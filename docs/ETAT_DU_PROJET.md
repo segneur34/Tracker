@@ -1,12 +1,12 @@
 # État du projet Tracker
 
-Document de passation, écrit le 21 septembre 2026 à partir d'une lecture complète du code et tenu à jour depuis ; dernière passe le 23 septembre 2026 (§10, point 36). Complète `CLAUDE.md`, qui donne les règles ; ici, l'inventaire, le pipeline, les chantiers et la cible mobile (§12). L'historique des décisions (§10) vit dans `docs/HISTORIQUE.md`.
+Document de passation, écrit le 21 septembre 2026 à partir d'une lecture complète du code et tenu à jour depuis ; dernière passe le 23 septembre 2026 (§10, point 37). Complète `CLAUDE.md`, qui donne les règles ; ici, l'inventaire, le pipeline, les chantiers et la cible mobile (§12). L'historique des décisions (§10) vit dans `docs/HISTORIQUE.md`.
 
 ## 1. Résumé
 
 Application web client-only qui lit une trace GPX et en tire des analyses. Les seuils de l'analyse voile s'accordent à l'allure de la session, ce qui la rend exploitable d'un bateau lent à un kite rapide, et lisible sur les traces enregistrées en cadence économique. Module voile abouti : carte colorée par la vitesse, statistiques globales, tops de vitesse, détection et qualité des virements et empannages, estimation du vent et de ses variations, VMG, notes de session. Module course opérationnel mais plus jeune : carte, graphes vitesse et altitude, zones de pente, dénivelé. Page Paramètres commune. Tout est persisté dans le navigateur, rien n'est exporté.
 
-État des contrôles au moment de la passation : typecheck, lint, 186 tests et build production passent.
+État des contrôles au moment de la passation : typecheck, lint, 192 tests et build production passent.
 
 ## 2. Environnement et outillage
 
@@ -15,22 +15,24 @@ Application web client-only qui lit une trace GPX et en tire des analyses. Les s
 - `tsconfig.app.json` : `verbatimModuleSyntax`, `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly`, `noFallthroughCasesInSwitch`. `strict` n'est pas écrit mais TypeScript 6 l'active par défaut. Conséquence pratique : un import inutilisé ou un paramètre inutilisé casse le build.
 - `.oxlintrc.json` : plugins react, typescript, oxc ; règles `react/rules-of-hooks` (erreur) et `react/only-export-components` (avertissement). Pas de règle sur `any`.
 - Vitest sans fichier de configuration : environnement node, pas de jsdom. Les tests importent `describe`, `it`, `expect` depuis `vitest`. Tout ce qui touche au DOM (parseur GPX, hooks, composants) n'est donc pas testé.
-- Dépôt git depuis le 23 septembre 2026 (Git pour Windows 2.55), branche `main`, dépôt distant privé `https://github.com/segneur34/Tracker.git`. Premier commit : l'état du projet avant l'allègement de `CLAUDE.md`, sans historique antérieur. Réglages locaux : auteur Tom Briere, `core.autocrlf=false` (les sources sont en LF, trois fichiers en CRLF ; git ne convertit rien). `.github/` vide. `dist/` est la sortie de `npm run build`, ignorée par `.gitignore`.
+- Dépôt git depuis le 23 septembre 2026 (Git pour Windows 2.55), branche `main`, dépôt distant privé `https://github.com/segneur34/Tracker.git`. Premier commit : l'état du projet avant l'allègement de `CLAUDE.md`, sans historique antérieur. Premier envoi sur GitHub le même jour, par l'utilisateur ; `main` suit `origin/main` et les identifiants sont mémorisés par Git pour Windows. Réglages locaux : auteur Tom Briere, `core.autocrlf=false` (les sources sont en LF, trois fichiers en CRLF ; git ne convertit rien). `.github/` vide. `dist/` est la sortie de `npm run build`, ignorée par `.gitignore`.
 - Terminal de l'utilisateur : `cmd` sous Windows 11.
 
 ## 3. Architecture
 
-Quatre couches, de bas en haut.
+Quatre couches, de bas en haut, plus une couche d'accès à la plateforme.
 
 **Noyau `src/core/`.** Sans notion de sport, en unités SI. Types, conversions, profils de support, parseur GPX, kinématique, filtres, allure et cadence d'une session (`sessionSpeed.ts`), cumuls, masque d'activité, dénivelé, meilleurs segments.
 
 **Extensions par sport.** `src/sailing/` travaille en nœuds sur `PointData` (adaptateur `src/utils/kinematics.ts`) : estimation du vent, manœuvres, VMG, stats, notes. `src/running/` travaille en m/s sur `TrackPoint` : pente, zones, allures. Le dégradé de couleur de la trace est commun aux deux (`core/speedGradient.ts`).
 
-**Hooks `src/hooks/`.** `useGpxSession` (ingestion générique), `useSailingSession` (orchestration voile complète), `useSportSettings` et `useAllSportSettings` (réglages persistés), `useSessionNotes`, `useRunnerProfile`, `useOpenSections`, tous sur `useStoredRecord` (localStorage générique).
+**Hooks `src/hooks/`.** `useGpxSession` (ingestion générique), `useSailingSession` (orchestration voile complète), `useSportSettings` et `useAllSportSettings` (réglages persistés), `useSessionNotes`, `useRunnerProfile`, `useOpenSections`, tous sur `useStoredRecord` (enregistrement persistant générique).
+
+**Plateforme `src/platform/`.** Seule couche autorisée à toucher au stockage, et demain aux fichiers et à la position (règle 12 de `CLAUDE.md`, §12). Aujourd'hui `storage.ts` seul, sur `localStorage` ; la version Android le remplacera sans que les hooks changent.
 
 **Pages et composants.** `Home`, `SailingModule`, `RunningModule`, `SettingsPage`, routes dans `App.tsx`. Composants partagés : `ModuleNav`, `SectionTabs`, `ResizablePanel`, `MapAutoResize`, `SpeedGradientLegend`, plus deux modules sans JSX : `chartHover.ts` (survol d'un graphe vers la carte) et `styles.ts` (`CARD_STYLE`).
 
-Graphe de dépendances résumé : `core/*` ne dépend que de `core/*`. `sailing/*` dépend de `core/*` et du type `PointData` de `utils/kinematics`. `running/*` dépend de `core/*`. Les hooks dépendent de `core`, `sailing`, `utils/kinematics`. Les pages dépendent des hooks, de `core`, `sailing`, `running` et des composants. Aucun alias de chemin : tous les imports sont relatifs.
+Graphe de dépendances résumé : `core/*` ne dépend que de `core/*`. `sailing/*` dépend de `core/*` et du type `PointData` de `utils/kinematics`. `running/*` dépend de `core/*`. `platform/*` ne dépend de rien. Les hooks dépendent de `core`, `sailing`, `utils/kinematics` et `platform` ; `ResizablePanel` dépend de `platform`. Les pages dépendent des hooks, de `core`, `sailing`, `running` et des composants. Aucun alias de chemin : tous les imports sont relatifs.
 
 ## 4. Pipeline de données
 
@@ -184,7 +186,7 @@ Signatures lues dans le code. Les fonctions internes non exportées sont omises 
 
 ### 5.4 `src/hooks/`
 
-- `useStoredRecord<T>(namespace, key | null, defaults) → { value; update(patch); loaded; readLatest() }` : localStorage générique, un espace de noms par clé de stockage, un enregistrement par sous-clé.
+- `useStoredRecord<T>(namespace, key | null, defaults) → { value; update(patch); loaded; readLatest() }` : enregistrement persistant générique, par `jsonStore` (`platform/storage.ts`), un espace de noms par clé de stockage, un enregistrement par sous-clé.
 - `useGpxSession(options?) → { fileName; trackName; rawPoints; hasDeviceSpeed; error; track; referenceSpeedMs; samplingS; sessionKey; deviceSpeedUnit; hasTrack; handleFileUpload; loadGpxContent; reset }`. Seuls les points bruts sont en état, la trace est dérivée par `useMemo` : changer une option de filtrage recalcule sans relire le fichier. `GpxSessionOptions` étend `KinematicsOptions` de `scaleFiltersToSession` (accorder les seuils de filtrage à l'allure de la session, faux par défaut, donc sans effet sur le module course) et `referenceSpeedOverrideMs`. `sessionKey` identifie la session (nom de trace et instant du premier point) : il sert à rattacher les notes en voile (`useSessionNotes`) et de clé de remontage à la carte dans les deux modules (§10, point 28).
 - `useSportSettings.ts` exporte aussi `TEXT_SCALE_FACTOR`, `TEXT_SCALE_LABEL`, `TERRAIN_LABEL`, `SAILING_UNITS = ['kn', 'kmh', 'ms']`, `RUNNING_UNITS = ['kmh', 'ms', 'minkm']`.
 - `useSportSettings(defaultSport, allowedSports = [defaultSport]) → { sport; setSport; profile; activeThreshold; setActiveThreshold; resetActiveThreshold; isThresholdOverridden; terrain; setTerrain; elevationProfile; speedUnit; setSpeedUnit; textScale; setTextScale; speedRange; setSpeedRange; referenceSpeed; setReferenceSpeed }`. Le support mémorisé n'est repris que s'il est dans `allowedSports`. `referenceSpeed` est l'allure imposée en m/s, `null` quand elle est déduite de la trace.
@@ -216,9 +218,13 @@ Signatures lues dans le code. Les fonctions internes non exportées sont omises 
 - `utils/kinematics.ts` : `PointData { lat; lon; time; timeMs; speed; smoothedSpeed; bearing }` en nœuds, `toPointData`, `trackToPointData`. Utilisé par `sailing/*` (type) et `useSailingSession` (`trackToPointData`).
 - `types/sailing.ts` : `TopRun = TopSegment`, `SessionStats extends BaseSessionStats { flightRatio; tops: { t2s; t5s; t10s; d100m; d500m; d1000m; d1NM } }`.
 
+### 5.8 `src/platform/`
+
+- `storage.ts` : `StorageBackend { getItem; setItem }` (`localStorage` y répond tel quel), `JsonStore { read<T>(key): T | null; write(key, value) }`, `createJsonStore(getBackend)`, `jsonStore` (sur `localStorage`). Le stockage est obtenu à chaque appel, dans le `try`, parce qu'un navigateur aux données de site bloquées lève une erreur dès l'accès à `localStorage`. Aucune erreur ne remonte : clé absente, JSON illisible ou stockage inaccessible donnent `null` à la lecture, et une écriture refusée est ignorée. Interface volontairement synchrone : la version Android chargera les Preferences en mémoire au démarrage (§12).
+
 ## 6. Persistance navigateur
 
-Cinq clés `localStorage`, toutes en `try/catch`.
+Cinq clés, toutes lues et écrites par `jsonStore` (`platform/storage.ts`), aujourd'hui dans `localStorage`. Les clés et le format JSON sont ceux d'avant ce module (§10, point 37) : les données déjà enregistrées sont relues telles quelles.
 
 | Clé | Fichier | Forme |
 |---|---|---|
@@ -250,7 +256,7 @@ Autres réglages : filtres (`speedFilter.ts`, accélération max 10 m/s², aberr
 
 ## 8. Tests
 
-186 tests dans 9 fichiers, `npx vitest run`, tous sur des fonctions pures avec des traces synthétiques.
+192 tests dans 10 fichiers, `npx vitest run`, tous sur des fonctions pures avec des traces synthétiques ou un stockage simulé.
 
 - `core/speedFilter.test.ts` (24) : médiane, écrêtage (pic, aller-retour de deux points, aberration au démarrage, plafond, non-verrouillage à 5 Hz), filtres médian, linéaire, moyenne.
 - `core/kinematics.test.ts` (22) : Haversine, cap, m/s, Doppler prioritaire, `forceDerivedSpeed`, saut de 500 m écrêté, détection km/h, m/s, nœuds, invariance 1 Hz / 5 Hz.
@@ -261,6 +267,7 @@ Autres réglages : filtres (`speedFilter.ts`, accélération max 10 m/s², aberr
 - `sailing/maneuvers.test.ts` (49) : virement unique, classification, vent local sur caps stabilisés, 1 Hz contre 5 Hz, métriques de qualité, résumé, estimation du vent avec les quatre protocoles synthétiques (rider asymétrique, session sans largue, courant traversier de 2 nœuds, bascule de 60°), chute au milieu de session, non-confusion avec l'opposé ; réglages du support (polaire aveugle au seuil wingfoil, empannage lent retenu au seuil du profil, neutralité des valeurs par défaut) ; `selectWindCandidate` (confiance de la direction retenue, accord négatif) ; `calculateWindStats` (périmètre complet, pondération par symétrie, repli sans vent de référence, marquage des manœuvres sur la courbe) ; enregistrement économique (virage compressé dans un pas de 22 s détecté, coupure de 60 s écartée, trace dense inchangée) ; seuils accordés à la session (virage à 2 nœuds écarté au seuil wingfoil et retenu au seuil de la session, virage sur place écarté faute de distance, `sessionManeuverThresholds` neutre au-dessus de 25 nœuds d'allure).
 - `running/runningAnalytics.test.ts` (13) : zones, pente sur 50 m robuste au bruit, allures par zone, dégradé (fonctions de `core/speedGradient.ts`, testées ici avec les bornes course).
 - `sailing/sailingConfig.test.ts` (9) : `suggestActiveThresholdKn` (régime rapide par support, exception bateau, borne à 12 nds, allure nulle) ; `suggestSpeedRangeMs` (borne basse alignée sur le seuil suggéré, borne haute au pic 2 s plus marge, repli sur trace vide ou trop courte).
+- `platform/storage.test.ts` (6) : clé absente, aller-retour, JSON identique à l'ancien accès direct (compatibilité des données déjà enregistrées), JSON illisible, stockage qui refuse de lire ou d'écrire, erreur levée dès l'accès au stockage. Sur un stockage simulé par une `Map`, en node.
 
 Générateurs réutilisables dans les tests : `buildEastwardTrack` (kinematics), `buildTrack` (plusieurs variantes selon le fichier), `realisticPolar` (wind), et dans `maneuvers.test.ts` `buildLegSession` avec `upwindDownwindLegs`, `downwindLegs` (portant pur, que des empannages), courant optionnel, `polar` optionnelle (`slowPolar`, la polaire du wingfoil divisée par 2,5, pour simuler un support lent) et `integratePosition`.
 
@@ -300,7 +307,7 @@ Exprimés par l'utilisateur ou découverts pendant le travail.
 
 ## 12. Cible mobile (Capacitor)
 
-Décidé le 23 septembre 2026 : proposition de Gemini, analysée et retenue. Téléphone de l'utilisateur : Android. Rien n'est encore installé côté mobile (ni Android Studio, ni Capacitor).
+Décidé le 23 septembre 2026 : proposition de Gemini, analysée et retenue. Téléphone de l'utilisateur : Android. Rien n'est encore installé côté mobile (ni Android Studio, ni Capacitor) ; seule la couche `src/platform/` est en place (phase 0).
 
 **Pourquoi Capacitor.** L'application est 100 % client : Capacitor emballe `dist/` dans une WebView Android, avec React, Leaflet et Recharts tels quels. Le code qui touche au navigateur tient en cinq endroits (`localStorage` à trois, `FileReader`, `DOMParser`, qui fonctionne en WebView) ; `core/`, `sailing/` et `running/` ne bougent pas. Écartés : PWA (géolocalisation coupée écran éteint), React Native (ni DOM, ni Leaflet, ni Recharts : réécriture des pages), natif (réécriture complète), Tauri mobile (géolocalisation en arrière-plan trop pauvre). iOS est hors de portée depuis Windows (Mac et compte Apple requis).
 
@@ -323,7 +330,7 @@ Décidé le 23 septembre 2026 : proposition de Gemini, analysée et retenue. Té
 **Boucle de développement.** Inchangée : `npm run dev` et le navigateur du PC. Mise en page mobile : mode appareil de Chrome (F12, Ctrl+Maj+M). Vers le téléphone, sans Wi-Fi commun : câble USB et débogage USB ; `npx cap run android` installe ; `--live-reload --host localhost --port 5173 --forwardPorts 5173:5173` charge l'application depuis le serveur du PC par le câble (à confirmer au premier essai) ; `chrome://inspect` montre la console. En option, un APK compilé par GitHub Actions et téléchargé sur le téléphone : il exige **une clé de signature fixe**, rangée dans les secrets du dépôt, sinon Android refuse la mise à jour et la désinstallation efface les sessions. Une mise à jour signée de la même clé conserve toutes les données.
 
 **Feuille de route.**
-- Phase 0 (en cours) : git et GitHub, `CLAUDE.md` allégé, historique sorti dans `docs/HISTORIQUE.md`, `src/platform/storage.ts`.
+- Phase 0, **faite le 23 septembre 2026** et validée par l'utilisateur (§10, points 36 et 37) : git et GitHub, `CLAUDE.md` allégé, historique sorti dans `docs/HISTORIQUE.md`, `src/platform/storage.ts`.
 - Phase 1 : Android Studio ; coquille Capacitor 8 ; stockage natif ; page d'enregistrement minimale (démarrer, arrêter, durée, points, précision) avec le plugin, le journal, l'écriture GPX et la source « rejeu » ; une vraie session de 2 h écran éteint.
 - Phase 2 : interface mobile (disposition empilée en écran étroit, décisions de disposition sur ordinateur inchangées ; toucher au lieu du survol ; `preferCanvas` ; `accept=".gpx"`, qui grise parfois les GPX sous Android) ; liste des sessions.
 - Phase 3 : partage et export GPX, réception d'un GPX partagé depuis Komoot, cartes hors ligne (pas de réseau en mer), capteur cardiaque Bluetooth.
