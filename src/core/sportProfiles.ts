@@ -33,6 +33,29 @@ export const ELEVATION_PRESETS: Record<'route' | 'trail', ElevationProfile> = {
   trail: { smoothingSeconds: 30, minGainM: 5 },
 };
 
+/**
+ * Réglage de l'enregistrement GPS sur téléphone. L'enregistreur ne filtre
+ * rien : il demande au système une position par intervalle et garde tout ce
+ * qui arrive, l'intelligence restant dans le pipeline d'analyse.
+ */
+export interface RecordingProfile {
+  /** Intervalle demandé entre deux positions, en millisecondes. */
+  intervalMs: number;
+  /** Déplacement minimal avant une nouvelle position, en mètres ; 0 n'en impose aucun. */
+  distanceFilterM: number;
+  /**
+   * Écart de temps de trace, en secondes, au-delà duquel les positions reçues
+   * sont écrites dans le journal. C'est la perte maximale en cas d'arrêt brutal.
+   */
+  journalFlushS: number;
+}
+
+/**
+ * Identique pour tous les supports au départ : 1 Hz, sans filtre de distance.
+ * Le 1 Hz tient aussi le coût du recalcul du vent (`docs/HISTORIQUE.md`, point 23).
+ */
+export const DEFAULT_RECORDING: RecordingProfile = { intervalMs: 1000, distanceFilterM: 0, journalFlushS: 10 };
+
 export interface SportProfile {
   id: SportType;
   label: string;
@@ -70,6 +93,8 @@ export interface SportProfile {
   elevation: ElevationProfile;
   /** Cibles de recherche des meilleurs segments. */
   topTargets: TopTarget[];
+  /** Réglage de l'enregistrement GPS. */
+  recording: RecordingProfile;
 }
 
 /** Cibles de tops utilisées par tous les supports à voile. */
@@ -95,6 +120,7 @@ const SAILING_DEFAULTS = {
   defaultPolarMinSpeed: 5,
   elevation: ELEVATION_PRESETS.route,
   topTargets: SAILING_TOP_TARGETS,
+  recording: DEFAULT_RECORDING,
 };
 
 export const SPORT_PROFILES: Record<SportType, SportProfile> = {
@@ -144,6 +170,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     elevation: ELEVATION_PRESETS.route,
     // Les cibles de tops running restent à définir avec les métriques du module.
     topTargets: [],
+    recording: DEFAULT_RECORDING,
   },
 };
 
