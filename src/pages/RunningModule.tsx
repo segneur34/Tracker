@@ -1,0 +1,438 @@
+import { useMemo, useState, type ReactNode } from 'react';
+import { CircleMarker, MapContainer, Polyline, TileLayer } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import {
+  Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  type TooltipPayloadEntry, type TooltipValueType,
+} from 'recharts';
+import MapAutoResize from '../components/MapAutoResize';
+import ModuleNav from '../components/ModuleNav';
+import ResizablePanel from '../components/ResizablePanel';
+import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
+import SpeedGradientLegend from '../components/SpeedGradientLegend';
+import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
+import { CARD_STYLE } from '../components/styles';
+import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER } from '../core/displayConfig';
+import { computeElevationStats } from '../core/elevation';
+import {
+  buildCumulativeTrack, buildBaseSessionStats, computeActiveDistanceM, computeActiveTimeMs,
+  computeActivityMask, computeTotalTimeMs,
+} from '../core/sessionStats';
+import { ELEVATION_PRESETS, getActiveThresholds } from '../core/sportProfiles';
+import { meanFilterByTime } from '../core/speedFilter';
+import { speedGradientColor } from '../core/speedGradient';
+import {
+  SPEED_UNIT_LABEL, formatSpeed, formatSpeedValue, fromDisplaySpeed, isInverseUnit, toDisplaySpeed,
+  type SpeedUnit,
+} from '../core/units';
+import { useGpxSession } from '../hooks/useGpxSession';
+import { useOpenSections } from '../hooks/useOpenSections';
+import { useRunnerProfile } from '../hooks/useRunnerProfile';
+import {
+  RUNNING_UNITS, TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, useSportSettings,
+  type TerrainType, type TextScale,
+} from '../hooks/useSportSettings';
+import { DEFAULT_SPEED_RANGE_MS, averagePace, computeGrades, computeZoneStats } from '../running/runningAnalytics';
+import type { RunningSessionStats } from '../running/types';
+
+/** Lissage supplémentaire de la vitesse pour le graphe, en secondes. */
+const CHART_SPEED_SMOOTHING_S = 10;
+/** Lissage de la vitesse pour la couleur de la trace, en secondes. */
+const MAP_SPEED_SMOOTHING_S = 15;
+
+/**
+ * Sections du module. Pour en ajouter une : une entrée ici, une valeur par
+ * défaut dans `RUNNING_SECTION_DEFAULTS`, et un bloc `{open.maCle && (...)}`
+ * dans le rendu. La carte n'en fait pas partie : comme en voile, elle
+ * s'affiche en permanence, jamais derrière un onglet qu'on pourrait fermer
+ * et oublier rouvert.
+ */
+type RunningSection = 'synthese' | 'zones' | 'graphiques';
+
+const RUNNING_SECTIONS: SectionDefinition<RunningSection>[] = [
+  { key: 'synthese', label: 'synthèse' },
+  { key: 'zones', label: 'zones de pente' },
+  { key: 'graphiques', label: 'graphiques' },
+];
+
+const RUNNING_SECTION_DEFAULTS: Record<RunningSection, boolean> = {
+  synthese: true,
+  zones: true,
+  graphiques: true,
+};
+
+type ChartMode = 'separate' | 'overlay';
+
+/** Une ligne des graphes : `index` renvoie au point de trace d'origine. */
+interface ChartRow {
+  index: number;
+  km: number;
+  speed: number | null;
+  speedMs: number;
+  altitude: number | null;
+}
+
+const cardStyle = CARD_STYLE;
+const chartTooltipStyle = { fontSize: '12px' } as const;
+
+/**
+ * Module course à pied : trace colorée par la vitesse, graphes de vitesse et
+ * d'altitude séparés ou superposés, allures par zone de pente.
+ */
+function RunningModule() {
+  const {
+    profile, terrain, setTerrain, elevationProfile,
+    speedUnit, setSpeedUnit, textScale, setTextScale,
+    speedRange, setSpeedRange,
+  } = useSportSettings('running');
+  const { profile: runner } = useRunnerProfile();
+  const gpx = useGpxSession({
+    medianWindowSeconds: profile.medianWindowSeconds,
+    maxSpeedMs: profile.maxPlausibleSpeedMs,
+  });
+
+  const { open, toggle } = useOpenSections<RunningSection>('running', RUNNING_SECTION_DEFAULTS);
+  const [chartMode, setChartMode] = useState<ChartMode>('separate');
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  const scale = TEXT_SCALE_FACTOR[textScale];
+  const unitLabel = SPEED_UNIT_LABEL[speedUnit];
+  const inverse = isInverseUnit(speedUnit);
+
+  const cumulative = useMemo(() => buildCumulativeTrack(gpx.track), [gpx.track]);
+
+  const elevation = useMemo(
+    () => computeElevationStats(gpx.track, elevationProfile),
+    [gpx.track, elevationProfile]
+  );
+
+  const activityMask = useMemo(() => {
+    const thresholds = getActiveThresholds(profile, profile.defaultActiveThreshold);
+    return computeActivityMask(gpx.track, {
+      enterThresholdMs: fromDisplaySpeed(thresholds.enter, profile.thresholdUnit),
+      exitThresholdMs: fromDisplaySpeed(thresholds.exit, profile.thresholdUnit),
+      minStateDurationS: profile.minStateDurationS,
+    });
+  }, [gpx.track, profile]);
+
+  const stats: RunningSessionStats | null = useMemo(() => {
+    if (gpx.track.length === 0) return null;
+    const thresholds = getActiveThresholds(profile, profile.defaultActiveThreshold);
+    return buildBaseSessionStats(gpx.track, {
+      enterThresholdMs: fromDisplaySpeed(thresholds.enter, profile.thresholdUnit),
+      exitThresholdMs: fromDisplaySpeed(thresholds.exit, profile.thresholdUnit),
+      minStateDurationS: profile.minStateDurationS,
+      cumulative,
+      activityMask,
+      elevationStats: elevation,
+    });
+  }, [gpx.track, profile, cumulative, activityMask, elevation]);
+
+  /** Allures moyennes : sur le temps total, et sur le seul temps en mouvement. */
+  const averages = useMemo(() => {
+    if (gpx.track.length === 0) return null;
+    const totalDistanceM = cumulative.cumDist[cumulative.cumDist.length - 1] ?? 0;
+    return {
+      overall: averagePace(totalDistanceM, computeTotalTimeMs(gpx.track)),
+      moving: averagePace(computeActiveDistanceM(gpx.track, activityMask), computeActiveTimeMs(gpx.track, activityMask)),
+    };
+  }, [gpx.track, cumulative, activityMask]);
+
+  const grades = useMemo(
+    () => (stats?.hasElevation ? computeGrades(elevation.smoothed, cumulative) : []),
+    [stats, elevation, cumulative]
+  );
+
+  const zoneStats = useMemo(
+    () => (grades.length > 0 ? computeZoneStats(gpx.track, grades, activityMask) : []),
+    [gpx.track, grades, activityMask]
+  );
+
+  /** Bornes du dégradé de couleur, en m/s. */
+  const range = speedRange ?? DEFAULT_SPEED_RANGE_MS;
+
+  /** Séries des graphes : distance en km, vitesse dans l'unité choisie, altitude lissée. */
+  const chartData = useMemo(() => {
+    if (gpx.track.length === 0) return [];
+    const displaySpeed = meanFilterByTime(
+      gpx.track.map((p) => p.smoothedSpeedMs),
+      gpx.track.map((p) => p.timeMs),
+      CHART_SPEED_SMOOTHING_S
+    );
+    const step = Math.max(1, Math.ceil(gpx.track.length / CHART_MAX_POINTS));
+    const data: ChartRow[] = [];
+    for (let i = 0; i < gpx.track.length; i += step) {
+      const altitude = elevation.smoothed[i];
+      const ms = displaySpeed[i];
+      // En min/km, l'arrêt tend vers l'infini : on laisse un trou plutôt qu'une valeur absurde.
+      const speed = inverse && ms < 0.3 ? null : parseFloat(toDisplaySpeed(ms, speedUnit).toFixed(2));
+      data.push({
+        index: i,
+        km: parseFloat((cumulative.cumDist[i] / 1000).toFixed(2)),
+        speed,
+        speedMs: ms,
+        altitude: stats?.hasElevation && isFinite(altitude) ? Math.round(altitude) : null,
+      });
+    }
+    return data;
+  }, [gpx.track, elevation, cumulative, stats, speedUnit, inverse]);
+
+  const mapSegments = useMemo(() => {
+    if (gpx.track.length < 2) return [];
+    const colorSpeed = meanFilterByTime(
+      gpx.track.map((p) => p.smoothedSpeedMs),
+      gpx.track.map((p) => p.timeMs),
+      MAP_SPEED_SMOOTHING_S
+    );
+    return gpx.track.slice(1).map((point, index) => {
+      const prev = gpx.track[index];
+      return {
+        id: index,
+        positions: [[prev.lat, prev.lon], [point.lat, point.lon]] as [[number, number], [number, number]],
+        color: speedGradientColor(colorSpeed[index + 1], range.minMs, range.maxMs),
+      };
+    });
+  }, [gpx.track, range.minMs, range.maxMs]);
+
+  const center: [number, number] = gpx.track.length > 0 ? [gpx.track[0].lat, gpx.track[0].lon] : DEFAULT_MAP_CENTER;
+
+  const onChartHover = (e: ChartHoverEvent) => {
+    const index = hoveredTrackIndex(e, chartData);
+    if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
+  };
+
+  const tooltipFormatter = (
+    value: TooltipValueType | undefined,
+    name: string | number | undefined,
+    item: TooltipPayloadEntry
+  ): [ReactNode, string | number | undefined] => {
+    // Recharts ne type pas la ligne de données derrière l'entrée : on la relit sous la forme de `chartData`.
+    const row: ChartRow | undefined = item.payload;
+    if (name === 'Vitesse' && row) return [formatSpeed(row.speedMs, speedUnit), name];
+    if (name === 'Altitude') return [`${value} m`, name];
+    return [String(value ?? ''), name];
+  };
+
+  const speedAxis = (
+    <YAxis
+      yAxisId="speed"
+      domain={inverse ? ['auto', 'auto'] : [0, 'auto']}
+      reversed={inverse}
+      tickFormatter={(v) => formatSpeedValue(v, speedUnit)}
+      width={46}
+      tick={{ fill: '#1e88e5', fontSize: 11 }}
+      label={{ value: unitLabel, angle: -90, position: 'insideLeft', fill: '#1e88e5', fontSize: 11 }} />
+  );
+  const altitudeAxis = (orientation: 'left' | 'right') => (
+    <YAxis yAxisId="altitude" orientation={orientation} domain={['auto', 'auto']} tickFormatter={(v) => `${v}`} width={44} tick={{ fill: '#e64a19', fontSize: 11 }} label={{ value: 'm', angle: -90, position: orientation === 'left' ? 'insideLeft' : 'insideRight', fill: '#e64a19', fontSize: 11 }} />
+  );
+  const xAxis = <XAxis dataKey="km" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(v) => `${v} km`} tick={{ fill: '#555', fontSize: 11 }} />;
+
+  const speedLegend = (
+    <SpeedGradientLegend
+      unit={speedUnit}
+      range={range}
+      isOverridden={speedRange !== null}
+      onChange={setSpeedRange}
+      slowLabel="marche" />
+  );
+
+  return (
+    <div style={{ padding: '20px', fontFamily: 'sans-serif' }} onMouseLeave={() => setHoveredIndex(null)}>
+      <ModuleNav />
+      <h1>Analyse Course à pied</h1>
+
+      <div style={{ display: 'flex', gap: '18px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', fontSize: '14px' }}>
+        <input type="file" accept=".gpx" onChange={gpx.handleFileUpload} />
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <strong>Unité :</strong>
+          <select value={speedUnit} onChange={(e) => setSpeedUnit(e.target.value as SpeedUnit)} style={{ padding: '4px 6px' }}>
+            {RUNNING_UNITS.map((u) => (
+              <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>
+            ))}
+          </select>
+        </label>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <strong>Terrain :</strong>
+          <select value={terrain} onChange={(e) => setTerrain(e.target.value as TerrainType)} style={{ padding: '4px 6px' }}>
+            {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
+              <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
+            ))}
+          </select>
+        </label>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <strong>Texte :</strong>
+          <select value={textScale} onChange={(e) => setTextScale(e.target.value as TextScale)} style={{ padding: '4px 6px' }}>
+            {(Object.keys(TEXT_SCALE_FACTOR) as TextScale[]).map((s) => (
+              <option key={s} value={s}>{TEXT_SCALE_LABEL[s]}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {gpx.error && (
+        <div style={{ padding: '10px 15px', backgroundColor: '#fdecea', border: '1px solid #d32f2f', borderRadius: '8px', color: '#b71c1c', marginBottom: '10px', maxWidth: '520px' }}>
+          {gpx.error}
+        </div>
+      )}
+
+      {!stats && !gpx.error && (
+        <p style={{ color: '#666' }}>Chargez une trace GPX pour lancer l'analyse.</p>
+      )}
+
+      {stats && averages && (
+        <SectionTabs sections={RUNNING_SECTIONS} open={open} onToggle={toggle} accent="#e64a19" />
+      )}
+
+      {stats && averages && (
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'stretch', marginBottom: '15px', fontSize: `${14 * scale}px` }}>
+          {open.synthese && (
+          <ResizablePanel id="running.synthese" style={{ ...cardStyle, flex: '1 1 300px' }}>
+            <strong style={{ display: 'block', marginBottom: '10px', fontSize: '1.15em' }}>
+              {gpx.trackName ?? gpx.fileName ?? 'Session'}
+            </strong>
+            <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.7' }}>
+              <li><strong>Distance :</strong> {stats.distance} km <span style={{ color: '#666' }}>(en mouvement {stats.activeDistance} km)</span></li>
+              <li><strong>Temps de parcours :</strong> {stats.totalTime} <span style={{ color: '#666' }}>(en mouvement {stats.activeTime}, {stats.activeRatio} %)</span></li>
+              <li><strong>Vitesse moyenne :</strong> {formatSpeed(averages.moving.speedMs, speedUnit)} <span style={{ color: '#666' }}>(en mouvement)</span></li>
+              <li><strong>Sur le temps total :</strong> {formatSpeed(averages.overall.speedMs, speedUnit)}</li>
+              <li style={{ marginTop: '6px' }}><strong>Dénivelé :</strong> +{stats.elevationGain} m / -{stats.elevationLoss} m</li>
+              <li><strong>Altitude :</strong> {stats.elevationMin} m à {stats.elevationMax} m</li>
+              {!stats.hasElevation && (
+                <li style={{ color: '#b71c1c', fontSize: '0.85em' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</li>
+              )}
+              <li style={{ color: '#666', fontSize: '0.85em', marginTop: '6px' }}>
+                Vitesse : {gpx.hasDeviceSpeed
+                  ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
+                  : 'dérivée des positions, filtrée'}
+                {runner.weightKg !== null ? ` · Poids : ${runner.weightKg} kg` : ' · Poids non renseigné, voir Paramètres'}
+              </li>
+            </ul>
+          </ResizablePanel>
+          )}
+
+          {open.zones && zoneStats.length > 0 && (
+            <ResizablePanel id="running.zones" style={{ ...cardStyle, flex: '1 1 420px' }}>
+              <strong style={{ display: 'block', marginBottom: '10px', fontSize: '1.15em' }}>Allure par zone de pente <span style={{ color: '#666', fontSize: '0.75em', fontWeight: 'normal' }}>(en mouvement)</span></strong>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: '#fff', border: '1px solid #ddd' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#e0e0e0' }}>
+                    <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
+                    <th style={{ padding: '0.4em 0.6em', fontWeight: 'normal', color: '#555' }}>Pente</th>
+                    <th style={{ padding: '0.4em 0.6em' }}>Distance</th>
+                    <th style={{ padding: '0.4em 0.6em' }}>Temps</th>
+                    <th style={{ padding: '0.4em 0.6em' }}>Vitesse ({unitLabel})</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {zoneStats.map((z) => (
+                    <tr key={z.zone.key} style={{ borderTop: '1px solid #eee', opacity: z.timeMs > 0 ? 1 : 0.45 }}>
+                      <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label}</td>
+                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: '#555', fontSize: '0.9em' }}>{z.zone.range}</td>
+                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.distance} <span style={{ color: '#888', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
+                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
+                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ color: '#666', fontSize: '0.8em', marginTop: '6px' }}>
+                Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone.
+              </div>
+            </ResizablePanel>
+          )}
+        </div>
+      )}
+
+      {open.graphiques && chartData.length > 1 && (
+        <ResizablePanel id="running.graphiques" defaultHeight={460} minHeight={220} direction="vertical"
+          style={{ ...cardStyle, marginBottom: '15px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
+            <strong style={{ fontSize: '16px' }}>Vitesse et altitude</strong>
+            <span style={{ flex: 1 }} />
+            {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
+              <button key={mode} onClick={() => setChartMode(mode)}
+                style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: chartMode === mode ? '#e64a19' : '#ddd', color: chartMode === mode ? '#fff' : '#000' }}>
+                {mode === 'separate' ? 'Séparés' : 'Superposés'}
+              </button>
+            ))}
+          </div>
+
+          {chartMode === 'overlay' ? (
+            <div style={{ width: '100%', flex: 1, minHeight: 0 }}>
+              <ResponsiveContainer>
+                <ComposedChart data={chartData} syncId="running" onMouseMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                  {xAxis}
+                  {speedAxis}
+                  {stats?.hasElevation && altitudeAxis('right')}
+                  <Tooltip formatter={tooltipFormatter} labelFormatter={(l) => `${l} km`} contentStyle={chartTooltipStyle} />
+                  {stats?.hasElevation && (
+                    <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke="#e64a19" strokeWidth={1.5} fill="#e64a19" fillOpacity={0.12} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
+                  )}
+                  <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <>
+              <div style={{ width: '100%', flex: stats?.hasElevation ? 1.1 : 1, minHeight: 0 }}>
+                <ResponsiveContainer>
+                  <ComposedChart data={chartData} syncId="running" onMouseMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                    {xAxis}
+                    {speedAxis}
+                    <Tooltip formatter={tooltipFormatter} labelFormatter={(l) => `${l} km`} contentStyle={chartTooltipStyle} />
+                    <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              {stats?.hasElevation && (
+                <div style={{ width: '100%', flex: 1, minHeight: 0, marginTop: '6px' }}>
+                  <ResponsiveContainer>
+                    <ComposedChart data={chartData} syncId="running" onMouseMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                      {xAxis}
+                      {altitudeAxis('left')}
+                      <Tooltip formatter={tooltipFormatter} labelFormatter={(l) => `${l} km`} contentStyle={chartTooltipStyle} />
+                      <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke="#e64a19" strokeWidth={2} fill="#e64a19" fillOpacity={0.15} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </>
+          )}
+          <div style={{ color: '#666', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
+            Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte. Poignée en bas à droite pour redimensionner.
+          </div>
+        </ResizablePanel>
+      )}
+
+      {gpx.track.length > 0 && speedLegend}
+
+      <div style={{ marginTop: '10px' }}>
+        <ResizablePanel id="running.carte" defaultHeight={520} minHeight={240}
+          style={{ width: '60%', zIndex: 0, overflow: 'hidden', borderRadius: '8px', border: '1px solid #ccc' }}>
+          <MapContainer key={gpx.sessionKey ?? 'empty'} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
+            <MapAutoResize />
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            {mapSegments.map((segment) => (
+              <Polyline key={`track-${segment.id}`} positions={segment.positions} pathOptions={{ color: segment.color, weight: 5 }} />
+            ))}
+            {hoveredIndex !== null && gpx.track[hoveredIndex] && (
+              <CircleMarker
+                center={[gpx.track[hoveredIndex].lat, gpx.track[hoveredIndex].lon]}
+                radius={8}
+                pathOptions={{ color: '#000', fillColor: '#fff', fillOpacity: 1, weight: 3 }} />
+            )}
+          </MapContainer>
+        </ResizablePanel>
+      </div>
+    </div>
+  );
+}
+
+export default RunningModule;
