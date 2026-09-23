@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Tracker : analyse de sessions sportives à partir de traces GPX
 
-Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau) et course (`/course`), pages `/enregistrer` et `/parametres`. Interface et commentaires en français. Application Android via Capacitor, avec enregistrement GPS natif : étape 1 faite, suite au §12 de `docs/ETAT_DU_PROJET.md` (« Cible mobile »).
+Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau) et course (`/course`), pages `/enregistrer` et `/parametres`. Interface et commentaires en français. Application Android via Capacitor, avec enregistrement GPS natif : plan en six lots au §12 de `docs/ETAT_DU_PROJET.md` (« Cible mobile »), lot 1 fait.
 
 `docs/ETAT_DU_PROJET.md` décrit le code, le pipeline et les chantiers : le lire avant de toucher au noyau ou aux analyses voile. `docs/INVENTAIRE.md` donne les signatures exportées, module par module. `docs/HISTORIQUE.md` garde les décisions passées et les pièges : le consulter sur le sujet qu'on touche.
 
@@ -19,7 +19,7 @@ npx vitest run src/sailing/wind.test.ts -t "nom"   un fichier, un test
 npm run build        tsc -b && vite build
 ```
 
-Android (JDK 21 obligatoire, détails dans `docs/ETAT_DU_PROJET.md` §2 et §12) : `npm run build`, `npx cap sync android`, puis `npx cap run android`. Dans le shell de Claude, la CLI ne trouve pas `gradlew` : passer par `android\gradlew.bat assembleDebug` et `adb install -r`.
+Android (JDK 21 obligatoire, détails dans `docs/ETAT_DU_PROJET.md` §2 et §12) : `npm run build`, `npx cap sync android`, puis `npx cap run android`. Dans le shell de Claude, la CLI ne trouve pas `gradlew` : passer par `android\gradlew.bat assembleRelease` (`JAVA_HOME` et `ANDROID_HOME` à poser) et `adb install -r`. APK signé par une clé dédiée, hors du dépôt (`android/keystore.properties`, ignoré) : ne jamais la régénérer ni la versionner. Version unique dans `package.json`, à augmenter avant chaque APK diffusé.
 
 Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous doivent passer.
 
@@ -58,6 +58,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Graphe relié à la carte : chaque ligne porte l'`index` du point de trace, et le survol passe par `hoveredTrackIndex` (`components/chartHover.ts`). Pas de `any`.
 - Métrique de manœuvre : `ManeuverLocation` (`sailing/maneuvers.ts`), puis `MANEUVER_METRICS` et `summarizeManeuvers` (`sailing/sailingAnalytics.ts`).
 - Calcul pur : dans `core/`, `sailing/`, `running/` ou `recording/`, avec son `*.test.ts` sur trace synthétique.
+- Couleur, police, rayon, espacement : une variable de `src/theme/tokens.css`, jamais une valeur en dur dans un écran neuf. Composants communs dans `components/ui`, icônes dans `components/icons.tsx` (pas d'emoji). Les couleurs de données des graphes et de la carte restent en dur (attributs SVG).
 
 ## Décisions de l'utilisateur
 
@@ -68,3 +69,6 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Tout bloc est redimensionnable (`ResizablePanel`), taille mémorisée.
 - Voile : manœuvres en petit tableau, détails dépliables. Carte à 60 % de large ; à sa droite, les onglets manœuvres, VMG, graphiques, vent (dans cet ordre, fermés par défaut, côte à côte si la place le permet). En haut : global, matos, tops seulement. Ne rien déplacer ni dupliquer entre les deux groupes sans redemander.
 - Enregistrement : brut à 1 Hz, sans autre filtre que les redélivrances ; un GPX par session dans `Documents/Tracker`, analysé par les modules existants via `loadGpxContent`. Suite de la cible mobile dans l'ordre fixé au §12 de l'état.
+- DA de la maquette pour l'instant (Figtree, fond gris chaud, cartes blanches, bleu voile, rouille course, vert Enregistrer), appelée à changer : tout passe par les variables. Navigation : barre d'onglets en bas sur téléphone, barre en haut sur ordinateur.
+- Réglages d'affichage (unités, taille du texte) choisis dans Réglages seulement, par famille (voile, course), actifs partout ; par sous-sport plus tard peut-être.
+- Diffusion : APK signé partagé par lien d'abord, lien web ensuite.
