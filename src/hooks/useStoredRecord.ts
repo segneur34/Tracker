@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { jsonStore } from '../platform/storage';
 
 /**
  * Enregistrement persistant dans le navigateur, rangé par espace de noms et
@@ -9,22 +10,10 @@ import { useCallback, useEffect, useState } from 'react';
  * été chargé.
  */
 
-const readAll = <T,>(namespace: string): Record<string, T> => {
-  try {
-    const raw = localStorage.getItem(namespace);
-    return raw ? (JSON.parse(raw) as Record<string, T>) : {};
-  } catch {
-    return {};
-  }
-};
+const readAll = <T,>(namespace: string): Record<string, T> =>
+  jsonStore.read<Record<string, T>>(namespace) ?? {};
 
-const writeAll = <T,>(namespace: string, all: Record<string, T>): void => {
-  try {
-    localStorage.setItem(namespace, JSON.stringify(all));
-  } catch {
-    // Stockage indisponible : la valeur reste valable pour la session en cours.
-  }
-};
+const writeAll = <T,>(namespace: string, all: Record<string, T>): void => jsonStore.write(namespace, all);
 
 export const useStoredRecord = <T extends object>(
   namespace: string,

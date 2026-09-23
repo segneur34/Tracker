@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import { jsonStore } from '../platform/storage';
 
 /**
  * Panneau redimensionnable par sa poignée en bas à droite, en largeur et en
@@ -26,24 +27,13 @@ interface PanelSize {
   height?: number;
 }
 
-const readSizes = (): Record<string, PanelSize> => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, PanelSize>) : {};
-  } catch {
-    return {};
-  }
-};
+const readSizes = (): Record<string, PanelSize> => jsonStore.read<Record<string, PanelSize>>(STORAGE_KEY) ?? {};
 
 const writeSize = (id: string, size: PanelSize | null): void => {
-  try {
-    const all = readSizes();
-    if (size === null) delete all[id];
-    else all[id] = size;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
-  } catch {
-    // Stockage indisponible : la taille vaut pour la session en cours.
-  }
+  const all = readSizes();
+  if (size === null) delete all[id];
+  else all[id] = size;
+  jsonStore.write(STORAGE_KEY, all);
 };
 
 interface ResizablePanelProps {

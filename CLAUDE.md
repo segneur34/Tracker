@@ -41,6 +41,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 9. Un module ne reprend que ses supports : `useSportSettings(defaultSport, allowedSports)`.
 10. Cadence variable : une application économique peut compresser un virage entier dans un seul intervalle. Ne jamais supposer plusieurs points dans une fenêtre de quelques secondes.
 11. react-leaflet : le style d'un `Polyline` passe toujours par `pathOptions`, sinon il n'est pas réappliqué.
+12. Stockage, fichiers, position : uniquement via `src/platform/` (aujourd'hui `storage.ts`, jamais `localStorage` en direct), pour que la version Android n'ait qu'une couche à remplacer.
 
 ## Où ajouter quoi
 

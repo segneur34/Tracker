@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { ELEVATION_PRESETS, SPORT_PROFILES, getSportProfile } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import { SPEED_UNIT_LABEL, type SpeedUnit } from '../core/units';
+import { jsonStore } from '../platform/storage';
 
 /** Taille du texte des tableaux et synthèses, en facteur d'échelle. */
 export type TextScale = 'compact' | 'normal' | 'large';
@@ -70,22 +71,9 @@ export const isKnownSpeedUnit = (value: unknown): value is SpeedUnit =>
 export const isKnownTextScale = (value: unknown): value is TextScale =>
   typeof value === 'string' && value in TEXT_SCALE_FACTOR;
 
-const readStored = (): StoredSettings => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as StoredSettings) : {};
-  } catch {
-    return {};
-  }
-};
+const readStored = (): StoredSettings => jsonStore.read<StoredSettings>(STORAGE_KEY) ?? {};
 
-const writeStored = (settings: StoredSettings): void => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    // Stockage indisponible : les réglages restent valables pour la session.
-  }
-};
+const writeStored = (settings: StoredSettings): void => jsonStore.write(STORAGE_KEY, settings);
 
 const isKnownSport = (value: unknown): value is SportType =>
   typeof value === 'string' && value in SPORT_PROFILES;
