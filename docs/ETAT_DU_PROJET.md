@@ -1,6 +1,6 @@
 # État du projet Tracker
 
-Document de passation, écrit le 21 septembre 2026 à partir d'une lecture complète du code et tenu à jour depuis ; dernière passe le 23 septembre 2026 (§10, point 37). Complète `CLAUDE.md`, qui donne les règles ; ici, l'inventaire, le pipeline, les chantiers et la cible mobile (§12). L'historique des décisions (§10) vit dans `docs/HISTORIQUE.md`.
+Document de passation, écrit le 21 septembre 2026 à partir d'une lecture complète du code et tenu à jour depuis ; dernière passe le 23 septembre 2026 (§10, point 38). Complète `CLAUDE.md`, qui donne les règles ; ici, l'inventaire, le pipeline, les chantiers et la cible mobile (§12). L'historique des décisions (§10) vit dans `docs/HISTORIQUE.md`.
 
 ## 1. Résumé
 
@@ -11,7 +11,8 @@ Application web client-only qui lit une trace GPX et en tire des analyses. Les s
 ## 2. Environnement et outillage
 
 - `package.json` : `dev` (vite), `build` (`tsc -b && vite build`), `lint` (oxlint), `test` (`vitest run`), `test:watch`, `preview`.
-- Dépendances : react et react-dom 19, react-router-dom 7, recharts 3, leaflet 1.9 et react-leaflet 5. Dev : typescript 6.0, vite 8.3, vitest 5, oxlint 1.8, @vitejs/plugin-react 6.
+- Dépendances : react et react-dom 19, react-router-dom 7, recharts 3, leaflet 1.9 et react-leaflet 5 ; Capacitor 8 (`@capacitor/core`, `android`, `app`, `filesystem`, `preferences`) et `@capgo/background-geolocation` 8.4. Dev : typescript 6.0, vite 8.3, vitest 5, oxlint 1.8, @vitejs/plugin-react 6, @capacitor/cli 8.5.
+- Android : `capacitor.config.ts` (vérifié par `tsconfig.node.json`), `android/` versionné (Gradle 8.14.3, AGP 8.13, compileSdk et targetSdk 36, minSdk 24). Compiler avec un **JDK 21** (Temurin, `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot`) : le Java 25 d'Android Studio 2026.1 ne fait pas tourner Gradle 8.14.3. SDK dans `%LOCALAPPDATA%\Android\Sdk`. Chaîne : `npm run build`, `npx cap sync android`, puis `npx cap run android` (voir §12).
 - `tsconfig.app.json` : `verbatimModuleSyntax`, `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly`, `noFallthroughCasesInSwitch`. `strict` n'est pas écrit mais TypeScript 6 l'active par défaut. Conséquence pratique : un import inutilisé ou un paramètre inutilisé casse le build.
 - `.oxlintrc.json` : plugins react, typescript, oxc ; règles `react/rules-of-hooks` (erreur) et `react/only-export-components` (avertissement). Pas de règle sur `any`.
 - Vitest sans fichier de configuration : environnement node, pas de jsdom. Les tests importent `describe`, `it`, `expect` depuis `vitest`. Tout ce qui touche au DOM (parseur GPX, hooks, composants) n'est donc pas testé.
@@ -106,7 +107,8 @@ Signatures lues dans le code. Les fonctions internes non exportées sont omises 
 
 **sportProfiles.ts**
 - `ElevationProfile { smoothingSeconds; minGainM }`, `ELEVATION_PRESETS = { route: {20, 3}, trail: {30, 5} }`
-- `SportProfile { id; label; speedUnit; thresholdUnit; defaultActiveThreshold; activeHysteresis { enterOffset; exitOffset }; minStateDurationS; medianWindowSeconds; maxPlausibleSpeedMs; defaultPolarMinSpeed; activeRatioLabel; elevation; topTargets }`
+- `SportProfile { id; label; speedUnit; thresholdUnit; defaultActiveThreshold; activeHysteresis { enterOffset; exitOffset }; minStateDurationS; medianWindowSeconds; maxPlausibleSpeedMs; defaultPolarMinSpeed; activeRatioLabel; elevation; topTargets; recording }`
+- `RecordingProfile { intervalMs; distanceFilterM; journalFlushS }`, `DEFAULT_RECORDING = { 1000, 0, 10 }`, commun à tous les supports (§12)
 - `SAILING_TOP_TARGETS` (7 cibles), `SPORT_PROFILES` (voir tableau §7), `SAILING_SPORTS`, `getSportProfile`, `getActiveThresholds(profile, threshold) → { enter; exit }` dans l'unité du profil
 
 **displayConfig.ts**
@@ -307,7 +309,7 @@ Exprimés par l'utilisateur ou découverts pendant le travail.
 
 ## 12. Cible mobile (Capacitor)
 
-Décidé le 23 septembre 2026 : proposition de Gemini, analysée et retenue. Téléphone de l'utilisateur : Android. Rien n'est encore installé côté mobile (ni Android Studio, ni Capacitor) ; seule la couche `src/platform/` est en place (phase 0).
+Décidé le 23 septembre 2026 : proposition de Gemini, analysée et retenue. Téléphone de l'utilisateur : POCO 2412DPC0AG (Xiaomi), Android 16, HyperOS 3.0 ; il faut « Installer via USB » en plus du débogage USB. La coquille Capacitor y est installée et vérifiée (phase 1, premier lot).
 
 **Pourquoi Capacitor.** L'application est 100 % client : Capacitor emballe `dist/` dans une WebView Android, avec React, Leaflet et Recharts tels quels. Le code qui touche au navigateur tient en trois endroits (`platform/storage.ts`, `FileReader` dans `useGpxSession`, `DOMParser`, qui fonctionne en WebView) ; `core/`, `sailing/` et `running/` ne bougent pas. Écartés : PWA (géolocalisation coupée écran éteint), React Native (ni DOM, ni Leaflet, ni Recharts : réécriture des pages), natif (réécriture complète), Tauri mobile (géolocalisation en arrière-plan trop pauvre). iOS est hors de portée depuis Windows (Mac et compte Apple requis).
 
@@ -325,13 +327,13 @@ Décidé le 23 septembre 2026 : proposition de Gemini, analysée et retenue. Té
 - `storage.ts` (phase 0) : JSON clé/valeur synchrone. En natif, `@capacitor/preferences`, chargé en mémoire au démarrage, parce que le système peut vider le `localStorage` d'une WebView.
 - `location.ts` (phase 1) : le plugin en natif, `watchPosition` dans le navigateur, et une source « rejeu » qui lit un GPX en accéléré pour tester tout l'enregistrement sur le PC.
 - `files.ts` (phase 1) : journal et GPX via `@capacitor/filesystem`.
-- `src/recording/` (phase 1) : logique pure testable en node (position → `RawTrackPoint`, journal, écriture GPX). `android/`, généré par Capacitor, sera versionné.
+- `src/recording/` (phase 1) : logique pure testable en node (position → `RawTrackPoint`, journal, écriture GPX). `android/`, généré par Capacitor, est versionné.
 
-**Boucle de développement.** Inchangée : `npm run dev` et le navigateur du PC ; mise en page mobile au mode appareil de Chrome. Vers le téléphone, sans Wi-Fi commun, par câble USB : `npx cap run android` installe, `--live-reload --host localhost --port 5173 --forwardPorts 5173:5173` charge l'application depuis le serveur du PC (à confirmer au premier essai), `chrome://inspect` montre la console. En option, un APK compilé par GitHub Actions : il exige **une clé de signature fixe** (secrets du dépôt), sinon Android refuse la mise à jour et la désinstallation efface les sessions.
+**Boucle de développement.** Inchangée : `npm run dev` et le navigateur du PC ; mise en page mobile au mode appareil de Chrome. Vers le téléphone, sans Wi-Fi commun, par câble USB : `npm run build`, `npx cap sync android`, `npx cap run android` (compile et installe, 2 min 20 à froid). Dans le shell de Claude, qui définit `NoDefaultCurrentDirectoryInExePath=1`, la CLI ne trouve pas `gradlew` : y passer par `android\gradlew.bat assembleDebug`, `adb install -r android/app/build/outputs/apk/debug/app-debug.apk` et `adb shell am start -n io.github.segneur.tracker/.MainActivity`. `--live-reload --host localhost --port 5173 --forwardPorts 5173:5173` chargerait l'application depuis le serveur du PC (pas encore essayé). `chrome://inspect` montre la console ; Claude peut aussi piloter la WebView de debug par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>` et le protocole DevTools. En option, un APK compilé par GitHub Actions : il exige **une clé de signature fixe** (secrets du dépôt), sinon Android refuse la mise à jour et la désinstallation efface les sessions.
 
 **Feuille de route.**
 - Phase 0, **faite le 23 septembre 2026** et validée par l'utilisateur (§10, points 36 et 37) : git et GitHub, `CLAUDE.md` allégé, historique sorti dans `docs/HISTORIQUE.md`, `src/platform/storage.ts`.
-- Phase 1 : Android Studio ; coquille Capacitor 8 ; stockage natif ; page d'enregistrement minimale (démarrer, arrêter, durée, points, précision) avec le plugin, le journal, l'écriture GPX et la source « rejeu » ; une vraie session de 2 h écran éteint.
+- Phase 1 : Android Studio et coquille Capacitor 8, **faits le 23 septembre 2026** (§10, point 38) ; restent le stockage natif ; page d'enregistrement minimale (démarrer, arrêter, durée, points, précision) avec le plugin, le journal, l'écriture GPX et la source « rejeu » ; une vraie session de 2 h écran éteint.
 - Phase 2 : interface mobile (disposition empilée en écran étroit, décisions de disposition sur ordinateur inchangées ; toucher au lieu du survol ; `preferCanvas` ; `accept=".gpx"`, qui grise parfois les GPX sous Android) ; liste des sessions.
 - Phase 3 : partage et export GPX, réception d'un GPX partagé depuis Komoot, cartes hors ligne (pas de réseau en mer), capteur cardiaque Bluetooth.
-- À vérifier en phase 1 : `BrowserRouter` dans la WebView, avec `HashRouter` en repli.
+- `BrowserRouter` fonctionne dans la WebView, chargement direct de chaque route compris : pas besoin de `HashRouter`.
