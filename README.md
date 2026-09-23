@@ -23,4 +23,5 @@ npm run build        build de production dans dist/
 ## Documentation
 
 - `CLAUDE.md` : règles d'architecture et conventions du projet.
-- `docs/ETAT_DU_PROJET.md` : inventaire du code, pipeline de calcul, décisions prises, chantiers en attente.
+- `docs/ETAT_DU_PROJET.md` : inventaire du code, pipeline de calcul, chantiers en attente, cible mobile.
+- `docs/HISTORIQUE.md` : décisions prises et pièges rencontrés, dans l'ordre chronologique.

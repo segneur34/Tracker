@@ -408,8 +408,8 @@ const STABLE_SEARCH_S = 20;
  * même légèrement décalé peut suffire à faire sortir un virage limite de la
  * tolérance de classement (`classifyTurn`), qui le fait alors disparaître
  * entièrement plutôt que de simplement l'exclure de la courbe de vent.
- * Revenu aux valeurs d'origine ; voir `docs/ETAT_DU_PROJET.md` §10 pour le
- * détail avant de retenter un réglage.
+ * Revenu aux valeurs d'origine ; voir `docs/HISTORIQUE.md`, point 21, pour
+ * le détail avant de retenter un réglage.
  */
 const STABLE_MARGIN_S = 4;
 /** Durée minimale d'un segment stabilisé, en secondes. */

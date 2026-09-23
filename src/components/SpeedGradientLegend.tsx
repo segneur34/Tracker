@@ -38,7 +38,7 @@ function SpeedGradientLegend({ unit, range, isOverridden, onChange, slowLabel }:
    * tout autre raison, React réappliquerait l'ancienne valeur et
    * repositionnerait le curseur en fin de champ, si bien que le chiffre
    * suivant s'ajouterait après l'ancienne valeur au lieu de la remplacer
-   * (piège du point 13 de docs/ETAT_DU_PROJET.md, que le point 20 pensait
+   * (piège du point 13 de docs/HISTORIQUE.md, que le point 20 pensait
    * éviter ici à tort). Le texte local reflète donc toujours exactement ce
    * qui a été tapé ; l'application reste immédiate dès que la valeur est
    * valide, flèches ↕ comprises.
