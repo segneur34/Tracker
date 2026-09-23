@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from 'react';
+import { useCallback, useState, useMemo, type ReactNode } from 'react';
 import { MapContainer, TileLayer, Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import {
@@ -7,6 +7,7 @@ import {
   type DotItemDotProps, type TooltipPayloadEntry,
 } from 'recharts';
 import 'leaflet/dist/leaflet.css';
+import { useIncomingSession, type IncomingSession } from '../hooks/useIncomingSession';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { useSessionNotes } from '../hooks/useSessionNotes';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -130,6 +131,7 @@ function SailingModule() {
     setManualWind, 
     autoWind, 
     handleFileUpload,
+    loadGpxContent,
     maneuverStats,
     maneuverSummary,
     vmgStats,
@@ -160,6 +162,13 @@ function SailingModule() {
     maneuverThresholds,
     availableSports
   } = useSailingSession();
+
+  // Session transmise par la page d'enregistrement : son support devient celui du module.
+  const receiveSession = useCallback((session: IncomingSession) => {
+    if (session.sport !== sport && availableSports.includes(session.sport)) setSport(session.sport);
+    loadGpxContent(session.content, session.fileName);
+  }, [availableSports, sport, setSport, loadGpxContent]);
+  useIncomingSession(receiveSession);
 
   const { notes, setNotes, isSaved } = useSessionNotes(sessionKey);
   const { open, toggle } = useOpenSections<SailingSection>('sailing', SAILING_SECTION_DEFAULTS);

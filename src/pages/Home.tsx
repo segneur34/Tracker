@@ -34,6 +34,18 @@ function Home() {
           </p>
         </div>
 
+        <div 
+          onClick={() => navigate('/enregistrer')}
+          style={{ flex: '1 1 300px', padding: '30px', backgroundColor: '#eef6ee', border: '2px solid #2e7d32', borderRadius: '12px', cursor: 'pointer', transition: 'transform 0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
+          onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-5px)'}
+          onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+        >
+          <h2 style={{ color: '#2e7d32', margin: '0 0 15px 0' }}>● Enregistrer</h2>
+          <p style={{ color: '#555', margin: 0, fontSize: '14px', lineHeight: '1.5' }}>
+            Enregistrer une session au GPS du téléphone, puis l'analyser dans le module voile ou course.
+          </p>
+        </div>
+
       </div>
     </div>
   );

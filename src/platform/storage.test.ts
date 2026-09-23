@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createJsonStore, type StorageBackend } from './storage';
+import { createJsonStore, createMirroredBackend, type StorageBackend } from './storage';
 
 /** Stockage en mémoire, qui se comporte comme `localStorage`. */
 const memoryBackend = (initial: Record<string, string> = {}): StorageBackend & { data: Map<string, string> } => {
@@ -70,5 +70,21 @@ describe('createJsonStore', () => {
     });
     expect(store.read('tracker.runnerProfile')).toBeNull();
     expect(() => store.write('tracker.runnerProfile', { me: {} })).not.toThrow();
+  });
+});
+
+describe('createMirroredBackend', () => {
+  it('lit depuis la mémoire amorcée et recopie chaque écriture', () => {
+    const persisted: [string, string][] = [];
+    const backend = createMirroredBackend({ 'tracker.sections': '{"sailing":{"global":true}}' }, (key, value) => {
+      persisted.push([key, value]);
+    });
+    const store = createJsonStore(() => backend);
+
+    expect(store.read('tracker.sections')).toEqual({ sailing: { global: true } });
+    store.write('tracker.panelSizes', { 'sailing.carte': { width: 600 } });
+
+    expect(store.read('tracker.panelSizes')).toEqual({ 'sailing.carte': { width: 600 } });
+    expect(persisted).toEqual([['tracker.panelSizes', '{"sailing.carte":{"width":600}}']]);
   });
 });

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { CircleMarker, MapContainer, Polyline, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -26,6 +26,7 @@ import {
   type SpeedUnit,
 } from '../core/units';
 import { useGpxSession } from '../hooks/useGpxSession';
+import { useIncomingSession, type IncomingSession } from '../hooks/useIncomingSession';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
@@ -90,6 +91,14 @@ function RunningModule() {
     medianWindowSeconds: profile.medianWindowSeconds,
     maxSpeedMs: profile.maxPlausibleSpeedMs,
   });
+
+  // Session transmise par la page d'enregistrement.
+  const { loadGpxContent } = gpx;
+  const receiveSession = useCallback(
+    (session: IncomingSession) => loadGpxContent(session.content, session.fileName),
+    [loadGpxContent]
+  );
+  useIncomingSession(receiveSession);
 
   const { open, toggle } = useOpenSections<RunningSection>('running', RUNNING_SECTION_DEFAULTS);
   const [chartMode, setChartMode] = useState<ChartMode>('separate');

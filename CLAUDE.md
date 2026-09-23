@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Tracker : analyse de sessions sportives à partir de traces GPX
 
 Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau) et course (`/course`), page `/parametres`. Interface et commentaires en français. Cible à venir : application Android via Capacitor, avec enregistrement GPS natif (`docs/ETAT_DU_PROJET.md`, « Cible mobile »).
@@ -11,8 +15,11 @@ npm run dev          serveur de développement
 npx tsc -b --force   typecheck (strict, noUnusedLocals, verbatimModuleSyntax)
 npm run lint         oxlint
 npx vitest run       tests, fonctions pures uniquement, environnement node
+npx vitest run src/sailing/wind.test.ts -t "nom"   un fichier, un test
 npm run build        tsc -b && vite build
 ```
+
+Android (JDK 21 obligatoire, détails dans `docs/ETAT_DU_PROJET.md` §2 et §12) : `npm run build`, `npx cap sync android`, puis `npx cap run android`. Dans le shell de Claude, la CLI ne trouve pas `gradlew` : passer par `android\gradlew.bat assembleDebug` et `adb install -r`.
 
 Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous doivent passer.
 

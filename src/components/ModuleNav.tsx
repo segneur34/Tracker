@@ -9,6 +9,7 @@ const MODULES = [
   { to: '/', label: 'Accueil', color: '#555' },
   { to: '/voile', label: '⛵ Voile / Wingfoil', color: '#1976d2' },
   { to: '/course', label: '🏃 Course à pied', color: '#e64a19' },
+  { to: '/enregistrer', label: '● Enregistrer', color: '#2e7d32' },
   { to: '/parametres', label: '⚙ Paramètres', color: '#455a64' },
 ];
 
