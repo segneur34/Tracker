@@ -1,4 +1,9 @@
-/** Styles en ligne partagés entre les pages. */
+/** Styles en ligne partagés entre les pages, sur les variables de `theme/tokens.css`. */
 
-/** Bloc gris clair arrondi qui encadre chaque section d'un module. */
-export const CARD_STYLE = { padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '8px' } as const;
+/** Bloc blanc arrondi qui encadre chaque section d'un module, comme `Card`. */
+export const CARD_STYLE = {
+  padding: '15px',
+  backgroundColor: 'var(--surface)',
+  border: '1px solid var(--line)',
+  borderRadius: 'var(--radius-l)',
+} as const;

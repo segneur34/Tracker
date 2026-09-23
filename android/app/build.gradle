@@ -1,5 +1,21 @@
 apply plugin: 'com.android.application'
 
+// Version unique de l'application : celle de package.json. versionCode doit
+// croître à chaque APK diffusé, sans quoi Android refuse la mise à jour.
+def appVersion = new groovy.json.JsonSlurper().parse(file('../../package.json')).version as String
+def versionParts = appVersion.tokenize('.').collect { it.replaceAll(/\D.*$/, '') as int }
+def appVersionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
+
+// Clé de signature, hors du dépôt : android/keystore.properties (ignoré par git)
+// désigne le fichier .jks et son mot de passe. Debug et release sont signés par
+// la même clé, pour qu'une version s'installe par-dessus l'autre sans perdre
+// les données. Sans ce fichier, Gradle retombe sur la clé de debug du PC.
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
 android {
     namespace = "io.github.segneur.tracker"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +23,8 @@ android {
         applicationId "io.github.segneur.tracker"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +32,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        tracker {
+            if (keystorePropertiesFile.exists()) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
+        debug {
+            if (keystorePropertiesFile.exists()) signingConfig signingConfigs.tracker
+        }
         release {
+            if (keystorePropertiesFile.exists()) signingConfig signingConfigs.tracker
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

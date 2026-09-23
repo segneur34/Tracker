@@ -6,6 +6,7 @@ import {
   fixesFromRawPoints,
   isNewerFix,
   isSportType,
+  recordingDurationMs,
   roundFix,
   sessionFileName,
   sessionTitle,
@@ -77,6 +78,15 @@ describe('addFixToStats', () => {
     expect(stats.lastMs).toBe(T0 + 48_000);
     expect(stats.longestGapS).toBe(45);
     expect(stats.lastAccuracyM).toBeNull();
+  });
+});
+
+describe('recordingDurationMs', () => {
+  it("vaut zéro avant la première position, puis l'écart entre la première et la dernière", () => {
+    expect(recordingDurationMs(EMPTY_RECORDING_STATS)).toBe(0);
+    expect(recordingDurationMs(addFixToStats(EMPTY_RECORDING_STATS, fixAt(0)))).toBe(0);
+    const stats = [fixAt(0), fixAt(1), fixAt(3725)].reduce(addFixToStats, EMPTY_RECORDING_STATS);
+    expect(recordingDurationMs(stats)).toBe(3_725_000);
   });
 });
 

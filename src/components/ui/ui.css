@@ -1,0 +1,246 @@
+/*
+ * Composants d'interface communs (`components/ui`), sur les variables de
+ * `theme/tokens.css`. Préfixe `ui-` : aucune collision avec Leaflet ou Recharts.
+ */
+
+/* --- Page --- */
+
+.ui-page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.ui-page--wide {
+  max-width: none;
+}
+
+.ui-page-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ui-page-header__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.ui-page-header h1 {
+  margin: 0;
+  font-size: var(--text-title);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.ui-page-header__subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-m);
+}
+
+.ui-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  color: var(--voile);
+  font-size: var(--text-m);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* --- Carte --- */
+
+.ui-card {
+  box-sizing: border-box;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  padding: var(--space-4) 18px;
+}
+
+.ui-card__title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-l);
+  font-weight: 700;
+}
+
+.ui-eyebrow {
+  font-size: var(--text-s);
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+/* --- Boutons --- */
+
+.ui-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-5);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-m);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: filter 0.15s ease, background-color 0.15s ease;
+}
+
+.ui-btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.ui-btn:not(:disabled):hover {
+  filter: brightness(0.95);
+}
+
+.ui-btn--l {
+  min-height: 56px;
+  font-size: var(--text-l);
+  font-weight: 700;
+}
+
+.ui-btn--s {
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-s);
+}
+
+.ui-btn--block {
+  display: flex;
+  width: 100%;
+}
+
+.ui-btn--primary {
+  background: var(--voile);
+  color: var(--on-accent);
+}
+
+.ui-btn--record {
+  background: var(--record);
+  color: var(--on-accent);
+}
+
+.ui-btn--danger {
+  background: var(--recording);
+  color: var(--on-accent);
+}
+
+.ui-btn--secondary {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--ink-2);
+}
+
+.ui-btn--ghost {
+  background: transparent;
+  color: var(--voile);
+}
+
+/* Rond blanc du bouton Enregistrer, carré pendant l'enregistrement. */
+.ui-record-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ui-record-dot--stop {
+  border-radius: 3px;
+}
+
+/* --- Onglets de section des modules d'analyse --- */
+
+.ui-tabs {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.ui-tab {
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--text-s);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ui-tab::first-letter {
+  text-transform: uppercase;
+}
+
+.ui-tab[aria-pressed='true'] {
+  background: var(--tab-accent, var(--voile));
+  border-color: var(--tab-accent, var(--voile));
+  color: var(--on-accent);
+}
+
+/* --- Messages --- */
+
+.ui-alert {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-m);
+  font-size: var(--text-m);
+  line-height: 1.45;
+}
+
+.ui-alert--danger {
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  color: #8e1c1c;
+}
+
+.ui-alert--warning {
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-line);
+}
+
+.ui-alert--success {
+  background: #e8f3e9;
+  border: 1px solid var(--success);
+}
+
+/* --- Champs --- */
+
+.ui-field {
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-m);
+}
+
+.ui-field--s {
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-s);
+}

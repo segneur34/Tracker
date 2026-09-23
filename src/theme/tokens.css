@@ -1,0 +1,78 @@
+/*
+ * Direction artistique de Tracker : toutes les valeurs visuelles de
+ * l'application, en variables. C'est le seul fichier à modifier pour changer
+ * de DA : pages et composants ne lisent que ces variables.
+ *
+ * Point de départ : la maquette validée le 23 septembre 2026 (police
+ * Figtree, fond gris chaud, cartes blanches, bleu voile, rouille course, vert
+ * Enregistrer). Les couleurs voile et course ont été vérifiées pour le
+ * daltonisme sur fond blanc.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Fonds et surfaces */
+  --bg: #f6f5f2;
+  --surface: #ffffff;
+  --surface-sunken: #e9e7e2;
+  --surface-hover: #ecebe7;
+
+  /* Traits */
+  --line: #e3e1dc;
+  --line-soft: #ecebe7;
+  --line-strong: #d6d3cc;
+
+  /* Encres */
+  --ink: #1b1f24;
+  --ink-2: #3d444d;
+  --muted: #5b6470;
+  --faint: #8a9099;
+  --on-accent: #ffffff;
+
+  /* Familles et actions */
+  --voile: #1565c0;
+  --voile-soft: #e3edf9;
+  --course: #bf360c;
+  --course-soft: #fbe9e4;
+  --record: #2e7d32;
+  --recording: #c62828;
+
+  /* États */
+  --success: #2e7d32;
+  --danger: #c62828;
+  --danger-soft: #fdecea;
+  --warning-soft: #fff8e1;
+  --warning-line: #f9a825;
+  --focus: #1565c0;
+
+  /* Typographie */
+  --font: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --text-xs: 12px;
+  --text-s: 13px;
+  --text-m: 15px;
+  --text-l: 17px;
+  --text-xl: 22px;
+  --text-title: 28px;
+
+  /* Rayons */
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* Espacements */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* Navigation */
+  --topbar-h: 56px;
+  --tabbar-h: 64px;
+  /* Marge du bas sous Android : Capacitor injecte --safe-area-inset-bottom. */
+  --inset-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}

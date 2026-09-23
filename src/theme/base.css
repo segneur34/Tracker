@@ -1,0 +1,52 @@
+/*
+ * Styles de base de toute l'application, sur les variables de `tokens.css`.
+ * Volontairement léger : les pages d'analyse gardent leur mise en page et
+ * leurs styles en ligne ; seuls la police, les couleurs de fond et d'encre et
+ * le focus sont posés ici.
+ */
+
+@import '@fontsource/figtree/latin-400.css';
+@import '@fontsource/figtree/latin-500.css';
+@import '@fontsource/figtree/latin-600.css';
+@import '@fontsource/figtree/latin-700.css';
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Les champs et boutons prennent la police de l'application, pas celle du système. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: var(--voile);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Chiffres de même largeur partout où une valeur change sous les yeux. */
+.num {
+  font-variant-numeric: tabular-nums;
+}

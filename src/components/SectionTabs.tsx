@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+
 /**
  * Rangée de boutons qui ouvrent et ferment les sections d'un module. Chaque
  * bouton est indépendant : plusieurs sections peuvent être ouvertes à la fois.
@@ -12,30 +14,23 @@ interface SectionTabsProps<K extends string> {
   sections: SectionDefinition<K>[];
   open: Record<K, boolean>;
   onToggle: (key: K) => void;
-  /** Couleur du bouton actif, celle du module. */
+  /** Couleur du bouton actif, celle du module (une variable de la DA). */
   accent?: string;
 }
 
-function SectionTabs<K extends string>({ sections, open, onToggle, accent = '#1976d2' }: SectionTabsProps<K>) {
+function SectionTabs<K extends string>({ sections, open, onToggle, accent = 'var(--voile)' }: SectionTabsProps<K>) {
   return (
-    <div style={{ display: 'flex', gap: '10px', borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
-      {sections.map((section) => {
-        const active = open[section.key];
-        return (
-          <button
-            key={section.key}
-            onClick={() => onToggle(section.key)}
-            aria-pressed={active}
-            style={{
-              padding: '8px 16px', cursor: 'pointer', border: 'none', borderRadius: '4px',
-              backgroundColor: active ? accent : '#e0e0e0',
-              color: active ? 'white' : 'black', fontWeight: active ? 'bold' : 'normal',
-              textTransform: 'uppercase',
-            }}>
-            {section.label}
-          </button>
-        );
-      })}
+    <div className="ui-tabs" style={{ '--tab-accent': accent } as CSSProperties}>
+      {sections.map((section) => (
+        <button
+          key={section.key}
+          type="button"
+          className="ui-tab"
+          onClick={() => onToggle(section.key)}
+          aria-pressed={open[section.key]}>
+          {section.label}
+        </button>
+      ))}
     </div>
   );
 }

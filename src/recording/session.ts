@@ -68,6 +68,10 @@ export const EMPTY_RECORDING_STATS: RecordingStats = {
   lastAccuracyM: null,
 };
 
+/** Durée couverte par les positions reçues, en millisecondes : le chrono de l'enregistrement. */
+export const recordingDurationMs = (stats: RecordingStats): number =>
+  stats.firstMs !== null && stats.lastMs !== null ? stats.lastMs - stats.firstMs : 0;
+
 export const addFixToStats = (stats: RecordingStats, fix: LocationFix): RecordingStats => {
   const gapS = stats.lastMs === null ? 0 : (fix.timeMs - stats.lastMs) / 1000;
   return {

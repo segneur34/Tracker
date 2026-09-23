@@ -9,10 +9,13 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
-    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <!-- Thème clair imposé, même en mode sombre : l'interface web n'a qu'une DA claire,
+         et le fond de la fenêtre, visible derrière les barres système, reprend son fond. -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <item name="android:windowBackground">@color/tracker_background</item>
     </style>
 
 

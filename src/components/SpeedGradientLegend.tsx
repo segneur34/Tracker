@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { SLOW_COLOR, gradientCss, type SpeedRangeMs } from '../core/speedGradient';
 import { SPEED_UNIT_LABEL, formatSpeedValue, fromDisplaySpeed, toDisplaySpeed, type SpeedUnit } from '../core/units';
+import Button from './ui/Button';
 
 /**
  * Légende du dégradé de couleur de la trace, avec saisie des deux bornes.
@@ -81,31 +82,33 @@ function SpeedGradientLegend({ unit, range, isOverridden, onChange, slowLabel }:
   });
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '12px', marginTop: '8px' }}>
-      <strong>Couleur de la trace ({unitLabel})</strong>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontSize: 'var(--text-xs)', color: 'var(--ink-2)', marginTop: '8px' }}>
+      <strong style={{ color: 'var(--ink)' }}>Couleur de la trace ({unitLabel})</strong>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-        <span style={{ display: 'inline-block', width: '22px', height: '12px', backgroundColor: SLOW_COLOR, borderRadius: '2px' }} />
+        <span style={{ display: 'inline-block', width: '22px', height: '12px', backgroundColor: SLOW_COLOR, borderRadius: '3px' }} />
         {slowLabel}
       </span>
       <span style={{ display: 'inline-flex', flexDirection: 'column', minWidth: '260px' }}>
-        <span style={{ display: 'block', height: '12px', borderRadius: '2px', background: gradientCss() }} />
-        <span style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#444' }}>
+        <span style={{ display: 'block', height: '12px', borderRadius: '3px', background: gradientCss() }} />
+        <span className="num" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--muted)' }}>
           {ticks.map((tick, i) => <span key={i}>{tick}</span>)}
         </span>
       </span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
         de
         <input type="number" min={0} step={0.5} value={minText}
           onChange={handleBoundChange('min')}
-          style={{ width: '64px', padding: '2px 4px', textAlign: 'right' }} />
+          className="ui-field ui-field--s num"
+          style={{ width: '68px', textAlign: 'right' }} />
         à
         <input type="number" min={0} step={0.5} value={maxText}
           onChange={handleBoundChange('max')}
-          style={{ width: '64px', padding: '2px 4px', textAlign: 'right' }} />
+          className="ui-field ui-field--s num"
+          style={{ width: '68px', textAlign: 'right' }} />
         {unitLabel}
       </span>
       {isOverridden && (
-        <button onClick={() => onChange(null)} style={{ padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}>Défaut</button>
+        <Button size="s" onClick={() => onChange(null)}>Défaut</Button>
       )}
     </div>
   );

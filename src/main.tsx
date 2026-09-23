@@ -1,6 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import './theme/tokens.css';
+import './theme/base.css';
+import './components/ui/ui.css';
+import './components/AppShell.css';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { installBackButton } from './platform/backButton';
 import { initStorage } from './platform/storage';

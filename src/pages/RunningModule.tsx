@@ -6,12 +6,13 @@ import {
   type TooltipPayloadEntry, type TooltipValueType,
 } from 'recharts';
 import MapAutoResize from '../components/MapAutoResize';
-import ModuleNav from '../components/ModuleNav';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE } from '../components/styles';
+import { IconFile } from '../components/icons';
+import PageHeader from '../components/ui/PageHeader';
 import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
 import {
@@ -247,16 +248,21 @@ function RunningModule() {
   );
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif' }} onMouseLeave={() => setHoveredIndex(null)}>
-      <ModuleNav />
-      <h1>Analyse Course à pied</h1>
+    <div style={{ padding: '20px' }} onMouseLeave={() => setHoveredIndex(null)}>
+      <div style={{ marginBottom: '15px' }}>
+        <PageHeader title="Analyse course à pied" />
+      </div>
 
       <div style={{ display: 'flex', gap: '18px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', fontSize: '14px' }}>
-        <input type="file" accept=".gpx" onChange={gpx.handleFileUpload} />
+        <label className="ui-btn ui-btn--secondary">
+          <IconFile size={18} />
+          Ouvrir un fichier GPX
+          <input type="file" accept=".gpx" onChange={gpx.handleFileUpload} hidden />
+        </label>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <strong>Unité :</strong>
-          <select value={speedUnit} onChange={(e) => setSpeedUnit(e.target.value as SpeedUnit)} style={{ padding: '4px 6px' }}>
+          <select value={speedUnit} onChange={(e) => setSpeedUnit(e.target.value as SpeedUnit)} className="ui-field ui-field--s">
             {RUNNING_UNITS.map((u) => (
               <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>
             ))}
@@ -265,7 +271,7 @@ function RunningModule() {
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <strong>Terrain :</strong>
-          <select value={terrain} onChange={(e) => setTerrain(e.target.value as TerrainType)} style={{ padding: '4px 6px' }}>
+          <select value={terrain} onChange={(e) => setTerrain(e.target.value as TerrainType)} className="ui-field ui-field--s">
             {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
               <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
             ))}
@@ -274,7 +280,7 @@ function RunningModule() {
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <strong>Texte :</strong>
-          <select value={textScale} onChange={(e) => setTextScale(e.target.value as TextScale)} style={{ padding: '4px 6px' }}>
+          <select value={textScale} onChange={(e) => setTextScale(e.target.value as TextScale)} className="ui-field ui-field--s">
             {(Object.keys(TEXT_SCALE_FACTOR) as TextScale[]).map((s) => (
               <option key={s} value={s}>{TEXT_SCALE_LABEL[s]}</option>
             ))}
@@ -283,17 +289,17 @@ function RunningModule() {
       </div>
 
       {gpx.error && (
-        <div style={{ padding: '10px 15px', backgroundColor: '#fdecea', border: '1px solid #d32f2f', borderRadius: '8px', color: '#b71c1c', marginBottom: '10px', maxWidth: '520px' }}>
+        <div className="ui-alert ui-alert--danger" style={{ marginBottom: '10px', maxWidth: '520px' }}>
           {gpx.error}
         </div>
       )}
 
       {!stats && !gpx.error && (
-        <p style={{ color: '#666' }}>Chargez une trace GPX pour lancer l'analyse.</p>
+        <p style={{ color: 'var(--muted)' }}>Chargez une trace GPX pour lancer l'analyse.</p>
       )}
 
       {stats && averages && (
-        <SectionTabs sections={RUNNING_SECTIONS} open={open} onToggle={toggle} accent="#e64a19" />
+        <SectionTabs sections={RUNNING_SECTIONS} open={open} onToggle={toggle} accent="var(--course)" />
       )}
 
       {stats && averages && (
@@ -304,16 +310,16 @@ function RunningModule() {
               {gpx.trackName ?? gpx.fileName ?? 'Session'}
             </strong>
             <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.7' }}>
-              <li><strong>Distance :</strong> {stats.distance} km <span style={{ color: '#666' }}>(en mouvement {stats.activeDistance} km)</span></li>
-              <li><strong>Temps de parcours :</strong> {stats.totalTime} <span style={{ color: '#666' }}>(en mouvement {stats.activeTime}, {stats.activeRatio} %)</span></li>
-              <li><strong>Vitesse moyenne :</strong> {formatSpeed(averages.moving.speedMs, speedUnit)} <span style={{ color: '#666' }}>(en mouvement)</span></li>
+              <li><strong>Distance :</strong> {stats.distance} km <span style={{ color: 'var(--muted)' }}>(en mouvement {stats.activeDistance} km)</span></li>
+              <li><strong>Temps de parcours :</strong> {stats.totalTime} <span style={{ color: 'var(--muted)' }}>(en mouvement {stats.activeTime}, {stats.activeRatio} %)</span></li>
+              <li><strong>Vitesse moyenne :</strong> {formatSpeed(averages.moving.speedMs, speedUnit)} <span style={{ color: 'var(--muted)' }}>(en mouvement)</span></li>
               <li><strong>Sur le temps total :</strong> {formatSpeed(averages.overall.speedMs, speedUnit)}</li>
               <li style={{ marginTop: '6px' }}><strong>Dénivelé :</strong> +{stats.elevationGain} m / -{stats.elevationLoss} m</li>
               <li><strong>Altitude :</strong> {stats.elevationMin} m à {stats.elevationMax} m</li>
               {!stats.hasElevation && (
                 <li style={{ color: '#b71c1c', fontSize: '0.85em' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</li>
               )}
-              <li style={{ color: '#666', fontSize: '0.85em', marginTop: '6px' }}>
+              <li style={{ color: 'var(--muted)', fontSize: '0.85em', marginTop: '6px' }}>
                 Vitesse : {gpx.hasDeviceSpeed
                   ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
                   : 'dérivée des positions, filtrée'}
@@ -325,12 +331,12 @@ function RunningModule() {
 
           {open.zones && zoneStats.length > 0 && (
             <ResizablePanel id="running.zones" style={{ ...cardStyle, flex: '1 1 420px' }}>
-              <strong style={{ display: 'block', marginBottom: '10px', fontSize: '1.15em' }}>Allure par zone de pente <span style={{ color: '#666', fontSize: '0.75em', fontWeight: 'normal' }}>(en mouvement)</span></strong>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: '#fff', border: '1px solid #ddd' }}>
+              <strong style={{ display: 'block', marginBottom: '10px', fontSize: '1.15em' }}>Allure par zone de pente <span style={{ color: 'var(--muted)', fontSize: '0.75em', fontWeight: 'normal' }}>(en mouvement)</span></strong>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#e0e0e0' }}>
+                  <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                     <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
-                    <th style={{ padding: '0.4em 0.6em', fontWeight: 'normal', color: '#555' }}>Pente</th>
+                    <th style={{ padding: '0.4em 0.6em', fontWeight: 'normal', color: 'var(--muted)' }}>Pente</th>
                     <th style={{ padding: '0.4em 0.6em' }}>Distance</th>
                     <th style={{ padding: '0.4em 0.6em' }}>Temps</th>
                     <th style={{ padding: '0.4em 0.6em' }}>Vitesse ({unitLabel})</th>
@@ -338,17 +344,17 @@ function RunningModule() {
                 </thead>
                 <tbody>
                   {zoneStats.map((z) => (
-                    <tr key={z.zone.key} style={{ borderTop: '1px solid #eee', opacity: z.timeMs > 0 ? 1 : 0.45 }}>
+                    <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.timeMs > 0 ? 1 : 0.45 }}>
                       <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label}</td>
-                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: '#555', fontSize: '0.9em' }}>{z.zone.range}</td>
-                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.distance} <span style={{ color: '#888', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
+                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: '0.9em' }}>{z.zone.range}</td>
+                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.distance} <span style={{ color: 'var(--muted)', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
                       <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
                       <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div style={{ color: '#666', fontSize: '0.8em', marginTop: '6px' }}>
+              <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
                 Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone.
               </div>
             </ResizablePanel>
@@ -364,7 +370,7 @@ function RunningModule() {
             <span style={{ flex: 1 }} />
             {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
               <button key={mode} onClick={() => setChartMode(mode)}
-                style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: chartMode === mode ? '#e64a19' : '#ddd', color: chartMode === mode ? '#fff' : '#000' }}>
+                style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: chartMode === mode ? 'var(--course)' : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
                 {mode === 'separate' ? 'Séparés' : 'Superposés'}
               </button>
             ))}
@@ -414,7 +420,7 @@ function RunningModule() {
               )}
             </>
           )}
-          <div style={{ color: '#666', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
+          <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
             Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte. Poignée en bas à droite pour redimensionner.
           </div>
         </ResizablePanel>
@@ -424,7 +430,7 @@ function RunningModule() {
 
       <div style={{ marginTop: '10px' }}>
         <ResizablePanel id="running.carte" defaultHeight={520} minHeight={240}
-          style={{ width: '60%', zIndex: 0, overflow: 'hidden', borderRadius: '8px', border: '1px solid #ccc' }}>
+          style={{ width: '60%', zIndex: 0, overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--line-strong)' }}>
           <MapContainer key={gpx.sessionKey ?? 'empty'} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
             <MapAutoResize />
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -435,7 +441,7 @@ function RunningModule() {
               <CircleMarker
                 center={[gpx.track[hoveredIndex].lat, gpx.track[hoveredIndex].lon]}
                 radius={8}
-                pathOptions={{ color: '#000', fillColor: '#fff', fillOpacity: 1, weight: 3 }} />
+                pathOptions={{ color: 'var(--ink)', fillColor: '#fff', fillOpacity: 1, weight: 3 }} />
             )}
           </MapContainer>
         </ResizablePanel>

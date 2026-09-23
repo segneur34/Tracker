@@ -103,3 +103,10 @@ export const formatDuration = (ms: number): string => {
   const m = totalMin % 60;
   return h > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${m} min`;
 };
+
+/** Durée en `h:mm:ss`, pour un chronomètre. */
+export const formatClock = (ms: number): string => {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
+};

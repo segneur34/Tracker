@@ -11,6 +11,13 @@ const config: CapacitorConfig = {
     // cessent d'arriver après 5 min en arrière-plan.
     useLegacyBridge: true,
   },
+  plugins: {
+    // Icônes sombres dans les barres système, sur le fond clair de la DA.
+    // Les marges du bas passent par --safe-area-inset-bottom (tokens.css).
+    SystemBars: {
+      style: 'LIGHT',
+    },
+  },
 };
 
 export default config;

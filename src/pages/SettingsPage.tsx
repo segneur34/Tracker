@@ -1,4 +1,3 @@
-import ModuleNav from '../components/ModuleNav';
 import { ELEVATION_PRESETS, SAILING_SPORTS, SPORT_PROFILES } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import { SPEED_UNIT_LABEL, formatSpeedValue, fromDisplaySpeed, toDisplaySpeed, type SpeedUnit } from '../core/units';
@@ -9,12 +8,13 @@ import {
 } from '../hooks/useSportSettings';
 import { DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
 import { CARD_STYLE } from '../components/styles';
+import PageHeader from '../components/ui/PageHeader';
 
 const ALL_SPORTS: SportType[] = [...SAILING_SPORTS, 'running'];
 
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
-const cellStyle = { padding: '6px 10px', borderTop: '1px solid #eee' } as const;
-const headStyle = { padding: '6px 10px', backgroundColor: '#e0e0e0', textAlign: 'left' } as const;
+const cellStyle = { padding: '6px 10px', borderTop: '1px solid var(--line-soft)' } as const;
+const headStyle = { padding: '6px 10px', backgroundColor: 'var(--surface-sunken)', textAlign: 'left' } as const;
 
 /**
  * Champ numérique optionnel, en `type="number"` avec flèches ↕, même
@@ -50,8 +50,9 @@ function NumberField({
         value={value ?? ''}
         placeholder={placeholder}
         onChange={handleChange}
-        style={{ width: '80px', padding: '4px 6px', textAlign: 'right' }} />
-      {unit && <span style={{ color: '#555' }}>{unit}</span>}
+        className="ui-field ui-field--s num"
+        style={{ width: '84px', textAlign: 'right' }} />
+      {unit && <span style={{ color: 'var(--muted)' }}>{unit}</span>}
     </label>
   );
 }
@@ -79,17 +80,16 @@ function SettingsPage() {
   const profileField = (field: Exclude<keyof RunnerProfile, 'sex'>) => (next: number | null) => setNumber(field, next);
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1000px' }}>
-      <ModuleNav />
-      <h1>Paramètres</h1>
-      <p style={{ color: '#666', marginTop: 0 }}>
-        Enregistrés dans ce navigateur, appliqués à l'ouverture de chaque module. Le bouton Défaut d'une ligne
-        revient à la valeur du profil du support.
-      </p>
+    <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto', boxSizing: 'border-box' }}>
+      <div style={{ marginBottom: '15px' }}>
+        <PageHeader
+          title="Réglages"
+          subtitle="Enregistrés sur cet appareil, appliqués à l'ouverture de chaque module. Le bouton Défaut d'une ligne revient à la valeur du profil du support." />
+      </div>
 
       <div style={cardStyle}>
         <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Réglages par support</strong>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', backgroundColor: '#fff', border: '1px solid #ddd' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
           <thead>
             <tr>
               <th style={headStyle}>Support</th>
@@ -109,7 +109,7 @@ function SettingsPage() {
                 <tr key={sport}>
                   <td style={{ ...cellStyle, fontWeight: 'bold' }}>{p.label}</td>
                   <td style={cellStyle}>
-                    <select value={s.speedUnit} onChange={(e) => setFor(sport, 'speedUnit', e.target.value as SpeedUnit)} style={{ padding: '4px 6px' }}>
+                    <select value={s.speedUnit} onChange={(e) => setFor(sport, 'speedUnit', e.target.value as SpeedUnit)} className="ui-field ui-field--s">
                       {units.map((u) => <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>)}
                     </select>
                   </td>
@@ -121,7 +121,7 @@ function SettingsPage() {
                       onCommit={(v) => setFor(sport, 'activeThreshold', v)} />
                   </td>
                   <td style={cellStyle}>
-                    <select value={s.textScale} onChange={(e) => setFor(sport, 'textScale', e.target.value as TextScale)} style={{ padding: '4px 6px' }}>
+                    <select value={s.textScale} onChange={(e) => setFor(sport, 'textScale', e.target.value as TextScale)} className="ui-field ui-field--s">
                       {(Object.keys(TEXT_SCALE_FACTOR) as TextScale[]).map((t) => <option key={t} value={t}>{TEXT_SCALE_LABEL[t]}</option>)}
                     </select>
                   </td>
@@ -139,7 +139,7 @@ function SettingsPage() {
             })}
           </tbody>
         </table>
-        <div style={{ color: '#666', fontSize: '12px', marginTop: '6px' }}>
+        <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '6px' }}>
           Le seuil d'activité est saisi dans l'unité du profil du support : nœuds pour la voile, km/h pour la course.
           En course, il sert aux temps de pause : reprise à seuil + 1, pause sous seuil − 1.
         </div>
@@ -149,10 +149,10 @@ function SettingsPage() {
         <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Course à pied</strong>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
           <span style={{ width: '190px' }}>Terrain par défaut</span>
-          <select value={running.terrain} onChange={(e) => setFor('running', 'terrain', e.target.value as TerrainType)} style={{ padding: '4px 6px' }}>
+          <select value={running.terrain} onChange={(e) => setFor('running', 'terrain', e.target.value as TerrainType)} className="ui-field ui-field--s">
             {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>)}
           </select>
-          <span style={{ color: '#666', fontSize: '12px' }}>
+          <span style={{ color: 'var(--muted)', fontSize: '12px' }}>
             lissage {ELEVATION_PRESETS[running.terrain].smoothingSeconds} s, seuil de dénivelé {ELEVATION_PRESETS[running.terrain].minGainM} m
           </span>
         </label>
@@ -168,7 +168,7 @@ function SettingsPage() {
           step={0.5}
           value={parseFloat(formatSpeedValue(toDisplaySpeed(runningRange.maxMs, rangeUnit), rangeUnit))}
           onCommit={(v) => setRangeBound('maxMs', v)} />
-        <div style={{ color: '#666', fontSize: '12px' }}>
+        <div style={{ color: 'var(--muted)', fontSize: '12px' }}>
           Gris sous la borne lente, la marche. Dégradé du bleu au rouge entre les deux bornes, rouge au-delà.
           {running.speedRange && (
             <button onClick={() => setFor('running', 'speedRange', null)} style={{ marginLeft: '10px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}>Défaut (4 à 15 km/h)</button>
@@ -178,7 +178,7 @@ function SettingsPage() {
 
       <div style={cardStyle}>
         <strong style={{ display: 'block', marginBottom: '4px', fontSize: '16px' }}>Coureur</strong>
-        <p style={{ color: '#666', fontSize: '12px', margin: '0 0 10px' }}>
+        <p style={{ color: 'var(--muted)', fontSize: '12px', margin: '0 0 10px' }}>
           Ces caractéristiques serviront aux estimations de coût énergétique et aux zones d'effort. Tout est facultatif.
         </p>
         <NumberField label="Poids" unit="kg" step={0.5} min={20} max={300} value={profile.weightKg} onCommit={profileField('weightKg')} placeholder="ex. 72" />
@@ -186,7 +186,7 @@ function SettingsPage() {
         <NumberField label="Année de naissance" unit={age !== null ? `${age} ans` : undefined} min={1900} max={2100} value={profile.birthYear} onCommit={profileField('birthYear')} placeholder="ex. 1985" />
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
           <span style={{ width: '190px' }}>Sexe</span>
-          <select value={profile.sex ?? ''} onChange={(e) => setSex(e.target.value === '' ? null : (e.target.value as 'f' | 'm'))} style={{ padding: '4px 6px' }}>
+          <select value={profile.sex ?? ''} onChange={(e) => setSex(e.target.value === '' ? null : (e.target.value as 'f' | 'm'))} className="ui-field ui-field--s">
             <option value="">Non renseigné</option>
             <option value="f">Femme</option>
             <option value="m">Homme</option>
@@ -211,7 +211,7 @@ function ThresholdField({
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
       <NumberField unit={unit} step={0.5} min={0} value={value} onCommit={onCommit} />
-      {isDefault && <span style={{ color: '#888', fontSize: '11px' }}>défaut</span>}
+      {isDefault && <span style={{ color: 'var(--muted)', fontSize: '11px' }}>défaut</span>}
     </span>
   );
 }

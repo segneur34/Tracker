@@ -18,13 +18,15 @@ import type { TopSegment } from '../core/types';
 import { SPEED_UNIT_LABEL, knotsToMs, msToKnots } from '../core/units';
 import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
 import { MANEUVER_METRICS, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
-import ModuleNav from '../components/ModuleNav';
 import MapAutoResize from '../components/MapAutoResize';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE } from '../components/styles';
+import { IconFile } from '../components/icons';
+import PageHeader from '../components/ui/PageHeader';
+import Button from '../components/ui/Button';
 
 /**
  * Sections du module. Pour en ajouter une : une entrée ici, une valeur par
@@ -110,10 +112,10 @@ const Compass = ({ windAngle }: { windAngle: number }) => {
   const center = size / 2;
   return (
     <div style={{ position: 'relative', width: `${size}px`, height: `${size}px`, background: '#fff', borderRadius: '50%', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', flexShrink: 0 }}>
-      <span style={{position:'absolute', top: 3, fontSize: '10px', fontWeight: 'bold', color: '#555', left: '50%', transform: 'translateX(-50%)'}}>N(0°)</span>
-      <span style={{position:'absolute', bottom: 3, fontSize: '10px', fontWeight: 'bold', color: '#555', left: '50%', transform: 'translateX(-50%)'}}>S(180°)</span>
-      <span style={{position:'absolute', right: 3, fontSize: '10px', fontWeight: 'bold', color: '#555', top: '50%', transform: 'translateY(-50%)'}}>E(90°)</span>
-      <span style={{position:'absolute', left: 3, fontSize: '10px', fontWeight: 'bold', color: '#555', top: '50%', transform: 'translateY(-50%)'}}>O(270°)</span>
+      <span style={{position:'absolute', top: 3, fontSize: '10px', fontWeight: 'bold', color: 'var(--muted)', left: '50%', transform: 'translateX(-50%)'}}>N(0°)</span>
+      <span style={{position:'absolute', bottom: 3, fontSize: '10px', fontWeight: 'bold', color: 'var(--muted)', left: '50%', transform: 'translateX(-50%)'}}>S(180°)</span>
+      <span style={{position:'absolute', right: 3, fontSize: '10px', fontWeight: 'bold', color: 'var(--muted)', top: '50%', transform: 'translateY(-50%)'}}>E(90°)</span>
+      <span style={{position:'absolute', left: 3, fontSize: '10px', fontWeight: 'bold', color: 'var(--muted)', top: '50%', transform: 'translateY(-50%)'}}>O(270°)</span>
       <svg width={size} height={size} style={{ position: 'absolute', transform: `rotate(${windAngle}deg)`, transition: 'transform 0.3s ease' }}>
         <line x1={center} y1={25} x2={center} y2={center} stroke="red" strokeWidth="3" />
         <polygon points={`${center - 5},${center - 10} ${center + 5},${center - 10} ${center},${center + 2}`} fill="red" />
@@ -282,7 +284,7 @@ function SailingModule() {
         <strong>{title}</strong>
         <button 
           onClick={() => setSelectedTopMap(selectedTopMap === topKey ? 'none' : topKey)}
-          style={{ padding: '2px 8px', fontSize: '11px', cursor: 'pointer', backgroundColor: selectedTopMap === topKey ? '#1976d2' : '#ddd', color: selectedTopMap === topKey ? '#fff' : '#000', border: '1px solid #aaa', borderRadius: '4px' }}>
+          style={{ padding: '2px 8px', fontSize: '11px', cursor: 'pointer', backgroundColor: selectedTopMap === topKey ? 'var(--voile)' : 'var(--surface-sunken)', color: selectedTopMap === topKey ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
           {selectedTopMap === topKey ? 'Masquer (Carte)' : 'Voir (Carte)'}
         </button>
       </div>
@@ -303,9 +305,9 @@ function SailingModule() {
   const renderVmgPanel = (id: string, v: NonNullable<typeof vmgStats>) => (
     <ResizablePanel id={id} style={{ ...CARD_STYLE, flex: '1 1 500px' }}>
       <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Analyse VMG</strong>
-      <table style={{ width: '100%', textAlign: 'center', borderCollapse: 'collapse', fontSize: '13px', backgroundColor: '#fff', border: '1px solid #ddd' }}>
+      <table style={{ width: '100%', textAlign: 'center', borderCollapse: 'collapse', fontSize: '13px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
         <thead>
-          <tr style={{ backgroundColor: '#e0e0e0', borderBottom: '1px solid #aaa' }}>
+          <tr style={{ backgroundColor: 'var(--surface-sunken)', borderBottom: '1px solid var(--line-strong)' }}>
             <th>Allure</th>
             <th style={{ color: '#d32f2f' }}>Bâbord (Moy/Max)</th>
             <th style={{ color: '#388e3c' }}>Tribord (Moy/Max)</th>
@@ -339,12 +341,12 @@ function SailingModule() {
     <ResizablePanel id={showManeuverDetails ? `${id}.details` : id} style={{ ...CARD_STYLE, flex: showManeuverDetails ? '1 1 100%' : '0 1 auto', padding: '12px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
         <strong style={{ fontSize: '16px' }}>Manœuvres</strong>
-        <span style={{ color: '#666', fontSize: '12px' }}>réussie si Vmin &ge; {activeThresholdKn} nds</span>
+        <span style={{ color: 'var(--muted)', fontSize: '12px' }}>réussie si Vmin &ge; {activeThresholdKn} nds</span>
       </div>
 
-      <table style={{ borderCollapse: 'collapse', fontSize: '14px', backgroundColor: '#fff', border: '1px solid #ddd', marginBottom: '10px' }}>
+      <table style={{ borderCollapse: 'collapse', fontSize: '14px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginBottom: '10px' }}>
         <thead>
-          <tr style={{ backgroundColor: '#e0e0e0' }}>
+          <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
             <th style={{ textAlign: 'left', padding: '7px 14px' }}>Type</th>
             <th style={{ padding: '7px 14px' }}>Réussis</th>
             <th style={{ padding: '7px 14px' }}>Ratés</th>
@@ -358,14 +360,14 @@ function SailingModule() {
             ['Virements', maneuverSummary.tack, showTacksOnMap, () => setShowTacksOnMap(!showTacksOnMap)],
             ['Empannages', maneuverSummary.jibe, showJibesOnMap, () => setShowJibesOnMap(!showJibesOnMap)],
           ] as const).map(([label, summary, shown, toggle]) => (
-            <tr key={label} style={{ borderTop: '1px solid #eee' }}>
+            <tr key={label} style={{ borderTop: '1px solid var(--line-soft)' }}>
               <td style={{ padding: '7px 14px', fontWeight: 'bold' }}>{label}</td>
               <td style={{ padding: '7px 14px', textAlign: 'center', color: '#388e3c', fontWeight: 'bold', fontSize: '16px' }}>{summary?.success ?? 0}</td>
               <td style={{ padding: '7px 14px', textAlign: 'center', color: '#d32f2f', fontSize: '16px' }}>{summary?.fail ?? 0}</td>
               <td style={{ padding: '7px 14px', textAlign: 'center' }}>{summary ? `${summary.vminAvg} nds` : '-'}</td>
               <td style={{ padding: '7px 14px', textAlign: 'center', fontWeight: 'bold' }}>{summary ? `${summary.vminMax} nds` : '-'}</td>
               <td style={{ padding: '4px 10px', textAlign: 'center' }}>
-                <button onClick={toggle} title={`Afficher les ${label.toLowerCase()} sur la carte`} style={{ padding: '3px 10px', cursor: 'pointer', backgroundColor: shown ? '#1976d2' : '#ddd', color: shown ? '#fff' : '#000', border: 'none', borderRadius: '4px', fontSize: '12px' }}>
+                <button onClick={toggle} title={`Afficher les ${label.toLowerCase()} sur la carte`} style={{ padding: '3px 10px', cursor: 'pointer', backgroundColor: shown ? 'var(--voile)' : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: '12px' }}>
                   {shown ? 'Masquer' : 'Voir'}
                 </button>
               </td>
@@ -374,7 +376,7 @@ function SailingModule() {
         </tbody>
       </table>
 
-      <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: '#f1f3f4', borderLeft: '3px solid #9e9e9e', borderRadius: '4px', color: '#444', fontSize: '12px', lineHeight: '1.6' }}>
+      <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: '12px', lineHeight: '1.6' }}>
         <strong>Enregistrement :</strong> {pointCount} points, un toutes les {samplingS < 10 ? samplingS.toFixed(1) : Math.round(samplingS)} s en médiane. Entrée de virage retenue au-dessus de {maneuverThresholds.minEntrySpeedKn.toFixed(1)} nds, d'après l'allure de la session.
         {samplingS > 10 && (
           <>
@@ -389,7 +391,7 @@ function SailingModule() {
         m.rejected.slowEntry > 0 ||
         m.rejected.incoherent > 0 ||
         m.rejected.tooShort > 0) && (
-        <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: '#f1f3f4', borderLeft: '3px solid #9e9e9e', borderRadius: '4px', color: '#444', fontSize: '12px', lineHeight: '1.6' }}>
+        <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: '12px', lineHeight: '1.6' }}>
           <strong>{m.locations.length} virage{m.locations.length > 1 ? 's' : ''} retenu{m.locations.length > 1 ? 's' : ''}</strong>, et d'autres écartés en chemin :
           {m.rejected.unclassified > 0 && (
             <>
@@ -420,7 +422,7 @@ function SailingModule() {
 
       <button
         onClick={() => setShowManeuverDetails(!showManeuverDetails)}
-        style={{ padding: '4px 10px', cursor: 'pointer', backgroundColor: showManeuverDetails ? '#1976d2' : '#ddd', color: showManeuverDetails ? '#fff' : '#000', border: 'none', borderRadius: '4px', fontSize: '12px' }}>
+        style={{ padding: '4px 10px', cursor: 'pointer', backgroundColor: showManeuverDetails ? 'var(--voile)' : 'var(--surface-sunken)', color: showManeuverDetails ? '#fff' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: '12px' }}>
         {showManeuverDetails ? 'Replier les détails ▲' : 'Détails des manœuvres ▼'}
       </button>
 
@@ -430,7 +432,7 @@ function SailingModule() {
           ['tack', 'Virements', maneuverSummary.tack],
           ['jibe', 'Empannages', maneuverSummary.jibe],
         ] as const).map(([type, title, summary]) => (
-          <div key={type} style={{ flex: '1 1 380px', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '6px', padding: '10px 12px' }}>
+          <div key={type} style={{ flex: '1 1 380px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '6px', padding: '10px 12px' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
               <strong style={{ fontSize: '15px' }}>{title}</strong>
               {summary ? (
@@ -441,14 +443,14 @@ function SailingModule() {
                   {' · Vmin moy. '}{summary.vminAvg}{' nds, max '}<strong>{summary.vminMax}</strong>{' nds'}
                 </span>
               ) : (
-                <span style={{ color: '#666', fontSize: '13px' }}>aucun</span>
+                <span style={{ color: 'var(--muted)', fontSize: '13px' }}>aucun</span>
               )}
             </div>
 
             {summary && (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
-                  <tr style={{ color: '#666', borderBottom: '1px solid #ddd' }}>
+                  <tr style={{ color: 'var(--muted)', borderBottom: '1px solid var(--line)' }}>
                     <th style={{ textAlign: 'left', padding: '3px 4px', fontWeight: 'normal' }}>Métrique</th>
                     <th style={{ padding: '3px 4px', fontWeight: 'normal' }}>Moyenne</th>
                     <th style={{ padding: '3px 4px', fontWeight: 'normal', color: '#d32f2f' }}>1er</th>
@@ -463,7 +465,7 @@ function SailingModule() {
                     const active = selectedManeuverTop === key;
                     const tops = summary.tops[metric.key];
                     return (
-                      <tr key={metric.key} title={metric.hint} style={{ borderBottom: '1px solid #eee', backgroundColor: active ? '#e3f2fd' : 'transparent' }}>
+                      <tr key={metric.key} title={metric.hint} style={{ borderBottom: '1px solid var(--line-soft)', backgroundColor: active ? 'var(--voile-soft)' : 'transparent' }}>
                         <td style={{ padding: '4px', textAlign: 'left' }}>{metric.label}</td>
                         <td style={{ padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{summary.averages[metric.key]}</td>
                         {[0, 1, 2].map((rank) => (
@@ -473,7 +475,7 @@ function SailingModule() {
                           <button
                             disabled={tops.length === 0}
                             onClick={() => setSelectedManeuverTop(active ? 'none' : key)}
-                            style={{ padding: '2px 7px', fontSize: '11px', cursor: tops.length === 0 ? 'default' : 'pointer', backgroundColor: active ? '#1976d2' : '#ddd', color: active ? '#fff' : '#000', border: '1px solid #aaa', borderRadius: '4px', opacity: tops.length === 0 ? 0.5 : 1 }}>
+                            style={{ padding: '2px 7px', fontSize: '11px', cursor: tops.length === 0 ? 'default' : 'pointer', backgroundColor: active ? 'var(--voile)' : 'var(--surface-sunken)', color: active ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px', opacity: tops.length === 0 ? 0.5 : 1 }}>
                             {active ? 'Masquer' : 'Carte'}
                           </button>
                         </td>
@@ -488,7 +490,7 @@ function SailingModule() {
       </div>
       )}
       {showManeuverDetails && (
-        <div style={{ color: '#666', fontSize: '11px', marginTop: '8px' }}>
+        <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>
           Survolez une ligne pour la définition. Le podium retient la meilleure valeur : conservation la plus haute, relance la plus courte, cap et distance les plus faibles.
         </div>
       )}
@@ -496,19 +498,24 @@ function SailingModule() {
   );
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <ModuleNav />
-      <h1>Wing Tracker - Analyse Visuelle</h1>
-      
+    <div style={{ padding: '20px' }}>
+      <div style={{ marginBottom: '15px' }}>
+        <PageHeader title="Analyse voile" />
+      </div>
+
       <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap' }}>
-        <input type="file" accept=".gpx" onChange={handleFileUpload} />
+        <label className="ui-btn ui-btn--secondary">
+          <IconFile size={18} />
+          Ouvrir un fichier GPX
+          <input type="file" accept=".gpx" onChange={handleFileUpload} hidden />
+        </label>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
           <strong>Support :</strong>
           <select
             value={sport}
             onChange={(e) => setSport(e.target.value as typeof sport)}
-            style={{ padding: '4px 6px' }}>
+            className="ui-field ui-field--s">
             {availableSports.map((s) => (
               <option key={s} value={s}>{SPORT_PROFILES[s].label}</option>
             ))}
@@ -526,15 +533,16 @@ function SailingModule() {
               const parsed = parseFloat(e.target.value);
               if (!isNaN(parsed)) setActiveThresholdKn(parsed);
             }}
-            style={{ width: '70px', padding: '4px 6px' }} />
+            className="ui-field ui-field--s num"
+            style={{ width: '70px' }} />
           {SPEED_UNIT_LABEL[profile.thresholdUnit]}
           {isThresholdOverridden && (
-            <button
+            <Button
+              size="s"
               onClick={resetActiveThreshold}
-              title={`Revenir au seuil suggéré pour cette session (${suggestedActiveThresholdKn} ${SPEED_UNIT_LABEL[profile.thresholdUnit]})`}
-              style={{ padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}>
+              title={`Revenir au seuil suggéré pour cette session (${suggestedActiveThresholdKn} ${SPEED_UNIT_LABEL[profile.thresholdUnit]})`}>
               Défaut
-            </button>
+            </Button>
           )}
         </label>
 
@@ -551,17 +559,15 @@ function SailingModule() {
                 if (!isNaN(parsed) && parsed > 0) setReferenceSpeed(knotsToMs(parsed));
               }}
               title="Vitesse de croisière de la session, dont dépendent les seuils de filtrage. Déduite de la trace, modifiable si elle la décrit mal."
-              style={{ width: '70px', padding: '4px 6px' }} />
+              className="ui-field ui-field--s num"
+              style={{ width: '70px' }} />
             nds
             {referenceSpeed === null ? (
-              <span style={{ color: '#666', fontSize: '12px' }}>(déduite de la trace)</span>
+              <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(déduite de la trace)</span>
             ) : (
-              <button
-                onClick={() => setReferenceSpeed(null)}
-                title="Revenir à l'allure déduite de la trace"
-                style={{ padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}>
+              <Button size="s" onClick={() => setReferenceSpeed(null)} title="Revenir à l'allure déduite de la trace">
                 Défaut
-              </button>
+              </Button>
             )}
           </label>
         )}
@@ -599,13 +605,13 @@ function SailingModule() {
                     <li><strong>Temps total :</strong> {stats.totalTime}</li>
                     <li><strong>Temps actif (&ge;{activeThresholdKn} nds) :</strong> {stats.activeTime}</li>
                     <li><strong>{profile.activeRatioLabel} :</strong> {stats.activeRatio}%</li>
-                    <li style={{ color: '#666', fontSize: '12px', marginTop: '6px' }}>
+                    <li style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '6px' }}>
                       Vitesse : {hasDeviceSpeed ? 'Doppler de l\'appareil' : 'dérivée des positions, filtrée'}
                     </li>
                   </ul>
                 </div>
 
-                <div style={{ flex: '1 1 350px', display: 'flex', gap: '20px', borderLeft: '2px solid #ccc', paddingLeft: '20px' }}>
+                <div style={{ flex: '1 1 350px', display: 'flex', gap: '20px', borderLeft: '2px solid var(--line)', paddingLeft: '20px' }}>
                   <div>
                     <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Axe du Vent Global (Polaire)</strong>
                     <div style={{ marginBottom: '10px' }}>
@@ -617,12 +623,13 @@ function SailingModule() {
                       )}
                       <br/>
                       <div style={{ marginTop: '5px' }}>
-                        Saisie : <input type="number" value={manualWind} onChange={(e) => setManualWind(e.target.value)} style={{ width: '60px' }} /> °
-                        <button
+                        Saisie : <input type="number" value={manualWind} onChange={(e) => setManualWind(e.target.value)} className="ui-field ui-field--s num" style={{ width: '64px' }} /> °
+                        <Button
+                          size="s"
                           onClick={() => setManualWind(String(((currentWindValue ?? autoWind ?? 0) + 180) % 360))}
-                          style={{ marginLeft: '5px', padding: '2px 6px' }}>
+                          style={{ marginLeft: '6px' }}>
                           Inverser
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -659,7 +666,7 @@ function SailingModule() {
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       {WIND_LEVELS.map((w) => (
                         <button key={w.value} onClick={() => setNotes({ windLevel: notes.windLevel === w.value ? null : w.value })}
-                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid #aaa', borderRadius: '4px', fontSize: '12px', backgroundColor: notes.windLevel === w.value ? '#1976d2' : '#fff', color: notes.windLevel === w.value ? '#fff' : '#000' }}>
+                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: '12px', backgroundColor: notes.windLevel === w.value ? 'var(--voile)' : '#fff', color: notes.windLevel === w.value ? '#fff' : 'var(--ink)' }}>
                           {w.label}
                         </button>
                       ))}
@@ -670,7 +677,7 @@ function SailingModule() {
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       {WATER_STATES.map((s) => (
                         <button key={s.value} onClick={() => setNotes({ waterState: notes.waterState === s.value ? null : s.value })}
-                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid #aaa', borderRadius: '4px', fontSize: '12px', backgroundColor: notes.waterState === s.value ? '#1976d2' : '#fff', color: notes.waterState === s.value ? '#fff' : '#000' }}>
+                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: '12px', backgroundColor: notes.waterState === s.value ? 'var(--voile)' : '#fff', color: notes.waterState === s.value ? '#fff' : 'var(--ink)' }}>
                           {s.label}
                         </button>
                       ))}
@@ -684,7 +691,7 @@ function SailingModule() {
                     {RATINGS.map((r) => (
                       <button key={r.value} onClick={() => setNotes({ rating: notes.rating === r.value ? null : r.value })}
                         title={r.label} aria-label={r.label}
-                        style={{ fontSize: '26px', lineHeight: 1, padding: '6px', cursor: 'pointer', border: notes.rating === r.value ? '2px solid #1976d2' : '1px solid #ccc', borderRadius: '8px', backgroundColor: notes.rating === r.value ? '#e3f2fd' : '#fff', opacity: notes.rating === null || notes.rating === r.value ? 1 : 0.5 }}>
+                        style={{ fontSize: '26px', lineHeight: 1, padding: '6px', cursor: 'pointer', border: notes.rating === r.value ? '2px solid var(--voile)' : '1px solid var(--line-strong)', borderRadius: '8px', backgroundColor: notes.rating === r.value ? 'var(--voile-soft)' : '#fff', opacity: notes.rating === null || notes.rating === r.value ? 1 : 0.5 }}>
                         {r.emoji}
                       </button>
                     ))}
@@ -698,7 +705,7 @@ function SailingModule() {
                     placeholder="Commentaire libre"
                     rows={3}
                     style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: '13px', boxSizing: 'border-box' }} />
-                  <div style={{ color: '#666', fontSize: '12px', marginTop: '6px' }}>
+                  <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '6px' }}>
                     {isSaved ? 'Enregistré dans ce navigateur, rattaché à cette trace.' : 'Les notes seront enregistrées dès la première saisie.'}
                   </div>
                 </div>
@@ -738,7 +745,7 @@ function SailingModule() {
 
       <div id="map-view" style={{ width: '100%', marginTop: '10px', zIndex: 0, display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         <ResizablePanel id="sailing.carte" defaultHeight={600} minHeight={240}
-          style={{ flex: '0 1 60%', overflow: 'hidden', borderRadius: '8px', border: '1px solid #ccc' }}>
+          style={{ flex: '0 1 60%', overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--line-strong)' }}>
           <MapContainer key={sessionKey ?? 'empty'} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
             <MapAutoResize />
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -768,7 +775,7 @@ function SailingModule() {
                   style={{ ...CARD_STYLE, flex: '1 1 100%', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}
                   onMouseLeave={() => setHoveredIndex(null)}
                 >
-                  <ResizablePanel id="sailing.graph.vitesse" defaultHeight={350} minWidth={250} minHeight={200} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed #ccc', padding: '10px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column' }}>
+                  <ResizablePanel id="sailing.graph.vitesse" defaultHeight={350} minWidth={250} minHeight={200} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
                     <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Historique de Vitesse (Cliquer pour défiler vers la carte)</strong>
                     <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
@@ -790,7 +797,7 @@ function SailingModule() {
                     </div>
                   </ResizablePanel>
 
-                  <ResizablePanel id="sailing.graph.polaire" defaultHeight={350} minWidth={250} minHeight={250} style={{ flex: 'none', width: '350px', overflow: 'hidden', border: '1px dashed #ccc', padding: '10px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column' }}>
+                  <ResizablePanel id="sailing.graph.polaire" defaultHeight={350} minWidth={250} minHeight={250} style={{ flex: 'none', width: '350px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
                     <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Polaire de Vitesse (TWA)</strong>
                     <div style={{ position: 'absolute', top: 35, left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 10, pointerEvents: 'none' }}>
                       <span style={{ fontSize: 9, fontWeight: 'bold', color: '#d32f2f', marginBottom: -2 }}>VENT</span>
@@ -823,18 +830,18 @@ function SailingModule() {
                   <div style={{ flex: '1 1 300px', minWidth: '250px' }}>
                     <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>
                       Variations du Vent
-                      <span style={{ color: '#666', fontSize: '12px', fontWeight: 'normal' }}> (mesurées sur {windStats.count} manœuvres)</span>
+                      <span style={{ color: 'var(--muted)', fontSize: '12px', fontWeight: 'normal' }}> (mesurées sur {windStats.count} manœuvres)</span>
                     </strong>
                     <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8' }}>
                       <li><strong>Moyenne :</strong> {windStats.avgWind}°</li>
                       <li><strong>Plage de variation :</strong> {windStats.range}° (de {windStats.minWind}° à {windStats.maxWind}°)</li>
                       <li><strong>Régularité (écart-type circulaire) :</strong> ± {windStats.stdDev}° <em>(faible = vent laminaire, élevé = vent oscillant)</em></li>
                       <li><strong>Tendance temporelle :</strong> {Math.abs(windStats.slopePerHour).toFixed(1)}°/heure ({windStats.slopePerHour > 0 ? 'rotation droite / horaire' : 'rotation gauche / anti-horaire'})</li>
-                      <li style={{ color: '#666', fontSize: '12px' }}>
+                      <li style={{ color: 'var(--muted)', fontSize: '12px' }}>
                         {Math.round(windStats.stableShare * 100)}% des manœuvres ont des caps stabilisés avant et après : ce sont les mesures les plus nettes, mais toutes comptent.
                       </li>
                     </ul>
-                    <p style={{ margin: '10px 0 0', color: '#666', fontSize: '12px', lineHeight: '1.5' }}>
+                    <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: '12px', lineHeight: '1.5' }}>
                       Chaque virement et chaque empannage donne une lecture du vent local, sans exception. Une manœuvre
                       symétrique, entrée et sortie au même angle du vent, place son milieu sur l'axe du vent et mesure
                       juste ; entrer au largue pour ressortir au près décale ce milieu d'autant. Ce biais ne peut pas se
@@ -846,7 +853,7 @@ function SailingModule() {
                     </p>
                   </div>
 
-                  <ResizablePanel id="sailing.graph.vent" defaultHeight={250} minWidth={300} minHeight={180} style={{ flex: '2 1 500px', overflow: 'hidden', border: '1px dashed #ccc', padding: '10px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column' }}>
+                  <ResizablePanel id="sailing.graph.vent" defaultHeight={250} minWidth={300} minHeight={180} style={{ flex: '2 1 500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
                     <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Évolution du Vent (Cliquer pour défiler vers la carte)</strong>
                     <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>

@@ -1,21 +1,22 @@
 import { useState, type ChangeEvent } from 'react';
-import ModuleNav from '../components/ModuleNav';
-import { CARD_STYLE } from '../components/styles';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import PageHeader from '../components/ui/PageHeader';
 import { parseGpx } from '../core/gpxParser';
 import { SPORT_PROFILES } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
+import { formatClock } from '../core/units';
 import { useOpenSession } from '../hooks/useIncomingSession';
 import { dismissRecorderResult, startRecording, stopRecording, useRecorder } from '../hooks/useRecorder';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { createReplaySource, deviceLocationSource, type LocationFix } from '../platform/location';
 import { isNativeApp } from '../platform/runtime';
-import { fixesFromRawPoints } from '../recording/session';
+import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
 
 /**
  * Enregistrement d'une session : support, démarrer, arrêter, et ce qu'il faut
  * pour juger en direct que l'enregistrement tient (points, durée, plus long
- * trou, précision). Volontairement sobre : cette page deviendra l'onglet
- * « Enregistrer » de la future navigation.
+ * trou, précision). L'onglet « Enregistrer » de la barre de navigation.
  *
  * Dans le navigateur, une source « rejeu » relit un GPX en accéléré : toute la
  * chaîne s'éprouve sur le PC, jusqu'à l'analyse de la session obtenue.
@@ -31,28 +32,10 @@ interface ReplayTrack {
   fixes: LocationFix[];
 }
 
-const pad = (n: number): string => String(n).padStart(2, '0');
-
-/** Durée en `h:mm:ss`. */
-const formatClock = (ms: number): string => {
-  const total = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
-};
-
-const BUTTON_STYLE = {
-  padding: '14px 28px',
-  fontSize: '18px',
-  fontWeight: 'bold',
-  border: 'none',
-  borderRadius: '10px',
-  color: '#fff',
-  cursor: 'pointer',
-} as const;
-
 const Stat = ({ label, value }: { label: string; value: string }) => (
-  <div style={{ flex: '1 1 130px' }}>
-    <div style={{ fontSize: '13px', color: '#666' }}>{label}</div>
-    <div style={{ fontSize: '26px', fontWeight: 'bold' }}>{value}</div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '12px 14px', borderRadius: 'var(--radius-m)', background: 'var(--bg)' }}>
+    <span style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>{label}</span>
+    <span className="num" style={{ fontSize: '24px', fontWeight: 700 }}>{value}</span>
   </div>
 );
 
@@ -69,7 +52,7 @@ function RecordingPage() {
 
   const busy = recorder.status !== 'idle';
   const { stats, saved } = recorder;
-  const durationMs = stats.firstMs !== null && stats.lastMs !== null ? stats.lastMs - stats.firstMs : 0;
+  const durationMs = recordingDurationMs(stats);
   const meanIntervalS = stats.pointCount > 1 ? durationMs / 1000 / (stats.pointCount - 1) : null;
   const canStart = !busy && (sourceChoice === 'device' || replay !== null);
 
@@ -95,114 +78,107 @@ function RecordingPage() {
   };
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '760px', margin: '0 auto' }}>
-      <ModuleNav />
-      <h1 style={{ fontSize: '1.8rem' }}>Enregistrer une session</h1>
+    <div className="ui-page">
+      <PageHeader title="Enregistrer" subtitle="Une position par seconde, gardée brute : l'analyse se fait ensuite." />
 
-      <div style={{ ...CARD_STYLE, display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '16px' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <strong>Support :</strong>
-          <select value={sport} disabled={busy} onChange={(e) => setSport(e.target.value as SportType)}
-            style={{ padding: '8px', fontSize: '16px' }}>
-            {SPORTS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-          </select>
-        </label>
+      <Card>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 'var(--text-m)' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span className="ui-eyebrow">Support</span>
+            <select value={sport} disabled={busy} onChange={(e) => setSport(e.target.value as SportType)} className="ui-field">
+              {SPORTS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </label>
 
-        {native ? (
-          <div><strong>Source :</strong> GPS du téléphone</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <strong>Source :</strong>
-            <label>
-              <input type="radio" checked={sourceChoice === 'device'} disabled={busy}
-                onChange={() => setSourceChoice('device')} /> GPS du navigateur
-            </label>
-            <label>
-              <input type="radio" checked={sourceChoice === 'replay'} disabled={busy}
-                onChange={() => setSourceChoice('replay')} /> Rejeu d'un GPX, pour éprouver l'enregistrement
-            </label>
-            {sourceChoice === 'replay' && (
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginLeft: '24px' }}>
-                <input type="file" accept=".gpx" disabled={busy} onChange={handleReplayFile} />
-                <label>
-                  Vitesse :{' '}
-                  <select value={replaySpeed} disabled={busy} onChange={(e) => setReplaySpeed(Number(e.target.value))}>
-                    {REPLAY_SPEEDS.map((s) => <option key={s} value={s}>×{s}</option>)}
-                  </select>
-                </label>
-                {replay && <span style={{ color: '#555' }}>{replay.fixes.length} points</span>}
-              </div>
-            )}
-            {replayError && <div style={{ color: '#c62828' }}>{replayError}</div>}
-          </div>
-        )}
-
-        <div>
-          {busy ? (
-            <button type="button" onClick={() => void stopRecording()} disabled={recorder.status !== 'recording'}
-              style={{ ...BUTTON_STYLE, backgroundColor: '#c62828' }}>
-              {recorder.status === 'stopping' ? 'Enregistrement du fichier…' : '■ Arrêter'}
-            </button>
+          {native ? (
+            <div><span className="ui-eyebrow">Source</span> <span style={{ marginLeft: '8px' }}>GPS du téléphone</span></div>
           ) : (
-            <button type="button" onClick={handleStart} disabled={!canStart}
-              style={{ ...BUTTON_STYLE, backgroundColor: canStart ? '#2e7d32' : '#9e9e9e' }}>
-              ● Démarrer
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span className="ui-eyebrow">Source</span>
+              <label>
+                <input type="radio" checked={sourceChoice === 'device'} disabled={busy}
+                  onChange={() => setSourceChoice('device')} /> GPS du navigateur
+              </label>
+              <label>
+                <input type="radio" checked={sourceChoice === 'replay'} disabled={busy}
+                  onChange={() => setSourceChoice('replay')} /> Rejeu d'un GPX, pour éprouver l'enregistrement
+              </label>
+              {sourceChoice === 'replay' && (
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginLeft: '24px' }}>
+                  <input type="file" accept=".gpx" disabled={busy} onChange={handleReplayFile} />
+                  <label>
+                    Vitesse :{' '}
+                    <select value={replaySpeed} disabled={busy} onChange={(e) => setReplaySpeed(Number(e.target.value))} className="ui-field ui-field--s">
+                      {REPLAY_SPEEDS.map((s) => <option key={s} value={s}>×{s}</option>)}
+                    </select>
+                  </label>
+                  {replay && <span style={{ color: 'var(--muted)' }}>{replay.fixes.length} points</span>}
+                </div>
+              )}
+              {replayError && <div style={{ color: 'var(--danger)' }}>{replayError}</div>}
+            </div>
           )}
         </div>
-      </div>
+      </Card>
 
-      {recorder.error && (
-        <div style={{ ...CARD_STYLE, backgroundColor: '#ffebee', color: '#b71c1c' }}>{recorder.error}</div>
+      {busy ? (
+        <Button variant="danger" size="l" block onClick={() => void stopRecording()} disabled={recorder.status !== 'recording'}>
+          <span className="ui-record-dot ui-record-dot--stop" />
+          {recorder.status === 'stopping' ? 'Enregistrement du fichier…' : 'Arrêter'}
+        </Button>
+      ) : (
+        <Button variant="record" size="l" block onClick={handleStart} disabled={!canStart}>
+          <span className="ui-record-dot" />
+          Démarrer
+        </Button>
       )}
 
+      {recorder.error && <div className="ui-alert ui-alert--danger">{recorder.error}</div>}
+
       {(busy || stats.pointCount > 0) && (
-        <div style={{ ...CARD_STYLE, marginTop: '16px' }}>
-          <div style={{ marginBottom: '10px', color: '#555' }}>
-            {busy ? `En cours : ${SPORT_PROFILES[recorder.sport ?? sport].label}, ${recorder.sourceLabel}` : 'Dernier enregistrement'}
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
+        <Card heading={busy ? `En cours : ${SPORT_PROFILES[recorder.sport ?? sport].label}` : 'Dernier enregistrement'}>
+          {busy && recorder.sourceLabel && (
+            <p style={{ margin: '-6px 0 12px', color: 'var(--muted)', fontSize: 'var(--text-s)' }}>{recorder.sourceLabel}</p>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '8px' }}>
             <Stat label="Durée" value={formatClock(durationMs)} />
             <Stat label="Points" value={String(stats.pointCount)} />
             <Stat label="Intervalle moyen" value={meanIntervalS === null ? '—' : `${meanIntervalS.toFixed(1)} s`} />
             <Stat label="Plus long trou" value={`${Math.round(stats.longestGapS)} s`} />
             <Stat label="Précision" value={stats.lastAccuracyM === null ? '—' : `${Math.round(stats.lastAccuracyM)} m`} />
           </div>
-        </div>
+        </Card>
       )}
 
       {saved && (
-        <div style={{ ...CARD_STYLE, marginTop: '16px', backgroundColor: '#e8f5e9' }}>
-          <strong>{saved.recovered ? 'Session interrompue récupérée' : 'Session enregistrée'}</strong>
-          <p style={{ margin: '8px 0' }}>
+        <Card heading={saved.recovered ? 'Session interrompue récupérée' : 'Session enregistrée'}>
+          <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
             {SPORT_PROFILES[saved.sport].label}, {saved.pointCount} points.<br />
-            Rangée dans : {saved.location}
+            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', wordBreak: 'break-all' }}>Rangée dans : {saved.location}</span>
           </p>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button type="button" style={{ ...BUTTON_STYLE, backgroundColor: '#1976d2', fontSize: '16px' }}
+            <Button variant="primary"
               onClick={() => openSession({ content: saved.content, fileName: saved.fileName, sport: saved.sport })}>
               Analyser
-            </button>
+            </Button>
             {canDownloadFiles() && (
-              <button type="button" style={{ ...BUTTON_STYLE, backgroundColor: '#455a64', fontSize: '16px' }}
-                onClick={() => downloadTextFile(saved.fileName, saved.content)}>
+              <Button onClick={() => downloadTextFile(saved.fileName, saved.content)}>
                 Télécharger le GPX
-              </button>
+              </Button>
             )}
-            <button type="button" style={{ ...BUTTON_STYLE, backgroundColor: '#9e9e9e', fontSize: '16px' }}
-              onClick={dismissRecorderResult}>
+            <Button variant="ghost" onClick={dismissRecorderResult}>
               Fermer
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {native && !busy && (
-        <div style={{ marginTop: '20px', fontSize: '14px', color: '#555', lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: 'var(--text-s)', color: 'var(--muted)', lineHeight: 1.5 }}>
           Pour un enregistrement écran éteint : autoriser la position et les notifications au premier démarrage ;
           dans les réglages de l'application, activer le démarrage automatique et mettre la batterie en « Aucune
           restriction ». Pendant l'enregistrement, ne pas balayer l'application hors des applications récentes.
-        </div>
+        </p>
       )}
     </div>
   );
