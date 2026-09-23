@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Tracker : analyse de sessions sportives à partir de traces GPX
 
-Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau) et course (`/course`), page `/parametres`. Interface et commentaires en français. Cible à venir : application Android via Capacitor, avec enregistrement GPS natif (`docs/ETAT_DU_PROJET.md`, « Cible mobile »).
+Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau) et course (`/course`), pages `/enregistrer` et `/parametres`. Interface et commentaires en français. Application Android via Capacitor, avec enregistrement GPS natif : étape 1 faite, suite au §12 de `docs/ETAT_DU_PROJET.md` (« Cible mobile »).
 
-`docs/ETAT_DU_PROJET.md` décrit le code, le pipeline et les chantiers : le lire avant de toucher au noyau ou aux analyses voile. `docs/HISTORIQUE.md` garde les décisions passées et les pièges : le consulter sur le sujet qu'on touche.
+`docs/ETAT_DU_PROJET.md` décrit le code, le pipeline et les chantiers : le lire avant de toucher au noyau ou aux analyses voile. `docs/INVENTAIRE.md` donne les signatures exportées, module par module. `docs/HISTORIQUE.md` garde les décisions passées et les pièges : le consulter sur le sujet qu'on touche.
 
 ## Commandes
 
@@ -48,7 +48,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 9. Un module ne reprend que ses supports : `useSportSettings(defaultSport, allowedSports)`.
 10. Cadence variable : une application économique peut compresser un virage entier dans un seul intervalle. Ne jamais supposer plusieurs points dans une fenêtre de quelques secondes.
 11. react-leaflet : le style d'un `Polyline` passe toujours par `pathOptions`, sinon il n'est pas réappliqué.
-12. Stockage, fichiers, position : uniquement via `src/platform/` (aujourd'hui `storage.ts`, jamais `localStorage` en direct), pour que la version Android n'ait qu'une couche à remplacer.
+12. Stockage, fichiers, position : uniquement via `src/platform/` (`storage.ts`, `files.ts`, `location.ts` ; jamais `localStorage`, `Filesystem` ni `navigator.geolocation` en direct). Chaque module y choisit sa version navigateur ou téléphone par `isNativeApp()`.
 
 ## Où ajouter quoi
 
@@ -57,7 +57,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Section de module : `*_SECTIONS` et `*_SECTION_DEFAULTS` de la page, et un bloc `{open.cle && ...}` dans un `ResizablePanel` d'`id` unique. En voile : `SAILING_SECTIONS` en haut, `SAILING_CARTE_PANELS` dans la colonne de la carte.
 - Graphe relié à la carte : chaque ligne porte l'`index` du point de trace, et le survol passe par `hoveredTrackIndex` (`components/chartHover.ts`). Pas de `any`.
 - Métrique de manœuvre : `ManeuverLocation` (`sailing/maneuvers.ts`), puis `MANEUVER_METRICS` et `summarizeManeuvers` (`sailing/sailingAnalytics.ts`).
-- Calcul pur : dans `core/`, `sailing/` ou `running/`, avec son `*.test.ts` sur trace synthétique.
+- Calcul pur : dans `core/`, `sailing/`, `running/` ou `recording/`, avec son `*.test.ts` sur trace synthétique.
 
 ## Décisions de l'utilisateur
 
@@ -67,3 +67,4 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Graphes course « superposés » à deux axes, voulus malgré la difficulté de lecture.
 - Tout bloc est redimensionnable (`ResizablePanel`), taille mémorisée.
 - Voile : manœuvres en petit tableau, détails dépliables. Carte à 60 % de large ; à sa droite, les onglets manœuvres, VMG, graphiques, vent (dans cet ordre, fermés par défaut, côte à côte si la place le permet). En haut : global, matos, tops seulement. Ne rien déplacer ni dupliquer entre les deux groupes sans redemander.
+- Enregistrement : brut à 1 Hz, sans autre filtre que les redélivrances ; un GPX par session dans `Documents/Tracker`, analysé par les modules existants via `loadGpxContent`. Suite de la cible mobile dans l'ordre fixé au §12 de l'état.
