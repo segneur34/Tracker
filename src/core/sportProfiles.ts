@@ -179,6 +179,11 @@ export const SAILING_SPORTS: SportType[] = ['wingfoil', 'windsurf', 'kite', 'bat
 
 export const getSportProfile = (sport: SportType): SportProfile => SPORT_PROFILES[sport];
 
+/** Famille d'un support : elle choisit le module qui l'analyse et la bibliothèque qui le range. */
+export type SportFamily = 'voile' | 'course';
+
+export const sportFamily = (sport: SportType): SportFamily => (SAILING_SPORTS.includes(sport) ? 'voile' : 'course');
+
 /** Les deux détentes du seuil d'activité, dans l'unité du profil. */
 export const getActiveThresholds = (
   profile: SportProfile,

@@ -8,6 +8,7 @@ import {
 } from '../hooks/useSportSettings';
 import { DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
 import { CARD_STYLE } from '../components/styles';
+import MemoryStatus from '../components/MemoryStatus';
 import PageHeader from '../components/ui/PageHeader';
 
 const ALL_SPORTS: SportType[] = [...SAILING_SPORTS, 'running'];
@@ -58,9 +59,10 @@ function NumberField({
 }
 
 /**
- * Page Paramètres : réglages par support, réglages propres à la course, et
- * caractéristiques du coureur. Tout est enregistré dans le navigateur à la
- * saisie, et relu par chaque module à son ouverture.
+ * Page Paramètres : mémoire, réglages par support, réglages propres à la
+ * course, et caractéristiques du coureur. Tout est enregistré sur l'appareil
+ * à la saisie, recopié dans le dossier mémoire (`reglages.json`), et relu par
+ * chaque module à son ouverture.
  */
 function SettingsPage() {
   const { view, setFor } = useAllSportSettings();
@@ -84,7 +86,11 @@ function SettingsPage() {
       <div style={{ marginBottom: '15px' }}>
         <PageHeader
           title="Réglages"
-          subtitle="Enregistrés sur cet appareil, appliqués à l'ouverture de chaque module. Le bouton Défaut d'une ligne revient à la valeur du profil du support." />
+          subtitle="Enregistrés sur cet appareil et dans le dossier mémoire, appliqués à l'ouverture de chaque module. Le bouton Défaut d'une ligne revient à la valeur du profil du support." />
+      </div>
+
+      <div style={{ marginBottom: '15px' }}>
+        <MemoryStatus detailed />
       </div>
 
       <div style={cardStyle}>

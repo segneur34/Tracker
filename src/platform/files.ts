@@ -1,18 +1,14 @@
 import { isNativeApp } from './runtime';
 
 /**
- * Fichiers de l'application : seul point d'accès autorisé.
+ * Fichiers de l'application hors du dossier mémoire : seul point d'accès
+ * autorisé, avec `memoryFolder.ts` qui tient les sessions.
  *
- * Sur le téléphone, deux emplacements aux rôles distincts :
- * - le journal de l'enregistrement en cours, dans le dossier privé de
- *   l'application : personne n'a à le voir, il ne sert qu'à survivre à un
- *   arrêt brutal ;
- * - les sessions terminées, un GPX chacune, dans `Documents/Tracker` : visibles
- *   depuis le PC par câble USB, lisibles par d'autres applications, et
- *   conservées si l'application est désinstallée.
- *
- * Dans le navigateur, le journal vit en mémoire et rien n'est écrit : le GPX
- * se télécharge d'un clic (`downloadTextFile`).
+ * - Le journal de l'enregistrement en cours, dans le dossier privé de
+ *   l'application sur le téléphone : personne n'a à le voir, il ne sert qu'à
+ *   survivre à un arrêt brutal. Dans le navigateur, il vit en mémoire.
+ * - Les fichiers choisis par l'utilisateur (`readPickedFile`) et le
+ *   téléchargement d'un GPX dans le navigateur (`downloadTextFile`).
  */
 
 /** Fichier texte asynchrone. La lecture d'un fichier absent rend `null`. */
@@ -77,28 +73,7 @@ export const recordingJournal: TextFile = isNativeApp()
   ? createPrivateFile('recording-journal.jsonl')
   : createMemoryFile();
 
-/** Dossier des sessions, sous `Documents` du téléphone. */
-export const SESSIONS_FOLDER = 'Tracker';
-
-/**
- * Range une session terminée et rend, en clair, l'endroit où elle se trouve.
- * Dans le navigateur, rien n'est écrit : la session reste en mémoire, prête à
- * être analysée ou téléchargée.
- */
-export const saveSessionFile = async (fileName: string, content: string): Promise<string> => {
-  if (!isNativeApp()) return 'mémoire du navigateur (à télécharger)';
-  const { Filesystem, Directory, Encoding } = await filesystem();
-  await Filesystem.writeFile({
-    path: `${SESSIONS_FOLDER}/${fileName}`,
-    data: content,
-    directory: Directory.Documents,
-    encoding: Encoding.UTF8,
-    recursive: true,
-  });
-  return `Documents/${SESSIONS_FOLDER}/${fileName}`;
-};
-
-/** Faux sur le téléphone, où les sessions sont déjà rangées dans `Documents`. */
+/** Faux sur le téléphone, où les sessions sont dans le dossier mémoire. */
 export const canDownloadFiles = (): boolean => !isNativeApp();
 
 /** Propose un fichier texte au téléchargement, dans le navigateur. */

@@ -128,7 +128,7 @@ export interface BaseSessionStatsOptions extends ActivityMaskOptions {
 }
 
 /** Part minimale de points avec altitude pour publier un dénivelé. */
-const MIN_ELEVATION_COVERAGE = 0.5;
+export const MIN_ELEVATION_COVERAGE = 0.5;
 
 /** Statistiques valables pour tous les supports. */
 export const buildBaseSessionStats = (

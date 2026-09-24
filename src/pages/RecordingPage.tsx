@@ -3,10 +3,10 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
 import { parseGpx } from '../core/gpxParser';
-import { SPORT_PROFILES } from '../core/sportProfiles';
+import { SPORT_PROFILES, sportFamily } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import { formatClock } from '../core/units';
-import { useOpenSession } from '../hooks/useIncomingSession';
+import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { dismissRecorderResult, startRecording, stopRecording, useRecorder } from '../hooks/useRecorder';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { createReplaySource, deviceLocationSource, type LocationFix } from '../platform/location';
@@ -157,10 +157,11 @@ function RecordingPage() {
             <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', wordBreak: 'break-all' }}>Rangée dans : {saved.location}</span>
           </p>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <Button variant="primary"
-              onClick={() => openSession({ content: saved.content, fileName: saved.fileName, sport: saved.sport })}>
-              Analyser
-            </Button>
+            {saved.libraryFile && (
+              <Button variant="primary" onClick={() => openSession(saved.libraryFile!, sportFamily(saved.sport))}>
+                Analyser
+              </Button>
+            )}
             {canDownloadFiles() && (
               <Button onClick={() => downloadTextFile(saved.fileName, saved.content)}>
                 Télécharger le GPX

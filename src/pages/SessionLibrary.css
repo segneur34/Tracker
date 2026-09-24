@@ -1,0 +1,107 @@
+/* Bibliothèque des sessions (`SessionLibrary.tsx`), sur les variables de `theme/tokens.css`. */
+
+.lib-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.lib-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.lib-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-m);
+  line-height: 1.5;
+}
+
+.lib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.lib-row {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--lib-accent, var(--voile));
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+
+.lib-row__main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3) calc(var(--space-6) + var(--space-4)) var(--space-2) var(--space-4);
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lib-row__main:hover {
+  background: var(--surface-hover);
+}
+
+.lib-row__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.lib-row__sport {
+  font-size: var(--text-l);
+  font-weight: 700;
+}
+
+.lib-row__date {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.lib-row__stats {
+  color: var(--ink-2);
+  font-size: var(--text-m);
+}
+
+.lib-row__note {
+  color: var(--muted);
+  font-size: var(--text-s);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-row__warning {
+  color: var(--danger);
+  font-size: var(--text-s);
+}
+
+.lib-row__chevron {
+  position: absolute;
+  top: 50%;
+  right: var(--space-4);
+  transform: translateY(-50%);
+  color: var(--faint);
+}
+
+.lib-row__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-2);
+}

@@ -71,6 +71,16 @@ describe('createJsonStore', () => {
     expect(store.read('tracker.runnerProfile')).toBeNull();
     expect(() => store.write('tracker.runnerProfile', { me: {} })).not.toThrow();
   });
+
+  it("signale chaque écriture aux abonnés, même refusée, jusqu'au désabonnement", () => {
+    const store = createJsonStore(() => failingBackend);
+    const keys: string[] = [];
+    const unsubscribe = store.subscribe((key) => keys.push(key));
+    store.write('tracker.sportSettings', { sport: 'kite' });
+    unsubscribe();
+    store.write('tracker.runnerProfile', {});
+    expect(keys).toEqual(['tracker.sportSettings']);
+  });
 });
 
 describe('createMirroredBackend', () => {

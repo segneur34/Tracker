@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { getSportProfile } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
-import { recordingJournal, saveSessionFile } from '../platform/files';
+import { recordingJournal } from '../platform/files';
 import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type StopLocation } from '../platform/location';
 import { buildGpx } from '../recording/gpxWriter';
 import { journalFixLine, journalHeaderLine, parseJournal } from '../recording/journal';
@@ -15,6 +15,7 @@ import {
   shouldFlushJournal,
   type RecordingStats,
 } from '../recording/session';
+import { saveRecordedSession } from './useSessionLibrary';
 
 /**
  * Enregistreur de session. Il vit hors des composants, dans ce module : on
@@ -24,9 +25,10 @@ import {
  *
  * Chaîne : chaque position reçue est arrondie (`roundFix`), gardée en mémoire
  * et ajoutée au journal, écrit par paquets à l'arrivée des positions
- * (`shouldFlushJournal`). À l'arrêt, le GPX est écrit depuis la mémoire ;
- * après un arrêt brutal, il est reconstruit depuis le journal au démarrage
- * suivant. Le journal n'est effacé qu'une fois le GPX écrit.
+ * (`shouldFlushJournal`). À l'arrêt, le GPX est construit depuis la mémoire
+ * et rangé dans la bibliothèque (`saveRecordedSession`) ; après un arrêt
+ * brutal, il est reconstruit depuis le journal au démarrage suivant. Le
+ * journal n'est effacé qu'une fois le GPX écrit.
  */
 
 export type RecorderStatus = 'idle' | 'starting' | 'recording' | 'stopping';
@@ -34,6 +36,8 @@ export type RecorderStatus = 'idle' | 'starting' | 'recording' | 'stopping';
 /** Session terminée, rangée et prête à être analysée. */
 export interface SavedSession {
   fileName: string;
+  /** Nom dans la mémoire, `null` si la session n'a pas pu y entrer (en attente, ou aucune mémoire). */
+  libraryFile: string | null;
   /** Où la trouver, en clair. */
   location: string;
   /** Le GPX lui-même, pour l'analyser ou le télécharger sans le relire. */
@@ -117,11 +121,12 @@ const receiveFix = (journalFlushS: number) => (received: LocationFix): void => {
 };
 
 /**
- * Écrit le GPX d'une liste de positions, puis efface le journal. Rend `null`
- * s'il n'y a aucune position : il n'y a alors rien à garder.
+ * Range le GPX d'une liste de positions dans la bibliothèque, puis efface le
+ * journal. Rend `null` s'il y a moins de deux positions : aucune trace ne
+ * s'en tire, il n'y a rien à garder.
  */
 const saveSession = async (sport: SportType, list: LocationFix[], recovered: boolean): Promise<SavedSession | null> => {
-  if (list.length === 0) {
+  if (list.length < 2) {
     await recordingJournal.remove();
     return null;
   }
@@ -130,9 +135,9 @@ const saveSession = async (sport: SportType, list: LocationFix[], recovered: boo
   const content = buildGpx(list, { name: sessionTitle(startMs, sport), sport });
   // Si l'écriture échoue, l'erreur remonte avant l'effacement : le journal
   // reste, et la session sera reconstruite au prochain démarrage.
-  const location = await saveSessionFile(fileName, content);
+  const { file, location } = await saveRecordedSession(content, sport);
   await recordingJournal.remove();
-  return { fileName, location, content, sport, pointCount: list.length, recovered };
+  return { fileName: file ?? fileName, libraryFile: file, location, content, sport, pointCount: list.length, recovered };
 };
 
 const isBusy = (): boolean => state.status !== 'idle';
@@ -205,7 +210,7 @@ export const stopRecording = async (): Promise<void> => {
     setState({
       status: 'idle',
       saved,
-      error: saved ? state.error : 'Aucune position reçue : rien à enregistrer.',
+      error: saved ? state.error : 'Moins de deux positions reçues : rien à enregistrer.',
     });
   } catch (err) {
     setState({

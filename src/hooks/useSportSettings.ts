@@ -71,7 +71,8 @@ export const isKnownSpeedUnit = (value: unknown): value is SpeedUnit =>
 export const isKnownTextScale = (value: unknown): value is TextScale =>
   typeof value === 'string' && value in TEXT_SCALE_FACTOR;
 
-const readStored = (): StoredSettings => jsonStore.read<StoredSettings>(STORAGE_KEY) ?? {};
+/** Réglages enregistrés, pour qui calcule hors d'un composant : les résumés de la bibliothèque. */
+export const readStoredSettings = (): StoredSettings => jsonStore.read<StoredSettings>(STORAGE_KEY) ?? {};
 
 const writeStored = (settings: StoredSettings): void => jsonStore.write(STORAGE_KEY, settings);
 
@@ -96,7 +97,7 @@ export interface SportSettingsView {
  * lisent à leur prochain affichage.
  */
 export const useAllSportSettings = () => {
-  const [stored, setStored] = useState<StoredSettings>(readStored);
+  const [stored, setStored] = useState<StoredSettings>(readStoredSettings);
 
   const persist = useCallback((next: StoredSettings) => {
     setStored(next);
@@ -179,7 +180,7 @@ export const useAllSportSettings = () => {
  *   seuil de vol.
  */
 export const useSportSettings = (defaultSport: SportType, allowedSports: SportType[] = [defaultSport]) => {
-  const [stored, setStored] = useState<StoredSettings>(readStored);
+  const [stored, setStored] = useState<StoredSettings>(readStoredSettings);
 
   const sport =
     isKnownSport(stored.sport) && allowedSports.includes(stored.sport) ? stored.sport : defaultSport;

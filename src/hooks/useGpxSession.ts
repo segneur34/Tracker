@@ -122,21 +122,6 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
     }
   }, []);
 
-  const handleFileUpload = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const gpxContent = e.target?.result as string;
-        loadGpxContent(gpxContent, file.name);
-      };
-      reader.readAsText(file);
-    },
-    [loadGpxContent]
-  );
-
   const reset = useCallback(() => setSession(EMPTY_STATE), []);
 
   return {
@@ -147,7 +132,6 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
     sessionKey,
     deviceSpeedUnit,
     hasTrack: track.length > 0,
-    handleFileUpload,
     loadGpxContent,
     reset,
   };

@@ -97,12 +97,15 @@ export const isSportType = (value: unknown): value is SportType =>
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 
-/** Nom de fichier d'une session, à l'heure locale de son premier point : `2026-09-23_14-05-07_wingfoil.gpx`. */
-export const sessionFileName = (startMs: number, sport: SportType): string => {
+/**
+ * Nom de fichier d'une session, à l'heure locale de son premier point :
+ * `2026-09-23_14-05-07_wingfoil.gpx`, ou `…_session.gpx` si le support est inconnu.
+ */
+export const sessionFileName = (startMs: number, sport: SportType | null): string => {
   const d = new Date(startMs);
   const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const time = `${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-  return `${date}_${time}_${sport}.gpx`;
+  return `${date}_${time}_${sport ?? 'session'}.gpx`;
 };
 
 /** Titre d'une session, repris comme nom de trace dans le GPX : `Wingfoil, 23/09/2026 14:05`. */

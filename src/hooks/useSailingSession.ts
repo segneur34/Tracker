@@ -230,7 +230,6 @@ export const useSailingSession = () => {
     autoWind,
     windEstimate,
     windInputRequired,
-    handleFileUpload: gpx.handleFileUpload,
     loadGpxContent: gpx.loadGpxContent,
     fileName: gpx.fileName,
     trackName: gpx.trackName,

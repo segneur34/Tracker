@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 import { CircleMarker, MapContainer, Polyline, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -27,7 +27,7 @@ import {
   type SpeedUnit,
 } from '../core/units';
 import { useGpxSession } from '../hooks/useGpxSession';
-import { useIncomingSession, type IncomingSession } from '../hooks/useIncomingSession';
+import { libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
@@ -36,6 +36,8 @@ import {
 } from '../hooks/useSportSettings';
 import { DEFAULT_SPEED_RANGE_MS, averagePace, computeGrades, computeZoneStats } from '../running/runningAnalytics';
 import type { RunningSessionStats } from '../running/types';
+import type { LibrarySession } from '../library/record';
+import { readPickedFile } from '../platform/files';
 
 /** Lissage supplémentaire de la vitesse pour le graphe, en secondes. */
 const CHART_SPEED_SMOOTHING_S = 10;
@@ -93,13 +95,22 @@ function RunningModule() {
     maxSpeedMs: profile.maxPlausibleSpeedMs,
   });
 
-  // Session transmise par la page d'enregistrement.
+  // Session de la mémoire désignée par l'URL.
   const { loadGpxContent } = gpx;
   const receiveSession = useCallback(
-    (session: IncomingSession) => loadGpxContent(session.content, session.fileName),
+    (content: string, session: LibrarySession) => loadGpxContent(content, session.file),
     [loadGpxContent]
   );
-  useIncomingSession(receiveSession);
+  const { error: sessionError } = useSessionFromUrl(receiveSession);
+
+  // Un GPX ouvert ici entre d'abord dans la mémoire ; faute de mémoire, il est lu directement.
+  const importAndOpen = useImportAndOpen('course');
+  const openFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!(await importAndOpen(file))) loadGpxContent(await readPickedFile(file), file.name);
+  };
 
   const { open, toggle } = useOpenSections<RunningSection>('running', RUNNING_SECTION_DEFAULTS);
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
@@ -250,14 +261,15 @@ function RunningModule() {
   return (
     <div style={{ padding: '20px' }} onMouseLeave={() => setHoveredIndex(null)}>
       <div style={{ marginBottom: '15px' }}>
-        <PageHeader title="Analyse course à pied" />
+        <PageHeader title="Analyse course à pied" back={{ to: libraryPath('course'), label: 'Sessions course' }} />
+        {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
       </div>
 
       <div style={{ display: 'flex', gap: '18px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', fontSize: '14px' }}>
         <label className="ui-btn ui-btn--secondary">
           <IconFile size={18} />
           Ouvrir un fichier GPX
-          <input type="file" accept=".gpx" onChange={gpx.handleFileUpload} hidden />
+          <input type="file" accept=".gpx" onChange={openFile} hidden />
         </label>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

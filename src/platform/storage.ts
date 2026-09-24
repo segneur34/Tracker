@@ -26,6 +26,12 @@ export interface JsonStore {
   read<T>(key: string): T | null;
   /** Enregistre `value` sous `key`, sérialisée en JSON ; sans effet si le stockage refuse. */
   write(key: string, value: unknown): void;
+  /**
+   * Appelle `listener` avec la clé de chaque écriture, même refusée par le
+   * stockage : la valeur vaut alors pour la session en cours, et doit être
+   * suivie comme une autre. Rend la fonction qui désabonne.
+   */
+  subscribe(listener: (key: string) => void): () => void;
 }
 
 /**
@@ -33,23 +39,33 @@ export interface JsonStore {
  * navigateur qui bloque les données de site lève une erreur dès l'accès à
  * `localStorage`, et cette erreur doit tomber dans le `try`.
  */
-export const createJsonStore = (getBackend: () => StorageBackend): JsonStore => ({
-  read: <T,>(key: string): T | null => {
-    try {
-      const raw = getBackend().getItem(key);
-      return raw === null ? null : (JSON.parse(raw) as T);
-    } catch {
-      return null;
-    }
-  },
-  write: (key: string, value: unknown): void => {
-    try {
-      getBackend().setItem(key, JSON.stringify(value));
-    } catch {
-      // Stockage indisponible : la valeur vaut pour la session en cours.
-    }
-  },
-});
+export const createJsonStore = (getBackend: () => StorageBackend): JsonStore => {
+  const listeners = new Set<(key: string) => void>();
+  return {
+    read: <T,>(key: string): T | null => {
+      try {
+        const raw = getBackend().getItem(key);
+        return raw === null ? null : (JSON.parse(raw) as T);
+      } catch {
+        return null;
+      }
+    },
+    write: (key: string, value: unknown): void => {
+      try {
+        getBackend().setItem(key, JSON.stringify(value));
+      } catch {
+        // Stockage indisponible : la valeur vaut pour la session en cours.
+      }
+      listeners.forEach((listener) => listener(key));
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+};
 
 /**
  * Stockage en mémoire, amorcé par `initial`, qui recopie chaque écriture vers

@@ -18,6 +18,12 @@ export interface ParsedGpx {
   rawPoints: RawTrackPoint[];
   /** Nom de la trace, si le fichier en porte un. */
   trackName?: string;
+  /**
+   * Type d'activité de la trace (`<trk><type>`), tel que l'application qui l'a
+   * écrit le nomme : notre support (`wingfoil`), `running` chez Strava ou
+   * Garmin…
+   */
+  trackType?: string;
   /** Vrai si au moins un point porte une vitesse fournie par l'appareil. */
   hasDeviceSpeed: boolean;
 }
@@ -47,6 +53,17 @@ const readText = (element: Element, localName: string): string | undefined => {
   const node = findByLocalName(element, localName);
   const text = node?.textContent?.trim();
   return text ? text : undefined;
+};
+
+/** Contenu d'un enfant direct : une extension de point du même nom ne doit pas répondre. */
+const readChildText = (element: Element, localName: string): string | undefined => {
+  for (let i = 0; i < element.children.length; i++) {
+    const child = element.children[i];
+    if (child.localName !== localName) continue;
+    const text = child.textContent?.trim();
+    return text ? text : undefined;
+  }
+  return undefined;
 };
 
 /**
@@ -102,6 +119,7 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
   return {
     rawPoints,
     trackName: trk ? readText(trk, 'name') : undefined,
+    trackType: trk ? readChildText(trk, 'type') : undefined,
     hasDeviceSpeed,
   };
 };

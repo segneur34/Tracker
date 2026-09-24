@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, useMemo, type ChangeEvent, type ReactNode } from 'react';
 import { MapContainer, TileLayer, Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import {
@@ -7,14 +7,17 @@ import {
   type DotItemDotProps, type TooltipPayloadEntry,
 } from 'recharts';
 import 'leaflet/dist/leaflet.css';
-import { useIncomingSession, type IncomingSession } from '../hooks/useIncomingSession';
+import { libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
+import { updateSessionRecord } from '../hooks/useSessionLibrary';
 import { useSessionNotes } from '../hooks/useSessionNotes';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { DEFAULT_MAP_CENTER } from '../core/displayConfig';
 import { SPORT_PROFILES } from '../core/sportProfiles';
 import { speedGradientColor } from '../core/speedGradient';
-import type { TopSegment } from '../core/types';
+import type { SportType, TopSegment } from '../core/types';
+import type { LibrarySession } from '../library/record';
+import { readPickedFile } from '../platform/files';
 import { SPEED_UNIT_LABEL, knotsToMs, msToKnots } from '../core/units';
 import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
 import { MANEUVER_METRICS, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
@@ -132,8 +135,8 @@ function SailingModule() {
     manualWind, 
     setManualWind, 
     autoWind, 
-    handleFileUpload,
     loadGpxContent,
+    fileName,
     maneuverStats,
     maneuverSummary,
     vmgStats,
@@ -165,14 +168,42 @@ function SailingModule() {
     availableSports
   } = useSailingSession();
 
-  // Session transmise par la page d'enregistrement : son support devient celui du module.
-  const receiveSession = useCallback((session: IncomingSession) => {
-    if (session.sport !== sport && availableSports.includes(session.sport)) setSport(session.sport);
-    loadGpxContent(session.content, session.fileName);
+  // Session de la mémoire désignée par l'URL : son support devient celui du module.
+  const receiveSession = useCallback((content: string, session: LibrarySession) => {
+    const recorded = session.record.sport;
+    if (recorded && recorded !== sport && availableSports.includes(recorded)) setSport(recorded);
+    loadGpxContent(content, session.file);
   }, [availableSports, sport, setSport, loadGpxContent]);
-  useIncomingSession(receiveSession);
+  const { file: sessionFile, error: sessionError } = useSessionFromUrl(receiveSession);
 
-  const { notes, setNotes, isSaved } = useSessionNotes(sessionKey);
+  // Un GPX ouvert ici entre d'abord dans la mémoire ; faute de mémoire, il est lu directement.
+  const importAndOpen = useImportAndOpen('voile');
+  const openFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!(await importAndOpen(file))) loadGpxContent(await readPickedFile(file), file.name);
+  };
+
+  /** Changer de support l'écrit aussi dans la fiche de la session. */
+  const changeSport = (next: SportType) => {
+    setSport(next);
+    if (sessionFile) updateSessionRecord(sessionFile, { sport: next });
+  };
+
+  // Nombre de manœuvres recopié dans la fiche, pour la liste des sessions. Seulement quand un
+  // vent est connu (sinon l'analyse des manœuvres est suspendue), et pour la trace de ce fichier.
+  const maneuverCount = maneuverStats
+    ? maneuverStats.tackSuccess + maneuverStats.tackFail + maneuverStats.jibeSuccess + maneuverStats.jibeFail
+    : null;
+  const loadedFromMemory = sessionFile !== null && fileName === sessionFile && trackData.length > 0;
+  useEffect(() => {
+    if (loadedFromMemory && sessionFile && currentWindValue !== null && maneuverCount !== null) {
+      updateSessionRecord(sessionFile, { maneuverCount });
+    }
+  }, [loadedFromMemory, sessionFile, currentWindValue, maneuverCount]);
+
+  const { notes, setNotes, isSaved, available: notesAvailable } = useSessionNotes(sessionFile);
   const { open, toggle } = useOpenSections<SailingSection>('sailing', SAILING_SECTION_DEFAULTS);
   const { open: carteOpen, toggle: toggleCarte } =
     useOpenSections<SailingCartePanel>('sailing-carte', SAILING_CARTE_PANEL_DEFAULTS);
@@ -500,21 +531,22 @@ function SailingModule() {
   return (
     <div style={{ padding: '20px' }}>
       <div style={{ marginBottom: '15px' }}>
-        <PageHeader title="Analyse voile" />
+        <PageHeader title="Analyse voile" back={{ to: libraryPath('voile'), label: 'Sessions voile' }} />
+        {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
       </div>
 
       <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap' }}>
         <label className="ui-btn ui-btn--secondary">
           <IconFile size={18} />
           Ouvrir un fichier GPX
-          <input type="file" accept=".gpx" onChange={handleFileUpload} hidden />
+          <input type="file" accept=".gpx" onChange={openFile} hidden />
         </label>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
           <strong>Support :</strong>
           <select
             value={sport}
-            onChange={(e) => setSport(e.target.value as typeof sport)}
+            onChange={(e) => changeSport(e.target.value as SportType)}
             className="ui-field ui-field--s">
             {availableSports.map((s) => (
               <option key={s} value={s}>{SPORT_PROFILES[s].label}</option>
@@ -706,7 +738,11 @@ function SailingModule() {
                     rows={3}
                     style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: '13px', boxSizing: 'border-box' }} />
                   <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '6px' }}>
-                    {isSaved ? 'Enregistré dans ce navigateur, rattaché à cette trace.' : 'Les notes seront enregistrées dès la première saisie.'}
+                    {!notesAvailable
+                      ? 'Notes indisponibles : cette trace n\'est pas dans la mémoire.'
+                      : isSaved
+                        ? 'Enregistré dans la fiche de la session, dans le dossier mémoire.'
+                        : 'Les notes seront enregistrées dès la première saisie.'}
                   </div>
                 </div>
               </ResizablePanel>

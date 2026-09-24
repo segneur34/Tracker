@@ -1,45 +1,49 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useMemo } from 'react';
+import type { StoredSessionNotes } from '../library/record';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
-import { useStoredRecord } from './useStoredRecord';
-
-const NAMESPACE = 'tracker.sailingNotes';
-
-type StoredNotes = SailingSessionNotes & { savedAt?: number };
+import { findLibrarySession, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
 
 /**
- * Notes d'une session à voile, persistées par session.
+ * Notes d'une session à voile, gardées dans sa fiche du dossier mémoire : elles
+ * suivent la session quand on copie le dossier.
  *
  * Quand une session n'a encore aucune note, le matériel de la dernière
  * session notée est proposé par défaut : on change rarement de foil entre
- * deux sorties.
+ * deux sorties. Il n'est écrit qu'à la première saisie.
  */
-export const useSessionNotes = (sessionKey: string | null) => {
-  const { value, update, loaded, readLatest } = useStoredRecord<StoredNotes>(
-    NAMESPACE,
-    sessionKey,
-    EMPTY_NOTES
-  );
-  const prefilledFor = useRef<string | null>(null);
+export const useSessionNotes = (file: string | null) => {
+  const { sessions } = useSessionLibrary();
+  const session = findLibrarySession(sessions, file);
+  const stored = session?.record.notes ?? null;
 
-  useEffect(() => {
-    if (!loaded || sessionKey === null || prefilledFor.current === sessionKey) return;
-    prefilledFor.current = sessionKey;
-    if (value.savedAt !== undefined) return;
-
-    const latest = readLatest();
-    if (latest && (latest.foil || latest.mast || latest.wing)) {
-      update({ foil: latest.foil, mast: latest.mast, wing: latest.wing });
+  const latestGear = useMemo(() => {
+    let latest: StoredSessionNotes | null = null;
+    for (const s of sessions) {
+      const n = s.record.notes;
+      if (n && (n.foil || n.mast || n.wing) && (!latest || n.savedAt > latest.savedAt)) latest = n;
     }
-  }, [loaded, sessionKey, value.savedAt, readLatest, update]);
+    return latest;
+  }, [sessions]);
+
+  const notes: SailingSessionNotes = useMemo(() => {
+    if (stored) return stored;
+    if (!latestGear) return EMPTY_NOTES;
+    return { ...EMPTY_NOTES, foil: latestGear.foil, mast: latestGear.mast, wing: latestGear.wing };
+  }, [stored, latestGear]);
 
   const setNotes = useCallback(
-    (patch: Partial<SailingSessionNotes>) => update({ ...patch, savedAt: Date.now() }),
-    [update]
+    (patch: Partial<SailingSessionNotes>) => {
+      if (file === null) return;
+      updateSessionRecord(file, { notes: { ...notes, ...patch, savedAt: Date.now() } });
+    },
+    [file, notes]
   );
 
   return {
-    notes: value as SailingSessionNotes,
+    notes,
     setNotes,
-    isSaved: value.savedAt !== undefined,
+    isSaved: stored !== null,
+    /** Faux pour une session hors de la mémoire, ou dont la fiche ne peut pas être réécrite. */
+    available: session !== undefined && !session.readOnly,
   };
 };
