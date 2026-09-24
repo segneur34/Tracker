@@ -155,6 +155,14 @@ function RecordingPage() {
           <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
             {SPORT_PROFILES[saved.sport].label}, {saved.pointCount} points.<br />
             <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', wordBreak: 'break-all' }}>Rangée dans : {saved.location}</span>
+            {!saved.libraryFile && native && (
+              <>
+                <br />
+                <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)' }}>
+                  Pour l'analyser, choisissez le dossier mémoire (Réglages › Mémoire) : elle y sera rangée.
+                </span>
+              </>
+            )}
           </p>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {saved.libraryFile && (

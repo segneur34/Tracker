@@ -29,6 +29,7 @@ function MemoryStatus({ detailed = false }: { detailed?: boolean }) {
   const library = useSessionLibrary();
   const { status, folderKind, folderLabel } = library;
   const canChoose = canChooseMemoryFolder();
+  const native = isNativeApp();
 
   const headline = (() => {
     switch (status) {
@@ -37,7 +38,9 @@ function MemoryStatus({ detailed = false }: { detailed?: boolean }) {
       case 'ready':
         return `${plural(library.sessions.length, 'session')} · ${folderLabel ?? 'mémoire'}`;
       case 'needs-permission':
-        return `Le ${folderLabel ?? 'dossier choisi'} attend votre autorisation.`;
+        return native
+          ? `Android a retiré l'accès au ${folderLabel ?? 'dossier choisi'}.`
+          : `Le ${folderLabel ?? 'dossier choisi'} attend votre autorisation.`;
       default:
         return library.reason ?? 'Aucune mémoire accessible.';
     }
@@ -61,19 +64,36 @@ function MemoryStatus({ detailed = false }: { detailed?: boolean }) {
           </p>
         )}
 
+        {status === 'unavailable' && native && (
+          <>
+            <p style={mutedStyle}>
+              Tracker garde vos sessions dans un dossier du téléphone, que vous pouvez copier sur le PC pour les
+              sauvegarder ou les retrouver. Dans le sélecteur qui va s'ouvrir : Documents, puis le dossier Tracker
+              (créez-le s'il n'existe pas), « Utiliser ce dossier », et « Autoriser ».
+            </p>
+            <div style={rowStyle}>
+              <Button variant="primary" onClick={() => void chooseFolder()}>Choisir le dossier</Button>
+            </div>
+          </>
+        )}
+
         {status === 'needs-permission' && (
           <div style={rowStyle}>
-            <Button variant="primary" onClick={() => void reconnectFolder()}>Reconnecter le dossier</Button>
-            {detailed && <Button onClick={() => void switchToBrowserMemory()}>Revenir à la mémoire du navigateur</Button>}
+            <Button variant="primary" onClick={() => void reconnectFolder()}>
+              {native ? 'Choisir à nouveau le dossier' : 'Reconnecter le dossier'}
+            </Button>
+            {detailed && !native && <Button onClick={() => void switchToBrowserMemory()}>Revenir à la mémoire du navigateur</Button>}
           </div>
         )}
 
         {status === 'ready' && folderKind === 'browser' && (
           <>
             <p style={mutedStyle}>
-              Les sessions sont gardées dans ce navigateur, où l'explorateur de fichiers ne les voit pas.
+              {detailed ? 'Emplacement : la mémoire interne de ce navigateur. ' : ''}
+              Les sessions sont gardées dans ce navigateur : aucun dossier sur le PC, l'explorateur de fichiers ne
+              les voit pas.
               {canChoose
-                ? ' Choisissez un dossier pour les sauvegarder, les copier ou les passer au téléphone.'
+                ? ' Choisissez un dossier pour les sauvegarder, les copier ou les passer au téléphone : elles y seront recopiées. Conseil : créez-le dans Documents, sous le nom Tracker, dans la fenêtre qui va s\'ouvrir.'
                 : ' Pour les garder dans un dossier du PC, ouvrez Tracker dans Chrome ou Edge.'}
             </p>
             {canChoose && (
@@ -85,10 +105,26 @@ function MemoryStatus({ detailed = false }: { detailed?: boolean }) {
         )}
 
         {detailed && status === 'ready' && folderKind === 'picked' && (
-          <div style={rowStyle}>
-            <Button onClick={() => void chooseFolder()}>Changer de dossier</Button>
-            <Button onClick={() => void switchToBrowserMemory()}>Revenir à la mémoire du navigateur</Button>
-          </div>
+          <>
+            <p style={mutedStyle}>
+              Emplacement : {folderLabel}, sur ce PC. Le navigateur ne donne que le nom du dossier, pas son chemin
+              complet : « Voir ou changer le dossier » ouvre la fenêtre de choix sur ce dossier, et son chemin
+              s'affiche dans la barre d'adresse de la fenêtre. Annuler le laisse tel quel.
+            </p>
+            <div style={rowStyle}>
+              <Button onClick={() => void chooseFolder()}>Voir ou changer le dossier</Button>
+              <Button onClick={() => void switchToBrowserMemory()}>Revenir à la mémoire du navigateur</Button>
+            </div>
+          </>
+        )}
+
+        {detailed && status === 'ready' && folderKind === 'device' && (
+          <>
+            <p style={mutedStyle}>Emplacement : {folderLabel}, dans le stockage interne du téléphone.</p>
+            <div style={rowStyle}>
+              <Button onClick={() => void chooseFolder()}>Changer de dossier</Button>
+            </div>
+          </>
         )}
 
         {library.duplicates.length > 0 && (
@@ -118,7 +154,7 @@ function MemoryStatus({ detailed = false }: { detailed?: boolean }) {
           <p style={mutedStyle}>
             Le dossier contient chaque session (sa trace GPX et une fiche avec son résumé et vos notes) et vos
             réglages. Pour sauvegarder, ou pour passer d'un appareil à l'autre, copiez le dossier Tracker entier.
-            {isNativeApp()
+            {native
               ? ' Sur ce téléphone, il se trouve dans Stockage interne › Documents › Tracker.'
               : ' Sur le téléphone, il se trouve dans Stockage interne › Documents › Tracker : copiez-le sur le PC par câble USB, puis choisissez-le ici.'}
           </p>

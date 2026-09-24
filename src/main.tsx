@@ -5,6 +5,7 @@ import './theme/tokens.css';
 import './theme/base.css';
 import './components/ui/ui.css';
 import './components/AppShell.css';
+import { confirmLeave, installLeaveGuard } from './hooks/leaveGuard';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { openLibrary, startLibraryUi } from './hooks/useSessionLibrary';
 import { installBackButton } from './platform/backButton';
@@ -28,7 +29,8 @@ void initStorage()
       </React.StrictMode>
     );
     startLibraryUi(isRecordingActive);
-    void installBackButton(isRecordingActive);
+    installLeaveGuard();
+    void installBackButton(isRecordingActive, confirmLeave);
     // Un enregistrement coupé par un arrêt brutal devient une session.
     void recoverInterruptedRecording();
   });

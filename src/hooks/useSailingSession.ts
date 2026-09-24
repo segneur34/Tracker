@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { SAILING_SPORTS } from '../core/sportProfiles';
@@ -29,15 +29,23 @@ import { useSportSettings } from './useSportSettings';
  *
  * Le seuil d'activité est propagé à tous les calculs qui en dépendent, et une
  * modification du seuil recalcule les statistiques sans relire le fichier.
+ *
+ * Le vent saisi et le seuil propre à la session viennent du module (son
+ * brouillon, `useSessionDraft`), qui les garde dans la fiche de la session.
  */
-export const useSailingSession = () => {
+export interface SailingSessionInput {
+  /** Vent saisi, en degrés ; `null` : vent estimé. */
+  windDeg: number | null;
+  /** Seuil d'activité de la session, en nœuds ; `null` : celui du support, ou la suggestion. */
+  activeThresholdKn: number | null;
+}
+
+export const useSailingSession = ({ windDeg, activeThresholdKn: sessionThresholdKn }: SailingSessionInput) => {
   const {
     sport,
     setSport,
     profile,
     activeThreshold: rawActiveThresholdKn,
-    setActiveThreshold: setActiveThresholdKn,
-    resetActiveThreshold,
     isThresholdOverridden,
     speedRange,
     setSpeedRange,
@@ -55,20 +63,6 @@ export const useSailingSession = () => {
     referenceSpeedOverrideMs: referenceSpeed ?? undefined,
   });
 
-  const [manualWind, setManualWind] = useState<string>('');
-
-  // Une saisie manuelle du vent ne vaut que pour la trace sur laquelle elle a
-  // été faite : sans ça, elle continue de primer sur l'estimation
-  // automatique de toute trace suivante chargée dans la même session de
-  // navigation, silencieusement (§10, point 31). Comparaison pendant le
-  // rendu plutôt qu'un `useEffect`, pour ne déclencher qu'un seul rendu
-  // supplémentaire (`react/set-state-in-effect`).
-  const [prevSessionKeyForWind, setPrevSessionKeyForWind] = useState(gpx.sessionKey);
-  if (gpx.sessionKey !== prevSessionKeyForWind) {
-    setPrevSessionKeyForWind(gpx.sessionKey);
-    setManualWind('');
-  }
-
   // Vue en nœuds de la trace, attendue par les analyses voile.
   const trackData = useMemo(() => trackToPointData(gpx.track), [gpx.track]);
 
@@ -77,12 +71,14 @@ export const useSailingSession = () => {
 
   /**
    * Seuil d'activité suggéré à partir de l'allure de la session, et seuil
-   * effectif : la surcharge de l'utilisateur si elle existe, sinon la
-   * suggestion, jamais le défaut fixe du profil (§10, point 29 ; une trace
-   * lente au seuil wingfoil n'affichait aucune manœuvre, cf. point 27).
+   * effectif : celui de la session s'il y en a un, sinon la surcharge du
+   * support, sinon la suggestion, jamais le défaut fixe du profil (§10,
+   * point 29 ; une trace lente au seuil wingfoil n'affichait aucune
+   * manœuvre, cf. point 27).
    */
   const suggestedActiveThresholdKn = suggestActiveThresholdKn(sport, referenceSpeedKn);
-  const activeThresholdKn = isThresholdOverridden ? rawActiveThresholdKn : suggestedActiveThresholdKn;
+  const defaultActiveThresholdKn = isThresholdOverridden ? rawActiveThresholdKn : suggestedActiveThresholdKn;
+  const activeThresholdKn = sessionThresholdKn ?? defaultActiveThresholdKn;
 
   const suggestedSpeedRangeMs = useMemo(
     () => suggestSpeedRangeMs(sport, referenceSpeedKn, gpx.track, cumulative),
@@ -121,11 +117,7 @@ export const useSailingSession = () => {
   );
   const autoWind = windEstimate?.direction ?? null;
 
-  const manualWindValue = useMemo(() => {
-    if (manualWind === '') return null;
-    const parsed = parseInt(manualWind, 10);
-    return isNaN(parsed) ? null : ((parsed % 360) + 360) % 360;
-  }, [manualWind]);
+  const manualWindValue = windDeg === null ? null : ((windDeg % 360) + 360) % 360;
 
   /** Vent global retenu, ou `null` si rien de fiable n'est disponible. */
   const currentWindValue = useMemo<number | null>(() => {
@@ -225,8 +217,6 @@ export const useSailingSession = () => {
     trackData,
     stats,
     currentWindValue,
-    manualWind,
-    setManualWind,
     autoWind,
     windEstimate,
     windInputRequired,
@@ -247,11 +237,8 @@ export const useSailingSession = () => {
     setSport,
     profile,
     activeThresholdKn,
-    setActiveThresholdKn,
-    resetActiveThreshold,
-    isThresholdOverridden,
-    /** Seuil d'activité suggéré à partir de l'allure de la session, affiché quand rien n'est surchargé. */
-    suggestedActiveThresholdKn,
+    /** Seuil hors réglage de la session : celui du support s'il est surchargé, sinon la suggestion. */
+    defaultActiveThresholdKn,
     /** Bornes du dégradé de la trace choisies par l'utilisateur, ou `null` pour la suggestion accordée à la session. */
     speedRange,
     setSpeedRange,

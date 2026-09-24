@@ -8,7 +8,7 @@ import { SAILING_SPORTS, SPORT_PROFILES, sportFamily, type SportFamily } from '.
 import type { SportType } from '../core/types';
 import { formatDuration, formatSpeed } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
-import { importFiles, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
+import { importFiles, importFromFolder, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
 import type { LibrarySession } from '../library/record';
 import { isNativeApp } from '../platform/runtime';
 import './SessionLibrary.css';
@@ -134,6 +134,17 @@ function SessionLibrary({ family }: { family: SportFamily }) {
     }
   };
 
+  const handleNativeFolder = async () => {
+    setImporting(true);
+    try {
+      await importFromFolder();
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const native = isNativeApp();
+
   const row = (session: LibrarySession) => (
     <SessionRow
       key={session.file}
@@ -156,11 +167,15 @@ function SessionLibrary({ family }: { family: SportFamily }) {
           {importing ? 'Import en cours…' : 'Importer des GPX'}
           <input type="file" accept=".gpx" multiple hidden disabled={!canImport || importing} onChange={handleImport} />
         </label>
-        {!isNativeApp() && (
+        {native ? (
+          <Button disabled={!canImport || importing} onClick={() => void handleNativeFolder()}>
+            Ajouter les sessions d'un dossier
+          </Button>
+        ) : (
           <label
             className={`ui-btn ui-btn--secondary${!canImport || importing ? ' lib-disabled' : ''}`}
-            title="Un dossier mémoire copié depuis le téléphone ou un autre PC : ses sessions et leurs notes sont ajoutées à celles-ci">
-            Importer un dossier
+            title="Un dossier Tracker copié depuis le téléphone ou un autre PC : ses sessions et leurs notes sont ajoutées à celles-ci. Le dossier mémoire de ce PC, lui, se choisit dans Réglages › Mémoire.">
+            Ajouter les sessions d'un dossier
             <input
               type="file"
               multiple
@@ -171,6 +186,11 @@ function SessionLibrary({ family }: { family: SportFamily }) {
           </label>
         )}
       </div>
+      <p className="lib-hint">
+        {native
+          ? "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le PC ou un autre téléphone, notes comprises. On peut aussi copier les fichiers directement dans Documents › Tracker › sessions : ils apparaissent au lancement suivant."
+          : "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le téléphone ou un autre PC. Chrome demande alors s'il faut importer les fichiers « sur ce site » : ils restent sur ce PC, Tracker n'envoie rien sur internet."}
+      </p>
 
       {family === 'voile' && familySessions.length > 0 && (
         <div className="ui-tabs" style={{ '--tab-accent': accent } as React.CSSProperties}>

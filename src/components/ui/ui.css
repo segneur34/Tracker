@@ -226,6 +226,43 @@
   border: 1px solid var(--success);
 }
 
+/* --- Barre d'enregistrement d'une session --- */
+
+.ui-savebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+/* Modifications en attente : la barre reste visible en faisant défiler la page. */
+.ui-savebar--dirty {
+  position: sticky;
+  top: 0;
+  z-index: 1050;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--warning-line);
+  border-radius: var(--radius-m);
+  background: var(--warning-soft);
+  color: var(--ink);
+  font-size: var(--text-m);
+}
+
+.ui-savebar__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+@media (min-width: 768px) {
+  .ui-savebar--dirty {
+    top: var(--topbar-h);
+  }
+}
+
 /* --- Champs --- */
 
 .ui-field {

@@ -24,6 +24,7 @@ import {
   recordFileName,
   serializeRecord,
   type LibrarySession,
+  type SessionAnalysis,
   type SessionRecord,
   type SessionSource,
   type SessionSummary,
@@ -47,6 +48,7 @@ import {
   forgetChosenFolder,
   openMemoryFolder,
   pendingFolder,
+  pickFolderToImport,
   reconnectMemoryFolder,
   type MemoryFolder,
   type MemoryKind,
@@ -200,13 +202,17 @@ const refreshCache = async (f: MemoryFolder, gen: number): Promise<void> => {
 
 // --- Résumés ---
 
-/** Réglages de l'utilisateur qui changent le résumé d'un support. */
-const summaryOptions = (sport: SportType | null): SummaryOptions => {
+/**
+ * Réglages de l'utilisateur qui changent le résumé d'un support. Le seuil
+ * d'activité propre à la session (`sessionThreshold`, dans sa fiche) prime
+ * sur celui du support.
+ */
+const summaryOptions = (sport: SportType | null, sessionThreshold?: number | null): SummaryOptions => {
   if (sport === null) return {};
   const stored = readStoredSettings();
   const terrain = stored.terrains?.[sport];
   return {
-    activeThreshold: stored.thresholds?.[sport],
+    activeThreshold: sessionThreshold ?? stored.thresholds?.[sport],
     referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? stored.referenceSpeeds?.[sport] : undefined,
     elevation: isKnownTerrain(terrain) ? ELEVATION_PRESETS[terrain] : undefined,
   };
@@ -219,14 +225,15 @@ interface AnalyzedGpx {
 }
 
 /**
- * Lit un GPX et le résume. `sport` absent : deviné depuis la trace. Rend
+ * Lit un GPX et le résume. `sport` absent : deviné depuis la trace.
+ * `sessionThreshold` : seuil d'activité de la fiche, s'il y en a un. Rend
  * `null` si la trace a moins de deux points, lève une erreur si le XML est
  * illisible.
  */
-const analyzeGpx = (text: string, sport?: SportType | null): AnalyzedGpx | null => {
+const analyzeGpx = (text: string, sport?: SportType | null, sessionThreshold?: number | null): AnalyzedGpx | null => {
   const parsed = parseGpx(text);
   const resolved = sport === undefined ? guessSport(parsed.trackType) : sport;
-  const summary = summarizeSession(parsed.rawPoints, resolved, summaryOptions(resolved));
+  const summary = summarizeSession(parsed.rawPoints, resolved, summaryOptions(resolved, sessionThreshold));
   return summary ? { summary, sport: resolved, title: parsed.trackName ?? null } : null;
 };
 
@@ -243,6 +250,7 @@ const newRecord = (gpx: string, analyzed: AnalyzedGpx, source: SessionSource): S
   summary: analyzed.summary,
   // Notes saisies avant l'existence du dossier, pour la même trace.
   notes: findLegacyNotes(jsonStore.read<Record<string, unknown>>(LEGACY_NOTES_KEY), analyzed.summary.startMs),
+  analysis: null,
 });
 
 /** Nouveau résumé, en gardant le nombre de manœuvres de la dernière analyse. */
@@ -453,7 +461,11 @@ const completeScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[]): P
     const job = jobs[i];
     try {
       const text = await f.readText(sessionPath(job.file));
-      const analyzed = text === null ? null : analyzeGpx(text, job.previous ? job.previous.sport : undefined);
+      const analyzed = text === null ? null : analyzeGpx(
+            text,
+            job.previous ? job.previous.sport : undefined,
+            job.previous?.analysis?.activeThreshold
+          );
       if (!analyzed) {
         unreadable.push(job.file);
         continue;
@@ -645,7 +657,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   let analyzed: AnalyzedGpx | null;
   try {
     const sport = options.sport ?? options.record?.sport ?? undefined;
-    analyzed = analyzeGpx(text, sport);
+    analyzed = analyzeGpx(text, sport, options.record?.analysis?.activeThreshold);
   } catch (err) {
     return { status: 'invalid', file: null, message: errorMessage(err, 'GPX illisible.') };
   }
@@ -754,6 +766,22 @@ export const importFiles = async (files: File[]): Promise<ImportReport> => {
   return report;
 };
 
+/**
+ * Sur le téléphone, ajoute les sessions d'un dossier que l'utilisateur désigne
+ * (un dossier Tracker copié depuis le PC) : `importFiles` sur ses GPX et ses
+ * fiches. `null` si l'utilisateur renonce.
+ */
+export const importFromFolder = async (): Promise<ImportReport | null> => {
+  let files: File[] | null;
+  try {
+    files = await pickFolderToImport();
+  } catch (err) {
+    setState({ message: `Lecture du dossier impossible : ${err instanceof Error ? err.message : String(err)}` });
+    return null;
+  }
+  return files ? importFiles(files) : null;
+};
+
 /** Contenu du GPX d'une session, `null` s'il n'est pas lisible. */
 export const readSessionGpx = async (file: string): Promise<string | null> => {
   await opening;
@@ -763,28 +791,38 @@ export const readSessionGpx = async (file: string): Promise<string | null> => {
 export interface RecordPatch {
   sport?: SportType | null;
   notes?: StoredSessionNotes | null;
+  analysis?: SessionAnalysis | null;
   maneuverCount?: number;
 }
 
 /**
- * Modifie la fiche d'une session : support, notes, nombre de manœuvres. La
- * liste suit tout de suite ; le fichier est écrit un instant plus tard. Un
- * changement de support recalcule le résumé.
+ * Modifie la fiche d'une session : support, notes, réglages d'analyse, nombre
+ * de manœuvres. La liste suit tout de suite ; le fichier est écrit un instant
+ * plus tard. Un changement de support ou de seuil d'activité recalcule le
+ * résumé ; un changement de support efface le seuil propre à la session,
+ * exprimé pour l'ancien support.
  */
 export const updateSessionRecord = (file: string, patch: RecordPatch): void => {
   const session = findSession(file);
   if (!session || session.readOnly) return;
   let record = session.record;
   if (patch.notes !== undefined) record = { ...record, notes: patch.notes };
+  const thresholdBefore = record.analysis?.activeThreshold ?? null;
+  if (patch.analysis !== undefined) record = { ...record, analysis: patch.analysis };
   if (patch.maneuverCount !== undefined && patch.maneuverCount !== record.summary.maneuverCount) {
     record = { ...record, summary: { ...record.summary, maneuverCount: patch.maneuverCount } };
   }
   const sportChanged = patch.sport !== undefined && patch.sport !== record.sport;
-  if (sportChanged) record = { ...record, sport: patch.sport ?? null };
+  if (sportChanged) {
+    record = { ...record, sport: patch.sport ?? null };
+    if (record.analysis?.activeThreshold != null) {
+      record = { ...record, analysis: { ...record.analysis, activeThreshold: null } };
+    }
+  }
   if (record === session.record) return;
   replaceSession({ ...session, record });
   scheduleRecordWrite(file);
-  if (sportChanged) void resummarize(file);
+  if (sportChanged || (record.analysis?.activeThreshold ?? null) !== thresholdBefore) void resummarize(file);
 };
 
 /** Résumé recalculé avec le support de la fiche. */
@@ -794,7 +832,7 @@ const resummarize = async (file: string): Promise<void> => {
   if (!f || !session) return;
   try {
     const text = await f.readText(sessionPath(file));
-    const analyzed = text === null ? null : analyzeGpx(text, session.record.sport);
+    const analyzed = text === null ? null : analyzeGpx(text, session.record.sport, session.record.analysis?.activeThreshold);
     const current = findSession(file);
     if (!analyzed || !current || folder !== f) return;
     replaceSession({ ...current, record: withSummary(current.record, analyzed.summary) });

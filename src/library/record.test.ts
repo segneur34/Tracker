@@ -36,6 +36,7 @@ const record = (patch: Partial<SessionRecord> = {}): SessionRecord => ({
     samplingS: 1,
   },
   notes: null,
+  analysis: null,
   ...patch,
 });
 
@@ -90,6 +91,25 @@ describe('parseRecord et serializeRecord', () => {
     expect(future).not.toBeNull();
     expect(isWritableRecord(future)).toBe(false);
     expect(isWritableRecord(record())).toBe(true);
+  });
+});
+
+describe("réglages d'analyse de la fiche", () => {
+  it("sont relus à l'identique", () => {
+    const r = record({ analysis: { windDeg: 315, activeThreshold: 6.5, savedAt: START_MS + 20 } });
+    expect(parseRecord(serializeRecord(r))?.analysis).toEqual(r.analysis);
+  });
+
+  it('valent `null` dans une fiche écrite avant eux', () => {
+    const { analysis: _omit, ...old } = record();
+    expect(parseRecord(JSON.stringify(old))?.analysis).toBeNull();
+  });
+
+  it('ramènent le vent dans [0, 360) et écartent les valeurs mal formées', () => {
+    const raw = { ...record(), analysis: { windDeg: -45, activeThreshold: -2, futur: true } };
+    expect(parseRecord(JSON.stringify(raw))?.analysis).toEqual({ windDeg: 315, activeThreshold: null, savedAt: 0, futur: true });
+    const texte = { ...record(), analysis: { windDeg: 'nord', activeThreshold: '8' } };
+    expect(parseRecord(JSON.stringify(texte))?.analysis).toEqual({ windDeg: null, activeThreshold: null, savedAt: 0 });
   });
 });
 

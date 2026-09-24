@@ -7,16 +7,19 @@ import {
   type DotItemDotProps, type TooltipPayloadEntry,
 } from 'recharts';
 import 'leaflet/dist/leaflet.css';
-import { libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLeaveWarning } from '../hooks/leaveGuard';
+import { analysisPath, libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
-import { useSessionNotes } from '../hooks/useSessionNotes';
+import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { DEFAULT_MAP_CENTER } from '../core/displayConfig';
 import { SPORT_PROFILES } from '../core/sportProfiles';
 import { speedGradientColor } from '../core/speedGradient';
 import type { SportType, TopSegment } from '../core/types';
 import type { LibrarySession } from '../library/record';
+import type { EditedPart } from '../library/sessionEdits';
 import { readPickedFile } from '../platform/files';
 import { SPEED_UNIT_LABEL, knotsToMs, msToKnots } from '../core/units';
 import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
@@ -127,14 +130,26 @@ const Compass = ({ windAngle }: { windAngle: number }) => {
   );
 };
 
+/** Parties d'une session modifiées, en clair. */
+const EDITED_PART_LABEL: Record<EditedPart, string> = {
+  vent: 'vent',
+  seuil: "seuil d'activité",
+  notes: 'notes',
+};
+
 function SailingModule() {
-  const { 
-    trackData, 
-    stats, 
-    currentWindValue, 
-    manualWind, 
-    setManualWind, 
-    autoWind, 
+  // Session de la mémoire désignée par l'URL, et son brouillon : vent saisi,
+  // seuil d'activité et notes, écrits dans sa fiche par « Enregistrer la session ».
+  const [searchParams] = useSearchParams();
+  const requestedFile = searchParams.get('session');
+  const draft = useSessionDraft(requestedFile);
+  const { edits } = draft;
+
+  const {
+    trackData,
+    stats,
+    currentWindValue,
+    autoWind,  
     loadGpxContent,
     fileName,
     maneuverStats,
@@ -152,10 +167,7 @@ function SailingModule() {
     setSport,
     profile,
     activeThresholdKn,
-    setActiveThresholdKn,
-    resetActiveThreshold,
-    isThresholdOverridden,
-    suggestedActiveThresholdKn,
+    defaultActiveThresholdKn,
     speedRange,
     setSpeedRange,
     suggestedSpeedRangeMs,
@@ -166,7 +178,7 @@ function SailingModule() {
     pointCount,
     maneuverThresholds,
     availableSports
-  } = useSailingSession();
+  } = useSailingSession({ windDeg: edits.windDeg, activeThresholdKn: edits.activeThreshold });
 
   // Session de la mémoire désignée par l'URL : son support devient celui du module.
   const receiveSession = useCallback((content: string, session: LibrarySession) => {
@@ -178,11 +190,16 @@ function SailingModule() {
 
   // Un GPX ouvert ici entre d'abord dans la mémoire ; faute de mémoire, il est lu directement.
   const importAndOpen = useImportAndOpen('voile');
+  const navigate = useNavigate();
   const openFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (!(await importAndOpen(file))) loadGpxContent(await readPickedFile(file), file.name);
+    if (await importAndOpen(file)) return;
+    // Lu hors de la mémoire : ni la session de l'URL, ni le brouillon d'une autre trace (§10, point 31).
+    if (requestedFile === null) draft.cancel();
+    else navigate(analysisPath('voile'), { replace: true });
+    loadGpxContent(await readPickedFile(file), file.name);
   };
 
   /** Changer de support l'écrit aussi dans la fiche de la session. */
@@ -196,14 +213,29 @@ function SailingModule() {
   const maneuverCount = maneuverStats
     ? maneuverStats.tackSuccess + maneuverStats.tackFail + maneuverStats.jibeSuccess + maneuverStats.jibeFail
     : null;
+  // Pas pendant un brouillon : la liste doit refléter l'état enregistré.
   const loadedFromMemory = sessionFile !== null && fileName === sessionFile && trackData.length > 0;
+  const { dirty } = draft;
   useEffect(() => {
-    if (loadedFromMemory && sessionFile && currentWindValue !== null && maneuverCount !== null) {
+    if (loadedFromMemory && sessionFile && !dirty && currentWindValue !== null && maneuverCount !== null) {
       updateSessionRecord(sessionFile, { maneuverCount });
     }
-  }, [loadedFromMemory, sessionFile, currentWindValue, maneuverCount]);
+  }, [loadedFromMemory, sessionFile, dirty, currentWindValue, maneuverCount]);
 
-  const { notes, setNotes, isSaved, available: notesAvailable } = useSessionNotes(sessionFile);
+  const notes = edits.notes;
+  const setNotes = draft.updateNotes;
+  const changedText = draft.changed.map((part) => EDITED_PART_LABEL[part]).join(', ');
+  const leaveWarning = useMemo(
+    () =>
+      draft.dirty && draft.savable
+        ? {
+            message: `Modifications non enregistrées sur cette session (${changedText}). Quitter sans les enregistrer ?`,
+            discard: draft.cancel,
+          }
+        : null,
+    [draft.dirty, draft.savable, draft.cancel, changedText]
+  );
+  useLeaveWarning(leaveWarning);
   const { open, toggle } = useOpenSections<SailingSection>('sailing', SAILING_SECTION_DEFAULTS);
   const { open: carteOpen, toggle: toggleCarte } =
     useOpenSections<SailingCartePanel>('sailing-carte', SAILING_CARTE_PANEL_DEFAULTS);
@@ -563,16 +595,17 @@ function SailingModule() {
             value={activeThresholdKn}
             onChange={(e) => {
               const parsed = parseFloat(e.target.value);
-              if (!isNaN(parsed)) setActiveThresholdKn(parsed);
+              if (!isNaN(parsed) && parsed >= 0) draft.update({ activeThreshold: parsed });
             }}
+            title="Seuil propre à cette session, enregistré avec elle. Celui du support se règle dans Réglages."
             className="ui-field ui-field--s num"
             style={{ width: '70px' }} />
           {SPEED_UNIT_LABEL[profile.thresholdUnit]}
-          {isThresholdOverridden && (
+          {edits.activeThreshold !== null && (
             <Button
               size="s"
-              onClick={resetActiveThreshold}
-              title={`Revenir au seuil suggéré pour cette session (${suggestedActiveThresholdKn} ${SPEED_UNIT_LABEL[profile.thresholdUnit]})`}>
+              onClick={() => draft.update({ activeThreshold: null })}
+              title={`Revenir au seuil du support (${defaultActiveThresholdKn} ${SPEED_UNIT_LABEL[profile.thresholdUnit]})`}>
               Défaut
             </Button>
           )}
@@ -604,6 +637,22 @@ function SailingModule() {
           </label>
         )}
       </div>
+
+      {draft.savable && loadedFromMemory && (
+        <div className={`ui-savebar${draft.dirty ? ' ui-savebar--dirty' : ''}`}>
+          {draft.dirty ? (
+            <>
+              <span><strong>Non enregistré</strong> : {changedText}.</span>
+              <span className="ui-savebar__actions">
+                <Button onClick={draft.cancel}>Annuler</Button>
+                <Button variant="primary" onClick={draft.save}>Enregistrer la session</Button>
+              </span>
+            </>
+          ) : (
+            <span>Session enregistrée : vent, seuil d'activité et notes sont gardés dans sa fiche.</span>
+          )}
+        </div>
+      )}
 
       {loadError && (
         <div style={{ padding: '10px 15px', backgroundColor: '#fdecea', border: '1px solid #d32f2f', borderRadius: '8px', color: '#b71c1c', marginBottom: '10px' }}>
@@ -655,13 +704,34 @@ function SailingModule() {
                       )}
                       <br/>
                       <div style={{ marginTop: '5px' }}>
-                        Saisie : <input type="number" value={manualWind} onChange={(e) => setManualWind(e.target.value)} className="ui-field ui-field--s num" style={{ width: '64px' }} /> °
+                        Saisie : <input
+                          type="number"
+                          value={edits.windDeg ?? ''}
+                          onChange={(e) => {
+                            if (e.target.value === '') {
+                              draft.update({ windDeg: null });
+                              return;
+                            }
+                            const parsed = parseInt(e.target.value, 10);
+                            if (!isNaN(parsed)) draft.update({ windDeg: parsed });
+                          }}
+                          className="ui-field ui-field--s num"
+                          style={{ width: '64px' }} /> °
                         <Button
                           size="s"
-                          onClick={() => setManualWind(String(((currentWindValue ?? autoWind ?? 0) + 180) % 360))}
+                          onClick={() => draft.update({ windDeg: ((currentWindValue ?? autoWind ?? 0) + 180) % 360 })}
                           style={{ marginLeft: '6px' }}>
                           Inverser
                         </Button>
+                        {edits.windDeg !== null && (
+                          <Button
+                            size="s"
+                            onClick={() => draft.update({ windDeg: null })}
+                            title="Revenir au vent calculé"
+                            style={{ marginLeft: '6px' }}>
+                            Calculé
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -738,11 +808,13 @@ function SailingModule() {
                     rows={3}
                     style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: '13px', boxSizing: 'border-box' }} />
                   <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '6px' }}>
-                    {!notesAvailable
+                    {!draft.savable
                       ? 'Notes indisponibles : cette trace n\'est pas dans la mémoire.'
-                      : isSaved
-                        ? 'Enregistré dans la fiche de la session, dans le dossier mémoire.'
-                        : 'Les notes seront enregistrées dès la première saisie.'}
+                      : draft.changed.includes('notes')
+                        ? 'Non enregistrées : « Enregistrer la session », en haut de la page.'
+                        : draft.hasSavedNotes
+                          ? 'Enregistrées dans la fiche de la session, dans le dossier mémoire.'
+                          : 'Enregistrées avec la session, par « Enregistrer la session ».'}
                   </div>
                 </div>
               </ResizablePanel>

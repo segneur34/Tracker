@@ -7,8 +7,9 @@ import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
  * dossier mémoire (`docs/ETAT_DU_PROJET.md` §6).
  *
  * Le GPX fait foi. La fiche en garde un résumé, pour afficher la liste sans
- * relire les traces, et ce que l'utilisateur a saisi : support, notes. Tout
- * se recalcule depuis le GPX, sauf les notes.
+ * relire les traces, et ce que l'utilisateur a saisi : support, notes,
+ * réglages d'analyse (vent, seuil d'activité). Tout se recalcule depuis le
+ * GPX, sauf ces saisies.
  *
  * Deux règles de compatibilité, parce que le dossier passe d'un appareil à
  * l'autre et d'une version de l'application à l'autre :
@@ -53,6 +54,19 @@ export interface SessionSummary {
 /** Notes saisies, datées de leur dernier changement. */
 export type StoredSessionNotes = SailingSessionNotes & { savedAt: number };
 
+/**
+ * Réglages d'analyse propres à la session, saisis par l'utilisateur et
+ * enregistrés par lui. `null` : la valeur par défaut (vent estimé, seuil du
+ * support ou suggéré par l'allure).
+ */
+export interface SessionAnalysis {
+  /** Direction d'où vient le vent, en degrés, dans [0, 360). */
+  windDeg: number | null;
+  /** Seuil d'activité, dans l'unité du profil du support (nœuds en voile). */
+  activeThreshold: number | null;
+  savedAt: number;
+}
+
 export interface SessionRecord {
   format: typeof RECORD_FORMAT;
   version: number;
@@ -67,6 +81,8 @@ export interface SessionRecord {
   title: string | null;
   summary: SessionSummary;
   notes: StoredSessionNotes | null;
+  /** Absent des fiches écrites avant son introduction : lu comme `null`. */
+  analysis: SessionAnalysis | null;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -123,6 +139,20 @@ export const readNotes = (raw: unknown): StoredSessionNotes | null => {
   };
 };
 
+/** Direction ramenée dans [0, 360). */
+export const normalizeDeg = (deg: number): number => ((deg % 360) + 360) % 360;
+
+/** Réglages d'analyse relus, champ par champ : une valeur mal formée revient au défaut. */
+export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
+  if (!isObject(raw)) return null;
+  return {
+    ...raw,
+    windDeg: isFiniteNumber(raw.windDeg) ? normalizeDeg(raw.windDeg) : null,
+    activeThreshold: isFiniteNumber(raw.activeThreshold) && raw.activeThreshold >= 0 ? raw.activeThreshold : null,
+    savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
+  };
+};
+
 /**
  * Lit une fiche. Rend `null` si le texte n'est pas une fiche lisible : JSON
  * mal formé, autre format, champ indispensable absent. Les champs inconnus
@@ -150,6 +180,7 @@ export const parseRecord = (text: string): SessionRecord | null => {
     title: typeof raw.title === 'string' ? raw.title : null,
     summary,
     notes: readNotes(raw.notes),
+    analysis: readAnalysis(raw.analysis),
   };
 };
 

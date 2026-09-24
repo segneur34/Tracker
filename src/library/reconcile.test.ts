@@ -18,6 +18,7 @@ const record = (gpx: string): SessionRecord => ({
     elevationGainM: null, maxSpeedMs: 3, pointCount: 2, samplingS: 1,
   },
   notes: null,
+  analysis: null,
 });
 
 describe('planReconcile', () => {

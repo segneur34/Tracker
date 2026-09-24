@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
+import MemoryStatus from '../components/MemoryStatus';
 import { IconRun, IconSail } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
+import { useSessionLibrary } from '../hooks/useSessionLibrary';
 
 /**
  * Accueil. Version d'attente : les deux modules et l'enregistrement. Le
@@ -24,10 +26,15 @@ const titleStyle = { display: 'flex', alignItems: 'center', gap: '10px', fontSiz
 
 function Home() {
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  const { status } = useSessionLibrary();
+  // Premier lancement sur le téléphone, ou dossier devenu inaccessible : la mémoire d'abord.
+  const memoryNeedsAction = status === 'unavailable' || status === 'needs-permission';
 
   return (
     <div className="ui-page">
       <PageHeader title="Tracker" aside={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)' }}>{today}</span>} />
+
+      {memoryNeedsAction && <MemoryStatus />}
 
       <Link to="/enregistrer" style={{ ...cardStyle, gap: '14px' }}>
         <span className="ui-eyebrow">Nouvelle session</span>
