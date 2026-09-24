@@ -111,7 +111,7 @@ Tracker/
     2026-09-23_14-05-12_wingfoil.json   sa fiche
 ```
 
-- **Le GPX fait foi.** La fiche (`library/record.ts`) en garde le support, un résumé en SI pour afficher la liste sans relire les traces (`summarizeSession`, qui reprend le pipeline du module), le nombre de manœuvres de la dernière analyse, les notes et les réglages d'analyse de la session (`analysis { windDeg; activeThreshold; savedAt }` : vent saisi, seuil d'activité propre à la session, `null` pour la valeur par défaut). Tout se recalcule depuis le GPX, sauf ces saisies. Une fiche dont `calcVersion` est dépassé est recalculée, saisies intactes. Le résumé est calculé avec le seuil de la session s'il y en a un ; changer de support efface ce seuil, exprimé pour l'ancien support.
+- **Le GPX fait foi.** La fiche (`library/record.ts`) en garde le support, un résumé en SI pour afficher la liste sans relire les traces (`summarizeSession`, qui reprend le pipeline du module), le nombre de manœuvres de la dernière analyse, les notes et les réglages d'analyse de la session (`analysis { windDeg; activeThreshold; referenceSpeedMs; savedAt }` : vent saisi, seuil d'activité et allure imposée propres à la session, `null` pour la valeur par défaut). Tout se recalcule depuis le GPX, sauf ces saisies. Une fiche dont `calcVersion` est dépassé est recalculée, saisies intactes. Le résumé est calculé avec le seuil de la session s'il y en a un ; changer de support efface ce seuil, exprimé pour l'ancien support.
 - **Enregistrement explicite** (§10, point 43) : dans le module voile, vent saisi, seuil et notes restent en brouillon (`useSessionDraft`), signalés par une barre « Non enregistré » ; « Enregistrer la session » les écrit dans la fiche, « Annuler » revient à l'état enregistré. Quitter avec un brouillon demande confirmation (`hooks/leaveGuard.ts`) : liens internes, touche retour d'Android, fermeture de l'onglet ; le retour arrière du navigateur n'est pas intercepté, mais le brouillon est retrouvé en revenant. Le support, lui, s'écrit tout de suite.
 - **Compatibilité** : les champs inconnus d'une fiche sont conservés à la réécriture ; une fiche d'une version future est lue, jamais réécrite ; une fiche illisible n'est jamais écrasée.
 - **Identité** : l'instant du premier point. Réimporter une trace ne la duplique pas ; deux fichiers de la même trace (fusion de dossiers) n'en font qu'une dans la liste.
@@ -126,7 +126,7 @@ Lues et écrites par `jsonStore` (`platform/storage.ts`) : `localStorage` dans l
 
 | Clé | Fichier | Forme |
 |---|---|---|
-| `tracker.sportSettings` | `hooks/useSportSettings.ts` | `StoredSettings { sport?; thresholds?; terrains?; speedUnits?; textScales?; speedRanges?; referenceSpeeds? }`, chaque champ indexé par support ; objet unique réécrit en entier à chaque changement. `speedRanges` sert aux deux modules, en m/s ; `referenceSpeeds` est l'allure imposée, en m/s, absente quand elle est déduite. Recopié dans `reglages.json` |
+| `tracker.sportSettings` | `hooks/useSportSettings.ts` | `StoredSettings { sport?; thresholds?; terrains?; speedUnits?; textScales?; speedRanges?; referenceSpeeds? }`, chaque champ indexé par support ; objet unique réécrit en entier à chaque changement. `speedRanges` sert aux deux modules, en m/s ; l'ancienne allure par support `referenceSpeeds` est écartée à la lecture (point 46). Recopié dans `reglages.json` |
 | `tracker.runnerProfile` | `hooks/useRunnerProfile.ts` | `Record<'me', RunnerProfile>`. Recopié dans `reglages.json` |
 | `tracker.memoryFolder` | `platform/memoryFolder.ts` | téléphone seulement : `{ uri; base; label }`, dossier désigné par le sélecteur d'Android (`base` = `Tracker` si l'on a désigné son parent) |
 | `tracker.settingsSavedAt` | `hooks/useSessionLibrary.ts` | instant du dernier changement de ces deux clés, en ms |
@@ -169,7 +169,6 @@ Non testé : `gpxParser` (DOM), `useRecorder`, `useSessionLibrary`, `useSessionD
 
 Nettoyages du 21 septembre 2026 (§10, point 15) et du 24 septembre 2026 (§10, point 44) : plus de fichier mort, plus d'export ni de champ inutilisé, plus de `any` dans `src/`. Ce qui reste, par ordre d'importance :
 
-- **Allure imposée gardée par support, pas par session** (`tracker.sportSettings.referenceSpeeds`) : saisie dans « Allure de la session » du module voile, elle s'applique ensuite en silence à toutes les sessions de ce support, filtres, seuils, vent et résumés de la liste compris. Même piège qu'au §10, point 29. Remède proposé : la ranger dans la fiche (`analysis`), en brouillon comme le seuil. Les bornes de couleur, elles aussi par support, ne touchent que l'affichage.
 - **Seuil de la course** : `RunningModule` ignore la surcharge de Réglages (`profile.defaultActiveThreshold`), alors que le résumé de la liste l'applique ; les temps en mouvement diffèrent dès qu'on la règle. Prévu au lot 2, comme l'unité choisie pour la voile (toujours affichée en nœuds) et les distances en km de la liste.
 - Le résumé d'une session est calculé à son entrée dans la mémoire : changer le seuil d'un support, un terrain ou l'allure imposée ne recalcule pas les résumés de la liste (seuls un changement de support, du seuil propre à la session, ou d'`SUMMARY_CALC_VERSION` le font), et rien ne le signale.
 - Ouvrir une session voile réécrit sa fiche (nombre de manœuvres) : la date du fichier change. Le cache des fiches n'est pas rafraîchi après une écriture : la fiche est relue au lancement suivant, sans autre effet.
@@ -217,7 +216,7 @@ C'est le seul endroit où il est tenu.
   - lot 4, accueil : graphe d'activités, totaux, dernières sessions ;
   - lot 5, enregistrement : famille puis activité, statistiques en direct (le cap moyen du bord remplace l'amure, le vent étant inconnu pendant l'enregistrement) ;
   - lot 6, APK pour les testeurs : icône, fiche d'installation.
-- Hors plan, le 24 septembre 2026 : audit, documentation allégée, code mort retiré (point 44) ; fins de ligne en LF et banc versé dans `outils/banc/` (point 45). Décidé, à faire avant le lot 2 : l'allure imposée rangée dans la fiche de la session (§9).
+- Hors plan, le 24 septembre 2026 : allure imposée propre à chaque session (point 46) ; audit, documentation allégée, code mort retiré (point 44) ; fins de ligne en LF et banc versé dans `outils/banc/` (point 45).
 - Phase 2 : interface mobile. Disposition empilée en écran étroit, décisions de disposition sur ordinateur inchangées ; toucher au lieu du survol ; graphes à largeur fixe (500 et 350 px) et poignée `resize` de 20 px à revoir ; `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz) : les regrouper par couleur toucherait à la décision « pas de paliers », à redemander ; `accept=".gpx"`, qui grise parfois les GPX sous Android.
 - Phase 3 : partage et export GPX, réception d'un GPX partagé depuis Komoot, cartes hors ligne (pas de réseau en mer), capteur cardiaque Bluetooth.
 

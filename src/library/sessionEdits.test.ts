@@ -32,14 +32,15 @@ const record = (patch: Partial<SessionRecord> = {}): SessionRecord => ({
 const notes = (patch: Partial<StoredSessionNotes> = {}): StoredSessionNotes => ({ ...EMPTY_NOTES, savedAt: START_MS, ...patch });
 
 describe('savedEdits', () => {
-  it('reprend le vent, le seuil et les notes de la fiche', () => {
+  it("reprend le vent, le seuil, l'allure et les notes de la fiche", () => {
     const r = record({
       notes: notes({ comment: 'Belle session', rating: 4 }),
-      analysis: { windDeg: 300, activeThreshold: 7, savedAt: START_MS },
+      analysis: { windDeg: 300, activeThreshold: 7, referenceSpeedMs: 2.5, savedAt: START_MS },
     });
     const saved = savedEdits(r, null);
     expect(saved.windDeg).toBe(300);
     expect(saved.activeThreshold).toBe(7);
+    expect(saved.referenceSpeedMs).toBe(2.5);
     expect(saved.notes).toEqual({ ...EMPTY_NOTES, comment: 'Belle session', rating: 4 });
   });
 
@@ -53,7 +54,7 @@ describe('savedEdits', () => {
   });
 
   it('rend les valeurs par défaut sans fiche', () => {
-    expect(savedEdits(null, null)).toEqual({ notes: EMPTY_NOTES, windDeg: null, activeThreshold: null });
+    expect(savedEdits(null, null)).toEqual({ notes: EMPTY_NOTES, windDeg: null, activeThreshold: null, referenceSpeedMs: null });
   });
 });
 
@@ -65,8 +66,8 @@ describe('changedParts', () => {
   });
 
   it("nomme chaque partie changée, dans l'ordre de l'écran", () => {
-    expect(changedParts(saved, { notes: { ...saved.notes, rating: 5 }, windDeg: 90, activeThreshold: 6 }))
-      .toEqual(['vent', 'seuil', 'notes']);
+    expect(changedParts(saved, { notes: { ...saved.notes, rating: 5 }, windDeg: 90, activeThreshold: 6, referenceSpeedMs: 2 }))
+      .toEqual(['vent', 'seuil', 'allure', 'notes']);
   });
 });
 
@@ -75,17 +76,25 @@ describe('editsPatch', () => {
     const r = record({ notes: notes({ comment: 'avant' }) });
     const saved = savedEdits(r, null);
     expect(editsPatch(r, saved, { ...saved, windDeg: -90 }, START_MS + 5)).toEqual({
-      analysis: { windDeg: 270, activeThreshold: null, savedAt: START_MS + 5 },
+      analysis: { windDeg: 270, activeThreshold: null, referenceSpeedMs: null, savedAt: START_MS + 5 },
     });
     expect(editsPatch(r, saved, { ...saved, notes: { ...saved.notes, comment: 'après' } }, START_MS + 6)).toEqual({
       notes: { ...EMPTY_NOTES, comment: 'après', savedAt: START_MS + 6 },
     });
   });
 
+  it("écrit l'allure imposée seule, le vent et le seuil de la fiche intacts", () => {
+    const r = record({ analysis: { windDeg: 45, activeThreshold: 3, referenceSpeedMs: null, savedAt: 0 } });
+    const saved = savedEdits(r, null);
+    expect(editsPatch(r, saved, { ...saved, referenceSpeedMs: 2.2 }, START_MS + 7)).toEqual({
+      analysis: { windDeg: 45, activeThreshold: 3, referenceSpeedMs: 2.2, savedAt: START_MS + 7 },
+    });
+  });
+
   it('garde les champs inconnus des notes et des réglages', () => {
     const r = record({
       notes: { ...notes(), futur: 1 } as StoredSessionNotes,
-      analysis: { windDeg: 10, activeThreshold: null, savedAt: 0, futur: 2 } as SessionRecord['analysis'],
+      analysis: { windDeg: 10, activeThreshold: null, referenceSpeedMs: null, savedAt: 0, futur: 2 } as SessionRecord['analysis'],
     });
     const saved = savedEdits(r, null);
     const patch = editsPatch(r, saved, { ...saved, activeThreshold: 6, notes: { ...saved.notes, rating: 3 } }, 9);

@@ -96,7 +96,7 @@ describe('parseRecord et serializeRecord', () => {
 
 describe("réglages d'analyse de la fiche", () => {
   it("sont relus à l'identique", () => {
-    const r = record({ analysis: { windDeg: 315, activeThreshold: 6.5, savedAt: START_MS + 20 } });
+    const r = record({ analysis: { windDeg: 315, activeThreshold: 6.5, referenceSpeedMs: 2.3, savedAt: START_MS + 20 } });
     expect(parseRecord(serializeRecord(r))?.analysis).toEqual(r.analysis);
   });
 
@@ -105,11 +105,22 @@ describe("réglages d'analyse de la fiche", () => {
     expect(parseRecord(JSON.stringify(old))?.analysis).toBeNull();
   });
 
+  it("donnent une allure déduite de la trace à une fiche d'avant l'allure imposée", () => {
+    const raw = { ...record(), analysis: { windDeg: 90, activeThreshold: 4, savedAt: START_MS } };
+    expect(parseRecord(JSON.stringify(raw))?.analysis?.referenceSpeedMs).toBeNull();
+  });
+
   it('ramènent le vent dans [0, 360) et écartent les valeurs mal formées', () => {
-    const raw = { ...record(), analysis: { windDeg: -45, activeThreshold: -2, futur: true } };
-    expect(parseRecord(JSON.stringify(raw))?.analysis).toEqual({ windDeg: 315, activeThreshold: null, savedAt: 0, futur: true });
-    const texte = { ...record(), analysis: { windDeg: 'nord', activeThreshold: '8' } };
-    expect(parseRecord(JSON.stringify(texte))?.analysis).toEqual({ windDeg: null, activeThreshold: null, savedAt: 0 });
+    const raw = { ...record(), analysis: { windDeg: -45, activeThreshold: -2, referenceSpeedMs: 0, futur: true } };
+    expect(parseRecord(JSON.stringify(raw))?.analysis).toEqual({
+      windDeg: 315, activeThreshold: null, referenceSpeedMs: null, savedAt: 0, futur: true,
+    });
+    const texte = { ...record(), analysis: { windDeg: 'nord', activeThreshold: '8', referenceSpeedMs: '3' } };
+    expect(parseRecord(JSON.stringify(texte))?.analysis).toEqual({
+      windDeg: null, activeThreshold: null, referenceSpeedMs: null, savedAt: 0,
+    });
+    const negative = { ...record(), analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: -1.5 } };
+    expect(parseRecord(JSON.stringify(negative))?.analysis?.referenceSpeedMs).toBeNull();
   });
 });
 

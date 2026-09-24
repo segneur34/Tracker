@@ -25,8 +25,11 @@ export const RECORD_VERSION = 1;
  * Version du calcul du résumé. À augmenter quand `summarizeSession` change :
  * les fiches plus anciennes sont alors recalculées depuis leur GPX, notes
  * intactes.
+ *
+ * 2 (24 septembre 2026) : l'allure imposée ne vient plus des réglages du
+ * support mais de la fiche de la session (`analysis.referenceSpeedMs`).
  */
-export const SUMMARY_CALC_VERSION = 1;
+export const SUMMARY_CALC_VERSION = 2;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -57,13 +60,19 @@ export type StoredSessionNotes = SailingSessionNotes & { savedAt: number };
 /**
  * Réglages d'analyse propres à la session, saisis par l'utilisateur et
  * enregistrés par lui. `null` : la valeur par défaut (vent estimé, seuil du
- * support ou suggéré par l'allure).
+ * support ou suggéré par l'allure, allure déduite de la trace).
  */
 export interface SessionAnalysis {
   /** Direction d'où vient le vent, en degrés, dans [0, 360). */
   windDeg: number | null;
   /** Seuil d'activité, dans l'unité du profil du support (nœuds en voile). */
   activeThreshold: number | null;
+  /**
+   * Allure de la session imposée, en m/s, pour une trace que sa propre vitesse
+   * décrit mal ; voile seulement. Elle décrit la trace, pas le support : un
+   * changement de support la garde.
+   */
+  referenceSpeedMs: number | null;
   savedAt: number;
 }
 
@@ -149,6 +158,7 @@ export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
     ...raw,
     windDeg: isFiniteNumber(raw.windDeg) ? normalizeDeg(raw.windDeg) : null,
     activeThreshold: isFiniteNumber(raw.activeThreshold) && raw.activeThreshold >= 0 ? raw.activeThreshold : null,
+    referenceSpeedMs: isFiniteNumber(raw.referenceSpeedMs) && raw.referenceSpeedMs > 0 ? raw.referenceSpeedMs : null,
     savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
   };
 };

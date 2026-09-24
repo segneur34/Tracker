@@ -30,17 +30,24 @@ import { useSportSettings } from './useSportSettings';
  * Le seuil d'activité est propagé à tous les calculs qui en dépendent, et une
  * modification du seuil recalcule les statistiques sans relire le fichier.
  *
- * Le vent saisi et le seuil propre à la session viennent du module (son
- * brouillon, `useSessionDraft`), qui les garde dans la fiche de la session.
+ * Le vent saisi, le seuil et l'allure propres à la session viennent du
+ * module (son brouillon, `useSessionDraft`), qui les garde dans la fiche de
+ * la session.
  */
 export interface SailingSessionInput {
   /** Vent saisi, en degrés ; `null` : vent estimé. */
   windDeg: number | null;
   /** Seuil d'activité de la session, en nœuds ; `null` : celui du support, ou la suggestion. */
   activeThresholdKn: number | null;
+  /** Allure de la session imposée, en m/s ; `null` : déduite de la trace. */
+  referenceSpeedMs: number | null;
 }
 
-export const useSailingSession = ({ windDeg, activeThresholdKn: sessionThresholdKn }: SailingSessionInput) => {
+export const useSailingSession = ({
+  windDeg,
+  activeThresholdKn: sessionThresholdKn,
+  referenceSpeedMs: sessionReferenceMs,
+}: SailingSessionInput) => {
   const {
     sport,
     setSport,
@@ -49,8 +56,6 @@ export const useSailingSession = ({ windDeg, activeThresholdKn: sessionThreshold
     isThresholdOverridden,
     speedRange,
     setSpeedRange,
-    referenceSpeed,
-    setReferenceSpeed,
   } = useSportSettings(DEFAULT_SAILING_SPORT, SAILING_SPORTS);
 
   // Les seuils de filtrage suivent l'allure de la session, pas seulement le
@@ -60,7 +65,7 @@ export const useSailingSession = ({ windDeg, activeThresholdKn: sessionThreshold
     medianWindowSeconds: profile.medianWindowSeconds,
     maxSpeedMs: profile.maxPlausibleSpeedMs,
     scaleFiltersToSession: true,
-    referenceSpeedOverrideMs: referenceSpeed ?? undefined,
+    referenceSpeedOverrideMs: sessionReferenceMs ?? undefined,
   });
 
   // Vue en nœuds de la trace, attendue par les analyses voile.
@@ -238,9 +243,6 @@ export const useSailingSession = ({ windDeg, activeThresholdKn: sessionThreshold
     maneuverThresholds,
     /** Nombre de points du fichier, avant tout filtrage. */
     pointCount: gpx.rawPoints.length,
-    /** Allure imposée par l'utilisateur, `null` quand elle est déduite. */
-    referenceSpeed,
-    setReferenceSpeed,
     availableSports: SAILING_SPORTS as SportType[],
   };
 };

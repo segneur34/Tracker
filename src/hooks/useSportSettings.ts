@@ -54,12 +54,6 @@ export interface StoredSettings {
   textScales?: Partial<Record<SportType, TextScale>>;
   /** Bornes du dégradé de couleur de la trace, en m/s, par support. */
   speedRanges?: Partial<Record<SportType, { minMs: number; maxMs: number }>>;
-  /**
-   * Allure de session imposée, en m/s, par support. Absente, elle est déduite
-   * de la trace : c'est le cas courant, et la surcharge ne sert qu'aux
-   * sessions que leur propre vitesse décrit mal.
-   */
-  referenceSpeeds?: Partial<Record<SportType, number>>;
 }
 
 export const isKnownTerrain = (value: unknown): value is TerrainType =>
@@ -71,8 +65,18 @@ export const isKnownSpeedUnit = (value: unknown): value is SpeedUnit =>
 export const isKnownTextScale = (value: unknown): value is TextScale =>
   typeof value === 'string' && value in TEXT_SCALE_FACTOR;
 
-/** Réglages enregistrés, pour qui calcule hors d'un composant : les résumés de la bibliothèque. */
-export const readStoredSettings = (): StoredSettings => jsonStore.read<StoredSettings>(STORAGE_KEY) ?? {};
+/**
+ * Réglages enregistrés, pour qui calcule hors d'un composant : les résumés de
+ * la bibliothèque. L'ancienne allure imposée par support (`referenceSpeeds`)
+ * est écartée : depuis le 24 septembre 2026, elle vit dans la fiche de chaque
+ * session (§10, point 46), et la prochaine écriture la retire de l'appareil
+ * et de `reglages.json`.
+ */
+export const readStoredSettings = (): StoredSettings => {
+  const { referenceSpeeds: _abandoned, ...settings } =
+    jsonStore.read<StoredSettings & { referenceSpeeds?: unknown }>(STORAGE_KEY) ?? {};
+  return settings;
+};
 
 const writeStored = (settings: StoredSettings): void => jsonStore.write(STORAGE_KEY, settings);
 
@@ -265,23 +269,6 @@ export const useSportSettings = (defaultSport: SportType, allowedSports: SportTy
     [persist, sport, stored]
   );
 
-  const storedReference = stored.referenceSpeeds?.[sport];
-  /** Allure imposée par l'utilisateur, en m/s, ou `null` si elle est déduite de la trace. */
-  const referenceSpeed =
-    storedReference !== undefined && isFinite(storedReference) && storedReference > 0
-      ? storedReference
-      : null;
-  const setReferenceSpeed = useCallback(
-    (next: number | null) => {
-      const referenceSpeeds = { ...stored.referenceSpeeds };
-      if (next === null) delete referenceSpeeds[sport];
-      else if (isFinite(next) && next > 0) referenceSpeeds[sport] = next;
-      else return;
-      persist({ ...stored, referenceSpeeds });
-    },
-    [persist, sport, stored]
-  );
-
   return {
     sport,
     setSport,
@@ -300,8 +287,5 @@ export const useSportSettings = (defaultSport: SportType, allowedSports: SportTy
     /** Bornes du dégradé choisies par l'utilisateur, ou `null` pour le défaut du module. */
     speedRange,
     setSpeedRange,
-    /** Allure de session imposée, en m/s, ou `null` si elle est déduite de la trace. */
-    referenceSpeed,
-    setReferenceSpeed,
   };
 };

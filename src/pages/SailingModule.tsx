@@ -134,12 +134,13 @@ const Compass = ({ windAngle }: { windAngle: number }) => {
 const EDITED_PART_LABEL: Record<EditedPart, string> = {
   vent: 'vent',
   seuil: "seuil d'activité",
+  allure: 'allure de la session',
   notes: 'notes',
 };
 
 function SailingModule() {
-  // Session de la mémoire désignée par l'URL, et son brouillon : vent saisi,
-  // seuil d'activité et notes, écrits dans sa fiche par « Enregistrer la session ».
+  // Session de la mémoire désignée par l'URL, et son brouillon : vent saisi, seuil
+  // d'activité, allure imposée et notes, écrits dans sa fiche par « Enregistrer la session ».
   const [searchParams] = useSearchParams();
   const requestedFile = searchParams.get('session');
   const draft = useSessionDraft(requestedFile);
@@ -172,13 +173,15 @@ function SailingModule() {
     setSpeedRange,
     suggestedSpeedRangeMs,
     referenceSpeedMs,
-    referenceSpeed,
-    setReferenceSpeed,
     samplingS,
     pointCount,
     maneuverThresholds,
     availableSports
-  } = useSailingSession({ windDeg: edits.windDeg, activeThresholdKn: edits.activeThreshold });
+  } = useSailingSession({
+    windDeg: edits.windDeg,
+    activeThresholdKn: edits.activeThreshold,
+    referenceSpeedMs: edits.referenceSpeedMs,
+  });
 
   // Session de la mémoire désignée par l'URL : son support devient celui du module.
   const receiveSession = useCallback((content: string, session: LibrarySession) => {
@@ -616,16 +619,16 @@ function SailingModule() {
               value={msToKnots(referenceSpeedMs).toFixed(1)}
               onChange={(e) => {
                 const parsed = parseFloat(e.target.value);
-                if (!isNaN(parsed) && parsed > 0) setReferenceSpeed(knotsToMs(parsed));
+                if (!isNaN(parsed) && parsed > 0) draft.update({ referenceSpeedMs: knotsToMs(parsed) });
               }}
-              title="Vitesse de croisière de la session, dont dépendent les seuils de filtrage. Déduite de la trace, modifiable si elle la décrit mal."
+              title="Vitesse de croisière de la session, dont dépendent les seuils de filtrage. Déduite de la trace ; imposée si elle la décrit mal, et alors enregistrée avec la session."
               className="ui-field ui-field--s num"
               style={{ width: '70px' }} />
             nds
-            {referenceSpeed === null ? (
+            {edits.referenceSpeedMs === null ? (
               <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(déduite de la trace)</span>
             ) : (
-              <Button size="s" onClick={() => setReferenceSpeed(null)} title="Revenir à l'allure déduite de la trace">
+              <Button size="s" onClick={() => draft.update({ referenceSpeedMs: null })} title="Revenir à l'allure déduite de la trace">
                 Défaut
               </Button>
             )}
@@ -644,7 +647,7 @@ function SailingModule() {
               </span>
             </>
           ) : (
-            <span>Session enregistrée : vent, seuil d'activité et notes sont gardés dans sa fiche.</span>
+            <span>Session enregistrée : vent, seuil d'activité, allure et notes sont gardés dans sa fiche.</span>
           )}
         </div>
       )}

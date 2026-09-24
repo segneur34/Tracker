@@ -203,17 +203,17 @@ const refreshCache = async (f: MemoryFolder, gen: number): Promise<void> => {
 // --- Résumés ---
 
 /**
- * Réglages de l'utilisateur qui changent le résumé d'un support. Le seuil
- * d'activité propre à la session (`sessionThreshold`, dans sa fiche) prime
- * sur celui du support.
+ * Réglages qui changent le résumé : ceux du support, et ceux de la session
+ * (`analysis`, dans sa fiche). Le seuil de la session prime sur celui du
+ * support ; l'allure imposée n'existe que pour une session, et qu'en voile.
  */
-const summaryOptions = (sport: SportType | null, sessionThreshold?: number | null): SummaryOptions => {
+const summaryOptions = (sport: SportType | null, analysis?: SessionAnalysis | null): SummaryOptions => {
   if (sport === null) return {};
   const stored = readStoredSettings();
   const terrain = stored.terrains?.[sport];
   return {
-    activeThreshold: sessionThreshold ?? stored.thresholds?.[sport],
-    referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? stored.referenceSpeeds?.[sport] : undefined,
+    activeThreshold: analysis?.activeThreshold ?? stored.thresholds?.[sport],
+    referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? analysis?.referenceSpeedMs ?? undefined : undefined,
     elevation: isKnownTerrain(terrain) ? ELEVATION_PRESETS[terrain] : undefined,
   };
 };
@@ -226,14 +226,14 @@ interface AnalyzedGpx {
 
 /**
  * Lit un GPX et le résume. `sport` absent : deviné depuis la trace.
- * `sessionThreshold` : seuil d'activité de la fiche, s'il y en a un. Rend
- * `null` si la trace a moins de deux points, lève une erreur si le XML est
- * illisible.
+ * `analysis` : réglages d'analyse de la fiche (seuil, allure), s'il y en a.
+ * Rend `null` si la trace a moins de deux points, lève une erreur si le XML
+ * est illisible.
  */
-const analyzeGpx = (text: string, sport?: SportType | null, sessionThreshold?: number | null): AnalyzedGpx | null => {
+const analyzeGpx = (text: string, sport?: SportType | null, analysis?: SessionAnalysis | null): AnalyzedGpx | null => {
   const parsed = parseGpx(text);
   const resolved = sport === undefined ? guessSport(parsed.trackType) : sport;
-  const summary = summarizeSession(parsed.rawPoints, resolved, summaryOptions(resolved, sessionThreshold));
+  const summary = summarizeSession(parsed.rawPoints, resolved, summaryOptions(resolved, analysis));
   return summary ? { summary, sport: resolved, title: parsed.trackName ?? null } : null;
 };
 
@@ -464,7 +464,7 @@ const completeScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[]): P
       const analyzed = text === null ? null : analyzeGpx(
             text,
             job.previous ? job.previous.sport : undefined,
-            job.previous?.analysis?.activeThreshold
+            job.previous?.analysis
           );
       if (!analyzed) {
         unreadable.push(job.file);
@@ -657,7 +657,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   let analyzed: AnalyzedGpx | null;
   try {
     const sport = options.sport ?? options.record?.sport ?? undefined;
-    analyzed = analyzeGpx(text, sport, options.record?.analysis?.activeThreshold);
+    analyzed = analyzeGpx(text, sport, options.record?.analysis);
   } catch (err) {
     return { status: 'invalid', file: null, message: errorMessage(err, 'GPX illisible.') };
   }
@@ -798,9 +798,9 @@ export interface RecordPatch {
 /**
  * Modifie la fiche d'une session : support, notes, réglages d'analyse, nombre
  * de manœuvres. La liste suit tout de suite ; le fichier est écrit un instant
- * plus tard. Un changement de support ou de seuil d'activité recalcule le
- * résumé ; un changement de support efface le seuil propre à la session,
- * exprimé pour l'ancien support.
+ * plus tard. Un changement de support, de seuil d'activité ou d'allure imposée
+ * recalcule le résumé ; un changement de support efface le seuil propre à la
+ * session, exprimé dans l'unité de l'ancien support (l'allure, en m/s, reste).
  */
 export const updateSessionRecord = (file: string, patch: RecordPatch): void => {
   const session = findSession(file);
@@ -808,6 +808,7 @@ export const updateSessionRecord = (file: string, patch: RecordPatch): void => {
   let record = session.record;
   if (patch.notes !== undefined) record = { ...record, notes: patch.notes };
   const thresholdBefore = record.analysis?.activeThreshold ?? null;
+  const referenceBefore = record.analysis?.referenceSpeedMs ?? null;
   if (patch.analysis !== undefined) record = { ...record, analysis: patch.analysis };
   if (patch.maneuverCount !== undefined && patch.maneuverCount !== record.summary.maneuverCount) {
     record = { ...record, summary: { ...record.summary, maneuverCount: patch.maneuverCount } };
@@ -822,7 +823,10 @@ export const updateSessionRecord = (file: string, patch: RecordPatch): void => {
   if (record === session.record) return;
   replaceSession({ ...session, record });
   scheduleRecordWrite(file);
-  if (sportChanged || (record.analysis?.activeThreshold ?? null) !== thresholdBefore) void resummarize(file);
+  const analysisChanged =
+    (record.analysis?.activeThreshold ?? null) !== thresholdBefore ||
+    (record.analysis?.referenceSpeedMs ?? null) !== referenceBefore;
+  if (sportChanged || analysisChanged) void resummarize(file);
 };
 
 /** Résumé recalculé avec le support de la fiche. */
@@ -832,7 +836,7 @@ const resummarize = async (file: string): Promise<void> => {
   if (!f || !session) return;
   try {
     const text = await f.readText(sessionPath(file));
-    const analyzed = text === null ? null : analyzeGpx(text, session.record.sport, session.record.analysis?.activeThreshold);
+    const analyzed = text === null ? null : analyzeGpx(text, session.record.sport, session.record.analysis);
     const current = findSession(file);
     if (!analyzed || !current || folder !== f) return;
     replaceSession({ ...current, record: withSummary(current.record, analyzed.summary) });

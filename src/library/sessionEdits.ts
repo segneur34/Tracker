@@ -3,8 +3,8 @@ import { normalizeDeg, type SessionAnalysis, type SessionRecord, type StoredSess
 
 /**
  * Ce que l'utilisateur change sur une session dans le module d'analyse : vent
- * saisi, seuil d'activité, notes. Les changements restent en brouillon
- * jusqu'à « Enregistrer la session », qui les écrit dans la fiche.
+ * saisi, seuil d'activité, allure imposée, notes. Les changements restent en
+ * brouillon jusqu'à « Enregistrer la session », qui les écrit dans la fiche.
  */
 export interface SessionEdits {
   notes: SailingSessionNotes;
@@ -12,6 +12,8 @@ export interface SessionEdits {
   windDeg: number | null;
   /** Seuil d'activité de la session, dans l'unité du profil ; `null` : celui du support. */
   activeThreshold: number | null;
+  /** Allure de la session imposée, en m/s ; `null` : déduite de la trace. */
+  referenceSpeedMs: number | null;
 }
 
 const NOTE_FIELDS = Object.keys(EMPTY_NOTES) as (keyof SailingSessionNotes)[];
@@ -44,19 +46,21 @@ export const savedEdits = (record: SessionRecord | null, gear: StoredSessionNote
     notes,
     windDeg: record?.analysis?.windDeg ?? null,
     activeThreshold: record?.analysis?.activeThreshold ?? null,
+    referenceSpeedMs: record?.analysis?.referenceSpeedMs ?? null,
   };
 };
 
 const pickNotes = (notes: SailingSessionNotes): SailingSessionNotes =>
   Object.fromEntries(NOTE_FIELDS.map((field) => [field, notes[field]])) as unknown as SailingSessionNotes;
 
-export type EditedPart = 'vent' | 'seuil' | 'notes';
+export type EditedPart = 'vent' | 'seuil' | 'allure' | 'notes';
 
 /** Parties qui diffèrent entre deux états, dans l'ordre de l'écran. */
 export const changedParts = (saved: SessionEdits, edits: SessionEdits): EditedPart[] => {
   const parts: EditedPart[] = [];
   if (saved.windDeg !== edits.windDeg) parts.push('vent');
   if (saved.activeThreshold !== edits.activeThreshold) parts.push('seuil');
+  if (saved.referenceSpeedMs !== edits.referenceSpeedMs) parts.push('allure');
   if (!sameNotes(saved.notes, edits.notes)) parts.push('notes');
   return parts;
 };
@@ -75,11 +79,12 @@ export const editsPatch = (record: SessionRecord, saved: SessionEdits, edits: Se
   const parts = changedParts(saved, edits);
   const patch: EditsPatch = {};
   if (parts.includes('notes')) patch.notes = { ...record.notes, ...edits.notes, savedAt: now };
-  if (parts.includes('vent') || parts.includes('seuil')) {
+  if (parts.includes('vent') || parts.includes('seuil') || parts.includes('allure')) {
     patch.analysis = {
       ...record.analysis,
       windDeg: edits.windDeg === null ? null : normalizeDeg(edits.windDeg),
       activeThreshold: edits.activeThreshold,
+      referenceSpeedMs: edits.referenceSpeedMs,
       savedAt: now,
     };
   }
