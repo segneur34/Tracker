@@ -88,6 +88,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 
 - `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement.
 - `MemoryStatus.tsx` : état de la mémoire et l'action qui convient. `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17).
+- `AnalysisMap.tsx` : carte d'une page d'analyse, sa légende collée dessous et sa vue plein écran au tap (`docs/MISE_EN_PAGE.md`).
 - `SpeedGradientLegend.tsx` : légende et bornes de couleur (§10, point 30). `MapAutoResize.tsx` : `invalidateSize` de la carte. `chartHover.ts` : survol d'un graphe vers la carte.
 - `ui/` : `Button`, `Card`, `PageHeader`, `ui.css`. `icons.tsx` : icônes SVG. `styles.ts` : `CARD_STYLE`.
 - `theme/tokens.css` : toutes les variables de la DA. `theme/base.css` : police, fond, focus.

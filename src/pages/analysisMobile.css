@@ -20,13 +20,21 @@
   .an-map-row {
     order: -1;
     margin-top: 0;
+    /* Réserve sous la légende, que la feuille chevauche (`margin-top` négatif de `.an-sheet`). */
+    padding-bottom: var(--space-4);
   }
 
+  /* Bloc carte + légende (`AnalysisMap`) : pleine largeur, carte à hauteur fixe, légende dessous. */
   .an-map-panel {
     flex: 1 1 100% !important;
     width: 100% !important;
-    height: 30vh !important;
+    height: auto !important;
     resize: none !important;
+  }
+
+  .an-map-frame {
+    flex: none !important;
+    height: 30vh;
     cursor: pointer;
   }
 

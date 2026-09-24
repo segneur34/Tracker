@@ -10,6 +10,7 @@ Chaque information a une seule place :
 - `docs/ETAT_DU_PROJET.md` : pipeline, persistance, dette, chantiers, et **l'avancement du plan mobile (§12), tenu là seulement**. Le lire avant de toucher au noyau ou aux analyses voile.
 - `docs/HISTORIQUE.md` : décisions et pièges, en points numérotés (« §10, point N ») ; le consulter par recherche sur le sujet, pas en entier.
 - `docs/INVENTAIRE.md` : carte des fichiers ; les signatures se lisent dans le code.
+- `docs/MISE_EN_PAGE.md` : patron commun des pages d'analyse (structure, règles ordinateur et téléphone, pièces partagées). Le suivre pour toute page d'analyse, existante ou nouvelle.
 
 ## Commandes
 
@@ -58,6 +59,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 
 - Support à voile : `SPORT_PROFILES` et `SAILING_SPORTS` (`core/sportProfiles.ts`).
 - Réglage utilisateur : `StoredSettings` (`hooks/useSportSettings.ts`), `useAllSportSettings`, `pages/SettingsPage.tsx`.
+- Page d'analyse d'un nouveau sport : suivre `docs/MISE_EN_PAGE.md` (`AnalysisMap`, `analysisMobile.css`, `PanelTitle`, `SessionNameEditor`) ; ce qui devient commun à deux modules va dans une pièce partagée, pas dans une copie.
 - Section de module : `*_SECTIONS` et `*_SECTION_DEFAULTS` de la page, et un bloc `{open.cle && ...}` dans un `ResizablePanel` d'`id` unique (l'`id` est la clé de la taille mémorisée : ne pas le renommer). En voile : `SAILING_SECTIONS` en haut, `SAILING_CARTE_PANELS` dans la colonne de la carte.
 - Graphe relié à la carte : chaque ligne porte l'`index` du point de trace, et le survol passe par `hoveredTrackIndex` (`components/chartHover.ts`). Pas de `any`.
 - Métrique de manœuvre : `ManeuverLocation` (`sailing/maneuvers.ts`), puis `MANEUVER_METRICS` et `summarizeManeuvers` (`sailing/sailingAnalytics.ts`).

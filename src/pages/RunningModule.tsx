@@ -1,17 +1,16 @@
 import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
-import { CircleMarker, MapContainer, Polyline, TileLayer } from 'react-leaflet';
+import { CircleMarker, Polyline, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
 import {
   Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
   type TooltipPayloadEntry, type TooltipValueType,
 } from 'recharts';
-import MapAutoResize from '../components/MapAutoResize';
+import AnalysisMap from '../components/AnalysisMap';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
-import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE } from '../components/styles';
 import { IconFile } from '../components/icons';
@@ -120,8 +119,6 @@ function RunningModule() {
   const { open, toggle } = useOpenSections<RunningSection>('running', RUNNING_SECTION_DEFAULTS);
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  /** Carte agrandie en plein écran, sur téléphone (tap sur la carte compacte, écran étroit seulement). */
-  const [mapExpanded, setMapExpanded] = useState(false);
 
   const scale = TEXT_SCALE_FACTOR[textScale];
   const unitLabel = SPEED_UNIT_LABEL[speedUnit];
@@ -255,15 +252,6 @@ function RunningModule() {
     <YAxis yAxisId="altitude" orientation={orientation} domain={['auto', 'auto']} tickFormatter={(v) => `${v}`} width={44} tick={{ fill: '#e64a19', fontSize: 11 }} label={{ value: 'm', angle: -90, position: orientation === 'left' ? 'insideLeft' : 'insideRight', fill: '#e64a19', fontSize: 11 }} />
   );
   const xAxis = <XAxis dataKey="km" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(v) => `${v} km`} tick={{ fill: '#555', fontSize: 11 }} />;
-
-  const speedLegend = (
-    <SpeedGradientLegend
-      unit={speedUnit}
-      range={range}
-      isOverridden={speedRange !== null}
-      onChange={setSpeedRange}
-      slowLabel="marche" />
-  );
 
   /** Couches de la carte, partagées par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
@@ -478,33 +466,21 @@ function RunningModule() {
         </ResizablePanel>
       )}
 
-      {gpx.track.length > 0 && speedLegend}
-
       <div className="an-map-row" style={{ marginTop: '10px' }}>
-        <ResizablePanel id="running.carte" defaultHeight={520} minHeight={240}
-          className="an-map-panel"
-          onClick={(e) => {
-            if ((e.target as HTMLElement).closest('.leaflet-control')) return;
-            if (window.matchMedia('(max-width: 767.98px)').matches) setMapExpanded(true);
-          }}
-          style={{ width: '60%', zIndex: 0, overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--line-strong)' }}>
-          <MapContainer key={gpx.sessionKey ?? 'empty'} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
-            <MapAutoResize />
-            {mapLayers}
-          </MapContainer>
-        </ResizablePanel>
-
-        {mapExpanded && (
-          <div className="an-map-overlay" onClick={() => setMapExpanded(false)}>
-            <button type="button" className="an-map-overlay__close" onClick={() => setMapExpanded(false)} aria-label="Fermer la carte">×</button>
-            <div className="an-map-overlay__map" onClick={(e) => e.stopPropagation()}>
-              <MapContainer key={`expanded-${gpx.sessionKey ?? 'empty'}`} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
-                <MapAutoResize />
-                {mapLayers}
-              </MapContainer>
-            </div>
-          </div>
-        )}
+        <AnalysisMap
+          panelId="running.carte"
+          sessionKey={gpx.sessionKey}
+          center={center}
+          layers={mapLayers}
+          defaultHeight={580}
+          legend={gpx.track.length > 0 ? {
+            unit: speedUnit,
+            range,
+            isOverridden: speedRange !== null,
+            onChange: setSpeedRange,
+            slowLabel: 'marche',
+          } : null}
+          style={{ width: '60%' }} />
       </div>
     </div>
   );

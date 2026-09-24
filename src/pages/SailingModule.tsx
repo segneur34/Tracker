@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useMemo, type ChangeEvent, type ReactNode } from 'react';
-import { MapContainer, TileLayer, Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
+import { TileLayer, Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -25,10 +25,9 @@ import { readPickedFile } from '../platform/files';
 import { SPEED_UNIT_LABEL, knotsToMs, msToKnots } from '../core/units';
 import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
 import { MANEUVER_METRICS, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
-import MapAutoResize from '../components/MapAutoResize';
+import AnalysisMap from '../components/AnalysisMap';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
-import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE } from '../components/styles';
 import { IconFile } from '../components/icons';
@@ -257,8 +256,6 @@ function SailingModule() {
   const [selectedManeuverTop, setSelectedManeuverTop] = useState<string>('none');
   const [showManeuverDetails, setShowManeuverDetails] = useState<boolean>(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  /** Carte agrandie en plein écran, sur téléphone (tap sur la carte compacte, écran étroit seulement). */
-  const [mapExpanded, setMapExpanded] = useState(false);
 
   /** Podium de manœuvres sélectionné pour la carte. */
   const maneuverTopArray = useMemo((): ManeuverTop[] => {
@@ -882,40 +879,21 @@ function SailingModule() {
         </div>
       )}
 
-      {trackData.length > 0 && (
-        <SpeedGradientLegend
-          unit="kn"
-          range={colorRange}
-          isOverridden={speedRange !== null}
-          onChange={setSpeedRange}
-          slowLabel={`sous ${Math.round(msToKnots(colorRange.minMs))} nds`} />
-      )}
-
       <div id="map-view" className="an-map-row" style={{ width: '100%', marginTop: '10px', zIndex: 0, display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-        <ResizablePanel id="sailing.carte" defaultHeight={600} minHeight={240}
-          className="an-map-panel"
-          onClick={(e) => {
-            if ((e.target as HTMLElement).closest('.leaflet-control')) return;
-            if (window.matchMedia('(max-width: 767.98px)').matches) setMapExpanded(true);
-          }}
-          style={{ flex: '0 1 60%', overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--line-strong)' }}>
-          <MapContainer key={sessionKey ?? 'empty'} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
-            <MapAutoResize />
-            {mapLayers}
-          </MapContainer>
-        </ResizablePanel>
-
-        {mapExpanded && (
-          <div className="an-map-overlay" onClick={() => setMapExpanded(false)}>
-            <button type="button" className="an-map-overlay__close" onClick={() => setMapExpanded(false)} aria-label="Fermer la carte">×</button>
-            <div className="an-map-overlay__map" onClick={(e) => e.stopPropagation()}>
-              <MapContainer key={`expanded-${sessionKey ?? 'empty'}`} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
-                <MapAutoResize />
-                {mapLayers}
-              </MapContainer>
-            </div>
-          </div>
-        )}
+        <AnalysisMap
+          panelId="sailing.carte"
+          sessionKey={sessionKey}
+          center={center}
+          layers={mapLayers}
+          defaultHeight={660}
+          legend={trackData.length > 0 ? {
+            unit: 'kn',
+            range: colorRange,
+            isOverridden: speedRange !== null,
+            onChange: setSpeedRange,
+            slowLabel: `sous ${Math.round(msToKnots(colorRange.minMs))} nds`,
+          } : null}
+          style={{ flex: '0 1 60%' }} />
 
         {stats && (
           <div style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
