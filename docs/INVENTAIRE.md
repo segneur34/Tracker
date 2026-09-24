@@ -1,179 +1,92 @@
-# Inventaire des exports
+# Carte des fichiers
 
-Sorti de `docs/ETAT_DU_PROJET.md` (ancien §5) le 23 septembre 2026, pour que l'état tienne en une lecture. Signatures lues dans le code ; les fonctions internes non exportées sont omises sauf mention. Les renvois « §10, point N » mènent à `docs/HISTORIQUE.md`, les autres « §N » à `docs/ETAT_DU_PROJET.md`.
+Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lisent dans le code, commenté en français ; l'architecture et les dépendances entre couches sont au §3 de `docs/ETAT_DU_PROJET.md`. Réduit le 24 septembre 2026 (§10, point 44) : l'ancien inventaire des signatures doublait le code et se périmait à chaque lot. Chaque fichier de calcul a son `*.test.ts` à côté de lui.
 
-## 1. `src/core/`
+## Amorce
 
-**types.ts**
-- `SportType = 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running'`
-- `RawTrackPoint { lat; lon; time: string | Date; ele?; speedMs?; hr?; cadence? }`
-- `SpeedSource = 'doppler' | 'derived'`
-- `TrackPoint { lat; lon; time; timeMs; ele?; hr?; cadence?; speedMs; smoothedSpeedMs; bearing; speedSource }`
-- `TopSegment { val: string; path: [number, number][] }`, `TopTarget { key; label; value; kind: 'time' | 'distance' }`
-- `BaseSessionStats { distance; activeDistance; totalTime; activeTime; activeRatio; speedSource; elevationGain; elevationLoss; elevationMin; elevationMax; hasElevation }` (chaînes formatées sauf `speedSource` et `hasElevation`)
-- `CumulativeTrack { cumDist: number[]; cumTime: number[] }`
+- `main.tsx` : stockage natif chargé, mémoire ouverte (1,5 s au plus), puis rendu ; garde en quittant, touche retour, reprise d'un enregistrement interrompu.
+- `App.tsx` : routes, toutes dans `AppShell` ; `/voile` et `/course` (bibliothèques), `/voile/analyse` et `/course/analyse` (`?session=`), `/enregistrer`, `/parametres`.
+- `env.d.ts` : `__APP_VERSION__`, types de `showDirectoryPicker` et des autorisations de dossier.
 
-**units.ts**
-- `MS_TO_KNOTS = 1.94384`, `MS_TO_KMH = 3.6`, `SpeedUnit = 'kn' | 'kmh' | 'ms' | 'minkm'`, `SPEED_UNIT_LABEL`
-- `msToKnots`, `knotsToMs`, `msToKmh`, `kmhToMs`, `msToPacePerKm(ms, minSpeedMs = 0.1): number | null`, `formatPace(ms): string` (`m:ss` ou `-`)
-- `toDisplaySpeed(ms, unit)`, `fromDisplaySpeed(value, unit)`, `isInverseUnit(unit)` (vrai pour min/km)
-- `formatSpeed(ms | null, unit): string` avec symbole ; `formatSpeedValue(value, unit): string` pour les axes ; `formatDuration(ms): string` (`1h24` ou `37 min`) ; `formatClock(ms): string` (`h:mm:ss`, chrono de l'enregistrement)
+## `core/` : noyau, SI, sans notion de sport
 
-**sportProfiles.ts**
-- `ElevationProfile { smoothingSeconds; minGainM }`, `ELEVATION_PRESETS = { route: {20, 3}, trail: {30, 5} }`
-- `SportProfile { id; label; speedUnit; thresholdUnit; defaultActiveThreshold; activeHysteresis { enterOffset; exitOffset }; minStateDurationS; medianWindowSeconds; maxPlausibleSpeedMs; defaultPolarMinSpeed; activeRatioLabel; elevation; topTargets; recording }`
-- `RecordingProfile { intervalMs; distanceFilterM; journalFlushS }`, `DEFAULT_RECORDING = { 1000, 0, 10 }`, commun à tous les supports (§12)
-- `SAILING_TOP_TARGETS` (7 cibles), `SPORT_PROFILES` (voir tableau §7), `SAILING_SPORTS`, `getSportProfile`, `getActiveThresholds(profile, threshold) → { enter; exit }` dans l'unité du profil
-- `SportFamily = 'voile' | 'course'`, `sportFamily(sport)` : la famille choisit le module d'analyse et la bibliothèque
+- `types.ts` : `SportType`, `RawTrackPoint`, `TrackPoint`, `TopSegment`, `BaseSessionStats`, `CumulativeTrack`.
+- `units.ts` : conversions (`msToKnots`, `knotsToMs`…), `SpeedUnit`, `toDisplaySpeed`, `formatSpeed`, `formatDuration`, `formatClock`.
+- `sportProfiles.ts` : `SPORT_PROFILES` (seuils, hystérésis, filtres, plafond, cibles de tops, `recording`), `SAILING_SPORTS`, `getActiveThresholds`, `sportFamily`, `ELEVATION_PRESETS`.
+- `gpxParser.ts` : `parseGpx`, lecteur maison par nom local (vitesse, FC, cadence, `trk/type`).
+- `kinematics.ts` : Haversine, cap, détection de l'unité de la vitesse appareil, `computeKinematics` (vitesse retenue et lissée).
+- `speedFilter.ts` : `clampByAcceleration` (écrêtage avec recherche du retour), filtres médian, linéaire et moyen en fenêtre de temps.
+- `sessionSpeed.ts` : allure de la session (`referenceSpeedMs`), cadence (`samplingIntervalS`), `sessionFilterThresholds`.
+- `sessionStats.ts` : `segmentDistanceM`, cumuls, masque d'activité (trigger de Schmitt), `buildBaseSessionStats`.
+- `elevation.ts` : lissage de l'altitude et dénivelé à seuil, `computeElevationStats`.
+- `topSegments.ts` : meilleurs segments en temps et en distance, sans chevauchement.
+- `speedGradient.ts` : dégradé de couleur de la trace, `speedGradientColor`.
+- `displayConfig.ts` : `CHART_MAX_POINTS`, `DEFAULT_MAP_CENTER`.
 
-**displayConfig.ts**
-- `CHART_MAX_POINTS = 500` (points maximum par graphe), `DEFAULT_MAP_CENTER: [number, number]` (Montpellier, avant chargement d'une trace)
+## `sailing/` : voile, en nœuds sur `PointData`
 
-**speedGradient.ts**
-- `SpeedRangeMs { minMs; maxMs }`, `SLOW_COLOR` (gris sous la borne basse), `gradientColor(t)` (position 0 à 1), `speedGradientColor(speedMs, minMs, maxMs)`, `gradientCss()` pour la légende
+- `sailingConfig.ts` : toutes les constantes de la voile, `sessionManeuverThresholds`, `suggestActiveThresholdKn`, `suggestSpeedRangeMs` (§10, point 29).
+- `wind.ts` : statistiques circulaires, interpolation des directions, polaire et centre de l'angle mort, `observeTurns` (orientation), `estimateWindPolar`.
+- `maneuvers.ts` : `analyzeManeuvers` (détection, classement, métriques), `estimateWind` (polaire + manœuvres), `selectWindCandidate`, `windSamplesFrom`.
+- `sailingAnalytics.ts` : `calculateWindStats` (courbe et stats du vent, pondération par symétrie), `summarizeManeuvers`, `MANEUVER_METRICS`, `calculateVmgStats`.
+- `sailingStats.ts` : `buildSailingSessionStats` (base + tops voile).
+- `sessionNotes.ts` : forme des notes (`SailingSessionNotes`), niveaux de vent, plan d'eau, appréciation.
+- `utils/kinematics.ts` : `PointData` et `trackToPointData`, vue en nœuds de la trace (règle 5). `types/sailing.ts` : `SessionStats`.
 
-**sessionSpeed.ts**
-- `referenceSpeedMs(points): number` : allure de la session en m/s, neuvième décile pondéré par la durée (échantillon plafonné à 10 s), sur les vitesses brutes, avant tout filtrage — puisque c'est le filtrage qui en dépend
-- `samplingIntervalS(points): number` : intervalle **médian** entre deux points, la cadence d'enregistrement ; la médiane, pour qu'une coupure ne la déplace pas
-- `sessionFilterThresholds(referenceMs, supportMaxSpeedMs) → { maxAcceleration; maxSpeedMs }` : seuils de filtrage accordés à l'allure, bornés par le support
+## `running/`
 
-**speedFilter.ts**
-- `DEFAULT_MAX_ACCELERATION = 10`, `DEFAULT_MAX_OUTLIER_S = 3`, `DEFAULT_MEDIAN_WINDOW_S = 3`, `ClampOptions`
-- `median(values)`, `clampByAcceleration(speedsMs, timesMs, maxAccelOrOptions?, maxOutlierSeconds?)`, `medianFilterByTime(values, timesMs, windowSeconds?)`, `linearSmoothByTime(values, timesMs, windowSeconds)`, `meanFilterByTime(values, timesMs, windowSeconds)`
+- `runningAnalytics.ts` : pente (`computeGrades`), zones (`computeZoneStats`), `averagePace`, `DEFAULT_SPEED_RANGE_MS`. `types.ts` : `RunningSessionStats`.
 
-**kinematics.ts**
-- `EARTH_RADIUS_M`, `toRad`, `toDeg`, `haversineDistance(lat1, lon1, lat2, lon2)`, `initialBearing(...)`, `pointTimeMs(time)`
-- `DeviceSpeedUnit = 'ms' | 'kmh' | 'kn'`, `DEVICE_SPEED_FACTOR`, `detectDeviceSpeedUnit(deviceSpeeds, derivedSpeeds)`, `detectTrackDeviceSpeedUnit(points): DeviceSpeedUnit | null`
-- `KinematicsOptions { medianWindowSeconds?; maxAcceleration?; maxSpeedMs?; forceDerivedSpeed? }`, `computeKinematics(points, options?): TrackPoint[]`
+## `recording/` : enregistrement, logique pure
 
-**gpxParser.ts**
-- `ParsedGpx { rawPoints; trackName?; trackType?; hasDeviceSpeed }`, `parseGpx(gpxContent): ParsedGpx` (lève une erreur si le XML est mal formé). `trackType` est le `<type>` enfant direct de `<trk>` (notre support, ou `running` chez Strava et Garmin), lu pour deviner le support d'un GPX importé
+- `session.ts` : `isNewerFix` (seul filtre), `roundFix`, statistiques en direct, `shouldFlushJournal`, `sessionFileName`, `sessionTitle`, `isSportType`.
+- `journal.ts` : journal JSON par ligne, relisible même abîmé (`parseJournal`).
+- `gpxWriter.ts` : `buildGpx`, GPX 1.1 avec vitesse, cap et précision en extension.
 
-**elevation.ts**
-- `ElevationStats { gainM; lossM; minEleM; maxEleM; smoothed: number[]; coverage }`, `EMPTY_ELEVATION`
-- `smoothElevation(track, smoothingSeconds)`, `accumulateElevation(altitudes, minGainM)`, `computeElevationStats(track, profile)`
+## `library/` : mémoire en dossier, logique pure
 
-**sessionStats.ts**
-- `segmentDistanceM(track, i)`, `buildCumulativeTrack(track)`, `computeTotalTimeMs(track)`
-- `ActivityMaskOptions { enterThresholdMs; exitThresholdMs; minStateDurationS? }`, `computeActivityMask(track, options): boolean[]`, `computeActiveTimeMs(track, mask)`, `computeActiveDistanceM(track, mask)`
-- `BaseSessionStatsOptions extends ActivityMaskOptions { cumulative?; activityMask?; elevation?; elevationStats? }`, `buildBaseSessionStats(track, options): BaseSessionStats`
-- `MIN_ELEVATION_COVERAGE = 0.5` : part minimale de points avec altitude pour publier un dénivelé (reprise par le résumé de la bibliothèque)
+- `record.ts` : la fiche (`SessionRecord`, `SessionSummary`, `SessionAnalysis`), `parseRecord` tolérante, `SUMMARY_CALC_VERSION`, `dedupeSessions`, `findLegacyNotes`.
+- `summary.ts` : `summarizeSession`, le résumé calculé par le pipeline du module qui analysera la session.
+- `sessionEdits.ts` : brouillon d'une session (`SessionEdits`), `savedEdits`, `changedParts`, `editsPatch`.
+- `reconcile.ts` : `planReconcile`, rapprochement de `sessions/` et du cache des fiches.
+- `settingsFile.ts` : `reglages.json`, `TRAVELLING_KEYS`, `chooseSettings` (le plus récent l'emporte).
+- `naming.ts` : `uniqueSessionFileName`, `guessSport` (types d'autres applications).
+- `folderLayout.ts` : noms des fichiers du dossier, marqueur, `LISEZMOI.txt`.
 
-**topSegments.ts**
-- `DEFAULT_TOP_COUNT = 3`, `TopSegmentOptions { count?; decimals? }`, `computeTopSegments(track, cum, target, toDisplaySpeed, options?)`, `computeAllTopSegments(track, cum, targets, toDisplaySpeed, options?): Record<string, TopSegment[]>`
+## `platform/` : seul accès au stockage, aux fichiers et à la position (règle 12)
 
-## 2. `src/sailing/`
+- `runtime.ts` : `isNativeApp`.
+- `storage.ts` : `jsonStore` (synchrone), `initStorage` (Preferences natives chargées en mémoire au démarrage).
+- `files.ts` : `recordingJournal` (dossier privé), `downloadTextFile`, `readPickedFile`.
+- `location.ts` : `deviceLocationSource` (plugin natif ou `watchPosition`), `createReplaySource` (rejeu accéléré), `stopOrphanedDeviceLocation`.
+- `memoryFolder.ts` : le dossier mémoire, OPFS ou dossier choisi dans le navigateur, dossier SAF sur le téléphone (`openMemoryFolder`, `chooseMemoryFolder`, `pickFolderToImport`, `pendingFolder`, `shouldDescendIntoMemory`).
+- `backButton.ts` : touche retour d'Android (brouillon, enregistrement en cours).
+- Plugin Android maison `MemoryFolder` (`android/app/src/main/java/io/github/segneur/tracker/MemoryFolderPlugin.java`, déclaré dans `MainActivity`) : `pickFolder`, `hasAccess`, `list`, `readText`, `writeText`, `remove` sur `DocumentsContract`.
 
-**sailingConfig.ts** : `SAILING_TOP_TARGETS` (ré-export), `DEFAULT_SAILING_SPORT = 'wingfoil'`, `getDefaultThresholdKn(sport?)`, `DEFAULT_SAILING_SPEED_RANGE_MS` (8 et 28 nœuds en m/s), `MANEUVER_MIN_TURN_DEG = 60`, `MANEUVER_WINDOW_S = 12`, `MANEUVER_MAX_STEP_S = 30`, `MANEUVER_COOLDOWN_S = 10`, `MANEUVER_MIN_ENTRY_SPEED_KN = 4`, `MANEUVER_MIN_DISTANCE_M = 10`, `MANEUVER_ENTRY_SPEED_RATIO = 0.16`, `POLAR_MIN_SPEED_RATIO = 0.2`, `sessionManeuverThresholds(sport, referenceSpeedKn) → { minEntrySpeedKn; polarMinSpeedKn }` (toujours le minimum entre le profil et la mise à l'échelle : celle-ci ne peut qu'abaisser un seuil), `VMG_WINDOW_S = 10`, `WIND_ESTIMATION_MIN_SPEED_KN = 5`, `ORIENTATION_MAX_CONSERVATION = 0.5`, `WIND_CONFIDENCE_MIN = 0.4`, `FAST_SESSION_REFERENCE_KN = 12`, `SLOW_SESSION_ACTIVE_THRESHOLD_KN = 1`, `SPEED_RANGE_MAX_MARGIN_KN = 1`, `suggestActiveThresholdKn(sport, referenceSpeedKn) → number`, `suggestSpeedRangeMs(sport, referenceSpeedKn, track, cum) → SpeedRangeMs` (règles dans les décisions de `CLAUDE.md` ; le pic sur 2 s réutilise `computeTopSegments` avec `count: 1`) (§10, point 29).
+## `hooks/`
 
-**wind.ts**
-- `angleDiff(a, b)` dans [−180, 180[, `normalizeAngle(a)` dans [0, 360[
-- `CircularStats`, `circularMean(angles, weights?) → { mean; R }`, `circularStats(angles, weights?)`
-- `TimedDirection { timeMs; direction }`, `interpolateDirection(samples, timeMs, reference, maxGapMs): number | null` (valeur la plus proche aux bords dans la limite de `maxGapMs`, `null` au-delà ou dans un trou trop large), `buildWindTimeline(samples, fallback, maxGapMs): (timeMs) => number`
-- `NO_GO_HALF_ANGLE = 35`, `UPWIND_SECTOR = [40, 85]`, `CANDIDATE_MIN_SEPARATION = 45`, `buildMaxSpeedsByBearing(points, minSpeedKn)`, `PolarScore`, `scoreWindCandidate(maxSpeeds, w)`, `PolarWindEstimate { direction; symmetry; coverage; clarity; contrast; best; opposite }`, `polarWindCandidates(points, minSpeedKn?, count = 3)`, `estimateWindFromPolar(points, minSpeedKn?)`, `describeWindCandidate(points, direction, minSpeedKn?)` (descripteur d'une direction imposée, nécessaire au jumeau au vent arrière, qui n'est pas un maximum du score)
-- `TURN_MIN_COHERENCE = 0.6`, `TurnObservation`, `observeTurns(points, minEntrySpeedKn?)`, `OrientationVote`, `orientationVotes(turns, axis)`. Le vol perdu s'y juge aussi sur la part de vitesse conservée (`ORIENTATION_MAX_CONSERVATION`, dans `sailingConfig`), et la fenêtre s'étire sur un pas unique comme celle de `analyzeManeuvers`
-- `WindOrientationSource = 'polaire' | 'virages' | 'référence'`, `WindEstimate { direction; confidence; reliable; orientedBy; maneuverCount }`, `WindEstimateOptions { minSpeedKn?; referenceDirection? }`, `estimateWindPolar(points, options?)`
+- `useSessionLibrary.ts` : la bibliothèque, store hors des composants (ouverture du dossier, rapprochement, réglages qui voyagent, import, écritures différées des fiches, suppression) ; `updateSessionRecord`, `saveRecordedSession`, `importFiles`.
+- `useRecorder.ts` : l'enregistreur, hors des composants (`startRecording`, `stopRecording`, `recoverInterruptedRecording`).
+- `useGpxSession.ts` : ingestion générique, `loadGpxContent` (entrée unique), trace dérivée des points bruts.
+- `useSailingSession.ts` : orchestration de la voile ; c'est ici que les seuils s'accordent à l'allure (règle 4).
+- `useSessionDraft.ts` : brouillon d'une session, écrit dans la fiche par `save`. `leaveGuard.ts` : avertissement en quittant.
+- `useLibraryNavigation.ts` : passage de la liste à l'analyse (`?session=`), `useSessionFromUrl` (chargement unique, §10 point 39), `useImportAndOpen`.
+- `useSportSettings.ts` : réglages par support (`tracker.sportSettings`), `useAllSportSettings` pour Réglages, `readStoredSettings`.
+- `useStoredRecord.ts`, `useOpenSections.ts`, `useRunnerProfile.ts` : enregistrements de l'appareil (sections ouvertes, profil du coureur).
 
-**maneuvers.ts**
-- ré-exporte `angleDiff`, `WindEstimate`
-- `ManeuverOptions { successThresholdKn?; minEntrySpeedKn?; windowSeconds?; cooldownSeconds?; maxStepSeconds?; minDistanceM? }`
-- `ManeuverRejections { slowEntry; incoherent; unclassified; tooShort }` : virages écartés par motif, pour que « aucune manœuvre » dise pourquoi
-- `ManeuverLocation { lat; lon; type: 'tack' | 'jibe'; success; vmin; localWind; timeMs; trackIndex; stableHeadings; entrySpeed; conservation; relaunchS: number | null; headingChange; distanceM; entryIndex; exitIndex; entryHeading; exitHeading; path }`
-- `ManeuverStats { tackSuccess; tackFail; jibeSuccess; jibeFail; rejected; tackVmins; jibeVmins; locations }`
-- `WindReference = number | ((timeMs) => number)`, `WIND_LOCAL_MAX_GAP_MIN = 30`
-- `windSamplesFrom(stats)` : manœuvres à caps stabilisés, virements et empannages réussis. Depuis le point 24 du §10, ce filtre ne sert plus qu'à l'estimation globale et à la timeline de reclassement de `useSailingSession` ; la courbe de l'onglet vent prend toutes les manœuvres.
-- `maneuverAgreement(stats) → { agreement; count; consistent; inconsistent }`
-- `WindEstimationOptions { minSpeedKn?; successThresholdKn?; minEntrySpeedKn? }`, `CandidateSelection { direction; orientedBy; polarConfidence; agreementScore }`, `selectWindCandidate(points, polar, options?): CandidateSelection`
-- `estimateWind(points, options?: WindEstimationOptions): WindEstimate`, `analyzeManeuvers(points, wind, options?): ManeuverStats`
+## `pages/`
 
-**sailingAnalytics.ts**
-- `VmgStats`, `WindGraphPoint { index; timeLabel; angle: number | null; display: number | null; isManeuver }`, `WindStats { avgWind; minWind; maxWind; range; stdDev; slopePerHour; count; stableShare; graphData; windAt }`, `WindSource`
-- `calculateWindStats(trackData, maneuverStats, referenceWind?): WindStats | null`
-- `ManeuverMetric = 'conservation' | 'relaunch' | 'headingChange' | 'distance'`, `MANEUVER_METRICS` (clé, libellé, aide), `ManeuverTop`, `ManeuverTypeSummary`, `ManeuverSummary`, `formatMetric(metric, value)`, `summarizeManeuvers(stats): ManeuverSummary`
-- `calculateVmgStats(trackData, wind, minSpeedKn?, windowSeconds?): VmgStats | null`
+- `Home.tsx` : accueil d'attente (Enregistrer, Voile, Course), tableau de bord au lot 4.
+- `SessionLibrary.tsx` (+ `.css`) : bibliothèque d'une famille, import, sessions à classer, suppression.
+- `SailingModule.tsx` : analyse voile (en-tête, barre d'enregistrement, onglets du haut, carte et sa colonne d'onglets).
+- `RunningModule.tsx` : analyse course (synthèse, zones, graphes, carte).
+- `RecordingPage.tsx` : enregistrement, source GPS ou rejeu.
+- `SettingsPage.tsx` : mémoire, réglages par support, course, coureur.
 
-**sailingStats.ts** : `SailingStatsOptions { sport?; activeThresholdKn? }`, `buildSailingSessionStats(track, options?): SessionStats | null`.
+## `components/` et thème
 
-**sessionNotes.ts** : `WindLevel`, `WaterState`, `Rating = 1..5`, `SailingSessionNotes { foil; mast; wing; windLevel; waterState; rating; comment }`, `EMPTY_NOTES`, `WIND_LEVELS` (très faible à très fort), `WATER_STATES` (plat, clapot, vagues), `RATINGS` (nul à très bien, avec emoji).
-
-## 3. `src/running/`
-
-**runningAnalytics.ts** : `GRADE_HALF_WINDOW_M = 25`, `FLAT_MAX_GRADE = 0.03`, `STEEP_MIN_GRADE = 0.1`, `GradeZoneKey`, `GradeZone { key; label; range }`, `GRADE_ZONES`, `classifyGrade(grade)`, `computeGrades(smoothedEle, cum, halfWindowM?)`, `ZoneStats { zone; distanceM; timeMs; avgSpeedMs; distanceShare; distance; time; pace; speedKmh }`, `computeZoneStats(track, grades, activityMask)`, `averagePace(distanceM, timeMs) → { pace; speedKmh; speedMs }`, `DEFAULT_SPEED_RANGE_MS = { minMs: 4/3.6, maxMs: 15/3.6 }`.
-
-**types.ts** : `RunningSessionStats = BaseSessionStats`.
-
-## 4. `src/hooks/`
-
-- `useStoredRecord<T>(namespace, key | null, defaults) → { value; update(patch) }` : enregistrement persistant de l'appareil, par `jsonStore` (`platform/storage.ts`), un espace de noms par clé de stockage, un enregistrement par sous-clé. Sert aux sections ouvertes et au profil du coureur ; les notes sont passées dans la fiche de la session.
-- `useGpxSession(options?) → { fileName; trackName; rawPoints; hasDeviceSpeed; error; track; referenceSpeedMs; samplingS; sessionKey; deviceSpeedUnit; hasTrack; loadGpxContent; reset }`. Seuls les points bruts sont en état, la trace est dérivée par `useMemo`. `GpxSessionOptions` étend `KinematicsOptions` de `scaleFiltersToSession` (faux par défaut, donc sans effet en course) et `referenceSpeedOverrideMs`. `sessionKey` (nom de trace et instant du premier point) sert de clé de remontage à la carte (§10, point 28). `loadGpxContent(texte, nom)` est l'entrée unique : session de la mémoire (`useSessionFromUrl`, le nom est alors celui du GPX dans `sessions/`), ou GPX lu directement faute de mémoire.
-- `useSportSettings.ts` exporte aussi `readStoredSettings()` (lecture hors d'un composant, pour les résumés de la bibliothèque), `isKnownTerrain`, `TEXT_SCALE_FACTOR`, `TEXT_SCALE_LABEL`, `TERRAIN_LABEL`, `SAILING_UNITS = ['kn', 'kmh', 'ms']`, `RUNNING_UNITS = ['kmh', 'ms', 'minkm']`.
-- `useSportSettings(defaultSport, allowedSports = [defaultSport]) → { sport; setSport; profile; activeThreshold; setActiveThreshold; resetActiveThreshold; isThresholdOverridden; terrain; setTerrain; elevationProfile; speedUnit; setSpeedUnit; textScale; setTextScale; speedRange; setSpeedRange; referenceSpeed; setReferenceSpeed }`. Le support mémorisé n'est repris que s'il est dans `allowedSports`. `referenceSpeed` est l'allure imposée en m/s, `null` quand elle est déduite de la trace.
-- `useAllSportSettings() → { view(sport): SportSettingsView; setFor(sport, champ, valeur | null) }` pour la page Paramètres.
-- `useSailingSession({ windDeg; activeThresholdKn })` : reçoit du module le vent saisi et le seuil propre à la session (`null` : par défaut), et rend la trace en nœuds (`trackData`), les statistiques, le vent (estimé, retenu : `windEstimate`, `autoWind`, `currentWindValue`), manœuvres et leur résumé, VMG, vent local (`windStats`), données de graphes, cadence et nombre de points, et les réglages du support avec leurs suggestions (`suggestedSpeedRangeMs`, `maneuverThresholds`, allure). C'est ici, et non dans les fonctions de calcul, que les seuils sont accordés à l'allure de la session : les fonctions gardent leurs valeurs par défaut, et les tests qui les appellent sans options restent donc neutres. `activeThresholdKn` est le seuil de la session s'il y en a un, sinon `defaultActiveThresholdKn` : la surcharge du support si elle existe, sinon la suggestion accordée à l'allure ; de même `speedRange` (surcharge ou `null`) prime sur `suggestedSpeedRangeMs` dans les pages (§10, point 29). Le vent saisi ne vaut que pour sa session : il vient de sa fiche ou de son brouillon (§10, points 31 et 43).
-- `useSessionDraft(file | null) → { edits; update(patch); updateNotes(patch); changed; dirty; save(); cancel(); savable; hasSavedNotes }` : brouillon des changements d'une session (`SessionEdits` : notes, vent saisi, seuil), suivi tout de suite par l'analyse, écrit dans la fiche seulement par `save` (`editsPatch`, puis `updateSessionRecord`) ; `cancel` revient à l'état enregistré. Le brouillon d'une session de la mémoire survit à un changement de page (table du module) ; celui d'un GPX ouvert hors mémoire vit le temps de la page. Foil, mât et aile de la dernière session notée sont proposés à une session sans notes. `savable` est faux hors de la mémoire ou pour une fiche en lecture seule. Remplace `useSessionNotes`.
-- `leaveGuard.ts` : `installLeaveGuard()` (au démarrage : clics sur les liens internes interceptés avant React, `beforeunload`), `confirmLeave()` (confirmation, puis abandon du brouillon ; passée à `installBackButton`), `useLeaveWarning({ message; discard } | null)`. `BrowserRouter` ne sait pas bloquer une navigation, d'où cette interception.
-- `useRunnerProfile() → { profile; setNumber(field, value | null); setSex; setWeightKg; age }`. Champs : `weightKg`, `heightCm`, `birthYear`, `sex`, `hrMax`, `hrRest`, bornes de validation dans `BOUNDS`.
-- `useOpenSections<K>(moduleId, defaults) → { open; toggle(key) }`. Utilisé par les deux modules (`running`, `sailing`).
-- `useRecorder.ts` : l'enregistreur vit **hors des composants**, dans le module, pour survivre aux changements de page. `RecorderStatus = 'idle' | 'starting' | 'recording' | 'stopping'`, `SavedSession { fileName; libraryFile; location; content; sport; pointCount; recovered }` (`libraryFile` : nom dans la mémoire, `null` si la session attend un dossier ou n'a pas pu y entrer), `RecorderState { status; sport; sourceLabel; stats; saved; error }`. Commandes : `startRecording(sport, source)`, `stopRecording()`, `recoverInterruptedRecording()` (appelée par `main.tsx` au démarrage et avant chaque départ : un journal orphelin devient un GPX), `dismissRecorderResult()`, `isRecordingActive()` (pour la touche retour) ; lecture par `useRecorder()` (`useSyncExternalStore`). Chaîne : position arrondie (`roundFix`) et ignorée si elle n'est pas plus récente (`isNewerFix`), gardée en mémoire, ajoutée au journal par paquets ; à l'arrêt, GPX construit depuis la mémoire et rangé par `saveRecordedSession` (bibliothèque), puis journal effacé. Si l'écriture échoue, le journal reste et sera repris. Moins de deux positions : rien n'est gardé.
-- `useSessionLibrary.ts` : la bibliothèque, **hors des composants** comme l'enregistreur, lue par `useSessionLibrary()` (`useSyncExternalStore`). `LibraryStatus = 'opening' | 'ready' | 'needs-permission' | 'unavailable'`, `LibraryState { status; folderKind; folderLabel; reason; sessions; scanning; duplicates; unreadable; pendingCount; settingsSource; settingsSavedAt; message; error }` (`sessions` : une par identité, de la plus récente à la plus ancienne). Commandes : `openLibrary()` (au démarrage, avant le premier rendu si possible), `startLibraryUi(isBusy)` (après le rendu : suivi des réglages, vidage des écritures différées au passage en arrière-plan), `saveRecordedSession(gpx, sport) → { file; location }`, `importFiles(files) → ImportReport { added; existing; duplicates; invalid; unsaved }` (GPX, ou dossier entier dont chaque fiche accompagne son GPX), `importFromFolder()` (téléphone : dossier désigné par le sélecteur d'Android, puis `importFiles`), `readSessionGpx(file)`, `updateSessionRecord(file, { sport?; notes?; analysis?; maneuverCount? })` (écriture différée de 800 ms ; un changement de support ou du seuil de la session recalcule le résumé, et un changement de support efface ce seuil), `removeSession(file)` (supprime aussi les copies de la même trace), `chooseFolder()`, `reconnectFolder()`, `switchToBrowserMemory()`, `canChooseMemoryFolder()`, `dismissLibraryMessage()`, `librarySession(file)`, `findLibrarySession(sessions, file)`. Ouverture d'un dossier (`attach`) : marqueur et `LISEZMOI.txt` écrits s'ils manquent, réglages rapprochés de `reglages.json` (le plus récent l'emporte, le dernier support choisi ne compte pas comme un changement), `sessions/` lu en une fois et rapproché du cache `tracker.libraryCache`, sessions en attente rangées, puis fiches créées ou recalculées en tâche de fond. Des réglages repris du dossier après le démarrage rechargent la page, sauf pendant un enregistrement.
-- `useLibraryNavigation.ts` : `libraryPath(family)`, `analysisPath(family, file?)` (`/voile/analyse?session=<fichier>`), `sessionFamily(session, fallback)`, `useOpenSession()` (ouvre une session de la mémoire dans le module de sa famille), `useImportAndOpen(fallback)` (importe un GPX choisi dans un module puis l'ouvre ; faux s'il n'a pas pu entrer dans la mémoire), `useSessionFromUrl(onLoad) → { file; session; error }` côté module : charge la session de l'URL une seule fois par fichier ; l'effet ne dépend que du nom du fichier, `onLoad` et la fiche passant par une référence (§10, point 39).
-
-## 5. `src/components/`
-
-- `AppShell` : cadre de toutes les routes (`<Outlet/>`). Sur téléphone (moins de 768 px, choix en CSS dans `AppShell.css`), barre d'onglets en bas : Accueil, Voile, Enregistrer (bouton central vert, rouge avec un carré pendant l'enregistrement), Course, Réglages ; sur ordinateur, les mêmes destinations en barre haute. Bandeau rouge « Enregistrement en cours » et chrono sur toutes les pages sauf `/enregistrer`. Barres en `z-index` 1100, au-dessus des calques de Leaflet ; marge du bas `--inset-bottom` (variable `--safe-area-inset-bottom` injectée par Capacitor).
-- `components/ui` : `Button({ variant: 'primary' | 'record' | 'danger' | 'secondary' | 'ghost'; size: 's' | 'm' | 'l'; block })` (`type="button"` par défaut), `Card({ heading })`, `PageHeader({ title; subtitle?; back?: { to; label }; aside? })`, et `ui.css` (classes `ui-page`, `ui-card`, `ui-btn`, `ui-tab`, `ui-alert`, `ui-field`, `ui-eyebrow`, `ui-record-dot`, `ui-savebar` : barre d'enregistrement d'une session, collante sous la barre du haut quand un brouillon attend).
-- `icons.tsx` : `IconHome`, `IconSail`, `IconRun`, `IconSettings`, `IconFile`, `IconChevronRight`, `IconBack`, `IconCheck`, SVG en trait à la couleur du texte.
-- `SectionTabs<K>({ sections; open; onToggle; accent? })` : rangée de boutons indépendants (classes `ui-tabs`, `ui-tab`), `accent` étant une variable de la DA (`var(--voile)` par défaut, `var(--course)` en course).
-- `ResizablePanel({ id; children; defaultHeight?; minWidth = 240; minHeight = 120; direction = 'both'; style? })` : `resize` CSS, taille enregistrée dans `tracker.panelSizes` à la fin d'un glisser, bouton ↺ de retour au défaut. Sans taille mémorisée, le `style` de la page fait la mise en page ; dès qu'un glisser commence sur la poignée (20 px du coin bas-droit), le panneau passe en taille fixe (`flex: '0 0 auto'`, `width`, `height`), appliquée après le `style` (§10, point 17). Si `id` change (manœuvres compact ↔ détails), la taille du nouvel identifiant est relue.
-- `SpeedGradientLegend({ unit; range; isOverridden; onChange; slowLabel })` : barre de dégradé à cinq graduations, bornes en `type="number"` (pas 0,5) appliquées dès qu'elles sont valides ; une saisie qui inverserait l'ordre est refusée. Chaque champ garde un texte local (`minText`/`maxText`), resynchronisé pendant le rendu et non par un effet, sans quoi une frappe intermédiaire refusée coupait la saisie (§10, point 30). Bouton Défaut. Partagée par les deux modules.
-- `MapAutoResize` : enfant de `MapContainer`, appelle `map.invalidateSize()` quand le conteneur change de taille.
-- `chartHover.ts` : `ChartHoverEvent { isTooltipActive?; activeTooltipIndex? }` (sous-ensemble de l'événement Recharts), `hoveredTrackIndex(e, data): number | null` qui relit l'`index` de trace porté par la ligne survolée. Un seul handler pour les trois graphes reliés à la carte.
-- `MemoryStatus({ detailed? })` : état de la mémoire (emplacement, nombre de sessions, lecture en cours, sessions en attente, doublons, GPX illisibles, compte rendu), et l'action qui convient : choisir, reconnecter ou changer de dossier, revenir à la mémoire du navigateur (pas sur le téléphone). Textes propres au téléphone (premier choix du dossier, accès retiré par Android). En version détaillée (Réglages) : emplacement en clair (« Voir ou changer le dossier » sur le PC), source des réglages et mode d'emploi du copier-coller.
-- `styles.ts` : `CARD_STYLE`, le bloc blanc arrondi des sections, sur les variables de la DA (même rendu que `Card`).
-
-## 6. `src/pages/`
-
-- `Home` : version d'attente, carte Enregistrer et deux cartes vers `/voile` et `/course`, précédées de `MemoryStatus` tant qu'aucune mémoire n'est prête (premier lancement sur le téléphone, accès perdu) ; le tableau de bord arrive au lot 4.
-- `RecordingPage` (`/enregistrer`) : support, source (GPS de l'appareil ou, dans le navigateur, rejeu d'un GPX à ×1, ×10, ×60 ou ×600), Démarrer / Arrêter ; en direct, points, durée, plus long trou et précision ; à l'arrêt, lieu du fichier, bouton Analyser (`useOpenSession`, seulement si la session est dans la mémoire) et, dans le navigateur, Télécharger. L'onglet « Enregistrer » de la navigation ; choix en deux temps et statistiques en direct à venir (plan, lot 5).
-- `SessionLibrary({ family })` sur `/voile` et `/course` (`SessionLibrary.css`) : `MemoryStatus`, « Importer des GPX », « Ajouter les sessions d'un dossier » (`webkitdirectory` dans le navigateur, `importFromFolder` sur le téléphone) et une ligne qui l'explique (sur le PC : la fenêtre de Chrome parle de fichiers importés « sur ce site », ils restent sur le PC), filtres par support en voile, carte « À classer » (sessions sans support, sélecteur « Classer… », présentes dans les deux familles), liste (support, date, heure, durée, distance en km ; en voile vitesse max et manœuvres ; en course allure et D+), suppression en deux temps.
-- `SailingModule` (`/voile/analyse`) et `RunningModule` (`/course/analyse`) chargent la session de l'URL par `useSessionFromUrl`, qui appelle `loadGpxContent` ; « Ouvrir un fichier GPX » passe par `useImportAndOpen`, sinon lit le fichier directement. Lien Retour vers la bibliothèque. En voile, le support de la fiche devient celui du module, un changement de support est écrit tout de suite dans la fiche, et le nombre de manœuvres y est recopié quand un vent est connu et qu'aucun brouillon n'attend. Vent saisi (« Inverser », « Calculé »), seuil d'activité (« Défaut » : celui du support) et notes passent par `useSessionDraft` ; barre `ui-savebar` « Non enregistré » avec Annuler et « Enregistrer la session », avertissement en quittant (`useLeaveWarning`). Un GPX ouvert hors mémoire retire la session de l'URL.
-- `SailingModule` : en-tête (titre « Analyse voile », bouton « Ouvrir un fichier GPX », sélecteur de support, seuil d'activité), bandeaux d'erreur et de vent non fiable, `SectionTabs` sur `global`, `matos`, `tops` (`SAILING_SECTIONS`, persisté sous `tracker.sections` / `sailing`, seul `global` ouvert par défaut), légende de couleurs, puis la zone carte : carte à `flex: '0 1 60%'` (redimensionnable en largeur comme tout le reste, `direction` par défaut) et, à côté, une colonne avec un second groupe d'onglets indépendant — `SAILING_CARTE_PANELS` : manœuvres, vmg, graphiques, vent, dans cet ordre, tous fermés par défaut, persisté sous `tracker.sections` / `sailing-carte`. Ces quatre onglets n'existent que là (§10, points 32 à 35). Manœuvres et vmg sont rendus par deux fonctions locales (`renderManeuversPanel`, `renderVmgPanel`, paramétrées par l'`id` du `ResizablePanel`), graphiques et vent en JSX direct. Zone des panneaux en `flex-wrap` : plusieurs panneaux ouverts se placent côte à côte selon la largeur. Identifiants `ResizablePanel` : `sailing.global`, `sailing.matos`, `sailing.tops`, `sailing.carte`, `sailing.carte.vmg`, `sailing.carte.manoeuvres` (`.details` en suffixe si `showManeuverDetails`), `sailing.graph.vitesse`, `sailing.graph.polaire`, `sailing.graph.vent` (ids inchangés depuis leur déplacement, tailles mémorisées conservées). États locaux : `showTacksOnMap`, `showJibesOnMap`, `selectedTopMap` (clé de top ou `vmgUpwind` / `vmgDownwind`), `selectedManeuverTop` (`type:metrique`), `showManeuverDetails`, `hoveredIndex`. Couleur de la trace par le dégradé commun, bornes `speedRange` du support ou `suggestedSpeedRangeMs`, légende `SpeedGradientLegend` en nœuds.
-- `RunningModule` : en-tête (titre « Analyse course à pied », bouton « Ouvrir un fichier GPX », unité, terrain, taille du texte), `SectionTabs` sur `synthese`, `zones`, `graphiques` (persisté sous `tracker.sections` / `running`), légende `SpeedGradientLegend`, carte. La carte n'est pas une section : comme en voile, elle est rendue sans condition `open.*`, visible dès l'ouverture du module (centrée sur `DEFAULT_MAP_CENTER` tant qu'aucune trace n'est chargée). Identifiants `ResizablePanel` : `running.synthese`, `running.zones`, `running.graphiques`, `running.carte`. Constantes locales : `CHART_SPEED_SMOOTHING_S = 10`, `MAP_SPEED_SMOOTHING_S = 15` ; type `ChartRow` pour les lignes des graphes. Mode graphes `separate` (deux graphes empilés, `syncId="running"`) ou `overlay` (un graphe à deux axes).
-- `SettingsPage` (titre « Réglages ») : carte « Mémoire » (`MemoryStatus` détaillé), bloc « Réglages par support » (unité, seuil d'activité dans l'unité du profil, taille du texte, bouton Défaut par ligne), bloc « Course à pied » (terrain par défaut, bornes de couleur), bloc « Coureur » (poids, taille, année de naissance et âge, sexe, FC max, FC repos). Champs numériques (`NumberField`) en `type="number"` avec flèches ↕, valeur appliquée immédiatement ; bornes `min`/`max` posées sur les champs du coureur à partir de `BOUNDS` (`hooks/useRunnerProfile.ts`).
-
-## 7. `src/utils/` et `src/types/`
-
-- `utils/kinematics.ts` : `PointData { lat; lon; time; timeMs; speed; smoothedSpeed; bearing }` en nœuds, `toPointData`, `trackToPointData`. Utilisé par `sailing/*` (type) et `useSailingSession` (`trackToPointData`).
-- `types/sailing.ts` : `TopRun = TopSegment`, `SessionStats extends BaseSessionStats { flightRatio; tops: { t2s; t5s; t10s; d100m; d500m; d1000m; d1NM } }`.
-
-## 8. `src/platform/`
-
-Seule couche autorisée à toucher au stockage, aux fichiers et à la position (règle 12 de `CLAUDE.md`). Chaque module choisit sa version au démarrage par `isNativeApp()` ; les plugins Capacitor y sont chargés par `import()` à la demande.
-
-- `runtime.ts` : `isNativeApp()` (`Capacitor.isNativePlatform()`).
-- `storage.ts` : `StorageBackend { getItem; setItem }`, `JsonStore { read<T>(key): T | null; write(key, value); subscribe(listener(key)) → désabonnement }` (chaque écriture est signalée, même refusée), `createJsonStore(getBackend)`, `createMirroredBackend(initial, persist)` (mémoire amorcée, écriture recopiée), `jsonStore` (backend natif s'il est chargé, sinon `localStorage`, obtenu à chaque appel dans le `try`), `initStorage()` : à attendre avant le premier rendu (`main.tsx`) ; sur le téléphone, charge toutes les Preferences en mémoire, puis recopie chaque écriture ; échec → `localStorage`. Aucune erreur ne remonte. Synchrone exprès : les hooks lisent pendant le rendu.
-- `location.ts` : `LocationFix { timeMs; lat; lon; accuracyM?; altitudeM?; speedMs?; bearingDeg? }` en SI, `LocationWatchOptions { intervalMs; distanceFilterM; notificationTitle; notificationText }`, `StopLocation`, `LocationSource { label; start(options, onFix, onError): Promise<StopLocation> }`. Sources : `deviceLocationSource()` (plugin `@capgo/background-geolocation`, service de premier plan, sur le téléphone ; `watchPosition` dans le navigateur, coupé écran éteint), `createReplaySource(fixes, speedFactor)` (relit une trace en accéléré, heures d'origine conservées), `stopOrphanedDeviceLocation()` (arrête un service GPS relancé seul après un arrêt brutal). Aucune source ne filtre.
-- `files.ts` : `TextFile { read; write; append; remove }` (lecture d'un absent → `null`), `createMemoryFile()`, `recordingJournal` (`recording-journal.jsonl` dans le dossier privé de l'application sur le téléphone, en mémoire dans le navigateur), `canDownloadFiles()`, `downloadTextFile(nom, contenu, type?)`, `readPickedFile(file)`.
-- `memoryFolder.ts` : le dossier mémoire. `FolderEntry { name; kind; size; mtimeMs }`, `MemoryKind = 'browser' | 'picked' | 'device'`, `MemoryFolder { kind; label; list(dir); readText(path); writeText(path, text); remove(path) }` (chemins relatifs, dossiers créés à l'écriture, absent → liste vide ou `null`), `MemoryAccess` (`ready`, `needs-permission`, `unavailable`), `MEMORY_FOLDER_NAME = 'Tracker'`, `openMemoryFolder()` (navigateur : dossier choisi s'il est accessible, sinon mémoire privée, OPFS ; téléphone : dossier désigné, `unavailable` sans choix, `needs-permission` si Android a retiré l'accès), `canChooseFolder()` (téléphone, et Chrome et Edge sur ordinateur), `chooseMemoryFolder()` (navigateur : `showDirectoryPicker`, ouvert sur le dossier en service, poignée gardée dans IndexedDB ; téléphone : sélecteur d'Android, choix gardé sous `tracker.memoryFolder`), `shouldDescendIntoMemory(nom, contenu)` (le dossier parent désigné : on descend dans `Tracker`), `reconnectMemoryFolder()` (téléphone : désigner à nouveau), `forgetChosenFolder()`, `folderImportPaths(racine, sessions)` et `pickFolderToImport() → File[] | null` (téléphone : GPX et fiches d'un dossier à importer, accès non gardé), `pendingFolder()` (téléphone : dossier privé `en-attente/`, où une session enregistrée attend qu'un dossier soit accessible ; `null` dans le navigateur). Types de `showDirectoryPicker` et des autorisations déclarés dans `src/env.d.ts`.
-- `backButton.ts` : `installBackButton(keepAlive, canLeave?)` : touche retour d'Android ; `canLeave` peut retenir sur la page (brouillon non enregistré, `confirmLeave`) ; à la racine de l'historique, met l'application en arrière-plan au lieu de la fermer tant qu'un enregistrement tourne (fermer l'activité ferait perdre les positions).
-- Plugin Android `MemoryFolder` (`android/app/src/main/java/io/github/segneur/tracker/MemoryFolderPlugin.java`, déclaré dans `MainActivity`) : `pickFolder({ persist? })` (`ACTION_OPEN_DOCUMENT_TREE` ouvert sur Documents ; autorisation gardée sauf `persist: false`), `hasAccess({ uri })`, `list`, `readText`, `writeText` (dossiers créés, fichier en `application/octet-stream` pour qu'Android n'ajoute pas d'extension, écriture tronquante en UTF-8), `remove`, par `DocumentsContract` sur l'arbre désigné.
-
-## 9. `src/recording/`
-
-Logique pure de l'enregistrement, testée en node, sans accès au téléphone. Principe : enregistrer brut, analyser ensuite (§12).
-
-- `session.ts` : `isNewerFix(lastMs, fix)` (seul filtre : une redélivrance donnerait un intervalle nul), `roundFix(fix)` (7 décimales de degré, cm/s, dm, dixième de degré ; appliqué à la réception pour que le GPX écrit depuis la mémoire et celui reconstruit depuis le journal soient identiques), `fixesFromRawPoints(points)` (entrée du rejeu), `RecordingStats { pointCount; firstMs; lastMs; longestGapS; lastAccuracyM }`, `EMPTY_RECORDING_STATS`, `recordingDurationMs(stats)` (chrono, zéro avant la première position), `addFixToStats`, `shouldFlushJournal(lastFlushMs, fixMs, flushS)` (compté en temps de trace, pas par minuterie, que le système bride écran éteint), `isSportType`, `sessionFileName(startMs, sport | null)` (`2026-09-23_14-05-07_wingfoil.gpx`, heure locale, `…_session.gpx` sans support), `sessionTitle(startMs, sport)` (`Wingfoil, 23/09/2026 14:05`, nom de trace).
-- `journal.ts` : une ligne JSON par position, écrite par paquets ; relisible même abîmé (dernière ligne tronquée ignorée, en-tête illisible toléré). `JournalHeader { format: 'tracker-journal'; version: 1; sport; startedAtMs }`, `journalHeaderLine`, `journalFixLine` (`[heure, lat, lon, précision, altitude, vitesse, cap]`, `null` si absent), `ParsedJournal { header | null; fixes }`, `parseJournal(texte)`.
-- `gpxWriter.ts` : `GpxMeta { name; sport }`, `buildGpx(fixes, meta)` : GPX 1.1, vitesse en `gpxtpx:speed` (m/s) et cap en `gpxtpx:course` (extension Garmin), précision en `tracker:accuracy`, support en `<type>`. `parseGpx` le relit sans cas particulier.
-
-## 10. `src/library/`
-
-La mémoire en dossier portable (§6 de l'état), en logique pure testée en node. Les accès au dossier passent par `platform/memoryFolder.ts`, l'orchestration par `hooks/useSessionLibrary.ts`.
-
-- `folderLayout.ts` : `SESSIONS_DIR = 'sessions'`, `MARKER_FILE = 'tracker.json'`, `SETTINGS_FILE = 'reglages.json'`, `README_FILE = 'LISEZMOI.txt'`, `MEMORY_FORMAT = 'tracker-memoire'`, `MEMORY_VERSION = 1`, `sessionPath(nom)`, `markerText()`, `readmeText()` (fins de ligne Windows).
-- `record.ts` : la fiche. `RECORD_FORMAT = 'tracker-session'`, `RECORD_VERSION = 1`, `SUMMARY_CALC_VERSION = 1` (à augmenter quand `summarizeSession` change : les fiches sont alors recalculées, notes intactes), `SessionSource = 'enregistrement' | 'import'`, `SessionSummary { calcVersion; startMs; endMs; distanceM; movingTimeS | null; elevationGainM | null; maxSpeedMs; pointCount; samplingS; maneuverCount? }` (SI), `StoredSessionNotes = SailingSessionNotes & { savedAt }`, `SessionAnalysis { windDeg | null; activeThreshold | null; savedAt }` (réglages d'analyse de la session, seuil dans l'unité du profil), `SessionRecord { format; version; gpx; sport | null; source; addedAt; title | null; summary; notes | null; analysis | null }`, `parseRecord(texte)` (tolérante, `null` si illisible, champs inconnus gardés), `readNotes`, `readAnalysis`, `normalizeDeg`, `serializeRecord`, `isWritableRecord` (faux pour une version future), `isSummaryStale`, `recordFileName(gpx)`, `isGpxFileName`, `findLegacyNotes(ancien tracker.sailingNotes, startMs)` (retrouve les notes d'avant le dossier par l'instant du premier point), `LibrarySession { file; record; readOnly; warning }`, `dedupeSessions(sessions) → { kept; duplicates }` (une session par instant de départ : celle qui a des notes, sinon le premier nom).
-- `sessionEdits.ts` : `SessionEdits { notes; windDeg; activeThreshold }`, `latestGearNotes(fiches)`, `savedEdits(fiche | null, matériel)` (état enregistré tel que le module l'affiche), `EditedPart = 'vent' | 'seuil' | 'notes'`, `changedParts(enregistré, brouillon)`, `editsPatch(fiche, enregistré, brouillon, now) → { notes?; analysis? }` (seulement les parties changées, datées, champs inconnus gardés).
-- `summary.ts` : `SummaryOptions { activeThreshold?; referenceSpeedOverrideMs?; elevation? }`, `summarizeSession(rawPoints, sport | null, options?) → SessionSummary | null`. Reprend le pipeline du module qui analysera la session : en voile, filtres et seuil accordés à l'allure (`sessionFilterThresholds`, `suggestActiveThresholdKn`), en course ceux du profil, surcharges comprises ; sans support, pas de temps en mouvement.
-- `reconcile.ts` : `CachedRecord { size; mtimeMs; record }`, `LibraryCache`, `ReconcilePlan { gpxFiles; reuse; read; summarize; orphanRecords; rootGpx }`, `planReconcile(entrées de sessions/, entrées de la racine, cache)` : fiche inchangée (taille et date) reprise du cache, fiche changée relue, GPX sans fiche à résumer, fiche sans GPX laissée de côté, GPX de la racine à ranger.
-- `naming.ts` : `uniqueSessionFileName(nom, pris)` (libre si le GPX et sa fiche le sont, casse ignorée), `guessSport(type)` (nos supports, et types d'autres applications : `running`, `Trail Running`, `windsurfing`, `kitesurfing`, `sailing`…).
-- `settingsFile.ts` : `SETTINGS_FORMAT = 'tracker-reglages'`, `TRAVELLING_KEYS` (`tracker.sportSettings`, `tracker.runnerProfile`), `SettingsFile { format; version; savedAt; values }`, `parseSettingsFile`, `buildSettingsFile(values, savedAt, previous?)` (clés inconnues gardées), `serializeSettingsFile`, `SettingsChoice = 'folder' | 'local' | 'same'`, `chooseSettings(localSavedAt | null, fichier | null)` (le plus récent l'emporte ; un appareil sans date reprend le dossier).
+- `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement.
+- `MemoryStatus.tsx` : état de la mémoire et l'action qui convient. `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17).
+- `SpeedGradientLegend.tsx` : légende et bornes de couleur (§10, point 30). `MapAutoResize.tsx` : `invalidateSize` de la carte. `chartHover.ts` : survol d'un graphe vers la carte.
+- `ui/` : `Button`, `Card`, `PageHeader`, `ui.css`. `icons.tsx` : icônes SVG. `styles.ts` : `CARD_STYLE`.
+- `theme/tokens.css` : toutes les variables de la DA. `theme/base.css` : police, fond, focus.

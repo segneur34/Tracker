@@ -4,9 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Tracker : analyse de sessions sportives à partir de traces GPX
 
-Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau) et course (`/course`), pages `/enregistrer` et `/parametres`. Interface et commentaires en français. Application Android via Capacitor, avec enregistrement GPS natif : plan en six lots au §12 de `docs/ETAT_DU_PROJET.md` (« Cible mobile »), lots 1 et 3 (mémoire en dossier, 3a navigateur et 3b téléphone) faits ; prochain : lot 2.
+Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau) et course (`/course`), pages `/enregistrer` et `/parametres`. Interface et commentaires en français. Application Android via Capacitor, avec enregistrement GPS natif et mémoire en dossier portable.
 
-`docs/ETAT_DU_PROJET.md` décrit le code, le pipeline et les chantiers : le lire avant de toucher au noyau ou aux analyses voile. `docs/INVENTAIRE.md` donne les signatures exportées, module par module. `docs/HISTORIQUE.md` garde les décisions passées et les pièges : le consulter sur le sujet qu'on touche.
+Chaque information a une seule place :
+- `docs/ETAT_DU_PROJET.md` : pipeline, persistance, dette, chantiers, et **l'avancement du plan mobile (§12), tenu là seulement**. Le lire avant de toucher au noyau ou aux analyses voile.
+- `docs/HISTORIQUE.md` : décisions et pièges, en points numérotés (« §10, point N ») ; le consulter par recherche sur le sujet, pas en entier.
+- `docs/INVENTAIRE.md` : carte des fichiers ; les signatures se lisent dans le code.
 
 ## Commandes
 
@@ -19,14 +22,14 @@ npx vitest run src/sailing/wind.test.ts -t "nom"   un fichier, un test
 npm run build        tsc -b && vite build
 ```
 
-Android (JDK 21 obligatoire, détails dans `docs/ETAT_DU_PROJET.md` §2 et §12) : `npm run build`, `npx cap sync android`, puis `npx cap run android`. Dans le shell de Claude, la CLI ne trouve pas `gradlew` : passer par `android\gradlew.bat assembleRelease` (`JAVA_HOME` et `ANDROID_HOME` à poser) et `adb install -r`. APK signé par une clé dédiée, hors du dépôt (`android/keystore.properties`, ignoré) : ne jamais la régénérer ni la versionner. Version unique dans `package.json`, à augmenter avant chaque APK diffusé.
+Android (JDK 21, procédure au §12 de l'état) : `npm run build`, `npx cap sync android`, puis, dans le shell de Claude, `android\gradlew.bat assembleRelease` et `adb install -r`. APK signé par une clé dédiée, hors du dépôt (`android/keystore.properties`, ignoré) : ne jamais la régénérer ni la versionner. Version unique dans `package.json`, à augmenter avant chaque APK diffusé.
 
 Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous doivent passer.
 
 ## Documentation
 
-- `docs/ETAT_DU_PROJET.md` : une passe après chaque lot que l'utilisateur a validé sur données réelles, jamais entre deux modifications, sans attendre la fin de session (git garde le code, pas le pourquoi). Une passe = sections touchées à jour, plus un point daté dans `docs/HISTORIQUE.md`.
-- `CLAUDE.md` : en fin de session, seulement si une règle ou une décision de l'utilisateur a changé. Il doit rester court.
+- Une passe après chaque lot que l'utilisateur a validé sur données réelles, jamais entre deux modifications, sans attendre la fin de session : sections touchées d'ETAT, un point daté d'une dizaine de lignes dans HISTORIQUE, la carte d'INVENTAIRE si un fichier apparaît ou change de rôle.
+- `CLAUDE.md` : seulement si une règle ou une décision de l'utilisateur a changé. Ni état d'avancement, ni procédure détaillée.
 
 ## Environnement
 
@@ -54,7 +57,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 
 - Support à voile : `SPORT_PROFILES` et `SAILING_SPORTS` (`core/sportProfiles.ts`).
 - Réglage utilisateur : `StoredSettings` (`hooks/useSportSettings.ts`), `useAllSportSettings`, `pages/SettingsPage.tsx`.
-- Section de module : `*_SECTIONS` et `*_SECTION_DEFAULTS` de la page, et un bloc `{open.cle && ...}` dans un `ResizablePanel` d'`id` unique. En voile : `SAILING_SECTIONS` en haut, `SAILING_CARTE_PANELS` dans la colonne de la carte.
+- Section de module : `*_SECTIONS` et `*_SECTION_DEFAULTS` de la page, et un bloc `{open.cle && ...}` dans un `ResizablePanel` d'`id` unique (l'`id` est la clé de la taille mémorisée : ne pas le renommer). En voile : `SAILING_SECTIONS` en haut, `SAILING_CARTE_PANELS` dans la colonne de la carte.
 - Graphe relié à la carte : chaque ligne porte l'`index` du point de trace, et le survol passe par `hoveredTrackIndex` (`components/chartHover.ts`). Pas de `any`.
 - Métrique de manœuvre : `ManeuverLocation` (`sailing/maneuvers.ts`), puis `MANEUVER_METRICS` et `summarizeManeuvers` (`sailing/sailingAnalytics.ts`).
 - Donnée propre à une session (notes, vent saisi, seuil d'activité, support) : dans sa fiche (`library/record.ts`), écrite par `updateSessionRecord` ; dans le module, par le brouillon (`useSessionDraft`, `library/sessionEdits.ts`) et « Enregistrer la session » ; jamais dans une clé de l'appareil. Une donnée recalculable depuis le GPX va dans `summary`, avec `SUMMARY_CALC_VERSION` augmenté si son calcul change.
@@ -63,7 +66,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 
 ## Décisions de l'utilisateur
 
-- Couleur de trace : dégradé continu sur une échelle absolue (`core/speedGradient.ts`), gris sous la borne basse, bornes réglables par support dans la légende ; ni échelle relative ni paliers. Course : 4 à 15 km/h. Voile : seuil d'activité et bornes suggérés par l'allure (`suggestActiveThresholdKn`, `suggestSpeedRangeMs` : au-dessus de 12 nds, défaut du profil, sauf le bateau à 1 nd ; en dessous, 1 nd ; borne haute = pic sur 2 s + 1 nd ; 8 à 28 nds si la trace est trop courte). La surcharge persistée prime toujours.
+- Couleur de trace : dégradé continu sur une échelle absolue (`core/speedGradient.ts`), gris sous la borne basse, bornes réglables par support dans la légende ; ni échelle relative ni paliers. Course : 4 à 15 km/h. Voile : seuil d'activité et bornes suggérés par l'allure de la session, selon des règles fixées par l'utilisateur (`suggestActiveThresholdKn`, `suggestSpeedRangeMs` dans `sailing/sailingConfig.ts`, HISTORIQUE point 29) : ne pas les retoucher sans lui. La surcharge persistée prime toujours.
 - Courbe du vent : toute la session, par toutes les manœuvres sans exception, valeur la plus proche aux bords, coupure au-delà de 30 min sans manœuvre.
 - Une seule notion de réussite : le vent est estimé au seuil d'activité effectif, surcharge comprise (bouger le seuil recalcule le vent, c'est accepté).
 - Session : vent saisi, seuil d'activité et notes restent en brouillon jusqu'à « Enregistrer la session » (Annuler, avertissement en quittant). Le seuil est propre à chaque session, dans sa fiche, et prime sur celui du support. Le support se change immédiatement.
