@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Tracker : analyse de sessions sportives à partir de traces GPX
 
-Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau) et course (`/course`), pages `/enregistrer` et `/parametres`. Interface et commentaires en français. Application Android via Capacitor, avec enregistrement GPS natif : plan en six lots au §12 de `docs/ETAT_DU_PROJET.md` (« Cible mobile »), lot 1 fait.
+Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau) et course (`/course`), pages `/enregistrer` et `/parametres`. Interface et commentaires en français. Application Android via Capacitor, avec enregistrement GPS natif : plan en six lots au §12 de `docs/ETAT_DU_PROJET.md` (« Cible mobile »), lot 1 fait, lot 3 (mémoire en dossier) passé avant le lot 2, 3a fait.
 
 `docs/ETAT_DU_PROJET.md` décrit le code, le pipeline et les chantiers : le lire avant de toucher au noyau ou aux analyses voile. `docs/INVENTAIRE.md` donne les signatures exportées, module par module. `docs/HISTORIQUE.md` garde les décisions passées et les pièges : le consulter sur le sujet qu'on touche.
 
@@ -48,7 +48,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 9. Un module ne reprend que ses supports : `useSportSettings(defaultSport, allowedSports)`.
 10. Cadence variable : une application économique peut compresser un virage entier dans un seul intervalle. Ne jamais supposer plusieurs points dans une fenêtre de quelques secondes.
 11. react-leaflet : le style d'un `Polyline` passe toujours par `pathOptions`, sinon il n'est pas réappliqué.
-12. Stockage, fichiers, position : uniquement via `src/platform/` (`storage.ts`, `files.ts`, `location.ts` ; jamais `localStorage`, `Filesystem` ni `navigator.geolocation` en direct). Chaque module y choisit sa version navigateur ou téléphone par `isNativeApp()`.
+12. Stockage, fichiers, position : uniquement via `src/platform/` (`storage.ts`, `files.ts`, `memoryFolder.ts`, `location.ts` ; jamais `localStorage`, `Filesystem`, `showDirectoryPicker` ni `navigator.geolocation` en direct). Chaque module y choisit sa version navigateur ou téléphone par `isNativeApp()`.
 
 ## Où ajouter quoi
 
@@ -57,7 +57,8 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Section de module : `*_SECTIONS` et `*_SECTION_DEFAULTS` de la page, et un bloc `{open.cle && ...}` dans un `ResizablePanel` d'`id` unique. En voile : `SAILING_SECTIONS` en haut, `SAILING_CARTE_PANELS` dans la colonne de la carte.
 - Graphe relié à la carte : chaque ligne porte l'`index` du point de trace, et le survol passe par `hoveredTrackIndex` (`components/chartHover.ts`). Pas de `any`.
 - Métrique de manœuvre : `ManeuverLocation` (`sailing/maneuvers.ts`), puis `MANEUVER_METRICS` et `summarizeManeuvers` (`sailing/sailingAnalytics.ts`).
-- Calcul pur : dans `core/`, `sailing/`, `running/` ou `recording/`, avec son `*.test.ts` sur trace synthétique.
+- Donnée propre à une session (notes, support, futur vent saisi) : dans sa fiche (`library/record.ts`), écrite par `updateSessionRecord` ; jamais dans une clé de l'appareil. Une donnée recalculable depuis le GPX va dans `summary`, avec `SUMMARY_CALC_VERSION` augmenté si son calcul change.
+- Calcul pur : dans `core/`, `sailing/`, `running/`, `recording/` ou `library/`, avec son `*.test.ts` sur trace synthétique.
 - Couleur, police, rayon, espacement : une variable de `src/theme/tokens.css`, jamais une valeur en dur dans un écran neuf. Composants communs dans `components/ui`, icônes dans `components/icons.tsx` (pas d'emoji). Les couleurs de données des graphes et de la carte restent en dur (attributs SVG).
 
 ## Décisions de l'utilisateur
@@ -68,7 +69,8 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Graphes course « superposés » à deux axes, voulus malgré la difficulté de lecture.
 - Tout bloc est redimensionnable (`ResizablePanel`), taille mémorisée.
 - Voile : manœuvres en petit tableau, détails dépliables. Carte à 60 % de large ; à sa droite, les onglets manœuvres, VMG, graphiques, vent (dans cet ordre, fermés par défaut, côte à côte si la place le permet). En haut : global, matos, tops seulement. Ne rien déplacer ni dupliquer entre les deux groupes sans redemander.
-- Enregistrement : brut à 1 Hz, sans autre filtre que les redélivrances ; un GPX par session dans `Documents/Tracker`, analysé par les modules existants via `loadGpxContent`. Suite de la cible mobile dans l'ordre fixé au §12 de l'état.
+- Enregistrement : brut à 1 Hz, sans autre filtre que les redélivrances ; un GPX par session, analysé par les modules existants via `loadGpxContent`.
+- Mémoire : un dossier portable `Tracker/` (GPX + fiche JSON par session dans `sessions/`, `reglages.json`), qu'on copie pour sauvegarder ou changer d'appareil ; pas d'index dans le dossier ; réglages : le plus récent l'emporte. Sur Android, dossier désigné par le sélecteur d'Android (SAF), jamais « accès à tous les fichiers ». Suite de la cible mobile dans l'ordre fixé au §12 de l'état.
 - DA de la maquette pour l'instant (Figtree, fond gris chaud, cartes blanches, bleu voile, rouille course, vert Enregistrer), appelée à changer : tout passe par les variables. Navigation : barre d'onglets en bas sur téléphone, barre en haut sur ordinateur.
 - Réglages d'affichage (unités, taille du texte) choisis dans Réglages seulement, par famille (voile, course), actifs partout ; par sous-sport plus tard peut-être.
 - Diffusion : APK signé partagé par lien d'abord, lien web ensuite.
