@@ -1,0 +1,4 @@
+# Fins de ligne : LF partout, CRLF pour les scripts de commandes Windows.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

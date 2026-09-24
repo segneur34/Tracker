@@ -17,7 +17,7 @@ Application web client-only qui lit une trace GPX et en tire des analyses. Les s
 - `tsconfig.app.json` : `verbatimModuleSyntax`, `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly`, `noFallthroughCasesInSwitch`. `strict` n'est pas écrit mais TypeScript 6 l'active par défaut. Conséquence pratique : un import inutilisé ou un paramètre inutilisé casse le build.
 - `.oxlintrc.json` : plugins react, typescript, oxc ; règles `react/rules-of-hooks` (erreur) et `react/only-export-components` (avertissement). Pas de règle sur `any`.
 - Vitest sans fichier de configuration : environnement node, pas de jsdom. Les tests importent `describe`, `it`, `expect` depuis `vitest`. Tout ce qui touche au DOM (parseur GPX, hooks, composants) n'est donc pas testé.
-- Git depuis le 23 septembre 2026 (Git pour Windows 2.55), branche `main` qui suit `origin/main`, dépôt privé `https://github.com/segneur34/Tracker.git`, identifiants mémorisés. Réglages locaux : auteur Tom Briere, `core.autocrlf=false` (sources en LF, trois fichiers en CRLF, rien n'est converti). `.github/` vide. `dist/`, sortie de `npm run build`, est ignoré.
+- Git depuis le 23 septembre 2026 (Git pour Windows 2.55), branche `main` qui suit `origin/main`, dépôt privé `https://github.com/segneur34/Tracker.git`, identifiants mémorisés. Réglages locaux : auteur Tom Briere, `core.autocrlf=false`. Fins de ligne fixées par `.gitattributes` depuis le 24 septembre 2026 (§10, point 45) : LF partout, CRLF pour les `.bat` (`android/gradlew.bat`). `.github/` vide. `dist/`, sortie de `npm run build`, est ignoré.
 - Terminal de l'utilisateur : `cmd` sous Windows 11.
 
 ## 3. Architecture
@@ -163,7 +163,7 @@ Générateurs réutilisables dans les tests : `buildEastwardTrack` (kinematics),
 
 **`integratePosition` mérite un mot** : par défaut les générateurs font avancer la position le long d'une ligne arbitraire, indépendante des caps imposés. C'est sans conséquence tant qu'un calcul ne lit que les caps et les vitesses, mais toute analyse qui touche aux positions — distance d'une manœuvre, tracé, et toute mesure géométrique du virage — doit être testée avec cette option active, faute de quoi elle mesure une trajectoire qui n'a rien à voir avec la session simulée.
 
-Non testé : `gpxParser` (DOM), `useRecorder`, `useSessionLibrary`, `useSessionDraft`, `leaveGuard`, les accès de `memoryFolder` et le plugin Java, `buildBaseSessionStats`, `buildSailingSessionStats`, `calculateVmgStats`, `buildWindTimeline`, tous les hooks, composants et pages. Ils se vérifient au banc Chrome (scripts hors du dépôt, décrits dans la mémoire de Claude) et sur le téléphone (§12). Pour prouver qu'un changement est neutre : texte de la page d'analyse relevé au banc avant et après, puis comparé (§10, point 44).
+Non testé : `gpxParser` (DOM), `useRecorder`, `useSessionLibrary`, `useSessionDraft`, `leaveGuard`, les accès de `memoryFolder` et le plugin Java, `buildBaseSessionStats`, `buildSailingSessionStats`, `calculateVmgStats`, `buildWindTimeline`, tous les hooks, composants et pages. Ils se vérifient au banc Chrome (`outils/banc/`, mode d'emploi dans son `LISEZMOI.md`) et sur le téléphone (§12). Pour prouver qu'un changement est neutre : texte de la page d'analyse relevé au banc avant et après, puis comparé (§10, point 44).
 
 ## 9. Dette et code mort
 
@@ -176,7 +176,6 @@ Nettoyages du 21 septembre 2026 (§10, point 15) et du 24 septembre 2026 (§10, 
 - Un enregistrement ou un import pendant la première lecture d'un dossier qui contient des GPX sans fiche peut créer un doublon (`addGpx` ne compare qu'aux sessions déjà publiées) ; `dedupeSessions` le masque, les deux fichiers restent.
 - `useStoredRecord` relit dans un effet : les onglets s'affichent un instant avec leurs défauts.
 - Détection des virages écrite deux fois, dans `observeTurns` (`wind.ts`) et `analyzeManeuvers` (`maneuvers.ts`) ; à fusionner avec le chantier de performance du §11, jamais seule (points 21, 26, 27).
-- Trois fichiers en CRLF (`App.tsx`, `Home.tsx`, `SailingModule.tsx`, ce dernier avec des espaces en fin de ligne) : piège d'outillage récurrent pour les scripts d'édition.
 - Brouillon de session : le retour arrière du navigateur n'est pas intercepté (le brouillon attend le retour sur la session) ; le support se change hors brouillon.
 - `Payload.payload` de Recharts est typé `any` par la librairie : les `formatter` d'infobulle relisent la ligne en l'annotant du type attendu (`ChartRow`, `WindGraphPoint`). Confiance accordée à Recharts, pas vérification.
 - Sens de rotation d'un virage vu en un seul pas : voir §11.
@@ -218,7 +217,7 @@ C'est le seul endroit où il est tenu.
   - lot 4, accueil : graphe d'activités, totaux, dernières sessions ;
   - lot 5, enregistrement : famille puis activité, statistiques en direct (le cap moyen du bord remplace l'amure, le vent étant inconnu pendant l'enregistrement) ;
   - lot 6, APK pour les testeurs : icône, fiche d'installation.
-- Hors plan, le 24 septembre 2026 : audit, documentation allégée, code mort retiré (point 44). En attente d'une décision de l'utilisateur : passer en LF les trois fichiers en CRLF (§9), ranger l'allure imposée dans la fiche de la session (§9).
+- Hors plan, le 24 septembre 2026 : audit, documentation allégée, code mort retiré (point 44) ; fins de ligne en LF et banc versé dans `outils/banc/` (point 45). Décidé, à faire avant le lot 2 : l'allure imposée rangée dans la fiche de la session (§9).
 - Phase 2 : interface mobile. Disposition empilée en écran étroit, décisions de disposition sur ordinateur inchangées ; toucher au lieu du survol ; graphes à largeur fixe (500 et 350 px) et poignée `resize` de 20 px à revoir ; `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz) : les regrouper par couleur toucherait à la décision « pas de paliers », à redemander ; `accept=".gpx"`, qui grise parfois les GPX sous Android.
 - Phase 3 : partage et export GPX, réception d'un GPX partagé depuis Komoot, cartes hors ligne (pas de réseau en mer), capteur cardiaque Bluetooth.
 

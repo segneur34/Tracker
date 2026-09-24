@@ -149,7 +149,7 @@ function SailingModule() {
     trackData,
     stats,
     currentWindValue,
-    autoWind,  
+    autoWind,
     loadGpxContent,
     fileName,
     maneuverStats,
@@ -260,7 +260,7 @@ function SailingModule() {
 
   const staticMapLayers = useMemo(() => {
     if (trackData.length === 0) return null;
-    
+
     const mapSegments = trackData.slice(1).map((point, index) => {
       const prevPoint = trackData[index];
       return {
@@ -269,7 +269,7 @@ function SailingModule() {
         color: speedGradientColor(knotsToMs(point.smoothedSpeed), colorRange.minMs, colorRange.maxMs)
       };
     });
-    
+
     const arrowMarkers = trackData.filter((_, index) => index % 40 === 0 && index !== 0);
 
     let topArray: TopSegment[] | undefined;
@@ -282,23 +282,23 @@ function SailingModule() {
         {mapSegments.map(segment => (
           <Polyline key={`track-${segment.id}`} positions={segment.positions} pathOptions={{ color: segment.color, weight: 5 }} />
         ))}
-        
+
         {arrowMarkers.map((point, idx) => (
           <Marker key={`arrow-${idx}`} position={[point.lat, point.lon]} icon={createArrowIcon(point.bearing)} />
         ))}
-        
+
         {maneuverStats?.locations.map((loc, idx) => {
           if ((loc.type === 'tack' && !showTacksOnMap) || (loc.type === 'jibe' && !showJibesOnMap)) return null;
           return (
-            <CircleMarker 
-              key={`maneuver-${idx}`} 
-              center={[loc.lat, loc.lon]} 
-              radius={6} 
-              pathOptions={{ 
-                color: loc.success ? '#388e3c' : '#d32f2f', 
-                fillColor: loc.type === 'tack' ? '#fff' : '#000', 
-                fillOpacity: 1, 
-                weight: 3 
+            <CircleMarker
+              key={`maneuver-${idx}`}
+              center={[loc.lat, loc.lon]}
+              radius={6}
+              pathOptions={{
+                color: loc.success ? '#388e3c' : '#d32f2f',
+                fillColor: loc.type === 'tack' ? '#fff' : '#000',
+                fillOpacity: 1,
+                weight: 3
               }}>
               <Popup>{loc.type === 'tack' ? 'Virement' : 'Empannage'} {loc.success ? 'Réussi' : 'Raté'} - Vmin: {loc.vmin.toFixed(1)} nds</Popup>
             </CircleMarker>
@@ -345,7 +345,7 @@ function SailingModule() {
     <div style={{ marginBottom: '10px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
         <strong>{title}</strong>
-        <button 
+        <button
           onClick={() => setSelectedTopMap(selectedTopMap === topKey ? 'none' : topKey)}
           style={{ padding: '2px 8px', fontSize: '11px', cursor: 'pointer', backgroundColor: selectedTopMap === topKey ? 'var(--voile)' : 'var(--surface-sunken)', color: selectedTopMap === topKey ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
           {selectedTopMap === topKey ? 'Masquer (Carte)' : 'Voir (Carte)'}

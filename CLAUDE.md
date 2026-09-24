@@ -33,7 +33,8 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 
 ## Environnement
 
-- Dépôt git, doublé d'un dépôt GitHub privé (`segneur34/Tracker`) : un commit par lot validé, un envoi après accord de l'utilisateur. `core.autocrlf` est à `false` dans ce dépôt : aucune conversion de fin de ligne.
+- Dépôt git, doublé d'un dépôt GitHub privé (`segneur34/Tracker`) : un commit par lot validé, un envoi après accord de l'utilisateur. Fins de ligne fixées par `.gitattributes` : LF partout, CRLF pour les `.bat`.
+- Banc de test dans `outils/banc/` (mode d'emploi dans son `LISEZMOI.md`) : Claude y éprouve lui-même l'application dans un Chrome sans fenêtre ; il prouve la neutralité d'un changement par le texte de la page relevé avant et après.
 - Windows 11, terminal `cmd` : ne jamais donner de commande PowerShell à recopier. L'utilisateur colle parfois lui-même la sortie.
 - Aucun GPX réel dans le projet : les tests sont synthétiques, la validation sur données réelles revient à l'utilisateur.
 - Une question d'algorithmique peut partir chez Gemini : la formuler de façon autonome et complète.

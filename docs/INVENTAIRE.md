@@ -90,3 +90,8 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `SpeedGradientLegend.tsx` : légende et bornes de couleur (§10, point 30). `MapAutoResize.tsx` : `invalidateSize` de la carte. `chartHover.ts` : survol d'un graphe vers la carte.
 - `ui/` : `Button`, `Card`, `PageHeader`, `ui.css`. `icons.tsx` : icônes SVG. `styles.ts` : `CARD_STYLE`.
 - `theme/tokens.css` : toutes les variables de la DA. `theme/base.css` : police, fond, focus.
+
+## Hors de `src/`
+
+- `outils/banc/` : banc de test, des scripts Node qui pilotent un Chrome sans fenêtre ou la WebView du téléphone ; mode d'emploi dans son `LISEZMOI.md`.
+- `.gitattributes` : fins de ligne (LF, CRLF pour les `.bat`).
