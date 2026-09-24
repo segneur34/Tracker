@@ -33,9 +33,9 @@ export const useStoredRecord = <T extends object>(
   }, [namespace, key]);
 
   const update = useCallback(
-    (patch: Partial<T>) => {
+    (patch: Partial<T> | ((current: T) => Partial<T>)) => {
       setValue((current) => {
-        const next = { ...current, ...patch };
+        const next = { ...current, ...(typeof patch === 'function' ? patch(current) : patch) };
         if (key !== null) {
           const all = readAll<T>(namespace);
           all[key] = next;

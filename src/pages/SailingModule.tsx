@@ -7,6 +7,7 @@ import {
   type DotItemDotProps, type TooltipPayloadEntry,
 } from 'recharts';
 import 'leaflet/dist/leaflet.css';
+import './SailingModule.css';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLeaveWarning } from '../hooks/leaveGuard';
 import { analysisPath, libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
@@ -30,7 +31,7 @@ import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE } from '../components/styles';
-import { IconFile } from '../components/icons';
+import { IconChevronRight, IconFile } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
 
@@ -113,6 +114,25 @@ const hoverIcon = L.divIcon({
 });
 
 // --- Composants UI locaux ---
+
+/**
+ * Titre d'un panneau de la colonne carte (Manœuvres, VMG, Graphiques, Vent),
+ * cliquable pour le refermer sans remonter à la rangée d'onglets : utile
+ * quand le panneau ouvert dépasse l'écran, surtout sur téléphone.
+ */
+const PanelTitle = ({ label, extra, open, onToggle }: { label: string; extra?: ReactNode; open: boolean; onToggle: () => void }) => (
+  <strong
+    role="button"
+    tabIndex={0}
+    onClick={onToggle}
+    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '16px', cursor: 'pointer', userSelect: 'none' }}>
+    <IconChevronRight size={14} style={{ transform: open ? 'rotate(90deg)' : undefined, transition: 'transform 0.15s', flexShrink: 0 }} />
+    {label}
+    {extra}
+  </strong>
+);
+
 const Compass = ({ windAngle }: { windAngle: number }) => {
   const size = 120;
   const center = size / 2;
@@ -253,6 +273,8 @@ function SailingModule() {
   const [selectedManeuverTop, setSelectedManeuverTop] = useState<string>('none');
   const [showManeuverDetails, setShowManeuverDetails] = useState<boolean>(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  /** Carte agrandie en plein écran, sur téléphone (tap sur la carte compacte, écran étroit seulement). */
+  const [mapExpanded, setMapExpanded] = useState(false);
 
   /** Podium de manœuvres sélectionné pour la carte. */
   const maneuverTopArray = useMemo((): ManeuverTop[] => {
@@ -365,7 +387,9 @@ function SailingModule() {
   /** Panneaux VMG et manœuvres de la colonne à droite de la carte. */
   const renderVmgPanel = (v: NonNullable<typeof vmgStats>) => (
     <ResizablePanel id="sailing.carte.vmg" style={{ ...CARD_STYLE, flex: '1 1 500px' }}>
-      <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Analyse VMG</strong>
+      <div style={{ marginBottom: '10px' }}>
+        <PanelTitle label="Analyse VMG" open={carteOpen.vmg} onToggle={() => toggleCarte('vmg')} />
+      </div>
       <table style={{ width: '100%', textAlign: 'center', borderCollapse: 'collapse', fontSize: '13px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
         <thead>
           <tr style={{ backgroundColor: 'var(--surface-sunken)', borderBottom: '1px solid var(--line-strong)' }}>
@@ -401,7 +425,7 @@ function SailingModule() {
   const renderManeuversPanel = (m: NonNullable<typeof maneuverStats>) => (
     <ResizablePanel id={showManeuverDetails ? 'sailing.carte.manoeuvres.details' : 'sailing.carte.manoeuvres'} style={{ ...CARD_STYLE, flex: showManeuverDetails ? '1 1 100%' : '0 1 auto', padding: '12px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
-        <strong style={{ fontSize: '16px' }}>Manœuvres</strong>
+        <PanelTitle label="Manœuvres" open={carteOpen.manoeuvres} onToggle={() => toggleCarte('manoeuvres')} />
         <span style={{ color: 'var(--muted)', fontSize: '12px' }}>réussie si Vmin &ge; {activeThresholdKn} nds</span>
       </div>
 
@@ -558,82 +582,110 @@ function SailingModule() {
     </ResizablePanel>
   );
 
+  /** Contenu partagé par la carte compacte et sa vue agrandie (tap, écran étroit). */
+  const mapLayers = (
+    <>
+      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+
+      {staticMapLayers}
+
+      {hoveredIndex !== null && trackData[hoveredIndex] && (
+        <Marker
+          position={[trackData[hoveredIndex].lat, trackData[hoveredIndex].lon]}
+          icon={hoverIcon}
+          zIndexOffset={1000}
+        />
+      )}
+    </>
+  );
+
   return (
-    <div style={{ padding: '20px' }}>
-      <div style={{ marginBottom: '15px' }}>
-        <PageHeader title="Analyse voile" back={{ to: libraryPath('voile'), label: 'Sessions voile' }} />
-        {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
-      </div>
+    <div className="sailing-page" style={{ padding: '20px' }}>
+      <div className="sw-sheet">
+        <div style={{ marginBottom: '15px' }}>
+          <PageHeader title="Analyse voile" back={{ to: libraryPath('voile'), label: 'Sessions voile' }} />
+          {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
+        </div>
 
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap' }}>
-        <label className="ui-btn ui-btn--secondary">
-          <IconFile size={18} />
-          Ouvrir un fichier GPX
-          <input type="file" accept=".gpx" onChange={openFile} hidden />
-        </label>
+        {stats && (
+          <div className="sw-sheet__stats">
+            <div className="sw-sheet__stat"><span className="sw-sheet__stat-label">Distance</span><strong className="sw-sheet__stat-value">{stats.distance} km</strong></div>
+            <div className="sw-sheet__stat"><span className="sw-sheet__stat-label">Temps total</span><strong className="sw-sheet__stat-value">{stats.totalTime}</strong></div>
+            <div className="sw-sheet__stat"><span className="sw-sheet__stat-label">Temps actif (&ge;{activeThresholdKn} nds)</span><strong className="sw-sheet__stat-value">{stats.activeTime}</strong></div>
+            <div className="sw-sheet__stat"><span className="sw-sheet__stat-label">{profile.activeRatioLabel}</span><strong className="sw-sheet__stat-value">{stats.activeRatio}%</strong></div>
+          </div>
+        )}
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-          <strong>Support :</strong>
-          <select
-            value={sport}
-            onChange={(e) => changeSport(e.target.value as SportType)}
-            className="ui-field ui-field--s">
-            {availableSports.map((s) => (
-              <option key={s} value={s}>{SPORT_PROFILES[s].label}</option>
-            ))}
-          </select>
-        </label>
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap' }}>
+          <label className="ui-btn ui-btn--secondary">
+            <IconFile size={18} />
+            Ouvrir un fichier GPX
+            <input type="file" accept=".gpx" onChange={openFile} hidden />
+          </label>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-          <strong>Seuil d'activité :</strong>
-          <input
-            type="number"
-            min={0}
-            step={0.5}
-            value={activeThresholdKn}
-            onChange={(e) => {
-              const parsed = parseFloat(e.target.value);
-              if (!isNaN(parsed) && parsed >= 0) draft.update({ activeThreshold: parsed });
-            }}
-            title="Seuil propre à cette session, enregistré avec elle. Celui du support se règle dans Réglages."
-            className="ui-field ui-field--s num"
-            style={{ width: '70px' }} />
-          {SPEED_UNIT_LABEL[profile.thresholdUnit]}
-          {edits.activeThreshold !== null && (
-            <Button
-              size="s"
-              onClick={() => draft.update({ activeThreshold: null })}
-              title={`Revenir au seuil du support (${defaultActiveThresholdKn} ${SPEED_UNIT_LABEL[profile.thresholdUnit]})`}>
-              Défaut
-            </Button>
-          )}
-        </label>
-
-        {trackData.length > 0 && (
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-            <strong>Allure de la session :</strong>
+            <strong>Support :</strong>
+            <select
+              value={sport}
+              onChange={(e) => changeSport(e.target.value as SportType)}
+              className="ui-field ui-field--s">
+              {availableSports.map((s) => (
+                <option key={s} value={s}>{SPORT_PROFILES[s].label}</option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+            <strong>Seuil d'activité :</strong>
             <input
               type="number"
               min={0}
               step={0.5}
-              value={msToKnots(referenceSpeedMs).toFixed(1)}
+              value={activeThresholdKn}
               onChange={(e) => {
                 const parsed = parseFloat(e.target.value);
-                if (!isNaN(parsed) && parsed > 0) draft.update({ referenceSpeedMs: knotsToMs(parsed) });
+                if (!isNaN(parsed) && parsed >= 0) draft.update({ activeThreshold: parsed });
               }}
-              title="Vitesse de croisière de la session, dont dépendent les seuils de filtrage. Déduite de la trace ; imposée si elle la décrit mal, et alors enregistrée avec la session."
+              title="Seuil propre à cette session, enregistré avec elle. Celui du support se règle dans Réglages."
               className="ui-field ui-field--s num"
               style={{ width: '70px' }} />
-            nds
-            {edits.referenceSpeedMs === null ? (
-              <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(déduite de la trace)</span>
-            ) : (
-              <Button size="s" onClick={() => draft.update({ referenceSpeedMs: null })} title="Revenir à l'allure déduite de la trace">
+            {SPEED_UNIT_LABEL[profile.thresholdUnit]}
+            {edits.activeThreshold !== null && (
+              <Button
+                size="s"
+                onClick={() => draft.update({ activeThreshold: null })}
+                title={`Revenir au seuil du support (${defaultActiveThresholdKn} ${SPEED_UNIT_LABEL[profile.thresholdUnit]})`}>
                 Défaut
               </Button>
             )}
           </label>
-        )}
+
+          {trackData.length > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+              <strong>Allure de la session :</strong>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={msToKnots(referenceSpeedMs).toFixed(1)}
+                onChange={(e) => {
+                  const parsed = parseFloat(e.target.value);
+                  if (!isNaN(parsed) && parsed > 0) draft.update({ referenceSpeedMs: knotsToMs(parsed) });
+                }}
+                title="Vitesse de croisière de la session, dont dépendent les seuils de filtrage. Déduite de la trace ; imposée si elle la décrit mal, et alors enregistrée avec la session."
+                className="ui-field ui-field--s num"
+                style={{ width: '70px' }} />
+              nds
+              {edits.referenceSpeedMs === null ? (
+                <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(déduite de la trace)</span>
+              ) : (
+                <Button size="s" onClick={() => draft.update({ referenceSpeedMs: null })} title="Revenir à l'allure déduite de la trace">
+                  Défaut
+                </Button>
+              )}
+            </label>
+          )}
+        </div>
       </div>
 
       {draft.savable && loadedFromMemory && (
@@ -851,23 +903,29 @@ function SailingModule() {
 
       <div id="map-view" style={{ width: '100%', marginTop: '10px', zIndex: 0, display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         <ResizablePanel id="sailing.carte" defaultHeight={600} minHeight={240}
+          className="sw-map-panel"
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest('.leaflet-control')) return;
+            if (window.matchMedia('(max-width: 767.98px)').matches) setMapExpanded(true);
+          }}
           style={{ flex: '0 1 60%', overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--line-strong)' }}>
           <MapContainer key={sessionKey ?? 'empty'} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
             <MapAutoResize />
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-
-            {staticMapLayers}
-
-            {hoveredIndex !== null && trackData[hoveredIndex] && (
-              <Marker
-                position={[trackData[hoveredIndex].lat, trackData[hoveredIndex].lon]}
-                icon={hoverIcon}
-                zIndexOffset={1000}
-              />
-            )}
-
+            {mapLayers}
           </MapContainer>
         </ResizablePanel>
+
+        {mapExpanded && (
+          <div className="sw-map-overlay" onClick={() => setMapExpanded(false)}>
+            <button type="button" className="sw-map-overlay__close" onClick={() => setMapExpanded(false)} aria-label="Fermer la carte">×</button>
+            <div className="sw-map-overlay__map" onClick={(e) => e.stopPropagation()}>
+              <MapContainer key={`expanded-${sessionKey ?? 'empty'}`} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
+                <MapAutoResize />
+                {mapLayers}
+              </MapContainer>
+            </div>
+          </div>
+        )}
 
         {stats && (
           <div style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -881,6 +939,10 @@ function SailingModule() {
                   style={{ ...CARD_STYLE, flex: '1 1 100%', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}
                   onMouseLeave={() => setHoveredIndex(null)}
                 >
+                  <div style={{ flex: '1 1 100%' }}>
+                    <PanelTitle label="Graphiques" open={carteOpen.graphiques} onToggle={() => toggleCarte('graphiques')} />
+                  </div>
+
                   <ResizablePanel id="sailing.graph.vitesse" defaultHeight={350} minWidth={250} minHeight={200} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
                     <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Historique de Vitesse (Cliquer pour défiler vers la carte)</strong>
                     <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
@@ -934,10 +996,13 @@ function SailingModule() {
                   onMouseLeave={() => setHoveredIndex(null)}
                 >
                   <div style={{ flex: '1 1 300px', minWidth: '250px' }}>
-                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>
-                      Variations du Vent
-                      <span style={{ color: 'var(--muted)', fontSize: '12px', fontWeight: 'normal' }}> (mesurées sur {windStats.count} manœuvres)</span>
-                    </strong>
+                    <div style={{ marginBottom: '10px' }}>
+                      <PanelTitle
+                        label="Variations du Vent"
+                        open={carteOpen.vent}
+                        onToggle={() => toggleCarte('vent')}
+                        extra={<span style={{ color: 'var(--muted)', fontSize: '12px', fontWeight: 'normal' }}> (mesurées sur {windStats.count} manœuvres)</span>} />
+                    </div>
                     <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8' }}>
                       <li><strong>Moyenne :</strong> {windStats.avgWind}°</li>
                       <li><strong>Plage de variation :</strong> {windStats.range}° (de {windStats.minWind}° à {windStats.maxWind}°)</li>

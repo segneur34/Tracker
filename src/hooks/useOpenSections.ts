@@ -9,8 +9,8 @@ export const useOpenSections = <K extends string>(moduleId: string, defaults: Re
   const { value, update } = useStoredRecord<Record<K, boolean>>('tracker.sections', moduleId, defaults);
 
   const toggle = useCallback(
-    (key: K) => update({ [key]: !value[key] } as Partial<Record<K, boolean>>),
-    [update, value]
+    (key: K) => update((current) => ({ [key]: !current[key] }) as Partial<Record<K, boolean>>),
+    [update]
   );
 
   return { open: value, toggle };

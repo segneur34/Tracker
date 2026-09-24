@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { jsonStore } from '../platform/storage';
 
 /**
@@ -47,6 +47,8 @@ interface ResizablePanelProps {
   /** Sens de redimensionnement autorisé. */
   direction?: 'both' | 'vertical' | 'horizontal';
   style?: CSSProperties;
+  className?: string;
+  onClick?: (e: MouseEvent<HTMLDivElement>) => void;
 }
 
 function ResizablePanel({
@@ -57,6 +59,8 @@ function ResizablePanel({
   minHeight = 120,
   direction = 'both',
   style,
+  className,
+  onClick,
 }: ResizablePanelProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [stored, setStored] = useState<PanelSize | null>(() => readSizes()[id] ?? null);
@@ -130,7 +134,9 @@ function ResizablePanel({
   return (
     <div
       ref={ref}
+      className={className}
       onPointerDown={onPointerDown}
+      onClick={onClick}
       style={{
         position: 'relative',
         resize: direction,

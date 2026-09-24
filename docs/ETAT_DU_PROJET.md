@@ -1,6 +1,6 @@
 # État du projet Tracker
 
-Document de passation, écrit le 21 septembre 2026 à partir d'une lecture complète du code et tenu à jour depuis ; dernière passe le 24 septembre 2026 (§10, point 44). Complète `CLAUDE.md`, qui donne les règles ; ici, le pipeline, la persistance, la dette, les chantiers et la cible mobile, dont **l'avancement n'est tenu qu'au §12**. L'historique des décisions (§10) vit dans `docs/HISTORIQUE.md`, la carte des fichiers dans `docs/INVENTAIRE.md`.
+Document de passation, écrit le 21 septembre 2026 à partir d'une lecture complète du code et tenu à jour depuis ; dernière passe le 25 septembre 2026 (§10, point 47). Complète `CLAUDE.md`, qui donne les règles ; ici, le pipeline, la persistance, la dette, les chantiers et la cible mobile, dont **l'avancement n'est tenu qu'au §12**. L'historique des décisions (§10) vit dans `docs/HISTORIQUE.md`, la carte des fichiers dans `docs/INVENTAIRE.md`.
 
 ## 1. Résumé
 
@@ -197,6 +197,7 @@ Exprimés par l'utilisateur ou découverts pendant le travail.
 - **Nommer un virage vu en un seul pas** (§10 point 27). Sur une trace d'enregistreur économique, le cap avant et le cap après sont connus, mais pas le chemin entre les deux : `angleDiff` retient l'arc court, et un virement pris en passant par le lit du vent ressort en empannage. La géométrie seule ne tranche pas. Pistes non tranchées : la perte de vitesse (inopérante sur une session lente de bout en bout), le déplacement latéral par rapport à l'axe du vent (ténu sur quelques mètres), ou assumer que le fichier ne le dit pas et l'afficher. Premier geste de la prochaine session sur ce sujet, à valider avec le souvenir de l'utilisateur.
 - Estimation du vent sur trace lente et peu échantillonnée : la polaire annonce une confiance élevée sur une direction fausse de 180° (§10 point 27). L'utilisateur corrige par « Inverser » et s'en satisfait pour l'instant ; la confiance affichée mériterait d'être rabattue quand la couverture polaire est maigre.
 - Valider les seuils d'un enregistrement dense sur une session de planche rapide : toute la calibration récente s'est faite sur une trace lente et une trace wingfoil, sans cas intermédiaire.
+- Taille des onglets et du texte sur téléphone (§10, point 47) : rentre mal sur un écran étroit au-delà de la carte voile déjà reprise. Refonte plus large qu'une conversation Sonnet, proposée par l'utilisateur pour Opus.
 
 ## 12. Cible mobile (Capacitor)
 
@@ -217,7 +218,8 @@ C'est le seul endroit où il est tenu.
   - lot 5, enregistrement : famille puis activité, statistiques en direct (le cap moyen du bord remplace l'amure, le vent étant inconnu pendant l'enregistrement) ;
   - lot 6, APK pour les testeurs : icône, fiche d'installation.
 - Hors plan, le 24 septembre 2026 : allure imposée propre à chaque session (point 46) ; audit, documentation allégée, code mort retiré (point 44) ; fins de ligne en LF et banc versé dans `outils/banc/` (point 45).
-- Phase 2 : interface mobile. Disposition empilée en écran étroit, décisions de disposition sur ordinateur inchangées ; toucher au lieu du survol ; graphes à largeur fixe (500 et 350 px) et poignée `resize` de 20 px à revoir ; `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz) : les regrouper par couleur toucherait à la décision « pas de paliers », à redemander ; `accept=".gpx"`, qui grise parfois les GPX sous Android.
+- Hors plan, le 25 septembre 2026 : lot I de la liste de bugs du 24/09 (point 47, APK 0.2.3) — quatre bugs d'interface téléphone (saisie du profil coureur, bascule des panneaux voile, disposition de la carte, aperçu carte de la bibliothèque). Les lots suivants de cette liste (renommage, pause d'enregistrement, poids du GPX) restent à faire, sous Opus.
+- Phase 2 : interface mobile. Amorcée pour le module voile (point 47) : carte pleine largeur en haut sous 768 px, feuille qui la chevauche, plein écran au tap. Restent : disposition empilée pour le reste de l'interface, taille des onglets et du texte à revoir plus largement (retour de l'utilisateur, point 47) ; toucher au lieu du survol ; graphes à largeur fixe (500 et 350 px) et poignée `resize` de 20 px à revoir ; `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz) : les regrouper par couleur toucherait à la décision « pas de paliers », à redemander ; `accept=".gpx"`, qui grise parfois les GPX sous Android.
 - Phase 3 : partage et export GPX, réception d'un GPX partagé depuis Komoot, cartes hors ligne (pas de réseau en mer), capteur cardiaque Bluetooth.
 
 ### Enregistrement

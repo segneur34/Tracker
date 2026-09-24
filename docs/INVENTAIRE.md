@@ -77,8 +77,8 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 ## `pages/`
 
 - `Home.tsx` : accueil d'attente (Enregistrer, Voile, Course), tableau de bord au lot 4.
-- `SessionLibrary.tsx` (+ `.css`) : bibliothèque d'une famille, import, sessions à classer, suppression.
-- `SailingModule.tsx` : analyse voile (en-tête, barre d'enregistrement, onglets du haut, carte et sa colonne d'onglets).
+- `SessionLibrary.tsx` (+ `.css`) : bibliothèque d'une famille, import, sessions à classer, suppression, aperçu carte d'une session à la demande (`SessionPreviewMap`, GPX relu, bornes de couleur comme le module d'analyse).
+- `SailingModule.tsx` (+ `.css`) : analyse voile (en-tête, barre d'enregistrement, onglets du haut, carte et sa colonne d'onglets) ; sous 768 px, carte pleine largeur en haut et vue plein écran au tap (`SailingModule.css`).
 - `RunningModule.tsx` : analyse course (synthèse, zones, graphes, carte).
 - `RecordingPage.tsx` : enregistrement, source GPS ou rejeu.
 - `SettingsPage.tsx` : mémoire, réglages par support, course, coureur.

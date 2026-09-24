@@ -1,16 +1,26 @@
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { MapContainer, Polyline, TileLayer } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import MapAutoResize from '../components/MapAutoResize';
 import MemoryStatus from '../components/MemoryStatus';
 import { IconChevronRight, IconFile } from '../components/icons';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
+import { parseGpx } from '../core/gpxParser';
+import { computeKinematics } from '../core/kinematics';
+import { referenceSpeedMs as sessionReferenceSpeedMs } from '../core/sessionSpeed';
+import { speedGradientColor } from '../core/speedGradient';
 import { SAILING_SPORTS, SPORT_PROFILES, sportFamily, type SportFamily } from '../core/sportProfiles';
-import type { SportType } from '../core/types';
-import { formatDuration, formatSpeed } from '../core/units';
+import type { RawTrackPoint, SportType, TrackPoint } from '../core/types';
+import { formatDuration, formatSpeed, knotsToMs, msToKnots } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
-import { importFiles, importFromFolder, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
+import { importFiles, importFromFolder, readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
+import { readStoredSettings } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
 import { isNativeApp } from '../platform/runtime';
+import { DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
+import { DEFAULT_SAILING_SPEED_RANGE_MS, SPEED_RANGE_MAX_MARGIN_KN, suggestActiveThresholdKn } from '../sailing/sailingConfig';
 import './SessionLibrary.css';
 
 /**
@@ -49,6 +59,81 @@ const rowStats = (session: LibrarySession): string[] => {
   return stats;
 };
 
+/**
+ * Bornes de couleur d'une vignette d'aperçu, dans cet ordre :
+ * 1. la surcharge réglée par l'utilisateur pour ce support (légende du module d'analyse,
+ *    `tracker.sportSettings`) — elle prime toujours ;
+ * 2. en voile, les bornes suggérées par l'allure de la session, comme le module d'analyse :
+ *    seuil d'activité suggéré en bas, pic de vitesse déjà enregistré dans la fiche
+ *    (`summary.maxSpeedMs`) plus une marge en haut — l'allure vient de la fiche si elle a été
+ *    imposée, sinon des points bruts du GPX qu'on vient de lire ;
+ * 3. à défaut (course, support inconnu, ou pic non mesuré), le défaut de la famille.
+ */
+const previewSpeedRange = (session: LibrarySession, family: SportFamily, rawPoints: RawTrackPoint[]): { minMs: number; maxMs: number } => {
+  const { record } = session;
+  if (record.sport) {
+    const override = readStoredSettings().speedRanges?.[record.sport];
+    if (override && isFinite(override.minMs) && isFinite(override.maxMs) && override.maxMs > override.minMs) return override;
+  }
+  if (record.sport && family === 'voile' && record.summary.maxSpeedMs > 0) {
+    const referenceKn = msToKnots(record.analysis?.referenceSpeedMs ?? sessionReferenceSpeedMs(rawPoints));
+    return {
+      minMs: knotsToMs(suggestActiveThresholdKn(record.sport, referenceKn)),
+      maxMs: record.summary.maxSpeedMs + knotsToMs(SPEED_RANGE_MAX_MARGIN_KN),
+    };
+  }
+  return family === 'voile' ? DEFAULT_SAILING_SPEED_RANGE_MS : DEFAULT_SPEED_RANGE_MS;
+};
+
+/** Aperçu carte d'une session, chargé et analysé à la demande (aucun point de trace en mémoire avant). */
+function SessionPreviewMap({ session, family }: { session: LibrarySession; family: SportFamily }) {
+  const [track, setTrack] = useState<TrackPoint[] | null>(null);
+  const [range, setRange] = useState<{ minMs: number; maxMs: number } | null>(null);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const gpx = await readSessionGpx(session.file);
+      if (cancelled) return;
+      if (gpx === null) { setStatus('error'); return; }
+      try {
+        const { rawPoints } = parseGpx(gpx);
+        const points = computeKinematics(rawPoints);
+        if (points.length < 2) { setStatus('error'); return; }
+        setTrack(points);
+        setRange(previewSpeedRange(session, family, rawPoints));
+        setStatus('ready');
+      } catch {
+        if (!cancelled) setStatus('error');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [session, family]);
+
+  if (status === 'loading') return <div className="lib-row__preview-status">Chargement de la carte…</div>;
+  if (status === 'error' || track === null || range === null) return <div className="lib-row__preview-status">Carte indisponible.</div>;
+
+  const { minMs, maxMs } = range;
+  return (
+    <MapContainer
+      center={[track[0].lat, track[0].lon]}
+      zoom={13}
+      style={{ height: '160px', width: '100%' }}
+      zoomControl={false}
+      attributionControl={false}>
+      <MapAutoResize />
+      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      {track.slice(1).map((point, index) => (
+        <Polyline
+          key={index}
+          positions={[[track[index].lat, track[index].lon], [point.lat, point.lon]]}
+          pathOptions={{ color: speedGradientColor(point.smoothedSpeedMs, minMs, maxMs), weight: 4 }} />
+      ))}
+    </MapContainer>
+  );
+}
+
 function SessionRow({
   session, family, confirming, onAskDelete, onCancelDelete,
 }: {
@@ -62,19 +147,38 @@ function SessionRow({
   const { record } = session;
   const { startMs } = record.summary;
   const unclassified = record.sport === null;
+  const [previewOpen, setPreviewOpen] = useState(false);
+  /** Une fois monté, l'aperçu reste en vie (juste masqué) pour ne pas relire le GPX à chaque redépli. */
+  const [previewMounted, setPreviewMounted] = useState(false);
 
   return (
     <li className="lib-row">
-      <button type="button" className="lib-row__main" onClick={() => openSession(session.file, family)}>
-        <span className="lib-row__head">
-          <span className="lib-row__sport">{record.sport ? SPORT_PROFILES[record.sport].label : 'À classer'}</span>
-          <span className="lib-row__date">{formatDate(startMs)} · {formatTime(startMs)}</span>
-        </span>
-        <span className="lib-row__stats num">{rowStats(session).join(' · ')}</span>
-        {record.notes?.comment && <span className="lib-row__note">{record.notes.comment}</span>}
-        {session.warning && <span className="lib-row__warning">{session.warning}</span>}
-        <IconChevronRight className="lib-row__chevron" />
-      </button>
+      <div className="lib-row__head-line">
+        <button type="button" className="lib-row__main" onClick={() => openSession(session.file, family)}>
+          <span className="lib-row__head">
+            <span className="lib-row__sport">{record.sport ? SPORT_PROFILES[record.sport].label : 'À classer'}</span>
+            <span className="lib-row__date">{formatDate(startMs)} · {formatTime(startMs)}</span>
+          </span>
+          <span className="lib-row__stats num">{rowStats(session).join(' · ')}</span>
+          {record.notes?.comment && <span className="lib-row__note">{record.notes.comment}</span>}
+          {session.warning && <span className="lib-row__warning">{session.warning}</span>}
+          <IconChevronRight className="lib-row__chevron" />
+        </button>
+        <button
+          type="button"
+          className="lib-row__preview-toggle"
+          aria-expanded={previewOpen}
+          aria-label={previewOpen ? 'Masquer l\'aperçu carte' : 'Aperçu carte'}
+          onClick={() => { setPreviewOpen((open) => !open); setPreviewMounted(true); }}>
+          <IconChevronRight style={{ transform: previewOpen ? 'rotate(90deg)' : undefined }} />
+        </button>
+      </div>
+
+      {previewMounted && (
+        <div className="lib-row__preview" style={previewOpen ? undefined : { display: 'none' }}>
+          <SessionPreviewMap session={session} family={family} />
+        </div>
+      )}
 
       <div className="lib-row__actions">
         {unclassified && !session.readOnly && (

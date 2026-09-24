@@ -1,0 +1,93 @@
+/* Disposition mobile du module voile (`SailingModule.tsx`), sur les variables de `theme/tokens.css`. */
+
+.sw-sheet__stats {
+  display: none;
+}
+
+.sw-map-overlay {
+  display: none;
+}
+
+@media (max-width: 767.98px) {
+  .sailing-page {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Carte et colonne d'onglets (liés en une seule rangée, inchangés sur ordinateur) remontent
+     tout en haut, devant le titre et les réglages : les autres blocs gardent leur ordre entre eux. */
+  #map-view {
+    order: -1;
+    margin-top: 0;
+  }
+
+  .sw-map-panel {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    height: 30vh !important;
+    resize: none !important;
+    cursor: pointer;
+  }
+
+  /* Feuille arrondie qui chevauche légèrement la carte : titre, chiffres clés, réglages. */
+  .sw-sheet {
+    background: var(--surface);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+    margin-top: -16px;
+    padding: var(--space-4) var(--space-4) var(--space-2);
+    position: relative;
+    z-index: 1;
+  }
+
+  .sw-sheet__stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-4);
+  }
+
+  .sw-sheet__stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .sw-sheet__stat-label {
+    color: var(--muted);
+    font-size: var(--text-s);
+  }
+
+  .sw-sheet__stat-value {
+    font-size: var(--text-l);
+  }
+
+  .sw-map-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: var(--surface);
+  }
+
+  .sw-map-overlay__close {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-4);
+    z-index: 1001;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: var(--text-xl);
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .sw-map-overlay__map {
+    width: 100%;
+    height: 100%;
+  }
+}

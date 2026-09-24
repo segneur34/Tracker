@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { ELEVATION_PRESETS, SAILING_SPORTS, SPORT_PROFILES } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import { SPEED_UNIT_LABEL, formatSpeedValue, fromDisplaySpeed, toDisplaySpeed, type SpeedUnit } from '../core/units';
@@ -20,7 +21,10 @@ const headStyle = { padding: '6px 10px', backgroundColor: 'var(--surface-sunken)
 /**
  * Champ numérique optionnel, en `type="number"` avec flèches ↕, même
  * principe que le seuil d'activité du module voile : la valeur s'applique
- * immédiatement, sans brouillon ni validation à la sortie du champ.
+ * immédiatement. L'affichage suit un brouillon local tant que le champ a le
+ * focus, pour ne pas effacer une frappe en cours (valeur hors bornes en
+ * cours de saisie, "." d'un décimal) quand un commit sans effet redéclenche
+ * un rendu ; à la sortie du champ, le brouillon revient à la valeur commise.
  */
 function NumberField({
   label, unit, value, onCommit, placeholder, step = 1, min, max,
@@ -34,12 +38,21 @@ function NumberField({
   min?: number;
   max?: number;
 }) {
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [draft, setDraft] = useState(value === null ? '' : String(value));
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (!focused.current) setDraft(value === null ? '' : String(value));
+  }, [value]);
+
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const text = e.target.value;
+    setDraft(text);
     if (text === '') { onCommit(null); return; }
     const parsed = parseFloat(text);
     if (!isNaN(parsed)) onCommit(parsed);
   };
+
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: label ? '8px' : 0, fontSize: '14px' }}>
       {label && <span style={{ width: '190px' }}>{label}</span>}
@@ -48,9 +61,11 @@ function NumberField({
         step={step}
         min={min}
         max={max}
-        value={value ?? ''}
+        value={draft}
         placeholder={placeholder}
         onChange={handleChange}
+        onFocus={() => { focused.current = true; }}
+        onBlur={() => { focused.current = false; setDraft(value === null ? '' : String(value)); }}
         className="ui-field ui-field--s num"
         style={{ width: '84px', textAlign: 'right' }} />
       {unit && <span style={{ color: 'var(--muted)' }}>{unit}</span>}
