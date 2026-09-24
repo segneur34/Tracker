@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Tracker : analyse de sessions sportives à partir de traces GPX
 
-Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau) et course (`/course`), pages `/enregistrer` et `/parametres`. Interface et commentaires en français. Application Android via Capacitor, avec enregistrement GPS natif : plan en six lots au §12 de `docs/ETAT_DU_PROJET.md` (« Cible mobile »), lot 1 fait, lot 3 (mémoire en dossier) passé avant le lot 2, 3a fait.
+Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau) et course (`/course`), pages `/enregistrer` et `/parametres`. Interface et commentaires en français. Application Android via Capacitor, avec enregistrement GPS natif : plan en six lots au §12 de `docs/ETAT_DU_PROJET.md` (« Cible mobile »), lots 1 et 3 (mémoire en dossier, 3a navigateur et 3b téléphone) faits ; prochain : lot 2.
 
 `docs/ETAT_DU_PROJET.md` décrit le code, le pipeline et les chantiers : le lire avant de toucher au noyau ou aux analyses voile. `docs/INVENTAIRE.md` donne les signatures exportées, module par module. `docs/HISTORIQUE.md` garde les décisions passées et les pièges : le consulter sur le sujet qu'on touche.
 
@@ -57,7 +57,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Section de module : `*_SECTIONS` et `*_SECTION_DEFAULTS` de la page, et un bloc `{open.cle && ...}` dans un `ResizablePanel` d'`id` unique. En voile : `SAILING_SECTIONS` en haut, `SAILING_CARTE_PANELS` dans la colonne de la carte.
 - Graphe relié à la carte : chaque ligne porte l'`index` du point de trace, et le survol passe par `hoveredTrackIndex` (`components/chartHover.ts`). Pas de `any`.
 - Métrique de manœuvre : `ManeuverLocation` (`sailing/maneuvers.ts`), puis `MANEUVER_METRICS` et `summarizeManeuvers` (`sailing/sailingAnalytics.ts`).
-- Donnée propre à une session (notes, support, futur vent saisi) : dans sa fiche (`library/record.ts`), écrite par `updateSessionRecord` ; jamais dans une clé de l'appareil. Une donnée recalculable depuis le GPX va dans `summary`, avec `SUMMARY_CALC_VERSION` augmenté si son calcul change.
+- Donnée propre à une session (notes, vent saisi, seuil d'activité, support) : dans sa fiche (`library/record.ts`), écrite par `updateSessionRecord` ; dans le module, par le brouillon (`useSessionDraft`, `library/sessionEdits.ts`) et « Enregistrer la session » ; jamais dans une clé de l'appareil. Une donnée recalculable depuis le GPX va dans `summary`, avec `SUMMARY_CALC_VERSION` augmenté si son calcul change.
 - Calcul pur : dans `core/`, `sailing/`, `running/`, `recording/` ou `library/`, avec son `*.test.ts` sur trace synthétique.
 - Couleur, police, rayon, espacement : une variable de `src/theme/tokens.css`, jamais une valeur en dur dans un écran neuf. Composants communs dans `components/ui`, icônes dans `components/icons.tsx` (pas d'emoji). Les couleurs de données des graphes et de la carte restent en dur (attributs SVG).
 
@@ -66,6 +66,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Couleur de trace : dégradé continu sur une échelle absolue (`core/speedGradient.ts`), gris sous la borne basse, bornes réglables par support dans la légende ; ni échelle relative ni paliers. Course : 4 à 15 km/h. Voile : seuil d'activité et bornes suggérés par l'allure (`suggestActiveThresholdKn`, `suggestSpeedRangeMs` : au-dessus de 12 nds, défaut du profil, sauf le bateau à 1 nd ; en dessous, 1 nd ; borne haute = pic sur 2 s + 1 nd ; 8 à 28 nds si la trace est trop courte). La surcharge persistée prime toujours.
 - Courbe du vent : toute la session, par toutes les manœuvres sans exception, valeur la plus proche aux bords, coupure au-delà de 30 min sans manœuvre.
 - Une seule notion de réussite : le vent est estimé au seuil d'activité effectif, surcharge comprise (bouger le seuil recalcule le vent, c'est accepté).
+- Session : vent saisi, seuil d'activité et notes restent en brouillon jusqu'à « Enregistrer la session » (Annuler, avertissement en quittant). Le seuil est propre à chaque session, dans sa fiche, et prime sur celui du support. Le support se change immédiatement.
 - Graphes course « superposés » à deux axes, voulus malgré la difficulté de lecture.
 - Tout bloc est redimensionnable (`ResizablePanel`), taille mémorisée.
 - Voile : manœuvres en petit tableau, détails dépliables. Carte à 60 % de large ; à sa droite, les onglets manœuvres, VMG, graphiques, vent (dans cet ordre, fermés par défaut, côte à côte si la place le permet). En haut : global, matos, tops seulement. Ne rien déplacer ni dupliquer entre les deux groupes sans redemander.
