@@ -13,6 +13,7 @@ const record = (gpx: string): SessionRecord => ({
   source: 'import',
   addedAt: '2026-09-23T13:00:00.000Z',
   title: null,
+  name: null,
   summary: {
     calcVersion: SUMMARY_CALC_VERSION, startMs: 1, endMs: 2, distanceM: 3, movingTimeS: 1,
     elevationGainM: null, maxSpeedMs: 3, pointCount: 2, samplingS: 1,

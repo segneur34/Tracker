@@ -13,6 +13,7 @@ const record = (patch: Partial<SessionRecord> = {}): SessionRecord => ({
   source: 'import',
   addedAt: '2026-09-24T10:00:00.000Z',
   title: null,
+  name: null,
   summary: {
     calcVersion: SUMMARY_CALC_VERSION,
     startMs: START_MS,

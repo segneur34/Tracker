@@ -21,6 +21,7 @@ import {
   isSummaryStale,
   isWritableRecord,
   parseRecord,
+  readSessionName,
   recordFileName,
   serializeRecord,
   type LibrarySession,
@@ -247,6 +248,7 @@ const newRecord = (gpx: string, analyzed: AnalyzedGpx, source: SessionSource): S
   source,
   addedAt: new Date().toISOString(),
   title: analyzed.title,
+  name: null,
   summary: analyzed.summary,
   // Notes saisies avant l'existence du dossier, pour la même trace.
   notes: findLegacyNotes(jsonStore.read<Record<string, unknown>>(LEGACY_NOTES_KEY), analyzed.summary.startMs),
@@ -790,15 +792,17 @@ export const readSessionGpx = async (file: string): Promise<string | null> => {
 
 export interface RecordPatch {
   sport?: SportType | null;
+  /** Nom donné par l'utilisateur ; vide ou `null` : plus de nom. */
+  name?: string | null;
   notes?: StoredSessionNotes | null;
   analysis?: SessionAnalysis | null;
   maneuverCount?: number;
 }
 
 /**
- * Modifie la fiche d'une session : support, notes, réglages d'analyse, nombre
- * de manœuvres. La liste suit tout de suite ; le fichier est écrit un instant
- * plus tard. Un changement de support, de seuil d'activité ou d'allure imposée
+ * Modifie la fiche d'une session : support, nom, notes, réglages d'analyse,
+ * nombre de manœuvres. La liste suit tout de suite ; le fichier est écrit un
+ * instant plus tard. Un changement de support, de seuil d'activité ou d'allure imposée
  * recalcule le résumé ; un changement de support efface le seuil propre à la
  * session, exprimé dans l'unité de l'ancien support (l'allure, en m/s, reste).
  */
@@ -806,6 +810,10 @@ export const updateSessionRecord = (file: string, patch: RecordPatch): void => {
   const session = findSession(file);
   if (!session || session.readOnly) return;
   let record = session.record;
+  if (patch.name !== undefined) {
+    const name = readSessionName(patch.name);
+    if (name !== record.name) record = { ...record, name };
+  }
   if (patch.notes !== undefined) record = { ...record, notes: patch.notes };
   const thresholdBefore = record.analysis?.activeThreshold ?? null;
   const referenceBefore = record.analysis?.referenceSpeedMs ?? null;
@@ -943,3 +951,7 @@ export const librarySession = (file: string): LibrarySession | undefined => find
 /** Session d'un fichier, ou `undefined` si la bibliothèque ne la connaît pas. */
 export const findLibrarySession = (sessions: LibrarySession[], file: string | null): LibrarySession | undefined =>
   file === null ? undefined : sessions.find((s) => s.file === file);
+
+/** Nom donné par l'utilisateur à la session d'un fichier, `null` sans nom ou hors de la mémoire. */
+export const useSessionName = (file: string | null): string | null =>
+  findLibrarySession(useSessionLibrary().sessions, file)?.record.name ?? null;

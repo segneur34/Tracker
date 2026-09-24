@@ -150,13 +150,24 @@ function SessionRow({
   const [previewOpen, setPreviewOpen] = useState(false);
   /** Une fois monté, l'aperçu reste en vie (juste masqué) pour ne pas relire le GPX à chaque redépli. */
   const [previewMounted, setPreviewMounted] = useState(false);
+  /** Nom en cours de saisie ; `null` hors renommage. */
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+
+  const saveName = () => {
+    if (nameDraft === null) return;
+    updateSessionRecord(session.file, { name: nameDraft });
+    setNameDraft(null);
+  };
 
   return (
     <li className="lib-row">
       <div className="lib-row__head-line">
         <button type="button" className="lib-row__main" onClick={() => openSession(session.file, family)}>
+          {record.name && <span className="lib-row__name">{record.name}</span>}
           <span className="lib-row__head">
-            <span className="lib-row__sport">{record.sport ? SPORT_PROFILES[record.sport].label : 'À classer'}</span>
+            <span className={record.name ? 'lib-row__sport lib-row__sport--sub' : 'lib-row__sport'}>
+              {record.sport ? SPORT_PROFILES[record.sport].label : 'À classer'}
+            </span>
             <span className="lib-row__date">{formatDate(startMs)} · {formatTime(startMs)}</span>
           </span>
           <span className="lib-row__stats num">{rowStats(session).join(' · ')}</span>
@@ -181,26 +192,50 @@ function SessionRow({
       )}
 
       <div className="lib-row__actions">
-        {unclassified && !session.readOnly && (
-          <select
-            className="ui-field ui-field--s"
-            value=""
-            aria-label="Classer la session"
-            onChange={(e) => updateSessionRecord(session.file, { sport: e.target.value as SportType })}>
-            <option value="" disabled>Classer…</option>
-            {[...SAILING_SPORTS, 'running' as const].map((s) => (
-              <option key={s} value={s}>{SPORT_PROFILES[s].label}</option>
-            ))}
-          </select>
-        )}
-        {!session.readOnly && (confirming ? (
+        {nameDraft !== null ? (
           <>
-            <Button size="s" variant="danger" onClick={() => void removeSession(session.file)}>Confirmer</Button>
-            <Button size="s" variant="ghost" onClick={onCancelDelete}>Annuler</Button>
+            <input
+              className="ui-field ui-field--s lib-row__rename"
+              value={nameDraft}
+              autoFocus
+              maxLength={80}
+              placeholder="Nom de la session"
+              aria-label="Nom de la session"
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveName();
+                else if (e.key === 'Escape') setNameDraft(null);
+              }} />
+            <Button size="s" onClick={saveName}>Valider</Button>
+            <Button size="s" variant="ghost" onClick={() => setNameDraft(null)}>Annuler</Button>
           </>
         ) : (
-          <Button size="s" variant="ghost" onClick={onAskDelete}>Supprimer</Button>
-        ))}
+          <>
+            {unclassified && !session.readOnly && (
+              <select
+                className="ui-field ui-field--s"
+                value=""
+                aria-label="Classer la session"
+                onChange={(e) => updateSessionRecord(session.file, { sport: e.target.value as SportType })}>
+                <option value="" disabled>Classer…</option>
+                {[...SAILING_SPORTS, 'running' as const].map((s) => (
+                  <option key={s} value={s}>{SPORT_PROFILES[s].label}</option>
+                ))}
+              </select>
+            )}
+            {!session.readOnly && !confirming && (
+              <Button size="s" variant="ghost" onClick={() => setNameDraft(record.name ?? '')}>Renommer</Button>
+            )}
+            {!session.readOnly && (confirming ? (
+              <>
+                <Button size="s" variant="danger" onClick={() => void removeSession(session.file)}>Confirmer</Button>
+                <Button size="s" variant="ghost" onClick={onCancelDelete}>Annuler</Button>
+              </>
+            ) : (
+              <Button size="s" variant="ghost" onClick={onAskDelete}>Supprimer</Button>
+            ))}
+          </>
+        )}
       </div>
     </li>
   );

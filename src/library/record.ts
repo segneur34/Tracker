@@ -88,6 +88,11 @@ export interface SessionRecord {
   addedAt: string;
   /** Nom de la trace lu dans le GPX. */
   title: string | null;
+  /**
+   * Nom donné par l'utilisateur, `null` s'il n'en a pas donné. Le GPX et la
+   * fiche gardent leur nom de fichier. Absent des fiches plus anciennes.
+   */
+  name: string | null;
   summary: SessionSummary;
   notes: StoredSessionNotes | null;
   /** Absent des fiches écrites avant son introduction : lu comme `null`. */
@@ -148,6 +153,13 @@ export const readNotes = (raw: unknown): StoredSessionNotes | null => {
   };
 };
 
+/** Nom de session saisi ou relu : rogné, `null` s'il est vide ou n'est pas un texte. */
+export const readSessionName = (raw: unknown): string | null => {
+  if (typeof raw !== 'string') return null;
+  const name = raw.trim();
+  return name === '' ? null : name;
+};
+
 /** Direction ramenée dans [0, 360). */
 export const normalizeDeg = (deg: number): number => ((deg % 360) + 360) % 360;
 
@@ -188,6 +200,7 @@ export const parseRecord = (text: string): SessionRecord | null => {
     source: raw.source === 'enregistrement' ? 'enregistrement' : 'import',
     addedAt: typeof raw.addedAt === 'string' ? raw.addedAt : new Date(summary.startMs).toISOString(),
     title: typeof raw.title === 'string' ? raw.title : null,
+    name: readSessionName(raw.name),
     summary,
     notes: readNotes(raw.notes),
     analysis: readAnalysis(raw.analysis),

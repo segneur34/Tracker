@@ -1,27 +1,28 @@
-/* Disposition mobile du module voile (`SailingModule.tsx`), sur les variables de `theme/tokens.css`. */
+/* Disposition mobile des modules d'analyse (`SailingModule.tsx`, `RunningModule.tsx`), sur les variables de `theme/tokens.css`.
+   Sur ordinateur, rien ne change : seules la feuille des chiffres clés et la vue plein écran sont masquées. */
 
-.sw-sheet__stats {
+.an-sheet__stats {
   display: none;
 }
 
-.sw-map-overlay {
+.an-map-overlay {
   display: none;
 }
 
 @media (max-width: 767.98px) {
-  .sailing-page {
+  .an-page {
     display: flex;
     flex-direction: column;
   }
 
-  /* Carte et colonne d'onglets (liés en une seule rangée, inchangés sur ordinateur) remontent
+  /* Rangée de la carte (en voile, avec la colonne d'onglets liée, inchangée sur ordinateur) remonte
      tout en haut, devant le titre et les réglages : les autres blocs gardent leur ordre entre eux. */
-  #map-view {
+  .an-map-row {
     order: -1;
     margin-top: 0;
   }
 
-  .sw-map-panel {
+  .an-map-panel {
     flex: 1 1 100% !important;
     width: 100% !important;
     height: 30vh !important;
@@ -30,7 +31,7 @@
   }
 
   /* Feuille arrondie qui chevauche légèrement la carte : titre, chiffres clés, réglages. */
-  .sw-sheet {
+  .an-sheet {
     background: var(--surface);
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
@@ -40,29 +41,29 @@
     z-index: 1;
   }
 
-  .sw-sheet__stats {
+  .an-sheet__stats {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-3) var(--space-4);
     margin-bottom: var(--space-4);
   }
 
-  .sw-sheet__stat {
+  .an-sheet__stat {
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
 
-  .sw-sheet__stat-label {
+  .an-sheet__stat-label {
     color: var(--muted);
     font-size: var(--text-s);
   }
 
-  .sw-sheet__stat-value {
+  .an-sheet__stat-value {
     font-size: var(--text-l);
   }
 
-  .sw-map-overlay {
+  .an-map-overlay {
     display: block;
     position: fixed;
     inset: 0;
@@ -70,7 +71,7 @@
     background: var(--surface);
   }
 
-  .sw-map-overlay__close {
+  .an-map-overlay__close {
     position: absolute;
     top: var(--space-4);
     right: var(--space-4);
@@ -86,7 +87,7 @@
     cursor: pointer;
   }
 
-  .sw-map-overlay__map {
+  .an-map-overlay__map {
     width: 100%;
     height: 100%;
   }

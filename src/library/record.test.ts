@@ -24,6 +24,7 @@ const record = (patch: Partial<SessionRecord> = {}): SessionRecord => ({
   source: 'enregistrement',
   addedAt: '2026-09-23T13:00:00.000Z',
   title: 'Wingfoil, 23/09/2026 14:00',
+  name: null,
   summary: {
     calcVersion: SUMMARY_CALC_VERSION,
     startMs: START_MS,
@@ -57,6 +58,16 @@ describe('parseRecord et serializeRecord', () => {
       summary: { ...record().summary, maneuverCount: 12 },
     });
     expect(parseRecord(serializeRecord(r))).toEqual(r);
+  });
+
+  it('relisent le nom donné par l\'utilisateur', () => {
+    const r = record({ name: 'Sortie du matin' });
+    expect(parseRecord(serializeRecord(r))?.name).toBe('Sortie du matin');
+    const { name: _absent, ...ancienne } = record();
+    expect(parseRecord(JSON.stringify(ancienne))?.name).toBeNull();
+    expect(parseRecord(JSON.stringify({ ...record(), name: '   ' }))?.name).toBeNull();
+    expect(parseRecord(JSON.stringify({ ...record(), name: 42 }))?.name).toBeNull();
+    expect(parseRecord(JSON.stringify({ ...record(), name: '  Foil  ' }))?.name).toBe('Foil');
   });
 
   it('conservent les champs inconnus, en tête comme dans le résumé', () => {

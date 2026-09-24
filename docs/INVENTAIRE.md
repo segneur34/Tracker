@@ -78,15 +78,16 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 
 - `Home.tsx` : accueil d'attente (Enregistrer, Voile, Course), tableau de bord au lot 4.
 - `SessionLibrary.tsx` (+ `.css`) : bibliothèque d'une famille, import, sessions à classer, suppression, aperçu carte d'une session à la demande (`SessionPreviewMap`, GPX relu, bornes de couleur comme le module d'analyse).
-- `SailingModule.tsx` (+ `.css`) : analyse voile (en-tête, barre d'enregistrement, onglets du haut, carte et sa colonne d'onglets) ; sous 768 px, carte pleine largeur en haut et vue plein écran au tap (`SailingModule.css`).
+- `SailingModule.tsx` : analyse voile (en-tête, barre d'enregistrement, onglets du haut, carte et sa colonne d'onglets).
 - `RunningModule.tsx` : analyse course (synthèse, zones, graphes, carte).
+- `analysisMobile.css` : disposition des deux modules d'analyse sous 768 px (carte pleine largeur en haut, feuille des chiffres clés, vue plein écran au tap) ; classes `an-*`.
 - `RecordingPage.tsx` : enregistrement, source GPS ou rejeu.
 - `SettingsPage.tsx` : mémoire, réglages par support, course, coureur.
 
 ## `components/` et thème
 
 - `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement.
-- `MemoryStatus.tsx` : état de la mémoire et l'action qui convient. `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17).
+- `MemoryStatus.tsx` : état de la mémoire et l'action qui convient. `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17).
 - `SpeedGradientLegend.tsx` : légende et bornes de couleur (§10, point 30). `MapAutoResize.tsx` : `invalidateSize` de la carte. `chartHover.ts` : survol d'un graphe vers la carte.
 - `ui/` : `Button`, `Card`, `PageHeader`, `ui.css`. `icons.tsx` : icônes SVG. `styles.ts` : `CARD_STYLE`.
 - `theme/tokens.css` : toutes les variables de la DA. `theme/base.css` : police, fond, focus.

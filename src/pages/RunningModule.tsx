@@ -1,13 +1,16 @@
 import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 import { CircleMarker, MapContainer, Polyline, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import './analysisMobile.css';
 import {
   Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
   type TooltipPayloadEntry, type TooltipValueType,
 } from 'recharts';
 import MapAutoResize from '../components/MapAutoResize';
+import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
+import SessionNameEditor from '../components/SessionNameEditor';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE } from '../components/styles';
@@ -27,6 +30,7 @@ import {
   type SpeedUnit,
 } from '../core/units';
 import { useGpxSession } from '../hooks/useGpxSession';
+import { useSessionName } from '../hooks/useSessionLibrary';
 import { libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
@@ -102,6 +106,7 @@ function RunningModule() {
     [loadGpxContent]
   );
   const { error: sessionError } = useSessionFromUrl(receiveSession);
+  const sessionName = useSessionName(gpx.fileName);
 
   // Un GPX ouvert ici entre d'abord dans la mémoire ; faute de mémoire, il est lu directement.
   const importAndOpen = useImportAndOpen('course');
@@ -115,6 +120,8 @@ function RunningModule() {
   const { open, toggle } = useOpenSections<RunningSection>('running', RUNNING_SECTION_DEFAULTS);
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  /** Carte agrandie en plein écran, sur téléphone (tap sur la carte compacte, écran étroit seulement). */
+  const [mapExpanded, setMapExpanded] = useState(false);
 
   const scale = TEXT_SCALE_FACTOR[textScale];
   const unitLabel = SPEED_UNIT_LABEL[speedUnit];
@@ -258,46 +265,73 @@ function RunningModule() {
       slowLabel="marche" />
   );
 
+  /** Couches de la carte, partagées par la carte compacte et sa vue agrandie (tap, écran étroit). */
+  const mapLayers = (
+    <>
+      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      {mapSegments.map((segment) => (
+        <Polyline key={`track-${segment.id}`} positions={segment.positions} pathOptions={{ color: segment.color, weight: 5 }} />
+      ))}
+      {hoveredIndex !== null && gpx.track[hoveredIndex] && (
+        <CircleMarker
+          center={[gpx.track[hoveredIndex].lat, gpx.track[hoveredIndex].lon]}
+          radius={8}
+          pathOptions={{ color: 'var(--ink)', fillColor: '#fff', fillOpacity: 1, weight: 3 }} />
+      )}
+    </>
+  );
+
   return (
-    <div style={{ padding: '20px' }} onMouseLeave={() => setHoveredIndex(null)}>
-      <div style={{ marginBottom: '15px' }}>
-        <PageHeader title="Analyse course à pied" back={{ to: libraryPath('course'), label: 'Sessions course' }} />
-        {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
-      </div>
+    <div className="an-page" style={{ padding: '20px' }} onMouseLeave={() => setHoveredIndex(null)}>
+      <div className="an-sheet">
+        <div style={{ marginBottom: '15px' }}>
+          <PageHeader title="Analyse course à pied" subtitle={gpx.fileName ? <SessionNameEditor file={gpx.fileName} /> : undefined} back={{ to: libraryPath('course'), label: 'Sessions course' }} />
+          {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
+        </div>
 
-      <div style={{ display: 'flex', gap: '18px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', fontSize: '14px' }}>
-        <label className="ui-btn ui-btn--secondary">
-          <IconFile size={18} />
-          Ouvrir un fichier GPX
-          <input type="file" accept=".gpx" onChange={openFile} hidden />
-        </label>
+        {stats && averages && (
+          <div className="an-sheet__stats">
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{stats.distance} km</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps de parcours</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne en mouvement</span><strong className="an-sheet__stat-value">{formatSpeed(averages.moving.speedMs, speedUnit)}</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Dénivelé positif</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `${stats.elevationGain} m` : '—'}</strong></div>
+          </div>
+        )}
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <strong>Unité :</strong>
-          <select value={speedUnit} onChange={(e) => setSpeedUnit(e.target.value as SpeedUnit)} className="ui-field ui-field--s">
-            {RUNNING_UNITS.map((u) => (
-              <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>
-            ))}
-          </select>
-        </label>
+        <div style={{ display: 'flex', gap: '18px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', fontSize: '14px' }}>
+          <label className="ui-btn ui-btn--secondary">
+            <IconFile size={18} />
+            Ouvrir un fichier GPX
+            <input type="file" accept=".gpx" onChange={openFile} hidden />
+          </label>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <strong>Terrain :</strong>
-          <select value={terrain} onChange={(e) => setTerrain(e.target.value as TerrainType)} className="ui-field ui-field--s">
-            {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
-              <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
-            ))}
-          </select>
-        </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <strong>Unité :</strong>
+            <select value={speedUnit} onChange={(e) => setSpeedUnit(e.target.value as SpeedUnit)} className="ui-field ui-field--s">
+              {RUNNING_UNITS.map((u) => (
+                <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>
+              ))}
+            </select>
+          </label>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <strong>Texte :</strong>
-          <select value={textScale} onChange={(e) => setTextScale(e.target.value as TextScale)} className="ui-field ui-field--s">
-            {(Object.keys(TEXT_SCALE_FACTOR) as TextScale[]).map((s) => (
-              <option key={s} value={s}>{TEXT_SCALE_LABEL[s]}</option>
-            ))}
-          </select>
-        </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <strong>Terrain :</strong>
+            <select value={terrain} onChange={(e) => setTerrain(e.target.value as TerrainType)} className="ui-field ui-field--s">
+              {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
+                <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <strong>Texte :</strong>
+            <select value={textScale} onChange={(e) => setTextScale(e.target.value as TextScale)} className="ui-field ui-field--s">
+              {(Object.keys(TEXT_SCALE_FACTOR) as TextScale[]).map((s) => (
+                <option key={s} value={s}>{TEXT_SCALE_LABEL[s]}</option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       {gpx.error && (
@@ -318,9 +352,9 @@ function RunningModule() {
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'stretch', marginBottom: '15px', fontSize: `${14 * scale}px` }}>
           {open.synthese && (
           <ResizablePanel id="running.synthese" style={{ ...cardStyle, flex: '1 1 300px' }}>
-            <strong style={{ display: 'block', marginBottom: '10px', fontSize: '1.15em' }}>
-              {gpx.trackName ?? gpx.fileName ?? 'Session'}
-            </strong>
+            <div style={{ marginBottom: '10px' }}>
+              <PanelTitle label={sessionName ?? gpx.trackName ?? gpx.fileName ?? 'Session'} open={open.synthese} onToggle={() => toggle('synthese')} />
+            </div>
             <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.7' }}>
               <li><strong>Distance :</strong> {stats.distance} km <span style={{ color: 'var(--muted)' }}>(en mouvement {stats.activeDistance} km)</span></li>
               <li><strong>Temps de parcours :</strong> {stats.totalTime} <span style={{ color: 'var(--muted)' }}>(en mouvement {stats.activeTime}, {stats.activeRatio} %)</span></li>
@@ -343,7 +377,13 @@ function RunningModule() {
 
           {open.zones && zoneStats.length > 0 && (
             <ResizablePanel id="running.zones" style={{ ...cardStyle, flex: '1 1 420px' }}>
-              <strong style={{ display: 'block', marginBottom: '10px', fontSize: '1.15em' }}>Allure par zone de pente <span style={{ color: 'var(--muted)', fontSize: '0.75em', fontWeight: 'normal' }}>(en mouvement)</span></strong>
+              <div style={{ marginBottom: '10px' }}>
+                <PanelTitle
+                  label="Allure par zone de pente"
+                  extra={<span style={{ color: 'var(--muted)', fontSize: '0.75em', fontWeight: 'normal' }}>(en mouvement)</span>}
+                  open={open.zones}
+                  onToggle={() => toggle('zones')} />
+              </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
@@ -378,7 +418,7 @@ function RunningModule() {
         <ResizablePanel id="running.graphiques" defaultHeight={460} minHeight={220} direction="vertical"
           style={{ ...cardStyle, marginBottom: '15px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
-            <strong style={{ fontSize: '16px' }}>Vitesse et altitude</strong>
+            <PanelTitle label="Vitesse et altitude" open={open.graphiques} onToggle={() => toggle('graphiques')} />
             <span style={{ flex: 1 }} />
             {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
               <button key={mode} onClick={() => setChartMode(mode)}
@@ -440,23 +480,31 @@ function RunningModule() {
 
       {gpx.track.length > 0 && speedLegend}
 
-      <div style={{ marginTop: '10px' }}>
+      <div className="an-map-row" style={{ marginTop: '10px' }}>
         <ResizablePanel id="running.carte" defaultHeight={520} minHeight={240}
+          className="an-map-panel"
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest('.leaflet-control')) return;
+            if (window.matchMedia('(max-width: 767.98px)').matches) setMapExpanded(true);
+          }}
           style={{ width: '60%', zIndex: 0, overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--line-strong)' }}>
           <MapContainer key={gpx.sessionKey ?? 'empty'} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
             <MapAutoResize />
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            {mapSegments.map((segment) => (
-              <Polyline key={`track-${segment.id}`} positions={segment.positions} pathOptions={{ color: segment.color, weight: 5 }} />
-            ))}
-            {hoveredIndex !== null && gpx.track[hoveredIndex] && (
-              <CircleMarker
-                center={[gpx.track[hoveredIndex].lat, gpx.track[hoveredIndex].lon]}
-                radius={8}
-                pathOptions={{ color: 'var(--ink)', fillColor: '#fff', fillOpacity: 1, weight: 3 }} />
-            )}
+            {mapLayers}
           </MapContainer>
         </ResizablePanel>
+
+        {mapExpanded && (
+          <div className="an-map-overlay" onClick={() => setMapExpanded(false)}>
+            <button type="button" className="an-map-overlay__close" onClick={() => setMapExpanded(false)} aria-label="Fermer la carte">×</button>
+            <div className="an-map-overlay__map" onClick={(e) => e.stopPropagation()}>
+              <MapContainer key={`expanded-${gpx.sessionKey ?? 'empty'}`} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
+                <MapAutoResize />
+                {mapLayers}
+              </MapContainer>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -7,7 +7,7 @@ import {
   type DotItemDotProps, type TooltipPayloadEntry,
 } from 'recharts';
 import 'leaflet/dist/leaflet.css';
-import './SailingModule.css';
+import './analysisMobile.css';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLeaveWarning } from '../hooks/leaveGuard';
 import { analysisPath, libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
@@ -31,7 +31,9 @@ import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE } from '../components/styles';
-import { IconChevronRight, IconFile } from '../components/icons';
+import { IconFile } from '../components/icons';
+import PanelTitle from '../components/PanelTitle';
+import SessionNameEditor from '../components/SessionNameEditor';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
 
@@ -114,24 +116,6 @@ const hoverIcon = L.divIcon({
 });
 
 // --- Composants UI locaux ---
-
-/**
- * Titre d'un panneau de la colonne carte (Manœuvres, VMG, Graphiques, Vent),
- * cliquable pour le refermer sans remonter à la rangée d'onglets : utile
- * quand le panneau ouvert dépasse l'écran, surtout sur téléphone.
- */
-const PanelTitle = ({ label, extra, open, onToggle }: { label: string; extra?: ReactNode; open: boolean; onToggle: () => void }) => (
-  <strong
-    role="button"
-    tabIndex={0}
-    onClick={onToggle}
-    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
-    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '16px', cursor: 'pointer', userSelect: 'none' }}>
-    <IconChevronRight size={14} style={{ transform: open ? 'rotate(90deg)' : undefined, transition: 'transform 0.15s', flexShrink: 0 }} />
-    {label}
-    {extra}
-  </strong>
-);
 
 const Compass = ({ windAngle }: { windAngle: number }) => {
   const size = 120;
@@ -600,19 +584,19 @@ function SailingModule() {
   );
 
   return (
-    <div className="sailing-page" style={{ padding: '20px' }}>
-      <div className="sw-sheet">
+    <div className="an-page" style={{ padding: '20px' }}>
+      <div className="an-sheet">
         <div style={{ marginBottom: '15px' }}>
-          <PageHeader title="Analyse voile" back={{ to: libraryPath('voile'), label: 'Sessions voile' }} />
+          <PageHeader title="Analyse voile" subtitle={requestedFile ? <SessionNameEditor file={requestedFile} /> : undefined} back={{ to: libraryPath('voile'), label: 'Sessions voile' }} />
           {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
         </div>
 
         {stats && (
-          <div className="sw-sheet__stats">
-            <div className="sw-sheet__stat"><span className="sw-sheet__stat-label">Distance</span><strong className="sw-sheet__stat-value">{stats.distance} km</strong></div>
-            <div className="sw-sheet__stat"><span className="sw-sheet__stat-label">Temps total</span><strong className="sw-sheet__stat-value">{stats.totalTime}</strong></div>
-            <div className="sw-sheet__stat"><span className="sw-sheet__stat-label">Temps actif (&ge;{activeThresholdKn} nds)</span><strong className="sw-sheet__stat-value">{stats.activeTime}</strong></div>
-            <div className="sw-sheet__stat"><span className="sw-sheet__stat-label">{profile.activeRatioLabel}</span><strong className="sw-sheet__stat-value">{stats.activeRatio}%</strong></div>
+          <div className="an-sheet__stats">
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{stats.distance} km</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps total</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps actif (&ge;{activeThresholdKn} nds)</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">{profile.activeRatioLabel}</span><strong className="an-sheet__stat-value">{stats.activeRatio}%</strong></div>
           </div>
         )}
 
@@ -729,7 +713,9 @@ function SailingModule() {
             {open.global && (
               <ResizablePanel id="sailing.global" style={{ ...CARD_STYLE, flex: '1 1 100%', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                 <div style={{ flex: '1 1 200px', minWidth: '250px' }}>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Global</strong>
+                  <div style={{ marginBottom: '10px' }}>
+                    <PanelTitle label="Global" open={open.global} onToggle={() => toggle('global')} />
+                  </div>
                   <ul style={{ margin: 0, paddingLeft: '20px' }}>
                     <li><strong>Distance totale :</strong> {stats.distance} km</li>
                     <li><strong>Distance active :</strong> {stats.activeDistance} km</li>
@@ -793,7 +779,9 @@ function SailingModule() {
             {open.matos && (
               <ResizablePanel id="sailing.matos" style={{ ...CARD_STYLE, flex: '1 1 100%', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                 <div style={{ flex: '1 1 260px' }}>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Matériel</strong>
+                  <div style={{ marginBottom: '10px' }}>
+                    <PanelTitle label="Matériel" open={open.matos} onToggle={() => toggle('matos')} />
+                  </div>
                   {([
                     ['foil', 'Foil'],
                     ['mast', 'Mât'],
@@ -873,7 +861,9 @@ function SailingModule() {
             {open.tops && (
               <ResizablePanel id="sailing.tops" style={{ ...CARD_STYLE, flex: '1 1 400px', display: 'flex', gap: '30px', flexWrap: 'wrap' }}>
                 <div>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Tops Temps</strong>
+                  <div style={{ marginBottom: '10px' }}>
+                    <PanelTitle label="Tops Temps" open={open.tops} onToggle={() => toggle('tops')} />
+                  </div>
                   {renderTop3("2 Secondes", "t2s", stats.tops.t2s)}
                   {renderTop3("5 Secondes", "t5s", stats.tops.t5s)}
                   {renderTop3("10 Secondes", "t10s", stats.tops.t10s)}
@@ -901,9 +891,9 @@ function SailingModule() {
           slowLabel={`sous ${Math.round(msToKnots(colorRange.minMs))} nds`} />
       )}
 
-      <div id="map-view" style={{ width: '100%', marginTop: '10px', zIndex: 0, display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+      <div id="map-view" className="an-map-row" style={{ width: '100%', marginTop: '10px', zIndex: 0, display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         <ResizablePanel id="sailing.carte" defaultHeight={600} minHeight={240}
-          className="sw-map-panel"
+          className="an-map-panel"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest('.leaflet-control')) return;
             if (window.matchMedia('(max-width: 767.98px)').matches) setMapExpanded(true);
@@ -916,9 +906,9 @@ function SailingModule() {
         </ResizablePanel>
 
         {mapExpanded && (
-          <div className="sw-map-overlay" onClick={() => setMapExpanded(false)}>
-            <button type="button" className="sw-map-overlay__close" onClick={() => setMapExpanded(false)} aria-label="Fermer la carte">×</button>
-            <div className="sw-map-overlay__map" onClick={(e) => e.stopPropagation()}>
+          <div className="an-map-overlay" onClick={() => setMapExpanded(false)}>
+            <button type="button" className="an-map-overlay__close" onClick={() => setMapExpanded(false)} aria-label="Fermer la carte">×</button>
+            <div className="an-map-overlay__map" onClick={(e) => e.stopPropagation()}>
               <MapContainer key={`expanded-${sessionKey ?? 'empty'}`} center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
                 <MapAutoResize />
                 {mapLayers}
