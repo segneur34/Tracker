@@ -68,9 +68,3 @@ export const IconBack = ({ size = 20, ...props }: IconProps) => (
     <path d="M15 6l-6 6 6 6" />
   </svg>
 );
-
-export const IconCheck = ({ size = 18, ...props }: IconProps) => (
-  <svg {...strokeProps(size)} {...props}>
-    <path d="M5 12l5 5 9-10" />
-  </svg>
-);

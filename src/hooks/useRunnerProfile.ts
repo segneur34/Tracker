@@ -56,10 +56,8 @@ export const useRunnerProfile = () => {
 
   const setSex = useCallback((sex: RunnerProfile['sex']) => update({ sex }), [update]);
 
-  const setWeightKg = useCallback((weightKg: number | null) => setNumber('weightKg', weightKg), [setNumber]);
-
   /** Âge à la date du jour, si l'année de naissance est connue. */
   const age = value.birthYear === null ? null : new Date().getFullYear() - value.birthYear;
 
-  return { profile: value, setNumber, setSex, setWeightKg, age };
+  return { profile: value, setNumber, setSex, age };
 };

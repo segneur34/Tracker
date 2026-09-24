@@ -1,6 +1,6 @@
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import type { PointData } from '../utils/kinematics';
-import type { ManeuverLocation, ManeuverStats } from './maneuvers';
+import type { ManeuverLocation, ManeuverStats, WindReference } from './maneuvers';
 import { VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
 import {
   angleDiff,
@@ -68,13 +68,10 @@ export interface WindStats {
 }
 
 /**
- * Vent de référence pour la VMG : soit une valeur fixe, soit une fonction du
- * temps. Sur une session longue le vent bascule, et une VMG calculée contre un
- * vent figé perd son sens.
+ * Vent de référence pour la VMG, fixe ou fonction du temps : sur une session
+ * longue le vent bascule, et une VMG calculée contre un vent figé perd son sens.
  */
-export type WindSource = number | ((timeMs: number) => number);
-
-const resolveWind = (wind: WindSource, timeMs: number): number =>
+const resolveWind = (wind: WindReference, timeMs: number): number =>
   typeof wind === 'function' ? wind(timeMs) : wind;
 
 /** Trou maximal, en minutes, à travers lequel on interpole encore entre deux manœuvres. */
@@ -348,7 +345,7 @@ export const summarizeManeuvers = (maneuverStats: ManeuverStats | null): Maneuve
  */
 export const calculateVmgStats = (
   trackData: PointData[],
-  wind: WindSource | null,
+  wind: WindReference | null,
   /** Vitesse minimale, en nœuds, pour qu'une fenêtre compte dans la VMG. */
   minSpeedKn: number = getDefaultThresholdKn(),
   windowSeconds: number = VMG_WINDOW_S

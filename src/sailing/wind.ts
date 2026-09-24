@@ -468,7 +468,7 @@ export const orientationVotes = (turns: TurnObservation[], axis: number): Orient
 // Estimation par la polaire, orientée
 // ---------------------------------------------------------------------------
 
-export type WindOrientationSource = 'polaire' | 'virages' | 'référence';
+export type WindOrientationSource = 'polaire' | 'virages';
 
 export interface WindEstimate {
   /** Direction d'où vient le vent, en degrés. */
@@ -484,8 +484,6 @@ export interface WindEstimate {
 
 export interface WindEstimateOptions {
   minSpeedKn?: number;
-  /** Direction de référence pour orienter quand rien d'autre ne départage. */
-  referenceDirection?: number;
 }
 
 /** Contraste minimal du score polaire pour que l'orientation soit acquise sans aide. */
@@ -494,7 +492,8 @@ const POLAR_CONTRAST_MIN = 0.15;
 /**
  * Centre de l'angle mort, puis orientation. Le score polaire départage
  * lui-même l'angle mort de son jumeau quand la couverture est assez
- * asymétrique ; sinon les virages tranchent, sinon la référence.
+ * asymétrique ; sinon les virages tranchent, sinon la polaire garde son
+ * orientation avec une confiance réduite d'autant.
  */
 export const estimateWindPolar = (points: PointData[], options: WindEstimateOptions = {}): WindEstimate => {
   const minSpeedKn = options.minSpeedKn ?? WIND_ESTIMATION_MIN_SPEED_KN;
@@ -513,11 +512,6 @@ export const estimateWindPolar = (points: PointData[], options: WindEstimateOpti
       direction = votes.forAxis >= votes.forOpposite ? candidateA : candidateB;
       orientedBy = 'virages';
       orientationConfidence = Math.abs(votes.forAxis - votes.forOpposite) / total;
-    } else if (options.referenceDirection !== undefined) {
-      direction =
-        Math.abs(angleDiff(candidateA, options.referenceDirection)) <= 90 ? candidateA : candidateB;
-      orientedBy = 'référence';
-      orientationConfidence = 0.8;
     }
   }
 

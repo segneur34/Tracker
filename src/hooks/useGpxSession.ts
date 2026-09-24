@@ -94,7 +94,7 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
   /** Intervalle médian entre deux points, en secondes : la cadence d'enregistrement. */
   const samplingS = useMemo(() => samplingIntervalS(session.rawPoints), [session.rawPoints]);
 
-  /** Identité de la session : nom de trace et instant du premier point, pour y rattacher des notes ou forcer un remontage de carte. */
+  /** Identité de la trace chargée : nom de trace et instant du premier point. Clé de remontage de la carte, et marque d'une nouvelle trace. */
   const sessionKey = useMemo(() => {
     if (track.length === 0) return null;
     return `${session.trackName ?? session.fileName ?? 'session'}|${track[0].timeMs}`;
@@ -122,8 +122,6 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
     }
   }, []);
 
-  const reset = useCallback(() => setSession(EMPTY_STATE), []);
-
   return {
     ...session,
     track,
@@ -131,8 +129,6 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
     samplingS,
     sessionKey,
     deviceSpeedUnit,
-    hasTrack: track.length > 0,
     loadGpxContent,
-    reset,
   };
 };

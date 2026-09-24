@@ -359,14 +359,9 @@ function SailingModule() {
     </div>
   );
 
-  /**
-   * Panneaux dupliqués entre les onglets du haut et le groupe d'onglets à
-   * droite de la carte : mêmes fonctions, mêmes closures sur l'état du
-   * composant (`showTacksOnMap`, `selectedManeuverTop`...), seul l'`id` du
-   * `ResizablePanel` change selon l'endroit où elles sont montées.
-   */
-  const renderVmgPanel = (id: string, v: NonNullable<typeof vmgStats>) => (
-    <ResizablePanel id={id} style={{ ...CARD_STYLE, flex: '1 1 500px' }}>
+  /** Panneaux VMG et manœuvres de la colonne à droite de la carte. */
+  const renderVmgPanel = (v: NonNullable<typeof vmgStats>) => (
+    <ResizablePanel id="sailing.carte.vmg" style={{ ...CARD_STYLE, flex: '1 1 500px' }}>
       <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Analyse VMG</strong>
       <table style={{ width: '100%', textAlign: 'center', borderCollapse: 'collapse', fontSize: '13px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
         <thead>
@@ -400,8 +395,8 @@ function SailingModule() {
     </ResizablePanel>
   );
 
-  const renderManeuversPanel = (id: string, m: NonNullable<typeof maneuverStats>) => (
-    <ResizablePanel id={showManeuverDetails ? `${id}.details` : id} style={{ ...CARD_STYLE, flex: showManeuverDetails ? '1 1 100%' : '0 1 auto', padding: '12px 15px' }}>
+  const renderManeuversPanel = (m: NonNullable<typeof maneuverStats>) => (
+    <ResizablePanel id={showManeuverDetails ? 'sailing.carte.manoeuvres.details' : 'sailing.carte.manoeuvres'} style={{ ...CARD_STYLE, flex: showManeuverDetails ? '1 1 100%' : '0 1 auto', padding: '12px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
         <strong style={{ fontSize: '16px' }}>Manœuvres</strong>
         <span style={{ color: 'var(--muted)', fontSize: '12px' }}>réussie si Vmin &ge; {activeThresholdKn} nds</span>
@@ -699,7 +694,7 @@ function SailingModule() {
                       Calculé : {autoWind}°
                       {windEstimate && (
                         <span style={{ color: windEstimate.reliable ? '#388e3c' : '#d32f2f', fontSize: '12px', marginLeft: '6px' }}>
-                          (confiance {Math.round(windEstimate.confidence * 100)}%, angle mort de la polaire{windEstimate.maneuverCount > 0 ? ` affiné par ${windEstimate.maneuverCount} manœuvres` : ''}, sens donné par {windEstimate.orientedBy === 'virages' ? 'les virages' : windEstimate.orientedBy === 'référence' ? 'la référence' : 'la polaire'})
+                          (confiance {Math.round(windEstimate.confidence * 100)}%, angle mort de la polaire{windEstimate.maneuverCount > 0 ? ` affiné par ${windEstimate.maneuverCount} manœuvres` : ''}, sens donné par {windEstimate.orientedBy === 'virages' ? 'les virages' : 'la polaire'})
                         </span>
                       )}
                       <br/>
@@ -875,8 +870,8 @@ function SailingModule() {
           <div style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <SectionTabs sections={SAILING_CARTE_PANELS} open={carteOpen} onToggle={toggleCarte} />
             <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-              {carteOpen.manoeuvres && maneuverStats && renderManeuversPanel('sailing.carte.manoeuvres', maneuverStats)}
-              {carteOpen.vmg && vmgStats && renderVmgPanel('sailing.carte.vmg', vmgStats)}
+              {carteOpen.manoeuvres && maneuverStats && renderManeuversPanel(maneuverStats)}
+              {carteOpen.vmg && vmgStats && renderVmgPanel(vmgStats)}
 
               {carteOpen.graphiques && (
                 <div

@@ -18,7 +18,7 @@ export interface SailingStatsOptions {
 
 /**
  * Statistiques d'une session à voile : la base générique, plus les tops de
- * vitesse et le ratio de temps actif sous son nom de domaine.
+ * vitesse.
  */
 export const buildSailingSessionStats = (
   track: TrackPoint[],
@@ -50,8 +50,6 @@ export const buildSailingSessionStats = (
 
   return {
     ...base,
-    // Vocabulaire wingfoil du ratio de temps actif, conservé pour l'affichage.
-    flightRatio: base.activeRatio,
     tops: {
       t2s: tops.t2s,
       t5s: tops.t5s,

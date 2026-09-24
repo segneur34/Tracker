@@ -1,3 +1,4 @@
+import { knotsToMs } from '../core/units';
 import type { PointData } from '../utils/kinematics';
 import {
   MANEUVER_COOLDOWN_S,
@@ -470,8 +471,6 @@ const stableSegment = (
   return { heading: circularMean(bearings).mean, meanSpeed: speedSum / bearings.length };
 };
 
-/** Nœuds vers mètres par seconde. */
-const KN_TO_MS = 0.514444;
 /** Délai maximal, en secondes, pour retrouver la vitesse après le point le plus lent. */
 const RELAUNCH_MAX_S = 60;
 /** Part de la vitesse d'entrée à retrouver pour considérer la relance acquise. */
@@ -495,7 +494,7 @@ const distanceBetween = (points: PointData[], from: number, to: number): number 
   let meters = 0;
   for (let k = from + 1; k <= to; k++) {
     const dt = (points[k].timeMs - points[k - 1].timeMs) / 1000;
-    if (dt > 0) meters += points[k].smoothedSpeed * KN_TO_MS * dt;
+    if (dt > 0) meters += knotsToMs(points[k].smoothedSpeed) * dt;
   }
   return meters;
 };

@@ -145,21 +145,7 @@ export const useSailingSession = ({ windDeg, activeThresholdKn: sessionThreshold
       currentWindValue,
       WIND_LOCAL_MAX_GAP_MIN * 60 * 1000
     );
-    const mStats = analyzeManeuvers(trackData, timeline, options);
-
-    const calcAvgMax = (arr?: number[]) => {
-      if (!arr || arr.length === 0) return { avg: "0.0", max: "0.0" };
-      const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
-      const max = Math.max(...arr);
-      return { avg: avg.toFixed(1), max: max.toFixed(1) };
-    };
-
-    return {
-      ...mStats,
-      tackSpd: calcAvgMax(mStats.tackVmins),
-      jibeSpd: calcAvgMax(mStats.jibeVmins),
-      locations: mStats.locations || []
-    };
+    return analyzeManeuvers(trackData, timeline, options);
   }, [trackData, currentWindValue, activeThresholdKn, maneuverThresholds]);
 
   const maneuverSummary = useMemo(() => summarizeManeuvers(maneuverStats), [maneuverStats]);
