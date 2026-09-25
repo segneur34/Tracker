@@ -138,7 +138,7 @@
 }
 
 .actchart__sessions button,
-.actchart__totals li {
+.actchart__totals button {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -155,8 +155,14 @@
   text-align: left;
 }
 
-.actchart__sessions button {
+.actchart__sessions button,
+.actchart__totals button {
   cursor: pointer;
+}
+
+.actchart__chevron {
+  flex: 0 0 auto;
+  color: var(--faint);
 }
 
 .actchart__dot,

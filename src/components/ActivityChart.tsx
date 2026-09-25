@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { sessionActivity, type Activity } from '../core/activities';
 import { sportFamily } from '../core/sportProfiles';
 import { DISTANCE_UNIT_SYMBOL, formatDuration, toDisplayDistance } from '../core/units';
-import { useOpenSession } from '../hooks/useLibraryNavigation';
+import { IconChevronRight } from './icons';
+import { libraryPath, useOpenSession } from '../hooks/useLibraryNavigation';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { effectiveDistanceUnit, readStoredActivities } from '../hooks/useSportSettings';
 import { CHART_PERIODS, buildActivityChart, type ChartPeriod, type ChartSession } from '../library/activityChart';
@@ -13,7 +15,8 @@ import './ActivityChart.css';
  * par jour ou par semaine, une couleur par activité, les sessions d'un même
  * jour empilées ; numéros de semaine ISO en dessous. Toucher une barre
  * affiche ses sessions, chacune ouvrant son analyse. Sous le graphe, les
- * totaux de la période par activité.
+ * totaux de la période par activité, chacun ouvrant la bibliothèque filtrée
+ * sur son activité.
  */
 
 /** Hauteur de la zone des barres, en pixels, et hauteur maximale d'une session. */
@@ -34,6 +37,7 @@ const plural = (n: number): string => `${n} session${n > 1 ? 's' : ''}`;
 function ActivityChart() {
   const { sessions } = useSessionLibrary();
   const openSession = useOpenSession();
+  const navigate = useNavigate();
   // Relues à l'ouverture de l'accueil : les activités se changent dans Réglages.
   const [activities] = useState(readStoredActivities);
   const [nowMs] = useState(() => Date.now());
@@ -149,11 +153,14 @@ function ActivityChart() {
             const activity = activityById.get(t.activityId)!;
             return (
               <li key={t.activityId}>
-                <span className="actchart__swatch" style={{ background: activity.color }} />
-                <span className="actchart__name">{activity.name}</span>
-                <span className="actchart__meta num">
-                  {plural(t.sessions)} · {formatDuration(t.durationS * 1000)} · {formatDistance(t.distanceM, activity)}
-                </span>
+                <button type="button" onClick={() => navigate(libraryPath(sportFamily(activity.base), activity.id))}>
+                  <span className="actchart__swatch" style={{ background: activity.color }} />
+                  <span className="actchart__name">{activity.name}</span>
+                  <span className="actchart__meta num">
+                    {plural(t.sessions)} · {formatDuration(t.durationS * 1000)} · {formatDistance(t.distanceM, activity)}
+                  </span>
+                  <IconChevronRight size={16} className="actchart__chevron" />
+                </button>
               </li>
             );
           })}

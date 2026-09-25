@@ -2,8 +2,33 @@
 
 .lib-actions {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
+}
+
+/* Point d'interrogation qui déplie l'aide de l'import d'un dossier. */
+.lib-help {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.lib-help:hover {
+  background: var(--surface-hover);
+}
+
+.lib-help[aria-expanded='true'] {
+  color: var(--lib-accent, var(--voile));
 }
 
 .lib-disabled {

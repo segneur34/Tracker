@@ -11,8 +11,9 @@ import { findLibrarySession, importFiles, librarySession, readSessionGpx, useSes
  * un rechargement la rouvre, et le retour arrière ramène à la liste.
  */
 
-/** Bibliothèque d'une famille. */
-export const libraryPath = (family: SportFamily): string => `/${family}`;
+/** Bibliothèque d'une famille, filtrée sur une activité si `activityId` est donné. */
+export const libraryPath = (family: SportFamily, activityId?: string): string =>
+  `/${family}${activityId ? `?activite=${encodeURIComponent(activityId)}` : ''}`;
 
 /** Module d'analyse d'une famille, ouvert sur une session de la mémoire si `file` est donné. */
 export const analysisPath = (family: SportFamily, file?: string | null): string =>

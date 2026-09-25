@@ -103,5 +103,6 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 ## Hors de `src/`
 
 - `outils/lancer-tracker.bat` : lance le serveur de développement s'il ne tourne pas et ouvre l'application ; cible du raccourci « Tracker » du bureau, icône `outils/tracker.ico` (`outils/LISEZMOI.md`).
+- `assets/` : sources du logo. `logo.png`, le logo complet (écran de démarrage, `splash.png`) ; `icone.svg`, sa version simplifiée pour les petites tailles, dont `outils/logo/icones-android.mjs` tire l'icône Android, `public/favicon.png` et `outils/tracker.ico`.
 - `outils/banc/` : banc de test, des scripts Node qui pilotent un Chrome sans fenêtre ou la WebView du téléphone ; mode d'emploi dans son `LISEZMOI.md`.
 - `.gitattributes` : fins de ligne (LF, CRLF pour les `.bat`).

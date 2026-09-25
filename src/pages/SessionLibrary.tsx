@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { MapContainer, Polyline, TileLayer } from 'react-leaflet';
+import { useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import MapAutoResize from '../components/MapAutoResize';
 import MemoryStatus from '../components/MemoryStatus';
-import { IconChevronRight, IconFile } from '../components/icons';
+import { IconChevronRight, IconFile, IconHelp } from '../components/icons';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
@@ -27,8 +28,9 @@ import './SessionLibrary.css';
 
 /**
  * Bibliothèque d'une famille : les onglets Voile et Course. La liste des
- * sessions de la mémoire, filtrable par support en voile, les sessions à
- * classer, l'import de GPX ou d'un dossier entier, la suppression.
+ * sessions de la mémoire, filtrable par activité (`?activite=<id>` pour
+ * arriver filtré, depuis l'accueil), les sessions à classer, l'import de GPX
+ * ou d'un dossier entier, la suppression.
  */
 
 const FAMILY: Record<SportFamily, { title: string; accent: string }> = {
@@ -268,7 +270,9 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   const { title, accent } = FAMILY[family];
   // Relues à l'ouverture de la page : les activités se changent dans Réglages.
   const [activities] = useState(readStoredActivities);
-  const [filter, setFilter] = useState<string>('all');
+  const [params] = useSearchParams();
+  const [filter, setFilter] = useState<string>(() => params.get('activite') ?? 'all');
+  const [helpOpen, setHelpOpen] = useState(false);
   const [confirmFile, setConfirmFile] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -294,7 +298,9 @@ function SessionLibrary({ family }: { family: SportFamily }) {
     }
     return [...byId.values()].filter((e) => e.count > 0);
   }, [activities, family, familySessions, activityByFile]);
-  const shown = filter === 'all' ? familySessions : familySessions.filter((s) => activityByFile.get(s.file)?.id === filter);
+  // Une activité sans session ici (ou seule, donc sans onglets) : « tous », jamais une liste vide sans issue.
+  const activeFilter = counts.length > 1 && counts.some((c) => c.activity.id === filter) ? filter : 'all';
+  const shown = activeFilter === 'all' ? familySessions : familySessions.filter((s) => activityByFile.get(s.file)?.id === activeFilter);
   const canImport = library.status === 'ready' || library.pendingCount > 0 || library.status === 'unavailable';
 
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -349,9 +355,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
             Ajouter les sessions d'un dossier
           </Button>
         ) : (
-          <label
-            className={`ui-btn ui-btn--secondary${!canImport || importing ? ' lib-disabled' : ''}`}
-            title="Un dossier Tracker copié depuis le téléphone ou un autre PC : ses sessions et leurs notes sont ajoutées à celles-ci. Le dossier mémoire de ce PC, lui, se choisit dans Réglages › Mémoire.">
+          <label className={`ui-btn ui-btn--secondary${!canImport || importing ? ' lib-disabled' : ''}`}>
             Ajouter les sessions d'un dossier
             <input
               type="file"
@@ -362,20 +366,30 @@ function SessionLibrary({ family }: { family: SportFamily }) {
               onChange={handleImport} />
           </label>
         )}
+        <button
+          type="button"
+          className="lib-help"
+          aria-label="À quoi sert « Ajouter les sessions d'un dossier » ?"
+          aria-expanded={helpOpen}
+          onClick={() => setHelpOpen(!helpOpen)}>
+          <IconHelp />
+        </button>
       </div>
-      <p className="lib-hint">
-        {native
-          ? "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le PC ou un autre téléphone, notes comprises. On peut aussi copier les fichiers directement dans Documents › Tracker › sessions : ils apparaissent au lancement suivant."
-          : "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le téléphone ou un autre PC. Chrome demande alors s'il faut importer les fichiers « sur ce site » : ils restent sur ce PC, Tracker n'envoie rien sur internet."}
-      </p>
+      {helpOpen && (
+        <p className="lib-hint">
+          {native
+            ? "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le PC ou un autre téléphone, notes comprises. On peut aussi copier les fichiers directement dans Documents › Tracker › sessions : ils apparaissent au lancement suivant."
+            : "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le téléphone ou un autre PC, notes comprises. Chrome demande alors s'il faut importer les fichiers « sur ce site » : ils restent sur ce PC, Tracker n'envoie rien sur internet. Le dossier mémoire de ce PC, lui, se choisit dans Réglages › Mémoire."}
+        </p>
+      )}
 
       {counts.length > 1 && (
         <div className="ui-tabs" style={{ '--tab-accent': accent } as React.CSSProperties}>
-          <button type="button" className="ui-tab" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
+          <button type="button" className="ui-tab" aria-pressed={activeFilter === 'all'} onClick={() => setFilter('all')}>
             tous ({familySessions.length})
           </button>
           {counts.map(({ activity, count }) => (
-            <button key={activity.id} type="button" className="ui-tab" aria-pressed={filter === activity.id} onClick={() => setFilter(activity.id)}>
+            <button key={activity.id} type="button" className="ui-tab" aria-pressed={activeFilter === activity.id} onClick={() => setFilter(activity.id)}>
               {activity.name} ({count})
             </button>
           ))}
