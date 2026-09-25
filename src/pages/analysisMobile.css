@@ -99,4 +99,70 @@
     width: 100%;
     height: 100%;
   }
+
+  /* Colonne d'onglets de la carte (voile) : jamais plus large que l'écran, même quand un panneau
+     porte un contenu de largeur fixe (graphes) ; ce contenu défile dans son panneau. */
+  .an-carte-col,
+  .an-carte-panels,
+  .an-carte-panels > * {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .an-carte-panels > * {
+    overflow-x: auto;
+  }
+
+  /* Panneau Manœuvres (voile) : synthèse pleine largeur et resserrée ; détails sur toute la
+     largeur ; podiums en grille, le libellé de la métrique sur sa propre ligne, les valeurs dessous.
+     Le conteneur défile plutôt que d'élargir la page si un texte agrandi ne tient pas. */
+  .an-man-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .an-man-summary {
+    width: 100%;
+    font-size: var(--text-xs) !important;
+  }
+
+  .an-man-summary th,
+  .an-man-summary td {
+    padding: var(--space-1) 3px !important;
+    font-size: inherit !important;
+  }
+
+  .an-man-summary th:first-child,
+  .an-man-summary td:first-child {
+    padding-left: var(--space-2) !important;
+  }
+
+  .an-man-summary button {
+    padding: 2px 6px !important;
+    font-size: inherit !important;
+  }
+
+  .an-man-detail {
+    flex: 1 1 100% !important;
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .an-man-podium thead tr,
+  .an-man-podium tbody tr {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+    align-items: center;
+  }
+
+  .an-man-podium thead th:first-child {
+    display: none;
+  }
+
+  .an-man-podium tbody td:first-child {
+    grid-column: 1 / -1;
+    padding-bottom: 0 !important;
+    font-weight: 600;
+  }
 }

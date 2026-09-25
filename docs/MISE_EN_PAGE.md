@@ -19,7 +19,8 @@ Patron commun aux modules d'analyse (voile, course) et à tout sport à venir. C
 - **Sur téléphone** :
   - la rangée de la carte remonte en tête de page (`order: -1`), en pleine largeur, avec une carte haute de 30 vh ;
   - la feuille la chevauche un peu ;
-  - un toucher sur la carte l'ouvre en plein écran (× pour fermer).
+  - un toucher sur la carte l'ouvre en plein écran (× pour fermer) ;
+  - rien n'élargit la page : une colonne de panneaux ne dépasse pas l'écran (`min-width: 0`, `max-width: 100%`), un contenu de largeur fixe défile dans son panneau ; un tableau se resserre, ou passe ses lignes en grille (libellé sur sa propre ligne, valeurs dessous), comme le panneau Manœuvres (`an-man-*`).
 - **La légende de couleur de la trace est collée à la carte**, juste en dessous, dans le même bloc (`AnalysisMap`). Elle ne se pose jamais ailleurs.
 - **Tout panneau est repliable par son titre** (`PanelTitle`) et par son onglet, et redimensionnable (`ResizablePanel`). L'`id` d'un panneau est la clé de sa taille mémorisée : ne pas le renommer.
 - Couleurs, rayons, espacements : les variables de `theme/tokens.css`. Les couleurs de données des graphes et de la carte restent en dur.

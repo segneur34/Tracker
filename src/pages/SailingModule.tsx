@@ -389,14 +389,15 @@ function SailingModule() {
         <span style={{ color: 'var(--muted)', fontSize: '12px' }}>réussie si Vmin &ge; {activeThresholdKn} nds</span>
       </div>
 
-      <table style={{ borderCollapse: 'collapse', fontSize: '14px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginBottom: '10px' }}>
+      <div className="an-man-scroll">
+      <table className="an-man-summary" style={{ borderCollapse: 'collapse', fontSize: '14px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginBottom: '10px' }}>
         <thead>
           <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
             <th style={{ textAlign: 'left', padding: '7px 14px' }}>Type</th>
             <th style={{ padding: '7px 14px' }}>Réussis</th>
             <th style={{ padding: '7px 14px' }}>Ratés</th>
-            <th style={{ padding: '7px 14px' }} title="Vitesse minimale pendant la manœuvre, moyenne sur toutes les manœuvres">Vmin moy.</th>
-            <th style={{ padding: '7px 14px' }} title="Meilleure vitesse minimale conservée sur une manœuvre">Vmin max</th>
+            <th style={{ padding: '7px 14px' }} title="Vitesse minimale pendant la manœuvre, moyenne sur toutes les manœuvres">Vmin moy. (nds)</th>
+            <th style={{ padding: '7px 14px' }} title="Meilleure vitesse minimale conservée sur une manœuvre">Vmin max (nds)</th>
             <th style={{ padding: '7px 10px' }}>Carte</th>
           </tr>
         </thead>
@@ -409,8 +410,8 @@ function SailingModule() {
               <td style={{ padding: '7px 14px', fontWeight: 'bold' }}>{label}</td>
               <td style={{ padding: '7px 14px', textAlign: 'center', color: '#388e3c', fontWeight: 'bold', fontSize: '16px' }}>{summary?.success ?? 0}</td>
               <td style={{ padding: '7px 14px', textAlign: 'center', color: '#d32f2f', fontSize: '16px' }}>{summary?.fail ?? 0}</td>
-              <td style={{ padding: '7px 14px', textAlign: 'center' }}>{summary ? `${summary.vminAvg} nds` : '-'}</td>
-              <td style={{ padding: '7px 14px', textAlign: 'center', fontWeight: 'bold' }}>{summary ? `${summary.vminMax} nds` : '-'}</td>
+              <td style={{ padding: '7px 14px', textAlign: 'center' }}>{summary ? summary.vminAvg : '-'}</td>
+              <td style={{ padding: '7px 14px', textAlign: 'center', fontWeight: 'bold' }}>{summary ? summary.vminMax : '-'}</td>
               <td style={{ padding: '4px 10px', textAlign: 'center' }}>
                 <button onClick={toggle} title={`Afficher les ${label.toLowerCase()} sur la carte`} style={{ padding: '3px 10px', cursor: 'pointer', backgroundColor: shown ? 'var(--voile)' : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: '12px' }}>
                   {shown ? 'Masquer' : 'Voir'}
@@ -420,6 +421,7 @@ function SailingModule() {
           ))}
         </tbody>
       </table>
+      </div>
 
       <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: '12px', lineHeight: '1.6' }}>
         <strong>Enregistrement :</strong> {pointCount} points, un toutes les {samplingS < 10 ? samplingS.toFixed(1) : Math.round(samplingS)} s en médiane. Entrée de virage retenue au-dessus de {maneuverThresholds.minEntrySpeedKn.toFixed(1)} nds, d'après l'allure de la session.
@@ -477,7 +479,7 @@ function SailingModule() {
           ['tack', 'Virements', maneuverSummary.tack],
           ['jibe', 'Empannages', maneuverSummary.jibe],
         ] as const).map(([type, title, summary]) => (
-          <div key={type} style={{ flex: '1 1 380px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '6px', padding: '10px 12px' }}>
+          <div key={type} className="an-man-detail" style={{ flex: '1 1 380px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '6px', padding: '10px 12px' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
               <strong style={{ fontSize: '15px' }}>{title}</strong>
               {summary ? (
@@ -493,7 +495,7 @@ function SailingModule() {
             </div>
 
             {summary && (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <table className="an-man-podium" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr style={{ color: 'var(--muted)', borderBottom: '1px solid var(--line)' }}>
                     <th style={{ textAlign: 'left', padding: '3px 4px', fontWeight: 'normal' }}>Métrique</th>
@@ -863,9 +865,9 @@ function SailingModule() {
           style={{ flex: '0 1 60%' }} />
 
         {stats && (
-          <div style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div className="an-carte-col" style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <SectionTabs sections={SAILING_CARTE_PANELS} open={carteOpen} onToggle={toggleCarte} />
-            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+            <div className="an-carte-panels" style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
               {carteOpen.manoeuvres && maneuverStats && renderManeuversPanel(maneuverStats)}
               {carteOpen.vmg && vmgStats && renderVmgPanel(vmgStats)}
 

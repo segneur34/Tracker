@@ -82,7 +82,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `SessionLibrary.tsx` (+ `.css`) : bibliothèque d'une famille, import, sessions à classer, suppression, aperçu carte d'une session à la demande (`SessionPreviewMap`, GPX relu, bornes de couleur comme le module d'analyse).
 - `SailingModule.tsx` : analyse voile (en-tête, barre d'enregistrement, onglets du haut, carte et sa colonne d'onglets).
 - `RunningModule.tsx` : analyse course (synthèse, zones, graphes, carte).
-- `analysisMobile.css` : disposition des deux modules d'analyse sous 768 px (carte pleine largeur en haut, feuille des chiffres clés, vue plein écran au tap) ; classes `an-*`.
+- `analysisMobile.css` : disposition des deux modules d'analyse sous 768 px (carte pleine largeur en haut, feuille des chiffres clés, vue plein écran au tap, colonne d'onglets de la voile bornée à l'écran, panneau Manœuvres resserré) ; classes `an-*`.
 - `RecordingPage.tsx` : enregistrement, source GPS ou rejeu, pause, carte et statistiques en direct.
 - `SettingsPage.tsx` : mémoire, réglages par support (couleurs de trace comprises), course, coureur ; `settingsPage.css` met le tableau des supports en cartes sous 768 px.
 
