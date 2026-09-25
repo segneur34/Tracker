@@ -590,8 +590,10 @@ function SailingModule() {
         )}
 
         {stats && (
-          <div className="an-sheet__wind" style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '15px', fontSize: `${scale}em` }}>
-            <div style={{ flex: '0 1 auto', minWidth: 0 }}>
+          <div className="an-sheet__wind" style={{ display: 'flex', gap: '16px', alignItems: 'center', marginBottom: '15px', fontSize: `${scale}em` }}>
+            {/* Boussole à gauche, calcul et saisie à sa droite : le bloc tient dans la hauteur de la boussole. */}
+            <Compass windAngle={currentWindValue ?? autoWind ?? 0} />
+            <div style={{ flex: '1 1 0', minWidth: 0 }}>
               <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Axe du Vent Global (Polaire)</strong>
               <div style={{ marginBottom: '10px' }}>
                 Calculé : {autoWind}°
@@ -633,7 +635,6 @@ function SailingModule() {
                 </div>
               </div>
             </div>
-            <Compass windAngle={currentWindValue ?? autoWind ?? 0} />
           </div>
         )}
       </div>
