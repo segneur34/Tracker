@@ -14,7 +14,7 @@ import { IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettin
  * Accueil · Voile · Enregistrer · Course · Réglages, le bouton du milieu
  * vert au repos, rouge pendant un enregistrement. Sur ordinateur, les mêmes
  * destinations dans une barre en haut, et « Itinéraires » à côté du bouton
- * Enregistrer (sur téléphone, on y va depuis la page Enregistrer). Le choix se fait en CSS
+ * Enregistrer (sur téléphone, on y va depuis l'accueil). Le choix se fait en CSS
  * (`AppShell.css`), sans lecture de la taille d'écran en JavaScript.
  *
  * Pendant un enregistrement, un bandeau rouge rappelle sur chaque page qu'il

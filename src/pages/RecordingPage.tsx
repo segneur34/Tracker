@@ -1,7 +1,8 @@
 import { useState, type ChangeEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
+import FollowTracePicker from '../components/FollowTracePicker';
 import PageHeader from '../components/ui/PageHeader';
 import { IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
@@ -9,6 +10,7 @@ import { activitiesOfFamily, type Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
+import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { effectiveDistanceUnit, effectiveSpeedUnit, lastRecordActivity, readStoredActivities, rememberRecordActivity } from '../hooks/useSportSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
@@ -28,6 +30,10 @@ import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
  * trou, précision). À l'arrêt, la session n'est rangée dans la mémoire que
  * sur « Analyser » ; « Jeter » l'abandonne. L'onglet « Enregistrer » de la
  * barre de navigation.
+ *
+ * « Suivre une trace » choisit un itinéraire rangé ou une session déjà
+ * enregistrée, dessiné sous la trace en cours ; au repos, la carte le montre
+ * en aperçu.
  *
  * Dans le navigateur, une source « rejeu » relit un GPX en accéléré : toute la
  * chaîne s'éprouve sur le PC, jusqu'à l'analyse de la session obtenue.
@@ -85,7 +91,8 @@ const liveStatItems = (activity: Activity, live: LiveStats): { label: string; va
 function RecordingPage() {
   const recorder = useRecorder();
   const openSession = useOpenSession();
-  const navigate = useNavigate();
+  const followed = useFollowedTrace();
+  const [picking, setPicking] = useState(false);
   const native = isNativeApp();
 
   // Famille puis activité ; la dernière enregistrée est proposée d'abord.
@@ -238,16 +245,28 @@ function RecordingPage() {
           </Button>
         </div>
       ) : !pending && (
-        // Au repos, la moitié du bouton mène à la planification d'un itinéraire.
+        // Au repos, la moitié du bouton choisit une trace à suivre.
         <div style={{ display: 'flex', gap: '10px' }}>
           <Button variant="record" size="l" style={{ flex: 1 }} onClick={handleStart} disabled={!canStart}>
             <span className="ui-record-dot" />
             Démarrer
           </Button>
-          <Button variant="secondary" size="l" style={{ flex: 1 }} onClick={() => navigate('/itineraires')}>
+          <Button variant="secondary" size="l" style={{ flex: 1 }} onClick={() => setPicking((p) => !p)} aria-expanded={picking}>
             <IconRoute size={20} />
-            Planifier un tracé
+            Suivre une trace
           </Button>
+        </div>
+      )}
+
+      {picking && !busy && !pending && <FollowTracePicker onClose={() => setPicking(false)} />}
+
+      {followed && (
+        <div className="ui-alert" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <IconRoute size={18} />
+          <span style={{ flex: 1 }}>
+            Trace suivie : <strong>{followed.name}</strong>{followed.source === 'session' ? ' (session)' : ''}
+          </span>
+          <Button size="s" variant="ghost" onClick={clearFollowedTrace}>Retirer</Button>
         </div>
       )}
 
@@ -260,8 +279,11 @@ function RecordingPage() {
 
       {recorder.error && <div className="ui-alert ui-alert--danger">{recorder.error}</div>}
 
-      {busy && (
-        <LiveMap segments={live.segments} position={getLastFix()} height="45vh"
+      {(busy || (followed && !pending)) && (
+        // Au repos, un aperçu de la trace suivie, sans position : remonté à chaque trace pour s'y cadrer.
+        <LiveMap key={busy ? 'direct' : `apercu-${followed?.name}-${followed?.points.length}`}
+          segments={busy ? live.segments : []} position={busy ? getLastFix() : null} height="45vh"
+          guide={followed?.points}
           color={liveActivity && sportFamily(liveActivity.base) === 'course' ? TRACK_COLOR.course : TRACK_COLOR.voile} />
       )}
 

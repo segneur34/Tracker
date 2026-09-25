@@ -49,8 +49,8 @@ import { jsonStore } from '../platform/storage';
  * mémoire, avec son GPX.
  *
  * Le calcul demande du réseau (`planning/brouter.ts`) ; un itinéraire rangé se
- * rouvre sans. On y arrive depuis la page Enregistrer (« Planifier un tracé »)
- * et, sur ordinateur, depuis la barre du haut.
+ * rouvre sans. On y arrive depuis l'accueil (« Planifier ») et, sur
+ * ordinateur, depuis la barre du haut.
  */
 
 /** Préférences de la page sur l'appareil : derniers mode et activité choisis, dernière vue de la carte. */
@@ -372,13 +372,18 @@ function PlanningPage() {
     setMessage(null);
   };
 
+  /** Supprime un itinéraire rangé ; celui qui est ouvert laisse la place à une carte vide. */
   const deleteSaved = async (saved: SavedRoute) => {
     setConfirmingDelete(null);
     try {
       await library.remove(saved);
       if (current?.base === saved.base) {
+        planner.replace(EMPTY_ROUTE);
         setCurrent(null);
         setSavedRoute(EMPTY_ROUTE);
+        setName('');
+        setSelected(null);
+        setMessage('Itinéraire supprimé.');
       }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Suppression impossible.');
@@ -403,7 +408,7 @@ function PlanningPage() {
     <div className="ui-page ui-page--wide plan-page">
       <PageHeader
         title="Itinéraires"
-        back={{ to: '/enregistrer', label: 'Enregistrer' }}
+        back={{ to: '/', label: 'Accueil' }}
         subtitle="Posez des points sur la carte : le tracé suit les chemins entre eux." />
 
       <div className="plan-layout">
@@ -680,6 +685,14 @@ function PlanningPage() {
                 <Button onClick={exportGpx} disabled={route.waypoints.length < 2}>Exporter le GPX</Button>
               )}
               {(current !== null || route.waypoints.length > 0) && <Button variant="ghost" onClick={startNew}>Nouvel itinéraire</Button>}
+              {current !== null && (confirmingDelete === current.base ? (
+                <>
+                  <Button variant="danger" onClick={() => void deleteSaved(current)}>Supprimer définitivement</Button>
+                  <Button variant="ghost" onClick={() => setConfirmingDelete(null)}>Garder</Button>
+                </>
+              ) : (
+                <Button variant="danger" onClick={() => setConfirmingDelete(current.base)}>Supprimer l'itinéraire</Button>
+              ))}
             </div>
             {message && <p className="plan-note">{message}</p>}
             {!canDownloadFiles() && (

@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
 import MemoryStatus from '../components/MemoryStatus';
-import { IconRun, IconSail } from '../components/icons';
+import { IconRoute, IconRun, IconSail } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 
 /**
- * Accueil : l'enregistrement, le graphe d'activités et ses totaux (dès qu'il
- * y a des sessions), puis les deux modules.
+ * Accueil : enregistrer ou planifier un itinéraire, le graphe d'activités et
+ * ses totaux (dès qu'il y a des sessions), puis les deux modules.
  */
 
 const cardStyle = {
@@ -36,13 +36,19 @@ function Home() {
 
       {memoryNeedsAction && <MemoryStatus />}
 
-      <Link to="/enregistrer" style={{ ...cardStyle, gap: '14px' }}>
+      <div style={{ ...cardStyle, gap: '14px' }}>
         <span className="ui-eyebrow">Nouvelle session</span>
-        <span className="ui-btn ui-btn--record ui-btn--l ui-btn--block">
-          <span className="ui-record-dot" />
-          Enregistrer
-        </span>
-      </Link>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <Link to="/enregistrer" className="ui-btn ui-btn--record ui-btn--l" style={{ flex: 1 }}>
+            <span className="ui-record-dot" />
+            Enregistrer
+          </Link>
+          <Link to="/itineraires" className="ui-btn ui-btn--secondary ui-btn--l" style={{ flex: 1 }}>
+            <IconRoute size={20} />
+            Planifier
+          </Link>
+        </div>
+      </div>
 
       {sessions.length > 0 && <ActivityChart />}
 
