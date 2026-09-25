@@ -3,6 +3,7 @@ import type { LocationFix } from '../platform/location';
 import {
   EMPTY_RECORDING_STATS,
   addFixToStats,
+  evaluateAutoPause,
   fixesFromRawPoints,
   isNewerFix,
   isSportType,
@@ -11,6 +12,7 @@ import {
   sessionFileName,
   sessionTitle,
   shouldFlushJournal,
+  splitIntoSegments,
 } from './session';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
@@ -45,13 +47,76 @@ describe('roundFix', () => {
     });
     expect(rounded).toEqual({
       timeMs: T0,
-      lat: 43.1234568,
-      lon: -3.9876543,
+      lat: 43.123457,
+      lon: -3.987654,
       accuracyM: 4.3,
       altitudeM: undefined,
       speedMs: 5.43,
       bearingDeg: 271.3,
     });
+  });
+});
+
+describe('splitIntoSegments', () => {
+  const fixes = [fixAt(0), fixAt(1), fixAt(2), fixAt(3)];
+
+  it('rend un seul segment sans coupure', () => {
+    expect(splitIntoSegments(fixes, [])).toEqual([fixes]);
+  });
+
+  it('découpe aux indices donnés', () => {
+    expect(splitIntoSegments(fixes, [2])).toEqual([fixes.slice(0, 2), fixes.slice(2)]);
+  });
+
+  it('accepte des coupures non triées, dédoublonnées', () => {
+    expect(splitIntoSegments(fixes, [3, 1, 1])).toEqual([fixes.slice(0, 1), fixes.slice(1, 3), fixes.slice(3)]);
+  });
+
+  it('ignore les coupures hors bornes, sans segment vide', () => {
+    expect(splitIntoSegments(fixes, [0, -1, 4, 99])).toEqual([fixes]);
+  });
+
+  it('rend un tableau vide pour une trace vide', () => {
+    expect(splitIntoSegments([], [1])).toEqual([]);
+  });
+});
+
+describe('evaluateAutoPause', () => {
+  const settings = { speedMs: 0.3, delayS: 60 };
+
+  it('désactivée si le seuil est nul ou négatif', () => {
+    expect(evaluateAutoPause(false, null, fixAt(0, { speedMs: 0 }), { speedMs: 0, delayS: 60 }))
+      .toEqual({ event: 'none', belowSinceMs: null });
+  });
+
+  it('ne change rien sans vitesse connue, en enregistrement ou en pause', () => {
+    expect(evaluateAutoPause(false, 1000, fixAt(1), settings)).toEqual({ event: 'none', belowSinceMs: 1000 });
+    expect(evaluateAutoPause(true, null, fixAt(1), settings)).toEqual({ event: 'none', belowSinceMs: null });
+  });
+
+  it('ancre la première position sous le seuil, sans déclencher tout de suite', () => {
+    const fix = fixAt(10, { speedMs: 0.1 });
+    expect(evaluateAutoPause(false, null, fix, settings)).toEqual({ event: 'none', belowSinceMs: fix.timeMs });
+  });
+
+  it('ne déclenche pas juste avant le délai, déclenche pile au délai', () => {
+    const since = T0;
+    const before = { timeMs: since + 59_000, lat: 43.5, lon: 3.9, speedMs: 0.1 };
+    const at = { timeMs: since + 60_000, lat: 43.5, lon: 3.9, speedMs: 0.1 };
+    expect(evaluateAutoPause(false, since, before, settings)).toEqual({ event: 'none', belowSinceMs: since });
+    expect(evaluateAutoPause(false, since, at, settings)).toEqual({ event: 'pause', belowSinceMs: null });
+  });
+
+  it('remet le compteur à zéro dès une vitesse au-dessus du seuil', () => {
+    expect(evaluateAutoPause(false, T0, fixAt(5, { speedMs: 1 }), settings)).toEqual({ event: 'none', belowSinceMs: null });
+  });
+
+  it('ne reprend pas tant que la vitesse reste sous le seuil', () => {
+    expect(evaluateAutoPause(true, null, fixAt(5, { speedMs: 0.1 }), settings)).toEqual({ event: 'none', belowSinceMs: null });
+  });
+
+  it('reprend dès qu\'une position dépasse le seuil', () => {
+    expect(evaluateAutoPause(true, null, fixAt(5, { speedMs: 1 }), settings)).toEqual({ event: 'resume', belowSinceMs: null });
   });
 });
 

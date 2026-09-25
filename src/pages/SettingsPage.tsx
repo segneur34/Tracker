@@ -117,6 +117,7 @@ function SettingsPage() {
               <th style={headStyle}>Unité de vitesse</th>
               <th style={headStyle} title="Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, réussite des manœuvres, VMG">Seuil d'activité</th>
               <th style={headStyle}>Taille du texte</th>
+              <th style={headStyle} title="À l'enregistrement : immobilité qui coupe la trace toute seule">Pause automatique</th>
               <th style={headStyle} />
             </tr>
           </thead>
@@ -125,7 +126,14 @@ function SettingsPage() {
               const s = view(sport);
               const p = SPORT_PROFILES[sport];
               const units = sport === 'running' ? RUNNING_UNITS : SAILING_UNITS;
-              const overridden = s.isSpeedUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal';
+              const overridden = s.isSpeedUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden;
+              const setAutoPauseField = (field: 'speedKmh' | 'delayS', next: number | null) => {
+                if (next === null) { setFor(sport, 'autoPause', null); return; }
+                setFor(sport, 'autoPause', {
+                  speedMs: field === 'speedKmh' ? next / 3.6 : s.autoPause.speedMs,
+                  delayS: field === 'delayS' ? next : s.autoPause.delayS,
+                });
+              };
               return (
                 <tr key={sport}>
                   <td style={{ ...cellStyle, fontWeight: 'bold' }}>{p.label}</td>
@@ -146,10 +154,21 @@ function SettingsPage() {
                       {(Object.keys(TEXT_SCALE_FACTOR) as TextScale[]).map((t) => <option key={t} value={t}>{TEXT_SCALE_LABEL[t]}</option>)}
                     </select>
                   </td>
+                  <td style={cellStyle}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <NumberField unit="km/h" step={0.1} min={0}
+                        value={parseFloat((s.autoPause.speedMs * 3.6).toFixed(1))}
+                        onCommit={(v) => setAutoPauseField('speedKmh', v)} />
+                      <NumberField unit="s" step={5} min={0}
+                        value={s.autoPause.delayS}
+                        onCommit={(v) => setAutoPauseField('delayS', v)} />
+                      {!s.isAutoPauseOverridden && <span style={{ color: 'var(--muted)', fontSize: '11px' }}>défaut</span>}
+                    </div>
+                  </td>
                   <td style={{ ...cellStyle, textAlign: 'right' }}>
                     {overridden && (
                       <button
-                        onClick={() => { setFor(sport, 'speedUnit', null); setFor(sport, 'activeThreshold', null); setFor(sport, 'textScale', null); }}
+                        onClick={() => { setFor(sport, 'speedUnit', null); setFor(sport, 'activeThreshold', null); setFor(sport, 'textScale', null); setFor(sport, 'autoPause', null); }}
                         style={{ padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}>
                         Défaut
                       </button>

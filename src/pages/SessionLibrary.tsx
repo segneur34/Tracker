@@ -16,7 +16,7 @@ import type { RawTrackPoint, SportType, TrackPoint } from '../core/types';
 import { formatDuration, formatSpeed, knotsToMs, msToKnots } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { importFiles, importFromFolder, readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
-import { readStoredSettings } from '../hooks/useSportSettings';
+import { effectiveSpeedUnit, readStoredSettings } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
 import { isNativeApp } from '../platform/runtime';
 import { DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
@@ -48,11 +48,11 @@ const rowStats = (session: LibrarySession): string[] => {
   const stats = [formatDuration(summary.endMs - summary.startMs), formatKm(summary.distanceM)];
   if (sport === null) return stats;
   if (sportFamily(sport) === 'voile') {
-    stats.push(`max ${formatSpeed(summary.maxSpeedMs, SPORT_PROFILES[sport].speedUnit)}`);
+    stats.push(`max ${formatSpeed(summary.maxSpeedMs, effectiveSpeedUnit(sport))}`);
     if (summary.maneuverCount !== undefined) stats.push(`${summary.maneuverCount} manœuvres`);
   } else {
     if (summary.movingTimeS && summary.distanceM > 0) {
-      stats.push(formatSpeed(summary.distanceM / summary.movingTimeS, 'minkm'));
+      stats.push(formatSpeed(summary.distanceM / summary.movingTimeS, effectiveSpeedUnit(sport)));
     }
     if (summary.elevationGainM !== null) stats.push(`D+ ${Math.round(summary.elevationGainM)} m`);
   }

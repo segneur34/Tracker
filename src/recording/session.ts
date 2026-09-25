@@ -21,16 +21,16 @@ const round = (value: number | undefined, decimals: number): number | undefined 
   value === undefined ? undefined : Number(value.toFixed(decimals));
 
 /**
- * Arrondi à la résolution utile : 7 décimales de degré (environ 1 cm), le
- * centimètre par seconde pour la vitesse, le décimètre pour la précision et
- * l'altitude, le dixième de degré pour le cap. Appliqué une fois, à la
- * réception, pour que le GPX écrit depuis la mémoire et celui reconstruit
- * depuis le journal soient identiques.
+ * Arrondi à la résolution utile : 6 décimales de degré (environ 11 cm, sous
+ * la précision GPS réelle), le centimètre par seconde pour la vitesse, le
+ * décimètre pour la précision et l'altitude, le dixième de degré pour le cap.
+ * Appliqué une fois, à la réception, pour que le GPX écrit depuis la mémoire
+ * et celui reconstruit depuis le journal soient identiques.
  */
 export const roundFix = (fix: LocationFix): LocationFix => ({
   timeMs: Math.round(fix.timeMs),
-  lat: Number(fix.lat.toFixed(7)),
-  lon: Number(fix.lon.toFixed(7)),
+  lat: Number(fix.lat.toFixed(6)),
+  lon: Number(fix.lon.toFixed(6)),
   accuracyM: round(fix.accuracyM, 1),
   altitudeM: round(fix.altitudeM, 1),
   speedMs: round(fix.speedMs, 2),
@@ -43,6 +43,27 @@ export const fixesFromRawPoints = (points: RawTrackPoint[]): LocationFix[] =>
     .map((p) => ({ p, timeMs: pointTimeMs(p.time) }))
     .filter(({ timeMs }) => isFinite(timeMs))
     .map(({ p, timeMs }) => ({ timeMs, lat: p.lat, lon: p.lon, altitudeM: p.ele, speedMs: p.speedMs }));
+
+/**
+ * Découpe une trace plate en segments continus, aux indices de `breaks` (le
+ * premier point de chaque nouveau segment ; le segment 0 commence à l'indice
+ * 0). Une pause, manuelle ou automatique, en pose une : c'est la même trace
+ * qu'elle vienne de la mémoire ou d'un journal relu après un arrêt brutal.
+ * Aucun segment vide dans le résultat.
+ */
+export const splitIntoSegments = (fixes: LocationFix[], breaks: number[]): LocationFix[][] => {
+  const cuts = [...new Set(breaks)]
+    .filter((i) => i > 0 && i < fixes.length)
+    .sort((a, b) => a - b);
+  const segments: LocationFix[][] = [];
+  let start = 0;
+  for (const cut of cuts) {
+    segments.push(fixes.slice(start, cut));
+    start = cut;
+  }
+  segments.push(fixes.slice(start));
+  return segments.filter((s) => s.length > 0);
+};
 
 /** Ce que la page d'enregistrement affiche en direct. */
 export interface RecordingStats {
@@ -91,6 +112,44 @@ export const addFixToStats = (stats: RecordingStats, fix: LocationFix): Recordin
  */
 export const shouldFlushJournal = (lastFlushMs: number | null, fixMs: number, flushS: number): boolean =>
   lastFlushMs === null || fixMs - lastFlushMs >= flushS * 1000;
+
+/** Résultat d'une évaluation de pause automatique : que faire, et l'état à garder pour la suivante. */
+export type AutoPauseEvent = 'none' | 'pause' | 'resume';
+export interface AutoPauseResult {
+  event: AutoPauseEvent;
+  belowSinceMs: number | null;
+}
+
+/**
+ * Décide, à chaque position reçue, si la pause automatique doit se déclencher
+ * ou s'arrêter. Toujours en temps réel de trace (`fix.timeMs`), jamais en
+ * nombre de positions (règle n°2) : une cadence variable ne doit pas changer
+ * le résultat. `speedMs <= 0` désactive la fonctionnalité.
+ *
+ * En enregistrement : la première position sous le seuil ancre
+ * `belowSinceMs` ; la pause se déclenche dès que `delayS` secondes se sont
+ * écoulées depuis cette ancre, sans qu'une position au-dessus du seuil ne
+ * l'ait entre-temps remise à zéro. En pause : seule une position au-dessus du
+ * seuil déclenche la reprise, immédiatement.
+ */
+export const evaluateAutoPause = (
+  isPaused: boolean,
+  belowSinceMs: number | null,
+  fix: LocationFix,
+  settings: { speedMs: number; delayS: number }
+): AutoPauseResult => {
+  if (settings.speedMs <= 0) return { event: 'none', belowSinceMs: null };
+  if (fix.speedMs === undefined) return { event: 'none', belowSinceMs };
+
+  const below = fix.speedMs < settings.speedMs;
+  if (isPaused) {
+    return below ? { event: 'none', belowSinceMs } : { event: 'resume', belowSinceMs: null };
+  }
+  if (!below) return { event: 'none', belowSinceMs: null };
+  const since = belowSinceMs ?? fix.timeMs;
+  if (fix.timeMs - since >= settings.delayS * 1000) return { event: 'pause', belowSinceMs: null };
+  return { event: 'none', belowSinceMs: since };
+};
 
 export const isSportType = (value: unknown): value is SportType =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(SPORT_PROFILES, value);

@@ -68,3 +68,15 @@ export const IconBack = ({ size = 20, ...props }: IconProps) => (
     <path d="M15 6l-6 6 6 6" />
   </svg>
 );
+
+export const IconPause = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M8 5v14M16 5v14" />
+  </svg>
+);
+
+export const IconPlay = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M7 5l11 7-11 7z" />
+  </svg>
+);

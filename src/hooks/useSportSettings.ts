@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ELEVATION_PRESETS, SPORT_PROFILES, getSportProfile } from '../core/sportProfiles';
+import { ELEVATION_PRESETS, SPORT_PROFILES, getSportProfile, type RecordingProfile } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import { SPEED_UNIT_LABEL, type SpeedUnit } from '../core/units';
 import { jsonStore } from '../platform/storage';
@@ -54,6 +54,8 @@ export interface StoredSettings {
   textScales?: Partial<Record<SportType, TextScale>>;
   /** Bornes du dégradé de couleur de la trace, en m/s, par support. */
   speedRanges?: Partial<Record<SportType, { minMs: number; maxMs: number }>>;
+  /** Surcharge de la pause automatique à l'enregistrement, par support. */
+  autoPause?: Partial<Record<SportType, { speedMs: number; delayS: number }>>;
 }
 
 export const isKnownTerrain = (value: unknown): value is TerrainType =>
@@ -80,6 +82,25 @@ export const readStoredSettings = (): StoredSettings => {
 
 const writeStored = (settings: StoredSettings): void => jsonStore.write(STORAGE_KEY, settings);
 
+/**
+ * Réglage d'enregistrement effectif d'un support : le profil, sauf surcharge
+ * de la pause automatique. Utilisable hors composant, par l'enregistreur.
+ */
+export const effectiveRecordingProfile = (sport: SportType): RecordingProfile => {
+  const profile = getSportProfile(sport);
+  const override = readStoredSettings().autoPause?.[sport];
+  return override ? { ...profile.recording, autoPauseSpeedMs: override.speedMs, autoPauseDelayS: override.delayS } : profile.recording;
+};
+
+/**
+ * Unité de vitesse effective d'un support : celle choisie dans Réglages, sinon
+ * celle du profil. Utilisable hors composant (enregistrement, bibliothèque).
+ */
+export const effectiveSpeedUnit = (sport: SportType): SpeedUnit => {
+  const unit = readStoredSettings().speedUnits?.[sport];
+  return isKnownSpeedUnit(unit) ? unit : getSportProfile(sport).speedUnit;
+};
+
 const isKnownSport = (value: unknown): value is SportType =>
   typeof value === 'string' && value in SPORT_PROFILES;
 
@@ -93,6 +114,9 @@ export interface SportSettingsView {
   textScale: TextScale;
   terrain: TerrainType;
   speedRange: { minMs: number; maxMs: number } | null;
+  /** Pause automatique effective à l'enregistrement (m/s, secondes). */
+  autoPause: { speedMs: number; delayS: number };
+  isAutoPauseOverridden: boolean;
 }
 
 /**
@@ -116,6 +140,7 @@ export const useAllSportSettings = () => {
       const scale = stored.textScales?.[sport];
       const terrain = stored.terrains?.[sport];
       const range = stored.speedRanges?.[sport];
+      const autoPauseOverride = stored.autoPause?.[sport];
       return {
         sport,
         speedUnit: isKnownSpeedUnit(unit) ? unit : profile.speedUnit,
@@ -125,6 +150,8 @@ export const useAllSportSettings = () => {
         textScale: isKnownTextScale(scale) ? scale : 'normal',
         terrain: isKnownTerrain(terrain) ? terrain : 'route',
         speedRange: range && range.maxMs > range.minMs ? range : null,
+        autoPause: autoPauseOverride ?? { speedMs: profile.recording.autoPauseSpeedMs, delayS: profile.recording.autoPauseDelayS },
+        isAutoPauseOverridden: autoPauseOverride !== undefined,
       };
     },
     [stored]
@@ -132,7 +159,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'un support. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange'>(
+    <F extends 'speedUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'autoPause'>(
       sport: SportType,
       field: F,
       value: SportSettingsView[F] | null
@@ -165,6 +192,12 @@ export const useAllSportSettings = () => {
           const r = value as { minMs: number; maxMs: number } | null;
           if (r !== null && !(isFinite(r.minMs) && isFinite(r.maxMs) && r.minMs >= 0 && r.maxMs > r.minMs)) return;
           next.speedRanges = put(stored.speedRanges, r);
+          break;
+        }
+        case 'autoPause': {
+          const a = value as { speedMs: number; delayS: number } | null;
+          if (a !== null && !(isFinite(a.speedMs) && isFinite(a.delayS) && a.speedMs >= 0 && a.delayS >= 0)) return;
+          next.autoPause = put(stored.autoPause, a);
           break;
         }
       }

@@ -38,10 +38,20 @@ export const journalFixLine = (fix: LocationFix): string =>
     fix.bearingDeg ?? null,
   ])}\n`;
 
+/**
+ * Frontière de segment : une pause, manuelle ou automatique, a repris à cet
+ * horodatage. Tableau à deux éléments, marqué par `'break'` en tête : ne
+ * collisionne ni avec l'en-tête (un objet), ni avec une position (`toFix`
+ * exige au moins trois éléments).
+ */
+export const journalBreakLine = (timeMs: number): string => `${JSON.stringify(['break', timeMs])}\n`;
+
 export interface ParsedJournal {
   /** En-tête, ou `null` s'il manque ou est illisible : les positions restent récupérables. */
   header: JournalHeader | null;
   fixes: LocationFix[];
+  /** Indices, dans `fixes`, où reprend un nouveau segment (voir `splitIntoSegments`). */
+  breaks: number[];
 }
 
 const optionalNumber = (value: unknown): number | undefined =>
@@ -61,6 +71,9 @@ const toHeader = (value: unknown): JournalHeader | null => {
   if (v.format !== 'tracker-journal' || !isSportType(v.sport) || typeof v.startedAtMs !== 'number') return null;
   return { format: 'tracker-journal', version: 1, sport: v.sport, startedAtMs: v.startedAtMs };
 };
+
+const toBreakMarker = (value: unknown): boolean =>
+  Array.isArray(value) && value.length === 2 && value[0] === 'break' && typeof value[1] === 'number' && isFinite(value[1]);
 
 const toFix = (value: unknown): LocationFix | null => {
   if (!Array.isArray(value) || value.length < 3) return null;
@@ -87,6 +100,7 @@ const toFix = (value: unknown): LocationFix | null => {
 export const parseJournal = (text: string): ParsedJournal => {
   let header: JournalHeader | null = null;
   const fixes: LocationFix[] = [];
+  const breaks: number[] = [];
 
   text.split('\n').forEach((line, i) => {
     if (line.trim() === '') return;
@@ -95,9 +109,13 @@ export const parseJournal = (text: string): ParsedJournal => {
       header = toHeader(value);
       if (header) return;
     }
+    if (toBreakMarker(value)) {
+      if (fixes.length > 0) breaks.push(fixes.length);
+      return;
+    }
     const fix = toFix(value);
     if (fix && (fixes.length === 0 || fix.timeMs > fixes[fixes.length - 1].timeMs)) fixes.push(fix);
   });
 
-  return { header, fixes };
+  return { header, fixes, breaks };
 };

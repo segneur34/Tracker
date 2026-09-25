@@ -34,7 +34,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 
 ## Environnement
 
-- Dépôt git, doublé d'un dépôt GitHub privé (`segneur34/Tracker`) : un commit par lot validé, un envoi après accord de l'utilisateur. Fins de ligne fixées par `.gitattributes` : LF partout, CRLF pour les `.bat`.
+- Dépôt git, doublé d'un dépôt GitHub privé (`segneur34/Tracker`) : un commit par lot validé, un envoi après accord de l'utilisateur. Un lot couvre un sujet entier (plusieurs étapes), pas une petite étape isolée : peu de lots, donc peu de commits. Fins de ligne fixées par `.gitattributes` : LF partout, CRLF pour les `.bat`.
 - Banc de test dans `outils/banc/` (mode d'emploi dans son `LISEZMOI.md`) : Claude y éprouve lui-même l'application dans un Chrome sans fenêtre ; il prouve la neutralité d'un changement par le texte de la page relevé avant et après.
 - Windows 11, terminal `cmd` : ne jamais donner de commande PowerShell à recopier. L'utilisateur colle parfois lui-même la sortie.
 - Aucun GPX réel dans le projet : les tests sont synthétiques, la validation sur données réelles revient à l'utilisateur.
@@ -76,7 +76,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Graphes course « superposés » à deux axes, voulus malgré la difficulté de lecture.
 - Tout bloc est redimensionnable (`ResizablePanel`), taille mémorisée.
 - Voile : manœuvres en petit tableau, détails dépliables. Carte à 60 % de large ; à sa droite, les onglets manœuvres, VMG, graphiques, vent (dans cet ordre, fermés par défaut, côte à côte si la place le permet). En haut : global, matos, tops seulement. Ne rien déplacer ni dupliquer entre les deux groupes sans redemander.
-- Enregistrement : brut à 1 Hz, sans autre filtre que les redélivrances ; un GPX par session, analysé par les modules existants via `loadGpxContent`.
+- Enregistrement : brut à 1 Hz, sans autre filtre que les redélivrances et la pause (manuelle, ou automatique sur immobilité, réglable par support) ; un GPX par session, analysé par les modules existants via `loadGpxContent`.
 - Mémoire : un dossier portable `Tracker/` (GPX + fiche JSON par session dans `sessions/`, `reglages.json`), qu'on copie pour sauvegarder ou changer d'appareil ; pas d'index dans le dossier ; réglages : le plus récent l'emporte. Sur Android, dossier désigné par le sélecteur d'Android (SAF), jamais « accès à tous les fichiers ». Suite de la cible mobile dans l'ordre fixé au §12 de l'état.
 - DA de la maquette pour l'instant (Figtree, fond gris chaud, cartes blanches, bleu voile, rouille course, vert Enregistrer), appelée à changer : tout passe par les variables. Navigation : barre d'onglets en bas sur téléphone, barre en haut sur ordinateur.
 - Réglages d'affichage (unités, taille du texte) choisis dans Réglages seulement, par famille (voile, course), actifs partout ; par sous-sport plus tard peut-être.

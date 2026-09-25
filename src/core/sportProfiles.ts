@@ -48,13 +48,28 @@ export interface RecordingProfile {
    * sont écrites dans le journal. C'est la perte maximale en cas d'arrêt brutal.
    */
   journalFlushS: number;
+  /**
+   * Vitesse système en dessous de laquelle une immobilité prolongée déclenche
+   * la pause automatique, en m/s ; 0 la désactive.
+   */
+  autoPauseSpeedMs: number;
+  /** Temps réel, en secondes, sous ce seuil avant que la pause se déclenche. */
+  autoPauseDelayS: number;
 }
 
 /**
  * Identique pour tous les supports au départ : 1 Hz, sans filtre de distance.
  * Le 1 Hz tient aussi le coût du recalcul du vent (`docs/HISTORIQUE.md`, point 23).
+ * Pause automatique sous 0,3 m/s (environ 1 km/h, sous le bruit GPS au repos)
+ * pendant 60 s.
  */
-export const DEFAULT_RECORDING: RecordingProfile = { intervalMs: 1000, distanceFilterM: 0, journalFlushS: 10 };
+export const DEFAULT_RECORDING: RecordingProfile = {
+  intervalMs: 1000,
+  distanceFilterM: 0,
+  journalFlushS: 10,
+  autoPauseSpeedMs: 0.3,
+  autoPauseDelayS: 60,
+};
 
 export interface SportProfile {
   id: SportType;

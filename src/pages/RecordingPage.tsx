@@ -2,12 +2,17 @@ import { useState, type ChangeEvent } from 'react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
+import { IconPause, IconPlay } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import { SPORT_PROFILES, sportFamily } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
-import { formatClock } from '../core/units';
+import { formatClock, formatSpeed } from '../core/units';
+import LiveMap from '../components/LiveMap';
+import { useLiveRecording } from '../hooks/useLiveRecording';
+import { effectiveSpeedUnit } from '../hooks/useSportSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
-import { dismissRecorderResult, startRecording, stopRecording, useRecorder } from '../hooks/useRecorder';
+import { dismissRecorderResult, getLastFix, pauseRecording, resumeRecording, startRecording, stopRecording, useRecorder } from '../hooks/useRecorder';
+import { LIVE_STATS_DEFAULTS, type LiveStats } from '../recording/liveStats';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { createReplaySource, deviceLocationSource, type LocationFix } from '../platform/location';
 import { isNativeApp } from '../platform/runtime';
@@ -39,6 +44,38 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
   </div>
 );
 
+const STAT_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' } as const;
+
+/** Couleur de la trace sur la carte en direct, celle de la famille (donnée de carte, donc en dur). */
+const TRACK_COLOR = { voile: '#1565c0', course: '#bf360c' } as const;
+
+const formatDistance = (m: number): string => `${(m / 1000).toFixed(2)} km`;
+const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
+const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
+
+/** Statistiques en direct propres à la famille du support. */
+const liveStatItems = (sport: SportType, live: LiveStats): { label: string; value: string }[] => {
+  const unit = effectiveSpeedUnit(sport);
+  if (sportFamily(sport) === 'voile') {
+    return [
+      ...LIVE_STATS_DEFAULTS.topDurationsS.map((d, i) => ({
+        label: `Top ${d} s (${recentWindowLabel})`,
+        value: formatSpeed(live.recentTopsMs[i] ?? null, unit),
+      })),
+      { label: 'Distance', value: formatDistance(live.distanceM) },
+    ];
+  }
+  return [
+    { label: 'Allure', value: formatSpeed(live.currentSpeedMs, unit) },
+    { label: 'Distance', value: formatDistance(live.distanceM) },
+    { label: `Dernier ${LIVE_STATS_DEFAULTS.lastDistanceM / 1000} km`, value: formatSpeed(live.lastDistanceSpeedMs, unit) },
+    { label: 'Allure moyenne', value: formatSpeed(live.averageSpeedMs, unit) },
+    { label: 'D+', value: formatMeters(live.elevationGainM) },
+    { label: 'D−', value: formatMeters(live.elevationLossM) },
+    { label: `D+ ${recentWindowLabel}`, value: formatMeters(live.recentGainM) },
+  ];
+};
+
 function RecordingPage() {
   const recorder = useRecorder();
   const openSession = useOpenSession();
@@ -55,6 +92,8 @@ function RecordingPage() {
   const durationMs = recordingDurationMs(stats);
   const meanIntervalS = stats.pointCount > 1 ? durationMs / 1000 / (stats.pointCount - 1) : null;
   const canStart = !busy && (sourceChoice === 'device' || replay !== null);
+  const liveSport = recorder.sport ?? sport;
+  const live = useLiveRecording(busy ? liveSport : null, stats.pointCount);
 
   const handleReplayFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -81,7 +120,7 @@ function RecordingPage() {
     <div className="ui-page">
       <PageHeader title="Enregistrer" subtitle="Une position par seconde, gardée brute : l'analyse se fait ensuite." />
 
-      <Card>
+      {!busy && <Card>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 'var(--text-m)' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span className="ui-eyebrow">Support</span>
@@ -119,13 +158,30 @@ function RecordingPage() {
             </div>
           )}
         </div>
-      </Card>
+      </Card>}
 
       {busy ? (
-        <Button variant="danger" size="l" block onClick={() => void stopRecording()} disabled={recorder.status !== 'recording'}>
-          <span className="ui-record-dot ui-record-dot--stop" />
-          {recorder.status === 'stopping' ? 'Enregistrement du fichier…' : 'Arrêter'}
-        </Button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {recorder.status === 'recording' && (
+            <Button variant="secondary" size="l" style={{ flex: 1 }} onClick={() => void pauseRecording()}>
+              <IconPause size={20} />
+              Pause
+            </Button>
+          )}
+          {recorder.status === 'paused' && recorder.pausedReason === 'manual' && (
+            <Button variant="record" size="l" style={{ flex: 1 }} onClick={() => void resumeRecording()}>
+              <IconPlay size={20} />
+              Reprendre
+            </Button>
+          )}
+          <Button
+            variant="danger" size="l" style={{ flex: 1 }}
+            onClick={() => void stopRecording()}
+            disabled={recorder.status === 'starting' || recorder.status === 'stopping'}>
+            <span className="ui-record-dot ui-record-dot--stop" />
+            {recorder.status === 'stopping' ? 'Enregistrement du fichier…' : 'Arrêter'}
+          </Button>
+        </div>
       ) : (
         <Button variant="record" size="l" block onClick={handleStart} disabled={!canStart}>
           <span className="ui-record-dot" />
@@ -133,20 +189,44 @@ function RecordingPage() {
         </Button>
       )}
 
+      {recorder.status === 'paused' && recorder.pausedReason === 'manual' && (
+        <div className="ui-alert ui-alert--warning">En pause : le GPS est coupé pour économiser la batterie.</div>
+      )}
+      {recorder.status === 'paused' && recorder.pausedReason === 'auto' && (
+        <div className="ui-alert ui-alert--warning">En pause automatique : aucun mouvement détecté. Reprend dès que vous bougez.</div>
+      )}
+
       {recorder.error && <div className="ui-alert ui-alert--danger">{recorder.error}</div>}
 
-      {(busy || stats.pointCount > 0) && (
-        <Card heading={busy ? `En cours : ${SPORT_PROFILES[recorder.sport ?? sport].label}` : 'Dernier enregistrement'}>
-          {busy && recorder.sourceLabel && (
+      {busy && (
+        <LiveMap segments={live.segments} position={getLastFix()} height="45vh"
+          color={sportFamily(liveSport) === 'voile' ? TRACK_COLOR.voile : TRACK_COLOR.course} />
+      )}
+
+      {busy && (
+        <Card heading={`En cours : ${SPORT_PROFILES[liveSport].label}`}>
+          {recorder.sourceLabel && (
             <p style={{ margin: '-6px 0 12px', color: 'var(--muted)', fontSize: 'var(--text-s)' }}>{recorder.sourceLabel}</p>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '8px' }}>
+          <div style={STAT_GRID}>
             <Stat label="Durée" value={formatClock(durationMs)} />
-            <Stat label="Points" value={String(stats.pointCount)} />
-            <Stat label="Intervalle moyen" value={meanIntervalS === null ? '—' : `${meanIntervalS.toFixed(1)} s`} />
-            <Stat label="Plus long trou" value={`${Math.round(stats.longestGapS)} s`} />
-            <Stat label="Précision" value={stats.lastAccuracyM === null ? '—' : `${Math.round(stats.lastAccuracyM)} m`} />
+            {liveStatItems(liveSport, live.stats).map((item) => <Stat key={item.label} {...item} />)}
           </div>
+        </Card>
+      )}
+
+      {(busy || stats.pointCount > 0) && (
+        <Card heading={busy ? undefined : 'Dernier enregistrement'}>
+          <details open={!busy}>
+            <summary className="ui-eyebrow" style={{ cursor: 'pointer', marginBottom: 'var(--space-2)' }}>GPS</summary>
+            <div style={STAT_GRID}>
+              <Stat label="Durée" value={formatClock(durationMs)} />
+              <Stat label="Points" value={String(stats.pointCount)} />
+              <Stat label="Intervalle moyen" value={meanIntervalS === null ? '—' : `${meanIntervalS.toFixed(1)} s`} />
+              <Stat label="Plus long trou" value={`${Math.round(stats.longestGapS)} s`} />
+              <Stat label="Précision" value={stats.lastAccuracyM === null ? '—' : `${Math.round(stats.lastAccuracyM)} m`} />
+            </div>
+          </details>
         </Card>
       )}
 
