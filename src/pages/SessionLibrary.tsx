@@ -15,10 +15,10 @@ import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import { activitiesOfFamily, sessionActivity, type Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import type { RawTrackPoint, TrackPoint } from '../core/types';
-import { formatDuration, formatSpeed, knotsToMs, msToKnots } from '../core/units';
+import { formatDistance, formatDuration, formatSpeed, knotsToMs, msToKnots, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { importFiles, importFromFolder, readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
-import { effectiveSpeedUnit, readStoredActivities, readStoredSettings } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, effectiveSpeedUnit, readStoredActivities, readStoredSettings } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
 import { isNativeApp } from '../platform/runtime';
 import { DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
@@ -46,12 +46,14 @@ const formatDate = (ms: number): string =>
 const formatTime = (ms: number): string =>
   new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-const formatKm = (m: number): string => `${(m / 1000).toFixed(m < 10_000 ? 2 : 1)} km`;
 
 /** Chiffres d'une ligne, selon la famille. */
 const rowStats = (session: LibrarySession, activity: Activity | null): string[] => {
   const { summary } = session.record;
-  const stats = [formatDuration(summary.endMs - summary.startMs), formatKm(summary.distanceM)];
+  // Deux décimales sous 10 unités, une au-delà.
+  const distanceUnit = activity ? effectiveDistanceUnit(activity) : 'km';
+  const decimals = toDisplayDistance(summary.distanceM, distanceUnit) < 10 ? 2 : 1;
+  const stats = [formatDuration(summary.endMs - summary.startMs), formatDistance(summary.distanceM, distanceUnit, decimals)];
   if (activity === null) return stats;
   if (sportFamily(activity.base) === 'voile') {
     stats.push(`max ${formatSpeed(summary.maxSpeedMs, effectiveSpeedUnit(activity))}`);

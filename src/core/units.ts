@@ -67,6 +67,14 @@ export const SPEED_UNIT_LABEL: Record<SpeedUnit, string> = {
   minkm: 'min/km',
 };
 
+/** Symbole court, accolé à une valeur (« 12.4 nds »). */
+export const SPEED_UNIT_SYMBOL: Record<SpeedUnit, string> = {
+  kn: 'nds',
+  kmh: 'km/h',
+  ms: 'm/s',
+  minkm: '/km',
+};
+
 /** Vrai si, dans cette unité, une valeur plus grande signifie plus lent. */
 export const isInverseUnit = (unit: SpeedUnit): boolean => unit === 'minkm';
 
@@ -95,6 +103,50 @@ export const formatSpeedValue = (value: number, unit: SpeedUnit): string => {
   }
   return unit === 'ms' ? value.toFixed(2) : value.toFixed(1);
 };
+
+/**
+ * Vitesse en nœuds convertie dans une unité d'affichage. Le module voile
+ * calcule en nœuds (règle 5) : il ne convertit qu'en sortie.
+ */
+export const knotsToDisplay = (kn: number, unit: SpeedUnit): number => toDisplaySpeed(knotsToMs(kn), unit);
+
+/**
+ * Valeur en nœuds, nombre ou texte déjà arrondi (tops, VMG), formatée dans
+ * l'unité, sans symbole. Un texte qui n'est pas un nombre (« - ») est rendu
+ * tel quel. En nœuds, le texte reçu est rendu inchangé.
+ */
+export const formatKnots = (kn: number | string, unit: SpeedUnit): string => {
+  const value = typeof kn === 'number' ? kn : parseFloat(kn);
+  if (!isFinite(value)) return String(kn);
+  if (unit === 'kn') return typeof kn === 'string' ? kn : value.toFixed(1);
+  return formatSpeedValue(knotsToDisplay(value, unit), unit);
+};
+
+/** Unité dans laquelle une distance est présentée : kilomètres ou milles nautiques. */
+export type DistanceUnit = 'km' | 'nm';
+
+export const DISTANCE_UNIT_LABEL: Record<DistanceUnit, string> = {
+  km: 'kilomètres',
+  nm: 'milles nautiques',
+};
+
+export const DISTANCE_UNIT_SYMBOL: Record<DistanceUnit, string> = {
+  km: 'km',
+  nm: 'NM',
+};
+
+/** Longueur d'une unité de distance, en mètres. */
+export const METERS_PER_DISTANCE_UNIT: Record<DistanceUnit, number> = {
+  km: 1000,
+  nm: 1852,
+};
+
+/** Convertit une distance en mètres vers une unité d'affichage. */
+export const toDisplayDistance = (m: number, unit: DistanceUnit): number => m / METERS_PER_DISTANCE_UNIT[unit];
+
+/** Formate une distance en mètres dans l'unité choisie, avec son symbole. */
+export const formatDistance = (m: number, unit: DistanceUnit, decimals = 2): string =>
+  isFinite(m) ? `${toDisplayDistance(m, unit).toFixed(decimals)} ${DISTANCE_UNIT_SYMBOL[unit]}` : '-';
 
 /** Formate une durée en millisecondes, par exemple `1h24` ou `37 min`. */
 export const formatDuration = (ms: number): string => {

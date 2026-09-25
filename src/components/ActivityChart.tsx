@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { sessionActivity, type Activity } from '../core/activities';
 import { sportFamily } from '../core/sportProfiles';
-import { formatDuration } from '../core/units';
+import { DISTANCE_UNIT_SYMBOL, formatDuration, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
-import { effectiveSpeedUnit, readStoredActivities } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, readStoredActivities } from '../hooks/useSportSettings';
 import { CHART_PERIODS, buildActivityChart, type ChartPeriod, type ChartSession } from '../library/activityChart';
 import './ActivityChart.css';
 
@@ -20,11 +20,11 @@ import './ActivityChart.css';
 const PLOT_H = 88;
 const UNIT_MAX_H = 24;
 
-/** Distance dans l'unité de l'activité : milles nautiques quand ses vitesses sont en nœuds. */
-const formatDistance = (m: number, activity: Activity): string =>
-  effectiveSpeedUnit(activity) === 'kn'
-    ? `${(m / 1852).toFixed(1).replace('.', ',')} milles`
-    : `${(m / 1000).toFixed(1).replace('.', ',')} km`;
+/** Distance dans l'unité choisie pour l'activité dans Réglages. */
+const formatDistance = (m: number, activity: Activity): string => {
+  const unit = effectiveDistanceUnit(activity);
+  return `${toDisplayDistance(m, unit).toFixed(1).replace('.', ',')} ${DISTANCE_UNIT_SYMBOL[unit]}`;
+};
 
 const formatTime = (ms: number): string =>
   new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });

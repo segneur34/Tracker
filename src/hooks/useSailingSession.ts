@@ -54,6 +54,9 @@ export const useSailingSession = ({
     activeThreshold: rawActiveThresholdKn,
     isThresholdOverridden,
     speedRange,
+    speedUnit,
+    distanceUnit,
+    textScale,
   } = useSportSettings('voile');
 
   // Les seuils de filtrage suivent l'allure de la session, pas seulement le
@@ -228,6 +231,10 @@ export const useSailingSession = ({
     setActivity,
     sport,
     profile,
+    /** Unité d'affichage des vitesses et taille du texte, choisies dans Réglages pour l'activité. */
+    speedUnit,
+    distanceUnit,
+    textScale,
     activeThresholdKn,
     /** Seuil hors réglage de la session : celui du support s'il est surchargé, sinon la suggestion. */
     defaultActiveThresholdKn,

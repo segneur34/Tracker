@@ -94,8 +94,7 @@ export interface ZoneStats {
   avgSpeedMs: number | null;
   /** Part de la distance totale en mouvement. */
   distanceShare: number;
-  /** Mêmes valeurs, formatées. */
-  distance: string;
+  /** Mêmes valeurs, formatées (la distance l'est à l'affichage, dans l'unité de l'activité). */
   time: string;
   pace: string;
   speedKmh: string;
@@ -139,7 +138,6 @@ export const computeZoneStats = (
       timeMs,
       avgSpeedMs,
       distanceShare: movingDistanceM > 0 ? distanceM / movingDistanceM : 0,
-      distance: `${(distanceM / 1000).toFixed(2)} km`,
       time: formatDuration(timeMs),
       pace: avgSpeedMs === null ? '-' : `${formatPace(avgSpeedMs)} /km`,
       speedKmh: avgSpeedMs === null ? '-' : `${msToKmh(avgSpeedMs).toFixed(1)} km/h`,

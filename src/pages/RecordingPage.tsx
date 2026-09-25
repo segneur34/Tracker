@@ -7,10 +7,10 @@ import { IconPause, IconPlay } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import { activitiesOfFamily, type Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
-import { formatClock, formatSpeed } from '../core/units';
+import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { useLiveRecording } from '../hooks/useLiveRecording';
-import { effectiveSpeedUnit, lastRecordActivity, readStoredActivities, rememberRecordActivity } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, effectiveSpeedUnit, lastRecordActivity, readStoredActivities, rememberRecordActivity } from '../hooks/useSportSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import {
   analyzePendingSession, discardPendingSession, dismissRecorderResult, getLastFix, pauseRecording, resumeRecording,
@@ -55,26 +55,26 @@ const STAT_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, min
 /** Couleur de la trace sur la carte en direct, celle de la famille (donnée de carte, donc en dur). */
 const TRACK_COLOR = { voile: '#1565c0', course: '#bf360c' } as const;
 
-const formatDistance = (m: number): string => `${(m / 1000).toFixed(2)} km`;
 const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
 const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
 
 /** Statistiques en direct propres à la famille de l'activité. */
 const liveStatItems = (activity: Activity, live: LiveStats): { label: string; value: string }[] => {
   const unit = effectiveSpeedUnit(activity);
+  const distanceUnit = effectiveDistanceUnit(activity);
   if (sportFamily(activity.base) === 'voile') {
     return [
       ...LIVE_STATS_DEFAULTS.topDurationsS.map((d, i) => ({
         label: `Top ${d} s (${recentWindowLabel})`,
         value: formatSpeed(live.recentTopsMs[i] ?? null, unit),
       })),
-      { label: 'Distance', value: formatDistance(live.distanceM) },
+      { label: 'Distance', value: formatDistance(live.distanceM, distanceUnit) },
     ];
   }
   return [
     { label: 'Allure', value: formatSpeed(live.currentSpeedMs, unit) },
-    { label: 'Distance', value: formatDistance(live.distanceM) },
-    { label: `Dernier ${LIVE_STATS_DEFAULTS.lastDistanceM / 1000} km`, value: formatSpeed(live.lastDistanceSpeedMs, unit) },
+    { label: 'Distance', value: formatDistance(live.distanceM, distanceUnit) },
+    { label: distanceUnit === 'nm' ? 'Dernier mille' : 'Dernier km', value: formatSpeed(live.lastDistanceSpeedMs, unit) },
     { label: 'Allure moyenne', value: formatSpeed(live.averageSpeedMs, unit) },
     { label: 'D+', value: formatMeters(live.elevationGainM) },
     { label: 'D−', value: formatMeters(live.elevationLossM) },
@@ -109,7 +109,11 @@ function RecordingPage() {
   const meanIntervalS = stats.pointCount > 1 ? durationMs / 1000 / (stats.pointCount - 1) : null;
   const canStart = !busy && pending === null && chosen !== null && (sourceChoice === 'device' || replay !== null);
   const liveActivity = recorder.activity ?? chosen;
-  const live = useLiveRecording(busy && liveActivity ? liveActivity.base : null, stats.pointCount);
+  const live = useLiveRecording(
+    busy && liveActivity ? liveActivity.base : null,
+    stats.pointCount,
+    liveActivity ? METERS_PER_DISTANCE_UNIT[effectiveDistanceUnit(liveActivity)] : undefined
+  );
 
   const handleReplayFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

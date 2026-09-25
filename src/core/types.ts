@@ -72,10 +72,10 @@ export interface TopTarget {
 
 /** Statistiques communes à tous les supports. */
 export interface BaseSessionStats {
-  /** Distance totale en kilomètres, formatée. */
-  distance: string;
-  /** Distance parcourue au-dessus du seuil d'activité, en kilomètres, formatée. */
-  activeDistance: string;
+  /** Distance totale, en mètres ; formatée dans l'unité de l'activité à l'affichage. */
+  distanceM: number;
+  /** Distance parcourue au-dessus du seuil d'activité, en mètres. */
+  activeDistanceM: number;
   /** Durée totale formatée, par exemple `1h24`. */
   totalTime: string;
   /** Durée passée au-dessus du seuil d'activité, formatée. */

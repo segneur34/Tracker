@@ -11,7 +11,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 ## `core/` : noyau, SI, sans notion de sport
 
 - `types.ts` : `SportType`, `RawTrackPoint`, `TrackPoint`, `TopSegment`, `BaseSessionStats`, `CumulativeTrack`.
-- `units.ts` : conversions (`msToKnots`, `knotsToMs`…), `SpeedUnit`, `toDisplaySpeed`, `formatSpeed`, `formatDuration`, `formatClock`.
+- `units.ts` : conversions (`msToKnots`, `knotsToMs`…), `SpeedUnit`, `toDisplaySpeed`, `formatSpeed`, `formatKnots` (nœuds des analyses voile vers l'unité affichée), `DistanceUnit` (km, milles nautiques), `formatDistance`, `formatDuration`, `formatClock`.
 - `sportProfiles.ts` : `SPORT_PROFILES` (seuils, hystérésis, filtres, plafond, cibles de tops, `recording`), `SAILING_SPORTS`, `getActiveThresholds`, `sportFamily`, `ELEVATION_PRESETS`.
 - `gpxParser.ts` : `parseGpx`, lecteur maison par nom local (vitesse, FC, cadence, `trk/type`).
 - `kinematics.ts` : Haversine, cap, détection de l'unité de la vitesse appareil, `computeKinematics` (vitesse retenue et lissée).
@@ -76,7 +76,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `useSailingSession.ts` : orchestration de la voile ; c'est ici que les seuils s'accordent à l'allure (règle 4).
 - `useSessionDraft.ts` : brouillon d'une session, écrit dans la fiche par `save`. `leaveGuard.ts` : avertissement en quittant.
 - `useLibraryNavigation.ts` : passage de la liste à l'analyse (`?session=`), `useSessionFromUrl` (chargement unique, §10 point 39), `useImportAndOpen`.
-- `useSportSettings.ts` : réglages par activité et liste des activités (`tracker.sportSettings`), `useSportSettings(family)` pour un module, `useAllSportSettings` pour Réglages, et hors composant `readStoredActivities`, `effectiveRecordingProfile`, `effectiveSpeedUnit`, `effectiveLongPressMs`.
+- `useSportSettings.ts` : réglages par activité et liste des activités (`tracker.sportSettings`), `useSportSettings(family)` pour un module, `useAllSportSettings` pour Réglages, et hors composant `readStoredActivities`, `effectiveRecordingProfile`, `effectiveSpeedUnit`, `effectiveDistanceUnit`, `effectiveLongPressMs`.
 - `useStoredRecord.ts`, `useOpenSections.ts`, `useRunnerProfile.ts` : enregistrements de l'appareil (sections ouvertes, profil du coureur).
 
 ## `pages/`
@@ -87,13 +87,13 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `RunningModule.tsx` : analyse course (synthèse, zones, graphes, carte).
 - `analysisMobile.css` : disposition des deux modules d'analyse sous 768 px (carte pleine largeur en haut, feuille des chiffres clés, vue plein écran au tap, colonne d'onglets de la voile bornée à l'écran, panneau Manœuvres resserré) ; classes `an-*`.
 - `RecordingPage.tsx` : enregistrement (famille puis activité), source GPS ou rejeu, pause, carte et statistiques en direct.
-- `SettingsPage.tsx` : mémoire, activités (ajouter, renommer, recolorer, supprimer) et leurs réglages (couleurs de trace comprises), enregistrement (appui long), course, coureur ; `settingsPage.css` met le tableau des activités en cartes sous 768 px.
+- `SettingsPage.tsx` : mémoire, activités (ajouter, renommer, recolorer, supprimer) et leurs réglages (unités, texte, seuil, couleurs de trace, pause automatique), enregistrement (appui long), course, coureur ; blocs et activités repliables (`useOpenSections`) ; `settingsPage.css` : une carte par activité, un réglage par ligne.
 
 ## `components/` et thème
 
 - `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement, bouton rond (appui long : pause ou reprise).
 - `ActivityChart.tsx` (+ `.css`) : graphe d'activités de l'accueil, période, détail d'une barre, totaux.
-- `MemoryStatus.tsx` : état de la mémoire et l'action qui convient. `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `LiveMap.tsx` : carte de l'enregistrement en cours, qui suit la position. `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17).
+- `MemoryStatus.tsx` : état de la mémoire et l'action qui convient ; repliable par `collapse` (Réglages). `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `LiveMap.tsx` : carte de l'enregistrement en cours, qui suit la position. `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17).
 - `SessionSaveBar.tsx` : barre « Enregistrer la session » du brouillon, commune aux deux modules.
 - `AnalysisMap.tsx` : carte d'une page d'analyse, cadrée sur la trace, sa légende collée dessous et sa vue plein écran au tap (`docs/MISE_EN_PAGE.md`).
 - `SpeedGradientLegend.tsx` : légende et bornes de couleur (§10, point 30). `MapAutoResize.tsx` : `invalidateSize` de la carte. `chartHover.ts` : survol d'un graphe vers la carte.

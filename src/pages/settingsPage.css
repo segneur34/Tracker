@@ -1,31 +1,108 @@
-/* Tableau « Réglages par support » (`SettingsPage.tsx`), sur les variables de `theme/tokens.css`.
-   Sur ordinateur, un tableau ; sur téléphone, une carte par support, un réglage par ligne. */
+/* Page Réglages (`SettingsPage.tsx`), sur les variables de `theme/tokens.css`.
+   Blocs repliables par leur titre ; une carte repliable par activité, un réglage par ligne. */
 
-.settings-sports {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-  background-color: var(--surface);
+.settings-block__intro {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.settings-block__note {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  margin-top: var(--space-2);
+}
+
+.settings-activities {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background-color: var(--surface);
 }
 
-.settings-sports th {
-  padding: 6px 6px;
-  background-color: var(--surface-sunken);
-  text-align: left;
-}
-
-.settings-sports td {
-  padding: 6px 6px;
+.settings-activity + .settings-activity {
   border-top: 1px solid var(--line-soft);
 }
 
-.settings-sports__name {
-  font-weight: bold;
+.settings-activity__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
 }
 
-.settings-sports__reset {
-  text-align: right;
+/* Titre d'une activité : tout le bandeau ouvre et referme. */
+.settings-activity__toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-1) 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-activity__head:has(input) .settings-activity__toggle {
+  flex: 0 0 auto;
+}
+
+.settings-activity__chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.settings-activity__dot {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+
+.settings-activity__name {
+  font-size: var(--text-m);
+}
+
+.settings-activity__summary {
+  width: 100%;
+  padding-left: 22px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.settings-activity__body {
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+/* Un réglage par ligne : son nom à gauche, le champ à droite. */
+.settings-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line-soft);
+  font-size: 14px;
+}
+
+.settings-row__label {
+  width: 170px;
+  color: var(--ink-2);
+}
+
+.settings-activity__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line-soft);
 }
 
 .settings-sports__pair {
@@ -41,49 +118,14 @@
 }
 
 @media (max-width: 767.98px) {
-  .settings-sports thead {
-    display: none;
-  }
-
-  .settings-sports,
-  .settings-sports tbody,
-  .settings-sports tr {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-  }
-
-  .settings-sports tr {
-    padding: var(--space-2) 0;
-  }
-
-  .settings-sports tr + tr {
-    border-top: 1px solid var(--line-strong);
-  }
-
-  /* Un réglage par ligne : son nom à gauche (repris de l'en-tête masqué), le champ à droite. */
-  .settings-sports td {
-    display: flex;
-    align-items: center;
+  .settings-row {
     justify-content: space-between;
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-2);
-    border-top: none;
-    padding: var(--space-1) var(--space-3);
   }
 
-  .settings-sports td[data-label]::before {
-    content: attr(data-label);
-    color: var(--muted);
+  .settings-row__label {
+    width: auto;
     font-size: var(--text-s);
-  }
-
-  .settings-sports__name {
-    font-size: var(--text-m);
-  }
-
-  .settings-sports__reset:empty {
-    display: none;
+    color: var(--muted);
   }
 }
 
@@ -98,13 +140,7 @@
   cursor: pointer;
 }
 
-.settings-sports__name .settings-sports__mark {
-  display: block;
-  margin-top: 2px;
-  font-weight: normal;
-}
-
-/* Ajout d'une activité, sous le tableau. */
+/* Ajout d'une activité, sous la liste. */
 .settings-add {
   display: flex;
   align-items: center;

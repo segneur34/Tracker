@@ -27,8 +27,8 @@ import { ELEVATION_PRESETS, getActiveThresholds } from '../core/sportProfiles';
 import { meanFilterByTime } from '../core/speedFilter';
 import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import {
-  SPEED_UNIT_LABEL, formatSpeed, formatSpeedValue, fromDisplaySpeed, isInverseUnit, toDisplaySpeed,
-  type SpeedUnit,
+  DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed, isInverseUnit,
+  toDisplayDistance, toDisplaySpeed,
 } from '../core/units';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { useSessionDraft } from '../hooks/useSessionDraft';
@@ -37,8 +37,7 @@ import { libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLi
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  RUNNING_UNITS, TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, readStoredActivities, useSportSettings,
-  type TerrainType, type TextScale,
+  TERRAIN_LABEL, TEXT_SCALE_FACTOR, readStoredActivities, useSportSettings, type TerrainType,
 } from '../hooks/useSportSettings';
 import { DEFAULT_SPEED_RANGE_MS, averagePace, computeGrades, computeZoneStats } from '../running/runningAnalytics';
 import type { RunningSessionStats } from '../running/types';
@@ -76,7 +75,8 @@ type ChartMode = 'separate' | 'overlay';
 /** Une ligne des graphes : `index` renvoie au point de trace d'origine. */
 interface ChartRow {
   index: number;
-  km: number;
+  /** Distance parcourue, dans l'unité de l'activité. */
+  dist: number;
   speed: number | null;
   speedMs: number;
   altitude: number | null;
@@ -92,8 +92,8 @@ const chartTooltipStyle = { fontSize: '12px' } as const;
 function RunningModule() {
   const {
     activity, activityOptions, setActivity,
-    profile, terrain, setTerrain, elevationProfile,
-    speedUnit, setSpeedUnit, textScale, setTextScale,
+    profile, activeThreshold, terrain, setTerrain, elevationProfile,
+    speedUnit, distanceUnit, textScale,
     speedRange,
   } = useSportSettings('course');
   const { profile: runner } = useRunnerProfile();
@@ -153,17 +153,17 @@ function RunningModule() {
   );
 
   const activityMask = useMemo(() => {
-    const thresholds = getActiveThresholds(profile, profile.defaultActiveThreshold);
+    const thresholds = getActiveThresholds(profile, activeThreshold);
     return computeActivityMask(gpx.track, {
       enterThresholdMs: fromDisplaySpeed(thresholds.enter, profile.thresholdUnit),
       exitThresholdMs: fromDisplaySpeed(thresholds.exit, profile.thresholdUnit),
       minStateDurationS: profile.minStateDurationS,
     });
-  }, [gpx.track, profile]);
+  }, [gpx.track, profile, activeThreshold]);
 
   const stats: RunningSessionStats | null = useMemo(() => {
     if (gpx.track.length === 0) return null;
-    const thresholds = getActiveThresholds(profile, profile.defaultActiveThreshold);
+    const thresholds = getActiveThresholds(profile, activeThreshold);
     return buildBaseSessionStats(gpx.track, {
       enterThresholdMs: fromDisplaySpeed(thresholds.enter, profile.thresholdUnit),
       exitThresholdMs: fromDisplaySpeed(thresholds.exit, profile.thresholdUnit),
@@ -172,7 +172,7 @@ function RunningModule() {
       activityMask,
       elevationStats: elevation,
     });
-  }, [gpx.track, profile, cumulative, activityMask, elevation]);
+  }, [gpx.track, profile, activeThreshold, cumulative, activityMask, elevation]);
 
   /** Allures moyennes : sur le temps total, et sur le seul temps en mouvement. */
   const averages = useMemo(() => {
@@ -197,7 +197,7 @@ function RunningModule() {
   /** Bornes du dégradé de couleur, en m/s : celles de la session, sinon de Réglages, sinon le défaut. */
   const range = draft.edits.speedRange ?? speedRange ?? DEFAULT_SPEED_RANGE_MS;
 
-  /** Séries des graphes : distance en km, vitesse dans l'unité choisie, altitude lissée. */
+  /** Séries des graphes : distance dans l'unité choisie, vitesse dans l'unité choisie, altitude lissée. */
   const chartData = useMemo(() => {
     if (gpx.track.length === 0) return [];
     const displaySpeed = meanFilterByTime(
@@ -214,14 +214,14 @@ function RunningModule() {
       const speed = inverse && ms < 0.3 ? null : parseFloat(toDisplaySpeed(ms, speedUnit).toFixed(2));
       data.push({
         index: i,
-        km: parseFloat((cumulative.cumDist[i] / 1000).toFixed(2)),
+        dist: parseFloat(toDisplayDistance(cumulative.cumDist[i], distanceUnit).toFixed(2)),
         speed,
         speedMs: ms,
         altitude: stats?.hasElevation && isFinite(altitude) ? Math.round(altitude) : null,
       });
     }
     return data;
-  }, [gpx.track, elevation, cumulative, stats, speedUnit, inverse]);
+  }, [gpx.track, elevation, cumulative, stats, speedUnit, distanceUnit, inverse]);
 
   const mapSegments = useMemo(() => {
     if (gpx.track.length < 2) return [];
@@ -272,7 +272,8 @@ function RunningModule() {
   const altitudeAxis = (orientation: 'left' | 'right') => (
     <YAxis yAxisId="altitude" orientation={orientation} domain={['auto', 'auto']} tickFormatter={(v) => `${v}`} width={44} tick={{ fill: '#e64a19', fontSize: 11 }} label={{ value: 'm', angle: -90, position: orientation === 'left' ? 'insideLeft' : 'insideRight', fill: '#e64a19', fontSize: 11 }} />
   );
-  const xAxis = <XAxis dataKey="km" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(v) => `${v} km`} tick={{ fill: '#555', fontSize: 11 }} />;
+  const distanceSymbol = DISTANCE_UNIT_SYMBOL[distanceUnit];
+  const xAxis = <XAxis dataKey="dist" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(v) => `${v} ${distanceSymbol}`} tick={{ fill: '#555', fontSize: 11 }} />;
 
   /** Couches de la carte, partagées par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
@@ -300,7 +301,7 @@ function RunningModule() {
 
         {stats && averages && (
           <div className="an-sheet__stats">
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{stats.distance} km</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
             <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps de parcours</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
             <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne en mouvement</span><strong className="an-sheet__stat-value">{formatSpeed(averages.moving.speedMs, speedUnit)}</strong></div>
             <div className="an-sheet__stat"><span className="an-sheet__stat-label">Dénivelé positif</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `${stats.elevationGain} m` : '—'}</strong></div>
@@ -326,28 +327,10 @@ function RunningModule() {
           )}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <strong>Unité :</strong>
-            <select value={speedUnit} onChange={(e) => setSpeedUnit(e.target.value as SpeedUnit)} className="ui-field ui-field--s">
-              {RUNNING_UNITS.map((u) => (
-                <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>
-              ))}
-            </select>
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <strong>Terrain :</strong>
             <select value={terrain} onChange={(e) => setTerrain(e.target.value as TerrainType)} className="ui-field ui-field--s">
               {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
                 <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
-              ))}
-            </select>
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <strong>Texte :</strong>
-            <select value={textScale} onChange={(e) => setTextScale(e.target.value as TextScale)} className="ui-field ui-field--s">
-              {(Object.keys(TEXT_SCALE_FACTOR) as TextScale[]).map((s) => (
-                <option key={s} value={s}>{TEXT_SCALE_LABEL[s]}</option>
               ))}
             </select>
           </label>
@@ -378,7 +361,7 @@ function RunningModule() {
               <PanelTitle label={sessionName ?? gpx.trackName ?? gpx.fileName ?? 'Session'} open={open.synthese} onToggle={() => toggle('synthese')} />
             </div>
             <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.7' }}>
-              <li><strong>Distance :</strong> {stats.distance} km <span style={{ color: 'var(--muted)' }}>(en mouvement {stats.activeDistance} km)</span></li>
+              <li><strong>Distance :</strong> {formatDistance(stats.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)' }}>(en mouvement {formatDistance(stats.activeDistanceM, distanceUnit)})</span></li>
               <li><strong>Temps de parcours :</strong> {stats.totalTime} <span style={{ color: 'var(--muted)' }}>(en mouvement {stats.activeTime}, {stats.activeRatio} %)</span></li>
               <li><strong>Vitesse moyenne :</strong> {formatSpeed(averages.moving.speedMs, speedUnit)} <span style={{ color: 'var(--muted)' }}>(en mouvement)</span></li>
               <li><strong>Sur le temps total :</strong> {formatSpeed(averages.overall.speedMs, speedUnit)}</li>
@@ -421,7 +404,7 @@ function RunningModule() {
                     <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.timeMs > 0 ? 1 : 0.45 }}>
                       <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label}</td>
                       <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: '0.9em' }}>{z.zone.range}</td>
-                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.distance} <span style={{ color: 'var(--muted)', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
+                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
                       <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
                       <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
                     </tr>
@@ -458,7 +441,7 @@ function RunningModule() {
                   {xAxis}
                   {speedAxis}
                   {stats?.hasElevation && altitudeAxis('right')}
-                  <Tooltip formatter={tooltipFormatter} labelFormatter={(l) => `${l} km`} contentStyle={chartTooltipStyle} />
+                  <Tooltip formatter={tooltipFormatter} labelFormatter={(l) => `${l} ${distanceSymbol}`} contentStyle={chartTooltipStyle} />
                   {stats?.hasElevation && (
                     <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke="#e64a19" strokeWidth={1.5} fill="#e64a19" fillOpacity={0.12} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
                   )}
@@ -474,7 +457,7 @@ function RunningModule() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
                     {xAxis}
                     {speedAxis}
-                    <Tooltip formatter={tooltipFormatter} labelFormatter={(l) => `${l} km`} contentStyle={chartTooltipStyle} />
+                    <Tooltip formatter={tooltipFormatter} labelFormatter={(l) => `${l} ${distanceSymbol}`} contentStyle={chartTooltipStyle} />
                     <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -486,7 +469,7 @@ function RunningModule() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
                       {xAxis}
                       {altitudeAxis('left')}
-                      <Tooltip formatter={tooltipFormatter} labelFormatter={(l) => `${l} km`} contentStyle={chartTooltipStyle} />
+                      <Tooltip formatter={tooltipFormatter} labelFormatter={(l) => `${l} ${distanceSymbol}`} contentStyle={chartTooltipStyle} />
                       <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke="#e64a19" strokeWidth={2} fill="#e64a19" fillOpacity={0.15} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
                     </ComposedChart>
                   </ResponsiveContainer>

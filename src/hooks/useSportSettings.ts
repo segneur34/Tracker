@@ -5,7 +5,7 @@ import {
 import { ELEVATION_PRESETS, getSportProfile, type RecordingProfile, type SportFamily } from '../core/sportProfiles';
 import { isValidSpeedRange } from '../core/speedGradient';
 import type { SportType } from '../core/types';
-import { SPEED_UNIT_LABEL, type SpeedUnit } from '../core/units';
+import { DISTANCE_UNIT_LABEL, SPEED_UNIT_LABEL, type DistanceUnit, type SpeedUnit } from '../core/units';
 import { jsonStore } from '../platform/storage';
 
 /** Taille du texte des tableaux et synthèses, en facteur d'échelle. */
@@ -64,6 +64,8 @@ export interface StoredSettings {
   terrains?: ByActivity<TerrainType>;
   /** Unité d'affichage des vitesses. */
   speedUnits?: ByActivity<SpeedUnit>;
+  /** Unité d'affichage des distances ; absente : kilomètres. */
+  distanceUnits?: ByActivity<DistanceUnit>;
   /** Taille du texte. */
   textScales?: ByActivity<TextScale>;
   /** Bornes du dégradé de couleur de la trace, en m/s. */
@@ -85,6 +87,9 @@ export const isKnownTerrain = (value: unknown): value is TerrainType =>
 
 export const isKnownSpeedUnit = (value: unknown): value is SpeedUnit =>
   typeof value === 'string' && value in SPEED_UNIT_LABEL;
+
+export const isKnownDistanceUnit = (value: unknown): value is DistanceUnit =>
+  typeof value === 'string' && value in DISTANCE_UNIT_LABEL;
 
 export const isKnownTextScale = (value: unknown): value is TextScale =>
   typeof value === 'string' && value in TEXT_SCALE_FACTOR;
@@ -143,11 +148,19 @@ export const effectiveSpeedUnit = (activity: Activity): SpeedUnit => {
   return isKnownSpeedUnit(unit) ? unit : getSportProfile(activity.base).speedUnit;
 };
 
+/** Unité de distance effective d'une activité : celle choisie dans Réglages, sinon le kilomètre. */
+export const effectiveDistanceUnit = (activity: Activity): DistanceUnit => {
+  const unit = readStoredSettings().distanceUnits?.[activity.id];
+  return isKnownDistanceUnit(unit) ? unit : 'km';
+};
+
 /** Réglages d'une activité tels que la page Réglages les présente. */
 export interface SportSettingsView {
   activity: Activity;
   speedUnit: SpeedUnit;
   isSpeedUnitOverridden: boolean;
+  distanceUnit: DistanceUnit;
+  isDistanceUnitOverridden: boolean;
   activeThreshold: number;
   isThresholdOverridden: boolean;
   textScale: TextScale;
@@ -159,7 +172,7 @@ export interface SportSettingsView {
 }
 
 /** Tables de réglages rangées par activité. */
-const PER_ACTIVITY_KEYS = ['thresholds', 'terrains', 'speedUnits', 'textScales', 'speedRanges', 'autoPause'] as const;
+const PER_ACTIVITY_KEYS = ['thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'textScales', 'speedRanges', 'autoPause'] as const;
 
 /** Réglages sans aucune surcharge rangée sous `id`. */
 const withoutOverrides = (stored: StoredSettings, id: string): StoredSettings => {
@@ -195,6 +208,7 @@ export const useAllSportSettings = () => {
       const id = activity.id;
       const profile = getSportProfile(activity.base);
       const unit = stored.speedUnits?.[id];
+      const distanceUnit = stored.distanceUnits?.[id];
       const threshold = stored.thresholds?.[id];
       const scale = stored.textScales?.[id];
       const terrain = stored.terrains?.[id];
@@ -204,6 +218,8 @@ export const useAllSportSettings = () => {
         activity,
         speedUnit: isKnownSpeedUnit(unit) ? unit : profile.speedUnit,
         isSpeedUnitOverridden: isKnownSpeedUnit(unit),
+        distanceUnit: isKnownDistanceUnit(distanceUnit) ? distanceUnit : 'km',
+        isDistanceUnitOverridden: isKnownDistanceUnit(distanceUnit),
         activeThreshold: threshold ?? profile.defaultActiveThreshold,
         isThresholdOverridden: threshold !== undefined,
         textScale: isKnownTextScale(scale) ? scale : 'normal',
@@ -218,7 +234,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'autoPause'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'autoPause'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -234,6 +250,10 @@ export const useAllSportSettings = () => {
         case 'speedUnit':
           if (value !== null && !isKnownSpeedUnit(value)) return;
           next.speedUnits = put(stored.speedUnits, value as SpeedUnit | null);
+          break;
+        case 'distanceUnit':
+          if (value !== null && !isKnownDistanceUnit(value)) return;
+          next.distanceUnits = put(stored.distanceUnits, value as DistanceUnit | null);
           break;
         case 'activeThreshold':
           if (value !== null && (typeof value !== 'number' || !isFinite(value) || value < 0)) return;
@@ -384,25 +404,13 @@ export const useSportSettings = (family: SportFamily) => {
     [persist, id, stored]
   );
 
+  // Lecture seule : unité et taille du texte se choisissent dans Réglages, par activité.
   const storedUnit = stored.speedUnits?.[id];
   const speedUnit: SpeedUnit = isKnownSpeedUnit(storedUnit) ? storedUnit : profile.speedUnit;
-  const setSpeedUnit = useCallback(
-    (next: SpeedUnit) => {
-      if (!isKnownSpeedUnit(next)) return;
-      persist({ ...stored, speedUnits: { ...stored.speedUnits, [id]: next } });
-    },
-    [persist, id, stored]
-  );
-
+  const storedDistanceUnit = stored.distanceUnits?.[id];
+  const distanceUnit: DistanceUnit = isKnownDistanceUnit(storedDistanceUnit) ? storedDistanceUnit : 'km';
   const storedScale = stored.textScales?.[id];
   const textScale: TextScale = isKnownTextScale(storedScale) ? storedScale : 'normal';
-  const setTextScale = useCallback(
-    (next: TextScale) => {
-      if (!isKnownTextScale(next)) return;
-      persist({ ...stored, textScales: { ...stored.textScales, [id]: next } });
-    },
-    [persist, id, stored]
-  );
 
   // Lecture seule ici : les bornes de l'activité se règlent dans Réglages, celles
   // d'une trace dans sa fiche (brouillon du module).
@@ -421,9 +429,8 @@ export const useSportSettings = (family: SportFamily) => {
     setTerrain,
     elevationProfile,
     speedUnit,
-    setSpeedUnit,
+    distanceUnit,
     textScale,
-    setTextScale,
     /** Bornes du dégradé réglées pour l'activité dans Réglages, ou `null` pour le défaut du module. */
     speedRange,
   };

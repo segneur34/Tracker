@@ -7,6 +7,7 @@ import {
   useSessionLibrary,
 } from '../hooks/useSessionLibrary';
 import { isNativeApp } from '../platform/runtime';
+import PanelTitle from './PanelTitle';
 import Button from './ui/Button';
 import Card from './ui/Card';
 
@@ -14,7 +15,8 @@ import Card from './ui/Card';
  * État de la mémoire : où elle est, combien de sessions, ce qu'il faut faire
  * si elle est inaccessible. En tête des bibliothèques en version courte, dans
  * Réglages en version détaillée (changer de dossier, réglages, mode d'emploi
- * du copier-coller).
+ * du copier-coller). Avec `collapse`, la carte se replie par son titre et ne
+ * garde, fermée, que sa ligne d'état et ses alertes.
  */
 
 const plural = (n: number, word: string): string => `${n} ${word}${n > 1 ? 's' : ''}`;
@@ -25,7 +27,12 @@ const formatDateTime = (ms: number): string =>
 const mutedStyle = { margin: 0, color: 'var(--muted)', fontSize: 'var(--text-s)', lineHeight: 1.5 } as const;
 const rowStyle = { display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' } as const;
 
-function MemoryStatus({ detailed = false }: { detailed?: boolean }) {
+function MemoryStatus({
+  detailed = false, collapse,
+}: {
+  detailed?: boolean;
+  collapse?: { open: boolean; onToggle: () => void };
+}) {
   const library = useSessionLibrary();
   const { status, folderKind, folderLabel } = library;
   const canChoose = canChooseMemoryFolder();
@@ -46,8 +53,28 @@ function MemoryStatus({ detailed = false }: { detailed?: boolean }) {
     }
   })();
 
+  const alert = (library.message || library.error) && (
+    <div className={`ui-alert ${library.error ? 'ui-alert--danger' : 'ui-alert--success'}`}>
+      {library.error ?? library.message}{' '}
+      <Button size="s" variant="ghost" onClick={dismissLibraryMessage}>Fermer</Button>
+    </div>
+  );
+
+  const heading = collapse ? <PanelTitle label="Mémoire" open={collapse.open} onToggle={collapse.onToggle} /> : detailed ? 'Mémoire' : undefined;
+
+  if (collapse && !collapse.open) {
+    return (
+      <Card heading={heading}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-m)', fontWeight: 600 }}>{headline}</p>
+          {alert}
+        </div>
+      </Card>
+    );
+  }
+
   return (
-    <Card heading={detailed ? 'Mémoire' : undefined}>
+    <Card heading={heading}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
         <p style={{ margin: 0, fontSize: 'var(--text-m)', fontWeight: 600 }}>{headline}</p>
 
@@ -160,12 +187,7 @@ function MemoryStatus({ detailed = false }: { detailed?: boolean }) {
           </p>
         )}
 
-        {(library.message || library.error) && (
-          <div className={`ui-alert ${library.error ? 'ui-alert--danger' : 'ui-alert--success'}`}>
-            {library.error ?? library.message}{' '}
-            <Button size="s" variant="ghost" onClick={dismissLibraryMessage}>Fermer</Button>
-          </div>
-        )}
+        {alert}
       </div>
     </Card>
   );

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getSportProfile } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import type { LocationFix } from '../platform/location';
-import { EMPTY_LIVE_STATS, computeLiveStats, type LiveStats } from '../recording/liveStats';
+import { EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS, computeLiveStats, type LiveStats } from '../recording/liveStats';
 import { getLiveSegments } from './useRecorder';
 
 /** Intervalle minimal entre deux recalculs, en temps réel : borne le coût d'une longue trace ou d'un rejeu accéléré. */
@@ -18,9 +18,14 @@ const EMPTY: LiveRecording = { segments: [], stats: EMPTY_LIVE_STATS };
 /**
  * Trace et statistiques de l'enregistrement en cours, recalculées au plus
  * toutes les `LIVE_REFRESH_MS`. Seule la page affichée les calcule :
- * l'enregistreur n'en porte pas le coût.
+ * l'enregistreur n'en porte pas le coût. `lastDistanceM` : longueur du
+ * « dernier kilomètre » (ou mille), selon l'unité de distance de l'activité.
  */
-export const useLiveRecording = (sport: SportType | null, pointCount: number): LiveRecording => {
+export const useLiveRecording = (
+  sport: SportType | null,
+  pointCount: number,
+  lastDistanceM: number = LIVE_STATS_DEFAULTS.lastDistanceM
+): LiveRecording => {
   const [live, setLive] = useState<LiveRecording>(EMPTY);
   const lastRunMs = useRef(0);
 
@@ -30,10 +35,10 @@ export const useLiveRecording = (sport: SportType | null, pointCount: number): L
     const id = setTimeout(() => {
       lastRunMs.current = Date.now();
       const segments = getLiveSegments();
-      setLive({ segments, stats: computeLiveStats(segments, getSportProfile(sport)) });
+      setLive({ segments, stats: computeLiveStats(segments, getSportProfile(sport), { ...LIVE_STATS_DEFAULTS, lastDistanceM }) });
     }, wait);
     return () => clearTimeout(id);
-  }, [sport, pointCount]);
+  }, [sport, pointCount, lastDistanceM]);
 
   return sport === null || pointCount === 0 ? EMPTY : live;
 };

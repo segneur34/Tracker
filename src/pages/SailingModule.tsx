@@ -12,7 +12,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { analysisPath, libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
-import { readStoredActivities } from '../hooks/useSportSettings';
+import { TEXT_SCALE_FACTOR, readStoredActivities } from '../hooks/useSportSettings';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { trackBounds } from '../core/displayConfig';
@@ -21,7 +21,9 @@ import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import type { TopSegment } from '../core/types';
 import type { LibrarySession } from '../library/record';
 import { readPickedFile } from '../platform/files';
-import { SPEED_UNIT_LABEL, knotsToMs, msToKnots } from '../core/units';
+import {
+  SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, fromDisplaySpeed, knotsToDisplay, knotsToMs, msToKnots, toDisplaySpeed,
+} from '../core/units';
 import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
 import { MANEUVER_METRICS, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
 import AnalysisMap from '../components/AnalysisMap';
@@ -93,9 +95,6 @@ const maneuverDot = (props: DotItemDotProps): ReactNode => {
   return <circle cx={props.cx} cy={props.cy} r={3} fill={WIND_COLOR} stroke="#fff" strokeWidth={1} />;
 };
 
-/** Infobulle des graphes de vitesse : la valeur suivie de l'unité. */
-const knotsFormatter = (label: string) => (value: unknown): [string, string] => [`${value} nds`, label];
-
 const createArrowIcon = (bearing: number) => {
   return L.divIcon({
     className: 'custom-arrow',
@@ -164,6 +163,9 @@ function SailingModule() {
     activityOptions,
     setActivity,
     profile,
+    speedUnit,
+    distanceUnit,
+    textScale,
     activeThresholdKn,
     defaultActiveThresholdKn,
     speedRange,
@@ -177,6 +179,26 @@ function SailingModule() {
     activeThresholdKn: edits.activeThreshold,
     referenceSpeedMs: edits.referenceSpeedMs,
   });
+
+  // Affichage dans l'unité de l'activité ; les analyses voile restent en nœuds (règle 5).
+  const speedSymbol = SPEED_UNIT_SYMBOL[speedUnit];
+  const showKn = (kn: number | string) => formatKnots(kn, speedUnit);
+  /** Seuil saisi en nœuds, montré tel quel en nœuds, sinon converti. */
+  const showThreshold = (kn: number) => (speedUnit === 'kn' ? String(kn) : showKn(kn));
+  /** Valeur d'un champ de vitesse dans l'unité, arrondie. */
+  const speedFieldValue = (kn: number) => parseFloat(knotsToDisplay(kn, speedUnit).toFixed(speedUnit === 'ms' ? 2 : 1));
+  /** Infobulle des graphes de vitesse : la valeur suivie de l'unité. */
+  const speedFormatter = (label: string) => (value: unknown): [string, string] => [`${value} ${speedSymbol}`, label];
+  const scale = TEXT_SCALE_FACTOR[textScale];
+  // Séries des graphes dans l'unité ; en nœuds, celles du hook telles quelles.
+  const speedGraphShown = useMemo(
+    () => (speedUnit === 'kn' ? speedGraphData : speedGraphData.map((p) => ({ ...p, vitesse: parseFloat(formatKnots(p.vitesse, speedUnit)) }))),
+    [speedGraphData, speedUnit]
+  );
+  const polarGraphShown = useMemo(
+    () => (speedUnit === 'kn' ? polarGraphData : polarGraphData.map((p) => ({ ...p, vitesse: parseFloat(formatKnots(p.vitesse, speedUnit)) }))),
+    [polarGraphData, speedUnit]
+  );
 
   // Session de la mémoire désignée par l'URL : son activité devient celle du module.
   const receiveSession = useCallback((content: string, session: LibrarySession) => {
@@ -293,7 +315,7 @@ function SailingModule() {
                 fillOpacity: 1,
                 weight: 3
               }}>
-              <Popup>{loc.type === 'tack' ? 'Virement' : 'Empannage'} {loc.success ? 'Réussi' : 'Raté'} - Vmin: {loc.vmin.toFixed(1)} nds</Popup>
+              <Popup>{loc.type === 'tack' ? 'Virement' : 'Empannage'} {loc.success ? 'Réussi' : 'Raté'} - Vmin: {formatKnots(loc.vmin, speedUnit)} {SPEED_UNIT_SYMBOL[speedUnit]}</Popup>
             </CircleMarker>
           );
         })}
@@ -324,7 +346,7 @@ function SailingModule() {
         })}
       </>
     );
-  }, [trackData, colorRange, maneuverStats, showTacksOnMap, showJibesOnMap, selectedTopMap, stats, vmgStats, maneuverTopArray, selectedManeuverTop]);
+  }, [trackData, colorRange, maneuverStats, showTacksOnMap, showJibesOnMap, selectedTopMap, stats, vmgStats, maneuverTopArray, selectedManeuverTop, speedUnit]);
 
   const mapBounds = useMemo(() => trackBounds(trackData), [trackData]);
 
@@ -345,9 +367,9 @@ function SailingModule() {
         </button>
       </div>
       <div style={{ display: 'flex', gap: '10px', fontSize: '13px', marginTop: '4px' }}>
-        <span style={{ color: '#d32f2f', fontWeight: 'bold' }}>1er: {values[0]?.val || "-"}</span>
-        <span style={{ color: '#f57c00', fontWeight: 'bold' }}>2e: {values[1]?.val || "-"}</span>
-        <span style={{ color: '#388e3c', fontWeight: 'bold' }}>3e: {values[2]?.val || "-"}</span>
+        <span style={{ color: '#d32f2f', fontWeight: 'bold' }}>1er: {values[0] ? showKn(values[0].val) : "-"}</span>
+        <span style={{ color: '#f57c00', fontWeight: 'bold' }}>2e: {values[1] ? showKn(values[1].val) : "-"}</span>
+        <span style={{ color: '#388e3c', fontWeight: 'bold' }}>3e: {values[2] ? showKn(values[2].val) : "-"}</span>
       </div>
     </div>
   );
@@ -369,13 +391,13 @@ function SailingModule() {
         <tbody>
           <tr>
             <td style={{ textAlign: 'left', padding: '4px' }}>Près</td>
-            <td>{v.upPort.avg} / <strong>{v.upPort.max}</strong></td>
-            <td>{v.upStbd.avg} / <strong>{v.upStbd.max}</strong></td>
+            <td>{showKn(v.upPort.avg)} / <strong>{showKn(v.upPort.max)}</strong></td>
+            <td>{showKn(v.upStbd.avg)} / <strong>{showKn(v.upStbd.max)}</strong></td>
           </tr>
           <tr>
             <td style={{ textAlign: 'left', padding: '4px' }}>Portant</td>
-            <td>{v.downPort.avg} / <strong>{v.downPort.max}</strong></td>
-            <td>{v.downStbd.avg} / <strong>{v.downStbd.max}</strong></td>
+            <td>{showKn(v.downPort.avg)} / <strong>{showKn(v.downPort.max)}</strong></td>
+            <td>{showKn(v.downStbd.avg)} / <strong>{showKn(v.downStbd.max)}</strong></td>
           </tr>
         </tbody>
       </table>
@@ -394,7 +416,7 @@ function SailingModule() {
     <ResizablePanel id={showManeuverDetails ? 'sailing.carte.manoeuvres.details' : 'sailing.carte.manoeuvres'} style={{ ...CARD_STYLE, flex: showManeuverDetails ? '1 1 100%' : '0 1 auto', padding: '12px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
         <PanelTitle label="Manœuvres" open={carteOpen.manoeuvres} onToggle={() => toggleCarte('manoeuvres')} />
-        <span style={{ color: 'var(--muted)', fontSize: '12px' }}>réussie si Vmin &ge; {activeThresholdKn} nds</span>
+        <span style={{ color: 'var(--muted)', fontSize: '12px' }}>réussie si Vmin &ge; {showThreshold(activeThresholdKn)} {speedSymbol}</span>
       </div>
 
       <div className="an-man-scroll">
@@ -404,8 +426,8 @@ function SailingModule() {
             <th style={{ textAlign: 'left', padding: '7px 14px' }}>Type</th>
             <th style={{ padding: '7px 14px' }}>Réussis</th>
             <th style={{ padding: '7px 14px' }}>Ratés</th>
-            <th style={{ padding: '7px 14px' }} title="Vitesse minimale pendant la manœuvre, moyenne sur toutes les manœuvres">Vmin moy. (nds)</th>
-            <th style={{ padding: '7px 14px' }} title="Meilleure vitesse minimale conservée sur une manœuvre">Vmin max (nds)</th>
+            <th style={{ padding: '7px 14px' }} title="Vitesse minimale pendant la manœuvre, moyenne sur toutes les manœuvres">Vmin moy. ({speedSymbol})</th>
+            <th style={{ padding: '7px 14px' }} title="Meilleure vitesse minimale conservée sur une manœuvre">Vmin max ({speedSymbol})</th>
             <th style={{ padding: '7px 10px' }}>Carte</th>
           </tr>
         </thead>
@@ -418,8 +440,8 @@ function SailingModule() {
               <td style={{ padding: '7px 14px', fontWeight: 'bold' }}>{label}</td>
               <td style={{ padding: '7px 14px', textAlign: 'center', color: '#388e3c', fontWeight: 'bold', fontSize: '16px' }}>{summary?.success ?? 0}</td>
               <td style={{ padding: '7px 14px', textAlign: 'center', color: '#d32f2f', fontSize: '16px' }}>{summary?.fail ?? 0}</td>
-              <td style={{ padding: '7px 14px', textAlign: 'center' }}>{summary ? summary.vminAvg : '-'}</td>
-              <td style={{ padding: '7px 14px', textAlign: 'center', fontWeight: 'bold' }}>{summary ? summary.vminMax : '-'}</td>
+              <td style={{ padding: '7px 14px', textAlign: 'center' }}>{summary ? showKn(summary.vminAvg) : '-'}</td>
+              <td style={{ padding: '7px 14px', textAlign: 'center', fontWeight: 'bold' }}>{summary ? showKn(summary.vminMax) : '-'}</td>
               <td style={{ padding: '4px 10px', textAlign: 'center' }}>
                 <button onClick={toggle} title={`Afficher les ${label.toLowerCase()} sur la carte`} style={{ padding: '3px 10px', cursor: 'pointer', backgroundColor: shown ? 'var(--voile)' : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: '12px' }}>
                   {shown ? 'Masquer' : 'Voir'}
@@ -432,7 +454,7 @@ function SailingModule() {
       </div>
 
       <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: '12px', lineHeight: '1.6' }}>
-        <strong>Enregistrement :</strong> {pointCount} points, un toutes les {samplingS < 10 ? samplingS.toFixed(1) : Math.round(samplingS)} s en médiane. Entrée de virage retenue au-dessus de {maneuverThresholds.minEntrySpeedKn.toFixed(1)} nds, d'après l'allure de la session.
+        <strong>Enregistrement :</strong> {pointCount} points, un toutes les {samplingS < 10 ? samplingS.toFixed(1) : Math.round(samplingS)} s en médiane. Entrée de virage retenue au-dessus de {showKn(maneuverThresholds.minEntrySpeedKn)} {speedSymbol}, d'après l'allure de la session.
         {samplingS > 10 && (
           <>
             {' '}Cadence économique : les manœuvres se lisent encore, mais leur qualité
@@ -457,7 +479,7 @@ function SailingModule() {
           {m.rejected.slowEntry > 0 && (
             <>
               <br />
-              <strong>{m.rejected.slowEntry}</strong> entamé{m.rejected.slowEntry > 1 ? 's' : ''} trop lentement (moins de {maneuverThresholds.minEntrySpeedKn.toFixed(1)} nds à l'entrée).
+              <strong>{m.rejected.slowEntry}</strong> entamé{m.rejected.slowEntry > 1 ? 's' : ''} trop lentement (moins de {showKn(maneuverThresholds.minEntrySpeedKn)} {speedSymbol} à l'entrée).
             </>
           )}
           {m.rejected.incoherent > 0 && (
@@ -495,7 +517,7 @@ function SailingModule() {
                   <span style={{ color: '#388e3c', fontWeight: 'bold' }}>{summary.success} réussi{summary.success > 1 ? 's' : ''}</span>
                   {' · '}
                   <span style={{ color: '#d32f2f' }}>{summary.fail} raté{summary.fail > 1 ? 's' : ''}</span>
-                  {' · Vmin moy. '}{summary.vminAvg}{' nds, max '}<strong>{summary.vminMax}</strong>{' nds'}
+                  {' · Vmin moy. '}{showKn(summary.vminAvg)}{` ${speedSymbol}, max `}<strong>{showKn(summary.vminMax)}</strong>{` ${speedSymbol}`}
                 </span>
               ) : (
                 <span style={{ color: 'var(--muted)', fontSize: '13px' }}>aucun</span>
@@ -579,9 +601,9 @@ function SailingModule() {
 
         {stats && (
           <div className="an-sheet__stats">
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{stats.distance} km</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
             <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps total</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps actif (&ge;{activeThresholdKn} nds)</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps actif (&ge;{showThreshold(activeThresholdKn)} {speedSymbol})</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
             <div className="an-sheet__stat"><span className="an-sheet__stat-label">{profile.activeRatioLabel}</span><strong className="an-sheet__stat-value">{stats.activeRatio}%</strong></div>
           </div>
         )}
@@ -611,20 +633,22 @@ function SailingModule() {
               type="number"
               min={0}
               step={0.5}
-              value={activeThresholdKn}
+              value={speedUnit === 'kn' ? activeThresholdKn : speedFieldValue(activeThresholdKn)}
               onChange={(e) => {
                 const parsed = parseFloat(e.target.value);
-                if (!isNaN(parsed) && parsed >= 0) draft.update({ activeThreshold: parsed });
+                if (!isNaN(parsed) && parsed >= 0) {
+                  draft.update({ activeThreshold: speedUnit === 'kn' ? parsed : msToKnots(fromDisplaySpeed(parsed, speedUnit)) });
+                }
               }}
               title="Seuil propre à cette session, enregistré avec elle. Celui du support se règle dans Réglages."
               className="ui-field ui-field--s num"
               style={{ width: '70px' }} />
-            {SPEED_UNIT_LABEL[profile.thresholdUnit]}
+            {SPEED_UNIT_LABEL[speedUnit]}
             {edits.activeThreshold !== null && (
               <Button
                 size="s"
                 onClick={() => draft.update({ activeThreshold: null })}
-                title={`Revenir au seuil du support (${defaultActiveThresholdKn} ${SPEED_UNIT_LABEL[profile.thresholdUnit]})`}>
+                title={`Revenir au seuil du support (${showThreshold(defaultActiveThresholdKn)} ${SPEED_UNIT_LABEL[speedUnit]})`}>
                 Défaut
               </Button>
             )}
@@ -637,15 +661,15 @@ function SailingModule() {
                 type="number"
                 min={0}
                 step={0.5}
-                value={msToKnots(referenceSpeedMs).toFixed(1)}
+                value={toDisplaySpeed(referenceSpeedMs, speedUnit).toFixed(speedUnit === 'ms' ? 2 : 1)}
                 onChange={(e) => {
                   const parsed = parseFloat(e.target.value);
-                  if (!isNaN(parsed) && parsed > 0) draft.update({ referenceSpeedMs: knotsToMs(parsed) });
+                  if (!isNaN(parsed) && parsed > 0) draft.update({ referenceSpeedMs: fromDisplaySpeed(parsed, speedUnit) });
                 }}
                 title="Vitesse de croisière de la session, dont dépendent les seuils de filtrage. Déduite de la trace ; imposée si elle la décrit mal, et alors enregistrée avec la session."
                 className="ui-field ui-field--s num"
                 style={{ width: '70px' }} />
-              nds
+              {speedSymbol}
               {edits.referenceSpeedMs === null ? (
                 <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(déduite de la trace)</span>
               ) : (
@@ -682,7 +706,7 @@ function SailingModule() {
 
           <SectionTabs sections={SAILING_SECTIONS} open={open} onToggle={toggle} />
 
-          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '15px' }}>
+          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '15px', fontSize: `${scale}em` }}>
 
             {open.global && (
               <ResizablePanel id="sailing.global" style={{ ...CARD_STYLE, flex: '1 1 100%', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
@@ -691,10 +715,10 @@ function SailingModule() {
                     <PanelTitle label="Global" open={open.global} onToggle={() => toggle('global')} />
                   </div>
                   <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                    <li><strong>Distance totale :</strong> {stats.distance} km</li>
-                    <li><strong>Distance active :</strong> {stats.activeDistance} km</li>
+                    <li><strong>Distance totale :</strong> {formatDistance(stats.distanceM, distanceUnit)}</li>
+                    <li><strong>Distance active :</strong> {formatDistance(stats.activeDistanceM, distanceUnit)}</li>
                     <li><strong>Temps total :</strong> {stats.totalTime}</li>
-                    <li><strong>Temps actif (&ge;{activeThresholdKn} nds) :</strong> {stats.activeTime}</li>
+                    <li><strong>Temps actif (&ge;{showThreshold(activeThresholdKn)} {speedSymbol}) :</strong> {stats.activeTime}</li>
                     <li><strong>{profile.activeRatioLabel} :</strong> {stats.activeRatio}%</li>
                     <li style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '6px' }}>
                       Vitesse : {hasDeviceSpeed ? 'Doppler de l\'appareil' : 'dérivée des positions, filtrée'}
@@ -864,16 +888,16 @@ function SailingModule() {
           layers={mapLayers}
           defaultHeight={660}
           legend={trackData.length > 0 ? {
-            unit: 'kn',
+            unit: speedUnit,
             range: colorRange,
             isOverridden: edits.speedRange !== null,
             onChange: (next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); },
-            slowLabel: `sous ${Math.round(msToKnots(colorRange.minMs))} nds`,
+            slowLabel: `sous ${Math.round(toDisplaySpeed(colorRange.minMs, speedUnit))} ${speedSymbol}`,
           } : null}
           style={{ flex: '0 1 60%' }} />
 
         {stats && (
-          <div className="an-carte-col" style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div className="an-carte-col" style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: `${scale}em` }}>
             <SectionTabs sections={SAILING_CARTE_PANELS} open={carteOpen} onToggle={toggleCarte} />
             <div className="an-carte-panels" style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
               {carteOpen.manoeuvres && maneuverStats && renderManeuversPanel(maneuverStats)}
@@ -893,8 +917,8 @@ function SailingModule() {
                     <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
                         <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={speedGraphData}
-                            onMouseMove={onChartHover(speedGraphData)}
+                          <LineChart data={speedGraphShown}
+                            onMouseMove={onChartHover(speedGraphShown)}
                             onClick={() => {
                               document.getElementById('map-view')?.scrollIntoView({ behavior: 'smooth' });
                             }}
@@ -902,7 +926,7 @@ function SailingModule() {
                             <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
                             <XAxis dataKey="index" hide />
                             <YAxis domain={[0, 'auto']} tick={{fill: '#111', fontSize: 11, fontWeight: 'bold'}} />
-                            <Tooltip formatter={knotsFormatter('Vitesse')} labelFormatter={() => ''} />
+                            <Tooltip formatter={speedFormatter('Vitesse')} labelFormatter={() => ''} />
                             <Line type="monotone" dataKey="vitesse" stroke="#1976d2" dot={false} strokeWidth={2} />
                           </LineChart>
                         </ResponsiveContainer>
@@ -921,12 +945,12 @@ function SailingModule() {
                     <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
                         <ResponsiveContainer width="100%" height="100%">
-                          <RadarChart cx="50%" cy="50%" outerRadius="80%" data={polarGraphData}>
+                          <RadarChart cx="50%" cy="50%" outerRadius="80%" data={polarGraphShown}>
                             <PolarGrid />
                             <PolarAngleAxis dataKey="angle" tick={{ fill: '#333', fontSize: 11 }} />
                             <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={{ fill: '#000', fontSize: 11, fontWeight: 'bold' }} />
                             <Radar name="Vitesse Max" dataKey="vitesse" stroke="#e64a19" fill="#e64a19" fillOpacity={0.4} />
-                            <Tooltip formatter={knotsFormatter('Vmax')} />
+                            <Tooltip formatter={speedFormatter('Vmax')} />
                           </RadarChart>
                         </ResponsiveContainer>
                       </div>

@@ -147,8 +147,8 @@ export const buildBaseSessionStats = (
   const hasElevation = elevation.coverage >= MIN_ELEVATION_COVERAGE;
 
   return {
-    distance: (totalDistanceM / 1000).toFixed(2),
-    activeDistance: (activeDistanceM / 1000).toFixed(2),
+    distanceM: totalDistanceM,
+    activeDistanceM,
     totalTime: formatDuration(totalTimeMs),
     activeTime: formatDuration(activeTimeMs),
     activeRatio: totalTimeMs > 0 ? ((activeTimeMs / totalTimeMs) * 100).toFixed(1) : '0.0',
