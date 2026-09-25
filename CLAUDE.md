@@ -50,20 +50,20 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 6. Distance = intégrale de la vitesse retenue (`segmentDistanceM`), ni celle du fichier ni une somme de Haversine.
 7. Vent : lu à la bissectrice de chaque manœuvre classée, toutes comprises ; statistiques pondérées par la symétrie du virage, jamais filtrées (`calculateWindStats`). L'estimation globale (`estimateWind`) repose sur la polaire et les manœuvres à caps stabilisés (`windSamplesFrom`). Polaire glissante et corde entrée → sortie ont été essayées puis retirées : ne pas les réintroduire.
 8. Lecteur GPX maison (`core/gpxParser.ts`) : ne pas réinstaller `gpxparser`, qui ignore les extensions (Doppler, FC, cadence).
-9. Un module ne reprend que ses supports : `useSportSettings(defaultSport, allowedSports)`.
+9. Un module ne reprend que les activités de sa famille : `useSportSettings(family)`.
 10. Cadence variable : une application économique peut compresser un virage entier dans un seul intervalle. Ne jamais supposer plusieurs points dans une fenêtre de quelques secondes.
 11. react-leaflet : le style d'un `Polyline` passe toujours par `pathOptions`, sinon il n'est pas réappliqué.
 12. Stockage, fichiers, position : uniquement via `src/platform/` (`storage.ts`, `files.ts`, `memoryFolder.ts`, `location.ts` ; jamais `localStorage`, `Filesystem`, `showDirectoryPicker` ni `navigator.geolocation` en direct). Chaque module y choisit sa version navigateur ou téléphone par `isNativeApp()`.
 
 ## Où ajouter quoi
 
-- Support à voile : `SPORT_PROFILES` et `SAILING_SPORTS` (`core/sportProfiles.ts`).
-- Réglage utilisateur : `StoredSettings` (`hooks/useSportSettings.ts`), `useAllSportSettings`, `pages/SettingsPage.tsx`.
+- Nouveau calcul de support : `SPORT_PROFILES` et `SAILING_SPORTS` (`core/sportProfiles.ts`). Une activité (moth, trail…) n'est jamais en dur : l'utilisateur la crée dans Réglages sur un de ces calculs (`core/activities.ts`).
+- Réglage utilisateur : `StoredSettings` (`hooks/useSportSettings.ts`), rangé par identifiant d'activité, `useAllSportSettings`, `pages/SettingsPage.tsx`.
 - Page d'analyse d'un nouveau sport : suivre `docs/MISE_EN_PAGE.md` (`AnalysisMap`, `analysisMobile.css`, `PanelTitle`, `SessionNameEditor`) ; ce qui devient commun à deux modules va dans une pièce partagée, pas dans une copie.
 - Section de module : `*_SECTIONS` et `*_SECTION_DEFAULTS` de la page, et un bloc `{open.cle && ...}` dans un `ResizablePanel` d'`id` unique (l'`id` est la clé de la taille mémorisée : ne pas le renommer). En voile : `SAILING_SECTIONS` en haut, `SAILING_CARTE_PANELS` dans la colonne de la carte.
 - Graphe relié à la carte : chaque ligne porte l'`index` du point de trace, et le survol passe par `hoveredTrackIndex` (`components/chartHover.ts`). Pas de `any`.
 - Métrique de manœuvre : `ManeuverLocation` (`sailing/maneuvers.ts`), puis `MANEUVER_METRICS` et `summarizeManeuvers` (`sailing/sailingAnalytics.ts`).
-- Donnée propre à une session (notes, vent saisi, seuil d'activité, allure imposée, support) : dans sa fiche (`library/record.ts`), écrite par `updateSessionRecord` ; dans le module, par le brouillon (`useSessionDraft`, `library/sessionEdits.ts`) et « Enregistrer la session » ; jamais dans une clé de l'appareil. Une donnée recalculable depuis le GPX va dans `summary`, avec `SUMMARY_CALC_VERSION` augmenté si son calcul change.
+- Donnée propre à une session (notes, vent saisi, seuil d'activité, allure imposée, support et activité) : dans sa fiche (`library/record.ts`), écrite par `updateSessionRecord` ; dans le module, par le brouillon (`useSessionDraft`, `library/sessionEdits.ts`) et « Enregistrer la session » ; jamais dans une clé de l'appareil. Une donnée recalculable depuis le GPX va dans `summary`, avec `SUMMARY_CALC_VERSION` augmenté si son calcul change.
 - Calcul pur : dans `core/`, `sailing/`, `running/`, `recording/` ou `library/`, avec son `*.test.ts` sur trace synthétique.
 - Couleur, police, rayon, espacement : une variable de `src/theme/tokens.css`, jamais une valeur en dur dans un écran neuf. Composants communs dans `components/ui`, icônes dans `components/icons.tsx` (pas d'emoji). Les couleurs de données des graphes et de la carte restent en dur (attributs SVG).
 
@@ -76,7 +76,8 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Graphes course « superposés » à deux axes, voulus malgré la difficulté de lecture.
 - Tout bloc est redimensionnable (`ResizablePanel`), taille mémorisée.
 - Voile : manœuvres en petit tableau, détails dépliables. Carte à 60 % de large ; à sa droite, les onglets manœuvres, VMG, graphiques, vent (dans cet ordre, fermés par défaut, côte à côte si la place le permet). En haut : global, matos, tops seulement. Ne rien déplacer ni dupliquer entre les deux groupes sans redemander.
-- Enregistrement : brut à 1 Hz, sans autre filtre que les redélivrances et la pause (manuelle, ou automatique sur immobilité, réglable par support) ; un GPX par session, analysé par les modules existants via `loadGpxContent`. À l'arrêt, rien n'est rangé : « Analyser » range la session, « Jeter » l'abandonne ; d'ici là elle attend, journal gardé.
+- Activités : l'utilisateur crée les siennes (nom, couleur, calcul de base), au départ « Voile » et « Course » ; elles seules sont proposées partout (Enregistrer, analyses, bibliothèque, accueil). Une activité supprimée garde ses sessions, sous le nom de leur calcul.
+- Enregistrement : brut à 1 Hz, sans autre filtre que les redélivrances et la pause (manuelle, par appui long de 2 s réglable sur le bouton rond, ou automatique sur immobilité, réglable par activité) ; un GPX par session, analysé par les modules existants via `loadGpxContent`. À l'arrêt, rien n'est rangé : « Analyser » range la session, « Jeter » l'abandonne ; d'ici là elle attend, journal gardé.
 - Mémoire : un dossier portable `Tracker/` (GPX + fiche JSON par session dans `sessions/`, `reglages.json`), qu'on copie pour sauvegarder ou changer d'appareil ; pas d'index dans le dossier ; réglages : le plus récent l'emporte. Sur Android, dossier désigné par le sélecteur d'Android (SAF), jamais « accès à tous les fichiers ». Suite de la cible mobile dans l'ordre fixé au §12 de l'état.
 - DA de la maquette pour l'instant (Figtree, fond gris chaud, cartes blanches, bleu voile, rouille course, vert Enregistrer), appelée à changer : tout passe par les variables. Navigation : barre d'onglets en bas sur téléphone, barre en haut sur ordinateur.
 - Réglages d'affichage (unités, taille du texte) choisis dans Réglages seulement, par famille (voile, course), actifs partout ; par sous-sport plus tard peut-être.

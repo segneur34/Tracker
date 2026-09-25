@@ -1,11 +1,8 @@
 import { useMemo } from 'react';
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import { buildCumulativeTrack } from '../core/sessionStats';
-import { SAILING_SPORTS } from '../core/sportProfiles';
-import type { SportType } from '../core/types';
 import { msToKnots } from '../core/units';
 import {
-  DEFAULT_SAILING_SPORT,
   sessionManeuverThresholds,
   suggestActiveThresholdKn,
   suggestSpeedRangeMs,
@@ -49,13 +46,15 @@ export const useSailingSession = ({
   referenceSpeedMs: sessionReferenceMs,
 }: SailingSessionInput) => {
   const {
+    activity,
+    activityOptions,
+    setActivity,
     sport,
-    setSport,
     profile,
     activeThreshold: rawActiveThresholdKn,
     isThresholdOverridden,
     speedRange,
-  } = useSportSettings(DEFAULT_SAILING_SPORT, SAILING_SPORTS);
+  } = useSportSettings('voile');
 
   // Les seuils de filtrage suivent l'allure de la session, pas seulement le
   // support : sur une trace lente, l'accélération et le plafond du wingfoil
@@ -222,9 +221,12 @@ export const useSailingSession = ({
     windStats,
     speedGraphData,
     polarGraphData,
-    // Réglages de support
+    // Réglages de l'activité
+    activity,
+    /** Activités voile proposées, plus l'activité de base de la session si elle n'en a pas. */
+    activityOptions,
+    setActivity,
     sport,
-    setSport,
     profile,
     activeThresholdKn,
     /** Seuil hors réglage de la session : celui du support s'il est surchargé, sinon la suggestion. */
@@ -241,6 +243,5 @@ export const useSailingSession = ({
     maneuverThresholds,
     /** Nombre de points du fichier, avant tout filtrage. */
     pointCount: gpx.rawPoints.length,
-    availableSports: SAILING_SPORTS as SportType[],
   };
 };

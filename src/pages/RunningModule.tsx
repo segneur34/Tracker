@@ -22,6 +22,7 @@ import {
   buildCumulativeTrack, buildBaseSessionStats, computeActiveDistanceM, computeActiveTimeMs,
   computeActivityMask, computeTotalTimeMs,
 } from '../core/sessionStats';
+import { sessionActivity } from '../core/activities';
 import { ELEVATION_PRESETS, getActiveThresholds } from '../core/sportProfiles';
 import { meanFilterByTime } from '../core/speedFilter';
 import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
@@ -31,12 +32,12 @@ import {
 } from '../core/units';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { useSessionDraft } from '../hooks/useSessionDraft';
-import { useSessionName } from '../hooks/useSessionLibrary';
+import { updateSessionRecord, useSessionName } from '../hooks/useSessionLibrary';
 import { libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  RUNNING_UNITS, TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, useSportSettings,
+  RUNNING_UNITS, TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, readStoredActivities, useSportSettings,
   type TerrainType, type TextScale,
 } from '../hooks/useSportSettings';
 import { DEFAULT_SPEED_RANGE_MS, averagePace, computeGrades, computeZoneStats } from '../running/runningAnalytics';
@@ -90,10 +91,11 @@ const chartTooltipStyle = { fontSize: '12px' } as const;
  */
 function RunningModule() {
   const {
+    activity, activityOptions, setActivity,
     profile, terrain, setTerrain, elevationProfile,
     speedUnit, setSpeedUnit, textScale, setTextScale,
     speedRange,
-  } = useSportSettings('running');
+  } = useSportSettings('course');
   const { profile: runner } = useRunnerProfile();
   const gpx = useGpxSession({
     medianWindowSeconds: profile.medianWindowSeconds,
@@ -102,15 +104,29 @@ function RunningModule() {
 
   // Session de la mémoire désignée par l'URL.
   const { loadGpxContent } = gpx;
+  // Session de la mémoire désignée par l'URL : son activité devient celle du module.
   const receiveSession = useCallback(
-    (content: string, session: LibrarySession) => loadGpxContent(content, session.file),
-    [loadGpxContent]
+    (content: string, session: LibrarySession) => {
+      const recorded = sessionActivity(readStoredActivities(), session.record.activityId, session.record.sport);
+      if (recorded && recorded.id !== activity.id) setActivity(recorded.id);
+      loadGpxContent(content, session.file);
+    },
+    [activity.id, setActivity, loadGpxContent]
   );
   const { file: sessionFile, error: sessionError } = useSessionFromUrl(receiveSession);
   const sessionName = useSessionName(gpx.fileName);
   // Brouillon de la session de la mémoire affichée (couleurs de la trace), écrit
   // dans sa fiche par « Enregistrer la session ». Aucun pour un GPX lu hors de la mémoire.
   const draft = useSessionDraft(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null);
+
+  /** Changer d'activité l'écrit aussi dans la fiche de la session (comme en voile). */
+  const changeActivity = (id: string) => {
+    const next = activityOptions.find((a) => a.id === id);
+    if (!next) return;
+    setActivity(next.id);
+    const listed = readStoredActivities().some((a) => a.id === next.id);
+    if (sessionFile) updateSessionRecord(sessionFile, { sport: next.base, activityId: listed ? next.id : null });
+  };
 
   // Un GPX ouvert ici entre d'abord dans la mémoire ; faute de mémoire, il est lu directement.
   const importAndOpen = useImportAndOpen('course');
@@ -297,6 +313,17 @@ function RunningModule() {
             Ouvrir un fichier GPX
             <input type="file" accept=".gpx" onChange={openFile} hidden />
           </label>
+
+          {activityOptions.length > 1 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <strong>Activité :</strong>
+              <select value={activity.id} onChange={(e) => changeActivity(e.target.value)} className="ui-field ui-field--s">
+                {activityOptions.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <strong>Unité :</strong>

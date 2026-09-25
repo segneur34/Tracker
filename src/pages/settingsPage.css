@@ -10,13 +10,13 @@
 }
 
 .settings-sports th {
-  padding: 6px 10px;
+  padding: 6px 6px;
   background-color: var(--surface-sunken);
   text-align: left;
 }
 
 .settings-sports td {
-  padding: 6px 10px;
+  padding: 6px 6px;
   border-top: 1px solid var(--line-soft);
 }
 
@@ -85,4 +85,38 @@
   .settings-sports__reset:empty {
     display: none;
   }
+}
+
+/* Pastille de couleur d'une activité (sélecteur natif). */
+.settings-sports__color {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: none;
+  cursor: pointer;
+}
+
+.settings-sports__name .settings-sports__mark {
+  display: block;
+  margin-top: 2px;
+  font-weight: normal;
+}
+
+/* Ajout d'une activité, sous le tableau. */
+.settings-add {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-m);
+}
+
+.settings-add__title {
+  width: 100%;
+  font-size: var(--text-s);
 }

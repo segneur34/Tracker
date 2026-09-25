@@ -184,7 +184,7 @@ describe('sessionFileName et sessionTitle', () => {
     expect(sessionFileName(start, 'wingfoil')).toBe('2026-09-03_09-05-07_wingfoil.gpx');
   });
 
-  it('titre la session par le support et l\'heure à la minute', () => {
-    expect(sessionTitle(start, 'running')).toBe('Course à pied, 03/09/2026 09:05');
+  it('titre la session par son activité et l\'heure à la minute', () => {
+    expect(sessionTitle(start, 'Trail')).toBe('Trail, 03/09/2026 09:05');
   });
 });

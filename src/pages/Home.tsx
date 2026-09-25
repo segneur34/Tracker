@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom';
+import ActivityChart from '../components/ActivityChart';
 import MemoryStatus from '../components/MemoryStatus';
 import { IconRun, IconSail } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 
 /**
- * Accueil. Version d'attente : les deux modules et l'enregistrement. Le
- * tableau de bord (graphe d'activités, totaux, dernières sessions) arrive
- * avec la bibliothèque des sessions.
+ * Accueil : l'enregistrement, le graphe d'activités et ses totaux (dès qu'il
+ * y a des sessions), puis les deux modules.
  */
 
 const cardStyle = {
@@ -26,7 +26,7 @@ const titleStyle = { display: 'flex', alignItems: 'center', gap: '10px', fontSiz
 
 function Home() {
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-  const { status } = useSessionLibrary();
+  const { status, sessions } = useSessionLibrary();
   // Premier lancement sur le téléphone, ou dossier devenu inaccessible : la mémoire d'abord.
   const memoryNeedsAction = status === 'unavailable' || status === 'needs-permission';
 
@@ -43,6 +43,8 @@ function Home() {
           Enregistrer
         </span>
       </Link>
+
+      {sessions.length > 0 && <ActivityChart />}
 
       <Link to="/voile" style={cardStyle}>
         <span style={{ ...titleStyle, color: 'var(--voile)' }}><IconSail /> Voile</span>

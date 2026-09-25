@@ -87,8 +87,17 @@ export interface SessionRecord {
   version: number;
   /** Nom du GPX, dans le même dossier. */
   gpx: string;
-  /** Support, `null` pour un GPX dont on n'a pas su le deviner. */
+  /**
+   * Calcul de la session (la base de son activité), `null` pour un GPX dont on
+   * n'a pas su le deviner : il choisit le module et le résumé.
+   */
   sport: SportType | null;
+  /**
+   * Activité choisie par l'utilisateur (`core/activities.ts`), `null` si
+   * aucune : la session va alors à la première activité de son calcul
+   * (`sessionActivity`). Absent des fiches d'avant les activités.
+   */
+  activityId: string | null;
   source: SessionSource;
   /** Instant d'entrée dans la mémoire, au format ISO. */
   addedAt: string;
@@ -208,6 +217,7 @@ export const parseRecord = (text: string): SessionRecord | null => {
     version: raw.version,
     gpx: raw.gpx,
     sport: isSportType(raw.sport) ? raw.sport : null,
+    activityId: typeof raw.activityId === 'string' && raw.activityId !== '' ? raw.activityId : null,
     source: raw.source === 'enregistrement' ? 'enregistrement' : 'import',
     addedAt: typeof raw.addedAt === 'string' ? raw.addedAt : new Date(summary.startMs).toISOString(),
     title: typeof raw.title === 'string' ? raw.title : null,

@@ -12,12 +12,13 @@ import { parseGpx } from '../core/gpxParser';
 import { computeKinematics } from '../core/kinematics';
 import { referenceSpeedMs as sessionReferenceSpeedMs } from '../core/sessionSpeed';
 import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
-import { SAILING_SPORTS, SPORT_PROFILES, sportFamily, type SportFamily } from '../core/sportProfiles';
-import type { RawTrackPoint, SportType, TrackPoint } from '../core/types';
+import { activitiesOfFamily, sessionActivity, type Activity } from '../core/activities';
+import { sportFamily, type SportFamily } from '../core/sportProfiles';
+import type { RawTrackPoint, TrackPoint } from '../core/types';
 import { formatDuration, formatSpeed, knotsToMs, msToKnots } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { importFiles, importFromFolder, readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
-import { effectiveSpeedUnit, readStoredSettings } from '../hooks/useSportSettings';
+import { effectiveSpeedUnit, readStoredActivities, readStoredSettings } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
 import { isNativeApp } from '../platform/runtime';
 import { DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
@@ -30,10 +31,14 @@ import './SessionLibrary.css';
  * classer, l'import de GPX ou d'un dossier entier, la suppression.
  */
 
-const FAMILY: Record<SportFamily, { title: string; accent: string; sports: SportType[] }> = {
-  voile: { title: 'Voile', accent: 'var(--voile)', sports: SAILING_SPORTS },
-  course: { title: 'Course à pied', accent: 'var(--course)', sports: ['running'] },
+const FAMILY: Record<SportFamily, { title: string; accent: string }> = {
+  voile: { title: 'Voile', accent: 'var(--voile)' },
+  course: { title: 'Course à pied', accent: 'var(--course)' },
 };
+
+/** Activité d'une session d'après sa fiche (`sessionActivity`), `null` pour une session à classer. */
+const activityOf = (session: LibrarySession, activities: Activity[]): Activity | null =>
+  sessionActivity(activities, session.record.activityId, session.record.sport);
 
 const formatDate = (ms: number): string =>
   new Date(ms).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
@@ -44,16 +49,16 @@ const formatTime = (ms: number): string =>
 const formatKm = (m: number): string => `${(m / 1000).toFixed(m < 10_000 ? 2 : 1)} km`;
 
 /** Chiffres d'une ligne, selon la famille. */
-const rowStats = (session: LibrarySession): string[] => {
-  const { summary, sport } = session.record;
+const rowStats = (session: LibrarySession, activity: Activity | null): string[] => {
+  const { summary } = session.record;
   const stats = [formatDuration(summary.endMs - summary.startMs), formatKm(summary.distanceM)];
-  if (sport === null) return stats;
-  if (sportFamily(sport) === 'voile') {
-    stats.push(`max ${formatSpeed(summary.maxSpeedMs, effectiveSpeedUnit(sport))}`);
+  if (activity === null) return stats;
+  if (sportFamily(activity.base) === 'voile') {
+    stats.push(`max ${formatSpeed(summary.maxSpeedMs, effectiveSpeedUnit(activity))}`);
     if (summary.maneuverCount !== undefined) stats.push(`${summary.maneuverCount} manœuvres`);
   } else {
     if (summary.movingTimeS && summary.distanceM > 0) {
-      stats.push(formatSpeed(summary.distanceM / summary.movingTimeS, effectiveSpeedUnit(sport)));
+      stats.push(formatSpeed(summary.distanceM / summary.movingTimeS, effectiveSpeedUnit(activity)));
     }
     if (summary.elevationGainM !== null) stats.push(`D+ ${Math.round(summary.elevationGainM)} m`);
   }
@@ -63,18 +68,23 @@ const rowStats = (session: LibrarySession): string[] => {
 /**
  * Bornes de couleur d'une vignette d'aperçu, dans cet ordre, comme le module d'analyse :
  * 0. celles enregistrées dans la fiche de la session (`analysis.speedRange`) ;
- * 1. celles réglées pour ce support dans Réglages (`tracker.sportSettings`) ;
+ * 1. celles réglées pour son activité dans Réglages (`tracker.sportSettings`) ;
  * 2. en voile, les bornes suggérées par l'allure de la session, comme le module d'analyse :
  *    seuil d'activité suggéré en bas, pic de vitesse déjà enregistré dans la fiche
  *    (`summary.maxSpeedMs`) plus une marge en haut — l'allure vient de la fiche si elle a été
  *    imposée, sinon des points bruts du GPX qu'on vient de lire ;
  * 3. à défaut (course, support inconnu, ou pic non mesuré), le défaut de la famille.
  */
-const previewSpeedRange = (session: LibrarySession, family: SportFamily, rawPoints: RawTrackPoint[]): { minMs: number; maxMs: number } => {
+const previewSpeedRange = (
+  session: LibrarySession,
+  activity: Activity | null,
+  family: SportFamily,
+  rawPoints: RawTrackPoint[]
+): { minMs: number; maxMs: number } => {
   const { record } = session;
   if (record.analysis?.speedRange) return record.analysis.speedRange;
-  if (record.sport) {
-    const override = readStoredSettings().speedRanges?.[record.sport];
+  if (activity) {
+    const override = readStoredSettings().speedRanges?.[activity.id];
     if (override && isValidSpeedRange(override)) return override;
   }
   if (record.sport && family === 'voile' && record.summary.maxSpeedMs > 0) {
@@ -88,7 +98,7 @@ const previewSpeedRange = (session: LibrarySession, family: SportFamily, rawPoin
 };
 
 /** Aperçu carte d'une session, chargé et analysé à la demande (aucun point de trace en mémoire avant). */
-function SessionPreviewMap({ session, family }: { session: LibrarySession; family: SportFamily }) {
+function SessionPreviewMap({ session, activity, family }: { session: LibrarySession; activity: Activity | null; family: SportFamily }) {
   const [track, setTrack] = useState<TrackPoint[] | null>(null);
   const [range, setRange] = useState<{ minMs: number; maxMs: number } | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -104,14 +114,14 @@ function SessionPreviewMap({ session, family }: { session: LibrarySession; famil
         const points = computeKinematics(rawPoints);
         if (points.length < 2) { setStatus('error'); return; }
         setTrack(points);
-        setRange(previewSpeedRange(session, family, rawPoints));
+        setRange(previewSpeedRange(session, activity, family, rawPoints));
         setStatus('ready');
       } catch {
         if (!cancelled) setStatus('error');
       }
     })();
     return () => { cancelled = true; };
-  }, [session, family]);
+  }, [session, activity, family]);
 
   if (status === 'loading') return <div className="lib-row__preview-status">Chargement de la carte…</div>;
   if (status === 'error' || track === null || range === null) return <div className="lib-row__preview-status">Carte indisponible.</div>;
@@ -137,9 +147,12 @@ function SessionPreviewMap({ session, family }: { session: LibrarySession; famil
 }
 
 function SessionRow({
-  session, family, confirming, onAskDelete, onCancelDelete,
+  session, activity, activities, family, confirming, onAskDelete, onCancelDelete,
 }: {
   session: LibrarySession;
+  activity: Activity | null;
+  /** Toutes les activités, pour classer une session. */
+  activities: Activity[];
   family: SportFamily;
   confirming: boolean;
   onAskDelete: () => void;
@@ -168,11 +181,11 @@ function SessionRow({
           {record.name && <span className="lib-row__name">{record.name}</span>}
           <span className="lib-row__head">
             <span className={record.name ? 'lib-row__sport lib-row__sport--sub' : 'lib-row__sport'}>
-              {record.sport ? SPORT_PROFILES[record.sport].label : 'À classer'}
+              {activity ? activity.name : 'À classer'}
             </span>
             <span className="lib-row__date">{formatDate(startMs)} · {formatTime(startMs)}</span>
           </span>
-          <span className="lib-row__stats num">{rowStats(session).join(' · ')}</span>
+          <span className="lib-row__stats num">{rowStats(session, activity).join(' · ')}</span>
           {record.notes?.comment && <span className="lib-row__note">{record.notes.comment}</span>}
           {session.warning && <span className="lib-row__warning">{session.warning}</span>}
           <IconChevronRight className="lib-row__chevron" />
@@ -189,7 +202,7 @@ function SessionRow({
 
       {previewMounted && (
         <div className="lib-row__preview" style={previewOpen ? undefined : { display: 'none' }}>
-          <SessionPreviewMap session={session} family={family} />
+          <SessionPreviewMap session={session} activity={activity} family={family} />
         </div>
       )}
 
@@ -218,10 +231,15 @@ function SessionRow({
                 className="ui-field ui-field--s"
                 value=""
                 aria-label="Classer la session"
-                onChange={(e) => updateSessionRecord(session.file, { sport: e.target.value as SportType })}>
+                onChange={(e) => {
+                  const chosen = activities.find((a) => a.id === e.target.value);
+                  if (chosen) updateSessionRecord(session.file, { sport: chosen.base, activityId: chosen.id });
+                }}>
                 <option value="" disabled>Classer…</option>
-                {[...SAILING_SPORTS, 'running' as const].map((s) => (
-                  <option key={s} value={s}>{SPORT_PROFILES[s].label}</option>
+                {(['voile', 'course'] as const).map((f) => (
+                  <optgroup key={f} label={FAMILY[f].title}>
+                    {activitiesOfFamily(activities, f).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </optgroup>
                 ))}
               </select>
             )}
@@ -245,22 +263,36 @@ function SessionRow({
 
 function SessionLibrary({ family }: { family: SportFamily }) {
   const library = useSessionLibrary();
-  const { title, accent, sports } = FAMILY[family];
-  const [filter, setFilter] = useState<SportType | 'all'>('all');
+  const { title, accent } = FAMILY[family];
+  // Relues à l'ouverture de la page : les activités se changent dans Réglages.
+  const [activities] = useState(readStoredActivities);
+  const [filter, setFilter] = useState<string>('all');
   const [confirmFile, setConfirmFile] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
+  /** Activité de chaque session, calculée une fois par liste. */
+  const activityByFile = useMemo(
+    () => new Map(library.sessions.map((s) => [s.file, activityOf(s, activities)])),
+    [library.sessions, activities]
+  );
   const familySessions = useMemo(
-    () => library.sessions.filter((s) => s.record.sport !== null && sports.includes(s.record.sport)),
-    [library.sessions, sports]
+    () => library.sessions.filter((s) => s.record.sport !== null && sportFamily(s.record.sport) === family),
+    [library.sessions, family]
   );
   const unclassified = useMemo(() => library.sessions.filter((s) => s.record.sport === null), [library.sessions]);
+  /** Activités présentes dans la liste, dans l'ordre de Réglages puis celles de base, avec leur nombre de sessions. */
   const counts = useMemo(() => {
-    const byS = new Map<SportType, number>();
-    for (const s of familySessions) byS.set(s.record.sport!, (byS.get(s.record.sport!) ?? 0) + 1);
-    return byS;
-  }, [familySessions]);
-  const shown = filter === 'all' ? familySessions : familySessions.filter((s) => s.record.sport === filter);
+    const byId = new Map<string, { activity: Activity; count: number }>();
+    for (const a of activitiesOfFamily(activities, family)) byId.set(a.id, { activity: a, count: 0 });
+    for (const s of familySessions) {
+      const a = activityByFile.get(s.file);
+      if (!a) continue;
+      const entry = byId.get(a.id) ?? { activity: a, count: 0 };
+      byId.set(a.id, { ...entry, count: entry.count + 1 });
+    }
+    return [...byId.values()].filter((e) => e.count > 0);
+  }, [activities, family, familySessions, activityByFile]);
+  const shown = filter === 'all' ? familySessions : familySessions.filter((s) => activityByFile.get(s.file)?.id === filter);
   const canImport = library.status === 'ready' || library.pendingCount > 0 || library.status === 'unavailable';
 
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -290,6 +322,8 @@ function SessionLibrary({ family }: { family: SportFamily }) {
     <SessionRow
       key={session.file}
       session={session}
+      activity={activityByFile.get(session.file) ?? null}
+      activities={activities}
       family={family}
       confirming={confirmFile === session.file}
       onAskDelete={() => setConfirmFile(session.file)}
@@ -333,14 +367,14 @@ function SessionLibrary({ family }: { family: SportFamily }) {
           : "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le téléphone ou un autre PC. Chrome demande alors s'il faut importer les fichiers « sur ce site » : ils restent sur ce PC, Tracker n'envoie rien sur internet."}
       </p>
 
-      {family === 'voile' && familySessions.length > 0 && (
+      {counts.length > 1 && (
         <div className="ui-tabs" style={{ '--tab-accent': accent } as React.CSSProperties}>
           <button type="button" className="ui-tab" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
             tous ({familySessions.length})
           </button>
-          {sports.filter((s) => counts.has(s)).map((s) => (
-            <button key={s} type="button" className="ui-tab" aria-pressed={filter === s} onClick={() => setFilter(s)}>
-              {SPORT_PROFILES[s].label} ({counts.get(s)})
+          {counts.map(({ activity, count }) => (
+            <button key={activity.id} type="button" className="ui-tab" aria-pressed={filter === activity.id} onClick={() => setFilter(activity.id)}>
+              {activity.name} ({count})
             </button>
           ))}
         </div>
@@ -349,7 +383,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       {unclassified.length > 0 && (
         <Card heading="À classer">
           <p className="lib-hint">
-            Traces dont le support n'est pas connu : choisissez-le pour les ranger en voile ou en course.
+            Traces dont l'activité n'est pas connue : choisissez-la pour les ranger en voile ou en course.
           </p>
           <ul className="lib-list">{unclassified.map(row)}</ul>
         </Card>

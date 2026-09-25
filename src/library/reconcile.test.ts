@@ -10,6 +10,7 @@ const record = (gpx: string): SessionRecord => ({
   version: RECORD_VERSION,
   gpx,
   sport: 'running',
+  activityId: null,
   source: 'import',
   addedAt: '2026-09-23T13:00:00.000Z',
   title: null,

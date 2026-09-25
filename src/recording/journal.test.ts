@@ -83,4 +83,11 @@ describe('journal', () => {
     expect(parsed.fixes).toHaveLength(1);
     expect(parsed.breaks).toEqual([]);
   });
+
+  it("garde l'activité de l'en-tête, et l'ignore abîmée", () => {
+    const withActivity = journalHeaderLine('kite', T0, { id: 'a-kite-lac', name: 'Kite au lac' });
+    expect(parseJournal(withActivity).header?.activity).toEqual({ id: 'a-kite-lac', name: 'Kite au lac' });
+    const broken = JSON.stringify({ format: 'tracker-journal', version: 1, sport: 'kite', startedAtMs: T0, activity: { id: 3 } }) + '\n';
+    expect(parseJournal(broken).header).toEqual({ format: 'tracker-journal', version: 1, sport: 'kite', startedAtMs: T0 });
+  });
 });

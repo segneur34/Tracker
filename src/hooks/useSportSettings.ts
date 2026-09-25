@@ -1,5 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ELEVATION_PRESETS, SPORT_PROFILES, getSportProfile, type RecordingProfile } from '../core/sportProfiles';
+import {
+  FAMILY_BASE, activitiesOfFamily, activityFamily, baseActivity, findActivity, newActivityId, readActivities, type Activity,
+} from '../core/activities';
+import { ELEVATION_PRESETS, getSportProfile, type RecordingProfile, type SportFamily } from '../core/sportProfiles';
 import { isValidSpeedRange } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { SPEED_UNIT_LABEL, type SpeedUnit } from '../core/units';
@@ -32,32 +35,50 @@ export const SAILING_UNITS: SpeedUnit[] = ['kn', 'kmh', 'ms'];
 export const RUNNING_UNITS: SpeedUnit[] = ['kmh', 'ms', 'minkm'];
 
 /**
- * Réglages de support : quel support est analysé, et avec quel seuil d'activité.
+ * Réglages par activité (`core/activities.ts`) : unité, seuil d'activité,
+ * taille du texte, terrain, couleurs de trace, pause automatique, rangés sous
+ * l'identifiant de l'activité. Le calcul de base ne fournit que les défauts ;
+ * la surcharge de l'utilisateur prime et survit au rechargement.
  *
- * Le seuil est volontairement modifiable : 8 nœuds ne vaut qu'en wingfoil, la
- * planche à voile, le kite et le bateau ont des valeurs différentes, et le
- * réglage fin dépend aussi du matériel et du pratiquant. Le profil ne fournit
- * qu'un point de départ, la surcharge de l'utilisateur prime et survit au
- * rechargement de la page.
+ * Le seuil est volontairement modifiable : 8 nœuds ne vaut qu'en wingfoil, et
+ * le réglage fin dépend du matériel et du pratiquant.
  */
 
 const STORAGE_KEY = 'tracker.sportSettings';
 
+/** Réglage rangé par identifiant d'activité. */
+type ByActivity<T> = Partial<Record<string, T>>;
+
 export interface StoredSettings {
-  sport?: SportType;
-  /** Surcharges du seuil d'activité, par support, dans l'unité du profil. */
-  thresholds?: Partial<Record<SportType, number>>;
-  /** Terrain retenu pour le dénivelé, par support. */
-  terrains?: Partial<Record<SportType, TerrainType>>;
-  /** Unité d'affichage des vitesses, par support. */
-  speedUnits?: Partial<Record<SportType, SpeedUnit>>;
-  /** Taille du texte, par support. */
-  textScales?: Partial<Record<SportType, TextScale>>;
-  /** Bornes du dégradé de couleur de la trace, en m/s, par support. */
-  speedRanges?: Partial<Record<SportType, { minMs: number; maxMs: number }>>;
-  /** Surcharge de la pause automatique à l'enregistrement, par support. */
-  autoPause?: Partial<Record<SportType, { speedMs: number; delayS: number }>>;
+  /** Ancienne clé : le support choisi dans le module voile, lu faute de `moduleActivity.voile`. */
+  sport?: string;
+  /** Activité retenue par chaque module tant qu'aucune session ne l'impose. */
+  moduleActivity?: Partial<Record<SportFamily, string>>;
+  /** Dernière activité enregistrée, proposée au prochain enregistrement. */
+  recordActivity?: string;
+  /** Activités de l'utilisateur ; absentes : celles du premier lancement. */
+  activities?: Activity[];
+  /** Surcharges du seuil d'activité, dans l'unité du profil du calcul. */
+  thresholds?: ByActivity<number>;
+  /** Terrain retenu pour le dénivelé. */
+  terrains?: ByActivity<TerrainType>;
+  /** Unité d'affichage des vitesses. */
+  speedUnits?: ByActivity<SpeedUnit>;
+  /** Taille du texte. */
+  textScales?: ByActivity<TextScale>;
+  /** Bornes du dégradé de couleur de la trace, en m/s. */
+  speedRanges?: ByActivity<{ minMs: number; maxMs: number }>;
+  /** Surcharge de la pause automatique à l'enregistrement. */
+  autoPause?: ByActivity<{ speedMs: number; delayS: number }>;
+  /** Durée de l'appui long sur le bouton rond qui met en pause, en millisecondes. */
+  longPressMs?: number;
 }
+
+/** Appui long par défaut : 2 s, assez pour ne pas partir d'un geste involontaire. */
+export const DEFAULT_LONG_PRESS_MS = 2000;
+
+const isValidLongPress = (value: unknown): value is number =>
+  typeof value === 'number' && isFinite(value) && value >= 300 && value <= 10_000;
 
 export const isKnownTerrain = (value: unknown): value is TerrainType =>
   typeof value === 'string' && value in ELEVATION_PRESETS;
@@ -83,31 +104,48 @@ export const readStoredSettings = (): StoredSettings => {
 
 const writeStored = (settings: StoredSettings): void => jsonStore.write(STORAGE_KEY, settings);
 
+/** Activités de l'utilisateur, hors composant (enregistrement, bibliothèque). */
+export const readStoredActivities = (): Activity[] => readActivities(readStoredSettings().activities);
+
+/** Dernière activité enregistrée, si elle existe encore. */
+export const lastRecordActivity = (): Activity | null => {
+  const stored = readStoredSettings();
+  return readActivities(stored.activities).find((a) => a.id === stored.recordActivity) ?? null;
+};
+
+export const rememberRecordActivity = (id: string): void => {
+  const stored = readStoredSettings();
+  if (stored.recordActivity !== id) writeStored({ ...stored, recordActivity: id });
+};
+
+/** Durée effective de l'appui long, lue à chaque appui. */
+export const effectiveLongPressMs = (): number => {
+  const value = readStoredSettings().longPressMs;
+  return isValidLongPress(value) ? value : DEFAULT_LONG_PRESS_MS;
+};
+
 /**
- * Réglage d'enregistrement effectif d'un support : le profil, sauf surcharge
- * de la pause automatique. Utilisable hors composant, par l'enregistreur.
+ * Réglage d'enregistrement effectif d'une activité : le profil de son calcul,
+ * sauf surcharge de la pause automatique. Utilisable hors composant.
  */
-export const effectiveRecordingProfile = (sport: SportType): RecordingProfile => {
-  const profile = getSportProfile(sport);
-  const override = readStoredSettings().autoPause?.[sport];
+export const effectiveRecordingProfile = (activity: Activity): RecordingProfile => {
+  const profile = getSportProfile(activity.base);
+  const override = readStoredSettings().autoPause?.[activity.id];
   return override ? { ...profile.recording, autoPauseSpeedMs: override.speedMs, autoPauseDelayS: override.delayS } : profile.recording;
 };
 
 /**
- * Unité de vitesse effective d'un support : celle choisie dans Réglages, sinon
- * celle du profil. Utilisable hors composant (enregistrement, bibliothèque).
+ * Unité de vitesse effective d'une activité : celle choisie dans Réglages,
+ * sinon celle du profil. Utilisable hors composant.
  */
-export const effectiveSpeedUnit = (sport: SportType): SpeedUnit => {
-  const unit = readStoredSettings().speedUnits?.[sport];
-  return isKnownSpeedUnit(unit) ? unit : getSportProfile(sport).speedUnit;
+export const effectiveSpeedUnit = (activity: Activity): SpeedUnit => {
+  const unit = readStoredSettings().speedUnits?.[activity.id];
+  return isKnownSpeedUnit(unit) ? unit : getSportProfile(activity.base).speedUnit;
 };
 
-const isKnownSport = (value: unknown): value is SportType =>
-  typeof value === 'string' && value in SPORT_PROFILES;
-
-/** Réglages d'un support tels que la page Paramètres les présente. */
+/** Réglages d'une activité tels que la page Réglages les présente. */
 export interface SportSettingsView {
-  sport: SportType;
+  activity: Activity;
   speedUnit: SpeedUnit;
   isSpeedUnitOverridden: boolean;
   activeThreshold: number;
@@ -120,13 +158,32 @@ export interface SportSettingsView {
   isAutoPauseOverridden: boolean;
 }
 
+/** Tables de réglages rangées par activité. */
+const PER_ACTIVITY_KEYS = ['thresholds', 'terrains', 'speedUnits', 'textScales', 'speedRanges', 'autoPause'] as const;
+
+/** Réglages sans aucune surcharge rangée sous `id`. */
+const withoutOverrides = (stored: StoredSettings, id: string): StoredSettings => {
+  const next: StoredSettings = { ...stored };
+  for (const key of PER_ACTIVITY_KEYS) {
+    const map = stored[key];
+    if (map && id in map) {
+      const copy: Record<string, unknown> = { ...map };
+      delete copy[id];
+      (next as Record<string, unknown>)[key] = copy;
+    }
+  }
+  return next;
+};
+
 /**
- * Accès à tous les supports à la fois, pour la page Paramètres. Chaque
- * modification est écrite immédiatement dans le navigateur ; les modules la
- * lisent à leur prochain affichage.
+ * Accès à toutes les activités à la fois, pour la page Réglages : leurs
+ * réglages, et la liste elle-même (ajouter, renommer, supprimer). Chaque
+ * modification est écrite immédiatement ; les modules la lisent à leur
+ * prochain affichage.
  */
 export const useAllSportSettings = () => {
   const [stored, setStored] = useState<StoredSettings>(readStoredSettings);
+  const activities = useMemo(() => readActivities(stored.activities), [stored.activities]);
 
   const persist = useCallback((next: StoredSettings) => {
     setStored(next);
@@ -134,16 +191,17 @@ export const useAllSportSettings = () => {
   }, []);
 
   const view = useCallback(
-    (sport: SportType): SportSettingsView => {
-      const profile = getSportProfile(sport);
-      const unit = stored.speedUnits?.[sport];
-      const threshold = stored.thresholds?.[sport];
-      const scale = stored.textScales?.[sport];
-      const terrain = stored.terrains?.[sport];
-      const range = stored.speedRanges?.[sport];
-      const autoPauseOverride = stored.autoPause?.[sport];
+    (activity: Activity): SportSettingsView => {
+      const id = activity.id;
+      const profile = getSportProfile(activity.base);
+      const unit = stored.speedUnits?.[id];
+      const threshold = stored.thresholds?.[id];
+      const scale = stored.textScales?.[id];
+      const terrain = stored.terrains?.[id];
+      const range = stored.speedRanges?.[id];
+      const autoPauseOverride = stored.autoPause?.[id];
       return {
-        sport,
+        activity,
         speedUnit: isKnownSpeedUnit(unit) ? unit : profile.speedUnit,
         isSpeedUnitOverridden: isKnownSpeedUnit(unit),
         activeThreshold: threshold ?? profile.defaultActiveThreshold,
@@ -158,18 +216,18 @@ export const useAllSportSettings = () => {
     [stored]
   );
 
-  /** Écrit ou efface (`null`) un réglage d'un support. */
+  /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
     <F extends 'speedUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'autoPause'>(
-      sport: SportType,
+      id: string,
       field: F,
       value: SportSettingsView[F] | null
     ) => {
       const next: StoredSettings = { ...stored };
-      const put = <T,>(map: Partial<Record<SportType, T>> | undefined, v: T | null): Partial<Record<SportType, T>> => {
+      const put = <T,>(map: ByActivity<T> | undefined, v: T | null): ByActivity<T> => {
         const copy = { ...map };
-        if (v === null) delete copy[sport];
-        else copy[sport] = v;
+        if (v === null) delete copy[id];
+        else copy[id] = v;
         return copy;
       };
       switch (field) {
@@ -207,98 +265,157 @@ export const useAllSportSettings = () => {
     [persist, stored]
   );
 
-  return { view, setFor };
+  /** Remet tous les réglages d'une activité au défaut de son calcul. */
+  const resetActivity = useCallback((id: string) => persist(withoutOverrides(stored, id)), [persist, stored]);
+
+  /** Ajoute une activité ; rend son identifiant, `null` si le nom est vide. */
+  const addActivity = useCallback(
+    (name: string, base: SportType, color: string): string | null => {
+      const trimmed = name.trim();
+      if (trimmed === '') return null;
+      const id = newActivityId(trimmed, activities);
+      persist({ ...stored, activities: [...activities, { id, name: trimmed, base, color }] });
+      return id;
+    },
+    [activities, persist, stored]
+  );
+
+  /** Renomme ou recolore une activité ; un nom vide est ignoré. */
+  const updateActivity = useCallback(
+    (id: string, patch: { name?: string; color?: string }) => {
+      const name = patch.name?.trim();
+      persist({
+        ...stored,
+        activities: activities.map((a) =>
+          a.id === id ? { ...a, ...(name ? { name } : {}), ...(patch.color ? { color: patch.color } : {}) } : a
+        ),
+      });
+    },
+    [activities, persist, stored]
+  );
+
+  /**
+   * Supprime une activité et ses réglages. Ses sessions restent, sous le nom
+   * de leur calcul (`sessionActivity`).
+   */
+  const removeActivity = useCallback(
+    (id: string) => persist({ ...withoutOverrides(stored, id), activities: activities.filter((a) => a.id !== id) }),
+    [activities, persist, stored]
+  );
+
+  const longPressMs = isValidLongPress(stored.longPressMs) ? stored.longPressMs : DEFAULT_LONG_PRESS_MS;
+  /** Durée de l'appui long, en millisecondes ; `null` revient au défaut. */
+  const setLongPressMs = useCallback(
+    (value: number | null) => {
+      if (value !== null && !isValidLongPress(value)) return;
+      const next: StoredSettings = { ...stored };
+      if (value === null) delete next.longPressMs;
+      else next.longPressMs = value;
+      persist(next);
+    },
+    [persist, stored]
+  );
+
+  return {
+    activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
+  };
 };
 
 /**
- * @param defaultSport support retenu tant que l'utilisateur n'en a pas choisi un.
- * @param allowedSports supports que ce module accepte. Le support mémorisé
- *   n'est repris que s'il en fait partie : le module course ne doit pas
- *   hériter du wingfoil choisi dans le module voile, avec ses nœuds et son
- *   seuil de vol.
+ * Activité retenue par un module : celle mémorisée si elle est de sa famille
+ * (une de la liste, ou l'activité de base d'un calcul, pour une session sans
+ * activité), sinon la première de la famille, sinon l'activité de base du
+ * calcul par défaut de la famille.
  */
-export const useSportSettings = (defaultSport: SportType, allowedSports: SportType[] = [defaultSport]) => {
+const moduleActivity = (stored: StoredSettings, activities: Activity[], family: SportFamily): Activity => {
+  const remembered = stored.moduleActivity?.[family] ?? (family === 'voile' ? stored.sport : undefined);
+  const found = findActivity(activities, remembered);
+  if (found && activityFamily(found) === family) return found;
+  return activitiesOfFamily(activities, family)[0] ?? baseActivity(FAMILY_BASE[family]);
+};
+
+/**
+ * Réglages d'un module d'analyse : son activité courante, le profil de son
+ * calcul et les réglages rangés sous elle. Un module ne reprend que les
+ * activités de sa famille : la course n'hérite pas du seuil de vol du
+ * wingfoil (règle 9).
+ */
+export const useSportSettings = (family: SportFamily) => {
   const [stored, setStored] = useState<StoredSettings>(readStoredSettings);
-
-  const sport =
-    isKnownSport(stored.sport) && allowedSports.includes(stored.sport) ? stored.sport : defaultSport;
+  const activities = useMemo(() => readActivities(stored.activities), [stored.activities]);
+  const activity = useMemo(() => moduleActivity(stored, activities, family), [stored, activities, family]);
+  const sport = activity.base;
   const profile = useMemo(() => getSportProfile(sport), [sport]);
+  const id = activity.id;
 
-  const activeThreshold = stored.thresholds?.[sport] ?? profile.defaultActiveThreshold;
-  const isThresholdOverridden = stored.thresholds?.[sport] !== undefined;
+  /** Activités proposées par le module : celles de la famille, plus l'activité courante si c'en est une de base. */
+  const activityOptions = useMemo(() => {
+    const own = activitiesOfFamily(activities, family);
+    return own.some((a) => a.id === id) ? own : [...own, activity];
+  }, [activities, family, activity, id]);
 
   const persist = useCallback((next: StoredSettings) => {
     setStored(next);
     writeStored(next);
   }, []);
 
-  const setSport = useCallback(
-    (next: SportType) => {
-      if (!isKnownSport(next) || !allowedSports.includes(next)) return;
-      persist({ ...stored, sport: next });
+  /** Change l'activité du module ; un identifiant d'une autre famille est ignoré. */
+  const setActivity = useCallback(
+    (nextId: string) => {
+      const next = findActivity(activities, nextId);
+      if (!next || activityFamily(next) !== family) return;
+      persist({ ...stored, moduleActivity: { ...stored.moduleActivity, [family]: next.id } });
     },
-    [persist, stored, allowedSports]
+    [persist, stored, activities, family]
   );
 
-  const setActiveThreshold = useCallback(
-    (value: number) => {
-      if (!isFinite(value) || value < 0) return;
-      persist({ ...stored, thresholds: { ...stored.thresholds, [sport]: value } });
-    },
-    [persist, sport, stored]
-  );
+  const activeThreshold = stored.thresholds?.[id] ?? profile.defaultActiveThreshold;
+  const isThresholdOverridden = stored.thresholds?.[id] !== undefined;
 
-  /** Revient au défaut du support courant. */
-  const resetActiveThreshold = useCallback(() => {
-    const thresholds = { ...stored.thresholds };
-    delete thresholds[sport];
-    persist({ ...stored, thresholds });
-  }, [persist, sport, stored]);
-
-  const storedTerrain = stored.terrains?.[sport];
+  const storedTerrain = stored.terrains?.[id];
   const terrain: TerrainType = isKnownTerrain(storedTerrain) ? storedTerrain : 'route';
   const elevationProfile = ELEVATION_PRESETS[terrain];
 
   const setTerrain = useCallback(
     (next: TerrainType) => {
       if (!isKnownTerrain(next)) return;
-      persist({ ...stored, terrains: { ...stored.terrains, [sport]: next } });
+      persist({ ...stored, terrains: { ...stored.terrains, [id]: next } });
     },
-    [persist, sport, stored]
+    [persist, id, stored]
   );
 
-  const storedUnit = stored.speedUnits?.[sport];
+  const storedUnit = stored.speedUnits?.[id];
   const speedUnit: SpeedUnit = isKnownSpeedUnit(storedUnit) ? storedUnit : profile.speedUnit;
   const setSpeedUnit = useCallback(
     (next: SpeedUnit) => {
       if (!isKnownSpeedUnit(next)) return;
-      persist({ ...stored, speedUnits: { ...stored.speedUnits, [sport]: next } });
+      persist({ ...stored, speedUnits: { ...stored.speedUnits, [id]: next } });
     },
-    [persist, sport, stored]
+    [persist, id, stored]
   );
 
-  const storedScale = stored.textScales?.[sport];
+  const storedScale = stored.textScales?.[id];
   const textScale: TextScale = isKnownTextScale(storedScale) ? storedScale : 'normal';
   const setTextScale = useCallback(
     (next: TextScale) => {
       if (!isKnownTextScale(next)) return;
-      persist({ ...stored, textScales: { ...stored.textScales, [sport]: next } });
+      persist({ ...stored, textScales: { ...stored.textScales, [id]: next } });
     },
-    [persist, sport, stored]
+    [persist, id, stored]
   );
 
-  // Lecture seule ici : les bornes du support se règlent dans Réglages, celles
+  // Lecture seule ici : les bornes de l'activité se règlent dans Réglages, celles
   // d'une trace dans sa fiche (brouillon du module).
-  const storedRange = stored.speedRanges?.[sport];
+  const storedRange = stored.speedRanges?.[id];
   const speedRange = storedRange && isValidSpeedRange(storedRange) ? storedRange : null;
 
   return {
+    activity,
+    activityOptions,
+    setActivity,
     sport,
-    setSport,
     profile,
     activeThreshold,
-    setActiveThreshold,
-    resetActiveThreshold,
     isThresholdOverridden,
     terrain,
     setTerrain,
@@ -307,7 +424,7 @@ export const useSportSettings = (defaultSport: SportType, allowedSports: SportTy
     setSpeedUnit,
     textScale,
     setTextScale,
-    /** Bornes du dégradé réglées pour le support dans Réglages, ou `null` pour le défaut du module. */
+    /** Bornes du dégradé réglées pour l'activité dans Réglages, ou `null` pour le défaut du module. */
     speedRange,
   };
 };

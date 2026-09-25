@@ -10,6 +10,7 @@ const record = (patch: Partial<SessionRecord> = {}): SessionRecord => ({
   version: RECORD_VERSION,
   gpx: '2026-09-24_12-00-00_wingfoil.gpx',
   sport: 'wingfoil',
+  activityId: null,
   source: 'import',
   addedAt: '2026-09-24T10:00:00.000Z',
   title: null,

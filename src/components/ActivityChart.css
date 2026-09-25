@@ -1,0 +1,177 @@
+/* Graphe d'activités de l'accueil (`ActivityChart.tsx`), sur les variables de `theme/tokens.css`.
+   Les couleurs des barres sont celles des activités, posées en style par le composant. */
+
+.actchart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* Sélecteur de période : quatre segments dans une gouttière. */
+.actchart__periods {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-m);
+  background: var(--surface-sunken);
+}
+
+.actchart__periods button {
+  min-height: 36px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-s);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actchart__periods button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.actchart__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.actchart__head h2 {
+  margin: 0;
+  font-size: var(--text-l);
+}
+
+.actchart__head span {
+  font-weight: 700;
+}
+
+/* Barres : chacune prend la même largeur, les piles montent du bas. */
+.actchart__plot {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.actchart__bar {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 3px 3px 0 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.actchart__bar--future {
+  background: var(--bg);
+}
+
+.actchart__bar--picked {
+  background: var(--line-soft);
+}
+
+.actchart__bar--week {
+  box-shadow: inset 1px 0 0 var(--line);
+}
+
+.actchart__stack {
+  flex: 0 0 auto;
+  border-radius: 2px 2px 0 0;
+}
+
+.actchart__axis {
+  display: flex;
+  height: 16px;
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.actchart__tick {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: visible;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.actchart__tick--center {
+  text-align: center;
+}
+
+.actchart__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 20px;
+  font-size: var(--text-s);
+}
+
+.actchart__detail strong::first-letter {
+  text-transform: uppercase;
+}
+
+.actchart__hint {
+  color: var(--muted);
+}
+
+.actchart__sessions,
+.actchart__totals {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.actchart__sessions button,
+.actchart__totals li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  width: 100%;
+  min-height: 40px;
+  padding: var(--space-1) 0;
+  border: none;
+  border-top: 1px solid var(--line-soft);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-s);
+  text-align: left;
+}
+
+.actchart__sessions button {
+  cursor: pointer;
+}
+
+.actchart__dot,
+.actchart__swatch {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.actchart__name {
+  font-weight: 600;
+}
+
+.actchart__meta {
+  margin-left: auto;
+  color: var(--muted);
+}

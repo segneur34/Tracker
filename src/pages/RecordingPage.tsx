@@ -1,15 +1,16 @@
 import { useState, type ChangeEvent } from 'react';
+import { Link } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
 import { IconPause, IconPlay } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
-import { SPORT_PROFILES, sportFamily } from '../core/sportProfiles';
-import type { SportType } from '../core/types';
+import { activitiesOfFamily, type Activity } from '../core/activities';
+import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import { formatClock, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { useLiveRecording } from '../hooks/useLiveRecording';
-import { effectiveSpeedUnit } from '../hooks/useSportSettings';
+import { effectiveSpeedUnit, lastRecordActivity, readStoredActivities, rememberRecordActivity } from '../hooks/useSportSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import {
   analyzePendingSession, discardPendingSession, dismissRecorderResult, getLastFix, pauseRecording, resumeRecording,
@@ -32,7 +33,7 @@ import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
  * chaîne s'éprouve sur le PC, jusqu'à l'analyse de la session obtenue.
  */
 
-const SPORTS = Object.values(SPORT_PROFILES);
+const FAMILY_LABEL: Record<SportFamily, string> = { voile: 'Voile', course: 'Course à pied' };
 const REPLAY_SPEEDS = [1, 10, 60, 600];
 
 type SourceChoice = 'device' | 'replay';
@@ -58,10 +59,10 @@ const formatDistance = (m: number): string => `${(m / 1000).toFixed(2)} km`;
 const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
 const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
 
-/** Statistiques en direct propres à la famille du support. */
-const liveStatItems = (sport: SportType, live: LiveStats): { label: string; value: string }[] => {
-  const unit = effectiveSpeedUnit(sport);
-  if (sportFamily(sport) === 'voile') {
+/** Statistiques en direct propres à la famille de l'activité. */
+const liveStatItems = (activity: Activity, live: LiveStats): { label: string; value: string }[] => {
+  const unit = effectiveSpeedUnit(activity);
+  if (sportFamily(activity.base) === 'voile') {
     return [
       ...LIVE_STATS_DEFAULTS.topDurationsS.map((d, i) => ({
         label: `Top ${d} s (${recentWindowLabel})`,
@@ -86,7 +87,16 @@ function RecordingPage() {
   const openSession = useOpenSession();
   const native = isNativeApp();
 
-  const [sport, setSport] = useState<SportType>('wingfoil');
+  // Famille puis activité ; la dernière enregistrée est proposée d'abord.
+  const [activities] = useState(readStoredActivities);
+  const [chosenId, setChosenId] = useState<string | null>(() => (lastRecordActivity() ?? activities[0])?.id ?? null);
+  const chosen = activities.find((a) => a.id === chosenId) ?? null;
+  const [family, setFamily] = useState<SportFamily>(chosen ? sportFamily(chosen.base) : 'voile');
+  const familyActivities = activitiesOfFamily(activities, family);
+  const pickFamily = (next: SportFamily) => {
+    setFamily(next);
+    setChosenId(activitiesOfFamily(activities, next)[0]?.id ?? null);
+  };
   const [sourceChoice, setSourceChoice] = useState<SourceChoice>('device');
   const [replay, setReplay] = useState<ReplayTrack | null>(null);
   const [replayError, setReplayError] = useState<string | null>(null);
@@ -97,9 +107,9 @@ function RecordingPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const durationMs = recordingDurationMs(stats);
   const meanIntervalS = stats.pointCount > 1 ? durationMs / 1000 / (stats.pointCount - 1) : null;
-  const canStart = !busy && pending === null && (sourceChoice === 'device' || replay !== null);
-  const liveSport = recorder.sport ?? sport;
-  const live = useLiveRecording(busy ? liveSport : null, stats.pointCount);
+  const canStart = !busy && pending === null && chosen !== null && (sourceChoice === 'device' || replay !== null);
+  const liveActivity = recorder.activity ?? chosen;
+  const live = useLiveRecording(busy && liveActivity ? liveActivity.base : null, stats.pointCount);
 
   const handleReplayFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -133,10 +143,12 @@ function RecordingPage() {
   };
 
   const handleStart = () => {
+    if (!chosen) return;
+    rememberRecordActivity(chosen.id);
     const source = sourceChoice === 'replay' && replay
       ? createReplaySource(replay.fixes, replaySpeed)
       : deviceLocationSource();
-    void startRecording(sport, source);
+    void startRecording(chosen, source);
   };
 
   return (
@@ -145,12 +157,27 @@ function RecordingPage() {
 
       {!busy && !pending && <Card>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 'var(--text-m)' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <span className="ui-eyebrow">Support</span>
-            <select value={sport} disabled={busy} onChange={(e) => setSport(e.target.value as SportType)} className="ui-field">
-              {SPORTS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
-          </label>
+          <div className="ui-tabs" role="group" aria-label="Famille" style={{ paddingBottom: 0 }}>
+            {(Object.keys(FAMILY_LABEL) as SportFamily[]).map((f) => (
+              <button key={f} type="button" className="ui-tab" aria-pressed={family === f}
+                style={{ '--tab-accent': f === 'voile' ? 'var(--voile)' : 'var(--course)' } as React.CSSProperties}
+                onClick={() => pickFamily(f)}>
+                {FAMILY_LABEL[f]}
+              </button>
+            ))}
+          </div>
+          {familyActivities.length > 0 ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span className="ui-eyebrow">Activité</span>
+              <select value={chosenId ?? ''} disabled={busy} onChange={(e) => setChosenId(e.target.value)} className="ui-field">
+                {familyActivities.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </label>
+          ) : (
+            <div className="ui-alert ui-alert--warning">
+              Aucune activité {family === 'voile' ? 'voile' : 'course'} : ajoutez-en une dans <Link to="/parametres">Réglages</Link>.
+            </div>
+          )}
 
           {native ? (
             <div><span className="ui-eyebrow">Source</span> <span style={{ marginLeft: '8px' }}>GPS du téléphone</span></div>
@@ -223,17 +250,17 @@ function RecordingPage() {
 
       {busy && (
         <LiveMap segments={live.segments} position={getLastFix()} height="45vh"
-          color={sportFamily(liveSport) === 'voile' ? TRACK_COLOR.voile : TRACK_COLOR.course} />
+          color={liveActivity && sportFamily(liveActivity.base) === 'course' ? TRACK_COLOR.course : TRACK_COLOR.voile} />
       )}
 
       {busy && (
-        <Card heading={`En cours : ${SPORT_PROFILES[liveSport].label}`}>
+        <Card heading={`En cours : ${liveActivity?.name ?? ''}`}>
           {recorder.sourceLabel && (
             <p style={{ margin: '-6px 0 12px', color: 'var(--muted)', fontSize: 'var(--text-s)' }}>{recorder.sourceLabel}</p>
           )}
           <div style={STAT_GRID}>
             <Stat label="Durée" value={formatClock(durationMs)} />
-            {liveStatItems(liveSport, live.stats).map((item) => <Stat key={item.label} {...item} />)}
+            {liveActivity && liveStatItems(liveActivity, live.stats).map((item) => <Stat key={item.label} {...item} />)}
           </div>
         </Card>
       )}
@@ -256,7 +283,7 @@ function RecordingPage() {
       {pending && (
         <Card heading={pending.recovered ? 'Session interrompue récupérée' : 'Session terminée'}>
           <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
-            {SPORT_PROFILES[pending.sport].label}, {pending.pointCount} points.<br />
+            {pending.activity.name}, {pending.pointCount} points.<br />
             <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)' }}>
               Pas encore rangée : « Analyser » la range dans la mémoire et l'ouvre, « Jeter » l'abandonne.
               Aucun nouvel enregistrement avant ce choix.
@@ -281,7 +308,7 @@ function RecordingPage() {
       {saved && (
         <Card heading="Session rangée">
           <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
-            {SPORT_PROFILES[saved.sport].label}, {saved.pointCount} points.<br />
+            {saved.activity.name}, {saved.pointCount} points.<br />
             <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', wordBreak: 'break-all' }}>Rangée dans : {saved.location}</span>
             {!saved.libraryFile && native && (
               <>

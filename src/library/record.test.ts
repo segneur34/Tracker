@@ -21,6 +21,7 @@ const record = (patch: Partial<SessionRecord> = {}): SessionRecord => ({
   version: RECORD_VERSION,
   gpx: '2026-09-23_14-00-00_wingfoil.gpx',
   sport: 'wingfoil',
+  activityId: null,
   source: 'enregistrement',
   addedAt: '2026-09-23T13:00:00.000Z',
   title: 'Wingfoil, 23/09/2026 14:00',
@@ -95,6 +96,13 @@ describe('parseRecord et serializeRecord', () => {
     const parsed = parseRecord(JSON.stringify({ ...record(), sport: 'parapente', notes: { foil: 'Axis', rating: 9 } }))!;
     expect(parsed.sport).toBeNull();
     expect(parsed.notes).toMatchObject({ foil: 'Axis', mast: '', rating: null, windLevel: null, savedAt: 0 });
+  });
+
+  it("relisent l'activité, et la lisent `null` dans une fiche d'avant les activités", () => {
+    expect(parseRecord(serializeRecord(record({ activityId: 'a-moth' })))!.activityId).toBe('a-moth');
+    const { activityId: _absent, ...legacy } = record();
+    expect(parseRecord(JSON.stringify(legacy))!.activityId).toBeNull();
+    expect(parseRecord(JSON.stringify({ ...record(), activityId: 42 }))!.activityId).toBeNull();
   });
 
   it('lisent une fiche d\'une version future sans permettre de la réécrire', () => {

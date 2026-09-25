@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from 'react';
-import { getSportProfile, type RecordingProfile } from '../core/sportProfiles';
+import { BASE_COLOR, baseActivity, findActivity, type Activity } from '../core/activities';
+import type { RecordingProfile } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
-import { effectiveRecordingProfile } from './useSportSettings';
+import { effectiveRecordingProfile, readStoredActivities } from './useSportSettings';
 import { recordingJournal } from '../platform/files';
 import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation } from '../platform/location';
 import { buildGpx } from '../recording/gpxWriter';
@@ -54,6 +55,7 @@ export interface PendingSession {
   /** Le GPX lui-même, pour le ranger ou le télécharger sans le reconstruire. */
   content: string;
   sport: SportType;
+  activity: Activity;
   pointCount: number;
   /** Vrai si elle a été reconstruite depuis le journal d'un enregistrement interrompu. */
   recovered: boolean;
@@ -69,6 +71,7 @@ export interface SavedSession {
   /** Le GPX lui-même, pour l'analyser ou le télécharger sans le relire. */
   content: string;
   sport: SportType;
+  activity: Activity;
   pointCount: number;
   /** Vrai si elle a été reconstruite depuis le journal d'un enregistrement interrompu. */
   recovered: boolean;
@@ -76,7 +79,9 @@ export interface SavedSession {
 
 export interface RecorderState {
   status: RecorderStatus;
+  /** Calcul de l'activité en cours, `null` au repos. */
   sport: SportType | null;
+  activity: Activity | null;
   sourceLabel: string | null;
   /** Raison de la pause en cours, `null` sinon. */
   pausedReason: 'manual' | 'auto' | null;
@@ -90,6 +95,7 @@ export interface RecorderState {
 const INITIAL_STATE: RecorderState = {
   status: 'idle',
   sport: null,
+  activity: null,
   sourceLabel: null,
   pausedReason: null,
   stats: EMPTY_RECORDING_STATS,
@@ -198,7 +204,8 @@ const receiveFix = (recording: RecordingProfile) => (received: LocationFix): voi
  * décision de l'utilisateur. Rend `null`, journal effacé, s'il y a moins de
  * deux positions au total : aucune trace ne s'en tire, il n'y a rien à garder.
  */
-const buildPendingSession = async (sport: SportType, segments: LocationFix[][], recovered: boolean): Promise<PendingSession | null> => {
+const buildPendingSession = async (activity: Activity, segments: LocationFix[][], recovered: boolean): Promise<PendingSession | null> => {
+  const sport = activity.base;
   const pointCount = segments.reduce((n, s) => n + s.length, 0);
   if (pointCount < 2) {
     await recordingJournal.remove();
@@ -206,8 +213,8 @@ const buildPendingSession = async (sport: SportType, segments: LocationFix[][], 
   }
   const startMs = segments.find((s) => s.length > 0)![0].timeMs;
   const fileName = sessionFileName(startMs, sport);
-  const content = buildGpx(segments, { name: sessionTitle(startMs, sport), sport });
-  return { fileName, content, sport, pointCount, recovered };
+  const content = buildGpx(segments, { name: sessionTitle(startMs, activity.name), sport });
+  return { fileName, content, sport, activity, pointCount, recovered };
 };
 
 /**
@@ -219,7 +226,7 @@ export const analyzePendingSession = async (): Promise<SavedSession | null> => {
   const pending = state.pending;
   if (!pending) return null;
   try {
-    const { file, location } = await saveRecordedSession(pending.content, pending.sport);
+    const { file, location } = await saveRecordedSession(pending.content, pending.sport, pending.activity.id);
     await recordingJournal.remove();
     const saved: SavedSession = { ...pending, fileName: file ?? pending.fileName, libraryFile: file, location };
     setState({ pending: null, saved, error: null });
@@ -238,12 +245,23 @@ export const discardPendingSession = async (): Promise<void> => {
 };
 
 /** Options de démarrage d'une source, communes au premier démarrage et à une reprise manuelle. */
-const sourceOptions = (sport: SportType, recording: RecordingProfile): LocationWatchOptions => ({
+const sourceOptions = (activity: Activity, recording: RecordingProfile): LocationWatchOptions => ({
   intervalMs: recording.intervalMs,
   distanceFilterM: recording.distanceFilterM,
   notificationTitle: 'Tracker enregistre',
-  notificationText: `Session ${getSportProfile(sport).label} en cours`,
+  notificationText: `Session ${activity.name} en cours`,
 });
+
+/**
+ * Activité d'un journal relu : celle de la liste si elle existe encore, sinon
+ * reconstruite sous le nom gardé dans l'en-tête (la fiche la rangera sous son
+ * calcul), sinon l'activité de base du calcul.
+ */
+const journalActivity = (sport: SportType, saved: { id: string; name: string } | undefined): Activity => {
+  if (!saved) return baseActivity(sport);
+  const found = findActivity(readStoredActivities(), saved.id);
+  return found && found.base === sport ? found : { id: saved.id, name: saved.name, base: sport, color: BASE_COLOR[sport] };
+};
 
 const isBusy = (): boolean => state.status !== 'idle';
 
@@ -263,20 +281,22 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
   await stopOrphanedDeviceLocation();
   const { header, fixes: list, breaks } = parseJournal(text);
   try {
-    const pending = await buildPendingSession(header?.sport ?? 'wingfoil', splitIntoSegments(list, breaks), true);
+    const sport = header?.sport ?? 'wingfoil';
+    const pending = await buildPendingSession(journalActivity(sport, header?.activity), splitIntoSegments(list, breaks), true);
     if (pending) setState({ pending, saved: null, error: null });
   } catch (err) {
     setState({ error: `Session interrompue non récupérée : ${errorMessage(err, 'erreur inconnue')}` });
   }
 };
 
-export const startRecording = async (sport: SportType, source: LocationSource): Promise<void> => {
+export const startRecording = async (activity: Activity, source: LocationSource): Promise<void> => {
   if (isBusy()) return;
   await recoverInterruptedRecording();
   // Le journal d'une session en attente serait écrasé : elle doit être analysée ou jetée d'abord.
   if (state.pending) return;
 
-  const profile = effectiveRecordingProfile(sport);
+  const sport = activity.base;
+  const profile = effectiveRecordingProfile(activity);
   fixes = [];
   segmentBreaks = [];
   pendingLines = '';
@@ -286,11 +306,11 @@ export const startRecording = async (sport: SportType, source: LocationSource): 
   lastReceivedMs = null;
   belowSinceMs = null;
   pendingBreak = false;
-  setState({ status: 'starting', sport, sourceLabel: source.label, pausedReason: null, stats: EMPTY_RECORDING_STATS, saved: null, error: null });
+  setState({ status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, stats: EMPTY_RECORDING_STATS, saved: null, error: null });
 
   try {
-    await recordingJournal.write(journalHeaderLine(sport, Date.now()));
-    stopSource = await source.start(sourceOptions(sport, profile), receiveFix(profile), (message) => setState({ error: message }));
+    await recordingJournal.write(journalHeaderLine(sport, Date.now(), activity));
+    stopSource = await source.start(sourceOptions(activity, profile), receiveFix(profile), (message) => setState({ error: message }));
     setState({ status: 'recording' });
   } catch (err) {
     stopSource = null;
@@ -301,10 +321,12 @@ export const startRecording = async (sport: SportType, source: LocationSource): 
 
 /**
  * Pause manuelle : coupe la source GPS pour économiser la batterie sur un
- * arrêt volontaire. `resumeRecording` la relance.
+ * arrêt volontaire. `resumeRecording` la relance. Depuis une pause
+ * automatique, elle coupe aussi la source : la reprise devient manuelle.
  */
 export const pauseRecording = async (): Promise<void> => {
-  if (state.status !== 'recording') return;
+  const autoPaused = state.status === 'paused' && state.pausedReason === 'auto';
+  if (state.status !== 'recording' && !autoPaused) return;
   try {
     await stopSource?.();
   } catch {
@@ -318,15 +340,15 @@ export const pauseRecording = async (): Promise<void> => {
 
 /** Relance la source coupée par `pauseRecording`. Le prochain point gardé ouvre un nouveau segment. */
 export const resumeRecording = async (): Promise<void> => {
-  if (state.status !== 'paused' || state.pausedReason !== 'manual' || state.sport === null || currentSource === null || currentProfile === null) {
+  if (state.status !== 'paused' || state.pausedReason !== 'manual' || state.activity === null || currentSource === null || currentProfile === null) {
     return;
   }
-  const sport = state.sport;
+  const activity = state.activity;
   const source = currentSource;
   const profile = currentProfile;
   try {
     pendingBreak = true;
-    stopSource = await source.start(sourceOptions(sport, profile), receiveFix(profile), (message) => setState({ error: message }));
+    stopSource = await source.start(sourceOptions(activity, profile), receiveFix(profile), (message) => setState({ error: message }));
     setState({ status: 'recording', pausedReason: null, error: null });
   } catch (err) {
     pendingBreak = false;
@@ -334,9 +356,13 @@ export const resumeRecording = async (): Promise<void> => {
   }
 };
 
+/** Appui long sur le bouton rond : pause manuelle, ou reprise si elle l'est déjà. */
+export const togglePauseRecording = (): Promise<void> =>
+  state.status === 'paused' && state.pausedReason === 'manual' ? resumeRecording() : pauseRecording();
+
 export const stopRecording = async (): Promise<void> => {
-  if ((state.status !== 'recording' && state.status !== 'paused') || state.sport === null) return;
-  const sport = state.sport;
+  if ((state.status !== 'recording' && state.status !== 'paused') || state.activity === null) return;
+  const activity = state.activity;
   setState({ status: 'stopping' });
   try {
     await stopSource?.();
@@ -349,7 +375,7 @@ export const stopRecording = async (): Promise<void> => {
   await flushJournal();
 
   try {
-    const pending = await buildPendingSession(sport, splitIntoSegments(fixes, segmentBreaks), false);
+    const pending = await buildPendingSession(activity, splitIntoSegments(fixes, segmentBreaks), false);
     setState({
       status: 'idle',
       pending,

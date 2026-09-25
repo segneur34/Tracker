@@ -19,6 +19,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `sessionSpeed.ts` : allure de la session (`referenceSpeedMs`), cadence (`samplingIntervalS`), `sessionFilterThresholds`.
 - `sessionStats.ts` : `segmentDistanceM`, cumuls, masque d'activité (trigger de Schmitt), `buildBaseSessionStats`.
 - `elevation.ts` : lissage de l'altitude et dénivelé à seuil, `computeElevationStats`.
+- `activities.ts` : activités de l'utilisateur sur un calcul de base (`Activity`, `DEFAULT_ACTIVITIES`, `readActivities`, `sessionActivity`, `findActivity`, `newActivityId`).
 - `topSegments.ts` : meilleurs segments en temps et en distance, sans chevauchement.
 - `speedGradient.ts` : dégradé de couleur de la trace, `speedGradientColor`.
 - `displayConfig.ts` : `CHART_MAX_POINTS`, `DEFAULT_MAP_CENTER`, `trackBounds` (emprise d'une trace, où la carte se cadre).
@@ -40,13 +41,14 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 ## `recording/` : enregistrement, logique pure
 
 - `session.ts` : `isNewerFix` (seul filtre), `roundFix`, compteurs de l'enregistrement, `splitIntoSegments`, `evaluateAutoPause`, `shouldFlushJournal`, `sessionFileName`, `sessionTitle`, `isSportType`.
-- `journal.ts` : journal JSON par ligne, relisible même abîmé (`parseJournal`), marques de pause (`journalBreakLine`).
+- `journal.ts` : journal JSON par ligne, relisible même abîmé (`parseJournal`), marques de pause (`journalBreakLine`), activité dans l'en-tête.
 - `gpxWriter.ts` : `buildGpx`, GPX 1.1, un `<trkseg>` par segment, vitesse seule en extension.
 - `liveStats.ts` : statistiques en direct par segment (`computeLiveStats`, `LIVE_STATS_DEFAULTS`).
 
 ## `library/` : mémoire en dossier, logique pure
 
-- `record.ts` : la fiche (`SessionRecord`, `SessionSummary`, `SessionAnalysis`), `parseRecord` tolérante, `SUMMARY_CALC_VERSION`, `dedupeSessions`, `findLegacyNotes`.
+- `activityChart.ts` : barres et totaux du graphe d'activités de l'accueil (`buildActivityChart`, semaines ISO).
+- `record.ts` : la fiche (`SessionRecord` avec `activityId`, `SessionSummary`, `SessionAnalysis`), `parseRecord` tolérante, `SUMMARY_CALC_VERSION`, `dedupeSessions`, `findLegacyNotes`.
 - `summary.ts` : `summarizeSession`, le résumé calculé par le pipeline du module qui analysera la session.
 - `sessionEdits.ts` : brouillon d'une session (`SessionEdits`), `savedEdits`, `changedParts`, `editsPatch`.
 - `reconcile.ts` : `planReconcile`, rapprochement de `sessions/` et du cache des fiches.
@@ -67,28 +69,30 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 ## `hooks/`
 
 - `useSessionLibrary.ts` : la bibliothèque, store hors des composants (ouverture du dossier, rapprochement, réglages qui voyagent, import, écritures différées des fiches, suppression) ; `updateSessionRecord`, `saveRecordedSession`, `importFiles`.
-- `useRecorder.ts` : l'enregistreur, hors des composants (`startRecording`, `pauseRecording`, `resumeRecording`, `stopRecording`, session en attente `analyzePendingSession`/`discardPendingSession`, `recoverInterruptedRecording`, pause automatique).
+- `useRecorder.ts` : l'enregistreur, hors des composants (`startRecording`, `pauseRecording`, `resumeRecording`, `stopRecording`, session en attente `analyzePendingSession`/`discardPendingSession`, `recoverInterruptedRecording`, pause automatique, `togglePauseRecording` pour l'appui long).
+- `useLongPress.ts` : appui long sur un élément, clic court préservé (bouton rond).
 - `useLiveRecording.ts` : trace et statistiques en direct pour la page affichée, recalculées au plus toutes les 2 s.
 - `useGpxSession.ts` : ingestion générique, `loadGpxContent` (entrée unique), trace dérivée des points bruts.
 - `useSailingSession.ts` : orchestration de la voile ; c'est ici que les seuils s'accordent à l'allure (règle 4).
 - `useSessionDraft.ts` : brouillon d'une session, écrit dans la fiche par `save`. `leaveGuard.ts` : avertissement en quittant.
 - `useLibraryNavigation.ts` : passage de la liste à l'analyse (`?session=`), `useSessionFromUrl` (chargement unique, §10 point 39), `useImportAndOpen`.
-- `useSportSettings.ts` : réglages par support (`tracker.sportSettings`), `useAllSportSettings` pour Réglages, `readStoredSettings`, et hors composant `effectiveRecordingProfile`, `effectiveSpeedUnit`.
+- `useSportSettings.ts` : réglages par activité et liste des activités (`tracker.sportSettings`), `useSportSettings(family)` pour un module, `useAllSportSettings` pour Réglages, et hors composant `readStoredActivities`, `effectiveRecordingProfile`, `effectiveSpeedUnit`, `effectiveLongPressMs`.
 - `useStoredRecord.ts`, `useOpenSections.ts`, `useRunnerProfile.ts` : enregistrements de l'appareil (sections ouvertes, profil du coureur).
 
 ## `pages/`
 
-- `Home.tsx` : accueil d'attente (Enregistrer, Voile, Course), tableau de bord au lot 4.
+- `Home.tsx` : accueil (Enregistrer, graphe d'activités, Voile, Course).
 - `SessionLibrary.tsx` (+ `.css`) : bibliothèque d'une famille, import, sessions à classer, suppression, aperçu carte d'une session à la demande (`SessionPreviewMap`, GPX relu, bornes de couleur comme le module d'analyse).
 - `SailingModule.tsx` : analyse voile (en-tête, barre d'enregistrement, onglets du haut, carte et sa colonne d'onglets).
 - `RunningModule.tsx` : analyse course (synthèse, zones, graphes, carte).
 - `analysisMobile.css` : disposition des deux modules d'analyse sous 768 px (carte pleine largeur en haut, feuille des chiffres clés, vue plein écran au tap, colonne d'onglets de la voile bornée à l'écran, panneau Manœuvres resserré) ; classes `an-*`.
-- `RecordingPage.tsx` : enregistrement, source GPS ou rejeu, pause, carte et statistiques en direct.
-- `SettingsPage.tsx` : mémoire, réglages par support (couleurs de trace comprises), course, coureur ; `settingsPage.css` met le tableau des supports en cartes sous 768 px.
+- `RecordingPage.tsx` : enregistrement (famille puis activité), source GPS ou rejeu, pause, carte et statistiques en direct.
+- `SettingsPage.tsx` : mémoire, activités (ajouter, renommer, recolorer, supprimer) et leurs réglages (couleurs de trace comprises), enregistrement (appui long), course, coureur ; `settingsPage.css` met le tableau des activités en cartes sous 768 px.
 
 ## `components/` et thème
 
-- `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement.
+- `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement, bouton rond (appui long : pause ou reprise).
+- `ActivityChart.tsx` (+ `.css`) : graphe d'activités de l'accueil, période, détail d'une barre, totaux.
 - `MemoryStatus.tsx` : état de la mémoire et l'action qui convient. `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `LiveMap.tsx` : carte de l'enregistrement en cours, qui suit la position. `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17).
 - `SessionSaveBar.tsx` : barre « Enregistrer la session » du brouillon, commune aux deux modules.
 - `AnalysisMap.tsx` : carte d'une page d'analyse, cadrée sur la trace, sa légende collée dessous et sa vue plein écran au tap (`docs/MISE_EN_PAGE.md`).

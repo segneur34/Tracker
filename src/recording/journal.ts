@@ -19,10 +19,17 @@ export interface JournalHeader {
   sport: SportType;
   /** Instant du démarrage, en millisecondes. */
   startedAtMs: number;
+  /**
+   * Activité choisie, avec son nom : une session reconstruite après une
+   * suppression de l'activité garde le nom sous lequel elle a été enregistrée.
+   * Absente des journaux d'avant les activités.
+   */
+  activity?: { id: string; name: string };
 }
 
-export const journalHeaderLine = (sport: SportType, startedAtMs: number): string => {
+export const journalHeaderLine = (sport: SportType, startedAtMs: number, activity?: { id: string; name: string }): string => {
   const header: JournalHeader = { format: 'tracker-journal', version: 1, sport, startedAtMs };
+  if (activity) header.activity = { id: activity.id, name: activity.name };
   return `${JSON.stringify(header)}\n`;
 };
 
@@ -69,7 +76,12 @@ const toHeader = (value: unknown): JournalHeader | null => {
   if (typeof value !== 'object' || value === null) return null;
   const v = value as Partial<JournalHeader>;
   if (v.format !== 'tracker-journal' || !isSportType(v.sport) || typeof v.startedAtMs !== 'number') return null;
-  return { format: 'tracker-journal', version: 1, sport: v.sport, startedAtMs: v.startedAtMs };
+  const header: JournalHeader = { format: 'tracker-journal', version: 1, sport: v.sport, startedAtMs: v.startedAtMs };
+  const a = v.activity;
+  if (typeof a === 'object' && a !== null && typeof a.id === 'string' && a.id !== '' && typeof a.name === 'string') {
+    header.activity = { id: a.id, name: a.name };
+  }
+  return header;
 };
 
 const toBreakMarker = (value: unknown): boolean =>

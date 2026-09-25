@@ -12,12 +12,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { analysisPath, libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
+import { readStoredActivities } from '../hooks/useSportSettings';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { trackBounds } from '../core/displayConfig';
-import { SPORT_PROFILES } from '../core/sportProfiles';
+import { sessionActivity } from '../core/activities';
 import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
-import type { SportType, TopSegment } from '../core/types';
+import type { TopSegment } from '../core/types';
 import type { LibrarySession } from '../library/record';
 import { readPickedFile } from '../platform/files';
 import { SPEED_UNIT_LABEL, knotsToMs, msToKnots } from '../core/units';
@@ -159,8 +160,9 @@ function SailingModule() {
     hasDeviceSpeed,
     loadError,
     sessionKey,
-    sport,
-    setSport,
+    activity,
+    activityOptions,
+    setActivity,
     profile,
     activeThresholdKn,
     defaultActiveThresholdKn,
@@ -170,19 +172,18 @@ function SailingModule() {
     samplingS,
     pointCount,
     maneuverThresholds,
-    availableSports
   } = useSailingSession({
     windDeg: edits.windDeg,
     activeThresholdKn: edits.activeThreshold,
     referenceSpeedMs: edits.referenceSpeedMs,
   });
 
-  // Session de la mémoire désignée par l'URL : son support devient celui du module.
+  // Session de la mémoire désignée par l'URL : son activité devient celle du module.
   const receiveSession = useCallback((content: string, session: LibrarySession) => {
-    const recorded = session.record.sport;
-    if (recorded && recorded !== sport && availableSports.includes(recorded)) setSport(recorded);
+    const recorded = sessionActivity(readStoredActivities(), session.record.activityId, session.record.sport);
+    if (recorded && recorded.id !== activity.id) setActivity(recorded.id);
     loadGpxContent(content, session.file);
-  }, [availableSports, sport, setSport, loadGpxContent]);
+  }, [activity.id, setActivity, loadGpxContent]);
   const { file: sessionFile, error: sessionError } = useSessionFromUrl(receiveSession);
 
   // Un GPX ouvert ici entre d'abord dans la mémoire ; faute de mémoire, il est lu directement.
@@ -199,10 +200,17 @@ function SailingModule() {
     loadGpxContent(await readPickedFile(file), file.name);
   };
 
-  /** Changer de support l'écrit aussi dans la fiche de la session. */
-  const changeSport = (next: SportType) => {
-    setSport(next);
-    if (sessionFile) updateSessionRecord(sessionFile, { sport: next });
+  /**
+   * Changer d'activité l'écrit aussi dans la fiche de la session. L'activité
+   * de base d'un calcul n'est pas une activité de la liste : la fiche n'en
+   * garde que le calcul.
+   */
+  const changeActivity = (id: string) => {
+    const next = activityOptions.find((a) => a.id === id);
+    if (!next) return;
+    setActivity(next.id);
+    const listed = readStoredActivities().some((a) => a.id === next.id);
+    if (sessionFile) updateSessionRecord(sessionFile, { sport: next.base, activityId: listed ? next.id : null });
   };
 
   // Nombre de manœuvres recopié dans la fiche, pour la liste des sessions. Seulement quand un
@@ -586,13 +594,13 @@ function SailingModule() {
           </label>
 
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-            <strong>Support :</strong>
+            <strong>Activité :</strong>
             <select
-              value={sport}
-              onChange={(e) => changeSport(e.target.value as SportType)}
+              value={activity.id}
+              onChange={(e) => changeActivity(e.target.value)}
               className="ui-field ui-field--s">
-              {availableSports.map((s) => (
-                <option key={s} value={s}>{SPORT_PROFILES[s].label}</option>
+              {activityOptions.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
           </label>

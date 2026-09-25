@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
 import { ELEVATION_PRESETS, SAILING_SPORTS } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
@@ -56,7 +57,7 @@ import {
 } from '../platform/memoryFolder';
 import { jsonStore } from '../platform/storage';
 import { sessionFileName } from '../recording/session';
-import { isKnownTerrain, readStoredSettings } from './useSportSettings';
+import { isKnownTerrain, readStoredActivities, readStoredSettings } from './useSportSettings';
 
 /**
  * Bibliothèque des sessions : la mémoire de l'application, tenue dans un
@@ -204,16 +205,22 @@ const refreshCache = async (f: MemoryFolder, gen: number): Promise<void> => {
 // --- Résumés ---
 
 /**
- * Réglages qui changent le résumé : ceux du support, et ceux de la session
- * (`analysis`, dans sa fiche). Le seuil de la session prime sur celui du
- * support ; l'allure imposée n'existe que pour une session, et qu'en voile.
+ * Réglages qui changent le résumé : ceux de l'activité de la session, et ceux
+ * de la session (`analysis`, dans sa fiche). Le seuil de la session prime sur
+ * celui de l'activité ; l'allure imposée n'existe que pour une session, et
+ * qu'en voile.
  */
-const summaryOptions = (sport: SportType | null, analysis?: SessionAnalysis | null): SummaryOptions => {
+const summaryOptions = (
+  sport: SportType | null,
+  analysis?: SessionAnalysis | null,
+  activityId?: string | null
+): SummaryOptions => {
   if (sport === null) return {};
   const stored = readStoredSettings();
-  const terrain = stored.terrains?.[sport];
+  const key = sessionActivity(readStoredActivities(), activityId, sport)?.id ?? sport;
+  const terrain = stored.terrains?.[key];
   return {
-    activeThreshold: analysis?.activeThreshold ?? stored.thresholds?.[sport],
+    activeThreshold: analysis?.activeThreshold ?? stored.thresholds?.[key],
     referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? analysis?.referenceSpeedMs ?? undefined : undefined,
     elevation: isKnownTerrain(terrain) ? ELEVATION_PRESETS[terrain] : undefined,
   };
@@ -227,24 +234,31 @@ interface AnalyzedGpx {
 
 /**
  * Lit un GPX et le résume. `sport` absent : deviné depuis la trace.
- * `analysis` : réglages d'analyse de la fiche (seuil, allure), s'il y en a.
+ * `analysis` : réglages d'analyse de la fiche (seuil, allure), s'il y en a ;
+ * `activityId` : son activité, dont les réglages s'appliquent.
  * Rend `null` si la trace a moins de deux points, lève une erreur si le XML
  * est illisible.
  */
-const analyzeGpx = (text: string, sport?: SportType | null, analysis?: SessionAnalysis | null): AnalyzedGpx | null => {
+const analyzeGpx = (
+  text: string,
+  sport?: SportType | null,
+  analysis?: SessionAnalysis | null,
+  activityId?: string | null
+): AnalyzedGpx | null => {
   const parsed = parseGpx(text);
   const resolved = sport === undefined ? guessSport(parsed.trackType) : sport;
-  const summary = summarizeSession(parsed.rawPoints, resolved, summaryOptions(resolved, analysis));
+  const summary = summarizeSession(parsed.rawPoints, resolved, summaryOptions(resolved, analysis, activityId));
   return summary ? { summary, sport: resolved, title: parsed.trackName ?? null } : null;
 };
 
 const LEGACY_NOTES_KEY = 'tracker.sailingNotes';
 
-const newRecord = (gpx: string, analyzed: AnalyzedGpx, source: SessionSource): SessionRecord => ({
+const newRecord = (gpx: string, analyzed: AnalyzedGpx, source: SessionSource, activityId: string | null = null): SessionRecord => ({
   format: RECORD_FORMAT,
   version: RECORD_VERSION,
   gpx,
   sport: analyzed.sport,
+  activityId,
   source,
   addedAt: new Date().toISOString(),
   title: analyzed.title,
@@ -466,7 +480,8 @@ const completeScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[]): P
       const analyzed = text === null ? null : analyzeGpx(
             text,
             job.previous ? job.previous.sport : undefined,
-            job.previous?.analysis
+            job.previous?.analysis,
+            job.previous?.activityId
           );
       if (!analyzed) {
         unreadable.push(job.file);
@@ -650,6 +665,8 @@ export interface AddResult {
 interface AddOptions {
   /** Support imposé ; absent : celui de la fiche importée, sinon deviné. */
   sport?: SportType;
+  /** Activité choisie à l'enregistrement. */
+  activityId?: string;
   /** Fiche qui accompagne le GPX, lors de l'import d'un dossier. */
   record?: SessionRecord | null;
 }
@@ -659,7 +676,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   let analyzed: AnalyzedGpx | null;
   try {
     const sport = options.sport ?? options.record?.sport ?? undefined;
-    analyzed = analyzeGpx(text, sport, options.record?.analysis);
+    analyzed = analyzeGpx(text, sport, options.record?.analysis, options.activityId ?? options.record?.activityId);
   } catch (err) {
     return { status: 'invalid', file: null, message: errorMessage(err, 'GPX illisible.') };
   }
@@ -682,7 +699,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   const gpx = uniqueSessionFileName(name, knownNames);
   const record = options.record
     ? withSummary({ ...options.record, gpx, sport: analyzed.sport }, analyzed.summary)
-    : newRecord(gpx, analyzed, source);
+    : newRecord(gpx, analyzed, source, options.activityId ?? null);
   await f.writeText(sessionPath(gpx), text);
   await f.writeText(sessionPath(recordFileName(gpx)), serializeRecord(record));
   knownNames.add(gpx);
@@ -698,10 +715,11 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
  */
 export const saveRecordedSession = async (
   text: string,
-  sport: SportType
+  sport: SportType,
+  activityId: string | null
 ): Promise<{ file: string | null; location: string }> => {
   await opening;
-  const result = await addGpx(text, 'enregistrement', { sport });
+  const result = await addGpx(text, 'enregistrement', { sport, activityId: activityId ?? undefined });
   switch (result.status) {
     case 'added':
       return { file: result.file, location: state.folderLabel ?? 'mémoire' };
@@ -792,6 +810,8 @@ export const readSessionGpx = async (file: string): Promise<string | null> => {
 
 export interface RecordPatch {
   sport?: SportType | null;
+  /** Activité ; `null` : la première de son calcul. */
+  activityId?: string | null;
   /** Nom donné par l'utilisateur ; vide ou `null` : plus de nom. */
   name?: string | null;
   notes?: StoredSessionNotes | null;
@@ -800,9 +820,9 @@ export interface RecordPatch {
 }
 
 /**
- * Modifie la fiche d'une session : support, nom, notes, réglages d'analyse,
+ * Modifie la fiche d'une session : support, activité, nom, notes, réglages d'analyse,
  * nombre de manœuvres. La liste suit tout de suite ; le fichier est écrit un
- * instant plus tard. Un changement de support, de seuil d'activité ou d'allure imposée
+ * instant plus tard. Un changement de support, d'activité, de seuil ou d'allure imposée
  * recalcule le résumé ; un changement de support efface le seuil propre à la
  * session, exprimé dans l'unité de l'ancien support (l'allure, en m/s, reste).
  */
@@ -821,6 +841,8 @@ export const updateSessionRecord = (file: string, patch: RecordPatch): void => {
   if (patch.maneuverCount !== undefined && patch.maneuverCount !== record.summary.maneuverCount) {
     record = { ...record, summary: { ...record.summary, maneuverCount: patch.maneuverCount } };
   }
+  const activityChanged = patch.activityId !== undefined && patch.activityId !== record.activityId;
+  if (activityChanged) record = { ...record, activityId: patch.activityId ?? null };
   const sportChanged = patch.sport !== undefined && patch.sport !== record.sport;
   if (sportChanged) {
     record = { ...record, sport: patch.sport ?? null };
@@ -834,7 +856,7 @@ export const updateSessionRecord = (file: string, patch: RecordPatch): void => {
   const analysisChanged =
     (record.analysis?.activeThreshold ?? null) !== thresholdBefore ||
     (record.analysis?.referenceSpeedMs ?? null) !== referenceBefore;
-  if (sportChanged || analysisChanged) void resummarize(file);
+  if (sportChanged || activityChanged || analysisChanged) void resummarize(file);
 };
 
 /** Résumé recalculé avec le support de la fiche. */
@@ -844,7 +866,7 @@ const resummarize = async (file: string): Promise<void> => {
   if (!f || !session) return;
   try {
     const text = await f.readText(sessionPath(file));
-    const analyzed = text === null ? null : analyzeGpx(text, session.record.sport, session.record.analysis);
+    const analyzed = text === null ? null : analyzeGpx(text, session.record.sport, session.record.analysis, session.record.activityId);
     const current = findSession(file);
     if (!analyzed || !current || folder !== f) return;
     replaceSession({ ...current, record: withSummary(current.record, analyzed.summary) });

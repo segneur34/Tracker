@@ -167,8 +167,8 @@ export const sessionFileName = (startMs: number, sport: SportType | null): strin
   return `${date}_${time}_${sport ?? 'session'}.gpx`;
 };
 
-/** Titre d'une session, repris comme nom de trace dans le GPX : `Wingfoil, 23/09/2026 14:05`. */
-export const sessionTitle = (startMs: number, sport: SportType): string => {
+/** Titre d'une session, repris comme nom de trace dans le GPX : `Moth à foil, 23/09/2026 14:05`. */
+export const sessionTitle = (startMs: number, activityName: string): string => {
   const d = new Date(startMs);
-  return `${SPORT_PROFILES[sport].label}, ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${activityName}, ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };

@@ -108,6 +108,48 @@
   background: var(--recording);
 }
 
+.shell-record--paused {
+  background: var(--muted);
+}
+
+/* Anneau qui se remplit pendant l'appui long (`--press-ms`, posé par AppShell.tsx).
+   Pendant un enregistrement, le rond est un <button> : sans le style natif. */
+.shell-record {
+  position: relative;
+  padding: 0;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.shell-record__ring {
+  position: absolute;
+  inset: -5px;
+  width: calc(100% + 10px);
+  height: calc(100% + 10px);
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.shell-record__ring circle {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: shell-record-fill var(--press-ms) linear forwards;
+}
+
+@keyframes shell-record-fill {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 .shell-record--busy .ui-record-dot {
   width: 18px;
   height: 18px;
