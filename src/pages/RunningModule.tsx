@@ -30,6 +30,7 @@ import {
   DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed, isInverseUnit,
   toDisplayDistance, toDisplaySpeed,
 } from '../core/units';
+import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { updateSessionRecord, useSessionName } from '../hooks/useSessionLibrary';
@@ -141,6 +142,7 @@ function RunningModule() {
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
+  const narrow = useNarrowScreen();
   const scale = TEXT_SCALE_FACTOR[textScale];
   const unitLabel = SPEED_UNIT_LABEL[speedUnit];
   const inverse = isInverseUnit(speedUnit);
@@ -427,7 +429,7 @@ function RunningModule() {
             <span style={{ flex: 1 }} />
             {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
               <button key={mode} onClick={() => setChartMode(mode)}
-                style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: chartMode === mode ? 'var(--course)' : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
+                style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: chartMode === mode ? 'var(--course)' : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
                 {mode === 'separate' ? 'Séparés' : 'Superposés'}
               </button>
             ))}
@@ -477,8 +479,8 @@ function RunningModule() {
               )}
             </>
           )}
-          <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
-            Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte. Poignée en bas à droite pour redimensionner.
+          <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
+            Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte.{narrow ? '' : ' Poignée en bas à droite pour redimensionner.'}
           </div>
         </ResizablePanel>
       )}

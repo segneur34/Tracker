@@ -17,7 +17,8 @@ Patron commun aux modules d'analyse (voile, course) et à tout sport à venir. C
 - **Deux dispositions, une seule rupture** : 768 px, la même que la barre de navigation (`AppShell.css`). Sous cette largeur, `analysisMobile.css` s'applique.
 - **Sur ordinateur** : la carte occupe 60 % de la largeur, en bas de la page, et le bloc est redimensionnable.
 - **Sur téléphone** :
-  - la rangée de la carte remonte en tête de page (`order: -1`), en pleine largeur, avec une carte haute de 30 vh ;
+  - la rangée de la carte s'efface (`display: contents`) : la carte remonte en tête de page (`order: -1`), en pleine largeur, haute de 30 vh ; en voile, suivent la feuille, les onglets de la carte (`an-carte-col`), puis les sections du haut (`an-sections`) — ordre provisoire, à revoir avec l'utilisateur ;
+  - les blocs `ResizablePanel` y sont en pleine largeur, sans poignée, à leur hauteur par défaut ; les explications longues se replient derrière `HelpButton` ;
   - la feuille la chevauche un peu ;
   - un toucher sur la carte l'ouvre en plein écran (× pour fermer) ;
   - rien n'élargit la page : une colonne de panneaux ne dépasse pas l'écran (`min-width: 0`, `max-width: 100%`), un contenu de largeur fixe défile dans son panneau ; un tableau se resserre, ou passe ses lignes en grille (libellé sur sa propre ligne, valeurs dessous), comme le panneau Manœuvres (`an-man-*`).

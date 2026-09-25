@@ -4,9 +4,10 @@ import { useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import MapAutoResize from '../components/MapAutoResize';
 import MemoryStatus from '../components/MemoryStatus';
-import { IconChevronRight, IconFile, IconHelp } from '../components/icons';
+import { IconChevronRight, IconFile } from '../components/icons';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
+import HelpButton from '../components/ui/HelpButton';
 import PageHeader from '../components/ui/PageHeader';
 import { trackBounds } from '../core/displayConfig';
 import { parseGpx } from '../core/gpxParser';
@@ -339,7 +340,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   );
 
   return (
-    <div className="ui-page" style={{ '--lib-accent': accent } as React.CSSProperties}>
+    <div className="ui-page" style={{ '--lib-accent': accent, '--help-accent': accent } as React.CSSProperties}>
       <PageHeader title={title} subtitle={`${familySessions.length} session${familySessions.length > 1 ? 's' : ''}`} />
 
       <MemoryStatus />
@@ -366,14 +367,10 @@ function SessionLibrary({ family }: { family: SportFamily }) {
               onChange={handleImport} />
           </label>
         )}
-        <button
-          type="button"
-          className="lib-help"
-          aria-label="À quoi sert « Ajouter les sessions d'un dossier » ?"
-          aria-expanded={helpOpen}
-          onClick={() => setHelpOpen(!helpOpen)}>
-          <IconHelp />
-        </button>
+        <HelpButton
+          open={helpOpen}
+          onToggle={() => setHelpOpen(!helpOpen)}
+          label="À quoi sert « Ajouter les sessions d'un dossier » ?" />
       </div>
       {helpOpen && (
         <p className="lib-hint">

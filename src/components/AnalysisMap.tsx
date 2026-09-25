@@ -1,16 +1,16 @@
 import { useState, type CSSProperties, type ComponentProps, type ReactNode } from 'react';
 import { MapContainer } from 'react-leaflet';
 import { DEFAULT_MAP_CENTER, type TrackBounds } from '../core/displayConfig';
+import { NARROW_QUERY } from '../hooks/useNarrowScreen';
 import MapAutoResize from './MapAutoResize';
 import ResizablePanel from './ResizablePanel';
 import SpeedGradientLegend from './SpeedGradientLegend';
 
-/** Largeur sous laquelle la page d'analyse passe en disposition téléphone (`analysisMobile.css`). */
-const NARROW_QUERY = '(max-width: 767.98px)';
-
 interface AnalysisMapProps {
   /** Identifiant du bloc redimensionnable, clé de sa taille mémorisée : ne pas le renommer. */
   panelId: string;
+  /** Ancre HTML du bloc, cible des boutons qui ramènent à la carte. */
+  anchorId?: string;
   /** Identité de la trace chargée : une nouvelle trace remonte la carte. */
   sessionKey: string | null;
   /** Emprise de la trace, où la carte se cadre à l'ouverture ; `null` sans trace. */
@@ -37,13 +37,13 @@ const initialView = (bounds: TrackBounds | null) =>
  * et un toucher l'ouvre en plein écran. Commune à tous les modules
  * (`docs/MISE_EN_PAGE.md`).
  */
-function AnalysisMap({ panelId, sessionKey, bounds, layers, legend, defaultHeight, style }: AnalysisMapProps) {
+function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, defaultHeight, style }: AnalysisMapProps) {
   /** Carte agrandie en plein écran (toucher sur la carte compacte, écran étroit seulement). */
   const [expanded, setExpanded] = useState(false);
 
   return (
     <>
-      <ResizablePanel id={panelId} defaultHeight={defaultHeight} minHeight={240}
+      <ResizablePanel id={panelId} anchorId={anchorId} defaultHeight={defaultHeight} minHeight={240}
         className="an-map-panel"
         style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 0, ...style }}>
         <div

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
+import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { jsonStore } from '../platform/storage';
 
 /**
@@ -15,6 +16,10 @@ import { jsonStore } from '../platform/storage';
  * largeur et hauteur explicites) qui prime sur le `style`. Sans cela, un
  * item flex à `flex-basis` non `auto` ignore la propriété `width` que pose
  * la poignée, et `flex-grow` le fait regrandir pour remplir la ligne.
+ *
+ * Sur téléphone (écran étroit), pas de poignée, inutilisable au doigt : le
+ * panneau prend toute la largeur, à sa hauteur par défaut, et la taille
+ * mémorisée sur ordinateur est ignorée sans être effacée.
  */
 
 const STORAGE_KEY = 'tracker.panelSizes';
@@ -39,6 +44,8 @@ const writeSize = (id: string, size: PanelSize | null): void => {
 interface ResizablePanelProps {
   /** Identifiant stable, unique dans l'application, sous lequel la taille est mémorisée. */
   id: string;
+  /** Ancre HTML (attribut `id`), distincte de la clé de la taille mémorisée. */
+  anchorId?: string;
   children: ReactNode;
   /** Hauteur initiale en pixels, tant que l'utilisateur n'a pas redimensionné. */
   defaultHeight?: number;
@@ -53,6 +60,7 @@ interface ResizablePanelProps {
 
 function ResizablePanel({
   id,
+  anchorId,
   children,
   defaultHeight,
   minWidth = 240,
@@ -67,6 +75,7 @@ function ResizablePanel({
   /** Taille figée au début d'un glisser sur la poignée, pour que la largeur suive la souris sans saut. */
   const [dragSize, setDragSize] = useState<PanelSize | null>(null);
   const dragStart = useRef<PanelSize | null>(null);
+  const narrow = useNarrowScreen();
 
   // Un même panneau peut changer d'identifiant, par exemple la section
   // manœuvres qui passe du tableau compact aux détails. C'est alors un autre
@@ -80,10 +89,10 @@ function ResizablePanel({
     const next = readSizes()[id] ?? null;
     setStored(next);
     const el = ref.current;
-    if (!el) return;
+    if (!el || narrow) return;
     el.style.width = next?.width !== undefined && direction !== 'vertical' ? `${next.width}px` : '';
     el.style.height = next?.height !== undefined ? `${next.height}px` : defaultHeight !== undefined ? `${defaultHeight}px` : '';
-  }, [id, direction, defaultHeight]);
+  }, [id, direction, defaultHeight, narrow]);
 
   const onPointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
     const el = ref.current;
@@ -122,8 +131,10 @@ function ResizablePanel({
     writeSize(id, null);
   };
 
-  const size = dragSize ?? stored;
-  const sizeOverride: CSSProperties = {};
+  const size = narrow ? null : dragSize ?? stored;
+  // `flex: 0 0 auto` : pleine ligne dans une rangée qui passe à la ligne, et hauteur respectée dans
+  // une colonne (`an-page`), où une base non `auto` l'ignorerait.
+  const sizeOverride: CSSProperties = narrow ? { width: '100%', flex: '0 0 auto', minWidth: 0 } : {};
   if (size?.height !== undefined) sizeOverride.height = `${size.height}px`;
   else if (defaultHeight !== undefined) sizeOverride.height = `${defaultHeight}px`;
   if (size?.width !== undefined && direction !== 'vertical') {
@@ -134,12 +145,13 @@ function ResizablePanel({
   return (
     <div
       ref={ref}
+      id={anchorId}
       className={className}
-      onPointerDown={onPointerDown}
+      onPointerDown={narrow ? undefined : onPointerDown}
       onClick={onClick}
       style={{
         position: 'relative',
-        resize: direction,
+        resize: narrow ? 'none' : direction,
         overflow: 'auto',
         boxSizing: 'border-box',
         minWidth,
@@ -149,7 +161,7 @@ function ResizablePanel({
         ...sizeOverride,
       }}>
       {children}
-      {stored !== null && (
+      {stored !== null && !narrow && (
         <button
           onClick={reset}
           title="Revenir à la taille par défaut"

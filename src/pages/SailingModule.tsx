@@ -37,6 +37,7 @@ import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
+import HelpButton from '../components/ui/HelpButton';
 
 /**
  * Sections du module. Pour en ajouter une : une entrée ici, une valeur par
@@ -264,6 +265,9 @@ function SailingModule() {
   /** Podium de manœuvres affiché sur la carte : `tack:conservation`, `jibe:distance`, ou `none`. */
   const [selectedManeuverTop, setSelectedManeuverTop] = useState<string>('none');
   const [showManeuverDetails, setShowManeuverDetails] = useState<boolean>(false);
+  /** Explications repliées derrière un « ? » (enregistrement et virages écartés ; lecture du vent). */
+  const [maneuverHelpOpen, setManeuverHelpOpen] = useState(false);
+  const [windHelpOpen, setWindHelpOpen] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   /** Podium de manœuvres sélectionné pour la carte. */
@@ -362,11 +366,11 @@ function SailingModule() {
         <strong>{title}</strong>
         <button
           onClick={() => setSelectedTopMap(selectedTopMap === topKey ? 'none' : topKey)}
-          style={{ padding: '2px 8px', fontSize: '11px', cursor: 'pointer', backgroundColor: selectedTopMap === topKey ? 'var(--voile)' : 'var(--surface-sunken)', color: selectedTopMap === topKey ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+          style={{ padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: 'pointer', backgroundColor: selectedTopMap === topKey ? 'var(--voile)' : 'var(--surface-sunken)', color: selectedTopMap === topKey ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
           {selectedTopMap === topKey ? 'Masquer (Carte)' : 'Voir (Carte)'}
         </button>
       </div>
-      <div style={{ display: 'flex', gap: '10px', fontSize: '13px', marginTop: '4px' }}>
+      <div style={{ display: 'flex', gap: '10px', fontSize: `${13 * scale}px`, marginTop: '4px' }}>
         <span style={{ color: '#d32f2f', fontWeight: 'bold' }}>1er: {values[0] ? showKn(values[0].val) : "-"}</span>
         <span style={{ color: '#f57c00', fontWeight: 'bold' }}>2e: {values[1] ? showKn(values[1].val) : "-"}</span>
         <span style={{ color: '#388e3c', fontWeight: 'bold' }}>3e: {values[2] ? showKn(values[2].val) : "-"}</span>
@@ -380,7 +384,7 @@ function SailingModule() {
       <div style={{ marginBottom: '10px' }}>
         <PanelTitle label="Analyse VMG" open={carteOpen.vmg} onToggle={() => toggleCarte('vmg')} />
       </div>
-      <table style={{ width: '100%', textAlign: 'center', borderCollapse: 'collapse', fontSize: '13px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
+      <table style={{ width: '100%', textAlign: 'center', borderCollapse: 'collapse', fontSize: `${13 * scale}px`, backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
         <thead>
           <tr style={{ backgroundColor: 'var(--surface-sunken)', borderBottom: '1px solid var(--line-strong)' }}>
             <th>Allure</th>
@@ -416,11 +420,13 @@ function SailingModule() {
     <ResizablePanel id={showManeuverDetails ? 'sailing.carte.manoeuvres.details' : 'sailing.carte.manoeuvres'} style={{ ...CARD_STYLE, flex: showManeuverDetails ? '1 1 100%' : '0 1 auto', padding: '12px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
         <PanelTitle label="Manœuvres" open={carteOpen.manoeuvres} onToggle={() => toggleCarte('manoeuvres')} />
-        <span style={{ color: 'var(--muted)', fontSize: '12px' }}>réussie si Vmin &ge; {showThreshold(activeThresholdKn)} {speedSymbol}</span>
+        <span style={{ color: 'var(--muted)', fontSize: `${12 * scale}px` }}>réussie si Vmin &ge; {showThreshold(activeThresholdKn)} {speedSymbol}</span>
+        <HelpButton size="s" open={maneuverHelpOpen} onToggle={() => setManeuverHelpOpen(!maneuverHelpOpen)}
+          label="Enregistrement et virages écartés" />
       </div>
 
       <div className="an-man-scroll">
-      <table className="an-man-summary" style={{ borderCollapse: 'collapse', fontSize: '14px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginBottom: '10px' }}>
+      <table className="an-man-summary" style={{ borderCollapse: 'collapse', fontSize: `${14 * scale}px`, backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginBottom: '10px' }}>
         <thead>
           <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
             <th style={{ textAlign: 'left', padding: '7px 14px' }}>Type</th>
@@ -438,12 +444,12 @@ function SailingModule() {
           ] as const).map(([label, summary, shown, toggle]) => (
             <tr key={label} style={{ borderTop: '1px solid var(--line-soft)' }}>
               <td style={{ padding: '7px 14px', fontWeight: 'bold' }}>{label}</td>
-              <td style={{ padding: '7px 14px', textAlign: 'center', color: '#388e3c', fontWeight: 'bold', fontSize: '16px' }}>{summary?.success ?? 0}</td>
-              <td style={{ padding: '7px 14px', textAlign: 'center', color: '#d32f2f', fontSize: '16px' }}>{summary?.fail ?? 0}</td>
+              <td style={{ padding: '7px 14px', textAlign: 'center', color: '#388e3c', fontWeight: 'bold', fontSize: `${16 * scale}px` }}>{summary?.success ?? 0}</td>
+              <td style={{ padding: '7px 14px', textAlign: 'center', color: '#d32f2f', fontSize: `${16 * scale}px` }}>{summary?.fail ?? 0}</td>
               <td style={{ padding: '7px 14px', textAlign: 'center' }}>{summary ? showKn(summary.vminAvg) : '-'}</td>
               <td style={{ padding: '7px 14px', textAlign: 'center', fontWeight: 'bold' }}>{summary ? showKn(summary.vminMax) : '-'}</td>
               <td style={{ padding: '4px 10px', textAlign: 'center' }}>
-                <button onClick={toggle} title={`Afficher les ${label.toLowerCase()} sur la carte`} style={{ padding: '3px 10px', cursor: 'pointer', backgroundColor: shown ? 'var(--voile)' : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: '12px' }}>
+                <button onClick={toggle} title={`Afficher les ${label.toLowerCase()} sur la carte`} style={{ padding: '3px 10px', cursor: 'pointer', backgroundColor: shown ? 'var(--voile)' : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px` }}>
                   {shown ? 'Masquer' : 'Voir'}
                 </button>
               </td>
@@ -453,7 +459,8 @@ function SailingModule() {
       </table>
       </div>
 
-      <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: '12px', lineHeight: '1.6' }}>
+      {maneuverHelpOpen && (<>
+      <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: `${12 * scale}px`, lineHeight: '1.6' }}>
         <strong>Enregistrement :</strong> {pointCount} points, un toutes les {samplingS < 10 ? samplingS.toFixed(1) : Math.round(samplingS)} s en médiane. Entrée de virage retenue au-dessus de {showKn(maneuverThresholds.minEntrySpeedKn)} {speedSymbol}, d'après l'allure de la session.
         {samplingS > 10 && (
           <>
@@ -468,7 +475,7 @@ function SailingModule() {
         m.rejected.slowEntry > 0 ||
         m.rejected.incoherent > 0 ||
         m.rejected.tooShort > 0) && (
-        <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: '12px', lineHeight: '1.6' }}>
+        <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: `${12 * scale}px`, lineHeight: '1.6' }}>
           <strong>{m.locations.length} virage{m.locations.length > 1 ? 's' : ''} retenu{m.locations.length > 1 ? 's' : ''}</strong>, et d'autres écartés en chemin :
           {m.rejected.unclassified > 0 && (
             <>
@@ -496,10 +503,11 @@ function SailingModule() {
           )}
         </p>
       )}
+      </>)}
 
       <button
         onClick={() => setShowManeuverDetails(!showManeuverDetails)}
-        style={{ padding: '4px 10px', cursor: 'pointer', backgroundColor: showManeuverDetails ? 'var(--voile)' : 'var(--surface-sunken)', color: showManeuverDetails ? '#fff' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: '12px' }}>
+        style={{ padding: '4px 10px', cursor: 'pointer', backgroundColor: showManeuverDetails ? 'var(--voile)' : 'var(--surface-sunken)', color: showManeuverDetails ? '#fff' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px` }}>
         {showManeuverDetails ? 'Replier les détails ▲' : 'Détails des manœuvres ▼'}
       </button>
 
@@ -511,21 +519,21 @@ function SailingModule() {
         ] as const).map(([type, title, summary]) => (
           <div key={type} className="an-man-detail" style={{ flex: '1 1 380px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '6px', padding: '10px 12px' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
-              <strong style={{ fontSize: '15px' }}>{title}</strong>
+              <strong style={{ fontSize: `${15 * scale}px` }}>{title}</strong>
               {summary ? (
-                <span style={{ fontSize: '13px' }}>
+                <span style={{ fontSize: `${13 * scale}px` }}>
                   <span style={{ color: '#388e3c', fontWeight: 'bold' }}>{summary.success} réussi{summary.success > 1 ? 's' : ''}</span>
                   {' · '}
                   <span style={{ color: '#d32f2f' }}>{summary.fail} raté{summary.fail > 1 ? 's' : ''}</span>
                   {' · Vmin moy. '}{showKn(summary.vminAvg)}{` ${speedSymbol}, max `}<strong>{showKn(summary.vminMax)}</strong>{` ${speedSymbol}`}
                 </span>
               ) : (
-                <span style={{ color: 'var(--muted)', fontSize: '13px' }}>aucun</span>
+                <span style={{ color: 'var(--muted)', fontSize: `${13 * scale}px` }}>aucun</span>
               )}
             </div>
 
             {summary && (
-              <table className="an-man-podium" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <table className="an-man-podium" style={{ width: '100%', borderCollapse: 'collapse', fontSize: `${12 * scale}px` }}>
                 <thead>
                   <tr style={{ color: 'var(--muted)', borderBottom: '1px solid var(--line)' }}>
                     <th style={{ textAlign: 'left', padding: '3px 4px', fontWeight: 'normal' }}>Métrique</th>
@@ -552,7 +560,7 @@ function SailingModule() {
                           <button
                             disabled={tops.length === 0}
                             onClick={() => setSelectedManeuverTop(active ? 'none' : key)}
-                            style={{ padding: '2px 7px', fontSize: '11px', cursor: tops.length === 0 ? 'default' : 'pointer', backgroundColor: active ? 'var(--voile)' : 'var(--surface-sunken)', color: active ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px', opacity: tops.length === 0 ? 0.5 : 1 }}>
+                            style={{ padding: '2px 7px', fontSize: `${11 * scale}px`, cursor: tops.length === 0 ? 'default' : 'pointer', backgroundColor: active ? 'var(--voile)' : 'var(--surface-sunken)', color: active ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px', opacity: tops.length === 0 ? 0.5 : 1 }}>
                             {active ? 'Masquer' : 'Carte'}
                           </button>
                         </td>
@@ -567,7 +575,7 @@ function SailingModule() {
       </div>
       )}
       {showManeuverDetails && (
-        <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>
+        <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '8px' }}>
           Survolez une ligne pour la définition. Le podium retient la meilleure valeur : conservation la plus haute, relance la plus courte, cap et distance les plus faibles.
         </div>
       )}
@@ -702,7 +710,7 @@ function SailingModule() {
       )}
 
       {stats && (
-        <div style={{ marginBottom: '10px' }}>
+        <div className="an-sections" style={{ marginBottom: '10px' }}>
 
           <SectionTabs sections={SAILING_SECTIONS} open={open} onToggle={toggle} />
 
@@ -720,7 +728,7 @@ function SailingModule() {
                     <li><strong>Temps total :</strong> {stats.totalTime}</li>
                     <li><strong>Temps actif (&ge;{showThreshold(activeThresholdKn)} {speedSymbol}) :</strong> {stats.activeTime}</li>
                     <li><strong>{profile.activeRatioLabel} :</strong> {stats.activeRatio}%</li>
-                    <li style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '6px' }}>
+                    <li style={{ color: 'var(--muted)', fontSize: `${12 * scale}px`, marginTop: '6px' }}>
                       Vitesse : {hasDeviceSpeed ? 'Doppler de l\'appareil' : 'dérivée des positions, filtrée'}
                     </li>
                   </ul>
@@ -728,11 +736,11 @@ function SailingModule() {
 
                 <div style={{ flex: '1 1 350px', display: 'flex', gap: '20px', borderLeft: '2px solid var(--line)', paddingLeft: '20px' }}>
                   <div>
-                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Axe du Vent Global (Polaire)</strong>
+                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Axe du Vent Global (Polaire)</strong>
                     <div style={{ marginBottom: '10px' }}>
                       Calculé : {autoWind}°
                       {windEstimate && (
-                        <span style={{ color: windEstimate.reliable ? '#388e3c' : '#d32f2f', fontSize: '12px', marginLeft: '6px' }}>
+                        <span style={{ color: windEstimate.reliable ? '#388e3c' : '#d32f2f', fontSize: `${12 * scale}px`, marginLeft: '6px' }}>
                           (confiance {Math.round(windEstimate.confidence * 100)}%, angle mort de la polaire{windEstimate.maneuverCount > 0 ? ` affiné par ${windEstimate.maneuverCount} manœuvres` : ''}, sens donné par {windEstimate.orientedBy === 'virages' ? 'les virages' : 'la polaire'})
                         </span>
                       )}
@@ -785,7 +793,7 @@ function SailingModule() {
                     ['mast', 'Mât'],
                     ['wing', 'Aile / voile'],
                   ] as const).map(([field, label]) => (
-                    <label key={field} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
+                    <label key={field} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: `${14 * scale}px` }}>
                       <span style={{ width: '90px' }}>{label}</span>
                       <input
                         type="text"
@@ -798,24 +806,24 @@ function SailingModule() {
                 </div>
 
                 <div style={{ flex: '1 1 260px' }}>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Conditions</strong>
+                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Conditions</strong>
                   <div style={{ marginBottom: '10px' }}>
-                    <span style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>Vent</span>
+                    <span style={{ display: 'block', fontSize: `${13 * scale}px`, marginBottom: '4px' }}>Vent</span>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       {WIND_LEVELS.map((w) => (
                         <button key={w.value} onClick={() => setNotes({ windLevel: notes.windLevel === w.value ? null : w.value })}
-                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: '12px', backgroundColor: notes.windLevel === w.value ? 'var(--voile)' : '#fff', color: notes.windLevel === w.value ? '#fff' : 'var(--ink)' }}>
+                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: notes.windLevel === w.value ? 'var(--voile)' : '#fff', color: notes.windLevel === w.value ? '#fff' : 'var(--ink)' }}>
                           {w.label}
                         </button>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <span style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>Plan d'eau</span>
+                    <span style={{ display: 'block', fontSize: `${13 * scale}px`, marginBottom: '4px' }}>Plan d'eau</span>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       {WATER_STATES.map((s) => (
                         <button key={s.value} onClick={() => setNotes({ waterState: notes.waterState === s.value ? null : s.value })}
-                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: '12px', backgroundColor: notes.waterState === s.value ? 'var(--voile)' : '#fff', color: notes.waterState === s.value ? '#fff' : 'var(--ink)' }}>
+                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: notes.waterState === s.value ? 'var(--voile)' : '#fff', color: notes.waterState === s.value ? '#fff' : 'var(--ink)' }}>
                           {s.label}
                         </button>
                       ))}
@@ -824,26 +832,26 @@ function SailingModule() {
                 </div>
 
                 <div style={{ flex: '1 1 260px' }}>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Appréciation de la séance</strong>
+                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Appréciation de la séance</strong>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
                     {RATINGS.map((r) => (
                       <button key={r.value} onClick={() => setNotes({ rating: notes.rating === r.value ? null : r.value })}
                         title={r.label} aria-label={r.label}
-                        style={{ fontSize: '26px', lineHeight: 1, padding: '6px', cursor: 'pointer', border: notes.rating === r.value ? '2px solid var(--voile)' : '1px solid var(--line-strong)', borderRadius: '8px', backgroundColor: notes.rating === r.value ? 'var(--voile-soft)' : '#fff', opacity: notes.rating === null || notes.rating === r.value ? 1 : 0.5 }}>
+                        style={{ fontSize: `${26 * scale}px`, lineHeight: 1, padding: '6px', cursor: 'pointer', border: notes.rating === r.value ? '2px solid var(--voile)' : '1px solid var(--line-strong)', borderRadius: '8px', backgroundColor: notes.rating === r.value ? 'var(--voile-soft)' : '#fff', opacity: notes.rating === null || notes.rating === r.value ? 1 : 0.5 }}>
                         {r.emoji}
                       </button>
                     ))}
                   </div>
                   {notes.rating !== null && (
-                    <div style={{ fontSize: '13px', marginBottom: '8px' }}>{RATINGS.find((r) => r.value === notes.rating)?.label}</div>
+                    <div style={{ fontSize: `${13 * scale}px`, marginBottom: '8px' }}>{RATINGS.find((r) => r.value === notes.rating)?.label}</div>
                   )}
                   <textarea
                     value={notes.comment}
                     onChange={(e) => setNotes({ comment: e.target.value })}
                     placeholder="Commentaire libre"
                     rows={3}
-                    style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: '13px', boxSizing: 'border-box' }} />
-                  <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '6px' }}>
+                    style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: `${13 * scale}px`, boxSizing: 'border-box' }} />
+                  <div style={{ color: 'var(--muted)', fontSize: `${12 * scale}px`, marginTop: '6px' }}>
                     {!draft.savable
                       ? 'Notes indisponibles : cette trace n\'est pas dans la mémoire.'
                       : draft.changed.includes('notes')
@@ -867,7 +875,7 @@ function SailingModule() {
                   {renderTop3("10 Secondes", "t10s", stats.tops.t10s)}
                 </div>
                 <div>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Tops Distance</strong>
+                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Tops Distance</strong>
                   {renderTop3("100 Mètres", "d100m", stats.tops.d100m)}
                   {renderTop3("500 Mètres", "d500m", stats.tops.d500m)}
                   {renderTop3("1000 Mètres", "d1000m", stats.tops.d1000m)}
@@ -880,9 +888,10 @@ function SailingModule() {
         </div>
       )}
 
-      <div id="map-view" className="an-map-row" style={{ width: '100%', marginTop: '10px', zIndex: 0, display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+      <div className="an-map-row" style={{ width: '100%', marginTop: '10px', zIndex: 0, display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         <AnalysisMap
           panelId="sailing.carte"
+          anchorId="map-view"
           sessionKey={sessionKey}
           bounds={mapBounds}
           layers={mapLayers}
@@ -913,7 +922,7 @@ function SailingModule() {
                   </div>
 
                   <ResizablePanel id="sailing.graph.vitesse" defaultHeight={350} minWidth={250} minHeight={200} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Historique de Vitesse (Cliquer pour défiler vers la carte)</strong>
+                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${14 * scale}px`, textAlign: 'center' }}>Historique de Vitesse (Cliquer pour défiler vers la carte)</strong>
                     <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
                         <ResponsiveContainer width="100%" height="100%">
@@ -935,7 +944,7 @@ function SailingModule() {
                   </ResizablePanel>
 
                   <ResizablePanel id="sailing.graph.polaire" defaultHeight={350} minWidth={250} minHeight={250} style={{ flex: 'none', width: '350px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Polaire de Vitesse (TWA)</strong>
+                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${14 * scale}px`, textAlign: 'center' }}>Polaire de Vitesse (TWA)</strong>
                     <div style={{ position: 'absolute', top: 35, left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 10, pointerEvents: 'none' }}>
                       <span style={{ fontSize: 9, fontWeight: 'bold', color: '#d32f2f', marginBottom: -2 }}>VENT</span>
                       <svg width="12" height="16" viewBox="0 0 24 24">
@@ -965,23 +974,25 @@ function SailingModule() {
                   onMouseLeave={() => setHoveredIndex(null)}
                 >
                   <div style={{ flex: '1 1 300px', minWidth: '250px' }}>
-                    <div style={{ marginBottom: '10px' }}>
+                    <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <PanelTitle
                         label="Variations du Vent"
                         open={carteOpen.vent}
                         onToggle={() => toggleCarte('vent')}
-                        extra={<span style={{ color: 'var(--muted)', fontSize: '12px', fontWeight: 'normal' }}> (mesurées sur {windStats.count} manœuvres)</span>} />
+                        extra={<span style={{ color: 'var(--muted)', fontSize: `${12 * scale}px`, fontWeight: 'normal' }}> (mesurées sur {windStats.count} manœuvres)</span>} />
+                      <HelpButton size="s" open={windHelpOpen} onToggle={() => setWindHelpOpen(!windHelpOpen)}
+                        label="Comment le vent est-il mesuré ?" />
                     </div>
                     <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8' }}>
                       <li><strong>Moyenne :</strong> {windStats.avgWind}°</li>
                       <li><strong>Plage de variation :</strong> {windStats.range}° (de {windStats.minWind}° à {windStats.maxWind}°)</li>
                       <li><strong>Régularité (écart-type circulaire) :</strong> ± {windStats.stdDev}° <em>(faible = vent laminaire, élevé = vent oscillant)</em></li>
                       <li><strong>Tendance temporelle :</strong> {Math.abs(windStats.slopePerHour).toFixed(1)}°/heure ({windStats.slopePerHour > 0 ? 'rotation droite / horaire' : 'rotation gauche / anti-horaire'})</li>
-                      <li style={{ color: 'var(--muted)', fontSize: '12px' }}>
+                      <li style={{ color: 'var(--muted)', fontSize: `${12 * scale}px` }}>
                         {Math.round(windStats.stableShare * 100)}% des manœuvres ont des caps stabilisés avant et après : ce sont les mesures les plus nettes, mais toutes comptent.
                       </li>
                     </ul>
-                    <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: '12px', lineHeight: '1.5' }}>
+                    {windHelpOpen && <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: `${12 * scale}px`, lineHeight: '1.5' }}>
                       Chaque virement et chaque empannage donne une lecture du vent local, sans exception. Une manœuvre
                       symétrique, entrée et sortie au même angle du vent, place son milieu sur l'axe du vent et mesure
                       juste ; entrer au largue pour ressortir au près décale ce milieu d'autant. Ce biais ne peut pas se
@@ -990,11 +1001,11 @@ function SailingModule() {
                       deux manœuvres la courbe est interpolée ; avant la première et après la dernière, elle garde la
                       valeur la plus proche. Elle s'interrompt au-delà de 30 minutes sans manœuvre. Sur le graphe, les
                       points marquent les manœuvres : c'est là, et là seulement, que le vent est mesuré.
-                    </p>
+                    </p>}
                   </div>
 
                   <ResizablePanel id="sailing.graph.vent" defaultHeight={250} minWidth={300} minHeight={180} style={{ flex: '2 1 500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Évolution du Vent (Cliquer pour défiler vers la carte)</strong>
+                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${14 * scale}px`, textAlign: 'center' }}>Évolution du Vent (Cliquer pour défiler vers la carte)</strong>
                     <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
                         <ResponsiveContainer width="100%" height="100%">

@@ -15,21 +15,33 @@
     flex-direction: column;
   }
 
-  /* Rangée de la carte (en voile, avec la colonne d'onglets liée, inchangée sur ordinateur) remonte
-     tout en haut, devant le titre et les réglages : les autres blocs gardent leur ordre entre eux. */
+  /* Rangée de la carte : sur téléphone, elle s'efface (`display: contents`) et ses enfants se rangent
+     dans la page. La carte remonte tout en haut, devant le titre et les réglages ; en voile, la colonne
+     d'onglets de la carte vient juste après la feuille, puis les sections du haut (`an-sections`).
+     La feuille, la barre de session et les alertes gardent leur ordre entre elles. */
   .an-map-row {
-    order: -1;
-    margin-top: 0;
-    /* Réserve sous la légende, que la feuille chevauche (`margin-top` négatif de `.an-sheet`). */
-    padding-bottom: var(--space-4);
+    display: contents !important;
   }
 
-  /* Bloc carte + légende (`AnalysisMap`) : pleine largeur, carte à hauteur fixe, légende dessous. */
+  .an-carte-col {
+    order: 1;
+    flex: none !important;
+  }
+
+  .an-sections {
+    order: 2;
+    margin-top: var(--space-4);
+  }
+
+  /* Bloc carte + légende (`AnalysisMap`) : pleine largeur, carte à hauteur fixe, légende dessous.
+     Réserve sous la légende, que la feuille chevauche (`margin-top` négatif de `.an-sheet`). */
   .an-map-panel {
-    flex: 1 1 100% !important;
+    order: -1;
+    flex: none !important;
     width: 100% !important;
     height: auto !important;
     resize: none !important;
+    margin-bottom: var(--space-4);
   }
 
   .an-map-frame {
@@ -124,7 +136,7 @@
 
   .an-man-summary {
     width: 100%;
-    font-size: var(--text-xs) !important;
+    font-size: 0.8em !important;
   }
 
   .an-man-summary th,
