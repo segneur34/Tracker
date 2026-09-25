@@ -1,6 +1,7 @@
 import { useCallback, useId, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { CircleMarker, Polyline, TileLayer } from 'react-leaflet';
+import { CircleMarker, Polyline } from 'react-leaflet';
+import OsmTileLayer from '../components/OsmTileLayer';
 import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
 import {
@@ -15,6 +16,7 @@ import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
+import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { CARD_STYLE } from '../components/styles';
 import PageHeader from '../components/ui/PageHeader';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
@@ -42,7 +44,7 @@ import {
   TERRAIN_LABEL, TEXT_SCALE_FACTOR, readStoredActivities, useSportSettings, type TerrainType,
 } from '../hooks/useSportSettings';
 import {
-  DEFAULT_SPEED_RANGE_MS, averagePace, computeGrades, computeZoneStats, gradeGradientStops, type GradientStop,
+  DEFAULT_SPEED_RANGE_MS, averagePace, computeGrades, computeZoneStats, gradeGradientStops,
 } from '../running/runningAnalytics';
 import type { RunningSessionStats } from '../running/types';
 import type { LibrarySession } from '../library/record';
@@ -87,18 +89,6 @@ interface ChartRow {
   /** Pente locale en fraction, `null` là où elle manque. */
   grade: number | null;
 }
-
-/**
- * Dégradé horizontal de la courbe d'altitude, selon la pente. Un par graphe :
- * l'identifiant doit être unique dans la page, les deux modes étant deux SVG.
- */
-const gradeGradientDefs = (id: string, stops: GradientStop[]) => (
-  <defs>
-    <linearGradient id={id} x1="0" y1="0" x2="1" y2="0">
-      {stops.map((stop, i) => <stop key={i} offset={stop.offset} stopColor={stop.color} />)}
-    </linearGradient>
-  </defs>
-);
 
 const cardStyle = CARD_STYLE;
 const chartTooltipStyle = { fontSize: '12px' } as const;
@@ -297,7 +287,7 @@ function RunningModule() {
   /** Couches de la carte, partagées par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
     <>
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      <OsmTileLayer />
       {mapSegments.map((segment) => (
         <Polyline key={`track-${segment.id}`} positions={segment.positions} pathOptions={{ color: segment.color, weight: 5 }} />
       ))}

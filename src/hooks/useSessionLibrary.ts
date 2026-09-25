@@ -977,3 +977,13 @@ export const findLibrarySession = (sessions: LibrarySession[], file: string | nu
 /** Nom donné par l'utilisateur à la session d'un fichier, `null` sans nom ou hors de la mémoire. */
 export const useSessionName = (file: string | null): string | null =>
   findLibrarySession(useSessionLibrary().sessions, file)?.record.name ?? null;
+
+/**
+ * Dossier mémoire en service, une fois l'ouverture en cours terminée ; `null`
+ * s'il n'y en a aucun d'accessible. Pour ce qui se range à côté des sessions :
+ * les itinéraires (`useRouteLibrary`).
+ */
+export const currentMemoryFolder = async (): Promise<MemoryFolder | null> => {
+  await opening;
+  return folder;
+};

@@ -183,3 +183,40 @@ export const stopOrphanedDeviceLocation = async (): Promise<void> => {
     // Rien à arrêter.
   }
 };
+
+/**
+ * Une seule position, pour centrer une carte (page Itinéraires). Sur le
+ * téléphone, le service GPS démarre le temps de la trouver, avec sa
+ * notification, puis s'arrête. Ne pas l'appeler pendant un enregistrement,
+ * qui partage ce service : prendre alors sa dernière position.
+ */
+export const currentPosition = (timeoutMs = 30_000): Promise<LocationFix> =>
+  new Promise((resolve, reject) => {
+    let settled = false;
+    let stop: StopLocation | null = null;
+    const finish = (settle: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      settle();
+      void stop?.();
+    };
+    const timer = setTimeout(
+      () => finish(() => reject(new Error('Position introuvable : vérifiez que la localisation est activée.'))),
+      timeoutMs
+    );
+    deviceLocationSource()
+      .start(
+        { intervalMs: 1000, distanceFilterM: 0, notificationTitle: 'Tracker', notificationText: 'Recherche de votre position' },
+        (fix) => finish(() => resolve(fix)),
+        (message) => finish(() => reject(new Error(message)))
+      )
+      .then(
+        (stopFn) => {
+          stop = stopFn;
+          // Position trouvée avant que le démarrage ne rende la main : on arrête tout de suite.
+          if (settled) void stopFn();
+        },
+        (err) => finish(() => reject(err instanceof Error ? err : new Error('Localisation indisponible.')))
+      );
+  });

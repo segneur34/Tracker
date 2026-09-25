@@ -5,7 +5,7 @@ import { useLongPress } from '../hooks/useLongPress';
 import { togglePauseRecording, useRecorder } from '../hooks/useRecorder';
 import { effectiveLongPressMs } from '../hooks/useSportSettings';
 import { recordingDurationMs } from '../recording/session';
-import { IconHome, IconPause, IconPlay, IconRun, IconSail, IconSettings } from './icons';
+import { IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings } from './icons';
 
 /**
  * Cadre de toutes les pages : navigation et bandeau d'enregistrement.
@@ -13,7 +13,8 @@ import { IconHome, IconPause, IconPlay, IconRun, IconSail, IconSettings } from '
  * Sur téléphone (moins de 768 px de large), une barre d'onglets en bas :
  * Accueil · Voile · Enregistrer · Course · Réglages, le bouton du milieu
  * vert au repos, rouge pendant un enregistrement. Sur ordinateur, les mêmes
- * destinations dans une barre en haut. Le choix se fait en CSS
+ * destinations dans une barre en haut, et « Itinéraires » à côté du bouton
+ * Enregistrer (sur téléphone, on y va depuis la page Enregistrer). Le choix se fait en CSS
  * (`AppShell.css`), sans lecture de la taille d'écran en JavaScript.
  *
  * Pendant un enregistrement, un bandeau rouge rappelle sur chaque page qu'il
@@ -35,6 +36,7 @@ const VOILE: Destination = { to: '/voile', label: 'Voile', Icon: IconSail, accen
 const COURSE: Destination = { to: '/course', label: 'Course', Icon: IconRun, accent: 'var(--course)' };
 const SETTINGS: Destination = { to: '/parametres', label: 'Réglages', Icon: IconSettings, accent: 'var(--ink)' };
 const RECORD_PATH = '/enregistrer';
+const PLAN_PATH = '/itineraires';
 
 const tabLink = (d: Destination) => (
   <NavLink
@@ -80,10 +82,16 @@ function AppShell() {
           {topLink(COURSE)}
           {topLink(SETTINGS)}
         </nav>
-        <NavLink to={RECORD_PATH} className={`shell-toprecord${busy ? ' shell-toprecord--busy' : ''}`}>
-          <span className={`ui-record-dot${busy ? ' ui-record-dot--stop' : ''}`} />
-          {busy ? <span className="num">{clock}</span> : 'Enregistrer'}
-        </NavLink>
+        <div className="shell-topactions">
+          <NavLink to={PLAN_PATH} className="shell-topplan">
+            <IconRoute size={18} />
+            Itinéraires
+          </NavLink>
+          <NavLink to={RECORD_PATH} className={`shell-toprecord${busy ? ' shell-toprecord--busy' : ''}`}>
+            <span className={`ui-record-dot${busy ? ' ui-record-dot--stop' : ''}`} />
+            {busy ? <span className="num">{clock}</span> : 'Enregistrer'}
+          </NavLink>
+        </div>
       </header>
 
       {busy && pathname !== RECORD_PATH && (

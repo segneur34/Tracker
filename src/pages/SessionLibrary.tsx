@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import { MapContainer, Polyline, TileLayer } from 'react-leaflet';
+import { MapContainer, Polyline } from 'react-leaflet';
+import OsmTileLayer from '../components/OsmTileLayer';
 import { useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import MapAutoResize from '../components/MapAutoResize';
@@ -137,10 +138,9 @@ function SessionPreviewMap({ session, activity, family }: { session: LibrarySess
       bounds={trackBounds(track) ?? undefined}
       boundsOptions={{ padding: [12, 12], maxZoom: 17 }}
       style={{ height: '160px', width: '100%' }}
-      zoomControl={false}
-      attributionControl={false}>
+      zoomControl={false}>
       <MapAutoResize />
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      <OsmTileLayer />
       {track.slice(1).map((point, index) => (
         <Polyline
           key={index}

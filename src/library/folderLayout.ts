@@ -6,9 +6,12 @@
  *       reglages.json    réglages qui voyagent (`settingsFile.ts`)
  *       LISEZMOI.txt     ce qu'est ce dossier, pour qui l'ouvre à la main
  *       sessions/        un GPX et sa fiche JSON par session (`record.ts`)
+ *       itineraires/     une fiche JSON et son GPX par itinéraire planifié
+ *                        (`planning/routeRecord.ts`)
  */
 
 export const SESSIONS_DIR = 'sessions';
+export const ROUTES_DIR = 'itineraires';
 export const MARKER_FILE = 'tracker.json';
 export const SETTINGS_FILE = 'reglages.json';
 export const README_FILE = 'LISEZMOI.txt';
@@ -17,6 +20,7 @@ export const MEMORY_FORMAT = 'tracker-memoire';
 export const MEMORY_VERSION = 1;
 
 export const sessionPath = (fileName: string): string => `${SESSIONS_DIR}/${fileName}`;
+export const routePath = (fileName: string): string => `${ROUTES_DIR}/${fileName}`;
 
 export const markerText = (): string =>
   `${JSON.stringify({ format: MEMORY_FORMAT, version: MEMORY_VERSION }, null, 2)}\n`;
@@ -31,6 +35,9 @@ export const readmeText = (): string =>
     '',
     '- sessions/ : une trace GPX par session, et à côté une fiche .json du même nom',
     '  (résumé, support, notes). Le GPX fait foi : la fiche se recalcule, sauf les notes.',
+    '- itineraires/ : les itinéraires planifiés. La fiche .json fait foi (points de',
+    '  passage, tracé) ; le GPX du même nom est à emporter dans une autre application',
+    '  ou sur une montre.',
     '- reglages.json : seuils, bornes de couleur et unités par support, profil du coureur.',
     '- tracker.json : permet à l\'application de reconnaître ce dossier.',
     '',

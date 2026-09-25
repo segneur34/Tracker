@@ -21,7 +21,8 @@ export interface GpxMeta {
   sport: SportType;
 }
 
-const escapeXml = (text: string): string =>
+/** Texte sûr dans un contenu ou un attribut XML ; sert aussi au GPX des itinéraires (`planning/routeGpx.ts`). */
+export const escapeXml = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const isoTime = (ms: number): string => new Date(ms).toISOString();

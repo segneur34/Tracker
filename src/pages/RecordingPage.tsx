@@ -1,9 +1,9 @@
 import { useState, type ChangeEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
-import { IconPause, IconPlay } from '../components/icons';
+import { IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import { activitiesOfFamily, type Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
@@ -85,6 +85,7 @@ const liveStatItems = (activity: Activity, live: LiveStats): { label: string; va
 function RecordingPage() {
   const recorder = useRecorder();
   const openSession = useOpenSession();
+  const navigate = useNavigate();
   const native = isNativeApp();
 
   // Famille puis activité ; la dernière enregistrée est proposée d'abord.
@@ -237,10 +238,17 @@ function RecordingPage() {
           </Button>
         </div>
       ) : !pending && (
-        <Button variant="record" size="l" block onClick={handleStart} disabled={!canStart}>
-          <span className="ui-record-dot" />
-          Démarrer
-        </Button>
+        // Au repos, la moitié du bouton mène à la planification d'un itinéraire.
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <Button variant="record" size="l" style={{ flex: 1 }} onClick={handleStart} disabled={!canStart}>
+            <span className="ui-record-dot" />
+            Démarrer
+          </Button>
+          <Button variant="secondary" size="l" style={{ flex: 1 }} onClick={() => navigate('/itineraires')}>
+            <IconRoute size={20} />
+            Planifier un tracé
+          </Button>
+        </div>
       )}
 
       {recorder.status === 'paused' && recorder.pausedReason === 'manual' && (

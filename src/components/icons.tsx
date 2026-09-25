@@ -88,3 +88,11 @@ export const IconPlay = ({ size = 24, ...props }: IconProps) => (
     <path d="M7 5l11 7-11 7z" />
   </svg>
 );
+
+export const IconRoute = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="6" cy="19" r="2" />
+    <circle cx="18" cy="5" r="2" />
+    <path d="M8 19h7.5a3.5 3.5 0 0 0 0-7h-7a3.5 3.5 0 0 1 0-7H16" />
+  </svg>
+);

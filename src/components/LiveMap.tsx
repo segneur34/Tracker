@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { CircleMarker, MapContainer, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { CircleMarker, MapContainer, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import type { LocationFix } from '../platform/location';
+import OsmTileLayer from './OsmTileLayer';
 import MapAutoResize from './MapAutoResize';
 import Button from './ui/Button';
 
@@ -43,7 +44,7 @@ function LiveMap({ segments, position, color, height }: LiveMapProps) {
     <div style={{ position: 'relative', height, borderRadius: 'var(--radius-m)', overflow: 'hidden', border: '1px solid var(--line-strong)', zIndex: 0 }}>
       <MapContainer center={[start.lat, start.lon]} zoom={16} style={{ height: '100%', width: '100%' }}>
         <MapAutoResize />
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <OsmTileLayer />
         {segments.map((segment, i) => {
           const positions = segment.map((f) => [f.lat, f.lon] as [number, number]);
           // Le dernier segment, recalculé moins souvent que la position, est prolongé jusqu'à elle.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useMemo, type ReactNode } from 'react';
-import { TileLayer, Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
+import { Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
+import OsmTileLayer from '../components/OsmTileLayer';
 import L from 'leaflet';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -555,7 +556,7 @@ function SailingModule() {
   /** Contenu partagé par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
     <>
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      <OsmTileLayer />
 
       {staticMapLayers}
 

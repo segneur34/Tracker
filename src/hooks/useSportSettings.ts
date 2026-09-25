@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   FAMILY_BASE, activitiesOfFamily, activityFamily, baseActivity, findActivity, newActivityId, readActivities, type Activity,
 } from '../core/activities';
-import { ELEVATION_PRESETS, getSportProfile, type RecordingProfile, type SportFamily } from '../core/sportProfiles';
+import { ELEVATION_PRESETS, getSportProfile, type ElevationProfile, type RecordingProfile, type SportFamily } from '../core/sportProfiles';
 import { isValidSpeedRange } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { DISTANCE_UNIT_LABEL, SPEED_UNIT_LABEL, type DistanceUnit, type SpeedUnit } from '../core/units';
@@ -155,6 +155,18 @@ export const effectiveSpeedUnit = (activity: Activity): SpeedUnit => {
 export const effectiveDistanceUnit = (activity: Activity): DistanceUnit => {
   const unit = readStoredSettings().distanceUnits?.[activity.id];
   return isKnownDistanceUnit(unit) ? unit : 'km';
+};
+
+/** Réglage du dénivelé effectif d'une activité : celui du terrain choisi pour elle, route par défaut. Utilisable hors composant. */
+export const effectiveElevationProfile = (activity: Activity): ElevationProfile => {
+  const terrain = readStoredSettings().terrains?.[activity.id];
+  return ELEVATION_PRESETS[isKnownTerrain(terrain) ? terrain : 'route'];
+};
+
+/** Bornes de la couleur de pente d'une activité : celles de Réglages, sinon le défaut. Utilisable hors composant. */
+export const effectiveGradeRange = (activity: Activity): GradeRange => {
+  const range = readStoredSettings().gradeRanges?.[activity.id];
+  return range && isValidGradeRange(range) ? range : DEFAULT_GRADE_RANGE;
 };
 
 /** Réglages d'une activité tels que la page Réglages les présente. */
