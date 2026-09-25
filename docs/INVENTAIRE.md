@@ -44,7 +44,8 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `journal.ts` : journal JSON par ligne, relisible même abîmé (`parseJournal`), marques de pause (`journalBreakLine`), activité dans l'en-tête.
 - `gpxWriter.ts` : `buildGpx`, GPX 1.1, un `<trkseg>` par segment, vitesse seule en extension.
 - `liveStats.ts` : statistiques en direct par segment (`computeLiveStats`, `LIVE_STATS_DEFAULTS`).
-- `followedTrace.ts` : trace suivie pendant l'enregistrement, tirée d'un itinéraire rangé ou des points d'une session.
+- `followedTrace.ts` : trace suivie pendant l'enregistrement, tirée d'un itinéraire rangé ou des points d'une session ; avancement le long de la trace (`followProgress`, `FOLLOW_DEFAULTS`), découpe faite / reste (`splitFollowedTrace`).
+- `heading.ts` : cap de la flèche de position (`travelHeading`, `displayHeading`) : marche en mouvement, boussole à l'arrêt.
 
 ## `library/` : mémoire en dossier, logique pure
 
@@ -68,6 +69,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `runtime.ts` : `isNativeApp`.
 - `storage.ts` : `jsonStore` (synchrone), `initStorage` (Preferences natives chargées en mémoire au démarrage).
 - `files.ts` : `recordingJournal` (dossier privé), `downloadTextFile`, `readPickedFile`.
+- `compass.ts` : `watchCompassHeading`, boussole par `deviceorientationabsolute` (rien sur ordinateur).
 - `location.ts` : `deviceLocationSource` (plugin natif ou `watchPosition`), `createReplaySource` (rejeu accéléré), `stopOrphanedDeviceLocation`, `currentPosition` (lecture unique).
 - `memoryFolder.ts` : le dossier mémoire, OPFS ou dossier choisi dans le navigateur, dossier SAF sur le téléphone (`openMemoryFolder`, `chooseMemoryFolder`, `pickFolderToImport`, `pendingFolder`, `shouldDescendIntoMemory`).
 - `backButton.ts` : touche retour d'Android (brouillon, enregistrement en cours).
@@ -84,7 +86,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `useSessionDraft.ts` : brouillon d'une session, écrit dans la fiche par `save`. `leaveGuard.ts` : avertissement en quittant.
 - `useLibraryNavigation.ts` : passage de la liste à l'analyse (`?session=`), `useSessionFromUrl` (chargement unique, §10 point 39 ; rend aussi `requested`, la session demandée).
 - `useSportSettings.ts` : réglages par activité et liste des activités (`tracker.sportSettings`), `useSportSettings(family)` pour un module, `useAllSportSettings` pour Réglages, et hors composant `readStoredActivities`, `effectiveRecordingProfile`, `effectiveSpeedUnit`, `effectiveDistanceUnit`, `effectiveLongPressMs`.
-- `usePlannedRoute.ts` : itinéraire en cours, annulation, calcul des tronçons un à un. `useRouteLibrary.ts` : itinéraires de `itineraires/`. `useFollowedTrace.ts` : trace suivie, gardée hors des pages le temps de l'application.
+- `usePlannedRoute.ts` : itinéraire en cours, annulation, calcul des tronçons un à un. `useRouteLibrary.ts` : itinéraires de `itineraires/`. `useFollowedTrace.ts` : trace suivie, gardée sur l'appareil jusqu'à « Retirer » (`tracker.followedTrace`, hors de `reglages.json`). `useCompassHeading.ts` : cap de la boussole tant qu'il est demandé.
 - `useStoredRecord.ts`, `useOpenSections.ts`, `useRunnerProfile.ts` : enregistrements de l'appareil (sections ouvertes, profil du coureur).
 
 ## `pages/`
@@ -102,7 +104,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 
 - `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement, bouton rond (appui long : pause ou reprise).
 - `ActivityChart.tsx` (+ `.css`) : graphe d'activités de l'accueil, période, détail d'une barre, totaux.
-- `MemoryStatus.tsx` : état de la mémoire et l'action qui convient ; repliable par `collapse` (Réglages). `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `LiveMap.tsx` : carte de l'enregistrement en cours, qui suit la position, trace suivie en pointillé. `FollowTracePicker.tsx` : choix de la trace à suivre (itinéraires, sessions filtrées par activité). `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17) ; sur téléphone, pleine largeur et sans poignée (point 56). `ui/HelpButton.tsx` : « ? » qui déplie une explication (bibliothèque, Manœuvres, Vent). `hooks/useNarrowScreen.ts` : rupture téléphone (768 px), `NARROW_QUERY`.
+- `MemoryStatus.tsx` : état de la mémoire et l'action qui convient ; repliable par `collapse` (Réglages). `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `LiveMap.tsx` : carte de l'enregistrement en cours, qui suit la position (flèche au cap), trace suivie en pointillé, partie faite en gris. `FollowTracePicker.tsx` : choix de la trace à suivre (itinéraires, sessions filtrées par activité). `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17) ; sur téléphone, pleine largeur et sans poignée (point 56). `ui/HelpButton.tsx` : « ? » qui déplie une explication (bibliothèque, Manœuvres, Vent). `hooks/useNarrowScreen.ts` : rupture téléphone (768 px), `NARROW_QUERY`.
 - `OsmTileLayer.tsx` : fond OpenStreetMap et sa mention, commun à toutes les cartes. `gradeGradientDefs.tsx` : dégradé de pente d'une courbe d'altitude (course, itinéraire).
 - `SessionSaveBar.tsx` : barre « Enregistrer la session » du brouillon, commune aux deux modules.
 - `AnalysisMap.tsx` : carte d'une page d'analyse, cadrée sur la trace, sa légende collée dessous et sa vue plein écran au tap (`docs/MISE_EN_PAGE.md`).

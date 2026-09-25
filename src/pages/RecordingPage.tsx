@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from 'react';
+import { useMemo, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -15,9 +15,11 @@ import { useLiveRecording } from '../hooks/useLiveRecording';
 import { effectiveDistanceUnit, effectiveSpeedUnit, lastRecordActivity, readStoredActivities, rememberRecordActivity } from '../hooks/useSportSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import {
-  analyzePendingSession, discardPendingSession, dismissRecorderResult, getLastFix, pauseRecording, resumeRecording,
+  analyzePendingSession, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording, resumeRecording,
   startRecording, stopRecording, useRecorder,
 } from '../hooks/useRecorder';
+import { followProgress, followedTraceLengthM, splitFollowedTrace, type FollowProgress } from '../recording/followedTrace';
+import { travelHeading } from '../recording/heading';
 import { LIVE_STATS_DEFAULTS, type LiveStats } from '../recording/liveStats';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { createReplaySource, deviceLocationSource, type LocationFix } from '../platform/location';
@@ -32,8 +34,9 @@ import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
  * barre de navigation.
  *
  * « Suivre une trace » choisit un itinéraire rangé ou une session déjà
- * enregistrée, dessiné sous la trace en cours ; au repos, la carte le montre
- * en aperçu.
+ * enregistrée, dessiné sous la trace en cours, la partie faite en gris, avec
+ * la distance restante le long de la trace ; au repos, la carte le montre en
+ * aperçu.
  *
  * Dans le navigateur, une source « rejeu » relit un GPX en accéléré : toute la
  * chaîne s'éprouve sur le PC, jusqu'à l'analyse de la session obtenue.
@@ -63,6 +66,19 @@ const TRACK_COLOR = { voile: '#1565c0', course: '#bf360c' } as const;
 
 const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
 const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
+
+/** Distance restante et part faite de la trace suivie ; « à rejoindre » tant qu'on ne l'a pas rejointe. */
+const followStatItems = (activity: Activity, progress: FollowProgress | null, totalM: number): { label: string; value: string }[] => {
+  const distanceUnit = effectiveDistanceUnit(activity);
+  const total = formatDistance(totalM, distanceUnit, 1);
+  return [
+    { label: 'Restant', value: progress ? formatDistance(progress.remainingM, distanceUnit) : '—' },
+    {
+      label: `Fait, sur ${total}`,
+      value: progress ? `${Math.round((100 * progress.progressM) / Math.max(1, progress.totalM))} %` : 'à rejoindre',
+    },
+  ];
+};
 
 /** Statistiques en direct propres à la famille de l'activité. */
 const liveStatItems = (activity: Activity, live: LiveStats): { label: string; value: string }[] => {
@@ -122,6 +138,19 @@ function RecordingPage() {
     stats.pointCount,
     liveActivity ? METERS_PER_DISTANCE_UNIT[effectiveDistanceUnit(liveActivity)] : undefined
   );
+
+  // Avancement sur la trace suivie, recalculé avec la trace en direct (toutes les 2 s au plus).
+  const followedLengthM = useMemo(() => (followed ? followedTraceLengthM(followed) : 0), [followed]);
+  const progress = useMemo(
+    () => (busy && followed ? followProgress(followed, live.segments) : null),
+    [busy, followed, live.segments]
+  );
+  const guide = useMemo(
+    () => (followed && progress ? splitFollowedTrace(followed, progress.progressM) : { done: [], remaining: followed?.points ?? [] }),
+    [followed, progress]
+  );
+  const liveFixes = getLiveFixes();
+  const travel = busy ? travelHeading(liveFixes) : undefined;
 
   const handleReplayFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -265,6 +294,7 @@ function RecordingPage() {
           <IconRoute size={18} />
           <span style={{ flex: 1 }}>
             Trace suivie : <strong>{followed.name}</strong>{followed.source === 'session' ? ' (session)' : ''}
+            {liveActivity && <> · {formatDistance(followedLengthM, effectiveDistanceUnit(liveActivity), 1)}</>}
           </span>
           <Button size="s" variant="ghost" onClick={clearFollowedTrace}>Retirer</Button>
         </div>
@@ -283,7 +313,7 @@ function RecordingPage() {
         // Au repos, un aperçu de la trace suivie, sans position : remonté à chaque trace pour s'y cadrer.
         <LiveMap key={busy ? 'direct' : `apercu-${followed?.name}-${followed?.points.length}`}
           segments={busy ? live.segments : []} position={busy ? getLastFix() : null} height="45vh"
-          guide={followed?.points}
+          guide={guide.remaining} guideDone={guide.done} travel={travel}
           color={liveActivity && sportFamily(liveActivity.base) === 'course' ? TRACK_COLOR.course : TRACK_COLOR.voile} />
       )}
 
@@ -294,6 +324,7 @@ function RecordingPage() {
           )}
           <div style={STAT_GRID}>
             <Stat label="Durée" value={formatClock(durationMs)} />
+            {liveActivity && followed && followStatItems(liveActivity, progress, followedLengthM).map((item) => <Stat key={item.label} {...item} />)}
             {liveActivity && liveStatItems(liveActivity, live.stats).map((item) => <Stat key={item.label} {...item} />)}
           </div>
         </Card>

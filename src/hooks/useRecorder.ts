@@ -394,6 +394,9 @@ export const stopRecording = async (): Promise<void> => {
 /** Trace de l'enregistrement en cours, un tableau par segment continu : la carte et les statistiques en direct. */
 export const getLiveSegments = (): LocationFix[][] => (isBusy() ? splitIntoSegments(fixes, segmentBreaks) : []);
 
+/** Positions de l'enregistrement en cours, toutes pauses confondues, sans recopie : à ne pas modifier. */
+export const getLiveFixes = (): ReadonlyArray<LocationFix> => (isBusy() ? fixes : []);
+
 /** Dernière position gardée de l'enregistrement en cours. */
 export const getLastFix = (): LocationFix | null => (isBusy() && fixes.length > 0 ? fixes[fixes.length - 1] : null);
 
