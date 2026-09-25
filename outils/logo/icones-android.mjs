@@ -41,9 +41,33 @@ for (const [density, scale] of Object.entries(DENSITIES)) {
 }
 await sharp(await disc(192)).toFile(join(root, 'public/favicon.png'));
 
-// Icône du raccourci de bureau (`outils/tracker.ico`) : un .ico fait d'images PNG, une par taille.
+// Icône du raccourci de bureau (`outils/icone-tracker.ico`) : une image par taille, en BMP 32 bits sous
+// 256 px, en PNG à 256. L'explorateur de Windows lit mal le PNG aux petites tailles : un .ico tout en
+// PNG y garde l'ancienne icône, même après redémarrage.
 const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
-const images = await Promise.all(ICO_SIZES.map(disc));
+const bmp = async (size) => {
+  const rgba = await sharp(await disc(size)).ensureAlpha().raw().toBuffer();
+  const maskRow = Math.ceil(size / 32) * 4;
+  const out = Buffer.alloc(40 + size * size * 4 + maskRow * size);
+  out.writeUInt32LE(40, 0);
+  out.writeInt32LE(size, 4);
+  out.writeInt32LE(size * 2, 8); // hauteur doublée : image puis masque
+  out.writeUInt16LE(1, 12);
+  out.writeUInt16LE(32, 14);
+  out.writeUInt32LE(size * size * 4 + maskRow * size, 20);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const from = ((size - 1 - y) * size + x) * 4; // lignes de bas en haut
+      const to = 40 + (y * size + x) * 4;
+      out[to] = rgba[from + 2];
+      out[to + 1] = rgba[from + 1];
+      out[to + 2] = rgba[from];
+      out[to + 3] = rgba[from + 3];
+    }
+  }
+  return out; // masque ET laissé à zéro : la transparence vient du canal alpha
+};
+const images = await Promise.all(ICO_SIZES.map((size) => (size < 256 ? bmp(size) : disc(size))));
 const header = Buffer.alloc(6 + 16 * images.length);
 header.writeUInt16LE(1, 2);
 header.writeUInt16LE(images.length, 4);
@@ -58,5 +82,5 @@ images.forEach((png, i) => {
   header.writeUInt32LE(offset, at + 12);
   offset += png.length;
 });
-writeFileSync(join(root, 'outils/tracker.ico'), Buffer.concat([header, ...images]));
+writeFileSync(join(root, 'outils/icone-tracker.ico'), Buffer.concat([header, ...images]));
 console.log('icônes Android, favicon et icône du bureau refaites');
