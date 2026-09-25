@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildBaseSessionStats,
   buildCumulativeTrack,
   computeActiveDistanceM,
   computeActiveTimeMs,
@@ -223,5 +224,26 @@ describe('computeActiveTimeMs et computeActiveDistanceM', () => {
 
     expect(computeActiveTimeMs(track, mask)).toBe(0);
     expect(computeActiveDistanceM(track, mask)).toBe(0);
+  });
+});
+
+describe('buildBaseSessionStats, vitesses moyennes', () => {
+  it('donne la moyenne totale et la moyenne active, quelle que soit la cadence', () => {
+    for (const stepSeconds of [1, 0.2]) {
+      const stats = buildBaseSessionStats(buildTrack([2, 2, 2, 2, 2, 8, 8, 8, 8, 8], stepSeconds), {
+        enterThresholdMs: 6,
+        exitThresholdMs: 6,
+      });
+      // 4 segments à 2 m/s puis 5 à 8 m/s : 48 m en 9 s au total, 40 m en 5 s en action.
+      expect(stats.avgSpeedMs).toBeCloseTo(48 / 9, 6);
+      expect(stats.activeAvgSpeedMs).toBeCloseTo(8, 6);
+    }
+  });
+
+  it('renvoie null sans temps actif', () => {
+    const stats = buildBaseSessionStats(buildTrack(new Array(10).fill(3)), { enterThresholdMs: 6, exitThresholdMs: 6 });
+
+    expect(stats.avgSpeedMs).toBeCloseTo(3, 6);
+    expect(stats.activeAvgSpeedMs).toBeNull();
   });
 });

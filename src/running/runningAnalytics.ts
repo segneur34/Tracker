@@ -1,5 +1,5 @@
 import { segmentDistanceM } from '../core/sessionStats';
-import type { SpeedRangeMs } from '../core/speedGradient';
+import { SLOW_COLOR, gradientColor, type SpeedRangeMs } from '../core/speedGradient';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { formatDuration, formatPace, msToKmh } from '../core/units';
 
@@ -157,3 +157,65 @@ export const averagePace = (distanceM: number, timeMs: number): { pace: string; 
  * en m/s : 4 km/h, la marche, et 15 km/h.
  */
 export const DEFAULT_SPEED_RANGE_MS: SpeedRangeMs = { minMs: 4 / 3.6, maxMs: 15 / 3.6 };
+
+/** Bornes du dégradé de couleur de la pente, en fraction (0,25 = 25 %). */
+export interface GradeRange {
+  min: number;
+  max: number;
+}
+
+/**
+ * Bornes par défaut de la couleur de la courbe d'altitude : du plat à 25 %,
+ * au-delà de quoi la couleur ne change plus.
+ */
+export const DEFAULT_GRADE_RANGE: GradeRange = { min: 0, max: 0.25 };
+
+/** Vrai pour des bornes utilisables : finies, basse positive ou nulle, haute au-dessus. */
+export const isValidGradeRange = (range: { min?: unknown; max?: unknown }): range is GradeRange =>
+  typeof range.min === 'number' && typeof range.max === 'number' &&
+  isFinite(range.min) && isFinite(range.max) && range.min >= 0 && range.max > range.min;
+
+/**
+ * Couleur d'une pente, sur la palette de la trace. La raideur seule compte :
+ * une descente à 20 % a la couleur d'une montée à 20 %, le sens se lit sur la
+ * courbe. Gris sous la borne basse et là où la pente manque.
+ */
+export const gradeGradientColor = (grade: number, range: GradeRange): string => {
+  const steepness = Math.abs(grade);
+  if (!isFinite(steepness) || steepness < range.min) return SLOW_COLOR;
+  return gradientColor((steepness - range.min) / (range.max - range.min));
+};
+
+/** Arrêt d'un dégradé SVG horizontal : position de 0 à 1 et couleur. */
+export interface GradientStop {
+  offset: number;
+  color: string;
+}
+
+/**
+ * Arrêts du dégradé horizontal qui colore la courbe d'altitude, un par ligne
+ * du graphe, placés selon la distance entre la première et la dernière ligne
+ * (l'étendue de l'aire tracée). Dans une suite de couleurs identiques, seuls
+ * le premier et le dernier arrêt sont gardés : le rendu ne change pas, le
+ * nombre d'arrêts fond sur le plat.
+ */
+export const gradeGradientStops = (
+  rows: { dist: number; grade: number | null }[],
+  range: GradeRange
+): GradientStop[] => {
+  if (rows.length === 0) return [];
+  const start = rows[0].dist;
+  const span = rows[rows.length - 1].dist - start;
+  const stops: GradientStop[] = [];
+  for (const row of rows) {
+    const stop = {
+      offset: span > 0 ? (row.dist - start) / span : 0,
+      color: gradeGradientColor(row.grade ?? NaN, range),
+    };
+    const n = stops.length;
+    // Troisième arrêt de même couleur à la suite : il prolonge le précédent.
+    if (n >= 2 && stops[n - 1].color === stop.color && stops[n - 2].color === stop.color) stops[n - 1] = stop;
+    else stops.push(stop);
+  }
+  return stops;
+};

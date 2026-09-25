@@ -152,6 +152,8 @@ export const buildBaseSessionStats = (
     totalTime: formatDuration(totalTimeMs),
     activeTime: formatDuration(activeTimeMs),
     activeRatio: totalTimeMs > 0 ? ((activeTimeMs / totalTimeMs) * 100).toFixed(1) : '0.0',
+    avgSpeedMs: totalTimeMs > 0 ? totalDistanceM / (totalTimeMs / 1000) : null,
+    activeAvgSpeedMs: activeTimeMs > 0 ? activeDistanceM / (activeTimeMs / 1000) : null,
     speedSource: track[0]?.speedSource ?? 'derived',
     elevationGain: hasElevation ? Math.round(elevation.gainM).toString() : '-',
     elevationLoss: hasElevation ? Math.round(elevation.lossM).toString() : '-',

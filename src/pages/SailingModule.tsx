@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo, type ChangeEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, useMemo, type ReactNode } from 'react';
 import { TileLayer, Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import {
@@ -8,8 +8,8 @@ import {
 } from 'recharts';
 import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { analysisPath, libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
+import { Link, useSearchParams } from 'react-router-dom';
+import { libraryPath, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
 import { TEXT_SCALE_FACTOR, readStoredActivities } from '../hooks/useSportSettings';
@@ -20,9 +20,8 @@ import { sessionActivity } from '../core/activities';
 import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import type { TopSegment } from '../core/types';
 import type { LibrarySession } from '../library/record';
-import { readPickedFile } from '../platform/files';
 import {
-  SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, fromDisplaySpeed, knotsToDisplay, knotsToMs, msToKnots, toDisplaySpeed,
+  SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatSpeed, fromDisplaySpeed, knotsToDisplay, knotsToMs, msToKnots, toDisplaySpeed,
 } from '../core/units';
 import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
 import { MANEUVER_METRICS, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
@@ -31,53 +30,40 @@ import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE } from '../components/styles';
-import { IconFile } from '../components/icons';
 import PanelTitle from '../components/PanelTitle';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
+import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
 import HelpButton from '../components/ui/HelpButton';
 
 /**
- * Sections du module. Pour en ajouter une : une entrée ici, une valeur par
- * défaut dans `SAILING_SECTION_DEFAULTS`, et un bloc `{open.maCle && (...)}`
- * dans le rendu.
+ * Onglets du module, tous dans la colonne à droite de la carte, dans l'ordre
+ * voulu par l'utilisateur ; les chiffres globaux et le vent sont dans la
+ * fiche du haut, toujours visible, les réglages de la session dans le dernier. Pour en ajouter un : une entrée ici, une valeur par défaut dans
+ * `SAILING_PANEL_DEFAULTS`, et un bloc `{open.maCle && (...)}` dans la colonne.
  */
-type SailingSection = 'global' | 'matos' | 'tops';
+type SailingPanel = 'tops' | 'manoeuvres' | 'graphiques' | 'vmg' | 'vent' | 'matos' | 'reglages';
 
-const SAILING_SECTIONS: SectionDefinition<SailingSection>[] = [
-  { key: 'global', label: 'global' },
-  { key: 'matos', label: 'matos et conditions' },
+const SAILING_PANELS: SectionDefinition<SailingPanel>[] = [
   { key: 'tops', label: 'tops' },
-];
-
-const SAILING_SECTION_DEFAULTS: Record<SailingSection, boolean> = {
-  global: true,
-  matos: false,
-  tops: false,
-};
-
-/**
- * Second groupe d'onglets, ouvrables/fermables indépendamment du premier,
- * dans la colonne à droite de la carte. Manœuvres, VMG, graphiques et vent
- * ont tous été déplacés ici depuis les onglets du haut : ils n'existent
- * plus que là.
- */
-type SailingCartePanel = 'manoeuvres' | 'vmg' | 'graphiques' | 'vent';
-
-const SAILING_CARTE_PANELS: SectionDefinition<SailingCartePanel>[] = [
   { key: 'manoeuvres', label: 'manœuvres' },
-  { key: 'vmg', label: 'vmg' },
   { key: 'graphiques', label: 'graphiques' },
+  { key: 'vmg', label: 'vmg' },
   { key: 'vent', label: 'vent' },
+  { key: 'matos', label: 'matos et conditions' },
+  { key: 'reglages', label: 'réglages' },
 ];
 
-const SAILING_CARTE_PANEL_DEFAULTS: Record<SailingCartePanel, boolean> = {
+const SAILING_PANEL_DEFAULTS: Record<SailingPanel, boolean> = {
+  tops: false,
   manoeuvres: false,
-  vmg: false,
   graphiques: false,
+  vmg: false,
   vent: false,
+  matos: false,
+  reglages: false,
 };
 
 // --- Utilitaires d'affichage ---
@@ -209,20 +195,6 @@ function SailingModule() {
   }, [activity.id, setActivity, loadGpxContent]);
   const { file: sessionFile, error: sessionError } = useSessionFromUrl(receiveSession);
 
-  // Un GPX ouvert ici entre d'abord dans la mémoire ; faute de mémoire, il est lu directement.
-  const importAndOpen = useImportAndOpen('voile');
-  const navigate = useNavigate();
-  const openFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (await importAndOpen(file)) return;
-    // Lu hors de la mémoire : ni la session de l'URL, ni le brouillon d'une autre trace (§10, point 31).
-    if (requestedFile === null) draft.cancel();
-    else navigate(analysisPath('voile'), { replace: true });
-    loadGpxContent(await readPickedFile(file), file.name);
-  };
-
   /**
    * Changer d'activité l'écrit aussi dans la fiche de la session. L'activité
    * de base d'un calcul n'est pas une activité de la liste : la fiche n'en
@@ -252,9 +224,7 @@ function SailingModule() {
 
   const notes = edits.notes;
   const setNotes = draft.updateNotes;
-  const { open, toggle } = useOpenSections<SailingSection>('sailing', SAILING_SECTION_DEFAULTS);
-  const { open: carteOpen, toggle: toggleCarte } =
-    useOpenSections<SailingCartePanel>('sailing-carte', SAILING_CARTE_PANEL_DEFAULTS);
+  const { open, toggle } = useOpenSections<SailingPanel>('sailing-onglets', SAILING_PANEL_DEFAULTS);
 
   /** Bornes du dégradé de couleur de la trace, en m/s : celles de la session, sinon de Réglages, sinon la suggestion. */
   const colorRange = edits.speedRange ?? speedRange ?? suggestedSpeedRangeMs;
@@ -382,7 +352,7 @@ function SailingModule() {
   const renderVmgPanel = (v: NonNullable<typeof vmgStats>) => (
     <ResizablePanel id="sailing.carte.vmg" style={{ ...CARD_STYLE, flex: '1 1 500px' }}>
       <div style={{ marginBottom: '10px' }}>
-        <PanelTitle label="Analyse VMG" open={carteOpen.vmg} onToggle={() => toggleCarte('vmg')} />
+        <PanelTitle label="Analyse VMG" open={open.vmg} onToggle={() => toggle('vmg')} />
       </div>
       <table style={{ width: '100%', textAlign: 'center', borderCollapse: 'collapse', fontSize: `${13 * scale}px`, backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
         <thead>
@@ -419,7 +389,7 @@ function SailingModule() {
   const renderManeuversPanel = (m: NonNullable<typeof maneuverStats>) => (
     <ResizablePanel id={showManeuverDetails ? 'sailing.carte.manoeuvres.details' : 'sailing.carte.manoeuvres'} style={{ ...CARD_STYLE, flex: showManeuverDetails ? '1 1 100%' : '0 1 auto', padding: '12px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
-        <PanelTitle label="Manœuvres" open={carteOpen.manoeuvres} onToggle={() => toggleCarte('manoeuvres')} />
+        <PanelTitle label="Manœuvres" open={open.manoeuvres} onToggle={() => toggle('manoeuvres')} />
         <span style={{ color: 'var(--muted)', fontSize: `${12 * scale}px` }}>réussie si Vmin &ge; {showThreshold(activeThresholdKn)} {speedSymbol}</span>
         <HelpButton size="s" open={maneuverHelpOpen} onToggle={() => setManeuverHelpOpen(!maneuverHelpOpen)}
           label="Enregistrement et virages écartés" />
@@ -608,86 +578,64 @@ function SailingModule() {
         </div>
 
         {stats && (
-          <div className="an-sheet__stats">
+          <div className="an-sheet__stats an-sheet__stats--always">
             <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance active</span><strong className="an-sheet__stat-value">{formatDistance(stats.activeDistanceM, distanceUnit)}</strong></div>
             <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps total</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
             <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps actif (&ge;{showThreshold(activeThresholdKn)} {speedSymbol})</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
             <div className="an-sheet__stat"><span className="an-sheet__stat-label">{profile.activeRatioLabel}</span><strong className="an-sheet__stat-value">{stats.activeRatio}%</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Vitesse moyenne</span><strong className="an-sheet__stat-value">{formatSpeed(stats.avgSpeedMs, speedUnit)}</strong></div>
+            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne active (&ge;{showThreshold(activeThresholdKn)} {speedSymbol})</span><strong className="an-sheet__stat-value">{formatSpeed(stats.activeAvgSpeedMs, speedUnit)}</strong></div>
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap' }}>
-          <label className="ui-btn ui-btn--secondary">
-            <IconFile size={18} />
-            Ouvrir un fichier GPX
-            <input type="file" accept=".gpx" onChange={openFile} hidden />
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-            <strong>Activité :</strong>
-            <select
-              value={activity.id}
-              onChange={(e) => changeActivity(e.target.value)}
-              className="ui-field ui-field--s">
-              {activityOptions.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-            <strong>Seuil d'activité :</strong>
-            <input
-              type="number"
-              min={0}
-              step={0.5}
-              value={speedUnit === 'kn' ? activeThresholdKn : speedFieldValue(activeThresholdKn)}
-              onChange={(e) => {
-                const parsed = parseFloat(e.target.value);
-                if (!isNaN(parsed) && parsed >= 0) {
-                  draft.update({ activeThreshold: speedUnit === 'kn' ? parsed : msToKnots(fromDisplaySpeed(parsed, speedUnit)) });
-                }
-              }}
-              title="Seuil propre à cette session, enregistré avec elle. Celui du support se règle dans Réglages."
-              className="ui-field ui-field--s num"
-              style={{ width: '70px' }} />
-            {SPEED_UNIT_LABEL[speedUnit]}
-            {edits.activeThreshold !== null && (
-              <Button
-                size="s"
-                onClick={() => draft.update({ activeThreshold: null })}
-                title={`Revenir au seuil du support (${showThreshold(defaultActiveThresholdKn)} ${SPEED_UNIT_LABEL[speedUnit]})`}>
-                Défaut
-              </Button>
-            )}
-          </label>
-
-          {trackData.length > 0 && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-              <strong>Allure de la session :</strong>
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                value={toDisplaySpeed(referenceSpeedMs, speedUnit).toFixed(speedUnit === 'ms' ? 2 : 1)}
-                onChange={(e) => {
-                  const parsed = parseFloat(e.target.value);
-                  if (!isNaN(parsed) && parsed > 0) draft.update({ referenceSpeedMs: fromDisplaySpeed(parsed, speedUnit) });
-                }}
-                title="Vitesse de croisière de la session, dont dépendent les seuils de filtrage. Déduite de la trace ; imposée si elle la décrit mal, et alors enregistrée avec la session."
-                className="ui-field ui-field--s num"
-                style={{ width: '70px' }} />
-              {speedSymbol}
-              {edits.referenceSpeedMs === null ? (
-                <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(déduite de la trace)</span>
-              ) : (
-                <Button size="s" onClick={() => draft.update({ referenceSpeedMs: null })} title="Revenir à l'allure déduite de la trace">
-                  Défaut
-                </Button>
-              )}
-            </label>
-          )}
-        </div>
+        {stats && (
+          <div className="an-sheet__wind" style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '15px', fontSize: `${scale}em` }}>
+            <div style={{ flex: '0 1 auto', minWidth: 0 }}>
+              <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Axe du Vent Global (Polaire)</strong>
+              <div style={{ marginBottom: '10px' }}>
+                Calculé : {autoWind}°
+                {windEstimate && (
+                  <span style={{ color: windEstimate.reliable ? '#388e3c' : '#d32f2f', fontSize: `${12 * scale}px`, marginLeft: '6px' }}>
+                    (confiance {Math.round(windEstimate.confidence * 100)}%, angle mort de la polaire{windEstimate.maneuverCount > 0 ? ` affiné par ${windEstimate.maneuverCount} manœuvres` : ''}, sens donné par {windEstimate.orientedBy === 'virages' ? 'les virages' : 'la polaire'})
+                  </span>
+                )}
+                <br/>
+                <div style={{ marginTop: '5px' }}>
+                  Saisie : <input
+                    type="number"
+                    value={edits.windDeg ?? ''}
+                    onChange={(e) => {
+                      if (e.target.value === '') {
+                        draft.update({ windDeg: null });
+                        return;
+                      }
+                      const parsed = parseInt(e.target.value, 10);
+                      if (!isNaN(parsed)) draft.update({ windDeg: parsed });
+                    }}
+                    className="ui-field ui-field--s num"
+                    style={{ width: '64px' }} /> °
+                  <Button
+                    size="s"
+                    onClick={() => draft.update({ windDeg: ((currentWindValue ?? autoWind ?? 0) + 180) % 360 })}
+                    style={{ marginLeft: '6px' }}>
+                    Inverser
+                  </Button>
+                  {edits.windDeg !== null && (
+                    <Button
+                      size="s"
+                      onClick={() => draft.update({ windDeg: null })}
+                      title="Revenir au vent calculé"
+                      style={{ marginLeft: '6px' }}>
+                      Calculé
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+            <Compass windAngle={currentWindValue ?? autoWind ?? 0} />
+          </div>
+        )}
       </div>
 
       {loadedFromMemory && (
@@ -704,189 +652,17 @@ function SailingModule() {
         <div style={{ padding: '10px 15px', backgroundColor: '#fff8e1', border: '1px solid #f9a825', borderRadius: '8px', marginBottom: '10px' }}>
           <strong>Vent non fiable.</strong> L'estimation automatique donne {autoWind}° avec un indice de confiance
           de {windEstimate ? Math.round(windEstimate.confidence * 100) : 0}%, trop faible pour être utilisée.
-          C'est typique d'un aller simple ou d'un plan d'eau à courant. Saisissez le vent ci-dessous pour
+          C'est typique d'un aller simple ou d'un plan d'eau à courant. Saisissez le vent ci-dessus pour
           débloquer les manœuvres, la VMG et la polaire.
         </div>
       )}
 
-      {stats && (
-        <div className="an-sections" style={{ marginBottom: '10px' }}>
-
-          <SectionTabs sections={SAILING_SECTIONS} open={open} onToggle={toggle} />
-
-          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '15px', fontSize: `${scale}em` }}>
-
-            {open.global && (
-              <ResizablePanel id="sailing.global" style={{ ...CARD_STYLE, flex: '1 1 100%', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 200px', minWidth: '250px' }}>
-                  <div style={{ marginBottom: '10px' }}>
-                    <PanelTitle label="Global" open={open.global} onToggle={() => toggle('global')} />
-                  </div>
-                  <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                    <li><strong>Distance totale :</strong> {formatDistance(stats.distanceM, distanceUnit)}</li>
-                    <li><strong>Distance active :</strong> {formatDistance(stats.activeDistanceM, distanceUnit)}</li>
-                    <li><strong>Temps total :</strong> {stats.totalTime}</li>
-                    <li><strong>Temps actif (&ge;{showThreshold(activeThresholdKn)} {speedSymbol}) :</strong> {stats.activeTime}</li>
-                    <li><strong>{profile.activeRatioLabel} :</strong> {stats.activeRatio}%</li>
-                    <li style={{ color: 'var(--muted)', fontSize: `${12 * scale}px`, marginTop: '6px' }}>
-                      Vitesse : {hasDeviceSpeed ? 'Doppler de l\'appareil' : 'dérivée des positions, filtrée'}
-                    </li>
-                  </ul>
-                </div>
-
-                <div style={{ flex: '1 1 350px', display: 'flex', gap: '20px', borderLeft: '2px solid var(--line)', paddingLeft: '20px' }}>
-                  <div>
-                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Axe du Vent Global (Polaire)</strong>
-                    <div style={{ marginBottom: '10px' }}>
-                      Calculé : {autoWind}°
-                      {windEstimate && (
-                        <span style={{ color: windEstimate.reliable ? '#388e3c' : '#d32f2f', fontSize: `${12 * scale}px`, marginLeft: '6px' }}>
-                          (confiance {Math.round(windEstimate.confidence * 100)}%, angle mort de la polaire{windEstimate.maneuverCount > 0 ? ` affiné par ${windEstimate.maneuverCount} manœuvres` : ''}, sens donné par {windEstimate.orientedBy === 'virages' ? 'les virages' : 'la polaire'})
-                        </span>
-                      )}
-                      <br/>
-                      <div style={{ marginTop: '5px' }}>
-                        Saisie : <input
-                          type="number"
-                          value={edits.windDeg ?? ''}
-                          onChange={(e) => {
-                            if (e.target.value === '') {
-                              draft.update({ windDeg: null });
-                              return;
-                            }
-                            const parsed = parseInt(e.target.value, 10);
-                            if (!isNaN(parsed)) draft.update({ windDeg: parsed });
-                          }}
-                          className="ui-field ui-field--s num"
-                          style={{ width: '64px' }} /> °
-                        <Button
-                          size="s"
-                          onClick={() => draft.update({ windDeg: ((currentWindValue ?? autoWind ?? 0) + 180) % 360 })}
-                          style={{ marginLeft: '6px' }}>
-                          Inverser
-                        </Button>
-                        {edits.windDeg !== null && (
-                          <Button
-                            size="s"
-                            onClick={() => draft.update({ windDeg: null })}
-                            title="Revenir au vent calculé"
-                            style={{ marginLeft: '6px' }}>
-                            Calculé
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <Compass windAngle={currentWindValue ?? autoWind ?? 0} />
-                </div>
-              </ResizablePanel>
-            )}
-
-            {open.matos && (
-              <ResizablePanel id="sailing.matos" style={{ ...CARD_STYLE, flex: '1 1 100%', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 260px' }}>
-                  <div style={{ marginBottom: '10px' }}>
-                    <PanelTitle label="Matériel" open={open.matos} onToggle={() => toggle('matos')} />
-                  </div>
-                  {([
-                    ['foil', 'Foil'],
-                    ['mast', 'Mât'],
-                    ['wing', 'Aile / voile'],
-                  ] as const).map(([field, label]) => (
-                    <label key={field} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: `${14 * scale}px` }}>
-                      <span style={{ width: '90px' }}>{label}</span>
-                      <input
-                        type="text"
-                        value={notes[field]}
-                        onChange={(e) => setNotes({ [field]: e.target.value })}
-                        placeholder={field === 'foil' ? 'ex. 1100 cm²' : field === 'mast' ? 'ex. 85 cm' : 'ex. 5 m²'}
-                        style={{ flex: 1, padding: '4px 6px' }} />
-                    </label>
-                  ))}
-                </div>
-
-                <div style={{ flex: '1 1 260px' }}>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Conditions</strong>
-                  <div style={{ marginBottom: '10px' }}>
-                    <span style={{ display: 'block', fontSize: `${13 * scale}px`, marginBottom: '4px' }}>Vent</span>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {WIND_LEVELS.map((w) => (
-                        <button key={w.value} onClick={() => setNotes({ windLevel: notes.windLevel === w.value ? null : w.value })}
-                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: notes.windLevel === w.value ? 'var(--voile)' : '#fff', color: notes.windLevel === w.value ? '#fff' : 'var(--ink)' }}>
-                          {w.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ display: 'block', fontSize: `${13 * scale}px`, marginBottom: '4px' }}>Plan d'eau</span>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {WATER_STATES.map((s) => (
-                        <button key={s.value} onClick={() => setNotes({ waterState: notes.waterState === s.value ? null : s.value })}
-                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: notes.waterState === s.value ? 'var(--voile)' : '#fff', color: notes.waterState === s.value ? '#fff' : 'var(--ink)' }}>
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ flex: '1 1 260px' }}>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Appréciation de la séance</strong>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                    {RATINGS.map((r) => (
-                      <button key={r.value} onClick={() => setNotes({ rating: notes.rating === r.value ? null : r.value })}
-                        title={r.label} aria-label={r.label}
-                        style={{ fontSize: `${26 * scale}px`, lineHeight: 1, padding: '6px', cursor: 'pointer', border: notes.rating === r.value ? '2px solid var(--voile)' : '1px solid var(--line-strong)', borderRadius: '8px', backgroundColor: notes.rating === r.value ? 'var(--voile-soft)' : '#fff', opacity: notes.rating === null || notes.rating === r.value ? 1 : 0.5 }}>
-                        {r.emoji}
-                      </button>
-                    ))}
-                  </div>
-                  {notes.rating !== null && (
-                    <div style={{ fontSize: `${13 * scale}px`, marginBottom: '8px' }}>{RATINGS.find((r) => r.value === notes.rating)?.label}</div>
-                  )}
-                  <textarea
-                    value={notes.comment}
-                    onChange={(e) => setNotes({ comment: e.target.value })}
-                    placeholder="Commentaire libre"
-                    rows={3}
-                    style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: `${13 * scale}px`, boxSizing: 'border-box' }} />
-                  <div style={{ color: 'var(--muted)', fontSize: `${12 * scale}px`, marginTop: '6px' }}>
-                    {!draft.savable
-                      ? 'Notes indisponibles : cette trace n\'est pas dans la mémoire.'
-                      : draft.changed.includes('notes')
-                        ? 'Non enregistrées : « Enregistrer la session », en haut de la page.'
-                        : draft.hasSavedNotes
-                          ? 'Enregistrées dans la fiche de la session, dans le dossier mémoire.'
-                          : 'Enregistrées avec la session, par « Enregistrer la session ».'}
-                  </div>
-                </div>
-              </ResizablePanel>
-            )}
-
-            {open.tops && (
-              <ResizablePanel id="sailing.tops" style={{ ...CARD_STYLE, flex: '1 1 400px', display: 'flex', gap: '30px', flexWrap: 'wrap' }}>
-                <div>
-                  <div style={{ marginBottom: '10px' }}>
-                    <PanelTitle label="Tops Temps" open={open.tops} onToggle={() => toggle('tops')} />
-                  </div>
-                  {renderTop3("2 Secondes", "t2s", stats.tops.t2s)}
-                  {renderTop3("5 Secondes", "t5s", stats.tops.t5s)}
-                  {renderTop3("10 Secondes", "t10s", stats.tops.t10s)}
-                </div>
-                <div>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Tops Distance</strong>
-                  {renderTop3("100 Mètres", "d100m", stats.tops.d100m)}
-                  {renderTop3("500 Mètres", "d500m", stats.tops.d500m)}
-                  {renderTop3("1000 Mètres", "d1000m", stats.tops.d1000m)}
-                  {renderTop3("1 Mille Nautique", "d1NM", stats.tops.d1NM)}
-                </div>
-              </ResizablePanel>
-            )}
-
-          </div>
-        </div>
+      {trackData.length === 0 && requestedFile === null && (
+        <p style={{ color: 'var(--muted)' }}>
+          Aucune session ouverte : choisissez-en une dans <Link to={libraryPath('voile')}>Sessions voile</Link>.
+        </p>
       )}
+
 
       <div className="an-map-row" style={{ width: '100%', marginTop: '10px', zIndex: 0, display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         <AnalysisMap
@@ -899,26 +675,43 @@ function SailingModule() {
           legend={trackData.length > 0 ? {
             unit: speedUnit,
             range: colorRange,
-            isOverridden: edits.speedRange !== null,
-            onChange: (next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); },
             slowLabel: `sous ${Math.round(toDisplaySpeed(colorRange.minMs, speedUnit))} ${speedSymbol}`,
           } : null}
           style={{ flex: '0 1 60%' }} />
 
         {stats && (
           <div className="an-carte-col" style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: `${scale}em` }}>
-            <SectionTabs sections={SAILING_CARTE_PANELS} open={carteOpen} onToggle={toggleCarte} />
+            <SectionTabs sections={SAILING_PANELS} open={open} onToggle={toggle} />
             <div className="an-carte-panels" style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-              {carteOpen.manoeuvres && maneuverStats && renderManeuversPanel(maneuverStats)}
-              {carteOpen.vmg && vmgStats && renderVmgPanel(vmgStats)}
+              {open.tops && (
+                <ResizablePanel id="sailing.tops" style={{ ...CARD_STYLE, flex: '1 1 400px', display: 'flex', gap: '30px', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ marginBottom: '10px' }}>
+                      <PanelTitle label="Tops Temps" open={open.tops} onToggle={() => toggle('tops')} />
+                    </div>
+                    {renderTop3("2 Secondes", "t2s", stats.tops.t2s)}
+                    {renderTop3("5 Secondes", "t5s", stats.tops.t5s)}
+                    {renderTop3("10 Secondes", "t10s", stats.tops.t10s)}
+                  </div>
+                  <div>
+                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Tops Distance</strong>
+                    {renderTop3("100 Mètres", "d100m", stats.tops.d100m)}
+                    {renderTop3("500 Mètres", "d500m", stats.tops.d500m)}
+                    {renderTop3("1000 Mètres", "d1000m", stats.tops.d1000m)}
+                    {renderTop3("1 Mille Nautique", "d1NM", stats.tops.d1NM)}
+                  </div>
+                </ResizablePanel>
+              )}
 
-              {carteOpen.graphiques && (
+              {open.manoeuvres && maneuverStats && renderManeuversPanel(maneuverStats)}
+
+              {open.graphiques && (
                 <div
                   style={{ ...CARD_STYLE, flex: '1 1 100%', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}
                   onMouseLeave={() => setHoveredIndex(null)}
                 >
                   <div style={{ flex: '1 1 100%' }}>
-                    <PanelTitle label="Graphiques" open={carteOpen.graphiques} onToggle={() => toggleCarte('graphiques')} />
+                    <PanelTitle label="Graphiques" open={open.graphiques} onToggle={() => toggle('graphiques')} />
                   </div>
 
                   <ResizablePanel id="sailing.graph.vitesse" defaultHeight={350} minWidth={250} minHeight={200} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
@@ -968,7 +761,9 @@ function SailingModule() {
                 </div>
               )}
 
-              {carteOpen.vent && windStats && (
+              {open.vmg && vmgStats && renderVmgPanel(vmgStats)}
+
+              {open.vent && windStats && (
                 <div
                   style={{ ...CARD_STYLE, flex: '1 1 100%', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}
                   onMouseLeave={() => setHoveredIndex(null)}
@@ -977,8 +772,8 @@ function SailingModule() {
                     <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <PanelTitle
                         label="Variations du Vent"
-                        open={carteOpen.vent}
-                        onToggle={() => toggleCarte('vent')}
+                        open={open.vent}
+                        onToggle={() => toggle('vent')}
                         extra={<span style={{ color: 'var(--muted)', fontSize: `${12 * scale}px`, fontWeight: 'normal' }}> (mesurées sur {windStats.count} manœuvres)</span>} />
                       <HelpButton size="s" open={windHelpOpen} onToggle={() => setWindHelpOpen(!windHelpOpen)}
                         label="Comment le vent est-il mesuré ?" />
@@ -1036,6 +831,174 @@ function SailingModule() {
                     </div>
                   </ResizablePanel>
                 </div>
+              )}
+
+              {open.matos && (
+                <ResizablePanel id="sailing.matos" style={{ ...CARD_STYLE, flex: '1 1 100%', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 260px' }}>
+                    <div style={{ marginBottom: '10px' }}>
+                      <PanelTitle label="Matériel" open={open.matos} onToggle={() => toggle('matos')} />
+                    </div>
+                    {([
+                      ['foil', 'Foil'],
+                      ['mast', 'Mât'],
+                      ['wing', 'Aile / voile'],
+                    ] as const).map(([field, label]) => (
+                      <label key={field} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: `${14 * scale}px` }}>
+                        <span style={{ width: '90px' }}>{label}</span>
+                        <input
+                          type="text"
+                          value={notes[field]}
+                          onChange={(e) => setNotes({ [field]: e.target.value })}
+                          placeholder={field === 'foil' ? 'ex. 1100 cm²' : field === 'mast' ? 'ex. 85 cm' : 'ex. 5 m²'}
+                          style={{ flex: 1, padding: '4px 6px' }} />
+                      </label>
+                    ))}
+                  </div>
+
+                  <div style={{ flex: '1 1 260px' }}>
+                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Conditions</strong>
+                    <div style={{ marginBottom: '10px' }}>
+                      <span style={{ display: 'block', fontSize: `${13 * scale}px`, marginBottom: '4px' }}>Vent</span>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {WIND_LEVELS.map((w) => (
+                          <button key={w.value} onClick={() => setNotes({ windLevel: notes.windLevel === w.value ? null : w.value })}
+                            style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: notes.windLevel === w.value ? 'var(--voile)' : '#fff', color: notes.windLevel === w.value ? '#fff' : 'var(--ink)' }}>
+                            {w.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ display: 'block', fontSize: `${13 * scale}px`, marginBottom: '4px' }}>Plan d'eau</span>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {WATER_STATES.map((s) => (
+                          <button key={s.value} onClick={() => setNotes({ waterState: notes.waterState === s.value ? null : s.value })}
+                            style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: notes.waterState === s.value ? 'var(--voile)' : '#fff', color: notes.waterState === s.value ? '#fff' : 'var(--ink)' }}>
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ flex: '1 1 260px' }}>
+                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Appréciation de la séance</strong>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                      {RATINGS.map((r) => (
+                        <button key={r.value} onClick={() => setNotes({ rating: notes.rating === r.value ? null : r.value })}
+                          title={r.label} aria-label={r.label}
+                          style={{ fontSize: `${26 * scale}px`, lineHeight: 1, padding: '6px', cursor: 'pointer', border: notes.rating === r.value ? '2px solid var(--voile)' : '1px solid var(--line-strong)', borderRadius: '8px', backgroundColor: notes.rating === r.value ? 'var(--voile-soft)' : '#fff', opacity: notes.rating === null || notes.rating === r.value ? 1 : 0.5 }}>
+                          {r.emoji}
+                        </button>
+                      ))}
+                    </div>
+                    {notes.rating !== null && (
+                      <div style={{ fontSize: `${13 * scale}px`, marginBottom: '8px' }}>{RATINGS.find((r) => r.value === notes.rating)?.label}</div>
+                    )}
+                    <textarea
+                      value={notes.comment}
+                      onChange={(e) => setNotes({ comment: e.target.value })}
+                      placeholder="Commentaire libre"
+                      rows={3}
+                      style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: `${13 * scale}px`, boxSizing: 'border-box' }} />
+                    <div style={{ color: 'var(--muted)', fontSize: `${12 * scale}px`, marginTop: '6px' }}>
+                      {!draft.savable
+                        ? 'Notes indisponibles : cette trace n\'est pas dans la mémoire.'
+                        : draft.changed.includes('notes')
+                          ? 'Non enregistrées : « Enregistrer la session », en haut de la page.'
+                          : draft.hasSavedNotes
+                            ? 'Enregistrées dans la fiche de la session, dans le dossier mémoire.'
+                            : 'Enregistrées avec la session, par « Enregistrer la session ».'}
+                    </div>
+                  </div>
+                </ResizablePanel>
+              )}
+
+              {open.reglages && (
+                <ResizablePanel id="sailing.reglages" style={{ ...CARD_STYLE, flex: '1 1 100%' }}>
+                  <div style={{ marginBottom: '10px' }}>
+                    <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+                      <strong>Activité :</strong>
+                      <select
+                        value={activity.id}
+                        onChange={(e) => changeActivity(e.target.value)}
+                        className="ui-field ui-field--s">
+                        {activityOptions.map((a) => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+                      <strong>Seuil d'activité :</strong>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.5}
+                        value={speedUnit === 'kn' ? activeThresholdKn : speedFieldValue(activeThresholdKn)}
+                        onChange={(e) => {
+                          const parsed = parseFloat(e.target.value);
+                          if (!isNaN(parsed) && parsed >= 0) {
+                            draft.update({ activeThreshold: speedUnit === 'kn' ? parsed : msToKnots(fromDisplaySpeed(parsed, speedUnit)) });
+                          }
+                        }}
+                        title="Seuil propre à cette session, enregistré avec elle. Celui du support se règle dans Réglages."
+                        className="ui-field ui-field--s num"
+                        style={{ width: '70px' }} />
+                      {SPEED_UNIT_LABEL[speedUnit]}
+                      {edits.activeThreshold !== null && (
+                        <Button
+                          size="s"
+                          onClick={() => draft.update({ activeThreshold: null })}
+                          title={`Revenir au seuil du support (${showThreshold(defaultActiveThresholdKn)} ${SPEED_UNIT_LABEL[speedUnit]})`}>
+                          Défaut
+                        </Button>
+                      )}
+                    </label>
+
+                    {trackData.length > 0 && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+                        <strong>Allure de la session :</strong>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.5}
+                          value={toDisplaySpeed(referenceSpeedMs, speedUnit).toFixed(speedUnit === 'ms' ? 2 : 1)}
+                          onChange={(e) => {
+                            const parsed = parseFloat(e.target.value);
+                            if (!isNaN(parsed) && parsed > 0) draft.update({ referenceSpeedMs: fromDisplaySpeed(parsed, speedUnit) });
+                          }}
+                          title="Vitesse de croisière de la session, dont dépendent les seuils de filtrage. Déduite de la trace ; imposée si elle la décrit mal, et alors enregistrée avec la session."
+                          className="ui-field ui-field--s num"
+                          style={{ width: '70px' }} />
+                        {speedSymbol}
+                        {edits.referenceSpeedMs === null ? (
+                          <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(déduite de la trace)</span>
+                        ) : (
+                          <Button size="s" onClick={() => draft.update({ referenceSpeedMs: null })} title="Revenir à l'allure déduite de la trace">
+                            Défaut
+                          </Button>
+                        )}
+                      </label>
+                    )}
+                  </div>
+                  {trackData.length > 0 && (
+                    <div style={{ marginTop: '12px', fontSize: '14px' }}>
+                      <SpeedRangeEditor
+                        unit={speedUnit}
+                        range={colorRange}
+                        isOverridden={edits.speedRange !== null}
+                        onChange={(next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); }} />
+                    </div>
+                  )}
+                  <div style={{ color: 'var(--muted)', fontSize: `${12 * scale}px`, marginTop: '10px' }}>
+                    Vitesse : {hasDeviceSpeed ? "Doppler de l'appareil" : 'dérivée des positions, filtrée'}
+                  </div>
+                </ResizablePanel>
               )}
             </div>
           </div>

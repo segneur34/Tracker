@@ -41,7 +41,7 @@ await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'
 await send('Page.navigate', { url: `${BASE}/` });
 await wait(2500);
 // Onglets de la colonne de la carte tous ouverts, comme chez l'utilisateur.
-await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ 'sailing-carte': { manoeuvres: true, vmg: true, graphiques: true, vent: true } })); 'ok'`);
+await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ 'sailing-onglets': { tops: true, manoeuvres: true, graphiques: true, vmg: true, vent: true, matos: true, reglages: true } })); 'ok'`);
 
 await send('Page.navigate', { url: `${BASE}/enregistrer` });
 await wait(2500);

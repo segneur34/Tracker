@@ -12,7 +12,7 @@ import {
   RUNNING_UNITS, SAILING_UNITS, TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, useAllSportSettings,
   type TerrainType, type TextScale,
 } from '../hooks/useSportSettings';
-import { DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
+import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
 import { DEFAULT_SAILING_SPEED_RANGE_MS } from '../sailing/sailingConfig';
 import { CARD_STYLE } from '../components/styles';
 import { IconChevronRight } from '../components/icons';
@@ -153,7 +153,7 @@ function SettingsPage() {
                 const units = sailing ? SAILING_UNITS : RUNNING_UNITS;
                 const isOpen = openActivity[id] === true;
                 const overridden =
-                  s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null;
+                  s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
                 const thresholdShown = parseFloat(
@@ -174,6 +174,14 @@ function SettingsPage() {
                   if (next === null) { setFor(id, 'speedRange', null); return; }
                   const candidate = { ...shownRange, [bound]: fromDisplaySpeed(next, rangeUnit) };
                   if (candidate.maxMs > candidate.minMs) setFor(id, 'speedRange', candidate);
+                };
+                // Couleur de pente de la courbe d'altitude (course), saisie en %, rangée en fraction.
+                const shownGrades = s.gradeRange ?? DEFAULT_GRADE_RANGE;
+                const percent = (fraction: number) => parseFloat((fraction * 100).toFixed(1));
+                const setGradeBound = (bound: 'min' | 'max', next: number | null) => {
+                  if (next === null) { setFor(id, 'gradeRange', null); return; }
+                  const candidate = { ...shownGrades, [bound]: next / 100 };
+                  if (candidate.max > candidate.min) setFor(id, 'gradeRange', candidate);
                 };
                 const setAutoPauseField = (field: 'speedKmh' | 'delayS', next: number | null) => {
                   if (next === null) { setFor(id, 'autoPause', null); return; }
@@ -257,6 +265,23 @@ function SettingsPage() {
                             {s.speedRange === null && <span className="settings-sports__mark">{sailing ? "selon l'allure" : 'défaut'}</span>}
                           </div>
                         </div>
+                        {!sailing && (
+                          <div className="settings-row" title="Dégradé de la courbe d'altitude selon la raideur de la pente, montée ou descente ; gris sous la borne basse">
+                            <span className="settings-row__label">Couleur de pente</span>
+                            <div className="settings-sports__pair">
+                              <NumberField step={1} min={0}
+                                value={s.gradeRange === null ? null : percent(shownGrades.min)}
+                                placeholder={String(percent(DEFAULT_GRADE_RANGE.min))}
+                                onCommit={(v) => setGradeBound('min', v)} />
+                              <span>à</span>
+                              <NumberField unit="%" step={1} min={0}
+                                value={s.gradeRange === null ? null : percent(shownGrades.max)}
+                                placeholder={String(percent(DEFAULT_GRADE_RANGE.max))}
+                                onCommit={(v) => setGradeBound('max', v)} />
+                              {s.gradeRange === null && <span className="settings-sports__mark">défaut</span>}
+                            </div>
+                          </div>
+                        )}
                         <div className="settings-row" title="À l'enregistrement : immobilité qui coupe la trace toute seule ; 0 km/h la désactive">
                           <span className="settings-row__label">Pause automatique</span>
                           <div className="settings-sports__pair">

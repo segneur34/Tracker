@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useCallback, useId, useMemo, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { CircleMarker, Polyline, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
@@ -12,9 +13,9 @@ import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
+import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE } from '../components/styles';
-import { IconFile } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
@@ -25,7 +26,7 @@ import {
 import { sessionActivity } from '../core/activities';
 import { ELEVATION_PRESETS, getActiveThresholds } from '../core/sportProfiles';
 import { meanFilterByTime } from '../core/speedFilter';
-import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
+import { SLOW_COLOR, gradientCss, isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import {
   DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed, isInverseUnit,
   toDisplayDistance, toDisplaySpeed,
@@ -33,17 +34,18 @@ import {
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { useSessionDraft } from '../hooks/useSessionDraft';
-import { updateSessionRecord, useSessionName } from '../hooks/useSessionLibrary';
-import { libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
+import { updateSessionRecord } from '../hooks/useSessionLibrary';
+import { libraryPath, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
   TERRAIN_LABEL, TEXT_SCALE_FACTOR, readStoredActivities, useSportSettings, type TerrainType,
 } from '../hooks/useSportSettings';
-import { DEFAULT_SPEED_RANGE_MS, averagePace, computeGrades, computeZoneStats } from '../running/runningAnalytics';
+import {
+  DEFAULT_SPEED_RANGE_MS, averagePace, computeGrades, computeZoneStats, gradeGradientStops, type GradientStop,
+} from '../running/runningAnalytics';
 import type { RunningSessionStats } from '../running/types';
 import type { LibrarySession } from '../library/record';
-import { readPickedFile } from '../platform/files';
 
 /** Lissage supplémentaire de la vitesse pour le graphe, en secondes. */
 const CHART_SPEED_SMOOTHING_S = 10;
@@ -53,22 +55,23 @@ const MAP_SPEED_SMOOTHING_S = 15;
 /**
  * Sections du module. Pour en ajouter une : une entrée ici, une valeur par
  * défaut dans `RUNNING_SECTION_DEFAULTS`, et un bloc `{open.maCle && (...)}`
- * dans le rendu. La carte n'en fait pas partie : comme en voile, elle
+ * dans le rendu. La synthèse est dans la fiche du haut, toujours visible,
+ * les réglages de la session dans le dernier onglet. La carte n'en fait pas partie : comme en voile, elle
  * s'affiche en permanence, jamais derrière un onglet qu'on pourrait fermer
  * et oublier rouvert.
  */
-type RunningSection = 'synthese' | 'zones' | 'graphiques';
+type RunningSection = 'zones' | 'graphiques' | 'reglages';
 
 const RUNNING_SECTIONS: SectionDefinition<RunningSection>[] = [
-  { key: 'synthese', label: 'synthèse' },
   { key: 'zones', label: 'zones de pente' },
   { key: 'graphiques', label: 'graphiques' },
+  { key: 'reglages', label: 'réglages' },
 ];
 
 const RUNNING_SECTION_DEFAULTS: Record<RunningSection, boolean> = {
-  synthese: true,
   zones: true,
   graphiques: true,
+  reglages: false,
 };
 
 type ChartMode = 'separate' | 'overlay';
@@ -81,7 +84,21 @@ interface ChartRow {
   speed: number | null;
   speedMs: number;
   altitude: number | null;
+  /** Pente locale en fraction, `null` là où elle manque. */
+  grade: number | null;
 }
+
+/**
+ * Dégradé horizontal de la courbe d'altitude, selon la pente. Un par graphe :
+ * l'identifiant doit être unique dans la page, les deux modes étant deux SVG.
+ */
+const gradeGradientDefs = (id: string, stops: GradientStop[]) => (
+  <defs>
+    <linearGradient id={id} x1="0" y1="0" x2="1" y2="0">
+      {stops.map((stop, i) => <stop key={i} offset={stop.offset} stopColor={stop.color} />)}
+    </linearGradient>
+  </defs>
+);
 
 const cardStyle = CARD_STYLE;
 const chartTooltipStyle = { fontSize: '12px' } as const;
@@ -95,7 +112,7 @@ function RunningModule() {
     activity, activityOptions, setActivity,
     profile, activeThreshold, terrain, setTerrain, elevationProfile,
     speedUnit, distanceUnit, textScale,
-    speedRange,
+    speedRange, gradeRange,
   } = useSportSettings('course');
   const { profile: runner } = useRunnerProfile();
   const gpx = useGpxSession({
@@ -114,8 +131,7 @@ function RunningModule() {
     },
     [activity.id, setActivity, loadGpxContent]
   );
-  const { file: sessionFile, error: sessionError } = useSessionFromUrl(receiveSession);
-  const sessionName = useSessionName(gpx.fileName);
+  const { file: sessionFile, requested: requestedFile, error: sessionError } = useSessionFromUrl(receiveSession);
   // Brouillon de la session de la mémoire affichée (couleurs de la trace), écrit
   // dans sa fiche par « Enregistrer la session ». Aucun pour un GPX lu hors de la mémoire.
   const draft = useSessionDraft(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null);
@@ -127,15 +143,6 @@ function RunningModule() {
     setActivity(next.id);
     const listed = readStoredActivities().some((a) => a.id === next.id);
     if (sessionFile) updateSessionRecord(sessionFile, { sport: next.base, activityId: listed ? next.id : null });
-  };
-
-  // Un GPX ouvert ici entre d'abord dans la mémoire ; faute de mémoire, il est lu directement.
-  const importAndOpen = useImportAndOpen('course');
-  const openFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (!(await importAndOpen(file))) loadGpxContent(await readPickedFile(file), file.name);
   };
 
   const { open, toggle } = useOpenSections<RunningSection>('running', RUNNING_SECTION_DEFAULTS);
@@ -220,10 +227,20 @@ function RunningModule() {
         speed,
         speedMs: ms,
         altitude: stats?.hasElevation && isFinite(altitude) ? Math.round(altitude) : null,
+        grade: isFinite(grades[i]) ? grades[i] : null,
       });
     }
     return data;
-  }, [gpx.track, elevation, cumulative, stats, speedUnit, distanceUnit, inverse]);
+  }, [gpx.track, elevation, cumulative, stats, grades, speedUnit, distanceUnit, inverse]);
+
+  /** Arrêts du dégradé de pente, sur l'étendue des lignes qui portent une altitude (celle de l'aire tracée). */
+  const gradeStops = useMemo(
+    () => gradeGradientStops(chartData.filter((row) => row.altitude !== null), gradeRange),
+    [chartData, gradeRange]
+  );
+  const gradientId = useId();
+  const overlayGradientId = `${gradientId}-superpose`;
+  const separateGradientId = `${gradientId}-separe`;
 
   const mapSegments = useMemo(() => {
     if (gpx.track.length < 2) return [];
@@ -257,7 +274,7 @@ function RunningModule() {
     // Recharts ne type pas la ligne de données derrière l'entrée : on la relit sous la forme de `chartData`.
     const row: ChartRow | undefined = item.payload;
     if (name === 'Vitesse' && row) return [formatSpeed(row.speedMs, speedUnit), name];
-    if (name === 'Altitude') return [`${value} m`, name];
+    if (name === 'Altitude') return [row?.grade != null ? `${value} m, pente ${Math.round(row.grade * 100)} %` : `${value} m`, name];
     return [String(value ?? ''), name];
   };
 
@@ -302,41 +319,23 @@ function RunningModule() {
         </div>
 
         {stats && averages && (
-          <div className="an-sheet__stats">
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps de parcours</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne en mouvement</span><strong className="an-sheet__stat-value">{formatSpeed(averages.moving.speedMs, speedUnit)}</strong></div>
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Dénivelé positif</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `${stats.elevationGain} m` : '—'}</strong></div>
-          </div>
+          <>
+            <div className="an-sheet__stats an-sheet__stats--always">
+              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
+              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance en mouvement</span><strong className="an-sheet__stat-value">{formatDistance(stats.activeDistanceM, distanceUnit)}</strong></div>
+              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps de parcours</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
+              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps en mouvement ({stats.activeRatio} %)</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
+              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne en mouvement</span><strong className="an-sheet__stat-value">{formatSpeed(averages.moving.speedMs, speedUnit)}</strong></div>
+              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne sur le temps total</span><strong className="an-sheet__stat-value">{formatSpeed(averages.overall.speedMs, speedUnit)}</strong></div>
+              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Dénivelé</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—'}</strong></div>
+              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Altitude</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—'}</strong></div>
+            </div>
+            {!stats.hasElevation && (
+              <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)', marginBottom: '15px' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
+            )}
+          </>
         )}
 
-        <div style={{ display: 'flex', gap: '18px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', fontSize: '14px' }}>
-          <label className="ui-btn ui-btn--secondary">
-            <IconFile size={18} />
-            Ouvrir un fichier GPX
-            <input type="file" accept=".gpx" onChange={openFile} hidden />
-          </label>
-
-          {activityOptions.length > 1 && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <strong>Activité :</strong>
-              <select value={activity.id} onChange={(e) => changeActivity(e.target.value)} className="ui-field ui-field--s">
-                {activityOptions.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <strong>Terrain :</strong>
-            <select value={terrain} onChange={(e) => setTerrain(e.target.value as TerrainType)} className="ui-field ui-field--s">
-              {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
-                <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
-              ))}
-            </select>
-          </label>
-        </div>
       </div>
 
       <SessionSaveBar draft={draft} />
@@ -347,8 +346,10 @@ function RunningModule() {
         </div>
       )}
 
-      {!stats && !gpx.error && (
-        <p style={{ color: 'var(--muted)' }}>Chargez une trace GPX pour lancer l'analyse.</p>
+      {!stats && !gpx.error && requestedFile === null && (
+        <p style={{ color: 'var(--muted)' }}>
+          Aucune session ouverte : choisissez-en une dans <Link to={libraryPath('course')}>Sessions course</Link>.
+        </p>
       )}
 
       {stats && averages && (
@@ -357,31 +358,6 @@ function RunningModule() {
 
       {stats && averages && (
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'stretch', marginBottom: '15px', fontSize: `${14 * scale}px` }}>
-          {open.synthese && (
-          <ResizablePanel id="running.synthese" style={{ ...cardStyle, flex: '1 1 300px' }}>
-            <div style={{ marginBottom: '10px' }}>
-              <PanelTitle label={sessionName ?? gpx.trackName ?? gpx.fileName ?? 'Session'} open={open.synthese} onToggle={() => toggle('synthese')} />
-            </div>
-            <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.7' }}>
-              <li><strong>Distance :</strong> {formatDistance(stats.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)' }}>(en mouvement {formatDistance(stats.activeDistanceM, distanceUnit)})</span></li>
-              <li><strong>Temps de parcours :</strong> {stats.totalTime} <span style={{ color: 'var(--muted)' }}>(en mouvement {stats.activeTime}, {stats.activeRatio} %)</span></li>
-              <li><strong>Vitesse moyenne :</strong> {formatSpeed(averages.moving.speedMs, speedUnit)} <span style={{ color: 'var(--muted)' }}>(en mouvement)</span></li>
-              <li><strong>Sur le temps total :</strong> {formatSpeed(averages.overall.speedMs, speedUnit)}</li>
-              <li style={{ marginTop: '6px' }}><strong>Dénivelé :</strong> +{stats.elevationGain} m / -{stats.elevationLoss} m</li>
-              <li><strong>Altitude :</strong> {stats.elevationMin} m à {stats.elevationMax} m</li>
-              {!stats.hasElevation && (
-                <li style={{ color: '#b71c1c', fontSize: '0.85em' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</li>
-              )}
-              <li style={{ color: 'var(--muted)', fontSize: '0.85em', marginTop: '6px' }}>
-                Vitesse : {gpx.hasDeviceSpeed
-                  ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
-                  : 'dérivée des positions, filtrée'}
-                {runner.weightKg !== null ? ` · Poids : ${runner.weightKg} kg` : ' · Poids non renseigné, voir Paramètres'}
-              </li>
-            </ul>
-          </ResizablePanel>
-          )}
-
           {open.zones && zoneStats.length > 0 && (
             <ResizablePanel id="running.zones" style={{ ...cardStyle, flex: '1 1 420px' }}>
               <div style={{ marginBottom: '10px' }}>
@@ -444,8 +420,9 @@ function RunningModule() {
                   {speedAxis}
                   {stats?.hasElevation && altitudeAxis('right')}
                   <Tooltip formatter={tooltipFormatter} labelFormatter={(l) => `${l} ${distanceSymbol}`} contentStyle={chartTooltipStyle} />
+                  {stats?.hasElevation && gradeGradientDefs(overlayGradientId, gradeStops)}
                   {stats?.hasElevation && (
-                    <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke="#e64a19" strokeWidth={1.5} fill="#e64a19" fillOpacity={0.12} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
+                    <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${overlayGradientId})`} strokeWidth={1.5} fill={`url(#${overlayGradientId})`} fillOpacity={0.3} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
                   )}
                   <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
                 </ComposedChart>
@@ -472,15 +449,75 @@ function RunningModule() {
                       {xAxis}
                       {altitudeAxis('left')}
                       <Tooltip formatter={tooltipFormatter} labelFormatter={(l) => `${l} ${distanceSymbol}`} contentStyle={chartTooltipStyle} />
-                      <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke="#e64a19" strokeWidth={2} fill="#e64a19" fillOpacity={0.15} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
+                      {gradeGradientDefs(separateGradientId, gradeStops)}
+                      <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${separateGradientId})`} strokeWidth={2} fill={`url(#${separateGradientId})`} fillOpacity={0.35} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               )}
             </>
           )}
+          {stats?.hasElevation && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
+              <span>Altitude colorée par la pente, montée ou descente :</span>
+              {gradeRange.min > 0 && (
+                <>
+                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', backgroundColor: SLOW_COLOR }} />
+                  <span>sous {Math.round(gradeRange.min * 100)} %,</span>
+                </>
+              )}
+              <span>{Math.round(gradeRange.min * 100)} %</span>
+              <span style={{ display: 'inline-block', width: '90px', height: '10px', borderRadius: '2px', background: gradientCss() }} />
+              <span>{Math.round(gradeRange.max * 100)} % et plus</span>
+            </div>
+          )}
           <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
             Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte.{narrow ? '' : ' Poignée en bas à droite pour redimensionner.'}
+          </div>
+        </ResizablePanel>
+      )}
+
+
+      {stats && open.reglages && (
+        <ResizablePanel id="running.reglages" style={{ ...cardStyle, marginBottom: '15px', fontSize: `${14 * scale}px` }}>
+          <div style={{ marginBottom: '10px' }}>
+            <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} />
+          </div>
+          <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap', fontSize: '14px' }}>
+            {activityOptions.length > 1 && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <strong>Activité :</strong>
+                <select value={activity.id} onChange={(e) => changeActivity(e.target.value)} className="ui-field ui-field--s">
+                  {activityOptions.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <strong>Terrain :</strong>
+              <select value={terrain} onChange={(e) => setTerrain(e.target.value as TerrainType)} className="ui-field ui-field--s">
+                {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
+                  <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {gpx.track.length > 0 && (
+            <div style={{ marginTop: '12px', fontSize: '14px' }}>
+              <SpeedRangeEditor
+                unit={speedUnit}
+                range={range}
+                isOverridden={draft.edits.speedRange !== null}
+                onChange={(next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); }} />
+            </div>
+          )}
+          <div style={{ color: 'var(--muted)', fontSize: '0.85em', marginTop: '10px' }}>
+            Vitesse : {gpx.hasDeviceSpeed
+              ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
+              : 'dérivée des positions, filtrée'}
+            {runner.weightKg !== null ? ` · Poids : ${runner.weightKg} kg` : ' · Poids non renseigné, voir Paramètres'}
           </div>
         </ResizablePanel>
       )}
@@ -495,8 +532,6 @@ function RunningModule() {
           legend={gpx.track.length > 0 ? {
             unit: speedUnit,
             range,
-            isOverridden: draft.edits.speedRange !== null,
-            onChange: (next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); },
             slowLabel: 'marche',
           } : null}
           style={{ width: '60%' }} />

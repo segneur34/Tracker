@@ -7,6 +7,7 @@ import { isValidSpeedRange } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { DISTANCE_UNIT_LABEL, SPEED_UNIT_LABEL, type DistanceUnit, type SpeedUnit } from '../core/units';
 import { jsonStore } from '../platform/storage';
+import { DEFAULT_GRADE_RANGE, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
 
 /** Taille du texte des tableaux et synthèses, en facteur d'échelle. */
 export type TextScale = 'compact' | 'normal' | 'large';
@@ -70,6 +71,8 @@ export interface StoredSettings {
   textScales?: ByActivity<TextScale>;
   /** Bornes du dégradé de couleur de la trace, en m/s. */
   speedRanges?: ByActivity<{ minMs: number; maxMs: number }>;
+  /** Bornes de la couleur de pente de la courbe d'altitude, en fraction (course). */
+  gradeRanges?: ByActivity<GradeRange>;
   /** Surcharge de la pause automatique à l'enregistrement. */
   autoPause?: ByActivity<{ speedMs: number; delayS: number }>;
   /** Durée de l'appui long sur le bouton rond qui met en pause, en millisecondes. */
@@ -166,13 +169,15 @@ export interface SportSettingsView {
   textScale: TextScale;
   terrain: TerrainType;
   speedRange: { minMs: number; maxMs: number } | null;
+  /** Bornes de la couleur de pente, ou `null` pour le défaut. */
+  gradeRange: GradeRange | null;
   /** Pause automatique effective à l'enregistrement (m/s, secondes). */
   autoPause: { speedMs: number; delayS: number };
   isAutoPauseOverridden: boolean;
 }
 
 /** Tables de réglages rangées par activité. */
-const PER_ACTIVITY_KEYS = ['thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'textScales', 'speedRanges', 'autoPause'] as const;
+const PER_ACTIVITY_KEYS = ['thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'textScales', 'speedRanges', 'gradeRanges', 'autoPause'] as const;
 
 /** Réglages sans aucune surcharge rangée sous `id`. */
 const withoutOverrides = (stored: StoredSettings, id: string): StoredSettings => {
@@ -213,6 +218,7 @@ export const useAllSportSettings = () => {
       const scale = stored.textScales?.[id];
       const terrain = stored.terrains?.[id];
       const range = stored.speedRanges?.[id];
+      const grades = stored.gradeRanges?.[id];
       const autoPauseOverride = stored.autoPause?.[id];
       return {
         activity,
@@ -225,6 +231,7 @@ export const useAllSportSettings = () => {
         textScale: isKnownTextScale(scale) ? scale : 'normal',
         terrain: isKnownTerrain(terrain) ? terrain : 'route',
         speedRange: range && isValidSpeedRange(range) ? range : null,
+        gradeRange: grades && isValidGradeRange(grades) ? grades : null,
         autoPause: autoPauseOverride ?? { speedMs: profile.recording.autoPauseSpeedMs, delayS: profile.recording.autoPauseDelayS },
         isAutoPauseOverridden: autoPauseOverride !== undefined,
       };
@@ -234,7 +241,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'autoPause'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'gradeRange' | 'autoPause'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -271,6 +278,12 @@ export const useAllSportSettings = () => {
           const r = value as { minMs: number; maxMs: number } | null;
           if (r !== null && !isValidSpeedRange(r)) return;
           next.speedRanges = put(stored.speedRanges, r);
+          break;
+        }
+        case 'gradeRange': {
+          const g = value as GradeRange | null;
+          if (g !== null && !isValidGradeRange(g)) return;
+          next.gradeRanges = put(stored.gradeRanges, g);
           break;
         }
         case 'autoPause': {
@@ -416,6 +429,8 @@ export const useSportSettings = (family: SportFamily) => {
   // d'une trace dans sa fiche (brouillon du module).
   const storedRange = stored.speedRanges?.[id];
   const speedRange = storedRange && isValidSpeedRange(storedRange) ? storedRange : null;
+  const storedGradeRange = stored.gradeRanges?.[id];
+  const gradeRange: GradeRange = storedGradeRange && isValidGradeRange(storedGradeRange) ? storedGradeRange : DEFAULT_GRADE_RANGE;
 
   return {
     activity,
@@ -433,5 +448,7 @@ export const useSportSettings = (family: SportFamily) => {
     textScale,
     /** Bornes du dégradé réglées pour l'activité dans Réglages, ou `null` pour le défaut du module. */
     speedRange,
+    /** Bornes de la couleur de pente de la courbe d'altitude, réglées dans Réglages ou par défaut. */
+    gradeRange,
   };
 };

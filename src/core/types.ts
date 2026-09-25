@@ -82,6 +82,10 @@ export interface BaseSessionStats {
   activeTime: string;
   /** Part du temps actif sur le temps total, en pourcentage formaté. */
   activeRatio: string;
+  /** Vitesse moyenne sur le temps total, en m/s, ou `null` sans durée. */
+  avgSpeedMs: number | null;
+  /** Vitesse moyenne sur le seul temps actif (distance active ÷ temps actif), en m/s, ou `null` sans temps actif. */
+  activeAvgSpeedMs: number | null;
   /** Part des points dont la vitesse vient de l'appareil et non d'une dérivation. */
   speedSource: SpeedSource;
   /** Dénivelé positif cumulé en mètres, formaté sans décimale. */

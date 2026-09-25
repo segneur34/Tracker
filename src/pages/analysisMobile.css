@@ -1,8 +1,31 @@
 /* Disposition mobile des modules d'analyse (`SailingModule.tsx`, `RunningModule.tsx`), sur les variables de `theme/tokens.css`.
-   Sur ordinateur, rien ne change : seules la feuille des chiffres clés et la vue plein écran sont masquées. */
+   Sur ordinateur, rien ne change : seules la feuille des chiffres clés (sauf en voile, où elle porte le
+   global : `--always`) et la vue plein écran sont masquées. */
 
 .an-sheet__stats {
   display: none;
+}
+
+.an-sheet__stats--always {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.an-sheet__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.an-sheet__stat-label {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.an-sheet__stat-value {
+  font-size: var(--text-l);
 }
 
 .an-map-overlay {
@@ -17,7 +40,7 @@
 
   /* Rangée de la carte : sur téléphone, elle s'efface (`display: contents`) et ses enfants se rangent
      dans la page. La carte remonte tout en haut, devant le titre et les réglages ; en voile, la colonne
-     d'onglets de la carte vient juste après la feuille, puis les sections du haut (`an-sections`).
+     d'onglets de la carte vient juste après la feuille.
      La feuille, la barre de session et les alertes gardent leur ordre entre elles. */
   .an-map-row {
     display: contents !important;
@@ -26,11 +49,6 @@
   .an-carte-col {
     order: 1;
     flex: none !important;
-  }
-
-  .an-sections {
-    order: 2;
-    margin-top: var(--space-4);
   }
 
   /* Bloc carte + légende (`AnalysisMap`) : pleine largeur, carte à hauteur fixe, légende dessous.
@@ -66,21 +84,6 @@
     grid-template-columns: 1fr 1fr;
     gap: var(--space-3) var(--space-4);
     margin-bottom: var(--space-4);
-  }
-
-  .an-sheet__stat {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .an-sheet__stat-label {
-    color: var(--muted);
-    font-size: var(--text-s);
-  }
-
-  .an-sheet__stat-value {
-    font-size: var(--text-l);
   }
 
   .an-map-overlay {

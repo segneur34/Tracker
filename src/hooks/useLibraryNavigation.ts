@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import type { LibrarySession } from '../library/record';
-import { findLibrarySession, importFiles, librarySession, readSessionGpx, useSessionLibrary } from './useSessionLibrary';
+import { findLibrarySession, librarySession, readSessionGpx, useSessionLibrary } from './useSessionLibrary';
 
 /**
  * Passage de la bibliothèque aux modules d'analyse.
@@ -29,25 +29,6 @@ export const useOpenSession = () => {
   return useCallback(
     (file: string, fallback: SportFamily) => navigate(analysisPath(sessionFamily(librarySession(file), fallback), file)),
     [navigate]
-  );
-};
-
-/**
- * Importe un GPX choisi dans un module d'analyse, puis l'ouvre depuis la
- * mémoire. Rend faux si la session n'a pas pu y entrer (GPX illisible, aucune
- * mémoire accessible) : au module de la charger directement.
- */
-export const useImportAndOpen = (fallback: SportFamily) => {
-  const openSession = useOpenSession();
-  return useCallback(
-    async (file: File): Promise<boolean> => {
-      const report = await importFiles([file]);
-      const target = report.added[0] ?? report.existing[0];
-      if (!target) return false;
-      openSession(target, fallback);
-      return true;
-    },
-    [openSession, fallback]
   );
 };
 
@@ -91,6 +72,8 @@ export const useSessionFromUrl = (onLoad: (content: string, session: LibrarySess
 
   const missing = requested !== null && !known && library.status === 'ready' && library.scanning === null;
   return {
+    /** Session demandée par l'URL, connue ou non de la mémoire, `null` si aucune. */
+    requested,
     /** Fichier de la session chargée depuis la mémoire, `null` sinon. */
     file: known ? requested : null,
     session,

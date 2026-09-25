@@ -3,11 +3,15 @@ import { buildCumulativeTrack } from '../core/sessionStats';
 import { SLOW_COLOR, gradientColor, speedGradientColor } from '../core/speedGradient';
 import type { TrackPoint } from '../core/types';
 import {
+  DEFAULT_GRADE_RANGE,
   DEFAULT_SPEED_RANGE_MS,
   averagePace,
   classifyGrade,
   computeGrades,
   computeZoneStats,
+  gradeGradientColor,
+  gradeGradientStops,
+  isValidGradeRange,
 } from './runningAnalytics';
 
 /**
@@ -160,5 +164,40 @@ describe('dégradé de vitesse', () => {
     const red = gradientColor(1);
     expect(speedGradientColor(kmh(12), kmh(5), kmh(12))).toBe(red);
     expect(speedGradientColor(kmh(12), kmh(5), kmh(18))).not.toBe(red);
+  });
+});
+
+describe('gradeGradientColor', () => {
+  it('colore la raideur, montée ou descente', () => {
+    expect(gradeGradientColor(0.2, DEFAULT_GRADE_RANGE)).toBe(gradeGradientColor(-0.2, DEFAULT_GRADE_RANGE));
+    expect(gradeGradientColor(0.2, DEFAULT_GRADE_RANGE)).toBe(gradientColor(0.8));
+  });
+
+  it('sature au-delà de la borne haute et grise sous la borne basse ou sans pente', () => {
+    expect(gradeGradientColor(0.4, DEFAULT_GRADE_RANGE)).toBe(gradientColor(1));
+    expect(gradeGradientColor(0.02, { min: 0.05, max: 0.25 })).toBe(SLOW_COLOR);
+    expect(gradeGradientColor(NaN, DEFAULT_GRADE_RANGE)).toBe(SLOW_COLOR);
+  });
+
+  it('refuse des bornes inversées ou négatives', () => {
+    expect(isValidGradeRange({ min: 0, max: 0.25 })).toBe(true);
+    expect(isValidGradeRange({ min: 0.3, max: 0.2 })).toBe(false);
+    expect(isValidGradeRange({ min: -0.1, max: 0.2 })).toBe(false);
+  });
+});
+
+describe('gradeGradientStops', () => {
+  it('place les arrêts de 0 à 1 selon la distance, dans l\'ordre', () => {
+    const rows = [0, 0.5, 1, 1.5, 2].map((dist, i) => ({ dist, grade: i * 0.05 }));
+    const stops = gradeGradientStops(rows, DEFAULT_GRADE_RANGE);
+    expect(stops.map((s) => s.offset)).toEqual([0, 0.25, 0.5, 0.75, 1]);
+    expect(stops[4].color).toBe(gradientColor(0.8));
+  });
+
+  it('ne garde que les bords d\'une suite de couleurs identiques', () => {
+    const rows = [0, 1, 2, 3, 4, 5].map((dist) => ({ dist, grade: dist < 5 ? 0.1 : null }));
+    const stops = gradeGradientStops(rows, DEFAULT_GRADE_RANGE);
+    expect(stops.map((s) => s.offset)).toEqual([0, 0.8, 1]);
+    expect(stops[2].color).toBe(SLOW_COLOR);
   });
 });
