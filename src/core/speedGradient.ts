@@ -15,6 +15,11 @@ export interface SpeedRangeMs {
   maxMs: number;
 }
 
+/** Vrai pour des bornes utilisables : finies, basse positive, haute au-dessus. */
+export const isValidSpeedRange = (range: { minMs?: unknown; maxMs?: unknown }): range is SpeedRangeMs =>
+  typeof range.minMs === 'number' && typeof range.maxMs === 'number' &&
+  isFinite(range.minMs) && isFinite(range.maxMs) && range.minMs >= 0 && range.maxMs > range.minMs;
+
 /** Couleur sous la borne basse. */
 export const SLOW_COLOR = '#9e9e9e';
 

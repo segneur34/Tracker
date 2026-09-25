@@ -8,15 +8,15 @@ import {
   type TerrainType, type TextScale,
 } from '../hooks/useSportSettings';
 import { DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
+import { DEFAULT_SAILING_SPEED_RANGE_MS } from '../sailing/sailingConfig';
 import { CARD_STYLE } from '../components/styles';
 import MemoryStatus from '../components/MemoryStatus';
 import PageHeader from '../components/ui/PageHeader';
+import './settingsPage.css';
 
 const ALL_SPORTS: SportType[] = [...SAILING_SPORTS, 'running'];
 
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
-const cellStyle = { padding: '6px 10px', borderTop: '1px solid var(--line-soft)' } as const;
-const headStyle = { padding: '6px 10px', backgroundColor: 'var(--surface-sunken)', textAlign: 'left' } as const;
 
 /**
  * Champ numérique optionnel, en `type="number"` avec flèches ↕, même
@@ -84,15 +84,6 @@ function SettingsPage() {
   const { profile, setNumber, setSex, age } = useRunnerProfile();
 
   const running = view('running');
-  const runningRange = running.speedRange ?? DEFAULT_SPEED_RANGE_MS;
-  const rangeUnit: SpeedUnit = running.speedUnit === 'minkm' ? 'kmh' : running.speedUnit;
-
-  const setRangeBound = (bound: 'minMs' | 'maxMs', next: number | null) => {
-    if (next === null) { setFor('running', 'speedRange', null); return; }
-    const ms = fromDisplaySpeed(next, rangeUnit);
-    const candidate = { ...runningRange, [bound]: ms };
-    if (candidate.maxMs > candidate.minMs) setFor('running', 'speedRange', candidate);
-  };
 
   const profileField = (field: Exclude<keyof RunnerProfile, 'sex'>) => (next: number | null) => setNumber(field, next);
 
@@ -110,15 +101,16 @@ function SettingsPage() {
 
       <div style={cardStyle}>
         <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Réglages par support</strong>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
+        <table className="settings-sports">
           <thead>
             <tr>
-              <th style={headStyle}>Support</th>
-              <th style={headStyle}>Unité de vitesse</th>
-              <th style={headStyle} title="Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, réussite des manœuvres, VMG">Seuil d'activité</th>
-              <th style={headStyle}>Taille du texte</th>
-              <th style={headStyle} title="À l'enregistrement : immobilité qui coupe la trace toute seule">Pause automatique</th>
-              <th style={headStyle} />
+              <th>Support</th>
+              <th>Unité de vitesse</th>
+              <th title="Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, réussite des manœuvres, VMG">Seuil d'activité</th>
+              <th>Taille du texte</th>
+              <th title="Bornes du dégradé de couleur, pour les traces qui n'ont pas les leurs">Couleur de trace</th>
+              <th title="À l'enregistrement : immobilité qui coupe la trace toute seule">Pause automatique</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -126,7 +118,21 @@ function SettingsPage() {
               const s = view(sport);
               const p = SPORT_PROFILES[sport];
               const units = sport === 'running' ? RUNNING_UNITS : SAILING_UNITS;
-              const overridden = s.isSpeedUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden;
+              const overridden =
+                s.isSpeedUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null;
+              // Bornes de couleur, saisies en km/h quand l'unité est une allure (min/km).
+              const rangeUnit: SpeedUnit = s.speedUnit === 'minkm' ? 'kmh' : s.speedUnit;
+              const sailing = sport !== 'running';
+              const fallbackRange = sailing ? DEFAULT_SAILING_SPEED_RANGE_MS : DEFAULT_SPEED_RANGE_MS;
+              const shownRange = s.speedRange ?? fallbackRange;
+              // Voile sans réglage : champs vides, les bornes suivent l'allure de chaque session.
+              const rangeEmpty = sailing && s.speedRange === null;
+              const displayBound = (ms: number) => parseFloat(formatSpeedValue(toDisplaySpeed(ms, rangeUnit), rangeUnit));
+              const setRangeBound = (bound: 'minMs' | 'maxMs', next: number | null) => {
+                if (next === null) { setFor(sport, 'speedRange', null); return; }
+                const candidate = { ...shownRange, [bound]: fromDisplaySpeed(next, rangeUnit) };
+                if (candidate.maxMs > candidate.minMs) setFor(sport, 'speedRange', candidate);
+              };
               const setAutoPauseField = (field: 'speedKmh' | 'delayS', next: number | null) => {
                 if (next === null) { setFor(sport, 'autoPause', null); return; }
                 setFor(sport, 'autoPause', {
@@ -136,39 +142,56 @@ function SettingsPage() {
               };
               return (
                 <tr key={sport}>
-                  <td style={{ ...cellStyle, fontWeight: 'bold' }}>{p.label}</td>
-                  <td style={cellStyle}>
+                  <td className="settings-sports__name">{p.label}</td>
+                  <td data-label="Unité de vitesse">
                     <select value={s.speedUnit} onChange={(e) => setFor(sport, 'speedUnit', e.target.value as SpeedUnit)} className="ui-field ui-field--s">
                       {units.map((u) => <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>)}
                     </select>
                   </td>
-                  <td style={cellStyle}>
+                  <td data-label="Seuil d'activité">
                     <ThresholdField
                       value={s.activeThreshold}
                       unit={SPEED_UNIT_LABEL[p.thresholdUnit]}
                       isDefault={!s.isThresholdOverridden}
                       onCommit={(v) => setFor(sport, 'activeThreshold', v)} />
                   </td>
-                  <td style={cellStyle}>
+                  <td data-label="Taille du texte">
                     <select value={s.textScale} onChange={(e) => setFor(sport, 'textScale', e.target.value as TextScale)} className="ui-field ui-field--s">
                       {(Object.keys(TEXT_SCALE_FACTOR) as TextScale[]).map((t) => <option key={t} value={t}>{TEXT_SCALE_LABEL[t]}</option>)}
                     </select>
                   </td>
-                  <td style={cellStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <td data-label="Couleur de trace">
+                    <div className="settings-sports__pair">
+                      <NumberField step={0.5} min={0}
+                        value={rangeEmpty ? null : displayBound(shownRange.minMs)}
+                        placeholder={String(displayBound(fallbackRange.minMs))}
+                        onCommit={(v) => setRangeBound('minMs', v)} />
+                      <span>à</span>
+                      <NumberField unit={SPEED_UNIT_LABEL[rangeUnit]} step={0.5} min={0}
+                        value={rangeEmpty ? null : displayBound(shownRange.maxMs)}
+                        placeholder={String(displayBound(fallbackRange.maxMs))}
+                        onCommit={(v) => setRangeBound('maxMs', v)} />
+                      {s.speedRange === null && <span className="settings-sports__mark">{sailing ? "selon l'allure" : 'défaut'}</span>}
+                    </div>
+                  </td>
+                  <td data-label="Pause automatique">
+                    <div className="settings-sports__pair">
                       <NumberField unit="km/h" step={0.1} min={0}
                         value={parseFloat((s.autoPause.speedMs * 3.6).toFixed(1))}
                         onCommit={(v) => setAutoPauseField('speedKmh', v)} />
                       <NumberField unit="s" step={5} min={0}
                         value={s.autoPause.delayS}
                         onCommit={(v) => setAutoPauseField('delayS', v)} />
-                      {!s.isAutoPauseOverridden && <span style={{ color: 'var(--muted)', fontSize: '11px' }}>défaut</span>}
+                      {!s.isAutoPauseOverridden && <span className="settings-sports__mark">défaut</span>}
                     </div>
                   </td>
-                  <td style={{ ...cellStyle, textAlign: 'right' }}>
+                  <td className="settings-sports__reset">
                     {overridden && (
                       <button
-                        onClick={() => { setFor(sport, 'speedUnit', null); setFor(sport, 'activeThreshold', null); setFor(sport, 'textScale', null); setFor(sport, 'autoPause', null); }}
+                        onClick={() => {
+                          setFor(sport, 'speedUnit', null); setFor(sport, 'activeThreshold', null); setFor(sport, 'textScale', null);
+                          setFor(sport, 'autoPause', null); setFor(sport, 'speedRange', null);
+                        }}
                         style={{ padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}>
                         Défaut
                       </button>
@@ -182,12 +205,16 @@ function SettingsPage() {
         <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '6px' }}>
           Le seuil d'activité est saisi dans l'unité du profil du support : nœuds pour la voile, km/h pour la course.
           En course, il sert aux temps de pause : reprise à seuil + 1, pause sous seuil − 1.
+          <br />
+          Couleur de trace : gris sous la borne lente, dégradé du bleu au rouge jusqu'à la borne rapide. En voile, sans
+          réglage, les bornes suivent l'allure de chaque session. Une trace peut avoir les siennes, réglées depuis sa
+          légende : elles ne changent qu'elle et priment sur celles-ci.
         </div>
       </div>
 
       <div style={cardStyle}>
         <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Course à pied</strong>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px', flexWrap: 'wrap' }}>
           <span style={{ width: '190px' }}>Terrain par défaut</span>
           <select value={running.terrain} onChange={(e) => setFor('running', 'terrain', e.target.value as TerrainType)} className="ui-field ui-field--s">
             {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>)}
@@ -196,24 +223,6 @@ function SettingsPage() {
             lissage {ELEVATION_PRESETS[running.terrain].smoothingSeconds} s, seuil de dénivelé {ELEVATION_PRESETS[running.terrain].minGainM} m
           </span>
         </label>
-        <NumberField
-          label="Couleur de trace, borne lente"
-          unit={SPEED_UNIT_LABEL[rangeUnit]}
-          step={0.5}
-          value={parseFloat(formatSpeedValue(toDisplaySpeed(runningRange.minMs, rangeUnit), rangeUnit))}
-          onCommit={(v) => setRangeBound('minMs', v)} />
-        <NumberField
-          label="Couleur de trace, borne rapide"
-          unit={SPEED_UNIT_LABEL[rangeUnit]}
-          step={0.5}
-          value={parseFloat(formatSpeedValue(toDisplaySpeed(runningRange.maxMs, rangeUnit), rangeUnit))}
-          onCommit={(v) => setRangeBound('maxMs', v)} />
-        <div style={{ color: 'var(--muted)', fontSize: '12px' }}>
-          Gris sous la borne lente, la marche. Dégradé du bleu au rouge entre les deux bornes, rouge au-delà.
-          {running.speedRange && (
-            <button onClick={() => setFor('running', 'speedRange', null)} style={{ marginLeft: '10px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}>Défaut (4 à 15 km/h)</button>
-          )}
-        </div>
       </div>
 
       <div style={cardStyle}>

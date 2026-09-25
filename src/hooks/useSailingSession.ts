@@ -55,7 +55,6 @@ export const useSailingSession = ({
     activeThreshold: rawActiveThresholdKn,
     isThresholdOverridden,
     speedRange,
-    setSpeedRange,
   } = useSportSettings(DEFAULT_SAILING_SPORT, SAILING_SPORTS);
 
   // Les seuils de filtrage suivent l'allure de la session, pas seulement le
@@ -230,9 +229,8 @@ export const useSailingSession = ({
     activeThresholdKn,
     /** Seuil hors réglage de la session : celui du support s'il est surchargé, sinon la suggestion. */
     defaultActiveThresholdKn,
-    /** Bornes du dégradé de la trace choisies par l'utilisateur, ou `null` pour la suggestion accordée à la session. */
+    /** Bornes du dégradé réglées pour le support dans Réglages, ou `null` pour la suggestion accordée à la session. */
     speedRange,
-    setSpeedRange,
     /** Bornes de couleur suggérées à partir de l'allure de la session et du pic de vitesse sur 2 s. */
     suggestedSpeedRangeMs,
     /** Allure de la session, en m/s : déduite de la trace, ou imposée. */

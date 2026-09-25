@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ELEVATION_PRESETS, SPORT_PROFILES, getSportProfile, type RecordingProfile } from '../core/sportProfiles';
+import { isValidSpeedRange } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { SPEED_UNIT_LABEL, type SpeedUnit } from '../core/units';
 import { jsonStore } from '../platform/storage';
@@ -149,7 +150,7 @@ export const useAllSportSettings = () => {
         isThresholdOverridden: threshold !== undefined,
         textScale: isKnownTextScale(scale) ? scale : 'normal',
         terrain: isKnownTerrain(terrain) ? terrain : 'route',
-        speedRange: range && range.maxMs > range.minMs ? range : null,
+        speedRange: range && isValidSpeedRange(range) ? range : null,
         autoPause: autoPauseOverride ?? { speedMs: profile.recording.autoPauseSpeedMs, delayS: profile.recording.autoPauseDelayS },
         isAutoPauseOverridden: autoPauseOverride !== undefined,
       };
@@ -190,7 +191,7 @@ export const useAllSportSettings = () => {
           break;
         case 'speedRange': {
           const r = value as { minMs: number; maxMs: number } | null;
-          if (r !== null && !(isFinite(r.minMs) && isFinite(r.maxMs) && r.minMs >= 0 && r.maxMs > r.minMs)) return;
+          if (r !== null && !isValidSpeedRange(r)) return;
           next.speedRanges = put(stored.speedRanges, r);
           break;
         }
@@ -286,21 +287,10 @@ export const useSportSettings = (defaultSport: SportType, allowedSports: SportTy
     [persist, sport, stored]
   );
 
+  // Lecture seule ici : les bornes du support se règlent dans Réglages, celles
+  // d'une trace dans sa fiche (brouillon du module).
   const storedRange = stored.speedRanges?.[sport];
-  const speedRange =
-    storedRange && isFinite(storedRange.minMs) && isFinite(storedRange.maxMs) && storedRange.maxMs > storedRange.minMs
-      ? storedRange
-      : null;
-  const setSpeedRange = useCallback(
-    (next: { minMs: number; maxMs: number } | null) => {
-      const speedRanges = { ...stored.speedRanges };
-      if (next === null) delete speedRanges[sport];
-      else if (isFinite(next.minMs) && isFinite(next.maxMs) && next.minMs >= 0 && next.maxMs > next.minMs) speedRanges[sport] = next;
-      else return;
-      persist({ ...stored, speedRanges });
-    },
-    [persist, sport, stored]
-  );
+  const speedRange = storedRange && isValidSpeedRange(storedRange) ? storedRange : null;
 
   return {
     sport,
@@ -317,8 +307,7 @@ export const useSportSettings = (defaultSport: SportType, allowedSports: SportTy
     setSpeedUnit,
     textScale,
     setTextScale,
-    /** Bornes du dégradé choisies par l'utilisateur, ou `null` pour le défaut du module. */
+    /** Bornes du dégradé réglées pour le support dans Réglages, ou `null` pour le défaut du module. */
     speedRange,
-    setSpeedRange,
   };
 };

@@ -11,11 +11,12 @@ import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
+import SessionSaveBar from '../components/SessionSaveBar';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE } from '../components/styles';
 import { IconFile } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
-import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER } from '../core/displayConfig';
+import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
 import {
   buildCumulativeTrack, buildBaseSessionStats, computeActiveDistanceM, computeActiveTimeMs,
@@ -23,12 +24,13 @@ import {
 } from '../core/sessionStats';
 import { ELEVATION_PRESETS, getActiveThresholds } from '../core/sportProfiles';
 import { meanFilterByTime } from '../core/speedFilter';
-import { speedGradientColor } from '../core/speedGradient';
+import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import {
   SPEED_UNIT_LABEL, formatSpeed, formatSpeedValue, fromDisplaySpeed, isInverseUnit, toDisplaySpeed,
   type SpeedUnit,
 } from '../core/units';
 import { useGpxSession } from '../hooks/useGpxSession';
+import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useSessionName } from '../hooks/useSessionLibrary';
 import { libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -90,7 +92,7 @@ function RunningModule() {
   const {
     profile, terrain, setTerrain, elevationProfile,
     speedUnit, setSpeedUnit, textScale, setTextScale,
-    speedRange, setSpeedRange,
+    speedRange,
   } = useSportSettings('running');
   const { profile: runner } = useRunnerProfile();
   const gpx = useGpxSession({
@@ -104,8 +106,11 @@ function RunningModule() {
     (content: string, session: LibrarySession) => loadGpxContent(content, session.file),
     [loadGpxContent]
   );
-  const { error: sessionError } = useSessionFromUrl(receiveSession);
+  const { file: sessionFile, error: sessionError } = useSessionFromUrl(receiveSession);
   const sessionName = useSessionName(gpx.fileName);
+  // Brouillon de la session de la mémoire affichée (couleurs de la trace), écrit
+  // dans sa fiche par « Enregistrer la session ». Aucun pour un GPX lu hors de la mémoire.
+  const draft = useSessionDraft(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null);
 
   // Un GPX ouvert ici entre d'abord dans la mémoire ; faute de mémoire, il est lu directement.
   const importAndOpen = useImportAndOpen('course');
@@ -173,8 +178,8 @@ function RunningModule() {
     [gpx.track, grades, activityMask]
   );
 
-  /** Bornes du dégradé de couleur, en m/s. */
-  const range = speedRange ?? DEFAULT_SPEED_RANGE_MS;
+  /** Bornes du dégradé de couleur, en m/s : celles de la session, sinon de Réglages, sinon le défaut. */
+  const range = draft.edits.speedRange ?? speedRange ?? DEFAULT_SPEED_RANGE_MS;
 
   /** Séries des graphes : distance en km, vitesse dans l'unité choisie, altitude lissée. */
   const chartData = useMemo(() => {
@@ -219,7 +224,7 @@ function RunningModule() {
     });
   }, [gpx.track, range.minMs, range.maxMs]);
 
-  const center: [number, number] = gpx.track.length > 0 ? [gpx.track[0].lat, gpx.track[0].lon] : DEFAULT_MAP_CENTER;
+  const mapBounds = useMemo(() => trackBounds(gpx.track), [gpx.track]);
 
   const onChartHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, chartData);
@@ -321,6 +326,8 @@ function RunningModule() {
           </label>
         </div>
       </div>
+
+      <SessionSaveBar draft={draft} />
 
       {gpx.error && (
         <div className="ui-alert ui-alert--danger" style={{ marginBottom: '10px', maxWidth: '520px' }}>
@@ -470,14 +477,14 @@ function RunningModule() {
         <AnalysisMap
           panelId="running.carte"
           sessionKey={gpx.sessionKey}
-          center={center}
+          bounds={mapBounds}
           layers={mapLayers}
           defaultHeight={580}
           legend={gpx.track.length > 0 ? {
             unit: speedUnit,
             range,
-            isOverridden: speedRange !== null,
-            onChange: setSpeedRange,
+            isOverridden: draft.edits.speedRange !== null,
+            onChange: (next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); },
             slowLabel: 'marche',
           } : null}
           style={{ width: '60%' }} />

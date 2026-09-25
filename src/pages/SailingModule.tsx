@@ -9,18 +9,16 @@ import {
 import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useLeaveWarning } from '../hooks/leaveGuard';
 import { analysisPath, libraryPath, useImportAndOpen, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { DEFAULT_MAP_CENTER } from '../core/displayConfig';
+import { trackBounds } from '../core/displayConfig';
 import { SPORT_PROFILES } from '../core/sportProfiles';
-import { speedGradientColor } from '../core/speedGradient';
+import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import type { SportType, TopSegment } from '../core/types';
 import type { LibrarySession } from '../library/record';
-import type { EditedPart } from '../library/sessionEdits';
 import { readPickedFile } from '../platform/files';
 import { SPEED_UNIT_LABEL, knotsToMs, msToKnots } from '../core/units';
 import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
@@ -33,6 +31,7 @@ import { CARD_STYLE } from '../components/styles';
 import { IconFile } from '../components/icons';
 import PanelTitle from '../components/PanelTitle';
 import SessionNameEditor from '../components/SessionNameEditor';
+import SessionSaveBar from '../components/SessionSaveBar';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
 
@@ -134,16 +133,9 @@ const Compass = ({ windAngle }: { windAngle: number }) => {
 };
 
 /** Parties d'une session modifiées, en clair. */
-const EDITED_PART_LABEL: Record<EditedPart, string> = {
-  vent: 'vent',
-  seuil: "seuil d'activité",
-  allure: 'allure de la session',
-  notes: 'notes',
-};
-
 function SailingModule() {
   // Session de la mémoire désignée par l'URL, et son brouillon : vent saisi, seuil
-  // d'activité, allure imposée et notes, écrits dans sa fiche par « Enregistrer la session ».
+  // d'activité, allure imposée, couleurs et notes, écrits dans sa fiche par « Enregistrer la session ».
   const [searchParams] = useSearchParams();
   const requestedFile = searchParams.get('session');
   const draft = useSessionDraft(requestedFile);
@@ -173,7 +165,6 @@ function SailingModule() {
     activeThresholdKn,
     defaultActiveThresholdKn,
     speedRange,
-    setSpeedRange,
     suggestedSpeedRangeMs,
     referenceSpeedMs,
     samplingS,
@@ -230,24 +221,12 @@ function SailingModule() {
 
   const notes = edits.notes;
   const setNotes = draft.updateNotes;
-  const changedText = draft.changed.map((part) => EDITED_PART_LABEL[part]).join(', ');
-  const leaveWarning = useMemo(
-    () =>
-      draft.dirty && draft.savable
-        ? {
-            message: `Modifications non enregistrées sur cette session (${changedText}). Quitter sans les enregistrer ?`,
-            discard: draft.cancel,
-          }
-        : null,
-    [draft.dirty, draft.savable, draft.cancel, changedText]
-  );
-  useLeaveWarning(leaveWarning);
   const { open, toggle } = useOpenSections<SailingSection>('sailing', SAILING_SECTION_DEFAULTS);
   const { open: carteOpen, toggle: toggleCarte } =
     useOpenSections<SailingCartePanel>('sailing-carte', SAILING_CARTE_PANEL_DEFAULTS);
 
-  /** Bornes du dégradé de couleur de la trace, en m/s. */
-  const colorRange = speedRange ?? suggestedSpeedRangeMs;
+  /** Bornes du dégradé de couleur de la trace, en m/s : celles de la session, sinon de Réglages, sinon la suggestion. */
+  const colorRange = edits.speedRange ?? speedRange ?? suggestedSpeedRangeMs;
 
   const [showTacksOnMap, setShowTacksOnMap] = useState<boolean>(false);
   const [showJibesOnMap, setShowJibesOnMap] = useState<boolean>(false);
@@ -339,7 +318,7 @@ function SailingModule() {
     );
   }, [trackData, colorRange, maneuverStats, showTacksOnMap, showJibesOnMap, selectedTopMap, stats, vmgStats, maneuverTopArray, selectedManeuverTop]);
 
-  const center: [number, number] = trackData.length > 0 ? [trackData[0].lat, trackData[0].lon] : DEFAULT_MAP_CENTER;
+  const mapBounds = useMemo(() => trackBounds(trackData), [trackData]);
 
   /** Survol d'un graphe : déplace le marqueur de la carte sur le point de trace correspondant. */
   const onChartHover = (data: ReadonlyArray<{ index: number }>) => (e: ChartHoverEvent) => {
@@ -669,20 +648,8 @@ function SailingModule() {
         </div>
       </div>
 
-      {draft.savable && loadedFromMemory && (
-        <div className={`ui-savebar${draft.dirty ? ' ui-savebar--dirty' : ''}`}>
-          {draft.dirty ? (
-            <>
-              <span><strong>Non enregistré</strong> : {changedText}.</span>
-              <span className="ui-savebar__actions">
-                <Button onClick={draft.cancel}>Annuler</Button>
-                <Button variant="primary" onClick={draft.save}>Enregistrer la session</Button>
-              </span>
-            </>
-          ) : (
-            <span>Session enregistrée : vent, seuil d'activité, allure et notes sont gardés dans sa fiche.</span>
-          )}
-        </div>
+      {loadedFromMemory && (
+        <SessionSaveBar draft={draft} kept="vent, seuil d'activité, allure, couleurs et notes sont gardés dans sa fiche" />
       )}
 
       {loadError && (
@@ -883,14 +850,14 @@ function SailingModule() {
         <AnalysisMap
           panelId="sailing.carte"
           sessionKey={sessionKey}
-          center={center}
+          bounds={mapBounds}
           layers={mapLayers}
           defaultHeight={660}
           legend={trackData.length > 0 ? {
             unit: 'kn',
             range: colorRange,
-            isOverridden: speedRange !== null,
-            onChange: setSpeedRange,
+            isOverridden: edits.speedRange !== null,
+            onChange: (next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); },
             slowLabel: `sous ${Math.round(msToKnots(colorRange.minMs))} nds`,
           } : null}
           style={{ flex: '0 1 60%' }} />

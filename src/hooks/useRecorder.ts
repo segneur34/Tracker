@@ -24,16 +24,21 @@ import { saveRecordedSession } from './useSessionLibrary';
  * Enregistreur de session. Il vit hors des composants, dans ce module : on
  * peut changer de page pendant un enregistrement sans l'interrompre. Les
  * pages le lisent par `useRecorder` et le pilotent par `startRecording`,
- * `stopRecording`, `pauseRecording`/`resumeRecording` (pause manuelle) et
+ * `stopRecording`, `pauseRecording`/`resumeRecording` (pause manuelle),
+ * `analyzePendingSession`/`discardPendingSession` et
  * `recoverInterruptedRecording`.
  *
  * Chaîne : chaque position reçue est arrondie (`roundFix`), gardée en mémoire
  * et ajoutée au journal, écrit par paquets à l'arrivée des positions
  * (`shouldFlushJournal`). À l'arrêt, le GPX est construit depuis la mémoire,
- * un `<trkseg>` par segment continu (`splitIntoSegments`), et rangé dans la
- * bibliothèque (`saveRecordedSession`) ; après un arrêt brutal, il est
- * reconstruit depuis le journal au démarrage suivant. Le journal n'est
- * effacé qu'une fois le GPX écrit.
+ * un `<trkseg>` par segment continu (`splitIntoSegments`), et la session
+ * attend une décision (`pending`) : « Analyser » la range dans la
+ * bibliothèque (`saveRecordedSession`), « Jeter » l'abandonne. Rien n'entre
+ * dans la mémoire sans cette décision, pour ne pas l'encombrer d'essais.
+ * Tant qu'elle attend, le journal est gardé : après un arrêt brutal ou une
+ * fermeture, la session est reconstruite depuis lui au démarrage suivant, et
+ * attend de nouveau. Le journal n'est effacé qu'une fois le GPX écrit, ou la
+ * session jetée.
  *
  * Deux pauses : manuelle (l'utilisateur coupe la source GPS, batterie
  * économisée, reprise explicite) et automatique (immobilité prolongée,
@@ -43,7 +48,18 @@ import { saveRecordedSession } from './useSessionLibrary';
 
 export type RecorderStatus = 'idle' | 'starting' | 'recording' | 'paused' | 'stopping';
 
-/** Session terminée, rangée et prête à être analysée. */
+/** Session terminée, pas encore rangée : l'utilisateur doit l'analyser ou la jeter. */
+export interface PendingSession {
+  fileName: string;
+  /** Le GPX lui-même, pour le ranger ou le télécharger sans le reconstruire. */
+  content: string;
+  sport: SportType;
+  pointCount: number;
+  /** Vrai si elle a été reconstruite depuis le journal d'un enregistrement interrompu. */
+  recovered: boolean;
+}
+
+/** Session rangée par « Analyser ». */
 export interface SavedSession {
   fileName: string;
   /** Nom dans la mémoire, `null` si la session n'a pas pu y entrer (en attente, ou aucune mémoire). */
@@ -65,6 +81,8 @@ export interface RecorderState {
   /** Raison de la pause en cours, `null` sinon. */
   pausedReason: 'manual' | 'auto' | null;
   stats: RecordingStats;
+  /** Session arrêtée qui attend « Analyser » ou « Jeter » ; aucun nouvel enregistrement d'ici là. */
+  pending: PendingSession | null;
   saved: SavedSession | null;
   error: string | null;
 }
@@ -75,6 +93,7 @@ const INITIAL_STATE: RecorderState = {
   sourceLabel: null,
   pausedReason: null,
   stats: EMPTY_RECORDING_STATS,
+  pending: null,
   saved: null,
   error: null,
 };
@@ -175,11 +194,11 @@ const receiveFix = (recording: RecordingProfile) => (received: LocationFix): voi
 };
 
 /**
- * Range le GPX de segments dans la bibliothèque, puis efface le journal.
- * Rend `null` s'il y a moins de deux positions au total : aucune trace ne
- * s'en tire, il n'y a rien à garder.
+ * Construit le GPX de segments, sans le ranger : le journal reste jusqu'à la
+ * décision de l'utilisateur. Rend `null`, journal effacé, s'il y a moins de
+ * deux positions au total : aucune trace ne s'en tire, il n'y a rien à garder.
  */
-const saveSession = async (sport: SportType, segments: LocationFix[][], recovered: boolean): Promise<SavedSession | null> => {
+const buildPendingSession = async (sport: SportType, segments: LocationFix[][], recovered: boolean): Promise<PendingSession | null> => {
   const pointCount = segments.reduce((n, s) => n + s.length, 0);
   if (pointCount < 2) {
     await recordingJournal.remove();
@@ -188,11 +207,34 @@ const saveSession = async (sport: SportType, segments: LocationFix[][], recovere
   const startMs = segments.find((s) => s.length > 0)![0].timeMs;
   const fileName = sessionFileName(startMs, sport);
   const content = buildGpx(segments, { name: sessionTitle(startMs, sport), sport });
-  // Si l'écriture échoue, l'erreur remonte avant l'effacement : le journal
-  // reste, et la session sera reconstruite au prochain démarrage.
-  const { file, location } = await saveRecordedSession(content, sport);
+  return { fileName, content, sport, pointCount, recovered };
+};
+
+/**
+ * « Analyser » : range la session en attente dans la bibliothèque, puis
+ * efface le journal. Rend la session rangée, ou `null` si l'écriture échoue :
+ * la session reste alors en attente, journal compris.
+ */
+export const analyzePendingSession = async (): Promise<SavedSession | null> => {
+  const pending = state.pending;
+  if (!pending) return null;
+  try {
+    const { file, location } = await saveRecordedSession(pending.content, pending.sport);
+    await recordingJournal.remove();
+    const saved: SavedSession = { ...pending, fileName: file ?? pending.fileName, libraryFile: file, location };
+    setState({ pending: null, saved, error: null });
+    return saved;
+  } catch (err) {
+    setState({ error: `Enregistrement du GPX impossible : ${errorMessage(err, 'erreur inconnue')}. La session reste en attente.` });
+    return null;
+  }
+};
+
+/** « Jeter » : abandonne la session en attente et efface son journal. */
+export const discardPendingSession = async (): Promise<void> => {
+  if (!state.pending) return;
   await recordingJournal.remove();
-  return { fileName: file ?? fileName, libraryFile: file, location, content, sport, pointCount, recovered };
+  setState({ pending: null, error: null });
 };
 
 /** Options de démarrage d'une source, communes au premier démarrage et à une reprise manuelle. */
@@ -209,18 +251,20 @@ const isBusy = (): boolean => state.status !== 'idle';
 export const isRecordingActive = (): boolean => isBusy();
 
 /**
- * Termine un enregistrement interrompu par un arrêt brutal : relit le
- * journal, écrit le GPX. À appeler au démarrage de l'application.
+ * Reprend un enregistrement que l'application n'a pas vu se conclure (arrêt
+ * brutal, ou session arrêtée puis application fermée sans décision) : relit
+ * le journal et remet la session en attente. À appeler au démarrage de
+ * l'application.
  */
 export const recoverInterruptedRecording = async (): Promise<void> => {
-  if (isBusy()) return;
+  if (isBusy() || state.pending) return;
   const text = await recordingJournal.read();
   if (text === null) return;
   await stopOrphanedDeviceLocation();
   const { header, fixes: list, breaks } = parseJournal(text);
   try {
-    const saved = await saveSession(header?.sport ?? 'wingfoil', splitIntoSegments(list, breaks), true);
-    if (saved) setState({ saved, error: null });
+    const pending = await buildPendingSession(header?.sport ?? 'wingfoil', splitIntoSegments(list, breaks), true);
+    if (pending) setState({ pending, saved: null, error: null });
   } catch (err) {
     setState({ error: `Session interrompue non récupérée : ${errorMessage(err, 'erreur inconnue')}` });
   }
@@ -229,6 +273,8 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
 export const startRecording = async (sport: SportType, source: LocationSource): Promise<void> => {
   if (isBusy()) return;
   await recoverInterruptedRecording();
+  // Le journal d'une session en attente serait écrasé : elle doit être analysée ou jetée d'abord.
+  if (state.pending) return;
 
   const profile = effectiveRecordingProfile(sport);
   fixes = [];
@@ -303,16 +349,16 @@ export const stopRecording = async (): Promise<void> => {
   await flushJournal();
 
   try {
-    const saved = await saveSession(sport, splitIntoSegments(fixes, segmentBreaks), false);
+    const pending = await buildPendingSession(sport, splitIntoSegments(fixes, segmentBreaks), false);
     setState({
       status: 'idle',
-      saved,
-      error: saved ? state.error : 'Moins de deux positions reçues : rien à enregistrer.',
+      pending,
+      error: pending ? state.error : 'Moins de deux positions reçues : rien à enregistrer.',
     });
   } catch (err) {
     setState({
       status: 'idle',
-      error: `Enregistrement du GPX impossible : ${errorMessage(err, 'erreur inconnue')}. Le journal est gardé et sera repris au prochain démarrage.`,
+      error: `Construction du GPX impossible : ${errorMessage(err, 'erreur inconnue')}. Le journal est gardé et sera repris au prochain démarrage.`,
     });
   }
   fixes = [];

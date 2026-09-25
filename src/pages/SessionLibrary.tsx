@@ -7,10 +7,11 @@ import { IconChevronRight, IconFile } from '../components/icons';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
+import { trackBounds } from '../core/displayConfig';
 import { parseGpx } from '../core/gpxParser';
 import { computeKinematics } from '../core/kinematics';
 import { referenceSpeedMs as sessionReferenceSpeedMs } from '../core/sessionSpeed';
-import { speedGradientColor } from '../core/speedGradient';
+import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import { SAILING_SPORTS, SPORT_PROFILES, sportFamily, type SportFamily } from '../core/sportProfiles';
 import type { RawTrackPoint, SportType, TrackPoint } from '../core/types';
 import { formatDuration, formatSpeed, knotsToMs, msToKnots } from '../core/units';
@@ -60,9 +61,9 @@ const rowStats = (session: LibrarySession): string[] => {
 };
 
 /**
- * Bornes de couleur d'une vignette d'aperçu, dans cet ordre :
- * 1. la surcharge réglée par l'utilisateur pour ce support (légende du module d'analyse,
- *    `tracker.sportSettings`) — elle prime toujours ;
+ * Bornes de couleur d'une vignette d'aperçu, dans cet ordre, comme le module d'analyse :
+ * 0. celles enregistrées dans la fiche de la session (`analysis.speedRange`) ;
+ * 1. celles réglées pour ce support dans Réglages (`tracker.sportSettings`) ;
  * 2. en voile, les bornes suggérées par l'allure de la session, comme le module d'analyse :
  *    seuil d'activité suggéré en bas, pic de vitesse déjà enregistré dans la fiche
  *    (`summary.maxSpeedMs`) plus une marge en haut — l'allure vient de la fiche si elle a été
@@ -71,9 +72,10 @@ const rowStats = (session: LibrarySession): string[] => {
  */
 const previewSpeedRange = (session: LibrarySession, family: SportFamily, rawPoints: RawTrackPoint[]): { minMs: number; maxMs: number } => {
   const { record } = session;
+  if (record.analysis?.speedRange) return record.analysis.speedRange;
   if (record.sport) {
     const override = readStoredSettings().speedRanges?.[record.sport];
-    if (override && isFinite(override.minMs) && isFinite(override.maxMs) && override.maxMs > override.minMs) return override;
+    if (override && isValidSpeedRange(override)) return override;
   }
   if (record.sport && family === 'voile' && record.summary.maxSpeedMs > 0) {
     const referenceKn = msToKnots(record.analysis?.referenceSpeedMs ?? sessionReferenceSpeedMs(rawPoints));
@@ -117,8 +119,8 @@ function SessionPreviewMap({ session, family }: { session: LibrarySession; famil
   const { minMs, maxMs } = range;
   return (
     <MapContainer
-      center={[track[0].lat, track[0].lon]}
-      zoom={13}
+      bounds={trackBounds(track) ?? undefined}
+      boundsOptions={{ padding: [12, 12], maxZoom: 17 }}
       style={{ height: '160px', width: '100%' }}
       zoomControl={false}
       attributionControl={false}>

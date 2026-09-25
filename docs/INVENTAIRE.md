@@ -21,7 +21,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `elevation.ts` : lissage de l'altitude et dénivelé à seuil, `computeElevationStats`.
 - `topSegments.ts` : meilleurs segments en temps et en distance, sans chevauchement.
 - `speedGradient.ts` : dégradé de couleur de la trace, `speedGradientColor`.
-- `displayConfig.ts` : `CHART_MAX_POINTS`, `DEFAULT_MAP_CENTER`.
+- `displayConfig.ts` : `CHART_MAX_POINTS`, `DEFAULT_MAP_CENTER`, `trackBounds` (emprise d'une trace, où la carte se cadre).
 
 ## `sailing/` : voile, en nœuds sur `PointData`
 
@@ -67,7 +67,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 ## `hooks/`
 
 - `useSessionLibrary.ts` : la bibliothèque, store hors des composants (ouverture du dossier, rapprochement, réglages qui voyagent, import, écritures différées des fiches, suppression) ; `updateSessionRecord`, `saveRecordedSession`, `importFiles`.
-- `useRecorder.ts` : l'enregistreur, hors des composants (`startRecording`, `pauseRecording`, `resumeRecording`, `stopRecording`, `recoverInterruptedRecording`, pause automatique).
+- `useRecorder.ts` : l'enregistreur, hors des composants (`startRecording`, `pauseRecording`, `resumeRecording`, `stopRecording`, session en attente `analyzePendingSession`/`discardPendingSession`, `recoverInterruptedRecording`, pause automatique).
 - `useLiveRecording.ts` : trace et statistiques en direct pour la page affichée, recalculées au plus toutes les 2 s.
 - `useGpxSession.ts` : ingestion générique, `loadGpxContent` (entrée unique), trace dérivée des points bruts.
 - `useSailingSession.ts` : orchestration de la voile ; c'est ici que les seuils s'accordent à l'allure (règle 4).
@@ -84,18 +84,20 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `RunningModule.tsx` : analyse course (synthèse, zones, graphes, carte).
 - `analysisMobile.css` : disposition des deux modules d'analyse sous 768 px (carte pleine largeur en haut, feuille des chiffres clés, vue plein écran au tap) ; classes `an-*`.
 - `RecordingPage.tsx` : enregistrement, source GPS ou rejeu, pause, carte et statistiques en direct.
-- `SettingsPage.tsx` : mémoire, réglages par support, course, coureur.
+- `SettingsPage.tsx` : mémoire, réglages par support (couleurs de trace comprises), course, coureur ; `settingsPage.css` met le tableau des supports en cartes sous 768 px.
 
 ## `components/` et thème
 
 - `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement.
 - `MemoryStatus.tsx` : état de la mémoire et l'action qui convient. `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `LiveMap.tsx` : carte de l'enregistrement en cours, qui suit la position. `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17).
-- `AnalysisMap.tsx` : carte d'une page d'analyse, sa légende collée dessous et sa vue plein écran au tap (`docs/MISE_EN_PAGE.md`).
+- `SessionSaveBar.tsx` : barre « Enregistrer la session » du brouillon, commune aux deux modules.
+- `AnalysisMap.tsx` : carte d'une page d'analyse, cadrée sur la trace, sa légende collée dessous et sa vue plein écran au tap (`docs/MISE_EN_PAGE.md`).
 - `SpeedGradientLegend.tsx` : légende et bornes de couleur (§10, point 30). `MapAutoResize.tsx` : `invalidateSize` de la carte. `chartHover.ts` : survol d'un graphe vers la carte.
 - `ui/` : `Button`, `Card`, `PageHeader`, `ui.css`. `icons.tsx` : icônes SVG. `styles.ts` : `CARD_STYLE`.
 - `theme/tokens.css` : toutes les variables de la DA. `theme/base.css` : police, fond, focus.
 
 ## Hors de `src/`
 
+- `outils/lancer-tracker.bat` : lance le serveur de développement s'il ne tourne pas et ouvre l'application ; cible du raccourci « Tracker » du bureau, icône `outils/tracker.ico` (`outils/LISEZMOI.md`).
 - `outils/banc/` : banc de test, des scripts Node qui pilotent un Chrome sans fenêtre ou la WebView du téléphone ; mode d'emploi dans son `LISEZMOI.md`.
 - `.gitattributes` : fins de ligne (LF, CRLF pour les `.bat`).

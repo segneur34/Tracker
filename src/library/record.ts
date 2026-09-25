@@ -1,3 +1,4 @@
+import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { isSportType } from '../recording/session';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
@@ -8,8 +9,8 @@ import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
  *
  * Le GPX fait foi. La fiche en garde un résumé, pour afficher la liste sans
  * relire les traces, et ce que l'utilisateur a saisi : support, notes,
- * réglages d'analyse (vent, seuil d'activité). Tout se recalcule depuis le
- * GPX, sauf ces saisies.
+ * réglages d'analyse (vent, seuil d'activité, couleurs). Tout se recalcule
+ * depuis le GPX, sauf ces saisies.
  *
  * Deux règles de compatibilité, parce que le dossier passe d'un appareil à
  * l'autre et d'une version de l'application à l'autre :
@@ -73,6 +74,11 @@ export interface SessionAnalysis {
    * changement de support la garde.
    */
   referenceSpeedMs: number | null;
+  /**
+   * Bornes du dégradé de couleur de la trace, en m/s, propres à la session ;
+   * `null` : celles des Réglages du support, sinon le défaut du module.
+   */
+  speedRange: SpeedRangeMs | null;
   savedAt: number;
 }
 
@@ -163,6 +169,10 @@ export const readSessionName = (raw: unknown): string | null => {
 /** Direction ramenée dans [0, 360). */
 export const normalizeDeg = (deg: number): number => ((deg % 360) + 360) % 360;
 
+/** Bornes de couleur relues : `null` si elles sont mal formées ou vides. */
+const readSpeedRange = (raw: unknown): SpeedRangeMs | null =>
+  isObject(raw) && isValidSpeedRange(raw) ? { minMs: raw.minMs, maxMs: raw.maxMs } : null;
+
 /** Réglages d'analyse relus, champ par champ : une valeur mal formée revient au défaut. */
 export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
   if (!isObject(raw)) return null;
@@ -171,6 +181,7 @@ export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
     windDeg: isFiniteNumber(raw.windDeg) ? normalizeDeg(raw.windDeg) : null,
     activeThreshold: isFiniteNumber(raw.activeThreshold) && raw.activeThreshold >= 0 ? raw.activeThreshold : null,
     referenceSpeedMs: isFiniteNumber(raw.referenceSpeedMs) && raw.referenceSpeedMs > 0 ? raw.referenceSpeedMs : null,
+    speedRange: readSpeedRange(raw.speedRange),
     savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
   };
 };

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
+  EDITED_PART_LABEL,
   changedParts,
   editsPatch,
   latestGearNotes,
@@ -8,12 +9,15 @@ import {
   type SessionEdits,
 } from '../library/sessionEdits';
 import type { SailingSessionNotes } from '../sailing/sessionNotes';
+import { useLeaveWarning } from './leaveGuard';
 import { findLibrarySession, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
 
 /**
  * Brouillon des changements faits sur une session (vent saisi, seuil
- * d'activité, notes) : l'analyse les suit tout de suite, mais la fiche ne les
- * reçoit qu'à `save`, et `cancel` revient à l'état enregistré.
+ * d'activité, allure, couleurs, notes) : l'analyse les suit tout de suite,
+ * mais la fiche ne les reçoit qu'à `save`, et `cancel` revient à l'état
+ * enregistré. Quitter la page avec un brouillon enregistrable demande
+ * confirmation (`useLeaveWarning`).
  *
  * Le brouillon d'une session de la mémoire survit à un changement de page,
  * jusqu'à ce qu'on l'enregistre ou l'abandonne. Celui d'un GPX ouvert hors de
@@ -68,6 +72,20 @@ export const useSessionDraft = (file: string | null) => {
     cancel();
   }, [draft, record, savable, file, saved, cancel]);
 
+  const changedText = changed.map((part) => EDITED_PART_LABEL[part]).join(', ');
+  const dirty = changed.length > 0;
+  const leaveWarning = useMemo(
+    () =>
+      dirty && savable
+        ? {
+            message: `Modifications non enregistrées sur cette session (${changedText}). Quitter sans les enregistrer ?`,
+            discard: cancel,
+          }
+        : null,
+    [dirty, savable, cancel, changedText]
+  );
+  useLeaveWarning(leaveWarning);
+
   return {
     /** État affiché : le brouillon, sinon l'état enregistré. */
     edits,
@@ -75,7 +93,9 @@ export const useSessionDraft = (file: string | null) => {
     updateNotes,
     /** Parties changées depuis le dernier enregistrement. */
     changed,
-    dirty: changed.length > 0,
+    /** Parties changées, en clair : « vent, notes ». */
+    changedText,
+    dirty,
     save,
     cancel,
     /** Faux pour une session hors de la mémoire, ou dont la fiche ne peut pas être réécrite. */

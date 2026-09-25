@@ -11,7 +11,10 @@ import LiveMap from '../components/LiveMap';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { effectiveSpeedUnit } from '../hooks/useSportSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
-import { dismissRecorderResult, getLastFix, pauseRecording, resumeRecording, startRecording, stopRecording, useRecorder } from '../hooks/useRecorder';
+import {
+  analyzePendingSession, discardPendingSession, dismissRecorderResult, getLastFix, pauseRecording, resumeRecording,
+  startRecording, stopRecording, useRecorder,
+} from '../hooks/useRecorder';
 import { LIVE_STATS_DEFAULTS, type LiveStats } from '../recording/liveStats';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { createReplaySource, deviceLocationSource, type LocationFix } from '../platform/location';
@@ -21,7 +24,9 @@ import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
 /**
  * Enregistrement d'une session : support, démarrer, arrêter, et ce qu'il faut
  * pour juger en direct que l'enregistrement tient (points, durée, plus long
- * trou, précision). L'onglet « Enregistrer » de la barre de navigation.
+ * trou, précision). À l'arrêt, la session n'est rangée dans la mémoire que
+ * sur « Analyser » ; « Jeter » l'abandonne. L'onglet « Enregistrer » de la
+ * barre de navigation.
  *
  * Dans le navigateur, une source « rejeu » relit un GPX en accéléré : toute la
  * chaîne s'éprouve sur le PC, jusqu'à l'analyse de la session obtenue.
@@ -88,10 +93,11 @@ function RecordingPage() {
   const [replaySpeed, setReplaySpeed] = useState(60);
 
   const busy = recorder.status !== 'idle';
-  const { stats, saved } = recorder;
+  const { stats, pending, saved } = recorder;
+  const [analyzing, setAnalyzing] = useState(false);
   const durationMs = recordingDurationMs(stats);
   const meanIntervalS = stats.pointCount > 1 ? durationMs / 1000 / (stats.pointCount - 1) : null;
-  const canStart = !busy && (sourceChoice === 'device' || replay !== null);
+  const canStart = !busy && pending === null && (sourceChoice === 'device' || replay !== null);
   const liveSport = recorder.sport ?? sport;
   const live = useLiveRecording(busy ? liveSport : null, stats.pointCount);
 
@@ -109,6 +115,23 @@ function RecordingPage() {
     }
   };
 
+  /** « Analyser » : range la session, puis l'ouvre si elle est entrée dans la mémoire. */
+  const handleAnalyze = async () => {
+    setAnalyzing(true);
+    const result = await analyzePendingSession();
+    setAnalyzing(false);
+    if (result?.libraryFile) {
+      dismissRecorderResult();
+      openSession(result.libraryFile, sportFamily(result.sport));
+    }
+  };
+
+  const handleDiscard = () => {
+    if (window.confirm('Jeter cette session ? Elle ne sera pas rangée dans la mémoire, et ne pourra pas être récupérée.')) {
+      void discardPendingSession();
+    }
+  };
+
   const handleStart = () => {
     const source = sourceChoice === 'replay' && replay
       ? createReplaySource(replay.fixes, replaySpeed)
@@ -120,7 +143,7 @@ function RecordingPage() {
     <div className="ui-page">
       <PageHeader title="Enregistrer" subtitle="Une position par seconde, gardée brute : l'analyse se fait ensuite." />
 
-      {!busy && <Card>
+      {!busy && !pending && <Card>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 'var(--text-m)' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span className="ui-eyebrow">Support</span>
@@ -182,7 +205,7 @@ function RecordingPage() {
             {recorder.status === 'stopping' ? 'Enregistrement du fichier…' : 'Arrêter'}
           </Button>
         </div>
-      ) : (
+      ) : !pending && (
         <Button variant="record" size="l" block onClick={handleStart} disabled={!canStart}>
           <span className="ui-record-dot" />
           Démarrer
@@ -230,8 +253,33 @@ function RecordingPage() {
         </Card>
       )}
 
+      {pending && (
+        <Card heading={pending.recovered ? 'Session interrompue récupérée' : 'Session terminée'}>
+          <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
+            {SPORT_PROFILES[pending.sport].label}, {pending.pointCount} points.<br />
+            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)' }}>
+              Pas encore rangée : « Analyser » la range dans la mémoire et l'ouvre, « Jeter » l'abandonne.
+              Aucun nouvel enregistrement avant ce choix.
+            </span>
+          </p>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <Button variant="primary" onClick={() => void handleAnalyze()} disabled={analyzing}>
+              {analyzing ? 'Rangement…' : 'Analyser'}
+            </Button>
+            {canDownloadFiles() && (
+              <Button onClick={() => downloadTextFile(pending.fileName, pending.content)}>
+                Télécharger le GPX
+              </Button>
+            )}
+            <Button variant="danger" onClick={handleDiscard} disabled={analyzing}>
+              Jeter
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {saved && (
-        <Card heading={saved.recovered ? 'Session interrompue récupérée' : 'Session enregistrée'}>
+        <Card heading="Session rangée">
           <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
             {SPORT_PROFILES[saved.sport].label}, {saved.pointCount} points.<br />
             <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', wordBreak: 'break-all' }}>Rangée dans : {saved.location}</span>
@@ -262,7 +310,7 @@ function RecordingPage() {
         </Card>
       )}
 
-      {native && !busy && (
+      {native && !busy && !pending && (
         <p style={{ margin: 0, fontSize: 'var(--text-s)', color: 'var(--muted)', lineHeight: 1.5 }}>
           Pour un enregistrement écran éteint : autoriser la position et les notifications au premier démarrage ;
           dans les réglages de l'application, activer le démarrage automatique et mettre la batterie en « Aucune

@@ -31,6 +31,6 @@ void initStorage()
     startLibraryUi(isRecordingActive);
     installLeaveGuard();
     void installBackButton(isRecordingActive, confirmLeave);
-    // Un enregistrement coupé par un arrêt brutal devient une session.
+    // Un enregistrement coupé par un arrêt brutal, ou arrêté sans décision, revient en attente.
     void recoverInterruptedRecording();
   });
