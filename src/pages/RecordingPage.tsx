@@ -20,6 +20,7 @@ import {
 } from '../hooks/useRecorder';
 import { followProgress, followedTraceLengthM, splitFollowedTrace, type FollowProgress } from '../recording/followedTrace';
 import { travelHeading } from '../recording/heading';
+import { LIVE_LEG_DEFAULTS, type LiveLeg } from '../recording/liveLegs';
 import { LIVE_STATS_DEFAULTS, type LiveStats } from '../recording/liveStats';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { createReplaySource, deviceLocationSource, type LocationFix } from '../platform/location';
@@ -102,6 +103,35 @@ const liveStatItems = (activity: Activity, live: LiveStats): { label: string; va
     { label: 'D−', value: formatMeters(live.elevationLossM) },
     { label: `D+ ${recentWindowLabel}`, value: formatMeters(live.recentGainM) },
   ];
+};
+
+/** Durée d'un bord : m:ss, h:mm:ss au-delà d'une heure. */
+const formatLegDuration = (ms: number): string => {
+  const clock = formatClock(ms);
+  return clock.startsWith('0:') ? clock.slice(2).replace(/^0(?=\d:)/, '') : clock;
+};
+
+/**
+ * Un bord de voile en direct : cap moyen (le vent est inconnu, donc pas
+ * d'amure), durée, vitesse moyenne et max sur 2 s. `leg` nul : `empty`.
+ */
+const LegCard = ({ title, leg, empty, activity }: { title: string; leg: LiveLeg | null; empty: string; activity: Activity }) => {
+  const unit = effectiveSpeedUnit(activity);
+  const detail = leg
+    ? `${leg.headingDeg === null ? 'cap —' : `cap ${Math.round(leg.headingDeg) % 360}°`} · ${formatLegDuration(leg.endMs - leg.startMs)}`
+    : empty;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-2)' }}>
+        <span style={{ fontWeight: 700 }}>{title}</span>
+        <span className="num" style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>{detail}</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-2)' }}>
+        <Stat label="Moyenne" value={formatSpeed(leg?.averageSpeedMs ?? null, unit)} />
+        <Stat label={`Max (${LIVE_LEG_DEFAULTS.topDurationS} s)`} value={formatSpeed(leg?.maxSpeedMs ?? null, unit)} />
+      </div>
+    </div>
+  );
 };
 
 function RecordingPage() {
@@ -327,6 +357,13 @@ function RecordingPage() {
             {liveActivity && followed && followStatItems(liveActivity, progress, followedLengthM).map((item) => <Stat key={item.label} {...item} />)}
             {liveActivity && liveStatItems(liveActivity, live.stats).map((item) => <Stat key={item.label} {...item} />)}
           </div>
+          {liveActivity && sportFamily(liveActivity.base) === 'voile' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
+              <LegCard title="Bord en cours" leg={live.stats.legs.current}
+                empty={live.stats.movingTimeMs > 0 ? 'en manœuvre' : 'pas encore'} activity={liveActivity} />
+              <LegCard title="Bord précédent" leg={live.stats.legs.previous} empty="pas encore" activity={liveActivity} />
+            </div>
+          )}
         </Card>
       )}
 

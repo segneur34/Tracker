@@ -1,10 +1,11 @@
 import { accumulateElevation, computeElevationStats } from '../core/elevation';
 import { computeKinematics } from '../core/kinematics';
 import { MIN_ELEVATION_COVERAGE, buildCumulativeTrack, segmentDistanceM } from '../core/sessionStats';
-import type { SportProfile } from '../core/sportProfiles';
+import { SAILING_SPORTS, type SportProfile } from '../core/sportProfiles';
 import { computeTopSegments } from '../core/topSegments';
 import type { RawTrackPoint, TrackPoint } from '../core/types';
 import type { LocationFix } from '../platform/location';
+import { EMPTY_LIVE_LEGS, computeLiveLegs, type LiveLegs } from './liveLegs';
 
 /**
  * Statistiques affichées pendant l'enregistrement, calculées sur la trace en
@@ -45,6 +46,8 @@ export interface LiveStats {
   elevationLossM: number | null;
   /** D+ sur la fenêtre récente, `null` si l'altitude manque. */
   recentGainM: number | null;
+  /** Bord en cours et bord précédent, en voile seulement. */
+  legs: LiveLegs;
 }
 
 export const EMPTY_LIVE_STATS: LiveStats = {
@@ -57,6 +60,7 @@ export const EMPTY_LIVE_STATS: LiveStats = {
   elevationGainM: null,
   elevationLossM: null,
   recentGainM: null,
+  legs: EMPTY_LIVE_LEGS,
 };
 
 const toRawPoint = (fix: LocationFix): RawTrackPoint => ({
@@ -158,5 +162,6 @@ export const computeLiveStats = (
     elevationGainM: hasElevation ? gainM : null,
     elevationLossM: hasElevation ? lossM : null,
     recentGainM: hasElevation ? recentGainM : null,
+    legs: SAILING_SPORTS.includes(profile.id) ? computeLiveLegs(tracks) : EMPTY_LIVE_LEGS,
   };
 };
