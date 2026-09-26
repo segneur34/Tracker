@@ -1,4 +1,5 @@
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
+import { sportFamily } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import { isSportType } from '../recording/session';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
@@ -299,4 +300,69 @@ export const dedupeSessions = (
   }
   const kept = [...byStart.values()].sort((a, b) => b.record.summary.startMs - a.record.summary.startMs);
   return { kept, duplicates };
+};
+
+/** Changement demandé sur une fiche ; un champ absent n'est pas touché. */
+export interface RecordPatch {
+  sport?: SportType | null;
+  /** Activité ; `null` : la première de son calcul. */
+  activityId?: string | null;
+  /** Nom donné par l'utilisateur ; vide ou `null` : plus de nom. */
+  name?: string | null;
+  notes?: StoredSessionNotes | null;
+  analysis?: SessionAnalysis | null;
+  maneuverCount?: number;
+}
+
+/**
+ * Fiche après un changement : support, activité, nom, notes, réglages
+ * d'analyse, nombre de manœuvres. Rend la fiche d'origine, à l'identique, si
+ * rien ne change. `resummarize` : le résumé est à recalculer (support,
+ * activité, seuil ou allure imposée changés).
+ *
+ * Un changement de support efface le seuil propre à la session, exprimé dans
+ * l'unité de l'ancien support ; un changement de famille (voile ↔ course)
+ * efface aussi ses bornes de couleur, pensées pour les vitesses de l'autre
+ * sport. Le vent saisi, l'allure imposée (elle décrit la trace) et les notes
+ * restent : sans effet en course, ils reviennent si la session repasse en
+ * voile.
+ */
+export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { record: SessionRecord; resummarize: boolean } => {
+  const original = record;
+  let next = record;
+  if (patch.name !== undefined) {
+    const name = readSessionName(patch.name);
+    if (name !== next.name) next = { ...next, name };
+  }
+  if (patch.notes !== undefined) next = { ...next, notes: patch.notes };
+  const thresholdBefore = next.analysis?.activeThreshold ?? null;
+  const referenceBefore = next.analysis?.referenceSpeedMs ?? null;
+  if (patch.analysis !== undefined) next = { ...next, analysis: patch.analysis };
+  if (patch.maneuverCount !== undefined && patch.maneuverCount !== next.summary.maneuverCount) {
+    next = { ...next, summary: { ...next.summary, maneuverCount: patch.maneuverCount } };
+  }
+  const activityChanged = patch.activityId !== undefined && patch.activityId !== next.activityId;
+  if (activityChanged) next = { ...next, activityId: patch.activityId ?? null };
+  const sportChanged = patch.sport !== undefined && patch.sport !== next.sport;
+  if (sportChanged) {
+    const before = next.sport;
+    const after = patch.sport ?? null;
+    const familyChanged = before !== null && after !== null && sportFamily(before) !== sportFamily(after);
+    next = { ...next, sport: after };
+    if (next.analysis) {
+      const cleared = {
+        ...next.analysis,
+        activeThreshold: null,
+        ...(familyChanged ? { speedRange: null } : {}),
+      };
+      if (cleared.activeThreshold !== next.analysis.activeThreshold || cleared.speedRange !== next.analysis.speedRange) {
+        next = { ...next, analysis: cleared };
+      }
+    }
+  }
+  if (next === original) return { record: original, resummarize: false };
+  const analysisChanged =
+    (next.analysis?.activeThreshold ?? null) !== thresholdBefore ||
+    (next.analysis?.referenceSpeedMs ?? null) !== referenceBefore;
+  return { record: next, resummarize: sportChanged || activityChanged || analysisChanged };
 };

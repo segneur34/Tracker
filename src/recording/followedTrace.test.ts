@@ -14,7 +14,8 @@ const META = { name: 'Tour du Pic', activityId: null, createdAt: '2026-09-25T10:
 describe('trace suivie', () => {
   it('garde les positions exploitables, sans le reste du point', () => {
     const trace = followedTraceFromPoints([{ ...A, ele: 12 } as { lat: number; lon: number }, { lat: NaN, lon: 3.8 }, B], 'Sortie', 'session');
-    expect(trace).toEqual({ name: 'Sortie', source: 'session', points: [A, B] });
+    expect(trace).toEqual({ name: 'Sortie', source: 'session', activityId: null, points: [A, B] });
+    expect(followedTraceFromPoints([A, B], 'Sortie', 'session', 'kite')?.activityId).toBe('kite');
   });
 
   it('refuse une trace de moins de deux positions', () => {
@@ -27,7 +28,8 @@ describe('trace suivie', () => {
     const mid = { lat: 43.605, lon: 3.801 };
     route = withLegResult(route, legKey(route, 0)!, [A, mid, B]);
     const trace = followedTraceFromRoute(routeToRecord(route, META));
-    expect(trace).toEqual({ name: 'Tour du Pic', source: 'route', points: [A, mid, B, C] });
+    // L'activité de l'itinéraire suit la trace : elle sera proposée pour l'enregistrement.
+    expect(trace).toEqual({ name: 'Tour du Pic', source: 'route', activityId: META.activityId, points: [A, mid, B, C] });
   });
 });
 

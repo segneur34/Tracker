@@ -2,11 +2,11 @@ import { useSyncExternalStore } from 'react';
 import { BASE_COLOR, baseActivity, findActivity, type Activity } from '../core/activities';
 import type { RecordingProfile } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
-import { effectiveRecordingProfile, readStoredActivities } from './useSportSettings';
+import { effectiveRecordingProfile, readStoredActivities, rememberRecordActivity } from './useSportSettings';
 import { recordingJournal } from '../platform/files';
 import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation } from '../platform/location';
 import { buildGpx } from '../recording/gpxWriter';
-import { journalBreakLine, journalFixLine, journalHeaderLine, parseJournal } from '../recording/journal';
+import { journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, parseJournal } from '../recording/journal';
 import {
   EMPTY_RECORDING_STATS,
   addFixToStats,
@@ -26,8 +26,8 @@ import { saveRecordedSession } from './useSessionLibrary';
  * peut changer de page pendant un enregistrement sans l'interrompre. Les
  * pages le lisent par `useRecorder` et le pilotent par `startRecording`,
  * `stopRecording`, `pauseRecording`/`resumeRecording` (pause manuelle),
- * `analyzePendingSession`/`discardPendingSession` et
- * `recoverInterruptedRecording`.
+ * `changeRecordingActivity`, `analyzePendingSession`/`discardPendingSession`
+ * et `recoverInterruptedRecording`.
  *
  * Chaîne : chaque position reçue est arrondie (`roundFix`), gardée en mémoire
  * et ajoutée au journal, écrit par paquets à l'arrivée des positions
@@ -132,7 +132,7 @@ let lastFlushMs: number | null = null;
 let stopSource: StopLocation | null = null;
 /** Source active, gardée pour relancer une pause manuelle sans la redemander à la page. */
 let currentSource: LocationSource | null = null;
-/** Réglage effectif de la session en cours, figé au démarrage. */
+/** Réglage effectif de la session en cours : celui de son activité, relu quand elle change. */
 let currentProfile: RecordingProfile | null = null;
 /**
  * Dernière position reçue, redélivrances comprises : distinct de
@@ -161,10 +161,12 @@ const flushJournal = (): Promise<void> => {
   return enqueueWrite(() => recordingJournal.append(lines));
 };
 
-const receiveFix = (recording: RecordingProfile) => (received: LocationFix): void => {
+/** Reçoit une position de la source. Le réglage est relu à chaque fois : l'activité peut changer en route. */
+const receiveFix = (received: LocationFix): void => {
   const acceptedStatus =
     state.status === 'starting' || state.status === 'recording' || (state.status === 'paused' && state.pausedReason === 'auto');
-  if (!acceptedStatus) return;
+  const recording = currentProfile;
+  if (!acceptedStatus || recording === null) return;
   if (!isNewerFix(lastReceivedMs, received)) return;
   const fix = roundFix(received);
   lastReceivedMs = fix.timeMs;
@@ -279,10 +281,14 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
   const text = await recordingJournal.read();
   if (text === null) return;
   await stopOrphanedDeviceLocation();
-  const { header, fixes: list, breaks } = parseJournal(text);
+  const parsed = parseJournal(text);
+  const { header, fixes: list, breaks } = parsed;
   try {
-    const sport = header?.sport ?? 'wingfoil';
-    const pending = await buildPendingSession(journalActivity(sport, header?.activity), splitIntoSegments(list, breaks), true);
+    // Une activité choisie en cours de route prime sur celle du départ.
+    const { activityChange } = parsed;
+    const sport = activityChange?.sport ?? header?.sport ?? 'wingfoil';
+    const saved = activityChange?.activity ?? header?.activity;
+    const pending = await buildPendingSession(journalActivity(sport, saved), splitIntoSegments(list, breaks), true);
     if (pending) setState({ pending, saved: null, error: null });
   } catch (err) {
     setState({ error: `Session interrompue non récupérée : ${errorMessage(err, 'erreur inconnue')}` });
@@ -310,7 +316,7 @@ export const startRecording = async (activity: Activity, source: LocationSource)
 
   try {
     await recordingJournal.write(journalHeaderLine(sport, Date.now(), activity));
-    stopSource = await source.start(sourceOptions(activity, profile), receiveFix(profile), (message) => setState({ error: message }));
+    stopSource = await source.start(sourceOptions(activity, profile), receiveFix, (message) => setState({ error: message }));
     setState({ status: 'recording' });
   } catch (err) {
     stopSource = null;
@@ -348,12 +354,41 @@ export const resumeRecording = async (): Promise<void> => {
   const profile = currentProfile;
   try {
     pendingBreak = true;
-    stopSource = await source.start(sourceOptions(activity, profile), receiveFix(profile), (message) => setState({ error: message }));
+    stopSource = await source.start(sourceOptions(activity, profile), receiveFix, (message) => setState({ error: message }));
     setState({ status: 'recording', pausedReason: null, error: null });
   } catch (err) {
     pendingBreak = false;
     setState({ error: `Reprise impossible : ${errorMessage(err, 'erreur inconnue')}` });
   }
+};
+
+/**
+ * Change l'activité de l'enregistrement en cours, d'une famille à l'autre
+ * comprise : la session sera rangée sous elle et sous son calcul (nom du
+ * fichier, `<type>` du GPX, module qui l'analyse), et la pause automatique
+ * suit ses réglages dès la position suivante. Le changement est écrit dans le
+ * journal : une session récupérée après un plantage garde l'activité choisie.
+ * La notification Android garde le nom du départ jusqu'à une reprise après
+ * pause manuelle : la changer tout de suite demanderait de relancer la source
+ * GPS, au risque d'un trou dans la trace.
+ */
+export const changeRecordingActivity = (activity: Activity): void => {
+  // Pas pendant le démarrage : l'en-tête du journal n'est peut-être pas encore écrit.
+  if ((state.status !== 'recording' && state.status !== 'paused') || state.activity?.id === activity.id) return;
+  const profile = effectiveRecordingProfile(activity);
+  currentProfile = profile;
+  belowSinceMs = null;
+  pendingLines += journalActivityLine(activity.base, activity);
+  const patch: Partial<RecorderState> = { sport: activity.base, activity };
+  // En pause automatique, une activité qui n'en a pas ne la lèverait jamais : l'enregistrement reprend.
+  if (state.status === 'paused' && state.pausedReason === 'auto' && profile.autoPauseSpeedMs <= 0) {
+    pendingBreak = true;
+    patch.status = 'recording';
+    patch.pausedReason = null;
+  }
+  setState(patch);
+  rememberRecordActivity(activity.id);
+  void flushJournal();
 };
 
 /** Appui long sur le bouton rond : pause manuelle, ou reprise si elle l'est déjà. */

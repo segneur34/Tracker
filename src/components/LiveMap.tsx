@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { divIcon, type Marker as LeafletMarker } from 'leaflet';
 import { trackBounds } from '../core/displayConfig';
 import { CircleMarker, MapContainer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
@@ -23,6 +23,8 @@ interface LiveMapProps {
   guideDone?: ReadonlyArray<{ lat: number; lon: number }>;
   /** Cap de la marche, pour orienter la flèche de position. */
   travel?: TravelHeading;
+  /** Commande posée en haut à droite de la carte (« Réduire la carte »). */
+  overlay?: ReactNode;
 }
 
 /** Couleurs de la trace suivie, reste et partie faite (données de carte, donc en dur). */
@@ -86,7 +88,7 @@ function FollowPosition({ position, following, onUserMove }: {
  * trace, la carte s'ouvre cadrée sur la trace suivie. Sans réseau, le fond
  * manque mais traces et position restent.
  */
-function LiveMap({ segments, position, color, height, guide, guideDone, travel }: LiveMapProps) {
+function LiveMap({ segments, position, color, height, guide, guideDone, travel, overlay }: LiveMapProps) {
   const [following, setFollowing] = useState(true);
   const start = position ?? segments[0]?.[0] ?? null;
   const guideBounds = !start && guide && guide.length > 1 ? trackBounds(guide) : null;
@@ -114,6 +116,9 @@ function LiveMap({ segments, position, color, height, guide, guideDone, travel }
         {position && <PositionMarker position={position} color={color} travel={travel} />}
         <FollowPosition position={position} following={following} onUserMove={() => setFollowing(false)} />
       </MapContainer>
+      {overlay && (
+        <div style={{ position: 'absolute', right: 'var(--space-3)', top: 'var(--space-3)', zIndex: 1000 }}>{overlay}</div>
+      )}
       {!following && (
         <Button variant="secondary" onClick={() => setFollowing(true)}
           style={{ position: 'absolute', right: 'var(--space-3)', bottom: 'var(--space-3)', zIndex: 1000 }}>

@@ -19,6 +19,11 @@ interface LatLon {
 export interface FollowedTrace {
   name: string;
   source: FollowedSource;
+  /**
+   * Activité de l'itinéraire ou de la session suivie, proposée pour
+   * l'enregistrement qui la suit ; `null` : aucune.
+   */
+  activityId: string | null;
   points: LatLon[];
 }
 
@@ -26,20 +31,22 @@ export interface FollowedTrace {
 export const followedTraceFromPoints = (
   points: ReadonlyArray<LatLon>,
   name: string,
-  source: FollowedSource
+  source: FollowedSource,
+  activityId: string | null = null
 ): FollowedTrace | null => {
   const kept = points
     .filter((p) => isFinite(p.lat) && isFinite(p.lon))
     .map(({ lat, lon }) => ({ lat, lon }));
-  return kept.length >= 2 ? { name, source, points: kept } : null;
+  return kept.length >= 2 ? { name, source, activityId, points: kept } : null;
 };
 
 /**
  * Trace d'un itinéraire rangé : ses tronçons à la suite ; un tronçon jamais
- * calculé y figure en ligne droite, comme sur la page Itinéraires.
+ * calculé y figure en ligne droite, comme sur la page Itinéraires. Elle garde
+ * l'activité choisie pour l'itinéraire.
  */
 export const followedTraceFromRoute = (record: RouteRecord): FollowedTrace | null =>
-  followedTraceFromPoints(routePoints(recordToRoute(record)), record.name, 'route');
+  followedTraceFromPoints(routePoints(recordToRoute(record)), record.name, 'route', record.activityId);
 
 export interface FollowOptions {
   /** Écart au-delà duquel une position n'est pas sur la trace, en mètres. */

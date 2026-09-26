@@ -3,6 +3,7 @@ import {
   RECORD_FORMAT,
   RECORD_VERSION,
   SUMMARY_CALC_VERSION,
+  applyRecordPatch,
   dedupeSessions,
   findLegacyNotes,
   isSummaryStale,
@@ -11,6 +12,7 @@ import {
   recordFileName,
   serializeRecord,
   type LibrarySession,
+  type SessionAnalysis,
   type SessionRecord,
 } from './record';
 
@@ -203,5 +205,59 @@ describe('dedupeSessions', () => {
     const { kept, duplicates } = dedupeSessions([session('z.gpx'), session('m.gpx')]);
     expect(kept.map((s) => s.file)).toEqual(['m.gpx']);
     expect(duplicates.map((s) => s.file)).toEqual(['z.gpx']);
+  });
+});
+
+describe('applyRecordPatch', () => {
+  const analysis: SessionAnalysis = { windDeg: 20, activeThreshold: 9, referenceSpeedMs: 7, speedRange: { minMs: 4, maxMs: 14 }, savedAt: 1 };
+  const withAnalysis = record({ analysis, notes: { ...record().notes, comment: 'Belle session', savedAt: 2 } as SessionRecord['notes'] });
+
+  it('rend la fiche telle quelle si rien ne change', () => {
+    const r = record();
+    expect(applyRecordPatch(r, {})).toEqual({ record: r, resummarize: false });
+    expect(applyRecordPatch(r, { sport: 'wingfoil', activityId: null, name: '  ' }).record).toBe(r);
+  });
+
+  it('un nom ou des notes ne demandent pas de recalcul', () => {
+    const { record: named, resummarize } = applyRecordPatch(record(), { name: '  Sortie du soir ' });
+    expect(named.name).toBe('Sortie du soir');
+    expect(resummarize).toBe(false);
+  });
+
+  it('dans la même famille, le seuil est effacé, bornes, vent et allure gardés', () => {
+    const { record: next, resummarize } = applyRecordPatch(withAnalysis, { sport: 'kite', activityId: 'kite' });
+    expect(next.sport).toBe('kite');
+    expect(next.activityId).toBe('kite');
+    expect(next.analysis).toEqual({ ...analysis, activeThreshold: null });
+    expect(resummarize).toBe(true);
+  });
+
+  it("d'une famille à l'autre, seuil et bornes de couleur effacés, le reste gardé", () => {
+    const { record: next, resummarize } = applyRecordPatch(withAnalysis, { sport: 'running', activityId: 'running' });
+    expect(next.sport).toBe('running');
+    expect(next.analysis).toEqual({ ...analysis, activeThreshold: null, speedRange: null });
+    expect(next.notes).toBe(withAnalysis.notes);
+    expect(next.name).toBe(withAnalysis.name);
+    expect(next.summary).toBe(withAnalysis.summary);
+    expect(resummarize).toBe(true);
+    // Retour en voile : le vent et l'allure sont toujours là.
+    expect(applyRecordPatch(next, { sport: 'wingfoil' }).record.analysis?.windDeg).toBe(20);
+  });
+
+  it('classer une session sans support ne touche pas à ses réglages', () => {
+    const unclassified = record({ sport: null, analysis });
+    const { record: next, resummarize } = applyRecordPatch(unclassified, { sport: 'running', activityId: 'running' });
+    expect(next.analysis).toEqual({ ...analysis, activeThreshold: null });
+    expect(resummarize).toBe(true);
+  });
+
+  it("un changement d'activité seule, de seuil ou d'allure demande un recalcul ; un nombre de manœuvres non", () => {
+    expect(applyRecordPatch(record(), { activityId: 'a-moth' }).resummarize).toBe(true);
+    expect(applyRecordPatch(withAnalysis, { analysis: { ...analysis, activeThreshold: 10 } }).resummarize).toBe(true);
+    expect(applyRecordPatch(withAnalysis, { analysis: { ...analysis, referenceSpeedMs: 8 } }).resummarize).toBe(true);
+    expect(applyRecordPatch(withAnalysis, { analysis: { ...analysis, windDeg: 40 } }).resummarize).toBe(false);
+    const counted = applyRecordPatch(record(), { maneuverCount: 12 });
+    expect(counted.record.summary.maneuverCount).toBe(12);
+    expect(counted.resummarize).toBe(false);
   });
 });

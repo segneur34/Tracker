@@ -1,24 +1,28 @@
 import { useMemo, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
+import ActivitySelect from '../components/ActivitySelect';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import FollowTracePicker from '../components/FollowTracePicker';
 import PageHeader from '../components/ui/PageHeader';
 import { IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
-import { activitiesOfFamily, type Activity } from '../core/activities';
+import { FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
-import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatSpeed } from '../core/units';
+import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatSpeed, isInverseUnit } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { useLiveRecording } from '../hooks/useLiveRecording';
+import { useOpenSections } from '../hooks/useOpenSections';
 import { effectiveDistanceUnit, effectiveSpeedUnit, lastRecordActivity, readStoredActivities, rememberRecordActivity } from '../hooks/useSportSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import {
-  analyzePendingSession, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording, resumeRecording,
-  startRecording, stopRecording, useRecorder,
+  analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording,
+  resumeRecording, startRecording, stopRecording, useRecorder,
 } from '../hooks/useRecorder';
-import { followProgress, followedTraceLengthM, splitFollowedTrace, type FollowProgress } from '../recording/followedTrace';
+import {
+  followProgress, followedTraceLengthM, splitFollowedTrace, type FollowProgress, type FollowedTrace,
+} from '../recording/followedTrace';
 import { travelHeading } from '../recording/heading';
 import { LIVE_LEG_DEFAULTS, type LiveLeg } from '../recording/liveLegs';
 import { LIVE_STATS_DEFAULTS, type LiveStats } from '../recording/liveStats';
@@ -43,7 +47,6 @@ import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
  * chaîne s'éprouve sur le PC, jusqu'à l'analyse de la session obtenue.
  */
 
-const FAMILY_LABEL: Record<SportFamily, string> = { voile: 'Voile', course: 'Course à pied' };
 const REPLAY_SPEEDS = [1, 10, 60, 600];
 
 type SourceChoice = 'device' | 'replay';
@@ -134,22 +137,71 @@ const LegCard = ({ title, leg, empty, activity }: { title: string; leg: LiveLeg 
   );
 };
 
+/**
+ * Résumé des vitesses en grands chiffres, quand la carte est réduite : celle
+ * du moment, la moyenne hors pauses, la meilleure tenue 2 s sur la session.
+ * En allure (min/km), les libellés le disent.
+ */
+const SpeedSummary = ({ activity, live }: { activity: Activity; live: LiveStats }) => {
+  const unit = effectiveSpeedUnit(activity);
+  const pace = isInverseUnit(unit);
+  const items = [
+    { label: pace ? 'Allure' : 'Vitesse', value: live.currentSpeedMs },
+    { label: pace ? 'Allure moyenne' : 'Moyenne', value: live.averageSpeedMs },
+    { label: `${pace ? 'Meilleure' : 'Max'} (${LIVE_STATS_DEFAULTS.maxDurationS} s)`, value: live.maxSpeedMs },
+  ];
+  return (
+    <Card>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        {items.map((item) => (
+          <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-3)' }}>
+            <span style={{ fontSize: 'var(--text-m)', color: 'var(--muted)' }}>{item.label}</span>
+            <span className="num" style={{ fontSize: 'var(--text-display)', fontWeight: 700, lineHeight: 1.15, whiteSpace: 'nowrap' }}>
+              {formatSpeed(item.value, unit)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+};
+
+/** Carte de l'enregistrement en cours, réduite ou non ; mémorisé sur l'appareil. */
+const RECORDING_SECTION_DEFAULTS = { carte: true };
+
 function RecordingPage() {
   const recorder = useRecorder();
   const openSession = useOpenSession();
   const followed = useFollowedTrace();
   const [picking, setPicking] = useState(false);
   const native = isNativeApp();
+  const { open: shown, toggle: toggleShown } = useOpenSections<'carte'>('recording', RECORDING_SECTION_DEFAULTS);
 
-  // Famille puis activité ; la dernière enregistrée est proposée d'abord.
+  // Famille puis activité : celle de la trace suivie d'abord, sinon la dernière enregistrée.
   const [activities] = useState(readStoredActivities);
-  const [chosenId, setChosenId] = useState<string | null>(() => (lastRecordActivity() ?? activities[0])?.id ?? null);
+  const [chosenId, setChosenId] = useState<string | null>(
+    () => (activities.find((a) => a.id === followed?.activityId) ?? lastRecordActivity() ?? activities[0])?.id ?? null
+  );
   const chosen = activities.find((a) => a.id === chosenId) ?? null;
   const [family, setFamily] = useState<SportFamily>(chosen ? sportFamily(chosen.base) : 'voile');
   const familyActivities = activitiesOfFamily(activities, family);
   const pickFamily = (next: SportFamily) => {
     setFamily(next);
     setChosenId(activitiesOfFamily(activities, next)[0]?.id ?? null);
+  };
+  const pickActivity = (activity: Activity) => {
+    setFamily(sportFamily(activity.base));
+    setChosenId(activity.id);
+  };
+  /** Une trace choisie propose son activité (celle de l'itinéraire, ou de la session). */
+  const proposeActivityOf = (trace: FollowedTrace) => {
+    const activity = activities.find((a) => a.id === trace.activityId);
+    if (activity) pickActivity(activity);
+  };
+  /** Changement d'activité en cours d'enregistrement : l'enregistreur la prend, la page la garde pour la suite. */
+  const changeLiveActivity = (activity: Activity) => {
+    changeRecordingActivity(activity);
+    pickActivity(activity);
   };
   const [sourceChoice, setSourceChoice] = useState<SourceChoice>('device');
   const [replay, setReplay] = useState<ReplayTrack | null>(null);
@@ -163,6 +215,7 @@ function RecordingPage() {
   const meanIntervalS = stats.pointCount > 1 ? durationMs / 1000 / (stats.pointCount - 1) : null;
   const canStart = !busy && pending === null && chosen !== null && (sourceChoice === 'device' || replay !== null);
   const liveActivity = recorder.activity ?? chosen;
+  const mapReduced = busy && !shown.carte;
   const live = useLiveRecording(
     busy && liveActivity ? liveActivity.base : null,
     stats.pointCount,
@@ -317,7 +370,7 @@ function RecordingPage() {
         </div>
       )}
 
-      {picking && !busy && !pending && <FollowTracePicker onClose={() => setPicking(false)} />}
+      {picking && !busy && !pending && <FollowTracePicker onClose={() => setPicking(false)} onPicked={proposeActivityOf} />}
 
       {followed && (
         <div className="ui-alert" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -339,18 +392,44 @@ function RecordingPage() {
 
       {recorder.error && <div className="ui-alert ui-alert--danger">{recorder.error}</div>}
 
-      {(busy || (followed && !pending)) && (
+      {(busy || (followed && !pending)) && !mapReduced && (
         // Au repos, un aperçu de la trace suivie, sans position : remonté à chaque trace pour s'y cadrer.
         <LiveMap key={busy ? 'direct' : `apercu-${followed?.name}-${followed?.points.length}`}
           segments={busy ? live.segments : []} position={busy ? getLastFix() : null} height="45vh"
           guide={guide.remaining} guideDone={guide.done} travel={travel}
-          color={liveActivity && sportFamily(liveActivity.base) === 'course' ? TRACK_COLOR.course : TRACK_COLOR.voile} />
+          color={liveActivity && sportFamily(liveActivity.base) === 'course' ? TRACK_COLOR.course : TRACK_COLOR.voile}
+          overlay={busy ? (
+            <Button size="s" onClick={() => toggleShown('carte')} style={{ boxShadow: '0 1px 5px rgba(0, 0, 0, 0.25)' }}>
+              Réduire la carte
+            </Button>
+          ) : undefined} />
+      )}
+
+      {mapReduced && (
+        // Carte réduite : elle n'est plus dessinée, les vitesses prennent sa place.
+        <>
+          <Button variant="secondary" block onClick={() => toggleShown('carte')}>Afficher la carte</Button>
+          {liveActivity && <SpeedSummary activity={liveActivity} live={live.stats} />}
+        </>
       )}
 
       {busy && (
-        <Card heading={`En cours : ${liveActivity?.name ?? ''}`}>
+        <Card heading="En cours">
           {recorder.sourceLabel && (
             <p style={{ margin: '-6px 0 12px', color: 'var(--muted)', fontSize: 'var(--text-s)' }}>{recorder.sourceLabel}</p>
+          )}
+          {liveActivity && (
+            // Changer d'activité en route, d'une famille à l'autre comprise : la session sera rangée sous la nouvelle.
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
+              <span className="ui-eyebrow">Activité</span>
+              <ActivitySelect
+                activities={activities}
+                value={liveActivity.id}
+                extra={liveActivity}
+                className="ui-field"
+                disabled={recorder.status !== 'recording' && recorder.status !== 'paused'}
+                onChange={changeLiveActivity} />
+            </label>
           )}
           <div style={STAT_GRID}>
             <Stat label="Durée" value={formatClock(durationMs)} />

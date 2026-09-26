@@ -6,14 +6,15 @@ import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { followTrace } from '../hooks/useFollowedTrace';
 import { readSessionGpx, useSessionLibrary } from '../hooks/useSessionLibrary';
 import { readStoredActivities } from '../hooks/useSportSettings';
-import { followedTraceFromPoints, followedTraceFromRoute } from '../recording/followedTrace';
+import { followedTraceFromPoints, followedTraceFromRoute, type FollowedTrace } from '../recording/followedTrace';
 import Button from './ui/Button';
 import Card from './ui/Card';
 
 /**
  * Choix de la trace à suivre pendant l'enregistrement : un itinéraire rangé
  * (page Itinéraires) ou une session déjà enregistrée, pour refaire un
- * parcours. La trace choisie va dans `useFollowedTrace`.
+ * parcours. La trace choisie va dans `useFollowedTrace`, avec son activité ;
+ * `onPicked` la reçoit aussi, pour proposer cette activité.
  */
 
 type PickerTab = 'route' | 'session';
@@ -42,7 +43,7 @@ const LIST_STYLE = { display: 'flex', flexDirection: 'column', gap: 'var(--space
 
 const formatDate = (ms: number | string) => new Date(ms).toLocaleDateString('fr-FR');
 
-function FollowTracePicker({ onClose }: { onClose: () => void }) {
+function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicked?: (trace: FollowedTrace) => void }) {
   const { status, sessions } = useSessionLibrary();
   const library = useRouteLibrary();
   const [tab, setTab] = useState<PickerTab>('route');
@@ -77,18 +78,20 @@ function FollowTracePicker({ onClose }: { onClose: () => void }) {
       return;
     }
     followTrace(trace);
+    onPicked?.(trace);
     onClose();
   };
 
-  const pickSession = async (file: string, name: string) => {
+  const pickSession = async (file: string, name: string, activityId: string | null) => {
     setLoading(file);
     setError(null);
     try {
       const text = await readSessionGpx(file);
       if (text === null) throw new Error('Session introuvable dans la mémoire.');
-      const trace = followedTraceFromPoints(parseGpx(text).rawPoints, name, 'session');
+      const trace = followedTraceFromPoints(parseGpx(text).rawPoints, name, 'session', activityId);
       if (!trace) throw new Error('Cette session n\'a pas assez de points.');
       followTrace(trace);
+      onPicked?.(trace);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Lecture de la session impossible.');
@@ -157,7 +160,7 @@ function FollowTracePicker({ onClose }: { onClose: () => void }) {
                 return (
                   <li key={file}>
                     <button type="button" style={ROW_STYLE} disabled={loading !== null}
-                      onClick={() => void pickSession(file, name)}>
+                      onClick={() => void pickSession(file, name, activity?.id ?? null)}>
                       <strong>{name}</strong>
                       <span style={DETAIL_STYLE}>
                         {loading === file ? 'Lecture…' : [activity?.name, formatDate(record.summary.startMs)].filter(Boolean).join(' · ')}

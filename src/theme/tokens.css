@@ -54,6 +54,8 @@
   --text-l: 17px;
   --text-xl: 22px;
   --text-title: 28px;
+  /* Grands chiffres lus d'un coup d'œil (vitesses de l'enregistrement, carte réduite). */
+  --text-display: 40px;
 
   /* Rayons */
   --radius-s: 8px;

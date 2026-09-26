@@ -4,6 +4,7 @@ import OsmTileLayer from '../components/OsmTileLayer';
 import { useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import MapAutoResize from '../components/MapAutoResize';
+import ActivitySelect from '../components/ActivitySelect';
 import MemoryStatus from '../components/MemoryStatus';
 import { IconChevronRight, IconFile } from '../components/icons';
 import Button from '../components/ui/Button';
@@ -232,21 +233,12 @@ function SessionRow({
         ) : (
           <>
             {unclassified && !session.readOnly && (
-              <select
-                className="ui-field ui-field--s"
-                value=""
-                aria-label="Classer la session"
-                onChange={(e) => {
-                  const chosen = activities.find((a) => a.id === e.target.value);
-                  if (chosen) updateSessionRecord(session.file, { sport: chosen.base, activityId: chosen.id });
-                }}>
-                <option value="" disabled>Classer…</option>
-                {(['voile', 'course'] as const).map((f) => (
-                  <optgroup key={f} label={FAMILY[f].title}>
-                    {activitiesOfFamily(activities, f).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </optgroup>
-                ))}
-              </select>
+              <ActivitySelect
+                activities={activities}
+                value={null}
+                placeholder="Classer…"
+                label="Classer la session"
+                onChange={(chosen) => updateSessionRecord(session.file, { sport: chosen.base, activityId: chosen.id })} />
             )}
             {!session.readOnly && !confirming && (
               <Button size="s" variant="ghost" onClick={() => setNameDraft(record.name ?? '')}>Renommer</Button>

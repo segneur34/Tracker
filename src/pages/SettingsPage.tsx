@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import { activitiesOfFamily, nextActivityColor, type Activity } from '../core/activities';
+import { FAMILY_LABEL, activitiesOfFamily, nextActivityColor, type Activity } from '../core/activities';
 import { ELEVATION_PRESETS, SAILING_SPORTS, SPORT_PROFILES, sportFamily, type SportFamily } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
@@ -23,7 +23,6 @@ import './settingsPage.css';
 
 /** Calculs proposés à une nouvelle activité, par famille. */
 const FAMILY_BASES: Record<SportFamily, SportType[]> = { voile: SAILING_SPORTS, course: ['running'] };
-const FAMILY_LABEL: Record<SportFamily, string> = { voile: 'Voile', course: 'Course à pied' };
 
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
 

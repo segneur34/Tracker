@@ -16,7 +16,8 @@ const readStored = (): FollowedTrace | null => {
   const stored = jsonStore.read<Partial<FollowedTrace>>(STORAGE_KEY);
   if (!stored || typeof stored.name !== 'string' || !Array.isArray(stored.points)) return null;
   if (stored.source !== 'route' && stored.source !== 'session') return null;
-  return followedTraceFromPoints(stored.points, stored.name, stored.source);
+  const activityId = typeof stored.activityId === 'string' && stored.activityId !== '' ? stored.activityId : null;
+  return followedTraceFromPoints(stored.points, stored.name, stored.source, activityId);
 };
 
 // Lue au premier besoin, pas au chargement du module : `initStorage` doit avoir chargé le stockage natif.

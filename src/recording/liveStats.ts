@@ -21,12 +21,15 @@ export interface LiveStatsOptions {
   topDurationsS: number[];
   /** Distance de l'allure « dernier kilomètre », en mètres. */
   lastDistanceM: number;
+  /** Durée de la vitesse max de la session, en secondes : une meilleure vitesse tenue, pas un point isolé. */
+  maxDurationS: number;
 }
 
 export const LIVE_STATS_DEFAULTS: LiveStatsOptions = {
   recentWindowS: 300,
   topDurationsS: [5, 10],
   lastDistanceM: 1000,
+  maxDurationS: 2,
 };
 
 export interface LiveStats {
@@ -41,6 +44,8 @@ export interface LiveStats {
   lastDistanceSpeedMs: number | null;
   /** Meilleure vitesse de chaque durée de `topDurationsS` sur la fenêtre récente, en m/s, dans le même ordre. */
   recentTopsMs: (number | null)[];
+  /** Meilleure vitesse tenue `maxDurationS` sur toute la session, en m/s. */
+  maxSpeedMs: number | null;
   /** Dénivelé cumulé, `null` si l'altitude manque. */
   elevationGainM: number | null;
   elevationLossM: number | null;
@@ -57,6 +62,7 @@ export const EMPTY_LIVE_STATS: LiveStats = {
   averageSpeedMs: null,
   lastDistanceSpeedMs: null,
   recentTopsMs: [],
+  maxSpeedMs: null,
   elevationGainM: null,
   elevationLossM: null,
   recentGainM: null,
@@ -91,11 +97,14 @@ const lastDistanceSpeed = (tracks: TrackPoint[][], targetM: number): number | nu
   return null;
 };
 
-/** Meilleure vitesse sur `durationS`, parmi les points postérieurs à `sinceMs`. */
-const recentTop = (tracks: TrackPoint[][], sinceMs: number, durationS: number): number | null => {
+/**
+ * Meilleure vitesse sur `durationS`, parmi les points postérieurs à `sinceMs`
+ * (toute la trace sans `sinceMs`). Segment par segment : rien ne franchit une pause.
+ */
+const bestTop = (tracks: TrackPoint[][], durationS: number, sinceMs?: number): number | null => {
   let best: number | null = null;
   for (const track of tracks) {
-    const recent = track.filter((p) => p.timeMs >= sinceMs);
+    const recent = sinceMs === undefined ? track : track.filter((p) => p.timeMs >= sinceMs);
     if (recent.length < 2) continue;
     const [top] = computeTopSegments(
       recent,
@@ -158,7 +167,8 @@ export const computeLiveStats = (
     currentSpeedMs: lastTrack[lastTrack.length - 1].smoothedSpeedMs,
     averageSpeedMs: movingTimeMs > 0 ? distanceM / (movingTimeMs / 1000) : null,
     lastDistanceSpeedMs: lastDistanceSpeed(tracks, options.lastDistanceM),
-    recentTopsMs: options.topDurationsS.map((d) => recentTop(tracks, sinceMs, d)),
+    recentTopsMs: options.topDurationsS.map((d) => bestTop(tracks, d, sinceMs)),
+    maxSpeedMs: bestTop(tracks, options.maxDurationS),
     elevationGainM: hasElevation ? gainM : null,
     elevationLossM: hasElevation ? lossM : null,
     recentGainM: hasElevation ? recentGainM : null,

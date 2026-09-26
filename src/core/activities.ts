@@ -47,6 +47,9 @@ export const DEFAULT_ACTIVITIES: Activity[] = [
 /** Calcul par défaut d'une famille, pour un module sans activité. */
 export const FAMILY_BASE: Record<SportFamily, SportType> = { voile: 'wingfoil', course: 'running' };
 
+/** Nom d'une famille, tel que l'interface l'affiche. */
+export const FAMILY_LABEL: Record<SportFamily, string> = { voile: 'Voile', course: 'Course à pied' };
+
 const isSportType = (value: unknown): value is SportType =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(SPORT_PROFILES, value);
 

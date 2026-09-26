@@ -103,4 +103,24 @@ describe('computeLiveStats', () => {
     expect(stats.recentTopsMs[0]).toBeCloseTo(8, 0);
     expect(stats.recentTopsMs[1]).toBeCloseTo(8, 0);
   });
+
+  it('prend la vitesse max sur toute la session, tenue 2 s, sans franchir une pause', () => {
+    // Pointe à 12 m/s pendant 30 s au début, hors de la fenêtre récente : elle compte pour le max.
+    const speed = (t: number) => (t >= 50 && t < 80 ? 12 : 5);
+    const stats = computeLiveStats([trace(0, 900, 1, speed)], wing);
+    expect(stats.maxSpeedMs).toBeCloseTo(12, 0);
+    expect(stats.recentTopsMs[0]).toBeCloseTo(5, 0);
+    // Deux segments à 4 m/s séparés d'une pause d'un quart d'heure : pas de vitesse fictive par-dessus la pause.
+    const before = trace(0, 120, 1, () => 4);
+    const after = trace(1020, 1140, 1, () => 4, undefined, before[before.length - 1].lat + 0.05);
+    expect(computeLiveStats([before, after], running).maxSpeedMs).toBeCloseTo(4, 1);
+    expect(computeLiveStats([], running).maxSpeedMs).toBeNull();
+  });
+
+  it('donne la même vitesse max à 1 Hz et à 5 Hz', () => {
+    const speed = (t: number) => 5 + 3 * Math.sin(t / 20);
+    const a = computeLiveStats([trace(0, 600, 1, speed)], wing);
+    const b = computeLiveStats([trace(0, 600, 5, speed)], wing);
+    expect(b.maxSpeedMs!).toBeCloseTo(a.maxSpeedMs!, 1);
+  });
 });

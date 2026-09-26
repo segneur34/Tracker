@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LocationFix } from '../platform/location';
 import { buildGpx } from './gpxWriter';
-import { journalBreakLine, journalFixLine, journalHeaderLine, parseJournal } from './journal';
+import { journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, parseJournal } from './journal';
 import { roundFix, splitIntoSegments } from './session';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
@@ -89,5 +89,33 @@ describe('journal', () => {
     expect(parseJournal(withActivity).header?.activity).toEqual({ id: 'a-kite-lac', name: 'Kite au lac' });
     const broken = JSON.stringify({ format: 'tracker-journal', version: 1, sport: 'kite', startedAtMs: T0, activity: { id: 3 } }) + '\n';
     expect(parseJournal(broken).header).toEqual({ format: 'tracker-journal', version: 1, sport: 'kite', startedAtMs: T0 });
+  });
+
+  it('retient le dernier changement d\'activité, sans rien perdre des positions ni des coupures', () => {
+    const text = journalHeaderLine('wingfoil', T0, { id: 'wingfoil', name: 'Voile' })
+      + journalFixLine(fixes[0])
+      + journalActivityLine('kite', { id: 'a-kite', name: 'Kite' })
+      + journalBreakLine(fixes[1].timeMs)
+      + journalFixLine(fixes[1])
+      + journalActivityLine('running', { id: 'running', name: 'Course' })
+      + journalFixLine(fixes[2]);
+    const parsed = parseJournal(text);
+    expect(parsed.activityChange).toEqual({ sport: 'running', activity: { id: 'running', name: 'Course' } });
+    // L'en-tête reste celui du départ : c'est au lecteur de faire primer le changement.
+    expect(parsed.header?.sport).toBe('wingfoil');
+    expect(parsed.fixes).toHaveLength(3);
+    expect(parsed.breaks).toEqual([1]);
+    expect(parseJournal(journalOf(fixes)).activityChange).toBeNull();
+  });
+
+  it('ignore un changement d\'activité abîmé ou tronqué, le précédent reste', () => {
+    const good = journalActivityLine('kite', { id: 'a-kite', name: 'Kite' });
+    const broken = `${JSON.stringify(['activity', { sport: 'moth', id: 'x', name: 'Moth' }])}\n`;
+    const truncated = journalActivityLine('running', { id: 'running', name: 'Course' }).slice(0, 20);
+    const parsed = parseJournal(journalOf(fixes) + good + broken + truncated);
+    expect(parsed.activityChange).toEqual({ sport: 'kite', activity: { id: 'a-kite', name: 'Kite' } });
+    expect(parsed.fixes).toHaveLength(3);
+    // Sans en-tête lisible, le changement vaut quand même.
+    expect(parseJournal(good + journalFixLine(fixes[0])).activityChange?.sport).toBe('kite');
   });
 });

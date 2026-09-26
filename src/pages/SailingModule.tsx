@@ -10,7 +10,7 @@ import {
 import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
 import { Link, useSearchParams } from 'react-router-dom';
-import { libraryPath, useSessionFromUrl } from '../hooks/useLibraryNavigation';
+import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
 import { TEXT_SCALE_FACTOR, readStoredActivities } from '../hooks/useSportSettings';
@@ -26,6 +26,7 @@ import {
 } from '../core/units';
 import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
 import { MANEUVER_METRICS, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
+import ActivitySelect from '../components/ActivitySelect';
 import AnalysisMap from '../components/AnalysisMap';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
@@ -148,7 +149,6 @@ function SailingModule() {
     loadError,
     sessionKey,
     activity,
-    activityOptions,
     setActivity,
     profile,
     speedUnit,
@@ -197,17 +197,13 @@ function SailingModule() {
   const { file: sessionFile, error: sessionError } = useSessionFromUrl(receiveSession);
 
   /**
-   * Changer d'activité l'écrit aussi dans la fiche de la session. L'activité
-   * de base d'un calcul n'est pas une activité de la liste : la fiche n'en
-   * garde que le calcul.
+   * Changer d'activité l'écrit aussi dans la fiche de la session ; vers une
+   * activité de course, la session part dans le module course
+   * (`useChangeSessionActivity`). Toutes les activités sont proposées pour une
+   * session de la mémoire, celles de la voile seules sinon.
    */
-  const changeActivity = (id: string) => {
-    const next = activityOptions.find((a) => a.id === id);
-    if (!next) return;
-    setActivity(next.id);
-    const listed = readStoredActivities().some((a) => a.id === next.id);
-    if (sessionFile) updateSessionRecord(sessionFile, { sport: next.base, activityId: listed ? next.id : null });
-  };
+  const [allActivities] = useState(readStoredActivities);
+  const changeSessionActivity = useChangeSessionActivity('voile', setActivity);
 
   // Nombre de manœuvres recopié dans la fiche, pour la liste des sessions. Seulement quand un
   // vent est connu (sinon l'analyse des manœuvres est suspendue), et pour la trace de ce fichier.
@@ -925,14 +921,12 @@ function SailingModule() {
                   <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
                       <strong>Activité :</strong>
-                      <select
+                      <ActivitySelect
+                        activities={allActivities}
                         value={activity.id}
-                        onChange={(e) => changeActivity(e.target.value)}
-                        className="ui-field ui-field--s">
-                        {activityOptions.map((a) => (
-                          <option key={a.id} value={a.id}>{a.name}</option>
-                        ))}
-                      </select>
+                        extra={activity}
+                        families={sessionFile ? undefined : ['voile']}
+                        onChange={(next) => changeSessionActivity(sessionFile, next)} />
                     </label>
 
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>

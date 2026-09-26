@@ -16,21 +16,21 @@ import { guessSport, uniqueSessionFileName } from '../library/naming';
 import {
   RECORD_FORMAT,
   RECORD_VERSION,
+  applyRecordPatch,
   dedupeSessions,
   findLegacyNotes,
   isGpxFileName,
   isSummaryStale,
   isWritableRecord,
   parseRecord,
-  readSessionName,
   recordFileName,
   serializeRecord,
   type LibrarySession,
+  type RecordPatch,
   type SessionAnalysis,
   type SessionRecord,
   type SessionSource,
   type SessionSummary,
-  type StoredSessionNotes,
 } from '../library/record';
 import { planReconcile, type LibraryCache } from '../library/reconcile';
 import {
@@ -808,55 +808,20 @@ export const readSessionGpx = async (file: string): Promise<string | null> => {
   return folder ? folder.readText(sessionPath(file)) : null;
 };
 
-export interface RecordPatch {
-  sport?: SportType | null;
-  /** Activité ; `null` : la première de son calcul. */
-  activityId?: string | null;
-  /** Nom donné par l'utilisateur ; vide ou `null` : plus de nom. */
-  name?: string | null;
-  notes?: StoredSessionNotes | null;
-  analysis?: SessionAnalysis | null;
-  maneuverCount?: number;
-}
-
 /**
- * Modifie la fiche d'une session : support, activité, nom, notes, réglages d'analyse,
- * nombre de manœuvres. La liste suit tout de suite ; le fichier est écrit un
- * instant plus tard. Un changement de support, d'activité, de seuil ou d'allure imposée
- * recalcule le résumé ; un changement de support efface le seuil propre à la
- * session, exprimé dans l'unité de l'ancien support (l'allure, en m/s, reste).
+ * Modifie la fiche d'une session (`applyRecordPatch`) : support, activité,
+ * nom, notes, réglages d'analyse, nombre de manœuvres. La liste suit tout de
+ * suite ; le fichier est écrit un instant plus tard, et le résumé recalculé
+ * si le changement le demande.
  */
 export const updateSessionRecord = (file: string, patch: RecordPatch): void => {
   const session = findSession(file);
   if (!session || session.readOnly) return;
-  let record = session.record;
-  if (patch.name !== undefined) {
-    const name = readSessionName(patch.name);
-    if (name !== record.name) record = { ...record, name };
-  }
-  if (patch.notes !== undefined) record = { ...record, notes: patch.notes };
-  const thresholdBefore = record.analysis?.activeThreshold ?? null;
-  const referenceBefore = record.analysis?.referenceSpeedMs ?? null;
-  if (patch.analysis !== undefined) record = { ...record, analysis: patch.analysis };
-  if (patch.maneuverCount !== undefined && patch.maneuverCount !== record.summary.maneuverCount) {
-    record = { ...record, summary: { ...record.summary, maneuverCount: patch.maneuverCount } };
-  }
-  const activityChanged = patch.activityId !== undefined && patch.activityId !== record.activityId;
-  if (activityChanged) record = { ...record, activityId: patch.activityId ?? null };
-  const sportChanged = patch.sport !== undefined && patch.sport !== record.sport;
-  if (sportChanged) {
-    record = { ...record, sport: patch.sport ?? null };
-    if (record.analysis?.activeThreshold != null) {
-      record = { ...record, analysis: { ...record.analysis, activeThreshold: null } };
-    }
-  }
+  const { record, resummarize: stale } = applyRecordPatch(session.record, patch);
   if (record === session.record) return;
   replaceSession({ ...session, record });
   scheduleRecordWrite(file);
-  const analysisChanged =
-    (record.analysis?.activeThreshold ?? null) !== thresholdBefore ||
-    (record.analysis?.referenceSpeedMs ?? null) !== referenceBefore;
-  if (sportChanged || activityChanged || analysisChanged) void resummarize(file);
+  if (stale) void resummarize(file);
 };
 
 /** Résumé recalculé avec le support de la fiche. */

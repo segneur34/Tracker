@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import type { Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import type { LibrarySession } from '../library/record';
-import { findLibrarySession, librarySession, readSessionGpx, useSessionLibrary } from './useSessionLibrary';
+import { confirmLeave } from './leaveGuard';
+import { findLibrarySession, librarySession, readSessionGpx, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
+import { readStoredActivities } from './useSportSettings';
 
 /**
  * Passage de la bibliothèque aux modules d'analyse.
@@ -29,6 +32,38 @@ export const useOpenSession = () => {
   return useCallback(
     (file: string, fallback: SportFamily) => navigate(analysisPath(sessionFamily(librarySession(file), fallback), file)),
     [navigate]
+  );
+};
+
+/**
+ * Changement d'activité depuis un module d'analyse. Dans la famille du module,
+ * l'activité du module suit (`setActivity`) et la fiche de la session est
+ * réécrite, comme avant. Vers l'autre famille, la session change de module :
+ * on quitte la page (le brouillon est abandonné, après confirmation,
+ * `confirmLeave`), la fiche prend le nouveau support, et le module de l'autre
+ * famille l'ouvre, résumé recalculé en arrière-plan. Sans fiche (`file` nul,
+ * GPX lu hors de la mémoire), rien ne change de famille.
+ *
+ * L'activité de base d'un calcul n'est pas une activité de la liste : la fiche
+ * n'en garde que le calcul.
+ */
+export const useChangeSessionActivity = (family: SportFamily, setActivity: (id: string) => void) => {
+  const navigate = useNavigate();
+  return useCallback(
+    (file: string | null, next: Activity) => {
+      const listed = readStoredActivities().some((a) => a.id === next.id);
+      const patch = { sport: next.base, activityId: listed ? next.id : null };
+      const nextFamily = sportFamily(next.base);
+      if (nextFamily === family) {
+        setActivity(next.id);
+        if (file) updateSessionRecord(file, patch);
+        return;
+      }
+      if (!file || !confirmLeave()) return;
+      updateSessionRecord(file, patch);
+      navigate(analysisPath(nextFamily, file), { replace: true });
+    },
+    [family, setActivity, navigate]
   );
 };
 

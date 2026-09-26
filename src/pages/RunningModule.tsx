@@ -8,6 +8,7 @@ import {
   Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
   type TooltipPayloadEntry, type TooltipValueType,
 } from 'recharts';
+import ActivitySelect from '../components/ActivitySelect';
 import AnalysisMap from '../components/AnalysisMap';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
@@ -36,8 +37,7 @@ import {
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { useSessionDraft } from '../hooks/useSessionDraft';
-import { updateSessionRecord } from '../hooks/useSessionLibrary';
-import { libraryPath, useSessionFromUrl } from '../hooks/useLibraryNavigation';
+import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
@@ -99,7 +99,7 @@ const chartTooltipStyle = { fontSize: '12px' } as const;
  */
 function RunningModule() {
   const {
-    activity, activityOptions, setActivity,
+    activity, setActivity,
     profile, activeThreshold, terrain, setTerrain, elevationProfile,
     speedUnit, distanceUnit, textScale,
     speedRange, gradeRange,
@@ -126,14 +126,12 @@ function RunningModule() {
   // dans sa fiche par « Enregistrer la session ». Aucun pour un GPX lu hors de la mémoire.
   const draft = useSessionDraft(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null);
 
-  /** Changer d'activité l'écrit aussi dans la fiche de la session (comme en voile). */
-  const changeActivity = (id: string) => {
-    const next = activityOptions.find((a) => a.id === id);
-    if (!next) return;
-    setActivity(next.id);
-    const listed = readStoredActivities().some((a) => a.id === next.id);
-    if (sessionFile) updateSessionRecord(sessionFile, { sport: next.base, activityId: listed ? next.id : null });
-  };
+  /**
+   * Changer d'activité l'écrit aussi dans la fiche de la session (comme en
+   * voile) ; vers une activité de voile, la session part dans le module voile.
+   */
+  const [allActivities] = useState(readStoredActivities);
+  const changeSessionActivity = useChangeSessionActivity('course', setActivity);
 
   const { open, toggle } = useOpenSections<RunningSection>('running', RUNNING_SECTION_DEFAULTS);
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
@@ -474,16 +472,15 @@ function RunningModule() {
             <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} />
           </div>
           <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap', fontSize: '14px' }}>
-            {activityOptions.length > 1 && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <strong>Activité :</strong>
-                <select value={activity.id} onChange={(e) => changeActivity(e.target.value)} className="ui-field ui-field--s">
-                  {activityOptions.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-              </label>
-            )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <strong>Activité :</strong>
+              <ActivitySelect
+                activities={allActivities}
+                value={activity.id}
+                extra={activity}
+                families={sessionFile ? undefined : ['course']}
+                onChange={(next) => changeSessionActivity(sessionFile, next)} />
+            </label>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <strong>Terrain :</strong>

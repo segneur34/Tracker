@@ -53,12 +53,29 @@ export const journalFixLine = (fix: LocationFix): string =>
  */
 export const journalBreakLine = (timeMs: number): string => `${JSON.stringify(['break', timeMs])}\n`;
 
+/** Activité prise en cours d'enregistrement, avec son calcul. */
+export interface JournalActivity {
+  sport: SportType;
+  activity: { id: string; name: string };
+}
+
+/**
+ * Changement d'activité pendant l'enregistrement : la session prend cette
+ * activité, et son calcul, pour tout son GPX. Tableau à deux éléments, marqué
+ * par `'activity'` en tête : ne collisionne ni avec l'en-tête (un objet), ni
+ * avec une position (un nombre en tête), ni avec une frontière de segment.
+ */
+export const journalActivityLine = (sport: SportType, activity: { id: string; name: string }): string =>
+  `${JSON.stringify(['activity', { sport, id: activity.id, name: activity.name }])}\n`;
+
 export interface ParsedJournal {
   /** En-tête, ou `null` s'il manque ou est illisible : les positions restent récupérables. */
   header: JournalHeader | null;
   fixes: LocationFix[];
   /** Indices, dans `fixes`, où reprend un nouveau segment (voir `splitIntoSegments`). */
   breaks: number[];
+  /** Dernier changement d'activité, qui prime sur l'en-tête ; `null` s'il n'y en a pas eu. */
+  activityChange: JournalActivity | null;
 }
 
 const optionalNumber = (value: unknown): number | undefined =>
@@ -87,6 +104,16 @@ const toHeader = (value: unknown): JournalHeader | null => {
 const toBreakMarker = (value: unknown): boolean =>
   Array.isArray(value) && value.length === 2 && value[0] === 'break' && typeof value[1] === 'number' && isFinite(value[1]);
 
+/** Ligne de changement d'activité : `true` si c'en est une (même abîmée), et l'activité si elle est lisible. */
+const toActivityMarker = (value: unknown): { marker: boolean; change: JournalActivity | null } => {
+  if (!Array.isArray(value) || value.length !== 2 || value[0] !== 'activity') return { marker: false, change: null };
+  const a: unknown = value[1];
+  if (typeof a !== 'object' || a === null) return { marker: true, change: null };
+  const { sport, id, name } = a as Record<string, unknown>;
+  if (!isSportType(sport) || typeof id !== 'string' || id === '' || typeof name !== 'string') return { marker: true, change: null };
+  return { marker: true, change: { sport, activity: { id, name } } };
+};
+
 const toFix = (value: unknown): LocationFix | null => {
   if (!Array.isArray(value) || value.length < 3) return null;
   const [timeMs, lat, lon, accuracyM, altitudeM, speedMs, bearingDeg] = value;
@@ -107,12 +134,13 @@ const toFix = (value: unknown): LocationFix | null => {
 /**
  * Relit un journal. Les lignes illisibles sont ignorées, de même qu'une
  * position qui n'est pas plus récente que la précédente, comme à
- * l'enregistrement.
+ * l'enregistrement. Le dernier changement d'activité lisible l'emporte.
  */
 export const parseJournal = (text: string): ParsedJournal => {
   let header: JournalHeader | null = null;
   const fixes: LocationFix[] = [];
   const breaks: number[] = [];
+  let activityChange: JournalActivity | null = null;
 
   text.split('\n').forEach((line, i) => {
     if (line.trim() === '') return;
@@ -125,9 +153,14 @@ export const parseJournal = (text: string): ParsedJournal => {
       if (fixes.length > 0) breaks.push(fixes.length);
       return;
     }
+    const { marker, change } = toActivityMarker(value);
+    if (marker) {
+      if (change) activityChange = change;
+      return;
+    }
     const fix = toFix(value);
     if (fix && (fixes.length === 0 || fix.timeMs > fixes[fixes.length - 1].timeMs)) fixes.push(fix);
   });
 
-  return { header, fixes, breaks };
+  return { header, fixes, breaks, activityChange };
 };
