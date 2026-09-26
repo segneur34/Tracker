@@ -29,7 +29,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 
 ## Documentation
 
-- Une passe après chaque lot que l'utilisateur a validé sur données réelles, jamais entre deux modifications, sans attendre la fin de session : sections touchées d'ETAT, un point daté d'une dizaine de lignes dans HISTORIQUE, la carte d'INVENTAIRE si un fichier apparaît ou change de rôle.
+- Une passe après chaque lot que l'utilisateur a validé sur données réelles, jamais entre deux modifications, sans attendre la fin de session : sections touchées d'ETAT (jamais le récit du lot, qui va dans HISTORIQUE), un point daté de quelques lignes dans HISTORIQUE (décision, pourquoi, piège ; ni fichiers touchés ni récit de livraison, que git garde), la carte d'INVENTAIRE si un fichier apparaît ou change de rôle.
 - `CLAUDE.md` : seulement si une règle ou une décision de l'utilisateur a changé. Ni état d'avancement, ni procédure détaillée.
 
 ## Environnement

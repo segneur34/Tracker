@@ -1,249 +1,348 @@
 # État du projet Tracker
 
-Document de passation, écrit le 21 septembre 2026 à partir d'une lecture complète du code et tenu à jour depuis ; dernière passe le 26 septembre 2026 (§10, point 64). Complète `CLAUDE.md`, qui donne les règles ; ici, le pipeline, la persistance, la dette, les chantiers et la cible mobile, dont **l'avancement n'est tenu qu'au §12**. L'historique des décisions (§10) vit dans `docs/HISTORIQUE.md`, la carte des fichiers dans `docs/INVENTAIRE.md`.
+Document de passation, tenu à jour à chaque lot validé ; dernière passe le 26 septembre 2026 (§10, point 65). Il complète `CLAUDE.md`, qui donne les règles et les décisions de l'utilisateur, sans les répéter. On y trouve l'architecture, le pipeline, la persistance, les tests, la dette, les chantiers et la cible mobile, dont **l'avancement n'est tenu qu'au §12**. L'historique des décisions (§10) est dans `docs/HISTORIQUE.md`, la carte des fichiers (§5) dans `docs/INVENTAIRE.md`. Les numéros de section ne changent pas : le code y renvoie.
+
+Pour que ce document reste léger :
+- les seuils, fenêtres et formules se lisent dans le code, où ils sont nommés et commentés ;
+- l'Avancement ne tient que les phases et le reste à faire ; le détail de chaque lot est dans HISTORIQUE.
 
 ## 1. Résumé
 
-Application web client-only qui lit une trace GPX et en tire des analyses. Les seuils de l'analyse voile s'accordent à l'allure de la session, ce qui la rend exploitable d'un bateau lent à un kite rapide, et lisible sur les traces enregistrées en cadence économique. Module voile abouti : carte colorée par la vitesse, statistiques globales, tops de vitesse, détection et qualité des virements et empannages, estimation du vent et de ses variations, VMG, notes de session. Module course opérationnel mais plus jeune : carte, graphes vitesse et altitude, zones de pente, dénivelé. Page Paramètres commune. Page Enregistrer : enregistrement GPS sur le téléphone Android (Capacitor), un GPX par session, analysé par les mêmes modules (§12). Les onglets Voile et Course sont la bibliothèque des sessions ; ce qu'on change sur une session (vent saisi, seuil d'activité, couleurs de la trace, notes) reste en brouillon jusqu'à « Enregistrer la session ». Sa mémoire est un dossier portable (§6), désigné une fois sur le téléphone comme sur le PC : les GPX, une fiche JSON par session (résumé, activité, notes) et les réglages, qu'on copie pour sauvegarder ou changer d'appareil. Interface dans la DA de la maquette (variables dans `src/theme/tokens.css`), barre d'onglets en bas sur téléphone, barre en haut sur ordinateur.
+Tracker est une application web 100 % client qui lit une trace GPX et en tire des analyses. Capacitor l'emballe pour Android, où elle enregistre aussi les sessions : un GPX par session, analysé par les mêmes modules.
 
-État des contrôles au moment de la passation : typecheck, lint, 270 tests et build production passent.
+- **Voile, abouti** : carte colorée par la vitesse, statistiques, tops, virements et empannages et leur qualité, vent et ses variations, VMG, notes. Les seuils s'accordent à l'allure de la session, d'un bateau lent à un kite rapide, et tiennent sur les traces en cadence économique.
+- **Course, plus jeune** : carte, graphes de vitesse et d'altitude, zones de pente, dénivelé, allures.
+- **Autour** : accueil et graphe d'activités, bibliothèque des sessions par famille (`/voile`, `/course`), enregistrement avec trace à suivre (`/enregistrer`), planification d'itinéraires (`/itineraires`), Réglages (`/parametres`), mémoire en dossier portable (§6).
 
 ## 2. Environnement et outillage
 
-- Scripts et dépendances dans `package.json`. À retenir : Capacitor 8 et `@capgo/background-geolocation` (§12), `@fontsource/figtree` (police embarquée, pour marcher hors ligne), TypeScript 6, Vite 8, Vitest 5, oxlint.
-- Version unique dans `package.json` (0.2.0) : Vite l'expose en `__APP_VERSION__` (`vite.config.ts`, déclarée dans `src/env.d.ts`), Gradle en tire `versionName` et `versionCode` (majeur×10000 + mineur×100 + correctif, 200 pour 0.2.0). À augmenter avant chaque APK diffusé.
-- Android : `capacitor.config.ts` (vérifié par `tsconfig.node.json`), `android/` versionné (Gradle 8.14.3, AGP 8.13, compileSdk et targetSdk 36, minSdk 24). Compiler avec un **JDK 21** (Temurin, `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot`) : le Java 25 d'Android Studio 2026.1 ne fait pas tourner Gradle 8.14.3. SDK dans `%LOCALAPPDATA%\Android\Sdk`. Chaîne : `npm run build`, `npx cap sync android`, puis `npx cap run android` (voir §12).
-- Signature : clé dédiée `C:\Users\segne\tracker-signing\tracker-release.jks`, **hors du dépôt**, sauvegardée par l'utilisateur ; `android/keystore.properties` (ignoré par git, copie dans le même dossier) en donne le chemin et le mot de passe. Debug et release sont signés par cette clé, pour qu'une version s'installe par-dessus l'autre. Sans le fichier, Gradle retombe sur la clé de debug du PC.
-- `tsconfig.app.json` : `verbatimModuleSyntax`, `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly`, `noFallthroughCasesInSwitch`. `strict` n'est pas écrit mais TypeScript 6 l'active par défaut. Conséquence pratique : un import inutilisé ou un paramètre inutilisé casse le build.
-- `.oxlintrc.json` : plugins react, typescript, oxc ; règles `react/rules-of-hooks` (erreur) et `react/only-export-components` (avertissement). Pas de règle sur `any`.
-- Vitest sans fichier de configuration : environnement node, pas de jsdom. Les tests importent `describe`, `it`, `expect` depuis `vitest`. Tout ce qui touche au DOM (parseur GPX, hooks, composants) n'est donc pas testé.
-- Git depuis le 23 septembre 2026 (Git pour Windows 2.55), branche `main` qui suit `origin/main`, dépôt privé `https://github.com/segneur34/Tracker.git`, identifiants mémorisés. Réglages locaux : auteur Tom Briere, `core.autocrlf=false`. Fins de ligne fixées par `.gitattributes` depuis le 24 septembre 2026 (§10, point 45) : LF partout, CRLF pour les `.bat` (`android/gradlew.bat`). `.github/` vide. `dist/`, sortie de `npm run build`, est ignoré.
-- Terminal de l'utilisateur : `cmd` sous Windows 11.
+Ce que les fichiers de configuration ne disent pas :
+
+- **TypeScript 6** active `strict` par défaut, même si `tsconfig.app.json` ne l'écrit pas. Avec `noUnusedLocals` et `noUnusedParameters`, un import ou un paramètre inutile casse le build.
+- **Vitest** tourne sans configuration, en environnement node, sans jsdom : rien de ce qui touche au DOM n'est testé (§8).
+- **oxlint** n'a pas de règle sur `any`. L'absence de `any` dans `src/` est une discipline, pas une contrainte de l'outil.
+- **Git** :
+  - `main` suit `origin/main` (`segneur34/Tracker`, dépôt privé), identifiants mémorisés ;
+  - auteur Tom Briere, `core.autocrlf=false` ;
+  - fins de ligne fixées par `.gitattributes` (§10, point 45) ;
+  - pas de `.github/` ; `dist/` est ignoré.
+- **Terminal** de l'utilisateur : `cmd` sous Windows 11.
+- **Android** (JDK, SDK, signature) : voir le §12.
 
 ## 3. Architecture
 
-Quatre couches, de bas en haut, plus une couche d'accès à la plateforme.
+Les couches, de bas en haut. Tous les imports sont relatifs, sans alias de chemin.
 
-**Noyau `src/core/`.** Sans notion de sport, en unités SI. Types, conversions, profils de support, parseur GPX, kinématique, filtres, allure et cadence d'une session (`sessionSpeed.ts`), cumuls, masque d'activité, dénivelé, meilleurs segments.
+- **Noyau `core/`** : sans notion de sport, en unités SI, du parseur GPX aux profils de support, en passant par la cinématique, les filtres, l'allure de la session, les cumuls, le masque d'activité, le dénivelé et les tops.
+- **Sports** : `sailing/` en nœuds sur `PointData` (adaptateur `utils/kinematics.ts`, règle 5), `running/` en m/s.
+- **Logique pure de l'application**, testée en node : `recording/` (positions, journal, GPX, direct, trace suivie), `library/` (fiche, résumé, rapprochement, réglages qui voyagent) et `planning/` (itinéraires).
+- **Plateforme `platform/`** : seul accès au stockage, aux fichiers et à la position (règle 12). `isNativeApp()` choisit la version navigateur ou téléphone de chaque module ; les hooks et les pages ne voient pas la différence. Exception : `compass`, la boussole, n'existe que dans le navigateur.
+- **Hooks** :
+  - le pipeline : `useGpxSession`, `useSailingSession` (§4) ;
+  - deux stores hors des composants, qui survivent aux changements de page : l'enregistreur (`useRecorder`) et la bibliothèque (`useSessionLibrary`) ;
+  - le brouillon d'une session : `useSessionDraft`, `leaveGuard` ;
+  - les réglages : `useSportSettings` lit `jsonStore` directement, les autres enregistrements de l'appareil passent par `useStoredRecord` ;
+  - les autres sont dans `docs/INVENTAIRE.md`.
+- **Pages** : sept, routées dans `App.tsx`, toutes dans `AppShell` (navigation, bandeau d'enregistrement, bouton rond). La session analysée est dans l'URL (`/voile/analyse?session=<fichier>`) et se charge par `loadGpxContent`. Le patron des analyses est dans `docs/MISE_EN_PAGE.md`.
+- **DA** : toutes les valeurs visuelles sont dans `theme/tokens.css`, seul fichier à changer pour une autre DA. `theme/base.css` pose la police, le fond et le focus. Les couleurs de données restent en dur : Recharts et Leaflet les posent en attributs SVG, où une variable CSS ne passe pas de façon sûre.
 
-**Extensions par sport.** `src/sailing/` travaille en nœuds sur `PointData` (adaptateur `src/utils/kinematics.ts`) : estimation du vent, manœuvres, VMG, stats, notes. `src/running/` travaille en m/s sur `TrackPoint` : pente, zones, allures. Le dégradé de couleur de la trace est commun aux deux (`core/speedGradient.ts`).
+Dépendances entre dossiers :
 
-**Hooks `src/hooks/`.** `useGpxSession` (ingestion générique), `useSailingSession` (orchestration voile complète), `useSportSettings` et `useAllSportSettings` (réglages persistés), `useRunnerProfile`, `useOpenSections`, tous sur `useStoredRecord` (enregistrement persistant générique) ; `useSessionDraft` (brouillon d'une session, écrit dans sa fiche par « Enregistrer la session ») et `leaveGuard` (avertissement en quittant avec un brouillon).
+| Dossier | Dépend de |
+|---|---|
+| `core` | `core` seulement |
+| `sailing` | `core`, `types/sailing`, le type `PointData` |
+| `running` | `core` |
+| `platform` | Capacitor et ses plugins seulement |
+| `recording` | `core`, `sailing` (`liveLegs`), `planning` (`followedTrace`), le type `LocationFix` de `platform/location` |
+| `planning` | `core`, `running/runningAnalytics` (pente), `recording/gpxWriter` |
+| `library` | `core`, `sailing/sailingConfig`, `sailing/sessionNotes`, `recording/session`, le type `FolderEntry` de `platform/memoryFolder` |
+| hooks | toutes les couches ci-dessus |
+| composants | `platform`, pour `ResizablePanel`, `LiveMap` et `MemoryStatus` |
+| pages | tout |
 
-**Plateforme `src/platform/`.** Seule couche autorisée à toucher au stockage, aux fichiers et à la position (règle 12 de `CLAUDE.md`, §12) : `storage.ts`, `files.ts`, `memoryFolder.ts`, `location.ts`, plus `runtime.ts` et `backButton.ts`. Chaque module a une version navigateur et une version téléphone, choisies par `isNativeApp()` ; les hooks et les pages ne voient pas la différence.
-
-**Enregistrement.** `src/recording/` (logique pure, testée en node : arrondi et filtre des positions, journal, écriture GPX) et `hooks/useRecorder.ts`, un enregistreur qui vit hors des composants pour survivre aux changements de page. La page `/enregistrer` le pilote ; à l'arrêt, la session attend : « Analyser » la range dans la bibliothèque et l'ouvre dans le module de sa famille, « Jeter » l'abandonne (point 51).
-
-**Bibliothèque.** `src/library/` (logique pure, testée : fiche, résumé, rapprochement du dossier et du cache, nommage, fichier de réglages) et `hooks/useSessionLibrary.ts`, un store hors des composants comme l'enregistreur. Les pages `/voile` et `/course` (`SessionLibrary`) listent les sessions ; les modules d'analyse sont en `/voile/analyse` et `/course/analyse`, la session à ouvrir dans l'URL (`?session=<fichier>`, `hooks/useLibraryNavigation.ts`), chargée par `loadGpxContent`.
-
-**Pages et composants.** Six pages, routes dans `App.tsx`, toutes imbriquées dans `AppShell` (navigation et bandeau d'enregistrement) ; composants partagés dans `components/` et `components/ui` (carte dans `docs/INVENTAIRE.md`).
-
-**DA.** Toutes les valeurs visuelles vivent dans `src/theme/tokens.css` (couleurs, police, rayons, espacements, hauteurs de barres) : c'est le seul fichier à changer pour une autre DA. `theme/base.css` pose la police Figtree, le fond et le focus. Les pages d'analyse gardent leurs styles en ligne, mais leurs gris, traits et accents lisent les variables ; les couleurs de données (podiums, réussite et échec, graphes, carte) restent en dur : Recharts et Leaflet les posent en attributs SVG, où une variable CSS ne passe pas de façon sûre.
-
-Graphe de dépendances résumé : `core/*` ne dépend que de `core/*`. `sailing/*` dépend de `core/*` et du type `PointData` de `utils/kinematics`. `running/*` dépend de `core/*`. `platform/*` ne dépend que de Capacitor et de ses plugins. `recording/*` dépend de `core/*` et du type `LocationFix` de `platform/location`. `library/*` dépend de `core/*`, de `sailing/sailingConfig` et `sailing/sessionNotes`, de `recording/session` et du type `FolderEntry` de `platform/memoryFolder`. Les hooks dépendent de `core`, `sailing`, `recording`, `library`, `utils/kinematics` et `platform` ; `ResizablePanel` dépend de `platform`. Les pages dépendent des hooks, de `core`, `sailing`, `running` et des composants. Aucun alias de chemin : tous les imports sont relatifs.
+`planning` et `recording` dépendent l'un de l'autre, mais aucun fichier n'entre dans un cycle.
 
 ## 4. Pipeline de données
 
-### 4.1 Ingestion, commune aux deux modules
+Ordre et orchestration seulement. Les seuils, fenêtres et formules sont nommés et commentés dans les fichiers cités.
 
-1. `loadGpxContent` (`useGpxSession`) reçoit le texte du GPX, lu dans la mémoire ou, faute de mémoire, dans le fichier choisi (`readPickedFile`), et appelle `parseGpx` (`core/gpxParser.ts`) : `DOMParser`, un `RawTrackPoint` par `trkpt` avec `lat`, `lon`, `time` (obligatoire), `ele`, `speed`, `hr`, `cad`, recherche par nom local pour tolérer les préfixes d'extension (`gpxtpx`, `gpxdata`, `ns3`). Le nom de la trace vient de `trk/name`, son type d'activité de `trk/type` (pour deviner le support d'un GPX importé). Une vitesse appareil hors [0, 100] est ignorée.
-2. `referenceSpeedMs` et `samplingIntervalS` (`core/sessionSpeed.ts`), sur les points bruts. L'allure de la session est le **neuvième décile des vitesses brutes, pondéré par la durée de chaque point** et non par leur nombre, pour rester identique à 1 Hz et à 5 Hz ; la durée d'un échantillon est plafonnée à 10 s, sans quoi le point qui précède une coupure d'un quart d'heure pèserait plus que toute la session. Le module voile s'en sert pour accorder les seuils de filtrage (`sessionFilterThresholds`, `scaleFiltersToSession` de `useGpxSession`) : accélération plausible proportionnelle à l'allure, plafond de vitesse resserré sans jamais dépasser celui du profil. L'utilisateur peut imposer l'allure, ce qui recalcule toute la chaîne (§10, point 26).
-3. `computeKinematics` (`core/kinematics.ts`), mémoïsé sur les points bruts et les options du profil :
-   - vitesse dérivée des positions (Haversine / dt) et cap initial pour chaque point ;
-   - si le fichier porte une vitesse appareil : détection de son unité (`detectDeviceSpeedUnit`, médiane du rapport appareil/dérivée, choix entre m/s, km/h, nœuds au plus proche en logarithme, au moins 10 échantillons) et conversion ; repli point par point sur la vitesse dérivée si l'appareil n'a rien fourni ;
-   - sans vitesse appareil, le premier point reçoit la vitesse du second, sinon un faux démarrage brutal serait pris pour une aberration ;
-   - écrêtage `clampByAcceleration` (`core/speedFilter.ts`) : amorce = médiane des 10 premières secondes ; un point est suspect si son accélération depuis la dernière valeur retenue dépasse 10 m/s² ou s'il dépasse le plafond du support ; on cherche alors un retour plausible dans les 3 s : trouvé, les points intermédiaires sont neutralisés ; non trouvé, le changement est réel et accepté sauf au-dessus du plafond ;
-   - filtre médian temporel `medianFilterByTime` (3 s en voile, 5 s en course) qui donne `smoothedSpeedMs`, la vitesse de toutes les analyses.
-4. `buildCumulativeTrack` (`core/sessionStats.ts`) : `cumDist` par intégration de `speedMs × dt` (`segmentDistanceM`), `cumTime` en secondes.
-5. `computeActivityMask` : trigger de Schmitt sur `smoothedSpeedMs`, seuil haut à l'entrée et seuil bas à la sortie, avec durée de confirmation optionnelle. Seuils dérivés du seuil d'activité du profil par `getActiveThresholds` (wingfoil : 8 + 0,5 à l'entrée, 8 − 1 à la sortie ; course : 3 + 1 et 3 − 1 km/h, confirmés sur 3 s).
-6. `computeElevationStats` (`core/elevation.ts`) : lissage de l'altitude par ajustement linéaire local sur fenêtre temporelle (`linearSmoothByTime`, 20 s route ou 30 s trail), puis accumulateur à seuil qui ne compte une montée ou une descente qu'après un renversement de pente supérieur à `minGainM` (3 m route, 5 m trail). Résultat publié seulement si au moins la moitié des points ont une altitude.
-7. `buildBaseSessionStats` : distance totale et active, temps total et actif, ratio, source de vitesse, dénivelé, altitudes, tout formaté en chaînes.
+### 4.1 Ingestion, commune aux deux modules (`useGpxSession`)
+
+1. `loadGpxContent` reçoit le texte du GPX, lu dans la mémoire ou dans un fichier choisi (`readPickedFile`). `parseGpx` (`core/gpxParser.ts`) en tire :
+   - les points bruts ;
+   - le nom (`trk/name`) ;
+   - le type d'activité (`trk/type`), qui sert à deviner le support d'un import.
+2. `core/sessionSpeed.ts` calcule l'allure de la session (`referenceSpeedMs`, neuvième décile des vitesses brutes, pondéré par la durée) et la cadence (`samplingIntervalS`).
+   - Le module voile en tire ses seuils de filtrage (`sessionFilterThresholds`, option `scaleFiltersToSession`). L'accélération plausible vaut max(2 ; 0,8 × allure) par seconde ; le plafond de vitesse est resserré, jamais au-dessus de celui du profil.
+   - Sans allure (en course, ou sur une trace trop courte) : 10 m/s² et le plafond du profil.
+   - L'allure peut être imposée pour une session, ce qui recalcule toute la chaîne (§10, point 46).
+3. `computeKinematics` (`core/kinematics.ts`), dans l'ordre :
+   - vitesse dérivée des positions ;
+   - vitesse de l'appareil, convertie après détection de son unité ;
+   - écrêtage (`clampByAcceleration`, `core/speedFilter.ts`) ;
+   - médiane temporelle, qui donne `smoothedSpeedMs`, la vitesse de toutes les analyses.
+4. Puis, dans `core/sessionStats.ts` et `core/elevation.ts` :
+   - `buildCumulativeTrack` ;
+   - `computeActivityMask`, un trigger de Schmitt autour du seuil d'activité ;
+   - `computeElevationStats` ;
+   - `buildBaseSessionStats`.
 
 ### 4.2 Voile (`useSailingSession`)
 
-1. `trackData = trackToPointData(track)` : vue en nœuds.
-2. `stats = buildSailingSessionStats(track, { sport, activeThresholdKn })` (`sailing/sailingStats.ts`) : base générique plus `tops` sur les sept cibles voile (2 s, 5 s, 10 s, 100 m, 500 m, 1000 m, 1 mille), calculés par `computeTopSegments` (`core/topSegments.ts`) : vitesse d'un segment = distance sur durée, borne de fin interpolée, segments sans chevauchement, trois par cible.
-3. `windEstimate = estimateWind(trackData, { minSpeedKn, successThresholdKn, minEntrySpeedKn })` (`sailing/maneuvers.ts`), l'estimation globale. Les seuils viennent du profil du support, de la surcharge de l'utilisateur et de l'allure de la session (`sessionManeuverThresholds`), jamais du code : c'est ce qui permet à un bateau de ne pas être analysé avec les valeurs d'un wingfoil (§10, points 23, 26 et 27).
-   - `estimateWindPolar` (`sailing/wind.ts`) cherche le centre de l'angle mort : pour chaque direction candidate, pénalité des vitesses max dans le cône de ±35°, récompense des secteurs de près [40°, 85°] des deux côtés, pénalité du déséquilibre ; score = gauche + droite − 4 × cône − |gauche − droite|. L'orientation, angle mort ou son jumeau au vent arrière, est fixée par le contraste polaire, sinon par les virages (vol perdu = virement, face au vent), sinon la polaire garde la sienne avec une confiance réduite ;
-   - `selectWindCandidate` retient, parmi trois candidats maximaux séparés d'au moins 45° plus le jumeau du meilleur, celui dont le classement des manœuvres colle à la physique (`maneuverAgreement` : virement si la **conservation** de vitesse tombe sous 0,5, critère sans dimension et donc valable à toutes les échelles de support), un classement incohérent comptant double en négatif. Chaque direction testée porte son propre descripteur, jumeau compris (`describeWindCandidate`), de sorte que la confiance renvoyée est toujours celle de la direction renvoyée ;
-   - deux allers-retours : les bissectrices des manœuvres à caps stabilisés sont fusionnées avec l'ancre polaire (moyenne vectorielle, poids 2 pour les manœuvres), puis chaque manœuvre est reclassée avec le vent local de son instant (`buildWindTimeline`).
-   - Confiance = max(confiance polaire, confiance manœuvres × 0,9) ; fiable si ≥ 0,4. Sous ce seuil l'interface exige une saisie manuelle et suspend manœuvres, VMG et polaire.
-4. `currentWindValue` : vent saisi de la session si présent, sinon estimation fiable, sinon `null`. Le vent saisi et le seuil d'activité propre à la session viennent du module (`useSailingSession({ windDeg, activeThresholdKn })`), qui les tient en brouillon puis les garde dans la fiche (§6.1). Seuil effectif : celui de la session, sinon la surcharge de l'activité, sinon la suggestion accordée à l'allure.
-5. `maneuverStats = analyzeManeuvers(trackData, wind, { successThresholdKn, minEntrySpeedKn })`, en deux passes (vent global, puis vent local interpolé entre les manœuvres de la première passe, trou maximal 30 min) :
-   - fenêtre de 12 s ; virage retenu si cumul > 60°, cohérence (virage net / rotation totale) ≥ 0,6, vitesse d'entrée au-dessus du seuil accordé à la session, et **au moins 10 m parcourus** ; observation prolongée tant que le cap tourne dans le même sens, jusqu'à 24 s ;
-   - si la fenêtre ne contient **aucun** point, un pas unique de moins de 30 s est lu à sa place : les enregistreurs économiques se taisent pendant le virage, quand le bateau ralentit, et y compriment toute la rotation (§10, point 27). La branche ne peut pas s'armer sur une trace dense ;
-   - les virages écartés sont comptés par motif (`ManeuverRejections` : `slowEntry`, `incoherent`, `unclassified`, `tooShort`) et affichés, sans quoi « aucune manœuvre » ne dit pas lequel des murs a été touché. Le comptage est dédupliqué, mais ne pose **jamais** de temps mort : un virage écarté peut être classé quelques points plus loin ;
-   - caps stabilisés avant et après (`stableSegment` : au-delà d'une marge de 4 s, jusqu'à 20 s, rotation < 3°/s, au moins 5 s) ; bissectrice parcourue dans le sens du virage, ce qui règle le cas dégénéré du virage de 180° ;
-   - classification par la bissectrice avec tolérance de 60° ou la moitié du virage : proche du vent, virement ; proche du vent arrière, empannage ; au travers, rien ;
-   - réussite si Vmin ≥ seuil d'activité ; temps mort de 10 s après la fin du virage ;
-   - métriques de qualité : vitesse d'entrée (moyenne du bord stabilisé avant), conservation = Vmin / entrée, temps de relance jusqu'au retour à 90 % de l'entrée dans la minute, changement de cap entre caps stabilisés, distance intégrée de l'entrée à la relance, tracé pour la carte ;
-   - `entryHeading` et `exitHeading`, caps instantanés aux deux bouts de la rotation : bruités, donc impropres à mesurer un angle fin, mais définis pour toutes les manœuvres, y compris celles sans cap stabilisé. Ils servent à juger la symétrie du virage, donc la confiance à accorder à sa mesure du vent.
-6. `maneuverSummary = summarizeManeuvers(maneuverStats)` : par type, réussis, ratés, Vmin moyenne et max, moyenne et podium de chaque métrique (conservation la plus haute, les trois autres les plus faibles).
-7. `windStats = calculateWindStats(trackData, maneuverStats, currentWindValue)` : statistiques circulaires (moyenne vectorielle, écarts à la moyenne, écart-type circulaire, tendance en degrés par heure) sur **toutes** les manœuvres classées, courbe interpolée entre manœuvres, valeur la plus proche conservée avant la première et après la dernière, interrompue au-delà de 30 min sans manœuvre (`interpolateDirection`), `windAt(t)`.
-   - Le troisième argument est le vent global. Il sert à juger l'angle au vent d'entrée et de sortie de chaque manœuvre, donc sa symétrie : `poids = max(0,2 ; 1 − |TWA entrée| − |TWA sortie| / 90)`. Une manœuvre où l'on entre au largue pour ressortir au près a son milieu décalé et pèse moins, sans jamais être exclue. Sans ce vent de référence, la fonction se rabat sur la moyenne brute des mesures, ce qui revient à juger une série biaisée par son propre biais (§10, point 24).
-   - Les poids s'appliquent à la moyenne, l'écart-type, la plage et la tendance, qui est une régression pondérée. L'interpolation, elle, ne pondère pas : la courbe passe par tous les points.
-   - `stableShare` n'est plus une part retenue mais un indicateur de qualité : la part des manœuvres dont les caps sont stabilisés des deux côtés.
-   - chaque point de `graphData` porte `isManeuver`, vrai sur le point d'échantillonnage le plus proche d'une manœuvre : le graphe y pose un point visible, pour distinguer la mesure de l'interpolation.
-8. `vmgStats = calculateVmgStats(trackData, windAt ?? vent global, activeThresholdKn)` : fenêtres de 10 s, VMG = vitesse × cos(cap − vent local), par allure et par bord, trois tops au près et au portant.
-9. Données de graphes : vitesse sous-échantillonnée à `CHART_MAX_POINTS` (500, `core/displayConfig.ts`), polaire de vitesse en 36 secteurs de 10° relatifs au vent.
+1. `trackToPointData` : la vue en nœuds.
+2. Le seuil d'activité effectif est celui de la session, sinon la surcharge de l'activité, sinon la suggestion accordée à l'allure (`suggestActiveThresholdKn`) ; jamais le défaut fixe du profil (§10, point 29). Les seuils de manœuvre s'accordent à l'allure par `sessionManeuverThresholds`.
+3. `buildSailingSessionStats` : la base, plus les tops de la voile (`core/topSegments.ts`).
+4. `estimateWind` (`sailing/maneuvers.ts`, polaire dans `sailing/wind.ts`) donne l'estimation globale : la polaire, puis les manœuvres à caps stabilisés (`windSamplesFrom`).
+   - Confiance = max(polaire ; manœuvres × 0,9).
+   - L'estimation est fiable à partir de 0,4 (`WIND_CONFIDENCE_MIN`). En dessous, l'interface exige une saisie, et suspend manœuvres, VMG et polaire.
+5. Vent retenu : celui saisi pour la session, sinon l'estimation fiable, sinon `null`.
+6. `analyzeManeuvers` tourne en deux passes, dans le hook :
+   - d'abord avec le vent global ;
+   - puis avec le vent local (`buildWindTimeline`), interpolé entre les manœuvres à caps stabilisés de la première passe.
+
+   Les virages écartés sont comptés par motif (`ManeuverRejections`), sans jamais poser de temps mort. `summarizeManeuvers` en tire le tableau.
+7. `calculateWindStats` (`sailing/sailingAnalytics.ts`) : statistiques et courbe du vent sur toutes les manœuvres classées (règle 7). Elles sont pondérées par la symétrie du virage, jugée contre le vent global (§10, point 24). Elle fournit aussi `windAt(t)`.
+8. `calculateVmgStats` : VMG = vitesse × cos(cap − vent local, sinon vent global).
+   - Fenêtres de 10 s.
+   - Par allure et par bord.
+   - Trois tops au près et trois au portant.
+9. Graphes :
+   - vitesse sous-échantillonnée à `CHART_MAX_POINTS` ;
+   - polaire en 36 secteurs relatifs au vent.
 
 ### 4.3 Course (`RunningModule`)
 
-Pas de hook dédié : le module compose directement `useGpxSession`, `useSportSettings('course')`, `useRunnerProfile`, `useOpenSections`. Il calcule cumuls, masque, dénivelé, stats de base, allures moyennes (`averagePace`, sur le temps total et sur le temps en mouvement), pentes (`computeGrades`, fenêtre de ±25 m sur l'altitude lissée), zones (`computeZoneStats`, cinq zones : montée raide ≥ 10 %, montée 3 à 10 %, plat ± 3 %, descente, descente raide ; pauses exclues), séries de graphes (vitesse lissée 10 s, altitude, distance en km ; courbe d'altitude et aire dessous colorées par la raideur de la pente, `gradeGradientStops`, dégradé SVG horizontal, 0 à 25 % par défaut, bornes par activité dans Réglages, point 57), et couleur de trace par dégradé continu (`speedGradientColor` de `core/speedGradient.ts`, gris sous la borne basse, bleu à rouge entre les bornes, 4 et 15 km/h par défaut, vitesse lissée 15 s). Le module voile utilise le même dégradé sur `smoothedSpeed`, bornes suggérées par l'allure (`suggestSpeedRangeMs`, repli 8 à 28 nœuds). Bornes effectives, dans les deux modules et l'aperçu de la liste : celles de la session (fiche, saisies dans l'onglet réglages de l'analyse, point 57), sinon celles du support dans Réglages, sinon ce défaut (point 51). La carte se cadre sur l'emprise de la trace (`trackBounds`).
+Pas de hook d'orchestration : la page compose elle-même `useGpxSession`, `useSportSettings('course')`, `useRunnerProfile`, `useOpenSections`, `useSessionDraft`, `useSessionFromUrl` et `useChangeSessionActivity`. Elle calcule ensuite, avec `running/runningAnalytics.ts` (lissages en tête de la page), les allures (`averagePace`), les pentes (`computeGrades`), les zones (`computeZoneStats`) et les séries des graphes.
+
+### 4.4 Couleur de la trace
+
+Dégradé continu `speedGradientColor` (`core/speedGradient.ts`), dans les deux modules et l'aperçu de la liste. L'ordre des bornes effectives est dans `CLAUDE.md` ; la suggestion vient de `suggestSpeedRangeMs` en voile, le défaut de `DEFAULT_SPEED_RANGE_MS` en course. La carte se cadre sur l'emprise de la trace (`trackBounds`).
 
 ## 5. Carte des fichiers
 
-Dans `docs/INVENTAIRE.md` : une ligne par fichier, son rôle et ses points d'entrée. Les signatures se lisent dans le code.
+Dans `docs/INVENTAIRE.md` : une ligne par fichier, son rôle et ses points d'entrée.
 
 ## 6. Persistance
 
 ### 6.1 Le dossier mémoire
 
-Décidé le 24 septembre 2026 (§10, point 42) : la mémoire de l'application est un dossier ordinaire, qu'on copie pour sauvegarder, migrer après une réinstallation ou passer du téléphone au PC.
+Le principe est dans `CLAUDE.md` (Décisions, « Mémoire ») ; décidé aux points 42 et 43 du §10.
 
 ```
 Tracker/
   tracker.json      marqueur { format: "tracker-memoire", version: 1 }
   reglages.json     réglages qui voyagent, datés
   LISEZMOI.txt      mode d'emploi, pour qui ouvre le dossier à la main
-  itineraires/      une fiche .json (fait foi) et son .gpx par itinéraire planifié (point 59)
+  itineraires/      une fiche .json (fait foi) et son .gpx par itinéraire (point 59)
   sessions/
     2026-09-23_14-05-12_wingfoil.gpx    la trace, jamais réécrite
     2026-09-23_14-05-12_wingfoil.json   sa fiche
 ```
 
-- **Le GPX fait foi.** La fiche (`library/record.ts`) en garde le support (le calcul) et l'activité (`activityId`, `null` : la première activité de ce calcul ; une activité supprimée laisse la session sous le nom de son calcul, point 53), un résumé en SI pour afficher la liste sans relire les traces (`summarizeSession`, qui reprend le pipeline du module), le nombre de manœuvres de la dernière analyse, le nom donné par l'utilisateur (`name`, `null` sans nom ; le GPX garde son nom de fichier), les notes et les réglages d'analyse de la session (`analysis { windDeg; activeThreshold; referenceSpeedMs; speedRange; savedAt }` : vent saisi, seuil d'activité, allure imposée et bornes de couleur propres à la session, `null` pour la valeur par défaut). Tout se recalcule depuis le GPX, sauf ces saisies. Une fiche dont `calcVersion` est dépassé est recalculée, saisies intactes. Le résumé est calculé avec le seuil de la session s'il y en a un ; changer de support efface ce seuil, exprimé pour l'ancien support, et changer de famille efface aussi ses bornes de couleur (`applyRecordPatch`, point 64).
-- **Enregistrement explicite** (§10, point 43) : dans le module voile, vent saisi, seuil, allure, couleurs et notes restent en brouillon (`useSessionDraft`), signalés par une barre « Non enregistré » (`SessionSaveBar`, aussi en course pour les couleurs, point 51) ; « Enregistrer la session » les écrit dans la fiche, « Annuler » revient à l'état enregistré. Quitter avec un brouillon demande confirmation (`hooks/leaveGuard.ts`) : liens internes, touche retour d'Android, fermeture de l'onglet ; le retour arrière du navigateur n'est pas intercepté, mais le brouillon est retrouvé en revenant. Le support et le nom, eux, s'écrivent tout de suite ; une activité de l'autre famille, choisie dans l'onglet réglages de l'analyse, rouvre la session dans l'autre module, après confirmation s'il y a un brouillon (point 64).
-- **Compatibilité** : les champs inconnus d'une fiche sont conservés à la réécriture ; une fiche d'une version future est lue, jamais réécrite ; une fiche illisible n'est jamais écrasée.
-- **Identité** : l'instant du premier point. Réimporter une trace ne la duplique pas ; deux fichiers de la même trace (fusion de dossiers) n'en font qu'une dans la liste.
-- **Pas d'index dans le dossier** : fusionner deux dossiers revient à copier leurs fichiers. Un GPX déposé à la main dans `sessions/` reçoit sa fiche au lancement suivant ; un GPX posé à la racine est rangé dans `sessions/`. Le cache des fiches vit hors du dossier (`tracker.libraryCache`).
-- **Réglages** : `reglages.json` recopie `tracker.sportSettings` et `tracker.runnerProfile` deux secondes après chaque changement. À l'ouverture d'un dossier, le plus récent l'emporte, celui du dossier ou celui de l'appareil (`tracker.settingsSavedAt`) ; le dernier support choisi dans un module ne compte pas comme un changement. Des réglages repris après le démarrage rechargent la page, sauf pendant un enregistrement.
-- **Emplacement** (`platform/memoryFolder.ts`) : dans le navigateur, la mémoire privée du navigateur (OPFS) par défaut, ou un vrai dossier choisi (Chrome et Edge, `showDirectoryPicker`, poignée gardée dans IndexedDB, autorisation à redonner d'un clic si le navigateur ne l'a pas gardée). Choisir un dossier y recopie les sessions de la mémoire du navigateur. Sur le téléphone, `Documents/Tracker` désigné une fois par le sélecteur d'Android (SAF, plugin maison `MemoryFolder`, `android/…/MemoryFolderPlugin.java`), adresse gardée sous `tracker.memoryFolder` ; si Android a retiré l'accès, il faut désigner le dossier à nouveau. Même garde sur les deux plateformes quand on désigne le dossier parent : on descend dans `Tracker` (`shouldDescendIntoMemory`). Sur le PC, « Voir ou changer le dossier » ouvre la fenêtre de choix sur le dossier en service, seul moyen d'en voir le chemin complet. Tant qu'aucun dossier n'est accessible, une session enregistrée attend dans le dossier privé `en-attente/`, rangée dès qu'un dossier l'est.
-- **Import** : des GPX, ou les sessions d'un autre dossier Tracker, « Ajouter les sessions d'un dossier » (chaque fiche accompagne son GPX, notes et réglages compris) : `webkitdirectory` dans le navigateur, sélecteur d'Android sur le téléphone (`pickFolderToImport`, accès non gardé). On peut aussi copier les fichiers dans `sessions/` : ils entrent au lancement suivant. Les notes saisies avant le dossier (`tracker.sailingNotes`) sont reprises à la création de la fiche de la même trace.
+- **Le GPX fait foi.** La fiche (`library/record.ts`) garde :
+  - le support (le calcul) et l'activité (`activityId`, `null` pour l'activité de base du calcul) ;
+  - un résumé en SI pour la liste (`summarizeSession`, qui reprend le pipeline du module) ;
+  - le nombre de manœuvres de la dernière analyse ;
+  - le nom donné (`name`) et les notes ;
+  - les saisies de la session (`analysis { windDeg; activeThreshold; referenceSpeedMs; speedRange; savedAt }`, `null` pour le défaut).
+
+  Tout le reste se recalcule : une fiche dont `calcVersion` est dépassé est recalculée, saisies intactes. Le résumé suit le seuil de la session. `applyRecordPatch` efface le seuil quand le support change, et les bornes de couleur quand la famille change (point 64).
+- **Compatibilité** :
+  - les champs inconnus sont conservés à la réécriture ;
+  - une fiche d'une version future est lue, jamais réécrite ;
+  - une fiche illisible n'est jamais écrasée.
+- **Identité** : l'instant du premier point. Réimporter une trace ne la duplique pas, et deux fichiers de la même trace n'en font qu'une dans la liste (`dedupeSessions`).
+- **Rapprochement** :
+  - un GPX déposé dans `sessions/` reçoit sa fiche au lancement suivant ;
+  - un GPX posé à la racine est rangé dans `sessions/` ;
+  - le cache des fiches vit hors du dossier (`tracker.libraryCache`).
+- **Réglages qui voyagent** : `reglages.json` recopie `tracker.sportSettings` et `tracker.runnerProfile` deux secondes après chaque changement, daté par `tracker.settingsSavedAt`.
+  - L'empreinte qui repère un changement (`settingsSignature`, `library/settingsFile.ts`) ignore les choix retenus : activité du module, ancienne clé du support, activité proposée à l'enregistrement (point 65).
+  - Des réglages repris du dossier après le démarrage rechargent la page, sauf pendant un enregistrement.
+- **Emplacement** (`platform/memoryFolder.ts`) :
+  - navigateur : la mémoire privée (OPFS) par défaut, ou un dossier choisi (Chrome, Edge : `showDirectoryPicker`, poignée dans IndexedDB, autorisation à redonner d'un clic), qui reçoit alors une copie des sessions de la mémoire privée. « Voir ou changer le dossier » est le seul moyen d'en voir le chemin ;
+  - téléphone : `Documents/Tracker`, désigné par le sélecteur d'Android (SAF, plugin maison `MemoryFolder`), à redésigner si Android a retiré l'accès ou après une réinstallation ;
+  - partout : désigner le dossier parent fait descendre dans `Tracker` (`shouldDescendIntoMemory`) ; sans dossier accessible, une session enregistrée attend dans le dossier privé `en-attente/`.
+- **Import** : des GPX, ou les sessions d'un autre dossier Tracker avec leurs fiches (`webkitdirectory` dans le navigateur, `pickFolderToImport` sur le téléphone). Les notes saisies avant le dossier (`tracker.sailingNotes`) sont reprises à la création de la fiche de la même trace.
 
 ### 6.2 Les clés de l'appareil
 
-Lues et écrites par `jsonStore` (`platform/storage.ts`) : `localStorage` dans le navigateur, Preferences natives sur le téléphone (chargées en mémoire au démarrage par `initStorage`). Les clés et le format JSON d'avant ce module sont relus tels quels (§10, point 37).
+`jsonStore` (`platform/storage.ts`) les lit et les écrit : `localStorage` dans le navigateur, Preferences natives sur le téléphone, chargées en mémoire au démarrage (`initStorage`). Les clés et le format d'avant ce module sont relus tels quels (point 37).
 
 | Clé | Fichier | Forme |
 |---|---|---|
-| `tracker.sportSettings` | `hooks/useSportSettings.ts` | `StoredSettings { activities?; moduleActivity?; recordActivity?; longPressMs?; thresholds?; terrains?; speedUnits?; distanceUnits?; textScales?; speedRanges?; gradeRanges?; autoPause?; sport?; referenceSpeeds? }` ; les réglages sont indexés par identifiant d'activité (point 53 : les activités de départ et celles de base portent l'identifiant du calcul, les anciens réglages par support restent donc valables ; `sport` est l'ancienne activité du module voile) ; objet unique réécrit en entier à chaque changement. `speedRanges` sert aux deux modules, en m/s, pour les traces sans bornes propres, et ne se règle que dans Réglages (point 51) ; `gradeRanges` (`{ min; max }`, en fraction) borne la couleur de pente de la courbe d'altitude en course (point 57) ; `autoPause` (`{ speedMs; delayS }`) surcharge la pause automatique de l'enregistrement ; `speedUnits` est lue hors composant par `effectiveSpeedUnit` (enregistrement, liste des sessions) ; l'ancienne allure par support `referenceSpeeds` est écartée à la lecture (point 46). Recopié dans `reglages.json` |
-| `tracker.runnerProfile` | `hooks/useRunnerProfile.ts` | `Record<'me', RunnerProfile>`. Recopié dans `reglages.json` |
-| `tracker.memoryFolder` | `platform/memoryFolder.ts` | téléphone seulement : `{ uri; base; label }`, dossier désigné par le sélecteur d'Android (`base` = `Tracker` si l'on a désigné son parent) |
-| `tracker.settingsSavedAt` | `hooks/useSessionLibrary.ts` | instant du dernier changement de ces deux clés, en ms |
-| `tracker.libraryCache` | `hooks/useSessionLibrary.ts` | `{ folder; entries: Record<nom de fiche, { size; mtimeMs; record }> }` : copie des fiches, reconstruite à volonté |
-| `tracker.sections` | `hooks/useOpenSections.ts` | `Record<moduleId, Record<section, boolean>>` ; identifiants `running`, `sailing-onglets` (barre unique de la voile, point 57), `planning` (blocs des itinéraires) et `recording` (carte de l'enregistrement réduite, point 64) ; `sailing` et `sailing-carte`, d'avant, ne sont plus lus |
+| `tracker.sportSettings` | `hooks/useSportSettings.ts` | `StoredSettings`, réécrit en entier à chaque changement (voir sous le tableau). Voyage dans `reglages.json` |
+| `tracker.runnerProfile` | `hooks/useRunnerProfile.ts` | `Record<'me', RunnerProfile>`. Voyage dans `reglages.json` |
+| `tracker.settingsSavedAt` | `hooks/useSessionLibrary.ts` | instant du dernier vrai changement des deux clés qui voyagent, en ms |
+| `tracker.memoryFolder` | `platform/memoryFolder.ts` | téléphone : `{ uri; base; label }` (`base` = `Tracker` si l'on a désigné son parent) |
+| `tracker.libraryCache` | `hooks/useSessionLibrary.ts` | `{ folder; entries: Record<fiche, { size; mtimeMs; record }> }`, reconstruit à volonté |
+| `tracker.sections` | `hooks/useOpenSections.ts` | `Record<moduleId, Record<section, boolean>>`. Modules lus : `running`, `sailing-onglets`, `planning`, `recording`, `settings`, `settings-activities`. `sailing` et `sailing-carte`, d'avant, ne sont plus lus |
 | `tracker.panelSizes` | `components/ResizablePanel.tsx` | `Record<panelId, { width?; height? }>` |
-| `tracker.followedTrace` | `hooks/useFollowedTrace.ts` | `{ name; source; activityId; points }` : trace suivie pendant l'enregistrement, gardée jusqu'à « Retirer » (points 61 et 64) |
-| `tracker.planning` | `pages/PlanningPage.tsx` | `{ mode?; activityId?; view? }` : derniers mode et activité choisis, dernière vue de la carte des itinéraires |
-| `tracker.sailingNotes` | ancienne clé | `Record<sessionKey, notes>` d'avant le dossier mémoire : plus écrite, lue seulement pour reprendre les notes d'une trace importée |
+| `tracker.followedTrace` | `hooks/useFollowedTrace.ts` | `{ name; source; activityId; points }`, gardée jusqu'à « Retirer » |
+| `tracker.planning` | `pages/PlanningPage.tsx` | `{ mode?; activityId?; view? }` |
+| `tracker.sailingNotes` | ancienne clé | notes d'avant le dossier, lues seulement pour reprendre celles d'une trace importée |
 
-La disposition (`sections`, `panelSizes`) reste propre à chaque appareil. Hors de ces clés et du dossier mémoire : le journal de l'enregistrement en cours (`recording-journal.jsonl`, dossier privé de l'application, gardé tant que la session arrêtée attend, effacé quand elle est rangée ou jetée ; en mémoire seulement dans le navigateur) et, dans le navigateur, la poignée du dossier choisi (IndexedDB `tracker-memoire`).
+`StoredSettings` contient :
+- la liste des activités ;
+- les réglages rangés par identifiant d'activité : seuils, terrains, unités, taille du texte, bornes de vitesse (en m/s) et de pente (en fraction), pause automatique ;
+- l'appui long ;
+- les choix retenus : `moduleActivity`, `recordActivity`, et `sport`, l'ancienne activité du module voile.
+
+L'ancienne allure par support, `referenceSpeeds`, est écartée à la lecture (point 46).
+
+Hors de ces clés et du dossier :
+- le journal de l'enregistrement (`recording-journal.jsonl`), dans le dossier privé de l'application, gardé tant que la session arrêtée attend ; dans le navigateur, il reste en mémoire ;
+- la poignée du dossier choisi, dans IndexedDB.
 
 ## 7. Réglages et constantes
 
-Profils (`core/sportProfiles.ts`) :
+Les profils de support sont dans `core/sportProfiles.ts` (`SPORT_PROFILES`) : seuil d'activité et hystérésis, médiane, plafond de vitesse, polaire, cibles de tops, dénivelé (`ELEVATION_PRESETS`), enregistrement. **Ce sont des défauts provisoires** : seul le wingfoil a été validé sur données réelles. Les activités de l'utilisateur reposent sur ces profils (`core/activities.ts`, point 53).
 
-| Support | Unité | Seuil d'activité | Hystérésis | Confirmation | Médiane | Plafond | Polaire min |
-|---|---|---|---|---|---|---|---|
-| wingfoil | nœuds | 8 | +0,5 / −1 | 0 s | 3 s | 30 m/s | 5 |
-| windsurf | nœuds | 10 | +0,5 / −1 | 0 s | 3 s | 30 m/s | 5 |
-| kite | nœuds | 8 | +0,5 / −1 | 0 s | 3 s | 30 m/s | 5 |
-| bateau | nœuds | 3 | +0,5 / −1 | 0 s | 3 s | 30 m/s | 2 |
-| running | min/km, seuil en km/h | 3 | +1 / −1 | 3 s | 5 s | 12 m/s | 0 |
+Les autres constantes vivent, nommées et commentées, là où elles servent :
 
-**Activités** (`core/activities.ts`, point 53) : l'utilisateur crée les siennes, chacune sur un de ces profils (sa base), qui donne ses défauts, sa famille et son module. Au départ, « Voile » (base wingfoil) et « Course ». Leurs réglages sont rangés sous leur identifiant.
-
-Les valeurs des seuils par support sont des défauts provisoires, jamais validés sur données réelles autres que le wingfoil.
-
-Les valeurs en nœuds du tableau ci-dessus sont des **plafonds** : en voile, `sessionManeuverThresholds` et `sessionFilterThresholds` les abaissent quand l'allure de la session est basse, jamais l'inverse.
-
-Les autres constantes vivent, nommées et commentées, là où elles servent : filtres (`core/speedFilter.ts`), allure de session (`core/sessionSpeed.ts`), détection d'unité (`core/kinematics.ts`), dénivelé (`ELEVATION_PRESETS` de `core/sportProfiles.ts`, couverture dans `core/sessionStats.ts`), manœuvres, vent, VMG et seuils suggérés (`sailing/sailingConfig.ts`, plus les constantes internes de `sailing/maneuvers.ts`, `sailing/wind.ts` et `sailing/sailingAnalytics.ts`), course (`running/runningAnalytics.ts`, lissages en tête de `pages/RunningModule.tsx`), affichage (`core/displayConfig.ts`, `TEXT_SCALE_FACTOR` de `hooks/useSportSettings.ts`).
+| Domaine | Fichier |
+|---|---|
+| Filtres | `core/speedFilter.ts` |
+| Allure | `core/sessionSpeed.ts` |
+| Unité de la vitesse de l'appareil | `core/kinematics.ts` |
+| Manœuvres, vent, VMG, suggestions | `sailing/sailingConfig.ts`, plus les constantes internes de `maneuvers.ts`, `wind.ts` et `sailingAnalytics.ts` |
+| Course | `running/runningAnalytics.ts`, et les lissages en tête de `pages/RunningModule.tsx` |
+| Direct | `LIVE_STATS_DEFAULTS`, `LIVE_LEG_DEFAULTS`, `FOLLOW_DEFAULTS` de `recording/` |
+| Affichage | `core/displayConfig.ts`, et `TEXT_SCALE_FACTOR` de `hooks/useSportSettings.ts` |
 
 ## 8. Tests
 
-Tous sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node (`npx vitest run` donne le compte : 418 au 26 septembre 2026). Chaque fichier de calcul a son `*.test.ts` à côté de lui, dont le titre des `describe` et des `it` dit ce qui est couvert. Deux familles méritent d'être connues : l'invariance 1 Hz / 5 Hz (filtres, allure, tops, manœuvres, résumé), et les protocoles synthétiques du vent de `sailing/maneuvers.test.ts` (rider asymétrique, session sans largue, courant traversier, bascule de 60°, support lent, enregistrement économique).
+Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 421 au 26 septembre 2026.
 
-Générateurs réutilisables dans les tests : `buildEastwardTrack` (kinematics), `buildTrack` (plusieurs variantes selon le fichier), `realisticPolar` (wind), et dans `maneuvers.test.ts` `buildLegSession` avec `upwindDownwindLegs`, `downwindLegs` (portant pur, que des empannages), courant optionnel, `polar` optionnelle (`slowPolar`, la polaire du wingfoil divisée par 2,5, pour simuler un support lent) et `integratePosition`.
+Un calcul a son `*.test.ts` à côté de lui, sauf :
+- `core/sessionStats` et `core/speedGradient`, couverts par d'autres fichiers de test (`topSegments`, `runningAnalytics`, `sailingConfig`) ;
+- `sailing/sailingAnalytics`, couvert par `maneuvers.test.ts` ;
+- `sailing/sailingStats`, `planning/geocoding` et `planning/routeGpx`, sans test.
 
-**`integratePosition` mérite un mot** : par défaut les générateurs font avancer la position le long d'une ligne arbitraire, indépendante des caps imposés. C'est sans conséquence tant qu'un calcul ne lit que les caps et les vitesses, mais toute analyse qui touche aux positions — distance d'une manœuvre, tracé, et toute mesure géométrique du virage — doit être testée avec cette option active, faute de quoi elle mesure une trajectoire qui n'a rien à voir avec la session simulée.
+Deux familles de tests méritent d'être connues :
+- l'invariance 1 Hz / 5 Hz : filtres, allure, tops, manœuvres, résumé ;
+- les protocoles synthétiques du vent de `sailing/maneuvers.test.ts` : rider asymétrique, session sans largue, courant traversier, bascule de 60°, support lent, enregistrement économique.
 
-Non testé : `gpxParser` (DOM), `useRecorder`, `useSessionLibrary`, `useSessionDraft`, `leaveGuard`, les accès de `memoryFolder` et le plugin Java, `buildSailingSessionStats`, `calculateVmgStats`, `buildWindTimeline`, tous les hooks, composants et pages. Ils se vérifient au banc Chrome (`outils/banc/`, mode d'emploi dans son `LISEZMOI.md`) et sur le téléphone (§12). Pour prouver qu'un changement est neutre : texte de la page d'analyse relevé au banc avant et après, puis comparé (§10, point 44).
+Générateurs : `buildEastwardTrack` (kinematics), `buildTrack` (plusieurs fichiers), `realisticPolar` (wind) et, dans `maneuvers.test.ts`, `buildLegSession`, avec ses allures, son courant et sa polaire optionnels (`slowPolar` : celle du wingfoil divisée par 2,5).
+
+**Attention à l'option `integratePosition`.** Par défaut, les générateurs font avancer la position le long d'une ligne arbitraire, indépendante des caps imposés. Toute analyse qui lit les positions (distance d'une manœuvre, tracé, géométrie du virage) doit être testée avec cette option, sinon elle mesure une trajectoire sans rapport avec la session simulée.
+
+Non testés :
+- `gpxParser` (DOM) ;
+- `buildSailingSessionStats`, `calculateVmgStats`, `buildWindTimeline` ;
+- `platform/` : `memoryFolder`, `files`, `compass`, et le plugin Java ;
+- tous les hooks (`useRecorder`, `useSessionLibrary`, `useSessionDraft`, `leaveGuard`…), les composants et les pages.
+
+Ils se vérifient au banc (`outils/banc/`, voir son `LISEZMOI.md`) et sur le téléphone (§12). Le banc prouve aussi qu'un changement est neutre : texte de la page relevé avant et après, puis comparé (point 44).
 
 ## 9. Dette et code mort
 
-Nettoyages du 21 septembre 2026 (§10, point 15) et du 24 septembre 2026 (§10, point 44) : plus de fichier mort, plus d'export ni de champ inutilisé, plus de `any` dans `src/`. Ce qui reste, par ordre d'importance :
+Plus de fichier mort, d'export ou de champ inutilisé, ni de `any` dans `src/` (nettoyages des points 15 et 44). Ce qui reste, par ordre d'importance :
 
 - **Allure de la course** : toujours en min/km, même quand l'activité est réglée en milles nautiques (point 54).
-- Le résumé d'une session est calculé à son entrée dans la mémoire : changer le seuil d'une activité, un terrain ou l'allure imposée ne recalcule pas les résumés de la liste (seuls un changement de support ou d'activité de la session, de son seuil propre, ou d'`SUMMARY_CALC_VERSION` le font), et rien ne le signale.
-- Ouvrir une session voile réécrit sa fiche (nombre de manœuvres) : la date du fichier change. Le cache des fiches n'est pas rafraîchi après une écriture : la fiche est relue au lancement suivant, sans autre effet.
-- Un enregistrement ou un import pendant la première lecture d'un dossier qui contient des GPX sans fiche peut créer un doublon (`addGpx` ne compare qu'aux sessions déjà publiées) ; `dedupeSessions` le masque, les deux fichiers restent.
-- `useStoredRecord` relit dans un effet : les onglets s'affichent un instant avec leurs défauts.
-- Détection des virages écrite deux fois, dans `observeTurns` (`wind.ts`) et `analyzeManeuvers` (`maneuvers.ts`) ; à fusionner avec le chantier de performance du §11, jamais seule (points 21, 26, 27).
-- Brouillon de session : le retour arrière du navigateur n'est pas intercepté (le brouillon attend le retour sur la session) ; le support se change hors brouillon.
-- `Payload.payload` de Recharts est typé `any` par la librairie : les `formatter` d'infobulle relisent la ligne en l'annotant du type attendu (`ChartRow`, `WindGraphPoint`). Confiance accordée à Recharts, pas vérification.
-- Sens de rotation d'un virage vu en un seul pas : voir §11.
-- Changement d'activité pendant l'enregistrement : la notification Android garde le nom du départ jusqu'à une reprise après pause manuelle (point 64).
-- Statistiques en direct (`useLiveRecording`) : chaque nouveau point relance l'attente de 2 s ; en rejeu très accéléré (×600), le recalcul n'a jamais lieu et la page reste sur « — ». Sans effet à 1 Hz sur le téléphone ; au banc, rejouer à ×10 pour les lire.
+- **Résumés de la liste** : le résumé d'une session est calculé à son entrée dans la mémoire.
+  - Changer le seuil d'une activité, un terrain ou l'allure imposée ne recalcule pas les résumés, et rien ne le signale.
+  - Seuls un changement du support, de l'activité ou du seuil propre de la session, ou de `SUMMARY_CALC_VERSION`, les recalculent.
+- **Fiche réécrite à l'ouverture** : ouvrir une session voile réécrit sa fiche si le nombre de manœuvres a changé, et la date du fichier change. Le cache des fiches n'est pas rafraîchi après une écriture : la fiche est relue au lancement suivant, sans autre effet.
+- **Doublon possible** : un enregistrement ou un import pendant la première lecture d'un dossier qui contient des GPX sans fiche peut créer un doublon, car `addGpx` ne compare qu'aux sessions déjà publiées. `dedupeSessions` le masque, mais les deux fichiers restent.
+- **`useStoredRecord`** relit dans un effet : les onglets s'affichent un instant avec leurs défauts.
+- **Brouillon de session** : le retour arrière du navigateur n'est pas intercepté. Le brouillon attend le retour sur la session.
+- **Recharts** type `Payload.payload` en `any` : les `formatter` d'infobulle (voile, course, itinéraires) annotent la ligne du type attendu. C'est une confiance accordée à Recharts, pas une vérification.
+- **Notification Android** : après un changement d'activité pendant l'enregistrement, elle garde le nom du départ jusqu'à une reprise après pause manuelle (point 64).
+- **Statistiques en direct** (`useLiveRecording`) : chaque nouveau point annule le calcul programmé et le reprogramme pour la fin des 2 s. En rejeu très accéléré (×600), les points arrivent plus vite, le calcul n'a jamais lieu et la page reste sur « — ». Sans effet à 1 Hz ; au banc, rejouer à ×10.
+- **Détection des virages écrite deux fois**, et sens d'un virage vu en un seul pas : voir le §11.
 
 ## 10. Historique des décisions et pièges rencontrés
 
-Déplacé dans `docs/HISTORIQUE.md` le 23 septembre 2026, numérotation inchangée : les renvois « §10, point N » du code et de ce document y mènent. Le consulter sur le sujet qu'on touche, avant de retenter ce qui a déjà été essayé.
+Déplacé dans `docs/HISTORIQUE.md` le 23 septembre 2026, numérotation inchangée : les renvois « §10, point N » y mènent. À consulter sur le sujet qu'on touche, avant de retenter ce qui a déjà été essayé.
 
 ## 11. Chantiers en attente
 
-Exprimés par l'utilisateur ou découverts pendant le travail.
+- **Course** :
+  - coût énergétique, à partir du poids et des caractéristiques du coureur, déjà saisis ;
+  - zones cardiaques : `hr` est lu, FC max et FC de repos sont saisies, mais rien ne les utilise ;
+  - tops, splits et allure par kilomètre (`topTargets: []` dans le profil) ;
+  - notes de session, sur le modèle du brouillon de la voile.
+- **Valider les seuils par support** sur des sessions réelles de planche, kite, bateau et course. Valider aussi un enregistrement dense sur une planche rapide : la calibration récente s'est faite sur une trace lente et une trace de wingfoil.
+- **Coût du vent à 5 Hz** (point 23) : environ 0,5 s à chaque mouvement du seuil sur 3 h à 5 Hz, contre 28 ms à 1 Hz.
+  - Cause : `analyzeManeuvers` refait la détection des virages pour chaque candidat de vent, alors que seule la classification en dépend.
+  - Piste : détecter une fois, puis classer par candidat. Le coût serait divisé par quatre environ, et la détection écrite une seconde fois dans `observeTurns` (`wind.ts`) serait fusionnée.
+  - C'est un vrai refactor, à ne jamais faire seul (points 21, 26, 27).
+- **Nommer un virage vu en un seul pas** (point 27) : on connaît le cap avant et le cap après, pas le chemin entre les deux. `angleDiff` retient l'arc court, si bien qu'un virement passé par le lit du vent ressort en empannage. Pistes :
+  - la perte de vitesse, inopérante sur une session lente ;
+  - le déplacement latéral, ténu ;
+  - ou assumer que le fichier ne le dit pas, et l'afficher.
 
-- Coût énergétique en course, à partir du poids et des caractéristiques du coureur déjà saisies dans Paramètres. Rien n'est calculé aujourd'hui.
-- Zones d'effort cardiaque : `hr` est lu du GPX et FC max et repos sont saisies, aucun calcul ne les utilise.
-- Cibles de tops pour la course (`topTargets: []` dans le profil running), splits kilométriques, allure par kilomètre.
-- Notes de session pour la course (matériel, conditions, appréciation), sur le modèle du brouillon de la voile (`useSessionDraft`).
-- Validation des seuils par support sur des sessions réelles de planche, kite, bateau et course.
-- Application Android via Capacitor et enregistrement GPS natif : feuille de route au §12.
-- Coût du recalcul du vent sur trace 5 Hz (§10 point 23) : environ 0,5 s à chaque mouvement du seuil d'activité sur 3 h à 5 Hz, contre 28 ms à 1 Hz. Mitigation identifiée et non faite, parce qu'elle demande un vrai refactor : `analyzeManeuvers` refait toute la détection des virages pour chaque candidat de vent, alors que seule la classification dépend du vent. Détecter une fois puis classer par candidat diviserait le coût par quatre environ, et fusionnerait la détection écrite une seconde fois dans `observeTurns` (§9).
-- **Nommer un virage vu en un seul pas** (§10 point 27). Sur une trace d'enregistreur économique, le cap avant et le cap après sont connus, mais pas le chemin entre les deux : `angleDiff` retient l'arc court, et un virement pris en passant par le lit du vent ressort en empannage. La géométrie seule ne tranche pas. Pistes non tranchées : la perte de vitesse (inopérante sur une session lente de bout en bout), le déplacement latéral par rapport à l'axe du vent (ténu sur quelques mètres), ou assumer que le fichier ne le dit pas et l'afficher. Premier geste de la prochaine session sur ce sujet, à valider avec le souvenir de l'utilisateur.
-- Estimation du vent sur trace lente et peu échantillonnée : la polaire annonce une confiance élevée sur une direction fausse de 180° (§10 point 27). L'utilisateur corrige par « Inverser » et s'en satisfait pour l'instant ; la confiance affichée mériterait d'être rabattue quand la couverture polaire est maigre.
-- Valider les seuils d'un enregistrement dense sur une session de planche rapide : toute la calibration récente s'est faite sur une trace lente et une trace wingfoil, sans cas intermédiaire.
-- Mise en page des analyses : deux passes faites et validées (§10, points 56 à 58).
+  À valider avec le souvenir de l'utilisateur.
+- **Vent sur trace lente et peu échantillonnée** : la polaire annonce une confiance élevée sur une direction fausse de 180° (point 27). L'utilisateur corrige par « Inverser ». La confiance mériterait d'être rabattue quand la couverture polaire est maigre.
 
 ## 12. Cible mobile (Capacitor)
 
-Décidé le 23 septembre 2026 ; le pourquoi de Capacitor et les options écartées sont au §10, point 36. Téléphone de l'utilisateur : POCO 2412DPC0AG (Xiaomi), Android 16, HyperOS 3.0 ; il faut « Installer via USB » en plus du débogage USB.
+Décidée le 23 septembre 2026 ; le choix de Capacitor et les options écartées sont au point 36. Téléphone de l'utilisateur : POCO 2412DPC0AG (Xiaomi), Android 16, HyperOS 3.0 ; il faut « Installer via USB » en plus du débogage USB.
 
 ### Avancement
 
-C'est le seul endroit où il est tenu.
+C'est le seul endroit où il est tenu : les phases et le reste à faire. Le détail de chaque lot est dans HISTORIQUE.
 
-- Phase 0, **faite** le 23 septembre 2026 (points 36 et 37) : git et GitHub, `CLAUDE.md` allégé, historique sorti, `platform/storage.ts`.
-- Phase 1, **faite** le 23 septembre 2026 : coquille Capacitor 8 (point 38) et enregistrement minimal (points 39 et 40), contrôle de 13 min 27 s écran éteint à 1 Hz, plus long trou 4 s. La session de 2 h écran éteint est reportée par l'utilisateur.
-- Maquette cliquable de l'accueil et de la navigation, validée le 23 septembre 2026 « pour le moment » (https://claude.ai/artifact/9enXeWAqdyhkqS95RRA4JR, privée) : enregistrement en deux temps (famille, puis activité) ; en direct, allure, D+ et D+ sur 5 min en course, bords en voile ; graphe d'activités Semaine · 30 jours · 6 mois · Année avec numéros de semaine ISO, totaux sur le même sélecteur.
-- Plan en six lots, approuvé le 23 septembre 2026, un commit et une validation chacun, dans cet ordre :
-  - lot 1, clé de signature, DA, navigation : **fait** (point 41) ;
-  - lot 3, bibliothèque des sessions, redéfini le 24 septembre 2026 autour du dossier mémoire (§6) et passé avant le lot 2 : 3a dans le navigateur **fait** (point 42), 3b sur le téléphone avec l'enregistrement explicite des sessions **fait** (point 43, APK 0.2.0) ;
-  - lot 2, **fait** (point 54, APK 0.2.15) : réglages d'affichage par activité, donc par support (unité de vitesse, unité de distance km ou milles nautiques, taille du texte), choisis dans Réglages seulement et actifs partout ; module voile dans l'unité de l'activité ; module course : Unité et Texte retirés de l'en-tête, seuil de Réglages lu ; Réglages en blocs et activités repliables ;
-  - lot 4, accueil : graphe d'activités et totaux **faits** (point 53, APK 0.2.13) ; les dernières sessions restent dans les bibliothèques ;
-  - lot 5, enregistrement : carte et statistiques en direct **faites** (point 50, APK 0.2.9) ; choix en deux temps (famille puis activité) **fait** (point 53) ; bords en voile, repérés par leur cap moyen, **faits** (point 62, APK 0.2.27) ;
-  - lot 6, APK pour les testeurs : icône **faite** (point 55, APK 0.2.16) ; fiche d'installation **faite** (`docs/INSTALLATION.md`, point 62). Le plan en six lots est terminé.
-- Hors plan, le 24 septembre 2026 : allure imposée propre à chaque session (point 46) ; audit, documentation allégée, code mort retiré (point 44) ; fins de ligne en LF et banc versé dans `outils/banc/` (point 45).
-- Hors plan, le 25 septembre 2026 : lot I de la liste de bugs du 24/09 (point 47, APK 0.2.3) — quatre bugs d'interface téléphone (saisie du profil coureur, bascule des panneaux voile, disposition de la carte, aperçu carte de la bibliothèque). Lot II (point 48, APK 0.2.5) : renommage d'une session, depuis la liste ou l'en-tête de l'analyse ; mise en page téléphone du lot I portée en course. Lot II bis (point 49, APK 0.2.6) : carte, légende et plein écran réunis dans `AnalysisMap`, légende collée sous la carte, patron commun dans `docs/MISE_EN_PAGE.md`. Lot III (point 50, validé avec le lot 5 sur l'APK 0.2.9) : pause d'enregistrement manuelle et automatique, GPX allégé. Lot de debug (point 51, APK 0.2.10) : carte cadrée sur la trace, Réglages lisibles sur téléphone, session rangée seulement sur « Analyser », couleurs propres à chaque trace, raccourci de bureau. Tableau des manœuvres sur téléphone (point 52, APK 0.2.11). Retouches (point 53, APK 0.2.13) : activités créées par l'utilisateur, graphe d'activités sur l'accueil, pause par appui long sur le bouton rond. Retouches et logo (point 55, APK 0.2.16) : totaux de l'accueil vers la bibliothèque filtrée, aide de l'import d'un dossier repliée, logo et icône simplifiée.
-- Phase 2 : interface mobile. Amorcée pour les modules voile et course (points 47 et 48) : carte pleine largeur en haut sous 768 px, feuille qui la chevauche avec quatre chiffres clés, plein écran au tap, panneaux repliables par leur titre, légende sous la carte (`analysisMobile.css`, `AnalysisMap`, patron dans `docs/MISE_EN_PAGE.md`). Tableau des manœuvres ajusté au téléphone (point 52) ; en voile sur ordinateur, la colonne d'onglets de la carte passe sous la carte quand ses quatre onglets sont ouverts (déjà ainsi avant le point 49). Point 56 (APK 0.2.17) : ordre voile sur téléphone, blocs pleine largeur sans poignée sur téléphone, « Taille du texte » sur tous les panneaux, explications repliées ; graphes gardés à 500 et 350 px sur ordinateur (choix de l'utilisateur). Point 57 (APK 0.2.21) : une seule barre d'onglets en voile, synthèse toujours visible dans la feuille des deux modules, réglages de la session dans un onglet, bornes de couleur saisies dans cet onglet. Point 58 (APK 0.2.22) : saisie et calcul du vent à droite de la boussole. Restent : toucher au lieu du survol ; `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz) : les regrouper par couleur toucherait à la décision « pas de paliers », à redemander ; `accept=".gpx"`, qui grise parfois les GPX sous Android.
-- Hors plan, le 25 septembre 2026 : planification d'itinéraires (point 59, APK 0.2.24) — page `/itineraires`, calcul BRouter en ligne, fiche et GPX dans `itineraires/`. Point 60 (APK 0.2.25) : planification ouverte depuis l'accueil (bouton coupé en deux, Enregistrer · Planifier), suppression de l'itinéraire dans son bloc Ranger ; « Suivre une trace » sur la page Enregistrer, un itinéraire ou une session, filtrée par activité, dessinée en pointillé sur la carte en direct. Point 61 (APK 0.2.26) : distance restante et part faite le long de la trace suivie, partie faite en gris, flèche de position au cap (marche, boussole à l'arrêt), trace suivie gardée jusqu'à « Retirer ». Pas d'alerte hors trace (décidé par l'utilisateur). Suite possible : calcul hors ligne des itinéraires.
-- Hors plan, le 26 septembre 2026 : planification, point 63 (APK 0.2.28) — « Précédent » sur la carte, boucle en ligne droite, chargement d'un GPX téléchargé, gardé tel quel entre départ et arrivée (tronçons `imported`, fiche d'itinéraire en version 2). Activité, point 64 (APK 0.2.29) — celle de la trace suivie proposée, changée pendant l'enregistrement ou dans l'onglet réglages de l'analyse, voile ↔ course comprises ; carte de l'enregistrement réduite à trois grands chiffres.
-- Phase 3 : partage et export GPX, réception d'un GPX partagé depuis Komoot, cartes hors ligne (pas de réseau en mer), capteur cardiaque Bluetooth.
+- **Phases 0 et 1, faites le 23/09** (points 36 à 40) : git, `platform/storage.ts`, coquille Capacitor, enregistrement minimal. Contrôle de 13 min 27 s écran éteint, plus long trou 4 s. **Le test de 2 h écran éteint est reporté par l'utilisateur.**
+- **Maquette** de l'accueil et de la navigation, validée le 23/09 : https://claude.ai/artifact/9enXeWAqdyhkqS95RRA4JR (privée).
+- **Plan en six lots, terminé le 25/09** :
+  - DA et navigation (point 41) ;
+  - bibliothèque en dossier mémoire (points 42 et 43) ;
+  - réglages d'affichage par activité (point 54) ;
+  - accueil (point 53) ;
+  - enregistrement en direct et bords (points 50, 53, 62) ;
+  - APK des testeurs et `docs/INSTALLATION.md` (points 55, 62).
+- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65).
+- **Phase 2, interface mobile** : deux passes faites (points 47 à 49, 52, 56 à 58 ; patron dans `docs/MISE_EN_PAGE.md`). Restent :
+  - toucher au lieu du survol, dans les graphes ;
+  - `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz). Les regrouper par couleur toucherait à « pas de paliers » : à redemander ;
+  - `accept=".gpx"` de la bibliothèque, qui grise parfois les GPX sous Android.
+- **Suite possible** : calcul des itinéraires hors ligne.
+- **Phase 3** :
+  - partage et export GPX ;
+  - réception d'un GPX partagé depuis Komoot ;
+  - cartes hors ligne (pas de réseau en mer) ;
+  - capteur cardiaque Bluetooth.
 
 ### Enregistrement
 
-- **Enregistrer brut, analyser ensuite** : 1 Hz, vitesse fournie par le système (Doppler sur la plupart des puces) ; ni filtre de distance, ni lissage. Paramètres dans `SportProfile.recording` (règle 3), identiques pour tous (1 s, 0 m). Le 1 Hz tient aussi le coût du recalcul du vent (point 23).
-- **Pauses** (point 50) : manuelle (la source GPS est coupée ; bouton Pause de la page, ou appui long de 2 s, réglable, sur le bouton rond depuis n'importe quelle page, point 53) ou automatique, sous 0,3 m/s pendant 60 s de temps de trace, réglable par support dans Réglages (`autoPause`), 0 la désactive ; reprise dès un point au-dessus du seuil. Chaque reprise ouvre un `<trkseg>` (marque `break` dans le journal) ; le GPX ne porte plus que la vitesse en extension, ni cap ni précision.
-- **En direct** (point 50) : carte qui suit la position (`LiveMap`), avec la trace suivie en pointillé s'il y en a une (point 60), sa partie faite en gris, la distance restante et la part faite le long d'elle, et une flèche de position au cap (point 61), statistiques par famille (`recording/liveStats.ts`, recalculées au plus toutes les 2 s par `useLiveRecording`, dans les unités de vitesse et de distance de l'activité) : en voile, tops 5 s et 10 s sur les 5 dernières minutes, distance, et bord en cours et bord précédent (cap moyen, durée, moyenne, max sur 2 s ; `recording/liveLegs.ts`, point 62) ; en course, allure, distance, dernier km (ou mille), allure moyenne, D+, D−, D+ sur 5 min.
-- **Plugin GPS** : `@capgo/background-geolocation` (MPL-2.0, Capacitor 8), avec `android.useLegacyBridge: true`, sans quoi les positions s'arrêtent après 5 min en arrière-plan. Repli si des points se perdent : Capawesome, payant, qui garde les positions dans une file SQLite native.
-- **Activité** (point 64) : celle de la trace suivie est proposée au départ ; elle se change en route, d'une famille à l'autre comprise (`changeRecordingActivity`, ligne `activity` du journal) : statistiques, couleur et pause automatique suivent, et la session est rangée sous la dernière. « Réduire la carte » laisse la place à la vitesse du moment, la moyenne et la meilleure vitesse tenue 2 s.
-- **Un GPX par session** : un journal écrit par paquets, qui résiste à un arrêt brutal, puis un GPX complet à l'arrêt, avec `<speed>` en m/s en extension ; ouvrir une session revient à appeler `loadGpxContent`. Nommage `AAAA-MM-JJ_hh-mm-ss_<support>.gpx`. À l'arrêt, rien n'est rangé : « Analyser » fait entrer la session dans le dossier mémoire (§6), « Jeter » l'abandonne ; d'ici là, pas de nouvel enregistrement, et une fermeture ou un plantage la remet en attente au lancement suivant (journal gardé, point 51). Faute de dossier accessible, une session analysée attend dans un dossier privé. Les gestionnaires de fichiers ne montrent pas le dossier dans leur catégorie « Documents » : passer par Stockage interne → Documents → Tracker, ou par le câble USB (bouton de partage en phase 3).
-- **Réglages du téléphone, avant tout enregistrement** : sur HyperOS, démarrage automatique et batterie « Aucune restriction » pour Tracker. Sans eux, le système coupe les positions dès que l'application passe en arrière-plan (trou de 93 s au contrôle 1b). Une désinstallation les remet à zéro, comme les autorisations.
+Les principes sont dans `CLAUDE.md` (Décisions, « Enregistrement ») ; ce qui suit est technique.
+
+- **Positions** : vitesse fournie par le système (Doppler) ; cadence et distance dans `SportProfile.recording` (1 s, 0 m pour tous). Le 1 Hz tient aussi le coût du vent (point 23).
+- **Plugin** : `@capgo/background-geolocation` (MPL-2.0, Capacitor 8), avec `android.useLegacyBridge: true`, sans quoi les positions s'arrêtent après 5 min en arrière-plan. Repli si des points se perdent : Capawesome, payant, qui garde les positions dans une file SQLite native.
+- **Journal** : écrit par paquets au rythme des positions, il résiste à un arrêt brutal.
+  - Chaque reprise après une pause ouvre un `<trkseg>` (marque `break`).
+  - Un changement d'activité ajoute une ligne `activity`.
+- **GPX** : écrit complet à l'arrêt, avec seulement la vitesse en extension (`<speed>` en m/s). Il est nommé `AAAA-MM-JJ_hh-mm-ss_<support>.gpx`, et ce nom ne change plus ensuite.
+- **Pause automatique** : par défaut sous 0,3 m/s pendant 60 s de temps de trace ; 0 la désactive.
+- **En direct** : `useLiveRecording` recalcule les statistiques et les bords (`recording/liveStats.ts`, `liveLegs.ts`) au plus toutes les 2 s.
+- **Réglages du téléphone, avant tout enregistrement** : sur HyperOS, démarrage automatique et batterie « Aucune restriction » pour Tracker.
+  - Sans eux, les positions s'arrêtent dès que l'application passe en arrière-plan (trou de 93 s au contrôle 1b).
+  - Une désinstallation les remet à zéro, comme les autorisations.
+- **Retrouver les fichiers** : les gestionnaires de fichiers ne montrent pas `Tracker` dans leur catégorie « Documents ». Passer par Stockage interne → Documents → Tracker, ou par le câble USB.
 
 ### Compiler, installer, signer
 
-- Boucle de développement inchangée : `npm run dev` (ou le raccourci « Tracker » du bureau, `outils/lancer-tracker.bat`) et le navigateur du PC, mise en page mobile au mode appareil de Chrome. `BrowserRouter` fonctionne dans la WebView, chargement direct de chaque route compris.
-- Vers le téléphone, par câble USB : `npm run build`, `npx cap sync android`, `npx cap run android` (2 min 20 à froid). Dans le shell de Claude, qui définit `NoDefaultCurrentDirectoryInExePath=1`, la CLI ne trouve pas `gradlew` : y passer par `android\gradlew.bat assembleRelease` (APK signé, celui des testeurs ; `assembleDebug` reste possible, signé par la même clé, pour inspecter la WebView), avec `JAVA_HOME` sur le JDK 21 et `ANDROID_HOME` sur `%LOCALAPPDATA%\Android\Sdk`, puis `adb install -r android/app/build/outputs/apk/release/app-release.apk` et `adb shell am start -n io.github.segneur.tracker/.MainActivity`.
-- Inspection : capture d'écran par `adb exec-out screencap -p` ; `chrome://inspect` montre la console ; Claude peut piloter la WebView de debug par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>` et le protocole DevTools. `--live-reload --host localhost --port 5173 --forwardPorts 5173:5173` chargerait l'application depuis le serveur du PC (pas encore essayé). En option, un APK compilé par GitHub Actions : il faudrait y confier la clé de signature (secrets du dépôt).
-- Signature et diffusion : l'APK se diffuse par un lien (Drive, WeTransfer). Android n'installe qu'un APK signé et refuse une mise à jour signée d'une autre clé, sauf désinstallation, qui efface les données de l'application : d'où la clé dédiée (§2, point 41). Après une réinstallation, il faut désigner à nouveau le dossier mémoire ; le sélecteur d'Android redonne accès aux fichiers déjà écrits.
+- **Développement** : `npm run dev` (ou le raccourci « Tracker » du bureau, `outils/lancer-tracker.bat`) et le navigateur du PC ; mise en page mobile au mode appareil de Chrome. `BrowserRouter` fonctionne dans la WebView, chargement direct de chaque route compris.
+- **Outils** :
+  - **JDK 21** (Temurin, `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot`) : le Java 25 d'Android Studio 2026.1 ne fait pas tourner Gradle 8.14.3 ;
+  - SDK dans `%LOCALAPPDATA%\Android\Sdk` ;
+  - `android/` est versionné, et `android/app/build.gradle` tire `versionName` et `versionCode` de `package.json`.
+- **Vers le téléphone** : `npm run build`, `npx cap sync android`, puis `npx cap run android` (2 min 20 à froid).
+  - Dans le shell de Claude, qui définit `NoDefaultCurrentDirectoryInExePath=1`, la CLI ne trouve pas `gradlew`.
+  - Y passer par `android\gradlew.bat assembleRelease`, avec `JAVA_HOME` et `ANDROID_HOME` posés.
+  - Puis `adb install -r android/app/build/outputs/apk/release/app-release.apk` et `adb shell am start -n io.github.segneur.tracker/.MainActivity`.
+  - `assembleDebug` reste possible, signé par la même clé, pour inspecter la WebView.
+- **Signature** : clé dédiée `C:\Users\segne\tracker-signing\tracker-release.jks`, **hors du dépôt**, sauvegardée par l'utilisateur.
+  - `android/keystore.properties` (ignoré par git, copie dans le même dossier) en donne le chemin et le mot de passe.
+  - Debug et release sont signés par cette clé, pour qu'une version s'installe par-dessus l'autre. Sans le fichier, Gradle retombe sur la clé de debug du PC.
+  - Android refuse une mise à jour signée d'une autre clé, sauf désinstallation, qui efface les données (point 41).
+- **Diffusion** : l'APK par un lien (Drive, WeTransfer), avec la fiche `docs/INSTALLATION.md`. Après une réinstallation, désigner à nouveau le dossier mémoire : le sélecteur d'Android redonne accès aux fichiers déjà écrits.
+- **Inspection** :
+  - capture d'écran : `adb exec-out screencap -p` ;
+  - console : `chrome://inspect` ;
+  - pilotage de la WebView de debug : `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>` et le protocole DevTools (`outils/banc/cdp.mjs`).
+
+  Pas encore essayés : `--live-reload` sur le serveur du PC ; un APK compilé par GitHub Actions, auquel il faudrait confier la clé.

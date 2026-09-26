@@ -6,6 +6,7 @@ import {
   chooseSettings,
   parseSettingsFile,
   serializeSettingsFile,
+  settingsSignature,
 } from './settingsFile';
 
 const values = { 'tracker.sportSettings': { thresholds: { wingfoil: 9 } } };
@@ -49,5 +50,30 @@ describe('chooseSettings', () => {
   it('écrit les réglages de l\'appareil dans un dossier qui n\'en a pas', () => {
     expect(chooseSettings(null, null)).toBe('local');
     expect(chooseSettings(1000, null)).toBe('local');
+  });
+});
+
+describe('settingsSignature', () => {
+  const settings = {
+    activities: [{ id: 'voile' }],
+    moduleActivity: { voile: 'wingfoil' },
+    recordActivity: 'voile',
+    thresholds: { wingfoil: 9 },
+  };
+  const signature = settingsSignature({ 'tracker.sportSettings': settings, 'tracker.runnerProfile': { me: { weightKg: 70 } } });
+
+  it('ignore les choix retenus : activité du module, ancienne clé du support, activité à enregistrer', () => {
+    const reopened = { ...settings, moduleActivity: { voile: 'kite', course: 'course' }, recordActivity: 'course', sport: 'kite' };
+    expect(settingsSignature({ 'tracker.sportSettings': reopened, 'tracker.runnerProfile': { me: { weightKg: 70 } } })).toBe(signature);
+  });
+
+  it('change avec un vrai réglage, de support ou de coureur', () => {
+    const changed = { ...settings, thresholds: { wingfoil: 10 } };
+    expect(settingsSignature({ 'tracker.sportSettings': changed, 'tracker.runnerProfile': { me: { weightKg: 70 } } })).not.toBe(signature);
+    expect(settingsSignature({ 'tracker.sportSettings': settings, 'tracker.runnerProfile': { me: { weightKg: 71 } } })).not.toBe(signature);
+  });
+
+  it('tient un appareil sans réglage de support', () => {
+    expect(settingsSignature({})).toBe('{}');
   });
 });

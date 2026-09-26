@@ -1,11 +1,11 @@
 # Carte des fichiers
 
-Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lisent dans le code, commenté en français ; l'architecture et les dépendances entre couches sont au §3 de `docs/ETAT_DU_PROJET.md`. Réduit le 24 septembre 2026 (§10, point 44) : l'ancien inventaire des signatures doublait le code et se périmait à chaque lot. Chaque fichier de calcul a son `*.test.ts` à côté de lui.
+Une ligne par fichier : son rôle et ses points d'entrée principaux. Les signatures se lisent dans le code, commenté en français ; l'architecture et les dépendances entre couches sont au §3 de `docs/ETAT_DU_PROJET.md`, les tests au §8.
 
 ## Amorce
 
 - `main.tsx` : stockage natif chargé, mémoire ouverte (1,5 s au plus), puis rendu ; garde en quittant, touche retour, reprise d'un enregistrement interrompu.
-- `App.tsx` : routes, toutes dans `AppShell` ; `/voile` et `/course` (bibliothèques), `/voile/analyse` et `/course/analyse` (`?session=`), `/enregistrer`, `/parametres`.
+- `App.tsx` : routes, toutes dans `AppShell` ; `/` (accueil), `/voile` et `/course` (bibliothèques), `/voile/analyse` et `/course/analyse` (`?session=`), `/enregistrer`, `/itineraires`, `/parametres`.
 - `env.d.ts` : `__APP_VERSION__`, types de `showDirectoryPicker` et des autorisations de dossier.
 
 ## `core/` : noyau, SI, sans notion de sport
@@ -32,7 +32,8 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `sailingAnalytics.ts` : `calculateWindStats` (courbe et stats du vent, pondération par symétrie), `summarizeManeuvers`, `MANEUVER_METRICS`, `calculateVmgStats`.
 - `sailingStats.ts` : `buildSailingSessionStats` (base + tops voile).
 - `sessionNotes.ts` : forme des notes (`SailingSessionNotes`), niveaux de vent, plan d'eau, appréciation.
-- `utils/kinematics.ts` : `PointData` et `trackToPointData`, vue en nœuds de la trace (règle 5). `types/sailing.ts` : `SessionStats`.
+
+Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trackToPointData`, vue en nœuds de la trace, règle 5) et `types/sailing.ts` (`SessionStats`).
 
 ## `running/`
 
@@ -55,7 +56,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `summary.ts` : `summarizeSession`, le résumé calculé par le pipeline du module qui analysera la session.
 - `sessionEdits.ts` : brouillon d'une session (`SessionEdits`), `savedEdits`, `changedParts`, `editsPatch`.
 - `reconcile.ts` : `planReconcile`, rapprochement de `sessions/` et du cache des fiches.
-- `settingsFile.ts` : `reglages.json`, `TRAVELLING_KEYS`, `chooseSettings` (le plus récent l'emporte).
+- `settingsFile.ts` : `reglages.json`, `TRAVELLING_KEYS`, `chooseSettings` (le plus récent l'emporte), `settingsSignature` (empreinte qui date un vrai changement, sans les choix retenus).
 - `naming.ts` : `uniqueSessionFileName`, `guessSport` (types d'autres applications).
 - `folderLayout.ts` : noms des fichiers du dossier, marqueur, `LISEZMOI.txt`.
 
@@ -89,6 +90,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `useSportSettings.ts` : réglages par activité et liste des activités (`tracker.sportSettings`), `useSportSettings(family)` pour un module, `useAllSportSettings` pour Réglages, et hors composant `readStoredActivities`, `effectiveRecordingProfile`, `effectiveSpeedUnit`, `effectiveDistanceUnit`, `effectiveLongPressMs`.
 - `usePlannedRoute.ts` : itinéraire en cours, annulation, calcul des tronçons un à un. `useRouteLibrary.ts` : itinéraires de `itineraires/`. `useFollowedTrace.ts` : trace suivie, gardée sur l'appareil jusqu'à « Retirer » (`tracker.followedTrace`, hors de `reglages.json`). `useCompassHeading.ts` : cap de la boussole tant qu'il est demandé.
 - `useStoredRecord.ts`, `useOpenSections.ts`, `useRunnerProfile.ts` : enregistrements de l'appareil (sections ouvertes, profil du coureur).
+- `useNarrowScreen.ts` : rupture téléphone (768 px), `NARROW_QUERY`.
 
 ## `pages/`
 
@@ -105,18 +107,19 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 
 - `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement, bouton rond (appui long : pause ou reprise).
 - `ActivityChart.tsx` (+ `.css`) : graphe d'activités de l'accueil, période, détail d'une barre, totaux.
-- `MemoryStatus.tsx` : état de la mémoire et l'action qui convient ; repliable par `collapse` (Réglages). `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `LiveMap.tsx` : carte de l'enregistrement en cours, qui suit la position (flèche au cap), trace suivie en pointillé, partie faite en gris. `ActivitySelect.tsx` : choix d'une activité, groupées par famille. `FollowTracePicker.tsx` : choix de la trace à suivre (itinéraires, sessions filtrées par activité). `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17) ; sur téléphone, pleine largeur et sans poignée (point 56). `ui/HelpButton.tsx` : « ? » qui déplie une explication (bibliothèque, Manœuvres, Vent). `hooks/useNarrowScreen.ts` : rupture téléphone (768 px), `NARROW_QUERY`.
+- `MemoryStatus.tsx` : état de la mémoire et l'action qui convient ; repliable par `collapse` (Réglages). `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `LiveMap.tsx` : carte de l'enregistrement en cours, qui suit la position (flèche au cap), trace suivie en pointillé, partie faite en gris. `ActivitySelect.tsx` : choix d'une activité, groupées par famille. `FollowTracePicker.tsx` : choix de la trace à suivre (itinéraires, sessions filtrées par activité). `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17) ; sur téléphone, pleine largeur et sans poignée (point 56).
 - `OsmTileLayer.tsx` : fond OpenStreetMap et sa mention, commun à toutes les cartes. `gradeGradientDefs.tsx` : dégradé de pente d'une courbe d'altitude (course, itinéraire).
 - `SessionSaveBar.tsx` : barre « Enregistrer la session » du brouillon, commune aux deux modules.
 - `AnalysisMap.tsx` : carte d'une page d'analyse, cadrée sur la trace, sa légende collée dessous et sa vue plein écran au tap (`docs/MISE_EN_PAGE.md`).
 - `SpeedGradientLegend.tsx` : légende de couleur, en lecture seule. `SpeedRangeEditor.tsx` : saisie des bornes, dans l'onglet réglages des deux modules (§10, points 30 et 57). `MapAutoResize.tsx` : `invalidateSize` de la carte. `chartHover.ts` : survol d'un graphe vers la carte.
-- `ui/` : `Button`, `Card`, `PageHeader`, `ui.css`. `icons.tsx` : icônes SVG. `styles.ts` : `CARD_STYLE`.
+- `ui/` : `Button`, `Card`, `PageHeader`, `HelpButton` (« ? » qui déplie une explication : bibliothèque, Manœuvres, Vent), `ui.css`. `icons.tsx` : icônes SVG. `styles.ts` : `CARD_STYLE`.
 - `theme/tokens.css` : toutes les variables de la DA. `theme/base.css` : police, fond, focus.
 
 ## Hors de `src/`
 
 - `outils/lancer-tracker.bat` : lance le serveur de développement s'il ne tourne pas et ouvre l'application ; cible du raccourci « Tracker » du bureau, icône `outils/icone-tracker.ico` (`outils/LISEZMOI.md`).
-- `assets/` : sources du logo. `logo.png`, le logo complet (écran de démarrage, `splash.png`) ; `icone.svg`, sa version simplifiée pour les petites tailles, dont `outils/logo/icones-android.mjs` tire l'icône Android, `public/favicon.png` et `outils/icone-tracker.ico`.
+- `assets/` : sources du logo. `logo.png`, le logo complet (écran de démarrage, `splash.png`) ; `icone.svg`, sa version simplifiée pour les petites tailles.
+- `outils/logo/icones-android.mjs` : tire d'`assets/icone.svg` l'icône Android, `public/favicon.png` et `outils/icone-tracker.ico`.
 - `docs/INSTALLATION.md` : fiche d'installation de l'APK, écrite pour les testeurs.
 - `outils/banc/` : banc de test, des scripts Node qui pilotent un Chrome sans fenêtre ou la WebView du téléphone ; mode d'emploi dans son `LISEZMOI.md`.
 - `.gitattributes` : fins de ligne (LF, CRLF pour les `.bat`).

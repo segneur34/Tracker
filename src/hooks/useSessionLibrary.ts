@@ -39,6 +39,7 @@ import {
   chooseSettings,
   parseSettingsFile,
   serializeSettingsFile,
+  settingsSignature,
   type SettingsChoice,
   type SettingsFile,
 } from '../library/settingsFile';
@@ -327,21 +328,6 @@ const localTravellingValues = (): Record<string, unknown> => {
   return values;
 };
 
-/**
- * Empreinte des réglages qui voyagent, sans le dernier support choisi dans un
- * module : ouvrir une session de kite n'est pas changer un réglage, et ne
- * doit pas rendre les réglages de l'appareil plus récents que ceux du dossier.
- */
-const settingsSignature = (): string => {
-  const values = localTravellingValues();
-  const sportSettings = values['tracker.sportSettings'];
-  if (sportSettings && typeof sportSettings === 'object') {
-    const { sport: _lastSport, ...rest } = sportSettings as Record<string, unknown>;
-    values['tracker.sportSettings'] = rest;
-  }
-  return JSON.stringify(values);
-};
-
 /** Empreinte au dernier rapprochement ou au dernier vrai changement. */
 let lastSignature: string | null = null;
 
@@ -394,7 +380,7 @@ const syncSettings = async (f: MemoryFolder): Promise<boolean> => {
   } else {
     setState({ settingsSource: 'same', settingsSavedAt: localSavedAt });
   }
-  lastSignature = settingsSignature();
+  lastSignature = settingsSignature(localTravellingValues());
   return changed;
 };
 
@@ -630,7 +616,7 @@ export const startLibraryUi = (isBusy: () => boolean): void => {
   canReload = () => !isBusy();
   jsonStore.subscribe((key) => {
     if (applyingSettings || !(TRAVELLING_KEYS as readonly string[]).includes(key)) return;
-    const signature = settingsSignature();
+    const signature = settingsSignature(localTravellingValues());
     if (signature === lastSignature) return;
     lastSignature = signature;
     const now = Date.now();

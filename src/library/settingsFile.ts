@@ -59,6 +59,26 @@ export const buildSettingsFile = (
 
 export const serializeSettingsFile = (file: SettingsFile): string => `${JSON.stringify(file, null, 2)}\n`;
 
+/**
+ * Choix retenus d'une fois sur l'autre, qui ne sont pas des réglages : le
+ * support ou l'activité du module (`sport`, l'ancienne clé, et
+ * `moduleActivity`) et l'activité proposée à l'enregistrement.
+ */
+const REMEMBERED_CHOICES = ['sport', 'moduleActivity', 'recordActivity'];
+
+/**
+ * Empreinte des réglages qui voyagent, sans les choix retenus : ouvrir une
+ * session de kite ou choisir l'activité d'un enregistrement n'est pas changer
+ * un réglage, et ne doit pas rendre les réglages de l'appareil plus récents
+ * que ceux du dossier.
+ */
+export const settingsSignature = (values: Record<string, unknown>): string => {
+  const sportSettings = values['tracker.sportSettings'];
+  if (!isObject(sportSettings)) return JSON.stringify(values);
+  const settings = Object.fromEntries(Object.entries(sportSettings).filter(([key]) => !REMEMBERED_CHOICES.includes(key)));
+  return JSON.stringify({ ...values, 'tracker.sportSettings': settings });
+};
+
 /** `folder` : reprendre le fichier ; `local` : l'écrire ; `same` : rien à faire. */
 export type SettingsChoice = 'folder' | 'local' | 'same';
 
