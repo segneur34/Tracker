@@ -72,13 +72,26 @@
   z-index: 0;
 }
 
-/* « Ma position », en haut à droite de la carte, face aux boutons de zoom. */
-.plan-locate {
+/* « Ma position » et « Précédent », en haut à droite de la carte, face aux boutons de zoom. */
+.plan-map-tools {
   position: absolute;
   top: var(--space-2);
   right: var(--space-2);
   z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.plan-map-tools > .ui-btn {
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+}
+
+/* Grisé, le bouton reste opaque : la carte ne doit pas transparaître à travers lui. */
+.plan-map-tools > .ui-btn:disabled {
+  opacity: 1;
+  color: var(--muted);
 }
 
 /* Repère d'un point : pastille lettrée à la couleur de l'activité. */

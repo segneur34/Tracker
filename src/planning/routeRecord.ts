@@ -14,7 +14,12 @@ import { isRouteMode, newLeg, type PlannedRoute, type RouteLeg, type RouteMode, 
  */
 
 export const ROUTE_FORMAT = 'tracker-itineraire';
-export const ROUTE_VERSION = 1;
+/**
+ * 2 : tronçons `imported` (trace d'un GPX chargé). Une version d'avant les
+ * lit sans les réécrire : elle les recalculerait par les chemins, et la trace
+ * serait perdue.
+ */
+export const ROUTE_VERSION = 2;
 
 /** Point de tracé compact : `[lat, lon]` ou `[lat, lon, altitude]`. */
 type StoredPoint = number[];
@@ -84,7 +89,8 @@ export const routeToRecord = (
 
 /**
  * Itinéraire d'une fiche. Un tronçon illisible, ou des tronçons qui ne
- * correspondent pas aux points, sont recalculés plutôt que perdus.
+ * correspondent pas aux points, sont recalculés plutôt que perdus (une trace
+ * importée illisible devient une ligne droite, `newLeg`).
  */
 export const recordToRoute = (record: RouteRecord): PlannedRoute => {
   const { waypoints } = record;

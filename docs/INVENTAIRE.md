@@ -13,7 +13,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `types.ts` : `SportType`, `RawTrackPoint`, `TrackPoint`, `TopSegment`, `BaseSessionStats`, `CumulativeTrack`.
 - `units.ts` : conversions (`msToKnots`, `knotsToMs`…), `SpeedUnit`, `toDisplaySpeed`, `formatSpeed`, `formatKnots` (nœuds des analyses voile vers l'unité affichée), `DistanceUnit` (km, milles nautiques), `formatDistance`, `formatDuration`, `formatClock`.
 - `sportProfiles.ts` : `SPORT_PROFILES` (seuils, hystérésis, filtres, plafond, cibles de tops, `recording`), `SAILING_SPORTS`, `getActiveThresholds`, `sportFamily`, `ELEVATION_PRESETS`.
-- `gpxParser.ts` : `parseGpx`, lecteur maison par nom local (vitesse, FC, cadence, `trk/type`).
+- `gpxParser.ts` : `parseGpx`, lecteur maison par nom local (vitesse, FC, cadence, `trk/type`) ; `parseGpxPath`, le tracé d'un parcours téléchargé, sans heure (`trkpt`, à défaut `rtept`).
 - `kinematics.ts` : Haversine, cap, détection de l'unité de la vitesse appareil, `computeKinematics` (vitesse retenue et lissée).
 - `speedFilter.ts` : `clampByAcceleration` (écrêtage avec recherche du retour), filtres médian, linéaire et moyen en fenêtre de temps.
 - `sessionSpeed.ts` : allure de la session (`referenceSpeedMs`), cadence (`samplingIntervalS`), `sessionFilterThresholds`.
@@ -61,7 +61,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 
 ## `planning/` : itinéraires planifiés, logique pure (point 59)
 
-- `route.ts` : itinéraire (points, tronçons, modes), opérations d'édition pures, totaux, profil d'altitude rééchantillonné.
+- `route.ts` : itinéraire (points, tronçons, modes, dont la trace importée gardée telle quelle), opérations d'édition pures, itinéraire tiré d'une trace chargée (`routeFromTrack`), totaux, profil d'altitude rééchantillonné.
 - `brouter.ts` : calcul d'un tronçon par le serveur BRouter (`fetchLeg`, seul appel réseau du calcul). `geocoding.ts` : recherche de lieux (Photon).
 - `routeRecord.ts` : fiche JSON `tracker-itineraire`. `routeGpx.ts` : GPX d'export.
 
@@ -98,7 +98,7 @@ Une ligne par fichier : son rôle et ses points d'entrée. Les signatures se lis
 - `RunningModule.tsx` : analyse course (feuille et synthèse, zones, graphes avec altitude colorée par la pente, réglages de la session, carte).
 - `analysisMobile.css` : disposition des deux modules d'analyse sous 768 px (carte pleine largeur en haut, feuille des chiffres clés, vue plein écran au tap, colonne d'onglets de la voile bornée à l'écran, panneau Manœuvres resserré) ; classes `an-*`.
 - `RecordingPage.tsx` : enregistrement (famille puis activité), source GPS ou rejeu, pause, carte et statistiques en direct.
-- `PlanningPage.tsx` (+ `.css`) : planification d'un itinéraire (carte, blocs Tracé, Points, Ranger, Mes itinéraires).
+- `PlanningPage.tsx` (+ `.css`) : planification d'un itinéraire (carte et son « Précédent », blocs Tracé avec le chargement d'un GPX, Points, Ranger, Mes itinéraires).
 - `SettingsPage.tsx` : mémoire, activités (ajouter, renommer, recolorer, supprimer) et leurs réglages (unités, texte, seuil, couleurs de trace, couleur de pente en course, pause automatique), enregistrement (appui long), course, coureur ; blocs et activités repliables (`useOpenSections`) ; `settingsPage.css` : une carte par activité, un réglage par ligne.
 
 ## `components/` et thème

@@ -1,11 +1,12 @@
 import { accumulateElevation } from '../core/elevation';
-import { haversineDistance } from '../core/kinematics';
+import { EARTH_RADIUS_M, haversineDistance, toRad } from '../core/kinematics';
 import { computeGrades } from '../running/runningAnalytics';
 
 /**
  * Itinéraire planifié : des points de passage posés par l'utilisateur, reliés
  * deux à deux par des tronçons. Un tronçon suit les chemins de la carte
- * (calcul par un serveur, `brouter.ts`) ou va en ligne droite.
+ * (calcul par un serveur, `brouter.ts`), va en ligne droite, ou reprend le
+ * tracé d'un GPX chargé (`routeFromTrack`).
  *
  * Toutes les opérations sont pures : elles rendent un nouvel itinéraire, où
  * les tronçons à recalculer sont marqués `pending`. Un tronçon en attente
@@ -20,9 +21,16 @@ export interface Waypoint {
   lon: number;
 }
 
-/** Façon de relier deux points : à pied, à vélo, en VTT, ou en ligne droite. */
-export type RouteMode = 'foot' | 'bike' | 'mtb' | 'straight';
+/**
+ * Façon de relier deux points : à pied, à vélo, en VTT, en ligne droite, ou
+ * par le tracé d'un GPX chargé (`imported`), gardé tel quel.
+ */
+export type RouteMode = 'foot' | 'bike' | 'mtb' | 'straight' | 'imported';
 
+/** Modes calculés sur les chemins de la carte (`brouter.ts`). */
+export type ComputedMode = Exclude<RouteMode, 'straight' | 'imported'>;
+
+/** Modes que l'on choisit ; `imported` ne s'obtient qu'en chargeant un GPX. */
 export const ROUTE_MODES: RouteMode[] = ['foot', 'bike', 'mtb', 'straight'];
 
 export const ROUTE_MODE_LABEL: Record<RouteMode, string> = {
@@ -30,10 +38,25 @@ export const ROUTE_MODE_LABEL: Record<RouteMode, string> = {
   bike: 'Vélo',
   mtb: 'VTT',
   straight: 'Ligne droite',
+  imported: 'Trace importée',
 };
 
+/** Tout mode connu, `imported` compris : celui d'un tronçon relu d'une fiche. */
 export const isRouteMode = (value: unknown): value is RouteMode =>
+  typeof value === 'string' && Object.prototype.hasOwnProperty.call(ROUTE_MODE_LABEL, value);
+
+/** Mode que l'utilisateur peut choisir (`ROUTE_MODES`). */
+export const isChoosableMode = (value: unknown): value is RouteMode =>
   typeof value === 'string' && (ROUTE_MODES as string[]).includes(value);
+
+/** Tronçon qui ne se calcule pas : ligne droite, ou trace importée. */
+const isFixedMode = (mode: RouteMode): boolean => mode === 'straight' || mode === 'imported';
+
+/**
+ * Mode d'un tronçon à refaire entre deux nouvelles extrémités : le sien, sauf
+ * une trace importée, qui ne se refait pas et prend le mode choisi à la place.
+ */
+const rebuiltMode = (mode: RouteMode, fallback: RouteMode): RouteMode => (mode === 'imported' ? fallback : mode);
 
 /** Point de la géométrie d'un tronçon ; altitude en mètres quand le calcul la fournit. */
 export interface RoutePoint {
@@ -62,12 +85,20 @@ export interface PlannedRoute {
 
 export const EMPTY_ROUTE: PlannedRoute = { waypoints: [], legs: [] };
 
-/** Tronçon neuf entre deux points : prêt s'il va en ligne droite, à calculer sinon. */
-export const newLeg = (from: Waypoint, to: Waypoint, mode: RouteMode): RouteLeg => ({
-  mode,
-  status: mode === 'straight' ? 'ready' : 'pending',
-  points: [{ lat: from.lat, lon: from.lon }, { lat: to.lat, lon: to.lon }],
-});
+/**
+ * Tronçon neuf entre deux points : prêt s'il va en ligne droite, à calculer
+ * sinon. Une trace importée ne se refait pas entre deux points quelconques :
+ * demandée ici, elle devient une ligne droite (les opérations d'édition la
+ * refont plutôt dans le mode choisi, `rebuiltMode`).
+ */
+export const newLeg = (from: Waypoint, to: Waypoint, mode: RouteMode): RouteLeg => {
+  const kept = mode === 'imported' ? 'straight' : mode;
+  return {
+    mode: kept,
+    status: kept === 'straight' ? 'ready' : 'pending',
+    points: [{ lat: from.lat, lon: from.lon }, { lat: to.lat, lon: to.lon }],
+  };
+};
 
 /** Ajoute un point à la fin ; le tronçon qui y mène prend le mode donné. */
 export const addWaypoint = (route: PlannedRoute, waypoint: Waypoint, mode: RouteMode): PlannedRoute => {
@@ -78,10 +109,28 @@ export const addWaypoint = (route: PlannedRoute, waypoint: Waypoint, mode: Route
   };
 };
 
-/** Insère un point au milieu du tronçon `legIndex`, qui devient deux tronçons du même mode. */
+/**
+ * Insère un point au milieu du tronçon `legIndex`, qui devient deux tronçons
+ * du même mode. Sur une trace importée, le point se pose sur la trace, au plus
+ * près de `waypoint`, et la coupe en deux sans rien en perdre ; au bout de la
+ * trace, il n'y a rien à couper.
+ */
 export const insertWaypoint = (route: PlannedRoute, legIndex: number, waypoint: Waypoint): PlannedRoute => {
   const leg = route.legs[legIndex];
   if (!leg) return route;
+  if (leg.mode === 'imported') {
+    const cut = splitPath(leg.points, waypoint);
+    if (!cut) return route;
+    return {
+      waypoints: [...route.waypoints.slice(0, legIndex + 1), { lat: cut.at.lat, lon: cut.at.lon }, ...route.waypoints.slice(legIndex + 1)],
+      legs: [
+        ...route.legs.slice(0, legIndex),
+        { mode: 'imported', status: 'ready', points: cut.before },
+        { mode: 'imported', status: 'ready', points: cut.after },
+        ...route.legs.slice(legIndex + 1),
+      ],
+    };
+  }
   const from = route.waypoints[legIndex];
   const to = route.waypoints[legIndex + 1];
   return {
@@ -98,30 +147,37 @@ export const insertWaypoint = (route: PlannedRoute, legIndex: number, waypoint: 
 /**
  * Déplace un point : seuls les tronçons qui le touchent sont à recalculer.
  * Sur une boucle, départ et arrivée ne font qu'un point : ils bougent ensemble
- * et la boucle reste fermée.
+ * et la boucle reste fermée. Un tronçon importé touché est refait dans
+ * `fallback`, le mode choisi sur la page.
  */
-export const moveWaypoint = (route: PlannedRoute, index: number, waypoint: Waypoint): PlannedRoute => {
+export const moveWaypoint = (route: PlannedRoute, index: number, waypoint: Waypoint, fallback: RouteMode = 'straight'): PlannedRoute => {
   const last = route.waypoints.length - 1;
   if (index < 0 || index > last) return route;
   const moved = isLooped(route) && (index === 0 || index === last) ? [0, last] : [index];
   const waypoints = route.waypoints.map((w, i) => (moved.includes(i) ? waypoint : w));
   const legs = route.legs.map((leg, i) =>
-    moved.includes(i) || moved.includes(i + 1) ? newLeg(waypoints[i], waypoints[i + 1], leg.mode) : leg
+    moved.includes(i) || moved.includes(i + 1) ? newLeg(waypoints[i], waypoints[i + 1], rebuiltMode(leg.mode, fallback)) : leg
   );
   return { waypoints, legs };
 };
 
 /**
  * Retire un point. Au milieu, ses deux tronçons sont remplacés par un seul,
- * qui garde le mode de celui qui arrivait au point.
+ * qui garde le mode de celui qui arrivait au point ; deux tronçons importés
+ * sont recollés, tracé intact. Un tronçon importé à refaire l'est dans
+ * `fallback`.
  */
-export const removeWaypoint = (route: PlannedRoute, index: number): PlannedRoute => {
+export const removeWaypoint = (route: PlannedRoute, index: number, fallback: RouteMode = 'straight'): PlannedRoute => {
   const n = route.waypoints.length;
   if (index < 0 || index >= n) return route;
   const waypoints = route.waypoints.filter((_, i) => i !== index);
   if (index === 0) return { waypoints, legs: route.legs.slice(1) };
   if (index === n - 1) return { waypoints, legs: route.legs.slice(0, -1) };
-  const merged = newLeg(route.waypoints[index - 1], route.waypoints[index + 1], route.legs[index - 1].mode);
+  const before = route.legs[index - 1];
+  const after = route.legs[index];
+  const merged: RouteLeg = before.mode === 'imported' && after.mode === 'imported'
+    ? { mode: 'imported', status: 'ready', points: joinPaths(before.points, after.points) }
+    : newLeg(route.waypoints[index - 1], route.waypoints[index + 1], rebuiltMode(before.mode, fallback));
   return { waypoints, legs: [...route.legs.slice(0, index - 1), merged, ...route.legs.slice(index + 1)] };
 };
 
@@ -138,13 +194,14 @@ export const setLegMode = (route: PlannedRoute, legIndex: number, mode: RouteMod
 /**
  * Parcours dans l'autre sens. Les tronçons calculés sont recalculés (un sens
  * unique peut changer le trajet à vélo) ; en attendant, ils gardent leur
- * tracé retourné.
+ * tracé retourné. Une ligne droite ou une trace importée est simplement
+ * retournée.
  */
 export const reverseRoute = (route: PlannedRoute): PlannedRoute => ({
   waypoints: [...route.waypoints].reverse(),
   legs: [...route.legs].reverse().map((leg) => ({
     mode: leg.mode,
-    status: leg.mode === 'straight' ? 'ready' : 'pending',
+    status: isFixedMode(leg.mode) ? 'ready' : 'pending',
     points: [...leg.points].reverse(),
   })),
 });
@@ -162,9 +219,10 @@ export const closeLoop = (route: PlannedRoute, mode: RouteMode): PlannedRoute =>
 /**
  * Change la place d'un point dans l'ordre du parcours. Un tronçon dont les
  * deux extrémités n'ont pas changé est gardé tel quel ; les autres sont
- * recalculés, avec le mode du tronçon qui occupait leur place.
+ * recalculés, avec le mode du tronçon qui occupait leur place (`fallback` à la
+ * place d'une trace importée).
  */
-export const reorderWaypoint = (route: PlannedRoute, from: number, to: number): PlannedRoute => {
+export const reorderWaypoint = (route: PlannedRoute, from: number, to: number, fallback: RouteMode = 'straight'): PlannedRoute => {
   const n = route.waypoints.length;
   if (from === to || from < 0 || to < 0 || from >= n || to >= n) return route;
   const waypoints = [...route.waypoints];
@@ -172,10 +230,106 @@ export const reorderWaypoint = (route: PlannedRoute, from: number, to: number): 
   waypoints.splice(to, 0, moved);
   const legs = waypoints.slice(1).map((w, i) => {
     const kept = route.legs.find((_, j) => route.waypoints[j] === waypoints[i] && route.waypoints[j + 1] === w);
-    return kept ?? newLeg(waypoints[i], w, route.legs[i].mode);
+    return kept ?? newLeg(waypoints[i], w, rebuiltMode(route.legs[i].mode, fallback));
   });
   return { waypoints, legs };
 };
+
+/** Écart sous lequel l'arrivée d'une trace chargée est prise pour son départ, en mètres. Défaut de `routeFromTrack`. */
+export const DEFAULT_LOOP_CLOSE_M = 30;
+
+/**
+ * Itinéraire tiré d'une trace chargée (un GPX téléchargé ailleurs) : la trace
+ * est gardée telle quelle, en tronçons `imported`, entre le départ et
+ * l'arrivée, seuls points de passage. Points répétés et positions illisibles
+ * retirés. Si l'arrivée est à moins de `loopCloseM` du départ, c'est une
+ * boucle : elle revient exactement au départ, par un point posé à mi-parcours
+ * (une boucle a trois points, `isLooped`). `null` sous deux points distincts.
+ */
+export const routeFromTrack = (
+  points: ReadonlyArray<RoutePoint>,
+  { loopCloseM = DEFAULT_LOOP_CLOSE_M }: { loopCloseM?: number } = {}
+): PlannedRoute | null => {
+  const kept: RoutePoint[] = [];
+  for (const p of points) {
+    if (!isFinite(p.lat) || !isFinite(p.lon) || samePlace(kept[kept.length - 1], p)) continue;
+    kept.push(p.eleM !== undefined && isFinite(p.eleM) ? { lat: p.lat, lon: p.lon, eleM: p.eleM } : { lat: p.lat, lon: p.lon });
+  }
+  if (kept.length < 2) return null;
+  const first = kept[0];
+  const last = kept[kept.length - 1];
+  const start: Waypoint = { lat: first.lat, lon: first.lon };
+  const closes = kept.length >= 3 && haversineDistance(first.lat, first.lon, last.lat, last.lon) <= loopCloseM;
+  if (!closes) {
+    return { waypoints: [start, { lat: last.lat, lon: last.lon }], legs: [{ mode: 'imported', status: 'ready', points: kept }] };
+  }
+
+  const path = samePlace(first, last) ? kept : [...kept, { ...first }];
+  const cum = cumulativeDistances(path);
+  const half = cum[cum.length - 1] / 2;
+  // Point à mi-parcours, jamais au départ ni à l'arrivée.
+  const mid = Math.min(path.length - 2, Math.max(1, cum.findIndex((d) => d >= half)));
+  return {
+    waypoints: [start, { lat: path[mid].lat, lon: path[mid].lon }, start],
+    legs: [
+      { mode: 'imported', status: 'ready', points: path.slice(0, mid + 1) },
+      { mode: 'imported', status: 'ready', points: path.slice(mid) },
+    ],
+  };
+};
+
+/** Point entre `a` et `b` à la fraction `t` ; altitude interpolée si les deux en ont une. */
+const interpolatePoint = (a: RoutePoint, b: RoutePoint, t: number): RoutePoint => {
+  const lat = a.lat + (b.lat - a.lat) * t;
+  const lon = a.lon + (b.lon - a.lon) * t;
+  return a.eleM !== undefined && b.eleM !== undefined ? { lat, lon, eleM: a.eleM + (b.eleM - a.eleM) * t } : { lat, lon };
+};
+
+/**
+ * Point du tracé le plus proche de `p` : le tronçon `index` et la fraction `t`
+ * le long de lui. Plan local équirectangulaire centré sur `p`, exact à mieux
+ * que le mètre à l'échelle d'un toucher sur la carte.
+ */
+const nearestOnPath = (points: ReadonlyArray<RoutePoint>, p: Waypoint): { index: number; t: number } => {
+  const cosLat = Math.cos(toRad(p.lat));
+  const x = (q: RoutePoint) => toRad(q.lon - p.lon) * cosLat * EARTH_RADIUS_M;
+  const y = (q: RoutePoint) => toRad(q.lat - p.lat) * EARTH_RADIUS_M;
+  let best = { index: 0, t: 0, d2: Infinity };
+  for (let i = 0; i + 1 < points.length; i++) {
+    const ax = x(points[i]);
+    const ay = y(points[i]);
+    const dx = x(points[i + 1]) - ax;
+    const dy = y(points[i + 1]) - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 > 0 ? Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len2)) : 0;
+    const d2 = (ax + t * dx) ** 2 + (ay + t * dy) ** 2;
+    if (d2 < best.d2) best = { index: i, t, d2 };
+  }
+  return best;
+};
+
+/**
+ * Tracé coupé au point le plus proche de `target` : les deux parts partagent
+ * le point de coupe. `null` si la coupe tombe à un bout (rien à couper).
+ */
+const splitPath = (
+  points: ReadonlyArray<RoutePoint>,
+  target: Waypoint
+): { at: RoutePoint; before: RoutePoint[]; after: RoutePoint[] } | null => {
+  if (points.length < 2) return null;
+  const { index, t } = nearestOnPath(points, target);
+  const at = interpolatePoint(points[index], points[index + 1], t);
+  const before = points.slice(0, index + 1);
+  if (!samePlace(before[before.length - 1], at)) before.push(at);
+  const rest = points.slice(index + 1);
+  const after = samePlace(rest[0], at) ? rest : [at, ...rest];
+  if (samePlace(at, points[0]) || samePlace(at, points[points.length - 1])) return null;
+  return { at, before, after };
+};
+
+/** Deux tracés qui se suivent, d'un seul trait : le point de jonction n'est compté qu'une fois. */
+const joinPaths = (a: RoutePoint[], b: RoutePoint[]): RoutePoint[] =>
+  samePlace(a[a.length - 1], b[0]) ? [...a, ...b.slice(1)] : [...a, ...b];
 
 /**
  * Clé d'un tronçon : ses deux extrémités et son mode. Un résultat de calcul

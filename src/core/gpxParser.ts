@@ -123,3 +123,50 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
     hasDeviceSpeed,
   };
 };
+
+/** Tracé d'un GPX, sans notion de temps : la forme d'un parcours à suivre. */
+export interface ParsedGpxPath {
+  /** Positions dans l'ordre du fichier ; altitude en mètres quand le fichier la porte. */
+  points: { lat: number; lon: number; eleM?: number }[];
+  /** Nom de la trace, de la route ou du fichier, si le GPX en porte un. */
+  name?: string;
+  /** Type d'activité de la trace (`<trk><type>`), comme pour `parseGpx`. */
+  trackType?: string;
+}
+
+/**
+ * Lecture d'un GPX pour en tirer un parcours (planification) : les points de
+ * trace (`trkpt`), à défaut ceux de route (`rtept`). Contrairement à
+ * `parseGpx`, l'heure n'est pas exigée : un parcours téléchargé (Visorando,
+ * Komoot, IGN…) n'en porte souvent pas, et ne sert pas à mesurer une vitesse.
+ */
+export const parseGpxPath = (gpxContent: string): ParsedGpxPath => {
+  const doc = new DOMParser().parseFromString(gpxContent, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length > 0) {
+    throw new Error('Fichier GPX illisible : le XML est mal formé.');
+  }
+
+  const read = (tag: string) => {
+    const nodes = doc.getElementsByTagName(tag);
+    const points: ParsedGpxPath['points'] = [];
+    for (let i = 0; i < nodes.length; i++) {
+      const lat = parseFloat(nodes[i].getAttribute('lat') ?? '');
+      const lon = parseFloat(nodes[i].getAttribute('lon') ?? '');
+      if (!isFinite(lat) || !isFinite(lon)) continue;
+      const eleM = readNumber(nodes[i], 'ele');
+      points.push(eleM !== undefined ? { lat, lon, eleM } : { lat, lon });
+    }
+    return points;
+  };
+  const trackPoints = read('trkpt');
+  const points = trackPoints.length >= 2 ? trackPoints : read('rtept');
+
+  const trk = doc.getElementsByTagName('trk')[0];
+  const rte = doc.getElementsByTagName('rte')[0];
+  const metadata = doc.getElementsByTagName('metadata')[0];
+  return {
+    points,
+    name: (trk && readChildText(trk, 'name')) ?? (rte && readChildText(rte, 'name')) ?? (metadata && readChildText(metadata, 'name')),
+    trackType: trk ? readChildText(trk, 'type') : undefined,
+  };
+};

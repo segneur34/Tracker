@@ -89,6 +89,14 @@ export const IconPlay = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+/** Flèche qui revient en arrière : « Précédent », annuler la dernière modification. */
+export const IconUndo = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M9 14L4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+  </svg>
+);
+
 export const IconRoute = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
     <circle cx="6" cy="19" r="2" />

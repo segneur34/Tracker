@@ -27,7 +27,8 @@ const CACHE_LIMIT = 200;
 type LegOutcome = { points: RoutePoint[] } | { error: string };
 
 const computeLeg = async (request: LegRequest, maxSnapM: number, signal: AbortSignal): Promise<LegOutcome> => {
-  if (request.mode === 'straight') return { points: [request.from, request.to] };
+  // Une trace importée n'est jamais en attente : elle ne vient ici que par erreur, gardée en ligne droite.
+  if (request.mode === 'straight' || request.mode === 'imported') return { points: [request.from, request.to] };
   try {
     const { points, maxGapM } = snapToWaypoints(request.from, request.to, await fetchLeg(request.from, request.to, request.mode, signal));
     if (maxGapM > maxSnapM) {
@@ -124,12 +125,14 @@ export const usePlannedRoute = (maxSnapM = DEFAULT_MAX_SNAP_M) => {
     route,
     canUndo: history.length > 0,
     undo: useCallback(() => dispatch({ type: 'undo' }), []),
+    /** Nouvel itinéraire (ouvert, chargé d'un GPX, effacé pour repartir) : l'annulation repart de zéro. */
     replace: useCallback((next: PlannedRoute) => dispatch({ type: 'replace', route: next }), []),
     add: useCallback((w: Waypoint, mode: RouteMode) => edit((r) => addWaypoint(r, w, mode)), [edit]),
     insert: useCallback((legIndex: number, w: Waypoint) => edit((r) => insertWaypoint(r, legIndex, w)), [edit]),
-    move: useCallback((index: number, w: Waypoint) => edit((r) => moveWaypoint(r, index, w)), [edit]),
-    remove: useCallback((index: number) => edit((r) => removeWaypoint(r, index)), [edit]),
-    reorder: useCallback((from: number, to: number) => edit((r) => reorderWaypoint(r, from, to)), [edit]),
+    // `mode` : celui choisi sur la page, pour refaire un tronçon de trace importée que l'édition touche.
+    move: useCallback((index: number, w: Waypoint, mode: RouteMode) => edit((r) => moveWaypoint(r, index, w, mode)), [edit]),
+    remove: useCallback((index: number, mode: RouteMode) => edit((r) => removeWaypoint(r, index, mode)), [edit]),
+    reorder: useCallback((from: number, to: number, mode: RouteMode) => edit((r) => reorderWaypoint(r, from, to, mode)), [edit]),
     setMode: useCallback((legIndex: number, mode: RouteMode) => edit((r) => setLegMode(r, legIndex, mode)), [edit]),
     reverse: useCallback(() => edit(reverseRoute), [edit]),
     loop: useCallback((mode: RouteMode) => edit((r) => closeLoop(r, mode)), [edit]),

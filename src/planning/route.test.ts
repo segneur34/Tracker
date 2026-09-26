@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  EMPTY_ROUTE, addWaypoint, closeLoop, insertWaypoint, isLooped, legKey, moveWaypoint, nextPendingLeg, pendingLegRequests, removeWaypoint,
-  reorderWaypoint, retryFailedLegs, reverseRoute, routePoints, routeProfileRows, routeTotals, setLegMode, snapToWaypoints, waypointDistances, withLegError, withLegResult,
+  DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, addWaypoint, closeLoop, insertWaypoint, isChoosableMode, isLooped, isRouteMode, legKey, moveWaypoint,
+  nextPendingLeg, pendingLegRequests, removeWaypoint, reorderWaypoint, retryFailedLegs, reverseRoute, routeFromTrack, routePoints,
+  routeProfileRows, routeTotals, setLegMode, snapToWaypoints, waypointDistances, withLegError, withLegResult,
   type PlannedRoute, type RoutePoint, type Waypoint,
 } from './route';
 
@@ -102,6 +103,14 @@ describe('édition d\'un itinéraire', () => {
     expect(closeLoop(loop, 'foot')).toBe(loop);
     expect(isLooped(build([A, B]))).toBe(false);
     expect(closeLoop(build([A]), 'foot').waypoints).toEqual([A]);
+  });
+
+  it('boucle en ligne droite : le dernier tronçon est prêt tout de suite, rien à calculer', () => {
+    const route = resolveAll(build([A, B, C]), [0, 0, 0]);
+    const loop = closeLoop(route, 'straight');
+    expect(isLooped(loop)).toBe(true);
+    expect(loop.legs[2]).toEqual({ mode: 'straight', status: 'ready', points: [C, A] });
+    expect(pendingLegRequests(loop)).toEqual([]);
   });
 
   it('sur une boucle, déplacer le départ déplace l\'arrivée : la boucle reste fermée', () => {
@@ -213,5 +222,105 @@ describe('totaux et profil', () => {
     const rows = routeProfileRows([{ ...A, eleM: 100 }, { ...B }]);
     expect(rows.every((r) => r.eleM === null)).toBe(true);
     expect(routeProfileRows([])).toEqual([]);
+  });
+});
+
+describe('trace importée', () => {
+  /** Trace de A vers le nord, puis vers l'est : cinq points, altitudes croissantes. */
+  const track: RoutePoint[] = [
+    { ...A, eleM: 10 },
+    { lat: 43.605, lon: 3.8, eleM: 20 },
+    { ...B, eleM: 30 },
+    { lat: 43.61, lon: 3.805, eleM: 40 },
+    { lat: 43.61, lon: 3.81, eleM: 50 },
+  ];
+  const END: Waypoint = { lat: 43.61, lon: 3.81 };
+
+  it('garde la trace entière entre le départ et l\'arrivée, points répétés retirés', () => {
+    const route = routeFromTrack([track[0], track[1], track[1], track[2], track[3], track[4]])!;
+    expect(route.waypoints).toEqual([A, END]);
+    expect(route.legs).toEqual([{ mode: 'imported', status: 'ready', points: track }]);
+    expect(isLooped(route)).toBe(false);
+    expect(nextPendingLeg(route)).toBe(-1);
+    expect(routeTotals(route, 3).gainM).toBe(40);
+  });
+
+  it('écarte les positions illisibles, et rend null sous deux points distincts', () => {
+    expect(routeFromTrack([A, { lat: NaN, lon: 3.8 }, B])!.legs[0].points).toEqual([A, B]);
+    expect(routeFromTrack([A, A])).toBeNull();
+    expect(routeFromTrack([])).toBeNull();
+  });
+
+  it('une trace qui revient près de son départ est une boucle, fermée exactement au départ', () => {
+    // Retour à une vingtaine de mètres du départ.
+    const back = { lat: 43.6002, lon: 3.8, eleM: 12 };
+    const route = routeFromTrack([...track, { lat: 43.605, lon: 3.81 }, back])!;
+    expect(isLooped(route)).toBe(true);
+    expect(route.waypoints).toHaveLength(3);
+    expect(route.waypoints[0]).toEqual(A);
+    expect(route.legs.every((l) => l.mode === 'imported' && l.status === 'ready')).toBe(true);
+    const all = routePoints(route);
+    expect(all[all.length - 1]).toEqual({ ...A, eleM: 10 });
+    // Rien de perdu : tous les points de la trace sont dans l'itinéraire, dans l'ordre.
+    expect(all.slice(0, -1)).toEqual([...track, { lat: 43.605, lon: 3.81 }, back]);
+    // Au-delà du seuil, pas de boucle.
+    expect(isLooped(routeFromTrack([...track, { lat: 43.605, lon: 3.81 }, back], { loopCloseM: 10 })!)).toBe(false);
+    expect(DEFAULT_LOOP_CLOSE_M).toBeGreaterThan(20);
+  });
+
+  it('insérer un point le pose sur la trace et la coupe sans rien perdre', () => {
+    const route = routeFromTrack(track)!;
+    // Touché à une vingtaine de mètres à l'ouest du milieu du premier segment.
+    const cut = insertWaypoint(route, 0, { lat: 43.6025, lon: 3.7998 });
+    expect(cut.waypoints).toHaveLength(3);
+    expect(cut.waypoints[1].lon).toBeCloseTo(3.8, 9);
+    expect(cut.waypoints[1].lat).toBeCloseTo(43.6025, 6);
+    expect(cut.legs.map((l) => l.mode)).toEqual(['imported', 'imported']);
+    expect(cut.legs[0].points[cut.legs[0].points.length - 1].eleM).toBeCloseTo(15, 3);
+    expect(routeTotals(cut, 3).distanceM).toBeCloseTo(routeTotals(route, 3).distanceM, 3);
+    // Au bout de la trace, rien à couper.
+    expect(insertWaypoint(route, 0, { lat: 43.59, lon: 3.8 })).toBe(route);
+  });
+
+  it('retirer le point entre deux parts importées les recolle, tracé intact', () => {
+    const route = routeFromTrack(track)!;
+    const cut = insertWaypoint(route, 0, B);
+    expect(cut.waypoints).toEqual([A, B, END]);
+    const joined = removeWaypoint(cut, 1, 'foot');
+    expect(joined.legs).toEqual(route.legs);
+  });
+
+  it('déplacer un point refait ses tronçons importés dans le mode choisi, les autres restent', () => {
+    const cut = insertWaypoint(routeFromTrack(track)!, 0, B);
+    const moved = moveWaypoint(cut, 2, { lat: 43.62, lon: 3.81 }, 'bike');
+    expect(moved.legs[0]).toBe(cut.legs[0]);
+    expect(moved.legs[1]).toMatchObject({ mode: 'bike', status: 'pending' });
+    // Sans mode donné, la ligne droite.
+    expect(moveWaypoint(cut, 2, { lat: 43.62, lon: 3.81 }).legs[1]).toMatchObject({ mode: 'straight', status: 'ready' });
+    // Retirer un point entre une part importée et une ligne droite : refait dans le mode choisi.
+    const mixed = addWaypoint(routeFromTrack(track)!, C, 'straight');
+    expect(removeWaypoint(mixed, 1, 'mtb').legs[0]).toMatchObject({ mode: 'mtb', status: 'pending' });
+  });
+
+  it('inverser retourne la trace sans la recalculer', () => {
+    const route = routeFromTrack(track)!;
+    const reversed = reverseRoute(route);
+    expect(reversed.legs[0]).toEqual({ mode: 'imported', status: 'ready', points: [...track].reverse() });
+    expect(pendingLegRequests(reversed)).toEqual([]);
+  });
+
+  it('réordonner garde une part importée dont les extrémités n\'ont pas changé', () => {
+    const route = addWaypoint(routeFromTrack(track)!, C, 'foot');
+    const moved = reorderWaypoint(route, 2, 0, 'foot');
+    expect(moved.waypoints).toEqual([C, A, END]);
+    expect(moved.legs[1]).toBe(route.legs[0]);
+    expect(moved.legs[0]).toMatchObject({ mode: 'foot', status: 'pending' });
+  });
+
+  it('le mode importé se relit mais ne se choisit pas', () => {
+    expect(isRouteMode('imported')).toBe(true);
+    expect(isChoosableMode('imported')).toBe(false);
+    expect(isChoosableMode('foot')).toBe(true);
+    expect(isRouteMode('toString')).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { Fragment, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { Fragment, useId, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Marker, Polyline, useMapEvents } from 'react-leaflet';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -10,13 +10,14 @@ import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
-import { IconChevronRight } from '../components/icons';
+import { IconChevronRight, IconFile, IconUndo } from '../components/icons';
 import { CARD_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import HelpButton from '../components/ui/HelpButton';
 import PageHeader from '../components/ui/PageHeader';
 import { findActivity, type Activity } from '../core/activities';
 import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER, trackBounds } from '../core/displayConfig';
+import { parseGpxPath } from '../core/gpxParser';
 import { ELEVATION_PRESETS } from '../core/sportProfiles';
 import { SLOW_COLOR, gradientCss } from '../core/speedGradient';
 import { DISTANCE_UNIT_SYMBOL, formatDistance, toDisplayDistance } from '../core/units';
@@ -29,16 +30,18 @@ import {
   effectiveDistanceUnit, effectiveElevationProfile, effectiveGradeRange, lastRecordActivity, readStoredActivities,
 } from '../hooks/useSportSettings';
 import { ROUTES_DIR } from '../library/folderLayout';
+import { guessSport } from '../library/naming';
 import { searchPlaces, type Place } from '../planning/geocoding';
 import {
-  EMPTY_ROUTE, ROUTE_MODES, ROUTE_MODE_LABEL, isLooped, isRouteMode, routePoints, routeProfileRows, routeTotals, waypointDistances,
-  type PlannedRoute, type RouteMode, type Waypoint,
+  EMPTY_ROUTE, ROUTE_MODES, ROUTE_MODE_LABEL, isChoosableMode, isLooped, routeFromTrack, routePoints, routeProfileRows, routeTotals,
+  waypointDistances, type PlannedRoute, type RouteLeg, type RouteMode, type Waypoint,
 } from '../planning/route';
 import { buildRouteGpx, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute } from '../planning/routeRecord';
 import { gradeGradientStops } from '../running/runningAnalytics';
-import { canDownloadFiles, downloadTextFile } from '../platform/files';
+import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { currentPosition } from '../platform/location';
+import { isNativeApp } from '../platform/runtime';
 import { jsonStore } from '../platform/storage';
 
 /**
@@ -155,6 +158,24 @@ function PlanBlock({ id, label, open, onToggle, aside, children }: {
   );
 }
 
+/**
+ * Façon de venir à un point : les modes que l'on choisit, et « Trace
+ * importée » pour un tronçon tiré d'un GPX chargé, montrée sans pouvoir être
+ * choisie (choisir un autre mode refait le tronçon).
+ */
+function LegModeSelect({ leg, label, onChange }: { leg: RouteLeg; label?: string; onChange: (mode: RouteMode) => void }) {
+  return (
+    <select
+      className="ui-field ui-field--s"
+      aria-label={label}
+      value={leg.mode}
+      onChange={(e) => isChoosableMode(e.target.value) && onChange(e.target.value)}>
+      {leg.mode === 'imported' && <option value="imported" disabled>{ROUTE_MODE_LABEL.imported}</option>}
+      {ROUTE_MODES.map((m) => <option key={m} value={m}>{ROUTE_MODE_LABEL[m]}</option>)}
+    </select>
+  );
+}
+
 function PlanningPage() {
   const [activities] = useState<Activity[]>(readStoredActivities);
   const [activityId, setActivityIdState] = useState<string | null>(
@@ -172,7 +193,7 @@ function PlanningPage() {
 
   const [mode, setModeChoice] = useState<RouteMode>(() => {
     const stored = readPrefs().mode;
-    return isRouteMode(stored) ? stored : 'foot';
+    return isChoosableMode(stored) ? stored : 'foot';
   });
   const chooseMode = (next: RouteMode) => {
     setModeChoice(next);
@@ -196,6 +217,8 @@ function PlanningPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  /** Échec du chargement d'un GPX, montré dans le bloc Tracé. */
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Recherche d'un lieu.
   const [query, setQuery] = useState('');
@@ -372,6 +395,41 @@ function PlanningPage() {
     setMessage(null);
   };
 
+  /**
+   * Charge un GPX téléchargé ailleurs : sa trace devient un nouvel itinéraire,
+   * gardée telle quelle entre le départ et l'arrivée (`routeFromTrack`), à
+   * ranger pour la suivre pendant un enregistrement. L'activité est devinée du
+   * type de la trace s'il en porte un.
+   */
+  const loadGpx = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.target;
+    const file = input.files?.[0];
+    // Vidé, le champ accepte de recharger le même fichier.
+    input.value = '';
+    if (!file) return;
+    setLoadError(null);
+    try {
+      const parsed = parseGpxPath(await readPickedFile(file));
+      const loaded = routeFromTrack(parsed.points);
+      if (!loaded) throw new Error(`${file.name} ne contient pas de trace : aucun point de trace ou de route.`);
+      if (!confirmDiscard()) return;
+      planner.replace(loaded);
+      setCurrent(null);
+      setSavedRoute(EMPTY_ROUTE);
+      setName(parsed.name ?? file.name.replace(/\.gpx$/i, ''));
+      const sport = guessSport(parsed.trackType);
+      const guessed = sport ? activities.find((a) => a.base === sport) : undefined;
+      if (guessed) setActivityId(guessed.id);
+      setSelected(null);
+      setCandidate(null);
+      setResults(null);
+      setMessage(null);
+      fitTo(loaded);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Lecture du fichier impossible.');
+    }
+  };
+
   /** Supprime un itinéraire rangé ; celui qui est ouvert laisse la place à une carte vide. */
   const deleteSaved = async (saved: SavedRoute) => {
     setConfirmingDelete(null);
@@ -478,7 +536,7 @@ function PlanningPage() {
                       setCandidate(null);
                       setSelected(i);
                     },
-                    dragend: (e) => planner.move(i, toWaypoint((e.target as L.Marker).getLatLng())),
+                    dragend: (e) => planner.move(i, toWaypoint((e.target as L.Marker).getLatLng()), mode),
                   }} />
               ))}
               {candidate && (
@@ -490,9 +548,15 @@ function PlanningPage() {
                   pathOptions={{ color: '#1b1f24', weight: 3, fillColor: '#ffffff', fillOpacity: 1 }} />
               )}
             </MapContainer>
-            <Button size="s" className="plan-locate" onClick={() => void locate()} disabled={locating}>
-              {locating ? 'Recherche…' : 'Ma position'}
-            </Button>
+            <div className="plan-map-tools">
+              <Button size="s" onClick={() => void locate()} disabled={locating}>
+                {locating ? 'Recherche…' : 'Ma position'}
+              </Button>
+              <Button size="s" onClick={planner.undo} disabled={!planner.canUndo} aria-label="Précédent : défaire la dernière modification">
+                <IconUndo size={16} />
+                Précédent
+              </Button>
+            </div>
 
             {selected !== null && route.waypoints[selected] && (
               <div className="plan-overlay">
@@ -500,18 +564,18 @@ function PlanningPage() {
                 {selectedLeg && (
                   <label className="plan-overlay__field">
                     <span>Pour y venir</span>
-                    <select
-                      className="ui-field ui-field--s"
-                      value={selectedLeg.mode}
-                      onChange={(e) => isRouteMode(e.target.value) && planner.setMode(selected - 1, e.target.value)}>
-                      {ROUTE_MODES.map((m) => <option key={m} value={m}>{ROUTE_MODE_LABEL[m]}</option>)}
-                    </select>
+                    <LegModeSelect leg={selectedLeg} onChange={(m) => planner.setMode(selected - 1, m)} />
                   </label>
                 )}
                 {selected === 0 && route.waypoints.length >= 2 && !looped && (
-                  <Button size="s" variant="primary" onClick={() => { planner.loop(mode); setSelected(null); }}>Boucler ici</Button>
+                  <>
+                    <Button size="s" variant="primary" onClick={() => { planner.loop(mode); setSelected(null); }}>Boucler ici</Button>
+                    {mode !== 'straight' && (
+                      <Button size="s" onClick={() => { planner.loop('straight'); setSelected(null); }}>En ligne droite</Button>
+                    )}
+                  </>
                 )}
-                <Button size="s" variant="danger" onClick={() => { planner.remove(selected); setSelected(null); }}>Retirer</Button>
+                <Button size="s" variant="danger" onClick={() => { planner.remove(selected, mode); setSelected(null); }}>Retirer</Button>
                 <button type="button" className="plan-overlay__close" aria-label="Fermer" onClick={() => setSelected(null)}>×</button>
                 {selectedLeg?.status === 'error' && <p className="plan-overlay__error">{selectedLeg.error}</p>}
               </div>
@@ -534,9 +598,11 @@ function PlanningPage() {
                 <li>Touchez la carte pour poser un point : A, puis B, puis C…</li>
                 <li>Touchez le tracé pour insérer un point entre deux autres.</li>
                 <li>Faites glisser un point pour le déplacer : seuls ses deux tronçons sont recalculés.</li>
-                <li>Touchez un point pour le retirer, ou changer la façon d'y venir ; touchez A pour boucler.</li>
+                <li>Touchez un point pour le retirer, ou changer la façon d'y venir ; touchez A pour boucler, par les chemins ou en ligne droite.</li>
+                <li>« Précédent », sur la carte, défait la dernière modification.</li>
                 <li>La liste des points permet aussi de changer leur ordre.</li>
                 <li>Le mode choisi ci-dessous vaut pour les points suivants. Le calcul demande du réseau.</li>
+                <li>« Charger un GPX » reprend telle quelle une trace téléchargée ailleurs. Touchez-la pour y poser un point ; un point déplacé refait ses tronçons dans le mode choisi.</li>
               </ul>
             )}
             <div className="ui-tabs plan-modes" role="group" aria-label="Mode de calcul"
@@ -548,11 +614,26 @@ function PlanningPage() {
               ))}
             </div>
             <div className="plan-actions">
-              <Button size="s" onClick={planner.undo} disabled={!planner.canUndo}>Annuler</Button>
+              <Button size="s" onClick={planner.undo} disabled={!planner.canUndo}>
+                <IconUndo size={16} />
+                Précédent
+              </Button>
               <Button size="s" onClick={planner.reverse} disabled={route.waypoints.length < 2}>Inverser</Button>
               <Button size="s" onClick={() => planner.loop(mode)} disabled={route.waypoints.length < 2 || looped}>Boucler</Button>
+              {mode !== 'straight' && (
+                <Button size="s" onClick={() => planner.loop('straight')} disabled={route.waypoints.length < 2 || looped}>
+                  Boucler en ligne droite
+                </Button>
+              )}
+              <label className="ui-btn ui-btn--secondary ui-btn--s">
+                <IconFile size={16} />
+                Charger un GPX
+                {/* Sur le téléphone, pas de filtre : Android grise parfois les GPX. Le contenu est vérifié à la lecture. */}
+                <input type="file" accept={isNativeApp() ? undefined : '.gpx'} hidden onChange={(e) => void loadGpx(e)} />
+              </label>
               <Button size="s" variant="ghost" onClick={() => { planner.clear(); setSelected(null); }} disabled={route.waypoints.length === 0}>Tout effacer</Button>
             </div>
+            {loadError && <div className="ui-alert ui-alert--warning">{loadError}</div>}
             {totals.pendingLegs > 0 && (
               <div className="plan-status">Calcul du tracé… ({totals.pendingLegs} tronçon{totals.pendingLegs > 1 ? 's' : ''})</div>
             )}
@@ -631,23 +712,17 @@ function PlanningPage() {
                       </button>
                       <span className="plan-point__actions">
                         {leg && (
-                          <select
-                            className="ui-field ui-field--s"
-                            aria-label={`Façon de venir au point ${waypointLabel(i)}`}
-                            value={leg.mode}
-                            onChange={(e) => isRouteMode(e.target.value) && planner.setMode(i - 1, e.target.value)}>
-                            {ROUTE_MODES.map((m) => <option key={m} value={m}>{ROUTE_MODE_LABEL[m]}</option>)}
-                          </select>
+                          <LegModeSelect leg={leg} label={`Façon de venir au point ${waypointLabel(i)}`} onChange={(m) => planner.setMode(i - 1, m)} />
                         )}
                         <Button size="s" variant="ghost" className="plan-point__move" aria-label={`Monter le point ${waypointLabel(i)}`}
-                          disabled={i === 0} onClick={() => { planner.reorder(i, i - 1); setSelected(null); }}>
+                          disabled={i === 0} onClick={() => { planner.reorder(i, i - 1, mode); setSelected(null); }}>
                           <IconChevronRight size={16} style={{ transform: 'rotate(-90deg)' }} />
                         </Button>
                         <Button size="s" variant="ghost" className="plan-point__move" aria-label={`Descendre le point ${waypointLabel(i)}`}
-                          disabled={i === last} onClick={() => { planner.reorder(i, i + 1); setSelected(null); }}>
+                          disabled={i === last} onClick={() => { planner.reorder(i, i + 1, mode); setSelected(null); }}>
                           <IconChevronRight size={16} style={{ transform: 'rotate(90deg)' }} />
                         </Button>
-                        <Button size="s" variant="ghost" onClick={() => { planner.remove(i); setSelected(null); }}>Retirer</Button>
+                        <Button size="s" variant="ghost" onClick={() => { planner.remove(i, mode); setSelected(null); }}>Retirer</Button>
                       </span>
                       {leg?.status === 'error' && <p className="plan-point__error">{leg.error}</p>}
                       {leg?.status === 'pending' && <p className="plan-point__pending">Calcul du tronçon…</p>}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_ROUTE, addWaypoint, legKey, withLegResult, type PlannedRoute } from './route';
+import { EMPTY_ROUTE, addWaypoint, legKey, routeFromTrack, withLegResult, type PlannedRoute } from './route';
 import { buildRouteGpx, waypointLabel } from './routeGpx';
 import {
   ROUTE_VERSION, isWritableRouteRecord, parseRouteRecord, recordToRoute, routeFileBase, routeToRecord, serializeRouteRecord,
@@ -44,6 +44,16 @@ describe('fiche d\'itinéraire', () => {
     expect(parseRouteRecord('pas du json')).toBeNull();
     expect(parseRouteRecord(JSON.stringify({ format: 'tracker-session', version: 1 }))).toBeNull();
     expect(parseRouteRecord(JSON.stringify({ format: 'tracker-itineraire', version: 1, waypoints: [{ lat: 'x' }] }))).toBeNull();
+  });
+
+  it('garde une trace importée telle quelle, sans la recalculer', () => {
+    const route = routeFromTrack([{ ...A, eleM: 10 }, { lat: 43.605, lon: 3.801, eleM: 15 }, { ...B, eleM: 20 }])!;
+    const record = parseRouteRecord(serializeRouteRecord(routeToRecord(route, META)))!;
+    expect(record.version).toBe(2);
+    expect(recordToRoute(record)).toEqual(route);
+    // Illisible, elle devient une ligne droite plutôt qu'un calcul par les chemins.
+    const broken = recordToRoute({ ...record, legs: [{ mode: 'imported', points: [] }] });
+    expect(broken.legs[0]).toMatchObject({ mode: 'straight', status: 'ready' });
   });
 
   it('recalcule des tronçons qui ne correspondent plus aux points', () => {

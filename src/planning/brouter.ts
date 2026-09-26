@@ -1,4 +1,4 @@
-import type { RouteMode, RoutePoint, Waypoint } from './route';
+import type { ComputedMode, RoutePoint, Waypoint } from './route';
 
 /**
  * Calcul d'un tronçon sur les chemins de la carte, par le serveur public de
@@ -16,7 +16,7 @@ export const BROUTER_URL = 'https://brouter.de/brouter';
  * Profil de calcul du serveur pour chaque mode. `hiking-mountain` prend les
  * sentiers selon leur difficulté notée sur la carte (`sac_scale`).
  */
-export const BROUTER_PROFILES: Record<Exclude<RouteMode, 'straight'>, string> = {
+export const BROUTER_PROFILES: Record<ComputedMode, string> = {
   foot: 'hiking-mountain',
   bike: 'trekking',
   mtb: 'mtb',
@@ -25,7 +25,7 @@ export const BROUTER_PROFILES: Record<Exclude<RouteMode, 'straight'>, string> = 
 /** Six décimales : une dizaine de centimètres, bien assez pour un point posé au doigt. */
 const coord = (w: Waypoint): string => `${w.lon.toFixed(6)},${w.lat.toFixed(6)}`;
 
-export const brouterUrl = (from: Waypoint, to: Waypoint, mode: Exclude<RouteMode, 'straight'>): string =>
+export const brouterUrl = (from: Waypoint, to: Waypoint, mode: ComputedMode): string =>
   `${BROUTER_URL}?lonlats=${coord(from)}|${coord(to)}&profile=${BROUTER_PROFILES[mode]}&alternativeidx=0&format=geojson`;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -72,7 +72,7 @@ export const brouterErrorMessage = (status: number, body: string): string =>
 export const fetchLeg = async (
   from: Waypoint,
   to: Waypoint,
-  mode: Exclude<RouteMode, 'straight'>,
+  mode: ComputedMode,
   signal?: AbortSignal
 ): Promise<RoutePoint[]> => {
   let response: Response;
