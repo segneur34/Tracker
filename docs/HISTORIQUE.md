@@ -280,3 +280,12 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Demande de l'utilisateur** : le doigt cache l'anneau du bouton rond, on ne voit pas où en est la pause.
     - Le cadran reprend le remplissage de l'anneau (même `--press-ms`), en rouge vers la pause, en vert vers la reprise. Il est sans pointeur, pour que le bouton garde le doigt.
     - Il n'apparaît qu'après 150 ms : un appui court, qui ouvre la page d'enregistrement, ne fait pas clignoter l'écran.
+67. Cartes hors ligne (28/09, validé en mode avion sur le téléphone, APK 0.2.32).
+    - **Règle d'OSM** : télécharger une zone à l'avance est interdit (au-delà de 250 tuiles). **Choix de l'utilisateur** : garder chaque tuile affichée en ligne, sans bouton ni durée limite. Un « fichier de région » vectoriel (Protomaps) a été écarté pour l'instant : nouvelle bibliothèque d'affichage, autre rendu.
+    - Une tuile gardée depuis plus de 7 jours est montrée aussitôt, puis redemandée en arrière-plan si le réseau répond. Sans réseau, elle reste. Seuls le plafond (500 Mo par défaut, les plus anciennes d'abord) et « Vider » effacent.
+    - Sans tuile à un zoom, on découpe et on agrandit celle d'un zoom inférieur, jusqu'à 3 crans : floue mais lisible. Le découpage passe par un canevas, pour que la case reste une `<img>` comme Leaflet l'attend.
+    - Plafond dans une liste, pas dans un champ : un champ saisi chiffre à chiffre aurait effacé des tuiles à « 50 » en tapant « 500 ».
+    - **Pièges** (téléphone) :
+      - écrites ensemble avec `recursive`, les tuiles se disputaient la création du dossier `tuiles/`, et l'une échouait. Le dossier est créé une fois avant la première écriture ;
+      - Capacitor journalise chaque lecture de fichier absent. Un index en mémoire (un seul `readdir`) évite de chercher une tuile qui n'y est pas.
+    - **Piège de banc** : la vue de `/itineraires` est mémorisée, et un profil déjà servi fausse le relevé d'un essai de zoom : prendre un profil neuf. Écran du téléphone éteint, Leaflet ne zoome plus sous le banc (animations suspendues).

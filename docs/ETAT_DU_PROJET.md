@@ -181,6 +181,7 @@ Tracker/
 | `tracker.panelSizes` | `components/ResizablePanel.tsx` | `Record<panelId, { width?; height? }>` |
 | `tracker.followedTrace` | `hooks/useFollowedTrace.ts` | `{ name; source; activityId; points }`, gardée jusqu'à « Retirer » |
 | `tracker.planning` | `pages/PlanningPage.tsx` | `{ mode?; activityId?; view? }` |
+| `tracker.tileCache` | `hooks/useTileCache.ts` | `{ capMb? }`, plafond des cartes gardées (500 Mo par défaut), propre à l'appareil |
 | `tracker.sailingNotes` | ancienne clé | notes d'avant le dossier, lues seulement pour reprendre celles d'une trace importée |
 
 `StoredSettings` contient :
@@ -193,7 +194,8 @@ L'ancienne allure par support, `referenceSpeeds`, est écartée à la lecture (p
 
 Hors de ces clés et du dossier :
 - le journal de l'enregistrement (`recording-journal.jsonl`), dans le dossier privé de l'application, gardé tant que la session arrêtée attend ; dans le navigateur, il reste en mémoire ;
-- la poignée du dossier choisi, dans IndexedDB.
+- la poignée du dossier choisi, dans IndexedDB ;
+- les cartes gardées (`platform/tileCache.ts`, point 67) : sur le téléphone, le dossier privé `tuiles/` (`z_x_y.png`, date du fichier) ; dans le navigateur, le Cache API (`tracker-tuiles`). Elles ne voyagent pas avec le dossier mémoire.
 
 ## 7. Réglages et constantes
 
@@ -213,7 +215,7 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 
 ## 8. Tests
 
-Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 421 au 26 septembre 2026.
+Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 428 au 28 septembre 2026.
 
 Un calcul a son `*.test.ts` à côté de lui, sauf :
 - `core/sessionStats` et `core/speedGradient`, couverts par d'autres fichiers de test (`topSegments`, `runningAnalytics`, `sailingConfig`) ;
@@ -231,7 +233,7 @@ Générateurs : `buildEastwardTrack` (kinematics), `buildTrack` (plusieurs fichi
 Non testés :
 - `gpxParser` (DOM) ;
 - `buildSailingSessionStats`, `calculateVmgStats`, `buildWindTimeline` ;
-- `platform/` : `memoryFolder`, `files`, `compass`, et le plugin Java ;
+- `platform/` : `memoryFolder`, `files`, `compass`, `tileCache`, et le plugin Java ;
 - tous les hooks (`useRecorder`, `useSessionLibrary`, `useSessionDraft`, `leaveGuard`…), les composants et les pages.
 
 Ils se vérifient au banc (`outils/banc/`, voir son `LISEZMOI.md`) et sur le téléphone (§12). Le banc prouve aussi qu'un changement est neutre : texte de la page relevé avant et après, puis comparé (point 44).
@@ -303,7 +305,7 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
 - **Phase 3** :
   - partage et export GPX ;
   - réception d'un GPX partagé depuis Komoot ;
-  - cartes hors ligne (pas de réseau en mer) ;
+  - cartes hors ligne : faites le 28/09 (point 67), par les tuiles vues en ligne ; le téléchargement d'une zone à l'avance reste exclu par les règles d'OSM ;
   - capteur cardiaque Bluetooth.
 
 ### Enregistrement

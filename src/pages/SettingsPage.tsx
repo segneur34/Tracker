@@ -7,6 +7,7 @@ import {
   type DistanceUnit, type SpeedUnit,
 } from '../core/units';
 import { useOpenSections } from '../hooks/useOpenSections';
+import { useTileCache } from '../hooks/useTileCache';
 import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import {
   RUNNING_UNITS, SAILING_UNITS, TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, useAllSportSettings,
@@ -27,10 +28,12 @@ const FAMILY_BASES: Record<SportFamily, SportType[]> = { voile: SAILING_SPORTS, 
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
 
 /** Blocs repliables de la page, tous fermés au départ ; l'état est mémorisé. */
-type SettingsBlock = 'memoire' | 'activites' | 'enregistrement' | 'course' | 'coureur';
+type SettingsBlock = 'memoire' | 'activites' | 'enregistrement' | 'cartes' | 'course' | 'coureur';
 const SETTINGS_BLOCK_DEFAULTS: Record<SettingsBlock, boolean> = {
-  memoire: false, activites: false, enregistrement: false, course: false, coureur: false,
+  memoire: false, activites: false, enregistrement: false, cartes: false, course: false, coureur: false,
 };
+/** Plafonds proposés pour les cartes gardées, en Mo : une liste plutôt qu'un champ, qui effacerait des tuiles à chaque chiffre tapé. */
+const TILE_CAP_CHOICES_MB = [100, 250, 500, 1000, 2000, 5000];
 const DISTANCE_UNITS = Object.keys(DISTANCE_UNIT_LABEL) as DistanceUnit[];
 /** Activités ouvertes, par identifiant ; absente : fermée. */
 const NO_ACTIVITY_OPEN: Record<string, boolean> = {};
@@ -339,6 +342,11 @@ function SettingsPage() {
         )}
       </div>
 
+      <div style={cardStyle}>
+        <PanelTitle label="Cartes hors ligne" open={open.cartes} onToggle={() => toggle('cartes')} />
+        {open.cartes && <OfflineMapsSettings />}
+      </div>
+
       {runningActivities.length > 0 && (
         <div style={cardStyle}>
           <PanelTitle label="Course à pied" open={open.course} onToggle={() => toggle('course')} />
@@ -461,6 +469,47 @@ function AddActivityForm({
       <input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="Couleur" className="settings-sports__color" />
       <button onClick={submit} disabled={name.trim() === ''} className="ui-btn ui-btn--secondary ui-btn--s">Ajouter</button>
     </div>
+  );
+}
+
+/**
+ * Cartes gardées sur l'appareil : place occupée, plafond, vidage. Monté
+ * seulement bloc ouvert, parce que compter les tuiles lit tout leur dossier.
+ */
+function OfflineMapsSettings() {
+  const { usage, capMb, setCapMb, clear } = useTileCache();
+  const choices = TILE_CAP_CHOICES_MB.includes(capMb) ? TILE_CAP_CHOICES_MB : [...TILE_CAP_CHOICES_MB, capMb].sort((a, b) => a - b);
+
+  const askClear = () => {
+    if (window.confirm("Effacer toutes les cartes gardées sur cet appareil ? Sans réseau, les cartes resteront vides jusqu'à ce qu'elles soient revues en ligne.")) {
+      void clear();
+    }
+  };
+
+  return (
+    <>
+      <p className="settings-block__intro">
+        Chaque morceau de carte affiché avec le réseau est gardé sur cet appareil et reste visible sans réseau, en mer
+        par exemple. Pour préparer une sortie, parcourez la zone en ligne, une fois de loin et une fois de près : sans
+        réseau, on peut encore zoomer de trois crans au-delà, en image agrandie. Les plus anciens morceaux sont effacés
+        au-delà du plafond.
+      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
+        <span style={{ width: '190px' }}>Place occupée</span>
+        <span className="num">
+          {usage === null ? '…' : `${(usage.bytes / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo (${usage.tiles.toLocaleString('fr-FR')} morceaux)`}
+        </span>
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
+        <span style={{ width: '190px' }}>Plafond</span>
+        <select value={capMb} onChange={(e) => void setCapMb(Number(e.target.value))} className="ui-field ui-field--s">
+          {choices.map((mb) => <option key={mb} value={mb}>{mb >= 1000 ? `${mb / 1000} Go` : `${mb} Mo`}</option>)}
+        </select>
+      </label>
+      <button type="button" onClick={askClear} disabled={usage?.tiles === 0} className="ui-btn ui-btn--secondary ui-btn--s">
+        Vider
+      </button>
+    </>
   );
 }
 
