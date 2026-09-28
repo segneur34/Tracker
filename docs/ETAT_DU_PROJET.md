@@ -12,7 +12,7 @@ Tracker est une application web 100 % client qui lit une trace GPX et en tire de
 
 - **Voile, abouti** : carte colorée par la vitesse, statistiques, tops, virements et empannages et leur qualité, vent et ses variations, VMG, notes. Les seuils s'accordent à l'allure de la session, d'un bateau lent à un kite rapide, et tiennent sur les traces en cadence économique.
 - **Course, plus jeune** : carte, graphes de vitesse et d'altitude, zones de pente, dénivelé, allures.
-- **Autour** : accueil et graphe d'activités, bibliothèque des sessions par famille (`/voile`, `/course`), enregistrement avec trace à suivre (`/enregistrer`), planification d'itinéraires (`/itineraires`), Réglages (`/parametres`), mémoire en dossier portable (§6).
+- **Autour** : accueil et graphe d'activités, bibliothèque des sessions par famille (`/voile`, `/course`), enregistrement avec trace à suivre (`/enregistrer`), planification d'itinéraires (`/itineraires`) et leur liste (`/itineraires/liste`, point 68), cartes hors ligne (point 67), Réglages (`/parametres`), mémoire en dossier portable (§6).
 
 ## 2. Environnement et outillage
 
@@ -181,6 +181,7 @@ Tracker/
 | `tracker.panelSizes` | `components/ResizablePanel.tsx` | `Record<panelId, { width?; height? }>` |
 | `tracker.followedTrace` | `hooks/useFollowedTrace.ts` | `{ name; source; activityId; points }`, gardée jusqu'à « Retirer » |
 | `tracker.planning` | `pages/PlanningPage.tsx` | `{ mode?; activityId?; view? }` |
+| `tracker.routeList` | `pages/RoutesPage.tsx` | `{ sort }`, tri de la liste des itinéraires |
 | `tracker.tileCache` | `hooks/useTileCache.ts` | `{ capMb? }`, plafond des cartes gardées (500 Mo par défaut), propre à l'appareil |
 | `tracker.sailingNotes` | ancienne clé | notes d'avant le dossier, lues seulement pour reprendre celles d'une trace importée |
 
@@ -215,7 +216,7 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 
 ## 8. Tests
 
-Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 428 au 28 septembre 2026.
+Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 432 au 28 septembre 2026.
 
 Un calcul a son `*.test.ts` à côté de lui, sauf :
 - `core/sessionStats` et `core/speedGradient`, couverts par d'autres fichiers de test (`topSegments`, `runningAnalytics`, `sailingConfig`) ;

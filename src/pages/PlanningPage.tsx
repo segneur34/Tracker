@@ -1,6 +1,7 @@
-import { Fragment, useId, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Marker, Polyline, useMapEvents } from 'react-leaflet';
+import { useSearchParams } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import 'leaflet/dist/leaflet.css';
 import './PlanningPage.css';
@@ -8,6 +9,7 @@ import MapAutoResize from '../components/MapAutoResize';
 import OsmTileLayer from '../components/OsmTileLayer';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
+import RouteList from '../components/RouteList';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { IconChevronRight, IconFile, IconUndo } from '../components/icons';
@@ -22,6 +24,7 @@ import { ELEVATION_PRESETS } from '../core/sportProfiles';
 import { SLOW_COLOR, gradientCss } from '../core/speedGradient';
 import { DISTANCE_UNIT_SYMBOL, formatDistance, toDisplayDistance } from '../core/units';
 import { useLeaveWarning } from '../hooks/leaveGuard';
+import { useGoOnRoute } from '../hooks/useGoOnRoute';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { usePlannedRoute } from '../hooks/usePlannedRoute';
 import { getLastFix, useRecorder } from '../hooks/useRecorder';
@@ -53,7 +56,8 @@ import { jsonStore } from '../platform/storage';
  *
  * Le calcul demande du réseau (`planning/brouter.ts`) ; un itinéraire rangé se
  * rouvre sans. On y arrive depuis l'accueil (« Planifier ») et, sur
- * ordinateur, depuis la barre du haut.
+ * ordinateur, depuis la barre du haut ; `?itineraire=<base>` ouvre un
+ * itinéraire rangé (listes de l'accueil et des bibliothèques).
  */
 
 /** Préférences de la page sur l'appareil : derniers mode et activité choisis, dernière vue de la carte. */
@@ -203,6 +207,7 @@ function PlanningPage() {
   const planner = usePlannedRoute();
   const { route } = planner;
   const library = useRouteLibrary();
+  const { go, canGo } = useGoOnRoute();
 
   const [map, setMap] = useState<L.Map | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
@@ -453,11 +458,19 @@ function PlanningPage() {
     downloadTextFile(fileName, buildRouteGpx(route, name.trim() || defaultName()));
   };
 
-  /** Distance de chaque itinéraire rangé, dans l'unité de l'activité en cours. */
-  const savedDistances = useMemo(
-    () => new Map(library.routes.map((s) => [s.base, routeTotals(recordToRoute(s.record), minGainM).distanceM])),
-    [library.routes, minGainM]
-  );
+  // Itinéraire demandé par l'adresse : ouvert une fois la liste lue et la carte prête, puis l'adresse est
+  // nettoyée, pour qu'un retour sur la page ne le rouvre pas par-dessus un tracé en cours.
+  const [params, setParams] = useSearchParams();
+  const requestedBase = params.get('itineraire');
+  useEffect(() => {
+    if (!requestedBase || !map) return;
+    const saved = library.routes.find((r) => r.base === requestedBase);
+    if (!saved) return;
+    openSaved(saved);
+    setParams({}, { replace: true });
+    // openSaved n'est pas stable ; seuls la demande, la liste et la carte comptent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedBase, map, library.routes]);
 
   const selectedLeg = selected !== null && selected > 0 ? route.legs[selected - 1] : undefined;
   const canSave = library.canSave && route.waypoints.length >= 2 && !saving && !current?.readOnly;
@@ -756,6 +769,12 @@ function PlanningPage() {
               <Button variant="primary" onClick={() => void handleSave()} disabled={!canSave || (current !== null && !dirty)}>
                 {saving ? 'Rangement…' : current ? 'Ranger les modifications' : 'Ranger'}
               </Button>
+              {current !== null && (
+                <Button variant="record" onClick={() => go(current)} disabled={dirty || !canGo}
+                  title={dirty ? "Rangez d'abord les modifications" : canGo ? undefined : 'Un enregistrement est en cours'}>
+                  Partir
+                </Button>
+              )}
               {canDownloadFiles() && (
                 <Button onClick={exportGpx} disabled={route.waypoints.length < 2}>Exporter le GPX</Button>
               )}
@@ -780,28 +799,20 @@ function PlanningPage() {
             {library.routes.length === 0 ? (
               <p className="plan-note">Aucun itinéraire rangé pour l'instant.</p>
             ) : (
-              <ul className="plan-saved">
-                {library.routes.map((saved) => (
-                  <li key={saved.base} className={current?.base === saved.base ? 'plan-saved__item plan-saved__item--current' : 'plan-saved__item'}>
-                    <button type="button" className="plan-saved__open" onClick={() => openSaved(saved)}>
-                      <strong>{saved.record.name}</strong>
-                      <span className="num">
-                        {formatDistance(savedDistances.get(saved.base) ?? 0, distanceUnit)}
-                        {' · '}
-                        {new Date(saved.record.updatedAt).toLocaleDateString('fr-FR')}
-                      </span>
-                    </button>
-                    {confirmingDelete === saved.base ? (
-                      <span className="plan-saved__confirm">
-                        <Button size="s" variant="danger" onClick={() => void deleteSaved(saved)}>Supprimer</Button>
-                        <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(null)}>Garder</Button>
-                      </span>
-                    ) : (
-                      <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(saved.base)} aria-label={`Supprimer ${saved.record.name}`}>Supprimer</Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <RouteList
+                routes={library.routes}
+                activities={activities}
+                onOpen={openSaved}
+                currentBase={current?.base ?? null}
+                go={false}
+                actions={(saved) => (confirmingDelete === saved.base ? (
+                  <span className="plan-saved__confirm">
+                    <Button size="s" variant="danger" onClick={() => void deleteSaved(saved)}>Supprimer</Button>
+                    <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(null)}>Garder</Button>
+                  </span>
+                ) : (
+                  <Button size="s" variant="ghost" onClick={() => setConfirmingDelete(saved.base)} aria-label={`Supprimer ${saved.record.name}`}>Supprimer</Button>
+                ))} />
             )}
           </PlanBlock>
         </div>

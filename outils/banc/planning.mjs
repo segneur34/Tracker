@@ -133,7 +133,7 @@ await wait(1500);
 console.log('message :', await evaluate(`[...document.querySelectorAll('.plan-note')].map((x) => x.textContent).join(' | ')`));
 await send('Page.navigate', { url: `${BASE}/itineraires` });
 await wait(3000);
-console.log('rouvrir :', await clickText('Sentier des crêtes', '.plan-saved__open'));
+console.log('rouvrir :', await clickText('Sentier des crêtes', '.route-list__open'));
 await wait(800);
 await log('rouvert');
 

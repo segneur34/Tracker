@@ -289,3 +289,10 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - écrites ensemble avec `recursive`, les tuiles se disputaient la création du dossier `tuiles/`, et l'une échouait. Le dossier est créé une fois avant la première écriture ;
       - Capacitor journalise chaque lecture de fichier absent. Un index en mémoire (un seul `readdir`) évite de chercher une tuile qui n'y est pas.
     - **Piège de banc** : la vue de `/itineraires` est mémorisée, et un profil déjà servi fausse le relevé d'un essai de zoom : prendre un profil neuf. Écran du téléphone éteint, Leaflet ne zoome plus sous le banc (animations suspendues).
+68. Itinéraires planifiés sur l'accueil et dans les bibliothèques, « Partir », liste complète avec tris (28/09, validé sur le téléphone, APK 0.2.34).
+    - **Choix de l'utilisateur** : dans Voile et Course, « Réalisées » (les sessions) ou « Planifiées » (les itinéraires de la famille, par les mêmes onglets d'activité). La notion d'itinéraire « fait » n'existe pas.
+    - **Retour de l'utilisateur** : une liste complète sur l'accueil l'aurait allongé sans fin. L'accueil en montre les 3 derniers, et sa carte mène à `/itineraires/liste` (tris, onglets d'activité).
+    - **« Partir »** (choix de l'utilisateur) : il suit l'itinéraire et ouvre Enregistrer, son activité proposée, sans démarrer, pour vérifier l'activité et attendre le GPS. Grisé pendant un enregistrement, où la trace suivie ne se change pas.
+    - Une seule liste (`RouteList`) sert partout. Chaque distance s'affiche dans l'unité de l'activité de son itinéraire, et non plus dans celle de l'activité choisie sur la page.
+    - `?itineraire=` ouvre un itinéraire une fois la liste et la carte prêtes, puis s'efface, pour ne pas rouvrir l'itinéraire par-dessus un tracé en cours.
+    - Un itinéraire sans activité connue n'appartient à aucune famille : on le trouve sur l'accueil et dans les pages Itinéraires seulement.

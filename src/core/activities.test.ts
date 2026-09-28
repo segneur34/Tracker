@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_ACTIVITIES, activitiesOfFamily, baseActivity, findActivity, newActivityId, nextActivityColor, readActivities,
+  DEFAULT_ACTIVITIES, activitiesOfFamily, activityCounts, baseActivity, findActivity, newActivityId, nextActivityColor, readActivities,
   sessionActivity, type Activity,
 } from './activities';
 
@@ -78,5 +78,13 @@ describe('newActivityId et nextActivityColor', () => {
 
   it('propose une couleur libre', () => {
     expect(nextActivityColor([voile])).not.toBe(voile.color);
+  });
+});
+
+describe('activityCounts', () => {
+  it('compte dans l’ordre donné, puis dans l’ordre d’apparition, sans les activités absentes', () => {
+    const kite = baseActivity('kite');
+    const counts = activityCounts([moth, null, kite, moth, voile], [voile, trail, moth]);
+    expect(counts.map((c) => [c.activity.id, c.count])).toEqual([[voile.id, 1], [moth.id, 2], ['kite', 1]]);
   });
 });

@@ -383,50 +383,6 @@
   font-size: var(--text-s);
 }
 
-.plan-saved {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.plan-saved__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) 0;
-  border-top: 1px solid var(--line-soft);
-}
-
-.plan-saved__item:first-child {
-  border-top: 0;
-}
-
-.plan-saved__item--current .plan-saved__open strong {
-  text-decoration: underline;
-}
-
-.plan-saved__open {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-1) 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.plan-saved__open span {
-  color: var(--muted);
-  font-size: var(--text-s);
-}
-
 .plan-saved__confirm {
   display: flex;
   gap: var(--space-1);

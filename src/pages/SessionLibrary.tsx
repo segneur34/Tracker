@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { MapContainer, Polyline } from 'react-leaflet';
 import OsmTileLayer from '../components/OsmTileLayer';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import MapAutoResize from '../components/MapAutoResize';
 import ActivitySelect from '../components/ActivitySelect';
 import MemoryStatus from '../components/MemoryStatus';
+import RouteList from '../components/RouteList';
 import { IconChevronRight, IconFile } from '../components/icons';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -16,14 +17,16 @@ import { parseGpx } from '../core/gpxParser';
 import { computeKinematics } from '../core/kinematics';
 import { referenceSpeedMs as sessionReferenceSpeedMs } from '../core/sessionSpeed';
 import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
-import { activitiesOfFamily, sessionActivity, type Activity } from '../core/activities';
+import { activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import type { RawTrackPoint, TrackPoint } from '../core/types';
 import { formatDistance, formatDuration, formatSpeed, knotsToMs, msToKnots, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
+import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { importFiles, importFromFolder, readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
 import { effectiveDistanceUnit, effectiveSpeedUnit, readStoredActivities, readStoredSettings } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
+import { routeActivity, routesOfFamily } from '../planning/routeList';
 import { isNativeApp } from '../platform/runtime';
 import { DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
 import { DEFAULT_SAILING_SPEED_RANGE_MS, SPEED_RANGE_MAX_MARGIN_KN, suggestActiveThresholdKn } from '../sailing/sailingConfig';
@@ -33,7 +36,9 @@ import './SessionLibrary.css';
  * Bibliothèque d'une famille : les onglets Voile et Course. La liste des
  * sessions de la mémoire, filtrable par activité (`?activite=<id>` pour
  * arriver filtré, depuis l'accueil), les sessions à classer, l'import de GPX
- * ou d'un dossier entier, la suppression.
+ * ou d'un dossier entier, la suppression. La vue « Planifiées »
+ * (`?vue=planifiees`) montre à la place les itinéraires de la famille, filtrés
+ * par les mêmes onglets d'activité.
  */
 
 const FAMILY: Record<SportFamily, { title: string; accent: string }> = {
@@ -263,8 +268,16 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   const { title, accent } = FAMILY[family];
   // Relues à l'ouverture de la page : les activités se changent dans Réglages.
   const [activities] = useState(readStoredActivities);
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [filter, setFilter] = useState<string>(() => params.get('activite') ?? 'all');
+  const planned = params.get('vue') === 'planifiees';
+  const setPlanned = (next: boolean) => setParams((current) => {
+    const updated = new URLSearchParams(current);
+    if (next) updated.set('vue', 'planifiees');
+    else updated.delete('vue');
+    return updated;
+  }, { replace: true });
+  const { routes } = useRouteLibrary();
   const [helpOpen, setHelpOpen] = useState(false);
   const [confirmFile, setConfirmFile] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -279,21 +292,19 @@ function SessionLibrary({ family }: { family: SportFamily }) {
     [library.sessions, family]
   );
   const unclassified = useMemo(() => library.sessions.filter((s) => s.record.sport === null), [library.sessions]);
-  /** Activités présentes dans la liste, dans l'ordre de Réglages puis celles de base, avec leur nombre de sessions. */
-  const counts = useMemo(() => {
-    const byId = new Map<string, { activity: Activity; count: number }>();
-    for (const a of activitiesOfFamily(activities, family)) byId.set(a.id, { activity: a, count: 0 });
-    for (const s of familySessions) {
-      const a = activityByFile.get(s.file);
-      if (!a) continue;
-      const entry = byId.get(a.id) ?? { activity: a, count: 0 };
-      byId.set(a.id, { ...entry, count: entry.count + 1 });
-    }
-    return [...byId.values()].filter((e) => e.count > 0);
-  }, [activities, family, familySessions, activityByFile]);
-  // Une activité sans session ici (ou seule, donc sans onglets) : « tous », jamais une liste vide sans issue.
+  const familyRoutes = useMemo(() => routesOfFamily(routes, activities, family), [routes, activities, family]);
+  /** Activités présentes dans la vue, dans l'ordre de Réglages puis celles de base, avec leur nombre d'éléments. */
+  const counts = useMemo(
+    () => activityCounts(
+      planned ? familyRoutes.map((r) => routeActivity(r, activities)) : familySessions.map((s) => activityByFile.get(s.file) ?? null),
+      activitiesOfFamily(activities, family)
+    ),
+    [planned, activities, family, familySessions, familyRoutes, activityByFile]
+  );
+  // Une activité sans élément ici (ou seule, donc sans onglets) : « tous », jamais une liste vide sans issue.
   const activeFilter = counts.length > 1 && counts.some((c) => c.activity.id === filter) ? filter : 'all';
   const shown = activeFilter === 'all' ? familySessions : familySessions.filter((s) => activityByFile.get(s.file)?.id === activeFilter);
+  const shownRoutes = activeFilter === 'all' ? familyRoutes : familyRoutes.filter((r) => routeActivity(r, activities)?.id === activeFilter);
   const canImport = library.status === 'ready' || library.pendingCount > 0 || library.status === 'unavailable';
 
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -372,10 +383,19 @@ function SessionLibrary({ family }: { family: SportFamily }) {
         </p>
       )}
 
+      <div className="ui-tabs" aria-label="Vue" style={{ '--tab-accent': accent } as React.CSSProperties}>
+        <button type="button" className="ui-tab" aria-pressed={!planned} onClick={() => setPlanned(false)}>
+          réalisées ({familySessions.length})
+        </button>
+        <button type="button" className="ui-tab" aria-pressed={planned} onClick={() => setPlanned(true)}>
+          planifiées ({familyRoutes.length})
+        </button>
+      </div>
+
       {counts.length > 1 && (
         <div className="ui-tabs" style={{ '--tab-accent': accent } as React.CSSProperties}>
           <button type="button" className="ui-tab" aria-pressed={activeFilter === 'all'} onClick={() => setFilter('all')}>
-            tous ({familySessions.length})
+            tous ({planned ? familyRoutes.length : familySessions.length})
           </button>
           {counts.map(({ activity, count }) => (
             <button key={activity.id} type="button" className="ui-tab" aria-pressed={activeFilter === activity.id} onClick={() => setFilter(activity.id)}>
@@ -385,7 +405,20 @@ function SessionLibrary({ family }: { family: SportFamily }) {
         </div>
       )}
 
-      {unclassified.length > 0 && (
+      {planned && (
+        <Card>
+          {shownRoutes.length > 0 ? (
+            <RouteList routes={shownRoutes} activities={activities} />
+          ) : (
+            <p className="lib-hint">
+              Aucun itinéraire {family === 'voile' ? 'de voile' : 'de course'} pour l'instant.{' '}
+              <Link to="/itineraires">Planifiez-en un</Link> et rangez-le sous une de ces activités : il apparaîtra ici.
+            </p>
+          )}
+        </Card>
+      )}
+
+      {!planned && unclassified.length > 0 && (
         <Card heading="À classer">
           <p className="lib-hint">
             Traces dont l'activité n'est pas connue : choisissez-la pour les ranger en voile ou en course.
@@ -394,7 +427,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
         </Card>
       )}
 
-      {shown.length > 0 ? (
+      {planned ? null : shown.length > 0 ? (
         <ul className="lib-list">{shown.map(row)}</ul>
       ) : (
         library.status === 'ready' && !library.scanning && (

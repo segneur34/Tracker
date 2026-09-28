@@ -5,7 +5,7 @@ Une ligne par fichier : son rôle et ses points d'entrée principaux. Les signat
 ## Amorce
 
 - `main.tsx` : stockage natif chargé, mémoire ouverte (1,5 s au plus), puis rendu ; garde en quittant, touche retour, reprise d'un enregistrement interrompu.
-- `App.tsx` : routes, toutes dans `AppShell` ; `/` (accueil), `/voile` et `/course` (bibliothèques), `/voile/analyse` et `/course/analyse` (`?session=`), `/enregistrer`, `/itineraires`, `/parametres`.
+- `App.tsx` : routes, toutes dans `AppShell` ; `/` (accueil), `/voile` et `/course` (bibliothèques), `/voile/analyse` et `/course/analyse` (`?session=`), `/enregistrer`, `/itineraires` (`?itineraire=`), `/itineraires/liste`, `/parametres`.
 - `env.d.ts` : `__APP_VERSION__`, types de `showDirectoryPicker` et des autorisations de dossier.
 
 ## `core/` : noyau, SI, sans notion de sport
@@ -19,7 +19,7 @@ Une ligne par fichier : son rôle et ses points d'entrée principaux. Les signat
 - `sessionSpeed.ts` : allure de la session (`referenceSpeedMs`), cadence (`samplingIntervalS`), `sessionFilterThresholds`.
 - `sessionStats.ts` : `segmentDistanceM`, cumuls, masque d'activité (trigger de Schmitt), `buildBaseSessionStats`.
 - `elevation.ts` : lissage de l'altitude et dénivelé à seuil, `computeElevationStats`.
-- `activities.ts` : activités de l'utilisateur sur un calcul de base (`Activity`, `DEFAULT_ACTIVITIES`, `readActivities`, `sessionActivity`, `findActivity`, `newActivityId`), noms des familles (`FAMILY_LABEL`).
+- `activities.ts` : activités de l'utilisateur sur un calcul de base (`Activity`, `DEFAULT_ACTIVITIES`, `readActivities`, `sessionActivity`, `findActivity`, `newActivityId`), noms des familles (`FAMILY_LABEL`), onglets d'une liste par activité (`activityCounts`).
 - `topSegments.ts` : meilleurs segments en temps et en distance, sans chevauchement.
 - `speedGradient.ts` : dégradé de couleur de la trace, `speedGradientColor`.
 - `displayConfig.ts` : `CHART_MAX_POINTS`, `DEFAULT_MAP_CENTER`, `trackBounds` (emprise d'une trace, où la carte se cadre).
@@ -66,6 +66,7 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `route.ts` : itinéraire (points, tronçons, modes, dont la trace importée gardée telle quelle), opérations d'édition pures, itinéraire tiré d'une trace chargée (`routeFromTrack`), totaux, profil d'altitude rééchantillonné.
 - `brouter.ts` : calcul d'un tronçon par le serveur BRouter (`fetchLeg`, seul appel réseau du calcul). `geocoding.ts` : recherche de lieux (Photon).
 - `routeRecord.ts` : fiche JSON `tracker-itineraire`. `routeGpx.ts` : GPX d'export.
+- `routeList.ts` : listes d'itinéraires rangés (`routeActivity`, `routesOfFamily`, `routeDistanceM`, `ROUTE_SORTS`, `sortRoutes`).
 
 ## `platform/` : seul accès au stockage, aux fichiers et à la position (règle 12)
 
@@ -90,20 +91,21 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `useSessionDraft.ts` : brouillon d'une session, écrit dans la fiche par `save`. `leaveGuard.ts` : avertissement en quittant.
 - `useLibraryNavigation.ts` : passage de la liste à l'analyse (`?session=`), `useSessionFromUrl` (chargement unique, §10 point 39 ; rend aussi `requested`, la session demandée), `useChangeSessionActivity` (changement d'activité depuis une analyse, vers l'autre module s'il le faut).
 - `useSportSettings.ts` : réglages par activité et liste des activités (`tracker.sportSettings`), `useSportSettings(family)` pour un module, `useAllSportSettings` pour Réglages, et hors composant `readStoredActivities`, `effectiveRecordingProfile`, `effectiveSpeedUnit`, `effectiveDistanceUnit`, `effectiveLongPressMs`.
-- `usePlannedRoute.ts` : itinéraire en cours, annulation, calcul des tronçons un à un. `useRouteLibrary.ts` : itinéraires de `itineraires/`. `useFollowedTrace.ts` : trace suivie, gardée sur l'appareil jusqu'à « Retirer » (`tracker.followedTrace`, hors de `reglages.json`). `useCompassHeading.ts` : cap de la boussole tant qu'il est demandé.
+- `usePlannedRoute.ts` : itinéraire en cours, annulation, calcul des tronçons un à un. `useRouteLibrary.ts` : itinéraires de `itineraires/`. `useFollowedTrace.ts` : trace suivie, gardée sur l'appareil jusqu'à « Retirer » (`tracker.followedTrace`, hors de `reglages.json`). `useCompassHeading.ts` : cap de la boussole tant qu'il est demandé. `useGoOnRoute.ts` : « Partir » sur un itinéraire (trace suivie, page Enregistrer).
 - `useStoredRecord.ts`, `useOpenSections.ts`, `useRunnerProfile.ts` : enregistrements de l'appareil (sections ouvertes, profil du coureur).
 - `useNarrowScreen.ts` : rupture téléphone (768 px), `NARROW_QUERY`.
 - `useTileCache.ts` : plafond des cartes gardées (`tracker.tileCache`), contrôle du plafond après chaque tuile gardée (`noteTileSaved`), `useTileCache` pour Réglages.
 
 ## `pages/`
 
-- `Home.tsx` : accueil (Enregistrer, graphe d'activités, Voile, Course).
-- `SessionLibrary.tsx` (+ `.css`) : bibliothèque d'une famille, import, sessions à classer, suppression, aperçu carte d'une session à la demande (`SessionPreviewMap`, GPX relu, bornes de couleur comme le module d'analyse).
+- `Home.tsx` : accueil (Enregistrer, graphe d'activités, Voile, Course, les 3 derniers itinéraires et le lien vers leur liste).
+- `SessionLibrary.tsx` (+ `.css`) : bibliothèque d'une famille, vues « Réalisées » et « Planifiées » (`?vue=planifiees`, ses itinéraires), import, sessions à classer, suppression, aperçu carte d'une session à la demande (`SessionPreviewMap`, GPX relu, bornes de couleur comme le module d'analyse).
 - `SailingModule.tsx` : analyse voile (feuille : synthèse et vent ; barre d'enregistrement ; carte et sa colonne d'onglets, `SAILING_PANELS`, réglages de la session en dernier).
 - `RunningModule.tsx` : analyse course (feuille et synthèse, zones, graphes avec altitude colorée par la pente, réglages de la session, carte).
 - `analysisMobile.css` : disposition des deux modules d'analyse sous 768 px (carte pleine largeur en haut, feuille des chiffres clés, vue plein écran au tap, colonne d'onglets de la voile bornée à l'écran, panneau Manœuvres resserré) ; classes `an-*`.
 - `RecordingPage.tsx` : enregistrement (famille puis activité, celle de la trace suivie proposée), source GPS ou rejeu, pause, activité changée en route, carte (réductible, grands chiffres à sa place) et statistiques en direct.
-- `PlanningPage.tsx` (+ `.css`) : planification d'un itinéraire (carte et son « Précédent », blocs Tracé avec le chargement d'un GPX, Points, Ranger, Mes itinéraires).
+- `PlanningPage.tsx` (+ `.css`) : planification d'un itinéraire (carte et son « Précédent », blocs Tracé avec le chargement d'un GPX, Points, Ranger et « Partir », Mes itinéraires) ; `?itineraire=<base>` ouvre un itinéraire rangé.
+- `RoutesPage.tsx` : tous les itinéraires planifiés, tri retenu (`tracker.routeList`), onglets d'activité.
 - `SettingsPage.tsx` : mémoire, activités (ajouter, renommer, recolorer, supprimer) et leurs réglages (unités, texte, seuil, couleurs de trace, couleur de pente en course, pause automatique), enregistrement (appui long), cartes hors ligne (place, plafond, vider), course, coureur ; blocs et activités repliables (`useOpenSections`) ; `settingsPage.css` : une carte par activité, un réglage par ligne.
 
 ## `components/` et thème
@@ -112,6 +114,7 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `ActivityChart.tsx` (+ `.css`) : graphe d'activités de l'accueil, période, détail d'une barre, totaux.
 - `MemoryStatus.tsx` : état de la mémoire et l'action qui convient ; repliable par `collapse` (Réglages). `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `LiveMap.tsx` : carte de l'enregistrement en cours, qui suit la position (flèche au cap), trace suivie en pointillé, partie faite en gris. `ActivitySelect.tsx` : choix d'une activité, groupées par famille. `FollowTracePicker.tsx` : choix de la trace à suivre (itinéraires, sessions filtrées par activité). `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17) ; sur téléphone, pleine largeur et sans poignée (point 56).
 - `OsmTileLayer.tsx` : fond OpenStreetMap et sa mention, commun à toutes les cartes ; tuiles gardées et relues sans réseau, agrandissement d'une tuile gardée des zooms inférieurs (point 67). `gradeGradientDefs.tsx` : dégradé de pente d'une courbe d'altitude (course, itinéraire).
+- `RouteList.tsx` (+ `.css`) : liste d'itinéraires rangés (activité, distance, date, « Partir »), commune à l'accueil, aux bibliothèques et aux pages Itinéraires.
 - `SessionSaveBar.tsx` : barre « Enregistrer la session » du brouillon, commune aux deux modules.
 - `AnalysisMap.tsx` : carte d'une page d'analyse, cadrée sur la trace, sa légende collée dessous et sa vue plein écran au tap (`docs/MISE_EN_PAGE.md`).
 - `SpeedGradientLegend.tsx` : légende de couleur, en lecture seule. `SpeedRangeEditor.tsx` : saisie des bornes, dans l'onglet réglages des deux modules (§10, points 30 et 57). `MapAutoResize.tsx` : `invalidateSize` de la carte. `chartHover.ts` : survol d'un graphe vers la carte.

@@ -143,3 +143,24 @@ export const nextActivityColor = (activities: Activity[]): string => {
   const used = new Set(activities.map((a) => a.color.toLowerCase()));
   return ACTIVITY_COLORS.find((c) => !used.has(c)) ?? ACTIVITY_COLORS[activities.length % ACTIVITY_COLORS.length];
 };
+
+export interface ActivityCount {
+  activity: Activity;
+  count: number;
+}
+
+/**
+ * Onglets d'une liste filtrable par activité : les activités présentes parmi
+ * `itemActivities` (une par élément, `null` s'il n'en a pas), dans l'ordre de
+ * `ordered` puis dans l'ordre d'apparition, avec leur nombre d'éléments.
+ */
+export const activityCounts = (itemActivities: (Activity | null)[], ordered: Activity[]): ActivityCount[] => {
+  const byId = new Map<string, ActivityCount>();
+  for (const a of ordered) byId.set(a.id, { activity: a, count: 0 });
+  for (const a of itemActivities) {
+    if (!a) continue;
+    const entry = byId.get(a.id) ?? { activity: a, count: 0 };
+    byId.set(a.id, { ...entry, count: entry.count + 1 });
+  }
+  return [...byId.values()].filter((e) => e.count > 0);
+};

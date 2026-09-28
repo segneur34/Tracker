@@ -7,6 +7,7 @@ import SessionLibrary from './pages/SessionLibrary';
 import SettingsPage from './pages/SettingsPage';
 import RecordingPage from './pages/RecordingPage';
 import PlanningPage from './pages/PlanningPage';
+import RoutesPage from './pages/RoutesPage';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
           <Route path="/course/analyse" element={<RunningModule />} />
           <Route path="/enregistrer" element={<RecordingPage />} />
           <Route path="/itineraires" element={<PlanningPage />} />
+          <Route path="/itineraires/liste" element={<RoutesPage />} />
           <Route path="/parametres" element={<SettingsPage />} />
         </Route>
       </Routes>
