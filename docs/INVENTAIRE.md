@@ -105,7 +105,7 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 
 ## `components/` et thème
 
-- `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement, bouton rond (appui long : pause ou reprise).
+- `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement, bouton rond (appui long : pause ou reprise, avec un grand cadran qui se remplit au milieu de l'écran).
 - `ActivityChart.tsx` (+ `.css`) : graphe d'activités de l'accueil, période, détail d'une barre, totaux.
 - `MemoryStatus.tsx` : état de la mémoire et l'action qui convient ; repliable par `collapse` (Réglages). `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `LiveMap.tsx` : carte de l'enregistrement en cours, qui suit la position (flèche au cap), trace suivie en pointillé, partie faite en gris. `ActivitySelect.tsx` : choix d'une activité, groupées par famille. `FollowTracePicker.tsx` : choix de la trace à suivre (itinéraires, sessions filtrées par activité). `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17) ; sur téléphone, pleine largeur et sans poignée (point 56).
 - `OsmTileLayer.tsx` : fond OpenStreetMap et sa mention, commun à toutes les cartes. `gradeGradientDefs.tsx` : dégradé de pente d'une courbe d'altitude (course, itinéraire).

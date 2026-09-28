@@ -276,3 +276,7 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - un point nouveau tient en quelques lignes.
     - **Régression corrigée** : depuis les activités (point 53), ouvrir une session d'une autre activité écrit `moduleActivity`, et choisir l'activité d'enregistrement écrit `recordActivity`. Ni l'un ni l'autre n'était exclu de l'empreinte, qui n'écartait que l'ancien `sport` : les réglages de l'appareil rajeunissaient et écrasaient ceux du dossier. `settingsSignature`, pure et testée (`library/settingsFile.ts`), écarte les trois.
     - Vérifié au banc : ouvrir la session ne date plus les réglages, alors qu'un vrai réglage les date toujours ; l'ancien code reproduisait le défaut.
+66. Appui long visible : grand cadran au milieu de l'écran (28/09, validé sur le téléphone, APK 0.2.31).
+    - **Demande de l'utilisateur** : le doigt cache l'anneau du bouton rond, on ne voit pas où en est la pause.
+    - Le cadran reprend le remplissage de l'anneau (même `--press-ms`), en rouge vers la pause, en vert vers la reprise. Il est sans pointeur, pour que le bouton garde le doigt.
+    - Il n'apparaît qu'après 150 ms : un appui court, qui ouvre la page d'enregistrement, ne fait pas clignoter l'écran.

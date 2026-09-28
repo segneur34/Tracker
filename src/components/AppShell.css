@@ -150,6 +150,87 @@
   }
 }
 
+/* Grand cadran au milieu de l'écran pendant l'appui long : le doigt cache
+   l'anneau du bouton. Au-dessus des barres (1100) ; sans pointeur, pour que le
+   bouton garde le doigt. Il n'apparaît qu'après 150 ms, pour qu'un appui court
+   (qui ouvre la page d'enregistrement) ne fasse pas clignoter l'écran ; le
+   remplissage, lui, court sur toute la durée. */
+.shell-hold {
+  --hold-color: var(--recording);
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 75%, transparent);
+  pointer-events: none;
+  animation: shell-hold-in 150ms ease-out 150ms both;
+}
+
+.shell-hold--resume {
+  --hold-color: var(--record);
+}
+
+.shell-hold__dial {
+  position: relative;
+  width: min(72vw, 60vh);
+  aspect-ratio: 1;
+}
+
+.shell-hold__ring {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.shell-hold__track {
+  fill: var(--surface);
+  stroke: var(--line-strong);
+  stroke-width: 8;
+}
+
+.shell-hold__fill {
+  fill: none;
+  stroke: var(--hold-color);
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: shell-record-fill var(--press-ms) linear forwards;
+}
+
+.shell-hold__label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--hold-color);
+}
+
+.shell-hold__title {
+  font-size: var(--text-display);
+  font-weight: 700;
+}
+
+.shell-hold__hint {
+  color: var(--muted);
+  font-size: var(--text-m);
+}
+
+@keyframes shell-hold-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .shell-record--busy .ui-record-dot {
   width: 18px;
   height: 18px;

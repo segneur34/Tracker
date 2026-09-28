@@ -141,6 +141,24 @@ function AppShell() {
         {tabLink(COURSE)}
         {tabLink(SETTINGS)}
       </nav>
+
+      {pressingMs !== null && (
+        // Le doigt cache l'anneau du bouton : le même remplissage, en grand, au milieu de l'écran.
+        <div className={`shell-hold${paused ? ' shell-hold--resume' : ''}`} aria-hidden="true"
+          style={{ '--press-ms': `${pressingMs}ms` } as React.CSSProperties}>
+          <div className="shell-hold__dial">
+            <svg className="shell-hold__ring" viewBox="0 0 100 100">
+              <circle className="shell-hold__track" cx="50" cy="50" r="45" />
+              <circle className="shell-hold__fill" cx="50" cy="50" r="45" pathLength="100" />
+            </svg>
+            <div className="shell-hold__label">
+              {paused ? <IconPlay size={56} strokeWidth={2.5} /> : <IconPause size={56} strokeWidth={3} />}
+              <span className="shell-hold__title">{paused ? 'Reprise' : 'Pause'}</span>
+              <span className="shell-hold__hint">Maintenez le bouton</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
