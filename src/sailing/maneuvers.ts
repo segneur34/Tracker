@@ -82,6 +82,13 @@ export interface ManeuverLocation {
   headingChange: number;
   /** Distance parcourue de l'entrée du virage à la relance, en mètres. */
   distanceM: number;
+  /**
+   * Gain au vent, en mètres, sur la même portée que `distanceM` : chemin
+   * parcouru projeté sur l'axe du vent retenu, positif vers le vent, négatif
+   * sous le vent (le cas courant d'un empannage). `null` pour une manœuvre
+   * ratée : seul le gain des manœuvres réussies a un sens à comparer.
+   */
+  windwardGainM: number | null;
   /** Indices de trace de l'entrée et de la sortie (relance, sinon fin du virage). */
   entryIndex: number;
   exitIndex: number;
@@ -500,6 +507,21 @@ const distanceBetween = (points: PointData[], from: number, to: number): number 
 };
 
 /**
+ * Chemin parcouru projeté sur la direction d'où vient le vent, en mètres :
+ * intégrale de la vitesse retenue fois le cosinus de l'écart entre la route
+ * et le vent, comme `distanceBetween`. Un virage compressé dans un seul
+ * intervalle compte par la route de cet intervalle, sa corde.
+ */
+const windwardDistance = (points: PointData[], from: number, to: number, windDeg: number): number => {
+  let meters = 0;
+  for (let k = from + 1; k <= to; k++) {
+    const dt = (points[k].timeMs - points[k - 1].timeMs) / 1000;
+    if (dt > 0) meters += knotsToMs(points[k].smoothedSpeed) * dt * Math.cos((angleDiff(points[k].bearing, windDeg) * Math.PI) / 180);
+  }
+  return meters;
+};
+
+/**
  * Détecte virements et empannages.
  *
  * Fenêtre d'observation et temps mort sont en secondes : le même virage doit
@@ -652,7 +674,8 @@ export const analyzeManeuvers = (
 
       const timeMs = points[apexIndex].timeMs;
       const turnEndMs = points[j].timeMs;
-      const type = classifyTurn(bisector, cumulativeTurn, windAt(wind, timeMs));
+      const windDeg = windAt(wind, timeMs);
+      const type = classifyTurn(bisector, cumulativeTurn, windDeg);
 
       if (type !== null) {
         // Métriques de qualité de la manœuvre.
@@ -676,6 +699,8 @@ export const analyzeManeuvers = (
           relaunchS: relaunchIndex === null ? null : (points[relaunchIndex].timeMs - timeMs) / 1000,
           headingChange,
           distanceM: distanceBetween(points, turnStart, exitIndex),
+          // Au vent retenu, et non à la bissectrice de la manœuvre même, qui rendrait la mesure circulaire.
+          windwardGainM: success ? windwardDistance(points, turnStart, exitIndex, windDeg) : null,
           entryIndex: turnStart,
           exitIndex,
           entryHeading: points[turnStart].bearing,

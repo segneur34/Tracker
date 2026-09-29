@@ -5,6 +5,7 @@ import { sportFamily } from '../core/sportProfiles';
 import { DISTANCE_UNIT_SYMBOL, formatDuration, toDisplayDistance } from '../core/units';
 import { IconChevronRight } from './icons';
 import { libraryPath, useOpenSession } from '../hooks/useLibraryNavigation';
+import { useOpenSections } from '../hooks/useOpenSections';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { effectiveDistanceUnit, readStoredActivities } from '../hooks/useSportSettings';
 import { CHART_PERIODS, buildActivityChart, type ChartPeriod, type ChartSession } from '../library/activityChart';
@@ -16,12 +17,15 @@ import './ActivityChart.css';
  * jour empilées ; numéros de semaine ISO en dessous. Toucher une barre
  * affiche ses sessions, chacune ouvrant son analyse. Sous le graphe, les
  * totaux de la période par activité, chacun ouvrant la bibliothèque filtrée
- * sur son activité.
+ * sur son activité ; une flèche les replie ou les déplie tous d'un coup.
  */
 
 /** Hauteur de la zone des barres, en pixels, et hauteur maximale d'une session. */
 const PLOT_H = 88;
 const UNIT_MAX_H = 24;
+
+/** Totaux par activité dépliés tant qu'on ne les a pas repliés. */
+const TOTALS_DEFAULT = { totaux: true };
 
 /** Distance dans l'unité choisie pour l'activité dans Réglages. */
 const formatDistance = (m: number, activity: Activity): string => {
@@ -43,6 +47,8 @@ function ActivityChart() {
   const [nowMs] = useState(() => Date.now());
   const [period, setPeriod] = useState<ChartPeriod>('trente');
   const [picked, setPicked] = useState<number | null>(null);
+  // Totaux par activité : repliés ou dépliés d'un seul geste, choix gardé sur l'appareil.
+  const { open, toggle } = useOpenSections('accueil.graphe', TOTALS_DEFAULT);
 
   // Sessions classées, avec leur activité ; les sessions à classer n'apparaissent pas.
   const { chartSessions, activityById } = useMemo(() => {
@@ -148,6 +154,15 @@ function ActivityChart() {
       </div>
 
       {chart.totals.length > 0 && (
+        <button type="button" className="actchart__fold" aria-expanded={open.totaux} onClick={() => toggle('totaux')}>
+          <span className="actchart__name">Par activité</span>
+          <span className="actchart__meta num">
+            {chart.totals.length} activité{chart.totals.length > 1 ? 's' : ''}
+          </span>
+          <IconChevronRight size={16} className="actchart__chevron" style={{ transform: `rotate(${open.totaux ? -90 : 90}deg)` }} />
+        </button>
+      )}
+      {chart.totals.length > 0 && open.totaux && (
         <ul className="actchart__totals">
           {chart.totals.map((t) => {
             const activity = activityById.get(t.activityId)!;

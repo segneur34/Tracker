@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Marker, Polyline, useMapEvents } from 'react-leaflet';
 import { useSearchParams } from 'react-router-dom';
@@ -43,7 +43,7 @@ import { buildRouteGpx, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute } from '../planning/routeRecord';
 import { gradeGradientStops } from '../running/runningAnalytics';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
-import { currentPosition } from '../platform/location';
+import { currentPosition, locationPermissionGranted } from '../platform/location';
 import { isNativeApp } from '../platform/runtime';
 import { jsonStore } from '../platform/storage';
 
@@ -68,6 +68,10 @@ interface PlanningPrefs {
   activityId?: string;
   view?: { lat: number; lon: number; zoom: number };
 }
+
+/** Centrage sur soi à l'ouverture : délai accordé au GPS, et zoom minimal une fois centré. */
+const AUTO_LOCATE_TIMEOUT_MS = 15_000;
+const AUTO_LOCATE_MIN_ZOOM = 14;
 
 const readPrefs = (): PlanningPrefs => jsonStore.read<PlanningPrefs>(PREFS_KEY) ?? {};
 const writePrefs = (patch: PlanningPrefs): void => jsonStore.write(PREFS_KEY, { ...readPrefs(), ...patch });
@@ -98,10 +102,15 @@ const waypointIcon = (label: string, color: string, selected: boolean): L.DivIco
 
 const toWaypoint = (latlng: L.LatLng): Waypoint => ({ lat: latlng.lat, lon: latlng.lng });
 
-/** Toucher de la carte, et vue retenue pour la prochaine ouverture. */
-function MapEvents({ onTap }: { onTap: (w: Waypoint) => void }) {
+/** Toucher de la carte, prise en main (toucher, glisser, zoomer), et vue retenue pour la prochaine ouverture. */
+function MapEvents({ onTap, onTakeOver }: { onTap: (w: Waypoint) => void; onTakeOver: () => void }) {
   useMapEvents({
-    click: (e) => onTap(toWaypoint(e.latlng)),
+    click: (e) => {
+      onTakeOver();
+      onTap(toWaypoint(e.latlng));
+    },
+    dragstart: onTakeOver,
+    zoomstart: onTakeOver,
     moveend: (e) => {
       const map = e.target as L.Map;
       const center = map.getCenter();
@@ -238,6 +247,11 @@ function PlanningPage() {
   const [locateError, setLocateError] = useState<string | null>(null);
 
   const [initialView] = useState(() => readPrefs().view ?? { lat: DEFAULT_MAP_CENTER[0], lon: DEFAULT_MAP_CENTER[1], zoom: 13 });
+  /** Vrai dès que l'utilisateur ou la page a déplacé la carte : le centrage sur soi à l'ouverture n'a plus lieu. */
+  const tookOver = useRef(false);
+  const takeOver = () => {
+    tookOver.current = true;
+  };
 
   const points = useMemo(() => routePoints(route), [route]);
   const totals = useMemo(() => routeTotals(route, minGainM), [route, minGainM]);
@@ -308,6 +322,7 @@ function PlanningPage() {
 
   const fitTo = (r: PlannedRoute) => {
     const bounds = trackBounds(routePoints(r).length > 0 ? routePoints(r) : r.waypoints);
+    takeOver();
     if (map && bounds) map.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 });
   };
 
@@ -336,10 +351,12 @@ function PlanningPage() {
     setResults(null);
     setSelected(null);
     setCandidate(place);
+    takeOver();
     map?.setView([place.lat, place.lon], Math.max(map.getZoom(), 15));
   };
 
   const locate = async () => {
+    takeOver();
     setLocating(true);
     setLocateError(null);
     try {
@@ -472,6 +489,29 @@ function PlanningPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedBase, map, library.routes]);
 
+  // À l'ouverture, carte centrée sur soi si la position est déjà permise (jamais demandée ici) ; sans réponse,
+  // en silence, la dernière vue reste. Rien si un itinéraire est demandé ou si la carte a bougé entre-temps.
+  useEffect(() => {
+    if (!map || requestedBase) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const fix = recording
+          ? getLastFix()
+          : (await locationPermissionGranted()) ? await currentPosition(AUTO_LOCATE_TIMEOUT_MS) : null;
+        if (!fix || cancelled || tookOver.current) return;
+        map.setView([fix.lat, fix.lon], Math.max(map.getZoom(), AUTO_LOCATE_MIN_ZOOM));
+      } catch {
+        // Localisation coupée ou trop lente : la dernière vue suffit.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Une fois, quand la carte est prête.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
+
   const selectedLeg = selected !== null && selected > 0 ? route.legs[selected - 1] : undefined;
   const canSave = library.canSave && route.waypoints.length >= 2 && !saving && !current?.readOnly;
 
@@ -513,7 +553,7 @@ function PlanningPage() {
             <MapContainer ref={setMap} center={[initialView.lat, initialView.lon]} zoom={initialView.zoom} style={{ height: '100%', width: '100%' }}>
               <MapAutoResize />
               <OsmTileLayer />
-              <MapEvents onTap={onMapTap} />
+              <MapEvents onTap={onMapTap} onTakeOver={takeOver} />
               {route.legs.map((leg, i) => {
                 const positions = leg.points.map((p) => [p.lat, p.lon] as [number, number]);
                 const style = leg.status === 'ready'

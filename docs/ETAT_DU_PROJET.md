@@ -101,7 +101,7 @@ Ordre et orchestration seulement. Les seuils, fenêtres et formules sont nommés
    - d'abord avec le vent global ;
    - puis avec le vent local (`buildWindTimeline`), interpolé entre les manœuvres à caps stabilisés de la première passe.
 
-   Les virages écartés sont comptés par motif (`ManeuverRejections`), sans jamais poser de temps mort. `summarizeManeuvers` en tire le tableau.
+   Les virages écartés sont comptés par motif (`ManeuverRejections`), sans jamais poser de temps mort. `summarizeManeuvers` en tire le tableau. Le gain au vent d'une manœuvre réussie est le chemin de l'entrée à la relance projeté sur le vent retenu, intégré comme la distance (point 69).
 7. `calculateWindStats` (`sailing/sailingAnalytics.ts`) : statistiques et courbe du vent sur toutes les manœuvres classées (règle 7). Elles sont pondérées par la symétrie du virage, jugée contre le vent global (§10, point 24). Elle fournit aussi `windAt(t)`.
 8. `calculateVmgStats` : VMG = vitesse × cos(cap − vent local, sinon vent global).
    - Fenêtres de 10 s.
@@ -177,7 +177,7 @@ Tracker/
 | `tracker.settingsSavedAt` | `hooks/useSessionLibrary.ts` | instant du dernier vrai changement des deux clés qui voyagent, en ms |
 | `tracker.memoryFolder` | `platform/memoryFolder.ts` | téléphone : `{ uri; base; label }` (`base` = `Tracker` si l'on a désigné son parent) |
 | `tracker.libraryCache` | `hooks/useSessionLibrary.ts` | `{ folder; entries: Record<fiche, { size; mtimeMs; record }> }`, reconstruit à volonté |
-| `tracker.sections` | `hooks/useOpenSections.ts` | `Record<moduleId, Record<section, boolean>>`. Modules lus : `running`, `sailing-onglets`, `planning`, `recording`, `settings`, `settings-activities`. `sailing` et `sailing-carte`, d'avant, ne sont plus lus |
+| `tracker.sections` | `hooks/useOpenSections.ts` | `Record<moduleId, Record<section, boolean>>`. Modules lus : `running`, `sailing-onglets`, `planning`, `recording`, `settings`, `settings-activities`, `accueil.graphe` (totaux du graphe d'activités). `sailing` et `sailing-carte`, d'avant, ne sont plus lus |
 | `tracker.panelSizes` | `components/ResizablePanel.tsx` | `Record<panelId, { width?; height? }>` |
 | `tracker.followedTrace` | `hooks/useFollowedTrace.ts` | `{ name; source; activityId; points }`, gardée jusqu'à « Retirer » |
 | `tracker.planning` | `pages/PlanningPage.tsx` | `{ mode?; activityId?; view? }` |
@@ -297,8 +297,8 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
   - accueil (point 53) ;
   - enregistrement en direct et bords (points 50, 53, 62) ;
   - APK des testeurs et `docs/INSTALLATION.md` (points 55, 62).
-- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65).
-- **Phase 2, interface mobile** : deux passes faites (points 47 à 49, 52, 56 à 58 ; patron dans `docs/MISE_EN_PAGE.md`). Restent :
+- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69).
+- **Phase 2, interface mobile** : trois passes faites (points 47 à 49, 52, 56 à 58, 69 ; patron dans `docs/MISE_EN_PAGE.md`). Restent :
   - toucher au lieu du survol, dans les graphes ;
   - `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz). Les regrouper par couleur toucherait à « pas de paliers » : à redemander ;
   - `accept=".gpx"` de la bibliothèque, qui grise parfois les GPX sous Android.

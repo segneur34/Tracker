@@ -51,6 +51,16 @@ describe('buildActivityChart', () => {
     expect(chart.totals).toEqual([{ activityId: 'voile', sessions: 1, durationS: 3600, distanceM: 10_000 }]);
   });
 
+  it('30 jours : pas de repère sur la première barre si le premier lundi la suit de trop près', () => {
+    // Lundi 28 septembre : la période commence le dimanche 30 août (S35), le lundi 31 est en S36.
+    const chart = buildActivityChart([], 'trente', at(2026, 9, 28, 18), []);
+    expect(chart.bars[0].label).toBe('');
+    expect(chart.bars[0].title).toContain('(S35)');
+    expect(chart.bars[1].label).toBe('S36');
+    // Mardi 29 : la période commence un lundi, qui porte son repère.
+    expect(buildActivityChart([], 'trente', at(2026, 9, 29, 18), []).bars[0].label).toBe('S36');
+  });
+
   it('6 mois et année : une barre par semaine, les totaux cumulés', () => {
     const sessions = [session('a', at(2026, 9, 21)), session('b', at(2026, 9, 27)), session('c', at(2026, 1, 2)), session('d', at(2025, 12, 28))];
     const six = buildActivityChart(sessions, 'sixmois', now, ['voile']);

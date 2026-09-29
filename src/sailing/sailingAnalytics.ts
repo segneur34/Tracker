@@ -201,7 +201,7 @@ export const calculateWindStats = (
 // Qualité des manœuvres : moyennes et podiums
 // ---------------------------------------------------------------------------
 
-export type ManeuverMetric = 'conservation' | 'relaunch' | 'headingChange' | 'distance';
+export type ManeuverMetric = 'conservation' | 'relaunch' | 'headingChange' | 'distance' | 'windwardGain';
 
 export const MANEUVER_METRICS: { key: ManeuverMetric; label: string; hint: string }[] = [
   {
@@ -223,6 +223,11 @@ export const MANEUVER_METRICS: { key: ManeuverMetric; label: string; hint: strin
     key: 'distance',
     label: 'Distance de manœuvre',
     hint: 'De l\'entrée du virage à la relance. Empreinte spatiale de la manœuvre.',
+  },
+  {
+    key: 'windwardGain',
+    label: 'Gain au vent',
+    hint: 'Du début du virage à la relance, mètres gagnés vers le vent (négatif : perdus sous le vent). Manœuvres réussies seulement.',
   },
 ];
 
@@ -260,6 +265,8 @@ const metricValue = (m: ManeuverLocation, metric: ManeuverMetric): number | null
       return m.headingChange;
     case 'distance':
       return m.distanceM > 0 ? m.distanceM : null;
+    case 'windwardGain':
+      return m.windwardGainM;
   }
 };
 
@@ -274,6 +281,10 @@ export const formatMetric = (metric: ManeuverMetric, value: number | null): stri
       return `${Math.round(value)}°`;
     case 'distance':
       return `${Math.round(value)} m`;
+    case 'windwardGain': {
+      const rounded = Math.round(value);
+      return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded)} m`;
+    }
   }
 };
 
@@ -283,6 +294,7 @@ const higherIsBetter: Record<ManeuverMetric, boolean> = {
   relaunch: false,
   headingChange: false,
   distance: false,
+  windwardGain: true,
 };
 
 const summarizeType = (

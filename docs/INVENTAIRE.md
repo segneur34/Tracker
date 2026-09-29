@@ -74,7 +74,7 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `storage.ts` : `jsonStore` (synchrone), `initStorage` (Preferences natives chargées en mémoire au démarrage).
 - `files.ts` : `recordingJournal` (dossier privé), `downloadTextFile`, `readPickedFile`.
 - `compass.ts` : `watchCompassHeading`, boussole par `deviceorientationabsolute` (rien sur ordinateur).
-- `location.ts` : `deviceLocationSource` (plugin natif ou `watchPosition`), `createReplaySource` (rejeu accéléré), `stopOrphanedDeviceLocation`, `currentPosition` (lecture unique).
+- `location.ts` : `deviceLocationSource` (plugin natif ou `watchPosition`), `createReplaySource` (rejeu accéléré), `stopOrphanedDeviceLocation`, `currentPosition` (lecture unique), `locationPermissionGranted` (autorisation déjà accordée, sans la demander).
 - `memoryFolder.ts` : le dossier mémoire, OPFS ou dossier choisi dans le navigateur, dossier SAF sur le téléphone (`openMemoryFolder`, `chooseMemoryFolder`, `pickFolderToImport`, `pendingFolder`, `shouldDescendIntoMemory`).
 - `backButton.ts` : touche retour d'Android (brouillon, enregistrement en cours).
 - `tileCache.ts` : `tileStore`, les tuiles de carte gardées (dossier privé `tuiles/` et index en mémoire sur le téléphone, Cache API dans le navigateur).
@@ -100,18 +100,18 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 
 - `Home.tsx` : accueil (Enregistrer, graphe d'activités, Voile, Course, les 3 derniers itinéraires et le lien vers leur liste).
 - `SessionLibrary.tsx` (+ `.css`) : bibliothèque d'une famille, vues « Réalisées » et « Planifiées » (`?vue=planifiees`, ses itinéraires), import, sessions à classer, suppression, aperçu carte d'une session à la demande (`SessionPreviewMap`, GPX relu, bornes de couleur comme le module d'analyse).
-- `SailingModule.tsx` : analyse voile (feuille : synthèse et vent ; barre d'enregistrement ; carte et sa colonne d'onglets, `SAILING_PANELS`, réglages de la session en dernier).
-- `RunningModule.tsx` : analyse course (feuille et synthèse, zones, graphes avec altitude colorée par la pente, réglages de la session, carte).
-- `analysisMobile.css` : disposition des deux modules d'analyse sous 768 px (carte pleine largeur en haut, feuille des chiffres clés, vue plein écran au tap, colonne d'onglets de la voile bornée à l'écran, panneau Manœuvres resserré) ; classes `an-*`.
+- `SailingModule.tsx` : analyse voile (en-tête ; barre d'enregistrement ; carte et sa colonne d'onglets, `SAILING_PANELS` : « général » avec la synthèse et le vent en premier, réglages de la session en dernier).
+- `RunningModule.tsx` : analyse course (en-tête, onglets : général avec la synthèse, zones, graphes avec altitude colorée par la pente, réglages de la session ; carte).
+- `analysisMobile.css` : disposition des deux modules d'analyse sous 768 px (en-tête sur une ligne au-dessus de la carte, carte pleine largeur, onglets en petites pastilles, vue plein écran au tap, colonne d'onglets de la voile bornée à l'écran, panneau Manœuvres resserré) ; classes `an-*`.
 - `RecordingPage.tsx` : enregistrement (famille puis activité, celle de la trace suivie proposée), source GPS ou rejeu, pause, activité changée en route, carte (réductible, grands chiffres à sa place) et statistiques en direct.
-- `PlanningPage.tsx` (+ `.css`) : planification d'un itinéraire (carte et son « Précédent », blocs Tracé avec le chargement d'un GPX, Points, Ranger et « Partir », Mes itinéraires) ; `?itineraire=<base>` ouvre un itinéraire rangé.
+- `PlanningPage.tsx` (+ `.css`) : planification d'un itinéraire (carte et son « Précédent », blocs Tracé avec le chargement d'un GPX, Points, Ranger et « Partir », Mes itinéraires) ; `?itineraire=<base>` ouvre un itinéraire rangé ; sinon, la carte se centre sur soi si la position est déjà permise.
 - `RoutesPage.tsx` : tous les itinéraires planifiés, tri retenu (`tracker.routeList`), onglets d'activité.
 - `SettingsPage.tsx` : mémoire, activités (ajouter, renommer, recolorer, supprimer) et leurs réglages (unités, texte, seuil, couleurs de trace, couleur de pente en course, pause automatique), enregistrement (appui long), cartes hors ligne (place, plafond, vider), course, coureur ; blocs et activités repliables (`useOpenSections`) ; `settingsPage.css` : une carte par activité, un réglage par ligne.
 
 ## `components/` et thème
 
 - `AppShell.tsx` (+ `.css`) : cadre, navigation (barre basse sous 768 px, haute au-delà), bandeau d'enregistrement, bouton rond (appui long : pause ou reprise, avec un grand cadran qui se remplit au milieu de l'écran).
-- `ActivityChart.tsx` (+ `.css`) : graphe d'activités de l'accueil, période, détail d'une barre, totaux.
+- `ActivityChart.tsx` (+ `.css`) : graphe d'activités de l'accueil, période, détail d'une barre, totaux repliables d'un geste.
 - `MemoryStatus.tsx` : état de la mémoire et l'action qui convient ; repliable par `collapse` (Réglages). `PanelTitle.tsx` : titre de panneau d'analyse qui le replie. `SessionNameEditor.tsx` : nom d'une session et « Renommer », en tête de l'analyse. `LiveMap.tsx` : carte de l'enregistrement en cours, qui suit la position (flèche au cap), trace suivie en pointillé, partie faite en gris. `ActivitySelect.tsx` : choix d'une activité, groupées par famille. `FollowTracePicker.tsx` : choix de la trace à suivre (itinéraires, sessions filtrées par activité). `SectionTabs.tsx` : rangée d'onglets. `ResizablePanel.tsx` : bloc redimensionnable, taille mémorisée par `id` (§10, point 17) ; sur téléphone, pleine largeur et sans poignée (point 56).
 - `OsmTileLayer.tsx` : fond OpenStreetMap et sa mention, commun à toutes les cartes ; tuiles gardées et relues sans réseau, agrandissement d'une tuile gardée des zooms inférieurs (point 67). `gradeGradientDefs.tsx` : dégradé de pente d'une courbe d'altitude (course, itinéraire).
 - `RouteList.tsx` (+ `.css`) : liste d'itinéraires rangés (activité, distance, date, « Partir »), commune à l'accueil, aux bibliothèques et aux pages Itinéraires.

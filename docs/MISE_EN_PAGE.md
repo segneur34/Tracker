@@ -4,11 +4,12 @@ Patron commun aux modules d'analyse (voile, course) et à tout sport à venir. C
 
 ## Structure, de haut en bas
 
-1. **Feuille** (`.an-sheet`) :
-   - en-tête `PageHeader` : retour à la liste du sport, titre « Analyse … », et `SessionNameEditor` en sous-titre (nom de la session et « Renommer ») ;
-   - la synthèse de la session (`.an-sheet__stats an-sheet__stats--always`, visible partout) : distances, temps, ratio actif, vitesses moyennes, et le dénivelé en course ; en voile, le vent suit.
-2. Barre « Non enregistré / Enregistrer la session » (`SessionSaveBar`), pendant un brouillon.
-3. **Onglets** `SectionTabs` et leurs **panneaux** : chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie. Le dernier onglet, « réglages », porte ceux de la session : activité, seuils, terrain, source de vitesse, bornes de couleur de la trace (`SpeedRangeEditor`). En course, les onglets sont sous la feuille ; en voile, ils sont tous dans la colonne à droite de la carte.
+1. **Feuille** (`.an-sheet`), réduite à l'en-tête (`.an-sheet__head`) : `PageHeader` avec le retour à la liste du sport, le titre « Analyse … », et `SessionNameEditor` en sous-titre (nom de la session et « Renommer »).
+2. Barre « Non enregistré / Enregistrer la session » (`SessionSaveBar`), pendant un brouillon seulement (la course ne passe pas `kept`, et la voile non plus).
+3. **Onglets** `SectionTabs` et leurs **panneaux** : chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
+   - Le premier onglet, « général », est le seul ouvert par défaut. Il porte la synthèse de la session (`.an-sheet__stats an-sheet__stats--always`) : distances, temps, ratio actif, vitesses moyennes, et le dénivelé en course ; en voile, le vent suit. On le replie pour comparer les tableaux à la carte.
+   - Le dernier onglet, « réglages », porte ceux de la session : activité, seuils, terrain, source de vitesse, bornes de couleur de la trace (`SpeedRangeEditor`).
+   - En course, les onglets sont sous la feuille ; en voile, ils sont tous dans la colonne à droite de la carte.
 4. **Rangée de la carte** (`.an-map-row`) : le bloc `AnalysisMap`, suivi en voile de la colonne d'onglets (`an-carte-col`).
 
 ## Règles communes
@@ -16,9 +17,10 @@ Patron commun aux modules d'analyse (voile, course) et à tout sport à venir. C
 - **Deux dispositions, une seule rupture** : 768 px, la même que la barre de navigation (`AppShell.css`). Sous cette largeur, `analysisMobile.css` s'applique.
 - **Sur ordinateur** : la carte occupe 60 % de la largeur, en bas de la page, et le bloc est redimensionnable.
 - **Sur téléphone** :
-  - la rangée de la carte s'efface (`display: contents`) : la carte remonte en tête de page (`order: -1`), en pleine largeur, haute de 30 vh ; en voile, suivent la feuille puis la colonne d'onglets (`an-carte-col`) ;
+  - l'en-tête tient sur une ligne, tout en haut (`order: -2`) : la flèche de retour, le nom et « Renommer ». Le titre et le texte du lien de retour restent lus par un lecteur d'écran ;
+  - la rangée de la carte s'efface (`display: contents`) : la carte suit l'en-tête (`order: -1`), en pleine largeur, haute de 30 vh ; en voile, la colonne d'onglets (`an-carte-col`) vient ensuite ;
+  - les onglets sont de petites pastilles serrées, sans trait dessous, qui suivent de près la légende de la carte ;
   - les blocs `ResizablePanel` y sont en pleine largeur, sans poignée, à leur hauteur par défaut ; les explications longues se replient derrière `HelpButton` ;
-  - la feuille la chevauche un peu ;
   - un toucher sur la carte l'ouvre en plein écran (× pour fermer) ;
   - rien n'élargit la page : une colonne de panneaux ne dépasse pas l'écran (`min-width: 0`, `max-width: 100%`), un contenu de largeur fixe défile dans son panneau ; un tableau se resserre, ou passe ses lignes en grille (libellé sur sa propre ligne, valeurs dessous), comme le panneau Manœuvres (`an-man-*`).
 - **La légende de couleur de la trace est collée à la carte**, juste en dessous, dans le même bloc (`AnalysisMap`). Elle ne se pose jamais ailleurs, et ne fait qu'afficher : les bornes se saisissent dans l'onglet réglages.
@@ -50,7 +52,7 @@ Ce que la page choisit, dans le cadre ci-dessus :
 
 ## Brancher un nouveau sport
 
-1. La page importe `analysisMobile.css`. Sa racine porte `an-page`, et l'en-tête et la synthèse vont dans `an-sheet`.
+1. La page importe `analysisMobile.css`. Sa racine porte `an-page`, et l'en-tête va dans `an-sheet` > `an-sheet__head`. La synthèse va dans un premier onglet « général », ouvert par défaut.
 2. En sous-titre du `PageHeader` : `SessionNameEditor` sur le fichier de la session.
 3. Des sections `*_SECTIONS` et `*_SECTION_DEFAULTS`, avec un `useOpenSections` propre au module. Chaque panneau est titré par `PanelTitle`.
 4. La rangée `.an-map-row`, qui contient `AnalysisMap` : `panelId` unique, couches de la carte, props de la légende, `style` de largeur (`width: '60%'`, ou `flex: '0 1 60%'` dans une rangée flexible).

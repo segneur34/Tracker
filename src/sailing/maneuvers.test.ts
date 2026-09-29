@@ -426,6 +426,27 @@ describe('analyzeManeuvers', () => {
     expect(Math.abs(tack!.headingChange - 90)).toBeLessThanOrEqual(5);
     expect(tack!.distanceM).toBeGreaterThan(10);
     expect(tack!.path.length).toBeGreaterThan(2);
+    // Virement tombé à 3 nœuds, raté au seuil de 8 : pas de gain au vent.
+    expect(tack!.success).toBe(false);
+    expect(tack!.windwardGainM).toBeNull();
+  });
+
+  it('mesure le gain au vent des manœuvres réussies : positif en virement, négatif en empannage, indépendant de la cadence', () => {
+    const at1Hz = analyzeManeuvers(buildLegSession(upwindDownwindLegs(2), () => 0), 0, { successThresholdKn: 2 }).locations;
+    const at5Hz = analyzeManeuvers(buildLegSession(upwindDownwindLegs(2), () => 0, { stepS: 0.2 }), 0, { successThresholdKn: 2 }).locations;
+    const tack = at1Hz.find((m) => m.type === 'tack')!;
+    const jibe = at1Hz.find((m) => m.type === 'jibe')!;
+
+    // Toujours face au vent pendant le virement : gain positif, plus court que le chemin parcouru.
+    expect(tack.success).toBe(true);
+    expect(tack.windwardGainM!).toBeGreaterThan(0);
+    expect(tack.windwardGainM!).toBeLessThan(tack.distanceM);
+    // Toujours dos au vent pendant l'empannage : du terrain perdu sous le vent.
+    expect(jibe.success).toBe(true);
+    expect(jibe.windwardGainM!).toBeLessThan(0);
+
+    const tack5Hz = at5Hz.find((m) => m.type === 'tack')!;
+    expect(Math.abs(tack5Hz.windwardGainM! - tack.windwardGainM!)).toBeLessThanOrEqual(0.2 * tack.windwardGainM!);
   });
 
   it('laisse la relance indéfinie quand la vitesse ne revient pas', () => {
@@ -449,6 +470,15 @@ describe('analyzeManeuvers', () => {
     expect(cons[0]).toBeGreaterThanOrEqual(cons[1]);
     const dist = summary.tack!.tops.distance.map((t) => t.value);
     expect(dist[0]).toBeLessThanOrEqual(dist[1]);
+    // Gain au vent : réussies seulement (ici, aucun virement), puis le plus grand d'abord, affiché signé.
+    expect(summary.tack!.tops.windwardGain).toHaveLength(0);
+    expect(summary.tack!.averages.windwardGain).toBe('-');
+    const reussies = summarizeManeuvers(analyzeManeuvers(track, 0, { successThresholdKn: 2 }));
+    const gain = reussies.tack!.tops.windwardGain.map((t) => t.value);
+    expect(gain).toHaveLength(3);
+    expect(gain[0]).toBeGreaterThanOrEqual(gain[1]);
+    expect(reussies.tack!.averages.windwardGain).toMatch(/^\+\d+ m$/);
+    expect(reussies.jibe!.averages.windwardGain).toMatch(/^−\d+ m$/);
 
     expect(summary.jibe).not.toBeNull();
     expect(summary.jibe!.count).toBe(1);

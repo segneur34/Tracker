@@ -185,6 +185,24 @@ export const stopOrphanedDeviceLocation = async (): Promise<void> => {
 };
 
 /**
+ * Vrai si l'accès à la position est déjà accordé, sans jamais le demander :
+ * une page peut alors s'en servir d'elle-même (Itinéraires centrée sur soi).
+ * Dans le doute, faux.
+ */
+export const locationPermissionGranted = async (): Promise<boolean> => {
+  try {
+    if (isNativeApp()) {
+      const { BackgroundGeolocation } = await import('@capgo/background-geolocation');
+      return (await BackgroundGeolocation.checkPermissions()).location === 'granted';
+    }
+    if (!('permissions' in navigator) || !('geolocation' in navigator)) return false;
+    return (await navigator.permissions.query({ name: 'geolocation' })).state === 'granted';
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Une seule position, pour centrer une carte (page Itinéraires). Sur le
  * téléphone, le service GPS démarre le temps de la trouver, avec sa
  * notification, puis s'arrête. Ne pas l'appeler pendant un enregistrement,

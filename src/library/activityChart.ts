@@ -69,6 +69,13 @@ export interface ActivityChartData {
 
 const DAY_MS = 86_400_000;
 const DAY_LETTERS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+/**
+ * Vue 30 jours : barres d'avant le premier lundi en dessous desquelles la
+ * première barre ne porte pas de numéro de semaine. Sur téléphone, une barre
+ * fait une dizaine de pixels et « S35 » le double : deux repères plus proches
+ * se chevauchent.
+ */
+const FIRST_LABEL_MIN_SLOTS = 4;
 
 /** Minuit local du jour de `ms`. */
 export const startOfDay = (ms: number): number => {
@@ -129,13 +136,16 @@ const slotsOf = (period: ChartPeriod, nowMs: number): { slots: Slot[]; title: st
   }
   if (period === 'trente') {
     const first = addDays(today, -29);
+    // La première barre porte sa semaine seulement si le premier lundi est assez loin pour ne pas la chevaucher.
+    const firstMondayIndex = (7 - isoWeekday(first)) % 7;
+    const labelFirst = firstMondayIndex === 0 || firstMondayIndex >= FIRST_LABEL_MIN_SLOTS;
     for (let i = 0; i < 30; i++) {
       const day = addDays(first, i);
       const monday = isoWeekday(day) === 0;
       const week = isoWeek(day).week;
       slots.push({
         startMs: day, endMs: addDays(day, 1),
-        label: monday || i === 0 ? `S${week}` : '',
+        label: monday || (i === 0 && labelFirst) ? `S${week}` : '',
         title: `${longDay(day)} (S${week})`,
         weekStart: monday && i > 0, future: false,
       });

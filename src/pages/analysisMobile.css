@@ -1,6 +1,6 @@
 /* Disposition mobile des modules d'analyse (`SailingModule.tsx`, `RunningModule.tsx`), sur les variables de `theme/tokens.css`.
-   Sur ordinateur, rien ne change : seules la feuille des chiffres clés (sauf en voile, où elle porte le
-   global : `--always`) et la vue plein écran sont masquées. */
+   Sur ordinateur, rien ne change : seule la vue plein écran est masquée. Les chiffres de la session sont
+   dans l'onglet « général » de chaque module (`an-sheet__stats--always`). */
 
 .an-sheet__stats {
   display: none;
@@ -32,6 +32,11 @@
   display: none;
 }
 
+/* En-tête de la feuille : retour, titre, nom de la session. */
+.an-sheet__head {
+  margin-bottom: var(--space-4);
+}
+
 @media (max-width: 767.98px) {
   .an-page {
     display: flex;
@@ -39,9 +44,8 @@
   }
 
   /* Rangée de la carte : sur téléphone, elle s'efface (`display: contents`) et ses enfants se rangent
-     dans la page. La carte remonte tout en haut, devant le titre et les réglages ; en voile, la colonne
-     d'onglets de la carte vient juste après la feuille.
-     La feuille, la barre de session et les alertes gardent leur ordre entre elles. */
+     dans la page. En tête, la ligne d'en-tête (`.an-sheet`), puis la carte, puis la barre de session,
+     les alertes et les onglets ; en voile, la colonne d'onglets de la carte vient en dernier. */
   .an-map-row {
     display: contents !important;
   }
@@ -51,15 +55,14 @@
     flex: none !important;
   }
 
-  /* Bloc carte + légende (`AnalysisMap`) : pleine largeur, carte à hauteur fixe, légende dessous.
-     Réserve sous la légende, que la feuille chevauche (`margin-top` négatif de `.an-sheet`). */
+  /* Bloc carte + légende (`AnalysisMap`) : pleine largeur, carte à hauteur fixe, légende dessous. */
   .an-map-panel {
     order: -1;
     flex: none !important;
     width: 100% !important;
     height: auto !important;
     resize: none !important;
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--space-2);
   }
 
   .an-map-frame {
@@ -68,15 +71,59 @@
     cursor: pointer;
   }
 
-  /* Feuille arrondie qui chevauche légèrement la carte : titre, chiffres clés, réglages. */
+  /* Feuille réduite à l'en-tête, sur une ligne au-dessus de la carte : la flèche de retour, le nom
+     de la session et Renommer. Le titre de la page reste lu par un lecteur d'écran, comme le texte du
+     lien de retour ; les chiffres sont dans l'onglet « général ». */
   .an-sheet {
-    background: var(--surface);
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
-    margin-top: -16px;
-    padding: var(--space-4) var(--space-4) var(--space-2);
-    position: relative;
-    z-index: 1;
+    order: -2;
+    margin-bottom: var(--space-2);
+  }
+
+  .an-sheet__head {
+    margin-bottom: 0;
+  }
+
+  .an-sheet .ui-page-header {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .an-sheet .ui-back {
+    font-size: 0;
+    min-width: 44px;
+  }
+
+  .an-sheet .ui-page-header__row {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .an-sheet .ui-page-header__subtitle {
+    min-width: 0;
+  }
+
+  /* Onglets en petites pastilles serrées, sans trait dessous : ils tiennent sur deux lignes. */
+  .an-page .ui-tabs {
+    gap: var(--space-1);
+    padding-bottom: 0;
+    margin-bottom: 0;
+    border-bottom: none;
+  }
+
+  .an-page .ui-tab {
+    min-height: 32px;
+    padding: 0 var(--space-3);
+    font-size: var(--text-xs);
+  }
+
+  /* En course, les panneaux suivent directement la barre ; en voile, la colonne les espace déjà. */
+  .an-page > .ui-tabs {
+    margin-bottom: var(--space-2);
   }
 
   .an-sheet__stats {

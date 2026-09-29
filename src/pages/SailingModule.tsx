@@ -42,13 +42,15 @@ import HelpButton from '../components/ui/HelpButton';
 
 /**
  * Onglets du module, tous dans la colonne à droite de la carte, dans l'ordre
- * voulu par l'utilisateur ; les chiffres globaux et le vent sont dans la
- * fiche du haut, toujours visible, les réglages de la session dans le dernier. Pour en ajouter un : une entrée ici, une valeur par défaut dans
+ * voulu par l'utilisateur. Le premier, « général », porte les chiffres globaux
+ * et le vent : seul ouvert par défaut, il se replie pour comparer tableaux et
+ * carte. Les réglages de la session sont dans le dernier. Pour en ajouter un : une entrée ici, une valeur par défaut dans
  * `SAILING_PANEL_DEFAULTS`, et un bloc `{open.maCle && (...)}` dans la colonne.
  */
-type SailingPanel = 'tops' | 'manoeuvres' | 'graphiques' | 'vmg' | 'vent' | 'matos' | 'reglages';
+type SailingPanel = 'general' | 'tops' | 'manoeuvres' | 'graphiques' | 'vmg' | 'vent' | 'matos' | 'reglages';
 
 const SAILING_PANELS: SectionDefinition<SailingPanel>[] = [
+  { key: 'general', label: 'général' },
   { key: 'tops', label: 'tops' },
   { key: 'manoeuvres', label: 'manœuvres' },
   { key: 'graphiques', label: 'graphiques' },
@@ -59,6 +61,7 @@ const SAILING_PANELS: SectionDefinition<SailingPanel>[] = [
 ];
 
 const SAILING_PANEL_DEFAULTS: Record<SailingPanel, boolean> = {
+  general: true,
   tops: false,
   manoeuvres: false,
   graphiques: false,
@@ -172,7 +175,8 @@ function SailingModule() {
   const speedSymbol = SPEED_UNIT_SYMBOL[speedUnit];
   const showKn = (kn: number | string) => formatKnots(kn, speedUnit);
   /** Seuil saisi en nœuds, montré tel quel en nœuds, sinon converti. */
-  const showThreshold = (kn: number) => (speedUnit === 'kn' ? String(kn) : showKn(kn));
+  // Arrondi au dixième : un seuil mis à l'échelle de l'allure sort en 7,999999… nœuds.
+  const showThreshold = (kn: number) => (speedUnit === 'kn' ? String(Math.round(kn * 10) / 10) : showKn(kn));
   /** Valeur d'un champ de vitesse dans l'unité, arrondie. */
   const speedFieldValue = (kn: number) => parseFloat(knotsToDisplay(kn, speedUnit).toFixed(speedUnit === 'ms' ? 2 : 1));
   /** Infobulle des graphes de vitesse : la valeur suivie de l'unité. */
@@ -543,7 +547,7 @@ function SailingModule() {
       )}
       {showManeuverDetails && (
         <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '8px' }}>
-          Survolez une ligne pour la définition. Le podium retient la meilleure valeur : conservation la plus haute, relance la plus courte, cap et distance les plus faibles.
+          Survolez une ligne pour la définition. Le podium retient la meilleure valeur : conservation la plus haute, relance la plus courte, cap et distance les plus faibles, gain au vent le plus grand.
         </div>
       )}
     </ResizablePanel>
@@ -569,76 +573,14 @@ function SailingModule() {
   return (
     <div className="an-page" style={{ padding: '20px' }}>
       <div className="an-sheet">
-        <div style={{ marginBottom: '15px' }}>
+        <div className="an-sheet__head">
           <PageHeader title="Analyse voile" subtitle={requestedFile ? <SessionNameEditor file={requestedFile} /> : undefined} back={{ to: libraryPath('voile'), label: 'Sessions voile' }} />
           {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
         </div>
-
-        {stats && (
-          <div className="an-sheet__stats an-sheet__stats--always">
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance active</span><strong className="an-sheet__stat-value">{formatDistance(stats.activeDistanceM, distanceUnit)}</strong></div>
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps total</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps actif (&ge;{showThreshold(activeThresholdKn)} {speedSymbol})</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">{profile.activeRatioLabel}</span><strong className="an-sheet__stat-value">{stats.activeRatio}%</strong></div>
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Vitesse moyenne</span><strong className="an-sheet__stat-value">{formatSpeed(stats.avgSpeedMs, speedUnit)}</strong></div>
-            <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne active (&ge;{showThreshold(activeThresholdKn)} {speedSymbol})</span><strong className="an-sheet__stat-value">{formatSpeed(stats.activeAvgSpeedMs, speedUnit)}</strong></div>
-          </div>
-        )}
-
-        {stats && (
-          <div className="an-sheet__wind" style={{ display: 'flex', gap: '16px', alignItems: 'center', marginBottom: '15px', fontSize: `${scale}em` }}>
-            {/* Boussole à gauche, calcul et saisie à sa droite : le bloc tient dans la hauteur de la boussole. */}
-            <Compass windAngle={currentWindValue ?? autoWind ?? 0} />
-            <div style={{ flex: '1 1 0', minWidth: 0 }}>
-              <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Axe du Vent Global (Polaire)</strong>
-              <div style={{ marginBottom: '10px' }}>
-                Calculé : {autoWind}°
-                {windEstimate && (
-                  <span style={{ color: windEstimate.reliable ? '#388e3c' : '#d32f2f', fontSize: `${12 * scale}px`, marginLeft: '6px' }}>
-                    (confiance {Math.round(windEstimate.confidence * 100)}%, angle mort de la polaire{windEstimate.maneuverCount > 0 ? ` affiné par ${windEstimate.maneuverCount} manœuvres` : ''}, sens donné par {windEstimate.orientedBy === 'virages' ? 'les virages' : 'la polaire'})
-                  </span>
-                )}
-                <br/>
-                <div style={{ marginTop: '5px' }}>
-                  Saisie : <input
-                    type="number"
-                    value={edits.windDeg ?? ''}
-                    onChange={(e) => {
-                      if (e.target.value === '') {
-                        draft.update({ windDeg: null });
-                        return;
-                      }
-                      const parsed = parseInt(e.target.value, 10);
-                      if (!isNaN(parsed)) draft.update({ windDeg: parsed });
-                    }}
-                    className="ui-field ui-field--s num"
-                    style={{ width: '64px' }} /> °
-                  <Button
-                    size="s"
-                    onClick={() => draft.update({ windDeg: ((currentWindValue ?? autoWind ?? 0) + 180) % 360 })}
-                    style={{ marginLeft: '6px' }}>
-                    Inverser
-                  </Button>
-                  {edits.windDeg !== null && (
-                    <Button
-                      size="s"
-                      onClick={() => draft.update({ windDeg: null })}
-                      title="Revenir au vent calculé"
-                      style={{ marginLeft: '6px' }}>
-                      Calculé
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {loadedFromMemory && (
-        <SessionSaveBar draft={draft} kept="vent, seuil d'activité, allure, couleurs et notes sont gardés dans sa fiche" />
-      )}
+      {/* Barre visible pendant un brouillon seulement : rien ne s'affiche quand tout est enregistré. */}
+      {loadedFromMemory && <SessionSaveBar draft={draft} />}
 
       {loadError && (
         <div style={{ padding: '10px 15px', backgroundColor: '#fdecea', border: '1px solid #d32f2f', borderRadius: '8px', color: '#b71c1c', marginBottom: '10px' }}>
@@ -650,8 +592,11 @@ function SailingModule() {
         <div style={{ padding: '10px 15px', backgroundColor: '#fff8e1', border: '1px solid #f9a825', borderRadius: '8px', marginBottom: '10px' }}>
           <strong>Vent non fiable.</strong> L'estimation automatique donne {autoWind}° avec un indice de confiance
           de {windEstimate ? Math.round(windEstimate.confidence * 100) : 0}%, trop faible pour être utilisée.
-          C'est typique d'un aller simple ou d'un plan d'eau à courant. Saisissez le vent ci-dessus pour
+          C'est typique d'un aller simple ou d'un plan d'eau à courant. Saisissez le vent dans l'onglet général pour
           débloquer les manœuvres, la VMG et la polaire.
+          {!open.general && (
+            <Button size="s" onClick={() => toggle('general')} style={{ marginLeft: '6px' }}>Ouvrir l'onglet général</Button>
+          )}
         </div>
       )}
 
@@ -681,6 +626,69 @@ function SailingModule() {
           <div className="an-carte-col" style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: `${scale}em` }}>
             <SectionTabs sections={SAILING_PANELS} open={open} onToggle={toggle} />
             <div className="an-carte-panels" style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+              {open.general && (
+                <ResizablePanel id="sailing.general" style={{ ...CARD_STYLE, flex: '1 1 100%' }}>
+                  <div style={{ marginBottom: '10px' }}>
+                    <PanelTitle label="Général" open={open.general} onToggle={() => toggle('general')} />
+                  </div>
+                  <div className="an-sheet__stats an-sheet__stats--always">
+                    <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
+                    <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance active</span><strong className="an-sheet__stat-value">{formatDistance(stats.activeDistanceM, distanceUnit)}</strong></div>
+                    <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps total</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
+                    <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps actif (&ge;{showThreshold(activeThresholdKn)} {speedSymbol})</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
+                    <div className="an-sheet__stat"><span className="an-sheet__stat-label">{profile.activeRatioLabel}</span><strong className="an-sheet__stat-value">{stats.activeRatio}%</strong></div>
+                    <div className="an-sheet__stat"><span className="an-sheet__stat-label">Vitesse moyenne</span><strong className="an-sheet__stat-value">{formatSpeed(stats.avgSpeedMs, speedUnit)}</strong></div>
+                    <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne active (&ge;{showThreshold(activeThresholdKn)} {speedSymbol})</span><strong className="an-sheet__stat-value">{formatSpeed(stats.activeAvgSpeedMs, speedUnit)}</strong></div>
+                  </div>
+                  <div className="an-sheet__wind" style={{ display: 'flex', gap: '16px', alignItems: 'center', fontSize: `${scale}em` }}>
+                    {/* Boussole à gauche, calcul et saisie à sa droite : le bloc tient dans la hauteur de la boussole. */}
+                    <Compass windAngle={currentWindValue ?? autoWind ?? 0} />
+                    <div style={{ flex: '1 1 0', minWidth: 0 }}>
+                      <strong style={{ display: 'block', marginBottom: '10px', fontSize: `${16 * scale}px` }}>Axe du Vent Global (Polaire)</strong>
+                      <div style={{ marginBottom: '10px' }}>
+                        Calculé : {autoWind}°
+                        {windEstimate && (
+                          <span style={{ color: windEstimate.reliable ? '#388e3c' : '#d32f2f', fontSize: `${12 * scale}px`, marginLeft: '6px' }}>
+                            (confiance {Math.round(windEstimate.confidence * 100)}%, angle mort de la polaire{windEstimate.maneuverCount > 0 ? ` affiné par ${windEstimate.maneuverCount} manœuvres` : ''}, sens donné par {windEstimate.orientedBy === 'virages' ? 'les virages' : 'la polaire'})
+                          </span>
+                        )}
+                        <br/>
+                        <div style={{ marginTop: '5px' }}>
+                          Saisie : <input
+                            type="number"
+                            value={edits.windDeg ?? ''}
+                            onChange={(e) => {
+                              if (e.target.value === '') {
+                                draft.update({ windDeg: null });
+                                return;
+                              }
+                              const parsed = parseInt(e.target.value, 10);
+                              if (!isNaN(parsed)) draft.update({ windDeg: parsed });
+                            }}
+                            className="ui-field ui-field--s num"
+                            style={{ width: '64px' }} /> °
+                          <Button
+                            size="s"
+                            onClick={() => draft.update({ windDeg: ((currentWindValue ?? autoWind ?? 0) + 180) % 360 })}
+                            style={{ marginLeft: '6px' }}>
+                            Inverser
+                          </Button>
+                          {edits.windDeg !== null && (
+                            <Button
+                              size="s"
+                              onClick={() => draft.update({ windDeg: null })}
+                              title="Revenir au vent calculé"
+                              style={{ marginLeft: '6px' }}>
+                              Calculé
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </ResizablePanel>
+              )}
+
               {open.tops && (
                 <ResizablePanel id="sailing.tops" style={{ ...CARD_STYLE, flex: '1 1 400px', display: 'flex', gap: '30px', flexWrap: 'wrap' }}>
                   <div>

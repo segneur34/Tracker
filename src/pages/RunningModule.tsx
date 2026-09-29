@@ -57,20 +57,23 @@ const MAP_SPEED_SMOOTHING_S = 15;
 /**
  * Sections du module. Pour en ajouter une : une entrée ici, une valeur par
  * défaut dans `RUNNING_SECTION_DEFAULTS`, et un bloc `{open.maCle && (...)}`
- * dans le rendu. La synthèse est dans la fiche du haut, toujours visible,
- * les réglages de la session dans le dernier onglet. La carte n'en fait pas partie : comme en voile, elle
+ * dans le rendu. Le premier onglet, « général », porte la synthèse (repliable
+ * pour gagner de la place, comme en voile), le dernier les réglages de la
+ * session. La carte n'en fait pas partie : comme en voile, elle
  * s'affiche en permanence, jamais derrière un onglet qu'on pourrait fermer
  * et oublier rouvert.
  */
-type RunningSection = 'zones' | 'graphiques' | 'reglages';
+type RunningSection = 'general' | 'zones' | 'graphiques' | 'reglages';
 
 const RUNNING_SECTIONS: SectionDefinition<RunningSection>[] = [
+  { key: 'general', label: 'général' },
   { key: 'zones', label: 'zones de pente' },
   { key: 'graphiques', label: 'graphiques' },
   { key: 'reglages', label: 'réglages' },
 ];
 
 const RUNNING_SECTION_DEFAULTS: Record<RunningSection, boolean> = {
+  general: true,
   zones: true,
   graphiques: true,
   reglages: false,
@@ -301,29 +304,10 @@ function RunningModule() {
   return (
     <div className="an-page" style={{ padding: '20px' }} onMouseLeave={() => setHoveredIndex(null)}>
       <div className="an-sheet">
-        <div style={{ marginBottom: '15px' }}>
+        <div className="an-sheet__head">
           <PageHeader title="Analyse course à pied" subtitle={gpx.fileName ? <SessionNameEditor file={gpx.fileName} /> : undefined} back={{ to: libraryPath('course'), label: 'Sessions course' }} />
           {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
         </div>
-
-        {stats && averages && (
-          <>
-            <div className="an-sheet__stats an-sheet__stats--always">
-              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
-              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance en mouvement</span><strong className="an-sheet__stat-value">{formatDistance(stats.activeDistanceM, distanceUnit)}</strong></div>
-              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps de parcours</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
-              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps en mouvement ({stats.activeRatio} %)</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
-              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne en mouvement</span><strong className="an-sheet__stat-value">{formatSpeed(averages.moving.speedMs, speedUnit)}</strong></div>
-              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne sur le temps total</span><strong className="an-sheet__stat-value">{formatSpeed(averages.overall.speedMs, speedUnit)}</strong></div>
-              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Dénivelé</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—'}</strong></div>
-              <div className="an-sheet__stat"><span className="an-sheet__stat-label">Altitude</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—'}</strong></div>
-            </div>
-            {!stats.hasElevation && (
-              <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)', marginBottom: '15px' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
-            )}
-          </>
-        )}
-
       </div>
 
       <SessionSaveBar draft={draft} />
@@ -346,6 +330,27 @@ function RunningModule() {
 
       {stats && averages && (
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'stretch', marginBottom: '15px', fontSize: `${14 * scale}px` }}>
+          {open.general && (
+            <ResizablePanel id="running.general" style={{ ...cardStyle, flex: '1 1 100%' }}>
+              <div style={{ marginBottom: '10px' }}>
+                <PanelTitle label="Général" open={open.general} onToggle={() => toggle('general')} />
+              </div>
+              <div className="an-sheet__stats an-sheet__stats--always">
+                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
+                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance en mouvement</span><strong className="an-sheet__stat-value">{formatDistance(stats.activeDistanceM, distanceUnit)}</strong></div>
+                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps de parcours</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
+                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps en mouvement ({stats.activeRatio} %)</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
+                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne en mouvement</span><strong className="an-sheet__stat-value">{formatSpeed(averages.moving.speedMs, speedUnit)}</strong></div>
+                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne sur le temps total</span><strong className="an-sheet__stat-value">{formatSpeed(averages.overall.speedMs, speedUnit)}</strong></div>
+                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Dénivelé</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—'}</strong></div>
+                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Altitude</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—'}</strong></div>
+              </div>
+              {!stats.hasElevation && (
+                <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
+              )}
+            </ResizablePanel>
+          )}
+
           {open.zones && zoneStats.length > 0 && (
             <ResizablePanel id="running.zones" style={{ ...cardStyle, flex: '1 1 420px' }}>
               <div style={{ marginBottom: '10px' }}>
