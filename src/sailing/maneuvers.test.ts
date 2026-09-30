@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { PointData } from '../utils/kinematics';
+import { computeKinematics } from '../core/kinematics';
+import type { RawTrackPoint } from '../core/types';
+import { trackToPointData, type PointData } from '../utils/kinematics';
 import {
   analyzeManeuvers,
   estimateWind,
+  measureManeuver,
   selectWindCandidate,
   windSamplesFrom,
+  type ManeuverLocation,
   type WindEstimationOptions,
 } from './maneuvers';
 import { sessionManeuverThresholds } from './sailingConfig';
@@ -261,6 +265,188 @@ const buildSlowTurnTrack = (speedKn: number, stepM: number): PointData[] => {
   return points;
 };
 
+/**
+ * Manœuvre d'une session scriptée : la vitesse tombe linéairement jusqu'à
+ * `conservation` × la vitesse de bord au milieu de la rotation (décalé de
+ * `minLagS`), puis remonte en `recoveryS`. `slowdown` fait ralentir le rider
+ * sur les secondes qui précèdent le virage, comme avant un empannage prudent.
+ */
+interface ScriptedManeuver {
+  conservation: number;
+  turnS: number;
+  recoveryS: number;
+  minLagS?: number;
+  slowdown?: { toKn: number; overS: number };
+}
+
+/** Bruit d'une trace : erreur de position GPS corrélée, oscillation du cap, bruit Doppler. */
+interface NoiseLevel {
+  positionM: number;
+  headingDeg: number;
+  dopplerMs: number;
+}
+
+/**
+ * Bruit calibré sur les traces réelles : il redonne la part de manœuvres à
+ * caps stabilisés des deux côtés qu'on y observe, environ une sur cinq.
+ */
+const REALISTIC_NOISE: NoiseLevel = { positionM: 0.5, headingDeg: 1.5, dopplerMs: 0.15 };
+/** Bruit faible, que la détection supporte aussi à 5 Hz. */
+const LOW_NOISE: NoiseLevel = { positionM: 0.1, headingDeg: 0.5, dopplerMs: 0.05 };
+
+/** Générateur pseudo-aléatoire à graine (mulberry32) : un test bruité doit rester reproductible. */
+const seededRandom = (seed: number) => () => {
+  seed = (seed + 0x6d2b79f5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+
+/**
+ * Session bruitée par bords, vent du nord : empannages entre largues à 135°,
+ * ou virements entre bords de près à 45°. La position est intégrée depuis le
+ * cap et la vitesse, bruitée, puis passée par `computeKinematics` comme un
+ * vrai fichier : caps et vitesses retenues sortent de la chaîne réelle, filtre
+ * médian compris. Rend aussi les instants vrais de chaque rotation.
+ */
+const buildNoisySession = (
+  maneuvers: ScriptedManeuver[],
+  options: { tack?: boolean; hz?: number; legKn?: number; noise?: NoiseLevel; seed?: number } = {}
+): { points: PointData[]; truth: { startMs: number; endMs: number }[] } => {
+  const tack = options.tack ?? false;
+  const hz = options.hz ?? 1;
+  const legKn = options.legKn ?? 18;
+  const noise = options.noise ?? REALISTIC_NOISE;
+  const legS = 40;
+  const random = seededRandom(options.seed ?? 1);
+  const gauss = () => {
+    let u = 0;
+    while (u === 0) u = random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * random());
+  };
+
+  // Le cap passe par le lit du vent au virement (45 → −45), par le vent
+  // arrière à l'empannage (135 → 225).
+  const twa = tack ? 45 : 135;
+  const legHeading = (k: number) => (k % 2 === 0 ? twa : tack ? -twa : 360 - twa);
+  const events = maneuvers.map((m, k) => {
+    const startS = legS * (k + 1) + maneuvers.slice(0, k).reduce((a, p) => a + p.turnS, 0);
+    return { ...m, k, startS, endS: startS + m.turnS, apexS: startS + m.turnS / 2 + (m.minLagS ?? 0) };
+  });
+  const totalS = legS * (maneuvers.length + 1) + maneuvers.reduce((a, m) => a + m.turnS, 0);
+
+  const dt = 0.02;
+  const decay = (value: number, tauS: number, sigma: number) =>
+    value - (value / tauS) * dt + sigma * Math.sqrt((2 * dt) / tauS) * gauss();
+  let north = 0;
+  let east = 0;
+  let errorNorth = 0;
+  let errorEast = 0;
+  let wobble = 0;
+  let nextSampleS = 0;
+  const raw: RawTrackPoint[] = [];
+  for (let s = 0; s <= totalS + 1e-9; s += dt) {
+    let heading = legHeading(0);
+    let speedKn = legKn;
+    for (const e of events) {
+      const from = legHeading(e.k);
+      const to = legHeading(e.k + 1);
+      if (s >= e.endS) heading = to;
+      if (s >= e.startS && s < e.endS) heading = from + (to - from) * ((s - e.startS) / e.turnS);
+      const minKn = legKn * e.conservation;
+      const entryKn = e.slowdown ? e.slowdown.toKn : legKn;
+      if (e.slowdown && s >= e.startS - e.slowdown.overS && s < e.startS) {
+        speedKn = Math.min(speedKn, legKn + (entryKn - legKn) * ((s - e.startS + e.slowdown.overS) / e.slowdown.overS));
+      }
+      if (s >= e.startS && s < e.apexS) {
+        speedKn = Math.min(speedKn, entryKn + (minKn - entryKn) * ((s - e.startS) / (e.apexS - e.startS)));
+      } else if (s >= e.apexS && s < e.apexS + e.recoveryS) {
+        speedKn = Math.min(speedKn, minKn + (legKn - minKn) * ((s - e.apexS) / e.recoveryS));
+      }
+    }
+    // Erreur GPS lente (10 s), oscillation du cap plus vive (3 s).
+    errorNorth = decay(errorNorth, 10, noise.positionM);
+    errorEast = decay(errorEast, 10, noise.positionM);
+    wobble = decay(wobble, 3, noise.headingDeg);
+    const rad = ((heading + wobble) * Math.PI) / 180;
+    const speedMs = speedKn * 0.514444;
+    north += speedMs * Math.cos(rad) * dt;
+    east += speedMs * Math.sin(rad) * dt;
+    if (s >= nextSampleS - 1e-9) {
+      raw.push({
+        lat: 43.5 + (north + errorNorth) / 111320,
+        lon: 3.8 + (east + errorEast) / (111320 * Math.cos((43.5 * Math.PI) / 180)),
+        time: new Date(TRACK_START_MS + Math.round(s * 1000)).toISOString(),
+        speedMs: Math.max(0, speedMs + noise.dopplerMs * gauss()),
+      });
+      nextSampleS += 1 / hz;
+    }
+  }
+  return {
+    points: trackToPointData(computeKinematics(raw, { medianWindowSeconds: 3 })),
+    truth: events.map((e) => ({ startMs: TRACK_START_MS + e.startS * 1000, endMs: TRACK_START_MS + e.endS * 1000 })),
+  };
+};
+
+/** Qualités d'empannage et de virement, de la meilleure à la moins bonne. */
+const GOOD_JIBES: ScriptedManeuver[] = [
+  { conservation: 0.85, turnS: 5, recoveryS: 3 },
+  { conservation: 0.65, turnS: 5, recoveryS: 6 },
+  { conservation: 0.5, turnS: 6, recoveryS: 9 },
+];
+const GOOD_TACKS: ScriptedManeuver[] = [
+  { conservation: 0.6, turnS: 4, recoveryS: 3 },
+  { conservation: 0.4, turnS: 5, recoveryS: 6 },
+  { conservation: 0.25, turnS: 6, recoveryS: 10 },
+];
+
+/**
+ * Un virement sans bruit, cap et vitesse imposés (donc sans filtre médian) :
+ * près à 45° jusqu'à 40 s, rotation jusqu'à −45° en 4 s, et une vitesse qui
+ * touche le fond, 4,5 nœuds, `minLagS` secondes après le milieu de la
+ * rotation. Rend aussi l'instant de ce creux.
+ */
+const scriptedTack = (minLagS: number) => {
+  const apexS = 42 + minLagS;
+  const track = buildTrack(
+    100,
+    1,
+    (t) => (t < 40 ? 45 : t < 44 ? 45 - ((t - 40) / 4) * 90 : -45),
+    (t) => {
+      const dip = t < apexS ? 15 - (10.5 * Math.max(0, t - 38)) / (apexS - 38) : 4.5 + (10.5 * (t - apexS)) / 6;
+      return Math.min(15, dip);
+    }
+  );
+  return { track, apexMs: TRACK_START_MS + apexS * 1000 };
+};
+
+/** Manœuvre factice, pour éprouver le résumé sans passer par la détection. */
+const fakeManeuver = (overrides: Partial<ManeuverLocation>): ManeuverLocation => ({
+  lat: 43.6,
+  lon: 3.8,
+  type: 'jibe',
+  success: true,
+  vmin: 12,
+  localWind: 0,
+  timeMs: TRACK_START_MS,
+  trackIndex: 0,
+  stableHeadings: false,
+  windCriteria: { conservation: 0.7, success: true },
+  entrySpeed: 18,
+  conservation: 0.7,
+  relaunchS: 3,
+  headingChange: 90,
+  distanceM: 60,
+  windwardGainM: 20,
+  apexIndex: 0,
+  entryIndex: 0,
+  exitIndex: 0,
+  entryHeading: 135,
+  exitHeading: 225,
+  path: [],
+  ...overrides,
+});
+
 describe('analyzeManeuvers, seuils accordés à la session', () => {
   it('écarte un virage lent avec le seuil du wingfoil, le retient avec celui de la session', () => {
     const track = buildSlowTurnTrack(2, 12);
@@ -431,22 +617,20 @@ describe('analyzeManeuvers', () => {
     expect(tack!.windwardGainM).toBeNull();
   });
 
-  it('mesure le gain au vent des manœuvres réussies : positif en virement, négatif en empannage, indépendant de la cadence', () => {
+  it('mesure le gain au vent des manœuvres réussies dans leur sens : vers le vent en virement, sous le vent en empannage, indépendant de la cadence', () => {
     const at1Hz = analyzeManeuvers(buildLegSession(upwindDownwindLegs(2), () => 0), 0, { successThresholdKn: 2 }).locations;
     const at5Hz = analyzeManeuvers(buildLegSession(upwindDownwindLegs(2), () => 0, { stepS: 0.2 }), 0, { successThresholdKn: 2 }).locations;
-    const tack = at1Hz.find((m) => m.type === 'tack')!;
-    const jibe = at1Hz.find((m) => m.type === 'jibe')!;
 
-    // Toujours face au vent pendant le virement : gain positif, plus court que le chemin parcouru.
-    expect(tack.success).toBe(true);
-    expect(tack.windwardGainM!).toBeGreaterThan(0);
-    expect(tack.windwardGainM!).toBeLessThan(tack.distanceM);
-    // Toujours dos au vent pendant l'empannage : du terrain perdu sous le vent.
-    expect(jibe.success).toBe(true);
-    expect(jibe.windwardGainM!).toBeLessThan(0);
-
-    const tack5Hz = at5Hz.find((m) => m.type === 'tack')!;
-    expect(Math.abs(tack5Hz.windwardGainM! - tack.windwardGainM!)).toBeLessThanOrEqual(0.2 * tack.windwardGainM!);
+    for (const type of ['tack', 'jibe'] as const) {
+      const at1 = at1Hz.find((m) => m.type === type)!;
+      const at5 = at5Hz.find((m) => m.type === type)!;
+      // Face au vent pendant le virement, dos au vent pendant l'empannage :
+      // chacun avance dans son sens, sur une part du chemin parcouru.
+      expect(at1.success).toBe(true);
+      expect(at1.windwardGainM!).toBeGreaterThan(0);
+      expect(at1.windwardGainM!).toBeLessThan(at1.distanceM!);
+      expect(Math.abs(at5.windwardGainM! - at1.windwardGainM!)).toBeLessThanOrEqual(0.2 * at1.windwardGainM!);
+    }
   });
 
   it('laisse la relance indéfinie quand la vitesse ne revient pas', () => {
@@ -478,7 +662,12 @@ describe('analyzeManeuvers', () => {
     expect(gain).toHaveLength(3);
     expect(gain[0]).toBeGreaterThanOrEqual(gain[1]);
     expect(reussies.tack!.averages.windwardGain).toMatch(/^\+\d+ m$/);
-    expect(reussies.jibe!.averages.windwardGain).toMatch(/^−\d+ m$/);
+    // Un empannage avance sous le vent : son gain est positif lui aussi.
+    expect(reussies.jibe!.averages.windwardGain).toMatch(/^\+\d+ m$/);
+    // Le cap de sortie d'un empannage est un choix d'allure : moyenne, pas de podium.
+    expect(summary.tack!.tops.headingChange.length).toBeGreaterThan(0);
+    expect(summary.jibe!.tops.headingChange).toHaveLength(0);
+    expect(summary.jibe!.averages.headingChange).not.toBe('-');
 
     expect(summary.jibe).not.toBeNull();
     expect(summary.jibe!.count).toBe(1);
@@ -492,6 +681,173 @@ describe('analyzeManeuvers', () => {
 
     expect(jibe).toBeDefined();
     expect(distanceTo(jibe!.localWind, 0)).toBeLessThanOrEqual(5);
+  });
+});
+
+describe('measureManeuver', () => {
+  const at = (points: PointData[], index: number) => points[index].timeMs;
+  const nearestTruth = (truth: { startMs: number; endMs: number }[], timeMs: number) =>
+    truth.reduce((best, t) => (Math.abs(t.startMs - timeMs) < Math.abs(best.startMs - timeMs) ? t : best));
+
+  it('borne la manœuvre au virage lui-même, malgré le bruit de la trace', () => {
+    // La détection se déclenche plusieurs secondes avant le virage : ses
+    // bornes faisaient commencer la manœuvre 5 s trop tôt en médiane.
+    for (const tack of [false, true]) {
+      for (const seed of [1, 2, 3]) {
+        const { points, truth } = buildNoisySession(tack ? GOOD_TACKS : GOOD_JIBES, { tack, legKn: tack ? 15 : 18, seed });
+        const found = analyzeManeuvers(points, 0, { successThresholdKn: 2 }).locations;
+        expect(found).toHaveLength(3);
+        for (const m of found) {
+          expect(m.type).toBe(tack ? 'tack' : 'jibe');
+          const t = nearestTruth(truth, at(points, m.entryIndex));
+          expect(Math.abs(at(points, m.entryIndex) - t.startMs)).toBeLessThanOrEqual(2000);
+          // La sortie ne tombe jamais avant la fin de la rotation.
+          expect(at(points, m.exitIndex)).toBeGreaterThanOrEqual(t.endMs - 2000);
+        }
+      }
+    }
+  });
+
+  it('garde les mêmes bornes où que la détection se soit déclenchée', () => {
+    const { track } = scriptedTack(0);
+    const bounds = new Set<string>();
+    for (const triggerS of [30, 34, 38]) {
+      for (const endS of [43, 44, 45]) {
+        const m = measureManeuver(track, { triggerIndex: triggerS, endIndex: endS, turnSign: -1, type: 'tack' }, 0);
+        bounds.add(`${m.rotationStartIndex}-${m.rotationEndIndex}`);
+      }
+    }
+    expect(bounds.size).toBe(1);
+  });
+
+  it('classe les manœuvres comme leur qualité, en conservation comme en relance', () => {
+    for (const tack of [false, true]) {
+      for (const seed of [1, 2, 3]) {
+        const { points } = buildNoisySession(tack ? GOOD_TACKS : GOOD_JIBES, { tack, legKn: tack ? 15 : 18, seed });
+        const stats = analyzeManeuvers(points, 0, { successThresholdKn: 2 });
+        // Dans l'ordre du temps : la meilleure, la moyenne, la moins bonne.
+        const [good, medium, poor] = stats.locations;
+        expect(good.conservation).toBeGreaterThan(medium.conservation);
+        expect(medium.conservation).toBeGreaterThan(poor.conservation);
+        expect(good.relaunchS!).toBeLessThan(medium.relaunchS!);
+        expect(medium.relaunchS!).toBeLessThan(poor.relaunchS!);
+
+        const summary = summarizeManeuvers(stats)[tack ? 'tack' : 'jibe']!;
+        expect(summary.tops.conservation.map((t) => t.index)).toEqual([0, 1, 2]);
+        expect(summary.tops.relaunch.map((t) => t.index)).toEqual([0, 1, 2]);
+      }
+    }
+  });
+
+  it('lit la vitesse d\'approche avant la rotation : ralentir avant d\'empanner n\'en fait pas un sans-faute', () => {
+    // Le cas relevé sur une séance réelle : 21 nœuds au largue, 12 au début
+    // du virage. Lue au premier point de la rotation, la vitesse d'entrée
+    // donnait 100 % de conservation, une relance de 0 s et une distance nulle.
+    const { points } = buildNoisySession(
+      [{ conservation: 12 / 18, turnS: 6, recoveryS: 8, slowdown: { toKn: 12, overS: 6 } }],
+      { seed: 3 }
+    );
+    const jibe = analyzeManeuvers(points, 0, { successThresholdKn: 2 }).locations.find((m) => m.type === 'jibe')!;
+
+    expect(Math.abs(jibe.entrySpeed - 18)).toBeLessThanOrEqual(1);
+    expect(jibe.conservation).toBeLessThan(0.75);
+    expect(jibe.relaunchS!).toBeGreaterThan(3);
+    expect(jibe.distanceM!).toBeGreaterThan(20);
+  });
+
+  it('trouve le creux de vitesse où qu\'il tombe, jusqu\'après la rotation', () => {
+    // Pendant la rotation, à sa fin, ou quelques secondes après : le creux
+    // d'un virement vient souvent une fois le nouveau cap pris. La détection
+    // ne le cherchait pas après la rotation et sautait le dernier point de sa
+    // fenêtre initiale.
+    for (const minLagS of [-1, 0, 2, 4, 8]) {
+      const { track, apexMs } = scriptedTack(minLagS);
+      const tack = analyzeManeuvers(track, 0, { successThresholdKn: 2 }).locations.find((m) => m.type === 'tack')!;
+
+      expect(tack.vmin).toBeCloseTo(4.5, 6);
+      expect(track[tack.apexIndex].timeMs).toBe(apexMs);
+      expect(tack.conservation).toBeCloseTo(0.3, 6);
+      expect(tack.relaunchS!).toBeGreaterThan(0);
+    }
+  });
+
+  it('mesure le gain au vent dans le sens de la manœuvre, plus grand pour la plus rapide', () => {
+    // Même durée de rotation : seule la vitesse conservée les distingue.
+    for (const tack of [false, true]) {
+      const fast = { conservation: tack ? 0.6 : 0.85, turnS: 5, recoveryS: 3 };
+      const slow = { conservation: tack ? 0.3 : 0.5, turnS: 5, recoveryS: 8 };
+      const { points } = buildNoisySession([fast, slow], { tack, legKn: tack ? 15 : 18, noise: LOW_NOISE });
+      const [first, second] = analyzeManeuvers(points, 0, { successThresholdKn: 2 }).locations;
+
+      expect(second.windwardGainM!).toBeGreaterThan(0);
+      expect(first.windwardGainM!).toBeGreaterThan(second.windwardGainM!);
+    }
+  });
+
+  it('donne les mêmes mesures à 1 Hz et à 5 Hz', () => {
+    // À bruit faible : au-delà, c'est la détection qui ne voit plus les
+    // virages à 5 Hz, un défaut connu qui ne relève pas de la mesure.
+    for (const tack of [false, true]) {
+      for (const seed of [1, 2, 3]) {
+        const options = { tack, legKn: tack ? 15 : 18, noise: LOW_NOISE, seed };
+        const at1Hz = analyzeManeuvers(buildNoisySession(tack ? GOOD_TACKS : GOOD_JIBES, options).points, 0, { successThresholdKn: 2 }).locations;
+        const at5Hz = analyzeManeuvers(buildNoisySession(tack ? GOOD_TACKS : GOOD_JIBES, { ...options, hz: 5 }).points, 0, { successThresholdKn: 2 }).locations;
+
+        expect(at5Hz).toHaveLength(at1Hz.length);
+        at1Hz.forEach((a, k) => {
+          const b = at5Hz[k];
+          expect(Math.abs(a.conservation - b.conservation)).toBeLessThanOrEqual(0.05);
+          expect(Math.abs(a.relaunchS! - b.relaunchS!)).toBeLessThanOrEqual(1.5);
+          expect(Math.abs(a.headingChange - b.headingChange)).toBeLessThanOrEqual(3);
+          expect(Math.abs(a.windwardGainM! - b.windwardGainM!)).toBeLessThanOrEqual(3);
+        });
+      }
+    }
+  });
+});
+
+describe('summarizeManeuvers', () => {
+  it('départage les égalités par la conservation, puis la conservation par la relance', () => {
+    const stats = {
+      tackSuccess: 0,
+      tackFail: 0,
+      jibeSuccess: 4,
+      jibeFail: 0,
+      rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0 },
+      locations: [
+        fakeManeuver({ timeMs: TRACK_START_MS, relaunchS: 2, conservation: 0.6 }),
+        fakeManeuver({ timeMs: TRACK_START_MS + 60000, relaunchS: 2, conservation: 0.8 }),
+        fakeManeuver({ timeMs: TRACK_START_MS + 120000, relaunchS: 4, conservation: 0.8 }),
+        fakeManeuver({ timeMs: TRACK_START_MS + 180000, relaunchS: null, conservation: 0.8 }),
+      ],
+    };
+    const jibe = summarizeManeuvers(stats).jibe!;
+
+    // Même relance de 2 s : la meilleure conservation passe devant la plus ancienne.
+    expect(jibe.tops.relaunch.map((t) => t.index)).toEqual([1, 0, 2]);
+    // Même conservation de 80 % : la relance la plus courte d'abord, sans relance en dernier.
+    expect(jibe.tops.conservation.map((t) => t.index)).toEqual([1, 2, 3]);
+  });
+
+  it('compte à part les manœuvres sans relance, absentes de la moyenne', () => {
+    const stats = {
+      tackSuccess: 0,
+      tackFail: 0,
+      jibeSuccess: 3,
+      jibeFail: 0,
+      rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0 },
+      locations: [
+        fakeManeuver({ relaunchS: 2 }),
+        fakeManeuver({ relaunchS: 4 }),
+        fakeManeuver({ relaunchS: null, distanceM: null }),
+      ],
+    };
+    const jibe = summarizeManeuvers(stats).jibe!;
+
+    expect(jibe.withoutRelaunch).toBe(1);
+    expect(jibe.averages.relaunch).toBe('3.0 s');
+    // Sans relance, pas de distance de manœuvre : elle ne gagne pas le podium des plus courtes.
+    expect(jibe.tops.distance).toHaveLength(2);
   });
 });
 
@@ -573,6 +929,45 @@ describe('estimateWind', () => {
 
     expect(distanceTo(estimate.direction, 120)).toBeLessThanOrEqual(10);
     expect(estimate.reliable).toBe(true);
+  });
+
+  it('ne dépend pas de la mesure affichée des manœuvres', () => {
+    // La trace du banc de test (outils/banc/make-gpx.mjs) : bords de près et
+    // de portant, virements qui tombent de 7 à 3 m/s. La détection lit leur
+    // conservation à 49 %, la mesure affichée à 51 %, de l'autre côté du
+    // seuil de 50 % qui oriente le vent. Lue sur la mesure affichée, elle
+    // faisait tourner l'estimation de 90° et ne laissait qu'une manœuvre.
+    const start = Date.UTC(2026, 8, 20, 13, 0, 0);
+    const raw: RawTrackPoint[] = [];
+    let lat = 43.5;
+    let lon = 3.95;
+    const step = (heading: number, speedMs: number) => {
+      const rad = (heading * Math.PI) / 180;
+      lat += (speedMs * Math.cos(rad)) / 6371000 * (180 / Math.PI);
+      lon += (speedMs * Math.sin(rad)) / (6371000 * Math.cos((lat * Math.PI) / 180)) * (180 / Math.PI);
+      raw.push({ lat, lon, time: new Date(start + raw.length * 1000).toISOString(), speedMs });
+    };
+    const leg = (heading: number, speedMs: number, count: number) => {
+      for (let i = 0; i < count; i++) step(heading + Math.sin(i / 7) * 3, speedMs + Math.sin(i / 5) * 0.5);
+    };
+    const turn = (from: number, to: number, minMs: number, maxMs: number, count: number) => {
+      const diff = ((to - from + 540) % 360) - 180;
+      for (let i = 1; i <= count; i++) {
+        step((from + (diff * i) / count + 360) % 360, maxMs - (maxMs - minMs) * Math.sin((Math.PI * i) / count));
+      }
+    };
+    for (let k = 0; k < 6; k++) { leg(45, 7, 150); turn(45, 315, 3, 7, 6); leg(315, 7, 150); turn(315, 45, 3, 7, 6); }
+    turn(45, 135, 6, 9, 5);
+    for (let k = 0; k < 6; k++) { leg(135, 9, 150); turn(135, 225, 6, 9, 6); leg(225, 9, 150); turn(225, 135, 6, 9, 6); }
+    const track = trackToPointData(computeKinematics(raw, { medianWindowSeconds: 3 }));
+
+    const tacks = analyzeManeuvers(track, 0).locations.filter((m) => m.type === 'tack');
+    expect(tacks.length).toBeGreaterThan(0);
+    for (const m of tacks) {
+      expect(m.windCriteria.conservation).toBeLessThan(0.5);
+      expect(m.conservation).toBeGreaterThan(0.5);
+    }
+    expect(distanceTo(estimateWind(track).direction, 0)).toBeLessThanOrEqual(8);
   });
 
   // Protocole 3 : courant traversier constant.

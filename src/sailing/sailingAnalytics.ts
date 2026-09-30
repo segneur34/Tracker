@@ -203,31 +203,48 @@ export const calculateWindStats = (
 
 export type ManeuverMetric = 'conservation' | 'relaunch' | 'headingChange' | 'distance' | 'windwardGain';
 
-export const MANEUVER_METRICS: { key: ManeuverMetric; label: string; hint: string }[] = [
+type ManeuverType = ManeuverLocation['type'];
+
+export const MANEUVER_METRICS: {
+  key: ManeuverMetric;
+  label: string;
+  hint: string;
+  /**
+   * Types de manœuvre dont la métrique a un podium. Une métrique qui décrit
+   * sans juger n'en a pas : le cap de sortie d'un empannage est un choix
+   * d'allure, et son podium tombait au hasard.
+   */
+  ranked: ManeuverType[];
+}[] = [
   {
     key: 'conservation',
     label: 'Conservation de vitesse',
-    hint: 'Vitesse minimale sur vitesse d\'entrée. Isole la technique de la force du vent.',
+    hint: 'Vitesse minimale sur vitesse d\'approche. Isole la technique de la force du vent.',
+    ranked: ['tack', 'jibe'],
   },
   {
     key: 'relaunch',
     label: 'Temps de relance',
-    hint: 'Du point le plus lent au retour à 90 % de la vitesse d\'entrée. Long : relance laborieuse en archimédien.',
+    hint: 'Du point le plus lent au retour à 90 % de la vitesse d\'approche. Long : relance laborieuse en archimédien. Sans retour dans la minute, la manœuvre est comptée à part.',
+    ranked: ['tack', 'jibe'],
   },
   {
     key: 'headingChange',
     label: 'Changement de cap',
-    hint: 'Entre les caps stabilisés avant et après. Un virement qui s\'ouvre à 120° a perdu du cap pour reprendre le vol.',
+    hint: 'Du cap d\'approche au cap de sortie. Un virement qui s\'ouvre à 120° a perdu du cap pour reprendre le vol. Pas de podium pour les empannages : leur cap de sortie est un choix d\'allure.',
+    ranked: ['tack'],
   },
   {
     key: 'distance',
     label: 'Distance de manœuvre',
-    hint: 'De l\'entrée du virage à la relance. Empreinte spatiale de la manœuvre.',
+    hint: 'Du début du virage à la relance. Empreinte spatiale de la manœuvre.',
+    ranked: ['tack', 'jibe'],
   },
   {
     key: 'windwardGain',
     label: 'Gain au vent',
-    hint: 'Du début du virage à la relance, mètres gagnés vers le vent (négatif : perdus sous le vent). Manœuvres réussies seulement.',
+    hint: 'Pendant le virage : mètres parcourus vers le vent au virement, sous le vent à l\'empannage. Manœuvres réussies seulement.',
+    ranked: ['tack', 'jibe'],
   },
 ];
 
@@ -244,9 +261,16 @@ export interface ManeuverTypeSummary {
   count: number;
   success: number;
   fail: number;
+  /**
+   * Manœuvres sans relance dans la minute : elles n'entrent ni dans la
+   * moyenne ni dans le podium du temps de relance, qui paraîtraient sinon
+   * meilleurs qu'ils ne sont sans que rien ne le dise.
+   */
+  withoutRelaunch: number;
   vminAvg: string;
   vminMax: string;
   averages: Record<ManeuverMetric, string>;
+  /** Podiums, vides pour une métrique qui n'en a pas pour ce type (`MANEUVER_METRICS[].ranked`). */
   tops: Record<ManeuverMetric, ManeuverTop[]>;
 }
 
@@ -264,7 +288,7 @@ const metricValue = (m: ManeuverLocation, metric: ManeuverMetric): number | null
     case 'headingChange':
       return m.headingChange;
     case 'distance':
-      return m.distanceM > 0 ? m.distanceM : null;
+      return m.distanceM !== null && m.distanceM > 0 ? m.distanceM : null;
     case 'windwardGain':
       return m.windwardGainM;
   }
@@ -297,9 +321,24 @@ const higherIsBetter: Record<ManeuverMetric, boolean> = {
   windwardGain: true,
 };
 
+/**
+ * Départage de deux manœuvres de même valeur. Sans lui, le tri stable mettait
+ * devant la plus ancienne, ce qui arrive souvent à 1 Hz, où les relances
+ * tombent sur des secondes entières. La meilleure conservation départage ; pour
+ * la conservation elle-même, la relance la plus courte, une manœuvre sans
+ * relance passant après.
+ */
+const tieBreak = (metric: ManeuverMetric, a: ManeuverLocation, b: ManeuverLocation): number => {
+  if (metric !== 'conservation') return b.conservation - a.conservation;
+  if (a.relaunchS === b.relaunchS) return 0;
+  if (a.relaunchS === null) return 1;
+  if (b.relaunchS === null) return -1;
+  return a.relaunchS - b.relaunchS;
+};
+
 const summarizeType = (
   locations: ManeuverLocation[],
-  type: 'tack' | 'jibe'
+  type: ManeuverType
 ): ManeuverTypeSummary | null => {
   const indexed = locations
     .map((m, index) => ({ m, index }))
@@ -310,7 +349,7 @@ const summarizeType = (
   const averages = {} as Record<ManeuverMetric, string>;
   const tops = {} as Record<ManeuverMetric, ManeuverTop[]>;
 
-  for (const { key } of MANEUVER_METRICS) {
+  for (const { key, ranked } of MANEUVER_METRICS) {
     const valued = indexed
       .map(({ m, index }) => ({ m, index, value: metricValue(m, key) }))
       .filter((e): e is { m: ManeuverLocation; index: number; value: number } => e.value !== null);
@@ -320,8 +359,12 @@ const summarizeType = (
         ? formatMetric(key, valued.reduce((a, e) => a + e.value, 0) / valued.length)
         : '-';
 
-    const sorted = [...valued].sort((a, b) =>
-      higherIsBetter[key] ? b.value - a.value : a.value - b.value
+    if (!ranked.includes(type)) {
+      tops[key] = [];
+      continue;
+    }
+    const sorted = [...valued].sort(
+      (a, b) => (higherIsBetter[key] ? b.value - a.value : a.value - b.value) || tieBreak(key, a.m, b.m)
     );
     tops[key] = sorted.slice(0, 3).map((e) => ({
       index: e.index,
@@ -336,6 +379,7 @@ const summarizeType = (
     count: indexed.length,
     success: indexed.filter(({ m }) => m.success).length,
     fail: indexed.filter(({ m }) => !m.success).length,
+    withoutRelaunch: indexed.filter(({ m }) => m.relaunchS === null).length,
     vminAvg: (vmins.reduce((a, b) => a + b, 0) / vmins.length).toFixed(1),
     vminMax: Math.max(...vmins).toFixed(1),
     averages,

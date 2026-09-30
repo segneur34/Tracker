@@ -162,3 +162,10 @@ export const formatClock = (ms: number): string => {
   const pad = (n: number): string => String(n).padStart(2, '0');
   return `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
 };
+
+/** Heure locale `hh:mm:ss` d'un instant, pour désigner un moment de la session. */
+export const formatTimeOfDay = (ms: number): string => {
+  const date = new Date(ms);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};

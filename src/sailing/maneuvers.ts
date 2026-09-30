@@ -1,3 +1,4 @@
+import { median } from '../core/speedFilter';
 import { knotsToMs } from '../core/units';
 import type { PointData } from '../utils/kinematics';
 import {
@@ -51,56 +52,83 @@ export interface ManeuverLocation {
   lat: number;
   lon: number;
   type: 'tack' | 'jibe';
+  /** Vrai si la vitesse minimale reste au seuil de réussite ou au-dessus. */
   success: boolean;
+  /**
+   * Vitesse minimale, en nœuds, du début de la rotation jusqu'au retour à
+   * 90 % de la vitesse d'approche, et au plus 10 s après la rotation : le
+   * creux d'un virement vient souvent une fois le nouveau cap pris.
+   */
   vmin: number;
   localWind: number;
+  /**
+   * Repère de la manœuvre, près du point le plus lent vu par la détection.
+   * Le classement y lit le vent : il reste donc celui de la détection, pour
+   * que ni le classement ni le vent ne dépendent de la mesure (§10, point 21).
+   */
   timeMs: number;
   trackIndex: number;
   /** Vrai si le vent local vient de caps stabilisés avant et après le virage. */
   stableHeadings: boolean;
+  /**
+   * Conservation et réussite telles que la détection les lit, pour la seule
+   * estimation du vent (`maneuverAgreement`, `windSamplesFrom`), réglée sur
+   * elles (§10, points 23 et 26). Les métriques affichées ne les remplacent
+   * pas : l'orientation du vent tient à un seuil de conservation de 50 %, et
+   * des virements de synthèse passés de 49 à 52 % par la mesure corrigée
+   * suffisaient à la faire tourner de 90° (§10, point 70).
+   */
+  windCriteria: { conservation: number; success: boolean };
 
-  /** Vitesse de croisière à l'entrée, en nœuds : moyenne du bord stabilisé avant, sinon vitesse au début du virage. */
+  /** Vitesse d'approche, en nœuds : médiane de la vitesse retenue de 12 s à 2 s avant la rotation. */
   entrySpeed: number;
   /**
    * Taux de conservation de la vitesse, de 0 à 1 : vitesse minimale sur
-   * vitesse d'entrée. Isole la qualité technique de la manœuvre de la force
+   * vitesse d'approche. Isole la qualité technique de la manœuvre de la force
    * du vent et de la vitesse de navigation.
    */
   conservation: number;
   /**
    * Temps de relance, en secondes : du point le plus lent au retour à 90 % de
-   * la vitesse d'entrée. `null` si la vitesse n'est pas revenue dans la
-   * minute, chute ou arrêt. Long, il signale une relance laborieuse en mode
-   * archimédien.
+   * la vitesse d'approche. `null` si la vitesse n'est pas revenue dans la
+   * minute : chute, arrêt, ou sortie sur une allure plus lente. Long, il
+   * signale une relance laborieuse en mode archimédien.
    */
   relaunchS: number | null;
   /**
-   * Changement de cap effectif, en degrés, entre les caps stabilisés avant et
-   * après. Un virement qui s'ouvre à 120° au lieu de 90° a perdu du cap pour
-   * reprendre le vol.
+   * Changement de cap, en degrés, du cap d'approche au cap de sortie. Un
+   * virement qui s'ouvre à 120° au lieu de 90° a perdu du cap pour reprendre
+   * le vol.
    */
   headingChange: number;
-  /** Distance parcourue de l'entrée du virage à la relance, en mètres. */
-  distanceM: number;
   /**
-   * Gain au vent, en mètres, sur la même portée que `distanceM` : chemin
-   * parcouru projeté sur l'axe du vent retenu, positif vers le vent, négatif
-   * sous le vent (le cas courant d'un empannage). `null` pour une manœuvre
-   * ratée : seul le gain des manœuvres réussies a un sens à comparer.
+   * Distance parcourue du début de la rotation à la relance, ou à la fin de
+   * la rotation si elle vient après, en mètres. `null` sans relance : une
+   * manœuvre jamais relancée n'a pas de fin, et ne doit pas passer pour courte.
+   */
+  distanceM: number | null;
+  /**
+   * Gain au vent, en mètres, pendant la seule rotation : chemin parcouru vers
+   * le vent retenu pour un virement, à l'opposé du vent pour un empannage.
+   * Positif quand la manœuvre avance dans son sens, négatif quand elle recule.
+   * `null` pour une manœuvre ratée : seul le gain des manœuvres réussies se
+   * compare.
    */
   windwardGainM: number | null;
-  /** Indices de trace de l'entrée et de la sortie (relance, sinon fin du virage). */
+  /** Indice du point le plus lent, où se lit `vmin` et d'où part la relance. */
+  apexIndex: number;
+  /** Indices de trace du début de la rotation et de la sortie (relance, sinon fin de la rotation). */
   entryIndex: number;
   exitIndex: number;
   /**
-   * Caps instantanés au début et à la fin de la rotation. Bruités, donc
+   * Caps instantanés au début et à la fin du virage détecté. Bruités, donc
    * impropres à mesurer un angle fin, mais définis pour toutes les manœuvres,
    * y compris celles sans cap stabilisé : ils servent à juger la symétrie du
    * virage, c'est-à-dire la confiance à accorder à sa mesure du vent.
    */
   entryHeading: number;
   exitHeading: number;
-  /** Tracé de l'entrée à la sortie, pour la carte. */
+  /** Tracé du début de la rotation à la sortie, pour la carte. */
   path: [number, number][];
 }
 
@@ -128,8 +156,6 @@ export interface ManeuverStats {
   jibeSuccess: number;
   jibeFail: number;
   rejected: ManeuverRejections;
-  tackVmins: number[];
-  jibeVmins: number[];
   locations: ManeuverLocation[];
 }
 
@@ -178,7 +204,7 @@ const MANEUVER_WEIGHT = 2;
 /** Manœuvres dont le vent local est exploitable : caps stabilisés de part et d'autre. */
 export const windSamplesFrom = (stats: ManeuverStats): ManeuverLocation[] =>
   stats.locations.filter(
-    (m) => m.stableHeadings && (m.type === 'tack' || (m.type === 'jibe' && m.success))
+    (m) => m.stableHeadings && (m.type === 'tack' || (m.type === 'jibe' && m.windCriteria.success))
   );
 
 /**
@@ -190,11 +216,11 @@ export const windSamplesFrom = (stats: ManeuverStats): ManeuverLocation[] =>
  * de 90°, les virages traversent les deux axes et ne sont plus classés du
  * tout. L'accord vaut donc 1 pour le bon vent et tend vers 0 pour les autres.
  *
- * Le vol perdu se juge sur la **conservation**, la vitesse minimale rapportée
- * à la vitesse d'entrée, et non sur une vitesse absolue. Un seuil en nœuds est
- * une valeur de wingfoil : sur une session de planche lente, toute manœuvre
- * passe en dessous, tout est lu comme un virement et l'estimation part à
- * l'opposé. Un rapport, lui, vaut la même chose à toutes les échelles — c'est
+ * Le vol perdu se juge sur la **conservation** lue par la détection
+ * (`windCriteria`), la vitesse minimale rapportée à la vitesse d'entrée, et non
+ * sur une vitesse absolue. Un seuil en nœuds est une valeur de wingfoil : sur
+ * une session de planche lente, toute manœuvre passe en dessous, tout est lu
+ * comme un virement et l'estimation part à l'opposé. Un rapport, lui, vaut la même chose à toutes les échelles — c'est
  * ce qui rend ce critère juste du bateau au kite.
  */
 export const maneuverAgreement = (
@@ -204,7 +230,7 @@ export const maneuverAgreement = (
   if (all.length === 0) return { agreement: 0, count: 0, consistent: 0, inconsistent: 0 };
   let consistent = 0;
   for (const m of all) {
-    const lostFlight = m.conservation < ORIENTATION_MAX_CONSERVATION;
+    const lostFlight = m.windCriteria.conservation < ORIENTATION_MAX_CONSERVATION;
     if ((m.type === 'tack') === lostFlight) consistent++;
   }
   return {
@@ -478,14 +504,68 @@ const stableSegment = (
   return { heading: circularMean(bearings).mean, meanSpeed: speedSum / bearings.length };
 };
 
+// ---------------------------------------------------------------------------
+// Mesure d'une manœuvre classée
+// ---------------------------------------------------------------------------
+
 /** Délai maximal, en secondes, pour retrouver la vitesse après le point le plus lent. */
 const RELAUNCH_MAX_S = 60;
-/** Part de la vitesse d'entrée à retrouver pour considérer la relance acquise. */
+/** Part de la vitesse d'approche à retrouver pour considérer la relance acquise. */
 const RELAUNCH_RATIO = 0.9;
+/** Durée, en secondes, avant le déclenchement de la détection, sur laquelle se lit le cap d'approche. */
+const APPROACH_HEADING_S = 4;
+/**
+ * Fenêtre, en secondes après la fin du virage détecté, sur laquelle se lit le
+ * cap de sortie. Elle commence un peu après : la détection arrête le virage au
+ * premier pas de cap hésitant, parfois avant que le nouveau cap soit pris.
+ */
+const EXIT_HEADING_FROM_S = 2;
+const EXIT_HEADING_TO_S = 8;
+/**
+ * Écart au cap d'approche, puis au cap de sortie, qui borne la rotation : le
+ * plus grand de 10° et d'un dixième du virage. Plus serré, le bruit du cap
+ * suffirait à ouvrir la rotation avant l'heure.
+ */
+const ROTATION_EDGE_MIN_DEG = 10;
+const ROTATION_EDGE_SHARE = 0.1;
+/** Fenêtre, en secondes avant la rotation, sur laquelle se lit la vitesse d'approche. */
+const APPROACH_SPEED_FROM_S = 12;
+const APPROACH_SPEED_TO_S = 2;
+/** Recherche du point le plus lent au-delà de la rotation, en secondes. */
+const APEX_SEARCH_AFTER_S = 10;
+
+/** Virage détecté et classé, tel que la mesure le reçoit. */
+export interface DetectedTurn {
+  /** Point où la détection s'est déclenchée, quelques secondes avant le virage. */
+  triggerIndex: number;
+  /** Dernier point où le cap tournait encore franchement dans le sens du virage. */
+  endIndex: number;
+  /** Sens du virage : 1 à droite, −1 à gauche. */
+  turnSign: number;
+  type: 'tack' | 'jibe';
+}
+
+/** Mesures d'une manœuvre, définies comme les champs de même nom de `ManeuverLocation`. */
+export interface ManeuverMeasure {
+  /** Dernier point encore au cap d'approche : la rotation part de là. */
+  rotationStartIndex: number;
+  /** Premier point au cap de sortie : la rotation s'achève là. */
+  rotationEndIndex: number;
+  apexIndex: number;
+  exitIndex: number;
+  entrySpeed: number;
+  vmin: number;
+  conservation: number;
+  relaunchS: number | null;
+  headingChange: number;
+  distanceM: number | null;
+  /** Gain au vent pendant la rotation, en mètres, que la manœuvre soit réussie ou non. */
+  gainM: number;
+}
 
 /**
  * Premier point, après le plus lent, où la vitesse retrouve 90 % de la
- * vitesse d'entrée. `null` si cela n'arrive pas dans le délai.
+ * vitesse d'approche. `null` si cela n'arrive pas dans le délai.
  */
 const findRelaunch = (points: PointData[], apexIndex: number, entrySpeed: number): number | null => {
   const target = RELAUNCH_RATIO * entrySpeed;
@@ -507,18 +587,163 @@ const distanceBetween = (points: PointData[], from: number, to: number): number 
 };
 
 /**
- * Chemin parcouru projeté sur la direction d'où vient le vent, en mètres :
- * intégrale de la vitesse retenue fois le cosinus de l'écart entre la route
- * et le vent, comme `distanceBetween`. Un virage compressé dans un seul
- * intervalle compte par la route de cet intervalle, sa corde.
+ * Chemin parcouru projeté sur une direction entre deux instants, en mètres :
+ * intégrale de la vitesse retenue fois le cosinus de l'écart entre la route et
+ * cette direction, comme `distanceBetween`, les intervalles au bord n'étant
+ * comptés que pour leur part. Un virage compressé dans un seul intervalle
+ * compte par la route de cet intervalle, sa corde. Les intervalles lus vont du
+ * point `from` au point `to`, qui doivent encadrer les deux instants.
  */
-const windwardDistance = (points: PointData[], from: number, to: number, windDeg: number): number => {
+const distanceAlongBetween = (
+  points: PointData[],
+  from: number,
+  to: number,
+  fromMs: number,
+  toMs: number,
+  directionDeg: number
+): number => {
   let meters = 0;
-  for (let k = from + 1; k <= to; k++) {
-    const dt = (points[k].timeMs - points[k - 1].timeMs) / 1000;
-    if (dt > 0) meters += knotsToMs(points[k].smoothedSpeed) * dt * Math.cos((angleDiff(points[k].bearing, windDeg) * Math.PI) / 180);
+  for (let k = Math.max(1, from); k <= to; k++) {
+    const overlapS = (Math.min(points[k].timeMs, toMs) - Math.max(points[k - 1].timeMs, fromMs)) / 1000;
+    if (overlapS > 0) meters += knotsToMs(points[k].smoothedSpeed) * overlapS * Math.cos((angleDiff(points[k].bearing, directionDeg) * Math.PI) / 180);
   }
   return meters;
+};
+
+/**
+ * Instant où l'écart de cap franchit `edge`, entre l'intervalle qui arrive au
+ * point `k` et celui qui arrive au point `k + 1`. Le cap d'un intervalle est
+ * celui de sa corde : il vaut au milieu de l'intervalle, et c'est là qu'on le
+ * place. Sans cela, une borne tombait à 1 Hz sur la seconde entière d'après,
+ * et le gain d'un virage de 5 s variait de près de 20 % entre 1 Hz et 5 Hz.
+ */
+const crossingMs = (points: PointData[], k: number, fromDeg: number, toDeg: number, edge: number): number => {
+  const fromMid = k > 0 ? (points[k - 1].timeMs + points[k].timeMs) / 2 : points[k].timeMs;
+  const toMid = (points[k].timeMs + points[k + 1].timeMs) / 2;
+  const ratio = toDeg === fromDeg ? 0 : (edge - fromDeg) / (toDeg - fromDeg);
+  return fromMid + Math.min(1, Math.max(0, ratio)) * (toMid - fromMid);
+};
+
+/**
+ * Mesure une manœuvre que la détection a trouvée et classée.
+ *
+ * La détection se déclenche plusieurs secondes avant le virage et l'arrête au
+ * premier pas de cap hésitant : ses bornes suffisent à classer, pas à mesurer.
+ * Prises telles quelles, elles faisaient commencer la manœuvre en pleine
+ * approche (5 s trop tôt en médiane sur une trace bruitée) et la finissaient
+ * au point le plus lent, parfois au milieu du virage. La rotation est donc
+ * rebornée sur le cap lui-même : elle commence quand le cap quitte celui
+ * d'approche et s'achève quand il atteint celui de sortie, deux caps lus en
+ * médiane, que le bruit ne déplace pas.
+ *
+ * Tout le reste en découle : la vitesse d'approche, lue avant la rotation et
+ * non à son premier point, où le rider a souvent déjà ralenti ; le point le
+ * plus lent, cherché sur toute la rotation et au-delà ; la relance, la
+ * distance et le gain au vent.
+ */
+export const measureManeuver = (points: PointData[], turn: DetectedTurn, windDeg: number): ManeuverMeasure => {
+  const { triggerIndex, endIndex, turnSign, type } = turn;
+  const triggerMs = points[triggerIndex].timeMs;
+  const endMs = points[endIndex].timeMs;
+
+  // Cap déroulé, du cap d'approche au cap de sortie, pas à pas par l'arc court.
+  // Forcer le sens du virage sur un pas voisin de 180° n'aide pas : un virage vu
+  // en un seul pas tient déjà son sens de ce pas, et sur une planche arrêtée,
+  // où le cap saute d'un bord à l'autre, cela empilait les tours (385°).
+  let first = triggerIndex;
+  while (first > 0 && points[first - 1].timeMs >= triggerMs - APPROACH_HEADING_S * 1000) first--;
+  let last = endIndex;
+  while (last + 1 < points.length && points[last + 1].timeMs <= endMs + EXIT_HEADING_TO_S * 1000) last++;
+  const unwrapped = [points[first].bearing];
+  for (let k = first + 1; k <= last; k++) {
+    unwrapped.push(unwrapped[unwrapped.length - 1] + angleDiff(points[k].bearing, points[k - 1].bearing));
+  }
+  const headingAt = (k: number): number => unwrapped[k - first];
+
+  const approachHeadings: number[] = [];
+  for (let k = first; k <= triggerIndex; k++) approachHeadings.push(headingAt(k));
+  const exitHeadings: number[] = [];
+  for (let k = endIndex; k <= last; k++) {
+    if (points[k].timeMs >= endMs + EXIT_HEADING_FROM_S * 1000) exitHeadings.push(headingAt(k));
+  }
+  const approachHeading = median(approachHeadings);
+  const exitHeading = exitHeadings.length > 0 ? median(exitHeadings) : headingAt(endIndex);
+  /** Changement de cap compté dans le sens du virage. */
+  const turned = turnSign * (exitHeading - approachHeading);
+
+  // Bornes de la rotation, cherchées de part et d'autre du milieu du virage.
+  // Des caps d'approche et de sortie trop proches, ou qui contredisent le sens
+  // du virage, ne bornent rien : on garde alors celles de la détection.
+  let rotationStart = triggerIndex;
+  let rotationEnd = endIndex;
+  let rotationStartMs = points[rotationStart].timeMs;
+  let rotationEndMs = points[rotationEnd].timeMs;
+  if (turned > 2 * ROTATION_EDGE_MIN_DEG) {
+    const edge = Math.max(ROTATION_EDGE_MIN_DEG, ROTATION_EDGE_SHARE * turned);
+    /** Cap tourné depuis le cap d'approche, dans le sens du virage. */
+    const turnedAt = (k: number): number => turnSign * (headingAt(k) - approachHeading);
+    let middle = -1;
+    for (let k = triggerIndex; k <= last && middle < 0; k++) {
+      if (turnedAt(k) >= turned / 2) middle = k;
+    }
+    if (middle > first) {
+      let start = first;
+      for (let k = middle; k >= first; k--) {
+        if (turnedAt(k) <= edge) { start = k; break; }
+      }
+      let end = last;
+      for (let k = middle; k <= last; k++) {
+        if (turned - turnedAt(k) <= edge) { end = k; break; }
+      }
+      if (end > start && start < middle) {
+        rotationStart = start;
+        rotationEnd = end;
+        rotationStartMs = crossingMs(points, start, turnedAt(start), turnedAt(start + 1), edge);
+        rotationEndMs = crossingMs(points, end - 1, turnedAt(end - 1), turnedAt(end), turned - edge);
+      }
+    }
+  }
+
+  // Vitesse d'approche, lue avant la rotation : à son premier point, le rider
+  // a souvent déjà ralenti, et la manœuvre passait pour parfaite.
+  const startMs = points[rotationStart].timeMs;
+  const approachSpeeds: number[] = [];
+  for (let k = rotationStart - 1; k >= 0 && points[k].timeMs >= startMs - APPROACH_SPEED_FROM_S * 1000; k--) {
+    if (points[k].timeMs <= startMs - APPROACH_SPEED_TO_S * 1000) approachSpeeds.push(points[k].smoothedSpeed);
+  }
+  const entrySpeed = approachSpeeds.length > 0 ? median(approachSpeeds) : points[rotationStart].smoothedSpeed;
+
+  // Point le plus lent : sur toute la rotation, puis au-delà tant que la
+  // vitesse n'est pas revenue, le creux d'un virement venant souvent une fois
+  // le nouveau cap pris.
+  const recoveredSpeed = RELAUNCH_RATIO * entrySpeed;
+  const apexSearchEndMs = points[rotationEnd].timeMs + APEX_SEARCH_AFTER_S * 1000;
+  let apexIndex = rotationStart;
+  for (let k = rotationStart + 1; k < points.length && points[k].timeMs <= apexSearchEndMs; k++) {
+    if (k > rotationEnd && points[k].smoothedSpeed >= recoveredSpeed) break;
+    if (points[k].smoothedSpeed < points[apexIndex].smoothedSpeed) apexIndex = k;
+  }
+  const vmin = points[apexIndex].smoothedSpeed;
+
+  const relaunchIndex = entrySpeed > 0 ? findRelaunch(points, apexIndex, entrySpeed) : null;
+  const exitIndex = relaunchIndex === null ? rotationEnd : Math.max(rotationEnd, relaunchIndex);
+  // Vers le vent pour un virement, à l'opposé pour un empannage : chacun est
+  // compté dans le sens où il fait avancer.
+  const gainDirection = type === 'tack' ? windDeg : windDeg + 180;
+
+  return {
+    rotationStartIndex: rotationStart,
+    rotationEndIndex: rotationEnd,
+    apexIndex,
+    exitIndex,
+    entrySpeed,
+    vmin,
+    conservation: entrySpeed > 0 ? Math.min(1, vmin / entrySpeed) : 0,
+    relaunchS: relaunchIndex === null ? null : (points[relaunchIndex].timeMs - points[apexIndex].timeMs) / 1000,
+    headingChange: Math.abs(exitHeading - approachHeading),
+    distanceM: relaunchIndex === null ? null : distanceBetween(points, rotationStart, exitIndex),
+    gainM: distanceAlongBetween(points, rotationStart, rotationEnd, rotationStartMs, rotationEndMs, gainDirection),
+  };
 };
 
 /**
@@ -550,8 +775,6 @@ export const analyzeManeuvers = (
     jibeSuccess: 0,
     jibeFail: 0,
     rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0 },
-    tackVmins: [],
-    jibeVmins: [],
     locations: [],
   };
 
@@ -576,8 +799,14 @@ export const analyzeManeuvers = (
 
     let cumulativeTurn = 0;
     let totalRotation = 0;
-    let minSpd = 999;
-    let apexIndex = i;
+    // Point le plus lent vu par la détection. Il date la manœuvre, à l'instant
+    // où le classement lit le vent, et nourrit la lecture qu'en fait
+    // l'estimation du vent (`windCriteria`). Il omet le dernier point de la
+    // fenêtre initiale : il reste tel quel, car le déplacer changerait le
+    // classement et le vent (§10, points 21 et 70). La vitesse minimale
+    // affichée est celle de `measureManeuver`, sur toute la rotation.
+    let anchorSpeed = Infinity;
+    let anchorIndex = i;
 
     let j = i;
     while (
@@ -592,9 +821,9 @@ export const analyzeManeuvers = (
       const step = angleDiff(points[j + 1].bearing, points[j].bearing);
       cumulativeTurn += step;
       totalRotation += Math.abs(step);
-      if (points[j].smoothedSpeed < minSpd) {
-        minSpd = points[j].smoothedSpeed;
-        apexIndex = j;
+      if (points[j].smoothedSpeed < anchorSpeed) {
+        anchorSpeed = points[j].smoothedSpeed;
+        anchorIndex = j;
       }
       j++;
     }
@@ -633,9 +862,9 @@ export const analyzeManeuvers = (
         if (Math.sign(step) !== turnSign || Math.abs(step) < 2) break;
         cumulativeTurn += step;
         j++;
-        if (points[j].smoothedSpeed < minSpd) {
-          minSpd = points[j].smoothedSpeed;
-          apexIndex = j;
+        if (points[j].smoothedSpeed < anchorSpeed) {
+          anchorSpeed = points[j].smoothedSpeed;
+          anchorIndex = j;
         }
       }
 
@@ -649,8 +878,6 @@ export const analyzeManeuvers = (
         }
       }
 
-      const success = minSpd >= successThresholdKn;
-
       const before = stableSegment(points, turnStart, -1);
       const after = stableSegment(points, j, 1);
       const stableHeadings = before !== null && after !== null;
@@ -660,58 +887,66 @@ export const analyzeManeuvers = (
       // opposé. Le sens compte : sur un virage de 180°, l'arc court est
       // indéfini et seule la direction de rotation départage.
       let bisector = normalizeAngle(points[i].bearing + cumulativeTurn / 2);
-      let headingChange = Math.abs(cumulativeTurn);
       if (before && after) {
         let delta = angleDiff(after.heading, before.heading);
         if (Math.sign(delta) !== turnSign && Math.abs(delta) > 150) delta += turnSign * 360;
         // Des caps stabilisés qui contredisent le sens du virage ne sont pas
         // exploitables : on garde alors la bissectrice du virage brut.
-        if (Math.sign(delta) === turnSign) {
-          bisector = normalizeAngle(before.heading + delta / 2);
-          headingChange = Math.abs(delta);
-        }
+        if (Math.sign(delta) === turnSign) bisector = normalizeAngle(before.heading + delta / 2);
       }
 
-      const timeMs = points[apexIndex].timeMs;
+      const timeMs = points[anchorIndex].timeMs;
       const turnEndMs = points[j].timeMs;
       const windDeg = windAt(wind, timeMs);
       const type = classifyTurn(bisector, cumulativeTurn, windDeg);
 
       if (type !== null) {
-        // Métriques de qualité de la manœuvre.
-        const entrySpeed = before ? before.meanSpeed : points[turnStart].smoothedSpeed;
-        const relaunchIndex = entrySpeed > 0 ? findRelaunch(points, apexIndex, entrySpeed) : null;
-        const exitIndex = relaunchIndex ?? j;
+        // Métriques de qualité, sur des bornes propres à la mesure : celles de
+        // la détection ne servent qu'à trouver et classer le virage.
+        // Le gain se projette au vent retenu, et non à la bissectrice de la
+        // manœuvre même, qui rendrait la mesure circulaire.
+        const measure = measureManeuver(points, { triggerIndex: i, endIndex: j, turnSign, type }, windDeg);
+        const success = measure.vmin >= successThresholdKn;
+        // Lecture de la détection, pour l'estimation du vent : vitesse du bord
+        // stabilisé avant, sinon celle du début du virage détecté, et point le
+        // plus lent de la détection.
+        const windEntrySpeed = before ? before.meanSpeed : points[turnStart].smoothedSpeed;
 
         const location: ManeuverLocation = {
-          lat: points[apexIndex].lat,
-          lon: points[apexIndex].lon,
+          lat: points[anchorIndex].lat,
+          lon: points[anchorIndex].lon,
           type,
           success,
-          vmin: minSpd,
+          vmin: measure.vmin,
           // L'empannage se lit à l'opposé de la bissectrice : le vent y vient de l'arrière.
           localWind: Math.round(normalizeAngle(type === 'tack' ? bisector : bisector + 180)),
           timeMs,
-          trackIndex: apexIndex,
+          trackIndex: anchorIndex,
           stableHeadings,
-          entrySpeed,
-          conservation: entrySpeed > 0 ? Math.min(1, minSpd / entrySpeed) : 0,
-          relaunchS: relaunchIndex === null ? null : (points[relaunchIndex].timeMs - timeMs) / 1000,
-          headingChange,
-          distanceM: distanceBetween(points, turnStart, exitIndex),
-          // Au vent retenu, et non à la bissectrice de la manœuvre même, qui rendrait la mesure circulaire.
-          windwardGainM: success ? windwardDistance(points, turnStart, exitIndex, windDeg) : null,
-          entryIndex: turnStart,
-          exitIndex,
+          windCriteria: {
+            conservation: windEntrySpeed > 0 ? Math.min(1, anchorSpeed / windEntrySpeed) : 0,
+            success: anchorSpeed >= successThresholdKn,
+          },
+          entrySpeed: measure.entrySpeed,
+          conservation: measure.conservation,
+          relaunchS: measure.relaunchS,
+          headingChange: measure.headingChange,
+          distanceM: measure.distanceM,
+          windwardGainM: success ? measure.gainM : null,
+          apexIndex: measure.apexIndex,
+          entryIndex: measure.rotationStartIndex,
+          exitIndex: measure.exitIndex,
           entryHeading: points[turnStart].bearing,
           exitHeading: points[j].bearing,
-          path: points.slice(turnStart, exitIndex + 1).map((p) => [p.lat, p.lon] as [number, number]),
+          path: points
+            .slice(measure.rotationStartIndex, measure.exitIndex + 1)
+            .map((p) => [p.lat, p.lon] as [number, number]),
         };
 
         if (type === 'tack') {
-          if (success) { stats.tackSuccess++; stats.tackVmins.push(minSpd); } else stats.tackFail++;
+          if (success) stats.tackSuccess++; else stats.tackFail++;
         } else {
-          if (success) { stats.jibeSuccess++; stats.jibeVmins.push(minSpd); } else stats.jibeFail++;
+          if (success) stats.jibeSuccess++; else stats.jibeFail++;
         }
         stats.locations.push(location);
         ignoreUntilMs = turnEndMs + cooldownMs;

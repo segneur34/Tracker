@@ -101,7 +101,12 @@ Ordre et orchestration seulement. Les seuils, fenêtres et formules sont nommés
    - d'abord avec le vent global ;
    - puis avec le vent local (`buildWindTimeline`), interpolé entre les manœuvres à caps stabilisés de la première passe.
 
-   Les virages écartés sont comptés par motif (`ManeuverRejections`), sans jamais poser de temps mort. `summarizeManeuvers` en tire le tableau. Le gain au vent d'une manœuvre réussie est le chemin de l'entrée à la relance projeté sur le vent retenu, intégré comme la distance (point 69).
+   Les virages écartés sont comptés par motif (`ManeuverRejections`), sans jamais poser de temps mort. Détection et classement ne changent pas ; chaque virage classé est ensuite mesuré à part par `measureManeuver` (point 70) :
+   - la rotation est bornée sur le cap déroulé, entre le cap d'approche et le cap de sortie ;
+   - la vitesse d'approche est la médiane de 12 s à 2 s avant la rotation ; le creux se cherche de son début jusqu'à 10 s après sa fin ; conservation, réussite et relance en découlent ;
+   - le gain au vent d'une manœuvre réussie est le chemin de la seule rotation, projeté sur le vent retenu : vers le vent au virement, sous le vent à l'empannage.
+
+   L'estimation du vent (`windSamplesFrom`, `maneuverAgreement`) lit encore la conservation et la réussite de la détection (`windCriteria`), et non celles de la mesure. `summarizeManeuvers` en tire le tableau : un podium par métrique et par type, sauf le changement de cap des empannages ; égalités départagées par la conservation ; manœuvres sans relance comptées à part.
 7. `calculateWindStats` (`sailing/sailingAnalytics.ts`) : statistiques et courbe du vent sur toutes les manœuvres classées (règle 7). Elles sont pondérées par la symétrie du virage, jugée contre le vent global (§10, point 24). Elle fournit aussi `windAt(t)`.
 8. `calculateVmgStats` : VMG = vitesse × cos(cap − vent local, sinon vent global).
    - Fenêtres de 10 s.
@@ -216,7 +221,7 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 
 ## 8. Tests
 
-Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 432 au 28 septembre 2026.
+Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 444 au 30 septembre 2026.
 
 Un calcul a son `*.test.ts` à côté de lui, sauf :
 - `core/sessionStats` et `core/speedGradient`, couverts par d'autres fichiers de test (`topSegments`, `runningAnalytics`, `sailingConfig`) ;
@@ -225,7 +230,8 @@ Un calcul a son `*.test.ts` à côté de lui, sauf :
 
 Deux familles de tests méritent d'être connues :
 - l'invariance 1 Hz / 5 Hz : filtres, allure, tops, manœuvres, résumé ;
-- les protocoles synthétiques du vent de `sailing/maneuvers.test.ts` : rider asymétrique, session sans largue, courant traversier, bascule de 60°, support lent, enregistrement économique.
+- les protocoles synthétiques du vent de `sailing/maneuvers.test.ts` : rider asymétrique, session sans largue, courant traversier, bascule de 60°, support lent, enregistrement économique ;
+- la mesure des manœuvres (`measureManeuver`), sur `buildNoisySession` : positions intégrées, bruit GPS, de cap et de Doppler à graine fixe, passage par `computeKinematics`.
 
 Générateurs : `buildEastwardTrack` (kinematics), `buildTrack` (plusieurs fichiers), `realisticPolar` (wind) et, dans `maneuvers.test.ts`, `buildLegSession`, avec ses allures, son courant et sa polaire optionnels (`slowPolar` : celle du wingfoil divisée par 2,5).
 
@@ -278,6 +284,11 @@ Déplacé dans `docs/HISTORIQUE.md` le 23 septembre 2026, numérotation inchang�
   - ou assumer que le fichier ne le dit pas, et l'afficher.
 
   À valider avec le souvenir de l'utilisateur.
+- **Manœuvres, suites de l'audit du point 70** :
+  - **5 Hz bruité** : la cohérence (somme des pas) et les caps stabilisés (3°/s d'un point au suivant) dépendent de la cadence. Avec un bruit réaliste, aucune manœuvre n'est détectée à 5 Hz (toutes « incohérentes ») et aucun cap n'est stabilisé. Le test 1 Hz / 5 Hz passe parce que ses traces sont sans bruit. Le corriger touche détection et classement : lot à part (point 21).
+  - **Orientation fragile** : le vent estimé tient aux lectures de la détection (`windCriteria`, qui omet le dernier point de sa fenêtre). Les remplacer par la mesure corrigée a fait tourner le vent du banc de 90°. Toute retouche de la détection doit refaire ce relevé.
+  - **Filtre médian de 3 s** : il remonte les creux en V, conservation surestimée de 0,05 à 0,1. Prendre la vitesse non filtrée pour le creux est une décision à part.
+  - **Relance après changement d'allure** : la cible reste 90 % de la vitesse d'approche. Ressortir au près après une approche au largue peut ne jamais l'atteindre ; ces manœuvres sont comptées « sans relance ».
 - **Vent sur trace lente et peu échantillonnée** : la polaire annonce une confiance élevée sur une direction fausse de 180° (point 27). L'utilisateur corrige par « Inverser ». La confiance mériterait d'être rabattue quand la couverture polaire est maigre.
 
 ## 12. Cible mobile (Capacitor)
@@ -297,7 +308,7 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
   - accueil (point 53) ;
   - enregistrement en direct et bords (points 50, 53, 62) ;
   - APK des testeurs et `docs/INSTALLATION.md` (points 55, 62).
-- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69).
+- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70).
 - **Phase 2, interface mobile** : trois passes faites (points 47 à 49, 52, 56 à 58, 69 ; patron dans `docs/MISE_EN_PAGE.md`). Restent :
   - toucher au lieu du survol, dans les graphes ;
   - `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz). Les regrouper par couleur toucherait à « pas de paliers » : à redemander ;

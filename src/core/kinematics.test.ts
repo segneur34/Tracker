@@ -87,11 +87,13 @@ describe('computeKinematics', () => {
     expect(track[1].timeMs - track[0].timeMs).toBe(1000);
   });
 
-  it('prête au premier point la vitesse du second, et un cap nul', () => {
-    // Un zéro artificiel au départ passerait pour un démarrage aberrant.
+  it('prête au premier point la vitesse et le cap du second', () => {
+    // Un zéro artificiel au départ passerait pour un démarrage aberrant, et un
+    // cap nul pour un virage de 90° sur cette trace qui part vers l'est.
     const track = computeKinematics(buildEastwardTrack(5, 10, 1));
     expect(track[0].speedMs).toBeCloseTo(track[1].speedMs, 9);
-    expect(track[0].bearing).toBe(0);
+    expect(track[0].bearing).toBeCloseTo(track[1].bearing, 9);
+    expect(track[0].bearing).toBeCloseTo(90, 1);
   });
 
   it('oriente une trace vers l\'est à environ 90°', () => {

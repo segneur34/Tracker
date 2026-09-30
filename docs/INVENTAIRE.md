@@ -29,7 +29,7 @@ Une ligne par fichier : son rôle et ses points d'entrée principaux. Les signat
 
 - `sailingConfig.ts` : toutes les constantes de la voile, `sessionManeuverThresholds`, `suggestActiveThresholdKn`, `suggestSpeedRangeMs` (§10, point 29).
 - `wind.ts` : statistiques circulaires, interpolation des directions, polaire et centre de l'angle mort, `observeTurns` (orientation), `estimateWindPolar`.
-- `maneuvers.ts` : `analyzeManeuvers` (détection, classement, métriques), `estimateWind` (polaire + manœuvres), `selectWindCandidate`, `windSamplesFrom`.
+- `maneuvers.ts` : `analyzeManeuvers` (détection, classement), `measureManeuver` (métriques affichées), `estimateWind` (polaire + manœuvres), `selectWindCandidate`, `windSamplesFrom`.
 - `sailingAnalytics.ts` : `calculateWindStats` (courbe et stats du vent, pondération par symétrie), `summarizeManeuvers`, `MANEUVER_METRICS`, `calculateVmgStats`.
 - `sailingStats.ts` : `buildSailingSessionStats` (base + tops voile).
 - `sessionNotes.ts` : forme des notes (`SailingSessionNotes`), niveaux de vent, plan d'eau, appréciation.

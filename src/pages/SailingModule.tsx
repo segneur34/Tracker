@@ -22,7 +22,7 @@ import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import type { TopSegment } from '../core/types';
 import type { LibrarySession } from '../library/record';
 import {
-  SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatSpeed, fromDisplaySpeed, knotsToDisplay, knotsToMs, msToKnots, toDisplaySpeed,
+  SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatSpeed, formatTimeOfDay, fromDisplaySpeed, knotsToDisplay, knotsToMs, msToKnots, toDisplaySpeed,
 } from '../core/units';
 import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
 import { MANEUVER_METRICS, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
@@ -315,7 +315,7 @@ function SailingModule() {
               key={`maneuver-top-${selectedManeuverTop}-${idx}`}
               positions={top.path}
               pathOptions={{ color: highlightColor, weight: 10, opacity: 0.85 }}>
-              <Popup>{idx + 1}{idx === 0 ? 'er' : 'e'} : {top.label}</Popup>
+              <Popup>{idx + 1}{idx === 0 ? 'er' : 'e'} · {formatTimeOfDay(top.timeMs)} · {top.label}</Popup>
             </Polyline>
           );
         })}
@@ -520,12 +520,22 @@ function SailingModule() {
                     const key = `${type}:${metric.key}`;
                     const active = selectedManeuverTop === key;
                     const tops = summary.tops[metric.key];
+                    const ranked = metric.ranked.includes(type);
                     return (
                       <tr key={metric.key} title={metric.hint} style={{ borderBottom: '1px solid var(--line-soft)', backgroundColor: active ? 'var(--voile-soft)' : 'transparent' }}>
                         <td style={{ padding: '4px', textAlign: 'left' }}>{metric.label}</td>
-                        <td style={{ padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{summary.averages[metric.key]}</td>
+                        <td style={{ padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>
+                          {summary.averages[metric.key]}
+                          {metric.key === 'relaunch' && summary.withoutRelaunch > 0 && (
+                            <span style={{ display: 'block', fontWeight: 'normal', color: 'var(--muted)', fontSize: '0.85em' }}>
+                              {summary.withoutRelaunch} sans relance
+                            </span>
+                          )}
+                        </td>
                         {[0, 1, 2].map((rank) => (
-                          <td key={rank} style={{ padding: '4px', textAlign: 'center' }}>{tops[rank]?.label ?? '-'}</td>
+                          <td key={rank} title={tops[rank] ? formatTimeOfDay(tops[rank].timeMs) : undefined} style={{ padding: '4px', textAlign: 'center' }}>
+                            {ranked ? tops[rank]?.label ?? '-' : '—'}
+                          </td>
                         ))}
                         <td style={{ padding: '2px 4px', textAlign: 'right' }}>
                           <button
@@ -547,7 +557,7 @@ function SailingModule() {
       )}
       {showManeuverDetails && (
         <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '8px' }}>
-          Survolez une ligne pour la définition. Le podium retient la meilleure valeur : conservation la plus haute, relance la plus courte, cap et distance les plus faibles, gain au vent le plus grand.
+          Survolez une ligne pour la définition, une case du podium pour l'heure de la manœuvre. Le podium retient la meilleure valeur : conservation la plus haute, relance la plus courte, cap (virements seulement) et distance les plus faibles, gain au vent le plus grand ; à égalité, la meilleure conservation.
         </div>
       )}
     </ResizablePanel>

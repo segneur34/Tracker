@@ -176,6 +176,12 @@ export const computeKinematics = (
   // pour une aberration : on lui prête la vitesse du second point.
   if (!useDeviceSpeed && rawSpeeds.length > 1) rawSpeeds[0] = rawSpeeds[1];
 
+  // Le premier point n'a pas de cap propre non plus. Un nord arbitraire
+  // ferait, sur une trace qui démarre en route, un virage de premier point
+  // que l'analyse des manœuvres prenait pour un virement : on lui prête le
+  // cap du second.
+  bearings[0] = bearings[1];
+
   const clamped = clampByAcceleration(rawSpeeds, timesMs, {
     maxAccel: maxAcceleration,
     maxSpeedMs: options.maxSpeedMs,
