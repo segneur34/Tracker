@@ -48,6 +48,16 @@ const FOREIGN_TYPES: Record<string, SportType> = {
   voile: 'bateau',
   wingfoiling: 'wingfoil',
   wingfoil: 'wingfoil',
+  cycling: 'cycling',
+  biking: 'cycling',
+  bike: 'cycling',
+  ride: 'cycling',
+  roadcycling: 'cycling',
+  roadbiking: 'cycling',
+  mountainbiking: 'cycling',
+  gravelcycling: 'cycling',
+  ebikeride: 'cycling',
+  velo: 'cycling',
 };
 
 /** Support deviné depuis la balise `<type>` d'un GPX, ou `null`. */

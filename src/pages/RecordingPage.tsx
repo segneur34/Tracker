@@ -7,8 +7,8 @@ import FollowTracePicker from '../components/FollowTracePicker';
 import PageHeader from '../components/ui/PageHeader';
 import { IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
-import { FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
-import { sportFamily, type SportFamily } from '../core/sportProfiles';
+import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
+import { SPORT_FAMILIES, sportFamily, type SportFamily } from '../core/sportProfiles';
 import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatSpeed, isInverseUnit } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
@@ -66,7 +66,7 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
 const STAT_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' } as const;
 
 /** Couleur de la trace sur la carte en direct, celle de la famille (donnée de carte, donc en dur). */
-const TRACK_COLOR = { voile: '#1565c0', course: '#bf360c' } as const;
+const TRACK_COLOR: Record<SportFamily, string> = { voile: '#1565c0', course: '#bf360c', velo: '#00695c' };
 
 const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
 const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
@@ -97,11 +97,13 @@ const liveStatItems = (activity: Activity, live: LiveStats): { label: string; va
       { label: 'Distance', value: formatDistance(live.distanceM, distanceUnit) },
     ];
   }
+  // Course : l'allure ; vélo : la vitesse.
+  const speedWord = sportFamily(activity.base) === 'velo' ? 'Vitesse' : 'Allure';
   return [
-    { label: 'Allure', value: formatSpeed(live.currentSpeedMs, unit) },
+    { label: speedWord, value: formatSpeed(live.currentSpeedMs, unit) },
     { label: 'Distance', value: formatDistance(live.distanceM, distanceUnit) },
     { label: distanceUnit === 'nm' ? 'Dernier mille' : 'Dernier km', value: formatSpeed(live.lastDistanceSpeedMs, unit) },
-    { label: 'Allure moyenne', value: formatSpeed(live.averageSpeedMs, unit) },
+    { label: `${speedWord} moyenne`, value: formatSpeed(live.averageSpeedMs, unit) },
     { label: 'D+', value: formatMeters(live.elevationGainM) },
     { label: 'D−', value: formatMeters(live.elevationLossM) },
     { label: `D+ ${recentWindowLabel}`, value: formatMeters(live.recentGainM) },
@@ -282,9 +284,9 @@ function RecordingPage() {
       {!busy && !pending && <Card>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 'var(--text-m)' }}>
           <div className="ui-tabs" role="group" aria-label="Famille" style={{ paddingBottom: 0 }}>
-            {(Object.keys(FAMILY_LABEL) as SportFamily[]).map((f) => (
+            {SPORT_FAMILIES.map((f) => (
               <button key={f} type="button" className="ui-tab" aria-pressed={family === f}
-                style={{ '--tab-accent': f === 'voile' ? 'var(--voile)' : 'var(--course)' } as React.CSSProperties}
+                style={{ '--tab-accent': FAMILY_ACCENT[f] } as React.CSSProperties}
                 onClick={() => pickFamily(f)}>
                 {FAMILY_LABEL[f]}
               </button>
@@ -299,7 +301,7 @@ function RecordingPage() {
             </label>
           ) : (
             <div className="ui-alert ui-alert--warning">
-              Aucune activité {family === 'voile' ? 'voile' : 'course'} : ajoutez-en une dans <Link to="/parametres">Réglages</Link>.
+              Aucune activité {({ voile: 'voile', course: 'course', velo: 'vélo' } as const)[family]} : ajoutez-en une dans <Link to="/parametres">Réglages</Link>.
             </div>
           )}
 
@@ -397,7 +399,7 @@ function RecordingPage() {
         <LiveMap key={busy ? 'direct' : `apercu-${followed?.name}-${followed?.points.length}`}
           segments={busy ? live.segments : []} position={busy ? getLastFix() : null} height="45vh"
           guide={guide.remaining} guideDone={guide.done} travel={travel}
-          color={liveActivity && sportFamily(liveActivity.base) === 'course' ? TRACK_COLOR.course : TRACK_COLOR.voile}
+          color={TRACK_COLOR[liveActivity ? sportFamily(liveActivity.base) : 'voile']}
           overlay={busy ? (
             <Button size="s" onClick={() => toggleShown('carte')} style={{ boxShadow: '0 1px 5px rgba(0, 0, 0, 0.25)' }}>
               Réduire la carte

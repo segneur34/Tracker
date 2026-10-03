@@ -1,14 +1,13 @@
 import { FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
-import type { SportFamily } from '../core/sportProfiles';
+import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
 
 /**
- * Choix d'une activité, groupées par famille (Voile, Course à pied) : classer
+ * Choix d'une activité, groupées par famille (Voile, Course à pied, Vélo) : classer
  * une session, changer l'activité d'un enregistrement en cours ou d'une
  * session analysée. Passer d'une famille à l'autre change le module qui
  * analyse la session : c'est à l'appelant d'en tirer les conséquences.
  */
 
-const ALL_FAMILIES: SportFamily[] = ['voile', 'course'];
 
 interface ActivitySelectProps {
   activities: Activity[];
@@ -26,7 +25,7 @@ interface ActivitySelectProps {
 }
 
 function ActivitySelect({
-  activities, value, onChange, extra, families = ALL_FAMILIES, placeholder, disabled, className = 'ui-field ui-field--s', label,
+  activities, value, onChange, extra, families = SPORT_FAMILIES, placeholder, disabled, className = 'ui-field ui-field--s', label,
 }: ActivitySelectProps) {
   const list = extra && !activities.some((a) => a.id === extra.id) ? [...activities, extra] : activities;
   const groups = families

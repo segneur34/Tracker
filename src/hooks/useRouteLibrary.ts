@@ -23,7 +23,7 @@ export interface SavedRoute {
   readOnly: boolean;
 }
 
-const NO_FOLDER = 'Aucun dossier mémoire accessible : choisissez-le dans Réglages pour ranger vos itinéraires.';
+const NO_FOLDER = 'Aucun dossier mémoire accessible : choisissez-le dans Réglages pour enregistrer vos itinéraires.';
 
 const requireFolder = async () => {
   const folder = await currentMemoryFolder();

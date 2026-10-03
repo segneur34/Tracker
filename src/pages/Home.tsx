@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
 import MemoryStatus from '../components/MemoryStatus';
 import RouteList from '../components/RouteList';
-import { IconChevronRight, IconRoute, IconRun, IconSail } from '../components/icons';
+import { IconBike, IconChevronRight, IconRoute, IconRun, IconSail } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
@@ -75,6 +75,13 @@ function Home() {
         <span style={{ ...titleStyle, color: 'var(--course)' }}><IconRun /> Course à pied</span>
         <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
           Allure, dénivelé, zones de pente, vitesse et altitude.
+        </span>
+      </Link>
+
+      <Link to="/velo" style={cardStyle}>
+        <span style={{ ...titleStyle, color: 'var(--velo)' }}><IconBike /> Vélo</span>
+        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
+          Vitesse, dénivelé, zones de pente, meilleurs segments, puissance et énergie.
         </span>
       </Link>
 

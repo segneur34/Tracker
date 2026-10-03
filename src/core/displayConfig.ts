@@ -7,6 +7,9 @@
 /** Nombre maximal de points tracés sur un graphe, pour rester fluide. */
 export const CHART_MAX_POINTS = 500;
 
+/** Plage la plus étroite d'un graphe zoomé, en part de son étendue : 1 %. */
+export const CHART_ZOOM_MIN_FRACTION = 0.01;
+
 /** Centre de la carte avant le chargement d'une trace : Montpellier. */
 export const DEFAULT_MAP_CENTER: [number, number] = [43.6108, 3.8767];
 

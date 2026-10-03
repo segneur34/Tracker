@@ -21,6 +21,7 @@ describe('guessSport', () => {
   it('reconnaît nos supports tels que notre GPX les écrit', () => {
     expect(guessSport('wingfoil')).toBe('wingfoil');
     expect(guessSport('bateau')).toBe('bateau');
+    expect(guessSport('cycling')).toBe('cycling');
   });
 
   it('reconnaît les types des autres applications, quelle que soit leur graphie', () => {
@@ -29,10 +30,13 @@ describe('guessSport', () => {
     expect(guessSport('trail_running')).toBe('running');
     expect(guessSport('Windsurfing')).toBe('windsurf');
     expect(guessSport('kitesurfing')).toBe('kite');
+    expect(guessSport('Road Cycling')).toBe('cycling');
+    expect(guessSport('mountain_biking')).toBe('cycling');
+    expect(guessSport('Ride')).toBe('cycling');
   });
 
   it('rend `null` pour un type inconnu ou absent', () => {
-    expect(guessSport('cycling')).toBeNull();
+    expect(guessSport('parapente')).toBeNull();
     expect(guessSport('9')).toBeNull();
     expect(guessSport(undefined)).toBeNull();
     expect(guessSport('toString')).toBeNull();

@@ -41,6 +41,17 @@ export const IconRun = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+export const IconBike = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="5.5" cy="16" r="3.5" />
+    <circle cx="18.5" cy="16" r="3.5" />
+    <path d="M5.5 16l4-7h6l3 7" />
+    <path d="M9.5 9l3 7h6" />
+    <path d="M8 6h3" />
+    <path d="M15.5 9l-1-3h2" />
+  </svg>
+);
+
 export const IconSettings = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
     <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
@@ -60,6 +71,22 @@ export const IconFile = ({ size = 24, ...props }: IconProps) => (
 export const IconChevronRight = ({ size = 20, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
     <path d="M9 6l6 6-6 6" />
+  </svg>
+);
+
+export const IconChevronUp = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M6 15l6-6 6 6" />
+  </svg>
+);
+
+/** Quatre carrés : le menu des sports de la barre du bas. */
+export const IconGrid = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />
+    <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" />
+    <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" />
+    <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" />
   </svg>
 );
 

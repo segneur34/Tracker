@@ -1,0 +1,41 @@
+/* Graphe zoomable (`ZoomableChart.tsx`) : planification et analyses course et vélo. */
+
+.zoom-chart {
+  position: relative;
+  /* Un doigt fait défiler la page ; deux doigts zooment le graphe, pas la page. */
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/*
+ * Les doigts visent toujours la surface du graphe, jamais un de ses traits :
+ * zoomer redessine grille et graduations, et un toucher dont la cible
+ * disparaît ne reçoit plus ses mouvements. Le survol de Recharts se fonde sur
+ * la position, pas sur la cible.
+ */
+.zoom-chart .recharts-surface * {
+  pointer-events: none;
+}
+
+/* Recharts rend le graphe focalisable (clavier) : pas de contour après un clic ou une zone tirée à la souris. */
+.zoom-chart .recharts-surface:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Zone tirée à la souris (couleur de graphe, donc en dur). */
+.zoom-chart__selection {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(30, 136, 229, 0.15);
+  border-left: 1px solid rgba(30, 136, 229, 0.6);
+  border-right: 1px solid rgba(30, 136, 229, 0.6);
+}
+
+.zoom-chart__reset {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-3);
+  z-index: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}

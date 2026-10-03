@@ -1,5 +1,6 @@
 import { accumulateElevation } from '../core/elevation';
 import { EARTH_RADIUS_M, haversineDistance, toRad } from '../core/kinematics';
+import type { SportFamily } from '../core/sportProfiles';
 import { computeGrades } from '../running/runningAnalytics';
 
 /**
@@ -22,28 +23,65 @@ export interface Waypoint {
 }
 
 /**
- * Façon de relier deux points : à pied, à vélo, en VTT, en ligne droite, ou
- * par le tracé d'un GPX chargé (`imported`), gardé tel quel.
+ * Façon de relier deux points : par le type de voie que l'on préfère (chemin,
+ * piste, route, grande route), en ligne droite, ou par le tracé d'un GPX
+ * chargé (`imported`), gardé tel quel. Le moyen de transport n'en fait pas
+ * partie : il suit l'activité (`RouteVehicle`).
  */
-export type RouteMode = 'foot' | 'bike' | 'mtb' | 'straight' | 'imported';
+export type RouteMode = 'chemin' | 'piste' | 'route' | 'grandeRoute' | 'straight' | 'imported';
 
 /** Modes calculés sur les chemins de la carte (`brouter.ts`). */
 export type ComputedMode = Exclude<RouteMode, 'straight' | 'imported'>;
 
 /** Modes que l'on choisit ; `imported` ne s'obtient qu'en chargeant un GPX. */
-export const ROUTE_MODES: RouteMode[] = ['foot', 'bike', 'mtb', 'straight'];
+export const ROUTE_MODES: RouteMode[] = ['chemin', 'piste', 'route', 'grandeRoute', 'straight'];
+
+/** Mode par défaut, et celui d'un tronçon illisible. */
+export const DEFAULT_ROUTE_MODE: RouteMode = 'chemin';
 
 export const ROUTE_MODE_LABEL: Record<RouteMode, string> = {
-  foot: 'À pied',
-  bike: 'Vélo',
-  mtb: 'VTT',
+  chemin: 'Chemin',
+  piste: 'Piste',
+  route: 'Route',
+  grandeRoute: 'Grande route',
   straight: 'Ligne droite',
   imported: 'Trace importée',
 };
 
+/** Ce que chaque mode favorise, pour l'aide et les infobulles. */
+export const ROUTE_MODE_HINT: Record<RouteMode, string> = {
+  chemin: 'sentiers et chemins étroits',
+  piste: 'chemins de terre larges',
+  route: 'petites routes peu fréquentées',
+  grandeRoute: 'départementales et nationales',
+  straight: 'tout droit, sans suivre la carte',
+  imported: 'trace d\'un GPX chargé, gardée telle quelle',
+};
+
+/** Modes d'avant les types de voie (À pied, Vélo, VTT), relus dans les fiches et les préférences. */
+const LEGACY_ROUTE_MODES: Record<string, RouteMode> = { foot: 'chemin', mtb: 'piste', bike: 'route' };
+
 /** Tout mode connu, `imported` compris : celui d'un tronçon relu d'une fiche. */
 export const isRouteMode = (value: unknown): value is RouteMode =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(ROUTE_MODE_LABEL, value);
+
+/** Mode relu d'une fiche ou des préférences, ancien mode traduit ; `null` s'il est inconnu. */
+export const readRouteMode = (value: unknown): RouteMode | null => {
+  if (isRouteMode(value)) return value;
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(LEGACY_ROUTE_MODES, value)
+    ? LEGACY_ROUTE_MODES[value]
+    : null;
+};
+
+/**
+ * Règles d'accès du calcul : celles du piéton (escaliers permis, sens
+ * interdits ignorés) ou du vélo (sens interdits respectés, passages à pied
+ * pénalisés). Elles suivent la famille de l'activité ; la voile prend celles
+ * du piéton.
+ */
+export type RouteVehicle = 'pieton' | 'velo';
+
+export const routeVehicle = (family: SportFamily): RouteVehicle => (family === 'velo' ? 'velo' : 'pieton');
 
 /** Mode que l'utilisateur peut choisir (`ROUTE_MODES`). */
 export const isChoosableMode = (value: unknown): value is RouteMode =>

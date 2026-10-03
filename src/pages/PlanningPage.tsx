@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Marker, Polyline, useMapEvents } from 'react-leaflet';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import 'leaflet/dist/leaflet.css';
 import './PlanningPage.css';
@@ -10,6 +10,7 @@ import OsmTileLayer from '../components/OsmTileLayer';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import RouteList from '../components/RouteList';
+import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { IconChevronRight, IconFile, IconUndo } from '../components/icons';
@@ -17,27 +18,32 @@ import { CARD_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import HelpButton from '../components/ui/HelpButton';
 import PageHeader from '../components/ui/PageHeader';
-import { findActivity, type Activity } from '../core/activities';
+import { activityFamily, findActivity, type Activity } from '../core/activities';
+import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER, trackBounds } from '../core/displayConfig';
 import { parseGpxPath } from '../core/gpxParser';
 import { ELEVATION_PRESETS } from '../core/sportProfiles';
 import { SLOW_COLOR, gradientCss } from '../core/speedGradient';
-import { DISTANCE_UNIT_SYMBOL, formatDistance, toDisplayDistance } from '../core/units';
+import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, toDisplayDistance } from '../core/units';
 import { useLeaveWarning } from '../hooks/leaveGuard';
+import { useChartZoom } from '../hooks/useChartZoom';
 import { useGoOnRoute } from '../hooks/useGoOnRoute';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { usePlannedRoute } from '../hooks/usePlannedRoute';
 import { getLastFix, useRecorder } from '../hooks/useRecorder';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
+import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  effectiveDistanceUnit, effectiveElevationProfile, effectiveGradeRange, lastRecordActivity, readStoredActivities,
+  effectiveDistanceUnit, effectiveDurationSettings, effectiveElevationProfile, effectiveGradeRange, effectivePace, lastRecordActivity,
+  readStoredActivities,
 } from '../hooks/useSportSettings';
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
+import { PACE_LEVEL_LABEL, estimateRouteDurationS } from '../planning/duration';
 import { searchPlaces, type Place } from '../planning/geocoding';
 import {
-  EMPTY_ROUTE, ROUTE_MODES, ROUTE_MODE_LABEL, isChoosableMode, isLooped, routeFromTrack, routePoints, routeProfileRows, routeTotals,
-  waypointDistances, type PlannedRoute, type RouteLeg, type RouteMode, type Waypoint,
+  DEFAULT_ROUTE_MODE, EMPTY_ROUTE, ROUTE_MODES, ROUTE_MODE_HINT, ROUTE_MODE_LABEL, isChoosableMode, isLooped, readRouteMode, routeFromTrack,
+  routePoints, routeProfileRows, routeTotals, routeVehicle, waypointDistances, type PlannedRoute, type RouteLeg, type RouteMode, type Waypoint,
 } from '../planning/route';
 import { buildRouteGpx, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute } from '../planning/routeRecord';
@@ -49,9 +55,10 @@ import { jsonStore } from '../platform/storage';
 
 /**
  * Planification d'un itinéraire : on pose des points sur la carte, chaque
- * tronçon entre deux points suit les chemins (à pied, à vélo, en VTT) ou va
+ * tronçon entre deux points suit la carte, par le type de voie choisi, ou va
  * en ligne droite. Distance, dénivelés et profil d'altitude se mettent à jour
- * à chaque calcul. L'itinéraire se range dans `itineraires/` du dossier
+ * à chaque calcul, avec le temps estimé en course et à vélo (niveau choisi
+ * dans Réglages). L'itinéraire s'enregistre dans `itineraires/` du dossier
  * mémoire, avec son GPX.
  *
  * Le calcul demande du réseau (`planning/brouter.ts`) ; un itinéraire rangé se
@@ -64,7 +71,8 @@ import { jsonStore } from '../platform/storage';
 const PREFS_KEY = 'tracker.planning';
 
 interface PlanningPrefs {
-  mode?: RouteMode;
+  /** Mode choisi ; peut être un mode d'avant les types de voie (`foot`…), traduit à la lecture. */
+  mode?: string;
   activityId?: string;
   view?: { lat: number; lon: number; zoom: number };
 }
@@ -80,18 +88,26 @@ const writePrefs = (patch: PlanningPrefs): void => jsonStore.write(PREFS_KEY, { 
 const ERROR_COLOR = '#c62828';
 /** Couleur de repli si celle de l'activité n'est pas un code couleur. */
 const FALLBACK_COLOR = '#6a1b9a';
+/** Départ en vert, arrivée en rouge sombre (distinct du rouge des tronçons en échec) ; les autres points à la couleur de l'activité. */
+const START_COLOR = '#2e7d32';
+const END_COLOR = '#b71c1c';
+/** Sur une boucle, un seul repère au départ, qui est aussi l'arrivée : moitié vert, moitié rouge. */
+const LOOP_FILL = `linear-gradient(90deg, ${START_COLOR} 50%, ${END_COLOR} 50%)`;
 
 const safeColor = (color: string): string => (/^#[0-9a-f]{3,8}$/i.test(color) ? color : FALLBACK_COLOR);
 
-/** Repères des points, lettrés, gardés d'un rendu à l'autre : Leaflet ne les redessine que s'ils changent. */
+/**
+ * Repères des points, lettrés, gardés d'un rendu à l'autre : Leaflet ne les
+ * redessine que s'ils changent. `fill` : fond CSS, couleur ou dégradé.
+ */
 const iconCache = new Map<string, L.DivIcon>();
-const waypointIcon = (label: string, color: string, selected: boolean): L.DivIcon => {
-  const key = `${label}|${color}|${selected}`;
+const waypointIcon = (label: string, fill: string, selected: boolean): L.DivIcon => {
+  const key = `${label}|${fill}|${selected}`;
   let icon = iconCache.get(key);
   if (!icon) {
     icon = L.divIcon({
       className: 'plan-marker',
-      html: `<span class="plan-marker__dot${selected ? ' plan-marker__dot--selected' : ''}" style="background:${color}">${label}</span>`,
+      html: `<span class="plan-marker__dot${selected ? ' plan-marker__dot--selected' : ''}" style="background:${fill}">${label}</span>`,
       iconSize: [30, 30],
       iconAnchor: [15, 15],
     });
@@ -124,7 +140,7 @@ const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math
 
 const defaultName = (): string => `Itinéraire du ${new Date().toLocaleDateString('fr-FR')}`;
 
-/** Aucune action à mener en quittant : l'itinéraire non rangé est simplement abandonné. */
+/** Aucune action à mener en quittant : l'itinéraire non enregistré est simplement abandonné. */
 const noop = () => {};
 
 interface ChartRow {
@@ -134,9 +150,11 @@ interface ChartRow {
   grade: number | null;
 }
 
-type PlanningSection = 'trace' | 'points' | 'ranger' | 'liste';
+/** `ranger` : bloc « Enregistrer l'itinéraire », clé gardée pour l'état mémorisé. */
+type PlanningSection = 'profil' | 'trace' | 'points' | 'ranger' | 'liste';
 
 const PLANNING_SECTION_DEFAULTS: Record<PlanningSection, boolean> = {
+  profil: true,
   trace: true,
   points: true,
   ranger: true,
@@ -203,17 +221,22 @@ function PlanningPage() {
   const minGainM = (activity ? effectiveElevationProfile(activity) : ELEVATION_PRESETS.route).minGainM;
   const gradeRange = useMemo(() => (activity ? effectiveGradeRange(activity) : null), [activity]);
   const color = safeColor(activity?.color ?? FALLBACK_COLOR);
+  const riderKg = useRunnerProfile().profile.weightKg;
+  /** Réglage du temps estimé : niveau de l'activité dans Réglages ; `null` en voile. */
+  const durationSettings = useMemo(() => (activity ? effectiveDurationSettings(activity, riderKg) : null), [activity, riderKg]);
+  const pace = useMemo(() => (activity ? effectivePace(activity) : null), [activity]);
 
   const [mode, setModeChoice] = useState<RouteMode>(() => {
-    const stored = readPrefs().mode;
-    return isChoosableMode(stored) ? stored : 'foot';
+    // Un mode d'avant les types de voie (`foot`…) est traduit.
+    const stored = readRouteMode(readPrefs().mode);
+    return isChoosableMode(stored) ? stored : DEFAULT_ROUTE_MODE;
   });
   const chooseMode = (next: RouteMode) => {
     setModeChoice(next);
     writePrefs({ mode: next });
   };
 
-  const planner = usePlannedRoute();
+  const planner = usePlannedRoute(routeVehicle(activity ? activityFamily(activity) : 'course'));
   const { route } = planner;
   const library = useRouteLibrary();
   const { go, canGo } = useGoOnRoute();
@@ -224,7 +247,7 @@ function PlanningPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const { open, toggle } = useOpenSections<PlanningSection>('planning', PLANNING_SECTION_DEFAULTS);
 
-  // Itinéraire rangé en cours d'édition, et l'état rangé, pour savoir s'il a changé.
+  // Itinéraire enregistré en cours d'édition, et l'état enregistré, pour savoir s'il a changé.
   const [current, setCurrent] = useState<SavedRoute | null>(null);
   const [savedRoute, setSavedRoute] = useState<PlannedRoute>(EMPTY_ROUTE);
   const [name, setName] = useState('');
@@ -260,30 +283,32 @@ function PlanningPage() {
   const looped = isLooped(route);
   /** Lettre d'un point ; sur une boucle, l'arrivée est le départ : A. */
   const pointLabel = (i: number) => waypointLabel(looped && i === route.waypoints.length - 1 ? 0 : i);
+  /** Fond d'un point de la liste : départ en vert, arrivée en rouge, les autres à la couleur de l'activité. */
+  const pointFill = (i: number) => (i === 0 ? START_COLOR : i === route.waypoints.length - 1 ? END_COLOR : color);
+  /** Fond d'un repère sur la carte : sur une boucle, le repère unique A porte départ et arrivée. */
+  const markerFill = (i: number) => (i === 0 && looped ? LOOP_FILL : pointFill(i));
+  const durationS = useMemo(() => estimateRouteDurationS(route, minGainM, durationSettings), [route, minGainM, durationSettings]);
 
   const dirty = current !== null
     ? route !== savedRoute || name.trim() !== current.record.name || (activity?.id ?? null) !== current.record.activityId
     : route.waypoints.length > 0;
-  useLeaveWarning(dirty ? { message: 'L\'itinéraire en cours n\'est pas rangé. Quitter quand même ?', discard: noop } : null);
+  useLeaveWarning(dirty ? { message: 'L\'itinéraire en cours n\'est pas enregistré. Quitter quand même ?', discard: noop } : null);
 
   // --- Profil d'altitude ---
 
   /** Profil à pas régulier ; ses lignes portent la position du repère de survol sur la carte. */
   const profile = useMemo(() => routeProfileRows(points), [points]);
+  /** Distance de chaque ligne du profil, dans l'unité affichée : l'axe du graphe et de son zoom. */
+  const profileDist = useMemo(() => profile.map((row) => toDisplayDistance(row.distM, distanceUnit)), [profile, distanceUnit]);
+  const zoom = useChartZoom(profileDist.length > 1 ? { min: profileDist[0], max: profileDist[profileDist.length - 1] } : null);
+  /** Lignes tracées : celles de la plage visible, au plus `CHART_MAX_POINTS` : zoomer montre plus de détail. */
   const chartRows = useMemo<ChartRow[]>(() => {
-    const step = Math.max(1, Math.ceil(profile.length / CHART_MAX_POINTS));
-    const out: ChartRow[] = [];
-    for (let i = 0; i < profile.length; i += step) {
-      const row = profile[i];
-      out.push({
-        index: i,
-        dist: parseFloat(toDisplayDistance(row.distM, distanceUnit).toFixed(2)),
-        altitude: row.eleM !== null ? Math.round(row.eleM) : null,
-        grade: row.grade,
-      });
-    }
-    return out;
-  }, [profile, distanceUnit]);
+    const [first, last] = visibleIndexRange(profileDist, zoom.view);
+    return sampledIndices(first, last, CHART_MAX_POINTS).map((i) => {
+      const { eleM, grade } = profile[i];
+      return { index: i, dist: parseFloat(profileDist[i].toFixed(3)), altitude: eleM !== null ? Math.round(eleM) : null, grade };
+    });
+  }, [profile, profileDist, zoom.view]);
   const gradeStops = useMemo(
     () => (gradeRange ? gradeGradientStops(chartRows.filter((r) => r.altitude !== null), gradeRange) : []),
     [chartRows, gradeRange]
@@ -373,7 +398,7 @@ function PlanningPage() {
     }
   };
 
-  // --- Rangement ---
+  // --- Enregistrement ---
 
   const handleSave = async () => {
     setSaving(true);
@@ -384,15 +409,15 @@ function PlanningPage() {
       setCurrent(saved);
       setSavedRoute(route);
       setName(finalName);
-      setMessage(`Rangé dans ${ROUTES_DIR}/${saved.base}.json, avec son GPX.`);
+      setMessage(`Enregistré dans ${ROUTES_DIR}/${saved.base}.json, avec son GPX.`);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Rangement impossible.');
+      setMessage(err instanceof Error ? err.message : 'Enregistrement impossible.');
     } finally {
       setSaving(false);
     }
   };
 
-  const confirmDiscard = () => !dirty || window.confirm('L\'itinéraire en cours n\'est pas rangé. L\'abandonner ?');
+  const confirmDiscard = () => !dirty || window.confirm('L\'itinéraire en cours n\'est pas enregistré. L\'abandonner ?');
 
   const openSaved = (saved: SavedRoute) => {
     if (!confirmDiscard()) return;
@@ -404,6 +429,7 @@ function PlanningPage() {
     if (saved.record.activityId && findActivity(activities, saved.record.activityId)) setActivityId(saved.record.activityId);
     setSelected(null);
     setMessage(null);
+    zoom.reset();
     fitTo(opened);
   };
 
@@ -415,12 +441,13 @@ function PlanningPage() {
     setName('');
     setSelected(null);
     setMessage(null);
+    zoom.reset();
   };
 
   /**
    * Charge un GPX téléchargé ailleurs : sa trace devient un nouvel itinéraire,
    * gardée telle quelle entre le départ et l'arrivée (`routeFromTrack`), à
-   * ranger pour la suivre pendant un enregistrement. L'activité est devinée du
+   * enregistrer pour la suivre pendant un enregistrement. L'activité est devinée du
    * type de la trace s'il en porte un.
    */
   const loadGpx = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -446,13 +473,14 @@ function PlanningPage() {
       setCandidate(null);
       setResults(null);
       setMessage(null);
+      zoom.reset();
       fitTo(loaded);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Lecture du fichier impossible.');
     }
   };
 
-  /** Supprime un itinéraire rangé ; celui qui est ouvert laisse la place à une carte vide. */
+  /** Supprime un itinéraire enregistré ; celui qui est ouvert laisse la place à une carte vide. */
   const deleteSaved = async (saved: SavedRoute) => {
     setConfirmingDelete(null);
     try {
@@ -463,6 +491,7 @@ function PlanningPage() {
         setSavedRoute(EMPTY_ROUTE);
         setName('');
         setSelected(null);
+        zoom.reset();
         setMessage('Itinéraire supprimé.');
       }
     } catch (err) {
@@ -583,7 +612,7 @@ function PlanningPage() {
                   key={i}
                   position={[w.lat, w.lon]}
                   draggable
-                  icon={waypointIcon(waypointLabel(i), color, selected === i)}
+                  icon={waypointIcon(waypointLabel(i), markerFill(i), selected === i)}
                   eventHandlers={{
                     click: () => {
                       setCandidate(null);
@@ -644,24 +673,101 @@ function PlanningPage() {
         </div>
 
         <div className="plan-panel">
+          <PlanBlock id="planning.profil" label="Dénivelé" open={open.profil} onToggle={() => toggle('profil')}>
+            <div className={durationSettings ? 'plan-stats plan-stats--four' : 'plan-stats'}>
+              {/* Au-delà de 100 km, une décimale : le chiffre tient dans sa case sur téléphone. */}
+              <div className="plan-stat"><span>Distance</span><strong className="num">{formatDistance(totals.distanceM, distanceUnit, toDisplayDistance(totals.distanceM, distanceUnit) >= 100 ? 1 : 2)}</strong></div>
+              <div className="plan-stat"><span>D+</span><strong className="num">{formatMeters(totals.gainM)}</strong></div>
+              <div className="plan-stat"><span>D−</span><strong className="num">{formatMeters(totals.lossM)}</strong></div>
+              {durationSettings && (
+                <div className="plan-stat">
+                  <span>Temps</span>
+                  <strong className="num">{durationS !== null ? `≈ ${formatDuration(durationS * 1000)}` : '—'}</strong>
+                </div>
+              )}
+            </div>
+
+            {hasElevation && gradeRange ? (
+              <div className="plan-profile" onMouseLeave={() => setHoveredIndex(null)}>
+                <ZoomableChart zoom={zoom} style={{ width: '100%', height: '170px' }}>
+                  <ResponsiveContainer>
+                    <AreaChart data={chartRows} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                      <ChartZoomProbe />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                      <XAxis dataKey="dist" type="number" allowDataOverflow
+                        domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
+                        ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
+                        tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`} tick={{ fill: '#555', fontSize: 11 }} />
+                      <YAxis domain={['auto', 'auto']} width={44} tick={{ fill: '#e64a19', fontSize: 11 }} tickFormatter={(v) => `${v}`} />
+                      <Tooltip
+                        contentStyle={{ fontSize: '12px' }}
+                        labelFormatter={(l) => `${parseFloat(Number(l).toFixed(2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`}
+                        formatter={(value, _name, item) => {
+                          const row: ChartRow | undefined = item.payload;
+                          return [row?.grade != null ? `${value} m, pente ${Math.round(row.grade * 100)} %` : `${value} m`, 'Altitude'];
+                        }} />
+                      {gradeGradientDefs(gradientId, gradeStops)}
+                      <Area type="monotone" dataKey="altitude" name="Altitude" stroke={`url(#${gradientId})`} strokeWidth={2}
+                        fill={`url(#${gradientId})`} fillOpacity={0.35} dot={false} activeDot={{ r: 4 }} connectNulls={false}
+                        isAnimationActive={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </ZoomableChart>
+                <div className="plan-legend">
+                  <span>Pente, montée ou descente :</span>
+                  {gradeRange.min > 0 && (
+                    <>
+                      <span className="plan-legend__swatch" style={{ backgroundColor: SLOW_COLOR }} />
+                      <span>sous {Math.round(gradeRange.min * 100)} %,</span>
+                    </>
+                  )}
+                  <span>{Math.round(gradeRange.min * 100)} %</span>
+                  <span className="plan-legend__bar" style={{ background: gradientCss() }} />
+                  <span>{Math.round(gradeRange.max * 100)} % et plus</span>
+                </div>
+                <div className="plan-legend">Pour zoomer : écartez deux doigts sur la courbe, ou tirez une zone à la souris.</div>
+              </div>
+            ) : (
+              route.waypoints.length >= 2 && totals.pendingLegs === 0 && (
+                <p className="plan-note">Pas d'altitude sur ce tracé (lignes droites seulement) : pas de courbe de dénivelé.</p>
+              )
+            )}
+            {durationSettings && pace && (
+              <p className="plan-note">
+                Temps estimé au niveau {PACE_LEVEL_LABEL[pace.level].toLowerCase()}, {parseFloat((pace.flatSpeedMs * 3.6).toFixed(1))} km/h sur le plat
+                {durationSettings.family === 'course' ? ', chaque 100 m de D+ comptant 1 km' : ''} : à régler dans <Link to="/parametres">Réglages</Link>.
+              </p>
+            )}
+          </PlanBlock>
+
           <PlanBlock id="planning.trace" label="Tracé" open={open.trace} onToggle={() => toggle('trace')}
             aside={<HelpButton open={helpOpen} onToggle={() => setHelpOpen((o) => !o)} label="Comment planifier ?" size="s" />}>
             {helpOpen && (
               <ul className="plan-help">
-                <li>Touchez la carte pour poser un point : A, puis B, puis C…</li>
+                <li>Touchez la carte pour poser un point : A, puis B, puis C… Le départ est en vert, l'arrivée en rouge.</li>
                 <li>Touchez le tracé pour insérer un point entre deux autres.</li>
                 <li>Faites glisser un point pour le déplacer : seuls ses deux tronçons sont recalculés.</li>
                 <li>Touchez un point pour le retirer, ou changer la façon d'y venir ; touchez A pour boucler, par les chemins ou en ligne droite.</li>
                 <li>« Précédent », sur la carte, défait la dernière modification.</li>
                 <li>La liste des points permet aussi de changer leur ordre.</li>
-                <li>Le mode choisi ci-dessous vaut pour les points suivants. Le calcul demande du réseau.</li>
+                <li>Le type de voie choisi ci-dessous vaut pour les points suivants. Le calcul demande du réseau.</li>
+                <li>
+                  {ROUTE_MODES.filter((m) => m !== 'straight').map((m, i, all) => (
+                    <Fragment key={m}>
+                      « {ROUTE_MODE_LABEL[m]} » favorise les {ROUTE_MODE_HINT[m]}{i < all.length - 1 ? ' ; ' : '. '}
+                    </Fragment>
+                  ))}
+                  Le calcul s'en écarte quand ce type de voie manque ou fait faire un trop grand détour.
+                </li>
+                <li>Les règles d'accès suivent l'activité : à pied, escaliers permis et sens interdits ignorés ; à vélo, sens interdits respectés.</li>
                 <li>« Charger un GPX » reprend telle quelle une trace téléchargée ailleurs. Touchez-la pour y poser un point ; un point déplacé refait ses tronçons dans le mode choisi.</li>
               </ul>
             )}
-            <div className="ui-tabs plan-modes" role="group" aria-label="Mode de calcul"
+            <div className="ui-tabs plan-modes" role="group" aria-label="Type de voie"
               style={{ '--tab-accent': color } as React.CSSProperties}>
               {ROUTE_MODES.map((m) => (
-                <button key={m} type="button" className="ui-tab" aria-pressed={mode === m} onClick={() => chooseMode(m)}>
+                <button key={m} type="button" className="ui-tab" aria-pressed={mode === m} onClick={() => chooseMode(m)}
+                  title={ROUTE_MODE_HINT[m]}>
                   {ROUTE_MODE_LABEL[m]}
                 </button>
               ))}
@@ -697,49 +803,6 @@ function PlanningPage() {
               </div>
             )}
 
-            <div className="plan-stats">
-              <div className="plan-stat"><span>Distance</span><strong className="num">{formatDistance(totals.distanceM, distanceUnit)}</strong></div>
-              <div className="plan-stat"><span>D+</span><strong className="num">{formatMeters(totals.gainM)}</strong></div>
-              <div className="plan-stat"><span>D−</span><strong className="num">{formatMeters(totals.lossM)}</strong></div>
-            </div>
-
-            {hasElevation && gradeRange && (
-              <div className="plan-profile" onMouseLeave={() => setHoveredIndex(null)}>
-                <div style={{ width: '100%', height: '160px' }}>
-                  <ResponsiveContainer>
-                    <AreaChart data={chartRows} onMouseMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                      <XAxis dataKey="dist" type="number" domain={['dataMin', 'dataMax']}
-                        tickFormatter={(v) => `${v} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`} tick={{ fill: '#555', fontSize: 11 }} />
-                      <YAxis domain={['auto', 'auto']} width={44} tick={{ fill: '#e64a19', fontSize: 11 }} tickFormatter={(v) => `${v}`} />
-                      <Tooltip
-                        contentStyle={{ fontSize: '12px' }}
-                        labelFormatter={(l) => `${l} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`}
-                        formatter={(value, _name, item) => {
-                          const row: ChartRow | undefined = item.payload;
-                          return [row?.grade != null ? `${value} m, pente ${Math.round(row.grade * 100)} %` : `${value} m`, 'Altitude'];
-                        }} />
-                      {gradeGradientDefs(gradientId, gradeStops)}
-                      <Area type="monotone" dataKey="altitude" name="Altitude" stroke={`url(#${gradientId})`} strokeWidth={2}
-                        fill={`url(#${gradientId})`} fillOpacity={0.35} dot={false} activeDot={{ r: 4 }} connectNulls={false}
-                        isAnimationActive={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="plan-legend">
-                  <span>Pente, montée ou descente :</span>
-                  {gradeRange.min > 0 && (
-                    <>
-                      <span className="plan-legend__swatch" style={{ backgroundColor: SLOW_COLOR }} />
-                      <span>sous {Math.round(gradeRange.min * 100)} %,</span>
-                    </>
-                  )}
-                  <span>{Math.round(gradeRange.min * 100)} %</span>
-                  <span className="plan-legend__bar" style={{ background: gradientCss() }} />
-                  <span>{Math.round(gradeRange.max * 100)} % et plus</span>
-                </div>
-              </div>
-            )}
           </PlanBlock>
 
           <PlanBlock id="planning.points" label={`Points (${route.waypoints.length})`} open={open.points} onToggle={() => toggle('points')}>
@@ -753,7 +816,7 @@ function PlanningPage() {
                   return (
                     <li key={i} className={selected === i ? 'plan-point plan-point--selected' : 'plan-point'}>
                       <button type="button" className="plan-point__main" onClick={() => selectPoint(i)}>
-                        <span className="plan-point__dot" style={{ background: color }}>{pointLabel(i)}</span>
+                        <span className="plan-point__dot" style={{ background: pointFill(i) }}>{pointLabel(i)}</span>
                         <span className="plan-point__text">
                           <strong>{i === 0 ? 'Départ' : i === last ? (looped ? 'Arrivée, retour au départ' : 'Arrivée') : `Point ${waypointLabel(i)}`}</strong>
                           <span className="num">
@@ -786,7 +849,7 @@ function PlanningPage() {
             )}
           </PlanBlock>
 
-          <PlanBlock id="planning.ranger" label={current ? 'Itinéraire rangé' : 'Ranger l\'itinéraire'} open={open.ranger} onToggle={() => toggle('ranger')}>
+          <PlanBlock id="planning.ranger" label={current ? 'Itinéraire enregistré' : 'Enregistrer l\'itinéraire'} open={open.ranger} onToggle={() => toggle('ranger')}>
             <div className="plan-form">
               <label className="plan-form__field">
                 <span className="ui-eyebrow">Nom</span>
@@ -800,18 +863,18 @@ function PlanningPage() {
               </label>
             </div>
             {!library.canSave && (
-              <div className="ui-alert ui-alert--warning">Aucun dossier mémoire : choisissez-le dans Réglages pour ranger vos itinéraires.</div>
+              <div className="ui-alert ui-alert--warning">Aucun dossier mémoire : choisissez-le dans Réglages pour enregistrer vos itinéraires.</div>
             )}
             {current?.readOnly && (
               <div className="ui-alert ui-alert--warning">Cet itinéraire vient d'une version plus récente de l'application : il se consulte sans se modifier.</div>
             )}
             <div className="plan-actions">
               <Button variant="primary" onClick={() => void handleSave()} disabled={!canSave || (current !== null && !dirty)}>
-                {saving ? 'Rangement…' : current ? 'Ranger les modifications' : 'Ranger'}
+                {saving ? 'Enregistrement…' : current ? 'Enregistrer les modifications' : 'Enregistrer'}
               </Button>
               {current !== null && (
                 <Button variant="record" onClick={() => go(current)} disabled={dirty || !canGo}
-                  title={dirty ? "Rangez d'abord les modifications" : canGo ? undefined : 'Un enregistrement est en cours'}>
+                  title={dirty ? "Enregistrez d'abord les modifications" : canGo ? undefined : 'Un enregistrement est en cours'}>
                   Partir
                 </Button>
               )}
@@ -830,14 +893,14 @@ function PlanningPage() {
             </div>
             {message && <p className="plan-note">{message}</p>}
             {!canDownloadFiles() && (
-              <p className="plan-note">Le GPX est rangé avec l'itinéraire, dans le dossier Tracker/{ROUTES_DIR}, pour l'emporter dans une autre application.</p>
+              <p className="plan-note">Le GPX est enregistré avec l'itinéraire, dans le dossier Tracker/{ROUTES_DIR}, pour l'emporter dans une autre application.</p>
             )}
           </PlanBlock>
 
           <PlanBlock id="planning.liste" label={`Mes itinéraires (${library.routes.length})`} open={open.liste} onToggle={() => toggle('liste')}>
             {library.error && <div className="ui-alert ui-alert--danger">{library.error}</div>}
             {library.routes.length === 0 ? (
-              <p className="plan-note">Aucun itinéraire rangé pour l'instant.</p>
+              <p className="plan-note">Aucun itinéraire enregistré pour l'instant.</p>
             ) : (
               <RouteList
                 routes={library.routes}

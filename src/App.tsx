@@ -2,7 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import AppShell from './components/AppShell';
 import Home from './pages/Home';
 import SailingModule from './pages/SailingModule';
-import RunningModule from './pages/RunningModule';
+import LandModule from './pages/LandModule';
 import SessionLibrary from './pages/SessionLibrary';
 import SettingsPage from './pages/SettingsPage';
 import RecordingPage from './pages/RecordingPage';
@@ -20,7 +20,9 @@ function App() {
           <Route path="/voile" element={<SessionLibrary key="voile" family="voile" />} />
           <Route path="/voile/analyse" element={<SailingModule />} />
           <Route path="/course" element={<SessionLibrary key="course" family="course" />} />
-          <Route path="/course/analyse" element={<RunningModule />} />
+          <Route path="/course/analyse" element={<LandModule key="course" family="course" />} />
+          <Route path="/velo" element={<SessionLibrary key="velo" family="velo" />} />
+          <Route path="/velo/analyse" element={<LandModule key="velo" family="velo" />} />
           <Route path="/enregistrer" element={<RecordingPage />} />
           <Route path="/itineraires" element={<PlanningPage />} />
           <Route path="/itineraires/liste" element={<RoutesPage />} />

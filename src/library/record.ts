@@ -321,7 +321,7 @@ export interface RecordPatch {
  * activité, seuil ou allure imposée changés).
  *
  * Un changement de support efface le seuil propre à la session, exprimé dans
- * l'unité de l'ancien support ; un changement de famille (voile ↔ course)
+ * l'unité de l'ancien support ; un changement de famille (voile ↔ course ↔ vélo)
  * efface aussi ses bornes de couleur, pensées pour les vitesses de l'autre
  * sport. Le vent saisi, l'allure imposée (elle décrit la trace) et les notes
  * restent : sans effet en course, ils reviennent si la session repasse en

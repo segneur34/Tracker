@@ -1,0 +1,117 @@
+import { describe, expect, it } from 'vitest';
+import { buildCumulativeTrack } from '../core/sessionStats';
+import type { TrackPoint } from '../core/types';
+import { computeGrades } from '../running/runningAnalytics';
+import {
+  BIKE_TYPES, computeCyclingEnergy, cyclingEnergyParams, resistiveForceN, type CyclingEnergyParams,
+} from './energy';
+
+/** Trace synthétique à cadence fixe, en ligne droite, altitude fonction de la distance. */
+const buildTrack = (
+  durationS: number,
+  speedAt: (tS: number) => number,
+  stepS = 1,
+  altitudeAt: (distanceM: number) => number = () => 100
+): TrackPoint[] => {
+  const start = Date.parse('2026-01-01T10:00:00Z');
+  const track: TrackPoint[] = [];
+  let meters = 0;
+  for (let k = 0; k * stepS <= durationS + 1e-9; k++) {
+    const tS = k * stepS;
+    const speedMs = speedAt(tS);
+    if (k > 0) meters += speedMs * stepS;
+    track.push({
+      lat: 43.6,
+      lon: 3.8 + meters / 80000,
+      time: new Date(start + tS * 1000).toISOString(),
+      timeMs: start + tS * 1000,
+      ele: altitudeAt(meters),
+      speedMs,
+      smoothedSpeedMs: speedMs,
+      bearing: 90,
+      speedSource: 'derived',
+    });
+  }
+  return track;
+};
+
+const allMoving = (track: TrackPoint[]) => track.map(() => true);
+const gradesOf = (track: TrackPoint[]) => computeGrades(track.map((p) => p.ele ?? NaN), buildCumulativeTrack(track));
+/** Vélo de route, 8,5 kg, cycliste de 70 kg. */
+const ROAD: CyclingEnergyParams = cyclingEnergyParams('route', 8.5, 70);
+
+describe('resistiveForceN', () => {
+  it('sur le plat : roulement plus air, calculés à la main', () => {
+    // 78,5 × 9,81 × 0,004 = 3,08 N ; ½ × 1,225 × 0,32 × 10² = 19,6 N.
+    expect(resistiveForceN(10, 0, ROAD)).toBeCloseTo(3.08 + 19.6, 1);
+  });
+
+  it('une pente manquante compte comme plate', () => {
+    expect(resistiveForceN(8, NaN, ROAD)).toBe(resistiveForceN(8, 0, ROAD));
+  });
+
+  it('devient négative dans une descente raide', () => {
+    expect(resistiveForceN(5, -0.08, ROAD)).toBeLessThan(0);
+  });
+});
+
+describe('computeCyclingEnergy', () => {
+  it('sur le plat à 36 km/h : environ 234 W mécaniques', () => {
+    const track = buildTrack(600, () => 10);
+    const r = computeCyclingEnergy(track, gradesOf(track), allMoving(track), ROAD, 0);
+    const expectedW = (resistiveForceN(10, 0, ROAD) * 10) / ROAD.drivetrainEfficiency;
+    // (3,08 + 19,6) N × 10 m/s / 0,97.
+    expect(expectedW).toBeCloseTo(233.8, 0);
+    expect(r.mechanicalJ / r.movingTimeS).toBeCloseTo(expectedW, 0);
+    expect(r.netJ).toBeCloseTo(r.mechanicalJ / ROAD.muscleEfficiency, 3);
+    expect(r.zones.find((z) => z.zone.key === 'flat')!.share).toBeCloseTo(1, 6);
+  });
+
+  it('la montée coûte surtout la pesanteur, et coûte plus que le plat à la même vitesse', () => {
+    const flat = buildTrack(600, () => 4);
+    const climb = buildTrack(600, () => 4, 1, (m) => 100 + 0.07 * m);
+    const rFlat = computeCyclingEnergy(flat, gradesOf(flat), allMoving(flat), ROAD, 0);
+    const rClimb = computeCyclingEnergy(climb, gradesOf(climb), allMoving(climb), ROAD, 0);
+    expect(rClimb.mechanicalJ).toBeGreaterThan(5 * rFlat.mechanicalJ);
+    // Pesanteur seule à 7 % et 4 m/s : 78,5 × 9,81 × sin(atan 0,07) × 4 ≈ 215 W.
+    expect(rClimb.mechanicalJ / rClimb.movingTimeS).toBeGreaterThan(215);
+  });
+
+  it('la descente en roue libre ne coûte rien', () => {
+    const descent = buildTrack(300, () => 12, 1, (m) => 1000 - 0.08 * m);
+    const r = computeCyclingEnergy(descent, gradesOf(descent), allMoving(descent), ROAD, 0);
+    const steep = r.zones.filter((z) => z.zone.key === 'steepDown' || z.zone.key === 'down');
+    expect(steep.reduce((s, z) => s + z.distanceM, 0)).toBeGreaterThan(0);
+    expect(steep.reduce((s, z) => s + z.mechanicalJ, 0)).toBe(0);
+  });
+
+  it('même résultat à 1 Hz et à 5 Hz', () => {
+    const speed = (t: number) => 8 + 2 * Math.sin(t / 60);
+    const altitude = (m: number) => 100 + 20 * Math.sin(m / 400);
+    const slow = buildTrack(1200, speed, 1, altitude);
+    const fast = buildTrack(1200, speed, 0.2, altitude);
+    const a = computeCyclingEnergy(slow, gradesOf(slow), allMoving(slow), ROAD, 80);
+    const b = computeCyclingEnergy(fast, gradesOf(fast), allMoving(fast), ROAD, 80);
+    expect(b.mechanicalJ).toBeCloseTo(a.mechanicalJ, -3);
+    expect(Math.abs(b.mechanicalJ - a.mechanicalJ) / a.mechanicalJ).toBeLessThan(0.01);
+    expect(b.restJ).toBeCloseTo(a.restJ, 3);
+  });
+
+  it("à l'arrêt, seul le repos compte", () => {
+    const track = buildTrack(120, () => 0);
+    const r = computeCyclingEnergy(track, gradesOf(track), track.map(() => false), ROAD, 100);
+    expect(r.netJ).toBe(0);
+    expect(r.restJ).toBeCloseTo(12000, 6);
+    expect(r.cumulativeTotalJ[track.length - 1]).toBeCloseTo(12000, 6);
+    expect(r.mechanicalPowerW.every((p) => Number.isNaN(p))).toBe(true);
+  });
+
+  it('un vélo de ville coûte plus qu’un vélo de route à la même vitesse', () => {
+    const track = buildTrack(600, () => 6);
+    const city = cyclingEnergyParams('ville', BIKE_TYPES.ville.bikeKg, 70);
+    const road = cyclingEnergyParams('route', BIKE_TYPES.route.bikeKg, 70);
+    const rCity = computeCyclingEnergy(track, gradesOf(track), allMoving(track), city, 0);
+    const rRoad = computeCyclingEnergy(track, gradesOf(track), allMoving(track), road, 0);
+    expect(rCity.mechanicalJ).toBeGreaterThan(rRoad.mechanicalJ);
+  });
+});

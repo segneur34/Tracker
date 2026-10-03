@@ -9,7 +9,7 @@
  */
 
 /** Support / activité analysée. Le seuil d'activité et l'unité d'affichage en dépendent. */
-export type SportType = 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running';
+export type SportType = 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running' | 'cycling';
 
 /** Point brut tel que lu dans le fichier de trace, avant tout calcul. */
 export interface RawTrackPoint {

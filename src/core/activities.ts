@@ -31,6 +31,7 @@ export const BASE_COLOR: Record<SportType, string> = {
   kite: '#6a1b9a',
   bateau: '#283593',
   running: '#bf360c',
+  cycling: '#00695c',
 };
 
 /** Couleurs proposées aux nouvelles activités, dans l'ordre. */
@@ -38,17 +39,21 @@ export const ACTIVITY_COLORS = [
   '#1565c0', '#bf360c', '#2e7d32', '#6a1b9a', '#00838f', '#ef6c00', '#ad1457', '#5d4037', '#283593', '#9e9d24',
 ];
 
-/** Au premier lancement : une activité par famille, sur les identifiants des anciens réglages. */
+/** Au premier lancement : une activité par famille, sur l'identifiant de son calcul (celui des anciens réglages). */
 export const DEFAULT_ACTIVITIES: Activity[] = [
   { id: 'wingfoil', name: 'Voile', base: 'wingfoil', color: BASE_COLOR.wingfoil },
   { id: 'running', name: 'Course', base: 'running', color: BASE_COLOR.running },
+  { id: 'cycling', name: 'Vélo', base: 'cycling', color: BASE_COLOR.cycling },
 ];
 
 /** Calcul par défaut d'une famille, pour un module sans activité. */
-export const FAMILY_BASE: Record<SportFamily, SportType> = { voile: 'wingfoil', course: 'running' };
+export const FAMILY_BASE: Record<SportFamily, SportType> = { voile: 'wingfoil', course: 'running', velo: 'cycling' };
 
 /** Nom d'une famille, tel que l'interface l'affiche. */
-export const FAMILY_LABEL: Record<SportFamily, string> = { voile: 'Voile', course: 'Course à pied' };
+export const FAMILY_LABEL: Record<SportFamily, string> = { voile: 'Voile', course: 'Course à pied', velo: 'Vélo' };
+
+/** Couleur d'interface d'une famille (variable du thème). */
+export const FAMILY_ACCENT: Record<SportFamily, string> = { voile: 'var(--voile)', course: 'var(--course)', velo: 'var(--velo)' };
 
 const isSportType = (value: unknown): value is SportType =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(SPORT_PROFILES, value);

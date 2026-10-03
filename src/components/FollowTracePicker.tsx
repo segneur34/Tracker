@@ -121,7 +121,7 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
 
         {tab === 'route' && status === 'ready' && (library.routes.length === 0 ? (
           <p style={{ margin: 0, color: 'var(--muted)' }}>
-            Aucun itinéraire rangé : planifiez-en un depuis l'accueil.
+            Aucun itinéraire enregistré : planifiez-en un depuis l'accueil.
           </p>
         ) : (
           <ul style={LIST_STYLE}>
@@ -129,7 +129,7 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
               <li key={saved.base}>
                 <button type="button" style={ROW_STYLE} onClick={() => pickRoute(i)}>
                   <strong>{saved.record.name}</strong>
-                  <span style={DETAIL_STYLE}>Rangé le {formatDate(saved.record.updatedAt)}</span>
+                  <span style={DETAIL_STYLE}>Enregistré le {formatDate(saved.record.updatedAt)}</span>
                 </button>
               </li>
             ))}

@@ -1,20 +1,25 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { FAMILY_LABEL, activitiesOfFamily, nextActivityColor, type Activity } from '../core/activities';
-import { ELEVATION_PRESETS, SAILING_SPORTS, SPORT_PROFILES, sportFamily, type SportFamily } from '../core/sportProfiles';
+import {
+  CYCLING_SPORTS, ELEVATION_PRESETS, SAILING_SPORTS, SPORT_FAMILIES, SPORT_PROFILES, sportFamily, type SportFamily,
+} from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
-  DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatSpeedValue, fromDisplaySpeed, toDisplaySpeed,
+  DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatPace, formatSpeedValue, fromDisplaySpeed, toDisplaySpeed,
   type DistanceUnit, type SpeedUnit,
 } from '../core/units';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
 import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  RUNNING_UNITS, SAILING_UNITS, TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, useAllSportSettings,
-  type TerrainType, type TextScale,
+  FAMILY_SPEED_RANGE_MS, FAMILY_UNITS, TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, defaultGradeRange, useAllSportSettings,
+  type SportSettingsView, type TerrainType, type TextScale,
 } from '../hooks/useSportSettings';
-import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
-import { DEFAULT_SAILING_SPEED_RANGE_MS } from '../sailing/sailingConfig';
+import { BIKE_TYPES, type BikeType } from '../cycling/energy';
+import {
+  CUSTOM_FLAT_SPEED_BOUNDS_MS, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PACE_LEVELS, PACE_LEVEL_LABEL, climbPowerWkgForFlatSpeed,
+  isPaceLevel, type PaceLevel, type PlanningFamily,
+} from '../planning/duration';
 import { CARD_STYLE } from '../components/styles';
 import { IconChevronRight } from '../components/icons';
 import MemoryStatus from '../components/MemoryStatus';
@@ -23,14 +28,15 @@ import PageHeader from '../components/ui/PageHeader';
 import './settingsPage.css';
 
 /** Calculs proposés à une nouvelle activité, par famille. */
-const FAMILY_BASES: Record<SportFamily, SportType[]> = { voile: SAILING_SPORTS, course: ['running'] };
+const FAMILY_BASES: Record<SportFamily, SportType[]> = { voile: SAILING_SPORTS, course: ['running'], velo: CYCLING_SPORTS };
 
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
 
 /** Blocs repliables de la page, tous fermés au départ ; l'état est mémorisé. */
-type SettingsBlock = 'memoire' | 'activites' | 'enregistrement' | 'cartes' | 'course' | 'coureur';
+type SettingsBlock = 'memoire' | 'activites' | 'enregistrement' | 'navigation' | 'cartes' | 'course' | 'velo' | 'coureur';
 const SETTINGS_BLOCK_DEFAULTS: Record<SettingsBlock, boolean> = {
-  memoire: false, activites: false, enregistrement: false, cartes: false, course: false, coureur: false,
+  memoire: false, activites: false, enregistrement: false, navigation: false, cartes: false, course: false, velo: false,
+  coureur: false,
 };
 /** Plafonds proposés pour les cartes gardées, en Mo : une liste plutôt qu'un champ, qui effacerait des tuiles à chaque chiffre tapé. */
 const TILE_CAP_CHOICES_MB = [100, 250, 500, 1000, 2000, 5000];
@@ -103,12 +109,14 @@ function NumberField({
 function SettingsPage() {
   const {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
+    navFamily, setNavFamily,
   } = useAllSportSettings();
   const { profile, setNumber, setSex, age } = useRunnerProfile();
   const { open, toggle } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
   const { open: openActivity, toggle: toggleActivity } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
 
   const runningActivities = activitiesOfFamily(activities, 'course');
+  const cyclingActivities = activitiesOfFamily(activities, 'velo');
 
   const askRemove = (a: Activity) => {
     if (window.confirm(`Supprimer l'activité « ${a.name} » ? Ses sessions restent, rangées sous « ${SPORT_PROFILES[a.base].label} », et ses réglages sont effacés.`)) {
@@ -143,7 +151,7 @@ function SettingsPage() {
           <>
             <p className="settings-block__intro">
               Celles proposées à l'enregistrement, dans les analyses et dans la bibliothèque. Chacune repose sur un calcul
-              (wingfoil, planche, kite, bateau ou course), qui fixe ses valeurs de départ ; ses réglages d'affichage et
+              (wingfoil, planche, kite, bateau, course ou vélo), qui fixe ses valeurs de départ ; ses réglages d'affichage et
               d'enregistrement lui sont propres.
             </p>
             <div className="settings-activities">
@@ -151,8 +159,9 @@ function SettingsPage() {
                 const s = view(activity);
                 const id = activity.id;
                 const p = SPORT_PROFILES[activity.base];
-                const sailing = sportFamily(activity.base) === 'voile';
-                const units = sailing ? SAILING_UNITS : RUNNING_UNITS;
+                const family = sportFamily(activity.base);
+                const sailing = family === 'voile';
+                const units = FAMILY_UNITS[family];
                 const isOpen = openActivity[id] === true;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null;
@@ -167,7 +176,7 @@ function SettingsPage() {
                   setFor(id, 'activeThreshold', next === null ? null : toDisplaySpeed(fromDisplaySpeed(next, thresholdUnit), p.thresholdUnit));
                 // Bornes de couleur, saisies en km/h quand l'unité est une allure (min/km).
                 const rangeUnit: SpeedUnit = s.speedUnit === 'minkm' ? 'kmh' : s.speedUnit;
-                const fallbackRange = sailing ? DEFAULT_SAILING_SPEED_RANGE_MS : DEFAULT_SPEED_RANGE_MS;
+                const fallbackRange = FAMILY_SPEED_RANGE_MS[family];
                 const shownRange = s.speedRange ?? fallbackRange;
                 // Voile sans réglage : champs vides, les bornes suivent l'allure de chaque session.
                 const rangeEmpty = sailing && s.speedRange === null;
@@ -177,8 +186,9 @@ function SettingsPage() {
                   const candidate = { ...shownRange, [bound]: fromDisplaySpeed(next, rangeUnit) };
                   if (candidate.maxMs > candidate.minMs) setFor(id, 'speedRange', candidate);
                 };
-                // Couleur de pente de la courbe d'altitude (course), saisie en %, rangée en fraction.
-                const shownGrades = s.gradeRange ?? DEFAULT_GRADE_RANGE;
+                // Couleur de pente de la courbe d'altitude (course, vélo), saisie en %, rangée en fraction.
+                const fallbackGrades = defaultGradeRange(activity.base);
+                const shownGrades = s.gradeRange ?? fallbackGrades;
                 const percent = (fraction: number) => parseFloat((fraction * 100).toFixed(1));
                 const setGradeBound = (bound: 'min' | 'max', next: number | null) => {
                   if (next === null) { setFor(id, 'gradeRange', null); return; }
@@ -273,12 +283,12 @@ function SettingsPage() {
                             <div className="settings-sports__pair">
                               <NumberField step={1} min={0}
                                 value={s.gradeRange === null ? null : percent(shownGrades.min)}
-                                placeholder={String(percent(DEFAULT_GRADE_RANGE.min))}
+                                placeholder={String(percent(fallbackGrades.min))}
                                 onCommit={(v) => setGradeBound('min', v)} />
                               <span>à</span>
                               <NumberField unit="%" step={1} min={0}
                                 value={s.gradeRange === null ? null : percent(shownGrades.max)}
-                                placeholder={String(percent(DEFAULT_GRADE_RANGE.max))}
+                                placeholder={String(percent(fallbackGrades.max))}
                                 onCommit={(v) => setGradeBound('max', v)} />
                               {s.gradeRange === null && <span className="settings-sports__mark">défaut</span>}
                             </div>
@@ -317,7 +327,7 @@ function SettingsPage() {
               au-dessus) et ne garde que la navigation au-dessus pour la VMG. Celui d'une session, réglé dans son analyse,
               prime ; sinon celui saisi ici ; sinon il est suggéré par l'allure de la session (celui du support quand elle
               est rapide, 1 nœud quand elle est lente ou en bateau). En course, en km/h, il ne sert qu'aux temps de pause
-              (reprise à seuil + 1, pause sous seuil − 1).
+              (reprise à seuil + 1, pause sous seuil − 1) ; à vélo de même (reprise à seuil + 1, pause sous seuil − 2).
               <br />
               Couleur de trace : gris sous la borne lente, dégradé du bleu au rouge jusqu'à la borne rapide. En voile, sans
               réglage, les bornes suivent l'allure de chaque session. Une trace peut avoir les siennes, réglées depuis sa
@@ -343,6 +353,24 @@ function SettingsPage() {
       </div>
 
       <div style={cardStyle}>
+        <PanelTitle label="Barre du bas" open={open.navigation} onToggle={() => toggle('navigation')} />
+        {open.navigation && (
+          <>
+            <p className="settings-block__intro">
+              Sur téléphone, un sport s'ouvre directement depuis la barre du bas, à gauche du bouton rond. Le bouton
+              « Sports », à sa droite, ouvre le menu des trois.
+            </p>
+            <div className="settings-row">
+              <span className="settings-row__label">Sport en accès direct</span>
+              <select value={navFamily} onChange={(e) => setNavFamily(e.target.value as SportFamily)} className="ui-field ui-field--s">
+                {SPORT_FAMILIES.map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
+              </select>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div style={cardStyle}>
         <PanelTitle label="Cartes hors ligne" open={open.cartes} onToggle={() => toggle('cartes')} />
         {open.cartes && <OfflineMapsSettings />}
       </div>
@@ -352,18 +380,28 @@ function SettingsPage() {
           <PanelTitle label="Course à pied" open={open.course} onToggle={() => toggle('course')} />
           {open.course && (
             <div style={{ marginTop: '10px' }}>
+              <p className="settings-block__intro">
+                Le niveau donne la vitesse sur le plat du temps estimé des itinéraires ; chaque 100 m de D+ y compte comme 1 km
+                de plus (règle du km-effort).
+              </p>
               {runningActivities.map((a) => {
-                const terrain = view(a).terrain;
+                const s = view(a);
+                const suffix = runningActivities.length > 1 ? ` (${a.name})` : '';
                 return (
-                  <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px', flexWrap: 'wrap' }}>
-                    <span style={{ width: '190px' }}>Terrain par défaut{runningActivities.length > 1 ? ` (${a.name})` : ''}</span>
-                    <select value={terrain} onChange={(e) => setFor(a.id, 'terrain', e.target.value as TerrainType)} className="ui-field ui-field--s">
-                      {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>)}
-                    </select>
-                    <span style={{ color: 'var(--muted)', fontSize: '12px' }}>
-                      lissage {ELEVATION_PRESETS[terrain].smoothingSeconds} s, seuil de dénivelé {ELEVATION_PRESETS[terrain].minGainM} m
-                    </span>
-                  </label>
+                  <div key={a.id} style={{ marginBottom: '10px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px', flexWrap: 'wrap' }}>
+                      <span style={{ width: '190px' }}>Terrain par défaut{suffix}</span>
+                      <select value={s.terrain} onChange={(e) => setFor(a.id, 'terrain', e.target.value as TerrainType)} className="ui-field ui-field--s">
+                        {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>)}
+                      </select>
+                      <span style={{ color: 'var(--muted)', fontSize: '12px' }}>
+                        lissage {ELEVATION_PRESETS[s.terrain].smoothingSeconds} s, seuil de dénivelé {ELEVATION_PRESETS[s.terrain].minGainM} m
+                      </span>
+                    </label>
+                    <PaceSettings family="course" view={s} suffix={suffix}
+                      onLevel={(level) => setFor(a.id, 'paceLevel', level)}
+                      onCustomSpeed={(ms) => setFor(a.id, 'customFlatSpeedMs', ms)} />
+                  </div>
                 );
               })}
             </div>
@@ -371,12 +409,39 @@ function SettingsPage() {
         </div>
       )}
 
+      {cyclingActivities.length > 0 && (
+        <div style={cardStyle}>
+          <PanelTitle label="Vélo" open={open.velo} onToggle={() => toggle('velo')} />
+          {open.velo && (
+            <div style={{ marginTop: '10px' }}>
+              <p className="settings-block__intro">
+                Le type de vélo fixe la résistance au roulement et la prise au vent ; avec le poids du vélo et le vôtre (bloc
+                Pratiquant), ils donnent la puissance et l'énergie de l'analyse.
+              </p>
+              <p className="settings-block__intro">
+                Le niveau donne le temps estimé des itinéraires : sa vitesse sur le plat ; en montée, la puissance que tient un
+                cycliste de ce niveau, en watts par kilo de votre poids ; en descente, la roue libre, jamais moins vite que sur le
+                plat, plafonnée selon le type de vélo.
+              </p>
+              {cyclingActivities.map((a) => (
+                <BikeSettings key={a.id} activity={a} view={view(a)} showName={cyclingActivities.length > 1}
+                  onTerrain={(t) => setFor(a.id, 'terrain', t)}
+                  onBikeType={(t) => setFor(a.id, 'bikeType', t)}
+                  onBikeWeight={(kg) => setFor(a.id, 'bikeWeight', kg)}
+                  onPaceLevel={(level) => setFor(a.id, 'paceLevel', level)}
+                  onCustomSpeed={(ms) => setFor(a.id, 'customFlatSpeedMs', ms)} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={cardStyle}>
-        <PanelTitle label="Coureur" open={open.coureur} onToggle={() => toggle('coureur')} />
+        <PanelTitle label="Pratiquant" open={open.coureur} onToggle={() => toggle('coureur')} />
         {open.coureur && (
           <>
             <p className="settings-block__intro">
-              Ces caractéristiques serviront aux estimations de coût énergétique et aux zones d'effort. Tout est facultatif.
+              Ces caractéristiques servent à l'onglet énergie des analyses de course et de vélo, et serviront aux zones d'effort. Tout est facultatif.
             </p>
             <NumberField label="Poids" unit="kg" step={0.5} min={20} max={300} value={profile.weightKg} onCommit={profileField('weightKg')} placeholder="ex. 72" />
             <NumberField label="Taille" unit="cm" min={100} max={250} value={profile.heightCm} onCommit={profileField('heightCm')} placeholder="ex. 178" />
@@ -391,9 +456,104 @@ function SettingsPage() {
             </label>
             <NumberField label="Fréquence cardiaque max" unit="bpm" min={100} max={250} value={profile.hrMax} onCommit={profileField('hrMax')} placeholder="ex. 185" />
             <NumberField label="Fréquence cardiaque de repos" unit="bpm" min={25} max={120} value={profile.hrRest} onCommit={profileField('hrRest')} placeholder="ex. 55" />
+            <NumberField label="Économie de course" unit="ml O₂/kg/km" min={120} max={320} value={profile.economyMlKgKm} onCommit={profileField('economyMlKgKm')} placeholder="200" />
+            <p className="settings-block__intro">
+              Oxygène consommé pour courir un kilomètre sur le plat, que donne un test d'effort en laboratoire. Sans valeur, 200 ml/kg/km : environ 1 kcal par kilo et par kilomètre.
+            </p>
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Vitesse en km/h, sans décimale inutile. */
+const kmhLabel = (ms: number): string => `${parseFloat((ms * 3.6).toFixed(1))} km/h`;
+
+/** Ce que donne une vitesse sur le plat : l'allure en course, la puissance de montée à vélo. */
+const paceDetail = (family: PlanningFamily, speedMs: number, climbWkg?: number): string =>
+  family === 'course'
+    ? `${kmhLabel(speedMs)}, ${formatPace(speedMs)} /km`
+    : `${kmhLabel(speedMs)}, ${parseFloat((climbWkg ?? climbPowerWkgForFlatSpeed(speedMs)).toFixed(1))} W/kg en montée`;
+
+/**
+ * Niveau du temps estimé des itinéraires d'une activité : un des niveaux,
+ * chacun avec sa vitesse, ou « Personnalisé » et une vitesse saisie en km/h.
+ */
+function PaceSettings({ family, view, suffix, onLevel, onCustomSpeed }: {
+  family: PlanningFamily;
+  view: SportSettingsView;
+  suffix: string;
+  onLevel: (level: PaceLevel) => void;
+  onCustomSpeed: (speedMs: number | null) => void;
+}) {
+  const [lo, hi] = CUSTOM_FLAT_SPEED_BOUNDS_MS[family];
+  const custom = view.customFlatSpeedMs;
+  return (
+    <>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px', flexWrap: 'wrap' }}>
+        <span style={{ width: '190px' }}>Niveau (temps estimé){suffix}</span>
+        <select value={view.paceLevel} onChange={(e) => isPaceLevel(e.target.value) && onLevel(e.target.value)} className="ui-field ui-field--s">
+          {PACE_LEVELS.map((level) => (
+            <option key={level} value={level}>
+              {level === 'perso'
+                ? PACE_LEVEL_LABEL.perso
+                : `${PACE_LEVEL_LABEL[level]} · ${paceDetail(family, LEVEL_FLAT_SPEED_MS[family][level], family === 'velo' ? LEVEL_CLIMB_POWER_WKG[level] : undefined)}`}
+            </option>
+          ))}
+        </select>
+      </label>
+      {view.paceLevel === 'perso' && (
+        <>
+          <NumberField label={`Vitesse sur le plat${suffix}`} unit="km/h" step={0.5}
+            min={parseFloat((lo * 3.6).toFixed(1))} max={parseFloat((hi * 3.6).toFixed(1))}
+            value={custom === null ? null : parseFloat((custom * 3.6).toFixed(1))}
+            onCommit={(kmh) => onCustomSpeed(kmh === null ? null : kmh / 3.6)} />
+          <p className="settings-block__intro">
+            {custom === null ? 'Sans vitesse saisie, le niveau moyen s\'applique.' : `Soit ${paceDetail(family, custom)}.`}
+          </p>
+        </>
+      )}
+    </>
+  );
+}
+
+/** Réglages propres à une activité vélo : terrain, type de vélo, poids du vélo, niveau. */
+function BikeSettings({
+  activity, view, showName, onTerrain, onBikeType, onBikeWeight, onPaceLevel, onCustomSpeed,
+}: {
+  activity: Activity;
+  view: SportSettingsView;
+  showName: boolean;
+  onTerrain: (terrain: TerrainType) => void;
+  onBikeType: (type: BikeType) => void;
+  onBikeWeight: (kg: number | null) => void;
+  onPaceLevel: (level: PaceLevel) => void;
+  onCustomSpeed: (speedMs: number | null) => void;
+}) {
+  const suffix = showName ? ` (${activity.name})` : '';
+  const spec = BIKE_TYPES[view.bikeType];
+  return (
+    <div style={{ marginBottom: '10px' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px', flexWrap: 'wrap' }}>
+        <span style={{ width: '190px' }}>Type de vélo{suffix}</span>
+        <select value={view.bikeType} onChange={(e) => onBikeType(e.target.value as BikeType)} className="ui-field ui-field--s">
+          {(Object.keys(BIKE_TYPES) as BikeType[]).map((t) => <option key={t} value={t}>{BIKE_TYPES[t].label}</option>)}
+        </select>
+        <span style={{ color: 'var(--muted)', fontSize: '12px' }}>roulement {spec.crr}, traînée {spec.cdaM2} m²</span>
+      </label>
+      <NumberField label={`Poids du vélo${suffix}`} unit="kg" step={0.5} min={3} max={60}
+        value={view.bikeWeight} placeholder={String(spec.bikeKg)} onCommit={onBikeWeight} />
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px', flexWrap: 'wrap' }}>
+        <span style={{ width: '190px' }}>Terrain par défaut{suffix}</span>
+        <select value={view.terrain} onChange={(e) => onTerrain(e.target.value as TerrainType)} className="ui-field ui-field--s">
+          {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>)}
+        </select>
+        <span style={{ color: 'var(--muted)', fontSize: '12px' }}>
+          lissage {ELEVATION_PRESETS[view.terrain].smoothingSeconds} s, seuil de dénivelé {ELEVATION_PRESETS[view.terrain].minGainM} m
+        </span>
+      </label>
+      <PaceSettings family="velo" view={view} suffix={suffix} onLevel={onPaceLevel} onCustomSpeed={onCustomSpeed} />
     </div>
   );
 }
@@ -456,7 +616,7 @@ function AddActivityForm({
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} />
       <select value={family} onChange={(e) => pickFamily(e.target.value as SportFamily)} aria-label="Famille" className="ui-field ui-field--s">
-        {(Object.keys(FAMILY_BASES) as SportFamily[]).map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
+        {SPORT_FAMILIES.map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
       </select>
       {FAMILY_BASES[family].length > 1 && (
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>

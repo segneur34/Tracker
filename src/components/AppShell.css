@@ -80,6 +80,72 @@
   font-weight: 700;
 }
 
+/* --- Menu des sports : le bouton « Sports » de la barre, et ce qu'il déplie --- */
+
+.shell-tab--menu {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.shell-tab__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.shell-tab__chevron {
+  transition: transform 150ms ease-out;
+}
+
+.shell-tab--menu[aria-expanded='true'] .shell-tab__chevron {
+  transform: rotate(180deg);
+}
+
+/* Au-dessus de la barre, calé à droite, sous le cadran d'appui long (1200). */
+.shell-sports-menu {
+  position: absolute;
+  right: var(--space-2);
+  bottom: calc(100% + var(--space-2));
+  z-index: 1150;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+.shell-sports-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 48px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-s);
+  color: var(--tab-color);
+  font-size: var(--text-m);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.shell-sports-menu__item.active {
+  background: var(--surface-sunken);
+  font-weight: 700;
+}
+
+/* Voile transparent sous la barre : un appui hors du menu le referme, un appui
+   sur un autre onglet de la barre marche directement. */
+.shell-sports-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1099;
+}
+
 .shell-tabbar__record {
   display: flex;
   align-items: center;
@@ -244,7 +310,8 @@
 }
 
 @media (min-width: 768px) {
-  .shell-tabbar {
+  .shell-tabbar,
+  .shell-sports-backdrop {
     display: none;
   }
 

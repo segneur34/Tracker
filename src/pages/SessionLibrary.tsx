@@ -24,12 +24,13 @@ import { formatDistance, formatDuration, formatSpeed, knotsToMs, msToKnots, toDi
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { importFiles, importFromFolder, readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
-import { effectiveDistanceUnit, effectiveSpeedUnit, readStoredActivities, readStoredSettings } from '../hooks/useSportSettings';
+import {
+  FAMILY_SPEED_RANGE_MS, effectiveDistanceUnit, effectiveSpeedUnit, readStoredActivities, readStoredSettings,
+} from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
 import { routeActivity, routesOfFamily } from '../planning/routeList';
 import { isNativeApp } from '../platform/runtime';
-import { DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
-import { DEFAULT_SAILING_SPEED_RANGE_MS, SPEED_RANGE_MAX_MARGIN_KN, suggestActiveThresholdKn } from '../sailing/sailingConfig';
+import { SPEED_RANGE_MAX_MARGIN_KN, suggestActiveThresholdKn } from '../sailing/sailingConfig';
 import './SessionLibrary.css';
 
 /**
@@ -41,9 +42,10 @@ import './SessionLibrary.css';
  * par les mêmes onglets d'activité.
  */
 
-const FAMILY: Record<SportFamily, { title: string; accent: string }> = {
-  voile: { title: 'Voile', accent: 'var(--voile)' },
-  course: { title: 'Course à pied', accent: 'var(--course)' },
+const FAMILY: Record<SportFamily, { title: string; accent: string; of: string }> = {
+  voile: { title: 'Voile', accent: 'var(--voile)', of: 'de voile' },
+  course: { title: 'Course à pied', accent: 'var(--course)', of: 'de course' },
+  velo: { title: 'Vélo', accent: 'var(--velo)', of: 'de vélo' },
 };
 
 /** Activité d'une session d'après sa fiche (`sessionActivity`), `null` pour une session à classer. */
@@ -106,7 +108,7 @@ const previewSpeedRange = (
       maxMs: record.summary.maxSpeedMs + knotsToMs(SPEED_RANGE_MAX_MARGIN_KN),
     };
   }
-  return family === 'voile' ? DEFAULT_SAILING_SPEED_RANGE_MS : DEFAULT_SPEED_RANGE_MS;
+  return FAMILY_SPEED_RANGE_MS[family];
 };
 
 /** Aperçu carte d'une session, chargé et analysé à la demande (aucun point de trace en mémoire avant). */
@@ -411,7 +413,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
             <RouteList routes={shownRoutes} activities={activities} />
           ) : (
             <p className="lib-hint">
-              Aucun itinéraire {family === 'voile' ? 'de voile' : 'de course'} pour l'instant.{' '}
+              Aucun itinéraire {FAMILY[family].of} pour l'instant.{' '}
               <Link to="/itineraires">Planifiez-en un</Link> et rangez-le sous une de ces activités : il apparaîtra ici.
             </p>
           )}
@@ -421,7 +423,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       {!planned && unclassified.length > 0 && (
         <Card heading="À classer">
           <p className="lib-hint">
-            Traces dont l'activité n'est pas connue : choisissez-la pour les ranger en voile ou en course.
+            Traces dont l'activité n'est pas connue : choisissez-la pour les ranger en voile, en course ou à vélo.
           </p>
           <ul className="lib-list">{unclassified.map(row)}</ul>
         </Card>
@@ -433,7 +435,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
         library.status === 'ready' && !library.scanning && (
           <Card>
             <p className="lib-hint">
-              Aucune session {family === 'voile' ? 'de voile' : 'de course'} pour l'instant. Enregistrez-en une, ou
+              Aucune session {FAMILY[family].of} pour l'instant. Enregistrez-en une, ou
               importez des GPX : ils sont rangés dans la mémoire et analysés ici.
             </p>
           </Card>

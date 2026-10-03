@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, addWaypoint, closeLoop, insertWaypoint, isChoosableMode, isLooped, isRouteMode, legKey, moveWaypoint,
-  nextPendingLeg, pendingLegRequests, removeWaypoint, reorderWaypoint, retryFailedLegs, reverseRoute, routeFromTrack, routePoints,
-  routeProfileRows, routeTotals, setLegMode, snapToWaypoints, waypointDistances, withLegError, withLegResult,
+  nextPendingLeg, pendingLegRequests, readRouteMode, removeWaypoint, reorderWaypoint, retryFailedLegs, reverseRoute, routeFromTrack, routePoints,
+  routeProfileRows, routeTotals, routeVehicle, setLegMode, snapToWaypoints, waypointDistances, withLegError, withLegResult,
   type PlannedRoute, type RoutePoint, type Waypoint,
 } from './route';
 
@@ -14,7 +14,7 @@ const D: Waypoint = { lat: 43.63, lon: 3.8 };
 /** Un degré de latitude fait un peu plus de 111 km : 0,01° ≈ 1 112 m. */
 const STEP_M = 1112;
 
-const build = (points: Waypoint[], mode: 'foot' | 'straight' = 'foot'): PlannedRoute =>
+const build = (points: Waypoint[], mode: 'chemin' | 'straight' = 'chemin'): PlannedRoute =>
   points.reduce((route, p) => addWaypoint(route, p, mode), EMPTY_ROUTE);
 
 /** Tracé calculé factice : trois points sur la droite, altitudes données. */
@@ -82,9 +82,9 @@ describe('édition d\'un itinéraire', () => {
 
   it('change le mode d\'un tronçon', () => {
     const route = resolveAll(build([A, B]), [0, 0, 0]);
-    const bike = setLegMode(route, 0, 'bike');
-    expect(bike.legs[0]).toMatchObject({ mode: 'bike', status: 'pending' });
-    expect(setLegMode(route, 0, 'foot')).toBe(route);
+    const bike = setLegMode(route, 0, 'route');
+    expect(bike.legs[0]).toMatchObject({ mode: 'route', status: 'pending' });
+    expect(setLegMode(route, 0, 'chemin')).toBe(route);
   });
 
   it('inverse le sens : tracés retournés en attendant le recalcul', () => {
@@ -97,12 +97,12 @@ describe('édition d\'un itinéraire', () => {
   });
 
   it('boucle : un dernier tronçon ramène au départ, une seule fois', () => {
-    const loop = closeLoop(build([A, B]), 'foot');
+    const loop = closeLoop(build([A, B]), 'chemin');
     expect(loop.waypoints).toEqual([A, B, A]);
     expect(isLooped(loop)).toBe(true);
-    expect(closeLoop(loop, 'foot')).toBe(loop);
+    expect(closeLoop(loop, 'chemin')).toBe(loop);
     expect(isLooped(build([A, B]))).toBe(false);
-    expect(closeLoop(build([A]), 'foot').waypoints).toEqual([A]);
+    expect(closeLoop(build([A]), 'chemin').waypoints).toEqual([A]);
   });
 
   it('boucle en ligne droite : le dernier tronçon est prêt tout de suite, rien à calculer', () => {
@@ -114,7 +114,7 @@ describe('édition d\'un itinéraire', () => {
   });
 
   it('sur une boucle, déplacer le départ déplace l\'arrivée : la boucle reste fermée', () => {
-    const loop = resolveAll(closeLoop(build([A, B, C]), 'foot'), [0, 0, 0]);
+    const loop = resolveAll(closeLoop(build([A, B, C]), 'chemin'), [0, 0, 0]);
     const moved = moveWaypoint(loop, 0, D);
     expect(moved.waypoints).toEqual([D, B, C, D]);
     expect(moved.legs.map((l) => l.status)).toEqual(['pending', 'ready', 'pending']);
@@ -129,7 +129,7 @@ describe('édition d\'un itinéraire', () => {
     // D → B prend la ligne droite de sa place : prête tout de suite ; A → D est à calculer.
     expect(moved.legs.map((l) => l.status)).toEqual(['pending', 'ready', 'ready']);
     expect(moved.legs[2]).toBe(route.legs[1]);
-    expect(moved.legs.map((l) => l.mode)).toEqual(['foot', 'straight', 'straight']);
+    expect(moved.legs.map((l) => l.mode)).toEqual(['chemin', 'straight', 'straight']);
     expect(reorderWaypoint(route, 1, 1)).toBe(route);
     expect(reorderWaypoint(route, 0, 9)).toBe(route);
   });
@@ -153,7 +153,7 @@ describe('résultats de calcul', () => {
 
   it('liste les calculs à demander, une fois par clé', () => {
     const route = closeLoop(build([A, B]), 'straight');
-    expect(pendingLegRequests(route)).toEqual([{ key: legKey(route, 0), from: A, to: B, mode: 'foot' }]);
+    expect(pendingLegRequests(route)).toEqual([{ key: legKey(route, 0), from: A, to: B, mode: 'chemin' }]);
   });
 
   it('un échec garde la ligne droite et la raison', () => {
@@ -286,20 +286,20 @@ describe('trace importée', () => {
     const route = routeFromTrack(track)!;
     const cut = insertWaypoint(route, 0, B);
     expect(cut.waypoints).toEqual([A, B, END]);
-    const joined = removeWaypoint(cut, 1, 'foot');
+    const joined = removeWaypoint(cut, 1, 'chemin');
     expect(joined.legs).toEqual(route.legs);
   });
 
   it('déplacer un point refait ses tronçons importés dans le mode choisi, les autres restent', () => {
     const cut = insertWaypoint(routeFromTrack(track)!, 0, B);
-    const moved = moveWaypoint(cut, 2, { lat: 43.62, lon: 3.81 }, 'bike');
+    const moved = moveWaypoint(cut, 2, { lat: 43.62, lon: 3.81 }, 'route');
     expect(moved.legs[0]).toBe(cut.legs[0]);
-    expect(moved.legs[1]).toMatchObject({ mode: 'bike', status: 'pending' });
+    expect(moved.legs[1]).toMatchObject({ mode: 'route', status: 'pending' });
     // Sans mode donné, la ligne droite.
     expect(moveWaypoint(cut, 2, { lat: 43.62, lon: 3.81 }).legs[1]).toMatchObject({ mode: 'straight', status: 'ready' });
     // Retirer un point entre une part importée et une ligne droite : refait dans le mode choisi.
     const mixed = addWaypoint(routeFromTrack(track)!, C, 'straight');
-    expect(removeWaypoint(mixed, 1, 'mtb').legs[0]).toMatchObject({ mode: 'mtb', status: 'pending' });
+    expect(removeWaypoint(mixed, 1, 'piste').legs[0]).toMatchObject({ mode: 'piste', status: 'pending' });
   });
 
   it('inverser retourne la trace sans la recalculer', () => {
@@ -310,17 +310,33 @@ describe('trace importée', () => {
   });
 
   it('réordonner garde une part importée dont les extrémités n\'ont pas changé', () => {
-    const route = addWaypoint(routeFromTrack(track)!, C, 'foot');
-    const moved = reorderWaypoint(route, 2, 0, 'foot');
+    const route = addWaypoint(routeFromTrack(track)!, C, 'chemin');
+    const moved = reorderWaypoint(route, 2, 0, 'chemin');
     expect(moved.waypoints).toEqual([C, A, END]);
     expect(moved.legs[1]).toBe(route.legs[0]);
-    expect(moved.legs[0]).toMatchObject({ mode: 'foot', status: 'pending' });
+    expect(moved.legs[0]).toMatchObject({ mode: 'chemin', status: 'pending' });
   });
 
   it('le mode importé se relit mais ne se choisit pas', () => {
     expect(isRouteMode('imported')).toBe(true);
     expect(isChoosableMode('imported')).toBe(false);
-    expect(isChoosableMode('foot')).toBe(true);
+    expect(isChoosableMode('chemin')).toBe(true);
     expect(isRouteMode('toString')).toBe(false);
+  });
+
+  it('traduit les modes d\'avant les types de voie, qui ne se choisissent plus', () => {
+    expect(readRouteMode('foot')).toBe('chemin');
+    expect(readRouteMode('mtb')).toBe('piste');
+    expect(readRouteMode('bike')).toBe('route');
+    expect(readRouteMode('grandeRoute')).toBe('grandeRoute');
+    expect(readRouteMode('toString')).toBeNull();
+    expect(readRouteMode(undefined)).toBeNull();
+    expect(isChoosableMode('foot')).toBe(false);
+  });
+
+  it('prend les règles du vélo pour la famille vélo, celles du piéton sinon', () => {
+    expect(routeVehicle('velo')).toBe('velo');
+    expect(routeVehicle('course')).toBe('pieton');
+    expect(routeVehicle('voile')).toBe('pieton');
   });
 });

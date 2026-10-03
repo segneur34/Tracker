@@ -77,7 +77,7 @@ await tapMap(0.55, 0.7);
 await log('trois points');
 console.log('Précédent (carte) :', await clickText('Précédent', '.plan-map-tools button'));
 await log('après Précédent');
-console.log('mode à pied :', await clickText('À pied', '.plan-modes button'));
+console.log('mode chemin :', await clickText('Chemin', '.plan-modes button'));
 console.log('Boucler en ligne droite :', await clickText('Boucler en ligne droite'));
 await log('boucle en ligne droite');
 console.log('Tout effacer :', await clickText('Tout effacer'));

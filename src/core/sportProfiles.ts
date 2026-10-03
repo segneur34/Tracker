@@ -123,6 +123,19 @@ export const SAILING_TOP_TARGETS: TopTarget[] = [
   { key: 'd1NM', label: '1 mille', value: 1852, kind: 'distance' },
 ];
 
+/** Cibles de tops du vélo : les durées des tests d'effort, les distances des segments usuels. */
+export const CYCLING_TOP_TARGETS: TopTarget[] = [
+  { key: 't1min', label: '1 min', value: 60, kind: 'time' },
+  { key: 't5min', label: '5 min', value: 300, kind: 'time' },
+  { key: 't20min', label: '20 min', value: 1200, kind: 'time' },
+  { key: 't60min', label: '1 h', value: 3600, kind: 'time' },
+  { key: 'd1km', label: '1 km', value: 1000, kind: 'distance' },
+  { key: 'd5km', label: '5 km', value: 5000, kind: 'distance' },
+  { key: 'd10km', label: '10 km', value: 10000, kind: 'distance' },
+  { key: 'd20km', label: '20 km', value: 20000, kind: 'distance' },
+  { key: 'd40km', label: '40 km', value: 40000, kind: 'distance' },
+];
+
 /** Réglages communs aux supports à voile, surchargés au cas par cas. */
 const SAILING_DEFAULTS = {
   speedUnit: 'kn' as SpeedUnit,
@@ -187,6 +200,24 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     topTargets: [],
     recording: DEFAULT_RECORDING,
   },
+  cycling: {
+    id: 'cycling',
+    label: 'Vélo',
+    speedUnit: 'kmh',
+    thresholdUnit: 'kmh',
+    // Reprise au-dessus de 6 km/h, pause en dessous de 3 km/h, confirmée sur 3 s.
+    defaultActiveThreshold: 5,
+    activeHysteresis: { enterOffset: 1, exitOffset: -2 },
+    minStateDurationS: 3,
+    medianWindowSeconds: 3,
+    // 25 m/s font 90 km/h, au-delà d'une descente de col ordinaire.
+    maxPlausibleSpeedMs: 25,
+    defaultPolarMinSpeed: 0,
+    activeRatioLabel: 'Ratio en mouvement',
+    elevation: ELEVATION_PRESETS.route,
+    topTargets: CYCLING_TOP_TARGETS,
+    recording: DEFAULT_RECORDING,
+  },
 };
 
 /** Supports dont l'analyse repose sur le vent. */
@@ -194,10 +225,17 @@ export const SAILING_SPORTS: SportType[] = ['wingfoil', 'windsurf', 'kite', 'bat
 
 export const getSportProfile = (sport: SportType): SportProfile => SPORT_PROFILES[sport];
 
-/** Famille d'un support : elle choisit le module qui l'analyse et la bibliothèque qui le range. */
-export type SportFamily = 'voile' | 'course';
+/** Supports analysés par le module vélo. */
+export const CYCLING_SPORTS: SportType[] = ['cycling'];
 
-export const sportFamily = (sport: SportType): SportFamily => (SAILING_SPORTS.includes(sport) ? 'voile' : 'course');
+/** Famille d'un support : elle choisit le module qui l'analyse et la bibliothèque qui le range. */
+export type SportFamily = 'voile' | 'course' | 'velo';
+
+/** Les familles, dans l'ordre de l'interface. */
+export const SPORT_FAMILIES: SportFamily[] = ['voile', 'course', 'velo'];
+
+export const sportFamily = (sport: SportType): SportFamily =>
+  SAILING_SPORTS.includes(sport) ? 'voile' : CYCLING_SPORTS.includes(sport) ? 'velo' : 'course';
 
 /** Les deux détentes du seuil d'activité, dans l'unité du profil. */
 export const getActiveThresholds = (

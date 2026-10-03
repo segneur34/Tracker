@@ -11,7 +11,7 @@ const voile = DEFAULT_ACTIVITIES[0];
 describe('readActivities', () => {
   it('rend celles du premier lancement quand la liste est absente', () => {
     expect(readActivities(undefined)).toEqual(DEFAULT_ACTIVITIES);
-    expect(DEFAULT_ACTIVITIES.map((a) => a.name)).toEqual(['Voile', 'Course']);
+    expect(DEFAULT_ACTIVITIES.map((a) => a.name)).toEqual(['Voile', 'Course', 'Vélo']);
   });
 
   it('garde une liste vide, écarte les entrées abîmées et les doublons', () => {
@@ -64,6 +64,13 @@ describe('findActivity et activitiesOfFamily', () => {
   it('range par famille', () => {
     expect(activitiesOfFamily([voile, moth, trail], 'voile')).toEqual([voile, moth]);
     expect(activitiesOfFamily([voile, moth, trail], 'course')).toEqual([trail]);
+  });
+
+  it('range le vélo dans sa propre famille, ni en course ni en voile', () => {
+    const gravel: Activity = { id: 'a-gravel', name: 'Gravel', base: 'cycling', color: '#00695c' };
+    expect(activitiesOfFamily([voile, trail, gravel], 'velo')).toEqual([gravel]);
+    expect(activitiesOfFamily([voile, trail, gravel], 'course')).toEqual([trail]);
+    expect(sessionActivity([voile, trail, gravel], null, 'cycling')).toBe(gravel);
   });
 });
 

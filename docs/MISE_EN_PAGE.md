@@ -1,15 +1,15 @@
 # Mise en page d'une page d'analyse
 
-Patron commun aux modules d'analyse (voile, course) et à tout sport à venir. Ce qui est commun passe par des pièces partagées, pour qu'une règle ne s'écrive qu'une fois ; ce document dit lesquelles et dans quel ordre les poser. Les signatures se lisent dans le code.
+Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `LandModule`) et à tout sport à venir. Ce qui est commun passe par des pièces partagées, pour qu'une règle ne s'écrive qu'une fois ; ce document dit lesquelles et dans quel ordre les poser. Les signatures se lisent dans le code.
 
 ## Structure, de haut en bas
 
 1. **Feuille** (`.an-sheet`), réduite à l'en-tête (`.an-sheet__head`) : `PageHeader` avec le retour à la liste du sport, le titre « Analyse … », et `SessionNameEditor` en sous-titre (nom de la session et « Renommer »).
 2. Barre « Non enregistré / Enregistrer la session » (`SessionSaveBar`), pendant un brouillon seulement (la course ne passe pas `kept`, et la voile non plus).
 3. **Onglets** `SectionTabs` et leurs **panneaux** : chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
-   - Le premier onglet, « général », est le seul ouvert par défaut. Il porte la synthèse de la session (`.an-sheet__stats an-sheet__stats--always`) : distances, temps, ratio actif, vitesses moyennes, et le dénivelé en course ; en voile, le vent suit. On le replie pour comparer les tableaux à la carte.
+   - Le premier onglet, « général », est le seul ouvert par défaut. Il porte la synthèse de la session (`.an-sheet__stats an-sheet__stats--always`) : distances, temps, ratio actif, vitesses moyennes, et le dénivelé en course et à vélo ; en voile, le vent suit. On le replie pour comparer les tableaux à la carte.
    - Le dernier onglet, « réglages », porte ceux de la session : activité, seuils, terrain, source de vitesse, bornes de couleur de la trace (`SpeedRangeEditor`).
-   - En course, les onglets sont sous la feuille ; en voile, ils sont tous dans la colonne à droite de la carte.
+   - En course et à vélo, les onglets sont sous la feuille ; en voile, ils sont tous dans la colonne à droite de la carte.
 4. **Rangée de la carte** (`.an-map-row`) : le bloc `AnalysisMap`, suivi en voile de la colonne d'onglets (`an-carte-col`).
 
 ## Règles communes

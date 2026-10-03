@@ -19,6 +19,8 @@ export interface RunnerProfile {
   hrMax: number | null;
   /** Fréquence cardiaque de repos, en battements par minute. */
   hrRest: number | null;
+  /** Économie de course sur le plat, en ml d'O₂ par kg et par km (test en laboratoire). */
+  economyMlKgKm: number | null;
 }
 
 export const EMPTY_RUNNER_PROFILE: RunnerProfile = {
@@ -28,6 +30,7 @@ export const EMPTY_RUNNER_PROFILE: RunnerProfile = {
   sex: null,
   hrMax: null,
   hrRest: null,
+  economyMlKgKm: null,
 };
 
 /** Plages plausibles de chaque champ numérique. */
@@ -37,6 +40,7 @@ const BOUNDS: Record<Exclude<keyof RunnerProfile, 'sex'>, [number, number]> = {
   birthYear: [1900, 2100],
   hrMax: [100, 250],
   hrRest: [25, 120],
+  economyMlKgKm: [120, 320],
 };
 
 export const useRunnerProfile = () => {

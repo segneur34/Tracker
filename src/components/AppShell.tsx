@@ -1,21 +1,28 @@
-import { useCallback, type ComponentType } from 'react';
+import { useCallback, useEffect, useState, type ComponentType } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
 import { formatClock } from '../core/units';
 import { useLongPress } from '../hooks/useLongPress';
 import { togglePauseRecording, useRecorder } from '../hooks/useRecorder';
-import { effectiveLongPressMs } from '../hooks/useSportSettings';
+import { effectiveLongPressMs, useNavFamily } from '../hooks/useSportSettings';
 import { recordingDurationMs } from '../recording/session';
-import { IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings } from './icons';
+import {
+  IconBike, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings,
+} from './icons';
 
 /**
  * Cadre de toutes les pages : navigation et bandeau d'enregistrement.
  *
- * Sur téléphone (moins de 768 px de large), une barre d'onglets en bas :
- * Accueil · Voile · Enregistrer · Course · Réglages, le bouton du milieu
- * vert au repos, rouge pendant un enregistrement. Sur ordinateur, les mêmes
- * destinations dans une barre en haut, et « Itinéraires » à côté du bouton
- * Enregistrer (sur téléphone, on y va depuis l'accueil). Le choix se fait en CSS
- * (`AppShell.css`), sans lecture de la taille d'écran en JavaScript.
+ * Sur téléphone (moins de 768 px de large), une barre d'onglets en bas, en
+ * cinq cases pour que le bouton rond reste au milieu : Accueil · sport favori
+ * · Enregistrer · Sports · Réglages. Le sport favori se choisit dans Réglages
+ * (voile par défaut) ; « Sports » déplie au-dessus de la barre le menu des
+ * trois, et prend le nom et la couleur du sport ouvert quand ce n'est pas le
+ * favori. Le bouton rond est vert au repos, rouge pendant un enregistrement.
+ * Sur ordinateur, toutes les destinations dans une barre en haut, et
+ * « Itinéraires » à côté du bouton Enregistrer (sur téléphone, on y va depuis
+ * l'accueil). Le choix se fait en CSS (`AppShell.css`), sans lecture de la
+ * taille d'écran en JavaScript.
  *
  * Pendant un enregistrement, un bandeau rouge rappelle sur chaque page qu'il
  * tourne et ramène à la page d'enregistrement. Un appui long sur le bouton du
@@ -34,9 +41,15 @@ interface Destination {
 const HOME: Destination = { to: '/', label: 'Accueil', Icon: IconHome, accent: 'var(--ink)' };
 const VOILE: Destination = { to: '/voile', label: 'Voile', Icon: IconSail, accent: 'var(--voile)' };
 const COURSE: Destination = { to: '/course', label: 'Course', Icon: IconRun, accent: 'var(--course)' };
+const VELO: Destination = { to: '/velo', label: 'Vélo', Icon: IconBike, accent: 'var(--velo)' };
 const SETTINGS: Destination = { to: '/parametres', label: 'Réglages', Icon: IconSettings, accent: 'var(--ink)' };
+const FAMILY_TABS: Record<SportFamily, Destination> = { voile: VOILE, course: COURSE, velo: VELO };
 const RECORD_PATH = '/enregistrer';
 const PLAN_PATH = '/itineraires';
+
+/** Sport de la page ouverte : celui dont la route préfixe l'adresse (bibliothèque ou analyse). */
+const familyOfPath = (pathname: string): SportFamily | null =>
+  SPORT_FAMILIES.find((f) => pathname === FAMILY_TABS[f].to || pathname.startsWith(`${FAMILY_TABS[f].to}/`)) ?? null;
 
 const tabLink = (d: Destination) => (
   <NavLink
@@ -72,14 +85,31 @@ function AppShell() {
   const onLongPress = useCallback(() => void togglePauseRecording(), []);
   const { pressingMs, handlers } = useLongPress(onLongPress, effectiveLongPressMs, canToggle);
 
+  const navFamily = useNavFamily();
+  const openFamily = familyOfPath(pathname);
+  // Sport ouvert hors du favori : le bouton Sports le montre.
+  const elsewhere = openFamily !== null && openFamily !== navFamily ? FAMILY_TABS[openFamily] : null;
+  // Menu des sports, ouvert pour l'adresse où on l'a déplié : un changement de page le referme.
+  const [menuPath, setMenuPath] = useState<string | null>(null);
+  const sportsOpen = menuPath === pathname;
+  const closeSports = useCallback(() => setMenuPath(null), []);
+
+  useEffect(() => {
+    if (!sportsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeSports();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sportsOpen, closeSports]);
+
   return (
     <div className="shell">
       <header className="shell-topbar">
         <Link to="/" className="shell-brand">Tracker</Link>
         <nav aria-label="Navigation principale" className="shell-toplinks">
           {topLink(HOME)}
-          {topLink(VOILE)}
-          {topLink(COURSE)}
+          {SPORT_FAMILIES.map((f) => topLink(FAMILY_TABS[f]))}
           {topLink(SETTINGS)}
         </nav>
         <div className="shell-topactions">
@@ -106,9 +136,11 @@ function AppShell() {
         <Outlet />
       </main>
 
+      {sportsOpen && <div className="shell-sports-backdrop" aria-hidden="true" onClick={closeSports} />}
+
       <nav aria-label="Navigation principale" className="shell-tabbar">
         {tabLink(HOME)}
-        {tabLink(VOILE)}
+        {tabLink(FAMILY_TABS[navFamily])}
         <div className="shell-tabbar__record">
           {canToggle ? (
             // Un bouton, pas un lien : la WebView d'Android affiche l'adresse d'un lien tenu longtemps.
@@ -138,8 +170,40 @@ function AppShell() {
             </NavLink>
           )}
         </div>
-        {tabLink(COURSE)}
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={sportsOpen}
+          aria-label={elsewhere ? `Sports, ${elsewhere.label} ouvert` : 'Sports'}
+          className={`shell-tab shell-tab--menu${elsewhere ? ' active' : ''}`}
+          style={elsewhere ? ({ '--tab-color': elsewhere.accent } as React.CSSProperties) : undefined}
+          onClick={() => setMenuPath(sportsOpen ? null : pathname)}>
+          {elsewhere ? <elsewhere.Icon size={24} /> : <IconGrid size={24} />}
+          <span className="shell-tab__label">
+            {elsewhere ? elsewhere.label : 'Sports'}
+            <IconChevronUp size={12} strokeWidth={2.5} className="shell-tab__chevron" />
+          </span>
+        </button>
         {tabLink(SETTINGS)}
+        {sportsOpen && (
+          <div className="shell-sports-menu" role="menu" aria-label="Sports">
+            {SPORT_FAMILIES.map((f) => {
+              const d = FAMILY_TABS[f];
+              return (
+                <NavLink
+                  key={d.to}
+                  to={d.to}
+                  role="menuitem"
+                  className="shell-sports-menu__item"
+                  style={{ '--tab-color': d.accent } as React.CSSProperties}
+                  onClick={closeSports}>
+                  <d.Icon size={22} />
+                  <span>{d.label}</span>
+                </NavLink>
+              );
+            })}
+          </div>
+        )}
       </nav>
 
       {pressingMs !== null && (

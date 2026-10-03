@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { brouterErrorMessage, brouterUrl, parseBrouterGeojson } from './brouter';
+import { brouterErrorMessage, brouterUrl, parseBrouterGeojson, parseProfileUpload } from './brouter';
+import {
+  BROUTER_PROFILE_TEXT, WAY_CATEGORIES, WAY_CATEGORY_HIGHWAYS, WAY_PARAM, WAY_PREFERENCE_COST, buildBrouterProfile,
+} from './brouterProfile';
 import { parsePhoton, photonUrl } from './geocoding';
 
 /** Extrait réduit d'une réponse réelle de brouter.de (25/09/2026). */
@@ -16,11 +19,23 @@ const BROUTER_RESPONSE = {
 };
 
 describe('BRouter', () => {
-  it('demande un tronçon en longitude, latitude, avec le profil du mode', () => {
-    expect(brouterUrl({ lat: 43.6108, lon: 3.8767 }, { lat: 43.62, lon: 3.89 }, 'foot')).toBe(
-      'https://brouter.de/brouter?lonlats=3.876700,43.610800|3.890000,43.620000&profile=hiking-mountain&alternativeidx=0&format=geojson'
+  it('demande un tronçon en longitude, latitude, avec le profil envoyé, le type de voie et les règles d\'accès', () => {
+    expect(brouterUrl({ lat: 43.6108, lon: 3.8767 }, { lat: 43.62, lon: 3.89 }, 'chemin', 'pieton', 'custom_42')).toBe(
+      'https://brouter.de/brouter?lonlats=3.876700,43.610800|3.890000,43.620000&profile=custom_42'
+        + '&profile:voie=1&profile:velo=0&alternativeidx=0&format=geojson'
     );
-    expect(brouterUrl({ lat: 0, lon: 0 }, { lat: 1, lon: 1 }, 'mtb')).toContain('profile=mtb');
+    const A = { lat: 0, lon: 0 };
+    const B = { lat: 1, lon: 1 };
+    expect(brouterUrl(A, B, 'piste', 'velo', 'custom_42')).toContain('&profile:voie=2&profile:velo=1&');
+    expect(brouterUrl(A, B, 'route', 'velo', 'custom_42')).toContain('&profile:voie=3&');
+    expect(brouterUrl(A, B, 'grandeRoute', 'pieton', 'custom_42')).toContain('&profile:voie=4&profile:velo=0&');
+  });
+
+  it('lit l\'id rendu à l\'envoi du profil, ou le refus du serveur', () => {
+    expect(parseProfileUpload({ profileid: 'custom_1790885483132' })).toBe('custom_1790885483132');
+    expect(() => parseProfileUpload({ profileid: 'custom_1', error: 'syntax error at line 12' })).toThrow(/refuse le profil.*line 12/);
+    expect(() => parseProfileUpload({ profileid: '../trekking' })).toThrow(/illisible/);
+    expect(() => parseProfileUpload('Please, retry later!')).toThrow(/illisible/);
   });
 
   it('lit la géométrie et l\'altitude, et écarte les points illisibles', () => {
@@ -74,5 +89,36 @@ describe('Photon', () => {
       { label: 'Montpellier', detail: 'France', lat: 43.61, lon: 3.87 },
     ]);
     expect(parsePhoton(null)).toEqual([]);
+  });
+});
+
+describe('profil de calcul', () => {
+  it('déclare ses deux variables, réglables par l\'adresse', () => {
+    expect(BROUTER_PROFILE_TEXT).toMatch(/^assign voie = 1 # %voie%/m);
+    expect(BROUTER_PROFILE_TEXT).toMatch(/^assign velo = 0 # %velo%/m);
+    expect(BROUTER_PROFILE_TEXT).toContain('---context:global');
+    expect(BROUTER_PROFILE_TEXT).toContain('---context:way');
+    expect(BROUTER_PROFILE_TEXT).toContain('---context:node');
+  });
+
+  it('reprend les catégories de voie et les coûts de chaque type', () => {
+    WAY_CATEGORIES.forEach((c, i) => {
+      expect(BROUTER_PROFILE_TEXT).toContain(`if highway=${WAY_CATEGORY_HIGHWAYS[c].join('|')} then ${i + 1}`);
+    });
+    for (const mode of Object.keys(WAY_PARAM) as (keyof typeof WAY_PARAM)[]) {
+      const c = WAY_PREFERENCE_COST[mode];
+      expect(BROUTER_PROFILE_TEXT).toContain(
+        `( if equal categorie 1 then ${c.chemin} else if equal categorie 2 then ${c.piste} else if equal categorie 3 then ${c.route} else ${c.grande} )`
+      );
+    }
+    // Un coût changé change le texte.
+    const cheaper = buildBrouterProfile({ ...WAY_PREFERENCE_COST, piste: { ...WAY_PREFERENCE_COST.piste, chemin: 1.1 } });
+    expect(cheaper).toContain('if equal categorie 1 then 1.1 else');
+    expect(cheaper).not.toBe(BROUTER_PROFILE_TEXT);
+  });
+
+  it('reste en ASCII, et chaque type a sa propre valeur de voie', () => {
+    expect([...BROUTER_PROFILE_TEXT].every((ch) => ch.charCodeAt(0) < 128)).toBe(true);
+    expect(new Set(Object.values(WAY_PARAM)).size).toBe(4);
   });
 });

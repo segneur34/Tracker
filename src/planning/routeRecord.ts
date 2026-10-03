@@ -1,4 +1,4 @@
-import { isRouteMode, newLeg, type PlannedRoute, type RouteLeg, type RouteMode, type RoutePoint, type Waypoint } from './route';
+import { DEFAULT_ROUTE_MODE, newLeg, readRouteMode, type PlannedRoute, type RouteLeg, type RouteMode, type RoutePoint, type Waypoint } from './route';
 
 /**
  * Fiche d'un itinéraire : le fichier JSON rangé dans `itineraires/` du
@@ -97,7 +97,7 @@ export const recordToRoute = (record: RouteRecord): PlannedRoute => {
   const legs: RouteLeg[] = [];
   for (let i = 0; i + 1 < waypoints.length; i++) {
     const stored = record.legs.length === waypoints.length - 1 ? record.legs[i] : undefined;
-    const mode: RouteMode = stored && isRouteMode(stored.mode) ? stored.mode : 'foot';
+    const mode: RouteMode = readRouteMode(stored?.mode) ?? DEFAULT_ROUTE_MODE;
     const points = (stored?.points ?? []).map(readPoint).filter((p): p is RoutePoint => p !== null);
     if (!stored || stored.pending || points.length < 2) {
       legs.push(newLeg(waypoints[i], waypoints[i + 1], mode));
@@ -133,7 +133,7 @@ export const parseRouteRecord = (text: string): RouteRecord | null => {
     waypoints: waypoints as Waypoint[],
     legs: legs.map((leg) => ({
       ...leg,
-      mode: isRouteMode(leg.mode) ? leg.mode : 'foot',
+      mode: readRouteMode(leg.mode) ?? DEFAULT_ROUTE_MODE,
       ...(leg.pending === true ? { pending: true } : {}),
       points: Array.isArray(leg.points) ? (leg.points as StoredPoint[]) : [],
     })),

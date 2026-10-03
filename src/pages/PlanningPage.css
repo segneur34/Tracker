@@ -94,7 +94,7 @@
   color: var(--muted);
 }
 
-/* Repère d'un point : pastille lettrée à la couleur de l'activité. */
+/* Repère d'un point : pastille lettrée, départ en vert, arrivée en rouge, les autres à la couleur de l'activité. */
 .plan-marker {
   background: transparent;
   border: 0;
@@ -310,11 +310,33 @@
   margin-top: var(--space-3);
 }
 
+/*
+ * Chiffres du bloc Dénivelé, en tête du bloc : trois, ou quatre avec le temps
+ * estimé. Sur téléphone, les quatre tiennent sur une ligne, en plus petit, pour
+ * que la courbe reste visible sous la carte ; sur un ordinateur étroit, deux
+ * par ligne.
+ */
 .plan-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
-  margin-top: var(--space-4);
+}
+
+.plan-stats--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.plan-stats--four .plan-stat {
+  padding: var(--space-1) var(--space-2);
+}
+
+.plan-stats--four .plan-stat span {
+  font-size: var(--text-xs);
+}
+
+.plan-stats--four .plan-stat strong {
+  font-size: var(--text-m);
 }
 
 .plan-stat {
@@ -337,7 +359,7 @@
 }
 
 .plan-profile {
-  margin-top: var(--space-4);
+  margin-top: var(--space-3);
 }
 
 .plan-legend {
@@ -389,8 +411,22 @@
 }
 
 @media (min-width: 768px) {
-  .plan-stat strong {
+  .plan-stat strong,
+  .plan-stats--four .plan-stat strong {
     font-size: var(--text-xl);
+  }
+
+  .plan-stats--four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  .plan-stats--four .plan-stat {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .plan-stats--four .plan-stat span {
+    font-size: var(--text-s);
   }
 
   .plan-layout {
@@ -405,5 +441,11 @@
   .plan-map {
     height: calc(100vh - var(--topbar-h) - 190px);
     min-height: 420px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .plan-stats--four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }

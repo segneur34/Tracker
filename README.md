@@ -3,10 +3,11 @@
 Analyse de sessions sportives à partir de traces GPX, et enregistrement GPS sur le téléphone. Application 100 % client : les traces ne partent pas sur internet (seule la planification d'itinéraires interroge un serveur). Elle tourne dans le navigateur du PC et, emballée par Capacitor, sur Android.
 
 - **Voile** (`/voile`) : wingfoil, planche à voile, kite, bateau. Bibliothèque des sessions, puis analyse (`/voile/analyse`) : carte colorée par la vitesse, statistiques, meilleurs segments (2 s à 1 mille), virements et empannages et leur qualité, estimation du vent et de ses variations, VMG, notes de session.
-- **Course à pied** (`/course`, `/course/analyse`) : carte en dégradé de vitesse, graphes vitesse et altitude, zones de pente, dénivelé, allures.
+- **Course à pied** (`/course`, `/course/analyse`) : carte en dégradé de vitesse, graphes vitesse et altitude (zoomables), zones de pente, dénivelé, allures, énergie dépensée.
+- **Vélo** (`/velo`, `/velo/analyse`) : la même analyse, plus les meilleurs segments (1 min à 1 h, 1 à 40 km) et une énergie par modèle physique (type et poids du vélo).
 - **Enregistrer** (`/enregistrer`) : une position par seconde, gardée brute, un GPX par session ; une trace à suivre au choix.
-- **Itinéraires** (`/itineraires`) : planification par les chemins de la carte (serveur BRouter), rangement et export GPX.
-- **Réglages** (`/parametres`) : dossier mémoire, unités, seuils d'activité, terrain, profil du coureur.
+- **Itinéraires** (`/itineraires`) : planification par type de voie (chemin, piste, route, grande route ; serveur BRouter), temps estimé selon le niveau, enregistrement et export GPX.
+- **Réglages** (`/parametres`) : dossier mémoire, unités, seuils d'activité, terrain, vélo, niveau, barre du bas, profil du pratiquant.
 
 ## Mémoire
 

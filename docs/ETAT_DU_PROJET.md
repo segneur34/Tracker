@@ -11,8 +11,9 @@ Pour que ce document reste léger :
 Tracker est une application web 100 % client qui lit une trace GPX et en tire des analyses. Capacitor l'emballe pour Android, où elle enregistre aussi les sessions : un GPX par session, analysé par les mêmes modules.
 
 - **Voile, abouti** : carte colorée par la vitesse, statistiques, tops, virements et empannages et leur qualité, vent et ses variations, VMG, notes. Les seuils s'accordent à l'allure de la session, d'un bateau lent à un kite rapide, et tiennent sur les traces en cadence économique.
-- **Course, plus jeune** : carte, graphes de vitesse et d'altitude, zones de pente, dénivelé, allures.
-- **Autour** : accueil et graphe d'activités, bibliothèque des sessions par famille (`/voile`, `/course`), enregistrement avec trace à suivre (`/enregistrer`), planification d'itinéraires (`/itineraires`) et leur liste (`/itineraires/liste`, point 68), cartes hors ligne (point 67), Réglages (`/parametres`), mémoire en dossier portable (§6).
+- **Course, plus jeune** : carte, graphes de vitesse et d'altitude (zoom), zones de pente, dénivelé, allures, énergie dépensée (point 71).
+- **Vélo, depuis le 01/10** (point 72) : le module d'analyse de la course (`LandModule`), plus les tops et une énergie par modèle physique.
+- **Autour** : accueil et graphe d'activités, bibliothèque des sessions par famille (`/voile`, `/course`, `/velo`), enregistrement avec trace à suivre (`/enregistrer`), planification d'itinéraires (`/itineraires`) et leur liste (`/itineraires/liste`, point 68), cartes hors ligne (point 67), Réglages (`/parametres`), mémoire en dossier portable (§6).
 
 ## 2. Environnement et outillage
 
@@ -34,7 +35,7 @@ Ce que les fichiers de configuration ne disent pas :
 Les couches, de bas en haut. Tous les imports sont relatifs, sans alias de chemin.
 
 - **Noyau `core/`** : sans notion de sport, en unités SI, du parseur GPX aux profils de support, en passant par la cinématique, les filtres, l'allure de la session, les cumuls, le masque d'activité, le dénivelé et les tops.
-- **Sports** : `sailing/` en nœuds sur `PointData` (adaptateur `utils/kinematics.ts`, règle 5), `running/` en m/s.
+- **Sports** : `sailing/` en nœuds sur `PointData` (adaptateur `utils/kinematics.ts`, règle 5), `running/` et `cycling/` en SI.
 - **Logique pure de l'application**, testée en node : `recording/` (positions, journal, GPX, direct, trace suivie), `library/` (fiche, résumé, rapprochement, réglages qui voyagent) et `planning/` (itinéraires).
 - **Plateforme `platform/`** : seul accès au stockage, aux fichiers et à la position (règle 12). `isNativeApp()` choisit la version navigateur ou téléphone de chaque module ; les hooks et les pages ne voient pas la différence. Exception : `compass`, la boussole, n'existe que dans le navigateur.
 - **Hooks** :
@@ -53,9 +54,10 @@ Dépendances entre dossiers :
 | `core` | `core` seulement |
 | `sailing` | `core`, `types/sailing`, le type `PointData` |
 | `running` | `core` |
+| `cycling` | `core`, `running/runningAnalytics` (zones de pente) |
 | `platform` | Capacitor et ses plugins seulement |
 | `recording` | `core`, `sailing` (`liveLegs`), `planning` (`followedTrace`), le type `LocationFix` de `platform/location` |
-| `planning` | `core`, `running/runningAnalytics` (pente), `recording/gpxWriter` |
+| `planning` | `core`, `running/runningAnalytics` (pente), `cycling/energy` (temps estimé), `recording/gpxWriter`, `platform/storage` (id du profil BRouter) |
 | `library` | `core`, `sailing/sailingConfig`, `sailing/sessionNotes`, `recording/session`, le type `FolderEntry` de `platform/memoryFolder` |
 | hooks | toutes les couches ci-dessus |
 | composants | `platform`, pour `ResizablePanel`, `LiveMap` et `MemoryStatus` |
@@ -67,7 +69,7 @@ Dépendances entre dossiers :
 
 Ordre et orchestration seulement. Les seuils, fenêtres et formules sont nommés et commentés dans les fichiers cités.
 
-### 4.1 Ingestion, commune aux deux modules (`useGpxSession`)
+### 4.1 Ingestion, commune aux modules (`useGpxSession`)
 
 1. `loadGpxContent` reçoit le texte du GPX, lu dans la mémoire ou dans un fichier choisi (`readPickedFile`). `parseGpx` (`core/gpxParser.ts`) en tire :
    - les points bruts ;
@@ -116,13 +118,20 @@ Ordre et orchestration seulement. Les seuils, fenêtres et formules sont nommés
    - vitesse sous-échantillonnée à `CHART_MAX_POINTS` ;
    - polaire en 36 secteurs relatifs au vent.
 
-### 4.3 Course (`RunningModule`)
+### 4.3 Course et vélo (`LandModule`)
 
-Pas de hook d'orchestration : la page compose elle-même `useGpxSession`, `useSportSettings('course')`, `useRunnerProfile`, `useOpenSections`, `useSessionDraft`, `useSessionFromUrl` et `useChangeSessionActivity`. Elle calcule ensuite, avec `running/runningAnalytics.ts` (lissages en tête de la page), les allures (`averagePace`), les pentes (`computeGrades`), les zones (`computeZoneStats`) et les séries des graphes.
+Un seul module pour les deux familles, monté deux fois (`/course/analyse`, `/velo/analyse`). Ce qui diffère tient dans un descripteur de `pages/landModules.tsx` : titres, couleur, préfixe des identifiants mémorisés (`running`, `cycling`), modèle d'énergie (point 72).
+
+Pas de hook d'orchestration : la page compose elle-même `useGpxSession`, `useSportSettings(family)`, `useRunnerProfile`, `useOpenSections`, `useSessionDraft`, `useSessionFromUrl` et `useChangeSessionActivity`. Elle calcule ensuite, avec `running/runningAnalytics.ts` (lissages en tête de la page) :
+- les allures (`averagePace`) ;
+- les pentes (`computeGrades`) et les zones (`computeZoneStats`) ;
+- les tops, quand le profil en a (le vélo seulement) ;
+- l'énergie, par `running/energy.ts` ou `cycling/energy.ts` selon le descripteur ;
+- les séries des graphes, sur la plage du zoom (`useChartZoom`, point 73).
 
 ### 4.4 Couleur de la trace
 
-Dégradé continu `speedGradientColor` (`core/speedGradient.ts`), dans les deux modules et l'aperçu de la liste. L'ordre des bornes effectives est dans `CLAUDE.md` ; la suggestion vient de `suggestSpeedRangeMs` en voile, le défaut de `DEFAULT_SPEED_RANGE_MS` en course. La carte se cadre sur l'emprise de la trace (`trackBounds`).
+Dégradé continu `speedGradientColor` (`core/speedGradient.ts`), dans les modules et l'aperçu de la liste. L'ordre des bornes effectives est dans `CLAUDE.md`. La suggestion vient de `suggestSpeedRangeMs` en voile. Ailleurs, le défaut de la famille est dans `FAMILY_SPEED_RANGE_MS` (`hooks/useSportSettings.ts`). La carte se cadre sur l'emprise de la trace (`trackBounds`).
 
 ## 5. Carte des fichiers
 
@@ -182,18 +191,19 @@ Tracker/
 | `tracker.settingsSavedAt` | `hooks/useSessionLibrary.ts` | instant du dernier vrai changement des deux clés qui voyagent, en ms |
 | `tracker.memoryFolder` | `platform/memoryFolder.ts` | téléphone : `{ uri; base; label }` (`base` = `Tracker` si l'on a désigné son parent) |
 | `tracker.libraryCache` | `hooks/useSessionLibrary.ts` | `{ folder; entries: Record<fiche, { size; mtimeMs; record }> }`, reconstruit à volonté |
-| `tracker.sections` | `hooks/useOpenSections.ts` | `Record<moduleId, Record<section, boolean>>`. Modules lus : `running`, `sailing-onglets`, `planning`, `recording`, `settings`, `settings-activities`, `accueil.graphe` (totaux du graphe d'activités). `sailing` et `sailing-carte`, d'avant, ne sont plus lus |
+| `tracker.sections` | `hooks/useOpenSections.ts` | `Record<moduleId, Record<section, boolean>>`. Modules lus : `running` (course), `cycling` (vélo), `sailing-onglets`, `planning`, `recording`, `settings`, `settings-activities`, `accueil.graphe` (totaux du graphe d'activités). `sailing` et `sailing-carte`, d'avant, ne sont plus lus |
 | `tracker.panelSizes` | `components/ResizablePanel.tsx` | `Record<panelId, { width?; height? }>` |
 | `tracker.followedTrace` | `hooks/useFollowedTrace.ts` | `{ name; source; activityId; points }`, gardée jusqu'à « Retirer » |
-| `tracker.planning` | `pages/PlanningPage.tsx` | `{ mode?; activityId?; view? }` |
+| `tracker.planning` | `pages/PlanningPage.tsx` | `{ mode?; activityId?; view? }` ; `mode` est le type de voie, les anciens modes (`foot`, `mtb`, `bike`) sont traduits à la lecture (point 74) |
+| `tracker.brouterProfile` | `planning/brouter.ts` | `{ id }`, id du profil maison sur brouter.de, renvoyé sur cet id à chaque lancement ; propre à l'appareil |
 | `tracker.routeList` | `pages/RoutesPage.tsx` | `{ sort }`, tri de la liste des itinéraires |
 | `tracker.tileCache` | `hooks/useTileCache.ts` | `{ capMb? }`, plafond des cartes gardées (500 Mo par défaut), propre à l'appareil |
 | `tracker.sailingNotes` | ancienne clé | notes d'avant le dossier, lues seulement pour reprendre celles d'une trace importée |
 
 `StoredSettings` contient :
 - la liste des activités ;
-- les réglages rangés par identifiant d'activité : seuils, terrains, unités, taille du texte, bornes de vitesse (en m/s) et de pente (en fraction), pause automatique ;
-- l'appui long ;
+- les réglages rangés par identifiant d'activité : seuils, terrains, unités, taille du texte, bornes de vitesse (en m/s) et de pente (en fraction), pause automatique, type et poids du vélo, niveau du temps estimé et vitesse « Personnalisé » ;
+- l'appui long, et le sport en accès direct de la barre du bas (`navFamily`, point 75) ;
 - les choix retenus : `moduleActivity`, `recordActivity`, et `sport`, l'ancienne activité du module voile.
 
 L'ancienne allure par support, `referenceSpeeds`, est écartée à la lecture (point 46).
@@ -215,17 +225,20 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 | Allure | `core/sessionSpeed.ts` |
 | Unité de la vitesse de l'appareil | `core/kinematics.ts` |
 | Manœuvres, vent, VMG, suggestions | `sailing/sailingConfig.ts`, plus les constantes internes de `maneuvers.ts`, `wind.ts` et `sailingAnalytics.ts` |
-| Course | `running/runningAnalytics.ts`, et les lissages en tête de `pages/RunningModule.tsx` |
+| Course | `running/runningAnalytics.ts`, `running/energy.ts`, et les lissages en tête de `pages/LandModule.tsx` |
+| Vélo | `cycling/energy.ts` (types de vélo, rendements), `cycling/cyclingConfig.ts` (couleurs par défaut) |
+| Planification | `planning/duration.ts` (niveaux, km-effort, puissance de montée), `planning/brouterProfile.ts` (coûts des types de voie) |
 | Direct | `LIVE_STATS_DEFAULTS`, `LIVE_LEG_DEFAULTS`, `FOLLOW_DEFAULTS` de `recording/` |
 | Affichage | `core/displayConfig.ts`, et `TEXT_SCALE_FACTOR` de `hooks/useSportSettings.ts` |
 
 ## 8. Tests
 
-Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 444 au 30 septembre 2026.
+Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 499 au 3 octobre 2026.
 
 Un calcul a son `*.test.ts` à côté de lui, sauf :
 - `core/sessionStats` et `core/speedGradient`, couverts par d'autres fichiers de test (`topSegments`, `runningAnalytics`, `sailingConfig`) ;
 - `sailing/sailingAnalytics`, couvert par `maneuvers.test.ts` ;
+- `planning/brouterProfile`, couvert par `brouter.test.ts` ;
 - `sailing/sailingStats`, `planning/geocoding` et `planning/routeGpx`, sans test.
 
 Deux familles de tests méritent d'être connues :
@@ -268,12 +281,12 @@ Déplacé dans `docs/HISTORIQUE.md` le 23 septembre 2026, numérotation inchang�
 
 ## 11. Chantiers en attente
 
+- **Énergie** (points 71 et 72) : le k de l'air en course (0,0065, Pugh 1971) n'est qu'un ordre de grandeur, à confirmer. Aucune des deux énergies n'a été comparée à une montre ou à Strava.
 - **Course** :
-  - coût énergétique, à partir du poids et des caractéristiques du coureur, déjà saisis ;
   - zones cardiaques : `hr` est lu, FC max et FC de repos sont saisies, mais rien ne les utilise ;
   - tops, splits et allure par kilomètre (`topTargets: []` dans le profil) ;
   - notes de session, sur le modèle du brouillon de la voile.
-- **Valider les seuils par support** sur des sessions réelles de planche, kite, bateau et course. Valider aussi un enregistrement dense sur une planche rapide : la calibration récente s'est faite sur une trace lente et une trace de wingfoil.
+- **Valider les seuils par support** sur des sessions réelles de planche, kite, bateau, course et vélo. Valider aussi un enregistrement dense sur une planche rapide : la calibration récente s'est faite sur une trace lente et une trace de wingfoil.
 - **Coût du vent à 5 Hz** (point 23) : environ 0,5 s à chaque mouvement du seuil sur 3 h à 5 Hz, contre 28 ms à 1 Hz.
   - Cause : `analyzeManeuvers` refait la détection des virages pour chaque candidat de vent, alors que seule la classification en dépend.
   - Piste : détecter une fois, puis classer par candidat. Le coût serait divisé par quatre environ, et la détection écrite une seconde fois dans `observeTurns` (`wind.ts`) serait fusionnée.
@@ -308,7 +321,7 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
   - accueil (point 53) ;
   - enregistrement en direct et bords (points 50, 53, 62) ;
   - APK des testeurs et `docs/INSTALLATION.md` (points 55, 62).
-- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70).
+- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75).
 - **Phase 2, interface mobile** : trois passes faites (points 47 à 49, 52, 56 à 58, 69 ; patron dans `docs/MISE_EN_PAGE.md`). Restent :
   - toucher au lieu du survol, dans les graphes ;
   - `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz). Les regrouper par couleur toucherait à « pas de paliers » : à redemander ;

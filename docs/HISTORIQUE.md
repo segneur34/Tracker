@@ -315,3 +315,57 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décisions de l'utilisateur** : pas de ligne « distance perdue » ; plus de podium du changement de cap aux empannages, où il dépend de l'allure de sortie choisie et tombait au hasard (leur moyenne reste).
     - Égalités départagées par la meilleure conservation, et non plus par l'ordre chronologique (fréquent à 1 Hz). Manœuvres sans relance dans la minute comptées à part, hors moyenne et podium. Heure de chaque manœuvre dans les cases du podium et sur la carte.
     - **Écart au plan** : l'estimation du vent devait suivre la nouvelle réussite (une seule notion). Sur le banc, la mesure corrigée faisait tourner le vent estimé de 90° : l'orientation repose sur les lectures de la détection, gardées à part (`windCriteria`). Fragilité notée au §11 d'ETAT, avec le 5 Hz bruité, le filtre médian et la relance après changement d'allure.
+71. Énergie de la course (30/09 ; commité le 03/10 avec les points 72 à 75, à la demande de l'utilisateur).
+    - **Modèle** : coût par mètre selon la pente de Minetti et al. (2002), mesuré de −45 % à +45 % et borné là. On garde la forme de la courbe, et l'économie du coureur remplace son coût sur le plat. Cette économie se saisit dans Réglages → Pratiquant, à 200 ml d'O₂/kg/km par défaut, soit la règle de 1 kcal/kg/km. La vitesse agit par la puissance, plus un terme d'air k·v².
+    - k vaut 0,0065, un ordre de grandeur tiré de Pugh (1971), non confirmé (§11 d'ETAT).
+    - **Repos** : Mifflin-St Jeor quand poids, taille, âge et sexe sont connus, sinon 1 MET. Il est compté sur toute la durée, pauses comprises.
+    - **Choix de l'utilisateur** :
+      - deux chiffres : l'énergie de course, puis la dépense totale avec le repos ;
+      - un graphe de la puissance ou de l'énergie cumulée ;
+      - l'énergie par zone de pente ;
+      - ni allure équivalente sur le plat, ni dérive chiffrée.
+    - Sans poids, les valeurs s'affichent par kilo ; sans altitude, la course compte comme plate.
+72. Vélo, troisième famille (01/10, APK 0.2.40 ; commité le 03/10).
+    - **Choix de l'utilisateur** : le vélo est une famille propre (`velo`, calcul `cycling`), et non un calcul rangé sous Course. Il a sa bibliothèque, son analyse, sa place dans Enregistrer et Réglages, et sa couleur.
+    - **Module d'analyse commun** à la course et au vélo (`LandModule`, descripteurs dans `landModules.tsx`), plutôt qu'une copie du module course. Les identifiants mémorisés de la course (`running.*`) restent tels quels, pour ne pas perdre les tailles et les onglets déjà réglés.
+    - **Énergie à vélo**, modèle physique de Martin et al. (1998) :
+      - pesanteur, roulement et air, divisés par le rendement de la transmission (0,97), puis par le rendement musculaire (0,25) pour le coût ;
+      - travail borné à 0 en descente (roue libre, freinage gratuit) ;
+      - variation d'énergie cinétique ignorée, car le GPS dérivé deux fois n'y donne que du bruit.
+    - Type et poids du vélo se règlent par activité. Contrairement à la course, la masse ne se met pas en facteur : sans poids du cycliste, on prend 75 kg, et l'interface l'affiche. Le bloc « Coureur » devient « Pratiquant », commun aux deux familles.
+    - Le vélo a des tops : 1, 5 et 20 min, 1 h ; 1, 5, 10, 20 et 40 km.
+    - **Piège** : l'activité « Vélo » n'entre que dans la liste du premier lancement. Une liste déjà gardée n'est pas touchée : l'utilisateur crée sa propre activité Vélo dans Réglages.
+    - La barre du bas à 6 onglets de ce lot décentrait le bouton rond (point 75).
+73. Planification et graphes : bloc Dénivelé, « Enregistrer », départ et arrivée, temps estimé, zoom (01/10, APK 0.2.41 ; commité le 03/10).
+    - **Bloc « Dénivelé »** à part, en tête du panneau, pour regarder la courbe en même temps que la carte. Les textes passent de « Ranger » à « Enregistrer ». La clé `ranger` et l'id `planning.ranger` restent : la taille du bloc y est mémorisée.
+    - **Couleurs** : départ en vert, arrivée en rouge sombre, distinct du rouge des tronçons en échec. Le repère unique d'une boucle est moitié vert, moitié rouge.
+    - **Temps estimé**, en course et à vélo, selon un niveau propre à chaque activité : débutant, moyen, bon, expert ou « Personnalisé » (vitesse saisie). Rien en voile.
+      - Course : km-effort, où 100 m de D+ comptent comme 1 km de plat.
+      - Vélo : on calcule pente par pente, avec le modèle de résistance de l'énergie.
+    - **Écart au plan** : à vélo, garder en montée la puissance qui tient la vitesse du plat donnait 3 km/h à 8 %. Chaque niveau a donc une puissance de montée en W/kg. En descente, on roule en roue libre, jamais moins vite que sur le plat, avec un plafond selon le type de vélo.
+    - **Zoom des graphes** :
+      - on pince à deux doigts, ou on tire une zone à la souris ; « Tout voir » ramène la vue entière ;
+      - un doigt garde le survol, qui suit la carte ;
+      - la zone de tracé est lue par `usePlotArea` de Recharts, jamais dans son DOM interne ;
+      - dans l'analyse, les graphes de vitesse et d'altitude, qui partagent l'axe, zooment ensemble. Celui de l'énergie, en temps, ne zoome pas.
+74. Types de voie en planification (01/10, APK 0.2.42 ; commité le 03/10).
+    - **Demande de l'utilisateur** : choisir le type de voie (Chemin, Piste, Route, Grande route) plutôt que le moyen de transport, que l'activité donne déjà. Les règles d'accès suivent l'activité :
+      - à pied, escaliers permis et sens interdits ignorés ;
+      - à vélo, sens interdits respectés et passages piétons pénalisés.
+    - **Aucun profil de brouter.de ne sépare ces types.** Mesure sur deux trajets : `mtb` donne 48 % de pistes et 34 % de sentiers. D'où un profil maison, envoyé au serveur, réglé par deux variables de l'adresse (`voie`, `velo`).
+    - Les coûts ont été réglés sur quatre trajets autour de Montpellier. Le type choisi fait le plus souvent 55 à 98 % du trajet, pour 1,0 à 1,4 fois la longueur du plus court chemin. Il reste minoritaire là où il manque.
+    - **Pièges du serveur** :
+      - les variables n'acceptent que des nombres (`=1` marche, `=true` échoue) ;
+      - un profil absent du serveur donne HTTP 500, corps vide : on renvoie le profil, une fois ;
+      - le serveur limite le débit.
+
+      Le profil est renvoyé une fois par lancement, sur l'id gardé : le serveur n'en a qu'un fichier par appareil.
+    - **Dépendance** : brouter.de doit continuer d'accepter les profils envoyés. Sinon, le calcul s'arrête.
+    - Les anciennes fiches (`foot`, `mtb`, `bike`) se relisent en Chemin, Piste et Route, sans recalcul. Changer d'activité ne recalcule pas un tronçon prêt.
+75. Barre du bas en cinq cases (02/10, APK 0.2.43 ; commité le 03/10).
+    - **Problème** : avec le vélo, 6 cases, et le bouton rond tombait en 4e position.
+    - **Choix de l'utilisateur** : Accueil · sport favori · bouton rond · Sports · Réglages.
+      - Le favori se règle dans Réglages → Barre du bas. C'est la voile par défaut, et il voyage dans `reglages.json`.
+      - « Sports » déplie au-dessus de la barre le menu des trois sports. Il prend le nom et la couleur du sport ouvert quand ce n'est pas le favori.
+      - La barre du haut, sur ordinateur, ne change pas.
+    - Le menu est ouvert pour l'adresse où on l'a déplié : un changement de page le referme sans effet React. Un voile transparent sous la barre le ferme au toucher, sans bloquer les autres onglets.

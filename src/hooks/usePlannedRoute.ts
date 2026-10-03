@@ -4,7 +4,7 @@ import {
   DEFAULT_MAX_SNAP_M, EMPTY_ROUTE, addWaypoint, closeLoop, insertWaypoint, moveWaypoint, pendingLegRequests, removeWaypoint,
   reorderWaypoint,
   retryFailedLegs, reverseRoute, setLegMode, snapToWaypoints, withLegError, withLegResult,
-  type LegRequest, type PlannedRoute, type RouteMode, type RoutePoint, type Waypoint,
+  type LegRequest, type PlannedRoute, type RouteMode, type RoutePoint, type RouteVehicle, type Waypoint,
 } from '../planning/route';
 
 /**
@@ -16,6 +16,9 @@ import {
  * porte encore sa clé, même si un point a été inséré avant lui. Les tracés
  * obtenus restent en cache le temps de la page : annuler, ou remettre un
  * point où il était, ne redemande rien au serveur.
+ *
+ * `vehicle` : règles d'accès de l'activité choisie. En changer ne touche pas
+ * aux tronçons prêts ; ceux en attente se calculent avec les nouvelles.
  */
 
 /** Profondeur de l'annulation. */
@@ -26,11 +29,11 @@ const CACHE_LIMIT = 200;
 /** Résultat d'un calcul : le tracé relié aux points, ou la raison de l'échec. */
 type LegOutcome = { points: RoutePoint[] } | { error: string };
 
-const computeLeg = async (request: LegRequest, maxSnapM: number, signal: AbortSignal): Promise<LegOutcome> => {
+const computeLeg = async (request: LegRequest, vehicle: RouteVehicle, maxSnapM: number, signal: AbortSignal): Promise<LegOutcome> => {
   // Une trace importée n'est jamais en attente : elle ne vient ici que par erreur, gardée en ligne droite.
   if (request.mode === 'straight' || request.mode === 'imported') return { points: [request.from, request.to] };
   try {
-    const { points, maxGapM } = snapToWaypoints(request.from, request.to, await fetchLeg(request.from, request.to, request.mode, signal));
+    const { points, maxGapM } = snapToWaypoints(request.from, request.to, await fetchLeg(request.from, request.to, request.mode, vehicle, signal));
     if (maxGapM > maxSnapM) {
       return { error: `Point à ${Math.round(maxGapM)} m du chemin le plus proche : rapprochez-le d'un chemin, ou passez ce tronçon en ligne droite.` };
     }
@@ -75,7 +78,10 @@ const reducer = (state: State, action: Action): State => {
   }
 };
 
-export const usePlannedRoute = (maxSnapM = DEFAULT_MAX_SNAP_M) => {
+/** Clé d'un calcul : celle du tronçon, et les règles d'accès qui le calculent. */
+const computeKey = (request: LegRequest, vehicle: RouteVehicle): string => `${request.key}|${vehicle}`;
+
+export const usePlannedRoute = (vehicle: RouteVehicle, maxSnapM = DEFAULT_MAX_SNAP_M) => {
   const [{ route, history }, dispatch] = useReducer(reducer, { route: EMPTY_ROUTE, history: [] });
   const inFlight = useRef<{ key: string; controller: AbortController } | null>(null);
   const cache = useRef(new Map<string, RoutePoint[]>());
@@ -84,27 +90,28 @@ export const usePlannedRoute = (maxSnapM = DEFAULT_MAX_SNAP_M) => {
   useEffect(() => {
     const requests = pendingLegRequests(route);
     const current = inFlight.current;
-    if (current && requests.some((r) => r.key === current.key)) return;
+    if (current && requests.some((r) => computeKey(r, vehicle) === current.key)) return;
     current?.controller.abort();
     inFlight.current = null;
 
     const request = requests[0];
     if (!request) return;
-    const cached = cache.current.get(request.key);
+    const key = computeKey(request, vehicle);
+    const cached = cache.current.get(key);
     if (cached) {
       dispatch({ type: 'apply', change: (r) => withLegResult(r, request.key, cached) });
       return;
     }
 
     const controller = new AbortController();
-    inFlight.current = { key: request.key, controller };
-    computeLeg(request, maxSnapM, controller.signal).then(
+    inFlight.current = { key, controller };
+    computeLeg(request, vehicle, maxSnapM, controller.signal).then(
       (outcome) => {
         if (inFlight.current?.controller !== controller) return;
         inFlight.current = null;
         if ('points' in outcome) {
           if (cache.current.size >= CACHE_LIMIT) cache.current.delete(cache.current.keys().next().value!);
-          cache.current.set(request.key, outcome.points);
+          cache.current.set(key, outcome.points);
           dispatch({ type: 'apply', change: (r) => withLegResult(r, request.key, outcome.points) });
         } else {
           dispatch({ type: 'apply', change: (r) => withLegError(r, request.key, outcome.error) });
@@ -114,7 +121,7 @@ export const usePlannedRoute = (maxSnapM = DEFAULT_MAX_SNAP_M) => {
         // Abandonné : le tronçon a changé, un autre calcul a pris la suite.
       }
     );
-  }, [route, maxSnapM]);
+  }, [route, vehicle, maxSnapM]);
 
   // Calcul abandonné en quittant la page.
   useEffect(() => () => inFlight.current?.controller.abort(), []);

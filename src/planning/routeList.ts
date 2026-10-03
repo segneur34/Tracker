@@ -1,5 +1,6 @@
 import { activityFamily, findActivity, type Activity } from '../core/activities';
 import type { SportFamily } from '../core/sportProfiles';
+import { estimateRouteDurationS, type DurationSettings } from './duration';
 import { routeTotals } from './route';
 import { recordToRoute, type RouteRecord } from './routeRecord';
 
@@ -26,6 +27,13 @@ export const routesOfFamily = <T extends WithActivity>(routes: T[], activities: 
 
 /** Distance d'un itinéraire rangé, en mètres ; elle ne dépend pas du seuil de dénivelé, d'où 0. */
 export const routeDistanceM = (record: RouteRecord): number => routeTotals(recordToRoute(record), 0).distanceM;
+
+/**
+ * Temps estimé d'un itinéraire rangé, en secondes, ou `null` sans réglage
+ * (voile) ; `minGainM` : seuil de dénivelé du terrain de son activité.
+ */
+export const routeDurationS = (record: RouteRecord, minGainM: number, settings: DurationSettings | null): number | null =>
+  estimateRouteDurationS(recordToRoute(record), minGainM, settings);
 
 export type RouteSort = 'recent' | 'ancien' | 'nom' | 'distance-croissante' | 'distance-decroissante';
 

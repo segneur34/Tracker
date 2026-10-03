@@ -24,7 +24,7 @@ describe('trace suivie', () => {
   });
 
   it('suit un itinéraire : tronçon calculé à la suite, tronçon en attente en ligne droite', () => {
-    let route = [A, B, C].reduce((r, p) => addWaypoint(r, p, 'foot'), EMPTY_ROUTE);
+    let route = [A, B, C].reduce((r, p) => addWaypoint(r, p, 'chemin'), EMPTY_ROUTE);
     const mid = { lat: 43.605, lon: 3.801 };
     route = withLegResult(route, legKey(route, 0)!, [A, mid, B]);
     const trace = followedTraceFromRoute(routeToRecord(route, META));
