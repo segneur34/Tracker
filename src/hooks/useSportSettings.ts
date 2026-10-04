@@ -10,6 +10,7 @@ import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { DISTANCE_UNIT_LABEL, SPEED_UNIT_LABEL, type DistanceUnit, type SpeedUnit } from '../core/units';
 import { jsonStore } from '../platform/storage';
+import { DEFAULT_LIVE_FIELDS, sanitizeLiveFields, type LiveFieldKey } from '../recording/liveFields';
 import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, type BikeType } from '../cycling/energy';
 import { DEFAULT_CYCLING_GRADE_RANGE, DEFAULT_CYCLING_SPEED_RANGE_MS } from '../cycling/cyclingConfig';
 import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
@@ -103,6 +104,8 @@ export interface StoredSettings {
   gradeRanges?: ByActivity<GradeRange>;
   /** Surcharge de la pause automatique à l'enregistrement. */
   autoPause?: ByActivity<{ speedMs: number; delayS: number }>;
+  /** Chiffres en grand de l'enregistrement, carte réduite ; absents : ceux de la famille. */
+  liveFields?: ByActivity<LiveFieldKey[]>;
   /** Type de vélo (vélo), qui fixe roulement et traînée ; absent : route. */
   bikeTypes?: ByActivity<BikeType>;
   /** Poids du vélo en kg (vélo) ; absent : celui du type. */
@@ -199,6 +202,12 @@ export const effectiveRecordingProfile = (activity: Activity): RecordingProfile 
   const profile = getSportProfile(activity.base);
   const override = readStoredSettings().autoPause?.[activity.id];
   return override ? { ...profile.recording, autoPauseSpeedMs: override.speedMs, autoPauseDelayS: override.delayS } : profile.recording;
+};
+
+/** Chiffres en grand de l'enregistrement, carte réduite : ceux choisis dans Réglages, sinon ceux de la famille. */
+export const effectiveLiveFields = (activity: Activity): LiveFieldKey[] => {
+  const family = activityFamily(activity);
+  return sanitizeLiveFields(readStoredSettings().liveFields?.[activity.id], family) ?? DEFAULT_LIVE_FIELDS[family];
 };
 
 /**
@@ -305,6 +314,9 @@ export interface SportSettingsView {
   /** Pause automatique effective à l'enregistrement (m/s, secondes). */
   autoPause: { speedMs: number; delayS: number };
   isAutoPauseOverridden: boolean;
+  /** Chiffres en grand de l'enregistrement, carte réduite. */
+  liveFields: LiveFieldKey[];
+  isLiveFieldsOverridden: boolean;
   /** Type de vélo (activités vélo seulement, route par défaut). */
   bikeType: BikeType;
   /** Poids du vélo en kg, ou `null` pour celui du type. */
@@ -318,7 +330,7 @@ export interface SportSettingsView {
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
   'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'textScales', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights',
-  'paceLevels', 'customFlatSpeeds',
+  'paceLevels', 'customFlatSpeeds', 'liveFields',
 ] as const;
 
 /** Réglages sans aucune surcharge rangée sous `id`. */
@@ -366,6 +378,7 @@ export const useAllSportSettings = () => {
       const bikeWeight = stored.bikeWeights?.[id];
       const paceLevel = stored.paceLevels?.[id];
       const customSpeed = stored.customFlatSpeeds?.[id];
+      const liveFields = sanitizeLiveFields(stored.liveFields?.[id], activityFamily(activity));
       return {
         activity,
         speedUnit: isKnownSpeedUnit(unit) ? unit : profile.speedUnit,
@@ -380,6 +393,8 @@ export const useAllSportSettings = () => {
         gradeRange: grades && isValidGradeRange(grades) ? grades : null,
         autoPause: autoPauseOverride ?? { speedMs: profile.recording.autoPauseSpeedMs, delayS: profile.recording.autoPauseDelayS },
         isAutoPauseOverridden: autoPauseOverride !== undefined,
+        liveFields: liveFields ?? DEFAULT_LIVE_FIELDS[activityFamily(activity)],
+        isLiveFieldsOverridden: liveFields !== null,
         bikeType: isBikeType(bikeType) ? bikeType : 'route',
         bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
         paceLevel: isPaceLevel(paceLevel) ? paceLevel : DEFAULT_PACE_LEVEL,
@@ -391,7 +406,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'gradeRange' | 'autoPause' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -440,6 +455,14 @@ export const useAllSportSettings = () => {
           const a = value as { speedMs: number; delayS: number } | null;
           if (a !== null && !(isFinite(a.speedMs) && isFinite(a.delayS) && a.speedMs >= 0 && a.delayS >= 0)) return;
           next.autoPause = put(stored.autoPause, a);
+          break;
+        }
+        case 'liveFields': {
+          const activity = findActivity(activities, id);
+          if (!activity) return;
+          const fields = value === null ? null : sanitizeLiveFields(value, activityFamily(activity));
+          if (value !== null && fields === null) return;
+          next.liveFields = put(stored.liveFields, fields);
           break;
         }
         case 'bikeType':

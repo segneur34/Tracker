@@ -18,6 +18,7 @@ import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
+import { IconChevronRight } from '../components/icons';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { CARD_STYLE } from '../components/styles';
 import PageHeader from '../components/ui/PageHeader';
@@ -121,10 +122,14 @@ interface EnergyChartRow {
   grade: number | null;
 }
 
-/** Durée en minutes écrite en h:mm. */
+/** Chiffres du panneau Énergie, dépliés tant qu'on ne les a pas repliés pour voir carte et graphe ensemble. */
+const ENERGY_FIGURES_DEFAULT = { chiffres: true };
+
+/** Temps écoulé, donné en minutes, écrit en h:mm, ou en h:mm:ss hors de la minute ronde (graphe zoomé). */
 const formatMinutes = (minutes: number): string => {
-  const total = Math.round(minutes);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  const totalS = Math.round(minutes * 60);
+  const hm = `${Math.floor(totalS / 3600)}:${String(Math.floor(totalS / 60) % 60).padStart(2, '0')}`;
+  return totalS % 60 === 0 ? hm : `${hm}:${String(totalS % 60).padStart(2, '0')}`;
 };
 
 const cardStyle = CARD_STYLE;
@@ -249,25 +254,39 @@ function LandModule({ family }: { family: LandFamily }) {
     [config, gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg]
   );
 
+  /** Chiffres du panneau Énergie repliés ou dépliés, choix gardé sur l'appareil. */
+  const energyFold = useOpenSections(`${config.storageId}.energie`, ENERGY_FIGURES_DEFAULT);
+  /** Temps écoulé de chaque point, en minutes : l'axe du graphe d'énergie et de son zoom. */
+  const trackMinutes = useMemo(
+    () => gpx.track.map((p) => (p.timeMs - gpx.track[0].timeMs) / 60000),
+    [gpx.track]
+  );
+  /** Zoom du graphe d'énergie, sur son axe en temps ; « tout voir » à chaque session. */
+  const energyZoom = useChartZoom(
+    trackMinutes.length > 1 ? { min: trackMinutes[0], max: trackMinutes[trackMinutes.length - 1] } : null,
+    gpx.sessionKey
+  );
+  /** Puissance lissée, une fois pour toute la trace : zoomer ne la recalcule pas. */
+  const smoothedPower = useMemo(
+    () => (energy && open.energie ? smoothMovingPower(energy.power, gpx.track, ENERGY_POWER_SMOOTHING_S) : []),
+    [energy, open.energie, gpx.track]
+  );
+  /** Lignes du graphe d'énergie sur la plage visible, au plus `CHART_MAX_POINTS`. */
   const energyChartData = useMemo(() => {
-    if (!energy || !open.energie) return [];
-    const smoothed = smoothMovingPower(energy.power, gpx.track, ENERGY_POWER_SMOOTHING_S);
-    const t0 = gpx.track[0].timeMs;
-    const step = Math.max(1, Math.ceil(gpx.track.length / CHART_MAX_POINTS));
-    const data: EnergyChartRow[] = [];
-    for (let i = 0; i < gpx.track.length; i += step) {
-      const power = smoothed[i];
-      data.push({
+    if (!energy || smoothedPower.length === 0) return [];
+    const [first, last] = visibleIndexRange(trackMinutes, energyZoom.view);
+    return sampledIndices(first, last, CHART_MAX_POINTS).map((i): EnergyChartRow => {
+      const power = smoothedPower[i];
+      return {
         index: i,
-        minutes: parseFloat(((gpx.track[i].timeMs - t0) / 60000).toFixed(2)),
+        minutes: parseFloat(trackMinutes[i].toFixed(3)),
         power: isFinite(power) ? Math.round(power * 10) / 10 : null,
         cumulative: energy.cumulative[i],
         speedMs: gpx.track[i].smoothedSpeedMs,
         grade: isFinite(grades[i]) ? grades[i] : null,
-      });
-    }
-    return data;
-  }, [energy, open.energie, gpx.track, grades]);
+      };
+    });
+  }, [energy, smoothedPower, trackMinutes, energyZoom.view, gpx.track, grades]);
 
   /** Meilleurs segments, dans l'unité affichée (km/h pour une allure). */
   const topUnit = speedUnit === 'minkm' ? 'kmh' : speedUnit;
@@ -570,30 +589,44 @@ function LandModule({ family }: { family: LandFamily }) {
                 {mode === 'power' ? 'Puissance' : 'Cumulée'}
               </button>
             ))}
+            <button type="button" aria-expanded={energyFold.open.chiffres} onClick={() => energyFold.toggle('chiffres')}
+              title={energyFold.open.chiffres ? 'Replier les chiffres pour voir le graphe et la carte ensemble' : 'Montrer les chiffres'}
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px 4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: 'var(--surface-sunken)', color: 'var(--ink)' }}>
+              Chiffres
+              <IconChevronRight size={14} style={{ transform: `rotate(${energyFold.open.chiffres ? -90 : 90}deg)`, transition: 'transform 0.15s' }} />
+            </button>
           </div>
-          {energy.warning && (
-            <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px' }}>
-              {energy.warning}
-            </div>
-          )}
-          <div className="an-sheet__stats an-sheet__stats--always" style={{ flexShrink: 0 }}>
-            {energy.stats.map((stat) => (
-              <div key={stat.label} className="an-sheet__stat">
-                <span className="an-sheet__stat-label">{stat.label}</span>
-                <strong className="an-sheet__stat-value">{stat.value}{stat.detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: '0.75em' }}> {stat.detail}</span>}</strong>
+          {energyFold.open.chiffres && (
+            <>
+              {energy.warning && (
+                <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px' }}>
+                  {energy.warning}
+                </div>
+              )}
+              <div className="an-sheet__stats an-sheet__stats--always" style={{ flexShrink: 0 }}>
+                {energy.stats.map((stat) => (
+                  <div key={stat.label} className="an-sheet__stat">
+                    <span className="an-sheet__stat-label">{stat.label}</span>
+                    <strong className="an-sheet__stat-value">{stat.value}{stat.detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: '0.75em' }}> {stat.detail}</span>}</strong>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          {!stats?.hasElevation && (
-            <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)', marginBottom: '6px' }}>{config.flatWarning}</div>
+              {!stats?.hasElevation && (
+                <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)', marginBottom: '6px' }}>{config.flatWarning}</div>
+              )}
+            </>
           )}
 
           {energyChartData.length > 1 && (
-            <div style={{ width: '100%', flex: 1, minHeight: '200px', marginTop: '6px' }}>
+            <ZoomableChart zoom={energyZoom} style={{ width: '100%', flex: 1, minHeight: '200px', marginTop: '6px' }}>
               <ResponsiveContainer>
-                <ComposedChart data={energyChartData} onMouseMove={onEnergyChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <ComposedChart data={energyChartData} onMouseMove={onEnergyChartHover} onTouchMove={onEnergyChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                  <ChartZoomProbe />
                   <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                  <XAxis dataKey="minutes" type="number" domain={['dataMin', 'dataMax']} tickFormatter={formatMinutes} tick={{ fill: '#555', fontSize: 11 }} />
+                  <XAxis dataKey="minutes" type="number" allowDataOverflow
+                    domain={energyZoom.shown ? [energyZoom.shown.min, energyZoom.shown.max] : ['dataMin', 'dataMax']}
+                    ticks={energyZoom.shown ? niceTicks(energyZoom.shown) : undefined}
+                    tickFormatter={formatMinutes} tick={{ fill: '#555', fontSize: 11 }} />
                   <YAxis domain={[0, 'auto']} width={50} tick={{ fill: '#e64a19', fontSize: 11 }}
                     label={{ value: energyMode === 'power' ? energy.powerUnit : energy.cumulativeUnit, angle: -90, position: 'insideLeft', fill: '#e64a19', fontSize: 11 }} />
                   <Tooltip formatter={energyTooltipFormatter} labelFormatter={(l) => formatMinutes(Number(l))} contentStyle={chartTooltipStyle} />
@@ -604,7 +637,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   )}
                 </ComposedChart>
               </ResponsiveContainer>
-            </div>
+            </ZoomableChart>
           )}
 
           {stats?.hasElevation && (
@@ -632,7 +665,7 @@ function LandModule({ family }: { family: LandFamily }) {
 
           <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '8px', flexShrink: 0 }}>
             {energy.note}
-            {' '}Puissance lissée sur {ENERGY_POWER_SMOOTHING_S} s, interrompue aux pauses.
+            {' '}Puissance lissée sur {ENERGY_POWER_SMOOTHING_S} s, moins près du départ et des arrêts, interrompue aux pauses.
           </div>
         </ResizablePanel>
       )}

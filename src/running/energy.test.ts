@@ -101,7 +101,14 @@ describe('computeEnergy', () => {
     expect(b.restJkg).toBeCloseTo(rest * 1200, 6);
     expect(b.movingTimeS).toBe(900);
     expect(b.netJkg).toBeCloseTo(a.netJkg * 0.75, 3);
-    expect(Number.isNaN(b.netPowerWkg[500])).toBe(true);
+    expect(Number.isNaN(b.mechanicalPowerWkg[500])).toBe(true);
+  });
+
+  it('donne une puissance mécanique de capteur, pas la dépense : 313 W à 4 m/s pour 75 kg', () => {
+    const track = buildTrack(600, () => 4);
+    const result = computeEnergy(track, gradesOf(track), allMoving(track), NO_AIR, 0);
+    expect(result.mechanicalPowerWkg[300] * 75).toBeCloseTo(4.18 * 0.25 * 4 * 75, 3);
+    expect(result.mechanicalJkg).toBeCloseTo(result.netJkg * 0.25, 6);
   });
 
   it('donne la même énergie à 1 Hz et à 5 Hz', () => {
@@ -137,10 +144,48 @@ describe('smoothMovingPower', () => {
   it('garde une puissance constante et laisse un trou aux pauses', () => {
     const track = buildTrack(600, (t) => (t > 200 && t <= 300 ? 0 : 3));
     const mask = track.map((p, i) => i === 0 || p.speedMs > 0);
-    const { netPowerWkg } = computeEnergy(track, gradesOf(track), mask, NO_AIR, 0);
-    const smooth = smoothMovingPower(netPowerWkg, track, 60);
-    expect(smooth[100]).toBeCloseTo(4.18 * 3, 6);
-    expect(smooth[199]).toBeCloseTo(4.18 * 3, 6);
+    const { mechanicalPowerWkg } = computeEnergy(track, gradesOf(track), mask, NO_AIR, 0);
+    const smooth = smoothMovingPower(mechanicalPowerWkg, track, 60);
+    expect(smooth[100]).toBeCloseTo(4.18 * 0.25 * 3, 6);
+    expect(smooth[199]).toBeCloseTo(4.18 * 0.25 * 3, 6);
     expect(Number.isNaN(smooth[250])).toBe(true);
+  });
+
+  it('rétrécit la fenêtre des deux côtés au départ : une rampe ressort intacte', () => {
+    // Puissance qui croît d'1 W/kg par minute : une moyenne centrée la rend telle
+    // quelle, bords compris ; tronquée d'un côté, elle prendrait 30 s d'avance.
+    const track = buildTrack(300, () => 3);
+    const power = track.map((p, i) => (i === 0 ? NaN : (p.timeMs - track[0].timeMs) / 60000));
+    const smooth = smoothMovingPower(power, track, 60);
+    expect(smooth[1]).toBeCloseTo(power[1], 6);
+    expect(smooth[10]).toBeCloseTo(power[10], 6);
+    expect(smooth[150]).toBeCloseTo(power[150], 6);
+    expect(smooth[300]).toBeCloseTo(power[300], 6);
+  });
+
+  it('repart du premier point après un long arrêt, mais lisse à travers un arrêt court', () => {
+    const track = buildTrack(400, () => 3);
+    // 20 s puis 100 s sans mouvement ; puissance de 2 W/kg avant, 5 W/kg après chacun.
+    const power = track.map((_, i) => (i === 0 || (i > 100 && i <= 120) || (i > 200 && i <= 300) ? NaN : i > 300 ? 5 : i > 120 ? 5 : 2));
+    const smooth = smoothMovingPower(power, track, 60);
+    expect(smooth[301]).toBeCloseTo(5, 6);
+    expect(smooth[121]).toBeLessThan(5);
+    expect(smooth[121]).toBeGreaterThan(2);
+  });
+
+  it('donne la même courbe à 1 Hz et à 5 Hz', () => {
+    const climb = (d: number) => 100 + (d < 300 ? d * 0.2 : 60);
+    const at = (stepS: number) => {
+      const track = buildTrack(600, (t) => (t < 5 ? 0 : 2.5), stepS, climb);
+      const mask = track.map((p) => p.speedMs > 0);
+      const { mechanicalPowerWkg } = computeEnergy(track, gradesOf(track), mask, NO_AIR, 0);
+      return { track, smooth: smoothMovingPower(mechanicalPowerWkg, track, 60) };
+    };
+    const slow = at(1);
+    const fast = at(0.2);
+    // L'écart qui reste vient de la pente, mesurée sur des points différents au départ.
+    for (const tS of [10, 30, 120, 400]) {
+      expect(Math.abs(fast.smooth[tS * 5] - slow.smooth[tS]) / slow.smooth[tS]).toBeLessThan(0.02);
+    }
   });
 });

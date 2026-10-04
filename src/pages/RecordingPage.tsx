@@ -9,12 +9,17 @@ import { IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, sportFamily, type SportFamily } from '../core/sportProfiles';
-import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatSpeed, isInverseUnit } from '../core/units';
+import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
+import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { effectiveDistanceUnit, effectiveSpeedUnit, lastRecordActivity, readStoredActivities, rememberRecordActivity } from '../hooks/useSportSettings';
+import { useRunnerProfile } from '../hooks/useRunnerProfile';
+import {
+  effectiveBikeSetup, effectiveDistanceUnit, effectiveLiveFields, effectiveSpeedUnit, lastRecordActivity, readStoredActivities,
+  rememberRecordActivity,
+} from '../hooks/useSportSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import {
   analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording,
@@ -24,8 +29,12 @@ import {
   followProgress, followedTraceLengthM, splitFollowedTrace, type FollowProgress, type FollowedTrace,
 } from '../recording/followedTrace';
 import { travelHeading } from '../recording/heading';
+import {
+  liveFieldLabel, liveFieldValue, type LiveFieldContext, type LiveFieldUnits,
+} from '../recording/liveFields';
 import { LIVE_LEG_DEFAULTS, type LiveLeg } from '../recording/liveLegs';
-import { LIVE_STATS_DEFAULTS, type LiveStats } from '../recording/liveStats';
+import { LIVE_STATS_DEFAULTS, type LiveEnergySetup, type LiveStats } from '../recording/liveStats';
+import { runningEnergyParams } from '../running/energy';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { createReplaySource, deviceLocationSource, type LocationFix } from '../platform/location';
 import { isNativeApp } from '../platform/runtime';
@@ -140,32 +149,42 @@ const LegCard = ({ title, leg, empty, activity }: { title: string; leg: LiveLeg 
 };
 
 /**
- * Résumé des vitesses en grands chiffres, quand la carte est réduite : celle
- * du moment, la moyenne hors pauses, la meilleure tenue 2 s sur la session.
- * En allure (min/km), les libellés le disent.
+ * Chiffres en grand quand la carte est réduite : ceux choisis pour l'activité
+ * dans Réglages (`effectiveLiveFields`), déjà formatés.
  */
-const SpeedSummary = ({ activity, live }: { activity: Activity; live: LiveStats }) => {
-  const unit = effectiveSpeedUnit(activity);
-  const pace = isInverseUnit(unit);
-  const items = [
-    { label: pace ? 'Allure' : 'Vitesse', value: live.currentSpeedMs },
-    { label: pace ? 'Allure moyenne' : 'Moyenne', value: live.averageSpeedMs },
-    { label: `${pace ? 'Meilleure' : 'Max'} (${LIVE_STATS_DEFAULTS.maxDurationS} s)`, value: live.maxSpeedMs },
-  ];
-  return (
-    <Card>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-        {items.map((item) => (
-          <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-3)' }}>
-            <span style={{ fontSize: 'var(--text-m)', color: 'var(--muted)' }}>{item.label}</span>
-            <span className="num" style={{ fontSize: 'var(--text-display)', fontWeight: 700, lineHeight: 1.15, whiteSpace: 'nowrap' }}>
-              {formatSpeed(item.value, unit)}
-            </span>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
+const LiveSummary = ({ items }: { items: { label: string; value: string }[] }) => (
+  <Card>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      {items.map((item) => (
+        <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-3)' }}>
+          <span style={{ fontSize: 'var(--text-m)', color: 'var(--muted)' }}>{item.label}</span>
+          <span className="num" style={{ fontSize: 'var(--text-display)', fontWeight: 700, lineHeight: 1.15, whiteSpace: 'nowrap' }}>
+            {item.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  </Card>
+);
+
+/** Lignes de la carte réduite, dans les unités de l'activité. */
+const liveSummaryItems = (activity: Activity, context: Omit<LiveFieldContext, keyof LiveFieldUnits>): { label: string; value: string }[] => {
+  const units: LiveFieldUnits = { speedUnit: effectiveSpeedUnit(activity), distanceUnit: effectiveDistanceUnit(activity) };
+  return effectiveLiveFields(activity).map((key) => ({
+    label: liveFieldLabel(key, units),
+    value: liveFieldValue(key, { ...units, ...context }),
+  }));
+};
+
+/** Modèle de la puissance et de l'énergie en direct, celui de l'analyse ; aucun en voile. */
+const liveEnergySetup = (activity: Activity, weightKg: number | null, economyMlKgKm: number | null): LiveEnergySetup | undefined => {
+  const family = sportFamily(activity.base);
+  if (family === 'course') return { family, params: runningEnergyParams(economyMlKgKm), massKg: weightKg };
+  if (family === 'velo') {
+    const { bikeType, bikeKg } = effectiveBikeSetup(activity);
+    return { family, params: cyclingEnergyParams(bikeType, bikeKg, weightKg ?? REFERENCE_RIDER_KG) };
+  }
+  return undefined;
 };
 
 /** Carte de l'enregistrement en cours, réduite ou non ; mémorisé sur l'appareil. */
@@ -218,11 +237,15 @@ function RecordingPage() {
   const canStart = !busy && pending === null && chosen !== null && (sourceChoice === 'device' || replay !== null);
   const liveActivity = recorder.activity ?? chosen;
   const mapReduced = busy && !shown.carte;
-  const live = useLiveRecording(
-    busy && liveActivity ? liveActivity.base : null,
-    stats.pointCount,
-    liveActivity ? METERS_PER_DISTANCE_UNIT[effectiveDistanceUnit(liveActivity)] : undefined
+  const { profile: runner } = useRunnerProfile();
+  const energy = useMemo(
+    () => (liveActivity ? liveEnergySetup(liveActivity, runner.weightKg, runner.economyMlKgKm) : undefined),
+    [liveActivity, runner.weightKg, runner.economyMlKgKm]
   );
+  const live = useLiveRecording(busy && liveActivity ? liveActivity.base : null, stats.pointCount, {
+    lastDistanceM: liveActivity ? METERS_PER_DISTANCE_UNIT[effectiveDistanceUnit(liveActivity)] : undefined,
+    energy,
+  });
 
   // Avancement sur la trace suivie, recalculé avec la trace en direct (toutes les 2 s au plus).
   const followedLengthM = useMemo(() => (followed ? followedTraceLengthM(followed) : 0), [followed]);
@@ -411,7 +434,15 @@ function RecordingPage() {
         // Carte réduite : elle n'est plus dessinée, les vitesses prennent sa place.
         <>
           <Button variant="secondary" block onClick={() => toggleShown('carte')}>Afficher la carte</Button>
-          {liveActivity && <SpeedSummary activity={liveActivity} live={live.stats} />}
+          {liveActivity && (
+            <LiveSummary items={liveSummaryItems(liveActivity, {
+              stats: live.stats,
+              durationMs,
+              nowMs: live.updatedMs,
+              remainingM: progress?.remainingM ?? null,
+              headingDeg: travel?.headingDeg ?? null,
+            })} />
+          )}
         </>
       )}
 

@@ -17,6 +17,9 @@ import {
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, type BikeType } from '../cycling/energy';
 import {
+  DEFAULT_LIVE_FIELDS, MAX_LIVE_FIELDS, liveFieldLabel, liveFieldsOfFamily, type LiveFieldKey,
+} from '../recording/liveFields';
+import {
   CUSTOM_FLAT_SPEED_BOUNDS_MS, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PACE_LEVELS, PACE_LEVEL_LABEL, climbPowerWkgForFlatSpeed,
   isPaceLevel, type PaceLevel, type PlanningFamily,
 } from '../planning/duration';
@@ -164,7 +167,8 @@ function SettingsPage() {
                 const units = FAMILY_UNITS[family];
                 const isOpen = openActivity[id] === true;
                 const overridden =
-                  s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null;
+                  s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
+                  s.isLiveFieldsOverridden;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
                 const thresholdShown = parseFloat(
@@ -308,6 +312,7 @@ function SettingsPage() {
                             {!s.isAutoPauseOverridden && <span className="settings-sports__mark">défaut</span>}
                           </div>
                         </div>
+                        <LiveFieldsSetting family={family} view={s} onChange={(fields) => setFor(id, 'liveFields', fields)} />
                         <div className="settings-activity__actions">
                           {overridden && (
                             <button type="button" onClick={() => resetActivity(id)} className="ui-btn ui-btn--secondary ui-btn--s">Défaut</button>
@@ -343,7 +348,8 @@ function SettingsPage() {
           <>
             <p className="settings-block__intro">
               Pendant un enregistrement, tenir le bouton rond de la barre du bas met en pause ou relance, depuis n'importe
-              quelle page. Un appui court ouvre la page d'enregistrement. La pause automatique se règle par activité.
+              quelle page. Un appui court ouvre la page d'enregistrement. La pause automatique se règle par activité, comme
+              les chiffres affichés en grand quand la carte est réduite.
             </p>
             <NumberField label="Appui long pour la pause" unit="s" step={0.5} min={0.5} max={10}
               value={longPressMs / 1000}
@@ -462,6 +468,45 @@ function SettingsPage() {
             </p>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Chiffres en grand de l'enregistrement quand la carte est réduite, de haut
+ * en bas : un menu par ligne, le premier toujours rempli. Un chiffre déjà
+ * placé n'est pas proposé ailleurs. La liste est rangée sans trou ; revenue
+ * au défaut de la famille, elle est effacée.
+ */
+function LiveFieldsSetting({ family, view, onChange }: {
+  family: SportFamily;
+  view: SportSettingsView;
+  onChange: (fields: LiveFieldKey[] | null) => void;
+}) {
+  const options = liveFieldsOfFamily(family);
+  const units = { speedUnit: view.speedUnit, distanceUnit: view.distanceUnit };
+  const slots = Array.from({ length: MAX_LIVE_FIELDS }, (_, i) => view.liveFields[i] ?? null);
+  const pick = (slot: number, key: LiveFieldKey | null) => {
+    const next = slots.map((k, i) => (i === slot ? key : k)).filter((k): k is LiveFieldKey => k !== null);
+    const defaults = DEFAULT_LIVE_FIELDS[family];
+    const isDefault = next.length === defaults.length && next.every((k, i) => k === defaults[i]);
+    onChange(isDefault ? null : next);
+  };
+  return (
+    <div className="settings-row" title="À l'enregistrement, quand la carte est réduite : les chiffres affichés en grand, de haut en bas">
+      <span className="settings-row__label">Carte réduite à l'enregistrement</span>
+      <div className="settings-sports__pair">
+        {slots.map((key, i) => (
+          <select key={i} value={key ?? ''} aria-label={`Ligne ${i + 1}`} className="ui-field ui-field--s"
+            onChange={(e) => pick(i, e.target.value === '' ? null : (e.target.value as LiveFieldKey))}>
+            {i > 0 && <option value="">—</option>}
+            {options.map((k) => (
+              <option key={k} value={k} disabled={k !== key && slots.includes(k)}>{liveFieldLabel(k, units)}</option>
+            ))}
+          </select>
+        ))}
+        {!view.isLiveFieldsOverridden && <span className="settings-sports__mark">défaut</span>}
       </div>
     </div>
   );

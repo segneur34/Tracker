@@ -12,6 +12,11 @@ import { GRADE_ZONES, classifyGrade, type GradeZone, type GradeZoneKey } from '.
  * l'économie du coureur. En course, le coût par mètre dépend à peine de la
  * vitesse : elle agit par la puissance (coût × vitesse) et par la résistance
  * de l'air, seul terme en v².
+ *
+ * L'énergie est celle que dépense l'organisme ; la puissance affichée est
+ * mécanique, cette dépense multipliée par un rendement, comme à vélo. Elle se
+ * compare à celle d'un capteur de puissance de course (environ 1 W/kg par m/s
+ * sur le plat), quatre fois moindre que la puissance dépensée.
  */
 
 export interface EnergyParams {
@@ -25,12 +30,15 @@ export interface EnergyParams {
   maxGrade: number;
   /** Métabolisme de repos à défaut de profil complet (1 MET), en ml d'O₂ par kg et par minute. */
   restingMlKgMin: number;
+  /** Rendement : puissance mécanique sur puissance de course nette (repos déduit). */
+  mechanicalEfficiency: number;
 }
 
 /**
  * 200 ml/kg/km à 20,9 J/ml font 4,18 J/kg/m, la règle classique de
  * 1 kcal/kg/km. Le k de l'air est un ordre de grandeur tiré de Pugh (1971) :
- * environ 4 % du coût à l'allure du marathon élite, 2 % à 3 m/s.
+ * environ 4 % du coût à l'allure du marathon élite, 2 % à 3 m/s. Le rendement
+ * est celui du vélo : 1,05 J/kg/m sur le plat, l'ordre des capteurs.
  */
 export const DEFAULT_ENERGY_PARAMS: EnergyParams = {
   economyMlKgKm: 200,
@@ -38,7 +46,14 @@ export const DEFAULT_ENERGY_PARAMS: EnergyParams = {
   airDragJs2M3Kg: 0.0065,
   maxGrade: 0.45,
   restingMlKgMin: 3.5,
+  mechanicalEfficiency: 0.25,
 };
+
+/** Paramètres pour l'économie de course du pratiquant, celle par défaut s'il ne l'a pas saisie. */
+export const runningEnergyParams = (economyMlKgKm: number | null): EnergyParams => ({
+  ...DEFAULT_ENERGY_PARAMS,
+  economyMlKgKm: economyMlKgKm ?? DEFAULT_ENERGY_PARAMS.economyMlKgKm,
+});
 
 /** Coût sur le plat du polynôme de Minetti, en J/kg/m. */
 const MINETTI_FLAT_JKGM = 3.6;
@@ -85,12 +100,14 @@ export interface EnergyZone {
 
 export interface EnergyResult {
   /**
-   * Puissance de course nette en chaque point (segment qui y mène), en W/kg ;
+   * Puissance mécanique en chaque point (segment qui y mène), en W/kg ;
    * `NaN` à l'arrêt et au premier point.
    */
-  netPowerWkg: number[];
+  mechanicalPowerWkg: number[];
   /** Énergie totale (course et repos) dépensée depuis le départ, en J/kg. */
   cumulativeTotalJkg: number[];
+  /** Travail mécanique, en J/kg. */
+  mechanicalJkg: number;
   /** Énergie de course nette, en J/kg. */
   netJkg: number;
   /** Métabolisme de repos sur toute la durée, pauses comprises, en J/kg. */
@@ -103,8 +120,9 @@ export interface EnergyResult {
 
 /**
  * Énergie dépensée le long de la trace. Chaque segment en mouvement coûte
- * (coût de la pente + k·v²) × distance ; le repos court sur toute la durée.
- * Une pente manquante compte comme plate, et son segment va dans la zone plate.
+ * (coût de la pente + k·v²) × distance, et en travail mécanique ce coût
+ * multiplié par le rendement ; le repos court sur toute la durée. Une pente
+ * manquante compte comme plate, et son segment va dans la zone plate.
  */
 export const computeEnergy = (
   track: TrackPoint[],
@@ -114,7 +132,7 @@ export const computeEnergy = (
   restWkg: number
 ): EnergyResult => {
   const n = track.length;
-  const netPowerWkg = new Array<number>(n).fill(NaN);
+  const mechanicalPowerWkg = new Array<number>(n).fill(NaN);
   const cumulativeTotalJkg = new Array<number>(n).fill(0);
   const byZone: Record<GradeZoneKey, { netJkg: number; distanceM: number }> = {
     steepDown: { netJkg: 0, distanceM: 0 },
@@ -142,7 +160,7 @@ export const computeEnergy = (
       const v = track[i].speedMs;
       const grade = grades[i] ?? NaN;
       net = (runningCostJkgM(grade, params) + params.airDragJs2M3Kg * v * v) * d;
-      netPowerWkg[i] = net / dt;
+      mechanicalPowerWkg[i] = (net * params.mechanicalEfficiency) / dt;
       netJkg += net;
       movingTimeS += dt;
       movingDistanceM += d;
@@ -154,8 +172,9 @@ export const computeEnergy = (
   }
 
   return {
-    netPowerWkg,
+    mechanicalPowerWkg,
     cumulativeTotalJkg,
+    mechanicalJkg: netJkg * params.mechanicalEfficiency,
     netJkg,
     restJkg,
     totalJkg: netJkg + restJkg,
@@ -172,6 +191,12 @@ export const computeEnergy = (
 /**
  * Moyenne glissante sur `windowSeconds` de la puissance, sur les seuls points
  * en mouvement : une pause laisse un trou au lieu de tirer la courbe vers zéro.
+ *
+ * La fenêtre reste centrée. Près du départ, de l'arrivée ou d'un arrêt plus
+ * long qu'une demi-fenêtre, elle rétrécit des deux côtés à la fois. Tronquée
+ * d'un seul côté, elle ne verrait que l'effort qui suit : sur une trace qui
+ * part en côte, la courbe démarrerait à la moyenne de la montée entière, son
+ * maximum, quand le premier point vaut deux fois moins.
  */
 export const smoothMovingPower = (
   powerWkg: number[],
@@ -182,27 +207,56 @@ export const smoothMovingPower = (
   const halfMs = (windowSeconds * 1000) / 2;
   const moving: number[] = [];
   for (let i = 0; i < powerWkg.length; i++) if (isFinite(powerWkg[i])) moving.push(i);
+  const m = moving.length;
+  if (m === 0) return out;
+  const time = (k: number) => track[moving[k]].timeMs;
 
   // Moyenne pondérée par la durée de chaque segment, pour qu'une cadence
-  // irrégulière ne donne pas plus de poids aux points serrés.
-  let start = 0;
-  let end = -1;
-  let energy = 0;
-  let time = 0;
-  const dt = (i: number) => (track[i].timeMs - track[i - 1].timeMs) / 1000;
-  for (let k = 0; k < moving.length; k++) {
-    const t = track[moving[k]].timeMs;
-    while (end + 1 < moving.length && track[moving[end + 1]].timeMs - t <= halfMs) {
-      end++;
-      energy += powerWkg[moving[end]] * dt(moving[end]);
-      time += dt(moving[end]);
+  // irrégulière ne donne pas plus de poids aux points serrés. Cumuls
+  // d'énergie et de temps : la moyenne de toute plage se lit en une soustraction.
+  const energyCum = new Array<number>(m + 1).fill(0);
+  const timeCum = new Array<number>(m + 1).fill(0);
+  for (let k = 0; k < m; k++) {
+    const i = moving[k];
+    const dt = i > 0 ? (track[i].timeMs - track[i - 1].timeMs) / 1000 : 0;
+    energyCum[k + 1] = energyCum[k] + powerWkg[i] * dt;
+    timeCum[k + 1] = timeCum[k] + dt;
+  }
+
+  // Tronçons en mouvement, coupés par un arrêt plus long qu'une demi-fenêtre.
+  const stretchStart = new Array<number>(m);
+  const stretchEnd = new Array<number>(m);
+  for (let k = 0; k < m; k++) {
+    stretchStart[k] = k > 0 && time(k) - time(k - 1) <= halfMs ? stretchStart[k - 1] : k;
+  }
+  for (let k = m - 1; k >= 0; k--) {
+    stretchEnd[k] = k < m - 1 && time(k + 1) - time(k) <= halfMs ? stretchEnd[k + 1] : k;
+  }
+
+  /**
+   * Premier rang de [lo, hi] dont l'instant atteint `t` (`strict` : le
+   * dépasse) ; hi + 1 s'il n'y en a pas.
+   */
+  const firstFrom = (t: number, lo: number, hi: number, strict: boolean): number => {
+    let a = lo;
+    let b = hi + 1;
+    while (a < b) {
+      const mid = (a + b) >> 1;
+      if (time(mid) < t || (strict && time(mid) === t)) a = mid + 1;
+      else b = mid;
     }
-    while (start < k && t - track[moving[start]].timeMs > halfMs) {
-      energy -= powerWkg[moving[start]] * dt(moving[start]);
-      time -= dt(moving[start]);
-      start++;
-    }
-    out[moving[k]] = time > 0 ? energy / time : powerWkg[moving[k]];
+    return a;
+  };
+
+  for (let k = 0; k < m; k++) {
+    const t = time(k);
+    const s = stretchStart[k];
+    const e = stretchEnd[k];
+    const half = Math.min(halfMs, t - time(s), time(e) - t);
+    const lo = firstFrom(t - half, s, k, false);
+    const hi = firstFrom(t + half, k, e, true) - 1;
+    const span = timeCum[hi + 1] - timeCum[lo];
+    out[moving[k]] = span > 0 ? (energyCum[hi + 1] - energyCum[lo]) / span : powerWkg[moving[k]];
   }
   return out;
 };

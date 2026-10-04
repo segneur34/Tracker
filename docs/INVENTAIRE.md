@@ -52,7 +52,8 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `session.ts` : `isNewerFix` (seul filtre), `roundFix`, compteurs de l'enregistrement, `splitIntoSegments`, `evaluateAutoPause`, `shouldFlushJournal`, `sessionFileName`, `sessionTitle`, `isSportType`.
 - `journal.ts` : journal JSON par ligne, relisible même abîmé (`parseJournal`), marques de pause (`journalBreakLine`), activité dans l'en-tête et ses changements en route (`journalActivityLine`, `activityChange`).
 - `gpxWriter.ts` : `buildGpx`, GPX 1.1, un `<trkseg>` par segment, vitesse seule en extension.
-- `liveStats.ts` : statistiques en direct par segment (`computeLiveStats`, `LIVE_STATS_DEFAULTS`).
+- `liveStats.ts` : statistiques en direct par segment (`computeLiveStats`, `LIVE_STATS_DEFAULTS`), puissance et énergie par le modèle de l'analyse (`LiveEnergySetup`).
+- `liveFields.ts` : chiffres de la carte réduite, choisis par activité (`LiveFieldKey`, `liveFieldsOfFamily`, `DEFAULT_LIVE_FIELDS`, `sanitizeLiveFields`), libellés et valeurs formatés (`liveFieldLabel`, `liveFieldValue`).
 - `liveLegs.ts` : bords de voile en direct, repérés par leur cap moyen (`computeLiveLegs`, `LIVE_LEG_DEFAULTS`).
 - `followedTrace.ts` : trace suivie pendant l'enregistrement, tirée d'un itinéraire rangé ou des points d'une session, avec son activité ; avancement le long de la trace (`followProgress`, `FOLLOW_DEFAULTS`), découpe faite / reste (`splitFollowedTrace`).
 - `heading.ts` : cap de la flèche de position (`travelHeading`, `displayHeading`) : marche en mouvement, boussole à l'arrêt.

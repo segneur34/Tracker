@@ -163,6 +163,9 @@ export const formatClock = (ms: number): string => {
   return `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
 };
 
+/** Joules par kilocalorie. */
+export const J_PER_KCAL = 4184;
+
 /** Heure locale `hh:mm:ss` d'un instant, pour désigner un moment de la session. */
 export const formatTimeOfDay = (ms: number): string => {
   const date = new Date(ms);

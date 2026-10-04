@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { TrackPoint } from '../core/types';
+import { J_PER_KCAL } from '../core/units';
 import {
   BIKE_TYPES, REFERENCE_RIDER_KG, computeCyclingEnergy, cyclingEnergyParams, type BikeType,
 } from '../cycling/energy';
 import type { RunnerProfile } from '../hooks/useRunnerProfile';
-import { DEFAULT_ENERGY_PARAMS, computeEnergy, restingPowerWkg } from '../running/energy';
+import { DEFAULT_ENERGY_PARAMS, computeEnergy, restingPowerWkg, runningEnergyParams } from '../running/energy';
 import type { GradeZone } from '../running/runningAnalytics';
 
 /**
@@ -17,9 +18,6 @@ import type { GradeZone } from '../running/runningAnalytics';
  */
 
 export type LandFamily = 'course' | 'velo';
-
-/** Joules par kilocalorie. */
-export const J_PER_KCAL = 4184;
 
 /** Un chiffre du panneau Énergie : sa valeur, et en plus petit un complément. */
 export interface EnergyStat {
@@ -92,7 +90,7 @@ const warningPerKg = (
  * l'affichage ; sans lui, les valeurs restent par kilo.
  */
 const runningEnergy = ({ track, grades, activityMask, runner, age }: EnergyInputs): EnergyView => {
-  const params = { ...DEFAULT_ENERGY_PARAMS, economyMlKgKm: runner.economyMlKgKm ?? DEFAULT_ENERGY_PARAMS.economyMlKgKm };
+  const params = runningEnergyParams(runner.economyMlKgKm);
   const restWkg = restingPowerWkg(runner, age, params);
   const energy = computeEnergy(track, grades, activityMask, params, restWkg);
   const mass = runner.weightKg;
@@ -105,7 +103,7 @@ const runningEnergy = ({ track, grades, activityMask, runner, age }: EnergyInput
   const kj = (jkg: number) => Math.round((jkg * massFactor) / 1000);
   const cumulativeDecimals = mass === null ? 2 : 0;
   return {
-    power: energy.netPowerWkg.map((p) => p * massFactor),
+    power: energy.mechanicalPowerWkg.map((p) => p * massFactor),
     powerUnit: `W${perKg}`,
     cumulative: energy.cumulativeTotalJkg.map((j) => parseFloat(((j * massFactor) / J_PER_KCAL).toFixed(cumulativeDecimals))),
     cumulativeUnit: `kcal${perKg}`,
@@ -114,8 +112,8 @@ const runningEnergy = ({ track, grades, activityMask, runner, age }: EnergyInput
       { label: 'Dépense totale, repos compris', value: `${kcal(energy.totalJkg)} kcal${perKg}`, detail: `${kj(energy.totalJkg)} kJ${perKg}` },
       {
         label: 'Puissance moyenne en mouvement',
-        value: energy.movingTimeS > 0 ? `${Math.round((energy.netJkg / energy.movingTimeS) * massFactor)} W${perKg}` : '—',
-        detail: mass !== null && energy.movingTimeS > 0 ? `${(energy.netJkg / energy.movingTimeS).toFixed(1)} W/kg` : undefined,
+        value: energy.movingTimeS > 0 ? `${Math.round((energy.mechanicalJkg / energy.movingTimeS) * massFactor)} W${perKg}` : '—',
+        detail: mass !== null && energy.movingTimeS > 0 ? `${(energy.mechanicalJkg / energy.movingTimeS).toFixed(1)} W/kg` : undefined,
       },
       {
         label: 'Coût de course par km',
@@ -132,6 +130,7 @@ const runningEnergy = ({ track, grades, activityMask, runner, age }: EnergyInput
     warning: mass === null ? warningPerKg : null,
     note:
       `Coût selon la pente de Minetti (2002), rapporté à l'économie de course (${params.economyMlKgKm} ml O₂/kg/km${runner.economyMlKgKm === null ? ', valeur par défaut' : ''}), plus la résistance de l'air par air calme ; rien à l'arrêt.` +
+      ` Puissance : mécanique, l'énergie de course sur un rendement de ${Math.round(params.mechanicalEfficiency * 100)} %, comparable à celle d'un capteur de puissance de course ; une estimation, pas une mesure.` +
       ` Repos : ${Math.round(restWkg * massFactor * 10) / 10} W${perKg}, ${mass !== null && runner.heightCm !== null && runner.sex !== null && age !== null ? 'selon poids, taille, âge et sexe' : 'valeur moyenne (1 MET) faute de profil complet'}, sur toute la durée.`,
   };
 };
