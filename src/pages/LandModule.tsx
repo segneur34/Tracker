@@ -51,7 +51,9 @@ import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import {
   TERRAIN_LABEL, TEXT_SCALE_FACTOR, readStoredActivities, useSportSettings, type TerrainType,
 } from '../hooks/useSportSettings';
-import { averagePace, computeGrades, computeZoneStats, gradeGradientStops } from '../running/runningAnalytics';
+import {
+  averagePace, computeGrades, computeZoneStats, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
+} from '../running/runningAnalytics';
 import { smoothMovingPower } from '../running/energy';
 import type { RunningSessionStats } from '../running/types';
 import { BIKE_TYPES } from '../cycling/energy';
@@ -67,6 +69,8 @@ const MAP_SPEED_SMOOTHING_S = 15;
 const ENERGY_POWER_SMOOTHING_S = 60;
 /** Couleurs des trois premiers d'un top, sur la carte et dans le tableau (comme en voile). */
 const TOP_COLORS = ['#d32f2f', '#f57c00', '#388e3c'];
+/** Zone de pente montrée sur la carte : un violet, absent du dégradé de vitesse de la trace. */
+const ZONE_COLOR = '#7b1fa2';
 
 /**
  * Sections du module. Pour en ajouter une : une entrée ici, une valeur par
@@ -192,7 +196,17 @@ function LandModule({ family }: { family: LandFamily }) {
     () => LAND_SECTIONS.filter((s) => s.key !== 'tops' || profile.topTargets.length > 0),
     [profile.topTargets]
   );
-  const [selectedTop, setSelectedTop] = useState<string | null>(null);
+  // Une seule surbrillance sur la carte : un top ou une zone de pente, choisir l'un retire l'autre.
+  const [selectedTop, setSelectedTopState] = useState<string | null>(null);
+  const [selectedZone, setSelectedZoneState] = useState<GradeZoneKey | null>(null);
+  const setSelectedTop = (key: string | null) => {
+    setSelectedTopState(key);
+    if (key !== null) setSelectedZoneState(null);
+  };
+  const setSelectedZone = (key: GradeZoneKey | null) => {
+    setSelectedZoneState(key);
+    if (key !== null) setSelectedTopState(null);
+  };
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
   const [energyMode, setEnergyMode] = useState<EnergyChartMode>('power');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -252,6 +266,11 @@ function LandModule({ family }: { family: LandFamily }) {
   const zoneStats = useMemo(
     () => (grades.length > 0 ? computeZoneStats(gpx.track, grades, activityMask) : []),
     [gpx.track, grades, activityMask]
+  );
+  /** Passages de la zone de pente choisie, tracés sur la carte tant que son onglet est ouvert. */
+  const zonePaths = useMemo(
+    () => (selectedZone !== null && open.zones && grades.length > 0 ? gradeZonePaths(gpx.track, grades, activityMask, selectedZone) : []),
+    [selectedZone, open.zones, gpx.track, grades, activityMask]
   );
 
   /**
@@ -440,6 +459,9 @@ function LandModule({ family }: { family: LandFamily }) {
       {mapSegments.map((segment) => (
         <Polyline key={`track-${segment.id}`} positions={segment.positions} pathOptions={{ color: segment.color, weight: 5 }} />
       ))}
+      {zonePaths.map((path, idx) => (
+        <Polyline key={`zone-${selectedZone}-${idx}`} positions={path} pathOptions={{ color: ZONE_COLOR, weight: 10, opacity: 0.8 }} />
+      ))}
       {selectedTopPaths.map((top, idx) => top.path.length > 1 && (
         <Polyline key={`top-${selectedTop}-${idx}`} positions={top.path} pathOptions={{ color: TOP_COLORS[idx] ?? TOP_COLORS[2], weight: 10, opacity: 0.8 }} />
       ))}
@@ -566,22 +588,33 @@ function LandModule({ family }: { family: LandFamily }) {
                     <th style={{ padding: '0.4em 0.6em' }}>Distance</th>
                     <th style={{ padding: '0.4em 0.6em' }}>Temps</th>
                     <th style={{ padding: '0.4em 0.6em' }}>Vitesse ({unitLabel})</th>
+                    <th style={{ padding: '0.4em 0.6em' }}>Carte</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {zoneStats.map((z) => (
-                    <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.timeMs > 0 ? 1 : 0.45 }}>
-                      <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label}</td>
-                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: '0.9em' }}>{z.zone.range}</td>
-                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
-                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
-                      <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
-                    </tr>
-                  ))}
+                  {zoneStats.map((z) => {
+                    const reached = z.distanceM > 0;
+                    const shown = selectedZone === z.zone.key;
+                    return (
+                      <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.timeMs > 0 ? 1 : 0.45 }}>
+                        <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label}</td>
+                        <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: '0.9em' }}>{z.zone.range}</td>
+                        <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
+                        <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
+                        <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
+                        <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
+                          <button type="button" disabled={!reached} onClick={() => setSelectedZone(shown ? null : z.zone.key)}
+                            style={{ padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? ZONE_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                            {shown ? 'Masquer' : 'Voir'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
-                Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone.
+                Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone. « Voir » montre ses passages sur la carte, en violet.
               </div>
             </ResizablePanel>
           )}

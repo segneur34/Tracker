@@ -58,7 +58,7 @@ const state = () => evaluate(`(() => {
   const modes = [...document.querySelectorAll('.plan-points select')].map((s) => s.value);
   const labels = [...document.querySelectorAll('.plan-point__text strong')].map((x) => x.textContent);
   const name = document.querySelector('.plan-form input')?.value ?? null;
-  const activity = document.querySelector('.plan-form select')?.selectedOptions[0]?.textContent ?? null;
+  const activity = document.querySelector('.plan-toolbar .activity-select')?.textContent ?? null;
   const alert = [...document.querySelectorAll('.ui-alert')].map((x) => x.textContent).join(' | ');
   const pendingText = document.body.innerText.includes('Calcul du tracé');
   return JSON.stringify({ title, stats, modes, labels, name, activity, alert, pendingText });
@@ -66,6 +66,11 @@ const state = () => evaluate(`(() => {
 const log = async (label) => console.log(label.padEnd(34), await state());
 
 await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
+await send('Page.navigate', { url: `${BASE}/itineraires` });
+await wait(3000);
+// En Course (sur un profil neuf, la première activité est la voile, sans chemins), tous les onglets ouverts.
+await evaluate(`localStorage.setItem('tracker.planning', JSON.stringify({ activityId: 'running' }));
+  localStorage.setItem('tracker.sections', JSON.stringify({ planning: { profil: true, surface: true, trace: true, points: true, ranger: true, liste: true } })); 'ok'`);
 await send('Page.navigate', { url: `${BASE}/itineraires` });
 await wait(3000);
 
@@ -126,9 +131,9 @@ console.log('Inverser :', await clickText('Inverser'));
 await log('inversé');
 console.log('Inverser :', await clickText('Inverser'));
 
-// 5. Ranger, recharger, rouvrir.
+// 5. Enregistrer, recharger, rouvrir.
 await wait(1500);
-console.log('Ranger :', await clickText('Ranger'));
+console.log('Enregistrer :', await clickText('Enregistrer'));
 await wait(1500);
 console.log('message :', await evaluate(`[...document.querySelectorAll('.plan-note')].map((x) => x.textContent).join(' | ')`));
 await send('Page.navigate', { url: `${BASE}/itineraires` });

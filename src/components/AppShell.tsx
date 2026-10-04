@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useState, type ComponentType, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
 import { formatClock } from '../core/units';
 import { useLongPress } from '../hooks/useLongPress';
 import { togglePauseRecording, useRecorder } from '../hooks/useRecorder';
-import { effectiveLongPressMs, useNavFamily } from '../hooks/useSportSettings';
+import {
+  effectiveLongPressMs, effectiveNavHoldMs, rememberNavSecondFamily, useNavFamily, useNavSecondFamily,
+} from '../hooks/useSportSettings';
 import { recordingDurationMs } from '../recording/session';
 import {
   IconBike, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings,
@@ -15,10 +17,12 @@ import {
  *
  * Sur téléphone (moins de 768 px de large), une barre d'onglets en bas, en
  * cinq cases pour que le bouton rond reste au milieu : Accueil · sport favori
- * · Enregistrer · Sports · Réglages. Le sport favori se choisit dans Réglages
- * (voile par défaut) ; « Sports » déplie au-dessus de la barre le menu des
- * trois, et prend le nom et la couleur du sport ouvert quand ce n'est pas le
- * favori. Le bouton rond est vert au repos, rouge pendant un enregistrement.
+ * · Enregistrer · sport secondaire · Réglages. Les deux sports se choisissent
+ * dans Réglages (voile, puis course par défaut) ; un appui long sur le sport
+ * secondaire (1 s par défaut, réglable) montre un grand cadran, puis déplie
+ * au-dessus de la barre le menu des autres sports : celui qu'on y choisit
+ * devient le sport secondaire, retenu. Le bouton rond est vert au repos,
+ * rouge pendant un enregistrement.
  * Sur ordinateur, toutes les destinations dans une barre en haut, et
  * « Itinéraires » à côté du bouton Enregistrer (sur téléphone, on y va depuis
  * l'accueil). Le choix se fait en CSS (`AppShell.css`), sans lecture de la
@@ -50,6 +54,35 @@ const PLAN_PATH = '/itineraires';
 /** Sport de la page ouverte : celui dont la route préfixe l'adresse (bibliothèque ou analyse). */
 const familyOfPath = (pathname: string): SportFamily | null =>
   SPORT_FAMILIES.find((f) => pathname === FAMILY_TABS[f].to || pathname.startsWith(`${FAMILY_TABS[f].to}/`)) ?? null;
+
+/**
+ * Grand cadran au milieu de l'écran pendant un appui long : le doigt cache le
+ * bouton tenu. Il se remplit en `pressMs`, à la couleur `color`.
+ */
+function HoldDial({ pressMs, color, icon, title, hint }: {
+  pressMs: number;
+  color: string;
+  icon: ReactNode;
+  title: string;
+  hint: string;
+}) {
+  return (
+    <div className="shell-hold" aria-hidden="true"
+      style={{ '--press-ms': `${pressMs}ms`, '--hold-color': color } as React.CSSProperties}>
+      <div className="shell-hold__dial">
+        <svg className="shell-hold__ring" viewBox="0 0 100 100">
+          <circle className="shell-hold__track" cx="50" cy="50" r="45" />
+          <circle className="shell-hold__fill" cx="50" cy="50" r="45" pathLength="100" />
+        </svg>
+        <div className="shell-hold__label">
+          {icon}
+          <span className="shell-hold__title">{title}</span>
+          <span className="shell-hold__hint">{hint}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const tabLink = (d: Destination) => (
   <NavLink
@@ -86,13 +119,16 @@ function AppShell() {
   const { pressingMs, handlers } = useLongPress(onLongPress, effectiveLongPressMs, canToggle);
 
   const navFamily = useNavFamily();
+  const secondFamily = useNavSecondFamily();
+  const second = FAMILY_TABS[secondFamily];
   const openFamily = familyOfPath(pathname);
-  // Sport ouvert hors du favori : le bouton Sports le montre.
-  const elsewhere = openFamily !== null && openFamily !== navFamily ? FAMILY_TABS[openFamily] : null;
   // Menu des sports, ouvert pour l'adresse où on l'a déplié : un changement de page le referme.
   const [menuPath, setMenuPath] = useState<string | null>(null);
   const sportsOpen = menuPath === pathname;
   const closeSports = useCallback(() => setMenuPath(null), []);
+  // Appui long sur le sport secondaire : le menu pour en changer.
+  const openSports = useCallback(() => setMenuPath(window.location.pathname), []);
+  const sportHold = useLongPress(openSports, effectiveNavHoldMs, true);
 
   useEffect(() => {
     if (!sportsOpen) return;
@@ -170,33 +206,45 @@ function AppShell() {
             </NavLink>
           )}
         </div>
+        {/* Un bouton, pas un lien : la WebView d'Android affiche l'adresse d'un lien tenu longtemps. */}
         <button
           type="button"
           aria-haspopup="menu"
           aria-expanded={sportsOpen}
-          aria-label={elsewhere ? `Sports, ${elsewhere.label} ouvert` : 'Sports'}
-          className={`shell-tab shell-tab--menu${elsewhere ? ' active' : ''}`}
-          style={elsewhere ? ({ '--tab-color': elsewhere.accent } as React.CSSProperties) : undefined}
-          onClick={() => setMenuPath(sportsOpen ? null : pathname)}>
-          {elsewhere ? <elsewhere.Icon size={24} /> : <IconGrid size={24} />}
+          aria-label={`${second.label} ; appui long : changer de sport`}
+          className={`shell-tab shell-tab--menu${openFamily === secondFamily ? ' active' : ''}`}
+          style={{ '--tab-color': second.accent } as React.CSSProperties}
+          {...sportHold.handlers}
+          onClick={(e) => {
+            sportHold.handlers.onClick(e);
+            if (e.defaultPrevented) return;
+            closeSports();
+            navigate(second.to);
+          }}>
+          <second.Icon size={24} />
           <span className="shell-tab__label">
-            {elsewhere ? elsewhere.label : 'Sports'}
+            {second.label}
             <IconChevronUp size={12} strokeWidth={2.5} className="shell-tab__chevron" />
           </span>
         </button>
         {tabLink(SETTINGS)}
         {sportsOpen && (
-          <div className="shell-sports-menu" role="menu" aria-label="Sports">
-            {SPORT_FAMILIES.map((f) => {
+          <div className="shell-sports-menu" role="menu" aria-label="Sport secondaire">
+            <span className="shell-sports-menu__title">Sport secondaire</span>
+            {SPORT_FAMILIES.filter((f) => f !== navFamily).map((f) => {
               const d = FAMILY_TABS[f];
               return (
                 <NavLink
                   key={d.to}
                   to={d.to}
-                  role="menuitem"
+                  role="menuitemradio"
+                  aria-checked={f === secondFamily}
                   className="shell-sports-menu__item"
                   style={{ '--tab-color': d.accent } as React.CSSProperties}
-                  onClick={closeSports}>
+                  onClick={() => {
+                    rememberNavSecondFamily(f);
+                    closeSports();
+                  }}>
                   <d.Icon size={22} />
                   <span>{d.label}</span>
                 </NavLink>
@@ -208,20 +256,13 @@ function AppShell() {
 
       {pressingMs !== null && (
         // Le doigt cache l'anneau du bouton : le même remplissage, en grand, au milieu de l'écran.
-        <div className={`shell-hold${paused ? ' shell-hold--resume' : ''}`} aria-hidden="true"
-          style={{ '--press-ms': `${pressingMs}ms` } as React.CSSProperties}>
-          <div className="shell-hold__dial">
-            <svg className="shell-hold__ring" viewBox="0 0 100 100">
-              <circle className="shell-hold__track" cx="50" cy="50" r="45" />
-              <circle className="shell-hold__fill" cx="50" cy="50" r="45" pathLength="100" />
-            </svg>
-            <div className="shell-hold__label">
-              {paused ? <IconPlay size={56} strokeWidth={2.5} /> : <IconPause size={56} strokeWidth={3} />}
-              <span className="shell-hold__title">{paused ? 'Reprise' : 'Pause'}</span>
-              <span className="shell-hold__hint">Maintenez le bouton</span>
-            </div>
-          </div>
-        </div>
+        <HoldDial pressMs={pressingMs} color={paused ? 'var(--record)' : 'var(--recording)'}
+          icon={paused ? <IconPlay size={56} strokeWidth={2.5} /> : <IconPause size={56} strokeWidth={3} />}
+          title={paused ? 'Reprise' : 'Pause'} hint="Maintenez le bouton" />
+      )}
+      {sportHold.pressingMs !== null && (
+        <HoldDial pressMs={sportHold.pressingMs} color={second.accent} icon={<IconGrid size={56} strokeWidth={2} />}
+          title="Changer de sport" hint="Maintenez le bouton" />
       )}
     </div>
   );

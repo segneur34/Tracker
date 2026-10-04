@@ -19,11 +19,11 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
 - **Sur téléphone** :
   - l'en-tête tient sur une ligne, tout en haut (`order: -2`) : la flèche de retour, le nom et « Renommer ». Le titre et le texte du lien de retour restent lus par un lecteur d'écran ;
   - la rangée de la carte s'efface (`display: contents`) : la carte suit l'en-tête (`order: -1`), en pleine largeur, haute de 30 vh ; en voile, la colonne d'onglets (`an-carte-col`) vient ensuite ;
-  - les onglets sont de petites pastilles serrées, sans trait dessous, qui suivent de près la légende de la carte ;
+  - les onglets sont de petites pastilles serrées, sans trait dessous, qui suivent de près la carte ;
   - les blocs `ResizablePanel` y sont en pleine largeur, sans poignée, à leur hauteur par défaut ; les explications longues se replient derrière `HelpButton` ;
   - un toucher sur la carte l'ouvre en plein écran (× pour fermer) ;
   - rien n'élargit la page : une colonne de panneaux ne dépasse pas l'écran (`min-width: 0`, `max-width: 100%`), un contenu de largeur fixe défile dans son panneau ; un tableau se resserre, ou passe ses lignes en grille (libellé sur sa propre ligne, valeurs dessous), comme le panneau Manœuvres (`an-man-*`).
-- **La légende de couleur de la trace est collée à la carte**, juste en dessous, dans le même bloc (`AnalysisMap`). Elle ne se pose jamais ailleurs, et ne fait qu'afficher : les bornes se saisissent dans l'onglet réglages.
+- **La légende de couleur de la trace est posée sur la carte**, en une ligne compacte, en bas à droite, juste à gauche de la mention OSM (contrôle Leaflet d'`AnalysisMap`, coin mis en ligne par `.an-map-corner`), dans la carte et dans sa vue plein écran. Ce que dit le gris passe dans son titre. Elle ne fait qu'afficher : les bornes se saisissent dans l'onglet réglages.
 - **Tout panneau est repliable par son titre** (`PanelTitle`) et par son onglet, et redimensionnable (`ResizablePanel`). L'`id` d'un panneau est la clé de sa taille mémorisée : ne pas le renommer.
 - Couleurs, rayons, espacements : les variables de `theme/tokens.css`. Les couleurs de données des graphes et de la carte restent en dur.
 
@@ -31,7 +31,7 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
 
 | Pièce | Rôle |
 |---|---|
-| `components/AnalysisMap.tsx` | Carte + légende + plein écran au toucher |
+| `components/AnalysisMap.tsx` | Carte, légende posée dessus, plein écran au toucher |
 | `pages/analysisMobile.css` | Disposition téléphone (classes `an-*`) |
 | `components/PanelTitle.tsx` | Titre de panneau qui le replie |
 | `components/SessionNameEditor.tsx` | Nom de la session et « Renommer » |

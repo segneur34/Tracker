@@ -69,7 +69,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 
 ## Décisions de l'utilisateur
 
-- Couleur de trace : dégradé continu sur une échelle absolue (`core/speedGradient.ts`), gris sous la borne basse, bornes réglables par support dans Réglages et par trace dans son analyse ; ni échelle relative ni paliers. Course : 4 à 15 km/h ; vélo : 10 à 40 km/h. Voile : seuil d'activité et bornes suggérés par l'allure de la session, selon des règles fixées par l'utilisateur (`suggestActiveThresholdKn`, `suggestSpeedRangeMs` dans `sailing/sailingConfig.ts`, HISTORIQUE point 29) : ne pas les retoucher sans lui. Bornes effectives : celles de la trace (sa fiche, réglées dans l'onglet réglages de son analyse), sinon celles du support dans Réglages, sinon la suggestion ou le défaut ; la légende sous la carte ne fait qu'afficher.
+- Couleur de trace : dégradé continu sur une échelle absolue (`core/speedGradient.ts`), gris sous la borne basse, bornes réglables par support dans Réglages et par trace dans son analyse ; ni échelle relative ni paliers. Course : 4 à 15 km/h ; vélo : 10 à 40 km/h. Voile : seuil d'activité et bornes suggérés par l'allure de la session, selon des règles fixées par l'utilisateur (`suggestActiveThresholdKn`, `suggestSpeedRangeMs` dans `sailing/sailingConfig.ts`, HISTORIQUE point 29) : ne pas les retoucher sans lui. Bornes effectives : celles de la trace (sa fiche, réglées dans l'onglet réglages de son analyse), sinon celles du support dans Réglages, sinon la suggestion ou le défaut ; la légende, compacte et posée sur la carte à gauche de la mention OSM, ne fait qu'afficher.
 - Courbe du vent : toute la session, par toutes les manœuvres sans exception, valeur la plus proche aux bords, coupure au-delà de 30 min sans manœuvre.
 - Une seule notion de réussite : le vent est estimé au seuil d'activité effectif, surcharge comprise (bouger le seuil recalcule le vent, c'est accepté).
 - Session : vent saisi, seuil d'activité, allure imposée, couleurs de la trace et notes restent en brouillon jusqu'à « Enregistrer la session » (Annuler, avertissement en quittant). Le seuil est propre à chaque session, dans sa fiche, et prime sur celui du support. Le support se change immédiatement.
@@ -86,7 +86,8 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Itinéraires planifiés : l'accueil montre les 3 derniers, sa carte mène à la liste complète (tris, onglets d'activité) ; Voile, Course et Vélo ont « Réalisées / Planifiées ». « Partir » ouvre Enregistrer, trace suivie et activité choisies, sans démarrer.
 - Planification :
   - on choisit le type de voie (Chemin, Piste, Route, Grande route), pas le moyen de transport, par un profil BRouter maison ; les règles d'accès suivent l'activité (piéton ou vélo) ;
-  - départ en vert, arrivée en rouge ;
+  - l'activité (liste par famille) et le type de voie se choisissent au-dessus de la carte ; dessous, des onglets comme dans les analyses (général, surface, tracé, points, enregistrer, mes itinéraires ; en voile parcours et balises), seul le premier ouvert par défaut ;
+  - tracé et points intermédiaires toujours en bleu, quelle que soit l'activité ; départ en vert, arrivée en rouge ;
   - temps estimé selon un niveau par activité (débutant à expert, ou vitesse personnalisée) : km-effort en course, modèle physique à vélo, rien en voile.
 - Balises en voile : un itinéraire de voile est un parcours de balises numérotées, en ligne droite. En navigation, chaque balise, départ compris, se valide en passant près d'elle, dans l'ordre (« Passer » la saute). Bips de plus en plus rapides à l'approche, et vibration réglable, joués par Android écran éteint. La courbe des bips se règle par activité dans Réglages ; un parcours peut avoir la sienne, dans sa fiche, qui prime.
 - Cartes hors ligne : chaque tuile vue en ligne est gardée sur l'appareil, sans bouton ni limite de durée (plafond et « Vider » dans Réglages) ; jamais de téléchargement de zone à l'avance, interdit par OSM.
@@ -96,7 +97,9 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
   - Accueil ;
   - le sport favori, choisi dans Réglages (voile par défaut) ;
   - le bouton rond ;
-  - « Sports », qui déplie le menu des trois sports ;
+  - le sport secondaire, choisi dans Réglages et retenu ; un appui long (1 s par défaut, réglable) montre un grand cadran puis le menu des autres sports, et le sport choisi devient le secondaire ;
   - Réglages.
-- Réglages d'affichage (unités de vitesse et de distance, taille du texte) choisis dans Réglages seulement, par activité (donc par support : bateau et wing peuvent différer), actifs partout ; distance en km par défaut, milles nautiques au choix. La pause automatique et les chiffres de la carte réduite à l'enregistrement (quatre au plus) se règlent aussi par activité.
+- Réglages d'affichage (unités de vitesse et de distance, taille du texte) choisis dans Réglages seulement, par activité (donc par support : bateau et wing peuvent différer), actifs partout ; distance en km par défaut, milles nautiques au choix. La pause automatique, les chiffres de la carte réduite à l'enregistrement (quatre au plus), le terrain, le type et le poids du vélo et le niveau du temps estimé se règlent aussi par activité, dans sa carte de Réglages.
+- Choix d'une activité : une liste dessinée par l'application (famille à gauche, activités décalées dessous, un trait entre familles), jamais le menu natif d'Android.
+- Analyses de course et de vélo : « Voir » d'une zone de pente la montre sur la carte, en violet, comme les tops. Bibliothèques : vignette carte toujours affichée, à droite des chiffres de chaque session.
 - Diffusion : APK signé partagé par lien d'abord, lien web ensuite.

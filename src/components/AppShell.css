@@ -80,7 +80,7 @@
   font-weight: 700;
 }
 
-/* --- Menu des sports : le bouton « Sports » de la barre, et ce qu'il déplie --- */
+/* --- Sport secondaire : un bouton de la barre, dont l'appui long déplie le menu des sports --- */
 
 .shell-tab--menu {
   padding: 0;
@@ -88,6 +88,11 @@
   background: none;
   font-family: inherit;
   cursor: pointer;
+  /* Appui long : ni sélection, ni menu du système, ni défilement qui l'annulerait. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .shell-tab__label {
@@ -133,7 +138,15 @@
   text-decoration: none;
 }
 
-.shell-sports-menu__item.active {
+.shell-sports-menu__title {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+/* Le sport secondaire en vigueur. */
+.shell-sports-menu__item[aria-checked='true'] {
   background: var(--surface-sunken);
   font-weight: 700;
 }
@@ -234,10 +247,6 @@
   animation: shell-hold-in 150ms ease-out 150ms both;
 }
 
-.shell-hold--resume {
-  --hold-color: var(--record);
-}
-
 .shell-hold__dial {
   position: relative;
   width: min(72vw, 60vh);
@@ -279,8 +288,11 @@
 }
 
 .shell-hold__title {
+  padding: 0 var(--space-5);
   font-size: var(--text-display);
   font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
 }
 
 .shell-hold__hint {

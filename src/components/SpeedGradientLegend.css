@@ -1,0 +1,28 @@
+/* Légende de couleur de la trace (`SpeedGradientLegend.tsx`) : une ligne compacte, du même
+   gabarit que la mention OSM à sa droite (fond blanc translucide, petit texte). */
+
+.speed-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 5px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.speed-legend__slow {
+  display: inline-block;
+  width: 10px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.speed-legend__bar {
+  display: inline-block;
+  width: 64px;
+  height: 8px;
+  border-radius: 2px;
+}

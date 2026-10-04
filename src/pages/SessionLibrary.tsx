@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { MapContainer, Polyline } from 'react-leaflet';
 import OsmTileLayer from '../components/OsmTileLayer';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -7,19 +7,19 @@ import MapAutoResize from '../components/MapAutoResize';
 import ActivitySelect from '../components/ActivitySelect';
 import MemoryStatus from '../components/MemoryStatus';
 import RouteList from '../components/RouteList';
-import { IconChevronRight, IconFile } from '../components/icons';
+import { IconFile } from '../components/icons';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import HelpButton from '../components/ui/HelpButton';
 import PageHeader from '../components/ui/PageHeader';
-import { trackBounds } from '../core/displayConfig';
+import { sampledIndices } from '../core/chartZoom';
+import { PREVIEW_MAX_POINTS, trackBounds, type TrackBounds } from '../core/displayConfig';
 import { parseGpx } from '../core/gpxParser';
 import { computeKinematics } from '../core/kinematics';
 import { referenceSpeedMs as sessionReferenceSpeedMs } from '../core/sessionSpeed';
 import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import { activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
-import type { RawTrackPoint, TrackPoint } from '../core/types';
 import { formatDistance, formatDuration, formatSpeed, knotsToMs, msToKnots, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
@@ -86,14 +86,14 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
  * 2. en voile, les bornes suggérées par l'allure de la session, comme le module d'analyse :
  *    seuil d'activité suggéré en bas, pic de vitesse déjà enregistré dans la fiche
  *    (`summary.maxSpeedMs`) plus une marge en haut — l'allure vient de la fiche si elle a été
- *    imposée, sinon des points bruts du GPX qu'on vient de lire ;
+ *    imposée, sinon de celle mesurée sur les points bruts du GPX (`measuredReferenceMs`) ;
  * 3. à défaut (course, support inconnu, ou pic non mesuré), le défaut de la famille.
  */
 const previewSpeedRange = (
   session: LibrarySession,
   activity: Activity | null,
   family: SportFamily,
-  rawPoints: RawTrackPoint[]
+  measuredReferenceMs: number
 ): { minMs: number; maxMs: number } => {
   const { record } = session;
   if (record.analysis?.speedRange) return record.analysis.speedRange;
@@ -102,7 +102,7 @@ const previewSpeedRange = (
     if (override && isValidSpeedRange(override)) return override;
   }
   if (record.sport && family === 'voile' && record.summary.maxSpeedMs > 0) {
-    const referenceKn = msToKnots(record.analysis?.referenceSpeedMs ?? sessionReferenceSpeedMs(rawPoints));
+    const referenceKn = msToKnots(record.analysis?.referenceSpeedMs ?? measuredReferenceMs);
     return {
       minMs: knotsToMs(suggestActiveThresholdKn(record.sport, referenceKn)),
       maxMs: record.summary.maxSpeedMs + knotsToMs(SPEED_RANGE_MAX_MARGIN_KN),
@@ -111,51 +111,112 @@ const previewSpeedRange = (
   return FAMILY_SPEED_RANGE_MS[family];
 };
 
-/** Aperçu carte d'une session, chargé et analysé à la demande (aucun point de trace en mémoire avant). */
-function SessionPreviewMap({ session, activity, family }: { session: LibrarySession; activity: Activity | null; family: SportFamily }) {
-  const [track, setTrack] = useState<TrackPoint[] | null>(null);
-  const [range, setRange] = useState<{ minMs: number; maxMs: number } | null>(null);
+/** Trace d'une vignette : au plus `PREVIEW_MAX_POINTS` points, l'emprise de la trace entière et son allure mesurée. */
+interface PreviewTrack {
+  points: { lat: number; lon: number; speedMs: number }[];
+  bounds: TrackBounds;
+  referenceMs: number;
+}
+
+/** Marge sous l'écran où une vignette se charge déjà, pour être prête quand on y arrive. */
+const PREVIEW_PRELOAD_MARGIN = '200px';
+
+/**
+ * Vignette carte d'une session, toujours affichée à droite de ses chiffres :
+ * le GPX est relu quand la ligne approche de l'écran, une fois, puis la trace
+ * est réduite à `PREVIEW_MAX_POINTS` points dessinés sur un canevas, pour que
+ * toutes les vignettes visibles restent légères. Figée (ni glisser ni zoomer :
+ * le doigt fait défiler la liste) ; un toucher ouvre l'analyse.
+ */
+function SessionPreviewMap({ session, activity, family, onOpen }: {
+  session: LibrarySession;
+  activity: Activity | null;
+  family: SportFamily;
+  onOpen: () => void;
+}) {
+  const frame = useRef<HTMLDivElement>(null);
+  // Sans IntersectionObserver, chargée tout de suite.
+  const [near, setNear] = useState(() => typeof IntersectionObserver === 'undefined');
+  const [track, setTrack] = useState<PreviewTrack | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const { file } = session;
 
   useEffect(() => {
+    const el = frame.current;
+    if (!el || near) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) setNear(true);
+    }, { rootMargin: PREVIEW_PRELOAD_MARGIN });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [near]);
+
+  useEffect(() => {
+    if (!near) return;
     let cancelled = false;
     void (async () => {
-      const gpx = await readSessionGpx(session.file);
+      const gpx = await readSessionGpx(file);
       if (cancelled) return;
       if (gpx === null) { setStatus('error'); return; }
       try {
         const { rawPoints } = parseGpx(gpx);
         const points = computeKinematics(rawPoints);
-        if (points.length < 2) { setStatus('error'); return; }
-        setTrack(points);
-        setRange(previewSpeedRange(session, activity, family, rawPoints));
+        const bounds = trackBounds(points);
+        if (points.length < 2 || bounds === null) { setStatus('error'); return; }
+        setTrack({
+          points: sampledIndices(0, points.length - 1, PREVIEW_MAX_POINTS)
+            .map((i) => ({ lat: points[i].lat, lon: points[i].lon, speedMs: points[i].smoothedSpeedMs })),
+          bounds,
+          referenceMs: sessionReferenceSpeedMs(rawPoints),
+        });
         setStatus('ready');
       } catch {
         if (!cancelled) setStatus('error');
       }
     })();
     return () => { cancelled = true; };
-  }, [session, activity, family]);
+  }, [near, file]);
 
-  if (status === 'loading') return <div className="lib-row__preview-status">Chargement de la carte…</div>;
-  if (status === 'error' || track === null || range === null) return <div className="lib-row__preview-status">Carte indisponible.</div>;
+  const range = useMemo(
+    () => (track ? previewSpeedRange(session, activity, family, track.referenceMs) : null),
+    [track, session, activity, family]
+  );
 
-  const { minMs, maxMs } = range;
   return (
-    <MapContainer
-      bounds={trackBounds(track) ?? undefined}
-      boundsOptions={{ padding: [12, 12], maxZoom: 17 }}
-      style={{ height: '160px', width: '100%' }}
-      zoomControl={false}>
-      <MapAutoResize />
-      <OsmTileLayer />
-      {track.slice(1).map((point, index) => (
-        <Polyline
-          key={index}
-          positions={[[track[index].lat, track[index].lon], [point.lat, point.lon]]}
-          pathOptions={{ color: speedGradientColor(point.smoothedSpeedMs, minMs, maxMs), weight: 4 }} />
-      ))}
-    </MapContainer>
+    <div
+      ref={frame}
+      className="lib-row__preview"
+      role="link"
+      aria-label="Ouvrir l'analyse"
+      // Le lien de la mention OSM compris : un toucher sur la vignette ouvre l'analyse, rien d'autre.
+      onClick={(e) => { e.preventDefault(); onOpen(); }}>
+      {status === 'ready' && track && range ? (
+        <MapContainer
+          bounds={track.bounds}
+          boundsOptions={{ padding: [8, 8], maxZoom: 17 }}
+          preferCanvas
+          dragging={false}
+          touchZoom={false}
+          doubleClickZoom={false}
+          scrollWheelZoom={false}
+          boxZoom={false}
+          keyboard={false}
+          zoomControl={false}
+          style={{ position: 'absolute', inset: 0 }}>
+          <MapAutoResize />
+          <OsmTileLayer />
+          {track.points.slice(1).map((point, index) => (
+            <Polyline
+              key={index}
+              interactive={false}
+              positions={[[track.points[index].lat, track.points[index].lon], [point.lat, point.lon]]}
+              pathOptions={{ color: speedGradientColor(point.speedMs, range.minMs, range.maxMs), weight: 3 }} />
+          ))}
+        </MapContainer>
+      ) : (
+        <span className="lib-row__preview-status">{status === 'error' ? 'Carte indisponible' : 'Carte…'}</span>
+      )}
+    </div>
   );
 }
 
@@ -175,9 +236,6 @@ function SessionRow({
   const { record } = session;
   const { startMs } = record.summary;
   const unclassified = record.sport === null;
-  const [previewOpen, setPreviewOpen] = useState(false);
-  /** Une fois monté, l'aperçu reste en vie (juste masqué) pour ne pas relire le GPX à chaque redépli. */
-  const [previewMounted, setPreviewMounted] = useState(false);
   /** Nom en cours de saisie ; `null` hors renommage. */
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
@@ -201,23 +259,9 @@ function SessionRow({
           <span className="lib-row__stats num">{rowStats(session, activity).join(' · ')}</span>
           {record.notes?.comment && <span className="lib-row__note">{record.notes.comment}</span>}
           {session.warning && <span className="lib-row__warning">{session.warning}</span>}
-          <IconChevronRight className="lib-row__chevron" />
         </button>
-        <button
-          type="button"
-          className="lib-row__preview-toggle"
-          aria-expanded={previewOpen}
-          aria-label={previewOpen ? 'Masquer l\'aperçu carte' : 'Aperçu carte'}
-          onClick={() => { setPreviewOpen((open) => !open); setPreviewMounted(true); }}>
-          <IconChevronRight style={{ transform: previewOpen ? 'rotate(90deg)' : undefined }} />
-        </button>
+        <SessionPreviewMap session={session} activity={activity} family={family} onOpen={() => openSession(session.file, family)} />
       </div>
-
-      {previewMounted && (
-        <div className="lib-row__preview" style={previewOpen ? undefined : { display: 'none' }}>
-          <SessionPreviewMap session={session} activity={activity} family={family} />
-        </div>
-      )}
 
       <div className="lib-row__actions">
         {nameDraft !== null ? (

@@ -1,0 +1,121 @@
+/* Choix d'une activité (`ActivitySelect.tsx`) : un bouton au gabarit d'un champ, et la liste des
+   activités par famille, au milieu de l'écran, au-dessus des barres (1100) et du cadran d'appui long (1200). */
+
+.activity-select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.activity-select:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.activity-select__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-select__name--empty {
+  color: var(--muted);
+}
+
+.activity-select__chevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--muted);
+  transform: rotate(90deg);
+}
+
+.activity-select__dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+}
+
+.activity-select__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: color-mix(in srgb, var(--ink) 40%, transparent);
+}
+
+.activity-select__sheet {
+  width: min(100%, 360px);
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: var(--space-1) 0;
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--ink) 25%, transparent);
+}
+
+/* Un trait entre deux familles, aucun entre les activités d'une même famille. */
+.activity-select__group + .activity-select__group {
+  border-top: 1px solid var(--line-strong);
+}
+
+.activity-select__family {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-1);
+  font-size: var(--text-m);
+  font-weight: 700;
+}
+
+/* Les activités, décalées sous le nom de leur famille. */
+.activity-select__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--space-4) 0 calc(var(--space-4) + 28px);
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-m);
+  text-align: left;
+  cursor: pointer;
+}
+
+.activity-select__option:hover,
+.activity-select__option:focus-visible {
+  background: var(--surface-hover);
+}
+
+.activity-select__option[aria-selected='true'] {
+  font-weight: 700;
+}
+
+.activity-select__option-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Rond de choix, plein pour l'activité en vigueur. */
+.activity-select__radio {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 2px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+}
+
+.activity-select__option[aria-selected='true'] .activity-select__radio {
+  border: 5px solid var(--ink);
+}

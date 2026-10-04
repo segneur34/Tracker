@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   FAMILY_BASE, activitiesOfFamily, activityFamily, baseActivity, findActivity, newActivityId, readActivities, type Activity,
 } from '../core/activities';
@@ -121,10 +121,16 @@ export interface StoredSettings {
   longPressMs?: number;
   /** Sport en accès direct dans la barre du bas, sur téléphone ; absent : voile. */
   navFamily?: SportFamily;
+  /** Sport secondaire de la barre du bas, à droite du bouton rond ; absent ou égal au favori : le premier autre sport. */
+  navSecondFamily?: SportFamily;
+  /** Durée de l'appui long sur le sport secondaire qui ouvre le menu pour en changer, en millisecondes. */
+  navHoldMs?: number;
 }
 
 /** Appui long par défaut : 2 s, assez pour ne pas partir d'un geste involontaire. */
 export const DEFAULT_LONG_PRESS_MS = 2000;
+/** Appui long qui change le sport secondaire : 1 s, plus court, un geste involontaire n'y coûte rien. */
+export const DEFAULT_NAV_HOLD_MS = 1000;
 
 /** Poids de vélo plausible, en kg. */
 export const isValidBikeWeight = (value: unknown): value is number =>
@@ -153,6 +159,13 @@ const DEFAULT_NAV_FAMILY: SportFamily = 'voile';
 
 const effectiveNavFamily = (stored: StoredSettings): SportFamily =>
   isKnownFamily(stored.navFamily) ? stored.navFamily : DEFAULT_NAV_FAMILY;
+
+/** Sport secondaire : celui choisi s'il n'est pas le favori, sinon le premier des autres. */
+const effectiveNavSecondFamily = (stored: StoredSettings): SportFamily => {
+  const favorite = effectiveNavFamily(stored);
+  if (isKnownFamily(stored.navSecondFamily) && stored.navSecondFamily !== favorite) return stored.navSecondFamily;
+  return SPORT_FAMILIES.find((f) => f !== favorite) ?? favorite;
+};
 
 /**
  * Réglages enregistrés, pour qui calcule hors d'un composant : les résumés de
@@ -190,12 +203,28 @@ export const effectiveLongPressMs = (): number => {
 };
 
 const readNavFamily = (): SportFamily => effectiveNavFamily(readStoredSettings());
+const readNavSecondFamily = (): SportFamily => effectiveNavSecondFamily(readStoredSettings());
 
 /**
  * Sport en accès direct de la barre du bas, suivi en direct : la barre se met
  * à jour dès que Réglages l'écrit, ou que `reglages.json` est repris du dossier.
  */
 export const useNavFamily = (): SportFamily => useSyncExternalStore(jsonStore.subscribe, readNavFamily);
+
+/** Sport secondaire de la barre du bas, suivi en direct comme le favori. */
+export const useNavSecondFamily = (): SportFamily => useSyncExternalStore(jsonStore.subscribe, readNavSecondFamily);
+
+/** Retient le sport secondaire choisi depuis la barre du bas (appui long). */
+export const rememberNavSecondFamily = (family: SportFamily): void => {
+  const stored = readStoredSettings();
+  if (isKnownFamily(family) && stored.navSecondFamily !== family) writeStored({ ...stored, navSecondFamily: family });
+};
+
+/** Durée effective de l'appui long qui change le sport secondaire, lue à chaque appui. */
+export const effectiveNavHoldMs = (): number => {
+  const value = readStoredSettings().navHoldMs;
+  return isValidLongPress(value) ? value : DEFAULT_NAV_HOLD_MS;
+};
 
 /**
  * Réglage d'enregistrement effectif d'une activité : le profil de son calcul,
@@ -371,6 +400,12 @@ export const useAllSportSettings = () => {
     setStored(next);
     writeStored(next);
   }, []);
+
+  // Écrits d'ailleurs pendant que la page est ouverte (sport secondaire choisi depuis la barre du bas,
+  // `reglages.json` repris du dossier) : relus, pour que le prochain changement ne les écrase pas.
+  useEffect(() => jsonStore.subscribe((key) => {
+    if (key === STORAGE_KEY) setStored(readStoredSettings());
+  }), []);
 
   const view = useCallback(
     (activity: Activity): SportSettingsView => {
@@ -569,9 +604,31 @@ export const useAllSportSettings = () => {
     [persist, stored]
   );
 
+  const navSecondFamily = effectiveNavSecondFamily(stored);
+  const setNavSecondFamily = useCallback(
+    (family: SportFamily) => {
+      if (!isKnownFamily(family)) return;
+      persist({ ...stored, navSecondFamily: family });
+    },
+    [persist, stored]
+  );
+
+  const navHoldMs = isValidLongPress(stored.navHoldMs) ? stored.navHoldMs : DEFAULT_NAV_HOLD_MS;
+  /** Durée de l'appui long qui change le sport secondaire, en millisecondes ; `null` revient au défaut. */
+  const setNavHoldMs = useCallback(
+    (value: number | null) => {
+      if (value !== null && !isValidLongPress(value)) return;
+      const next: StoredSettings = { ...stored };
+      if (value === null) delete next.navHoldMs;
+      else next.navHoldMs = value;
+      persist(next);
+    },
+    [persist, stored]
+  );
+
   return {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
-    navFamily, setNavFamily,
+    navFamily, setNavFamily, navSecondFamily, setNavSecondFamily, navHoldMs, setNavHoldMs,
   };
 };
 

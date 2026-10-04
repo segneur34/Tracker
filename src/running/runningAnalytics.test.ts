@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { haversineDistance } from '../core/kinematics';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { SLOW_COLOR, gradientColor, speedGradientColor } from '../core/speedGradient';
 import type { TrackPoint } from '../core/types';
@@ -11,6 +12,7 @@ import {
   computeZoneStats,
   gradeGradientColor,
   gradeGradientStops,
+  gradeZonePaths,
   isValidGradeRange,
 } from './runningAnalytics';
 
@@ -20,19 +22,20 @@ import {
  */
 const buildTrack = (
   speedsMs: number[],
-  altitudeAt: (distanceM: number) => number = () => 100
+  altitudeAt: (distanceM: number) => number = () => 100,
+  intervalS = 1
 ): TrackPoint[] => {
   const start = Date.parse('2026-01-01T10:00:00Z');
   const lat = 43.6;
   const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
   let meters = 0;
   return speedsMs.map((speedMs, i) => {
-    if (i > 0) meters += speedMs;
+    if (i > 0) meters += speedMs * intervalS;
     return {
       lat,
       lon: 3.8 + meters / metersPerDegLon,
-      time: new Date(start + i * 1000).toISOString(),
-      timeMs: start + i * 1000,
+      time: new Date(start + i * intervalS * 1000).toISOString(),
+      timeMs: start + i * intervalS * 1000,
       ele: altitudeAt(meters),
       speedMs,
       smoothedSpeedMs: speedMs,
@@ -118,6 +121,62 @@ describe('computeZoneStats', () => {
     const zones = computeZoneStats(track, grades, mask);
     const flatZone = zones.find((z) => z.zone.key === 'flat')!;
     expect(flatZone.timeMs).toBeLessThanOrEqual(50 * 1000);
+  });
+});
+
+describe('gradeZonePaths', () => {
+  /** 300 m de plat, 300 m à 12 %, 300 m de plat, à 3 m/s : `intervalS` entre deux points. */
+  const hillTrack = (intervalS: number) => {
+    const altitudeAt = (d: number) => (d <= 300 ? 100 : d <= 600 ? 100 + 0.12 * (d - 300) : 136);
+    const track = buildTrack(new Array(Math.round(300 / intervalS)).fill(3), altitudeAt, intervalS);
+    const grades = computeGrades(track.map((p) => p.ele as number), buildCumulativeTrack(track));
+    return { track, grades };
+  };
+  const lengthM = (paths: [number, number][][]) =>
+    paths.reduce((sum, path) => sum + path.slice(1).reduce((s, [lat, lon], k) => s + haversineDistance(path[k][0], path[k][1], lat, lon), 0), 0);
+
+  it('rend un tracé par passage dans la zone, bout à bout avec la trace', () => {
+    const { track, grades } = hillTrack(1);
+    const all = new Array(track.length).fill(true);
+    const steep = gradeZonePaths(track, grades, all, 'steepUp');
+    const flat = gradeZonePaths(track, grades, all, 'flat');
+    expect(steep).toHaveLength(1);
+    expect(flat).toHaveLength(2);
+    // La montée suit la côte, aux bords près, que la fenêtre de 50 m arrondit.
+    expect(lengthM(steep)).toBeGreaterThan(250);
+    expect(lengthM(steep)).toBeLessThan(330);
+    // Entre le plat et la côte, la pente passe par « Montée » ; chaque tracé reprend là où le précédent finit.
+    const up = gradeZonePaths(track, grades, all, 'up');
+    expect(up[0][0]).toEqual(flat[0][flat[0].length - 1]);
+    expect(steep[0][0]).toEqual(up[0][up[0].length - 1]);
+  });
+
+  it('les longueurs, comptées comme le tableau, sont celles de computeZoneStats', () => {
+    const { track, grades } = hillTrack(1);
+    const all = new Array(track.length).fill(true);
+    const zones = computeZoneStats(track, grades, all);
+    for (const key of ['flat', 'up', 'steepUp'] as const) {
+      const expected = zones.find((z) => z.zone.key === key)!.distanceM;
+      expect(lengthM(gradeZonePaths(track, grades, all, key))).toBeCloseTo(expected, -1);
+    }
+  });
+
+  it('coupe le tracé à une pause et là où la pente manque', () => {
+    const { track, grades } = hillTrack(1);
+    const mask = new Array(track.length).fill(true);
+    for (let i = 40; i < 45; i++) mask[i] = false;
+    expect(gradeZonePaths(track, grades, mask, 'flat')).toHaveLength(3);
+    const holed = [...grades];
+    holed[260] = NaN;
+    expect(gradeZonePaths(track, holed, new Array(track.length).fill(true), 'flat')).toHaveLength(3);
+  });
+
+  it('donne la même montée à 1 Hz et à 5 Hz', () => {
+    const at = (intervalS: number) => {
+      const { track, grades } = hillTrack(intervalS);
+      return lengthM(gradeZonePaths(track, grades, new Array(track.length).fill(true), 'steepUp'));
+    };
+    expect(Math.abs(at(1) - at(0.2))).toBeLessThan(5);
   });
 });
 

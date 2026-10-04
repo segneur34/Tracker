@@ -5,12 +5,14 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import 'leaflet/dist/leaflet.css';
 import './PlanningPage.css';
+import ActivitySelect from '../components/ActivitySelect';
 import BeepCurveEditor from '../components/BeepCurveEditor';
 import MapAutoResize from '../components/MapAutoResize';
 import OsmTileLayer from '../components/OsmTileLayer';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import RouteList from '../components/RouteList';
+import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SurfaceBar from '../components/SurfaceBar';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
@@ -61,7 +63,9 @@ import { jsonStore } from '../platform/storage';
 /**
  * Planification d'un itinéraire : on pose des points sur la carte, chaque
  * tronçon entre deux points suit la carte, par le type de voie choisi, ou va
- * en ligne droite. Distance, dénivelés et profil d'altitude se mettent à jour
+ * en ligne droite. L'activité et le type de voie se choisissent au-dessus de
+ * la carte ; dessous, des onglets ouvrent les blocs (général, surface, tracé,
+ * points, enregistrer, mes itinéraires), comme dans les analyses. Distance, dénivelés et profil d'altitude se mettent à jour
  * à chaque calcul, avec le temps estimé en course et à vélo (niveau choisi
  * dans Réglages) et le revêtement des voies suivies (`planning/surface.ts`). L'itinéraire s'enregistre dans `itineraires/` du dossier
  * mémoire, avec son GPX.
@@ -98,7 +102,13 @@ const writePrefs = (patch: PlanningPrefs): void => jsonStore.write(PREFS_KEY, { 
 const ERROR_COLOR = '#c62828';
 /** Couleur de repli si celle de l'activité n'est pas un code couleur. */
 const FALLBACK_COLOR = '#6a1b9a';
-/** Départ en vert, arrivée en rouge sombre (distinct du rouge des tronçons en échec) ; les autres points à la couleur de l'activité. */
+/**
+ * Tracé et points intermédiaires toujours en bleu, celui de la voile, quelle
+ * que soit l'activité : une activité verte ou rouge se confondrait avec le
+ * départ ou l'arrivée.
+ */
+const ROUTE_COLOR = '#1565c0';
+/** Départ en vert, arrivée en rouge sombre (distinct du rouge des tronçons en échec). */
 const START_COLOR = '#2e7d32';
 const END_COLOR = '#b71c1c';
 /** Sur une boucle, un seul repère au départ, qui est aussi l'arrivée : moitié vert, moitié rouge. */
@@ -162,23 +172,27 @@ interface ChartRow {
   grade: number | null;
 }
 
-/** `ranger` : bloc « Enregistrer l'itinéraire », clé gardée pour l'état mémorisé. */
+/**
+ * Onglets sous la carte. `profil` : l'onglet « général » (ex-« Dénivelé »),
+ * `ranger` : « enregistrer » ; clés gardées pour l'état mémorisé. Seul le
+ * premier est ouvert au départ, comme dans les analyses.
+ */
 type PlanningSection = 'profil' | 'surface' | 'parcours' | 'trace' | 'points' | 'ranger' | 'liste';
 
 const PLANNING_SECTION_DEFAULTS: Record<PlanningSection, boolean> = {
   profil: true,
-  surface: true,
+  surface: false,
   parcours: true,
-  trace: true,
-  points: true,
-  ranger: true,
-  liste: true,
+  trace: false,
+  points: false,
+  ranger: false,
+  liste: false,
 };
 
 /**
- * Bloc du panneau, replié ou déplié par son titre (état mémorisé). Ouvert, il
- * se redimensionne en hauteur sur ordinateur (`ResizablePanel`, taille
- * mémorisée sous `id`, à ne pas renommer) ; replié, il ne garde que son titre.
+ * Bloc d'un onglet, montré tant que l'onglet est ouvert (état mémorisé) ; son
+ * titre le ferme. Il se redimensionne en hauteur sur ordinateur
+ * (`ResizablePanel`, taille mémorisée sous `id`, à ne pas renommer).
  */
 function PlanBlock({ id, label, open, onToggle, aside, children }: {
   id: string;
@@ -188,16 +202,13 @@ function PlanBlock({ id, label, open, onToggle, aside, children }: {
   aside?: ReactNode;
   children: ReactNode;
 }) {
-  const head = (
-    <div className="plan-block__head">
-      <PanelTitle label={label} open={open} onToggle={onToggle} />
-      {aside}
-    </div>
-  );
-  if (!open) return <section style={CARD_STYLE}>{head}</section>;
+  if (!open) return null;
   return (
     <ResizablePanel id={id} direction="vertical" minHeight={80} style={CARD_STYLE}>
-      {head}
+      <div className="plan-block__head">
+        <PanelTitle label={label} open={open} onToggle={onToggle} />
+        {aside}
+      </div>
       {children}
     </ResizablePanel>
   );
@@ -319,8 +330,8 @@ function PlanningPage() {
   const [beepsOpen, setBeepsOpen] = useState(false);
   const activityGuide = useMemo(() => (activity && sailing ? effectiveMarkGuide(activity) : null), [activity, sailing]);
   const guide = courseGuide ?? activityGuide;
-  /** Fond d'un point de la liste : départ en vert, arrivée en rouge, les autres à la couleur de l'activité. */
-  const pointFill = (i: number) => (i === 0 ? START_COLOR : i === route.waypoints.length - 1 ? END_COLOR : color);
+  /** Fond d'un point de la liste : départ en vert, arrivée en rouge, les autres en bleu, comme le tracé. */
+  const pointFill = (i: number) => (i === 0 ? START_COLOR : i === route.waypoints.length - 1 ? END_COLOR : ROUTE_COLOR);
   /** Fond d'un repère sur la carte : sur une boucle, le repère unique A porte départ et arrivée. */
   const markerFill = (i: number) => (i === 0 && looped ? LOOP_FILL : pointFill(i));
   const durationS = useMemo(() => estimateRouteDurationS(route, minGainM, durationSettings), [route, minGainM, durationSettings]);
@@ -587,6 +598,18 @@ function PlanningPage() {
   const selectedLeg = selected !== null && selected > 0 ? route.legs[selected - 1] : undefined;
   const canSave = library.canSave && route.waypoints.length >= 2 && !saving && !current?.readOnly;
 
+  /** Onglets sous la carte : en voile, le parcours et ses balises ; ailleurs, le général, le revêtement et les points. */
+  const pointCount = route.waypoints.length;
+  const sections: SectionDefinition<PlanningSection>[] = [
+    ...(sailing
+      ? [{ key: 'parcours' as const, label: 'parcours' }]
+      : [{ key: 'profil' as const, label: 'général' }, { key: 'surface' as const, label: 'surface' }]),
+    { key: 'trace', label: 'tracé' },
+    { key: 'points', label: `${sailing ? 'balises' : 'points'} (${pointCount})` },
+    { key: 'ranger', label: 'enregistrer' },
+    { key: 'liste', label: `mes itinéraires (${library.routes.length})` },
+  ];
+
   return (
     <div className="ui-page ui-page--wide plan-page">
       <PageHeader
@@ -598,6 +621,23 @@ function PlanningPage() {
 
       <div className="plan-layout">
         <div className="plan-map-col">
+          <div className="plan-toolbar">
+            <ActivitySelect activities={activities} value={activity?.id ?? null} label="Activité"
+              onChange={(next) => chooseActivity(next.id)} />
+            {sailing ? (
+              <span className="plan-toolbar__note">Balises reliées en ligne droite</span>
+            ) : (
+              <div className="ui-tabs plan-modes" role="group" aria-label="Type de voie"
+                style={{ '--tab-accent': color } as React.CSSProperties}>
+                {ROUTE_MODES.map((m) => (
+                  <button key={m} type="button" className="ui-tab" aria-pressed={mode === m} onClick={() => chooseMode(m)}
+                    title={ROUTE_MODE_HINT[m]}>
+                    {ROUTE_MODE_LABEL[m]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <form className="plan-search" onSubmit={(e) => void onSearch(e)}>
             <input
               type="search"
@@ -632,15 +672,15 @@ function PlanningPage() {
                 const positions = leg.points.map((p) => [p.lat, p.lon] as [number, number]);
                 const style = leg.status === 'ready'
                   // dashArray explicite : Leaflet garderait sinon le pointillé du tronçon en attente.
-                  ? { color, weight: 5, opacity: 0.9, dashArray: undefined }
-                  : { color: leg.status === 'error' ? ERROR_COLOR : color, weight: 4, opacity: leg.status === 'error' ? 0.9 : 0.55, dashArray: '6 8' };
+                  ? { color: ROUTE_COLOR, weight: 5, opacity: 0.9, dashArray: undefined }
+                  : { color: leg.status === 'error' ? ERROR_COLOR : ROUTE_COLOR, weight: 4, opacity: leg.status === 'error' ? 0.9 : 0.55, dashArray: '6 8' };
                 return (
                   <Fragment key={i}>
                     <Polyline positions={positions} pathOptions={{ ...style, interactive: false }} />
                     {/* Trait invisible et large : le toucher qui insère un point n'a pas à viser un trait de 5 px. */}
                     <Polyline
                       positions={positions}
-                      pathOptions={{ color, weight: 24, opacity: 0, bubblingMouseEvents: false }}
+                      pathOptions={{ color: ROUTE_COLOR, weight: 24, opacity: 0, bubblingMouseEvents: false }}
                       eventHandlers={{
                         click: (e) => {
                           setSelected(null);
@@ -668,7 +708,7 @@ function PlanningPage() {
               ))}
               {candidate && (
                 <CircleMarker center={[candidate.lat, candidate.lon]} radius={9}
-                  pathOptions={{ color: '#ffffff', weight: 3, fillColor: color, fillOpacity: 0.6 }} />
+                  pathOptions={{ color: '#ffffff', weight: 3, fillColor: ROUTE_COLOR, fillOpacity: 0.6 }} />
               )}
               {hovered && (
                 <CircleMarker center={[hovered.lat, hovered.lon]} radius={7}
@@ -717,9 +757,21 @@ function PlanningPage() {
               </div>
             )}
           </ResizablePanel>
+          {/* Hors des onglets : l'état du calcul se voit même onglet Tracé fermé. */}
+          {loadError && <div className="ui-alert ui-alert--warning">{loadError}</div>}
+          {totals.pendingLegs > 0 && (
+            <div className="plan-status">Calcul du tracé… ({totals.pendingLegs} tronçon{totals.pendingLegs > 1 ? 's' : ''})</div>
+          )}
+          {firstError && (
+            <div className="ui-alert ui-alert--warning plan-error">
+              <span>{totals.errorLegs > 1 ? `${totals.errorLegs} tronçons en ligne droite. ` : ''}{firstError}</span>
+              <Button size="s" onClick={planner.retry}>Réessayer</Button>
+            </div>
+          )}
         </div>
 
         <div className="plan-panel">
+          <SectionTabs sections={sections} open={open} onToggle={toggle} accent={color} />
           {sailing ? (
             <PlanBlock id="planning.parcours" label="Parcours" open={open.parcours} onToggle={() => toggle('parcours')}>
               <div className="plan-stats">
@@ -765,7 +817,7 @@ function PlanningPage() {
               )}
             </PlanBlock>
           ) : (
-            <PlanBlock id="planning.profil" label="Dénivelé" open={open.profil} onToggle={() => toggle('profil')}>
+            <PlanBlock id="planning.profil" label="Général" open={open.profil} onToggle={() => toggle('profil')}>
               <div className={durationSettings ? 'plan-stats plan-stats--four' : 'plan-stats'}>
                 {/* Au-delà de 100 km, une décimale : le chiffre tient dans sa case sur téléphone. */}
                 <div className="plan-stat"><span>Distance</span><strong className="num">{formatDistance(totals.distanceM, distanceUnit, toDisplayDistance(totals.distanceM, distanceUnit) >= 100 ? 1 : 2)}</strong></div>
@@ -881,7 +933,7 @@ function PlanningPage() {
                 <li>Touchez un point pour le retirer, ou changer la façon d'y venir ; touchez A pour boucler, par les chemins ou en ligne droite.</li>
                 <li>« Précédent », sur la carte, défait la dernière modification.</li>
                 <li>La liste des points permet aussi de changer leur ordre.</li>
-                <li>Le type de voie choisi ci-dessous vaut pour les points suivants. Le calcul demande du réseau.</li>
+                <li>Le type de voie choisi au-dessus de la carte vaut pour les points suivants. Le calcul demande du réseau.</li>
                 <li>
                   {ROUTE_MODES.filter((m) => m !== 'straight').map((m, i, all) => (
                     <Fragment key={m}>
@@ -893,17 +945,6 @@ function PlanningPage() {
                 <li>Les règles d'accès suivent l'activité : à pied, escaliers permis et sens interdits ignorés ; à vélo, sens interdits respectés.</li>
                 <li>« Charger un GPX » reprend telle quelle une trace téléchargée ailleurs. Touchez-la pour y poser un point ; un point déplacé refait ses tronçons dans le mode choisi.</li>
               </ul>
-            )}
-            {!sailing && (
-              <div className="ui-tabs plan-modes" role="group" aria-label="Type de voie"
-                style={{ '--tab-accent': color } as React.CSSProperties}>
-                {ROUTE_MODES.map((m) => (
-                  <button key={m} type="button" className="ui-tab" aria-pressed={mode === m} onClick={() => chooseMode(m)}
-                    title={ROUTE_MODE_HINT[m]}>
-                    {ROUTE_MODE_LABEL[m]}
-                  </button>
-                ))}
-              </div>
             )}
             <div className="plan-actions">
               <Button size="s" onClick={planner.undo} disabled={!planner.canUndo}>
@@ -925,17 +966,6 @@ function PlanningPage() {
               </label>
               <Button size="s" variant="ghost" onClick={() => { planner.clear(); setSelected(null); }} disabled={route.waypoints.length === 0}>Tout effacer</Button>
             </div>
-            {loadError && <div className="ui-alert ui-alert--warning">{loadError}</div>}
-            {totals.pendingLegs > 0 && (
-              <div className="plan-status">Calcul du tracé… ({totals.pendingLegs} tronçon{totals.pendingLegs > 1 ? 's' : ''})</div>
-            )}
-            {firstError && (
-              <div className="ui-alert ui-alert--warning plan-error">
-                <span>{totals.errorLegs > 1 ? `${totals.errorLegs} tronçons en ligne droite. ` : ''}{firstError}</span>
-                <Button size="s" onClick={planner.retry}>Réessayer</Button>
-              </div>
-            )}
-
           </PlanBlock>
 
           <PlanBlock id="planning.points" label={`${sailing ? 'Balises' : 'Points'} (${route.waypoints.length})`} open={open.points} onToggle={() => toggle('points')}>
@@ -987,12 +1017,6 @@ function PlanningPage() {
               <label className="plan-form__field">
                 <span className="ui-eyebrow">Nom</span>
                 <input className="ui-field" value={name} placeholder={defaultName()} onChange={(e) => setName(e.target.value)} />
-              </label>
-              <label className="plan-form__field">
-                <span className="ui-eyebrow">Activité</span>
-                <select className="ui-field" value={activity?.id ?? ''} onChange={(e) => chooseActivity(e.target.value)}>
-                  {activities.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
               </label>
             </div>
             {!library.canSave && (

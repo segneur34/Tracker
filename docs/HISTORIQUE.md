@@ -408,3 +408,20 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - beaucoup de trottoirs et de sentiers n'ont pas d'étiquette `surface` : ils tombent en « Inconnu », faute de mieux ;
       - l'écriture de la fiche est différée de 800 ms : au banc, attendre avant de recharger la page ;
       - Overpass met de quelques secondes à plus d'une minute selon sa charge.
+79. Retouches du 03/10 (04/10, APK 0.2.52).
+    - **Demandes de l'utilisateur** :
+      - zones de pente montrées sur la carte, comme les tops : passages en violet, couleur absente du dégradé de vitesse, une seule surbrillance à la fois ;
+      - réglages par activité (niveau du temps estimé, terrain, vélo) dans la carte de l'activité, plus dans des blocs par famille ;
+      - sport secondaire retenu dans la barre du bas, changé par un appui long (1 s, réglage à part de celui de la pause), avec un grand cadran ;
+      - en planification, activité au-dessus de la carte, onglets dessous (« Dénivelé » devient « Général »), tracé toujours bleu ;
+      - légende de couleur réduite, posée sur la carte à gauche de la mention OSM ;
+      - vignette carte toujours visible dans la liste des sessions, à droite des chiffres ;
+      - icône de la course : un coureur au lieu d'un graphe.
+    - **Choix techniques** :
+      - la légende est un contrôle Leaflet du coin bas droit. Leaflet place un contrôle du bas avant ceux qui y sont, et le coin est mis en ligne en CSS : la légende se range à gauche de la mention ;
+      - les vignettes se chargent quand la ligne approche de l'écran, au plus 300 points, sur canevas. Elles sont figées, pour que le doigt fasse défiler la liste ;
+      - en planification, le calcul en cours et ses erreurs s'affichent sous la carte, hors des onglets, qui peuvent être fermés.
+    - **Pièges** :
+      - le `<select>` natif d'Android range mal les groupes : il trace des traits entre les activités d'une même famille et aucun entre familles. `ActivitySelect` dessine donc sa propre liste ;
+      - avec les onglets fermés par défaut, les scripts du banc doivent poser `tracker.sections` puis recharger la page ;
+      - `planning.mjs` cherchait encore « Ranger », renommé au point 73.

@@ -145,6 +145,35 @@ export const computeZoneStats = (
   });
 };
 
+/**
+ * Tracés d'une zone de pente, à montrer sur la carte : les suites de segments
+ * en mouvement dont la pente tombe dans la zone, retenus comme par
+ * `computeZoneStats` (le segment qui arrive au point `i` porte la pente de
+ * `i`). Chaque tracé est une suite de positions `[lat, lon]`, coupée à chaque
+ * changement de zone, à chaque pause et là où la pente manque.
+ */
+export const gradeZonePaths = (
+  track: TrackPoint[],
+  grades: number[],
+  activityMask: boolean[],
+  zone: GradeZoneKey
+): [number, number][][] => {
+  const paths: [number, number][][] = [];
+  let current: [number, number][] | null = null;
+  for (let i = 1; i < track.length; i++) {
+    if (!activityMask[i] || classifyGrade(grades[i]) !== zone) {
+      current = null;
+      continue;
+    }
+    if (current === null) {
+      current = [[track[i - 1].lat, track[i - 1].lon]];
+      paths.push(current);
+    }
+    current.push([track[i].lat, track[i].lon]);
+  }
+  return paths;
+};
+
 /** Allure et vitesse moyennes d'une distance parcourue en un temps donné. */
 export const averagePace = (distanceM: number, timeMs: number): { pace: string; speedKmh: string; speedMs: number | null } => {
   if (timeMs <= 0 || distanceM <= 0) return { pace: '-', speedKmh: '-', speedMs: null };

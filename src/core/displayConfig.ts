@@ -7,6 +7,12 @@
 /** Nombre maximal de points tracés sur un graphe, pour rester fluide. */
 export const CHART_MAX_POINTS = 500;
 
+/**
+ * Nombre maximal de points tracés sur la vignette d'une session, dans la liste
+ * de la bibliothèque : toutes les vignettes visibles sont dessinées à la fois.
+ */
+export const PREVIEW_MAX_POINTS = 300;
+
 /** Plage la plus étroite d'un graphe zoomé, en part de son étendue : 1 %. */
 export const CHART_ZOOM_MIN_FRACTION = 0.01;
 

@@ -41,15 +41,25 @@ const setFile = async (selector, path) => {
   const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
   await send('DOM.setFileInputFiles', { nodeId, files: [path] });
 };
-/** Choisit une option, par son texte, dans le menu qui la contient (le premier trouvé). */
-const chooseOption = (text) => evaluate(`(() => {
+/** Choisit une option, par son texte : dans le menu natif qui la contient (le premier trouvé), sinon dans un choix d'activité. */
+const chooseOption = (text) => evaluate(`(async () => {
   const select = [...document.querySelectorAll('select')].find((s) => [...s.options].some((o) => o.textContent === ${JSON.stringify(text)} && !o.disabled));
-  if (!select) return 'absent';
-  const option = [...select.options].find((o) => o.textContent === ${JSON.stringify(text)});
-  const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
-  set.call(select, option.value);
-  select.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
+  if (select) {
+    const option = [...select.options].find((o) => o.textContent === ${JSON.stringify(text)});
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, option.value);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return 'ok';
+  }
+  // Choix d'activité (ActivitySelect) : le bouton ouvre la liste, puis l'activité s'y choisit.
+  for (const button of document.querySelectorAll('button.activity-select:not(:disabled)')) {
+    button.click();
+    await new Promise((r) => setTimeout(r, 150));
+    const item = [...document.querySelectorAll('.activity-select__option')].find((o) => o.textContent.trim() === ${JSON.stringify(text)});
+    if (item) { item.click(); return 'ok'; }
+    document.querySelector('.activity-select__backdrop')?.click();
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return 'absent';
 })()`);
 const lines = (pattern) => evaluate(`document.body.innerText.split('\\n').filter((l) => ${pattern}.test(l)).join(' | ')`);
 const shoot = async (name) => {

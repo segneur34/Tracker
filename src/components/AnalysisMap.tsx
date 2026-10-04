@@ -1,5 +1,7 @@
-import { useState, type CSSProperties, type ComponentProps, type ReactNode } from 'react';
-import { MapContainer } from 'react-leaflet';
+import { useEffect, useState, type CSSProperties, type ComponentProps, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import L from 'leaflet';
+import { MapContainer, useMap } from 'react-leaflet';
 import { DEFAULT_MAP_CENTER, type TrackBounds } from '../core/displayConfig';
 import { NARROW_QUERY } from '../hooks/useNarrowScreen';
 import MapAutoResize from './MapAutoResize';
@@ -17,9 +19,9 @@ interface AnalysisMapProps {
   bounds: TrackBounds | null;
   /** Couches propres au module (fond, trace, repères), rendues dans la carte et dans sa vue agrandie. */
   layers: ReactNode;
-  /** Légende de la couleur de la trace, sous la carte ; `null` sans trace. */
+  /** Légende de la couleur de la trace, sur la carte ; `null` sans trace. */
   legend: ComponentProps<typeof SpeedGradientLegend> | null;
-  /** Hauteur par défaut du bloc, légende comprise. */
+  /** Hauteur par défaut du bloc. */
   defaultHeight: number;
   /** Place du bloc dans sa rangée, sur ordinateur (60 % de large). */
   style?: CSSProperties;
@@ -32,14 +34,36 @@ const initialView = (bounds: TrackBounds | null) =>
     : { center: DEFAULT_MAP_CENTER, zoom: 14 };
 
 /**
- * Carte d'une page d'analyse et sa légende, collée dessous. Sur ordinateur,
- * un bloc redimensionnable ; sur téléphone, pleine largeur en tête de page,
- * et un toucher l'ouvre en plein écran. Commune à tous les modules
+ * Contrôle Leaflet du coin bas droit qui porte `children`. Leaflet place un
+ * contrôle du bas avant ceux qui y sont déjà : posé après la mention OSM, il
+ * se range à sa gauche, le coin étant mis en ligne par `analysisMobile.css`
+ * (`.an-map-corner`).
+ */
+function MapCornerControl({ children }: { children: ReactNode }) {
+  const map = useMap();
+  const [container] = useState(() => L.DomUtil.create('div', 'an-map-legend'));
+  useEffect(() => {
+    const control = new L.Control({ position: 'bottomright' });
+    control.onAdd = () => container;
+    control.addTo(map);
+    return () => {
+      control.remove();
+    };
+  }, [map, container]);
+  return createPortal(children, container);
+}
+
+/**
+ * Carte d'une page d'analyse, avec sa légende de couleur posée dessus, en bas
+ * à droite, à gauche de la mention OSM. Sur ordinateur, un bloc
+ * redimensionnable ; sur téléphone, pleine largeur en tête de page, et un
+ * toucher l'ouvre en plein écran. Commune à tous les modules
  * (`docs/MISE_EN_PAGE.md`).
  */
 function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, defaultHeight, style }: AnalysisMapProps) {
   /** Carte agrandie en plein écran (toucher sur la carte compacte, écran étroit seulement). */
   const [expanded, setExpanded] = useState(false);
+  const legendControl = legend && <MapCornerControl><SpeedGradientLegend {...legend} /></MapCornerControl>;
 
   return (
     <>
@@ -47,7 +71,7 @@ function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, de
         className="an-map-panel"
         style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 0, ...style }}>
         <div
-          className="an-map-frame"
+          className="an-map-frame an-map-corner"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest('.leaflet-control')) return;
             if (window.matchMedia(NARROW_QUERY).matches) setExpanded(true);
@@ -56,22 +80,19 @@ function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, de
           <MapContainer key={sessionKey ?? 'empty'} {...initialView(bounds)} style={{ height: '100%', width: '100%' }}>
             <MapAutoResize />
             {layers}
+            {legendControl}
           </MapContainer>
         </div>
-        {legend && (
-          <div style={{ flexShrink: 0 }}>
-            <SpeedGradientLegend {...legend} />
-          </div>
-        )}
       </ResizablePanel>
 
       {expanded && (
         <div className="an-map-overlay" onClick={() => setExpanded(false)}>
           <button type="button" className="an-map-overlay__close" onClick={() => setExpanded(false)} aria-label="Fermer la carte">×</button>
-          <div className="an-map-overlay__map" onClick={(e) => e.stopPropagation()}>
+          <div className="an-map-overlay__map an-map-corner" onClick={(e) => e.stopPropagation()}>
             <MapContainer key={`expanded-${sessionKey ?? 'empty'}`} {...initialView(bounds)} style={{ height: '100%', width: '100%' }}>
               <MapAutoResize />
               {layers}
+              {legendControl}
             </MapContainer>
           </div>
         </div>

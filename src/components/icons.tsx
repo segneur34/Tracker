@@ -35,9 +35,15 @@ export const IconSail = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+/** Coureur stylisé, en pleine foulée vers la droite. */
 export const IconRun = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
-    <path d="M3 12h4l3-7 4 14 3-7h4" />
+    <circle cx="16" cy="4" r="1.6" fill="currentColor" />
+    <path d="M14.5 8l-2.5 6" />
+    <path d="M14 9.5l3 2.5h2.5" />
+    <path d="M14 9.5l-3.5.5-2 2.5" />
+    <path d="M12 14l3 2v4.5" />
+    <path d="M12 14l-2.5 4H5" />
   </svg>
 );
 

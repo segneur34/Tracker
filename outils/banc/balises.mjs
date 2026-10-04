@@ -79,13 +79,25 @@ const setFile = async (selector, path) => {
   const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
   await send('DOM.setFileInputFiles', { nodeId, files: [path] });
 };
-const chooseOption = (text) => evaluate(`(() => {
+/** Choisit une option, par son texte : dans le menu natif qui la contient (le premier trouvé), sinon dans un choix d'activité. */
+const chooseOption = (text) => evaluate(`(async () => {
   const select = [...document.querySelectorAll('select')].find((s) => [...s.options].some((o) => o.textContent === ${JSON.stringify(text)} && !o.disabled));
-  if (!select) return 'absent';
-  const option = [...select.options].find((o) => o.textContent === ${JSON.stringify(text)});
-  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, option.value);
-  select.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
+  if (select) {
+    const option = [...select.options].find((o) => o.textContent === ${JSON.stringify(text)});
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, option.value);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return 'ok';
+  }
+  // Choix d'activité (ActivitySelect) : le bouton ouvre la liste, puis l'activité s'y choisit.
+  for (const button of document.querySelectorAll('button.activity-select:not(:disabled)')) {
+    button.click();
+    await new Promise((r) => setTimeout(r, 150));
+    const item = [...document.querySelectorAll('.activity-select__option')].find((o) => o.textContent.trim() === ${JSON.stringify(text)});
+    if (item) { item.click(); return 'ok'; }
+    document.querySelector('.activity-select__backdrop')?.click();
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return 'absent';
 })()`);
 const mouse = (type, x, y) => send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
 const clickAt = async (x, y) => { await mouse('mousePressed', x, y); await mouse('mouseReleased', x, y); await wait(300); };
@@ -117,7 +129,10 @@ await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, devi
 // 1. Itinéraires en Voile.
 await send('Page.navigate', { url: `${BASE}/itineraires` });
 await wait(3000);
+// Tous les onglets ouverts (seul le premier l'est par défaut), lus au chargement de la page.
 await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ planning: { profil: true, parcours: true, trace: true, points: true, ranger: true, liste: true } })); 'ok'`);
+await send('Page.navigate', { url: `${BASE}/itineraires` });
+await wait(3000);
 console.log('activité Voile :', await chooseOption('Voile'));
 await wait(300);
 await tapMap(0.3, 0.3);

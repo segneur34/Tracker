@@ -32,6 +32,22 @@
   display: none;
 }
 
+/* Coin bas droit d'une carte d'analyse (`AnalysisMap`) : la légende de couleur, puis la mention OSM,
+   côte à côte sur une ligne plutôt qu'empilées. */
+.an-map-corner .leaflet-bottom.leaflet-right {
+  display: flex;
+  align-items: flex-end;
+}
+
+.an-map-corner .leaflet-bottom.leaflet-right > .leaflet-control {
+  float: none;
+  clear: none;
+}
+
+.an-map-corner .leaflet-control.an-map-legend {
+  margin: 0 2px 0 0;
+}
+
 /* En-tête de la feuille : retour, titre, nom de la session. */
 .an-sheet__head {
   margin-bottom: var(--space-4);
@@ -55,7 +71,7 @@
     flex: none !important;
   }
 
-  /* Bloc carte + légende (`AnalysisMap`) : pleine largeur, carte à hauteur fixe, légende dessous. */
+  /* Bloc carte (`AnalysisMap`, légende posée dessus) : pleine largeur, carte à hauteur fixe. */
   .an-map-panel {
     order: -1;
     flex: none !important;
