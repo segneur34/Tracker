@@ -6,6 +6,7 @@ import './theme/base.css';
 import './components/ui/ui.css';
 import './components/AppShell.css';
 import { confirmLeave, installLeaveGuard } from './hooks/leaveGuard';
+import { startMarkGuide } from './hooks/useMarkGuide';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { openLibrary, startLibraryUi } from './hooks/useSessionLibrary';
 import { installBackButton } from './platform/backButton';
@@ -33,4 +34,6 @@ void initStorage()
     void installBackButton(isRecordingActive, confirmLeave);
     // Un enregistrement coupé par un arrêt brutal, ou arrêté sans décision, revient en attente.
     void recoverInterruptedRecording();
+    // Bips d'approche des balises, pendant un enregistrement de voile qui suit un parcours.
+    startMarkGuide();
   });

@@ -1,5 +1,5 @@
 import { accumulateElevation } from '../core/elevation';
-import { EARTH_RADIUS_M, haversineDistance, toRad } from '../core/kinematics';
+import { EARTH_RADIUS_M, haversineDistance, initialBearing, toRad } from '../core/kinematics';
 import type { SportFamily } from '../core/sportProfiles';
 import { computeGrades } from '../running/runningAnalytics';
 
@@ -253,6 +253,34 @@ export const isLooped = (route: PlannedRoute): boolean => {
 /** Boucle : un dernier tronçon ramène au départ. Sans effet sous deux points, ni sur un itinéraire déjà bouclé. */
 export const closeLoop = (route: PlannedRoute, mode: RouteMode): PlannedRoute =>
   route.waypoints.length < 2 || isLooped(route) ? route : addWaypoint(route, route.waypoints[0], mode);
+
+/**
+ * Parcours de voile : sur l'eau, aucun chemin à suivre. Les tronçons
+ * calculés par la carte passent en ligne droite ; une ligne droite ou une
+ * trace importée reste telle quelle. Itinéraire inchangé (même objet) s'il
+ * n'y a rien à redresser.
+ */
+export const straightenRoute = (route: PlannedRoute): PlannedRoute =>
+  route.legs.some((leg) => !isFixedMode(leg.mode))
+    ? { ...route, legs: route.legs.map((leg, i) => (isFixedMode(leg.mode) ? leg : newLeg(route.waypoints[i], route.waypoints[i + 1], 'straight'))) }
+    : route;
+
+/** Un bord d'un parcours de voile : d'une balise à la suivante, en ligne droite. */
+export interface CourseLeg {
+  distanceM: number;
+  /** Cap de la balise de départ vers la suivante, en degrés depuis le nord. */
+  bearingDeg: number;
+}
+
+/** Bords du parcours, de balise en balise : `courseLegs(route)[i]` va du point `i` au point `i + 1`. */
+export const courseLegs = (route: PlannedRoute): CourseLeg[] =>
+  route.waypoints.slice(1).map((to, i) => {
+    const from = route.waypoints[i];
+    return {
+      distanceM: haversineDistance(from.lat, from.lon, to.lat, to.lon),
+      bearingDeg: initialBearing(from.lat, from.lon, to.lat, to.lon),
+    };
+  });
 
 /**
  * Change la place d'un point dans l'ordre du parcours. Un tronçon dont les

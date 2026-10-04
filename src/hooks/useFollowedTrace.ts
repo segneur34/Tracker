@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { jsonStore } from '../platform/storage';
 import { followedTraceFromPoints, type FollowedTrace } from '../recording/followedTrace';
+import { sanitizeMarkGuide } from '../recording/markGuide';
 
 /**
  * Trace suivie pendant l'enregistrement, gardée hors des pages : elle reste
@@ -17,7 +18,10 @@ const readStored = (): FollowedTrace | null => {
   if (!stored || typeof stored.name !== 'string' || !Array.isArray(stored.points)) return null;
   if (stored.source !== 'route' && stored.source !== 'session') return null;
   const activityId = typeof stored.activityId === 'string' && stored.activityId !== '' ? stored.activityId : null;
-  return followedTraceFromPoints(stored.points, stored.name, stored.source, activityId);
+  const marks = Array.isArray(stored.marks) ? stored.marks : undefined;
+  const trace = followedTraceFromPoints(stored.points, stored.name, stored.source, activityId, marks);
+  const markGuide = sanitizeMarkGuide(stored.markGuide);
+  return trace && markGuide ? { ...trace, markGuide } : trace;
 };
 
 // Lue au premier besoin, pas au chargement du module : `initStorage` doit avoir chargé le stockage natif.
@@ -47,3 +51,9 @@ export const followTrace = (trace: FollowedTrace): void => set(trace);
 export const clearFollowedTrace = (): void => set(null);
 
 export const useFollowedTrace = (): FollowedTrace | null => useSyncExternalStore(subscribe, getSnapshot);
+
+/** Trace suivie, hors React (guidage vers les balises). */
+export const getFollowedTrace = (): FollowedTrace | null => getSnapshot();
+
+/** Changements de la trace suivie, hors React ; rend le désabonnement. */
+export const subscribeToFollowedTrace = (listener: () => void): (() => void) => subscribe(listener);

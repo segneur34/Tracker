@@ -44,6 +44,26 @@ export const initialBearing = (
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 };
 
+/**
+ * Distance de `p` au segment [`a`, `b`], en mètres, mesurée en plan local
+ * équirectangulaire centré sur `p` : exact à mieux que le mètre sur quelques
+ * kilomètres. Segment réduit à un point : distance à ce point.
+ */
+export const distanceToSegmentM = (
+  p: { lat: number; lon: number },
+  a: { lat: number; lon: number },
+  b: { lat: number; lon: number }
+): number => {
+  const cosLat = Math.cos(toRad(p.lat));
+  const ax = toRad(a.lon - p.lon) * cosLat * EARTH_RADIUS_M;
+  const ay = toRad(a.lat - p.lat) * EARTH_RADIUS_M;
+  const dx = toRad(b.lon - p.lon) * cosLat * EARTH_RADIUS_M - ax;
+  const dy = toRad(b.lat - p.lat) * EARTH_RADIUS_M - ay;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 > 0 ? Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len2)) : 0;
+  return Math.hypot(ax + t * dx, ay + t * dy);
+};
+
 /** Convertit un horodatage de point en millisecondes depuis l'époque. */
 export const pointTimeMs = (time: string | Date): number =>
   typeof time === 'string' ? new Date(time).getTime() : time.getTime();

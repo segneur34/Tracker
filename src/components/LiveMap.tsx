@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { divIcon, type Marker as LeafletMarker } from 'leaflet';
 import { trackBounds } from '../core/displayConfig';
-import { CircleMarker, MapContainer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
+import { Circle, CircleMarker, MapContainer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import { useCompassHeading } from '../hooks/useCompassHeading';
 import type { LocationFix } from '../platform/location';
 import { displayHeading, type TravelHeading } from '../recording/heading';
+import type { CourseMark } from '../recording/markGuide';
 import OsmTileLayer from './OsmTileLayer';
 import MapAutoResize from './MapAutoResize';
 import Button from './ui/Button';
@@ -25,11 +26,45 @@ interface LiveMapProps {
   travel?: TravelHeading;
   /** Commande posée en haut à droite de la carte (« Réduire la carte »). */
   overlay?: ReactNode;
+  /** Balises du parcours suivi, en voile, et rayon de validation autour de la balise visée, en mètres. */
+  marks?: ReadonlyArray<CourseMark>;
+  validationRadiusM?: number;
 }
 
 /** Couleurs de la trace suivie, reste et partie faite (données de carte, donc en dur). */
 const GUIDE_STYLE = { color: '#37474f', weight: 5, opacity: 0.6, dashArray: '8 8', interactive: false } as const;
 const GUIDE_DONE_STYLE = { color: '#9e9e9e', weight: 4, opacity: 0.5, interactive: false } as const;
+
+/** Balises : fond, bordure et chiffre selon leur état (données de carte, donc en dur). */
+const MARK_STYLE: Record<CourseMark['state'], { fill: string; border: string; ink: string; dashed?: boolean }> = {
+  validated: { fill: '#9e9e9e', border: '#ffffff', ink: '#ffffff' },
+  skipped: { fill: '#ffffff', border: '#9e9e9e', ink: '#9e9e9e', dashed: true },
+  target: { fill: '#e65100', border: '#ffffff', ink: '#ffffff' },
+  next: { fill: '#ffffff', border: '#37474f', ink: '#37474f' },
+};
+const TARGET_CIRCLE_STYLE = { color: '#e65100', weight: 2, opacity: 0.8, fillOpacity: 0.08, interactive: false } as const;
+const AIM_STYLE = { color: '#e65100', weight: 2, opacity: 0.8, dashArray: '4 6', interactive: false } as const;
+const MARK_SIZE = 26;
+
+/** Repères des balises, gardés d'un rendu à l'autre : Leaflet ne les redessine que s'ils changent. */
+const markIcons = new Map<string, ReturnType<typeof divIcon>>();
+const markIcon = (label: string, state: CourseMark['state']) => {
+  const key = `${label}|${state}`;
+  let icon = markIcons.get(key);
+  if (!icon) {
+    const { fill, border, ink, dashed } = MARK_STYLE[state];
+    icon = divIcon({
+      className: '',
+      iconSize: [MARK_SIZE, MARK_SIZE],
+      iconAnchor: [MARK_SIZE / 2, MARK_SIZE / 2],
+      html: `<span style="display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:${MARK_SIZE}px;height:${MARK_SIZE}px;`
+        + `border-radius:50%;background:${fill};color:${ink};border:2px ${dashed ? 'dashed' : 'solid'} ${border};`
+        + `font-weight:700;font-size:13px;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,0.35)">${label}</span>`,
+    });
+    markIcons.set(key, icon);
+  }
+  return icon;
+};
 
 const ARROW_SIZE = 30;
 
@@ -84,12 +119,14 @@ function FollowPosition({ position, following, onUserMove }: {
  * Carte de l'enregistrement en cours : la trace d'une seule couleur (un
  * dégradé demanderait un trait par point, trop lourd à redessiner) et la
  * position du moment (une flèche au cap, `PositionMarker`), et la trace
- * suivie s'il y en a une, la partie faite en gris. Sans position ni
- * trace, la carte s'ouvre cadrée sur la trace suivie. Sans réseau, le fond
- * manque mais traces et position restent.
+ * suivie s'il y en a une, la partie faite en gris, et en voile ses balises
+ * (la visée en orange, avec son cercle de validation et un pointillé depuis
+ * la position). Sans position ni trace, la carte s'ouvre cadrée sur la trace
+ * suivie. Sans réseau, le fond manque mais traces et position restent.
  */
-function LiveMap({ segments, position, color, height, guide, guideDone, travel, overlay }: LiveMapProps) {
+function LiveMap({ segments, position, color, height, guide, guideDone, travel, overlay, marks, validationRadiusM }: LiveMapProps) {
   const [following, setFollowing] = useState(true);
+  const target = marks?.find((m) => m.state === 'target');
   const start = position ?? segments[0]?.[0] ?? null;
   const guideBounds = !start && guide && guide.length > 1 ? trackBounds(guide) : null;
   if (!start && !guideBounds) return null;
@@ -107,12 +144,22 @@ function LiveMap({ segments, position, color, height, guide, guideDone, travel, 
         {guide && guide.length > 1 && (
           <Polyline positions={guide.map((p) => [p.lat, p.lon] as [number, number])} pathOptions={GUIDE_STYLE} />
         )}
+        {target && validationRadiusM !== undefined && validationRadiusM > 0 && (
+          <Circle center={[target.lat, target.lon]} radius={validationRadiusM} pathOptions={TARGET_CIRCLE_STYLE} />
+        )}
+        {target && position && (
+          <Polyline positions={[[position.lat, position.lon], [target.lat, target.lon]]} pathOptions={AIM_STYLE} />
+        )}
         {segments.map((segment, i) => {
           const positions = segment.map((f) => [f.lat, f.lon] as [number, number]);
           // Le dernier segment, recalculé moins souvent que la position, est prolongé jusqu'à elle.
           if (i === segments.length - 1 && position) positions.push([position.lat, position.lon]);
           return <Polyline key={i} positions={positions} pathOptions={{ color, weight: 4, opacity: 0.9 }} />;
         })}
+        {marks?.map((m, i) => (
+          <Marker key={i} position={[m.lat, m.lon]} icon={markIcon(m.label, m.state)} interactive={false} keyboard={false}
+            zIndexOffset={m.state === 'target' ? 500 : 0} />
+        ))}
         {position && <PositionMarker position={position} color={color} travel={travel} />}
         <FollowPosition position={position} following={following} onUserMove={() => setFollowing(false)} />
       </MapContainer>

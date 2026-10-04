@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import 'leaflet/dist/leaflet.css';
 import './PlanningPage.css';
+import BeepCurveEditor from '../components/BeepCurveEditor';
 import MapAutoResize from '../components/MapAutoResize';
 import OsmTileLayer from '../components/OsmTileLayer';
 import PanelTitle from '../components/PanelTitle';
@@ -34,19 +35,21 @@ import { getLastFix, useRecorder } from '../hooks/useRecorder';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  effectiveDistanceUnit, effectiveDurationSettings, effectiveElevationProfile, effectiveGradeRange, effectivePace, lastRecordActivity,
-  readStoredActivities,
+  effectiveDistanceUnit, effectiveDurationSettings, effectiveElevationProfile, effectiveGradeRange, effectiveMarkGuide, effectivePace,
+  lastRecordActivity, readStoredActivities,
 } from '../hooks/useSportSettings';
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
 import { PACE_LEVEL_LABEL, estimateRouteDurationS } from '../planning/duration';
 import { searchPlaces, type Place } from '../planning/geocoding';
 import {
-  DEFAULT_ROUTE_MODE, EMPTY_ROUTE, ROUTE_MODES, ROUTE_MODE_HINT, ROUTE_MODE_LABEL, isChoosableMode, isLooped, readRouteMode, routeFromTrack,
-  routePoints, routeProfileRows, routeTotals, routeVehicle, waypointDistances, type PlannedRoute, type RouteLeg, type RouteMode, type Waypoint,
+  DEFAULT_ROUTE_MODE, EMPTY_ROUTE, ROUTE_MODES, ROUTE_MODE_HINT, ROUTE_MODE_LABEL, courseLegs, isChoosableMode, isLooped, readRouteMode,
+  routeFromTrack, routePoints, routeProfileRows, routeTotals, routeVehicle, straightenRoute, waypointDistances, type PlannedRoute, type RouteLeg,
+  type RouteMode, type Waypoint,
 } from '../planning/route';
-import { buildRouteGpx, waypointLabel } from '../planning/routeGpx';
-import { recordToRoute } from '../planning/routeRecord';
+import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
+import { recordToRoute, routeMarkGuide } from '../planning/routeRecord';
+import { beepStartM, validationRadiusM, type MarkGuideSettings } from '../recording/markGuide';
 import { gradeGradientStops } from '../running/runningAnalytics';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { currentPosition, locationPermissionGranted } from '../platform/location';
@@ -60,6 +63,11 @@ import { jsonStore } from '../platform/storage';
  * à chaque calcul, avec le temps estimé en course et à vélo (niveau choisi
  * dans Réglages). L'itinéraire s'enregistre dans `itineraires/` du dossier
  * mémoire, avec son GPX.
+ *
+ * En voile, c'est un parcours : des balises numérotées, reliées en ligne
+ * droite, que l'enregistrement fait valider une à une, avec des bips
+ * d'approche (`recording/markGuide.ts`) : ceux de l'activité (Réglages), ou
+ * ceux propres au parcours, rangés dans sa fiche.
  *
  * Le calcul demande du réseau (`planning/brouter.ts`) ; un itinéraire rangé se
  * rouvre sans. On y arrive depuis l'accueil (« Planifier ») et, sur
@@ -140,6 +148,8 @@ const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math
 
 const defaultName = (): string => `Itinéraire du ${new Date().toLocaleDateString('fr-FR')}`;
 
+const sameGuide = (a: MarkGuideSettings | null, b: MarkGuideSettings | null): boolean => JSON.stringify(a) === JSON.stringify(b);
+
 /** Aucune action à mener en quittant : l'itinéraire non enregistré est simplement abandonné. */
 const noop = () => {};
 
@@ -151,10 +161,11 @@ interface ChartRow {
 }
 
 /** `ranger` : bloc « Enregistrer l'itinéraire », clé gardée pour l'état mémorisé. */
-type PlanningSection = 'profil' | 'trace' | 'points' | 'ranger' | 'liste';
+type PlanningSection = 'profil' | 'parcours' | 'trace' | 'points' | 'ranger' | 'liste';
 
 const PLANNING_SECTION_DEFAULTS: Record<PlanningSection, boolean> = {
   profil: true,
+  parcours: true,
   trace: true,
   points: true,
   ranger: true,
@@ -217,6 +228,8 @@ function PlanningPage() {
     writePrefs({ activityId: id });
   };
   const activity = findActivity(activities, activityId) ?? activities[0] ?? null;
+  /** Parcours de voile : balises numérotées, tronçons en ligne droite, bloc « Parcours » au lieu du dénivelé. */
+  const sailing = activity !== null && activityFamily(activity) === 'voile';
   const distanceUnit = activity ? effectiveDistanceUnit(activity) : 'km';
   const minGainM = (activity ? effectiveElevationProfile(activity) : ELEVATION_PRESETS.route).minGainM;
   const gradeRange = useMemo(() => (activity ? effectiveGradeRange(activity) : null), [activity]);
@@ -235,11 +248,20 @@ function PlanningPage() {
     setModeChoice(next);
     writePrefs({ mode: next });
   };
+  /** Mode des éditions : en voile, toujours la ligne droite ; le type de voie choisi reste pour les autres activités. */
+  const editMode: RouteMode = sailing ? 'straight' : mode;
 
   const planner = usePlannedRoute(routeVehicle(activity ? activityFamily(activity) : 'course'));
   const { route } = planner;
   const library = useRouteLibrary();
   const { go, canGo } = useGoOnRoute();
+
+  /** Activité choisie dans le menu : passer à la voile redresse les tronçons calculés (annulable). */
+  const chooseActivity = (id: string) => {
+    setActivityId(id);
+    const next = findActivity(activities, id);
+    if (next && activityFamily(next) === 'voile') planner.straighten();
+  };
 
   const [map, setMap] = useState<L.Map | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
@@ -281,8 +303,18 @@ function PlanningPage() {
   const firstError = route.legs.find((l) => l.status === 'error')?.error ?? null;
   const distances = useMemo(() => waypointDistances(route), [route]);
   const looped = isLooped(route);
-  /** Lettre d'un point ; sur une boucle, l'arrivée est le départ : A. */
-  const pointLabel = (i: number) => waypointLabel(looped && i === route.waypoints.length - 1 ? 0 : i);
+  /** Nom des points : numéros des balises en voile, lettres ailleurs. */
+  const label = sailing ? markLabel : waypointLabel;
+  /** Nom d'un point ; sur une boucle, l'arrivée est le départ : A, ou 1. */
+  const pointLabel = (i: number) => label(looped && i === route.waypoints.length - 1 ? 0 : i);
+  /** Nom d'un point au milieu du parcours, en toutes lettres. */
+  const pointName = (i: number) => (sailing ? `Balise ${label(i)}` : `Point ${label(i)}`);
+  const legs = useMemo(() => (sailing ? courseLegs(route) : []), [sailing, route]);
+  /** Bips d'approche propres au parcours (`null` : ceux de l'activité), et l'éditeur ouvert ou non. */
+  const [courseGuide, setCourseGuide] = useState<MarkGuideSettings | null>(null);
+  const [beepsOpen, setBeepsOpen] = useState(false);
+  const activityGuide = useMemo(() => (activity && sailing ? effectiveMarkGuide(activity) : null), [activity, sailing]);
+  const guide = courseGuide ?? activityGuide;
   /** Fond d'un point de la liste : départ en vert, arrivée en rouge, les autres à la couleur de l'activité. */
   const pointFill = (i: number) => (i === 0 ? START_COLOR : i === route.waypoints.length - 1 ? END_COLOR : color);
   /** Fond d'un repère sur la carte : sur une boucle, le repère unique A porte départ et arrivée. */
@@ -291,7 +323,8 @@ function PlanningPage() {
 
   const dirty = current !== null
     ? route !== savedRoute || name.trim() !== current.record.name || (activity?.id ?? null) !== current.record.activityId
-    : route.waypoints.length > 0;
+      || !sameGuide(courseGuide, routeMarkGuide(current.record))
+    : route.waypoints.length > 0 || courseGuide !== null;
   useLeaveWarning(dirty ? { message: 'L\'itinéraire en cours n\'est pas enregistré. Quitter quand même ?', discard: noop } : null);
 
   // --- Profil d'altitude ---
@@ -332,7 +365,7 @@ function PlanningPage() {
       setResults(null);
       return;
     }
-    planner.add(w, mode);
+    planner.add(w, editMode);
   };
 
   /** Point choisi dans la liste : même bandeau qu'au toucher sur la carte, carte centrée dessus. */
@@ -405,7 +438,7 @@ function PlanningPage() {
     setMessage(null);
     try {
       const finalName = name.trim() || defaultName();
-      const saved = await library.save(route, { name: finalName, activityId: activity?.id ?? null }, current ?? undefined);
+      const saved = await library.save(route, { name: finalName, activityId: activity?.id ?? null, markGuide: courseGuide }, current ?? undefined);
       setCurrent(saved);
       setSavedRoute(route);
       setName(finalName);
@@ -422,7 +455,10 @@ function PlanningPage() {
   const openSaved = (saved: SavedRoute) => {
     if (!confirmDiscard()) return;
     const opened = recordToRoute(saved.record);
-    planner.replace(opened);
+    const openedActivity = findActivity(activities, saved.record.activityId) ?? activity;
+    // Un parcours de voile va de balise en balise : un tronçon calculé d'avant est redressé, à enregistrer.
+    planner.replace(openedActivity && activityFamily(openedActivity) === 'voile' ? straightenRoute(opened) : opened);
+    setCourseGuide(routeMarkGuide(saved.record));
     setCurrent(saved);
     setSavedRoute(opened);
     setName(saved.record.name);
@@ -439,6 +475,7 @@ function PlanningPage() {
     setCurrent(null);
     setSavedRoute(EMPTY_ROUTE);
     setName('');
+    setCourseGuide(null);
     setSelected(null);
     setMessage(null);
     zoom.reset();
@@ -465,6 +502,7 @@ function PlanningPage() {
       planner.replace(loaded);
       setCurrent(null);
       setSavedRoute(EMPTY_ROUTE);
+      setCourseGuide(null);
       setName(parsed.name ?? file.name.replace(/\.gpx$/i, ''));
       const sport = guessSport(parsed.trackType);
       const guessed = sport ? activities.find((a) => a.base === sport) : undefined;
@@ -490,6 +528,7 @@ function PlanningPage() {
         setCurrent(null);
         setSavedRoute(EMPTY_ROUTE);
         setName('');
+        setCourseGuide(null);
         setSelected(null);
         zoom.reset();
         setMessage('Itinéraire supprimé.');
@@ -501,7 +540,7 @@ function PlanningPage() {
 
   const exportGpx = () => {
     const fileName = `${current?.base ?? (name.trim() || defaultName()).replace(/[\\/:*?"<>|]/g, ' ')}.gpx`;
-    downloadTextFile(fileName, buildRouteGpx(route, name.trim() || defaultName()));
+    downloadTextFile(fileName, buildRouteGpx(route, name.trim() || defaultName(), label));
   };
 
   // Itinéraire demandé par l'adresse : ouvert une fois la liste lue et la carte prête, puis l'adresse est
@@ -549,7 +588,9 @@ function PlanningPage() {
       <PageHeader
         title="Itinéraires"
         back={{ to: '/', label: 'Accueil' }}
-        subtitle="Posez des points sur la carte : le tracé suit les chemins entre eux." />
+        subtitle={sailing
+          ? 'Posez les balises sur la carte : le parcours les relie en ligne droite.'
+          : 'Posez des points sur la carte : le tracé suit les chemins entre eux.'} />
 
       <div className="plan-layout">
         <div className="plan-map-col">
@@ -612,13 +653,13 @@ function PlanningPage() {
                   key={i}
                   position={[w.lat, w.lon]}
                   draggable
-                  icon={waypointIcon(waypointLabel(i), markerFill(i), selected === i)}
+                  icon={waypointIcon(label(i), markerFill(i), selected === i)}
                   eventHandlers={{
                     click: () => {
                       setCandidate(null);
                       setSelected(i);
                     },
-                    dragend: (e) => planner.move(i, toWaypoint((e.target as L.Marker).getLatLng()), mode),
+                    dragend: (e) => planner.move(i, toWaypoint((e.target as L.Marker).getLatLng()), editMode),
                   }} />
               ))}
               {candidate && (
@@ -642,8 +683,8 @@ function PlanningPage() {
 
             {selected !== null && route.waypoints[selected] && (
               <div className="plan-overlay">
-                <strong>Point {pointLabel(selected)}</strong>
-                {selectedLeg && (
+                <strong>{sailing ? 'Balise' : 'Point'} {pointLabel(selected)}</strong>
+                {selectedLeg && !sailing && (
                   <label className="plan-overlay__field">
                     <span>Pour y venir</span>
                     <LegModeSelect leg={selectedLeg} onChange={(m) => planner.setMode(selected - 1, m)} />
@@ -651,13 +692,13 @@ function PlanningPage() {
                 )}
                 {selected === 0 && route.waypoints.length >= 2 && !looped && (
                   <>
-                    <Button size="s" variant="primary" onClick={() => { planner.loop(mode); setSelected(null); }}>Boucler ici</Button>
-                    {mode !== 'straight' && (
+                    <Button size="s" variant="primary" onClick={() => { planner.loop(editMode); setSelected(null); }}>Boucler ici</Button>
+                    {editMode !== 'straight' && (
                       <Button size="s" onClick={() => { planner.loop('straight'); setSelected(null); }}>En ligne droite</Button>
                     )}
                   </>
                 )}
-                <Button size="s" variant="danger" onClick={() => { planner.remove(selected, mode); setSelected(null); }}>Retirer</Button>
+                <Button size="s" variant="danger" onClick={() => { planner.remove(selected, editMode); setSelected(null); }}>Retirer</Button>
                 <button type="button" className="plan-overlay__close" aria-label="Fermer" onClick={() => setSelected(null)}>×</button>
                 {selectedLeg?.status === 'error' && <p className="plan-overlay__error">{selectedLeg.error}</p>}
               </div>
@@ -665,7 +706,9 @@ function PlanningPage() {
             {candidate && (
               <div className="plan-overlay">
                 <span className="plan-overlay__place"><strong>{candidate.label}</strong>{candidate.detail && ` · ${candidate.detail}`}</span>
-                <Button size="s" variant="primary" onClick={() => { planner.add(candidate, mode); setCandidate(null); }}>Ajouter ce point</Button>
+                <Button size="s" variant="primary" onClick={() => { planner.add(candidate, editMode); setCandidate(null); }}>
+                  {sailing ? 'Ajouter cette balise' : 'Ajouter ce point'}
+                </Button>
                 <button type="button" className="plan-overlay__close" aria-label="Fermer" onClick={() => setCandidate(null)}>×</button>
               </div>
             )}
@@ -673,76 +716,136 @@ function PlanningPage() {
         </div>
 
         <div className="plan-panel">
-          <PlanBlock id="planning.profil" label="Dénivelé" open={open.profil} onToggle={() => toggle('profil')}>
-            <div className={durationSettings ? 'plan-stats plan-stats--four' : 'plan-stats'}>
-              {/* Au-delà de 100 km, une décimale : le chiffre tient dans sa case sur téléphone. */}
-              <div className="plan-stat"><span>Distance</span><strong className="num">{formatDistance(totals.distanceM, distanceUnit, toDisplayDistance(totals.distanceM, distanceUnit) >= 100 ? 1 : 2)}</strong></div>
-              <div className="plan-stat"><span>D+</span><strong className="num">{formatMeters(totals.gainM)}</strong></div>
-              <div className="plan-stat"><span>D−</span><strong className="num">{formatMeters(totals.lossM)}</strong></div>
-              {durationSettings && (
+          {sailing ? (
+            <PlanBlock id="planning.parcours" label="Parcours" open={open.parcours} onToggle={() => toggle('parcours')}>
+              <div className="plan-stats">
+                <div className="plan-stat"><span>Distance</span><strong className="num">{formatDistance(totals.distanceM, distanceUnit, toDisplayDistance(totals.distanceM, distanceUnit) >= 100 ? 1 : 2)}</strong></div>
+                <div className="plan-stat"><span>Balises</span><strong className="num">{route.waypoints.length - (looped ? 1 : 0)}</strong></div>
                 <div className="plan-stat">
-                  <span>Temps</span>
-                  <strong className="num">{durationS !== null ? `≈ ${formatDuration(durationS * 1000)}` : '—'}</strong>
+                  <span>Plus long bord</span>
+                  <strong className="num">{legs.length > 0 ? formatDistance(Math.max(...legs.map((l) => l.distanceM)), distanceUnit) : '—'}</strong>
+                </div>
+              </div>
+              {legs.length > 0 ? (
+                <ol className="plan-course">
+                  {legs.map((leg, i) => (
+                    <li key={i} className="plan-course__leg">
+                      <span>{pointLabel(i)} → {pointLabel(i + 1)}</span>
+                      <span className="num">{formatDistance(leg.distanceM, distanceUnit)}</span>
+                      <span className="num">{Math.round(leg.bearingDeg) % 360}°</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="plan-note">Touchez la carte pour poser le départ, puis les balises.</p>
+              )}
+              {guide && activity && (
+                <div className="plan-beeps">
+                  <div className="plan-beeps__head">
+                    <p className="plan-note">
+                      En navigation, chaque balise, départ compris, se valide à moins de {validationRadiusM(guide)} m. Bips dès{' '}
+                      {beepStartM(guide)} m : {courseGuide
+                        ? 'propres à ce parcours.'
+                        : <>ceux de l'activité {activity.name}, réglés dans <Link to="/parametres">Réglages</Link>.</>}
+                    </p>
+                    <Button size="s" onClick={() => setBeepsOpen((o) => !o)} aria-expanded={beepsOpen}>
+                      {beepsOpen ? 'Fermer' : 'Régler pour ce parcours'}
+                    </Button>
+                  </div>
+                  {beepsOpen && activityGuide && (
+                    <BeepCurveEditor value={guide} overridden={courseGuide !== null} fallback={activityGuide}
+                      resetLabel="Comme l'activité" fallbackMark={`ceux de l'activité ${activity.name}`}
+                      onChange={setCourseGuide} />
+                  )}
                 </div>
               )}
-            </div>
-
-            {hasElevation && gradeRange ? (
-              <div className="plan-profile" onMouseLeave={() => setHoveredIndex(null)}>
-                <ZoomableChart zoom={zoom} style={{ width: '100%', height: '170px' }}>
-                  <ResponsiveContainer>
-                    <AreaChart data={chartRows} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                      <ChartZoomProbe />
-                      <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                      <XAxis dataKey="dist" type="number" allowDataOverflow
-                        domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
-                        ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-                        tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`} tick={{ fill: '#555', fontSize: 11 }} />
-                      <YAxis domain={['auto', 'auto']} width={44} tick={{ fill: '#e64a19', fontSize: 11 }} tickFormatter={(v) => `${v}`} />
-                      <Tooltip
-                        contentStyle={{ fontSize: '12px' }}
-                        labelFormatter={(l) => `${parseFloat(Number(l).toFixed(2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`}
-                        formatter={(value, _name, item) => {
-                          const row: ChartRow | undefined = item.payload;
-                          return [row?.grade != null ? `${value} m, pente ${Math.round(row.grade * 100)} %` : `${value} m`, 'Altitude'];
-                        }} />
-                      {gradeGradientDefs(gradientId, gradeStops)}
-                      <Area type="monotone" dataKey="altitude" name="Altitude" stroke={`url(#${gradientId})`} strokeWidth={2}
-                        fill={`url(#${gradientId})`} fillOpacity={0.35} dot={false} activeDot={{ r: 4 }} connectNulls={false}
-                        isAnimationActive={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </ZoomableChart>
-                <div className="plan-legend">
-                  <span>Pente, montée ou descente :</span>
-                  {gradeRange.min > 0 && (
-                    <>
-                      <span className="plan-legend__swatch" style={{ backgroundColor: SLOW_COLOR }} />
-                      <span>sous {Math.round(gradeRange.min * 100)} %,</span>
-                    </>
-                  )}
-                  <span>{Math.round(gradeRange.min * 100)} %</span>
-                  <span className="plan-legend__bar" style={{ background: gradientCss() }} />
-                  <span>{Math.round(gradeRange.max * 100)} % et plus</span>
-                </div>
-                <div className="plan-legend">Pour zoomer : écartez deux doigts sur la courbe, ou tirez une zone à la souris.</div>
+            </PlanBlock>
+          ) : (
+            <PlanBlock id="planning.profil" label="Dénivelé" open={open.profil} onToggle={() => toggle('profil')}>
+              <div className={durationSettings ? 'plan-stats plan-stats--four' : 'plan-stats'}>
+                {/* Au-delà de 100 km, une décimale : le chiffre tient dans sa case sur téléphone. */}
+                <div className="plan-stat"><span>Distance</span><strong className="num">{formatDistance(totals.distanceM, distanceUnit, toDisplayDistance(totals.distanceM, distanceUnit) >= 100 ? 1 : 2)}</strong></div>
+                <div className="plan-stat"><span>D+</span><strong className="num">{formatMeters(totals.gainM)}</strong></div>
+                <div className="plan-stat"><span>D−</span><strong className="num">{formatMeters(totals.lossM)}</strong></div>
+                {durationSettings && (
+                  <div className="plan-stat">
+                    <span>Temps</span>
+                    <strong className="num">{durationS !== null ? `≈ ${formatDuration(durationS * 1000)}` : '—'}</strong>
+                  </div>
+                )}
               </div>
-            ) : (
-              route.waypoints.length >= 2 && totals.pendingLegs === 0 && (
-                <p className="plan-note">Pas d'altitude sur ce tracé (lignes droites seulement) : pas de courbe de dénivelé.</p>
-              )
-            )}
-            {durationSettings && pace && (
-              <p className="plan-note">
-                Temps estimé au niveau {PACE_LEVEL_LABEL[pace.level].toLowerCase()}, {parseFloat((pace.flatSpeedMs * 3.6).toFixed(1))} km/h sur le plat
-                {durationSettings.family === 'course' ? ', chaque 100 m de D+ comptant 1 km' : ''} : à régler dans <Link to="/parametres">Réglages</Link>.
-              </p>
-            )}
-          </PlanBlock>
+
+              {hasElevation && gradeRange ? (
+                <div className="plan-profile" onMouseLeave={() => setHoveredIndex(null)}>
+                  <ZoomableChart zoom={zoom} style={{ width: '100%', height: '170px' }}>
+                    <ResponsiveContainer>
+                      <AreaChart data={chartRows} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                        <ChartZoomProbe />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                        <XAxis dataKey="dist" type="number" allowDataOverflow
+                          domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
+                          ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
+                          tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`} tick={{ fill: '#555', fontSize: 11 }} />
+                        <YAxis domain={['auto', 'auto']} width={44} tick={{ fill: '#e64a19', fontSize: 11 }} tickFormatter={(v) => `${v}`} />
+                        <Tooltip
+                          contentStyle={{ fontSize: '12px' }}
+                          labelFormatter={(l) => `${parseFloat(Number(l).toFixed(2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`}
+                          formatter={(value, _name, item) => {
+                            const row: ChartRow | undefined = item.payload;
+                            return [row?.grade != null ? `${value} m, pente ${Math.round(row.grade * 100)} %` : `${value} m`, 'Altitude'];
+                          }} />
+                        {gradeGradientDefs(gradientId, gradeStops)}
+                        <Area type="monotone" dataKey="altitude" name="Altitude" stroke={`url(#${gradientId})`} strokeWidth={2}
+                          fill={`url(#${gradientId})`} fillOpacity={0.35} dot={false} activeDot={{ r: 4 }} connectNulls={false}
+                          isAnimationActive={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </ZoomableChart>
+                  <div className="plan-legend">
+                    <span>Pente, montée ou descente :</span>
+                    {gradeRange.min > 0 && (
+                      <>
+                        <span className="plan-legend__swatch" style={{ backgroundColor: SLOW_COLOR }} />
+                        <span>sous {Math.round(gradeRange.min * 100)} %,</span>
+                      </>
+                    )}
+                    <span>{Math.round(gradeRange.min * 100)} %</span>
+                    <span className="plan-legend__bar" style={{ background: gradientCss() }} />
+                    <span>{Math.round(gradeRange.max * 100)} % et plus</span>
+                  </div>
+                  <div className="plan-legend">Pour zoomer : écartez deux doigts sur la courbe, ou tirez une zone à la souris.</div>
+                </div>
+              ) : (
+                route.waypoints.length >= 2 && totals.pendingLegs === 0 && (
+                  <p className="plan-note">Pas d'altitude sur ce tracé (lignes droites seulement) : pas de courbe de dénivelé.</p>
+                )
+              )}
+              {durationSettings && pace && (
+                <p className="plan-note">
+                  Temps estimé au niveau {PACE_LEVEL_LABEL[pace.level].toLowerCase()}, {parseFloat((pace.flatSpeedMs * 3.6).toFixed(1))} km/h sur le plat
+                  {durationSettings.family === 'course' ? ', chaque 100 m de D+ comptant 1 km' : ''} : à régler dans <Link to="/parametres">Réglages</Link>.
+                </p>
+              )}
+            </PlanBlock>
+          )}
 
           <PlanBlock id="planning.trace" label="Tracé" open={open.trace} onToggle={() => toggle('trace')}
             aside={<HelpButton open={helpOpen} onToggle={() => setHelpOpen((o) => !o)} label="Comment planifier ?" size="s" />}>
-            {helpOpen && (
+            {helpOpen && sailing && (
+              <ul className="plan-help">
+                <li>Touchez la carte pour poser les balises : 1, puis 2, puis 3… Le départ est en vert, l'arrivée en rouge.</li>
+                <li>Les balises sont reliées en ligne droite : sur l'eau, pas de chemin à suivre.</li>
+                <li>Touchez le parcours pour insérer une balise entre deux autres ; faites glisser une balise pour la déplacer.</li>
+                <li>Touchez une balise pour la retirer ; touchez la 1 pour boucler, retour au départ.</li>
+                <li>« Précédent », sur la carte, défait la dernière modification. La liste des balises permet aussi de changer leur ordre.</li>
+                <li>
+                  En navigation (« Partir »), chaque balise, départ compris, se valide en passant près d'elle, avec des bips de plus en plus
+                  rapides à l'approche ; « Passer » saute une balise. Distances, rythme et vibration se règlent dans Réglages.
+                </li>
+                <li>« Charger un GPX » reprend telle quelle une trace téléchargée ailleurs ; touchez-la pour y poser des balises.</li>
+              </ul>
+            )}
+            {helpOpen && !sailing && (
               <ul className="plan-help">
                 <li>Touchez la carte pour poser un point : A, puis B, puis C… Le départ est en vert, l'arrivée en rouge.</li>
                 <li>Touchez le tracé pour insérer un point entre deux autres.</li>
@@ -763,23 +866,25 @@ function PlanningPage() {
                 <li>« Charger un GPX » reprend telle quelle une trace téléchargée ailleurs. Touchez-la pour y poser un point ; un point déplacé refait ses tronçons dans le mode choisi.</li>
               </ul>
             )}
-            <div className="ui-tabs plan-modes" role="group" aria-label="Type de voie"
-              style={{ '--tab-accent': color } as React.CSSProperties}>
-              {ROUTE_MODES.map((m) => (
-                <button key={m} type="button" className="ui-tab" aria-pressed={mode === m} onClick={() => chooseMode(m)}
-                  title={ROUTE_MODE_HINT[m]}>
-                  {ROUTE_MODE_LABEL[m]}
-                </button>
-              ))}
-            </div>
+            {!sailing && (
+              <div className="ui-tabs plan-modes" role="group" aria-label="Type de voie"
+                style={{ '--tab-accent': color } as React.CSSProperties}>
+                {ROUTE_MODES.map((m) => (
+                  <button key={m} type="button" className="ui-tab" aria-pressed={mode === m} onClick={() => chooseMode(m)}
+                    title={ROUTE_MODE_HINT[m]}>
+                    {ROUTE_MODE_LABEL[m]}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="plan-actions">
               <Button size="s" onClick={planner.undo} disabled={!planner.canUndo}>
                 <IconUndo size={16} />
                 Précédent
               </Button>
               <Button size="s" onClick={planner.reverse} disabled={route.waypoints.length < 2}>Inverser</Button>
-              <Button size="s" onClick={() => planner.loop(mode)} disabled={route.waypoints.length < 2 || looped}>Boucler</Button>
-              {mode !== 'straight' && (
+              <Button size="s" onClick={() => planner.loop(editMode)} disabled={route.waypoints.length < 2 || looped}>Boucler</Button>
+              {editMode !== 'straight' && (
                 <Button size="s" onClick={() => planner.loop('straight')} disabled={route.waypoints.length < 2 || looped}>
                   Boucler en ligne droite
                 </Button>
@@ -805,7 +910,7 @@ function PlanningPage() {
 
           </PlanBlock>
 
-          <PlanBlock id="planning.points" label={`Points (${route.waypoints.length})`} open={open.points} onToggle={() => toggle('points')}>
+          <PlanBlock id="planning.points" label={`${sailing ? 'Balises' : 'Points'} (${route.waypoints.length})`} open={open.points} onToggle={() => toggle('points')}>
             {route.waypoints.length === 0 ? (
               <p className="plan-note">Aucun point : touchez la carte pour poser le départ.</p>
             ) : (
@@ -818,7 +923,7 @@ function PlanningPage() {
                       <button type="button" className="plan-point__main" onClick={() => selectPoint(i)}>
                         <span className="plan-point__dot" style={{ background: pointFill(i) }}>{pointLabel(i)}</span>
                         <span className="plan-point__text">
-                          <strong>{i === 0 ? 'Départ' : i === last ? (looped ? 'Arrivée, retour au départ' : 'Arrivée') : `Point ${waypointLabel(i)}`}</strong>
+                          <strong>{i === 0 ? 'Départ' : i === last ? (looped ? 'Arrivée, retour au départ' : 'Arrivée') : pointName(i)}</strong>
                           <span className="num">
                             {i === 0
                               ? formatDistance(0, distanceUnit)
@@ -827,18 +932,18 @@ function PlanningPage() {
                         </span>
                       </button>
                       <span className="plan-point__actions">
-                        {leg && (
-                          <LegModeSelect leg={leg} label={`Façon de venir au point ${waypointLabel(i)}`} onChange={(m) => planner.setMode(i - 1, m)} />
+                        {leg && !sailing && (
+                          <LegModeSelect leg={leg} label={`Façon de venir au point ${label(i)}`} onChange={(m) => planner.setMode(i - 1, m)} />
                         )}
-                        <Button size="s" variant="ghost" className="plan-point__move" aria-label={`Monter le point ${waypointLabel(i)}`}
-                          disabled={i === 0} onClick={() => { planner.reorder(i, i - 1, mode); setSelected(null); }}>
+                        <Button size="s" variant="ghost" className="plan-point__move" aria-label={`Monter : ${pointName(i)}`}
+                          disabled={i === 0} onClick={() => { planner.reorder(i, i - 1, editMode); setSelected(null); }}>
                           <IconChevronRight size={16} style={{ transform: 'rotate(-90deg)' }} />
                         </Button>
-                        <Button size="s" variant="ghost" className="plan-point__move" aria-label={`Descendre le point ${waypointLabel(i)}`}
-                          disabled={i === last} onClick={() => { planner.reorder(i, i + 1, mode); setSelected(null); }}>
+                        <Button size="s" variant="ghost" className="plan-point__move" aria-label={`Descendre : ${pointName(i)}`}
+                          disabled={i === last} onClick={() => { planner.reorder(i, i + 1, editMode); setSelected(null); }}>
                           <IconChevronRight size={16} style={{ transform: 'rotate(90deg)' }} />
                         </Button>
-                        <Button size="s" variant="ghost" onClick={() => { planner.remove(i, mode); setSelected(null); }}>Retirer</Button>
+                        <Button size="s" variant="ghost" onClick={() => { planner.remove(i, editMode); setSelected(null); }}>Retirer</Button>
                       </span>
                       {leg?.status === 'error' && <p className="plan-point__error">{leg.error}</p>}
                       {leg?.status === 'pending' && <p className="plan-point__pending">Calcul du tronçon…</p>}
@@ -857,7 +962,7 @@ function PlanningPage() {
               </label>
               <label className="plan-form__field">
                 <span className="ui-eyebrow">Activité</span>
-                <select className="ui-field" value={activity?.id ?? ''} onChange={(e) => setActivityId(e.target.value)}>
+                <select className="ui-field" value={activity?.id ?? ''} onChange={(e) => chooseActivity(e.target.value)}>
                   {activities.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </label>

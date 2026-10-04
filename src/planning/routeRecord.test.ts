@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_ROUTE, addWaypoint, legKey, routeFromTrack, withLegResult, type PlannedRoute } from './route';
 import { buildRouteGpx, waypointLabel } from './routeGpx';
+import { MARK_GUIDE_DEFAULTS } from '../recording/markGuide';
 import {
-  ROUTE_VERSION, isWritableRouteRecord, parseRouteRecord, recordToRoute, routeFileBase, routeToRecord, serializeRouteRecord,
+  ROUTE_VERSION, isWritableRouteRecord, parseRouteRecord, recordToRoute, routeFileBase, routeMarkGuide, routeToRecord, serializeRouteRecord,
 } from './routeRecord';
 
 const A = { lat: 43.6, lon: 3.8 };
@@ -38,6 +39,20 @@ describe('fiche d\'itinéraire', () => {
     expect(record.couleur).toBe('rouge');
     expect(isWritableRouteRecord(record)).toBe(false);
     expect(routeToRecord(sample(), META, record).couleur).toBe('rouge');
+  });
+
+  it('range les bips propres au parcours, les garde au renommage, les retire sur demande', () => {
+    const guide = { curve: [{ distanceM: 30, intervalMs: 200 }, { distanceM: 120, intervalMs: 1500 }], vibrate: false };
+    const record = parseRouteRecord(serializeRouteRecord(routeToRecord(sample(), { ...META, markGuide: guide })))!;
+    expect(routeMarkGuide(record)).toEqual(guide);
+    // Sans `markGuide` (renommage), ceux de la fiche relue restent.
+    expect(routeMarkGuide(routeToRecord(sample(), META, record))).toEqual(guide);
+    const cleared = routeToRecord(sample(), { ...META, markGuide: null }, record);
+    expect(cleared).not.toHaveProperty('markGuide');
+    expect(routeMarkGuide(cleared)).toBeNull();
+    // Illisibles : ceux de l'activité.
+    expect(routeMarkGuide({ ...record, markGuide: { curve: 'non' } })).toBeNull();
+    expect(routeMarkGuide({ ...record, markGuide: MARK_GUIDE_DEFAULTS })).toEqual(MARK_GUIDE_DEFAULTS);
   });
 
   it('refuse ce qui n\'est pas une fiche d\'itinéraire', () => {

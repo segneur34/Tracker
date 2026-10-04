@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
+import { activityFamily, findActivity } from '../core/activities';
 import { ROUTES_DIR, routePath } from '../library/folderLayout';
 import type { PlannedRoute } from '../planning/route';
-import { buildRouteGpx } from '../planning/routeGpx';
+import type { MarkGuideSettings } from '../recording/markGuide';
+import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
 import {
   isWritableRouteRecord, parseRouteRecord, recordToRoute, routeFileBase, routeToRecord, serializeRouteRecord,
   type RouteRecord,
 } from '../planning/routeRecord';
 import { currentMemoryFolder, useSessionLibrary } from './useSessionLibrary';
+import { readStoredActivities } from './useSportSettings';
 
 /**
  * Itinéraires rangés dans `itineraires/` du dossier mémoire, à côté des
@@ -14,6 +17,12 @@ import { currentMemoryFolder, useSessionLibrary } from './useSessionLibrary';
  * nom de fichier est tiré du nom de l'itinéraire à son premier rangement et
  * ne change plus ; renommer ne touche qu'au contenu.
  */
+
+/** Noms des points dans le GPX : numéros des balises en voile, lettres ailleurs. */
+const gpxLabel = (activityId: string | null): ((index: number) => string) => {
+  const activity = findActivity(readStoredActivities(), activityId);
+  return activity && activityFamily(activity) === 'voile' ? markLabel : waypointLabel;
+};
 
 export interface SavedRoute {
   /** Nom des fichiers, sans extension : la clé de stockage. */
@@ -78,7 +87,11 @@ export const useRouteLibrary = () => {
    * un nouveau nom. Rend l'itinéraire rangé.
    */
   const save = useCallback(
-    async (route: PlannedRoute, meta: { name: string; activityId: string | null }, existing?: SavedRoute): Promise<SavedRoute> => {
+    async (
+      route: PlannedRoute,
+      meta: { name: string; activityId: string | null; markGuide?: MarkGuideSettings | null },
+      existing?: SavedRoute
+    ): Promise<SavedRoute> => {
       if (existing?.readOnly) throw new Error('Cet itinéraire vient d\'une version plus récente de l\'application : rangez-le sous un autre nom.');
       const folder = await requireFolder();
       const base = existing?.base ?? routeFileBase(meta.name, (await folder.list(ROUTES_DIR)).map((e) => e.name));
@@ -88,7 +101,7 @@ export const useRouteLibrary = () => {
         { ...meta, createdAt: existing?.record.createdAt ?? now, updatedAt: now },
         existing?.record
       );
-      await folder.writeText(routePath(`${base}.gpx`), buildRouteGpx(route, meta.name));
+      await folder.writeText(routePath(`${base}.gpx`), buildRouteGpx(route, meta.name, gpxLabel(meta.activityId)));
       await folder.writeText(routePath(`${base}.json`), serializeRouteRecord(record));
       reload();
       return { base, record, readOnly: false };

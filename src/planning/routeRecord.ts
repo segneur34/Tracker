@@ -1,3 +1,4 @@
+import { sanitizeMarkGuide, type MarkGuideSettings } from '../recording/markGuide';
 import { DEFAULT_ROUTE_MODE, newLeg, readRouteMode, type PlannedRoute, type RouteLeg, type RouteMode, type RoutePoint, type Waypoint } from './route';
 
 /**
@@ -42,6 +43,11 @@ export interface RouteRecord {
   updatedAt: string;
   waypoints: Waypoint[];
   legs: StoredLeg[];
+  /**
+   * Bips d'approche propres à ce parcours (voile), tels que rangés ; absents :
+   * ceux de l'activité. À relire par `routeMarkGuide`.
+   */
+  markGuide?: unknown;
   [unknown: string]: unknown;
 }
 
@@ -65,27 +71,36 @@ const readWaypoint = (raw: unknown): Waypoint | null =>
 
 /**
  * Fiche d'un itinéraire. `previous` : la fiche relue, dont les champs
- * inconnus sont gardés.
+ * inconnus sont gardés. `meta.markGuide` : bips propres au parcours ;
+ * `null` les retire, absent garde ceux de `previous`.
  */
 export const routeToRecord = (
   route: PlannedRoute,
-  meta: { name: string; activityId: string | null; createdAt: string; updatedAt: string },
+  meta: { name: string; activityId: string | null; createdAt: string; updatedAt: string; markGuide?: MarkGuideSettings | null },
   previous?: RouteRecord
-): RouteRecord => ({
-  ...previous,
-  format: ROUTE_FORMAT,
-  version: ROUTE_VERSION,
-  name: meta.name,
-  activityId: meta.activityId,
-  createdAt: meta.createdAt,
-  updatedAt: meta.updatedAt,
-  waypoints: route.waypoints.map((w) => ({ lat: round(w.lat, 7), lon: round(w.lon, 7) })),
-  legs: route.legs.map((leg) => ({
-    mode: leg.mode,
-    ...(leg.status !== 'ready' ? { pending: true } : {}),
-    points: leg.points.map(storePoint),
-  })),
-});
+): RouteRecord => {
+  const record: RouteRecord = {
+    ...previous,
+    format: ROUTE_FORMAT,
+    version: ROUTE_VERSION,
+    name: meta.name,
+    activityId: meta.activityId,
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
+    waypoints: route.waypoints.map((w) => ({ lat: round(w.lat, 7), lon: round(w.lon, 7) })),
+    legs: route.legs.map((leg) => ({
+      mode: leg.mode,
+      ...(leg.status !== 'ready' ? { pending: true } : {}),
+      points: leg.points.map(storePoint),
+    })),
+  };
+  if (meta.markGuide === null) delete record.markGuide;
+  else if (meta.markGuide !== undefined) record.markGuide = meta.markGuide;
+  return record;
+};
+
+/** Bips d'approche propres au parcours, s'ils sont lisibles ; `null` : ceux de l'activité. */
+export const routeMarkGuide = (record: RouteRecord): MarkGuideSettings | null => sanitizeMarkGuide(record.markGuide);
 
 /**
  * Itinéraire d'une fiche. Un tronçon illisible, ou des tronçons qui ne

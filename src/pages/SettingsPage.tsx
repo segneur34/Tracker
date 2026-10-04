@@ -23,6 +23,7 @@ import {
   CUSTOM_FLAT_SPEED_BOUNDS_MS, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PACE_LEVELS, PACE_LEVEL_LABEL, climbPowerWkgForFlatSpeed,
   isPaceLevel, type PaceLevel, type PlanningFamily,
 } from '../planning/duration';
+import BeepCurveEditor from '../components/BeepCurveEditor';
 import { CARD_STYLE } from '../components/styles';
 import { IconChevronRight } from '../components/icons';
 import MemoryStatus from '../components/MemoryStatus';
@@ -168,7 +169,7 @@ function SettingsPage() {
                 const isOpen = openActivity[id] === true;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
-                  s.isLiveFieldsOverridden;
+                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
                 const thresholdShown = parseFloat(
@@ -313,6 +314,13 @@ function SettingsPage() {
                           </div>
                         </div>
                         <LiveFieldsSetting family={family} view={s} onChange={(fields) => setFor(id, 'liveFields', fields)} />
+                        {sailing && (
+                          <div className="settings-row" title="En navigation sur un parcours planifié : bips de plus en plus rapides à l'approche de chaque balise, bip long à la validation">
+                            <span className="settings-row__label">Bips d'approche des balises</span>
+                            <BeepCurveEditor value={s.markGuide} overridden={s.isMarkGuideOverridden}
+                              onChange={(guide) => setFor(id, 'markGuide', guide)} />
+                          </div>
+                        )}
                         <div className="settings-activity__actions">
                           {overridden && (
                             <button type="button" onClick={() => resetActivity(id)} className="ui-btn ui-btn--secondary ui-btn--s">Défaut</button>

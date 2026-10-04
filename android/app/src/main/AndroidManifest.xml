@@ -38,4 +38,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Vibrations du guidage vers les balises (BeeperPlugin) : permission normale, sans demande. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

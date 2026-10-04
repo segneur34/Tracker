@@ -376,3 +376,17 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Graphe d'énergie** : zoomable, un doigt suit la carte ; les chiffres au-dessus se replient, et l'état est mémorisé, pour voir carte et graphe ensemble sur téléphone.
     - **Écartés faute de cause constatée** : pente sur fenêtre complète, plafond de pente à vélo, limite d'accélération.
     - En direct, la puissance sur 15 s compte toute position comme en mouvement : le départ peut encore sauter, le temps que le GPS trouve son altitude.
+77. Parcours et balises en voile, bips d'approche (04/10, essayé à pied et validé, APK 0.2.47).
+    - **Demande de l'utilisateur** : poser des points sur la carte, puis, en navigation, entendre des bips de plus en plus rapides en approchant d'un point (200 m, 150, 130, 100…), et un bip long à 50 m qui le valide ; on passe alors au suivant. Tout est réglable, par une courbe dont on tire les points ; c'est valable pour tous les sports de voile.
+    - **Choix de l'utilisateur** :
+      - toutes les balises se valident, départ compris : un bip long dès le départ prouve que le son marche avant d'aller sur l'eau ;
+      - bips et vibration, la vibration réglable ;
+      - une courbe de base par activité dans Réglages, et une courbe propre à un parcours, rangée dans sa fiche, qui prime en navigation.
+    - **Planification en voile** : sur l'eau, aucun chemin à suivre. Les tronçons passent en ligne droite, les balises sont numérotées, et le bloc « Parcours » remplace le dénivelé. Un tracé calculé par les chemins est redressé quand on passe à une activité de voile, ou à l'ouverture.
+    - **Avancement** : `followProgress` s'accroche au tracé à 60 m au plus, alors qu'on tire des bords. En voile, il se compte donc par balises.
+    - **Validation** : elle se juge sur le segment parcouru depuis la position précédente, pas sur la position seule. Une trace peu dense qui passe la balise entre deux points la valide quand même (règle 10), et le résultat ne dépend pas de la cadence (testé à 1 Hz et 5 Hz).
+    - **Pièges** :
+      - écran éteint, les minuteries de la WebView sont bridées (point 40). Le rythme des bips est donc tenu par un greffon Android, sur un fil à lui ; la couche web ne règle que l'intervalle, à chaque position reçue. Le service GPS garde le processeur éveillé ;
+      - en arrière-plan, Android ne fait vibrer une application que si l'usage est déclaré : la vibration est d'usage alarme ;
+      - le son passe par le flux des alarmes : il sonne téléphone en silencieux, au volume des alarmes. C'est un sinus de 2 kHz, synthétisé une fois puis rejoué ;
+      - dans le GPX exporté d'une boucle, l'arrivée s'appelle « 4 », alors que la carte montre « 1 ».

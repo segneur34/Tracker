@@ -1,6 +1,6 @@
 import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
 import {
-  J_PER_KCAL, formatClock, formatDistance, formatSpeed, formatTimeOfDay, isInverseUnit, type DistanceUnit, type SpeedUnit,
+  J_PER_KCAL, formatClock, formatDistance, formatShortDistance, formatSpeed, formatTimeOfDay, isInverseUnit, type DistanceUnit, type SpeedUnit,
 } from '../core/units';
 import { LIVE_STATS_DEFAULTS, type LiveStats } from './liveStats';
 
@@ -14,7 +14,7 @@ import { LIVE_STATS_DEFAULTS, type LiveStats } from './liveStats';
 export type LiveFieldKey =
   | 'speed' | 'average' | 'max' | 'recentDistanceSpeed' | 'lastDistance' | 'distance' | 'duration' | 'clock'
   | 'remaining' | 'remainingTime'
-  | 'recentTopShort' | 'recentTopLong' | 'heading' | 'legAverage'
+  | 'recentTopShort' | 'recentTopLong' | 'heading' | 'legAverage' | 'markDistance' | 'markBearing'
   | 'grade' | 'gain' | 'recentDistanceGain' | 'loss' | 'climbRate' | 'power' | 'effort';
 
 const LAND: SportFamily[] = ['course', 'velo'];
@@ -30,6 +30,8 @@ const LIVE_FIELD_FAMILIES: Record<LiveFieldKey, readonly SportFamily[]> = {
   recentTopLong: ['voile'],
   legAverage: ['voile'],
   heading: ['voile'],
+  markDistance: ['voile'],
+  markBearing: ['voile'],
   grade: LAND,
   gain: LAND,
   recentDistanceGain: LAND,
@@ -104,6 +106,8 @@ export const liveFieldLabel = (key: LiveFieldKey, { speedUnit, distanceUnit }: L
     case 'recentTopLong': return `Top ${TOP_LONG_S} s (${recentWindowLabel})`;
     case 'heading': return 'Cap';
     case 'legAverage': return 'Moyenne du bord';
+    case 'markDistance': return 'Balise';
+    case 'markBearing': return 'Cap balise';
     case 'grade': return 'Pente';
     case 'gain': return 'D+';
     case 'recentDistanceGain': return `D+ ${LIVE_STATS_DEFAULTS.recentDistanceM} derniers m`;
@@ -124,6 +128,9 @@ export interface LiveFieldContext extends LiveFieldUnits {
   remainingM: number | null;
   /** Cap de la marche, en degrés ; `null` s'il n'est pas connu. */
   headingDeg: number | null;
+  /** Distance et cap vers la balise visée d'un parcours de voile ; `null` sans guidage. */
+  markDistanceM: number | null;
+  markBearingDeg: number | null;
 }
 
 const NONE = '—';
@@ -158,6 +165,8 @@ export const liveFieldValue = (key: LiveFieldKey, ctx: LiveFieldContext): string
     case 'recentTopLong': return formatSpeed(stats.recentTopsMs[1] ?? null, speedUnit);
     case 'heading': return ctx.headingDeg === null ? NONE : `${Math.round(ctx.headingDeg) % 360}°`;
     case 'legAverage': return stats.legs.current ? formatSpeed(stats.legs.current.averageSpeedMs, speedUnit) : NONE;
+    case 'markDistance': return ctx.markDistanceM === null ? NONE : formatShortDistance(ctx.markDistanceM, distanceUnit);
+    case 'markBearing': return ctx.markBearingDeg === null ? NONE : `${Math.round(ctx.markBearingDeg) % 360}°`;
     case 'grade': return formatGrade(stats.currentGrade);
     case 'gain': return formatMeters(stats.elevationGainM);
     case 'recentDistanceGain': return formatMeters(stats.recentDistanceGainM);

@@ -29,7 +29,20 @@ describe('trace suivie', () => {
     route = withLegResult(route, legKey(route, 0)!, [A, mid, B]);
     const trace = followedTraceFromRoute(routeToRecord(route, META));
     // L'activité de l'itinéraire suit la trace : elle sera proposée pour l'enregistrement.
-    expect(trace).toEqual({ name: 'Tour du Pic', source: 'route', activityId: META.activityId, points: [A, mid, B, C] });
+    expect(trace).toEqual({ name: 'Tour du Pic', source: 'route', activityId: META.activityId, points: [A, mid, B, C], marks: [A, B, C] });
+  });
+
+  it('garde les bips propres à l\'itinéraire, et aucun quand il n\'en a pas', () => {
+    const route = [A, B, C].reduce((r, p) => addWaypoint(r, p, 'straight'), EMPTY_ROUTE);
+    const guide = { curve: [{ distanceM: 30, intervalMs: 200 }, { distanceM: 120, intervalMs: 1500 }], vibrate: true };
+    expect(followedTraceFromRoute(routeToRecord(route, { ...META, markGuide: guide }))?.markGuide).toEqual(guide);
+    expect(followedTraceFromRoute(routeToRecord(route, META))).not.toHaveProperty('markGuide');
+  });
+
+  it('garde les balises exploitables, et aucune pour une session', () => {
+    const trace = followedTraceFromPoints([A, B], 'Parcours', 'route', 'wingfoil', [A, { lat: NaN, lon: 3.8 }, C]);
+    expect(trace?.marks).toEqual([A, C]);
+    expect(followedTraceFromPoints([A, B], 'Sortie', 'session')).not.toHaveProperty('marks');
   });
 });
 

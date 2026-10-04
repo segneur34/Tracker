@@ -53,7 +53,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 9. Un module ne reprend que les activités de sa famille : `useSportSettings(family)`.
 10. Cadence variable : une application économique peut compresser un virage entier dans un seul intervalle. Ne jamais supposer plusieurs points dans une fenêtre de quelques secondes.
 11. react-leaflet : le style d'un `Polyline` passe toujours par `pathOptions`, sinon il n'est pas réappliqué.
-12. Stockage, fichiers, position : uniquement via `src/platform/` (`storage.ts`, `files.ts`, `memoryFolder.ts`, `location.ts` ; jamais `localStorage`, `Filesystem`, `showDirectoryPicker` ni `navigator.geolocation` en direct). Chaque module y choisit sa version navigateur ou téléphone par `isNativeApp()`.
+12. Stockage, fichiers, position, son et vibreur : uniquement via `src/platform/` (`storage.ts`, `files.ts`, `memoryFolder.ts`, `location.ts`, `beeper.ts` ; jamais `localStorage`, `Filesystem`, `showDirectoryPicker`, `navigator.geolocation`, Web Audio ni `navigator.vibrate` en direct). Chaque module y choisit sa version navigateur ou téléphone par `isNativeApp()`.
 
 ## Où ajouter quoi
 
@@ -87,6 +87,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
   - on choisit le type de voie (Chemin, Piste, Route, Grande route), pas le moyen de transport, par un profil BRouter maison ; les règles d'accès suivent l'activité (piéton ou vélo) ;
   - départ en vert, arrivée en rouge ;
   - temps estimé selon un niveau par activité (débutant à expert, ou vitesse personnalisée) : km-effort en course, modèle physique à vélo, rien en voile.
+- Balises en voile : un itinéraire de voile est un parcours de balises numérotées, en ligne droite. En navigation, chaque balise, départ compris, se valide en passant près d'elle, dans l'ordre (« Passer » la saute). Bips de plus en plus rapides à l'approche, et vibration réglable, joués par Android écran éteint. La courbe des bips se règle par activité dans Réglages ; un parcours peut avoir la sienne, dans sa fiche, qui prime.
 - Cartes hors ligne : chaque tuile vue en ligne est gardée sur l'appareil, sans bouton ni limite de durée (plafond et « Vider » dans Réglages) ; jamais de téléchargement de zone à l'avance, interdit par OSM.
 - Mémoire : un dossier portable `Tracker/` (GPX + fiche JSON par session dans `sessions/`, `reglages.json`), qu'on copie pour sauvegarder ou changer d'appareil ; pas d'index dans le dossier ; réglages : le plus récent l'emporte. Sur Android, dossier désigné par le sélecteur d'Android (SAF), jamais « accès à tous les fichiers ». Suite de la cible mobile dans l'ordre fixé au §12 de l'état.
 - DA de la maquette pour l'instant (Figtree, fond gris chaud, cartes blanches, bleu voile, rouille course, vert sombre vélo, vert Enregistrer), appelée à changer : tout passe par les variables.

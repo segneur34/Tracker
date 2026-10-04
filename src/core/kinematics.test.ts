@@ -3,6 +3,7 @@ import {
   computeKinematics,
   detectDeviceSpeedUnit,
   detectTrackDeviceSpeedUnit,
+  distanceToSegmentM,
   haversineDistance,
   initialBearing,
 } from './kinematics';
@@ -66,6 +67,26 @@ describe('initialBearing', () => {
     const bearing = initialBearing(43.6, 3.8, 43.6, 3.7);
     expect(bearing).toBeGreaterThanOrEqual(0);
     expect(bearing).toBeLessThan(360);
+  });
+});
+
+describe('distanceToSegmentM', () => {
+  const M_PER_DEG_LAT = 111195;
+  const M_PER_DEG_LON = M_PER_DEG_LAT * Math.cos((43.6 * Math.PI) / 180);
+  /** Position à `east` m à l'est et `north` m au nord de (43,6 ; 3,8). */
+  const at = (east: number, north: number) => ({ lat: 43.6 + north / M_PER_DEG_LAT, lon: 3.8 + east / M_PER_DEG_LON });
+
+  it('mesure l\'écart perpendiculaire quand le pied tombe dans le segment', () => {
+    expect(distanceToSegmentM(at(30, 0), at(0, -100), at(0, 100))).toBeCloseTo(30, 0);
+  });
+
+  it('mesure la distance au bout le plus proche au-delà du segment', () => {
+    expect(distanceToSegmentM(at(0, 140), at(0, -100), at(0, 100))).toBeCloseTo(40, 0);
+    expect(distanceToSegmentM(at(30, -140), at(0, -100), at(0, 100))).toBeCloseTo(50, 0);
+  });
+
+  it('traite un segment réduit à un point comme ce point', () => {
+    expect(distanceToSegmentM(at(30, 40), at(0, 0), at(0, 0))).toBeCloseTo(50, 0);
   });
 });
 

@@ -27,7 +27,9 @@ import { saveRecordedSession } from './useSessionLibrary';
  * pages le lisent par `useRecorder` et le pilotent par `startRecording`,
  * `stopRecording`, `pauseRecording`/`resumeRecording` (pause manuelle),
  * `changeRecordingActivity`, `analyzePendingSession`/`discardPendingSession`
- * et `recoverInterruptedRecording`.
+ * et `recoverInterruptedRecording`. Le guidage vers les balises
+ * (`useMarkGuide`), hors React lui aussi, s'abonne aux positions reçues
+ * (`subscribeToFixes`) et à l'état (`subscribeToRecorder`).
  *
  * Chaîne : chaque position reçue est arrondie (`roundFix`), gardée en mémoire
  * et ajoutée au journal, écrit par paquets à l'arrivée des positions
@@ -119,6 +121,27 @@ const subscribe = (listener: () => void) => {
   };
 };
 
+/** État de l'enregistreur, hors React. */
+export const getRecorderState = (): RecorderState => state;
+
+/** Changements d'état de l'enregistreur, hors React ; rend le désabonnement. */
+export const subscribeToRecorder = (listener: () => void): (() => void) => subscribe(listener);
+
+/** Abonnés aux positions reçues. */
+const fixListeners = new Set<(fix: LocationFix) => void>();
+
+/**
+ * Chaque position nouvelle reçue pendant l'enregistrement, pause
+ * automatique comprise (la source tourne encore) : la seule boucle sûre
+ * écran éteint. Rend le désabonnement.
+ */
+export const subscribeToFixes = (listener: (fix: LocationFix) => void): (() => void) => {
+  fixListeners.add(listener);
+  return () => {
+    fixListeners.delete(listener);
+  };
+};
+
 const errorMessage = (err: unknown, fallback: string): string =>
   err instanceof Error && err.message ? err.message : fallback;
 
@@ -170,6 +193,13 @@ const receiveFix = (received: LocationFix): void => {
   if (!isNewerFix(lastReceivedMs, received)) return;
   const fix = roundFix(received);
   lastReceivedMs = fix.timeMs;
+  for (const listener of fixListeners) {
+    try {
+      listener(fix);
+    } catch {
+      // Un abonné en échec n'arrête pas l'enregistrement.
+    }
+  }
 
   const auto = evaluateAutoPause(state.status === 'paused', belowSinceMs, fix, {
     speedMs: recording.autoPauseSpeedMs,

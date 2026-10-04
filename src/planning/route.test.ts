@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, addWaypoint, closeLoop, insertWaypoint, isChoosableMode, isLooped, isRouteMode, legKey, moveWaypoint,
+  DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, addWaypoint, closeLoop, courseLegs, insertWaypoint, isChoosableMode, isLooped, isRouteMode, legKey, moveWaypoint,
   nextPendingLeg, pendingLegRequests, readRouteMode, removeWaypoint, reorderWaypoint, retryFailedLegs, reverseRoute, routeFromTrack, routePoints,
-  routeProfileRows, routeTotals, routeVehicle, setLegMode, snapToWaypoints, waypointDistances, withLegError, withLegResult,
+  routeProfileRows, routeTotals, routeVehicle, setLegMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
   type PlannedRoute, type RoutePoint, type Waypoint,
 } from './route';
 
@@ -338,5 +338,36 @@ describe('trace importée', () => {
     expect(routeVehicle('velo')).toBe('velo');
     expect(routeVehicle('course')).toBe('pieton');
     expect(routeVehicle('voile')).toBe('pieton');
+  });
+});
+
+describe('parcours de voile', () => {
+  it('redresse les tronçons calculés, garde lignes droites et traces importées', () => {
+    const computedLegs = resolveAll(build([A, B, C]), [10, 20, 30]);
+    const imported = routeFromTrack([A, { lat: 43.605, lon: 3.801 }, B])!;
+    const mixed: PlannedRoute = {
+      waypoints: [A, B, C, D],
+      legs: [imported.legs[0], computedLegs.legs[1], build([C, D], 'straight').legs[0]],
+    };
+    const straight = straightenRoute(mixed);
+    expect(straight.waypoints).toEqual(mixed.waypoints);
+    expect(straight.legs[0]).toBe(mixed.legs[0]);
+    expect(straight.legs[1]).toEqual({ mode: 'straight', status: 'ready', points: [B, C] });
+    expect(straight.legs[2]).toBe(mixed.legs[2]);
+  });
+
+  it('rend le même itinéraire quand il n\'y a rien à redresser', () => {
+    const route = build([A, B, C], 'straight');
+    expect(straightenRoute(route)).toBe(route);
+  });
+
+  it('donne distance et cap de chaque bord, de balise en balise', () => {
+    const east: Waypoint = { lat: 43.61, lon: 3.81 };
+    const legs = courseLegs(build([A, B, east], 'straight'));
+    expect(legs).toHaveLength(2);
+    expect(legs[0].distanceM).toBeCloseTo(STEP_M, -1);
+    expect(legs[0].bearingDeg).toBeCloseTo(0, 3);
+    expect(legs[1].bearingDeg).toBeCloseTo(90, 0);
+    expect(courseLegs(EMPTY_ROUTE)).toEqual([]);
   });
 });

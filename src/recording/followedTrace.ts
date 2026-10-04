@@ -1,6 +1,7 @@
 import { EARTH_RADIUS_M, haversineDistance, toRad } from '../core/kinematics';
 import { cumulativeDistances, routePoints } from '../planning/route';
-import { recordToRoute, type RouteRecord } from '../planning/routeRecord';
+import { recordToRoute, routeMarkGuide, type RouteRecord } from '../planning/routeRecord';
+import type { MarkGuideSettings } from './markGuide';
 
 /**
  * Trace suivie pendant un enregistrement : un itinéraire rangé ou une session
@@ -25,28 +26,45 @@ export interface FollowedTrace {
    */
   activityId: string | null;
   points: LatLon[];
+  /**
+   * Points posés de l'itinéraire, départ compris, dans l'ordre : les balises
+   * du guidage en voile (`markGuide.ts`). Absentes pour une session suivie.
+   */
+  marks?: LatLon[];
+  /** Bips d'approche propres au parcours suivi ; absents : ceux de l'activité. */
+  markGuide?: MarkGuideSettings;
 }
 
-/** Trace faite des positions données ; `null` sous deux positions exploitables. */
+/** Positions exploitables seulement, sans le reste du point. */
+const usable = (points: ReadonlyArray<LatLon>): LatLon[] =>
+  points.filter((p) => isFinite(p.lat) && isFinite(p.lon)).map(({ lat, lon }) => ({ lat, lon }));
+
+/** Trace faite des positions données ; `null` sous deux positions exploitables. Balises gardées s'il en reste. */
 export const followedTraceFromPoints = (
   points: ReadonlyArray<LatLon>,
   name: string,
   source: FollowedSource,
-  activityId: string | null = null
+  activityId: string | null = null,
+  marks?: ReadonlyArray<LatLon>
 ): FollowedTrace | null => {
-  const kept = points
-    .filter((p) => isFinite(p.lat) && isFinite(p.lon))
-    .map(({ lat, lon }) => ({ lat, lon }));
-  return kept.length >= 2 ? { name, source, activityId, points: kept } : null;
+  const kept = usable(points);
+  if (kept.length < 2) return null;
+  const keptMarks = marks ? usable(marks) : [];
+  return keptMarks.length > 0 ? { name, source, activityId, points: kept, marks: keptMarks } : { name, source, activityId, points: kept };
 };
 
 /**
  * Trace d'un itinéraire rangé : ses tronçons à la suite ; un tronçon jamais
  * calculé y figure en ligne droite, comme sur la page Itinéraires. Elle garde
- * l'activité choisie pour l'itinéraire.
+ * l'activité choisie pour l'itinéraire, ses points en balises, et ses bips
+ * d'approche s'il en a de propres.
  */
-export const followedTraceFromRoute = (record: RouteRecord): FollowedTrace | null =>
-  followedTraceFromPoints(routePoints(recordToRoute(record)), record.name, 'route', record.activityId);
+export const followedTraceFromRoute = (record: RouteRecord): FollowedTrace | null => {
+  const route = recordToRoute(record);
+  const trace = followedTraceFromPoints(routePoints(route), record.name, 'route', record.activityId, route.waypoints);
+  const markGuide = routeMarkGuide(record);
+  return trace && markGuide ? { ...trace, markGuide } : trace;
+};
 
 export interface FollowOptions {
   /** Écart au-delà duquel une position n'est pas sur la trace, en mètres. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDistance, formatKnots, knotsToDisplay, toDisplayDistance } from './units';
+import { formatDistance, formatKnots, formatShortDistance, knotsToDisplay, toDisplayDistance } from './units';
 
 describe('distances', () => {
   it('convertit les mètres en kilomètres et en milles nautiques', () => {
@@ -11,6 +11,13 @@ describe('distances', () => {
     expect(formatDistance(29_720, 'km')).toBe('29.72 km');
     expect(formatDistance(3704, 'nm', 1)).toBe('2.0 NM');
     expect(formatDistance(NaN, 'km')).toBe('-');
+  });
+
+  it('donne une distance d\'approche en mètres sous 1 000 m', () => {
+    expect(formatShortDistance(143.4, 'km')).toBe('143 m');
+    expect(formatShortDistance(143.4, 'nm')).toBe('143 m');
+    expect(formatShortDistance(3704, 'nm')).toBe('2.00 NM');
+    expect(formatShortDistance(NaN, 'km')).toBe('-');
   });
 });
 

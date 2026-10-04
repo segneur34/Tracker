@@ -55,7 +55,8 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `liveStats.ts` : statistiques en direct par segment (`computeLiveStats`, `LIVE_STATS_DEFAULTS`), puissance et énergie par le modèle de l'analyse (`LiveEnergySetup`).
 - `liveFields.ts` : chiffres de la carte réduite, choisis par activité (`LiveFieldKey`, `liveFieldsOfFamily`, `DEFAULT_LIVE_FIELDS`, `sanitizeLiveFields`), libellés et valeurs formatés (`liveFieldLabel`, `liveFieldValue`).
 - `liveLegs.ts` : bords de voile en direct, repérés par leur cap moyen (`computeLiveLegs`, `LIVE_LEG_DEFAULTS`).
-- `followedTrace.ts` : trace suivie pendant l'enregistrement, tirée d'un itinéraire rangé ou des points d'une session, avec son activité ; avancement le long de la trace (`followProgress`, `FOLLOW_DEFAULTS`), découpe faite / reste (`splitFollowedTrace`).
+- `followedTrace.ts` : trace suivie pendant l'enregistrement, tirée d'un itinéraire rangé (avec ses points en balises et ses bips propres) ou des points d'une session, avec son activité ; avancement le long de la trace (`followProgress`, `FOLLOW_DEFAULTS`), découpe faite / reste (`splitFollowedTrace`).
+- `markGuide.ts` : balises d'un parcours de voile (§10, point 77) : courbe des bips (`MARK_GUIDE_DEFAULTS`, `sanitizeMarkGuide`, `beepIntervalMs`, `validationRadiusM`, `beepStartM`), avance du guidage à chaque position (`stepMarkGuide`, validation sur le segment parcouru), `skipMark`, `remainingCourseM`, balises à dessiner (`courseMarks`, `markName`).
 - `heading.ts` : cap de la flèche de position (`travelHeading`, `displayHeading`) : marche en mouvement, boussole à l'arrêt.
 
 ## `library/` : mémoire en dossier, logique pure
@@ -74,10 +75,10 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `route.ts` : itinéraire (points, tronçons, modes : types de voie, ligne droite, trace importée gardée telle quelle), anciens modes relus (`readRouteMode`), règles d'accès de l'activité (`routeVehicle`), opérations d'édition pures, itinéraire tiré d'une trace chargée (`routeFromTrack`), totaux, profil d'altitude rééchantillonné.
 - `brouter.ts` : calcul d'un tronçon par le serveur BRouter (`fetchLeg`, seuls appels réseau du calcul), avec envoi du profil maison une fois par lancement et renvoi sur un HTTP 500. `brouterProfile.ts` : texte de ce profil, coûts des types de voie (`WAY_PREFERENCE_COST`, §10 point 74). `geocoding.ts` : recherche de lieux (Photon).
 - `duration.ts` : temps estimé d'un itinéraire (§10, point 73) : niveaux (`LEVEL_FLAT_SPEED_MS`, `LEVEL_CLIMB_POWER_WKG`), km-effort en course, vitesse pente par pente à vélo, `estimateRouteDurationS`.
-- `routeRecord.ts` : fiche JSON `tracker-itineraire`. `routeGpx.ts` : GPX d'export.
+- `routeRecord.ts` : fiche JSON `tracker-itineraire`, bips propres à un parcours de voile compris (`routeMarkGuide`). `routeGpx.ts` : GPX d'export, points nommés A, B… ou 1, 2… en voile (`markLabel`).
 - `routeList.ts` : listes d'itinéraires enregistrés (`routeActivity`, `routesOfFamily`, `routeDistanceM`, `routeDurationS`, `ROUTE_SORTS`, `sortRoutes`).
 
-## `platform/` : seul accès au stockage, aux fichiers et à la position (règle 12)
+## `platform/` : seul accès au stockage, aux fichiers, à la position, au son et au vibreur (règle 12)
 
 - `runtime.ts` : `isNativeApp`.
 - `storage.ts` : `jsonStore` (synchrone), `initStorage` (Preferences natives chargées en mémoire au démarrage).
@@ -87,7 +88,9 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `memoryFolder.ts` : le dossier mémoire, OPFS ou dossier choisi dans le navigateur, dossier SAF sur le téléphone (`openMemoryFolder`, `chooseMemoryFolder`, `pickFolderToImport`, `pendingFolder`, `shouldDescendIntoMemory`).
 - `backButton.ts` : touche retour d'Android (brouillon, enregistrement en cours).
 - `tileCache.ts` : `tileStore`, les tuiles de carte gardées (dossier privé `tuiles/` et index en mémoire sur le téléphone, Cache API dans le navigateur).
+- `beeper.ts` : bips et vibrations du guidage vers les balises (`getBeeper` : `setInterval`, `validated`, `finished`, `stop`) ; greffon natif sur le téléphone, Web Audio dans le navigateur, qui consigne chaque son (`[bips]`) pour le banc.
 - Plugin Android maison `MemoryFolder` (`android/app/src/main/java/io/github/segneur/tracker/MemoryFolderPlugin.java`, déclaré dans `MainActivity`) : `pickFolder`, `hasAccess`, `list`, `readText`, `writeText`, `remove` sur `DocumentsContract`.
+- Plugin Android maison `Beeper` (`BeeperPlugin.java`, même dossier, déclaré dans `MainActivity`) : rythme des bips sur un fil à lui, sons synthétisés sur le flux des alarmes, vibration d'usage alarme (§10, point 77).
 
 ## `hooks/`
 
@@ -100,7 +103,7 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `useSessionDraft.ts` : brouillon d'une session, écrit dans la fiche par `save`. `leaveGuard.ts` : avertissement en quittant.
 - `useLibraryNavigation.ts` : passage de la liste à l'analyse (`?session=`), `useSessionFromUrl` (chargement unique, §10 point 39 ; rend aussi `requested`, la session demandée), `useChangeSessionActivity` (changement d'activité depuis une analyse, vers l'autre module s'il le faut).
 - `useSportSettings.ts` : réglages par activité et liste des activités (`tracker.sportSettings`), `useSportSettings(family)` pour un module, `useAllSportSettings` pour Réglages, et hors composant `readStoredActivities`, `effectiveRecordingProfile`, `effectiveSpeedUnit`, `effectiveDistanceUnit`, `effectiveLongPressMs`, `effectiveBikeSetup`, `effectiveDurationSettings` ; `useNavFamily`, le sport en accès direct de la barre du bas, suivi en direct.
-- `usePlannedRoute.ts` : itinéraire en cours, annulation, calcul des tronçons un à un. `useRouteLibrary.ts` : itinéraires de `itineraires/`. `useFollowedTrace.ts` : trace suivie, gardée sur l'appareil jusqu'à « Retirer » (`tracker.followedTrace`, hors de `reglages.json`). `useCompassHeading.ts` : cap de la boussole tant qu'il est demandé. `useGoOnRoute.ts` : « Partir » sur un itinéraire (trace suivie, page Enregistrer).
+- `usePlannedRoute.ts` : itinéraire en cours, annulation, calcul des tronçons un à un. `useRouteLibrary.ts` : itinéraires de `itineraires/`. `useFollowedTrace.ts` : trace suivie, gardée sur l'appareil jusqu'à « Retirer » (`tracker.followedTrace`, hors de `reglages.json`). `useMarkGuide.ts` : guidage vers les balises pendant un enregistrement de voile, hors des composants (`startMarkGuide`, `skipMark`, `setBeepsMuted`, `useMarkGuide`). `useCompassHeading.ts` : cap de la boussole tant qu'il est demandé. `useGoOnRoute.ts` : « Partir » sur un itinéraire (trace suivie, page Enregistrer).
 - `useStoredRecord.ts`, `useOpenSections.ts`, `useRunnerProfile.ts` : enregistrements de l'appareil (sections ouvertes, profil du pratiquant, économie de course comprise).
 - `useChartZoom.ts` : plage visible d'un graphe zoomé, ramenée dans l'étendue quand elle change, remise à zéro à l'ouverture d'une autre session.
 - `useNarrowScreen.ts` : rupture téléphone (768 px), `NARROW_QUERY`.
@@ -128,7 +131,7 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `RouteList.tsx` (+ `.css`) : liste d'itinéraires enregistrés (activité, distance, temps estimé, date, « Partir »), commune à l'accueil, aux bibliothèques et aux pages Itinéraires.
 - `SessionSaveBar.tsx` : barre « Enregistrer la session » du brouillon, commune aux modules.
 - `AnalysisMap.tsx` : carte d'une page d'analyse, cadrée sur la trace, sa légende collée dessous et sa vue plein écran au tap (`docs/MISE_EN_PAGE.md`).
-- `SpeedGradientLegend.tsx` : légende de couleur, en lecture seule. `SpeedRangeEditor.tsx` : saisie des bornes, dans l'onglet réglages des modules (§10, points 30 et 57). `MapAutoResize.tsx` : `invalidateSize` de la carte. `chartHover.ts` : survol d'un graphe vers la carte.
+- `SpeedGradientLegend.tsx` : légende de couleur, en lecture seule. `SpeedRangeEditor.tsx` : saisie des bornes, dans l'onglet réglages des modules (§10, points 30 et 57). `BeepCurveEditor.tsx` : courbe des bips d'approche, points tirés au doigt, « Écouter » (Réglages par activité, Itinéraires par parcours ; §10, point 77). `MapAutoResize.tsx` : `invalidateSize` de la carte. `chartHover.ts` : survol d'un graphe vers la carte.
 - `ui/` : `Button`, `Card`, `PageHeader`, `HelpButton` (« ? » qui déplie une explication : bibliothèque, Manœuvres, Vent), `ui.css`. `icons.tsx` : icônes SVG. `styles.ts` : `CARD_STYLE`.
 - `theme/tokens.css` : toutes les variables de la DA. `theme/base.css` : police, fond, focus.
 

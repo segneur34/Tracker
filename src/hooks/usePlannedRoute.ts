@@ -3,7 +3,7 @@ import { fetchLeg } from '../planning/brouter';
 import {
   DEFAULT_MAX_SNAP_M, EMPTY_ROUTE, addWaypoint, closeLoop, insertWaypoint, moveWaypoint, pendingLegRequests, removeWaypoint,
   reorderWaypoint,
-  retryFailedLegs, reverseRoute, setLegMode, snapToWaypoints, withLegError, withLegResult,
+  retryFailedLegs, reverseRoute, setLegMode, snapToWaypoints, straightenRoute, withLegError, withLegResult,
   type LegRequest, type PlannedRoute, type RouteMode, type RoutePoint, type RouteVehicle, type Waypoint,
 } from '../planning/route';
 
@@ -143,6 +143,8 @@ export const usePlannedRoute = (vehicle: RouteVehicle, maxSnapM = DEFAULT_MAX_SN
     setMode: useCallback((legIndex: number, mode: RouteMode) => edit((r) => setLegMode(r, legIndex, mode)), [edit]),
     reverse: useCallback(() => edit(reverseRoute), [edit]),
     loop: useCallback((mode: RouteMode) => edit((r) => closeLoop(r, mode)), [edit]),
+    /** Parcours de voile : tronçons calculés passés en ligne droite, annulable par « Précédent ». */
+    straighten: useCallback(() => edit(straightenRoute), [edit]),
     clear: useCallback(() => edit(() => EMPTY_ROUTE), [edit]),
     retry: useCallback(() => dispatch({ type: 'apply', change: retryFailedLegs }), []),
   };

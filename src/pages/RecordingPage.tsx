@@ -9,11 +9,12 @@ import { IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, sportFamily, type SportFamily } from '../core/sportProfiles';
-import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatSpeed } from '../core/units';
+import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatShortDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { useLiveRecording } from '../hooks/useLiveRecording';
+import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../hooks/useMarkGuide';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
@@ -33,6 +34,7 @@ import {
   liveFieldLabel, liveFieldValue, type LiveFieldContext, type LiveFieldUnits,
 } from '../recording/liveFields';
 import { LIVE_LEG_DEFAULTS, type LiveLeg } from '../recording/liveLegs';
+import { courseMarks, markName } from '../recording/markGuide';
 import { LIVE_STATS_DEFAULTS, type LiveEnergySetup, type LiveStats } from '../recording/liveStats';
 import { runningEnergyParams } from '../running/energy';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
@@ -50,7 +52,9 @@ import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
  * « Suivre une trace » choisit un itinéraire rangé ou une session déjà
  * enregistrée, dessiné sous la trace en cours, la partie faite en gris, avec
  * la distance restante le long de la trace ; au repos, la carte le montre en
- * aperçu.
+ * aperçu. En voile, un itinéraire est un parcours : ses balises se valident
+ * une à une, avec des bips d'approche (`useMarkGuide`), et l'avancement se
+ * compte par balises.
  *
  * Dans le navigateur, une source « rejeu » relit un GPX en accéléré : toute la
  * chaîne s'éprouve sur le PC, jusqu'à l'analyse de la session obtenue.
@@ -91,6 +95,44 @@ const followStatItems = (activity: Activity, progress: FollowProgress | null, to
       value: progress ? `${Math.round((100 * progress.progressM) / Math.max(1, progress.totalM))} %` : 'à rejoindre',
     },
   ];
+};
+
+/** Avancement d'un parcours de voile : distance restante par les balises, et balises validées. */
+const courseStatItems = (activity: Activity, view: MarkGuideView): { label: string; value: string }[] => [
+  { label: 'Restant', value: view.remainingM !== null ? formatDistance(view.remainingM, effectiveDistanceUnit(activity)) : '—' },
+  { label: 'Balises validées', value: `${view.outcomes.filter((o) => o === 'validated').length}/${view.marks.length}` },
+];
+
+/**
+ * Guidage vers la balise visée : son nom, sa distance et son cap ; « Passer »
+ * la laisse pour la suivante, « Bips » coupe ou remet sons et vibrations.
+ */
+const MarkGuideCard = ({ view, activity }: { view: MarkGuideView; activity: Activity }) => {
+  const count = view.marks.length;
+  const aim = view.finished
+    ? 'Parcours fini'
+    : view.distanceM === null || view.bearingDeg === null
+      ? 'en attente du GPS'
+      : `${formatShortDistance(view.distanceM, effectiveDistanceUnit(activity))} · ${Math.round(view.bearingDeg) % 360}°`;
+  return (
+    <Card>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2) var(--space-3)', flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 12em', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>
+            {view.finished ? `${count} balises` : `${markName(view.target, count)} · ${view.target + 1}/${count}`}
+          </span>
+          <span className="num" style={{ fontSize: 'var(--text-display)', fontWeight: 700, lineHeight: 1.15, whiteSpace: 'nowrap' }}>{aim}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <Button onClick={skipMark} disabled={view.finished}>Passer</Button>
+          <Button variant={view.muted ? 'secondary' : 'ghost'} aria-pressed={!view.muted} onClick={() => setBeepsMuted(!view.muted)}
+            title={view.muted ? 'Remettre les bips et les vibrations' : 'Couper les bips et les vibrations'}>
+            {view.muted ? 'Bips coupés' : 'Bips'}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
 };
 
 /** Statistiques en direct propres à la famille de l'activité. */
@@ -247,15 +289,26 @@ function RecordingPage() {
     energy,
   });
 
+  // Parcours de voile : la trace suivie a des balises et l'activité est de voile. L'avancement se compte par balises.
+  const markGuide = useMarkGuide();
+  const courseMarksOf = followed?.marks && liveActivity && sportFamily(liveActivity.base) === 'voile' ? followed.marks : null;
+  /** Balises laissées derrière soi : toutes celles d'avant la visée. */
+  const leftMarks = markGuide.active ? markGuide.target : 0;
+
   // Avancement sur la trace suivie, recalculé avec la trace en direct (toutes les 2 s au plus).
   const followedLengthM = useMemo(() => (followed ? followedTraceLengthM(followed) : 0), [followed]);
   const progress = useMemo(
-    () => (busy && followed ? followProgress(followed, live.segments) : null),
-    [busy, followed, live.segments]
+    () => (busy && followed && !courseMarksOf ? followProgress(followed, live.segments) : null),
+    [busy, followed, courseMarksOf, live.segments]
   );
-  const guide = useMemo(
-    () => (followed && progress ? splitFollowedTrace(followed, progress.progressM) : { done: [], remaining: followed?.points ?? [] }),
-    [followed, progress]
+  const guide = useMemo(() => {
+    // En voile, le parcours va de balise en balise : fait jusqu'à la dernière laissée, à faire ensuite.
+    if (courseMarksOf) return { done: courseMarksOf.slice(0, leftMarks), remaining: courseMarksOf.slice(Math.max(0, leftMarks - 1)) };
+    return followed && progress ? splitFollowedTrace(followed, progress.progressM) : { done: [], remaining: followed?.points ?? [] };
+  }, [followed, progress, courseMarksOf, leftMarks]);
+  const mapMarks = useMemo(
+    () => (courseMarksOf ? courseMarks(courseMarksOf, markGuide.active ? markGuide : null) : undefined),
+    [courseMarksOf, markGuide]
   );
   const liveFixes = getLiveFixes();
   const travel = busy ? travelHeading(liveFixes) : undefined;
@@ -417,11 +470,14 @@ function RecordingPage() {
 
       {recorder.error && <div className="ui-alert ui-alert--danger">{recorder.error}</div>}
 
+      {markGuide.active && liveActivity && <MarkGuideCard view={markGuide} activity={liveActivity} />}
+
       {(busy || (followed && !pending)) && !mapReduced && (
         // Au repos, un aperçu de la trace suivie, sans position : remonté à chaque trace pour s'y cadrer.
         <LiveMap key={busy ? 'direct' : `apercu-${followed?.name}-${followed?.points.length}`}
           segments={busy ? live.segments : []} position={busy ? getLastFix() : null} height="45vh"
           guide={guide.remaining} guideDone={guide.done} travel={travel}
+          marks={mapMarks} validationRadiusM={markGuide.active ? markGuide.validationRadiusM : undefined}
           color={TRACK_COLOR[liveActivity ? sportFamily(liveActivity.base) : 'voile']}
           overlay={busy ? (
             <Button size="s" onClick={() => toggleShown('carte')} style={{ boxShadow: '0 1px 5px rgba(0, 0, 0, 0.25)' }}>
@@ -439,8 +495,10 @@ function RecordingPage() {
               stats: live.stats,
               durationMs,
               nowMs: live.updatedMs,
-              remainingM: progress?.remainingM ?? null,
+              remainingM: courseMarksOf ? (markGuide.active ? markGuide.remainingM : null) : progress?.remainingM ?? null,
               headingDeg: travel?.headingDeg ?? null,
+              markDistanceM: markGuide.active ? markGuide.distanceM : null,
+              markBearingDeg: markGuide.active ? markGuide.bearingDeg : null,
             })} />
           )}
         </>
@@ -466,7 +524,10 @@ function RecordingPage() {
           )}
           <div style={STAT_GRID}>
             <Stat label="Durée" value={formatClock(durationMs)} />
-            {liveActivity && followed && followStatItems(liveActivity, progress, followedLengthM).map((item) => <Stat key={item.label} {...item} />)}
+            {liveActivity && followed && (courseMarksOf && markGuide.active
+              ? courseStatItems(liveActivity, markGuide)
+              : followStatItems(liveActivity, progress, followedLengthM)
+            ).map((item) => <Stat key={item.label} {...item} />)}
             {liveActivity && liveStatItems(liveActivity, live.stats).map((item) => <Stat key={item.label} {...item} />)}
           </div>
           {liveActivity && sportFamily(liveActivity.base) === 'voile' && (

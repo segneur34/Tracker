@@ -8,6 +8,8 @@ const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
   nowMs: 0,
   remainingM: null,
   headingDeg: null,
+  markDistanceM: null,
+  markBearingDeg: null,
   speedUnit: 'kmh',
   distanceUnit: 'km',
   ...patch,
@@ -18,6 +20,8 @@ describe('liveFieldsOfFamily', () => {
     expect(liveFieldsOfFamily('voile')).toContain('recentTopShort');
     expect(liveFieldsOfFamily('voile')).not.toContain('power');
     expect(liveFieldsOfFamily('course')).toContain('power');
+    expect(liveFieldsOfFamily('voile')).toContain('markDistance');
+    expect(liveFieldsOfFamily('course')).not.toContain('markBearing');
     expect(liveFieldsOfFamily('course')).not.toContain('heading');
     expect(liveFieldsOfFamily('velo')).toContain('grade');
   });
@@ -80,9 +84,11 @@ describe('liveFieldValue', () => {
   });
 
   it('marque les valeurs manquantes', () => {
-    for (const key of ['grade', 'gain', 'climbRate', 'power', 'effort', 'heading', 'legAverage'] as const) {
+    for (const key of ['grade', 'gain', 'climbRate', 'power', 'effort', 'heading', 'legAverage', 'markDistance', 'markBearing'] as const) {
       expect(liveFieldValue(key, context())).toBe('—');
     }
     expect(liveFieldValue('heading', context({ headingDeg: 359.7 }))).toBe('0°');
+    expect(liveFieldValue('markBearing', context({ markBearingDeg: 245.2 }))).toBe('245°');
+    expect(liveFieldValue('markDistance', context({ markDistanceM: 143 }))).toBe('143 m');
   });
 });

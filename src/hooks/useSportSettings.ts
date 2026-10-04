@@ -11,6 +11,7 @@ import type { SportType } from '../core/types';
 import { DISTANCE_UNIT_LABEL, SPEED_UNIT_LABEL, type DistanceUnit, type SpeedUnit } from '../core/units';
 import { jsonStore } from '../platform/storage';
 import { DEFAULT_LIVE_FIELDS, sanitizeLiveFields, type LiveFieldKey } from '../recording/liveFields';
+import { MARK_GUIDE_DEFAULTS, sanitizeMarkGuide, type MarkGuideSettings } from '../recording/markGuide';
 import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, type BikeType } from '../cycling/energy';
 import { DEFAULT_CYCLING_GRADE_RANGE, DEFAULT_CYCLING_SPEED_RANGE_MS } from '../cycling/cyclingConfig';
 import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
@@ -106,6 +107,8 @@ export interface StoredSettings {
   autoPause?: ByActivity<{ speedMs: number; delayS: number }>;
   /** Chiffres en grand de l'enregistrement, carte réduite ; absents : ceux de la famille. */
   liveFields?: ByActivity<LiveFieldKey[]>;
+  /** Bips d'approche des balises (voile) : courbe et vibration ; absent : `MARK_GUIDE_DEFAULTS`. */
+  markGuide?: ByActivity<MarkGuideSettings>;
   /** Type de vélo (vélo), qui fixe roulement et traînée ; absent : route. */
   bikeTypes?: ByActivity<BikeType>;
   /** Poids du vélo en kg (vélo) ; absent : celui du type. */
@@ -209,6 +212,10 @@ export const effectiveLiveFields = (activity: Activity): LiveFieldKey[] => {
   const family = activityFamily(activity);
   return sanitizeLiveFields(readStoredSettings().liveFields?.[activity.id], family) ?? DEFAULT_LIVE_FIELDS[family];
 };
+
+/** Bips d'approche des balises d'un parcours : ceux réglés pour l'activité, sinon le défaut. */
+export const effectiveMarkGuide = (activity: Activity): MarkGuideSettings =>
+  sanitizeMarkGuide(readStoredSettings().markGuide?.[activity.id]) ?? MARK_GUIDE_DEFAULTS;
 
 /**
  * Unité de vitesse effective d'une activité : celle choisie dans Réglages,
@@ -317,6 +324,9 @@ export interface SportSettingsView {
   /** Chiffres en grand de l'enregistrement, carte réduite. */
   liveFields: LiveFieldKey[];
   isLiveFieldsOverridden: boolean;
+  /** Bips d'approche des balises (voile). */
+  markGuide: MarkGuideSettings;
+  isMarkGuideOverridden: boolean;
   /** Type de vélo (activités vélo seulement, route par défaut). */
   bikeType: BikeType;
   /** Poids du vélo en kg, ou `null` pour celui du type. */
@@ -330,7 +340,7 @@ export interface SportSettingsView {
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
   'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'textScales', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights',
-  'paceLevels', 'customFlatSpeeds', 'liveFields',
+  'paceLevels', 'customFlatSpeeds', 'liveFields', 'markGuide',
 ] as const;
 
 /** Réglages sans aucune surcharge rangée sous `id`. */
@@ -379,6 +389,7 @@ export const useAllSportSettings = () => {
       const paceLevel = stored.paceLevels?.[id];
       const customSpeed = stored.customFlatSpeeds?.[id];
       const liveFields = sanitizeLiveFields(stored.liveFields?.[id], activityFamily(activity));
+      const markGuide = sanitizeMarkGuide(stored.markGuide?.[id]);
       return {
         activity,
         speedUnit: isKnownSpeedUnit(unit) ? unit : profile.speedUnit,
@@ -395,6 +406,8 @@ export const useAllSportSettings = () => {
         isAutoPauseOverridden: autoPauseOverride !== undefined,
         liveFields: liveFields ?? DEFAULT_LIVE_FIELDS[activityFamily(activity)],
         isLiveFieldsOverridden: liveFields !== null,
+        markGuide: markGuide ?? MARK_GUIDE_DEFAULTS,
+        isMarkGuideOverridden: markGuide !== null,
         bikeType: isBikeType(bikeType) ? bikeType : 'route',
         bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
         paceLevel: isPaceLevel(paceLevel) ? paceLevel : DEFAULT_PACE_LEVEL,
@@ -406,7 +419,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -463,6 +476,12 @@ export const useAllSportSettings = () => {
           const fields = value === null ? null : sanitizeLiveFields(value, activityFamily(activity));
           if (value !== null && fields === null) return;
           next.liveFields = put(stored.liveFields, fields);
+          break;
+        }
+        case 'markGuide': {
+          const guide = value === null ? null : sanitizeMarkGuide(value);
+          if (value !== null && guide === null) return;
+          next.markGuide = put(stored.markGuide, guide);
           break;
         }
         case 'bikeType':

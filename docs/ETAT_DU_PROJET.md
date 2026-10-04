@@ -37,7 +37,7 @@ Les couches, de bas en haut. Tous les imports sont relatifs, sans alias de chemi
 - **Noyau `core/`** : sans notion de sport, en unités SI, du parseur GPX aux profils de support, en passant par la cinématique, les filtres, l'allure de la session, les cumuls, le masque d'activité, le dénivelé et les tops.
 - **Sports** : `sailing/` en nœuds sur `PointData` (adaptateur `utils/kinematics.ts`, règle 5), `running/` et `cycling/` en SI.
 - **Logique pure de l'application**, testée en node : `recording/` (positions, journal, GPX, direct, trace suivie), `library/` (fiche, résumé, rapprochement, réglages qui voyagent) et `planning/` (itinéraires).
-- **Plateforme `platform/`** : seul accès au stockage, aux fichiers et à la position (règle 12). `isNativeApp()` choisit la version navigateur ou téléphone de chaque module ; les hooks et les pages ne voient pas la différence. Exception : `compass`, la boussole, n'existe que dans le navigateur.
+- **Plateforme `platform/`** : seul accès au stockage, aux fichiers, à la position, au son et au vibreur (règle 12). `isNativeApp()` choisit la version navigateur ou téléphone de chaque module ; les hooks et les pages ne voient pas la différence. Exception : `compass`, la boussole, n'existe que dans le navigateur.
 - **Hooks** :
   - le pipeline : `useGpxSession`, `useSailingSession` (§4) ;
   - deux stores hors des composants, qui survivent aux changements de page : l'enregistreur (`useRecorder`) et la bibliothèque (`useSessionLibrary`) ;
@@ -57,7 +57,7 @@ Dépendances entre dossiers :
 | `cycling` | `core`, `running/runningAnalytics` (zones de pente) |
 | `platform` | Capacitor et ses plugins seulement |
 | `recording` | `core`, `sailing` (`liveLegs`), `planning` (`followedTrace`), le type `LocationFix` de `platform/location` |
-| `planning` | `core`, `running/runningAnalytics` (pente), `cycling/energy` (temps estimé), `recording/gpxWriter`, `platform/storage` (id du profil BRouter) |
+| `planning` | `core`, `running/runningAnalytics` (pente), `cycling/energy` (temps estimé), `recording/gpxWriter`, `recording/markGuide` (bips d'un parcours), `platform/storage` (id du profil BRouter) |
 | `library` | `core`, `sailing/sailingConfig`, `sailing/sessionNotes`, `recording/session`, le type `FolderEntry` de `platform/memoryFolder` |
 | hooks | toutes les couches ci-dessus |
 | composants | `platform`, pour `ResizablePanel`, `LiveMap` et `MemoryStatus` |
@@ -148,7 +148,8 @@ Tracker/
   tracker.json      marqueur { format: "tracker-memoire", version: 1 }
   reglages.json     réglages qui voyagent, datés
   LISEZMOI.txt      mode d'emploi, pour qui ouvre le dossier à la main
-  itineraires/      une fiche .json (fait foi) et son .gpx par itinéraire (point 59)
+  itineraires/      une fiche .json (fait foi) et son .gpx par itinéraire (point 59) ; la fiche
+                    d'un parcours de voile peut porter ses bips propres (`markGuide`, point 77)
   sessions/
     2026-09-23_14-05-12_wingfoil.gpx    la trace, jamais réécrite
     2026-09-23_14-05-12_wingfoil.json   sa fiche
@@ -193,7 +194,7 @@ Tracker/
 | `tracker.libraryCache` | `hooks/useSessionLibrary.ts` | `{ folder; entries: Record<fiche, { size; mtimeMs; record }> }`, reconstruit à volonté |
 | `tracker.sections` | `hooks/useOpenSections.ts` | `Record<moduleId, Record<section, boolean>>`. Modules lus : `running` (course), `cycling` (vélo), `running.energie` et `cycling.energie` (chiffres du panneau Énergie, point 76), `sailing-onglets`, `planning`, `recording`, `settings`, `settings-activities`, `accueil.graphe` (totaux du graphe d'activités). `sailing` et `sailing-carte`, d'avant, ne sont plus lus |
 | `tracker.panelSizes` | `components/ResizablePanel.tsx` | `Record<panelId, { width?; height? }>` |
-| `tracker.followedTrace` | `hooks/useFollowedTrace.ts` | `{ name; source; activityId; points }`, gardée jusqu'à « Retirer » |
+| `tracker.followedTrace` | `hooks/useFollowedTrace.ts` | `{ name; source; activityId; points; marks?; markGuide? }`, gardée jusqu'à « Retirer » ; `marks` : les points posés d'un itinéraire (balises en voile), `markGuide` : ses bips propres (point 77) |
 | `tracker.planning` | `pages/PlanningPage.tsx` | `{ mode?; activityId?; view? }` ; `mode` est le type de voie, les anciens modes (`foot`, `mtb`, `bike`) sont traduits à la lecture (point 74) |
 | `tracker.brouterProfile` | `planning/brouter.ts` | `{ id }`, id du profil maison sur brouter.de, renvoyé sur cet id à chaque lancement ; propre à l'appareil |
 | `tracker.routeList` | `pages/RoutesPage.tsx` | `{ sort }`, tri de la liste des itinéraires |
@@ -202,7 +203,7 @@ Tracker/
 
 `StoredSettings` contient :
 - la liste des activités ;
-- les réglages rangés par identifiant d'activité : seuils, terrains, unités, taille du texte, bornes de vitesse (en m/s) et de pente (en fraction), pause automatique, chiffres de la carte réduite (`liveFields`, point 76), type et poids du vélo, niveau du temps estimé et vitesse « Personnalisé » ;
+- les réglages rangés par identifiant d'activité : seuils, terrains, unités, taille du texte, bornes de vitesse (en m/s) et de pente (en fraction), pause automatique, chiffres de la carte réduite (`liveFields`, point 76), bips d'approche des balises (`markGuide`, voile, point 77), type et poids du vélo, niveau du temps estimé et vitesse « Personnalisé » ;
 - l'appui long, et le sport en accès direct de la barre du bas (`navFamily`, point 75) ;
 - les choix retenus : `moduleActivity`, `recordActivity`, et `sport`, l'ancienne activité du module voile.
 
@@ -228,7 +229,7 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 | Course | `running/runningAnalytics.ts`, `running/energy.ts`, et les lissages en tête de `pages/LandModule.tsx` |
 | Vélo | `cycling/energy.ts` (types de vélo, rendements), `cycling/cyclingConfig.ts` (couleurs par défaut) |
 | Planification | `planning/duration.ts` (niveaux, km-effort, puissance de montée), `planning/brouterProfile.ts` (coûts des types de voie) |
-| Direct | `LIVE_STATS_DEFAULTS`, `LIVE_LEG_DEFAULTS`, `FOLLOW_DEFAULTS` de `recording/` |
+| Direct | `LIVE_STATS_DEFAULTS`, `LIVE_LEG_DEFAULTS`, `FOLLOW_DEFAULTS`, `MARK_GUIDE_DEFAULTS` et `BEEP_CURVE_LIMITS` de `recording/` ; durées et hauteur des bips dans `platform/beeper.ts` et `BeeperPlugin.java` |
 | Affichage | `core/displayConfig.ts`, et `TEXT_SCALE_FACTOR` de `hooks/useSportSettings.ts` |
 
 ## 8. Tests
@@ -253,7 +254,7 @@ Générateurs : `buildEastwardTrack` (kinematics), `buildTrack` (plusieurs fichi
 Non testés :
 - `gpxParser` (DOM) ;
 - `buildSailingSessionStats`, `calculateVmgStats`, `buildWindTimeline` ;
-- `platform/` : `memoryFolder`, `files`, `compass`, `tileCache`, et le plugin Java ;
+- `platform/` : `memoryFolder`, `files`, `compass`, `tileCache`, `beeper`, et les plugins Java ;
 - tous les hooks (`useRecorder`, `useSessionLibrary`, `useSessionDraft`, `leaveGuard`…), les composants et les pages.
 
 Ils se vérifient au banc (`outils/banc/`, voir son `LISEZMOI.md`) et sur le téléphone (§12). Le banc prouve aussi qu'un changement est neutre : texte de la page relevé avant et après, puis comparé (point 44).
@@ -321,7 +322,7 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
   - accueil (point 53) ;
   - enregistrement en direct et bords (points 50, 53, 62) ;
   - APK des testeurs et `docs/INSTALLATION.md` (points 55, 62).
-- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76).
+- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76), parcours et balises en voile avec bips d'approche (77).
 - **Phase 2, interface mobile** : trois passes faites (points 47 à 49, 52, 56 à 58, 69 ; patron dans `docs/MISE_EN_PAGE.md`). Restent :
   - toucher au lieu du survol, dans les graphes ;
   - `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz). Les regrouper par couleur toucherait à « pas de paliers » : à redemander ;
@@ -345,6 +346,7 @@ Les principes sont dans `CLAUDE.md` (Décisions, « Enregistrement ») ; ce qui 
 - **GPX** : écrit complet à l'arrêt, avec seulement la vitesse en extension (`<speed>` en m/s). Il est nommé `AAAA-MM-JJ_hh-mm-ss_<support>.gpx`, et ce nom ne change plus ensuite.
 - **Pause automatique** : par défaut sous 0,3 m/s pendant 60 s de temps de trace ; 0 la désactive.
 - **En direct** : `useLiveRecording` recalcule les statistiques et les bords (`recording/liveStats.ts`, `liveLegs.ts`) au plus toutes les 2 s.
+- **Balises en voile** (point 77) : le guidage (`hooks/useMarkGuide.ts`) vit hors React, branché au démarrage dans `main.tsx`, et avance à chaque position reçue (`subscribeToFixes` de l'enregistreur). Le rythme des bips est tenu par le greffon `BeeperPlugin.java`, sur un fil à lui ; le service GPS garde le processeur éveillé. Son sur le flux des alarmes, vibration d'usage alarme (permission `VIBRATE`).
 - **Réglages du téléphone, avant tout enregistrement** : sur HyperOS, démarrage automatique et batterie « Aucune restriction » pour Tracker.
   - Sans eux, les positions s'arrêtent dès que l'application passe en arrière-plan (trou de 93 s au contrôle 1b).
   - Une désinstallation les remet à zéro, comme les autorisations.

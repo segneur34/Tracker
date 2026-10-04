@@ -148,6 +148,10 @@ export const toDisplayDistance = (m: number, unit: DistanceUnit): number => m / 
 export const formatDistance = (m: number, unit: DistanceUnit, decimals = 2): string =>
   isFinite(m) ? `${toDisplayDistance(m, unit).toFixed(decimals)} ${DISTANCE_UNIT_SYMBOL[unit]}` : '-';
 
+/** Distance d'approche (une balise) : en mètres sous 1 000 m, quelle que soit l'unité ; au-delà, dans l'unité. */
+export const formatShortDistance = (m: number, unit: DistanceUnit): string =>
+  isFinite(m) && m < 1000 ? `${Math.round(m)} m` : formatDistance(m, unit);
+
 /** Formate une durée en millisecondes, par exemple `1h24` ou `37 min`. */
 export const formatDuration = (ms: number): string => {
   const totalMin = Math.floor(ms / 60000);
