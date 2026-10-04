@@ -11,6 +11,7 @@ import OsmTileLayer from '../components/OsmTileLayer';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import RouteList from '../components/RouteList';
+import SurfaceBar from '../components/SurfaceBar';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
@@ -49,6 +50,7 @@ import {
 } from '../planning/route';
 import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute, routeMarkGuide } from '../planning/routeRecord';
+import { routeSurfaces } from '../planning/surface';
 import { beepStartM, validationRadiusM, type MarkGuideSettings } from '../recording/markGuide';
 import { gradeGradientStops } from '../running/runningAnalytics';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
@@ -61,7 +63,7 @@ import { jsonStore } from '../platform/storage';
  * tronçon entre deux points suit la carte, par le type de voie choisi, ou va
  * en ligne droite. Distance, dénivelés et profil d'altitude se mettent à jour
  * à chaque calcul, avec le temps estimé en course et à vélo (niveau choisi
- * dans Réglages). L'itinéraire s'enregistre dans `itineraires/` du dossier
+ * dans Réglages) et le revêtement des voies suivies (`planning/surface.ts`). L'itinéraire s'enregistre dans `itineraires/` du dossier
  * mémoire, avec son GPX.
  *
  * En voile, c'est un parcours : des balises numérotées, reliées en ligne
@@ -161,10 +163,11 @@ interface ChartRow {
 }
 
 /** `ranger` : bloc « Enregistrer l'itinéraire », clé gardée pour l'état mémorisé. */
-type PlanningSection = 'profil' | 'parcours' | 'trace' | 'points' | 'ranger' | 'liste';
+type PlanningSection = 'profil' | 'surface' | 'parcours' | 'trace' | 'points' | 'ranger' | 'liste';
 
 const PLANNING_SECTION_DEFAULTS: Record<PlanningSection, boolean> = {
   profil: true,
+  surface: true,
   parcours: true,
   trace: true,
   points: true,
@@ -300,6 +303,7 @@ function PlanningPage() {
 
   const points = useMemo(() => routePoints(route), [route]);
   const totals = useMemo(() => routeTotals(route, minGainM), [route, minGainM]);
+  const surfaces = useMemo(() => routeSurfaces(route.legs), [route.legs]);
   const firstError = route.legs.find((l) => l.status === 'error')?.error ?? null;
   const distances = useMemo(() => waypointDistances(route), [route]);
   const looped = isLooped(route);
@@ -826,6 +830,30 @@ function PlanningPage() {
                   {durationSettings.family === 'course' ? ', chaque 100 m de D+ comptant 1 km' : ''} : à régler dans <Link to="/parametres">Réglages</Link>.
                 </p>
               )}
+            </PlanBlock>
+          )}
+
+          {!sailing && (
+            <PlanBlock id="planning.surface" label="Surface" open={open.surface} onToggle={() => toggle('surface')}>
+              {surfaces.totals.length > 0 ? (
+                <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit} />
+              ) : (
+                <p className="plan-note">Le revêtement s'affiche dès le premier tronçon calculé.</p>
+              )}
+              {surfaces.pendingLegs > 0 && (
+                <p className="plan-note">Tronçons en calcul : ils s'ajouteront une fois calculés.</p>
+              )}
+              {surfaces.missingLegs > 0 && (
+                <div className="plan-surface__missing">
+                  <p className="plan-note">
+                    {surfaces.missingLegs > 1 ? `${surfaces.missingLegs} tronçons enregistrés` : 'Un tronçon enregistré'} avant
+                    qu'on garde le revêtement : compté « Inconnu ». Le calculer de nouveau le donne, mais le tracé peut
+                    changer si la carte a changé depuis.
+                  </p>
+                  <Button size="s" onClick={planner.recomputeSurfaces}>Calculer</Button>
+                </div>
+              )}
+              <p className="plan-note">Revêtement des voies d'OpenStreetMap. Lignes droites et traces importées : « Inconnu ».</p>
             </PlanBlock>
           )}
 

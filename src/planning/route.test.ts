@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, addWaypoint, closeLoop, courseLegs, insertWaypoint, isChoosableMode, isLooped, isRouteMode, legKey, moveWaypoint,
-  nextPendingLeg, pendingLegRequests, readRouteMode, removeWaypoint, reorderWaypoint, retryFailedLegs, reverseRoute, routeFromTrack, routePoints,
+  nextPendingLeg, pendingLegRequests, readRouteMode, recomputeLegsWithoutSurfaces, removeWaypoint, reorderWaypoint, retryFailedLegs, reverseRoute,
+  routeFromTrack, routePoints,
   routeProfileRows, routeTotals, routeVehicle, setLegMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
   type PlannedRoute, type RoutePoint, type Waypoint,
 } from './route';
@@ -173,6 +174,32 @@ describe('résultats de calcul', () => {
     expect(snapped.maxGapM).toBeGreaterThan(STEP_M * 0.99);
     expect(snapToWaypoints(A, B, computed(A, B, [0, 0, 0]))).toEqual({ points: computed(A, B, [0, 0, 0]), maxGapM: 0 });
     expect(snapToWaypoints(A, A, []).points).toEqual([A, A]);
+  });
+
+  it('fait prendre à l\'approche ajoutée en tête la voie qui suit', () => {
+    const surfaces = { tags: ['highway=track', 'highway=residential'], runs: [[0, 0], [1, 1]] as [number, number][] };
+    const snapped = snapToWaypoints(A, C, [{ ...B }, { lat: 43.615, lon: 3.8 }, { lat: 43.618, lon: 3.8 }], surfaces);
+    expect(snapped.points).toHaveLength(5);
+    expect(snapped.surfaces?.runs).toEqual([[0, 0], [2, 1]]);
+    // Sans point ajouté en tête, rien ne bouge.
+    expect(snapToWaypoints(B, C, [{ ...B }, { lat: 43.615, lon: 3.8 }], surfaces).surfaces).toBe(surfaces);
+  });
+
+  it('pose les voies avec le tracé calculé, et recalcule les tronçons rangés sans elles', () => {
+    const surfaces = { tags: ['highway=residential'], runs: [[0, 0]] as [number, number][] };
+    let route = build([A, B, C]);
+    route = withLegResult(route, legKey(route, 0)!, computed(A, B, [0, 0, 0]), surfaces);
+    route = withLegResult(route, legKey(route, 1)!, computed(B, C, [0, 0, 0]));
+    expect(route.legs[0].surfaces).toBe(surfaces);
+    expect(route.legs[1]).not.toHaveProperty('surfaces');
+    const again = recomputeLegsWithoutSurfaces(route);
+    expect(again.legs[0]).toBe(route.legs[0]);
+    expect(again.legs[1].status).toBe('pending');
+    // Ligne droite et trace importée n'ont pas de voies à demander.
+    const fixed = build([A, B], 'straight');
+    expect(recomputeLegsWithoutSurfaces(fixed)).toBe(fixed);
+    const imported = routeFromTrack([A, B, C])!;
+    expect(recomputeLegsWithoutSurfaces(imported)).toBe(imported);
   });
 });
 

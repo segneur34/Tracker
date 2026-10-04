@@ -488,3 +488,11 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+/* Bloc Surface : tronçons rangés sans revêtement, et le bouton qui les recalcule. */
+.plan-surface__missing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}

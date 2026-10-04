@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { fetchLeg } from '../planning/brouter';
 import {
-  DEFAULT_MAX_SNAP_M, EMPTY_ROUTE, addWaypoint, closeLoop, insertWaypoint, moveWaypoint, pendingLegRequests, removeWaypoint,
-  reorderWaypoint,
-  retryFailedLegs, reverseRoute, setLegMode, snapToWaypoints, straightenRoute, withLegError, withLegResult,
+  DEFAULT_MAX_SNAP_M, EMPTY_ROUTE, addWaypoint, closeLoop, insertWaypoint, moveWaypoint, pendingLegRequests, recomputeLegsWithoutSurfaces,
+  removeWaypoint, reorderWaypoint, retryFailedLegs, reverseRoute, setLegMode, snapToWaypoints, straightenRoute, withLegError, withLegResult,
   type LegRequest, type PlannedRoute, type RouteMode, type RoutePoint, type RouteVehicle, type Waypoint,
 } from '../planning/route';
+import type { SurfaceRuns } from '../planning/surface';
 
 /**
  * Itinéraire en cours de planification : les modifications de l'utilisateur,
@@ -26,18 +26,25 @@ const HISTORY_LIMIT = 50;
 /** Tracés gardés en cache. */
 const CACHE_LIMIT = 200;
 
-/** Résultat d'un calcul : le tracé relié aux points, ou la raison de l'échec. */
-type LegOutcome = { points: RoutePoint[] } | { error: string };
+/** Tracé calculé relié aux points, et ses voies si le serveur les a données. */
+interface LegResult {
+  points: RoutePoint[];
+  surfaces?: SurfaceRuns;
+}
+
+/** Résultat d'un calcul : le tracé, ou la raison de l'échec. */
+type LegOutcome = LegResult | { error: string };
 
 const computeLeg = async (request: LegRequest, vehicle: RouteVehicle, maxSnapM: number, signal: AbortSignal): Promise<LegOutcome> => {
   // Une trace importée n'est jamais en attente : elle ne vient ici que par erreur, gardée en ligne droite.
   if (request.mode === 'straight' || request.mode === 'imported') return { points: [request.from, request.to] };
   try {
-    const { points, maxGapM } = snapToWaypoints(request.from, request.to, await fetchLeg(request.from, request.to, request.mode, vehicle, signal));
+    const computed = await fetchLeg(request.from, request.to, request.mode, vehicle, signal);
+    const { maxGapM, ...result } = snapToWaypoints(request.from, request.to, computed.points, computed.surfaces);
     if (maxGapM > maxSnapM) {
       return { error: `Point à ${Math.round(maxGapM)} m du chemin le plus proche : rapprochez-le d'un chemin, ou passez ce tronçon en ligne droite.` };
     }
-    return { points };
+    return result;
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') throw err;
     return { error: err instanceof Error ? err.message : 'Calcul impossible.' };
@@ -84,7 +91,7 @@ const computeKey = (request: LegRequest, vehicle: RouteVehicle): string => `${re
 export const usePlannedRoute = (vehicle: RouteVehicle, maxSnapM = DEFAULT_MAX_SNAP_M) => {
   const [{ route, history }, dispatch] = useReducer(reducer, { route: EMPTY_ROUTE, history: [] });
   const inFlight = useRef<{ key: string; controller: AbortController } | null>(null);
-  const cache = useRef(new Map<string, RoutePoint[]>());
+  const cache = useRef(new Map<string, LegResult>());
 
   // Un calcul à la fois : le premier tronçon en attente, sauf si celui en cours attend toujours.
   useEffect(() => {
@@ -99,7 +106,7 @@ export const usePlannedRoute = (vehicle: RouteVehicle, maxSnapM = DEFAULT_MAX_SN
     const key = computeKey(request, vehicle);
     const cached = cache.current.get(key);
     if (cached) {
-      dispatch({ type: 'apply', change: (r) => withLegResult(r, request.key, cached) });
+      dispatch({ type: 'apply', change: (r) => withLegResult(r, request.key, cached.points, cached.surfaces) });
       return;
     }
 
@@ -111,8 +118,8 @@ export const usePlannedRoute = (vehicle: RouteVehicle, maxSnapM = DEFAULT_MAX_SN
         inFlight.current = null;
         if ('points' in outcome) {
           if (cache.current.size >= CACHE_LIMIT) cache.current.delete(cache.current.keys().next().value!);
-          cache.current.set(key, outcome.points);
-          dispatch({ type: 'apply', change: (r) => withLegResult(r, request.key, outcome.points) });
+          cache.current.set(key, outcome);
+          dispatch({ type: 'apply', change: (r) => withLegResult(r, request.key, outcome.points, outcome.surfaces) });
         } else {
           dispatch({ type: 'apply', change: (r) => withLegError(r, request.key, outcome.error) });
         }
@@ -147,5 +154,7 @@ export const usePlannedRoute = (vehicle: RouteVehicle, maxSnapM = DEFAULT_MAX_SN
     straighten: useCallback(() => edit(straightenRoute), [edit]),
     clear: useCallback(() => edit(() => EMPTY_ROUTE), [edit]),
     retry: useCallback(() => dispatch({ type: 'apply', change: retryFailedLegs }), []),
+    /** Tronçons calculés rangés sans leurs voies : recalculés pour en avoir le revêtement, annulable par « Précédent ». */
+    recomputeSurfaces: useCallback(() => edit(recomputeLegsWithoutSurfaces), [edit]),
   };
 };

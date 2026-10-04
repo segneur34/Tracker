@@ -1,6 +1,7 @@
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import { sportFamily } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
+import { readSurfaceRuns, type SurfaceRuns } from '../planning/surface';
 import { isSportType } from '../recording/session';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
 
@@ -83,6 +84,21 @@ export interface SessionAnalysis {
   savedAt: number;
 }
 
+/**
+ * Voies suivies par la trace, demandées à OpenStreetMap (`planning/overpass.ts`)
+ * à la première ouverture de l'onglet « surface », puis gardées : elles ne se
+ * recalculent pas sans réseau. Les débuts des morceaux sont des décalages en
+ * millisecondes depuis `startMs`, l'instant du premier point apparié.
+ */
+export interface SessionSurfaces extends SurfaceRuns {
+  source: 'overpass';
+  /** Date ISO de la demande. */
+  fetchedAt: string;
+  /** Version de l'appariement (`WAY_MATCH_VERSION`) : une plus ancienne est refaite. */
+  matchVersion: number;
+  startMs: number;
+}
+
 export interface SessionRecord {
   format: typeof RECORD_FORMAT;
   version: number;
@@ -113,6 +129,8 @@ export interface SessionRecord {
   notes: StoredSessionNotes | null;
   /** Absent des fiches écrites avant son introduction : lu comme `null`. */
   analysis: SessionAnalysis | null;
+  /** Absent tant que l'onglet « surface » n'a rien trouvé, ou si la fiche en porte de mal formées. */
+  surfaces?: SessionSurfaces;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -196,6 +214,14 @@ export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
   };
 };
 
+/** Voies relues, `null` si elles sont mal formées. */
+export const readSessionSurfaces = (raw: unknown): SessionSurfaces | null => {
+  if (!isObject(raw) || raw.source !== 'overpass' || typeof raw.fetchedAt !== 'string') return null;
+  if (!isFiniteNumber(raw.matchVersion) || !isFiniteNumber(raw.startMs)) return null;
+  const runs = readSurfaceRuns(raw, Number.MAX_SAFE_INTEGER);
+  return runs ? { ...raw, ...runs, source: 'overpass', fetchedAt: raw.fetchedAt, matchVersion: raw.matchVersion, startMs: raw.startMs } : null;
+};
+
 /**
  * Lit une fiche. Rend `null` si le texte n'est pas une fiche lisible : JSON
  * mal formé, autre format, champ indispensable absent. Les champs inconnus
@@ -212,8 +238,10 @@ export const parseRecord = (text: string): SessionRecord | null => {
   if (typeof raw.gpx !== 'string' || raw.gpx === '') return null;
   const summary = readSummary(raw.summary);
   if (!summary) return null;
+  const { surfaces: rawSurfaces, ...rest } = raw;
+  const surfaces = readSessionSurfaces(rawSurfaces);
   return {
-    ...raw,
+    ...rest,
     format: RECORD_FORMAT,
     version: raw.version,
     gpx: raw.gpx,
@@ -226,6 +254,7 @@ export const parseRecord = (text: string): SessionRecord | null => {
     summary,
     notes: readNotes(raw.notes),
     analysis: readAnalysis(raw.analysis),
+    ...(surfaces ? { surfaces } : {}),
   };
 };
 
@@ -312,11 +341,13 @@ export interface RecordPatch {
   notes?: StoredSessionNotes | null;
   analysis?: SessionAnalysis | null;
   maneuverCount?: number;
+  /** Voies trouvées pour la trace ; `null` les retire. */
+  surfaces?: SessionSurfaces | null;
 }
 
 /**
  * Fiche après un changement : support, activité, nom, notes, réglages
- * d'analyse, nombre de manœuvres. Rend la fiche d'origine, à l'identique, si
+ * d'analyse, nombre de manœuvres, voies suivies. Rend la fiche d'origine, à l'identique, si
  * rien ne change. `resummarize` : le résumé est à recalculer (support,
  * activité, seuil ou allure imposée changés).
  *
@@ -335,6 +366,10 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
     if (name !== next.name) next = { ...next, name };
   }
   if (patch.notes !== undefined) next = { ...next, notes: patch.notes };
+  if (patch.surfaces !== undefined) {
+    const { surfaces: _previous, ...others } = next;
+    next = patch.surfaces ? { ...others, surfaces: patch.surfaces } : others;
+  }
   const thresholdBefore = next.analysis?.activeThreshold ?? null;
   const referenceBefore = next.analysis?.referenceSpeedMs ?? null;
   if (patch.analysis !== undefined) next = { ...next, analysis: patch.analysis };

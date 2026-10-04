@@ -55,6 +55,20 @@ describe('fiche d\'itinéraire', () => {
     expect(routeMarkGuide({ ...record, markGuide: MARK_GUIDE_DEFAULTS })).toEqual(MARK_GUIDE_DEFAULTS);
   });
 
+  it('range les voies d\'un tronçon calculé, et écarte celles qui ne collent pas à son tracé', () => {
+    let route = [A, B].reduce((r, p) => addWaypoint(r, p, 'route'), EMPTY_ROUTE);
+    const surfaces = { tags: ['highway=residential surface=asphalt', 'highway=track'], runs: [[0, 0], [1, 1]] as [number, number][] };
+    route = withLegResult(route, legKey(route, 0)!, [A, { lat: 43.605, lon: 3.8 }, B], surfaces);
+    const record = parseRouteRecord(serializeRouteRecord(routeToRecord(route, META)))!;
+    expect(recordToRoute(record).legs[0].surfaces).toEqual(surfaces);
+    // Morceaux mal formés, ou tracé dont un point est illisible : revêtement inconnu, tracé gardé.
+    const broken = { ...record, legs: [{ ...record.legs[0], surfaces: { tags: ['x'], runs: [[0, 5]] } }] };
+    expect(recordToRoute(broken).legs[0]).toMatchObject({ status: 'ready' });
+    expect(recordToRoute(broken).legs[0]).not.toHaveProperty('surfaces');
+    const holed = { ...record, legs: [{ ...record.legs[0], points: [...record.legs[0].points, [Number.NaN, 3.8]] }] };
+    expect(recordToRoute(holed).legs[0]).not.toHaveProperty('surfaces');
+  });
+
   it('refuse ce qui n\'est pas une fiche d\'itinéraire', () => {
     expect(parseRouteRecord('pas du json')).toBeNull();
     expect(parseRouteRecord(JSON.stringify({ format: 'tracker-session', version: 1 }))).toBeNull();

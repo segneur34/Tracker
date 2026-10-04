@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { brouterErrorMessage, brouterUrl, parseBrouterGeojson, parseProfileUpload } from './brouter';
+import { brouterErrorMessage, brouterUrl, parseBrouterGeojson, parseBrouterMessages, parseProfileUpload } from './brouter';
 import {
   BROUTER_PROFILE_TEXT, WAY_CATEGORIES, WAY_CATEGORY_HIGHWAYS, WAY_PARAM, WAY_PREFERENCE_COST, buildBrouterProfile,
 } from './brouterProfile';
@@ -39,11 +39,41 @@ describe('BRouter', () => {
   });
 
   it('lit la géométrie et l\'altitude, et écarte les points illisibles', () => {
-    expect(parseBrouterGeojson(BROUTER_RESPONSE)).toEqual([
-      { lat: 43.610874, lon: 3.876718, eleM: 47 },
-      { lat: 43.610848, lon: 3.876918, eleM: 47 },
-      { lat: 43.610893, lon: 3.877033 },
-    ]);
+    expect(parseBrouterGeojson(BROUTER_RESPONSE)).toEqual({
+      points: [
+        { lat: 43.610874, lon: 3.876718, eleM: 47 },
+        { lat: 43.610848, lon: 3.876918, eleM: 47 },
+        { lat: 43.610893, lon: 3.877033 },
+      ],
+    });
+  });
+
+  it('tire les voies suivies de `messages` : chaque ligne finit au point du tracé qui porte ses coordonnées', () => {
+    // Forme des réponses de brouter.de (04/10/2026), coordonnées et étiquettes synthétiques.
+    const points = [0, 1, 2, 3, 4, 5].map((i) => ({ lat: 43.6 + i * 0.001, lon: 3.85 }));
+    const row = (i: number, tags: string) => [String(3_850_000), String(43_600_000 + i * 1000), '50', '111', '1000', '0', '0', '0', '0', tags, '', '0', '0'];
+    const messages = [
+      ['Longitude', 'Latitude', 'Elevation', 'Distance', 'CostPerKm', 'ElevCost', 'TurnCost', 'NodeCost', 'InitialCost', 'WayTags', 'NodeTags', 'Time', 'Energy'],
+      row(2, 'reversedirection=yes highway=residential surface=asphalt oneway=yes'),
+      row(3, 'highway=track tracktype=grade2 estimated_forest_class=5'),
+      row(5, 'highway=track tracktype=grade2 estimated_forest_class=6'),
+    ];
+    expect(parseBrouterMessages(messages, points)).toEqual({
+      tags: ['highway=residential surface=asphalt', 'highway=track tracktype=grade2'],
+      runs: [[0, 0], [2, 1]],
+    });
+    const response = { features: [{ geometry: { type: 'LineString', coordinates: points.map((p) => [p.lon, p.lat]) }, properties: { messages } }] };
+    expect(parseBrouterGeojson(response).surfaces?.runs).toEqual([[0, 0], [2, 1]]);
+  });
+
+  it('laisse le revêtement inconnu si `messages` manque ou ne colle pas au tracé', () => {
+    const points = [{ lat: 43.6, lon: 3.85 }, { lat: 43.601, lon: 3.85 }];
+    const header = ['Longitude', 'Latitude', 'WayTags'];
+    expect(parseBrouterMessages(undefined, points)).toBeUndefined();
+    expect(parseBrouterMessages([header], points)).toBeUndefined();
+    expect(parseBrouterMessages([['Longitude', 'Latitude'], ['3850000', '43601000']], points)).toBeUndefined();
+    expect(parseBrouterMessages([header, ['3900000', '43601000', 'highway=path']], points)).toBeUndefined();
+    expect(parseBrouterMessages([header, ['3850000', '43601000', 'highway=path']], points)).toEqual({ tags: ['highway=path'], runs: [[0, 0]] });
   });
 
   it('refuse une réponse sans ligne', () => {
@@ -99,6 +129,8 @@ describe('profil de calcul', () => {
     expect(BROUTER_PROFILE_TEXT).toContain('---context:global');
     expect(BROUTER_PROFILE_TEXT).toContain('---context:way');
     expect(BROUTER_PROFILE_TEXT).toContain('---context:node');
+    // Toutes les étiquettes connues du serveur sortent dans `messages`, d'où le revêtement.
+    expect(BROUTER_PROFILE_TEXT).toMatch(/^assign processUnusedTags true$/m);
   });
 
   it('reprend les catégories de voie et les coûts de chaque type', () => {

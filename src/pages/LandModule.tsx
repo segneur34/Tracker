@@ -16,11 +16,13 @@ import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
+import SurfaceBar from '../components/SurfaceBar';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { IconChevronRight } from '../components/icons';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { CARD_STYLE } from '../components/styles';
+import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
@@ -45,6 +47,7 @@ import { useSessionDraft } from '../hooks/useSessionDraft';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
+import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import {
   TERRAIN_LABEL, TEXT_SCALE_FACTOR, readStoredActivities, useSportSettings, type TerrainType,
 } from '../hooks/useSportSettings';
@@ -53,6 +56,7 @@ import { smoothMovingPower } from '../running/energy';
 import type { RunningSessionStats } from '../running/types';
 import { BIKE_TYPES } from '../cycling/energy';
 import type { LibrarySession } from '../library/record';
+import { WAY_MATCH_DEFAULTS } from '../planning/wayMatch';
 import { LAND_MODULES, type LandFamily } from './landModules';
 
 /** Lissage supplémentaire de la vitesse pour le graphe, en secondes. */
@@ -72,14 +76,17 @@ const TOP_COLORS = ['#d32f2f', '#f57c00', '#388e3c'];
  * session. La carte n'en fait pas partie : comme en voile, elle
  * s'affiche en permanence, jamais derrière un onglet qu'on pourrait fermer
  * et oublier rouvert. « tops » n'apparaît que si le calcul a des cibles de
- * meilleurs segments (le vélo, pas la course).
+ * meilleurs segments (le vélo, pas la course). « surface » demande les voies à
+ * OpenStreetMap à sa première ouverture : fermé par défaut, il ne coûte rien
+ * tant qu'on ne l'ouvre pas.
  */
-type LandSection = 'general' | 'tops' | 'zones' | 'energie' | 'graphiques' | 'reglages';
+type LandSection = 'general' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'reglages';
 
 const LAND_SECTIONS: SectionDefinition<LandSection>[] = [
   { key: 'general', label: 'général' },
   { key: 'tops', label: 'tops' },
   { key: 'zones', label: 'zones de pente' },
+  { key: 'surface', label: 'surface' },
   { key: 'energie', label: 'énergie' },
   { key: 'graphiques', label: 'graphiques' },
   { key: 'reglages', label: 'réglages' },
@@ -89,6 +96,7 @@ const LAND_SECTION_DEFAULTS: Record<LandSection, boolean> = {
   general: true,
   tops: true,
   zones: true,
+  surface: false,
   energie: false,
   graphiques: true,
   reglages: false,
@@ -237,6 +245,9 @@ function LandModule({ family }: { family: LandFamily }) {
     () => (stats?.hasElevation ? computeGrades(elevation.smoothed, cumulative) : []),
     [stats, elevation, cumulative]
   );
+
+  /** Revêtement des voies suivies, demandé à OpenStreetMap à la première ouverture de l'onglet, puis gardé dans la fiche. */
+  const surfaces = useSessionSurfaces(gpx.track, sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null, open.surface);
 
   const zoneStats = useMemo(
     () => (grades.length > 0 ? computeZoneStats(gpx.track, grades, activityMask) : []),
@@ -571,6 +582,28 @@ function LandModule({ family }: { family: LandFamily }) {
               </table>
               <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
                 Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone.
+              </div>
+            </ResizablePanel>
+          )}
+
+          {open.surface && (
+            <ResizablePanel id={panelId('surface')} style={{ ...cardStyle, flex: '1 1 420px' }}>
+              <div style={{ marginBottom: '10px' }}>
+                <PanelTitle label="Surface" open={open.surface} onToggle={() => toggle('surface')} />
+              </div>
+              {surfaces.totals && <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit} />}
+              {surfaces.status === 'searching' && (
+                <div style={{ color: 'var(--muted)' }}>Recherche des voies sur OpenStreetMap…</div>
+              )}
+              {surfaces.status === 'error' && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ color: 'var(--danger)' }}>{surfaces.error}</span>
+                  <Button size="s" onClick={surfaces.retry}>Réessayer</Button>
+                </div>
+              )}
+              <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '10px' }}>
+                Revêtement des voies d'OpenStreetMap à moins de {WAY_MATCH_DEFAULTS.radiusM} m de la trace, demandées à la première
+                ouverture de cet onglet puis gardées avec la session. Hors de toute voie : « Inconnu ».
               </div>
             </ResizablePanel>
           )}

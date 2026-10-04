@@ -14,6 +14,7 @@ import {
   type LibrarySession,
   type SessionAnalysis,
   type SessionRecord,
+  type SessionSurfaces,
 } from './record';
 
 const START_MS = Date.UTC(2026, 8, 23, 12, 0, 0);
@@ -157,6 +158,36 @@ describe("réglages d'analyse de la fiche", () => {
     });
     const negative = { ...record(), analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: -1.5 } };
     expect(parseRecord(JSON.stringify(negative))?.analysis?.referenceSpeedMs).toBeNull();
+  });
+});
+
+describe('voies suivies de la fiche', () => {
+  const surfaces: SessionSurfaces = {
+    source: 'overpass',
+    fetchedAt: '2026-10-04T15:00:00.000Z',
+    matchVersion: 1,
+    startMs: START_MS,
+    tags: ['highway=residential', 'highway=track tracktype=grade2'],
+    runs: [[0, 0], [125_000, 1], [300_000, -1]],
+  };
+
+  it('sont relues à l\'identique, et absentes d\'une fiche qui n\'en a pas', () => {
+    expect(parseRecord(serializeRecord(record({ surfaces })))?.surfaces).toEqual(surfaces);
+    expect(parseRecord(serializeRecord(record()))).not.toHaveProperty('surfaces');
+  });
+
+  it('sont écartées si elles sont mal formées', () => {
+    const broken = { ...record(), surfaces: { ...surfaces, runs: [[5, 0]] } };
+    expect(parseRecord(JSON.stringify(broken))).not.toHaveProperty('surfaces');
+    const otherSource = { ...record(), surfaces: { ...surfaces, source: 'ailleurs' } };
+    expect(parseRecord(JSON.stringify(otherSource))).not.toHaveProperty('surfaces');
+  });
+
+  it('se rangent et se retirent sans recalcul, et restent quand l\'activité change', () => {
+    const added = applyRecordPatch(record(), { surfaces });
+    expect(added).toEqual({ record: { ...record(), surfaces }, resummarize: false });
+    expect(applyRecordPatch(added.record, { activityId: 'trail' }).record.surfaces).toEqual(surfaces);
+    expect(applyRecordPatch(added.record, { surfaces: null }).record).not.toHaveProperty('surfaces');
   });
 });
 

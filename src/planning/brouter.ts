@@ -1,6 +1,7 @@
 import { jsonStore } from '../platform/storage';
 import { BROUTER_PROFILE_TEXT, WAY_PARAM } from './brouterProfile';
 import type { ComputedMode, RoutePoint, RouteVehicle, Waypoint } from './route';
+import { buildSurfaceRuns, parseWayTags, wayTagsText, type SurfaceRuns } from './surface';
 
 /**
  * Calcul d'un tronçon sur les chemins de la carte, par le serveur public de
@@ -14,8 +15,9 @@ import type { ComputedMode, RoutePoint, RouteVehicle, Waypoint } from './route';
  * plutôt que d'en créer un autre.
  *
  * La réponse GeoJSON donne l'altitude de chaque point, d'où le dénivelé de
- * l'itinéraire. Seuls `fetchLeg` et l'envoi du profil touchent au réseau ; le
- * reste est pur.
+ * l'itinéraire, et les étiquettes des voies suivies, d'où son revêtement
+ * (`surface.ts`). Seuls `fetchLeg` et l'envoi du profil touchent au réseau ;
+ * le reste est pur.
  */
 
 export const BROUTER_URL = 'https://brouter.de/brouter';
@@ -60,13 +62,49 @@ export const parseProfileUpload = (json: unknown): string => {
   return id;
 };
 
+/** Une coordonnée en micro-degrés, comme le serveur l'écrit dans `messages`. */
+const micro = (deg: number): number => Math.round(deg * 1e6);
+
+/**
+ * Voies suivies, tirées de `messages` : une ligne d'en-tête, puis une ligne
+ * par morceau de voie, qui finit au point du tracé dont elle porte les
+ * coordonnées (en micro-degrés) et commence où finit la précédente. Seules les
+ * étiquettes du revêtement sont gardées (`wayTagsText`). `undefined` si le
+ * tableau manque ou ne colle pas au tracé : le revêtement reste inconnu.
+ */
+export const parseBrouterMessages = (messages: unknown, points: ReadonlyArray<RoutePoint>): SurfaceRuns | undefined => {
+  if (!Array.isArray(messages) || messages.length < 2 || !Array.isArray(messages[0]) || points.length < 2) return undefined;
+  const header = messages[0] as unknown[];
+  const lonCol = header.indexOf('Longitude');
+  const latCol = header.indexOf('Latitude');
+  const tagsCol = header.indexOf('WayTags');
+  if (lonCol < 0 || latCol < 0 || tagsCol < 0) return undefined;
+
+  const entries: { start: number; tags: string }[] = [];
+  let start = 0;
+  for (const row of messages.slice(1)) {
+    if (!Array.isArray(row)) return undefined;
+    const lon = Number(row[lonCol]);
+    const lat = Number(row[latCol]);
+    let end = start;
+    while (end < points.length && (micro(points[end].lon) !== lon || micro(points[end].lat) !== lat)) end++;
+    if (end === points.length) return undefined;
+    if (end > start) {
+      entries.push({ start, tags: wayTagsText(parseWayTags(typeof row[tagsCol] === 'string' ? row[tagsCol] : '')) });
+      start = end;
+    }
+  }
+  return entries.length > 0 ? buildSurfaceRuns(entries) : undefined;
+};
+
 /**
  * Géométrie de la réponse : les coordonnées `[lon, lat, altitude]` de la
- * première ligne. Elle part du chemin le plus proche du premier point, pas du
- * point lui-même (`snapToWaypoints`), et peut être vide pour deux points
- * confondus. Lève une erreur si la réponse n'a pas cette forme.
+ * première ligne, et les voies suivies (`parseBrouterMessages`). Elle part du
+ * chemin le plus proche du premier point, pas du point lui-même
+ * (`snapToWaypoints`), et peut être vide pour deux points confondus. Lève une
+ * erreur si la réponse n'a pas cette forme.
  */
-export const parseBrouterGeojson = (json: unknown): RoutePoint[] => {
+export const parseBrouterGeojson = (json: unknown): { points: RoutePoint[]; surfaces?: SurfaceRuns } => {
   const feature = isObject(json) && Array.isArray(json.features) ? json.features[0] : null;
   const geometry = isObject(feature) ? feature.geometry : null;
   const coordinates = isObject(geometry) && geometry.type === 'LineString' ? geometry.coordinates : null;
@@ -79,7 +117,9 @@ export const parseBrouterGeojson = (json: unknown): RoutePoint[] => {
     if (typeof lat !== 'number' || typeof lon !== 'number' || !isFinite(lat) || !isFinite(lon)) continue;
     points.push(typeof ele === 'number' && isFinite(ele) ? { lat, lon, eleM: ele } : { lat, lon });
   }
-  return points;
+  const properties = isObject(feature) ? feature.properties : null;
+  const surfaces = parseBrouterMessages(isObject(properties) ? properties.messages : undefined, points);
+  return surfaces ? { points, surfaces } : { points };
 };
 
 /**
@@ -135,7 +175,7 @@ export const fetchLeg = async (
   mode: ComputedMode,
   vehicle: RouteVehicle,
   signal?: AbortSignal
-): Promise<RoutePoint[]> => {
+): Promise<{ points: RoutePoint[]; surfaces?: SurfaceRuns }> => {
   const request = async (profileId: string): Promise<Response> => {
     try {
       return await fetch(brouterUrl(from, to, mode, vehicle, profileId), { signal });

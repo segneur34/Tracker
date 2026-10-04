@@ -2,6 +2,7 @@ import { accumulateElevation } from '../core/elevation';
 import { EARTH_RADIUS_M, haversineDistance, initialBearing, toRad } from '../core/kinematics';
 import type { SportFamily } from '../core/sportProfiles';
 import { computeGrades } from '../running/runningAnalytics';
+import { shiftSurfaceRuns, type SurfaceRuns } from './surface';
 
 /**
  * Itinéraire planifié : des points de passage posés par l'utilisateur, reliés
@@ -113,6 +114,12 @@ export interface RouteLeg {
   points: RoutePoint[];
   /** Raison de l'échec, en clair, si `status` vaut `error`. */
   error?: string;
+  /**
+   * Voies suivies, d'après le calcul (`brouter.ts`), en indices de `points`.
+   * Absent pour une ligne droite, une trace importée, ou un tronçon calculé
+   * avant qu'on les garde : son revêtement est alors inconnu (`surface.ts`).
+   */
+  surfaces?: SurfaceRuns;
 }
 
 /** `legs[i]` relie `waypoints[i]` à `waypoints[i + 1]` : un tronçon de moins que de points. */
@@ -415,13 +422,15 @@ const pendingWithKey = (route: PlannedRoute, key: string): number[] =>
   route.legs.flatMap((l, i) => (l.status === 'pending' && legKey(route, i) === key ? [i] : []));
 
 /**
- * Géométrie calculée pour la clé `key`, posée sur les tronçons en attente qui
- * la portent encore ; itinéraire inchangé si aucun ne la porte plus.
+ * Géométrie calculée pour la clé `key`, et ses voies s'il y en a, posées sur
+ * les tronçons en attente qui la portent encore ; itinéraire inchangé si aucun
+ * ne la porte plus.
  */
-export const withLegResult = (route: PlannedRoute, key: string, points: RoutePoint[]): PlannedRoute => {
+export const withLegResult = (route: PlannedRoute, key: string, points: RoutePoint[], surfaces?: SurfaceRuns): PlannedRoute => {
   const targets = pendingWithKey(route, key);
   if (targets.length === 0 || points.length < 2) return route;
-  return { ...route, legs: route.legs.map((l, i) => (targets.includes(i) ? { mode: l.mode, status: 'ready', points } : l)) };
+  const ready = (mode: RouteMode): RouteLeg => (surfaces ? { mode, status: 'ready', points, surfaces } : { mode, status: 'ready', points });
+  return { ...route, legs: route.legs.map((l, i) => (targets.includes(i) ? ready(l.mode) : l)) };
 };
 
 /** Échec du calcul pour la clé `key` : la ligne droite reste, avec la raison. */
@@ -435,6 +444,19 @@ export const withLegError = (route: PlannedRoute, key: string, message: string):
     ),
   };
 };
+
+/** Tronçon calculé, prêt, mais sans voies connues : rangé avant qu'on les garde. */
+const lacksSurfaces = (leg: RouteLeg): boolean => leg.status === 'ready' && !isFixedMode(leg.mode) && !leg.surfaces;
+
+/**
+ * Remet en calcul les tronçons calculés sans voies connues, pour en avoir le
+ * revêtement. Le tracé peut changer si la carte a changé depuis. Itinéraire
+ * inchangé (même objet) s'il n'y en a aucun.
+ */
+export const recomputeLegsWithoutSurfaces = (route: PlannedRoute): PlannedRoute =>
+  route.legs.some(lacksSurfaces)
+    ? { ...route, legs: route.legs.map((l, i) => (lacksSurfaces(l) ? newLeg(route.waypoints[i], route.waypoints[i + 1], l.mode) : l)) }
+    : route;
 
 /** Remet en calcul les tronçons en échec. */
 export const retryFailedLegs = (route: PlannedRoute): PlannedRoute =>
@@ -478,14 +500,16 @@ const withEle = (w: Waypoint, eleM: number | undefined): RoutePoint =>
  * chemin le plus proche du point posé : on ajoute le point lui-même en tête et
  * en queue, pour que le trait touche le repère et que la distance compte
  * l'approche. Le point ajouté prend l'altitude du chemin voisin : l'approche
- * est courte (sous `DEFAULT_MAX_SNAP_M`), et le profil n'a pas de trou.
- * `maxGapM` : le plus grand des deux écarts, à comparer au seuil.
+ * est courte (sous `DEFAULT_MAX_SNAP_M`), et le profil n'a pas de trou. Elle
+ * prend aussi la voie voisine : `surfaces` sont décalées d'un point ajouté en
+ * tête. `maxGapM` : le plus grand des deux écarts, à comparer au seuil.
  */
 export const snapToWaypoints = (
   from: Waypoint,
   to: Waypoint,
-  computed: RoutePoint[]
-): { points: RoutePoint[]; maxGapM: number } => {
+  computed: RoutePoint[],
+  surfaces?: SurfaceRuns
+): { points: RoutePoint[]; surfaces?: SurfaceRuns; maxGapM: number } => {
   if (computed.length === 0) return { points: [{ lat: from.lat, lon: from.lon }, { lat: to.lat, lon: to.lon }], maxGapM: 0 };
   const first = computed[0];
   const last = computed[computed.length - 1];
@@ -496,7 +520,9 @@ export const snapToWaypoints = (
     ...computed,
     ...(gapEnd > 0 ? [withEle(to, last.eleM)] : []),
   ];
-  return { points, maxGapM: Math.max(gapStart, gapEnd) };
+  const maxGapM = Math.max(gapStart, gapEnd);
+  if (!surfaces) return { points, maxGapM };
+  return { points, surfaces: gapStart > 0 ? shiftSurfaceRuns(surfaces, 1) : surfaces, maxGapM };
 };
 
 /** Premier tronçon à calculer, ou `-1`. */

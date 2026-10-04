@@ -1,5 +1,6 @@
 import { sanitizeMarkGuide, type MarkGuideSettings } from '../recording/markGuide';
 import { DEFAULT_ROUTE_MODE, newLeg, readRouteMode, type PlannedRoute, type RouteLeg, type RouteMode, type RoutePoint, type Waypoint } from './route';
+import { readSurfaceRuns, type SurfaceRuns } from './surface';
 
 /**
  * Fiche d'un itinéraire : le fichier JSON rangé dans `itineraires/` du
@@ -19,6 +20,10 @@ export const ROUTE_FORMAT = 'tracker-itineraire';
  * 2 : tronçons `imported` (trace d'un GPX chargé). Une version d'avant les
  * lit sans les réécrire : elle les recalculerait par les chemins, et la trace
  * serait perdue.
+ *
+ * Les voies d'un tronçon calculé (`surfaces`) sont venues après, sans changer
+ * de version : une version d'avant les perd en réécrivant la fiche, et le
+ * tronçon redevient « à recalculer » pour son revêtement, sans rien d'autre.
  */
 export const ROUTE_VERSION = 2;
 
@@ -30,6 +35,8 @@ interface StoredLeg {
   /** Vrai si le tronçon n'était pas calculé au rangement : il le sera à l'ouverture. */
   pending?: boolean;
   points: StoredPoint[];
+  /** Voies suivies, en indices de `points` (`SurfaceRuns`) ; à relire par `readSurfaceRuns`. */
+  surfaces?: unknown;
 }
 
 export interface RouteRecord {
@@ -92,6 +99,7 @@ export const routeToRecord = (
       mode: leg.mode,
       ...(leg.status !== 'ready' ? { pending: true } : {}),
       points: leg.points.map(storePoint),
+      ...(leg.status === 'ready' && leg.surfaces ? { surfaces: leg.surfaces } : {}),
     })),
   };
   if (meta.markGuide === null) delete record.markGuide;
@@ -116,9 +124,13 @@ export const recordToRoute = (record: RouteRecord): PlannedRoute => {
     const points = (stored?.points ?? []).map(readPoint).filter((p): p is RoutePoint => p !== null);
     if (!stored || stored.pending || points.length < 2) {
       legs.push(newLeg(waypoints[i], waypoints[i + 1], mode));
-    } else {
-      legs.push({ mode, status: 'ready', points });
+      continue;
     }
+    // Des voies ne valent que pour le tracé où elles ont été rangées : sans point écarté à la lecture.
+    const surfaces: SurfaceRuns | null = mode !== 'straight' && mode !== 'imported' && points.length === stored.points.length
+      ? readSurfaceRuns(stored.surfaces, points.length)
+      : null;
+    legs.push(surfaces ? { mode, status: 'ready', points, surfaces } : { mode, status: 'ready', points });
   }
   return { waypoints, legs };
 };

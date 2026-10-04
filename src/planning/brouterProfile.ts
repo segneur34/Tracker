@@ -16,6 +16,10 @@ import type { ComputedMode } from './route';
  * Accès, sens interdits et nœuds repris du profil `trekking` du serveur. Le
  * dénivelé ne compte pas, comme dans `hiking-mountain`. Texte en ASCII : le
  * serveur ne précise pas l'encodage qu'il lit.
+ *
+ * `processUnusedTags true` : la réponse donne toutes les étiquettes connues du
+ * serveur pour chaque voie, pas seulement celles que le profil lit ; on en
+ * tire le revêtement (`surface`, `tracktype`, `sac_scale`, `surface.ts`).
  */
 
 /** Catégories de voie du profil, numérotées de 1 à 4 dans cet ordre (variable `categorie`). */
@@ -97,7 +101,7 @@ assign uphillcost 0
 assign uphillcutoff 1.5
 
 assign turnInstructionMode 0
-assign processUnusedTags false
+assign processUnusedTags true
 
 ---context:way
 

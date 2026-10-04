@@ -390,3 +390,21 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - en arrière-plan, Android ne fait vibrer une application que si l'usage est déclaré : la vibration est d'usage alarme ;
       - le son passe par le flux des alarmes : il sonne téléphone en silencieux, au volume des alarmes. C'est un sinus de 2 kHz, synthétisé une fois puis rejoué ;
       - dans le GPX exporté d'une boucle, l'arrivée s'appelle « 4 », alors que la carte montre « 1 ».
+78. Revêtement des itinéraires et des sessions, onglet « surface » (04/10, validé sur le téléphone, APK 0.2.48).
+    - **Demande de l'utilisateur** : une barre de revêtement à la Komoot (Asphalte, Gravillon, Terre…), en planification et dans l'analyse de course et de vélo.
+    - **Classement** (`classifySurface`), d'après les étiquettes OSM de chaque voie, dans cet ordre :
+      - `sac_scale` de montagne, qui donne « Alpin » ;
+      - `surface` déclarée, une valeur inconnue donnant « Autre » ;
+      - `tracktype` ;
+      - une route sans précision, comptée en asphalte ;
+      - sinon « Inconnu ».
+
+      On ne garde que ces quatre étiquettes, si bien qu'on peut changer le classement sans redemander les voies.
+    - **Planification** : les voies viennent des `messages` de BRouter, avec le profil passé en `processUnusedTags true`. Elles sont rangées par tronçon dans la fiche de l'itinéraire. Ligne droite et GPX importé donnent « Inconnu ». Un itinéraire rangé avant ce lot propose « Calculer » ; ce nouveau calcul peut changer le tracé si la carte a changé depuis.
+    - **Sessions** : Overpass n'est appelé qu'à la première ouverture de l'onglet, fermé par défaut. Chaque point va à la voie la plus proche dans 25 m ; il garde celle du point précédent tant qu'une autre n'est pas plus proche de 5 m, sans quoi la trace sauterait du trottoir à la route. Le résultat est rangé dans la fiche, hors brouillon : ce n'est pas une saisie. Course du 03/10 : 19 voies trouvées en 4 s, Gravillon 3,25 km, Terre 3,13, Asphalte 0,23, Inconnu 11 m.
+    - **Pièges** :
+      - Overpass répond 406 à un agent de navigateur sans `Referer`. Le navigateur et la WebView l'envoient d'office : ne pas le retirer ;
+      - BRouter ramène certaines valeurs à une forme canonique (`bricks` → `paved`, `rocks` → `rock`) : la table de classement porte les deux formes ;
+      - beaucoup de trottoirs et de sentiers n'ont pas d'étiquette `surface` : ils tombent en « Inconnu », faute de mieux ;
+      - l'écriture de la fiche est différée de 800 ms : au banc, attendre avant de recharger la page ;
+      - Overpass met de quelques secondes à plus d'une minute selon sa charge.
