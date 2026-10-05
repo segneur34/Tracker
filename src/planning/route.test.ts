@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, addWaypoint, closeLoop, courseLegs, insertWaypoint, isChoosableMode, isLooped, isRouteMode, legKey, moveWaypoint,
-  nextPendingLeg, pendingLegRequests, readRouteMode, recomputeLegsWithoutSurfaces, removeWaypoint, reorderWaypoint, retryFailedLegs, reverseRoute,
-  routeFromTrack, routePoints,
+  DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, addWaypoint, closeLoop, courseLegs, insertWaypoint, isChoosableMode, isLooped, isRouteMode, isWaysMode, legKey,
+  moveWaypoint, nextPendingLeg, pendingLegRequests, readRouteMode, recomputeLegsWithoutSurfaces, removeWaypoint, reorderWaypoint, retryFailedLegs,
+  reverseRoute, routeFromTrack, routeModeLabel, routePoints, toggleWayType, wayTypesOf, waysMode,
   routeProfileRows, routeTotals, routeVehicle, setLegMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
   type PlannedRoute, type RoutePoint, type Waypoint,
 } from './route';
@@ -15,7 +15,7 @@ const D: Waypoint = { lat: 43.63, lon: 3.8 };
 /** Un degré de latitude fait un peu plus de 111 km : 0,01° ≈ 1 112 m. */
 const STEP_M = 1112;
 
-const build = (points: Waypoint[], mode: 'chemin' | 'straight' = 'chemin'): PlannedRoute =>
+const build = (points: Waypoint[], mode: 'sentier' | 'straight' = 'sentier'): PlannedRoute =>
   points.reduce((route, p) => addWaypoint(route, p, mode), EMPTY_ROUTE);
 
 /** Tracé calculé factice : trois points sur la droite, altitudes données. */
@@ -85,7 +85,7 @@ describe('édition d\'un itinéraire', () => {
     const route = resolveAll(build([A, B]), [0, 0, 0]);
     const bike = setLegMode(route, 0, 'route');
     expect(bike.legs[0]).toMatchObject({ mode: 'route', status: 'pending' });
-    expect(setLegMode(route, 0, 'chemin')).toBe(route);
+    expect(setLegMode(route, 0, 'sentier')).toBe(route);
   });
 
   it('inverse le sens : tracés retournés en attendant le recalcul', () => {
@@ -98,12 +98,12 @@ describe('édition d\'un itinéraire', () => {
   });
 
   it('boucle : un dernier tronçon ramène au départ, une seule fois', () => {
-    const loop = closeLoop(build([A, B]), 'chemin');
+    const loop = closeLoop(build([A, B]), 'sentier');
     expect(loop.waypoints).toEqual([A, B, A]);
     expect(isLooped(loop)).toBe(true);
-    expect(closeLoop(loop, 'chemin')).toBe(loop);
+    expect(closeLoop(loop, 'sentier')).toBe(loop);
     expect(isLooped(build([A, B]))).toBe(false);
-    expect(closeLoop(build([A]), 'chemin').waypoints).toEqual([A]);
+    expect(closeLoop(build([A]), 'sentier').waypoints).toEqual([A]);
   });
 
   it('boucle en ligne droite : le dernier tronçon est prêt tout de suite, rien à calculer', () => {
@@ -115,7 +115,7 @@ describe('édition d\'un itinéraire', () => {
   });
 
   it('sur une boucle, déplacer le départ déplace l\'arrivée : la boucle reste fermée', () => {
-    const loop = resolveAll(closeLoop(build([A, B, C]), 'chemin'), [0, 0, 0]);
+    const loop = resolveAll(closeLoop(build([A, B, C]), 'sentier'), [0, 0, 0]);
     const moved = moveWaypoint(loop, 0, D);
     expect(moved.waypoints).toEqual([D, B, C, D]);
     expect(moved.legs.map((l) => l.status)).toEqual(['pending', 'ready', 'pending']);
@@ -130,7 +130,7 @@ describe('édition d\'un itinéraire', () => {
     // D → B prend la ligne droite de sa place : prête tout de suite ; A → D est à calculer.
     expect(moved.legs.map((l) => l.status)).toEqual(['pending', 'ready', 'ready']);
     expect(moved.legs[2]).toBe(route.legs[1]);
-    expect(moved.legs.map((l) => l.mode)).toEqual(['chemin', 'straight', 'straight']);
+    expect(moved.legs.map((l) => l.mode)).toEqual(['sentier', 'straight', 'straight']);
     expect(reorderWaypoint(route, 1, 1)).toBe(route);
     expect(reorderWaypoint(route, 0, 9)).toBe(route);
   });
@@ -154,7 +154,7 @@ describe('résultats de calcul', () => {
 
   it('liste les calculs à demander, une fois par clé', () => {
     const route = closeLoop(build([A, B]), 'straight');
-    expect(pendingLegRequests(route)).toEqual([{ key: legKey(route, 0), from: A, to: B, mode: 'chemin' }]);
+    expect(pendingLegRequests(route)).toEqual([{ key: legKey(route, 0), from: A, to: B, mode: 'sentier' }]);
   });
 
   it('un échec garde la ligne droite et la raison', () => {
@@ -313,7 +313,7 @@ describe('trace importée', () => {
     const route = routeFromTrack(track)!;
     const cut = insertWaypoint(route, 0, B);
     expect(cut.waypoints).toEqual([A, B, END]);
-    const joined = removeWaypoint(cut, 1, 'chemin');
+    const joined = removeWaypoint(cut, 1, 'sentier');
     expect(joined.legs).toEqual(route.legs);
   });
 
@@ -337,28 +337,82 @@ describe('trace importée', () => {
   });
 
   it('réordonner garde une part importée dont les extrémités n\'ont pas changé', () => {
-    const route = addWaypoint(routeFromTrack(track)!, C, 'chemin');
-    const moved = reorderWaypoint(route, 2, 0, 'chemin');
+    const route = addWaypoint(routeFromTrack(track)!, C, 'sentier');
+    const moved = reorderWaypoint(route, 2, 0, 'sentier');
     expect(moved.waypoints).toEqual([C, A, END]);
     expect(moved.legs[1]).toBe(route.legs[0]);
-    expect(moved.legs[0]).toMatchObject({ mode: 'chemin', status: 'pending' });
+    expect(moved.legs[0]).toMatchObject({ mode: 'sentier', status: 'pending' });
   });
 
   it('le mode importé se relit mais ne se choisit pas', () => {
     expect(isRouteMode('imported')).toBe(true);
     expect(isChoosableMode('imported')).toBe(false);
-    expect(isChoosableMode('chemin')).toBe(true);
+    expect(isChoosableMode('sentier')).toBe(true);
     expect(isRouteMode('toString')).toBe(false);
   });
 
   it('traduit les modes d\'avant les types de voie, qui ne se choisissent plus', () => {
-    expect(readRouteMode('foot')).toBe('chemin');
+    expect(readRouteMode('foot')).toBe('sentier');
     expect(readRouteMode('mtb')).toBe('piste');
     expect(readRouteMode('bike')).toBe('route');
     expect(readRouteMode('grandeRoute')).toBe('grandeRoute');
     expect(readRouteMode('toString')).toBeNull();
     expect(readRouteMode(undefined)).toBeNull();
     expect(isChoosableMode('foot')).toBe(false);
+  });
+
+  it('relit « Chemin », devenu « Sentier », seul ou avec d\x27autres types', () => {
+    expect(readRouteMode('chemin')).toBe('sentier');
+    expect(readRouteMode('chemin+piste')).toBe('sentier+piste');
+    expect(readRouteMode('route+chemin')).toBe('sentier+route');
+    // Un ancien nom n'est pas un mode tel quel : il se relit, puis s'écrit sous le nouveau.
+    expect(isRouteMode('chemin')).toBe(false);
+  });
+
+  it('écrit plusieurs types cochés dans l\'ordre fixe, sans doublon ; aucun type ne fait pas de mode', () => {
+    expect(waysMode(['grandeRoute', 'route'])).toBe('route+grandeRoute');
+    expect(waysMode(['piste', 'sentier', 'piste'])).toBe('sentier+piste');
+    expect(waysMode(['route'])).toBe('route');
+    expect(waysMode([])).toBeNull();
+    expect(wayTypesOf('sentier+route+grandeRoute')).toEqual(['sentier', 'route', 'grandeRoute']);
+    expect(isWaysMode('route+grandeRoute')).toBe(true);
+    expect(isWaysMode('straight')).toBe(false);
+    expect(isWaysMode('imported')).toBe(false);
+  });
+
+  it('relit une combinaison, remise dans l\'ordre, et refuse un type inconnu', () => {
+    expect(readRouteMode('route+grandeRoute')).toBe('route+grandeRoute');
+    expect(readRouteMode('grandeRoute+route')).toBe('route+grandeRoute');
+    expect(readRouteMode('route+toString')).toBeNull();
+    expect(readRouteMode('')).toBeNull();
+    expect(readRouteMode('straight')).toBe('straight');
+    // Seule la forme dans l'ordre est un mode tel quel.
+    expect(isRouteMode('route+grandeRoute')).toBe(true);
+    expect(isRouteMode('grandeRoute+route')).toBe(false);
+    expect(isChoosableMode('sentier+piste')).toBe(true);
+    expect(isChoosableMode('straight')).toBe(true);
+  });
+
+  it('nomme un mode en clair', () => {
+    expect(routeModeLabel('route+grandeRoute')).toBe('Route + Grande route');
+    expect(routeModeLabel('sentier')).toBe('Sentier');
+    expect(routeModeLabel('straight')).toBe('Ligne droite');
+    expect(routeModeLabel('imported')).toBe('Trace importée');
+  });
+
+  it('coche et décoche un type, sans jamais décocher le dernier ; depuis la ligne droite, le type seul', () => {
+    expect(toggleWayType('route', 'grandeRoute')).toBe('route+grandeRoute');
+    expect(toggleWayType('route+grandeRoute', 'route')).toBe('grandeRoute');
+    expect(toggleWayType('route', 'route')).toBe('route');
+    expect(toggleWayType('straight', 'piste')).toBe('piste');
+    expect(toggleWayType('imported', 'sentier')).toBe('sentier');
+  });
+
+  it('passe un tronçon d\'une combinaison à une autre, et le recalcule', () => {
+    const route = setLegMode(build([A, B]), 0, 'route+grandeRoute');
+    expect(route.legs[0]).toMatchObject({ mode: 'route+grandeRoute', status: 'pending' });
+    expect(legKey(route, 0)).toContain(':route+grandeRoute');
+    expect(setLegMode(route, 0, 'grandeRoute').legs[0]).toMatchObject({ mode: 'grandeRoute', status: 'pending' });
   });
 
   it('prend les règles du vélo pour la famille vélo, celles du piéton sinon', () => {

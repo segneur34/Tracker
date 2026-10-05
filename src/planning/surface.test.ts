@@ -136,7 +136,7 @@ describe('longueurs par revêtement', () => {
     const points = north(3);
     const legs: RouteLeg[] = [
       { mode: 'route', status: 'ready', points, surfaces: { tags: ['highway=residential'], runs: [[0, 0]] } },
-      { mode: 'chemin', status: 'ready', points },
+      { mode: 'sentier', status: 'ready', points },
       { mode: 'straight', status: 'ready', points },
       { mode: 'imported', status: 'ready', points },
       { mode: 'piste', status: 'pending', points },

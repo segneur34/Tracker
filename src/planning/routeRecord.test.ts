@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_ROUTE, addWaypoint, legKey, routeFromTrack, withLegResult, type PlannedRoute } from './route';
+import { EMPTY_ROUTE, addWaypoint, legKey, routeFromTrack, setLegMode, withLegResult, type PlannedRoute } from './route';
 import { buildRouteGpx, waypointLabel } from './routeGpx';
 import { MARK_GUIDE_DEFAULTS } from '../recording/markGuide';
 import {
@@ -12,7 +12,7 @@ const C = { lat: 43.62, lon: 3.81 };
 
 /** A → B calculé (avec altitude), B → C en attente. */
 const sample = (): PlannedRoute => {
-  let route = [A, B, C].reduce((r, p) => addWaypoint(r, p, 'chemin'), EMPTY_ROUTE);
+  let route = [A, B, C].reduce((r, p) => addWaypoint(r, p, 'sentier'), EMPTY_ROUTE);
   route = withLegResult(route, legKey(route, 0)!, [
     { ...A, eleM: 100 }, { lat: 43.605, lon: 3.8012345678, eleM: 120.26 }, { ...B, eleM: 110 },
   ]);
@@ -30,7 +30,7 @@ describe('fiche d\'itinéraire', () => {
     expect(back.waypoints).toEqual([A, B, C]);
     expect(back.legs[0].status).toBe('ready');
     expect(back.legs[0].points[1]).toEqual({ lat: 43.605, lon: 3.8012346, eleM: 120.3 });
-    expect(back.legs[1]).toMatchObject({ mode: 'chemin', status: 'pending' });
+    expect(back.legs[1]).toMatchObject({ mode: 'sentier', status: 'pending' });
   });
 
   it('garde les champs inconnus et ne réécrit pas une fiche d\'une version future', () => {
@@ -78,7 +78,7 @@ describe('fiche d\'itinéraire', () => {
   it('garde une trace importée telle quelle, sans la recalculer', () => {
     const route = routeFromTrack([{ ...A, eleM: 10 }, { lat: 43.605, lon: 3.801, eleM: 15 }, { ...B, eleM: 20 }])!;
     const record = parseRouteRecord(serializeRouteRecord(routeToRecord(route, META)))!;
-    expect(record.version).toBe(2);
+    expect(record.version).toBeGreaterThanOrEqual(2);
     expect(recordToRoute(record)).toEqual(route);
     // Illisible, elle devient une ligne droite plutôt qu'un calcul par les chemins.
     const broken = recordToRoute({ ...record, legs: [{ mode: 'imported', points: [] }] });
@@ -91,8 +91,27 @@ describe('fiche d\'itinéraire', () => {
     old.legs[0].mode = 'foot';
     old.legs[1].mode = 'mtb';
     const back = recordToRoute(parseRouteRecord(JSON.stringify(old))!);
-    expect(back.legs[0]).toMatchObject({ mode: 'chemin', status: 'ready' });
+    expect(back.legs[0]).toMatchObject({ mode: 'sentier', status: 'ready' });
     expect(back.legs[1]).toMatchObject({ mode: 'piste', status: 'pending' });
+  });
+
+  it('relit « Chemin » en « Sentier » sans recalculer le tronçon', () => {
+    const old = JSON.parse(serializeRouteRecord(routeToRecord(sample(), META))) as { legs: { mode: string }[] };
+    old.legs[0].mode = 'chemin';
+    old.legs[1].mode = 'chemin+route';
+    const back = recordToRoute(parseRouteRecord(JSON.stringify(old))!);
+    expect(back.legs[0]).toMatchObject({ mode: 'sentier', status: 'ready' });
+    expect(back.legs[1]).toMatchObject({ mode: 'sentier+route' });
+  });
+
+  it('garde plusieurs types cochés, remis dans l\'ordre à la lecture', () => {
+    const route = setLegMode(sample(), 0, 'route+grandeRoute');
+    const record = parseRouteRecord(serializeRouteRecord(routeToRecord(route, META)))!;
+    expect(record.version).toBe(3);
+    expect(record.legs[0].mode).toBe('route+grandeRoute');
+    const shuffled = JSON.parse(serializeRouteRecord(record)) as { legs: { mode: string }[] };
+    shuffled.legs[0].mode = 'grandeRoute+route';
+    expect(recordToRoute(parseRouteRecord(JSON.stringify(shuffled))!).legs[0].mode).toBe('route+grandeRoute');
   });
 
   it('recalcule des tronçons qui ne correspondent plus aux points', () => {

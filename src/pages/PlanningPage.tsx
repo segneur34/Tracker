@@ -45,10 +45,11 @@ import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
 import { PACE_LEVEL_LABEL, estimateRouteDurationS } from '../planning/duration';
 import { searchPlaces, type Place } from '../planning/geocoding';
+import { WAY_TYPES } from '../planning/brouterProfile';
 import {
-  DEFAULT_ROUTE_MODE, EMPTY_ROUTE, ROUTE_MODES, ROUTE_MODE_HINT, ROUTE_MODE_LABEL, courseLegs, isChoosableMode, isLooped, readRouteMode,
-  routeFromTrack, routePoints, routeProfileRows, routeTotals, routeVehicle, straightenRoute, waypointDistances, type PlannedRoute, type RouteLeg,
-  type RouteMode, type Waypoint,
+  DEFAULT_ROUTE_MODE, EMPTY_ROUTE, STRAIGHT_HINT, STRAIGHT_LABEL, WAY_TYPE_HINT, WAY_TYPE_LABEL, courseLegs, isChoosableMode, isLooped, isWaysMode,
+  readRouteMode, routeFromTrack, routeModeLabel, routePoints, routeProfileRows, routeTotals, routeVehicle, straightenRoute, toggleWayType,
+  wayTypesOf, waypointDistances, type PlannedRoute, type RouteMode, type Waypoint,
 } from '../planning/route';
 import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute, routeMarkGuide } from '../planning/routeRecord';
@@ -215,20 +216,33 @@ function PlanBlock({ id, label, open, onToggle, aside, children }: {
 }
 
 /**
- * Façon de venir à un point : les modes que l'on choisit, et « Trace
- * importée » pour un tronçon tiré d'un GPX chargé, montrée sans pouvoir être
- * choisie (choisir un autre mode refait le tronçon).
+ * Façon de relier les points : les types de voie cochés, et la ligne droite à
+ * part. Toucher un type le coche ou le décoche (le dernier reste coché) ;
+ * toucher « Ligne droite » la choisit seule. Sert à la barre au-dessus de la
+ * carte (mode des points suivants) et au tronçon d'un point sélectionné ; sur
+ * une trace importée, rien n'est coché, et choisir refait le tronçon.
  */
-function LegModeSelect({ leg, label, onChange }: { leg: RouteLeg; label?: string; onChange: (mode: RouteMode) => void }) {
+function WayPicker({ mode, label, className, style, onChange }: {
+  mode: RouteMode;
+  label: string;
+  className: string;
+  style?: React.CSSProperties;
+  onChange: (mode: RouteMode) => void;
+}) {
+  const ways = isWaysMode(mode) ? wayTypesOf(mode) : [];
   return (
-    <select
-      className="ui-field ui-field--s"
-      aria-label={label}
-      value={leg.mode}
-      onChange={(e) => isChoosableMode(e.target.value) && onChange(e.target.value)}>
-      {leg.mode === 'imported' && <option value="imported" disabled>{ROUTE_MODE_LABEL.imported}</option>}
-      {ROUTE_MODES.map((m) => <option key={m} value={m}>{ROUTE_MODE_LABEL[m]}</option>)}
-    </select>
+    <div className={`ui-tabs ${className}`} role="group" aria-label={label} style={style}>
+      {WAY_TYPES.map((t) => (
+        <button key={t} type="button" className="ui-tab" aria-pressed={ways.includes(t)} title={WAY_TYPE_HINT[t]}
+          onClick={() => onChange(toggleWayType(mode, t))}>
+          {WAY_TYPE_LABEL[t]}
+        </button>
+      ))}
+      <button type="button" className="ui-tab plan-modes__straight" aria-pressed={mode === 'straight'} title={STRAIGHT_HINT}
+        onClick={() => onChange('straight')}>
+        {STRAIGHT_LABEL}
+      </button>
+    </div>
   );
 }
 
@@ -627,15 +641,8 @@ function PlanningPage() {
             {sailing ? (
               <span className="plan-toolbar__note">Balises reliées en ligne droite</span>
             ) : (
-              <div className="ui-tabs plan-modes" role="group" aria-label="Type de voie"
-                style={{ '--tab-accent': color } as React.CSSProperties}>
-                {ROUTE_MODES.map((m) => (
-                  <button key={m} type="button" className="ui-tab" aria-pressed={mode === m} onClick={() => chooseMode(m)}
-                    title={ROUTE_MODE_HINT[m]}>
-                    {ROUTE_MODE_LABEL[m]}
-                  </button>
-                ))}
-              </div>
+              <WayPicker mode={mode} label="Types de voie" className="plan-modes" onChange={chooseMode}
+                style={{ '--tab-accent': color } as React.CSSProperties} />
             )}
           </div>
           <form className="plan-search" onSubmit={(e) => void onSearch(e)}>
@@ -729,10 +736,11 @@ function PlanningPage() {
               <div className="plan-overlay">
                 <strong>{sailing ? 'Balise' : 'Point'} {pointLabel(selected)}</strong>
                 {selectedLeg && !sailing && (
-                  <label className="plan-overlay__field">
-                    <span>Pour y venir</span>
-                    <LegModeSelect leg={selectedLeg} onChange={(m) => planner.setMode(selected - 1, m)} />
-                  </label>
+                  <div className="plan-overlay__field">
+                    <span>Pour y venir{selectedLeg.mode === 'imported' && ' (trace importée)'}</span>
+                    <WayPicker mode={selectedLeg.mode} label={`Façon de venir au point ${pointLabel(selected)}`} className="plan-leg-modes"
+                      onChange={(m) => planner.setMode(selected - 1, m)} />
+                  </div>
                 )}
                 {selected === 0 && route.waypoints.length >= 2 && !looped && (
                   <>
@@ -933,16 +941,24 @@ function PlanningPage() {
                 <li>Touchez un point pour le retirer, ou changer la façon d'y venir ; touchez A pour boucler, par les chemins ou en ligne droite.</li>
                 <li>« Précédent », sur la carte, défait la dernière modification.</li>
                 <li>La liste des points permet aussi de changer leur ordre.</li>
-                <li>Le type de voie choisi au-dessus de la carte vaut pour les points suivants. Le calcul demande du réseau.</li>
+                <li>Les types de voie cochés au-dessus de la carte valent pour les points suivants ; on peut en cocher plusieurs. Le calcul demande du réseau.</li>
                 <li>
-                  {ROUTE_MODES.filter((m) => m !== 'straight').map((m, i, all) => (
-                    <Fragment key={m}>
-                      « {ROUTE_MODE_LABEL[m]} » favorise les {ROUTE_MODE_HINT[m]}{i < all.length - 1 ? ' ; ' : '. '}
+                  {WAY_TYPES.map((t, i) => (
+                    <Fragment key={t}>
+                      « {WAY_TYPE_LABEL[t]} » : {WAY_TYPE_HINT[t]}{i < WAY_TYPES.length - 1 ? ' ; ' : '. '}
                     </Fragment>
                   ))}
-                  Le calcul s'en écarte quand ce type de voie manque ou fait faire un trop grand détour.
+                  Une voie est rangée selon ce qu'elle est : une route en terre ou en gravier compte comme piste, une piste goudronnée comme route.
                 </li>
-                <li>Les règles d'accès suivent l'activité : à pied, escaliers permis et sens interdits ignorés ; à vélo, sens interdits respectés.</li>
+                <li>
+                  Le calcul suit les types cochés et prend les autres quand ils évitent un détour. À vélo, un type plus facile reste permis
+                  (une route pour rejoindre une piste), un plus dur est évité d'autant plus qu'il est dur ; à pied, tous se valent.
+                  Les grandes routes non cochées sont toujours évitées.
+                </li>
+                <li>
+                  Les règles d'accès suivent l'activité : à pied, escaliers permis et sens interdits ignorés ; à vélo, sens interdits respectés,
+                  et voies notées difficiles sur la carte (difficulté VTT 3 ou plus, randonnée T3 ou plus, escaliers) évitées même cochées.
+                </li>
                 <li>« Charger un GPX » reprend telle quelle une trace téléchargée ailleurs. Touchez-la pour y poser un point ; un point déplacé refait ses tronçons dans le mode choisi.</li>
               </ul>
             )}
@@ -987,12 +1003,10 @@ function PlanningPage() {
                               ? formatDistance(0, distanceUnit)
                               : `${formatDistance(distances[i].cumulativeM, distanceUnit)} · tronçon ${formatDistance(distances[i].legM, distanceUnit)}`}
                           </span>
+                          {leg && !sailing && <span className="plan-point__mode">{routeModeLabel(leg.mode)}</span>}
                         </span>
                       </button>
                       <span className="plan-point__actions">
-                        {leg && !sailing && (
-                          <LegModeSelect leg={leg} label={`Façon de venir au point ${label(i)}`} onChange={(m) => planner.setMode(i - 1, m)} />
-                        )}
                         <Button size="s" variant="ghost" className="plan-point__move" aria-label={`Monter : ${pointName(i)}`}
                           disabled={i === 0} onClick={() => { planner.reorder(i, i - 1, editMode); setSelected(null); }}>
                           <IconChevronRight size={16} style={{ transform: 'rotate(-90deg)' }} />

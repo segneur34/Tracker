@@ -24,8 +24,12 @@ export const ROUTE_FORMAT = 'tracker-itineraire';
  * Les voies d'un tronçon calculé (`surfaces`) sont venues après, sans changer
  * de version : une version d'avant les perd en réécrivant la fiche, et le
  * tronçon redevient « à recalculer » pour son revêtement, sans rien d'autre.
+ *
+ * 3 : plusieurs types de voie cochés par tronçon (`route+grandeRoute`), et
+ * « Chemin » devenu « Sentier » (`sentier`). Une version d'avant les
+ * lirait en « Chemin » : elle lit la fiche sans la réécrire.
  */
-export const ROUTE_VERSION = 2;
+export const ROUTE_VERSION = 3;
 
 /** Point de tracé compact : `[lat, lon]` ou `[lat, lon, altitude]`. */
 type StoredPoint = number[];

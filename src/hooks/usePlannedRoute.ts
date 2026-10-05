@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { fetchLeg } from '../planning/brouter';
 import {
-  DEFAULT_MAX_SNAP_M, EMPTY_ROUTE, addWaypoint, closeLoop, insertWaypoint, moveWaypoint, pendingLegRequests, recomputeLegsWithoutSurfaces,
-  removeWaypoint, reorderWaypoint, retryFailedLegs, reverseRoute, setLegMode, snapToWaypoints, straightenRoute, withLegError, withLegResult,
+  DEFAULT_MAX_SNAP_M, EMPTY_ROUTE, addWaypoint, closeLoop, insertWaypoint, isWaysMode, moveWaypoint, pendingLegRequests, recomputeLegsWithoutSurfaces,
+  removeWaypoint, reorderWaypoint, retryFailedLegs, reverseRoute, setLegMode, snapToWaypoints, straightenRoute, wayTypesOf, withLegError, withLegResult,
   type LegRequest, type PlannedRoute, type RouteMode, type RoutePoint, type RouteVehicle, type Waypoint,
 } from '../planning/route';
 import type { SurfaceRuns } from '../planning/surface';
@@ -37,9 +37,9 @@ type LegOutcome = LegResult | { error: string };
 
 const computeLeg = async (request: LegRequest, vehicle: RouteVehicle, maxSnapM: number, signal: AbortSignal): Promise<LegOutcome> => {
   // Une trace importée n'est jamais en attente : elle ne vient ici que par erreur, gardée en ligne droite.
-  if (request.mode === 'straight' || request.mode === 'imported') return { points: [request.from, request.to] };
+  if (!isWaysMode(request.mode)) return { points: [request.from, request.to] };
   try {
-    const computed = await fetchLeg(request.from, request.to, request.mode, vehicle, signal);
+    const computed = await fetchLeg(request.from, request.to, wayTypesOf(request.mode), vehicle, signal);
     const { maxGapM, ...result } = snapToWaypoints(request.from, request.to, computed.points, computed.surfaces);
     if (maxGapM > maxSnapM) {
       return { error: `Point à ${Math.round(maxGapM)} m du chemin le plus proche : rapprochez-le d'un chemin, ou passez ce tronçon en ligne droite.` };

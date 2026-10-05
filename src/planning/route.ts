@@ -2,6 +2,7 @@ import { accumulateElevation } from '../core/elevation';
 import { EARTH_RADIUS_M, haversineDistance, initialBearing, toRad } from '../core/kinematics';
 import type { SportFamily } from '../core/sportProfiles';
 import { computeGrades } from '../running/runningAnalytics';
+import { WAY_TYPES, type WayType } from './brouterProfile';
 import { shiftSurfaceRuns, type SurfaceRuns } from './surface';
 
 /**
@@ -23,55 +24,115 @@ export interface Waypoint {
   lon: number;
 }
 
-/**
- * Façon de relier deux points : par le type de voie que l'on préfère (chemin,
- * piste, route, grande route), en ligne droite, ou par le tracé d'un GPX
- * chargé (`imported`), gardé tel quel. Le moyen de transport n'en fait pas
- * partie : il suit l'activité (`RouteVehicle`).
- */
-export type RouteMode = 'chemin' | 'piste' | 'route' | 'grandeRoute' | 'straight' | 'imported';
-
-/** Modes calculés sur les chemins de la carte (`brouter.ts`). */
-export type ComputedMode = Exclude<RouteMode, 'straight' | 'imported'>;
-
-/** Modes que l'on choisit ; `imported` ne s'obtient qu'en chargeant un GPX. */
-export const ROUTE_MODES: RouteMode[] = ['chemin', 'piste', 'route', 'grandeRoute', 'straight'];
-
-/** Mode par défaut, et celui d'un tronçon illisible. */
-export const DEFAULT_ROUTE_MODE: RouteMode = 'chemin';
-
-export const ROUTE_MODE_LABEL: Record<RouteMode, string> = {
-  chemin: 'Chemin',
+export const WAY_TYPE_LABEL: Record<WayType, string> = {
+  sentier: 'Sentier',
   piste: 'Piste',
   route: 'Route',
   grandeRoute: 'Grande route',
-  straight: 'Ligne droite',
-  imported: 'Trace importée',
 };
 
-/** Ce que chaque mode favorise, pour l'aide et les infobulles. */
-export const ROUTE_MODE_HINT: Record<RouteMode, string> = {
-  chemin: 'sentiers et chemins étroits',
-  piste: 'chemins de terre larges',
-  route: 'petites routes peu fréquentées',
+/** Voies de chaque type, pour l'aide et les infobulles (classement : `brouterProfile.ts`). */
+export const WAY_TYPE_HINT: Record<WayType, string> = {
+  sentier: 'sentiers et chemins étroits, non revêtus',
+  piste: 'chemins larges et routes en terre ou en gravier',
+  route: 'petites routes, rues et voies cyclables revêtues',
   grandeRoute: 'départementales et nationales',
-  straight: 'tout droit, sans suivre la carte',
-  imported: 'trace d\'un GPX chargé, gardée telle quelle',
+};
+
+/** Séparateur des types dans un mode : `route+grandeRoute`. */
+const WAYS_SEPARATOR = '+';
+
+/** Types optionnels, mis bout à bout dans l'ordre de `WAY_TYPES` ; `''` pour aucun. */
+type JoinWays<A extends string, B extends string> = A extends '' ? B : B extends '' ? A : `${A}${typeof WAYS_SEPARATOR}${B}`;
+type OptionalWay<T extends WayType> = T | '';
+
+/**
+ * Mode d'un tronçon calculé : les types cochés, dans l'ordre de `WAY_TYPES`,
+ * joints par « + » (`route+grandeRoute`). Un seul type garde son nom : les
+ * fiches et préférences d'avant les cases (`piste`, `grandeRoute`…) se
+ * relisent telles quelles ; « Chemin », devenu « Sentier », est traduit
+ * (`readRouteMode`).
+ */
+export type WaysMode = Exclude<
+  JoinWays<JoinWays<JoinWays<OptionalWay<'sentier'>, OptionalWay<'piste'>>, OptionalWay<'route'>>, OptionalWay<'grandeRoute'>>,
+  ''
+>;
+
+/**
+ * Façon de relier deux points : par les types de voie cochés, en ligne
+ * droite, ou par le tracé d'un GPX chargé (`imported`), gardé tel quel. Le
+ * moyen de transport n'en fait pas partie : il suit l'activité
+ * (`RouteVehicle`).
+ */
+export type RouteMode = WaysMode | 'straight' | 'imported';
+
+/** Mode des types donnés, remis dans l'ordre et sans doublon ; `null` sans aucun type. */
+export const waysMode = (types: Iterable<WayType>): WaysMode | null => {
+  const chosen = new Set(types);
+  const kept = WAY_TYPES.filter((t) => chosen.has(t));
+  // Types connus, dans l'ordre : la chaîne est bien un `WaysMode`.
+  return kept.length > 0 ? (kept.join(WAYS_SEPARATOR) as WaysMode) : null;
+};
+
+/** Types de voie d'un mode, dans l'ordre de `WAY_TYPES`. */
+export const wayTypesOf = (mode: WaysMode): WayType[] => {
+  const parts = mode.split(WAYS_SEPARATOR);
+  return WAY_TYPES.filter((t) => parts.includes(t));
+};
+
+/** Vrai pour un mode calculé par les types de voie (ni ligne droite, ni trace importée). */
+export const isWaysMode = (mode: RouteMode): mode is WaysMode => mode !== 'straight' && mode !== 'imported';
+
+/** Mode par défaut, et celui d'un tronçon illisible. */
+export const DEFAULT_ROUTE_MODE: RouteMode = 'sentier';
+
+export const STRAIGHT_LABEL = 'Ligne droite';
+export const STRAIGHT_HINT = 'tout droit, sans suivre la carte';
+
+/** Libellé d'un mode : « Route + Grande route », « Ligne droite », « Trace importée ». */
+export const routeModeLabel = (mode: RouteMode): string => {
+  if (mode === 'straight') return STRAIGHT_LABEL;
+  if (mode === 'imported') return 'Trace importée';
+  return wayTypesOf(mode).map((t) => WAY_TYPE_LABEL[t]).join(' + ');
+};
+
+/**
+ * Coche ou décoche un type. Depuis la ligne droite ou une trace importée, le
+ * type seul est choisi. Le dernier type coché ne se décoche pas : mode
+ * inchangé.
+ */
+export const toggleWayType = (mode: RouteMode, type: WayType): RouteMode => {
+  if (!isWaysMode(mode)) return type;
+  const types = wayTypesOf(mode);
+  return types.includes(type) ? waysMode(types.filter((t) => t !== type)) ?? mode : waysMode([...types, type]) ?? mode;
 };
 
 /** Modes d'avant les types de voie (À pied, Vélo, VTT), relus dans les fiches et les préférences. */
-const LEGACY_ROUTE_MODES: Record<string, RouteMode> = { foot: 'chemin', mtb: 'piste', bike: 'route' };
+const LEGACY_ROUTE_MODES: Record<string, RouteMode> = { foot: 'sentier', mtb: 'piste', bike: 'route' };
 
-/** Tout mode connu, `imported` compris : celui d'un tronçon relu d'une fiche. */
+/** Types renommés, relus sous leur nouveau nom : « Chemin » est devenu « Sentier » (05/10/2026). */
+const LEGACY_WAY_TYPES: Record<string, WayType> = { chemin: 'sentier' };
+
+const isWayType = (value: string): value is WayType => (WAY_TYPES as readonly string[]).includes(value);
+
+/** Types d'une chaîne `a+b`, dans le désordre accepté, anciens noms traduits ; `null` si une part n'est pas un type. */
+const parseWays = (value: string): WaysMode | null => {
+  const parts = value.split(WAYS_SEPARATOR).map((part) =>
+    Object.prototype.hasOwnProperty.call(LEGACY_WAY_TYPES, part) ? LEGACY_WAY_TYPES[part] : part
+  );
+  return parts.every(isWayType) ? waysMode(parts) : null;
+};
+
+/** Tout mode connu, écrit dans l'ordre, `imported` compris : celui d'un tronçon relu d'une fiche. */
 export const isRouteMode = (value: unknown): value is RouteMode =>
-  typeof value === 'string' && Object.prototype.hasOwnProperty.call(ROUTE_MODE_LABEL, value);
+  value === 'straight' || value === 'imported' || (typeof value === 'string' && parseWays(value) === value);
 
-/** Mode relu d'une fiche ou des préférences, ancien mode traduit ; `null` s'il est inconnu. */
+/** Mode relu d'une fiche ou des préférences, types remis dans l'ordre, ancien mode traduit ; `null` s'il est inconnu. */
 export const readRouteMode = (value: unknown): RouteMode | null => {
-  if (isRouteMode(value)) return value;
-  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(LEGACY_ROUTE_MODES, value)
-    ? LEGACY_ROUTE_MODES[value]
-    : null;
+  if (typeof value !== 'string') return null;
+  if (value === 'straight' || value === 'imported') return value;
+  if (Object.prototype.hasOwnProperty.call(LEGACY_ROUTE_MODES, value)) return LEGACY_ROUTE_MODES[value];
+  return parseWays(value);
 };
 
 /**
@@ -84,12 +145,11 @@ export type RouteVehicle = 'pieton' | 'velo';
 
 export const routeVehicle = (family: SportFamily): RouteVehicle => (family === 'velo' ? 'velo' : 'pieton');
 
-/** Mode que l'utilisateur peut choisir (`ROUTE_MODES`). */
-export const isChoosableMode = (value: unknown): value is RouteMode =>
-  typeof value === 'string' && (ROUTE_MODES as string[]).includes(value);
+/** Mode que l'utilisateur peut choisir : des types de voie, ou la ligne droite. */
+export const isChoosableMode = (value: unknown): value is RouteMode => isRouteMode(value) && value !== 'imported';
 
 /** Tronçon qui ne se calcule pas : ligne droite, ou trace importée. */
-const isFixedMode = (mode: RouteMode): boolean => mode === 'straight' || mode === 'imported';
+const isFixedMode = (mode: RouteMode): boolean => !isWaysMode(mode);
 
 /**
  * Mode d'un tronçon à refaire entre deux nouvelles extrémités : le sien, sauf

@@ -1,7 +1,7 @@
 import { haversineDistance } from '../core/kinematics';
 import { segmentDistanceM } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
-import { WAY_CATEGORY_HIGHWAYS } from './brouterProfile';
+import { WAY_TYPE_HIGHWAYS } from './brouterProfile';
 import type { RouteLeg, RoutePoint } from './route';
 
 /**
@@ -76,7 +76,7 @@ const TRACKTYPE_VALUES: Record<string, SurfaceCategory> = {
 };
 
 /** Routes, petites et grandes : asphaltées quand rien ne dit le contraire, comme le veut l'usage d'OSM. */
-const ROAD_HIGHWAYS = new Set([...WAY_CATEGORY_HIGHWAYS.route, ...WAY_CATEGORY_HIGHWAYS.grande]);
+const ROAD_HIGHWAYS = new Set([...WAY_TYPE_HIGHWAYS.route, ...WAY_TYPE_HIGHWAYS.grandeRoute]);
 
 /** Étiquettes lues dans un texte `clé=valeur clé=valeur` (forme de BRouter). */
 export const parseWayTags = (text: string): Record<string, string> => {

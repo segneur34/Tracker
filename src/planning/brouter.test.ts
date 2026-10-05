@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { brouterErrorMessage, brouterUrl, parseBrouterGeojson, parseBrouterMessages, parseProfileUpload } from './brouter';
 import {
-  BROUTER_PROFILE_TEXT, WAY_CATEGORIES, WAY_CATEGORY_HIGHWAYS, WAY_PARAM, WAY_PREFERENCE_COST, buildBrouterProfile,
+  BROUTER_PROFILE_TEXT, PEDESTRIAN_HIGHWAY, UNRIDEABLE_TAGS, WAY_COSTS, WAY_TYPES, WAY_TYPE_HIGHWAYS, WAY_TYPE_LEVEL, WAY_TYPE_VARIABLE,
+  buildBrouterProfile, profileCombination, type WayType,
 } from './brouterProfile';
 import { parsePhoton, photonUrl } from './geocoding';
 
@@ -19,16 +20,18 @@ const BROUTER_RESPONSE = {
 };
 
 describe('BRouter', () => {
-  it('demande un tronçon en longitude, latitude, avec le profil envoyé, le type de voie et les règles d\'accès', () => {
-    expect(brouterUrl({ lat: 43.6108, lon: 3.8767 }, { lat: 43.62, lon: 3.89 }, 'chemin', 'pieton', 'custom_42')).toBe(
+  it('demande un tronçon en longitude, latitude, avec le profil envoyé, les types de voie cochés et les règles d\'accès', () => {
+    expect(brouterUrl({ lat: 43.6108, lon: 3.8767 }, { lat: 43.62, lon: 3.89 }, ['sentier'], 'pieton', 'custom_42')).toBe(
       'https://brouter.de/brouter?lonlats=3.876700,43.610800|3.890000,43.620000&profile=custom_42'
-        + '&profile:voie=1&profile:velo=0&alternativeidx=0&format=geojson'
+        + '&profile:calcul=1&alternativeidx=0&format=geojson'
     );
     const A = { lat: 0, lon: 0 };
     const B = { lat: 1, lon: 1 };
-    expect(brouterUrl(A, B, 'piste', 'velo', 'custom_42')).toContain('&profile:voie=2&profile:velo=1&');
-    expect(brouterUrl(A, B, 'route', 'velo', 'custom_42')).toContain('&profile:voie=3&');
-    expect(brouterUrl(A, B, 'grandeRoute', 'pieton', 'custom_42')).toContain('&profile:voie=4&profile:velo=0&');
+    expect(brouterUrl(A, B, ['piste'], 'velo', 'custom_42')).toContain('&profile:calcul=18&');
+    expect(brouterUrl(A, B, ['sentier', 'piste'], 'velo', 'custom_42')).toContain('&profile:calcul=19&');
+    // Plusieurs types cochés, dans n'importe quel ordre : route 4 + grande route 8, plus 16 pour le vélo.
+    expect(brouterUrl(A, B, ['grandeRoute', 'route'], 'velo', 'custom_42')).toContain('&profile:calcul=28&');
+    expect(brouterUrl(A, B, ['grandeRoute', 'route'], 'pieton', 'custom_42')).toContain('&profile:calcul=12&');
   });
 
   it('lit l\'id rendu à l\'envoi du profil, ou le refus du serveur', () => {
@@ -123,9 +126,15 @@ describe('Photon', () => {
 });
 
 describe('profil de calcul', () => {
-  it('déclare ses deux variables, réglables par l\'adresse', () => {
-    expect(BROUTER_PROFILE_TEXT).toMatch(/^assign voie = 1 # %voie%/m);
-    expect(BROUTER_PROFILE_TEXT).toMatch(/^assign velo = 0 # %velo%/m);
+  /** Profil sur une ligne, espaces réduits : les règles se lisent sans dépendre de la mise en page. */
+  const flat = BROUTER_PROFILE_TEXT.replace(/\s+/g, ' ');
+
+  it('déclare une seule variable réglable par l\'adresse, et en tire les types cochés et les règles d\'accès', () => {
+    expect(BROUTER_PROFILE_TEXT).toMatch(/^assign calcul = 1 # %calcul%/m);
+    expect(BROUTER_PROFILE_TEXT.match(/# %\w+%/g)).toEqual(['# %calcul%']);
+    expect(BROUTER_PROFILE_TEXT).not.toMatch(/assign voie\b/);
+    // Jamais le nom d'une clé OSM que le profil lit (`route=ferry`).
+    for (const name of Object.values(WAY_TYPE_VARIABLE)) expect(BROUTER_PROFILE_TEXT).not.toContain(`${name}=`);
     expect(BROUTER_PROFILE_TEXT).toContain('---context:global');
     expect(BROUTER_PROFILE_TEXT).toContain('---context:way');
     expect(BROUTER_PROFILE_TEXT).toContain('---context:node');
@@ -133,24 +142,98 @@ describe('profil de calcul', () => {
     expect(BROUTER_PROFILE_TEXT).toMatch(/^assign processUnusedTags true$/m);
   });
 
-  it('reprend les catégories de voie et les coûts de chaque type', () => {
-    WAY_CATEGORIES.forEach((c, i) => {
-      expect(BROUTER_PROFILE_TEXT).toContain(`if highway=${WAY_CATEGORY_HIGHWAYS[c].join('|')} then ${i + 1}`);
-    });
-    for (const mode of Object.keys(WAY_PARAM) as (keyof typeof WAY_PARAM)[]) {
-      const c = WAY_PREFERENCE_COST[mode];
-      expect(BROUTER_PROFILE_TEXT).toContain(
-        `( if equal categorie 1 then ${c.chemin} else if equal categorie 2 then ${c.piste} else if equal categorie 3 then ${c.route} else ${c.grande} )`
-      );
-    }
-    // Un coût changé change le texte.
-    const cheaper = buildBrouterProfile({ ...WAY_PREFERENCE_COST, piste: { ...WAY_PREFERENCE_COST.piste, chemin: 1.1 } });
-    expect(cheaper).toContain('if equal categorie 1 then 1.1 else');
-    expect(cheaper).not.toBe(BROUTER_PROFILE_TEXT);
+  it('classe les voies selon ce qu\'elles sont : étiquette de départ, puis revêtement', () => {
+    const cat = (t: WayType) => WAY_TYPES.indexOf(t) + 1;
+    expect(flat).toContain(`if highway=${WAY_TYPE_HIGHWAYS.grandeRoute.join('|')} then ${cat('grandeRoute')}`);
+    // Route ou rue piétonne non revêtue : piste.
+    expect(flat).toContain(
+      `else if highway=${WAY_TYPE_HIGHWAYS.route.join('|')}|${PEDESTRIAN_HIGHWAY} then ( if nonrevetu then ${cat('piste')} else ${cat('route')} )`
+    );
+    // Piste revêtue : route.
+    expect(flat).toContain(`else if highway=track then ( if revetu then ${cat('route')} else ${cat('piste')} )`);
+    // Sentier : route s'il est un trottoir, revêtu, ou une voie cyclable sans revêtement déclaré ; piste s'il est compacté.
+    expect(flat).toContain(
+      `else if highway=${WAY_TYPE_HIGHWAYS.sentier.join('|')} then ( if footway=sidewalk|crossing then ${cat('route')}`
+        + ` else if ( and not highway=steps revetu ) then ${cat('route')}`
+        + ` else if surface=compacted|fine_gravel then ${cat('piste')}`
+        + ` else if ( and surface= bicycle=designated ) then ${cat('route')}`
+        + ` else ${cat('sentier')} ) else 0`
+    );
+    expect(flat).toContain('assign revetu = if surface= then tracktype=grade1 else surface=asphalt|');
+    expect(flat).toContain('assign nonrevetu = if surface= then tracktype=grade2|grade3|grade4|grade5 else surface=gravel|');
+    expect(flat).toContain(`if equal categorie 1 then ${WAY_TYPE_VARIABLE[WAY_TYPES[0]]}`);
   });
 
-  it('reste en ASCII, et chaque type a sa propre valeur de voie', () => {
+  it('suit les types cochés ; à vélo, un type plus facile reste permis, un plus dur est évité selon l\'écart', () => {
+    const { bikeEasier, bikeHarder, foot, mainRoad, unrideable, entryM } = WAY_COSTS;
+    expect(bikeEasier).toBeLessThan(bikeHarder[0]);
+    expect(bikeHarder[0]).toBeLessThan(bikeHarder[1]);
+    expect(bikeHarder[bikeHarder.length - 1]).toBeLessThan(unrideable);
+    expect(foot).toBeLessThan(mainRoad);
+    expect(WAY_TYPE_LEVEL.route).toBe(WAY_TYPE_LEVEL.grandeRoute);
+    expect(WAY_TYPE_LEVEL.route).toBeLessThan(WAY_TYPE_LEVEL.piste);
+    expect(WAY_TYPE_LEVEL.piste).toBeLessThan(WAY_TYPE_LEVEL.sentier);
+    expect(flat).toContain('assign niveaumax = if suitsentier then 2 else if suitpiste then 1 else 0');
+    expect(flat).toContain('assign niveau = if equal categorie 1 then 2 else if equal categorie 2 then 1 else 0');
+    expect(flat).toContain(
+      `assign preference = if aporter then ${unrideable} else if suivie then 1`
+        + ` else if equal categorie 4 then ${mainRoad} else if ( not velo ) then ${foot}`
+        + ` else if lesser ecart 1 then ${bikeEasier} else if equal ecart 1 then ${bikeHarder[0]} else ${bikeHarder[1]} assign`
+    );
+    // Chaque entrée sur un type non coché coûte une longueur fixe ; le bac garde son coût d'embarquement.
+    expect(BROUTER_PROFILE_TEXT).toContain('assign initialclassifier = if route=ferry then 3 else if suivie then 1 else 2');
+    expect(BROUTER_PROFILE_TEXT).toContain(`assign initialcost = if route=ferry then 10000 else if suivie then 0 else ${entryM}`);
+    // Les coûts se changent pour la mesure.
+    const softer = buildBrouterProfile({ ...WAY_COSTS, bikeEasier: 2, entryM: 0 });
+    expect(softer).toContain('else if lesser ecart 1 then 2');
+    expect(softer).toContain('else if suivie then 0 else 0');
+  });
+
+  it('à vélo, évite les voies difficiles plus que tout type non coché, mais pas un simple sentier de montagne', () => {
+    expect(BROUTER_PROFILE_TEXT).toContain('if ( not velo ) then false');
+    expect(BROUTER_PROFILE_TEXT).toContain(`mtb:scale=${UNRIDEABLE_TAGS.mtbScale.join('|')}`);
+    expect(BROUTER_PROFILE_TEXT).toContain(`sac_scale=${UNRIDEABLE_TAGS.sacScale.join('|')}`);
+    expect(BROUTER_PROFILE_TEXT).toContain(`smoothness=${UNRIDEABLE_TAGS.smoothness.join('|')}`);
+    // Le T2 (`mountain_hiking`) se roule souvent : 45 m au Salagou faisaient faire 2,4 km de détour.
+    expect(UNRIDEABLE_TAGS.sacScale).not.toContain('mountain_hiking');
+    expect(BROUTER_PROFILE_TEXT).not.toMatch(/[=|]mountain_hiking/);
+  });
+
+  it('reste en ASCII, et chaque type a sa propre variable', () => {
     expect([...BROUTER_PROFILE_TEXT].every((ch) => ch.charCodeAt(0) < 128)).toBe(true);
-    expect(new Set(Object.values(WAY_PARAM)).size).toBe(4);
+    expect(new Set(Object.values(WAY_TYPE_VARIABLE)).size).toBe(WAY_TYPES.length);
+  });
+
+  /** Toutes les combinaisons : chaque sous-ensemble non vide des types, à pied et à vélo. */
+  const combinations = (): { ways: WayType[]; velo: boolean }[] =>
+    Array.from({ length: 2 ** WAY_TYPES.length - 1 }, (_, m) => WAY_TYPES.filter((_, i) => ((m + 1) >> i) & 1))
+      .flatMap((ways) => [{ ways, velo: false }, { ways, velo: true }]);
+
+  it('décode `calcul` dans le profil : chaque combinaison retrouve ses types et ses règles', () => {
+    // Petit évaluateur des lignes de décodage du profil (`greater`, `sub`, `multiply`).
+    const decode = (calcul: number): Record<string, number> => {
+      const vars: Record<string, number> = { calcul };
+      const value = (token: string) => (token in vars ? vars[token] : Number(token));
+      for (const line of BROUTER_PROFILE_TEXT.split('\n')) {
+        const greater = /^assign (\w+) = greater (\w+) (\d+)$/.exec(line);
+        const sub = /^assign (\w+) = sub (\w+) multiply (\d+) (\w+)$/.exec(line);
+        if (greater) vars[greater[1]] = value(greater[2]) > value(greater[3]) ? 1 : 0;
+        if (sub) vars[sub[1]] = value(sub[2]) - value(sub[3]) * value(sub[4]);
+      }
+      return vars;
+    };
+    for (const { ways, velo } of combinations()) {
+      const vars = decode(profileCombination(ways, velo));
+      expect(vars.velo).toBe(velo ? 1 : 0);
+      for (const t of WAY_TYPES) expect(vars[WAY_TYPE_VARIABLE[t]]).toBe(ways.includes(t) ? 1 : 0);
+    }
+  });
+
+  it('donne au serveur une empreinte différente pour chaque combinaison', () => {
+    // Le serveur range un profil compilé sous la somme des `hashCode` Java des noms et valeurs passés :
+    // deux combinaisons de même somme se partageraient le même calcul.
+    const javaHash = (s: string) => [...s].reduce((h, ch) => (Math.imul(31, h) + ch.charCodeAt(0)) | 0, 0);
+    const checksums = combinations().map(({ ways, velo }) => javaHash('calcul') + javaHash(String(profileCombination(ways, velo))));
+    expect(new Set(checksums).size).toBe(checksums.length);
   });
 });

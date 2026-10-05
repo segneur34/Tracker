@@ -55,13 +55,14 @@ const tapMap = async (fx, fy) => {
 const state = () => evaluate(`(() => {
   const title = [...document.querySelectorAll('button, h2, h3, span, strong')].map((x) => x.textContent.trim()).find((t) => /^Points \\(\\d+\\)$/.test(t)) ?? null;
   const stats = [...document.querySelectorAll('.plan-stat strong')].map((x) => x.textContent);
-  const modes = [...document.querySelectorAll('.plan-points select')].map((s) => s.value);
+  const modes = [...document.querySelectorAll('.plan-point__mode')].map((x) => x.textContent);
+  const ways = [...document.querySelectorAll('.plan-modes button[aria-pressed="true"]')].map((x) => x.textContent);
   const labels = [...document.querySelectorAll('.plan-point__text strong')].map((x) => x.textContent);
   const name = document.querySelector('.plan-form input')?.value ?? null;
   const activity = document.querySelector('.plan-toolbar .activity-select')?.textContent ?? null;
   const alert = [...document.querySelectorAll('.ui-alert')].map((x) => x.textContent).join(' | ');
   const pendingText = document.body.innerText.includes('Calcul du tracé');
-  return JSON.stringify({ title, stats, modes, labels, name, activity, alert, pendingText });
+  return JSON.stringify({ title, stats, ways, modes, labels, name, activity, alert, pendingText });
 })()`);
 const log = async (label) => console.log(label.padEnd(34), await state());
 
@@ -82,7 +83,16 @@ await tapMap(0.55, 0.7);
 await log('trois points');
 console.log('Précédent (carte) :', await clickText('Précédent', '.plan-map-tools button'));
 await log('après Précédent');
-console.log('mode chemin :', await clickText('Chemin', '.plan-modes button'));
+console.log('mode sentier :', await clickText('Sentier', '.plan-modes button'));
+// Plusieurs types cochés, puis décochés : le dernier coché reste.
+console.log('+ route :', await clickText('Route', '.plan-modes button'));
+console.log('+ grande route :', await clickText('Grande route', '.plan-modes button'));
+await log('sentier, route, grande route');
+console.log('- sentier :', await clickText('Sentier', '.plan-modes button'));
+console.log('- route :', await clickText('Route', '.plan-modes button'));
+console.log('- grande route (dernier) :', await clickText('Grande route', '.plan-modes button'));
+await log('grande route seule');
+console.log('mode sentier seul :', await clickText('Ligne droite', '.plan-modes button'), await clickText('Sentier', '.plan-modes button'));
 console.log('Boucler en ligne droite :', await clickText('Boucler en ligne droite'));
 await log('boucle en ligne droite');
 console.log('Tout effacer :', await clickText('Tout effacer'));

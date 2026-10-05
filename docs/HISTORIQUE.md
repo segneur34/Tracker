@@ -425,3 +425,26 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - le `<select>` natif d'Android range mal les groupes : il trace des traits entre les activités d'une même famille et aucun entre familles. `ActivitySelect` dessine donc sa propre liste ;
       - avec les onglets fermés par défaut, les scripts du banc doivent poser `tracker.sections` puis recharger la page ;
       - `planning.mjs` cherchait encore « Ranger », renommé au point 73.
+80. Types de voie cochés, rangés selon la nature de la voie (05/10, validé sur le téléphone, APK 0.2.54).
+    - **Demande de l'utilisateur** : cocher plusieurs types de voie à la fois. Une première version (évitement de 10 à 30 fois la longueur pour un type non coché, 60 pour une voie infranchissable à vélo) faisait des détours : des Vailhés au barrage du Salagou, « Chemin + Piste » contournait le lac. Ses consignes :
+      - au plus 5 types ;
+      - à vélo, un type plus facile doit rester simple à prendre, pas un plus dur ; à pied, pas d'asymétrie ;
+      - des présélections commodes.
+    - **Étude** (nuit du 04 au 05/10) : environ 250 000 trajets sur un BRouter local, 78 parcours dans neuf terrains de l'Hérault, toutes les combinaisons de cases. Constats :
+      - le classement par la seule étiquette `highway` rangeait le bord du lac (`unclassified`, `surface=gravel`) parmi les routes, et tenait 45 m de sentier T2 (`mountain_hiking`) pour infranchissables à vélo ;
+      - l'évitement fort faisait de longs détours (VTT : trajet médian 1,45 fois le plus court ; trail : 1,60) ;
+      - cocher plusieurs types revenait à prendre le plus court (gravel avec Piste + Route : 26 % de piste) ;
+      - un cinquième type (voie verte, sentier technique, piste roulante ou en terre) est trop peu porté par les données OSM.
+    - **Choix de l'utilisateur**, tous ceux recommandés :
+      - quatre types, Sentier (ex-« Chemin »), Piste, Route, Grande route, rangés selon le revêtement : route non revêtue → piste, piste revêtue → route, sentier revêtu, trottoir ou voie cyclable sans revêtement déclaré → route, sentier compacté → piste ;
+      - à vélo, rangs de difficulté (route et grande route, piste, sentier) : un type non coché plus facile coûte 3 fois sa longueur, un plus dur 10 ou 30 selon l'écart ;
+      - à pied, tout type non coché coûte 3 ;
+      - partout, une grande route non cochée coûte 8, et chaque entrée sur un type non coché 200 m ;
+      - à vélo, une voie difficile coûte 60, même cochée : `mtb:scale` de 3 ou plus, sinon `sac_scale` T3 ou plus, `smoothness` horrible ou pire, escaliers. Le T2 se roule souvent.
+    - **Effet mesuré** : VTT 1,45 → 1,07 fois le plus court ; trail 1,60 → 1,13 ; gravel 26 → 51 % de piste. Le profil de l'application rend les mêmes trajets que celui de l'étude (858 sur 858, longueur et coût).
+    - **Retour d'essai** : le coût d'un type non coché lui semble un peu faible, mais il le garde (« on verra à l'usage »). La différence entre vélo et pied est difficile à saisir : à dire simplement, sans que la façon soit tranchée (proposition : types permis à vélo montrés à demi cochés).
+    - **Pièges** :
+      - le serveur range un profil compilé sous la somme des `hashCode` des variables passées : avec une variable à 0 ou 1 par type, « Route » seule et « Grande route » seule se confondaient. Une seule variable, `calcul`, porte toute la combinaison ;
+      - le serveur public répond 403 (« retry later ») après une trentaine de calculs en rafale : toute mesure se fait sur un BRouter local (1.7.10, tuile de brouter.de), qui rend les mêmes longueurs au mètre près ;
+      - les pistes DFCI étiquetées en route sans revêtement déclaré restent des routes : rien dans les données ne les distingue, la correction se fait dans OSM ;
+      - les fiches et préférences en « Chemin », seul ou dans une combinaison, se relisent en « Sentier » ; les fiches passent en version 3.
