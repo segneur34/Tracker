@@ -87,6 +87,7 @@ Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous 
 - Planification :
   - on coche un ou plusieurs types de voie (Sentier, Piste, Route, Grande route), pas le moyen de transport, par un profil BRouter maison ; les règles d'accès suivent l'activité (piéton ou vélo) ;
   - chaque activité coche d'office les siens, réglés dans sa carte de Réglages, sinon tirés du type de vélo ou du terrain ;
+  - les cases valent pour tout l'itinéraire : les changer recalcule aussitôt chaque tronçon calculé (une trace importée ne bouge pas), « Précédent » rend cases et tracé ;
   - chaque voie est rangée selon ce qu'elle est (revêtement), pas sa seule étiquette OSM. À vélo, un type non coché plus facile reste permis et un plus dur est évité selon l'écart ; à pied, tous se valent ; une grande route non cochée est toujours évitée. Coûts fixés avec l'utilisateur (HISTORIQUE point 80) : ne pas les retoucher sans lui ;
   - l'activité (liste par famille) et les types de voie se choisissent au-dessus de la carte ; dessous, des onglets comme dans les analyses (général, surface, tracé, points, enregistrer, mes itinéraires ; en voile parcours et balises), seul le premier ouvert par défaut ;
   - tracé et points intermédiaires toujours en bleu, quelle que soit l'activité, sauf le temps de « Voir sur la carte » du revêtement ; départ en vert, arrivée en rouge ;

@@ -4,7 +4,7 @@ import { WAY_TYPE_HINT, WAY_TYPE_LABEL } from '../planning/route';
 
 /**
  * Cases des types de voie (Sentier, Piste, Route, Grande route), qui se
- * cochent ensemble : en planification, pour les points suivants et pour un
+ * cochent ensemble : en planification, pour tout l'itinéraire et pour un
  * tronçon ; dans Réglages, pour les types cochés d'office d'une activité.
  * `children` s'ajoute après les types (la ligne droite, en planification).
  */

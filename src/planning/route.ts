@@ -329,6 +329,26 @@ export const setLegMode = (route: PlannedRoute, legIndex: number, mode: RouteMod
 };
 
 /**
+ * Types de voie cochés au-dessus de la carte, ou ligne droite, appliqués à
+ * tout l'itinéraire (§10, point 83) : chaque tronçon calculé par la carte
+ * prend `mode` et se recalcule. Une ligne droite reste, sauf si l'on quitte la
+ * ligne droite (`previous`) : elle suit alors aussi, pour qu'un aller-retour
+ * par « Ligne droite » rende l'itinéraire d'avant. Une trace importée ne bouge
+ * pas. `recompute` : refaire aussi les tronçons calculés déjà dans ce mode,
+ * quand les règles d'accès changent avec l'activité. Itinéraire inchangé
+ * (même objet) si aucun tronçon ne change.
+ */
+export const setRouteMode = (route: PlannedRoute, mode: RouteMode, previous: RouteMode, recompute = false): PlannedRoute => {
+  if (mode === 'imported') return route;
+  const follows = (leg: RouteLeg): boolean => {
+    if (leg.mode === 'imported' || (leg.mode === 'straight' && previous !== 'straight')) return false;
+    return leg.mode !== mode || (recompute && isWaysMode(mode));
+  };
+  if (!route.legs.some(follows)) return route;
+  return { ...route, legs: route.legs.map((leg, i) => (follows(leg) ? newLeg(route.waypoints[i], route.waypoints[i + 1], mode) : leg)) };
+};
+
+/**
  * Parcours dans l'autre sens. Les tronçons calculés sont recalculés (un sens
  * unique peut changer le trajet à vélo) ; en attendant, ils gardent leur
  * tracé retourné. Une ligne droite ou une trace importée est simplement

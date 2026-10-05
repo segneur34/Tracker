@@ -50,7 +50,8 @@ import { searchPlaces, type Place } from '../planning/geocoding';
 import { WAY_TYPES } from '../planning/brouterProfile';
 import {
   DEFAULT_ROUTE_MODE, EMPTY_ROUTE, STRAIGHT_HINT, STRAIGHT_LABEL, WAY_TYPE_HINT, WAY_TYPE_LABEL, courseLegs, isLooped, isWaysMode, routeFromTrack,
-  routeModeLabel, routePoints, routeProfileRows, routeTotals, routeVehicle, straightenRoute, toggleWayType, wayTypesOf, waypointDistances, waysMode,
+  routeModeLabel, routePoints, routeProfileRows, routeTotals, routeVehicle, setRouteMode, straightenRoute, toggleWayType, wayTypesOf, waypointDistances,
+  waysMode,
   type PlannedRoute, type RouteMode, type Waypoint,
 } from '../planning/route';
 import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
@@ -68,7 +69,9 @@ import { jsonStore } from '../platform/storage';
  * tronçon entre deux points suit la carte, par les types de voie cochés, ou
  * va en ligne droite. L'activité et les types de voie se choisissent
  * au-dessus de la carte ; choisir une activité coche les siens (Réglages,
- * `effectiveWayTypes`), que l'on change ensuite pour cet itinéraire ; dessous, des onglets ouvrent les blocs (général, surface, tracé,
+ * `effectiveWayTypes`), que l'on change ensuite pour cet itinéraire. Les
+ * changer, directement ou par l'activité, recalcule tout l'itinéraire
+ * (`setRouteMode`) ; dessous, des onglets ouvrent les blocs (général, surface, tracé,
  * points, enregistrer, mes itinéraires), comme dans les analyses. Distance, dénivelés et profil d'altitude se mettent à jour
  * à chaque calcul, avec le temps estimé en course et à vélo (niveau choisi
  * dans Réglages) et le revêtement des voies suivies (`planning/surface.ts`). L'itinéraire s'enregistre dans `itineraires/` du dossier
@@ -224,7 +227,7 @@ function PlanBlock({ id, label, open, onToggle, aside, children }: {
  * Façon de relier les points : les types de voie cochés, et la ligne droite à
  * part. Toucher un type le coche ou le décoche (le dernier reste coché) ;
  * toucher « Ligne droite » la choisit seule. Sert à la barre au-dessus de la
- * carte (mode des points suivants) et au tronçon d'un point sélectionné ; sur
+ * carte (tout l'itinéraire et les points suivants) et au tronçon d'un point sélectionné ; sur
  * une trace importée, rien n'est coché, et choisir refait le tronçon.
  */
 function WayPicker({ mode, label, compact, className, style, onChange }: {
@@ -246,7 +249,7 @@ function WayPicker({ mode, label, compact, className, style, onChange }: {
   );
 }
 
-/** Mode des points suivants à l'arrivée sur une activité : ses types de voie ; sans eux (voile), le mode par défaut. */
+/** Types de voie cochés à l'arrivée sur une activité : les siens ; sans eux (voile), le mode par défaut. */
 const activityMode = (activity: Activity | null): RouteMode => (activity ? waysMode(effectiveWayTypes(activity)) : null) ?? DEFAULT_ROUTE_MODE;
 
 function PlanningPage() {
@@ -270,22 +273,30 @@ function PlanningPage() {
   const durationSettings = useMemo(() => (activity ? effectiveDurationSettings(activity, riderKg) : null), [activity, riderKg]);
   const pace = useMemo(() => (activity ? effectivePace(activity) : null), [activity]);
 
+  const vehicle = routeVehicle(activity ? activityFamily(activity) : 'course');
   // Types de voie de l'activité à l'ouverture et à chaque changement d'activité, puis ceux que l'on coche.
-  const [mode, chooseMode] = useState<RouteMode>(() => activityMode(activity));
+  const planner = usePlannedRoute(vehicle, activityMode(activity));
+  const { route, mode } = planner;
   /** Mode des éditions : en voile, toujours la ligne droite ; le type de voie choisi reste pour les autres activités. */
   const editMode: RouteMode = sailing ? 'straight' : mode;
-
-  const planner = usePlannedRoute(routeVehicle(activity ? activityFamily(activity) : 'course'));
-  const { route } = planner;
   const library = useRouteLibrary();
   const { go, canGo } = useGoOnRoute();
 
-  /** Activité choisie dans le menu : passer à la voile redresse les tronçons calculés (annulable). */
+  /** Types de voie cochés au-dessus de la carte : ceux de tout l'itinéraire, recalculé, et des points suivants (annulable). */
+  const chooseMode = (next: RouteMode) => planner.chooseMode(next, (r) => setRouteMode(r, next, mode));
+
+  /**
+   * Activité choisie dans le menu : ses types de voie, appliqués à tout
+   * l'itinéraire avec ses règles d'accès ; passer à la voile redresse les
+   * tronçons calculés, en revenir les recalcule (annulable).
+   */
   const chooseActivity = (id: string) => {
     setActivityId(id);
     const next = findActivity(activities, id);
-    chooseMode(activityMode(next));
-    if (next && activityFamily(next) === 'voile') planner.straighten();
+    const nextMode = activityMode(next);
+    const nextFamily = next ? activityFamily(next) : 'course';
+    const nextEdit = nextFamily === 'voile' ? 'straight' : nextMode;
+    planner.chooseMode(nextMode, (r) => setRouteMode(r, nextEdit, editMode, routeVehicle(nextFamily) !== vehicle));
   };
 
   const [map, setMap] = useState<L.Map | null>(null);
@@ -489,17 +500,19 @@ function PlanningPage() {
   const openSaved = (saved: SavedRoute) => {
     if (!confirmDiscard()) return;
     const opened = recordToRoute(saved.record);
-    const openedActivity = findActivity(activities, saved.record.activityId) ?? activity;
+    const known = findActivity(activities, saved.record.activityId);
+    const openedActivity = known ?? activity;
     // Un parcours de voile va de balise en balise : un tronçon calculé d'avant est redressé, à enregistrer.
-    planner.replace(openedActivity && activityFamily(openedActivity) === 'voile' ? straightenRoute(opened) : opened);
+    // Les cases sont celles de l'activité de l'itinéraire ; rien n'est recalculé.
+    planner.replace(
+      openedActivity && activityFamily(openedActivity) === 'voile' ? straightenRoute(opened) : opened,
+      known ? activityMode(known) : undefined
+    );
     setCourseGuide(routeMarkGuide(saved.record));
     setCurrent(saved);
     setSavedRoute(opened);
     setName(saved.record.name);
-    if (saved.record.activityId && findActivity(activities, saved.record.activityId)) {
-      setActivityId(saved.record.activityId);
-      chooseMode(activityMode(openedActivity));
-    }
+    if (known) setActivityId(known.id);
     setSelected(null);
     setMessage(null);
     zoom.reset();
@@ -750,7 +763,7 @@ function PlanningPage() {
                   <div className="plan-overlay__field">
                     <span>Pour y venir{selectedLeg.mode === 'imported' && ' (trace importée)'}</span>
                     <WayPicker mode={selectedLeg.mode} label={`Façon de venir au point ${pointLabel(selected)}`} compact
-                      onChange={(m) => planner.setMode(selected - 1, m)} />
+                      onChange={(m) => planner.setLegMode(selected - 1, m)} />
                   </div>
                 )}
                 {selected === 0 && route.waypoints.length >= 2 && !looped && (
@@ -957,8 +970,9 @@ function PlanningPage() {
                 <li>« Précédent », sur la carte, défait la dernière modification.</li>
                 <li>La liste des points permet aussi de changer leur ordre.</li>
                 <li>
-                  Les types de voie cochés au-dessus de la carte valent pour les points suivants ; on peut en cocher plusieurs. Choisir une activité
-                  coche les siens, réglés dans sa carte de Réglages. Le calcul demande du réseau.
+                  Les types de voie cochés au-dessus de la carte valent pour tout l'itinéraire, recalculé dès qu'on les change, et pour les points
+                  suivants ; on peut en cocher plusieurs. Choisir une activité coche les siens, réglés dans sa carte de Réglages. Une trace importée
+                  garde son tracé. Le calcul demande du réseau.
                 </li>
                 <li>
                   {WAY_TYPES.map((t, i) => (

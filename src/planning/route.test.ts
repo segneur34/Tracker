@@ -3,7 +3,7 @@ import {
   DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, addWaypoint, closeLoop, courseLegs, insertWaypoint, isChoosableMode, isLooped, isRouteMode, isWaysMode, legKey,
   moveWaypoint, nextPendingLeg, pendingLegRequests, readRouteMode, recomputeLegsWithoutSurfaces, removeWaypoint, reorderWaypoint, retryFailedLegs,
   presetWayTypes, reverseRoute, routeFromTrack, routeModeLabel, routePoints, sanitizeWayTypes, toggleWayType, wayTypesOf, waysMode,
-  routeProfileRows, routeTotals, routeVehicle, setLegMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
+  routeProfileRows, routeTotals, routeVehicle, setLegMode, setRouteMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
   type PlannedRoute, type RoutePoint, type Waypoint,
 } from './route';
 
@@ -86,6 +86,39 @@ describe('édition d\'un itinéraire', () => {
     const bike = setLegMode(route, 0, 'route');
     expect(bike.legs[0]).toMatchObject({ mode: 'route', status: 'pending' });
     expect(setLegMode(route, 0, 'sentier')).toBe(route);
+  });
+
+  it('types de voie de tout l\'itinéraire : chaque tronçon calculé les prend, ligne droite et trace importée restent', () => {
+    // A → B calculé, B → C en ligne droite, C → D importé.
+    const resolved = resolveAll(setLegMode(build([A, B, C, D]), 1, 'straight'), [0, 0, 0]);
+    const imported = { mode: 'imported' as const, status: 'ready' as const, points: [C, { lat: 43.625, lon: 3.81 }, D] };
+    const route: PlannedRoute = { ...resolved, legs: [resolved.legs[0], resolved.legs[1], imported] };
+    const changed = setRouteMode(route, 'piste+route', 'sentier');
+    expect(changed.legs[0]).toEqual({ mode: 'piste+route', status: 'pending', points: [A, B] });
+    expect(changed.legs[1]).toBe(route.legs[1]);
+    expect(changed.legs[2]).toBe(imported);
+    expect(setRouteMode(changed, 'piste+route', 'sentier')).toBe(changed);
+    expect(setRouteMode(route, 'imported', 'sentier')).toBe(route);
+    expect(setRouteMode(EMPTY_ROUTE, 'route', 'sentier')).toBe(EMPTY_ROUTE);
+  });
+
+  it('ligne droite au-dessus de la carte : tout se redresse, et en revenir refait aussi les tronçons droits', () => {
+    const route = resolveAll(setLegMode(build([A, B, C]), 1, 'straight'), [0, 0, 0]);
+    const straight = setRouteMode(route, 'straight', 'sentier');
+    expect(straight.legs.map((l) => [l.mode, l.status])).toEqual([['straight', 'ready'], ['straight', 'ready']]);
+    expect(straight.legs[1]).toBe(route.legs[1]);
+    const back = setRouteMode(straight, 'route', 'straight');
+    expect(back.legs.map((l) => [l.mode, l.status])).toEqual([['route', 'pending'], ['route', 'pending']]);
+  });
+
+  it('règles d\'accès changées : les tronçons calculés sont refaits, même dans leur mode', () => {
+    const route = resolveAll(setLegMode(build([A, B, C]), 1, 'straight'), [0, 0, 0]);
+    expect(setRouteMode(route, 'sentier', 'sentier')).toBe(route);
+    const redone = setRouteMode(route, 'sentier', 'sentier', true);
+    expect(redone.legs[0]).toEqual({ mode: 'sentier', status: 'pending', points: [A, B] });
+    expect(redone.legs[1]).toBe(route.legs[1]);
+    // Vers la ligne droite, rien à recalculer.
+    expect(setRouteMode(build([A, B], 'straight'), 'straight', 'straight', true).legs[0].status).toBe('ready');
   });
 
   it('inverse le sens : tracés retournés en attendant le recalcul', () => {
