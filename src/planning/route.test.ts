@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, addWaypoint, closeLoop, courseLegs, insertWaypoint, isChoosableMode, isLooped, isRouteMode, isWaysMode, legKey,
   moveWaypoint, nextPendingLeg, pendingLegRequests, readRouteMode, recomputeLegsWithoutSurfaces, removeWaypoint, reorderWaypoint, retryFailedLegs,
-  reverseRoute, routeFromTrack, routeModeLabel, routePoints, toggleWayType, wayTypesOf, waysMode,
+  presetWayTypes, reverseRoute, routeFromTrack, routeModeLabel, routePoints, sanitizeWayTypes, toggleWayType, wayTypesOf, waysMode,
   routeProfileRows, routeTotals, routeVehicle, setLegMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
   type PlannedRoute, type RoutePoint, type Waypoint,
 } from './route';
@@ -419,6 +419,24 @@ describe('trace importée', () => {
     expect(routeVehicle('velo')).toBe('velo');
     expect(routeVehicle('course')).toBe('pieton');
     expect(routeVehicle('voile')).toBe('pieton');
+  });
+
+  it('propose des types de voie selon le type de vélo, ou le terrain à pied ; aucun en voile', () => {
+    expect(presetWayTypes('velo', 'route', 'trail')).toEqual(['route']);
+    expect(presetWayTypes('velo', 'ville', 'route')).toEqual(['route']);
+    expect(presetWayTypes('velo', 'gravel', 'route')).toEqual(['piste']);
+    expect(presetWayTypes('velo', 'vtt', 'route')).toEqual(['sentier', 'piste']);
+    expect(presetWayTypes('course', 'vtt', 'route')).toEqual(['route']);
+    expect(presetWayTypes('course', 'route', 'trail')).toEqual(['sentier', 'piste']);
+    expect(presetWayTypes('voile', 'route', 'route')).toEqual([]);
+  });
+
+  it('lit les types de voie d\'un réglage : remis dans l\'ordre, sans doublon, jamais vides', () => {
+    expect(sanitizeWayTypes(['piste', 'sentier', 'piste'])).toEqual(['sentier', 'piste']);
+    expect(sanitizeWayTypes([])).toBeNull();
+    expect(sanitizeWayTypes(['route', 'autoroute'])).toBeNull();
+    expect(sanitizeWayTypes('route')).toBeNull();
+    expect(sanitizeWayTypes(undefined)).toBeNull();
   });
 });
 

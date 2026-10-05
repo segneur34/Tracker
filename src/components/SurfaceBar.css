@@ -5,6 +5,10 @@
   gap: var(--space-3);
 }
 
+.surface-bar__actions {
+  display: flex;
+}
+
 .surface-bar__track {
   display: flex;
   gap: 2px;

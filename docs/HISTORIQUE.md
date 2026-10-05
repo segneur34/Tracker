@@ -448,3 +448,19 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - le serveur public répond 403 (« retry later ») après une trentaine de calculs en rafale : toute mesure se fait sur un BRouter local (1.7.10, tuile de brouter.de), qui rend les mêmes longueurs au mètre près ;
       - les pistes DFCI étiquetées en route sans revêtement déclaré restent des routes : rien dans les données ne les distingue, la correction se fait dans OSM ;
       - les fiches et préférences en « Chemin », seul ou dans une combinaison, se relisent en « Sentier » ; les fiches passent en version 3.
+81. Types de voie cochés d'office par activité, activités vélo de départ (05/10, validé sur le téléphone, APK 0.2.56).
+    - **Demande de l'utilisateur** : les présélections commodes du point 80 (choix 6 et 7 de l'étude). Il a choisi :
+      - l'activité vélo de départ (id `cycling`) s'appelle « Route » ; Gravel et VTT sont créées d'office dans la famille Vélo, et restent supprimables ;
+      - VTT rejoint les types de vélo (roulement 0,012, traînée 0,5 m², 13 kg, 30 km/h en descente) ; « Gravel / VTT » devient « Gravel ». Gravel et VTT prennent d'office leur type de vélo ;
+      - chaque activité a ses types de voie cochés d'office, réglables dans sa carte de Réglages. Sans réglage, ils suivent le type de vélo (route ou ville → Route, gravel → Piste, VTT → Sentier + Piste) ou le terrain à pied (route → Route, trail → Sentier + Piste) ;
+      - en planification, les cases sont celles de l'activité à l'ouverture, au changement d'activité et à la réouverture d'un itinéraire. La page ne retient plus de mode.
+    - **Frontière Route / Grande route** : `secondary` reste une grande route (réponse : « on garde »), bien que ces routes soient souvent de petites départementales (la D148 est `secondary` sur 7 km ; dans l'Hérault, 1 404 km, 60 % des grandes routes, aux étiquettes proches des `tertiary`). Ne pas le reproposer sans élément nouveau.
+    - **Mise à jour des réglages** : une liste d'activités d'avant passe une seule fois à la version 2 (`upgradeActivities`, `ACTIVITIES_VERSION`). « Vélo » devient « Route » sous le même id, donc avec les mêmes sessions et les mêmes réglages. Gravel et VTT s'ajoutent après la dernière activité vélo, sauf si l'id ou le nom existe déjà. Toute écriture de la liste porte le numéro, pour qu'une activité supprimée ne revienne pas.
+    - **Piège** : la mise à jour se fait au démarrage, une fois les réglages du dossier repris et avant que la bibliothèque ne guette leurs changements. Elle ne date pas les réglages, sinon un appareil en retard deviendrait « le plus récent » et écraserait ceux du dossier. Elle voyage avec le prochain vrai changement.
+82. Revêtement sur la carte (05/10, validé sur le téléphone, APK 0.2.56).
+    - **Demande de l'utilisateur** : « afficher les couleurs de type de route sur la carte avec un bouton dans l'onglet surface ». Ce sont les catégories de revêtement de la barre, pas les types de voie.
+    - **Choix** :
+      - un bouton « Voir sur la carte » / « Masquer de la carte » au-dessus de la barre, en Course, Vélo et Itinéraires ; il n'agit que tant que l'onglet surface est ouvert ;
+      - en analyse, la trace prend les couleurs du revêtement à la place de la vitesse, et la légende de vitesse se retire ;
+      - en planification, les tronçons prêts prennent ces couleurs, ceux en calcul ou en échec gardent leur pointillé. C'est la seule dérogation au tracé toujours bleu, le temps de l'affichage.
+    - **Piège** : les teintes claires (Inconnu, Sable, Gravillon) disparaissent sur le fond de carte. Le tracé est posé sur une bordure sombre, toutes les bordures avant toutes les couleurs, pour qu'une bordure ne coupe pas la jonction de deux morceaux.

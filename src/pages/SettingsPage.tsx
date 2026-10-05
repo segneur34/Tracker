@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from 'react';
 import { FAMILY_LABEL, nextActivityColor, type Activity } from '../core/activities';
 import {
   CYCLING_SPORTS, ELEVATION_PRESETS, SAILING_SPORTS, SPORT_FAMILIES, SPORT_PROFILES, sportFamily, type SportFamily,
@@ -12,7 +12,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
 import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  FAMILY_SPEED_RANGE_MS, FAMILY_UNITS, TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, defaultGradeRange, planningFamily,
+  FAMILY_SPEED_RANGE_MS, FAMILY_UNITS, TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, defaultBikeType, defaultGradeRange, planningFamily,
   useAllSportSettings, type SportSettingsView, type TerrainType, type TextScale,
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, type BikeType } from '../cycling/energy';
@@ -23,13 +23,40 @@ import {
   CUSTOM_FLAT_SPEED_BOUNDS_MS, DEFAULT_PACE_LEVEL, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PACE_LEVELS, PACE_LEVEL_LABEL,
   climbPowerWkgForFlatSpeed, isPaceLevel, type PaceLevel, type PlanningFamily,
 } from '../planning/duration';
+import type { WayType } from '../planning/brouterProfile';
+import { WAY_TYPE_LABEL } from '../planning/route';
 import BeepCurveEditor from '../components/BeepCurveEditor';
 import { CARD_STYLE } from '../components/styles';
 import { IconChevronRight } from '../components/icons';
 import MemoryStatus from '../components/MemoryStatus';
 import PanelTitle from '../components/PanelTitle';
+import WayTypeTabs from '../components/WayTypeTabs';
 import PageHeader from '../components/ui/PageHeader';
 import './settingsPage.css';
+
+/**
+ * Types de voie cochés d'office quand on choisit l'activité en planification
+ * (course, vélo) : proposés selon le vélo ou le terrain, tant qu'on ne les
+ * change pas. Le dernier coché ne se décoche pas.
+ */
+function WayTypesSetting({ view, family, onChange }: { view: SportSettingsView; family: SportFamily; onChange: (ways: WayType[]) => void }) {
+  const toggle = (type: WayType) => {
+    const next = view.wayTypes.includes(type) ? view.wayTypes.filter((w) => w !== type) : [...view.wayTypes, type];
+    if (next.length > 0) onChange(next);
+  };
+  return (
+    <div className="settings-row" title="Cochés d'office en planification quand on choisit cette activité ; ils se changent ensuite pour chaque itinéraire">
+      <span className="settings-row__label">Types de voie</span>
+      <div className="settings-sports__pair">
+        <WayTypeTabs compact checked={view.wayTypes} onToggle={toggle} label={`Types de voie de ${view.activity.name}`}
+          style={{ '--tab-accent': view.activity.color } as CSSProperties} />
+        {!view.isWayTypesOverridden && (
+          <span className="settings-sports__mark">{family === 'velo' ? 'selon le vélo' : 'selon le terrain'}</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /** Calculs proposés à une nouvelle activité, par famille. */
 const FAMILY_BASES: Record<SportFamily, SportType[]> = { voile: SAILING_SPORTS, course: ['running'], velo: CYCLING_SPORTS };
@@ -168,8 +195,8 @@ function SettingsPage() {
                 const isOpen = openActivity[id] === true;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
-                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.bikeType !== 'route' || s.bikeWeight !== null ||
-                  s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null;
+                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null ||
+                  s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
                 const thresholdShown = parseFloat(
@@ -213,7 +240,8 @@ function SettingsPage() {
                   DISTANCE_UNIT_SYMBOL[s.distanceUnit],
                   thresholdEmpty ? "seuil selon l'allure" : `seuil ${thresholdShown} ${SPEED_UNIT_LABEL[thresholdUnit]}`,
                   s.autoPause.speedMs > 0 ? `pause sous ${pauseKmh} km/h après ${s.autoPause.delayS} s` : 'sans pause automatique',
-                  ...(family === 'velo' ? [BIKE_TYPES[s.bikeType].label.toLowerCase()] : []),
+                  ...(family === 'velo' ? [BIKE_TYPES[s.bikeType].noun] : []),
+                  ...(sailing ? [] : [`voies : ${s.wayTypes.map((w) => WAY_TYPE_LABEL[w].toLowerCase()).join(' + ')}`]),
                   ...(paceFamily ? [`niveau ${PACE_LEVEL_LABEL[s.paceLevel].toLowerCase()}`] : []),
                 ].join(' · ');
                 return (
@@ -332,6 +360,9 @@ function SettingsPage() {
                           <BikeSettings view={s}
                             onBikeType={(t) => setFor(id, 'bikeType', t)}
                             onBikeWeight={(kg) => setFor(id, 'bikeWeight', kg)} />
+                        )}
+                        {!sailing && (
+                          <WayTypesSetting view={s} family={family} onChange={(ways) => setFor(id, 'wayTypes', ways)} />
                         )}
                         {paceFamily && (
                           <PaceSettings family={paceFamily} view={s}

@@ -173,7 +173,7 @@ const cyclingEnergy = ({ track, grades, activityMask, runner, age, bikeType, bik
       ? <>Poids non renseigné : calcul pour un cycliste de {REFERENCE_RIDER_KG} kg. Il se saisit dans <Link to="/parametres">Réglages</Link>, bloc Pratiquant.</>
       : null,
     note:
-      `Pesanteur, roulement et air par air calme (vélo ${bike.label.toLowerCase()} : Crr ${bike.crr}, CdA ${bike.cdaM2} m², ${bikeWeightKg} kg ; masse totale ${Math.round(params.totalMassKg * 10) / 10} kg), transmission ${Math.round(params.drivetrainEfficiency * 100)} % ; rien en roue libre ni à l'arrêt.` +
+      `Pesanteur, roulement et air par air calme (vélo ${bike.noun} : Crr ${bike.crr}, CdA ${bike.cdaM2} m², ${bikeWeightKg} kg ; masse totale ${Math.round(params.totalMassKg * 10) / 10} kg), transmission ${Math.round(params.drivetrainEfficiency * 100)} % ; rien en roue libre ni à l'arrêt.` +
       ` Énergie de pédalage : travail mécanique sur un rendement musculaire de ${Math.round(params.muscleEfficiency * 100)} %.` +
       ` Repos : ${Math.round(restW)} W, ${runner.weightKg !== null && runner.heightCm !== null && runner.sex !== null && age !== null ? 'selon poids, taille, âge et sexe' : 'valeur moyenne (1 MET) faute de profil complet'}, sur toute la durée.`,
   };

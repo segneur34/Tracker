@@ -44,18 +44,6 @@
   margin-left: var(--space-2);
 }
 
-.plan-leg-modes {
-  gap: var(--space-1);
-  padding-bottom: 0;
-  margin-bottom: 0;
-  border-bottom: none;
-}
-
-.plan-leg-modes .ui-tab {
-  min-height: 28px;
-  padding: 0 var(--space-2);
-}
-
 .plan-toolbar__note {
   color: var(--muted);
   font-size: var(--text-s);

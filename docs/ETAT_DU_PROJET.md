@@ -198,15 +198,15 @@ Tracker/
 | `tracker.sections` | `hooks/useOpenSections.ts` | `Record<moduleId, Record<section, boolean>>`. Modules lus : `running` (course), `cycling` (vélo), dont l'onglet `surface` (point 78), `running.energie` et `cycling.energie` (chiffres du panneau Énergie, point 76), `sailing-onglets`, `planning` (onglets sous la carte, seuls `profil` et `parcours` ouverts par défaut depuis le point 79 ; dont `surface`), `recording`, `settings`, `settings-activities`, `accueil.graphe` (totaux du graphe d'activités). `sailing` et `sailing-carte`, d'avant, ne sont plus lus |
 | `tracker.panelSizes` | `components/ResizablePanel.tsx` | `Record<panelId, { width?; height? }>` |
 | `tracker.followedTrace` | `hooks/useFollowedTrace.ts` | `{ name; source; activityId; points; marks?; markGuide? }`, gardée jusqu'à « Retirer » ; `marks` : les points posés d'un itinéraire (balises en voile), `markGuide` : ses bips propres (point 77) |
-| `tracker.planning` | `pages/PlanningPage.tsx` | `{ mode?; activityId?; view? }` ; `mode` : les types de voie cochés, joints par « + » (`sentier+piste`), ou la ligne droite ; les anciens modes (`foot`, `mtb`, `bike`) et l'ancien nom `chemin` sont traduits à la lecture (points 74, 80) |
+| `tracker.planning` | `pages/PlanningPage.tsx` | `{ activityId?; view? }` ; un ancien `mode` y reste, ignoré : les cases suivent l'activité depuis le point 81 |
 | `tracker.brouterProfile` | `planning/brouter.ts` | `{ id }`, id du profil maison sur brouter.de, renvoyé sur cet id à chaque lancement ; propre à l'appareil |
 | `tracker.routeList` | `pages/RoutesPage.tsx` | `{ sort }`, tri de la liste des itinéraires |
 | `tracker.tileCache` | `hooks/useTileCache.ts` | `{ capMb? }`, plafond des cartes gardées (500 Mo par défaut), propre à l'appareil |
 | `tracker.sailingNotes` | ancienne clé | notes d'avant le dossier, lues seulement pour reprendre celles d'une trace importée |
 
 `StoredSettings` contient :
-- la liste des activités ;
-- les réglages rangés par identifiant d'activité : seuils, terrains, unités, taille du texte, bornes de vitesse (en m/s) et de pente (en fraction), pause automatique, chiffres de la carte réduite (`liveFields`, point 76), bips d'approche des balises (`markGuide`, voile, point 77), type et poids du vélo, niveau du temps estimé et vitesse « Personnalisé » ;
+- la liste des activités et sa version (`activitiesVersion`, point 81 : une liste d'avant est mise à jour une fois au démarrage) ;
+- les réglages rangés par identifiant d'activité : seuils, terrains, unités, taille du texte, bornes de vitesse (en m/s) et de pente (en fraction), pause automatique, chiffres de la carte réduite (`liveFields`, point 76), bips d'approche des balises (`markGuide`, voile, point 77), type et poids du vélo, niveau du temps estimé et vitesse « Personnalisé », types de voie cochés d'office en planification (`wayTypes`, point 81) ;
 - l'appui long, et les sports de la barre du bas : favori (`navFamily`, point 75), secondaire et durée de l'appui long qui le change (`navSecondFamily`, `navHoldMs`, point 79) ;
 - les choix retenus : `moduleActivity`, `recordActivity`, et `sport`, l'ancienne activité du module voile.
 
@@ -231,7 +231,7 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 | Manœuvres, vent, VMG, suggestions | `sailing/sailingConfig.ts`, plus les constantes internes de `maneuvers.ts`, `wind.ts` et `sailingAnalytics.ts` |
 | Course | `running/runningAnalytics.ts`, `running/energy.ts`, et les lissages en tête de `pages/LandModule.tsx` |
 | Vélo | `cycling/energy.ts` (types de vélo, rendements), `cycling/cyclingConfig.ts` (couleurs par défaut) |
-| Planification | `planning/duration.ts` (niveaux, km-effort, puissance de montée), `planning/brouterProfile.ts` (classement des voies, rangs de difficulté à vélo, coûts des types de voie : `WAY_COSTS`, fixés avec l'utilisateur au point 80) |
+| Planification | `planning/duration.ts` (niveaux, km-effort, puissance de montée), `planning/brouterProfile.ts` (classement des voies, rangs de difficulté à vélo, coûts des types de voie : `WAY_COSTS`, fixés avec l'utilisateur au point 80), `BIKE_WAY_TYPES` et `TERRAIN_WAY_TYPES` de `planning/route.ts` (types cochés d'office, point 81) |
 | Revêtement | `planning/surface.ts` (étiquettes OSM vers catégories), `WAY_MATCH_DEFAULTS` de `planning/wayMatch.ts` (rayon, marge de changement de voie, pas de la requête), `OVERPASS_MAX_COORDS` de `planning/overpass.ts` |
 | Direct | `LIVE_STATS_DEFAULTS`, `LIVE_LEG_DEFAULTS`, `FOLLOW_DEFAULTS`, `MARK_GUIDE_DEFAULTS` et `BEEP_CURVE_LIMITS` de `recording/` ; durées et hauteur des bips dans `platform/beeper.ts` et `BeeperPlugin.java` |
 | Affichage | `core/displayConfig.ts`, et `TEXT_SCALE_FACTOR` de `hooks/useSportSettings.ts` |
@@ -287,7 +287,6 @@ Déplacé dans `docs/HISTORIQUE.md` le 23 septembre 2026, numérotation inchang�
 ## 11. Chantiers en attente
 
 - **Types de voie** (point 80) :
-  - présélections par activité (types cochés d'office, tirés du type de vélo ou du terrain) et activités Route, Gravel et VTT créées d'office dans la famille Vélo, supprimables, avec VTT ajouté aux types de vélo : lot suivant, choix 6 et 7 de l'étude ;
   - le coût d'un type non coché (3) semble un peu faible à l'utilisateur, gardé « pour voir à l'usage » ;
   - dire simplement la différence entre vélo et pied (proposé : types permis à vélo montrés à demi cochés), non tranché.
 - **Énergie** (points 71 et 72) : le k de l'air en course (0,0065, Pugh 1971) n'est qu'un ordre de grandeur, à confirmer. Aucune des deux énergies n'a été comparée à une montre ou à Strava.
@@ -330,7 +329,7 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
   - accueil (point 53) ;
   - enregistrement en direct et bords (points 50, 53, 62) ;
   - APK des testeurs et `docs/INSTALLATION.md` (points 55, 62).
-- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76), parcours et balises en voile avec bips d'approche (77), revêtement des itinéraires et des sessions (78), retouches du 03/10 : zones de pente sur la carte, réglages par activité, sport secondaire, onglets et activité en planification, légende sur la carte, vignettes, choix d'activité dessiné, icône de la course (79), types de voie cochés, rangés selon la nature de la voie (80).
+- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76), parcours et balises en voile avec bips d'approche (77), revêtement des itinéraires et des sessions (78), retouches du 03/10 : zones de pente sur la carte, réglages par activité, sport secondaire, onglets et activité en planification, légende sur la carte, vignettes, choix d'activité dessiné, icône de la course (79), types de voie cochés, rangés selon la nature de la voie (80), types de voie cochés d'office par activité et activités Route, Gravel, VTT (81), revêtement sur la carte (82).
 - **Phase 2, interface mobile** : trois passes faites (points 47 à 49, 52, 56 à 58, 69 ; patron dans `docs/MISE_EN_PAGE.md`). Restent :
   - toucher au lieu du survol, dans les graphes ;
   - `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz). Les regrouper par couleur toucherait à « pas de paliers » : à redemander ;

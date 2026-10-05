@@ -1,6 +1,7 @@
 import { accumulateElevation } from '../core/elevation';
 import { EARTH_RADIUS_M, haversineDistance, initialBearing, toRad } from '../core/kinematics';
-import type { SportFamily } from '../core/sportProfiles';
+import type { ELEVATION_PRESETS, SportFamily } from '../core/sportProfiles';
+import type { BikeType } from '../cycling/energy';
 import { computeGrades } from '../running/runningAnalytics';
 import { WAY_TYPES, type WayType } from './brouterProfile';
 import { shiftSurfaceRuns, type SurfaceRuns } from './surface';
@@ -144,6 +145,37 @@ export const readRouteMode = (value: unknown): RouteMode | null => {
 export type RouteVehicle = 'pieton' | 'velo';
 
 export const routeVehicle = (family: SportFamily): RouteVehicle => (family === 'velo' ? 'velo' : 'pieton');
+
+/** À vélo, types de voie cochés d'office selon le type de vélo (§10, point 81). */
+export const BIKE_WAY_TYPES: Record<BikeType, WayType[]> = {
+  route: ['route'],
+  ville: ['route'],
+  gravel: ['piste'],
+  vtt: ['sentier', 'piste'],
+};
+
+/** À pied, types de voie cochés d'office selon le terrain de l'activité. */
+export const TERRAIN_WAY_TYPES: Record<keyof typeof ELEVATION_PRESETS, WayType[]> = {
+  route: ['route'],
+  trail: ['sentier', 'piste'],
+};
+
+/**
+ * Types de voie cochés d'office en planification pour une activité qui n'en
+ * a pas de réglés : selon son type de vélo, ou son terrain à pied ; aucun en
+ * voile, où les balises sont reliées en ligne droite.
+ */
+export const presetWayTypes = (family: SportFamily, bikeType: BikeType, terrain: keyof typeof ELEVATION_PRESETS): WayType[] => {
+  if (family === 'velo') return BIKE_WAY_TYPES[bikeType];
+  return family === 'course' ? TERRAIN_WAY_TYPES[terrain] : [];
+};
+
+/** Types de voie d'un réglage : connus, dans l'ordre, sans doublon ; `null` si la valeur n'en est pas une liste non vide. */
+export const sanitizeWayTypes = (value: unknown): WayType[] | null => {
+  if (!Array.isArray(value) || !value.every((v): v is WayType => typeof v === 'string' && isWayType(v))) return null;
+  const mode = waysMode(value);
+  return mode ? wayTypesOf(mode) : null;
+};
 
 /** Mode que l'utilisateur peut choisir : des types de voie, ou la ligne droite. */
 export const isChoosableMode = (value: unknown): value is RouteMode => isRouteMode(value) && value !== 'imported';

@@ -49,6 +49,24 @@ export const SURFACE_LABEL: Record<SurfaceCategory, string> = {
 };
 
 /**
+ * Couleur de chaque catégorie, dans la barre et sur la carte (donnée de
+ * graphe, donc en dur) : tons sourds, proches de ceux de Komoot.
+ */
+export const SURFACE_COLOR: Record<SurfaceCategory, string> = {
+  asphalte: '#5b6270',
+  pierresPlates: '#c4c7cc',
+  paves: '#8f8a84',
+  gravillon: '#d9c7a3',
+  nonPave: '#a07850',
+  terre: '#7b5534',
+  herbe: '#9dbf7a',
+  sable: '#e6d38f',
+  alpin: '#7f9f86',
+  autre: '#a99bb8',
+  inconnu: '#dedbd5',
+};
+
+/**
  * Valeurs de `surface`, sans leur précision après « : » (`concrete:plates`,
  * `paving_stones:30`). BRouter ramène certaines valeurs à une autre
  * (`bricks` → `paved`, `rocks` → `rock`) : les deux formes sont là.
@@ -245,8 +263,42 @@ export const summarizeSurfaces = (stretches: ReadonlyArray<SurfaceStretch>): Sur
   return [...totals].map(([category, distanceM]) => ({ category, distanceM })).sort((a, b) => b.distanceM - a.distanceM);
 };
 
+/** Morceau de tracé d'une seule catégorie, pour la carte. */
+export interface SurfacePath {
+  category: SurfaceCategory;
+  positions: [number, number][];
+}
+
+/**
+ * Tracé découpé par revêtement, pour la carte : `stretches[k]` est le
+ * revêtement du segment `k → k + 1` (`legSurfaceStretches`,
+ * `trackSurfaceStretches`). Les segments voisins de même catégorie ne font
+ * qu'un morceau ; deux morceaux qui se suivent partagent leur point de
+ * jonction, pour que le tracé reste continu.
+ */
+export const surfacePaths = (
+  points: ReadonlyArray<{ lat: number; lon: number }>,
+  stretches: ReadonlyArray<SurfaceStretch>
+): SurfacePath[] => {
+  const paths: SurfacePath[] = [];
+  let current: SurfacePath | null = null;
+  for (let k = 0; k < stretches.length && k + 1 < points.length; k++) {
+    const { category } = stretches[k];
+    if (current === null || current.category !== category) {
+      current = { category, positions: [[points[k].lat, points[k].lon]] };
+      paths.push(current);
+    }
+    current.positions.push([points[k + 1].lat, points[k + 1].lon]);
+  }
+  return paths;
+};
+
 /** Tronçon que la carte calcule (type de voie), par opposition à une ligne droite ou une trace importée. */
 const isComputedLeg = (leg: RouteLeg): boolean => leg.mode !== 'straight' && leg.mode !== 'imported';
+
+/** Voies connues d'un tronçon : celles d'un tronçon calculé et prêt ; sinon aucune (« Inconnu »). */
+const knownLegSurfaces = (leg: RouteLeg): SurfaceRuns | undefined =>
+  leg.status === 'ready' && isComputedLeg(leg) ? leg.surfaces : undefined;
 
 /** Revêtement d'un itinéraire, et ce qui manque pour qu'il soit complet. */
 export interface RouteSurfaces {
@@ -271,9 +323,16 @@ export const routeSurfaces = (legs: ReadonlyArray<RouteLeg>): RouteSurfaces => {
       pendingLegs += 1;
       continue;
     }
-    const known = leg.status === 'ready' && isComputedLeg(leg) ? leg.surfaces : undefined;
+    const known = knownLegSurfaces(leg);
     if (leg.status === 'ready' && isComputedLeg(leg) && !known) missingLegs += 1;
     stretches.push(...legSurfaceStretches(leg.points, known));
   }
   return { totals: summarizeSurfaces(stretches), pendingLegs, missingLegs };
 };
+
+/**
+ * Tracé de chaque tronçon découpé par revêtement, pour la carte ; `null` pour
+ * un tronçon en calcul ou en échec, que la carte garde en pointillé.
+ */
+export const routeSurfacePaths = (legs: ReadonlyArray<RouteLeg>): (SurfacePath[] | null)[] =>
+  legs.map((leg) => (leg.status === 'ready' ? surfacePaths(leg.points, legSurfaceStretches(leg.points, knownLegSurfaces(leg))) : null));

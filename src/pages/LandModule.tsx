@@ -17,6 +17,7 @@ import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import SurfaceBar from '../components/SurfaceBar';
+import SurfaceLayer from '../components/SurfaceLayer';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { IconChevronRight } from '../components/icons';
@@ -262,6 +263,9 @@ function LandModule({ family }: { family: LandFamily }) {
 
   /** Revêtement des voies suivies, demandé à OpenStreetMap à la première ouverture de l'onglet, puis gardé dans la fiche. */
   const surfaces = useSessionSurfaces(gpx.track, sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null, open.surface);
+  /** « Voir sur la carte » de l'onglet surface : la trace prend les couleurs du revêtement, tant que l'onglet est ouvert. */
+  const [surfaceOnMap, setSurfaceOnMap] = useState(false);
+  const surfaceMapPaths = open.surface && surfaceOnMap ? surfaces.paths : null;
 
   const zoneStats = useMemo(
     () => (grades.length > 0 ? computeZoneStats(gpx.track, grades, activityMask) : []),
@@ -456,7 +460,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const mapLayers = (
     <>
       <OsmTileLayer />
-      {mapSegments.map((segment) => (
+      {surfaceMapPaths ? <SurfaceLayer paths={surfaceMapPaths} /> : mapSegments.map((segment) => (
         <Polyline key={`track-${segment.id}`} positions={segment.positions} pathOptions={{ color: segment.color, weight: 5 }} />
       ))}
       {zonePaths.map((path, idx) => (
@@ -624,7 +628,10 @@ function LandModule({ family }: { family: LandFamily }) {
               <div style={{ marginBottom: '10px' }}>
                 <PanelTitle label="Surface" open={open.surface} onToggle={() => toggle('surface')} />
               </div>
-              {surfaces.totals && <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit} />}
+              {surfaces.totals && (
+                <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit}
+                  shownOnMap={surfaceOnMap} onToggleMap={() => setSurfaceOnMap((shown) => !shown)} />
+              )}
               {surfaces.status === 'searching' && (
                 <div style={{ color: 'var(--muted)' }}>Recherche des voies sur OpenStreetMap…</div>
               )}
@@ -636,7 +643,8 @@ function LandModule({ family }: { family: LandFamily }) {
               )}
               <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '10px' }}>
                 Revêtement des voies d'OpenStreetMap à moins de {WAY_MATCH_DEFAULTS.radiusM} m de la trace, demandées à la première
-                ouverture de cet onglet puis gardées avec la session. Hors de toute voie : « Inconnu ».
+                ouverture de cet onglet puis gardées avec la session. Hors de toute voie : « Inconnu ». « Voir sur la carte » y colore
+                la trace selon le revêtement, à la place de la vitesse.
               </div>
             </ResizablePanel>
           )}
@@ -859,7 +867,7 @@ function LandModule({ family }: { family: LandFamily }) {
             Vitesse : {gpx.hasDeviceSpeed
               ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
               : 'dérivée des positions, filtrée'}
-            {family === 'velo' && ` · Vélo : ${BIKE_TYPES[bikeType].label.toLowerCase()}, ${bikeWeightKg} kg (Réglages)`}
+            {family === 'velo' && ` · Vélo : ${BIKE_TYPES[bikeType].noun}, ${bikeWeightKg} kg (Réglages)`}
             {runner.weightKg !== null ? ` · Poids : ${runner.weightKg} kg` : ' · Poids non renseigné, voir Paramètres'}
           </div>
         </ResizablePanel>
@@ -872,7 +880,7 @@ function LandModule({ family }: { family: LandFamily }) {
           bounds={mapBounds}
           layers={mapLayers}
           defaultHeight={580}
-          legend={gpx.track.length > 0 ? {
+          legend={gpx.track.length > 0 && !surfaceMapPaths ? {
             unit: speedUnit,
             range,
             slowLabel: config.slowLabel,

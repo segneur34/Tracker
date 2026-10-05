@@ -14,6 +14,8 @@ import ResizablePanel from '../components/ResizablePanel';
 import RouteList from '../components/RouteList';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SurfaceBar from '../components/SurfaceBar';
+import SurfaceLayer from '../components/SurfaceLayer';
+import WayTypeTabs from '../components/WayTypeTabs';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
@@ -39,7 +41,7 @@ import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
   effectiveDistanceUnit, effectiveDurationSettings, effectiveElevationProfile, effectiveGradeRange, effectiveMarkGuide, effectivePace,
-  lastRecordActivity, readStoredActivities,
+  effectiveWayTypes, lastRecordActivity, readStoredActivities,
 } from '../hooks/useSportSettings';
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
@@ -47,13 +49,13 @@ import { PACE_LEVEL_LABEL, estimateRouteDurationS } from '../planning/duration';
 import { searchPlaces, type Place } from '../planning/geocoding';
 import { WAY_TYPES } from '../planning/brouterProfile';
 import {
-  DEFAULT_ROUTE_MODE, EMPTY_ROUTE, STRAIGHT_HINT, STRAIGHT_LABEL, WAY_TYPE_HINT, WAY_TYPE_LABEL, courseLegs, isChoosableMode, isLooped, isWaysMode,
-  readRouteMode, routeFromTrack, routeModeLabel, routePoints, routeProfileRows, routeTotals, routeVehicle, straightenRoute, toggleWayType,
-  wayTypesOf, waypointDistances, type PlannedRoute, type RouteMode, type Waypoint,
+  DEFAULT_ROUTE_MODE, EMPTY_ROUTE, STRAIGHT_HINT, STRAIGHT_LABEL, WAY_TYPE_HINT, WAY_TYPE_LABEL, courseLegs, isLooped, isWaysMode, routeFromTrack,
+  routeModeLabel, routePoints, routeProfileRows, routeTotals, routeVehicle, straightenRoute, toggleWayType, wayTypesOf, waypointDistances, waysMode,
+  type PlannedRoute, type RouteMode, type Waypoint,
 } from '../planning/route';
 import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute, routeMarkGuide } from '../planning/routeRecord';
-import { routeSurfaces } from '../planning/surface';
+import { routeSurfacePaths, routeSurfaces } from '../planning/surface';
 import { beepStartM, validationRadiusM, type MarkGuideSettings } from '../recording/markGuide';
 import { gradeGradientStops } from '../running/runningAnalytics';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
@@ -63,9 +65,10 @@ import { jsonStore } from '../platform/storage';
 
 /**
  * Planification d'un itinéraire : on pose des points sur la carte, chaque
- * tronçon entre deux points suit la carte, par le type de voie choisi, ou va
- * en ligne droite. L'activité et le type de voie se choisissent au-dessus de
- * la carte ; dessous, des onglets ouvrent les blocs (général, surface, tracé,
+ * tronçon entre deux points suit la carte, par les types de voie cochés, ou
+ * va en ligne droite. L'activité et les types de voie se choisissent
+ * au-dessus de la carte ; choisir une activité coche les siens (Réglages,
+ * `effectiveWayTypes`), que l'on change ensuite pour cet itinéraire ; dessous, des onglets ouvrent les blocs (général, surface, tracé,
  * points, enregistrer, mes itinéraires), comme dans les analyses. Distance, dénivelés et profil d'altitude se mettent à jour
  * à chaque calcul, avec le temps estimé en course et à vélo (niveau choisi
  * dans Réglages) et le revêtement des voies suivies (`planning/surface.ts`). L'itinéraire s'enregistre dans `itineraires/` du dossier
@@ -82,12 +85,14 @@ import { jsonStore } from '../platform/storage';
  * itinéraire rangé (listes de l'accueil et des bibliothèques).
  */
 
-/** Préférences de la page sur l'appareil : derniers mode et activité choisis, dernière vue de la carte. */
+/**
+ * Préférences de la page sur l'appareil : dernière activité choisie, dernière
+ * vue de la carte. Le mode n'y est plus écrit depuis que chaque activité a
+ * ses types de voie (§10, point 81) : un ancien `mode` y reste, ignoré.
+ */
 const PREFS_KEY = 'tracker.planning';
 
 interface PlanningPrefs {
-  /** Mode choisi ; peut être un mode d'avant les types de voie (`foot`…), traduit à la lecture. */
-  mode?: string;
   activityId?: string;
   view?: { lat: number; lon: number; zoom: number };
 }
@@ -222,29 +227,27 @@ function PlanBlock({ id, label, open, onToggle, aside, children }: {
  * carte (mode des points suivants) et au tronçon d'un point sélectionné ; sur
  * une trace importée, rien n'est coché, et choisir refait le tronçon.
  */
-function WayPicker({ mode, label, className, style, onChange }: {
+function WayPicker({ mode, label, compact, className, style, onChange }: {
   mode: RouteMode;
   label: string;
-  className: string;
+  compact?: boolean;
+  className?: string;
   style?: React.CSSProperties;
   onChange: (mode: RouteMode) => void;
 }) {
-  const ways = isWaysMode(mode) ? wayTypesOf(mode) : [];
   return (
-    <div className={`ui-tabs ${className}`} role="group" aria-label={label} style={style}>
-      {WAY_TYPES.map((t) => (
-        <button key={t} type="button" className="ui-tab" aria-pressed={ways.includes(t)} title={WAY_TYPE_HINT[t]}
-          onClick={() => onChange(toggleWayType(mode, t))}>
-          {WAY_TYPE_LABEL[t]}
-        </button>
-      ))}
+    <WayTypeTabs checked={isWaysMode(mode) ? wayTypesOf(mode) : []} onToggle={(t) => onChange(toggleWayType(mode, t))} label={label}
+      compact={compact} className={className} style={style}>
       <button type="button" className="ui-tab plan-modes__straight" aria-pressed={mode === 'straight'} title={STRAIGHT_HINT}
         onClick={() => onChange('straight')}>
         {STRAIGHT_LABEL}
       </button>
-    </div>
+    </WayTypeTabs>
   );
 }
+
+/** Mode des points suivants à l'arrivée sur une activité : ses types de voie ; sans eux (voile), le mode par défaut. */
+const activityMode = (activity: Activity | null): RouteMode => (activity ? waysMode(effectiveWayTypes(activity)) : null) ?? DEFAULT_ROUTE_MODE;
 
 function PlanningPage() {
   const [activities] = useState<Activity[]>(readStoredActivities);
@@ -267,15 +270,8 @@ function PlanningPage() {
   const durationSettings = useMemo(() => (activity ? effectiveDurationSettings(activity, riderKg) : null), [activity, riderKg]);
   const pace = useMemo(() => (activity ? effectivePace(activity) : null), [activity]);
 
-  const [mode, setModeChoice] = useState<RouteMode>(() => {
-    // Un mode d'avant les types de voie (`foot`…) est traduit.
-    const stored = readRouteMode(readPrefs().mode);
-    return isChoosableMode(stored) ? stored : DEFAULT_ROUTE_MODE;
-  });
-  const chooseMode = (next: RouteMode) => {
-    setModeChoice(next);
-    writePrefs({ mode: next });
-  };
+  // Types de voie de l'activité à l'ouverture et à chaque changement d'activité, puis ceux que l'on coche.
+  const [mode, chooseMode] = useState<RouteMode>(() => activityMode(activity));
   /** Mode des éditions : en voile, toujours la ligne droite ; le type de voie choisi reste pour les autres activités. */
   const editMode: RouteMode = sailing ? 'straight' : mode;
 
@@ -288,6 +284,7 @@ function PlanningPage() {
   const chooseActivity = (id: string) => {
     setActivityId(id);
     const next = findActivity(activities, id);
+    chooseMode(activityMode(next));
     if (next && activityFamily(next) === 'voile') planner.straighten();
   };
 
@@ -329,6 +326,14 @@ function PlanningPage() {
   const points = useMemo(() => routePoints(route), [route]);
   const totals = useMemo(() => routeTotals(route, minGainM), [route, minGainM]);
   const surfaces = useMemo(() => routeSurfaces(route.legs), [route.legs]);
+  /**
+   * « Voir sur la carte » du bloc Surface : le tracé prend les couleurs du
+   * revêtement tant que le bloc est ouvert, à la place du bleu ; un tronçon en
+   * calcul ou en échec garde son pointillé.
+   */
+  const [surfaceOnMap, setSurfaceOnMap] = useState(false);
+  const surfaceShown = !sailing && open.surface && surfaceOnMap;
+  const legSurfacePaths = useMemo(() => (surfaceShown ? routeSurfacePaths(route.legs) : null), [surfaceShown, route.legs]);
   const firstError = route.legs.find((l) => l.status === 'error')?.error ?? null;
   const distances = useMemo(() => waypointDistances(route), [route]);
   const looped = isLooped(route);
@@ -491,7 +496,10 @@ function PlanningPage() {
     setCurrent(saved);
     setSavedRoute(opened);
     setName(saved.record.name);
-    if (saved.record.activityId && findActivity(activities, saved.record.activityId)) setActivityId(saved.record.activityId);
+    if (saved.record.activityId && findActivity(activities, saved.record.activityId)) {
+      setActivityId(saved.record.activityId);
+      chooseMode(activityMode(openedActivity));
+    }
     setSelected(null);
     setMessage(null);
     zoom.reset();
@@ -681,9 +689,12 @@ function PlanningPage() {
                   // dashArray explicite : Leaflet garderait sinon le pointillé du tronçon en attente.
                   ? { color: ROUTE_COLOR, weight: 5, opacity: 0.9, dashArray: undefined }
                   : { color: leg.status === 'error' ? ERROR_COLOR : ROUTE_COLOR, weight: 4, opacity: leg.status === 'error' ? 0.9 : 0.55, dashArray: '6 8' };
+                const surfacePaths = legSurfacePaths?.[i];
                 return (
                   <Fragment key={i}>
-                    <Polyline positions={positions} pathOptions={{ ...style, interactive: false }} />
+                    {surfacePaths
+                      ? <SurfaceLayer paths={surfacePaths} />
+                      : <Polyline positions={positions} pathOptions={{ ...style, interactive: false }} />}
                     {/* Trait invisible et large : le toucher qui insère un point n'a pas à viser un trait de 5 px. */}
                     <Polyline
                       positions={positions}
@@ -738,7 +749,7 @@ function PlanningPage() {
                 {selectedLeg && !sailing && (
                   <div className="plan-overlay__field">
                     <span>Pour y venir{selectedLeg.mode === 'imported' && ' (trace importée)'}</span>
-                    <WayPicker mode={selectedLeg.mode} label={`Façon de venir au point ${pointLabel(selected)}`} className="plan-leg-modes"
+                    <WayPicker mode={selectedLeg.mode} label={`Façon de venir au point ${pointLabel(selected)}`} compact
                       onChange={(m) => planner.setMode(selected - 1, m)} />
                   </div>
                 )}
@@ -896,7 +907,8 @@ function PlanningPage() {
           {!sailing && (
             <PlanBlock id="planning.surface" label="Surface" open={open.surface} onToggle={() => toggle('surface')}>
               {surfaces.totals.length > 0 ? (
-                <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit} />
+                <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit}
+                  shownOnMap={surfaceOnMap} onToggleMap={() => setSurfaceOnMap((shown) => !shown)} />
               ) : (
                 <p className="plan-note">Le revêtement s'affiche dès le premier tronçon calculé.</p>
               )}
@@ -913,7 +925,10 @@ function PlanningPage() {
                   <Button size="s" onClick={planner.recomputeSurfaces}>Calculer</Button>
                 </div>
               )}
-              <p className="plan-note">Revêtement des voies d'OpenStreetMap. Lignes droites et traces importées : « Inconnu ».</p>
+              <p className="plan-note">
+                Revêtement des voies d'OpenStreetMap. Lignes droites et traces importées : « Inconnu ». « Voir sur la carte » y colore
+                le tracé selon le revêtement.
+              </p>
             </PlanBlock>
           )}
 
@@ -941,7 +956,10 @@ function PlanningPage() {
                 <li>Touchez un point pour le retirer, ou changer la façon d'y venir ; touchez A pour boucler, par les chemins ou en ligne droite.</li>
                 <li>« Précédent », sur la carte, défait la dernière modification.</li>
                 <li>La liste des points permet aussi de changer leur ordre.</li>
-                <li>Les types de voie cochés au-dessus de la carte valent pour les points suivants ; on peut en cocher plusieurs. Le calcul demande du réseau.</li>
+                <li>
+                  Les types de voie cochés au-dessus de la carte valent pour les points suivants ; on peut en cocher plusieurs. Choisir une activité
+                  coche les siens, réglés dans sa carte de Réglages. Le calcul demande du réseau.
+                </li>
                 <li>
                   {WAY_TYPES.map((t, i) => (
                     <Fragment key={t}>

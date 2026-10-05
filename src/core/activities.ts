@@ -39,12 +39,31 @@ export const ACTIVITY_COLORS = [
   '#1565c0', '#bf360c', '#2e7d32', '#6a1b9a', '#00838f', '#ef6c00', '#ad1457', '#5d4037', '#283593', '#9e9d24',
 ];
 
-/** Au premier lancement : une activité par famille, sur l'identifiant de son calcul (celui des anciens réglages). */
+/** Activité vélo de départ, sur l'identifiant du calcul ; appelée « Vélo » avant le point 81. */
+const ROUTE_ACTIVITY: Activity = { id: 'cycling', name: 'Route', base: 'cycling', color: BASE_COLOR.cycling };
+/** Activités vélo de départ à côté de Route (§10, point 81) ; leur type de vélo par défaut suit (`useSportSettings.ts`). */
+export const GRAVEL_ACTIVITY: Activity = { id: 'a-gravel', name: 'Gravel', base: 'cycling', color: '#9e9d24' };
+export const VTT_ACTIVITY: Activity = { id: 'a-vtt', name: 'VTT', base: 'cycling', color: '#5d4037' };
+
+/** Au premier lancement : une activité par famille, sur l'identifiant de son calcul (celui des anciens réglages), plus Gravel et VTT. */
 export const DEFAULT_ACTIVITIES: Activity[] = [
   { id: 'wingfoil', name: 'Voile', base: 'wingfoil', color: BASE_COLOR.wingfoil },
   { id: 'running', name: 'Course', base: 'running', color: BASE_COLOR.running },
-  { id: 'cycling', name: 'Vélo', base: 'cycling', color: BASE_COLOR.cycling },
+  ROUTE_ACTIVITY,
+  GRAVEL_ACTIVITY,
+  VTT_ACTIVITY,
 ];
+
+/**
+ * Version de la liste des activités rangée dans les réglages. 2 : Route,
+ * Gravel et VTT dans la famille Vélo (point 81). Une liste d'avant est mise
+ * à jour une fois (`upgradeActivities`) ; toute liste écrite ensuite porte ce
+ * numéro, pour qu'une activité supprimée ne revienne pas.
+ */
+export const ACTIVITIES_VERSION = 2;
+
+/** Ancien nom de l'activité vélo de départ, devenue « Route ». */
+const LEGACY_CYCLING_NAME = 'Vélo';
 
 /** Calcul par défaut d'une famille, pour un module sans activité. */
 export const FAMILY_BASE: Record<SportFamily, SportType> = { voile: 'wingfoil', course: 'running', velo: 'cycling' };
@@ -122,6 +141,29 @@ export const sessionActivity = (
     return chosen && chosen.base === sport ? chosen : baseActivity(sport);
   }
   return activities.find((a) => a.id === sport) ?? activities.find((a) => a.base === sport) ?? baseActivity(sport);
+};
+
+/**
+ * Liste d'une version d'avant mise à jour (`ACTIVITIES_VERSION`). L'activité
+ * vélo de départ, si elle s'appelle encore « Vélo », devient « Route » : même
+ * identifiant, donc mêmes sessions et mêmes réglages. Gravel et VTT
+ * s'ajoutent après la dernière activité vélo, sauf si l'une porte déjà leur
+ * identifiant ou leur nom ; leur couleur, si une autre la porte déjà, est la
+ * première libre.
+ */
+export const upgradeActivities = (activities: Activity[]): Activity[] => {
+  const sameName = (a: string, b: string) => a.toLocaleLowerCase('fr') === b.toLocaleLowerCase('fr');
+  let list = activities.map((a) =>
+    a.id === ROUTE_ACTIVITY.id && a.name === LEGACY_CYCLING_NAME ? { ...a, name: ROUTE_ACTIVITY.name } : a
+  );
+  for (const seed of [GRAVEL_ACTIVITY, VTT_ACTIVITY]) {
+    if (list.some((a) => a.id === seed.id || (activityFamily(a) === 'velo' && sameName(a.name, seed.name)))) continue;
+    const color = list.some((a) => a.color.toLowerCase() === seed.color) ? nextActivityColor(list) : seed.color;
+    const lastCycling = list.map(activityFamily).lastIndexOf('velo');
+    const at = lastCycling < 0 ? list.length : lastCycling + 1;
+    list = [...list.slice(0, at), { ...seed, color }, ...list.slice(at)];
+  }
+  return list;
 };
 
 /**

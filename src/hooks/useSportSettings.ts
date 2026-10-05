@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
-  FAMILY_BASE, activitiesOfFamily, activityFamily, baseActivity, findActivity, newActivityId, readActivities, type Activity,
+  ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, baseActivity, findActivity, newActivityId,
+  readActivities, upgradeActivities, type Activity,
 } from '../core/activities';
 import {
   ELEVATION_PRESETS, SPORT_FAMILIES, getSportProfile, sportFamily, type ElevationProfile, type RecordingProfile,
@@ -20,6 +21,8 @@ import {
   DEFAULT_PACE_LEVEL, KM_EFFORT_CLIMB_FACTOR, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, climbPowerWkgForFlatSpeed, isPaceLevel,
   isValidFlatSpeed, type DurationSettings, type PaceLevel, type PlanningFamily, type PresetPaceLevel,
 } from '../planning/duration';
+import type { WayType } from '../planning/brouterProfile';
+import { presetWayTypes, sanitizeWayTypes } from '../planning/route';
 
 /** Taille du texte des tableaux et synthèses, en facteur d'échelle. */
 export type TextScale = 'compact' | 'normal' | 'large';
@@ -89,6 +92,8 @@ export interface StoredSettings {
   recordActivity?: string;
   /** Activités de l'utilisateur ; absentes : celles du premier lancement. */
   activities?: Activity[];
+  /** Version de la liste des activités (`ACTIVITIES_VERSION`) ; absente : 1. */
+  activitiesVersion?: number;
   /** Surcharges du seuil d'activité, dans l'unité du profil du calcul. */
   thresholds?: ByActivity<number>;
   /** Terrain retenu pour le dénivelé. */
@@ -109,7 +114,7 @@ export interface StoredSettings {
   liveFields?: ByActivity<LiveFieldKey[]>;
   /** Bips d'approche des balises (voile) : courbe et vibration ; absent : `MARK_GUIDE_DEFAULTS`. */
   markGuide?: ByActivity<MarkGuideSettings>;
-  /** Type de vélo (vélo), qui fixe roulement et traînée ; absent : route. */
+  /** Type de vélo (vélo), qui fixe roulement et traînée ; absent : `defaultBikeType`. */
   bikeTypes?: ByActivity<BikeType>;
   /** Poids du vélo en kg (vélo) ; absent : celui du type. */
   bikeWeights?: ByActivity<number>;
@@ -117,6 +122,8 @@ export interface StoredSettings {
   paceLevels?: ByActivity<PaceLevel>;
   /** Vitesse sur le plat du niveau « Personnalisé », en m/s. */
   customFlatSpeeds?: ByActivity<number>;
+  /** Types de voie cochés d'office en planification (course, vélo) ; absents : `presetWayTypes`. */
+  wayTypes?: ByActivity<WayType[]>;
   /** Durée de l'appui long sur le bouton rond qui met en pause, en millisecondes. */
   longPressMs?: number;
   /** Sport en accès direct dans la barre du bas, sur téléphone ; absent : voile. */
@@ -181,6 +188,28 @@ export const readStoredSettings = (): StoredSettings => {
 };
 
 const writeStored = (settings: StoredSettings): void => jsonStore.write(STORAGE_KEY, settings);
+
+/**
+ * Met à jour, une fois, une liste d'activités d'une version d'avant
+ * (`upgradeActivities`). À appeler au démarrage, une fois les réglages du
+ * dossier mémoire repris, et avant que la bibliothèque ne guette les
+ * changements de réglages : la mise à jour ne rend pas les réglages de
+ * l'appareil plus récents que ceux du dossier, qui l'emporteraient sinon
+ * sur un changement fait ailleurs. Elle voyage avec le prochain vrai
+ * changement. Sans liste rangée, rien à faire : celle du premier lancement
+ * est déjà à jour.
+ */
+export const upgradeStoredActivities = (): void => {
+  const stored = readStoredSettings();
+  if (stored.activities === undefined || (stored.activitiesVersion ?? 1) >= ACTIVITIES_VERSION) return;
+  writeStored({ ...stored, activities: upgradeActivities(readActivities(stored.activities)), activitiesVersion: ACTIVITIES_VERSION });
+};
+
+/** Type de vélo d'une activité sans réglage : celui de Gravel et de VTT pour elles, route sinon. */
+export const defaultBikeType = (activityId: string): BikeType => {
+  if (activityId === GRAVEL_ACTIVITY.id) return 'gravel';
+  return activityId === VTT_ACTIVITY.id ? 'vtt' : 'route';
+};
 
 /** Activités de l'utilisateur, hors composant (enregistrement, bibliothèque). */
 export const readStoredActivities = (): Activity[] => readActivities(readStoredSettings().activities);
@@ -279,14 +308,33 @@ export const planningFamily = (activity: Activity): PlanningFamily | null => {
   return family === 'voile' ? null : family;
 };
 
-/** Type et poids du vélo d'une activité : ceux de Réglages, sinon route et le poids du type. Utilisable hors composant. */
+/** Type et poids du vélo d'une activité : ceux de Réglages, sinon le type par défaut et son poids. Utilisable hors composant. */
 export const effectiveBikeSetup = (activity: Activity): { bikeType: BikeType; bikeKg: number } => {
   const stored = readStoredSettings();
   const type = stored.bikeTypes?.[activity.id];
-  const bikeType: BikeType = isBikeType(type) ? type : 'route';
+  const bikeType: BikeType = isBikeType(type) ? type : defaultBikeType(activity.id);
   const weight = stored.bikeWeights?.[activity.id];
   return { bikeType, bikeKg: isValidBikeWeight(weight) ? weight : BIKE_TYPES[bikeType].bikeKg };
 };
+
+/** Types de voie cochés d'office pour une activité, réglés ou proposés (`presetWayTypes`). */
+const resolveWayTypes = (stored: StoredSettings, activity: Activity): { wayTypes: WayType[]; overridden: boolean } => {
+  const own = sanitizeWayTypes(stored.wayTypes?.[activity.id]);
+  if (own) return { wayTypes: own, overridden: true };
+  const bikeType = stored.bikeTypes?.[activity.id];
+  const terrain = stored.terrains?.[activity.id];
+  return {
+    wayTypes: presetWayTypes(
+      activityFamily(activity),
+      isBikeType(bikeType) ? bikeType : defaultBikeType(activity.id),
+      isKnownTerrain(terrain) ? terrain : 'route'
+    ),
+    overridden: false,
+  };
+};
+
+/** Types de voie cochés d'office en planification ; aucun en voile. Utilisable hors composant. */
+export const effectiveWayTypes = (activity: Activity): WayType[] => resolveWayTypes(readStoredSettings(), activity).wayTypes;
 
 /**
  * Niveau effectif et vitesse sur le plat qui en découle, en m/s ; un
@@ -356,7 +404,7 @@ export interface SportSettingsView {
   /** Bips d'approche des balises (voile). */
   markGuide: MarkGuideSettings;
   isMarkGuideOverridden: boolean;
-  /** Type de vélo (activités vélo seulement, route par défaut). */
+  /** Type de vélo (activités vélo seulement, `defaultBikeType` par défaut). */
   bikeType: BikeType;
   /** Poids du vélo en kg, ou `null` pour celui du type. */
   bikeWeight: number | null;
@@ -364,12 +412,15 @@ export interface SportSettingsView {
   paceLevel: PaceLevel;
   /** Vitesse sur le plat saisie pour « Personnalisé », en m/s, ou `null`. */
   customFlatSpeedMs: number | null;
+  /** Types de voie cochés d'office en planification (course, vélo) ; aucun en voile. */
+  wayTypes: WayType[];
+  isWayTypesOverridden: boolean;
 }
 
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
   'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'textScales', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights',
-  'paceLevels', 'customFlatSpeeds', 'liveFields', 'markGuide',
+  'paceLevels', 'customFlatSpeeds', 'liveFields', 'markGuide', 'wayTypes',
 ] as const;
 
 /** Réglages sans aucune surcharge rangée sous `id`. */
@@ -425,6 +476,7 @@ export const useAllSportSettings = () => {
       const customSpeed = stored.customFlatSpeeds?.[id];
       const liveFields = sanitizeLiveFields(stored.liveFields?.[id], activityFamily(activity));
       const markGuide = sanitizeMarkGuide(stored.markGuide?.[id]);
+      const ways = resolveWayTypes(stored, activity);
       return {
         activity,
         speedUnit: isKnownSpeedUnit(unit) ? unit : profile.speedUnit,
@@ -443,10 +495,12 @@ export const useAllSportSettings = () => {
         isLiveFieldsOverridden: liveFields !== null,
         markGuide: markGuide ?? MARK_GUIDE_DEFAULTS,
         isMarkGuideOverridden: markGuide !== null,
-        bikeType: isBikeType(bikeType) ? bikeType : 'route',
+        bikeType: isBikeType(bikeType) ? bikeType : defaultBikeType(id),
         bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
         paceLevel: isPaceLevel(paceLevel) ? paceLevel : DEFAULT_PACE_LEVEL,
         customFlatSpeedMs: typeof customSpeed === 'number' && isFinite(customSpeed) ? customSpeed : null,
+        wayTypes: ways.wayTypes,
+        isWayTypesOverridden: ways.overridden,
       };
     },
     [stored]
@@ -454,7 +508,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -538,6 +592,12 @@ export const useAllSportSettings = () => {
           next.customFlatSpeeds = put(stored.customFlatSpeeds, value as number | null);
           break;
         }
+        case 'wayTypes': {
+          const ways = value === null ? null : sanitizeWayTypes(value);
+          if (value !== null && ways === null) return;
+          next.wayTypes = put(stored.wayTypes, ways);
+          break;
+        }
       }
       persist(next);
     },
@@ -553,7 +613,7 @@ export const useAllSportSettings = () => {
       const trimmed = name.trim();
       if (trimmed === '') return null;
       const id = newActivityId(trimmed, activities);
-      persist({ ...stored, activities: [...activities, { id, name: trimmed, base, color }] });
+      persist({ ...stored, activities: [...activities, { id, name: trimmed, base, color }], activitiesVersion: ACTIVITIES_VERSION });
       return id;
     },
     [activities, persist, stored]
@@ -565,6 +625,7 @@ export const useAllSportSettings = () => {
       const name = patch.name?.trim();
       persist({
         ...stored,
+        activitiesVersion: ACTIVITIES_VERSION,
         activities: activities.map((a) =>
           a.id === id ? { ...a, ...(name ? { name } : {}), ...(patch.color ? { color: patch.color } : {}) } : a
         ),
@@ -578,7 +639,7 @@ export const useAllSportSettings = () => {
    * de leur calcul (`sessionActivity`).
    */
   const removeActivity = useCallback(
-    (id: string) => persist({ ...withoutOverrides(stored, id), activities: activities.filter((a) => a.id !== id) }),
+    (id: string) => persist({ ...withoutOverrides(stored, id), activities: activities.filter((a) => a.id !== id), activitiesVersion: ACTIVITIES_VERSION }),
     [activities, persist, stored]
   );
 
@@ -712,7 +773,7 @@ export const useSportSettings = (family: SportFamily) => {
 
   // Vélo : type et poids, réglés dans Réglages.
   const storedBikeType = stored.bikeTypes?.[id];
-  const bikeType: BikeType = isBikeType(storedBikeType) ? storedBikeType : 'route';
+  const bikeType: BikeType = isBikeType(storedBikeType) ? storedBikeType : defaultBikeType(id);
   const storedBikeWeight = stored.bikeWeights?.[id];
   const bikeWeightKg = isValidBikeWeight(storedBikeWeight) ? storedBikeWeight : BIKE_TYPES[bikeType].bikeKg;
 

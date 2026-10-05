@@ -201,6 +201,19 @@
   color: var(--on-accent);
 }
 
+/* Rangée resserrée, sans trait dessous : dans une ligne de réglage ou un encart sur la carte. */
+.ui-tabs--compact {
+  gap: var(--space-1);
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.ui-tabs--compact .ui-tab {
+  min-height: 28px;
+  padding: 0 var(--space-2);
+}
+
 /* --- Point d'interrogation qui déplie une explication (`HelpButton`) --- */
 
 .ui-help {

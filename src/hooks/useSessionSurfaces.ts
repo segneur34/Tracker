@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { TrackPoint } from '../core/types';
 import type { SessionSurfaces } from '../library/record';
 import { fetchWays } from '../planning/overpass';
-import { summarizeSurfaces, trackSurfaceStretches, type SurfaceTotal } from '../planning/surface';
+import { summarizeSurfaces, surfacePaths, trackSurfaceStretches, type SurfacePath, type SurfaceTotal } from '../planning/surface';
 import { WAY_MATCH_DEFAULTS, WAY_MATCH_VERSION, queryLines, trackSurfaceRuns } from '../planning/wayMatch';
 import { findLibrarySession, librarySession, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
 
@@ -86,12 +86,15 @@ export const useSessionSurfaces = (track: TrackPoint[], file: string | null, act
 
   const retry = () => setError(null);
 
-  const totals: SurfaceTotal[] | null = useMemo(
-    () => (surfaces ? summarizeSurfaces(trackSurfaceStretches(track, surfaces, surfaces.startMs)) : null),
-    [track, surfaces]
-  );
+  /** Longueurs par revêtement, et tracé découpé par revêtement pour la carte. */
+  const split: { totals: SurfaceTotal[]; paths: SurfacePath[] } | null = useMemo(() => {
+    if (!surfaces) return null;
+    const stretches = trackSurfaceStretches(track, surfaces, surfaces.startMs);
+    return { totals: summarizeSurfaces(stretches), paths: surfacePaths(track, stretches) };
+  }, [track, surfaces]);
+  const totals = split?.totals ?? null;
 
   // Onglet ouvert, sans voies ni échec : la recherche est lancée (ou le sera par l'effet).
   const status: SurfaceSearchStatus = totals ? 'ready' : failed !== null ? 'error' : active && startMs !== null ? 'searching' : 'idle';
-  return { status, totals, error: failed, retry };
+  return { status, totals, paths: split?.paths ?? null, error: failed, retry };
 };

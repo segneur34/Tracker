@@ -114,4 +114,13 @@ describe('computeCyclingEnergy', () => {
     const rRoad = computeCyclingEnergy(track, gradesOf(track), allMoving(track), road, 0);
     expect(rCity.mechanicalJ).toBeGreaterThan(rRoad.mechanicalJ);
   });
+
+  it('un VTT coûte plus qu’un gravel à la même vitesse', () => {
+    const track = buildTrack(600, () => 6);
+    const mtb = cyclingEnergyParams('vtt', BIKE_TYPES.vtt.bikeKg, 70);
+    const gravel = cyclingEnergyParams('gravel', BIKE_TYPES.gravel.bikeKg, 70);
+    const rMtb = computeCyclingEnergy(track, gradesOf(track), allMoving(track), mtb, 0);
+    const rGravel = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 0);
+    expect(rMtb.mechanicalJ).toBeGreaterThan(rGravel.mechanicalJ);
+  });
 });

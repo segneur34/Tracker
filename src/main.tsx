@@ -9,6 +9,7 @@ import { confirmLeave, installLeaveGuard } from './hooks/leaveGuard';
 import { startMarkGuide } from './hooks/useMarkGuide';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { openLibrary, startLibraryUi } from './hooks/useSessionLibrary';
+import { upgradeStoredActivities } from './hooks/useSportSettings';
 import { installBackButton } from './platform/backButton';
 import { initStorage } from './platform/storage';
 
@@ -24,6 +25,8 @@ const LIBRARY_OPEN_WAIT_MS = 1500;
 void initStorage()
   .then(() => Promise.race([openLibrary(), new Promise((resolve) => setTimeout(resolve, LIBRARY_OPEN_WAIT_MS))]))
   .then(() => {
+    // Liste d'activités d'une version d'avant mise à jour, une fois les réglages du dossier repris.
+    upgradeStoredActivities();
     ReactDOM.createRoot(document.getElementById('root')!).render(
       <React.StrictMode>
         <App />

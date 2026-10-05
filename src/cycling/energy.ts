@@ -22,10 +22,12 @@ import { GRADE_ZONES, classifyGrade, type GradeZone, type GradeZoneKey } from '.
  */
 
 /** Type de vélo : il fixe le roulement, la traînée et le poids du vélo par défaut. */
-export type BikeType = 'route' | 'gravel' | 'ville';
+export type BikeType = 'route' | 'gravel' | 'vtt' | 'ville';
 
 export interface BikeSpec {
   label: string;
+  /** Nom dans une phrase, en minuscules sauf un sigle. */
+  noun: string;
   /** Coefficient de résistance au roulement. */
   crr: number;
   /** Surface de traînée (coefficient × surface frontale), en m². */
@@ -39,12 +41,14 @@ export interface BikeSpec {
 /**
  * Ordres de grandeur publiés : pneus de route gonflés sur bon revêtement et
  * position mains en bas des cocottes ; pneus larges sur chemin et position
- * plus droite ; vélo de ville, pneus épais et buste redressé.
+ * plus droite ; VTT, pneus à crampons, buste plus droit encore, descentes
+ * plus lentes sur sentier ; vélo de ville, pneus épais et buste redressé.
  */
 export const BIKE_TYPES: Record<BikeType, BikeSpec> = {
-  route: { label: 'Route', crr: 0.004, cdaM2: 0.32, bikeKg: 8.5, maxDescentMs: 55 / 3.6 },
-  gravel: { label: 'Gravel / VTT', crr: 0.008, cdaM2: 0.45, bikeKg: 12, maxDescentMs: 35 / 3.6 },
-  ville: { label: 'Ville', crr: 0.007, cdaM2: 0.55, bikeKg: 16, maxDescentMs: 30 / 3.6 },
+  route: { label: 'Route', noun: 'route', crr: 0.004, cdaM2: 0.32, bikeKg: 8.5, maxDescentMs: 55 / 3.6 },
+  gravel: { label: 'Gravel', noun: 'gravel', crr: 0.008, cdaM2: 0.45, bikeKg: 12, maxDescentMs: 35 / 3.6 },
+  vtt: { label: 'VTT', noun: 'VTT', crr: 0.012, cdaM2: 0.5, bikeKg: 13, maxDescentMs: 30 / 3.6 },
+  ville: { label: 'Ville', noun: 'ville', crr: 0.007, cdaM2: 0.55, bikeKg: 16, maxDescentMs: 30 / 3.6 },
 };
 
 export const isBikeType = (value: unknown): value is BikeType =>
