@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from 'react';
 import { FAMILY_LABEL, nextActivityColor, type Activity } from '../core/activities';
 import {
-  CYCLING_SPORTS, ELEVATION_PRESETS, SAILING_SPORTS, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, sportFamily, type SportFamily,
+  CYCLING_SPORTS, ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SAILING_SPORTS, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, sportFamily, type SportFamily,
 } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
@@ -196,7 +196,8 @@ function SettingsPage() {
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
                   s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null ||
-                  s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden;
+                  s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden ||
+                  s.loopReturnRatio !== p.loopReturnMaxRatio;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
                 const thresholdShown = parseFloat(
@@ -375,6 +376,18 @@ function SettingsPage() {
                         )}
                         {!sailing && (
                           <WayTypesSetting view={s} family={family} onChange={(ways) => setFor(id, 'wayTypes', ways)} />
+                        )}
+                        {s.loopReturnRatio !== null && (
+                          <div className="settings-row"
+                            title="Itinéraires en mode « Boucle » : le retour évite les voies de l'aller tant qu'il ne dépasse pas tant de fois sa longueur ; au-delà, c'est le retour le plus court">
+                            <span className="settings-row__label">Retour de boucle</span>
+                            <div className="settings-sports__pair">
+                              <span className="settings-sports__mark">au plus</span>
+                              <NumberField unit="× l'aller" step={0.1} min={LOOP_RETURN_RATIO_RANGE.min} max={LOOP_RETURN_RATIO_RANGE.max}
+                                value={s.loopReturnRatio} onCommit={(v) => setFor(id, 'loopReturnRatio', v)} />
+                              {s.loopReturnRatio === p.loopReturnMaxRatio && <span className="settings-sports__mark">défaut</span>}
+                            </div>
+                          </div>
                         )}
                         {paceFamily && (
                           <PaceSettings family={paceFamily} view={s}

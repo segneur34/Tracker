@@ -4,7 +4,7 @@ import {
   readActivities, upgradeActivities, type Activity,
 } from '../core/activities';
 import {
-  ELEVATION_PRESETS, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, getSportProfile, sportFamily, type ElevationProfile, type RecordingProfile,
+  ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, getSportProfile, sportFamily, type ElevationProfile, type RecordingProfile,
   type SportFamily,
 } from '../core/sportProfiles';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
@@ -126,6 +126,8 @@ export interface StoredSettings {
   customFlatSpeeds?: ByActivity<number>;
   /** Types de voie cochés d'office en planification (course, vélo) ; absents : `presetWayTypes`. */
   wayTypes?: ByActivity<WayType[]>;
+  /** Retour d'une boucle en planification : au plus tant de fois l'aller (course, vélo) ; absent : celui du profil. */
+  loopReturnRatios?: ByActivity<number>;
   /** Durée de l'appui long sur le bouton rond qui met en pause, en millisecondes. */
   longPressMs?: number;
   /** Sport en accès direct dans la barre du bas, sur téléphone ; absent : voile. */
@@ -160,6 +162,18 @@ const resolveTerrainStepM = (stored: StoredSettings, activity: Activity): number
   if (profileStep === null) return null;
   const step = stored.terrainSteps?.[activity.id];
   return isTerrainStep(step) ? step : profileStep;
+};
+
+/** Rapport du retour de boucle admis, en fois l'aller. */
+export const isValidLoopReturnRatio = (value: unknown): value is number =>
+  typeof value === 'number' && isFinite(value) && value >= LOOP_RETURN_RATIO_RANGE.min && value <= LOOP_RETURN_RATIO_RANGE.max;
+
+/** Rapport du retour de boucle : celui réglé, sinon celui du profil ; `null` en voile. */
+const resolveLoopReturnRatio = (stored: StoredSettings, activity: Activity): number | null => {
+  const profileRatio = getSportProfile(activity.base).loopReturnMaxRatio;
+  if (profileRatio === null) return null;
+  const ratio = stored.loopReturnRatios?.[activity.id];
+  return isValidLoopReturnRatio(ratio) ? ratio : profileRatio;
 };
 
 export const isKnownSpeedUnit = (value: unknown): value is SpeedUnit =>
@@ -312,6 +326,9 @@ export const effectiveElevationProfile = (activity: Activity): ElevationProfile 
 /** Pas des échantillons d'altitude du terrain d'une activité, `null` en voile. Utilisable hors composant. */
 export const effectiveTerrainStepM = (activity: Activity): number | null => resolveTerrainStepM(readStoredSettings(), activity);
 
+/** Retour de boucle d'une activité en planification, en fois l'aller ; `null` en voile. Utilisable hors composant. */
+export const effectiveLoopReturnRatio = (activity: Activity): number | null => resolveLoopReturnRatio(readStoredSettings(), activity);
+
 /** Bornes de la couleur de pente d'une activité : celles de Réglages, sinon le défaut. Utilisable hors composant. */
 export const effectiveGradeRange = (activity: Activity): GradeRange => {
   const range = readStoredSettings().gradeRanges?.[activity.id];
@@ -433,12 +450,14 @@ export interface SportSettingsView {
   /** Types de voie cochés d'office en planification (course, vélo) ; aucun en voile. */
   wayTypes: WayType[];
   isWayTypesOverridden: boolean;
+  /** Retour de boucle en planification, en fois l'aller ; `null` en voile. */
+  loopReturnRatio: number | null;
 }
 
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
   'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'textScales', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights',
-  'paceLevels', 'customFlatSpeeds', 'liveFields', 'markGuide', 'wayTypes', 'terrainSteps',
+  'paceLevels', 'customFlatSpeeds', 'liveFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios',
 ] as const;
 
 /** Réglages sans aucune surcharge rangée sous `id`. */
@@ -520,6 +539,7 @@ export const useAllSportSettings = () => {
         customFlatSpeedMs: typeof customSpeed === 'number' && isFinite(customSpeed) ? customSpeed : null,
         wayTypes: ways.wayTypes,
         isWayTypesOverridden: ways.overridden,
+        loopReturnRatio: resolveLoopReturnRatio(stored, activity),
       };
     },
     [stored]
@@ -527,7 +547,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -621,6 +641,10 @@ export const useAllSportSettings = () => {
           next.wayTypes = put(stored.wayTypes, ways);
           break;
         }
+        case 'loopReturnRatio':
+          if (value !== null && !isValidLoopReturnRatio(value)) return;
+          next.loopReturnRatios = put(stored.loopReturnRatios, value as number | null);
+          break;
       }
       persist(next);
     },

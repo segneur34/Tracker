@@ -4,6 +4,7 @@ import type { ELEVATION_PRESETS, SportFamily } from '../core/sportProfiles';
 import type { BikeType } from '../cycling/energy';
 import { computeGrades } from '../running/runningAnalytics';
 import { WAY_TYPES, type WayType } from './brouterProfile';
+import { LOOP_RETURN_VARIANTS } from './loopReturn';
 import { shiftSurfaceRuns, type SurfaceRuns } from './surface';
 
 /**
@@ -212,6 +213,28 @@ export interface RouteLeg {
    * avant qu'on les garde : son revêtement est alors inconnu (`surface.ts`).
    */
   surfaces?: SurfaceRuns;
+  /** Retour d'une boucle en mode « Boucle », calculé à part, en évitant l'aller (`LoopReturn`). */
+  loopReturn?: LoopReturn;
+}
+
+/**
+ * Marque du retour d'une boucle en mode « Boucle » (§10, point 87) : le
+ * dernier tronçon, quand il se calcule par les voies, est demandé à part, en
+ * évitant l'aller (`loopReturn.ts`), une fois tout l'aller calculé. Jamais
+ * sur une ligne droite, ni sur une trace importée, qui restent telles
+ * quelles. Elle n'est pas rangée dans la fiche (`acceptLoopReturn`).
+ */
+export interface LoopReturn {
+  /** Aller pour lequel le retour est demandé ou calculé (`outboundKey`) : s'il change, le retour est à refaire. */
+  basis: string;
+  /** Variante demandée au serveur (`alternativeidx`), de 0 à `LOOP_RETURN_VARIANTS - 1`. */
+  variant: number;
+  /** Retour obtenu : par d'autres voies, ou le plus court faute de mieux ; absent avant le calcul et pour un retour rangé. */
+  outcome?: 'avoided' | 'shortest';
+  /** Longueur du retour sur l'aller, en mètres. */
+  sharedM?: number;
+  /** Vrai si l'aller était trop long pour poser le couloir dans l'adresse : retour le plus court d'office. */
+  tooLong?: boolean;
 }
 
 /** `legs[i]` relie `waypoints[i]` à `waypoints[i + 1]` : un tronçon de moins que de points. */
@@ -374,6 +397,168 @@ export const closeLoop = (route: PlannedRoute, mode: RouteMode): PlannedRoute =>
   route.waypoints.length < 2 || isLooped(route) ? route : addWaypoint(route, route.waypoints[0], mode);
 
 /**
+ * Clé de l'aller d'une boucle : la clé et l'état de chacun de ses tronçons
+ * (tous sauf le dernier, le retour). Tout recalcul d'un tronçon passe par
+ * `pending`, donc change cette clé : le retour se refait après un point
+ * déplacé comme après « Réessayer » ou un changement d'activité.
+ */
+export const outboundKey = (route: PlannedRoute): string =>
+  route.legs.slice(0, -1).map((leg, i) => `${legKey(route, i)}~${leg.status}`).join('|');
+
+/** Tronçon sans marque de retour (même objet s'il n'en a pas). */
+const withoutReturnMark = (leg: RouteLeg): RouteLeg => {
+  if (!leg.loopReturn) return leg;
+  const { loopReturn: _mark, ...rest } = leg;
+  return rest;
+};
+
+/** Retour à calculer pour l'aller `basis`, à la variante donnée, entre les deux points du tronçon `index`. */
+const pendingReturn = (route: PlannedRoute, index: number, mode: RouteMode, basis: string, variant: number): RouteLeg => ({
+  ...newLeg(route.waypoints[index], route.waypoints[index + 1], mode),
+  loopReturn: { basis, variant },
+});
+
+/**
+ * Remet en ordre un itinéraire en mode « Boucle », après chaque
+ * modification : un itinéraire ouvert d'au moins deux points est bouclé (le
+ * retour prend `mode`), seul le dernier tronçon porte la marque du retour
+ * (« Inverser » la déplace), et un retour calculé pour un autre aller est à
+ * refaire, à la première variante. Un retour sans marque (bouclé autrement,
+ * ou bouton tout juste allumé) est refait ; une ligne droite ou une trace
+ * importée reste telle quelle. Itinéraire inchangé (même objet) s'il est déjà
+ * en ordre.
+ */
+export const withLoopReturn = (route: PlannedRoute, mode: RouteMode): PlannedRoute => {
+  if (route.waypoints.length < 2) return route;
+  const closed = isLooped(route) ? route : addWaypoint(route, route.waypoints[0], mode);
+  const last = closed.legs.length - 1;
+  const basis = outboundKey(closed);
+  const settle = (leg: RouteLeg, i: number): RouteLeg => {
+    if (i !== last || !isWaysMode(leg.mode)) return withoutReturnMark(leg);
+    if (leg.loopReturn?.basis === basis) return leg;
+    return pendingReturn(closed, i, leg.mode, basis, 0);
+  };
+  const legs = closed.legs.map(settle);
+  return closed === route && legs.every((leg, i) => leg === route.legs[i]) ? route : { waypoints: closed.waypoints, legs };
+};
+
+/**
+ * Boucle rouverte depuis la mémoire, en mode « Boucle » : son retour,
+ * calculé par les voies, est pris tel quel pour l'aller qu'il a, sans être
+ * recalculé tant que l'aller ne change pas. Itinéraire inchangé s'il n'est
+ * pas bouclé, ou si son retour va en ligne droite ou suit une trace importée.
+ */
+export const acceptLoopReturn = (route: PlannedRoute): PlannedRoute => {
+  const last = route.legs.length - 1;
+  const leg = route.legs[last];
+  if (!isLooped(route) || !leg || !isWaysMode(leg.mode) || leg.loopReturn) return route;
+  return { ...route, legs: route.legs.map((l, i) => (i === last ? { ...l, loopReturn: { basis: outboundKey(route), variant: 0 } } : l)) };
+};
+
+/**
+ * Point posé en mode « Boucle » : sur une boucle, il s'insère avant le
+ * retour, qui part désormais de lui (dans son mode, ou `mode` à la place
+ * d'une trace importée) ; sinon, il s'ajoute à la fin.
+ */
+export const addBeforeReturn = (route: PlannedRoute, waypoint: Waypoint, mode: RouteMode): PlannedRoute => {
+  if (!isLooped(route)) return addWaypoint(route, waypoint, mode);
+  const n = route.waypoints.length;
+  const start = route.waypoints[n - 1];
+  return {
+    waypoints: [...route.waypoints.slice(0, n - 1), waypoint, start],
+    legs: [
+      ...route.legs.slice(0, n - 2),
+      newLeg(route.waypoints[n - 2], waypoint, mode),
+      newLeg(waypoint, start, rebuiltMode(route.legs[n - 2].mode, mode)),
+    ],
+  };
+};
+
+/**
+ * Retire le départ d'une boucle, qui est aussi son arrivée : le point
+ * suivant devient le départ, et `withLoopReturn` y referme la boucle. Sur un
+ * itinéraire ouvert, retire simplement le premier point.
+ */
+export const removeLoopStart = (route: PlannedRoute): PlannedRoute =>
+  isLooped(route) ? removeWaypoint(removeWaypoint(route, route.waypoints.length - 1), 0) : removeWaypoint(route, 0);
+
+/**
+ * Bouton « Boucle » éteint : le retour au départ est retiré, l'itinéraire
+ * s'arrête au dernier point de l'aller. Un retour qui suit une trace importée
+ * reste. Itinéraire inchangé s'il n'est pas bouclé.
+ */
+export const openLoop = (route: PlannedRoute): PlannedRoute =>
+  isLooped(route) && route.legs[route.legs.length - 1].mode !== 'imported'
+    ? { waypoints: route.waypoints.slice(0, -1), legs: route.legs.slice(0, -1) }
+    : route;
+
+/** « Autre retour » : le retour est redemandé à la variante suivante, puis de nouveau à la première. Itinéraire inchangé sans retour marqué. */
+export const nextReturnVariant = (route: PlannedRoute): PlannedRoute => {
+  const last = route.legs.length - 1;
+  const mark = route.legs[last]?.loopReturn;
+  if (!mark) return route;
+  const next = pendingReturn(route, last, route.legs[last].mode, outboundKey(route), (mark.variant + 1) % LOOP_RETURN_VARIANTS);
+  return { ...route, legs: route.legs.map((l, i) => (i === last ? next : l)) };
+};
+
+/** Le retour à calculer : ses extrémités, son mode, l'aller qu'il évite et pour lequel il est demandé, la variante. */
+export interface ReturnRequest {
+  basis: string;
+  variant: number;
+  from: Waypoint;
+  to: Waypoint;
+  mode: WaysMode;
+  /** Tronçons de l'aller, tous calculés. */
+  outbound: RouteLeg[];
+}
+
+/** Retour à calculer, une fois tout l'aller calculé ; `null` s'il n'y en a pas, ou si l'aller attend encore. */
+export const returnRequest = (route: PlannedRoute): ReturnRequest | null => {
+  const last = route.legs.length - 1;
+  const leg = route.legs[last];
+  if (!leg?.loopReturn || leg.status !== 'pending' || !isWaysMode(leg.mode)) return null;
+  const outbound = route.legs.slice(0, -1);
+  if (outbound.some((l) => l.status === 'pending')) return null;
+  return { basis: leg.loopReturn.basis, variant: leg.loopReturn.variant, from: route.waypoints[last], to: route.waypoints[last + 1], mode: leg.mode, outbound };
+};
+
+/** Indice du retour qui attend toujours le calcul demandé pour `basis` et `variant`, ou `-1` : l'aller ou la variante ont changé entre-temps. */
+const waitingReturn = (route: PlannedRoute, basis: string, variant: number): number => {
+  const last = route.legs.length - 1;
+  const leg = route.legs[last];
+  const mark = leg?.loopReturn;
+  return leg?.status === 'pending' && mark?.basis === basis && mark.variant === variant && outboundKey(route) === basis ? last : -1;
+};
+
+/** Retour calculé, posé s'il est toujours attendu pour cet aller et cette variante ; itinéraire inchangé sinon. */
+export const withReturnResult = (
+  route: PlannedRoute,
+  basis: string,
+  variant: number,
+  result: { points: RoutePoint[]; surfaces?: SurfaceRuns; outcome: 'avoided' | 'shortest'; sharedM: number; tooLong?: boolean }
+): PlannedRoute => {
+  const target = waitingReturn(route, basis, variant);
+  if (target < 0 || result.points.length < 2) return route;
+  const { points, surfaces, ...mark } = result;
+  const leg: RouteLeg = {
+    mode: route.legs[target].mode,
+    status: 'ready',
+    points,
+    ...(surfaces ? { surfaces } : {}),
+    loopReturn: { basis, variant, ...mark },
+  };
+  return { ...route, legs: route.legs.map((l, i) => (i === target ? leg : l)) };
+};
+
+/** Échec du calcul du retour : la ligne droite reste, avec la raison, comme pour un tronçon ordinaire. */
+export const withReturnError = (route: PlannedRoute, basis: string, variant: number, message: string): PlannedRoute => {
+  const target = waitingReturn(route, basis, variant);
+  if (target < 0) return route;
+  const leg: RouteLeg = { ...pendingReturn(route, target, route.legs[target].mode, basis, variant), status: 'error', error: message };
+  return { ...route, legs: route.legs.map((l, i) => (i === target ? leg : l)) };
+};
+
+/**
  * Parcours de voile : sur l'eau, aucun chemin à suivre. Les tronçons
  * calculés par la carte passent en ligne droite ; une ligne droite ou une
  * trace importée reste telle quelle. Itinéraire inchangé (même objet) s'il
@@ -529,9 +714,12 @@ export const legKey = (route: PlannedRoute, legIndex: number): string | null => 
   return `${from.lat},${from.lon}>${to.lat},${to.lon}:${leg.mode}`;
 };
 
-/** Indices des tronçons en attente qui portent cette clé (un point a pu être inséré avant eux entre-temps). */
+/**
+ * Indices des tronçons en attente qui portent cette clé (un point a pu être
+ * inséré avant eux entre-temps) ; jamais le retour d'une boucle, calculé à part.
+ */
 const pendingWithKey = (route: PlannedRoute, key: string): number[] =>
-  route.legs.flatMap((l, i) => (l.status === 'pending' && legKey(route, i) === key ? [i] : []));
+  route.legs.flatMap((l, i) => (l.status === 'pending' && !l.loopReturn && legKey(route, i) === key ? [i] : []));
 
 /**
  * Géométrie calculée pour la clé `key`, et ses voies s'il y en a, posées sur
@@ -584,13 +772,13 @@ export interface LegRequest {
   mode: RouteMode;
 }
 
-/** Calculs à demander, dans l'ordre du parcours, une fois par clé. */
+/** Calculs à demander, dans l'ordre du parcours, une fois par clé ; le retour d'une boucle à part (`returnRequest`). */
 export const pendingLegRequests = (route: PlannedRoute): LegRequest[] => {
   const seen = new Set<string>();
   const requests: LegRequest[] = [];
   route.legs.forEach((leg, i) => {
     const key = legKey(route, i);
-    if (leg.status !== 'pending' || key === null || seen.has(key)) return;
+    if (leg.status !== 'pending' || leg.loopReturn || key === null || seen.has(key)) return;
     seen.add(key);
     requests.push({ key, from: route.waypoints[i], to: route.waypoints[i + 1], mode: leg.mode });
   });
@@ -641,9 +829,12 @@ export const snapToWaypoints = (
 export const nextPendingLeg = (route: PlannedRoute): number => route.legs.findIndex((l) => l.status === 'pending');
 
 /** Tout l'itinéraire d'un seul trait, point de jonction entre deux tronçons compté une fois. */
-export const routePoints = (route: PlannedRoute): RoutePoint[] => {
+export const routePoints = (route: PlannedRoute): RoutePoint[] => legsPoints(route.legs);
+
+/** Des tronçons qui se suivent, d'un seul trait, point de jonction compté une fois. */
+export const legsPoints = (legs: ReadonlyArray<RouteLeg>): RoutePoint[] => {
   const out: RoutePoint[] = [];
-  for (const leg of route.legs) {
+  for (const leg of legs) {
     const start = out.length > 0 && samePlace(out[out.length - 1], leg.points[0]) ? 1 : 0;
     for (let i = start; i < leg.points.length; i++) out.push(leg.points[i]);
   }

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, addWaypoint, closeLoop, courseLegs, insertWaypoint, isChoosableMode, isLooped, isRouteMode, isWaysMode, legKey,
+  DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, acceptLoopReturn, addBeforeReturn, addWaypoint, closeLoop, courseLegs, insertWaypoint, isChoosableMode, isLooped, isRouteMode, isWaysMode, legKey,
   moveWaypoint, nextPendingLeg, pendingLegRequests, readRouteMode, recomputeLegsWithoutSurfaces, removeWaypoint, reorderWaypoint, retryFailedLegs,
   presetWayTypes, reverseRoute, routeFromTrack, routeModeLabel, routePoints, sanitizeWayTypes, toggleWayType, wayTypesOf, waysMode,
   routeProfileRows, routeTotals, routeVehicle, setLegMode, setRouteMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
+  nextReturnVariant, openLoop, outboundKey, removeLoopStart, returnRequest, withLoopReturn, withReturnError, withReturnResult,
   type PlannedRoute, type RoutePoint, type Waypoint,
 } from './route';
 
@@ -501,5 +502,158 @@ describe('parcours de voile', () => {
     expect(legs[0].bearingDeg).toBeCloseTo(0, 3);
     expect(legs[1].bearingDeg).toBeCloseTo(90, 0);
     expect(courseLegs(EMPTY_ROUTE)).toEqual([]);
+  });
+});
+
+describe('mode « Boucle »', () => {
+  const W: Waypoint = { lat: 43.615, lon: 3.81 };
+
+  /** Point posé en mode « Boucle », puis l'itinéraire remis en ordre, comme le fait le réducteur. */
+  const loopAdd = (route: PlannedRoute, w: Waypoint): PlannedRoute => withLoopReturn(addBeforeReturn(route, w, 'sentier'), 'sentier');
+  const loopBuild = (points: Waypoint[]): PlannedRoute => points.reduce(loopAdd, EMPTY_ROUTE);
+
+  /** Calcule l'aller, tronçon par tronçon, l'itinéraire remis en ordre après chaque résultat. */
+  const resolveOutbound = (route: PlannedRoute): PlannedRoute => {
+    let r = route;
+    for (let requests = pendingLegRequests(r); requests.length > 0; requests = pendingLegRequests(r)) {
+      const { key, from, to } = requests[0];
+      r = withLoopReturn(withLegResult(r, key, computed(from, to, [0, 0, 0])), 'sentier');
+    }
+    return r;
+  };
+
+  /** Retour calculé : un détour par l'est. */
+  const resolveReturn = (route: PlannedRoute): PlannedRoute => {
+    const request = returnRequest(route)!;
+    const points = [request.from, { lat: (request.from.lat + request.to.lat) / 2, lon: 3.82 }, request.to];
+    return withLoopReturn(withReturnResult(route, request.basis, request.variant, { points, outcome: 'avoided', sharedM: 40 }), 'sentier');
+  };
+
+  const last = (route: PlannedRoute) => route.legs[route.legs.length - 1];
+
+  it('poser des points boucle l\'itinéraire : le dernier tronçon est le retour, seul marqué', () => {
+    expect(loopBuild([A])).toEqual({ waypoints: [A], legs: [] });
+    const two = loopBuild([A, B]);
+    expect(two.waypoints).toEqual([A, B, A]);
+    expect(last(two)).toMatchObject({ status: 'pending', loopReturn: { basis: outboundKey(two), variant: 0 } });
+    const three = loopBuild([A, B, C]);
+    expect(three.waypoints).toEqual([A, B, C, A]);
+    expect(three.legs.map((l) => l.loopReturn !== undefined)).toEqual([false, false, true]);
+    expect(withLoopReturn(three, 'sentier')).toBe(three);
+  });
+
+  it('le retour se calcule à part, une fois tout l\'aller calculé', () => {
+    const route = loopBuild([A, B, C]);
+    expect(pendingLegRequests(route).map((r) => r.key)).toEqual([legKey(route, 0), legKey(route, 1)]);
+    expect(returnRequest(route)).toBeNull();
+    const outbound = resolveOutbound(route);
+    const request = returnRequest(outbound)!;
+    expect(request).toMatchObject({ from: C, to: A, mode: 'sentier', variant: 0, basis: outboundKey(outbound) });
+    expect(request.outbound).toEqual(outbound.legs.slice(0, 2));
+    // Un résultat ordinaire ne se pose pas sur le retour.
+    expect(withLegResult(outbound, legKey(outbound, 2)!, computed(C, A, [0, 0, 0]))).toBe(outbound);
+    const done = resolveReturn(outbound);
+    expect(last(done)).toMatchObject({ status: 'ready', loopReturn: { outcome: 'avoided', sharedM: 40, variant: 0 } });
+    // Son propre résultat ne le remet pas en calcul.
+    expect(withLoopReturn(done, 'sentier')).toBe(done);
+    expect(returnRequest(done)).toBeNull();
+  });
+
+  it('un aller modifié remet le retour en calcul, et le résultat d\'avant n\'est plus posé', () => {
+    const done = resolveReturn(resolveOutbound(loopBuild([A, B, C])));
+    const stale = returnRequest(resolveOutbound(loopBuild([A, B, C])))!;
+    const moved = withLoopReturn(moveWaypoint(done, 1, W), 'sentier');
+    expect(last(moved)).toMatchObject({ status: 'pending', loopReturn: { basis: outboundKey(moved), variant: 0 } });
+    expect(withReturnResult(moved, stale.basis, stale.variant, { points: [C, A], outcome: 'avoided', sharedM: 0 })).toBe(moved);
+  });
+
+  it('« Réessayer » un tronçon de l\'aller refait aussi le retour', () => {
+    const route = loopBuild([A, B, C]);
+    const failed = withLoopReturn(withLegError(route, legKey(route, 0)!, 'Pas de réseau'), 'sentier');
+    const done = resolveReturn(resolveOutbound(failed));
+    expect(done.legs[0].status).toBe('error');
+    expect(last(done).status).toBe('ready');
+    const retried = withLoopReturn(retryFailedLegs(done), 'sentier');
+    expect(last(retried).status).toBe('pending');
+  });
+
+  it('échec du retour : ligne droite et raison, marque gardée', () => {
+    const outbound = resolveOutbound(loopBuild([A, B, C]));
+    const request = returnRequest(outbound)!;
+    const failed = withReturnError(outbound, request.basis, request.variant, 'Aucun chemin trouvé');
+    expect(last(failed)).toMatchObject({ status: 'error', error: 'Aucun chemin trouvé', points: [C, A], loopReturn: { basis: request.basis } });
+    expect(withLoopReturn(failed, 'sentier')).toBe(failed);
+  });
+
+  it('« Autre retour » passe à la variante suivante, puis revient à la première', () => {
+    let route = resolveReturn(resolveOutbound(loopBuild([A, B, C])));
+    const variants: number[] = [];
+    for (let k = 0; k < 4; k++) {
+      route = withLoopReturn(nextReturnVariant(route), 'sentier');
+      expect(last(route).status).toBe('pending');
+      variants.push(returnRequest(route)!.variant);
+      route = resolveReturn(route);
+    }
+    expect(variants).toEqual([1, 2, 3, 0]);
+    expect(nextReturnVariant(build([A, B]))).toEqual(build([A, B]));
+  });
+
+  it('un point posé sur le retour rejoint l\'aller ; le nouveau retour part de lui', () => {
+    const done = resolveReturn(resolveOutbound(loopBuild([A, B, C])));
+    const inserted = withLoopReturn(insertWaypoint(done, 2, W), 'sentier');
+    expect(inserted.waypoints).toEqual([A, B, C, W, A]);
+    expect(inserted.legs[2]).toMatchObject({ status: 'pending', points: [C, W] });
+    expect(inserted.legs[2].loopReturn).toBeUndefined();
+    expect(last(inserted)).toMatchObject({ status: 'pending', points: [W, A], loopReturn: { variant: 0 } });
+  });
+
+  it('déplacer A déplace le départ et l\'arrivée ; « Inverser » garde A et déplace la marque', () => {
+    const done = resolveReturn(resolveOutbound(loopBuild([A, B, C])));
+    const moved = withLoopReturn(moveWaypoint(done, 0, D), 'sentier');
+    expect(moved.waypoints).toEqual([D, B, C, D]);
+    expect(last(moved).loopReturn?.basis).toBe(outboundKey(moved));
+    const reversed = withLoopReturn(reverseRoute(done), 'sentier');
+    expect(reversed.waypoints).toEqual([A, C, B, A]);
+    expect(reversed.legs.map((l) => l.loopReturn !== undefined)).toEqual([false, false, true]);
+    expect(pendingLegRequests(reversed).map((r) => r.from)).toEqual([A, C]);
+  });
+
+  it('retirer A fait du point suivant le départ, et la boucle s\'y referme', () => {
+    const done = resolveReturn(resolveOutbound(loopBuild([A, B, C])));
+    const removed = withLoopReturn(removeLoopStart(done), 'sentier');
+    expect(removed.waypoints).toEqual([B, C, B]);
+    expect(removed.legs[0]).toBe(done.legs[1]);
+    expect(last(removed)).toMatchObject({ status: 'pending', points: [C, B] });
+    expect(withLoopReturn(removeLoopStart(loopBuild([A, B])), 'sentier').waypoints).toEqual([B]);
+  });
+
+  it('ligne droite et trace importée ne sont jamais marquées', () => {
+    const straight = withLoopReturn(build([A, B, C], 'straight'), 'straight');
+    expect(last(straight)).toEqual({ mode: 'straight', status: 'ready', points: [C, A] });
+    expect(returnRequest(straight)).toBeNull();
+    const imported = routeFromTrack([A, { lat: 43.605, lon: 3.81 }, B, { lat: 43.605, lon: 3.79 }, { lat: 43.6001, lon: 3.8 }])!;
+    expect(isLooped(imported)).toBe(true);
+    expect(withLoopReturn(imported, 'sentier')).toBe(imported);
+    expect(openLoop(imported)).toBe(imported);
+  });
+
+  it('bouton allumé sur une boucle faite par « Boucler » : son retour est refait ; éteint : le retour est retiré', () => {
+    const closed = resolveAll(closeLoop(build([A, B, C]), 'sentier'), [0, 0, 0]);
+    const on = withLoopReturn(closed, 'sentier');
+    expect(last(on)).toMatchObject({ status: 'pending', loopReturn: { variant: 0 } });
+    expect(on.legs.slice(0, 2)).toEqual(closed.legs.slice(0, 2));
+    const off = openLoop(on);
+    expect(off.waypoints).toEqual([A, B, C]);
+    expect(off.legs).toEqual(closed.legs.slice(0, 2));
+    expect(openLoop(build([A, B]))).toEqual(build([A, B]));
+  });
+
+  it('boucle rouverte : son retour est pris tel quel, rien à recalculer', () => {
+    const closed = resolveAll(closeLoop(build([A, B, C]), 'sentier'), [0, 0, 0]);
+    const opened = acceptLoopReturn(closed);
+    expect(last(opened)).toMatchObject({ status: 'ready', loopReturn: { basis: outboundKey(closed), variant: 0 } });
+    expect(withLoopReturn(opened, 'sentier')).toBe(opened);
+    expect(returnRequest(opened)).toBeNull();
+    expect(acceptLoopReturn(build([A, B]))).toEqual(build([A, B]));
   });
 });

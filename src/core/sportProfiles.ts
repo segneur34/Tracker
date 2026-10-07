@@ -24,6 +24,14 @@ export interface ElevationProfile {
 }
 
 /**
+ * Retour d'une boucle qui évite l'aller : au plus 1,5 fois l'aller, choix de
+ * l'utilisateur (06/10/2026, §10, point 87).
+ */
+export const DEFAULT_LOOP_RETURN_MAX_RATIO = 1.5;
+/** Bornes du réglage du retour de boucle, en fois l'aller. */
+export const LOOP_RETURN_RATIO_RANGE = { min: 1, max: 3 } as const;
+
+/**
  * Deux terrains, deux réglages. Le parcours roulant demande un seuil bas pour
  * ne pas effacer les faux plats, le terrain accidenté demande un seuil haut
  * pour absorber le bruit.
@@ -114,6 +122,12 @@ export interface SportProfile {
    * par activité ; `null` : pas d'altitude du terrain (voile).
    */
   terrainElevationStepM: number | null;
+  /**
+   * Mode « Boucle » de la planification : longueur maximale du retour qui
+   * évite l'aller, en fois l'aller ; au-delà, le retour le plus court.
+   * Surchargeable par activité ; `null` : pas de boucle (voile).
+   */
+  loopReturnMaxRatio: number | null;
   /** Cibles de recherche des meilleurs segments. */
   topTargets: TopTarget[];
   /** Réglage de l'enregistrement GPS. */
@@ -156,6 +170,7 @@ const SAILING_DEFAULTS = {
   defaultPolarMinSpeed: 5,
   elevation: ELEVATION_PRESETS.route,
   terrainElevationStepM: null,
+  loopReturnMaxRatio: null,
   topTargets: SAILING_TOP_TARGETS,
   recording: DEFAULT_RECORDING,
 };
@@ -206,6 +221,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     activeRatioLabel: 'Ratio en mouvement',
     elevation: ELEVATION_PRESETS.route,
     terrainElevationStepM: 10,
+    loopReturnMaxRatio: DEFAULT_LOOP_RETURN_MAX_RATIO,
     // Les cibles de tops running restent à définir avec les métriques du module.
     topTargets: [],
     recording: DEFAULT_RECORDING,
@@ -226,6 +242,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     activeRatioLabel: 'Ratio en mouvement',
     elevation: ELEVATION_PRESETS.route,
     terrainElevationStepM: 10,
+    loopReturnMaxRatio: DEFAULT_LOOP_RETURN_MAX_RATIO,
     topTargets: CYCLING_TOP_TARGETS,
     recording: DEFAULT_RECORDING,
   },

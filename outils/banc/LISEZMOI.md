@@ -47,6 +47,15 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - l'exclusion de la pente et du revêtement sur la carte, si Overpass répond dans les 3 min ;
   - la même chose à 390×844 ;
   - en planification, deux points en Course, puis « Voir sur la carte » du bloc Général.
+- `boucle.mjs <port> [<dossier des captures>]` : mode « Boucle » de la planification (point 87), sur un profil neuf, avec réseau (brouter.de). En Course, puis à vélo (activité Route), le script pose A, B et C au nord-est de Montpellier, boucle allumée, et attend la fin de chaque calcul. Il vérifie :
+  - la boucle fermée toute seule, et la ligne d'état du retour ;
+  - A fixe dans la liste des points, la ligne du retour sans boutons ;
+  - B déplacé, « Autre retour », un point posé sur le retour, « Précédent » ;
+  - A retiré (B devient le départ), puis rendu ;
+  - le rangement, puis la réouverture après rechargement : bouton allumé, aucune requête au serveur, rien à enregistrer ;
+  - le bouton éteint, qui retire le retour.
+
+  Il dure environ 3 min.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

@@ -38,10 +38,27 @@ const NO_NETWORK = 'Pas de réseau : le tronçon reste en ligne droite.';
 /** Six décimales : une dizaine de centimètres, bien assez pour un point posé au doigt. */
 const coord = (w: Waypoint): string => `${w.lon.toFixed(6)},${w.lat.toFixed(6)}`;
 
+/**
+ * Options d'un calcul : zones pondérées à éviter (paramètre `polygons`,
+ * `loopReturn.ts`) et variante demandée (`alternativeidx`, 0 par défaut).
+ */
+export interface LegOptions {
+  polygons?: string;
+  alternative?: number;
+}
+
 /** Types de voie cochés et règles d'accès, en une seule variable du profil (`profileCombination`). */
-export const brouterUrl = (from: Waypoint, to: Waypoint, ways: ReadonlyArray<WayType>, vehicle: RouteVehicle, profileId: string): string =>
+export const brouterUrl = (
+  from: Waypoint,
+  to: Waypoint,
+  ways: ReadonlyArray<WayType>,
+  vehicle: RouteVehicle,
+  profileId: string,
+  { polygons, alternative = 0 }: LegOptions = {}
+): string =>
   `${BROUTER_URL}?lonlats=${coord(from)}|${coord(to)}&profile=${profileId}` +
-  `&profile:calcul=${profileCombination(ways, vehicle === 'velo')}&alternativeidx=0&format=geojson`;
+  `&profile:calcul=${profileCombination(ways, vehicle === 'velo')}&alternativeidx=${alternative}&format=geojson` +
+  (polygons ? `&polygons=${polygons}` : '');
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -166,20 +183,21 @@ const ensureProfile = (): Promise<string> => {
 
 /**
  * Calcule un tronçon, selon les types de voie cochés et les règles d'accès de
- * l'activité. `signal` annule la requête quand le tronçon a changé
- * entre-temps (l'envoi du profil, partagé, va à son terme). Lève une erreur au
- * message lisible.
+ * l'activité, et les options (`LegOptions`). `signal` annule la requête quand
+ * le tronçon a changé entre-temps (l'envoi du profil, partagé, va à son
+ * terme). Lève une erreur au message lisible.
  */
 export const fetchLeg = async (
   from: Waypoint,
   to: Waypoint,
   ways: ReadonlyArray<WayType>,
   vehicle: RouteVehicle,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: LegOptions
 ): Promise<{ points: RoutePoint[]; surfaces?: SurfaceRuns }> => {
   const request = async (profileId: string): Promise<Response> => {
     try {
-      return await fetch(brouterUrl(from, to, ways, vehicle, profileId), { signal });
+      return await fetch(brouterUrl(from, to, ways, vehicle, profileId, options), { signal });
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') throw err;
       throw new Error(NO_NETWORK);

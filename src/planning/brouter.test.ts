@@ -34,6 +34,17 @@ describe('BRouter', () => {
     expect(brouterUrl(A, B, ['grandeRoute', 'route'], 'pieton', 'custom_42')).toContain('&profile:calcul=12&');
   });
 
+  it('retour d\'une boucle : zones à éviter et variante demandées dans l\'adresse', () => {
+    const A = { lat: 0, lon: 0 };
+    const B = { lat: 1, lon: 1 };
+    const polygons = '0.00000,0.00000,0.00010,0.00000,0.00010,0.00010,200';
+    expect(brouterUrl(A, B, ['route'], 'pieton', 'custom_42', { polygons, alternative: 2 })).toBe(
+      'https://brouter.de/brouter?lonlats=0.000000,0.000000|1.000000,1.000000&profile=custom_42'
+        + `&profile:calcul=4&alternativeidx=2&format=geojson&polygons=${polygons}`
+    );
+    expect(brouterUrl(A, B, ['route'], 'pieton', 'custom_42', {})).toBe(brouterUrl(A, B, ['route'], 'pieton', 'custom_42'));
+  });
+
   it('lit l\'id rendu à l\'envoi du profil, ou le refus du serveur', () => {
     expect(parseProfileUpload({ profileid: 'custom_1790885483132' })).toBe('custom_1790885483132');
     expect(() => parseProfileUpload({ profileid: 'custom_1', error: 'syntax error at line 12' })).toThrow(/refuse le profil.*line 12/);

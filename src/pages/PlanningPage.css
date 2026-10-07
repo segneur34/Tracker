@@ -39,8 +39,9 @@
   padding: 0 var(--space-3);
 }
 
-/* « Ligne droite » à part des types de voie, qui se cochent ensemble. */
-.plan-modes__straight {
+/* « Ligne droite » à part des types de voie, qui se cochent ensemble ; « Boucle » à part encore. */
+.plan-modes__straight,
+.plan-modes__loop {
   margin-left: var(--space-2);
 }
 
@@ -331,6 +332,14 @@
 .plan-status {
   color: var(--muted);
   font-size: var(--text-s);
+}
+
+/* Retour d'une boucle : ce qu'il évite de l'aller, et « Autre retour ». */
+.plan-loop-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .plan-error {

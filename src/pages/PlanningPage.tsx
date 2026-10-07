@@ -40,8 +40,8 @@ import { getLastFix, useRecorder } from '../hooks/useRecorder';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  effectiveDistanceUnit, effectiveDurationSettings, effectiveElevationProfile, effectiveGradeRange, effectiveMarkGuide, effectivePace,
-  effectiveWayTypes, lastRecordActivity, readStoredActivities,
+  effectiveDistanceUnit, effectiveDurationSettings, effectiveElevationProfile, effectiveGradeRange, effectiveLoopReturnRatio, effectiveMarkGuide,
+  effectivePace, effectiveWayTypes, lastRecordActivity, readStoredActivities,
 } from '../hooks/useSportSettings';
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
@@ -49,7 +49,8 @@ import { PACE_LEVEL_LABEL, estimateRouteDurationS } from '../planning/duration';
 import { searchPlaces, type Place } from '../planning/geocoding';
 import { WAY_TYPES } from '../planning/brouterProfile';
 import {
-  DEFAULT_ROUTE_MODE, EMPTY_ROUTE, STRAIGHT_HINT, STRAIGHT_LABEL, WAY_TYPE_HINT, WAY_TYPE_LABEL, courseLegs, isLooped, isWaysMode, routeFromTrack,
+  DEFAULT_ROUTE_MODE, EMPTY_ROUTE, STRAIGHT_HINT, STRAIGHT_LABEL, WAY_TYPE_HINT, WAY_TYPE_LABEL, acceptLoopReturn, courseLegs, isLooped, isWaysMode,
+  routeFromTrack,
   routeModeLabel, routePoints, routeProfileRows, routeTotals, routeVehicle, setRouteMode, straightenRoute, toggleWayType, wayTypesOf, waypointDistances,
   waysMode,
   type PlannedRoute, type RouteMode, type Waypoint,
@@ -90,14 +91,16 @@ import { jsonStore } from '../platform/storage';
 
 /**
  * Préférences de la page sur l'appareil : dernière activité choisie, dernière
- * vue de la carte. Le mode n'y est plus écrit depuis que chaque activité a
- * ses types de voie (§10, point 81) : un ancien `mode` y reste, ignoré.
+ * vue de la carte, dernier état choisi du bouton « Boucle ». Le mode n'y est
+ * plus écrit depuis que chaque activité a ses types de voie (§10, point 81) :
+ * un ancien `mode` y reste, ignoré.
  */
 const PREFS_KEY = 'tracker.planning';
 
 interface PlanningPrefs {
   activityId?: string;
   view?: { lat: number; lon: number; zoom: number };
+  loop?: boolean;
 }
 
 /** Centrage sur soi à l'ouverture : délai accordé au GPS, et zoom minimal une fois centré. */
@@ -228,15 +231,17 @@ function PlanBlock({ id, label, open, onToggle, aside, children }: {
  * part. Toucher un type le coche ou le décoche (le dernier reste coché) ;
  * toucher « Ligne droite » la choisit seule. Sert à la barre au-dessus de la
  * carte (tout l'itinéraire et les points suivants) et au tronçon d'un point sélectionné ; sur
- * une trace importée, rien n'est coché, et choisir refait le tronçon.
+ * une trace importée, rien n'est coché, et choisir refait le tronçon. `children` suit la
+ * ligne droite, dans la même rangée (le bouton « Boucle », au-dessus de la carte).
  */
-function WayPicker({ mode, label, compact, className, style, onChange }: {
+function WayPicker({ mode, label, compact, className, style, onChange, children }: {
   mode: RouteMode;
   label: string;
   compact?: boolean;
   className?: string;
   style?: React.CSSProperties;
   onChange: (mode: RouteMode) => void;
+  children?: ReactNode;
 }) {
   return (
     <WayTypeTabs checked={isWaysMode(mode) ? wayTypesOf(mode) : []} onToggle={(t) => onChange(toggleWayType(mode, t))} label={label}
@@ -245,6 +250,7 @@ function WayPicker({ mode, label, compact, className, style, onChange }: {
         onClick={() => onChange('straight')}>
         {STRAIGHT_LABEL}
       </button>
+      {children}
     </WayTypeTabs>
   );
 }
@@ -274,9 +280,14 @@ function PlanningPage() {
   const pace = useMemo(() => (activity ? effectivePace(activity) : null), [activity]);
 
   const vehicle = routeVehicle(activity ? activityFamily(activity) : 'course');
-  // Types de voie de l'activité à l'ouverture et à chaque changement d'activité, puis ceux que l'on coche.
-  const planner = usePlannedRoute(vehicle, activityMode(activity));
+  /** Retour d'une boucle : au plus tant de fois l'aller (Réglages) ; `null` en voile. */
+  const loopRatio = useMemo(() => (activity ? effectiveLoopReturnRatio(activity) : null), [activity]);
+  // Types de voie de l'activité à l'ouverture et à chaque changement d'activité, puis ceux que l'on coche ; mode « Boucle »
+  // tel que laissé la dernière fois, jamais en voile.
+  const planner = usePlannedRoute(vehicle, activityMode(activity), readPrefs().loop === true && !sailing, { maxReturnRatio: loopRatio });
   const { route, mode } = planner;
+  /** Mode « Boucle » : l'itinéraire reste bouclé, le retour évite l'aller. */
+  const loopOn = planner.loop && !sailing;
   /** Mode des éditions : en voile, toujours la ligne droite ; le type de voie choisi reste pour les autres activités. */
   const editMode: RouteMode = sailing ? 'straight' : mode;
   const library = useRouteLibrary();
@@ -285,10 +296,16 @@ function PlanningPage() {
   /** Types de voie cochés au-dessus de la carte : ceux de tout l'itinéraire, recalculé, et des points suivants (annulable). */
   const chooseMode = (next: RouteMode) => planner.chooseMode(next, (r) => setRouteMode(r, next, mode));
 
+  /** Bouton « Boucle » : allumé, l'itinéraire se boucle ; éteint, le retour est retiré (annulable). Retenu pour la prochaine ouverture. */
+  const toggleLoop = () => {
+    planner.setLoop(!planner.loop);
+    writePrefs({ loop: !planner.loop });
+  };
+
   /**
    * Activité choisie dans le menu : ses types de voie, appliqués à tout
    * l'itinéraire avec ses règles d'accès ; passer à la voile redresse les
-   * tronçons calculés, en revenir les recalcule (annulable).
+   * tronçons calculés et éteint la boucle, en revenir les recalcule (annulable).
    */
   const chooseActivity = (id: string) => {
     setActivityId(id);
@@ -296,7 +313,8 @@ function PlanningPage() {
     const nextMode = activityMode(next);
     const nextFamily = next ? activityFamily(next) : 'course';
     const nextEdit = nextFamily === 'voile' ? 'straight' : nextMode;
-    planner.chooseMode(nextMode, (r) => setRouteMode(r, nextEdit, editMode, routeVehicle(nextFamily) !== vehicle));
+    planner.chooseMode(nextMode, (r) => setRouteMode(r, nextEdit, editMode, routeVehicle(nextFamily) !== vehicle),
+      nextFamily === 'voile' ? false : undefined);
   };
 
   const [map, setMap] = useState<L.Map | null>(null);
@@ -358,6 +376,30 @@ function PlanningPage() {
   const firstError = route.legs.find((l) => l.status === 'error')?.error ?? null;
   const distances = useMemo(() => waypointDistances(route), [route]);
   const looped = isLooped(route);
+  /** Retour de la boucle en mode « Boucle », quand il se calcule à part (`loopReturn`). */
+  const returnLeg = loopOn && looped ? route.legs[route.legs.length - 1] : undefined;
+  const returnMark = returnLeg?.loopReturn;
+  const returnPending = returnLeg?.status === 'pending' && returnMark !== undefined;
+  /** Tronçons de l'aller encore en calcul : le retour attend qu'ils le soient tous. */
+  const tracePending = totals.pendingLegs - (returnPending ? 1 : 0);
+  /** Ligne d'état du retour calculé : longueur, rapport à l'aller, part commune avec lui. */
+  const returnStatus = (() => {
+    if (!returnMark || returnLeg?.status !== 'ready') return null;
+    if (!returnMark.outcome || returnMark.sharedM === undefined) return 'Retour enregistré avec l\'itinéraire.';
+    const n = route.waypoints.length;
+    const returnM = distances[n - 1].legM;
+    const outboundM = distances[n - 2].cumulativeM;
+    const km = (m: number) => formatDistance(m, distanceUnit, 1);
+    const variant = returnMark.variant > 0 ? ` (variante ${returnMark.variant + 1})` : '';
+    if (returnMark.outcome === 'avoided') {
+      const ratio = outboundM > 0 ? ` (${parseFloat((returnM / outboundM).toFixed(2))} × l'aller)` : '';
+      return `Retour par d'autres voies${variant} : ${km(returnM)}${ratio}, ${km(returnMark.sharedM)} sur l'aller.`;
+    }
+    const why = returnMark.tooLong
+      ? 'Aller trop long pour éviter ses voies'
+      : `Pas de retour par d'autres voies sous ${loopRatio ?? '—'} × l'aller`;
+    return `${why} : retour le plus court${variant}, ${km(returnMark.sharedM)} sur l'aller. Posez des points sur le retour pour le modeler.`;
+  })();
   /** Nom des points : numéros des balises en voile, lettres ailleurs. */
   const label = sailing ? markLabel : waypointLabel;
   /** Nom d'un point ; sur une boucle, l'arrivée est le départ : A, ou 1. */
@@ -516,15 +558,16 @@ function PlanningPage() {
 
   const openSaved = (saved: SavedRoute) => {
     if (!confirmDiscard()) return;
-    const opened = recordToRoute(saved.record);
     const known = findActivity(activities, saved.record.activityId);
     const openedActivity = known ?? activity;
+    const openedSailing = openedActivity !== null && activityFamily(openedActivity) === 'voile';
+    // Une boucle rouvre le mode « Boucle », son retour pris tel quel : rien à recalculer, rien à enregistrer.
+    const read = recordToRoute(saved.record);
+    const looping = !openedSailing && isLooped(read);
+    const opened = looping ? acceptLoopReturn(read) : read;
     // Un parcours de voile va de balise en balise : un tronçon calculé d'avant est redressé, à enregistrer.
     // Les cases sont celles de l'activité de l'itinéraire ; rien n'est recalculé.
-    planner.replace(
-      openedActivity && activityFamily(openedActivity) === 'voile' ? straightenRoute(opened) : opened,
-      known ? activityMode(known) : undefined
-    );
+    planner.replace(openedSailing ? straightenRoute(opened) : opened, known ? activityMode(known) : undefined, looping);
     setCourseGuide(routeMarkGuide(saved.record));
     setCurrent(saved);
     setSavedRoute(opened);
@@ -566,7 +609,8 @@ function PlanningPage() {
       const loaded = routeFromTrack(parsed.points);
       if (!loaded) throw new Error(`${file.name} ne contient pas de trace : aucun point de trace ou de route.`);
       if (!confirmDiscard()) return;
-      planner.replace(loaded);
+      // La trace reste telle quelle : pas de mode « Boucle ».
+      planner.replace(loaded, undefined, false);
       setCurrent(null);
       setSavedRoute(EMPTY_ROUTE);
       setCourseGuide(null);
@@ -680,7 +724,12 @@ function PlanningPage() {
               <span className="plan-toolbar__note">Balises reliées en ligne droite</span>
             ) : (
               <WayPicker mode={mode} label="Types de voie" className="plan-modes" onChange={chooseMode}
-                style={{ '--tab-accent': color } as React.CSSProperties} />
+                style={{ '--tab-accent': color } as React.CSSProperties}>
+                <button type="button" className="ui-tab plan-modes__loop" aria-pressed={planner.loop} onClick={toggleLoop}
+                  title="L'itinéraire revient toujours au départ, par un retour qui évite les voies de l'aller">
+                  Boucle
+                </button>
+              </WayPicker>
             )}
           </div>
           <form className="plan-search" onSubmit={(e) => void onSearch(e)}>
@@ -788,11 +837,11 @@ function PlanningPage() {
                       onChange={(m) => planner.setLegMode(selected - 1, m)} />
                   </div>
                 )}
-                {selected === 0 && route.waypoints.length >= 2 && !looped && (
+                {selected === 0 && route.waypoints.length >= 2 && !looped && !loopOn && (
                   <>
-                    <Button size="s" variant="primary" onClick={() => { planner.loop(editMode); setSelected(null); }}>Boucler ici</Button>
+                    <Button size="s" variant="primary" onClick={() => { planner.closeLoop(editMode); setSelected(null); }}>Boucler ici</Button>
                     {editMode !== 'straight' && (
-                      <Button size="s" onClick={() => { planner.loop('straight'); setSelected(null); }}>En ligne droite</Button>
+                      <Button size="s" onClick={() => { planner.closeLoop('straight'); setSelected(null); }}>En ligne droite</Button>
                     )}
                   </>
                 )}
@@ -813,8 +862,15 @@ function PlanningPage() {
           </ResizablePanel>
           {/* Hors des onglets : l'état du calcul se voit même onglet Tracé fermé. */}
           {loadError && <div className="ui-alert ui-alert--warning">{loadError}</div>}
-          {totals.pendingLegs > 0 && (
-            <div className="plan-status">Calcul du tracé… ({totals.pendingLegs} tronçon{totals.pendingLegs > 1 ? 's' : ''})</div>
+          {tracePending > 0 && (
+            <div className="plan-status">Calcul du tracé… ({tracePending} tronçon{tracePending > 1 ? 's' : ''})</div>
+          )}
+          {tracePending === 0 && returnPending && <div className="plan-status">Calcul du retour…</div>}
+          {returnStatus && (
+            <div className="plan-status plan-loop-status">
+              <span>{returnStatus}</span>
+              <Button size="s" onClick={planner.otherReturn}>Autre retour</Button>
+            </div>
           )}
           {firstError && (
             <div className="ui-alert ui-alert--warning plan-error">
@@ -992,6 +1048,12 @@ function PlanningPage() {
                 <li>Touchez le tracé pour insérer un point entre deux autres.</li>
                 <li>Faites glisser un point pour le déplacer : seuls ses deux tronçons sont recalculés.</li>
                 <li>Touchez un point pour le retirer, ou changer la façon d'y venir ; touchez A pour boucler, par les chemins ou en ligne droite.</li>
+                <li>
+                  « Boucle », au-dessus de la carte : posez l'aller, l'itinéraire revient toujours au départ. Le retour évite les voies de
+                  l'aller tant qu'il ne dépasse pas {loopRatio ?? '—'} fois sa longueur (réglable dans Réglages) ; sinon, c'est le retour le
+                  plus court. « Autre retour » en propose une variante ; touchez le retour pour y poser un point et le modeler. A reste le
+                  départ : faites-le glisser pour le déplacer.
+                </li>
                 <li>« Précédent », sur la carte, défait la dernière modification.</li>
                 <li>La liste des points permet aussi de changer leur ordre.</li>
                 <li>
@@ -1025,9 +1087,12 @@ function PlanningPage() {
                 Précédent
               </Button>
               <Button size="s" onClick={planner.reverse} disabled={route.waypoints.length < 2}>Inverser</Button>
-              <Button size="s" onClick={() => planner.loop(editMode)} disabled={route.waypoints.length < 2 || looped}>Boucler</Button>
-              {editMode !== 'straight' && (
-                <Button size="s" onClick={() => planner.loop('straight')} disabled={route.waypoints.length < 2 || looped}>
+              {/* En mode « Boucle », l'itinéraire est toujours bouclé. */}
+              {!loopOn && (
+                <Button size="s" onClick={() => planner.closeLoop(editMode)} disabled={route.waypoints.length < 2 || looped}>Boucler</Button>
+              )}
+              {!loopOn && editMode !== 'straight' && (
+                <Button size="s" onClick={() => planner.closeLoop('straight')} disabled={route.waypoints.length < 2 || looped}>
                   Boucler en ligne droite
                 </Button>
               )}
@@ -1049,6 +1114,8 @@ function PlanningPage() {
                 {route.waypoints.map((_, i) => {
                   const leg = i > 0 ? route.legs[i - 1] : undefined;
                   const last = route.waypoints.length - 1;
+                  // En mode « Boucle », A reste le départ et le retour, le dernier tronçon : ni l'un ni l'autre ne change de place.
+                  const fixedLoop = loopOn && looped;
                   return (
                     <li key={i} className={selected === i ? 'plan-point plan-point--selected' : 'plan-point'}>
                       <button type="button" className="plan-point__main" onClick={() => selectPoint(i)}>
@@ -1063,17 +1130,20 @@ function PlanningPage() {
                           {leg && !sailing && <span className="plan-point__mode">{routeModeLabel(leg.mode)}</span>}
                         </span>
                       </button>
-                      <span className="plan-point__actions">
-                        <Button size="s" variant="ghost" className="plan-point__move" aria-label={`Monter : ${pointName(i)}`}
-                          disabled={i === 0} onClick={() => { planner.reorder(i, i - 1, editMode); setSelected(null); }}>
-                          <IconChevronRight size={16} style={{ transform: 'rotate(-90deg)' }} />
-                        </Button>
-                        <Button size="s" variant="ghost" className="plan-point__move" aria-label={`Descendre : ${pointName(i)}`}
-                          disabled={i === last} onClick={() => { planner.reorder(i, i + 1, editMode); setSelected(null); }}>
-                          <IconChevronRight size={16} style={{ transform: 'rotate(90deg)' }} />
-                        </Button>
-                        <Button size="s" variant="ghost" onClick={() => { planner.remove(i, editMode); setSelected(null); }}>Retirer</Button>
-                      </span>
+                      {!(fixedLoop && i === last) && (
+                        <span className="plan-point__actions">
+                          <Button size="s" variant="ghost" className="plan-point__move" aria-label={`Monter : ${pointName(i)}`}
+                            disabled={i === 0 || (fixedLoop && i === 1)} onClick={() => { planner.reorder(i, i - 1, editMode); setSelected(null); }}>
+                            <IconChevronRight size={16} style={{ transform: 'rotate(-90deg)' }} />
+                          </Button>
+                          <Button size="s" variant="ghost" className="plan-point__move" aria-label={`Descendre : ${pointName(i)}`}
+                            disabled={i === last || (fixedLoop && (i === 0 || i === last - 1))}
+                            onClick={() => { planner.reorder(i, i + 1, editMode); setSelected(null); }}>
+                            <IconChevronRight size={16} style={{ transform: 'rotate(90deg)' }} />
+                          </Button>
+                          <Button size="s" variant="ghost" onClick={() => { planner.remove(i, editMode); setSelected(null); }}>Retirer</Button>
+                        </span>
+                      )}
                       {leg?.status === 'error' && <p className="plan-point__error">{leg.error}</p>}
                       {leg?.status === 'pending' && <p className="plan-point__pending">Calcul du tronçon…</p>}
                     </li>
