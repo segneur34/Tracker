@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from 'react';
 import { FAMILY_LABEL, nextActivityColor, type Activity } from '../core/activities';
 import {
-  CYCLING_SPORTS, ELEVATION_PRESETS, SAILING_SPORTS, SPORT_FAMILIES, SPORT_PROFILES, sportFamily, type SportFamily,
+  CYCLING_SPORTS, ELEVATION_PRESETS, SAILING_SPORTS, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, sportFamily, type SportFamily,
 } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
@@ -195,7 +195,7 @@ function SettingsPage() {
                 const isOpen = openActivity[id] === true;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
-                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null ||
+                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null ||
                   s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
@@ -353,6 +353,18 @@ function SettingsPage() {
                               <span className="settings-sports__mark">
                                 lissage {ELEVATION_PRESETS[s.terrain].smoothingSeconds} s, seuil de dénivelé {ELEVATION_PRESETS[s.terrain].minGainM} m
                               </span>
+                            </div>
+                          </div>
+                        )}
+                        {s.terrainStepM !== null && (
+                          <div className="settings-row" title="Altitude du terrain demandée à l'IGN pour les sessions de cette activité : un point tous les … le long de la trace">
+                            <span className="settings-row__label">Altitude IGN</span>
+                            <div className="settings-sports__pair">
+                              <span className="settings-sports__mark">un point tous les</span>
+                              <select value={s.terrainStepM} onChange={(e) => setFor(id, 'terrainStepM', Number(e.target.value))} className="ui-field ui-field--s">
+                                {TERRAIN_STEP_CHOICES_M.map((m) => <option key={m} value={m}>{m} m</option>)}
+                              </select>
+                              {s.terrainStepM === p.terrainElevationStepM && <span className="settings-sports__mark">défaut</span>}
                             </div>
                           </div>
                         )}

@@ -4,7 +4,7 @@ import {
   readActivities, upgradeActivities, type Activity,
 } from '../core/activities';
 import {
-  ELEVATION_PRESETS, SPORT_FAMILIES, getSportProfile, sportFamily, type ElevationProfile, type RecordingProfile,
+  ELEVATION_PRESETS, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, getSportProfile, sportFamily, type ElevationProfile, type RecordingProfile,
   type SportFamily,
 } from '../core/sportProfiles';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
@@ -98,6 +98,8 @@ export interface StoredSettings {
   thresholds?: ByActivity<number>;
   /** Terrain retenu pour le dénivelé. */
   terrains?: ByActivity<TerrainType>;
+  /** Pas des échantillons d'altitude du terrain (IGN), en mètres (course, vélo) ; absent : celui du profil. */
+  terrainSteps?: ByActivity<number>;
   /** Unité d'affichage des vitesses. */
   speedUnits?: ByActivity<SpeedUnit>;
   /** Unité d'affichage des distances ; absente : kilomètres. */
@@ -148,6 +150,17 @@ const isValidLongPress = (value: unknown): value is number =>
 
 export const isKnownTerrain = (value: unknown): value is TerrainType =>
   typeof value === 'string' && value in ELEVATION_PRESETS;
+
+export const isTerrainStep = (value: unknown): value is number =>
+  typeof value === 'number' && (TERRAIN_STEP_CHOICES_M as readonly number[]).includes(value);
+
+/** Pas d'altitude du terrain : celui réglé, sinon celui du profil ; `null` en voile. */
+const resolveTerrainStepM = (stored: StoredSettings, activity: Activity): number | null => {
+  const profileStep = getSportProfile(activity.base).terrainElevationStepM;
+  if (profileStep === null) return null;
+  const step = stored.terrainSteps?.[activity.id];
+  return isTerrainStep(step) ? step : profileStep;
+};
 
 export const isKnownSpeedUnit = (value: unknown): value is SpeedUnit =>
   typeof value === 'string' && value in SPEED_UNIT_LABEL;
@@ -296,6 +309,9 @@ export const effectiveElevationProfile = (activity: Activity): ElevationProfile 
   return ELEVATION_PRESETS[isKnownTerrain(terrain) ? terrain : 'route'];
 };
 
+/** Pas des échantillons d'altitude du terrain d'une activité, `null` en voile. Utilisable hors composant. */
+export const effectiveTerrainStepM = (activity: Activity): number | null => resolveTerrainStepM(readStoredSettings(), activity);
+
 /** Bornes de la couleur de pente d'une activité : celles de Réglages, sinon le défaut. Utilisable hors composant. */
 export const effectiveGradeRange = (activity: Activity): GradeRange => {
   const range = readStoredSettings().gradeRanges?.[activity.id];
@@ -392,6 +408,8 @@ export interface SportSettingsView {
   isThresholdOverridden: boolean;
   textScale: TextScale;
   terrain: TerrainType;
+  /** Pas des échantillons d'altitude du terrain, en mètres ; `null` en voile. */
+  terrainStepM: number | null;
   speedRange: { minMs: number; maxMs: number } | null;
   /** Bornes de la couleur de pente, ou `null` pour le défaut. */
   gradeRange: GradeRange | null;
@@ -420,7 +438,7 @@ export interface SportSettingsView {
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
   'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'textScales', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights',
-  'paceLevels', 'customFlatSpeeds', 'liveFields', 'markGuide', 'wayTypes',
+  'paceLevels', 'customFlatSpeeds', 'liveFields', 'markGuide', 'wayTypes', 'terrainSteps',
 ] as const;
 
 /** Réglages sans aucune surcharge rangée sous `id`. */
@@ -487,6 +505,7 @@ export const useAllSportSettings = () => {
         isThresholdOverridden: threshold !== undefined,
         textScale: isKnownTextScale(scale) ? scale : 'normal',
         terrain: isKnownTerrain(terrain) ? terrain : 'route',
+        terrainStepM: resolveTerrainStepM(stored, activity),
         speedRange: range && isValidSpeedRange(range) ? range : null,
         gradeRange: grades && isValidGradeRange(grades) ? grades : null,
         autoPause: autoPauseOverride ?? { speedMs: profile.recording.autoPauseSpeedMs, delayS: profile.recording.autoPauseDelayS },
@@ -508,7 +527,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -540,6 +559,10 @@ export const useAllSportSettings = () => {
         case 'terrain':
           if (value !== null && !isKnownTerrain(value)) return;
           next.terrains = put(stored.terrains, value as TerrainType | null);
+          break;
+        case 'terrainStepM':
+          if (value !== null && !isTerrainStep(value)) return;
+          next.terrainSteps = put(stored.terrainSteps, value as number | null);
           break;
         case 'speedRange': {
           const r = value as { minMs: number; maxMs: number } | null;
@@ -747,6 +770,8 @@ export const useSportSettings = (family: SportFamily) => {
   const storedTerrain = stored.terrains?.[id];
   const terrain: TerrainType = isKnownTerrain(storedTerrain) ? storedTerrain : 'route';
   const elevationProfile = ELEVATION_PRESETS[terrain];
+  /** Pas des échantillons d'altitude du terrain, réglé dans Réglages ; `null` en voile. */
+  const terrainStepM = resolveTerrainStepM(stored, activity);
 
   const setTerrain = useCallback(
     (next: TerrainType) => {
@@ -788,6 +813,7 @@ export const useSportSettings = (family: SportFamily) => {
     terrain,
     setTerrain,
     elevationProfile,
+    terrainStepM,
     speedUnit,
     distanceUnit,
     textScale,

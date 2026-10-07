@@ -474,3 +474,13 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Annulation** : les cases font partie de l'état de l'itinéraire (`usePlannedRoute`). « Précédent » rend donc les cases avec le tracé. Sur une carte vide, changer les cases ne crée pas d'étape à défaire.
     - **Ajouté sans demande, gardé par l'utilisateur (07/10)** : changer d'activité applique aussi ses types à tout l'itinéraire, et refait les tronçons calculés quand les règles d'accès changent (course ↔ vélo). En revenant de la voile, les lignes droites sont recalculées. « Précédent » ne rend pas l'activité.
     - **Piège** : chaque changement refait tous les tronçons calculés, et le serveur public refuse après une trentaine de calculs en rafale (point 80). Les calculs passent un à un, et un changement qui en suit vite un autre abandonne la requête devenue inutile ; revenir à des types déjà calculés ne redemande rien (cache de la page).
+84. Altitude de l'IGN pour les sessions course et vélo (07/10, validée sur le téléphone, APK 0.2.58 à 0.2.61).
+    - **Pourquoi** : l'altitude GPS d'Android est bruitée, surtout au départ, et donnée au-dessus de l'ellipsoïde, environ 52 m trop haut dans l'Hérault. Elle gonfle pentes, puissance et D+. Sur la course du 03/10 : première minute à 23,2 % au GPS contre 9,8 % à l'IGN, puissance maximale 564 W contre 278 W, D+ 138 m contre 112 m.
+    - **Choix de l'utilisateur** :
+      - l'altitude de chaque point devient celle du terrain, tirée de l'API altimétrique de la Géoplateforme (RGE ALTI, grille d'un mètre ; gratuite, sans clé, appelable depuis la page). Le GPX n'est jamais réécrit : les échantillons vont dans la fiche ;
+      - un échantillon tous les 5, 10 ou 20 m de distance (10 m d'office), réglable par activité, à sa demande ; une fiche d'un autre pas est redemandée à l'ouverture ;
+      - IGN par défaut. « Altitude : IGN / GPS » dans l'onglet réglages de l'analyse s'applique tout de suite, hors brouillon, comme le support ;
+      - demandée à l'ouverture de l'analyse, jamais au balayage de la bibliothèque. Le D+ de la liste suit la source retenue ;
+      - lissage, seuil du D+ et fenêtre de la pente inchangés.
+    - **Hors couverture** (le service rend -99999) : l'altitude GPS reprend, décalée de l'écart médian IGN − GPS des points couverts, pour éviter une marche d'une cinquantaine de mètres à la frontière. Sans aucun point couvert, la session reste au GPS et la légende le dit.
+    - **Piège** : le serveur annonce une requête par seconde (`x-ratelimit-limit-second: 1`, relevé le 07/10) : les paquets de 5 000 points partent l'un après l'autre, à 1,1 s d'écart.

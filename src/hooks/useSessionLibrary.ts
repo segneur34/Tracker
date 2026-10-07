@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
-import { ELEVATION_PRESETS, SAILING_SPORTS } from '../core/sportProfiles';
+import { ELEVATION_PRESETS, SAILING_SPORTS, sportFamily } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
   MARKER_FILE,
@@ -209,12 +209,14 @@ const refreshCache = async (f: MemoryFolder, gen: number): Promise<void> => {
  * Réglages qui changent le résumé : ceux de l'activité de la session, et ceux
  * de la session (`analysis`, dans sa fiche). Le seuil de la session prime sur
  * celui de l'activité ; l'allure imposée n'existe que pour une session, et
- * qu'en voile.
+ * qu'en voile. L'altitude du terrain de la fiche remplace celle du GPS en
+ * course et à vélo, sauf si l'utilisateur a gardé le GPS.
  */
 const summaryOptions = (
   sport: SportType | null,
   analysis?: SessionAnalysis | null,
-  activityId?: string | null
+  activityId?: string | null,
+  elevation?: SessionElevation | null
 ): SummaryOptions => {
   if (sport === null) return {};
   const stored = readStoredSettings();
@@ -224,8 +226,13 @@ const summaryOptions = (
     activeThreshold: analysis?.activeThreshold ?? stored.thresholds?.[key],
     referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? analysis?.referenceSpeedMs ?? undefined : undefined,
     elevation: isKnownTerrain(terrain) ? ELEVATION_PRESETS[terrain] : undefined,
+    terrainElevation:
+      sportFamily(sport) !== 'voile' && elevation?.elevationSource !== 'gps' ? elevation?.terrainElevation : undefined,
   };
 };
+
+/** Altitude de la fiche : celle du terrain, et la source choisie. */
+type SessionElevation = Pick<SessionRecord, 'terrainElevation' | 'elevationSource'>;
 
 interface AnalyzedGpx {
   summary: SessionSummary;
@@ -236,7 +243,8 @@ interface AnalyzedGpx {
 /**
  * Lit un GPX et le résume. `sport` absent : deviné depuis la trace.
  * `analysis` : réglages d'analyse de la fiche (seuil, allure), s'il y en a ;
- * `activityId` : son activité, dont les réglages s'appliquent.
+ * `activityId` : son activité, dont les réglages s'appliquent ;
+ * `elevation` : son altitude du terrain et la source choisie.
  * Rend `null` si la trace a moins de deux points, lève une erreur si le XML
  * est illisible.
  */
@@ -244,11 +252,12 @@ const analyzeGpx = (
   text: string,
   sport?: SportType | null,
   analysis?: SessionAnalysis | null,
-  activityId?: string | null
+  activityId?: string | null,
+  elevation?: SessionElevation | null
 ): AnalyzedGpx | null => {
   const parsed = parseGpx(text);
   const resolved = sport === undefined ? guessSport(parsed.trackType) : sport;
-  const summary = summarizeSession(parsed.rawPoints, resolved, summaryOptions(resolved, analysis, activityId));
+  const summary = summarizeSession(parsed.rawPoints, resolved, summaryOptions(resolved, analysis, activityId, elevation));
   return summary ? { summary, sport: resolved, title: parsed.trackName ?? null } : null;
 };
 
@@ -467,7 +476,8 @@ const completeScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[]): P
             text,
             job.previous ? job.previous.sport : undefined,
             job.previous?.analysis,
-            job.previous?.activityId
+            job.previous?.activityId,
+            job.previous
           );
       if (!analyzed) {
         unreadable.push(job.file);
@@ -662,7 +672,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   let analyzed: AnalyzedGpx | null;
   try {
     const sport = options.sport ?? options.record?.sport ?? undefined;
-    analyzed = analyzeGpx(text, sport, options.record?.analysis, options.activityId ?? options.record?.activityId);
+    analyzed = analyzeGpx(text, sport, options.record?.analysis, options.activityId ?? options.record?.activityId, options.record);
   } catch (err) {
     return { status: 'invalid', file: null, message: errorMessage(err, 'GPX illisible.') };
   }
@@ -817,7 +827,7 @@ const resummarize = async (file: string): Promise<void> => {
   if (!f || !session) return;
   try {
     const text = await f.readText(sessionPath(file));
-    const analyzed = text === null ? null : analyzeGpx(text, session.record.sport, session.record.analysis, session.record.activityId);
+    const analyzed = text === null ? null : analyzeGpx(text, session.record.sport, session.record.analysis, session.record.activityId, session.record);
     const current = findSession(file);
     if (!analyzed || !current || folder !== f) return;
     replaceSession({ ...current, record: withSummary(current.record, analyzed.summary) });

@@ -9,6 +9,7 @@ import {
 } from '../core/sessionStats';
 import { SAILING_SPORTS, getActiveThresholds, getSportProfile, type ElevationProfile } from '../core/sportProfiles';
 import type { RawTrackPoint, SportType, TrackPoint } from '../core/types';
+import { applyTerrainElevation, type TerrainSamples } from '../core/terrainElevation';
 import { fromDisplaySpeed, msToKnots } from '../core/units';
 import { suggestActiveThresholdKn } from '../sailing/sailingConfig';
 import { SUMMARY_CALC_VERSION, type SessionSummary } from './record';
@@ -34,6 +35,11 @@ export interface SummaryOptions {
   referenceSpeedOverrideMs?: number;
   /** Réglage du dénivelé. Absent : celui du profil. */
   elevation?: ElevationProfile;
+  /**
+   * Altitude du terrain de la fiche, substituée à celle du GPS avant le
+   * dénivelé (course, vélo, source IGN : l'appelant en décide).
+   */
+  terrainElevation?: TerrainSamples;
 }
 
 /** Trace enrichie et temps en action, selon le support. */
@@ -74,10 +80,12 @@ export const summarizeSession = (
   sport: SportType | null,
   options: SummaryOptions = {}
 ): SessionSummary | null => {
-  const { track, movingTimeS } = analyze(rawPoints, sport, options);
-  if (track.length < 2) return null;
+  const analyzed = analyze(rawPoints, sport, options);
+  const { movingTimeS } = analyzed;
+  if (analyzed.track.length < 2) return null;
 
-  const { cumDist } = buildCumulativeTrack(track);
+  const { cumDist } = buildCumulativeTrack(analyzed.track);
+  const track = options.terrainElevation ? applyTerrainElevation(analyzed.track, cumDist, options.terrainElevation).track : analyzed.track;
   const elevationProfile = options.elevation ?? getSportProfile(sport ?? 'running').elevation;
   const elevation = computeElevationStats(track, elevationProfile);
   let maxSpeedMs = 0;

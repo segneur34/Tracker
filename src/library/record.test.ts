@@ -15,6 +15,7 @@ import {
   type SessionAnalysis,
   type SessionRecord,
   type SessionSurfaces,
+  type SessionTerrainElevation,
 } from './record';
 
 const START_MS = Date.UTC(2026, 8, 23, 12, 0, 0);
@@ -188,6 +189,56 @@ describe('voies suivies de la fiche', () => {
     expect(added).toEqual({ record: { ...record(), surfaces }, resummarize: false });
     expect(applyRecordPatch(added.record, { activityId: 'trail' }).record.surfaces).toEqual(surfaces);
     expect(applyRecordPatch(added.record, { surfaces: null }).record).not.toHaveProperty('surfaces');
+  });
+});
+
+describe('altitude du terrain de la fiche', () => {
+  const terrainElevation: SessionTerrainElevation = {
+    source: 'ign',
+    resource: 'ign_rge_alti_wld',
+    version: 1,
+    stepM: 10,
+    fetchedAt: '2026-10-07T09:00:00.000Z',
+    startMs: START_MS,
+    t: [0, 3333, 6667],
+    z: [47.54, 46.87, null],
+  };
+
+  it('est relue à l\'identique, avec sa source', () => {
+    const read = parseRecord(serializeRecord(record({ terrainElevation, elevationSource: 'gps' })));
+    expect(read?.terrainElevation).toEqual(terrainElevation);
+    expect(read?.elevationSource).toBe('gps');
+    expect(parseRecord(serializeRecord(record()))).not.toHaveProperty('terrainElevation');
+    expect(parseRecord(serializeRecord(record()))).not.toHaveProperty('elevationSource');
+  });
+
+  it('est écartée si elle est mal formée', () => {
+    const cases = [
+      { ...terrainElevation, t: [0, 3333] },
+      { ...terrainElevation, t: [10, 3333, 6667] },
+      { ...terrainElevation, t: [0, 6667, 3333] },
+      { ...terrainElevation, z: [47.54, 'x', null] },
+      { ...terrainElevation, stepM: 0 },
+      { ...terrainElevation, source: 'gps' },
+    ];
+    for (const broken of cases) {
+      expect(parseRecord(JSON.stringify({ ...record(), terrainElevation: broken }))).not.toHaveProperty('terrainElevation');
+    }
+    expect(parseRecord(JSON.stringify({ ...record(), elevationSource: 'ign' }))).not.toHaveProperty('elevationSource');
+  });
+
+  it('se range, se retire et change de source en recalculant le résumé, et reste quand l\'activité change', () => {
+    const added = applyRecordPatch(record(), { terrainElevation });
+    expect(added).toEqual({ record: { ...record(), terrainElevation }, resummarize: true });
+    expect(applyRecordPatch(added.record, { terrainElevation }).resummarize).toBe(false);
+    expect(applyRecordPatch(added.record, { activityId: 'trail' }).record.terrainElevation).toEqual(terrainElevation);
+    const removed = applyRecordPatch(added.record, { terrainElevation: null });
+    expect(removed.record).not.toHaveProperty('terrainElevation');
+    expect(removed.resummarize).toBe(true);
+    const gps = applyRecordPatch(added.record, { elevationSource: 'gps' });
+    expect(gps).toEqual({ record: { ...added.record, elevationSource: 'gps' }, resummarize: true });
+    expect(applyRecordPatch(gps.record, { elevationSource: null }).record).not.toHaveProperty('elevationSource');
+    expect(applyRecordPatch(record(), { elevationSource: null })).toEqual({ record: record(), resummarize: false });
   });
 });
 

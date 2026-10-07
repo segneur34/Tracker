@@ -28,6 +28,9 @@ export interface ElevationProfile {
  * ne pas effacer les faux plats, le terrain accidenté demande un seuil haut
  * pour absorber le bruit.
  */
+/** Pas proposés pour l'altitude du terrain, en mètres. */
+export const TERRAIN_STEP_CHOICES_M = [5, 10, 20] as const;
+
 export const ELEVATION_PRESETS: Record<'route' | 'trail', ElevationProfile> = {
   route: { smoothingSeconds: 20, minGainM: 3 },
   trail: { smoothingSeconds: 30, minGainM: 5 },
@@ -106,6 +109,11 @@ export interface SportProfile {
   activeRatioLabel: string;
   /** Réglage du dénivelé. */
   elevation: ElevationProfile;
+  /**
+   * Pas des échantillons d'altitude du terrain (IGN), en mètres, surchargeable
+   * par activité ; `null` : pas d'altitude du terrain (voile).
+   */
+  terrainElevationStepM: number | null;
   /** Cibles de recherche des meilleurs segments. */
   topTargets: TopTarget[];
   /** Réglage de l'enregistrement GPS. */
@@ -147,6 +155,7 @@ const SAILING_DEFAULTS = {
   maxPlausibleSpeedMs: 30,
   defaultPolarMinSpeed: 5,
   elevation: ELEVATION_PRESETS.route,
+  terrainElevationStepM: null,
   topTargets: SAILING_TOP_TARGETS,
   recording: DEFAULT_RECORDING,
 };
@@ -196,6 +205,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     defaultPolarMinSpeed: 0,
     activeRatioLabel: 'Ratio en mouvement',
     elevation: ELEVATION_PRESETS.route,
+    terrainElevationStepM: 10,
     // Les cibles de tops running restent à définir avec les métriques du module.
     topTargets: [],
     recording: DEFAULT_RECORDING,
@@ -215,6 +225,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     defaultPolarMinSpeed: 0,
     activeRatioLabel: 'Ratio en mouvement',
     elevation: ELEVATION_PRESETS.route,
+    terrainElevationStepM: 10,
     topTargets: CYCLING_TOP_TARGETS,
     recording: DEFAULT_RECORDING,
   },

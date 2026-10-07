@@ -37,6 +37,10 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - une course synthétique le long du tracé, importée puis ouverte : l'onglet « surface » fait une requête à Overpass et range les voies ; après rechargement, mêmes chiffres, sans nouvelle requête.
 
   Overpass peut mettre plus d'une minute : ne pas le relancer en rafale.
+- `altitude.mjs <port> <dossier de travail> [<dossier des captures>]` : altitude de l'IGN (point 84), sur un profil neuf, avec réseau (data.geopf.fr). Le script écrit lui-même son GPX : une course au nord de Montpellier, altitude GPS plate et bruitée. Il vérifie :
+  - l'ouverture de l'analyse : une requête à l'IGN, l'altitude rangée dans la fiche, la ligne « Source : IGN » et le dénivelé changé ; après rechargement, aucune nouvelle requête ;
+  - le passage au GPS puis le retour à l'IGN dans les réglages de la session, suivis par le dénivelé de l'analyse et le D+ de la liste ;
+  - un point tous les 20 m réglé dans Réglages : l'altitude est redemandée à la réouverture.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

@@ -84,6 +84,17 @@ describe('summarizeSession', () => {
     expect(summarizeSession(buildTrack([[600, 3]]), 'running')!.elevationGainM).toBeNull();
   });
 
+  it("prend le dénivelé sur l'altitude du terrain quand la fiche en porte une", () => {
+    // GPS : 100 m de montée ; terrain : 50 m, un échantillon toutes les 10 s, même sans altitude GPS.
+    const t = Array.from({ length: 61 }, (_, i) => i * 10_000);
+    const terrainElevation = { startMs: START_MS, t, z: t.map((ms) => 50 + (50 * ms) / 600_000) };
+    for (const raw of [buildTrack([[600, 3]], 1, 100 / 600), buildTrack([[600, 3]])]) {
+      const summary = summarizeSession(raw, 'running', { terrainElevation })!;
+      expect(summary.elevationGainM).toBeGreaterThan(45);
+      expect(summary.elevationGainM).toBeLessThan(52);
+    }
+  });
+
   it('résume une trace sans support, sauf le temps en mouvement', () => {
     const summary = summarizeSession(buildTrack([[600, 3]]), null)!;
     expect(summary.distanceM).toBeCloseTo(1800, -1);

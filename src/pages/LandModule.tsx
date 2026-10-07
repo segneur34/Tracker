@@ -49,6 +49,7 @@ import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hoo
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
+import { useTerrainElevation, type TerrainElevationStatus } from '../hooks/useTerrainElevation';
 import {
   TERRAIN_LABEL, TEXT_SCALE_FACTOR, readStoredActivities, useSportSettings, type TerrainType,
 } from '../hooks/useSportSettings';
@@ -148,6 +149,22 @@ const formatMinutes = (minutes: number): string => {
 const cardStyle = CARD_STYLE;
 const chartTooltipStyle = { fontSize: '12px' } as const;
 
+/** Ligne sous le graphe d'altitude : d'où vient l'altitude affichée. */
+const elevationSourceText = (status: TerrainElevationStatus, stepM: number, error: string | null): string => {
+  switch (status) {
+    case 'ready':
+      return `Altitude du terrain, un point tous les ${stepM} m (RGE ALTI). Source : IGN.`;
+    case 'searching':
+      return 'Altitude du GPS, en attendant celle de l\'IGN…';
+    case 'outside':
+      return 'Altitude du GPS : la trace est hors de la couverture de l\'IGN.';
+    case 'error':
+      return `Altitude du GPS. ${error ?? ''}`;
+    case 'off':
+      return 'Altitude enregistrée par le GPS (choisie dans les réglages de la session).';
+  }
+};
+
 /**
  * Module des familles terrestres, course à pied et vélo (`landModules.tsx`) :
  * trace colorée par la vitesse, graphes de vitesse et d'altitude séparés ou
@@ -159,7 +176,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const panelId = (name: string) => `${config.storageId}.${name}`;
   const {
     activity, setActivity,
-    profile, activeThreshold, terrain, setTerrain, elevationProfile,
+    profile, activeThreshold, terrain, setTerrain, elevationProfile, terrainStepM,
     speedUnit, distanceUnit, textScale,
     speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg,
   } = useSportSettings(family);
@@ -219,9 +236,20 @@ function LandModule({ family }: { family: LandFamily }) {
 
   const cumulative = useMemo(() => buildCumulativeTrack(gpx.track), [gpx.track]);
 
+  /**
+   * Altitude du terrain (IGN), demandée à l'ouverture et gardée dans la fiche,
+   * sauf si la session garde celle du GPS ; seule l'altitude des points change.
+   */
+  const terrainElevation = useTerrainElevation(
+    gpx.track,
+    cumulative.cumDist,
+    sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null,
+    terrainStepM
+  );
+
   const elevation = useMemo(
-    () => computeElevationStats(gpx.track, elevationProfile),
-    [gpx.track, elevationProfile]
+    () => computeElevationStats(terrainElevation.track, elevationProfile),
+    [terrainElevation.track, elevationProfile]
   );
 
   const activityMask = useMemo(() => {
@@ -821,6 +849,12 @@ function LandModule({ family }: { family: LandFamily }) {
               <span>{Math.round(gradeRange.max * 100)} % et plus</span>
             </div>
           )}
+          {gpx.track.length > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: terrainElevation.status === 'error' ? 'var(--danger)' : 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
+              <span>{elevationSourceText(terrainElevation.status, terrainElevation.stepM, terrainElevation.error)}</span>
+              {terrainElevation.status === 'error' && <Button size="s" onClick={terrainElevation.retry}>Réessayer</Button>}
+            </div>
+          )}
           <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
             Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte.
             {narrow ? ' Écartez deux doigts sur un graphe pour zoomer.' : ' Tirez une zone à la souris pour zoomer, double-clic pour tout revoir. Poignée en bas à droite pour redimensionner.'}
@@ -851,6 +885,18 @@ function LandModule({ family }: { family: LandFamily }) {
                 {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
                   <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
                 ))}
+              </select>
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title="Altitude du terrain (IGN), ou celle enregistrée par le GPS">
+              <strong>Altitude :</strong>
+              <select
+                value={terrainElevation.source}
+                disabled={!terrainElevation.canChangeSource}
+                onChange={(e) => terrainElevation.setSource(e.target.value === 'gps' ? 'gps' : 'ign')}
+                className="ui-field ui-field--s">
+                <option value="ign">IGN</option>
+                <option value="gps">GPS</option>
               </select>
             </label>
           </div>

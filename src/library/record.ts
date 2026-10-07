@@ -1,6 +1,7 @@
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import { sportFamily } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
+import type { TerrainSamples } from '../core/terrainElevation';
 import { readSurfaceRuns, type SurfaceRuns } from '../planning/surface';
 import { isSportType } from '../recording/session';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
@@ -99,6 +100,23 @@ export interface SessionSurfaces extends SurfaceRuns {
   startMs: number;
 }
 
+/**
+ * Altitude du terrain, demandée à l'IGN (`planning/ignAltimetry.ts`) à la
+ * première ouverture de l'analyse course ou vélo, puis gardée. Un échantillon
+ * tous les `stepM` mètres, repéré par son instant (`core/terrainElevation.ts`).
+ */
+export interface SessionTerrainElevation extends TerrainSamples {
+  source: 'ign';
+  /** Modèle demandé (`IGN_RESOURCE`). */
+  resource: string;
+  /** Version de l'échantillonnage (`TERRAIN_ELEVATION_VERSION`) : une plus ancienne est redemandée. */
+  version: number;
+  /** Pas des échantillons, en mètres : un autre pas réglé est redemandé. */
+  stepM: number;
+  /** Date ISO de la demande. */
+  fetchedAt: string;
+}
+
 export interface SessionRecord {
   format: typeof RECORD_FORMAT;
   version: number;
@@ -131,6 +149,10 @@ export interface SessionRecord {
   analysis: SessionAnalysis | null;
   /** Absent tant que l'onglet « surface » n'a rien trouvé, ou si la fiche en porte de mal formées. */
   surfaces?: SessionSurfaces;
+  /** Absent tant que l'IGN n'a pas répondu, ou si la fiche en porte une mal formée. */
+  terrainElevation?: SessionTerrainElevation;
+  /** `'gps'` : l'utilisateur garde l'altitude du GPS ; absent : celle de l'IGN (course et vélo). */
+  elevationSource?: 'gps';
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -223,6 +245,33 @@ export const readSessionSurfaces = (raw: unknown): SessionSurfaces | null => {
 };
 
 /**
+ * Altitude du terrain relue, `null` si elle est mal formée : instants entiers,
+ * strictement croissants depuis 0, autant d'altitudes que d'instants.
+ */
+export const readTerrainElevation = (raw: unknown): SessionTerrainElevation | null => {
+  if (!isObject(raw) || raw.source !== 'ign' || typeof raw.resource !== 'string' || typeof raw.fetchedAt !== 'string') return null;
+  if (!isFiniteNumber(raw.version) || !isFiniteNumber(raw.stepM) || raw.stepM <= 0 || !isFiniteNumber(raw.startMs)) return null;
+  const { t, z } = raw;
+  if (!Array.isArray(t) || !Array.isArray(z) || t.length === 0 || t.length !== z.length) return null;
+  for (let i = 0; i < t.length; i++) {
+    const ti: unknown = t[i];
+    if (!Number.isInteger(ti) || (i === 0 ? ti !== 0 : (ti as number) <= (t[i - 1] as number))) return null;
+    if (z[i] !== null && !isFiniteNumber(z[i])) return null;
+  }
+  return {
+    ...raw,
+    source: 'ign',
+    resource: raw.resource,
+    version: raw.version,
+    stepM: raw.stepM,
+    fetchedAt: raw.fetchedAt,
+    startMs: raw.startMs,
+    t: t as number[],
+    z: z as (number | null)[],
+  };
+};
+
+/**
  * Lit une fiche. Rend `null` si le texte n'est pas une fiche lisible : JSON
  * mal formé, autre format, champ indispensable absent. Les champs inconnus
  * sont gardés tels quels.
@@ -238,8 +287,9 @@ export const parseRecord = (text: string): SessionRecord | null => {
   if (typeof raw.gpx !== 'string' || raw.gpx === '') return null;
   const summary = readSummary(raw.summary);
   if (!summary) return null;
-  const { surfaces: rawSurfaces, ...rest } = raw;
+  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, ...rest } = raw;
   const surfaces = readSessionSurfaces(rawSurfaces);
+  const terrainElevation = readTerrainElevation(rawTerrain);
   return {
     ...rest,
     format: RECORD_FORMAT,
@@ -255,6 +305,8 @@ export const parseRecord = (text: string): SessionRecord | null => {
     notes: readNotes(raw.notes),
     analysis: readAnalysis(raw.analysis),
     ...(surfaces ? { surfaces } : {}),
+    ...(terrainElevation ? { terrainElevation } : {}),
+    ...(rawSource === 'gps' ? { elevationSource: 'gps' as const } : {}),
   };
 };
 
@@ -343,13 +395,18 @@ export interface RecordPatch {
   maneuverCount?: number;
   /** Voies trouvées pour la trace ; `null` les retire. */
   surfaces?: SessionSurfaces | null;
+  /** Altitude du terrain ; `null` la retire. */
+  terrainElevation?: SessionTerrainElevation | null;
+  /** Source de l'altitude ; `null` : celle de l'IGN. */
+  elevationSource?: 'gps' | null;
 }
 
 /**
  * Fiche après un changement : support, activité, nom, notes, réglages
- * d'analyse, nombre de manœuvres, voies suivies. Rend la fiche d'origine, à l'identique, si
- * rien ne change. `resummarize` : le résumé est à recalculer (support,
- * activité, seuil ou allure imposée changés).
+ * d'analyse, nombre de manœuvres, voies suivies, altitude du terrain et sa
+ * source. Rend la fiche d'origine, à l'identique, si rien ne change.
+ * `resummarize` : le résumé est à recalculer (support, activité, seuil, allure
+ * imposée, altitude ou source de l'altitude changés).
  *
  * Un changement de support efface le seuil propre à la session, exprimé dans
  * l'unité de l'ancien support ; un changement de famille (voile ↔ course ↔ vélo)
@@ -369,6 +426,18 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   if (patch.surfaces !== undefined) {
     const { surfaces: _previous, ...others } = next;
     next = patch.surfaces ? { ...others, surfaces: patch.surfaces } : others;
+  }
+  // L'altitude change le dénivelé du résumé.
+  let elevationChanged = false;
+  if (patch.terrainElevation !== undefined && (patch.terrainElevation ?? undefined) !== next.terrainElevation) {
+    const { terrainElevation: _previous, ...others } = next;
+    next = patch.terrainElevation ? { ...others, terrainElevation: patch.terrainElevation } : others;
+    elevationChanged = true;
+  }
+  if (patch.elevationSource !== undefined && (patch.elevationSource ?? undefined) !== next.elevationSource) {
+    const { elevationSource: _previous, ...others } = next;
+    next = patch.elevationSource ? { ...others, elevationSource: patch.elevationSource } : others;
+    elevationChanged = true;
   }
   const thresholdBefore = next.analysis?.activeThreshold ?? null;
   const referenceBefore = next.analysis?.referenceSpeedMs ?? null;
@@ -399,5 +468,5 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   const analysisChanged =
     (next.analysis?.activeThreshold ?? null) !== thresholdBefore ||
     (next.analysis?.referenceSpeedMs ?? null) !== referenceBefore;
-  return { record: next, resummarize: sportChanged || activityChanged || analysisChanged };
+  return { record: next, resummarize: sportChanged || activityChanged || analysisChanged || elevationChanged };
 };
