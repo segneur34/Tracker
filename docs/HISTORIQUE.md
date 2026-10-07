@@ -484,3 +484,21 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - lissage, seuil du D+ et fenêtre de la pente inchangés.
     - **Hors couverture** (le service rend -99999) : l'altitude GPS reprend, décalée de l'écart médian IGN − GPS des points couverts, pour éviter une marche d'une cinquantaine de mètres à la frontière. Sans aucun point couvert, la session reste au GPS et la légende le dit.
     - **Piège** : le serveur annonce une requête par seconde (`x-ratelimit-limit-second: 1`, relevé le 07/10) : les paquets de 5 000 points partent l'un après l'autre, à 1,1 s d'écart.
+85. Pentes sur la carte, onglet énergie (07/10, validé sur le téléphone et sur PC, APK 0.2.59 à 0.2.61).
+    - **Demandes de l'utilisateur (05/10)** : un bouton qui colore la trace par la pente sur la carte, comme le revêtement, aussi en planification sous le graphe du dénivelé ; dans l'onglet énergie, replier le tableau des zones comme les détails des manœuvres, et une puissance par zone de pente.
+    - **Choix** :
+      - « Voir sur la carte » sous le graphe d'altitude (onglet graphiques) et sous le graphe du dénivelé (Itinéraires, « général »), actif tant que l'onglet est ouvert ; pente et revêtement s'excluent. En analyse, la légende posée sur la carte passe à la pente ; en planification, les tronçons en calcul ou en échec gardent leur pointillé ;
+      - couleurs et bornes de la courbe d'altitude, ramenées à 20 paliers pour fondre les segments voisins en un trait : quelques centaines de traits au lieu d'un par point. La vitesse garde son dégradé continu ;
+      - colonne Puissance : puissance mécanique moyenne en mouvement dans la zone (W, ou W/kg en course sans poids), roue libre comprise à vélo ;
+      - repli du tableau : d'abord un bouton dans l'en-tête du panneau, déplacé à la demande de l'utilisateur à la place du tableau, flèche vers le haut pour replier, vers le bas pour déplier ;
+      - graphe d'énergie ramené à 200 px, la hauteur d'un graphe de vitesse ou d'altitude, le panneau suivant son contenu (« beaucoup trop haut », il remplissait un panneau de 720 px).
+    - **Signalé, sans suite** : en planification, le bleu des faibles pentes ressemble au bleu du tracé ; un itinéraire plat change peu à l'œil.
+    - **Piège** : un graphe Recharts dans un bloc à hauteur automatique mesure 0 px, `ResponsiveContainer` voulant une hauteur définie. Le graphe d'énergie a donc une hauteur explicite, et une base flex égale pour grandir quand on agrandit le panneau.
+86. Mise en page commune des analyses sur ordinateur (07/10, validée sur PC).
+    - **Demandes de l'utilisateur (05/10)** : des panneaux deux par ligne au lieu de toute la largeur ; la même disposition en voile, course et vélo, « onglets sous la carte » ; de la place autour de la carte pour faire défiler la page à la souris.
+    - **Choix de l'utilisateur** : carte en haut, onglets dessous, panneaux deux par ligne, dans les trois modules ; une marge seulement, la molette zoome toujours la carte (Ctrl + molette écarté). La carte à 60 % avec ses onglets à droite (points 32 et 57) est abandonnée.
+    - **Réalisation** :
+      - carte centrée à 80 % de la largeur, haute de 480 px, redimensionnable en hauteur seulement : une largeur mémorisée sous l'ancienne disposition est ignorée ;
+      - panneaux en demi-ligne, un par ligne quand la moitié n'atteint plus 420 px ; les détails des manœuvres gardent la pleine largeur ;
+      - téléphone inchangé : texte de page identique en voile ; en course, seules les commandes de la carte changent de place dans le code.
+    - **Piège** : un simple bloc (Graphiques et Vent en voile) sans `box-sizing: border-box` ajoute sa marge intérieure à la demi-ligne et ne tient plus à côté de son voisin, qui reste seul sur sa ligne. La règle commune (`HALF_PANEL_STYLE`) la porte.

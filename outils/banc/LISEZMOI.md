@@ -41,6 +41,12 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - l'ouverture de l'analyse : une requête à l'IGN, l'altitude rangée dans la fiche, la ligne « Source : IGN » et le dénivelé changé ; après rechargement, aucune nouvelle requête ;
   - le passage au GPS puis le retour à l'IGN dans les réglages de la session, suivis par le dénivelé de l'analyse et le D+ de la liste ;
   - un point tous les 20 m réglé dans Réglages : l'altitude est redemandée à la réouverture.
+- `pentes.mjs <port> <dossier de travail> [<dossier des captures>]` : pentes sur la carte et onglet énergie (point 85), sur un profil neuf, avec réseau (data.geopf.fr, brouter.de et overpass-api.de). Le script écrit lui-même son GPX, une course au nord de Montpellier. Il vérifie :
+  - « Voir sur la carte » sous le graphe d'altitude : la trace prend les couleurs de la pente, la légende de pente se pose sur la carte, puis « Masquer » rend la vitesse ;
+  - la colonne Puissance du tableau des zones d'énergie, et son repli « Énergie par zone de pente », gardé après rechargement ;
+  - l'exclusion de la pente et du revêtement sur la carte, si Overpass répond dans les 3 min ;
+  - la même chose à 390×844 ;
+  - en planification, deux points en Course, puis « Voir sur la carte » du bloc Général.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

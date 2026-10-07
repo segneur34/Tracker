@@ -106,6 +106,8 @@ export interface CyclingEnergyZone {
   /** Énergie de pédalage nette dans la zone, en J. */
   netJ: number;
   distanceM: number;
+  /** Temps en mouvement dans la zone, en s : d'où sa puissance moyenne. */
+  timeS: number;
   /** Part de l'énergie de pédalage nette. */
   share: number;
 }
@@ -144,12 +146,12 @@ export const computeCyclingEnergy = (
   const n = track.length;
   const mechanicalPowerW = new Array<number>(n).fill(NaN);
   const cumulativeTotalJ = new Array<number>(n).fill(0);
-  const byZone: Record<GradeZoneKey, { mechanicalJ: number; netJ: number; distanceM: number }> = {
-    steepDown: { mechanicalJ: 0, netJ: 0, distanceM: 0 },
-    down: { mechanicalJ: 0, netJ: 0, distanceM: 0 },
-    flat: { mechanicalJ: 0, netJ: 0, distanceM: 0 },
-    up: { mechanicalJ: 0, netJ: 0, distanceM: 0 },
-    steepUp: { mechanicalJ: 0, netJ: 0, distanceM: 0 },
+  const byZone: Record<GradeZoneKey, { mechanicalJ: number; netJ: number; distanceM: number; timeS: number }> = {
+    steepDown: { mechanicalJ: 0, netJ: 0, distanceM: 0, timeS: 0 },
+    down: { mechanicalJ: 0, netJ: 0, distanceM: 0, timeS: 0 },
+    flat: { mechanicalJ: 0, netJ: 0, distanceM: 0, timeS: 0 },
+    up: { mechanicalJ: 0, netJ: 0, distanceM: 0, timeS: 0 },
+    steepUp: { mechanicalJ: 0, netJ: 0, distanceM: 0, timeS: 0 },
   };
   let mechanicalJ = 0;
   let netJ = 0;
@@ -180,6 +182,7 @@ export const computeCyclingEnergy = (
       zone.mechanicalJ += work;
       zone.netJ += net;
       zone.distanceM += d;
+      zone.timeS += dt;
     }
     cumulativeTotalJ[i] = cumulativeTotalJ[i - 1] + rest + net;
   }

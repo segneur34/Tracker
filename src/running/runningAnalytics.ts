@@ -215,6 +215,52 @@ export const gradeGradientColor = (grade: number, range: GradeRange): string => 
   return gradientColor((steepness - range.min) / (range.max - range.min));
 };
 
+/**
+ * Nombre de paliers de la couleur de pente sur la carte : le dégradé reste
+ * lisible, et les segments voisins de même palier se fondent en un seul trait.
+ */
+export const GRADE_COLOR_STEPS = 20;
+
+/** Couleur d'une pente ramenée au plus proche des `steps` paliers entre les bornes ; gris comme `gradeGradientColor`. */
+export const gradeStepColor = (grade: number, range: GradeRange, steps = GRADE_COLOR_STEPS): string => {
+  const steepness = Math.abs(grade);
+  if (!isFinite(steepness) || steepness < range.min) return SLOW_COLOR;
+  const t = Math.min(1, (steepness - range.min) / (range.max - range.min));
+  return gradientColor(Math.round(t * steps) / steps);
+};
+
+/** Un trait de couleur sur la carte : suite de positions `[lat, lon]`. */
+export interface ColoredPath {
+  positions: [number, number][];
+  color: string;
+}
+
+/**
+ * Trace colorée par la pente, pour la carte : le segment qui arrive au point
+ * `i` porte la pente de `i` (comme `gradeZonePaths`), à la couleur de son
+ * palier (`gradeStepColor`). Les segments voisins de même couleur forment un
+ * seul trait, qui reprend la dernière position du précédent.
+ */
+export const gradeColorPaths = (
+  positions: ReadonlyArray<[number, number]>,
+  grades: ReadonlyArray<number | null>,
+  range: GradeRange,
+  steps = GRADE_COLOR_STEPS
+): ColoredPath[] => {
+  const paths: ColoredPath[] = [];
+  let current: ColoredPath | null = null;
+  for (let i = 1; i < positions.length; i++) {
+    const color = gradeStepColor(grades[i] ?? NaN, range, steps);
+    if (current !== null && current.color === color) {
+      current.positions.push(positions[i]);
+    } else {
+      current = { color, positions: [positions[i - 1], positions[i]] };
+      paths.push(current);
+    }
+  }
+  return paths;
+};
+
 /** Arrêt d'un dégradé SVG horizontal : position de 0 à 1 et couleur. */
 export interface GradientStop {
   offset: number;

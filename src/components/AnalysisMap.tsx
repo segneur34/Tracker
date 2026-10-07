@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import L from 'leaflet';
 import { MapContainer, useMap } from 'react-leaflet';
@@ -6,7 +6,6 @@ import { DEFAULT_MAP_CENTER, type TrackBounds } from '../core/displayConfig';
 import { NARROW_QUERY } from '../hooks/useNarrowScreen';
 import MapAutoResize from './MapAutoResize';
 import ResizablePanel from './ResizablePanel';
-import SpeedGradientLegend from './SpeedGradientLegend';
 
 interface AnalysisMapProps {
   /** Identifiant du bloc redimensionnable, clé de sa taille mémorisée : ne pas le renommer. */
@@ -19,11 +18,15 @@ interface AnalysisMapProps {
   bounds: TrackBounds | null;
   /** Couches propres au module (fond, trace, repères), rendues dans la carte et dans sa vue agrandie. */
   layers: ReactNode;
-  /** Légende de la couleur de la trace, sur la carte ; `null` sans trace. */
-  legend: ComponentProps<typeof SpeedGradientLegend> | null;
+  /**
+   * Légende de la couleur de la trace, posée sur la carte : celle de la
+   * vitesse (`SpeedGradientLegend`) ou de la pente (`GradeGradientLegend`) ;
+   * `null` sans trace, ou quand la trace a d'autres couleurs (revêtement).
+   */
+  legend: ReactNode | null;
   /** Hauteur par défaut du bloc. */
   defaultHeight: number;
-  /** Place du bloc dans sa rangée, sur ordinateur (60 % de large). */
+  /** Style propre au module ; la largeur, elle, est commune (`--analysis-map-width`, `analysisMobile.css`). */
   style?: CSSProperties;
 }
 
@@ -55,19 +58,21 @@ function MapCornerControl({ children }: { children: ReactNode }) {
 
 /**
  * Carte d'une page d'analyse, avec sa légende de couleur posée dessus, en bas
- * à droite, à gauche de la mention OSM. Sur ordinateur, un bloc
- * redimensionnable ; sur téléphone, pleine largeur en tête de page, et un
- * toucher l'ouvre en plein écran. Commune à tous les modules
+ * à droite, à gauche de la mention OSM. Sur ordinateur, en haut de la page,
+ * centrée, plus étroite que la page et redimensionnable en hauteur ; sur
+ * téléphone, pleine largeur en tête de page, et un toucher l'ouvre en plein
+ * écran. Commune à tous les modules
  * (`docs/MISE_EN_PAGE.md`).
  */
 function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, defaultHeight, style }: AnalysisMapProps) {
   /** Carte agrandie en plein écran (toucher sur la carte compacte, écran étroit seulement). */
   const [expanded, setExpanded] = useState(false);
-  const legendControl = legend && <MapCornerControl><SpeedGradientLegend {...legend} /></MapCornerControl>;
+  const legendControl = legend && <MapCornerControl>{legend}</MapCornerControl>;
 
   return (
     <>
-      <ResizablePanel id={panelId} anchorId={anchorId} defaultHeight={defaultHeight} minHeight={240}
+      {/* En hauteur seulement : la largeur suit la page, et une largeur mémorisée sous l'ancienne disposition est ignorée. */}
+      <ResizablePanel id={panelId} anchorId={anchorId} defaultHeight={defaultHeight} minHeight={240} direction="vertical"
         className="an-map-panel"
         style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 0, ...style }}>
         <div

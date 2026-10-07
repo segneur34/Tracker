@@ -58,7 +58,7 @@ import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute, routeMarkGuide } from '../planning/routeRecord';
 import { routeSurfacePaths, routeSurfaces } from '../planning/surface';
 import { beepStartM, validationRadiusM, type MarkGuideSettings } from '../recording/markGuide';
-import { gradeGradientStops } from '../running/runningAnalytics';
+import { gradeColorPaths, gradeGradientStops } from '../running/runningAnalytics';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { currentPosition, locationPermissionGranted } from '../platform/location';
 import { isNativeApp } from '../platform/runtime';
@@ -338,11 +338,21 @@ function PlanningPage() {
   const totals = useMemo(() => routeTotals(route, minGainM), [route, minGainM]);
   const surfaces = useMemo(() => routeSurfaces(route.legs), [route.legs]);
   /**
-   * « Voir sur la carte » du bloc Surface : le tracé prend les couleurs du
-   * revêtement tant que le bloc est ouvert, à la place du bleu ; un tronçon en
-   * calcul ou en échec garde son pointillé.
+   * « Voir sur la carte » du bloc Surface, et celui de la pente sous le graphe
+   * du dénivelé : le tracé prend les couleurs du revêtement ou de la pente tant
+   * que leur bloc est ouvert, à la place du bleu ; un tronçon en calcul ou en
+   * échec garde son pointillé. Un seul à la fois : en allumer un éteint l'autre.
    */
   const [surfaceOnMap, setSurfaceOnMap] = useState(false);
+  const [gradeOnMap, setGradeOnMap] = useState(false);
+  const toggleSurfaceOnMap = () => {
+    setSurfaceOnMap(!surfaceOnMap);
+    if (!surfaceOnMap) setGradeOnMap(false);
+  };
+  const toggleGradeOnMap = () => {
+    setGradeOnMap(!gradeOnMap);
+    if (!gradeOnMap) setSurfaceOnMap(false);
+  };
   const surfaceShown = !sailing && open.surface && surfaceOnMap;
   const legSurfacePaths = useMemo(() => (surfaceShown ? routeSurfacePaths(route.legs) : null), [surfaceShown, route.legs]);
   const firstError = route.legs.find((l) => l.status === 'error')?.error ?? null;
@@ -394,6 +404,13 @@ function PlanningPage() {
   const gradientId = `${useId()}-profil`;
   const hasElevation = totals.gainM !== null && chartRows.some((r) => r.altitude !== null);
   const hovered = hoveredIndex !== null ? profile[hoveredIndex] : undefined;
+  /** Tracé coloré par la pente, sur les lignes du profil (tous les 10 m), tant que le bloc Général est ouvert. */
+  const gradePaths = useMemo(
+    () => (!sailing && open.profil && gradeOnMap && !surfaceShown && hasElevation && gradeRange
+      ? gradeColorPaths(profile.map((row): [number, number] => [row.lat, row.lon]), profile.map((row) => row.grade), gradeRange)
+      : null),
+    [sailing, open.profil, gradeOnMap, surfaceShown, hasElevation, gradeRange, profile]
+  );
 
   const onChartHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, chartRows);
@@ -696,6 +713,10 @@ function PlanningPage() {
               <MapAutoResize />
               <OsmTileLayer />
               <MapEvents onTap={onMapTap} onTakeOver={takeOver} />
+              {/* Sous les tronçons : un tronçon en calcul ou en échec garde son pointillé par-dessus. */}
+              {gradePaths?.map((path, idx) => (
+                <Polyline key={`grade-${idx}`} positions={path.positions} pathOptions={{ color: path.color, weight: 5, opacity: 0.9, interactive: false }} />
+              ))}
               {route.legs.map((leg, i) => {
                 const positions = leg.points.map((p) => [p.lat, p.lon] as [number, number]);
                 const style = leg.status === 'ready'
@@ -707,7 +728,8 @@ function PlanningPage() {
                   <Fragment key={i}>
                     {surfacePaths
                       ? <SurfaceLayer paths={surfacePaths} />
-                      : <Polyline positions={positions} pathOptions={{ ...style, interactive: false }} />}
+                      : gradePaths && leg.status === 'ready' ? null
+                        : <Polyline positions={positions} pathOptions={{ ...style, interactive: false }} />}
                     {/* Trait invisible et large : le toucher qui insère un point n'a pas à viser un trait de 5 px. */}
                     <Polyline
                       positions={positions}
@@ -900,6 +922,9 @@ function PlanningPage() {
                     <span>{Math.round(gradeRange.min * 100)} %</span>
                     <span className="plan-legend__bar" style={{ background: gradientCss() }} />
                     <span>{Math.round(gradeRange.max * 100)} % et plus</span>
+                    <Button size="s" aria-pressed={gradeOnMap} onClick={toggleGradeOnMap} style={{ marginLeft: 'auto' }}>
+                      {gradeOnMap ? 'Masquer de la carte' : 'Voir sur la carte'}
+                    </Button>
                   </div>
                   <div className="plan-legend">Pour zoomer : écartez deux doigts sur la courbe, ou tirez une zone à la souris.</div>
                 </div>
@@ -921,7 +946,7 @@ function PlanningPage() {
             <PlanBlock id="planning.surface" label="Surface" open={open.surface} onToggle={() => toggle('surface')}>
               {surfaces.totals.length > 0 ? (
                 <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit}
-                  shownOnMap={surfaceOnMap} onToggleMap={() => setSurfaceOnMap((shown) => !shown)} />
+                  shownOnMap={surfaceOnMap} onToggleMap={toggleSurfaceOnMap} />
               ) : (
                 <p className="plan-note">Le revêtement s'affiche dès le premier tronçon calculé.</p>
               )}

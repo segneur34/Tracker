@@ -6,19 +6,22 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
 
 1. **Feuille** (`.an-sheet`), réduite à l'en-tête (`.an-sheet__head`) : `PageHeader` avec le retour à la liste du sport, le titre « Analyse … », et `SessionNameEditor` en sous-titre (nom de la session et « Renommer »).
 2. Barre « Non enregistré / Enregistrer la session » (`SessionSaveBar`), pendant un brouillon seulement (la course ne passe pas `kept`, et la voile non plus).
-3. **Onglets** `SectionTabs` et leurs **panneaux** : chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
+3. **Rangée de la carte** (`.an-map-row`) : le bloc `AnalysisMap`, seul.
+4. **Colonne des onglets** (`.an-carte-col`), sous la carte : `SectionTabs`, puis leurs **panneaux** (`.an-carte-panels`), chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
    - Le premier onglet, « général », est le seul ouvert par défaut. Il porte la synthèse de la session (`.an-sheet__stats an-sheet__stats--always`) : distances, temps, ratio actif, vitesses moyennes, et le dénivelé en course et à vélo ; en voile, le vent suit. On le replie pour comparer les tableaux à la carte.
    - Le dernier onglet, « réglages », porte ceux de la session : activité, seuils, terrain, source de vitesse, bornes de couleur de la trace (`SpeedRangeEditor`).
-   - En course et à vélo, les onglets sont sous la feuille ; en voile, ils sont tous dans la colonne à droite de la carte.
-4. **Rangée de la carte** (`.an-map-row`) : le bloc `AnalysisMap`, suivi en voile de la colonne d'onglets (`an-carte-col`).
+   - La même disposition en voile, en course et à vélo (point 86).
 
 ## Règles communes
 
-- **Deux dispositions, une seule rupture** : 768 px, la même que la barre de navigation (`AppShell.css`). Sous cette largeur, `analysisMobile.css` s'applique.
-- **Sur ordinateur** : la carte occupe 60 % de la largeur, en bas de la page, et le bloc est redimensionnable.
+- **Deux dispositions, une seule rupture** : 768 px, la même que la barre de navigation (`AppShell.css`). `analysisMobile.css` porte les deux ; ses règles de téléphone valent sous cette largeur.
+- **Sur ordinateur** :
+  - la carte est en haut, centrée, à `--analysis-map-width` (80 %, `theme/tokens.css`) : de chaque côté, la souris fait défiler la page sans zoomer la carte. Elle se redimensionne en hauteur ;
+  - les panneaux vont deux par ligne (`HALF_PANEL_STYLE`, `components/styles.ts`), un seul quand la moitié n'atteint plus 420 px, alignés en haut ; un panneau qui a besoin de toute la largeur la prend (détails des manœuvres) ;
+  - un simple bloc en demi-ligne doit compter sa marge intérieure (`box-sizing: border-box`, porté par `HALF_PANEL_STYLE`), sinon il ne tient plus à côté de son voisin.
 - **Sur téléphone** :
   - l'en-tête tient sur une ligne, tout en haut (`order: -2`) : la flèche de retour, le nom et « Renommer ». Le titre et le texte du lien de retour restent lus par un lecteur d'écran ;
-  - la rangée de la carte s'efface (`display: contents`) : la carte suit l'en-tête (`order: -1`), en pleine largeur, haute de 30 vh ; en voile, la colonne d'onglets (`an-carte-col`) vient ensuite ;
+  - la rangée de la carte s'efface (`display: contents`) : la carte suit l'en-tête (`order: -1`), en pleine largeur, haute de 30 vh ; la colonne d'onglets (`an-carte-col`) vient ensuite ;
   - les onglets sont de petites pastilles serrées, sans trait dessous, qui suivent de près la carte ;
   - les blocs `ResizablePanel` y sont en pleine largeur, sans poignée, à leur hauteur par défaut ; les explications longues se replient derrière `HelpButton` ;
   - un toucher sur la carte l'ouvre en plein écran (× pour fermer) ;
@@ -31,12 +34,13 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
 
 | Pièce | Rôle |
 |---|---|
-| `components/AnalysisMap.tsx` | Carte, légende posée dessus, plein écran au toucher |
+| `components/AnalysisMap.tsx` | Carte, légende donnée par le module posée dessus, plein écran au toucher |
 | `pages/analysisMobile.css` | Disposition téléphone (classes `an-*`) |
 | `components/PanelTitle.tsx` | Titre de panneau qui le replie |
 | `components/SessionNameEditor.tsx` | Nom de la session et « Renommer » |
 | `components/SectionTabs.tsx`, `components/ResizablePanel.tsx` | Onglets, panneaux redimensionnables |
-| `components/SpeedGradientLegend.tsx` | La légende, en lecture seule, rendue par `AnalysisMap` |
+| `components/SpeedGradientLegend.tsx`, `components/GradeGradientLegend.tsx` | Les légendes de la vitesse et de la pente, en lecture seule, passées à `AnalysisMap` |
+| `components/styles.ts` | `CARD_STYLE` des panneaux, `HALF_PANEL_STYLE` pour deux panneaux par ligne |
 | `components/SpeedRangeEditor.tsx` | Saisie des bornes de couleur de la trace, dans l'onglet réglages |
 | `components/SessionSaveBar.tsx` | Barre du brouillon de la session |
 
@@ -55,5 +59,5 @@ Ce que la page choisit, dans le cadre ci-dessus :
 1. La page importe `analysisMobile.css`. Sa racine porte `an-page`, et l'en-tête va dans `an-sheet` > `an-sheet__head`. La synthèse va dans un premier onglet « général », ouvert par défaut.
 2. En sous-titre du `PageHeader` : `SessionNameEditor` sur le fichier de la session.
 3. Des sections `*_SECTIONS` et `*_SECTION_DEFAULTS`, avec un `useOpenSections` propre au module. Chaque panneau est titré par `PanelTitle`.
-4. La rangée `.an-map-row`, qui contient `AnalysisMap` : `panelId` unique, couches de la carte, props de la légende, `style` de largeur (`width: '60%'`, ou `flex: '0 1 60%'` dans une rangée flexible).
+4. La rangée `.an-map-row`, qui contient `AnalysisMap` seul : `panelId` unique, couches de la carte, sa légende ; la largeur est commune. Puis `.an-carte-col` : `SectionTabs` et `.an-carte-panels`, chaque panneau en `HALF_PANEL_STYLE`.
 5. Au banc (`outils/banc/`), vérifier la page sur ordinateur et à 390×844.

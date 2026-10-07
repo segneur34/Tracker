@@ -138,6 +138,17 @@ describe('computeEnergy', () => {
     expect(up.netJkg / up.distanceM).toBeGreaterThan(2 * (down.netJkg / down.distanceM));
     expect(result.cumulativeTotalJkg[track.length - 1]).toBeCloseTo(result.totalJkg, 6);
   });
+
+  it('donne à chaque zone son temps et son travail : leur somme fait le total, et la montée pousse plus de watts', () => {
+    const track = buildTrack(1200, () => 3, 1, (d) => (d < 1800 ? 100 + 0.12 * d : 316));
+    const result = computeEnergy(track, gradesOf(track), allMoving(track), DEFAULT_ENERGY_PARAMS, 1.2);
+    expect(result.zones.reduce((s, z) => s + z.timeS, 0)).toBeCloseTo(result.movingTimeS, 6);
+    expect(result.zones.reduce((s, z) => s + z.mechanicalJkg, 0)).toBeCloseTo(result.mechanicalJkg, 6);
+    const up = result.zones.find((z) => z.zone.key === 'steepUp')!;
+    const flat = result.zones.find((z) => z.zone.key === 'flat')!;
+    // Minetti à 12 % : environ 1,8 fois le coût du plat, à la même vitesse.
+    expect(up.mechanicalJkg / up.timeS).toBeGreaterThan(1.5 * (flat.mechanicalJkg / flat.timeS));
+  });
 });
 
 describe('smoothMovingPower', () => {

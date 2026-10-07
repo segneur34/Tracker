@@ -1,6 +1,8 @@
-/* Disposition mobile des modules d'analyse (`SailingModule.tsx`, `RunningModule.tsx`), sur les variables de `theme/tokens.css`.
-   Sur ordinateur, rien ne change : seule la vue plein écran est masquée. Les chiffres de la session sont
-   dans l'onglet « général » de chaque module (`an-sheet__stats--always`). */
+/* Disposition des modules d'analyse (`SailingModule.tsx`, `LandModule.tsx`), sur les variables de `theme/tokens.css`
+   (`docs/MISE_EN_PAGE.md`). Sur ordinateur : la carte en haut, plus étroite que la page, puis la colonne
+   des onglets (`.an-carte-col`) et ses panneaux, deux par ligne (`HALF_PANEL_STYLE`). Sur téléphone, sous
+   768 px : la carte en tête, en pleine largeur, puis les panneaux un par ligne. Les chiffres de la session
+   sont dans l'onglet « général » de chaque module (`an-sheet__stats--always`). */
 
 .an-sheet__stats {
   display: none;
@@ -46,6 +48,35 @@
 
 .an-map-corner .leaflet-control.an-map-legend {
   margin: 0 2px 0 0;
+}
+
+/* Onglets sous la carte, puis leurs panneaux : en ligne, qui passent à la ligne ; un panneau haut
+   n'étire pas son voisin. */
+.an-carte-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.an-carte-panels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+@media (min-width: 768px) {
+  /* Carte en haut, centrée, plus étroite que la page : la souris trouve de la place de chaque côté
+     pour faire défiler la page sans zoomer la carte. */
+  .an-map-row {
+    display: flex;
+    justify-content: center;
+    margin-bottom: var(--space-4);
+  }
+
+  .an-map-panel {
+    width: var(--analysis-map-width);
+  }
 }
 
 /* En-tête de la feuille : retour, titre, nom de la session. */
@@ -135,11 +166,6 @@
     min-height: 32px;
     padding: 0 var(--space-3);
     font-size: var(--text-xs);
-  }
-
-  /* En course, les panneaux suivent directement la barre ; en voile, la colonne les espace déjà. */
-  .an-page > .ui-tabs {
-    margin-bottom: var(--space-2);
   }
 
   .an-sheet__stats {

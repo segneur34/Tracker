@@ -10,11 +10,13 @@ import {
 } from 'recharts';
 import ActivitySelect from '../components/ActivitySelect';
 import AnalysisMap from '../components/AnalysisMap';
+import GradeGradientLegend from '../components/GradeGradientLegend';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
+import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import SurfaceBar from '../components/SurfaceBar';
 import SurfaceLayer from '../components/SurfaceLayer';
@@ -22,7 +24,7 @@ import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { IconChevronRight } from '../components/icons';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
-import { CARD_STYLE } from '../components/styles';
+import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
@@ -54,7 +56,7 @@ import {
   TERRAIN_LABEL, TEXT_SCALE_FACTOR, readStoredActivities, useSportSettings, type TerrainType,
 } from '../hooks/useSportSettings';
 import {
-  averagePace, computeGrades, computeZoneStats, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
+  averagePace, computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
 } from '../running/runningAnalytics';
 import { smoothMovingPower } from '../running/energy';
 import type { RunningSessionStats } from '../running/types';
@@ -69,6 +71,12 @@ const CHART_SPEED_SMOOTHING_S = 10;
 const MAP_SPEED_SMOOTHING_S = 15;
 /** Lissage de la puissance du graphe d'énergie, en secondes. */
 const ENERGY_POWER_SMOOTHING_S = 60;
+/**
+ * Hauteur du graphe d'énergie, celle d'un graphe de vitesse ou d'altitude : le
+ * panneau suit son contenu. Agrandi à la poignée sur ordinateur, le graphe
+ * prend la place gagnée.
+ */
+const ENERGY_CHART_HEIGHT_PX = 200;
 /** Couleurs des trois premiers d'un top, sur la carte et dans le tableau (comme en voile). */
 const TOP_COLORS = ['#d32f2f', '#f57c00', '#388e3c'];
 /** Zone de pente montrée sur la carte : un violet, absent du dégradé de vitesse de la trace. */
@@ -136,8 +144,11 @@ interface EnergyChartRow {
   grade: number | null;
 }
 
-/** Chiffres du panneau Énergie, dépliés tant qu'on ne les a pas repliés pour voir carte et graphe ensemble. */
-const ENERGY_FIGURES_DEFAULT = { chiffres: true };
+/**
+ * Chiffres et tableau des zones du panneau Énergie, dépliés tant qu'on ne les
+ * a pas repliés pour voir carte et graphe ensemble.
+ */
+const ENERGY_FIGURES_DEFAULT = { chiffres: true, zones: true };
 
 /** Temps écoulé, donné en minutes, écrit en h:mm, ou en h:mm:ss hors de la minute ronde (graphe zoomé). */
 const formatMinutes = (minutes: number): string => {
@@ -291,9 +302,31 @@ function LandModule({ family }: { family: LandFamily }) {
 
   /** Revêtement des voies suivies, demandé à OpenStreetMap à la première ouverture de l'onglet, puis gardé dans la fiche. */
   const surfaces = useSessionSurfaces(gpx.track, sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null, open.surface);
-  /** « Voir sur la carte » de l'onglet surface : la trace prend les couleurs du revêtement, tant que l'onglet est ouvert. */
+  /**
+   * « Voir sur la carte » de l'onglet surface, et celui de la pente sous le
+   * graphe d'altitude : la trace prend les couleurs du revêtement ou de la
+   * pente, tant que leur onglet est ouvert. Un seul à la fois : en allumer un
+   * éteint l'autre.
+   */
   const [surfaceOnMap, setSurfaceOnMap] = useState(false);
+  const [gradeOnMap, setGradeOnMap] = useState(false);
+  const toggleSurfaceOnMap = () => {
+    setSurfaceOnMap(!surfaceOnMap);
+    if (!surfaceOnMap) setGradeOnMap(false);
+  };
+  const toggleGradeOnMap = () => {
+    setGradeOnMap(!gradeOnMap);
+    if (!gradeOnMap) setSurfaceOnMap(false);
+  };
   const surfaceMapPaths = open.surface && surfaceOnMap ? surfaces.paths : null;
+
+  /** Trace colorée par la pente, au palier près (`gradeColorPaths`), tant que l'onglet graphiques est ouvert. */
+  const gradeMapPaths = useMemo(
+    () => (gradeOnMap && open.graphiques && !surfaceMapPaths && grades.length > 0
+      ? gradeColorPaths(gpx.track.map((p): [number, number] => [p.lat, p.lon]), grades, gradeRange)
+      : null),
+    [gradeOnMap, open.graphiques, surfaceMapPaths, grades, gpx.track, gradeRange]
+  );
 
   const zoneStats = useMemo(
     () => (grades.length > 0 ? computeZoneStats(gpx.track, grades, activityMask) : []),
@@ -488,7 +521,9 @@ function LandModule({ family }: { family: LandFamily }) {
   const mapLayers = (
     <>
       <OsmTileLayer />
-      {surfaceMapPaths ? <SurfaceLayer paths={surfaceMapPaths} /> : mapSegments.map((segment) => (
+      {surfaceMapPaths ? <SurfaceLayer paths={surfaceMapPaths} /> : gradeMapPaths ? gradeMapPaths.map((path, idx) => (
+        <Polyline key={`grade-${idx}`} positions={path.positions} pathOptions={{ color: path.color, weight: 5 }} />
+      )) : mapSegments.map((segment) => (
         <Polyline key={`track-${segment.id}`} positions={segment.positions} pathOptions={{ color: segment.color, weight: 5 }} />
       ))}
       {zonePaths.map((path, idx) => (
@@ -529,410 +564,422 @@ function LandModule({ family }: { family: LandFamily }) {
         </p>
       )}
 
-      {stats && averages && (
-        <SectionTabs sections={sections} open={open} onToggle={toggle} accent={config.accent} />
-      )}
-
-      {stats && averages && (
-        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'stretch', marginBottom: '15px', fontSize: `${14 * scale}px` }}>
-          {open.general && (
-            <ResizablePanel id={panelId('general')} style={{ ...cardStyle, flex: '1 1 100%' }}>
-              <div style={{ marginBottom: '10px' }}>
-                <PanelTitle label="Général" open={open.general} onToggle={() => toggle('general')} />
-              </div>
-              <div className="an-sheet__stats an-sheet__stats--always">
-                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
-                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance en mouvement</span><strong className="an-sheet__stat-value">{formatDistance(stats.activeDistanceM, distanceUnit)}</strong></div>
-                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps de parcours</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
-                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps en mouvement ({stats.activeRatio} %)</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
-                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne en mouvement</span><strong className="an-sheet__stat-value">{formatSpeed(averages.moving.speedMs, speedUnit)}</strong></div>
-                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne sur le temps total</span><strong className="an-sheet__stat-value">{formatSpeed(averages.overall.speedMs, speedUnit)}</strong></div>
-                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Dénivelé</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—'}</strong></div>
-                <div className="an-sheet__stat"><span className="an-sheet__stat-label">Altitude</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—'}</strong></div>
-              </div>
-              {!stats.hasElevation && (
-                <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
-              )}
-            </ResizablePanel>
-          )}
-
-          {open.tops && tops && (
-            <ResizablePanel id={panelId('tops')} style={{ ...cardStyle, flex: '1 1 420px' }}>
-              <div style={{ marginBottom: '10px' }}>
-                <PanelTitle label="Meilleurs segments" open={open.tops} onToggle={() => toggle('tops')} />
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
-                <thead>
-                  <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                    <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Sur</th>
-                    {['1er', '2e', '3e'].map((rank, idx) => (
-                      <th key={rank} style={{ padding: '0.4em 0.6em', color: TOP_COLORS[idx] }}>{rank} ({SPEED_UNIT_LABEL[topUnit]})</th>
-                    ))}
-                    <th style={{ padding: '0.4em 0.6em' }}>Carte</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(['time', 'distance'] as const).map((kind) => (
-                    <Fragment key={kind}>
-                      {profile.topTargets.filter((t) => t.kind === kind).map((target) => {
-                        const values = tops[target.key] ?? [];
-                        const reached = values.some((v) => v.path.length > 1);
-                        const shown = selectedTop === target.key;
-                        return (
-                          <tr key={target.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: reached ? 1 : 0.45 }}>
-                            <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{target.label}</td>
-                            {[0, 1, 2].map((idx) => (
-                              <td key={idx} style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: idx === 0 ? 'bold' : 'normal' }}>{values[idx]?.val ?? '-'}</td>
-                            ))}
-                            <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
-                              <button type="button" disabled={!reached} onClick={() => setSelectedTop(shown ? null : target.key)}
-                                style={{ padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? config.accent : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
-                                {shown ? 'Masquer' : 'Voir'}
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-              <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
-                Vitesse moyenne du meilleur passage sur chaque durée ou distance, sans chevauchement, pauses comprises.
-              </div>
-            </ResizablePanel>
-          )}
-
-          {open.zones && zoneStats.length > 0 && (
-            <ResizablePanel id={panelId('zones')} style={{ ...cardStyle, flex: '1 1 420px' }}>
-              <div style={{ marginBottom: '10px' }}>
-                <PanelTitle
-                  label={config.zonesTitle}
-                  extra={<span style={{ color: 'var(--muted)', fontSize: '0.75em', fontWeight: 'normal' }}>(en mouvement)</span>}
-                  open={open.zones}
-                  onToggle={() => toggle('zones')} />
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
-                <thead>
-                  <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                    <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
-                    <th style={{ padding: '0.4em 0.6em', fontWeight: 'normal', color: 'var(--muted)' }}>Pente</th>
-                    <th style={{ padding: '0.4em 0.6em' }}>Distance</th>
-                    <th style={{ padding: '0.4em 0.6em' }}>Temps</th>
-                    <th style={{ padding: '0.4em 0.6em' }}>Vitesse ({unitLabel})</th>
-                    <th style={{ padding: '0.4em 0.6em' }}>Carte</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {zoneStats.map((z) => {
-                    const reached = z.distanceM > 0;
-                    const shown = selectedZone === z.zone.key;
-                    return (
-                      <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.timeMs > 0 ? 1 : 0.45 }}>
-                        <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label}</td>
-                        <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: '0.9em' }}>{z.zone.range}</td>
-                        <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
-                        <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
-                        <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
-                        <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
-                          <button type="button" disabled={!reached} onClick={() => setSelectedZone(shown ? null : z.zone.key)}
-                            style={{ padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? ZONE_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
-                            {shown ? 'Masquer' : 'Voir'}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
-                Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone. « Voir » montre ses passages sur la carte, en violet.
-              </div>
-            </ResizablePanel>
-          )}
-
-          {open.surface && (
-            <ResizablePanel id={panelId('surface')} style={{ ...cardStyle, flex: '1 1 420px' }}>
-              <div style={{ marginBottom: '10px' }}>
-                <PanelTitle label="Surface" open={open.surface} onToggle={() => toggle('surface')} />
-              </div>
-              {surfaces.totals && (
-                <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit}
-                  shownOnMap={surfaceOnMap} onToggleMap={() => setSurfaceOnMap((shown) => !shown)} />
-              )}
-              {surfaces.status === 'searching' && (
-                <div style={{ color: 'var(--muted)' }}>Recherche des voies sur OpenStreetMap…</div>
-              )}
-              {surfaces.status === 'error' && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ color: 'var(--danger)' }}>{surfaces.error}</span>
-                  <Button size="s" onClick={surfaces.retry}>Réessayer</Button>
-                </div>
-              )}
-              <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '10px' }}>
-                Revêtement des voies d'OpenStreetMap à moins de {WAY_MATCH_DEFAULTS.radiusM} m de la trace, demandées à la première
-                ouverture de cet onglet puis gardées avec la session. Hors de toute voie : « Inconnu ». « Voir sur la carte » y colore
-                la trace selon le revêtement, à la place de la vitesse.
-              </div>
-            </ResizablePanel>
-          )}
-        </div>
-      )}
-
-      {open.energie && energy && (
-        <ResizablePanel id={panelId('energie')} defaultHeight={720} minHeight={320} direction="vertical"
-          style={{ ...cardStyle, marginBottom: '15px', display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: `${14 * scale}px` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', paddingRight: '28px' }}>
-            <PanelTitle label={config.energyLabel} open={open.energie} onToggle={() => toggle('energie')} />
-            <span style={{ flex: 1 }} />
-            {(['power', 'cumulative'] as EnergyChartMode[]).map((mode) => (
-              <button key={mode} onClick={() => setEnergyMode(mode)}
-                style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: energyMode === mode ? config.accent : 'var(--surface-sunken)', color: energyMode === mode ? '#fff' : 'var(--ink)' }}>
-                {mode === 'power' ? 'Puissance' : 'Cumulée'}
-              </button>
-            ))}
-            <button type="button" aria-expanded={energyFold.open.chiffres} onClick={() => energyFold.toggle('chiffres')}
-              title={energyFold.open.chiffres ? 'Replier les chiffres pour voir le graphe et la carte ensemble' : 'Montrer les chiffres'}
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px 4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: 'var(--surface-sunken)', color: 'var(--ink)' }}>
-              Chiffres
-              <IconChevronRight size={14} style={{ transform: `rotate(${energyFold.open.chiffres ? -90 : 90}deg)`, transition: 'transform 0.15s' }} />
-            </button>
-          </div>
-          {energyFold.open.chiffres && (
-            <>
-              {energy.warning && (
-                <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px' }}>
-                  {energy.warning}
-                </div>
-              )}
-              <div className="an-sheet__stats an-sheet__stats--always" style={{ flexShrink: 0 }}>
-                {energy.stats.map((stat) => (
-                  <div key={stat.label} className="an-sheet__stat">
-                    <span className="an-sheet__stat-label">{stat.label}</span>
-                    <strong className="an-sheet__stat-value">{stat.value}{stat.detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: '0.75em' }}> {stat.detail}</span>}</strong>
-                  </div>
-                ))}
-              </div>
-              {!stats?.hasElevation && (
-                <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)', marginBottom: '6px' }}>{config.flatWarning}</div>
-              )}
-            </>
-          )}
-
-          {energyChartData.length > 1 && (
-            <ZoomableChart zoom={energyZoom} style={{ width: '100%', flex: 1, minHeight: '200px', marginTop: '6px' }}>
-              <ResponsiveContainer>
-                <ComposedChart data={energyChartData} onMouseMove={onEnergyChartHover} onTouchMove={onEnergyChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                  <ChartZoomProbe />
-                  <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                  <XAxis dataKey="minutes" type="number" allowDataOverflow
-                    domain={energyZoom.shown ? [energyZoom.shown.min, energyZoom.shown.max] : ['dataMin', 'dataMax']}
-                    ticks={energyZoom.shown ? niceTicks(energyZoom.shown) : undefined}
-                    tickFormatter={formatMinutes} tick={{ fill: '#555', fontSize: 11 }} />
-                  <YAxis domain={[0, 'auto']} width={50} tick={{ fill: '#e64a19', fontSize: 11 }}
-                    label={{ value: energyMode === 'power' ? energy.powerUnit : energy.cumulativeUnit, angle: -90, position: 'insideLeft', fill: '#e64a19', fontSize: 11 }} />
-                  <Tooltip formatter={energyTooltipFormatter} labelFormatter={(l) => formatMinutes(Number(l))} contentStyle={chartTooltipStyle} />
-                  {energyMode === 'power' ? (
-                    <Line type="monotone" name="Puissance" dataKey="power" stroke="#e64a19" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} isAnimationActive={false} />
-                  ) : (
-                    <Area type="monotone" name="Énergie dépensée" dataKey="cumulative" stroke="#e64a19" strokeWidth={2} fill="#e64a19" fillOpacity={0.15} dot={false} activeDot={{ r: 5 }} isAnimationActive={false} />
-                  )}
-                </ComposedChart>
-              </ResponsiveContainer>
-            </ZoomableChart>
-          )}
-
-          {stats?.hasElevation && (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginTop: '12px', flexShrink: 0 }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                  <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
-                  <th style={{ padding: '0.4em 0.6em' }}>Énergie</th>
-                  <th style={{ padding: '0.4em 0.6em' }}>Part</th>
-                  <th style={{ padding: '0.4em 0.6em' }}>Par km</th>
-                </tr>
-              </thead>
-              <tbody>
-                {energy.zones.map((z) => (
-                  <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.distanceM > 0 ? 1 : 0.45 }}>
-                    <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label} <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: '0.85em' }}>{z.zone.range}</span></td>
-                    <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.energy}</td>
-                    <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{Math.round(z.share * 100)} %</td>
-                    <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{z.perKm}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '8px', flexShrink: 0 }}>
-            {energy.note}
-            {' '}Puissance lissée sur {ENERGY_POWER_SMOOTHING_S} s, moins près du départ et des arrêts, interrompue aux pauses.
-          </div>
-        </ResizablePanel>
-      )}
-
-      {open.graphiques && chartData.length > 1 && (
-        <ResizablePanel id={panelId('graphiques')} defaultHeight={460} minHeight={220} direction="vertical"
-          style={{ ...cardStyle, marginBottom: '15px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
-            <PanelTitle label="Vitesse et altitude" open={open.graphiques} onToggle={() => toggle('graphiques')} />
-            <span style={{ flex: 1 }} />
-            {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
-              <button key={mode} onClick={() => setChartMode(mode)}
-                style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: chartMode === mode ? config.accent : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
-                {mode === 'separate' ? 'Séparés' : 'Superposés'}
-              </button>
-            ))}
-          </div>
-
-          {chartMode === 'overlay' ? (
-            <ZoomableChart zoom={zoom} style={{ width: '100%', flex: 1, minHeight: 0 }}>
-              <ResponsiveContainer>
-                <ComposedChart data={chartData} syncId={config.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                  <ChartZoomProbe />
-                  <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                  {xAxis}
-                  {speedAxis}
-                  {stats?.hasElevation && altitudeAxis('right')}
-                  <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
-                  {stats?.hasElevation && gradeGradientDefs(overlayGradientId, gradeStops)}
-                  {stats?.hasElevation && (
-                    <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${overlayGradientId})`} strokeWidth={1.5} fill={`url(#${overlayGradientId})`} fillOpacity={0.3} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
-                  )}
-                  <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </ZoomableChart>
-          ) : (
-            <>
-              <ZoomableChart zoom={zoom} style={{ width: '100%', flex: stats?.hasElevation ? 1.1 : 1, minHeight: 0 }}>
-                <ResponsiveContainer>
-                  <ComposedChart data={chartData} syncId={config.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                    <ChartZoomProbe />
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                    {xAxis}
-                    {speedAxis}
-                    <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
-                    <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </ZoomableChart>
-              {stats?.hasElevation && (
-                <ZoomableChart zoom={zoom} showReset={false} style={{ width: '100%', flex: 1, minHeight: 0, marginTop: '6px' }}>
-                  <ResponsiveContainer>
-                    <ComposedChart data={chartData} syncId={config.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                      <ChartZoomProbe />
-                      <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                      {xAxis}
-                      {altitudeAxis('left')}
-                      <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
-                      {gradeGradientDefs(separateGradientId, gradeStops)}
-                      <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${separateGradientId})`} strokeWidth={2} fill={`url(#${separateGradientId})`} fillOpacity={0.35} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </ZoomableChart>
-              )}
-            </>
-          )}
-          {stats?.hasElevation && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
-              <span>Altitude colorée par la pente, montée ou descente :</span>
-              {gradeRange.min > 0 && (
-                <>
-                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', backgroundColor: SLOW_COLOR }} />
-                  <span>sous {Math.round(gradeRange.min * 100)} %,</span>
-                </>
-              )}
-              <span>{Math.round(gradeRange.min * 100)} %</span>
-              <span style={{ display: 'inline-block', width: '90px', height: '10px', borderRadius: '2px', background: gradientCss() }} />
-              <span>{Math.round(gradeRange.max * 100)} % et plus</span>
-            </div>
-          )}
-          {gpx.track.length > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: terrainElevation.status === 'error' ? 'var(--danger)' : 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
-              <span>{elevationSourceText(terrainElevation.status, terrainElevation.stepM, terrainElevation.error)}</span>
-              {terrainElevation.status === 'error' && <Button size="s" onClick={terrainElevation.retry}>Réessayer</Button>}
-            </div>
-          )}
-          <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
-            Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte.
-            {narrow ? ' Écartez deux doigts sur un graphe pour zoomer.' : ' Tirez une zone à la souris pour zoomer, double-clic pour tout revoir. Poignée en bas à droite pour redimensionner.'}
-          </div>
-        </ResizablePanel>
-      )}
-
-
-      {stats && open.reglages && (
-        <ResizablePanel id={panelId('reglages')} style={{ ...cardStyle, marginBottom: '15px', fontSize: `${14 * scale}px` }}>
-          <div style={{ marginBottom: '10px' }}>
-            <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} />
-          </div>
-          <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap', fontSize: '14px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <strong>Activité :</strong>
-              <ActivitySelect
-                activities={allActivities}
-                value={activity.id}
-                extra={activity}
-                families={sessionFile ? undefined : [family]}
-                onChange={(next) => changeSessionActivity(sessionFile, next)} />
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <strong>Terrain :</strong>
-              <select value={terrain} onChange={(e) => setTerrain(e.target.value as TerrainType)} className="ui-field ui-field--s">
-                {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
-                  <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
-                ))}
-              </select>
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title="Altitude du terrain (IGN), ou celle enregistrée par le GPS">
-              <strong>Altitude :</strong>
-              <select
-                value={terrainElevation.source}
-                disabled={!terrainElevation.canChangeSource}
-                onChange={(e) => terrainElevation.setSource(e.target.value === 'gps' ? 'gps' : 'ign')}
-                className="ui-field ui-field--s">
-                <option value="ign">IGN</option>
-                <option value="gps">GPS</option>
-              </select>
-            </label>
-          </div>
-          {gpx.track.length > 0 && (
-            <div style={{ marginTop: '12px', fontSize: '14px' }}>
-              <SpeedRangeEditor
-                unit={speedUnit}
-                range={range}
-                isOverridden={draft.edits.speedRange !== null}
-                onChange={(next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); }} />
-            </div>
-          )}
-          <div style={{ color: 'var(--muted)', fontSize: '0.85em', marginTop: '10px' }}>
-            Vitesse : {gpx.hasDeviceSpeed
-              ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
-              : 'dérivée des positions, filtrée'}
-            {family === 'velo' && ` · Vélo : ${BIKE_TYPES[bikeType].noun}, ${bikeWeightKg} kg (Réglages)`}
-            {runner.weightKg !== null ? ` · Poids : ${runner.weightKg} kg` : ' · Poids non renseigné, voir Paramètres'}
-          </div>
-        </ResizablePanel>
-      )}
-
       <div className="an-map-row" style={{ marginTop: '10px' }}>
         <AnalysisMap
           panelId={panelId('carte')}
           sessionKey={gpx.sessionKey}
           bounds={mapBounds}
           layers={mapLayers}
-          defaultHeight={580}
-          legend={gpx.track.length > 0 && !surfaceMapPaths ? {
-            unit: speedUnit,
-            range,
-            slowLabel: config.slowLabel,
-          } : null}
-          style={{ width: '60%' }} />
+          defaultHeight={480}
+          legend={gpx.track.length === 0 || surfaceMapPaths ? null
+            : gradeMapPaths ? <GradeGradientLegend range={gradeRange} />
+              : <SpeedGradientLegend unit={speedUnit} range={range} slowLabel={config.slowLabel} />} />
       </div>
+
+      {/* Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`). */}
+      {stats && averages && (
+        <div className="an-carte-col">
+          <SectionTabs sections={sections} open={open} onToggle={toggle} accent={config.accent} />
+          <div className="an-carte-panels">
+            {open.general && (
+              <ResizablePanel id={panelId('general')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
+                <div style={{ marginBottom: '10px' }}>
+                  <PanelTitle label="Général" open={open.general} onToggle={() => toggle('general')} />
+                </div>
+                <div className="an-sheet__stats an-sheet__stats--always">
+                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
+                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance en mouvement</span><strong className="an-sheet__stat-value">{formatDistance(stats.activeDistanceM, distanceUnit)}</strong></div>
+                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps de parcours</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
+                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps en mouvement ({stats.activeRatio} %)</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
+                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne en mouvement</span><strong className="an-sheet__stat-value">{formatSpeed(averages.moving.speedMs, speedUnit)}</strong></div>
+                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne sur le temps total</span><strong className="an-sheet__stat-value">{formatSpeed(averages.overall.speedMs, speedUnit)}</strong></div>
+                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Dénivelé</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—'}</strong></div>
+                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Altitude</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—'}</strong></div>
+                </div>
+                {!stats.hasElevation && (
+                  <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
+                )}
+              </ResizablePanel>
+            )}
+
+            {open.tops && tops && (
+              <ResizablePanel id={panelId('tops')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
+                <div style={{ marginBottom: '10px' }}>
+                  <PanelTitle label="Meilleurs segments" open={open.tops} onToggle={() => toggle('tops')} />
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
+                      <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Sur</th>
+                      {['1er', '2e', '3e'].map((rank, idx) => (
+                        <th key={rank} style={{ padding: '0.4em 0.6em', color: TOP_COLORS[idx] }}>{rank} ({SPEED_UNIT_LABEL[topUnit]})</th>
+                      ))}
+                      <th style={{ padding: '0.4em 0.6em' }}>Carte</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(['time', 'distance'] as const).map((kind) => (
+                      <Fragment key={kind}>
+                        {profile.topTargets.filter((t) => t.kind === kind).map((target) => {
+                          const values = tops[target.key] ?? [];
+                          const reached = values.some((v) => v.path.length > 1);
+                          const shown = selectedTop === target.key;
+                          return (
+                            <tr key={target.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: reached ? 1 : 0.45 }}>
+                              <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{target.label}</td>
+                              {[0, 1, 2].map((idx) => (
+                                <td key={idx} style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: idx === 0 ? 'bold' : 'normal' }}>{values[idx]?.val ?? '-'}</td>
+                              ))}
+                              <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
+                                <button type="button" disabled={!reached} onClick={() => setSelectedTop(shown ? null : target.key)}
+                                  style={{ padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? config.accent : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                                  {shown ? 'Masquer' : 'Voir'}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
+                  Vitesse moyenne du meilleur passage sur chaque durée ou distance, sans chevauchement, pauses comprises.
+                </div>
+              </ResizablePanel>
+            )}
+
+            {open.zones && zoneStats.length > 0 && (
+              <ResizablePanel id={panelId('zones')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
+                <div style={{ marginBottom: '10px' }}>
+                  <PanelTitle
+                    label={config.zonesTitle}
+                    extra={<span style={{ color: 'var(--muted)', fontSize: '0.75em', fontWeight: 'normal' }}>(en mouvement)</span>}
+                    open={open.zones}
+                    onToggle={() => toggle('zones')} />
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
+                      <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
+                      <th style={{ padding: '0.4em 0.6em', fontWeight: 'normal', color: 'var(--muted)' }}>Pente</th>
+                      <th style={{ padding: '0.4em 0.6em' }}>Distance</th>
+                      <th style={{ padding: '0.4em 0.6em' }}>Temps</th>
+                      <th style={{ padding: '0.4em 0.6em' }}>Vitesse ({unitLabel})</th>
+                      <th style={{ padding: '0.4em 0.6em' }}>Carte</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {zoneStats.map((z) => {
+                      const reached = z.distanceM > 0;
+                      const shown = selectedZone === z.zone.key;
+                      return (
+                        <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.timeMs > 0 ? 1 : 0.45 }}>
+                          <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: '0.9em' }}>{z.zone.range}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
+                            <button type="button" disabled={!reached} onClick={() => setSelectedZone(shown ? null : z.zone.key)}
+                              style={{ padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? ZONE_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                              {shown ? 'Masquer' : 'Voir'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
+                  Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone. « Voir » montre ses passages sur la carte, en violet.
+                </div>
+              </ResizablePanel>
+            )}
+
+            {open.surface && (
+              <ResizablePanel id={panelId('surface')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
+                <div style={{ marginBottom: '10px' }}>
+                  <PanelTitle label="Surface" open={open.surface} onToggle={() => toggle('surface')} />
+                </div>
+                {surfaces.totals && (
+                  <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit}
+                    shownOnMap={surfaceOnMap} onToggleMap={toggleSurfaceOnMap} />
+                )}
+                {surfaces.status === 'searching' && (
+                  <div style={{ color: 'var(--muted)' }}>Recherche des voies sur OpenStreetMap…</div>
+                )}
+                {surfaces.status === 'error' && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: 'var(--danger)' }}>{surfaces.error}</span>
+                    <Button size="s" onClick={surfaces.retry}>Réessayer</Button>
+                  </div>
+                )}
+                <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '10px' }}>
+                  Revêtement des voies d'OpenStreetMap à moins de {WAY_MATCH_DEFAULTS.radiusM} m de la trace, demandées à la première
+                  ouverture de cet onglet puis gardées avec la session. Hors de toute voie : « Inconnu ». « Voir sur la carte » y colore
+                  la trace selon le revêtement, à la place de la vitesse.
+                </div>
+              </ResizablePanel>
+            )}
+
+            {open.energie && energy && (
+              <ResizablePanel id={panelId('energie')} minHeight={320} direction="vertical"
+                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: `${14 * scale}px` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', paddingRight: '28px' }}>
+                  <PanelTitle label={config.energyLabel} open={open.energie} onToggle={() => toggle('energie')} />
+                  <span style={{ flex: 1 }} />
+                  {(['power', 'cumulative'] as EnergyChartMode[]).map((mode) => (
+                    <button key={mode} onClick={() => setEnergyMode(mode)}
+                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: energyMode === mode ? config.accent : 'var(--surface-sunken)', color: energyMode === mode ? '#fff' : 'var(--ink)' }}>
+                      {mode === 'power' ? 'Puissance' : 'Cumulée'}
+                    </button>
+                  ))}
+                  <button type="button" aria-expanded={energyFold.open.chiffres} onClick={() => energyFold.toggle('chiffres')}
+                    title={energyFold.open.chiffres ? 'Replier les chiffres pour voir le graphe et la carte ensemble' : 'Montrer les chiffres'}
+                    style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px 4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: 'var(--surface-sunken)', color: 'var(--ink)' }}>
+                    Chiffres
+                    <IconChevronRight size={14} style={{ transform: `rotate(${energyFold.open.chiffres ? -90 : 90}deg)`, transition: 'transform 0.15s' }} />
+                  </button>
+                </div>
+                {energyFold.open.chiffres && (
+                  <>
+                    {energy.warning && (
+                      <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px' }}>
+                        {energy.warning}
+                      </div>
+                    )}
+                    <div className="an-sheet__stats an-sheet__stats--always" style={{ flexShrink: 0 }}>
+                      {energy.stats.map((stat) => (
+                        <div key={stat.label} className="an-sheet__stat">
+                          <span className="an-sheet__stat-label">{stat.label}</span>
+                          <strong className="an-sheet__stat-value">{stat.value}{stat.detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: '0.75em' }}> {stat.detail}</span>}</strong>
+                        </div>
+                      ))}
+                    </div>
+                    {!stats?.hasElevation && (
+                      <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)', marginBottom: '6px' }}>{config.flatWarning}</div>
+                    )}
+                  </>
+                )}
+
+                {energyChartData.length > 1 && (
+                  <ZoomableChart zoom={energyZoom} style={{ width: '100%', flex: `1 0 ${ENERGY_CHART_HEIGHT_PX}px`, height: `${ENERGY_CHART_HEIGHT_PX}px`, marginTop: '6px' }}>
+                    <ResponsiveContainer>
+                      <ComposedChart data={energyChartData} onMouseMove={onEnergyChartHover} onTouchMove={onEnergyChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                        <ChartZoomProbe />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                        <XAxis dataKey="minutes" type="number" allowDataOverflow
+                          domain={energyZoom.shown ? [energyZoom.shown.min, energyZoom.shown.max] : ['dataMin', 'dataMax']}
+                          ticks={energyZoom.shown ? niceTicks(energyZoom.shown) : undefined}
+                          tickFormatter={formatMinutes} tick={{ fill: '#555', fontSize: 11 }} />
+                        <YAxis domain={[0, 'auto']} width={50} tick={{ fill: '#e64a19', fontSize: 11 }}
+                          label={{ value: energyMode === 'power' ? energy.powerUnit : energy.cumulativeUnit, angle: -90, position: 'insideLeft', fill: '#e64a19', fontSize: 11 }} />
+                        <Tooltip formatter={energyTooltipFormatter} labelFormatter={(l) => formatMinutes(Number(l))} contentStyle={chartTooltipStyle} />
+                        {energyMode === 'power' ? (
+                          <Line type="monotone" name="Puissance" dataKey="power" stroke="#e64a19" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} isAnimationActive={false} />
+                        ) : (
+                          <Area type="monotone" name="Énergie dépensée" dataKey="cumulative" stroke="#e64a19" strokeWidth={2} fill="#e64a19" fillOpacity={0.15} dot={false} activeDot={{ r: 5 }} isAnimationActive={false} />
+                        )}
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </ZoomableChart>
+                )}
+
+                {/* À la place du tableau : flèche vers le haut pour le replier, vers le bas pour le montrer. */}
+                {stats?.hasElevation && (
+                  <button type="button" aria-expanded={energyFold.open.zones} onClick={() => energyFold.toggle('zones')}
+                    title={energyFold.open.zones ? 'Replier le tableau des zones de pente' : 'Montrer le tableau des zones de pente'}
+                    style={{ alignSelf: 'flex-start', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '12px', padding: '4px 8px 4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: 'var(--surface-sunken)', color: 'var(--ink)' }}>
+                    Énergie par zone de pente
+                    <IconChevronRight size={14} style={{ transform: `rotate(${energyFold.open.zones ? -90 : 90}deg)`, transition: 'transform 0.15s' }} />
+                  </button>
+                )}
+                {stats?.hasElevation && energyFold.open.zones && (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginTop: '6px', flexShrink: 0 }}>
+                    <thead>
+                      <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
+                        <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
+                        <th style={{ padding: '0.4em 0.6em' }}>Énergie</th>
+                        <th style={{ padding: '0.4em 0.6em' }}>Part</th>
+                        <th style={{ padding: '0.4em 0.6em' }}>Par km</th>
+                        <th style={{ padding: '0.4em 0.6em' }} title="Puissance mécanique moyenne en mouvement dans la zone">Puissance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {energy.zones.map((z) => (
+                        <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.distanceM > 0 ? 1 : 0.45 }}>
+                          <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label} <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: '0.85em' }}>{z.zone.range}</span></td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.energy}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{Math.round(z.share * 100)} %</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{z.perKm}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.power}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '8px', flexShrink: 0 }}>
+                  {energy.note}
+                  {' '}Puissance lissée sur {ENERGY_POWER_SMOOTHING_S} s, moins près du départ et des arrêts, interrompue aux pauses.
+                  {stats?.hasElevation && ' Puissance d\'une zone : sa moyenne en mouvement, roue libre et arrêts courts compris.'}
+                </div>
+              </ResizablePanel>
+            )}
+
+            {open.graphiques && chartData.length > 1 && (
+              <ResizablePanel id={panelId('graphiques')} defaultHeight={460} minHeight={220} direction="vertical"
+                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
+                  <PanelTitle label="Vitesse et altitude" open={open.graphiques} onToggle={() => toggle('graphiques')} />
+                  <span style={{ flex: 1 }} />
+                  {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
+                    <button key={mode} onClick={() => setChartMode(mode)}
+                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: chartMode === mode ? config.accent : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
+                      {mode === 'separate' ? 'Séparés' : 'Superposés'}
+                    </button>
+                  ))}
+                </div>
+
+                {chartMode === 'overlay' ? (
+                  <ZoomableChart zoom={zoom} style={{ width: '100%', flex: 1, minHeight: 0 }}>
+                    <ResponsiveContainer>
+                      <ComposedChart data={chartData} syncId={config.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                        <ChartZoomProbe />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                        {xAxis}
+                        {speedAxis}
+                        {stats?.hasElevation && altitudeAxis('right')}
+                        <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
+                        {stats?.hasElevation && gradeGradientDefs(overlayGradientId, gradeStops)}
+                        {stats?.hasElevation && (
+                          <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${overlayGradientId})`} strokeWidth={1.5} fill={`url(#${overlayGradientId})`} fillOpacity={0.3} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
+                        )}
+                        <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </ZoomableChart>
+                ) : (
+                  <>
+                    <ZoomableChart zoom={zoom} style={{ width: '100%', flex: stats?.hasElevation ? 1.1 : 1, minHeight: 0 }}>
+                      <ResponsiveContainer>
+                        <ComposedChart data={chartData} syncId={config.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                          <ChartZoomProbe />
+                          <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                          {xAxis}
+                          {speedAxis}
+                          <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
+                          <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </ZoomableChart>
+                    {stats?.hasElevation && (
+                      <ZoomableChart zoom={zoom} showReset={false} style={{ width: '100%', flex: 1, minHeight: 0, marginTop: '6px' }}>
+                        <ResponsiveContainer>
+                          <ComposedChart data={chartData} syncId={config.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                            <ChartZoomProbe />
+                            <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                            {xAxis}
+                            {altitudeAxis('left')}
+                            <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
+                            {gradeGradientDefs(separateGradientId, gradeStops)}
+                            <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${separateGradientId})`} strokeWidth={2} fill={`url(#${separateGradientId})`} fillOpacity={0.35} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </ZoomableChart>
+                    )}
+                  </>
+                )}
+                {stats?.hasElevation && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
+                    <span>Altitude colorée par la pente, montée ou descente :</span>
+                    {gradeRange.min > 0 && (
+                      <>
+                        <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', backgroundColor: SLOW_COLOR }} />
+                        <span>sous {Math.round(gradeRange.min * 100)} %,</span>
+                      </>
+                    )}
+                    <span>{Math.round(gradeRange.min * 100)} %</span>
+                    <span style={{ display: 'inline-block', width: '90px', height: '10px', borderRadius: '2px', background: gradientCss() }} />
+                    <span>{Math.round(gradeRange.max * 100)} % et plus</span>
+                    <Button size="s" aria-pressed={gradeOnMap} onClick={toggleGradeOnMap} style={{ marginLeft: 'auto' }}>
+                      {gradeOnMap ? 'Masquer de la carte' : 'Voir sur la carte'}
+                    </Button>
+                  </div>
+                )}
+                {gpx.track.length > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: terrainElevation.status === 'error' ? 'var(--danger)' : 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
+                    <span>{elevationSourceText(terrainElevation.status, terrainElevation.stepM, terrainElevation.error)}</span>
+                    {terrainElevation.status === 'error' && <Button size="s" onClick={terrainElevation.retry}>Réessayer</Button>}
+                  </div>
+                )}
+                <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
+                  Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte.
+                  {narrow ? ' Écartez deux doigts sur un graphe pour zoomer.' : ' Tirez une zone à la souris pour zoomer, double-clic pour tout revoir. Poignée en bas à droite pour redimensionner.'}
+                </div>
+              </ResizablePanel>
+            )}
+
+
+            {stats && open.reglages && (
+              <ResizablePanel id={panelId('reglages')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
+                <div style={{ marginBottom: '10px' }}>
+                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} />
+                </div>
+                <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap', fontSize: '14px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong>Activité :</strong>
+                    <ActivitySelect
+                      activities={allActivities}
+                      value={activity.id}
+                      extra={activity}
+                      families={sessionFile ? undefined : [family]}
+                      onChange={(next) => changeSessionActivity(sessionFile, next)} />
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong>Terrain :</strong>
+                    <select value={terrain} onChange={(e) => setTerrain(e.target.value as TerrainType)} className="ui-field ui-field--s">
+                      {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
+                        <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title="Altitude du terrain (IGN), ou celle enregistrée par le GPS">
+                    <strong>Altitude :</strong>
+                    <select
+                      value={terrainElevation.source}
+                      disabled={!terrainElevation.canChangeSource}
+                      onChange={(e) => terrainElevation.setSource(e.target.value === 'gps' ? 'gps' : 'ign')}
+                      className="ui-field ui-field--s">
+                      <option value="ign">IGN</option>
+                      <option value="gps">GPS</option>
+                    </select>
+                  </label>
+                </div>
+                {gpx.track.length > 0 && (
+                  <div style={{ marginTop: '12px', fontSize: '14px' }}>
+                    <SpeedRangeEditor
+                      unit={speedUnit}
+                      range={range}
+                      isOverridden={draft.edits.speedRange !== null}
+                      onChange={(next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); }} />
+                  </div>
+                )}
+                <div style={{ color: 'var(--muted)', fontSize: '0.85em', marginTop: '10px' }}>
+                  Vitesse : {gpx.hasDeviceSpeed
+                    ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
+                    : 'dérivée des positions, filtrée'}
+                  {family === 'velo' && ` · Vélo : ${BIKE_TYPES[bikeType].noun}, ${bikeWeightKg} kg (Réglages)`}
+                  {runner.weightKg !== null ? ` · Poids : ${runner.weightKg} kg` : ' · Poids non renseigné, voir Paramètres'}
+                </div>
+              </ResizablePanel>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

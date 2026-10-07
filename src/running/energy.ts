@@ -93,7 +93,11 @@ export interface EnergyZone {
   zone: GradeZone;
   /** Énergie de course nette dans la zone, en J/kg. */
   netJkg: number;
+  /** Travail mécanique dans la zone, en J/kg : d'où sa puissance moyenne, sur `timeS`. */
+  mechanicalJkg: number;
   distanceM: number;
+  /** Temps en mouvement dans la zone, en s. */
+  timeS: number;
   /** Part de l'énergie de course nette. */
   share: number;
 }
@@ -134,12 +138,12 @@ export const computeEnergy = (
   const n = track.length;
   const mechanicalPowerWkg = new Array<number>(n).fill(NaN);
   const cumulativeTotalJkg = new Array<number>(n).fill(0);
-  const byZone: Record<GradeZoneKey, { netJkg: number; distanceM: number }> = {
-    steepDown: { netJkg: 0, distanceM: 0 },
-    down: { netJkg: 0, distanceM: 0 },
-    flat: { netJkg: 0, distanceM: 0 },
-    up: { netJkg: 0, distanceM: 0 },
-    steepUp: { netJkg: 0, distanceM: 0 },
+  const byZone: Record<GradeZoneKey, { netJkg: number; distanceM: number; timeS: number }> = {
+    steepDown: { netJkg: 0, distanceM: 0, timeS: 0 },
+    down: { netJkg: 0, distanceM: 0, timeS: 0 },
+    flat: { netJkg: 0, distanceM: 0, timeS: 0 },
+    up: { netJkg: 0, distanceM: 0, timeS: 0 },
+    steepUp: { netJkg: 0, distanceM: 0, timeS: 0 },
   };
   let netJkg = 0;
   let restJkg = 0;
@@ -167,6 +171,7 @@ export const computeEnergy = (
       const zone = byZone[classifyGrade(grade) ?? 'flat'];
       zone.netJkg += net;
       zone.distanceM += d;
+      zone.timeS += dt;
     }
     cumulativeTotalJkg[i] = cumulativeTotalJkg[i - 1] + rest + net;
   }
@@ -183,6 +188,7 @@ export const computeEnergy = (
     zones: GRADE_ZONES.map((zone) => ({
       zone,
       ...byZone[zone.key],
+      mechanicalJkg: byZone[zone.key].netJkg * params.mechanicalEfficiency,
       share: netJkg > 0 ? byZone[zone.key].netJkg / netJkg : 0,
     })),
   };

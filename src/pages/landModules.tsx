@@ -32,6 +32,8 @@ export interface EnergyZoneRow {
   energy: string;
   share: number;
   perKm: string;
+  /** Puissance mécanique moyenne en mouvement dans la zone, dans l'unité de puissance du modèle. */
+  power: string;
   distanceM: number;
 }
 
@@ -101,6 +103,8 @@ const runningEnergy = ({ track, grades, activityMask, runner, age }: EnergyInput
     return mass === null ? value.toFixed(1) : String(Math.round(value));
   };
   const kj = (jkg: number) => Math.round((jkg * massFactor) / 1000);
+  /** Puissance donnée en W/kg, écrite en W ; au dixième si elle reste par kilo. */
+  const powerText = (wkg: number) => (mass === null ? wkg.toFixed(1) : String(Math.round(wkg * mass)));
   const cumulativeDecimals = mass === null ? 2 : 0;
   return {
     power: energy.mechanicalPowerWkg.map((p) => p * massFactor),
@@ -125,6 +129,7 @@ const runningEnergy = ({ track, grades, activityMask, runner, age }: EnergyInput
       energy: `${kcal(z.netJkg)} kcal${perKg}`,
       share: z.share,
       perKm: z.distanceM > 0 ? `${kcal((z.netJkg / z.distanceM) * 1000)} kcal${perKg}` : '—',
+      power: z.timeS > 0 ? `${powerText(z.mechanicalJkg / z.timeS)} W${perKg}` : '—',
       distanceM: z.distanceM,
     })),
     warning: mass === null ? warningPerKg : null,
@@ -167,6 +172,7 @@ const cyclingEnergy = ({ track, grades, activityMask, runner, age, bikeType, bik
       energy: `${kcal(z.netJ)} kcal`,
       share: z.share,
       perKm: z.distanceM > 0 ? `${kcal((z.netJ / z.distanceM) * 1000)} kcal` : '—',
+      power: z.timeS > 0 ? `${Math.round(z.mechanicalJ / z.timeS)} W` : '—',
       distanceM: z.distanceM,
     })),
     warning: runner.weightKg === null

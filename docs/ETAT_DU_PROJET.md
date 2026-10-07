@@ -127,7 +127,8 @@ Pas de hook d'orchestration : la page compose elle-même `useGpxSession`, `useSp
 - l'altitude des points : celle du terrain (IGN), rangée dans la fiche, sinon celle du GPS (`useTerrainElevation`, `applyTerrainElevation`, point 84). Tout ce qui suit en dépend ;
 - les pentes (`computeGrades`) et les zones (`computeZoneStats`) ;
 - les tops, quand le profil en a (le vélo seulement) ;
-- l'énergie, par `running/energy.ts` ou `cycling/energy.ts` selon le descripteur ;
+- l'énergie, par `running/energy.ts` ou `cycling/energy.ts` selon le descripteur, avec le temps et la puissance moyenne en mouvement de chaque zone de pente (point 85) ;
+- la trace colorée par la pente, pour « Voir sur la carte » sous le graphe d'altitude (`gradeColorPaths`, point 85), comme en planification ;
 - les séries des graphes, sur la plage du zoom (`useChartZoom`, point 73).
 
 ### 4.4 Couleur de la trace
@@ -197,7 +198,7 @@ Tracker/
 | `tracker.settingsSavedAt` | `hooks/useSessionLibrary.ts` | instant du dernier vrai changement des deux clés qui voyagent, en ms |
 | `tracker.memoryFolder` | `platform/memoryFolder.ts` | téléphone : `{ uri; base; label }` (`base` = `Tracker` si l'on a désigné son parent) |
 | `tracker.libraryCache` | `hooks/useSessionLibrary.ts` | `{ folder; entries: Record<fiche, { size; mtimeMs; record }> }`, reconstruit à volonté |
-| `tracker.sections` | `hooks/useOpenSections.ts` | `Record<moduleId, Record<section, boolean>>`. Modules lus : `running` (course), `cycling` (vélo), dont l'onglet `surface` (point 78), `running.energie` et `cycling.energie` (chiffres du panneau Énergie, point 76), `sailing-onglets`, `planning` (onglets sous la carte, seuls `profil` et `parcours` ouverts par défaut depuis le point 79 ; dont `surface`), `recording`, `settings`, `settings-activities`, `accueil.graphe` (totaux du graphe d'activités). `sailing` et `sailing-carte`, d'avant, ne sont plus lus |
+| `tracker.sections` | `hooks/useOpenSections.ts` | `Record<moduleId, Record<section, boolean>>`. Modules lus : `running` (course), `cycling` (vélo), dont l'onglet `surface` (point 78), `running.energie` et `cycling.energie` (chiffres du panneau Énergie, point 76, et tableau des zones, `zones`, point 85), `sailing-onglets`, `planning` (onglets sous la carte, seuls `profil` et `parcours` ouverts par défaut depuis le point 79 ; dont `surface`), `recording`, `settings`, `settings-activities`, `accueil.graphe` (totaux du graphe d'activités). `sailing` et `sailing-carte`, d'avant, ne sont plus lus |
 | `tracker.panelSizes` | `components/ResizablePanel.tsx` | `Record<panelId, { width?; height? }>` |
 | `tracker.followedTrace` | `hooks/useFollowedTrace.ts` | `{ name; source; activityId; points; marks?; markGuide? }`, gardée jusqu'à « Retirer » ; `marks` : les points posés d'un itinéraire (balises en voile), `markGuide` : ses bips propres (point 77) |
 | `tracker.planning` | `pages/PlanningPage.tsx` | `{ activityId?; view? }` ; un ancien `mode` y reste, ignoré : les cases suivent l'activité depuis le point 81 |
@@ -237,7 +238,7 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 | Altitude du terrain | `core/terrainElevation.ts` (`TERRAIN_ELEVATION_VERSION`), limites du service dans `planning/ignAltimetry.ts`, pas proposés dans `TERRAIN_STEP_CHOICES_M` de `core/sportProfiles.ts` (défaut du profil : `terrainElevationStepM`) |
 | Revêtement | `planning/surface.ts` (étiquettes OSM vers catégories), `WAY_MATCH_DEFAULTS` de `planning/wayMatch.ts` (rayon, marge de changement de voie, pas de la requête), `OVERPASS_MAX_COORDS` de `planning/overpass.ts` |
 | Direct | `LIVE_STATS_DEFAULTS`, `LIVE_LEG_DEFAULTS`, `FOLLOW_DEFAULTS`, `MARK_GUIDE_DEFAULTS` et `BEEP_CURVE_LIMITS` de `recording/` ; durées et hauteur des bips dans `platform/beeper.ts` et `BeeperPlugin.java` |
-| Affichage | `core/displayConfig.ts`, et `TEXT_SCALE_FACTOR` de `hooks/useSportSettings.ts` |
+| Affichage | `core/displayConfig.ts`, `TEXT_SCALE_FACTOR` de `hooks/useSportSettings.ts`, `GRADE_COLOR_STEPS` de `running/runningAnalytics.ts` (pente sur la carte) ; mise en page des analyses sur ordinateur : `--analysis-map-width` de `theme/tokens.css` et `HALF_PANEL_STYLE` de `components/styles.ts` (point 86) |
 
 ## 8. Tests
 
@@ -332,7 +333,7 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
   - accueil (point 53) ;
   - enregistrement en direct et bords (points 50, 53, 62) ;
   - APK des testeurs et `docs/INSTALLATION.md` (points 55, 62).
-- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76), parcours et balises en voile avec bips d'approche (77), revêtement des itinéraires et des sessions (78), retouches du 03/10 : zones de pente sur la carte, réglages par activité, sport secondaire, onglets et activité en planification, légende sur la carte, vignettes, choix d'activité dessiné, icône de la course (79), types de voie cochés, rangés selon la nature de la voie (80), types de voie cochés d'office par activité et activités Route, Gravel, VTT (81), revêtement sur la carte (82), types de voie appliqués à tout l'itinéraire (83), altitude de l'IGN pour la course et le vélo (84).
+- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76), parcours et balises en voile avec bips d'approche (77), revêtement des itinéraires et des sessions (78), retouches du 03/10 : zones de pente sur la carte, réglages par activité, sport secondaire, onglets et activité en planification, légende sur la carte, vignettes, choix d'activité dessiné, icône de la course (79), types de voie cochés, rangés selon la nature de la voie (80), types de voie cochés d'office par activité et activités Route, Gravel, VTT (81), revêtement sur la carte (82), types de voie appliqués à tout l'itinéraire (83), altitude de l'IGN pour la course et le vélo (84), pentes sur la carte et puissance par zone de pente (85), mise en page commune des analyses sur ordinateur (86).
 - **Phase 2, interface mobile** : trois passes faites (points 47 à 49, 52, 56 à 58, 69 ; patron dans `docs/MISE_EN_PAGE.md`). Restent :
   - toucher au lieu du survol, dans les graphes ;
   - `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz). Les regrouper par couleur toucherait à « pas de paliers » : à redemander ;

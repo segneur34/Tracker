@@ -10,8 +10,10 @@ import {
   classifyGrade,
   computeGrades,
   computeZoneStats,
+  gradeColorPaths,
   gradeGradientColor,
   gradeGradientStops,
+  gradeStepColor,
   gradeZonePaths,
   isValidGradeRange,
 } from './runningAnalytics';
@@ -258,5 +260,35 @@ describe('gradeGradientStops', () => {
     const stops = gradeGradientStops(rows, DEFAULT_GRADE_RANGE);
     expect(stops.map((s) => s.offset)).toEqual([0, 0.8, 1]);
     expect(stops[2].color).toBe(SLOW_COLOR);
+  });
+});
+
+describe('gradeColorPaths', () => {
+  const positions: [number, number][] = [0, 1, 2, 3, 4, 5].map((i) => [43.6, 3.8 + i * 0.001]);
+
+  it('fond en un trait les segments voisins de même couleur, le suivant reprenant la dernière position', () => {
+    const paths = gradeColorPaths(positions, [null, 0.05, 0.05, 0.05, 0.2, 0.2], DEFAULT_GRADE_RANGE);
+    expect(paths).toHaveLength(2);
+    expect(paths[0].positions).toEqual(positions.slice(0, 4));
+    expect(paths[1].positions).toEqual(positions.slice(3));
+    expect(paths[1].color).toBe(gradeStepColor(0.2, DEFAULT_GRADE_RANGE));
+  });
+
+  it('donne la même couleur à une montée et à une descente de même raideur, et à deux pentes du même palier', () => {
+    expect(gradeColorPaths(positions.slice(0, 4), [null, 0.1, -0.1, 0.101], DEFAULT_GRADE_RANGE)).toHaveLength(1);
+  });
+
+  it('met en gris une pente manquante ou sous la borne basse', () => {
+    const paths = gradeColorPaths(positions.slice(0, 3), [null, NaN, 0.01], { min: 0.03, max: 0.25 });
+    expect(paths).toEqual([{ color: SLOW_COLOR, positions: positions.slice(0, 3) }]);
+  });
+
+  it('ramène la raideur au palier le plus proche, saturé au-delà de la borne haute', () => {
+    expect(gradeStepColor(0.4, DEFAULT_GRADE_RANGE)).toBe(gradientColor(1));
+    expect(gradeStepColor(0.1, DEFAULT_GRADE_RANGE, 4)).toBe(gradientColor(0.5));
+  });
+
+  it('ne rend rien pour moins de deux positions', () => {
+    expect(gradeColorPaths(positions.slice(0, 1), [0.1], DEFAULT_GRADE_RANGE)).toEqual([]);
   });
 });

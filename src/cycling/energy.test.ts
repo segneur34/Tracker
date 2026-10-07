@@ -123,4 +123,14 @@ describe('computeCyclingEnergy', () => {
     const rGravel = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 0);
     expect(rMtb.mechanicalJ).toBeGreaterThan(rGravel.mechanicalJ);
   });
+
+  it('donne à chaque zone son temps : leur somme fait le temps en mouvement, et la montée pousse plus de watts', () => {
+    const track = buildTrack(1200, () => 5, 1, (m) => (m < 3000 ? 100 + 0.07 * m : 310));
+    const result = computeCyclingEnergy(track, gradesOf(track), allMoving(track), ROAD, 0);
+    expect(result.zones.reduce((s, z) => s + z.timeS, 0)).toBeCloseTo(result.movingTimeS, 6);
+    expect(result.zones.reduce((s, z) => s + z.mechanicalJ, 0)).toBeCloseTo(result.mechanicalJ, 6);
+    const up = result.zones.find((z) => z.zone.key === 'up')!;
+    const flat = result.zones.find((z) => z.zone.key === 'flat')!;
+    expect(up.mechanicalJ / up.timeS).toBeGreaterThan(2 * (flat.mechanicalJ / flat.timeS));
+  });
 });

@@ -74,6 +74,10 @@
   --space-5: 20px;
   --space-6: 24px;
 
+  /* Pages d'analyse, sur ordinateur : largeur de la carte, centrée, la place de part et d'autre
+     servant à faire défiler la page à la souris (`analysisMobile.css`). */
+  --analysis-map-width: 80%;
+
   /* Navigation */
   --topbar-h: 56px;
   --tabbar-h: 64px;
