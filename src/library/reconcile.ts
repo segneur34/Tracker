@@ -1,4 +1,5 @@
 import type { FolderEntry } from '../platform/memoryFolder';
+import { MARKER_FILE, SETTINGS_FILE } from './folderLayout';
 import { isGpxFileName, recordFileName, type SessionRecord } from './record';
 
 /**
@@ -35,6 +36,12 @@ export interface ReconcilePlan {
   orphanRecords: string[];
   /** GPX posés à la racine du dossier : à ranger dans `sessions/`. */
   rootGpx: string[];
+  /**
+   * Fiche posée à la racine à côté d'un de ces GPX, par nom de GPX : elle le
+   * suit dans `sessions/` (activité, nom, notes, altitude, revêtement gardés).
+   * Le marqueur et les réglages ne sont jamais pris pour une fiche.
+   */
+  rootRecords: Record<string, string>;
 }
 
 const isRecordFileName = (name: string): boolean => /\.json$/i.test(name);
@@ -52,7 +59,7 @@ export const planReconcile = (
     .sort();
   const gpxRecordNames = new Set(gpxFiles.map(recordFileName));
 
-  const plan: ReconcilePlan = { gpxFiles, reuse: {}, read: [], summarize: [], orphanRecords: [], rootGpx: [] };
+  const plan: ReconcilePlan = { gpxFiles, reuse: {}, read: [], summarize: [], orphanRecords: [], rootGpx: [], rootRecords: {} };
   for (const gpx of gpxFiles) {
     const entry = records.get(recordFileName(gpx));
     if (!entry) {
@@ -68,5 +75,10 @@ export const planReconcile = (
     .filter((e) => e.kind === 'file' && isGpxFileName(e.name))
     .map((e) => e.name)
     .sort();
+  const rootFiles = new Set(rootEntries.filter((e) => e.kind === 'file').map((e) => e.name));
+  for (const gpx of plan.rootGpx) {
+    const name = recordFileName(gpx);
+    if (rootFiles.has(name) && name !== MARKER_FILE && name !== SETTINGS_FILE) plan.rootRecords[gpx] = name;
+  }
   return plan;
 };

@@ -1,5 +1,6 @@
 import { segmentDistanceM } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
+import type { SurfaceCategory } from '../planning/surface';
 import { GRADE_ZONES, classifyGrade, type GradeZone, type GradeZoneKey } from '../running/runningAnalytics';
 
 /**
@@ -19,17 +20,27 @@ import { GRADE_ZONES, classifyGrade, type GradeZone, type GradeZoneKey } from '.
  * Le coût pour l'organisme est le travail mécanique divisé par le rendement
  * musculaire net (repos déduit, autour de 25 %) ; le repos s'ajoute sur toute
  * la durée, comme en course.
+ *
+ * Le roulement dépend des pneus et du sol : chaque type de vélo a un Crr par
+ * revêtement (`crrBySurface`), pris segment par segment quand le revêtement
+ * de la trace est connu ; ailleurs, son Crr moyen (`crr`).
  */
 
-/** Type de vélo : il fixe le roulement, la traînée et le poids du vélo par défaut. */
+/** Type de vélo, c'est-à-dire surtout ses pneus : il fixe le roulement, la traînée et le poids du vélo par défaut. */
 export type BikeType = 'route' | 'gravel' | 'vtt' | 'ville';
 
 export interface BikeSpec {
   label: string;
   /** Nom dans une phrase, en minuscules sauf un sigle. */
   noun: string;
-  /** Coefficient de résistance au roulement. */
+  /**
+   * Coefficient de résistance au roulement moyen, sur le terrain habituel du
+   * vélo : celui d'un revêtement inconnu, de l'enregistrement en direct et du
+   * temps estimé des itinéraires.
+   */
   crr: number;
+  /** Coefficient de roulement par revêtement ; un revêtement absent (« autre », « inconnu ») prend `crr`. */
+  crrBySurface: Partial<Record<SurfaceCategory, number>>;
   /** Surface de traînée (coefficient × surface frontale), en m². */
   cdaM2: number;
   /** Poids du vélo par défaut, en kg. */
@@ -43,13 +54,40 @@ export interface BikeSpec {
  * position mains en bas des cocottes ; pneus larges sur chemin et position
  * plus droite ; VTT, pneus à crampons, buste plus droit encore, descentes
  * plus lentes sur sentier ; vélo de ville, pneus épais et buste redressé.
+ *
+ * Roulement par revêtement : le pneu fin roule le mieux sur l'asphalte et
+ * perd le plus quand le sol se dégrade (pavés, terre, herbe, sable) ; le pneu
+ * large ou à crampons perd moins. Ordres de grandeur, à confirmer à l'usage.
  */
 export const BIKE_TYPES: Record<BikeType, BikeSpec> = {
-  route: { label: 'Route', noun: 'route', crr: 0.004, cdaM2: 0.32, bikeKg: 8.5, maxDescentMs: 55 / 3.6 },
-  gravel: { label: 'Gravel', noun: 'gravel', crr: 0.008, cdaM2: 0.45, bikeKg: 12, maxDescentMs: 35 / 3.6 },
-  vtt: { label: 'VTT', noun: 'VTT', crr: 0.012, cdaM2: 0.5, bikeKg: 13, maxDescentMs: 30 / 3.6 },
-  ville: { label: 'Ville', noun: 'ville', crr: 0.007, cdaM2: 0.55, bikeKg: 16, maxDescentMs: 30 / 3.6 },
+  route: {
+    label: 'Route', noun: 'route', crr: 0.004, cdaM2: 0.32, bikeKg: 8.5, maxDescentMs: 55 / 3.6,
+    crrBySurface: {
+      asphalte: 0.004, pierresPlates: 0.006, paves: 0.012, gravillon: 0.01, nonPave: 0.014, terre: 0.016, herbe: 0.03, sable: 0.06, alpin: 0.03,
+    },
+  },
+  gravel: {
+    label: 'Gravel', noun: 'gravel', crr: 0.008, cdaM2: 0.45, bikeKg: 12, maxDescentMs: 35 / 3.6,
+    crrBySurface: {
+      asphalte: 0.005, pierresPlates: 0.006, paves: 0.009, gravillon: 0.008, nonPave: 0.01, terre: 0.012, herbe: 0.02, sable: 0.04, alpin: 0.02,
+    },
+  },
+  vtt: {
+    label: 'VTT', noun: 'VTT', crr: 0.012, cdaM2: 0.5, bikeKg: 13, maxDescentMs: 30 / 3.6,
+    crrBySurface: {
+      asphalte: 0.008, pierresPlates: 0.009, paves: 0.01, gravillon: 0.01, nonPave: 0.011, terre: 0.012, herbe: 0.018, sable: 0.03, alpin: 0.016,
+    },
+  },
+  ville: {
+    label: 'Ville', noun: 'ville', crr: 0.007, cdaM2: 0.55, bikeKg: 16, maxDescentMs: 30 / 3.6,
+    crrBySurface: {
+      asphalte: 0.006, pierresPlates: 0.007, paves: 0.011, gravillon: 0.01, nonPave: 0.013, terre: 0.015, herbe: 0.025, sable: 0.05, alpin: 0.025,
+    },
+  },
 };
+
+/** Coefficient de roulement tel qu'il s'affiche : « 0,005 ». */
+export const formatCrr = (crr: number): string => crr.toLocaleString('fr-FR', { maximumFractionDigits: 4 });
 
 export const isBikeType = (value: unknown): value is BikeType =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(BIKE_TYPES, value);
@@ -58,7 +96,10 @@ export const isBikeType = (value: unknown): value is BikeType =>
 export const REFERENCE_RIDER_KG = 75;
 
 export interface CyclingEnergyParams {
+  /** Roulement moyen, celui d'un revêtement inconnu. */
   crr: number;
+  /** Roulement par revêtement, quand celui de la trace est connu ; absent : `crr` partout. */
+  crrBySurface?: Partial<Record<SurfaceCategory, number>>;
   cdaM2: number;
   /** Masse totale pratiquant + vélo, en kg. */
   totalMassKg: number;
@@ -84,17 +125,23 @@ export const DEFAULT_CYCLING_PARAMS: Omit<CyclingEnergyParams, 'crr' | 'cdaM2' |
 export const cyclingEnergyParams = (bike: BikeType, bikeKg: number, riderKg: number): CyclingEnergyParams => ({
   ...DEFAULT_CYCLING_PARAMS,
   crr: BIKE_TYPES[bike].crr,
+  crrBySurface: BIKE_TYPES[bike].crrBySurface,
   cdaM2: BIKE_TYPES[bike].cdaM2,
   totalMassKg: riderKg + bikeKg,
 });
 
+/** Roulement sur un revêtement : celui du tableau, sinon (revêtement inconnu, absent du tableau) le roulement moyen. */
+export const rollingCoefficient = (params: CyclingEnergyParams, surface?: SurfaceCategory | null): number =>
+  (surface ? params.crrBySurface?.[surface] : undefined) ?? params.crr;
+
 /**
  * Force résistante, en N, à la vitesse et à la pente données (`NaN` compte
- * comme plat). Négative dans une descente assez raide : la pente pousse.
+ * comme plat), avec le roulement `crr` (le moyen par défaut). Négative dans
+ * une descente assez raide : la pente pousse.
  */
-export const resistiveForceN = (speedMs: number, grade: number, params: CyclingEnergyParams): number => {
+export const resistiveForceN = (speedMs: number, grade: number, params: CyclingEnergyParams, crr = params.crr): number => {
   const theta = Math.atan(isFinite(grade) ? grade : 0);
-  const gravityAndRolling = params.totalMassKg * params.gravityMs2 * (params.crr * Math.cos(theta) + Math.sin(theta));
+  const gravityAndRolling = params.totalMassKg * params.gravityMs2 * (crr * Math.cos(theta) + Math.sin(theta));
   const air = 0.5 * params.airDensityKgM3 * params.cdaM2 * speedMs * speedMs;
   return gravityAndRolling + air;
 };
@@ -126,6 +173,11 @@ export interface CyclingEnergyResult {
   totalJ: number;
   movingTimeS: number;
   movingDistanceM: number;
+  /**
+   * Distance en mouvement par revêtement, en m, quand le revêtement est donné
+   * (vide sinon) : ceux du tableau ont pris leur roulement, les autres le moyen.
+   */
+  surfaceDistanceM: Partial<Record<SurfaceCategory, number>>;
   zones: CyclingEnergyZone[];
 }
 
@@ -135,13 +187,18 @@ export interface CyclingEnergyResult {
  * et ce travail divisé par le rendement musculaire pour l'organisme ; le
  * repos (`restW`, en W) court sur toute la durée. Une pente manquante compte
  * comme plate, et son segment va dans la zone plate.
+ *
+ * `surfaces`, quand le revêtement est connu : celui de chaque segment, rangé
+ * comme `trackSurfaceStretches` (`surfaces[i - 1]` pour le segment `i - 1 → i`).
+ * Chaque segment prend alors le roulement de son revêtement (`rollingCoefficient`).
  */
 export const computeCyclingEnergy = (
   track: TrackPoint[],
   grades: number[],
   activityMask: boolean[],
   params: CyclingEnergyParams,
-  restW: number
+  restW: number,
+  surfaces?: ReadonlyArray<SurfaceCategory>
 ): CyclingEnergyResult => {
   const n = track.length;
   const mechanicalPowerW = new Array<number>(n).fill(NaN);
@@ -158,6 +215,7 @@ export const computeCyclingEnergy = (
   let restJ = 0;
   let movingTimeS = 0;
   let movingDistanceM = 0;
+  const surfaceDistanceM: Partial<Record<SurfaceCategory, number>> = {};
 
   for (let i = 1; i < n; i++) {
     const dt = (track[i].timeMs - track[i - 1].timeMs) / 1000;
@@ -171,7 +229,10 @@ export const computeCyclingEnergy = (
     if (activityMask[i]) {
       const d = segmentDistanceM(track, i);
       const grade = grades[i] ?? NaN;
-      const work = Math.max(0, resistiveForceN(track[i].speedMs, grade, params) * d) / params.drivetrainEfficiency;
+      const surface = surfaces?.[i - 1];
+      const crr = rollingCoefficient(params, surface);
+      const work = Math.max(0, resistiveForceN(track[i].speedMs, grade, params, crr) * d) / params.drivetrainEfficiency;
+      if (surface) surfaceDistanceM[surface] = (surfaceDistanceM[surface] ?? 0) + d;
       net = work / params.muscleEfficiency;
       mechanicalPowerW[i] = work / dt;
       mechanicalJ += work;
@@ -196,6 +257,7 @@ export const computeCyclingEnergy = (
     totalJ: netJ + restJ,
     movingTimeS,
     movingDistanceM,
+    surfaceDistanceM,
     zones: GRADE_ZONES.map((zone) => ({
       zone,
       ...byZone[zone.key],

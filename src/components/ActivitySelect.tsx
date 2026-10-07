@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
-import { IconBike, IconChevronRight, IconRun, IconSail } from './icons';
+import { FAMILY_ICON } from './familyIcons';
+import { IconChevronRight } from './icons';
 import './ActivitySelect.css';
 
 /**
@@ -15,8 +16,88 @@ import './ActivitySelect.css';
  * Une liste dessinée par l'application plutôt qu'un menu natif : celui
  * d'Android range mal les groupes (traits entre les activités d'une même
  * famille, aucun entre les familles). Ici, la famille à gauche, ses activités
- * décalées dessous, un trait entre deux familles.
+ * décalées dessous, un trait entre deux familles. La liste seule
+ * (`ActivitySheet`) s'ouvre aussi sans bouton : demander l'activité d'une
+ * session à classer avant de l'analyser.
  */
+
+interface ActivitySheetProps {
+  activities: Activity[];
+  /** Identifiant de l'activité choisie, `null` si aucune. */
+  value: string | null;
+  /** Familles proposées ; toutes par défaut. */
+  families?: SportFamily[];
+  label?: string;
+  /** Question posée en tête de la liste, et sa précision. */
+  heading?: { title: string; hint?: string };
+  onChoose: (activity: Activity) => void;
+  onClose: () => void;
+}
+
+/** Liste des activités par famille, par-dessus la page ; Échap ou un appui à côté la ferme. */
+export function ActivitySheet({ activities, value, families = SPORT_FAMILIES, label, heading, onChoose, onClose }: ActivitySheetProps) {
+  const selectedRef = useRef<HTMLButtonElement>(null);
+  const groups = families
+    .map((family) => ({ family, items: activitiesOfFamily(activities, family) }))
+    .filter((g) => g.items.length > 0);
+
+  // Une fois à l'ouverture : la page dessous peut se redessiner (chaque seconde à l'enregistrement)
+  // sans ramener le focus ; le dernier `onClose` est lu au moment d'Échap.
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+  useEffect(() => {
+    selectedRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  return createPortal(
+    <div className="activity-select__backdrop" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+      <div className="activity-select__sheet" role="listbox" aria-label={heading?.title ?? label ?? 'Activité'} onClick={(e) => e.stopPropagation()}>
+        {heading && (
+          <div className="activity-select__heading">
+            <strong>{heading.title}</strong>
+            {heading.hint && <span>{heading.hint}</span>}
+          </div>
+        )}
+        {groups.map(({ family, items }) => {
+          const Icon = FAMILY_ICON[family];
+          return (
+            <div key={family} className="activity-select__group" role="group" aria-label={FAMILY_LABEL[family]}>
+              <div className="activity-select__family" style={{ color: FAMILY_ACCENT[family] }}>
+                <Icon size={20} />
+                {FAMILY_LABEL[family]}
+              </div>
+              {items.map((a) => {
+                const selected = a.id === value;
+                return (
+                  <button
+                    key={a.id}
+                    ref={selected ? selectedRef : undefined}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    className="activity-select__option"
+                    onClick={() => onChoose(a)}>
+                    <span className="activity-select__dot" style={{ backgroundColor: a.color }} />
+                    <span className="activity-select__option-name">{a.name}</span>
+                    <span className="activity-select__radio" aria-hidden="true" />
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 interface ActivitySelectProps {
   activities: Activity[];
@@ -34,28 +115,12 @@ interface ActivitySelectProps {
   label?: string;
 }
 
-const FAMILY_ICON: Record<SportFamily, ComponentType<{ size?: number }>> = { voile: IconSail, course: IconRun, velo: IconBike };
-
 function ActivitySelect({
-  activities, value, onChange, extra, families = SPORT_FAMILIES, placeholder, disabled, className = 'ui-field ui-field--s', label,
+  activities, value, onChange, extra, families, placeholder, disabled, className = 'ui-field ui-field--s', label,
 }: ActivitySelectProps) {
   const [open, setOpen] = useState(false);
-  const selectedRef = useRef<HTMLButtonElement>(null);
   const list = extra && !activities.some((a) => a.id === extra.id) ? [...activities, extra] : activities;
-  const groups = families
-    .map((family) => ({ family, items: activitiesOfFamily(list, family) }))
-    .filter((g) => g.items.length > 0);
   const current = list.find((a) => a.id === value) ?? null;
-
-  useEffect(() => {
-    if (!open) return;
-    selectedRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
 
   const choose = (activity: Activity) => {
     setOpen(false);
@@ -79,40 +144,8 @@ function ActivitySelect({
         <IconChevronRight size={14} className="activity-select__chevron" />
       </button>
 
-      {open && createPortal(
-        <div className="activity-select__backdrop" onClick={(e) => { e.stopPropagation(); setOpen(false); }}>
-          <div className="activity-select__sheet" role="listbox" aria-label={label ?? 'Activité'} onClick={(e) => e.stopPropagation()}>
-            {groups.map(({ family, items }) => {
-              const Icon = FAMILY_ICON[family];
-              return (
-                <div key={family} className="activity-select__group" role="group" aria-label={FAMILY_LABEL[family]}>
-                  <div className="activity-select__family" style={{ color: FAMILY_ACCENT[family] }}>
-                    <Icon size={20} />
-                    {FAMILY_LABEL[family]}
-                  </div>
-                  {items.map((a) => {
-                    const selected = a.id === value;
-                    return (
-                      <button
-                        key={a.id}
-                        ref={selected ? selectedRef : undefined}
-                        type="button"
-                        role="option"
-                        aria-selected={selected}
-                        className="activity-select__option"
-                        onClick={() => choose(a)}>
-                        <span className="activity-select__dot" style={{ backgroundColor: a.color }} />
-                        <span className="activity-select__option-name">{a.name}</span>
-                        <span className="activity-select__radio" aria-hidden="true" />
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        </div>,
-        document.body
+      {open && (
+        <ActivitySheet activities={list} value={value} families={families} label={label} onChoose={choose} onClose={() => setOpen(false)} />
       )}
     </>
   );

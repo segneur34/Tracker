@@ -1,5 +1,6 @@
 import {
   canChooseMemoryFolder,
+  canImportSessions,
   chooseFolder,
   dismissLibraryMessage,
   reconnectFolder,
@@ -7,7 +8,9 @@ import {
   useSessionLibrary,
 } from '../hooks/useSessionLibrary';
 import { isNativeApp } from '../platform/runtime';
+import ImportButtons from './ImportButtons';
 import PanelTitle from './PanelTitle';
+import RefreshLibraryButton from './RefreshLibraryButton';
 import Button from './ui/Button';
 import Card from './ui/Card';
 
@@ -17,6 +20,11 @@ import Card from './ui/Card';
  * Réglages en version détaillée (changer de dossier, réglages, mode d'emploi
  * du copier-coller). Avec `collapse`, la carte se replie par son titre et ne
  * garde, fermée, que sa ligne d'état et ses alertes.
+ *
+ * Dans Réglages, « Mettre à jour » (`RefreshLibraryButton`) et « Ajouter les
+ * sessions d'un dossier » (`ImportButtons`) suivent la ligne d'état, carte
+ * repliée comprise ; dans les bibliothèques, ils sont dans la rangée des
+ * imports.
  */
 
 const plural = (n: number, word: string): string => `${n} ${word}${n > 1 ? 's' : ''}`;
@@ -53,6 +61,19 @@ function MemoryStatus({
     }
   })();
 
+  /** Ligne d'état ; dans Réglages, « Mettre à jour » et l'import d'un dossier dessous. */
+  const statusLine = (
+    <>
+      <p style={{ margin: 0, fontSize: 'var(--text-m)', fontWeight: 600 }}>{headline}</p>
+      {detailed && canImportSessions(library) && (
+        <div style={rowStyle}>
+          <RefreshLibraryButton />
+          <ImportButtons gpx={false} />
+        </div>
+      )}
+    </>
+  );
+
   const alert = (library.message || library.error) && (
     <div className={`ui-alert ${library.error ? 'ui-alert--danger' : 'ui-alert--success'}`}>
       {library.error ?? library.message}{' '}
@@ -66,7 +87,7 @@ function MemoryStatus({
     return (
       <Card heading={heading}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          <p style={{ margin: 0, fontSize: 'var(--text-m)', fontWeight: 600 }}>{headline}</p>
+          {statusLine}
           {alert}
         </div>
       </Card>
@@ -76,7 +97,7 @@ function MemoryStatus({
   return (
     <Card heading={heading}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-        <p style={{ margin: 0, fontSize: 'var(--text-m)', fontWeight: 600 }}>{headline}</p>
+        {statusLine}
 
         {library.scanning && (
           <p style={mutedStyle}>

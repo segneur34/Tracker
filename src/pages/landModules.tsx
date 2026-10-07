@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import type { TrackPoint } from '../core/types';
 import { J_PER_KCAL } from '../core/units';
 import {
-  BIKE_TYPES, REFERENCE_RIDER_KG, computeCyclingEnergy, cyclingEnergyParams, type BikeType,
+  BIKE_TYPES, REFERENCE_RIDER_KG, computeCyclingEnergy, cyclingEnergyParams, formatCrr, type BikeType,
 } from '../cycling/energy';
 import type { RunnerProfile } from '../hooks/useRunnerProfile';
+import type { SurfaceSearchStatus } from '../hooks/useSessionSurfaces';
+import { SURFACE_LABEL, type SurfaceCategory, type SurfaceStretch } from '../planning/surface';
 import { DEFAULT_ENERGY_PARAMS, computeEnergy, restingPowerWkg, runningEnergyParams } from '../running/energy';
 import type { GradeZone } from '../running/runningAnalytics';
 
@@ -61,6 +63,8 @@ export interface EnergyInputs {
   age: number | null;
   bikeType: BikeType;
   bikeWeightKg: number;
+  /** Revêtement des voies suivies : état de la recherche, et revêtement de chaque segment une fois connu. */
+  surfaces: { status: SurfaceSearchStatus; stretches: SurfaceStretch[] | null };
 }
 
 export interface LandModuleConfig {
@@ -80,6 +84,11 @@ export interface LandModuleConfig {
   energyLabel: string;
   /** Avertissement d'un fichier sans altitude, sous les chiffres d'énergie. */
   flatWarning: string;
+  /**
+   * Revêtement demandé dès l'ouverture de l'analyse, pour l'énergie (le
+   * roulement à vélo) ; sinon à la première ouverture de l'onglet « surface ».
+   */
+  surfacesAtOpening: boolean;
   energy: (inputs: EnergyInputs) => EnergyView;
 }
 
@@ -141,17 +150,49 @@ const runningEnergy = ({ track, grades, activityMask, runner, age }: EnergyInput
 };
 
 /**
- * Vélo : modèle physique en valeurs absolues (`cycling/energy.ts`), sur la
- * masse du pratiquant (de référence s'il n'est pas renseigné) et du vélo.
+ * Roulement de la sortie, dans la note du panneau : celui de chaque revêtement
+ * parcouru, du plus long au plus court, et la part de la distance qu'ils
+ * couvrent ; ailleurs, le roulement moyen du vélo.
  */
-const cyclingEnergy = ({ track, grades, activityMask, runner, age, bikeType, bikeWeightKg }: EnergyInputs): EnergyView => {
+const rollingNote = (bikeType: BikeType, surfaceDistanceM: Partial<Record<SurfaceCategory, number>>, movingDistanceM: number): string => {
+  const bike = BIKE_TYPES[bikeType];
+  const nominal = `roulement moyen du vélo ${bike.noun}, ${formatCrr(bike.crr)}`;
+  const known = (Object.entries(surfaceDistanceM) as [SurfaceCategory, number][])
+    .filter(([category, m]) => m > 0 && bike.crrBySurface[category] !== undefined)
+    .sort((a, b) => b[1] - a[1]);
+  if (known.length === 0 || movingDistanceM <= 0) return `Revêtement inconnu : ${nominal}.`;
+  const knownM = known.reduce((sum, [, m]) => sum + m, 0);
+  const percent = Math.round((knownM / movingDistanceM) * 100);
+  const list = known.map(([category]) => `${SURFACE_LABEL[category].toLowerCase()} ${formatCrr(bike.crrBySurface[category]!)}`).join(', ');
+  return percent >= 100
+    ? `Roulement selon le revêtement (OpenStreetMap) : ${list}.`
+    : `Roulement selon le revêtement (OpenStreetMap) sur ${percent} % de la distance : ${list} ; ailleurs, ${nominal}.`;
+};
+
+/**
+ * Vélo : modèle physique en valeurs absolues (`cycling/energy.ts`), sur la
+ * masse du pratiquant (de référence s'il n'est pas renseigné) et du vélo, et
+ * le roulement de ses pneus sur chaque revêtement, une fois celui-ci connu.
+ */
+const cyclingEnergy = ({ track, grades, activityMask, runner, age, bikeType, bikeWeightKg, surfaces }: EnergyInputs): EnergyView => {
   const riderKg = runner.weightKg ?? REFERENCE_RIDER_KG;
   const params = cyclingEnergyParams(bikeType, bikeWeightKg, riderKg);
   const restW = restingPowerWkg(runner, age, DEFAULT_ENERGY_PARAMS) * riderKg;
-  const energy = computeCyclingEnergy(track, grades, activityMask, params, restW);
+  const energy = computeCyclingEnergy(track, grades, activityMask, params, restW, surfaces.stretches?.map((s) => s.category));
   const kcal = (j: number) => String(Math.round(j / J_PER_KCAL));
   const kj = (j: number) => `${Math.round(j / 1000)} kJ`;
   const bike = BIKE_TYPES[bikeType];
+  const weightWarning = runner.weightKg === null
+    ? <>Poids non renseigné : calcul pour un cycliste de {REFERENCE_RIDER_KG} kg. Il se saisit dans <Link to="/parametres">Réglages</Link>, bloc Pratiquant.</>
+    : null;
+  const nominal = `roulement moyen du vélo ${bike.noun} (${formatCrr(bike.crr)})`;
+  const surfaceWarning = surfaces.stretches
+    ? null
+    : surfaces.status === 'searching'
+      ? `Revêtement en cours de recherche (OpenStreetMap) : ${nominal} partout en attendant.`
+      : surfaces.status === 'error'
+        ? `Revêtement introuvable : ${nominal} partout. L'onglet surface permet de réessayer.`
+        : null;
   return {
     power: energy.mechanicalPowerW,
     powerUnit: 'W',
@@ -175,11 +216,12 @@ const cyclingEnergy = ({ track, grades, activityMask, runner, age, bikeType, bik
       power: z.timeS > 0 ? `${Math.round(z.mechanicalJ / z.timeS)} W` : '—',
       distanceM: z.distanceM,
     })),
-    warning: runner.weightKg === null
-      ? <>Poids non renseigné : calcul pour un cycliste de {REFERENCE_RIDER_KG} kg. Il se saisit dans <Link to="/parametres">Réglages</Link>, bloc Pratiquant.</>
-      : null,
+    warning: weightWarning && surfaceWarning
+      ? <>{weightWarning}<br />{surfaceWarning}</>
+      : weightWarning ?? surfaceWarning,
     note:
-      `Pesanteur, roulement et air par air calme (vélo ${bike.noun} : Crr ${bike.crr}, CdA ${bike.cdaM2} m², ${bikeWeightKg} kg ; masse totale ${Math.round(params.totalMassKg * 10) / 10} kg), transmission ${Math.round(params.drivetrainEfficiency * 100)} % ; rien en roue libre ni à l'arrêt.` +
+      `Pesanteur, roulement et air par air calme (vélo ${bike.noun} : CdA ${bike.cdaM2} m², ${bikeWeightKg} kg ; masse totale ${Math.round(params.totalMassKg * 10) / 10} kg), transmission ${Math.round(params.drivetrainEfficiency * 100)} % ; rien en roue libre ni à l'arrêt.` +
+      ` ${rollingNote(bikeType, energy.surfaceDistanceM, energy.movingDistanceM)}` +
       ` Énergie de pédalage : travail mécanique sur un rendement musculaire de ${Math.round(params.muscleEfficiency * 100)} %.` +
       ` Repos : ${Math.round(restW)} W, ${runner.weightKg !== null && runner.heightCm !== null && runner.sex !== null && age !== null ? 'selon poids, taille, âge et sexe' : 'valeur moyenne (1 MET) faute de profil complet'}, sur toute la durée.`,
   };
@@ -196,6 +238,7 @@ export const LAND_MODULES: Record<LandFamily, LandModuleConfig> = {
     zonesTitle: 'Allure par zone de pente',
     energyLabel: 'Énergie',
     flatWarning: 'Sans altitude dans le fichier, la course est comptée comme plate.',
+    surfacesAtOpening: false,
     energy: runningEnergy,
   },
   velo: {
@@ -208,6 +251,7 @@ export const LAND_MODULES: Record<LandFamily, LandModuleConfig> = {
     zonesTitle: 'Vitesse par zone de pente',
     energyLabel: 'Énergie',
     flatWarning: 'Sans altitude dans le fichier, la sortie est comptée comme plate.',
+    surfacesAtOpening: true,
     energy: cyclingEnergy,
   },
 };

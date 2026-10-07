@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_ACTIVITIES, GRAVEL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityCounts, baseActivity, findActivity, newActivityId,
+  DEFAULT_ACTIVITIES, GRAVEL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityCounts, baseActivity, findActivity, insertActivity, newActivityId,
   nextActivityColor, readActivities, sessionActivity, upgradeActivities, type Activity,
 } from './activities';
 
@@ -62,6 +62,25 @@ describe('upgradeActivities', () => {
   it('ne change plus rien une fois faite', () => {
     const once = upgradeActivities([sail, oldCycling, run, trail]);
     expect(upgradeActivities(once)).toEqual(once);
+  });
+});
+
+describe('insertActivity', () => {
+  const [sail, run, route, gravel, vtt] = DEFAULT_ACTIVITIES;
+  const names = (list: Activity[]) => list.map((a) => a.name);
+
+  it('range une activité après la dernière de sa famille', () => {
+    expect(names(insertActivity(DEFAULT_ACTIVITIES, moth))).toEqual(['Voile', 'Moth à foil', 'Course', 'Route', 'Gravel', 'VTT']);
+    expect(names(insertActivity(DEFAULT_ACTIVITIES, trail))).toEqual(['Voile', 'Course', 'Trail', 'Route', 'Gravel', 'VTT']);
+    const tandem: Activity = { id: 'a-tandem', name: 'Tandem', base: 'cycling', color: '#ad1457' };
+    expect(names(insertActivity(DEFAULT_ACTIVITIES, tandem))).toEqual(['Voile', 'Course', 'Route', 'Gravel', 'VTT', 'Tandem']);
+  });
+
+  it('sans activité de sa famille, la place avant les familles qui la suivent', () => {
+    expect(names(insertActivity([route, gravel, vtt], trail))).toEqual(['Trail', 'Route', 'Gravel', 'VTT']);
+    expect(names(insertActivity([run, route], sail))).toEqual(['Voile', 'Course', 'Route']);
+    expect(names(insertActivity([sail], vtt))).toEqual(['Voile', 'VTT']);
+    expect(names(insertActivity([], moth))).toEqual(['Moth à foil']);
   });
 });
 

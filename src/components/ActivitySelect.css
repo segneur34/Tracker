@@ -119,3 +119,18 @@
 .activity-select__option[aria-selected='true'] .activity-select__radio {
   border: 5px solid var(--ink);
 }
+
+/* Question posée en tête de la liste, quand elle s'ouvre seule (session à classer). */
+.activity-select__heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--line-strong);
+  font-size: var(--text-m);
+}
+
+.activity-select__heading span {
+  color: var(--muted);
+  font-size: var(--text-s);
+}

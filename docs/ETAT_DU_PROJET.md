@@ -127,7 +127,7 @@ Pas de hook d'orchestration : la page compose elle-même `useGpxSession`, `useSp
 - l'altitude des points : celle du terrain (IGN), rangée dans la fiche, sinon celle du GPS (`useTerrainElevation`, `applyTerrainElevation`, point 84). Tout ce qui suit en dépend ;
 - les pentes (`computeGrades`) et les zones (`computeZoneStats`) ;
 - les tops, quand le profil en a (le vélo seulement) ;
-- l'énergie, par `running/energy.ts` ou `cycling/energy.ts` selon le descripteur, avec le temps et la puissance moyenne en mouvement de chaque zone de pente (point 85) ;
+- l'énergie, par `running/energy.ts` ou `cycling/energy.ts` selon le descripteur, avec le temps et la puissance moyenne en mouvement de chaque zone de pente (point 85) ; à vélo, le roulement suit le revêtement de chaque segment (`useSessionSurfaces`, demandé dès l'ouverture, point 88), le Crr moyen du vélo là où il est inconnu ;
 - la trace colorée par la pente, pour « Voir sur la carte » sous le graphe d'altitude (`gradeColorPaths`, point 85), comme en planification ;
 - les séries des graphes, sur la plage du zoom (`useChartZoom`, point 73).
 
@@ -165,7 +165,7 @@ Tracker/
   - le nombre de manœuvres de la dernière analyse ;
   - le nom donné (`name`) et les notes ;
   - les saisies de la session (`analysis { windDeg; activeThreshold; referenceSpeedMs; speedRange; savedAt }`, `null` pour le défaut) ;
-  - en course et à vélo, les voies suivies (`surfaces`, point 78) : demandées à OpenStreetMap à la première ouverture de l'onglet « surface », écrites hors brouillon, refaites si `WAY_MATCH_VERSION` a augmenté ;
+  - en course et à vélo, les voies suivies (`surfaces`, point 78) : demandées à OpenStreetMap à la première ouverture de l'onglet « surface », dès l'ouverture de l'analyse à vélo (point 88), écrites hors brouillon, refaites si `WAY_MATCH_VERSION` a augmenté ;
   - en course et à vélo, l'altitude du terrain (`terrainElevation`, point 84) : échantillons de l'IGN, un tous les 5, 10 ou 20 m, repérés par leur instant (`t`, en ms depuis `startMs`) avec leur altitude (`z`, `null` hors couverture). Demandée à l'ouverture de l'analyse, écrite hors brouillon, redemandée si le pas réglé ou `TERRAIN_ELEVATION_VERSION` change ; `elevationSource: 'gps'` quand la session garde l'altitude du GPS. Changer l'un ou l'autre recalcule le résumé.
 
   Tout le reste se recalcule : une fiche dont `calcVersion` est dépassé est recalculée, saisies intactes. Le résumé suit le seuil de la session. `applyRecordPatch` efface le seuil quand le support change, et les bornes de couleur quand la famille change (point 64).
@@ -175,8 +175,8 @@ Tracker/
   - une fiche illisible n'est jamais écrasée.
 - **Identité** : l'instant du premier point. Réimporter une trace ne la duplique pas, et deux fichiers de la même trace n'en font qu'une dans la liste (`dedupeSessions`).
 - **Rapprochement** :
-  - un GPX déposé dans `sessions/` reçoit sa fiche au lancement suivant ;
-  - un GPX posé à la racine est rangé dans `sessions/` ;
+  - un GPX déposé dans `sessions/` reçoit sa fiche au lancement suivant, ou à « Mettre à jour » (`refreshLibrary`, point 88), qui relit le dossier sans le refermer : sessions, itinéraires et réglages ;
+  - un GPX posé à la racine est rangé dans `sessions/`, avec la fiche posée à côté de lui ;
   - le cache des fiches vit hors du dossier (`tracker.libraryCache`).
 - **Réglages qui voyagent** : `reglages.json` recopie `tracker.sportSettings` et `tracker.runnerProfile` deux secondes après chaque changement, daté par `tracker.settingsSavedAt`.
   - L'empreinte qui repère un changement (`settingsSignature`, `library/settingsFile.ts`) ignore les choix retenus : activité du module, ancienne clé du support, activité proposée à l'enregistrement (point 65).
@@ -184,8 +184,8 @@ Tracker/
 - **Emplacement** (`platform/memoryFolder.ts`) :
   - navigateur : la mémoire privée (OPFS) par défaut, ou un dossier choisi (Chrome, Edge : `showDirectoryPicker`, poignée dans IndexedDB, autorisation à redonner d'un clic), qui reçoit alors une copie des sessions de la mémoire privée. « Voir ou changer le dossier » est le seul moyen d'en voir le chemin ;
   - téléphone : `Documents/Tracker`, désigné par le sélecteur d'Android (SAF, plugin maison `MemoryFolder`), à redésigner si Android a retiré l'accès ou après une réinstallation ;
-  - partout : désigner le dossier parent fait descendre dans `Tracker` (`shouldDescendIntoMemory`) ; sans dossier accessible, une session enregistrée attend dans le dossier privé `en-attente/`.
-- **Import** : des GPX, ou les sessions d'un autre dossier Tracker avec leurs fiches (`webkitdirectory` dans le navigateur, `pickFolderToImport` sur le téléphone). Les notes saisies avant le dossier (`tracker.sailingNotes`) sont reprises à la création de la fiche de la même trace.
+  - partout : désigner le dossier parent fait descendre dans `Tracker` (`shouldDescendIntoMemory`) ; un sous-dossier `sessions` ou `itineraires` sans marqueur est refusé, et oublié s'il était retenu (`isMemorySubfolder`, point 88) ; sans dossier accessible, une session enregistrée attend dans le dossier privé `en-attente/`.
+- **Import** : des GPX, ou les sessions d'un autre dossier Tracker avec leurs fiches (`webkitdirectory` dans le navigateur, `pickFolderToImport` sur le téléphone), depuis les bibliothèques ou Réglages › Mémoire (`ImportButtons`). Une session dont le GPX ne dit pas l'activité est « à classer » ; l'ouvrir la demande d'abord. Les notes saisies avant le dossier (`tracker.sailingNotes`) sont reprises à la création de la fiche de la même trace.
 
 ### 6.2 Les clés de l'appareil
 
@@ -233,7 +233,7 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 | Unité de la vitesse de l'appareil | `core/kinematics.ts` |
 | Manœuvres, vent, VMG, suggestions | `sailing/sailingConfig.ts`, plus les constantes internes de `maneuvers.ts`, `wind.ts` et `sailingAnalytics.ts` |
 | Course | `running/runningAnalytics.ts`, `running/energy.ts`, et les lissages en tête de `pages/LandModule.tsx` |
-| Vélo | `cycling/energy.ts` (types de vélo, rendements), `cycling/cyclingConfig.ts` (couleurs par défaut) |
+| Vélo | `cycling/energy.ts` (types de vélo, roulement par revêtement `crrBySurface`, rendements), `cycling/cyclingConfig.ts` (couleurs par défaut) |
 | Planification | `planning/duration.ts` (niveaux, km-effort, puissance de montée), `planning/brouterProfile.ts` (classement des voies, rangs de difficulté à vélo, coûts des types de voie : `WAY_COSTS`, fixés avec l'utilisateur au point 80), `BIKE_WAY_TYPES` et `TERRAIN_WAY_TYPES` de `planning/route.ts` (types cochés d'office, point 81), `LOOP_RETURN_DEFAULTS` de `planning/loopReturn.ts` (couloir, poids et limite de l'adresse du retour d'une boucle, point 87 ; son rapport à l'aller : `loopReturnMaxRatio` du profil) |
 | Altitude du terrain | `core/terrainElevation.ts` (`TERRAIN_ELEVATION_VERSION`), limites du service dans `planning/ignAltimetry.ts`, pas proposés dans `TERRAIN_STEP_CHOICES_M` de `core/sportProfiles.ts` (défaut du profil : `terrainElevationStepM`) |
 | Revêtement | `planning/surface.ts` (étiquettes OSM vers catégories), `WAY_MATCH_DEFAULTS` de `planning/wayMatch.ts` (rayon, marge de changement de voie, pas de la requête), `OVERPASS_MAX_COORDS` de `planning/overpass.ts` |
@@ -242,7 +242,7 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 
 ## 8. Tests
 
-Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 659 au 7 octobre 2026.
+Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 671 au 7 octobre 2026.
 
 Un calcul a son `*.test.ts` à côté de lui, sauf :
 - `core/sessionStats` et `core/speedGradient`, couverts par d'autres fichiers de test (`topSegments`, `runningAnalytics`, `sailingConfig`) ;
@@ -293,7 +293,7 @@ Déplacé dans `docs/HISTORIQUE.md` le 23 septembre 2026, numérotation inchang�
 - **Types de voie** (point 80) :
   - le coût d'un type non coché (3) semble un peu faible à l'utilisateur, gardé « pour voir à l'usage » ;
   - dire simplement la différence entre vélo et pied (proposé : types permis à vélo montrés à demi cochés), non tranché.
-- **Énergie** (points 71 et 72) : le k de l'air en course (0,0065, Pugh 1971) n'est qu'un ordre de grandeur, à confirmer. Aucune des deux énergies n'a été comparée à une montre ou à Strava.
+- **Énergie** (points 71, 72 et 88) : le k de l'air en course (0,0065, Pugh 1971) et les Crr par revêtement ne sont que des ordres de grandeur, à confirmer. Aucune des deux énergies n'a été comparée à une montre ou à Strava. Pistes et sentiers sans étiquette de revêtement restent « Inconnu » (Crr moyen du vélo) : les compter en « non pavé » est proposé, non tranché.
 - **Course** :
   - zones cardiaques : `hr` est lu, FC max et FC de repos sont saisies, mais rien ne les utilise ;
   - tops, splits et allure par kilomètre (`topTargets: []` dans le profil) ;
@@ -333,7 +333,7 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
   - accueil (point 53) ;
   - enregistrement en direct et bords (points 50, 53, 62) ;
   - APK des testeurs et `docs/INSTALLATION.md` (points 55, 62).
-- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76), parcours et balises en voile avec bips d'approche (77), revêtement des itinéraires et des sessions (78), retouches du 03/10 : zones de pente sur la carte, réglages par activité, sport secondaire, onglets et activité en planification, légende sur la carte, vignettes, choix d'activité dessiné, icône de la course (79), types de voie cochés, rangés selon la nature de la voie (80), types de voie cochés d'office par activité et activités Route, Gravel, VTT (81), revêtement sur la carte (82), types de voie appliqués à tout l'itinéraire (83), altitude de l'IGN pour la course et le vélo (84), pentes sur la carte et puissance par zone de pente (85), mise en page commune des analyses sur ordinateur (86), mode « Boucle » en planification (87).
+- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76), parcours et balises en voile avec bips d'approche (77), revêtement des itinéraires et des sessions (78), retouches du 03/10 : zones de pente sur la carte, réglages par activité, sport secondaire, onglets et activité en planification, légende sur la carte, vignettes, choix d'activité dessiné, icône de la course (79), types de voie cochés, rangés selon la nature de la voie (80), types de voie cochés d'office par activité et activités Route, Gravel, VTT (81), revêtement sur la carte (82), types de voie appliqués à tout l'itinéraire (83), altitude de l'IGN pour la course et le vélo (84), pentes sur la carte et puissance par zone de pente (85), mise en page commune des analyses sur ordinateur (86), mode « Boucle » en planification (87), roulement selon le revêtement, « Mettre à jour », activités par famille et session à classer demandée avant l'analyse (88).
 - **Phase 2, interface mobile** : trois passes faites (points 47 à 49, 52, 56 à 58, 69 ; patron dans `docs/MISE_EN_PAGE.md`). Restent :
   - toucher au lieu du survol, dans les graphes ;
   - `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz). Les regrouper par couleur toucherait à « pas de paliers » : à redemander ;

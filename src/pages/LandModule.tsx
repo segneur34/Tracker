@@ -92,7 +92,8 @@ const ZONE_COLOR = '#7b1fa2';
  * et oublier rouvert. « tops » n'apparaît que si le calcul a des cibles de
  * meilleurs segments (le vélo, pas la course). « surface » demande les voies à
  * OpenStreetMap à sa première ouverture : fermé par défaut, il ne coûte rien
- * tant qu'on ne l'ouvre pas.
+ * tant qu'on ne l'ouvre pas. À vélo, elles sont demandées dès l'ouverture de
+ * l'analyse, pour le roulement de l'énergie (`surfacesAtOpening`).
  */
 type LandSection = 'general' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'reglages';
 
@@ -102,7 +103,7 @@ const LAND_SECTIONS: SectionDefinition<LandSection>[] = [
   { key: 'zones', label: 'zones de pente' },
   { key: 'surface', label: 'surface' },
   { key: 'energie', label: 'énergie' },
-  { key: 'graphiques', label: 'graphiques' },
+  { key: 'graphiques', label: 'vitesse et altitude' },
   { key: 'reglages', label: 'réglages' },
 ];
 
@@ -300,8 +301,16 @@ function LandModule({ family }: { family: LandFamily }) {
     [stats, elevation, cumulative]
   );
 
-  /** Revêtement des voies suivies, demandé à OpenStreetMap à la première ouverture de l'onglet, puis gardé dans la fiche. */
-  const surfaces = useSessionSurfaces(gpx.track, sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null, open.surface);
+  /**
+   * Revêtement des voies suivies, demandé à OpenStreetMap à la première
+   * ouverture de l'onglet, ou dès l'ouverture de l'analyse à vélo (roulement
+   * de l'énergie), puis gardé dans la fiche.
+   */
+  const surfaces = useSessionSurfaces(
+    gpx.track,
+    sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null,
+    open.surface || config.surfacesAtOpening
+  );
   /**
    * « Voir sur la carte » de l'onglet surface, et celui de la pente sous le
    * graphe d'altitude : la trace prend les couleurs du revêtement ou de la
@@ -320,7 +329,7 @@ function LandModule({ family }: { family: LandFamily }) {
   };
   const surfaceMapPaths = open.surface && surfaceOnMap ? surfaces.paths : null;
 
-  /** Trace colorée par la pente, au palier près (`gradeColorPaths`), tant que l'onglet graphiques est ouvert. */
+  /** Trace colorée par la pente, au palier près (`gradeColorPaths`), tant que l'onglet « vitesse et altitude » est ouvert. */
   const gradeMapPaths = useMemo(
     () => (gradeOnMap && open.graphiques && !surfaceMapPaths && grades.length > 0
       ? gradeColorPaths(gpx.track.map((p): [number, number] => [p.lat, p.lon]), grades, gradeRange)
@@ -340,13 +349,19 @@ function LandModule({ family }: { family: LandFamily }) {
 
   /**
    * Énergie dépensée, selon le modèle de la famille (`landModules.tsx`) :
-   * pente, résistance de l'air, et repos sur toute la durée.
+   * pente, résistance de l'air, roulement selon le revêtement à vélo, et repos
+   * sur toute la durée. Recalculée quand le revêtement arrive.
    */
+  const surfaceStatus = surfaces.status;
+  const surfaceStretches = surfaces.stretches;
   const energy = useMemo(
     () => (gpx.track.length > 1
-      ? config.energy({ track: gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg })
+      ? config.energy({
+          track: gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg,
+          surfaces: { status: surfaceStatus, stretches: surfaceStretches },
+        })
       : null),
-    [config, gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg]
+    [config, gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg, surfaceStatus, surfaceStretches]
   );
 
   /** Chiffres du panneau Énergie repliés ou dépliés, choix gardé sur l'appareil. */

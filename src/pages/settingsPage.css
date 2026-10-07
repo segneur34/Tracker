@@ -25,6 +25,20 @@
   border-top: 1px solid var(--line-soft);
 }
 
+/* Activités rangées par famille : son nom en tête, un trait marqué entre deux familles. */
+.settings-activities__family {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  font-size: var(--text-s);
+  font-weight: 700;
+}
+
+.settings-activity + .settings-activities__family {
+  border-top: 1px solid var(--line-strong);
+}
+
 .settings-activity__head {
   display: flex;
   align-items: center;

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
+import type { SurfaceCategory } from '../planning/surface';
 import { computeGrades } from '../running/runningAnalytics';
 import {
-  BIKE_TYPES, computeCyclingEnergy, cyclingEnergyParams, resistiveForceN, type CyclingEnergyParams,
+  BIKE_TYPES, computeCyclingEnergy, cyclingEnergyParams, resistiveForceN, rollingCoefficient, type BikeType, type CyclingEnergyParams,
 } from './energy';
 
 /** Trace synthétique à cadence fixe, en ligne droite, altitude fonction de la distance. */
@@ -36,6 +37,9 @@ const buildTrack = (
 };
 
 const allMoving = (track: TrackPoint[]) => track.map(() => true);
+/** Revêtement de chaque segment, celui de son point de départ selon son instant (comme `trackSurfaceStretches`). */
+const surfacesByTime = (track: TrackPoint[], at: (tS: number) => SurfaceCategory): SurfaceCategory[] =>
+  track.slice(0, -1).map((p) => at((p.timeMs - track[0].timeMs) / 1000));
 const gradesOf = (track: TrackPoint[]) => computeGrades(track.map((p) => p.ele ?? NaN), buildCumulativeTrack(track));
 /** Vélo de route, 8,5 kg, cycliste de 70 kg. */
 const ROAD: CyclingEnergyParams = cyclingEnergyParams('route', 8.5, 70);
@@ -52,6 +56,37 @@ describe('resistiveForceN', () => {
 
   it('devient négative dans une descente raide', () => {
     expect(resistiveForceN(5, -0.08, ROAD)).toBeLessThan(0);
+  });
+});
+
+describe('roulement par revêtement', () => {
+  const bikes = Object.keys(BIKE_TYPES) as BikeType[];
+
+  it('prend le roulement du revêtement, sinon le roulement moyen du vélo', () => {
+    const gravel = cyclingEnergyParams('gravel', 12, 70);
+    expect(rollingCoefficient(gravel, 'asphalte')).toBe(0.005);
+    expect(rollingCoefficient(gravel, 'terre')).toBe(0.012);
+    expect(rollingCoefficient(gravel, 'inconnu')).toBe(BIKE_TYPES.gravel.crr);
+    expect(rollingCoefficient(gravel, null)).toBe(BIKE_TYPES.gravel.crr);
+    expect(rollingCoefficient({ ...gravel, crrBySurface: undefined }, 'terre')).toBe(BIKE_TYPES.gravel.crr);
+  });
+
+  it('pour chaque vélo, l’asphalte roule le mieux, et le sable le moins bien', () => {
+    for (const bike of bikes) {
+      const table = Object.values(BIKE_TYPES[bike].crrBySurface);
+      expect(BIKE_TYPES[bike].crrBySurface.asphalte).toBe(Math.min(...table));
+      expect(BIKE_TYPES[bike].crrBySurface.sable).toBe(Math.max(...table));
+    }
+  });
+
+  it('le pneu de route roule le mieux sur l’asphalte, et perd le plus sur la terre', () => {
+    const { route, gravel, vtt } = BIKE_TYPES;
+    expect(route.crrBySurface.asphalte).toBeLessThan(gravel.crrBySurface.asphalte!);
+    expect(gravel.crrBySurface.asphalte).toBeLessThan(vtt.crrBySurface.asphalte!);
+    expect(route.crrBySurface.terre).toBeGreaterThan(gravel.crrBySurface.terre!);
+    const loss = (bike: BikeType) => BIKE_TYPES[bike].crrBySurface.terre! / BIKE_TYPES[bike].crrBySurface.asphalte!;
+    expect(loss('route')).toBeGreaterThan(loss('gravel'));
+    expect(loss('gravel')).toBeGreaterThan(loss('vtt'));
   });
 });
 
@@ -122,6 +157,52 @@ describe('computeCyclingEnergy', () => {
     const rMtb = computeCyclingEnergy(track, gradesOf(track), allMoving(track), mtb, 0);
     const rGravel = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 0);
     expect(rMtb.mechanicalJ).toBeGreaterThan(rGravel.mechanicalJ);
+  });
+
+  it('sans revêtement, ou sur un revêtement inconnu, garde le roulement moyen du vélo', () => {
+    const track = buildTrack(600, () => 6);
+    const gravel = cyclingEnergyParams('gravel', BIKE_TYPES.gravel.bikeKg, 70);
+    const without = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 50);
+    const unknown = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 50, surfacesByTime(track, () => 'inconnu'));
+    const other = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 50, surfacesByTime(track, () => 'autre'));
+    expect(unknown.mechanicalJ).toBe(without.mechanicalJ);
+    expect(other.cumulativeTotalJ).toEqual(without.cumulativeTotalJ);
+    expect(without.surfaceDistanceM).toEqual({});
+    expect(unknown.surfaceDistanceM.inconnu).toBeCloseTo(without.movingDistanceM, 6);
+  });
+
+  it('un gravel coûte moins sur l’asphalte que sur la terre, à la même vitesse', () => {
+    const track = buildTrack(600, () => 6);
+    const gravel = cyclingEnergyParams('gravel', BIKE_TYPES.gravel.bikeKg, 70);
+    const road = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 0, surfacesByTime(track, () => 'asphalte'));
+    const dirt = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 0, surfacesByTime(track, () => 'terre'));
+    const nominal = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 0);
+    expect(road.mechanicalJ).toBeLessThan(nominal.mechanicalJ);
+    expect(dirt.mechanicalJ).toBeGreaterThan(nominal.mechanicalJ);
+    // Roulement seul à 6 m/s : 82 kg × 9,81 × (0,012 − 0,005) × 6 m/s / 0,97 ≈ 34,8 W d'écart.
+    expect((dirt.mechanicalJ - road.mechanicalJ) / dirt.movingTimeS).toBeCloseTo(34.8, 0);
+  });
+
+  it('prend le roulement de chaque segment, et range sa distance sous son revêtement', () => {
+    const track = buildTrack(600, () => 6);
+    const gravel = cyclingEnergyParams('gravel', BIKE_TYPES.gravel.bikeKg, 70);
+    const mixed = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 0, surfacesByTime(track, (t) => (t < 300 ? 'asphalte' : 'terre')));
+    const road = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 0, surfacesByTime(track, () => 'asphalte'));
+    const dirt = computeCyclingEnergy(track, gradesOf(track), allMoving(track), gravel, 0, surfacesByTime(track, () => 'terre'));
+    expect(mixed.mechanicalJ).toBeCloseTo((road.mechanicalJ + dirt.mechanicalJ) / 2, 0);
+    expect(mixed.surfaceDistanceM.asphalte).toBeCloseTo(1800, 6);
+    expect(mixed.surfaceDistanceM.terre).toBeCloseTo(1800, 6);
+  });
+
+  it('même résultat à 1 Hz et à 5 Hz avec le revêtement', () => {
+    const speed = (t: number) => 7 + 2 * Math.sin(t / 50);
+    const surface = (t: number): SurfaceCategory => (t < 400 ? 'asphalte' : t < 800 ? 'gravillon' : 'terre');
+    const gravel = cyclingEnergyParams('gravel', BIKE_TYPES.gravel.bikeKg, 70);
+    const slow = buildTrack(1200, speed, 1);
+    const fast = buildTrack(1200, speed, 0.2);
+    const a = computeCyclingEnergy(slow, gradesOf(slow), allMoving(slow), gravel, 0, surfacesByTime(slow, surface));
+    const b = computeCyclingEnergy(fast, gradesOf(fast), allMoving(fast), gravel, 0, surfacesByTime(fast, surface));
+    expect(Math.abs(b.mechanicalJ - a.mechanicalJ) / a.mechanicalJ).toBeLessThan(0.01);
   });
 
   it('donne à chaque zone son temps : leur somme fait le temps en mouvement, et la montée pousse plus de watts', () => {

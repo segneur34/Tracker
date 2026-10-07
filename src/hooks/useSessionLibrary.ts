@@ -46,6 +46,7 @@ import {
 import { summarizeSession, type SummaryOptions } from '../library/summary';
 import { readPickedFile } from '../platform/files';
 import {
+  FolderRefusedError,
   canChooseFolder,
   chooseMemoryFolder,
   forgetChosenFolder,
@@ -77,6 +78,10 @@ import { isKnownTerrain, readStoredActivities, readStoredSettings } from './useS
  * 4. en tâche de fond, chaque GPX sans fiche en reçoit une, et chaque fiche
  *    dont le résumé est périmé est recalculée, notes intactes.
  *
+ * « Mettre à jour » (`refreshLibrary`) refait les étapes 2 à 4 sans refermer
+ * le dossier : sessions et itinéraires copiés depuis un autre appareil
+ * pendant que l'application est ouverte.
+ *
  * Les écritures d'une fiche (notes surtout, saisies lettre à lettre) sont
  * regroupées et différées, puis vidées dès que l'application passe en
  * arrière-plan.
@@ -104,7 +109,13 @@ export interface LibraryState {
   /** D'où viennent les réglages en vigueur, à la dernière ouverture ou au dernier changement. */
   settingsSource: SettingsChoice | null;
   settingsSavedAt: number | null;
-  /** Compte rendu de la dernière action (import, copie). */
+  /** Relecture du dossier en cours (« Mettre à jour »). */
+  refreshing: boolean;
+  /** Import en cours (GPX ou dossier), d'où qu'il parte. */
+  importing: boolean;
+  /** Incrémenté à chaque relecture du dossier : les listes tenues ailleurs (itinéraires) se relisent. */
+  revision: number;
+  /** Compte rendu de la dernière action (import, copie, relecture). */
   message: string | null;
   error: string | null;
 }
@@ -121,6 +132,9 @@ const INITIAL_STATE: LibraryState = {
   pendingCount: 0,
   settingsSource: null,
   settingsSavedAt: null,
+  refreshing: false,
+  importing: false,
+  revision: 0,
   message: null,
   error: null,
 };
@@ -314,6 +328,16 @@ const cancelRecordWrite = (file: string): void => {
   recordTimers.delete(file);
 };
 
+/** Écrit tout de suite les fiches et les réglages en attente d'écriture. */
+const flushWrites = async (): Promise<void> => {
+  const files = [...recordTimers.keys()];
+  files.forEach(cancelRecordWrite);
+  await Promise.all([
+    ...files.map((file) => writeRecordNow(file)),
+    ...(settingsTimer !== null ? [flushSettings()] : []),
+  ]);
+};
+
 // --- Réglages qui voyagent ---
 
 /** Instant du dernier changement des réglages de l'appareil. */
@@ -423,14 +447,20 @@ const scan = async (f: MemoryFolder, gen: number): Promise<SummaryJob[]> => {
   const cache = readCache(f);
   let plan = planReconcile(entries, rootEntries, cache);
 
-  // Un GPX posé à la racine du dossier est rangé dans `sessions/`.
+  // Un GPX posé à la racine du dossier est rangé dans `sessions/`, avec la fiche posée à côté de lui.
   if (plan.rootGpx.length > 0) {
     const taken = new Set(entries.map((e) => e.name));
     for (const name of plan.rootGpx) {
       const text = await f.readText(name);
       if (text === null) continue;
       const target = uniqueSessionFileName(name, taken);
+      const recordName = plan.rootRecords[name];
+      const recordText = recordName ? await f.readText(recordName) : null;
       await f.writeText(sessionPath(target), text);
+      if (recordName && recordText !== null) {
+        await f.writeText(sessionPath(recordFileName(target)), recordText);
+        await f.remove(recordName);
+      }
       await f.remove(name);
       taken.add(target);
     }
@@ -602,7 +632,9 @@ export const openLibrary = (): Promise<void> => {
     setState({ status: 'opening' });
     const access = await openMemoryFolder();
     if (access.state === 'ready') {
-      applySettingsChange(await attach(access.folder));
+      const settingsChanged = await attach(access.folder);
+      if (access.notice) setState({ error: access.notice });
+      applySettingsChange(settingsChanged);
       return;
     }
     detach(
@@ -636,13 +668,7 @@ export const startLibraryUi = (isBusy: () => boolean): void => {
     settingsTimer = setTimeout(() => void flushSettings(), SETTINGS_WRITE_DELAY_MS);
   });
   // Écritures différées vidées dès que l'application passe en arrière-plan.
-  const flushAll = () => {
-    for (const file of [...recordTimers.keys()]) {
-      cancelRecordWrite(file);
-      void writeRecordNow(file);
-    }
-    if (settingsTimer !== null) void flushSettings();
-  };
+  const flushAll = () => void flushWrites();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushAll();
   });
@@ -757,29 +783,34 @@ const describeImport = (report: ImportReport): string => {
  * compris). Une session déjà présente n'est pas dupliquée.
  */
 export const importFiles = async (files: File[]): Promise<ImportReport> => {
-  await opening;
-  const records = new Map<string, File>();
-  for (const file of files) if (/\.json$/i.test(file.name)) records.set(baseKey(file), file);
+  setState({ importing: true });
+  try {
+    await opening;
+    const records = new Map<string, File>();
+    for (const file of files) if (/\.json$/i.test(file.name)) records.set(baseKey(file), file);
 
-  const report: ImportReport = { added: [], existing: [], duplicates: 0, invalid: [], unsaved: 0 };
-  for (const file of files) {
-    if (!isGpxFileName(file.name)) continue;
-    const recordFile = records.get(baseKey(file));
-    const record = recordFile ? parseRecord(await readPickedFile(recordFile)) : null;
-    const result = await addGpx(await readPickedFile(file), 'import', {
-      record: record && isWritableRecord(record) ? record : null,
-    });
-    if (result.status === 'added' && result.file) report.added.push(result.file);
-    else if (result.status === 'duplicate') {
-      report.duplicates += 1;
-      if (result.file) report.existing.push(result.file);
+    const report: ImportReport = { added: [], existing: [], duplicates: 0, invalid: [], unsaved: 0 };
+    for (const file of files) {
+      if (!isGpxFileName(file.name)) continue;
+      const recordFile = records.get(baseKey(file));
+      const record = recordFile ? parseRecord(await readPickedFile(recordFile)) : null;
+      const result = await addGpx(await readPickedFile(file), 'import', {
+        record: record && isWritableRecord(record) ? record : null,
+      });
+      if (result.status === 'added' && result.file) report.added.push(result.file);
+      else if (result.status === 'duplicate') {
+        report.duplicates += 1;
+        if (result.file) report.existing.push(result.file);
+      }
+      else if (result.status === 'invalid') report.invalid.push(file.name);
+      else report.unsaved += 1;
     }
-    else if (result.status === 'invalid') report.invalid.push(file.name);
-    else report.unsaved += 1;
+    if (folder) void refreshCache(folder, generation);
+    setState({ message: describeImport(report) });
+    return report;
+  } finally {
+    setState({ importing: false });
   }
-  if (folder) void refreshCache(folder, generation);
-  setState({ message: describeImport(report) });
-  return report;
 };
 
 /**
@@ -797,6 +828,13 @@ export const importFromFolder = async (): Promise<ImportReport | null> => {
   }
   return files ? importFiles(files) : null;
 };
+
+/**
+ * Peut-on importer : mémoire ouverte, ou sans dossier sur le téléphone (les
+ * sessions attendent alors dans le dossier privé).
+ */
+export const canImportSessions = (s: Pick<LibraryState, 'status' | 'pendingCount'>): boolean =>
+  s.status === 'ready' || s.pendingCount > 0 || s.status === 'unavailable';
 
 /** Contenu du GPX d'une session, `null` s'il n'est pas lisible. */
 export const readSessionGpx = async (file: string): Promise<string | null> => {
@@ -874,7 +912,7 @@ export const chooseFolder = async (): Promise<void> => {
   try {
     picked = await chooseMemoryFolder();
   } catch (err) {
-    setState({ error: `Dossier inaccessible : ${errorMessage(err, 'erreur inconnue')}` });
+    setState({ error: err instanceof FolderRefusedError ? err.message : `Dossier inaccessible : ${errorMessage(err, 'erreur inconnue')}` });
     return;
   }
   if (!picked) return;
@@ -905,7 +943,19 @@ export const chooseFolder = async (): Promise<void> => {
 
 /** Redonne l'autorisation au dossier choisi, depuis un clic. */
 export const reconnectFolder = async (): Promise<void> => {
-  const f = await reconnectMemoryFolder();
+  let f: MemoryFolder | null;
+  try {
+    f = await reconnectMemoryFolder();
+  } catch (err) {
+    if (err instanceof FolderRefusedError) {
+      // Dossier retenu écarté (un sous-dossier d'une mémoire) : retour à la mémoire du navigateur.
+      await openLibrary();
+      setState({ error: err.message });
+      return;
+    }
+    setState({ error: `Dossier inaccessible : ${errorMessage(err, 'erreur inconnue')}` });
+    return;
+  }
   if (!f) {
     setState({ error: 'Autorisation refusée : le dossier reste inaccessible.' });
     return;
@@ -921,6 +971,64 @@ export const reconnectFolder = async (): Promise<void> => {
 export const switchToBrowserMemory = async (): Promise<void> => {
   await forgetChosenFolder();
   await openLibrary();
+};
+
+/** Relecture en cours : un second appui attend la même. */
+let refreshing: Promise<void> | null = null;
+
+const plural = (n: number, word: string): string => `${n} ${word}${n > 1 ? 's' : ''}`;
+
+/**
+ * Relit le dossier mémoire sans le refermer (« Mettre à jour ») : sessions et
+ * itinéraires copiés depuis un autre appareil, réglages plus récents (qui
+ * rechargent la page, comme au lancement). La liste reste affichée pendant la
+ * relecture ; les écritures en attente partent d'abord, pour qu'une fiche
+ * modifiée ne soit pas remplacée par celle du disque. Le compte rendu dit
+ * combien de sessions sont apparues.
+ */
+export const refreshLibrary = (): Promise<void> => {
+  if (refreshing) return refreshing;
+  const scanned = (async () => {
+    await opening;
+    const f = folder;
+    if (!f || state.status !== 'ready') return null;
+    setState({ refreshing: true, message: null, error: null });
+    const before = new Set(state.sessions.map((s) => s.record.summary.startMs));
+    await flushWrites();
+    generation += 1;
+    const gen = generation;
+    const settingsChanged = await syncSettings(f);
+    const jobs = await scan(f, gen);
+    if (gen !== generation) return null;
+    setState({ revision: state.revision + 1 });
+    await flushPending();
+    return { f, gen, jobs, before, settingsChanged };
+  })();
+  // Les écritures (enregistrement, import) attendent la lecture du dossier, pas le calcul des fiches.
+  opening = scanned.then(() => undefined, () => undefined);
+  refreshing = scanned
+    .then(async (read) => {
+      if (!read) return;
+      await completeScan(read.f, read.gen, read.jobs);
+      if (read.gen !== generation) return;
+      const after = new Set(state.sessions.map((s) => s.record.summary.startMs));
+      const added = [...after].filter((startMs) => !read.before.has(startMs)).length;
+      const removed = [...read.before].filter((startMs) => !after.has(startMs)).length;
+      const changes = [
+        ...(added > 0 ? [`${plural(added, 'session')} de plus`] : []),
+        ...(removed > 0 ? [`${plural(removed, 'session')} en moins`] : []),
+      ];
+      setState({ message: `Dossier relu : ${changes.length > 0 ? changes.join(', ') : 'rien de nouveau'}.` });
+      applySettingsChange(read.settingsChanged);
+    })
+    .catch((err: unknown) => {
+      setState({ scanning: null, error: `Relecture du dossier impossible : ${errorMessage(err, 'erreur inconnue')}` });
+    })
+    .finally(() => {
+      refreshing = null;
+      setState({ refreshing: false });
+    });
+  return refreshing;
 };
 
 export const dismissLibraryMessage = (): void => setState({ message: null, error: null });

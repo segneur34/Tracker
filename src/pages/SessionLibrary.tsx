@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Polyline } from 'react-leaflet';
 import OsmTileLayer from '../components/OsmTileLayer';
 import { Link, useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import MapAutoResize from '../components/MapAutoResize';
-import ActivitySelect from '../components/ActivitySelect';
+import ActivitySelect, { ActivitySheet } from '../components/ActivitySelect';
+import ImportButtons from '../components/ImportButtons';
 import MemoryStatus from '../components/MemoryStatus';
+import RefreshLibraryButton from '../components/RefreshLibraryButton';
 import RouteList from '../components/RouteList';
-import { IconFile } from '../components/icons';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import HelpButton from '../components/ui/HelpButton';
@@ -23,7 +24,7 @@ import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import { formatDistance, formatDuration, formatSpeed, knotsToMs, msToKnots, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
-import { importFiles, importFromFolder, readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
+import { readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
 import {
   FAMILY_SPEED_RANGE_MS, effectiveDistanceUnit, effectiveSpeedUnit, readStoredActivities, readStoredSettings,
 } from '../hooks/useSportSettings';
@@ -238,6 +239,24 @@ function SessionRow({
   const unclassified = record.sport === null;
   /** Nom en cours de saisie ; `null` hors renommage. */
   const [nameDraft, setNameDraft] = useState<string | null>(null);
+  /** Activité demandée avant l'analyse d'une session à classer. */
+  const [asking, setAsking] = useState(false);
+
+  /**
+   * Ouvre l'analyse. Une session à classer (le fichier ne dit pas son
+   * activité) la demande d'abord : sans elle, le module et ses seuils
+   * seraient pris au hasard. Une fiche en lecture seule ne peut pas la
+   * garder : la session s'ouvre dans le module de la page, comme avant.
+   */
+  const open = () => {
+    if (unclassified && !session.readOnly) setAsking(true);
+    else openSession(session.file, family);
+  };
+  const classifyAndOpen = (chosen: Activity) => {
+    setAsking(false);
+    updateSessionRecord(session.file, { sport: chosen.base, activityId: chosen.id });
+    openSession(session.file, sportFamily(chosen.base));
+  };
 
   const saveName = () => {
     if (nameDraft === null) return;
@@ -248,7 +267,7 @@ function SessionRow({
   return (
     <li className="lib-row">
       <div className="lib-row__head-line">
-        <button type="button" className="lib-row__main" onClick={() => openSession(session.file, family)}>
+        <button type="button" className="lib-row__main" onClick={open}>
           {record.name && <span className="lib-row__name">{record.name}</span>}
           <span className="lib-row__head">
             <span className={record.name ? 'lib-row__sport lib-row__sport--sub' : 'lib-row__sport'}>
@@ -260,8 +279,16 @@ function SessionRow({
           {record.notes?.comment && <span className="lib-row__note">{record.notes.comment}</span>}
           {session.warning && <span className="lib-row__warning">{session.warning}</span>}
         </button>
-        <SessionPreviewMap session={session} activity={activity} family={family} onOpen={() => openSession(session.file, family)} />
+        <SessionPreviewMap session={session} activity={activity} family={family} onOpen={open} />
       </div>
+      {asking && (
+        <ActivitySheet
+          activities={activities}
+          value={null}
+          heading={{ title: 'Quelle activité ?', hint: "Le fichier ne la dit pas : choisissez-la avant l'analyse. Elle reste dans la fiche de la session." }}
+          onChoose={classifyAndOpen}
+          onClose={() => setAsking(false)} />
+      )}
 
       <div className="lib-row__actions">
         {nameDraft !== null ? (
@@ -326,7 +353,6 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   const { routes } = useRouteLibrary();
   const [helpOpen, setHelpOpen] = useState(false);
   const [confirmFile, setConfirmFile] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
 
   /** Activité de chaque session, calculée une fois par liste. */
   const activityByFile = useMemo(
@@ -351,29 +377,6 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   const activeFilter = counts.length > 1 && counts.some((c) => c.activity.id === filter) ? filter : 'all';
   const shown = activeFilter === 'all' ? familySessions : familySessions.filter((s) => activityByFile.get(s.file)?.id === activeFilter);
   const shownRoutes = activeFilter === 'all' ? familyRoutes : familyRoutes.filter((r) => routeActivity(r, activities)?.id === activeFilter);
-  const canImport = library.status === 'ready' || library.pendingCount > 0 || library.status === 'unavailable';
-
-  const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files ? [...event.target.files] : [];
-    event.target.value = '';
-    if (files.length === 0) return;
-    setImporting(true);
-    try {
-      await importFiles(files);
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const handleNativeFolder = async () => {
-    setImporting(true);
-    try {
-      await importFromFolder();
-    } finally {
-      setImporting(false);
-    }
-  };
-
   const native = isNativeApp();
 
   const row = (session: LibrarySession) => (
@@ -395,27 +398,8 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       <MemoryStatus />
 
       <div className="lib-actions">
-        <label className={`ui-btn ui-btn--secondary${!canImport || importing ? ' lib-disabled' : ''}`}>
-          <IconFile size={18} />
-          {importing ? 'Import en cours…' : 'Importer des GPX'}
-          <input type="file" accept=".gpx" multiple hidden disabled={!canImport || importing} onChange={handleImport} />
-        </label>
-        {native ? (
-          <Button disabled={!canImport || importing} onClick={() => void handleNativeFolder()}>
-            Ajouter les sessions d'un dossier
-          </Button>
-        ) : (
-          <label className={`ui-btn ui-btn--secondary${!canImport || importing ? ' lib-disabled' : ''}`}>
-            Ajouter les sessions d'un dossier
-            <input
-              type="file"
-              multiple
-              hidden
-              disabled={!canImport || importing}
-              ref={(el) => el?.setAttribute('webkitdirectory', '')}
-              onChange={handleImport} />
-          </label>
-        )}
+        <ImportButtons />
+        <RefreshLibraryButton />
         <HelpButton
           open={helpOpen}
           onToggle={() => setHelpOpen(!helpOpen)}
@@ -424,8 +408,8 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       {helpOpen && (
         <p className="lib-hint">
           {native
-            ? "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le PC ou un autre téléphone, notes comprises. On peut aussi copier les fichiers directement dans Documents › Tracker › sessions : ils apparaissent au lancement suivant."
-            : "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le téléphone ou un autre PC, notes comprises. Chrome demande alors s'il faut importer les fichiers « sur ce site » : ils restent sur ce PC, Tracker n'envoie rien sur internet. Le dossier mémoire de ce PC, lui, se choisit dans Réglages › Mémoire."}
+            ? "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le PC ou un autre téléphone, notes comprises. On peut aussi copier les fichiers directement dans Documents › Tracker › sessions : ils apparaissent avec « Mettre à jour », ou au lancement suivant."
+            : "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le téléphone ou un autre PC, notes comprises. Chrome demande alors s'il faut importer les fichiers « sur ce site » : ils restent sur ce PC, Tracker n'envoie rien sur internet. Le dossier mémoire de ce PC, lui, se choisit dans Réglages › Mémoire ; des fichiers copiés dedans pendant que Tracker est ouvert apparaissent avec « Mettre à jour »."}
         </p>
       )}
 
@@ -467,7 +451,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       {!planned && unclassified.length > 0 && (
         <Card heading="À classer">
           <p className="lib-hint">
-            Traces dont l'activité n'est pas connue : choisissez-la pour les ranger en voile, en course ou à vélo.
+            Traces dont l'activité n'est pas connue : choisissez-la pour les ranger en voile, en course ou à vélo. Ouvrir l'une d'elles la demande d'abord.
           </p>
           <ul className="lib-list">{unclassified.map(row)}</ul>
         </Card>

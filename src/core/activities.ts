@@ -1,4 +1,4 @@
-import { SPORT_PROFILES, sportFamily, type SportFamily } from './sportProfiles';
+import { SPORT_FAMILIES, SPORT_PROFILES, sportFamily, type SportFamily } from './sportProfiles';
 import type { SportType } from './types';
 
 /**
@@ -159,11 +159,25 @@ export const upgradeActivities = (activities: Activity[]): Activity[] => {
   for (const seed of [GRAVEL_ACTIVITY, VTT_ACTIVITY]) {
     if (list.some((a) => a.id === seed.id || (activityFamily(a) === 'velo' && sameName(a.name, seed.name)))) continue;
     const color = list.some((a) => a.color.toLowerCase() === seed.color) ? nextActivityColor(list) : seed.color;
-    const lastCycling = list.map(activityFamily).lastIndexOf('velo');
-    const at = lastCycling < 0 ? list.length : lastCycling + 1;
-    list = [...list.slice(0, at), { ...seed, color }, ...list.slice(at)];
+    list = insertActivity(list, { ...seed, color });
   }
   return list;
+};
+
+/**
+ * Liste avec une activité de plus, rangée avec sa famille : après la dernière
+ * de la même famille ; sans elle, avant la première d'une famille qui la suit
+ * (ordre de `SPORT_FAMILIES`), sinon à la fin. Une liste rangée par famille
+ * le reste.
+ */
+export const insertActivity = (activities: Activity[], activity: Activity): Activity[] => {
+  const family = activityFamily(activity);
+  const families = activities.map(activityFamily);
+  const lastSame = families.lastIndexOf(family);
+  const rank = SPORT_FAMILIES.indexOf(family);
+  const firstLater = families.findIndex((f) => SPORT_FAMILIES.indexOf(f) > rank);
+  const at = lastSame >= 0 ? lastSame + 1 : firstLater >= 0 ? firstLater : activities.length;
+  return [...activities.slice(0, at), activity, ...activities.slice(at)];
 };
 
 /**

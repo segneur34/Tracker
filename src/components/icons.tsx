@@ -137,3 +137,11 @@ export const IconRoute = ({ size = 24, ...props }: IconProps) => (
     <path d="M8 19h7.5a3.5 3.5 0 0 0 0-7h-7a3.5 3.5 0 0 1 0-7H16" />
   </svg>
 );
+
+/** Flèche qui tourne : « Mettre à jour », relire le dossier mémoire. */
+export const IconRefresh = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M21 4v6h-6" />
+    <path d="M20.5 15a9 9 0 1 1-2.1-9.4L21 10" />
+  </svg>
+);

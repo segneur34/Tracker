@@ -2,14 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import type { TrackPoint } from '../core/types';
 import type { SessionSurfaces } from '../library/record';
 import { fetchWays } from '../planning/overpass';
-import { summarizeSurfaces, surfacePaths, trackSurfaceStretches, type SurfacePath, type SurfaceTotal } from '../planning/surface';
+import {
+  summarizeSurfaces, surfacePaths, trackSurfaceStretches, type SurfacePath, type SurfaceStretch, type SurfaceTotal,
+} from '../planning/surface';
 import { WAY_MATCH_DEFAULTS, WAY_MATCH_VERSION, queryLines, trackSurfaceRuns } from '../planning/wayMatch';
 import { findLibrarySession, librarySession, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
 
 /**
- * Revêtement d'une session course ou vélo (onglet « surface ») : les voies
- * suivies sont demandées à OpenStreetMap la première fois que l'onglet
- * s'ouvre (`active`), une seule fois par trace, puis rangées dans la fiche
+ * Revêtement d'une session course ou vélo (onglet « surface », et roulement
+ * de l'énergie à vélo) : les voies suivies sont demandées à OpenStreetMap la
+ * première fois qu'on en a besoin (`active` : l'onglet s'ouvre, ou l'analyse
+ * d'une session de vélo), une seule fois par trace, puis rangées dans la fiche
  * (`SessionRecord.surfaces`, hors brouillon : ce n'est pas une saisie).
  *
  * Une trace ouverte hors de la mémoire (`file` à `null`) n'a pas de fiche :
@@ -86,15 +89,18 @@ export const useSessionSurfaces = (track: TrackPoint[], file: string | null, act
 
   const retry = () => setError(null);
 
-  /** Longueurs par revêtement, et tracé découpé par revêtement pour la carte. */
-  const split: { totals: SurfaceTotal[]; paths: SurfacePath[] } | null = useMemo(() => {
+  /**
+   * Revêtement de chaque segment (pour l'énergie), longueurs par revêtement,
+   * et tracé découpé par revêtement pour la carte.
+   */
+  const split: { stretches: SurfaceStretch[]; totals: SurfaceTotal[]; paths: SurfacePath[] } | null = useMemo(() => {
     if (!surfaces) return null;
     const stretches = trackSurfaceStretches(track, surfaces, surfaces.startMs);
-    return { totals: summarizeSurfaces(stretches), paths: surfacePaths(track, stretches) };
+    return { stretches, totals: summarizeSurfaces(stretches), paths: surfacePaths(track, stretches) };
   }, [track, surfaces]);
   const totals = split?.totals ?? null;
 
   // Onglet ouvert, sans voies ni échec : la recherche est lancée (ou le sera par l'effet).
   const status: SurfaceSearchStatus = totals ? 'ready' : failed !== null ? 'error' : active && startMs !== null ? 'searching' : 'idle';
-  return { status, totals, paths: split?.paths ?? null, error: failed, retry };
+  return { status, totals, stretches: split?.stretches ?? null, paths: split?.paths ?? null, error: failed, retry };
 };

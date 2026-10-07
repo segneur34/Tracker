@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { folderImportPaths, shouldDescendIntoMemory } from './memoryFolder';
+import { folderImportPaths, isMemorySubfolder, shouldDescendIntoMemory } from './memoryFolder';
 
 describe('shouldDescendIntoMemory', () => {
   it('garde le dossier Tracker désigné, même vide', () => {
@@ -18,6 +18,20 @@ describe('shouldDescendIntoMemory', () => {
 
   it('garde un dossier quelconque sans Tracker : il deviendra la mémoire', () => {
     expect(shouldDescendIntoMemory('Traces', new Set(['a.gpx']))).toBe(false);
+  });
+});
+
+describe('isMemorySubfolder', () => {
+  it('refuse le dossier sessions ou itineraires d\'une mémoire', () => {
+    expect(isMemorySubfolder('sessions', new Set(['a.gpx', 'a.json']))).toBe(true);
+    expect(isMemorySubfolder('Documents/Tracker/Sessions', new Set())).toBe(true);
+    expect(isMemorySubfolder('itineraires', new Set(['Boucle.json']))).toBe(true);
+  });
+
+  it('accepte un dossier marqué comme mémoire, quel que soit son nom, et tout autre dossier', () => {
+    expect(isMemorySubfolder('sessions', new Set(['tracker.json', 'sessions']))).toBe(false);
+    expect(isMemorySubfolder('Tracker', new Set(['sessions']))).toBe(false);
+    expect(isMemorySubfolder('Mes sessions', new Set())).toBe(false);
   });
 });
 

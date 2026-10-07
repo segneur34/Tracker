@@ -56,14 +56,14 @@ const listRoutes = async (): Promise<SavedRoute[]> => {
 };
 
 export const useRouteLibrary = () => {
-  const { status, folderLabel } = useSessionLibrary();
+  const { status, folderLabel, revision } = useSessionLibrary();
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
   const [error, setError] = useState<string | null>(null);
   /** Incrémenté après chaque écriture : la liste est relue. */
   const [version, setVersion] = useState(0);
   const reload = useCallback(() => setVersion((v) => v + 1), []);
 
-  // Relu quand la mémoire s'ouvre, change de dossier, ou après une écriture.
+  // Relu quand la mémoire s'ouvre, change de dossier ou est relue (« Mettre à jour »), ou après une écriture.
   useEffect(() => {
     if (status !== 'ready') return;
     let cancelled = false;
@@ -80,7 +80,7 @@ export const useRouteLibrary = () => {
     return () => {
       cancelled = true;
     };
-  }, [status, folderLabel, version]);
+  }, [status, folderLabel, revision, version]);
 
   /**
    * Range un itinéraire : sous ses fichiers s'il en a (`existing`), sinon sous

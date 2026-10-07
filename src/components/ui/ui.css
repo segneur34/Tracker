@@ -109,6 +109,12 @@
   opacity: 0.45;
 }
 
+/* Bouton grisé qui n'est pas un `button` (un `label` porteur d'un sélecteur de fichiers). */
+.ui-btn--off {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .ui-btn:not(:disabled):hover {
   filter: brightness(0.95);
 }

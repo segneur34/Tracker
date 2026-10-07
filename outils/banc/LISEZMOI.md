@@ -56,6 +56,16 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - le bouton éteint, qui retire le retour.
 
   Il dure environ 3 min.
+- `roulement.mjs <port> <dossier de travail> [<dossier des captures>]` : roulement selon le revêtement à vélo (point 88), sur un profil neuf, avec réseau (brouter.de, overpass-api.de et data.geopf.fr). Le script demande lui-même à BRouter un tracé mêlant routes et chemins au nord de Montpellier, et en tire une sortie à 6 m/s ; l'activité Route y prend un vélo gravel. Il vérifie :
+  - la recherche des voies à l'ouverture de l'analyse, onglet « surface » fermé ;
+  - l'onglet « énergie » : roulement moyen et avertissement pendant la recherche, puis roulement selon le revêtement dans la note, puissance moyenne recalculée, voies rangées dans la fiche ;
+  - deux rechargements : mêmes chiffres, aucune nouvelle requête (une seule si la première a échoué) ; les réponses d'Overpass sont relevées ;
+  - le nom de l'onglet « vitesse et altitude ».
+- `miseajour.mjs <port> <dossier de travail> [<dossier des captures>]` : « Mettre à jour » (point 88), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX et touche à la mémoire du navigateur pendant que la page est ouverte. Il vérifie :
+  - une session retirée du dossier : la liste ne change qu'avec « Mettre à jour » (« 1 session en moins ») ;
+  - un GPX et sa fiche posés à la racine, un GPX seul dans `sessions/` : les deux apparaissent, la fiche suit son GPX (nom et activité gardés), celle du GPX seul est créée ;
+  - « rien de nouveau » à la relecture suivante, le bouton dans la rangée des imports, et dans Réglages › Mémoire, carte repliée comprise.
+- `classer.mjs <port> <dossier de travail> [<dossier des captures>]` : session à classer (point 88), sur un profil neuf, sans réseau. Le script écrit lui-même un GPX dont le `<type>` ne dit rien (`other`) et l'importe depuis la page Course. Il vérifie la carte « À classer », la question « Quelle activité ? » à l'ouverture au lieu de l'analyse, Échap qui la ferme sans rien changer, puis Gravel choisi : activité rangée dans la fiche, analyse vélo ouverte.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

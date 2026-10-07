@@ -63,5 +63,16 @@ describe('planReconcile', () => {
       {}
     );
     expect(plan.rootGpx).toEqual(['2026-09-23_18-00-00_running.GPX']);
+    expect(plan.rootRecords).toEqual({});
+  });
+
+  it('fait suivre à un GPX de la racine la fiche posée à côté de lui, jamais le marqueur ni les réglages', () => {
+    const plan = planReconcile(
+      [],
+      [file('a.gpx'), file('a.json'), file('b.gpx'), file('c.json'), file('tracker.gpx'), file('tracker.json'), file('reglages.gpx'), file('reglages.json')],
+      {}
+    );
+    expect(plan.rootGpx).toEqual(['a.gpx', 'b.gpx', 'reglages.gpx', 'tracker.gpx']);
+    expect(plan.rootRecords).toEqual({ 'a.gpx': 'a.json' });
   });
 });

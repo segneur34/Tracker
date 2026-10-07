@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, baseActivity, findActivity, newActivityId,
-  readActivities, upgradeActivities, type Activity,
+  insertActivity, readActivities, upgradeActivities, type Activity,
 } from '../core/activities';
 import {
   ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, getSportProfile, sportFamily, type ElevationProfile, type RecordingProfile,
@@ -654,13 +654,13 @@ export const useAllSportSettings = () => {
   /** Remet tous les réglages d'une activité au défaut de son calcul. */
   const resetActivity = useCallback((id: string) => persist(withoutOverrides(stored, id)), [persist, stored]);
 
-  /** Ajoute une activité ; rend son identifiant, `null` si le nom est vide. */
+  /** Ajoute une activité, rangée avec sa famille ; rend son identifiant, `null` si le nom est vide. */
   const addActivity = useCallback(
     (name: string, base: SportType, color: string): string | null => {
       const trimmed = name.trim();
       if (trimmed === '') return null;
       const id = newActivityId(trimmed, activities);
-      persist({ ...stored, activities: [...activities, { id, name: trimmed, base, color }], activitiesVersion: ACTIVITIES_VERSION });
+      persist({ ...stored, activities: insertActivity(activities, { id, name: trimmed, base, color }), activitiesVersion: ACTIVITIES_VERSION });
       return id;
     },
     [activities, persist, stored]
