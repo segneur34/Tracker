@@ -464,7 +464,7 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - en analyse, la trace prend les couleurs du revêtement à la place de la vitesse, et la légende de vitesse se retire ;
       - en planification, les tronçons prêts prennent ces couleurs, ceux en calcul ou en échec gardent leur pointillé. C'est la seule dérogation au tracé toujours bleu, le temps de l'affichage.
     - **Piège** : les teintes claires (Inconnu, Sable, Gravillon) disparaissent sur le fond de carte. Le tracé est posé sur une bordure sombre, toutes les bordures avant toutes les couleurs, pour qu'une bordure ne coupe pas la jonction de deux morceaux.
-83. Types de voie appliqués à tout l'itinéraire (05/10, APK 0.2.57 ; commité à la demande de l'utilisateur, sans essai sur le téléphone).
+83. Types de voie appliqués à tout l'itinéraire (05/10, APK 0.2.57 ; commité à la demande de l'utilisateur avant essai ; validé sur le téléphone le 07/10).
     - **Demande de l'utilisateur** : « quand je change de type de route, ça refait le calcul directement », sans « Précédent » ni nouveau point. Les cases au-dessus de la carte valaient jusque-là pour les points suivants seulement.
     - **Choix** (`setRouteMode`) :
       - chaque tronçon calculé par la carte prend les types cochés et se recalcule ;
@@ -472,5 +472,5 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - une trace importée ne bouge pas ;
       - rouvrir un itinéraire ne recalcule rien.
     - **Annulation** : les cases font partie de l'état de l'itinéraire (`usePlannedRoute`). « Précédent » rend donc les cases avec le tracé. Sur une carte vide, changer les cases ne crée pas d'étape à défaire.
-    - **Ajouté sans demande, à confirmer** : changer d'activité applique aussi ses types à tout l'itinéraire, et refait les tronçons calculés quand les règles d'accès changent (course ↔ vélo). En revenant de la voile, les lignes droites sont recalculées. « Précédent » ne rend pas l'activité.
+    - **Ajouté sans demande, gardé par l'utilisateur (07/10)** : changer d'activité applique aussi ses types à tout l'itinéraire, et refait les tronçons calculés quand les règles d'accès changent (course ↔ vélo). En revenant de la voile, les lignes droites sont recalculées. « Précédent » ne rend pas l'activité.
     - **Piège** : chaque changement refait tous les tronçons calculés, et le serveur public refuse après une trentaine de calculs en rafale (point 80). Les calculs passent un à un, et un changement qui en suit vite un autre abandonne la requête devenue inutile ; revenir à des types déjà calculés ne redemande rien (cache de la page).

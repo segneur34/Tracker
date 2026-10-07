@@ -288,8 +288,7 @@ Déplacé dans `docs/HISTORIQUE.md` le 23 septembre 2026, numérotation inchang�
 
 - **Types de voie** (point 80) :
   - le coût d'un type non coché (3) semble un peu faible à l'utilisateur, gardé « pour voir à l'usage » ;
-  - dire simplement la différence entre vélo et pied (proposé : types permis à vélo montrés à demi cochés), non tranché ;
-  - changer d'activité recalcule tout l'itinéraire (point 83) : ajouté sans demande, à confirmer par l'utilisateur.
+  - dire simplement la différence entre vélo et pied (proposé : types permis à vélo montrés à demi cochés), non tranché.
 - **Énergie** (points 71 et 72) : le k de l'air en course (0,0065, Pugh 1971) n'est qu'un ordre de grandeur, à confirmer. Aucune des deux énergies n'a été comparée à une montre ou à Strava.
 - **Course** :
   - zones cardiaques : `hr` est lu, FC max et FC de repos sont saisies, mais rien ne les utilise ;
