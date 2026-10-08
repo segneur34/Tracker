@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
-  ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, baseActivity, findActivity, newActivityId,
-  insertActivity, readActivities, upgradeActivities, type Activity,
+  ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
+  newActivityId, insertActivity, readActivities, upgradeActivities, type Activity,
 } from '../core/activities';
 import {
-  ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, getSportProfile, sportFamily, type ElevationProfile, type RecordingProfile,
-  type SportFamily,
+  ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, getSportProfile, sportTreatment, type ElevationProfile,
+  type RecordingProfile, type SportFamily, type Treatment,
 } from '../core/sportProfiles';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { DISTANCE_UNIT_LABEL, SPEED_UNIT_LABEL, type DistanceUnit, type SpeedUnit } from '../core/units';
 import { jsonStore } from '../platform/storage';
+import {
+  DEFAULT_INTERVAL_WORKOUT, MAX_INTERVAL_PRESETS, newPresetId, sameWorkout, sanitizePresets, sanitizeWorkout, workoutLabel,
+  type IntervalPreset, type IntervalWorkout,
+} from '../recording/intervalTimer';
 import { DEFAULT_LIVE_FIELDS, sanitizeLiveFields, type LiveFieldKey } from '../recording/liveFields';
 import { MARK_GUIDE_DEFAULTS, sanitizeMarkGuide, type MarkGuideSettings } from '../recording/markGuide';
 import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, type BikeType } from '../cycling/energy';
@@ -46,19 +50,19 @@ export const TERRAIN_LABEL: Record<TerrainType, string> = {
   trail: 'Trail / montagne',
 };
 
-/** Unités d'affichage proposées selon la famille de support. */
+/** Unités d'affichage proposées selon le traitement du calcul. */
 export const SAILING_UNITS: SpeedUnit[] = ['kn', 'kmh', 'ms'];
 export const RUNNING_UNITS: SpeedUnit[] = ['kmh', 'ms', 'minkm'];
 export const CYCLING_UNITS: SpeedUnit[] = ['kmh', 'ms'];
 
-export const FAMILY_UNITS: Record<SportFamily, SpeedUnit[]> = {
+export const TREATMENT_UNITS: Record<Treatment, SpeedUnit[]> = {
   voile: SAILING_UNITS,
   course: RUNNING_UNITS,
   velo: CYCLING_UNITS,
 };
 
 /** Bornes de couleur de la trace à défaut de réglage (en voile, avant toute suggestion tirée de la session). */
-export const FAMILY_SPEED_RANGE_MS: Record<SportFamily, SpeedRangeMs> = {
+export const TREATMENT_SPEED_RANGE_MS: Record<Treatment, SpeedRangeMs> = {
   voile: DEFAULT_SAILING_SPEED_RANGE_MS,
   course: DEFAULT_SPEED_RANGE_MS,
   velo: DEFAULT_CYCLING_SPEED_RANGE_MS,
@@ -66,7 +70,7 @@ export const FAMILY_SPEED_RANGE_MS: Record<SportFamily, SpeedRangeMs> = {
 
 /** Bornes de la couleur de pente à défaut de réglage. */
 export const defaultGradeRange = (sport: SportType): GradeRange =>
-  sportFamily(sport) === 'velo' ? DEFAULT_CYCLING_GRADE_RANGE : DEFAULT_GRADE_RANGE;
+  sportTreatment(sport) === 'velo' ? DEFAULT_CYCLING_GRADE_RANGE : DEFAULT_GRADE_RANGE;
 
 /**
  * Réglages par activité (`core/activities.ts`) : unité, seuil d'activité,
@@ -136,6 +140,10 @@ export interface StoredSettings {
   navSecondFamily?: SportFamily;
   /** Durée de l'appui long sur le sport secondaire qui ouvre le menu pour en changer, en millisecondes. */
   navHoldMs?: number;
+  /** Séances du compteur gardées pour être reprises toutes faites (fractionné), communes aux activités. */
+  intervalPresets?: IntervalPreset[];
+  /** Dernière séance lancée au compteur, proposée la fois suivante (choix retenu). */
+  lastIntervalWorkout?: IntervalWorkout;
 }
 
 /** Appui long par défaut : 2 s, assez pour ne pas partir d'un geste involontaire. */
@@ -229,7 +237,11 @@ const writeStored = (settings: StoredSettings): void => jsonStore.write(STORAGE_
 export const upgradeStoredActivities = (): void => {
   const stored = readStoredSettings();
   if (stored.activities === undefined || (stored.activitiesVersion ?? 1) >= ACTIVITIES_VERSION) return;
-  writeStored({ ...stored, activities: upgradeActivities(readActivities(stored.activities)), activitiesVersion: ACTIVITIES_VERSION });
+  writeStored({
+    ...stored,
+    activities: upgradeActivities(readActivities(stored.activities), stored.activitiesVersion ?? 1),
+    activitiesVersion: ACTIVITIES_VERSION,
+  });
 };
 
 /** Type de vélo d'une activité sans réglage : celui de Gravel et de VTT pour elles, route sinon. */
@@ -276,6 +288,56 @@ export const rememberNavSecondFamily = (family: SportFamily): void => {
   if (isKnownFamily(family) && stored.navSecondFamily !== family) writeStored({ ...stored, navSecondFamily: family });
 };
 
+/** Séances du compteur : celles gardées, et celle à proposer (la dernière lancée, sinon la séance par défaut). */
+export interface IntervalSettings {
+  presets: IntervalPreset[];
+  last: IntervalWorkout;
+}
+
+/** Dernière lecture, rendue telle quelle tant que rien n'a changé : `useSyncExternalStore` compare les références. */
+let intervalSettingsCache: { key: string; value: IntervalSettings } | null = null;
+
+const readIntervalSettings = (): IntervalSettings => {
+  const stored = readStoredSettings();
+  const key = JSON.stringify([stored.intervalPresets ?? null, stored.lastIntervalWorkout ?? null]);
+  if (intervalSettingsCache?.key !== key) {
+    intervalSettingsCache = {
+      key,
+      value: {
+        presets: sanitizePresets(stored.intervalPresets),
+        last: sanitizeWorkout(stored.lastIntervalWorkout) ?? DEFAULT_INTERVAL_WORKOUT,
+      },
+    };
+  }
+  return intervalSettingsCache.value;
+};
+
+/** Séances du compteur, suivies en direct. */
+export const useIntervalSettings = (): IntervalSettings => useSyncExternalStore(jsonStore.subscribe, readIntervalSettings);
+
+/** Retient la séance lancée, proposée au prochain lancement. */
+export const rememberIntervalWorkout = (workout: IntervalWorkout): void => {
+  const stored = readStoredSettings();
+  const last = sanitizeWorkout(stored.lastIntervalWorkout);
+  if (!last || !sameWorkout(last, workout)) writeStored({ ...stored, lastIntervalWorkout: workout });
+};
+
+/** Garde une séance, sous le nom donné (vide : son libellé) ; sans effet au-delà de `MAX_INTERVAL_PRESETS`. */
+export const saveIntervalPreset = (name: string, workout: IntervalWorkout): void => {
+  const stored = readStoredSettings();
+  const presets = sanitizePresets(stored.intervalPresets);
+  const clean = sanitizeWorkout(workout);
+  if (!clean || presets.length >= MAX_INTERVAL_PRESETS) return;
+  const preset: IntervalPreset = { id: newPresetId(presets), name: name.trim() || workoutLabel(clean), workout: clean };
+  writeStored({ ...stored, intervalPresets: [...presets, preset] });
+};
+
+/** Retire une séance gardée. */
+export const removeIntervalPreset = (id: string): void => {
+  const stored = readStoredSettings();
+  writeStored({ ...stored, intervalPresets: sanitizePresets(stored.intervalPresets).filter((p) => p.id !== id) });
+};
+
 /** Durée effective de l'appui long qui change le sport secondaire, lue à chaque appui. */
 export const effectiveNavHoldMs = (): number => {
   const value = readStoredSettings().navHoldMs;
@@ -292,10 +354,10 @@ export const effectiveRecordingProfile = (activity: Activity): RecordingProfile 
   return override ? { ...profile.recording, autoPauseSpeedMs: override.speedMs, autoPauseDelayS: override.delayS } : profile.recording;
 };
 
-/** Chiffres en grand de l'enregistrement, carte réduite : ceux choisis dans Réglages, sinon ceux de la famille. */
+/** Chiffres en grand de l'enregistrement, carte réduite : ceux choisis dans Réglages, sinon ceux du traitement. */
 export const effectiveLiveFields = (activity: Activity): LiveFieldKey[] => {
-  const family = activityFamily(activity);
-  return sanitizeLiveFields(readStoredSettings().liveFields?.[activity.id], family) ?? DEFAULT_LIVE_FIELDS[family];
+  const treatment = activityTreatment(activity);
+  return sanitizeLiveFields(readStoredSettings().liveFields?.[activity.id], treatment) ?? DEFAULT_LIVE_FIELDS[treatment];
 };
 
 /** Bips d'approche des balises d'un parcours : ceux réglés pour l'activité, sinon le défaut. */
@@ -335,11 +397,18 @@ export const effectiveGradeRange = (activity: Activity): GradeRange => {
   return range && isValidGradeRange(range) ? range : defaultGradeRange(activity.base);
 };
 
-/** Famille d'une activité qui a un temps estimé, `null` en voile. */
+/**
+ * Famille d'une activité qui se planifie avec un temps estimé (course, vélo) ;
+ * `null` en voile, qui planifie sans temps, et pour le fractionné, qui ne
+ * planifie pas.
+ */
 export const planningFamily = (activity: Activity): PlanningFamily | null => {
   const family = activityFamily(activity);
-  return family === 'voile' ? null : family;
+  return family === 'course' || family === 'velo' ? family : null;
 };
+
+/** Familles proposées en planification. */
+export const PLANNING_FAMILIES: SportFamily[] = ['voile', 'course', 'velo'];
 
 /** Type et poids du vélo d'une activité : ceux de Réglages, sinon le type par défaut et son poids. Utilisable hors composant. */
 export const effectiveBikeSetup = (activity: Activity): { bikeType: BikeType; bikeKg: number } => {
@@ -358,7 +427,7 @@ const resolveWayTypes = (stored: StoredSettings, activity: Activity): { wayTypes
   const terrain = stored.terrains?.[activity.id];
   return {
     wayTypes: presetWayTypes(
-      activityFamily(activity),
+      activityTreatment(activity),
       isBikeType(bikeType) ? bikeType : defaultBikeType(activity.id),
       isKnownTerrain(terrain) ? terrain : 'route'
     ),
@@ -511,7 +580,7 @@ export const useAllSportSettings = () => {
       const bikeWeight = stored.bikeWeights?.[id];
       const paceLevel = stored.paceLevels?.[id];
       const customSpeed = stored.customFlatSpeeds?.[id];
-      const liveFields = sanitizeLiveFields(stored.liveFields?.[id], activityFamily(activity));
+      const liveFields = sanitizeLiveFields(stored.liveFields?.[id], activityTreatment(activity));
       const markGuide = sanitizeMarkGuide(stored.markGuide?.[id]);
       const ways = resolveWayTypes(stored, activity);
       return {
@@ -529,7 +598,7 @@ export const useAllSportSettings = () => {
         gradeRange: grades && isValidGradeRange(grades) ? grades : null,
         autoPause: autoPauseOverride ?? { speedMs: profile.recording.autoPauseSpeedMs, delayS: profile.recording.autoPauseDelayS },
         isAutoPauseOverridden: autoPauseOverride !== undefined,
-        liveFields: liveFields ?? DEFAULT_LIVE_FIELDS[activityFamily(activity)],
+        liveFields: liveFields ?? DEFAULT_LIVE_FIELDS[activityTreatment(activity)],
         isLiveFieldsOverridden: liveFields !== null,
         markGuide: markGuide ?? MARK_GUIDE_DEFAULTS,
         isMarkGuideOverridden: markGuide !== null,
@@ -605,7 +674,7 @@ export const useAllSportSettings = () => {
         case 'liveFields': {
           const activity = findActivity(activities, id);
           if (!activity) return;
-          const fields = value === null ? null : sanitizeLiveFields(value, activityFamily(activity));
+          const fields = value === null ? null : sanitizeLiveFields(value, activityTreatment(activity));
           if (value !== null && fields === null) return;
           next.liveFields = put(stored.liveFields, fields);
           break;
@@ -845,8 +914,8 @@ export const useSportSettings = (family: SportFamily) => {
     speedRange,
     /** Bornes de la couleur de pente de la courbe d'altitude, réglées dans Réglages ou par défaut. */
     gradeRange,
-    /** Bornes du dégradé à défaut de réglage, propres à la famille. */
-    defaultSpeedRange: FAMILY_SPEED_RANGE_MS[family],
+    /** Bornes du dégradé à défaut de réglage, propres au traitement du calcul. */
+    defaultSpeedRange: TREATMENT_SPEED_RANGE_MS[sportTreatment(sport)],
     bikeType,
     /** Poids du vélo effectif, en kg (celui du type à défaut de réglage). */
     bikeWeightKg,

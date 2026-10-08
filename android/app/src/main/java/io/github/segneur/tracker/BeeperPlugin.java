@@ -1,54 +1,38 @@
 package io.github.segneur.tracker;
 
-import android.content.Context;
-import android.media.AudioAttributes;
-import android.media.AudioFormat;
-import android.media.AudioTrack;
-import android.os.Build;
+import android.content.Intent;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.SystemClock;
-import android.os.VibrationAttributes;
-import android.os.VibrationEffect;
-import android.os.Vibrator;
-import android.os.VibratorManager;
+import androidx.core.content.ContextCompat;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
- * Bips et vibrations du guidage vers les balises d'un parcours de voile
- * (src/recording/markGuide.ts, src/platform/beeper.ts).
+ * Bips et vibrations : le guidage vers les balises d'un parcours de voile
+ * (src/recording/markGuide.ts, src/platform/beeper.ts), et le compteur du
+ * fractionné (src/platform/intervalClock.ts), confié à IntervalTimerService.
  *
- * Le rythme est tenu ici, sur un fil à lui : écran éteint, les minuteries de
- * la WebView sont bridées, pas celles d'Android, et le service GPS de
- * l'enregistrement garde le processeur éveillé. La couche web ne fait que
- * régler l'intervalle à chaque position reçue.
- *
- * Le son passe par le flux des alarmes : audible téléphone en silencieux, au
- * volume des alarmes. Les sons sont synthétisés une fois (sinus, fondus de
- * quelques millisecondes pour éviter les claquements), puis rejoués.
+ * Le rythme des balises est tenu ici, sur un fil à lui : écran éteint, les
+ * minuteries de la WebView sont bridées, pas celles d'Android, et le service
+ * GPS de l'enregistrement garde le processeur éveillé. La couche web ne fait
+ * que régler l'intervalle à chaque position reçue. Sons et vibrations :
+ * TonePlayer.
  */
 @CapacitorPlugin(name = "Beeper")
 public class BeeperPlugin extends Plugin {
 
-    /** Durées, en millisecondes : bip d'approche, bip de validation, pause entre les trois bips de fin (comme beeper.ts). */
-    private static final int SHORT_MS = 120;
-    private static final int LONG_MS = 800;
+    /** Pause entre les trois bips de fin (comme beeper.ts), en millisecondes. */
     private static final int FINISH_GAP_MS = 250;
-    /** Vibrations, en millisecondes : avec un bip d'approche, à la validation. */
-    private static final int SHORT_VIBRATION_MS = 80;
-    private static final int LONG_VIBRATION_MS = 600;
-    /** Hauteur des bips : vers 2 kHz, un haut-parleur de téléphone porte le mieux. */
-    private static final double TONE_HZ = 2000;
-    private static final int SAMPLE_RATE = 44100;
-    private static final int FADE_MS = 5;
 
     private HandlerThread thread;
     private Handler handler;
-    private AudioTrack shortTone;
-    private AudioTrack longTone;
+    private TonePlayer tones;
 
     // État du rythme, lu et écrit sur le fil des bips seulement.
     /** Intervalle entre deux bips, en millisecondes ; 0 : silence. */
@@ -60,7 +44,7 @@ public class BeeperPlugin extends Plugin {
         @Override
         public void run() {
             if (intervalMs <= 0) return;
-            play(shortTone(), SHORT_VIBRATION_MS);
+            tones().playShort(vibrate);
             lastBeepAt = SystemClock.uptimeMillis();
             handler.postDelayed(this, intervalMs);
         }
@@ -73,6 +57,11 @@ public class BeeperPlugin extends Plugin {
             handler = new Handler(thread.getLooper());
         }
         return handler;
+    }
+
+    private TonePlayer tones() {
+        if (tones == null) tones = new TonePlayer(getContext());
+        return tones;
     }
 
     // --- Méthodes ---
@@ -102,9 +91,9 @@ public class BeeperPlugin extends Plugin {
         h.post(() -> {
             silence();
             vibrate = vibrateRequested;
-            play(longTone(), LONG_VIBRATION_MS);
+            tones().playLong(vibrate);
             // Le bip suivant attend la fin du bip long.
-            lastBeepAt = SystemClock.uptimeMillis() + LONG_MS;
+            lastBeepAt = SystemClock.uptimeMillis() + TonePlayer.LONG_MS;
         });
         call.resolve();
     }
@@ -117,9 +106,9 @@ public class BeeperPlugin extends Plugin {
             silence();
             vibrate = vibrateRequested;
             for (int k = 0; k < 3; k++) {
-                h.postDelayed(() -> play(longTone(), LONG_VIBRATION_MS), (long) k * (LONG_MS + FINISH_GAP_MS));
+                h.postDelayed(() -> tones().playLong(vibrate), (long) k * (TonePlayer.LONG_MS + FINISH_GAP_MS));
             }
-            lastBeepAt = SystemClock.uptimeMillis() + 3L * LONG_MS + 2L * FINISH_GAP_MS;
+            lastBeepAt = SystemClock.uptimeMillis() + 3L * TonePlayer.LONG_MS + 2L * FINISH_GAP_MS;
         });
         call.resolve();
     }
@@ -130,8 +119,59 @@ public class BeeperPlugin extends Plugin {
         h.post(() -> {
             silence();
             h.removeCallbacksAndMessages(null);
-            release();
+            if (tones != null) tones.release();
+            tones = null;
         });
+        call.resolve();
+    }
+
+    /**
+     * Compteur du fractionné : remplace le programme en cours par celui-ci
+     * (sons et changements de phase, chacun à un délai en millisecondes) et
+     * lance le service qui le joue, écran éteint compris ; `stopAfterMs` : le
+     * service s'arrête de lui-même après ce délai (fin de séance), 0 jamais.
+     */
+    @PluginMethod
+    public void scheduleIntervals(PluginCall call) {
+        JSArray toneList = call.getArray("tones", new JSArray());
+        JSArray cueList = call.getArray("cues", new JSArray());
+        try {
+            long[] toneDelays = new long[toneList.length()];
+            int[] toneKinds = new int[toneList.length()];
+            for (int i = 0; i < toneList.length(); i++) {
+                JSONObject tone = toneList.getJSONObject(i);
+                toneDelays[i] = tone.getLong("delayMs");
+                toneKinds[i] = IntervalTimerService.toneKind(tone.optString("tone", "court"));
+            }
+            long[] cueDelays = new long[cueList.length()];
+            long[] cuePhaseMs = new long[cueList.length()];
+            String[] cueTitles = new String[cueList.length()];
+            for (int i = 0; i < cueList.length(); i++) {
+                JSONObject cue = cueList.getJSONObject(i);
+                cueDelays[i] = cue.getLong("delayMs");
+                cuePhaseMs[i] = cue.optLong("phaseMs", 0);
+                cueTitles[i] = cue.optString("title", "");
+            }
+            Intent intent = new Intent(getContext(), IntervalTimerService.class)
+                .setAction(IntervalTimerService.ACTION_SCHEDULE)
+                .putExtra(IntervalTimerService.EXTRA_TONE_DELAYS, toneDelays)
+                .putExtra(IntervalTimerService.EXTRA_TONE_KINDS, toneKinds)
+                .putExtra(IntervalTimerService.EXTRA_CUE_DELAYS, cueDelays)
+                .putExtra(IntervalTimerService.EXTRA_CUE_PHASE_MS, cuePhaseMs)
+                .putExtra(IntervalTimerService.EXTRA_CUE_TITLES, cueTitles)
+                .putExtra(IntervalTimerService.EXTRA_VIBRATE, Boolean.TRUE.equals(call.getBoolean("vibrate", false)))
+                .putExtra(IntervalTimerService.EXTRA_STOP_AFTER_MS, (long) call.getInt("stopAfterMs", 0));
+            ContextCompat.startForegroundService(getContext(), intent);
+            call.resolve();
+        } catch (JSONException | RuntimeException e) {
+            call.reject("Compteur impossible à lancer : " + e.getMessage());
+        }
+    }
+
+    /** Arrête le compteur du fractionné : silence, plus de notification. */
+    @PluginMethod
+    public void stopIntervals(PluginCall call) {
+        getContext().stopService(new Intent(getContext(), IntervalTimerService.class));
         call.resolve();
     }
 
@@ -140,103 +180,16 @@ public class BeeperPlugin extends Plugin {
         Handler h = handler;
         if (h != null) {
             h.removeCallbacksAndMessages(null);
-            h.post(this::release);
+            h.post(() -> {
+                if (tones != null) tones.release();
+                tones = null;
+            });
             thread.quitSafely();
         }
     }
 
-    // --- Sons et vibrations, sur le fil des bips ---
-
     private void silence() {
         intervalMs = 0;
         handler.removeCallbacks(beep);
-    }
-
-    private AudioTrack shortTone() {
-        if (shortTone == null) shortTone = buildTone(SHORT_MS);
-        return shortTone;
-    }
-
-    private AudioTrack longTone() {
-        if (longTone == null) longTone = buildTone(LONG_MS);
-        return longTone;
-    }
-
-    private void release() {
-        if (shortTone != null) shortTone.release();
-        if (longTone != null) longTone.release();
-        shortTone = null;
-        longTone = null;
-    }
-
-    /** Sinus de `durationMs`, fondu à l'entrée et à la sortie, prêt à être rejoué. */
-    private static AudioTrack buildTone(int durationMs) {
-        int n = SAMPLE_RATE * durationMs / 1000;
-        int fade = SAMPLE_RATE * FADE_MS / 1000;
-        short[] pcm = new short[n];
-        for (int i = 0; i < n; i++) {
-            double envelope = Math.min(1.0, Math.min(i, n - 1 - i) / (double) fade);
-            pcm[i] = (short) (Math.sin(2 * Math.PI * TONE_HZ * i / SAMPLE_RATE) * envelope * Short.MAX_VALUE * 0.9);
-        }
-        AudioTrack track = new AudioTrack.Builder()
-            .setAudioAttributes(
-                new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-            .setAudioFormat(
-                new AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(SAMPLE_RATE)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .setBufferSizeInBytes(n * 2)
-            .build();
-        track.write(pcm, 0, n);
-        return track;
-    }
-
-    /** Joue un son depuis son début, avec la vibration si elle est demandée. */
-    private void play(AudioTrack track, int vibrationMs) {
-        try {
-            if (track.getPlayState() != AudioTrack.PLAYSTATE_STOPPED) track.stop();
-            track.reloadStaticData();
-            track.play();
-        } catch (IllegalStateException e) {
-            // Son indisponible (sortie audio occupée ou coupée) : la vibration reste.
-        }
-        if (vibrate) vibrate(vibrationMs);
-    }
-
-    /**
-     * Vibration d'alarme : une application en arrière-plan, écran éteint, ne
-     * vibre que si l'usage est déclaré (alarme, sonnerie, notification).
-     */
-    private void vibrate(int durationMs) {
-        Context context = getContext();
-        Vibrator vibrator;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            VibratorManager manager = (VibratorManager) context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
-            vibrator = manager != null ? manager.getDefaultVibrator() : null;
-        } else {
-            vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
-        }
-        if (vibrator == null || !vibrator.hasVibrator()) return;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            vibrator.vibrate(
-                VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE),
-                VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM)
-            );
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(
-                VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE),
-                new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
-            );
-        } else {
-            vibrator.vibrate(durationMs, new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build());
-        }
     }
 }

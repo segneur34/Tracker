@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_LIVE_FIELDS, MAX_LIVE_FIELDS, liveFieldLabel, liveFieldValue, liveFieldsOfFamily, sanitizeLiveFields, type LiveFieldContext } from './liveFields';
+import { DEFAULT_LIVE_FIELDS, MAX_LIVE_FIELDS, liveFieldLabel, liveFieldValue, liveFieldsOfTreatment, sanitizeLiveFields, type LiveFieldContext } from './liveFields';
 import { EMPTY_LIVE_STATS } from './liveStats';
 
 const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
@@ -15,20 +15,20 @@ const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
   ...patch,
 });
 
-describe('liveFieldsOfFamily', () => {
-  it('ne propose que les chiffres qui ont un sens pour la famille', () => {
-    expect(liveFieldsOfFamily('voile')).toContain('recentTopShort');
-    expect(liveFieldsOfFamily('voile')).not.toContain('power');
-    expect(liveFieldsOfFamily('course')).toContain('power');
-    expect(liveFieldsOfFamily('voile')).toContain('markDistance');
-    expect(liveFieldsOfFamily('course')).not.toContain('markBearing');
-    expect(liveFieldsOfFamily('course')).not.toContain('heading');
-    expect(liveFieldsOfFamily('velo')).toContain('grade');
+describe('liveFieldsOfTreatment', () => {
+  it('ne propose que les chiffres qui ont un sens pour le traitement', () => {
+    expect(liveFieldsOfTreatment('voile')).toContain('recentTopShort');
+    expect(liveFieldsOfTreatment('voile')).not.toContain('power');
+    expect(liveFieldsOfTreatment('course')).toContain('power');
+    expect(liveFieldsOfTreatment('voile')).toContain('markDistance');
+    expect(liveFieldsOfTreatment('course')).not.toContain('markBearing');
+    expect(liveFieldsOfTreatment('course')).not.toContain('heading');
+    expect(liveFieldsOfTreatment('velo')).toContain('grade');
   });
 
-  it('propose les défauts de chaque famille', () => {
-    for (const family of ['voile', 'course', 'velo'] as const) {
-      for (const key of DEFAULT_LIVE_FIELDS[family]) expect(liveFieldsOfFamily(family)).toContain(key);
+  it('propose les défauts de chaque traitement', () => {
+    for (const treatment of ['voile', 'course', 'velo'] as const) {
+      for (const key of DEFAULT_LIVE_FIELDS[treatment]) expect(liveFieldsOfTreatment(treatment)).toContain(key);
     }
   });
 });

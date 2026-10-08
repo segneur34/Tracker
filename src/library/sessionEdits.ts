@@ -4,9 +4,9 @@ import { normalizeDeg, type SessionAnalysis, type SessionRecord, type StoredSess
 
 /**
  * Ce que l'utilisateur change sur une session dans le module d'analyse : vent
- * saisi, seuil d'activité, allure imposée, couleurs de la trace, notes. Les
- * changements restent en brouillon jusqu'à « Enregistrer la session », qui
- * les écrit dans la fiche.
+ * saisi, seuil d'activité, allure imposée, couleurs de la trace, seuil
+ * d'effort du fractionné, notes. Les changements restent en brouillon jusqu'à
+ * « Enregistrer la session », qui les écrit dans la fiche.
  */
 export interface SessionEdits {
   notes: SailingSessionNotes;
@@ -18,6 +18,8 @@ export interface SessionEdits {
   referenceSpeedMs: number | null;
   /** Bornes de couleur de la trace, en m/s ; `null` : celles des Réglages, sinon le défaut du module. */
   speedRange: SpeedRangeMs | null;
+  /** Seuil d'effort de la détection des répétitions, en m/s ; `null` : celui tiré de la session. */
+  effortThresholdMs: number | null;
 }
 
 const NOTE_FIELDS = Object.keys(EMPTY_NOTES) as (keyof SailingSessionNotes)[];
@@ -52,13 +54,14 @@ export const savedEdits = (record: SessionRecord | null, gear: StoredSessionNote
     activeThreshold: record?.analysis?.activeThreshold ?? null,
     referenceSpeedMs: record?.analysis?.referenceSpeedMs ?? null,
     speedRange: record?.analysis?.speedRange ?? null,
+    effortThresholdMs: record?.analysis?.effortThresholdMs ?? null,
   };
 };
 
 const pickNotes = (notes: SailingSessionNotes): SailingSessionNotes =>
   Object.fromEntries(NOTE_FIELDS.map((field) => [field, notes[field]])) as unknown as SailingSessionNotes;
 
-export type EditedPart = 'vent' | 'seuil' | 'allure' | 'couleurs' | 'notes';
+export type EditedPart = 'vent' | 'seuil' | 'allure' | 'couleurs' | 'effort' | 'notes';
 
 /** Nom de chaque partie, tel que l'écran l'annonce. */
 export const EDITED_PART_LABEL: Record<EditedPart, string> = {
@@ -66,6 +69,7 @@ export const EDITED_PART_LABEL: Record<EditedPart, string> = {
   seuil: "seuil d'activité",
   allure: 'allure de la session',
   couleurs: 'couleurs de la trace',
+  effort: "seuil d'effort",
   notes: 'notes',
 };
 
@@ -79,6 +83,7 @@ export const changedParts = (saved: SessionEdits, edits: SessionEdits): EditedPa
   if (saved.activeThreshold !== edits.activeThreshold) parts.push('seuil');
   if (saved.referenceSpeedMs !== edits.referenceSpeedMs) parts.push('allure');
   if (!sameRange(saved.speedRange, edits.speedRange)) parts.push('couleurs');
+  if (saved.effortThresholdMs !== edits.effortThresholdMs) parts.push('effort');
   if (!sameNotes(saved.notes, edits.notes)) parts.push('notes');
   return parts;
 };
@@ -104,6 +109,7 @@ export const editsPatch = (record: SessionRecord, saved: SessionEdits, edits: Se
       activeThreshold: edits.activeThreshold,
       referenceSpeedMs: edits.referenceSpeedMs,
       speedRange: edits.speedRange,
+      effortThresholdMs: edits.effortThresholdMs,
       savedAt: now,
     };
   }

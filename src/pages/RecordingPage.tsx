@@ -4,15 +4,17 @@ import ActivitySelect from '../components/ActivitySelect';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import FollowTracePicker from '../components/FollowTracePicker';
+import IntervalCard from '../components/IntervalCard';
 import PageHeader from '../components/ui/PageHeader';
 import { IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
-import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
-import { SPORT_FAMILIES, sportFamily, type SportFamily } from '../core/sportProfiles';
+import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
+import { SPORT_FAMILIES, sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
 import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatShortDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
+import { useIntervalTimerOpen } from '../hooks/useIntervalTimer';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../hooks/useMarkGuide';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -56,6 +58,9 @@ import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
  * une à une, avec des bips d'approche (`useMarkGuide`), et l'avancement se
  * compte par balises.
  *
+ * En fractionné, le compteur (`IntervalCard`) vit à côté de l'enregistrement,
+ * sans en dépendre : lancé avant, pendant ou sans lui.
+ *
  * Dans le navigateur, une source « rejeu » relit un GPX en accéléré : toute la
  * chaîne s'éprouve sur le PC, jusqu'à l'analyse de la session obtenue.
  */
@@ -79,7 +84,10 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
 const STAT_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' } as const;
 
 /** Couleur de la trace sur la carte en direct, celle de la famille (donnée de carte, donc en dur). */
-const TRACK_COLOR: Record<SportFamily, string> = { voile: '#1565c0', course: '#bf360c', velo: '#00695c' };
+const TRACK_COLOR: Record<SportFamily, string> = { voile: '#1565c0', course: '#bf360c', velo: '#00695c', fractionne: '#ad1457' };
+
+/** Nom d'une famille dans « Aucune activité … ». */
+const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'course', velo: 'vélo', fractionne: 'de fractionné' };
 
 const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
 const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
@@ -135,11 +143,11 @@ const MarkGuideCard = ({ view, activity }: { view: MarkGuideView; activity: Acti
   );
 };
 
-/** Statistiques en direct propres à la famille de l'activité. */
+/** Statistiques en direct propres au traitement du calcul de l'activité. */
 const liveStatItems = (activity: Activity, live: LiveStats): { label: string; value: string }[] => {
   const unit = effectiveSpeedUnit(activity);
   const distanceUnit = effectiveDistanceUnit(activity);
-  if (sportFamily(activity.base) === 'voile') {
+  if (sportTreatment(activity.base) === 'voile') {
     return [
       ...LIVE_STATS_DEFAULTS.topDurationsS.map((d, i) => ({
         label: `Top ${d} s (${recentWindowLabel})`,
@@ -149,7 +157,7 @@ const liveStatItems = (activity: Activity, live: LiveStats): { label: string; va
     ];
   }
   // Course : l'allure ; vélo : la vitesse.
-  const speedWord = sportFamily(activity.base) === 'velo' ? 'Vitesse' : 'Allure';
+  const speedWord = sportTreatment(activity.base) === 'velo' ? 'Vitesse' : 'Allure';
   return [
     { label: speedWord, value: formatSpeed(live.currentSpeedMs, unit) },
     { label: 'Distance', value: formatDistance(live.distanceM, distanceUnit) },
@@ -220,7 +228,7 @@ const liveSummaryItems = (activity: Activity, context: Omit<LiveFieldContext, ke
 
 /** Modèle de la puissance et de l'énergie en direct, celui de l'analyse ; aucun en voile. */
 const liveEnergySetup = (activity: Activity, weightKg: number | null, economyMlKgKm: number | null): LiveEnergySetup | undefined => {
-  const family = sportFamily(activity.base);
+  const family = sportTreatment(activity.base);
   if (family === 'course') return { family, params: runningEnergyParams(economyMlKgKm), massKg: weightKg };
   if (family === 'velo') {
     const { bikeType, bikeKg } = effectiveBikeSetup(activity);
@@ -279,6 +287,10 @@ function RecordingPage() {
   const canStart = !busy && pending === null && chosen !== null && (sourceChoice === 'device' || replay !== null);
   const liveActivity = recorder.activity ?? chosen;
   const mapReduced = busy && !shown.carte;
+  // Compteur : pour le fractionné choisi (au repos) ou enregistré, et tant qu'une séance est lancée.
+  const counterOpen = useIntervalTimerOpen();
+  const counterFamily = busy ? (liveActivity ? activityFamily(liveActivity) : null) : pending ? null : family;
+  const showCounter = counterOpen || counterFamily === 'fractionne';
   const { profile: runner } = useRunnerProfile();
   const energy = useMemo(
     () => (liveActivity ? liveEnergySetup(liveActivity, runner.weightKg, runner.economyMlKgKm) : undefined),
@@ -377,7 +389,7 @@ function RecordingPage() {
             </label>
           ) : (
             <div className="ui-alert ui-alert--warning">
-              Aucune activité {({ voile: 'voile', course: 'course', velo: 'vélo' } as const)[family]} : ajoutez-en une dans <Link to="/parametres">Réglages</Link>.
+              Aucune activité {FAMILY_NOUN[family]} : ajoutez-en une dans <Link to="/parametres">Réglages</Link>.
             </div>
           )}
 
@@ -469,6 +481,8 @@ function RecordingPage() {
       )}
 
       {recorder.error && <div className="ui-alert ui-alert--danger">{recorder.error}</div>}
+
+      {showCounter && <IntervalCard recording={busy} />}
 
       {markGuide.active && liveActivity && <MarkGuideCard view={markGuide} activity={liveActivity} />}
 

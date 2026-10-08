@@ -1,0 +1,56 @@
+/* Onglet « fractionné » des analyses (`IntervalAnalysis.tsx`). */
+
+.an-ivl-spark {
+  display: block;
+  margin: 0 auto;
+}
+
+.an-ivl-launch,
+.an-ivl-hold {
+  white-space: nowrap;
+}
+
+/* Sur téléphone, chaque répétition passe sur trois rangées, comme les podiums des manœuvres :
+   numéro à gauche, puis vitesse, distance et « Voir » ; lancé, maintien et durée ; la mini-courbe et le repos. */
+@media (max-width: 767.98px) {
+  .an-ivl-table thead {
+    display: none;
+  }
+
+  .an-ivl-table tbody tr {
+    display: grid;
+    grid-template-columns: 2em minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-areas:
+      'rep speed dist map'
+      'rep launch hold dur'
+      'rep spark spark rest';
+    align-items: center;
+    padding: 4px 0;
+  }
+
+  .an-ivl-table td {
+    padding: 2px 4px !important;
+    text-align: left !important;
+  }
+
+  .an-ivl-rep { grid-area: rep; align-self: start; }
+  .an-ivl-speed { grid-area: speed; }
+  .an-ivl-dist { grid-area: dist; }
+  .an-ivl-map { grid-area: map; }
+  .an-ivl-launch { grid-area: launch; }
+  .an-ivl-hold { grid-area: hold; }
+  .an-ivl-dur { grid-area: dur; }
+  .an-ivl-spark-cell { grid-area: spark; }
+  .an-ivl-rest { grid-area: rest; font-size: 0.9em; }
+
+  .an-ivl-spark {
+    margin: 0;
+  }
+
+  .an-ivl-launch::before,
+  .an-ivl-hold::before {
+    content: attr(data-label) ' ';
+    color: var(--muted);
+    font-size: 0.85em;
+  }
+}

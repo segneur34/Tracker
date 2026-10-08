@@ -62,9 +62,10 @@ export const serializeSettingsFile = (file: SettingsFile): string => `${JSON.str
 /**
  * Choix retenus d'une fois sur l'autre, qui ne sont pas des réglages : le
  * support ou l'activité du module (`sport`, l'ancienne clé, et
- * `moduleActivity`) et l'activité proposée à l'enregistrement.
+ * `moduleActivity`), l'activité proposée à l'enregistrement et la dernière
+ * séance lancée au compteur.
  */
-const REMEMBERED_CHOICES = ['sport', 'moduleActivity', 'recordActivity'];
+const REMEMBERED_CHOICES = ['sport', 'moduleActivity', 'recordActivity', 'lastIntervalWorkout'];
 
 /**
  * Empreinte des réglages qui voyagent, sans les choix retenus : ouvrir une

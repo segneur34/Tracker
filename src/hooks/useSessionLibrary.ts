@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
-import { ELEVATION_PRESETS, SAILING_SPORTS, sportFamily } from '../core/sportProfiles';
+import { ELEVATION_PRESETS, SAILING_SPORTS, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
   MARKER_FILE,
@@ -58,6 +58,7 @@ import {
   type MemoryKind,
 } from '../platform/memoryFolder';
 import { jsonStore } from '../platform/storage';
+import type { IntervalSeries } from '../recording/intervalTimer';
 import { sessionFileName } from '../recording/session';
 import { isKnownTerrain, readStoredActivities, readStoredSettings } from './useSportSettings';
 
@@ -241,7 +242,7 @@ const summaryOptions = (
     referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? analysis?.referenceSpeedMs ?? undefined : undefined,
     elevation: isKnownTerrain(terrain) ? ELEVATION_PRESETS[terrain] : undefined,
     terrainElevation:
-      sportFamily(sport) !== 'voile' && elevation?.elevationSource !== 'gps' ? elevation?.terrainElevation : undefined,
+      sportTreatment(sport) !== 'voile' && elevation?.elevationSource !== 'gps' ? elevation?.terrainElevation : undefined,
   };
 };
 
@@ -691,6 +692,8 @@ interface AddOptions {
   activityId?: string;
   /** Fiche qui accompagne le GPX, lors de l'import d'un dossier. */
   record?: SessionRecord | null;
+  /** Séances du compteur faites pendant l'enregistrement, rangées dans la fiche. */
+  intervals?: IntervalSeries[];
 }
 
 /** Range un GPX dans la mémoire, avec sa fiche. */
@@ -719,9 +722,10 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   }
 
   const gpx = uniqueSessionFileName(name, knownNames);
-  const record = options.record
+  const made = options.record
     ? withSummary({ ...options.record, gpx, sport: analyzed.sport }, analyzed.summary)
     : newRecord(gpx, analyzed, source, options.activityId ?? null);
+  const record = options.intervals && options.intervals.length > 0 ? { ...made, intervals: options.intervals } : made;
   await f.writeText(sessionPath(gpx), text);
   await f.writeText(sessionPath(recordFileName(gpx)), serializeRecord(record));
   knownNames.add(gpx);
@@ -731,17 +735,20 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
 };
 
 /**
- * Range une session qui vient d'être enregistrée. Rend son nom dans la
- * mémoire et, en clair, l'endroit où elle se trouve. Ne lève d'erreur que si
- * l'écriture échoue : l'enregistreur garde alors son journal.
+ * Range une session qui vient d'être enregistrée, avec les séances du
+ * compteur faites pendant elle. Rend son nom dans la mémoire et, en clair,
+ * l'endroit où elle se trouve. Ne lève d'erreur que si l'écriture échoue :
+ * l'enregistreur garde alors son journal. Une session mise en attente faute
+ * de dossier n'a pas encore de fiche : ses séances ne sont pas gardées.
  */
 export const saveRecordedSession = async (
   text: string,
   sport: SportType,
-  activityId: string | null
+  activityId: string | null,
+  intervals: IntervalSeries[] = []
 ): Promise<{ file: string | null; location: string }> => {
   await opening;
-  const result = await addGpx(text, 'enregistrement', { sport, activityId: activityId ?? undefined });
+  const result = await addGpx(text, 'enregistrement', { sport, activityId: activityId ?? undefined, intervals });
   switch (result.status) {
     case 'added':
       return { file: result.file, location: state.folderLabel ?? 'mémoire' };

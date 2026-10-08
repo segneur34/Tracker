@@ -24,7 +24,7 @@ import { CARD_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import HelpButton from '../components/ui/HelpButton';
 import PageHeader from '../components/ui/PageHeader';
-import { activityFamily, findActivity, type Activity } from '../core/activities';
+import { activityFamily, activityTreatment, findActivity, type Activity } from '../core/activities';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER, trackBounds } from '../core/displayConfig';
 import { parseGpxPath } from '../core/gpxParser';
@@ -41,7 +41,7 @@ import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
   effectiveDistanceUnit, effectiveDurationSettings, effectiveElevationProfile, effectiveGradeRange, effectiveLoopReturnRatio, effectiveMarkGuide,
-  effectivePace, effectiveWayTypes, lastRecordActivity, readStoredActivities,
+  effectivePace, effectiveWayTypes, lastRecordActivity, readStoredActivities, PLANNING_FAMILIES,
 } from '../hooks/useSportSettings';
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
@@ -260,14 +260,16 @@ const activityMode = (activity: Activity | null): RouteMode => (activity ? waysM
 
 function PlanningPage() {
   const [activities] = useState<Activity[]>(readStoredActivities);
+  // Le fractionné ne se planifie pas : ses activités ne sont ni proposées ni reprises.
+  const plannable = (a: Activity | null): a is Activity => a !== null && PLANNING_FAMILIES.includes(activityFamily(a));
   const [activityId, setActivityIdState] = useState<string | null>(
-    () => findActivity(activities, readPrefs().activityId)?.id ?? (lastRecordActivity() ?? activities[0])?.id ?? null
+    () => [findActivity(activities, readPrefs().activityId), lastRecordActivity(), ...activities].find(plannable)?.id ?? null
   );
   const setActivityId = (id: string) => {
     setActivityIdState(id);
     writePrefs({ activityId: id });
   };
-  const activity = findActivity(activities, activityId) ?? activities[0] ?? null;
+  const activity = findActivity(activities, activityId) ?? activities.find(plannable) ?? null;
   /** Parcours de voile : balises numérotées, tronçons en ligne droite, bloc « Parcours » au lieu du dénivelé. */
   const sailing = activity !== null && activityFamily(activity) === 'voile';
   const distanceUnit = activity ? effectiveDistanceUnit(activity) : 'km';
@@ -279,7 +281,7 @@ function PlanningPage() {
   const durationSettings = useMemo(() => (activity ? effectiveDurationSettings(activity, riderKg) : null), [activity, riderKg]);
   const pace = useMemo(() => (activity ? effectivePace(activity) : null), [activity]);
 
-  const vehicle = routeVehicle(activity ? activityFamily(activity) : 'course');
+  const vehicle = routeVehicle(activity ? activityTreatment(activity) : 'course');
   /** Retour d'une boucle : au plus tant de fois l'aller (Réglages) ; `null` en voile. */
   const loopRatio = useMemo(() => (activity ? effectiveLoopReturnRatio(activity) : null), [activity]);
   // Types de voie de l'activité à l'ouverture et à chaque changement d'activité, puis ceux que l'on coche ; mode « Boucle »
@@ -313,7 +315,8 @@ function PlanningPage() {
     const nextMode = activityMode(next);
     const nextFamily = next ? activityFamily(next) : 'course';
     const nextEdit = nextFamily === 'voile' ? 'straight' : nextMode;
-    planner.chooseMode(nextMode, (r) => setRouteMode(r, nextEdit, editMode, routeVehicle(nextFamily) !== vehicle),
+    const nextVehicle = routeVehicle(next ? activityTreatment(next) : 'course');
+    planner.chooseMode(nextMode, (r) => setRouteMode(r, nextEdit, editMode, nextVehicle !== vehicle),
       nextFamily === 'voile' ? false : undefined);
   };
 
@@ -718,7 +721,7 @@ function PlanningPage() {
       <div className="plan-layout">
         <div className="plan-map-col">
           <div className="plan-toolbar">
-            <ActivitySelect activities={activities} value={activity?.id ?? null} label="Activité"
+            <ActivitySelect activities={activities} value={activity?.id ?? null} label="Activité" families={PLANNING_FAMILIES}
               onChange={(next) => chooseActivity(next.id)} />
             {sailing ? (
               <span className="plan-toolbar__note">Balises reliées en ligne droite</span>

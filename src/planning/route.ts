@@ -1,6 +1,6 @@
 import { accumulateElevation } from '../core/elevation';
 import { EARTH_RADIUS_M, haversineDistance, initialBearing, toRad } from '../core/kinematics';
-import type { ELEVATION_PRESETS, SportFamily } from '../core/sportProfiles';
+import type { ELEVATION_PRESETS, Treatment } from '../core/sportProfiles';
 import type { BikeType } from '../cycling/energy';
 import { computeGrades } from '../running/runningAnalytics';
 import { WAY_TYPES, type WayType } from './brouterProfile';
@@ -140,12 +140,12 @@ export const readRouteMode = (value: unknown): RouteMode | null => {
 /**
  * Règles d'accès du calcul : celles du piéton (escaliers permis, sens
  * interdits ignorés) ou du vélo (sens interdits respectés, passages à pied
- * pénalisés). Elles suivent la famille de l'activité ; la voile prend celles
- * du piéton.
+ * pénalisés). Elles suivent le traitement de l'activité ; la voile prend
+ * celles du piéton.
  */
 export type RouteVehicle = 'pieton' | 'velo';
 
-export const routeVehicle = (family: SportFamily): RouteVehicle => (family === 'velo' ? 'velo' : 'pieton');
+export const routeVehicle = (treatment: Treatment): RouteVehicle => (treatment === 'velo' ? 'velo' : 'pieton');
 
 /** À vélo, types de voie cochés d'office selon le type de vélo (§10, point 81). */
 export const BIKE_WAY_TYPES: Record<BikeType, WayType[]> = {
@@ -166,9 +166,9 @@ export const TERRAIN_WAY_TYPES: Record<keyof typeof ELEVATION_PRESETS, WayType[]
  * a pas de réglés : selon son type de vélo, ou son terrain à pied ; aucun en
  * voile, où les balises sont reliées en ligne droite.
  */
-export const presetWayTypes = (family: SportFamily, bikeType: BikeType, terrain: keyof typeof ELEVATION_PRESETS): WayType[] => {
-  if (family === 'velo') return BIKE_WAY_TYPES[bikeType];
-  return family === 'course' ? TERRAIN_WAY_TYPES[terrain] : [];
+export const presetWayTypes = (treatment: Treatment, bikeType: BikeType, terrain: keyof typeof ELEVATION_PRESETS): WayType[] => {
+  if (treatment === 'velo') return BIKE_WAY_TYPES[bikeType];
+  return treatment === 'course' ? TERRAIN_WAY_TYPES[terrain] : [];
 };
 
 /** Types de voie d'un réglage : connus, dans l'ordre, sans doublon ; `null` si la valeur n'en est pas une liste non vide. */

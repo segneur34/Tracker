@@ -6,6 +6,7 @@ import './theme/base.css';
 import './components/ui/ui.css';
 import './components/AppShell.css';
 import { confirmLeave, installLeaveGuard } from './hooks/leaveGuard';
+import { isIntervalTimerActive, startIntervalTimer } from './hooks/useIntervalTimer';
 import { startMarkGuide } from './hooks/useMarkGuide';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { openLibrary, startLibraryUi } from './hooks/useSessionLibrary';
@@ -34,9 +35,12 @@ void initStorage()
     );
     startLibraryUi(isRecordingActive);
     installLeaveGuard();
-    void installBackButton(isRecordingActive, confirmLeave);
+    // Pendant un enregistrement ou une séance du compteur, la touche retour met l'application en arrière-plan.
+    void installBackButton(() => isRecordingActive() || isIntervalTimerActive(), confirmLeave);
     // Un enregistrement coupé par un arrêt brutal, ou arrêté sans décision, revient en attente.
     void recoverInterruptedRecording();
     // Bips d'approche des balises, pendant un enregistrement de voile qui suit un parcours.
     startMarkGuide();
+    // Compteur du fractionné : séance reprise si elle court encore, et confiée à l'enregistreur.
+    startIntervalTimer();
   });

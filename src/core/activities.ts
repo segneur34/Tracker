@@ -1,4 +1,4 @@
-import { SPORT_FAMILIES, SPORT_PROFILES, sportFamily, type SportFamily } from './sportProfiles';
+import { SPORT_FAMILIES, SPORT_PROFILES, sportFamily, sportTreatment, type SportFamily, type Treatment } from './sportProfiles';
 import type { SportType } from './types';
 
 /**
@@ -32,6 +32,8 @@ export const BASE_COLOR: Record<SportType, string> = {
   bateau: '#283593',
   running: '#bf360c',
   cycling: '#00695c',
+  'run-intervals': '#ad1457',
+  'bike-intervals': '#ef6c00',
 };
 
 /** Couleurs proposées aux nouvelles activités, dans l'ordre. */
@@ -44,35 +46,63 @@ const ROUTE_ACTIVITY: Activity = { id: 'cycling', name: 'Route', base: 'cycling'
 /** Activités vélo de départ à côté de Route (§10, point 81) ; leur type de vélo par défaut suit (`useSportSettings.ts`). */
 export const GRAVEL_ACTIVITY: Activity = { id: 'a-gravel', name: 'Gravel', base: 'cycling', color: '#9e9d24' };
 export const VTT_ACTIVITY: Activity = { id: 'a-vtt', name: 'VTT', base: 'cycling', color: '#5d4037' };
+/** Activités de la famille Fractionné (§10, point 89), sur l'identifiant de leur calcul. */
+export const RUN_INTERVALS_ACTIVITY: Activity = {
+  id: 'run-intervals', name: 'Fractionné à pied', base: 'run-intervals', color: BASE_COLOR['run-intervals'],
+};
+export const BIKE_INTERVALS_ACTIVITY: Activity = {
+  id: 'bike-intervals', name: 'Fractionné vélo', base: 'bike-intervals', color: BASE_COLOR['bike-intervals'],
+};
 
-/** Au premier lancement : une activité par famille, sur l'identifiant de son calcul (celui des anciens réglages), plus Gravel et VTT. */
+/**
+ * Au premier lancement : une activité par famille, sur l'identifiant de son
+ * calcul (celui des anciens réglages), plus Gravel et VTT, et les deux du
+ * fractionné.
+ */
 export const DEFAULT_ACTIVITIES: Activity[] = [
   { id: 'wingfoil', name: 'Voile', base: 'wingfoil', color: BASE_COLOR.wingfoil },
   { id: 'running', name: 'Course', base: 'running', color: BASE_COLOR.running },
   ROUTE_ACTIVITY,
   GRAVEL_ACTIVITY,
   VTT_ACTIVITY,
+  RUN_INTERVALS_ACTIVITY,
+  BIKE_INTERVALS_ACTIVITY,
 ];
 
 /**
  * Version de la liste des activités rangée dans les réglages. 2 : Route,
- * Gravel et VTT dans la famille Vélo (point 81). Une liste d'avant est mise
- * à jour une fois (`upgradeActivities`) ; toute liste écrite ensuite porte ce
- * numéro, pour qu'une activité supprimée ne revienne pas.
+ * Gravel et VTT dans la famille Vélo (point 81) ; 3 : les deux activités du
+ * fractionné (point 89). Une liste d'avant est mise à jour une fois
+ * (`upgradeActivities`) ; toute liste écrite ensuite porte ce numéro, pour
+ * qu'une activité supprimée ne revienne pas.
  */
-export const ACTIVITIES_VERSION = 2;
+export const ACTIVITIES_VERSION = 3;
+
+/** Activités ajoutées à une liste d'avant, avec la version de la liste qui les a apportées. */
+const ACTIVITY_SEEDS: { version: number; activity: Activity }[] = [
+  { version: 2, activity: GRAVEL_ACTIVITY },
+  { version: 2, activity: VTT_ACTIVITY },
+  { version: 3, activity: RUN_INTERVALS_ACTIVITY },
+  { version: 3, activity: BIKE_INTERVALS_ACTIVITY },
+];
 
 /** Ancien nom de l'activité vélo de départ, devenue « Route ». */
 const LEGACY_CYCLING_NAME = 'Vélo';
 
 /** Calcul par défaut d'une famille, pour un module sans activité. */
-export const FAMILY_BASE: Record<SportFamily, SportType> = { voile: 'wingfoil', course: 'running', velo: 'cycling' };
+export const FAMILY_BASE: Record<SportFamily, SportType> = {
+  voile: 'wingfoil', course: 'running', velo: 'cycling', fractionne: 'run-intervals',
+};
 
 /** Nom d'une famille, tel que l'interface l'affiche. */
-export const FAMILY_LABEL: Record<SportFamily, string> = { voile: 'Voile', course: 'Course à pied', velo: 'Vélo' };
+export const FAMILY_LABEL: Record<SportFamily, string> = {
+  voile: 'Voile', course: 'Course à pied', velo: 'Vélo', fractionne: 'Fractionné',
+};
 
 /** Couleur d'interface d'une famille (variable du thème). */
-export const FAMILY_ACCENT: Record<SportFamily, string> = { voile: 'var(--voile)', course: 'var(--course)', velo: 'var(--velo)' };
+export const FAMILY_ACCENT: Record<SportFamily, string> = {
+  voile: 'var(--voile)', course: 'var(--course)', velo: 'var(--velo)', fractionne: 'var(--fractionne)',
+};
 
 const isSportType = (value: unknown): value is SportType =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(SPORT_PROFILES, value);
@@ -109,6 +139,8 @@ export const baseActivity = (sport: SportType): Activity => ({
 
 export const activityFamily = (activity: Activity): SportFamily => sportFamily(activity.base);
 
+export const activityTreatment = (activity: Activity): Treatment => sportTreatment(activity.base);
+
 export const activitiesOfFamily = (activities: Activity[], family: SportFamily): Activity[] =>
   activities.filter((a) => activityFamily(a) === family);
 
@@ -144,20 +176,27 @@ export const sessionActivity = (
 };
 
 /**
- * Liste d'une version d'avant mise à jour (`ACTIVITIES_VERSION`). L'activité
- * vélo de départ, si elle s'appelle encore « Vélo », devient « Route » : même
- * identifiant, donc mêmes sessions et mêmes réglages. Gravel et VTT
- * s'ajoutent après la dernière activité vélo, sauf si l'une porte déjà leur
- * identifiant ou leur nom ; leur couleur, si une autre la porte déjà, est la
- * première libre.
+ * Liste de la version `fromVersion` mise à jour (`ACTIVITIES_VERSION`) : seul
+ * ce qu'ont apporté les versions suivantes s'ajoute, pour qu'une activité
+ * supprimée depuis ne revienne pas.
+ * - Version 2 : l'activité vélo de départ, si elle s'appelle encore « Vélo »,
+ *   devient « Route » (même identifiant, donc mêmes sessions et mêmes
+ *   réglages) ; Gravel et VTT s'ajoutent.
+ * - Version 3 : les deux activités du fractionné.
+ *
+ * Une activité ajoutée se range avec sa famille, sauf si une autre porte déjà
+ * son identifiant, ou son nom dans la même famille ; sa couleur, si une autre
+ * la porte déjà, est la première libre.
  */
-export const upgradeActivities = (activities: Activity[]): Activity[] => {
+export const upgradeActivities = (activities: Activity[], fromVersion: number): Activity[] => {
   const sameName = (a: string, b: string) => a.toLocaleLowerCase('fr') === b.toLocaleLowerCase('fr');
-  let list = activities.map((a) =>
+  let list = fromVersion >= 2 ? activities : activities.map((a) =>
     a.id === ROUTE_ACTIVITY.id && a.name === LEGACY_CYCLING_NAME ? { ...a, name: ROUTE_ACTIVITY.name } : a
   );
-  for (const seed of [GRAVEL_ACTIVITY, VTT_ACTIVITY]) {
-    if (list.some((a) => a.id === seed.id || (activityFamily(a) === 'velo' && sameName(a.name, seed.name)))) continue;
+  for (const { version, activity: seed } of ACTIVITY_SEEDS) {
+    if (version <= fromVersion) continue;
+    const family = activityFamily(seed);
+    if (list.some((a) => a.id === seed.id || (activityFamily(a) === family && sameName(a.name, seed.name)))) continue;
     const color = list.some((a) => a.color.toLowerCase() === seed.color) ? nextActivityColor(list) : seed.color;
     list = insertActivity(list, { ...seed, color });
   }

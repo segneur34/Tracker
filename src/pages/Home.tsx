@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
 import MemoryStatus from '../components/MemoryStatus';
 import RouteList from '../components/RouteList';
-import { IconBike, IconChevronRight, IconRoute, IconRun, IconSail } from '../components/icons';
+import { IconBike, IconChevronRight, IconRoute, IconRun, IconSail, IconStopwatch } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
@@ -11,7 +11,7 @@ import { readStoredActivities } from '../hooks/useSportSettings';
 
 /**
  * Accueil : enregistrer ou planifier un itinéraire, le graphe d'activités et
- * ses totaux (dès qu'il y a des sessions), les deux modules, puis les
+ * ses totaux (dès qu'il y a des sessions), les quatre familles, puis les
  * derniers itinéraires planifiés (dès que la mémoire est prête), dont la carte
  * mène à la liste complète.
  */
@@ -82,6 +82,13 @@ function Home() {
         <span style={{ ...titleStyle, color: 'var(--velo)' }}><IconBike /> Vélo</span>
         <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
           Vitesse, dénivelé, zones de pente, meilleurs segments, puissance et énergie.
+        </span>
+      </Link>
+
+      <Link to="/fractionne" style={cardStyle}>
+        <span style={{ ...titleStyle, color: 'var(--fractionne)' }}><IconStopwatch /> Fractionné</span>
+        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
+          À pied ou à vélo : compteur de répétitions à l'enregistrement, avec bips, puis l'analyse de la course ou du vélo.
         </span>
       </Link>
 

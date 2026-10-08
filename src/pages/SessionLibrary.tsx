@@ -19,14 +19,14 @@ import { parseGpx } from '../core/gpxParser';
 import { computeKinematics } from '../core/kinematics';
 import { referenceSpeedMs as sessionReferenceSpeedMs } from '../core/sessionSpeed';
 import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
-import { activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
-import { sportFamily, type SportFamily } from '../core/sportProfiles';
+import { FAMILY_BASE, activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
+import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
 import { formatDistance, formatDuration, formatSpeed, knotsToMs, msToKnots, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
 import {
-  FAMILY_SPEED_RANGE_MS, effectiveDistanceUnit, effectiveSpeedUnit, readStoredActivities, readStoredSettings,
+  PLANNING_FAMILIES, TREATMENT_SPEED_RANGE_MS, effectiveDistanceUnit, effectiveSpeedUnit, readStoredActivities, readStoredSettings,
 } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
 import { routeActivity, routesOfFamily } from '../planning/routeList';
@@ -35,18 +35,19 @@ import { SPEED_RANGE_MAX_MARGIN_KN, suggestActiveThresholdKn } from '../sailing/
 import './SessionLibrary.css';
 
 /**
- * Bibliothèque d'une famille : les onglets Voile et Course. La liste des
+ * Bibliothèque d'une famille : Voile, Course, Vélo, Fractionné. La liste des
  * sessions de la mémoire, filtrable par activité (`?activite=<id>` pour
  * arriver filtré, depuis l'accueil), les sessions à classer, l'import de GPX
  * ou d'un dossier entier, la suppression. La vue « Planifiées »
  * (`?vue=planifiees`) montre à la place les itinéraires de la famille, filtrés
- * par les mêmes onglets d'activité.
+ * par les mêmes onglets d'activité ; le fractionné, qui ne planifie pas, n'en a pas.
  */
 
 const FAMILY: Record<SportFamily, { title: string; accent: string; of: string }> = {
   voile: { title: 'Voile', accent: 'var(--voile)', of: 'de voile' },
   course: { title: 'Course à pied', accent: 'var(--course)', of: 'de course' },
   velo: { title: 'Vélo', accent: 'var(--velo)', of: 'de vélo' },
+  fractionne: { title: 'Fractionné', accent: 'var(--fractionne)', of: 'de fractionné' },
 };
 
 /** Activité d'une session d'après sa fiche (`sessionActivity`), `null` pour une session à classer. */
@@ -60,7 +61,7 @@ const formatTime = (ms: number): string =>
   new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
 
-/** Chiffres d'une ligne, selon la famille. */
+/** Chiffres d'une ligne, selon le traitement de son calcul. */
 const rowStats = (session: LibrarySession, activity: Activity | null): string[] => {
   const { summary } = session.record;
   // Deux décimales sous 10 unités, une au-delà.
@@ -68,7 +69,7 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
   const decimals = toDisplayDistance(summary.distanceM, distanceUnit) < 10 ? 2 : 1;
   const stats = [formatDuration(summary.endMs - summary.startMs), formatDistance(summary.distanceM, distanceUnit, decimals)];
   if (activity === null) return stats;
-  if (sportFamily(activity.base) === 'voile') {
+  if (sportTreatment(activity.base) === 'voile') {
     stats.push(`max ${formatSpeed(summary.maxSpeedMs, effectiveSpeedUnit(activity))}`);
     if (summary.maneuverCount !== undefined) stats.push(`${summary.maneuverCount} manœuvres`);
   } else {
@@ -77,6 +78,9 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
     }
     if (summary.elevationGainM !== null) stats.push(`D+ ${Math.round(summary.elevationGainM)} m`);
   }
+  // Répétitions du compteur, quand la session en a (fractionné).
+  const reps = session.record.intervals?.reduce((n, series) => n + series.laps.filter((l) => l.kind === 'travail').length, 0) ?? 0;
+  if (reps > 0) stats.push(`${reps} rép.`);
   return stats;
 };
 
@@ -88,7 +92,8 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
  *    seuil d'activité suggéré en bas, pic de vitesse déjà enregistré dans la fiche
  *    (`summary.maxSpeedMs`) plus une marge en haut — l'allure vient de la fiche si elle a été
  *    imposée, sinon de celle mesurée sur les points bruts du GPX (`measuredReferenceMs`) ;
- * 3. à défaut (course, support inconnu, ou pic non mesuré), le défaut de la famille.
+ * 3. à défaut (course, support inconnu, ou pic non mesuré), le défaut du traitement de son calcul
+ *    (celui du calcul par défaut de la famille pour une session à classer).
  */
 const previewSpeedRange = (
   session: LibrarySession,
@@ -109,7 +114,7 @@ const previewSpeedRange = (
       maxMs: record.summary.maxSpeedMs + knotsToMs(SPEED_RANGE_MAX_MARGIN_KN),
     };
   }
-  return FAMILY_SPEED_RANGE_MS[family];
+  return TREATMENT_SPEED_RANGE_MS[sportTreatment(record.sport ?? FAMILY_BASE[family])];
 };
 
 /** Trace d'une vignette : au plus `PREVIEW_MAX_POINTS` points, l'emprise de la trace entière et son allure mesurée. */
@@ -343,7 +348,8 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   const [activities] = useState(readStoredActivities);
   const [params, setParams] = useSearchParams();
   const [filter, setFilter] = useState<string>(() => params.get('activite') ?? 'all');
-  const planned = params.get('vue') === 'planifiees';
+  const plans = PLANNING_FAMILIES.includes(family);
+  const planned = plans && params.get('vue') === 'planifiees';
   const setPlanned = (next: boolean) => setParams((current) => {
     const updated = new URLSearchParams(current);
     if (next) updated.set('vue', 'planifiees');
@@ -413,14 +419,16 @@ function SessionLibrary({ family }: { family: SportFamily }) {
         </p>
       )}
 
-      <div className="ui-tabs" aria-label="Vue" style={{ '--tab-accent': accent } as React.CSSProperties}>
-        <button type="button" className="ui-tab" aria-pressed={!planned} onClick={() => setPlanned(false)}>
-          réalisées ({familySessions.length})
-        </button>
-        <button type="button" className="ui-tab" aria-pressed={planned} onClick={() => setPlanned(true)}>
-          planifiées ({familyRoutes.length})
-        </button>
-      </div>
+      {plans && (
+        <div className="ui-tabs" aria-label="Vue" style={{ '--tab-accent': accent } as React.CSSProperties}>
+          <button type="button" className="ui-tab" aria-pressed={!planned} onClick={() => setPlanned(false)}>
+            réalisées ({familySessions.length})
+          </button>
+          <button type="button" className="ui-tab" aria-pressed={planned} onClick={() => setPlanned(true)}>
+            planifiées ({familyRoutes.length})
+          </button>
+        </div>
+      )}
 
       {counts.length > 1 && (
         <div className="ui-tabs" style={{ '--tab-accent': accent } as React.CSSProperties}>
@@ -451,7 +459,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       {!planned && unclassified.length > 0 && (
         <Card heading="À classer">
           <p className="lib-hint">
-            Traces dont l'activité n'est pas connue : choisissez-la pour les ranger en voile, en course ou à vélo. Ouvrir l'une d'elles la demande d'abord.
+            Traces dont l'activité n'est pas connue : choisissez-la pour les ranger en voile, en course, à vélo ou en fractionné. Ouvrir l'une d'elles la demande d'abord.
           </p>
           <ul className="lib-list">{unclassified.map(row)}</ul>
         </Card>

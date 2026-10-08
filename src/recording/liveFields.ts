@@ -1,4 +1,4 @@
-import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
+import type { Treatment } from '../core/sportProfiles';
 import {
   J_PER_KCAL, formatClock, formatDistance, formatShortDistance, formatSpeed, formatTimeOfDay, isInverseUnit, type DistanceUnit, type SpeedUnit,
 } from '../core/units';
@@ -7,8 +7,8 @@ import { LIVE_STATS_DEFAULTS, type LiveStats } from './liveStats';
 /**
  * Chiffres en grand de l'enregistrement quand la carte est réduite, choisis
  * par activité dans Réglages : jusqu'à `MAX_LIVE_FIELDS`, parmi ceux qui ont
- * un sens pour sa famille. Libellés et valeurs sont formatés ici, dans les
- * unités de l'activité.
+ * un sens pour son traitement (le fractionné à pied a ceux de la course).
+ * Libellés et valeurs sont formatés ici, dans les unités de l'activité.
  */
 
 export type LiveFieldKey =
@@ -17,15 +17,16 @@ export type LiveFieldKey =
   | 'recentTopShort' | 'recentTopLong' | 'heading' | 'legAverage' | 'markDistance' | 'markBearing'
   | 'grade' | 'gain' | 'recentDistanceGain' | 'loss' | 'climbRate' | 'power' | 'effort';
 
-const LAND: SportFamily[] = ['course', 'velo'];
+const ALL: Treatment[] = ['voile', 'course', 'velo'];
+const LAND: Treatment[] = ['course', 'velo'];
 
-/** Familles où chaque chiffre a un sens ; l'ordre est celui des menus de Réglages. */
-const LIVE_FIELD_FAMILIES: Record<LiveFieldKey, readonly SportFamily[]> = {
-  speed: SPORT_FAMILIES,
-  average: SPORT_FAMILIES,
-  max: SPORT_FAMILIES,
-  recentDistanceSpeed: SPORT_FAMILIES,
-  lastDistance: SPORT_FAMILIES,
+/** Traitements où chaque chiffre a un sens ; l'ordre est celui des menus de Réglages. */
+const LIVE_FIELD_TREATMENTS: Record<LiveFieldKey, readonly Treatment[]> = {
+  speed: ALL,
+  average: ALL,
+  max: ALL,
+  recentDistanceSpeed: ALL,
+  lastDistance: ALL,
   recentTopShort: ['voile'],
   recentTopLong: ['voile'],
   legAverage: ['voile'],
@@ -39,42 +40,42 @@ const LIVE_FIELD_FAMILIES: Record<LiveFieldKey, readonly SportFamily[]> = {
   climbRate: LAND,
   power: LAND,
   effort: LAND,
-  distance: SPORT_FAMILIES,
-  duration: SPORT_FAMILIES,
-  clock: SPORT_FAMILIES,
-  remaining: SPORT_FAMILIES,
-  remainingTime: SPORT_FAMILIES,
+  distance: ALL,
+  duration: ALL,
+  clock: ALL,
+  remaining: ALL,
+  remainingTime: ALL,
 };
 
-const LIVE_FIELD_KEYS = Object.keys(LIVE_FIELD_FAMILIES) as LiveFieldKey[];
+const LIVE_FIELD_KEYS = Object.keys(LIVE_FIELD_TREATMENTS) as LiveFieldKey[];
 
-/** Chiffres proposés pour une famille, dans l'ordre des menus. */
-export const liveFieldsOfFamily = (family: SportFamily): LiveFieldKey[] =>
-  LIVE_FIELD_KEYS.filter((key) => LIVE_FIELD_FAMILIES[key].includes(family));
+/** Chiffres proposés pour un traitement, dans l'ordre des menus. */
+export const liveFieldsOfTreatment = (treatment: Treatment): LiveFieldKey[] =>
+  LIVE_FIELD_KEYS.filter((key) => LIVE_FIELD_TREATMENTS[key].includes(treatment));
 
 /** Nombre de lignes au plus. */
 export const MAX_LIVE_FIELDS = 4;
 
 /** Lignes à défaut de choix : en course, les 300 derniers mètres plutôt que la pointe de 2 s. */
-export const DEFAULT_LIVE_FIELDS: Record<SportFamily, LiveFieldKey[]> = {
+export const DEFAULT_LIVE_FIELDS: Record<Treatment, LiveFieldKey[]> = {
   voile: ['speed', 'average', 'max'],
   course: ['speed', 'average', 'recentDistanceSpeed'],
   velo: ['speed', 'average', 'max'],
 };
 
 const isLiveFieldKey = (value: unknown): value is LiveFieldKey =>
-  typeof value === 'string' && Object.prototype.hasOwnProperty.call(LIVE_FIELD_FAMILIES, value);
+  typeof value === 'string' && Object.prototype.hasOwnProperty.call(LIVE_FIELD_TREATMENTS, value);
 
 /**
- * Choix rangé, nettoyé : clés connues et permises pour la famille, sans
+ * Choix rangé, nettoyé : clés connues et permises pour le traitement, sans
  * doublon, `MAX_LIVE_FIELDS` au plus ; `null` s'il n'en reste aucune (le
  * défaut s'applique).
  */
-export const sanitizeLiveFields = (value: unknown, family: SportFamily): LiveFieldKey[] | null => {
+export const sanitizeLiveFields = (value: unknown, treatment: Treatment): LiveFieldKey[] | null => {
   if (!Array.isArray(value)) return null;
   const kept: LiveFieldKey[] = [];
   for (const key of value) {
-    if (isLiveFieldKey(key) && LIVE_FIELD_FAMILIES[key].includes(family) && !kept.includes(key)) kept.push(key);
+    if (isLiveFieldKey(key) && LIVE_FIELD_TREATMENTS[key].includes(treatment) && !kept.includes(key)) kept.push(key);
     if (kept.length === MAX_LIVE_FIELDS) break;
   }
   return kept.length > 0 ? kept : null;

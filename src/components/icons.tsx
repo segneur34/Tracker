@@ -58,6 +58,17 @@ export const IconBike = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+/** Chronomètre : le fractionné et son compteur. */
+export const IconStopwatch = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="12" cy="13.5" r="7.5" />
+    <path d="M12 13.5V9.5" />
+    <path d="M10 2.5h4" />
+    <path d="M12 2.5V6" />
+    <path d="M18.5 6.5l1.5-1.5" />
+  </svg>
+);
+
 export const IconSettings = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
     <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />

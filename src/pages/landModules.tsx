@@ -12,14 +12,23 @@ import { DEFAULT_ENERGY_PARAMS, computeEnergy, restingPowerWkg, runningEnergyPar
 import type { GradeZone } from '../running/runningAnalytics';
 
 /**
- * Les deux familles terrestres, course à pied et vélo, partagent un module
- * d'analyse (`LandModule`) : carte, synthèse, zones de pente, graphes et
- * réglages de session sont les mêmes. Ce qui change tient ici : titres,
- * couleur, identifiants mémorisés, et le modèle d'énergie, ramené à une
- * forme d'affichage commune (`EnergyView`).
+ * Les familles terrestres, course à pied, vélo et fractionné, partagent un
+ * module d'analyse (`LandModule`) : carte, synthèse, zones de pente, graphes
+ * et réglages de session sont les mêmes. Ce qui change tient ici, en deux
+ * parts :
+ * - selon la famille, la page : titre, retour à la bibliothèque, couleur,
+ *   identifiants mémorisés (`LAND_PAGES`) ;
+ * - selon le traitement du calcul de l'activité, le modèle : énergie, ramenée
+ *   à une forme d'affichage commune (`EnergyView`), revêtement demandé à
+ *   l'ouverture, libellés (`LAND_TREATMENTS`). Le fractionné à pied a celui
+ *   de la course, le fractionné vélo celui du vélo (§10, point 89).
  */
 
-export type LandFamily = 'course' | 'velo';
+/** Familles analysées par `LandModule`. */
+export type LandFamily = 'course' | 'velo' | 'fractionne';
+
+/** Traitements terrestres. */
+export type LandTreatment = 'course' | 'velo';
 
 /** Un chiffre du panneau Énergie : sa valeur, et en plus petit un complément. */
 export interface EnergyStat {
@@ -67,7 +76,8 @@ export interface EnergyInputs {
   surfaces: { status: SurfaceSearchStatus; stretches: SurfaceStretch[] | null };
 }
 
-export interface LandModuleConfig {
+/** Ce qui suit la famille : la page et ce qu'elle mémorise. */
+export interface LandPageConfig {
   family: LandFamily;
   title: string;
   /** Lien de retour vers la bibliothèque. */
@@ -78,6 +88,11 @@ export interface LandModuleConfig {
    * (`ResizablePanel`) : ne pas le renommer, les tailles seraient perdues.
    */
   storageId: string;
+}
+
+/** Ce qui suit le traitement du calcul : le modèle et ses libellés. */
+export interface LandTreatmentConfig {
+  treatment: LandTreatment;
   /** Libellé de la couleur grise de la légende, sous la borne basse. */
   slowLabel: string;
   zonesTitle: string;
@@ -227,13 +242,33 @@ const cyclingEnergy = ({ track, grades, activityMask, runner, age, bikeType, bik
   };
 };
 
-export const LAND_MODULES: Record<LandFamily, LandModuleConfig> = {
+export const LAND_PAGES: Record<LandFamily, LandPageConfig> = {
   course: {
     family: 'course',
     title: 'Analyse course à pied',
     backLabel: 'Sessions course',
     accent: 'var(--course)',
     storageId: 'running',
+  },
+  velo: {
+    family: 'velo',
+    title: 'Analyse vélo',
+    backLabel: 'Sessions vélo',
+    accent: 'var(--velo)',
+    storageId: 'cycling',
+  },
+  fractionne: {
+    family: 'fractionne',
+    title: 'Analyse fractionné',
+    backLabel: 'Sessions fractionné',
+    accent: 'var(--fractionne)',
+    storageId: 'intervals',
+  },
+};
+
+export const LAND_TREATMENTS: Record<LandTreatment, LandTreatmentConfig> = {
+  course: {
+    treatment: 'course',
     slowLabel: 'marche',
     zonesTitle: 'Allure par zone de pente',
     energyLabel: 'Énergie',
@@ -242,11 +277,7 @@ export const LAND_MODULES: Record<LandFamily, LandModuleConfig> = {
     energy: runningEnergy,
   },
   velo: {
-    family: 'velo',
-    title: 'Analyse vélo',
-    backLabel: 'Sessions vélo',
-    accent: 'var(--velo)',
-    storageId: 'cycling',
+    treatment: 'velo',
     slowLabel: 'arrêt',
     zonesTitle: 'Vitesse par zone de pente',
     energyLabel: 'Énergie',

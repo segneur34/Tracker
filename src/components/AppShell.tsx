@@ -2,14 +2,16 @@ import { useCallback, useEffect, useState, type ComponentType, type ReactNode } 
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
 import { formatClock } from '../core/units';
+import { useIntervalTimer } from '../hooks/useIntervalTimer';
 import { useLongPress } from '../hooks/useLongPress';
 import { togglePauseRecording, useRecorder } from '../hooks/useRecorder';
 import {
   effectiveLongPressMs, effectiveNavHoldMs, rememberNavSecondFamily, useNavFamily, useNavSecondFamily,
 } from '../hooks/useSportSettings';
+import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
 import { recordingDurationMs } from '../recording/session';
 import {
-  IconBike, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings,
+  IconBike, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings, IconStopwatch,
 } from './icons';
 
 /**
@@ -29,7 +31,8 @@ import {
  * taille d'écran en JavaScript.
  *
  * Pendant un enregistrement, un bandeau rouge rappelle sur chaque page qu'il
- * tourne et ramène à la page d'enregistrement. Un appui long sur le bouton du
+ * tourne et ramène à la page d'enregistrement ; pendant une séance du
+ * compteur du fractionné, un second bandeau dit la phase et son temps restant. Un appui long sur le bouton du
  * milieu (2 s par défaut, réglable) met en pause ou relance, depuis n'importe
  * quelle page ; un appui court y ramène, comme au repos.
  */
@@ -46,8 +49,9 @@ const HOME: Destination = { to: '/', label: 'Accueil', Icon: IconHome, accent: '
 const VOILE: Destination = { to: '/voile', label: 'Voile', Icon: IconSail, accent: 'var(--voile)' };
 const COURSE: Destination = { to: '/course', label: 'Course', Icon: IconRun, accent: 'var(--course)' };
 const VELO: Destination = { to: '/velo', label: 'Vélo', Icon: IconBike, accent: 'var(--velo)' };
+const FRACTIONNE: Destination = { to: '/fractionne', label: 'Fractionné', Icon: IconStopwatch, accent: 'var(--fractionne)' };
 const SETTINGS: Destination = { to: '/parametres', label: 'Réglages', Icon: IconSettings, accent: 'var(--ink)' };
-const FAMILY_TABS: Record<SportFamily, Destination> = { voile: VOILE, course: COURSE, velo: VELO };
+const FAMILY_TABS: Record<SportFamily, Destination> = { voile: VOILE, course: COURSE, velo: VELO, fractionne: FRACTIONNE };
 const RECORD_PATH = '/enregistrer';
 const PLAN_PATH = '/itineraires';
 
@@ -81,6 +85,23 @@ function HoldDial({ pressMs, color, icon, title, hint }: {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Bandeau du compteur du fractionné sur les autres pages : phase et temps
+ * restant, un toucher ramène à Enregistrer. À part, pour que le rafraîchissement
+ * du compteur ne redessine que lui.
+ */
+function IntervalBanner() {
+  const { run, state } = useIntervalTimer();
+  if (!run || !state?.phase) return null;
+  const paused = state.status === 'paused';
+  return (
+    <Link to={RECORD_PATH} className="shell-banner shell-banner--intervals">
+      <span className="shell-banner__text">{paused ? 'Fractionné en pause' : 'Fractionné'} · {phaseName(state.phase, run.workout.reps)}</span>
+      <span className="num">{formatIntervalClock(state.remainingMs / 1000)}</span>
+    </Link>
   );
 }
 
@@ -160,13 +181,16 @@ function AppShell() {
         </div>
       </header>
 
-      {busy && pathname !== RECORD_PATH && (
-        <Link to={RECORD_PATH} className="shell-banner">
-          <span className="shell-banner__dot" />
-          <span className="shell-banner__text">{paused ? 'Enregistrement en pause' : 'Enregistrement en cours'}</span>
-          <span className="num">{clock}</span>
-        </Link>
-      )}
+      <div className="shell-banners">
+        {busy && pathname !== RECORD_PATH && (
+          <Link to={RECORD_PATH} className="shell-banner">
+            <span className="shell-banner__dot" />
+            <span className="shell-banner__text">{paused ? 'Enregistrement en pause' : 'Enregistrement en cours'}</span>
+            <span className="num">{clock}</span>
+          </Link>
+        )}
+        {pathname !== RECORD_PATH && <IntervalBanner />}
+      </div>
 
       <main className="shell-main">
         <Outlet />

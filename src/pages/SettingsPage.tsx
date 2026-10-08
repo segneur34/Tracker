@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from 'react';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, nextActivityColor, type Activity } from '../core/activities';
 import {
-  CYCLING_SPORTS, ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SAILING_SPORTS, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, sportFamily, type SportFamily,
+  ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, sportFamily, sportTreatment,
+  type SportFamily, type Treatment,
 } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
@@ -12,12 +13,12 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
 import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  FAMILY_SPEED_RANGE_MS, FAMILY_UNITS, TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, defaultBikeType, defaultGradeRange, planningFamily,
+  TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, TREATMENT_SPEED_RANGE_MS, TREATMENT_UNITS, defaultBikeType, defaultGradeRange, planningFamily,
   useAllSportSettings, type SportSettingsView, type TerrainType, type TextScale,
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
 import {
-  DEFAULT_LIVE_FIELDS, MAX_LIVE_FIELDS, liveFieldLabel, liveFieldsOfFamily, type LiveFieldKey,
+  DEFAULT_LIVE_FIELDS, MAX_LIVE_FIELDS, liveFieldLabel, liveFieldsOfTreatment, type LiveFieldKey,
 } from '../recording/liveFields';
 import {
   CUSTOM_FLAT_SPEED_BOUNDS_MS, DEFAULT_PACE_LEVEL, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PACE_LEVELS, PACE_LEVEL_LABEL,
@@ -40,7 +41,7 @@ import './settingsPage.css';
  * (course, vélo) : proposés selon le vélo ou le terrain, tant qu'on ne les
  * change pas. Le dernier coché ne se décoche pas.
  */
-function WayTypesSetting({ view, family, onChange }: { view: SportSettingsView; family: SportFamily; onChange: (ways: WayType[]) => void }) {
+function WayTypesSetting({ view, treatment, onChange }: { view: SportSettingsView; treatment: Treatment; onChange: (ways: WayType[]) => void }) {
   const toggle = (type: WayType) => {
     const next = view.wayTypes.includes(type) ? view.wayTypes.filter((w) => w !== type) : [...view.wayTypes, type];
     if (next.length > 0) onChange(next);
@@ -52,15 +53,12 @@ function WayTypesSetting({ view, family, onChange }: { view: SportSettingsView; 
         <WayTypeTabs compact checked={view.wayTypes} onToggle={toggle} label={`Types de voie de ${view.activity.name}`}
           style={{ '--tab-accent': view.activity.color } as CSSProperties} />
         {!view.isWayTypesOverridden && (
-          <span className="settings-sports__mark">{family === 'velo' ? 'selon le vélo' : 'selon le terrain'}</span>
+          <span className="settings-sports__mark">{treatment === 'velo' ? 'selon le vélo' : 'selon le terrain'}</span>
         )}
       </div>
     </div>
   );
 }
-
-/** Calculs proposés à une nouvelle activité, par famille. */
-const FAMILY_BASES: Record<SportFamily, SportType[]> = { voile: SAILING_SPORTS, course: ['running'], velo: CYCLING_SPORTS };
 
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
 
@@ -146,7 +144,7 @@ function SettingsPage() {
   const { profile, setNumber, setSex, age } = useRunnerProfile();
   const { open, toggle } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
   const { open: openActivity, toggle: toggleActivity } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
-  /** Activités rangées par famille (Voile, Course à pied, Vélo), chacune dans l'ordre de la liste. */
+  /** Activités rangées par famille (Voile, Course à pied, Vélo, Fractionné), chacune dans l'ordre de la liste. */
   const familyOrdered = SPORT_FAMILIES.flatMap((f) => activitiesOfFamily(activities, f));
 
   const askRemove = (a: Activity) => {
@@ -182,7 +180,7 @@ function SettingsPage() {
           <>
             <p className="settings-block__intro">
               Celles proposées à l'enregistrement, dans les analyses et dans la bibliothèque. Chacune repose sur un calcul
-              (wingfoil, planche, kite, bateau, course ou vélo), qui fixe ses valeurs de départ ; ses réglages d'affichage et
+              (wingfoil, planche, kite, bateau, course, vélo, fractionné à pied ou à vélo), qui fixe ses valeurs de départ ; ses réglages d'affichage et
               d'enregistrement lui sont propres.
             </p>
             <div className="settings-activities">
@@ -191,10 +189,11 @@ function SettingsPage() {
                 const id = activity.id;
                 const p = SPORT_PROFILES[activity.base];
                 const family = sportFamily(activity.base);
-                const sailing = family === 'voile';
-                /** Famille du temps estimé des itinéraires, `null` en voile. */
+                const treatment = sportTreatment(activity.base);
+                const sailing = treatment === 'voile';
+                /** Famille du temps estimé des itinéraires, `null` en voile et en fractionné. */
                 const paceFamily = planningFamily(activity);
-                const units = FAMILY_UNITS[family];
+                const units = TREATMENT_UNITS[treatment];
                 const isOpen = openActivity[id] === true;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
@@ -212,7 +211,7 @@ function SettingsPage() {
                   setFor(id, 'activeThreshold', next === null ? null : toDisplaySpeed(fromDisplaySpeed(next, thresholdUnit), p.thresholdUnit));
                 // Bornes de couleur, saisies en km/h quand l'unité est une allure (min/km).
                 const rangeUnit: SpeedUnit = s.speedUnit === 'minkm' ? 'kmh' : s.speedUnit;
-                const fallbackRange = FAMILY_SPEED_RANGE_MS[family];
+                const fallbackRange = TREATMENT_SPEED_RANGE_MS[treatment];
                 const shownRange = s.speedRange ?? fallbackRange;
                 // Voile sans réglage : champs vides, les bornes suivent l'allure de chaque session.
                 const rangeEmpty = sailing && s.speedRange === null;
@@ -244,8 +243,8 @@ function SettingsPage() {
                   DISTANCE_UNIT_SYMBOL[s.distanceUnit],
                   thresholdEmpty ? "seuil selon l'allure" : `seuil ${thresholdShown} ${SPEED_UNIT_LABEL[thresholdUnit]}`,
                   s.autoPause.speedMs > 0 ? `pause sous ${pauseKmh} km/h après ${s.autoPause.delayS} s` : 'sans pause automatique',
-                  ...(family === 'velo' ? [BIKE_TYPES[s.bikeType].noun] : []),
-                  ...(sailing ? [] : [`voies : ${s.wayTypes.map((w) => WAY_TYPE_LABEL[w].toLowerCase()).join(' + ')}`]),
+                  ...(treatment === 'velo' ? [BIKE_TYPES[s.bikeType].noun] : []),
+                  ...(paceFamily ? [`voies : ${s.wayTypes.map((w) => WAY_TYPE_LABEL[w].toLowerCase()).join(' + ')}`] : []),
                   ...(paceFamily ? [`niveau ${PACE_LEVEL_LABEL[s.paceLevel].toLowerCase()}`] : []),
                 ].join(' · ');
                 return (
@@ -374,13 +373,13 @@ function SettingsPage() {
                               </div>
                             </div>
                           )}
-                          {family === 'velo' && (
+                          {treatment === 'velo' && (
                             <BikeSettings view={s}
                               onBikeType={(t) => setFor(id, 'bikeType', t)}
                               onBikeWeight={(kg) => setFor(id, 'bikeWeight', kg)} />
                           )}
-                          {!sailing && (
-                            <WayTypesSetting view={s} family={family} onChange={(ways) => setFor(id, 'wayTypes', ways)} />
+                          {paceFamily && (
+                            <WayTypesSetting view={s} treatment={treatment} onChange={(ways) => setFor(id, 'wayTypes', ways)} />
                           )}
                           {s.loopReturnRatio !== null && (
                             <div className="settings-row"
@@ -399,7 +398,7 @@ function SettingsPage() {
                               onLevel={(level) => setFor(id, 'paceLevel', level)}
                               onCustomSpeed={(ms) => setFor(id, 'customFlatSpeedMs', ms)} />
                           )}
-                          <LiveFieldsSetting family={family} view={s} onChange={(fields) => setFor(id, 'liveFields', fields)} />
+                          <LiveFieldsSetting treatment={treatment} view={s} onChange={(fields) => setFor(id, 'liveFields', fields)} />
                           {sailing && (
                             <div className="settings-row" title="En navigation sur un parcours planifié : bips de plus en plus rapides à l'approche de chaque balise, bip long à la validation">
                               <span className="settings-row__label">Bips d'approche des balises</span>
@@ -532,19 +531,19 @@ function SettingsPage() {
  * Chiffres en grand de l'enregistrement quand la carte est réduite, de haut
  * en bas : un menu par ligne, le premier toujours rempli. Un chiffre déjà
  * placé n'est pas proposé ailleurs. La liste est rangée sans trou ; revenue
- * au défaut de la famille, elle est effacée.
+ * au défaut du traitement, elle est effacée.
  */
-function LiveFieldsSetting({ family, view, onChange }: {
-  family: SportFamily;
+function LiveFieldsSetting({ treatment, view, onChange }: {
+  treatment: Treatment;
   view: SportSettingsView;
   onChange: (fields: LiveFieldKey[] | null) => void;
 }) {
-  const options = liveFieldsOfFamily(family);
+  const options = liveFieldsOfTreatment(treatment);
   const units = { speedUnit: view.speedUnit, distanceUnit: view.distanceUnit };
   const slots = Array.from({ length: MAX_LIVE_FIELDS }, (_, i) => view.liveFields[i] ?? null);
   const pick = (slot: number, key: LiveFieldKey | null) => {
     const next = slots.map((k, i) => (i === slot ? key : k)).filter((k): k is LiveFieldKey => k !== null);
-    const defaults = DEFAULT_LIVE_FIELDS[family];
+    const defaults = DEFAULT_LIVE_FIELDS[treatment];
     const isDefault = next.length === defaults.length && next.every((k, i) => k === defaults[i]);
     onChange(isDefault ? null : next);
   };
@@ -693,7 +692,7 @@ function ActivityNameField({
   );
 }
 
-/** Ajout d'une activité : nom, famille, calcul (en voile), couleur. */
+/** Ajout d'une activité : nom, famille, calcul (en voile et en fractionné), couleur. */
 function AddActivityForm({
   activities, onAdd,
 }: {
@@ -702,11 +701,11 @@ function AddActivityForm({
 }) {
   const [name, setName] = useState('');
   const [family, setFamily] = useState<SportFamily>('voile');
-  const [base, setBase] = useState<SportType>(FAMILY_BASES.voile[0]);
+  const [base, setBase] = useState<SportType>(familySports('voile')[0]);
   const [color, setColor] = useState(() => nextActivityColor(activities));
   const pickFamily = (next: SportFamily) => {
     setFamily(next);
-    setBase(FAMILY_BASES[next][0]);
+    setBase(familySports(next)[0]);
   };
   const submit = () => {
     if (onAdd(name, base, color) === null) return;
@@ -723,11 +722,11 @@ function AddActivityForm({
       <select value={family} onChange={(e) => pickFamily(e.target.value as SportFamily)} aria-label="Famille" className="ui-field ui-field--s">
         {SPORT_FAMILIES.map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
       </select>
-      {FAMILY_BASES[family].length > 1 && (
+      {familySports(family).length > 1 && (
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ color: 'var(--muted)', fontSize: '12px' }}>calcul</span>
           <select value={base} onChange={(e) => setBase(e.target.value as SportType)} className="ui-field ui-field--s">
-            {FAMILY_BASES[family].map((b) => <option key={b} value={b}>{SPORT_PROFILES[b].label}</option>)}
+            {familySports(family).map((b) => <option key={b} value={b}>{SPORT_PROFILES[b].label}</option>)}
           </select>
         </label>
       )}

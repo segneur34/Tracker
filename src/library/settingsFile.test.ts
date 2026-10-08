@@ -62,14 +62,19 @@ describe('settingsSignature', () => {
   };
   const signature = settingsSignature({ 'tracker.sportSettings': settings, 'tracker.runnerProfile': { me: { weightKg: 70 } } });
 
-  it('ignore les choix retenus : activité du module, ancienne clé du support, activité à enregistrer', () => {
-    const reopened = { ...settings, moduleActivity: { voile: 'kite', course: 'course' }, recordActivity: 'course', sport: 'kite' };
+  it('ignore les choix retenus : activité du module, ancienne clé du support, activité à enregistrer, dernière séance du compteur', () => {
+    const reopened = {
+      ...settings, moduleActivity: { voile: 'kite', course: 'course' }, recordActivity: 'course', sport: 'kite',
+      lastIntervalWorkout: { reps: 8, workS: 30, restS: 30 },
+    };
     expect(settingsSignature({ 'tracker.sportSettings': reopened, 'tracker.runnerProfile': { me: { weightKg: 70 } } })).toBe(signature);
   });
 
-  it('change avec un vrai réglage, de support ou de coureur', () => {
+  it('change avec un vrai réglage, de support, de coureur ou une séance gardée', () => {
     const changed = { ...settings, thresholds: { wingfoil: 10 } };
     expect(settingsSignature({ 'tracker.sportSettings': changed, 'tracker.runnerProfile': { me: { weightKg: 70 } } })).not.toBe(signature);
+    const preset = { ...settings, intervalPresets: [{ id: 's1', name: 'Pyramide', workout: { reps: 8, workS: 30, restS: 30 } }] };
+    expect(settingsSignature({ 'tracker.sportSettings': preset, 'tracker.runnerProfile': { me: { weightKg: 70 } } })).not.toBe(signature);
     expect(settingsSignature({ 'tracker.sportSettings': settings, 'tracker.runnerProfile': { me: { weightKg: 71 } } })).not.toBe(signature);
   });
 

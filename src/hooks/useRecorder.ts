@@ -6,7 +6,10 @@ import { effectiveRecordingProfile, readStoredActivities, rememberRecordActivity
 import { recordingJournal } from '../platform/files';
 import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation } from '../platform/location';
 import { buildGpx } from '../recording/gpxWriter';
-import { journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, parseJournal } from '../recording/journal';
+import { seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
+import {
+  journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalIntervalsLine, parseJournal,
+} from '../recording/journal';
 import {
   EMPTY_RECORDING_STATS,
   addFixToStats,
@@ -29,7 +32,9 @@ import { saveRecordedSession } from './useSessionLibrary';
  * `changeRecordingActivity`, `analyzePendingSession`/`discardPendingSession`
  * et `recoverInterruptedRecording`. Le guidage vers les balises
  * (`useMarkGuide`), hors React lui aussi, s'abonne aux positions reçues
- * (`subscribeToFixes`) et à l'état (`subscribeToRecorder`).
+ * (`subscribeToFixes`) et à l'état (`subscribeToRecorder`). Le compteur du
+ * fractionné (`useIntervalTimer`) lui confie ses séances (`noteIntervalRun`),
+ * écrites dans le journal et rangées avec la session.
  *
  * Chaîne : chaque position reçue est arrondie (`roundFix`), gardée en mémoire
  * et ajoutée au journal, écrit par paquets à l'arrivée des positions
@@ -61,6 +66,8 @@ export interface PendingSession {
   pointCount: number;
   /** Vrai si elle a été reconstruite depuis le journal d'un enregistrement interrompu. */
   recovered: boolean;
+  /** Séances du compteur faites pendant l'enregistrement, bornées à lui. */
+  intervals: IntervalSeries[];
 }
 
 /** Session rangée par « Analyser ». */
@@ -169,6 +176,10 @@ let belowSinceMs: number | null = null;
 let pendingBreak = false;
 /** Écritures du journal, enchaînées pour qu'elles arrivent dans l'ordre. */
 let writes: Promise<void> = Promise.resolve();
+/** Instant du démarrage, à l'horloge : le début de la fenêtre des séances du compteur. */
+let startedAtMs = 0;
+/** Séances du compteur confiées pendant l'enregistrement, chacune dans son dernier état. */
+let intervalRuns = new Map<number, IntervalRun>();
 
 const enqueueWrite = (write: () => Promise<void>): Promise<void> => {
   writes = writes.then(write).catch((err) => {
@@ -236,7 +247,12 @@ const receiveFix = (received: LocationFix): void => {
  * décision de l'utilisateur. Rend `null`, journal effacé, s'il y a moins de
  * deux positions au total : aucune trace ne s'en tire, il n'y a rien à garder.
  */
-const buildPendingSession = async (activity: Activity, segments: LocationFix[][], recovered: boolean): Promise<PendingSession | null> => {
+const buildPendingSession = async (
+  activity: Activity,
+  segments: LocationFix[][],
+  recovered: boolean,
+  intervals: IntervalSeries[]
+): Promise<PendingSession | null> => {
   const sport = activity.base;
   const pointCount = segments.reduce((n, s) => n + s.length, 0);
   if (pointCount < 2) {
@@ -246,7 +262,7 @@ const buildPendingSession = async (activity: Activity, segments: LocationFix[][]
   const startMs = segments.find((s) => s.length > 0)![0].timeMs;
   const fileName = sessionFileName(startMs, sport);
   const content = buildGpx(segments, { name: sessionTitle(startMs, activity.name), sport });
-  return { fileName, content, sport, activity, pointCount, recovered };
+  return { fileName, content, sport, activity, pointCount, recovered, intervals };
 };
 
 /**
@@ -258,7 +274,7 @@ export const analyzePendingSession = async (): Promise<SavedSession | null> => {
   const pending = state.pending;
   if (!pending) return null;
   try {
-    const { file, location } = await saveRecordedSession(pending.content, pending.sport, pending.activity.id);
+    const { file, location } = await saveRecordedSession(pending.content, pending.sport, pending.activity.id, pending.intervals);
     await recordingJournal.remove();
     const saved: SavedSession = { ...pending, fileName: file ?? pending.fileName, libraryFile: file, location };
     setState({ pending: null, saved, error: null });
@@ -318,7 +334,11 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
     const { activityChange } = parsed;
     const sport = activityChange?.sport ?? header?.sport ?? 'wingfoil';
     const saved = activityChange?.activity ?? header?.activity;
-    const pending = await buildPendingSession(journalActivity(sport, saved), splitIntoSegments(list, breaks), true);
+    // Séances du compteur : du démarrage à la dernière position gardée.
+    const fromMs = header?.startedAtMs ?? list[0]?.timeMs ?? 0;
+    const toMs = list[list.length - 1]?.timeMs ?? fromMs;
+    const intervals = seriesWithin(parsed.intervalRuns, fromMs, toMs);
+    const pending = await buildPendingSession(journalActivity(sport, saved), splitIntoSegments(list, breaks), true, intervals);
     if (pending) setState({ pending, saved: null, error: null });
   } catch (err) {
     setState({ error: `Session interrompue non récupérée : ${errorMessage(err, 'erreur inconnue')}` });
@@ -342,10 +362,12 @@ export const startRecording = async (activity: Activity, source: LocationSource)
   lastReceivedMs = null;
   belowSinceMs = null;
   pendingBreak = false;
+  startedAtMs = Date.now();
+  intervalRuns = new Map();
   setState({ status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, stats: EMPTY_RECORDING_STATS, saved: null, error: null });
 
   try {
-    await recordingJournal.write(journalHeaderLine(sport, Date.now(), activity));
+    await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity));
     stopSource = await source.start(sourceOptions(activity, profile), receiveFix, (message) => setState({ error: message }));
     setState({ status: 'recording' });
   } catch (err) {
@@ -421,6 +443,19 @@ export const changeRecordingActivity = (activity: Activity): void => {
   void flushJournal();
 };
 
+/**
+ * Séance du compteur du fractionné, dans son état du moment : gardée pour la
+ * session et écrite dans le journal, pour survivre à un plantage. Sans effet
+ * hors d'un enregistrement. Pendant le démarrage, la ligne attend le premier
+ * paquet du journal, écrit après son en-tête.
+ */
+export const noteIntervalRun = (run: IntervalRun): void => {
+  if (state.status === 'idle') return;
+  intervalRuns.set(run.startedAtMs, run);
+  pendingLines += journalIntervalsLine(run);
+  if (state.status === 'recording' || state.status === 'paused') void flushJournal();
+};
+
 /** Appui long sur le bouton rond : pause manuelle, ou reprise si elle l'est déjà. */
 export const togglePauseRecording = (): Promise<void> =>
   state.status === 'paused' && state.pausedReason === 'manual' ? resumeRecording() : pauseRecording();
@@ -428,6 +463,7 @@ export const togglePauseRecording = (): Promise<void> =>
 export const stopRecording = async (): Promise<void> => {
   if ((state.status !== 'recording' && state.status !== 'paused') || state.activity === null) return;
   const activity = state.activity;
+  const stoppedAtMs = Date.now();
   setState({ status: 'stopping' });
   try {
     await stopSource?.();
@@ -440,7 +476,8 @@ export const stopRecording = async (): Promise<void> => {
   await flushJournal();
 
   try {
-    const pending = await buildPendingSession(activity, splitIntoSegments(fixes, segmentBreaks), false);
+    const intervals = seriesWithin([...intervalRuns.values()], startedAtMs, stoppedAtMs);
+    const pending = await buildPendingSession(activity, splitIntoSegments(fixes, segmentBreaks), false, intervals);
     setState({
       status: 'idle',
       pending,
@@ -454,6 +491,7 @@ export const stopRecording = async (): Promise<void> => {
   }
   fixes = [];
   segmentBreaks = [];
+  intervalRuns = new Map();
 };
 
 /** Trace de l'enregistrement en cours, un tableau par segment continu : la carte et les statistiques en direct. */

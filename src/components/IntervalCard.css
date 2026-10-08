@@ -1,0 +1,157 @@
+/* Compteur du fractionné (IntervalCard), sur la page Enregistrer. */
+
+.ivl-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+}
+
+.ivl-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ivl-field__pair {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.ivl-summary {
+  margin: var(--space-3) 0 0;
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.ivl-note {
+  margin: var(--space-3) 0 0;
+  color: var(--muted);
+  font-size: var(--text-s);
+  line-height: 1.5;
+}
+
+.ivl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.ivl-launch {
+  flex: 1 1 14em;
+}
+
+.ivl-name {
+  flex: 1 1 12em;
+  min-width: 0;
+}
+
+/* Séances gardées : des pastilles, un toucher reprend la séance. */
+.ivl-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.ivl-preset {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.ivl-preset__pick {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 36px;
+  padding: 2px var(--space-2) 2px var(--space-3);
+  border: none;
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--text-s);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ivl-preset__pick[aria-pressed='true'] {
+  background: var(--fractionne);
+  color: var(--on-accent);
+}
+
+.ivl-preset__detail {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+.ivl-preset__remove {
+  min-width: 32px;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: none;
+  color: var(--muted);
+  font-size: var(--text-l);
+  cursor: pointer;
+}
+
+/* Séance en cours : la phase et son temps restant, en grand. */
+.ivl-live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ivl-live__phase {
+  font-size: var(--text-l);
+  font-weight: 700;
+  color: var(--ivl-color);
+}
+
+.ivl-live__clock {
+  font-size: var(--text-display);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.ivl-live__bar {
+  display: block;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.ivl-live__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ivl-color);
+}
+
+.ivl-live__left {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.ivl--travail {
+  --ivl-color: var(--fractionne);
+}
+
+.ivl--repos {
+  --ivl-color: var(--success);
+}
+
+.ivl--pret {
+  --ivl-color: var(--ink-2);
+}
+
+.ivl-done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

@@ -82,6 +82,73 @@ export const DEFAULT_RECORDING: RecordingProfile = {
   autoPauseDelayS: 60,
 };
 
+/**
+ * Fractionné : pause automatique coupée, un repos immobile de plus de 60 s
+ * couperait la trace (§10, point 89). Le délai reste, pour qui la rallume.
+ */
+const INTERVAL_RECORDING: RecordingProfile = { ...DEFAULT_RECORDING, autoPauseSpeedMs: 0 };
+
+/**
+ * Répétitions retrouvées dans la vitesse d'une session faite sans le compteur
+ * (`running/intervalDetection.ts`). Le seuil d'effort, lui, est tiré de la
+ * session, et se surcharge par session (`SessionAnalysis.effortThresholdMs`).
+ */
+export interface IntervalDetectionProfile {
+  /** Pas de lecture de la vitesse sur la distance cumulée, en secondes. */
+  stepS: number;
+  /** Lissage de la vitesse avant la recherche des efforts, en secondes. */
+  smoothingS: number;
+  /** On sort d'un effort sous le seuil diminué de cette fraction (hystérésis). */
+  exitFraction: number;
+  /** Effort plus court écarté, en secondes. */
+  minWorkS: number;
+  /** Effort plus court que cette part de la durée médiane de sa séance écarté (accélération d'échauffement). */
+  minWorkFraction: number;
+  /** Creux plus court fondu dans l'effort qui l'entoure, en secondes. */
+  minDipS: number;
+  /** Recherche du creux de vitesse qui précède un effort, d'où il part, en secondes. */
+  launchSearchS: number;
+  /**
+   * Rapport minimal entre la vitesse moyenne des efforts et celle du reste ;
+   * en dessous, la session n'a pas l'allure d'un fractionné.
+   */
+  minContrast: number;
+  /**
+   * Rapport à partir duquel les rapides se séparent encore en deux (footing
+   * d'approche et efforts) : le seuil monte alors entre eux. Plus haut que
+   * `minContrast`, pour ne pas couper entre deux allures d'effort.
+   */
+  upperContrast: number;
+  /** Repos minimal qui ouvre une nouvelle séance (10/10 puis 20/20), en secondes. */
+  blockMinGapS: number;
+  /** …et en fois le repos médian de la session. */
+  blockGapFactor: number;
+}
+
+/** Analyse des répétitions (fractionné, §10, point 89). */
+export interface IntervalProfile {
+  /** Pas du profil de vitesse d'une répétition, en secondes. */
+  profileStepS: number;
+  /** Fin de la mise en vitesse : la répétition atteint cette part de sa vitesse. */
+  launchFraction: number;
+  detection: IntervalDetectionProfile;
+}
+
+/**
+ * Commun à pied et à vélo : seuils relatifs et durées, aucun en vitesse
+ * absolue. Efforts de 3 s au moins : sur une trace Komoot, un 10/10 ne montre
+ * que 3 à 6 s de points rapides, le reste tombant dans le long segment de la
+ * récupération (essai du 08/10).
+ */
+const INTERVAL_ANALYSIS: IntervalProfile = {
+  profileStepS: 1,
+  launchFraction: 0.9,
+  detection: {
+    stepS: 1, smoothingS: 3, exitFraction: 0.05, minWorkS: 3, minWorkFraction: 0.4, minDipS: 5, launchSearchS: 8,
+    minContrast: 1.25, upperContrast: 1.4, blockMinGapS: 60, blockGapFactor: 3,
+  },
+};
+
 export interface SportProfile {
   id: SportType;
   label: string;
@@ -125,13 +192,18 @@ export interface SportProfile {
   /**
    * Mode « Boucle » de la planification : longueur maximale du retour qui
    * évite l'aller, en fois l'aller ; au-delà, le retour le plus court.
-   * Surchargeable par activité ; `null` : pas de boucle (voile).
+   * Surchargeable par activité ; `null` : pas de boucle (voile, fractionné, qui ne planifie pas).
    */
   loopReturnMaxRatio: number | null;
   /** Cibles de recherche des meilleurs segments. */
   topTargets: TopTarget[];
   /** Réglage de l'enregistrement GPS. */
   recording: RecordingProfile;
+  /**
+   * Analyse des répétitions du compteur, et leur détection en famille
+   * Fractionné ; `null` en voile, où le compteur ne sert pas.
+   */
+  intervals: IntervalProfile | null;
 }
 
 /** Cibles de tops utilisées par tous les supports à voile. */
@@ -173,6 +245,52 @@ const SAILING_DEFAULTS = {
   loopReturnMaxRatio: null,
   topTargets: SAILING_TOP_TARGETS,
   recording: DEFAULT_RECORDING,
+  intervals: null,
+};
+
+const RUNNING_PROFILE: SportProfile = {
+  id: 'running',
+  label: 'Course à pied',
+  speedUnit: 'minkm',
+  thresholdUnit: 'kmh',
+  // Reprise au-dessus de 4 km/h, pause en dessous de 2 km/h, confirmée sur 3 s.
+  defaultActiveThreshold: 3,
+  activeHysteresis: { enterOffset: 1, exitOffset: -1 },
+  minStateDurationS: 3,
+  medianWindowSeconds: 5,
+  // 12 m/s font 43 km/h, au-delà du sprint humain.
+  maxPlausibleSpeedMs: 12,
+  defaultPolarMinSpeed: 0,
+  activeRatioLabel: 'Ratio en mouvement',
+  elevation: ELEVATION_PRESETS.route,
+  terrainElevationStepM: 10,
+  loopReturnMaxRatio: DEFAULT_LOOP_RETURN_MAX_RATIO,
+  // Les cibles de tops running restent à définir avec les métriques du module.
+  topTargets: [],
+  recording: DEFAULT_RECORDING,
+  intervals: INTERVAL_ANALYSIS,
+};
+
+const CYCLING_PROFILE: SportProfile = {
+  id: 'cycling',
+  label: 'Vélo',
+  speedUnit: 'kmh',
+  thresholdUnit: 'kmh',
+  // Reprise au-dessus de 6 km/h, pause en dessous de 3 km/h, confirmée sur 3 s.
+  defaultActiveThreshold: 5,
+  activeHysteresis: { enterOffset: 1, exitOffset: -2 },
+  minStateDurationS: 3,
+  medianWindowSeconds: 3,
+  // 25 m/s font 90 km/h, au-delà d'une descente de col ordinaire.
+  maxPlausibleSpeedMs: 25,
+  defaultPolarMinSpeed: 0,
+  activeRatioLabel: 'Ratio en mouvement',
+  elevation: ELEVATION_PRESETS.route,
+  terrainElevationStepM: 10,
+  loopReturnMaxRatio: DEFAULT_LOOP_RETURN_MAX_RATIO,
+  topTargets: CYCLING_TOP_TARGETS,
+  recording: DEFAULT_RECORDING,
+  intervals: INTERVAL_ANALYSIS,
 };
 
 export const SPORT_PROFILES: Record<SportType, SportProfile> = {
@@ -205,46 +323,14 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     defaultPolarMinSpeed: 2,
     activeRatioLabel: 'Ratio de navigation',
   },
-  running: {
-    id: 'running',
-    label: 'Course à pied',
-    speedUnit: 'minkm',
-    thresholdUnit: 'kmh',
-    // Reprise au-dessus de 4 km/h, pause en dessous de 2 km/h, confirmée sur 3 s.
-    defaultActiveThreshold: 3,
-    activeHysteresis: { enterOffset: 1, exitOffset: -1 },
-    minStateDurationS: 3,
-    medianWindowSeconds: 5,
-    // 12 m/s font 43 km/h, au-delà du sprint humain.
-    maxPlausibleSpeedMs: 12,
-    defaultPolarMinSpeed: 0,
-    activeRatioLabel: 'Ratio en mouvement',
-    elevation: ELEVATION_PRESETS.route,
-    terrainElevationStepM: 10,
-    loopReturnMaxRatio: DEFAULT_LOOP_RETURN_MAX_RATIO,
-    // Les cibles de tops running restent à définir avec les métriques du module.
-    topTargets: [],
-    recording: DEFAULT_RECORDING,
+  running: RUNNING_PROFILE,
+  cycling: CYCLING_PROFILE,
+  // Fractionné : les calculs de la course et du vélo, sans pause automatique ni planification.
+  'run-intervals': {
+    ...RUNNING_PROFILE, id: 'run-intervals', label: 'Fractionné à pied', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING,
   },
-  cycling: {
-    id: 'cycling',
-    label: 'Vélo',
-    speedUnit: 'kmh',
-    thresholdUnit: 'kmh',
-    // Reprise au-dessus de 6 km/h, pause en dessous de 3 km/h, confirmée sur 3 s.
-    defaultActiveThreshold: 5,
-    activeHysteresis: { enterOffset: 1, exitOffset: -2 },
-    minStateDurationS: 3,
-    medianWindowSeconds: 3,
-    // 25 m/s font 90 km/h, au-delà d'une descente de col ordinaire.
-    maxPlausibleSpeedMs: 25,
-    defaultPolarMinSpeed: 0,
-    activeRatioLabel: 'Ratio en mouvement',
-    elevation: ELEVATION_PRESETS.route,
-    terrainElevationStepM: 10,
-    loopReturnMaxRatio: DEFAULT_LOOP_RETURN_MAX_RATIO,
-    topTargets: CYCLING_TOP_TARGETS,
-    recording: DEFAULT_RECORDING,
+  'bike-intervals': {
+    ...CYCLING_PROFILE, id: 'bike-intervals', label: 'Fractionné vélo', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING,
   },
 };
 
@@ -253,17 +339,48 @@ export const SAILING_SPORTS: SportType[] = ['wingfoil', 'windsurf', 'kite', 'bat
 
 export const getSportProfile = (sport: SportType): SportProfile => SPORT_PROFILES[sport];
 
-/** Supports analysés par le module vélo. */
-export const CYCLING_SPORTS: SportType[] = ['cycling'];
+/**
+ * Traitement d'un calcul : la façon dont ses sessions se calculent et
+ * s'affichent (unités, énergie, vélo, altitude du terrain, chiffres du direct,
+ * module d'analyse). À ne pas confondre avec la famille, qui les range.
+ */
+export type Treatment = 'voile' | 'course' | 'velo';
 
-/** Famille d'un support : elle choisit le module qui l'analyse et la bibliothèque qui le range. */
-export type SportFamily = 'voile' | 'course' | 'velo';
+/**
+ * Famille d'un calcul : où ses sessions se rangent (bibliothèque, accueil,
+ * barre de navigation, listes d'activités, Réglages). Une famille de
+ * traitement porte son nom ; « Fractionné » range des calculs traités à pied
+ * ou à vélo (§10, point 89).
+ */
+export type SportFamily = Treatment | 'fractionne';
 
 /** Les familles, dans l'ordre de l'interface. */
-export const SPORT_FAMILIES: SportFamily[] = ['voile', 'course', 'velo'];
+export const SPORT_FAMILIES: SportFamily[] = ['voile', 'course', 'velo', 'fractionne'];
 
-export const sportFamily = (sport: SportType): SportFamily =>
-  SAILING_SPORTS.includes(sport) ? 'voile' : CYCLING_SPORTS.includes(sport) ? 'velo' : 'course';
+const SPORT_TREATMENT: Record<SportType, Treatment> = {
+  wingfoil: 'voile',
+  windsurf: 'voile',
+  kite: 'voile',
+  bateau: 'voile',
+  running: 'course',
+  cycling: 'velo',
+  'run-intervals': 'course',
+  'bike-intervals': 'velo',
+};
+
+const SPORT_FAMILY: Record<SportType, SportFamily> = {
+  ...SPORT_TREATMENT,
+  'run-intervals': 'fractionne',
+  'bike-intervals': 'fractionne',
+};
+
+export const sportTreatment = (sport: SportType): Treatment => SPORT_TREATMENT[sport];
+
+export const sportFamily = (sport: SportType): SportFamily => SPORT_FAMILY[sport];
+
+/** Calculs d'une famille, dans l'ordre de `SPORT_PROFILES`. */
+export const familySports = (family: SportFamily): SportType[] =>
+  (Object.keys(SPORT_PROFILES) as SportType[]).filter((sport) => SPORT_FAMILY[sport] === family);
 
 /** Les deux détentes du seuil d'activité, dans l'unité du profil. */
 export const getActiveThresholds = (

@@ -1,8 +1,9 @@
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
-import { sportFamily } from '../core/sportProfiles';
+import { sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import type { TerrainSamples } from '../core/terrainElevation';
 import { readSurfaceRuns, type SurfaceRuns } from '../planning/surface';
+import { readIntervalSeries, type IntervalSeries } from '../recording/intervalTimer';
 import { isSportType } from '../recording/session';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
 
@@ -82,6 +83,12 @@ export interface SessionAnalysis {
    * `null` : celles des Réglages du support, sinon le défaut du module.
    */
   speedRange: SpeedRangeMs | null;
+  /**
+   * Seuil d'effort de la détection des répétitions (fractionné sans compteur),
+   * en m/s ; `null` : celui tiré de la session. Il décrit la trace : un
+   * changement de support le garde. Absent des fiches plus anciennes.
+   */
+  effortThresholdMs: number | null;
   savedAt: number;
 }
 
@@ -153,6 +160,12 @@ export interface SessionRecord {
   terrainElevation?: SessionTerrainElevation;
   /** `'gps'` : l'utilisateur garde l'altitude du GPS ; absent : celle de l'IGN (course et vélo). */
   elevationSource?: 'gps';
+  /**
+   * Séances du compteur faites pendant l'enregistrement (fractionné, §10,
+   * point 89), datées par l'horloge du téléphone : elles ne se tirent pas du
+   * GPX. Absent sans compteur, ou si la fiche en porte de mal formées.
+   */
+  intervals?: IntervalSeries[];
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -232,6 +245,7 @@ export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
     activeThreshold: isFiniteNumber(raw.activeThreshold) && raw.activeThreshold >= 0 ? raw.activeThreshold : null,
     referenceSpeedMs: isFiniteNumber(raw.referenceSpeedMs) && raw.referenceSpeedMs > 0 ? raw.referenceSpeedMs : null,
     speedRange: readSpeedRange(raw.speedRange),
+    effortThresholdMs: isFiniteNumber(raw.effortThresholdMs) && raw.effortThresholdMs > 0 ? raw.effortThresholdMs : null,
     savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
   };
 };
@@ -287,9 +301,10 @@ export const parseRecord = (text: string): SessionRecord | null => {
   if (typeof raw.gpx !== 'string' || raw.gpx === '') return null;
   const summary = readSummary(raw.summary);
   if (!summary) return null;
-  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, ...rest } = raw;
+  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, intervals: rawIntervals, ...rest } = raw;
   const surfaces = readSessionSurfaces(rawSurfaces);
   const terrainElevation = readTerrainElevation(rawTerrain);
+  const intervals = readIntervalSeries(rawIntervals);
   return {
     ...rest,
     format: RECORD_FORMAT,
@@ -307,6 +322,7 @@ export const parseRecord = (text: string): SessionRecord | null => {
     ...(surfaces ? { surfaces } : {}),
     ...(terrainElevation ? { terrainElevation } : {}),
     ...(rawSource === 'gps' ? { elevationSource: 'gps' as const } : {}),
+    ...(intervals ? { intervals } : {}),
   };
 };
 
@@ -409,9 +425,9 @@ export interface RecordPatch {
  * imposée, altitude ou source de l'altitude changés).
  *
  * Un changement de support efface le seuil propre à la session, exprimé dans
- * l'unité de l'ancien support ; un changement de famille (voile ↔ course ↔ vélo)
- * efface aussi ses bornes de couleur, pensées pour les vitesses de l'autre
- * sport. Le vent saisi, l'allure imposée (elle décrit la trace) et les notes
+ * l'unité de l'ancien support ; un changement de traitement (voile ↔ course ↔
+ * vélo) efface aussi ses bornes de couleur, pensées pour les vitesses de
+ * l'autre sport : passer de la course au fractionné à pied les garde. Le vent saisi, l'allure imposée (elle décrit la trace) et les notes
  * restent : sans effet en course, ils reviennent si la session repasse en
  * voile.
  */
@@ -451,13 +467,13 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   if (sportChanged) {
     const before = next.sport;
     const after = patch.sport ?? null;
-    const familyChanged = before !== null && after !== null && sportFamily(before) !== sportFamily(after);
+    const treatmentChanged = before !== null && after !== null && sportTreatment(before) !== sportTreatment(after);
     next = { ...next, sport: after };
     if (next.analysis) {
       const cleared = {
         ...next.analysis,
         activeThreshold: null,
-        ...(familyChanged ? { speedRange: null } : {}),
+        ...(treatmentChanged ? { speedRange: null } : {}),
       };
       if (cleared.activeThreshold !== next.analysis.activeThreshold || cleared.speedRange !== next.analysis.speedRange) {
         next = { ...next, analysis: cleared };

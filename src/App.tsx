@@ -23,6 +23,8 @@ function App() {
           <Route path="/course/analyse" element={<LandModule key="course" family="course" />} />
           <Route path="/velo" element={<SessionLibrary key="velo" family="velo" />} />
           <Route path="/velo/analyse" element={<LandModule key="velo" family="velo" />} />
+          <Route path="/fractionne" element={<SessionLibrary key="fractionne" family="fractionne" />} />
+          <Route path="/fractionne/analyse" element={<LandModule key="fractionne" family="fractionne" />} />
           <Route path="/enregistrer" element={<RecordingPage />} />
           <Route path="/itineraires" element={<PlanningPage />} />
           <Route path="/itineraires/liste" element={<RoutesPage />} />

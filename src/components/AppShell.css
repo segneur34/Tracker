@@ -19,12 +19,15 @@
   min-width: 0;
 }
 
-/* --- Bandeau d'enregistrement --- */
+/* --- Bandeaux d'enregistrement et du compteur, l'un sous l'autre --- */
 
-.shell-banner {
+.shell-banners {
   position: sticky;
   top: 0;
   z-index: 1100;
+}
+
+.shell-banner {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -35,6 +38,10 @@
   font-size: var(--text-m);
   font-weight: 600;
   text-decoration: none;
+}
+
+.shell-banner--intervals {
+  background: var(--fractionne);
 }
 
 .shell-banner__dot {
@@ -341,8 +348,8 @@
     border-bottom: 1px solid var(--line);
   }
 
-  /* Sous la barre du haut, le bandeau reste visible au défilement. */
-  .shell-banner {
+  /* Sous la barre du haut, les bandeaux restent visibles au défilement. */
+  .shell-banners {
     top: var(--topbar-h);
   }
 }

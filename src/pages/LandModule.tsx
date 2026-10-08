@@ -10,7 +10,9 @@ import {
 } from 'recharts';
 import ActivitySelect from '../components/ActivitySelect';
 import AnalysisMap from '../components/AnalysisMap';
+import EffortThresholdEditor from '../components/EffortThresholdEditor';
 import GradeGradientLegend from '../components/GradeGradientLegend';
+import IntervalAnalysis, { type IntervalSeriesView } from '../components/IntervalAnalysis';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
@@ -35,13 +37,13 @@ import {
   computeActivityMask, computeTotalTimeMs,
 } from '../core/sessionStats';
 import { sessionActivity } from '../core/activities';
-import { ELEVATION_PRESETS, getActiveThresholds } from '../core/sportProfiles';
+import { ELEVATION_PRESETS, getActiveThresholds, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import { meanFilterByTime } from '../core/speedFilter';
 import { SLOW_COLOR, gradientCss, isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import {
-  DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed, isInverseUnit,
-  toDisplayDistance, toDisplaySpeed,
+  DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
+  isInverseUnit, toDisplayDistance, toDisplaySpeed,
 } from '../core/units';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
@@ -59,11 +61,14 @@ import {
   averagePace, computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
 } from '../running/runningAnalytics';
 import { smoothMovingPower } from '../running/energy';
+import { detectIntervals } from '../running/intervalDetection';
+import { analyzeIntervals, type IntervalPhaseSpan } from '../running/intervalStats';
 import type { RunningSessionStats } from '../running/types';
 import { BIKE_TYPES } from '../cycling/energy';
 import type { LibrarySession } from '../library/record';
+import type { IntervalSeries, IntervalWorkout } from '../recording/intervalTimer';
 import { WAY_MATCH_DEFAULTS } from '../planning/wayMatch';
-import { LAND_MODULES, type LandFamily } from './landModules';
+import { LAND_PAGES, LAND_TREATMENTS, type LandFamily } from './landModules';
 
 /** Lissage supplémentaire de la vitesse pour le graphe, en secondes. */
 const CHART_SPEED_SMOOTHING_S = 10;
@@ -94,11 +99,15 @@ const ZONE_COLOR = '#7b1fa2';
  * OpenStreetMap à sa première ouverture : fermé par défaut, il ne coûte rien
  * tant qu'on ne l'ouvre pas. À vélo, elles sont demandées dès l'ouverture de
  * l'analyse, pour le roulement de l'énergie (`surfacesAtOpening`).
+ * « fractionné » n'apparaît que pour une session qui a des répétitions du
+ * compteur dans sa fiche, ou qui est de la famille Fractionné : ses
+ * répétitions sont alors retrouvées dans la vitesse (§10, point 89).
  */
-type LandSection = 'general' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'reglages';
+type LandSection = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'reglages';
 
 const LAND_SECTIONS: SectionDefinition<LandSection>[] = [
   { key: 'general', label: 'général' },
+  { key: 'fractionne', label: 'fractionné' },
   { key: 'tops', label: 'tops' },
   { key: 'zones', label: 'zones de pente' },
   { key: 'surface', label: 'surface' },
@@ -109,6 +118,7 @@ const LAND_SECTIONS: SectionDefinition<LandSection>[] = [
 
 const LAND_SECTION_DEFAULTS: Record<LandSection, boolean> = {
   general: true,
+  fractionne: true,
   tops: true,
   zones: true,
   surface: false,
@@ -178,20 +188,22 @@ const elevationSourceText = (status: TerrainElevationStatus, stepM: number, erro
 };
 
 /**
- * Module des familles terrestres, course à pied et vélo (`landModules.tsx`) :
- * trace colorée par la vitesse, graphes de vitesse et d'altitude séparés ou
- * superposés et zoomables, vitesses par zone de pente, énergie, meilleurs
- * segments.
+ * Module des familles terrestres, course à pied, vélo et fractionné
+ * (`landModules.tsx`) : trace colorée par la vitesse, graphes de vitesse et
+ * d'altitude séparés ou superposés et zoomables, vitesses par zone de pente,
+ * énergie, meilleurs segments. La page suit la famille, le modèle (énergie,
+ * libellés) le calcul de l'activité courante.
  */
 function LandModule({ family }: { family: LandFamily }) {
-  const config = LAND_MODULES[family];
-  const panelId = (name: string) => `${config.storageId}.${name}`;
+  const page = LAND_PAGES[family];
+  const panelId = (name: string) => `${page.storageId}.${name}`;
   const {
-    activity, setActivity,
+    activity, setActivity, sport,
     profile, activeThreshold, terrain, setTerrain, elevationProfile, terrainStepM,
     speedUnit, distanceUnit, textScale,
     speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg,
   } = useSportSettings(family);
+  const model = LAND_TREATMENTS[sportTreatment(sport) === 'velo' ? 'velo' : 'course'];
   const { profile: runner, age } = useRunnerProfile();
   const gpx = useGpxSession({
     medianWindowSeconds: profile.medianWindowSeconds,
@@ -201,10 +213,13 @@ function LandModule({ family }: { family: LandFamily }) {
   // Session de la mémoire désignée par l'URL.
   const { loadGpxContent } = gpx;
   // Session de la mémoire désignée par l'URL : son activité devient celle du module.
+  /** Répétitions du compteur rangées dans la fiche de la session, s'il y en a. */
+  const [sessionIntervals, setSessionIntervals] = useState<IntervalSeries[]>([]);
   const receiveSession = useCallback(
     (content: string, session: LibrarySession) => {
       const recorded = sessionActivity(readStoredActivities(), session.record.activityId, session.record.sport);
       if (recorded && recorded.id !== activity.id) setActivity(recorded.id);
+      setSessionIntervals(session.record.intervals ?? []);
       loadGpxContent(content, session.file);
     },
     [activity.id, setActivity, loadGpxContent]
@@ -221,21 +236,38 @@ function LandModule({ family }: { family: LandFamily }) {
   const [allActivities] = useState(readStoredActivities);
   const changeSessionActivity = useChangeSessionActivity(family, setActivity);
 
-  const { open, toggle } = useOpenSections<LandSection>(config.storageId, LAND_SECTION_DEFAULTS);
+  const { open, toggle } = useOpenSections<LandSection>(page.storageId, LAND_SECTION_DEFAULTS);
+  /** Répétitions retrouvées dans la vitesse : en famille Fractionné, pour une session faite sans le compteur. */
+  const detectionOn = family === 'fractionne' && sessionIntervals.length === 0 && profile.intervals !== null;
+  const hasIntervals = sessionIntervals.length > 0 || detectionOn;
   const sections = useMemo(
-    () => LAND_SECTIONS.filter((s) => s.key !== 'tops' || profile.topTargets.length > 0),
-    [profile.topTargets]
+    () => LAND_SECTIONS.filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals)),
+    [profile.topTargets, hasIntervals]
   );
-  // Une seule surbrillance sur la carte : un top ou une zone de pente, choisir l'un retire l'autre.
+  // Une seule surbrillance sur la carte : un top, une zone de pente ou une répétition, choisir l'un retire les autres.
   const [selectedTop, setSelectedTopState] = useState<string | null>(null);
   const [selectedZone, setSelectedZoneState] = useState<GradeZoneKey | null>(null);
+  const [selectedLap, setSelectedLapState] = useState<string | null>(null);
   const setSelectedTop = (key: string | null) => {
     setSelectedTopState(key);
-    if (key !== null) setSelectedZoneState(null);
+    if (key !== null) {
+      setSelectedZoneState(null);
+      setSelectedLapState(null);
+    }
   };
   const setSelectedZone = (key: GradeZoneKey | null) => {
     setSelectedZoneState(key);
-    if (key !== null) setSelectedTopState(null);
+    if (key !== null) {
+      setSelectedTopState(null);
+      setSelectedLapState(null);
+    }
+  };
+  const setSelectedLap = (key: string | null) => {
+    setSelectedLapState(key);
+    if (key !== null) {
+      setSelectedTopState(null);
+      setSelectedZoneState(null);
+    }
   };
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
   const [energyMode, setEnergyMode] = useState<EnergyChartMode>('power');
@@ -309,7 +341,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const surfaces = useSessionSurfaces(
     gpx.track,
     sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null,
-    open.surface || config.surfacesAtOpening
+    open.surface || model.surfacesAtOpening
   );
   /**
    * « Voir sur la carte » de l'onglet surface, et celui de la pente sous le
@@ -348,7 +380,7 @@ function LandModule({ family }: { family: LandFamily }) {
   );
 
   /**
-   * Énergie dépensée, selon le modèle de la famille (`landModules.tsx`) :
+   * Énergie dépensée, selon le modèle du traitement (`landModules.tsx`) :
    * pente, résistance de l'air, roulement selon le revêtement à vélo, et repos
    * sur toute la durée. Recalculée quand le revêtement arrive.
    */
@@ -356,16 +388,16 @@ function LandModule({ family }: { family: LandFamily }) {
   const surfaceStretches = surfaces.stretches;
   const energy = useMemo(
     () => (gpx.track.length > 1
-      ? config.energy({
+      ? model.energy({
           track: gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg,
           surfaces: { status: surfaceStatus, stretches: surfaceStretches },
         })
       : null),
-    [config, gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg, surfaceStatus, surfaceStretches]
+    [model, gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg, surfaceStatus, surfaceStretches]
   );
 
   /** Chiffres du panneau Énergie repliés ou dépliés, choix gardé sur l'appareil. */
-  const energyFold = useOpenSections(`${config.storageId}.energie`, ENERGY_FIGURES_DEFAULT);
+  const energyFold = useOpenSections(`${page.storageId}.energie`, ENERGY_FIGURES_DEFAULT);
   /** Temps écoulé de chaque point, en minutes : l'axe du graphe d'énergie et de son zoom. */
   const trackMinutes = useMemo(
     () => gpx.track.map((p) => (p.timeMs - gpx.track[0].timeMs) / 60000),
@@ -407,6 +439,51 @@ function LandModule({ family }: { family: LandFamily }) {
     [profile.topTargets, gpx.track, cumulative, open.tops, topUnit]
   );
   const selectedTopPaths = selectedTop !== null && tops ? tops[selectedTop] ?? [] : [];
+
+  /**
+   * Répétitions retrouvées dans la vitesse (famille Fractionné, sans
+   * compteur), au seuil d'effort de la session s'il est imposé (brouillon,
+   * puis fiche), sinon à celui tiré de la session.
+   */
+  const effortOverrideMs = draft.edits.effortThresholdMs;
+  const detected = useMemo(
+    () => (detectionOn && profile.intervals && gpx.track.length > 1
+      ? detectIntervals(gpx.track, cumulative, activityMask, profile.intervals.detection, effortOverrideMs)
+      : null),
+    [detectionOn, profile.intervals, gpx.track, cumulative, activityMask, effortOverrideMs]
+  );
+  /** Séances de la session : celles du compteur, sinon celles retrouvées dans la vitesse. */
+  const intervalSeries = useMemo((): { workout: IntervalWorkout; laps: IntervalPhaseSpan[]; detected: boolean }[] => {
+    if (sessionIntervals.length > 0) return sessionIntervals.map((s) => ({ workout: s.workout, laps: s.laps, detected: false }));
+    return (detected?.series ?? []).map((s) => ({ workout: s.workout, laps: s.phases, detected: true }));
+  }, [sessionIntervals, detected]);
+  /**
+   * Séances mesurées sur la trace : chaque répétition avec le repos qui la
+   * suit, son profil, et la synthèse. Clé d'une répétition : `séance-répétition`.
+   */
+  const intervalViews = useMemo(
+    (): IntervalSeriesView[] => (open.fractionne && profile.intervals && gpx.track.length > 1
+      ? intervalSeries.map((s) => ({ workout: s.workout, detected: s.detected, ...analyzeIntervals(gpx.track, cumulative, s.laps, profile.intervals!) }))
+      : []),
+    [open.fractionne, profile.intervals, intervalSeries, gpx.track, cumulative]
+  );
+  /** Ce que dit l'onglet quand la vitesse ne livre aucune répétition. */
+  const intervalEmptyText = (() => {
+    if (intervalSeries.length > 0 || !detected) return null;
+    switch (detected.miss) {
+      case 'sans-contraste':
+        return "Pas de fractionné reconnu : la vitesse ne se partage pas nettement entre efforts et récupérations. Un seuil d'effort imposé dans l'onglet réglages force la recherche.";
+      case 'aucun-effort':
+        return `Aucun effort au-dessus du seuil d'effort (${formatSpeed(detected.thresholdMs, speedUnit === 'minkm' ? 'kmh' : speedUnit)}) : il se baisse dans l'onglet réglages.`;
+      default:
+        return 'Trop peu de mouvement pour y chercher des répétitions.';
+    }
+  })();
+  const selectedLapPath = useMemo(() => {
+    if (selectedLap === null || !open.fractionne) return [];
+    const [series, rep] = selectedLap.split('-').map(Number);
+    return intervalViews[series]?.reps.find((r) => r.rep === rep)?.work.path ?? [];
+  }, [selectedLap, open.fractionne, intervalViews]);
 
   /** Bornes du dégradé de couleur, en m/s : celles de la session, sinon de Réglages, sinon le défaut de la famille. */
   const range = draft.edits.speedRange ?? speedRange ?? defaultSpeedRange;
@@ -544,6 +621,9 @@ function LandModule({ family }: { family: LandFamily }) {
       {zonePaths.map((path, idx) => (
         <Polyline key={`zone-${selectedZone}-${idx}`} positions={path} pathOptions={{ color: ZONE_COLOR, weight: 10, opacity: 0.8 }} />
       ))}
+      {selectedLapPath.length > 1 && (
+        <Polyline key={`fractionne-${selectedLap}`} positions={selectedLapPath} pathOptions={{ color: ZONE_COLOR, weight: 10, opacity: 0.8 }} />
+      )}
       {selectedTopPaths.map((top, idx) => top.path.length > 1 && (
         <Polyline key={`top-${selectedTop}-${idx}`} positions={top.path} pathOptions={{ color: TOP_COLORS[idx] ?? TOP_COLORS[2], weight: 10, opacity: 0.8 }} />
       ))}
@@ -560,7 +640,7 @@ function LandModule({ family }: { family: LandFamily }) {
     <div className="an-page" style={{ padding: '20px' }} onMouseLeave={() => setHoveredIndex(null)}>
       <div className="an-sheet">
         <div className="an-sheet__head">
-          <PageHeader title={config.title} subtitle={gpx.fileName ? <SessionNameEditor file={gpx.fileName} /> : undefined} back={{ to: libraryPath(family), label: config.backLabel }} />
+          <PageHeader title={page.title} subtitle={gpx.fileName ? <SessionNameEditor file={gpx.fileName} /> : undefined} back={{ to: libraryPath(family), label: page.backLabel }} />
           {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
         </div>
       </div>
@@ -575,7 +655,7 @@ function LandModule({ family }: { family: LandFamily }) {
 
       {!stats && !gpx.error && requestedFile === null && (
         <p style={{ color: 'var(--muted)' }}>
-          Aucune session ouverte : choisissez-en une dans <Link to={libraryPath(family)}>{config.backLabel}</Link>.
+          Aucune session ouverte : choisissez-en une dans <Link to={libraryPath(family)}>{page.backLabel}</Link>.
         </p>
       )}
 
@@ -588,13 +668,13 @@ function LandModule({ family }: { family: LandFamily }) {
           defaultHeight={480}
           legend={gpx.track.length === 0 || surfaceMapPaths ? null
             : gradeMapPaths ? <GradeGradientLegend range={gradeRange} />
-              : <SpeedGradientLegend unit={speedUnit} range={range} slowLabel={config.slowLabel} />} />
+              : <SpeedGradientLegend unit={speedUnit} range={range} slowLabel={model.slowLabel} />} />
       </div>
 
       {/* Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`). */}
       {stats && averages && (
         <div className="an-carte-col">
-          <SectionTabs sections={sections} open={open} onToggle={toggle} accent={config.accent} />
+          <SectionTabs sections={sections} open={open} onToggle={toggle} accent={page.accent} />
           <div className="an-carte-panels">
             {open.general && (
               <ResizablePanel id={panelId('general')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
@@ -615,6 +695,23 @@ function LandModule({ family }: { family: LandFamily }) {
                   <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
                 )}
               </ResizablePanel>
+            )}
+
+            {open.fractionne && hasIntervals && profile.intervals && (intervalViews.length > 0 || intervalEmptyText !== null) && (
+              <IntervalAnalysis
+                series={intervalViews}
+                stepS={profile.intervals.profileStepS}
+                launchFraction={profile.intervals.launchFraction}
+                samplingS={gpx.samplingS}
+                speedUnit={speedUnit}
+                distanceUnit={distanceUnit}
+                scale={scale}
+                panelId={panelId}
+                open={open.fractionne}
+                onToggle={() => toggle('fractionne')}
+                selectedLap={selectedLap}
+                onSelectLap={setSelectedLap}
+                emptyText={intervalEmptyText} />
             )}
 
             {open.tops && tops && (
@@ -647,7 +744,7 @@ function LandModule({ family }: { family: LandFamily }) {
                               ))}
                               <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
                                 <button type="button" disabled={!reached} onClick={() => setSelectedTop(shown ? null : target.key)}
-                                  style={{ padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? config.accent : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                                  style={{ padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? page.accent : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
                                   {shown ? 'Masquer' : 'Voir'}
                                 </button>
                               </td>
@@ -668,7 +765,7 @@ function LandModule({ family }: { family: LandFamily }) {
               <ResizablePanel id={panelId('zones')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle
-                    label={config.zonesTitle}
+                    label={model.zonesTitle}
                     extra={<span style={{ color: 'var(--muted)', fontSize: '0.75em', fontWeight: 'normal' }}>(en mouvement)</span>}
                     open={open.zones}
                     onToggle={() => toggle('zones')} />
@@ -742,11 +839,11 @@ function LandModule({ family }: { family: LandFamily }) {
               <ResizablePanel id={panelId('energie')} minHeight={320} direction="vertical"
                 style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: `${14 * scale}px` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', paddingRight: '28px' }}>
-                  <PanelTitle label={config.energyLabel} open={open.energie} onToggle={() => toggle('energie')} />
+                  <PanelTitle label={model.energyLabel} open={open.energie} onToggle={() => toggle('energie')} />
                   <span style={{ flex: 1 }} />
                   {(['power', 'cumulative'] as EnergyChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setEnergyMode(mode)}
-                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: energyMode === mode ? config.accent : 'var(--surface-sunken)', color: energyMode === mode ? '#fff' : 'var(--ink)' }}>
+                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: energyMode === mode ? page.accent : 'var(--surface-sunken)', color: energyMode === mode ? '#fff' : 'var(--ink)' }}>
                       {mode === 'power' ? 'Puissance' : 'Cumulée'}
                     </button>
                   ))}
@@ -773,7 +870,7 @@ function LandModule({ family }: { family: LandFamily }) {
                       ))}
                     </div>
                     {!stats?.hasElevation && (
-                      <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)', marginBottom: '6px' }}>{config.flatWarning}</div>
+                      <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)', marginBottom: '6px' }}>{model.flatWarning}</div>
                     )}
                   </>
                 )}
@@ -851,7 +948,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   <span style={{ flex: 1 }} />
                   {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setChartMode(mode)}
-                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: chartMode === mode ? config.accent : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
+                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: chartMode === mode ? page.accent : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
                       {mode === 'separate' ? 'Séparés' : 'Superposés'}
                     </button>
                   ))}
@@ -860,7 +957,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 {chartMode === 'overlay' ? (
                   <ZoomableChart zoom={zoom} style={{ width: '100%', flex: 1, minHeight: 0 }}>
                     <ResponsiveContainer>
-                      <ComposedChart data={chartData} syncId={config.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                      <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                         <ChartZoomProbe />
                         <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
                         {xAxis}
@@ -879,7 +976,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   <>
                     <ZoomableChart zoom={zoom} style={{ width: '100%', flex: stats?.hasElevation ? 1.1 : 1, minHeight: 0 }}>
                       <ResponsiveContainer>
-                        <ComposedChart data={chartData} syncId={config.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                        <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                           <ChartZoomProbe />
                           <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
                           {xAxis}
@@ -892,7 +989,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     {stats?.hasElevation && (
                       <ZoomableChart zoom={zoom} showReset={false} style={{ width: '100%', flex: 1, minHeight: 0, marginTop: '6px' }}>
                         <ResponsiveContainer>
-                          <ComposedChart data={chartData} syncId={config.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                          <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                             <ChartZoomProbe />
                             <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
                             {xAxis}
@@ -983,11 +1080,21 @@ function LandModule({ family }: { family: LandFamily }) {
                       onChange={(next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); }} />
                   </div>
                 )}
+                {detected && (
+                  <div style={{ marginTop: '12px', fontSize: '14px' }}>
+                    <EffortThresholdEditor
+                      unit={speedUnit === 'minkm' ? 'kmh' : speedUnit}
+                      valueMs={detected.thresholdMs}
+                      suggestedMs={detected.suggestedThresholdMs}
+                      isOverridden={draft.edits.effortThresholdMs !== null}
+                      onChange={(next) => draft.update({ effortThresholdMs: next })} />
+                  </div>
+                )}
                 <div style={{ color: 'var(--muted)', fontSize: '0.85em', marginTop: '10px' }}>
                   Vitesse : {gpx.hasDeviceSpeed
                     ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
                     : 'dérivée des positions, filtrée'}
-                  {family === 'velo' && ` · Vélo : ${BIKE_TYPES[bikeType].noun}, ${bikeWeightKg} kg (Réglages)`}
+                  {model.treatment === 'velo' && ` · Vélo : ${BIKE_TYPES[bikeType].noun}, ${bikeWeightKg} kg (Réglages)`}
                   {runner.weightKg !== null ? ` · Poids : ${runner.weightKg} kg` : ' · Poids non renseigné, voir Paramètres'}
                 </div>
               </ResizablePanel>

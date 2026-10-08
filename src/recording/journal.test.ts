@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { LocationFix } from '../platform/location';
 import { buildGpx } from './gpxWriter';
-import { journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, parseJournal } from './journal';
+import { runCommand, startRun } from './intervalTimer';
+import { journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalIntervalsLine, parseJournal } from './journal';
 import { roundFix, splitIntoSegments } from './session';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
@@ -117,5 +118,19 @@ describe('journal', () => {
     expect(parsed.fixes).toHaveLength(3);
     // Sans en-tête lisible, le changement vaut quand même.
     expect(parseJournal(good + journalFixLine(fixes[0])).activityChange?.sport).toBe('kite');
+  });
+
+  it("relit chaque séance du compteur dans son dernier état, et l'ignore abîmée", () => {
+    const workout = { reps: 2, workS: 60, restS: 30 };
+    const first = startRun(workout, T0);
+    const paused = runCommand(first, 'pause', T0 + 10_000);
+    const second = startRun(workout, T0 + 500_000);
+    const broken = `${JSON.stringify(['intervals', { workout: {}, startedAtMs: T0 }])}\n`;
+    const text = journalOf(fixes) + journalIntervalsLine(first) + journalIntervalsLine(second) + journalIntervalsLine(paused)
+      + broken + journalIntervalsLine(second).slice(0, 30);
+    const parsed = parseJournal(text);
+    expect(parsed.intervalRuns).toEqual([paused, second]);
+    expect(parsed.fixes).toHaveLength(3);
+    expect(parseJournal(journalOf(fixes)).intervalRuns).toEqual([]);
   });
 });

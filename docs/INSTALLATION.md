@@ -33,7 +33,7 @@ Ces réglages évitent que le téléphone coupe le GPS quand l'écran s'éteint.
 **Au premier enregistrement**, Tracker demande deux autorisations :
 
 - **Position** : choisissez **Lorsque vous utilisez l'appli**, et laissez **Position exacte** activée. Avec la position approximative, la trace est inutilisable.
-- **Notifications** : choisissez **Autoriser**. Pendant l'enregistrement, une notification reste affichée. C'est elle qui permet à Tracker de continuer à enregistrer écran éteint.
+- **Notifications** : choisissez **Autoriser**. Pendant l'enregistrement, une notification reste affichée. C'est elle qui permet à Tracker de continuer à enregistrer écran éteint. Le compteur du fractionné s'en sert aussi : sa notification montre la répétition en cours, et lui permet de sonner écran éteint, même sans enregistrement.
 
 **Batterie**. Ouvrez Paramètres, puis Applications, puis Tracker, puis Batterie (ou « Économiseur de batterie »), et choisissez **Aucune restriction** (ou « Non restreinte »).
 
