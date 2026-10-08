@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import { sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
-import { ELEVATION_PRESETS, SAILING_SPORTS, sportTreatment } from '../core/sportProfiles';
+import { pruneImuFile } from '../core/imuPrune';
+import { ELEVATION_PRESETS, SAILING_SPORTS, getSportProfile, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
   MARKER_FILE,
@@ -21,6 +22,7 @@ import {
   applyRecordPatch,
   dedupeSessions,
   findLegacyNotes,
+  imuFileName,
   isGpxFileName,
   isSummaryStale,
   isWritableRecord,
@@ -53,7 +55,7 @@ import {
   type SettingsEntry,
 } from '../library/settingsFile';
 import { summarizeSession, type SummaryOptions } from '../library/summary';
-import { readPickedFile } from '../platform/files';
+import { readPickedBytes, readPickedFile } from '../platform/files';
 import {
   FolderRefusedError,
   canChooseFolder,
@@ -637,10 +639,15 @@ const scan = async (f: MemoryFolder, gen: number): Promise<SummaryJob[]> => {
       const target = uniqueSessionFileName(name, taken);
       const recordName = plan.rootRecords[name];
       const recordText = recordName ? await f.readText(recordName) : null;
+      const motion = rootEntries.some((e) => e.name === imuFileName(name)) ? await f.readBytes(imuFileName(name)) : null;
       await f.writeText(sessionPath(target), text);
       if (recordName && recordText !== null) {
         await f.writeText(sessionPath(recordFileName(target)), recordText);
         await f.remove(recordName);
+      }
+      if (motion) {
+        await f.writeBytes(sessionPath(imuFileName(target)), motion);
+        await f.remove(imuFileName(name));
       }
       await f.remove(name);
       taken.add(target);
@@ -719,8 +726,12 @@ const flushPending = async (): Promise<void> => {
   for (const entry of files) {
     const text = await pending.readText(entry.name);
     if (text === null) continue;
-    const result = await addGpx(text, 'enregistrement', {});
-    if (result.status === 'added' || result.status === 'duplicate') await pending.remove(entry.name);
+    const motion = await pending.readBytes(imuFileName(entry.name));
+    const result = await addGpx(text, 'enregistrement', { motion: motion ?? undefined });
+    if (result.status === 'added' || result.status === 'duplicate') {
+      await pending.remove(entry.name);
+      if (motion) await pending.remove(imuFileName(entry.name));
+    }
   }
   await countPending();
 };
@@ -874,7 +885,24 @@ interface AddOptions {
   record?: SessionRecord | null;
   /** Séances du compteur faites pendant l'enregistrement, rangées dans la fiche. */
   intervals?: IntervalSeries[];
+  /** Capteurs de l'enregistrement (`.imu`), rangés à côté du GPX. */
+  motion?: Uint8Array;
 }
+
+/**
+ * Capteurs d'un enregistrement à leur entrée dans la mémoire : élagués autour
+ * des vols si le calcul de la session mesure les sauts. En cas d'échec, la
+ * capture complète : on ne perd jamais de mesure par erreur.
+ */
+const prunedMotion = async (motion: Uint8Array, sport: SportType | null): Promise<Uint8Array> => {
+  const detection = sport ? getSportProfile(sport).jumps?.detection : null;
+  if (!detection) return motion;
+  try {
+    return await pruneImuFile(motion, detection);
+  } catch {
+    return motion;
+  }
+};
 
 /** Range un GPX dans la mémoire, avec sa fiche. */
 const addGpx = async (text: string, source: SessionSource, options: AddOptions): Promise<AddResult> => {
@@ -897,6 +925,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     const pending = pendingFolder();
     if (!pending) return { status: 'unsaved', file: null };
     await pending.writeText(name, text);
+    if (options.motion) await pending.writeBytes(imuFileName(name), options.motion);
     await countPending();
     return { status: 'pending', file: null };
   }
@@ -910,25 +939,34 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   await f.writeText(sessionPath(recordFileName(gpx)), serializeRecord(record));
   knownNames.add(gpx);
   knownNames.add(recordFileName(gpx));
+  if (options.motion) {
+    // Un enregistrement est élagué en entrant ; un dossier importé est rangé tel quel.
+    const motion = source === 'enregistrement' ? await prunedMotion(options.motion, analyzed.sport) : options.motion;
+    await f.writeBytes(sessionPath(imuFileName(gpx)), motion);
+    knownNames.add(imuFileName(gpx));
+  }
   replaceSession({ file: gpx, record, readOnly: false, warning: null });
   return { status: 'added', file: gpx };
 };
 
 /**
  * Range une session qui vient d'être enregistrée, avec les séances du
- * compteur faites pendant elle. Rend son nom dans la mémoire et, en clair,
- * l'endroit où elle se trouve. Ne lève d'erreur que si l'écriture échoue :
- * l'enregistreur garde alors son journal. Une session mise en attente faute
- * de dossier n'a pas encore de fiche : ses séances ne sont pas gardées.
+ * compteur faites pendant elle et ses capteurs (`motion`, le contenu du
+ * `.imu`). Rend son nom dans la mémoire et, en clair, l'endroit où elle se
+ * trouve. Ne lève d'erreur que si l'écriture échoue : l'enregistreur garde
+ * alors son journal. Une session mise en attente faute de dossier n'a pas
+ * encore de fiche : ses séances ne sont pas gardées ; ses capteurs attendent
+ * avec elle.
  */
 export const saveRecordedSession = async (
   text: string,
   sport: SportType,
   activityId: string | null,
-  intervals: IntervalSeries[] = []
+  intervals: IntervalSeries[] = [],
+  motion: Uint8Array | null = null
 ): Promise<{ file: string | null; location: string }> => {
   await opening;
-  const result = await addGpx(text, 'enregistrement', { sport, activityId: activityId ?? undefined, intervals });
+  const result = await addGpx(text, 'enregistrement', { sport, activityId: activityId ?? undefined, intervals, motion: motion ?? undefined });
   switch (result.status) {
     case 'added':
       return { file: result.file, location: state.folderLabel ?? 'mémoire' };
@@ -953,7 +991,7 @@ export interface ImportReport {
 }
 
 const baseKey = (file: File): string =>
-  (file.webkitRelativePath || file.name).replace(/\.(gpx|json)$/i, '').toLowerCase();
+  (file.webkitRelativePath || file.name).replace(/\.(gpx|json|imu)$/i, '').toLowerCase();
 
 const describeImport = (report: ImportReport): string => {
   const parts: string[] = [];
@@ -974,15 +1012,21 @@ export const importFiles = async (files: File[]): Promise<ImportReport> => {
   try {
     await opening;
     const records = new Map<string, File>();
-    for (const file of files) if (/\.json$/i.test(file.name)) records.set(baseKey(file), file);
+    const motions = new Map<string, File>();
+    for (const file of files) {
+      if (/\.json$/i.test(file.name)) records.set(baseKey(file), file);
+      else if (/\.imu$/i.test(file.name)) motions.set(baseKey(file), file);
+    }
 
     const report: ImportReport = { added: [], existing: [], duplicates: 0, invalid: [], unsaved: 0 };
     for (const file of files) {
       if (!isGpxFileName(file.name)) continue;
       const recordFile = records.get(baseKey(file));
       const record = recordFile ? parseRecord(await readPickedFile(recordFile)) : null;
+      const motionFile = motions.get(baseKey(file));
       const result = await addGpx(await readPickedFile(file), 'import', {
         record: record && isWritableRecord(record) ? record : null,
+        motion: motionFile ? await readPickedBytes(motionFile) : undefined,
       });
       if (result.status === 'added' && result.file) report.added.push(result.file);
       else if (result.status === 'duplicate') {
@@ -1029,6 +1073,15 @@ export const readSessionGpx = async (file: string): Promise<string | null> => {
   return folder ? folder.readText(sessionPath(file)) : null;
 };
 
+/** Vrai si la session a ses capteurs (`.imu`) dans la mémoire. */
+export const hasSessionMotion = (file: string): boolean => knownNames.has(imuFileName(file));
+
+/** Capteurs d'une session (`.imu`), `null` si elle n'en a pas ou hors de la mémoire. */
+export const readSessionMotion = async (file: string): Promise<Uint8Array | null> => {
+  await opening;
+  return folder && hasSessionMotion(file) ? folder.readBytes(sessionPath(imuFileName(file))) : null;
+};
+
 /**
  * Modifie la fiche d'une session (`applyRecordPatch`) : support, activité,
  * nom, notes, réglages d'analyse, nombre de manœuvres. La liste suit tout de
@@ -1063,7 +1116,7 @@ const resummarize = async (file: string): Promise<void> => {
 };
 
 /**
- * Supprime une session : son GPX et sa fiche, ainsi que les copies de la même
+ * Supprime une session : son GPX, sa fiche et ses capteurs, ainsi que les copies de la même
  * trace sous un autre nom, qui sans cela prendraient sa place dans la liste.
  */
 export const removeSession = async (file: string): Promise<void> => {
@@ -1075,9 +1128,11 @@ export const removeSession = async (file: string): Promise<void> => {
     for (const copy of copies) {
       cancelRecordWrite(copy.file);
       await f.remove(sessionPath(recordFileName(copy.file)));
+      await f.remove(sessionPath(imuFileName(copy.file)));
       await f.remove(sessionPath(copy.file));
       knownNames.delete(copy.file);
       knownNames.delete(recordFileName(copy.file));
+      knownNames.delete(imuFileName(copy.file));
     }
   } catch (err) {
     setState({ error: `Suppression incomplète : ${errorMessage(err, 'erreur inconnue')}` });
@@ -1118,7 +1173,11 @@ export const chooseFolder = async (): Promise<void> => {
     for (const session of previousSessions) {
       const text = await previous.readText(sessionPath(session.file));
       if (text === null) continue;
-      const result = await addGpx(text, session.record.source, { record: session.readOnly ? null : session.record });
+      const motion = await previous.readBytes(sessionPath(imuFileName(session.file)));
+      const result = await addGpx(text, session.record.source, {
+        record: session.readOnly ? null : session.record,
+        motion: motion ?? undefined,
+      });
       if (result.status === 'added') copied += 1;
     }
     if (copied > 0) {

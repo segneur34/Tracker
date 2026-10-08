@@ -89,3 +89,6 @@ export const downloadTextFile = (fileName: string, content: string, mimeType = '
 
 /** Contenu texte d'un fichier choisi par l'utilisateur. */
 export const readPickedFile = (file: File): Promise<string> => file.text();
+
+/** Contenu binaire d'un fichier choisi par l'utilisateur (capteurs d'une session importée). */
+export const readPickedBytes = async (file: File): Promise<Uint8Array> => new Uint8Array(await file.arrayBuffer());

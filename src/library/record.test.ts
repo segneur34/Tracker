@@ -13,6 +13,7 @@ import {
   serializeRecord,
   type LibrarySession,
   type SessionAnalysis,
+  type SessionJumps,
   type SessionRecord,
   type SessionSurfaces,
   type SessionTerrainElevation,
@@ -119,7 +120,7 @@ describe('parseRecord et serializeRecord', () => {
 
 describe("réglages d'analyse de la fiche", () => {
   it("sont relus à l'identique", () => {
-    const r = record({ analysis: { windDeg: 315, activeThreshold: 6.5, referenceSpeedMs: 2.3, speedRange: { minMs: 2, maxMs: 8 }, effortThresholdMs: 3.6, savedAt: START_MS + 20 } });
+    const r = record({ analysis: { windDeg: 315, activeThreshold: 6.5, referenceSpeedMs: 2.3, speedRange: { minMs: 2, maxMs: 8 }, effortThresholdMs: 3.6, foil: null, savedAt: START_MS + 20 } });
     expect(parseRecord(serializeRecord(r))?.analysis).toEqual(r.analysis);
   });
 
@@ -145,6 +146,13 @@ describe("réglages d'analyse de la fiche", () => {
     expect(parseRecord(JSON.stringify(broken))?.analysis?.effortThresholdMs).toBeNull();
   });
 
+  it("donnent le foil de l'activité à une fiche d'avant le foil par session, ou qui en porte un mal formé", () => {
+    const before = { ...record(), analysis: { windDeg: 90, activeThreshold: 4, referenceSpeedMs: null, speedRange: null, savedAt: START_MS } };
+    expect(parseRecord(JSON.stringify(before))?.analysis?.foil).toBeNull();
+    expect(parseRecord(JSON.stringify({ ...before, analysis: { ...before.analysis, foil: true } }))?.analysis?.foil).toBe(true);
+    expect(parseRecord(JSON.stringify({ ...before, analysis: { ...before.analysis, foil: 'oui' } }))?.analysis?.foil).toBeNull();
+  });
+
   it('écartent des bornes de couleur mal formées', () => {
     const read = (speedRange: unknown) =>
       parseRecord(JSON.stringify({ ...record(), analysis: { windDeg: null, speedRange } }))?.analysis?.speedRange;
@@ -158,11 +166,11 @@ describe("réglages d'analyse de la fiche", () => {
   it('ramènent le vent dans [0, 360) et écartent les valeurs mal formées', () => {
     const raw = { ...record(), analysis: { windDeg: -45, activeThreshold: -2, referenceSpeedMs: 0, futur: true } };
     expect(parseRecord(JSON.stringify(raw))?.analysis).toEqual({
-      windDeg: 315, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, savedAt: 0, futur: true,
+      windDeg: 315, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, savedAt: 0, futur: true,
     });
     const texte = { ...record(), analysis: { windDeg: 'nord', activeThreshold: '8', referenceSpeedMs: '3', effortThresholdMs: '4' } };
     expect(parseRecord(JSON.stringify(texte))?.analysis).toEqual({
-      windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, savedAt: 0,
+      windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, savedAt: 0,
     });
     const negative = { ...record(), analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: -1.5 } };
     expect(parseRecord(JSON.stringify(negative))?.analysis?.referenceSpeedMs).toBeNull();
@@ -221,6 +229,38 @@ describe('séances du compteur de la fiche', () => {
   it('restent quand l\'activité ou le support changent', () => {
     const changed = applyRecordPatch(record({ sport: 'run-intervals', intervals }), { sport: 'running', activityId: 'running' });
     expect(changed.record.intervals).toEqual(intervals);
+  });
+});
+
+describe('sauts de la fiche', () => {
+  const jumps: SessionJumps = {
+    version: 1,
+    computedAt: '2026-10-08T14:00:00.000Z',
+    jumps: [{
+      takeoffMs: START_MS + 60_000, landingMs: START_MS + 61_250, flightS: 1.25, heightM: 1.13, takeoffVerticalMs: 3.9,
+      speedMs: 7.82, lengthM: 9.8, doubts: ['verticale'], curve: { stepS: 0.05, startS: -0.5, heightsM: [-0.2, 0, 0.6, 1.13, 0.4, 0] },
+    }],
+  };
+
+  it("sont relus à l'identique, absents d'une fiche qui n'en a pas", () => {
+    expect(parseRecord(serializeRecord(record({ jumps })))?.jumps).toEqual(jumps);
+    expect(parseRecord(serializeRecord(record()))).not.toHaveProperty('jumps');
+  });
+
+  it('sont écartés si un saut est mal formé : ils seront refaits depuis le .imu', () => {
+    const bad = (patch: object) => ({ ...jumps, jumps: [{ ...jumps.jumps[0], ...patch }] });
+    expect(parseRecord(JSON.stringify({ ...record(), jumps: 'dix' }))).not.toHaveProperty('jumps');
+    expect(parseRecord(JSON.stringify({ ...record(), jumps: bad({ heightM: 'haut' }) }))).not.toHaveProperty('jumps');
+    expect(parseRecord(JSON.stringify({ ...record(), jumps: bad({ doubts: ['inconnu'] }) }))).not.toHaveProperty('jumps');
+    expect(parseRecord(JSON.stringify({ ...record(), jumps: bad({ curve: { stepS: 0, startS: 0, heightsM: [] } }) }))).not.toHaveProperty('jumps');
+  });
+
+  it("se rangent et se retirent sans recalcul du résumé, et restent quand l'activité change", () => {
+    const added = applyRecordPatch(record(), { jumps });
+    expect(added.record.jumps).toEqual(jumps);
+    expect(added.resummarize).toBe(false);
+    expect(applyRecordPatch(added.record, { activityId: 'kite' }).record.jumps).toEqual(jumps);
+    expect(applyRecordPatch(added.record, { jumps: null }).record).not.toHaveProperty('jumps');
   });
 });
 
@@ -323,7 +363,7 @@ describe('dedupeSessions', () => {
 });
 
 describe('applyRecordPatch', () => {
-  const analysis: SessionAnalysis = { windDeg: 20, activeThreshold: 9, referenceSpeedMs: 7, speedRange: { minMs: 4, maxMs: 14 }, effortThresholdMs: null, savedAt: 1 };
+  const analysis: SessionAnalysis = { windDeg: 20, activeThreshold: 9, referenceSpeedMs: 7, speedRange: { minMs: 4, maxMs: 14 }, effortThresholdMs: null, foil: null, savedAt: 1 };
   const withAnalysis = record({ analysis, notes: { ...record().notes, comment: 'Belle session', savedAt: 2 } as SessionRecord['notes'] });
 
   it('rend la fiche telle quelle si rien ne change', () => {

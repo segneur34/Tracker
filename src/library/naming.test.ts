@@ -12,6 +12,10 @@ describe('uniqueSessionFileName', () => {
     expect(uniqueSessionFileName('a.gpx', ['a.json'])).toBe('a-2.gpx');
   });
 
+  it('écarte aussi un nom dont les capteurs sont restés seuls', () => {
+    expect(uniqueSessionFileName('a.gpx', ['a.imu'])).toBe('a-2.gpx');
+  });
+
   it('ignore la casse, comme Windows', () => {
     expect(uniqueSessionFileName('Sortie.gpx', ['sortie.GPX'])).toBe('Sortie-2.gpx');
   });

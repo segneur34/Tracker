@@ -111,6 +111,12 @@
   color: var(--ink-2);
 }
 
+/* Sous-option d'un réglage coché (sauts) : en retrait sous lui. */
+.settings-row--sub {
+  padding-left: var(--space-4);
+  border-top-style: dashed;
+}
+
 .settings-activity__actions {
   display: flex;
   justify-content: flex-end;

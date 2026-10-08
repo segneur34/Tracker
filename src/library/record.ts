@@ -1,3 +1,4 @@
+import { JUMP_DOUBTS, type JumpDoubt, type SessionJump } from '../core/jumps';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import { sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
@@ -89,6 +90,12 @@ export interface SessionAnalysis {
    * changement de support le garde. Absent des fiches plus anciennes.
    */
   effortThresholdMs: number | null;
+  /**
+   * Support sur foil pour cette session ; `null` : celui de son activité
+   * (Réglages). Il décrit le matériel du jour : un changement d'activité le
+   * garde. Absent des fiches plus anciennes.
+   */
+  foil: boolean | null;
   savedAt: number;
 }
 
@@ -122,6 +129,24 @@ export interface SessionTerrainElevation extends TerrainSamples {
   stepM: number;
   /** Date ISO de la demande. */
   fetchedAt: string;
+}
+
+/**
+ * Sauts d'une session de voile, mesurés par les capteurs du téléphone
+ * (`core/jumps.ts`) : calculés depuis le `.imu` rangé à côté du GPX à
+ * l'ouverture de l'analyse, puis gardés, puisqu'ils ne se tirent pas du GPX.
+ */
+export interface SessionJumps {
+  /** Version du calcul (`JUMPS_CALC_VERSION`) : une plus ancienne est refaite si le `.imu` est là. */
+  version: number;
+  /** Date ISO du calcul. */
+  computedAt: string;
+  /**
+   * Vols assez longs et assez hauts pour être rangés, dans l'ordre du temps ;
+   * la hauteur minimale de l'activité et le seuil d'activité ne filtrent
+   * qu'à l'affichage.
+   */
+  jumps: SessionJump[];
 }
 
 export interface SessionRecord {
@@ -166,6 +191,8 @@ export interface SessionRecord {
    * GPX. Absent sans compteur, ou si la fiche en porte de mal formées.
    */
   intervals?: IntervalSeries[];
+  /** Sauts mesurés (voile) ; absent sans `.imu`, avant leur calcul, ou si la fiche en porte de mal formés. */
+  jumps?: SessionJumps;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -246,6 +273,7 @@ export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
     referenceSpeedMs: isFiniteNumber(raw.referenceSpeedMs) && raw.referenceSpeedMs > 0 ? raw.referenceSpeedMs : null,
     speedRange: readSpeedRange(raw.speedRange),
     effortThresholdMs: isFiniteNumber(raw.effortThresholdMs) && raw.effortThresholdMs > 0 ? raw.effortThresholdMs : null,
+    foil: typeof raw.foil === 'boolean' ? raw.foil : null,
     savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
   };
 };
@@ -285,6 +313,38 @@ export const readTerrainElevation = (raw: unknown): SessionTerrainElevation | nu
   };
 };
 
+const isJumpDoubt = (value: unknown): value is JumpDoubt => (JUMP_DOUBTS as readonly unknown[]).includes(value);
+
+/** Un saut relu, `null` s'il est mal formé. */
+const readSessionJump = (raw: unknown): SessionJump | null => {
+  if (!isObject(raw)) return null;
+  const { takeoffMs, landingMs, flightS, heightM, takeoffVerticalMs, speedMs, lengthM, doubts, curve } = raw;
+  if (![takeoffMs, landingMs, flightS, heightM, takeoffVerticalMs].every(isFiniteNumber)) return null;
+  if ((speedMs !== null && !isFiniteNumber(speedMs)) || (lengthM !== null && !isFiniteNumber(lengthM))) return null;
+  if (!Array.isArray(doubts) || !doubts.every(isJumpDoubt)) return null;
+  if (!isObject(curve) || !isFiniteNumber(curve.stepS) || curve.stepS <= 0 || !isFiniteNumber(curve.startS)) return null;
+  if (!Array.isArray(curve.heightsM) || !curve.heightsM.every(isFiniteNumber)) return null;
+  return {
+    takeoffMs: takeoffMs as number,
+    landingMs: landingMs as number,
+    flightS: flightS as number,
+    heightM: heightM as number,
+    takeoffVerticalMs: takeoffVerticalMs as number,
+    speedMs: speedMs as number | null,
+    lengthM: lengthM as number | null,
+    doubts,
+    curve: { stepS: curve.stepS, startS: curve.startS, heightsM: curve.heightsM },
+  };
+};
+
+/** Sauts relus, `null` s'ils sont mal formés : ils seront refaits depuis le `.imu`. */
+export const readSessionJumps = (raw: unknown): SessionJumps | null => {
+  if (!isObject(raw) || !isFiniteNumber(raw.version) || typeof raw.computedAt !== 'string' || !Array.isArray(raw.jumps)) return null;
+  const jumps = raw.jumps.map(readSessionJump);
+  if (jumps.some((j) => j === null)) return null;
+  return { version: raw.version, computedAt: raw.computedAt, jumps: jumps as SessionJump[] };
+};
+
 /**
  * Lit une fiche. Rend `null` si le texte n'est pas une fiche lisible : JSON
  * mal formé, autre format, champ indispensable absent. Les champs inconnus
@@ -301,10 +361,11 @@ export const parseRecord = (text: string): SessionRecord | null => {
   if (typeof raw.gpx !== 'string' || raw.gpx === '') return null;
   const summary = readSummary(raw.summary);
   if (!summary) return null;
-  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, intervals: rawIntervals, ...rest } = raw;
+  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, intervals: rawIntervals, jumps: rawJumps, ...rest } = raw;
   const surfaces = readSessionSurfaces(rawSurfaces);
   const terrainElevation = readTerrainElevation(rawTerrain);
   const intervals = readIntervalSeries(rawIntervals);
+  const jumps = readSessionJumps(rawJumps);
   return {
     ...rest,
     format: RECORD_FORMAT,
@@ -323,6 +384,7 @@ export const parseRecord = (text: string): SessionRecord | null => {
     ...(terrainElevation ? { terrainElevation } : {}),
     ...(rawSource === 'gps' ? { elevationSource: 'gps' as const } : {}),
     ...(intervals ? { intervals } : {}),
+    ...(jumps ? { jumps } : {}),
   };
 };
 
@@ -338,6 +400,9 @@ export const isSummaryStale = (record: SessionRecord): boolean =>
 
 /** Nom de la fiche d'un GPX : même nom, extension `.json`. */
 export const recordFileName = (gpxName: string): string => gpxName.replace(/\.gpx$/i, '') + '.json';
+
+/** Nom du fichier des capteurs d'un GPX (`core/imuFile.ts`) : même nom, extension `.imu`. */
+export const imuFileName = (gpxName: string): string => gpxName.replace(/\.gpx$/i, '') + '.imu';
 
 export const isGpxFileName = (name: string): boolean => /\.gpx$/i.test(name);
 
@@ -415,12 +480,14 @@ export interface RecordPatch {
   terrainElevation?: SessionTerrainElevation | null;
   /** Source de l'altitude ; `null` : celle de l'IGN. */
   elevationSource?: 'gps' | null;
+  /** Sauts calculés ; `null` les retire. */
+  jumps?: SessionJumps | null;
 }
 
 /**
  * Fiche après un changement : support, activité, nom, notes, réglages
  * d'analyse, nombre de manœuvres, voies suivies, altitude du terrain et sa
- * source. Rend la fiche d'origine, à l'identique, si rien ne change.
+ * source, sauts. Rend la fiche d'origine, à l'identique, si rien ne change.
  * `resummarize` : le résumé est à recalculer (support, activité, seuil, allure
  * imposée, altitude ou source de l'altitude changés).
  *
@@ -439,6 +506,10 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
     if (name !== next.name) next = { ...next, name };
   }
   if (patch.notes !== undefined) next = { ...next, notes: patch.notes };
+  if (patch.jumps !== undefined) {
+    const { jumps: _previous, ...others } = next;
+    next = patch.jumps ? { ...others, jumps: patch.jumps } : others;
+  }
   if (patch.surfaces !== undefined) {
     const { surfaces: _previous, ...others } = next;
     next = patch.surfaces ? { ...others, surfaces: patch.surfaces } : others;

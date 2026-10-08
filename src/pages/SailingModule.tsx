@@ -13,11 +13,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
-import { TEXT_SCALE_FACTOR, readStoredActivities } from '../hooks/useSportSettings';
+import { TEXT_SCALE_FACTOR, effectiveJumpSettings, readStoredActivities } from '../hooks/useSportSettings';
+import { useSessionJumps } from '../hooks/useSessionJumps';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { trackBounds } from '../core/displayConfig';
 import { sessionActivity } from '../core/activities';
+import { activeRatioLabel } from '../core/sportProfiles';
 import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
 import type { TopSegment } from '../core/types';
 import type { LibrarySession } from '../library/record';
@@ -27,6 +29,8 @@ import {
 import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
 import { MANEUVER_METRICS, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
 import ActivitySelect from '../components/ActivitySelect';
+import JumpsPanel from '../components/JumpsPanel';
+import { JUMP_PODIUM_COLORS, JUMP_SHOWN_COLOR } from '../components/jumpColors';
 import AnalysisMap from '../components/AnalysisMap';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
@@ -48,7 +52,7 @@ import HelpButton from '../components/ui/HelpButton';
  * carte. Les réglages de la session sont dans le dernier. Pour en ajouter un : une entrée ici, une valeur par défaut dans
  * `SAILING_PANEL_DEFAULTS`, et un bloc `{open.maCle && (...)}` dans la colonne.
  */
-type SailingPanel = 'general' | 'tops' | 'manoeuvres' | 'graphiques' | 'vmg' | 'vent' | 'matos' | 'reglages';
+type SailingPanel = 'general' | 'tops' | 'manoeuvres' | 'graphiques' | 'vmg' | 'sauts' | 'vent' | 'matos' | 'reglages';
 
 const SAILING_PANELS: SectionDefinition<SailingPanel>[] = [
   { key: 'general', label: 'général' },
@@ -56,6 +60,8 @@ const SAILING_PANELS: SectionDefinition<SailingPanel>[] = [
   { key: 'manoeuvres', label: 'manœuvres' },
   { key: 'graphiques', label: 'graphiques' },
   { key: 'vmg', label: 'vmg' },
+  // Seulement pour une session aux sauts mesurés par les capteurs du téléphone.
+  { key: 'sauts', label: 'sauts' },
   { key: 'vent', label: 'vent' },
   { key: 'matos', label: 'matos et conditions' },
   { key: 'reglages', label: 'réglages' },
@@ -67,6 +73,7 @@ const SAILING_PANEL_DEFAULTS: Record<SailingPanel, boolean> = {
   manoeuvres: false,
   graphiques: false,
   vmg: false,
+  sauts: false,
   vent: false,
   matos: false,
   reglages: false,
@@ -136,6 +143,7 @@ function SailingModule() {
 
   const {
     trackData,
+    track,
     stats,
     currentWindValue,
     autoWind,
@@ -155,6 +163,7 @@ function SailingModule() {
     activity,
     setActivity,
     profile,
+    activityFoil,
     speedUnit,
     distanceUnit,
     textScale,
@@ -224,8 +233,25 @@ function SailingModule() {
     }
   }, [loadedFromMemory, sessionFile, dirty, currentWindValue, maneuverCount]);
 
+  // Sauts mesurés par les capteurs du téléphone : ceux de la fiche, sinon calculés depuis le `.imu`.
+  const jumpsState = useSessionJumps(loadedFromMemory ? sessionFile : null, track, profile.id);
+  const jumpSettings = effectiveJumpSettings(activity);
+  const jumpMinHeightM = jumpSettings?.minHeightM ?? profile.jumps?.defaultMinHeightM ?? 0;
+  /** Sauts montrés : la hauteur minimale de l'activité atteinte, pris au seuil d'activité ou plus. */
+  const shownJumps = useMemo(() => {
+    const thresholdMs = knotsToMs(activeThresholdKn);
+    return jumpsState.jumps.filter((j) => j.heightM >= jumpMinHeightM && (j.speedMs === null || j.speedMs >= thresholdMs));
+  }, [jumpsState.jumps, jumpMinHeightM, activeThresholdKn]);
+  const jumpsVisible = jumpsState.status !== 'none';
+  const sailingPanels = useMemo(() => SAILING_PANELS.filter((p) => p.key !== 'sauts' || jumpsVisible), [jumpsVisible]);
+  /** Saut montré sur la carte, par l'heure de son décollage ; podium des trois plus hauts. */
+  const [shownJump, setShownJump] = useState<number | null>(null);
+  const [jumpPodiumShown, setJumpPodiumShown] = useState(false);
+
   const notes = edits.notes;
   const setNotes = draft.updateNotes;
+  /** Support sur foil de la session : le sien s'il est réglé, sinon celui de l'activité. */
+  const foil = edits.foil ?? activityFoil;
   const { open, toggle } = useOpenSections<SailingPanel>('sailing-onglets', SAILING_PANEL_DEFAULTS);
 
   /** Bornes du dégradé de couleur de la trace, en m/s : celles de la session, sinon de Réglages, sinon la suggestion. */
@@ -564,12 +590,52 @@ function SailingModule() {
     </ResizablePanel>
   );
 
+  /** Point de trace le plus proche d'un instant. */
+  const trackIndexAt = useCallback((ms: number): number => {
+    let lo = 0;
+    let hi = trackData.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (trackData[mid].timeMs <= ms) lo = mid;
+      else hi = mid;
+    }
+    return Math.abs(trackData[hi]?.timeMs - ms) < Math.abs(trackData[lo]?.timeMs - ms) ? hi : lo;
+  }, [trackData]);
+
+  /** Sauts sur la carte : celui choisi en violet, ou le podium aux couleurs des tops ; un point au décollage. */
+  const jumpMapLayers = useMemo(() => {
+    if (trackData.length < 2) return null;
+    const byHeight = [...shownJumps].sort((a, b) => b.heightM - a.heightM);
+    const drawn = jumpPodiumShown
+      ? byHeight.slice(0, 3).map((j, k) => ({ jump: j, color: JUMP_PODIUM_COLORS[k] }))
+      : shownJumps.filter((j) => j.takeoffMs === shownJump).map((j) => ({ jump: j, color: JUMP_SHOWN_COLOR }));
+    return drawn.map(({ jump, color }) => {
+      // Du point de trace qui précède le décollage à celui qui suit l'atterrissage : deux points au moins.
+      let from = trackIndexAt(jump.takeoffMs);
+      if (trackData[from].timeMs > jump.takeoffMs && from > 0) from -= 1;
+      let to = trackIndexAt(jump.landingMs);
+      if (trackData[to].timeMs < jump.landingMs && to < trackData.length - 1) to += 1;
+      if (to <= from) to = Math.min(trackData.length - 1, from + 1);
+      const path = trackData.slice(from, to + 1).map((p) => [p.lat, p.lon] as [number, number]);
+      const start = trackData[trackIndexAt(jump.takeoffMs)];
+      return (
+        <span key={`jump-${jump.takeoffMs}`}>
+          <Polyline positions={path} pathOptions={{ color, weight: 10, opacity: 0.85 }} />
+          <CircleMarker center={[start.lat, start.lon]} radius={7} pathOptions={{ color, fillColor: color, fillOpacity: 1, weight: 2 }}>
+            <Popup>Saut de {formatTimeOfDay(jump.takeoffMs)} · {jump.heightM.toFixed(2)} m · {jump.flightS.toFixed(2)} s de vol</Popup>
+          </CircleMarker>
+        </span>
+      );
+    });
+  }, [trackData, shownJumps, shownJump, jumpPodiumShown, trackIndexAt]);
+
   /** Contenu partagé par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
     <>
       <OsmTileLayer />
 
       {staticMapLayers}
+      {jumpMapLayers}
 
       {hoveredIndex !== null && trackData[hoveredIndex] && (
         <Marker
@@ -635,7 +701,7 @@ function SailingModule() {
       {/* Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`). */}
       {stats && (
         <div className="an-carte-col" style={{ fontSize: `${scale}em` }}>
-          <SectionTabs sections={SAILING_PANELS} open={open} onToggle={toggle} />
+          <SectionTabs sections={sailingPanels} open={open} onToggle={toggle} />
           <div className="an-carte-panels">
             {open.general && (
               <ResizablePanel id="sailing.general" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
@@ -647,7 +713,7 @@ function SailingModule() {
                   <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance active</span><strong className="an-sheet__stat-value">{formatDistance(stats.activeDistanceM, distanceUnit)}</strong></div>
                   <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps total</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
                   <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps actif (&ge;{showThreshold(activeThresholdKn)} {speedSymbol})</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">{profile.activeRatioLabel}</span><strong className="an-sheet__stat-value">{stats.activeRatio}%</strong></div>
+                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">{activeRatioLabel(profile, foil)}</span><strong className="an-sheet__stat-value">{stats.activeRatio}%</strong></div>
                   <div className="an-sheet__stat"><span className="an-sheet__stat-label">Vitesse moyenne</span><strong className="an-sheet__stat-value">{formatSpeed(stats.avgSpeedMs, speedUnit)}</strong></div>
                   <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne active (&ge;{showThreshold(activeThresholdKn)} {speedSymbol})</span><strong className="an-sheet__stat-value">{formatSpeed(stats.activeAvgSpeedMs, speedUnit)}</strong></div>
                 </div>
@@ -780,6 +846,35 @@ function SailingModule() {
 
             {open.vmg && vmgStats && renderVmgPanel(vmgStats)}
 
+            {open.sauts && jumpsVisible && (
+              <JumpsPanel
+                status={jumpsState.status}
+                error={jumpsState.error}
+                jumps={shownJumps}
+                hiddenCount={jumpsState.jumps.length - shownJumps.length}
+                minHeightM={jumpMinHeightM}
+                thresholdLabel={`${showThreshold(activeThresholdKn)} ${speedSymbol}`}
+                speedUnit={speedUnit}
+                distanceUnit={distanceUnit}
+                scale={scale}
+                open={open.sauts}
+                onToggle={() => toggle('sauts')}
+                shownJump={shownJump}
+                onShowJump={(takeoffMs) => {
+                  setShownJump(takeoffMs);
+                  if (takeoffMs !== null) setJumpPodiumShown(false);
+                }}
+                podiumShown={jumpPodiumShown}
+                onTogglePodium={() => {
+                  setJumpPodiumShown(!jumpPodiumShown);
+                  setShownJump(null);
+                }}
+                trackIndexAt={trackIndexAt}
+                onCurveHover={onChartHover}
+                onCurveLeave={() => setHoveredIndex(null)}
+              />
+            )}
+
             {open.vent && windStats && (
               <div
                 style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}
@@ -856,11 +951,11 @@ function SailingModule() {
                   <div style={{ marginBottom: '10px' }}>
                     <PanelTitle label="Matériel" open={open.matos} onToggle={() => toggle('matos')} />
                   </div>
-                  {([
-                    ['foil', 'Foil'],
-                    ['mast', 'Mât'],
-                    ['wing', 'Aile / voile'],
-                  ] as const).map(([field, label]) => (
+                  {/* Foil et mât sur foil seulement ; ce qui est saisi reste dans la fiche, et revient si l'on recoche. */}
+                  {(foil
+                    ? [['foil', 'Foil'], ['mast', 'Mât'], ['wing', 'Aile / voile']] as const
+                    : [['wing', 'Aile / voile']] as const
+                  ).map(([field, label]) => (
                     <label key={field} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: `${14 * scale}px` }}>
                       <span style={{ width: '90px' }}>{label}</span>
                       <input
@@ -973,6 +1068,13 @@ function SailingModule() {
                         Défaut
                       </Button>
                     )}
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}
+                    title="Support sur foil pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">
+                    <input type="checkbox" checked={foil} onChange={(e) => draft.update({ foil: e.target.checked === activityFoil ? null : e.target.checked })} />
+                    <strong>Foil</strong>
+                    {edits.foil === null && <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(celui de l'activité)</span>}
                   </label>
 
                   {trackData.length > 0 && (

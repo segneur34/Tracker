@@ -83,6 +83,18 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - « Reprendre » : activités recolorées dans les nuances de leur famille, seuil repris, choix retenus de l'appareil gardés ;
   - le renommage de l'appareil, qui renomme son fichier, et le refus d'un nom déjà pris ;
   - un autre appareil sous le nom de celui-ci : l'appareil prend un nom libre et le dit.
+- `sauts.mjs <port> [<dossier des captures>]` : sauts en voile et case « Foil » (point 91), sur un profil neuf, sans réseau. Le script fabrique dans la page une session de voile et ses capteurs (`.imu`, par l'encodeur de l'application). Il vérifie :
+  - dans Réglages, « Foil » et « Sauts » sous « Taille du texte », leurs sous-options, relus après rechargement ;
+  - l'import d'une session avec ses capteurs : `.imu` rangé à côté du GPX ;
+  - le foil de l'activité, puis celui de la session : « Ratio de navigation » ou « Ratio de vol », champs Foil et Mât ;
+  - l'onglet « sauts » : chiffres, podium, tableau et son tri, courbe, « Voir », « Détail », comparaison, sauts rangés dans la fiche, sur ordinateur et à 390×844 ;
+  - l'absence de « Mesurer les sauts » dans le navigateur, et la suppression de la session avec son `.imu`.
+- `sauts-diagnostic.mjs <fichier .imu> [<fichier .gpx>] [--tous] [--support=wingfoil]` : sans navigateur ni serveur (Node 22.18 ou plus, qui lit le TypeScript de l'application tel quel). Relit une capture des capteurs d'une vraie séance, rangée à côté de son GPX dans le dossier mémoire. Il donne :
+  - le téléphone, les capteurs, l'emplacement et le foil choisis ;
+  - la durée, la cadence et les trous de chaque flux ;
+  - l'écart avec le GPX ;
+  - les sauts tels que l'application les calcule (`src/core/jumps.ts`), avec la vitesse GPS au décollage, et la part de la séance que garderait l'élagage ;
+  - avec `--tous`, les vols écartés et leur raison, pour recaler la détection.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

@@ -4,6 +4,10 @@ import type { RecordingProfile } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import { effectiveRecordingProfile, readStoredActivities, rememberRecordActivity } from './useSportSettings';
 import { recordingJournal } from '../platform/files';
+import {
+  findMotionCapture, pauseMotionCapture, readMotionCapture, removeMotionCapture, resumeMotionCapture, startMotionCapture,
+  stopMotionCapture, type MotionCapture, type MotionSetup,
+} from '../platform/motion';
 import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation } from '../platform/location';
 import { buildGpx } from '../recording/gpxWriter';
 import { seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
@@ -34,7 +38,10 @@ import { saveRecordedSession } from './useSessionLibrary';
  * (`useMarkGuide`), hors React lui aussi, s'abonne aux positions reçues
  * (`subscribeToFixes`) et à l'état (`subscribeToRecorder`). Le compteur du
  * fractionné (`useIntervalTimer`) lui confie ses séances (`noteIntervalRun`),
- * écrites dans le journal et rangées avec la session.
+ * écrites dans le journal et rangées avec la session. La mesure des sauts,
+ * demandée au départ, fait capter accéléromètre et gyroscope par le
+ * téléphone (`platform/motion.ts`) ; la capture suit la pause manuelle et se
+ * range à côté du GPX (`.imu`).
  *
  * Chaîne : chaque position reçue est arrondie (`roundFix`), gardée en mémoire
  * et ajoutée au journal, écrit par paquets à l'arrivée des positions
@@ -68,6 +75,8 @@ export interface PendingSession {
   recovered: boolean;
   /** Séances du compteur faites pendant l'enregistrement, bornées à lui. */
   intervals: IntervalSeries[];
+  /** Capture des capteurs (sauts), dans le dossier privé, rangée avec la session ; `null` sans mesure. */
+  motion: MotionCapture | null;
 }
 
 /** Session rangée par « Analyser ». */
@@ -94,6 +103,8 @@ export interface RecorderState {
   sourceLabel: string | null;
   /** Raison de la pause en cours, `null` sinon. */
   pausedReason: 'manual' | 'auto' | null;
+  /** Vrai tant que les capteurs mesurent les sauts. */
+  measuringJumps: boolean;
   stats: RecordingStats;
   /** Session arrêtée qui attend « Analyser » ou « Jeter » ; aucun nouvel enregistrement d'ici là. */
   pending: PendingSession | null;
@@ -107,6 +118,7 @@ const INITIAL_STATE: RecorderState = {
   activity: null,
   sourceLabel: null,
   pausedReason: null,
+  measuringJumps: false,
   stats: EMPTY_RECORDING_STATS,
   pending: null,
   saved: null,
@@ -251,18 +263,20 @@ const buildPendingSession = async (
   activity: Activity,
   segments: LocationFix[][],
   recovered: boolean,
-  intervals: IntervalSeries[]
+  intervals: IntervalSeries[],
+  motion: MotionCapture | null
 ): Promise<PendingSession | null> => {
   const sport = activity.base;
   const pointCount = segments.reduce((n, s) => n + s.length, 0);
   if (pointCount < 2) {
     await recordingJournal.remove();
+    if (motion) await removeMotionCapture(motion.path);
     return null;
   }
   const startMs = segments.find((s) => s.length > 0)![0].timeMs;
   const fileName = sessionFileName(startMs, sport);
   const content = buildGpx(segments, { name: sessionTitle(startMs, activity.name), sport });
-  return { fileName, content, sport, activity, pointCount, recovered, intervals };
+  return { fileName, content, sport, activity, pointCount, recovered, intervals, motion };
 };
 
 /**
@@ -274,8 +288,11 @@ export const analyzePendingSession = async (): Promise<SavedSession | null> => {
   const pending = state.pending;
   if (!pending) return null;
   try {
-    const { file, location } = await saveRecordedSession(pending.content, pending.sport, pending.activity.id, pending.intervals);
+    // Capteurs illisibles ou absents : la session est rangée sans eux.
+    const motion = pending.motion ? await readMotionCapture(pending.motion.path).catch(() => null) : null;
+    const { file, location } = await saveRecordedSession(pending.content, pending.sport, pending.activity.id, pending.intervals, motion);
     await recordingJournal.remove();
+    if (pending.motion) await removeMotionCapture(pending.motion.path);
     const saved: SavedSession = { ...pending, fileName: file ?? pending.fileName, libraryFile: file, location };
     setState({ pending: null, saved, error: null });
     return saved;
@@ -289,6 +306,7 @@ export const analyzePendingSession = async (): Promise<SavedSession | null> => {
 export const discardPendingSession = async (): Promise<void> => {
   if (!state.pending) return;
   await recordingJournal.remove();
+  if (state.pending.motion) await removeMotionCapture(state.pending.motion.path);
   setState({ pending: null, error: null });
 };
 
@@ -327,6 +345,8 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
   const text = await recordingJournal.read();
   if (text === null) return;
   await stopOrphanedDeviceLocation();
+  // Capture restée ouverte après un rechargement de la page : fermée, elle attend avec la session.
+  const orphan = await stopMotionCapture().catch(() => null);
   const parsed = parseJournal(text);
   const { header, fixes: list, breaks } = parsed;
   try {
@@ -338,14 +358,24 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
     const fromMs = header?.startedAtMs ?? list[0]?.timeMs ?? 0;
     const toMs = list[list.length - 1]?.timeMs ?? fromMs;
     const intervals = seriesWithin(parsed.intervalRuns, fromMs, toMs);
-    const pending = await buildPendingSession(journalActivity(sport, saved), splitIntoSegments(list, breaks), true, intervals);
+    const motion = header ? (orphan?.path.endsWith(`/${header.startedAtMs}.imu`) ? orphan : await findMotionCapture(header.startedAtMs)) : null;
+    const pending = await buildPendingSession(journalActivity(sport, saved), splitIntoSegments(list, breaks), true, intervals, motion);
     if (pending) setState({ pending, saved: null, error: null });
   } catch (err) {
     setState({ error: `Session interrompue non récupérée : ${errorMessage(err, 'erreur inconnue')}` });
   }
 };
 
-export const startRecording = async (activity: Activity, source: LocationSource): Promise<void> => {
+/**
+ * Démarre un enregistrement. `jumps` : mesurer les sauts, avec l'emplacement
+ * du téléphone et le foil ; si les capteurs ne démarrent pas, l'enregistrement
+ * continue sans eux, et le dit.
+ */
+export const startRecording = async (
+  activity: Activity,
+  source: LocationSource,
+  options: { jumps?: MotionSetup | null } = {}
+): Promise<void> => {
   if (isBusy()) return;
   await recoverInterruptedRecording();
   // Le journal d'une session en attente serait écrasé : elle doit être analysée ou jetée d'abord.
@@ -364,7 +394,10 @@ export const startRecording = async (activity: Activity, source: LocationSource)
   pendingBreak = false;
   startedAtMs = Date.now();
   intervalRuns = new Map();
-  setState({ status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, stats: EMPTY_RECORDING_STATS, saved: null, error: null });
+  setState({
+    status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, measuringJumps: false, stats: EMPTY_RECORDING_STATS,
+    saved: null, error: null,
+  });
 
   try {
     await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity));
@@ -374,6 +407,15 @@ export const startRecording = async (activity: Activity, source: LocationSource)
     stopSource = null;
     await recordingJournal.remove();
     setState({ status: 'idle', error: `Démarrage impossible : ${errorMessage(err, 'erreur inconnue')}` });
+    return;
+  }
+  if (options.jumps) {
+    try {
+      await startMotionCapture(startedAtMs, options.jumps);
+      setState({ measuringJumps: true });
+    } catch (err) {
+      setState({ error: `Mesure des sauts impossible : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
+    }
   }
 };
 
@@ -393,6 +435,7 @@ export const pauseRecording = async (): Promise<void> => {
   stopSource = null;
   belowSinceMs = null;
   await flushJournal();
+  if (state.measuringJumps) await pauseMotionCapture().catch(() => undefined);
   setState({ status: 'paused', pausedReason: 'manual' });
 };
 
@@ -407,6 +450,7 @@ export const resumeRecording = async (): Promise<void> => {
   try {
     pendingBreak = true;
     stopSource = await source.start(sourceOptions(activity, profile), receiveFix, (message) => setState({ error: message }));
+    if (state.measuringJumps) await resumeMotionCapture().catch(() => undefined);
     setState({ status: 'recording', pausedReason: null, error: null });
   } catch (err) {
     pendingBreak = false;
@@ -474,18 +518,21 @@ export const stopRecording = async (): Promise<void> => {
   currentSource = null;
   currentProfile = null;
   await flushJournal();
+  const motion = state.measuringJumps ? await stopMotionCapture().catch(() => null) : null;
 
   try {
     const intervals = seriesWithin([...intervalRuns.values()], startedAtMs, stoppedAtMs);
-    const pending = await buildPendingSession(activity, splitIntoSegments(fixes, segmentBreaks), false, intervals);
+    const pending = await buildPendingSession(activity, splitIntoSegments(fixes, segmentBreaks), false, intervals, motion);
     setState({
       status: 'idle',
+      measuringJumps: false,
       pending,
       error: pending ? state.error : 'Moins de deux positions reçues : rien à enregistrer.',
     });
   } catch (err) {
     setState({
       status: 'idle',
+      measuringJumps: false,
       error: `Construction du GPX impossible : ${errorMessage(err, 'erreur inconnue')}. Le journal est gardé et sera repris au prochain démarrage.`,
     });
   }

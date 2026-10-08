@@ -1,6 +1,6 @@
 import type { SportType } from '../core/types';
 import { isSportType } from '../recording/session';
-import { recordFileName } from './record';
+import { imuFileName, recordFileName } from './record';
 
 /**
  * Nom et support d'un GPX qui entre dans la mémoire.
@@ -18,7 +18,9 @@ import { recordFileName } from './record';
  */
 export const uniqueSessionFileName = (gpxName: string, taken: Iterable<string>): string => {
   const used = new Set([...taken].map((n) => n.toLowerCase()));
-  const isFree = (name: string) => !used.has(name.toLowerCase()) && !used.has(recordFileName(name).toLowerCase());
+  // Ni le GPX, ni sa fiche, ni ses capteurs : un fichier resté seul ne doit pas être repris par une autre session.
+  const isFree = (name: string) =>
+    !used.has(name.toLowerCase()) && !used.has(recordFileName(name).toLowerCase()) && !used.has(imuFileName(name).toLowerCase());
   if (isFree(gpxName)) return gpxName;
   const base = gpxName.replace(/\.gpx$/i, '');
   for (let i = 2; ; i++) {

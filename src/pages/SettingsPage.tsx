@@ -34,8 +34,55 @@ import MemoryStatus from '../components/MemoryStatus';
 import PanelTitle from '../components/PanelTitle';
 import ShadePicker from '../components/ShadePicker';
 import WayTypeTabs from '../components/WayTypeTabs';
+import {
+  JUMP_MIN_HEIGHT_RANGE, JUMP_PLACEMENTS, JUMP_PLACEMENT_HINT, JUMP_PLACEMENT_LABEL, type JumpPlacement, type JumpSettings,
+} from '../recording/jumpSettings';
 import PageHeader from '../components/ui/PageHeader';
 import './settingsPage.css';
+
+/**
+ * Sauts mesurés par les capteurs du téléphone (voile, sauf bateau) : la case,
+ * puis, cochée, l'emplacement du téléphone et la hauteur minimale montrée. Le
+ * foil, juste au-dessus, est un réglage de l'activité à part entière.
+ */
+function JumpsSetting({ jumps, overridden, onChange }: {
+  jumps: JumpSettings;
+  overridden: boolean;
+  onChange: (next: JumpSettings) => void;
+}) {
+  return (
+    <>
+      <div className="settings-row" title="Hauteur des sauts mesurée par l'accéléromètre et le gyroscope du téléphone, fixé au corps ; proposée à chaque enregistrement, sur le téléphone">
+        <span className="settings-row__label">Sauts</span>
+        <label className="settings-sports__pair">
+          <input type="checkbox" checked={jumps.enabled} onChange={(e) => onChange({ ...jumps, enabled: e.target.checked })} />
+          <span>Mesurer les sauts</span>
+          {!overridden && <span className="settings-sports__mark">défaut</span>}
+        </label>
+      </div>
+      {jumps.enabled && (
+        <>
+          <div className="settings-row settings-row--sub">
+            <span className="settings-row__label">Emplacement du téléphone</span>
+            <div className="settings-sports__pair">
+              <select value={jumps.placement} className="ui-field ui-field--s"
+                onChange={(e) => onChange({ ...jumps, placement: e.target.value as JumpPlacement })}>
+                {JUMP_PLACEMENTS.map((p) => <option key={p} value={p}>{JUMP_PLACEMENT_LABEL[p]}</option>)}
+              </select>
+              <span className="settings-sports__mark">{JUMP_PLACEMENT_HINT[jumps.placement]}</span>
+            </div>
+          </div>
+          <div className="settings-row settings-row--sub" title="Les sauts plus bas ne sont pas montrés ; tous restent mesurés">
+            <span className="settings-row__label">Hauteur minimale</span>
+            <NumberField unit="m" step={0.1} min={JUMP_MIN_HEIGHT_RANGE.min} max={JUMP_MIN_HEIGHT_RANGE.max}
+              value={jumps.minHeightM}
+              onCommit={(v) => { if (v !== null && v >= JUMP_MIN_HEIGHT_RANGE.min && v <= JUMP_MIN_HEIGHT_RANGE.max) onChange({ ...jumps, minHeightM: v }); }} />
+          </div>
+        </>
+      )}
+    </>
+  );
+}
 
 /**
  * Types de voie cochés d'office quand on choisit l'activité en planification
@@ -200,7 +247,7 @@ function SettingsPage() {
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
                   s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null ||
                   s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden ||
-                  s.loopReturnRatio !== p.loopReturnMaxRatio;
+                  s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.isJumpsOverridden;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
                 const thresholdShown = parseFloat(
@@ -244,6 +291,8 @@ function SettingsPage() {
                   DISTANCE_UNIT_SYMBOL[s.distanceUnit],
                   thresholdEmpty ? "seuil selon l'allure" : `seuil ${thresholdShown} ${SPEED_UNIT_LABEL[thresholdUnit]}`,
                   s.autoPause.speedMs > 0 ? `pause sous ${pauseKmh} km/h après ${s.autoPause.delayS} s` : 'sans pause automatique',
+                  ...(s.foil ? ['foil'] : []),
+                  ...(s.jumps?.enabled ? ['sauts'] : []),
                   ...(treatment === 'velo' ? [BIKE_TYPES[s.bikeType].noun] : []),
                   ...(paceFamily ? [`voies : ${s.wayTypes.map((w) => WAY_TYPE_LABEL[w].toLowerCase()).join(' + ')}`] : []),
                   ...(paceFamily ? [`niveau ${PACE_LEVEL_LABEL[s.paceLevel].toLowerCase()}`] : []),
@@ -296,6 +345,19 @@ function SettingsPage() {
                               {(Object.keys(TEXT_SCALE_FACTOR) as TextScale[]).map((t) => <option key={t} value={t}>{TEXT_SCALE_LABEL[t]}</option>)}
                             </select>
                           </div>
+                          {s.foil !== null && (
+                            <div className="settings-row" title="Support sur foil : sauts, champs « Foil » et « Mât » du matériel, « Ratio de vol ». Chaque session peut avoir le sien, dans l'onglet réglages de son analyse">
+                              <span className="settings-row__label">Foil</span>
+                              <label className="settings-sports__pair">
+                                <input type="checkbox" checked={s.foil} onChange={(e) => setFor(id, 'foil', e.target.checked === p.foilDefault ? null : e.target.checked)} />
+                                <span>Support sur foil</span>
+                                {!s.isFoilOverridden && <span className="settings-sports__mark">défaut</span>}
+                              </label>
+                            </div>
+                          )}
+                          {s.jumps !== null && (
+                            <JumpsSetting jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => setFor(id, 'jumps', next)} />
+                          )}
                           <div className="settings-row" title="Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, réussite des manœuvres, VMG ; en course, temps de pause">
                             <span className="settings-row__label">Seuil d'activité</span>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>

@@ -1,4 +1,5 @@
 import { registerPlugin } from '@capacitor/core';
+import { base64ToBytes, bytesToBase64 } from './base64';
 import { isNativeApp } from './runtime';
 import { jsonStore } from './storage';
 
@@ -13,7 +14,7 @@ import { jsonStore } from './storage';
  *       sessions/   un GPX et sa fiche JSON par session
  *
  * Ce module ne sait rien de ce contenu : il lit, écrit et liste des fichiers
- * texte par chemin relatif (`sessions/x.gpx`). La bibliothèque
+ * par chemin relatif (`sessions/x.gpx`), texte ou binaires (capteurs, `.imu`). La bibliothèque
  * (`hooks/useSessionLibrary.ts`) en tire le sens.
  *
  * Dans le navigateur, une seule implémentation, sur les poignées de dossier
@@ -54,6 +55,10 @@ export interface MemoryFolder {
   readText(path: string): Promise<string | null>;
   /** Écrit un fichier texte, en créant les dossiers qui manquent. */
   writeText(path: string, text: string): Promise<void>;
+  /** Contenu d'un fichier binaire, `null` s'il n'existe pas. */
+  readBytes(path: string): Promise<Uint8Array | null>;
+  /** Écrit un fichier binaire, en créant les dossiers qui manquent. */
+  writeBytes(path: string, bytes: Uint8Array): Promise<void>;
   /** Efface un fichier ; sans effet s'il n'existe pas. */
   remove(path: string): Promise<void>;
 }
@@ -80,6 +85,35 @@ const createHandleFolder = (root: FileSystemDirectoryHandle, kind: MemoryKind, l
     return dir;
   };
 
+  const fileAt = async (path: string): Promise<File | null> => {
+    const parts = splitPath(path);
+    const name = parts.pop();
+    if (!name) return null;
+    try {
+      const dir = await dirAt(parts, false);
+      return await (await dir.getFileHandle(name)).getFile();
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    }
+  };
+
+  const write = async (path: string, data: string | Uint8Array): Promise<void> => {
+    const parts = splitPath(path);
+    const name = parts.pop();
+    if (!name) throw new Error(`Chemin invalide : ${path}`);
+    const dir = await dirAt(parts, true);
+    const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
+    if (typeof data === 'string') {
+      await writable.write(data);
+    } else {
+      const copy = new Uint8Array(data.byteLength);
+      copy.set(data);
+      await writable.write(copy);
+    }
+    await writable.close();
+  };
+
   return {
     kind,
     label,
@@ -103,27 +137,15 @@ const createHandleFolder = (root: FileSystemDirectoryHandle, kind: MemoryKind, l
       return entries;
     },
     readText: async (path) => {
-      const parts = splitPath(path);
-      const name = parts.pop();
-      if (!name) return null;
-      try {
-        const dir = await dirAt(parts, false);
-        const file = await (await dir.getFileHandle(name)).getFile();
-        return await file.text();
-      } catch (err) {
-        if (isNotFound(err)) return null;
-        throw err;
-      }
+      const file = await fileAt(path);
+      return file ? file.text() : null;
     },
-    writeText: async (path, text) => {
-      const parts = splitPath(path);
-      const name = parts.pop();
-      if (!name) throw new Error(`Chemin invalide : ${path}`);
-      const dir = await dirAt(parts, true);
-      const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
-      await writable.write(text);
-      await writable.close();
+    writeText: (path, text) => write(path, text),
+    readBytes: async (path) => {
+      const file = await fileAt(path);
+      return file ? new Uint8Array(await file.arrayBuffer()) : null;
     },
+    writeBytes: (path, bytes) => write(path, bytes),
     remove: async (path) => {
       const parts = splitPath(path);
       const name = parts.pop();
@@ -270,6 +292,8 @@ interface MemoryFolderPlugin {
   list(options: { uri: string; path: string }): Promise<{ entries: NativeEntry[] }>;
   readText(options: { uri: string; path: string }): Promise<{ text: string | null }>;
   writeText(options: { uri: string; path: string; text: string }): Promise<void>;
+  readBase64(options: { uri: string; path: string }): Promise<{ data: string | null }>;
+  writeBase64(options: { uri: string; path: string; data: string }): Promise<void>;
   remove(options: { uri: string; path: string }): Promise<void>;
 }
 
@@ -295,6 +319,13 @@ const createDeviceFolder = ({ uri, base, label }: DeviceFolderChoice): MemoryFol
     readText: async (path) => (await nativeFolder.readText({ uri, path: full(path) })).text,
     writeText: async (path, text) => {
       await nativeFolder.writeText({ uri, path: full(path), text });
+    },
+    readBytes: async (path) => {
+      const { data } = await nativeFolder.readBase64({ uri, path: full(path) });
+      return data === null ? null : base64ToBytes(data);
+    },
+    writeBytes: async (path, bytes) => {
+      await nativeFolder.writeBase64({ uri, path: full(path), data: bytesToBase64(bytes) });
     },
     remove: async (path) => {
       await nativeFolder.remove({ uri, path: full(path) });
@@ -340,11 +371,12 @@ const openDeviceFolder = async (): Promise<MemoryAccess> => {
 type NamedEntry = Pick<FolderEntry, 'name' | 'kind'>;
 
 /**
- * Fichiers à reprendre d'un dossier Tracker copié : GPX et fiches, à sa racine
- * et dans `sessions/`. `root` et `sessions` : contenu de ces deux dossiers.
+ * Fichiers à reprendre d'un dossier Tracker copié : GPX, fiches et capteurs,
+ * à sa racine et dans `sessions/`. `root` et `sessions` : contenu de ces deux
+ * dossiers.
  */
 export const folderImportPaths = (root: readonly NamedEntry[], sessions: readonly NamedEntry[]): string[] => {
-  const wanted = (e: NamedEntry) => e.kind === 'file' && /\.(gpx|json)$/i.test(e.name);
+  const wanted = (e: NamedEntry) => e.kind === 'file' && /\.(gpx|json|imu)$/i.test(e.name);
   return [
     ...root.filter(wanted).map((e) => e.name),
     ...sessions.filter(wanted).map((e) => `sessions/${e.name}`),
@@ -353,7 +385,7 @@ export const folderImportPaths = (root: readonly NamedEntry[], sessions: readonl
 
 /**
  * Sur le téléphone, fait désigner un dossier (par exemple un dossier Tracker
- * copié depuis le PC) et en rend les GPX et les fiches, sous la même forme
+ * copié depuis le PC) et en rend les GPX, les fiches et les capteurs, sous la même forme
  * que le sélecteur de fichiers du navigateur. `null` si l'utilisateur renonce.
  * L'accès au dossier n'est pas gardé : il n'est lu qu'une fois.
  */
@@ -368,8 +400,19 @@ export const pickFolderToImport = async (): Promise<File[] | null> => {
   const paths = folderImportPaths(base ? await list('') : root, await list('sessions'));
   const files: File[] = [];
   for (const path of paths) {
+    const name = path.split('/').pop()!;
+    if (/\.imu$/i.test(name)) {
+      const { data } = await nativeFolder.readBase64({ uri, path: full(path) });
+      if (data !== null) {
+        const bytes = base64ToBytes(data);
+        const copy = new Uint8Array(bytes.byteLength);
+        copy.set(bytes);
+        files.push(new File([copy], name));
+      }
+      continue;
+    }
     const { text } = await nativeFolder.readText({ uri, path: full(path) });
-    if (text !== null) files.push(new File([text], path.split('/').pop()!));
+    if (text !== null) files.push(new File([text], name));
   }
   return files;
 };
@@ -461,6 +504,40 @@ export const openMemoryFolder = async (): Promise<MemoryAccess> => {
 const filesystem = () => import('@capacitor/filesystem');
 
 /**
+ * Fichier binaire du dossier privé de l'application (`Directory.Data`), par
+ * son chemin dans ce dossier ; `null` s'il n'existe pas.
+ */
+export const readPrivateBytes = async (path: string): Promise<Uint8Array | null> => {
+  const { Filesystem, Directory } = await filesystem();
+  try {
+    const { data } = await Filesystem.readFile({ path, directory: Directory.Data });
+    return typeof data === 'string' ? base64ToBytes(data) : new Uint8Array(await data.arrayBuffer());
+  } catch {
+    return null;
+  }
+};
+
+/** Taille d'un fichier du dossier privé de l'application, en octets ; `null` s'il n'existe pas. */
+export const privateFileSize = async (path: string): Promise<number | null> => {
+  const { Filesystem, Directory } = await filesystem();
+  try {
+    return (await Filesystem.stat({ path, directory: Directory.Data })).size;
+  } catch {
+    return null;
+  }
+};
+
+/** Efface un fichier du dossier privé de l'application ; sans effet s'il n'existe pas. */
+export const removePrivateFile = async (path: string): Promise<void> => {
+  const { Filesystem, Directory } = await filesystem();
+  try {
+    await Filesystem.deleteFile({ path, directory: Directory.Data });
+  } catch {
+    // Déjà absent.
+  }
+};
+
+/**
  * Dossier privé de l'application, sur le téléphone. Les sessions enregistrées
  * y attendent qu'un dossier mémoire soit accessible : un enregistrement ne
  * doit jamais échouer faute de dossier.
@@ -502,6 +579,12 @@ const createPrivateFolder = (base: string): MemoryFolder => {
         encoding: Encoding.UTF8,
         recursive: true,
       });
+    },
+    readBytes: (path) => readPrivateBytes(full(path)),
+    writeBytes: async (path, bytes) => {
+      const { Filesystem, Directory } = await filesystem();
+      // Sans encodage, `data` est du base64.
+      await Filesystem.writeFile({ path: full(path), data: bytesToBase64(bytes), directory: Directory.Data, recursive: true });
     },
     remove: async (path) => {
       const { Filesystem, Directory } = await filesystem();

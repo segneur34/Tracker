@@ -20,6 +20,8 @@ export interface SessionEdits {
   speedRange: SpeedRangeMs | null;
   /** Seuil d'effort de la détection des répétitions, en m/s ; `null` : celui tiré de la session. */
   effortThresholdMs: number | null;
+  /** Support sur foil pour la session ; `null` : celui de l'activité. */
+  foil: boolean | null;
 }
 
 const NOTE_FIELDS = Object.keys(EMPTY_NOTES) as (keyof SailingSessionNotes)[];
@@ -55,13 +57,14 @@ export const savedEdits = (record: SessionRecord | null, gear: StoredSessionNote
     referenceSpeedMs: record?.analysis?.referenceSpeedMs ?? null,
     speedRange: record?.analysis?.speedRange ?? null,
     effortThresholdMs: record?.analysis?.effortThresholdMs ?? null,
+    foil: record?.analysis?.foil ?? null,
   };
 };
 
 const pickNotes = (notes: SailingSessionNotes): SailingSessionNotes =>
   Object.fromEntries(NOTE_FIELDS.map((field) => [field, notes[field]])) as unknown as SailingSessionNotes;
 
-export type EditedPart = 'vent' | 'seuil' | 'allure' | 'couleurs' | 'effort' | 'notes';
+export type EditedPart = 'vent' | 'seuil' | 'allure' | 'couleurs' | 'effort' | 'foil' | 'notes';
 
 /** Nom de chaque partie, tel que l'écran l'annonce. */
 export const EDITED_PART_LABEL: Record<EditedPart, string> = {
@@ -70,6 +73,7 @@ export const EDITED_PART_LABEL: Record<EditedPart, string> = {
   allure: 'allure de la session',
   couleurs: 'couleurs de la trace',
   effort: "seuil d'effort",
+  foil: 'foil',
   notes: 'notes',
 };
 
@@ -84,6 +88,7 @@ export const changedParts = (saved: SessionEdits, edits: SessionEdits): EditedPa
   if (saved.referenceSpeedMs !== edits.referenceSpeedMs) parts.push('allure');
   if (!sameRange(saved.speedRange, edits.speedRange)) parts.push('couleurs');
   if (saved.effortThresholdMs !== edits.effortThresholdMs) parts.push('effort');
+  if (saved.foil !== edits.foil) parts.push('foil');
   if (!sameNotes(saved.notes, edits.notes)) parts.push('notes');
   return parts;
 };
@@ -110,6 +115,7 @@ export const editsPatch = (record: SessionRecord, saved: SessionEdits, edits: Se
       referenceSpeedMs: edits.referenceSpeedMs,
       speedRange: edits.speedRange,
       effortThresholdMs: edits.effortThresholdMs,
+      foil: edits.foil,
       savedAt: now,
     };
   }

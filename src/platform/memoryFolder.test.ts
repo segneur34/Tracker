@@ -39,11 +39,11 @@ describe('folderImportPaths', () => {
   const file = (name: string) => ({ name, kind: 'file' as const });
   const dir = (name: string) => ({ name, kind: 'directory' as const });
 
-  it("reprend les GPX et les fiches de la racine et de sessions/", () => {
+  it("reprend les GPX, les fiches et les capteurs de la racine et de sessions/", () => {
     expect(folderImportPaths(
       [file('tracker.json'), file('a.GPX'), dir('sessions')],
-      [file('b.gpx'), file('b.json')]
-    )).toEqual(['tracker.json', 'a.GPX', 'sessions/b.gpx', 'sessions/b.json']);
+      [file('b.gpx'), file('b.json'), file('b.imu')]
+    )).toEqual(['tracker.json', 'a.GPX', 'sessions/b.gpx', 'sessions/b.json', 'sessions/b.imu']);
   });
 
   it('ignore les autres fichiers et les dossiers', () => {

@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.DocumentsContract;
 import android.provider.DocumentsContract.Document;
+import android.util.Base64;
 import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -180,12 +181,55 @@ public class MemoryFolderPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /** Contenu d'un fichier quelconque (capteurs), en base64 ; `data` nul s'il n'existe pas. */
+    @PluginMethod
+    public void readBase64(PluginCall call) {
+        Uri tree = treeOf(call);
+        if (tree == null) return;
+        JSObject ret = new JSObject();
+        try {
+            String id = resolve(tree, call.getString("path", ""), false);
+            if (id == null) {
+                ret.put("data", JSONObject.NULL);
+            } else {
+                try (InputStream in = resolver().openInputStream(DocumentsContract.buildDocumentUriUsingTree(tree, id))) {
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    byte[] buffer = new byte[65536];
+                    int n;
+                    while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
+                    ret.put("data", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP));
+                }
+            }
+        } catch (Exception e) {
+            call.reject("Lecture impossible : " + e.getMessage());
+            return;
+        }
+        call.resolve(ret);
+    }
+
     @PluginMethod
     public void writeText(PluginCall call) {
+        String text = call.getString("text", "");
+        writeBytes(call, text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Écrit un fichier quelconque (capteurs), reçu en base64. */
+    @PluginMethod
+    public void writeBase64(PluginCall call) {
+        byte[] data;
+        try {
+            data = Base64.decode(call.getString("data", ""), Base64.DEFAULT);
+        } catch (IllegalArgumentException e) {
+            call.reject("Données illisibles : " + e.getMessage());
+            return;
+        }
+        writeBytes(call, data);
+    }
+
+    private void writeBytes(PluginCall call, byte[] data) {
         Uri tree = treeOf(call);
         if (tree == null) return;
         String path = call.getString("path", "");
-        String text = call.getString("text", "");
         try {
             int slash = path.lastIndexOf('/');
             String parentPath = slash < 0 ? "" : path.substring(0, slash);
@@ -208,7 +252,7 @@ public class MemoryFolderPlugin extends Plugin {
             // courte que la précédente en garderait la fin.
             try (OutputStream out = resolver().openOutputStream(target, "wt")) {
                 if (out == null) throw new Exception("écriture refusée pour " + path);
-                out.write(text.getBytes(StandardCharsets.UTF_8));
+                out.write(data);
             }
         } catch (Exception e) {
             call.reject("Écriture impossible : " + e.getMessage());

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
 import ActivitySelect from '../components/ActivitySelect';
 import Button from '../components/ui/Button';
@@ -20,9 +20,11 @@ import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../ho
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  effectiveBikeSetup, effectiveDistanceUnit, effectiveLiveFields, effectiveSpeedUnit, lastRecordActivity, readStoredActivities,
-  rememberRecordActivity,
+  effectiveBikeSetup, effectiveDistanceUnit, effectiveFoil, effectiveJumpSettings, effectiveLiveFields, effectiveSpeedUnit, lastRecordActivity,
+  readStoredActivities, rememberRecordActivity,
 } from '../hooks/useSportSettings';
+import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
+import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import {
   analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording,
@@ -271,6 +273,17 @@ function RecordingPage() {
     changeRecordingActivity(activity);
     pickActivity(activity);
   };
+  // Sauts : proposés par l'activité (Réglages), sur le téléphone seulement ; la case vaut pour cet enregistrement.
+  const jumpSettings = chosen ? effectiveJumpSettings(chosen) : null;
+  const [jumpChoice, setJumpChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
+  const measureJumps = chosen !== null && jumpSettings !== null &&
+    (jumpChoice?.activityId === chosen.id ? jumpChoice.measure : jumpSettings.enabled);
+  const [motionCaps, setMotionCaps] = useState<MotionCapabilities | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void getMotionCapabilities().then((caps) => { if (alive) setMotionCaps(caps); });
+    return () => { alive = false; };
+  }, []);
   const [sourceChoice, setSourceChoice] = useState<SourceChoice>('device');
   const [replay, setReplay] = useState<ReplayTrack | null>(null);
   const [replayError, setReplayError] = useState<string | null>(null);
@@ -359,7 +372,10 @@ function RecordingPage() {
     const source = sourceChoice === 'replay' && replay
       ? createReplaySource(replay.fixes, replaySpeed)
       : deviceLocationSource();
-    void startRecording(chosen, source);
+    const jumps = measureJumps && jumpSettings && motionCaps?.available && sourceChoice === 'device'
+      ? { placement: jumpSettings.placement, foil: effectiveFoil(chosen) ?? false }
+      : null;
+    void startRecording(chosen, source, { jumps });
   };
 
   return (
@@ -387,6 +403,23 @@ function RecordingPage() {
           ) : (
             <div className="ui-alert ui-alert--warning">
               Aucune activité {FAMILY_NOUN[family]} : ajoutez-en une dans <Link to="/parametres">Réglages</Link>.
+            </div>
+          )}
+
+          {chosen && jumpSettings && native && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input type="checkbox" checked={measureJumps && motionCaps?.available === true} disabled={!motionCaps?.available}
+                  onChange={(e) => setJumpChoice({ activityId: chosen.id, measure: e.target.checked })} />
+                <span>Mesurer les sauts</span>
+              </label>
+              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', marginLeft: '26px' }}>
+                {motionCaps && !motionCaps.available
+                  ? motionCaps.reason
+                  : `Téléphone fixé au corps : ${JUMP_PLACEMENT_LABEL[jumpSettings.placement].toLowerCase()}${effectiveFoil(chosen) ? ', sur foil' : ''} (Réglages).`}
+                {motionCaps?.available && motionCaps.accelMaxG !== null && motionCaps.accelMaxG < 8 &&
+                  ` L'accéléromètre plafonne à ${Math.round(motionCaps.accelMaxG)} g : les chocs à l'atterrissage seront écrêtés.`}
+              </span>
             </div>
           )}
 
@@ -471,7 +504,12 @@ function RecordingPage() {
       )}
 
       {recorder.status === 'paused' && recorder.pausedReason === 'manual' && (
-        <div className="ui-alert ui-alert--warning">En pause : le GPS est coupé pour économiser la batterie.</div>
+        <div className="ui-alert ui-alert--warning">
+          En pause : le GPS est coupé pour économiser la batterie{recorder.measuringJumps ? ', et la mesure des sauts aussi' : ''}.
+        </div>
+      )}
+      {busy && recorder.measuringJumps && recorder.status !== 'paused' && (
+        <div className="ui-alert">Sauts : les capteurs du téléphone mesurent.</div>
       )}
       {recorder.status === 'paused' && recorder.pausedReason === 'auto' && (
         <div className="ui-alert ui-alert--warning">En pause automatique : aucun mouvement détecté. Reprend dès que vous bougez.</div>

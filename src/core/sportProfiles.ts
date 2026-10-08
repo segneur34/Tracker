@@ -1,3 +1,4 @@
+import type { JumpDetection } from './jumps';
 import type { SportType, TopTarget } from './types';
 import type { SpeedUnit } from './units';
 
@@ -125,6 +126,35 @@ export interface IntervalDetectionProfile {
   blockGapFactor: number;
 }
 
+/** Sauts mesurés par les capteurs du téléphone (voile, `core/jumps.ts`). */
+export interface JumpProfile {
+  /** Hauteur minimale d'un saut montré, en mètres, surchargeable par activité. */
+  defaultMinHeightM: number;
+  detection: JumpDetection;
+}
+
+/**
+ * Détection et mesure des sauts, communes aux supports qui sautent. Réglées sur
+ * les séances de wingfoil du 08/10/2026, téléphone sur la poitrine : la séance
+ * témoin ne donne aucun vol de 0,2 m, l'autre ses 10 sauts (0,66 à 1,72 m) et
+ * rien d'autre au-dessus de 0,33 m. Les longs vols du kite restent à vérifier
+ * sur une séance de kite.
+ */
+const JUMP_DETECTION: JumpDetection = {
+  gridStepS: 0.01, maxGapS: 0.05,
+  calmForceFraction: 0.15, calmRotationRadS: 0.3, minCalmS: 1,
+  attitudeTauS: 3, attitudeMaxRotationRadS: 1.5, attitudeInitS: 1,
+  smoothingS: 0.1, pushG: 0.4, pushSearchS: 0.5, landingG: 0.3, edgeSearchS: 0.05,
+  minFlightS: 0.2, maxFlightS: 8, minFallG: 0.2, biasWindowS: 10,
+  keepMinFlightS: 0.4, keepMinHeightM: 0.2,
+  pruneMinFlightS: 0.4, pruneMinHeightM: 0.15, pruneMarginS: 15, pruneChunkS: 300, pruneChunkMarginS: 20,
+  dubiousBallisticFactor: 1.1, saturationFraction: 0.98, doubtMarginS: 2, attitudeMaxErrorM: 0.1,
+  curveStepS: 0.05, curveMarginS: 0.5,
+};
+
+/** Libellé du ratio de temps actif d'une session sur foil, quel que soit le calcul. */
+export const FOIL_RATIO_LABEL = 'Ratio de vol';
+
 /** Analyse des répétitions (fractionné, §10, point 89). */
 export interface IntervalProfile {
   /** Pas du profil de vitesse d'une répétition, en secondes. */
@@ -180,8 +210,16 @@ export interface SportProfile {
   maxPlausibleSpeedMs: number;
   /** Vitesse minimale, dans `thresholdUnit`, pour qu'un point alimente le diagramme polaire. */
   defaultPolarMinSpeed: number;
-  /** Libellé du ratio de temps actif, propre au vocabulaire du support. */
+  /**
+   * Libellé du ratio de temps actif, propre au vocabulaire du support, hors
+   * foil : sur foil, c'est `FOIL_RATIO_LABEL` (`activeRatioLabel`).
+   */
   activeRatioLabel: string;
+  /**
+   * Support sur foil par défaut. Surchargeable par activité (Réglages) et par
+   * session (onglet réglages de l'analyse) ; sans objet hors voile.
+   */
+  foilDefault: boolean;
   /** Réglage du dénivelé. */
   elevation: ElevationProfile;
   /**
@@ -204,6 +242,8 @@ export interface SportProfile {
    * Fractionné ; `null` en voile, où le compteur ne sert pas.
    */
   intervals: IntervalProfile | null;
+  /** Sauts mesurés par les capteurs du téléphone ; `null` hors voile et en bateau. */
+  jumps: JumpProfile | null;
 }
 
 /** Cibles de tops utilisées par tous les supports à voile. */
@@ -246,6 +286,7 @@ const SAILING_DEFAULTS = {
   topTargets: SAILING_TOP_TARGETS,
   recording: DEFAULT_RECORDING,
   intervals: null,
+  foilDefault: false,
 };
 
 const RUNNING_PROFILE: SportProfile = {
@@ -269,6 +310,8 @@ const RUNNING_PROFILE: SportProfile = {
   topTargets: [],
   recording: DEFAULT_RECORDING,
   intervals: INTERVAL_ANALYSIS,
+  foilDefault: false,
+  jumps: null,
 };
 
 const CYCLING_PROFILE: SportProfile = {
@@ -291,6 +334,8 @@ const CYCLING_PROFILE: SportProfile = {
   topTargets: CYCLING_TOP_TARGETS,
   recording: DEFAULT_RECORDING,
   intervals: INTERVAL_ANALYSIS,
+  foilDefault: false,
+  jumps: null,
 };
 
 export const SPORT_PROFILES: Record<SportType, SportProfile> = {
@@ -299,7 +344,10 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     id: 'wingfoil',
     label: 'Wingfoil',
     defaultActiveThreshold: 8,
-    activeRatioLabel: 'Ratio de vol',
+    // Sans foil (case décochée), un wing se dit « en navigation » ; sur foil, « Ratio de vol ».
+    activeRatioLabel: 'Ratio de navigation',
+    foilDefault: true,
+    jumps: { defaultMinHeightM: 0.5, detection: JUMP_DETECTION },
   },
   windsurf: {
     ...SAILING_DEFAULTS,
@@ -307,6 +355,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     label: 'Planche à voile',
     defaultActiveThreshold: 10,
     activeRatioLabel: 'Ratio de planing',
+    jumps: { defaultMinHeightM: 0.5, detection: JUMP_DETECTION },
   },
   kite: {
     ...SAILING_DEFAULTS,
@@ -314,6 +363,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     label: 'Kitesurf',
     defaultActiveThreshold: 8,
     activeRatioLabel: 'Ratio de navigation',
+    jumps: { defaultMinHeightM: 1, detection: JUMP_DETECTION },
   },
   bateau: {
     ...SAILING_DEFAULTS,
@@ -322,6 +372,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     defaultActiveThreshold: 3,
     defaultPolarMinSpeed: 2,
     activeRatioLabel: 'Ratio de navigation',
+    jumps: null,
   },
   running: RUNNING_PROFILE,
   cycling: CYCLING_PROFILE,
@@ -338,6 +389,10 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
 export const SAILING_SPORTS: SportType[] = ['wingfoil', 'windsurf', 'kite', 'bateau'];
 
 export const getSportProfile = (sport: SportType): SportProfile => SPORT_PROFILES[sport];
+
+/** Libellé du ratio de temps actif d'une session : « Ratio de vol » sur foil, sinon celui du calcul. */
+export const activeRatioLabel = (profile: SportProfile, foil: boolean): string =>
+  foil ? FOIL_RATIO_LABEL : profile.activeRatioLabel;
 
 /**
  * Traitement d'un calcul : la façon dont ses sessions se calculent et

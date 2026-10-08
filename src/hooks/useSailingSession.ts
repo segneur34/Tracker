@@ -57,6 +57,7 @@ export const useSailingSession = ({
     speedUnit,
     distanceUnit,
     textScale,
+    foil: activityFoil,
   } = useSportSettings('voile');
 
   // Les seuils de filtrage suivent l'allure de la session, pas seulement le
@@ -207,6 +208,8 @@ export const useSailingSession = ({
 
   return {
     trackData,
+    /** Trace en unités SI, pour les calculs du noyau (sauts). */
+    track: gpx.track,
     stats,
     currentWindValue,
     autoWind,
@@ -231,6 +234,8 @@ export const useSailingSession = ({
     setActivity,
     sport,
     profile,
+    /** Support sur foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
+    activityFoil,
     /** Unité d'affichage des vitesses et taille du texte, choisies dans Réglages pour l'activité. */
     speedUnit,
     distanceUnit,

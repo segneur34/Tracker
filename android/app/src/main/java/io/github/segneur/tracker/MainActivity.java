@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
         // Plugins propres à l'application, déclarés avant le démarrage du pont.
         registerPlugin(MemoryFolderPlugin.class);
         registerPlugin(BeeperPlugin.class);
+        registerPlugin(MotionPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

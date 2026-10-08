@@ -17,6 +17,7 @@ import {
 } from '../recording/intervalTimer';
 import { DEFAULT_LIVE_FIELDS, sanitizeLiveFields, type LiveFieldKey } from '../recording/liveFields';
 import { MARK_GUIDE_DEFAULTS, sanitizeMarkGuide, type MarkGuideSettings } from '../recording/markGuide';
+import { defaultJumpSettings, sanitizeJumpSettings, type JumpSettings } from '../recording/jumpSettings';
 import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, type BikeType } from '../cycling/energy';
 import { DEFAULT_CYCLING_GRADE_RANGE, DEFAULT_CYCLING_SPEED_RANGE_MS } from '../cycling/cyclingConfig';
 import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
@@ -120,6 +121,10 @@ export interface StoredSettings {
   liveFields?: ByActivity<LiveFieldKey[]>;
   /** Bips d'approche des balises (voile) : courbe et vibration ; absent : `MARK_GUIDE_DEFAULTS`. */
   markGuide?: ByActivity<MarkGuideSettings>;
+  /** Support sur foil (voile) ; absent : `foilDefault` du calcul. */
+  foils?: ByActivity<boolean>;
+  /** Sauts mesurés par les capteurs du téléphone (voile, sauf bateau) ; absents : non mesurés. */
+  jumps?: ByActivity<JumpSettings>;
   /** Type de vélo (vélo), qui fixe roulement et traînée ; absent : `defaultBikeType`. */
   bikeTypes?: ByActivity<BikeType>;
   /** Poids du vélo en kg (vélo) ; absent : celui du type. */
@@ -364,6 +369,26 @@ export const effectiveLiveFields = (activity: Activity): LiveFieldKey[] => {
 export const effectiveMarkGuide = (activity: Activity): MarkGuideSettings =>
   sanitizeMarkGuide(readStoredSettings().markGuide?.[activity.id]) ?? MARK_GUIDE_DEFAULTS;
 
+/** Foil d'une activité : celui réglé, sinon le défaut du calcul ; `null` hors voile. */
+const resolveFoil = (stored: StoredSettings, activity: Activity): boolean | null => {
+  if (activityTreatment(activity) !== 'voile') return null;
+  const foil = stored.foils?.[activity.id];
+  return typeof foil === 'boolean' ? foil : getSportProfile(activity.base).foilDefault;
+};
+
+/** Sauts d'une activité : ceux réglés, sinon le défaut ; `null` si son calcul ne les mesure pas. */
+const resolveJumps = (stored: StoredSettings, activity: Activity): JumpSettings | null => {
+  const profile = getSportProfile(activity.base).jumps;
+  if (!profile) return null;
+  return sanitizeJumpSettings(stored.jumps?.[activity.id], profile) ?? defaultJumpSettings(profile);
+};
+
+/** Support sur foil d'une activité de voile, `null` hors voile. Utilisable hors composant. */
+export const effectiveFoil = (activity: Activity): boolean | null => resolveFoil(readStoredSettings(), activity);
+
+/** Réglages des sauts d'une activité, `null` si son calcul ne les mesure pas. Utilisable hors composant. */
+export const effectiveJumpSettings = (activity: Activity): JumpSettings | null => resolveJumps(readStoredSettings(), activity);
+
 /**
  * Unité de vitesse effective d'une activité : celle choisie dans Réglages,
  * sinon celle du profil. Utilisable hors composant.
@@ -508,6 +533,12 @@ export interface SportSettingsView {
   /** Bips d'approche des balises (voile). */
   markGuide: MarkGuideSettings;
   isMarkGuideOverridden: boolean;
+  /** Support sur foil ; `null` hors voile. */
+  foil: boolean | null;
+  isFoilOverridden: boolean;
+  /** Sauts mesurés par les capteurs ; `null` si le calcul ne les mesure pas (bateau, hors voile). */
+  jumps: JumpSettings | null;
+  isJumpsOverridden: boolean;
   /** Type de vélo (activités vélo seulement, `defaultBikeType` par défaut). */
   bikeType: BikeType;
   /** Poids du vélo en kg, ou `null` pour celui du type. */
@@ -526,7 +557,7 @@ export interface SportSettingsView {
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
   'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'textScales', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights',
-  'paceLevels', 'customFlatSpeeds', 'liveFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios',
+  'paceLevels', 'customFlatSpeeds', 'liveFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'jumps',
 ] as const;
 
 /** Réglages sans aucune surcharge rangée sous `id`. */
@@ -602,6 +633,10 @@ export const useAllSportSettings = () => {
         isLiveFieldsOverridden: liveFields !== null,
         markGuide: markGuide ?? MARK_GUIDE_DEFAULTS,
         isMarkGuideOverridden: markGuide !== null,
+        foil: resolveFoil(stored, activity),
+        isFoilOverridden: typeof stored.foils?.[id] === 'boolean',
+        jumps: resolveJumps(stored, activity),
+        isJumpsOverridden: stored.jumps?.[id] !== undefined && profile.jumps !== null,
         bikeType: isBikeType(bikeType) ? bikeType : defaultBikeType(id),
         bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
         paceLevel: isPaceLevel(paceLevel) ? paceLevel : DEFAULT_PACE_LEVEL,
@@ -616,7 +651,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'foil' | 'jumps' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -683,6 +718,22 @@ export const useAllSportSettings = () => {
           const guide = value === null ? null : sanitizeMarkGuide(value);
           if (value !== null && guide === null) return;
           next.markGuide = put(stored.markGuide, guide);
+          break;
+        }
+        case 'foil': {
+          const activity = findActivity(activities, id);
+          if (!activity || activityTreatment(activity) !== 'voile') return;
+          if (value !== null && typeof value !== 'boolean') return;
+          next.foils = put(stored.foils, value as boolean | null);
+          break;
+        }
+        case 'jumps': {
+          const activity = findActivity(activities, id);
+          const profile = activity ? getSportProfile(activity.base).jumps : null;
+          if (!profile) return;
+          const jumps = value === null ? null : sanitizeJumpSettings(value, profile);
+          if (value !== null && jumps === null) return;
+          next.jumps = put(stored.jumps, jumps);
           break;
         }
         case 'bikeType':
@@ -895,6 +946,9 @@ export const useSportSettings = (family: SportFamily) => {
   const storedBikeWeight = stored.bikeWeights?.[id];
   const bikeWeightKg = isValidBikeWeight(storedBikeWeight) ? storedBikeWeight : BIKE_TYPES[bikeType].bikeKg;
 
+  /** Support sur foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
+  const foil = resolveFoil(stored, activity) ?? false;
+
   return {
     activity,
     activityOptions,
@@ -920,5 +974,6 @@ export const useSportSettings = (family: SportFamily) => {
     /** Poids du vélo effectif, en kg (celui du type à défaut de réglage). */
     bikeWeightKg,
     isBikeWeightOverridden: isValidBikeWeight(storedBikeWeight),
+    foil,
   };
 };

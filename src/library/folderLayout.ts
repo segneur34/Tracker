@@ -7,7 +7,9 @@
  *                        (`settingsFile.ts`) ; avant le point 90, un seul
  *                        reglages.json à la racine
  *       LISEZMOI.txt     ce qu'est ce dossier, pour qui l'ouvre à la main
- *       sessions/        un GPX et sa fiche JSON par session (`record.ts`)
+ *       sessions/        un GPX et sa fiche JSON par session (`record.ts`), et
+ *                        ses capteurs `.imu` si les sauts ont été mesurés
+ *                        (`core/imuFile.ts`)
  *       itineraires/     une fiche JSON et son GPX par itinéraire planifié
  *                        (`planning/routeRecord.ts`)
  */
@@ -40,6 +42,8 @@ export const readmeText = (): string =>
     '',
     '- sessions/ : une trace GPX par session, et à côté une fiche .json du même nom',
     '  (résumé, support, notes). Le GPX fait foi : la fiche se recalcule, sauf les notes.',
+    '  Une session dont les sauts ont été mesurés a aussi un fichier .imu du même nom :',
+    '  les mesures de l\'accéléromètre et du gyroscope du téléphone.',
     '- itineraires/ : les itinéraires planifiés. La fiche .json fait foi (points de',
     '  passage, tracé) ; le GPX du même nom est à emporter dans une autre application',
     '  ou sur une montre.',
@@ -62,6 +66,6 @@ export const readmeText = (): string =>
     '« Mettre à jour » en tête d\'une liste de sessions.',
     '',
     'Ne modifiez pas les fichiers à la main, sauf pour les supprimer : supprimez',
-    'alors le GPX et sa fiche ensemble.',
+    'alors le GPX, sa fiche et son .imu ensemble.',
     '',
   ].join('\r\n');

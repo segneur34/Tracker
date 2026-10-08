@@ -1,0 +1,109 @@
+/* Onglet « sauts » de l'analyse voile (`JumpsPanel.tsx`). */
+
+.an-jump-podium {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.an-jump-podium__dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.an-jump-sort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.an-jump-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+/* Choix des sauts de la courbe : passent à la ligne sur un écran étroit. */
+.an-jump-compare {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-bottom: 8px;
+}
+
+.an-jump-compare label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.an-jump-compare select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.an-jump-compare__dot {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.an-jump-doubt {
+  color: var(--muted);
+  font-weight: normal;
+  cursor: help;
+}
+
+.an-jump-time,
+.an-jump-height {
+  white-space: nowrap;
+}
+
+/* Sur téléphone, chaque saut passe sur deux rangées, comme les manœuvres :
+   numéro à gauche, puis heure, hauteur et « Voir » ; vol, longueur et vitesse. */
+@media (max-width: 767.98px) {
+  .an-jump-table thead {
+    display: none;
+  }
+
+  .an-jump-table tbody tr {
+    display: grid;
+    grid-template-columns: 2em minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-areas:
+      'num time height map'
+      'num flight length speed';
+    align-items: center;
+    padding: 4px 0;
+  }
+
+  .an-jump-table td {
+    padding: 2px 4px !important;
+    text-align: left !important;
+  }
+
+  .an-jump-num { grid-area: num; align-self: start; }
+  .an-jump-time { grid-area: time; }
+  .an-jump-height { grid-area: height; }
+  .an-jump-map { grid-area: map; }
+  .an-jump-flight { grid-area: flight; }
+  .an-jump-length { grid-area: length; }
+  .an-jump-speed { grid-area: speed; font-size: 0.9em; }
+
+  .an-jump-flight::before {
+    content: attr(data-label) ' ';
+    color: var(--muted);
+    font-size: 0.85em;
+  }
+}
