@@ -9,7 +9,7 @@ import { confirmLeave, installLeaveGuard } from './hooks/leaveGuard';
 import { isIntervalTimerActive, startIntervalTimer } from './hooks/useIntervalTimer';
 import { startMarkGuide } from './hooks/useMarkGuide';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
-import { openLibrary, startLibraryUi } from './hooks/useSessionLibrary';
+import { openLibrary, settingsUpgraded, startLibraryUi } from './hooks/useSessionLibrary';
 import { upgradeStoredActivities } from './hooks/useSportSettings';
 import { installBackButton } from './platform/backButton';
 import { initStorage } from './platform/storage';
@@ -22,12 +22,12 @@ const LIBRARY_OPEN_WAIT_MS = 1500;
 
 // Le stockage natif doit être en mémoire avant le premier rendu : les hooks
 // le lisent pendant le rendu (`platform/storage.ts`). La mémoire aussi, si
-// possible : les réglages repris de son `reglages.json` sont alors en place.
+// possible : les réglages repris de son dossier `reglages/` sont alors en place.
 void initStorage()
   .then(() => Promise.race([openLibrary(), new Promise((resolve) => setTimeout(resolve, LIBRARY_OPEN_WAIT_MS))]))
   .then(() => {
-    // Liste d'activités d'une version d'avant mise à jour, une fois les réglages du dossier repris.
-    upgradeStoredActivities();
+    // Liste d'activités d'une version d'avant mise à jour, une fois les réglages du dossier repris ; le fichier de l'appareil suit.
+    if (upgradeStoredActivities()) void settingsUpgraded();
     ReactDOM.createRoot(document.getElementById('root')!).render(
       <React.StrictMode>
         <App />

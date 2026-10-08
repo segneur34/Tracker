@@ -6,10 +6,16 @@
 //     puis retiré ; pc.json est récrit ;
 //  3. le fichier d'un autre appareil (« Léa », liste d'activités de la version 3, anciennes couleurs) déposé
 //     dans reglages/ : absent de la liste avant « Mettre à jour », présent après, et pas repris de lui-même ;
-//  4. « Reprendre » : confirmation acceptée, rechargement, activités de Léa recolorées dans les nuances de leur
-//     famille, seuil repris, choix retenus de l'appareil gardés, pc.json récrit ;
+//     le bandeau « Nouveau fichier de réglages : Léa » paraît ;
+//  4. « Reprendre » du bandeau : confirmation acceptée, rechargement, activités de Léa recolorées dans les
+//     nuances de leur famille, seuil repris, choix retenus de l'appareil gardés, pc.json récrit ; plus de bandeau ;
 //  5. renommage de l'appareil : le fichier suit son nom ; un nom déjà porté par un autre fichier est refusé ;
-//  6. un fichier d'un autre appareil posé sous le nom de celui-ci : l'appareil prend un nom libre et le dit.
+//  6. un fichier d'un autre appareil posé sous le nom de celui-ci : l'appareil prend un nom libre et le dit ;
+//     le bandeau le propose au lancement, « Fermer » le retire, et il ne revient pas au rechargement ;
+//  7. activités de la version 3 rangées sur l'appareil et dans son fichier : au lancement, le fichier passe aux
+//     nuances de la version 4 sans changer de date ;
+//  8. « Importer un fichier de réglages » : un JSON quelconque et le fichier de l'appareil refusés ; celui d'une
+//     tablette rangé sous son nom, reprise refusée puis faite depuis la liste ; pas de bandeau ensuite.
 import { writeFileSync } from 'node:fs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -26,13 +32,15 @@ let id = 0;
 const pending = new Map();
 const logs = [];
 const dialogs = [];
+/** Réponse aux confirmations de la page : acceptées, sauf le temps d'y renoncer. */
+let acceptDialogs = true;
 const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
 ws.onmessage = (e) => {
   const msg = JSON.parse(e.data);
   if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
   if (msg.method === 'Page.javascriptDialogOpening') {
     dialogs.push(msg.params.message.split('\n')[0]);
-    void send('Page.handleJavaScriptDialog', { accept: true });
+    void send('Page.handleJavaScriptDialog', { accept: acceptDialogs });
   }
   if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
   if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
@@ -63,7 +71,10 @@ const rename = async (name) => {
   await evaluate(`(() => { const i = document.querySelector('input[maxlength="40"].ui-field'); i.focus(); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, ${JSON.stringify(name)}); i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); return 'ok'; })()`);
   await wait(1200);
 };
-const pageLines = (re) => evaluate(`document.body.innerText.split('\\n').filter((l) => ${re}.test(l)).join(' | ')`);
+/** Texte du bandeau « Nouveau fichier de réglages », ou « (aucun) ». */
+const banner = () => evaluate(`(() => { const a = [...document.querySelectorAll('.ui-alert')].find((x) => /Nouveau fichier de réglages/.test(x.innerText)); return a ? a.innerText.replace(/\\n/g, ' / ') : '(aucun)'; })()`);
+const clickInBanner = (text) => evaluate(`(() => { const a = [...document.querySelectorAll('.ui-alert')].find((x) => /Nouveau fichier de réglages/.test(x.innerText)); if (!a) return 'bandeau absent'; const b = [...a.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)}); if (!b) return 'bouton absent'; b.click(); return 'ok'; })()`);
+const pageLines = (re) =>evaluate(`document.body.innerText.split('\\n').filter((l) => ${re}.test(l)).join(' | ')`);
 const step = (title) => console.log(`\n== ${title}`);
 
 await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
@@ -112,10 +123,11 @@ console.log('Mettre à jour :', await evaluate(`(() => { const b = [...document.
 await wait(2500);
 console.log('liste après :', await fileList());
 console.log('seuil de l\'appareil, inchangé :', (await stored())?.thresholds?.wingfoil);
+console.log('bandeau :', await banner());
 await shoot('reglages-liste');
 
-step('4. Reprendre les réglages de Léa');
-console.log('Reprendre :', await clickButton('Reprendre', 'Léa'));
+step('4. Reprendre les réglages de Léa, depuis le bandeau');
+console.log('Reprendre :', await clickInBanner('Reprendre'));
 await wait(4500);
 console.log('confirmation :', dialogs.at(-1) ?? '(aucune)');
 const after = await stored();
@@ -127,6 +139,7 @@ console.log('pc.json : seuil', pc.values['tracker.sportSettings']?.thresholds?.w
 console.log('carte Mémoire :', await openMemory());
 await wait(500);
 console.log('liste :', await fileList());
+console.log('bandeau après la reprise (aucun attendu) :', await banner());
 
 step('5. Renommer l\'appareil');
 await rename('PC du bureau');
@@ -143,6 +156,61 @@ await go('/parametres', 4000);
 console.log('message :', await pageLines('/s\'appelle désormais/'));
 console.log('reglages/ :', await listSettings(), '| nom :', await evaluate(`localStorage.getItem('tracker.deviceName')`));
 console.log('pc-du-bureau.json reste à l\'intrus :', (await readSettings('pc-du-bureau.json')).device?.id);
+console.log('bandeau au lancement :', await banner());
+console.log('Fermer :', await clickInBanner('Fermer'));
+await wait(300);
+console.log('bandeau après « Fermer » (aucun attendu) :', await banner());
+await go('/parametres', 4000);
+console.log('bandeau après rechargement (aucun attendu) :', await banner());
+
+step('7. Activités de la version 3, au lancement');
+const ownName = (await listSettings()).split(', ').find((n) => n.startsWith('pc-du-bureau-'));
+const oldList = [
+  { id: 'wingfoil', name: 'Voile', base: 'wingfoil', color: '#1565c0' },
+  { id: 'running', name: 'Course', base: 'running', color: '#bf360c' },
+  { id: 'a-trail', name: 'Trail', base: 'running', color: '#6a1b9a' },
+];
+const savedAtBefore = await evaluate(`Number(localStorage.getItem('tracker.settingsSavedAt'))`);
+await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}'); s.activities = ${JSON.stringify(oldList)}; s.activitiesVersion = 3; localStorage.setItem('tracker.sportSettings', JSON.stringify(s)); return 'ok'; })()`);
+const ownBefore = await readSettings(ownName);
+ownBefore.values['tracker.sportSettings'] = await stored();
+console.log(`${ownName} en version 3 :`, await writeFile(`reglages/${ownName}`, ownBefore));
+await go('/parametres', 5000);
+const upgraded = await readSettings(ownName);
+const upgradedSport = upgraded.values['tracker.sportSettings'];
+console.log('appareil :', (await stored())?.activities?.map((a) => `${a.name} ${a.color}`).join(', '), '| version', (await stored())?.activitiesVersion);
+console.log('fichier  :', upgradedSport?.activities?.map((a) => `${a.name} ${a.color}`).join(', '), '| version', upgradedSport?.activitiesVersion);
+console.log('date du fichier inchangée :', upgraded.savedAt === savedAtBefore, '| date de l\'appareil inchangée :', (await evaluate(`Number(localStorage.getItem('tracker.settingsSavedAt'))`)) === savedAtBefore);
+
+step('8. Importer un fichier de réglages');
+/** Choisit un fichier JSON dans « Importer un fichier de réglages », fabriqué dans la page. */
+const importJson = async (name, value) => {
+  const res = await evaluate(`(() => { const input = document.querySelector('input[type=file][accept*="json"]'); if (!input) return 'champ absent'; const dt = new DataTransfer(); dt.items.add(new File([${JSON.stringify(JSON.stringify(value))}], ${JSON.stringify(name)}, { type: 'application/json' })); input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
+  await wait(1500);
+  return res;
+};
+const importNote = () => pageLines('/n\'est pas un fichier|fichier de réglages de cet appareil|est dans la liste/');
+console.log('carte Mémoire :', await openMemory());
+await wait(500);
+console.log('un JSON quelconque :', await importJson('notes.json', { bonjour: 1 }), '|', await importNote());
+console.log('le fichier de cet appareil :', await importJson(ownName, await readSettings(ownName)), '|', await importNote());
+const tablet = {
+  format: 'tracker-reglages', version: 2, savedAt: Date.now() - 600_000, device: { id: 'tablette-de-lea', name: 'Tablette' },
+  values: { 'tracker.sportSettings': { ...(await stored()), thresholds: { wingfoil: 15 } } },
+};
+acceptDialogs = false;
+console.log('la Tablette, reprise refusée :', await importJson('reglages-tablette.json', tablet), '|', await importNote());
+acceptDialogs = true;
+console.log('confirmation posée :', dialogs.at(-1));
+console.log('reglages/ :', await listSettings(), '| seuil de l\'appareil, inchangé :', (await stored())?.thresholds?.wingfoil);
+console.log('liste :', await fileList(), '| bandeau (aucun attendu) :', await banner());
+console.log('Reprendre dans la liste :', await clickButton('Reprendre', 'Tablette'));
+await wait(4500);
+console.log('seuil wingfoil :', (await stored())?.thresholds?.wingfoil, '(15 attendu)');
+console.log('carte Mémoire :', await openMemory());
+await wait(500);
+console.log('bandeau après rechargement (aucun attendu) :', await banner());
+await shoot('reglages-import');
 
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go('/parametres', 3000);

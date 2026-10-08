@@ -45,13 +45,16 @@ import {
   cleanDeviceName,
   deviceFileName,
   freeDeviceName,
+  importedSettingsFileName,
   newestSettingsEntry,
   ownSettingsEntry,
   parseSettingsFile,
   serializeSettingsFile,
   settingsActivityCount,
+  settingsEntryKey,
   settingsEntryName,
   settingsSignature,
+  unseenSettingsEntries,
   type SettingsEntry,
 } from '../library/settingsFile';
 import { summarizeSession, type SummaryOptions } from '../library/summary';
@@ -135,6 +138,8 @@ export interface LibraryState {
   deviceName: string;
   /** Fichiers de réglages du dossier (`reglages/`), celui de l'appareil en tête. */
   settingsFiles: SettingsFileInfo[];
+  /** Fichier de réglages d'un autre appareil apparu dans le dossier, jamais vu par celui-ci : proposé une fois. */
+  settingsOffer: SettingsFileInfo | null;
   /** Relecture du dossier en cours (« Mettre à jour »). */
   refreshing: boolean;
   /** Import en cours (GPX ou dossier), d'où qu'il parte. */
@@ -158,6 +163,7 @@ const INITIAL_STATE: LibraryState = {
   pendingCount: 0,
   deviceName: '',
   settingsFiles: [],
+  settingsOffer: null,
   refreshing: false,
   importing: false,
   revision: 0,
@@ -371,6 +377,8 @@ const SETTINGS_SAVED_AT_KEY = 'tracker.settingsSavedAt';
 /** Identifiant et nom de l'appareil : propres à lui, ils ne voyagent pas. */
 const DEVICE_ID_KEY = 'tracker.deviceId';
 const DEVICE_NAME_KEY = 'tracker.deviceName';
+/** Fichiers de réglages déjà vus par l'appareil (`settingsEntryKey`) : un nouveau n'est proposé qu'une fois. */
+const SEEN_SETTINGS_KEY = 'tracker.seenSettingsFiles';
 const SETTINGS_WRITE_DELAY_MS = 2000;
 let settingsTimer: ReturnType<typeof setTimeout> | null = null;
 /** Vrai pendant qu'on applique des réglages repris : ce ne sont pas des changements de l'utilisateur. */
@@ -425,17 +433,19 @@ const readSettingsEntries = async (f: MemoryFolder): Promise<SettingsEntry[]> =>
   return entries;
 };
 
+const settingsFileInfo = (e: SettingsEntry, id: string): SettingsFileInfo => ({
+  fileName: e.fileName,
+  name: settingsEntryName(e),
+  savedAt: e.file.savedAt,
+  activityCount: settingsActivityCount(e.file),
+  own: e.file.device?.id === id,
+});
+
 /** Liste de Réglages › Mémoire : le fichier de l'appareil en tête, puis les autres du plus récent au plus ancien. */
 const publishSettingsFiles = (): void => {
   const id = deviceId();
   const settingsFiles = settingsEntries
-    .map((e): SettingsFileInfo => ({
-      fileName: e.fileName,
-      name: settingsEntryName(e),
-      savedAt: e.file.savedAt,
-      activityCount: settingsActivityCount(e.file),
-      own: e.file.device?.id === id,
-    }))
+    .map((e) => settingsFileInfo(e, id))
     .sort((a, b) => Number(b.own) - Number(a.own) || b.savedAt - a.savedAt);
   setState({ settingsFiles, deviceName: deviceName() });
 };
@@ -478,6 +488,44 @@ const flushSettings = async (): Promise<void> => {
   }
 };
 
+/**
+ * Après la mise à jour des activités au démarrage (`upgradeStoredActivities`),
+ * qui n'est pas un changement de l'utilisateur : le fichier de l'appareil est
+ * récrit à la même date, et l'empreinte recalée, pour que le premier choix
+ * retenu écrit ensuite ne date pas les réglages.
+ */
+export const settingsUpgraded = async (): Promise<void> => {
+  await opening;
+  lastSignature = settingsSignature(localTravellingValues());
+  await flushSettings();
+};
+
+/** Fichiers de réglages déjà vus (`settingsEntryKey`) ; `null` avant le premier rapprochement qui les retient. */
+const readSeenSettings = (): Set<string> | null => {
+  const raw = jsonStore.read<unknown>(SEEN_SETTINGS_KEY);
+  return Array.isArray(raw) ? new Set(raw.filter((key): key is string => typeof key === 'string')) : null;
+};
+
+const markSettingsSeen = (entries: readonly SettingsEntry[]): void => {
+  jsonStore.write(SEEN_SETTINGS_KEY, [...new Set([...(readSeenSettings() ?? []), ...entries.map(settingsEntryKey)])]);
+};
+
+/**
+ * Propose, une fois, le plus récent des fichiers d'autres appareils que
+ * celui-ci n'a jamais vus (« Nouveau fichier de réglages »), puis les tient
+ * tous pour vus. Rien quand l'appareil vient de reprendre tout seul le plus
+ * récent. Une proposition encore affichée reste tant que son fichier est là.
+ */
+const offerNewSettings = (autoAdopted: boolean): void => {
+  const id = deviceId();
+  const seen = readSeenSettings();
+  const fresh = autoAdopted ? [] : unseenSettingsEntries(settingsEntries, seen, id);
+  markSettingsSeen(settingsEntries);
+  const previous = state.settingsOffer;
+  const offer = fresh[0] ?? (previous ? settingsEntries.find((e) => e.fileName === previous.fileName) : undefined);
+  setState({ settingsOffer: offer ? settingsFileInfo(offer, id) : null });
+};
+
 /** Remplace les réglages de l'appareil par `values`, clé par clé ; rend vrai si l'un d'eux a changé. */
 const applySettingsValues = (values: Record<string, unknown>): boolean => {
   let changed = false;
@@ -507,7 +555,8 @@ const applySettingsValues = (values: Record<string, unknown>): boolean => {
  * - Sinon, les réglages de l'appareil sont les siens, quoi que contiennent
  *   les autres fichiers.
  * L'appareil écrit ensuite son fichier s'il manque ou diffère, et l'ancien
- * `reglages.json` est retiré.
+ * `reglages.json` est retiré. Le fichier d'un autre appareil qu'il n'avait
+ * jamais vu lui est proposé (`offerNewSettings`).
  */
 const syncSettings = async (f: MemoryFolder): Promise<boolean> => {
   const id = deviceId();
@@ -516,10 +565,12 @@ const syncSettings = async (f: MemoryFolder): Promise<boolean> => {
   const legacy = parseSettingsFile(await f.readText(SETTINGS_FILE));
   let savedAt = readLocalSavedAt();
   let changed = false;
+  let autoAdopted = false;
   if (savedAt === null) {
     const newest = own ?? newestSettingsEntry(settingsEntries);
     const source = newest?.file ?? legacy;
     if (source) {
+      autoAdopted = true;
       changed = applySettingsValues(adoptedValues(source.values, localTravellingValues()));
       savedAt = source.savedAt;
       if (newest && newest !== own) setState({ message: `Réglages repris de « ${settingsEntryName(newest)} », le fichier le plus récent du dossier.` });
@@ -536,6 +587,7 @@ const syncSettings = async (f: MemoryFolder): Promise<boolean> => {
   if (upToDate) publishSettingsFiles();
   else await writeOwnSettings(f, savedAt);
   if (legacy) await f.remove(SETTINGS_FILE);
+  offerNewSettings(autoAdopted);
   return changed;
 };
 
@@ -564,7 +616,7 @@ export const adoptSettingsFile = async (fileName: string): Promise<void> => {
     lastSignature = settingsSignature(localTravellingValues());
     settingsEntries = await readSettingsEntries(f);
     await writeOwnSettings(f, now);
-    setState({ message: `Réglages repris de « ${settingsEntryName({ fileName, file })} ».` });
+    setState({ message: `Réglages repris de « ${settingsEntryName({ fileName, file })} ».`, settingsOffer: null });
     applySettingsChange(true);
   } catch (err) {
     setState({ error: `Reprise des réglages impossible : ${errorMessage(err, 'erreur inconnue')}` });
@@ -597,6 +649,37 @@ export const renameDevice = async (raw: string): Promise<string | null> => {
     return null;
   } catch (err) {
     return `Renommage impossible : ${errorMessage(err, 'erreur inconnue')}`;
+  }
+};
+
+/**
+ * « Importer un fichier de réglages » (Réglages › Mémoire) : le fichier
+ * choisi est rangé tel quel dans `reglages/`, comme s'il y avait été déposé,
+ * et tenu pour vu (le bandeau ne le propose pas). Il sert là où l'on ne peut
+ * rien déposer à la main : la mémoire du navigateur (Firefox). Rend le
+ * fichier rangé, ou la raison d'un refus.
+ */
+export const importSettingsFile = async (picked: File): Promise<{ file: SettingsFileInfo } | { refusal: string }> => {
+  await opening;
+  const f = folder;
+  if (!f) return { refusal: 'Aucune mémoire ouverte.' };
+  try {
+    const text = await readPickedFile(picked);
+    const file = parseSettingsFile(text);
+    if (!file) return { refusal: `${picked.name} n'est pas un fichier de réglages de Tracker.` };
+    const id = deviceId();
+    if (file.device?.id === id) return { refusal: `${picked.name} est le fichier de réglages de cet appareil.` };
+    settingsEntries = await readSettingsEntries(f);
+    const taken = new Set((await f.list(SETTINGS_DIR)).map((e) => e.name.toLowerCase()));
+    const fileName = importedSettingsFileName(file, picked.name, settingsEntries, taken);
+    await f.writeText(settingsPath(fileName), text);
+    const entry: SettingsEntry = { fileName, file };
+    settingsEntries = [...settingsEntries.filter((e) => e.fileName !== fileName), entry];
+    markSettingsSeen([entry]);
+    publishSettingsFiles();
+    return { file: settingsFileInfo(entry, id) };
+  } catch (err) {
+    return { refusal: `Import impossible : ${errorMessage(err, 'erreur inconnue')}` };
   }
 };
 
@@ -792,6 +875,7 @@ const detach = (status: 'needs-permission' | 'unavailable', label: string | null
     unreadable: [],
     scanning: null,
     settingsFiles: [],
+    settingsOffer: null,
   });
 };
 
@@ -1278,6 +1362,9 @@ export const refreshLibrary = (): Promise<void> => {
 };
 
 export const dismissLibraryMessage = (): void => setState({ message: null, error: null });
+
+/** Ferme la proposition d'un nouveau fichier de réglages ; il reste dans la liste de Réglages › Mémoire. */
+export const dismissSettingsOffer = (): void => setState({ settingsOffer: null });
 
 /** État de la bibliothèque, relu à chaque changement. */
 export const useSessionLibrary = (): LibraryState => useSyncExternalStore(subscribe, () => state);

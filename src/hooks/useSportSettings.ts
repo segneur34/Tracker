@@ -233,20 +233,21 @@ const writeStored = (settings: StoredSettings): void => jsonStore.write(STORAGE_
  * Met à jour, une fois, une liste d'activités d'une version d'avant
  * (`upgradeActivities`). À appeler au démarrage, une fois les réglages du
  * dossier mémoire repris, et avant que la bibliothèque ne guette les
- * changements de réglages : la mise à jour ne rend pas les réglages de
- * l'appareil plus récents que ceux du dossier, qui l'emporteraient sinon
- * sur un changement fait ailleurs. Elle voyage avec le prochain vrai
- * changement. Sans liste rangée, rien à faire : celle du premier lancement
- * est déjà à jour.
+ * changements de réglages : ce n'est pas un changement de l'utilisateur, et
+ * la date des réglages de l'appareil ne bouge pas. Rend vrai si la liste a
+ * été récrite : le fichier de réglages de l'appareil est alors à récrire, à
+ * la même date (`settingsUpgraded`). Sans liste rangée, rien à faire : celle
+ * du premier lancement est déjà à jour.
  */
-export const upgradeStoredActivities = (): void => {
+export const upgradeStoredActivities = (): boolean => {
   const stored = readStoredSettings();
-  if (stored.activities === undefined || (stored.activitiesVersion ?? 1) >= ACTIVITIES_VERSION) return;
+  if (stored.activities === undefined || (stored.activitiesVersion ?? 1) >= ACTIVITIES_VERSION) return false;
   writeStored({
     ...stored,
     activities: upgradeActivities(readActivities(stored.activities), stored.activitiesVersion ?? 1),
     activitiesVersion: ACTIVITIES_VERSION,
   });
+  return true;
 };
 
 /** Type de vélo d'une activité sans réglage : celui de Gravel et de VTT pour elles, route sinon. */

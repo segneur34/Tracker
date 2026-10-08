@@ -11,7 +11,7 @@ import { isNativeApp } from '../platform/runtime';
 import ImportButtons from './ImportButtons';
 import PanelTitle from './PanelTitle';
 import RefreshLibraryButton from './RefreshLibraryButton';
-import SettingsFiles from './SettingsFiles';
+import SettingsFiles, { SettingsOfferBanner } from './SettingsFiles';
 import Button from './ui/Button';
 import Card from './ui/Card';
 
@@ -20,7 +20,8 @@ import Card from './ui/Card';
  * si elle est inaccessible. En tête des bibliothèques en version courte, dans
  * Réglages en version détaillée (changer de dossier, fichiers de réglages
  * par appareil par `SettingsFiles`, mode d'emploi du copier-coller). Avec `collapse`, la carte se replie par son titre et ne
- * garde, fermée, que sa ligne d'état et ses alertes.
+ * garde, fermée, que sa ligne d'état et ses alertes, dont la proposition d'un
+ * nouveau fichier de réglages (`SettingsOfferBanner`).
  *
  * Dans Réglages, « Mettre à jour » (`RefreshLibraryButton`) et « Ajouter les
  * sessions d'un dossier » (`ImportButtons`) suivent la ligne d'état, carte
@@ -86,6 +87,7 @@ function MemoryStatus({
       <Card heading={heading}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           {statusLine}
+          <SettingsOfferBanner />
           {alert}
         </div>
       </Card>
@@ -185,6 +187,7 @@ function MemoryStatus({
           </p>
         )}
 
+        <SettingsOfferBanner />
         {detailed && status === 'ready' && <SettingsFiles />}
 
         {detailed && (

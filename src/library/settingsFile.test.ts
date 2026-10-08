@@ -9,13 +9,16 @@ import {
   cleanDeviceName,
   deviceFileName,
   freeDeviceName,
+  importedSettingsFileName,
   newestSettingsEntry,
   ownSettingsEntry,
   parseSettingsFile,
   serializeSettingsFile,
   settingsActivityCount,
+  settingsEntryKey,
   settingsEntryName,
   settingsSignature,
+  unseenSettingsEntries,
   type SettingsEntry,
 } from './settingsFile';
 
@@ -152,6 +155,45 @@ describe('appareils et noms de fichier', () => {
     expect(settingsActivityCount(phone.file)).toBe(DEFAULT_ACTIVITIES.length);
     const two = buildSettingsFile({ 'tracker.sportSettings': { activities: DEFAULT_ACTIVITIES.slice(0, 2) } }, 1);
     expect(settingsActivityCount(two)).toBe(2);
+  });
+
+  it("reconnaît un fichier à son appareil, même renommé, sinon à son nom de fichier", () => {
+    const renamed = entry('telephone-de-lea.json', 5000, { id: 'tel', name: 'Téléphone de Léa' });
+    expect(settingsEntryKey(renamed)).toBe(settingsEntryKey(phone));
+    expect(settingsEntryKey(friend)).toBe(settingsEntryKey(entry('LEA.json', 1, null)));
+    expect(settingsEntryKey(friend)).not.toBe(settingsEntryKey(pc));
+  });
+
+  it("propose les fichiers des autres appareils jamais vus, le plus récent en tête", () => {
+    const seen = new Set([settingsEntryKey(pc)]);
+    expect(unseenSettingsEntries([pc, phone, friend], seen, 'pc')).toEqual([friend, phone]);
+    expect(unseenSettingsEntries([pc, phone, friend], new Set([settingsEntryKey(phone), settingsEntryKey(friend)]), 'pc')).toEqual([]);
+  });
+
+  it("ne propose jamais le fichier de l'appareil, même jamais vu", () => {
+    expect(unseenSettingsEntries([pc], new Set(), 'pc')).toEqual([]);
+  });
+
+  it('tient pour vus tous les fichiers la première fois', () => {
+    expect(unseenSettingsEntries([pc, phone, friend], null, 'pc')).toEqual([]);
+  });
+
+  it("range un fichier importé sous le nom de son appareil, sans écraser celui d'un autre", () => {
+    const tablet = buildSettingsFile(values, 6000, null, { id: 'tab', name: 'Tablette' });
+    expect(importedSettingsFileName(tablet, 'n-importe.json', [pc, phone], new Set(['pc.json', 'telephone.json']))).toBe('tablette.json');
+    const otherPhone = buildSettingsFile(values, 6000, null, { id: 'tel-2', name: 'Téléphone' });
+    expect(importedSettingsFileName(otherPhone, 'telephone.json', [pc, phone], new Set(['pc.json', 'telephone.json']))).toBe('telephone-2.json');
+  });
+
+  it("remplace le fichier du même appareil, même rangé sous un autre nom", () => {
+    const newerPhone = buildSettingsFile(values, 9000, null, { id: 'tel', name: 'Téléphone de Léa' });
+    expect(importedSettingsFileName(newerPhone, 'x.json', [pc, phone], new Set(['pc.json', 'telephone.json']))).toBe('telephone.json');
+  });
+
+  it("nomme un fichier sans appareil d'après le fichier choisi", () => {
+    const old = buildSettingsFile(values, 1000);
+    expect(importedSettingsFileName(old, 'Réglages Léa.json', [], new Set())).toBe('reglages-lea.json');
+    expect(importedSettingsFileName(old, 'reglages-lea.JSON', [], new Set(['reglages-lea.json']))).toBe('reglages-lea-2.json');
   });
 });
 

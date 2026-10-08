@@ -190,10 +190,12 @@ Tracker/
 - **Réglages, un fichier par appareil** (point 90, `library/settingsFile.ts`) : chaque appareil recopie `tracker.sportSettings` et `tracker.runnerProfile` dans `reglages/<son nom>.json` deux secondes après chaque changement, daté par `tracker.settingsSavedAt`, avec son nom et son identifiant (format version 2, `device`).
   - L'appareil reconnaît son fichier à son identifiant (`tracker.deviceId`, tiré au hasard), pas à son nom : un fichier qui porte son nom avec un autre identifiant est celui d'un autre appareil, et il prend alors un nom libre (« Téléphone 2 »), qu'il annonce. Renommer l'appareil (`tracker.deviceName`, « Téléphone » ou « PC » par défaut) renomme son fichier ; un nom déjà pris est refusé.
   - Il n'adopte jamais de lui-même les réglages d'un autre : « Reprendre », dans Réglages › Mémoire, remplace les siens par ceux du fichier choisi, sauf les choix retenus (`adoptedValues`), récrit son fichier et recharge la page. Seul un appareil neuf, sans réglage daté, reprend tout seul le fichier le plus récent, et le dit.
+  - Le fichier d'un autre appareil qu'il n'avait jamais vu (`tracker.seenSettingsFiles`, `unseenSettingsEntries`) lui est proposé une fois, au lancement comme à « Mettre à jour » : bandeau « Nouveau fichier de réglages », avec « Reprendre » et « Fermer », en tête des bibliothèques et dans Réglages › Mémoire. La première fois, les fichiers déjà là sont tenus pour vus.
+  - « Importer un fichier de réglages » (Réglages › Mémoire) range un fichier choisi à la main dans `reglages/`, sous le nom de son appareil (celui du même appareil est remplacé), le tient pour vu, puis propose de le reprendre. C'est le seul moyen dans la mémoire du navigateur, où l'on ne peut rien déposer : sur le PC de l'utilisateur, Tracker tourne dans Firefox.
   - Passage depuis l'ancien `reglages.json` : tant que l'appareil n'a pas de fichier à lui, la règle d'avant joue une dernière fois (le plus récent l'emporte, `chooseSettings`), puis `reglages.json` est retiré. `LISEZMOI.txt` est récrit s'il diffère.
   - L'empreinte qui repère un changement (`settingsSignature`, `library/settingsFile.ts`) ignore les choix retenus : activité du module, ancienne clé du support, activité proposée à l'enregistrement (point 65), dernière séance lancée au compteur (point 89).
   - Des réglages repris après le démarrage rechargent la page, sauf pendant un enregistrement.
-  - La liste des activités d'une version d'avant est mise à jour au démarrage, après la lecture du dossier (`upgradeStoredActivities`) ; en version 4 (point 90), toute couleur qui n'est pas une nuance de sa famille, ou portée deux fois, est remplacée par la première nuance libre.
+  - La liste des activités d'une version d'avant est mise à jour au démarrage, après la lecture du dossier (`upgradeStoredActivities`) ; en version 4 (point 90), toute couleur qui n'est pas une nuance de sa famille, ou portée deux fois, est remplacée par la première nuance libre. Le fichier de l'appareil est alors récrit à la même date (`settingsUpgraded`) : ce n'est pas un changement de l'utilisateur.
 - **Emplacement** (`platform/memoryFolder.ts`) :
   - navigateur : la mémoire privée (OPFS) par défaut, ou un dossier choisi (Chrome, Edge : `showDirectoryPicker`, poignée dans IndexedDB, autorisation à redonner d'un clic), qui reçoit alors une copie des sessions de la mémoire privée. « Voir ou changer le dossier » est le seul moyen d'en voir le chemin ;
   - téléphone : `Documents/Tracker`, désigné par le sélecteur d'Android (SAF, plugin maison `MemoryFolder`), à redésigner si Android a retiré l'accès ou après une réinstallation ;
@@ -210,6 +212,7 @@ Tracker/
 | `tracker.runnerProfile` | `hooks/useRunnerProfile.ts` | `Record<'me', RunnerProfile>`. Voyage dans le fichier de l'appareil (`reglages/`) |
 | `tracker.settingsSavedAt` | `hooks/useSessionLibrary.ts` | instant du dernier vrai changement des deux clés qui voyagent, en ms |
 | `tracker.deviceId`, `tracker.deviceName` | `hooks/useSessionLibrary.ts` | identifiant tiré au hasard et nom de l'appareil, qui nomme son fichier de réglages (point 90) ; ne voyagent pas |
+| `tracker.seenSettingsFiles` | `hooks/useSessionLibrary.ts` | fichiers de réglages déjà vus (`settingsEntryKey` : appareil, sinon nom du fichier), pour ne proposer un nouveau qu'une fois ; ne voyage pas |
 | `tracker.memoryFolder` | `platform/memoryFolder.ts` | téléphone : `{ uri; base; label }` (`base` = `Tracker` si l'on a désigné son parent) |
 | `tracker.libraryCache` | `hooks/useSessionLibrary.ts` | `{ folder; entries: Record<fiche, { size; mtimeMs; record }> }`, reconstruit à volonté |
 | `tracker.intervalRun` | `hooks/useIntervalTimer.ts` | séance du compteur en cours (`IntervalRun` : séance, lancement, commandes datées), reprise si la page est fermée puis rouverte ; effacée à la fermeture du compteur (point 89) |
@@ -261,7 +264,7 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 
 ## 8. Tests
 
-Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 785 au 8 octobre 2026.
+Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 792 au 8 octobre 2026.
 
 Un calcul a son `*.test.ts` à côté de lui, sauf :
 - `core/sessionStats` et `core/speedGradient`, couverts par d'autres fichiers de test (`topSegments`, `runningAnalytics`, `sailingConfig`) ;

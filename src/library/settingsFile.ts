@@ -136,6 +136,52 @@ export const newestSettingsEntry = (entries: readonly SettingsEntry[]): Settings
 export const settingsEntryName = (entry: SettingsEntry): string =>
   entry.file.device?.name ?? entry.fileName.replace(/\.json$/i, '');
 
+/**
+ * Ce qui fait reconnaître un fichier d'un lancement à l'autre : l'identifiant
+ * de l'appareil qui l'a écrit, qui ne change pas quand il se renomme ; à
+ * défaut, le nom du fichier.
+ */
+export const settingsEntryKey = (entry: SettingsEntry): string =>
+  entry.file.device ? `appareil:${entry.file.device.id}` : `fichier:${entry.fileName.toLowerCase()}`;
+
+/**
+ * Fichiers d'autres appareils que celui-ci n'a jamais vus (`seen` : clés
+ * `settingsEntryKey` déjà vues), le plus récent en tête : chacun n'est
+ * proposé qu'une fois. Sans liste gardée (`null`), la première fois, aucun :
+ * les fichiers déjà là sont tenus pour vus.
+ */
+export const unseenSettingsEntries = (
+  entries: readonly SettingsEntry[],
+  seen: ReadonlySet<string> | null,
+  deviceId: string
+): SettingsEntry[] =>
+  seen === null
+    ? []
+    : entries
+      .filter((e) => e.file.device?.id !== deviceId && !seen.has(settingsEntryKey(e)))
+      .sort((a, b) => b.file.savedAt - a.file.savedAt);
+
+/**
+ * Nom sous lequel ranger dans `reglages/` un fichier choisi à la main
+ * (« Importer un fichier de réglages ») : celui du fichier du même appareil,
+ * qu'il remplace ; sinon tiré du nom de l'appareil (du nom du fichier choisi
+ * à défaut), suivi de 2, 3… s'il est déjà pris (`taken`, en minuscules).
+ */
+export const importedSettingsFileName = (
+  file: SettingsFile,
+  pickedName: string,
+  entries: readonly SettingsEntry[],
+  taken: ReadonlySet<string>
+): string => {
+  const sameDevice = file.device ? entries.find((e) => e.file.device?.id === file.device?.id) : undefined;
+  if (sameDevice) return sameDevice.fileName;
+  const base = deviceFileName(file.device?.name ?? pickedName.replace(/\.json$/i, '')).replace(/\.json$/, '');
+  if (!taken.has(`${base}.json`)) return `${base}.json`;
+  for (let n = 2; ; n++) {
+    if (!taken.has(`${base}-${n}.json`)) return `${base}-${n}.json`;
+  }
+};
+
 /** Nombre d'activités d'un fichier ; sans liste rangée, celles du premier lancement. */
 export const settingsActivityCount = (file: SettingsFile): number => {
   const sport = file.values['tracker.sportSettings'];

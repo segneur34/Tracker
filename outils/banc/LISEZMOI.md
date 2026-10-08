@@ -79,10 +79,12 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 - `reglages.mjs <port> [<dossier des captures>]` : un fichier de réglages par appareil (point 90), sur un profil neuf, sans réseau, dans la mémoire du navigateur. Il vérifie :
   - `reglages/pc.json` écrit au premier lancement ;
   - le passage depuis un ancien `reglages.json` plus récent : repris une dernière fois, puis retiré ;
-  - le fichier d'un autre appareil (« Léa », activités de la version 3) déposé dans `reglages/` : visible après « Mettre à jour », pas repris de lui-même ;
-  - « Reprendre » : activités recolorées dans les nuances de leur famille, seuil repris, choix retenus de l'appareil gardés ;
+  - le fichier d'un autre appareil (« Léa », activités de la version 3) déposé dans `reglages/` : visible après « Mettre à jour », pas repris de lui-même, proposé par le bandeau « Nouveau fichier de réglages » ;
+  - « Reprendre » du bandeau : activités recolorées dans les nuances de leur famille, seuil repris, choix retenus de l'appareil gardés ; plus de bandeau ensuite ;
   - le renommage de l'appareil, qui renomme son fichier, et le refus d'un nom déjà pris ;
-  - un autre appareil sous le nom de celui-ci : l'appareil prend un nom libre et le dit.
+  - un autre appareil sous le nom de celui-ci : l'appareil prend un nom libre et le dit ; le bandeau le propose, « Fermer » le retire pour de bon ;
+  - des activités de la version 3 au lancement : le fichier de l'appareil passe aux nouvelles couleurs sans changer de date ;
+  - « Importer un fichier de réglages » : un JSON quelconque et le fichier de l'appareil refusés ; celui d'une tablette rangé sous son nom, reprise refusée puis faite depuis la liste.
 - `sauts.mjs <port> [<dossier des captures>]` : sauts en voile et case « Foil » (point 91), sur un profil neuf, sans réseau. Le script fabrique dans la page une session de voile et ses capteurs (`.imu`, par l'encodeur de l'application). Il vérifie :
   - dans Réglages, « Foil » et « Sauts » sous « Taille du texte », leurs sous-options, relus après rechargement ;
   - l'import d'une session avec ses capteurs : `.imu` rangé à côté du GPX ;
