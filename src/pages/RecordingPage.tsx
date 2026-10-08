@@ -8,7 +8,7 @@ import IntervalCard from '../components/IntervalCard';
 import PageHeader from '../components/ui/PageHeader';
 import { IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
-import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
+import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
 import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatShortDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
@@ -82,9 +82,6 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
 );
 
 const STAT_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' } as const;
-
-/** Couleur de la trace sur la carte en direct, celle de la famille (donnée de carte, donc en dur). */
-const TRACK_COLOR: Record<SportFamily, string> = { voile: '#1565c0', course: '#bf360c', velo: '#00695c', fractionne: '#ad1457' };
 
 /** Nom d'une famille dans « Aucune activité … ». */
 const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'course', velo: 'vélo', fractionne: 'de fractionné' };
@@ -492,7 +489,7 @@ function RecordingPage() {
           segments={busy ? live.segments : []} position={busy ? getLastFix() : null} height="45vh"
           guide={guide.remaining} guideDone={guide.done} travel={travel}
           marks={mapMarks} validationRadiusM={markGuide.active ? markGuide.validationRadiusM : undefined}
-          color={TRACK_COLOR[liveActivity ? sportFamily(liveActivity.base) : 'voile']}
+          color={FAMILY_SHADES[liveActivity ? sportFamily(liveActivity.base) : 'voile'][0]}
           overlay={busy ? (
             <Button size="s" onClick={() => toggleShown('carte')} style={{ boxShadow: '0 1px 5px rgba(0, 0, 0, 0.25)' }}>
               Réduire la carte

@@ -151,7 +151,8 @@ Le principe est dans `CLAUDE.md` (Décisions, « Mémoire ») ; décidé aux poi
 ```
 Tracker/
   tracker.json      marqueur { format: "tracker-memoire", version: 1 }
-  reglages.json     réglages qui voyagent, datés
+  reglages/         un fichier de réglages par appareil, `<appareil>.json` (point 90) ;
+                    avant lui, un seul reglages.json à la racine
   LISEZMOI.txt      mode d'emploi, pour qui ouvre le dossier à la main
   itineraires/      une fiche .json (fait foi) et son .gpx par itinéraire (point 59) ; la fiche
                     d'un parcours de voile peut porter ses bips propres (`markGuide`, point 77),
@@ -182,9 +183,13 @@ Tracker/
   - un GPX déposé dans `sessions/` reçoit sa fiche au lancement suivant, ou à « Mettre à jour » (`refreshLibrary`, point 88), qui relit le dossier sans le refermer : sessions, itinéraires et réglages ;
   - un GPX posé à la racine est rangé dans `sessions/`, avec la fiche posée à côté de lui ;
   - le cache des fiches vit hors du dossier (`tracker.libraryCache`).
-- **Réglages qui voyagent** : `reglages.json` recopie `tracker.sportSettings` et `tracker.runnerProfile` deux secondes après chaque changement, daté par `tracker.settingsSavedAt`.
+- **Réglages, un fichier par appareil** (point 90, `library/settingsFile.ts`) : chaque appareil recopie `tracker.sportSettings` et `tracker.runnerProfile` dans `reglages/<son nom>.json` deux secondes après chaque changement, daté par `tracker.settingsSavedAt`, avec son nom et son identifiant (format version 2, `device`).
+  - L'appareil reconnaît son fichier à son identifiant (`tracker.deviceId`, tiré au hasard), pas à son nom : un fichier qui porte son nom avec un autre identifiant est celui d'un autre appareil, et il prend alors un nom libre (« Téléphone 2 »), qu'il annonce. Renommer l'appareil (`tracker.deviceName`, « Téléphone » ou « PC » par défaut) renomme son fichier ; un nom déjà pris est refusé.
+  - Il n'adopte jamais de lui-même les réglages d'un autre : « Reprendre », dans Réglages › Mémoire, remplace les siens par ceux du fichier choisi, sauf les choix retenus (`adoptedValues`), récrit son fichier et recharge la page. Seul un appareil neuf, sans réglage daté, reprend tout seul le fichier le plus récent, et le dit.
+  - Passage depuis l'ancien `reglages.json` : tant que l'appareil n'a pas de fichier à lui, la règle d'avant joue une dernière fois (le plus récent l'emporte, `chooseSettings`), puis `reglages.json` est retiré. `LISEZMOI.txt` est récrit s'il diffère.
   - L'empreinte qui repère un changement (`settingsSignature`, `library/settingsFile.ts`) ignore les choix retenus : activité du module, ancienne clé du support, activité proposée à l'enregistrement (point 65), dernière séance lancée au compteur (point 89).
-  - Des réglages repris du dossier après le démarrage rechargent la page, sauf pendant un enregistrement.
+  - Des réglages repris après le démarrage rechargent la page, sauf pendant un enregistrement.
+  - La liste des activités d'une version d'avant est mise à jour au démarrage, après la lecture du dossier (`upgradeStoredActivities`) ; en version 4 (point 90), toute couleur qui n'est pas une nuance de sa famille, ou portée deux fois, est remplacée par la première nuance libre.
 - **Emplacement** (`platform/memoryFolder.ts`) :
   - navigateur : la mémoire privée (OPFS) par défaut, ou un dossier choisi (Chrome, Edge : `showDirectoryPicker`, poignée dans IndexedDB, autorisation à redonner d'un clic), qui reçoit alors une copie des sessions de la mémoire privée. « Voir ou changer le dossier » est le seul moyen d'en voir le chemin ;
   - téléphone : `Documents/Tracker`, désigné par le sélecteur d'Android (SAF, plugin maison `MemoryFolder`), à redésigner si Android a retiré l'accès ou après une réinstallation ;
@@ -197,9 +202,10 @@ Tracker/
 
 | Clé | Fichier | Forme |
 |---|---|---|
-| `tracker.sportSettings` | `hooks/useSportSettings.ts` | `StoredSettings`, réécrit en entier à chaque changement (voir sous le tableau). Voyage dans `reglages.json` |
-| `tracker.runnerProfile` | `hooks/useRunnerProfile.ts` | `Record<'me', RunnerProfile>`. Voyage dans `reglages.json` |
+| `tracker.sportSettings` | `hooks/useSportSettings.ts` | `StoredSettings`, réécrit en entier à chaque changement (voir sous le tableau). Voyage dans le fichier de l'appareil (`reglages/`) |
+| `tracker.runnerProfile` | `hooks/useRunnerProfile.ts` | `Record<'me', RunnerProfile>`. Voyage dans le fichier de l'appareil (`reglages/`) |
 | `tracker.settingsSavedAt` | `hooks/useSessionLibrary.ts` | instant du dernier vrai changement des deux clés qui voyagent, en ms |
+| `tracker.deviceId`, `tracker.deviceName` | `hooks/useSessionLibrary.ts` | identifiant tiré au hasard et nom de l'appareil, qui nomme son fichier de réglages (point 90) ; ne voyagent pas |
 | `tracker.memoryFolder` | `platform/memoryFolder.ts` | téléphone : `{ uri; base; label }` (`base` = `Tracker` si l'on a désigné son parent) |
 | `tracker.libraryCache` | `hooks/useSessionLibrary.ts` | `{ folder; entries: Record<fiche, { size; mtimeMs; record }> }`, reconstruit à volonté |
 | `tracker.intervalRun` | `hooks/useIntervalTimer.ts` | séance du compteur en cours (`IntervalRun` : séance, lancement, commandes datées), reprise si la page est fermée puis rouverte ; effacée à la fermeture du compteur (point 89) |
@@ -249,7 +255,7 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 
 ## 8. Tests
 
-Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 727 au 8 octobre 2026.
+Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 747 au 8 octobre 2026.
 
 Un calcul a son `*.test.ts` à côté de lui, sauf :
 - `core/sessionStats` et `core/speedGradient`, couverts par d'autres fichiers de test (`topSegments`, `runningAnalytics`, `sailingConfig`) ;
@@ -305,6 +311,7 @@ Déplacé dans `docs/HISTORIQUE.md` le 23 septembre 2026, numérotation inchang�
   - zones cardiaques : `hr` est lu, FC max et FC de repos sont saisies, mais rien ne les utilise ;
   - tops, splits et allure par kilomètre (`topTargets: []` dans le profil) ;
   - notes de session, sur le modèle du brouillon de la voile.
+- **Mode daltonien** (point 90), voulu par l'utilisateur plus tard : rouge, orange et vert des familles ne se séparent que par leur clarté ; aujourd'hui, une famille va toujours avec son icône ou son nom.
 - **Valider les seuils par support** sur des sessions réelles de planche, kite, bateau, course et vélo. Valider aussi un enregistrement dense sur une planche rapide : la calibration récente s'est faite sur une trace lente et une trace de wingfoil.
 - **Coût du vent à 5 Hz** (point 23) : environ 0,5 s à chaque mouvement du seuil sur 3 h à 5 Hz, contre 28 ms à 1 Hz.
   - Cause : `analyzeManeuvers` refait la détection des virages pour chaque candidat de vent, alors que seule la classification en dépend.
@@ -340,7 +347,7 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
   - accueil (point 53) ;
   - enregistrement en direct et bords (points 50, 53, 62) ;
   - APK des testeurs et `docs/INSTALLATION.md` (points 55, 62).
-- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76), parcours et balises en voile avec bips d'approche (77), revêtement des itinéraires et des sessions (78), retouches du 03/10 : zones de pente sur la carte, réglages par activité, sport secondaire, onglets et activité en planification, légende sur la carte, vignettes, choix d'activité dessiné, icône de la course (79), types de voie cochés, rangés selon la nature de la voie (80), types de voie cochés d'office par activité et activités Route, Gravel, VTT (81), revêtement sur la carte (82), types de voie appliqués à tout l'itinéraire (83), altitude de l'IGN pour la course et le vélo (84), pentes sur la carte et puissance par zone de pente (85), mise en page commune des analyses sur ordinateur (86), mode « Boucle » en planification (87), roulement selon le revêtement, « Mettre à jour », activités par famille et session à classer demandée avant l'analyse (88), groupe Fractionné, compteur d'intervalles et analyse des répétitions (89 ; commité avant l'essai d'une vraie séance enregistrée par Tracker).
+- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76), parcours et balises en voile avec bips d'approche (77), revêtement des itinéraires et des sessions (78), retouches du 03/10 : zones de pente sur la carte, réglages par activité, sport secondaire, onglets et activité en planification, légende sur la carte, vignettes, choix d'activité dessiné, icône de la course (79), types de voie cochés, rangés selon la nature de la voie (80), types de voie cochés d'office par activité et activités Route, Gravel, VTT (81), revêtement sur la carte (82), types de voie appliqués à tout l'itinéraire (83), altitude de l'IGN pour la course et le vélo (84), pentes sur la carte et puissance par zone de pente (85), mise en page commune des analyses sur ordinateur (86), mode « Boucle » en planification (87), roulement selon le revêtement, « Mettre à jour », activités par famille et session à classer demandée avant l'analyse (88), groupe Fractionné, compteur d'intervalles et analyse des répétitions (89 ; commité avant l'essai d'une vraie séance enregistrée par Tracker), couleurs par famille et un fichier de réglages par appareil (90).
 - **Phase 2, interface mobile** : trois passes faites (points 47 à 49, 52, 56 à 58, 69 ; patron dans `docs/MISE_EN_PAGE.md`). Restent :
   - toucher au lieu du survol, dans les graphes ;
   - `preferCanvas` pour la carte, qui porte une `Polyline` par segment (10 800 pour 3 h à 1 Hz). Les regrouper par couleur toucherait à « pas de paliers » : à redemander ;

@@ -1,6 +1,7 @@
 // Banc de la bibliothèque, suite (à lancer après library.mjs, même profil Chrome) :
 // 1. une paire GPX + fiche exportée, la session supprimée, puis la paire réimportée : les notes reviennent ;
-// 2. reglages.json plus récent que l'appareil : ses réglages sont repris au lancement.
+// 2. le fichier de réglages d'un autre appareil, plus récent : il paraît dans Réglages › Mémoire, mais n'est
+//    pas repris de lui-même (§10, point 90 ; « Reprendre » est éprouvé par reglages.mjs).
 // Usage : node library2.mjs <port> <dossier de travail>
 import { writeFileSync } from 'node:fs';
 
@@ -61,15 +62,16 @@ console.log('après import :', await rows());
 const record = JSON.parse(await readOpfs(`sessions/${NAME}.json`));
 console.log('fiche réimportée : notes.foil =', record.notes?.foil, '| manœuvres =', record.summary.maneuverCount, '| source =', record.source);
 
-console.log('\n== 2. reglages.json plus récent que l\'appareil');
-const settings = JSON.parse(await readOpfs('reglages.json'));
+console.log('\n== 2. fichier d\'un autre appareil, plus récent');
+const settings = JSON.parse(await readOpfs('reglages/pc.json'));
 settings.savedAt = Date.now() + 60_000;
+settings.device = { id: 'autre-appareil', name: 'Téléphone' };
 settings.values['tracker.sportSettings'] = { ...settings.values['tracker.sportSettings'], thresholds: { wingfoil: 11 } };
-console.log('écriture :', await writeOpfs('reglages.json', JSON.stringify(settings)));
+console.log('écriture :', await writeOpfs('reglages/telephone.json', JSON.stringify(settings)));
 await go('/parametres', 3500);
-console.log('seuil wingfoil affiché :', await evaluate(`document.querySelector('table input[type=number]')?.value`));
+console.log('seuil wingfoil affiché (inchangé attendu) :', await evaluate(`document.querySelector('table input[type=number]')?.value`));
 console.log('stockage de l\'appareil :', await evaluate(`localStorage.getItem('tracker.sportSettings')`));
-console.log(await evaluate(`document.body.innerText.split('\\n').filter((l) => /Réglages (repris|de cet|identiques)/.test(l)).join(' | ')`));
+console.log(await evaluate(`document.body.innerText.split('\\n').filter((l) => /^(Téléphone|PC|cet appareil|Reprendre)$/.test(l)).join(' | ')`));
 
 console.log('\n--- console (erreurs, avertissements) ---');
 [...new Set(logs)].slice(0, 15).forEach((l) => console.log(l));

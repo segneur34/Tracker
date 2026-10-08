@@ -4,9 +4,13 @@
  * de DA : pages et composants ne lisent que ces variables.
  *
  * Point de départ : la maquette validée le 23 septembre 2026 (police
- * Figtree, fond gris chaud, cartes blanches, bleu voile, rouille course, vert
- * Enregistrer). Les couleurs voile et course ont été vérifiées pour le
- * daltonisme sur fond blanc.
+ * Figtree, fond gris chaud, cartes blanches, vert Enregistrer). Couleurs des
+ * familles validées le 8 octobre 2026 (§10, point 90) : bleu voile, rouge
+ * course, vert vélo, orange fractionné, gris réservé au surf. Chacune est la
+ * première nuance de sa famille (`FAMILY_SHADES` de `core/activities.ts`,
+ * égalité vérifiée par `palette.test.ts`) et porte du texte blanc : contraste
+ * d'au moins 4,5 sur blanc. Rouge, orange et vert ne se séparent que par leur
+ * clarté pour un daltonien : une famille va toujours avec son icône ou son nom.
  */
 
 :root {
@@ -31,14 +35,14 @@
   --on-accent: #ffffff;
 
   /* Familles et actions */
-  --voile: #1565c0;
-  --voile-soft: #e3edf9;
-  --course: #bf360c;
-  --course-soft: #fbe9e4;
-  --velo: #00695c;
-  --velo-soft: #e0f2ef;
-  --fractionne: #ad1457;
-  --fractionne-soft: #fbe6ef;
+  --voile: #1976d2;
+  --voile-soft: #e7f1fe;
+  --course: #d42a3c;
+  --course-soft: #feebea;
+  --velo: #1e7a3c;
+  --velo-soft: #e1f7e4;
+  --fractionne: #c25700;
+  --fractionne-soft: #feece3;
   --record: #2e7d32;
   --recording: #c62828;
 

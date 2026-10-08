@@ -1,20 +1,44 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_ACTIVITIES } from '../core/activities';
 import {
   SETTINGS_FORMAT,
   SETTINGS_VERSION,
+  adoptedValues,
   buildSettingsFile,
   chooseSettings,
+  cleanDeviceName,
+  deviceFileName,
+  freeDeviceName,
+  newestSettingsEntry,
+  ownSettingsEntry,
   parseSettingsFile,
   serializeSettingsFile,
+  settingsActivityCount,
+  settingsEntryName,
   settingsSignature,
+  type SettingsEntry,
 } from './settingsFile';
 
 const values = { 'tracker.sportSettings': { thresholds: { wingfoil: 9 } } };
 
 describe('parseSettingsFile', () => {
-  it('relit un fichier écrit', () => {
-    const file = buildSettingsFile(values, 1234);
+  it('relit un fichier écrit, avec son appareil', () => {
+    const file = buildSettingsFile(values, 1234, null, { id: 'abc', name: 'Téléphone' });
     expect(parseSettingsFile(serializeSettingsFile(file))).toEqual(file);
+    expect(file.version).toBe(2);
+  });
+
+  it("relit l'ancien reglages.json (version 1), sans appareil", () => {
+    const old = JSON.stringify({ format: SETTINGS_FORMAT, version: 1, savedAt: 5, values });
+    expect(parseSettingsFile(old)).toEqual({ format: SETTINGS_FORMAT, version: 1, savedAt: 5, device: null, values });
+  });
+
+  it('écarte un appareil abîmé, et nettoie son nom', () => {
+    const read = (device: unknown) => parseSettingsFile(JSON.stringify({ format: SETTINGS_FORMAT, version: 2, savedAt: 5, device, values }))?.device;
+    expect(read({ id: '', name: 'PC' })).toBeNull();
+    expect(read({ id: 'x', name: '   ' })).toBeNull();
+    expect(read('PC')).toBeNull();
+    expect(read({ id: 'x', name: '  PC   du   bureau ' })).toEqual({ id: 'x', name: 'PC du bureau' });
   });
 
   it('rend `null` pour un fichier absent, illisible ou d\'un autre format', () => {
@@ -27,7 +51,7 @@ describe('parseSettingsFile', () => {
 
 describe('buildSettingsFile', () => {
   it('garde les clés et la version d\'un fichier écrit par une version plus récente', () => {
-    const previous = { format: SETTINGS_FORMAT, version: SETTINGS_VERSION + 1, savedAt: 1, values: { 'tracker.futur': 1 } } as const;
+    const previous = { format: SETTINGS_FORMAT, version: SETTINGS_VERSION + 1, savedAt: 1, device: null, values: { 'tracker.futur': 1 } } as const;
     const file = buildSettingsFile(values, 2, previous);
     expect(file.values).toEqual({ 'tracker.futur': 1, ...values });
     expect(file.version).toBe(SETTINGS_VERSION + 1);
@@ -80,5 +104,76 @@ describe('settingsSignature', () => {
 
   it('tient un appareil sans réglage de support', () => {
     expect(settingsSignature({})).toBe('{}');
+  });
+});
+
+describe('appareils et noms de fichier', () => {
+  it("tire le nom du fichier du nom de l'appareil", () => {
+    expect(deviceFileName('Téléphone')).toBe('telephone.json');
+    expect(deviceFileName('PC')).toBe('pc.json');
+    expect(deviceFileName('Téléphone de Léa (bœuf)')).toBe('telephone-de-lea-boeuf.json');
+    expect(deviceFileName('!!!')).toBe('appareil.json');
+  });
+
+  it('nettoie un nom saisi', () => {
+    expect(cleanDeviceName('  Mon   PC ')).toBe('Mon PC');
+    expect(cleanDeviceName('x'.repeat(60))).toHaveLength(40);
+  });
+
+  it('donne un nom libre quand un autre appareil porte déjà le sien', () => {
+    expect(freeDeviceName('Téléphone', new Set(['pc.json']))).toBe('Téléphone');
+    expect(freeDeviceName('Téléphone', new Set(['telephone.json']))).toBe('Téléphone 2');
+    expect(freeDeviceName('Téléphone', new Set(['telephone.json', 'telephone-2.json']))).toBe('Téléphone 3');
+  });
+
+  const entry = (fileName: string, savedAt: number, device: { id: string; name: string } | null): SettingsEntry =>
+    ({ fileName, file: buildSettingsFile(values, savedAt, null, device) });
+  const phone = entry('telephone.json', 3000, { id: 'tel', name: 'Téléphone' });
+  const pc = entry('pc.json', 2000, { id: 'pc', name: 'PC' });
+  const friend = entry('lea.json', 4000, null);
+
+  it("retrouve le fichier de l'appareil à son identifiant, pas à son nom", () => {
+    expect(ownSettingsEntry([phone, pc, friend], 'pc')).toBe(pc);
+    const sameName = entry('telephone.json', 1000, { id: 'autre', name: 'Téléphone' });
+    expect(ownSettingsEntry([sameName], 'tel')).toBeNull();
+  });
+
+  it('désigne le plus récent, pour un appareil neuf', () => {
+    expect(newestSettingsEntry([phone, pc, friend])).toBe(friend);
+    expect(newestSettingsEntry([])).toBeNull();
+  });
+
+  it('nomme un fichier par son appareil, sinon par son nom de fichier', () => {
+    expect(settingsEntryName(phone)).toBe('Téléphone');
+    expect(settingsEntryName(friend)).toBe('lea');
+  });
+
+  it("compte les activités, celles du premier lancement sans liste rangée", () => {
+    expect(settingsActivityCount(phone.file)).toBe(DEFAULT_ACTIVITIES.length);
+    const two = buildSettingsFile({ 'tracker.sportSettings': { activities: DEFAULT_ACTIVITIES.slice(0, 2) } }, 1);
+    expect(settingsActivityCount(two)).toBe(2);
+  });
+});
+
+describe('adoptedValues', () => {
+  it("prend les réglages de l'autre appareil, mais garde les choix retenus de celui-ci", () => {
+    const theirs = {
+      'tracker.sportSettings': { thresholds: { wingfoil: 12 }, recordActivity: 'a-trail', moduleActivity: { voile: 'a-kite' }, intervalPresets: [1] },
+      'tracker.runnerProfile': { me: { weightKg: 80 } },
+    };
+    const mine = {
+      'tracker.sportSettings': { thresholds: { wingfoil: 9 }, recordActivity: 'wingfoil', lastIntervalWorkout: { reps: 4, workS: 60, restS: 60 } },
+    };
+    expect(adoptedValues(theirs, mine)).toEqual({
+      'tracker.sportSettings': {
+        thresholds: { wingfoil: 12 }, intervalPresets: [1], recordActivity: 'wingfoil', lastIntervalWorkout: { reps: 4, workS: 60, restS: 60 },
+      },
+      'tracker.runnerProfile': { me: { weightKg: 80 } },
+    });
+  });
+
+  it('rend tel quel un fichier sans réglage de support', () => {
+    const theirs = { 'tracker.runnerProfile': { me: { weightKg: 80 } } };
+    expect(adoptedValues(theirs, { 'tracker.sportSettings': { recordActivity: 'x' } })).toBe(theirs);
   });
 });

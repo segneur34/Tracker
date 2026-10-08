@@ -3,7 +3,9 @@
  *
  *     Tracker/
  *       tracker.json     marqueur, pour reconnaître le dossier
- *       reglages.json    réglages qui voyagent (`settingsFile.ts`)
+ *       reglages/        un fichier de réglages par appareil, `<appareil>.json`
+ *                        (`settingsFile.ts`) ; avant le point 90, un seul
+ *                        reglages.json à la racine
  *       LISEZMOI.txt     ce qu'est ce dossier, pour qui l'ouvre à la main
  *       sessions/        un GPX et sa fiche JSON par session (`record.ts`)
  *       itineraires/     une fiche JSON et son GPX par itinéraire planifié
@@ -13,6 +15,8 @@
 export const SESSIONS_DIR = 'sessions';
 export const ROUTES_DIR = 'itineraires';
 export const MARKER_FILE = 'tracker.json';
+export const SETTINGS_DIR = 'reglages';
+/** Ancien fichier unique des réglages, à la racine : relu une fois, puis retiré. */
 export const SETTINGS_FILE = 'reglages.json';
 export const README_FILE = 'LISEZMOI.txt';
 
@@ -21,6 +25,7 @@ export const MEMORY_VERSION = 1;
 
 export const sessionPath = (fileName: string): string => `${SESSIONS_DIR}/${fileName}`;
 export const routePath = (fileName: string): string => `${ROUTES_DIR}/${fileName}`;
+export const settingsPath = (fileName: string): string => `${SETTINGS_DIR}/${fileName}`;
 
 export const markerText = (): string =>
   `${JSON.stringify({ format: MEMORY_FORMAT, version: MEMORY_VERSION }, null, 2)}\n`;
@@ -38,7 +43,11 @@ export const readmeText = (): string =>
     '- itineraires/ : les itinéraires planifiés. La fiche .json fait foi (points de',
     '  passage, tracé) ; le GPX du même nom est à emporter dans une autre application',
     '  ou sur une montre.',
-    '- reglages.json : seuils, bornes de couleur et unités par support, profil du coureur.',
+    '- reglages/ : un fichier de réglages par appareil (telephone.json, pc.json…) :',
+    '  activités et leurs réglages, séances du compteur, barre du bas, profil du',
+    '  pratiquant. Chaque appareil écrit le sien. Pour reprendre ceux d\'un autre',
+    '  appareil, ou de quelqu\'un d\'autre : déposez son fichier ici, puis dans',
+    '  Réglages > Mémoire, « Mettre à jour » et « Reprendre ».',
     '- tracker.json : permet à l\'application de reconnaître ce dossier.',
     '',
     'Sauvegarder ou changer d\'appareil : copiez le dossier Tracker entier.',

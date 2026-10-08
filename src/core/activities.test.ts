@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BIKE_INTERVALS_ACTIVITY, DEFAULT_ACTIVITIES, GRAVEL_ACTIVITY, RUN_INTERVALS_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityCounts,
-  activityFamily, activityTreatment, baseActivity, findActivity, insertActivity, newActivityId, nextActivityColor, readActivities,
-  sessionActivity, upgradeActivities, type Activity,
+  BIKE_INTERVALS_ACTIVITY, DEFAULT_ACTIVITIES, FAMILY_SHADES, GRAVEL_ACTIVITY, RUN_INTERVALS_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily,
+  activityCounts, activityFamily, activityTreatment, baseActivity, findActivity, insertActivity, newActivityId, nextActivityColor,
+  readActivities, recolorActivities, sessionActivity, upgradeActivities, type Activity,
 } from './activities';
 
 const moth: Activity = { id: 'a-moth', name: 'Moth à foil', base: 'wingfoil', color: '#2e7d32' };
@@ -175,8 +175,48 @@ describe('newActivityId et nextActivityColor', () => {
     expect(newActivityId('!!!', [])).toBe('a-activite');
   });
 
-  it('propose une couleur libre', () => {
-    expect(nextActivityColor([voile])).not.toBe(voile.color);
+  it('propose la première nuance libre de la famille, puis les reprend dans l\'ordre', () => {
+    expect(nextActivityColor([voile], 'voile')).toBe(FAMILY_SHADES.voile[1]);
+    expect(nextActivityColor([voile], 'course')).toBe(FAMILY_SHADES.course[0]);
+    const six = FAMILY_SHADES.velo.map((color, i): Activity => ({ id: `v${i}`, name: `V${i}`, base: 'cycling', color }));
+    expect(nextActivityColor(six, 'velo')).toBe(FAMILY_SHADES.velo[0]);
+    expect(nextActivityColor([...six, { ...six[0], id: 'v6' }], 'velo')).toBe(FAMILY_SHADES.velo[1]);
+  });
+});
+
+describe('recolorActivities (version 4)', () => {
+  const [sail, run, route, gravel, vtt, pied, velo] = DEFAULT_ACTIVITIES;
+  const old = (a: Activity, color: string): Activity => ({ ...a, color });
+
+  it('donne à une liste d\'avant les nuances de chaque famille, dans l\'ordre de la liste', () => {
+    const before = [old(sail, '#1565c0'), old(moth, '#2e7d32'), old(run, '#bf360c'), old(route, '#00695c'), old(gravel, '#9e9d24'),
+      old(vtt, '#5d4037'), old(pied, '#ad1457'), old(velo, '#ef6c00')];
+    expect(recolorActivities(before).map((a) => a.color)).toEqual([
+      FAMILY_SHADES.voile[0], FAMILY_SHADES.voile[1], FAMILY_SHADES.course[0], FAMILY_SHADES.velo[0], FAMILY_SHADES.velo[1],
+      FAMILY_SHADES.velo[2], FAMILY_SHADES.fractionne[0], FAMILY_SHADES.fractionne[1],
+    ]);
+  });
+
+  it('garde une nuance déjà juste, et recolore un doublon ou la nuance d\'une autre famille', () => {
+    const kept = old(moth, FAMILY_SHADES.voile[0]);
+    const twin = old(sail, FAMILY_SHADES.voile[0]);
+    const foreign = old(trail, FAMILY_SHADES.voile[2]);
+    expect(recolorActivities([twin, kept, foreign]).map((a) => a.color)).toEqual([
+      FAMILY_SHADES.voile[0], FAMILY_SHADES.voile[1], FAMILY_SHADES.course[0],
+    ]);
+    // Une nuance juste plus bas dans la liste reste à son activité.
+    const later = old(moth, FAMILY_SHADES.voile[0]);
+    expect(recolorActivities([old(sail, '#123456'), later]).map((a) => a.color)).toEqual([FAMILY_SHADES.voile[1], FAMILY_SHADES.voile[0]]);
+  });
+
+  it('ne change rien à une liste déjà juste', () => {
+    expect(recolorActivities(DEFAULT_ACTIVITIES)).toEqual(DEFAULT_ACTIVITIES);
+  });
+
+  it('passe par upgradeActivities pour une liste de la version 3', () => {
+    expect(upgradeActivities([old(sail, '#1565c0'), old(run, '#bf360c')], 3).map((a) => a.color)).toEqual([
+      FAMILY_SHADES.voile[0], FAMILY_SHADES.course[0],
+    ]);
   });
 });
 

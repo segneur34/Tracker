@@ -1,0 +1,25 @@
+/* Nuances d'une famille, au choix pour la couleur d'une activité. */
+.shade-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.shade-picker__swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid var(--surface);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 0 1px var(--line-strong);
+  cursor: pointer;
+}
+
+.shade-picker__swatch[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+.shade-picker__swatch:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

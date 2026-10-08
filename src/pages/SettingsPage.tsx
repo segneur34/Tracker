@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from 'react';
-import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, nextActivityColor, type Activity } from '../core/activities';
+import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, nextActivityColor, type Activity } from '../core/activities';
 import {
   ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, sportFamily, sportTreatment,
   type SportFamily, type Treatment,
@@ -32,6 +32,7 @@ import { FAMILY_ICON } from '../components/familyIcons';
 import { IconChevronRight } from '../components/icons';
 import MemoryStatus from '../components/MemoryStatus';
 import PanelTitle from '../components/PanelTitle';
+import ShadePicker from '../components/ShadePicker';
 import WayTypeTabs from '../components/WayTypeTabs';
 import PageHeader from '../components/ui/PageHeader';
 import './settingsPage.css';
@@ -51,7 +52,7 @@ function WayTypesSetting({ view, treatment, onChange }: { view: SportSettingsVie
       <span className="settings-row__label">Types de voie</span>
       <div className="settings-sports__pair">
         <WayTypeTabs compact checked={view.wayTypes} onToggle={toggle} label={`Types de voie de ${view.activity.name}`}
-          style={{ '--tab-accent': view.activity.color } as CSSProperties} />
+          style={{ '--tab-accent': FAMILY_ACCENT[activityFamily(view.activity)] } as CSSProperties} />
         {!view.isWayTypesOverridden && (
           <span className="settings-sports__mark">{treatment === 'velo' ? 'selon le vélo' : 'selon le terrain'}</span>
         )}
@@ -265,13 +266,18 @@ function SettingsPage() {
                         </button>
                         {isOpen && (
                           <>
-                            <ActivityNameField key={activity.name} activity={activity} onRename={(name) => updateActivity(id, { name })} onColor={(color) => updateActivity(id, { color })} />
+                            <ActivityNameField key={activity.name} activity={activity} onRename={(name) => updateActivity(id, { name })} />
                             <span className="settings-sports__mark">{p.label}</span>
                           </>
                         )}
                       </div>
                       {isOpen && (
                         <div className="settings-activity__body">
+                          <div className="settings-row" title="Couleur de l'activité dans le graphe de l'accueil et les listes, parmi les nuances de sa famille">
+                            <span className="settings-row__label">Couleur</span>
+                            <ShadePicker shades={FAMILY_SHADES[family]} value={activity.color} onChange={(color) => updateActivity(id, { color })}
+                              label={`Couleur de ${activity.name}`} />
+                          </div>
                           <div className="settings-row">
                             <span className="settings-row__label">Unité de vitesse</span>
                             <select value={s.speedUnit} onChange={(e) => setFor(id, 'speedUnit', e.target.value as SpeedUnit)} className="ui-field ui-field--s">
@@ -663,16 +669,16 @@ function BikeSettings({ view, onBikeType, onBikeWeight }: {
 }
 
 /**
- * Nom et couleur d'une activité. Le nom s'enregistre en quittant le champ ou
- * sur Entrée ; vide, il revient au précédent. Le parent le remonte (clé :
- * le nom) quand le nom enregistré change, ce qui remet le brouillon à jour.
+ * Nom d'une activité, après sa pastille de couleur (choisie dans la ligne
+ * « Couleur »). Le nom s'enregistre en quittant le champ ou sur Entrée ;
+ * vide, il revient au précédent. Le parent le remonte (clé : le nom) quand le
+ * nom enregistré change, ce qui remet le brouillon à jour.
  */
 function ActivityNameField({
-  activity, onRename, onColor,
+  activity, onRename,
 }: {
   activity: Activity;
   onRename: (name: string) => void;
-  onColor: (color: string) => void;
 }) {
   const [draft, setDraft] = useState(activity.name);
   const commit = () => {
@@ -681,8 +687,7 @@ function ActivityNameField({
   };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-      <input type="color" value={activity.color} aria-label={`Couleur de ${activity.name}`}
-        onChange={(e) => onColor(e.target.value)} className="settings-sports__color" />
+      <span className="settings-activity__dot" style={{ backgroundColor: activity.color }} />
       <input value={draft} maxLength={40} aria-label="Nom de l'activité" className="ui-field ui-field--s"
         style={{ width: '120px', fontWeight: 600 }}
         onChange={(e) => setDraft(e.target.value)}
@@ -692,7 +697,7 @@ function ActivityNameField({
   );
 }
 
-/** Ajout d'une activité : nom, famille, calcul (en voile et en fractionné), couleur. */
+/** Ajout d'une activité : nom, famille, calcul (en voile et en fractionné), nuance de la famille. */
 function AddActivityForm({
   activities, onAdd,
 }: {
@@ -702,15 +707,16 @@ function AddActivityForm({
   const [name, setName] = useState('');
   const [family, setFamily] = useState<SportFamily>('voile');
   const [base, setBase] = useState<SportType>(familySports('voile')[0]);
-  const [color, setColor] = useState(() => nextActivityColor(activities));
+  const [color, setColor] = useState(() => nextActivityColor(activities, 'voile'));
   const pickFamily = (next: SportFamily) => {
     setFamily(next);
     setBase(familySports(next)[0]);
+    setColor(nextActivityColor(activities, next));
   };
   const submit = () => {
     if (onAdd(name, base, color) === null) return;
     setName('');
-    setColor(nextActivityColor([...activities, { id: '', name, base, color }]));
+    setColor(nextActivityColor([...activities, { id: '', name, base, color }], family));
   };
   return (
     <div className="settings-add">
@@ -730,7 +736,7 @@ function AddActivityForm({
           </select>
         </label>
       )}
-      <input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="Couleur" className="settings-sports__color" />
+      <ShadePicker shades={FAMILY_SHADES[family]} value={color} onChange={setColor} label="Couleur de la nouvelle activité" />
       <button onClick={submit} disabled={name.trim() === ''} className="ui-btn ui-btn--secondary ui-btn--s">Ajouter</button>
     </div>
   );

@@ -11,14 +11,15 @@ import { isNativeApp } from '../platform/runtime';
 import ImportButtons from './ImportButtons';
 import PanelTitle from './PanelTitle';
 import RefreshLibraryButton from './RefreshLibraryButton';
+import SettingsFiles from './SettingsFiles';
 import Button from './ui/Button';
 import Card from './ui/Card';
 
 /**
  * État de la mémoire : où elle est, combien de sessions, ce qu'il faut faire
  * si elle est inaccessible. En tête des bibliothèques en version courte, dans
- * Réglages en version détaillée (changer de dossier, réglages, mode d'emploi
- * du copier-coller). Avec `collapse`, la carte se replie par son titre et ne
+ * Réglages en version détaillée (changer de dossier, fichiers de réglages
+ * par appareil par `SettingsFiles`, mode d'emploi du copier-coller). Avec `collapse`, la carte se replie par son titre et ne
  * garde, fermée, que sa ligne d'état et ses alertes.
  *
  * Dans Réglages, « Mettre à jour » (`RefreshLibraryButton`) et « Ajouter les
@@ -28,9 +29,6 @@ import Card from './ui/Card';
  */
 
 const plural = (n: number, word: string): string => `${n} ${word}${n > 1 ? 's' : ''}`;
-
-const formatDateTime = (ms: number): string =>
-  new Date(ms).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 const mutedStyle = { margin: 0, color: 'var(--muted)', fontSize: 'var(--text-s)', lineHeight: 1.5 } as const;
 const rowStyle = { display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' } as const;
@@ -187,21 +185,12 @@ function MemoryStatus({
           </p>
         )}
 
-        {detailed && status === 'ready' && library.settingsSource && (
-          <p style={mutedStyle}>
-            {library.settingsSource === 'folder'
-              ? 'Réglages repris du fichier reglages.json du dossier'
-              : library.settingsSource === 'local'
-                ? 'Réglages de cet appareil, recopiés dans reglages.json'
-                : 'Réglages identiques sur cet appareil et dans le dossier'}
-            {library.settingsSavedAt !== null && ` (modifiés le ${formatDateTime(library.settingsSavedAt)})`}.
-          </p>
-        )}
+        {detailed && status === 'ready' && <SettingsFiles />}
 
         {detailed && (
           <p style={mutedStyle}>
-            Le dossier contient chaque session (sa trace GPX et une fiche avec son résumé et vos notes) et vos
-            réglages. Pour sauvegarder, ou pour passer d'un appareil à l'autre, copiez le dossier Tracker entier.
+            Le dossier contient chaque session (sa trace GPX et une fiche avec son résumé et vos notes) et un fichier de
+            réglages par appareil. Pour sauvegarder, ou pour passer d'un appareil à l'autre, copiez le dossier Tracker entier.
             {native
               ? ' Sur ce téléphone, il se trouve dans Stockage interne › Documents › Tracker.'
               : ' Sur le téléphone, il se trouve dans Stockage interne › Documents › Tracker : copiez-le sur le PC par câble USB, puis choisissez-le ici.'}

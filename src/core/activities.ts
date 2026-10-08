@@ -24,28 +24,39 @@ export interface Activity {
   color: string;
 }
 
-/** Couleur de chaque calcul, pour ses activités de base et comme première proposition. */
-export const BASE_COLOR: Record<SportType, string> = {
-  wingfoil: '#1565c0',
-  windsurf: '#00838f',
-  kite: '#6a1b9a',
-  bateau: '#283593',
-  running: '#bf360c',
-  cycling: '#00695c',
-  'run-intervals': '#ad1457',
-  'bike-intervals': '#ef6c00',
+/**
+ * Nuances de chaque famille (§10, point 90) : la première est la couleur de la
+ * famille (`--voile`, `--course`… de `theme/tokens.css`, qui porte du texte
+ * blanc, contraste d'au moins 4,5 sur blanc) ; les suivantes, d'un contraste
+ * d'au moins 3, vont aux activités dans cet ordre (`nextActivityColor`).
+ * Toutes distinctes, d'une famille à l'autre comprises (`palette.test.ts`).
+ * Rouge, orange et vert ne se séparent que par leur clarté pour un daltonien :
+ * une famille ne se montre jamais par sa seule couleur.
+ */
+export const FAMILY_SHADES: Record<SportFamily, readonly string[]> = {
+  voile: ['#1976d2', '#014e86', '#5b87f2', '#4458c2', '#192f94', '#0c92ce'],
+  course: ['#d42a3c', '#970029', '#f0504a', '#b9045d', '#6e1020', '#d6336c'],
+  velo: ['#1e7a3c', '#015215', '#0a9469', '#6f9a3a', '#056245', '#2e9d2a'],
+  fractionne: ['#c25700', '#873e04', '#dc7810', '#9f6c00', '#5f3104', '#b8860b'],
 };
 
-/** Couleurs proposées aux nouvelles activités, dans l'ordre. */
-export const ACTIVITY_COLORS = [
-  '#1565c0', '#bf360c', '#2e7d32', '#6a1b9a', '#00838f', '#ef6c00', '#ad1457', '#5d4037', '#283593', '#9e9d24',
-];
+/** Couleur de chaque calcul, pour ses activités de base : une nuance de sa famille. */
+export const BASE_COLOR: Record<SportType, string> = {
+  wingfoil: FAMILY_SHADES.voile[0],
+  windsurf: FAMILY_SHADES.voile[5],
+  kite: FAMILY_SHADES.voile[3],
+  bateau: FAMILY_SHADES.voile[1],
+  running: FAMILY_SHADES.course[0],
+  cycling: FAMILY_SHADES.velo[0],
+  'run-intervals': FAMILY_SHADES.fractionne[0],
+  'bike-intervals': FAMILY_SHADES.fractionne[1],
+};
 
 /** Activité vélo de départ, sur l'identifiant du calcul ; appelée « Vélo » avant le point 81. */
 const ROUTE_ACTIVITY: Activity = { id: 'cycling', name: 'Route', base: 'cycling', color: BASE_COLOR.cycling };
 /** Activités vélo de départ à côté de Route (§10, point 81) ; leur type de vélo par défaut suit (`useSportSettings.ts`). */
-export const GRAVEL_ACTIVITY: Activity = { id: 'a-gravel', name: 'Gravel', base: 'cycling', color: '#9e9d24' };
-export const VTT_ACTIVITY: Activity = { id: 'a-vtt', name: 'VTT', base: 'cycling', color: '#5d4037' };
+export const GRAVEL_ACTIVITY: Activity = { id: 'a-gravel', name: 'Gravel', base: 'cycling', color: FAMILY_SHADES.velo[1] };
+export const VTT_ACTIVITY: Activity = { id: 'a-vtt', name: 'VTT', base: 'cycling', color: FAMILY_SHADES.velo[2] };
 /** Activités de la famille Fractionné (§10, point 89), sur l'identifiant de leur calcul. */
 export const RUN_INTERVALS_ACTIVITY: Activity = {
   id: 'run-intervals', name: 'Fractionné à pied', base: 'run-intervals', color: BASE_COLOR['run-intervals'],
@@ -72,11 +83,12 @@ export const DEFAULT_ACTIVITIES: Activity[] = [
 /**
  * Version de la liste des activités rangée dans les réglages. 2 : Route,
  * Gravel et VTT dans la famille Vélo (point 81) ; 3 : les deux activités du
- * fractionné (point 89). Une liste d'avant est mise à jour une fois
+ * fractionné (point 89) ; 4 : couleurs prises dans les nuances de la famille
+ * (point 90). Une liste d'avant est mise à jour une fois
  * (`upgradeActivities`) ; toute liste écrite ensuite porte ce numéro, pour
  * qu'une activité supprimée ne revienne pas.
  */
-export const ACTIVITIES_VERSION = 3;
+export const ACTIVITIES_VERSION = 4;
 
 /** Activités ajoutées à une liste d'avant, avec la version de la liste qui les a apportées. */
 const ACTIVITY_SEEDS: { version: number; activity: Activity }[] = [
@@ -183,10 +195,13 @@ export const sessionActivity = (
  *   devient « Route » (même identifiant, donc mêmes sessions et mêmes
  *   réglages) ; Gravel et VTT s'ajoutent.
  * - Version 3 : les deux activités du fractionné.
+ * - Version 4 : chaque activité dont la couleur n'est pas une nuance de sa
+ *   famille, ou en porte une déjà prise plus haut dans la liste, reçoit la
+ *   première nuance libre de sa famille (`recolorActivities`).
  *
  * Une activité ajoutée se range avec sa famille, sauf si une autre porte déjà
  * son identifiant, ou son nom dans la même famille ; sa couleur, si une autre
- * la porte déjà, est la première libre.
+ * la porte déjà, est la première nuance libre.
  */
 export const upgradeActivities = (activities: Activity[], fromVersion: number): Activity[] => {
   const sameName = (a: string, b: string) => a.toLocaleLowerCase('fr') === b.toLocaleLowerCase('fr');
@@ -197,10 +212,34 @@ export const upgradeActivities = (activities: Activity[], fromVersion: number): 
     if (version <= fromVersion) continue;
     const family = activityFamily(seed);
     if (list.some((a) => a.id === seed.id || (activityFamily(a) === family && sameName(a.name, seed.name)))) continue;
-    const color = list.some((a) => a.color.toLowerCase() === seed.color) ? nextActivityColor(list) : seed.color;
+    const color = list.some((a) => a.color.toLowerCase() === seed.color) ? nextActivityColor(list, family) : seed.color;
     list = insertActivity(list, { ...seed, color });
   }
-  return list;
+  return fromVersion >= 4 ? list : recolorActivities(list);
+};
+
+/**
+ * Liste où chaque activité porte une nuance de sa famille, distincte des
+ * autres. Une nuance déjà juste est gardée, la première fois qu'elle paraît ;
+ * les autres activités reçoivent, dans l'ordre de la liste, la première
+ * nuance libre : sur une liste d'avant le point 90, la première activité de
+ * chaque famille prend donc la couleur de la famille.
+ */
+export const recolorActivities = (activities: Activity[]): Activity[] => {
+  const kept = new Set<string>();
+  const keeps = activities.map((a) => {
+    const color = a.color.toLowerCase();
+    const ok = FAMILY_SHADES[activityFamily(a)].includes(color) && !kept.has(color);
+    if (ok) kept.add(color);
+    return ok;
+  });
+  const list = activities.filter((_, i) => keeps[i]);
+  return activities.map((a, i) => {
+    if (keeps[i]) return a;
+    const recolored = { ...a, color: nextActivityColor(list, activityFamily(a)) };
+    list.push(recolored);
+    return recolored;
+  });
 };
 
 /**
@@ -238,10 +277,15 @@ export const newActivityId = (name: string, existing: Activity[]): string => {
   return id;
 };
 
-/** Première couleur de la palette qu'aucune activité n'utilise encore. */
-export const nextActivityColor = (activities: Activity[]): string => {
+/**
+ * Couleur d'une nouvelle activité de la famille : la première de ses nuances
+ * qu'aucune activité ne porte encore ; les six prises, elles reviennent dans
+ * l'ordre.
+ */
+export const nextActivityColor = (activities: Activity[], family: SportFamily): string => {
+  const shades = FAMILY_SHADES[family];
   const used = new Set(activities.map((a) => a.color.toLowerCase()));
-  return ACTIVITY_COLORS.find((c) => !used.has(c)) ?? ACTIVITY_COLORS[activities.length % ACTIVITY_COLORS.length];
+  return shades.find((c) => !used.has(c)) ?? shades[activitiesOfFamily(activities, family).length % shades.length];
 };
 
 export interface ActivityCount {

@@ -143,17 +143,6 @@
   }
 }
 
-/* Pastille de couleur d'une activité (sélecteur natif). */
-.settings-sports__color {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-s);
-  background: none;
-  cursor: pointer;
-}
-
 /* Ajout d'une activité, sous la liste. */
 .settings-add {
   display: flex;

@@ -1,5 +1,5 @@
 // Banc de la bibliothèque (lot 3a) : mémoire du navigateur (OPFS), enregistrement rangé, notes dans la fiche,
-// import, doublon, à classer, suppression, relance, reglages.json. Profil Chrome neuf : OPFS vide au départ.
+// import, doublon, à classer, suppression, relance, fichier de réglages de l'appareil. Profil Chrome neuf : OPFS vide au départ.
 // Usage : node library.mjs <port> <dossier des GPX : voile.gpx, course.gpx, sans-type.gpx> <dossier des captures>
 import { writeFileSync } from 'node:fs';
 
@@ -112,13 +112,13 @@ console.log('Confirmer :', await clickText('Confirmer'));
 await wait(1500);
 console.log('lignes course :', await rows(), '|', await lines(/Aucune session/));
 
-step('7. Réglages : seuil changé, reglages.json');
+step('7. Réglages : seuil changé, fichier de l\'appareil (reglages/pc.json)');
 await go('/parametres');
 await evaluate(`(() => { const i = document.querySelector('table input[type=number]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, '9.5'); i.dispatchEvent(new Event('input', { bubbles: true })); return i.value; })()`);
 await wait(3000);
-const settings = JSON.parse(await readOpfs('reglages.json'));
-console.log('reglages.json :', JSON.stringify(settings.values['tracker.sportSettings']?.thresholds), '| savedAt', new Date(settings.savedAt).toISOString());
-console.log(await lines(/Réglages de cet appareil|Réglages repris|identiques/));
+const settings = JSON.parse(await readOpfs('reglages/pc.json'));
+console.log('reglages/pc.json :', JSON.stringify(settings.values['tracker.sportSettings']?.thresholds), '| appareil', settings.device?.name, '| savedAt', new Date(settings.savedAt).toISOString());
+console.log(await lines(/cet appareil|Nom de cet appareil/));
 await shot('reglages-desktop', 1400, 1000, false);
 await shot('reglages-mobile', 390, 844, true);
 
