@@ -26,6 +26,8 @@ import {
   isGpxFileName,
   isSummaryStale,
   isWritableRecord,
+  lightRecord,
+  mergeLightRecord,
   parseRecord,
   recordFileName,
   serializeRecord,
@@ -68,6 +70,7 @@ import {
   pendingFolder,
   pickFolderToImport,
   reconnectMemoryFolder,
+  type FolderEntry,
   type MemoryFolder,
   type MemoryKind,
 } from '../platform/memoryFolder';
@@ -90,7 +93,10 @@ import { isKnownTerrain, readStoredActivities, readStoredSettings } from './useS
  * 2. les réglages sont rapprochés de `reglages.json`, le plus récent
  *    l'emporte ;
  * 3. `sessions/` est lu en une fois et rapproché du cache des fiches :
- *    seules les fiches qui ont changé sont relues, et la liste s'affiche ;
+ *    seules les fiches qui ont changé sont relues, et la liste s'affiche. Le
+ *    cache ne garde que des fiches allégées (`lightRecord`) : une session qui
+ *    en vient est `partial`, et sa fiche est relue en entier avant d'être
+ *    écrite ou ouverte dans une analyse (`hydrateSession`) ;
  * 4. en tâche de fond, chaque GPX sans fiche en reçoit une, et chaque fiche
  *    dont le résumé est périmé est recalculée, notes intactes.
  *
@@ -189,6 +195,19 @@ const subscribe = (listener: () => void) => {
 const errorMessage = (err: unknown, fallback: string): string =>
   err instanceof Error && err.message ? err.message : fallback;
 
+/** Phrase terminée par un point, pour en mettre plusieurs à la suite. */
+const sentence = (text: string): string => (/[.!?…]$/.test(text) ? text : `${text}.`);
+
+/**
+ * Ajoute une erreur à celles déjà affichées, sans la répéter : plusieurs
+ * peuvent survenir à l'ouverture d'un dossier sans que l'une cache l'autre.
+ */
+const reportError = (text: string): void => {
+  const message = sentence(text);
+  if (state.error?.includes(message)) return;
+  setState({ error: state.error ? `${sentence(state.error)} ${message}` : message });
+};
+
 /** Laisse l'interface respirer entre deux traces lourdes. */
 const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -223,30 +242,76 @@ const CACHE_KEY = 'tracker.libraryCache';
 
 interface StoredCache {
   folder: string;
+  /**
+   * Fiches allégées (`lightRecord`) : sans altitude du terrain, voies ni
+   * sauts, relus sur le disque quand on en a besoin. Absent d'un cache d'avant,
+   * dont les fiches sont entières.
+   */
+  light?: boolean;
   entries: LibraryCache;
 }
 
 const folderId = (f: MemoryFolder): string => `${f.kind}:${f.label}`;
 
-const readCache = (f: MemoryFolder): LibraryCache => {
+const readCache = (f: MemoryFolder): { entries: LibraryCache; light: boolean } => {
   const cache = jsonStore.read<StoredCache>(CACHE_KEY);
-  return cache && cache.folder === folderId(f) && cache.entries ? cache.entries : {};
+  return cache && cache.folder === folderId(f) && cache.entries
+    ? { entries: cache.entries, light: cache.light === true }
+    : { entries: {}, light: false };
 };
 
-/** Cache reconstruit d'après le contenu réel de `sessions/` et les fiches connues. */
+/** Cache reconstruit d'après le contenu réel de `sessions/` et les fiches connues, allégées. */
 const refreshCache = async (f: MemoryFolder, gen: number): Promise<void> => {
   const entries = await f.list(SESSIONS_DIR);
   if (gen !== generation) return;
   const byName = new Map(entries.map((e) => [e.name, e]));
   const next: LibraryCache = {};
   for (const session of all) {
-    // Une fiche en attente d'écriture diffère encore du fichier : elle sera relue au prochain lancement.
-    if (session.readOnly || recordTimers.has(session.file)) continue;
+    // Une fiche en attente ou en cours d'écriture diffère encore du fichier : elle sera relue au prochain lancement.
+    if (session.readOnly || recordTimers.has(session.file) || writing.has(session.file)) continue;
     const name = recordFileName(session.file);
     const entry = byName.get(name);
-    if (entry) next[name] = { size: entry.size, mtimeMs: entry.mtimeMs, record: session.record };
+    if (entry) next[name] = { size: entry.size, mtimeMs: entry.mtimeMs, record: lightRecord(session.record) };
   }
-  jsonStore.write(CACHE_KEY, { folder: folderId(f), entries: next } satisfies StoredCache);
+  jsonStore.write(CACHE_KEY, { folder: folderId(f), light: true, entries: next } satisfies StoredCache);
+};
+
+const FUTURE_RECORD_WARNING = 'Fiche écrite par une version plus récente de Tracker : lue sans être modifiée.';
+const UNREADABLE_RECORD_WARNING = 'Fiche illisible, laissée telle quelle : le résumé affiché est recalculé.';
+const DAMAGED_RECORD_WARNING = 'Fiche devenue illisible, laissée telle quelle : les changements ne sont plus enregistrés.';
+
+/** Relectures en cours, une seule par session. */
+const hydrating = new Map<string, Promise<void>>();
+
+/**
+ * Relit en entier la fiche d'une session tirée du cache allégé (`partial`),
+ * et la fond dans la session telle qu'elle est après la lecture : une saisie
+ * faite pendant ce temps est gardée (`mergeLightRecord`). Une fiche absente
+ * laisse la mémoire telle quelle, qui est alors tout ce qu'on a ; une fiche
+ * illisible ou d'une version future met la session en lecture seule. Une
+ * erreur de lecture remonte, et la session reste partielle : rien ne doit
+ * alors être écrit.
+ */
+const hydrateSession = (f: MemoryFolder, file: string): Promise<void> => {
+  if (!findSession(file)?.partial) return Promise.resolve();
+  let pending = hydrating.get(file);
+  if (!pending) {
+    pending = (async () => {
+      const text = await f.readText(sessionPath(recordFileName(file)));
+      const current = findSession(file);
+      if (!current?.partial || folder !== f) return;
+      const disk = text === null ? null : parseRecord(text);
+      if (text !== null && !disk) {
+        replaceSession({ ...current, partial: false, readOnly: true, warning: DAMAGED_RECORD_WARNING });
+      } else if (disk && !isWritableRecord(disk)) {
+        replaceSession({ ...current, record: { ...disk, gpx: file }, partial: false, readOnly: true, warning: FUTURE_RECORD_WARNING });
+      } else {
+        replaceSession({ ...current, record: disk ? mergeLightRecord(disk, current.record) : current.record, partial: false });
+      }
+    })().finally(() => hydrating.delete(file));
+    hydrating.set(file, pending);
+  }
+  return pending;
 };
 
 // --- Résumés ---
@@ -336,15 +401,41 @@ const withSummary = (record: SessionRecord, summary: SessionSummary): SessionRec
 
 const RECORD_WRITE_DELAY_MS = 800;
 const recordTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Écritures en cours, par fiche. */
+const writing = new Map<string, number>();
 
-const writeRecordNow = async (file: string): Promise<void> => {
+/**
+ * Saisies, numérotées dans l'ordre : `lastEdit` garde le numéro de la
+ * dernière de chaque fiche. Une relecture du dossier (« Mettre à jour ») garde
+ * la version en mémoire d'une fiche saisie pendant qu'elle lisait le disque.
+ */
+let editCount = 0;
+const lastEdit = new Map<string, number>();
+
+/**
+ * Écrit la fiche telle qu'elle est en mémoire. Une fiche allégée est d'abord
+ * relue en entier : on n'écrit jamais une fiche privée de son altitude, de
+ * ses voies ou de ses sauts. Rend vrai si la fiche est écrite ; un échec est
+ * dit en clair.
+ */
+const writeRecordNow = async (file: string): Promise<boolean> => {
   recordTimers.delete(file);
-  const session = findSession(file);
-  if (!session || session.readOnly || !folder) return;
+  const f = folder;
+  if (!f || !findSession(file)) return false;
+  writing.set(file, (writing.get(file) ?? 0) + 1);
   try {
-    await folder.writeText(sessionPath(recordFileName(file)), serializeRecord(session.record));
+    await hydrateSession(f, file);
+    const session = findSession(file);
+    if (!session || session.readOnly || session.partial || folder !== f) return false;
+    await f.writeText(sessionPath(recordFileName(file)), serializeRecord(session.record));
+    return true;
   } catch (err) {
-    setState({ error: `Fiche non enregistrée : ${errorMessage(err, 'erreur inconnue')}` });
+    reportError(`Fiche de ${file} non enregistrée : ${errorMessage(err, 'erreur inconnue')}`);
+    return false;
+  } finally {
+    const left = (writing.get(file) ?? 1) - 1;
+    if (left > 0) writing.set(file, left);
+    else writing.delete(file);
   }
 };
 
@@ -591,6 +682,16 @@ const syncSettings = async (f: MemoryFolder): Promise<boolean> => {
   return changed;
 };
 
+/** `syncSettings`, dont l'échec est dit sans empêcher d'ouvrir ni de relire le dossier. */
+const syncSettingsSafely = async (f: MemoryFolder): Promise<boolean> => {
+  try {
+    return await syncSettings(f);
+  } catch (err) {
+    reportError(`Réglages du dossier non relus : ${errorMessage(err, 'erreur inconnue')}`);
+    return false;
+  }
+};
+
 /**
  * Reprend le fichier de réglages d'un autre appareil (Réglages › Mémoire) :
  * ses activités et leurs réglages, profil, séances du compteur et barre du
@@ -693,75 +794,159 @@ const ensureLayout = async (f: MemoryFolder): Promise<void> => {
 
 interface SummaryJob {
   file: string;
-  /** Fiche dont seul le résumé est à refaire ; `null` pour une fiche à créer. */
-  previous: SessionRecord | null;
+  /**
+   * `create` : fiche à créer ; `refresh` : fiche existante dont seul le résumé
+   * est à refaire, d'après la session telle qu'elle est au moment du calcul.
+   */
+  kind: 'create' | 'refresh';
   /** Vrai si la fiche existante ne doit pas être réécrite. */
   readOnly: boolean;
   warning: string | null;
 }
 
-const FUTURE_RECORD_WARNING = 'Fiche écrite par une version plus récente de Tracker : lue sans être modifiée.';
-const UNREADABLE_RECORD_WARNING = 'Fiche illisible, laissée telle quelle : le résumé affiché est recalculé.';
+/**
+ * Version en mémoire d'une session relue, quand elle doit l'emporter sur celle
+ * du disque ou du cache : saisie pendant la relecture (après `editsBefore`),
+ * ou déjà relue en entier alors que le cache n'en donne que la fiche allégée
+ * d'un fichier inchangé. Sans cela, « Mettre à jour » perdrait une saisie, ou
+ * rendrait partielle la session d'une analyse ouverte.
+ */
+const keptInMemory = (read: LibrarySession, editsBefore: number): LibrarySession | undefined => {
+  const current = findSession(read.file);
+  if (!current) return undefined;
+  if ((lastEdit.get(read.file) ?? 0) > editsBefore) return current;
+  return read.partial && !current.partial ? current : undefined;
+};
 
 /**
  * Lit `sessions/` et publie la liste. Rend les fiches à créer ou à
  * recalculer, que `completeScan` traite ensuite en tâche de fond.
+ * `editsBefore` : numéro de la dernière saisie avant la relecture.
  */
-const scan = async (f: MemoryFolder, gen: number): Promise<SummaryJob[]> => {
+const scan = async (f: MemoryFolder, gen: number, editsBefore = editCount): Promise<SummaryJob[]> => {
   let entries = await f.list(SESSIONS_DIR);
   const rootEntries = await f.list('');
   const cache = readCache(f);
-  let plan = planReconcile(entries, rootEntries, cache);
+  let plan = planReconcile(entries, rootEntries, cache.entries);
 
   // Un GPX posé à la racine du dossier est rangé dans `sessions/`, avec la fiche posée à côté de lui.
   if (plan.rootGpx.length > 0) {
     const taken = new Set(entries.map((e) => e.name));
     for (const name of plan.rootGpx) {
-      const text = await f.readText(name);
-      if (text === null) continue;
-      const target = uniqueSessionFileName(name, taken);
-      const recordName = plan.rootRecords[name];
-      const recordText = recordName ? await f.readText(recordName) : null;
-      const motion = rootEntries.some((e) => e.name === imuFileName(name)) ? await f.readBytes(imuFileName(name)) : null;
-      await f.writeText(sessionPath(target), text);
-      if (recordName && recordText !== null) {
-        await f.writeText(sessionPath(recordFileName(target)), recordText);
-        await f.remove(recordName);
+      try {
+        const text = await f.readText(name);
+        if (text === null) continue;
+        const target = uniqueSessionFileName(name, taken);
+        const recordName = plan.rootRecords[name];
+        const recordText = recordName ? await f.readText(recordName) : null;
+        const motion = rootEntries.some((e) => e.name === imuFileName(name)) ? await f.readBytes(imuFileName(name)) : null;
+        await f.writeText(sessionPath(target), text);
+        taken.add(target);
+        if (recordName && recordText !== null) {
+          await f.writeText(sessionPath(recordFileName(target)), recordText);
+          await f.remove(recordName);
+        }
+        if (motion) {
+          await f.writeBytes(sessionPath(imuFileName(target)), motion);
+          await f.remove(imuFileName(name));
+        }
+        await f.remove(name);
+      } catch (err) {
+        reportError(`${name} n'a pas pu être rangé dans sessions/ : ${errorMessage(err, 'erreur inconnue')}`);
       }
-      if (motion) {
-        await f.writeBytes(sessionPath(imuFileName(target)), motion);
-        await f.remove(imuFileName(name));
-      }
-      await f.remove(name);
-      taken.add(target);
     }
     entries = await f.list(SESSIONS_DIR);
-    plan = planReconcile(entries, [], cache);
+    plan = planReconcile(entries, [], cache.entries);
   }
   if (gen !== generation) return [];
 
   knownNames = new Set(entries.map((e) => e.name));
   const jobs: SummaryJob[] = [];
   const found: LibrarySession[] = [];
-  const keep = (file: string, record: SessionRecord) => {
+  const keep = (file: string, record: SessionRecord, partial: boolean) => {
     const readOnly = !isWritableRecord(record);
-    found.push({ file, record: { ...record, gpx: file }, readOnly, warning: readOnly ? FUTURE_RECORD_WARNING : null });
-    if (!readOnly && isSummaryStale(record)) jobs.push({ file, previous: record, readOnly: false, warning: null });
+    found.push({
+      file,
+      record: { ...record, gpx: file },
+      readOnly,
+      warning: readOnly ? FUTURE_RECORD_WARNING : null,
+      ...(partial ? { partial: true } : {}),
+    });
+    if (!readOnly && isSummaryStale(record)) jobs.push({ file, kind: 'refresh', readOnly: false, warning: null });
   };
 
-  for (const [file, record] of Object.entries(plan.reuse)) keep(file, record);
+  for (const [file, record] of Object.entries(plan.reuse)) keep(file, record, cache.light);
   for (const file of plan.read) {
     const text = await f.readText(sessionPath(recordFileName(file)));
     const record = text === null ? null : parseRecord(text);
-    if (record) keep(file, record);
-    else jobs.push({ file, previous: null, readOnly: true, warning: UNREADABLE_RECORD_WARNING });
+    if (record) keep(file, record, false);
+    else jobs.push({ file, kind: 'create', readOnly: true, warning: UNREADABLE_RECORD_WARNING });
   }
-  for (const file of plan.summarize) jobs.push({ file, previous: null, readOnly: false, warning: null });
+  for (const file of plan.summarize) jobs.push({ file, kind: 'create', readOnly: false, warning: null });
   if (gen !== generation) return [];
 
-  all = found;
+  all = found.map((read) => keptInMemory(read, editsBefore) ?? read);
   publish();
   return jobs;
+};
+
+/** `stopped` : le dossier a changé, le balayage s'arrête. */
+type JobOutcome = 'done' | 'unreadable' | 'stopped';
+
+/**
+ * Crée une fiche, ou refait le résumé d'une fiche existante. Pour celle-ci,
+ * la session est prise au moment du calcul, pas au début du balayage : une
+ * saisie faite entre-temps (nom, notes, activité) est gardée, et l'analyse,
+ * synchrone, n'en laisse passer aucune avant que le résumé soit posé. Seul un
+ * GPX qu'on n'a pas su lire est « illisible » ; un échec d'écriture est dit
+ * en clair.
+ */
+const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<JobOutcome> => {
+  let text: string | null;
+  try {
+    text = await f.readText(sessionPath(job.file));
+  } catch {
+    return 'unreadable';
+  }
+  if (job.kind === 'refresh') {
+    try {
+      await hydrateSession(f, job.file);
+    } catch (err) {
+      reportError(`Fiche de ${job.file} non relue : ${errorMessage(err, 'erreur inconnue')}`);
+      return 'done';
+    }
+  }
+  if (gen !== generation) return 'stopped';
+  const current = job.kind === 'refresh' ? findSession(job.file) : undefined;
+  if (job.kind === 'refresh' && (!current || current.readOnly || current.partial)) return 'done';
+  let analyzed: AnalyzedGpx | null;
+  try {
+    analyzed = text === null
+      ? null
+      : analyzeGpx(text, current ? current.record.sport : undefined, current?.record.analysis, current?.record.activityId, current?.record);
+  } catch {
+    return 'unreadable';
+  }
+  if (!analyzed) return 'unreadable';
+
+  if (current) {
+    replaceSession({ ...current, record: withSummary(current.record, analyzed.summary) });
+    cancelRecordWrite(job.file);
+    await writeRecordNow(job.file);
+    return 'done';
+  }
+  const record = newRecord(job.file, analyzed, 'import');
+  if (!job.readOnly) {
+    try {
+      await f.writeText(sessionPath(recordFileName(job.file)), serializeRecord(record));
+      knownNames.add(recordFileName(job.file));
+    } catch (err) {
+      reportError(`Fiche de ${job.file} non enregistrée : ${errorMessage(err, 'erreur inconnue')}`);
+    }
+  }
+  if (gen !== generation) return 'stopped';
+  replaceSession({ file: job.file, record, readOnly: job.readOnly, warning: job.warning });
+  return 'done';
 };
 
 /** Crée ou recalcule les fiches, une trace à la fois, en laissant l'interface répondre. */
@@ -770,30 +955,9 @@ const completeScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[]): P
   for (let i = 0; i < jobs.length; i++) {
     if (gen !== generation) return;
     setState({ scanning: { done: i, total: jobs.length } });
-    const job = jobs[i];
-    try {
-      const text = await f.readText(sessionPath(job.file));
-      const analyzed = text === null ? null : analyzeGpx(
-            text,
-            job.previous ? job.previous.sport : undefined,
-            job.previous?.analysis,
-            job.previous?.activityId,
-            job.previous
-          );
-      if (!analyzed) {
-        unreadable.push(job.file);
-        continue;
-      }
-      const record = job.previous
-        ? withSummary(job.previous, analyzed.summary)
-        : newRecord(job.file, analyzed, 'import');
-      if (!job.readOnly) await f.writeText(sessionPath(recordFileName(job.file)), serializeRecord(record));
-      if (gen !== generation) return;
-      knownNames.add(recordFileName(job.file));
-      replaceSession({ file: job.file, record, readOnly: job.readOnly, warning: job.warning });
-    } catch {
-      unreadable.push(job.file);
-    }
+    const outcome = await runJob(f, gen, jobs[i]);
+    if (outcome === 'stopped') return;
+    if (outcome === 'unreadable') unreadable.push(jobs[i].file);
     await pause();
   }
   if (gen !== generation) return;
@@ -801,19 +965,35 @@ const completeScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[]): P
   await refreshCache(f, gen);
 };
 
-/** Sessions enregistrées sur le téléphone faute de dossier, rangées dès qu'il y en a un. */
+/**
+ * Sessions enregistrées sur le téléphone faute de dossier, rangées dès qu'il
+ * y en a un. Une session qu'on ne peut ranger reste en attente, sans retenir
+ * les autres, et l'échec est dit.
+ */
 const flushPending = async (): Promise<void> => {
   const pending = pendingFolder();
   if (!pending) return;
-  const files = (await pending.list('')).filter((e) => e.kind === 'file' && isGpxFileName(e.name));
+  let files: FolderEntry[];
+  try {
+    files = (await pending.list('')).filter((e) => e.kind === 'file' && isGpxFileName(e.name));
+  } catch (err) {
+    reportError(`Sessions en attente illisibles : ${errorMessage(err, 'erreur inconnue')}`);
+    return;
+  }
   for (const entry of files) {
-    const text = await pending.readText(entry.name);
-    if (text === null) continue;
-    const motion = await pending.readBytes(imuFileName(entry.name));
-    const result = await addGpx(text, 'enregistrement', { motion: motion ?? undefined });
-    if (result.status === 'added' || result.status === 'duplicate') {
-      await pending.remove(entry.name);
-      if (motion) await pending.remove(imuFileName(entry.name));
+    try {
+      const text = await pending.readText(entry.name);
+      if (text === null) continue;
+      const motion = await pending.readBytes(imuFileName(entry.name));
+      const result = await addGpx(text, 'enregistrement', { motion: motion ?? undefined });
+      if (result.status === 'added' || result.status === 'duplicate') {
+        await pending.remove(entry.name);
+        if (motion) await pending.remove(imuFileName(entry.name));
+      } else if (result.status === 'invalid') {
+        reportError(`Session en attente ${entry.name} illisible, laissée en attente : ${result.message ?? 'GPX illisible'}`);
+      }
+    } catch (err) {
+      reportError(`Session en attente ${entry.name} non rangée : ${errorMessage(err, 'erreur inconnue')}`);
     }
   }
   await countPending();
@@ -822,13 +1002,19 @@ const flushPending = async (): Promise<void> => {
 const countPending = async (): Promise<void> => {
   const pending = pendingFolder();
   if (!pending) return;
-  const files = await pending.list('');
-  setState({ pendingCount: files.filter((e) => e.kind === 'file' && isGpxFileName(e.name)).length });
+  try {
+    const files = await pending.list('');
+    setState({ pendingCount: files.filter((e) => e.kind === 'file' && isGpxFileName(e.name)).length });
+  } catch {
+    // Dossier privé illisible : le compte précédent reste affiché.
+  }
 };
 
 /**
  * Met un dossier en service. Rend vrai si des réglages du dossier ont
- * remplacé ceux de l'appareil.
+ * remplacé ceux de l'appareil. Seule la lecture de `sessions/` est
+ * indispensable : marqueur, réglages et sessions en attente, s'ils échouent,
+ * sont dits, et l'ouverture continue.
  */
 const attach = async (f: MemoryFolder): Promise<boolean> => {
   generation += 1;
@@ -847,8 +1033,12 @@ const attach = async (f: MemoryFolder): Promise<boolean> => {
     scanning: null,
     error: null,
   });
-  await ensureLayout(f);
-  const settingsChanged = await syncSettings(f);
+  try {
+    await ensureLayout(f);
+  } catch (err) {
+    reportError(`Marqueur du dossier non écrit : ${errorMessage(err, 'erreur inconnue')}`);
+  }
+  const settingsChanged = await syncSettingsSafely(f);
   const jobs = await scan(f, gen);
   if (gen !== generation) return settingsChanged;
   setState({ status: 'ready' });
@@ -911,7 +1101,7 @@ export const openLibrary = (): Promise<void> => {
     const access = await openMemoryFolder();
     if (access.state === 'ready') {
       const settingsChanged = await attach(access.folder);
-      if (access.notice) setState({ error: access.notice });
+      if (access.notice) reportError(access.notice);
       applySettingsChange(settingsChanged);
       return;
     }
@@ -943,6 +1133,13 @@ export const startLibraryUi = (isBusy: () => boolean): void => {
     if (settingsTimer !== null) clearTimeout(settingsTimer);
     settingsTimer = setTimeout(() => void flushSettings(), SETTINGS_WRITE_DELAY_MS);
   });
+  // Un réglage que l'appareil refuse de garder vaut jusqu'à la fermeture : dit une fois par lancement.
+  let storageFailureShown = false;
+  jsonStore.subscribeFailure(() => {
+    if (storageFailureShown) return;
+    storageFailureShown = true;
+    reportError('Stockage de l\'appareil plein ou bloqué : les derniers changements de réglages valent jusqu\'à la fermeture de l\'application, sans être gardés');
+  });
   // Écritures différées vidées dès que l'application passe en arrière-plan.
   const flushAll = () => void flushWrites();
   document.addEventListener('visibilitychange', () => {
@@ -958,6 +1155,8 @@ export interface AddResult {
   /** Nom du GPX dans la mémoire : la session ajoutée, ou celle qui existait déjà. */
   file: string | null;
   message?: string;
+  /** Session déjà présente, qui n'avait pas ses capteurs : ceux apportés lui ont été ajoutés. */
+  motionAdded?: boolean;
 }
 
 interface AddOptions {
@@ -1001,7 +1200,16 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
 
   const startMs = analyzed.summary.startMs;
   const existing = all.find((s) => s.record.summary.startMs === startMs);
-  if (existing) return { status: 'duplicate', file: existing.file };
+  if (existing) {
+    // Session entrée sans ses capteurs (GPX importé seul, ou copié avant son `.imu`) : ils la rejoignent,
+    // sa fiche restant celle de la mémoire.
+    const f = folder;
+    if (!options.motion || !f || hasSessionMotion(existing.file)) return { status: 'duplicate', file: existing.file };
+    const motion = source === 'enregistrement' ? await prunedMotion(options.motion, analyzed.sport) : options.motion;
+    await f.writeBytes(sessionPath(imuFileName(existing.file)), motion);
+    knownNames.add(imuFileName(existing.file));
+    return { status: 'duplicate', file: existing.file, motionAdded: true };
+  }
 
   const f = folder;
   const name = sessionFileName(startMs, analyzed.sport);
@@ -1019,16 +1227,22 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     ? withSummary({ ...options.record, gpx, sport: analyzed.sport }, analyzed.summary)
     : newRecord(gpx, analyzed, source, options.activityId ?? null);
   const record = options.intervals && options.intervals.length > 0 ? { ...made, intervals: options.intervals } : made;
-  await f.writeText(sessionPath(gpx), text);
-  await f.writeText(sessionPath(recordFileName(gpx)), serializeRecord(record));
+  // Un enregistrement est élagué en entrant ; un dossier importé est rangé tel quel.
+  const motion = options.motion && source === 'enregistrement' ? await prunedMotion(options.motion, analyzed.sport) : options.motion;
+  const written = [sessionPath(gpx), sessionPath(recordFileName(gpx)), ...(motion ? [sessionPath(imuFileName(gpx))] : [])];
+  try {
+    await f.writeText(sessionPath(gpx), text);
+    await f.writeText(sessionPath(recordFileName(gpx)), serializeRecord(record));
+    if (motion) await f.writeBytes(sessionPath(imuFileName(gpx)), motion);
+  } catch (err) {
+    // Rangée à moitié, la session reparaîtrait sans sa fiche ou ses capteurs, et un nouvel essai ferait un doublon :
+    // ce qui a été écrit est retiré, et l'appelant garde de quoi recommencer (journal de l'enregistreur, fichiers choisis).
+    for (const path of written) await f.remove(path).catch(() => undefined);
+    throw err;
+  }
   knownNames.add(gpx);
   knownNames.add(recordFileName(gpx));
-  if (options.motion) {
-    // Un enregistrement est élagué en entrant ; un dossier importé est rangé tel quel.
-    const motion = source === 'enregistrement' ? await prunedMotion(options.motion, analyzed.sport) : options.motion;
-    await f.writeBytes(sessionPath(imuFileName(gpx)), motion);
-    knownNames.add(imuFileName(gpx));
-  }
+  if (motion) knownNames.add(imuFileName(gpx));
   replaceSession({ file: gpx, record, readOnly: false, warning: null });
   return { status: 'added', file: gpx };
 };
@@ -1072,6 +1286,10 @@ export interface ImportReport {
   duplicates: number;
   invalid: string[];
   unsaved: number;
+  /** Fichiers qu'on n'a pas pu lire ou ranger, avec la raison. */
+  failed: string[];
+  /** Sessions déjà présentes qui ont reçu leurs capteurs (`.imu`). */
+  motionAdded: number;
 }
 
 const baseKey = (file: File): string =>
@@ -1081,6 +1299,9 @@ const describeImport = (report: ImportReport): string => {
   const parts: string[] = [];
   parts.push(report.added.length === 1 ? '1 session ajoutée' : `${report.added.length} sessions ajoutées`);
   if (report.duplicates > 0) parts.push(`${report.duplicates} déjà présente${report.duplicates > 1 ? 's' : ''}`);
+  if (report.motionAdded > 0) {
+    parts.push(`capteurs ajoutés à ${report.motionAdded} session${report.motionAdded > 1 ? 's' : ''} déjà présente${report.motionAdded > 1 ? 's' : ''}`);
+  }
   if (report.invalid.length > 0) parts.push(`${report.invalid.length} illisible${report.invalid.length > 1 ? 's' : ''} (${report.invalid.join(', ')})`);
   if (report.unsaved > 0) parts.push(`${report.unsaved} non rangée${report.unsaved > 1 ? 's' : ''}, faute de mémoire accessible`);
   return `${parts.join(', ')}.`;
@@ -1089,10 +1310,14 @@ const describeImport = (report: ImportReport): string => {
 /**
  * Importe des fichiers choisis par l'utilisateur : des GPX, ou un dossier
  * mémoire entier, dont chaque fiche accompagne son GPX (notes et support
- * compris). Une session déjà présente n'est pas dupliquée.
+ * compris). Une session déjà présente n'est pas dupliquée ; si elle n'avait
+ * pas ses capteurs, elle reçoit ceux du dossier (`.imu`). Un fichier qu'on
+ * ne peut lire ou ranger n'arrête pas les autres : il est nommé, avec la
+ * raison, dans une erreur.
  */
 export const importFiles = async (files: File[]): Promise<ImportReport> => {
   setState({ importing: true });
+  const report: ImportReport = { added: [], existing: [], duplicates: 0, invalid: [], unsaved: 0, failed: [], motionAdded: 0 };
   try {
     await opening;
     const records = new Map<string, File>();
@@ -1102,30 +1327,42 @@ export const importFiles = async (files: File[]): Promise<ImportReport> => {
       else if (/\.imu$/i.test(file.name)) motions.set(baseKey(file), file);
     }
 
-    const report: ImportReport = { added: [], existing: [], duplicates: 0, invalid: [], unsaved: 0 };
     for (const file of files) {
       if (!isGpxFileName(file.name)) continue;
-      const recordFile = records.get(baseKey(file));
-      const record = recordFile ? parseRecord(await readPickedFile(recordFile)) : null;
-      const motionFile = motions.get(baseKey(file));
-      const result = await addGpx(await readPickedFile(file), 'import', {
-        record: record && isWritableRecord(record) ? record : null,
-        motion: motionFile ? await readPickedBytes(motionFile) : undefined,
-      });
-      if (result.status === 'added' && result.file) report.added.push(result.file);
-      else if (result.status === 'duplicate') {
-        report.duplicates += 1;
-        if (result.file) report.existing.push(result.file);
+      try {
+        const recordFile = records.get(baseKey(file));
+        const record = recordFile ? parseRecord(await readPickedFile(recordFile)) : null;
+        const motionFile = motions.get(baseKey(file));
+        const result = await addGpx(await readPickedFile(file), 'import', {
+          record: record && isWritableRecord(record) ? record : null,
+          motion: motionFile ? await readPickedBytes(motionFile) : undefined,
+        });
+        if (result.status === 'added' && result.file) report.added.push(result.file);
+        else if (result.status === 'duplicate') {
+          report.duplicates += 1;
+          if (result.file) report.existing.push(result.file);
+          if (result.motionAdded) report.motionAdded += 1;
+        }
+        else if (result.status === 'invalid') report.invalid.push(file.name);
+        else report.unsaved += 1;
+      } catch (err) {
+        report.failed.push(`${file.name} : ${errorMessage(err, 'erreur inconnue')}`);
       }
-      else if (result.status === 'invalid') report.invalid.push(file.name);
-      else report.unsaved += 1;
     }
-    if (folder) void refreshCache(folder, generation);
-    setState({ message: describeImport(report) });
-    return report;
+    if (folder) void refreshCache(folder, generation).catch(() => undefined);
+    if (report.failed.length === 0) {
+      setState({ message: describeImport(report) });
+    } else {
+      // Le compte rendu va avec l'échec : le bandeau d'erreur cacherait sinon le message.
+      const n = report.failed.length;
+      reportError(`${describeImport(report)} ${n} fichier${n > 1 ? 's' : ''} non rangé${n > 1 ? 's' : ''} (${report.failed.join(' ; ')})`);
+    }
+  } catch (err) {
+    reportError(`Import interrompu : ${errorMessage(err, 'erreur inconnue')}`);
   } finally {
     setState({ importing: false });
   }
+  return report;
 };
 
 /**
@@ -1157,6 +1394,33 @@ export const readSessionGpx = async (file: string): Promise<string | null> => {
   return folder ? folder.readText(sessionPath(file)) : null;
 };
 
+/**
+ * Relit en entier la fiche d'une session tirée du cache allégé : altitude du
+ * terrain, voies et sauts rangés. Sans effet sur une fiche déjà entière ; un
+ * échec est dit, et la session reste partielle.
+ */
+export const loadFullSession = async (file: string): Promise<void> => {
+  await opening;
+  const f = folder;
+  if (!f) return;
+  try {
+    await hydrateSession(f, file);
+  } catch (err) {
+    reportError(`Fiche de ${file} non relue : ${errorMessage(err, 'erreur inconnue')}`);
+  }
+};
+
+/**
+ * GPX d'une session à ouvrir dans une analyse, `null` s'il n'est pas
+ * lisible. Sa fiche est d'abord relue en entier (`loadFullSession`) : la trace
+ * n'existe qu'une fois l'altitude, les voies et les sauts rangés connus, et
+ * l'analyse ne les redemande pas.
+ */
+export const loadSessionGpx = async (file: string): Promise<string | null> => {
+  await loadFullSession(file);
+  return readSessionGpx(file);
+};
+
 /** Vrai si la session a ses capteurs (`.imu`) dans la mémoire. */
 export const hasSessionMotion = (file: string): boolean => knownNames.has(imuFileName(file));
 
@@ -1177,25 +1441,33 @@ export const updateSessionRecord = (file: string, patch: RecordPatch): void => {
   if (!session || session.readOnly) return;
   const { record, resummarize: stale } = applyRecordPatch(session.record, patch);
   if (record === session.record) return;
+  editCount += 1;
+  lastEdit.set(file, editCount);
   replaceSession({ ...session, record });
   scheduleRecordWrite(file);
   if (stale) void resummarize(file);
 };
 
-/** Résumé recalculé avec le support de la fiche. */
+/**
+ * Résumé recalculé avec les réglages de la fiche, pris après la lecture du
+ * GPX : un second changement fait pendant ce temps n'est pas recouvert par un
+ * résumé calculé avant lui. La fiche est relue en entier d'abord : l'altitude
+ * du terrain entre dans le dénivelé.
+ */
 const resummarize = async (file: string): Promise<void> => {
   const f = folder;
-  const session = findSession(file);
-  if (!f || !session) return;
+  if (!f || !findSession(file)) return;
   try {
     const text = await f.readText(sessionPath(file));
-    const analyzed = text === null ? null : analyzeGpx(text, session.record.sport, session.record.analysis, session.record.activityId, session.record);
-    const current = findSession(file);
-    if (!analyzed || !current || folder !== f) return;
-    replaceSession({ ...current, record: withSummary(current.record, analyzed.summary) });
+    await hydrateSession(f, file);
+    const session = findSession(file);
+    if (text === null || !session || session.readOnly || session.partial || folder !== f) return;
+    const analyzed = analyzeGpx(text, session.record.sport, session.record.analysis, session.record.activityId, session.record);
+    if (!analyzed) return;
+    replaceSession({ ...session, record: withSummary(session.record, analyzed.summary) });
     scheduleRecordWrite(file);
   } catch {
-    // Trace illisible : le résumé précédent reste affiché.
+    // Trace ou fiche illisible : le résumé précédent reste affiché.
   }
 };
 
@@ -1223,7 +1495,18 @@ export const removeSession = async (file: string): Promise<void> => {
   }
   all = all.filter((s) => !copies.includes(s));
   publish();
-  void refreshCache(f, generation);
+  void refreshCache(f, generation).catch(() => undefined);
+};
+
+/**
+ * Fiche entière d'une session de la mémoire `f`, pour la recopier ailleurs :
+ * une fiche allégée est complétée par celle du disque.
+ */
+const fullRecordIn = async (f: MemoryFolder, session: LibrarySession): Promise<SessionRecord> => {
+  if (!session.partial) return session.record;
+  const text = await f.readText(sessionPath(recordFileName(session.file)));
+  const disk = text === null ? null : parseRecord(text);
+  return disk ? mergeLightRecord(disk, session.record) : session.record;
 };
 
 /** Vrai si l'on peut désigner un vrai dossier comme mémoire (Chrome et Edge sur ordinateur). */
@@ -1243,6 +1526,8 @@ export const chooseFolder = async (): Promise<void> => {
   }
   if (!picked) return;
   const previous = folder;
+  // Les saisies en attente partent dans l'ancienne mémoire avant qu'on la quitte.
+  await flushWrites();
   const previousSessions = previous?.kind === 'browser' ? [...all] : [];
   let settingsChanged: boolean;
   try {
@@ -1255,14 +1540,18 @@ export const chooseFolder = async (): Promise<void> => {
   if (previous && previousSessions.length > 0) {
     let copied = 0;
     for (const session of previousSessions) {
-      const text = await previous.readText(sessionPath(session.file));
-      if (text === null) continue;
-      const motion = await previous.readBytes(sessionPath(imuFileName(session.file)));
-      const result = await addGpx(text, session.record.source, {
-        record: session.readOnly ? null : session.record,
-        motion: motion ?? undefined,
-      });
-      if (result.status === 'added') copied += 1;
+      try {
+        const text = await previous.readText(sessionPath(session.file));
+        if (text === null) continue;
+        const motion = await previous.readBytes(sessionPath(imuFileName(session.file)));
+        const result = await addGpx(text, session.record.source, {
+          record: session.readOnly ? null : await fullRecordIn(previous, session),
+          motion: motion ?? undefined,
+        });
+        if (result.status === 'added') copied += 1;
+      } catch (err) {
+        reportError(`${session.file} non recopiée dans le dossier : ${errorMessage(err, 'erreur inconnue')}`);
+      }
     }
     if (copied > 0) {
       setState({ message: `${copied} session${copied > 1 ? 's' : ''} de la mémoire du navigateur recopiée${copied > 1 ? 's' : ''} dans le dossier.` });
@@ -1299,6 +1588,7 @@ export const reconnectFolder = async (): Promise<void> => {
 
 /** Oublie le dossier choisi et revient à la mémoire du navigateur. */
 export const switchToBrowserMemory = async (): Promise<void> => {
+  await flushWrites();
   await forgetChosenFolder();
   await openLibrary();
 };
@@ -1324,11 +1614,13 @@ export const refreshLibrary = (): Promise<void> => {
     if (!f || state.status !== 'ready') return null;
     setState({ refreshing: true, message: null, error: null });
     const before = new Set(state.sessions.map((s) => s.record.summary.startMs));
+    // Une saisie faite à partir d'ici garde sa version en mémoire (`keptInMemory`).
+    const editsBefore = editCount;
     await flushWrites();
     generation += 1;
     const gen = generation;
-    const settingsChanged = await syncSettings(f);
-    const jobs = await scan(f, gen);
+    const settingsChanged = await syncSettingsSafely(f);
+    const jobs = await scan(f, gen, editsBefore);
     if (gen !== generation) return null;
     setState({ revision: state.revision + 1 });
     await flushPending();

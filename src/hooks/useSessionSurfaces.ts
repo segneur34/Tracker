@@ -64,6 +64,8 @@ export const useSessionSurfaces = (track: TrackPoint[], file: string | null, act
   const session = findLibrarySession(sessions, file);
   const startMs = track.length > 1 ? track[0].timeMs : null;
   const stored = session?.record.surfaces;
+  // Fiche allégée, pas encore relue en entier : ses voies rangées ne sont pas encore connues.
+  const partial = session?.partial === true;
   const [, setFoundCount] = useState(found.size);
   const [error, setError] = useState<{ startMs: number; message: string } | null>(null);
 
@@ -73,11 +75,11 @@ export const useSessionSurfaces = (track: TrackPoint[], file: string | null, act
 
   // Voies trouvées avant que la bibliothèque connaisse la session : rangées dès qu'elle la connaît.
   useEffect(() => {
-    if (local && !isCurrent(stored) && session && !session.readOnly) store(session.file, local);
-  }, [local, stored, session]);
+    if (local && !isCurrent(stored) && session && !session.readOnly && !partial) store(session.file, local);
+  }, [local, stored, session, partial]);
 
   useEffect(() => {
-    if (!active || surfaces || failed !== null || startMs === null) return;
+    if (!active || surfaces || failed !== null || startMs === null || partial) return;
     search(track).then(
       (result) => {
         store(file, result);
@@ -85,7 +87,7 @@ export const useSessionSurfaces = (track: TrackPoint[], file: string | null, act
       },
       (err: unknown) => setError({ startMs, message: err instanceof Error ? err.message : 'Recherche des voies impossible.' })
     );
-  }, [active, surfaces, failed, startMs, track, file]);
+  }, [active, surfaces, failed, startMs, track, file, partial]);
 
   const retry = () => setError(null);
 

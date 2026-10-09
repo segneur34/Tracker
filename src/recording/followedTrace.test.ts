@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_ROUTE, addWaypoint, legKey, withLegResult } from '../planning/route';
 import { routeToRecord } from '../planning/routeRecord';
 import {
-  followProgress, followedTraceFromPoints, followedTraceFromRoute, followedTraceLengthM, splitFollowedTrace,
-  type FollowedTrace,
+  FOLLOWED_TRACE_TOLERANCE_M, followProgress, followedTraceFromPoints, followedTraceFromRoute, followedTraceLengthM,
+  splitFollowedTrace, thinFollowedTrace, type FollowedTrace,
 } from './followedTrace';
 
 const A = { lat: 43.6, lon: 3.8 };
@@ -133,5 +133,46 @@ describe('découpe de la trace suivie', () => {
   it("aux bords : rien de fait au départ, tout fait à l'arrivée", () => {
     expect(splitFollowedTrace(line, 0)).toEqual({ done: [], remaining: line.points });
     expect(splitFollowedTrace(line, followedTraceLengthM(line))).toEqual({ done: line.points, remaining: [] });
+  });
+});
+
+describe('trace suivie amincie pour être gardée', () => {
+  /** Générateur pseudo-aléatoire à graine fixe. */
+  const noise = (() => {
+    let seed = 42;
+    return () => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+      return seed / 2 ** 31 - 0.5;
+    };
+  })();
+
+  it('réduit fortement trois heures à 1 Hz, à 1 % près sur la longueur, bouts et balises intacts', () => {
+    // Une boucle de 10 800 points, avec un bruit de ±1 m. Le bruit allonge la trace brute ;
+    // l'amincie retrouve la longueur du tracé sans bruit.
+    const clean: [number, number][] = [];
+    for (let i = 0; i < 10_800; i++) {
+      const a = (2 * Math.PI * i) / 10_800;
+      clean.push([3000 * Math.cos(a), 2000 * Math.sin(2 * a)]);
+    }
+    const marks = [at(3000, 0), at(-3000, 0)];
+    const trace = { ...traceOf(clean.map(([e, n]) => [e + 2 * noise(), n + 2 * noise()])), marks };
+    const thin = thinFollowedTrace(trace, FOLLOWED_TRACE_TOLERANCE_M);
+    expect(thin.points.length).toBeLessThan(trace.points.length / 5);
+    expect(thin.points[0]).toEqual({ lat: Math.round(trace.points[0].lat * 1e6) / 1e6, lon: Math.round(trace.points[0].lon * 1e6) / 1e6 });
+    expect(thin.marks).toBe(marks);
+    expect(thin.name).toBe(trace.name);
+    expect(Math.abs(followedTraceLengthM(thin) / followedTraceLengthM(traceOf(clean)) - 1)).toBeLessThan(0.01);
+    // Plus léger d'un facteur dix une fois gardé.
+    expect(JSON.stringify(thin).length).toBeLessThan(JSON.stringify(trace).length / 10);
+  });
+
+  it('suit la même avancée que la trace complète', () => {
+    const line = traceOf(walk([[0, 0], [0, 500], [400, 900]], 1).map((p) => [
+      (p.lon - O.lon) * M_PER_DEG_LON, (p.lat - O.lat) * M_PER_DEG_LAT,
+    ] as [number, number]));
+    const thin = thinFollowedTrace(line, FOLLOWED_TRACE_TOLERANCE_M);
+    expect(thin.points.length).toBe(3);
+    const fixes = [walk([[0, 0], [0, 500], [200, 700]], 5)];
+    expect(followProgress(thin, fixes)!.progressM).toBeCloseTo(followProgress(line, fixes)!.progressM, -1);
   });
 });

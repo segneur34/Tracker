@@ -4,7 +4,7 @@ import type { Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import type { LibrarySession } from '../library/record';
 import { confirmLeave } from './leaveGuard';
-import { findLibrarySession, librarySession, readSessionGpx, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
+import { findLibrarySession, librarySession, loadFullSession, loadSessionGpx, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
 import { readStoredActivities } from './useSportSettings';
 
 /**
@@ -69,7 +69,9 @@ export const useChangeSessionActivity = (family: SportFamily, setActivity: (id: 
 
 /**
  * Côté module : charge la session désignée par l'URL, une seule fois par
- * fichier, dès que la bibliothèque la connaît.
+ * fichier, dès que la bibliothèque la connaît. Sa fiche est relue en entier
+ * avant le GPX (`loadSessionGpx`) : altitude, voies et sauts rangés sont là
+ * dès que la trace existe.
  *
  * Le chargement ne dépend que du nom du fichier. `onLoad` change d'identité à
  * chaque changement de réglage (`setSport`), et la fiche à chaque écriture
@@ -93,9 +95,10 @@ export const useSessionFromUrl = (onLoad: (content: string, session: LibrarySess
   useEffect(() => {
     if (requested === null || !known || loadedFor.current === requested) return;
     loadedFor.current = requested;
-    void readSessionGpx(requested).then((text) => {
+    void loadSessionGpx(requested).then((text) => {
       if (loadedFor.current !== requested) return;
-      const current = latest.current.session;
+      // La session relue en entier, plus récente que celle du dernier rendu.
+      const current = librarySession(requested) ?? latest.current.session;
       if (text === null || !current) {
         setReadError('GPX introuvable dans la mémoire.');
         return;
@@ -104,6 +107,12 @@ export const useSessionFromUrl = (onLoad: (content: string, session: LibrarySess
       latest.current.onLoad(text, current);
     });
   }, [requested, known]);
+
+  // Fiche redevenue partielle sous l'analyse ouverte (cas de secours) : relue en entier.
+  const partial = session?.partial === true;
+  useEffect(() => {
+    if (partial && requested !== null && loadedFor.current === requested) void loadFullSession(requested);
+  }, [partial, requested]);
 
   const missing = requested !== null && !known && library.status === 'ready' && library.scanning === null;
   return {

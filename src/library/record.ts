@@ -425,6 +425,35 @@ export const findLegacyNotes = (
   return null;
 };
 
+/**
+ * Champs d'une fiche gardés dans le cache de la bibliothèque : ce que la liste
+ * montre et ce que l'utilisateur saisit. Le reste (altitude du terrain, voies,
+ * sauts, champs d'une version future) pèse lourd et ne sert qu'à l'analyse :
+ * il est relu sur le disque quand on en a besoin.
+ */
+export const RECORD_LIGHT_FIELDS = [
+  'format', 'version', 'gpx', 'sport', 'activityId', 'source', 'addedAt', 'title', 'name',
+  'summary', 'notes', 'analysis', 'elevationSource', 'intervals',
+] as const satisfies readonly (keyof SessionRecord)[];
+
+const LIGHT_FIELDS: ReadonlySet<string> = new Set(RECORD_LIGHT_FIELDS);
+
+/** Fiche réduite aux champs légers (`RECORD_LIGHT_FIELDS`), pour le cache. */
+export const lightRecord = (record: SessionRecord): SessionRecord =>
+  Object.fromEntries(Object.entries(record).filter(([key]) => LIGHT_FIELDS.has(key))) as unknown as SessionRecord;
+
+/**
+ * Fiche entière, tirée de celle du disque (`disk`) et de la fiche allégée
+ * tenue en mémoire (`light`) : les champs lourds et inconnus viennent du
+ * disque, les champs légers de la mémoire seule, qui porte les saisies. Un
+ * champ léger retiré en mémoire (la source de l'altitude) ne revient donc pas ;
+ * un champ lourd posé en mémoire depuis (altitude trouvée) l'emporte.
+ */
+export const mergeLightRecord = (disk: SessionRecord, light: SessionRecord): SessionRecord => ({
+  ...(Object.fromEntries(Object.entries(disk).filter(([key]) => !LIGHT_FIELDS.has(key))) as Partial<SessionRecord>),
+  ...light,
+});
+
 /** Une session montrée par la bibliothèque : la fiche, et ce qu'on sait de son état. */
 export interface LibrarySession {
   /** Nom du GPX dans `sessions/` : la clé de stockage. */
@@ -434,6 +463,12 @@ export interface LibrarySession {
   readOnly: boolean;
   /** Ce qui cloche, en clair, s'il y a lieu. */
   warning: string | null;
+  /**
+   * Vrai si la fiche vient du cache allégé (`lightRecord`) : altitude du
+   * terrain, voies et sauts n'y sont pas encore. La bibliothèque la relit en
+   * entier avant de l'écrire ou de l'ouvrir dans une analyse.
+   */
+  partial?: boolean;
 }
 
 /**

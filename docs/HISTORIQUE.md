@@ -562,3 +562,11 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - borner le vol sur l'accélération lissée biaisait la hauteur de −4 à −8 % : les bornes se lisent sur les passages par 0 de l'accélération brute ;
       - `cap sync` depuis une copie de travail (worktree) récrit `capacitor.settings.gradle` avec le chemin résolu de la jonction `node_modules` : à ne pas commiter ;
       - une prise USB-C mouillée charge sans passer de données ni adb ; sèche, le débogage USB était coupé.
+92. Données sûres, lot A de l'audit général (09/10, APK 0.2.76, validé par l'utilisateur sur le PC et le téléphone).
+    - **Constats revérifiés dans le code** : cache des fiches entières dans `tracker.libraryCache` (quota de Firefox, Preferences d'Android réécrites à chaque écriture) ; recalcul de fond qui écrivait la fiche prise au début du balayage (`job.previous`) ; « Mettre à jour » qui remplaçait la liste par le disque ; erreurs d'import et d'ouverture muettes ou rangées parmi les GPX illisibles ; fiche vidée puis écrite par SAF (`"wt"`).
+    - **Décisions** : cache réduit aux champs légers, fiche entière relue sur le disque avant toute écriture, tout recalcul et toute analyse (une fiche allégée n'est jamais écrite) ; recalcul fait sur la session courante juste avant d'écrire ; écriture par `.tmp` puis échange sur le téléphone ; trace suivie amincie à 2 m (écart toléré de 60 m : invisible). Rien ne change à l'écran (textes de six pages identiques au banc).
+    - **Capteurs à l'import** : sur le PC, les sessions du 08/10 étaient dans OPFS sans leur `.imu`, et un nouvel import les voyait « déjà présentes » en ignorant les capteurs, d'où un onglet « sauts » absent. `addGpx` ajoute désormais le `.imu` à une session présente qui n'en a pas (« capteurs ajoutés à… »).
+    - **Pièges** :
+      - une valeur refusée par le stockage était relue à l'ancienne : un réglage changé revenait aussitôt ; elle est gardée en mémoire jusqu'à la fermeture ;
+      - les garde-fous de l'altitude, des voies et des sauts attendent la fiche entière (`partial`) : sans eux, une session tirée du cache allégé redemandait IGN et Overpass pour des données déjà rangées ;
+      - le Douglas-Peucker sorti dans `core/simplify.ts` nomme sa distance au segment `pointSegmentDistanceM`, pour ne pas la confondre avec `segmentDistanceM` (règle 6).

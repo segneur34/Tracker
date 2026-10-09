@@ -8,6 +8,8 @@ import {
   findLegacyNotes,
   isSummaryStale,
   isWritableRecord,
+  lightRecord,
+  mergeLightRecord,
   parseRecord,
   recordFileName,
   serializeRecord,
@@ -311,6 +313,49 @@ describe('altitude du terrain de la fiche', () => {
     expect(gps).toEqual({ record: { ...added.record, elevationSource: 'gps' }, resummarize: true });
     expect(applyRecordPatch(gps.record, { elevationSource: null }).record).not.toHaveProperty('elevationSource');
     expect(applyRecordPatch(record(), { elevationSource: null })).toEqual({ record: record(), resummarize: false });
+  });
+});
+
+describe('fiche allégée du cache', () => {
+  const terrainElevation: SessionTerrainElevation = {
+    source: 'ign', resource: 'ign_rge_alti_wld', version: 1, stepM: 10,
+    fetchedAt: '2026-10-07T09:00:00.000Z', startMs: START_MS, t: [0, 3333], z: [47.5, 46.9],
+  };
+  const surfaces: SessionSurfaces = {
+    source: 'overpass', fetchedAt: '2026-10-04T15:00:00.000Z', matchVersion: 1, startMs: START_MS,
+    tags: ['highway=residential'], runs: [[0, 0]],
+  };
+  const jumps: SessionJumps = { version: 1, computedAt: '2026-10-08T14:00:00.000Z', jumps: [] };
+  const intervals = [{
+    workout: { reps: 1, workS: 60, restS: 30 },
+    laps: [{ kind: 'travail' as const, rep: 1, startMs: START_MS, endMs: START_MS + 60_000 }],
+  }];
+  const full = {
+    ...record({ name: 'Sortie', elevationSource: 'gps', intervals, terrainElevation, surfaces, jumps }),
+    venuDuFutur: { lourd: true },
+  } as SessionRecord;
+
+  it("ne garde que ce que la liste montre et ce que l'utilisateur saisit", () => {
+    const light = lightRecord(full);
+    expect(light).toEqual(record({ name: 'Sortie', elevationSource: 'gps', intervals }));
+    for (const key of ['terrainElevation', 'surfaces', 'jumps', 'venuDuFutur']) expect(light).not.toHaveProperty(key);
+  });
+
+  it('se recompose avec la fiche du disque : champs lourds et inconnus gardés', () => {
+    expect(mergeLightRecord(full, lightRecord(full))).toEqual(full);
+  });
+
+  it('garde les saisies de la mémoire, y compris un champ léger retiré', () => {
+    const { elevationSource: _removed, ...edited } = { ...lightRecord(full), name: 'Nouveau nom', notes: null };
+    const merged = mergeLightRecord(full, edited as SessionRecord);
+    expect(merged.name).toBe('Nouveau nom');
+    expect(merged).not.toHaveProperty('elevationSource');
+    expect(merged.terrainElevation).toEqual(terrainElevation);
+  });
+
+  it("laisse l'emporter un champ lourd posé en mémoire depuis", () => {
+    const newer = { ...terrainElevation, fetchedAt: '2026-10-09T09:00:00.000Z' };
+    expect(mergeLightRecord(full, { ...lightRecord(full), terrainElevation: newer }).terrainElevation).toEqual(newer);
   });
 });
 

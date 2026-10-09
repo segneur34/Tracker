@@ -1,4 +1,5 @@
 import { EARTH_RADIUS_M, haversineDistance, toRad } from '../core/kinematics';
+import { simplifyLatLon } from '../core/simplify';
 import { cumulativeDistances, routePoints } from '../planning/route';
 import { recordToRoute, routeMarkGuide, type RouteRecord } from '../planning/routeRecord';
 import type { MarkGuideSettings } from './markGuide';
@@ -65,6 +66,28 @@ export const followedTraceFromRoute = (record: RouteRecord): FollowedTrace | nul
   const markGuide = routeMarkGuide(record);
   return trace && markGuide ? { ...trace, markGuide } : trace;
 };
+
+/**
+ * Écart toléré quand la trace suivie est amincie pour être gardée sur
+ * l'appareil, en mètres : très en deçà de l'écart qui la quitte
+ * (`FOLLOW_DEFAULTS.maxOffsetM`), et du bruit du GPS.
+ */
+export const FOLLOWED_TRACE_TOLERANCE_M = 2;
+
+/** Arrondi des positions gardées : 1e-6° vaut 0,1 m. */
+const roundDeg = (deg: number): number => Math.round(deg * 1e6) / 1e6;
+
+/**
+ * Trace suivie amincie pour être gardée sur l'appareil (`tracker.followedTrace`) :
+ * points simplifiés à `toleranceM` près, bouts compris (`simplifyLatLon`), et
+ * positions arrondies. Trois heures à 1 Hz pèsent plusieurs centaines de Ko
+ * sinon, réécrites avec chaque réglage sur le téléphone. Les balises ne
+ * bougent jamais.
+ */
+export const thinFollowedTrace = (trace: FollowedTrace, toleranceM: number): FollowedTrace => ({
+  ...trace,
+  points: simplifyLatLon(trace.points, toleranceM).map((p) => ({ lat: roundDeg(p.lat), lon: roundDeg(p.lon) })),
+});
 
 export interface FollowOptions {
   /** Écart au-delà duquel une position n'est pas sur la trace, en mètres. */

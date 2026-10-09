@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { jsonStore } from '../platform/storage';
-import { followedTraceFromPoints, type FollowedTrace } from '../recording/followedTrace';
+import { FOLLOWED_TRACE_TOLERANCE_M, followedTraceFromPoints, thinFollowedTrace, type FollowedTrace } from '../recording/followedTrace';
 import { sanitizeMarkGuide } from '../recording/markGuide';
 
 /**
@@ -8,6 +8,8 @@ import { sanitizeMarkGuide } from '../recording/markGuide';
  * affichée quand on quitte la page Enregistrer et qu'on y revient. Gardée sur
  * l'appareil jusqu'à « Retirer », fermeture de l'application ou plantage
  * compris ; propre à l'appareil, elle ne voyage pas dans `reglages.json`.
+ * Amincie dès qu'on la choisit (`thinFollowedTrace`) : la même trace est
+ * suivie et gardée, et elle pèse peu dans le stockage de l'appareil.
  */
 
 const STORAGE_KEY = 'tracker.followedTrace';
@@ -36,13 +38,18 @@ const subscribe = (listener: () => void) => {
 };
 
 const getSnapshot = (): FollowedTrace | null => {
-  if (followed === undefined) followed = readStored();
+  if (followed === undefined) {
+    const stored = readStored();
+    followed = stored && thinFollowedTrace(stored, FOLLOWED_TRACE_TOLERANCE_M);
+    // Trace gardée avant l'amincissement : récrite une fois, allégée.
+    if (stored && followed && followed.points.length < stored.points.length) jsonStore.write(STORAGE_KEY, followed);
+  }
   return followed;
 };
 
 const set = (next: FollowedTrace | null) => {
-  followed = next;
-  jsonStore.write(STORAGE_KEY, next);
+  followed = next && thinFollowedTrace(next, FOLLOWED_TRACE_TOLERANCE_M);
+  jsonStore.write(STORAGE_KEY, followed);
   for (const listener of listeners) listener();
 };
 

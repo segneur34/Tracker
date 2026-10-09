@@ -97,6 +97,14 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - l'écart avec le GPX ;
   - les sauts tels que l'application les calcule (`src/core/jumps.ts`), avec la vitesse GPS au décollage, et la part de la séance que garderait l'élagage ;
   - avec `--tous`, les vols écartés et leur raison, pour recaler la détection.
+- `donnees.mjs <port> <dossier de travail> [<dossier des captures>]` : données sûres (lot A, point 92), sur un profil neuf, dans la mémoire du navigateur. Il faut le serveur de développement, **redémarré depuis la dernière modification des sources** : le script importe `/src/hooks/useSessionLibrary.ts`, et après un rechargement à chaud, il obtiendrait une seconde copie du module, vide. Aucune demande à l'IGN ni à Overpass n'est attendue : elles sont relevées. Le script écrit lui-même ses GPX. Il vérifie :
+  - le cache allégé : une sortie à vélo dont la fiche porte une altitude IGN et des voies. Après deux lancements, `tracker.libraryCache` ne les contient plus, et la session est partielle. Un renommage depuis la liste les laisse dans la fiche. L'analyse s'ouvre sans aucune demande, altitude « IGN » ;
+  - le recalcul de fond : 30 fiches au résumé périmé. La dernière, renommée pendant le balayage, garde son nom et passe en `calcVersion` 2 ;
+  - « Mettre à jour » : une session renommée pendant la relecture garde son nom, en mémoire et dans la fiche ;
+  - l'import de trois GPX : un illisible, et un dont la fiche ne s'écrit pas, à cause d'un dossier piège posé au nom de la fiche. Le troisième est rangé, l'échec est nommé dans le bandeau avec le compte rendu, et le GPX à moitié rangé est retiré. Importé de nouveau avec un `.imu`, le troisième reçoit ses capteurs (« capteurs ajoutés à 1 session déjà présente ») ;
+  - le stockage plein : `localStorage` rempli, un pli des totaux de l'accueil reste en mémoire sans être gardé, et le bandeau d'erreur le dit sur l'accueil.
+
+  Il dure environ 1 min 30. Le passer aussi sur la version d'avant le lot, `770fa94` (un `git worktree` servi sur un autre port), montre chaque perte qu'il évite.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

@@ -72,6 +72,40 @@ describe('createJsonStore', () => {
     expect(() => store.write('tracker.runnerProfile', { me: {} })).not.toThrow();
   });
 
+  it('garde pour la session une valeur que le stockage refuse, au lieu de relire l\'ancienne', () => {
+    // Quota plein : l'ancienne valeur reste lisible, la nouvelle ne s'écrit pas.
+    const backend = memoryBackend({ 'tracker.sportSettings': '{"sport":"wingfoil"}' });
+    const full: StorageBackend = { getItem: backend.getItem, setItem: () => { throw new Error('quota dépassé'); } };
+    let refuse = true;
+    const store = createJsonStore(() => (refuse ? full : backend));
+
+    store.write('tracker.sportSettings', { sport: 'kite' });
+    expect(store.read('tracker.sportSettings')).toEqual({ sport: 'kite' });
+    expect(backend.data.get('tracker.sportSettings')).toBe('{"sport":"wingfoil"}');
+
+    // Le stockage accepte de nouveau : la valeur écrite fait foi.
+    refuse = false;
+    store.write('tracker.sportSettings', { sport: 'windsurf' });
+    expect(backend.data.get('tracker.sportSettings')).toBe('{"sport":"windsurf"}');
+    refuse = true;
+    expect(store.read('tracker.sportSettings')).toEqual({ sport: 'windsurf' });
+  });
+
+  it('signale chaque refus, et seulement les refus, y compris ceux constatés plus tard', () => {
+    let refuse = false;
+    const backend = memoryBackend();
+    const store = createJsonStore(() => (refuse ? failingBackend : backend));
+    const failures: string[] = [];
+    const unsubscribe = store.subscribeFailure((key) => failures.push(key));
+    store.write('tracker.panelSizes', {});
+    refuse = true;
+    store.write('tracker.libraryCache', {});
+    store.reportFailure('tracker.followedTrace');
+    unsubscribe();
+    store.write('tracker.sections', {});
+    expect(failures).toEqual(['tracker.libraryCache', 'tracker.followedTrace']);
+  });
+
   it("signale chaque écriture aux abonnés, même refusée, jusqu'au désabonnement", () => {
     const store = createJsonStore(() => failingBackend);
     const keys: string[] = [];

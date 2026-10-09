@@ -35,12 +35,13 @@ const titleStyle = { display: 'flex', alignItems: 'center', gap: '10px', fontSiz
 
 function Home() {
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-  const { status, sessions } = useSessionLibrary();
+  const { status, sessions, error } = useSessionLibrary();
   const { routes } = useRouteLibrary();
   // Relues à l'ouverture de la page : les activités se changent dans Réglages.
   const [activities] = useState(readStoredActivities);
-  // Premier lancement sur le téléphone, ou dossier devenu inaccessible : la mémoire d'abord.
-  const memoryNeedsAction = status === 'unavailable' || status === 'needs-permission';
+  // Premier lancement sur le téléphone, ou dossier devenu inaccessible : la mémoire d'abord. Une erreur
+  // (écriture refusée, réglages du dossier illisibles) se voit aussi dès l'accueil.
+  const memoryNeedsAction = status === 'unavailable' || status === 'needs-permission' || error !== null;
 
   return (
     <div className="ui-page">

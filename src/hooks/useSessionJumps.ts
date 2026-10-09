@@ -61,7 +61,9 @@ export const useSessionJumps = (file: string | null, track: TrackPoint[], sport:
   const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
   const [, setComputedCount] = useState(computed.size);
   const failed = failure !== null && failure.key === key ? failure.message : null;
-  const wanted = key !== null && detection !== null && session !== undefined && motion && !current && !local && failed === null;
+  const eligible = key !== null && detection !== null && session !== undefined && motion && !current && !local && failed === null;
+  // Fiche allégée, pas encore relue en entier : elle porte peut-être déjà les sauts, rien n'est calculé avant.
+  const wanted = eligible && session?.partial !== true;
 
   useEffect(() => {
     if (!wanted || key === null || file === null || detection === null) return;
@@ -80,6 +82,6 @@ export const useSessionJumps = (file: string | null, track: TrackPoint[], sport:
   }, [wanted, key, file, detection, track]);
 
   const jumps = current ?? local ?? null;
-  const status: JumpsStatus = jumps !== null ? 'ready' : failed !== null ? 'error' : wanted ? 'computing' : 'none';
+  const status: JumpsStatus = jumps !== null ? 'ready' : failed !== null ? 'error' : eligible ? 'computing' : 'none';
   return { status, jumps: jumps ?? [], error: failed };
 };

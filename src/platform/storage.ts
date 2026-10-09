@@ -11,8 +11,9 @@ import { isNativeApp } from './runtime';
  * (`initStorage`) plutôt que de les obliger à attendre.
  *
  * Aucune erreur ne remonte : stockage bloqué, quota dépassé ou JSON illisible
- * ne doivent jamais casser l'interface. La valeur vaut alors pour la session
- * en cours, comme avant l'existence de ce module.
+ * ne doivent jamais casser l'interface. Une valeur que le stockage refuse
+ * vaut pour la session en cours, gardée en mémoire et relue à sa place, et
+ * le refus est signalé (`subscribeFailure`) pour être dit à l'utilisateur.
  */
 
 /** Stockage clé → texte. `localStorage` y répond tel quel. */
@@ -24,7 +25,10 @@ export interface StorageBackend {
 export interface JsonStore {
   /** Valeur enregistrée sous `key`, ou `null` si elle est absente, illisible ou inaccessible. */
   read<T>(key: string): T | null;
-  /** Enregistre `value` sous `key`, sérialisée en JSON ; sans effet si le stockage refuse. */
+  /**
+   * Enregistre `value` sous `key`, sérialisée en JSON. Si le stockage refuse,
+   * la valeur vaut pour la session en cours et le refus est signalé.
+   */
   write(key: string, value: unknown): void;
   /**
    * Appelle `listener` avec la clé de chaque écriture, même refusée par le
@@ -32,6 +36,10 @@ export interface JsonStore {
    * suivie comme une autre. Rend la fonction qui désabonne.
    */
   subscribe(listener: (key: string) => void): () => void;
+  /** Appelle `listener` avec la clé de chaque écriture refusée par le stockage. Rend la fonction qui désabonne. */
+  subscribeFailure(listener: (key: string) => void): () => void;
+  /** Signale le refus d'une écriture constaté plus tard (Preferences natives, qui écrivent en arrière-plan). */
+  reportFailure(key: string): void;
 }
 
 /**
@@ -41,22 +49,32 @@ export interface JsonStore {
  */
 export const createJsonStore = (getBackend: () => StorageBackend): JsonStore => {
   const listeners = new Set<(key: string) => void>();
+  const failureListeners = new Set<(key: string) => void>();
+  /** Valeurs refusées par le stockage, relues à la place de l'ancienne valeur jusqu'à la fermeture. */
+  const unsaved = new Map<string, string>();
+  const parse = <T,>(raw: string | null): T | null => (raw === null ? null : (JSON.parse(raw) as T));
+  const reportFailure = (key: string): void => failureListeners.forEach((listener) => listener(key));
   return {
     read: <T,>(key: string): T | null => {
       try {
-        const raw = getBackend().getItem(key);
-        return raw === null ? null : (JSON.parse(raw) as T);
+        const kept = unsaved.get(key);
+        return parse<T>(kept !== undefined ? kept : getBackend().getItem(key));
       } catch {
         return null;
       }
     },
     write: (key: string, value: unknown): void => {
+      const raw = JSON.stringify(value);
+      let refused = false;
       try {
-        getBackend().setItem(key, JSON.stringify(value));
+        getBackend().setItem(key, raw);
+        unsaved.delete(key);
       } catch {
-        // Stockage indisponible : la valeur vaut pour la session en cours.
+        unsaved.set(key, raw);
+        refused = true;
       }
       listeners.forEach((listener) => listener(key));
+      if (refused) reportFailure(key);
     },
     subscribe: (listener) => {
       listeners.add(listener);
@@ -64,6 +82,13 @@ export const createJsonStore = (getBackend: () => StorageBackend): JsonStore => 
         listeners.delete(listener);
       };
     },
+    subscribeFailure: (listener) => {
+      failureListeners.add(listener);
+      return () => {
+        failureListeners.delete(listener);
+      };
+    },
+    reportFailure,
   };
 };
 
@@ -110,9 +135,8 @@ export const initStorage = async (): Promise<void> => {
     const initial: Record<string, string> = {};
     for (const [key, value] of entries) if (value !== null) initial[key] = value;
     nativeBackend = createMirroredBackend(initial, (key, value) => {
-      Preferences.set({ key, value }).catch(() => {
-        // Écriture refusée : la valeur vaut pour la session en cours.
-      });
+      // Écriture refusée : la valeur, déjà en mémoire, vaut pour la session en cours.
+      Preferences.set({ key, value }).catch(() => jsonStore.reportFailure(key));
     });
   } catch {
     // Preferences indisponibles : on reste sur `localStorage`.

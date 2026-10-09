@@ -22,6 +22,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import org.json.JSONObject;
 
 /**
@@ -37,12 +41,20 @@ import org.json.JSONObject;
  * couche web (src/platform/memoryFolder.ts) qui la garde. Les méthodes
  * tournent sur le fil des plugins de Capacitor, jamais sur celui de
  * l'interface.
+ *
+ * Un fichier existant n'est jamais réécrit sur place : le nouveau contenu va
+ * d'abord à côté (« nom.tracker-tmp »), puis prend sa place (`replace`). Une
+ * coupure en plein échange est reprise à la lecture suivante du dossier
+ * (`list`) : une fiche n'est jamais laissée à moitié écrite.
  */
 @CapacitorPlugin(name = "MemoryFolder")
 public class MemoryFolderPlugin extends Plugin {
 
     /** Type des fichiers créés : Android n'ajoute alors aucune extension au nom demandé. */
     private static final String FILE_MIME = "application/octet-stream";
+
+    /** Suffixe du fichier écrit à côté de celui qu'il remplace, le temps de l'échange. */
+    private static final String TEMP_SUFFIX = ".tracker-tmp";
 
     private static final String[] CHILD_COLUMNS = {
         Document.COLUMN_DOCUMENT_ID,
@@ -134,17 +146,28 @@ public class MemoryFolderPlugin extends Plugin {
         try {
             String dirId = resolve(tree, call.getString("path", ""), false);
             if (dirId != null) {
-                Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId);
-                try (Cursor c = resolver().query(children, CHILD_COLUMNS, null, null, null)) {
+                List<Child> children = new ArrayList<>();
+                Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId);
+                try (Cursor c = resolver().query(childrenUri, CHILD_COLUMNS, null, null, null)) {
                     while (c != null && c.moveToNext()) {
-                        boolean isDir = Document.MIME_TYPE_DIR.equals(c.getString(2));
-                        JSObject entry = new JSObject();
-                        entry.put("name", c.getString(1));
-                        entry.put("kind", isDir ? "directory" : "file");
-                        entry.put("size", isDir || c.isNull(3) ? 0 : c.getLong(3));
-                        entry.put("mtimeMs", c.isNull(4) ? 0 : c.getLong(4));
-                        entries.put(entry);
+                        children.add(new Child(
+                            c.getString(0),
+                            c.getString(1),
+                            Document.MIME_TYPE_DIR.equals(c.getString(2)),
+                            c.isNull(3) ? 0 : c.getLong(3),
+                            c.isNull(4) ? 0 : c.getLong(4)
+                        ));
                     }
+                }
+                Set<String> names = new HashSet<>();
+                for (Child child : children) names.add(child.name);
+                for (Child child : children) {
+                    if (!child.isDir && child.name.endsWith(TEMP_SUFFIX) && child.name.length() > TEMP_SUFFIX.length()) {
+                        String original = finishInterruptedReplace(tree, child, names);
+                        if (original != null) entries.put(entryOf(original, child));
+                        continue;
+                    }
+                    entries.put(entryOf(child.name, child));
                 }
             }
         } catch (Exception e) {
@@ -236,29 +259,125 @@ public class MemoryFolderPlugin extends Plugin {
             String name = path.substring(slash + 1);
             String parentId = resolve(tree, parentPath, true);
             String id = findChild(tree, parentId, name);
-            Uri target;
             if (id != null) {
-                target = DocumentsContract.buildDocumentUriUsingTree(tree, id);
+                replace(tree, parentId, name, DocumentsContract.buildDocumentUriUsingTree(tree, id), data, path);
             } else {
-                target = DocumentsContract.createDocument(
-                    resolver(),
-                    DocumentsContract.buildDocumentUriUsingTree(tree, parentId),
-                    FILE_MIME,
-                    name
-                );
-                if (target == null) throw new Exception("création refusée pour " + path);
-            }
-            // « wt » : le fichier est tronqué avant l'écriture, sans quoi une fiche plus
-            // courte que la précédente en garderait la fin.
-            try (OutputStream out = resolver().openOutputStream(target, "wt")) {
-                if (out == null) throw new Exception("écriture refusée pour " + path);
-                out.write(data);
+                writeTo(create(tree, parentId, name, path), data, path);
             }
         } catch (Exception e) {
             call.reject("Écriture impossible : " + e.getMessage());
             return;
         }
         call.resolve();
+    }
+
+    /**
+     * Remplace un fichier existant sans jamais le laisser à moitié écrit : le
+     * contenu va d'abord dans « nom.tracker-tmp », puis l'ancien fichier est
+     * retiré et le nouveau prend son nom. Si l'application est tuée entre deux
+     * étapes, `list` termine l'échange. Un fournisseur qui ne sait pas renommer
+     * reçoit l'écriture en place, comme avant.
+     */
+    private void replace(Uri tree, String parentId, String name, Uri target, byte[] data, String path) throws Exception {
+        String tempName = name + TEMP_SUFFIX;
+        String tempId = findChild(tree, parentId, tempName);
+        Uri temp = tempId != null ? DocumentsContract.buildDocumentUriUsingTree(tree, tempId) : create(tree, parentId, tempName, path);
+        writeTo(temp, data, path);
+        if (!supportsRename(temp)) {
+            writeTo(target, data, path);
+            DocumentsContract.deleteDocument(resolver(), temp);
+            return;
+        }
+        DocumentsContract.deleteDocument(resolver(), target);
+        Uri renamed;
+        try {
+            renamed = DocumentsContract.renameDocument(resolver(), temp, name);
+        } catch (Exception e) {
+            renamed = null;
+        }
+        if (renamed == null) {
+            // Renommage refusé malgré l'annonce du fournisseur : le contenu est écrit sous son nom.
+            writeTo(create(tree, parentId, name, path), data, path);
+            DocumentsContract.deleteDocument(resolver(), temp);
+        }
+    }
+
+    /**
+     * Fichier temporaire trouvé dans un dossier : un échange interrompu. À côté
+     * de l'original, l'ancien contenu est intact et le temporaire, peut-être
+     * incomplet, est retiré ; seul, l'original avait déjà été retiré et le
+     * temporaire, complet, reprend son nom. Rend le nom sous lequel le montrer,
+     * `null` s'il ne doit pas l'être.
+     */
+    private String finishInterruptedReplace(Uri tree, Child temp, Set<String> names) {
+        String original = temp.name.substring(0, temp.name.length() - TEMP_SUFFIX.length());
+        Uri doc = DocumentsContract.buildDocumentUriUsingTree(tree, temp.id);
+        try {
+            if (names.contains(original)) {
+                DocumentsContract.deleteDocument(resolver(), doc);
+                return null;
+            }
+            if (DocumentsContract.renameDocument(resolver(), doc, original) == null) return null;
+            names.add(original);
+            return original;
+        } catch (Exception e) {
+            // Laissé tel quel : rien n'est perdu, l'échange sera repris à la prochaine lecture.
+            return null;
+        }
+    }
+
+    private Uri create(Uri tree, String parentId, String name, String path) throws Exception {
+        Uri created = DocumentsContract.createDocument(
+            resolver(),
+            DocumentsContract.buildDocumentUriUsingTree(tree, parentId),
+            FILE_MIME,
+            name
+        );
+        if (created == null) throw new Exception("création refusée pour " + path);
+        return created;
+    }
+
+    private void writeTo(Uri doc, byte[] data, String path) throws Exception {
+        // « wt » : le fichier est tronqué avant l'écriture, sans quoi un contenu plus
+        // court que le précédent en garderait la fin.
+        try (OutputStream out = resolver().openOutputStream(doc, "wt")) {
+            if (out == null) throw new Exception("écriture refusée pour " + path);
+            out.write(data);
+        }
+    }
+
+    private boolean supportsRename(Uri doc) {
+        try (Cursor c = resolver().query(doc, new String[] { Document.COLUMN_FLAGS }, null, null, null)) {
+            return c != null && c.moveToFirst() && (c.getInt(0) & Document.FLAG_SUPPORTS_RENAME) != 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Un enfant d'un dossier, tel que le fournisseur le décrit. */
+    private static final class Child {
+        final String id;
+        final String name;
+        final boolean isDir;
+        final long size;
+        final long mtimeMs;
+
+        Child(String id, String name, boolean isDir, long size, long mtimeMs) {
+            this.id = id;
+            this.name = name;
+            this.isDir = isDir;
+            this.size = size;
+            this.mtimeMs = mtimeMs;
+        }
+    }
+
+    private static JSObject entryOf(String name, Child child) {
+        JSObject entry = new JSObject();
+        entry.put("name", name);
+        entry.put("kind", child.isDir ? "directory" : "file");
+        entry.put("size", child.isDir ? 0 : child.size);
+        entry.put("mtimeMs", child.mtimeMs);
+        return entry;
     }
 
     @PluginMethod

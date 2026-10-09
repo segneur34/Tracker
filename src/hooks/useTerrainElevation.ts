@@ -87,6 +87,8 @@ export const useTerrainElevation = (
   const session = findLibrarySession(sessions, file);
   const startMs = track.length > 1 ? track[0].timeMs : null;
   const stored = session?.record.terrainElevation;
+  // Fiche allégée, pas encore relue en entier : son altitude rangée n'est pas encore connue.
+  const partial = session?.partial === true;
   const [, setFoundCount] = useState(found.size);
   const [, setLocalCount] = useState(0);
   const [error, setError] = useState<{ key: string; message: string } | null>(null);
@@ -102,11 +104,11 @@ export const useTerrainElevation = (
 
   // Altitude trouvée avant que la bibliothèque connaisse la session : rangée dès qu'elle la connaît.
   useEffect(() => {
-    if (local && !isCurrent(stored, startMs, stepM) && session && !session.readOnly) store(session.file, local);
-  }, [local, stored, startMs, stepM, session]);
+    if (local && !isCurrent(stored, startMs, stepM) && session && !session.readOnly && !partial) store(session.file, local);
+  }, [local, stored, startMs, stepM, session, partial]);
 
   useEffect(() => {
-    if (!wanted || terrain || failed !== null || key === null || stepM === null) return;
+    if (!wanted || terrain || failed !== null || key === null || stepM === null || partial) return;
     search(track, cumDist, stepM).then(
       (result) => {
         store(file, result);
@@ -114,7 +116,7 @@ export const useTerrainElevation = (
       },
       (err: unknown) => setError({ key, message: err instanceof Error ? err.message : 'Altitude de l\'IGN indisponible.' })
     );
-  }, [wanted, terrain, failed, key, track, cumDist, stepM, file]);
+  }, [wanted, terrain, failed, key, track, cumDist, stepM, file, partial]);
 
   const retry = () => setError(null);
 

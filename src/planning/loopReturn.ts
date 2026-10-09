@@ -1,4 +1,5 @@
 import { EARTH_RADIUS_M, toRad } from '../core/kinematics';
+import { pointSegmentDistanceM, simplifyPlane, type PlanePoint } from '../core/simplify';
 import type { RouteLeg, RoutePoint, Waypoint } from './route';
 
 /**
@@ -56,10 +57,7 @@ export const LOOP_RETURN_VARIANTS = 4;
 export type AvoidancePolygon = Waypoint[];
 
 /** Point projeté dans un plan local, en mètres. */
-interface XY {
-  x: number;
-  y: number;
-}
+type XY = PlanePoint;
 
 /** Plan local équirectangulaire autour de `refLat` : exact à mieux que le pour cent sur quelques dizaines de kilomètres. */
 const projection = (refLat: number) => {
@@ -75,41 +73,6 @@ const meanLat = (points: ReadonlyArray<Waypoint>): number =>
   points.length > 0 ? points.reduce((s, p) => s + p.lat, 0) / points.length : 0;
 
 const dist = (a: XY, b: XY): number => Math.hypot(b.x - a.x, b.y - a.y);
-
-/** Distance de `p` au segment `[a, b]`, en mètres. */
-const segmentDistance = (p: XY, a: XY, b: XY): number => {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len2 = dx * dx + dy * dy;
-  const t = len2 > 0 ? Math.min(1, Math.max(0, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
-  return Math.hypot(a.x + t * dx - p.x, a.y + t * dy - p.y);
-};
-
-/** Douglas-Peucker sans récursion : les points gardés, bouts compris. */
-const simplify = (points: XY[], toleranceM: number): XY[] => {
-  if (points.length < 3) return points;
-  const keep = new Array<boolean>(points.length).fill(false);
-  keep[0] = true;
-  keep[points.length - 1] = true;
-  const stack: [number, number][] = [[0, points.length - 1]];
-  while (stack.length > 0) {
-    const [first, last] = stack.pop()!;
-    let worst = -1;
-    let index = -1;
-    for (let i = first + 1; i < last; i++) {
-      const d = segmentDistance(points[i], points[first], points[last]);
-      if (d > worst) {
-        worst = d;
-        index = i;
-      }
-    }
-    if (index >= 0 && worst > toleranceM) {
-      keep[index] = true;
-      stack.push([first, index], [index, last]);
-    }
-  }
-  return points.filter((_, i) => keep[i]);
-};
 
 /** Rectangle autour du segment `[a, b]`, prolongé de `h` à chaque bout pour couvrir les coudes. */
 const rectangle = (a: XY, b: XY, h: number): XY[] => {
@@ -205,7 +168,7 @@ export const avoidancePolygons = (
     const halfWidth = Math.max(params.halfWidthM, toleranceM);
     const polygons: AvoidancePolygon[] = [];
     for (const run of runs) {
-      const kept = simplify(run, toleranceM);
+      const kept = simplifyPlane(run, toleranceM);
       for (let i = 1; i < kept.length; i++) polygons.push(rectangle(kept[i - 1], kept[i], halfWidth).map(proj.from));
     }
     if (polygonsParam(polygons, heaviest).length <= params.maxParamChars) return { polygons, toleranceM };
@@ -258,7 +221,7 @@ export const sharedDistanceM = (path: ReadonlyArray<RoutePoint>, outbound: Reado
   }
   const near = (p: XY): boolean => {
     const list = grid.get(cellKey(Math.floor(p.x / cell), Math.floor(p.y / cell)));
-    return !!list && list.some((i) => segmentDistance(p, aller[i], aller[i + 1]) < toleranceM);
+    return !!list && list.some((i) => pointSegmentDistanceM(p, aller[i], aller[i + 1]) < toleranceM);
   };
 
   const points = path.map(proj.to);
