@@ -22,6 +22,7 @@ import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import SurfaceBar from '../components/SurfaceBar';
 import SurfaceLayer from '../components/SurfaceLayer';
+import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { IconChevronRight } from '../components/icons';
@@ -531,7 +532,8 @@ function LandModule({ family }: { family: LandFamily }) {
   const overlayGradientId = `${gradientId}-superpose`;
   const separateGradientId = `${gradientId}-separe`;
 
-  const mapSegments = useMemo(() => {
+  /** Traits de la trace colorée par la vitesse, mémorisés : le survol d'un graphe ne les redessine pas (`TrackSegmentsLayer`). */
+  const mapSegments = useMemo((): TrackSegment[] => {
     if (gpx.track.length < 2) return [];
     const colorSpeed = meanFilterByTime(
       gpx.track.map((p) => p.smoothedSpeedMs),
@@ -541,8 +543,7 @@ function LandModule({ family }: { family: LandFamily }) {
     return gpx.track.slice(1).map((point, index) => {
       const prev = gpx.track[index];
       return {
-        id: index,
-        positions: [[prev.lat, prev.lon], [point.lat, point.lon]] as [[number, number], [number, number]],
+        positions: [[prev.lat, prev.lon], [point.lat, point.lon]],
         color: speedGradientColor(colorSpeed[index + 1], range.minMs, range.maxMs),
       };
     });
@@ -615,9 +616,7 @@ function LandModule({ family }: { family: LandFamily }) {
       <OsmTileLayer />
       {surfaceMapPaths ? <SurfaceLayer paths={surfaceMapPaths} /> : gradeMapPaths ? gradeMapPaths.map((path, idx) => (
         <Polyline key={`grade-${idx}`} positions={path.positions} pathOptions={{ color: path.color, weight: 5 }} />
-      )) : mapSegments.map((segment) => (
-        <Polyline key={`track-${segment.id}`} positions={segment.positions} pathOptions={{ color: segment.color, weight: 5 }} />
-      ))}
+      )) : <TrackSegmentsLayer segments={mapSegments} weight={5} />}
       {zonePaths.map((path, idx) => (
         <Polyline key={`zone-${selectedZone}-${idx}`} positions={path} pathOptions={{ color: ZONE_COLOR, weight: 10, opacity: 0.8 }} />
       ))}

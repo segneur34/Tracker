@@ -3,7 +3,7 @@ import { TERRAIN_ELEVATION_VERSION, applyTerrainElevation, roundTerrainZ, terrai
 import type { TrackPoint } from '../core/types';
 import type { SessionTerrainElevation } from '../library/record';
 import { IGN_RESOURCE, fetchIgnElevations } from '../planning/ignAltimetry';
-import { findLibrarySession, librarySession, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
+import { librarySession, updateSessionRecord, useLibrarySession } from './useSessionLibrary';
 
 /**
  * Altitude d'une session course ou vélo : celle du terrain (IGN), demandée à
@@ -83,8 +83,7 @@ export const useTerrainElevation = (
   /** Pas des échantillons, en mètres ; `null` : pas d'altitude du terrain pour cette activité. */
   stepM: number | null
 ) => {
-  const { sessions } = useSessionLibrary();
-  const session = findLibrarySession(sessions, file);
+  const session = useLibrarySession(file);
   const startMs = track.length > 1 ? track[0].timeMs : null;
   const stored = session?.record.terrainElevation;
   // Fiche allégée, pas encore relue en entier : son altitude rangée n'est pas encore connue.

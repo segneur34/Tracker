@@ -3,7 +3,7 @@ import { decodeImu } from '../core/imuFile';
 import { JUMPS_CALC_VERSION, measureJumps, toSessionJump, type JumpDetection, type SessionJump } from '../core/jumps';
 import { getSportProfile } from '../core/sportProfiles';
 import type { SportType, TrackPoint } from '../core/types';
-import { findLibrarySession, hasSessionMotion, librarySession, readSessionMotion, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
+import { hasSessionMotion, librarySession, readSessionMotion, updateSessionRecord, useLibrarySession } from './useSessionLibrary';
 
 /**
  * Sauts d'une session de voile (`core/jumps.ts`) : ceux de sa fiche s'ils sont
@@ -50,8 +50,7 @@ const compute = (key: string, file: string, track: TrackPoint[], detection: Jump
 };
 
 export const useSessionJumps = (file: string | null, track: TrackPoint[], sport: SportType) => {
-  const { sessions } = useSessionLibrary();
-  const session = findLibrarySession(sessions, file);
+  const session = useLibrarySession(file);
   const detection = getSportProfile(sport).jumps?.detection ?? null;
   const key = file !== null && track.length > 1 ? `${file}|${track[0].timeMs}` : null;
   const stored = session?.record.jumps;

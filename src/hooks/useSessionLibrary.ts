@@ -1668,9 +1668,25 @@ export const librarySession = (file: string): LibrarySession | undefined => find
 export const findLibrarySession = (sessions: LibrarySession[], file: string | null): LibrarySession | undefined =>
   file === null ? undefined : sessions.find((s) => s.file === file);
 
+/**
+ * Une partie de l'état de la bibliothèque : le composant n'est rendu de
+ * nouveau que si elle change (une analyse ne suit pas le balayage ni les
+ * messages). `select` doit rendre une valeur stable pour un même état : une
+ * primitive, ou un objet déjà rangé dans l'état, jamais un objet neuf.
+ */
+export const useLibrarySelector = <T>(select: (s: LibraryState) => T): T =>
+  useSyncExternalStore(subscribe, () => select(state));
+
+/**
+ * Session d'un fichier, `undefined` si la bibliothèque ne la connaît pas.
+ * Elle garde son identité tant que sa fiche ne change pas.
+ */
+export const useLibrarySession = (file: string | null): LibrarySession | undefined =>
+  useLibrarySelector((s) => findLibrarySession(s.sessions, file));
+
 /** Nom donné par l'utilisateur à la session d'un fichier, `null` sans nom ou hors de la mémoire. */
 export const useSessionName = (file: string | null): string | null =>
-  findLibrarySession(useSessionLibrary().sessions, file)?.record.name ?? null;
+  useLibrarySelector((s) => findLibrarySession(s.sessions, file)?.record.name ?? null);
 
 /**
  * Dossier mémoire en service, une fois l'ouverture en cours terminée ; `null`

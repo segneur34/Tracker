@@ -6,7 +6,7 @@ import {
   summarizeSurfaces, surfacePaths, trackSurfaceStretches, type SurfacePath, type SurfaceStretch, type SurfaceTotal,
 } from '../planning/surface';
 import { WAY_MATCH_DEFAULTS, WAY_MATCH_VERSION, queryLines, trackSurfaceRuns } from '../planning/wayMatch';
-import { findLibrarySession, librarySession, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
+import { librarySession, updateSessionRecord, useLibrarySession } from './useSessionLibrary';
 
 /**
  * Revêtement d'une session course ou vélo (onglet « surface », et roulement
@@ -60,8 +60,7 @@ const isCurrent = (surfaces: SessionSurfaces | undefined): surfaces is SessionSu
 export type SurfaceSearchStatus = 'idle' | 'searching' | 'error' | 'ready';
 
 export const useSessionSurfaces = (track: TrackPoint[], file: string | null, active: boolean) => {
-  const { sessions } = useSessionLibrary();
-  const session = findLibrarySession(sessions, file);
+  const session = useLibrarySession(file);
   const startMs = track.length > 1 ? track[0].timeMs : null;
   const stored = session?.record.surfaces;
   // Fiche allégée, pas encore relue en entier : ses voies rangées ne sont pas encore connues.

@@ -35,7 +35,7 @@ const setFile = async (selector, path) => {
   const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
   await send('DOM.setFileInputFiles', { nodeId, files: [path] });
 };
-const snapshot = () => evaluate(`JSON.stringify({ url: location.pathname, h1: document.querySelector('h1')?.textContent ?? null, text: document.body.innerText.length, segments: document.querySelectorAll('path.leaflet-interactive').length, charts: document.querySelectorAll('.recharts-surface').length })`);
+const snapshot = () => evaluate(`JSON.stringify({ url: location.pathname, h1: document.querySelector('h1')?.textContent ?? null, text: document.body.innerText.length, segments: document.querySelectorAll('path.leaflet-interactive').length, traceCanvas: document.querySelectorAll('.leaflet-trace-pane canvas').length, charts: document.querySelectorAll('.recharts-surface').length })`);
 
 await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
 await send('Page.navigate', { url: `${BASE}/` });

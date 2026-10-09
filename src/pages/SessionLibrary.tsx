@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, Polyline } from 'react-leaflet';
+import { MapContainer } from 'react-leaflet';
 import OsmTileLayer from '../components/OsmTileLayer';
 import { Link, useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
@@ -9,6 +9,7 @@ import ImportButtons from '../components/ImportButtons';
 import MemoryStatus from '../components/MemoryStatus';
 import RefreshLibraryButton from '../components/RefreshLibraryButton';
 import RouteList from '../components/RouteList';
+import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import HelpButton from '../components/ui/HelpButton';
@@ -187,6 +188,16 @@ function SessionPreviewMap({ session, activity, family, onOpen }: {
     () => (track ? previewSpeedRange(session, activity, family, track.referenceMs) : null),
     [track, session, activity, family]
   );
+  /** Traits de la vignette, mémorisés : un balayage de la bibliothèque ne les redessine pas. */
+  const segments = useMemo(
+    (): TrackSegment[] => (track && range
+      ? track.points.slice(1).map((point, index) => ({
+          positions: [[track.points[index].lat, track.points[index].lon], [point.lat, point.lon]],
+          color: speedGradientColor(point.speedMs, range.minMs, range.maxMs),
+        }))
+      : []),
+    [track, range]
+  );
 
   return (
     <div
@@ -211,13 +222,7 @@ function SessionPreviewMap({ session, activity, family, onOpen }: {
           style={{ position: 'absolute', inset: 0 }}>
           <MapAutoResize />
           <OsmTileLayer />
-          {track.points.slice(1).map((point, index) => (
-            <Polyline
-              key={index}
-              interactive={false}
-              positions={[[track.points[index].lat, track.points[index].lon], [point.lat, point.lon]]}
-              pathOptions={{ color: speedGradientColor(point.speedMs, range.minMs, range.maxMs), weight: 3 }} />
-          ))}
+          <TrackSegmentsLayer segments={segments} weight={3} />
         </MapContainer>
       ) : (
         <span className="lib-row__preview-status">{status === 'error' ? 'Carte indisponible' : 'Carte…'}</span>

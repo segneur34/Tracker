@@ -40,6 +40,7 @@ import PanelTitle from '../components/PanelTitle';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
+import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
@@ -275,19 +276,29 @@ function SailingModule() {
     return maneuverSummary[type]?.tops[metric] ?? [];
   }, [selectedManeuverTop, maneuverSummary]);
 
-  const staticMapLayers = useMemo(() => {
-    if (trackData.length === 0) return null;
-
-    const mapSegments = trackData.slice(1).map((point, index) => {
+  /**
+   * Trace colorée par la vitesse, et ses flèches de cap, chacune mémorisée à
+   * part : montrer un top ou les manœuvres ne les redessine pas.
+   */
+  const mapSegments = useMemo(
+    (): TrackSegment[] => trackData.slice(1).map((point, index) => {
       const prevPoint = trackData[index];
       return {
-        id: index,
-        positions: [[prevPoint.lat, prevPoint.lon], [point.lat, point.lon]] as [[number, number], [number, number]],
-        color: speedGradientColor(knotsToMs(point.smoothedSpeed), colorRange.minMs, colorRange.maxMs)
+        positions: [[prevPoint.lat, prevPoint.lon], [point.lat, point.lon]],
+        color: speedGradientColor(knotsToMs(point.smoothedSpeed), colorRange.minMs, colorRange.maxMs),
       };
-    });
+    }),
+    [trackData, colorRange.minMs, colorRange.maxMs]
+  );
+  const arrowLayers = useMemo(
+    () => trackData
+      .filter((_, index) => index % 40 === 0 && index !== 0)
+      .map((point, idx) => <Marker key={`arrow-${idx}`} position={[point.lat, point.lon]} icon={createArrowIcon(point.bearing)} />),
+    [trackData]
+  );
 
-    const arrowMarkers = trackData.filter((_, index) => index % 40 === 0 && index !== 0);
+  const staticMapLayers = useMemo(() => {
+    if (trackData.length === 0) return null;
 
     let topArray: TopSegment[] | undefined;
     if (selectedTopMap === 'vmgUpwind') topArray = vmgStats?.topsUpwind;
@@ -296,14 +307,6 @@ function SailingModule() {
 
     return (
       <>
-        {mapSegments.map(segment => (
-          <Polyline key={`track-${segment.id}`} positions={segment.positions} pathOptions={{ color: segment.color, weight: 5 }} />
-        ))}
-
-        {arrowMarkers.map((point, idx) => (
-          <Marker key={`arrow-${idx}`} position={[point.lat, point.lon]} icon={createArrowIcon(point.bearing)} />
-        ))}
-
         {maneuverStats?.locations.map((loc, idx) => {
           if ((loc.type === 'tack' && !showTacksOnMap) || (loc.type === 'jibe' && !showJibesOnMap)) return null;
           return (
@@ -348,7 +351,7 @@ function SailingModule() {
         })}
       </>
     );
-  }, [trackData, colorRange, maneuverStats, showTacksOnMap, showJibesOnMap, selectedTopMap, stats, vmgStats, maneuverTopArray, selectedManeuverTop, speedUnit]);
+  }, [trackData, maneuverStats, showTacksOnMap, showJibesOnMap, selectedTopMap, stats, vmgStats, maneuverTopArray, selectedManeuverTop, speedUnit]);
 
   const mapBounds = useMemo(() => trackBounds(trackData), [trackData]);
 
@@ -634,6 +637,8 @@ function SailingModule() {
     <>
       <OsmTileLayer />
 
+      {trackData.length > 0 && <TrackSegmentsLayer segments={mapSegments} weight={5} />}
+      {arrowLayers}
       {staticMapLayers}
       {jumpMapLayers}
 

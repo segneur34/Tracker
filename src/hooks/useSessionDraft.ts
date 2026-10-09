@@ -10,7 +10,7 @@ import {
 } from '../library/sessionEdits';
 import type { SailingSessionNotes } from '../sailing/sessionNotes';
 import { useLeaveWarning } from './leaveGuard';
-import { findLibrarySession, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
+import { updateSessionRecord, useLibrarySelector, useLibrarySession } from './useSessionLibrary';
 
 /**
  * Brouillon des changements faits sur une session (vent saisi, seuil
@@ -27,8 +27,8 @@ import { findLibrarySession, updateSessionRecord, useSessionLibrary } from './us
 const drafts = new Map<string, SessionEdits>();
 
 export const useSessionDraft = (file: string | null) => {
-  const { sessions } = useSessionLibrary();
-  const session = findLibrarySession(sessions, file);
+  const session = useLibrarySession(file);
+  const sessions = useLibrarySelector((s) => s.sessions);
   const record = session?.record ?? null;
   const gear = useMemo(() => latestGearNotes(sessions.map((s) => s.record)), [sessions]);
   const saved = useMemo(() => savedEdits(record, gear), [record, gear]);

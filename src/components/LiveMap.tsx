@@ -115,6 +115,9 @@ function FollowPosition({ position, following, onUserMove }: {
   return null;
 }
 
+/** Points d'un tracé, dans la forme de Leaflet. */
+const latLngs = (points: ReadonlyArray<{ lat: number; lon: number }>): [number, number][] => points.map((p) => [p.lat, p.lon]);
+
 /**
  * Carte de l'enregistrement en cours : la trace d'une seule couleur (un
  * dégradé demanderait un trait par point, trop lourd à redessiner) et la
@@ -126,6 +129,14 @@ function FollowPosition({ position, following, onUserMove }: {
  */
 function LiveMap({ segments, position, color, height, guide, guideDone, travel, overlay, marks, validationRadiusM }: LiveMapProps) {
   const [following, setFollowing] = useState(true);
+  // Tracés mémorisés : `segments` ne change qu'au recalcul (toutes les 2 s, `useLiveRecording`), la position à chaque mesure.
+  // Leaflet ne reprend un tracé que si son tableau de points change.
+  const paths = useMemo(() => segments.map(latLngs), [segments]);
+  const guidePath = useMemo(() => (guide && guide.length > 1 ? latLngs(guide) : null), [guide]);
+  const guideDonePath = useMemo(() => (guideDone && guideDone.length > 1 ? latLngs(guideDone) : null), [guideDone]);
+  const trackStyle = useMemo(() => ({ color, weight: 4, opacity: 0.9 }), [color]);
+  // Le dernier segment, recalculé moins souvent que la position, est prolongé jusqu'à elle par un trait à part.
+  const lastFix = segments[segments.length - 1]?.at(-1);
   const target = marks?.find((m) => m.state === 'target');
   const start = position ?? segments[0]?.[0] ?? null;
   const guideBounds = !start && guide && guide.length > 1 ? trackBounds(guide) : null;
@@ -138,24 +149,18 @@ function LiveMap({ segments, position, color, height, guide, guideDone, travel, 
         style={{ height: '100%', width: '100%' }}>
         <MapAutoResize />
         <OsmTileLayer />
-        {guideDone && guideDone.length > 1 && (
-          <Polyline positions={guideDone.map((p) => [p.lat, p.lon] as [number, number])} pathOptions={GUIDE_DONE_STYLE} />
-        )}
-        {guide && guide.length > 1 && (
-          <Polyline positions={guide.map((p) => [p.lat, p.lon] as [number, number])} pathOptions={GUIDE_STYLE} />
-        )}
+        {guideDonePath && <Polyline positions={guideDonePath} pathOptions={GUIDE_DONE_STYLE} />}
+        {guidePath && <Polyline positions={guidePath} pathOptions={GUIDE_STYLE} />}
         {target && validationRadiusM !== undefined && validationRadiusM > 0 && (
           <Circle center={[target.lat, target.lon]} radius={validationRadiusM} pathOptions={TARGET_CIRCLE_STYLE} />
         )}
         {target && position && (
           <Polyline positions={[[position.lat, position.lon], [target.lat, target.lon]]} pathOptions={AIM_STYLE} />
         )}
-        {segments.map((segment, i) => {
-          const positions = segment.map((f) => [f.lat, f.lon] as [number, number]);
-          // Le dernier segment, recalculé moins souvent que la position, est prolongé jusqu'à elle.
-          if (i === segments.length - 1 && position) positions.push([position.lat, position.lon]);
-          return <Polyline key={i} positions={positions} pathOptions={{ color, weight: 4, opacity: 0.9 }} />;
-        })}
+        {paths.map((positions, i) => <Polyline key={i} positions={positions} pathOptions={trackStyle} />)}
+        {lastFix && position && (
+          <Polyline positions={[[lastFix.lat, lastFix.lon], [position.lat, position.lon]]} pathOptions={trackStyle} />
+        )}
         {marks?.map((m, i) => (
           <Marker key={i} position={[m.lat, m.lon]} icon={markIcon(m.label, m.state)} interactive={false} keyboard={false}
             zIndexOffset={m.state === 'target' ? 500 : 0} />

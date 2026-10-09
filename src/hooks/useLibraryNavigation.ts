@@ -4,7 +4,7 @@ import type { Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import type { LibrarySession } from '../library/record';
 import { confirmLeave } from './leaveGuard';
-import { findLibrarySession, librarySession, loadFullSession, loadSessionGpx, updateSessionRecord, useSessionLibrary } from './useSessionLibrary';
+import { librarySession, loadFullSession, loadSessionGpx, updateSessionRecord, useLibrarySelector, useLibrarySession } from './useSessionLibrary';
 import { readStoredActivities } from './useSportSettings';
 
 /**
@@ -81,8 +81,9 @@ export const useChangeSessionActivity = (family: SportFamily, setActivity: (id: 
 export const useSessionFromUrl = (onLoad: (content: string, session: LibrarySession) => void) => {
   const [params] = useSearchParams();
   const requested = params.get('session');
-  const library = useSessionLibrary();
-  const session = findLibrarySession(library.sessions, requested);
+  const session = useLibrarySession(requested);
+  /** Bibliothèque ouverte et balayée : une session encore inconnue n'y est pas. */
+  const settled = useLibrarySelector((s) => s.status === 'ready' && s.scanning === null);
   const known = session !== undefined;
 
   const latest = useRef({ onLoad, session });
@@ -114,7 +115,7 @@ export const useSessionFromUrl = (onLoad: (content: string, session: LibrarySess
     if (partial && requested !== null && loadedFor.current === requested) void loadFullSession(requested);
   }, [partial, requested]);
 
-  const missing = requested !== null && !known && library.status === 'ready' && library.scanning === null;
+  const missing = requested !== null && !known && settled;
   return {
     /** Session demandée par l'URL, connue ou non de la mémoire, `null` si aucune. */
     requested,
