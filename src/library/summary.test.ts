@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { computeKinematics } from '../core/kinematics';
 import type { RawTrackPoint } from '../core/types';
 import { SUMMARY_CALC_VERSION } from './record';
-import { summarizeSession } from './summary';
+import { analysisTrack, summarizeSession } from './summary';
 
 const START_MS = Date.parse('2026-09-20T10:00:00Z');
 const LAT = 43.6;
@@ -45,6 +46,20 @@ describe('summarizeSession', () => {
     expect(summary.pointCount).toBe(601);
     expect(summary.samplingS).toBeCloseTo(1, 5);
     expect(summary.maxSpeedMs).toBeCloseTo(3, 1);
+  });
+
+  it('part de la trace d\'analyse, celle que la vignette colore', () => {
+    // Pic de 1 s à 60 m/s : au-delà de la vitesse plausible d'une course, il est écrêté.
+    const raw = buildTrack([[300, 3], [1, 60], [300, 3]]);
+    for (const sport of ['running', 'wingfoil'] as const) {
+      const track = analysisTrack(raw, sport);
+      const summary = summarizeSession(raw, sport)!;
+      expect(summary.pointCount).toBe(track.length);
+      expect(summary.maxSpeedMs).toBe(Math.max(...track.map((p) => p.smoothedSpeedMs)));
+    }
+    expect(Math.max(...analysisTrack(raw, 'running').map((p) => p.smoothedSpeedMs))).toBeLessThan(20);
+    // Sans support, aucun filtre : la trace brute enrichie.
+    expect(analysisTrack(raw, null)).toEqual(computeKinematics(raw));
   });
 
   it('ne compte en mouvement que le temps passé au-dessus du seuil du support', () => {

@@ -17,6 +17,7 @@ import SurfaceBar from '../components/SurfaceBar';
 import SurfaceLayer from '../components/SurfaceLayer';
 import WayTypeTabs from '../components/WayTypeTabs';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
+import HoverMarker from '../components/HoverMarker';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { IconChevronRight, IconFile, IconUndo } from '../components/icons';
@@ -815,10 +816,7 @@ function PlanningPage() {
                 <CircleMarker center={[candidate.lat, candidate.lon]} radius={9}
                   pathOptions={{ color: '#ffffff', weight: 3, fillColor: ROUTE_COLOR, fillOpacity: 0.6 }} />
               )}
-              {hovered && (
-                <CircleMarker center={[hovered.lat, hovered.lon]} radius={7}
-                  pathOptions={{ color: '#1b1f24', weight: 3, fillColor: '#ffffff', fillOpacity: 1 }} />
-              )}
+              {hovered && <HoverMarker position={[hovered.lat, hovered.lon]} />}
             </MapContainer>
             <div className="plan-map-tools">
               <Button size="s" onClick={() => void locate()} disabled={locating}>

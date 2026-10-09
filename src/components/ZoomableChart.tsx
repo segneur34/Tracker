@@ -13,7 +13,9 @@ import './ZoomableChart.css';
  * deux doigts : écarter zoome, pincer dézoome, glisser déplace ; un seul
  * doigt garde le survol, qui déplace le repère sur la carte. Sur ordinateur,
  * tirer une zone à la souris zoome dessus ; un double-clic revient à tout
- * voir, comme le bouton « Tout voir » qui paraît une fois zoomé.
+ * voir, comme le bouton « Tout voir » qui paraît une fois zoomé. La souris
+ * qui sort du graphe appelle `onLeave`, qui efface le repère ; au doigt, il
+ * reste où on l'a laissé.
  *
  * Le graphe Recharts va dedans, avec `ChartZoomProbe` parmi ses enfants :
  * elle lit la zone de tracé (`usePlotArea`), qui convertit les positions à
@@ -53,8 +55,10 @@ interface Pinch {
   start: XRange;
 }
 
-function ZoomableChart({ zoom, showReset = true, className, style, children }: {
+function ZoomableChart({ zoom, showReset = true, onLeave, className, style, children }: {
   zoom: ChartZoom;
+  /** Souris sortie du graphe. */
+  onLeave?: () => void;
   /** Bouton « Tout voir » sur ce graphe ; à retirer sur le second de deux graphes superposés. */
   showReset?: boolean;
   className?: string;
@@ -158,7 +162,10 @@ function ZoomableChart({ zoom, showReset = true, className, style, children }: {
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
-      onMouseLeave={() => setDrag(null)}
+      onMouseLeave={() => {
+        setDrag(null);
+        onLeave?.();
+      }}
       onDoubleClick={() => zoom.reset()}>
       <PlotAreaContext.Provider value={reportPlot}>{children}</PlotAreaContext.Provider>
       {selection && <div className="zoom-chart__selection" style={selection} />}

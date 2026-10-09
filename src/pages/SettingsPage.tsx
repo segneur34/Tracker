@@ -13,8 +13,8 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
 import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  TERRAIN_LABEL, TEXT_SCALE_FACTOR, TEXT_SCALE_LABEL, TREATMENT_SPEED_RANGE_MS, TREATMENT_UNITS, defaultBikeType, defaultGradeRange, planningFamily,
-  useAllSportSettings, type SportSettingsView, type TerrainType, type TextScale,
+  TERRAIN_LABEL, TREATMENT_SPEED_RANGE_MS, TREATMENT_UNITS, defaultBikeType, defaultGradeRange, planningFamily,
+  useAllSportSettings, type SportSettingsView, type TerrainType,
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
 import {
@@ -244,7 +244,7 @@ function SettingsPage() {
                 const units = TREATMENT_UNITS[treatment];
                 const isOpen = openActivity[id] === true;
                 const overridden =
-                  s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.textScale !== 'normal' || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
+                  s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
                   s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null ||
                   s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden ||
                   s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.isJumpsOverridden;
@@ -337,12 +337,6 @@ function SettingsPage() {
                             <span className="settings-row__label">Unité de distance</span>
                             <select value={s.distanceUnit} onChange={(e) => setFor(id, 'distanceUnit', e.target.value as DistanceUnit)} className="ui-field ui-field--s">
                               {DISTANCE_UNITS.map((u) => <option key={u} value={u}>{DISTANCE_UNIT_LABEL[u]}</option>)}
-                            </select>
-                          </div>
-                          <div className="settings-row">
-                            <span className="settings-row__label">Taille du texte</span>
-                            <select value={s.textScale} onChange={(e) => setFor(id, 'textScale', e.target.value as TextScale)} className="ui-field ui-field--s">
-                              {(Object.keys(TEXT_SCALE_FACTOR) as TextScale[]).map((t) => <option key={t} value={t}>{TEXT_SCALE_LABEL[t]}</option>)}
                             </select>
                           </div>
                           {s.foil !== null && (

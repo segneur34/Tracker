@@ -17,12 +17,13 @@ import PageHeader from '../components/ui/PageHeader';
 import { sampledIndices } from '../core/chartZoom';
 import { PREVIEW_MAX_POINTS, trackBounds, type TrackBounds } from '../core/displayConfig';
 import { parseGpx } from '../core/gpxParser';
-import { computeKinematics } from '../core/kinematics';
 import { referenceSpeedMs as sessionReferenceSpeedMs } from '../core/sessionSpeed';
-import { isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
+import { buildCumulativeTrack } from '../core/sessionStats';
+import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
+import { coloredSegments, trackColorSpeedsMs } from '../core/trackColor';
 import { FAMILY_BASE, activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
 import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
-import { formatDistance, formatDuration, formatSpeed, knotsToMs, msToKnots, toDisplayDistance } from '../core/units';
+import { formatDistance, formatDuration, formatSpeed, msToKnots, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
@@ -30,9 +31,10 @@ import {
   PLANNING_FAMILIES, TREATMENT_SPEED_RANGE_MS, effectiveDistanceUnit, effectiveSpeedUnit, readStoredActivities, readStoredSettings,
 } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
+import { analysisTrack } from '../library/summary';
 import { routeActivity, routesOfFamily } from '../planning/routeList';
 import { isNativeApp } from '../platform/runtime';
-import { SPEED_RANGE_MAX_MARGIN_KN, suggestActiveThresholdKn } from '../sailing/sailingConfig';
+import { suggestSpeedRangeMs } from '../sailing/sailingConfig';
 import './SessionLibrary.css';
 
 /**
@@ -89,40 +91,36 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
  * Bornes de couleur d'une vignette d'aperçu, dans cet ordre, comme le module d'analyse :
  * 0. celles enregistrées dans la fiche de la session (`analysis.speedRange`) ;
  * 1. celles réglées pour son activité dans Réglages (`tracker.sportSettings`) ;
- * 2. en voile, les bornes suggérées par l'allure de la session, comme le module d'analyse :
- *    seuil d'activité suggéré en bas, pic de vitesse déjà enregistré dans la fiche
- *    (`summary.maxSpeedMs`) plus une marge en haut — l'allure vient de la fiche si elle a été
- *    imposée, sinon de celle mesurée sur les points bruts du GPX (`measuredReferenceMs`) ;
- * 3. à défaut (course, support inconnu, ou pic non mesuré), le défaut du traitement de son calcul
- *    (celui du calcul par défaut de la famille pour une session à classer).
+ * 2. en voile, les bornes suggérées par l'allure de la session (`suggestSpeedRangeMs`,
+ *    mesurées sur la trace entière comme dans l'analyse) ;
+ * 3. à défaut, le défaut du traitement de son calcul (celui du calcul par défaut de la
+ *    famille pour une session à classer).
  */
 const previewSpeedRange = (
   session: LibrarySession,
   activity: Activity | null,
   family: SportFamily,
-  measuredReferenceMs: number
-): { minMs: number; maxMs: number } => {
+  suggested: SpeedRangeMs | null
+): SpeedRangeMs => {
   const { record } = session;
   if (record.analysis?.speedRange) return record.analysis.speedRange;
   if (activity) {
     const override = readStoredSettings().speedRanges?.[activity.id];
     if (override && isValidSpeedRange(override)) return override;
   }
-  if (record.sport && family === 'voile' && record.summary.maxSpeedMs > 0) {
-    const referenceKn = msToKnots(record.analysis?.referenceSpeedMs ?? measuredReferenceMs);
-    return {
-      minMs: knotsToMs(suggestActiveThresholdKn(record.sport, referenceKn)),
-      maxMs: record.summary.maxSpeedMs + knotsToMs(SPEED_RANGE_MAX_MARGIN_KN),
-    };
-  }
+  if (suggested) return suggested;
   return TREATMENT_SPEED_RANGE_MS[sportTreatment(record.sport ?? FAMILY_BASE[family])];
 };
 
-/** Trace d'une vignette : au plus `PREVIEW_MAX_POINTS` points, l'emprise de la trace entière et son allure mesurée. */
+/**
+ * Trace d'une vignette : au plus `PREVIEW_MAX_POINTS` points, chacun avec sa vitesse
+ * de couleur calculée sur la trace entière, l'emprise de la trace et, en voile, les
+ * bornes suggérées par l'allure.
+ */
 interface PreviewTrack {
-  points: { lat: number; lon: number; speedMs: number }[];
+  points: { lat: number; lon: number; colorMs: number }[];
   bounds: TrackBounds;
-  referenceMs: number;
+  suggested: SpeedRangeMs | null;
 }
 
 /** Marge sous l'écran où une vignette se charge déjà, pour être prête quand on y arrive. */
@@ -147,6 +145,8 @@ function SessionPreviewMap({ session, activity, family, onOpen }: {
   const [track, setTrack] = useState<PreviewTrack | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const { file } = session;
+  const sport = session.record.sport;
+  const referenceOverrideMs = session.record.analysis?.referenceSpeedMs ?? null;
 
   useEffect(() => {
     const el = frame.current;
@@ -166,15 +166,21 @@ function SessionPreviewMap({ session, activity, family, onOpen }: {
       if (cancelled) return;
       if (gpx === null) { setStatus('error'); return; }
       try {
+        // La trace et sa couleur telles que l'analyse les calcule : filtres du support, allure de la session.
         const { rawPoints } = parseGpx(gpx);
-        const points = computeKinematics(rawPoints);
+        const referenceMs = referenceOverrideMs ?? sessionReferenceSpeedMs(rawPoints);
+        const points = analysisTrack(rawPoints, sport, referenceMs);
         const bounds = trackBounds(points);
         if (points.length < 2 || bounds === null) { setStatus('error'); return; }
+        const treatment = sportTreatment(sport ?? FAMILY_BASE[family]);
+        const colorMs = trackColorSpeedsMs(points, treatment);
         setTrack({
           points: sampledIndices(0, points.length - 1, PREVIEW_MAX_POINTS)
-            .map((i) => ({ lat: points[i].lat, lon: points[i].lon, speedMs: points[i].smoothedSpeedMs })),
+            .map((i) => ({ lat: points[i].lat, lon: points[i].lon, colorMs: colorMs[i] })),
           bounds,
-          referenceMs: sessionReferenceSpeedMs(rawPoints),
+          suggested: sport !== null && treatment === 'voile'
+            ? suggestSpeedRangeMs(sport, msToKnots(referenceMs), points, buildCumulativeTrack(points))
+            : null,
         });
         setStatus('ready');
       } catch {
@@ -182,20 +188,15 @@ function SessionPreviewMap({ session, activity, family, onOpen }: {
       }
     })();
     return () => { cancelled = true; };
-  }, [near, file]);
+  }, [near, file, sport, referenceOverrideMs, family]);
 
   const range = useMemo(
-    () => (track ? previewSpeedRange(session, activity, family, track.referenceMs) : null),
+    () => (track ? previewSpeedRange(session, activity, family, track.suggested) : null),
     [track, session, activity, family]
   );
   /** Traits de la vignette, mémorisés : un balayage de la bibliothèque ne les redessine pas. */
   const segments = useMemo(
-    (): TrackSegment[] => (track && range
-      ? track.points.slice(1).map((point, index) => ({
-          positions: [[track.points[index].lat, track.points[index].lon], [point.lat, point.lon]],
-          color: speedGradientColor(point.speedMs, range.minMs, range.maxMs),
-        }))
-      : []),
+    (): TrackSegment[] => (track && range ? coloredSegments(track.points, range) : []),
     [track, range]
   );
 

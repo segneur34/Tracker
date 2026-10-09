@@ -4,7 +4,7 @@ import { JUMP_DOUBT_LABEL, type SessionJump } from '../core/jumps';
 import { formatShortDistance, formatSpeed, formatTimeOfDay, type DistanceUnit, type SpeedUnit } from '../core/units';
 import type { JumpsStatus } from '../hooks/useSessionJumps';
 import type { ChartHoverEvent } from './chartHover';
-import { JUMP_PODIUM_COLORS, JUMP_SHOWN_COLOR } from './jumpColors';
+import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 import PanelTitle from './PanelTitle';
 import ResizablePanel from './ResizablePanel';
 import { CARD_STYLE, HALF_PANEL_STYLE } from './styles';
@@ -50,8 +50,6 @@ export interface JumpsPanelProps {
   thresholdLabel: string;
   speedUnit: SpeedUnit;
   distanceUnit: DistanceUnit;
-  /** Facteur de la taille du texte. */
-  scale: number;
   open: boolean;
   onToggle: () => void;
   /** Saut montré sur la carte, par l'heure de son décollage. */
@@ -83,7 +81,7 @@ const curvePoints = (j: SessionJump): Map<number, number> => {
 };
 
 function JumpsPanel({
-  status, error, jumps, hiddenCount, minHeightM, thresholdLabel, speedUnit, distanceUnit, scale, open, onToggle,
+  status, error, jumps, hiddenCount, minHeightM, thresholdLabel, speedUnit, distanceUnit, open, onToggle,
   shownJump, onShowJump, podiumShown, onTogglePodium, trackIndexAt, onCurveHover, onCurveLeave,
 }: JumpsPanelProps) {
   const [help, setHelp] = useState(false);
@@ -91,9 +89,9 @@ function JumpsPanel({
   /** Sauts de la courbe, par l'heure de leur décollage : le premier (le plus haut d'office), et celui qu'on lui compare. */
   const [curveFirst, setCurveFirst] = useState<number | null>(null);
   const [curveSecond, setCurveSecond] = useState<number | null>(null);
-  const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` };
+  const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: '14px' };
   const buttonStyle = (active: boolean, color: string): CSSProperties => ({
-    padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: 'pointer', backgroundColor: active ? color : 'var(--surface-sunken)',
+    padding: '2px 8px', fontSize: '11px', cursor: 'pointer', backgroundColor: active ? color : 'var(--surface-sunken)',
     color: active ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px',
   });
   const heading = (label: string, withHelp = false) => (
@@ -177,7 +175,7 @@ function JumpsPanel({
         <ol className="an-jump-podium">
           {byHeight.slice(0, 3).map((j, k) => (
             <li key={j.takeoffMs}>
-              <span className="an-jump-podium__dot" style={{ backgroundColor: JUMP_PODIUM_COLORS[k] }} />
+              <span className="an-jump-podium__dot" style={{ backgroundColor: HIGHLIGHT_PODIUM_COLORS[k] }} />
               {rank(k)} · <strong>{meters(j.heightM)}</strong> · {formatTimeOfDay(j.takeoffMs)}
             </li>
           ))}
@@ -223,7 +221,7 @@ function JumpsPanel({
                   <td className="an-jump-speed" style={cellStyle}>{formatSpeed(j.speedMs, speedUnit)}</td>
                   <td className="an-jump-map" style={cellStyle}>
                     <span className="an-jump-actions">
-                      <button type="button" onClick={() => onShowJump(shown ? null : j.takeoffMs)} style={buttonStyle(shown, JUMP_SHOWN_COLOR)}>
+                      <button type="button" onClick={() => onShowJump(shown ? null : j.takeoffMs)} style={buttonStyle(shown, HIGHLIGHT_SHOWN_COLOR)}>
                         {shown ? 'Masquer' : 'Voir'}
                       </button>
                       <button type="button" onClick={() => showDetail(j)} style={buttonStyle(onCurve, CURVE_COLORS[0])}>

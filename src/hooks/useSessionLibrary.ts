@@ -332,7 +332,8 @@ const summaryOptions = (
   if (sport === null) return {};
   const stored = readStoredSettings();
   const key = sessionActivity(readStoredActivities(), activityId, sport)?.id ?? sport;
-  const terrain = stored.terrains?.[key];
+  // Le terrain de la session prime sur celui de son activité.
+  const terrain = analysis?.terrain ?? stored.terrains?.[key];
   return {
     activeThreshold: analysis?.activeThreshold ?? stored.thresholds?.[key],
     referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? analysis?.referenceSpeedMs ?? undefined : undefined,

@@ -1,6 +1,6 @@
 import { JUMP_DOUBTS, type JumpDoubt, type SessionJump } from '../core/jumps';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
-import { sportTreatment } from '../core/sportProfiles';
+import { ELEVATION_PRESETS, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import type { TerrainSamples } from '../core/terrainElevation';
 import { readSurfaceRuns, type SurfaceRuns } from '../planning/surface';
@@ -63,6 +63,12 @@ export interface SessionSummary {
 /** Notes saisies, datées de leur dernier changement. */
 export type StoredSessionNotes = SailingSessionNotes & { savedAt: number };
 
+/** Terrain du dénivelé, une clé de `ELEVATION_PRESETS`. */
+export type SessionTerrain = keyof typeof ELEVATION_PRESETS;
+
+export const isSessionTerrain = (value: unknown): value is SessionTerrain =>
+  typeof value === 'string' && Object.prototype.hasOwnProperty.call(ELEVATION_PRESETS, value);
+
 /**
  * Réglages d'analyse propres à la session, saisis par l'utilisateur et
  * enregistrés par lui. `null` : la valeur par défaut (vent estimé, seuil du
@@ -96,6 +102,12 @@ export interface SessionAnalysis {
    * garde. Absent des fiches plus anciennes.
    */
   foil: boolean | null;
+  /**
+   * Terrain du dénivelé (route, trail) pour cette session, course et vélo ;
+   * `null` : celui de son activité (Réglages). Il décrit le parcours : un
+   * changement d'activité le garde. Absent des fiches plus anciennes.
+   */
+  terrain: SessionTerrain | null;
   savedAt: number;
 }
 
@@ -274,6 +286,7 @@ export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
     speedRange: readSpeedRange(raw.speedRange),
     effortThresholdMs: isFiniteNumber(raw.effortThresholdMs) && raw.effortThresholdMs > 0 ? raw.effortThresholdMs : null,
     foil: typeof raw.foil === 'boolean' ? raw.foil : null,
+    terrain: isSessionTerrain(raw.terrain) ? raw.terrain : null,
     savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
   };
 };
@@ -563,6 +576,7 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   }
   const thresholdBefore = next.analysis?.activeThreshold ?? null;
   const referenceBefore = next.analysis?.referenceSpeedMs ?? null;
+  const terrainBefore = next.analysis?.terrain ?? null;
   if (patch.analysis !== undefined) next = { ...next, analysis: patch.analysis };
   if (patch.maneuverCount !== undefined && patch.maneuverCount !== next.summary.maneuverCount) {
     next = { ...next, summary: { ...next.summary, maneuverCount: patch.maneuverCount } };
@@ -589,6 +603,7 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   if (next === original) return { record: original, resummarize: false };
   const analysisChanged =
     (next.analysis?.activeThreshold ?? null) !== thresholdBefore ||
-    (next.analysis?.referenceSpeedMs ?? null) !== referenceBefore;
+    (next.analysis?.referenceSpeedMs ?? null) !== referenceBefore ||
+    (next.analysis?.terrain ?? null) !== terrainBefore;
   return { record: next, resummarize: sportChanged || activityChanged || analysisChanged || elevationChanged };
 };

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { computeKinematics } from '../core/kinematics';
 import type { RawTrackPoint } from '../core/types';
+import { sampledIndices } from '../core/chartZoom';
+import { CHART_MAX_POINTS } from '../core/displayConfig';
 import { trackToPointData, type PointData } from '../utils/kinematics';
 import {
   analyzeManeuvers,
@@ -12,7 +14,7 @@ import {
   type WindEstimationOptions,
 } from './maneuvers';
 import { sessionManeuverThresholds } from './sailingConfig';
-import { calculateWindStats, summarizeManeuvers } from './sailingAnalytics';
+import { calculateWindStats, summarizeManeuvers, windChartRows } from './sailingAnalytics';
 import {
   angleDiff,
   circularMean,
@@ -1188,7 +1190,7 @@ describe('calculateWindStats', () => {
 
     expect(stats).not.toBeNull();
     expect(stats!.windAt(TRACK_START_MS + 1800 * 1000)).toBeNull();
-    expect(stats!.graphData.some((p) => p.angle === null)).toBe(true);
+    expect(windChartRows(track, stats!, sampledIndices(0, track.length - 1, CHART_MAX_POINTS)).some((p) => p.angle === null)).toBe(true);
   });
 
   it('marque chaque manœuvre sur la courbe, là où se trouve la mesure', () => {
@@ -1199,13 +1201,30 @@ describe('calculateWindStats', () => {
     expect(stats).not.toBeNull();
 
     // Un point marqué par manœuvre, et chacun près de la manœuvre qu'il marque.
-    expect(stats!.graphData.filter((p) => p.isManeuver).length).toBe(maneuvers.locations.length);
+    const rows = windChartRows(track, stats!, sampledIndices(0, track.length - 1, CHART_MAX_POINTS));
+    expect(rows.filter((p) => p.isManeuver).length).toBe(maneuvers.locations.length);
     for (const m of maneuvers.locations) {
-      const marked = stats!.graphData.some(
-        (p) => p.isManeuver && Math.abs(track[p.index].timeMs - m.timeMs) <= 10000
-      );
+      const marked = rows.some((p) => p.isManeuver && Math.abs(track[p.index].timeMs - m.timeMs) <= 10000);
       expect(marked).toBe(true);
     }
+  });
+
+  it('ne marque, zoomé, que les manœuvres de la plage visible', () => {
+    const track = buildLegSession(upwindDownwindLegs(6), () => 0);
+    const maneuvers = analyzeManeuvers(track, 0, { successThresholdKn: 8 });
+    const stats = calculateWindStats(track, maneuvers, 0);
+    expect(stats).not.toBeNull();
+
+    // Première moitié de la trace, à 50 lignes : seules ses manœuvres sont marquées.
+    const last = Math.floor(track.length / 2);
+    const rows = windChartRows(track, stats!, sampledIndices(0, last, 50));
+    const inside = maneuvers.locations.filter((m) => m.trackIndex <= last).length;
+    expect(inside).toBeGreaterThan(0);
+    expect(inside).toBeLessThan(maneuvers.locations.length);
+    expect(rows.filter((p) => p.isManeuver).length).toBe(inside);
+    expect(rows[0].minutes).toBe(0);
+    // Angle tracé autour de la référence : jamais déroulé de plus d'un demi-tour.
+    for (const row of rows) if (row.angle !== null) expect(Math.abs(row.angle - stats!.referenceDeg)).toBeLessThanOrEqual(180);
   });
 
   // Protocole 4 : bascule de vent.

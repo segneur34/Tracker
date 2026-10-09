@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { CHART_MAX_POINTS } from '../core/displayConfig';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { msToKnots } from '../core/units';
 import {
@@ -56,7 +55,6 @@ export const useSailingSession = ({
     speedRange,
     speedUnit,
     distanceUnit,
-    textScale,
     foil: activityFoil,
   } = useSportSettings('voile');
 
@@ -176,19 +174,6 @@ export const useSailingSession = ({
     return calculateVmgStats(trackData, windAt, activeThresholdKn);
   }, [trackData, windAt, activeThresholdKn]);
 
-  const speedGraphData = useMemo(() => {
-    if (!trackData.length) return [];
-    const step = Math.ceil(trackData.length / CHART_MAX_POINTS);
-    const data = [];
-    for (let i = 0; i < trackData.length; i += step) {
-      data.push({
-        index: i,
-        vitesse: parseFloat(trackData[i].smoothedSpeed.toFixed(1))
-      });
-    }
-    return data;
-  }, [trackData]);
-
   const polarGraphData = useMemo(() => {
     if (!trackData.length || currentWindValue === null) return [];
     const bins = new Array(36).fill(0);
@@ -225,7 +210,6 @@ export const useSailingSession = ({
     maneuverSummary,
     vmgStats,
     windStats,
-    speedGraphData,
     polarGraphData,
     // Réglages de l'activité
     activity,
@@ -236,10 +220,9 @@ export const useSailingSession = ({
     profile,
     /** Support sur foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
     activityFoil,
-    /** Unité d'affichage des vitesses et taille du texte, choisies dans Réglages pour l'activité. */
+    /** Unités d'affichage, choisies dans Réglages pour l'activité. */
     speedUnit,
     distanceUnit,
-    textScale,
     activeThresholdKn,
     /** Seuil hors réglage de la session : celui du support s'il est surchargé, sinon la suggestion. */
     defaultActiveThresholdKn,

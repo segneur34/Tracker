@@ -45,8 +45,6 @@ interface IntervalAnalysisProps {
   samplingS: number;
   speedUnit: SpeedUnit;
   distanceUnit: DistanceUnit;
-  /** Facteur de la taille du texte. */
-  scale: number;
   /** Clé de la taille mémorisée de chaque panneau. */
   panelId: (name: string) => string;
   open: boolean;
@@ -158,14 +156,14 @@ function Sparkline({ points, length, domain }: { points: (number | null)[]; leng
 }
 
 function IntervalAnalysis({
-  series, stepS, launchFraction, samplingS, speedUnit, distanceUnit, scale, panelId, open, onToggle, selectedLap, onSelectLap, emptyText,
+  series, stepS, launchFraction, samplingS, speedUnit, distanceUnit, panelId, open, onToggle, selectedLap, onSelectLap, emptyText,
 }: IntervalAnalysisProps) {
   const [help, setHelp] = useState(false);
   const inverse = isInverseUnit(speedUnit);
   const noun = inverse ? 'allure' : 'vitesse';
   /** Accélération et seuils : en km/h pour une allure, comme les tops. */
   const rateUnit: SpeedUnit = speedUnit === 'minkm' ? 'kmh' : speedUnit;
-  const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` };
+  const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: '14px' };
   const display = (ms: number | null): number | null =>
     ms === null || !isFinite(ms) || (inverse && ms < MIN_PACE_SPEED_MS) ? null : parseFloat(toDisplaySpeed(ms, speedUnit).toFixed(2));
   const formatRate = (ms2: number): string =>
@@ -277,7 +275,7 @@ function IntervalAnalysis({
                         </td>
                         <td className="an-ivl-map" style={cellStyle}>
                           <button type="button" disabled={!reached} onClick={() => onSelectLap(shown ? null : key)}
-                            style={{ padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                            style={{ padding: '2px 8px', fontSize: '11px', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
                             {shown ? 'Masquer' : 'Voir'}
                           </button>
                         </td>

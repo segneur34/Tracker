@@ -8,8 +8,8 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
 2. Barre « Non enregistré / Enregistrer la session » (`SessionSaveBar`), pendant un brouillon seulement (la course ne passe pas `kept`, et la voile non plus).
 3. **Rangée de la carte** (`.an-map-row`) : le bloc `AnalysisMap`, seul.
 4. **Colonne des onglets** (`.an-carte-col`), sous la carte : `SectionTabs`, puis leurs **panneaux** (`.an-carte-panels`), chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
-   - Le premier onglet, « général », est le seul ouvert par défaut. Il porte la synthèse de la session (`.an-sheet__stats an-sheet__stats--always`) : distances, temps, ratio actif, vitesses moyennes, et le dénivelé en course et à vélo ; en voile, le vent suit. On le replie pour comparer les tableaux à la carte.
-   - Le dernier onglet, « réglages », porte ceux de la session : activité, seuils, terrain, source de vitesse, bornes de couleur de la trace (`SpeedRangeEditor`).
+   - Le premier onglet, « général », est le seul ouvert au départ (avec « fractionné » quand la session en a, point 89) ; ensuite, les onglets ouverts sont mémorisés par module (`useOpenSections`). Il porte la synthèse de la session (`.an-sheet__stats an-sheet__stats--always`) : distances, temps, ratio actif, vitesses moyennes, et le dénivelé en course et à vélo ; en voile, le vent suit. On le replie pour comparer les tableaux à la carte.
+   - Le dernier onglet, « réglages », porte ceux de la session : activité, seuils, terrain (course, vélo), source de vitesse ou d'altitude, bornes de couleur de la trace (`SpeedRangeEditor`). Seuil, terrain et couleurs passent par le brouillon ; l'activité et la source d'altitude s'appliquent tout de suite.
    - La même disposition en voile, en course et à vélo (point 86).
 
 ## Règles communes
@@ -27,6 +27,8 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
   - un toucher sur la carte l'ouvre en plein écran (× pour fermer) ;
   - rien n'élargit la page : une colonne de panneaux ne dépasse pas l'écran (`min-width: 0`, `max-width: 100%`), un contenu de largeur fixe défile dans son panneau ; un tableau se resserre, ou passe ses lignes en grille (libellé sur sa propre ligne, valeurs dessous), comme le panneau Manœuvres (`an-man-*`).
 - **La légende de couleur de la trace est posée sur la carte**, en une ligne compacte, en bas à droite, juste à gauche de la mention OSM (contrôle Leaflet d'`AnalysisMap`, coin mis en ligne par `.an-map-corner`), dans la carte et dans sa vue plein écran. Ce que dit le gris passe dans son titre. Elle ne fait qu'afficher : les bornes se saisissent dans l'onglet réglages.
+- **Une seule surbrillance sur la carte** (`useMapHighlight`) : montrer un top, un podium, une zone, une répétition ou un saut retire la précédente ; fermer son onglet l'efface. Couleurs de `components/highlightColors.ts`.
+- **Graphes reliés à la carte** : dans `ZoomableChart` (deux doigts, zone tirée à la souris, « Tout voir »), `onMouseMove` et `onTouchMove` vers `hoveredTrackIndex`, `onLeave` qui efface le repère (`HoverMarker`) ; deux graphes du même axe partagent un `useChartZoom`.
 - **Tout panneau est repliable par son titre** (`PanelTitle`) et par son onglet, et redimensionnable (`ResizablePanel`). L'`id` d'un panneau est la clé de sa taille mémorisée : ne pas le renommer.
 - Couleurs, rayons, espacements : les variables de `theme/tokens.css`. Les couleurs de données des graphes et de la carte restent en dur.
 
@@ -43,6 +45,9 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
 | `components/styles.ts` | `CARD_STYLE` des panneaux, `HALF_PANEL_STYLE` pour deux panneaux par ligne |
 | `components/SpeedRangeEditor.tsx` | Saisie des bornes de couleur de la trace, dans l'onglet réglages |
 | `components/SessionSaveBar.tsx` | Barre du brouillon de la session |
+| `core/trackColor.ts`, `components/TrackSegmentsLayer.tsx` | Trace colorée par la vitesse, la même dans l'analyse et la vignette |
+| `hooks/useMapHighlight.ts`, `components/highlightColors.ts` | La surbrillance unique de la carte et ses couleurs |
+| `components/ZoomableChart.tsx`, `hooks/useChartZoom.ts`, `components/HoverMarker.tsx` | Graphe zoomable, son zoom, le repère du survol sur la carte |
 
 ## Propre à chaque sport
 

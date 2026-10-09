@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useId, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { CircleMarker, Polyline } from 'react-leaflet';
+import { Polyline } from 'react-leaflet';
 import OsmTileLayer from '../components/OsmTileLayer';
 import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
@@ -15,6 +15,7 @@ import GradeGradientLegend from '../components/GradeGradientLegend';
 import IntervalAnalysis, { type IntervalSeriesView } from '../components/IntervalAnalysis';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
+import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
@@ -24,6 +25,7 @@ import SurfaceBar from '../components/SurfaceBar';
 import SurfaceLayer from '../components/SurfaceLayer';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
+import HoverMarker from '../components/HoverMarker';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { IconChevronRight } from '../components/icons';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
@@ -41,7 +43,8 @@ import { sessionActivity } from '../core/activities';
 import { ELEVATION_PRESETS, getActiveThresholds, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import { meanFilterByTime } from '../core/speedFilter';
-import { SLOW_COLOR, gradientCss, isValidSpeedRange, speedGradientColor } from '../core/speedGradient';
+import { SLOW_COLOR, gradientCss, isValidSpeedRange } from '../core/speedGradient';
+import { trackColorSegments } from '../core/trackColor';
 import {
   DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
   isInverseUnit, toDisplayDistance, toDisplaySpeed,
@@ -52,11 +55,12 @@ import { useGpxSession } from '../hooks/useGpxSession';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
+import { useMapHighlight } from '../hooks/useMapHighlight';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import { useTerrainElevation, type TerrainElevationStatus } from '../hooks/useTerrainElevation';
 import {
-  TERRAIN_LABEL, TEXT_SCALE_FACTOR, readStoredActivities, useSportSettings, type TerrainType,
+  TERRAIN_LABEL, isKnownTerrain, readStoredActivities, useSportSettings, type TerrainType,
 } from '../hooks/useSportSettings';
 import {
   averagePace, computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
@@ -73,8 +77,6 @@ import { LAND_PAGES, LAND_TREATMENTS, type LandFamily } from './landModules';
 
 /** Lissage supplémentaire de la vitesse pour le graphe, en secondes. */
 const CHART_SPEED_SMOOTHING_S = 10;
-/** Lissage de la vitesse pour la couleur de la trace, en secondes. */
-const MAP_SPEED_SMOOTHING_S = 15;
 /** Lissage de la puissance du graphe d'énergie, en secondes. */
 const ENERGY_POWER_SMOOTHING_S = 60;
 /**
@@ -83,10 +85,6 @@ const ENERGY_POWER_SMOOTHING_S = 60;
  * prend la place gagnée.
  */
 const ENERGY_CHART_HEIGHT_PX = 200;
-/** Couleurs des trois premiers d'un top, sur la carte et dans le tableau (comme en voile). */
-const TOP_COLORS = ['#d32f2f', '#f57c00', '#388e3c'];
-/** Zone de pente montrée sur la carte : un violet, absent du dégradé de vitesse de la trace. */
-const ZONE_COLOR = '#7b1fa2';
 
 /**
  * Sections du module. Pour en ajouter une : une entrée ici, une valeur par
@@ -120,11 +118,11 @@ const LAND_SECTIONS: SectionDefinition<LandSection>[] = [
 const LAND_SECTION_DEFAULTS: Record<LandSection, boolean> = {
   general: true,
   fractionne: true,
-  tops: true,
-  zones: true,
+  tops: false,
+  zones: false,
   surface: false,
   energie: false,
-  graphiques: true,
+  graphiques: false,
   reglages: false,
 };
 
@@ -200,8 +198,8 @@ function LandModule({ family }: { family: LandFamily }) {
   const panelId = (name: string) => `${page.storageId}.${name}`;
   const {
     activity, setActivity, sport,
-    profile, activeThreshold, terrain, setTerrain, elevationProfile, terrainStepM,
-    speedUnit, distanceUnit, textScale,
+    profile, activeThreshold, terrain: activityTerrain, terrainStepM,
+    speedUnit, distanceUnit,
     speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg,
   } = useSportSettings(family);
   const model = LAND_TREATMENTS[sportTreatment(sport) === 'velo' ? 'velo' : 'course'];
@@ -229,6 +227,9 @@ function LandModule({ family }: { family: LandFamily }) {
   // Brouillon de la session de la mémoire affichée (couleurs de la trace), écrit
   // dans sa fiche par « Enregistrer la session ». Aucun pour un GPX lu hors de la mémoire.
   const draft = useSessionDraft(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null);
+  /** Terrain du dénivelé : celui de la session (brouillon, puis fiche), sinon celui de l'activité. */
+  const terrain = draft.edits.terrain ?? activityTerrain;
+  const elevationProfile = ELEVATION_PRESETS[terrain];
 
   /**
    * Changer d'activité l'écrit aussi dans la fiche de la session (comme en
@@ -245,37 +246,20 @@ function LandModule({ family }: { family: LandFamily }) {
     () => LAND_SECTIONS.filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals)),
     [profile.topTargets, hasIntervals]
   );
-  // Une seule surbrillance sur la carte : un top, une zone de pente ou une répétition, choisir l'un retire les autres.
-  const [selectedTop, setSelectedTopState] = useState<string | null>(null);
-  const [selectedZone, setSelectedZoneState] = useState<GradeZoneKey | null>(null);
-  const [selectedLap, setSelectedLapState] = useState<string | null>(null);
-  const setSelectedTop = (key: string | null) => {
-    setSelectedTopState(key);
-    if (key !== null) {
-      setSelectedZoneState(null);
-      setSelectedLapState(null);
-    }
-  };
-  const setSelectedZone = (key: GradeZoneKey | null) => {
-    setSelectedZoneState(key);
-    if (key !== null) {
-      setSelectedTopState(null);
-      setSelectedLapState(null);
-    }
-  };
-  const setSelectedLap = (key: string | null) => {
-    setSelectedLapState(key);
-    if (key !== null) {
-      setSelectedTopState(null);
-      setSelectedZoneState(null);
-    }
-  };
+  // Une seule surbrillance sur la carte : un top, une zone de pente ou une
+  // répétition ; choisir l'une retire les autres, fermer son onglet l'efface.
+  const highlight = useMapHighlight(open);
+  const selectedTop = highlight.shownIn('tops');
+  const selectedZone = highlight.shownIn('zones') as GradeZoneKey | null;
+  const selectedLap = highlight.shownIn('fractionne');
+  const setSelectedTop = (key: string | null) => highlight.show('tops', key);
+  const setSelectedZone = (key: GradeZoneKey | null) => highlight.show('zones', key);
+  const setSelectedLap = (key: string | null) => highlight.show('fractionne', key);
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
   const [energyMode, setEnergyMode] = useState<EnergyChartMode>('power');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   const narrow = useNarrowScreen();
-  const scale = TEXT_SCALE_FACTOR[textScale];
   const unitLabel = SPEED_UNIT_LABEL[speedUnit];
   const inverse = isInverseUnit(speedUnit);
 
@@ -533,24 +517,15 @@ function LandModule({ family }: { family: LandFamily }) {
   const separateGradientId = `${gradientId}-separe`;
 
   /** Traits de la trace colorée par la vitesse, mémorisés : le survol d'un graphe ne les redessine pas (`TrackSegmentsLayer`). */
-  const mapSegments = useMemo((): TrackSegment[] => {
-    if (gpx.track.length < 2) return [];
-    const colorSpeed = meanFilterByTime(
-      gpx.track.map((p) => p.smoothedSpeedMs),
-      gpx.track.map((p) => p.timeMs),
-      MAP_SPEED_SMOOTHING_S
-    );
-    return gpx.track.slice(1).map((point, index) => {
-      const prev = gpx.track[index];
-      return {
-        positions: [[prev.lat, prev.lon], [point.lat, point.lon]],
-        color: speedGradientColor(colorSpeed[index + 1], range.minMs, range.maxMs),
-      };
-    });
-  }, [gpx.track, range.minMs, range.maxMs]);
+  const treatment = sportTreatment(sport);
+  const mapSegments = useMemo(
+    (): TrackSegment[] => trackColorSegments(gpx.track, treatment, { minMs: range.minMs, maxMs: range.maxMs }),
+    [gpx.track, treatment, range.minMs, range.maxMs]
+  );
 
   const mapBounds = useMemo(() => trackBounds(gpx.track), [gpx.track]);
 
+  const clearHover = () => setHoveredIndex(null);
   const onChartHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, chartData);
     if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
@@ -618,25 +593,22 @@ function LandModule({ family }: { family: LandFamily }) {
         <Polyline key={`grade-${idx}`} positions={path.positions} pathOptions={{ color: path.color, weight: 5 }} />
       )) : <TrackSegmentsLayer segments={mapSegments} weight={5} />}
       {zonePaths.map((path, idx) => (
-        <Polyline key={`zone-${selectedZone}-${idx}`} positions={path} pathOptions={{ color: ZONE_COLOR, weight: 10, opacity: 0.8 }} />
+        <Polyline key={`zone-${selectedZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       ))}
       {selectedLapPath.length > 1 && (
-        <Polyline key={`fractionne-${selectedLap}`} positions={selectedLapPath} pathOptions={{ color: ZONE_COLOR, weight: 10, opacity: 0.8 }} />
+        <Polyline key={`fractionne-${selectedLap}`} positions={selectedLapPath} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       )}
       {selectedTopPaths.map((top, idx) => top.path.length > 1 && (
-        <Polyline key={`top-${selectedTop}-${idx}`} positions={top.path} pathOptions={{ color: TOP_COLORS[idx] ?? TOP_COLORS[2], weight: 10, opacity: 0.8 }} />
+        <Polyline key={`top-${selectedTop}-${idx}`} positions={top.path} pathOptions={{ color: HIGHLIGHT_PODIUM_COLORS[idx] ?? HIGHLIGHT_PODIUM_COLORS[2], weight: 10, opacity: 0.8 }} />
       ))}
       {hoveredIndex !== null && gpx.track[hoveredIndex] && (
-        <CircleMarker
-          center={[gpx.track[hoveredIndex].lat, gpx.track[hoveredIndex].lon]}
-          radius={8}
-          pathOptions={{ color: 'var(--ink)', fillColor: '#fff', fillOpacity: 1, weight: 3 }} />
+        <HoverMarker position={[gpx.track[hoveredIndex].lat, gpx.track[hoveredIndex].lon]} />
       )}
     </>
   );
 
   return (
-    <div className="an-page" style={{ padding: '20px' }} onMouseLeave={() => setHoveredIndex(null)}>
+    <div className="an-page" style={{ padding: '20px' }}>
       <div className="an-sheet">
         <div className="an-sheet__head">
           <PageHeader title={page.title} subtitle={gpx.fileName ? <SessionNameEditor file={gpx.fileName} /> : undefined} back={{ to: libraryPath(family), label: page.backLabel }} />
@@ -676,7 +648,7 @@ function LandModule({ family }: { family: LandFamily }) {
           <SectionTabs sections={sections} open={open} onToggle={toggle} accent={page.accent} />
           <div className="an-carte-panels">
             {open.general && (
-              <ResizablePanel id={panelId('general')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
+              <ResizablePanel id={panelId('general')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Général" open={open.general} onToggle={() => toggle('general')} />
                 </div>
@@ -704,7 +676,6 @@ function LandModule({ family }: { family: LandFamily }) {
                 samplingS={gpx.samplingS}
                 speedUnit={speedUnit}
                 distanceUnit={distanceUnit}
-                scale={scale}
                 panelId={panelId}
                 open={open.fractionne}
                 onToggle={() => toggle('fractionne')}
@@ -714,7 +685,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.tops && tops && (
-              <ResizablePanel id={panelId('tops')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
+              <ResizablePanel id={panelId('tops')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Meilleurs segments" open={open.tops} onToggle={() => toggle('tops')} />
                 </div>
@@ -723,7 +694,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                       <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Sur</th>
                       {['1er', '2e', '3e'].map((rank, idx) => (
-                        <th key={rank} style={{ padding: '0.4em 0.6em', color: TOP_COLORS[idx] }}>{rank} ({SPEED_UNIT_LABEL[topUnit]})</th>
+                        <th key={rank} style={{ padding: '0.4em 0.6em', color: HIGHLIGHT_PODIUM_COLORS[idx] }}>{rank} ({SPEED_UNIT_LABEL[topUnit]})</th>
                       ))}
                       <th style={{ padding: '0.4em 0.6em' }}>Carte</th>
                     </tr>
@@ -743,7 +714,7 @@ function LandModule({ family }: { family: LandFamily }) {
                               ))}
                               <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
                                 <button type="button" disabled={!reached} onClick={() => setSelectedTop(shown ? null : target.key)}
-                                  style={{ padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? page.accent : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                                  style={{ padding: '2px 8px', fontSize: '11px', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? page.accent : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
                                   {shown ? 'Masquer' : 'Voir'}
                                 </button>
                               </td>
@@ -761,7 +732,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.zones && zoneStats.length > 0 && (
-              <ResizablePanel id={panelId('zones')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
+              <ResizablePanel id={panelId('zones')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle
                     label={model.zonesTitle}
@@ -793,7 +764,7 @@ function LandModule({ family }: { family: LandFamily }) {
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
                             <button type="button" disabled={!reached} onClick={() => setSelectedZone(shown ? null : z.zone.key)}
-                              style={{ padding: '2px 8px', fontSize: `${11 * scale}px`, cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? ZONE_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                              style={{ padding: '2px 8px', fontSize: '11px', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? HIGHLIGHT_SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
                               {shown ? 'Masquer' : 'Voir'}
                             </button>
                           </td>
@@ -809,7 +780,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.surface && (
-              <ResizablePanel id={panelId('surface')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
+              <ResizablePanel id={panelId('surface')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Surface" open={open.surface} onToggle={() => toggle('surface')} />
                 </div>
@@ -836,19 +807,19 @@ function LandModule({ family }: { family: LandFamily }) {
 
             {open.energie && energy && (
               <ResizablePanel id={panelId('energie')} minHeight={320} direction="vertical"
-                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: `${14 * scale}px` }}>
+                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: '14px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', paddingRight: '28px' }}>
                   <PanelTitle label={model.energyLabel} open={open.energie} onToggle={() => toggle('energie')} />
                   <span style={{ flex: 1 }} />
                   {(['power', 'cumulative'] as EnergyChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setEnergyMode(mode)}
-                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: energyMode === mode ? page.accent : 'var(--surface-sunken)', color: energyMode === mode ? '#fff' : 'var(--ink)' }}>
+                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: energyMode === mode ? page.accent : 'var(--surface-sunken)', color: energyMode === mode ? '#fff' : 'var(--ink)' }}>
                       {mode === 'power' ? 'Puissance' : 'Cumulée'}
                     </button>
                   ))}
                   <button type="button" aria-expanded={energyFold.open.chiffres} onClick={() => energyFold.toggle('chiffres')}
                     title={energyFold.open.chiffres ? 'Replier les chiffres pour voir le graphe et la carte ensemble' : 'Montrer les chiffres'}
-                    style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px 4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: 'var(--surface-sunken)', color: 'var(--ink)' }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px 4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: 'var(--surface-sunken)', color: 'var(--ink)' }}>
                     Chiffres
                     <IconChevronRight size={14} style={{ transform: `rotate(${energyFold.open.chiffres ? -90 : 90}deg)`, transition: 'transform 0.15s' }} />
                   </button>
@@ -875,7 +846,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 )}
 
                 {energyChartData.length > 1 && (
-                  <ZoomableChart zoom={energyZoom} style={{ width: '100%', flex: `1 0 ${ENERGY_CHART_HEIGHT_PX}px`, height: `${ENERGY_CHART_HEIGHT_PX}px`, marginTop: '6px' }}>
+                  <ZoomableChart zoom={energyZoom} onLeave={clearHover} style={{ width: '100%', flex: `1 0 ${ENERGY_CHART_HEIGHT_PX}px`, height: `${ENERGY_CHART_HEIGHT_PX}px`, marginTop: '6px' }}>
                     <ResponsiveContainer>
                       <ComposedChart data={energyChartData} onMouseMove={onEnergyChartHover} onTouchMove={onEnergyChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                         <ChartZoomProbe />
@@ -901,7 +872,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 {stats?.hasElevation && (
                   <button type="button" aria-expanded={energyFold.open.zones} onClick={() => energyFold.toggle('zones')}
                     title={energyFold.open.zones ? 'Replier le tableau des zones de pente' : 'Montrer le tableau des zones de pente'}
-                    style={{ alignSelf: 'flex-start', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '12px', padding: '4px 8px 4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: 'var(--surface-sunken)', color: 'var(--ink)' }}>
+                    style={{ alignSelf: 'flex-start', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '12px', padding: '4px 8px 4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: 'var(--surface-sunken)', color: 'var(--ink)' }}>
                     Énergie par zone de pente
                     <IconChevronRight size={14} style={{ transform: `rotate(${energyFold.open.zones ? -90 : 90}deg)`, transition: 'transform 0.15s' }} />
                   </button>
@@ -931,7 +902,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   </table>
                 )}
 
-                <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '8px', flexShrink: 0 }}>
+                <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px', flexShrink: 0 }}>
                   {energy.note}
                   {' '}Puissance lissée sur {ENERGY_POWER_SMOOTHING_S} s, moins près du départ et des arrêts, interrompue aux pauses.
                   {stats?.hasElevation && ' Puissance d\'une zone : sa moyenne en mouvement, roue libre et arrêts courts compris.'}
@@ -947,14 +918,14 @@ function LandModule({ family }: { family: LandFamily }) {
                   <span style={{ flex: 1 }} />
                   {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setChartMode(mode)}
-                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: `${12 * scale}px`, backgroundColor: chartMode === mode ? page.accent : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
+                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: chartMode === mode ? page.accent : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
                       {mode === 'separate' ? 'Séparés' : 'Superposés'}
                     </button>
                   ))}
                 </div>
 
                 {chartMode === 'overlay' ? (
-                  <ZoomableChart zoom={zoom} style={{ width: '100%', flex: 1, minHeight: 0 }}>
+                  <ZoomableChart zoom={zoom} onLeave={clearHover} style={{ width: '100%', flex: 1, minHeight: 0 }}>
                     <ResponsiveContainer>
                       <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                         <ChartZoomProbe />
@@ -973,7 +944,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   </ZoomableChart>
                 ) : (
                   <>
-                    <ZoomableChart zoom={zoom} style={{ width: '100%', flex: stats?.hasElevation ? 1.1 : 1, minHeight: 0 }}>
+                    <ZoomableChart zoom={zoom} onLeave={clearHover} style={{ width: '100%', flex: stats?.hasElevation ? 1.1 : 1, minHeight: 0 }}>
                       <ResponsiveContainer>
                         <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                           <ChartZoomProbe />
@@ -986,7 +957,7 @@ function LandModule({ family }: { family: LandFamily }) {
                       </ResponsiveContainer>
                     </ZoomableChart>
                     {stats?.hasElevation && (
-                      <ZoomableChart zoom={zoom} showReset={false} style={{ width: '100%', flex: 1, minHeight: 0, marginTop: '6px' }}>
+                      <ZoomableChart zoom={zoom} onLeave={clearHover} showReset={false} style={{ width: '100%', flex: 1, minHeight: 0, marginTop: '6px' }}>
                         <ResponsiveContainer>
                           <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                             <ChartZoomProbe />
@@ -1003,7 +974,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   </>
                 )}
                 {stats?.hasElevation && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
                     <span>Altitude colorée par la pente, montée ou descente :</span>
                     {gradeRange.min > 0 && (
                       <>
@@ -1020,12 +991,12 @@ function LandModule({ family }: { family: LandFamily }) {
                   </div>
                 )}
                 {gpx.track.length > 1 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: terrainElevation.status === 'error' ? 'var(--danger)' : 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: terrainElevation.status === 'error' ? 'var(--danger)' : 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
                     <span>{elevationSourceText(terrainElevation.status, terrainElevation.stepM, terrainElevation.error)}</span>
                     {terrainElevation.status === 'error' && <Button size="s" onClick={terrainElevation.retry}>Réessayer</Button>}
                   </div>
                 )}
-                <div style={{ color: 'var(--muted)', fontSize: `${11 * scale}px`, marginTop: '6px', flexShrink: 0 }}>
+                <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
                   Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte.
                   {narrow ? ' Écartez deux doigts sur un graphe pour zoomer.' : ' Tirez une zone à la souris pour zoomer, double-clic pour tout revoir. Poignée en bas à droite pour redimensionner.'}
                 </div>
@@ -1034,7 +1005,7 @@ function LandModule({ family }: { family: LandFamily }) {
 
 
             {stats && open.reglages && (
-              <ResizablePanel id={panelId('reglages')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: `${14 * scale}px` }}>
+              <ResizablePanel id={panelId('reglages')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} />
                 </div>
@@ -1051,7 +1022,11 @@ function LandModule({ family }: { family: LandFamily }) {
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <strong>Terrain :</strong>
-                    <select value={terrain} onChange={(e) => setTerrain(e.target.value as TerrainType)} className="ui-field ui-field--s">
+                    <select
+                      value={draft.edits.terrain ?? ''}
+                      onChange={(e) => draft.update({ terrain: isKnownTerrain(e.target.value) ? e.target.value : null })}
+                      className="ui-field ui-field--s">
+                      <option value="">Celui de l'activité ({TERRAIN_LABEL[activityTerrain]})</option>
                       {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
                         <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
                       ))}

@@ -29,21 +29,6 @@ import {
 import type { WayType } from '../planning/brouterProfile';
 import { presetWayTypes, sanitizeWayTypes } from '../planning/route';
 
-/** Taille du texte des tableaux et synthèses, en facteur d'échelle. */
-export type TextScale = 'compact' | 'normal' | 'large';
-
-export const TEXT_SCALE_FACTOR: Record<TextScale, number> = {
-  compact: 0.85,
-  normal: 1,
-  large: 1.25,
-};
-
-export const TEXT_SCALE_LABEL: Record<TextScale, string> = {
-  compact: 'Compact',
-  normal: 'Normal',
-  large: 'Grand',
-};
-
 export type TerrainType = keyof typeof ELEVATION_PRESETS;
 
 export const TERRAIN_LABEL: Record<TerrainType, string> = {
@@ -75,7 +60,7 @@ export const defaultGradeRange = (sport: SportType): GradeRange =>
 
 /**
  * Réglages par activité (`core/activities.ts`) : unité, seuil d'activité,
- * taille du texte, terrain, couleurs de trace, pause automatique, rangés sous
+ * terrain, couleurs de trace, pause automatique, rangés sous
  * l'identifiant de l'activité. Le calcul de base ne fournit que les défauts ;
  * la surcharge de l'utilisateur prime et survit au rechargement.
  *
@@ -109,8 +94,6 @@ export interface StoredSettings {
   speedUnits?: ByActivity<SpeedUnit>;
   /** Unité d'affichage des distances ; absente : kilomètres. */
   distanceUnits?: ByActivity<DistanceUnit>;
-  /** Taille du texte. */
-  textScales?: ByActivity<TextScale>;
   /** Bornes du dégradé de couleur de la trace, en m/s. */
   speedRanges?: ByActivity<{ minMs: number; maxMs: number }>;
   /** Bornes de la couleur de pente de la courbe d'altitude, en fraction (course). */
@@ -195,8 +178,6 @@ export const isKnownSpeedUnit = (value: unknown): value is SpeedUnit =>
 export const isKnownDistanceUnit = (value: unknown): value is DistanceUnit =>
   typeof value === 'string' && value in DISTANCE_UNIT_LABEL;
 
-export const isKnownTextScale = (value: unknown): value is TextScale =>
-  typeof value === 'string' && value in TEXT_SCALE_FACTOR;
 
 const isKnownFamily = (value: unknown): value is SportFamily =>
   typeof value === 'string' && (SPORT_FAMILIES as string[]).includes(value);
@@ -518,7 +499,6 @@ export interface SportSettingsView {
   isDistanceUnitOverridden: boolean;
   activeThreshold: number;
   isThresholdOverridden: boolean;
-  textScale: TextScale;
   terrain: TerrainType;
   /** Pas des échantillons d'altitude du terrain, en mètres ; `null` en voile. */
   terrainStepM: number | null;
@@ -557,7 +537,7 @@ export interface SportSettingsView {
 
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
-  'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'textScales', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights',
+  'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights',
   'paceLevels', 'customFlatSpeeds', 'liveFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'jumps',
 ] as const;
 
@@ -603,7 +583,6 @@ export const useAllSportSettings = () => {
       const unit = stored.speedUnits?.[id];
       const distanceUnit = stored.distanceUnits?.[id];
       const threshold = stored.thresholds?.[id];
-      const scale = stored.textScales?.[id];
       const terrain = stored.terrains?.[id];
       const range = stored.speedRanges?.[id];
       const grades = stored.gradeRanges?.[id];
@@ -623,7 +602,6 @@ export const useAllSportSettings = () => {
         isDistanceUnitOverridden: isKnownDistanceUnit(distanceUnit),
         activeThreshold: threshold ?? profile.defaultActiveThreshold,
         isThresholdOverridden: threshold !== undefined,
-        textScale: isKnownTextScale(scale) ? scale : 'normal',
         terrain: isKnownTerrain(terrain) ? terrain : 'route',
         terrainStepM: resolveTerrainStepM(stored, activity),
         speedRange: range && isValidSpeedRange(range) ? range : null,
@@ -652,7 +630,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'textScale' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'foil' | 'jumps' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'foil' | 'jumps' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -676,10 +654,6 @@ export const useAllSportSettings = () => {
         case 'activeThreshold':
           if (value !== null && (typeof value !== 'number' || !isFinite(value) || value < 0)) return;
           next.thresholds = put(stored.thresholds, value as number | null);
-          break;
-        case 'textScale':
-          if (value !== null && !isKnownTextScale(value)) return;
-          next.textScales = put(stored.textScales, value as TextScale | null);
           break;
         case 'terrain':
           if (value !== null && !isKnownTerrain(value)) return;
@@ -912,27 +886,18 @@ export const useSportSettings = (family: SportFamily) => {
   const activeThreshold = stored.thresholds?.[id] ?? profile.defaultActiveThreshold;
   const isThresholdOverridden = stored.thresholds?.[id] !== undefined;
 
+  // Lecture seule : le terrain de l'activité se règle dans Réglages, celui
+  // d'une session dans sa fiche (brouillon du module).
   const storedTerrain = stored.terrains?.[id];
   const terrain: TerrainType = isKnownTerrain(storedTerrain) ? storedTerrain : 'route';
-  const elevationProfile = ELEVATION_PRESETS[terrain];
   /** Pas des échantillons d'altitude du terrain, réglé dans Réglages ; `null` en voile. */
   const terrainStepM = resolveTerrainStepM(stored, activity);
 
-  const setTerrain = useCallback(
-    (next: TerrainType) => {
-      if (!isKnownTerrain(next)) return;
-      persist({ ...stored, terrains: { ...stored.terrains, [id]: next } });
-    },
-    [persist, id, stored]
-  );
-
-  // Lecture seule : unité et taille du texte se choisissent dans Réglages, par activité.
+  // Lecture seule : les unités se choisissent dans Réglages, par activité.
   const storedUnit = stored.speedUnits?.[id];
   const speedUnit: SpeedUnit = isKnownSpeedUnit(storedUnit) ? storedUnit : profile.speedUnit;
   const storedDistanceUnit = stored.distanceUnits?.[id];
   const distanceUnit: DistanceUnit = isKnownDistanceUnit(storedDistanceUnit) ? storedDistanceUnit : 'km';
-  const storedScale = stored.textScales?.[id];
-  const textScale: TextScale = isKnownTextScale(storedScale) ? storedScale : 'normal';
 
   // Lecture seule ici : les bornes de l'activité se règlent dans Réglages, celles
   // d'une trace dans sa fiche (brouillon du module).
@@ -958,13 +923,11 @@ export const useSportSettings = (family: SportFamily) => {
     profile,
     activeThreshold,
     isThresholdOverridden,
+    /** Terrain du dénivelé de l'activité ; une session peut avoir le sien. */
     terrain,
-    setTerrain,
-    elevationProfile,
     terrainStepM,
     speedUnit,
     distanceUnit,
-    textScale,
     /** Bornes du dégradé réglées pour l'activité dans Réglages, ou `null` pour le défaut du module. */
     speedRange,
     /** Bornes de la couleur de pente de la courbe d'altitude, réglées dans Réglages ou par défaut. */

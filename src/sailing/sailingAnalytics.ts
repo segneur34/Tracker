@@ -1,4 +1,3 @@
-import { CHART_MAX_POINTS } from '../core/displayConfig';
 import type { PointData } from '../utils/kinematics';
 import type { ManeuverLocation, ManeuverStats, WindReference } from './maneuvers';
 import { VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
@@ -21,7 +20,10 @@ export interface VmgStats {
 }
 
 export interface WindGraphPoint {
+  /** Point de la trace. */
   index: number;
+  /** Temps écoulé depuis le début de la trace, en minutes : l'axe des graphes et de leur zoom. */
+  minutes: number;
   timeLabel: string;
   /**
    * Valeur tracée, exprimée comme référence + écart à la référence, pour
@@ -32,8 +34,8 @@ export interface WindGraphPoint {
   /** Même valeur ramenée dans [0, 360[, pour l'info-bulle. */
   display: number | null;
   /**
-   * Vrai sur le point d'échantillonnage le plus proche d'une manœuvre : c'est
-   * là que se trouve une vraie mesure, ailleurs la courbe est interpolée.
+   * Vrai sur la ligne affichée la plus proche d'une manœuvre : c'est là que se
+   * trouve une vraie mesure, ailleurs la courbe est interpolée.
    */
   isManeuver: boolean;
 }
@@ -62,7 +64,10 @@ export interface WindStats {
   count: number;
   /** Part des manœuvres dont les caps sont stabilisés de part et d'autre : un indicateur de qualité, plus un filtre. */
   stableShare: number;
-  graphData: WindGraphPoint[];
+  /** Direction autour de laquelle la courbe est tracée sans se dérouler : la moyenne, en degrés. */
+  referenceDeg: number;
+  /** Points de trace des manœuvres mesurées, dans l'ordre du temps. */
+  maneuverIndices: number[];
   /** Vent interpolé à un instant, ou `null` loin de toute manœuvre. */
   windAt: (timeMs: number) => number | null;
 }
@@ -163,26 +168,6 @@ export const calculateWindStats = (
   const maxGapMs = MAX_INTERPOLATION_GAP_MIN * 60 * 1000;
   const windAt = (timeMs: number) => interpolateDirection(samples, timeMs, reference, maxGapMs);
 
-  const graphData: WindGraphPoint[] = [];
-  const step = Math.ceil(trackData.length / CHART_MAX_POINTS);
-  for (let i = 0; i < trackData.length; i += step) {
-    const timeMs = trackData[i].timeMs;
-    const date = new Date(timeMs);
-    const direction = windAt(timeMs);
-    graphData.push({
-      index: i,
-      timeLabel: `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`,
-      angle: direction === null ? null : reference + angleDiff(direction, reference),
-      display: direction === null ? null : Math.round(direction),
-      isManeuver: false,
-    });
-  }
-
-  for (const m of maneuvers) {
-    const slot = Math.round(m.trackIndex / step);
-    if (slot >= 0 && slot < graphData.length) graphData[slot].isManeuver = true;
-  }
-
   return {
     avgWind: Math.round(stats.mean),
     minWind: Math.round(normalizeAngle(stats.mean + stats.minDev)),
@@ -192,9 +177,54 @@ export const calculateWindStats = (
     slopePerHour: den !== 0 ? (num / den) * 60 : 0,
     count: maneuvers.length,
     stableShare: maneuvers.filter((m) => m.stableHeadings).length / maneuvers.length,
-    graphData,
+    referenceDeg: reference,
+    maneuverIndices: maneuvers.map((m) => m.trackIndex),
     windAt,
   };
+};
+
+/**
+ * Lignes du graphe du vent aux points `indices` de la trace (croissants, ceux
+ * de la plage visible, `sampledIndices`). Chaque manœuvre de la plage marque
+ * la ligne la plus proche d'elle ; zoomer en sépare deux qui se touchaient.
+ */
+export const windChartRows = (
+  trackData: PointData[],
+  wind: Pick<WindStats, 'referenceDeg' | 'maneuverIndices' | 'windAt'>,
+  indices: readonly number[]
+): WindGraphPoint[] => {
+  if (trackData.length === 0 || indices.length === 0) return [];
+  const startMs = trackData[0].timeMs;
+  const reference = wind.referenceDeg;
+  const rows = indices.map((i): WindGraphPoint => {
+    const timeMs = trackData[i].timeMs;
+    const date = new Date(timeMs);
+    const direction = wind.windAt(timeMs);
+    return {
+      index: i,
+      minutes: (timeMs - startMs) / 60000,
+      timeLabel: `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`,
+      angle: direction === null ? null : reference + angleDiff(direction, reference),
+      display: direction === null ? null : Math.round(direction),
+      isManeuver: false,
+    };
+  });
+  const first = indices[0];
+  const last = indices[indices.length - 1];
+  for (const k of wind.maneuverIndices) {
+    if (k < first || k > last) continue;
+    // Première ligne au point k ou après, puis la plus proche des deux voisines.
+    let lo = 0;
+    let hi = indices.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (indices[mid] < k) lo = mid + 1;
+      else hi = mid;
+    }
+    const slot = lo > 0 && k - indices[lo - 1] < indices[lo] - k ? lo - 1 : lo;
+    rows[slot].isManeuver = true;
+  }
+  return rows;
 };
 
 // ---------------------------------------------------------------------------

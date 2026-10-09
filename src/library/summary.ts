@@ -42,6 +42,29 @@ export interface SummaryOptions {
   terrainElevation?: TerrainSamples;
 }
 
+/**
+ * Trace enrichie telle que le module d'analyse la calcule : filtres du
+ * profil, accordés en voile à l'allure de la session (imposée, sinon mesurée
+ * sur les points bruts, `referenceMs`). Sans support connu, aucun filtre.
+ * Le résumé et la vignette de la bibliothèque en partent.
+ */
+export const analysisTrack = (
+  rawPoints: RawTrackPoint[],
+  sport: SportType | null,
+  referenceMs: number = referenceSpeedMs(rawPoints)
+): TrackPoint[] => {
+  if (sport === null) return computeKinematics(rawPoints);
+  const profile = getSportProfile(sport);
+  const filters = SAILING_SPORTS.includes(sport)
+    ? sessionFilterThresholds(referenceMs, profile.maxPlausibleSpeedMs)
+    : { maxAcceleration: undefined, maxSpeedMs: profile.maxPlausibleSpeedMs };
+  return computeKinematics(rawPoints, {
+    medianWindowSeconds: profile.medianWindowSeconds,
+    maxAcceleration: filters.maxAcceleration,
+    maxSpeedMs: filters.maxSpeedMs,
+  });
+};
+
 /** Trace enrichie et temps en action, selon le support. */
 const analyze = (
   rawPoints: RawTrackPoint[],
@@ -53,14 +76,7 @@ const analyze = (
   const profile = getSportProfile(sport);
   const isSailing = SAILING_SPORTS.includes(sport);
   const referenceMs = options.referenceSpeedOverrideMs ?? referenceSpeedMs(rawPoints);
-  const filters = isSailing
-    ? sessionFilterThresholds(referenceMs, profile.maxPlausibleSpeedMs)
-    : { maxAcceleration: undefined, maxSpeedMs: profile.maxPlausibleSpeedMs };
-  const track = computeKinematics(rawPoints, {
-    medianWindowSeconds: profile.medianWindowSeconds,
-    maxAcceleration: filters.maxAcceleration,
-    maxSpeedMs: filters.maxSpeedMs,
-  });
+  const track = analysisTrack(rawPoints, sport, referenceMs);
 
   const threshold =
     options.activeThreshold ??
