@@ -13,6 +13,8 @@ import AnalysisMap from '../components/AnalysisMap';
 import EffortThresholdEditor from '../components/EffortThresholdEditor';
 import GradeGradientLegend from '../components/GradeGradientLegend';
 import IntervalAnalysis, { type IntervalSeriesView } from '../components/IntervalAnalysis';
+import JumpMapLayer from '../components/JumpMapLayer';
+import JumpsPanel from '../components/JumpsPanel';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
@@ -41,6 +43,7 @@ import {
   computeActivityMask, computeTotalTimeMs,
 } from '../core/sessionStats';
 import { sessionActivity } from '../core/activities';
+import { trackIndexAtTime } from '../core/jumps';
 import { ELEVATION_PRESETS, getActiveThresholds, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import { meanFilterByTime } from '../core/speedFilter';
@@ -58,10 +61,11 @@ import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hoo
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useMapHighlight } from '../hooks/useMapHighlight';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
+import { useSessionJumps } from '../hooks/useSessionJumps';
 import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import { useTerrainElevation, type TerrainElevationStatus } from '../hooks/useTerrainElevation';
 import {
-  TERRAIN_LABEL, isKnownTerrain, readStoredActivities, useSportSettings, type TerrainType,
+  TERRAIN_LABEL, effectiveJumpSettings, isKnownTerrain, readStoredActivities, useSportSettings, type TerrainType,
 } from '../hooks/useSportSettings';
 import {
   averagePace, computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
@@ -103,8 +107,10 @@ const ENERGY_CHART_HEIGHT_PX = 200;
  * « fractionné » n'apparaît que pour une session qui a des répétitions du
  * compteur dans sa fiche, ou qui est de la famille Fractionné : ses
  * répétitions sont alors retrouvées dans la vitesse (§10, point 89).
+ * « sauts » n'apparaît que pour une session aux sauts mesurés par les
+ * capteurs du téléphone, comme en voile.
  */
-type LandSection = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'reglages';
+type LandSection = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'sauts' | 'reglages';
 
 const LAND_SECTIONS: SectionDefinition<LandSection>[] = [
   { key: 'general', label: 'général' },
@@ -114,6 +120,7 @@ const LAND_SECTIONS: SectionDefinition<LandSection>[] = [
   { key: 'surface', label: 'surface' },
   { key: 'energie', label: 'énergie' },
   { key: 'graphiques', label: 'vitesse et altitude' },
+  { key: 'sauts', label: 'sauts' },
   { key: 'reglages', label: 'réglages' },
 ];
 
@@ -125,6 +132,7 @@ const LAND_SECTION_DEFAULTS: Record<LandSection, boolean> = {
   surface: false,
   energie: false,
   graphiques: false,
+  sauts: false,
   reglages: false,
 };
 
@@ -244,9 +252,20 @@ function LandModule({ family }: { family: LandFamily }) {
   /** Répétitions retrouvées dans la vitesse : en famille Fractionné, pour une session faite sans le compteur. */
   const detectionOn = family === 'fractionne' && sessionIntervals.length === 0 && profile.intervals !== null;
   const hasIntervals = sessionIntervals.length > 0 || detectionOn;
+  // Sauts mesurés par les capteurs du téléphone : ceux de la fiche, sinon calculés depuis le `.imu`.
+  const jumpsState = useSessionJumps(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null, gpx.track, profile.id);
+  const jumpMinHeightM = effectiveJumpSettings(activity)?.minHeightM ?? profile.jumps?.defaultMinHeightM ?? 0;
+  const thresholdMs = fromDisplaySpeed(activeThreshold, profile.thresholdUnit);
+  /** Sauts montrés : la hauteur minimale de l'activité atteinte, pris au seuil d'activité ou plus. */
+  const shownJumps = useMemo(
+    () => jumpsState.jumps.filter((j) => j.heightM >= jumpMinHeightM && (j.speedMs === null || j.speedMs >= thresholdMs)),
+    [jumpsState.jumps, jumpMinHeightM, thresholdMs]
+  );
+  const jumpsVisible = jumpsState.status !== 'none';
   const sections = useMemo(
-    () => LAND_SECTIONS.filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals)),
-    [profile.topTargets, hasIntervals]
+    () => LAND_SECTIONS.filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals)
+      && (s.key !== 'sauts' || jumpsVisible)),
+    [profile.topTargets, hasIntervals, jumpsVisible]
   );
   // Une seule surbrillance sur la carte : un top, une zone de pente, une
   // répétition ou un revêtement ; choisir l'une retire les autres, fermer son onglet l'efface.
@@ -259,6 +278,10 @@ function LandModule({ family }: { family: LandFamily }) {
   const setSelectedLap = (key: string | null) => highlight.show('fractionne', key);
   const selectedSurface = highlight.shownIn('surface') as SurfaceCategory | null;
   const setSelectedSurface = (key: SurfaceCategory | null) => highlight.show('surface', key);
+  /** Sauts montrés : le podium des trois plus hauts (`podium`), ou un saut, par l'heure de son décollage. */
+  const jumpHighlight = highlight.shownIn('sauts');
+  const jumpPodiumShown = jumpHighlight === 'podium';
+  const shownJump = jumpHighlight !== null && !jumpPodiumShown ? Number(jumpHighlight) : null;
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
   const [energyMode, setEnergyMode] = useState<EnergyChartMode>('power');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -535,6 +558,13 @@ function LandModule({ family }: { family: LandFamily }) {
     if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
   };
 
+  /** Point de trace le plus proche d'un instant : relie la courbe d'un saut à la carte. */
+  const trackIndexAt = useCallback((ms: number): number => trackIndexAtTime(gpx.track, ms), [gpx.track]);
+  const onJumpCurveHover = (rows: ReadonlyArray<{ index: number }>) => (e: ChartHoverEvent) => {
+    const index = hoveredTrackIndex(e, rows);
+    if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
+  };
+
   const onEnergyChartHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, energyChartData);
     if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
@@ -606,6 +636,7 @@ function LandModule({ family }: { family: LandFamily }) {
       {selectedTopPaths.map((top, idx) => top.path.length > 1 && (
         <Polyline key={`top-${selectedTop}-${idx}`} positions={top.path} pathOptions={{ color: HIGHLIGHT_PODIUM_COLORS[idx] ?? HIGHLIGHT_PODIUM_COLORS[2], weight: 10, opacity: 0.8 }} />
       ))}
+      {jumpsVisible && <JumpMapLayer track={gpx.track} jumps={shownJumps} shownJump={shownJump} podiumShown={jumpPodiumShown} />}
       {hoveredIndex !== null && gpx.track[hoveredIndex] && (
         <HoverMarker position={[gpx.track[hoveredIndex].lat, gpx.track[hoveredIndex].lon]} />
       )}
@@ -1009,6 +1040,31 @@ function LandModule({ family }: { family: LandFamily }) {
               </ResizablePanel>
             )}
 
+
+            {open.sauts && jumpsVisible && (
+              <JumpsPanel
+                status={jumpsState.status}
+                error={jumpsState.error}
+                jumps={shownJumps}
+                hiddenCount={jumpsState.jumps.length - shownJumps.length}
+                minHeightM={jumpMinHeightM}
+                thresholdLabel={formatSpeed(thresholdMs, speedUnit === 'minkm' ? 'kmh' : speedUnit)}
+                speedUnit={speedUnit}
+                distanceUnit={distanceUnit}
+                open={open.sauts}
+                onToggle={() => toggle('sauts')}
+                shownJump={shownJump}
+                onShowJump={(takeoffMs) => highlight.show('sauts', takeoffMs === null ? null : String(takeoffMs))}
+                podiumShown={jumpPodiumShown}
+                onTogglePodium={() => highlight.show('sauts', jumpPodiumShown ? null : 'podium')}
+                trackIndexAt={trackIndexAt}
+                onCurveHover={onJumpCurveHover}
+                onCurveLeave={clearHover}
+                panelPrefix={page.storageId}
+                accent={page.accent}
+                sailing={false}
+              />
+            )}
 
             {stats && open.reglages && (
               <ResizablePanel id={panelId('reglages')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>

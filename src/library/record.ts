@@ -144,7 +144,7 @@ export interface SessionTerrainElevation extends TerrainSamples {
 }
 
 /**
- * Sauts d'une session de voile, mesurés par les capteurs du téléphone
+ * Sauts d'une session (voile, course, vélo), mesurés par les capteurs du téléphone
  * (`core/jumps.ts`) : calculés depuis le `.imu` rangé à côté du GPX à
  * l'ouverture de l'analyse, puis gardés, puisqu'ils ne se tirent pas du GPX.
  */
@@ -203,7 +203,7 @@ export interface SessionRecord {
    * GPX. Absent sans compteur, ou si la fiche en porte de mal formées.
    */
   intervals?: IntervalSeries[];
-  /** Sauts mesurés (voile) ; absent sans `.imu`, avant leur calcul, ou si la fiche en porte de mal formés. */
+  /** Sauts mesurés (voile, course, vélo) ; absent sans `.imu`, avant leur calcul, ou si la fiche en porte de mal formés. */
   jumps?: SessionJumps;
 }
 

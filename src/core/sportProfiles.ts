@@ -126,7 +126,7 @@ export interface IntervalDetectionProfile {
   blockGapFactor: number;
 }
 
-/** Sauts mesurés par les capteurs du téléphone (voile, `core/jumps.ts`). */
+/** Sauts mesurés par les capteurs du téléphone (`core/jumps.ts`) : voile, course, vélo. */
 export interface JumpProfile {
   /** Hauteur minimale d'un saut montré, en mètres, surchargeable par activité. */
   defaultMinHeightM: number;
@@ -138,7 +138,8 @@ export interface JumpProfile {
  * les séances de wingfoil du 08/10/2026, téléphone sur la poitrine : la séance
  * témoin ne donne aucun vol de 0,2 m, l'autre ses 10 sauts (0,66 à 1,72 m) et
  * rien d'autre au-dessus de 0,33 m. Les longs vols du kite restent à vérifier
- * sur une séance de kite.
+ * sur une séance de kite. À pied et à vélo (VTT), les mêmes seuils écartent
+ * la foulée (vol d'environ 0,1 s) ; ils restent à vérifier sur le terrain.
  */
 const JUMP_DETECTION: JumpDetection = {
   gridStepS: 0.01, maxGapS: 0.05,
@@ -242,7 +243,7 @@ export interface SportProfile {
    * Fractionné ; `null` en voile, où le compteur ne sert pas.
    */
   intervals: IntervalProfile | null;
-  /** Sauts mesurés par les capteurs du téléphone ; `null` hors voile et en bateau. */
+  /** Sauts mesurés par les capteurs du téléphone ; `null` en bateau et en fractionné. */
   jumps: JumpProfile | null;
 }
 
@@ -311,7 +312,7 @@ const RUNNING_PROFILE: SportProfile = {
   recording: DEFAULT_RECORDING,
   intervals: INTERVAL_ANALYSIS,
   foilDefault: false,
-  jumps: null,
+  jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
 };
 
 const CYCLING_PROFILE: SportProfile = {
@@ -335,7 +336,7 @@ const CYCLING_PROFILE: SportProfile = {
   recording: DEFAULT_RECORDING,
   intervals: INTERVAL_ANALYSIS,
   foilDefault: false,
-  jumps: null,
+  jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
 };
 
 export const SPORT_PROFILES: Record<SportType, SportProfile> = {
@@ -376,12 +377,12 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
   },
   running: RUNNING_PROFILE,
   cycling: CYCLING_PROFILE,
-  // Fractionné : les calculs de la course et du vélo, sans pause automatique ni planification.
+  // Fractionné : les calculs de la course et du vélo, sans pause automatique, planification ni sauts.
   'run-intervals': {
-    ...RUNNING_PROFILE, id: 'run-intervals', label: 'Fractionné à pied', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING,
+    ...RUNNING_PROFILE, id: 'run-intervals', label: 'Fractionné à pied', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING, jumps: null,
   },
   'bike-intervals': {
-    ...CYCLING_PROFILE, id: 'bike-intervals', label: 'Fractionné vélo', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING,
+    ...CYCLING_PROFILE, id: 'bike-intervals', label: 'Fractionné vélo', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING, jumps: null,
   },
 };
 

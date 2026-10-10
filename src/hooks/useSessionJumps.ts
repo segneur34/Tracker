@@ -6,7 +6,7 @@ import type { SportType, TrackPoint } from '../core/types';
 import { hasSessionMotion, librarySession, readSessionMotion, updateSessionRecord, useLibrarySession } from './useSessionLibrary';
 
 /**
- * Sauts d'une session de voile (`core/jumps.ts`) : ceux de sa fiche s'ils sont
+ * Sauts d'une session (voile, course, vélo ; `core/jumps.ts`) : ceux de sa fiche s'ils sont
  * à jour, sinon calculés depuis son `.imu` à l'ouverture de l'analyse, puis
  * rangés dans la fiche (hors brouillon : ce n'est pas une saisie). Une session
  * sans `.imu` ni sauts rangés n'en a pas : l'onglet « sauts » ne paraît pas.

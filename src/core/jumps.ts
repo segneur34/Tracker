@@ -1,7 +1,7 @@
 import type { ImuRecording, ImuSeries } from './imuFile';
 
 /**
- * Sauts mesurés par l'accéléromètre et le gyroscope du téléphone (voile),
+ * Sauts mesurés par l'accéléromètre et le gyroscope du téléphone (voile, course, vélo),
  * depuis le fichier `.imu` d'une session (`core/imuFile.ts`). Tout est en SI :
  * instants du fichier en microsecondes, heures en millisecondes, hauteurs en
  * mètres, accélérations en m/s².
@@ -595,4 +595,39 @@ export const measureJumps = (rec: ImuRecording, d: JumpDetection, track: Readonl
       lengthM: distanceBetween(track, f.takeoffMs, f.landingMs, d.gridStepS),
     }));
   return { jumps, flights, windows };
+};
+
+// --- Sur la carte ---
+
+/** Point de la trace le plus proche d'un instant, la trace étant rangée par le temps ; 0 sur une trace vide. */
+export const trackIndexAtTime = (track: ReadonlyArray<{ timeMs: number }>, ms: number): number => {
+  if (track.length === 0) return 0;
+  let lo = 0;
+  let hi = track.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (track[mid].timeMs <= ms) lo = mid;
+    else hi = mid;
+  }
+  return Math.abs(track[hi].timeMs - ms) < Math.abs(track[lo].timeMs - ms) ? hi : lo;
+};
+
+/**
+ * Points de la trace d'un saut, pour la carte : du point qui précède le
+ * décollage à celui qui suit l'atterrissage, deux au moins, puisqu'un saut
+ * peut tenir dans un seul intervalle de la trace ; `start`, le point le plus
+ * proche du décollage. `null` sur une trace de moins de deux points.
+ */
+export const jumpTrackSpan = (
+  track: ReadonlyArray<{ timeMs: number }>,
+  jump: Pick<SessionJump, 'takeoffMs' | 'landingMs'>
+): { from: number; to: number; start: number } | null => {
+  if (track.length < 2) return null;
+  const start = trackIndexAtTime(track, jump.takeoffMs);
+  let from = start;
+  if (track[from].timeMs > jump.takeoffMs && from > 0) from -= 1;
+  let to = trackIndexAtTime(track, jump.landingMs);
+  if (track[to].timeMs < jump.landingMs && to < track.length - 1) to += 1;
+  if (to <= from) to = Math.min(track.length - 1, from + 1);
+  return { from, to, start };
 };

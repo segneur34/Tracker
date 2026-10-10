@@ -20,6 +20,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { useMapHighlight } from '../hooks/useMapHighlight';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
+import { trackIndexAtTime } from '../core/jumps';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { sessionActivity } from '../core/activities';
@@ -35,7 +36,8 @@ import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
 import { MANEUVER_METRICS, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
 import ActivitySelect from '../components/ActivitySelect';
 import JumpsPanel from '../components/JumpsPanel';
-import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
+import JumpMapLayer from '../components/JumpMapLayer';
+import { HIGHLIGHT_PODIUM_COLORS } from '../components/highlightColors';
 import AnalysisMap from '../components/AnalysisMap';
 import HoverMarker from '../components/HoverMarker';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
@@ -619,44 +621,8 @@ function SailingModule() {
     </ResizablePanel>
   );
 
-  /** Point de trace le plus proche d'un instant. */
-  const trackIndexAt = useCallback((ms: number): number => {
-    let lo = 0;
-    let hi = trackData.length - 1;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (trackData[mid].timeMs <= ms) lo = mid;
-      else hi = mid;
-    }
-    return Math.abs(trackData[hi]?.timeMs - ms) < Math.abs(trackData[lo]?.timeMs - ms) ? hi : lo;
-  }, [trackData]);
-
-  /** Sauts sur la carte : celui choisi en violet, ou le podium aux couleurs des tops ; un point au décollage. */
-  const jumpMapLayers = useMemo(() => {
-    if (trackData.length < 2) return null;
-    const byHeight = [...shownJumps].sort((a, b) => b.heightM - a.heightM);
-    const drawn = jumpPodiumShown
-      ? byHeight.slice(0, 3).map((j, k) => ({ jump: j, color: HIGHLIGHT_PODIUM_COLORS[k] }))
-      : shownJumps.filter((j) => j.takeoffMs === shownJump).map((j) => ({ jump: j, color: HIGHLIGHT_SHOWN_COLOR }));
-    return drawn.map(({ jump, color }) => {
-      // Du point de trace qui précède le décollage à celui qui suit l'atterrissage : deux points au moins.
-      let from = trackIndexAt(jump.takeoffMs);
-      if (trackData[from].timeMs > jump.takeoffMs && from > 0) from -= 1;
-      let to = trackIndexAt(jump.landingMs);
-      if (trackData[to].timeMs < jump.landingMs && to < trackData.length - 1) to += 1;
-      if (to <= from) to = Math.min(trackData.length - 1, from + 1);
-      const path = trackData.slice(from, to + 1).map((p) => [p.lat, p.lon] as [number, number]);
-      const start = trackData[trackIndexAt(jump.takeoffMs)];
-      return (
-        <span key={`jump-${jump.takeoffMs}`}>
-          <Polyline positions={path} pathOptions={{ color, weight: 10, opacity: 0.85 }} />
-          <CircleMarker center={[start.lat, start.lon]} radius={7} pathOptions={{ color, fillColor: color, fillOpacity: 1, weight: 2 }}>
-            <Popup>Saut de {formatTimeOfDay(jump.takeoffMs)} · {jump.heightM.toFixed(2)} m · {jump.flightS.toFixed(2)} s de vol</Popup>
-          </CircleMarker>
-        </span>
-      );
-    });
-  }, [trackData, shownJumps, shownJump, jumpPodiumShown, trackIndexAt]);
+  /** Point de trace le plus proche d'un instant : relie la courbe d'un saut à la carte. */
+  const trackIndexAt = useCallback((ms: number): number => trackIndexAtTime(trackData, ms), [trackData]);
 
   /** Contenu partagé par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
@@ -666,7 +632,7 @@ function SailingModule() {
       {trackData.length > 0 && <TrackSegmentsLayer segments={mapSegments} weight={5} />}
       {arrowLayers}
       {staticMapLayers}
-      {jumpMapLayers}
+      <JumpMapLayer track={trackData} jumps={shownJumps} shownJump={shownJump} podiumShown={jumpPodiumShown} />
 
       {hoveredIndex !== null && trackData[hoveredIndex] && (
         <HoverMarker position={[trackData[hoveredIndex].lat, trackData[hoveredIndex].lon]} />

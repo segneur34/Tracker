@@ -106,7 +106,7 @@ export interface StoredSettings {
   markGuide?: ByActivity<MarkGuideSettings>;
   /** Support sur foil (voile) ; absent : `foilDefault` du calcul. */
   foils?: ByActivity<boolean>;
-  /** Sauts mesurés par les capteurs du téléphone (voile, sauf bateau) ; absents : non mesurés. */
+  /** Sauts mesurés par les capteurs du téléphone (voile sauf bateau, course, vélo) ; absents : non mesurés. */
   jumps?: ByActivity<JumpSettings>;
   /** Type de vélo (vélo), qui fixe roulement et traînée ; absent : `defaultBikeType`. */
   bikeTypes?: ByActivity<BikeType>;
@@ -526,7 +526,7 @@ export interface SportSettingsView {
   /** Support sur foil ; `null` hors voile. */
   foil: boolean | null;
   isFoilOverridden: boolean;
-  /** Sauts mesurés par les capteurs ; `null` si le calcul ne les mesure pas (bateau, hors voile). */
+  /** Sauts mesurés par les capteurs ; `null` si le calcul ne les mesure pas (bateau, fractionné). */
   jumps: JumpSettings | null;
   isJumpsOverridden: boolean;
   /** Type de vélo (activités vélo seulement, `defaultBikeType` par défaut). */

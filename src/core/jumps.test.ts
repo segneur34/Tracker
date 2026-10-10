@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { IMU_FORMAT, IMU_VERSION, PHONE_STREAMS, decodeImu, encodeImu, selectImuWindows, type ImuHeader, type ImuRecording } from './imuFile';
 import { pruneImuFile } from './imuPrune';
-import { measureJumps, pruneWindows, type MeasuredJump } from './jumps';
+import { jumpTrackSpan, measureJumps, pruneWindows, trackIndexAtTime, type MeasuredJump } from './jumps';
 import { SPORT_PROFILES } from './sportProfiles';
 
 const G = 9.80665;
@@ -285,5 +285,28 @@ describe('sauts : élagage du fichier', () => {
     expect(await pruneImuFile(once, D)).toBe(once);
     const junk = new TextEncoder().encode('<gpx></gpx>');
     expect(await pruneImuFile(junk, D)).toBe(junk);
+  });
+});
+
+describe('sauts sur la carte', () => {
+  const at = (...seconds: number[]) => seconds.map((s) => ({ timeMs: WALL_MS + s * 1000 }));
+
+  it('prend le point de trace le plus proche d’un instant', () => {
+    const track = at(0, 1, 2, 3, 10);
+    expect(trackIndexAtTime(track, WALL_MS + 1400)).toBe(1);
+    expect(trackIndexAtTime(track, WALL_MS + 1600)).toBe(2);
+    expect(trackIndexAtTime(track, WALL_MS + 8000)).toBe(4);
+    expect(trackIndexAtTime(track, WALL_MS - 5000)).toBe(0);
+    expect(trackIndexAtTime([], WALL_MS)).toBe(0);
+  });
+
+  it('encadre le saut, deux points au moins, même dans un seul intervalle de la trace', () => {
+    // À 1 Hz : un vol de 2,3 s à 4,3 s va du point de 4 s à celui de 5 s.
+    expect(jumpTrackSpan(at(0, 1, 2, 3, 4, 5, 6), { takeoffMs: WALL_MS + 2300, landingMs: WALL_MS + 4300 }))
+      .toEqual({ from: 2, to: 5, start: 2 });
+    // Trace clairsemée : tout le vol tient entre deux points.
+    expect(jumpTrackSpan(at(0, 10, 20), { takeoffMs: WALL_MS + 12_000, landingMs: WALL_MS + 13_000 }))
+      .toEqual({ from: 1, to: 2, start: 1 });
+    expect(jumpTrackSpan(at(0), { takeoffMs: WALL_MS, landingMs: WALL_MS + 500 })).toBeNull();
   });
 });

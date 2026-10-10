@@ -41,7 +41,7 @@ import PageHeader from '../components/ui/PageHeader';
 import './settingsPage.css';
 
 /**
- * Sauts mesurés par les capteurs du téléphone (voile, sauf bateau) : la case,
+ * Sauts mesurés par les capteurs du téléphone (voile sauf bateau, course, vélo) : la case,
  * puis, cochée, l'emplacement du téléphone et la hauteur minimale montrée. Le
  * foil, juste au-dessus, est un réglage de l'activité à part entière.
  */

@@ -5,13 +5,23 @@ import { DEFAULT_JUMP_PLACEMENT, defaultJumpSettings, sanitizeJumpSettings } fro
 const kite = SPORT_PROFILES.kite.jumps!;
 
 describe('réglages des sauts', () => {
-  it('sont mesurés en wingfoil, planche et kite, pas en bateau ni hors voile', () => {
+  it('sont mesurés en wingfoil, planche, kite, course et vélo, pas en bateau ni en fractionné', () => {
     expect(SPORT_PROFILES.wingfoil.jumps).not.toBeNull();
     expect(SPORT_PROFILES.windsurf.jumps).not.toBeNull();
     expect(SPORT_PROFILES.kite.jumps).not.toBeNull();
+    expect(SPORT_PROFILES.running.jumps).not.toBeNull();
+    expect(SPORT_PROFILES.cycling.jumps).not.toBeNull();
     expect(SPORT_PROFILES.bateau.jumps).toBeNull();
-    expect(SPORT_PROFILES.running.jumps).toBeNull();
+    expect(SPORT_PROFILES['run-intervals'].jumps).toBeNull();
     expect(SPORT_PROFILES['bike-intervals'].jumps).toBeNull();
+  });
+
+  it('partent décochés à pied et à vélo, à 0,3 m, et se relisent comme en voile', () => {
+    for (const sport of ['running', 'cycling'] as const) {
+      const profile = SPORT_PROFILES[sport].jumps!;
+      expect(defaultJumpSettings(profile)).toEqual({ enabled: false, placement: DEFAULT_JUMP_PLACEMENT, minHeightM: 0.3 });
+      expect(sanitizeJumpSettings({ enabled: true }, profile)).toEqual({ ...defaultJumpSettings(profile), enabled: true });
+    }
   });
 
   it('partent décochés, téléphone sur la poitrine, à la hauteur minimale du calcul', () => {

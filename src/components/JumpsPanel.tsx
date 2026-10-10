@@ -12,7 +12,7 @@ import HelpButton from './ui/HelpButton';
 import './JumpsPanel.css';
 
 /**
- * Onglet « sauts » de l'analyse voile : les sauts mesurés par les capteurs du
+ * Onglet « sauts » des analyses (voile, course, vélo) : les sauts mesurés par les capteurs du
  * téléphone (`core/jumps.ts`, rangés dans la fiche par `useSessionJumps`).
  * Chiffres, podium des trois plus hauts, tableau trié au choix (hauteur, vol,
  * longueur), et courbe d'un saut, ou de deux pour les comparer. Le calcul est
@@ -22,8 +22,6 @@ import './JumpsPanel.css';
 /** Courbes comparées : le premier saut en bleu, le second en orange. */
 const CURVE_COLORS = ['#1565c0', '#ef6c00'];
 const CURVE_HEIGHT_PX = 220;
-/** Ancre de la courbe, pour « Détail ». */
-const CURVE_ANCHOR_ID = 'sailing-jump-curve';
 
 /** Tri du tableau. */
 type JumpSort = 'hauteur' | 'vol' | 'longueur';
@@ -61,6 +59,12 @@ export interface JumpsPanelProps {
   trackIndexAt: (ms: number) => number;
   onCurveHover: (rows: ReadonlyArray<{ index: number }>) => (e: ChartHoverEvent) => void;
   onCurveLeave: () => void;
+  /** Début des `id` des blocs, dont la taille est mémorisée : `sailing`, `running`, `cycling`. */
+  panelPrefix?: string;
+  /** Couleur des boutons choisis : celle du module. */
+  accent?: string;
+  /** Voile : l'aide parle de la planche et du foil. */
+  sailing?: boolean;
 }
 
 const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' };
@@ -83,7 +87,10 @@ const curvePoints = (j: SessionJump): Map<number, number> => {
 function JumpsPanel({
   status, error, jumps, hiddenCount, minHeightM, thresholdLabel, speedUnit, distanceUnit, open, onToggle,
   shownJump, onShowJump, podiumShown, onTogglePodium, trackIndexAt, onCurveHover, onCurveLeave,
+  panelPrefix = 'sailing', accent = 'var(--voile)', sailing = true,
 }: JumpsPanelProps) {
+  /** Ancre de la courbe, pour « Détail ». */
+  const curveAnchorId = `${panelPrefix}-jump-curve`;
   const [help, setHelp] = useState(false);
   const [sort, setSort] = useState<JumpSort>('hauteur');
   /** Sauts de la courbe, par l'heure de leur décollage : le premier (le plus haut d'office), et celui qu'on lui compare. */
@@ -111,7 +118,7 @@ function JumpsPanel({
         ? `Sauts indisponibles : ${error ?? 'calcul impossible'}.`
         : `Aucun saut d'au moins ${meters(minHeightM)} pris à ${thresholdLabel} ou plus.`;
     return (
-      <ResizablePanel id="sailing.sauts" style={panelStyle}>
+      <ResizablePanel id={`${panelPrefix}.sauts`} style={panelStyle}>
         {heading('Sauts')}
         <div style={{ color: 'var(--muted)' }}>{text}</div>
         {status === 'ready' && hiddenNote && <div style={noteStyle}>{hiddenNote}</div>}
@@ -141,17 +148,17 @@ function JumpsPanel({
   const showDetail = (j: SessionJump) => {
     setCurveFirst(j.takeoffMs);
     if (curveSecond === j.takeoffMs) setCurveSecond(null);
-    document.getElementById(CURVE_ANCHOR_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById(curveAnchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const jumpsPanel = (
-    <ResizablePanel id="sailing.sauts" style={panelStyle}>
+    <ResizablePanel id={`${panelPrefix}.sauts`} style={panelStyle}>
       {heading('Sauts', true)}
       {help && (
         <div style={{ ...noteStyle, marginTop: 0, marginBottom: '10px' }}>
           Hauteur gagnée par le téléphone, donc par le buste, au-dessus de son niveau au décollage, mesurée par
-          l'accéléromètre et le gyroscope : ce n'est pas la hauteur de la planche au-dessus de l'eau. Précision attendue,
-          téléphone sur la poitrine : ±0,1 à 0,2 m sans foil, ±0,2 à 0,3 m sur foil ; davantage au bras. Vol : du décollage
+          l'accéléromètre et le gyroscope : ce n'est pas la hauteur {sailing ? "de la planche au-dessus de l'eau" : 'des pieds ou des roues au-dessus du sol'}. Précision attendue,
+          téléphone sur la poitrine : {sailing ? '±0,1 à 0,2 m sans foil, ±0,2 à 0,3 m sur foil' : '±0,1 à 0,2 m'} ; davantage au bras. Vol : du décollage
           à l'atterrissage. Longueur : chemin parcouru pendant le vol, lu sur la trace ; vitesse : au décollage. « ≈ » marque
           une mesure douteuse, dont la raison s'affiche au survol. « Voir » montre le saut sur la carte, « Détail » sur la
           courbe. Sont montrés les sauts d'au moins {meters(minHeightM)} (Réglages, carte de l'activité) pris à {thresholdLabel}
@@ -168,7 +175,7 @@ function JumpsPanel({
       <div style={{ margin: '10px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <strong>Les plus hauts</strong>
-          <button type="button" onClick={onTogglePodium} style={buttonStyle(podiumShown, 'var(--voile)')}>
+          <button type="button" onClick={onTogglePodium} style={buttonStyle(podiumShown, accent)}>
             {podiumShown ? 'Masquer (Carte)' : 'Voir (Carte)'}
           </button>
         </div>
@@ -185,7 +192,7 @@ function JumpsPanel({
       <div className="an-jump-sort" role="group" aria-label="Trier les sauts">
         <span style={{ color: 'var(--muted)' }}>Trier par</span>
         {SORTS.map((s) => (
-          <button key={s.key} type="button" aria-pressed={sort === s.key} onClick={() => setSort(s.key)} style={buttonStyle(sort === s.key, 'var(--voile)')}>
+          <button key={s.key} type="button" aria-pressed={sort === s.key} onClick={() => setSort(s.key)} style={buttonStyle(sort === s.key, accent)}>
             {s.label}
           </button>
         ))}
@@ -257,8 +264,8 @@ function JumpsPanel({
     </select>
   );
   const curvePanel = (
-    <ResizablePanel id="sailing.sauts.courbe" style={panelStyle}>
-      <div id={CURVE_ANCHOR_ID} className="an-jump-compare">
+    <ResizablePanel id={`${panelPrefix}.sauts.courbe`} style={panelStyle}>
+      <div id={curveAnchorId} className="an-jump-compare">
         <label>
           <span className="an-jump-compare__dot" style={{ backgroundColor: CURVE_COLORS[0] }} />
           Saut {select(first.takeoffMs, (v) => setCurveFirst(v), false, null)}
