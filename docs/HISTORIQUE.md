@@ -605,3 +605,9 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Pièges** :
       - six gris assez distincts entre eux (écart OKLab de 6) ne se trouvent pas en ne jouant que sur la clarté : les nuances du surf sont des gris un peu bleutés ou chauds, cherchés par un petit script contre les contraintes de `palette.test.ts` ;
       - au banc, les onglets ouverts sont mémorisés : un clic sur un onglet déjà ouvert le ferme (`openTab` de `surf.mjs`).
+
+98. Une session passe d'un appareil à l'autre en un seul GPX complet (10/10, validé par l'utilisateur, APK 0.2.82).
+    - **Constat** : un fractionné fait au compteur, passé au PC en GPX seul, retombait sur la détection dans la vitesse : ses séances vivent dans la fiche, pas dans le GPX. Réimporter la fiche ne servait à rien, la session déjà présente gardant la sienne.
+    - **Décision** (choix de l'utilisateur, contre plusieurs fichiers du même nom ou un `.zip`) : « Télécharger la session » donne un seul GPX, qui porte la fiche et le `.imu` dans une `<extensions>` posée avant `</gpx>` ; points tels que rangés, bloc ignoré des autres applications et de notre lecteur. À l'import, le bloc est retiré à l'identique (la mémoire range le GPX d'origine) ; un `.json` ou un `.imu` posé à côté prime. Une session déjà présente reçoit ce qui manque à sa fiche (séances, nom, notes, saisies), sans rien écraser.
+    - **Pièges** : la fiche est échappée XML (`<`, `&`) plutôt qu'en CDATA, qu'un `]]>` dans une note casserait ; la fiche exportée est la fiche entière (`fullRecordIn`), pas celle du cache allégé.
+    - En-tête des analyses : un nom long poussait « … » à la ligne et son menu s'ouvrait hors de l'écran ; nom, « Renommer » et « … » tiennent sur une ligne, le nom tronqué.

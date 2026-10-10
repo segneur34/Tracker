@@ -20,6 +20,7 @@ import {
   RECORD_FORMAT,
   RECORD_VERSION,
   applyRecordPatch,
+  completeRecord,
   dedupeSessions,
   findLegacyNotes,
   imuFileName,
@@ -39,6 +40,7 @@ import {
   type SessionSummary,
 } from '../library/record';
 import { planReconcile, type LibraryCache } from '../library/reconcile';
+import { unbundleSessionGpx } from '../library/sessionBundle';
 import {
   TRAVELLING_KEYS,
   adoptedValues,
@@ -1163,6 +1165,8 @@ export interface AddResult {
   message?: string;
   /** Session déjà présente, qui n'avait pas ses capteurs : ceux apportés lui ont été ajoutés. */
   motionAdded?: boolean;
+  /** Session déjà présente dont la fiche a reçu ce qui lui manquait (`completeRecord`). */
+  recordCompleted?: boolean;
 }
 
 interface AddOptions {
@@ -1207,14 +1211,23 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   const startMs = analyzed.summary.startMs;
   const existing = all.find((s) => s.record.summary.startMs === startMs);
   if (existing) {
-    // Session entrée sans ses capteurs (GPX importé seul, ou copié avant son `.imu`) : ils la rejoignent,
-    // sa fiche restant celle de la mémoire.
+    // Session entrée sans sa fiche complète (GPX importé seul) : celle de la copie lui donne ce qui
+    // lui manque, sans rien écraser ; de même ses capteurs, s'ils ne sont pas encore là.
+    let recordCompleted = false;
+    if (options.record && !existing.readOnly) {
+      const record = completeRecord(existing.record, options.record);
+      if (record !== existing.record) {
+        replaceSession({ ...existing, record });
+        scheduleRecordWrite(existing.file);
+        recordCompleted = true;
+      }
+    }
     const f = folder;
-    if (!options.motion || !f || hasSessionMotion(existing.file)) return { status: 'duplicate', file: existing.file };
+    if (!options.motion || !f || hasSessionMotion(existing.file)) return { status: 'duplicate', file: existing.file, recordCompleted };
     const motion = source === 'enregistrement' ? await prunedMotion(options.motion, analyzed.sport) : options.motion;
     await f.writeBytes(sessionPath(imuFileName(existing.file)), motion);
     knownNames.add(imuFileName(existing.file));
-    return { status: 'duplicate', file: existing.file, motionAdded: true };
+    return { status: 'duplicate', file: existing.file, motionAdded: true, recordCompleted };
   }
 
   const f = folder;
@@ -1296,6 +1309,8 @@ export interface ImportReport {
   failed: string[];
   /** Sessions déjà présentes qui ont reçu leurs capteurs (`.imu`). */
   motionAdded: number;
+  /** Sessions déjà présentes dont la fiche a été complétée. */
+  recordCompleted: number;
 }
 
 const baseKey = (file: File): string =>
@@ -1307,6 +1322,9 @@ const describeImport = (report: ImportReport): string => {
   if (report.duplicates > 0) parts.push(`${report.duplicates} déjà présente${report.duplicates > 1 ? 's' : ''}`);
   if (report.motionAdded > 0) {
     parts.push(`capteurs ajoutés à ${report.motionAdded} session${report.motionAdded > 1 ? 's' : ''} déjà présente${report.motionAdded > 1 ? 's' : ''}`);
+  }
+  if (report.recordCompleted > 0) {
+    parts.push(`fiche complétée pour ${report.recordCompleted} session${report.recordCompleted > 1 ? 's' : ''} déjà présente${report.recordCompleted > 1 ? 's' : ''}`);
   }
   if (report.invalid.length > 0) parts.push(`${report.invalid.length} illisible${report.invalid.length > 1 ? 's' : ''} (${report.invalid.join(', ')})`);
   if (report.unsaved > 0) parts.push(`${report.unsaved} non rangée${report.unsaved > 1 ? 's' : ''}, faute de mémoire accessible`);
@@ -1323,7 +1341,7 @@ const describeImport = (report: ImportReport): string => {
  */
 export const importFiles = async (files: File[]): Promise<ImportReport> => {
   setState({ importing: true });
-  const report: ImportReport = { added: [], existing: [], duplicates: 0, invalid: [], unsaved: 0, failed: [], motionAdded: 0 };
+  const report: ImportReport = { added: [], existing: [], duplicates: 0, invalid: [], unsaved: 0, failed: [], motionAdded: 0, recordCompleted: 0 };
   try {
     await opening;
     const records = new Map<string, File>();
@@ -1336,18 +1354,23 @@ export const importFiles = async (files: File[]): Promise<ImportReport> => {
     for (const file of files) {
       if (!isGpxFileName(file.name)) continue;
       try {
+        // GPX complet (`library/sessionBundle.ts`) : la fiche et les capteurs qu'il porte servent
+        // à défaut de fichiers posés à côté ; la mémoire range le GPX sans eux.
+        const bundle = unbundleSessionGpx(await readPickedFile(file));
         const recordFile = records.get(baseKey(file));
-        const record = recordFile ? parseRecord(await readPickedFile(recordFile)) : null;
+        const sidecar = recordFile ? parseRecord(await readPickedFile(recordFile)) : null;
+        const record = sidecar && isWritableRecord(sidecar) ? sidecar : bundle.record;
         const motionFile = motions.get(baseKey(file));
-        const result = await addGpx(await readPickedFile(file), 'import', {
-          record: record && isWritableRecord(record) ? record : null,
-          motion: motionFile ? await readPickedBytes(motionFile) : undefined,
+        const result = await addGpx(bundle.gpx, 'import', {
+          record,
+          motion: motionFile ? await readPickedBytes(motionFile) : bundle.motion ?? undefined,
         });
         if (result.status === 'added' && result.file) report.added.push(result.file);
         else if (result.status === 'duplicate') {
           report.duplicates += 1;
           if (result.file) report.existing.push(result.file);
           if (result.motionAdded) report.motionAdded += 1;
+          if (result.recordCompleted) report.recordCompleted += 1;
         }
         else if (result.status === 'invalid') report.invalid.push(file.name);
         else report.unsaved += 1;
@@ -1425,6 +1448,21 @@ export const loadFullSession = async (file: string): Promise<void> => {
 export const loadSessionGpx = async (file: string): Promise<string | null> => {
   await loadFullSession(file);
   return readSessionGpx(file);
+};
+
+/**
+ * GPX complet d'une session, pour « Télécharger la session » : le GPX tel que
+ * rangé, sa fiche entière et ses capteurs (`library/sessionBundle.ts`).
+ * `null` si le GPX n'est pas lisible.
+ */
+export const readSessionExport = async (file: string): Promise<{ gpx: string; record: SessionRecord; motion: Uint8Array | null } | null> => {
+  await opening;
+  const f = folder;
+  const session = findSession(file);
+  if (!f || !session) return null;
+  const gpx = await f.readText(sessionPath(file));
+  if (gpx === null) return null;
+  return { gpx, record: await fullRecordIn(f, session), motion: await readSessionMotion(file) };
 };
 
 /** Vrai si la session a ses capteurs (`.imu`) dans la mémoire. */

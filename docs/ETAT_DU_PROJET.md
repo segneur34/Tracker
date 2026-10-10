@@ -186,6 +186,8 @@ Tracker/
   - en course et à vélo, les voies suivies (`surfaces`, point 78) : demandées à OpenStreetMap à la première ouverture de l'onglet « surface », dès l'ouverture de l'analyse à vélo (point 88), écrites hors brouillon, refaites si `WAY_MATCH_VERSION` a augmenté ;
   - en course et à vélo, l'altitude du terrain (`terrainElevation`, point 84) : échantillons de l'IGN, un tous les 5, 10 ou 20 m, repérés par leur instant (`t`, en ms depuis `startMs`) avec leur altitude (`z`, `null` hors couverture). Demandée à l'ouverture de l'analyse, écrite hors brouillon, redemandée si le pas réglé ou `TERRAIN_ELEVATION_VERSION` change ; `elevationSource: 'gps'` quand la session garde l'altitude du GPS. Changer l'un ou l'autre recalcule le résumé.
 
+  Pour passer d'un appareil à l'autre, la session voyage en un seul GPX complet (point 98, `library/sessionBundle.ts`) : la fiche et le `.imu` dans une extension posée avant `</gpx>`, retirée à l'import ; une session déjà présente reçoit seulement ce qui manque à sa fiche (`completeRecord` : séances, nom, notes, saisies), jamais rien d'écrasé.
+
   Tout le reste se recalcule : une fiche dont `calcVersion` est dépassé est recalculée, saisies intactes. Le résumé suit le seuil de la session. `applyRecordPatch` efface le seuil quand le support change, et les bornes de couleur quand la famille change (point 64).
 - **Compatibilité** :
   - les champs inconnus sont conservés à la réécriture ;
@@ -382,7 +384,7 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
   - `accept=".gpx"` de la bibliothèque, qui grise parfois les GPX sous Android.
 - **Suite possible** : calcul des itinéraires hors ligne.
 - **Phase 3** :
-  - partage et export GPX : le GPX d'une session se télécharge depuis son analyse (point 95, `DownloadsPlugin.java`, dossier Téléchargements par MediaStore) ; reste le partage vers une autre application ;
+  - partage et export GPX : le GPX d'une session se télécharge depuis son analyse (point 95, `DownloadsPlugin.java`, dossier Téléchargements par MediaStore), complet avec sa fiche et ses capteurs (point 98) ; reste le partage vers une autre application ;
   - réception d'un GPX partagé depuis Komoot ;
   - cartes hors ligne : faites le 28/09 (point 67), par les tuiles vues en ligne ; le téléchargement d'une zone à l'avance reste exclu par les règles d'OSM ;
   - capteur cardiaque Bluetooth.

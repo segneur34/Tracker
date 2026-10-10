@@ -420,6 +420,21 @@ export const serializeRecord = (record: SessionRecord): string => `${JSON.string
 /** Faux pour une fiche écrite par une version plus récente : on la lit sans jamais la réécrire. */
 export const isWritableRecord = (record: SessionRecord): boolean => record.version <= RECORD_VERSION;
 
+/**
+ * Fiche de la mémoire complétée par celle d'une copie de la même session
+ * (import d'un GPX complet, `library/sessionBundle.ts`) : séances du
+ * compteur, nom, notes et réglages qu'elle n'a pas encore. Rien de ce qu'elle
+ * porte n'est écrasé ; rend la même fiche si rien ne manque.
+ */
+export const completeRecord = (existing: SessionRecord, incoming: SessionRecord): SessionRecord => {
+  const patch: Partial<SessionRecord> = {};
+  if (!existing.intervals?.length && incoming.intervals?.length) patch.intervals = incoming.intervals;
+  if (existing.name === null && incoming.name !== null) patch.name = incoming.name;
+  if (existing.notes === null && incoming.notes !== null) patch.notes = incoming.notes;
+  if (existing.analysis === null && incoming.analysis !== null) patch.analysis = incoming.analysis;
+  return Object.keys(patch).length > 0 ? { ...existing, ...patch } : existing;
+};
+
 /** Vrai si le résumé a été calculé par une version antérieure du calcul. */
 export const isSummaryStale = (record: SessionRecord): boolean =>
   record.summary.calcVersion < SUMMARY_CALC_VERSION;

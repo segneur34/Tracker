@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { librarySession, readSessionGpx, updateSessionRecord, useSessionName } from '../hooks/useSessionLibrary';
+import { librarySession, readSessionExport, updateSessionRecord, useSessionName } from '../hooks/useSessionLibrary';
+import { bundleSessionGpx } from '../library/sessionBundle';
 import { safeFileName, saveToDownloads } from '../platform/files';
 import { IconDownload } from './icons';
 import Button from './ui/Button';
@@ -10,8 +11,9 @@ const DOWNLOAD_NOTE_MS = 4000;
 
 /**
  * Nom d'une session de la mémoire, en tête de son analyse, son bouton
- * « Renommer » et son menu « … » (« Télécharger le GPX », dans
- * Téléchargements). Le nom est écrit dans la fiche dès sa validation, comme un
+ * « Renommer » et son menu « … » (« Télécharger la session », dans
+ * Téléchargements : un GPX complet, fiche et capteurs compris, que « Importer
+ * des GPX » range tout entier sur un autre appareil). Le nom est écrit dans la fiche dès sa validation, comme un
  * changement de support (la bibliothèque offre le même renommage). Rien pour
  * un GPX ouvert hors de la mémoire ; pas de renommage pour une fiche en
  * lecture seule, qui se télécharge quand même.
@@ -36,14 +38,14 @@ function SessionNameEditor({ file }: { file: string | null }) {
     setDraft(null);
   };
 
-  /** Le GPX tel que rangé, sous le nom de la session s'il en a un. */
+  /** Le GPX tel que rangé, avec sa fiche et ses capteurs, sous le nom de la session s'il en a un. */
   const download = async () => {
     try {
-      const gpx = await readSessionGpx(file);
-      if (gpx === null) throw new Error('GPX illisible dans la mémoire.');
+      const session = await readSessionExport(file);
+      if (session === null) throw new Error('GPX illisible dans la mémoire.');
       const named = name ? safeFileName(name) : '';
-      await saveToDownloads(named ? `${named}.gpx` : file, gpx);
-      setNote({ text: 'GPX enregistré dans Téléchargements.', error: false });
+      await saveToDownloads(named ? `${named}.gpx` : file, bundleSessionGpx(session.gpx, session.record, session.motion));
+      setNote({ text: 'Session enregistrée dans Téléchargements.', error: false });
     } catch (err) {
       setNote({ text: `Téléchargement impossible : ${err instanceof Error ? err.message : 'erreur inconnue'}`, error: true });
     }
@@ -72,21 +74,28 @@ function SessionNameEditor({ file }: { file: string | null }) {
   }
 
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-      {name
-        ? <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{name}</span>
-        : <span>Sans nom</span>}
-      {!session.readOnly && (
-        <Button size="s" variant="ghost" onClick={() => setDraft(name ?? '')}>Renommer</Button>
-      )}
-      <MoreMenu label="Plus d'actions sur la session">
-        <Button onClick={() => void download()}>
-          <IconDownload size={18} />
-          Télécharger le GPX
-        </Button>
-      </MoreMenu>
+    // Une seule ligne : un nom long se tronque, « Renommer » et « … » restent à droite (le menu s'ouvre à l'écran).
+    <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
+        <span
+          title={name ?? undefined}
+          style={{ flex: '0 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(name ? { color: 'var(--ink)', fontWeight: 600 } : {}) }}>
+          {name ?? 'Sans nom'}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+          {!session.readOnly && (
+            <Button size="s" variant="ghost" onClick={() => setDraft(name ?? '')}>Renommer</Button>
+          )}
+          <MoreMenu label="Plus d'actions sur la session">
+            <Button onClick={() => void download()}>
+              <IconDownload size={18} />
+              Télécharger la session
+            </Button>
+          </MoreMenu>
+        </span>
+      </span>
       {note && (
-        <span role="status" style={{ flexBasis: '100%', fontSize: 'var(--text-s)', color: note.error ? 'var(--recording)' : 'var(--muted)' }}>
+        <span role="status" style={{ fontSize: 'var(--text-s)', color: note.error ? 'var(--recording)' : 'var(--muted)' }}>
           {note.text}
         </span>
       )}
