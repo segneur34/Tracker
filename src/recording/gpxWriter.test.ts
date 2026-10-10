@@ -19,13 +19,21 @@ describe('buildGpx', () => {
     expect(gpx).toContain('<trkpt lat="43.1234667" lon="-3.5"><time>2026-09-23T12:00:01.000Z</time></trkpt>');
   });
 
-  it('porte vitesse en m/s et altitude du premier point, sans cap ni précision', () => {
+  it('porte vitesse en m/s, cap et altitude du premier point, sans précision', () => {
     expect(gpx).toContain(
       '<trkpt lat="43.1234567" lon="3.7654321"><ele>2.5</ele><time>2026-09-23T12:00:00.000Z</time>'
-      + '<extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>5.43</gpxtpx:speed></gpxtpx:TrackPointExtension></extensions></trkpt>'
+      + '<extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>5.43</gpxtpx:speed><gpxtpx:course>270.1</gpxtpx:course>'
+      + '</gpxtpx:TrackPointExtension></extensions></trkpt>'
     );
-    expect(gpx).not.toContain('gpxtpx:course');
     expect(gpx).not.toContain('tracker:accuracy');
+  });
+
+  it("n'écrit pas le cap d'une position immobile ou sans vitesse", () => {
+    const still = buildGpx([[
+      { timeMs: T0, lat: 43, lon: 3, speedMs: 0, bearingDeg: 12 },
+      { timeMs: T0 + 1000, lat: 43, lon: 3, bearingDeg: 12 },
+    ]], { name: 'Arrêt', sport: 'surf' });
+    expect(still).not.toContain('gpxtpx:course');
   });
 
   it('échappe le nom de la trace et indique le support', () => {

@@ -3,6 +3,7 @@ import AppShell from './components/AppShell';
 import Home from './pages/Home';
 import SailingModule from './pages/SailingModule';
 import LandModule from './pages/LandModule';
+import SurfModule from './pages/SurfModule';
 import SessionLibrary from './pages/SessionLibrary';
 import SettingsPage from './pages/SettingsPage';
 import RecordingPage from './pages/RecordingPage';
@@ -25,6 +26,8 @@ function App() {
           <Route path="/velo/analyse" element={<LandModule key="velo" family="velo" />} />
           <Route path="/fractionne" element={<SessionLibrary key="fractionne" family="fractionne" />} />
           <Route path="/fractionne/analyse" element={<LandModule key="fractionne" family="fractionne" />} />
+          <Route path="/surf" element={<SessionLibrary key="surf" family="surf" />} />
+          <Route path="/surf/analyse" element={<SurfModule />} />
           <Route path="/enregistrer" element={<RecordingPage />} />
           <Route path="/itineraires" element={<PlanningPage />} />
           <Route path="/itineraires/liste" element={<RoutesPage />} />

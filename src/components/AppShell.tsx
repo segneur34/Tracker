@@ -11,7 +11,7 @@ import {
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
 import { recordingDurationMs } from '../recording/session';
 import {
-  IconBike, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings, IconStopwatch,
+  IconBike, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings, IconStopwatch, IconWave,
 } from './icons';
 
 /**
@@ -51,8 +51,9 @@ const VOILE: Destination = { to: '/voile', label: 'Voile', Icon: IconSail, accen
 const COURSE: Destination = { to: '/course', label: 'Course', Icon: IconRun, accent: 'var(--course)' };
 const VELO: Destination = { to: '/velo', label: 'Vélo', Icon: IconBike, accent: 'var(--velo)' };
 const FRACTIONNE: Destination = { to: '/fractionne', label: 'Fractionné', Icon: IconStopwatch, accent: 'var(--fractionne)' };
+const SURF: Destination = { to: '/surf', label: 'Surf', Icon: IconWave, accent: 'var(--surf)' };
 const SETTINGS: Destination = { to: '/parametres', label: 'Réglages', Icon: IconSettings, accent: 'var(--ink)' };
-const FAMILY_TABS: Record<SportFamily, Destination> = { voile: VOILE, course: COURSE, velo: VELO, fractionne: FRACTIONNE };
+const FAMILY_TABS: Record<SportFamily, Destination> = { voile: VOILE, course: COURSE, velo: VELO, fractionne: FRACTIONNE, surf: SURF };
 const RECORD_PATH = '/enregistrer';
 const PLAN_PATH = '/itineraires';
 /** Gris foncé : le bleu du tracé est déjà celui de la voile. */

@@ -86,7 +86,7 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
 const STAT_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' } as const;
 
 /** Nom d'une famille dans « Aucune activité … ». */
-const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'course', velo: 'vélo', fractionne: 'de fractionné' };
+const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'course', velo: 'vélo', fractionne: 'de fractionné', surf: 'de surf' };
 
 const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
 const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
@@ -152,6 +152,13 @@ const liveStatItems = (activity: Activity, live: LiveStats): { label: string; va
         label: `Top ${d} s (${recentWindowLabel})`,
         value: formatSpeed(live.recentTopsMs[i] ?? null, unit),
       })),
+      { label: 'Distance', value: formatDistance(live.distanceM, distanceUnit) },
+    ];
+  }
+  if (sportTreatment(activity.base) === 'surf') {
+    return [
+      { label: 'Vitesse', value: formatSpeed(live.currentSpeedMs, unit) },
+      { label: 'Vitesse max', value: formatSpeed(live.maxSpeedMs, unit) },
       { label: 'Distance', value: formatDistance(live.distanceM, distanceUnit) },
     ];
   }

@@ -17,7 +17,7 @@ export type LiveFieldKey =
   | 'recentTopShort' | 'recentTopLong' | 'heading' | 'legAverage' | 'markDistance' | 'markBearing'
   | 'grade' | 'gain' | 'recentDistanceGain' | 'loss' | 'climbRate' | 'power' | 'effort';
 
-const ALL: Treatment[] = ['voile', 'course', 'velo'];
+const ALL: Treatment[] = ['voile', 'course', 'velo', 'surf'];
 const LAND: Treatment[] = ['course', 'velo'];
 
 /** Traitements où chaque chiffre a un sens ; l'ordre est celui des menus de Réglages. */
@@ -61,6 +61,7 @@ export const DEFAULT_LIVE_FIELDS: Record<Treatment, LiveFieldKey[]> = {
   voile: ['speed', 'average', 'max'],
   course: ['speed', 'average', 'recentDistanceSpeed'],
   velo: ['speed', 'average', 'max'],
+  surf: ['speed', 'max', 'duration'],
 };
 
 const isLiveFieldKey = (value: unknown): value is LiveFieldKey =>

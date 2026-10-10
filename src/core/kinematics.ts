@@ -219,6 +219,7 @@ export const computeKinematics = (
     speedMs: clamped[i],
     smoothedSpeedMs: smoothed[i],
     bearing: bearings[i],
+    ...(p.courseDeg !== undefined ? { courseDeg: p.courseDeg } : {}),
     speedSource,
   }));
 };

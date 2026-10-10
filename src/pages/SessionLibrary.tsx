@@ -24,7 +24,7 @@ import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import { coloredSegments, trackColorSpeedsMs } from '../core/trackColor';
 import { FAMILY_BASE, activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
 import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
-import { formatDistance, formatDuration, formatSpeed, msToKnots, toDisplayDistance } from '../core/units';
+import { formatDistance, formatDuration, formatShortDuration, formatSpeed, msToKnots, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
@@ -39,12 +39,12 @@ import { suggestSpeedRangeMs } from '../sailing/sailingConfig';
 import './SessionLibrary.css';
 
 /**
- * Bibliothèque d'une famille : Voile, Course, Vélo, Fractionné. La liste des
+ * Bibliothèque d'une famille : Voile, Course, Vélo, Fractionné, Surf. La liste des
  * sessions de la mémoire, filtrable par activité (`?activite=<id>` pour
  * arriver filtré, depuis l'accueil), les sessions à classer, l'import de GPX
  * ou d'un dossier entier, la suppression. La vue « Planifiées »
  * (`?vue=planifiees`) montre à la place les itinéraires de la famille, filtrés
- * par les mêmes onglets d'activité ; le fractionné, qui ne planifie pas, n'en a pas.
+ * par les mêmes onglets d'activité ; le fractionné et le surf, qui ne planifient pas, n'en ont pas.
  */
 
 const FAMILY: Record<SportFamily, { title: string; accent: string; of: string }> = {
@@ -52,6 +52,7 @@ const FAMILY: Record<SportFamily, { title: string; accent: string; of: string }>
   course: { title: 'Course à pied', accent: 'var(--course)', of: 'de course' },
   velo: { title: 'Vélo', accent: 'var(--velo)', of: 'de vélo' },
   fractionne: { title: 'Fractionné', accent: 'var(--fractionne)', of: 'de fractionné' },
+  surf: { title: 'Surf', accent: 'var(--surf)', of: 'de surf' },
 };
 
 /** Activité d'une session d'après sa fiche (`sessionActivity`), `null` pour une session à classer. */
@@ -76,6 +77,11 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
   if (sportTreatment(activity.base) === 'voile') {
     stats.push(`max ${formatSpeed(summary.maxSpeedMs, effectiveSpeedUnit(activity))}`);
     if (summary.maneuverCount !== undefined) stats.push(`${summary.maneuverCount} manœuvres`);
+  } else if (sportTreatment(activity.base) === 'surf') {
+    // Vagues, plus longue vague ; sur foil, le plus long vol.
+    if (summary.waveCount !== undefined) stats.push(`${summary.waveCount} vague${summary.waveCount > 1 ? 's' : ''}`);
+    if (summary.longestWaveM != null) stats.push(`plus longue ${Math.round(summary.longestWaveM)} m`);
+    if (summary.longestFlightS != null) stats.push(`vol ${formatShortDuration(summary.longestFlightS)}`);
   } else {
     if (summary.movingTimeS && summary.distanceM > 0) {
       stats.push(formatSpeed(summary.distanceM / summary.movingTimeS, effectiveSpeedUnit(activity)));

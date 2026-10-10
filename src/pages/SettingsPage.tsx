@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type ReactNode } from 'react';
 import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, nextActivityColor, type Activity } from '../core/activities';
 import {
-  ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, sportFamily, sportTreatment,
+  ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, isLandTreatment, sportFamily,
+  sportTreatment,
   type SportFamily, type Treatment,
 } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
@@ -13,7 +14,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
 import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  TERRAIN_LABEL, TREATMENT_SPEED_RANGE_MS, TREATMENT_UNITS, defaultBikeType, defaultGradeRange, planningFamily,
+  TERRAIN_LABEL, TREATMENT_SPEED_RANGE_MS, TREATMENT_UNITS, defaultBikeType, defaultFoil, defaultGradeRange, planningFamily,
   useAllSportSettings, type NavSecond, type SportSettingsView, type TerrainType,
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
@@ -250,7 +251,7 @@ function SettingsPage() {
           <>
             <p className="settings-block__intro">
               Celles proposées à l'enregistrement, dans les analyses et dans la bibliothèque. Chacune repose sur un calcul
-              (wingfoil, planche, kite, bateau, course, vélo, fractionné à pied ou à vélo), qui fixe ses valeurs de départ ; ses réglages d'affichage et
+              (wingfoil, planche, kite, bateau, course, vélo, fractionné à pied ou à vélo, surf), qui fixe ses valeurs de départ ; ses réglages d'affichage et
               d'enregistrement lui sont propres.
             </p>
             <div className="settings-activities">
@@ -261,6 +262,10 @@ function SettingsPage() {
                 const family = sportFamily(activity.base);
                 const treatment = sportTreatment(activity.base);
                 const sailing = treatment === 'voile';
+                /** À pied ou à vélo : pente, terrain, dénivelé. */
+                const land = isLandTreatment(treatment);
+                /** Seuil d'activité, sous son nom : de vague ou de vol en surf. */
+                const thresholdLabel = treatment === 'surf' ? (s.foil ? 'Seuil de vol' : 'Seuil de vague') : "Seuil d'activité";
                 /** Famille du temps estimé des itinéraires, `null` en voile et en fractionné. */
                 const paceFamily = planningFamily(activity);
                 const units = TREATMENT_UNITS[treatment];
@@ -377,7 +382,7 @@ function SettingsPage() {
                                 {s.speedRange === null && <span className="settings-sports__mark">{sailing ? "selon l'allure" : 'défaut'}</span>}
                               </div>
                             </div>
-                            {!sailing && (
+                            {land && (
                               <div className="settings-row" title="Dégradé de la courbe d'altitude selon la raideur de la pente, montée ou descente ; gris sous la borne basse">
                                 <span className="settings-row__label">Couleur de pente</span>
                                 <div className="settings-sports__pair">
@@ -396,8 +401,10 @@ function SettingsPage() {
                             )}
                           </ActivityPart>
                           <ActivityPart label="Analyse" open={openPart.analyse} onToggle={() => togglePart('analyse')}>
-                            <div className="settings-row" title="Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, réussite des manœuvres, VMG ; en course, temps de pause">
-                              <span className="settings-row__label">Seuil d'activité</span>
+                            <div className="settings-row" title={treatment === 'surf'
+                              ? "Vitesse au-dessus de laquelle la planche est sur la vague, ou vole sur foil. Chaque session peut avoir le sien, dans l'onglet réglages de son analyse"
+                              : "Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, réussite des manœuvres, VMG ; en course, temps de pause"}>
+                              <span className="settings-row__label">{thresholdLabel}</span>
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                                 <NumberField unit={SPEED_UNIT_LABEL[thresholdUnit]} step={thresholdUnit === 'ms' ? 0.1 : 0.5} min={0}
                                   value={thresholdEmpty ? null : thresholdShown}
@@ -409,16 +416,18 @@ function SettingsPage() {
                               </span>
                             </div>
                             {s.foil !== null && (
-                              <div className="settings-row" title="Support sur foil : sauts, champs « Foil » et « Mât » du matériel, « Ratio de vol ». Chaque session peut avoir le sien, dans l'onglet réglages de son analyse">
+                              <div className="settings-row" title={treatment === 'surf'
+                                ? "Surf foil : vols qui relient les vagues, ratio de vol, seuil de vol. Chaque session peut avoir le sien, dans l'onglet réglages de son analyse"
+                                : "Support sur foil : sauts, champs « Foil » et « Mât » du matériel, « Ratio de vol ». Chaque session peut avoir le sien, dans l'onglet réglages de son analyse"}>
                                 <span className="settings-row__label">Foil</span>
                                 <label className="settings-sports__pair">
-                                  <input type="checkbox" checked={s.foil} onChange={(e) => setFor(id, 'foil', e.target.checked === p.foilDefault ? null : e.target.checked)} />
+                                  <input type="checkbox" checked={s.foil} onChange={(e) => setFor(id, 'foil', e.target.checked === defaultFoil(activity) ? null : e.target.checked)} />
                                   <span>Support sur foil</span>
                                   {!s.isFoilOverridden && <span className="settings-sports__mark">défaut</span>}
                                 </label>
                               </div>
                             )}
-                            {!sailing && (
+                            {land && (
                               <div className="settings-row" title="Lissage de l'altitude et seuil du dénivelé, dans les analyses et les itinéraires">
                                 <span className="settings-row__label">Terrain</span>
                                 <div className="settings-sports__pair">

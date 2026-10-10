@@ -180,6 +180,33 @@ const INTERVAL_ANALYSIS: IntervalProfile = {
   },
 };
 
+/**
+ * Analyse d'une session de surf (`surfing/`, §10, point 97) : vagues, rame,
+ * attente, vols sur foil. Les seuils de vitesse de la vague et du vol sont le
+ * seuil d'activité (`defaultActiveThreshold`, `foilActiveThreshold`) ; le
+ * reste est ici. Défauts provisoires, à valider sur des sessions réelles.
+ */
+export interface SurfProfile {
+  /** Attente au pic sous cette vitesse lissée, en m/s ; au-dessus, hors vague, on rame. */
+  stillMs: number;
+  /** Arrêt plus court ignoré (canard, série qui passe) : pas encore l'attente au pic, en secondes. */
+  minWaitS: number;
+  /** Vague plus courte écartée, en secondes… */
+  minWaveS: number;
+  /** …ou plus courte que cette distance, en mètres. */
+  minWaveM: number;
+  /** Rame de départ : le mouvement continu qui précède la vague, cherché au plus cette durée, en secondes. */
+  takeoffSearchS: number;
+  /** Écart entre deux points au-delà duquel la trace a un trou (téléphone sous l'eau), en secondes. */
+  maxGapS: number;
+  /** Seuil de vol sur foil, dans `thresholdUnit` : le seuil d'activité par défaut d'une session sur foil. */
+  foilActiveThreshold: number;
+  /** Seuil de vague sur foil, dans `thresholdUnit` : au-dessus, le vol est porté par une vague ; en dessous, il est pompé. */
+  foilWaveThreshold: number;
+  /** Changement de direction compté par le GPS : rotation d'au moins cette valeur depuis l'extrême précédent, en degrés. */
+  turnMinDeg: number;
+}
+
 export interface SportProfile {
   id: SportType;
   label: string;
@@ -243,8 +270,10 @@ export interface SportProfile {
    * Fractionné ; `null` en voile, où le compteur ne sert pas.
    */
   intervals: IntervalProfile | null;
-  /** Sauts mesurés par les capteurs du téléphone ; `null` en bateau et en fractionné. */
+  /** Sauts mesurés par les capteurs du téléphone ; `null` en bateau, en fractionné et en surf. */
   jumps: JumpProfile | null;
+  /** Analyse des vagues ; `null` hors surf. */
+  surf: SurfProfile | null;
 }
 
 /** Cibles de tops utilisées par tous les supports à voile. */
@@ -288,6 +317,7 @@ const SAILING_DEFAULTS = {
   recording: DEFAULT_RECORDING,
   intervals: null,
   foilDefault: false,
+  surf: null,
 };
 
 const RUNNING_PROFILE: SportProfile = {
@@ -313,6 +343,7 @@ const RUNNING_PROFILE: SportProfile = {
   intervals: INTERVAL_ANALYSIS,
   foilDefault: false,
   jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
+  surf: null,
 };
 
 const CYCLING_PROFILE: SportProfile = {
@@ -337,6 +368,41 @@ const CYCLING_PROFILE: SportProfile = {
   intervals: INTERVAL_ANALYSIS,
   foilDefault: false,
   jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
+  surf: null,
+};
+
+/**
+ * Surf : pause automatique coupée, l'attente au pic est immobile. Seuil de
+ * vague à 9 km/h (entrée à 10, sortie à 7) : la rame la plus vive reste sous
+ * 7 km/h, une vague se surfe au-dessus de 10. Sur foil, le vol commence à
+ * 11 km/h et finit sous 8 ; il est porté par une vague au-dessus de 18 km/h,
+ * pompé en dessous. Valeurs de départ, à valider sur des sessions réelles.
+ */
+const SURF_PROFILE: SportProfile = {
+  id: 'surf',
+  label: 'Surf',
+  speedUnit: 'kmh',
+  thresholdUnit: 'kmh',
+  defaultActiveThreshold: 9,
+  activeHysteresis: { enterOffset: 1, exitOffset: -2 },
+  minStateDurationS: 0,
+  medianWindowSeconds: 3,
+  // 20 m/s font 72 km/h, au-delà d'une grosse vague ordinaire.
+  maxPlausibleSpeedMs: 20,
+  defaultPolarMinSpeed: 0,
+  activeRatioLabel: 'Ratio sur la vague',
+  foilDefault: false,
+  elevation: ELEVATION_PRESETS.route,
+  terrainElevationStepM: null,
+  loopReturnMaxRatio: null,
+  topTargets: [],
+  recording: { ...DEFAULT_RECORDING, autoPauseSpeedMs: 0 },
+  intervals: null,
+  jumps: null,
+  surf: {
+    stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15, maxGapS: 10,
+    foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60,
+  },
 };
 
 export const SPORT_PROFILES: Record<SportType, SportProfile> = {
@@ -384,12 +450,20 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
   'bike-intervals': {
     ...CYCLING_PROFILE, id: 'bike-intervals', label: 'Fractionné vélo', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING, jumps: null,
   },
+  surf: SURF_PROFILE,
 };
 
 /** Supports dont l'analyse repose sur le vent. */
 export const SAILING_SPORTS: SportType[] = ['wingfoil', 'windsurf', 'kite', 'bateau'];
 
 export const getSportProfile = (sport: SportType): SportProfile => SPORT_PROFILES[sport];
+
+/**
+ * Seuil d'activité par défaut d'un calcul, dans `thresholdUnit`. En surf, il dépend du foil : le
+ * seuil de vague sans lui, le seuil de vol avec (point 97). En voile, le foil n'y touche pas.
+ */
+export const defaultActiveThresholdOf = (profile: SportProfile, foil: boolean): number =>
+  foil && profile.surf ? profile.surf.foilActiveThreshold : profile.defaultActiveThreshold;
 
 /** Libellé du ratio de temps actif d'une session : « Ratio de vol » sur foil, sinon celui du calcul. */
 export const activeRatioLabel = (profile: SportProfile, foil: boolean): string =>
@@ -400,7 +474,10 @@ export const activeRatioLabel = (profile: SportProfile, foil: boolean): string =
  * s'affichent (unités, énergie, vélo, altitude du terrain, chiffres du direct,
  * module d'analyse). À ne pas confondre avec la famille, qui les range.
  */
-export type Treatment = 'voile' | 'course' | 'velo';
+export type Treatment = 'voile' | 'course' | 'velo' | 'surf';
+
+/** Traitement à pied ou à vélo : dénivelé, altitude du terrain, pente, énergie. */
+export const isLandTreatment = (treatment: Treatment): boolean => treatment === 'course' || treatment === 'velo';
 
 /**
  * Famille d'un calcul : où ses sessions se rangent (bibliothèque, accueil,
@@ -411,7 +488,7 @@ export type Treatment = 'voile' | 'course' | 'velo';
 export type SportFamily = Treatment | 'fractionne';
 
 /** Les familles, dans l'ordre de l'interface. */
-export const SPORT_FAMILIES: SportFamily[] = ['voile', 'course', 'velo', 'fractionne'];
+export const SPORT_FAMILIES: SportFamily[] = ['voile', 'course', 'velo', 'fractionne', 'surf'];
 
 const SPORT_TREATMENT: Record<SportType, Treatment> = {
   wingfoil: 'voile',
@@ -422,6 +499,7 @@ const SPORT_TREATMENT: Record<SportType, Treatment> = {
   cycling: 'velo',
   'run-intervals': 'course',
   'bike-intervals': 'velo',
+  surf: 'surf',
 };
 
 const SPORT_FAMILY: Record<SportType, SportFamily> = {

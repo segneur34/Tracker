@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
 import { pruneImuFile } from '../core/imuPrune';
-import { ELEVATION_PRESETS, SAILING_SPORTS, getSportProfile, sportTreatment } from '../core/sportProfiles';
+import { ELEVATION_PRESETS, SAILING_SPORTS, getSportProfile, isLandTreatment, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
   MARKER_FILE,
@@ -78,7 +78,7 @@ import { isNativeApp } from '../platform/runtime';
 import { jsonStore } from '../platform/storage';
 import type { IntervalSeries } from '../recording/intervalTimer';
 import { sessionFileName } from '../recording/session';
-import { isKnownTerrain, readStoredActivities, readStoredSettings } from './useSportSettings';
+import { effectiveFoil, isKnownTerrain, readStoredActivities, readStoredSettings } from './useSportSettings';
 
 /**
  * Bibliothèque des sessions : la mémoire de l'application, tenue dans un
@@ -321,7 +321,8 @@ const hydrateSession = (f: MemoryFolder, file: string): Promise<void> => {
  * de la session (`analysis`, dans sa fiche). Le seuil de la session prime sur
  * celui de l'activité ; l'allure imposée n'existe que pour une session, et
  * qu'en voile. L'altitude du terrain de la fiche remplace celle du GPS en
- * course et à vélo, sauf si l'utilisateur a gardé le GPS.
+ * course et à vélo, sauf si l'utilisateur a gardé le GPS. En surf, le foil
+ * de la session (sinon de son activité) et son seuil de vague en foil.
  */
 const summaryOptions = (
   sport: SportType | null,
@@ -331,7 +332,8 @@ const summaryOptions = (
 ): SummaryOptions => {
   if (sport === null) return {};
   const stored = readStoredSettings();
-  const key = sessionActivity(readStoredActivities(), activityId, sport)?.id ?? sport;
+  const activity = sessionActivity(readStoredActivities(), activityId, sport);
+  const key = activity?.id ?? sport;
   // Le terrain de la session prime sur celui de son activité.
   const terrain = analysis?.terrain ?? stored.terrains?.[key];
   return {
@@ -339,7 +341,10 @@ const summaryOptions = (
     referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? analysis?.referenceSpeedMs ?? undefined : undefined,
     elevation: isKnownTerrain(terrain) ? ELEVATION_PRESETS[terrain] : undefined,
     terrainElevation:
-      sportTreatment(sport) !== 'voile' && elevation?.elevationSource !== 'gps' ? elevation?.terrainElevation : undefined,
+      isLandTreatment(sportTreatment(sport)) && elevation?.elevationSource !== 'gps' ? elevation?.terrainElevation : undefined,
+    // Surf : le foil de la session, sinon celui de son activité ; son seuil de vague en foil.
+    foil: analysis?.foil ?? (activity ? effectiveFoil(activity) ?? undefined : undefined),
+    waveThreshold: analysis?.waveThreshold ?? undefined,
   };
 };
 

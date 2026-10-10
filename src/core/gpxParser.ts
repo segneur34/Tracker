@@ -79,6 +79,12 @@ const readDeviceSpeed = (trkpt: Element): number | undefined => {
   return speed;
 };
 
+/** Cap porté par le point (`course` du profil Garmin), en degrés ; hors de 0 à 360, écarté. */
+const readCourse = (trkpt: Element): number | undefined => {
+  const course = readNumber(trkpt, 'course');
+  return course !== undefined && course >= 0 && course <= 360 ? course : undefined;
+};
+
 export const parseGpx = (gpxContent: string): ParsedGpx => {
   const doc = new DOMParser().parseFromString(gpxContent, 'application/xml');
 
@@ -109,6 +115,7 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
       time,
       ele: readNumber(trkpt, 'ele'),
       speedMs,
+      courseDeg: readCourse(trkpt),
       hr: readNumber(trkpt, 'hr'),
       cadence: readNumber(trkpt, 'cad'),
     });

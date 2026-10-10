@@ -35,6 +35,14 @@ export const IconSail = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+/** Vague qui déferle vers la gauche, sur la ligne de l'eau. */
+export const IconWave = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M3 17c4 0 5.5-3 6.5-6s3-6 7-6c2.8 0 4.5 1.8 4.5 4-1.5-1-3.6-.9-4.5.7s-.2 3.8 2 4.8" />
+    <path d="M3 21c2.5-1.3 5-1.3 7.5 0s5 1.3 7.5 0" />
+  </svg>
+);
+
 /** Coureur stylisé, en pleine foulée vers la droite. */
 export const IconRun = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>

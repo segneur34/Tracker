@@ -37,6 +37,10 @@ describe('guessSport', () => {
     expect(guessSport('Road Cycling')).toBe('cycling');
     expect(guessSport('mountain_biking')).toBe('cycling');
     expect(guessSport('Ride')).toBe('cycling');
+    expect(guessSport('Surfing')).toBe('surf');
+    expect(guessSport('surf')).toBe('surf');
+    // Le kitesurf reste du kite.
+    expect(guessSport('Kitesurf')).toBe('kite');
   });
 
   it('rend `null` pour un type inconnu ou absent', () => {

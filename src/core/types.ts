@@ -13,7 +13,7 @@
  * L'identifiant va dans le `<type>` du GPX enregistré et dans le nom de son fichier.
  */
 export type SportType =
-  | 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running' | 'cycling' | 'run-intervals' | 'bike-intervals';
+  | 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running' | 'cycling' | 'run-intervals' | 'bike-intervals' | 'surf';
 
 /** Point brut tel que lu dans le fichier de trace, avant tout calcul. */
 export interface RawTrackPoint {
@@ -27,6 +27,8 @@ export interface RawTrackPoint {
    * dérivation de positions : elle est nettement plus fiable sur les pointes.
    */
   speedMs?: number;
+  /** Cap fourni par l'appareil (Doppler), en degrés, 0 = nord, sens horaire, s'il est présent. */
+  courseDeg?: number;
   /** Fréquence cardiaque en battements par minute, si présente. */
   hr?: number;
   /** Cadence, si présente. */
@@ -50,8 +52,10 @@ export interface TrackPoint {
   speedMs: number;
   /** Vitesse filtrée servant à toutes les analyses, en m/s. */
   smoothedSpeedMs: number;
-  /** Cap en degrés, 0 = nord, sens horaire. */
+  /** Cap en degrés, 0 = nord, sens horaire, tiré des positions (du point précédent à celui-ci). */
   bearing: number;
+  /** Cap fourni par l'appareil, s'il est présent : plus juste que `bearing` à 1 Hz. */
+  courseDeg?: number;
   /** D'où vient `speedMs`. */
   speedSource: SpeedSource;
 }

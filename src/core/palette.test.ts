@@ -46,7 +46,7 @@ const readTokensCss = async (): Promise<string> => {
   return fs.readFileSync(new URL('../theme/tokens.css', import.meta.url), 'utf8');
 };
 
-const TOKEN: Record<string, string> = { voile: '--voile', course: '--course', velo: '--velo', fractionne: '--fractionne' };
+const TOKEN: Record<string, string> = { voile: '--voile', course: '--course', velo: '--velo', fractionne: '--fractionne', surf: '--surf' };
 
 describe('nuances des familles', () => {
   it('six nuances par famille, en minuscules', () => {

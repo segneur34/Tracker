@@ -6,7 +6,7 @@
  * Point de départ : la maquette validée le 23 septembre 2026 (police
  * Figtree, fond gris chaud, cartes blanches, vert Enregistrer). Couleurs des
  * familles validées le 8 octobre 2026 (§10, point 90) : bleu voile, rouge
- * course, vert vélo, orange fractionné, gris réservé au surf. Chacune est la
+ * course, vert vélo, orange fractionné, gris surf (point 97). Chacune est la
  * première nuance de sa famille (`FAMILY_SHADES` de `core/activities.ts`,
  * égalité vérifiée par `palette.test.ts`) et porte du texte blanc : contraste
  * d'au moins 4,5 sur blanc. Rouge, orange et vert ne se séparent que par leur
@@ -43,6 +43,8 @@
   --velo-soft: #e1f7e4;
   --fractionne: #c25700;
   --fractionne-soft: #feece3;
+  --surf: #5b6670;
+  --surf-soft: #eceff2;
   --record: #2e7d32;
   --recording: #c62828;
 

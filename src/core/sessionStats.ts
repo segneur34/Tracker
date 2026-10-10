@@ -98,6 +98,37 @@ export const computeActivityMask = (
   return mask;
 };
 
+/**
+ * Une suite continue du masque d'activité, en index de points : `start` est le
+ * point d'où elle part (celui qui précède le premier point en action, le pas
+ * qui y mène étant compté), `end` le dernier point en action. Sa durée est
+ * `timeMs[end] − timeMs[start]`, sa distance `cumDist[end] − cumDist[start]`,
+ * comme les cumuls de `computeActiveTimeMs` et `computeActiveDistanceM`.
+ */
+export interface ActiveRun {
+  start: number;
+  end: number;
+}
+
+/**
+ * Suites du masque d'activité. Un pas plus long que `maxGapS` (un trou de la
+ * trace) n'est jamais en action : il coupe la suite en cours.
+ */
+export const activeRuns = (track: TrackPoint[], mask: boolean[], maxGapS = Infinity): ActiveRun[] => {
+  const runs: ActiveRun[] = [];
+  let start: number | null = null;
+  for (let i = 1; i < track.length; i++) {
+    const active = mask[i] && (track[i].timeMs - track[i - 1].timeMs) / 1000 <= maxGapS;
+    if (active && start === null) start = i - 1;
+    if (!active && start !== null) {
+      runs.push({ start, end: i - 1 });
+      start = null;
+    }
+  }
+  if (start !== null) runs.push({ start, end: track.length - 1 });
+  return runs;
+};
+
 /** Temps passé en action, en millisecondes. */
 export const computeActiveTimeMs = (track: TrackPoint[], mask: boolean[]): number => {
   let total = 0;

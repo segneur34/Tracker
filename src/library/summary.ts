@@ -7,11 +7,12 @@ import {
   computeActivityMask,
   computeActiveTimeMs,
 } from '../core/sessionStats';
-import { SAILING_SPORTS, getActiveThresholds, getSportProfile, type ElevationProfile } from '../core/sportProfiles';
+import { SAILING_SPORTS, defaultActiveThresholdOf, getActiveThresholds, getSportProfile, type ElevationProfile } from '../core/sportProfiles';
 import type { RawTrackPoint, SportType, TrackPoint } from '../core/types';
 import { applyTerrainElevation, type TerrainSamples } from '../core/terrainElevation';
 import { fromDisplaySpeed, msToKnots } from '../core/units';
 import { suggestActiveThresholdKn } from '../sailing/sailingConfig';
+import { runSurfSession, surfProfileOf } from '../surfing/surfSession';
 import { SUMMARY_CALC_VERSION, type SessionSummary } from './record';
 
 /**
@@ -22,7 +23,9 @@ import { SUMMARY_CALC_VERSION, type SessionSummary } from './record';
  * liste et l'analyse donnent les mêmes chiffres :
  * - en voile, filtres et seuil d'activité accordés à l'allure de la session
  *   (`useSailingSession`, règle 4), sauf surcharge de l'utilisateur ;
- * - en course, filtres et seuil du profil, sauf surcharge.
+ * - en course, filtres et seuil du profil, sauf surcharge ;
+ * - en surf, les vagues de la page d'analyse (`runSurfSession`) : le temps en
+ *   action est le temps de glisse, et le résumé compte les vagues.
  *
  * Sans support connu, ni filtre de support ni seuil d'activité : distance et
  * durée restent justes, le temps en action attend que la session soit classée.
@@ -40,6 +43,10 @@ export interface SummaryOptions {
    * dénivelé (course, vélo, source IGN : l'appelant en décide).
    */
   terrainElevation?: TerrainSamples;
+  /** Support sur foil de la session (surf : il change le seuil par défaut et l'analyse). */
+  foil?: boolean;
+  /** Seuil de vague en foil de la session, dans l'unité du profil (surf). */
+  waveThreshold?: number;
 }
 
 /**
@@ -70,7 +77,7 @@ const analyze = (
   rawPoints: RawTrackPoint[],
   sport: SportType | null,
   options: SummaryOptions
-): { track: TrackPoint[]; movingTimeS: number | null } => {
+): { track: TrackPoint[]; movingTimeS: number | null; surf?: Pick<SessionSummary, 'waveCount' | 'longestWaveM' | 'longestFlightS'> } => {
   if (sport === null) return { track: computeKinematics(rawPoints), movingTimeS: null };
 
   const profile = getSportProfile(sport);
@@ -80,7 +87,19 @@ const analyze = (
 
   const threshold =
     options.activeThreshold ??
-    (isSailing ? suggestActiveThresholdKn(sport, msToKnots(referenceMs)) : profile.defaultActiveThreshold);
+    (isSailing ? suggestActiveThresholdKn(sport, msToKnots(referenceMs)) : defaultActiveThresholdOf(profile, options.foil ?? false));
+  const surfProfile = surfProfileOf(profile);
+  if (surfProfile) {
+    const foil = options.foil ?? false;
+    const { summary } = runSurfSession(track, buildCumulativeTrack(track), surfProfile, {
+      threshold, foil, waveThreshold: options.waveThreshold ?? null,
+    });
+    return {
+      track,
+      movingTimeS: summary.glisseS,
+      surf: { waveCount: summary.waveCount, longestWaveM: summary.longestWaveM, longestFlightS: foil ? summary.longestFlightS : null },
+    };
+  }
   const { enter, exit } = getActiveThresholds(profile, threshold);
   const mask = computeActivityMask(track, {
     enterThresholdMs: fromDisplaySpeed(enter, profile.thresholdUnit),
@@ -117,5 +136,6 @@ export const summarizeSession = (
     maxSpeedMs,
     pointCount: track.length,
     samplingS: samplingIntervalS(rawPoints),
+    ...analyzed.surf,
   };
 };

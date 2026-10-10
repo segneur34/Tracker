@@ -32,8 +32,14 @@ const trackPoint = (fix: LocationFix): string => {
   if (fix.altitudeM !== undefined) children.push(`<ele>${fix.altitudeM}</ele>`);
   children.push(`<time>${isoTime(fix.timeMs)}</time>`);
 
-  if (fix.speedMs !== undefined) {
-    children.push(`<extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>${fix.speedMs}</gpxtpx:speed></gpxtpx:TrackPointExtension></extensions>`);
+  // Vitesse et cap du système (Doppler) ; le cap sert aux virages du surf (§10, point 97).
+  const extension: string[] = [];
+  if (fix.speedMs !== undefined) extension.push(`<gpxtpx:speed>${fix.speedMs}</gpxtpx:speed>`);
+  if (fix.bearingDeg !== undefined && fix.speedMs !== undefined && fix.speedMs > 0) {
+    extension.push(`<gpxtpx:course>${fix.bearingDeg}</gpxtpx:course>`);
+  }
+  if (extension.length > 0) {
+    children.push(`<extensions><gpxtpx:TrackPointExtension>${extension.join('')}</gpxtpx:TrackPointExtension></extensions>`);
   }
 
   return `      <trkpt lat="${fix.lat}" lon="${fix.lon}">${children.join('')}</trkpt>`;

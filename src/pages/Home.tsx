@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
 import MemoryStatus from '../components/MemoryStatus';
 import RouteList from '../components/RouteList';
-import { IconBike, IconChevronRight, IconRoute, IconRun, IconSail, IconStopwatch } from '../components/icons';
+import { IconBike, IconChevronRight, IconRoute, IconRun, IconSail, IconStopwatch, IconWave } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
@@ -11,7 +11,7 @@ import { readStoredActivities } from '../hooks/useSportSettings';
 
 /**
  * Accueil : enregistrer ou planifier un itinéraire, le graphe d'activités et
- * ses totaux (dès qu'il y a des sessions), les quatre familles, puis les
+ * ses totaux (dès qu'il y a des sessions), les cinq familles, puis les
  * derniers itinéraires planifiés (dès que la mémoire est prête), dont la carte
  * mène à la liste complète.
  */
@@ -90,6 +90,13 @@ function Home() {
         <span style={{ ...titleStyle, color: 'var(--fractionne)' }}><IconStopwatch /> Fractionné</span>
         <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
           À pied ou à vélo : compteur de répétitions à l'enregistrement, avec bips, puis l'analyse de la course ou du vélo.
+        </span>
+      </Link>
+
+      <Link to="/surf" style={cardStyle}>
+        <span style={{ ...titleStyle, color: 'var(--surf)' }}><IconWave /> Surf</span>
+        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
+          Vagues, temps sur la vague, vitesse, rame et retour au pic ; sur foil, les vols enchaînés.
         </span>
       </Link>
 

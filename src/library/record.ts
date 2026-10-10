@@ -58,6 +58,10 @@ export interface SessionSummary {
   samplingS: number;
   /** Virements et empannages classés à la dernière analyse, s'il y en a eu une. */
   maneuverCount?: number;
+  /** Surf : vagues, plus longue vague, et plus long vol sur foil (`null` sans foil ou sans vague). */
+  waveCount?: number;
+  longestWaveM?: number | null;
+  longestFlightS?: number | null;
 }
 
 /** Notes saisies, datées de leur dernier changement. */
@@ -102,6 +106,11 @@ export interface SessionAnalysis {
    * garde. Absent des fiches plus anciennes.
    */
   foil: boolean | null;
+  /**
+   * Seuil de vague sur foil (surf, point 97), dans l'unité du profil : au-dessus,
+   * un vol est porté par une vague ; `null` : celui du profil. Absent des fiches plus anciennes.
+   */
+  waveThreshold: number | null;
   /**
    * Terrain du dénivelé (route, trail) pour cette session, course et vélo ;
    * `null` : celui de son activité (Réglages). Il décrit le parcours : un
@@ -239,6 +248,9 @@ const readSummary = (raw: unknown): SessionSummary | null => {
     samplingS,
   };
   if (!isFiniteNumber(raw.maneuverCount)) delete summary.maneuverCount;
+  if (!isFiniteNumber(raw.waveCount)) delete summary.waveCount;
+  if ('longestWaveM' in raw) summary.longestWaveM = isFiniteNumber(raw.longestWaveM) ? raw.longestWaveM : null;
+  if ('longestFlightS' in raw) summary.longestFlightS = isFiniteNumber(raw.longestFlightS) ? raw.longestFlightS : null;
   return summary;
 };
 
@@ -286,6 +298,7 @@ export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
     speedRange: readSpeedRange(raw.speedRange),
     effortThresholdMs: isFiniteNumber(raw.effortThresholdMs) && raw.effortThresholdMs > 0 ? raw.effortThresholdMs : null,
     foil: typeof raw.foil === 'boolean' ? raw.foil : null,
+    waveThreshold: isFiniteNumber(raw.waveThreshold) && raw.waveThreshold > 0 ? raw.waveThreshold : null,
     terrain: isSessionTerrain(raw.terrain) ? raw.terrain : null,
     savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
   };
@@ -577,6 +590,9 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   const thresholdBefore = next.analysis?.activeThreshold ?? null;
   const referenceBefore = next.analysis?.referenceSpeedMs ?? null;
   const terrainBefore = next.analysis?.terrain ?? null;
+  // En surf, le foil et le seuil de vague changent les vagues du résumé.
+  const foilBefore = next.analysis?.foil ?? null;
+  const waveBefore = next.analysis?.waveThreshold ?? null;
   if (patch.analysis !== undefined) next = { ...next, analysis: patch.analysis };
   if (patch.maneuverCount !== undefined && patch.maneuverCount !== next.summary.maneuverCount) {
     next = { ...next, summary: { ...next.summary, maneuverCount: patch.maneuverCount } };
@@ -593,9 +609,13 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
       const cleared = {
         ...next.analysis,
         activeThreshold: null,
+        waveThreshold: null,
         ...(treatmentChanged ? { speedRange: null } : {}),
       };
-      if (cleared.activeThreshold !== next.analysis.activeThreshold || cleared.speedRange !== next.analysis.speedRange) {
+      if (
+        cleared.activeThreshold !== next.analysis.activeThreshold || cleared.speedRange !== next.analysis.speedRange
+        || cleared.waveThreshold !== (next.analysis.waveThreshold ?? null)
+      ) {
         next = { ...next, analysis: cleared };
       }
     }
@@ -604,6 +624,8 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   const analysisChanged =
     (next.analysis?.activeThreshold ?? null) !== thresholdBefore ||
     (next.analysis?.referenceSpeedMs ?? null) !== referenceBefore ||
-    (next.analysis?.terrain ?? null) !== terrainBefore;
+    (next.analysis?.terrain ?? null) !== terrainBefore ||
+    (next.analysis?.foil ?? null) !== foilBefore ||
+    (next.analysis?.waveThreshold ?? null) !== waveBefore;
   return { record: next, resummarize: sportChanged || activityChanged || analysisChanged || elevationChanged };
 };

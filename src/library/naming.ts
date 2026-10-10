@@ -60,6 +60,10 @@ const FOREIGN_TYPES: Record<string, SportType> = {
   gravelcycling: 'cycling',
   ebikeride: 'cycling',
   velo: 'cycling',
+  surfing: 'surf',
+  surf: 'surf',
+  surffoiling: 'surf',
+  foilsurfing: 'surf',
 };
 
 /** Support deviné depuis la balise `<type>` d'un GPX, ou `null`. */

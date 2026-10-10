@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
-  ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
+  ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, SURF_FOIL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
   newActivityId, insertActivity, readActivities, upgradeActivities, type Activity,
 } from '../core/activities';
 import {
-  ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, getSportProfile, sportTreatment, type ElevationProfile,
+  ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, defaultActiveThresholdOf, getSportProfile, sportTreatment, type ElevationProfile,
   type RecordingProfile, type SportFamily, type Treatment,
 } from '../core/sportProfiles';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
@@ -22,6 +22,7 @@ import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, type B
 import { DEFAULT_CYCLING_GRADE_RANGE, DEFAULT_CYCLING_SPEED_RANGE_MS } from '../cycling/cyclingConfig';
 import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
 import { DEFAULT_SAILING_SPEED_RANGE_MS } from '../sailing/sailingConfig';
+import { DEFAULT_SURF_SPEED_RANGE_MS } from '../surfing/surfConfig';
 import {
   DEFAULT_PACE_LEVEL, KM_EFFORT_CLIMB_FACTOR, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, climbPowerWkgForFlatSpeed, isPaceLevel,
   isValidFlatSpeed, type DurationSettings, type PaceLevel, type PlanningFamily, type PresetPaceLevel,
@@ -45,6 +46,7 @@ export const TREATMENT_UNITS: Record<Treatment, SpeedUnit[]> = {
   voile: SAILING_UNITS,
   course: RUNNING_UNITS,
   velo: CYCLING_UNITS,
+  surf: CYCLING_UNITS,
 };
 
 /** Bornes de couleur de la trace à défaut de réglage (en voile, avant toute suggestion tirée de la session). */
@@ -52,6 +54,7 @@ export const TREATMENT_SPEED_RANGE_MS: Record<Treatment, SpeedRangeMs> = {
   voile: DEFAULT_SAILING_SPEED_RANGE_MS,
   course: DEFAULT_SPEED_RANGE_MS,
   velo: DEFAULT_CYCLING_SPEED_RANGE_MS,
+  surf: DEFAULT_SURF_SPEED_RANGE_MS,
 };
 
 /** Bornes de la couleur de pente à défaut de réglage. */
@@ -104,7 +107,7 @@ export interface StoredSettings {
   liveFields?: ByActivity<LiveFieldKey[]>;
   /** Bips d'approche des balises (voile) : courbe et vibration ; absent : `MARK_GUIDE_DEFAULTS`. */
   markGuide?: ByActivity<MarkGuideSettings>;
-  /** Support sur foil (voile) ; absent : `foilDefault` du calcul. */
+  /** Support sur foil (voile, surf) ; absent : `foilDefault` du calcul, coché pour « Surf foil ». */
   foils?: ByActivity<boolean>;
   /** Sauts mesurés par les capteurs du téléphone (voile sauf bateau, course, vélo) ; absents : non mesurés. */
   jumps?: ByActivity<JumpSettings>;
@@ -360,11 +363,16 @@ export const effectiveLiveFields = (activity: Activity): LiveFieldKey[] => {
 export const effectiveMarkGuide = (activity: Activity): MarkGuideSettings =>
   sanitizeMarkGuide(readStoredSettings().markGuide?.[activity.id]) ?? MARK_GUIDE_DEFAULTS;
 
-/** Foil d'une activité : celui réglé, sinon le défaut du calcul ; `null` hors voile. */
+/** Foil d'une activité sans réglage : coché pour « Surf foil » (point 97), sinon le défaut du calcul. */
+export const defaultFoil = (activity: Activity): boolean =>
+  activity.id === SURF_FOIL_ACTIVITY.id || getSportProfile(activity.base).foilDefault;
+
+/** Foil d'une activité : celui réglé, sinon son défaut ; `null` hors voile et surf. */
 const resolveFoil = (stored: StoredSettings, activity: Activity): boolean | null => {
-  if (activityTreatment(activity) !== 'voile') return null;
+  const treatment = activityTreatment(activity);
+  if (treatment !== 'voile' && treatment !== 'surf') return null;
   const foil = stored.foils?.[activity.id];
-  return typeof foil === 'boolean' ? foil : getSportProfile(activity.base).foilDefault;
+  return typeof foil === 'boolean' ? foil : defaultFoil(activity);
 };
 
 /** Sauts d'une activité : ceux réglés, sinon le défaut ; `null` si son calcul ne les mesure pas. */
@@ -374,7 +382,7 @@ const resolveJumps = (stored: StoredSettings, activity: Activity): JumpSettings 
   return sanitizeJumpSettings(stored.jumps?.[activity.id], profile) ?? defaultJumpSettings(profile);
 };
 
-/** Support sur foil d'une activité de voile, `null` hors voile. Utilisable hors composant. */
+/** Support sur foil d'une activité de voile ou de surf, `null` ailleurs. Utilisable hors composant. */
 export const effectiveFoil = (activity: Activity): boolean | null => resolveFoil(readStoredSettings(), activity);
 
 /** Réglages des sauts d'une activité, `null` si son calcul ne les mesure pas. Utilisable hors composant. */
@@ -523,7 +531,7 @@ export interface SportSettingsView {
   /** Bips d'approche des balises (voile). */
   markGuide: MarkGuideSettings;
   isMarkGuideOverridden: boolean;
-  /** Support sur foil ; `null` hors voile. */
+  /** Support sur foil ; `null` hors voile et surf. */
   foil: boolean | null;
   isFoilOverridden: boolean;
   /** Sauts mesurés par les capteurs ; `null` si le calcul ne les mesure pas (bateau, fractionné). */
@@ -609,7 +617,7 @@ export const useAllSportSettings = () => {
         isSpeedUnitOverridden: isKnownSpeedUnit(unit),
         distanceUnit: isKnownDistanceUnit(distanceUnit) ? distanceUnit : 'km',
         isDistanceUnitOverridden: isKnownDistanceUnit(distanceUnit),
-        activeThreshold: threshold ?? profile.defaultActiveThreshold,
+        activeThreshold: threshold ?? defaultActiveThresholdOf(profile, resolveFoil(stored, activity) ?? false),
         isThresholdOverridden: threshold !== undefined,
         terrain: isKnownTerrain(terrain) ? terrain : 'route',
         terrainStepM: resolveTerrainStepM(stored, activity),
@@ -706,7 +714,7 @@ export const useAllSportSettings = () => {
         }
         case 'foil': {
           const activity = findActivity(activities, id);
-          if (!activity || activityTreatment(activity) !== 'voile') return;
+          if (!activity || resolveFoil(stored, activity) === null) return;
           if (value !== null && typeof value !== 'boolean') return;
           next.foils = put(stored.foils, value as boolean | null);
           break;
@@ -892,8 +900,13 @@ export const useSportSettings = (family: SportFamily) => {
     [persist, stored, activities, family]
   );
 
-  const activeThreshold = stored.thresholds?.[id] ?? profile.defaultActiveThreshold;
-  const isThresholdOverridden = stored.thresholds?.[id] !== undefined;
+  /** Support sur foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
+  const foil = resolveFoil(stored, activity) ?? false;
+
+  /** Seuil réglé pour l'activité, `null` sans réglage ; en surf, le défaut dépend du foil de la session. */
+  const thresholdOverride = stored.thresholds?.[id] ?? null;
+  const activeThreshold = thresholdOverride ?? defaultActiveThresholdOf(profile, foil);
+  const isThresholdOverridden = thresholdOverride !== null;
 
   // Lecture seule : le terrain de l'activité se règle dans Réglages, celui
   // d'une session dans sa fiche (brouillon du module).
@@ -921,9 +934,6 @@ export const useSportSettings = (family: SportFamily) => {
   const storedBikeWeight = stored.bikeWeights?.[id];
   const bikeWeightKg = isValidBikeWeight(storedBikeWeight) ? storedBikeWeight : BIKE_TYPES[bikeType].bikeKg;
 
-  /** Support sur foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
-  const foil = resolveFoil(stored, activity) ?? false;
-
   return {
     activity,
     activityOptions,
@@ -931,6 +941,7 @@ export const useSportSettings = (family: SportFamily) => {
     sport,
     profile,
     activeThreshold,
+    thresholdOverride,
     isThresholdOverridden,
     /** Terrain du dénivelé de l'activité ; une session peut avoir le sien. */
     terrain,

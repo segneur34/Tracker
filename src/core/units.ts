@@ -160,6 +160,14 @@ export const formatDuration = (ms: number): string => {
   return h > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${m} min`;
 };
 
+/** Durée courte, en secondes : « 45 s », « 1 min 05 », puis comme `formatDuration` au-delà d'une heure. */
+export const formatShortDuration = (s: number): string => {
+  const total = Math.max(0, Math.round(s));
+  if (total < 60) return `${total} s`;
+  if (total >= 3600) return formatDuration(total * 1000);
+  return `${Math.floor(total / 60)} min ${String(total % 60).padStart(2, '0')}`;
+};
+
 /** Durée en `h:mm:ss`, pour un chronomètre. */
 export const formatClock = (ms: number): string => {
   const total = Math.max(0, Math.round(ms / 1000));
