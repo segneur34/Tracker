@@ -6,7 +6,7 @@ import { useIntervalTimer } from '../hooks/useIntervalTimer';
 import { useLongPress } from '../hooks/useLongPress';
 import { togglePauseRecording, useRecorder } from '../hooks/useRecorder';
 import {
-  effectiveLongPressMs, effectiveNavHoldMs, rememberNavSecondFamily, useNavFamily, useNavSecondFamily,
+  effectiveLongPressMs, effectiveNavHoldMs, rememberNavSecond, useNavFamily, useNavSecond, type NavSecond,
 } from '../hooks/useSportSettings';
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
 import { recordingDurationMs } from '../recording/session';
@@ -23,7 +23,8 @@ import {
  * dans Réglages (voile, puis course par défaut) ; un appui long sur le sport
  * secondaire (1 s par défaut, réglable) montre un grand cadran, puis déplie
  * au-dessus de la barre le menu des autres sports : celui qu'on y choisit
- * devient le sport secondaire, retenu. Le bouton rond est vert au repos,
+ * devient le sport secondaire, retenu. La planification des itinéraires
+ * (« Planifier ») peut y prendre la place d'un sport. Le bouton rond est vert au repos,
  * rouge pendant un enregistrement.
  * Sur ordinateur, toutes les destinations dans une barre en haut, et
  * « Itinéraires » à côté du bouton Enregistrer (sur téléphone, on y va depuis
@@ -54,10 +55,18 @@ const SETTINGS: Destination = { to: '/parametres', label: 'Réglages', Icon: Ico
 const FAMILY_TABS: Record<SportFamily, Destination> = { voile: VOILE, course: COURSE, velo: VELO, fractionne: FRACTIONNE };
 const RECORD_PATH = '/enregistrer';
 const PLAN_PATH = '/itineraires';
+/** Gris foncé : le bleu du tracé est déjà celui de la voile. */
+const PLANIFIER: Destination = { to: PLAN_PATH, label: 'Planifier', Icon: IconRoute, accent: 'var(--ink-2)' };
+const SECOND_TABS: Record<NavSecond, Destination> = { ...FAMILY_TABS, planifier: PLANIFIER };
 
-/** Sport de la page ouverte : celui dont la route préfixe l'adresse (bibliothèque ou analyse). */
-const familyOfPath = (pathname: string): SportFamily | null =>
-  SPORT_FAMILIES.find((f) => pathname === FAMILY_TABS[f].to || pathname.startsWith(`${FAMILY_TABS[f].to}/`)) ?? null;
+const underPath = (pathname: string, to: string): boolean => pathname === to || pathname.startsWith(`${to}/`);
+
+/**
+ * Case de la page ouverte : le sport dont la route préfixe l'adresse (bibliothèque ou analyse), ou la
+ * planification (itinéraire et liste).
+ */
+const secondOfPath = (pathname: string): NavSecond | null =>
+  SPORT_FAMILIES.find((f) => underPath(pathname, FAMILY_TABS[f].to)) ?? (underPath(pathname, PLAN_PATH) ? 'planifier' : null);
 
 /**
  * Grand cadran au milieu de l'écran pendant un appui long : le doigt cache le
@@ -140,9 +149,9 @@ function AppShell() {
   const { pressingMs, handlers } = useLongPress(onLongPress, effectiveLongPressMs, canToggle);
 
   const navFamily = useNavFamily();
-  const secondFamily = useNavSecondFamily();
-  const second = FAMILY_TABS[secondFamily];
-  const openFamily = familyOfPath(pathname);
+  const secondKey = useNavSecond();
+  const second = SECOND_TABS[secondKey];
+  const openSecond = secondOfPath(pathname);
   // Menu des sports, ouvert pour l'adresse où on l'a déplié : un changement de page le referme.
   const [menuPath, setMenuPath] = useState<string | null>(null);
   const sportsOpen = menuPath === pathname;
@@ -236,7 +245,7 @@ function AppShell() {
           aria-haspopup="menu"
           aria-expanded={sportsOpen}
           aria-label={`${second.label} ; appui long : changer de sport`}
-          className={`shell-tab shell-tab--menu${openFamily === secondFamily ? ' active' : ''}`}
+          className={`shell-tab shell-tab--menu${openSecond === secondKey ? ' active' : ''}`}
           style={{ '--tab-color': second.accent } as React.CSSProperties}
           {...sportHold.handlers}
           onClick={(e) => {
@@ -255,18 +264,18 @@ function AppShell() {
         {sportsOpen && (
           <div className="shell-sports-menu" role="menu" aria-label="Sport secondaire">
             <span className="shell-sports-menu__title">Sport secondaire</span>
-            {SPORT_FAMILIES.filter((f) => f !== navFamily).map((f) => {
-              const d = FAMILY_TABS[f];
+            {[...SPORT_FAMILIES.filter((f) => f !== navFamily), 'planifier' as const].map((key) => {
+              const d = SECOND_TABS[key];
               return (
                 <NavLink
                   key={d.to}
                   to={d.to}
                   role="menuitemradio"
-                  aria-checked={f === secondFamily}
-                  className="shell-sports-menu__item"
+                  aria-checked={key === secondKey}
+                  className={`shell-sports-menu__item${key === 'planifier' ? ' shell-sports-menu__item--apart' : ''}`}
                   style={{ '--tab-color': d.accent } as React.CSSProperties}
                   onClick={() => {
-                    rememberNavSecondFamily(f);
+                    rememberNavSecond(key);
                     closeSports();
                   }}>
                   <d.Icon size={22} />

@@ -4,6 +4,7 @@ import OsmTileLayer from '../components/OsmTileLayer';
 import { Link, useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import MapAutoResize from '../components/MapAutoResize';
+import { IconHelp } from '../components/icons';
 import ActivitySelect, { ActivitySheet } from '../components/ActivitySelect';
 import ImportButtons from '../components/ImportButtons';
 import MemoryStatus from '../components/MemoryStatus';
@@ -12,7 +13,7 @@ import RouteList from '../components/RouteList';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import HelpButton from '../components/ui/HelpButton';
+import MoreMenu from '../components/ui/MoreMenu';
 import PageHeader from '../components/ui/PageHeader';
 import { sampledIndices } from '../core/chartZoom';
 import { PREVIEW_MAX_POINTS, trackBounds, type TrackBounds } from '../core/displayConfig';
@@ -405,18 +406,27 @@ function SessionLibrary({ family }: { family: SportFamily }) {
 
   return (
     <div className="ui-page" style={{ '--lib-accent': accent, '--help-accent': accent } as React.CSSProperties}>
-      <PageHeader title={title} subtitle={`${familySessions.length} session${familySessions.length > 1 ? 's' : ''}`} />
+      <PageHeader
+        title={title}
+        subtitle={`${familySessions.length} session${familySessions.length > 1 ? 's' : ''}`}
+        aside={(
+          // Imports et mise à jour, de moindre usage : derrière « … », pour que la liste vienne tout de suite.
+          <MoreMenu label="Importer, mettre à jour">
+            {library.status === 'ready' && (
+              <span className="ui-more__note">
+                Mémoire : {library.folderLabel ?? 'ce navigateur'}, {library.sessions.length} session{library.sessions.length > 1 ? 's' : ''} en tout
+              </span>
+            )}
+            <ImportButtons />
+            <RefreshLibraryButton />
+            <Button aria-expanded={helpOpen} onClick={() => setHelpOpen(!helpOpen)}>
+              <IconHelp size={18} />
+              À quoi sert « Ajouter les sessions d'un dossier » ?
+            </Button>
+          </MoreMenu>
+        )} />
 
-      <MemoryStatus />
-
-      <div className="lib-actions">
-        <ImportButtons />
-        <RefreshLibraryButton />
-        <HelpButton
-          open={helpOpen}
-          onToggle={() => setHelpOpen(!helpOpen)}
-          label="À quoi sert « Ajouter les sessions d'un dossier » ?" />
-      </div>
+      <MemoryStatus compact />
       {helpOpen && (
         <p className="lib-hint">
           {native

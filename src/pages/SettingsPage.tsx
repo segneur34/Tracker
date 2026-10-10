@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type ReactNode } from 'react';
 import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, nextActivityColor, type Activity } from '../core/activities';
 import {
   ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, sportFamily, sportTreatment,
@@ -14,7 +14,7 @@ import { useTileCache } from '../hooks/useTileCache';
 import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import {
   TERRAIN_LABEL, TREATMENT_SPEED_RANGE_MS, TREATMENT_UNITS, defaultBikeType, defaultGradeRange, planningFamily,
-  useAllSportSettings, type SportSettingsView, type TerrainType,
+  useAllSportSettings, type NavSecond, type SportSettingsView, type TerrainType,
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
 import {
@@ -108,6 +108,22 @@ function WayTypesSetting({ view, treatment, onChange }: { view: SportSettingsVie
   );
 }
 
+/**
+ * Partie repliable d'une carte d'activité (affichage, analyse, enregistrement…) :
+ * une carte ouverte pour changer un nom reste courte.
+ */
+function ActivityPart({ label, open, onToggle, children }: { label: string; open: boolean; onToggle: () => void; children: ReactNode }) {
+  return (
+    <div className="settings-part">
+      <button type="button" className="settings-part__toggle" aria-expanded={open} onClick={onToggle}>
+        <IconChevronRight size={14} className="settings-activity__chevron" style={{ transform: open ? 'rotate(90deg)' : undefined }} />
+        {label}
+      </button>
+      {open && <div className="settings-part__body">{children}</div>}
+    </div>
+  );
+}
+
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
 
 /** Blocs repliables de la page, tous fermés au départ ; l'état est mémorisé. */
@@ -120,6 +136,11 @@ const TILE_CAP_CHOICES_MB = [100, 250, 500, 1000, 2000, 5000];
 const DISTANCE_UNITS = Object.keys(DISTANCE_UNIT_LABEL) as DistanceUnit[];
 /** Activités ouvertes, par identifiant ; absente : fermée. */
 const NO_ACTIVITY_OPEN: Record<string, boolean> = {};
+/** Parties d'une carte d'activité, toutes fermées au départ ; l'état, mémorisé, vaut pour toutes les activités. */
+type ActivityPartKey = 'affichage' | 'analyse' | 'enregistrement' | 'itineraires' | 'balises';
+const ACTIVITY_PART_DEFAULTS: Record<ActivityPartKey, boolean> = {
+  affichage: false, analyse: false, enregistrement: false, itineraires: false, balises: false,
+};
 
 /**
  * Champ numérique optionnel, en `type="number"` avec flèches ↕, même
@@ -187,11 +208,12 @@ function NumberField({
 function SettingsPage() {
   const {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
-    navFamily, setNavFamily, navSecondFamily, setNavSecondFamily, navHoldMs, setNavHoldMs,
+    navFamily, setNavFamily, navSecond, setNavSecond, navHoldMs, setNavHoldMs,
   } = useAllSportSettings();
   const { profile, setNumber, setSex, age } = useRunnerProfile();
   const { open, toggle } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
   const { open: openActivity, toggle: toggleActivity } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
+  const { open: openPart, toggle: togglePart } = useOpenSections<ActivityPartKey>('settings-activity-parts', ACTIVITY_PART_DEFAULTS);
   /** Activités rangées par famille (Voile, Course à pied, Vélo, Fractionné), chacune dans l'ordre de la liste. */
   const familyOrdered = SPORT_FAMILIES.flatMap((f) => activitiesOfFamily(activities, f));
 
@@ -327,146 +349,158 @@ function SettingsPage() {
                             <ShadePicker shades={FAMILY_SHADES[family]} value={activity.color} onChange={(color) => updateActivity(id, { color })}
                               label={`Couleur de ${activity.name}`} />
                           </div>
-                          <div className="settings-row">
-                            <span className="settings-row__label">Unité de vitesse</span>
-                            <select value={s.speedUnit} onChange={(e) => setFor(id, 'speedUnit', e.target.value as SpeedUnit)} className="ui-field ui-field--s">
-                              {units.map((u) => <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>)}
-                            </select>
-                          </div>
-                          <div className="settings-row">
-                            <span className="settings-row__label">Unité de distance</span>
-                            <select value={s.distanceUnit} onChange={(e) => setFor(id, 'distanceUnit', e.target.value as DistanceUnit)} className="ui-field ui-field--s">
-                              {DISTANCE_UNITS.map((u) => <option key={u} value={u}>{DISTANCE_UNIT_LABEL[u]}</option>)}
-                            </select>
-                          </div>
-                          {s.foil !== null && (
-                            <div className="settings-row" title="Support sur foil : sauts, champs « Foil » et « Mât » du matériel, « Ratio de vol ». Chaque session peut avoir le sien, dans l'onglet réglages de son analyse">
-                              <span className="settings-row__label">Foil</span>
-                              <label className="settings-sports__pair">
-                                <input type="checkbox" checked={s.foil} onChange={(e) => setFor(id, 'foil', e.target.checked === p.foilDefault ? null : e.target.checked)} />
-                                <span>Support sur foil</span>
-                                {!s.isFoilOverridden && <span className="settings-sports__mark">défaut</span>}
-                              </label>
+                          <ActivityPart label="Affichage" open={openPart.affichage} onToggle={() => togglePart('affichage')}>
+                            <div className="settings-row">
+                              <span className="settings-row__label">Unité de vitesse</span>
+                              <select value={s.speedUnit} onChange={(e) => setFor(id, 'speedUnit', e.target.value as SpeedUnit)} className="ui-field ui-field--s">
+                                {units.map((u) => <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>)}
+                              </select>
                             </div>
-                          )}
-                          {s.jumps !== null && (
-                            <JumpsSetting jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => setFor(id, 'jumps', next)} />
-                          )}
-                          <div className="settings-row" title="Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, réussite des manœuvres, VMG ; en course, temps de pause">
-                            <span className="settings-row__label">Seuil d'activité</span>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                              <NumberField unit={SPEED_UNIT_LABEL[thresholdUnit]} step={thresholdUnit === 'ms' ? 0.1 : 0.5} min={0}
-                                value={thresholdEmpty ? null : thresholdShown}
-                                placeholder={String(thresholdShown)}
-                                onCommit={setThreshold} />
-                              {!s.isThresholdOverridden && (
-                                <span className="settings-sports__mark">{sailing ? "selon l'allure" : 'défaut'}</span>
-                              )}
-                            </span>
-                          </div>
-                          <div className="settings-row" title="Bornes du dégradé de couleur, pour les traces qui n'ont pas les leurs">
-                            <span className="settings-row__label">Couleur de trace</span>
-                            <div className="settings-sports__pair">
-                              <NumberField step={0.5} min={0}
-                                value={rangeEmpty ? null : displayBound(shownRange.minMs)}
-                                placeholder={String(displayBound(fallbackRange.minMs))}
-                                onCommit={(v) => setRangeBound('minMs', v)} />
-                              <span>à</span>
-                              <NumberField unit={SPEED_UNIT_LABEL[rangeUnit]} step={0.5} min={0}
-                                value={rangeEmpty ? null : displayBound(shownRange.maxMs)}
-                                placeholder={String(displayBound(fallbackRange.maxMs))}
-                                onCommit={(v) => setRangeBound('maxMs', v)} />
-                              {s.speedRange === null && <span className="settings-sports__mark">{sailing ? "selon l'allure" : 'défaut'}</span>}
+                            <div className="settings-row">
+                              <span className="settings-row__label">Unité de distance</span>
+                              <select value={s.distanceUnit} onChange={(e) => setFor(id, 'distanceUnit', e.target.value as DistanceUnit)} className="ui-field ui-field--s">
+                                {DISTANCE_UNITS.map((u) => <option key={u} value={u}>{DISTANCE_UNIT_LABEL[u]}</option>)}
+                              </select>
                             </div>
-                          </div>
-                          {!sailing && (
-                            <div className="settings-row" title="Dégradé de la courbe d'altitude selon la raideur de la pente, montée ou descente ; gris sous la borne basse">
-                              <span className="settings-row__label">Couleur de pente</span>
+                            <div className="settings-row" title="Bornes du dégradé de couleur, pour les traces qui n'ont pas les leurs">
+                              <span className="settings-row__label">Couleur de trace</span>
                               <div className="settings-sports__pair">
-                                <NumberField step={1} min={0}
-                                  value={s.gradeRange === null ? null : percent(shownGrades.min)}
-                                  placeholder={String(percent(fallbackGrades.min))}
-                                  onCommit={(v) => setGradeBound('min', v)} />
+                                <NumberField step={0.5} min={0}
+                                  value={rangeEmpty ? null : displayBound(shownRange.minMs)}
+                                  placeholder={String(displayBound(fallbackRange.minMs))}
+                                  onCommit={(v) => setRangeBound('minMs', v)} />
                                 <span>à</span>
-                                <NumberField unit="%" step={1} min={0}
-                                  value={s.gradeRange === null ? null : percent(shownGrades.max)}
-                                  placeholder={String(percent(fallbackGrades.max))}
-                                  onCommit={(v) => setGradeBound('max', v)} />
-                                {s.gradeRange === null && <span className="settings-sports__mark">défaut</span>}
+                                <NumberField unit={SPEED_UNIT_LABEL[rangeUnit]} step={0.5} min={0}
+                                  value={rangeEmpty ? null : displayBound(shownRange.maxMs)}
+                                  placeholder={String(displayBound(fallbackRange.maxMs))}
+                                  onCommit={(v) => setRangeBound('maxMs', v)} />
+                                {s.speedRange === null && <span className="settings-sports__mark">{sailing ? "selon l'allure" : 'défaut'}</span>}
                               </div>
                             </div>
-                          )}
-                          <div className="settings-row" title="À l'enregistrement : immobilité qui coupe la trace toute seule ; 0 km/h la désactive">
-                            <span className="settings-row__label">Pause automatique</span>
-                            <div className="settings-sports__pair">
-                              <span className="settings-sports__mark">sous</span>
-                              <NumberField unit="km/h" step={0.1} min={0}
-                                value={pauseKmh}
-                                onCommit={(v) => setAutoPauseField('speedKmh', v)} />
-                              <span className="settings-sports__mark">pendant</span>
-                              <NumberField unit="s" step={5} min={0}
-                                value={s.autoPause.delayS}
-                                onCommit={(v) => setAutoPauseField('delayS', v)} />
-                              {!s.isAutoPauseOverridden && <span className="settings-sports__mark">défaut</span>}
+                            {!sailing && (
+                              <div className="settings-row" title="Dégradé de la courbe d'altitude selon la raideur de la pente, montée ou descente ; gris sous la borne basse">
+                                <span className="settings-row__label">Couleur de pente</span>
+                                <div className="settings-sports__pair">
+                                  <NumberField step={1} min={0}
+                                    value={s.gradeRange === null ? null : percent(shownGrades.min)}
+                                    placeholder={String(percent(fallbackGrades.min))}
+                                    onCommit={(v) => setGradeBound('min', v)} />
+                                  <span>à</span>
+                                  <NumberField unit="%" step={1} min={0}
+                                    value={s.gradeRange === null ? null : percent(shownGrades.max)}
+                                    placeholder={String(percent(fallbackGrades.max))}
+                                    onCommit={(v) => setGradeBound('max', v)} />
+                                  {s.gradeRange === null && <span className="settings-sports__mark">défaut</span>}
+                                </div>
+                              </div>
+                            )}
+                          </ActivityPart>
+                          <ActivityPart label="Analyse" open={openPart.analyse} onToggle={() => togglePart('analyse')}>
+                            <div className="settings-row" title="Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, réussite des manœuvres, VMG ; en course, temps de pause">
+                              <span className="settings-row__label">Seuil d'activité</span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                <NumberField unit={SPEED_UNIT_LABEL[thresholdUnit]} step={thresholdUnit === 'ms' ? 0.1 : 0.5} min={0}
+                                  value={thresholdEmpty ? null : thresholdShown}
+                                  placeholder={String(thresholdShown)}
+                                  onCommit={setThreshold} />
+                                {!s.isThresholdOverridden && (
+                                  <span className="settings-sports__mark">{sailing ? "selon l'allure" : 'défaut'}</span>
+                                )}
+                              </span>
                             </div>
-                          </div>
-                          {!sailing && (
-                            <div className="settings-row" title="Lissage de l'altitude et seuil du dénivelé, dans les analyses et les itinéraires">
-                              <span className="settings-row__label">Terrain</span>
+                            {s.foil !== null && (
+                              <div className="settings-row" title="Support sur foil : sauts, champs « Foil » et « Mât » du matériel, « Ratio de vol ». Chaque session peut avoir le sien, dans l'onglet réglages de son analyse">
+                                <span className="settings-row__label">Foil</span>
+                                <label className="settings-sports__pair">
+                                  <input type="checkbox" checked={s.foil} onChange={(e) => setFor(id, 'foil', e.target.checked === p.foilDefault ? null : e.target.checked)} />
+                                  <span>Support sur foil</span>
+                                  {!s.isFoilOverridden && <span className="settings-sports__mark">défaut</span>}
+                                </label>
+                              </div>
+                            )}
+                            {!sailing && (
+                              <div className="settings-row" title="Lissage de l'altitude et seuil du dénivelé, dans les analyses et les itinéraires">
+                                <span className="settings-row__label">Terrain</span>
+                                <div className="settings-sports__pair">
+                                  <select value={s.terrain} onChange={(e) => setFor(id, 'terrain', e.target.value as TerrainType)} className="ui-field ui-field--s">
+                                    {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>)}
+                                  </select>
+                                  <span className="settings-sports__mark">
+                                    lissage {ELEVATION_PRESETS[s.terrain].smoothingSeconds} s, seuil de dénivelé {ELEVATION_PRESETS[s.terrain].minGainM} m
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {s.terrainStepM !== null && (
+                              <div className="settings-row" title="Altitude du terrain demandée à l'IGN pour les sessions de cette activité : un point tous les … le long de la trace">
+                                <span className="settings-row__label">Altitude IGN</span>
+                                <div className="settings-sports__pair">
+                                  <span className="settings-sports__mark">un point tous les</span>
+                                  <select value={s.terrainStepM} onChange={(e) => setFor(id, 'terrainStepM', Number(e.target.value))} className="ui-field ui-field--s">
+                                    {TERRAIN_STEP_CHOICES_M.map((m) => <option key={m} value={m}>{m} m</option>)}
+                                  </select>
+                                  {s.terrainStepM === p.terrainElevationStepM && <span className="settings-sports__mark">défaut</span>}
+                                </div>
+                              </div>
+                            )}
+                          </ActivityPart>
+                          <ActivityPart label="Enregistrement" open={openPart.enregistrement} onToggle={() => togglePart('enregistrement')}>
+                            <div className="settings-row" title="À l'enregistrement : immobilité qui coupe la trace toute seule ; 0 km/h la désactive">
+                              <span className="settings-row__label">Pause automatique</span>
                               <div className="settings-sports__pair">
-                                <select value={s.terrain} onChange={(e) => setFor(id, 'terrain', e.target.value as TerrainType)} className="ui-field ui-field--s">
-                                  {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>)}
-                                </select>
-                                <span className="settings-sports__mark">
-                                  lissage {ELEVATION_PRESETS[s.terrain].smoothingSeconds} s, seuil de dénivelé {ELEVATION_PRESETS[s.terrain].minGainM} m
-                                </span>
+                                <span className="settings-sports__mark">sous</span>
+                                <NumberField unit="km/h" step={0.1} min={0}
+                                  value={pauseKmh}
+                                  onCommit={(v) => setAutoPauseField('speedKmh', v)} />
+                                <span className="settings-sports__mark">pendant</span>
+                                <NumberField unit="s" step={5} min={0}
+                                  value={s.autoPause.delayS}
+                                  onCommit={(v) => setAutoPauseField('delayS', v)} />
+                                {!s.isAutoPauseOverridden && <span className="settings-sports__mark">défaut</span>}
                               </div>
                             </div>
+                            <LiveFieldsSetting treatment={treatment} view={s} onChange={(fields) => setFor(id, 'liveFields', fields)} />
+                            {s.jumps !== null && (
+                              <JumpsSetting jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => setFor(id, 'jumps', next)} />
+                            )}
+                          </ActivityPart>
+                          {(treatment === 'velo' || paceFamily !== null || s.loopReturnRatio !== null) && (
+                            <ActivityPart label={treatment === 'velo' ? (paceFamily ? 'Vélo et itinéraires' : 'Vélo') : 'Itinéraires'} open={openPart.itineraires} onToggle={() => togglePart('itineraires')}>
+                              {treatment === 'velo' && (
+                                <BikeSettings view={s}
+                                  onBikeType={(t) => setFor(id, 'bikeType', t)}
+                                  onBikeWeight={(kg) => setFor(id, 'bikeWeight', kg)} />
+                              )}
+                              {paceFamily && (
+                                <WayTypesSetting view={s} treatment={treatment} onChange={(ways) => setFor(id, 'wayTypes', ways)} />
+                              )}
+                              {s.loopReturnRatio !== null && (
+                                <div className="settings-row"
+                                  title="Itinéraires en mode « Boucle » : le retour évite les voies de l'aller tant qu'il ne dépasse pas tant de fois sa longueur ; au-delà, c'est le retour le plus court">
+                                  <span className="settings-row__label">Retour de boucle</span>
+                                  <div className="settings-sports__pair">
+                                    <span className="settings-sports__mark">au plus</span>
+                                    <NumberField unit="× l'aller" step={0.1} min={LOOP_RETURN_RATIO_RANGE.min} max={LOOP_RETURN_RATIO_RANGE.max}
+                                      value={s.loopReturnRatio} onCommit={(v) => setFor(id, 'loopReturnRatio', v)} />
+                                    {s.loopReturnRatio === p.loopReturnMaxRatio && <span className="settings-sports__mark">défaut</span>}
+                                  </div>
+                                </div>
+                              )}
+                              {paceFamily && (
+                                <PaceSettings family={paceFamily} view={s}
+                                  onLevel={(level) => setFor(id, 'paceLevel', level)}
+                                  onCustomSpeed={(ms) => setFor(id, 'customFlatSpeedMs', ms)} />
+                              )}
+                            </ActivityPart>
                           )}
-                          {s.terrainStepM !== null && (
-                            <div className="settings-row" title="Altitude du terrain demandée à l'IGN pour les sessions de cette activité : un point tous les … le long de la trace">
-                              <span className="settings-row__label">Altitude IGN</span>
-                              <div className="settings-sports__pair">
-                                <span className="settings-sports__mark">un point tous les</span>
-                                <select value={s.terrainStepM} onChange={(e) => setFor(id, 'terrainStepM', Number(e.target.value))} className="ui-field ui-field--s">
-                                  {TERRAIN_STEP_CHOICES_M.map((m) => <option key={m} value={m}>{m} m</option>)}
-                                </select>
-                                {s.terrainStepM === p.terrainElevationStepM && <span className="settings-sports__mark">défaut</span>}
-                              </div>
-                            </div>
-                          )}
-                          {treatment === 'velo' && (
-                            <BikeSettings view={s}
-                              onBikeType={(t) => setFor(id, 'bikeType', t)}
-                              onBikeWeight={(kg) => setFor(id, 'bikeWeight', kg)} />
-                          )}
-                          {paceFamily && (
-                            <WayTypesSetting view={s} treatment={treatment} onChange={(ways) => setFor(id, 'wayTypes', ways)} />
-                          )}
-                          {s.loopReturnRatio !== null && (
-                            <div className="settings-row"
-                              title="Itinéraires en mode « Boucle » : le retour évite les voies de l'aller tant qu'il ne dépasse pas tant de fois sa longueur ; au-delà, c'est le retour le plus court">
-                              <span className="settings-row__label">Retour de boucle</span>
-                              <div className="settings-sports__pair">
-                                <span className="settings-sports__mark">au plus</span>
-                                <NumberField unit="× l'aller" step={0.1} min={LOOP_RETURN_RATIO_RANGE.min} max={LOOP_RETURN_RATIO_RANGE.max}
-                                  value={s.loopReturnRatio} onCommit={(v) => setFor(id, 'loopReturnRatio', v)} />
-                                {s.loopReturnRatio === p.loopReturnMaxRatio && <span className="settings-sports__mark">défaut</span>}
-                              </div>
-                            </div>
-                          )}
-                          {paceFamily && (
-                            <PaceSettings family={paceFamily} view={s}
-                              onLevel={(level) => setFor(id, 'paceLevel', level)}
-                              onCustomSpeed={(ms) => setFor(id, 'customFlatSpeedMs', ms)} />
-                          )}
-                          <LiveFieldsSetting treatment={treatment} view={s} onChange={(fields) => setFor(id, 'liveFields', fields)} />
                           {sailing && (
-                            <div className="settings-row" title="En navigation sur un parcours planifié : bips de plus en plus rapides à l'approche de chaque balise, bip long à la validation">
-                              <span className="settings-row__label">Bips d'approche des balises</span>
-                              <BeepCurveEditor value={s.markGuide} overridden={s.isMarkGuideOverridden}
-                                onChange={(guide) => setFor(id, 'markGuide', guide)} />
-                            </div>
+                            <ActivityPart label="Balises sonores" open={openPart.balises} onToggle={() => togglePart('balises')}>
+                                <div className="settings-row" title="En navigation sur un parcours planifié : bips de plus en plus rapides à l'approche de chaque balise, bip long à la validation">
+                                  <span className="settings-row__label">Bips d'approche des balises</span>
+                                  <BeepCurveEditor value={s.markGuide} overridden={s.isMarkGuideOverridden}
+                                    onChange={(guide) => setFor(id, 'markGuide', guide)} />
+                                </div>
+                            </ActivityPart>
                           )}
                           <div className="settings-activity__actions">
                             {overridden && (
@@ -528,8 +562,8 @@ function SettingsPage() {
           <>
             <p className="settings-block__intro">
               Sur téléphone, deux sports s'ouvrent directement depuis la barre du bas : le favori à gauche du bouton rond,
-              le secondaire à sa droite. Tenir le sport secondaire déplie le menu des autres sports : celui qu'on y choisit
-              devient le sport secondaire.
+              le secondaire à sa droite. Tenir le sport secondaire déplie le menu des autres sports, et de la planification
+              des itinéraires : celui qu'on y choisit prend sa place.
             </p>
             <div className="settings-row">
               <span className="settings-row__label">Sport favori</span>
@@ -539,8 +573,9 @@ function SettingsPage() {
             </div>
             <div className="settings-row">
               <span className="settings-row__label">Sport secondaire</span>
-              <select value={navSecondFamily} onChange={(e) => setNavSecondFamily(e.target.value as SportFamily)} className="ui-field ui-field--s">
+              <select value={navSecond} onChange={(e) => setNavSecond(e.target.value as NavSecond)} className="ui-field ui-field--s">
                 {SPORT_FAMILIES.filter((f) => f !== navFamily).map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
+                <option value="planifier">Planifier (itinéraires)</option>
               </select>
             </div>
             <div className="settings-row">

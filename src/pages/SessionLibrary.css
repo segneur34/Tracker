@@ -1,12 +1,5 @@
 /* Bibliothèque des sessions (`SessionLibrary.tsx`), sur les variables de `theme/tokens.css`. */
 
-.lib-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
 .lib-hint {
   margin: 0;
   color: var(--muted);

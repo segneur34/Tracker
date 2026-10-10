@@ -149,6 +149,23 @@ export const IconRoute = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+/** Trois points : le menu « … » des actions de moindre usage. */
+export const IconMore = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="5" cy="12" r="1.3" fill="currentColor" />
+    <circle cx="12" cy="12" r="1.3" fill="currentColor" />
+    <circle cx="19" cy="12" r="1.3" fill="currentColor" />
+  </svg>
+);
+
+/** Flèche vers un plateau : télécharger un fichier. */
+export const IconDownload = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M12 4v11M7 10l5 5 5-5" />
+    <path d="M5 19h14" />
+  </svg>
+);
+
 /** Flèche qui tourne : « Mettre à jour », relire le dossier mémoire. */
 export const IconRefresh = ({ size = 20, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>

@@ -14,6 +14,7 @@ import ResizablePanel from '../components/ResizablePanel';
 import RouteList from '../components/RouteList';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SurfaceBar from '../components/SurfaceBar';
+import SurfaceHighlight from '../components/SurfaceHighlight';
 import SurfaceLayer from '../components/SurfaceLayer';
 import WayTypeTabs from '../components/WayTypeTabs';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
@@ -58,10 +59,10 @@ import {
 } from '../planning/route';
 import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute, routeMarkGuide } from '../planning/routeRecord';
-import { routeSurfacePaths, routeSurfaces } from '../planning/surface';
+import { routeSurfacePaths, routeSurfaces, type SurfaceCategory } from '../planning/surface';
 import { beepStartM, validationRadiusM, type MarkGuideSettings } from '../recording/markGuide';
 import { gradeColorPaths, gradeGradientStops } from '../running/runningAnalytics';
-import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
+import { canDownloadFiles, downloadTextFile, readPickedFile, safeFileName } from '../platform/files';
 import { currentPosition, locationPermissionGranted } from '../platform/location';
 import { isNativeApp } from '../platform/runtime';
 import { jsonStore } from '../platform/storage';
@@ -377,6 +378,13 @@ function PlanningPage() {
   };
   const surfaceShown = !sailing && open.surface && surfaceOnMap;
   const legSurfacePaths = useMemo(() => (surfaceShown ? routeSurfacePaths(route.legs) : null), [surfaceShown, route.legs]);
+  /** Revêtement choisi dans la barre, en surbrillance sur la carte ; effacé quand le bloc Surface se ferme. */
+  const [selectedSurface, setSelectedSurface] = useState<SurfaceCategory | null>(null);
+  if (selectedSurface !== null && (sailing || !open.surface)) setSelectedSurface(null);
+  const shownSurfacePaths = useMemo(
+    () => (selectedSurface ? routeSurfacePaths(route.legs).flatMap((paths) => paths ?? []) : null),
+    [selectedSurface, route.legs]
+  );
   const firstError = route.legs.find((l) => l.status === 'error')?.error ?? null;
   const distances = useMemo(() => waypointDistances(route), [route]);
   const looped = isLooped(route);
@@ -654,7 +662,7 @@ function PlanningPage() {
   };
 
   const exportGpx = () => {
-    const fileName = `${current?.base ?? (name.trim() || defaultName()).replace(/[\\/:*?"<>|]/g, ' ')}.gpx`;
+    const fileName = `${current?.base ?? safeFileName(name.trim() || defaultName())}.gpx`;
     downloadTextFile(fileName, buildRouteGpx(route, name.trim() || defaultName(), label));
   };
 
@@ -797,6 +805,7 @@ function PlanningPage() {
                   </Fragment>
                 );
               })}
+              {selectedSurface && shownSurfacePaths && <SurfaceHighlight paths={shownSurfacePaths} category={selectedSurface} />}
               {/* Sur une boucle, l'arrivée est au départ : un seul repère, A, qui les déplace ensemble. */}
               {(looped ? route.waypoints.slice(0, -1) : route.waypoints).map((w, i) => (
                 <Marker
@@ -1003,7 +1012,8 @@ function PlanningPage() {
             <PlanBlock id="planning.surface" label="Surface" open={open.surface} onToggle={() => toggle('surface')}>
               {surfaces.totals.length > 0 ? (
                 <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit}
-                  shownOnMap={surfaceOnMap} onToggleMap={toggleSurfaceOnMap} />
+                  shownOnMap={surfaceOnMap} onToggleMap={toggleSurfaceOnMap}
+                  selected={selectedSurface} onSelect={setSelectedSurface} />
               ) : (
                 <p className="plan-note">Le revêtement s'affiche dès le premier tronçon calculé.</p>
               )}

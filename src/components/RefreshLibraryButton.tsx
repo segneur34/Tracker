@@ -5,7 +5,7 @@ import Button from './ui/Button';
 /**
  * « Mettre à jour » : relit le dossier mémoire sans relancer l'application
  * (`refreshLibrary`), pour voir les sessions et itinéraires copiés depuis un
- * autre appareil. Dans la rangée des imports des bibliothèques, et dans
+ * autre appareil. Dans le menu « … » des bibliothèques, et dans
  * Réglages › Mémoire. Absent tant que la mémoire n'est pas ouverte, grisé
  * pendant la relecture et le calcul des fiches.
  */

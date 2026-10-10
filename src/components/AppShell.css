@@ -152,6 +152,14 @@
   font-weight: 600;
 }
 
+/* « Planifier », séparé des sports par un trait. */
+.shell-sports-menu__item--apart {
+  margin-top: var(--space-1);
+  border-top: 1px solid var(--line);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 /* Le sport secondaire en vigueur. */
 .shell-sports-menu__item[aria-checked='true'] {
   background: var(--surface-sunken);

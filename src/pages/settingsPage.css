@@ -117,6 +117,32 @@
   border-top-style: dashed;
 }
 
+/* Partie repliable d'une carte d'activité (`ActivityPart`) : un titre qui l'ouvre, ses lignes en retrait. */
+.settings-part {
+  border-top: 1px solid var(--line-soft);
+}
+
+.settings-part__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 40px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-s);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-part__body {
+  padding: 0 0 var(--space-2) 22px;
+}
+
 .settings-activity__actions {
   display: flex;
   justify-content: flex-end;

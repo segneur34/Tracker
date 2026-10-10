@@ -124,8 +124,12 @@ export interface StoredSettings {
   longPressMs?: number;
   /** Sport en accès direct dans la barre du bas, sur téléphone ; absent : voile. */
   navFamily?: SportFamily;
-  /** Sport secondaire de la barre du bas, à droite du bouton rond ; absent ou égal au favori : le premier autre sport. */
-  navSecondFamily?: SportFamily;
+  /**
+   * Case secondaire de la barre du bas, à droite du bouton rond : un sport, ou la planification
+   * (`'planifier'`) ; absente ou égale au favori, le premier autre sport. Nom gardé d'avant la
+   * planification, pour ne pas perdre le choix déjà fait.
+   */
+  navSecondFamily?: NavSecond;
   /** Durée de l'appui long sur le sport secondaire qui ouvre le menu pour en changer, en millisecondes. */
   navHoldMs?: number;
   /** Séances du compteur gardées pour être reprises toutes faites (fractionné), communes aux activités. */
@@ -188,10 +192,15 @@ const DEFAULT_NAV_FAMILY: SportFamily = 'voile';
 const effectiveNavFamily = (stored: StoredSettings): SportFamily =>
   isKnownFamily(stored.navFamily) ? stored.navFamily : DEFAULT_NAV_FAMILY;
 
-/** Sport secondaire : celui choisi s'il n'est pas le favori, sinon le premier des autres. */
-const effectiveNavSecondFamily = (stored: StoredSettings): SportFamily => {
+/** Case secondaire de la barre du bas : un sport, ou la planification des itinéraires. */
+export type NavSecond = SportFamily | 'planifier';
+
+const isNavSecond = (value: unknown): value is NavSecond => value === 'planifier' || isKnownFamily(value);
+
+/** Case secondaire : celle choisie si elle n'est pas le favori, sinon le premier des autres sports. */
+const effectiveNavSecond = (stored: StoredSettings): NavSecond => {
   const favorite = effectiveNavFamily(stored);
-  if (isKnownFamily(stored.navSecondFamily) && stored.navSecondFamily !== favorite) return stored.navSecondFamily;
+  if (isNavSecond(stored.navSecondFamily) && stored.navSecondFamily !== favorite) return stored.navSecondFamily;
   return SPORT_FAMILIES.find((f) => f !== favorite) ?? favorite;
 };
 
@@ -258,7 +267,7 @@ export const effectiveLongPressMs = (): number => {
 };
 
 const readNavFamily = (): SportFamily => effectiveNavFamily(readStoredSettings());
-const readNavSecondFamily = (): SportFamily => effectiveNavSecondFamily(readStoredSettings());
+const readNavSecond = (): NavSecond => effectiveNavSecond(readStoredSettings());
 
 /**
  * Sport en accès direct de la barre du bas, suivi en direct : la barre se met
@@ -266,13 +275,13 @@ const readNavSecondFamily = (): SportFamily => effectiveNavSecondFamily(readStor
  */
 export const useNavFamily = (): SportFamily => useSyncExternalStore(jsonStore.subscribe, readNavFamily);
 
-/** Sport secondaire de la barre du bas, suivi en direct comme le favori. */
-export const useNavSecondFamily = (): SportFamily => useSyncExternalStore(jsonStore.subscribe, readNavSecondFamily);
+/** Case secondaire de la barre du bas, suivie en direct comme le favori. */
+export const useNavSecond = (): NavSecond => useSyncExternalStore(jsonStore.subscribe, readNavSecond);
 
-/** Retient le sport secondaire choisi depuis la barre du bas (appui long). */
-export const rememberNavSecondFamily = (family: SportFamily): void => {
+/** Retient la case secondaire choisie depuis la barre du bas (appui long). */
+export const rememberNavSecond = (second: NavSecond): void => {
   const stored = readStoredSettings();
-  if (isKnownFamily(family) && stored.navSecondFamily !== family) writeStored({ ...stored, navSecondFamily: family });
+  if (isNavSecond(second) && stored.navSecondFamily !== second) writeStored({ ...stored, navSecondFamily: second });
 };
 
 /** Séances du compteur : celles gardées, et celle à proposer (la dernière lancée, sinon la séance par défaut). */
@@ -807,11 +816,11 @@ export const useAllSportSettings = () => {
     [persist, stored]
   );
 
-  const navSecondFamily = effectiveNavSecondFamily(stored);
-  const setNavSecondFamily = useCallback(
-    (family: SportFamily) => {
-      if (!isKnownFamily(family)) return;
-      persist({ ...stored, navSecondFamily: family });
+  const navSecond = effectiveNavSecond(stored);
+  const setNavSecond = useCallback(
+    (second: NavSecond) => {
+      if (!isNavSecond(second)) return;
+      persist({ ...stored, navSecondFamily: second });
     },
     [persist, stored]
   );
@@ -831,7 +840,7 @@ export const useAllSportSettings = () => {
 
   return {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
-    navFamily, setNavFamily, navSecondFamily, setNavSecondFamily, navHoldMs, setNavHoldMs,
+    navFamily, setNavFamily, navSecond, setNavSecond, navHoldMs, setNavHoldMs,
   };
 };
 

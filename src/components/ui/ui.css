@@ -250,6 +250,90 @@
   color: var(--help-accent, var(--voile));
 }
 
+/* --- Menu « … » des actions de moindre usage (`MoreMenu`) --- */
+
+.ui-more {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.ui-more__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.ui-more__button:hover,
+.ui-more__button[aria-expanded='true'] {
+  background: var(--surface-hover);
+}
+
+/* Au-dessus des cartes Leaflet, comme le menu des sports de la barre du bas. */
+.ui-more__panel {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 1150;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 240px;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--ink) 18%, transparent);
+  font-size: var(--text-m);
+  font-weight: 400;
+  color: var(--ink);
+  text-align: left;
+  white-space: normal;
+}
+
+.ui-more__panel[hidden] {
+  display: none;
+}
+
+/* Les boutons posés dans le menu y deviennent des lignes à plat. */
+.ui-more__panel .ui-btn {
+  justify-content: flex-start;
+  width: 100%;
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.ui-more__panel .ui-btn svg {
+  flex-shrink: 0;
+}
+
+.ui-more__panel .ui-btn:not(:disabled):not(.ui-btn--off):hover {
+  filter: none;
+  background: var(--surface-hover);
+}
+
+/* Ligne d'information en tête du menu (nombre de sessions, emplacement). */
+.ui-more__note {
+  display: block;
+  padding: var(--space-1) var(--space-3) var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-s);
+  line-height: 1.4;
+}
+
 /* --- Messages --- */
 
 .ui-alert {

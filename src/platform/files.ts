@@ -1,3 +1,4 @@
+import { registerPlugin } from '@capacitor/core';
 import { isNativeApp } from './runtime';
 
 /**
@@ -8,7 +9,8 @@ import { isNativeApp } from './runtime';
  *   l'application sur le téléphone : personne n'a à le voir, il ne sert qu'à
  *   survivre à un arrêt brutal. Dans le navigateur, il vit en mémoire.
  * - Les fichiers choisis par l'utilisateur (`readPickedFile`) et le
- *   téléchargement d'un GPX dans le navigateur (`downloadTextFile`).
+ *   téléchargement d'un GPX dans le navigateur (`downloadTextFile`), ou
+ *   dans Téléchargements, téléphone compris (`saveToDownloads`).
  */
 
 /** Fichier texte asynchrone. La lecture d'un fichier absent rend `null`. */
@@ -86,6 +88,28 @@ export const downloadTextFile = (fileName: string, content: string, mimeType = '
   // Libérée au tour suivant : certains navigateurs lisent l'URL après le clic.
   setTimeout(() => URL.revokeObjectURL(url), 0);
 };
+
+interface DownloadsPlugin {
+  saveText(options: { name: string; text: string }): Promise<{ uri: string }>;
+}
+
+const downloads = registerPlugin<DownloadsPlugin>('Downloads');
+
+/**
+ * Dépose un fichier texte dans le dossier Téléchargements : par le navigateur
+ * sur le PC, par `DownloadsPlugin.java` (MediaStore, Android 10 et plus, sans
+ * permission) sur le téléphone. Un échec y est levé, message en clair.
+ */
+export const saveToDownloads = async (fileName: string, content: string): Promise<void> => {
+  if (!isNativeApp()) {
+    downloadTextFile(fileName, content);
+    return;
+  }
+  await downloads.saveText({ name: fileName, text: content });
+};
+
+/** Nom de fichier sans les caractères refusés par Windows ou Android, espaces resserrées. */
+export const safeFileName = (name: string): string => name.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
 
 /** Contenu texte d'un fichier choisi par l'utilisateur. */
 export const readPickedFile = (file: File): Promise<string> => file.text();

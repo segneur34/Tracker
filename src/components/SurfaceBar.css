@@ -18,13 +18,40 @@
 .surface-bar__part {
   flex-basis: 0;
   min-width: 4px;
+  padding: 0;
+  border: none;
   border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+/* Un revêtement choisi : les autres parts s'effacent, la sienne est cerclée. */
+.surface-bar__track--chosen .surface-bar__part {
+  opacity: 0.35;
+}
+
+.surface-bar__track--chosen .surface-bar__part[aria-pressed='true'] {
+  opacity: 1;
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+/* Ligne au-dessus de la barre : le revêtement survolé ou choisi, sa longueur et sa part. */
+.surface-bar__caption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 20px;
+  font-size: var(--text-s);
+}
+
+.surface-bar__hint {
+  color: var(--muted);
 }
 
 .surface-bar__list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -34,6 +61,23 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  margin: 0 calc(-1 * var(--space-2));
+  box-sizing: content-box;
+  border: none;
+  border-radius: var(--radius-s);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.surface-bar__row:hover,
+.surface-bar__row[aria-pressed='true'] {
+  background: var(--surface-sunken);
 }
 
 .surface-bar__swatch {

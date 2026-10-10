@@ -22,6 +22,7 @@ import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import SurfaceBar from '../components/SurfaceBar';
+import SurfaceHighlight from '../components/SurfaceHighlight';
 import SurfaceLayer from '../components/SurfaceLayer';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
@@ -72,6 +73,7 @@ import type { RunningSessionStats } from '../running/types';
 import { BIKE_TYPES } from '../cycling/energy';
 import type { LibrarySession } from '../library/record';
 import type { IntervalSeries, IntervalWorkout } from '../recording/intervalTimer';
+import type { SurfaceCategory } from '../planning/surface';
 import { WAY_MATCH_DEFAULTS } from '../planning/wayMatch';
 import { LAND_PAGES, LAND_TREATMENTS, type LandFamily } from './landModules';
 
@@ -246,8 +248,8 @@ function LandModule({ family }: { family: LandFamily }) {
     () => LAND_SECTIONS.filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals)),
     [profile.topTargets, hasIntervals]
   );
-  // Une seule surbrillance sur la carte : un top, une zone de pente ou une
-  // répétition ; choisir l'une retire les autres, fermer son onglet l'efface.
+  // Une seule surbrillance sur la carte : un top, une zone de pente, une
+  // répétition ou un revêtement ; choisir l'une retire les autres, fermer son onglet l'efface.
   const highlight = useMapHighlight(open);
   const selectedTop = highlight.shownIn('tops');
   const selectedZone = highlight.shownIn('zones') as GradeZoneKey | null;
@@ -255,6 +257,8 @@ function LandModule({ family }: { family: LandFamily }) {
   const setSelectedTop = (key: string | null) => highlight.show('tops', key);
   const setSelectedZone = (key: GradeZoneKey | null) => highlight.show('zones', key);
   const setSelectedLap = (key: string | null) => highlight.show('fractionne', key);
+  const selectedSurface = highlight.shownIn('surface') as SurfaceCategory | null;
+  const setSelectedSurface = (key: SurfaceCategory | null) => highlight.show('surface', key);
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
   const [energyMode, setEnergyMode] = useState<EnergyChartMode>('power');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -595,6 +599,7 @@ function LandModule({ family }: { family: LandFamily }) {
       {zonePaths.map((path, idx) => (
         <Polyline key={`zone-${selectedZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       ))}
+      {selectedSurface && surfaces.paths && <SurfaceHighlight paths={surfaces.paths} category={selectedSurface} />}
       {selectedLapPath.length > 1 && (
         <Polyline key={`fractionne-${selectedLap}`} positions={selectedLapPath} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       )}
@@ -786,7 +791,8 @@ function LandModule({ family }: { family: LandFamily }) {
                 </div>
                 {surfaces.totals && (
                   <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit}
-                    shownOnMap={surfaceOnMap} onToggleMap={toggleSurfaceOnMap} />
+                    shownOnMap={surfaceOnMap} onToggleMap={toggleSurfaceOnMap}
+                    selected={selectedSurface} onSelect={setSelectedSurface} />
                 )}
                 {surfaces.status === 'searching' && (
                   <div style={{ color: 'var(--muted)' }}>Recherche des voies sur OpenStreetMap…</div>

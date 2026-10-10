@@ -17,7 +17,11 @@ import Card from './ui/Card';
 
 /**
  * État de la mémoire : où elle est, combien de sessions, ce qu'il faut faire
- * si elle est inaccessible. En tête des bibliothèques en version courte, dans
+ * si elle est inaccessible. En tête des bibliothèques en version `compact`,
+ * qui ne montre rien quand tout va bien (le nombre de sessions et
+ * l'emplacement sont dans leur menu « … »), seulement ce qui demande
+ * attention : mémoire fermée, lecture en cours, sessions en attente,
+ * doublons, GPX illisibles, messages et fichier de réglages proposé. Dans
  * Réglages en version détaillée (changer de dossier, fichiers de réglages
  * par appareil par `SettingsFiles`, mode d'emploi du copier-coller). Avec `collapse`, la carte se replie par son titre et ne
  * garde, fermée, que sa ligne d'état et ses alertes, dont la proposition d'un
@@ -25,8 +29,7 @@ import Card from './ui/Card';
  *
  * Dans Réglages, « Mettre à jour » (`RefreshLibraryButton`) et « Ajouter les
  * sessions d'un dossier » (`ImportButtons`) suivent la ligne d'état, carte
- * repliée comprise ; dans les bibliothèques, ils sont dans la rangée des
- * imports.
+ * repliée comprise ; dans les bibliothèques, ils sont dans le menu « … ».
  */
 
 const plural = (n: number, word: string): string => `${n} ${word}${n > 1 ? 's' : ''}`;
@@ -35,9 +38,11 @@ const mutedStyle = { margin: 0, color: 'var(--muted)', fontSize: 'var(--text-s)'
 const rowStyle = { display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' } as const;
 
 function MemoryStatus({
-  detailed = false, collapse,
+  detailed = false, compact = false, collapse,
 }: {
   detailed?: boolean;
+  /** Bibliothèques : rien quand tout va bien. */
+  compact?: boolean;
   collapse?: { open: boolean; onToggle: () => void };
 }) {
   const library = useSessionLibrary();
@@ -79,6 +84,17 @@ function MemoryStatus({
       <Button size="s" variant="ghost" onClick={dismissLibraryMessage}>Fermer</Button>
     </div>
   );
+
+  const attention = status !== 'ready' || library.scanning !== null || library.pendingCount > 0
+    || library.duplicates.length > 0 || library.unreadable.length > 0;
+  if (compact && !attention) {
+    return (
+      <>
+        <SettingsOfferBanner />
+        {alert}
+      </>
+    );
+  }
 
   const heading = collapse ? <PanelTitle label="Mémoire" open={collapse.open} onToggle={collapse.onToggle} /> : detailed ? 'Mémoire' : undefined;
 
@@ -134,7 +150,7 @@ function MemoryStatus({
           </div>
         )}
 
-        {status === 'ready' && folderKind === 'browser' && (
+        {status === 'ready' && folderKind === 'browser' && !compact && (
           <>
             <p style={mutedStyle}>
               {detailed ? 'Emplacement : la mémoire interne de ce navigateur. ' : ''}

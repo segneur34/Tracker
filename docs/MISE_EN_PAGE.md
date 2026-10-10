@@ -4,7 +4,7 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
 
 ## Structure, de haut en bas
 
-1. **Feuille** (`.an-sheet`), réduite à l'en-tête (`.an-sheet__head`) : `PageHeader` avec le retour à la liste du sport, le titre « Analyse … », et `SessionNameEditor` en sous-titre (nom de la session et « Renommer »).
+1. **Feuille** (`.an-sheet`), réduite à l'en-tête (`.an-sheet__head`) : `PageHeader` avec le retour à la liste du sport, le titre « Analyse … », et `SessionNameEditor` en sous-titre (nom de la session, « Renommer » et un « … » qui télécharge le GPX).
 2. Barre « Non enregistré / Enregistrer la session » (`SessionSaveBar`), pendant un brouillon seulement (la course ne passe pas `kept`, et la voile non plus).
 3. **Rangée de la carte** (`.an-map-row`) : le bloc `AnalysisMap`, seul.
 4. **Colonne des onglets** (`.an-carte-col`), sous la carte : `SectionTabs`, puis leurs **panneaux** (`.an-carte-panels`), chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
@@ -27,7 +27,7 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
   - un toucher sur la carte l'ouvre en plein écran (× pour fermer) ;
   - rien n'élargit la page : une colonne de panneaux ne dépasse pas l'écran (`min-width: 0`, `max-width: 100%`), un contenu de largeur fixe défile dans son panneau ; un tableau se resserre, ou passe ses lignes en grille (libellé sur sa propre ligne, valeurs dessous), comme le panneau Manœuvres (`an-man-*`).
 - **La légende de couleur de la trace est posée sur la carte**, en une ligne compacte, en bas à droite, juste à gauche de la mention OSM (contrôle Leaflet d'`AnalysisMap`, coin mis en ligne par `.an-map-corner`), dans la carte et dans sa vue plein écran. Ce que dit le gris passe dans son titre. Elle ne fait qu'afficher : les bornes se saisissent dans l'onglet réglages.
-- **Une seule surbrillance sur la carte** (`useMapHighlight`) : montrer un top, un podium, une zone, une répétition ou un saut retire la précédente ; fermer son onglet l'efface. Couleurs de `components/highlightColors.ts`.
+- **Une seule surbrillance sur la carte** (`useMapHighlight`) : montrer un top, un podium, une zone, une répétition, un saut ou un revêtement retire la précédente ; fermer son onglet l'efface. Couleurs de `components/highlightColors.ts`.
 - **Graphes reliés à la carte** : dans `ZoomableChart` (deux doigts, zone tirée à la souris, « Tout voir »), `onMouseMove` et `onTouchMove` vers `hoveredTrackIndex`, `onLeave` qui efface le repère (`HoverMarker`) ; deux graphes du même axe partagent un `useChartZoom`.
 - **Tout panneau est repliable par son titre** (`PanelTitle`) et par son onglet, et redimensionnable (`ResizablePanel`). L'`id` d'un panneau est la clé de sa taille mémorisée : ne pas le renommer.
 - Couleurs, rayons, espacements : les variables de `theme/tokens.css`. Les couleurs de données des graphes et de la carte restent en dur.
@@ -39,7 +39,7 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
 | `components/AnalysisMap.tsx` | Carte, légende donnée par le module posée dessus, plein écran au toucher |
 | `pages/analysisMobile.css` | Disposition téléphone (classes `an-*`) |
 | `components/PanelTitle.tsx` | Titre de panneau qui le replie |
-| `components/SessionNameEditor.tsx` | Nom de la session et « Renommer » |
+| `components/SessionNameEditor.tsx` | Nom de la session, « Renommer », et « … » (`ui/MoreMenu.tsx`) pour télécharger le GPX |
 | `components/SectionTabs.tsx`, `components/ResizablePanel.tsx` | Onglets, panneaux redimensionnables |
 | `components/SpeedGradientLegend.tsx`, `components/GradeGradientLegend.tsx` | Les légendes de la vitesse et de la pente, en lecture seule, passées à `AnalysisMap` |
 | `components/styles.ts` | `CARD_STYLE` des panneaux, `HALF_PANEL_STYLE` pour deux panneaux par ligne |
@@ -47,6 +47,7 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
 | `components/SessionSaveBar.tsx` | Barre du brouillon de la session |
 | `core/trackColor.ts`, `components/TrackSegmentsLayer.tsx` | Trace colorée par la vitesse, la même dans l'analyse et la vignette |
 | `hooks/useMapHighlight.ts`, `components/highlightColors.ts` | La surbrillance unique de la carte et ses couleurs |
+| `components/SurfaceHighlight.tsx` | Un revêtement choisi dans `SurfaceBar`, en violet sur la carte (analyse et planification) |
 | `components/ZoomableChart.tsx`, `hooks/useChartZoom.ts`, `components/HoverMarker.tsx` | Graphe zoomable, son zoom, le repère du survol sur la carte |
 
 ## Propre à chaque sport

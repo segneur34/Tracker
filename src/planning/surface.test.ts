@@ -4,7 +4,7 @@ import type { RawTrackPoint } from '../core/types';
 import type { RouteLeg, RoutePoint } from './route';
 import {
   buildSurfaceRuns, classifySurface, legSurfaceStretches, parseWayTags, readSurfaceRuns, routeSurfacePaths, routeSurfaces,
-  shiftSurfaceRuns, summarizeSurfaces, surfacePaths, tagsAt, trackSurfaceStretches, wayTagsText,
+  shiftSurfaceRuns, summarizeSurfaces, surfaceHighlight, surfacePaths, tagsAt, trackSurfaceStretches, wayTagsText,
 } from './surface';
 
 /** Points vers le nord, tous les 0,001° (≈ 111 m). */
@@ -194,5 +194,36 @@ describe('tracé par revêtement, pour la carte', () => {
     expect(paths[1]?.map((p) => p.category)).toEqual(['inconnu']);
     expect(paths[2]).toBeNull();
     expect(paths[3]).toBeNull();
+  });
+});
+
+describe('surbrillance d\'un revêtement choisi', () => {
+  // Huit segments égaux : asphalte, un court morceau de sable (un segment, 1/8), asphalte, puis sable sur deux segments (1/4).
+  const points = north(9);
+  const surfaces = {
+    tags: ['highway=residential', 'highway=path surface=sand'],
+    runs: [[0, 0], [2, 1], [3, 0], [6, 1]] as [number, number][],
+  };
+  const paths = surfacePaths(points, legSurfaceStretches(points, surfaces));
+
+  it('garde les seuls morceaux de la catégorie', () => {
+    const { lines } = surfaceHighlight(paths, 'sable');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toEqual([[points[2].lat, points[2].lon], [points[3].lat, points[3].lon]]);
+    expect(surfaceHighlight(paths, 'alpin')).toEqual({ lines: [], marks: [] });
+  });
+
+  it('repère en son milieu chaque morceau trop court pour se voir seul', () => {
+    // Sous 2 % du tracé, aucun des deux.
+    expect(surfaceHighlight(paths, 'sable').marks).toEqual([]);
+    // Sous 20 % : le seul morceau d'un segment.
+    const short = surfaceHighlight(paths, 'sable', 0.2).marks;
+    expect(short).toHaveLength(1);
+    expect(short[0][0]).toBeCloseTo((points[2].lat + points[3].lat) / 2, 9);
+    // Sous 30 % : les deux ; deux segments égaux ont leur milieu au point qui les sépare.
+    const both = surfaceHighlight(paths, 'sable', 0.3).marks;
+    expect(both).toHaveLength(2);
+    expect(both[1][0]).toBeCloseTo(points[7].lat, 6);
+    expect(both[1][1]).toBeCloseTo(3.8, 9);
   });
 });

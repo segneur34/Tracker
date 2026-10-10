@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MemoryFolderPlugin.class);
         registerPlugin(BeeperPlugin.class);
         registerPlugin(MotionPlugin.class);
+        registerPlugin(DownloadsPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

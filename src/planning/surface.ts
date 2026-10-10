@@ -293,6 +293,54 @@ export const surfacePaths = (
   return paths;
 };
 
+/** Longueur d'une ligne, en mètres (distance entre ses points). */
+const lineLengthM = (positions: ReadonlyArray<[number, number]>): number => {
+  let total = 0;
+  for (let i = 1; i < positions.length; i++) {
+    total += haversineDistance(positions[i - 1][0], positions[i - 1][1], positions[i][0], positions[i][1]);
+  }
+  return total;
+};
+
+/** Point à mi-longueur d'une ligne, interpolé sur le segment qui le contient. */
+const midpoint = (positions: ReadonlyArray<[number, number]>): [number, number] => {
+  let remaining = lineLengthM(positions) / 2;
+  for (let i = 1; i < positions.length; i++) {
+    const [a, b] = [positions[i - 1], positions[i]];
+    const d = haversineDistance(a[0], a[1], b[0], b[1]);
+    if (remaining <= d && d > 0) {
+      const t = remaining / d;
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    }
+    remaining -= d;
+  }
+  return positions[0];
+};
+
+/**
+ * Part de la longueur totale sous laquelle un morceau en surbrillance reçoit
+ * un repère : la carte montre d'ordinaire tout le tracé, et un trait plus
+ * court s'y perd.
+ */
+export const SURFACE_MARK_MAX_SHARE = 0.02;
+
+/**
+ * Morceaux d'un revêtement choisi dans la barre, pour la surbrillance de la
+ * carte : leurs lignes, et un repère au milieu de chaque morceau trop court
+ * pour se voir seul (moins de `markMaxShare` de tout le tracé), quand il ne
+ * fait que quelques mètres d'une grande boucle.
+ */
+export const surfaceHighlight = (
+  paths: ReadonlyArray<SurfacePath>,
+  category: SurfaceCategory,
+  markMaxShare = SURFACE_MARK_MAX_SHARE
+): { lines: [number, number][][]; marks: [number, number][] } => {
+  const totalM = paths.reduce((sum, p) => sum + lineLengthM(p.positions), 0);
+  const lines = paths.filter((p) => p.category === category && p.positions.length > 0).map((p) => p.positions);
+  const marks = lines.filter((line) => lineLengthM(line) < markMaxShare * totalM).map(midpoint);
+  return { lines, marks };
+};
+
 /** Tronçon que la carte calcule (type de voie), par opposition à une ligne droite ou une trace importée. */
 const isComputedLeg = (leg: RouteLeg): boolean => leg.mode !== 'straight' && leg.mode !== 'imported';
 
