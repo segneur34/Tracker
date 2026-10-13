@@ -209,7 +209,7 @@ function NumberField({
 function SettingsPage() {
   const {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
-    navFamily, setNavFamily, navSecond, setNavSecond, navHoldMs, setNavHoldMs,
+    stopHoldMs, setStopHoldMs, navFamily, setNavFamily, navSecond, setNavSecond, navHoldMs, setNavHoldMs,
   } = useAllSportSettings();
   const { profile, setNumber, setSex, age } = useRunnerProfile();
   const { open, toggle } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
@@ -555,12 +555,16 @@ function SettingsPage() {
           <>
             <p className="settings-block__intro">
               Pendant un enregistrement, tenir le bouton rond de la barre du bas met en pause ou relance, depuis n'importe
-              quelle page. Un appui court ouvre la page d'enregistrement. La pause automatique se règle par activité, comme
+              quelle page. Un appui court ouvre la page d'enregistrement. Le bouton « Arrêter » se tient aussi, pour qu'un geste
+              involontaire ne coupe pas la session ; à 0, un simple appui suffit. La pause automatique se règle par activité, comme
               les chiffres affichés en grand quand la carte est réduite.
             </p>
             <NumberField label="Appui long pour la pause" unit="s" step={0.5} min={0.5} max={10}
               value={longPressMs / 1000}
               onCommit={(v) => setLongPressMs(v === null ? null : Math.round(v * 1000))} />
+            <NumberField label="Appui long pour arrêter" unit="s" step={0.5} min={0} max={10}
+              value={stopHoldMs / 1000}
+              onCommit={(v) => setStopHoldMs(v === null ? null : Math.round(v * 1000))} />
           </>
         )}
       </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ComponentType } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
 import { formatClock } from '../core/units';
@@ -13,6 +13,7 @@ import { recordingDurationMs } from '../recording/session';
 import {
   IconBike, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings, IconStopwatch, IconWave,
 } from './icons';
+import HoldDial from './ui/HoldDial';
 
 /**
  * Cadre de toutes les pages : navigation et bandeau d'enregistrement.
@@ -68,35 +69,6 @@ const underPath = (pathname: string, to: string): boolean => pathname === to || 
  */
 const secondOfPath = (pathname: string): NavSecond | null =>
   SPORT_FAMILIES.find((f) => underPath(pathname, FAMILY_TABS[f].to)) ?? (underPath(pathname, PLAN_PATH) ? 'planifier' : null);
-
-/**
- * Grand cadran au milieu de l'écran pendant un appui long : le doigt cache le
- * bouton tenu. Il se remplit en `pressMs`, à la couleur `color`.
- */
-function HoldDial({ pressMs, color, icon, title, hint }: {
-  pressMs: number;
-  color: string;
-  icon: ReactNode;
-  title: string;
-  hint: string;
-}) {
-  return (
-    <div className="shell-hold" aria-hidden="true"
-      style={{ '--press-ms': `${pressMs}ms`, '--hold-color': color } as React.CSSProperties}>
-      <div className="shell-hold__dial">
-        <svg className="shell-hold__ring" viewBox="0 0 100 100">
-          <circle className="shell-hold__track" cx="50" cy="50" r="45" />
-          <circle className="shell-hold__fill" cx="50" cy="50" r="45" pathLength="100" />
-        </svg>
-        <div className="shell-hold__label">
-          {icon}
-          <span className="shell-hold__title">{title}</span>
-          <span className="shell-hold__hint">{hint}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /**
  * Bandeau du compteur du fractionné sur les autres pages : phase et temps

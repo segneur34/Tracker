@@ -124,6 +124,12 @@ export interface IntervalDetectionProfile {
   blockMinGapS: number;
   /** …et en fois le repos médian de la session. */
   blockGapFactor: number;
+  /**
+   * Rapport de durée qui ouvre aussi une séance sans long repos (10/10 enchaîné
+   * sur un 20/20) : deux efforts de suite aussi éloignés de la durée médiane de
+   * la séance en cours, plus longs ou plus courts.
+   */
+  blockWorkFactor: number;
 }
 
 /** Sauts mesurés par les capteurs du téléphone (`core/jumps.ts`) : voile, course, vélo. */
@@ -176,7 +182,7 @@ const INTERVAL_ANALYSIS: IntervalProfile = {
   launchFraction: 0.9,
   detection: {
     stepS: 1, smoothingS: 3, exitFraction: 0.05, minWorkS: 3, minWorkFraction: 0.4, minDipS: 5, launchSearchS: 8,
-    minContrast: 1.25, upperContrast: 1.4, blockMinGapS: 60, blockGapFactor: 3,
+    minContrast: 1.25, upperContrast: 1.4, blockMinGapS: 60, blockGapFactor: 3, blockWorkFactor: 1.6,
   },
 };
 

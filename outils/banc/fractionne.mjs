@@ -44,6 +44,13 @@ await new Promise((r) => { ws.onopen = r; });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
 const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+// « Arrêter » se tient (appui long réglable, 2 s par défaut) : appui, attente, puis relâcher.
+const holdStop = async () => {
+  const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
+  if (down !== 'ok') return down;
+  await wait(2300);
+  return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
+};
 const clickText = (text, selector = 'button') => evaluate(`(() => {
   const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.trim() === ${JSON.stringify(text)} || x.textContent.includes(${JSON.stringify(text)}));
   if (!b) return 'absent'; if (b.disabled) return 'désactivé'; b.click(); return 'ok';
@@ -186,7 +193,7 @@ console.log('Lancer :', await clickText('Lancer le compteur'));
 await wait(21000);
 console.log('pendant :', await card());
 await shoot('fractionne-enregistrement');
-console.log('Arrêter (enregistrement) :', await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.closest('.ivl')); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+console.log('Arrêter (enregistrement) :', await holdStop());
 await wait(2500);
 console.log('Analyser :', await clickText('Analyser'));
 await wait(6000);

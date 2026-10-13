@@ -11,6 +11,8 @@ import {
 import { formatIntervalClock, workoutLabel, type IntervalWorkout } from '../recording/intervalTimer';
 import type { IntervalRep, IntervalSummary } from '../running/intervalStats';
 import type { ChartHoverEvent } from './chartHover';
+import { HIGHLIGHT_PODIUM_COLORS } from './highlightColors';
+import { IconChevronRight } from './icons';
 import PanelTitle from './PanelTitle';
 import ResizablePanel from './ResizablePanel';
 import { CARD_STYLE, HALF_PANEL_STYLE } from './styles';
@@ -62,9 +64,11 @@ const SHOWN_COLOR = '#7b1fa2';
 const SPEED_COLOR = '#1e88e5';
 const TREND_COLOR = '#757575';
 const MEAN_COLOR = '#263238';
-/** Répétitions du profil, de la première (claire) à la dernière (foncée). */
-const REP_LIGHT = [0x90, 0xca, 0xf9];
-const REP_DARK = [0x0d, 0x47, 0xa1];
+/**
+ * Répétitions d'une séance, de la première à la dernière : vert, orange puis
+ * rouge, les couleurs des podiums, pour voir la progression.
+ */
+const REP_STOPS = [...HIGHLIGHT_PODIUM_COLORS].reverse().map((hex) => [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16)));
 const EVOLUTION_HEIGHT_PX = 200;
 const PROFILE_HEIGHT_PX = 220;
 const SPARK_WIDTH = 96;
@@ -88,10 +92,27 @@ const repTicks = (first: number, last: number): number[] => {
   return ticks;
 };
 
+/** Couleur de la répétition de rang `i` (depuis 0) sur `count` : vert pour la première, rouge pour la dernière. */
 const repColor = (i: number, count: number): string => {
-  const f = count > 1 ? i / (count - 1) : 1;
-  return `#${REP_LIGHT.map((c, k) => Math.round(c + f * (REP_DARK[k] - c)).toString(16).padStart(2, '0')).join('')}`;
+  const f = (count > 1 ? i / (count - 1) : 0) * (REP_STOPS.length - 1);
+  const k = Math.min(Math.floor(f), REP_STOPS.length - 2);
+  const from = REP_STOPS[k];
+  const to = REP_STOPS[k + 1];
+  return `#${from.map((c, j) => Math.round(c + (f - k) * (to[j] - c)).toString(16).padStart(2, '0')).join('')}`;
 };
+
+/** Petite légende du dégradé des répétitions : « rép. 1 », la bande de couleur, « rép. N ». */
+function RepGradientLegend({ count }: { count: number }) {
+  if (count < 2) return null;
+  const band = `linear-gradient(to right, ${repColor(0, 3)}, ${repColor(1, 3)}, ${repColor(2, 3)})`;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--muted)', fontSize: '11px', fontWeight: 'normal' }}>
+      rép. 1
+      <span aria-hidden="true" style={{ width: '48px', height: '6px', borderRadius: '3px', background: band }} />
+      rép. {count}
+    </span>
+  );
+}
 
 /** Écart signé, en pourcentage : « +1.2 % », « −3.0 % ». */
 const signedPercent = (fraction: number, decimals = 1): string => {
@@ -159,6 +180,18 @@ function IntervalAnalysis({
   series, stepS, launchFraction, samplingS, speedUnit, distanceUnit, panelId, open, onToggle, selectedLap, onSelectLap, emptyText,
 }: IntervalAnalysisProps) {
   const [help, setHelp] = useState(false);
+  /**
+   * Séances repliées, par indice, dans les trois panneaux à la fois (pour ne garder que le profil des
+   * 20-20, par exemple) ; remises à zéro quand les séances changent.
+   */
+  const [folding, setFolding] = useState<{ of: IntervalSeriesView[]; folded: Set<number> }>({ of: series, folded: new Set() });
+  const folded = folding.of === series ? folding.folded : new Set<number>();
+  const toggleFold = (index: number) => {
+    const next = new Set(folded);
+    if (next.has(index)) next.delete(index);
+    else next.add(index);
+    setFolding({ of: series, folded: next });
+  };
   const inverse = isInverseUnit(speedUnit);
   const noun = inverse ? 'allure' : 'vitesse';
   /** Accélération et seuils : en km/h pour une allure, comme les tops. */
@@ -170,6 +203,25 @@ function IntervalAnalysis({
     rateUnit === 'ms' ? `${ms2.toFixed(2)} m/s²` : `${toDisplaySpeed(ms2, rateUnit).toFixed(1)} ${SPEED_UNIT_LABEL[rateUnit]} par s`;
   const title = (s: IntervalSeriesView) =>
     s.detected ? `≈ ${workoutLabel(s.workout)}, répétitions détectées` : `Séance ${workoutLabel(s.workout)}`;
+  /** Titre d'une séance : un bouton à chevron qui la replie ou la déplie dans les trois panneaux. */
+  const seriesTitle = (s: IntervalSeriesView, index: number, legend = false) => {
+    const isOpen = !folded.has(index);
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
+        <button type="button" aria-expanded={isOpen} onClick={() => toggleFold(index)}
+          title={isOpen ? 'Replier cette séance' : 'Déplier cette séance'}
+          style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: 0, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink)', fontWeight: 600, fontSize: 'inherit', textAlign: 'left' }}>
+          <IconChevronRight size={14} style={{ transform: `rotate(${isOpen ? 90 : 0}deg)`, transition: 'transform 0.15s', flexShrink: 0 }} />
+          {title(s)}
+        </button>
+        {legend && isOpen && <RepGradientLegend count={s.reps.length} />}
+      </div>
+    );
+  };
+  /** Séance repliée : son titre seul. */
+  const foldedSeries = (s: IntervalSeriesView, index: number) => (
+    <div key={index} style={{ marginBottom: '8px' }}>{seriesTitle(s, index)}</div>
+  );
   const heading = (label: string, withHelp = false) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', paddingRight: '28px' }}>
       <PanelTitle label={label} open={open} onToggle={onToggle} />
@@ -210,7 +262,14 @@ function IntervalAnalysis({
           segment de la récupération ; lancé, maintien et profils sont approximatifs.
         </div>
       )}
+      {series.some((s) => s.detected) && (
+        <div style={{ ...noteStyle, marginTop: 0, marginBottom: '10px' }}>
+          Répétitions retrouvées dans la vitesse : la fiche de cette session n'a pas les séances du compteur. Si elle a été
+          faite avec lui, « Télécharger la session » sur le téléphone, puis « Importer des GPX » ici, les reprend.
+        </div>
+      )}
       {series.map((s, seriesIndex) => {
+        if (folded.has(seriesIndex)) return foldedSeries(s, seriesIndex);
         const { summary } = s;
         const sparks = new Map(s.reps.map((r) => [r.rep, sparkPoints(r, stepS)]));
         const sparkLength = Math.max(0, ...s.reps.map((r) => r.profile.length));
@@ -228,7 +287,7 @@ function IntervalAnalysis({
         );
         return (
           <div key={seriesIndex} style={{ marginBottom: '14px' }}>
-            <div style={{ fontWeight: 600, marginBottom: '6px' }}>{title(s)}</div>
+            {seriesTitle(s, seriesIndex)}
             <div className="an-sheet__stats an-sheet__stats--always">
               {stat('Répétitions', s.detected ? `${summary.count}` : `${summary.count} / ${s.workout.reps}`, s.detected ? 'détectées' : undefined)}
               {stat(`Moyenne des répétitions`, formatSpeed(summary.meanSpeedMs, speedUnit))}
@@ -257,13 +316,13 @@ function IntervalAnalysis({
                   </tr>
                 </thead>
                 <tbody>
-                  {s.reps.map(({ rep, work, rest, launchS, holdRatio }) => {
+                  {s.reps.map(({ rep, work, rest, launchS, holdRatio }, repIndex) => {
                     const key = `${seriesIndex}-${rep}`;
                     const shown = selectedLap === key;
                     const reached = work.path.length > 1;
                     return (
                       <tr key={key} style={{ borderTop: '1px solid var(--line-soft)', opacity: reached ? 1 : 0.45 }}>
-                        <td className="an-ivl-rep" style={{ ...cellStyle, textAlign: 'left', fontWeight: 'bold' }}>{rep}</td>
+                        <td className="an-ivl-rep" style={{ ...cellStyle, textAlign: 'left', fontWeight: 'bold', color: repColor(repIndex, s.reps.length) }}>{rep}</td>
                         {showDuration && <td className="an-ivl-dur num" style={cellStyle}>{formatIntervalClock(Math.round(work.durationS))}</td>}
                         <td className="an-ivl-dist" style={cellStyle}>{work.distanceM === null ? '—' : formatShortDistance(work.distanceM, distanceUnit)}</td>
                         <td className="an-ivl-speed" style={{ ...cellStyle, fontWeight: 'bold' }}>{formatSpeed(work.speedMs, speedUnit)}</td>
@@ -309,6 +368,7 @@ function IntervalAnalysis({
     <ResizablePanel id={panelId('fractionne-evolution')} style={panelStyle}>
       {heading('Évolution des répétitions')}
       {series.map((s, seriesIndex) => {
+        if (folded.has(seriesIndex)) return foldedSeries(s, seriesIndex);
         const trend = s.summary.trend;
         const reps = s.reps.filter((r) => r.work.speedMs !== null);
         const first = reps[0]?.rep ?? 1;
@@ -318,6 +378,7 @@ function IntervalAnalysis({
           const shown = selectedLap === `${seriesIndex}-${r.rep}`;
           return {
             rep: r.rep,
+            color: repColor(s.reps.indexOf(r), s.reps.length),
             speed: display(r.work.speedMs), speedMs: r.work.speedMs,
             trend: display(at(r.rep)), trendMs: at(r.rep),
             mean: display(s.summary.meanSpeedMs), meanMs: s.summary.meanSpeedMs,
@@ -332,7 +393,7 @@ function IntervalAnalysis({
         };
         return (
           <div key={seriesIndex} style={{ marginBottom: '10px' }}>
-            {series.length > 1 && <div style={{ fontWeight: 600, marginBottom: '6px' }}>{title(s)}</div>}
+            {seriesTitle(s, seriesIndex, true)}
             {data.length > 1 ? (
               <div style={{ width: '100%', height: `${EVOLUTION_HEIGHT_PX}px` }}>
                 <ResponsiveContainer>
@@ -345,7 +406,11 @@ function IntervalAnalysis({
                     <Tooltip formatter={speedFormatter} labelFormatter={(l) => `Répétition ${l}`} contentStyle={chartTooltipStyle} />
                     <Line type="linear" name="Moyenne" dataKey="mean" stroke={TREND_COLOR} strokeWidth={1} dot={false} activeDot={false} isAnimationActive={false} />
                     {trend && <Line type="linear" name="Tendance" dataKey="trend" stroke={TREND_COLOR} strokeWidth={1.5} strokeDasharray="5 4" dot={false} activeDot={false} isAnimationActive={false} />}
-                    <Line type="linear" name={inverse ? 'Allure' : 'Vitesse'} dataKey="speed" stroke={SPEED_COLOR} strokeWidth={2} dot={{ r: 4, fill: SPEED_COLOR }} activeDot={{ r: 6 }} isAnimationActive={false} />
+                    <Line type="linear" name={inverse ? 'Allure' : 'Vitesse'} dataKey="speed" stroke={SPEED_COLOR} strokeWidth={2} isAnimationActive={false}
+                      dot={({ cx, cy, index }) => (
+                        <circle key={index} cx={cx} cy={cy} r={4} fill={data[index]?.color ?? SPEED_COLOR} stroke="#fff" strokeWidth={1} />
+                      )}
+                      activeDot={{ r: 6 }} />
                     <Line type="linear" name="Sur la carte" dataKey="shown" stroke="none" dot={{ r: 7, fill: SHOWN_COLOR, stroke: '#fff', strokeWidth: 2 }} activeDot={false} tooltipType="none" isAnimationActive={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -357,8 +422,9 @@ function IntervalAnalysis({
         );
       })}
       <div style={noteStyle}>
-        {inverse ? 'Allure' : 'Vitesse'} de chaque répétition, avec sa moyenne (trait fin) et sa tendance (pointillé)
-        {inverse ? ', axe inversé : plus haut, plus vite' : ''}. Toucher une répétition la montre sur la carte.
+        {inverse ? 'Allure' : 'Vitesse'} de chaque répétition, de la première (verte) à la dernière (rouge), avec sa moyenne
+        (trait fin) et sa tendance (pointillé){inverse ? ', axe inversé : plus haut, plus vite' : ''}. Toucher une répétition
+        la montre sur la carte. Toucher le titre d'une séance la replie dans les trois panneaux.
       </div>
     </ResizablePanel>
   );
@@ -367,6 +433,7 @@ function IntervalAnalysis({
     <ResizablePanel id={panelId('fractionne-profil')} style={panelStyle}>
       {heading("Profil d'une répétition")}
       {series.map((s, seriesIndex) => {
+        if (folded.has(seriesIndex)) return foldedSeries(s, seriesIndex);
         const length = Math.max(0, ...s.reps.map((r) => r.profile.length));
         const data = Array.from({ length }, (_, k) => {
           const row: Record<string, number | null> = { t: parseFloat(((k + 0.5) * stepS).toFixed(2)) };
@@ -391,7 +458,7 @@ function IntervalAnalysis({
         }
         return (
           <div key={seriesIndex} style={{ marginBottom: '10px' }}>
-            {series.length > 1 && <div style={{ fontWeight: 600, marginBottom: '6px' }}>{title(s)}</div>}
+            {seriesTitle(s, seriesIndex, true)}
             {data.length > 1 ? (
               <div style={{ width: '100%', height: `${PROFILE_HEIGHT_PX}px` }}>
                 <ResponsiveContainer>
@@ -403,7 +470,7 @@ function IntervalAnalysis({
                     <Tooltip formatter={speedFormatter} labelFormatter={(l) => `${formatIntervalClock(Number(l))} après le départ`} contentStyle={chartTooltipStyle} />
                     {s.reps.map((r, i) => (
                       <Line key={r.rep} type="monotone" name={`Rép. ${r.rep}`} dataKey={`r${r.rep}`} stroke={repColor(i, s.reps.length)}
-                        strokeWidth={1} dot={false} activeDot={false} connectNulls={false} tooltipType="none" isAnimationActive={false} />
+                        strokeWidth={1.5} dot={false} activeDot={false} connectNulls={false} tooltipType="none" isAnimationActive={false} />
                     ))}
                     <Line type="monotone" name="Moyenne" dataKey="mean" stroke={MEAN_COLOR} strokeWidth={3} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
                     {launch !== null && launch > 0 && (
@@ -421,7 +488,7 @@ function IntervalAnalysis({
       })}
       <div style={noteStyle}>
         {inverse ? 'Allure' : 'Vitesse'} seconde par seconde depuis le départ de chaque répétition : chacune en trait fin, de la
-        première (claire) à la dernière (foncée), et leur moyenne en trait épais. L'échelle est celle des répétitions une fois
+        première (verte) à la dernière (rouge), et leur moyenne en trait épais. L'échelle est celle des répétitions une fois
         lancées : le départ, plus lent, sort par le bas. Le pointillé marque la mise en vitesse moyenne.
       </div>
     </ResizablePanel>

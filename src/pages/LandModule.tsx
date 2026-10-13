@@ -61,6 +61,7 @@ import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hoo
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useMapHighlight } from '../hooks/useMapHighlight';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
+import { useLibrarySession } from '../hooks/useSessionLibrary';
 import { useSessionJumps } from '../hooks/useSessionJumps';
 import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import { useTerrainElevation, type TerrainElevationStatus } from '../hooks/useTerrainElevation';
@@ -177,6 +178,9 @@ const formatMinutes = (minutes: number): string => {
   return totalS % 60 === 0 ? hm : `${hm}:${String(totalS % 60).padStart(2, '0')}`;
 };
 
+/** Session sans séances du compteur : un tableau constant, pour ne pas relancer les calculs qui en dépendent. */
+const NO_INTERVALS: IntervalSeries[] = [];
+
 const cardStyle = CARD_STYLE;
 const chartTooltipStyle = { fontSize: '12px' } as const;
 
@@ -219,16 +223,12 @@ function LandModule({ family }: { family: LandFamily }) {
     maxSpeedMs: profile.maxPlausibleSpeedMs,
   });
 
-  // Session de la mémoire désignée par l'URL.
   const { loadGpxContent } = gpx;
   // Session de la mémoire désignée par l'URL : son activité devient celle du module.
-  /** Répétitions du compteur rangées dans la fiche de la session, s'il y en a. */
-  const [sessionIntervals, setSessionIntervals] = useState<IntervalSeries[]>([]);
   const receiveSession = useCallback(
     (content: string, session: LibrarySession) => {
       const recorded = sessionActivity(readStoredActivities(), session.record.activityId, session.record.sport);
       if (recorded && recorded.id !== activity.id) setActivity(recorded.id);
-      setSessionIntervals(session.record.intervals ?? []);
       loadGpxContent(content, session.file);
     },
     [activity.id, setActivity, loadGpxContent]
@@ -237,6 +237,12 @@ function LandModule({ family }: { family: LandFamily }) {
   // Brouillon de la session de la mémoire affichée (couleurs de la trace), écrit
   // dans sa fiche par « Enregistrer la session ». Aucun pour un GPX lu hors de la mémoire.
   const draft = useSessionDraft(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null);
+  /**
+   * Répétitions du compteur rangées dans la fiche de la session affichée, s'il y en a, suivies en direct :
+   * une fiche complétée par un import (« Télécharger la session » du téléphone) s'applique sans rouvrir l'analyse.
+   */
+  const shownRecord = useLibrarySession(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null)?.record;
+  const sessionIntervals = shownRecord?.intervals ?? NO_INTERVALS;
   /** Terrain du dénivelé : celui de la session (brouillon, puis fiche), sinon celui de l'activité. */
   const terrain = draft.edits.terrain ?? activityTerrain;
   const elevationProfile = ELEVATION_PRESETS[terrain];

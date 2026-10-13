@@ -47,7 +47,7 @@ describe('GPX complet', () => {
     const motion = new Uint8Array([0, 1, 2, 250, 255]);
     const bundled = bundleSessionGpx(GPX, fiche, motion);
     expect(bundled).not.toBe(GPX);
-    expect(bundled.indexOf('<trk>')).toBe(GPX.indexOf('<trk>'));
+    expect(bundled).toContain(GPX.slice(GPX.indexOf('<trkseg>'), GPX.indexOf('</trk>')));
     const back = unbundleSessionGpx(bundled);
     expect(back.gpx).toBe(GPX);
     expect(back.record?.name).toBe('Piste <10/10> & 20/20 ]]>');
@@ -75,6 +75,52 @@ describe('GPX complet', () => {
 
   it('ignore une fiche écrite par une version plus récente', () => {
     expect(unbundleSessionGpx(bundleSessionGpx(GPX, record({ version: RECORD_VERSION + 1 }), null)).record).toBeNull();
+  });
+});
+
+describe('nom de la session dans le GPX complet', () => {
+  /** Paquet de la 0.2.82 : la fiche et les capteurs, sans retouche du nom. */
+  const OLD_BUNDLE = GPX.replace('</gpx>', '<extensions><tracker:session xmlns:tracker="https://github.com/segneur34/Tracker/session" version="1">'
+    + '<tracker:record>' + JSON.stringify(record({ name: 'Ancien' })).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    + '</tracker:record></tracker:session></extensions></gpx>');
+
+  it('écrit le nom dans les métadonnées, créées, et dans la trace, puis rend le GPX d’origine', () => {
+    const bundled = bundleSessionGpx(GPX, record({ name: 'Carnon' }), null);
+    expect(bundled).toContain('<metadata><name>Carnon</name></metadata>');
+    expect(bundled).toContain('<trk><name>Carnon</name><trkseg>');
+    expect(bundled).not.toContain('<name>Fractionné</name>');
+    expect(unbundleSessionGpx(bundled).gpx).toBe(GPX);
+  });
+
+  it('échappe un nom avec &, < et des guillemets', () => {
+    const name = 'Piste "A" <10/10> & 20/20';
+    const bundled = bundleSessionGpx(GPX, record({ name }), null);
+    expect(bundled).toContain('<trk><name>Piste "A" &lt;10/10&gt; &amp; 20/20</name>');
+    const back = unbundleSessionGpx(bundled);
+    expect(back.gpx).toBe(GPX);
+    expect(back.record?.name).toBe(name);
+  });
+
+  it('remplace le nom des métadonnées existantes et ajoute celui d’une trace sans nom', () => {
+    const metadata = '<metadata>\n  <name>Wingfoil, 10/10/2026 10:00</name><time>2026-10-10T07:00:00Z</time></metadata>\n';
+    const gpx = GPX.replace('1/1">\n', `1/1">\n${metadata}`).replace('<trk><name>Fractionné</name>', '<trk>');
+    const bundled = bundleSessionGpx(gpx, record({ name: 'Carnon' }), null);
+    expect(bundled).toContain('<metadata>\n  <name>Carnon</name><time>');
+    expect(bundled).toContain('<trk><name>Carnon</name><trkseg>');
+    expect(unbundleSessionGpx(bundled).gpx).toBe(gpx);
+  });
+
+  it('laisse les noms d’une session sans nom', () => {
+    const bundled = bundleSessionGpx(GPX, record({ name: null }), null);
+    expect(bundled).toContain('<trk><name>Fractionné</name>');
+    expect(bundled).not.toContain('<metadata>');
+    expect(unbundleSessionGpx(bundled).gpx).toBe(GPX);
+  });
+
+  it('relit un paquet de la 0.2.82', () => {
+    const back = unbundleSessionGpx(OLD_BUNDLE);
+    expect(back.gpx).toBe(GPX);
+    expect(back.record?.name).toBe('Ancien');
   });
 });
 

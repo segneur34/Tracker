@@ -70,6 +70,13 @@ await new Promise((r) => { ws.onopen = r; });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
 /** Bouton dont le texte est exactement `text` (ou le contient, `loose`). */
+// « Arrêter » se tient (appui long réglable, 2 s par défaut) : appui, attente, puis relâcher.
+const holdStop = async () => {
+  const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
+  if (down !== 'ok') return down;
+  await wait(2300);
+  return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
+};
 const clickButton = (text, loose = false) => evaluate(`(() => {
   const b = [...document.querySelectorAll('button')].find((x) => (${loose} ? x.textContent.trim().includes(${JSON.stringify(text)}) : x.textContent.trim() === ${JSON.stringify(text)}) && !x.disabled);
   if (!b) return 'absent'; b.click(); return 'ok';
@@ -213,7 +220,7 @@ console.log(beeps.map((b, k) => {
   const gap = k > 0 ? ` +${((b.at - beeps[k - 1].at) / 1000).toFixed(2)} s` : '';
   return `  ${rel(b).padStart(6)} s ${b.text.replace(/ à \d+$/, '').replace('[bips] ', '')}${gap}`;
 }).join('\n'));
-console.log('Arrêter :', await clickButton('Arrêter', true));
+console.log('Arrêter :', await holdStop());
 await wait(1500);
 console.log('Jeter :', await clickButton('Jeter'));
 await wait(1000);
@@ -238,7 +245,7 @@ console.log('après Bips :', await guideCard());
 await wait(10_000);
 console.log('fin :', await guideCard(), '; bips après la coupure :', beeps.filter((b) => b.at > mutedAt).length,
   '; avant :', beeps.filter((b) => b.at <= mutedAt).map((b) => b.text.split(' ')[1]).join(', '));
-await clickButton('Arrêter', true);
+await holdStop();
 await wait(1500);
 await clickButton('Jeter');
 await wait(1000);

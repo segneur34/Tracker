@@ -1,0 +1,85 @@
+/* Grand cadran au milieu de l'écran pendant l'appui long : le doigt cache
+   l'anneau ou le bouton tenu. Au-dessus des barres (1100) ; sans pointeur, pour
+   que le bouton garde le doigt. Il n'apparaît qu'après 150 ms, pour qu'un appui
+   court ne fasse pas clignoter l'écran ; le remplissage, lui, court sur toute
+   la durée. */
+.hold-dial {
+  --hold-color: var(--recording);
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 75%, transparent);
+  pointer-events: none;
+  animation: hold-dial-in 150ms ease-out 150ms both;
+}
+
+.hold-dial__dial {
+  position: relative;
+  width: min(72vw, 60vh);
+  aspect-ratio: 1;
+}
+
+.hold-dial__ring {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.hold-dial__track {
+  fill: var(--surface);
+  stroke: var(--line-strong);
+  stroke-width: 8;
+}
+
+.hold-dial__fill {
+  fill: none;
+  stroke: var(--hold-color);
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: hold-dial-fill var(--press-ms) linear forwards;
+}
+
+.hold-dial__label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--hold-color);
+}
+
+.hold-dial__title {
+  padding: 0 var(--space-5);
+  font-size: var(--text-display);
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.hold-dial__hint {
+  color: var(--muted);
+  font-size: var(--text-m);
+}
+
+@keyframes hold-dial-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes hold-dial-fill {
+  to {
+    stroke-dashoffset: 0;
+  }
+}

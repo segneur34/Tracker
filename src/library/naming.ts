@@ -29,6 +29,21 @@ export const uniqueSessionFileName = (gpxName: string, taken: Iterable<string>):
   }
 };
 
+const pad = (n: number): string => String(n).padStart(2, '0');
+
+/**
+ * Nom du GPX téléchargé d'une session nommée, sans extension :
+ * `2026-10-10 Wingfoil - Carnon`, pour la retrouver dans Téléchargements. La
+ * date est celle du début de la session (heure locale), sinon le préfixe daté
+ * de son nom de fichier ; sans l'un ni l'autre, ni activité, il reste le nom.
+ */
+export const downloadBaseName = (sessionName: string, activityName: string | null, startMs: number | null, fileName: string): string => {
+  const d = startMs === null ? null : new Date(startMs);
+  const date = d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : /^(\d{4}-\d{2}-\d{2})/.exec(fileName)?.[1];
+  const label = activityName ? `${activityName} - ${sessionName.trim()}` : sessionName.trim();
+  return date ? `${date} ${label}` : label;
+};
+
 /**
  * Types d'activité des autres applications, ramenés à nos supports. Les clés
  * sont en minuscules, sans espace ni tiret ni souligné : `Trail Running`,

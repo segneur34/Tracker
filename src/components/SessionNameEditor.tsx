@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
+import { sessionActivity } from '../core/activities';
 import { librarySession, readSessionExport, updateSessionRecord, useSessionName } from '../hooks/useSessionLibrary';
+import { readStoredActivities } from '../hooks/useSportSettings';
+import { downloadBaseName } from '../library/naming';
 import { bundleSessionGpx } from '../library/sessionBundle';
 import { safeFileName, saveToDownloads } from '../platform/files';
 import { IconDownload } from './icons';
@@ -38,12 +41,17 @@ function SessionNameEditor({ file }: { file: string | null }) {
     setDraft(null);
   };
 
-  /** Le GPX tel que rangé, avec sa fiche et ses capteurs, sous le nom de la session s'il en a un. */
+  /**
+   * Le GPX tel que rangé, avec sa fiche et ses capteurs. Une session nommée part sous
+   * `AAAA-MM-JJ Activité - Nom.gpx`, son nom écrit dans le GPX ; les autres, sous leur nom de fichier.
+   */
   const download = async () => {
     try {
       const session = await readSessionExport(file);
       if (session === null) throw new Error('GPX illisible dans la mémoire.');
-      const named = name ? safeFileName(name) : '';
+      const { record } = session;
+      const activity = sessionActivity(readStoredActivities(), record.activityId, record.sport);
+      const named = name?.trim() ? safeFileName(downloadBaseName(name, activity?.name ?? null, record.summary.startMs, file)) : '';
       await saveToDownloads(named ? `${named}.gpx` : file, bundleSessionGpx(session.gpx, session.record, session.motion));
       setNote({ text: 'Session enregistrée dans Téléchargements.', error: false });
     } catch (err) {

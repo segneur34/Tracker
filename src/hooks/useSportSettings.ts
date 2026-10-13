@@ -125,6 +125,8 @@ export interface StoredSettings {
   loopReturnRatios?: ByActivity<number>;
   /** Durée de l'appui long sur le bouton rond qui met en pause, en millisecondes. */
   longPressMs?: number;
+  /** Durée de l'appui long sur « Arrêter » qui termine l'enregistrement, en millisecondes ; 0 : un simple appui. */
+  stopHoldMs?: number;
   /** Sport en accès direct dans la barre du bas, sur téléphone ; absent : voile. */
   navFamily?: SportFamily;
   /**
@@ -145,6 +147,8 @@ export interface StoredSettings {
 export const DEFAULT_LONG_PRESS_MS = 2000;
 /** Appui long qui change le sport secondaire : 1 s, plus court, un geste involontaire n'y coûte rien. */
 export const DEFAULT_NAV_HOLD_MS = 1000;
+/** Appui long qui arrête l'enregistrement : 2 s, pour qu'un geste involontaire ne coupe pas la session. */
+export const DEFAULT_STOP_HOLD_MS = 2000;
 
 /** Poids de vélo plausible, en kg. */
 export const isValidBikeWeight = (value: unknown): value is number =>
@@ -152,6 +156,10 @@ export const isValidBikeWeight = (value: unknown): value is number =>
 
 const isValidLongPress = (value: unknown): value is number =>
   typeof value === 'number' && isFinite(value) && value >= 300 && value <= 10_000;
+
+/** Appui long pour arrêter : 0 (simple appui), ou de 0,5 à 10 s. */
+const isValidStopHold = (value: unknown): value is number =>
+  value === 0 || (typeof value === 'number' && isFinite(value) && value >= 500 && value <= 10_000);
 
 export const isKnownTerrain = (value: unknown): value is TerrainType =>
   typeof value === 'string' && value in ELEVATION_PRESETS;
@@ -267,6 +275,12 @@ export const rememberRecordActivity = (id: string): void => {
 export const effectiveLongPressMs = (): number => {
   const value = readStoredSettings().longPressMs;
   return isValidLongPress(value) ? value : DEFAULT_LONG_PRESS_MS;
+};
+
+/** Durée effective de l'appui long qui arrête l'enregistrement, lue à chaque appui ; 0 : un simple appui. */
+export const effectiveStopHoldMs = (): number => {
+  const value = readStoredSettings().stopHoldMs;
+  return isValidStopHold(value) ? value : DEFAULT_STOP_HOLD_MS;
 };
 
 const readNavFamily = (): SportFamily => effectiveNavFamily(readStoredSettings());
@@ -815,6 +829,19 @@ export const useAllSportSettings = () => {
     [persist, stored]
   );
 
+  const stopHoldMs = isValidStopHold(stored.stopHoldMs) ? stored.stopHoldMs : DEFAULT_STOP_HOLD_MS;
+  /** Durée de l'appui long qui arrête l'enregistrement, en millisecondes (0 : simple appui) ; `null` revient au défaut. */
+  const setStopHoldMs = useCallback(
+    (value: number | null) => {
+      if (value !== null && !isValidStopHold(value)) return;
+      const next: StoredSettings = { ...stored };
+      if (value === null) delete next.stopHoldMs;
+      else next.stopHoldMs = value;
+      persist(next);
+    },
+    [persist, stored]
+  );
+
   const navFamily = effectiveNavFamily(stored);
   const setNavFamily = useCallback(
     (family: SportFamily) => {
@@ -848,6 +875,7 @@ export const useAllSportSettings = () => {
 
   return {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
+    stopHoldMs, setStopHoldMs,
     navFamily, setNavFamily, navSecond, setNavSecond, navHoldMs, setNavHoldMs,
   };
 };

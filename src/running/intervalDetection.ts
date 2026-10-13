@@ -33,13 +33,42 @@ import { repSpeedProfile, type IntervalPhaseSpan } from './intervalStats';
  *    part au signal.
  * 6. Les efforts se rangent en séances : un repos plus long que
  *    `blockMinGapS` et que `blockGapFactor` fois le repos médian en ouvre une
- *    nouvelle (10/10, puis 20/20). Dans une séance, un effort plus court que
+ *    nouvelle (10/10, puis 20/20), comme deux efforts de suite dont la durée
+ *    s'écarte de `blockWorkFactor` fois la médiane de la séance en cours (un
+ *    20/20 enchaîné sans long repos ; un seul effort à part ne coupe pas). Dans une séance, un effort plus court que
  *    `minWorkFraction` de la durée médiane est une accélération d'échauffement,
  *    écartée. Une séance d'un seul effort n'est gardée que s'il n'y en a pas
  *    d'autre.
  * L'échauffement et le retour au calme, plus lents que le seuil, s'écartent
  * d'eux-mêmes ; un repos est le temps entre deux efforts.
  */
+
+interface Effort {
+  startMs: number;
+  endMs: number;
+}
+
+const durationMs = (e: Effort): number => e.endMs - e.startMs;
+
+/**
+ * Séance coupée là où la durée des efforts change durablement (un 10/10
+ * enchaîné sur un 20/20) : un effort et le suivant tous deux à `factor` fois
+ * la durée médiane de la séance en cours, ou plus loin, plus longs ou plus
+ * courts. Un effort seul à part, ou le dernier, ne coupe pas.
+ */
+const splitOnDuration = (efforts: Effort[], factor: number): Effort[][] => {
+  if (efforts.length === 0) return [[]];
+  const parts: Effort[][] = [[efforts[0]]];
+  efforts.slice(1).forEach((effort, j) => {
+    const part = parts[parts.length - 1];
+    const typical = median(part.map(durationMs));
+    const apart = (e: Effort | undefined) =>
+      e !== undefined && Math.max(durationMs(e), typical) >= factor * Math.min(durationMs(e), typical);
+    if (apart(effort) && apart(efforts[j + 2])) parts.push([effort]);
+    else part.push(effort);
+  });
+  return parts;
+};
 
 /** Pourquoi aucune répétition n'est trouvée. */
 export type DetectionMiss = 'peu-de-points' | 'sans-contraste' | 'aucun-effort';
@@ -232,15 +261,16 @@ export const detectIntervals = (
   // Séances : un repos bien plus long que les autres en ouvre une nouvelle.
   const rests = efforts.slice(1).map((e, j) => (e.startMs - efforts[j].endMs) / 1000);
   const gap = rests.length > 0 ? Math.max(params.blockMinGapS, params.blockGapFactor * median(rests)) : Infinity;
-  const blocks: { startMs: number; endMs: number }[][] = [[efforts[0]]];
+  const blocks: Effort[][] = [[efforts[0]]];
   efforts.slice(1).forEach((effort, j) => {
     if (rests[j] > gap) blocks.push([effort]);
     else blocks[blocks.length - 1].push(effort);
   });
-  // Dans une séance, un effort bien plus court que les autres est une accélération, pas une répétition.
-  const trimmed = blocks.map((block) => {
-    const typical = median(block.map((e) => e.endMs - e.startMs));
-    return block.filter((e) => e.endMs - e.startMs >= params.minWorkFraction * typical);
+  // Dans une séance, un effort bien plus court que les autres est une accélération, pas une répétition ;
+  // les accélérations écartées, un changement durable de la durée des efforts ouvre une autre séance.
+  const trimmed = blocks.flatMap((block) => {
+    const typical = median(block.map(durationMs));
+    return splitOnDuration(block.filter((e) => durationMs(e) >= params.minWorkFraction * typical), params.blockWorkFactor);
   });
   const several = trimmed.filter((b) => b.length > 1);
   const series = (several.length > 0 ? several : trimmed.filter((b) => b.length > 0)).map(toSeries);

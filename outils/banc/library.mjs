@@ -29,6 +29,13 @@ const evaluate = async (expression) => {
   return res.result?.result?.value;
 };
 const go = async (path, ms = 2500) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+// « Arrêter » se tient (appui long réglable, 2 s par défaut) : appui, attente, puis relâcher.
+const holdStop = async () => {
+  const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
+  if (down !== 'ok') return down;
+  await wait(2300);
+  return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
+};
 const clickText = (text, selector = 'button') => evaluate(`(() => { const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.trim().startsWith(${JSON.stringify(text)})); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
 const setFiles = async (selector, paths) => {
   const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
@@ -66,7 +73,7 @@ await wait(800);
 await evaluate(`(() => { const s = [...document.querySelectorAll('select')].pop(); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(s, '600'); s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()`);
 console.log('Démarrer :', await clickText('Démarrer'));
 await wait(9000);
-console.log('Arrêter :', await clickText('Arrêter'));
+console.log('Arrêter :', await holdStop());
 await wait(3000);
 console.log(await lines(/points|Rangée|Session/));
 console.log('Analyser :', await clickText('Analyser'));

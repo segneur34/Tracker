@@ -29,6 +29,13 @@ await new Promise((r) => { ws.onopen = r; });
 const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
+// « Arrêter » se tient (appui long réglable, 2 s par défaut) : appui, attente, puis relâcher.
+const holdStop = async () => {
+  const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
+  if (down !== 'ok') return down;
+  await wait(2300);
+  return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
+};
 const clickText = (text) => evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes(${JSON.stringify(text)})); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
 const setFile = async (selector, path) => {
   const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
@@ -52,7 +59,7 @@ await wait(800);
 await evaluate(`(() => { const s = [...document.querySelectorAll('select')].pop(); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(s, '600'); s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()`);
 console.log('Démarrer :', await clickText('Démarrer'));
 await wait(8000);
-console.log('Arrêter :', await clickText('Arrêter'));
+console.log('Arrêter :', await holdStop());
 await wait(2000);
 console.log('page enregistrement :', await evaluate(`document.body.innerText.split('\\n').filter((l) => /points|Rangée|Session/.test(l)).join(' | ')`));
 console.log('Analyser :', await clickText('Analyser'));

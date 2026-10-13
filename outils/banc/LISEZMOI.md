@@ -124,6 +124,8 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 
+« Arrêter » se tient depuis le point 99 (2 s par défaut) : les scripts qui arrêtent un enregistrement le font par `holdStop`, un appui simulé (`pointerdown`, 2,3 s, `pointerup`).
+
 ## Prouver qu'un changement est neutre
 
 1. Avant le changement : `bench.mjs` avec `DUMP=avant.txt`, sur un profil neuf.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guessSport, uniqueSessionFileName } from './naming';
+import { downloadBaseName, guessSport, uniqueSessionFileName } from './naming';
 
 describe('uniqueSessionFileName', () => {
   it("garde le nom s'il est libre, sinon ajoute un numéro", () => {
@@ -48,5 +48,20 @@ describe('guessSport', () => {
     expect(guessSport('9')).toBeNull();
     expect(guessSport(undefined)).toBeNull();
     expect(guessSport('toString')).toBeNull();
+  });
+});
+
+describe('downloadBaseName', () => {
+  it("écrit la date du début, l'activité puis le nom", () => {
+    const startMs = new Date(2026, 9, 10, 10, 0).getTime();
+    expect(downloadBaseName('Carnon', 'Wingfoil', startMs, 'x.gpx')).toBe('2026-10-10 Wingfoil - Carnon');
+  });
+
+  it('prend sinon la date du nom de fichier', () => {
+    expect(downloadBaseName(' Carnon ', 'Wingfoil', null, '2026-10-09_10-00-00_wingfoil.gpx')).toBe('2026-10-09 Wingfoil - Carnon');
+  });
+
+  it("se passe de date et d'activité inconnues", () => {
+    expect(downloadBaseName('Carnon', null, null, 'sortie.gpx')).toBe('Carnon');
   });
 });

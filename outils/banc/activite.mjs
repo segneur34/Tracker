@@ -35,6 +35,13 @@ ws.onmessage = (e) => {
 await new Promise((r) => { ws.onopen = r; });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
+// « Arrêter » se tient (appui long réglable, 2 s par défaut) : appui, attente, puis relâcher.
+const holdStop = async () => {
+  const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
+  if (down !== 'ok') return down;
+  await wait(2300);
+  return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
+};
 const clickText = (text, scope = 'button') => evaluate(`(() => { const b = [...document.querySelectorAll(${JSON.stringify(scope)})].find((x) => x.textContent.trim().includes(${JSON.stringify(text)}) && !x.disabled); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
 const setFile = async (selector, path) => {
   const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
@@ -135,7 +142,7 @@ await wait(1000);
 console.log('Afficher la carte :', await clickText('Afficher la carte'));
 await wait(1000);
 console.log('carte montée :', await evaluate(`document.querySelectorAll('.leaflet-container').length`));
-console.log('Arrêter :', await clickText('Arrêter'));
+console.log('Arrêter :', await holdStop());
 await wait(2500);
 console.log('attente :', await lines('/points\\./'));
 console.log('Analyser :', await clickText('Analyser'));

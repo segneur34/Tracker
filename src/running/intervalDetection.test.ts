@@ -159,6 +159,43 @@ describe('detectIntervals', () => {
     ]);
   });
 
+  /** 7 min de footing, 6 × 10/10 puis aussitôt 6 × 20/20, sans long repos entre les deux, 5 min de footing. */
+  const chained = (s: number): number => {
+    if (s < 420) return 2.6;
+    let t = s - 420;
+    if (t < 6 * 20) return t % 20 < 10 ? 5.3 : 0.4;
+    t -= 6 * 20;
+    if (t < 6 * 40) return t % 40 < 20 ? 5 : 0.4;
+    return 2.6;
+  };
+  const CHAINED_S = 420 + 6 * 20 + 6 * 40 + 300;
+
+  it('range en deux séances un 10/10 enchaîné sur un 20/20 sans long repos', () => {
+    const found = detect(buildTrack(chained, CHAINED_S));
+    expect(found.series.map((s) => s.workout)).toEqual([
+      { reps: 6, workS: 10, restS: 10 },
+      { reps: 6, workS: 20, restS: 20 },
+    ]);
+  });
+
+  it("garde en une séance des efforts réguliers, même avec un effort deux fois plus long", () => {
+    // La quatrième répétition dure 100 s au lieu de 60, son repos 20 : seule, elle ne coupe pas la séance.
+    const longFourth = (s: number) => {
+      const t = s - WARMUP_S;
+      return t >= 3 * 120 + 60 && t < 3 * 120 + 100 ? 5 : session(s);
+    };
+    const found = detect(buildTrack(longFourth, SESSION_S));
+    expect(found.series).toHaveLength(1);
+    expect(works(found)).toHaveLength(8);
+    // Des efforts un peu inégaux (de 50 à 70 s) restent aussi ensemble.
+    const uneven = (s: number) => {
+      const t = s - WARMUP_S;
+      if (s < WARMUP_S || t >= 8 * 120 - 60) return session(s);
+      return t % 120 < 50 + ((Math.floor(t / 120) * 7) % 21) ? 5 : 1.5;
+    };
+    expect(detect(buildTrack(uneven, SESSION_S)).series).toHaveLength(1);
+  });
+
   it('ne voit pas de fractionné dans une course régulière, sauf seuil imposé', () => {
     const steady = (s: number) => 3 + 0.2 * Math.sin(s / 7);
     const track = buildTrack(steady, 1800);

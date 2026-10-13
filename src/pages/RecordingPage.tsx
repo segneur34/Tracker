@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import ActivitySelect from '../components/ActivitySelect';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
+import HoldDial from '../components/ui/HoldDial';
 import FollowTracePicker from '../components/FollowTracePicker';
 import IntervalCard from '../components/IntervalCard';
 import PageHeader from '../components/ui/PageHeader';
@@ -15,12 +16,14 @@ import LiveMap from '../components/LiveMap';
 import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { useIntervalTimerOpen } from '../hooks/useIntervalTimer';
+import { useLongPress } from '../hooks/useLongPress';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../hooks/useMarkGuide';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  effectiveBikeSetup, effectiveDistanceUnit, effectiveFoil, effectiveJumpSettings, effectiveLiveFields, effectiveSpeedUnit, lastRecordActivity,
+  effectiveBikeSetup, effectiveDistanceUnit, effectiveFoil, effectiveJumpSettings, effectiveLiveFields, effectiveSpeedUnit, effectiveStopHoldMs,
+  lastRecordActivity,
   readStoredActivities, rememberRecordActivity,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
@@ -28,7 +31,7 @@ import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import {
   analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording,
-  resumeRecording, startRecording, stopRecording, useRecorder,
+  resumeRecording, startRecording, stopRecording, useRecorder, type RecorderState,
 } from '../hooks/useRecorder';
 import {
   followProgress, followedTraceLengthM, splitFollowedTrace, type FollowProgress, type FollowedTrace,
@@ -245,6 +248,51 @@ const liveEnergySetup = (activity: Activity, weightKg: number | null, economyMlK
 
 /** Carte de l'enregistrement en cours, réduite ou non ; mémorisé sur l'appareil. */
 const RECORDING_SECTION_DEFAULTS = { carte: true };
+
+/**
+ * « Arrêter » : tenu le temps réglé dans Réglages (2 s par défaut), pour qu'un
+ * geste involontaire ne coupe pas la session ; un appui court le rappelle. À 0,
+ * un simple appui arrête. Le grand cadran montre l'appui sous le doigt.
+ */
+function StopButton({ status }: { status: RecorderState['status'] }) {
+  const busy = status === 'starting' || status === 'stopping';
+  // Lue au rendu, comme à chaque appui : un réglage changé dans Réglages vaut au retour sur la page.
+  const holdMs = effectiveStopHoldMs();
+  const stop = useCallback(() => void stopRecording(), []);
+  const { pressingMs, handlers } = useLongPress(stop, effectiveStopHoldMs, holdMs > 0 && !busy);
+  /** Rappel du geste après un appui trop court, effacé au bout de quelques secondes. */
+  const [hint, setHint] = useState(false);
+  useEffect(() => {
+    if (!hint) return undefined;
+    const timer = window.setTimeout(() => setHint(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [hint]);
+
+  const onClick = (e: MouseEvent) => {
+    if (holdMs === 0) {
+      stop();
+      return;
+    }
+    handlers.onClick(e);
+    // Le clic qui suit un appui long abouti est annulé par `useLongPress` : seul un appui court rappelle le geste.
+    if (!e.defaultPrevented) setHint(true);
+  };
+
+  const holdS = (holdMs / 1000).toLocaleString('fr-FR');
+  return (
+    <>
+      <Button variant="danger" size="l" style={{ flex: 1 }} disabled={busy} {...handlers} onClick={onClick}>
+        <span className="ui-record-dot ui-record-dot--stop" />
+        {status === 'stopping' ? 'Enregistrement du fichier…' : hint ? `Maintenir ${holdS} s pour arrêter` : 'Arrêter'}
+      </Button>
+      {pressingMs !== null && (
+        <HoldDial pressMs={pressingMs} color="var(--recording)"
+          icon={<span className="ui-record-dot ui-record-dot--stop" style={{ width: '48px', height: '48px', borderRadius: '8px' }} />}
+          title="Arrêter" hint="Maintenez le bouton" />
+      )}
+    </>
+  );
+}
 
 function RecordingPage() {
   const recorder = useRecorder();
@@ -475,13 +523,7 @@ function RecordingPage() {
               Reprendre
             </Button>
           )}
-          <Button
-            variant="danger" size="l" style={{ flex: 1 }}
-            onClick={() => void stopRecording()}
-            disabled={recorder.status === 'starting' || recorder.status === 'stopping'}>
-            <span className="ui-record-dot ui-record-dot--stop" />
-            {recorder.status === 'stopping' ? 'Enregistrement du fichier…' : 'Arrêter'}
-          </Button>
+          <StopButton status={recorder.status} />
         </div>
       ) : !pending && (
         // Au repos, la moitié du bouton choisit une trace à suivre.
