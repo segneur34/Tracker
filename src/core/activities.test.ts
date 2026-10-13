@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   BIKE_INTERVALS_ACTIVITY, DEFAULT_ACTIVITIES, FAMILY_SHADES, GRAVEL_ACTIVITY, RUN_INTERVALS_ACTIVITY, SURF_ACTIVITY, SURF_FOIL_ACTIVITY,
   VTT_ACTIVITY, activitiesOfFamily,
-  activityCounts, activityFamily, activityTreatment, baseActivity, findActivity, insertActivity, newActivityId, nextActivityColor,
-  readActivities, recolorActivities, sessionActivity, upgradeActivities, type Activity,
+  activityCounts, activityFamily, activityTreatment, baseActivity, findActivity, insertActivity, isActivityShown, isFamilyHidden,
+  newActivityId, nextActivityColor, pickNavFamily, pickNavSecond, readActivities, recolorActivities, sessionActivity, upgradeActivities,
+  visibleActivities, visibleFamilies, withHidden, type Activity,
 } from './activities';
 
 const moth: Activity = { id: 'a-moth', name: 'Moth à foil', base: 'wingfoil', color: '#2e7d32' };
@@ -243,5 +244,67 @@ describe('activityCounts', () => {
     const kite = baseActivity('kite');
     const counts = activityCounts([moth, null, kite, moth, voile], [voile, trail, moth]);
     expect(counts.map((c) => [c.activity.id, c.count])).toEqual([[voile.id, 1], [moth.id, 2], ['kite', 1]]);
+  });
+});
+
+describe('familles et activités cachées (point 100)', () => {
+  const hiddenVtt = withHidden(VTT_ACTIVITY, true);
+  const withVtt = DEFAULT_ACTIVITIES.map((a) => (a.id === VTT_ACTIVITY.id ? hiddenVtt : a));
+
+  it('readActivities garde « hidden: true » et ignore toute autre valeur', () => {
+    const [kept, ignored] = readActivities([{ ...moth, hidden: true }, { ...trail, hidden: 'oui' }]);
+    expect(kept).toEqual({ ...moth, hidden: true });
+    expect(ignored).toEqual(trail);
+    expect('hidden' in ignored).toBe(false);
+  });
+
+  it('withHidden pose ou retire le champ, sans le laisser à faux', () => {
+    expect(withHidden(moth, true)).toEqual({ ...moth, hidden: true });
+    expect(withHidden(withHidden(moth, true), false)).toEqual(moth);
+    expect('hidden' in withHidden(withHidden(moth, true), false)).toBe(false);
+  });
+
+  it("une liste mise à jour garde l'activité cachée", () => {
+    const old = [voile, withHidden(trail, true)];
+    expect(upgradeActivities(old, 4).find((a) => a.id === trail.id)?.hidden).toBe(true);
+  });
+
+  it('une famille est cachée par Réglages, ou quand toutes ses activités le sont', () => {
+    expect(isFamilyHidden(DEFAULT_ACTIVITIES, ['surf'], 'surf')).toBe(true);
+    expect(isFamilyHidden(withVtt, [], 'velo')).toBe(false);
+    const allBikes = DEFAULT_ACTIVITIES.map((a) => (activityFamily(a) === 'velo' ? withHidden(a, true) : a));
+    expect(isFamilyHidden(allBikes, [], 'velo')).toBe(true);
+    // Sans activité, une famille est cachée aussi.
+    expect(isFamilyHidden([voile], [], 'surf')).toBe(true);
+    expect(isFamilyHidden([voile], [], 'voile')).toBe(false);
+  });
+
+  it('visibleFamilies et visibleActivities', () => {
+    expect(visibleFamilies(withVtt, ['surf'])).toEqual(['voile', 'course', 'velo', 'fractionne']);
+    expect(visibleActivities(withVtt, [], 'velo').map((a) => a.name)).toEqual(['Route', 'Gravel']);
+    expect(visibleActivities(withVtt, ['surf']).map((a) => a.name)).not.toContain('Surf foil');
+    expect(visibleActivities(withVtt, ['surf']).map((a) => a.name)).not.toContain('VTT');
+  });
+
+  it("l'activité de base d'un calcul suit sa famille", () => {
+    expect(isActivityShown(baseActivity('kite'), DEFAULT_ACTIVITIES, [])).toBe(true);
+    expect(isActivityShown(baseActivity('kite'), DEFAULT_ACTIVITIES, ['voile'])).toBe(false);
+    expect(isActivityShown(hiddenVtt, withVtt, [])).toBe(false);
+  });
+
+  it('le favori caché retombe sur la première famille visible', () => {
+    expect(pickNavFamily('voile', ['voile', 'course'])).toBe('voile');
+    expect(pickNavFamily('surf', ['voile', 'course'])).toBe('voile');
+    expect(pickNavFamily('voile', ['course', 'velo'])).toBe('course');
+    expect(pickNavFamily('surf', [])).toBe('surf');
+  });
+
+  it('le secondaire caché, ou égal au favori, retombe sur un autre sport visible, sinon la planification', () => {
+    expect(pickNavSecond('course', 'voile', ['voile', 'course'])).toBe('course');
+    expect(pickNavSecond('surf', 'voile', ['voile', 'course', 'velo'])).toBe('course');
+    expect(pickNavSecond('voile', 'voile', ['voile', 'velo'])).toBe('velo');
+    expect(pickNavSecond(null, 'voile', ['voile', 'course'])).toBe('course');
+    expect(pickNavSecond('planifier', 'voile', ['voile'])).toBe('planifier');
+    expect(pickNavSecond('course', 'voile', ['voile'])).toBe('planifier');
   });
 });

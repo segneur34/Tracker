@@ -7,15 +7,16 @@ import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
 import { activityCounts } from '../core/activities';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
-import { readStoredActivities } from '../hooks/useSportSettings';
-import { ROUTE_SORTS, isRouteSort, routeActivity, routeDistanceM, sortRoutes, type RouteSort } from '../planning/routeList';
+import { useVisibility } from '../hooks/useSportSettings';
+import { ROUTE_SORTS, isRouteSort, routeActivity, routeDistanceM, shownRoutes, sortRoutes, type RouteSort } from '../planning/routeList';
 import { jsonStore } from '../platform/storage';
 
 /**
  * Tous les itinéraires planifiés (point 68), ouverts depuis la carte de
  * l'accueil, qui n'en montre que les derniers : tri au choix, retenu sur
  * l'appareil (`tracker.routeList`), et onglets par activité. Chaque ligne
- * ouvre l'itinéraire, ou part dessus (« Partir »).
+ * ouvre l'itinéraire, ou part dessus (« Partir »). Ceux d'une activité
+ * cachée dans Réglages n'y sont pas (§10, point 100).
  */
 
 const PREFS_KEY = 'tracker.routeList';
@@ -28,9 +29,9 @@ const readSort = (): RouteSort => {
 };
 
 function RoutesPage() {
-  const { routes, error } = useRouteLibrary();
-  // Relues à l'ouverture de la page : les activités se changent dans Réglages.
-  const [activities] = useState(readStoredActivities);
+  const { routes: allRoutes, error } = useRouteLibrary();
+  const { activities, isShown } = useVisibility();
+  const routes = useMemo(() => shownRoutes(allRoutes, activities, isShown), [allRoutes, activities, isShown]);
   const [sort, setSortState] = useState<RouteSort>(readSort);
   const setSort = (next: RouteSort) => {
     setSortState(next);

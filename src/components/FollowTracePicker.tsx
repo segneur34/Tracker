@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
-import { useRouteLibrary } from '../hooks/useRouteLibrary';
+import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { followTrace } from '../hooks/useFollowedTrace';
 import { readSessionGpx, useSessionLibrary } from '../hooks/useSessionLibrary';
-import { readStoredActivities } from '../hooks/useSportSettings';
+import { useVisibility } from '../hooks/useSportSettings';
+import { shownRoutes } from '../planning/routeList';
 import { followedTraceFromPoints, followedTraceFromRoute, type FollowedTrace } from '../recording/followedTrace';
 import Button from './ui/Button';
 import Card from './ui/Card';
@@ -50,7 +51,9 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
   const [shown, setShown] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activities] = useState(readStoredActivities);
+  // Ni itinéraire ni session d'une activité cachée dans Réglages (§10, point 100).
+  const { activities, isShown } = useVisibility();
+  const routes = useMemo(() => shownRoutes(library.routes, activities, isShown), [library.routes, activities, isShown]);
   /** Activité retenue dans l'onglet Sessions ; `null` : toutes. */
   const [activityFilter, setActivityFilter] = useState<string | null>(null);
 
@@ -58,8 +61,9 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
   const sortedSessions = useMemo(
     () => [...sessions]
       .sort((a, b) => b.record.summary.startMs - a.record.summary.startMs)
-      .map((session) => ({ ...session, activity: sessionActivity(activities, session.record.activityId, session.record.sport) })),
-    [sessions, activities]
+      .map((session) => ({ ...session, activity: sessionActivity(activities, session.record.activityId, session.record.sport) }))
+      .filter((s) => s.activity === null || isShown(s.activity)),
+    [sessions, activities, isShown]
   );
   /** Activités présentes parmi les sessions, dans l'ordre des Réglages. */
   const sessionActivities = useMemo(
@@ -70,9 +74,8 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
     ? sortedSessions
     : sortedSessions.filter((s) => s.activity?.id === activityFilter);
 
-  const pickRoute = (index: number) => {
-    const saved = library.routes[index];
-    const trace = saved ? followedTraceFromRoute(saved.record) : null;
+  const pickRoute = (saved: SavedRoute) => {
+    const trace = followedTraceFromRoute(saved.record);
     if (!trace) {
       setError('Cet itinéraire n\'a pas assez de points.');
       return;
@@ -105,10 +108,10 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: 'var(--text-m)' }}>
         <div className="ui-tabs" role="group" aria-label="Trace à suivre" style={{ paddingBottom: 0 }}>
           <button type="button" className="ui-tab" aria-pressed={tab === 'route'} onClick={() => setTab('route')}>
-            Itinéraires ({library.routes.length})
+            Itinéraires ({routes.length})
           </button>
           <button type="button" className="ui-tab" aria-pressed={tab === 'session'} onClick={() => setTab('session')}>
-            Sessions ({sessions.length})
+            Sessions ({sortedSessions.length})
           </button>
         </div>
 
@@ -119,15 +122,15 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
         )}
         {error && <div className="ui-alert ui-alert--danger">{error}</div>}
 
-        {tab === 'route' && status === 'ready' && (library.routes.length === 0 ? (
+        {tab === 'route' && status === 'ready' && (routes.length === 0 ? (
           <p style={{ margin: 0, color: 'var(--muted)' }}>
             Aucun itinéraire enregistré : planifiez-en un depuis l'accueil.
           </p>
         ) : (
           <ul style={LIST_STYLE}>
-            {library.routes.map((saved, i) => (
+            {routes.map((saved) => (
               <li key={saved.base}>
-                <button type="button" style={ROW_STYLE} onClick={() => pickRoute(i)}>
+                <button type="button" style={ROW_STYLE} onClick={() => pickRoute(saved)}>
                   <strong>{saved.record.name}</strong>
                   <span style={DETAIL_STYLE}>Enregistré le {formatDate(saved.record.updatedAt)}</span>
                 </button>

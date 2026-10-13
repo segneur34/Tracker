@@ -39,6 +39,35 @@
   border-top: 1px solid var(--line-strong);
 }
 
+/* Œil d'une famille ou d'une activité (§10, point 100), au bout de sa ligne. */
+.settings-eye {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: var(--space-1);
+  border: none;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.settings-eye:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--line-soft);
+}
+
+.settings-eye:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Activité cachée, ou de famille cachée : grisée, son œil reste net. */
+.settings-activity--hidden .settings-activity__head > :not(.settings-eye) {
+  opacity: 0.5;
+}
+
 .settings-activity__head {
   display: flex;
   align-items: center;

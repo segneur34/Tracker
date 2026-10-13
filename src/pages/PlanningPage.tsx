@@ -43,11 +43,12 @@ import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
   effectiveDistanceUnit, effectiveDurationSettings, effectiveElevationProfile, effectiveGradeRange, effectiveLoopReturnRatio, effectiveMarkGuide,
-  effectivePace, effectiveWayTypes, lastRecordActivity, readStoredActivities, PLANNING_FAMILIES,
+  effectivePace, effectiveWayTypes, lastRecordActivity, useVisibility, PLANNING_FAMILIES,
 } from '../hooks/useSportSettings';
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
 import { PACE_LEVEL_LABEL, estimateRouteDurationS } from '../planning/duration';
+import { shownRoutes } from '../planning/routeList';
 import { searchPlaces, type Place } from '../planning/geocoding';
 import { WAY_TYPES } from '../planning/brouterProfile';
 import {
@@ -261,9 +262,10 @@ function WayPicker({ mode, label, compact, className, style, onChange, children 
 const activityMode = (activity: Activity | null): RouteMode => (activity ? waysMode(effectiveWayTypes(activity)) : null) ?? DEFAULT_ROUTE_MODE;
 
 function PlanningPage() {
-  const [activities] = useState<Activity[]>(readStoredActivities);
+  // Une activité cachée dans Réglages n'est ni proposée (`ActivitySheet`) ni reprise (§10, point 100).
+  const { activities, isShown } = useVisibility();
   // Le fractionné ne se planifie pas : ses activités ne sont ni proposées ni reprises.
-  const plannable = (a: Activity | null): a is Activity => a !== null && PLANNING_FAMILIES.includes(activityFamily(a));
+  const plannable = (a: Activity | null): a is Activity => a !== null && PLANNING_FAMILIES.includes(activityFamily(a)) && isShown(a);
   const [activityId, setActivityIdState] = useState<string | null>(
     () => [findActivity(activities, readPrefs().activityId), lastRecordActivity(), ...activities].find(plannable)?.id ?? null
   );
@@ -295,6 +297,8 @@ function PlanningPage() {
   /** Mode des éditions : en voile, toujours la ligne droite ; le type de voie choisi reste pour les autres activités. */
   const editMode: RouteMode = sailing ? 'straight' : mode;
   const library = useRouteLibrary();
+  /** « Mes itinéraires » : sans ceux d'une activité cachée. */
+  const listedRoutes = useMemo(() => shownRoutes(library.routes, activities, isShown), [library.routes, activities, isShown]);
   const { go, canGo } = useGoOnRoute();
 
   /** Types de voie cochés au-dessus de la carte : ceux de tout l'itinéraire, recalculé, et des points suivants (annulable). */
@@ -715,7 +719,7 @@ function PlanningPage() {
     { key: 'trace', label: 'tracé' },
     { key: 'points', label: `${sailing ? 'balises' : 'points'} (${pointCount})` },
     { key: 'ranger', label: 'enregistrer' },
-    { key: 'liste', label: `mes itinéraires (${library.routes.length})` },
+    { key: 'liste', label: `mes itinéraires (${listedRoutes.length})` },
   ];
 
   return (
@@ -1206,13 +1210,13 @@ function PlanningPage() {
             )}
           </PlanBlock>
 
-          <PlanBlock id="planning.liste" label={`Mes itinéraires (${library.routes.length})`} open={open.liste} onToggle={() => toggle('liste')}>
+          <PlanBlock id="planning.liste" label={`Mes itinéraires (${listedRoutes.length})`} open={open.liste} onToggle={() => toggle('liste')}>
             {library.error && <div className="ui-alert ui-alert--danger">{library.error}</div>}
-            {library.routes.length === 0 ? (
+            {listedRoutes.length === 0 ? (
               <p className="plan-note">Aucun itinéraire enregistré pour l'instant.</p>
             ) : (
               <RouteList
-                routes={library.routes}
+                routes={listedRoutes}
                 activities={activities}
                 onOpen={openSaved}
                 currentBase={current?.base ?? null}

@@ -6,7 +6,7 @@ import { useIntervalTimer } from '../hooks/useIntervalTimer';
 import { useLongPress } from '../hooks/useLongPress';
 import { togglePauseRecording, useRecorder } from '../hooks/useRecorder';
 import {
-  effectiveLongPressMs, effectiveNavHoldMs, rememberNavSecond, useNavFamily, useNavSecond, type NavSecond,
+  effectiveLongPressMs, effectiveNavHoldMs, rememberNavSecond, useNavFamily, useNavSecond, useVisibility, type NavSecond,
 } from '../hooks/useSportSettings';
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
 import { recordingDurationMs } from '../recording/session';
@@ -27,6 +27,8 @@ import HoldDial from './ui/HoldDial';
  * devient le sport secondaire, retenu. La planification des itinéraires
  * (« Planifier ») peut y prendre la place d'un sport. Le bouton rond est vert au repos,
  * rouge pendant un enregistrement.
+ * Une famille cachée dans Réglages n'est ni dans les barres ni dans le menu ;
+ * son adresse s'ouvre toujours (§10, point 100).
  * Sur ordinateur, toutes les destinations dans une barre en haut, et
  * « Itinéraires » à côté du bouton Enregistrer (sur téléphone, on y va depuis
  * l'accueil). Le choix se fait en CSS (`AppShell.css`), sans lecture de la
@@ -121,6 +123,7 @@ function AppShell() {
   const onLongPress = useCallback(() => void togglePauseRecording(), []);
   const { pressingMs, handlers } = useLongPress(onLongPress, effectiveLongPressMs, canToggle);
 
+  const { families } = useVisibility();
   const navFamily = useNavFamily();
   const secondKey = useNavSecond();
   const second = SECOND_TABS[secondKey];
@@ -148,7 +151,7 @@ function AppShell() {
         <Link to="/" className="shell-brand">Tracker</Link>
         <nav aria-label="Navigation principale" className="shell-toplinks">
           {topLink(HOME)}
-          {SPORT_FAMILIES.map((f) => topLink(FAMILY_TABS[f]))}
+          {families.map((f) => topLink(FAMILY_TABS[f]))}
           {topLink(SETTINGS)}
         </nav>
         <div className="shell-topactions">
@@ -237,7 +240,7 @@ function AppShell() {
         {sportsOpen && (
           <div className="shell-sports-menu" role="menu" aria-label="Sport secondaire">
             <span className="shell-sports-menu__title">Sport secondaire</span>
-            {[...SPORT_FAMILIES.filter((f) => f !== navFamily), 'planifier' as const].map((key) => {
+            {[...families.filter((f) => f !== navFamily), 'planifier' as const].map((key) => {
               const d = SECOND_TABS[key];
               return (
                 <NavLink

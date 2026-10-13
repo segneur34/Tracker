@@ -1,19 +1,25 @@
-import { useState } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
 import MemoryStatus from '../components/MemoryStatus';
 import RouteList from '../components/RouteList';
-import { IconBike, IconChevronRight, IconRoute, IconRun, IconSail, IconStopwatch, IconWave } from '../components/icons';
+import { FAMILY_ICON } from '../components/familyIcons';
+import { IconChevronRight, IconRoute } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
+import { FAMILY_ACCENT, FAMILY_LABEL } from '../core/activities';
+import type { SportFamily } from '../core/sportProfiles';
+import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
-import { readStoredActivities } from '../hooks/useSportSettings';
+import { useVisibility } from '../hooks/useSportSettings';
+import { shownRoutes } from '../planning/routeList';
 
 /**
  * Accueil : enregistrer ou planifier un itinéraire, le graphe d'activités et
- * ses totaux (dès qu'il y a des sessions), les cinq familles, puis les
+ * ses totaux (dès qu'il y a des sessions), les familles visibles, puis les
  * derniers itinéraires planifiés (dès que la mémoire est prête), dont la carte
- * mène à la liste complète.
+ * mène à la liste complète. Une famille cachée dans Réglages n'y a pas sa
+ * carte, une activité cachée pas ses itinéraires (§10, point 100).
  */
 
 /** Itinéraires montrés sur l'accueil, les derniers rangés ; les autres sont dans la liste complète. */
@@ -31,14 +37,23 @@ const cardStyle = {
   textDecoration: 'none',
 } as const;
 
+/** Ce que chaque famille analyse, sous son nom. */
+const FAMILY_BLURB: Record<SportFamily, string> = {
+  voile: 'Wingfoil, planche, kite, bateau : vitesse, tops, virements et empannages, vent, VMG.',
+  course: 'Allure, dénivelé, zones de pente, vitesse et altitude.',
+  velo: 'Vitesse, dénivelé, zones de pente, meilleurs segments, puissance et énergie.',
+  fractionne: "À pied ou à vélo : compteur de répétitions à l'enregistrement, avec bips, puis l'analyse de la course ou du vélo.",
+  surf: 'Vagues, temps sur la vague, vitesse, rame et retour au pic ; sur foil, les vols enchaînés.',
+};
+
 const titleStyle = { display: 'flex', alignItems: 'center', gap: '10px', fontSize: 'var(--text-l)', fontWeight: 700 } as const;
 
 function Home() {
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
   const { status, sessions, error } = useSessionLibrary();
-  const { routes } = useRouteLibrary();
-  // Relues à l'ouverture de la page : les activités se changent dans Réglages.
-  const [activities] = useState(readStoredActivities);
+  const { routes: allRoutes } = useRouteLibrary();
+  const { activities, families, isShown } = useVisibility();
+  const routes = useMemo(() => shownRoutes(allRoutes, activities, isShown), [allRoutes, activities, isShown]);
   // Premier lancement sur le téléphone, ou dossier devenu inaccessible : la mémoire d'abord. Une erreur
   // (écriture refusée, réglages du dossier illisibles) se voit aussi dès l'accueil.
   const memoryNeedsAction = status === 'unavailable' || status === 'needs-permission' || error !== null;
@@ -65,40 +80,15 @@ function Home() {
 
       {sessions.length > 0 && <ActivityChart />}
 
-      <Link to="/voile" style={cardStyle}>
-        <span style={{ ...titleStyle, color: 'var(--voile)' }}><IconSail /> Voile</span>
-        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
-          Wingfoil, planche, kite, bateau : vitesse, tops, virements et empannages, vent, VMG.
-        </span>
-      </Link>
-
-      <Link to="/course" style={cardStyle}>
-        <span style={{ ...titleStyle, color: 'var(--course)' }}><IconRun /> Course à pied</span>
-        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
-          Allure, dénivelé, zones de pente, vitesse et altitude.
-        </span>
-      </Link>
-
-      <Link to="/velo" style={cardStyle}>
-        <span style={{ ...titleStyle, color: 'var(--velo)' }}><IconBike /> Vélo</span>
-        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
-          Vitesse, dénivelé, zones de pente, meilleurs segments, puissance et énergie.
-        </span>
-      </Link>
-
-      <Link to="/fractionne" style={cardStyle}>
-        <span style={{ ...titleStyle, color: 'var(--fractionne)' }}><IconStopwatch /> Fractionné</span>
-        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
-          À pied ou à vélo : compteur de répétitions à l'enregistrement, avec bips, puis l'analyse de la course ou du vélo.
-        </span>
-      </Link>
-
-      <Link to="/surf" style={cardStyle}>
-        <span style={{ ...titleStyle, color: 'var(--surf)' }}><IconWave /> Surf</span>
-        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
-          Vagues, temps sur la vague, vitesse, rame et retour au pic ; sur foil, les vols enchaînés.
-        </span>
-      </Link>
+      {families.map((family) => {
+        const Icon = FAMILY_ICON[family];
+        return (
+          <Link key={family} to={libraryPath(family)} style={cardStyle}>
+            <span style={{ ...titleStyle, color: FAMILY_ACCENT[family] }}><Icon /> {FAMILY_LABEL[family]}</span>
+            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>{FAMILY_BLURB[family]}</span>
+          </Link>
+        );
+      })}
 
       {status === 'ready' && (
         <div style={cardStyle}>

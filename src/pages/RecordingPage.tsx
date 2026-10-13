@@ -10,7 +10,7 @@ import PageHeader from '../components/ui/PageHeader';
 import { IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
-import { SPORT_FAMILIES, sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
+import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
 import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatShortDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
@@ -23,8 +23,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
   effectiveBikeSetup, effectiveDistanceUnit, effectiveFoil, effectiveJumpSettings, effectiveLiveFields, effectiveSpeedUnit, effectiveStopHoldMs,
-  lastRecordActivity,
-  readStoredActivities, rememberRecordActivity,
+  lastRecordActivity, rememberRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
 import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
@@ -303,16 +302,19 @@ function RecordingPage() {
   const { open: shown, toggle: toggleShown } = useOpenSections<'carte'>('recording', RECORDING_SECTION_DEFAULTS);
 
   // Famille puis activité : celle de la trace suivie d'abord, sinon la dernière enregistrée.
-  const [activities] = useState(readStoredActivities);
-  const [chosenId, setChosenId] = useState<string | null>(
-    () => (activities.find((a) => a.id === followed?.activityId) ?? lastRecordActivity() ?? activities[0])?.id ?? null
-  );
+  // Seules les visibles sont proposées : une activité cachée dans Réglages n'est pas reprise (§10, point 100).
+  const { activities, families, isShown } = useVisibility();
+  const shownActivities = useMemo(() => activities.filter(isShown), [activities, isShown]);
+  const [chosenId, setChosenId] = useState<string | null>(() => {
+    const last = lastRecordActivity();
+    return (shownActivities.find((a) => a.id === followed?.activityId) ?? (last && isShown(last) ? last : null) ?? shownActivities[0])?.id ?? null;
+  });
   const chosen = activities.find((a) => a.id === chosenId) ?? null;
-  const [family, setFamily] = useState<SportFamily>(chosen ? sportFamily(chosen.base) : 'voile');
-  const familyActivities = activitiesOfFamily(activities, family);
+  const [family, setFamily] = useState<SportFamily>(chosen ? sportFamily(chosen.base) : families[0] ?? 'voile');
+  const familyActivities = activitiesOfFamily(shownActivities, family);
   const pickFamily = (next: SportFamily) => {
     setFamily(next);
-    setChosenId(activitiesOfFamily(activities, next)[0]?.id ?? null);
+    setChosenId(activitiesOfFamily(shownActivities, next)[0]?.id ?? null);
   };
   const pickActivity = (activity: Activity) => {
     setFamily(sportFamily(activity.base));
@@ -320,7 +322,7 @@ function RecordingPage() {
   };
   /** Une trace choisie propose son activité (celle de l'itinéraire, ou de la session). */
   const proposeActivityOf = (trace: FollowedTrace) => {
-    const activity = activities.find((a) => a.id === trace.activityId);
+    const activity = shownActivities.find((a) => a.id === trace.activityId);
     if (activity) pickActivity(activity);
   };
   /** Changement d'activité en cours d'enregistrement : l'enregistreur la prend, la page la garde pour la suite. */
@@ -440,7 +442,7 @@ function RecordingPage() {
       {!busy && !pending && <Card>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 'var(--text-m)' }}>
           <div className="ui-tabs" role="group" aria-label="Famille" style={{ paddingBottom: 0 }}>
-            {SPORT_FAMILIES.map((f) => (
+            {families.map((f) => (
               <button key={f} type="button" className="ui-tab" aria-pressed={family === f}
                 style={{ '--tab-accent': FAMILY_ACCENT[f] } as React.CSSProperties}
                 onClick={() => pickFamily(f)}>

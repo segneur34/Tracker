@@ -1,5 +1,8 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type ReactNode } from 'react';
-import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, nextActivityColor, type Activity } from '../core/activities';
+import {
+  FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, isFamilyHidden, nextActivityColor, visibleActivities, visibleFamilies,
+  type Activity,
+} from '../core/activities';
 import {
   ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, isLandTreatment, sportFamily,
   sportTreatment,
@@ -30,7 +33,7 @@ import { WAY_TYPE_LABEL } from '../planning/route';
 import BeepCurveEditor from '../components/BeepCurveEditor';
 import { CARD_STYLE } from '../components/styles';
 import { FAMILY_ICON } from '../components/familyIcons';
-import { IconChevronRight } from '../components/icons';
+import { IconChevronRight, IconEye, IconEyeOff } from '../components/icons';
 import MemoryStatus from '../components/MemoryStatus';
 import PanelTitle from '../components/PanelTitle';
 import ShadePicker from '../components/ShadePicker';
@@ -210,13 +213,25 @@ function SettingsPage() {
   const {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
     stopHoldMs, setStopHoldMs, navFamily, setNavFamily, navSecond, setNavSecond, navHoldMs, setNavHoldMs,
+    hiddenFamilies, setActivityHidden, setFamilyHidden,
   } = useAllSportSettings();
   const { profile, setNumber, setSex, age } = useRunnerProfile();
   const { open, toggle } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
   const { open: openActivity, toggle: toggleActivity } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
   const { open: openPart, toggle: togglePart } = useOpenSections<ActivityPartKey>('settings-activity-parts', ACTIVITY_PART_DEFAULTS);
-  /** Activités rangées par famille (Voile, Course à pied, Vélo, Fractionné), chacune dans l'ordre de la liste. */
-  const familyOrdered = SPORT_FAMILIES.flatMap((f) => activitiesOfFamily(activities, f));
+  /**
+   * Activités rangées par famille (Voile, Course à pied, Vélo, Fractionné, Surf), chacune dans l'ordre de
+   * la liste, les cachées en bas de leur famille (§10, point 100).
+   */
+  const familyOrdered = SPORT_FAMILIES.flatMap((f) => {
+    const own = activitiesOfFamily(activities, f);
+    return [...own.filter((a) => !a.hidden), ...own.filter((a) => a.hidden)];
+  });
+  /** Familles visibles, proposées pour la barre du bas. */
+  const shownFamilies = visibleFamilies(activities, hiddenFamilies);
+  /** Il reste toujours une famille visible, et une activité visible : leur œil ne se ferme pas. */
+  const lastFamily = shownFamilies.length <= 1;
+  const lastActivity = visibleActivities(activities, hiddenFamilies).length <= 1;
 
   const askRemove = (a: Activity) => {
     if (window.confirm(`Supprimer l'activité « ${a.name} » ? Ses sessions restent, rangées sous « ${SPORT_PROFILES[a.base].label} », et ses réglages sont effacés.`)) {
@@ -252,7 +267,8 @@ function SettingsPage() {
             <p className="settings-block__intro">
               Celles proposées à l'enregistrement, dans les analyses et dans la bibliothèque. Chacune repose sur un calcul
               (wingfoil, planche, kite, bateau, course, vélo, fractionné à pied ou à vélo, surf), qui fixe ses valeurs de départ ; ses réglages d'affichage et
-              d'enregistrement lui sont propres.
+              d'enregistrement lui sont propres. L'œil cache une famille ou une activité partout, sessions comprises ;
+              rien n'est effacé, et la ré-afficher rend tout.
             </p>
             <div className="settings-activities">
               {familyOrdered.map((activity, k) => {
@@ -270,6 +286,9 @@ function SettingsPage() {
                 const paceFamily = planningFamily(activity);
                 const units = TREATMENT_UNITS[treatment];
                 const isOpen = openActivity[id] === true;
+                const familyHidden = isFamilyHidden(activities, hiddenFamilies, family);
+                /** Grisée : cachée elle-même, ou par sa famille. */
+                const shownHidden = activity.hidden === true || familyHidden;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
                   s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null ||
@@ -326,8 +345,11 @@ function SettingsPage() {
                 ].join(' · ');
                 return (
                   <Fragment key={id}>
-                    {(k === 0 || sportFamily(familyOrdered[k - 1].base) !== family) && <FamilyHeading family={family} />}
-                    <div className="settings-activity">
+                    {(k === 0 || sportFamily(familyOrdered[k - 1].base) !== family) && (
+                      <FamilyHeading family={family} hidden={familyHidden} disabled={!familyHidden && lastFamily}
+                        onToggle={() => setFamilyHidden(family, !familyHidden)} />
+                    )}
+                    <div className={`settings-activity${shownHidden ? ' settings-activity--hidden' : ''}`}>
                       <div className="settings-activity__head">
                         <button type="button" className="settings-activity__toggle" aria-expanded={isOpen} onClick={() => toggleActivity(id)}>
                           <IconChevronRight size={14} className="settings-activity__chevron" style={{ transform: isOpen ? 'rotate(90deg)' : undefined }} />
@@ -346,6 +368,9 @@ function SettingsPage() {
                             <span className="settings-sports__mark">{p.label}</span>
                           </>
                         )}
+                        <EyeButton name={activity.name} hidden={activity.hidden === true}
+                          disabled={!activity.hidden && !familyHidden && lastActivity}
+                          onToggle={() => setActivityHidden(id, !activity.hidden)} />
                       </div>
                       {isOpen && (
                         <div className="settings-activity__body">
@@ -581,13 +606,13 @@ function SettingsPage() {
             <div className="settings-row">
               <span className="settings-row__label">Sport favori</span>
               <select value={navFamily} onChange={(e) => setNavFamily(e.target.value as SportFamily)} className="ui-field ui-field--s">
-                {SPORT_FAMILIES.map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
+                {shownFamilies.map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
               </select>
             </div>
             <div className="settings-row">
               <span className="settings-row__label">Sport secondaire</span>
               <select value={navSecond} onChange={(e) => setNavSecond(e.target.value as NavSecond)} className="ui-field ui-field--s">
-                {SPORT_FAMILIES.filter((f) => f !== navFamily).map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
+                {shownFamilies.filter((f) => f !== navFamily).map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
                 <option value="planifier">Planifier (itinéraires)</option>
               </select>
             </div>
@@ -730,14 +755,36 @@ function PaceSettings({ family, view, onLevel, onCustomSpeed }: {
   );
 }
 
-/** En-tête d'une famille dans la liste des activités, comme dans le choix d'une activité. */
-function FamilyHeading({ family }: { family: SportFamily }) {
+/**
+ * En-tête d'une famille dans la liste des activités, comme dans le choix d'une activité, avec son œil :
+ * cachée, elle est grisée, ses activités aussi.
+ */
+function FamilyHeading({ family, hidden, disabled, onToggle }: {
+  family: SportFamily;
+  hidden: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
   const Icon = FAMILY_ICON[family];
   return (
-    <div className="settings-activities__family" style={{ color: FAMILY_ACCENT[family] }}>
+    <div className="settings-activities__family" style={{ color: hidden ? 'var(--muted)' : FAMILY_ACCENT[family] }}>
       <Icon size={18} />
       {FAMILY_LABEL[family]}
+      <EyeButton name={FAMILY_LABEL[family]} hidden={hidden} disabled={disabled} onToggle={onToggle} />
     </div>
+  );
+}
+
+/**
+ * Œil qui cache ou ré-affiche une famille ou une activité (§10, point 100). Fermé (désactivé) sur la
+ * dernière visible : il en reste toujours une.
+ */
+function EyeButton({ name, hidden, disabled, onToggle }: { name: string; hidden: boolean; disabled: boolean; onToggle: () => void }) {
+  const label = disabled ? `${name} : la dernière visible, elle ne se cache pas` : hidden ? `Afficher ${name}` : `Cacher ${name}`;
+  return (
+    <button type="button" className="settings-eye" aria-pressed={hidden} aria-label={label} title={label} disabled={disabled} onClick={onToggle}>
+      {hidden ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+    </button>
   );
 }
 

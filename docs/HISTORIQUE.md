@@ -620,3 +620,9 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Pièges** :
       - couper sur la durée avant d'écarter les accélérations d'échauffement en faisait une séance à part : la coupure vient après ce filtre ;
       - un seul effort plus long ne doit pas couper : la règle exige l'effort et le suivant.
+
+100. Familles et activités cachées, lot 3 des demandes du 10-13/10 (13/10, validé par l'utilisateur, APK 0.2.84).
+    - **Demande de l'utilisateur** : ne plus voir pendant quelques mois un sport qu'il ne pratique pas (le surf) ou une activité (le VTT), sans rien perdre ; réglé dans Réglages, devant la famille et devant chaque activité.
+    - **Choix de l'utilisateur** : caché veut dire absent partout, sessions et itinéraires compris (bibliothèque, graphe de l'accueil, itinéraires, trace à suivre), pas seulement des menus ; une famille sans activité visible, toutes cachées ou aucune, est cachée ; ré-afficher une activité d'une famille cachée ré-affiche la famille, ré-afficher une famille dont tout était caché ré-affiche tout.
+    - **Décisions de mise en œuvre** : `hidden: true` sur l'activité, `hiddenFamilies` dans les réglages, sans nouvelle version de la liste ; la liste complète nomme toujours les sessions (`sessionActivity`), le filtre ne vaut que pour les choix et les listes (`useVisibility`, suivi en direct pour la barre). Le choix d'activité dessiné (`ActivitySheet`) filtre pour tous ses appelants et garde l'activité choisie : l'analyse d'une session cachée la montre encore. Une adresse s'ouvre toujours ; la page d'une famille cachée montre tout et le dit. Le favori et le secondaire cachés retombent sur une famille visible, le choix rangé n'étant pas récrit. Il reste toujours une famille visible.
+    - **Piège** : `readActivities` ne recopiait que les champs connus ; un champ ajouté à l'activité y est effacé s'il n'y est pas lu.

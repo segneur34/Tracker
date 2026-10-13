@@ -22,6 +22,11 @@ export interface Activity {
   base: SportType;
   /** Couleur de l'activité dans le graphe de l'accueil (donnée de graphe, en dur). */
   color: string;
+  /**
+   * Cachée dans Réglages : ni proposée, ni listée, ses sessions comprises ;
+   * rien n'est effacé, la ré-afficher rend tout (§10, point 100).
+   */
+  hidden?: true;
 }
 
 /**
@@ -142,11 +147,11 @@ export const readActivities = (raw: unknown): Activity[] => {
   const list: Activity[] = [];
   for (const item of raw) {
     if (typeof item !== 'object' || item === null) continue;
-    const { id, name, base, color } = item as Record<string, unknown>;
+    const { id, name, base, color, hidden } = item as Record<string, unknown>;
     if (typeof id !== 'string' || id === '' || seen.has(id)) continue;
     if (typeof name !== 'string' || name.trim() === '' || !isSportType(base)) continue;
     seen.add(id);
-    list.push({ id, name: name.trim(), base, color: isColor(color) ? color : BASE_COLOR[base] });
+    list.push({ id, name: name.trim(), base, color: isColor(color) ? color : BASE_COLOR[base], ...(hidden === true ? { hidden } : {}) });
   }
   return list;
 };
@@ -165,6 +170,56 @@ export const activityTreatment = (activity: Activity): Treatment => sportTreatme
 
 export const activitiesOfFamily = (activities: Activity[], family: SportFamily): Activity[] =>
   activities.filter((a) => activityFamily(a) === family);
+
+/**
+ * Famille cachée (§10, point 100) : cachée dans Réglages, ou sans activité
+ * visible, qu'elles soient toutes cachées ou qu'elle n'en ait aucune (choix de
+ * l'utilisateur). Une activité ajoutée dans Réglages la fait revenir.
+ */
+export const isFamilyHidden = (activities: Activity[], hiddenFamilies: readonly SportFamily[], family: SportFamily): boolean =>
+  hiddenFamilies.includes(family) || activitiesOfFamily(activities, family).every((a) => a.hidden);
+
+/** Familles visibles, dans l'ordre de `families` (toutes par défaut). */
+export const visibleFamilies = (
+  activities: Activity[], hiddenFamilies: readonly SportFamily[], families: readonly SportFamily[] = SPORT_FAMILIES
+): SportFamily[] => families.filter((f) => !isFamilyHidden(activities, hiddenFamilies, f));
+
+/**
+ * Activité visible : ni cachée elle-même, ni dans une famille cachée. Une
+ * activité de base (supprimée, ou session sans activité) suit sa famille.
+ */
+export const isActivityShown = (activity: Activity, activities: Activity[], hiddenFamilies: readonly SportFamily[]): boolean =>
+  !activity.hidden && !isFamilyHidden(activities, hiddenFamilies, activityFamily(activity));
+
+/**
+ * Sport favori de la barre du bas : celui choisi s'il est visible, sinon la
+ * première famille visible ; sans famille visible, celui choisi.
+ */
+export const pickNavFamily = (chosen: SportFamily, shown: readonly SportFamily[]): SportFamily =>
+  shown.length === 0 || shown.includes(chosen) ? chosen : shown[0];
+
+/**
+ * Case secondaire de la barre du bas : la planification si elle est choisie ;
+ * le sport choisi s'il est visible et n'est pas le favori ; sinon le premier
+ * autre sport visible, sinon la planification.
+ */
+export const pickNavSecond = (
+  chosen: SportFamily | 'planifier' | null, favorite: SportFamily, shown: readonly SportFamily[]
+): SportFamily | 'planifier' => {
+  if (chosen === 'planifier') return chosen;
+  if (chosen !== null && chosen !== favorite && shown.includes(chosen)) return chosen;
+  return shown.find((f) => f !== favorite) ?? 'planifier';
+};
+
+/** Activité cachée ou ré-affichée ; une activité visible ne porte pas le champ. */
+export const withHidden = (activity: Activity, hidden: boolean): Activity => {
+  const { hidden: _was, ...rest } = activity;
+  return hidden ? { ...rest, hidden: true } : rest;
+};
+
+/** Activités visibles, d'une famille ou de toutes, dans l'ordre de la liste. */
+export const visibleActivities = (activities: Activity[], hiddenFamilies: readonly SportFamily[], family?: SportFamily): Activity[] =>
+  (family ? activitiesOfFamily(activities, family) : activities).filter((a) => isActivityShown(a, activities, hiddenFamilies));
 
 /**
  * Activité désignée par un identifiant : une de la liste, sinon celle de base

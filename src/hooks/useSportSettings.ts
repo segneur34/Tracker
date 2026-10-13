@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, SURF_FOIL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
-  newActivityId, insertActivity, readActivities, upgradeActivities, type Activity,
+  isActivityShown, newActivityId, insertActivity, pickNavFamily, pickNavSecond, readActivities, upgradeActivities, visibleActivities, visibleFamilies, withHidden, type Activity,
 } from '../core/activities';
 import {
   ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, defaultActiveThresholdOf, getSportProfile, sportTreatment, type ElevationProfile,
@@ -87,6 +87,8 @@ export interface StoredSettings {
   activities?: Activity[];
   /** Version de la liste des activités (`ACTIVITIES_VERSION`) ; absente : 1. */
   activitiesVersion?: number;
+  /** Familles cachées dans Réglages (§10, point 100) : ni proposées, ni listées ; rien n'est effacé. */
+  hiddenFamilies?: SportFamily[];
   /** Surcharges du seuil d'activité, dans l'unité du profil du calcul. */
   thresholds?: ByActivity<number>;
   /** Terrain retenu pour le dénivelé. */
@@ -200,20 +202,38 @@ const isKnownFamily = (value: unknown): value is SportFamily =>
 /** Sport en accès direct dans la barre du bas, par défaut la voile. */
 const DEFAULT_NAV_FAMILY: SportFamily = 'voile';
 
+/** Familles cachées, valeurs inconnues écartées. */
+const readHiddenFamilies = (stored: StoredSettings): SportFamily[] =>
+  Array.isArray(stored.hiddenFamilies) ? stored.hiddenFamilies.filter(isKnownFamily) : [];
+
+/** Réglages avec ces activités et ces familles cachées ; `null` s'il ne resterait aucune famille visible. */
+const withVisibility = (stored: StoredSettings, activities: Activity[], hiddenFamilies: SportFamily[]): StoredSettings | null =>
+  visibleFamilies(activities, hiddenFamilies).length === 0
+    ? null
+    : { ...stored, activities, activitiesVersion: ACTIVITIES_VERSION, hiddenFamilies };
+
+/** Familles visibles des réglages rangés. */
+const shownFamilies = (stored: StoredSettings): SportFamily[] =>
+  visibleFamilies(readActivities(stored.activities), readHiddenFamilies(stored));
+
+/**
+ * Sport favori : celui choisi, sinon la voile ; caché, la première famille
+ * visible. Le choix rangé n'est pas récrit : ré-afficher la famille le rend.
+ */
 const effectiveNavFamily = (stored: StoredSettings): SportFamily =>
-  isKnownFamily(stored.navFamily) ? stored.navFamily : DEFAULT_NAV_FAMILY;
+  pickNavFamily(isKnownFamily(stored.navFamily) ? stored.navFamily : DEFAULT_NAV_FAMILY, shownFamilies(stored));
 
 /** Case secondaire de la barre du bas : un sport, ou la planification des itinéraires. */
 export type NavSecond = SportFamily | 'planifier';
 
 const isNavSecond = (value: unknown): value is NavSecond => value === 'planifier' || isKnownFamily(value);
 
-/** Case secondaire : celle choisie si elle n'est pas le favori, sinon le premier des autres sports. */
-const effectiveNavSecond = (stored: StoredSettings): NavSecond => {
-  const favorite = effectiveNavFamily(stored);
-  if (isNavSecond(stored.navSecondFamily) && stored.navSecondFamily !== favorite) return stored.navSecondFamily;
-  return SPORT_FAMILIES.find((f) => f !== favorite) ?? favorite;
-};
+/**
+ * Case secondaire : celle choisie si elle n'est ni le favori ni cachée, sinon
+ * le premier des autres sports visibles, sinon la planification.
+ */
+const effectiveNavSecond = (stored: StoredSettings): NavSecond =>
+  pickNavSecond(isNavSecond(stored.navSecondFamily) ? stored.navSecondFamily : null, effectiveNavFamily(stored), shownFamilies(stored));
 
 /**
  * Réglages enregistrés, pour qui calcule hors d'un composant : les résumés de
@@ -300,6 +320,46 @@ export const rememberNavSecond = (second: NavSecond): void => {
   const stored = readStoredSettings();
   if (isNavSecond(second) && stored.navSecondFamily !== second) writeStored({ ...stored, navSecondFamily: second });
 };
+
+/** Ce qui est visible (§10, point 100) : la liste complète, les familles cachées, et de quoi filtrer. */
+export interface Visibility {
+  /** Toutes les activités, cachées comprises : elles nomment les sessions (`sessionActivity`). */
+  activities: Activity[];
+  hiddenFamilies: SportFamily[];
+  /** Familles visibles, dans l'ordre de `SPORT_FAMILIES`. */
+  families: SportFamily[];
+  /** Activité visible : ni cachée, ni dans une famille cachée ; une activité de base suit sa famille. */
+  isShown: (activity: Activity) => boolean;
+  /** Activités visibles, d'une famille ou de toutes. */
+  shownActivities: (family?: SportFamily) => Activity[];
+}
+
+/** Dernière lecture, rendue telle quelle tant que rien n'a changé. */
+let visibilityCache: { key: string; value: Visibility } | null = null;
+
+/** Ce qui est visible, hors composant. */
+export const readVisibility = (): Visibility => {
+  const stored = readStoredSettings();
+  const key = JSON.stringify([stored.activities ?? null, stored.hiddenFamilies ?? null]);
+  if (visibilityCache?.key !== key) {
+    const activities = readActivities(stored.activities);
+    const hiddenFamilies = readHiddenFamilies(stored);
+    visibilityCache = {
+      key,
+      value: {
+        activities,
+        hiddenFamilies,
+        families: visibleFamilies(activities, hiddenFamilies),
+        isShown: (a) => isActivityShown(a, activities, hiddenFamilies),
+        shownActivities: (family) => visibleActivities(activities, hiddenFamilies, family),
+      },
+    };
+  }
+  return visibilityCache.value;
+};
+
+/** Ce qui est visible, suivi en direct : la barre change dès que Réglages cache ou ré-affiche. */
+export const useVisibility = (): Visibility => useSyncExternalStore(jsonStore.subscribe, readVisibility);
 
 /** Séances du compteur : celles gardées, et celle à proposer (la dernière lancée, sinon la séance par défaut). */
 export interface IntervalSettings {
@@ -816,6 +876,46 @@ export const useAllSportSettings = () => {
     [activities, persist, stored]
   );
 
+  /**
+   * Cache ou ré-affiche une activité (§10, point 100) ; rien n'est effacé.
+   * Ré-afficher une activité d'une famille cachée ré-affiche la famille.
+   * Cacher la dernière activité visible de la dernière famille visible est refusé.
+   */
+  const setActivityHidden = useCallback(
+    (id: string, hidden: boolean) => {
+      const hiddenFamilies = readHiddenFamilies(stored);
+      const target = activities.find((a) => a.id === id);
+      if (!target) return;
+      const nextActivities = activities.map((a) => (a.id === id ? withHidden(a, hidden) : a));
+      const family = activityFamily(target);
+      const next = withVisibility(stored, nextActivities, hidden ? hiddenFamilies : hiddenFamilies.filter((f) => f !== family));
+      if (next) persist(next);
+    },
+    [activities, persist, stored]
+  );
+
+  /**
+   * Cache ou ré-affiche une famille. Ré-afficher une famille dont toutes les
+   * activités sont cachées les ré-affiche toutes ; sinon chacune garde son
+   * choix. Cacher la dernière famille visible est refusé.
+   */
+  const setFamilyHidden = useCallback(
+    (family: SportFamily, hidden: boolean) => {
+      const hiddenFamilies = readHiddenFamilies(stored);
+      if (hidden) {
+        const next = withVisibility(stored, activities, hiddenFamilies.includes(family) ? hiddenFamilies : [...hiddenFamilies, family]);
+        if (next) persist(next);
+        return;
+      }
+      const own = activitiesOfFamily(activities, family);
+      const allHidden = own.length > 0 && own.every((a) => a.hidden);
+      const nextActivities = allHidden ? activities.map((a) => (activityFamily(a) === family ? withHidden(a, false) : a)) : activities;
+      const next = withVisibility(stored, nextActivities, hiddenFamilies.filter((f) => f !== family));
+      if (next) persist(next);
+    },
+    [activities, persist, stored]
+  );
+
   const longPressMs = isValidLongPress(stored.longPressMs) ? stored.longPressMs : DEFAULT_LONG_PRESS_MS;
   /** Durée de l'appui long, en millisecondes ; `null` revient au défaut. */
   const setLongPressMs = useCallback(
@@ -875,7 +975,7 @@ export const useAllSportSettings = () => {
 
   return {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
-    stopHoldMs, setStopHoldMs,
+    stopHoldMs, setStopHoldMs, hiddenFamilies: readHiddenFamilies(stored), setActivityHidden, setFamilyHidden,
     navFamily, setNavFamily, navSecond, setNavSecond, navHoldMs, setNavHoldMs,
   };
 };
@@ -889,8 +989,10 @@ export const useAllSportSettings = () => {
 const moduleActivity = (stored: StoredSettings, activities: Activity[], family: SportFamily): Activity => {
   const remembered = stored.moduleActivity?.[family] ?? (family === 'voile' ? stored.sport : undefined);
   const found = findActivity(activities, remembered);
-  if (found && activityFamily(found) === family) return found;
-  return activitiesOfFamily(activities, family)[0] ?? baseActivity(FAMILY_BASE[family]);
+  if (found && activityFamily(found) === family && !found.hidden) return found;
+  // Cachée : la première visible de la famille, sinon celle retenue tout de même (§10, point 100).
+  const own = activitiesOfFamily(activities, family);
+  return own.find((a) => !a.hidden) ?? (found && activityFamily(found) === family ? found : own[0]) ?? baseActivity(FAMILY_BASE[family]);
 };
 
 /**
@@ -907,9 +1009,9 @@ export const useSportSettings = (family: SportFamily) => {
   const profile = useMemo(() => getSportProfile(sport), [sport]);
   const id = activity.id;
 
-  /** Activités proposées par le module : celles de la famille, plus l'activité courante si c'en est une de base. */
+  /** Activités proposées par le module : les visibles de la famille, plus l'activité courante (de base, ou cachée). */
   const activityOptions = useMemo(() => {
-    const own = activitiesOfFamily(activities, family);
+    const own = activitiesOfFamily(activities, family).filter((a) => !a.hidden || a.id === id);
     return own.some((a) => a.id === id) ? own : [...own, activity];
   }, [activities, family, activity, id]);
 

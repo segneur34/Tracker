@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer } from 'react-leaflet';
 import OsmTileLayer from '../components/OsmTileLayer';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -29,7 +29,7 @@ import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
 import {
-  PLANNING_FAMILIES, TREATMENT_SPEED_RANGE_MS, effectiveDistanceUnit, effectiveSpeedUnit, readStoredActivities, readStoredSettings,
+  PLANNING_FAMILIES, TREATMENT_SPEED_RANGE_MS, effectiveDistanceUnit, effectiveSpeedUnit, readStoredSettings, useVisibility,
 } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
 import { analysisTrack } from '../library/summary';
@@ -45,6 +45,10 @@ import './SessionLibrary.css';
  * ou d'un dossier entier, la suppression. La vue « Planifiées »
  * (`?vue=planifiees`) montre à la place les itinéraires de la famille, filtrés
  * par les mêmes onglets d'activité ; le fractionné et le surf, qui ne planifient pas, n'en ont pas.
+ *
+ * Les sessions et itinéraires d'une activité cachée dans Réglages n'y sont
+ * pas, une ligne dit combien ; la page d'une famille cachée, ouverte par son
+ * adresse, montre tout et le rappelle (§10, point 100).
  */
 
 const FAMILY: Record<SportFamily, { title: string; accent: string; of: string }> = {
@@ -357,8 +361,9 @@ function SessionRow({
 function SessionLibrary({ family }: { family: SportFamily }) {
   const library = useSessionLibrary();
   const { title, accent } = FAMILY[family];
-  // Relues à l'ouverture de la page : les activités se changent dans Réglages.
-  const [activities] = useState(readStoredActivities);
+  const { activities, families, isShown } = useVisibility();
+  /** Famille cachée, ouverte par son adresse : tout y est montré. */
+  const familyHidden = !families.includes(family);
   const [params, setParams] = useSearchParams();
   const [filter, setFilter] = useState<string>(() => params.get('activite') ?? 'all');
   const plans = PLANNING_FAMILIES.includes(family);
@@ -378,12 +383,27 @@ function SessionLibrary({ family }: { family: SportFamily }) {
     () => new Map(library.sessions.map((s) => [s.file, activityOf(s, activities)])),
     [library.sessions, activities]
   );
-  const familySessions = useMemo(
+  /** Élément montré : visible, ou de la page d'une famille cachée ; sans activité, toujours. */
+  const listed = useCallback(
+    (activity: Activity | null | undefined) => familyHidden || !activity || isShown(activity),
+    [familyHidden, isShown]
+  );
+  const allFamilySessions = useMemo(
     () => library.sessions.filter((s) => s.record.sport !== null && sportFamily(s.record.sport) === family),
     [library.sessions, family]
   );
+  const familySessions = useMemo(
+    () => allFamilySessions.filter((s) => listed(activityByFile.get(s.file))),
+    [allFamilySessions, listed, activityByFile]
+  );
   const unclassified = useMemo(() => library.sessions.filter((s) => s.record.sport === null), [library.sessions]);
-  const familyRoutes = useMemo(() => routesOfFamily(routes, activities, family), [routes, activities, family]);
+  const allFamilyRoutes = useMemo(() => routesOfFamily(routes, activities, family), [routes, activities, family]);
+  const familyRoutes = useMemo(
+    () => allFamilyRoutes.filter((r) => listed(routeActivity(r, activities))),
+    [allFamilyRoutes, listed, activities]
+  );
+  /** Éléments d'activités cachées, retirés de la vue. */
+  const hiddenCount = planned ? allFamilyRoutes.length - familyRoutes.length : allFamilySessions.length - familySessions.length;
   /** Activités présentes dans la vue, dans l'ordre de Réglages puis celles de base, avec leur nombre d'éléments. */
   const counts = useMemo(
     () => activityCounts(
@@ -441,6 +461,12 @@ function SessionLibrary({ family }: { family: SportFamily }) {
         </p>
       )}
 
+      {familyHidden && (
+        <p className="lib-hint">
+          {title} est caché dans <Link to="/parametres">Réglages</Link> : ni proposé, ni dans la barre. Ses sessions restent toutes ici.
+        </p>
+      )}
+
       {plans && (
         <div className="ui-tabs" aria-label="Vue" style={{ '--tab-accent': accent } as React.CSSProperties}>
           <button type="button" className="ui-tab" aria-pressed={!planned} onClick={() => setPlanned(false)}>
@@ -465,7 +491,14 @@ function SessionLibrary({ family }: { family: SportFamily }) {
         </div>
       )}
 
-      {planned && (
+      {hiddenCount > 0 && (
+        <p className="lib-hint">
+          Activités cachées : {hiddenCount} {planned ? 'itinéraire' : 'session'}{hiddenCount > 1 ? 's' : ''} en moins dans la liste.
+          Elles se ré-affichent dans <Link to="/parametres">Réglages</Link>.
+        </p>
+      )}
+
+      {planned && (shownRoutes.length > 0 || hiddenCount === 0) && (
         <Card>
           {shownRoutes.length > 0 ? (
             <RouteList routes={shownRoutes} activities={activities} />
@@ -490,7 +523,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       {planned ? null : shown.length > 0 ? (
         <ul className="lib-list">{shown.map(row)}</ul>
       ) : (
-        library.status === 'ready' && !library.scanning && (
+        library.status === 'ready' && !library.scanning && hiddenCount === 0 && (
           <Card>
             <p className="lib-hint">
               Aucune session {FAMILY[family].of} pour l'instant. Enregistrez-en une, ou

@@ -7,7 +7,7 @@ import { IconChevronRight } from './icons';
 import { libraryPath, useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
-import { effectiveDistanceUnit, readStoredActivities } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, useVisibility } from '../hooks/useSportSettings';
 import { CHART_PERIODS, buildActivityChart, type ChartPeriod, type ChartSession } from '../library/activityChart';
 import './ActivityChart.css';
 
@@ -18,6 +18,7 @@ import './ActivityChart.css';
  * affiche ses sessions, chacune ouvrant son analyse. Sous le graphe, les
  * totaux de la période par activité, chacun ouvrant la bibliothèque filtrée
  * sur son activité ; une flèche les replie ou les déplie tous d'un coup.
+ * Les sessions d'une activité ou d'une famille cachée n'y sont pas (§10, point 100).
  */
 
 /** Hauteur de la zone des barres, en pixels, et hauteur maximale d'une session. */
@@ -42,27 +43,26 @@ function ActivityChart() {
   const { sessions } = useSessionLibrary();
   const openSession = useOpenSession();
   const navigate = useNavigate();
-  // Relues à l'ouverture de l'accueil : les activités se changent dans Réglages.
-  const [activities] = useState(readStoredActivities);
+  const { activities, isShown } = useVisibility();
   const [nowMs] = useState(() => Date.now());
   const [period, setPeriod] = useState<ChartPeriod>('trente');
   const [picked, setPicked] = useState<number | null>(null);
   // Totaux par activité : repliés ou dépliés d'un seul geste, choix gardé sur l'appareil.
   const { open, toggle } = useOpenSections('accueil.graphe', TOTALS_DEFAULT);
 
-  // Sessions classées, avec leur activité ; les sessions à classer n'apparaissent pas.
+  // Sessions classées et visibles, avec leur activité ; les sessions à classer n'apparaissent pas.
   const { chartSessions, activityById } = useMemo(() => {
     const byId = new Map<string, Activity>();
     const list: ChartSession[] = [];
     for (const s of sessions) {
       const activity = sessionActivity(activities, s.record.activityId, s.record.sport);
-      if (!activity) continue;
+      if (!activity || !isShown(activity)) continue;
       byId.set(activity.id, activity);
       const { startMs, endMs, distanceM } = s.record.summary;
       list.push({ file: s.file, startMs, durationS: (endMs - startMs) / 1000, distanceM, activityId: activity.id });
     }
     return { chartSessions: list, activityById: byId };
-  }, [sessions, activities]);
+  }, [sessions, activities, isShown]);
 
   const chart = useMemo(
     () => buildActivityChart(chartSessions, period, nowMs, activities.map((a) => a.id)),

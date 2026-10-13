@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
+import { useVisibility } from '../hooks/useSportSettings';
 import { FAMILY_ICON } from './familyIcons';
 import { IconChevronRight } from './icons';
 import './ActivitySelect.css';
@@ -19,6 +20,10 @@ import './ActivitySelect.css';
  * décalées dessous, un trait entre deux familles. La liste seule
  * (`ActivitySheet`) s'ouvre aussi sans bouton : demander l'activité d'une
  * session à classer avant de l'analyser.
+ *
+ * Une activité cachée dans Réglages, ou d'une famille cachée, n'y est pas
+ * proposée, sauf si c'est celle choisie : l'analyse d'une session cachée
+ * garde son activité (§10, point 100).
  */
 
 interface ActivitySheetProps {
@@ -37,8 +42,9 @@ interface ActivitySheetProps {
 /** Liste des activités par famille, par-dessus la page ; Échap ou un appui à côté la ferme. */
 export function ActivitySheet({ activities, value, families = SPORT_FAMILIES, label, heading, onChoose, onClose }: ActivitySheetProps) {
   const selectedRef = useRef<HTMLButtonElement>(null);
+  const { isShown } = useVisibility();
   const groups = families
-    .map((family) => ({ family, items: activitiesOfFamily(activities, family) }))
+    .map((family) => ({ family, items: activitiesOfFamily(activities, family).filter((a) => a.id === value || isShown(a)) }))
     .filter((g) => g.items.length > 0);
 
   // Une fois à l'ouverture : la page dessous peut se redessiner (chaque seconde à l'enregistrement)
