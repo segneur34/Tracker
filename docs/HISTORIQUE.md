@@ -531,3 +531,10 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - décollage (expérimental) : fin des chocs de l'eau, cherchée autour du passage du Seuil de vol, qui est le réglage « mon aile vole à 10 ou à 15 km/h » voulu par l'utilisateur.
     - **Piège** : l'élagage du `.imu` de surf autour des vols effaçait tout d'une session sans vol, justement celle qui sert à régler. Coupé (`pruneCapture` à faux, APK 0.2.88) tant que les seuils ne sont pas réglés.
     - Capture du 14/10 (paddle foil, sans vol) : saine (100 Hz, trou maximal 55 ms), rame visible, rien pour régler le décollage ; la rugosité à l'arrêt (0,03 à 0,05 g) est déjà sous `liftoffCalmG` (0,08 g).
+111. Nœuds en surf, lot 1 des demandes du 14/10, seconde série (14/10, commité en `fa3cb9e`, APK 0.2.93).
+    - Le surf propose les nœuds dans Réglages (`SURF_UNITS`), le km/h restant en tête et par défaut. Avant, il reprenait la liste du vélo.
+112. Onglet « matériel et notes » dans toutes les activités, lot 2 des demandes du 14/10, seconde série (14/10, commité en `fa3cb9e`, APK 0.2.93).
+    - **Choix de l'utilisateur** : hors voile, deux champs de matériel nommés par activité dans Réglages › Analyse (« Matériel 1 », « Matériel 2 » sans réglage) et des conditions en texte libre ; l'appréciation et le commentaire sont communs. La voile garde foil, mât, aile, vent et plan d'eau.
+    - Une seule pièce, `components/SessionNotesPanel.tsx`, pour les quatre modules ; la voile y est passée sans changement de texte (banc, `bench.mjs` avant et après).
+    - Les notes gagnent `gear1`, `gear2` et `conditions`, lus vides dans les fiches plus anciennes ; même partie « notes » du brouillon.
+    - **Piège corrigé** : le matériel proposé à une session enregistrée sans notes venait de la dernière session notée, toutes activités mêlées : une course aurait reçu l'aile de la dernière wing. `latestGearNotes` ne regarde plus que l'activité de la session ; les conditions, propres à la sortie, ne sont jamais reprises.

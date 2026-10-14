@@ -36,7 +36,7 @@ Une ligne par fichier : son rôle et ses points d'entrée principaux. Les signat
 - `maneuvers.ts` : `analyzeManeuvers` (détection, classement), `measureManeuver` (métriques affichées), `estimateWind` (polaire + manœuvres), `selectWindCandidate`, `windSamplesFrom`.
 - `sailingAnalytics.ts` : `calculateWindStats` (stats du vent, pondération par symétrie, `windAt`), `windChartRows` (lignes du graphe du vent sur la plage du zoom), `summarizeManeuvers`, `MANEUVER_METRICS`, `calculateVmgStats`.
 - `sailingStats.ts` : `buildSailingSessionStats` (base + tops voile).
-- `sessionNotes.ts` : forme des notes (`SailingSessionNotes`), niveaux de vent, plan d'eau, appréciation.
+- `sessionNotes.ts` : forme des notes de toutes les activités (`SailingSessionNotes` : matériel de voile, `gear1`, `gear2`, conditions), niveaux de vent, plan d'eau, appréciation.
 
 Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trackToPointData`, vue en nœuds de la trace, règle 5) et `types/sailing.ts` (`SessionStats`).
 
@@ -170,6 +170,7 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `ZoomableChart.tsx` (+ `.css`) : enveloppe d'un graphe Recharts qui zoome (deux doigts, zone tirée à la souris, double-clic et « Tout voir »), `onLeave` quand la souris le quitte ; analyses de course, vélo et voile, planification ; `ChartZoomProbe` lit la zone de tracé par `usePlotArea`.
 - `RouteList.tsx` (+ `.css`) : liste d'itinéraires enregistrés (activité, distance, temps estimé, date, « Partir »), commune à l'accueil, aux bibliothèques et aux pages Itinéraires.
 - `SessionMarks.tsx` : repères d'une session, fanions numérotés sur la carte (`SessionMarksLayer`) et liste de l'onglet général (`SessionMarksList` : heure, distance, nom modifiable, montrer, supprimer). `markReferenceLines.tsx` : leurs traits fins sur les graphes.
+- `SessionNotesPanel.tsx` : contenu de l'onglet du matériel et des notes, commun aux quatre modules (champs de matériel reçus du module, conditions en boutons en voile, libres ailleurs).
 - `SessionWeightField.tsx` : masse propre à une session dans l'onglet réglages (poids du vélo et des bagages, charge portée), vide pour celle de l'activité.
 - `SessionSaveBar.tsx` : barre « Enregistrer la session » du brouillon, commune aux modules.
 - `AnalysisMap.tsx` : carte d'une page d'analyse, cadrée sur la trace, redimensionnable en hauteur, la légende donnée par le module posée dessus (contrôle Leaflet à gauche de la mention OSM) et sa vue plein écran au tap (`docs/MISE_EN_PAGE.md`).
