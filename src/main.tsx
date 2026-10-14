@@ -7,7 +7,9 @@ import './components/ui/ui.css';
 import './components/AppShell.css';
 import { confirmLeave, installLeaveGuard } from './hooks/leaveGuard';
 import { isIntervalTimerActive, startIntervalTimer } from './hooks/useIntervalTimer';
+import { startLiveRecording } from './hooks/useLiveRecording';
 import { startMarkGuide } from './hooks/useMarkGuide';
+import { startRecordingNotification } from './hooks/recordingNotification';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { openLibrary, settingsUpgraded, startLibraryUi } from './hooks/useSessionLibrary';
 import { upgradeStoredActivities } from './hooks/useSportSettings';
@@ -43,4 +45,8 @@ void initStorage()
     startMarkGuide();
     // Compteur du fractionné : séance reprise si elle court encore, et confiée à l'enregistreur.
     startIntervalTimer();
+    // Statistiques du direct, lues par la page Enregistrer et par la notification.
+    startLiveRecording();
+    // Notification de l'enregistrement, écran verrouillé : chiffres choisis dans Réglages.
+    startRecordingNotification();
   });

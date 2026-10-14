@@ -215,5 +215,11 @@ const subscribe = (listener: () => void) => {
   };
 };
 
+/** État du guidage, hors React (notification de l'enregistrement). */
+export const getMarkGuideView = (): MarkGuideView => view;
+
+/** Changements du guidage, hors React ; rend le désabonnement. */
+export const subscribeToMarkGuide = (listener: () => void): (() => void) => subscribe(listener);
+
 /** État du guidage, relu à chaque position. */
 export const useMarkGuide = (): MarkGuideView => useSyncExternalStore(subscribe, () => view);

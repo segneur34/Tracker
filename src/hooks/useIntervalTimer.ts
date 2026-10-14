@@ -50,6 +50,8 @@ let run: IntervalRun | null = null;
 let error: string | null = null;
 let view: IntervalTimerView = { run: null, state: null, nowMs: 0, error: null };
 const listeners = new Set<() => void>();
+/** Abonnés hors React, prévenus à chaque commande. */
+const commandListeners = new Set<() => void>();
 let refresh: ReturnType<typeof setInterval> | null = null;
 
 const isActive = (state: IntervalTimerState | null): boolean => state?.status === 'running' || state?.status === 'paused';
@@ -86,8 +88,10 @@ const subscribe = (listener: () => void) => {
  * Confie au téléphone le programme de la séance à partir de maintenant :
  * sons et notification en marche, notification seule en pause, rien une fois
  * close. `announce` : la phase en cours vient de commencer (« Passer »), un bip long l'annonce.
+ * Les abonnés aux commandes (notification de l'enregistrement) sont prévenus.
  */
 const reschedule = (announce: boolean): void => {
+  commandListeners.forEach((listener) => listener());
   const clock = getIntervalClock();
   const onError = (err: unknown) => {
     error = err instanceof Error && err.message ? err.message : 'Les bips du compteur ne peuvent pas être joués.';
@@ -181,6 +185,21 @@ export const startIntervalTimer = (): void => {
     if (recording && !wasRecording && run && isActive(timerStateAt(run, Date.now()))) noteIntervalRun(run);
     wasRecording = recording;
   });
+};
+
+/** Séance du compteur, hors React (notification de l'enregistrement) ; `null` sans séance. */
+export const getIntervalRun = (): IntervalRun | null => run;
+
+/**
+ * Commandes du compteur (lancement, pause, reprise, « Passer », arrêt,
+ * fermeture), hors React. Ne compte pas comme une page qui regarde : pas de
+ * minuterie d'affichage. Rend le désabonnement.
+ */
+export const subscribeToIntervalCommands = (listener: () => void): (() => void) => {
+  commandListeners.add(listener);
+  return () => {
+    commandListeners.delete(listener);
+  };
 };
 
 /** Le compteur, relu à chaque changement et, pendant une séance qui avance, au quart de seconde. */

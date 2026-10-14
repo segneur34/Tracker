@@ -15,7 +15,9 @@ import {
   DEFAULT_INTERVAL_WORKOUT, MAX_INTERVAL_PRESETS, newPresetId, sameWorkout, sanitizePresets, sanitizeWorkout, workoutLabel,
   type IntervalPreset, type IntervalWorkout,
 } from '../recording/intervalTimer';
-import { DEFAULT_LIVE_FIELDS, sanitizeLiveFields, type LiveFieldKey } from '../recording/liveFields';
+import {
+  DEFAULT_LIVE_FIELDS, DEFAULT_NOTIFICATION_FIELDS, MAX_NOTIFICATION_FIELDS, sanitizeLiveFields, type LiveFieldKey,
+} from '../recording/liveFields';
 import { MARK_GUIDE_DEFAULTS, sanitizeMarkGuide, type MarkGuideSettings } from '../recording/markGuide';
 import { defaultJumpSettings, sanitizeJumpSettings, type JumpSettings } from '../recording/jumpSettings';
 import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, type BikeType } from '../cycling/energy';
@@ -107,6 +109,8 @@ export interface StoredSettings {
   autoPause?: ByActivity<{ speedMs: number; delayS: number }>;
   /** Chiffres en grand de l'enregistrement, carte réduite ; absents : ceux de la famille. */
   liveFields?: ByActivity<LiveFieldKey[]>;
+  /** Chiffres de la notification de l'enregistrement, écran verrouillé ; absents : `DEFAULT_NOTIFICATION_FIELDS`. */
+  notificationFields?: ByActivity<LiveFieldKey[]>;
   /** Bips d'approche des balises (voile) : courbe et vibration ; absent : `MARK_GUIDE_DEFAULTS`. */
   markGuide?: ByActivity<MarkGuideSettings>;
   /** Support sur foil (voile, surf) ; absent : `foilDefault` du calcul, coché pour « Surf foil ». */
@@ -433,6 +437,13 @@ export const effectiveLiveFields = (activity: Activity): LiveFieldKey[] => {
   return sanitizeLiveFields(readStoredSettings().liveFields?.[activity.id], treatment) ?? DEFAULT_LIVE_FIELDS[treatment];
 };
 
+/** Chiffres de la notification de l'enregistrement : ceux choisis dans Réglages, sinon ceux du traitement. */
+export const effectiveNotificationFields = (activity: Activity): LiveFieldKey[] => {
+  const treatment = activityTreatment(activity);
+  return sanitizeLiveFields(readStoredSettings().notificationFields?.[activity.id], treatment, MAX_NOTIFICATION_FIELDS)
+    ?? DEFAULT_NOTIFICATION_FIELDS[treatment];
+};
+
 /** Bips d'approche des balises d'un parcours : ceux réglés pour l'activité, sinon le défaut. */
 export const effectiveMarkGuide = (activity: Activity): MarkGuideSettings =>
   sanitizeMarkGuide(readStoredSettings().markGuide?.[activity.id]) ?? MARK_GUIDE_DEFAULTS;
@@ -602,6 +613,9 @@ export interface SportSettingsView {
   /** Chiffres en grand de l'enregistrement, carte réduite. */
   liveFields: LiveFieldKey[];
   isLiveFieldsOverridden: boolean;
+  /** Chiffres de la notification de l'enregistrement. */
+  notificationFields: LiveFieldKey[];
+  isNotificationFieldsOverridden: boolean;
   /** Bips d'approche des balises (voile). */
   markGuide: MarkGuideSettings;
   isMarkGuideOverridden: boolean;
@@ -629,7 +643,7 @@ export interface SportSettingsView {
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
   'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights',
-  'paceLevels', 'customFlatSpeeds', 'liveFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'jumps',
+  'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'jumps',
 ] as const;
 
 /** Réglages sans aucune surcharge rangée sous `id`. */
@@ -683,6 +697,7 @@ export const useAllSportSettings = () => {
       const paceLevel = stored.paceLevels?.[id];
       const customSpeed = stored.customFlatSpeeds?.[id];
       const liveFields = sanitizeLiveFields(stored.liveFields?.[id], activityTreatment(activity));
+      const notificationFields = sanitizeLiveFields(stored.notificationFields?.[id], activityTreatment(activity), MAX_NOTIFICATION_FIELDS);
       const markGuide = sanitizeMarkGuide(stored.markGuide?.[id]);
       const ways = resolveWayTypes(stored, activity);
       return {
@@ -701,6 +716,8 @@ export const useAllSportSettings = () => {
         isAutoPauseOverridden: autoPauseOverride !== undefined,
         liveFields: liveFields ?? DEFAULT_LIVE_FIELDS[activityTreatment(activity)],
         isLiveFieldsOverridden: liveFields !== null,
+        notificationFields: notificationFields ?? DEFAULT_NOTIFICATION_FIELDS[activityTreatment(activity)],
+        isNotificationFieldsOverridden: notificationFields !== null,
         markGuide: markGuide ?? MARK_GUIDE_DEFAULTS,
         isMarkGuideOverridden: markGuide !== null,
         foil: resolveFoil(stored, activity),
@@ -721,7 +738,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'markGuide' | 'foil' | 'jumps' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'jumps' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -778,6 +795,14 @@ export const useAllSportSettings = () => {
           const fields = value === null ? null : sanitizeLiveFields(value, activityTreatment(activity));
           if (value !== null && fields === null) return;
           next.liveFields = put(stored.liveFields, fields);
+          break;
+        }
+        case 'notificationFields': {
+          const activity = findActivity(activities, id);
+          if (!activity) return;
+          const fields = value === null ? null : sanitizeLiveFields(value, activityTreatment(activity), MAX_NOTIFICATION_FIELDS);
+          if (value !== null && fields === null) return;
+          next.notificationFields = put(stored.notificationFields, fields);
           break;
         }
         case 'markGuide': {

@@ -13,6 +13,12 @@ const readAll = <T,>(namespace: string): Record<string, T> =>
 
 const writeAll = <T,>(namespace: string, all: Record<string, T>): void => jsonStore.write(namespace, all);
 
+/** Valeur rangée sous `key`, complétée par `defaults` : la même que le hook, hors composant. */
+export const readStoredRecord = <T extends object>(namespace: string, key: string, defaults: T): T => {
+  const stored = readAll<T>(namespace)[key];
+  return stored ? { ...defaults, ...stored } : defaults;
+};
+
 export const useStoredRecord = <T extends object>(
   namespace: string,
   key: string | null,
@@ -26,8 +32,7 @@ export const useStoredRecord = <T extends object>(
       setValue(defaults);
       return;
     }
-    const stored = readAll<T>(namespace)[key];
-    setValue(stored ? { ...defaults, ...stored } : defaults);
+    setValue(readStoredRecord(namespace, key, defaults));
     // `defaults` est une constante de module chez tous les appelants.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [namespace, key]);

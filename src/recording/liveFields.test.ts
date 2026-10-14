@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_LIVE_FIELDS, MAX_LIVE_FIELDS, liveFieldLabel, liveFieldValue, liveFieldsOfTreatment, sanitizeLiveFields, type LiveFieldContext } from './liveFields';
+import {
+  DEFAULT_LIVE_FIELDS, DEFAULT_NOTIFICATION_FIELDS, MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, liveFieldLabel, liveFieldShortLabel, liveFieldValue,
+  liveFieldsOfTreatment, sanitizeLiveFields, type LiveFieldContext,
+} from './liveFields';
 import { EMPTY_LIVE_STATS } from './liveStats';
 
 const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
@@ -27,8 +30,10 @@ describe('liveFieldsOfTreatment', () => {
   });
 
   it('propose les défauts de chaque traitement', () => {
-    for (const treatment of ['voile', 'course', 'velo'] as const) {
+    for (const treatment of ['voile', 'course', 'velo', 'surf'] as const) {
       for (const key of DEFAULT_LIVE_FIELDS[treatment]) expect(liveFieldsOfTreatment(treatment)).toContain(key);
+      for (const key of DEFAULT_NOTIFICATION_FIELDS[treatment]) expect(liveFieldsOfTreatment(treatment)).toContain(key);
+      expect(DEFAULT_NOTIFICATION_FIELDS[treatment].length).toBeLessThanOrEqual(MAX_NOTIFICATION_FIELDS);
     }
   });
 });
@@ -37,6 +42,11 @@ describe('sanitizeLiveFields', () => {
   it('garde les clés connues et permises, sans doublon, dans la limite', () => {
     expect(sanitizeLiveFields(['speed', 'power', 'speed', 'inconnu', 'heading'], 'course')).toEqual(['speed', 'power']);
     expect(sanitizeLiveFields(['speed', 'average', 'max', 'distance', 'duration'], 'voile')).toHaveLength(MAX_LIVE_FIELDS);
+  });
+
+  it('borne au maximum demandé, celui de la notification', () => {
+    expect(sanitizeLiveFields(['speed', 'average', 'max', 'distance'], 'voile', MAX_NOTIFICATION_FIELDS)).toEqual(['speed', 'average', 'max']);
+    expect(sanitizeLiveFields(['heading', 'speed', 'power', 'average', 'max'], 'course', 3)).toEqual(['speed', 'power', 'average']);
   });
 
   it("rend null quand rien ne reste, pour retomber sur le défaut", () => {
@@ -54,6 +64,14 @@ describe('liveFieldLabel', () => {
     expect(liveFieldLabel('lastDistance', { speedUnit: 'kn', distanceUnit: 'nm' })).toBe('Dernier mille');
     expect(liveFieldLabel('recentDistanceSpeed', { speedUnit: 'kmh', distanceUnit: 'km' })).toBe('300 derniers m');
     expect(liveFieldLabel('power', { speedUnit: 'kmh', distanceUnit: 'km' })).toBe('Puissance (15 s)');
+  });
+});
+
+describe('liveFieldShortLabel', () => {
+  it("abrège, et parle d'allure en min/km", () => {
+    expect(liveFieldShortLabel('speed', { speedUnit: 'kmh', distanceUnit: 'km' })).toBe('Vit.');
+    expect(liveFieldShortLabel('speed', { speedUnit: 'minkm', distanceUnit: 'km' })).toBe('Allure');
+    expect(liveFieldShortLabel('lastDistance', { speedUnit: 'kn', distanceUnit: 'nm' })).toBe('Dern. mille');
   });
 });
 

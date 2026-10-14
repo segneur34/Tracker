@@ -8,7 +8,9 @@ import { LIVE_STATS_DEFAULTS, type LiveStats } from './liveStats';
  * Chiffres en grand de l'enregistrement quand la carte est réduite, choisis
  * par activité dans Réglages : jusqu'à `MAX_LIVE_FIELDS`, parmi ceux qui ont
  * un sens pour son traitement (le fractionné à pied a ceux de la course).
- * Libellés et valeurs sont formatés ici, dans les unités de l'activité.
+ * Ceux de la notification de l'enregistrement viennent du même catalogue,
+ * choisis à part, `MAX_NOTIFICATION_FIELDS` au plus. Libellés et valeurs sont
+ * formatés ici, dans les unités de l'activité.
  */
 
 export type LiveFieldKey =
@@ -64,20 +66,31 @@ export const DEFAULT_LIVE_FIELDS: Record<Treatment, LiveFieldKey[]> = {
   surf: ['speed', 'max', 'duration'],
 };
 
+/** Chiffres de la notification de l'enregistrement au plus : la ligne repliée tient écran verrouillé. */
+export const MAX_NOTIFICATION_FIELDS = 3;
+
+/** Chiffres de la notification à défaut de choix, les mêmes pour tous les traitements. */
+export const DEFAULT_NOTIFICATION_FIELDS: Record<Treatment, LiveFieldKey[]> = {
+  voile: ['speed', 'average', 'distance'],
+  course: ['speed', 'average', 'distance'],
+  velo: ['speed', 'average', 'distance'],
+  surf: ['speed', 'average', 'distance'],
+};
+
 const isLiveFieldKey = (value: unknown): value is LiveFieldKey =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(LIVE_FIELD_TREATMENTS, value);
 
 /**
  * Choix rangé, nettoyé : clés connues et permises pour le traitement, sans
- * doublon, `MAX_LIVE_FIELDS` au plus ; `null` s'il n'en reste aucune (le
- * défaut s'applique).
+ * doublon, `max` au plus ; `null` s'il n'en reste aucune (le défaut
+ * s'applique).
  */
-export const sanitizeLiveFields = (value: unknown, treatment: Treatment): LiveFieldKey[] | null => {
+export const sanitizeLiveFields = (value: unknown, treatment: Treatment, max = MAX_LIVE_FIELDS): LiveFieldKey[] | null => {
   if (!Array.isArray(value)) return null;
   const kept: LiveFieldKey[] = [];
   for (const key of value) {
+    if (kept.length === max) break;
     if (isLiveFieldKey(key) && LIVE_FIELD_TREATMENTS[key].includes(treatment) && !kept.includes(key)) kept.push(key);
-    if (kept.length === MAX_LIVE_FIELDS) break;
   }
   return kept.length > 0 ? kept : null;
 };
@@ -116,6 +129,36 @@ export const liveFieldLabel = (key: LiveFieldKey, { speedUnit, distanceUnit }: L
     case 'loss': return 'D−';
     case 'climbRate': return 'Vitesse ascensionnelle';
     case 'power': return `Puissance (${LIVE_STATS_DEFAULTS.powerWindowS} s)`;
+    case 'effort': return 'Énergie';
+  }
+};
+
+/** Libellé court d'un chiffre, devant sa valeur sur la ligne repliée de la notification. */
+export const liveFieldShortLabel = (key: LiveFieldKey, { speedUnit, distanceUnit }: LiveFieldUnits): string => {
+  const pace = isInverseUnit(speedUnit);
+  switch (key) {
+    case 'speed': return pace ? 'Allure' : 'Vit.';
+    case 'average': return 'Moy.';
+    case 'max': return pace ? 'Meill.' : 'Max';
+    case 'recentDistanceSpeed': return `${LIVE_STATS_DEFAULTS.recentDistanceM} m`;
+    case 'lastDistance': return distanceUnit === 'nm' ? 'Dern. mille' : 'Dern. km';
+    case 'distance': return 'Dist.';
+    case 'duration': return 'Durée';
+    case 'clock': return 'Heure';
+    case 'remaining': return 'Reste';
+    case 'remainingTime': return 'Temps rest.';
+    case 'recentTopShort': return `Top ${TOP_SHORT_S} s`;
+    case 'recentTopLong': return `Top ${TOP_LONG_S} s`;
+    case 'heading': return 'Cap';
+    case 'legAverage': return 'Bord';
+    case 'markDistance': return 'Balise';
+    case 'markBearing': return 'Cap bal.';
+    case 'grade': return 'Pente';
+    case 'gain': return 'D+';
+    case 'recentDistanceGain': return `D+ ${LIVE_STATS_DEFAULTS.recentDistanceM} m`;
+    case 'loss': return 'D−';
+    case 'climbRate': return 'Asc.';
+    case 'power': return 'Puiss.';
     case 'effort': return 'Énergie';
   }
 };

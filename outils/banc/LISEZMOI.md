@@ -125,6 +125,11 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - Surf puis Route cachés par leur œil dans Réglages : toujours listés, grisés ; Surf hors des barres, de l'accueil, d'Enregistrer et du choix du favori, le favori retombé sur la voile ; la session de Route retirée de la bibliothèque Vélo, une ligne le dit ; Route hors d'Enregistrer ; `/surf` s'ouvre et dit qu'il est caché ;
   - l'œil de la dernière famille visible désactivé ;
   - tout ré-affiché : barres, accueil, bibliothèque Vélo et Enregistrer identiques au relevé de départ, favori compris.
+- `notification.mjs <port> <dossier de travail>` : notification de l'enregistrement (point 101), sur un profil neuf, sans réseau, environ 1 min 30. La version navigateur de `platform/notification.ts` consigne chaque envoi en `console.debug` (« [notification] »). Le script vérifie :
+  - la partie « Notification » de la carte Voile dans Réglages : trois menus, « défaut », puis une ligne changée et rangée ;
+  - un rejeu ×10 de voile : titre, chiffres choisis, chronomètre de durée, 5 s au moins entre deux envois ;
+  - pause manuelle (envoi immédiat, « en pause », posé seul), reprise, puis effacement à l'arrêt ;
+  - le compteur pendant un enregistrement de fractionné : phase au titre et décompte.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

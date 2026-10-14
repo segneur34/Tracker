@@ -25,6 +25,10 @@ import androidx.core.app.NotificationCompat;
  * cours et décompte son temps. Chaque programme reçu remplace le précédent
  * (lancement, pause, reprise, « Passer ») ; le dernier son de la séance joué,
  * le service s'arrête de lui-même. Sons et vibrations : TonePlayer.
+ *
+ * Notification lisible écran verrouillé, sauf pendant un enregistrement dont
+ * la notification (RecordingNotificationPlugin) porte déjà la phase et son
+ * décompte : elle s'y cache alors, pour n'en montrer qu'une.
  */
 public class IntervalTimerService extends Service {
 
@@ -54,11 +58,16 @@ public class IntervalTimerService extends Service {
     /** Marge du verrou au-delà du dernier son, en millisecondes. */
     private static final long WAKE_MARGIN_MS = 10_000;
 
+    /** Service en marche, pour lui signaler la notification de l'enregistrement ; `null` sinon. */
+    private static volatile IntervalTimerService running;
+
     private HandlerThread thread;
     private Handler handler;
     private TonePlayer tones;
     private PowerManager.WakeLock wakeLock;
     private String title = "Fractionné";
+    /** Fin de la phase affichée, à l'horloge, en millisecondes ; 0 : sans décompte. */
+    private long phaseEndAt = 0;
 
     @Override
     public void onCreate() {
@@ -67,6 +76,7 @@ public class IntervalTimerService extends Service {
         thread.start();
         handler = new Handler(thread.getLooper());
         tones = new TonePlayer(this);
+        running = this;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Fractionné", NotificationManager.IMPORTANCE_LOW);
             channel.setDescription("Compteur des répétitions : phase en cours et temps restant");
@@ -136,8 +146,22 @@ public class IntervalTimerService extends Service {
 
     private void show(String cueTitle, long phaseMs) {
         title = cueTitle;
+        phaseEndAt = phaseMs > 0 ? System.currentTimeMillis() + phaseMs : 0;
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager != null) manager.notify(NOTIFICATION_ID, notification(cueTitle, phaseMs));
+    }
+
+    /** La notification de l'enregistrement paraît ou disparaît : celle du compteur change de visibilité. */
+    static void recordingNotificationChanged() {
+        IntervalTimerService service = running;
+        if (service != null) service.handler.post(service::repost);
+    }
+
+    /** Repose la notification de la phase en cours, décompte compris. */
+    private void repost() {
+        long phaseMs = phaseEndAt > 0 ? Math.max(1, phaseEndAt - System.currentTimeMillis()) : 0;
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) manager.notify(NOTIFICATION_ID, notification(title, phaseMs));
     }
 
     /** Notification de la phase : son nom, et le décompte de son temps quand elle en a un. */
@@ -152,6 +176,7 @@ public class IntervalTimerService extends Service {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
+            .setVisibility(RecordingNotificationPlugin.isShown() ? NotificationCompat.VISIBILITY_SECRET : NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_STOPWATCH);
         if (phaseMs > 0) {
             builder.setUsesChronometer(true)
@@ -180,6 +205,7 @@ public class IntervalTimerService extends Service {
 
     @Override
     public void onDestroy() {
+        if (running == this) running = null;
         handler.removeCallbacksAndMessages(null);
         handler.post(() -> tones.release());
         thread.quitSafely();

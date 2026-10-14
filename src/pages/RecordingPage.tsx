@@ -11,18 +11,16 @@ import { IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
 import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
-import { METERS_PER_DISTANCE_UNIT, formatClock, formatDistance, formatShortDistance, formatSpeed } from '../core/units';
+import { formatClock, formatDistance, formatShortDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
-import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { useIntervalTimerOpen } from '../hooks/useIntervalTimer';
 import { useLongPress } from '../hooks/useLongPress';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../hooks/useMarkGuide';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  effectiveBikeSetup, effectiveDistanceUnit, effectiveFoil, effectiveJumpSettings, effectiveLiveFields, effectiveSpeedUnit, effectiveStopHoldMs,
+  effectiveDistanceUnit, effectiveFoil, effectiveJumpSettings, effectiveLiveFields, effectiveSpeedUnit, effectiveStopHoldMs,
   lastRecordActivity, rememberRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
@@ -32,17 +30,14 @@ import {
   analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording,
   resumeRecording, startRecording, stopRecording, useRecorder, type RecorderState,
 } from '../hooks/useRecorder';
-import {
-  followProgress, followedTraceLengthM, splitFollowedTrace, type FollowProgress, type FollowedTrace,
-} from '../recording/followedTrace';
+import { followedTraceLengthM, splitFollowedTrace, type FollowProgress, type FollowedTrace } from '../recording/followedTrace';
 import { travelHeading } from '../recording/heading';
 import {
   liveFieldLabel, liveFieldValue, type LiveFieldContext, type LiveFieldUnits,
 } from '../recording/liveFields';
 import { LIVE_LEG_DEFAULTS, type LiveLeg } from '../recording/liveLegs';
 import { courseMarks, markName } from '../recording/markGuide';
-import { LIVE_STATS_DEFAULTS, type LiveEnergySetup, type LiveStats } from '../recording/liveStats';
-import { runningEnergyParams } from '../running/energy';
+import { LIVE_STATS_DEFAULTS, type LiveStats } from '../recording/liveStats';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { createReplaySource, deviceLocationSource, type LocationFix } from '../platform/location';
 import { isNativeApp } from '../platform/runtime';
@@ -234,17 +229,6 @@ const liveSummaryItems = (activity: Activity, context: Omit<LiveFieldContext, ke
   }));
 };
 
-/** Modèle de la puissance et de l'énergie en direct, celui de l'analyse ; aucun en voile. */
-const liveEnergySetup = (activity: Activity, weightKg: number | null, economyMlKgKm: number | null): LiveEnergySetup | undefined => {
-  const family = sportTreatment(activity.base);
-  if (family === 'course') return { family, params: runningEnergyParams(economyMlKgKm), massKg: weightKg };
-  if (family === 'velo') {
-    const { bikeType, bikeKg } = effectiveBikeSetup(activity);
-    return { family, params: cyclingEnergyParams(bikeType, bikeKg, weightKg ?? REFERENCE_RIDER_KG) };
-  }
-  return undefined;
-};
-
 /** Carte de l'enregistrement en cours, réduite ou non ; mémorisé sur l'appareil. */
 const RECORDING_SECTION_DEFAULTS = { carte: true };
 
@@ -358,15 +342,8 @@ function RecordingPage() {
   const counterOpen = useIntervalTimerOpen();
   const counterFamily = busy ? (liveActivity ? activityFamily(liveActivity) : null) : pending ? null : family;
   const showCounter = counterOpen || counterFamily === 'fractionne';
-  const { profile: runner } = useRunnerProfile();
-  const energy = useMemo(
-    () => (liveActivity ? liveEnergySetup(liveActivity, runner.weightKg, runner.economyMlKgKm) : undefined),
-    [liveActivity, runner.weightKg, runner.economyMlKgKm]
-  );
-  const live = useLiveRecording(busy && liveActivity ? liveActivity.base : null, stats.pointCount, {
-    lastDistanceM: liveActivity ? METERS_PER_DISTANCE_UNIT[effectiveDistanceUnit(liveActivity)] : undefined,
-    energy,
-  });
+  // Calculé hors de la page, repris par la notification de l'enregistrement.
+  const live = useLiveRecording();
 
   // Parcours de voile : la trace suivie a des balises et l'activité est de voile. L'avancement se compte par balises.
   const markGuide = useMarkGuide();
@@ -376,10 +353,7 @@ function RecordingPage() {
 
   // Avancement sur la trace suivie, recalculé avec la trace en direct (toutes les 2 s au plus).
   const followedLengthM = useMemo(() => (followed ? followedTraceLengthM(followed) : 0), [followed]);
-  const progress = useMemo(
-    () => (busy && followed && !courseMarksOf ? followProgress(followed, live.segments) : null),
-    [busy, followed, courseMarksOf, live.segments]
-  );
+  const progress = busy && followed && !courseMarksOf ? live.progress : null;
   const guide = useMemo(() => {
     // En voile, le parcours va de balise en balise : fait jusqu'à la dernière laissée, à faire ensuite.
     if (courseMarksOf) return { done: courseMarksOf.slice(0, leftMarks), remaining: courseMarksOf.slice(Math.max(0, leftMarks - 1)) };

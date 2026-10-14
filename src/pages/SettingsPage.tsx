@@ -22,7 +22,8 @@ import {
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
 import {
-  DEFAULT_LIVE_FIELDS, MAX_LIVE_FIELDS, liveFieldLabel, liveFieldsOfTreatment, type LiveFieldKey,
+  DEFAULT_LIVE_FIELDS, DEFAULT_NOTIFICATION_FIELDS, MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, liveFieldLabel, liveFieldsOfTreatment,
+  type LiveFieldKey, type LiveFieldUnits,
 } from '../recording/liveFields';
 import {
   CUSTOM_FLAT_SPEED_BOUNDS_MS, DEFAULT_PACE_LEVEL, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PACE_LEVELS, PACE_LEVEL_LABEL,
@@ -141,9 +142,9 @@ const DISTANCE_UNITS = Object.keys(DISTANCE_UNIT_LABEL) as DistanceUnit[];
 /** Activités ouvertes, par identifiant ; absente : fermée. */
 const NO_ACTIVITY_OPEN: Record<string, boolean> = {};
 /** Parties d'une carte d'activité, toutes fermées au départ ; l'état, mémorisé, vaut pour toutes les activités. */
-type ActivityPartKey = 'affichage' | 'analyse' | 'enregistrement' | 'itineraires' | 'balises';
+type ActivityPartKey = 'affichage' | 'analyse' | 'enregistrement' | 'notification' | 'itineraires' | 'balises';
 const ACTIVITY_PART_DEFAULTS: Record<ActivityPartKey, boolean> = {
-  affichage: false, analyse: false, enregistrement: false, itineraires: false, balises: false,
+  affichage: false, analyse: false, enregistrement: false, notification: false, itineraires: false, balises: false,
 };
 
 /**
@@ -493,10 +494,26 @@ function SettingsPage() {
                                 {!s.isAutoPauseOverridden && <span className="settings-sports__mark">défaut</span>}
                               </div>
                             </div>
-                            <LiveFieldsSetting treatment={treatment} view={s} onChange={(fields) => setFor(id, 'liveFields', fields)} />
+                            <FieldsSetting label="Carte réduite à l'enregistrement"
+                              title="À l'enregistrement, quand la carte est réduite : les chiffres affichés en grand, de haut en bas"
+                              treatment={treatment} units={s} fields={s.liveFields} overridden={s.isLiveFieldsOverridden}
+                              defaults={DEFAULT_LIVE_FIELDS[treatment]} max={MAX_LIVE_FIELDS}
+                              onChange={(fields) => setFor(id, 'liveFields', fields)} />
                             {s.jumps !== null && (
                               <JumpsSetting jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => setFor(id, 'jumps', next)} />
                             )}
+                          </ActivityPart>
+                          <ActivityPart label="Notification" open={openPart.notification} onToggle={() => togglePart('notification')}>
+                            <FieldsSetting label="Chiffres de la notification"
+                              title="Pendant l'enregistrement, sur Android : les chiffres de la notification, lisible écran verrouillé, dans cet ordre"
+                              treatment={treatment} units={s} fields={s.notificationFields} overridden={s.isNotificationFieldsOverridden}
+                              defaults={DEFAULT_NOTIFICATION_FIELDS[treatment]} max={MAX_NOTIFICATION_FIELDS}
+                              onChange={(fields) => setFor(id, 'notificationFields', fields)} />
+                            <p className="settings-block__intro" style={{ margin: 0 }}>
+                              Sur Android, la notification de l'enregistrement donne le nom de l'activité, la durée qui tourne et ces
+                              chiffres ; en fractionné, la répétition et le décompte du compteur ; en pause, les derniers chiffres. Pour la
+                              lire écran verrouillé, le téléphone doit y montrer le contenu des notifications.
+                            </p>
                           </ActivityPart>
                           {(treatment === 'velo' || paceFamily !== null || s.loopReturnRatio !== null) && (
                             <ActivityPart label={treatment === 'velo' ? (paceFamily ? 'Vélo et itinéraires' : 'Vélo') : 'Itinéraires'} open={openPart.itineraires} onToggle={() => togglePart('itineraires')}>
@@ -582,7 +599,7 @@ function SettingsPage() {
               Pendant un enregistrement, tenir le bouton rond de la barre du bas met en pause ou relance, depuis n'importe
               quelle page. Un appui court ouvre la page d'enregistrement. Le bouton « Arrêter » se tient aussi, pour qu'un geste
               involontaire ne coupe pas la session ; à 0, un simple appui suffit. La pause automatique se règle par activité, comme
-              les chiffres affichés en grand quand la carte est réduite.
+              les chiffres affichés en grand quand la carte est réduite et ceux de la notification.
             </p>
             <NumberField label="Appui long pour la pause" unit="s" step={0.5} min={0.5} max={10}
               value={longPressMs / 1000}
@@ -663,28 +680,32 @@ function SettingsPage() {
 }
 
 /**
- * Chiffres en grand de l'enregistrement quand la carte est réduite, de haut
- * en bas : un menu par ligne, le premier toujours rempli. Un chiffre déjà
- * placé n'est pas proposé ailleurs. La liste est rangée sans trou ; revenue
- * au défaut du traitement, elle est effacée.
+ * Chiffres de l'enregistrement, choisis dans le catalogue du direct : ceux en
+ * grand de la carte réduite, ceux de la notification. Un menu par ligne, le
+ * premier toujours rempli ; un chiffre déjà placé n'est pas proposé ailleurs.
+ * La liste est rangée sans trou ; revenue au défaut, elle est effacée.
  */
-function LiveFieldsSetting({ treatment, view, onChange }: {
+function FieldsSetting({ label, title, treatment, units, fields, overridden, defaults, max, onChange }: {
+  label: string;
+  title: string;
   treatment: Treatment;
-  view: SportSettingsView;
+  units: LiveFieldUnits;
+  fields: LiveFieldKey[];
+  overridden: boolean;
+  defaults: LiveFieldKey[];
+  max: number;
   onChange: (fields: LiveFieldKey[] | null) => void;
 }) {
   const options = liveFieldsOfTreatment(treatment);
-  const units = { speedUnit: view.speedUnit, distanceUnit: view.distanceUnit };
-  const slots = Array.from({ length: MAX_LIVE_FIELDS }, (_, i) => view.liveFields[i] ?? null);
+  const slots = Array.from({ length: max }, (_, i) => fields[i] ?? null);
   const pick = (slot: number, key: LiveFieldKey | null) => {
     const next = slots.map((k, i) => (i === slot ? key : k)).filter((k): k is LiveFieldKey => k !== null);
-    const defaults = DEFAULT_LIVE_FIELDS[treatment];
     const isDefault = next.length === defaults.length && next.every((k, i) => k === defaults[i]);
     onChange(isDefault ? null : next);
   };
   return (
-    <div className="settings-row" title="À l'enregistrement, quand la carte est réduite : les chiffres affichés en grand, de haut en bas">
-      <span className="settings-row__label">Carte réduite à l'enregistrement</span>
+    <div className="settings-row" title={title}>
+      <span className="settings-row__label">{label}</span>
       <div className="settings-sports__pair">
         {slots.map((key, i) => (
           <select key={i} value={key ?? ''} aria-label={`Ligne ${i + 1}`} className="ui-field ui-field--s"
@@ -695,7 +716,7 @@ function LiveFieldsSetting({ treatment, view, onChange }: {
             ))}
           </select>
         ))}
-        {!view.isLiveFieldsOverridden && <span className="settings-sports__mark">défaut</span>}
+        {!overridden && <span className="settings-sports__mark">défaut</span>}
       </div>
     </div>
   );

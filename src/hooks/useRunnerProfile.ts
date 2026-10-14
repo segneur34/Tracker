@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useStoredRecord } from './useStoredRecord';
+import { readStoredRecord, useStoredRecord } from './useStoredRecord';
 
 /**
  * Profil du coureur, persistant dans le navigateur. Ces caractéristiques
@@ -43,8 +43,14 @@ const BOUNDS: Record<Exclude<keyof RunnerProfile, 'sex'>, [number, number]> = {
   economyMlKgKm: [120, 320],
 };
 
+const NAMESPACE = 'tracker.runnerProfile';
+const KEY = 'me';
+
+/** Profil du pratiquant, hors composant (statistiques du direct). */
+export const readRunnerProfile = (): RunnerProfile => readStoredRecord(NAMESPACE, KEY, EMPTY_RUNNER_PROFILE);
+
 export const useRunnerProfile = () => {
-  const { value, update } = useStoredRecord<RunnerProfile>('tracker.runnerProfile', 'me', EMPTY_RUNNER_PROFILE);
+  const { value, update } = useStoredRecord<RunnerProfile>(NAMESPACE, KEY, EMPTY_RUNNER_PROFILE);
 
   /** Écrit un champ numérique, `null` pour l'effacer ; les valeurs hors plage sont ignorées. */
   const setNumber = useCallback(
