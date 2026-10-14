@@ -76,6 +76,37 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - le groupe dans Réglages, sur l'accueil et dans la barre du haut, son absence en planification, la page à 390 px sans débordement.
 
   Il dure environ 2 min.
+- `chrono.mjs <port> [<dossier des captures>]` : chronomètre de la carte du compteur (lot 2 des demandes du 10-14/10), sur un profil neuf, sans réseau, à 390×844 puis à 1400×1000. Il vérifie :
+  - la bascule « Compteur | Chrono » ;
+  - Départ, deux tours (le dernier en haut), Arrêt (temps figé), Reprendre ;
+  - la pastille du chrono sur la vue Compteur ;
+  - le chrono repris juste après un rechargement ;
+  - la carte gardée en Course tant que le chrono est lancé, puis retirée par « Remise à zéro » ;
+  - la page sans débordement.
+
+  Il dure environ 30 s. Sur un serveur neuf, charger une page avant : le premier passage, à 390 px, ne trouve sinon rien.
+- `notes.mjs <port> <dossier de travail> [<dossier des captures>]` : bouton « Note » de l'enregistrement (lot 3 des demandes du 10-14/10), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX. En Course à pied, en Voile puis en Surf, il vérifie :
+  - un rejeu ×1 à 390×844, avec deux notes posées : le bouton dit « Note N posée » puis revient, le vibreur est relevé (« [bips] vibreur »), la page ne déborde pas ;
+  - l'analyse : deux fanions numérotés sur la carte, la liste de « Général », « Voir » qui passe le fanion au violet, un trait par repère sur les graphes, deux repères dans la fiche ;
+  - en Course seulement : la note 1 nommée, la note 2 supprimée, « Enregistrer la session », la fiche relue, puis la liste après rechargement, et à 1400×1000.
+
+  Il dure environ 2 min.
+- `charge.mjs <port> [<dossier des captures>]` : charge portée en course et poids du vélo par session (lot 4 des demandes du 10-14/10), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX, deux côtes à 5 %, et pose un poids de 70 kg. Il vérifie :
+  - dans Réglages, partie Analyse : le champ « Charge portée » sur Course et Fractionné à pied, pas sur Route ; 5 kg rangés pour Course ;
+  - une course importée : énergie et note avec la charge de l'activité, puis 12 kg dans l'onglet réglages (énergie × 82/75), barre « charge », « Enregistrer la session », fiche relue, rechargement, « Revenir à l'activité » puis Annuler ;
+  - une sortie à vélo importée : 20 kg de vélo et de bagages, puissance et masse totale recalculées, fiche relue ;
+  - à 390×844, aucun débordement.
+
+  Il dure environ 1 min.
+- `imports.mjs <port> [<dossier des captures>]` : imports anciens sans artefact (lot 5 des demandes du 10-14/10), sur un profil neuf, sans réseau, poids du pratiquant non renseigné. Le script écrit lui-même ses GPX et leurs fiches, et les importe par la page. Il vérifie :
+  - le matériel : une wing importée seule n'emprunte rien à la dernière session notée ; une wing enregistrée sans notes le reçoit ;
+  - une fiche de la première version (24/09) : notes gardées, réglages, activité et nom nuls, session modifiable ;
+  - une fiche au résumé abîmé, importée puis posée dans `sessions/` avant « Mettre à jour » : nom et notes gardés, résumé refait, pas de lecture seule ;
+  - une course importée seule, puis avec sa fiche : nom et voies reçus, « fiche complétée » ;
+  - à vélo, sans poids : énergie à « — », avertissement, pas de graphe ;
+  - en surf : foil supposé dans « Général » et dans l'onglet réglages ; à 390×844, aucun débordement.
+
+  Il dure environ 1 min 30.
 - `reglages.mjs <port> [<dossier des captures>]` : un fichier de réglages par appareil (point 90), sur un profil neuf, sans réseau, dans la mémoire du navigateur. Il vérifie :
   - `reglages/pc.json` écrit au premier lancement ;
   - le passage depuis un ancien `reglages.json` plus récent : repris une dernière fois, puis retiré ;

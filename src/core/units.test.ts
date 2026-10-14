@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDistance, formatKnots, formatShortDistance, knotsToDisplay, toDisplayDistance } from './units';
+import { formatDistance, formatSessionDate, formatKnots, formatShortDistance, knotsToDisplay, toDisplayDistance } from './units';
 
 describe('distances', () => {
   it('convertit les mètres en kilomètres et en milles nautiques', () => {
@@ -42,5 +42,12 @@ describe('formatKnots', () => {
 
   it('rend tel quel ce qui n\'est pas un nombre', () => {
     expect(formatKnots('-', 'kmh')).toBe('-');
+  });
+});
+
+describe('formatSessionDate', () => {
+  it("donne le jour, la date et l'heure locale", () => {
+    expect(formatSessionDate(new Date(2026, 9, 14, 10, 2, 41).getTime())).toBe('mer. 14/10/2026 · 10:02');
+    expect(formatSessionDate(new Date(2026, 0, 4, 7, 5).getTime())).toBe('dim. 04/01/2026 · 07:05');
   });
 });

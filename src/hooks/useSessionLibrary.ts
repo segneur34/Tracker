@@ -3,6 +3,7 @@ import { sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
 import { pruneImuFile } from '../core/imuPrune';
 import { pruneSurfImu } from '../surfing/pumping';
+import type { SessionMark } from '../core/sessionMarks';
 import { ELEVATION_PRESETS, SAILING_SPORTS, getSportProfile, isLandTreatment, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
@@ -31,10 +32,13 @@ import {
   lightRecord,
   mergeLightRecord,
   parseRecord,
+  parseRecordParts,
+  readAnalysis,
   recordFileName,
   serializeRecord,
   type LibrarySession,
   type RecordPatch,
+  type RecordWithoutSummary,
   type SessionAnalysis,
   type SessionRecord,
   type SessionSource,
@@ -400,10 +404,10 @@ const newRecord = (gpx: string, analyzed: AnalyzedGpx, source: SessionSource, ac
 });
 
 /** Nouveau résumé, en gardant le nombre de manœuvres de la dernière analyse. */
-const withSummary = (record: SessionRecord, summary: SessionSummary): SessionRecord => ({
+const withSummary = (record: RecordWithoutSummary, summary: SessionSummary): SessionRecord => ({
   ...record,
   summary:
-    record.summary.maneuverCount === undefined ? summary : { ...summary, maneuverCount: record.summary.maneuverCount },
+    record.summary?.maneuverCount === undefined ? summary : { ...summary, maneuverCount: record.summary.maneuverCount },
 });
 
 // --- Écritures différées des fiches ---
@@ -811,6 +815,8 @@ interface SummaryJob {
   /** Vrai si la fiche existante ne doit pas être réécrite. */
   readOnly: boolean;
   warning: string | null;
+  /** `create` d'une fiche lue dont seul le résumé est illisible : elle garde le reste. */
+  base?: RecordWithoutSummary;
 }
 
 /**
@@ -887,8 +893,10 @@ const scan = async (f: MemoryFolder, gen: number, editsBefore = editCount): Prom
   for (const [file, record] of Object.entries(plan.reuse)) keep(file, record, cache.light);
   for (const file of plan.read) {
     const text = await f.readText(sessionPath(recordFileName(file)));
-    const record = text === null ? null : parseRecord(text);
-    if (record) keep(file, record, false);
+    const parts = text === null ? null : parseRecordParts(text);
+    if (parts?.summary) keep(file, { ...parts, summary: parts.summary }, false);
+    // Résumé seul illisible : il se refait depuis le GPX, la fiche garde nom, notes et réglages.
+    else if (parts && isWritableRecord(parts)) jobs.push({ file, kind: 'create', readOnly: false, warning: null, base: parts });
     else jobs.push({ file, kind: 'create', readOnly: true, warning: UNREADABLE_RECORD_WARNING });
   }
   for (const file of plan.summarize) jobs.push({ file, kind: 'create', readOnly: false, warning: null });
@@ -928,11 +936,10 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
   if (gen !== generation) return 'stopped';
   const current = job.kind === 'refresh' ? findSession(job.file) : undefined;
   if (job.kind === 'refresh' && (!current || current.readOnly || current.partial)) return 'done';
+  const from = current?.record ?? job.base;
   let analyzed: AnalyzedGpx | null;
   try {
-    analyzed = text === null
-      ? null
-      : analyzeGpx(text, current ? current.record.sport : undefined, current?.record.analysis, current?.record.activityId, current?.record);
+    analyzed = text === null ? null : analyzeGpx(text, from ? from.sport : undefined, from?.analysis, from?.activityId, from);
   } catch {
     return 'unreadable';
   }
@@ -944,7 +951,7 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
     await writeRecordNow(job.file);
     return 'done';
   }
-  const record = newRecord(job.file, analyzed, 'import');
+  const record = job.base ? withSummary({ ...job.base, gpx: job.file }, analyzed.summary) : newRecord(job.file, analyzed, 'import');
   if (!job.readOnly) {
     try {
       await f.writeText(sessionPath(recordFileName(job.file)), serializeRecord(record));
@@ -1175,12 +1182,16 @@ interface AddOptions {
   sport?: SportType;
   /** Activité choisie à l'enregistrement. */
   activityId?: string;
-  /** Fiche qui accompagne le GPX, lors de l'import d'un dossier. */
-  record?: SessionRecord | null;
+  /** Fiche qui accompagne le GPX, lors de l'import d'un dossier ; son résumé est refait. */
+  record?: RecordWithoutSummary | null;
   /** Séances du compteur faites pendant l'enregistrement, rangées dans la fiche. */
   intervals?: IntervalSeries[];
+  /** Repères du bouton « Note », rangés dans la fiche. */
+  marks?: SessionMark[];
   /** Capteurs de l'enregistrement (`.imu`), rangés à côté du GPX. */
   motion?: Uint8Array;
+  /** Foil de l'activité à l'enregistrement, rangé dans les réglages de la session. */
+  foil?: boolean;
 }
 
 /**
@@ -1220,17 +1231,23 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   if (!analyzed) return { status: 'invalid', file: null, message: 'Pas assez de points horodatés.' };
 
   const startMs = analyzed.summary.startMs;
-  const existing = all.find((s) => s.record.summary.startMs === startMs);
+  let existing = all.find((s) => s.record.summary.startMs === startMs);
+  // Fiche du cache allégé : relue en entier, pour ne pas croire absents ses sauts, ses voies ou son altitude.
+  if (existing?.partial && options.record && folder) {
+    await hydrateSession(folder, existing.file).catch(() => undefined);
+    existing = findSession(existing.file) ?? existing;
+  }
   if (existing) {
     // Session entrée sans sa fiche complète (GPX importé seul) : celle de la copie lui donne ce qui
     // lui manque, sans rien écraser ; de même ses capteurs, s'ils ne sont pas encore là.
     let recordCompleted = false;
-    if (options.record && !existing.readOnly) {
-      const record = completeRecord(existing.record, options.record);
+    if (options.record && !existing.readOnly && !existing.partial) {
+      const { record, resummarize: stale } = completeRecord(existing.record, options.record);
       if (record !== existing.record) {
         replaceSession({ ...existing, record });
         scheduleRecordWrite(existing.file);
         recordCompleted = true;
+        if (stale) void resummarize(existing.file);
       }
     }
     const f = folder;
@@ -1257,8 +1274,15 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   const gpx = uniqueSessionFileName(name, knownNames);
   const made = options.record
     ? withSummary({ ...options.record, gpx, sport: analyzed.sport }, analyzed.summary)
-    : newRecord(gpx, analyzed, source, options.activityId ?? null);
-  const record = options.intervals && options.intervals.length > 0 ? { ...made, intervals: options.intervals } : made;
+    : {
+      ...newRecord(gpx, analyzed, source, options.activityId ?? null),
+      ...(options.foil !== undefined ? { analysis: readAnalysis({ foil: options.foil, savedAt: Date.now() }) } : {}),
+    };
+  const record = {
+    ...made,
+    ...(options.intervals && options.intervals.length > 0 ? { intervals: options.intervals } : {}),
+    ...(options.marks && options.marks.length > 0 ? { marks: options.marks } : {}),
+  };
   // Un enregistrement est élagué en entrant ; un dossier importé est rangé tel quel.
   const motion = options.motion && source === 'enregistrement'
     ? await prunedMotion(options.motion, analyzed.sport, text, options.record?.analysis, options.activityId ?? options.record?.activityId)
@@ -1283,11 +1307,11 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
 
 /**
  * Range une session qui vient d'être enregistrée, avec les séances du
- * compteur faites pendant elle et ses capteurs (`motion`, le contenu du
- * `.imu`). Rend son nom dans la mémoire et, en clair, l'endroit où elle se
+ * compteur faites pendant elle, ses repères (`marks`), ses capteurs (`motion`, le contenu du
+ * `.imu`) et le foil de son activité (`foil`, `null` hors voile et surf). Rend son nom dans la mémoire et, en clair, l'endroit où elle se
  * trouve. Ne lève d'erreur que si l'écriture échoue : l'enregistreur garde
  * alors son journal. Une session mise en attente faute de dossier n'a pas
- * encore de fiche : ses séances ne sont pas gardées ; ses capteurs attendent
+ * encore de fiche : ses séances et ses repères ne sont pas gardés ; ses capteurs attendent
  * avec elle.
  */
 export const saveRecordedSession = async (
@@ -1295,10 +1319,14 @@ export const saveRecordedSession = async (
   sport: SportType,
   activityId: string | null,
   intervals: IntervalSeries[] = [],
-  motion: Uint8Array | null = null
+  motion: Uint8Array | null = null,
+  marks: SessionMark[] = [],
+  foil: boolean | null = null
 ): Promise<{ file: string | null; location: string }> => {
   await opening;
-  const result = await addGpx(text, 'enregistrement', { sport, activityId: activityId ?? undefined, intervals, motion: motion ?? undefined });
+  const result = await addGpx(text, 'enregistrement', {
+    sport, activityId: activityId ?? undefined, intervals, marks, motion: motion ?? undefined, foil: foil ?? undefined,
+  });
   switch (result.status) {
     case 'added':
       return { file: result.file, location: state.folderLabel ?? 'mémoire' };
@@ -1373,7 +1401,7 @@ export const importFiles = async (files: File[]): Promise<ImportReport> => {
         // à défaut de fichiers posés à côté ; la mémoire range le GPX sans eux.
         const bundle = unbundleSessionGpx(await readPickedFile(file));
         const recordFile = records.get(baseKey(file));
-        const sidecar = recordFile ? parseRecord(await readPickedFile(recordFile)) : null;
+        const sidecar = recordFile ? parseRecordParts(await readPickedFile(recordFile)) : null;
         const record = sidecar && isWritableRecord(sidecar) ? sidecar : bundle.record;
         const motionFile = motions.get(baseKey(file));
         const result = await addGpx(bundle.gpx, 'import', {

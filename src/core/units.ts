@@ -184,3 +184,12 @@ export const formatTimeOfDay = (ms: number): string => {
   const pad = (n: number): string => String(n).padStart(2, '0');
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
+
+const WEEKDAYS_FR = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+
+/** Date et heure de départ d'une session, en heure locale : « mer. 14/10/2026 · 10:02 ». */
+export const formatSessionDate = (ms: number): string => {
+  const date = new Date(ms);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${WEEKDAYS_FR[date.getDay()]} ${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} · ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};

@@ -95,6 +95,10 @@ export const isBikeType = (value: unknown): value is BikeType =>
 /** Masse du cycliste retenue quand son poids n'est pas renseigné, en kg. */
 export const REFERENCE_RIDER_KG = 75;
 
+/** Poids de vélo plausible, en kg, bagages compris pour celui d'une session. */
+export const isValidBikeWeight = (value: unknown): value is number =>
+  typeof value === 'number' && isFinite(value) && value >= 3 && value <= 60;
+
 export interface CyclingEnergyParams {
   /** Roulement moyen, celui d'un revêtement inconnu. */
   crr: number;

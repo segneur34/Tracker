@@ -1,3 +1,4 @@
+import type { SessionMark } from '../core/sessionMarks';
 import type { SpeedRangeMs } from '../core/speedGradient';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
 import { normalizeDeg, type SessionAnalysis, type SessionRecord, type SessionTerrain, type StoredSessionNotes } from './record';
@@ -5,7 +6,8 @@ import { normalizeDeg, type SessionAnalysis, type SessionRecord, type SessionTer
 /**
  * Ce que l'utilisateur change sur une session dans le module d'analyse : vent
  * saisi, seuil d'activité, allure imposée, couleurs de la trace, seuil
- * d'effort du fractionné, foil, pumping, seuil de vague en foil (surf), terrain, notes. Les changements restent en brouillon jusqu'à
+ * d'effort du fractionné, foil, pumping, seuil de vague en foil (surf), terrain, poids
+ * du vélo et charge portée, notes, repères du bouton « Note » (nommés ou supprimés). Les changements restent en brouillon jusqu'à
  * « Enregistrer la session », qui les écrit dans la fiche.
  */
 export interface SessionEdits {
@@ -28,6 +30,12 @@ export interface SessionEdits {
   waveThreshold: number | null;
   /** Terrain du dénivelé pour la session ; `null` : celui de l'activité. */
   terrain: SessionTerrain | null;
+  /** Poids du vélo et des bagages, en kg ; `null` : celui de l'activité. */
+  bikeWeightKg: number | null;
+  /** Charge portée en course, en kg ; `null` : celle de l'activité. */
+  loadKg: number | null;
+  /** Repères de la session, dans l'ordre du temps. */
+  marks: SessionMark[];
 }
 
 const NOTE_FIELDS = Object.keys(EMPTY_NOTES) as (keyof SailingSessionNotes)[];
@@ -35,7 +43,7 @@ const NOTE_FIELDS = Object.keys(EMPTY_NOTES) as (keyof SailingSessionNotes)[];
 const sameNotes = (a: SailingSessionNotes, b: SailingSessionNotes): boolean =>
   NOTE_FIELDS.every((field) => a[field] === b[field]);
 
-/** Notes les plus récentes qui portent du matériel : proposées à une session encore sans notes. */
+/** Notes les plus récentes qui portent du matériel : proposées à une session enregistrée encore sans notes. */
 export const latestGearNotes = (records: readonly SessionRecord[]): StoredSessionNotes | null => {
   let latest: StoredSessionNotes | null = null;
   for (const record of records) {
@@ -46,14 +54,16 @@ export const latestGearNotes = (records: readonly SessionRecord[]): StoredSessio
 };
 
 /**
- * État enregistré d'une session, tel que le module l'affiche. Une session sans
- * notes reçoit le matériel de la dernière session notée (`gear`) : on change
- * rarement de foil entre deux sorties.
+ * État enregistré d'une session, tel que le module l'affiche. Une session
+ * enregistrée sans notes reçoit le matériel de la dernière session notée
+ * (`gear`) : on change rarement de foil entre deux sorties. Une session
+ * importée, ou un GPX hors de la mémoire, n'emprunte rien : ce que sa fiche ne
+ * porte pas reste vide.
  */
 export const savedEdits = (record: SessionRecord | null, gear: StoredSessionNotes | null): SessionEdits => {
   const notes: SailingSessionNotes = record?.notes
     ? pickNotes(record.notes)
-    : gear
+    : gear && record?.source === 'enregistrement'
       ? { ...EMPTY_NOTES, foil: gear.foil, mast: gear.mast, wing: gear.wing }
       : EMPTY_NOTES;
   return {
@@ -67,13 +77,18 @@ export const savedEdits = (record: SessionRecord | null, gear: StoredSessionNote
     pumping: record?.analysis?.pumping ?? null,
     waveThreshold: record?.analysis?.waveThreshold ?? null,
     terrain: record?.analysis?.terrain ?? null,
+    bikeWeightKg: record?.analysis?.bikeWeightKg ?? null,
+    loadKg: record?.analysis?.loadKg ?? null,
+    marks: record?.marks ?? NO_MARKS,
   };
 };
+
+const NO_MARKS: SessionMark[] = [];
 
 const pickNotes = (notes: SailingSessionNotes): SailingSessionNotes =>
   Object.fromEntries(NOTE_FIELDS.map((field) => [field, notes[field]])) as unknown as SailingSessionNotes;
 
-export type EditedPart = 'vent' | 'seuil' | 'allure' | 'couleurs' | 'effort' | 'foil' | 'pumping' | 'vague' | 'terrain' | 'notes';
+export type EditedPart = 'vent' | 'seuil' | 'allure' | 'couleurs' | 'effort' | 'foil' | 'pumping' | 'vague' | 'terrain' | 'charge' | 'notes' | 'reperes';
 
 /** Nom de chaque partie, tel que l'écran l'annonce. */
 export const EDITED_PART_LABEL: Record<EditedPart, string> = {
@@ -86,11 +101,19 @@ export const EDITED_PART_LABEL: Record<EditedPart, string> = {
   pumping: 'pumping',
   vague: 'seuil de vague',
   terrain: 'terrain',
+  charge: 'charge',
   notes: 'notes',
+  reperes: 'repères',
 };
 
 const sameRange = (a: SpeedRangeMs | null, b: SpeedRangeMs | null): boolean =>
   a === b || (a !== null && b !== null && a.minMs === b.minMs && a.maxMs === b.maxMs);
+
+const sameMarks = (a: readonly SessionMark[], b: readonly SessionMark[]): boolean =>
+  a === b || (a.length === b.length && a.every((m, i) => {
+    const o = b[i];
+    return m.timeMs === o.timeMs && m.lat === o.lat && m.lon === o.lon && m.label === o.label;
+  }));
 
 /** Parties qui diffèrent entre deux états, dans l'ordre de l'écran. */
 export const changedParts = (saved: SessionEdits, edits: SessionEdits): EditedPart[] => {
@@ -104,13 +127,17 @@ export const changedParts = (saved: SessionEdits, edits: SessionEdits): EditedPa
   if (saved.pumping !== edits.pumping) parts.push('pumping');
   if (saved.waveThreshold !== edits.waveThreshold) parts.push('vague');
   if (saved.terrain !== edits.terrain) parts.push('terrain');
+  if (saved.bikeWeightKg !== edits.bikeWeightKg || saved.loadKg !== edits.loadKg) parts.push('charge');
   if (!sameNotes(saved.notes, edits.notes)) parts.push('notes');
+  if (!sameMarks(saved.marks, edits.marks)) parts.push('reperes');
   return parts;
 };
 
 export interface EditsPatch {
   notes?: StoredSessionNotes;
   analysis?: SessionAnalysis;
+  /** Repères ; une liste vide les retire de la fiche. */
+  marks?: SessionMark[];
 }
 
 /**
@@ -122,7 +149,8 @@ export const editsPatch = (record: SessionRecord, saved: SessionEdits, edits: Se
   const parts = changedParts(saved, edits);
   const patch: EditsPatch = {};
   if (parts.includes('notes')) patch.notes = { ...record.notes, ...edits.notes, savedAt: now };
-  if (parts.some((part) => part !== 'notes')) {
+  if (parts.includes('reperes')) patch.marks = edits.marks.map((m) => ({ ...m, label: m.label?.trim() || null }));
+  if (parts.some((part) => part !== 'notes' && part !== 'reperes')) {
     patch.analysis = {
       ...record.analysis,
       windDeg: edits.windDeg === null ? null : normalizeDeg(edits.windDeg),
@@ -134,6 +162,8 @@ export const editsPatch = (record: SessionRecord, saved: SessionEdits, edits: Se
       pumping: edits.pumping,
       waveThreshold: edits.waveThreshold,
       terrain: edits.terrain,
+      bikeWeightKg: edits.bikeWeightKg,
+      loadKg: edits.loadKg,
       savedAt: now,
     };
   }

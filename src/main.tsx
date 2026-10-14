@@ -10,6 +10,7 @@ import { isIntervalTimerActive, startIntervalTimer } from './hooks/useIntervalTi
 import { startLiveRecording } from './hooks/useLiveRecording';
 import { startMarkGuide } from './hooks/useMarkGuide';
 import { startRecordingNotification } from './hooks/recordingNotification';
+import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { openLibrary, settingsUpgraded, startLibraryUi } from './hooks/useSessionLibrary';
 import { upgradeStoredActivities } from './hooks/useSportSettings';
@@ -37,14 +38,16 @@ void initStorage()
     );
     startLibraryUi(isRecordingActive);
     installLeaveGuard();
-    // Pendant un enregistrement ou une séance du compteur, la touche retour met l'application en arrière-plan.
-    void installBackButton(() => isRecordingActive() || isIntervalTimerActive(), confirmLeave);
+    // Pendant un enregistrement, une séance du compteur ou un chrono en marche, la touche retour met l'application en arrière-plan.
+    void installBackButton(() => isRecordingActive() || isIntervalTimerActive() || isStopwatchRunning(), confirmLeave);
     // Un enregistrement coupé par un arrêt brutal, ou arrêté sans décision, revient en attente.
     void recoverInterruptedRecording();
     // Bips d'approche des balises, pendant un enregistrement de voile qui suit un parcours.
     startMarkGuide();
     // Compteur du fractionné : séance reprise si elle court encore, et confiée à l'enregistreur.
     startIntervalTimer();
+    // Chronomètre de la carte du compteur, repris s'il était lancé.
+    startStopwatchStore();
     // Statistiques du direct, lues par la page Enregistrer et par la notification.
     startLiveRecording();
     // Notification de l'enregistrement, écran verrouillé : chiffres choisis dans Réglages.

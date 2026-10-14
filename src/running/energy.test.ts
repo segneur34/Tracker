@@ -91,6 +91,18 @@ describe('computeEnergy', () => {
     expect(result.netJkg).toBeCloseTo(expected, 3);
   });
 
+  it('10 kg de charge sur 70 kg : déplacement × 8/7, repos inchangé', () => {
+    const track = buildTrack(1200, () => 3, 1, (m) => 100 + 0.05 * m);
+    const rest = 1.2;
+    const free = computeEnergy(track, gradesOf(track), allMoving(track), DEFAULT_ENERGY_PARAMS, rest);
+    const loaded = computeEnergy(track, gradesOf(track), allMoving(track), DEFAULT_ENERGY_PARAMS, rest, 10 / 70);
+    expect(loaded.netJkg).toBeCloseTo(free.netJkg * (8 / 7), 6);
+    expect(loaded.mechanicalJkg).toBeCloseTo(free.mechanicalJkg * (8 / 7), 6);
+    expect(loaded.restJkg).toBe(free.restJkg);
+    expect(loaded.totalJkg).toBeCloseTo(free.netJkg * (8 / 7) + free.restJkg, 6);
+    expect(loaded.cumulativeTotalJkg.at(-1)).toBeCloseTo(loaded.totalJkg, 6);
+  });
+
   it("une pause n'ajoute que le repos", () => {
     const run = buildTrack(1200, () => 3);
     const paused = buildTrack(1200, (t) => (t > 400 && t <= 700 ? 0 : 3));

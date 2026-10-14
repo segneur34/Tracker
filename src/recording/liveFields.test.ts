@@ -45,7 +45,7 @@ describe('sanitizeLiveFields', () => {
   });
 
   it('borne au maximum demandé, celui de la notification', () => {
-    expect(sanitizeLiveFields(['speed', 'average', 'max', 'distance'], 'voile', MAX_NOTIFICATION_FIELDS)).toEqual(['speed', 'average', 'max']);
+    expect(sanitizeLiveFields(['speed', 'average', 'max', 'distance'], 'voile', MAX_NOTIFICATION_FIELDS)).toEqual(['speed', 'average']);
     expect(sanitizeLiveFields(['heading', 'speed', 'power', 'average', 'max'], 'course', 3)).toEqual(['speed', 'power', 'average']);
   });
 

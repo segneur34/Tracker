@@ -1,0 +1,76 @@
+/* Accueil : version à côté du nom, familles en grille de deux colonnes. */
+
+.home-version {
+  margin-left: var(--space-2);
+  font-size: var(--text-s);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.home-families {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.home-family {
+  position: relative;
+  display: flex;
+}
+
+.home-family__link {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 52px;
+  padding: 0 40px 0 var(--space-3);
+  border-radius: var(--radius-m);
+  background: var(--family-color);
+  color: var(--on-accent);
+  font-size: var(--text-m);
+  font-weight: 700;
+  text-decoration: none;
+  overflow: hidden;
+}
+
+.home-family__link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-family__help {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1);
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--on-accent);
+  opacity: 0.8;
+  cursor: pointer;
+}
+
+.home-family__help[aria-expanded='true'] {
+  opacity: 1;
+}
+
+.home-family__blurb {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-m);
+  line-height: 1.5;
+}

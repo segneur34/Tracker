@@ -9,3 +9,6 @@ export const HIGHLIGHT_PODIUM_COLORS = ['#d32f2f', '#f57c00', '#388e3c'];
 
 /** Passage seul montré sur la carte (zone de pente, répétition, saut) : un violet, absent du dégradé de la trace. */
 export const HIGHLIGHT_SHOWN_COLOR = '#7b1fa2';
+
+/** Repère du bouton « Note » au repos, sur la carte et les graphes (`SessionMarks.tsx`) ; montré, il prend le violet. */
+export const MARK_FLAG_COLOR = '#37474f';

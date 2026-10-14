@@ -49,6 +49,10 @@ export const DEFAULT_ENERGY_PARAMS: EnergyParams = {
   mechanicalEfficiency: 0.25,
 };
 
+/** Charge portée plausible (sac, affaires), en kg ; 0 : aucune. */
+export const isValidCarriedLoad = (value: unknown): value is number =>
+  typeof value === 'number' && isFinite(value) && value >= 0 && value <= 50;
+
 /** Paramètres pour l'économie de course du pratiquant, celle par défaut s'il ne l'a pas saisie. */
 export const runningEnergyParams = (economyMlKgKm: number | null): EnergyParams => ({
   ...DEFAULT_ENERGY_PARAMS,
@@ -127,14 +131,20 @@ export interface EnergyResult {
  * (coût de la pente + k·v²) × distance, et en travail mécanique ce coût
  * multiplié par le rendement ; le repos court sur toute la durée. Une pente
  * manquante compte comme plate, et son segment va dans la zone plate.
+ *
+ * `loadRatio` : charge portée (sac, affaires) sur le poids du corps. Le
+ * déplacement coûte en proportion de la masse déplacée, corps et charge ; le
+ * repos reste celui du corps. Les résultats restent par kilo de coureur.
  */
 export const computeEnergy = (
   track: TrackPoint[],
   grades: number[],
   activityMask: boolean[],
   params: EnergyParams,
-  restWkg: number
+  restWkg: number,
+  loadRatio = 0
 ): EnergyResult => {
+  const massRatio = 1 + Math.max(0, loadRatio);
   const n = track.length;
   const mechanicalPowerWkg = new Array<number>(n).fill(NaN);
   const cumulativeTotalJkg = new Array<number>(n).fill(0);
@@ -163,7 +173,7 @@ export const computeEnergy = (
       const d = segmentDistanceM(track, i);
       const v = track[i].speedMs;
       const grade = grades[i] ?? NaN;
-      net = (runningCostJkgM(grade, params) + params.airDragJs2M3Kg * v * v) * d;
+      net = (runningCostJkgM(grade, params) + params.airDragJs2M3Kg * v * v) * d * massRatio;
       mechanicalPowerWkg[i] = (net * params.mechanicalEfficiency) / dt;
       netJkg += net;
       movingTimeS += dt;

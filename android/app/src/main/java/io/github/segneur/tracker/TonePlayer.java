@@ -113,8 +113,9 @@ final class TonePlayer {
     /**
      * Vibration d'alarme : une application en arrière-plan, écran éteint, ne
      * vibre que si l'usage est déclaré (alarme, sonnerie, notification).
+     * Seule, sans son : le retour du bouton « Note » (BeeperPlugin.buzz).
      */
-    private void vibrate(int durationMs) {
+    void vibrate(int durationMs) {
         Vibrator vibrator;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             VibratorManager manager = (VibratorManager) context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);

@@ -155,3 +155,76 @@
   flex-direction: column;
   gap: var(--space-1);
 }
+
+/* Bascule « Compteur | Chrono », en tête de la carte. */
+.ivl-switch {
+  display: inline-flex;
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.ivl-switch__pick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 2px var(--space-3);
+  border: none;
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--text-s);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ivl-switch__pick + .ivl-switch__pick {
+  border-left: 1px solid var(--line);
+}
+
+.ivl-switch__pick[aria-pressed='true'] {
+  background: var(--fractionne);
+  color: var(--on-accent);
+}
+
+/* L'autre vue tourne : sa phase ou son temps, en pastille. */
+.ivl-switch__badge {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--fractionne-soft);
+  color: var(--fractionne);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+/* Tours du chrono, le dernier en haut, le meilleur en vert. */
+.ivl-laps {
+  width: 100%;
+  margin-top: var(--space-3);
+  border-collapse: collapse;
+  font-size: var(--text-s);
+}
+
+.ivl-laps th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.ivl-laps th,
+.ivl-laps td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--line-soft);
+  text-align: right;
+}
+
+.ivl-laps th:first-child,
+.ivl-laps td:first-child {
+  text-align: left;
+}
+
+.ivl-laps__best td {
+  color: var(--success);
+  font-weight: 700;
+}

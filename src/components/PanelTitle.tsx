@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { formatSessionDate } from '../core/units';
 import { IconChevronRight } from './icons';
 
 /**
@@ -22,3 +23,13 @@ function PanelTitle({ label, extra, open, onToggle }: { label: ReactNode; extra?
 }
 
 export default PanelTitle;
+
+/** Date et heure de départ d'une session, en petit à droite du titre « Général ». */
+export function SessionDate({ track }: { track: readonly { timeMs: number }[] }) {
+  if (track.length === 0) return null;
+  return (
+    <span style={{ marginLeft: '6px', fontSize: 'var(--text-s)', fontWeight: 400, color: 'var(--muted)' }}>
+      {formatSessionDate(track[0].timeMs)}
+    </span>
+  );
+}

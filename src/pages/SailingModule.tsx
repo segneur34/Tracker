@@ -16,6 +16,8 @@ import { updateSessionRecord } from '../hooks/useSessionLibrary';
 import { effectiveJumpSettings, readStoredActivities } from '../hooks/useSportSettings';
 import { useSessionJumps } from '../hooks/useSessionJumps';
 import { useSessionDraft } from '../hooks/useSessionDraft';
+import { useSessionMarks } from '../hooks/useSessionMarks';
+import { buildCumulativeTrack } from '../core/sessionStats';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useMapHighlight } from '../hooks/useMapHighlight';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
@@ -23,7 +25,7 @@ import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom'
 import { trackIndexAtTime } from '../core/jumps';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
-import { sessionActivity } from '../core/activities';
+import { FAMILY_ACCENT, sessionActivity } from '../core/activities';
 import { activeRatioLabel } from '../core/sportProfiles';
 import { isValidSpeedRange } from '../core/speedGradient';
 import { trackColorSegments } from '../core/trackColor';
@@ -45,9 +47,11 @@ import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
-import PanelTitle from '../components/PanelTitle';
+import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
+import { SessionMarksLayer, SessionMarksList } from '../components/SessionMarks';
+import { markReferenceLines } from '../components/markReferenceLines';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
@@ -256,6 +260,11 @@ function SailingModule() {
   const jumpHighlight = highlight.shownIn('sauts');
   const jumpPodiumShown = jumpHighlight === 'podium';
   const shownJump = jumpHighlight !== null && !jumpPodiumShown ? Number(jumpHighlight) : null;
+  // Repères du bouton « Note » : fanions, liste de « Général », traits des graphes.
+  const cumulative = useMemo(() => buildCumulativeTrack(track), [track]);
+  const marks = useSessionMarks(draft, track, cumulative.cumDist);
+  const shownMarkKey = highlight.shownIn('general');
+  const shownMark = shownMarkKey === null ? null : Number(shownMarkKey);
 
   /** Bornes du dégradé de couleur de la trace, en m/s : celles de la session, sinon de Réglages, sinon la suggestion. */
   const colorRange = edits.speedRange ?? speedRange ?? suggestedSpeedRangeMs;
@@ -385,6 +394,8 @@ function SailingModule() {
       tickFormatter={(v: number) => (trackData.length > 0 ? formatTimeOfDay(trackData[0].timeMs + v * 60000).slice(0, 5) : '')}
       tick={{ fill: '#555', fontSize: 11 }} />
   );
+  /** Traits des repères sur les graphes, en minutes depuis le premier point. */
+  const markLines = markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark);
   const zoomHint = narrow
     ? 'Écartez deux doigts sur un graphe pour zoomer.'
     : 'Tirez une zone à la souris pour zoomer, double-clic pour tout revoir.';
@@ -634,6 +645,7 @@ function SailingModule() {
       {staticMapLayers}
       <JumpMapLayer track={trackData} jumps={shownJumps} shownJump={shownJump} podiumShown={jumpPodiumShown} />
 
+      <SessionMarksLayer located={marks.located} shownMs={shownMark} />
       {hoveredIndex !== null && trackData[hoveredIndex] && (
         <HoverMarker position={[trackData[hoveredIndex].lat, trackData[hoveredIndex].lon]} />
       )}
@@ -699,7 +711,7 @@ function SailingModule() {
             {open.general && (
               <ResizablePanel id="sailing.general" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" open={open.general} onToggle={() => toggle('general')} />
+                  <PanelTitle label="Général" extra={<SessionDate track={trackData} />} open={open.general} onToggle={() => toggle('general')} />
                 </div>
                 <div className="an-sheet__stats an-sheet__stats--always">
                   <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
@@ -756,6 +768,8 @@ function SailingModule() {
                     </div>
                   </div>
                 </div>
+                <SessionMarksList view={marks} distanceUnit={distanceUnit} shownMs={shownMark} accent={FAMILY_ACCENT.voile}
+                  onShow={(ms) => highlight.show('general', ms === null ? null : String(ms))} />
               </ResizablePanel>
             )}
 
@@ -799,6 +813,7 @@ function SailingModule() {
                           <ChartZoomProbe />
                           <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
                           {timeAxis}
+                          {markLines}
                           <YAxis domain={[0, 'auto']} tick={{fill: '#111', fontSize: 11, fontWeight: 'bold'}} />
                           <Tooltip formatter={speedFormatter('Vitesse')} labelFormatter={() => ''} />
                           <Line type="monotone" dataKey="vitesse" stroke="#1976d2" dot={false} strokeWidth={2} />
@@ -905,6 +920,7 @@ function SailingModule() {
                           <ChartZoomProbe />
                           <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
                           {timeAxis}
+                          {markLines}
                           <YAxis domain={['dataMin - 15', 'dataMax + 15']} tickFormatter={(val: number) => `${((Math.round(val) % 360) + 360) % 360}°`} tick={{fill: '#111', fontSize: 11, fontWeight: 'bold'}} />
                           <Tooltip
                             formatter={(_val, _name, item: TooltipPayloadEntry): [string, string] => {
@@ -1056,9 +1072,9 @@ function SailingModule() {
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}
                     title="Support sur foil pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">
-                    <input type="checkbox" checked={foil} onChange={(e) => draft.update({ foil: e.target.checked === activityFoil ? null : e.target.checked })} />
+                    <input type="checkbox" checked={foil} onChange={(e) => draft.update({ foil: e.target.checked })} />
                     <strong>Foil</strong>
-                    {edits.foil === null && <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(celui de l'activité)</span>}
+                    {edits.foil === null && <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(supposé : celui de l'activité)</span>}
                   </label>
 
                   {trackData.length > 0 && (

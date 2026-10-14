@@ -112,6 +112,14 @@ describe('computeCyclingEnergy', () => {
     expect(rClimb.mechanicalJ / rClimb.movingTimeS).toBeGreaterThan(215);
   });
 
+  it('un vélo chargé coûte plus en montée', () => {
+    const climb = buildTrack(600, () => 4, 1, (m) => 100 + 0.07 * m);
+    const light = computeCyclingEnergy(climb, gradesOf(climb), allMoving(climb), ROAD, 0);
+    const loaded = computeCyclingEnergy(climb, gradesOf(climb), allMoving(climb), cyclingEnergyParams('route', 18.5, 70), 0);
+    // 10 kg de plus sur 78,5 : la pesanteur, qui domine, croît de près de 13 %.
+    expect(loaded.mechanicalJ / light.mechanicalJ).toBeGreaterThan(1.1);
+  });
+
   it('la descente en roue libre ne coûte rien', () => {
     const descent = buildTrack(300, () => 12, 1, (m) => 1000 - 0.08 * m);
     const r = computeCyclingEnergy(descent, gradesOf(descent), allMoving(descent), ROAD, 0);

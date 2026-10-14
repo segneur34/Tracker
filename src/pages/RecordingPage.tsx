@@ -7,7 +7,7 @@ import HoldDial from '../components/ui/HoldDial';
 import FollowTracePicker from '../components/FollowTracePicker';
 import IntervalCard from '../components/IntervalCard';
 import PageHeader from '../components/ui/PageHeader';
-import { IconPause, IconPlay, IconRoute } from '../components/icons';
+import { IconFlag, IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
 import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
@@ -15,6 +15,7 @@ import { formatClock, formatDistance, formatShortDistance, formatSpeed } from '.
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { useIntervalTimerOpen } from '../hooks/useIntervalTimer';
+import { useStopwatchOpen } from '../hooks/useStopwatch';
 import { useLongPress } from '../hooks/useLongPress';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../hooks/useMarkGuide';
@@ -27,7 +28,7 @@ import { getMotionCapabilities, type MotionCapabilities } from '../platform/moti
 import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import {
-  analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording,
+  addRecordingMark, analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording,
   resumeRecording, startRecording, stopRecording, useRecorder, type RecorderState,
 } from '../hooks/useRecorder';
 import { followedTraceLengthM, splitFollowedTrace, type FollowProgress, type FollowedTrace } from '../recording/followedTrace';
@@ -40,7 +41,9 @@ import { courseMarks, markName } from '../recording/markGuide';
 import { LIVE_STATS_DEFAULTS, type LiveStats } from '../recording/liveStats';
 import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/files';
 import { createReplaySource, deviceLocationSource, type LocationFix } from '../platform/location';
+import { buzz } from '../platform/beeper';
 import { isNativeApp } from '../platform/runtime';
+import { keepScreenOn } from '../platform/screen';
 import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
 
 /**
@@ -264,7 +267,7 @@ function StopButton({ status }: { status: RecorderState['status'] }) {
   const holdS = (holdMs / 1000).toLocaleString('fr-FR');
   return (
     <>
-      <Button variant="danger" size="l" style={{ flex: 1 }} disabled={busy} {...handlers} onClick={onClick}>
+      <Button variant="danger" size="l" className="ui-btn--hold" style={{ flex: 1 }} disabled={busy} {...handlers} onClick={onClick}>
         <span className="ui-record-dot ui-record-dot--stop" />
         {status === 'stopping' ? 'Enregistrement du fichier…' : hint ? `Maintenir ${holdS} s pour arrêter` : 'Arrêter'}
       </Button>
@@ -274,6 +277,37 @@ function StopButton({ status }: { status: RecorderState['status'] }) {
           title="Arrêter" hint="Maintenez le bouton" />
       )}
     </>
+  );
+}
+
+/** Durée du retour du bouton « Note », en millisecondes. */
+const NOTE_FEEDBACK_MS = 3000;
+/** Vibration qui confirme une note posée, en millisecondes. */
+const NOTE_BUZZ_MS = 80;
+
+/**
+ * Bouton « Note » : pose un repère à cet instant et à la dernière position
+ * (`addRecordingMark`), sans rien saisir, puisqu'on est en mouvement ; il se
+ * nomme ensuite dans l'analyse. Le bouton dit lui-même « Note N posée »
+ * quelques secondes, et le téléphone vibre.
+ */
+function NoteButton() {
+  const [feedback, setFeedback] = useState<string | null>(null);
+  useEffect(() => {
+    if (feedback === null) return;
+    const timer = setTimeout(() => setFeedback(null), NOTE_FEEDBACK_MS);
+    return () => clearTimeout(timer);
+  }, [feedback]);
+  const note = () => {
+    const added = addRecordingMark();
+    setFeedback(added ? `Note ${added.n} posée` : 'Pas encore de position : note impossible');
+    if (added) void buzz(NOTE_BUZZ_MS).catch(() => undefined);
+  };
+  return (
+    <Button variant="secondary" size="l" block className="ui-btn--hold" onClick={note} aria-live="polite">
+      <IconFlag size={20} />
+      {feedback ?? 'Note'}
+    </Button>
   );
 }
 
@@ -342,10 +376,18 @@ function RecordingPage() {
   const canStart = !busy && pending === null && chosen !== null && (sourceChoice === 'device' || replay !== null);
   const liveActivity = recorder.activity ?? chosen;
   const mapReduced = busy && !shown.carte;
-  // Compteur : pour le fractionné choisi (au repos) ou enregistré, et tant qu'une séance est lancée.
+  // Compteur : pour le fractionné choisi (au repos) ou enregistré, et tant qu'une séance ou le chrono est lancé.
   const counterOpen = useIntervalTimerOpen();
+  const stopwatchOpen = useStopwatchOpen();
   const counterFamily = busy ? (liveActivity ? activityFamily(liveActivity) : null) : pending ? null : family;
-  const showCounter = counterOpen || counterFamily === 'fractionne';
+  const showCounter = counterOpen || stopwatchOpen || counterFamily === 'fractionne';
+  // Écran allumé tant qu'un enregistrement (pause comprise), une séance du compteur ou le chrono tourne, sur cette page seulement.
+  const screenOn = busy || counterOpen || stopwatchOpen;
+  useEffect(() => {
+    if (!screenOn) return undefined;
+    keepScreenOn(true);
+    return () => keepScreenOn(false);
+  }, [screenOn]);
   // Calculé hors de la page, repris par la notification de l'enregistrement.
   const live = useLiveRecording();
 
@@ -536,6 +578,8 @@ function RecordingPage() {
           </Button>
         </div>
       )}
+
+      {(recorder.status === 'recording' || recorder.status === 'paused') && <NoteButton />}
 
       {picking && !busy && !pending && <FollowTracePicker onClose={() => setPicking(false)} onPicked={proposeActivityOf} />}
 

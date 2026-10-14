@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { LocationFix } from '../platform/location';
 import { buildGpx } from './gpxWriter';
 import { runCommand, startRun } from './intervalTimer';
-import { journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalIntervalsLine, parseJournal } from './journal';
+import { journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalIntervalsLine, journalNoteLine, parseJournal } from './journal';
 import { roundFix, splitIntoSegments } from './session';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
@@ -132,5 +132,27 @@ describe('journal', () => {
     expect(parsed.intervalRuns).toEqual([paused, second]);
     expect(parsed.fixes).toHaveLength(3);
     expect(parseJournal(journalOf(fixes)).intervalRuns).toEqual([]);
+  });
+});
+
+describe('notes du journal', () => {
+  const first = { timeMs: T0 + 1500, lat: 43.12346, lon: 3.76542, label: null };
+  const second = { timeMs: T0 + 500, lat: 43.1234, lon: 3.7654, label: null };
+
+  it("relit les repères, dans l'ordre du temps, sans gêner les positions", () => {
+    const text = journalHeaderLine('kite', T0 - 5000) + journalFixLine(fixes[0]) + journalNoteLine(first)
+      + journalFixLine(fixes[1]) + journalNoteLine(second) + journalFixLine(fixes[2]);
+    const parsed = parseJournal(text);
+    expect(parsed.marks).toEqual([second, first]);
+    expect(parsed.fixes).toHaveLength(3);
+    expect(parsed.breaks).toEqual([]);
+  });
+
+  it('ignore une note abîmée, et rend une liste vide sans note', () => {
+    const text = journalOf(fixes) + '["note",{"timeMs":"hier","lat":43,"lon":3}]\n' + '["note",{"timeMs":1,"lat":4';
+    const parsed = parseJournal(text);
+    expect(parsed.marks).toEqual([]);
+    expect(parsed.fixes).toHaveLength(3);
+    expect(parseJournal(journalOf(fixes)).marks).toEqual([]);
   });
 });

@@ -209,3 +209,18 @@ export const IconRefresh = ({ size = 20, ...props }: IconProps) => (
     <path d="M20.5 15a9 9 0 1 1-2.1-9.4L21 10" />
   </svg>
 );
+
+/** Fanion : le bouton « Note » de l'enregistrement, et les repères qu'il pose. */
+export const IconFlag = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M6 21V4" />
+    <path d="M6 4h11l-2.5 4L17 12H6" />
+  </svg>
+);
+
+/** Croix : supprimer. */
+export const IconClose = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M6 6l12 12M18 6L6 18" />
+  </svg>
+);

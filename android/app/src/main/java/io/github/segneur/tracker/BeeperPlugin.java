@@ -113,6 +113,14 @@ public class BeeperPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Vibration seule, sans son ni effet sur le rythme des balises : le bouton « Note ». */
+    @PluginMethod
+    public void buzz(PluginCall call) {
+        int durationMs = Math.max(1, Math.min(1000, call.getInt("durationMs", 80)));
+        handler().post(() -> tones().vibrate(durationMs));
+        call.resolve();
+    }
+
     @PluginMethod
     public void stop(PluginCall call) {
         Handler h = handler();

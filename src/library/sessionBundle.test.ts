@@ -124,17 +124,56 @@ describe('nom de la session dans le GPX complet', () => {
   });
 });
 
+describe('repères de la session dans le GPX complet', () => {
+  const marks = [
+    { timeMs: START_MS + 120_000, lat: 43.61, lon: 3.81, label: 'Bouée <rouge>' },
+    { timeMs: START_MS + 60_000, lat: 43.6, lon: 3.8, label: null },
+  ];
+
+  it('les écrit en <wpt> avant la trace, puis rend le GPX d’origine', () => {
+    const bundled = bundleSessionGpx(GPX, record({ marks }), null);
+    expect(bundled).toContain('<wpt lat="43.6" lon="3.8"><time>2026-10-10T07:01:00.000Z</time><name>Note 1</name></wpt>'
+      + '<wpt lat="43.61" lon="3.81"><time>2026-10-10T07:02:00.000Z</time><name>Bouée &lt;rouge&gt;</name></wpt><trk>');
+    const back = unbundleSessionGpx(bundled);
+    expect(back.gpx).toBe(GPX);
+    expect(back.record?.marks).toEqual([...marks].reverse());
+  });
+
+  it('avec un nom : métadonnées, points de passage, puis la trace nommée', () => {
+    const bundled = bundleSessionGpx(GPX, record({ name: 'Carnon', marks }), null);
+    const order = ['<metadata><name>Carnon</name></metadata>', '<wpt ', '<trk><name>Carnon</name>'].map((t) => bundled.indexOf(t));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((x, y) => x - y)).toEqual(order);
+    expect(unbundleSessionGpx(bundled).gpx).toBe(GPX);
+  });
+
+  it('sans repère, n’écrit pas de <wpt>', () => {
+    expect(bundleSessionGpx(GPX, record(), null)).not.toContain('<wpt');
+  });
+});
+
+describe('GPX complet dont la fiche a un résumé abîmé', () => {
+  it('rend la fiche sans son résumé, qui se refait à l’import', () => {
+    const bundled = bundleSessionGpx(GPX, record({ name: 'Piste' }), null);
+    const damaged = bundled.replace('&quot;maxSpeedMs&quot;: 6', '&quot;maxSpeedMs&quot;: null').replace('"maxSpeedMs": 6', '"maxSpeedMs": null');
+    expect(damaged).not.toBe(bundled);
+    const back = unbundleSessionGpx(damaged);
+    expect(back.record?.summary).toBeNull();
+    expect(back.record?.name).toBe('Piste');
+  });
+});
+
 describe('completeRecord', () => {
   it('reprend ce qui manque sans rien écraser', () => {
     const existing = record({ name: 'Nom du PC' });
     const incoming = record({ name: 'Nom du téléphone', intervals: INTERVALS });
-    const done = completeRecord(existing, incoming);
+    const { record: done } = completeRecord(existing, incoming);
     expect(done.name).toBe('Nom du PC');
     expect(done.intervals).toEqual(INTERVALS);
   });
 
   it('rend la même fiche si rien ne manque', () => {
     const existing = record({ intervals: INTERVALS });
-    expect(completeRecord(existing, record({ intervals: [] }))).toBe(existing);
+    expect(completeRecord(existing, record({ intervals: [] })).record).toBe(existing);
   });
 });

@@ -112,7 +112,7 @@ await go('/enregistrer');
 console.log('onglet Fractionné :', await clickText('Fractionné'));
 await wait(400);
 console.log('activités :', await evaluate(`[...document.querySelector('select.ui-field').options].map((o) => o.textContent).join(', ')`));
-console.log('compteur :', await evaluate(`(document.querySelector('.ivl .ui-card__title')?.textContent ?? '(absent)') + ' / ' + (document.querySelector('.ivl-summary')?.textContent ?? '')`));
+console.log('compteur :', await evaluate(`(document.querySelector('.ivl .ivl-switch__pick[aria-pressed=true]')?.textContent ?? '(absent)') + ' / ' + (document.querySelector('.ivl-summary')?.textContent ?? '')`));
 
 // 2. Séance 2 × 0:05 / 0:05, gardée.
 console.log('réglage :', await setSelect('Répétitions', 2), await setSelect('Travail, minutes', 0), await setSelect('Travail, secondes', 5),

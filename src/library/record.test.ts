@@ -4,6 +4,7 @@ import {
   RECORD_VERSION,
   SUMMARY_CALC_VERSION,
   applyRecordPatch,
+  completeRecord,
   dedupeSessions,
   findLegacyNotes,
   isSummaryStale,
@@ -11,6 +12,7 @@ import {
   lightRecord,
   mergeLightRecord,
   parseRecord,
+  parseRecordParts,
   recordFileName,
   serializeRecord,
   type LibrarySession,
@@ -122,8 +124,18 @@ describe('parseRecord et serializeRecord', () => {
 
 describe("réglages d'analyse de la fiche", () => {
   it("sont relus à l'identique", () => {
-    const r = record({ analysis: { windDeg: 315, activeThreshold: 6.5, referenceSpeedMs: 2.3, speedRange: { minMs: 2, maxMs: 8 }, effortThresholdMs: 3.6, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: START_MS + 20 } });
+    const r = record({ analysis: { windDeg: 315, activeThreshold: 6.5, referenceSpeedMs: 2.3, speedRange: { minMs: 2, maxMs: 8 }, effortThresholdMs: 3.6, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS + 20 } });
     expect(parseRecord(serializeRecord(r))?.analysis).toEqual(r.analysis);
+  });
+
+  it('relisent le poids du vélo et la charge, et écartent les valeurs hors bornes', () => {
+    const base = { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 1 };
+    const ok = record({ analysis: { ...base, bikeWeightKg: 14.5, loadKg: 0 } });
+    expect(parseRecord(serializeRecord(ok))?.analysis).toMatchObject({ bikeWeightKg: 14.5, loadKg: 0 });
+    const bad = record({ analysis: { ...base, bikeWeightKg: 1, loadKg: -3 } });
+    expect(parseRecord(serializeRecord(bad))?.analysis).toMatchObject({ bikeWeightKg: null, loadKg: null });
+    const { bikeWeightKg: _b, loadKg: _l, ...old } = ok.analysis!;
+    expect(parseRecord(serializeRecord(record({ analysis: old as typeof ok.analysis })))?.analysis).toMatchObject({ bikeWeightKg: null, loadKg: null });
   });
 
   it('valent `null` dans une fiche écrite avant eux', () => {
@@ -171,11 +183,11 @@ describe("réglages d'analyse de la fiche", () => {
   it('ramènent le vent dans [0, 360) et écartent les valeurs mal formées', () => {
     const raw = { ...record(), analysis: { windDeg: -45, activeThreshold: -2, referenceSpeedMs: 0, futur: true } };
     expect(parseRecord(JSON.stringify(raw))?.analysis).toEqual({
-      windDeg: 315, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 0, futur: true,
+      windDeg: 315, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: 0, futur: true,
     });
     const texte = { ...record(), analysis: { windDeg: 'nord', activeThreshold: '8', referenceSpeedMs: '3', effortThresholdMs: '4' } };
     expect(parseRecord(JSON.stringify(texte))?.analysis).toEqual({
-      windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 0,
+      windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: 0,
     });
     const negative = { ...record(), analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: -1.5 } };
     expect(parseRecord(JSON.stringify(negative))?.analysis?.referenceSpeedMs).toBeNull();
@@ -411,7 +423,7 @@ describe('dedupeSessions', () => {
 });
 
 describe('applyRecordPatch', () => {
-  const analysis: SessionAnalysis = { windDeg: 20, activeThreshold: 9, referenceSpeedMs: 7, speedRange: { minMs: 4, maxMs: 14 }, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 1 };
+  const analysis: SessionAnalysis = { windDeg: 20, activeThreshold: 9, referenceSpeedMs: 7, speedRange: { minMs: 4, maxMs: 14 }, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: 1 };
   const withAnalysis = record({ analysis, notes: { ...record().notes, comment: 'Belle session', savedAt: 2 } as SessionRecord['notes'] });
 
   it('rend la fiche telle quelle si rien ne change', () => {
@@ -482,5 +494,128 @@ describe('applyRecordPatch', () => {
     const counted = applyRecordPatch(record(), { maneuverCount: 12 });
     expect(counted.record.summary.maneuverCount).toBe(12);
     expect(counted.resummarize).toBe(false);
+  });
+});
+
+describe('repères de la fiche', () => {
+  const marks = [
+    { timeMs: START_MS + 60_000, lat: 43.5, lon: 3.9, label: 'Saut' },
+    { timeMs: START_MS + 120_000, lat: 43.51, lon: 3.91, label: null },
+  ];
+
+  it("sont relus à l'identique, absents sans repère", () => {
+    expect(parseRecord(serializeRecord(record({ marks })))?.marks).toEqual(marks);
+    expect(parseRecord(serializeRecord(record()))).not.toHaveProperty('marks');
+  });
+
+  it("écartent un repère mal formé, rangent les autres dans l'ordre du temps", () => {
+    const raw = [marks[1], { timeMs: 'midi', lat: 43, lon: 3 }, { ...marks[0], label: '  ' }, { timeMs: 1, lat: 200, lon: 3 }];
+    expect(parseRecord(JSON.stringify({ ...record(), marks: raw }))?.marks).toEqual([{ ...marks[0], label: null }, marks[1]]);
+    expect(parseRecord(JSON.stringify({ ...record(), marks: 'deux' }))).not.toHaveProperty('marks');
+    expect(parseRecord(JSON.stringify({ ...record(), marks: [] }))).not.toHaveProperty('marks');
+  });
+
+  it('se complètent sans écraser, et se retirent par une liste vide', () => {
+    expect(completeRecord(record(), record({ marks })).record.marks).toEqual(marks);
+    const own = [marks[1]];
+    expect(completeRecord(record({ marks: own }), record({ marks })).record.marks).toEqual(own);
+    expect(applyRecordPatch(record({ marks }), { marks: [] }).record).not.toHaveProperty('marks');
+    expect(applyRecordPatch(record({ marks }), { marks: own }).record.marks).toEqual(own);
+  });
+
+  it('restent dans la fiche allégée du cache', () => {
+    expect(lightRecord(record({ marks })).marks).toEqual(marks);
+  });
+});
+
+describe('fiches anciennes et abîmées', () => {
+  /** Fiche telle que l'écrivait la première version de la mémoire (24/09, b8620ff). */
+  const firstFormat = {
+    format: RECORD_FORMAT,
+    version: 1,
+    gpx: '2026-09-23_14-00-00_wingfoil.gpx',
+    sport: 'wingfoil',
+    source: 'import',
+    addedAt: '2026-09-24T10:00:00.000Z',
+    title: 'Wingfoil',
+    summary: record().summary,
+    notes: { foil: 'Axis 900', mast: '', wing: '5 m', comment: '', windLevel: null, waterState: null, rating: 4, savedAt: 1 },
+  };
+
+  it("lit la première fiche : ce qu'elle ignorait reste nul ou absent", () => {
+    const read = parseRecord(JSON.stringify(firstFormat));
+    expect(read).not.toBeNull();
+    expect(read?.activityId).toBeNull();
+    expect(read?.name).toBeNull();
+    expect(read?.analysis).toBeNull();
+    for (const key of ['intervals', 'jumps', 'marks', 'surfaces', 'terrainElevation', 'elevationSource']) expect(read).not.toHaveProperty(key);
+    expect(read?.notes?.foil).toBe('Axis 900');
+    expect(read && isWritableRecord(read)).toBe(true);
+  });
+
+  it('un résumé abîmé ne rend pas la fiche illisible : le reste est gardé, le résumé est à refaire', () => {
+    const damaged = { ...firstFormat, name: 'Sortie', summary: { ...firstFormat.summary, maxSpeedMs: null } };
+    const text = JSON.stringify(damaged);
+    expect(parseRecord(text)).toBeNull();
+    const parts = parseRecordParts(text);
+    expect(parts?.summary).toBeNull();
+    expect(parts?.name).toBe('Sortie');
+    expect(parts?.notes?.wing).toBe('5 m');
+    expect(parts?.addedAt).toBe('2026-09-24T10:00:00.000Z');
+    expect(parseRecordParts(JSON.stringify({ ...damaged, summary: undefined }))?.summary).toBeNull();
+    expect(parseRecordParts('{ pas du JSON')).toBeNull();
+    expect(parseRecordParts(JSON.stringify({ ...damaged, gpx: '' }))).toBeNull();
+  });
+
+  it('une fiche lisible se lit pareil par les deux lectures', () => {
+    const text = serializeRecord(record({ name: 'Sortie' }));
+    expect(parseRecordParts(text)).toEqual(parseRecord(text));
+  });
+});
+
+describe('completeRecord', () => {
+  const terrainElevation: SessionTerrainElevation = {
+    source: 'ign', resource: 'ign_rge_alti_wld', version: 1, stepM: 10,
+    fetchedAt: '2026-10-07T09:00:00.000Z', startMs: START_MS, t: [0, 3333], z: [47.5, 46.9],
+  };
+  const surfaces: SessionSurfaces = {
+    source: 'overpass', fetchedAt: '2026-10-04T15:00:00.000Z', matchVersion: 1, startMs: START_MS,
+    tags: ['highway=residential'], runs: [[0, 0]],
+  };
+  const jumps: SessionJumps = { version: 1, computedAt: '2026-10-08T14:00:00.000Z', jumps: [] };
+
+  it("reprend sauts, voies et altitude qui manquent, et refait le résumé pour l'altitude", () => {
+    const { record: done, resummarize } = completeRecord(record(), record({ jumps, surfaces, terrainElevation, elevationSource: 'gps' }));
+    expect(done.jumps).toEqual(jumps);
+    expect(done.surfaces).toEqual(surfaces);
+    expect(done.terrainElevation).toEqual(terrainElevation);
+    expect(done.elevationSource).toBe('gps');
+    expect(resummarize).toBe(true);
+    expect(completeRecord(record(), record({ jumps, surfaces })).resummarize).toBe(false);
+  });
+
+  it("n'écrase rien de ce que la fiche porte", () => {
+    const own: SessionJumps = { ...jumps, computedAt: '2026-10-09T08:00:00.000Z' };
+    const existing = record({ jumps: own, sport: 'kite', activityId: 'a-kite' });
+    const { record: done, resummarize } = completeRecord(existing, record({ jumps, sport: 'wingfoil', activityId: 'a-wing' }));
+    expect(done).toBe(existing);
+    expect(resummarize).toBe(false);
+  });
+
+  it('donne support et activité à une session à classer, et refait le résumé', () => {
+    const { record: done, resummarize } = completeRecord(record({ sport: null }), record({ sport: 'kite', activityId: 'a-kite' }));
+    expect(done.sport).toBe('kite');
+    expect(done.activityId).toBe('a-kite');
+    expect(resummarize).toBe(true);
+  });
+
+  it("ne prend pas l'activité d'un autre calcul", () => {
+    const { record: done } = completeRecord(record({ sport: 'kite' }), record({ sport: 'wingfoil', activityId: 'a-wing' }));
+    expect(done.activityId).toBeNull();
+  });
+
+  it('accepte une fiche sans résumé', () => {
+    const { summary: _unused, ...rest } = record({ name: 'Sortie' });
+    expect(completeRecord(record(), { ...rest, summary: null }).record.name).toBe('Sortie');
   });
 });

@@ -1,4 +1,6 @@
+import { isValidBikeWeight } from '../cycling/energy';
 import { JUMP_DOUBTS, type JumpDoubt, type SessionJump } from '../core/jumps';
+import { readSessionMarks, type SessionMark } from '../core/sessionMarks';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import { ELEVATION_PRESETS, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
@@ -6,6 +8,7 @@ import type { TerrainSamples } from '../core/terrainElevation';
 import { readSurfaceRuns, type SurfaceRuns } from '../planning/surface';
 import { readIntervalSeries, type IntervalSeries } from '../recording/intervalTimer';
 import { isSportType } from '../recording/session';
+import { isValidCarriedLoad } from '../running/energy';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
 
 /**
@@ -122,6 +125,18 @@ export interface SessionAnalysis {
    * changement d'activité le garde. Absent des fiches plus anciennes.
    */
   terrain: SessionTerrain | null;
+  /**
+   * Poids du vélo et des bagages pour cette session, en kg (vélo, énergie) ;
+   * `null` : celui de son activité (Réglages). Il décrit le matériel du jour :
+   * un changement d'activité le garde. Absent des fiches plus anciennes.
+   */
+  bikeWeightKg: number | null;
+  /**
+   * Charge portée (sac, affaires) pour cette session, en kg (course, énergie) ;
+   * `null` : celle de son activité (Réglages). Un changement d'activité la
+   * garde. Absente des fiches plus anciennes.
+   */
+  loadKg: number | null;
   savedAt: number;
 }
 
@@ -219,6 +234,11 @@ export interface SessionRecord {
   intervals?: IntervalSeries[];
   /** Sauts mesurés (voile, course, vélo) ; absent sans `.imu`, avant leur calcul, ou si la fiche en porte de mal formés. */
   jumps?: SessionJumps;
+  /**
+   * Repères posés par le bouton « Note » pendant l'enregistrement, nommés ou
+   * supprimés dans l'analyse ; dans l'ordre du temps. Absent sans repère.
+   */
+  marks?: SessionMark[];
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -306,6 +326,8 @@ export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
     pumping: typeof raw.pumping === 'boolean' ? raw.pumping : null,
     waveThreshold: isFiniteNumber(raw.waveThreshold) && raw.waveThreshold > 0 ? raw.waveThreshold : null,
     terrain: isSessionTerrain(raw.terrain) ? raw.terrain : null,
+    bikeWeightKg: isValidBikeWeight(raw.bikeWeightKg) ? raw.bikeWeightKg : null,
+    loadKg: isValidCarriedLoad(raw.loadKg) ? raw.loadKg : null,
     savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
   };
 };
@@ -378,11 +400,19 @@ export const readSessionJumps = (raw: unknown): SessionJumps | null => {
 };
 
 /**
- * Lit une fiche. Rend `null` si le texte n'est pas une fiche lisible : JSON
- * mal formé, autre format, champ indispensable absent. Les champs inconnus
- * sont gardés tels quels.
+ * Fiche relue sans son résumé, mal formé (un `NaN` écrit `null`, une retouche
+ * à la main) : il se refait depuis le GPX, et le reste (nom, notes, réglages)
+ * est gardé.
  */
-export const parseRecord = (text: string): SessionRecord | null => {
+export type RecordWithoutSummary = Omit<SessionRecord, 'summary'> & { summary: SessionSummary | null };
+
+/**
+ * Lit une fiche, résumé compris s'il est lisible. Rend `null` si le texte
+ * n'est pas une fiche : JSON mal formé, autre format, GPX non nommé. Les
+ * champs absents, ceux qu'une ancienne version ignorait, restent nuls ; les
+ * champs inconnus sont gardés tels quels.
+ */
+export const parseRecordParts = (text: string): RecordWithoutSummary | null => {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -392,12 +422,12 @@ export const parseRecord = (text: string): SessionRecord | null => {
   if (!isObject(raw) || raw.format !== RECORD_FORMAT || !isFiniteNumber(raw.version)) return null;
   if (typeof raw.gpx !== 'string' || raw.gpx === '') return null;
   const summary = readSummary(raw.summary);
-  if (!summary) return null;
-  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, intervals: rawIntervals, jumps: rawJumps, ...rest } = raw;
+  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, intervals: rawIntervals, jumps: rawJumps, marks: rawMarks, ...rest } = raw;
   const surfaces = readSessionSurfaces(rawSurfaces);
   const terrainElevation = readTerrainElevation(rawTerrain);
   const intervals = readIntervalSeries(rawIntervals);
   const jumps = readSessionJumps(rawJumps);
+  const marks = readSessionMarks(rawMarks);
   return {
     ...rest,
     format: RECORD_FORMAT,
@@ -406,7 +436,8 @@ export const parseRecord = (text: string): SessionRecord | null => {
     sport: isSportType(raw.sport) ? raw.sport : null,
     activityId: typeof raw.activityId === 'string' && raw.activityId !== '' ? raw.activityId : null,
     source: raw.source === 'enregistrement' ? 'enregistrement' : 'import',
-    addedAt: typeof raw.addedAt === 'string' ? raw.addedAt : new Date(summary.startMs).toISOString(),
+    // Sans date d'entrée : celle de la trace, sinon maintenant, puisqu'elle entre dans la mémoire.
+    addedAt: typeof raw.addedAt === 'string' ? raw.addedAt : new Date(summary?.startMs ?? Date.now()).toISOString(),
     title: typeof raw.title === 'string' ? raw.title : null,
     name: readSessionName(raw.name),
     summary,
@@ -417,28 +448,52 @@ export const parseRecord = (text: string): SessionRecord | null => {
     ...(rawSource === 'gps' ? { elevationSource: 'gps' as const } : {}),
     ...(intervals ? { intervals } : {}),
     ...(jumps ? { jumps } : {}),
+    ...(marks ? { marks } : {}),
   };
+};
+
+/** Lit une fiche, `null` si elle n'est pas lisible ou si son résumé ne l'est pas (`parseRecordParts`). */
+export const parseRecord = (text: string): SessionRecord | null => {
+  const parts = parseRecordParts(text);
+  return parts?.summary ? { ...parts, summary: parts.summary } : null;
 };
 
 /** Texte de la fiche, indenté pour rester lisible dans un éditeur. */
 export const serializeRecord = (record: SessionRecord): string => `${JSON.stringify(record, null, 2)}\n`;
 
 /** Faux pour une fiche écrite par une version plus récente : on la lit sans jamais la réécrire. */
-export const isWritableRecord = (record: SessionRecord): boolean => record.version <= RECORD_VERSION;
+export const isWritableRecord = (record: Pick<SessionRecord, 'version'>): boolean => record.version <= RECORD_VERSION;
 
 /**
  * Fiche de la mémoire complétée par celle d'une copie de la même session
- * (import d'un GPX complet, `library/sessionBundle.ts`) : séances du
- * compteur, nom, notes et réglages qu'elle n'a pas encore. Rien de ce qu'elle
- * porte n'est écrasé ; rend la même fiche si rien ne manque.
+ * (import d'un GPX complet, `library/sessionBundle.ts`, ou d'un GPX et de sa
+ * fiche) : support et activité inconnus, séances du compteur, repères, nom,
+ * notes, réglages, sauts, voies et altitude qu'elle n'a pas encore. Rien de ce
+ * qu'elle porte n'est écrasé ; rend la même fiche si rien ne manque.
+ * `resummarize` : le résumé est à refaire (support, activité, réglages ou
+ * altitude reçus).
  */
-export const completeRecord = (existing: SessionRecord, incoming: SessionRecord): SessionRecord => {
+export const completeRecord = (
+  existing: SessionRecord,
+  incoming: RecordWithoutSummary
+): { record: SessionRecord; resummarize: boolean } => {
   const patch: Partial<SessionRecord> = {};
+  if (existing.sport === null && incoming.sport !== null) patch.sport = incoming.sport;
+  if (existing.activityId === null && incoming.activityId !== null && (patch.sport ?? existing.sport) === incoming.sport) {
+    patch.activityId = incoming.activityId;
+  }
   if (!existing.intervals?.length && incoming.intervals?.length) patch.intervals = incoming.intervals;
+  if (!existing.marks?.length && incoming.marks?.length) patch.marks = incoming.marks;
   if (existing.name === null && incoming.name !== null) patch.name = incoming.name;
   if (existing.notes === null && incoming.notes !== null) patch.notes = incoming.notes;
   if (existing.analysis === null && incoming.analysis !== null) patch.analysis = incoming.analysis;
-  return Object.keys(patch).length > 0 ? { ...existing, ...patch } : existing;
+  if (!existing.jumps && incoming.jumps) patch.jumps = incoming.jumps;
+  if (!existing.surfaces && incoming.surfaces) patch.surfaces = incoming.surfaces;
+  if (!existing.terrainElevation && incoming.terrainElevation) patch.terrainElevation = incoming.terrainElevation;
+  if (!existing.elevationSource && incoming.elevationSource) patch.elevationSource = incoming.elevationSource;
+  if (Object.keys(patch).length === 0) return { record: existing, resummarize: false };
+  const resummarize = ['sport', 'activityId', 'analysis', 'terrainElevation', 'elevationSource'].some((key) => key in patch);
+  return { record: { ...existing, ...patch }, resummarize };
 };
 
 /** Vrai si le résumé a été calculé par une version antérieure du calcul. */
@@ -480,7 +535,7 @@ export const findLegacyNotes = (
  */
 export const RECORD_LIGHT_FIELDS = [
   'format', 'version', 'gpx', 'sport', 'activityId', 'source', 'addedAt', 'title', 'name',
-  'summary', 'notes', 'analysis', 'elevationSource', 'intervals',
+  'summary', 'notes', 'analysis', 'elevationSource', 'intervals', 'marks',
 ] as const satisfies readonly (keyof SessionRecord)[];
 
 const LIGHT_FIELDS: ReadonlySet<string> = new Set(RECORD_LIGHT_FIELDS);
@@ -564,12 +619,14 @@ export interface RecordPatch {
   elevationSource?: 'gps' | null;
   /** Sauts calculés ; `null` les retire. */
   jumps?: SessionJumps | null;
+  /** Repères du bouton « Note » ; `null` ou une liste vide les retire. */
+  marks?: SessionMark[] | null;
 }
 
 /**
  * Fiche après un changement : support, activité, nom, notes, réglages
  * d'analyse, nombre de manœuvres, voies suivies, altitude du terrain et sa
- * source, sauts. Rend la fiche d'origine, à l'identique, si rien ne change.
+ * source, sauts, repères. Rend la fiche d'origine, à l'identique, si rien ne change.
  * `resummarize` : le résumé est à recalculer (support, activité, seuil, allure
  * imposée, altitude ou source de l'altitude changés).
  *
@@ -591,6 +648,10 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   if (patch.jumps !== undefined) {
     const { jumps: _previous, ...others } = next;
     next = patch.jumps ? { ...others, jumps: patch.jumps } : others;
+  }
+  if (patch.marks !== undefined) {
+    const { marks: _previous, ...others } = next;
+    next = patch.marks?.length ? { ...others, marks: patch.marks } : others;
   }
   if (patch.surfaces !== undefined) {
     const { surfaces: _previous, ...others } = next;

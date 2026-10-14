@@ -4,12 +4,17 @@ import Card from './ui/Card';
 import { IconPause, IconPlay } from './icons';
 import {
   closeIntervals, pauseIntervals, resumeIntervals, skipIntervalPhase, startIntervals, stopIntervals, useIntervalTimer,
+  type IntervalTimerView,
 } from '../hooks/useIntervalTimer';
+import {
+  lapStopwatch, pauseStopwatch, resetStopwatch, resumeStopwatch, startStopwatchRun, useStopwatch,
+} from '../hooks/useStopwatch';
 import { removeIntervalPreset, saveIntervalPreset, useIntervalSettings } from '../hooks/useSportSettings';
 import {
   INTERVAL_LEAD_IN_S, INTERVAL_LIMITS, MAX_INTERVAL_PRESETS, formatIntervalClock, phaseName, sameWorkout, sanitizeWorkout, workoutDurationS, workoutLabel,
   type IntervalWorkout,
 } from '../recording/intervalTimer';
+import { formatStopwatch, type StopwatchState } from '../recording/stopwatch';
 import './IntervalCard.css';
 
 /**
@@ -17,6 +22,7 @@ import './IntervalCard.css';
  * séance (répétitions, travail, repos), les séances gardées, « Lancer le
  * compteur », puis la phase en cours en grand et ses commandes. Il vit à côté
  * de l'enregistrement sans en dépendre : lancé avant, pendant ou sans lui.
+ * Une bascule montre à sa place le chronomètre libre (`useStopwatch`).
  */
 
 const range = (from: number, to: number, step = 1): number[] =>
@@ -121,22 +127,16 @@ function WorkoutEditor({ recording }: { recording: boolean }) {
   );
 }
 
-/** Compteur du fractionné : la séance à lancer, ou celle en cours. `recording` : un enregistrement tourne. */
-function IntervalCard({ recording }: { recording: boolean }) {
-  const { run, state, error } = useIntervalTimer();
+/** Vue « Compteur » : la séance à lancer, ou celle en cours. `recording` : un enregistrement tourne. */
+function CounterView({ recording, timer }: { recording: boolean; timer: IntervalTimerView }) {
+  const { run, state, error } = timer;
 
-  if (!run || !state) {
-    return (
-      <Card heading="Compteur" className="ivl">
-        <WorkoutEditor recording={recording} />
-      </Card>
-    );
-  }
+  if (!run || !state) return <WorkoutEditor recording={recording} />;
 
   const reps = run.workout.reps;
   if (state.status === 'finished' || state.status === 'stopped') {
     return (
-      <Card heading="Compteur" className="ivl">
+      <>
         <div className="ivl-done">
           <strong>{state.status === 'finished' ? 'Séance terminée' : 'Séance arrêtée'}</strong>
           <span>{workoutLabel(run.workout)}</span>
@@ -144,7 +144,7 @@ function IntervalCard({ recording }: { recording: boolean }) {
         <div className="ivl-actions">
           <Button onClick={closeIntervals}>Fermer</Button>
         </div>
-      </Card>
+      </>
     );
   }
 
@@ -155,7 +155,7 @@ function IntervalCard({ recording }: { recording: boolean }) {
   // Reste de la séance, compte à rebours du départ ôté.
   const leftS = Math.min(workoutDurationS(run.workout), workoutDurationS(run.workout) + INTERVAL_LEAD_IN_S - state.elapsedS);
   return (
-    <Card heading="Compteur" className={`ivl ivl--${phase.kind}`}>
+    <>
       <div className="ivl-live" aria-live="polite">
         <span className="ivl-live__phase">{phaseName(phase, reps)}{paused ? ' · en pause' : ''}</span>
         <span className="ivl-live__clock num">{formatIntervalClock(state.remainingMs / 1000)}</span>
@@ -172,6 +172,100 @@ function IntervalCard({ recording }: { recording: boolean }) {
         <Button variant="danger" onClick={stopIntervals}>Arrêter</Button>
       </div>
       {error && <div className="ui-alert ui-alert--danger">{error}</div>}
+    </>
+  );
+}
+
+/** Vue « Chrono » : chronomètre libre, avec ses tours, le dernier en haut. */
+function StopwatchView({ state }: { state: StopwatchState | null }) {
+  if (!state) {
+    return (
+      <>
+        <div className="ivl-live">
+          <span className="ivl-live__clock num">{formatStopwatch(0)}</span>
+          <span className="ivl-live__left">Libre, à côté du compteur et de l'enregistrement : départ, tours, arrêt.</span>
+        </div>
+        <div className="ivl-actions">
+          <Button variant="primary" size="l" className="ivl-launch" onClick={startStopwatchRun}><IconPlay size={20} />Départ</Button>
+        </div>
+      </>
+    );
+  }
+  const paused = state.status === 'paused';
+  const best = state.laps.length > 1 ? Math.min(...state.laps.map((l) => l.lapMs)) : null;
+  return (
+    <>
+      <div className="ivl-live">
+        {paused && <span className="ivl-live__phase">À l'arrêt</span>}
+        <span className="ivl-live__clock num">{formatStopwatch(state.elapsedMs)}</span>
+        <span className="ivl-live__left num">Tour {state.laps.length + 1} · {formatStopwatch(state.currentLapMs)}</span>
+      </div>
+      <div className="ivl-actions">
+        {paused ? (
+          <>
+            <Button variant="primary" onClick={resumeStopwatch}><IconPlay size={18} />Reprendre</Button>
+            <Button variant="danger" onClick={resetStopwatch}>Remise à zéro</Button>
+          </>
+        ) : (
+          <>
+            <Button variant="primary" onClick={lapStopwatch}>Tour</Button>
+            <Button onClick={pauseStopwatch}><IconPause size={18} />Arrêt</Button>
+          </>
+        )}
+      </div>
+      {state.laps.length > 0 && (
+        <table className="ivl-laps num">
+          <thead>
+            <tr><th>Tour</th><th>Temps</th><th>Cumul</th></tr>
+          </thead>
+          <tbody>
+            {[...state.laps].reverse().map((lap) => (
+              <tr key={lap.n} className={lap.lapMs === best ? 'ivl-laps__best' : undefined}>
+                <td>{lap.n}</td>
+                <td>{formatStopwatch(lap.lapMs)}</td>
+                <td>{formatStopwatch(lap.totalMs)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
+  );
+}
+
+type CardView = 'compteur' | 'chrono';
+
+/**
+ * Carte du compteur, deux vues par une bascule : le compteur du fractionné et
+ * le chronomètre libre. Celle qu'on ne regarde pas, si elle tourne, se
+ * rappelle en pastille sur son bouton. `recording` : un enregistrement tourne.
+ */
+function IntervalCard({ recording }: { recording: boolean }) {
+  const timer = useIntervalTimer();
+  const { state: chrono } = useStopwatch();
+  const counterLive = timer.state?.status === 'running' || timer.state?.status === 'paused';
+  // Ouverte sur le chrono quand lui seul est lancé.
+  const [shown, setShown] = useState<CardView>(() => (chrono && !timer.run ? 'chrono' : 'compteur'));
+
+  const counterBadge = shown === 'chrono' && counterLive && timer.run && timer.state?.phase
+    ? phaseName(timer.state.phase, timer.run.workout.reps) : null;
+  const chronoBadge = shown === 'compteur' && chrono
+    ? `${formatStopwatch(chrono.elapsedMs)}${chrono.status === 'paused' ? ' · arrêt' : ''}` : null;
+  const phaseClass = shown === 'compteur' && counterLive && timer.state?.phase ? ` ivl--${timer.state.phase.kind}` : '';
+
+  return (
+    <Card className={`ivl${phaseClass}`} aria-label="Compteur">
+      <div className="ivl-switch" role="group" aria-label="Compteur ou chrono">
+        <button type="button" className="ivl-switch__pick" aria-pressed={shown === 'compteur'} onClick={() => setShown('compteur')}>
+          Compteur
+          {counterBadge && <span className="ivl-switch__badge num">{counterBadge}</span>}
+        </button>
+        <button type="button" className="ivl-switch__pick" aria-pressed={shown === 'chrono'} onClick={() => setShown('chrono')}>
+          Chrono
+          {chronoBadge && <span className="ivl-switch__badge num">{chronoBadge}</span>}
+        </button>
+      </div>
+      {shown === 'compteur' ? <CounterView recording={recording} timer={timer} /> : <StopwatchView state={chrono} />}
     </Card>
   );
 }

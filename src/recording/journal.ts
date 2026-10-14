@@ -1,3 +1,4 @@
+import { readSessionMark, sortMarks, type SessionMark } from '../core/sessionMarks';
 import type { SportType } from '../core/types';
 import type { LocationFix } from '../platform/location';
 import { readIntervalRun, type IntervalRun } from './intervalTimer';
@@ -77,6 +78,12 @@ export const journalActivityLine = (sport: SportType, activity: { id: string; na
  */
 export const journalIntervalsLine = (run: IntervalRun): string => `${JSON.stringify(['intervals', run])}\n`;
 
+/**
+ * Repère posé par le bouton « Note ». Tableau à deux éléments, marqué par
+ * `'note'` en tête, ignoré par les versions qui ne le connaissent pas.
+ */
+export const journalNoteLine = (mark: SessionMark): string => `${JSON.stringify(['note', mark])}\n`;
+
 export interface ParsedJournal {
   /** En-tête, ou `null` s'il manque ou est illisible : les positions restent récupérables. */
   header: JournalHeader | null;
@@ -87,6 +94,8 @@ export interface ParsedJournal {
   activityChange: JournalActivity | null;
   /** Séances du compteur, chacune dans son dernier état, dans l'ordre de leur lancement. */
   intervalRuns: IntervalRun[];
+  /** Repères du bouton « Note », dans l'ordre du temps. */
+  marks: SessionMark[];
 }
 
 const optionalNumber = (value: unknown): number | undefined =>
@@ -131,6 +140,12 @@ const toIntervalsMarker = (value: unknown): { marker: boolean; run: IntervalRun 
     ? { marker: true, run: readIntervalRun(value[1]) }
     : { marker: false, run: null };
 
+/** Ligne de repère : `true` si c'en est une (même abîmée), et le repère s'il est lisible. */
+const toNoteMarker = (value: unknown): { marker: boolean; mark: SessionMark | null } =>
+  Array.isArray(value) && value.length === 2 && value[0] === 'note'
+    ? { marker: true, mark: readSessionMark(value[1]) }
+    : { marker: false, mark: null };
+
 const toFix = (value: unknown): LocationFix | null => {
   if (!Array.isArray(value) || value.length < 3) return null;
   const [timeMs, lat, lon, accuracyM, altitudeM, speedMs, bearingDeg] = value;
@@ -160,6 +175,7 @@ export const parseJournal = (text: string): ParsedJournal => {
   const breaks: number[] = [];
   let activityChange: JournalActivity | null = null;
   const runs = new Map<number, IntervalRun>();
+  const marks: SessionMark[] = [];
 
   text.split('\n').forEach((line, i) => {
     if (line.trim() === '') return;
@@ -182,10 +198,15 @@ export const parseJournal = (text: string): ParsedJournal => {
       if (intervals.run) runs.set(intervals.run.startedAtMs, intervals.run);
       return;
     }
+    const note = toNoteMarker(value);
+    if (note.marker) {
+      if (note.mark) marks.push(note.mark);
+      return;
+    }
     const fix = toFix(value);
     if (fix && (fixes.length === 0 || fix.timeMs > fixes[fixes.length - 1].timeMs)) fixes.push(fix);
   });
 
   const intervalRuns = [...runs.values()].sort((a, b) => a.startedAtMs - b.startedAtMs);
-  return { header, fixes, breaks, activityChange, intervalRuns };
+  return { header, fixes, breaks, activityChange, intervalRuns, marks: sortMarks(marks) };
 };

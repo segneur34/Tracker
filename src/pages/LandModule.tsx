@@ -15,12 +15,15 @@ import GradeGradientLegend from '../components/GradeGradientLegend';
 import IntervalAnalysis, { type IntervalSeriesView } from '../components/IntervalAnalysis';
 import JumpMapLayer from '../components/JumpMapLayer';
 import JumpsPanel from '../components/JumpsPanel';
-import PanelTitle from '../components/PanelTitle';
+import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
+import SessionWeightField from '../components/SessionWeightField';
+import { SessionMarksLayer, SessionMarksList } from '../components/SessionMarks';
+import { markReferenceLines } from '../components/markReferenceLines';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import SurfaceBar from '../components/SurfaceBar';
@@ -63,6 +66,7 @@ import { useMapHighlight } from '../hooks/useMapHighlight';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useLibrarySession } from '../hooks/useSessionLibrary';
 import { useSessionJumps } from '../hooks/useSessionJumps';
+import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import { useTerrainElevation, type TerrainElevationStatus } from '../hooks/useTerrainElevation';
 import {
@@ -71,11 +75,11 @@ import {
 import {
   averagePace, computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
 } from '../running/runningAnalytics';
-import { smoothMovingPower } from '../running/energy';
+import { isValidCarriedLoad, smoothMovingPower } from '../running/energy';
 import { detectIntervals } from '../running/intervalDetection';
 import { analyzeIntervals, type IntervalPhaseSpan } from '../running/intervalStats';
 import type { RunningSessionStats } from '../running/types';
-import { BIKE_TYPES } from '../cycling/energy';
+import { BIKE_TYPES, isValidBikeWeight } from '../cycling/energy';
 import type { LibrarySession } from '../library/record';
 import type { IntervalSeries, IntervalWorkout } from '../recording/intervalTimer';
 import type { SurfaceCategory } from '../planning/surface';
@@ -214,7 +218,7 @@ function LandModule({ family }: { family: LandFamily }) {
     activity, setActivity, sport,
     profile, activeThreshold, terrain: activityTerrain, terrainStepM,
     speedUnit, distanceUnit,
-    speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg,
+    speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg,
   } = useSportSettings(family);
   const model = LAND_TREATMENTS[sportTreatment(sport) === 'velo' ? 'velo' : 'course'];
   const { profile: runner, age } = useRunnerProfile();
@@ -245,6 +249,9 @@ function LandModule({ family }: { family: LandFamily }) {
   const sessionIntervals = shownRecord?.intervals ?? NO_INTERVALS;
   /** Terrain du dénivelé : celui de la session (brouillon, puis fiche), sinon celui de l'activité. */
   const terrain = draft.edits.terrain ?? activityTerrain;
+  /** Poids du vélo et des bagages, charge portée : ceux de la session (brouillon, puis fiche), sinon ceux de l'activité. */
+  const bikeWeightKg = draft.edits.bikeWeightKg ?? activityBikeKg;
+  const loadKg = draft.edits.loadKg ?? carriedLoadKg;
   const elevationProfile = ELEVATION_PRESETS[terrain];
 
   /**
@@ -297,6 +304,10 @@ function LandModule({ family }: { family: LandFamily }) {
   const inverse = isInverseUnit(speedUnit);
 
   const cumulative = useMemo(() => buildCumulativeTrack(gpx.track), [gpx.track]);
+  // Repères du bouton « Note » : fanions, liste de « Général », traits des graphes.
+  const marks = useSessionMarks(draft, gpx.track, cumulative.cumDist);
+  const shownMarkKey = highlight.shownIn('general');
+  const shownMark = shownMarkKey === null ? null : Number(shownMarkKey);
 
   /**
    * Altitude du terrain (IGN), demandée à l'ouverture et gardée dans la fiche,
@@ -407,11 +418,11 @@ function LandModule({ family }: { family: LandFamily }) {
   const energy = useMemo(
     () => (gpx.track.length > 1
       ? model.energy({
-          track: gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg,
+          track: gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg, loadKg,
           surfaces: { status: surfaceStatus, stretches: surfaceStretches },
         })
       : null),
-    [model, gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg, surfaceStatus, surfaceStretches]
+    [model, gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg, loadKg, surfaceStatus, surfaceStretches]
   );
 
   /** Chiffres du panneau Énergie repliés ou dépliés, choix gardé sur l'appareil. */
@@ -625,6 +636,10 @@ function LandModule({ family }: { family: LandFamily }) {
       tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${distanceSymbol}`} tick={{ fill: '#555', fontSize: 11 }} />
   );
 
+  /** Traits des repères sur les graphes, en abscisse de distance. */
+  const markLines = (yAxisId: 'speed' | 'altitude') =>
+    markReferenceLines(marks.located, (m) => toDisplayDistance(m.distanceM, distanceUnit), shownMark, yAxisId);
+
   /** Couches de la carte, partagées par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
     <>
@@ -643,6 +658,7 @@ function LandModule({ family }: { family: LandFamily }) {
         <Polyline key={`top-${selectedTop}-${idx}`} positions={top.path} pathOptions={{ color: HIGHLIGHT_PODIUM_COLORS[idx] ?? HIGHLIGHT_PODIUM_COLORS[2], weight: 10, opacity: 0.8 }} />
       ))}
       {jumpsVisible && <JumpMapLayer track={gpx.track} jumps={shownJumps} shownJump={shownJump} podiumShown={jumpPodiumShown} />}
+      <SessionMarksLayer located={marks.located} shownMs={shownMark} />
       {hoveredIndex !== null && gpx.track[hoveredIndex] && (
         <HoverMarker position={[gpx.track[hoveredIndex].lat, gpx.track[hoveredIndex].lon]} />
       )}
@@ -692,7 +708,7 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.general && (
               <ResizablePanel id={panelId('general')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" open={open.general} onToggle={() => toggle('general')} />
+                  <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={() => toggle('general')} />
                 </div>
                 <div className="an-sheet__stats an-sheet__stats--always">
                   <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
@@ -707,6 +723,8 @@ function LandModule({ family }: { family: LandFamily }) {
                 {!stats.hasElevation && (
                   <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
                 )}
+                <SessionMarksList view={marks} distanceUnit={distanceUnit} shownMs={shownMark} accent={page.accent}
+                  onShow={(ms) => highlight.show('general', ms === null ? null : String(ms))} />
               </ResizablePanel>
             )}
 
@@ -854,7 +872,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', paddingRight: '28px' }}>
                   <PanelTitle label={model.energyLabel} open={open.energie} onToggle={() => toggle('energie')} />
                   <span style={{ flex: 1 }} />
-                  {(['power', 'cumulative'] as EnergyChartMode[]).map((mode) => (
+                  {energy.power.length > 0 && (['power', 'cumulative'] as EnergyChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setEnergyMode(mode)}
                       style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: energyMode === mode ? page.accent : 'var(--surface-sunken)', color: energyMode === mode ? '#fff' : 'var(--ink)' }}>
                       {mode === 'power' ? 'Puissance' : 'Cumulée'}
@@ -912,7 +930,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 )}
 
                 {/* À la place du tableau : flèche vers le haut pour le replier, vers le bas pour le montrer. */}
-                {stats?.hasElevation && (
+                {stats?.hasElevation && energy.zones.length > 0 && (
                   <button type="button" aria-expanded={energyFold.open.zones} onClick={() => energyFold.toggle('zones')}
                     title={energyFold.open.zones ? 'Replier le tableau des zones de pente' : 'Montrer le tableau des zones de pente'}
                     style={{ alignSelf: 'flex-start', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '12px', padding: '4px 8px 4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: 'var(--surface-sunken)', color: 'var(--ink)' }}>
@@ -920,7 +938,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     <IconChevronRight size={14} style={{ transform: `rotate(${energyFold.open.zones ? -90 : 90}deg)`, transition: 'transform 0.15s' }} />
                   </button>
                 )}
-                {stats?.hasElevation && energyFold.open.zones && (
+                {stats?.hasElevation && energy.zones.length > 0 && energyFold.open.zones && (
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginTop: '6px', flexShrink: 0 }}>
                     <thead>
                       <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
@@ -974,6 +992,7 @@ function LandModule({ family }: { family: LandFamily }) {
                         <ChartZoomProbe />
                         <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
                         {xAxis}
+                        {markLines('speed')}
                         {speedAxis}
                         {stats?.hasElevation && altitudeAxis('right')}
                         <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
@@ -993,6 +1012,7 @@ function LandModule({ family }: { family: LandFamily }) {
                           <ChartZoomProbe />
                           <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
                           {xAxis}
+                          {markLines('speed')}
                           {speedAxis}
                           <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
                           <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
@@ -1006,6 +1026,7 @@ function LandModule({ family }: { family: LandFamily }) {
                             <ChartZoomProbe />
                             <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
                             {xAxis}
+                            {markLines('altitude')}
                             {altitudeAxis('left')}
                             <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
                             {gradeGradientDefs(separateGradientId, gradeStops)}
@@ -1113,6 +1134,17 @@ function LandModule({ family }: { family: LandFamily }) {
                     </select>
                   </label>
                 </div>
+                <div style={{ marginTop: '12px', fontSize: '14px' }}>
+                  {model.treatment === 'velo' ? (
+                    <SessionWeightField label="Poids du vélo et des bagages" valueKg={draft.edits.bikeWeightKg} activityKg={activityBikeKg}
+                      isValid={isValidBikeWeight} onChange={(kg) => draft.update({ bikeWeightKg: kg })}
+                      title={`Vélo ${BIKE_TYPES[bikeType].noun} ; pesanteur et roulement de l'énergie`} />
+                  ) : (
+                    <SessionWeightField label="Charge portée" valueKg={draft.edits.loadKg} activityKg={carriedLoadKg}
+                      isValid={isValidCarriedLoad} onChange={(kg) => draft.update({ loadKg: kg })}
+                      title="Sac, eau, affaires : ils augmentent le coût du déplacement dans l'énergie (pas le repos)" />
+                  )}
+                </div>
                 {gpx.track.length > 0 && (
                   <div style={{ marginTop: '12px', fontSize: '14px' }}>
                     <SpeedRangeEditor
@@ -1136,7 +1168,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   Vitesse : {gpx.hasDeviceSpeed
                     ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
                     : 'dérivée des positions, filtrée'}
-                  {model.treatment === 'velo' && ` · Vélo : ${BIKE_TYPES[bikeType].noun}, ${bikeWeightKg} kg (Réglages)`}
+                  {model.treatment === 'velo' && ` · Vélo : ${BIKE_TYPES[bikeType].noun} (Réglages)`}
                   {runner.weightKg !== null ? ` · Poids : ${runner.weightKg} kg` : ' · Poids non renseigné, voir Paramètres'}
                 </div>
               </ResizablePanel>

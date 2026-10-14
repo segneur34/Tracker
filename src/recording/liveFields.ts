@@ -66,15 +66,15 @@ export const DEFAULT_LIVE_FIELDS: Record<Treatment, LiveFieldKey[]> = {
   surf: ['speed', 'max', 'duration'],
 };
 
-/** Chiffres de la notification de l'enregistrement au plus : la ligne repliée tient écran verrouillé. */
-export const MAX_NOTIFICATION_FIELDS = 3;
+/** Chiffres de la notification de l'enregistrement au plus : écran verrouillé, Android coupe la ligne au-delà de deux. */
+export const MAX_NOTIFICATION_FIELDS = 2;
 
 /** Chiffres de la notification à défaut de choix, les mêmes pour tous les traitements. */
 export const DEFAULT_NOTIFICATION_FIELDS: Record<Treatment, LiveFieldKey[]> = {
-  voile: ['speed', 'average', 'distance'],
-  course: ['speed', 'average', 'distance'],
-  velo: ['speed', 'average', 'distance'],
-  surf: ['speed', 'average', 'distance'],
+  voile: ['speed', 'distance'],
+  course: ['speed', 'distance'],
+  velo: ['speed', 'distance'],
+  surf: ['speed', 'distance'],
 };
 
 const isLiveFieldKey = (value: unknown): value is LiveFieldKey =>

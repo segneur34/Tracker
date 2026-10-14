@@ -37,7 +37,7 @@ describe('savedEdits', () => {
   it("reprend le vent, le seuil, l'allure, les couleurs et les notes de la fiche", () => {
     const r = record({
       notes: notes({ comment: 'Belle session', rating: 4 }),
-      analysis: { windDeg: 300, activeThreshold: 7, referenceSpeedMs: 2.5, speedRange: { minMs: 3, maxMs: 12 }, effortThresholdMs: 3.4, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: START_MS },
+      analysis: { windDeg: 300, activeThreshold: 7, referenceSpeedMs: 2.5, speedRange: { minMs: 3, maxMs: 12 }, effortThresholdMs: 3.4, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS },
     });
     const saved = savedEdits(r, null);
     expect(saved.windDeg).toBe(300);
@@ -48,17 +48,23 @@ describe('savedEdits', () => {
     expect(saved.notes).toEqual({ ...EMPTY_NOTES, comment: 'Belle session', rating: 4 });
   });
 
-  it('propose le matériel de la dernière session notée à une session sans notes', () => {
+  it('propose le matériel de la dernière session notée à une session enregistrée sans notes', () => {
     const gear = latestGearNotes([
       record({ notes: notes({ foil: 'Axis 900', savedAt: START_MS }) }),
       record({ notes: notes({ foil: 'Axis 1100', wing: '5 m²', comment: 'x', savedAt: START_MS + 1 }) }),
       record({ notes: notes({ comment: 'sans matériel', savedAt: START_MS + 2 }) }),
     ]);
-    expect(savedEdits(record(), gear).notes).toEqual({ ...EMPTY_NOTES, foil: 'Axis 1100', wing: '5 m²' });
+    expect(savedEdits(record({ source: 'enregistrement' }), gear).notes).toEqual({ ...EMPTY_NOTES, foil: 'Axis 1100', wing: '5 m²' });
+  });
+
+  it("n'emprunte pas de matériel pour une session importée ni pour un GPX hors de la mémoire", () => {
+    const gear = latestGearNotes([record({ notes: notes({ foil: 'Axis 900', savedAt: START_MS }) })]);
+    expect(savedEdits(record({ source: 'import' }), gear).notes).toEqual(EMPTY_NOTES);
+    expect(savedEdits(null, gear).notes).toEqual(EMPTY_NOTES);
   });
 
   it('rend les valeurs par défaut sans fiche', () => {
-    expect(savedEdits(null, null)).toEqual({ notes: EMPTY_NOTES, windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null });
+    expect(savedEdits(null, null)).toEqual({ notes: EMPTY_NOTES, windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, marks: [] });
   });
 });
 
@@ -72,12 +78,12 @@ describe('changedParts', () => {
   it("nomme chaque partie changée, dans l'ordre de l'écran", () => {
     expect(changedParts(saved, {
       notes: { ...saved.notes, rating: 5 }, windDeg: 90, activeThreshold: 6, referenceSpeedMs: 2, speedRange: { minMs: 1, maxMs: 5 },
-      effortThresholdMs: 4, foil: true, pumping: true, waveThreshold: 20, terrain: null,
+      effortThresholdMs: 4, foil: true, pumping: true, waveThreshold: 20, terrain: null, bikeWeightKg: null, loadKg: null, marks: [],
     })).toEqual(['vent', 'seuil', 'allure', 'couleurs', 'effort', 'foil', 'pumping', 'vague', 'notes']);
   });
 
   it('range le foil de la session, et le relit', () => {
-    const r = record({ analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 0 } });
+    const r = record({ analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: 0 } });
     const before = savedEdits(r, null);
     expect(changedParts(before, { ...before, foil: false })).toEqual(['foil']);
     const patch = editsPatch(r, before, { ...before, foil: false }, START_MS + 3);
@@ -86,7 +92,7 @@ describe('changedParts', () => {
   });
 
   it('range le pumping de la session, et le relit', () => {
-    const r = record({ analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: true, pumping: null, waveThreshold: null, terrain: null, savedAt: 0 } });
+    const r = record({ analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: true, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: 0 } });
     const before = savedEdits(r, null);
     expect(changedParts(before, { ...before, pumping: true })).toEqual(['pumping']);
     const patch = editsPatch(r, before, { ...before, pumping: true }, START_MS + 4);
@@ -95,13 +101,24 @@ describe('changedParts', () => {
   });
 
   it('range le terrain de la session, et le relit', () => {
-    const r = record({ analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 0 } });
+    const r = record({ analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: 0 } });
     const before = savedEdits(r, null);
     expect(before.terrain).toBeNull();
     expect(changedParts(before, { ...before, terrain: 'trail' })).toEqual(['terrain']);
     const patch = editsPatch(r, before, { ...before, terrain: 'trail' }, START_MS + 4);
     expect(patch.analysis).toMatchObject({ terrain: 'trail', savedAt: START_MS + 4 });
     expect(savedEdits({ ...r, analysis: patch.analysis! }, null).terrain).toBe('trail');
+  });
+
+  it('range le poids du vélo et la charge de la session, et les relit', () => {
+    const r = record({ analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: 0 } });
+    const before = savedEdits(r, null);
+    expect(changedParts(before, { ...before, bikeWeightKg: 14 })).toEqual(['charge']);
+    expect(changedParts(before, { ...before, loadKg: 8 })).toEqual(['charge']);
+    const patch = editsPatch(r, before, { ...before, bikeWeightKg: 14, loadKg: 8 }, START_MS + 6);
+    expect(patch.analysis).toMatchObject({ bikeWeightKg: 14, loadKg: 8, savedAt: START_MS + 6 });
+    const after = savedEdits({ ...r, analysis: patch.analysis! }, null);
+    expect([after.bikeWeightKg, after.loadKg]).toEqual([14, 8]);
   });
 
   it('compare les bornes de couleur par leurs valeurs', () => {
@@ -117,7 +134,7 @@ describe('editsPatch', () => {
     const r = record({ notes: notes({ comment: 'avant' }) });
     const saved = savedEdits(r, null);
     expect(editsPatch(r, saved, { ...saved, windDeg: -90 }, START_MS + 5)).toEqual({
-      analysis: { windDeg: 270, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: START_MS + 5 },
+      analysis: { windDeg: 270, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS + 5 },
     });
     expect(editsPatch(r, saved, { ...saved, notes: { ...saved.notes, comment: 'après' } }, START_MS + 6)).toEqual({
       notes: { ...EMPTY_NOTES, comment: 'après', savedAt: START_MS + 6 },
@@ -125,10 +142,10 @@ describe('editsPatch', () => {
   });
 
   it("écrit l'allure imposée seule, le vent et le seuil de la fiche intacts", () => {
-    const r = record({ analysis: { windDeg: 45, activeThreshold: 3, referenceSpeedMs: null, speedRange: null, effortThresholdMs: 3.8, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 0 } });
+    const r = record({ analysis: { windDeg: 45, activeThreshold: 3, referenceSpeedMs: null, speedRange: null, effortThresholdMs: 3.8, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: 0 } });
     const saved = savedEdits(r, null);
     expect(editsPatch(r, saved, { ...saved, referenceSpeedMs: 2.2 }, START_MS + 7)).toEqual({
-      analysis: { windDeg: 45, activeThreshold: 3, referenceSpeedMs: 2.2, speedRange: null, effortThresholdMs: 3.8, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: START_MS + 7 },
+      analysis: { windDeg: 45, activeThreshold: 3, referenceSpeedMs: 2.2, speedRange: null, effortThresholdMs: 3.8, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS + 7 },
     });
   });
 
@@ -136,7 +153,7 @@ describe('editsPatch', () => {
     const r = record();
     const saved = savedEdits(r, null);
     expect(editsPatch(r, saved, { ...saved, speedRange: { minMs: 2, maxMs: 9 } }, START_MS + 8)).toEqual({
-      analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: { minMs: 2, maxMs: 9 }, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: START_MS + 8 },
+      analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: { minMs: 2, maxMs: 9 }, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS + 8 },
     });
   });
 
@@ -150,7 +167,7 @@ describe('editsPatch', () => {
   it('garde les champs inconnus des notes et des réglages', () => {
     const r = record({
       notes: { ...notes(), futur: 1 } as StoredSessionNotes,
-      analysis: { windDeg: 10, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 0, futur: 2 } as SessionRecord['analysis'],
+      analysis: { windDeg: 10, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, bikeWeightKg: null, loadKg: null, savedAt: 0, futur: 2 } as SessionRecord['analysis'],
     });
     const saved = savedEdits(r, null);
     const patch = editsPatch(r, saved, { ...saved, activeThreshold: 6, notes: { ...saved.notes, rating: 3 } }, 9);
@@ -162,5 +179,31 @@ describe('editsPatch', () => {
     const r = record();
     const saved = savedEdits(r, null);
     expect(editsPatch(r, saved, saved, 1)).toEqual({});
+  });
+});
+
+describe('repères dans le brouillon', () => {
+  const marks = [
+    { timeMs: START_MS + 60_000, lat: 43.5, lon: 3.9, label: null },
+    { timeMs: START_MS + 120_000, lat: 43.51, lon: 3.91, label: 'Bouée' },
+  ];
+  const r = record({ marks });
+  const saved = savedEdits(r, null);
+
+  it('sont repris de la fiche', () => {
+    expect(saved.marks).toEqual(marks);
+    expect(changedParts(saved, { ...saved, marks: marks.map((m) => ({ ...m })) })).toEqual([]);
+  });
+
+  it("nommer un repère le change seul, nom rogné à l'enregistrement", () => {
+    const edits = { ...saved, marks: [{ ...marks[0], label: ' Saut ' }, marks[1]] };
+    expect(changedParts(saved, edits)).toEqual(['reperes']);
+    const patch = editsPatch(r, saved, edits, START_MS + 5);
+    expect(patch).toEqual({ marks: [{ ...marks[0], label: 'Saut' }, marks[1]] });
+  });
+
+  it('supprimer un repère écrit la liste restante, vide comprise', () => {
+    expect(editsPatch(r, saved, { ...saved, marks: [marks[1]] }, START_MS).marks).toEqual([marks[1]]);
+    expect(editsPatch(r, saved, { ...saved, marks: [] }, START_MS)).toEqual({ marks: [] });
   });
 });

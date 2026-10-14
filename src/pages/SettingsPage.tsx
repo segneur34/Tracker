@@ -292,7 +292,7 @@ function SettingsPage() {
                 const shownHidden = activity.hidden === true || familyHidden;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
-                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null ||
+                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null || s.carriedLoad !== null ||
                   s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden ||
                   s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
@@ -478,6 +478,17 @@ function SettingsPage() {
                                 </div>
                               </div>
                             )}
+                            {treatment === 'course' && (
+                              <div className="settings-row"
+                                title="Sac, eau, affaires : portés avec le corps, ils augmentent le coût du déplacement dans l'énergie des sessions (pas le repos). Chaque session peut avoir la sienne, dans l'onglet réglages de son analyse">
+                                <span className="settings-row__label">Charge portée</span>
+                                <div className="settings-sports__pair">
+                                  <NumberField unit="kg" step={0.5} min={0} max={50}
+                                    value={s.carriedLoad} placeholder="0" onCommit={(kg) => setFor(id, 'carriedLoad', kg)} />
+                                  {s.carriedLoad === null && <span className="settings-sports__mark">aucune</span>}
+                                </div>
+                              </div>
+                            )}
                             {s.terrainStepM !== null && (
                               <div className="settings-row" title="Altitude du terrain demandée à l'IGN pour les sessions de cette activité : un point tous les … le long de la trace">
                                 <span className="settings-row__label">Altitude IGN</span>
@@ -523,7 +534,7 @@ function SettingsPage() {
                               onChange={(fields) => setFor(id, 'notificationFields', fields)} />
                             <p className="settings-block__intro" style={{ margin: 0 }}>
                               Sur Android, la notification de l'enregistrement donne le nom de l'activité, la durée qui tourne et ces
-                              chiffres ; en fractionné, la répétition et le décompte du compteur ; en pause, les derniers chiffres. Pour la
+                              deux chiffres, au plus, qu'Android laisse lisibles sur la ligne repliée ; en fractionné, la répétition et le décompte du compteur ; en pause, les derniers chiffres. Pour la
                               lire écran verrouillé, le téléphone doit y montrer le contenu des notifications.
                             </p>
                           </ActivityPart>

@@ -11,7 +11,8 @@ import { liveFieldLabel, liveFieldShortLabel, liveFieldValue, type LiveFieldCont
  * - Chronomètre d'Android dans l'en-tête, qui tourne seul : le décompte de la
  *   phase du compteur quand elle avance, sinon la durée de la session (depuis
  *   son premier point, pauses comprises, comme `recordingDurationMs`). Aucun
- *   en pause manuelle : la durée figée passe en tête du texte.
+ *   en pause manuelle : la durée figée passe dans le titre, après « en pause »,
+ *   pour que la ligne repliée garde ses deux chiffres.
  * - Ligne repliée : les chiffres choisis, libellé court et valeur.
  * - Texte déplié : un chiffre par ligne, libellé complet.
  */
@@ -44,7 +45,7 @@ export const liveNotification = ({
 
   const titleParts = [activityName];
   if (phase && interval) titleParts.push(interval.state.status === 'paused' ? `${phaseName(phase, interval.reps)} en pause` : phaseName(phase, interval.reps));
-  if (paused === 'manual') titleParts.push('en pause');
+  if (paused === 'manual') titleParts.push(`en pause ${formatClock(context.durationMs)}`);
   else if (paused === 'auto') titleParts.push('pause auto');
 
   const values = fields.map((key) => ({
@@ -54,11 +55,6 @@ export const liveNotification = ({
   }));
   const text = values.map((v) => `${v.short} ${v.value}`);
   const lines = values.map((v) => `${v.label} : ${v.value}`);
-  if (paused === 'manual') {
-    const duration = formatClock(context.durationMs);
-    text.unshift(duration);
-    lines.unshift(`Durée : ${duration}`);
-  }
 
   let chrono: RecordingNotificationContent['chrono'] = null;
   if (paused !== 'manual') {

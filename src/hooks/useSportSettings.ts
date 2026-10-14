@@ -20,7 +20,8 @@ import {
 } from '../recording/liveFields';
 import { MARK_GUIDE_DEFAULTS, sanitizeMarkGuide, type MarkGuideSettings } from '../recording/markGuide';
 import { defaultJumpSettings, sanitizeJumpSettings, type JumpSettings } from '../recording/jumpSettings';
-import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, type BikeType } from '../cycling/energy';
+import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, isValidBikeWeight, type BikeType } from '../cycling/energy';
+import { isValidCarriedLoad } from '../running/energy';
 import { DEFAULT_CYCLING_GRADE_RANGE, DEFAULT_CYCLING_SPEED_RANGE_MS } from '../cycling/cyclingConfig';
 import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
 import { DEFAULT_SAILING_SPEED_RANGE_MS } from '../sailing/sailingConfig';
@@ -123,6 +124,8 @@ export interface StoredSettings {
   bikeTypes?: ByActivity<BikeType>;
   /** Poids du vélo en kg (vélo) ; absent : celui du type. */
   bikeWeights?: ByActivity<number>;
+  /** Charge portée en kg, sac et affaires (course) ; absente : 0. */
+  carriedLoads?: ByActivity<number>;
   /** Niveau qui donne la vitesse du temps estimé d'un itinéraire (course, vélo) ; absent : moyen. */
   paceLevels?: ByActivity<PaceLevel>;
   /** Vitesse sur le plat du niveau « Personnalisé », en m/s. */
@@ -157,10 +160,6 @@ export const DEFAULT_LONG_PRESS_MS = 2000;
 export const DEFAULT_NAV_HOLD_MS = 1000;
 /** Appui long qui arrête l'enregistrement : 2 s, pour qu'un geste involontaire ne coupe pas la session. */
 export const DEFAULT_STOP_HOLD_MS = 2000;
-
-/** Poids de vélo plausible, en kg. */
-export const isValidBikeWeight = (value: unknown): value is number =>
-  typeof value === 'number' && isFinite(value) && value >= 3 && value <= 60;
 
 const isValidLongPress = (value: unknown): value is number =>
   typeof value === 'number' && isFinite(value) && value >= 300 && value <= 10_000;
@@ -539,6 +538,12 @@ export const effectiveBikeSetup = (activity: Activity): { bikeType: BikeType; bi
   return { bikeType, bikeKg: isValidBikeWeight(weight) ? weight : BIKE_TYPES[bikeType].bikeKg };
 };
 
+/** Charge portée réglée pour une activité, en kg ; 0 sans réglage. Utilisable hors composant. */
+export const effectiveCarriedLoad = (activity: Activity): number => {
+  const load = readStoredSettings().carriedLoads?.[activity.id];
+  return isValidCarriedLoad(load) ? load : 0;
+};
+
 /** Types de voie cochés d'office pour une activité, réglés ou proposés (`presetWayTypes`). */
 const resolveWayTypes = (stored: StoredSettings, activity: Activity): { wayTypes: WayType[]; overridden: boolean } => {
   const own = sanitizeWayTypes(stored.wayTypes?.[activity.id]);
@@ -642,6 +647,8 @@ export interface SportSettingsView {
   bikeType: BikeType;
   /** Poids du vélo en kg, ou `null` pour celui du type. */
   bikeWeight: number | null;
+  /** Charge portée en kg (course), ou `null` sans réglage (0). */
+  carriedLoad: number | null;
   /** Niveau du temps estimé (course, vélo) ; moyen par défaut. */
   paceLevel: PaceLevel;
   /** Vitesse sur le plat saisie pour « Personnalisé », en m/s, ou `null`. */
@@ -655,7 +662,7 @@ export interface SportSettingsView {
 
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
-  'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights',
+  'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads',
   'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
 ] as const;
 
@@ -707,6 +714,7 @@ export const useAllSportSettings = () => {
       const autoPauseOverride = stored.autoPause?.[id];
       const bikeType = stored.bikeTypes?.[id];
       const bikeWeight = stored.bikeWeights?.[id];
+      const carriedLoad = stored.carriedLoads?.[id];
       const paceLevel = stored.paceLevels?.[id];
       const customSpeed = stored.customFlatSpeeds?.[id];
       const liveFields = sanitizeLiveFields(stored.liveFields?.[id], activityTreatment(activity));
@@ -740,6 +748,7 @@ export const useAllSportSettings = () => {
         isJumpsOverridden: stored.jumps?.[id] !== undefined && profile.jumps !== null,
         bikeType: isBikeType(bikeType) ? bikeType : defaultBikeType(id),
         bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
+        carriedLoad: isValidCarriedLoad(carriedLoad) ? carriedLoad : null,
         paceLevel: isPaceLevel(paceLevel) ? paceLevel : DEFAULT_PACE_LEVEL,
         customFlatSpeedMs: typeof customSpeed === 'number' && isFinite(customSpeed) ? customSpeed : null,
         wayTypes: ways.wayTypes,
@@ -752,7 +761,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -855,6 +864,10 @@ export const useAllSportSettings = () => {
         case 'bikeWeight':
           if (value !== null && !isValidBikeWeight(value)) return;
           next.bikeWeights = put(stored.bikeWeights, value as number | null);
+          break;
+        case 'carriedLoad':
+          if (value !== null && !isValidCarriedLoad(value)) return;
+          next.carriedLoads = put(stored.carriedLoads, value === 0 ? null : value as number | null);
           break;
         case 'paceLevel':
           if (value !== null && !isPaceLevel(value)) return;
@@ -1111,6 +1124,9 @@ export const useSportSettings = (family: SportFamily) => {
   const bikeType: BikeType = isBikeType(storedBikeType) ? storedBikeType : defaultBikeType(id);
   const storedBikeWeight = stored.bikeWeights?.[id];
   const bikeWeightKg = isValidBikeWeight(storedBikeWeight) ? storedBikeWeight : BIKE_TYPES[bikeType].bikeKg;
+  // Course : charge portée, réglée dans Réglages.
+  const storedLoad = stored.carriedLoads?.[id];
+  const carriedLoadKg = isValidCarriedLoad(storedLoad) ? storedLoad : 0;
 
   return {
     activity,
@@ -1136,6 +1152,8 @@ export const useSportSettings = (family: SportFamily) => {
     /** Poids du vélo effectif, en kg (celui du type à défaut de réglage). */
     bikeWeightKg,
     isBikeWeightOverridden: isValidBikeWeight(storedBikeWeight),
+    /** Charge portée de l'activité, en kg (0 sans réglage) ; une session peut avoir la sienne. */
+    carriedLoadKg,
     foil,
     pumping,
   };

@@ -2,9 +2,9 @@ import { registerPlugin } from '@capacitor/core';
 import { isNativeApp } from './runtime';
 
 /**
- * Bips et vibrations : seul accès au son et au vibreur (règle 12). Deux
- * usages : le guidage vers les balises (`getBeeper`) et le compteur du
- * fractionné (`getIntervalClock`).
+ * Bips et vibrations : seul accès au son et au vibreur (règle 12). Trois
+ * usages : le guidage vers les balises (`getBeeper`), le compteur du
+ * fractionné (`getIntervalClock`) et le retour du bouton « Note » (`buzz`).
  *
  * Sur le téléphone, un greffon Android tient le rythme sur un fil à lui :
  * écran éteint, les minuteries de la WebView sont bridées (point 40), pas
@@ -77,6 +77,7 @@ interface BeeperPlugin {
   stop(): Promise<void>;
   scheduleIntervals(options: ClockPlan & { vibrate: boolean }): Promise<void>;
   stopIntervals(): Promise<void>;
+  buzz(options: { durationMs: number }): Promise<void>;
 }
 
 const nativePlugin = registerPlugin<BeeperPlugin>('Beeper');
@@ -166,6 +167,14 @@ const createBrowserBeeper = (): Beeper => {
       browserAudio = null;
     },
   };
+};
+
+/** Vibration brève, sans son : n'interrompt pas les bips des balises. */
+export const buzz = (durationMs: number): Promise<void> => {
+  if (isNativeApp()) return nativePlugin.buzz({ durationMs });
+  console.debug(`[bips] vibreur ${durationMs} ms à ${Date.now()}`);
+  if (typeof navigator.vibrate === 'function') navigator.vibrate(durationMs);
+  return Promise.resolve();
 };
 
 let beeper: Beeper | null = null;

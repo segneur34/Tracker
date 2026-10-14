@@ -10,7 +10,9 @@ import {
 import ActivitySelect from '../components/ActivitySelect';
 import AnalysisMap from '../components/AnalysisMap';
 import HoverMarker from '../components/HoverMarker';
-import PanelTitle from '../components/PanelTitle';
+import { SessionMarksLayer, SessionMarksList } from '../components/SessionMarks';
+import { markReferenceLines } from '../components/markReferenceLines';
+import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
@@ -40,6 +42,7 @@ import { useChartZoom } from '../hooks/useChartZoom';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useMapHighlight } from '../hooks/useMapHighlight';
+import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useSessionDraft } from '../hooks/useSessionDraft';
@@ -217,6 +220,10 @@ function SurfModule() {
 
   const track = gpx.track;
   const cumulative = useMemo(() => buildCumulativeTrack(track), [track]);
+  // Repères du bouton « Note » : fanions, liste de « Général », traits du graphe.
+  const marks = useSessionMarks(draft, track, cumulative.cumDist);
+  const shownMarkKey = highlight.shownIn('general');
+  const shownMark = shownMarkKey === null ? null : Number(shownMarkKey);
   const result = useMemo(
     () => (surfProfile && track.length > 1
       ? runSurfSession(track, cumulative, surfProfile, { threshold, foil, waveThreshold: draft.edits.waveThreshold })
@@ -343,6 +350,7 @@ function SurfModule() {
       <OsmTileLayer />
       <TrackSegmentsLayer segments={mapSegments} weight={5} />
       <SurfSpanLayer track={track} spans={shownSpans} />
+      <SessionMarksLayer located={marks.located} shownMs={shownMark} />
       {hoveredIndex !== null && track[hoveredIndex] && <HoverMarker position={[track[hoveredIndex].lat, track[hoveredIndex].lon]} />}
     </>
   );
@@ -390,7 +398,7 @@ function SurfModule() {
             {open.general && (
               <ResizablePanel id={panelId('general')} style={panelStyle}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" open={open.general} onToggle={() => toggle('general')} />
+                  <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={() => toggle('general')} />
                 </div>
                 <div className="an-sheet__stats an-sheet__stats--always">
                   <Stat label="Durée de la session" value={formatDuration(summary.totalS * 1000)} />
@@ -411,6 +419,11 @@ function SurfModule() {
                   )}
                   <Stat label="Distance totale" value={formatDistance(totalDistanceM, distanceUnit)} />
                 </div>
+                {draft.edits.foil === null && (
+                  <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '8px' }}>
+                    {foil ? 'Sur foil' : 'Sans foil'}, supposé d'après l'activité : la session ne le dit pas. Il se règle dans l'onglet réglages.
+                  </div>
+                )}
                 {summary.totalS > 0 && (
                   <div style={{ marginTop: '12px' }}>
                     <div style={{ display: 'flex', height: '12px', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--line)' }}
@@ -435,6 +448,8 @@ function SurfModule() {
                     </div>
                   </div>
                 )}
+                <SessionMarksList view={marks} distanceUnit={distanceUnit} shownMs={shownMark} accent={ACCENT}
+                  onShow={(ms) => highlight.show('general', ms === null ? null : String(ms))} />
               </ResizablePanel>
             )}
 
@@ -743,6 +758,7 @@ function SurfModule() {
                         ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
                         tickFormatter={(v: number) => (track.length > 0 ? formatTimeOfDay(track[0].timeMs + v * 60000).slice(0, 5) : '')}
                         tick={{ fill: '#555', fontSize: 11 }} />
+                      {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark)}
                       <YAxis domain={[0, 'auto']} tickFormatter={(v) => formatSpeedValue(v, speedUnit)} width={46}
                         tick={{ fill: '#1e88e5', fontSize: 11 }}
                         label={{ value: unitLabel, angle: -90, position: 'insideLeft', fill: '#1e88e5', fontSize: 11 }} />
@@ -783,9 +799,9 @@ function SurfModule() {
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                     title="Surf foil pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">
-                    <input type="checkbox" checked={foil} onChange={(e) => draft.update({ foil: e.target.checked === activityFoil ? null : e.target.checked })} />
+                    <input type="checkbox" checked={foil} onChange={(e) => draft.update({ foil: e.target.checked })} />
                     <strong>Foil</strong>
-                    {draft.edits.foil === null && <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(celui de l'activité)</span>}
+                    {draft.edits.foil === null && <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(supposé : celui de l'activité)</span>}
                   </label>
                   {foil && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}

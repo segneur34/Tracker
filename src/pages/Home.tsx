@@ -1,10 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
 import MemoryStatus from '../components/MemoryStatus';
 import RouteList from '../components/RouteList';
 import { FAMILY_ICON } from '../components/familyIcons';
-import { IconChart, IconChevronRight, IconRoute } from '../components/icons';
+import { IconChart, IconChevronRight, IconHelp, IconRoute } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
 import { FAMILY_ACCENT, FAMILY_LABEL } from '../core/activities';
 import type { SportFamily } from '../core/sportProfiles';
@@ -13,10 +13,12 @@ import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
 import { shownRoutes } from '../planning/routeList';
+import './Home.css';
 
 /**
  * Accueil : enregistrer ou planifier un itinéraire, le graphe d'activités et
- * ses totaux, puis l'entrée des statistiques (dès qu'il y a des sessions), les familles visibles, puis les
+ * ses totaux, puis l'entrée des statistiques (dès qu'il y a des sessions), les familles visibles en grille
+ * de deux colonnes (un « ? » déplie ce que chacune analyse), puis les
  * derniers itinéraires planifiés (dès que la mémoire est prête), dont la carte
  * mène à la liste complète. Une famille cachée dans Réglages n'y a pas sa
  * carte, une activité cachée pas ses itinéraires (§10, point 100).
@@ -37,7 +39,7 @@ const cardStyle = {
   textDecoration: 'none',
 } as const;
 
-/** Ce que chaque famille analyse, sous son nom. */
+/** Ce que chaque famille analyse, déplié par son « ? ». */
 const FAMILY_BLURB: Record<SportFamily, string> = {
   voile: 'Wingfoil, planche, kite, bateau : vitesse, tops, virements et empannages, vent, VMG.',
   course: 'Allure, dénivelé, zones de pente, vitesse et altitude.',
@@ -53,6 +55,7 @@ function Home() {
   const { status, sessions, error } = useSessionLibrary();
   const { routes: allRoutes } = useRouteLibrary();
   const { activities, families, isShown } = useVisibility();
+  const [blurbOf, setBlurbOf] = useState<SportFamily | null>(null);
   const routes = useMemo(() => shownRoutes(allRoutes, activities, isShown), [allRoutes, activities, isShown]);
   // Premier lancement sur le téléphone, ou dossier devenu inaccessible : la mémoire d'abord. Une erreur
   // (écriture refusée, réglages du dossier illisibles) se voit aussi dès l'accueil.
@@ -60,7 +63,7 @@ function Home() {
 
   return (
     <div className="ui-page">
-      <PageHeader title="Tracker" aside={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)' }}>{today}</span>} />
+      <PageHeader title={<>Tracker<span className="home-version">v{__APP_VERSION__}</span></>} aside={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)' }}>{today}</span>} />
 
       {memoryNeedsAction && <MemoryStatus />}
 
@@ -89,15 +92,22 @@ function Home() {
         </Link>
       )}
 
-      {families.map((family) => {
-        const Icon = FAMILY_ICON[family];
-        return (
-          <Link key={family} to={libraryPath(family)} style={cardStyle}>
-            <span style={{ ...titleStyle, color: FAMILY_ACCENT[family] }}><Icon /> {FAMILY_LABEL[family]}</span>
-            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>{FAMILY_BLURB[family]}</span>
-          </Link>
-        );
-      })}
+      <div className="home-families">
+        {families.map((family) => {
+          const Icon = FAMILY_ICON[family];
+          const open = blurbOf === family;
+          return (
+            <div key={family} className="home-family" style={{ '--family-color': FAMILY_ACCENT[family] } as CSSProperties}>
+              <Link to={libraryPath(family)} className="home-family__link"><Icon /> <span>{FAMILY_LABEL[family]}</span></Link>
+              <button type="button" className="home-family__help" aria-expanded={open}
+                aria-label={`Ce qu'analyse ${FAMILY_LABEL[family]}`} onClick={() => setBlurbOf(open ? null : family)}>
+                <IconHelp size={18} />
+              </button>
+            </div>
+          );
+        })}
+        {blurbOf !== null && families.includes(blurbOf) && <p className="home-family__blurb">{FAMILY_BLURB[blurbOf]}</p>}
+      </div>
 
       {status === 'ready' && (
         <div style={cardStyle}>
