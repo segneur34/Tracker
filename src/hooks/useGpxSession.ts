@@ -53,6 +53,7 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
   const [session, setSession] = useState<GpxSessionState>(EMPTY_STATE);
   const {
     medianWindowSeconds,
+    maxDetourRatio,
     maxAcceleration,
     maxSpeedMs,
     forceDerivedSpeed,
@@ -77,6 +78,7 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
       : { maxAcceleration, maxSpeedMs };
     return computeKinematics(session.rawPoints, {
       medianWindowSeconds,
+      maxDetourRatio,
       maxAcceleration: scaled.maxAcceleration,
       maxSpeedMs: scaled.maxSpeedMs,
       forceDerivedSpeed,
@@ -84,6 +86,7 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
   }, [
     session.rawPoints,
     medianWindowSeconds,
+    maxDetourRatio,
     maxAcceleration,
     maxSpeedMs,
     forceDerivedSpeed,

@@ -37,8 +37,11 @@ export const RECORD_VERSION = 1;
  *
  * 2 (24 septembre 2026) : l'allure imposée ne vient plus des réglages du
  * support mais de la fiche de la session (`analysis.referenceSpeedMs`).
+ *
+ * 3 (14 octobre 2026) : une position qui saute puis revient est écartée de la
+ * vitesse (`detourSpikes`), même suivie d'un trou.
  */
-export const SUMMARY_CALC_VERSION = 2;
+export const SUMMARY_CALC_VERSION = 3;
 
 export type SessionSource = 'enregistrement' | 'import';
 

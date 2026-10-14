@@ -86,6 +86,7 @@ Ordre et orchestration seulement. Les seuils, fenêtres et formules sont nommés
    - L'allure peut être imposée pour une session, ce qui recalcule toute la chaîne (§10, point 46).
 3. `computeKinematics` (`core/kinematics.ts`), dans l'ordre :
    - vitesse dérivée des positions ;
+   - point dont la position saute puis revient (`detourSpikes`) : détour de plus de `maxDetourRatio` fois (3, profil) le chemin direct entre ses voisins, et vitesse impossible au regard de l'accélération plausible. Ses deux intervalles prennent la vitesse et le cap du chemin direct ; un point qui a son Doppler n'est pas touché (§10, point 104) ;
    - vitesse de l'appareil, convertie après détection de son unité ;
    - écrêtage (`clampByAcceleration`, `core/speedFilter.ts`) ;
    - médiane temporelle, qui donne `smoothedSpeedMs`, la vitesse de toutes les analyses.

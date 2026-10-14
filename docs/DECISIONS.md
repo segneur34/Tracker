@@ -9,6 +9,7 @@ Les onglets de l'analyse de voile sont dans `CLAUDE.md` (décision « Voile », 
 - Courbe du vent : toute la session, par toutes les manœuvres sans exception, valeur la plus proche aux bords, coupure au-delà de 30 min sans manœuvre.
 - Une seule notion de réussite : le vent est estimé au seuil d'activité effectif, surcharge comprise (bouger le seuil recalcule le vent, c'est accepté).
 - Manœuvres : gain au vent = chemin pendant la rotation, vers le vent au virement, sous le vent à l'empannage, le plus grand en tête ; pas de podium du changement de cap aux empannages ; pas de ligne « distance perdue ».
+- Vitesse aberrante (« 41 knt pb », 14/10) : corrigée par un filtre automatique, celui de l'aller-retour (`detourSpikes`, il vaut pour tous les supports), pas par un outil « Exclure un passage » ni en cachant un record ; l'outil manuel reste une piste si un cas échappe au filtre.
 - Foil : case de toute activité de voile, bateau compris (cochée d'office en wingfoil), et valeur par session dans l'onglet réglages de l'analyse. Sur foil : « Ratio de vol », champs Foil et Mât ; elle ne touche ni au seuil d'activité ni à ses suggestions.
 - Balises en voile : un itinéraire de voile est un parcours de balises numérotées, en ligne droite. En navigation, chaque balise, départ compris, se valide en passant près d'elle, dans l'ordre (« Passer » la saute). Bips de plus en plus rapides à l'approche, et vibration réglable, joués par Android écran éteint. La courbe des bips se règle par activité dans Réglages ; un parcours peut avoir la sienne, dans sa fiche, qui prime.
 

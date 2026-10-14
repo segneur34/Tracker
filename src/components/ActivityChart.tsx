@@ -17,13 +17,14 @@ import './ActivityChart.css';
  * jour empilées ; numéros de semaine ISO en dessous. Toucher une barre
  * affiche ses sessions, chacune ouvrant son analyse. Sous le graphe, les
  * totaux de la période par activité, chacun ouvrant la bibliothèque filtrée
- * sur son activité ; une flèche les replie ou les déplie tous d'un coup.
+ * sur son activité, précédés de la légende (dates de la période, toucher une
+ * barre) ; une ligne fine les replie ou les déplie tous d'un coup.
  * Les sessions d'une activité ou d'une famille cachée n'y sont pas (§10, point 100).
  */
 
 /** Hauteur de la zone des barres, en pixels, et hauteur maximale d'une session. */
-const PLOT_H = 88;
-const UNIT_MAX_H = 24;
+const PLOT_H = 62;
+const UNIT_MAX_H = 17;
 
 /** Totaux par activité dépliés tant qu'on ne les a pas repliés. */
 const TOTALS_DEFAULT = { totaux: true };
@@ -122,36 +123,32 @@ function ActivityChart() {
         ))}
       </div>
 
-      <div className="actchart__detail">
-        {bar === null ? (
-          <span className="actchart__hint">{chart.range}. Toucher une barre pour le détail.</span>
-        ) : (
-          <>
-            <strong>{bar.title}</strong>
-            {bar.sessions.length === 0 ? (
-              <span className="actchart__hint">Aucune session.</span>
-            ) : (
-              <ul className="actchart__sessions">
-                {bar.sessions.map((s) => {
-                  const activity = activityById.get(s.activityId)!;
-                  return (
-                    <li key={s.file}>
-                      <button type="button" onClick={() => openSession(s.file, sportFamily(activity.base))}>
-                        <span className="actchart__dot" style={{ background: activity.color }} />
-                        <span className="actchart__name">{activity.name}</span>
-                        <span className="actchart__meta num">
-                          {weekly && `${new Date(s.startMs).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })} · `}
-                          {formatTime(s.startMs)} · {formatDuration(s.durationS * 1000)} · {formatDistance(s.distanceM, activity)}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </>
-        )}
-      </div>
+      {bar !== null && (
+        <div className="actchart__detail">
+          <strong>{bar.title}</strong>
+          {bar.sessions.length === 0 ? (
+            <span className="actchart__hint">Aucune session.</span>
+          ) : (
+            <ul className="actchart__sessions">
+              {bar.sessions.map((s) => {
+                const activity = activityById.get(s.activityId)!;
+                return (
+                  <li key={s.file}>
+                    <button type="button" onClick={() => openSession(s.file, sportFamily(activity.base))}>
+                      <span className="actchart__dot" style={{ background: activity.color }} />
+                      <span className="actchart__name">{activity.name}</span>
+                      <span className="actchart__meta num">
+                        {weekly && `${new Date(s.startMs).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })} · `}
+                        {formatTime(s.startMs)} · {formatDuration(s.durationS * 1000)} · {formatDistance(s.distanceM, activity)}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       {chart.totals.length > 0 && (
         <button type="button" className="actchart__fold" aria-expanded={open.totaux} onClick={() => toggle('totaux')}>
@@ -164,6 +161,7 @@ function ActivityChart() {
       )}
       {chart.totals.length > 0 && open.totaux && (
         <ul className="actchart__totals">
+          <li className="actchart__hint actchart__legend">{chart.range}. Toucher une barre pour le détail.</li>
           {chart.totals.map((t) => {
             const activity = activityById.get(t.activityId)!;
             return (

@@ -63,6 +63,7 @@ export const useSailingSession = ({
   // laissent passer des pics d'enregistrement qui fabriquent des manœuvres.
   const gpx = useGpxSession({
     medianWindowSeconds: profile.medianWindowSeconds,
+    maxDetourRatio: profile.maxDetourRatio,
     maxSpeedMs: profile.maxPlausibleSpeedMs,
     scaleFiltersToSession: true,
     referenceSpeedOverrideMs: sessionReferenceMs ?? undefined,

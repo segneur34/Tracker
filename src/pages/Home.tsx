@@ -2,7 +2,6 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
 import MemoryStatus from '../components/MemoryStatus';
-import RouteList from '../components/RouteList';
 import { FAMILY_ICON } from '../components/familyIcons';
 import { IconChart, IconChevronRight, IconHelp, IconRoute } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
@@ -17,15 +16,13 @@ import './Home.css';
 
 /**
  * Accueil : enregistrer ou planifier un itinéraire, le graphe d'activités et
- * ses totaux, puis l'entrée des statistiques (dès qu'il y a des sessions), les familles visibles en grille
- * de deux colonnes (un « ? » déplie ce que chacune analyse), puis les
- * derniers itinéraires planifiés (dès que la mémoire est prête), dont la carte
- * mène à la liste complète. Une famille cachée dans Réglages n'y a pas sa
- * carte, une activité cachée pas ses itinéraires (§10, point 100).
+ * ses totaux, puis les familles visibles en grille de deux colonnes (un « ? »
+ * déplie ce que chacune analyse), et sous elles, de la même épaisseur, l'entrée
+ * de la liste des itinéraires planifiés (leur nombre dès que la mémoire est
+ * prête) et celle des statistiques (dès qu'il y a des sessions). Une famille
+ * cachée dans Réglages n'y a pas sa carte, une activité cachée pas ses
+ * itinéraires dans le nombre (§10, point 100).
  */
-
-/** Itinéraires montrés sur l'accueil, les derniers rangés ; les autres sont dans la liste complète. */
-const HOME_ROUTES = 3;
 
 const cardStyle = {
   display: 'flex',
@@ -47,8 +44,6 @@ const FAMILY_BLURB: Record<SportFamily, string> = {
   fractionne: "À pied ou à vélo : compteur de répétitions à l'enregistrement, avec bips, puis l'analyse de la course ou du vélo.",
   surf: 'Vagues, temps sur la vague, vitesse, rame et retour au pic ; sur foil, les vols enchaînés.',
 };
-
-const titleStyle = { display: 'flex', alignItems: 'center', gap: '10px', fontSize: 'var(--text-l)', fontWeight: 700 } as const;
 
 function Home() {
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -83,15 +78,6 @@ function Home() {
 
       {sessions.length > 0 && <ActivityChart />}
 
-      {sessions.length > 0 && (
-        <Link to="/statistiques" style={cardStyle}>
-          <span style={titleStyle}><IconChart /> <span style={{ flex: 1 }}>Statistiques</span> <IconChevronRight /></span>
-          <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
-            Sessions, distances, vitesse max, régularité et records, par famille et par activité.
-          </span>
-        </Link>
-      )}
-
       <div className="home-families">
         {families.map((family) => {
           const Icon = FAMILY_ICON[family];
@@ -107,27 +93,15 @@ function Home() {
           );
         })}
         {blurbOf !== null && families.includes(blurbOf) && <p className="home-family__blurb">{FAMILY_BLURB[blurbOf]}</p>}
-      </div>
-
-      {status === 'ready' && (
-        <div style={cardStyle}>
-          <Link to="/itineraires/liste" style={{ ...titleStyle, color: 'var(--ink)', textDecoration: 'none' }}>
-            <IconRoute /> <span style={{ flex: 1 }}>Itinéraires planifiés ({routes.length})</span> <IconChevronRight />
+        <Link to="/itineraires/liste" className="home-link">
+          <IconRoute /> <span>Itinéraires planifiés{status === 'ready' ? ` (${routes.length})` : ''}</span> <IconChevronRight />
+        </Link>
+        {sessions.length > 0 && (
+          <Link to="/statistiques" className="home-link">
+            <IconChart /> <span>Statistiques</span> <IconChevronRight />
           </Link>
-          {routes.length > 0 ? (
-            <>
-              <RouteList routes={routes.slice(0, HOME_ROUTES)} activities={activities} />
-              <Link to="/itineraires/liste" style={{ fontSize: 'var(--text-m)', fontWeight: 600 }}>
-                {routes.length > HOME_ROUTES ? `Voir les ${routes.length} itinéraires` : 'Trier et voir tous les itinéraires'}
-              </Link>
-            </>
-          ) : (
-            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
-              Aucun itinéraire pour l'instant. <Link to="/itineraires">Planifier</Link> un parcours pour le retrouver ici.
-            </span>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

@@ -256,6 +256,12 @@ export interface SportProfile {
   /** Largeur du filtre médian appliqué à la vitesse, en secondes. */
   medianWindowSeconds: number;
   /**
+   * Détour maximal par un point, en fois le chemin direct entre ses voisins :
+   * au-delà, si la vitesse qu'il donne est impossible, sa position a sauté
+   * (`detourSpikes`). Rapport sans dimension, le même pour tous les supports.
+   */
+  maxDetourRatio: number;
+  /**
    * Vitesse maximale physiquement plausible pour ce support, en m/s. Au-delà,
    * c'est une aberration GPS, quelle que soit l'accélération qui y mène.
    */
@@ -331,6 +337,7 @@ const SAILING_DEFAULTS = {
   activeHysteresis: { enterOffset: 0.5, exitOffset: -1 },
   minStateDurationS: 0,
   medianWindowSeconds: 3,
+  maxDetourRatio: 3,
   // 30 m/s font 58 nœuds : hors de portée en session ordinaire.
   maxPlausibleSpeedMs: 30,
   defaultPolarMinSpeed: 5,
@@ -354,6 +361,7 @@ const RUNNING_PROFILE: SportProfile = {
   activeHysteresis: { enterOffset: 1, exitOffset: -1 },
   minStateDurationS: 3,
   medianWindowSeconds: 5,
+  maxDetourRatio: 3,
   // 12 m/s font 43 km/h, au-delà du sprint humain.
   maxPlausibleSpeedMs: 12,
   defaultPolarMinSpeed: 0,
@@ -380,6 +388,7 @@ const CYCLING_PROFILE: SportProfile = {
   activeHysteresis: { enterOffset: 1, exitOffset: -2 },
   minStateDurationS: 3,
   medianWindowSeconds: 3,
+  maxDetourRatio: 3,
   // 25 m/s font 90 km/h, au-delà d'une descente de col ordinaire.
   maxPlausibleSpeedMs: 25,
   defaultPolarMinSpeed: 0,
@@ -411,6 +420,7 @@ const SURF_PROFILE: SportProfile = {
   activeHysteresis: { enterOffset: 1, exitOffset: -2 },
   minStateDurationS: 0,
   medianWindowSeconds: 3,
+  maxDetourRatio: 3,
   // 20 m/s font 72 km/h, au-delà d'une grosse vague ordinaire.
   maxPlausibleSpeedMs: 20,
   defaultPolarMinSpeed: 0,

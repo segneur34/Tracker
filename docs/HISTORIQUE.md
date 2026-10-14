@@ -481,3 +481,18 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - Les manœuvres ne sont comptées que sur les sessions de voile déjà ouvertes, ce que la page précise.
       - « Statistiques » peut prendre la case secondaire du téléphone, comme « Planifier » (`NavPage`).
     - **Piège** : une session peut tenir d'une activité de base, absente de la liste (un calcul sans activité créée, comme le kite, ou une activité supprimée). Une liste d'activités tirée des seules activités créées la perd. On la garde donc avec celles-ci, pour qu'elle ait sa pastille, son nom et sa couleur.
+104. Vitesse aberrante en wingfoil, lot 6 des demandes du 10-14/10 (14/10, validé par l'utilisateur sur le téléphone, APK 0.2.92).
+    - **Demande** : une session (« 41 knt pb ») affichait 41 nd en foil, ce qui est impossible.
+    - **Cause** : un import Komoot, sans Doppler, avec un point toutes les 2 s et des trous. Un point est déplacé d'environ 40 m au moment où l'utilisateur s'arrête, puis le point suivant n'arrive que 7 s plus tard. `clampByAcceleration` juge bien le pic suspect, mais il cherche un retour plausible dans les 3 s. Aucun point n'y tombe, donc le changement est accepté, et il passe sous le plafond (environ 45 nd à cette allure). La médiane de 3 s ne protège pas les tops, qui intègrent `speedMs`.
+    - **Choix de l'utilisateur** : un filtre automatique seul. Pas d'outil « Exclure un passage », pas de record caché.
+    - **Le filtre** (`detourSpikes`) :
+      - il compare le détour par le point au chemin direct entre ses deux voisins, quel que soit leur écart de temps ;
+      - le seuil est un rapport sans dimension, `maxDetourRatio` à 3 dans le profil ;
+      - il exige en plus une vitesse impossible au regard de l'accélération plausible, ce qui garde un vrai demi-tour serré ;
+      - il ne touche jamais un point Doppler, cap compris.
+    - **Effet** : `SUMMARY_CALC_VERSION` 3. Sur les 17 sessions du téléphone, seule celle-ci change : 2 points sur 1 420 sont écartés, et la vitesse max passe de 41,2 à 22,1 nd.
+    - **Piège** :
+      - un filtre qui attend un retour dans une fenêtre de temps suppose une cadence dense (règle 10) ;
+      - au seuil 2, le rapport de détour prendrait de vrais virages à 2 s de cadence ;
+      - limite connue : un point déplacé en pleine vitesse et suivi d'un trou garde un faible détour, et peut encore passer.
+    - **Accueil, dans le même commit** : les itinéraires et les statistiques deviennent des liens fins sous les familles, le graphe d'activités est plus bas, et sa légende passe sous les barres.

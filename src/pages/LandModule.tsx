@@ -224,6 +224,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const { profile: runner, age } = useRunnerProfile();
   const gpx = useGpxSession({
     medianWindowSeconds: profile.medianWindowSeconds,
+    maxDetourRatio: profile.maxDetourRatio,
     maxSpeedMs: profile.maxPlausibleSpeedMs,
   });
 

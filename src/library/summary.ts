@@ -67,6 +67,7 @@ export const analysisTrack = (
     : { maxAcceleration: undefined, maxSpeedMs: profile.maxPlausibleSpeedMs };
   return computeKinematics(rawPoints, {
     medianWindowSeconds: profile.medianWindowSeconds,
+    maxDetourRatio: profile.maxDetourRatio,
     maxAcceleration: filters.maxAcceleration,
     maxSpeedMs: filters.maxSpeedMs,
   });

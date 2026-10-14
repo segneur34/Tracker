@@ -135,9 +135,56 @@ export const detectTrackDeviceSpeedUnit = (points: RawTrackPoint[]): DeviceSpeed
   return detectDeviceSpeedUnit(points.map((p) => p.speedMs), derived);
 };
 
+/**
+ * Détour maximal par un point, en fois le chemin direct entre ses voisins.
+ * Au-delà, et si la vitesse qu'il donne est impossible, la position a sauté.
+ */
+export const DEFAULT_MAX_DETOUR_RATIO = 3;
+
+/** Plancher du chemin direct, en mètres : à l'arrêt, les voisins se confondent. */
+const DETOUR_FLOOR_M = 1;
+
+/**
+ * Indices des points dont la position a sauté puis est revenue : le détour par
+ * le point dépasse `maxDetourRatio` fois le chemin direct entre ses voisins, et
+ * la vitesse d'entrée ou de sortie s'écarte de la vitesse directe de plus que
+ * `maxAccel`. Le rapport ne dépend ni de la cadence ni de l'allure, et le test
+ * ne regarde que les deux voisins, quel que soit leur écart de temps : un point
+ * déplacé suivi d'un trou échappe à `clampByAcceleration`, qui cherche le
+ * retour dans les 3 s (session Komoot à 41 nd, §10). La seconde condition
+ * garde un vrai demi-tour serré, parcouru à vitesse constante. Deux points de
+ * suite ne sont jamais écartés : le suivant d'un point écarté est sauté.
+ */
+export const detourSpikes = (
+  points: { lat: number; lon: number }[],
+  timesMs: number[],
+  maxDetourRatio: number = DEFAULT_MAX_DETOUR_RATIO,
+  maxAccel: number = DEFAULT_MAX_ACCELERATION
+): number[] => {
+  const spikes: number[] = [];
+  for (let i = 1; i < points.length - 1; i++) {
+    const dtIn = (timesMs[i] - timesMs[i - 1]) / 1000;
+    const dtOut = (timesMs[i + 1] - timesMs[i]) / 1000;
+    if (dtIn <= 0 || dtOut <= 0) continue;
+    const [p0, p1, p2] = [points[i - 1], points[i], points[i + 1]];
+    const inM = haversineDistance(p0.lat, p0.lon, p1.lat, p1.lon);
+    const outM = haversineDistance(p1.lat, p1.lon, p2.lat, p2.lon);
+    const directM = haversineDistance(p0.lat, p0.lon, p2.lat, p2.lon);
+    if ((inM + outM) / Math.max(directM, DETOUR_FLOOR_M) <= maxDetourRatio) continue;
+    const directMs = directM / (dtIn + dtOut);
+    const accel = Math.max((inM / dtIn - directMs) / dtIn, (outM / dtOut - directMs) / dtOut);
+    if (accel <= maxAccel) continue;
+    spikes.push(i);
+    i++;
+  }
+  return spikes;
+};
+
 export interface KinematicsOptions {
   /** Largeur du filtre médian appliqué à la vitesse, en secondes. */
   medianWindowSeconds?: number;
+  /** Détour maximal par un point, en fois le chemin direct entre ses voisins (`detourSpikes`). */
+  maxDetourRatio?: number;
   /** Accélération maximale plausible, en m/s². */
   maxAcceleration?: number;
   /** Vitesse maximale plausible pour le support, en m/s. */
@@ -177,6 +224,21 @@ export const computeKinematics = (
     const dt = (timesMs[i] - timesMs[i - 1]) / 1000;
     derivedSpeeds.push(dt > 0 ? haversineDistance(p0.lat, p0.lon, p1.lat, p1.lon) / dt : 0);
     bearings.push(initialBearing(p0.lat, p0.lon, p1.lat, p1.lon));
+  }
+
+  // Position qui saute puis revient : les deux intervalles du point prennent
+  // la vitesse et le cap du chemin direct entre ses voisins. Le point reste
+  // sur la carte ; seule sa vitesse tirée des positions change. Un point qui a
+  // sa vitesse Doppler n'est pas touché, son cap non plus.
+  for (const i of detourSpikes(points, timesMs, options.maxDetourRatio, maxAcceleration)) {
+    if (useDeviceSpeed && points[i].speedMs !== undefined) continue;
+    const p0 = points[i - 1];
+    const p2 = points[i + 1];
+    const directMs =
+      haversineDistance(p0.lat, p0.lon, p2.lat, p2.lon) / ((timesMs[i + 1] - timesMs[i - 1]) / 1000);
+    const bearing = initialBearing(p0.lat, p0.lon, p2.lat, p2.lon);
+    derivedSpeeds[i] = derivedSpeeds[i + 1] = directMs;
+    bearings[i] = bearings[i + 1] = bearing;
   }
 
   // L'unité de la vitesse appareil n'est pas garantie : on la déduit.

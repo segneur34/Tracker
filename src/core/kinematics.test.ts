@@ -3,9 +3,11 @@ import {
   computeKinematics,
   detectDeviceSpeedUnit,
   detectTrackDeviceSpeedUnit,
+  detourSpikes,
   distanceToSegmentM,
   haversineDistance,
   initialBearing,
+  pointTimeMs,
 } from './kinematics';
 import type { RawTrackPoint } from './types';
 
@@ -203,5 +205,91 @@ describe('computeKinematics', () => {
     // Milieu de trace, loin des bords : les deux doivent lire 10 m/s.
     expect(at1Hz[15].smoothedSpeedMs).toBeCloseTo(10, 1);
     expect(at5Hz[75].smoothedSpeedMs).toBeCloseTo(10, 1);
+  });
+});
+
+describe('detourSpikes', () => {
+  const lat = 43.6;
+  const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
+  const metersPerDegLat = (Math.PI / 180) * 6371e3;
+  const startTime = Date.parse('2026-01-01T10:00:00Z');
+
+  /** Trace plane à partir de positions en mètres (est, nord) et d'instants en secondes. */
+  const buildTrack = (steps: { x: number; y: number; t: number }[]): RawTrackPoint[] =>
+    steps.map(({ x, y, t }) => ({
+      lat: lat + y / metersPerDegLat,
+      lon: 3.8 + x / metersPerDegLon,
+      time: new Date(startTime + t * 1000).toISOString(),
+    }));
+
+  /**
+   * Ligne droite à 6 m/s jusqu'à 20 s, puis arrêt (une chute), un point
+   * toutes les `stepS` secondes ; à 22 s, un point déplacé de 50 m sur le côté,
+   * suivi d'un trou jusqu'à 29 s : le cas de la session Komoot à 41 nd, que la
+   * fenêtre de 3 s de `clampByAcceleration` laissait passer.
+   */
+  const spikeThenGap = (stepS = 2) => {
+    const steps: { x: number; y: number; t: number }[] = [];
+    for (let k = 0; k * stepS <= 20 + 1e-9; k++) steps.push({ x: 6 * k * stepS, y: 0, t: k * stepS });
+    steps.push({ x: 120, y: 50, t: 22 });
+    for (let k = 0; 29 + k * stepS <= 49 + 1e-9; k++) steps.push({ x: 121, y: 0, t: 29 + k * stepS });
+    return buildTrack(steps);
+  };
+
+  it('écarte un point déplacé suivi d\'un trou', () => {
+    const points = spikeThenGap();
+    const times = points.map((p) => pointTimeMs(p.time));
+    expect(detourSpikes(points, times)).toEqual([11]);
+  });
+
+  it('ramène la vitesse max à l\'allure de la trace', () => {
+    const track = computeKinematics(spikeThenGap());
+    const max = Math.max(...track.map((p) => p.speedMs));
+    expect(max).toBeLessThan(6.5);
+    // Sans le filtre, le point déplacé donne 25 m/s.
+    const unfiltered = computeKinematics(spikeThenGap(), { maxDetourRatio: Infinity });
+    expect(Math.max(...unfiltered.map((p) => p.speedMs))).toBeGreaterThan(20);
+  });
+
+  it('garde un demi-tour serré parcouru à vitesse constante', () => {
+    // Empannage de 8 m de rayon à 8 m/s, un point toutes les 2 s, quel que
+    // soit l'instant du premier point par rapport au virage.
+    const radius = 8;
+    const arc = Math.PI * radius;
+    const along = (s: number) => {
+      if (s <= 80) return { x: s, y: 0 };
+      if (s <= 80 + arc) {
+        const angle = (s - 80) / radius - Math.PI / 2;
+        return { x: 80 + radius * Math.cos(angle), y: radius + radius * Math.sin(angle) };
+      }
+      return { x: 80 - (s - 80 - arc), y: 2 * radius };
+    };
+    for (const offset of [0, 0.5, 1, 1.5]) {
+      const steps: { x: number; y: number; t: number }[] = [];
+      for (let t = offset; t <= 30; t += 2) steps.push({ ...along(8 * t), t });
+      const points = buildTrack(steps);
+      const times = points.map((p) => pointTimeMs(p.time));
+      expect(detourSpikes(points, times, 3, 2)).toEqual([]);
+    }
+  });
+
+  it('n\'écarte rien à l\'arrêt, malgré le bruit de position', () => {
+    const offsets = [0, 0.4, -0.3, 0.2, 0.5, -0.4, 0.1, -0.2, 0.3, 0];
+    const points = buildTrack(offsets.map((o, k) => ({ x: o, y: -o, t: k })));
+    const times = points.map((p) => pointTimeMs(p.time));
+    expect(detourSpikes(points, times, 3, 2)).toEqual([]);
+  });
+
+  it('donne la même vitesse max à 1 Hz et à 5 Hz', () => {
+    const max = (stepS: number) => Math.max(...computeKinematics(spikeThenGap(stepS)).map((p) => p.speedMs));
+    expect(max(1)).toBeLessThan(6.5);
+    expect(max(0.2)).toBeLessThan(6.5);
+  });
+
+  it('ne change pas une trace qui a la vitesse de l\'appareil', () => {
+    const points = spikeThenGap().map((p) => ({ ...p, speedMs: 6 }));
+    const track = computeKinematics(points);
+    const unfiltered = computeKinematics(points, { maxDetourRatio: Infinity });
+    expect(track.map((p) => [p.speedMs, p.bearing])).toEqual(unfiltered.map((p) => [p.speedMs, p.bearing]));
   });
 });

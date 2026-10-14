@@ -182,7 +182,7 @@ function SurfModule() {
     activity, setActivity, profile, thresholdOverride, speedUnit, distanceUnit, speedRange, defaultSpeedRange, foil: activityFoil,
     pumping: activityPumping,
   } = useSportSettings('surf');
-  const gpx = useGpxSession({ medianWindowSeconds: profile.medianWindowSeconds, maxSpeedMs: profile.maxPlausibleSpeedMs });
+  const gpx = useGpxSession({ medianWindowSeconds: profile.medianWindowSeconds, maxDetourRatio: profile.maxDetourRatio, maxSpeedMs: profile.maxPlausibleSpeedMs });
 
   const { loadGpxContent } = gpx;
   // Session de la mémoire désignée par l'URL : son activité devient celle du module.
