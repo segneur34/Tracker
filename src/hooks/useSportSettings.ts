@@ -115,6 +115,8 @@ export interface StoredSettings {
   markGuide?: ByActivity<MarkGuideSettings>;
   /** Support sur foil (voile, surf) ; absent : `foilDefault` du calcul, coché pour « Surf foil ». */
   foils?: ByActivity<boolean>;
+  /** Pumping foil (surf, point 104) : capteurs proposés à l'enregistrement, pumping des vols dans l'analyse ; absent : non. */
+  pumping?: ByActivity<boolean>;
   /** Sauts mesurés par les capteurs du téléphone (voile sauf bateau, course, vélo) ; absents : non mesurés. */
   jumps?: ByActivity<JumpSettings>;
   /** Type de vélo (vélo), qui fixe roulement et traînée ; absent : `defaultBikeType`. */
@@ -460,6 +462,12 @@ const resolveFoil = (stored: StoredSettings, activity: Activity): boolean | null
   return typeof foil === 'boolean' ? foil : defaultFoil(activity);
 };
 
+/** Pumping foil d'une activité : celui réglé, sinon non ; `null` hors surf. */
+const resolvePumping = (stored: StoredSettings, activity: Activity): boolean | null => {
+  if (activityTreatment(activity) !== 'surf') return null;
+  return stored.pumping?.[activity.id] === true;
+};
+
 /** Sauts d'une activité : ceux réglés, sinon le défaut ; `null` si son calcul ne les mesure pas. */
 const resolveJumps = (stored: StoredSettings, activity: Activity): JumpSettings | null => {
   const profile = getSportProfile(activity.base).jumps;
@@ -469,6 +477,9 @@ const resolveJumps = (stored: StoredSettings, activity: Activity): JumpSettings 
 
 /** Support sur foil d'une activité de voile ou de surf, `null` ailleurs. Utilisable hors composant. */
 export const effectiveFoil = (activity: Activity): boolean | null => resolveFoil(readStoredSettings(), activity);
+
+/** Pumping foil d'une activité de surf, `null` ailleurs. Utilisable hors composant. */
+export const effectivePumping = (activity: Activity): boolean | null => resolvePumping(readStoredSettings(), activity);
 
 /** Réglages des sauts d'une activité, `null` si son calcul ne les mesure pas. Utilisable hors composant. */
 export const effectiveJumpSettings = (activity: Activity): JumpSettings | null => resolveJumps(readStoredSettings(), activity);
@@ -622,6 +633,8 @@ export interface SportSettingsView {
   /** Support sur foil ; `null` hors voile et surf. */
   foil: boolean | null;
   isFoilOverridden: boolean;
+  /** Pumping foil ; `null` hors surf. */
+  pumping: boolean | null;
   /** Sauts mesurés par les capteurs ; `null` si le calcul ne les mesure pas (bateau, fractionné). */
   jumps: JumpSettings | null;
   isJumpsOverridden: boolean;
@@ -643,7 +656,7 @@ export interface SportSettingsView {
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
   'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights',
-  'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'jumps',
+  'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
 ] as const;
 
 /** Réglages sans aucune surcharge rangée sous `id`. */
@@ -722,6 +735,7 @@ export const useAllSportSettings = () => {
         isMarkGuideOverridden: markGuide !== null,
         foil: resolveFoil(stored, activity),
         isFoilOverridden: typeof stored.foils?.[id] === 'boolean',
+        pumping: resolvePumping(stored, activity),
         jumps: resolveJumps(stored, activity),
         isJumpsOverridden: stored.jumps?.[id] !== undefined && profile.jumps !== null,
         bikeType: isBikeType(bikeType) ? bikeType : defaultBikeType(id),
@@ -738,7 +752,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'jumps' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'bikeType' | 'bikeWeight' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -816,6 +830,13 @@ export const useAllSportSettings = () => {
           if (!activity || resolveFoil(stored, activity) === null) return;
           if (value !== null && typeof value !== 'boolean') return;
           next.foils = put(stored.foils, value as boolean | null);
+          break;
+        }
+        case 'pumping': {
+          const activity = findActivity(activities, id);
+          if (!activity || resolvePumping(stored, activity) === null) return;
+          if (value !== null && typeof value !== 'boolean') return;
+          next.pumping = put(stored.pumping, value === true ? true : null);
           break;
         }
         case 'jumps': {
@@ -1057,6 +1078,8 @@ export const useSportSettings = (family: SportFamily) => {
 
   /** Support sur foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
   const foil = resolveFoil(stored, activity) ?? false;
+  /** Pumping foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
+  const pumping = resolvePumping(stored, activity) ?? false;
 
   /** Seuil réglé pour l'activité, `null` sans réglage ; en surf, le défaut dépend du foil de la session. */
   const thresholdOverride = stored.thresholds?.[id] ?? null;
@@ -1114,5 +1137,6 @@ export const useSportSettings = (family: SportFamily) => {
     bikeWeightKg,
     isBikeWeightOverridden: isValidBikeWeight(storedBikeWeight),
     foil,
+    pumping,
   };
 };

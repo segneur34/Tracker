@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
 import { pruneImuFile } from '../core/imuPrune';
+import { pruneSurfImu } from '../surfing/pumping';
 import { ELEVATION_PRESETS, SAILING_SPORTS, getSportProfile, isLandTreatment, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
@@ -61,7 +62,7 @@ import {
   unseenSettingsEntries,
   type SettingsEntry,
 } from '../library/settingsFile';
-import { summarizeSession, type SummaryOptions } from '../library/summary';
+import { summarizeSession, surfRides, type SummaryOptions } from '../library/summary';
 import { readPickedBytes, readPickedFile } from '../platform/files';
 import {
   FolderRefusedError,
@@ -1184,14 +1185,24 @@ interface AddOptions {
 
 /**
  * Capteurs d'un enregistrement à leur entrée dans la mémoire : élagués autour
- * des vols si le calcul de la session mesure les sauts. En cas d'échec, la
- * capture complète : on ne perd jamais de mesure par erreur.
+ * des vols si le calcul de la session mesure les sauts, autour des glisses en
+ * surf (vols sur foil, vagues sinon, au seuil de la fiche ou de l'activité)
+ * si son profil le demande (`pump.pruneCapture`), sinon gardés entiers.
+ * En cas d'échec, la capture complète : on ne perd jamais de mesure par erreur.
  */
-const prunedMotion = async (motion: Uint8Array, sport: SportType | null): Promise<Uint8Array> => {
-  const detection = sport ? getSportProfile(sport).jumps?.detection : null;
-  if (!detection) return motion;
+const prunedMotion = async (
+  motion: Uint8Array, sport: SportType | null, text: string, analysis?: SessionAnalysis | null, activityId?: string | null
+): Promise<Uint8Array> => {
+  if (!sport) return motion;
+  const profile = getSportProfile(sport);
   try {
-    return await pruneImuFile(motion, detection);
+    if (profile.surf) {
+      if (!profile.surf.pump.pruneCapture) return motion;
+      const rides = surfRides(parseGpx(text).rawPoints, sport, summaryOptions(sport, analysis, activityId));
+      return rides ? await pruneSurfImu(motion, rides, profile.surf.pump.pruneMarginS) : motion;
+    }
+    const detection = profile.jumps?.detection;
+    return detection ? await pruneImuFile(motion, detection) : motion;
   } catch {
     return motion;
   }
@@ -1224,7 +1235,9 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     }
     const f = folder;
     if (!options.motion || !f || hasSessionMotion(existing.file)) return { status: 'duplicate', file: existing.file, recordCompleted };
-    const motion = source === 'enregistrement' ? await prunedMotion(options.motion, analyzed.sport) : options.motion;
+    const motion = source === 'enregistrement'
+      ? await prunedMotion(options.motion, analyzed.sport, text, existing.record.analysis, existing.record.activityId)
+      : options.motion;
     await f.writeBytes(sessionPath(imuFileName(existing.file)), motion);
     knownNames.add(imuFileName(existing.file));
     return { status: 'duplicate', file: existing.file, motionAdded: true, recordCompleted };
@@ -1247,7 +1260,9 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     : newRecord(gpx, analyzed, source, options.activityId ?? null);
   const record = options.intervals && options.intervals.length > 0 ? { ...made, intervals: options.intervals } : made;
   // Un enregistrement est élagué en entrant ; un dossier importé est rangé tel quel.
-  const motion = options.motion && source === 'enregistrement' ? await prunedMotion(options.motion, analyzed.sport) : options.motion;
+  const motion = options.motion && source === 'enregistrement'
+    ? await prunedMotion(options.motion, analyzed.sport, text, options.record?.analysis, options.activityId ?? options.record?.activityId)
+    : options.motion;
   const written = [sessionPath(gpx), sessionPath(recordFileName(gpx)), ...(motion ? [sessionPath(imuFileName(gpx))] : [])];
   try {
     await f.writeText(sessionPath(gpx), text);

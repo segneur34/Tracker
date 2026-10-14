@@ -43,9 +43,11 @@ import { useMapHighlight } from '../hooks/useMapHighlight';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useSessionDraft } from '../hooks/useSessionDraft';
+import { useSessionPumping } from '../hooks/useSessionPumping';
 import { readStoredActivities, useSportSettings } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
-import type { SurfPhase, SurfReturn, SurfSpan } from '../surfing/surfAnalysis';
+import { measureFlightPumping, summarizePumping, type FlightPumping } from '../surfing/pumping';
+import type { SurfFlight, SurfPhase, SurfReturn, SurfSpan } from '../surfing/surfAnalysis';
 import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfing/surfSession';
 
 /**
@@ -53,7 +55,8 @@ import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfin
  * (`docs/MISE_EN_PAGE.md`) : carte colorée par la vitesse, puis les onglets.
  * « général » porte la synthèse ; « vagues » le tableau des vagues ; « rame »
  * les remontées et le retour au pic ; « vols », sur foil seulement, les vols
- * qui relient plusieurs vagues en pompant ; « graphiques » la vitesse au fil
+ * qui relient plusieurs vagues en pompant, et leur pumping mesuré par les
+ * capteurs si la session les a (point 104) ; « graphiques » la vitesse au fil
  * de la session, vagues en bandes ; « réglages » ceux de la session.
  */
 type SurfSection = 'general' | 'vagues' | 'rame' | 'vols' | 'graphiques' | 'reglages';
@@ -174,6 +177,7 @@ interface ChartRow {
 function SurfModule() {
   const {
     activity, setActivity, profile, thresholdOverride, speedUnit, distanceUnit, speedRange, defaultSpeedRange, foil: activityFoil,
+    pumping: activityPumping,
   } = useSportSettings('surf');
   const gpx = useGpxSession({ medianWindowSeconds: profile.medianWindowSeconds, maxSpeedMs: profile.maxPlausibleSpeedMs });
 
@@ -189,12 +193,15 @@ function SurfModule() {
   );
   const { file: sessionFile, requested: requestedFile, error: sessionError } = useSessionFromUrl(receiveSession);
   // Brouillon de la session : seuils, foil, couleurs ; écrit dans sa fiche par « Enregistrer la session ».
-  const draft = useSessionDraft(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null);
+  const shownFile = sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null;
+  const draft = useSessionDraft(shownFile);
   const [allActivities] = useState(readStoredActivities);
   const changeSessionActivity = useChangeSessionActivity('surf', setActivity);
 
   /** Foil de la session (brouillon, puis fiche), sinon celui de l'activité. */
   const foil = draft.edits.foil ?? activityFoil;
+  /** Pumping foil de la session (brouillon, puis fiche), sinon celui de l'activité ; sur foil seulement. */
+  const pumping = foil && (draft.edits.pumping ?? activityPumping);
   /** Seuil de la glisse : celui de la session, sinon de l'activité, sinon le défaut, de vague ou de vol selon le foil. */
   const defaultThreshold = defaultActiveThresholdOf(profile, foil);
   const threshold = draft.edits.activeThreshold ?? thresholdOverride ?? defaultThreshold;
@@ -237,6 +244,23 @@ function SurfModule() {
   const flights = useMemo(() => analysis?.flights ?? [], [analysis]);
   const returns = useMemo(() => analysis?.returns ?? [], [analysis]);
 
+  // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
+  const sensors = useSessionPumping(shownFile, pumping);
+  const pumpDetection = surfProfile?.surf.pump ?? null;
+  const flightPumping = useMemo(() => {
+    if (!sensors.recording || !pumpDetection || flights.length === 0) return null;
+    const list = measureFlightPumping(sensors.recording, pumpDetection, track, cumulative, flights);
+    return new Map(list.flatMap((x): [number, FlightPumping][] => (x ? [[x.n, x]] : [])));
+  }, [sensors.recording, pumpDetection, track, cumulative, flights]);
+  const pumpSummary = useMemo(() => (flightPumping ? summarizePumping([...flightPumping.values()]) : null), [flightPumping]);
+  /** Les 3 plus longs vols, le résumé de l'onglet. */
+  const podiumFlights = useMemo(() => [...flights].sort((a, b) => b.durationS - a.durationS).slice(0, 3), [flights]);
+  const [allFlightsOpen, setAllFlightsOpen] = useState(false);
+  const speedCell = (ms: number | null): string => (ms === null ? '—' : formatSpeedValue(toDisplaySpeed(ms, speedUnit), speedUnit));
+  /** Nom d'un vol dans les tableaux ; une étoile si les capteurs n'en couvrent qu'une partie. */
+  const flightLabel = (f: SurfFlight, pump: FlightPumping | null, named = true): string =>
+    `${named ? 'Vol ' : ''}${f.n}${pump && !pump.covered ? ' *' : ''}`;
+
   /** Point d'arrivée d'une remontée sur la carte : le pic (début de l'attente), sinon la glisse suivante. */
   const returnEnd = useCallback(
     (r: SurfReturn): number => {
@@ -259,7 +283,7 @@ function SurfModule() {
       return w ? [{ key: `vague-${w.n}`, start: w.start, end: w.end, color: HIGHLIGHT_SHOWN_COLOR, label: spanLabel('Vague', w) }] : [];
     }
     if (flightShown === 'podium') {
-      return [...flights].sort((a, b) => b.durationS - a.durationS).slice(0, 3)
+      return podiumFlights
         .map((f, k) => ({ key: `vol-${f.n}`, start: f.start, end: f.end, color: HIGHLIGHT_PODIUM_COLORS[k], label: spanLabel('Vol', f) }));
     }
     if (flightShown !== null) {
@@ -275,7 +299,7 @@ function SurfModule() {
       return [{ key: `remontee-${r.after}`, start, end: returnEnd(r), color: HIGHLIGHT_SHOWN_COLOR, label: `${label} · ${formatTimeOfDay(r.startMs)}` }];
     }
     return [];
-  }, [waveShown, flightShown, returnShown, waves, flights, returns, track, returnEnd, speedUnit]);
+  }, [waveShown, flightShown, returnShown, waves, flights, podiumFlights, returns, track, returnEnd, speedUnit]);
 
   const sortedWaves = useMemo(() => {
     const list = [...waves];
@@ -557,8 +581,77 @@ function SurfModule() {
                   <Stat label="Plus long vol" value={orDash(summary.longestFlightS, formatShortDuration)} />
                   <Stat label="Temps de vol" value={formatShortDuration(summary.flightS)} />
                   <Stat label="Vagues en un vol" value={summary.maxWavesInFlight ?? '—'} />
+                  {pumpSummary && (
+                    <>
+                      <Stat label="Coups de pompe" value={pumpSummary.strokes} />
+                      <Stat label="Fréquence" value={orDash(pumpSummary.strokesPerMin, (v) => `${Math.round(v)} /min`)} title="Coups de pompe par minute de pumping" />
+                      <Stat label="Par coup" value={orDash(pumpSummary.perStrokeM, (v) => `${v.toFixed(1)} m`)} title="Distance pompée divisée par le nombre de coups" />
+                    </>
+                  )}
                 </div>
                 {flights.length > 0 && (
+                  <div style={{ overflowX: 'auto', marginTop: '10px' }}>
+                    <table style={tableStyle}>
+                      <thead>
+                        <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
+                          <th style={thStyle}>{flights.length > 1 ? 'Plus longs' : 'Vol'}</th>
+                          <th style={thStyle}>Durée</th>
+                          <th style={thStyle}>Distance</th>
+                          {flightPumping ? (
+                            <>
+                              <th style={thStyle}>Décollage ({unitLabel})</th>
+                              <th style={thStyle}>Fréquence</th>
+                              <th style={thStyle}>m/coup</th>
+                            </>
+                          ) : (
+                            <>
+                              <th style={thStyle}>Vagues</th>
+                              <th style={thStyle}>Pompage</th>
+                            </>
+                          )}
+                          <th style={thStyle}>Carte</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {podiumFlights.map((f, k) => {
+                          const shown = flightShown === String(f.n);
+                          const pump = flightPumping?.get(f.n) ?? null;
+                          return (
+                            <tr key={f.n} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                              <td style={{ ...tdStyle, fontWeight: 'bold' }}>
+                                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: HIGHLIGHT_PODIUM_COLORS[k], marginRight: '6px' }} />
+                                {flightLabel(f, pump)}
+                              </td>
+                              <td style={{ ...tdStyle, fontWeight: 'bold' }}>{formatShortDuration(f.durationS)}</td>
+                              <td style={tdStyle}>{Math.round(f.distanceM)} m</td>
+                              {flightPumping ? (
+                                <>
+                                  <td style={tdStyle}>{speedCell(pump?.takeoffSpeedMs ?? null)}</td>
+                                  <td style={tdStyle}>{orDash(pump?.strokesPerMin ?? null, (v) => `${Math.round(v)} /min`)}</td>
+                                  <td style={tdStyle}>{orDash(pump?.perStrokeM ?? null, (v) => v.toFixed(1))}</td>
+                                </>
+                              ) : (
+                                <>
+                                  <td style={tdStyle}>{f.waveCount}</td>
+                                  <td style={tdStyle}>{formatShortDuration(f.pumpS)}</td>
+                                </>
+                              )}
+                              <td style={tdStyle}>
+                                <ShowButton shown={shown} onClick={() => highlight.show('vols', shown ? null : String(f.n))} />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {flights.length > 3 && (
+                  <Button size="s" style={{ marginTop: '10px' }} aria-expanded={allFlightsOpen} onClick={() => setAllFlightsOpen(!allFlightsOpen)}>
+                    {allFlightsOpen ? 'Replier les vols ▲' : `Tous les vols (${flights.length}) ▼`}
+                  </Button>
+                )}
+                {allFlightsOpen && flights.length > 3 && (
                   <div style={{ overflowX: 'auto', marginTop: '10px' }}>
                     <table style={tableStyle}>
                       <thead>
@@ -567,24 +660,48 @@ function SurfModule() {
                           <th style={thStyle}>Heure</th>
                           <th style={thStyle}>Durée</th>
                           <th style={thStyle}>Distance</th>
+                          {flightPumping && <th style={thStyle}>Décollage ({unitLabel})</th>}
                           <th style={thStyle}>Vagues</th>
                           <th style={thStyle}>Pompage</th>
-                          <th style={thStyle}>Pompe ({unitLabel})</th>
+                          {flightPumping ? (
+                            <>
+                              <th style={thStyle}>Distance pompée</th>
+                              <th style={thStyle}>Coups</th>
+                              <th style={thStyle}>Fréquence</th>
+                              <th style={thStyle}>m/coup</th>
+                            </>
+                          ) : (
+                            <th style={thStyle}>Pompe ({unitLabel})</th>
+                          )}
                           <th style={thStyle}>Carte</th>
                         </tr>
                       </thead>
                       <tbody>
                         {flights.map((f) => {
                           const shown = flightShown === String(f.n);
+                          const pump = flightPumping?.get(f.n) ?? null;
                           return (
                             <tr key={f.n} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                              <td style={{ ...tdStyle, fontWeight: 'bold' }}>{f.n}</td>
+                              <td style={{ ...tdStyle, fontWeight: 'bold' }}>{flightLabel(f, pump, false)}</td>
                               <td style={tdStyle}>{formatTimeOfDay(f.startMs).slice(0, 5)}</td>
                               <td style={{ ...tdStyle, fontWeight: 'bold' }}>{formatShortDuration(f.durationS)}</td>
                               <td style={tdStyle}>{Math.round(f.distanceM)} m</td>
+                              {flightPumping && <td style={tdStyle}>{speedCell(pump?.takeoffSpeedMs ?? null)}</td>}
                               <td style={tdStyle}>{f.waveCount}</td>
-                              <td style={tdStyle}>{formatShortDuration(f.pumpS)}</td>
-                              <td style={tdStyle}>{f.pumpSpeedMs === null ? '—' : formatSpeedValue(toDisplaySpeed(f.pumpSpeedMs, speedUnit), speedUnit)}</td>
+                              {flightPumping ? (
+                                <>
+                                  <td style={tdStyle}>{pump ? formatShortDuration(pump.pumpS) : '—'}</td>
+                                  <td style={tdStyle}>{pump ? `${Math.round(pump.pumpDistanceM)} m` : '—'}</td>
+                                  <td style={tdStyle}>{pump ? pump.strokes : '—'}</td>
+                                  <td style={tdStyle}>{orDash(pump?.strokesPerMin ?? null, (v) => `${Math.round(v)} /min`)}</td>
+                                  <td style={tdStyle}>{orDash(pump?.perStrokeM ?? null, (v) => v.toFixed(1))}</td>
+                                </>
+                              ) : (
+                                <>
+                                  <td style={tdStyle}>{formatShortDuration(f.pumpS)}</td>
+                                  <td style={tdStyle}>{speedCell(f.pumpSpeedMs)}</td>
+                                </>
+                              )}
                               <td style={tdStyle}>
                                 <ShowButton shown={shown} onClick={() => highlight.show('vols', shown ? null : String(f.n))} />
                               </td>
@@ -596,8 +713,17 @@ function SurfModule() {
                   </div>
                 )}
                 <div style={noteStyle}>
-                  Vol : au-dessus du seuil de vol, d'une traite ; ses vagues sont ses passages au-dessus du seuil de vague en foil, le reste est pompé.
+                  Vol : au-dessus du seuil de vol, d'une traite ; ses vagues sont ses passages au-dessus du seuil de vague en foil.
+                  {flightPumping
+                    ? " Pumping : mesuré par les capteurs du téléphone, sur les séries de coups. Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)."
+                    : ' Le reste du vol est pompé.'}
+                  {flightPumping && [...flightPumping.values()].some((x) => !x.covered) && ' * : capteurs sur une partie du vol seulement.'}
                 </div>
+                {pumping && sensors.status === 'none' && (
+                  <div style={noteStyle}>Cette session n'a pas les capteurs : cochez « Mesurer le pumping » dans Enregistrer, téléphone fixé sur la poitrine.</div>
+                )}
+                {sensors.status === 'loading' && <div style={noteStyle}>Lecture des capteurs…</div>}
+                {sensors.error && <div style={noteStyle}>Capteurs : {sensors.error}</div>}
               </ResizablePanel>
             )}
 
@@ -661,6 +787,14 @@ function SurfModule() {
                     <strong>Foil</strong>
                     {draft.edits.foil === null && <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(celui de l'activité)</span>}
                   </label>
+                  {foil && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      title="Pumping des vols par les capteurs du téléphone, pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">
+                      <input type="checkbox" checked={pumping} onChange={(e) => draft.update({ pumping: e.target.checked === activityPumping ? null : e.target.checked })} />
+                      <strong>Pumping</strong>
+                      {draft.edits.pumping === null && <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(celui de l'activité)</span>}
+                    </label>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
                   <SessionThresholdField

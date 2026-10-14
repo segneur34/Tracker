@@ -107,6 +107,11 @@ export interface SessionAnalysis {
    */
   foil: boolean | null;
   /**
+   * Pumping foil pour cette session (surf, point 104) ; `null` : celui de son
+   * activité (Réglages). Absent des fiches plus anciennes.
+   */
+  pumping: boolean | null;
+  /**
    * Seuil de vague sur foil (surf, point 97), dans l'unité du profil : au-dessus,
    * un vol est porté par une vague ; `null` : celui du profil. Absent des fiches plus anciennes.
    */
@@ -298,6 +303,7 @@ export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
     speedRange: readSpeedRange(raw.speedRange),
     effortThresholdMs: isFiniteNumber(raw.effortThresholdMs) && raw.effortThresholdMs > 0 ? raw.effortThresholdMs : null,
     foil: typeof raw.foil === 'boolean' ? raw.foil : null,
+    pumping: typeof raw.pumping === 'boolean' ? raw.pumping : null,
     waveThreshold: isFiniteNumber(raw.waveThreshold) && raw.waveThreshold > 0 ? raw.waveThreshold : null,
     terrain: isSessionTerrain(raw.terrain) ? raw.terrain : null,
     savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,

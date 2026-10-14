@@ -1,4 +1,5 @@
 import type { JumpDetection } from './jumps';
+import type { PumpDetection } from '../surfing/pumping';
 import type { SportType, TopTarget } from './types';
 import type { SpeedUnit } from './units';
 
@@ -159,6 +160,21 @@ const JUMP_DETECTION: JumpDetection = {
   curveStepS: 0.05, curveMarginS: 0.5,
 };
 
+/**
+ * Pumping sur foil, téléphone sur la poitrine (point 104) : verticale calculée
+ * comme pour les sauts ; coups, séries et décollage provisoires, à régler sur
+ * une première session réelle.
+ */
+const PUMP_DETECTION: PumpDetection = {
+  gridStepS: 0.01, maxGapS: 0.05,
+  calmForceFraction: 0.15, calmRotationRadS: 0.3, minCalmS: 1,
+  attitudeTauS: 3, attitudeMaxRotationRadS: 1.5, attitudeInitS: 1,
+  strokeSmoothingS: 0.15, strokeBaselineS: 2, strokeMinG: 0.12, strokeMinPeriodS: 0.3, strokeMaxGapS: 2.5, minSeriesStrokes: 3,
+  liftoffHighPassS: 0.1, liftoffRoughWindowS: 0.5, liftoffCalmG: 0.08, liftoffCalmS: 1.5,
+  liftoffSearchBeforeS: 10, liftoffSearchAfterS: 5,
+  pruneCapture: false, pruneMarginS: 30,
+};
+
 /** Libellé du ratio de temps actif d'une session sur foil, quel que soit le calcul. */
 export const FOIL_RATIO_LABEL = 'Ratio de vol';
 
@@ -211,6 +227,8 @@ export interface SurfProfile {
   foilWaveThreshold: number;
   /** Changement de direction compté par le GPS : rotation d'au moins cette valeur depuis l'extrême précédent, en degrés. */
   turnMinDeg: number;
+  /** Pumping sur foil, mesuré par les capteurs du téléphone (`surfing/pumping.ts`, point 104). */
+  pump: PumpDetection;
 }
 
 export interface SportProfile {
@@ -407,7 +425,7 @@ const SURF_PROFILE: SportProfile = {
   jumps: null,
   surf: {
     stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15, maxGapS: 10,
-    foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60,
+    foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60, pump: PUMP_DETECTION,
   },
 };
 

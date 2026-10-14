@@ -294,7 +294,7 @@ function SettingsPage() {
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
                   s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null ||
                   s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden ||
-                  s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.isJumpsOverridden;
+                  s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
                 const thresholdShown = parseFloat(
@@ -339,6 +339,7 @@ function SettingsPage() {
                   thresholdEmpty ? "seuil selon l'allure" : `seuil ${thresholdShown} ${SPEED_UNIT_LABEL[thresholdUnit]}`,
                   s.autoPause.speedMs > 0 ? `pause sous ${pauseKmh} km/h après ${s.autoPause.delayS} s` : 'sans pause automatique',
                   ...(s.foil ? ['foil'] : []),
+                  ...(s.foil && s.pumping ? ['pumping'] : []),
                   ...(s.jumps?.enabled ? ['sauts'] : []),
                   ...(treatment === 'velo' ? [BIKE_TYPES[s.bikeType].noun] : []),
                   ...(paceFamily ? [`voies : ${s.wayTypes.map((w) => WAY_TYPE_LABEL[w].toLowerCase()).join(' + ')}`] : []),
@@ -428,7 +429,9 @@ function SettingsPage() {
                           </ActivityPart>
                           <ActivityPart label="Analyse" open={openPart.analyse} onToggle={() => togglePart('analyse')}>
                             <div className="settings-row" title={treatment === 'surf'
-                              ? "Vitesse au-dessus de laquelle la planche est sur la vague, ou vole sur foil. Chaque session peut avoir le sien, dans l'onglet réglages de son analyse"
+                              ? (s.foil
+                                ? "Vitesse à laquelle votre aile décolle, de 10 à 15 km/h selon l'aile : au-dessus, la planche vole. Chaque session peut avoir le sien, dans l'onglet réglages de son analyse"
+                                : "Vitesse au-dessus de laquelle la planche est sur la vague. Chaque session peut avoir le sien, dans l'onglet réglages de son analyse")
                               : "Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, réussite des manœuvres, VMG ; en course, temps de pause"}>
                               <span className="settings-row__label">{thresholdLabel}</span>
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -450,6 +453,15 @@ function SettingsPage() {
                                   <input type="checkbox" checked={s.foil} onChange={(e) => setFor(id, 'foil', e.target.checked === defaultFoil(activity) ? null : e.target.checked)} />
                                   <span>Support sur foil</span>
                                   {!s.isFoilOverridden && <span className="settings-sports__mark">défaut</span>}
+                                </label>
+                              </div>
+                            )}
+                            {s.foil && s.pumping !== null && (
+                              <div className="settings-row" title="Fréquence de pumping, distance par coup et décollage de chaque vol, par les capteurs du téléphone fixé sur la poitrine : « Mesurer le pumping » est alors proposé dans Enregistrer. Chaque session peut avoir le sien, dans l'onglet réglages de son analyse">
+                                <span className="settings-row__label">Pumping</span>
+                                <label className="settings-sports__pair">
+                                  <input type="checkbox" checked={s.pumping} onChange={(e) => setFor(id, 'pumping', e.target.checked)} />
+                                  <span>Pumping foil</span>
                                 </label>
                               </div>
                             )}

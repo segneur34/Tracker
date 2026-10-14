@@ -122,7 +122,7 @@ describe('parseRecord et serializeRecord', () => {
 
 describe("réglages d'analyse de la fiche", () => {
   it("sont relus à l'identique", () => {
-    const r = record({ analysis: { windDeg: 315, activeThreshold: 6.5, referenceSpeedMs: 2.3, speedRange: { minMs: 2, maxMs: 8 }, effortThresholdMs: 3.6, foil: null, waveThreshold: null, terrain: null, savedAt: START_MS + 20 } });
+    const r = record({ analysis: { windDeg: 315, activeThreshold: 6.5, referenceSpeedMs: 2.3, speedRange: { minMs: 2, maxMs: 8 }, effortThresholdMs: 3.6, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: START_MS + 20 } });
     expect(parseRecord(serializeRecord(r))?.analysis).toEqual(r.analysis);
   });
 
@@ -153,6 +153,9 @@ describe("réglages d'analyse de la fiche", () => {
     expect(parseRecord(JSON.stringify(before))?.analysis?.foil).toBeNull();
     expect(parseRecord(JSON.stringify({ ...before, analysis: { ...before.analysis, foil: true } }))?.analysis?.foil).toBe(true);
     expect(parseRecord(JSON.stringify({ ...before, analysis: { ...before.analysis, foil: 'oui' } }))?.analysis?.foil).toBeNull();
+    expect(parseRecord(JSON.stringify(before))?.analysis?.pumping).toBeNull();
+    expect(parseRecord(JSON.stringify({ ...before, analysis: { ...before.analysis, pumping: true } }))?.analysis?.pumping).toBe(true);
+    expect(parseRecord(JSON.stringify({ ...before, analysis: { ...before.analysis, pumping: 1 } }))?.analysis?.pumping).toBeNull();
   });
 
   it('écartent des bornes de couleur mal formées', () => {
@@ -168,11 +171,11 @@ describe("réglages d'analyse de la fiche", () => {
   it('ramènent le vent dans [0, 360) et écartent les valeurs mal formées', () => {
     const raw = { ...record(), analysis: { windDeg: -45, activeThreshold: -2, referenceSpeedMs: 0, futur: true } };
     expect(parseRecord(JSON.stringify(raw))?.analysis).toEqual({
-      windDeg: 315, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, waveThreshold: null, terrain: null, savedAt: 0, futur: true,
+      windDeg: 315, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 0, futur: true,
     });
     const texte = { ...record(), analysis: { windDeg: 'nord', activeThreshold: '8', referenceSpeedMs: '3', effortThresholdMs: '4' } };
     expect(parseRecord(JSON.stringify(texte))?.analysis).toEqual({
-      windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, waveThreshold: null, terrain: null, savedAt: 0,
+      windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 0,
     });
     const negative = { ...record(), analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: -1.5 } };
     expect(parseRecord(JSON.stringify(negative))?.analysis?.referenceSpeedMs).toBeNull();
@@ -408,7 +411,7 @@ describe('dedupeSessions', () => {
 });
 
 describe('applyRecordPatch', () => {
-  const analysis: SessionAnalysis = { windDeg: 20, activeThreshold: 9, referenceSpeedMs: 7, speedRange: { minMs: 4, maxMs: 14 }, effortThresholdMs: null, foil: null, waveThreshold: null, terrain: null, savedAt: 1 };
+  const analysis: SessionAnalysis = { windDeg: 20, activeThreshold: 9, referenceSpeedMs: 7, speedRange: { minMs: 4, maxMs: 14 }, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, terrain: null, savedAt: 1 };
   const withAnalysis = record({ analysis, notes: { ...record().notes, comment: 'Belle session', savedAt: 2 } as SessionRecord['notes'] });
 
   it('rend la fiche telle quelle si rien ne change', () => {

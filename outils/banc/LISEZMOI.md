@@ -91,6 +91,15 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - le foil de l'activité, puis celui de la session : « Ratio de navigation » ou « Ratio de vol », champs Foil et Mât ;
   - l'onglet « sauts » : chiffres, podium, tableau et son tri, courbe, « Voir », « Détail », comparaison, sauts rangés dans la fiche, sur ordinateur et à 390×844 ;
   - l'absence de « Mesurer les sauts » dans le navigateur, et la suppression de la session avec son `.imu`.
+
+  La partie Réglages est périmée depuis le 09/10 : elle cherche « Taille du texte », retiré, et la carte de l'activité par son nom, qui disparaît quand la carte est ouverte (voir `pumping.mjs`). Le foil de la session échoue à sa suite ; l'onglet « sauts » et le reste passent.
+- `pumping.mjs <port> [<dossier des captures>]` : pumping foil en surf (point 104), sur un profil neuf, sans réseau, serveur de développement (le script importe `/src/...` dans la page). Le script fabrique dans la page une session de surf foil de quatre vols et ses capteurs (`core/imuSynthetic.ts` : chocs de l'eau hors des vols, pumping à 1,5 Hz en vol), et vérifie :
+  - dans Réglages, la case « Pumping foil » de Surf foil (pas de Surf), l'aide du seuil de vol, le résumé de la carte repliée ;
+  - l'import de la session avec ses capteurs, Foil et Pumping cochés pour la session, l'onglet « vols » : coups, fréquence vers 90 /min, distance par coup, podium des 3 plus longs vols avec décollage, « Tous les vols (4) » replié puis déplié, « Voir » ;
+  - Pumping décoché pour la session (colonnes du GPS revenues), puis « Enregistrer la session » (`analysis.pumping` dans la fiche) ;
+  - l'absence de « Mesurer le pumping » dans le navigateur, et la page à 390 × 844 sans débordement.
+
+  Il dure environ 1 min et finit par « Tout passe. » ou le nombre d'échecs.
 - `sauts-diagnostic.mjs <fichier .imu> [<fichier .gpx>] [--tous] [--support=wingfoil]` : sans navigateur ni serveur (Node 22.18 ou plus, qui lit le TypeScript de l'application tel quel). Relit une capture des capteurs d'une vraie séance, rangée à côté de son GPX dans le dossier mémoire. Il donne :
   - le téléphone, les capteurs, l'emplacement et le foil choisis ;
   - la durée, la cadence et les trous de chaque flux ;

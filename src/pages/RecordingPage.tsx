@@ -20,7 +20,7 @@ import { useLiveRecording } from '../hooks/useLiveRecording';
 import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../hooks/useMarkGuide';
 import { useOpenSections } from '../hooks/useOpenSections';
 import {
-  effectiveDistanceUnit, effectiveFoil, effectiveJumpSettings, effectiveLiveFields, effectiveSpeedUnit, effectiveStopHoldMs,
+  effectiveDistanceUnit, effectiveFoil, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs,
   lastRecordActivity, rememberRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
@@ -319,6 +319,10 @@ function RecordingPage() {
   const [jumpChoice, setJumpChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
   const measureJumps = chosen !== null && jumpSettings !== null &&
     (jumpChoice?.activityId === chosen.id ? jumpChoice.measure : jumpSettings.enabled);
+  // Pumping foil : proposé par l'activité de surf (foil et pumping cochés dans Réglages), coché d'office ; la case vaut pour cet enregistrement.
+  const pumpingOffered = chosen !== null && effectiveFoil(chosen) === true && effectivePumping(chosen) === true;
+  const [pumpChoice, setPumpChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
+  const measurePumping = pumpingOffered && (pumpChoice?.activityId === chosen.id ? pumpChoice.measure : true);
   const [motionCaps, setMotionCaps] = useState<MotionCapabilities | null>(null);
   useEffect(() => {
     let alive = true;
@@ -403,10 +407,13 @@ function RecordingPage() {
     const source = sourceChoice === 'replay' && replay
       ? createReplaySource(replay.fixes, replaySpeed)
       : deviceLocationSource();
-    const jumps = measureJumps && jumpSettings && motionCaps?.available && sourceChoice === 'device'
+    const capture = motionCaps?.available === true && sourceChoice === 'device';
+    const motion = capture && measureJumps && jumpSettings
       ? { placement: jumpSettings.placement, foil: effectiveFoil(chosen) ?? false }
-      : null;
-    void startRecording(chosen, source, { jumps });
+      : capture && measurePumping
+        ? { placement: 'poitrine' as const, foil: true }
+        : null;
+    void startRecording(chosen, source, { motion });
   };
 
   return (
@@ -450,6 +457,21 @@ function RecordingPage() {
                   : `Téléphone fixé au corps : ${JUMP_PLACEMENT_LABEL[jumpSettings.placement].toLowerCase()}${effectiveFoil(chosen) ? ', sur foil' : ''} (Réglages).`}
                 {motionCaps?.available && motionCaps.accelMaxG !== null && motionCaps.accelMaxG < 8 &&
                   ` L'accéléromètre plafonne à ${Math.round(motionCaps.accelMaxG)} g : les chocs à l'atterrissage seront écrêtés.`}
+              </span>
+            </div>
+          )}
+
+          {chosen && pumpingOffered && native && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input type="checkbox" checked={measurePumping && motionCaps?.available === true} disabled={!motionCaps?.available}
+                  onChange={(e) => setPumpChoice({ activityId: chosen.id, measure: e.target.checked })} />
+                <span>Mesurer le pumping</span>
+              </label>
+              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', marginLeft: '26px' }}>
+                {motionCaps && !motionCaps.available
+                  ? motionCaps.reason
+                  : 'Téléphone fixé sur la poitrine : fréquence de pumping, distance par coup et décollage de chaque vol (Réglages).'}
               </span>
             </div>
           )}
@@ -530,11 +552,11 @@ function RecordingPage() {
 
       {recorder.status === 'paused' && recorder.pausedReason === 'manual' && (
         <div className="ui-alert ui-alert--warning">
-          En pause : le GPS est coupé pour économiser la batterie{recorder.measuringJumps ? ', et la mesure des sauts aussi' : ''}.
+          En pause : le GPS est coupé pour économiser la batterie{recorder.measuringMotion ? ', et la mesure des capteurs aussi' : ''}.
         </div>
       )}
-      {busy && recorder.measuringJumps && recorder.status !== 'paused' && (
-        <div className="ui-alert">Sauts : les capteurs du téléphone mesurent.</div>
+      {busy && recorder.measuringMotion && recorder.status !== 'paused' && (
+        <div className="ui-alert">{liveActivity && sportTreatment(liveActivity.base) === 'surf' ? 'Pumping' : 'Sauts'} : les capteurs du téléphone mesurent.</div>
       )}
       {recorder.status === 'paused' && recorder.pausedReason === 'auto' && (
         <div className="ui-alert ui-alert--warning">En pause automatique : aucun mouvement détecté. Reprend dès que vous bougez.</div>

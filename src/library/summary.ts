@@ -72,6 +72,28 @@ export const analysisTrack = (
   });
 };
 
+/**
+ * Glisses d'une session de surf telles que le module d'analyse les découpe :
+ * les vols sur foil, les vagues sinon. L'élagage de ses capteurs les entoure
+ * (`surfing/pumping.ts`). `null` hors surf.
+ */
+export const surfRides = (
+  rawPoints: RawTrackPoint[],
+  sport: SportType | null,
+  options: SummaryOptions
+): { startMs: number; endMs: number }[] | null => {
+  if (sport === null) return null;
+  const profile = getSportProfile(sport);
+  const surfProfile = surfProfileOf(profile);
+  if (!surfProfile) return null;
+  const track = analysisTrack(rawPoints, sport);
+  const foil = options.foil ?? false;
+  const { analysis } = runSurfSession(track, buildCumulativeTrack(track), surfProfile, {
+    threshold: options.activeThreshold ?? defaultActiveThresholdOf(profile, foil), foil, waveThreshold: options.waveThreshold ?? null,
+  });
+  return (foil ? analysis.flights : analysis.waves).map((r) => ({ startMs: r.startMs, endMs: r.endMs }));
+};
+
 /** Trace enrichie et temps en action, selon le support. */
 const analyze = (
   rawPoints: RawTrackPoint[],

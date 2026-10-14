@@ -5,7 +5,7 @@ import { normalizeDeg, type SessionAnalysis, type SessionRecord, type SessionTer
 /**
  * Ce que l'utilisateur change sur une session dans le module d'analyse : vent
  * saisi, seuil d'activité, allure imposée, couleurs de la trace, seuil
- * d'effort du fractionné, foil, seuil de vague en foil (surf), terrain, notes. Les changements restent en brouillon jusqu'à
+ * d'effort du fractionné, foil, pumping, seuil de vague en foil (surf), terrain, notes. Les changements restent en brouillon jusqu'à
  * « Enregistrer la session », qui les écrit dans la fiche.
  */
 export interface SessionEdits {
@@ -22,6 +22,8 @@ export interface SessionEdits {
   effortThresholdMs: number | null;
   /** Support sur foil pour la session ; `null` : celui de l'activité. */
   foil: boolean | null;
+  /** Pumping foil pour la session (surf) ; `null` : celui de l'activité. */
+  pumping: boolean | null;
   /** Seuil de vague en foil de la session (surf), dans l'unité du profil ; `null` : celui du profil. */
   waveThreshold: number | null;
   /** Terrain du dénivelé pour la session ; `null` : celui de l'activité. */
@@ -62,6 +64,7 @@ export const savedEdits = (record: SessionRecord | null, gear: StoredSessionNote
     speedRange: record?.analysis?.speedRange ?? null,
     effortThresholdMs: record?.analysis?.effortThresholdMs ?? null,
     foil: record?.analysis?.foil ?? null,
+    pumping: record?.analysis?.pumping ?? null,
     waveThreshold: record?.analysis?.waveThreshold ?? null,
     terrain: record?.analysis?.terrain ?? null,
   };
@@ -70,7 +73,7 @@ export const savedEdits = (record: SessionRecord | null, gear: StoredSessionNote
 const pickNotes = (notes: SailingSessionNotes): SailingSessionNotes =>
   Object.fromEntries(NOTE_FIELDS.map((field) => [field, notes[field]])) as unknown as SailingSessionNotes;
 
-export type EditedPart = 'vent' | 'seuil' | 'allure' | 'couleurs' | 'effort' | 'foil' | 'vague' | 'terrain' | 'notes';
+export type EditedPart = 'vent' | 'seuil' | 'allure' | 'couleurs' | 'effort' | 'foil' | 'pumping' | 'vague' | 'terrain' | 'notes';
 
 /** Nom de chaque partie, tel que l'écran l'annonce. */
 export const EDITED_PART_LABEL: Record<EditedPart, string> = {
@@ -80,6 +83,7 @@ export const EDITED_PART_LABEL: Record<EditedPart, string> = {
   couleurs: 'couleurs de la trace',
   effort: "seuil d'effort",
   foil: 'foil',
+  pumping: 'pumping',
   vague: 'seuil de vague',
   terrain: 'terrain',
   notes: 'notes',
@@ -97,6 +101,7 @@ export const changedParts = (saved: SessionEdits, edits: SessionEdits): EditedPa
   if (!sameRange(saved.speedRange, edits.speedRange)) parts.push('couleurs');
   if (saved.effortThresholdMs !== edits.effortThresholdMs) parts.push('effort');
   if (saved.foil !== edits.foil) parts.push('foil');
+  if (saved.pumping !== edits.pumping) parts.push('pumping');
   if (saved.waveThreshold !== edits.waveThreshold) parts.push('vague');
   if (saved.terrain !== edits.terrain) parts.push('terrain');
   if (!sameNotes(saved.notes, edits.notes)) parts.push('notes');
@@ -126,6 +131,7 @@ export const editsPatch = (record: SessionRecord, saved: SessionEdits, edits: Se
       speedRange: edits.speedRange,
       effortThresholdMs: edits.effortThresholdMs,
       foil: edits.foil,
+      pumping: edits.pumping,
       waveThreshold: edits.waveThreshold,
       terrain: edits.terrain,
       savedAt: now,
