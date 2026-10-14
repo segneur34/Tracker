@@ -1,6 +1,6 @@
 # État du projet Tracker
 
-Document de passation, tenu à jour à chaque lot validé ; dernière passe le 26 septembre 2026 (§10, point 65). Il complète `CLAUDE.md`, qui donne les règles et les décisions de l'utilisateur, sans les répéter. On y trouve l'architecture, le pipeline, la persistance, les tests, la dette, les chantiers et la cible mobile, dont **l'avancement n'est tenu qu'au §12**. L'historique des décisions (§10) est dans `docs/HISTORIQUE.md`, la carte des fichiers (§5) dans `docs/INVENTAIRE.md`. Les numéros de section ne changent pas : le code y renvoie.
+Document de passation, tenu à jour à chaque lot validé ; dernière passe d'ensemble le 14 octobre 2026 (§10, point 102). Il complète `CLAUDE.md`, qui donne les règles et les décisions transverses de l'utilisateur, et `docs/DECISIONS.md`, qui donne ses décisions par domaine, sans les répéter. On y trouve l'architecture, le pipeline, la persistance, les tests, la dette, les chantiers et la cible mobile, dont **l'avancement n'est tenu qu'au §12**. L'historique des décisions (§10) est dans `docs/HISTORIQUE.md`, la carte des fichiers (§5) dans `docs/INVENTAIRE.md`. Les numéros de section ne changent pas : le code y renvoie.
 
 Pour que ce document reste léger :
 - les seuils, fenêtres et formules se lisent dans le code, où ils sont nommés et commentés ;
@@ -44,10 +44,11 @@ Les couches, de bas en haut. Tous les imports sont relatifs, sans alias de chemi
 - **Hooks** :
   - le pipeline : `useGpxSession`, `useSailingSession` (§4) ;
   - trois stores hors des composants, qui survivent aux changements de page : l'enregistreur (`useRecorder`), la bibliothèque (`useSessionLibrary`) et le compteur du fractionné (`useIntervalTimer`, qui confie à l'enregistreur la séance courant pendant un enregistrement) ;
+  - trois modules, branchés au démarrage dans `main.tsx`, qui suivent l'enregistreur page fermée et écran éteint : le direct (`useLiveRecording`), le guidage des balises (`useMarkGuide`) et la notification (`recordingNotification`) ;
   - le brouillon d'une session : `useSessionDraft`, `leaveGuard` ;
   - les réglages : `useSportSettings` lit `jsonStore` directement, les autres enregistrements de l'appareil passent par `useStoredRecord` ;
   - les autres sont dans `docs/INVENTAIRE.md`.
-- **Pages** : sept, routées dans `App.tsx`, toutes dans `AppShell` (navigation, bandeau d'enregistrement, bouton rond). La session analysée est dans l'URL (`/voile/analyse?session=<fichier>`) et se charge par `loadGpxContent`. Le patron des analyses est dans `docs/MISE_EN_PAGE.md`.
+- **Pages** : neuf, routées dans `App.tsx` (accueil, bibliothèque commune aux cinq familles, analyses de voile, de course et vélo et fractionné par `LandModule`, de surf, Enregistrer, planification, liste des itinéraires, Réglages), toutes dans `AppShell` (navigation, bandeau d'enregistrement, bouton rond). La session analysée est dans l'URL (`/voile/analyse?session=<fichier>`) et se charge par `loadGpxContent`. Le patron des analyses est dans `docs/MISE_EN_PAGE.md`.
 - **DA** : toutes les valeurs visuelles sont dans `theme/tokens.css`, seul fichier à changer pour une autre DA. `theme/base.css` pose la police, le fond et le focus. Les couleurs de données restent en dur : Recharts et Leaflet les posent en attributs SVG, où une variable CSS ne passe pas de façon sûre.
 
 Dépendances entre dossiers :
@@ -280,15 +281,17 @@ Les autres constantes vivent, nommées et commentées, là où elles servent :
 
 ## 8. Tests
 
-Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 841 au 10 octobre 2026.
+Ils portent sur des fonctions pures, avec des traces synthétiques ou un stockage simulé par une `Map`, en node. `npx vitest run` donne le compte : 878 au 14 octobre 2026.
 
 Un calcul a son `*.test.ts` à côté de lui, sauf :
 - `core/sessionStats` et `core/speedGradient`, couverts par d'autres fichiers de test (`topSegments`, `runningAnalytics`, `sailingConfig`) ;
+- `core/imuPrune`, couvert par `jumps.test.ts`, et `surfing/surfSession`, par `surfAnalysis.test.ts` ;
 - `sailing/sailingAnalytics`, couvert par `maneuvers.test.ts` ;
 - `planning/brouterProfile`, couvert par `brouter.test.ts` ;
-- `sailing/sailingStats`, `planning/geocoding` et `planning/routeGpx`, sans test.
+- `sailing/sailingStats`, `sailing/sessionNotes`, `planning/geocoding`, `planning/routeGpx` et `library/folderLayout`, sans test ;
+- les tables de réglages (`core/sportProfiles`, `cycling/cyclingConfig`, `surfing/surfConfig`) et les fichiers de types, lus par les autres tests.
 
-Deux familles de tests méritent d'être connues :
+Trois familles de tests méritent d'être connues :
 - l'invariance 1 Hz / 5 Hz : filtres, allure, tops, manœuvres, résumé ;
 - les protocoles synthétiques du vent de `sailing/maneuvers.test.ts` : rider asymétrique, session sans largue, courant traversier, bascule de 60°, support lent, enregistrement économique ;
 - la mesure des manœuvres (`measureManeuver`), sur `buildNoisySession` : positions intégrées, bruit GPS, de cap et de Doppler à graine fixe, passage par `computeKinematics`.
@@ -300,7 +303,7 @@ Générateurs : `buildEastwardTrack` (kinematics), `buildTrack` (plusieurs fichi
 Non testés :
 - `gpxParser` (DOM) ;
 - `buildSailingSessionStats`, `calculateVmgStats`, `buildWindTimeline` ;
-- `platform/` : `memoryFolder`, `files`, `compass`, `tileCache`, `beeper`, `motion`, et les plugins Java ;
+- `platform/` : `memoryFolder`, `files`, `compass`, `tileCache`, `beeper`, `motion`, `notification`, et les greffons Java ;
 - tous les hooks (`useRecorder`, `useSessionLibrary`, `useSessionDraft`, `leaveGuard`…), les composants et les pages.
 
 Ils se vérifient au banc (`outils/banc/`, voir son `LISEZMOI.md`) et sur le téléphone (§12). Le banc prouve aussi qu'un changement est neutre : texte de la page relevé avant et après, puis comparé (point 44).
@@ -376,8 +379,8 @@ C'est le seul endroit où il est tenu : les phases et le reste à faire. Le dét
   - accueil (point 53) ;
   - enregistrement en direct et bords (points 50, 53, 62) ;
   - APK des testeurs et `docs/INSTALLATION.md` (points 55, 62).
-- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76), parcours et balises en voile avec bips d'approche (77), revêtement des itinéraires et des sessions (78), retouches du 03/10 : zones de pente sur la carte, réglages par activité, sport secondaire, onglets et activité en planification, légende sur la carte, vignettes, choix d'activité dessiné, icône de la course (79), types de voie cochés, rangés selon la nature de la voie (80), types de voie cochés d'office par activité et activités Route, Gravel, VTT (81), revêtement sur la carte (82), types de voie appliqués à tout l'itinéraire (83), altitude de l'IGN pour la course et le vélo (84), pentes sur la carte et puissance par zone de pente (85), mise en page commune des analyses sur ordinateur (86), mode « Boucle » en planification (87), roulement selon le revêtement, « Mettre à jour », activités par famille et session à classer demandée avant l'analyse (88), groupe Fractionné, compteur d'intervalles et analyse des répétitions (89 ; commité avant l'essai d'une vraie séance enregistrée par Tracker), couleurs par famille et un fichier de réglages par appareil (90), sauts en voile mesurés par les capteurs du téléphone et case « Foil » (91), données sûres (92), cartes et survol (93), une seule mécanique pour les analyses (94), retouches du 08-09/10 : menus « … », GPX téléchargé, « Planifier » dans la barre, Réglages repliables, revêtement en surbrillance (95), puis sauts en course et à vélo (96), surf par le GPS (97 ; lot 2, les virages au gyroscope, à venir), session en un seul GPX complet (98), puis les demandes du 10-13/10 : retouches du 10/10 (99), familles et activités cachées (100), notification lisible écran verrouillé (101).
-- **Audit général du 09/10**, quatre lots, prévus avant le surf, que l'utilisateur a finalement attaqué avant le dernier : A, données sûres, fait (point 92) ; B, cartes et survol, fait (point 93) ; C, une seule mécanique pour les analyses, fait (point 94) ; reste D (documentation), après les retouches du 08-09/10 (faites, points 95 et 96).
+- **Hors plan** : allure par session (46), bugs et renommage (47 à 49, 51, 52), activités (53), itinéraires et trace suivie (59 à 61, 63), activité changée en route (64), audits de la documentation (44, 65), retouches du 29/09 dont l'onglet « général » des analyses (69), audit et nouvelle mesure des manœuvres (70), énergie de la course (71), vélo (72), planification et zoom des graphes (73), types de voie (74), barre du bas en cinq cases (75), puissance mécanique et chiffres de la carte réduite (76), parcours et balises en voile avec bips d'approche (77), revêtement des itinéraires et des sessions (78), retouches du 03/10 : zones de pente sur la carte, réglages par activité, sport secondaire, onglets et activité en planification, légende sur la carte, vignettes, choix d'activité dessiné, icône de la course (79), types de voie cochés, rangés selon la nature de la voie (80), types de voie cochés d'office par activité et activités Route, Gravel, VTT (81), revêtement sur la carte (82), types de voie appliqués à tout l'itinéraire (83), altitude de l'IGN pour la course et le vélo (84), pentes sur la carte et puissance par zone de pente (85), mise en page commune des analyses sur ordinateur (86), mode « Boucle » en planification (87), roulement selon le revêtement, « Mettre à jour », activités par famille et session à classer demandée avant l'analyse (88), groupe Fractionné, compteur d'intervalles et analyse des répétitions (89 ; commité avant l'essai d'une vraie séance enregistrée par Tracker), couleurs par famille et un fichier de réglages par appareil (90), sauts en voile mesurés par les capteurs du téléphone et case « Foil » (91), données sûres (92), cartes et survol (93), une seule mécanique pour les analyses (94), retouches du 08-09/10 : menus « … », GPX téléchargé, « Planifier » dans la barre, Réglages repliables, revêtement en surbrillance (95), puis sauts en course et à vélo (96), surf par le GPS (97 ; lot 2, les virages au gyroscope, à venir), session en un seul GPX complet (98), puis les demandes du 10-13/10 : retouches du 10/10 (99), familles et activités cachées (100), notification lisible écran verrouillé (101), documentation allégée (102).
+- **Audit général du 09/10**, quatre lots, prévus avant le surf, que l'utilisateur a finalement attaqué avant le dernier : A, données sûres, fait (point 92) ; B, cartes et survol, fait (point 93) ; C, une seule mécanique pour les analyses, fait (point 94) ; D, documentation allégée (`docs/DECISIONS.md`, HISTORIQUE condensé), fait (point 102), après les retouches du 08-09/10 (points 95 et 96) et les lots 1, 3 et 4 des demandes du 10-13/10. Tous les lots de l'audit sont faits.
 - **Phase 2, interface mobile** : trois passes faites (points 47 à 49, 52, 56 à 58, 69 ; patron dans `docs/MISE_EN_PAGE.md`). Restent :
   - toucher au lieu du survol : fait pour les graphes de vitesse, d'altitude et du vent (points 73, 94) ; restent la courbe d'un saut et les mini-courbes du fractionné ;
   - `accept=".gpx"` de la bibliothèque, qui grise parfois les GPX sous Android.

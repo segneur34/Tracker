@@ -1,6 +1,6 @@
 # Mise en page d'une page d'analyse
 
-Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `LandModule`) et à tout sport à venir. Ce qui est commun passe par des pièces partagées, pour qu'une règle ne s'écrive qu'une fois ; ce document dit lesquelles et dans quel ordre les poser. Les signatures se lisent dans le code.
+Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui partagent `LandModule` ; surf) et à tout sport à venir. Ce qui est commun passe par des pièces partagées, pour qu'une règle ne s'écrive qu'une fois ; ce document dit lesquelles et dans quel ordre les poser. Les signatures se lisent dans le code.
 
 ## Structure, de haut en bas
 
@@ -10,7 +10,7 @@ Patron commun aux modules d'analyse (voile ; course et vélo, qui partagent `Lan
 4. **Colonne des onglets** (`.an-carte-col`), sous la carte : `SectionTabs`, puis leurs **panneaux** (`.an-carte-panels`), chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
    - Le premier onglet, « général », est le seul ouvert au départ (avec « fractionné » quand la session en a, point 89) ; ensuite, les onglets ouverts sont mémorisés par module (`useOpenSections`). Il porte la synthèse de la session (`.an-sheet__stats an-sheet__stats--always`) : distances, temps, ratio actif, vitesses moyennes, et le dénivelé en course et à vélo ; en voile, le vent suit. On le replie pour comparer les tableaux à la carte.
    - Le dernier onglet, « réglages », porte ceux de la session : activité, seuils, terrain (course, vélo), source de vitesse ou d'altitude, bornes de couleur de la trace (`SpeedRangeEditor`). Seuil, terrain et couleurs passent par le brouillon ; l'activité et la source d'altitude s'appliquent tout de suite.
-   - La même disposition en voile, en course et à vélo (point 86).
+   - La même disposition en voile, en course, à vélo, en fractionné et en surf (points 86, 89 et 97).
 
 ## Règles communes
 
