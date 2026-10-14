@@ -305,6 +305,7 @@ describe('familles et activités cachées (point 100)', () => {
     expect(pickNavSecond('voile', 'voile', ['voile', 'velo'])).toBe('velo');
     expect(pickNavSecond(null, 'voile', ['voile', 'course'])).toBe('course');
     expect(pickNavSecond('planifier', 'voile', ['voile'])).toBe('planifier');
+    expect(pickNavSecond('statistiques', 'voile', ['voile', 'course'])).toBe('statistiques');
     expect(pickNavSecond('course', 'voile', ['voile'])).toBe('planifier');
   });
 });

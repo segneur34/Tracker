@@ -617,8 +617,8 @@ function SettingsPage() {
           <>
             <p className="settings-block__intro">
               Sur téléphone, deux sports s'ouvrent directement depuis la barre du bas : le favori à gauche du bouton rond,
-              le secondaire à sa droite. Tenir le sport secondaire déplie le menu des autres sports, et de la planification
-              des itinéraires : celui qu'on y choisit prend sa place.
+              le secondaire à sa droite. Tenir le sport secondaire déplie le menu des autres sports, de la planification
+              des itinéraires et des statistiques : celui qu'on y choisit prend sa place.
             </p>
             <div className="settings-row">
               <span className="settings-row__label">Sport favori</span>
@@ -631,6 +631,7 @@ function SettingsPage() {
               <select value={navSecond} onChange={(e) => setNavSecond(e.target.value as NavSecond)} className="ui-field ui-field--s">
                 {shownFamilies.filter((f) => f !== navFamily).map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
                 <option value="planifier">Planifier (itinéraires)</option>
+                <option value="statistiques">Statistiques</option>
               </select>
             </div>
             <div className="settings-row">

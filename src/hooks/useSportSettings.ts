@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, SURF_FOIL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
-  isActivityShown, newActivityId, insertActivity, pickNavFamily, pickNavSecond, readActivities, upgradeActivities, visibleActivities, visibleFamilies, withHidden, type Activity,
+  isActivityShown, isNavPage, newActivityId, insertActivity, pickNavFamily, pickNavSecond, readActivities, upgradeActivities, visibleActivities, visibleFamilies, withHidden, type Activity, type NavPage,
 } from '../core/activities';
 import {
   ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, defaultActiveThresholdOf, getSportProfile, sportTreatment, type ElevationProfile,
@@ -136,9 +136,9 @@ export interface StoredSettings {
   /** Sport en accès direct dans la barre du bas, sur téléphone ; absent : voile. */
   navFamily?: SportFamily;
   /**
-   * Case secondaire de la barre du bas, à droite du bouton rond : un sport, ou la planification
-   * (`'planifier'`) ; absente ou égale au favori, le premier autre sport. Nom gardé d'avant la
-   * planification, pour ne pas perdre le choix déjà fait.
+   * Case secondaire de la barre du bas, à droite du bouton rond : un sport, la planification
+   * (`'planifier'`) ou les statistiques (`'statistiques'`) ; absente ou égale au favori, le premier
+   * autre sport. Nom gardé d'avant la planification, pour ne pas perdre le choix déjà fait.
    */
   navSecondFamily?: NavSecond;
   /** Durée de l'appui long sur le sport secondaire qui ouvre le menu pour en changer, en millisecondes. */
@@ -227,10 +227,10 @@ const shownFamilies = (stored: StoredSettings): SportFamily[] =>
 const effectiveNavFamily = (stored: StoredSettings): SportFamily =>
   pickNavFamily(isKnownFamily(stored.navFamily) ? stored.navFamily : DEFAULT_NAV_FAMILY, shownFamilies(stored));
 
-/** Case secondaire de la barre du bas : un sport, ou la planification des itinéraires. */
-export type NavSecond = SportFamily | 'planifier';
+/** Case secondaire de la barre du bas : un sport, la planification des itinéraires ou les statistiques. */
+export type NavSecond = SportFamily | NavPage;
 
-const isNavSecond = (value: unknown): value is NavSecond => value === 'planifier' || isKnownFamily(value);
+const isNavSecond = (value: unknown): value is NavSecond => isNavPage(value) || isKnownFamily(value);
 
 /**
  * Case secondaire : celle choisie si elle n'est ni le favori ni cachée, sinon

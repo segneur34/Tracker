@@ -11,7 +11,7 @@ import {
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
 import { recordingDurationMs } from '../recording/session';
 import {
-  IconBike, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings, IconStopwatch, IconWave,
+  IconBike, IconChart, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings, IconStopwatch, IconWave,
 } from './icons';
 import HoldDial from './ui/HoldDial';
 
@@ -25,11 +25,12 @@ import HoldDial from './ui/HoldDial';
  * secondaire (1 s par défaut, réglable) montre un grand cadran, puis déplie
  * au-dessus de la barre le menu des autres sports : celui qu'on y choisit
  * devient le sport secondaire, retenu. La planification des itinéraires
- * (« Planifier ») peut y prendre la place d'un sport. Le bouton rond est vert au repos,
+ * (« Planifier ») ou les statistiques peuvent y prendre la place d'un sport. Le bouton rond est vert au repos,
  * rouge pendant un enregistrement.
  * Une famille cachée dans Réglages n'est ni dans les barres ni dans le menu ;
  * son adresse s'ouvre toujours (§10, point 100).
- * Sur ordinateur, toutes les destinations dans une barre en haut, et
+ * Sur ordinateur, toutes les destinations dans une barre en haut (les
+ * statistiques avant Réglages), et
  * « Itinéraires » à côté du bouton Enregistrer (sur téléphone, on y va depuis
  * l'accueil). Le choix se fait en CSS (`AppShell.css`), sans lecture de la
  * taille d'écran en JavaScript.
@@ -61,16 +62,19 @@ const RECORD_PATH = '/enregistrer';
 const PLAN_PATH = '/itineraires';
 /** Gris foncé : le bleu du tracé est déjà celui de la voile. */
 const PLANIFIER: Destination = { to: PLAN_PATH, label: 'Planifier', Icon: IconRoute, accent: 'var(--ink-2)' };
-const SECOND_TABS: Record<NavSecond, Destination> = { ...FAMILY_TABS, planifier: PLANIFIER };
+const STATS_PATH = '/statistiques';
+const STATISTIQUES: Destination = { to: STATS_PATH, label: 'Statistiques', Icon: IconChart, accent: 'var(--ink-2)' };
+const SECOND_TABS: Record<NavSecond, Destination> = { ...FAMILY_TABS, planifier: PLANIFIER, statistiques: STATISTIQUES };
 
 const underPath = (pathname: string, to: string): boolean => pathname === to || pathname.startsWith(`${to}/`);
 
 /**
- * Case de la page ouverte : le sport dont la route préfixe l'adresse (bibliothèque ou analyse), ou la
- * planification (itinéraire et liste).
+ * Case de la page ouverte : le sport dont la route préfixe l'adresse (bibliothèque ou analyse), la
+ * planification (itinéraire et liste) ou les statistiques.
  */
 const secondOfPath = (pathname: string): NavSecond | null =>
-  SPORT_FAMILIES.find((f) => underPath(pathname, FAMILY_TABS[f].to)) ?? (underPath(pathname, PLAN_PATH) ? 'planifier' : null);
+  SPORT_FAMILIES.find((f) => underPath(pathname, FAMILY_TABS[f].to))
+  ?? (underPath(pathname, PLAN_PATH) ? 'planifier' : underPath(pathname, STATS_PATH) ? 'statistiques' : null);
 
 /**
  * Bandeau du compteur du fractionné sur les autres pages : phase et temps
@@ -152,6 +156,7 @@ function AppShell() {
         <nav aria-label="Navigation principale" className="shell-toplinks">
           {topLink(HOME)}
           {families.map((f) => topLink(FAMILY_TABS[f]))}
+          {topLink(STATISTIQUES)}
           {topLink(SETTINGS)}
         </nav>
         <div className="shell-topactions">
@@ -240,7 +245,7 @@ function AppShell() {
         {sportsOpen && (
           <div className="shell-sports-menu" role="menu" aria-label="Sport secondaire">
             <span className="shell-sports-menu__title">Sport secondaire</span>
-            {[...families.filter((f) => f !== navFamily), 'planifier' as const].map((key) => {
+            {[...families.filter((f) => f !== navFamily), 'planifier' as const, 'statistiques' as const].map((key) => {
               const d = SECOND_TABS[key];
               return (
                 <NavLink

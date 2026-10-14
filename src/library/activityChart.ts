@@ -84,7 +84,7 @@ export const startOfDay = (ms: number): number => {
 };
 
 /** Ajoute des jours de calendrier (juste aux changements d'heure). */
-const addDays = (dayMs: number, n: number): number => {
+export const addDays = (dayMs: number, n: number): number => {
   const d = new Date(dayMs);
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime();
 };
@@ -173,6 +173,16 @@ const slotsOf = (period: ChartPeriod, nowMs: number): { slots: Slot[]; title: st
     title: period === 'sixmois' ? '6 derniers mois, par semaine' : `Année ${year}, par semaine`,
     range: `S${firstWeek} à S${thisWeek}`,
   };
+};
+
+/**
+ * Bornes d'une période, `[fromMs, toMs[` : du minuit de sa première case à la
+ * fin de sa dernière (la semaine en cours va jusqu'au dimanche soir). Les
+ * statistiques les reprennent, pour dire la même chose que le graphe.
+ */
+export const chartPeriodBounds = (period: ChartPeriod, nowMs: number): { fromMs: number; toMs: number } => {
+  const { slots } = slotsOf(period, nowMs);
+  return { fromMs: slots[0].startMs, toMs: slots[slots.length - 1].endMs };
 };
 
 /**

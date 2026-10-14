@@ -198,15 +198,20 @@ export const isActivityShown = (activity: Activity, activities: Activity[], hidd
 export const pickNavFamily = (chosen: SportFamily, shown: readonly SportFamily[]): SportFamily =>
   shown.length === 0 || shown.includes(chosen) ? chosen : shown[0];
 
+/** Pages qui peuvent prendre la case secondaire de la barre du bas à la place d'un sport. */
+export type NavPage = 'planifier' | 'statistiques';
+
+export const isNavPage = (value: unknown): value is NavPage => value === 'planifier' || value === 'statistiques';
+
 /**
- * Case secondaire de la barre du bas : la planification si elle est choisie ;
- * le sport choisi s'il est visible et n'est pas le favori ; sinon le premier
- * autre sport visible, sinon la planification.
+ * Case secondaire de la barre du bas : la planification ou les statistiques si
+ * elles sont choisies ; le sport choisi s'il est visible et n'est pas le
+ * favori ; sinon le premier autre sport visible, sinon la planification.
  */
 export const pickNavSecond = (
-  chosen: SportFamily | 'planifier' | null, favorite: SportFamily, shown: readonly SportFamily[]
-): SportFamily | 'planifier' => {
-  if (chosen === 'planifier') return chosen;
+  chosen: SportFamily | NavPage | null, favorite: SportFamily, shown: readonly SportFamily[]
+): SportFamily | NavPage => {
+  if (isNavPage(chosen)) return chosen;
   if (chosen !== null && chosen !== favorite && shown.includes(chosen)) return chosen;
   return shown.find((f) => f !== favorite) ?? 'planifier';
 };

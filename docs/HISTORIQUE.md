@@ -466,3 +466,18 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décisions** : les décisions propres à un domaine passent mot pour mot dans `docs/DECISIONS.md`, en huit sections, avec la même autorité ; `CLAUDE.md` garde les règles, les décisions transverses et une table « avant de toucher à… → section à lire ». Une décision de domaine nouvelle va dans sa section. Les points 67 à 99 sont condensés : décision, pourquoi, valeurs fixées avec l'utilisateur et pièges gardés, ce qui est déjà dans `CLAUDE.md` ou `DECISIONS.md` seulement rappelé ; numérotation inchangée.
     - **Contrôles, à refaire à la prochaine découpe** : un script vérifie que chaque phrase de l'ancien `CLAUDE.md` se retrouve dans le nouveau ou dans `DECISIONS.md` ; un autre relève les noms entre accents graves des docs et les cherche dans le code, et chaque fichier de `src/` doit paraître dans INVENTAIRE.
     - **Piège** : une décision qui vaut pour toutes les analyses peut être écrite sous un domaine (« Voile : … une seule barre d'onglets … ne rien déplacer », « Bibliothèques : vignette » dans la décision course et vélo) : elle reste dans `CLAUDE.md`.
+103. Statistiques, étape 1, lot 5 des demandes du 10-13/10 (14/10, validé par l'utilisateur, APK 0.2.86).
+    - **Demande de l'utilisateur** : une entrée « Statistiques » à part des sports. On y trouve une vue d'ensemble, puis une famille, puis une activité : combien de sessions, quelle distance, l'évolution de la vitesse max, la régularité. Il ajoutera d'autres onglets plus tard.
+    - **Choix de l'utilisateur** :
+      - une rangée d'activités dans chaque famille, avec toutes ses activités visibles, même sans session ;
+      - la période « Tout » en plus de celles de l'accueil, choisie par défaut ;
+      - un onglet « records » ;
+      - pas de vitesse max ni de records dans la vue d'ensemble, parce que les unités s'y mêlent.
+    - **Décisions de mise en œuvre** :
+      - Tout se tire du résumé des fiches, déjà dans le cache allégé : aucun GPX n'est relu.
+      - Les périodes et les semaines ISO sont celles du graphe de l'accueil (`chartPeriodBounds`).
+      - Pour une famille entière, on prend les unités de sa première activité visible.
+      - Le choix est dans l'adresse : le retour arrière remonte d'un niveau.
+      - Les manœuvres ne sont comptées que sur les sessions de voile déjà ouvertes, ce que la page précise.
+      - « Statistiques » peut prendre la case secondaire du téléphone, comme « Planifier » (`NavPage`).
+    - **Piège** : une session peut tenir d'une activité de base, absente de la liste (un calcul sans activité créée, comme le kite, ou une activité supprimée). Une liste d'activités tirée des seules activités créées la perd. On la garde donc avec celles-ci, pour qu'elle ait sa pastille, son nom et sa couleur.

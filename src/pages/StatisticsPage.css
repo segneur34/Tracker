@@ -1,0 +1,142 @@
+/* Page des statistiques (`StatisticsPage.tsx`), sur les variables de `theme/tokens.css`. Les panneaux
+   reprennent ceux des analyses (`analysisMobile.css` : `an-carte-panels`, `an-sheet__stats`). */
+
+.stats-page {
+  max-width: 1200px;
+}
+
+.stats-choice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.stats-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stats-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.stats-col > .stats-hint {
+  margin-bottom: var(--space-3);
+}
+
+/* Lignes qui ouvrent : un groupe, un record, la session choisie sur le graphe. */
+.stats-rows {
+  display: flex;
+  flex-direction: column;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stats-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  width: 100%;
+  min-height: 40px;
+  padding: var(--space-1) 0;
+  border: none;
+  border-top: 1px solid var(--line-soft);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-s);
+  text-align: left;
+  cursor: pointer;
+}
+
+.stats-row__swatch {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.stats-row__rank {
+  flex: 0 0 auto;
+  min-width: 1.2em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.stats-row__name {
+  font-weight: 600;
+}
+
+.stats-row__meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.stats-row__open {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.stats-row__chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--faint);
+}
+
+.stats-picked {
+  flex-shrink: 0;
+  margin-top: var(--space-2);
+}
+
+.stats-records {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.stats-records__title {
+  color: var(--muted);
+  font-size: var(--text-s);
+  font-weight: 600;
+}
+
+.stats-records .stats-rows {
+  margin-top: var(--space-1);
+}
+
+.stats-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  font-size: 12px;
+}
+
+@media (max-width: 767px) {
+  .stats-page {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  /* Onglets en petites pastilles, comme les analyses (`.an-page`), un peu détachés des panneaux. */
+  .stats-col > .ui-tabs {
+    margin-bottom: var(--space-3);
+  }
+
+  /* Rien n'élargit la page : un panneau ne dépasse pas l'écran. */
+  .stats-panels,
+  .stats-panels > * {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}

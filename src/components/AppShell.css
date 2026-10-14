@@ -152,7 +152,7 @@
   font-weight: 600;
 }
 
-/* « Planifier », séparé des sports par un trait. */
+/* « Planifier », séparé des sports par un trait ; « Statistiques » le suit, sans second trait. */
 .shell-sports-menu__item--apart {
   margin-top: var(--space-1);
   border-top: 1px solid var(--line);

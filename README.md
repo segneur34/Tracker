@@ -7,6 +7,7 @@ Analyse de sessions sportives à partir de traces GPX, et enregistrement GPS sur
 - **Vélo** (`/velo`, `/velo/analyse`) : la même analyse, plus les meilleurs segments (1 min à 1 h, 1 à 40 km) et une énergie par modèle physique (type et poids du vélo).
 - **Enregistrer** (`/enregistrer`) : une position par seconde, gardée brute, un GPX par session ; une trace à suivre au choix.
 - **Itinéraires** (`/itineraires`) : planification par type de voie (chemin, piste, route, grande route ; serveur BRouter), temps estimé selon le niveau, enregistrement et export GPX.
+- **Statistiques** (`/statistiques`) : par famille et par activité, sur une période : totaux, vitesse max, régularité, records.
 - **Réglages** (`/parametres`) : dossier mémoire, unités, seuils d'activité, terrain, vélo, niveau, barre du bas, profil du pratiquant.
 
 ## Mémoire

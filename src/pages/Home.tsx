@@ -4,7 +4,7 @@ import ActivityChart from '../components/ActivityChart';
 import MemoryStatus from '../components/MemoryStatus';
 import RouteList from '../components/RouteList';
 import { FAMILY_ICON } from '../components/familyIcons';
-import { IconChevronRight, IconRoute } from '../components/icons';
+import { IconChart, IconChevronRight, IconRoute } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
 import { FAMILY_ACCENT, FAMILY_LABEL } from '../core/activities';
 import type { SportFamily } from '../core/sportProfiles';
@@ -16,7 +16,7 @@ import { shownRoutes } from '../planning/routeList';
 
 /**
  * Accueil : enregistrer ou planifier un itinéraire, le graphe d'activités et
- * ses totaux (dès qu'il y a des sessions), les familles visibles, puis les
+ * ses totaux, puis l'entrée des statistiques (dès qu'il y a des sessions), les familles visibles, puis les
  * derniers itinéraires planifiés (dès que la mémoire est prête), dont la carte
  * mène à la liste complète. Une famille cachée dans Réglages n'y a pas sa
  * carte, une activité cachée pas ses itinéraires (§10, point 100).
@@ -79,6 +79,15 @@ function Home() {
       </div>
 
       {sessions.length > 0 && <ActivityChart />}
+
+      {sessions.length > 0 && (
+        <Link to="/statistiques" style={cardStyle}>
+          <span style={titleStyle}><IconChart /> <span style={{ flex: 1 }}>Statistiques</span> <IconChevronRight /></span>
+          <span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)', lineHeight: 1.5 }}>
+            Sessions, distances, vitesse max, régularité et records, par famille et par activité.
+          </span>
+        </Link>
+      )}
 
       {families.map((family) => {
         const Icon = FAMILY_ICON[family];

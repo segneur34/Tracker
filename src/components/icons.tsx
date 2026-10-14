@@ -115,6 +115,16 @@ export const IconGrid = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+/** Trois barres montantes sur leur axe : les statistiques. */
+export const IconChart = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M4 20h16" />
+    <path d="M7 16v-4" />
+    <path d="M12 16V8" />
+    <path d="M17 16V4" />
+  </svg>
+);
+
 export const IconHelp = ({ size = 20, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
     <circle cx="12" cy="12" r="9" />

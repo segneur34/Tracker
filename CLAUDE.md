@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Tracker : analyse de sessions sportives à partir de traces GPX
 
-Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau), course (`/course`), vélo (`/velo`) et fractionné (`/fractionne`), ces trois derniers sur un module d'analyse commun (`LandModule`), surf (`/surf`), pages `/enregistrer`, `/itineraires` et `/parametres`. Interface et commentaires en français. Application Android via Capacitor, avec enregistrement GPS natif et mémoire en dossier portable.
+Application 100 % client (React 19, TypeScript, Vite 8, Recharts, Leaflet), sans backend. Modules voile (`/voile` : wingfoil, planche, kite, bateau), course (`/course`), vélo (`/velo`) et fractionné (`/fractionne`), ces trois derniers sur un module d'analyse commun (`LandModule`), surf (`/surf`), pages `/enregistrer`, `/itineraires`, `/statistiques` et `/parametres`. Interface et commentaires en français. Application Android via Capacitor, avec enregistrement GPS natif et mémoire en dossier portable.
 
 Chaque information a une seule place :
 - `docs/ETAT_DU_PROJET.md` : pipeline, persistance, dette, chantiers, et **l'avancement du plan mobile (§12), tenu là seulement**. Le lire avant de toucher au noyau ou aux analyses voile.
@@ -95,14 +95,20 @@ Décisions transverses :
 - Activités : l'utilisateur crée les siennes (nom, couleur prise parmi les nuances de sa famille, calcul de base), au départ « Voile », « Course », à vélo « Route », « Gravel » et « VTT », en fractionné « Fractionné à pied » et « Fractionné vélo » ; elles seules sont proposées partout (Enregistrer, analyses, bibliothèque, accueil). Dans Réglages, rangées par famille. Une activité supprimée garde ses sessions, sous le nom de leur calcul. Un œil dans Réglages cache une famille ou une activité : absente partout, sessions et itinéraires compris, rien d'effacé ; une famille sans activité visible est cachée ; une adresse s'ouvre toujours, et l'analyse d'une session cachée garde son activité.
 - Activité d'une session : celle de la trace suivie est proposée à l'enregistrement ; elle se change pendant l'enregistrement et dans l'onglet réglages de l'analyse, d'une famille à l'autre comprise (recalcul complet, la session change de module).
 - DA de la maquette pour l'instant (Figtree, fond gris chaud, cartes blanches, vert Enregistrer), appelée à changer : tout passe par les variables. Une couleur par famille (bleu voile, rouge course, vert vélo, orange fractionné, gris surf), qui porte du texte blanc ; chaque activité prend une des six nuances de sa famille. Le bouton rond garde son vert et son rouge, le tracé de la planification son bleu. Mode daltonien prévu plus tard.
-- Navigation : barre en haut sur ordinateur, avec toutes les destinations (familles cachées exceptées ; le favori ou le secondaire caché retombe sur une famille visible, le choix gardé). Sur téléphone, une barre en bas de cinq cases, le bouton rond au milieu :
+- Navigation : barre en haut sur ordinateur, avec toutes les destinations, « Statistiques » avant Réglages (familles cachées exceptées ; le favori ou le secondaire caché retombe sur une famille visible, le choix gardé). Sur téléphone, une barre en bas de cinq cases, le bouton rond au milieu :
   - Accueil ;
   - le sport favori, choisi dans Réglages (voile par défaut) ;
   - le bouton rond ;
-  - le sport secondaire, ou « Planifier », choisi dans Réglages et retenu ; un appui long (1 s par défaut, réglable) montre un grand cadran puis le menu des autres sports et de « Planifier », et le choix devient le secondaire ;
+  - le sport secondaire, « Planifier » ou « Statistiques », choisi dans Réglages et retenu ; un appui long (1 s par défaut, réglable) montre un grand cadran puis le menu des autres sports, de « Planifier » et de « Statistiques », et le choix devient le secondaire ;
   - Réglages.
 - Réglages d'affichage (unités de vitesse et de distance) choisis dans Réglages seulement, par activité (donc par support : bateau et wing peuvent différer), actifs partout ; distance en km par défaut, milles nautiques au choix. Pas de réglage de la taille du texte : retiré le 09/10, jugé inutile. La pause automatique, les chiffres de la carte réduite à l'enregistrement (quatre au plus), ceux de la notification lisible écran verrouillé (trois au plus : vitesse, moyenne, distance par défaut ; avec le compteur du fractionné, la phase et son décompte en plus ; « en pause », chiffres figés, en pause manuelle), le terrain par défaut des sessions, le type et le poids du vélo, le niveau du temps estimé et les types de voie cochés d'office se règlent aussi par activité, dans sa carte de Réglages, rangés en parties repliables (affichage, analyse, enregistrement, notification, itinéraires, balises sonores), fermées au départ, état retenu pour toutes les activités.
 - Choix d'une activité : une liste dessinée par l'application (famille à gauche, activités décalées dessous, un trait entre familles), jamais le menu natif d'Android.
 - Surbrillances sur la carte des analyses : une seule à la fois (top, podium de manœuvres, zone de pente, répétition, saut, revêtement), effacée quand son onglet se ferme et pas ramenée à sa réouverture ; les virements et empannages de la voile restent des cases à part, cumulables. Podiums aux couleurs rouge, orange, vert ; passage seul en violet.
 - Diffusion : APK signé partagé par lien d'abord, lien web ensuite.
 - Bibliothèques : vignette carte toujours affichée, à droite des chiffres de chaque session.
+- Statistiques (`/statistiques`, depuis la barre du haut, la carte de l'accueil ou la case secondaire) :
+  - une vue d'ensemble, puis une famille, puis une activité ; chaque famille a sa rangée d'activités, toutes ses activités visibles comprises ;
+  - périodes de l'accueil, plus « Tout », par défaut ;
+  - onglets général, vitesse max (un point par session, record en pointillé), régularité et records ; pas de vitesse max ni de records dans la vue d'ensemble, où les unités se mêlent ;
+  - tout tiré du résumé des fiches, sessions cachées et à classer écartées ;
+  - d'autres onglets viendront, et une étape 2 (W/kg, poids passé, FC) à décider avec l'utilisateur.
