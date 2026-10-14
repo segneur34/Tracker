@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { sessionActivity } from '../core/activities';
 import {
   EDITED_PART_LABEL,
   changedParts,
@@ -10,6 +11,7 @@ import {
 } from '../library/sessionEdits';
 import type { SailingSessionNotes } from '../sailing/sessionNotes';
 import { useLeaveWarning } from './leaveGuard';
+import { readStoredActivities } from './useSportSettings';
 import { updateSessionRecord, useLibrarySelector, useLibrarySession } from './useSessionLibrary';
 
 /**
@@ -30,7 +32,13 @@ export const useSessionDraft = (file: string | null) => {
   const session = useLibrarySession(file);
   const sessions = useLibrarySelector((s) => s.sessions);
   const record = session?.record ?? null;
-  const gear = useMemo(() => latestGearNotes(sessions.map((s) => s.record)), [sessions]);
+  // Matériel repris de la dernière session notée de la même activité seulement.
+  const gear = useMemo(() => {
+    if (!record) return null;
+    const activities = readStoredActivities();
+    const activity = sessionActivity(activities, record.activityId, record.sport);
+    return activity ? latestGearNotes(sessions.map((s) => s.record), activity.id, activities) : null;
+  }, [sessions, record]);
   const saved = useMemo(() => savedEdits(record, gear), [record, gear]);
 
   const key = file ?? '';

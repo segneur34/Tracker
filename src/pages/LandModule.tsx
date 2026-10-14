@@ -17,6 +17,7 @@ import JumpMapLayer from '../components/JumpMapLayer';
 import JumpsPanel from '../components/JumpsPanel';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
+import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
@@ -113,9 +114,11 @@ const ENERGY_CHART_HEIGHT_PX = 200;
  * compteur dans sa fiche, ou qui est de la famille Fractionné : ses
  * répétitions sont alors retrouvées dans la vitesse (§10, point 89).
  * « sauts » n'apparaît que pour une session aux sauts mesurés par les
- * capteurs du téléphone, comme en voile.
+ * capteurs du téléphone, comme en voile. « matériel et notes » porte le
+ * matériel (deux champs nommés par activité dans Réglages), les conditions,
+ * l'appréciation et le commentaire, comme « matos et conditions » en voile.
  */
-type LandSection = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'sauts' | 'reglages';
+type LandSection = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'sauts' | 'notes' | 'reglages';
 
 const LAND_SECTIONS: SectionDefinition<LandSection>[] = [
   { key: 'general', label: 'général' },
@@ -126,6 +129,7 @@ const LAND_SECTIONS: SectionDefinition<LandSection>[] = [
   { key: 'energie', label: 'énergie' },
   { key: 'graphiques', label: 'vitesse et altitude' },
   { key: 'sauts', label: 'sauts' },
+  { key: 'notes', label: 'matériel et notes' },
   { key: 'reglages', label: 'réglages' },
 ];
 
@@ -138,6 +142,7 @@ const LAND_SECTION_DEFAULTS: Record<LandSection, boolean> = {
   energie: false,
   graphiques: false,
   sauts: false,
+  notes: false,
   reglages: false,
 };
 
@@ -186,6 +191,12 @@ const formatMinutes = (minutes: number): string => {
 const NO_INTERVALS: IntervalSeries[] = [];
 
 const cardStyle = CARD_STYLE;
+
+/** Champs du matériel hors voile, sous les intitulés de l'activité. */
+const gearFields = (labels: [string, string]): GearField[] => [
+  { field: 'gear1', label: labels[0], placeholder: 'ex. modèle, taille' },
+  { field: 'gear2', label: labels[1], placeholder: 'ex. modèle, taille' },
+];
 const chartTooltipStyle = { fontSize: '12px' } as const;
 
 /** Ligne sous le graphe d'altitude : d'où vient l'altitude affichée. */
@@ -218,7 +229,7 @@ function LandModule({ family }: { family: LandFamily }) {
     activity, setActivity, sport,
     profile, activeThreshold, terrain: activityTerrain, terrainStepM,
     speedUnit, distanceUnit,
-    speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg,
+    speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, gearLabels,
   } = useSportSettings(family);
   const model = LAND_TREATMENTS[sportTreatment(sport) === 'velo' ? 'velo' : 'course'];
   const { profile: runner, age } = useRunnerProfile();
@@ -1092,6 +1103,13 @@ function LandModule({ family }: { family: LandFamily }) {
                 accent={page.accent}
                 sailing={false}
               />
+            )}
+
+            {stats && open.notes && (
+              <ResizablePanel id={panelId('notes')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                <SessionNotesPanel notes={draft.edits.notes} setNotes={draft.updateNotes} family={family} conditions="libre" draft={draft}
+                  gearFields={gearFields(gearLabels)} open={open.notes} onToggle={() => toggle('notes')} />
+              </ResizablePanel>
             )}
 
             {stats && open.reglages && (

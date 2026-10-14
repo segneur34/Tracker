@@ -107,6 +107,12 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - en surf : foil supposé dans « Général » et dans l'onglet réglages ; à 390×844, aucun débordement.
 
   Il dure environ 1 min 30.
+- `materiel.mjs <port> [<dossier des captures>]` : onglet « matériel et notes » hors voile (lot 2 des demandes du 14/10, seconde série), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX et les importe par la page. Il vérifie :
+  - dans Réglages, partie Analyse : la ligne « Matériel » sur Course, Route et Surf, pas sur Voile ; « Chaussures » et « Sac » rangés pour Course ;
+  - une course, une sortie à vélo et une session de surf : l'onglet juste avant « réglages », les intitulés de l'activité (ceux par défaut à vélo et en surf), ni vent ni plan d'eau, saisie du matériel, des conditions et de l'appréciation, partie « notes » dans la barre, « Enregistrer la session », fiche relue, rechargement ;
+  - à 390×844, aucun débordement.
+
+  Il dure environ 1 min et finit par « Tout passe. » ou le nombre d'échecs. La voile se vérifie à part, par `bench.mjs` et `DUMP` avant et après : texte identique.
 - `reglages.mjs <port> [<dossier des captures>]` : un fichier de réglages par appareil (point 90), sur un profil neuf, sans réseau, dans la mémoire du navigateur. Il vérifie :
   - `reglages/pc.json` écrit au premier lancement ;
   - le passage depuis un ancien `reglages.json` plus récent : repris une dernière fois, puis retiré ;

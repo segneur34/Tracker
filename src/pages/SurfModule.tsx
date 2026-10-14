@@ -14,6 +14,7 @@ import { SessionMarksLayer, SessionMarksList } from '../components/SessionMarks'
 import { markReferenceLines } from '../components/markReferenceLines';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
+import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
@@ -60,9 +61,11 @@ import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfin
  * les remontées et le retour au pic ; « vols », sur foil seulement, les vols
  * qui relient plusieurs vagues en pompant, et leur pumping mesuré par les
  * capteurs si la session les a (point 104) ; « graphiques » la vitesse au fil
- * de la session, vagues en bandes ; « réglages » ceux de la session.
+ * de la session, vagues en bandes ; « matériel et notes » le matériel (deux
+ * champs nommés par activité dans Réglages), les conditions, l'appréciation et
+ * le commentaire ; « réglages » ceux de la session.
  */
-type SurfSection = 'general' | 'vagues' | 'rame' | 'vols' | 'graphiques' | 'reglages';
+type SurfSection = 'general' | 'vagues' | 'rame' | 'vols' | 'graphiques' | 'notes' | 'reglages';
 
 const SURF_SECTIONS: SectionDefinition<SurfSection>[] = [
   { key: 'general', label: 'général' },
@@ -70,6 +73,7 @@ const SURF_SECTIONS: SectionDefinition<SurfSection>[] = [
   { key: 'rame', label: 'rame' },
   { key: 'vols', label: 'vols' },
   { key: 'graphiques', label: 'graphiques' },
+  { key: 'notes', label: 'matériel et notes' },
   { key: 'reglages', label: 'réglages' },
 ];
 
@@ -79,6 +83,7 @@ const SURF_SECTION_DEFAULTS: Record<SurfSection, boolean> = {
   rame: false,
   vols: false,
   graphiques: false,
+  notes: false,
   reglages: false,
 };
 
@@ -99,6 +104,12 @@ const WAVE_SORT_LABEL: Record<WaveSort, string> = { ordre: 'ordre', distance: 'd
 
 const cardStyle = CARD_STYLE;
 const panelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: '14px' } as const;
+
+/** Champs du matériel, sous les intitulés de l'activité. */
+const gearFields = (labels: [string, string]): GearField[] => [
+  { field: 'gear1', label: labels[0], placeholder: 'ex. modèle, taille' },
+  { field: 'gear2', label: labels[1], placeholder: 'ex. modèle, taille' },
+];
 const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' } as const;
 const thStyle = { padding: '0.4em 0.5em', whiteSpace: 'nowrap' } as const;
 const tdStyle = { padding: '0.35em 0.5em', textAlign: 'center', whiteSpace: 'nowrap' } as const;
@@ -180,7 +191,7 @@ interface ChartRow {
 function SurfModule() {
   const {
     activity, setActivity, profile, thresholdOverride, speedUnit, distanceUnit, speedRange, defaultSpeedRange, foil: activityFoil,
-    pumping: activityPumping,
+    pumping: activityPumping, gearLabels,
   } = useSportSettings('surf');
   const gpx = useGpxSession({ medianWindowSeconds: profile.medianWindowSeconds, maxDetourRatio: profile.maxDetourRatio, maxSpeedMs: profile.maxPlausibleSpeedMs });
 
@@ -779,6 +790,13 @@ function SurfModule() {
                   Bandes bleues : les vagues{foil ? ', violettes : les vols' : ''}. Le survol déplace le repère sur la carte.
                   {narrow ? ' Écartez deux doigts pour zoomer.' : ' Tirez une zone à la souris pour zoomer, double-clic pour tout revoir.'}
                 </div>
+              </ResizablePanel>
+            )}
+
+            {open.notes && (
+              <ResizablePanel id={panelId('notes')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                <SessionNotesPanel notes={draft.edits.notes} setNotes={draft.updateNotes} family="surf" conditions="libre" draft={draft}
+                  gearFields={gearFields(gearLabels)} open={open.notes} onToggle={() => toggle('notes')} />
               </ResizablePanel>
             )}
 

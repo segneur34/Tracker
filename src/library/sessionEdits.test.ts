@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { baseActivity, type Activity } from '../core/activities';
 import { EMPTY_NOTES } from '../sailing/sessionNotes';
 import { RECORD_FORMAT, RECORD_VERSION, SUMMARY_CALC_VERSION, type SessionRecord, type StoredSessionNotes } from './record';
 import { changedParts, editsPatch, latestGearNotes, savedEdits } from './sessionEdits';
@@ -33,6 +34,12 @@ const record = (patch: Partial<SessionRecord> = {}): SessionRecord => ({
 
 const notes = (patch: Partial<StoredSessionNotes> = {}): StoredSessionNotes => ({ ...EMPTY_NOTES, savedAt: START_MS, ...patch });
 
+const ACTIVITIES: Activity[] = [
+  { id: 'voile', name: 'Voile', base: 'wingfoil', color: '#1976d2' },
+  { id: 'course', name: 'Course', base: 'running', color: '#d42a3c' },
+  { id: 'trail', name: 'Trail', base: 'running', color: '#d42a3c' },
+];
+
 describe('savedEdits', () => {
   it("reprend le vent, le seuil, l'allure, les couleurs et les notes de la fiche", () => {
     const r = record({
@@ -53,14 +60,30 @@ describe('savedEdits', () => {
       record({ notes: notes({ foil: 'Axis 900', savedAt: START_MS }) }),
       record({ notes: notes({ foil: 'Axis 1100', wing: '5 m²', comment: 'x', savedAt: START_MS + 1 }) }),
       record({ notes: notes({ comment: 'sans matériel', savedAt: START_MS + 2 }) }),
-    ]);
+    ], 'voile', ACTIVITIES);
     expect(savedEdits(record({ source: 'enregistrement' }), gear).notes).toEqual({ ...EMPTY_NOTES, foil: 'Axis 1100', wing: '5 m²' });
   });
 
   it("n'emprunte pas de matériel pour une session importée ni pour un GPX hors de la mémoire", () => {
-    const gear = latestGearNotes([record({ notes: notes({ foil: 'Axis 900', savedAt: START_MS }) })]);
+    const gear = latestGearNotes([record({ notes: notes({ foil: 'Axis 900', savedAt: START_MS }) })], 'voile', ACTIVITIES);
     expect(savedEdits(record({ source: 'import' }), gear).notes).toEqual(EMPTY_NOTES);
     expect(savedEdits(null, gear).notes).toEqual(EMPTY_NOTES);
+  });
+
+  it("ne reprend pas le matériel d'une autre activité, même plus récent", () => {
+    const records = [
+      record({ notes: notes({ wing: '5 m²', savedAt: START_MS + 5 }) }),
+      record({ sport: 'running', activityId: 'trail', notes: notes({ gear1: 'Speedgoat', savedAt: START_MS + 3 }) }),
+      record({ sport: 'running', activityId: 'course', notes: notes({ gear1: 'Pegasus', gear2: 'Gilet', conditions: 'Chaud', savedAt: START_MS + 1 }) }),
+    ];
+    expect(latestGearNotes(records, 'course', ACTIVITIES)?.gear1).toBe('Pegasus');
+    expect(latestGearNotes(records, 'trail', ACTIVITIES)?.gear1).toBe('Speedgoat');
+    expect(latestGearNotes(records, 'voile', ACTIVITIES)?.wing).toBe('5 m²');
+    expect(latestGearNotes(records, baseActivity('cycling').id, ACTIVITIES)).toBeNull();
+    // Le matériel est repris, pas les conditions, propres à la sortie.
+    const gear = latestGearNotes(records, 'course', ACTIVITIES);
+    expect(savedEdits(record({ sport: 'running', activityId: 'course', source: 'enregistrement' }), gear).notes)
+      .toEqual({ ...EMPTY_NOTES, gear1: 'Pegasus', gear2: 'Gilet' });
   });
 
   it('rend les valeurs par défaut sans fiche', () => {
@@ -73,6 +96,11 @@ describe('changedParts', () => {
 
   it('ne voit aucun changement sur un état identique', () => {
     expect(changedParts(saved, { ...saved, notes: { ...saved.notes } })).toEqual([]);
+  });
+
+  it('voit le matériel et les conditions hors voile dans la partie « notes »', () => {
+    expect(changedParts(saved, { ...saved, notes: { ...saved.notes, gear1: 'Pegasus' } })).toEqual(['notes']);
+    expect(changedParts(saved, { ...saved, notes: { ...saved.notes, conditions: 'Boue' } })).toEqual(['notes']);
   });
 
   it("nomme chaque partie changée, dans l'ordre de l'écran", () => {

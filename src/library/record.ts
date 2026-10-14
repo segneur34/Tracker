@@ -285,7 +285,7 @@ const readSummary = (raw: unknown): SessionSummary | null => {
 /** Notes relues, champ par champ : un champ absent ou mal formé reprend sa valeur vide. */
 export const readNotes = (raw: unknown): StoredSessionNotes | null => {
   if (!isObject(raw)) return null;
-  const text = (key: 'foil' | 'mast' | 'wing' | 'comment') =>
+  const text = (key: 'foil' | 'mast' | 'wing' | 'gear1' | 'gear2' | 'conditions' | 'comment') =>
     typeof raw[key] === 'string' ? (raw[key] as string) : EMPTY_NOTES[key];
   const rating = raw.rating;
   return {
@@ -293,6 +293,9 @@ export const readNotes = (raw: unknown): StoredSessionNotes | null => {
     foil: text('foil'),
     mast: text('mast'),
     wing: text('wing'),
+    gear1: text('gear1'),
+    gear2: text('gear2'),
+    conditions: text('conditions'),
     comment: text('comment'),
     windLevel: typeof raw.windLevel === 'string' ? (raw.windLevel as SailingSessionNotes['windLevel']) : null,
     waterState: typeof raw.waterState === 'string' ? (raw.waterState as SailingSessionNotes['waterState']) : null,

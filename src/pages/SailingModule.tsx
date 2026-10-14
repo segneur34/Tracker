@@ -34,7 +34,6 @@ import type { LibrarySession } from '../library/record';
 import {
   SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatSpeed, formatTimeOfDay, fromDisplaySpeed, knotsToDisplay, knotsToMs, msToKnots, toDisplaySpeed,
 } from '../core/units';
-import { RATINGS, WATER_STATES, WIND_LEVELS } from '../sailing/sessionNotes';
 import { MANEUVER_METRICS, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
 import ActivitySelect from '../components/ActivitySelect';
 import JumpsPanel from '../components/JumpsPanel';
@@ -44,6 +43,7 @@ import AnalysisMap from '../components/AnalysisMap';
 import HoverMarker from '../components/HoverMarker';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import ResizablePanel from '../components/ResizablePanel';
+import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
@@ -58,6 +58,14 @@ import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
 import HelpButton from '../components/ui/HelpButton';
+
+/** Champs du matériel en voile : l'aile ou la voile, plus le foil et le mât sur foil. */
+const SAILING_GEAR_FIELDS: GearField[] = [{ field: 'wing', label: 'Aile / voile', placeholder: 'ex. 5 m²' }];
+const SAILING_GEAR_FIELDS_FOIL: GearField[] = [
+  { field: 'foil', label: 'Foil', placeholder: 'ex. 1100 cm²' },
+  { field: 'mast', label: 'Mât', placeholder: 'ex. 85 cm' },
+  ...SAILING_GEAR_FIELDS,
+];
 
 /**
  * Onglets du module, tous sous la carte, dans l'ordre
@@ -947,83 +955,10 @@ function SailingModule() {
 
             {open.matos && (
               <ResizablePanel id="sailing.matos" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 260px' }}>
-                  <div style={{ marginBottom: '10px' }}>
-                    <PanelTitle label="Matériel" open={open.matos} onToggle={() => toggle('matos')} />
-                  </div>
-                  {/* Foil et mât sur foil seulement ; ce qui est saisi reste dans la fiche, et revient si l'on recoche. */}
-                  {(foil
-                    ? [['foil', 'Foil'], ['mast', 'Mât'], ['wing', 'Aile / voile']] as const
-                    : [['wing', 'Aile / voile']] as const
-                  ).map(([field, label]) => (
-                    <label key={field} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
-                      <span style={{ width: '90px' }}>{label}</span>
-                      <input
-                        type="text"
-                        value={notes[field]}
-                        onChange={(e) => setNotes({ [field]: e.target.value })}
-                        placeholder={field === 'foil' ? 'ex. 1100 cm²' : field === 'mast' ? 'ex. 85 cm' : 'ex. 5 m²'}
-                        style={{ flex: 1, padding: '4px 6px' }} />
-                    </label>
-                  ))}
-                </div>
-
-                <div style={{ flex: '1 1 260px' }}>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Conditions</strong>
-                  <div style={{ marginBottom: '10px' }}>
-                    <span style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>Vent</span>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {WIND_LEVELS.map((w) => (
-                        <button key={w.value} onClick={() => setNotes({ windLevel: notes.windLevel === w.value ? null : w.value })}
-                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: '12px', backgroundColor: notes.windLevel === w.value ? 'var(--voile)' : '#fff', color: notes.windLevel === w.value ? '#fff' : 'var(--ink)' }}>
-                          {w.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>Plan d'eau</span>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {WATER_STATES.map((s) => (
-                        <button key={s.value} onClick={() => setNotes({ waterState: notes.waterState === s.value ? null : s.value })}
-                          style={{ padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: '12px', backgroundColor: notes.waterState === s.value ? 'var(--voile)' : '#fff', color: notes.waterState === s.value ? '#fff' : 'var(--ink)' }}>
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ flex: '1 1 260px' }}>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Appréciation de la séance</strong>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                    {RATINGS.map((r) => (
-                      <button key={r.value} onClick={() => setNotes({ rating: notes.rating === r.value ? null : r.value })}
-                        title={r.label} aria-label={r.label}
-                        style={{ fontSize: '26px', lineHeight: 1, padding: '6px', cursor: 'pointer', border: notes.rating === r.value ? '2px solid var(--voile)' : '1px solid var(--line-strong)', borderRadius: '8px', backgroundColor: notes.rating === r.value ? 'var(--voile-soft)' : '#fff', opacity: notes.rating === null || notes.rating === r.value ? 1 : 0.5 }}>
-                        {r.emoji}
-                      </button>
-                    ))}
-                  </div>
-                  {notes.rating !== null && (
-                    <div style={{ fontSize: '13px', marginBottom: '8px' }}>{RATINGS.find((r) => r.value === notes.rating)?.label}</div>
-                  )}
-                  <textarea
-                    value={notes.comment}
-                    onChange={(e) => setNotes({ comment: e.target.value })}
-                    placeholder="Commentaire libre"
-                    rows={3}
-                    style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: '13px', boxSizing: 'border-box' }} />
-                  <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '6px' }}>
-                    {!draft.savable
-                      ? 'Notes indisponibles : cette trace n\'est pas dans la mémoire.'
-                      : draft.changed.includes('notes')
-                        ? 'Non enregistrées : « Enregistrer la session », en haut de la page.'
-                        : draft.hasSavedNotes
-                          ? 'Enregistrées dans la fiche de la session, dans le dossier mémoire.'
-                          : 'Enregistrées avec la session, par « Enregistrer la session ».'}
-                  </div>
-                </div>
+                {/* Foil et mât sur foil seulement ; ce qui est saisi reste dans la fiche, et revient si l'on recoche. */}
+                <SessionNotesPanel notes={notes} setNotes={setNotes} family="voile" conditions="voile" draft={draft}
+                  gearFields={foil ? SAILING_GEAR_FIELDS_FOIL : SAILING_GEAR_FIELDS}
+                  open={open.matos} onToggle={() => toggle('matos')} />
               </ResizablePanel>
             )}
 

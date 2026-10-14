@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EMPTY_NOTES } from '../sailing/sessionNotes';
 import {
   RECORD_FORMAT,
   RECORD_VERSION,
@@ -13,6 +14,7 @@ import {
   mergeLightRecord,
   parseRecord,
   parseRecordParts,
+  readNotes,
   recordFileName,
   serializeRecord,
   type LibrarySession,
@@ -62,7 +64,7 @@ describe('parseRecord et serializeRecord', () => {
   it('relisent une fiche à l\'identique', () => {
     const r = record({
       notes: {
-        foil: 'Axis 900', mast: '75', wing: 'Duotone 5', windLevel: 'moyen', waterState: 'clapot',
+        foil: 'Axis 900', mast: '75', wing: 'Duotone 5', gear1: '', gear2: '', conditions: '', windLevel: 'moyen', waterState: 'clapot',
         rating: 4, comment: 'Belle session', savedAt: START_MS + 10,
       },
       summary: { ...record().summary, maneuverCount: 12 },
@@ -404,9 +406,21 @@ describe('findLegacyNotes', () => {
   });
 });
 
+describe('readNotes', () => {
+  it("lit une fiche d'avant les champs génériques : matériel et conditions vides", () => {
+    const notes = readNotes({ foil: 'Axis 900', mast: '75', wing: '5 m²', windLevel: 'fort', waterState: 'plat', rating: 3, comment: 'ok', savedAt: 5 });
+    expect(notes).toEqual({ ...EMPTY_NOTES, foil: 'Axis 900', mast: '75', wing: '5 m²', windLevel: 'fort', waterState: 'plat', rating: 3, comment: 'ok', savedAt: 5 });
+  });
+
+  it('lit le matériel et les conditions hors voile, et vide un champ mal formé', () => {
+    const notes = readNotes({ gear1: 'Pegasus 41', gear2: 42, conditions: 'Boue, 28 °C', savedAt: 5 });
+    expect(notes).toEqual({ ...EMPTY_NOTES, gear1: 'Pegasus 41', gear2: '', conditions: 'Boue, 28 °C', savedAt: 5 });
+  });
+});
+
 describe('dedupeSessions', () => {
   it('ne garde qu\'une session par identité, celle qui a des notes, et trie par date décroissante', () => {
-    const notes = { ...record().notes, foil: 'Axis', mast: '', wing: '', windLevel: null, waterState: null, rating: null, comment: '', savedAt: 1 };
+    const notes = { ...EMPTY_NOTES, foil: 'Axis', savedAt: 1 };
     const older = session('a-old.gpx', { summary: { ...record().summary, startMs: START_MS - 86_400_000 } });
     const copieSansNotes = session('a.gpx');
     const avecNotes = session('b.gpx', { notes });

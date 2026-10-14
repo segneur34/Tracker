@@ -44,12 +44,13 @@ export const TERRAIN_LABEL: Record<TerrainType, string> = {
 export const SAILING_UNITS: SpeedUnit[] = ['kn', 'kmh', 'ms'];
 export const RUNNING_UNITS: SpeedUnit[] = ['kmh', 'ms', 'minkm'];
 export const CYCLING_UNITS: SpeedUnit[] = ['kmh', 'ms'];
+export const SURF_UNITS: SpeedUnit[] = ['kmh', 'kn', 'ms'];
 
 export const TREATMENT_UNITS: Record<Treatment, SpeedUnit[]> = {
   voile: SAILING_UNITS,
   course: RUNNING_UNITS,
   velo: CYCLING_UNITS,
-  surf: CYCLING_UNITS,
+  surf: SURF_UNITS,
 };
 
 /** Bornes de couleur de la trace à défaut de réglage (en voile, avant toute suggestion tirée de la session). */
@@ -126,6 +127,8 @@ export interface StoredSettings {
   bikeWeights?: ByActivity<number>;
   /** Charge portée en kg, sac et affaires (course) ; absente : 0. */
   carriedLoads?: ByActivity<number>;
+  /** Intitulés des deux champs de matériel des notes (hors voile) ; un texte vide : celui par défaut. */
+  gearLabels?: ByActivity<[string, string]>;
   /** Niveau qui donne la vitesse du temps estimé d'un itinéraire (course, vélo) ; absent : moyen. */
   paceLevels?: ByActivity<PaceLevel>;
   /** Vitesse sur le plat du niveau « Personnalisé », en m/s. */
@@ -180,6 +183,23 @@ const resolveTerrainStepM = (stored: StoredSettings, activity: Activity): number
   if (profileStep === null) return null;
   const step = stored.terrainSteps?.[activity.id];
   return isTerrainStep(step) ? step : profileStep;
+};
+
+/** Intitulés des champs de matériel des notes à défaut de réglage. */
+export const DEFAULT_GEAR_LABELS: [string, string] = ['Matériel 1', 'Matériel 2'];
+export const MAX_GEAR_LABEL_LENGTH = 30;
+
+/** Intitulés de matériel rognés et tronqués ; `null` s'ils sont mal formés ou tous deux vides (intitulés par défaut). */
+export const sanitizeGearLabels = (value: unknown): [string, string] | null => {
+  if (!Array.isArray(value) || value.length !== 2 || !value.every((v) => typeof v === 'string')) return null;
+  const labels = value.map((v: string) => v.trim().slice(0, MAX_GEAR_LABEL_LENGTH)) as [string, string];
+  return labels[0] === '' && labels[1] === '' ? null : labels;
+};
+
+/** Intitulés effectifs : ceux réglés, chacun remplacé par le défaut s'il est vide. */
+const resolveGearLabels = (stored: StoredSettings, id: string): [string, string] => {
+  const own = sanitizeGearLabels(stored.gearLabels?.[id]);
+  return [own?.[0] || DEFAULT_GEAR_LABELS[0], own?.[1] || DEFAULT_GEAR_LABELS[1]];
 };
 
 /** Rapport du retour de boucle admis, en fois l'aller. */
@@ -649,6 +669,8 @@ export interface SportSettingsView {
   bikeWeight: number | null;
   /** Charge portée en kg (course), ou `null` sans réglage (0). */
   carriedLoad: number | null;
+  /** Intitulés de matériel réglés (hors voile), un texte vide pour celui par défaut ; `null` sans réglage. */
+  gearLabels: [string, string] | null;
   /** Niveau du temps estimé (course, vélo) ; moyen par défaut. */
   paceLevel: PaceLevel;
   /** Vitesse sur le plat saisie pour « Personnalisé », en m/s, ou `null`. */
@@ -662,7 +684,7 @@ export interface SportSettingsView {
 
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
-  'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads',
+  'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'gearLabels',
   'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
 ] as const;
 
@@ -749,6 +771,7 @@ export const useAllSportSettings = () => {
         bikeType: isBikeType(bikeType) ? bikeType : defaultBikeType(id),
         bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
         carriedLoad: isValidCarriedLoad(carriedLoad) ? carriedLoad : null,
+        gearLabels: sanitizeGearLabels(stored.gearLabels?.[id]),
         paceLevel: isPaceLevel(paceLevel) ? paceLevel : DEFAULT_PACE_LEVEL,
         customFlatSpeedMs: typeof customSpeed === 'number' && isFinite(customSpeed) ? customSpeed : null,
         wayTypes: ways.wayTypes,
@@ -761,7 +784,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'gearLabels' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -869,6 +892,12 @@ export const useAllSportSettings = () => {
           if (value !== null && !isValidCarriedLoad(value)) return;
           next.carriedLoads = put(stored.carriedLoads, value === 0 ? null : value as number | null);
           break;
+        case 'gearLabels': {
+          const labels = value === null ? null : sanitizeGearLabels(value);
+          if (value !== null && !Array.isArray(value)) return;
+          next.gearLabels = put(stored.gearLabels, labels);
+          break;
+        }
         case 'paceLevel':
           if (value !== null && !isPaceLevel(value)) return;
           next.paceLevels = put(stored.paceLevels, value as PaceLevel | null);
@@ -1127,6 +1156,7 @@ export const useSportSettings = (family: SportFamily) => {
   // Course : charge portée, réglée dans Réglages.
   const storedLoad = stored.carriedLoads?.[id];
   const carriedLoadKg = isValidCarriedLoad(storedLoad) ? storedLoad : 0;
+  const gearLabels = useMemo(() => resolveGearLabels(stored, id), [stored, id]);
 
   return {
     activity,
@@ -1154,6 +1184,8 @@ export const useSportSettings = (family: SportFamily) => {
     isBikeWeightOverridden: isValidBikeWeight(storedBikeWeight),
     /** Charge portée de l'activité, en kg (0 sans réglage) ; une session peut avoir la sienne. */
     carriedLoadKg,
+    /** Intitulés des deux champs de matériel des notes (hors voile), réglés dans Réglages ou par défaut. */
+    gearLabels,
     foil,
     pumping,
   };

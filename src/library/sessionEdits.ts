@@ -1,3 +1,4 @@
+import { sessionActivity, type Activity } from '../core/activities';
 import type { SessionMark } from '../core/sessionMarks';
 import type { SpeedRangeMs } from '../core/speedGradient';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
@@ -43,20 +44,31 @@ const NOTE_FIELDS = Object.keys(EMPTY_NOTES) as (keyof SailingSessionNotes)[];
 const sameNotes = (a: SailingSessionNotes, b: SailingSessionNotes): boolean =>
   NOTE_FIELDS.every((field) => a[field] === b[field]);
 
-/** Notes les plus récentes qui portent du matériel : proposées à une session enregistrée encore sans notes. */
-export const latestGearNotes = (records: readonly SessionRecord[]): StoredSessionNotes | null => {
+/**
+ * Notes les plus récentes d'une session de l'activité `activityId` qui portent
+ * du matériel : proposées à une session enregistrée encore sans notes. Les
+ * autres activités sont écartées : une course ne reçoit pas l'aile de la
+ * dernière session de wing.
+ */
+export const latestGearNotes = (
+  records: readonly SessionRecord[],
+  activityId: string,
+  activities: Activity[]
+): StoredSessionNotes | null => {
   let latest: StoredSessionNotes | null = null;
   for (const record of records) {
     const n = record.notes;
-    if (n && (n.foil || n.mast || n.wing) && (!latest || n.savedAt > latest.savedAt)) latest = n;
+    if (!n || !(n.foil || n.mast || n.wing || n.gear1 || n.gear2) || (latest && n.savedAt <= latest.savedAt)) continue;
+    if (sessionActivity(activities, record.activityId, record.sport)?.id === activityId) latest = n;
   }
   return latest;
 };
 
 /**
  * État enregistré d'une session, tel que le module l'affiche. Une session
- * enregistrée sans notes reçoit le matériel de la dernière session notée
- * (`gear`) : on change rarement de foil entre deux sorties. Une session
+ * enregistrée sans notes reçoit le matériel de la dernière session notée de
+ * son activité (`gear`) : on change rarement de foil entre deux sorties ; les
+ * conditions, propres à la sortie, ne sont pas reprises. Une session
  * importée, ou un GPX hors de la mémoire, n'emprunte rien : ce que sa fiche ne
  * porte pas reste vide.
  */
@@ -64,7 +76,7 @@ export const savedEdits = (record: SessionRecord | null, gear: StoredSessionNote
   const notes: SailingSessionNotes = record?.notes
     ? pickNotes(record.notes)
     : gear && record?.source === 'enregistrement'
-      ? { ...EMPTY_NOTES, foil: gear.foil, mast: gear.mast, wing: gear.wing }
+      ? { ...EMPTY_NOTES, foil: gear.foil, mast: gear.mast, wing: gear.wing, gear1: gear.gear1, gear2: gear.gear2 }
       : EMPTY_NOTES;
   return {
     notes,

@@ -17,8 +17,8 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
 import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  TERRAIN_LABEL, TREATMENT_SPEED_RANGE_MS, TREATMENT_UNITS, defaultBikeType, defaultFoil, defaultGradeRange, planningFamily,
-  useAllSportSettings, type NavSecond, type SportSettingsView, type TerrainType,
+  DEFAULT_GEAR_LABELS, MAX_GEAR_LABEL_LENGTH, TERRAIN_LABEL, TREATMENT_SPEED_RANGE_MS, TREATMENT_UNITS, defaultBikeType, defaultFoil, defaultGradeRange, planningFamily,
+  sanitizeGearLabels, useAllSportSettings, type NavSecond, type SportSettingsView, type TerrainType,
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
 import {
@@ -292,7 +292,7 @@ function SettingsPage() {
                 const shownHidden = activity.hidden === true || familyHidden;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
-                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null || s.carriedLoad !== null ||
+                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null || s.carriedLoad !== null || s.gearLabels !== null ||
                   s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden ||
                   s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
@@ -486,6 +486,17 @@ function SettingsPage() {
                                   <NumberField unit="kg" step={0.5} min={0} max={50}
                                     value={s.carriedLoad} placeholder="0" onCommit={(kg) => setFor(id, 'carriedLoad', kg)} />
                                   {s.carriedLoad === null && <span className="settings-sports__mark">aucune</span>}
+                                </div>
+                              </div>
+                            )}
+                            {!sailing && (
+                              <div className="settings-row"
+                                title="Intitulés des deux champs de matériel de l'onglet « matériel et notes » des analyses de cette activité (chaussures, vélo, planche…)">
+                                <span className="settings-row__label">Matériel</span>
+                                <div className="settings-sports__pair">
+                                  <GearLabelsField labels={s.gearLabels}
+                                    onCommit={(labels) => setFor(id, 'gearLabels', labels)} />
+                                  {s.gearLabels === null && <span className="settings-sports__mark">défaut</span>}
                                 </div>
                               </div>
                             )}
@@ -890,6 +901,40 @@ function ActivityNameField({
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
     </span>
+  );
+}
+
+/** Intitulés des deux champs de matériel d'une activité, rangés quand on quitte un champ ; vides, ceux par défaut. */
+function GearLabelsField({
+  labels, onCommit,
+}: {
+  labels: [string, string] | null;
+  onCommit: (labels: [string, string] | null) => void;
+}) {
+  const first = labels?.[0] ?? '';
+  const second = labels?.[1] ?? '';
+  const [draft, setDraft] = useState<[string, string]>([first, second]);
+  const [shown, setShown] = useState(`${first}|${second}`);
+  // Changés d'ailleurs (remise au défaut de l'activité, fichier de réglages repris) : relus, pendant le rendu.
+  if (shown !== `${first}|${second}`) {
+    setShown(`${first}|${second}`);
+    setDraft([first, second]);
+  }
+  const commit = () => {
+    const next = sanitizeGearLabels(draft);
+    if ((next?.[0] ?? '') !== first || (next?.[1] ?? '') !== second) onCommit(next);
+    setDraft([next?.[0] ?? '', next?.[1] ?? '']);
+  };
+  return (
+    <>
+      {([0, 1] as const).map((k) => (
+        <input key={k} value={draft[k]} maxLength={MAX_GEAR_LABEL_LENGTH} placeholder={DEFAULT_GEAR_LABELS[k]}
+          aria-label={`Intitulé du matériel ${k + 1}`} className="ui-field ui-field--s" style={{ width: '110px' }}
+          onChange={(e) => setDraft(k === 0 ? [e.target.value, draft[1]] : [draft[0], e.target.value])}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+      ))}
+    </>
   );
 }
 
