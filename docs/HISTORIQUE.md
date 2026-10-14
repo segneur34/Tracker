@@ -496,3 +496,38 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
       - au seuil 2, le rapport de détour prendrait de vrais virages à 2 s de cadence ;
       - limite connue : un point déplacé en pleine vitesse et suivi d'un trou garde un faible détour, et peut encore passer.
     - **Accueil, dans le même commit** : les itinéraires et les statistiques deviennent des liens fins sous les familles, le graphe d'activités est plus bas, et sa légende passe sous les barres.
+105. Retouches, lot 1 des demandes du 10-14/10 (14/10, commité en `d6b308f` avant l'essai, documenté le 14/10 à la demande de l'utilisateur, APK 0.2.90).
+    - Version en petit et grisé à droite de « Tracker » sur l'accueil ; date et heure de la session à droite de « Général » dans les trois analyses.
+    - « Arrêter » et les boutons tenus ne sélectionnent plus leur texte (`.ui-btn--hold` : `user-select`, `touch-action`, `-webkit-touch-callout`).
+    - **Notification : deux chiffres au plus**, choix de l'utilisateur ; au-delà, Android coupe la ligne à l'écran verrouillé. Défaut : vitesse et distance ; un réglage rangé à trois est tronqué à la lecture.
+    - **Piège** : en pause manuelle, la durée ajoutée devant les chiffres refaisait trois éléments. Elle monte dans le titre, après « en pause ».
+    - Écran gardé allumé sur Enregistrer (`platform/screen.ts`, greffon `Screen`) : seule la mise en veille automatique est empêchée, ce que voulait l'utilisateur.
+    - Accueil compact : familles en grille de deux colonnes, le « ? » hors du lien. Retouché au point 104 : itinéraires et statistiques en liens fins sous les familles, graphe plus bas.
+106. Chronomètre, lot 2 des demandes du 10-14/10 (14/10, commité en `d6b308f`, APK 0.2.90).
+    - **Choix de l'utilisateur** : un chronomètre à part (départ, tours, pause, remise à zéro), dans la carte du compteur, par la bascule « Compteur | Chrono », utilisable à tout moment, sans son. Ses tours ne vont pas dans la fiche ; on pourra les joindre aux repères plus tard.
+    - Calcul pur (`recording/stopwatch.ts`), sur le modèle du compteur : des commandes datées, l'état recalculé à l'horloge, donc juste après une mise en arrière-plan ou un rechargement (`tracker.stopwatch`).
+    - Une pastille rappelle la vue cachée qui tourne ; un chrono lancé garde la carte visible hors du Fractionné.
+107. Bouton « Note » à l'enregistrement, lot 3 des demandes du 10-14/10 (14/10, commité en `d6b308f`, APK 0.2.90).
+    - Un appui pose un repère (instant, dernière position reçue, nom vide) et vibre brièvement (`buzz` du greffon Beeper : `navigator.vibrate` ne marche pas dans la WebView). Sans position, pas de repère, et un message le dit.
+    - Le repère va dans le journal (ligne `note`), puis dans la fiche à l'arrêt (`marks`) ; nom et suppression passent par le brouillon (partie « repères »).
+    - Dans l'analyse : fanions numérotés sur la carte, liste dans « général », trait fin sur les graphes, communs aux trois modules (`useSessionMarks`). Choix de l'utilisateur : `<wpt>` dans le GPX complet, retirés à l'identique à l'import.
+108. Charge portée et poids du vélo par session, lot 4 des demandes du 10-14/10 (14/10, commité en `d6b308f`, APK 0.2.90).
+    - Le poids du vélo et des bagages se règle aussi par session ; en course, une charge portée (sac) par activité (0 par défaut) et par session. Vide, la valeur de l'activité s'applique.
+    - **Décision** : la charge multiplie le coût du déplacement (`loadRatio` de `computeEnergy`), pas le repos, qui reste celui du corps. Sans poids du pratiquant, l'énergie de course est par kilo et ignore la charge, ce que l'avertissement dit.
+    - Hors du résumé, donc pas de `SUMMARY_CALC_VERSION`. Le direct et le temps estimé gardent les valeurs de l'activité, sans charge.
+109. Imports anciens sans artefact, lot 5 des demandes du 10-14/10 (14/10, commité en `d6b308f`, APK 0.2.90).
+    - **Principe, sans cas vu** : ce qu'une version ancienne ignorait reste nul ; rien n'est inventé, mis par défaut ni emprunté à une autre session.
+    - **Choix de l'utilisateur** :
+      - seule une session enregistrée par l'application reçoit le matériel de la dernière session notée ;
+      - sans foil dans la fiche, celui de l'activité est montré « supposé » ;
+      - sans poids du pratiquant, l'énergie à vélo n'est pas calculée (« — ») ; le direct et le temps estimé gardent 75 kg ;
+      - le seuil suggéré par l'allure en voile est gardé.
+    - **Piège** : un `NaN` écrit `null` par `JSON.stringify` dans le résumé rendait toute la fiche illisible, nom et notes compris. `parseRecordParts` lit tout sauf le résumé, qui est refait depuis le GPX au balayage.
+    - `completeRecord` complète aussi sauts, voies, altitude, sport et activité, sans rien écraser, et demande un nouveau résumé si le calcul en dépend.
+110. Pumping foil, lot 6 des demandes du 10-13/10 (14/10, commité en `e1dc180`, **en cours** : seuils à régler sur un premier vol réel).
+    - **Choix de l'utilisateur** : case « Pumping » par activité et par session, sous Foil ; téléphone sur la poitrine ; par vol, coups, fréquence, distance pompée et par coup, temps de vol, vitesse de décollage ; replié, podium des 3 plus longs vols ; virages au gyroscope dans un lot suivant.
+    - **Décisions de mise en œuvre** :
+      - la verticale du monde est sortie de `jumps.ts` vers `core/imuVertical.ts`, sans rien changer aux sauts (leurs tests passent sans retouche) ;
+      - décollage (expérimental) : fin des chocs de l'eau, cherchée autour du passage du Seuil de vol, qui est le réglage « mon aile vole à 10 ou à 15 km/h » voulu par l'utilisateur.
+    - **Piège** : l'élagage du `.imu` de surf autour des vols effaçait tout d'une session sans vol, justement celle qui sert à régler. Coupé (`pruneCapture` à faux, APK 0.2.88) tant que les seuils ne sont pas réglés.
+    - Capture du 14/10 (paddle foil, sans vol) : saine (100 Hz, trou maximal 55 ms), rame visible, rien pour régler le décollage ; la rugosité à l'arrêt (0,03 à 0,05 g) est déjà sous `liftoffCalmG` (0,08 g).
