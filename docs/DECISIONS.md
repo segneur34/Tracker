@@ -46,6 +46,7 @@ Les onglets de l'analyse de voile sont dans `CLAUDE.md` (décision « Voile », 
   - Bouton « Note » pendant l'enregistrement : un repère à l'heure et à la dernière position, une courte vibration ; dans l'analyse, fanions numérotés sur la carte, liste nommable dans « général », trait fin sur les graphes ; `<wpt>` dans le GPX complet.
   - Écran gardé allumé sur la page Enregistrer tant qu'un enregistrement (pause comprise), le compteur ou le chronomètre tourne : seule la mise en veille automatique est empêchée, le bouton du téléphone verrouille toujours.
   - « Arrêter » et les boutons tenus ne sélectionnent pas leur texte.
+  - Ceinture cardio : cherchée, essayée et retenue dans Réglages › Capteurs (une par appareil), sans appairage ni application du fabricant ; case « Ceinture cardio » par activité, partie Enregistrement, reprise à la page Enregistrer ; FC jointe à chaque position, trou plutôt que valeur figée ; chiffre « FC » proposé dans la carte réduite et la notification.
 
 ## 7. Planification et itinéraires
 
