@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
+import { buzz } from '../platform/beeper';
 
 /**
  * Appui long sur un élément : `onLongPress` part quand le doigt est resté
@@ -41,7 +42,7 @@ export const useLongPress = (onLongPress: () => void, getDurationMs: () => numbe
         timer.current = null;
         fired.current = true;
         setPressingMs(null);
-        navigator.vibrate?.(60);
+        void buzz(60).catch(() => undefined);
         onLongPress();
       }, duration);
     },

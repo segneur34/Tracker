@@ -20,7 +20,7 @@ import { useSessionMarks } from '../hooks/useSessionMarks';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useMapHighlight } from '../hooks/useMapHighlight';
-import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
+import { ARROW_EVERY_S, CHART_MAX_POINTS, arrowIndices, trackBounds } from '../core/displayConfig';
 import { SAILING_TABS, maskHiddenTabs, shownTabs, type SailingTab } from '../core/analysisTabs';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { trackIndexAtTime } from '../core/jumps';
@@ -296,9 +296,10 @@ function SailingModule() {
     [track, colorRange.minMs, colorRange.maxMs]
   );
   const arrowLayers = useMemo(
-    () => trackData
-      .filter((_, index) => index % 40 === 0 && index !== 0)
-      .map((point, idx) => <Marker key={`arrow-${idx}`} position={[point.lat, point.lon]} icon={createArrowIcon(point.bearing)} />),
+    () => arrowIndices(trackData, ARROW_EVERY_S).map((index, idx) => {
+      const point = trackData[index];
+      return <Marker key={`arrow-${idx}`} position={[point.lat, point.lon]} icon={createArrowIcon(point.bearing)} />;
+    }),
     [trackData]
   );
 

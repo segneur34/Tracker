@@ -17,16 +17,20 @@ Chaque information a une seule place :
 
 ```
 npm run dev          serveur de développement
-npx tsc -b --force   typecheck (strict, noUnusedLocals, verbatimModuleSyntax)
+npx tsc -b           typecheck incrémental (strict, noUnusedLocals, verbatimModuleSyntax) ; --force pour tout revérifier
 npm run lint         oxlint
-npx vitest run       tests, fonctions pures uniquement, environnement node
+npx vitest run --changed   tests qui importent, même de loin, un fichier modifié non commité
+npx vitest run       tous les tests, fonctions pures uniquement, environnement node
 npx vitest run src/sailing/wind.test.ts -t "nom"   un fichier, un test
 npm run build        tsc -b && vite build
 ```
 
 Android (JDK 21, procédure au §12 de l'état) : `npm run build`, `npx cap sync android`, puis, dans le shell de Claude, `android\gradlew.bat assembleRelease` et `adb install -r`. APK signé par une clé dédiée, hors du dépôt (`android/keystore.properties`, ignoré) : ne jamais la régénérer ni la versionner. Version unique dans `package.json`, à augmenter avant chaque APK diffusé.
 
-Après toute modification, dans cet ordre : typecheck, lint, tests, build. Tous doivent passer.
+Vérifications, toutes doivent passer :
+- pendant le travail, après une modification du code : typecheck, lint, `vitest run --changed` ;
+- à la fin de chaque étape rendue à l'utilisateur, et avant tout commit, banc ou APK : lint, tous les tests, build (qui fait le typecheck) ;
+- rien pour une modification de la seule documentation.
 
 ## Documentation
 

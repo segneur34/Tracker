@@ -321,11 +321,12 @@ function SurfModule() {
       if (!r) return [];
       let start = 0;
       while (start < track.length - 1 && track[start].timeMs < r.startMs) start++;
-      const label = r.after === 0 ? 'Première sortie' : `Remontée après la vague ${r.after}`;
+      // Sur foil, les remontées suivent les vols, numérotés comme eux.
+      const label = r.after === 0 ? 'Première sortie' : `Remontée après ${foil ? 'le vol' : 'la vague'} ${r.after}`;
       return [{ key: `remontee-${r.after}`, start, end: returnEnd(r), color: HIGHLIGHT_SHOWN_COLOR, label: `${label} · ${formatTimeOfDay(r.startMs)}` }];
     }
     return [];
-  }, [waveShown, flightShown, returnShown, waves, flights, podiumFlights, returns, track, returnEnd, speedUnit]);
+  }, [waveShown, flightShown, returnShown, waves, flights, podiumFlights, returns, track, returnEnd, speedUnit, foil]);
 
   const sortedWaves = useMemo(() => {
     const list = [...waves];

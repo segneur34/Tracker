@@ -40,3 +40,26 @@ export const trackBounds = (points: ReadonlyArray<{ lat: number; lon: number }>)
   }
   return south === Infinity ? null : [[south, west], [north, east]];
 };
+
+/** Écart entre deux flèches de cap sur la carte de la voile, en secondes. */
+export const ARROW_EVERY_S = 40;
+
+/**
+ * Points qui portent une flèche de cap : le premier point à `everyS`,
+ * 2 × `everyS`… secondes du départ, si bien qu'une trace à 1 Hz et à 5 Hz a
+ * ses flèches aux mêmes instants (règle 2). Après un trou plus long que
+ * l'écart, une seule flèche, au point qui le suit.
+ */
+export const arrowIndices = (track: ReadonlyArray<{ timeMs: number }>, everyS: number): number[] => {
+  if (track.length === 0 || !(everyS > 0)) return [];
+  const stepMs = everyS * 1000;
+  const startMs = track[0].timeMs;
+  const indices: number[] = [];
+  let nextMs = startMs + stepMs;
+  for (let i = 1; i < track.length; i++) {
+    if (track[i].timeMs < nextMs) continue;
+    indices.push(i);
+    nextMs = startMs + (Math.floor((track[i].timeMs - startMs) / stepMs) + 1) * stepMs;
+  }
+  return indices;
+};
