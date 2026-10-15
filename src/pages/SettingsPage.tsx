@@ -6,8 +6,9 @@ import {
 import {
   ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, isLandTreatment, sportFamily,
   sportTreatment,
-  type SportFamily, type Treatment,
+  type SportFamily, type SportProfile, type Treatment,
 } from '../core/sportProfiles';
+import { analysisTabs, isTabShown, toggleTabChoice, type TabChoices } from '../core/analysisTabs';
 import type { SportType } from '../core/types';
 import {
   DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatPace, formatSpeedValue, fromDisplaySpeed, toDisplaySpeed,
@@ -108,6 +109,38 @@ function WayTypesSetting({ view, treatment, onChange }: { view: SportSettingsVie
         {!view.isWayTypesOverridden && (
           <span className="settings-sports__mark">{treatment === 'velo' ? 'selon le vélo' : 'selon le terrain'}</span>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Onglets des analyses de l'activité : enfoncé, montré. Ceux du module le sont
+ * d'office, un onglet générique (« tops » à pied et en surf) ne l'est qu'une
+ * fois coché ; tous se cachent. « vols » n'est proposé que sur foil.
+ */
+function AnalysisTabsSetting({ view, profile, onChange }: {
+  view: SportSettingsView;
+  profile: SportProfile;
+  onChange: (choices: TabChoices | null) => void;
+}) {
+  const tabs = analysisTabs(profile).filter((tab) => tab.key !== 'vols' || view.foil === true);
+  return (
+    <div className="settings-row"
+      title="Onglets montrés dans les analyses de cette activité : enfoncés, montrés. Un onglet caché garde ses calculs, il revient en l'enfonçant de nouveau. Sans « réglages », l'activité et le seuil d'une session ne se changent plus depuis son analyse">
+      <span className="settings-row__label">Onglets</span>
+      <div className="settings-sports__pair">
+        <div className="ui-tabs ui-tabs--compact" role="group" aria-label={`Onglets des analyses de ${view.activity.name}`}
+          style={{ '--tab-accent': FAMILY_ACCENT[activityFamily(view.activity)] } as CSSProperties}>
+          {tabs.map((tab) => (
+            <button key={tab.key} type="button" className="ui-tab" aria-pressed={isTabShown(tab, view.tabs)}
+              title={tab.generic ? "Onglet en plus, caché tant qu'on ne le coche pas" : undefined}
+              onClick={() => onChange(toggleTabChoice(view.tabs, tab))}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {view.tabs === null && <span className="settings-sports__mark">défaut</span>}
       </div>
     </div>
   );
@@ -292,7 +325,7 @@ function SettingsPage() {
                 const shownHidden = activity.hidden === true || familyHidden;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
-                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null || s.carriedLoad !== null || s.gearLabels !== null ||
+                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null || s.carriedLoad !== null || s.gearLabels !== null || s.tabs !== null ||
                   s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden ||
                   s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
@@ -427,7 +460,7 @@ function SettingsPage() {
                               </div>
                             )}
                           </ActivityPart>
-                          <ActivityPart label="Analyse" open={openPart.analyse} onToggle={() => togglePart('analyse')}>
+                          <ActivityPart label="Onglet analyse" open={openPart.analyse} onToggle={() => togglePart('analyse')}>
                             <div className="settings-row" title={treatment === 'surf'
                               ? (s.foil
                                 ? "Vitesse à laquelle votre aile décolle, de 10 à 15 km/h selon l'aile : au-dessus, la planche vole. Chaque session peut avoir le sien, dans l'onglet réglages de son analyse"
@@ -512,6 +545,7 @@ function SettingsPage() {
                                 </div>
                               </div>
                             )}
+                            <AnalysisTabsSetting view={s} profile={p} onChange={(choices) => setFor(id, 'tabs', choices)} />
                           </ActivityPart>
                           <ActivityPart label="Enregistrement" open={openPart.enregistrement} onToggle={() => togglePart('enregistrement')}>
                             <div className="settings-row" title="À l'enregistrement : immobilité qui coupe la trace toute seule ; 0 km/h la désactive">

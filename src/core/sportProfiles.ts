@@ -291,7 +291,10 @@ export interface SportProfile {
    * Surchargeable par activité ; `null` : pas de boucle (voile, fractionné, qui ne planifie pas).
    */
   loopReturnMaxRatio: number | null;
-  /** Cibles de recherche des meilleurs segments. */
+  /**
+   * Cibles de recherche des meilleurs segments. L'onglet « tops » est natif en
+   * voile et à vélo, générique à pied et en surf (`core/analysisTabs.ts`).
+   */
   topTargets: TopTarget[];
   /** Réglage de l'enregistrement GPS. */
   recording: RecordingProfile;
@@ -328,6 +331,44 @@ export const CYCLING_TOP_TARGETS: TopTarget[] = [
   { key: 'd10km', label: '10 km', value: 10000, kind: 'distance' },
   { key: 'd20km', label: '20 km', value: 20000, kind: 'distance' },
   { key: 'd40km', label: '40 km', value: 40000, kind: 'distance' },
+];
+
+/**
+ * Cibles de tops à pied, course et marche : les durées des tests (Cooper sur
+ * 12 min) et les distances des courses usuelles. Onglet caché tant que
+ * l'activité ne le coche pas dans Réglages.
+ */
+export const RUNNING_TOP_TARGETS: TopTarget[] = [
+  { key: 't1min', label: '1 min', value: 60, kind: 'time' },
+  { key: 't5min', label: '5 min', value: 300, kind: 'time' },
+  { key: 't12min', label: '12 min', value: 720, kind: 'time' },
+  { key: 't30min', label: '30 min', value: 1800, kind: 'time' },
+  { key: 't60min', label: '1 h', value: 3600, kind: 'time' },
+  { key: 'd400m', label: '400 m', value: 400, kind: 'distance' },
+  { key: 'd1km', label: '1 km', value: 1000, kind: 'distance' },
+  { key: 'd5km', label: '5 km', value: 5000, kind: 'distance' },
+  { key: 'd10km', label: '10 km', value: 10000, kind: 'distance' },
+  { key: 'dsemi', label: 'semi', value: 21097.5, kind: 'distance' },
+  { key: 'dmarathon', label: 'marathon', value: 42195, kind: 'distance' },
+];
+
+/**
+ * Cibles de tops de la famille surf (surf, paddle, SUP foil, kayak,
+ * downwind) : la pointe et la glisse d'une vague, les distances du kayak
+ * (200, 500, 1000 m) et celles d'un downwind. Onglet caché tant que
+ * l'activité ne le coche pas dans Réglages.
+ */
+export const SURF_TOP_TARGETS: TopTarget[] = [
+  { key: 't2s', label: '2 s', value: 2, kind: 'time' },
+  { key: 't10s', label: '10 s', value: 10, kind: 'time' },
+  { key: 't1min', label: '1 min', value: 60, kind: 'time' },
+  { key: 't10min', label: '10 min', value: 600, kind: 'time' },
+  { key: 'd100m', label: '100 m', value: 100, kind: 'distance' },
+  { key: 'd200m', label: '200 m', value: 200, kind: 'distance' },
+  { key: 'd500m', label: '500 m', value: 500, kind: 'distance' },
+  { key: 'd1km', label: '1 km', value: 1000, kind: 'distance' },
+  { key: 'd5km', label: '5 km', value: 5000, kind: 'distance' },
+  { key: 'd10km', label: '10 km', value: 10000, kind: 'distance' },
 ];
 
 /** Réglages communs aux supports à voile, surchargés au cas par cas. */
@@ -369,8 +410,7 @@ const RUNNING_PROFILE: SportProfile = {
   elevation: ELEVATION_PRESETS.route,
   terrainElevationStepM: 10,
   loopReturnMaxRatio: DEFAULT_LOOP_RETURN_MAX_RATIO,
-  // Les cibles de tops running restent à définir avec les métriques du module.
-  topTargets: [],
+  topTargets: RUNNING_TOP_TARGETS,
   recording: DEFAULT_RECORDING,
   intervals: INTERVAL_ANALYSIS,
   foilDefault: false,
@@ -429,7 +469,7 @@ const SURF_PROFILE: SportProfile = {
   elevation: ELEVATION_PRESETS.route,
   terrainElevationStepM: null,
   loopReturnMaxRatio: null,
-  topTargets: [],
+  topTargets: SURF_TOP_TARGETS,
   recording: { ...DEFAULT_RECORDING, autoPauseSpeedMs: 0 },
   intervals: null,
   jumps: null,

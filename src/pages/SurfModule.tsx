@@ -15,12 +15,13 @@ import { markReferenceLines } from '../components/markReferenceLines';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
-import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
+import SectionTabs from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import SurfSpanLayer, { type SurfSpanShown } from '../components/SurfSpanLayer';
+import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
@@ -29,11 +30,13 @@ import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
 import { sessionActivity } from '../core/activities';
+import { SURF_TABS, maskHiddenTabs, shownTabs, type SurfTab } from '../core/analysisTabs';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { defaultActiveThresholdOf, sportTreatment } from '../core/sportProfiles';
 import { isValidSpeedRange } from '../core/speedGradient';
+import { computeAllTopSegments } from '../core/topSegments';
 import { trackColorSegments } from '../core/trackColor';
 import {
   SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
@@ -48,7 +51,7 @@ import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useSessionPumping } from '../hooks/useSessionPumping';
-import { readStoredActivities, useSportSettings } from '../hooks/useSportSettings';
+import { effectiveTabChoices, readStoredActivities, useSportSettings } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
 import { measureFlightPumping, summarizePumping, type FlightPumping } from '../surfing/pumping';
 import type { SurfFlight, SurfPhase, SurfReturn, SurfSpan } from '../surfing/surfAnalysis';
@@ -60,28 +63,22 @@ import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfin
  * « général » porte la synthèse ; « vagues » le tableau des vagues ; « rame »
  * les remontées et le retour au pic ; « vols », sur foil seulement, les vols
  * qui relient plusieurs vagues en pompant, et leur pumping mesuré par les
- * capteurs si la session les a (point 104) ; « graphiques » la vitesse au fil
+ * capteurs si la session les a (point 104) ; « tops », si l'activité le coche
+ * dans Réglages (paddle, kayak, downwind), les meilleurs passages sur chaque
+ * durée ou distance ; « graphiques » la vitesse au fil
  * de la session, vagues en bandes ; « matériel et notes » le matériel (deux
  * champs nommés par activité dans Réglages), les conditions, l'appréciation et
- * le commentaire ; « réglages » ceux de la session.
+ * le commentaire ; « réglages » ceux de la session. Leur liste est `SURF_TABS`
+ * (`core/analysisTabs.ts`), où chaque activité choisit dans Réglages ceux qu'elle montre.
  */
-type SurfSection = 'general' | 'vagues' | 'rame' | 'vols' | 'graphiques' | 'notes' | 'reglages';
-
-const SURF_SECTIONS: SectionDefinition<SurfSection>[] = [
-  { key: 'general', label: 'général' },
-  { key: 'vagues', label: 'vagues' },
-  { key: 'rame', label: 'rame' },
-  { key: 'vols', label: 'vols' },
-  { key: 'graphiques', label: 'graphiques' },
-  { key: 'notes', label: 'matériel et notes' },
-  { key: 'reglages', label: 'réglages' },
-];
+type SurfSection = SurfTab;
 
 const SURF_SECTION_DEFAULTS: Record<SurfSection, boolean> = {
   general: true,
   vagues: false,
   rame: false,
   vols: false,
+  tops: false,
   graphiques: false,
   notes: false,
   reglages: false,
@@ -222,8 +219,11 @@ function SurfModule() {
   const surfProfile = surfProfileOf(profile);
   const waveThreshold = surfProfile ? effectiveWaveThreshold(surfProfile.surf, draft.edits.waveThreshold) : 0;
 
-  const { open, toggle } = useOpenSections<SurfSection>(STORAGE_ID, SURF_SECTION_DEFAULTS);
-  const sections = useMemo(() => SURF_SECTIONS.filter((s) => s.key !== 'vols' || foil), [foil]);
+  const { open: storedOpen, toggle } = useOpenSections<SurfSection>(STORAGE_ID, SURF_SECTION_DEFAULTS);
+  // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
+  const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
+  const open = useMemo(() => maskHiddenTabs(storedOpen, SURF_TABS, tabChoices), [storedOpen, tabChoices]);
+  const sections = useMemo(() => shownTabs(SURF_TABS, tabChoices).filter((s) => s.key !== 'vols' || foil), [tabChoices, foil]);
   const highlight = useMapHighlight(open);
   const [waveSort, setWaveSort] = useState<WaveSort>('ordre');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -243,6 +243,14 @@ function SurfModule() {
   );
   const summary = result?.summary ?? null;
   const analysis = result?.analysis ?? null;
+  /** Meilleurs segments, calculés à l'ouverture de leur onglet. */
+  const tops = useMemo(
+    () => (open.tops && track.length > 1
+      ? computeAllTopSegments(track, cumulative, profile.topTargets, (ms) => toDisplaySpeed(ms, speedUnit), { decimals: 1 })
+      : null),
+    [open.tops, track, cumulative, profile.topTargets, speedUnit]
+  );
+  const topShown = highlight.shownIn('tops');
   const totalDistanceM = cumulative.cumDist[cumulative.cumDist.length - 1] ?? 0;
 
   /** Bornes du dégradé de couleur, en m/s : celles de la session, sinon de Réglages, sinon le défaut du surf. */
@@ -361,6 +369,7 @@ function SurfModule() {
       <OsmTileLayer />
       <TrackSegmentsLayer segments={mapSegments} weight={5} />
       <SurfSpanLayer track={track} spans={shownSpans} />
+      <TopsHighlight tops={tops} selected={topShown} />
       <SessionMarksLayer located={marks.located} shownMs={shownMark} />
       {hoveredIndex !== null && track[hoveredIndex] && <HoverMarker position={[track[hoveredIndex].lat, track[hoveredIndex].lon]} />}
     </>
@@ -750,6 +759,13 @@ function SurfModule() {
                 )}
                 {sensors.status === 'loading' && <div style={noteStyle}>Lecture des capteurs…</div>}
                 {sensors.error && <div style={noteStyle}>Capteurs : {sensors.error}</div>}
+              </ResizablePanel>
+            )}
+
+            {open.tops && tops && (
+              <ResizablePanel id={panelId('tops')} style={panelStyle}>
+                <TopsPanel targets={profile.topTargets} tops={tops} unit={speedUnit} selected={topShown}
+                  onSelect={(key) => highlight.show('tops', key)} accent={ACCENT} open={open.tops} onToggle={() => toggle('tops')} />
               </ResizablePanel>
             )}
 

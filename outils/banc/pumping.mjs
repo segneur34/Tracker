@@ -3,7 +3,7 @@
 // Sur un profil neuf, sans réseau, serveur de développement (le script importe `/src/...` dans la page).
 // Le script fabrique lui-même, dans la page, une session de surf foil de quatre vols et ses capteurs
 // (`.imu` synthétique, `core/imuSynthetic.ts` : chocs de l'eau hors des vols, pumping à 1,5 Hz en vol), et vérifie :
-//  1. Réglages, carte « Surf foil » : la case « Pumping foil » (partie Analyse), cochée, puis le résumé de la carte ;
+//  1. Réglages, carte « Surf foil » : la case « Pumping foil » (partie Onglet analyse), cochée, puis le résumé de la carte ;
 //     carte « Surf » (sans foil) : pas de case ;
 //  2. l'import de la session avec ses capteurs, puis l'analyse : Foil et Pumping cochés pour la session (onglet
 //     réglages), onglet « vols » : coups, fréquence (vers 90 /min), distance par coup, podium des 3 plus longs vols avec
@@ -111,7 +111,7 @@ for (const name of ['Surf foil', 'Surf']) {
   await setCardOpen(name, true);
   await wait(300);
 }
-await clickText('Analyse', '.settings-activity button');
+await clickText('Onglet analyse', '.settings-activity button');
 await wait(300);
 const rows = (name) => evaluate(`[...(${card(name)}?.querySelectorAll('.settings-row__label') ?? [])].map((l) => l.textContent).join(', ')`);
 const foilRows = await rows('Surf foil');

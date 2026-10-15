@@ -92,7 +92,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 
   Il dure environ 2 min.
 - `charge.mjs <port> [<dossier des captures>]` : charge portée en course et poids du vélo par session (lot 4 des demandes du 10-14/10), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX, deux côtes à 5 %, et pose un poids de 70 kg. Il vérifie :
-  - dans Réglages, partie Analyse : le champ « Charge portée » sur Course et Fractionné à pied, pas sur Route ; 5 kg rangés pour Course ;
+  - dans Réglages, partie Onglet analyse : le champ « Charge portée » sur Course et Fractionné à pied, pas sur Route ; 5 kg rangés pour Course ;
   - une course importée : énergie et note avec la charge de l'activité, puis 12 kg dans l'onglet réglages (énergie × 82/75), barre « charge », « Enregistrer la session », fiche relue, rechargement, « Revenir à l'activité » puis Annuler ;
   - une sortie à vélo importée : 20 kg de vélo et de bagages, puissance et masse totale recalculées, fiche relue ;
   - à 390×844, aucun débordement.
@@ -108,11 +108,19 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 
   Il dure environ 1 min 30.
 - `materiel.mjs <port> [<dossier des captures>]` : onglet « matériel et notes » hors voile (lot 2 des demandes du 14/10, seconde série), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX et les importe par la page. Il vérifie :
-  - dans Réglages, partie Analyse : la ligne « Matériel » sur Course, Route et Surf, pas sur Voile ; « Chaussures » et « Sac » rangés pour Course ;
+  - dans Réglages, partie Onglet analyse : la ligne « Matériel » sur Course, Route et Surf, pas sur Voile ; « Chaussures » et « Sac » rangés pour Course ;
   - une course, une sortie à vélo et une session de surf : l'onglet juste avant « réglages », les intitulés de l'activité (ceux par défaut à vélo et en surf), ni vent ni plan d'eau, saisie du matériel, des conditions et de l'appréciation, partie « notes » dans la barre, « Enregistrer la session », fiche relue, rechargement ;
   - à 390×844, aucun débordement.
 
   Il dure environ 1 min et finit par « Tout passe. » ou le nombre d'échecs. La voile se vérifie à part, par `bench.mjs` et `DUMP` avant et après : texte identique.
+- `onglets.mjs <port> [<dossier des captures>]` : onglets choisis par activité et « tops » à pied et en surf (lot 3 des demandes du 14/10, seconde série), sur un profil neuf, sans réseau. Le script écrit lui-même une course, une sortie à vélo et une session de surf, prend celle de voile de `make-gpx.mjs`, et les importe par la page. Il :
+  - ouvre tous les onglets de chaque analyse et, avec `DUMP=x`, relève leur texte dans `x-course.txt`, `x-velo.txt`, `x-surf.txt` et `x-voile.txt`. Avec `RELEVE_SEUL=1`, il s'arrête là : c'est le relevé à faire sur la version d'avant (un `git worktree` servi sur un autre port), pour un texte identique sans réglage ;
+  - vérifie dans Réglages, partie Onglet analyse, la ligne « Onglets » de Voile, Course, Route, Fractionné à pied, Surf et Surf foil : « tops » enfoncé en voile et à vélo, relâché à pied et en surf, « vols » sur foil seulement, pas de « sauts » en fractionné ;
+  - coche « tops » en surf et en course, cache « vagues » en surf et « vmg » en voile, et vérifie ce qui est rangé ;
+  - en surf : « tops » entre « rame » et « graphiques », le panneau « Vagues » absent bien que laissé ouvert, le tableau, « Voir » qui trace le podium, la surbrillance effacée à la fermeture de l'onglet et pas ramenée ; en course : « tops » et ses distances (400 m vers 18 km/h) ; en voile : ni onglet ni panneau VMG ;
+  - à 390×844 : Réglages et le surf sans débordement ; puis « Défaut » de la carte Surf, qui efface ses choix et garde ceux des autres.
+
+  Il dure environ 2 min et finit par « Tout passe. » ou le nombre d'échecs. Il appelle `Network.enable` : sans lui, le blocage par hôte ne tient pas toujours, Overpass répond (504) et le relevé du vélo change.
 - `reglages.mjs <port> [<dossier des captures>]` : un fichier de réglages par appareil (point 90), sur un profil neuf, sans réseau, dans la mémoire du navigateur. Il vérifie :
   - `reglages/pc.json` écrit au premier lancement ;
   - le passage depuis un ancien `reglages.json` plus récent : repris une dernière fois, puis retiré ;

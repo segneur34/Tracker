@@ -13,7 +13,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
-import { effectiveJumpSettings, readStoredActivities } from '../hooks/useSportSettings';
+import { effectiveJumpSettings, effectiveTabChoices, readStoredActivities } from '../hooks/useSportSettings';
 import { useSessionJumps } from '../hooks/useSessionJumps';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useSessionMarks } from '../hooks/useSessionMarks';
@@ -21,6 +21,7 @@ import { buildCumulativeTrack } from '../core/sessionStats';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useMapHighlight } from '../hooks/useMapHighlight';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
+import { SAILING_TABS, maskHiddenTabs, shownTabs, type SailingTab } from '../core/analysisTabs';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { trackIndexAtTime } from '../core/jumps';
 import { useChartZoom } from '../hooks/useChartZoom';
@@ -44,7 +45,7 @@ import HoverMarker from '../components/HoverMarker';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
-import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
+import SectionTabs from '../components/SectionTabs';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
@@ -71,23 +72,11 @@ const SAILING_GEAR_FIELDS_FOIL: GearField[] = [
  * Onglets du module, tous sous la carte, dans l'ordre
  * voulu par l'utilisateur. Le premier, « général », porte les chiffres globaux
  * et le vent : seul ouvert par défaut, il se replie pour comparer tableaux et
- * carte. Les réglages de la session sont dans le dernier. Pour en ajouter un : une entrée ici, une valeur par défaut dans
- * `SAILING_PANEL_DEFAULTS`, et un bloc `{open.maCle && (...)}` dans la colonne.
+ * carte. Les réglages de la session sont dans le dernier. Leur liste est `SAILING_TABS`
+ * (`core/analysisTabs.ts`), où chaque activité choisit dans Réglages ceux qu'elle montre. Pour en ajouter un :
+ * une entrée là, une valeur par défaut dans `SAILING_PANEL_DEFAULTS`, et un bloc `{open.maCle && (...)}` dans la colonne.
  */
-type SailingPanel = 'general' | 'tops' | 'manoeuvres' | 'graphiques' | 'vmg' | 'sauts' | 'vent' | 'matos' | 'reglages';
-
-const SAILING_PANELS: SectionDefinition<SailingPanel>[] = [
-  { key: 'general', label: 'général' },
-  { key: 'tops', label: 'tops' },
-  { key: 'manoeuvres', label: 'manœuvres' },
-  { key: 'graphiques', label: 'graphiques' },
-  { key: 'vmg', label: 'vmg' },
-  // Seulement pour une session aux sauts mesurés par les capteurs du téléphone.
-  { key: 'sauts', label: 'sauts' },
-  { key: 'vent', label: 'vent' },
-  { key: 'matos', label: 'matos et conditions' },
-  { key: 'reglages', label: 'réglages' },
-];
+type SailingPanel = SailingTab;
 
 const SAILING_PANEL_DEFAULTS: Record<SailingPanel, boolean> = {
   general: true,
@@ -251,13 +240,19 @@ function SailingModule() {
     return jumpsState.jumps.filter((j) => j.heightM >= jumpMinHeightM && (j.speedMs === null || j.speedMs >= thresholdMs));
   }, [jumpsState.jumps, jumpMinHeightM, activeThresholdKn]);
   const jumpsVisible = jumpsState.status !== 'none';
-  const sailingPanels = useMemo(() => SAILING_PANELS.filter((p) => p.key !== 'sauts' || jumpsVisible), [jumpsVisible]);
+  // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
+  const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
+  const sailingPanels = useMemo(
+    () => shownTabs(SAILING_TABS, tabChoices).filter((p) => p.key !== 'sauts' || jumpsVisible),
+    [tabChoices, jumpsVisible]
+  );
 
   const notes = edits.notes;
   const setNotes = draft.updateNotes;
   /** Support sur foil de la session : le sien s'il est réglé, sinon celui de l'activité. */
   const foil = edits.foil ?? activityFoil;
-  const { open, toggle } = useOpenSections<SailingPanel>('sailing-onglets', SAILING_PANEL_DEFAULTS);
+  const { open: storedOpen, toggle } = useOpenSections<SailingPanel>('sailing-onglets', SAILING_PANEL_DEFAULTS);
+  const open = useMemo(() => maskHiddenTabs(storedOpen, SAILING_TABS, tabChoices), [storedOpen, tabChoices]);
   /** Une seule surbrillance sur la carte, effacée quand son onglet se ferme (`useMapHighlight`). */
   const highlight = useMapHighlight(open);
   /** Top montré : de vitesse (onglet tops, `t2s`…) ou de VMG (onglet VMG, `vmgUpwind`, `vmgDownwind`), ou `none`. */

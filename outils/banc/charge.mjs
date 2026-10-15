@@ -2,7 +2,7 @@
 // Usage : node charge.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Dure environ 1 min. Le script :
 //  1. pose un poids de 70 kg (bloc Pratiquant) et ouvre, dans Réglages, les cartes Course, Fractionné à pied et
-//     Route, partie Analyse : le champ « Charge portée » n'est que dans les deux premières ; 5 kg sur Course ;
+//     Route, partie Onglet analyse : le champ « Charge portée » n'est que dans les deux premières ; 5 kg sur Course ;
 //  2. importe une course en côte : énergie avec la charge de l'activité (note), puis 12 kg dans l'onglet réglages,
 //     énergie recalculée, partie « charge » dans la barre, « Enregistrer la session », fiche relue, rechargement ;
 //  3. importe une sortie à vélo en côte : poids du vélo et des bagages à 20 kg, puissance recalculée, fiche relue ;

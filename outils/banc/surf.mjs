@@ -138,7 +138,7 @@ for (const name of ['Surf foil', 'Surf']) {
   await evaluate(`[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent === ${JSON.stringify(name)})?.querySelector('.settings-activity__toggle').click()`);
   await wait(300);
 }
-for (const part of ['Affichage', 'Analyse']) await clickText(part, '.settings-activity button');
+for (const part of ['Affichage', 'Onglet analyse']) await clickText(part, '.settings-activity button');
 await wait(300);
 console.log('carte Surf ouverte :', await evaluate(`[...document.querySelectorAll('.settings-activity')].filter((c) => c.querySelector('.settings-activity__body')).map((c) => [...c.querySelectorAll('.settings-row__label')].map((l) => l.textContent).join(', ')).join(' || ')`));
 await shoot('surf-reglages');

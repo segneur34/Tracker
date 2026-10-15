@@ -9,6 +9,7 @@ import {
 import { computeAllTopSegments, computeTopSegments } from './topSegments';
 import type { TopTarget, TrackPoint } from './types';
 import { msToKnots } from './units';
+import { RUNNING_TOP_TARGETS, SURF_TOP_TARGETS } from './sportProfiles';
 
 /**
  * Trace synthétique : vitesse imposée point par point, cadence réglable.
@@ -245,5 +246,52 @@ describe('buildBaseSessionStats, vitesses moyennes', () => {
 
     expect(stats.avgSpeedMs).toBeCloseTo(3, 6);
     expect(stats.activeAvgSpeedMs).toBeNull();
+  });
+});
+
+describe('cibles des tops à pied et en surf (onglet générique)', () => {
+  /** Vitesse par seconde, répétée `hz` fois : la même session à 1 Hz et à 5 Hz. */
+  const atRate = (perSecond: number[], hz: number) => buildTrack(perSecond.flatMap((v) => new Array(hz).fill(v)), 1 / hz);
+  const kmh = (ms: number) => ms * 3.6;
+
+  // Surf : 20 min de rame à 1,2 m/s, une vague de 12 s à 5 m/s, dont 2 s à 7 m/s.
+  const surfSeconds = Array.from({ length: 1200 }, (_, t) => (t >= 305 && t < 307 ? 7 : t >= 300 && t < 312 ? 5 : 1.2));
+  // Course : 40 min à 3 m/s, dont 80 s à 5 m/s (400 m).
+  const runSeconds = Array.from({ length: 2400 }, (_, t) => (t >= 600 && t < 680 ? 5 : 3));
+
+  for (const [name, seconds, targets] of [
+    ['surf', surfSeconds, SURF_TOP_TARGETS],
+    ['course', runSeconds, RUNNING_TOP_TARGETS],
+  ] as const) {
+    // Le meilleur passage est le même ; les suivants, sans chevauchement, se
+    // placent à la fraction de seconde près au bord d'une vague : seule leur présence est comparée.
+    it(`${name} : même meilleur passage à 1 Hz et à 5 Hz`, () => {
+      const one = atRate(seconds, 1);
+      const five = atRate(seconds, 5);
+      const a = computeAllTopSegments(one, buildCumulativeTrack(one), targets, kmh);
+      const b = computeAllTopSegments(five, buildCumulativeTrack(five), targets, kmh);
+      for (const target of targets) {
+        expect(b[target.key][0].val, target.key).toBe(a[target.key][0].val);
+        expect(b[target.key].map((top) => top.val === '-'), target.key).toEqual(a[target.key].map((top) => top.val === '-'));
+      }
+    });
+  }
+
+  it('surf : la pointe de la vague sur 2 s, 5 km jamais atteints', () => {
+    const track = atRate(surfSeconds, 1);
+    const tops = computeAllTopSegments(track, buildCumulativeTrack(track), SURF_TOP_TARGETS, kmh);
+    expect(parseFloat(tops.t2s[0].val)).toBeCloseTo(kmh(7), 0);
+    expect(parseFloat(tops.t10s[0].val)).toBeGreaterThan(kmh(5) - 0.5);
+    expect(tops.d1km[0].val).not.toBe('-');
+    expect(tops.d5km[0].val).toBe('-');
+  });
+
+  it('course : les 400 m rapides, ni semi ni marathon', () => {
+    const track = atRate(runSeconds, 1);
+    const tops = computeAllTopSegments(track, buildCumulativeTrack(track), RUNNING_TOP_TARGETS, kmh);
+    expect(parseFloat(tops.d400m[0].val)).toBeCloseTo(kmh(5), 0);
+    expect(parseFloat(tops.t12min[0].val)).toBeGreaterThan(kmh(3));
+    expect(tops.dsemi[0].val).toBe('-');
+    expect(tops.dmarathon[0].val).toBe('-');
   });
 });

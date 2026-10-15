@@ -1,7 +1,7 @@
 // Banc de test : onglet « matériel et notes » dans toutes les activités (lot 2 des demandes du 14/10, seconde série).
 // Usage : node materiel.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Dure environ 1 min. Le script :
-//  1. ouvre dans Réglages les cartes Voile, Course, Route et Surf, partie Analyse : la ligne « Matériel » n'est
+//  1. ouvre dans Réglages les cartes Voile, Course, Route et Surf, partie Onglet analyse : la ligne « Matériel » n'est
 //     pas en Voile ; intitulés « Chaussures » et « Sac » rangés pour Course ;
 //  2. importe une course : onglet « matériel et notes » juste avant « réglages », champs sous les intitulés de
 //     Course, saisie du matériel, des conditions et de l'appréciation, partie « notes » dans la barre,

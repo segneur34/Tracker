@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useId, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useId, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Polyline } from 'react-leaflet';
 import OsmTileLayer from '../components/OsmTileLayer';
@@ -18,8 +18,8 @@ import JumpsPanel from '../components/JumpsPanel';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
-import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
-import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
+import { HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
+import SectionTabs from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SessionWeightField from '../components/SessionWeightField';
@@ -30,6 +30,7 @@ import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import SurfaceBar from '../components/SurfaceBar';
 import SurfaceHighlight from '../components/SurfaceHighlight';
 import SurfaceLayer from '../components/SurfaceLayer';
+import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import HoverMarker from '../components/HoverMarker';
@@ -39,6 +40,7 @@ import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
+import { LAND_TABS, maskHiddenTabs, shownTabs, type LandTab } from '../core/analysisTabs';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
@@ -71,7 +73,7 @@ import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import { useTerrainElevation, type TerrainElevationStatus } from '../hooks/useTerrainElevation';
 import {
-  TERRAIN_LABEL, effectiveJumpSettings, isKnownTerrain, readStoredActivities, useSportSettings, type TerrainType,
+  TERRAIN_LABEL, effectiveJumpSettings, effectiveTabChoices, isKnownTerrain, readStoredActivities, useSportSettings, type TerrainType,
 } from '../hooks/useSportSettings';
 import {
   averagePace, computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
@@ -99,14 +101,15 @@ const ENERGY_POWER_SMOOTHING_S = 60;
 const ENERGY_CHART_HEIGHT_PX = 200;
 
 /**
- * Sections du module. Pour en ajouter une : une entrée ici, une valeur par
- * défaut dans `LAND_SECTION_DEFAULTS`, et un bloc `{open.maCle && (...)}`
- * dans le rendu. Le premier onglet, « général », porte la synthèse (repliable
+ * Sections du module, rangées dans `LAND_TABS` (`core/analysisTabs.ts`), où
+ * chaque activité choisit dans Réglages celles qu'elle montre. Pour en ajouter
+ * une : une entrée là, une valeur par défaut dans `LAND_SECTION_DEFAULTS`, et
+ * un bloc `{open.maCle && (...)}` dans le rendu. Le premier onglet, « général », porte la synthèse (repliable
  * pour gagner de la place, comme en voile), le dernier les réglages de la
  * session. La carte n'en fait pas partie : comme en voile, elle
  * s'affiche en permanence, jamais derrière un onglet qu'on pourrait fermer
- * et oublier rouvert. « tops » n'apparaît que si le calcul a des cibles de
- * meilleurs segments (le vélo, pas la course). « surface » demande les voies à
+ * et oublier rouvert. « tops » est natif à vélo ; à pied, il n'apparaît que
+ * si l'activité le coche dans Réglages (course, marche). « surface » demande les voies à
  * OpenStreetMap à sa première ouverture : fermé par défaut, il ne coûte rien
  * tant qu'on ne l'ouvre pas. À vélo, elles sont demandées dès l'ouverture de
  * l'analyse, pour le roulement de l'énergie (`surfacesAtOpening`).
@@ -118,20 +121,7 @@ const ENERGY_CHART_HEIGHT_PX = 200;
  * matériel (deux champs nommés par activité dans Réglages), les conditions,
  * l'appréciation et le commentaire, comme « matos et conditions » en voile.
  */
-type LandSection = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'sauts' | 'notes' | 'reglages';
-
-const LAND_SECTIONS: SectionDefinition<LandSection>[] = [
-  { key: 'general', label: 'général' },
-  { key: 'fractionne', label: 'fractionné' },
-  { key: 'tops', label: 'tops' },
-  { key: 'zones', label: 'zones de pente' },
-  { key: 'surface', label: 'surface' },
-  { key: 'energie', label: 'énergie' },
-  { key: 'graphiques', label: 'vitesse et altitude' },
-  { key: 'sauts', label: 'sauts' },
-  { key: 'notes', label: 'matériel et notes' },
-  { key: 'reglages', label: 'réglages' },
-];
+type LandSection = LandTab;
 
 const LAND_SECTION_DEFAULTS: Record<LandSection, boolean> = {
   general: true,
@@ -273,7 +263,11 @@ function LandModule({ family }: { family: LandFamily }) {
   const [allActivities] = useState(readStoredActivities);
   const changeSessionActivity = useChangeSessionActivity(family, setActivity);
 
-  const { open, toggle } = useOpenSections<LandSection>(page.storageId, LAND_SECTION_DEFAULTS);
+  const { open: storedOpen, toggle } = useOpenSections<LandSection>(page.storageId, LAND_SECTION_DEFAULTS);
+  // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
+  const landTabs = LAND_TABS[model.treatment];
+  const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
+  const open = useMemo(() => maskHiddenTabs(storedOpen, landTabs, tabChoices), [storedOpen, landTabs, tabChoices]);
   /** Répétitions retrouvées dans la vitesse : en famille Fractionné, pour une session faite sans le compteur. */
   const detectionOn = family === 'fractionne' && sessionIntervals.length === 0 && profile.intervals !== null;
   const hasIntervals = sessionIntervals.length > 0 || detectionOn;
@@ -288,9 +282,9 @@ function LandModule({ family }: { family: LandFamily }) {
   );
   const jumpsVisible = jumpsState.status !== 'none';
   const sections = useMemo(
-    () => LAND_SECTIONS.filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals)
+    () => shownTabs(landTabs, tabChoices).filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals)
       && (s.key !== 'sauts' || jumpsVisible)),
-    [profile.topTargets, hasIntervals, jumpsVisible]
+    [landTabs, tabChoices, profile.topTargets, hasIntervals, jumpsVisible]
   );
   // Une seule surbrillance sur la carte : un top, une zone de pente, une
   // répétition ou un revêtement ; choisir l'une retire les autres, fermer son onglet l'efface.
@@ -479,7 +473,6 @@ function LandModule({ family }: { family: LandFamily }) {
       : null),
     [profile.topTargets, gpx.track, cumulative, open.tops, topUnit]
   );
-  const selectedTopPaths = selectedTop !== null && tops ? tops[selectedTop] ?? [] : [];
 
   /**
    * Répétitions retrouvées dans la vitesse (famille Fractionné, sans
@@ -666,9 +659,7 @@ function LandModule({ family }: { family: LandFamily }) {
       {selectedLapPath.length > 1 && (
         <Polyline key={`fractionne-${selectedLap}`} positions={selectedLapPath} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       )}
-      {selectedTopPaths.map((top, idx) => top.path.length > 1 && (
-        <Polyline key={`top-${selectedTop}-${idx}`} positions={top.path} pathOptions={{ color: HIGHLIGHT_PODIUM_COLORS[idx] ?? HIGHLIGHT_PODIUM_COLORS[2], weight: 10, opacity: 0.8 }} />
-      ))}
+      <TopsHighlight tops={tops} selected={selectedTop} />
       {jumpsVisible && <JumpMapLayer track={gpx.track} jumps={shownJumps} shownJump={shownJump} podiumShown={jumpPodiumShown} />}
       <SessionMarksLayer located={marks.located} shownMs={shownMark} />
       {hoveredIndex !== null && gpx.track[hoveredIndex] && (
@@ -758,48 +749,8 @@ function LandModule({ family }: { family: LandFamily }) {
 
             {open.tops && tops && (
               <ResizablePanel id={panelId('tops')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Meilleurs segments" open={open.tops} onToggle={() => toggle('tops')} />
-                </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                      <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Sur</th>
-                      {['1er', '2e', '3e'].map((rank, idx) => (
-                        <th key={rank} style={{ padding: '0.4em 0.6em', color: HIGHLIGHT_PODIUM_COLORS[idx] }}>{rank} ({SPEED_UNIT_LABEL[topUnit]})</th>
-                      ))}
-                      <th style={{ padding: '0.4em 0.6em' }}>Carte</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(['time', 'distance'] as const).map((kind) => (
-                      <Fragment key={kind}>
-                        {profile.topTargets.filter((t) => t.kind === kind).map((target) => {
-                          const values = tops[target.key] ?? [];
-                          const reached = values.some((v) => v.path.length > 1);
-                          const shown = selectedTop === target.key;
-                          return (
-                            <tr key={target.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: reached ? 1 : 0.45 }}>
-                              <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{target.label}</td>
-                              {[0, 1, 2].map((idx) => (
-                                <td key={idx} style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: idx === 0 ? 'bold' : 'normal' }}>{values[idx]?.val ?? '-'}</td>
-                              ))}
-                              <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
-                                <button type="button" disabled={!reached} onClick={() => setSelectedTop(shown ? null : target.key)}
-                                  style={{ padding: '2px 8px', fontSize: '11px', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? page.accent : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
-                                  {shown ? 'Masquer' : 'Voir'}
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </Fragment>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
-                  Vitesse moyenne du meilleur passage sur chaque durée ou distance, sans chevauchement, pauses comprises.
-                </div>
+                <TopsPanel targets={profile.topTargets} tops={tops} unit={topUnit} selected={selectedTop} onSelect={setSelectedTop}
+                  accent={page.accent} open={open.tops} onToggle={() => toggle('tops')} />
               </ResizablePanel>
             )}
 

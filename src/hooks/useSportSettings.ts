@@ -7,6 +7,7 @@ import {
   ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, defaultActiveThresholdOf, getSportProfile, sportTreatment, type ElevationProfile,
   type RecordingProfile, type SportFamily, type Treatment,
 } from '../core/sportProfiles';
+import { sanitizeTabChoices, type TabChoices } from '../core/analysisTabs';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { DISTANCE_UNIT_LABEL, SPEED_UNIT_LABEL, type DistanceUnit, type SpeedUnit } from '../core/units';
@@ -129,6 +130,11 @@ export interface StoredSettings {
   carriedLoads?: ByActivity<number>;
   /** Intitulés des deux champs de matériel des notes (hors voile) ; un texte vide : celui par défaut. */
   gearLabels?: ByActivity<[string, string]>;
+  /**
+   * Onglets des analyses montrés ou cachés à l'écart de leur défaut, par clé
+   * d'onglet (`core/analysisTabs.ts`) ; absents : ceux du module, sans les génériques.
+   */
+  tabs?: ByActivity<Record<string, boolean>>;
   /** Niveau qui donne la vitesse du temps estimé d'un itinéraire (course, vélo) ; absent : moyen. */
   paceLevels?: ByActivity<PaceLevel>;
   /** Vitesse sur le plat du niveau « Personnalisé », en m/s. */
@@ -503,6 +509,9 @@ export const effectivePumping = (activity: Activity): boolean | null => resolveP
 /** Réglages des sauts d'une activité, `null` si son calcul ne les mesure pas. Utilisable hors composant. */
 export const effectiveJumpSettings = (activity: Activity): JumpSettings | null => resolveJumps(readStoredSettings(), activity);
 
+/** Onglets choisis pour les analyses d'une activité, `null` sans choix. Utilisable hors composant. */
+export const effectiveTabChoices = (activity: Activity): TabChoices | null => sanitizeTabChoices(readStoredSettings().tabs?.[activity.id]);
+
 /**
  * Unité de vitesse effective d'une activité : celle choisie dans Réglages,
  * sinon celle du profil. Utilisable hors composant.
@@ -671,6 +680,8 @@ export interface SportSettingsView {
   carriedLoad: number | null;
   /** Intitulés de matériel réglés (hors voile), un texte vide pour celui par défaut ; `null` sans réglage. */
   gearLabels: [string, string] | null;
+  /** Onglets des analyses montrés ou cachés à l'écart de leur défaut ; `null` sans choix. */
+  tabs: TabChoices | null;
   /** Niveau du temps estimé (course, vélo) ; moyen par défaut. */
   paceLevel: PaceLevel;
   /** Vitesse sur le plat saisie pour « Personnalisé », en m/s, ou `null`. */
@@ -684,7 +695,7 @@ export interface SportSettingsView {
 
 /** Tables de réglages rangées par activité. */
 const PER_ACTIVITY_KEYS = [
-  'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'gearLabels',
+  'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'gearLabels', 'tabs',
   'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
 ] as const;
 
@@ -772,6 +783,7 @@ export const useAllSportSettings = () => {
         bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
         carriedLoad: isValidCarriedLoad(carriedLoad) ? carriedLoad : null,
         gearLabels: sanitizeGearLabels(stored.gearLabels?.[id]),
+        tabs: sanitizeTabChoices(stored.tabs?.[id]),
         paceLevel: isPaceLevel(paceLevel) ? paceLevel : DEFAULT_PACE_LEVEL,
         customFlatSpeedMs: typeof customSpeed === 'number' && isFinite(customSpeed) ? customSpeed : null,
         wayTypes: ways.wayTypes,
@@ -784,7 +796,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'gearLabels' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'gearLabels' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -896,6 +908,12 @@ export const useAllSportSettings = () => {
           const labels = value === null ? null : sanitizeGearLabels(value);
           if (value !== null && !Array.isArray(value)) return;
           next.gearLabels = put(stored.gearLabels, labels);
+          break;
+        }
+        case 'tabs': {
+          const choices = value === null ? null : sanitizeTabChoices(value);
+          if (value !== null && choices === null) return;
+          next.tabs = put(stored.tabs, choices === null ? null : { ...choices });
           break;
         }
         case 'paceLevel':
