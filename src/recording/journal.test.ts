@@ -25,6 +25,16 @@ describe('journal', () => {
     })));
   });
 
+  it("garde la fréquence cardiaque, et relit les lignes d'avant elle", () => {
+    const withHr: LocationFix = { timeMs: T0, lat: 43, lon: 3, heartRateBpm: 151 };
+    expect(journalFixLine(withHr)).toBe(`[${T0},43,3,null,null,null,null,151]
+`);
+    expect(journalFixLine({ timeMs: T0, lat: 43, lon: 3 })).toBe(`[${T0},43,3,null,null,null,null]
+`);
+    const parsed = parseJournal(journalOf([withHr, { timeMs: T0 + 1000, lat: 43, lon: 3 }]));
+    expect(parsed.fixes.map((f) => f.heartRateBpm)).toEqual([151, undefined]);
+  });
+
   it('ignore une dernière ligne tronquée par un arrêt brutal', () => {
     const text = journalOf(fixes);
     const truncated = text.slice(0, text.length - 12);

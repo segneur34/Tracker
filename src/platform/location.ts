@@ -25,6 +25,8 @@ export interface LocationFix {
   speedMs?: number;
   /** Cap fourni par le système, en degrés, 0 = nord, sens horaire. */
   bearingDeg?: number;
+  /** Fréquence cardiaque de la ceinture, en battements par minute, jointe par l'enregistreur. */
+  heartRateBpm?: number;
 }
 
 export interface LocationWatchOptions {

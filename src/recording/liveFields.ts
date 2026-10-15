@@ -17,7 +17,7 @@ export type LiveFieldKey =
   | 'speed' | 'average' | 'max' | 'recentDistanceSpeed' | 'lastDistance' | 'distance' | 'duration' | 'clock'
   | 'remaining' | 'remainingTime'
   | 'recentTopShort' | 'recentTopLong' | 'heading' | 'legAverage' | 'markDistance' | 'markBearing'
-  | 'grade' | 'gain' | 'recentDistanceGain' | 'loss' | 'climbRate' | 'power' | 'effort';
+  | 'grade' | 'gain' | 'recentDistanceGain' | 'loss' | 'climbRate' | 'power' | 'effort' | 'heartRate';
 
 const ALL: Treatment[] = ['voile', 'course', 'velo', 'surf'];
 const LAND: Treatment[] = ['course', 'velo'];
@@ -42,6 +42,7 @@ const LIVE_FIELD_TREATMENTS: Record<LiveFieldKey, readonly Treatment[]> = {
   climbRate: LAND,
   power: LAND,
   effort: LAND,
+  heartRate: LAND,
   distance: ALL,
   duration: ALL,
   clock: ALL,
@@ -130,6 +131,7 @@ export const liveFieldLabel = (key: LiveFieldKey, { speedUnit, distanceUnit }: L
     case 'climbRate': return 'Vitesse ascensionnelle';
     case 'power': return `Puissance (${LIVE_STATS_DEFAULTS.powerWindowS} s)`;
     case 'effort': return 'Énergie';
+    case 'heartRate': return 'Fréquence cardiaque';
   }
 };
 
@@ -160,6 +162,7 @@ export const liveFieldShortLabel = (key: LiveFieldKey, { speedUnit, distanceUnit
     case 'climbRate': return 'Asc.';
     case 'power': return 'Puiss.';
     case 'effort': return 'Énergie';
+    case 'heartRate': return 'FC';
   }
 };
 
@@ -176,6 +179,8 @@ export interface LiveFieldContext extends LiveFieldUnits {
   /** Distance et cap vers la balise visée d'un parcours de voile ; `null` sans guidage. */
   markDistanceM: number | null;
   markBearingDeg: number | null;
+  /** Fréquence de la ceinture cardio, en battements par minute ; `null` sans ceinture ou sans mesure. */
+  heartRateBpm: number | null;
 }
 
 const NONE = '—';
@@ -225,5 +230,6 @@ export const liveFieldValue = (key: LiveFieldKey, ctx: LiveFieldContext): string
       const kcal = stats.effortJ / J_PER_KCAL;
       return stats.energyPerKg ? `${kcal.toFixed(1)} kcal/kg` : `${Math.round(kcal)} kcal`;
     }
+    case 'heartRate': return ctx.heartRateBpm === null ? NONE : `${Math.round(ctx.heartRateBpm)} bpm`;
   }
 };

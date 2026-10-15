@@ -33,6 +33,7 @@ import {
 import type { WayType } from '../planning/brouterProfile';
 import { WAY_TYPE_LABEL } from '../planning/route';
 import BeepCurveEditor from '../components/BeepCurveEditor';
+import HeartRateBeltSettings from '../components/HeartRateBeltSettings';
 import { CARD_STYLE } from '../components/styles';
 import { FAMILY_ICON } from '../components/familyIcons';
 import { IconChevronRight, IconEye, IconEyeOff } from '../components/icons';
@@ -165,9 +166,9 @@ function ActivityPart({ label, open, onToggle, children }: { label: string; open
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
 
 /** Blocs repliables de la page, tous fermés au départ ; l'état est mémorisé. */
-type SettingsBlock = 'memoire' | 'activites' | 'enregistrement' | 'navigation' | 'cartes' | 'coureur';
+type SettingsBlock = 'memoire' | 'activites' | 'enregistrement' | 'capteurs' | 'navigation' | 'cartes' | 'coureur';
 const SETTINGS_BLOCK_DEFAULTS: Record<SettingsBlock, boolean> = {
-  memoire: false, activites: false, enregistrement: false, navigation: false, cartes: false, coureur: false,
+  memoire: false, activites: false, enregistrement: false, capteurs: false, navigation: false, cartes: false, coureur: false,
 };
 /** Plafonds proposés pour les cartes gardées, en Mo : une liste plutôt qu'un champ, qui effacerait des tuiles à chaque chiffre tapé. */
 const TILE_CAP_CHOICES_MB = [100, 250, 500, 1000, 2000, 5000];
@@ -327,7 +328,7 @@ function SettingsPage() {
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
                   s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null || s.carriedLoad !== null || s.gearLabels !== null || s.tabs !== null ||
                   s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden ||
-                  s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden;
+                  s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.heartRate === true;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
                 const thresholdShown = parseFloat(
@@ -570,6 +571,15 @@ function SettingsPage() {
                             {s.jumps !== null && (
                               <JumpsSetting jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => setFor(id, 'jumps', next)} />
                             )}
+                            {s.heartRate !== null && (
+                              <div className="settings-row" title="La ceinture choisie dans le bloc « Capteurs » est proposée, cochée, à chaque enregistrement de cette activité ; sa fréquence est écrite à chaque point de la trace">
+                                <span className="settings-row__label">Ceinture cardio</span>
+                                <label className="settings-sports__pair">
+                                  <input type="checkbox" checked={s.heartRate} onChange={(e) => setFor(id, 'heartRate', e.target.checked)} />
+                                  <span>Proposer la ceinture cardio</span>
+                                </label>
+                              </div>
+                            )}
                           </ActivityPart>
                           <ActivityPart label="Notification" open={openPart.notification} onToggle={() => togglePart('notification')}>
                             <FieldsSetting label="Chiffres de la notification"
@@ -677,6 +687,11 @@ function SettingsPage() {
               onCommit={(v) => setStopHoldMs(v === null ? null : Math.round(v * 1000))} />
           </>
         )}
+      </div>
+
+      <div style={cardStyle}>
+        <PanelTitle label="Capteurs" open={open.capteurs} onToggle={() => toggle('capteurs')} />
+        {open.capteurs && <HeartRateBeltSettings />}
       </div>
 
       <div style={cardStyle}>

@@ -89,6 +89,7 @@ const update = (force: boolean) => {
     headingDeg: fields.includes('heading') ? travelHeading(getLiveFixes()).headingDeg : null,
     markDistanceM: mark.active ? mark.distanceM : null,
     markBearingDeg: mark.active ? mark.bearingDeg : null,
+    heartRateBpm: recorder.heartRate?.bpm ?? null,
   };
   const paused = status === 'paused' ? recorder.pausedReason ?? 'auto' : null;
   const content = liveNotification({

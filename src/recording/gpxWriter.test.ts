@@ -36,6 +36,15 @@ describe('buildGpx', () => {
     expect(still).not.toContain('gpxtpx:course');
   });
 
+  it('écrit la fréquence cardiaque avant la vitesse, là où le lecteur la cherche', () => {
+    const hr = buildGpx([[
+      { timeMs: T0, lat: 43, lon: 3, speedMs: 3.2, heartRateBpm: 142 },
+      { timeMs: T0 + 1000, lat: 43.0001, lon: 3, speedMs: 3.1 },
+    ]], { name: 'Footing', sport: 'running' });
+    expect(hr).toContain('<gpxtpx:TrackPointExtension><gpxtpx:hr>142</gpxtpx:hr><gpxtpx:speed>3.2</gpxtpx:speed>');
+    expect(hr.match(/gpxtpx:hr>/g)).toHaveLength(2);
+  });
+
   it('échappe le nom de la trace et indique le support', () => {
     expect(gpx).toContain('<name>Voile &amp; vent &lt;fort&gt;</name>');
     expect(gpx).toContain('<type>windsurf</type>');

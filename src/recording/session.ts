@@ -35,6 +35,7 @@ export const roundFix = (fix: LocationFix): LocationFix => ({
   altitudeM: round(fix.altitudeM, 1),
   speedMs: round(fix.speedMs, 2),
   bearingDeg: round(fix.bearingDeg, 1),
+  heartRateBpm: round(fix.heartRateBpm, 0),
 });
 
 /** Points d'une trace lue, rendus sous forme de positions : l'entrée du rejeu. */

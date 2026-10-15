@@ -133,6 +133,20 @@ export interface IntervalDetectionProfile {
   blockWorkFactor: number;
 }
 
+/**
+ * Ceinture cardio Bluetooth à l'enregistrement (`platform/heartRate.ts`) :
+ * course, vélo et fractionné, jamais en voile.
+ */
+export interface HeartRateProfile {
+  /**
+   * Écart de temps au-delà duquel une mesure de la ceinture n'est plus jointe
+   * à une position, en secondes : une ceinture émet environ une fois par seconde.
+   */
+  maxAgeS: number;
+}
+
+const HEART_RATE: HeartRateProfile = { maxAgeS: 3 };
+
 /** Sauts mesurés par les capteurs du téléphone (`core/jumps.ts`) : voile, course, vélo. */
 export interface JumpProfile {
   /** Hauteur minimale d'un saut montré, en mètres, surchargeable par activité. */
@@ -305,6 +319,8 @@ export interface SportProfile {
   intervals: IntervalProfile | null;
   /** Sauts mesurés par les capteurs du téléphone ; `null` en bateau, en fractionné et en surf. */
   jumps: JumpProfile | null;
+  /** Ceinture cardio proposée à l'enregistrement ; `null` en voile et en surf. */
+  heartRate: HeartRateProfile | null;
   /** Analyse des vagues ; `null` hors surf. */
   surf: SurfProfile | null;
 }
@@ -389,6 +405,7 @@ const SAILING_DEFAULTS = {
   recording: DEFAULT_RECORDING,
   intervals: null,
   foilDefault: false,
+  heartRate: null,
   surf: null,
 };
 
@@ -415,6 +432,7 @@ const RUNNING_PROFILE: SportProfile = {
   intervals: INTERVAL_ANALYSIS,
   foilDefault: false,
   jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
+  heartRate: HEART_RATE,
   surf: null,
 };
 
@@ -441,6 +459,7 @@ const CYCLING_PROFILE: SportProfile = {
   intervals: INTERVAL_ANALYSIS,
   foilDefault: false,
   jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
+  heartRate: HEART_RATE,
   surf: null,
 };
 
@@ -473,6 +492,7 @@ const SURF_PROFILE: SportProfile = {
   recording: { ...DEFAULT_RECORDING, autoPauseSpeedMs: 0 },
   intervals: null,
   jumps: null,
+  heartRate: null,
   surf: {
     stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15, maxGapS: 10,
     foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60, pump: PUMP_DETECTION,

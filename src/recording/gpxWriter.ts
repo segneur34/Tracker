@@ -6,8 +6,8 @@ import type { LocationFix } from '../platform/location';
  * que l'enregistreur produit, `parseGpx` le relit sans rien de particulier, et
  * n'importe quelle autre application aussi.
  *
- * La vitesse du système va dans `gpxtpx:speed` (extension Garmin, en m/s) :
- * le seul champ de `LocationFix` que l'analyse relit. Le cap et la précision,
+ * La vitesse du système va dans `gpxtpx:speed` (extension Garmin, en m/s), et
+ * la fréquence cardiaque de la ceinture dans `gpxtpx:hr`. La précision,
  * utiles seulement en direct pendant l'enregistrement, ne sont pas écrits :
  * ils alourdiraient le fichier sans être relus par personne.
  *
@@ -34,6 +34,8 @@ const trackPoint = (fix: LocationFix): string => {
 
   // Vitesse et cap du système (Doppler) ; le cap sert aux virages du surf (§10, point 97).
   const extension: string[] = [];
+  // Ordre du schéma Garmin : la fréquence cardiaque avant la vitesse.
+  if (fix.heartRateBpm !== undefined) extension.push(`<gpxtpx:hr>${fix.heartRateBpm}</gpxtpx:hr>`);
   if (fix.speedMs !== undefined) extension.push(`<gpxtpx:speed>${fix.speedMs}</gpxtpx:speed>`);
   if (fix.bearingDeg !== undefined && fix.speedMs !== undefined && fix.speedMs > 0) {
     extension.push(`<gpxtpx:course>${fix.bearingDeg}</gpxtpx:course>`);

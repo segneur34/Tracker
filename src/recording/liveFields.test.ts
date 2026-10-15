@@ -13,6 +13,7 @@ const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
   headingDeg: null,
   markDistanceM: null,
   markBearingDeg: null,
+  heartRateBpm: null,
   speedUnit: 'kmh',
   distanceUnit: 'km',
   ...patch,
@@ -107,6 +108,8 @@ describe('liveFieldValue', () => {
     }
     expect(liveFieldValue('heading', context({ headingDeg: 359.7 }))).toBe('0°');
     expect(liveFieldValue('markBearing', context({ markBearingDeg: 245.2 }))).toBe('245°');
+    expect(liveFieldValue('heartRate', context({ heartRateBpm: 142.4 }))).toBe('142 bpm');
+    expect(liveFieldValue('heartRate', context())).toBe('—');
     expect(liveFieldValue('markDistance', context({ markDistanceM: 143 }))).toBe('143 m');
   });
 });

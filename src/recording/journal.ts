@@ -35,9 +35,13 @@ export const journalHeaderLine = (sport: SportType, startedAtMs: number, activit
   return `${JSON.stringify(header)}\n`;
 };
 
-/** `[heure, lat, lon, précision, altitude, vitesse, cap]`, `null` pour une valeur absente. */
-export const journalFixLine = (fix: LocationFix): string =>
-  `${JSON.stringify([
+/**
+ * `[heure, lat, lon, précision, altitude, vitesse, cap]`, `null` pour une
+ * valeur absente, et la fréquence cardiaque en huitième place quand la
+ * ceinture en donne une (les journaux d'avant s'arrêtent au cap).
+ */
+export const journalFixLine = (fix: LocationFix): string => {
+  const line: (number | null)[] = [
     fix.timeMs,
     fix.lat,
     fix.lon,
@@ -45,7 +49,10 @@ export const journalFixLine = (fix: LocationFix): string =>
     fix.altitudeM ?? null,
     fix.speedMs ?? null,
     fix.bearingDeg ?? null,
-  ])}\n`;
+  ];
+  if (fix.heartRateBpm !== undefined) line.push(fix.heartRateBpm);
+  return `${JSON.stringify(line)}\n`;
+};
 
 /**
  * Frontière de segment : une pause, manuelle ou automatique, a repris à cet
@@ -148,7 +155,7 @@ const toNoteMarker = (value: unknown): { marker: boolean; mark: SessionMark | nu
 
 const toFix = (value: unknown): LocationFix | null => {
   if (!Array.isArray(value) || value.length < 3) return null;
-  const [timeMs, lat, lon, accuracyM, altitudeM, speedMs, bearingDeg] = value;
+  const [timeMs, lat, lon, accuracyM, altitudeM, speedMs, bearingDeg, heartRateBpm] = value;
   if (optionalNumber(timeMs) === undefined || optionalNumber(lat) === undefined || optionalNumber(lon) === undefined) {
     return null;
   }
@@ -160,6 +167,7 @@ const toFix = (value: unknown): LocationFix | null => {
     altitudeM: optionalNumber(altitudeM),
     speedMs: optionalNumber(speedMs),
     bearingDeg: optionalNumber(bearingDeg),
+    heartRateBpm: optionalNumber(heartRateBpm),
   };
 };
 

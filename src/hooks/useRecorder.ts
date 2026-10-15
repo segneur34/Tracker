@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { BASE_COLOR, baseActivity, findActivity, type Activity } from '../core/activities';
 import { marksWithin, type SessionMark } from '../core/sessionMarks';
-import type { RecordingProfile } from '../core/sportProfiles';
+import { getSportProfile, type RecordingProfile } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import { effectiveFoil, effectiveRecordingProfile, readStoredActivities, rememberRecordActivity } from './useSportSettings';
 import { recordingJournal } from '../platform/files';
@@ -9,8 +9,12 @@ import {
   findMotionCapture, pauseMotionCapture, readMotionCapture, removeMotionCapture, resumeMotionCapture, startMotionCapture,
   stopMotionCapture, type MotionCapture, type MotionSetup,
 } from '../platform/motion';
+import {
+  beltState, holdBelt, latestHeartRate, releaseOrphanedBelt, subscribeBeltState, subscribeHeartRate, type BeltState, type HeartRateBelt,
+} from '../platform/heartRate';
 import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation } from '../platform/location';
 import { buildGpx } from '../recording/gpxWriter';
+import { heartRateAt } from '../recording/heartRate';
 import { seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
 import {
   journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalIntervalsLine, journalNoteLine, parseJournal,
@@ -43,7 +47,9 @@ import { saveRecordedSession } from './useSessionLibrary';
  * du bouton « Note » (`addRecordingMark`). La mesure des sauts,
  * demandée au départ, fait capter accéléromètre et gyroscope par le
  * téléphone (`platform/motion.ts`) ; la capture suit la pause manuelle et se
- * range à côté du GPX (`.imu`).
+ * range à côté du GPX (`.imu`). La ceinture cardio, demandée au départ, est
+ * tenue jusqu'à l'arrêt (`platform/heartRate.ts`) : sa dernière mesure est
+ * jointe à chaque position reçue, donc au journal et au GPX (`gpxtpx:hr`).
  *
  * Chaîne : chaque position reçue est arrondie (`roundFix`), gardée en mémoire
  * et ajoutée au journal, écrit par paquets à l'arrivée des positions
@@ -109,6 +115,8 @@ export interface RecorderState {
   pausedReason: 'manual' | 'auto' | null;
   /** Vrai tant que les capteurs du téléphone mesurent (sauts, pumping). */
   measuringMotion: boolean;
+  /** Ceinture cardio de l'enregistrement : état de la connexion et dernière fréquence ; `null` sans ceinture. */
+  heartRate: { state: BeltState; bpm: number | null } | null;
   stats: RecordingStats;
   /** Session arrêtée qui attend « Analyser » ou « Jeter » ; aucun nouvel enregistrement d'ici là. */
   pending: PendingSession | null;
@@ -123,6 +131,7 @@ const INITIAL_STATE: RecorderState = {
   sourceLabel: null,
   pausedReason: null,
   measuringMotion: false,
+  heartRate: null,
   stats: EMPTY_RECORDING_STATS,
   pending: null,
   saved: null,
@@ -200,6 +209,10 @@ let startedAtMs = 0;
 let intervalRuns = new Map<number, IntervalRun>();
 /** Repères posés pendant l'enregistrement, dans l'ordre. */
 let marks: SessionMark[] = [];
+/** Écart toléré entre une mesure de la ceinture et une position, en secondes ; `null` sans ceinture. */
+let heartRateMaxAgeS: number | null = null;
+/** Rend la ceinture et se désabonne de ses mesures ; `null` sans ceinture. */
+let dropBelt: (() => void) | null = null;
 
 const enqueueWrite = (write: () => Promise<void>): Promise<void> => {
   writes = writes.then(write).catch((err) => {
@@ -222,7 +235,9 @@ const receiveFix = (received: LocationFix): void => {
   const recording = currentProfile;
   if (!acceptedStatus || recording === null) return;
   if (!isNewerFix(lastReceivedMs, received)) return;
-  const fix = roundFix(received);
+  // Comparée à l'heure de réception, pas à celle de la position : la même horloge que la ceinture, et un rejeu marche aussi.
+  const heartRateBpm = heartRateMaxAgeS === null ? undefined : heartRateAt(latestHeartRate(), Date.now(), heartRateMaxAgeS);
+  const fix = roundFix(heartRateBpm === undefined ? received : { ...received, heartRateBpm });
   lastReceivedMs = fix.timeMs;
   lastReceivedFix = fix;
   for (const listener of fixListeners) {
@@ -357,6 +372,7 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
   const text = await recordingJournal.read();
   if (text === null) return;
   await stopOrphanedDeviceLocation();
+  await releaseOrphanedBelt();
   // Capture restée ouverte après un rechargement de la page : fermée, elle attend avec la session.
   const orphan = await stopMotionCapture().catch(() => null);
   const parsed = parseJournal(text);
@@ -380,15 +396,43 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
   }
 };
 
+/** Prend la ceinture pour l'enregistrement et suit ses mesures dans l'état. */
+const takeBelt = async (belt: HeartRateBelt, maxAgeS: number): Promise<void> => {
+  const release = await holdBelt('enregistrement', belt);
+  heartRateMaxAgeS = maxAgeS;
+  setState({ heartRate: { state: beltState(), bpm: null } });
+  const offSample = subscribeHeartRate((sample) => {
+    const bpm = sample.contact === false || !(sample.bpm > 0) ? null : sample.bpm;
+    if (state.heartRate && (state.heartRate.bpm !== bpm || state.heartRate.state !== beltState())) {
+      setState({ heartRate: { state: beltState(), bpm } });
+    }
+  });
+  const offState = subscribeBeltState((beltNow) => {
+    if (state.heartRate) setState({ heartRate: { state: beltNow, bpm: beltNow === 'connected' ? state.heartRate.bpm : null } });
+  });
+  dropBelt = () => {
+    offSample();
+    offState();
+    release();
+  };
+};
+
+/** Rend la ceinture, s'il y en a une. */
+const releaseRecordingBelt = (): void => {
+  dropBelt?.();
+  dropBelt = null;
+  heartRateMaxAgeS = null;
+};
+
 /**
  * Démarre un enregistrement. `motion` : capter l'accéléromètre et le gyroscope
  * (sauts, pumping en surf), avec l'emplacement du téléphone et le foil ; si les capteurs ne démarrent pas, l'enregistrement
- * continue sans eux, et le dit.
+ * continue sans eux, et le dit. `heartRate` : la ceinture cardio à joindre ; de même, sans elle si elle ne répond pas.
  */
 export const startRecording = async (
   activity: Activity,
   source: LocationSource,
-  options: { motion?: MotionSetup | null } = {}
+  options: { motion?: MotionSetup | null; heartRate?: HeartRateBelt | null } = {}
 ): Promise<void> => {
   if (isBusy()) return;
   await recoverInterruptedRecording();
@@ -411,7 +455,7 @@ export const startRecording = async (
   intervalRuns = new Map();
   marks = [];
   setState({
-    status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, measuringMotion: false, stats: EMPTY_RECORDING_STATS,
+    status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, measuringMotion: false, heartRate: null, stats: EMPTY_RECORDING_STATS,
     saved: null, error: null,
   });
 
@@ -431,6 +475,15 @@ export const startRecording = async (
       setState({ measuringMotion: true });
     } catch (err) {
       setState({ error: `Mesure des capteurs impossible : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
+    }
+  }
+  const heartRateProfile = getSportProfile(sport).heartRate;
+  if (options.heartRate && heartRateProfile) {
+    try {
+      await takeBelt(options.heartRate, heartRateProfile.maxAgeS);
+    } catch (err) {
+      releaseRecordingBelt();
+      setState({ heartRate: null, error: `Ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
     }
   }
 };
@@ -551,6 +604,7 @@ export const stopRecording = async (): Promise<void> => {
   currentProfile = null;
   await flushJournal();
   const motion = state.measuringMotion ? await stopMotionCapture().catch(() => null) : null;
+  releaseRecordingBelt();
 
   try {
     const intervals = seriesWithin([...intervalRuns.values()], startedAtMs, stoppedAtMs);
@@ -558,6 +612,7 @@ export const stopRecording = async (): Promise<void> => {
     setState({
       status: 'idle',
       measuringMotion: false,
+      heartRate: null,
       pending,
       error: pending ? state.error : 'Moins de deux positions reçues : rien à enregistrer.',
     });
@@ -565,6 +620,7 @@ export const stopRecording = async (): Promise<void> => {
     setState({
       status: 'idle',
       measuringMotion: false,
+      heartRate: null,
       error: `Construction du GPX impossible : ${errorMessage(err, 'erreur inconnue')}. Le journal est gardé et sera repris au prochain démarrage.`,
     });
   }

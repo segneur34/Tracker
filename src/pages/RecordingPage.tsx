@@ -21,10 +21,11 @@ import { useLiveRecording } from '../hooks/useLiveRecording';
 import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../hooks/useMarkGuide';
 import { useOpenSections } from '../hooks/useOpenSections';
 import {
-  effectiveDistanceUnit, effectiveFoil, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs,
+  effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs,
   lastRecordActivity, rememberRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
+import { BELT_STATE_LABEL, savedBelt } from '../platform/heartRate';
 import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import {
@@ -357,6 +358,12 @@ function RecordingPage() {
   const pumpingOffered = chosen !== null && effectiveFoil(chosen) === true && effectivePumping(chosen) === true;
   const [pumpChoice, setPumpChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
   const measurePumping = pumpingOffered && (pumpChoice?.activityId === chosen.id ? pumpChoice.measure : true);
+  // Ceinture cardio : proposée par l'activité (course, vélo, fractionné), cochée d'office si Réglages le dit ; la case vaut pour cet enregistrement.
+  const heartRateSetting = chosen ? effectiveHeartRate(chosen) : null;
+  const belt = useMemo(() => savedBelt(), []);
+  const [heartRateChoice, setHeartRateChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
+  const measureHeartRate = chosen !== null && heartRateSetting !== null && belt !== null &&
+    (heartRateChoice?.activityId === chosen.id ? heartRateChoice.measure : heartRateSetting);
   const [motionCaps, setMotionCaps] = useState<MotionCapabilities | null>(null);
   useEffect(() => {
     let alive = true;
@@ -455,7 +462,8 @@ function RecordingPage() {
       : capture && measurePumping
         ? { placement: 'poitrine' as const, foil: true }
         : null;
-    void startRecording(chosen, source, { motion });
+    const heartRate = native && sourceChoice === 'device' && measureHeartRate ? belt : null;
+    void startRecording(chosen, source, { motion, heartRate });
   };
 
   return (
@@ -499,6 +507,21 @@ function RecordingPage() {
                   : `Téléphone fixé au corps : ${JUMP_PLACEMENT_LABEL[jumpSettings.placement].toLowerCase()}${effectiveFoil(chosen) ? ', sur foil' : ''} (Réglages).`}
                 {motionCaps?.available && motionCaps.accelMaxG !== null && motionCaps.accelMaxG < 8 &&
                   ` L'accéléromètre plafonne à ${Math.round(motionCaps.accelMaxG)} g : les chocs à l'atterrissage seront écrêtés.`}
+              </span>
+            </div>
+          )}
+
+          {chosen && heartRateSetting !== null && native && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input type="checkbox" checked={measureHeartRate} disabled={belt === null}
+                  onChange={(e) => setHeartRateChoice({ activityId: chosen.id, measure: e.target.checked })} />
+                <span>Ceinture cardio</span>
+              </label>
+              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', marginLeft: '26px' }}>
+                {belt === null
+                  ? <>Aucune ceinture choisie : <Link to="/parametres">Réglages</Link>, bloc « Capteurs ».</>
+                  : `${belt.name}, portée et humidifiée : elle n'émet qu'au contact de la peau.`}
               </span>
             </div>
           )}
@@ -639,6 +662,7 @@ function RecordingPage() {
               headingDeg: travel?.headingDeg ?? null,
               markDistanceM: markGuide.active ? markGuide.distanceM : null,
               markBearingDeg: markGuide.active ? markGuide.bearingDeg : null,
+              heartRateBpm: recorder.heartRate?.bpm ?? null,
             })} />
           )}
         </>
@@ -661,6 +685,14 @@ function RecordingPage() {
                 disabled={recorder.status !== 'recording' && recorder.status !== 'paused'}
                 onChange={changeLiveActivity} />
             </label>
+          )}
+          {recorder.heartRate && (
+            <p style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-s)' }}>
+              <span className="ui-eyebrow">Ceinture cardio</span>{' '}
+              {recorder.heartRate.state === 'connected' && recorder.heartRate.bpm !== null
+                ? `${Math.round(recorder.heartRate.bpm)} bpm`
+                : recorder.heartRate.state === 'connected' ? 'connectée, sans contact avec la peau' : BELT_STATE_LABEL[recorder.heartRate.state]}
+            </p>
           )}
           <div style={STAT_GRID}>
             <Stat label="Durée" value={formatClock(durationMs)} />
