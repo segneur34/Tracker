@@ -155,9 +155,12 @@ export const timeInZones = (
   return times;
 };
 
-/** Charge d'Edwards : minutes en zone 1 × 1 + … + minutes en zone 5 × 5 ; « sous Z1 » ne compte pas. */
-export const edwardsLoad = (zoneTimesS: readonly number[]): number =>
-  zoneTimesS.reduce((sum, s, zone) => sum + (s / 60) * zone, 0);
+/**
+ * Charge d'Edwards : minutes de chaque zone × son coefficient (`weights`, de
+ * « sous Z1 » à Z5, `HeartRateProfile.loadWeights`).
+ */
+export const edwardsLoad = (zoneTimesS: readonly number[], weights: readonly number[]): number =>
+  zoneTimesS.reduce((sum, s, zone) => sum + (s / 60) * (weights[zone] ?? 0), 0);
 
 /** Secondes par battement, de `fromBpm` à `fromBpm + seconds.length - 1` ; rangé dans le résumé. */
 export interface HeartRateHistogram {

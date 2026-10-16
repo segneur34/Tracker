@@ -151,6 +151,11 @@ export interface HeartRateProfile {
   minCoverageS: number;
   /** Bornes basses des zones 1 à 5, en fraction de la réserve cardiaque (ou de la FC max sans FC de repos). */
   zoneFractions: readonly number[];
+  /**
+   * Coefficients de la charge par minute, de « sous Z1 » à Z5 : ceux d'Edwards
+   * (1 à 5), plus le temps sous Z1, qui compte aussi (choix de l'utilisateur).
+   */
+  loadWeights: readonly number[];
   /** Temps actif à FC au-dessous duquel la dérive n'est pas donnée, en secondes. */
   driftMinS: number;
   /** Dérive sous laquelle la FC est dite stable, en %. */
@@ -167,6 +172,7 @@ const HEART_RATE: HeartRateProfile = {
   gapS: 10,
   minCoverageS: 60,
   zoneFractions: [0.5, 0.6, 0.7, 0.8, 0.9],
+  loadWeights: [0.5, 1, 2, 3, 4, 5],
   driftMinS: 20 * 60,
   driftStablePct: 5,
   recoveryS: 60,

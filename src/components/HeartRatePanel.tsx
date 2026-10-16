@@ -1,11 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
+import CardioLoadHelp from './CardioLoadHelp';
 import HeartRateChart from './HeartRateChart';
 import PanelTitle from './PanelTitle';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from './heartRateColors';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 import Button from './ui/Button';
+import HelpButton from './ui/HelpButton';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import {
@@ -82,6 +84,7 @@ export default function HeartRatePanel({
 
   const zoneTimes = useMemo(() => (zones ? timeInZones(track, smoothed, zones.bounds, params.gapS) : null), [zones, track, smoothed, params.gapS]);
   const countedS = zoneTimes?.reduce((a, b) => a + b, 0) ?? 0;
+  const [loadHelp, setLoadHelp] = useState(false);
   const drift = useMemo(
     () => (efficiency ? heartRateDrift(track, smoothed, efficiency.speedsMs, efficiency.active, params.gapS, params.driftMinS) : null),
     [efficiency, track, smoothed, params.gapS, params.driftMinS]
@@ -107,10 +110,14 @@ export default function HeartRatePanel({
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">FC moyenne</span><strong className="an-sheet__stat-value">{Math.round(stats.avgBpm)} bpm</strong></div>
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">FC max</span><strong className="an-sheet__stat-value">{stats.maxBpm} bpm</strong></div>
         {zoneTimes && (
-          <div className="an-sheet__stat"><span className="an-sheet__stat-label">Charge</span><strong className="an-sheet__stat-value">{Math.round(edwardsLoad(zoneTimes))}</strong></div>
+          <div className="an-sheet__stat">
+            <span className="an-sheet__stat-label">Charge <HelpButton size="xs" open={loadHelp} onToggle={() => setLoadHelp(!loadHelp)} label="Qu'est-ce que la charge ?" /></span>
+            <strong className="an-sheet__stat-value">{Math.round(edwardsLoad(zoneTimes, params.loadWeights))}</strong>
+          </div>
         )}
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps mesuré</span><strong className="an-sheet__stat-value">{formatShortDuration(stats.coveredS)}</strong></div>
       </div>
+      {loadHelp && zones && <CardioLoadHelp bounds={zones.bounds} weights={params.loadWeights} />}
 
       {aboveProfile && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', margin: '8px 0', fontSize: 'var(--text-s)' }}>
@@ -181,7 +188,7 @@ export default function HeartRatePanel({
           <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
             Zones : {METHOD_LABEL[zones.method]}
             {zones.hrMax !== null && zones.method !== 'perso' && `, FC max ${zones.hrMax} bpm${zones.estimated ? ' estimée par l\'âge' : ''}`}.
-            {' '}« Voir » montre ses passages sur la carte, en violet. Charge : minutes en Z1 × 1, … en Z5 × 5 (méthode d'Edwards).
+            {' '}« Voir » montre ses passages sur la carte, en violet.
           </div>
         </>
       ) : (

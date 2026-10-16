@@ -195,33 +195,36 @@ describe('dateTicks', () => {
 
 describe('cardio', () => {
   const bounds = [100, 120, 140, 160, 180];
+  const weights = [0.5, 1, 2, 3, 4, 5];
   // 10 min à 130 (Z2), 10 min à 170 (Z4) : charge 10 × 2 + 10 × 4 = 60.
   const hr = (avgBpm: number) => ({ avgBpm, maxBpm: 171, coveredS: 1200, histogram: { fromBpm: 130, seconds: [600, ...new Array(39).fill(0), 600] } });
 
   it("tire la charge et les zones de l'histogramme, avec les zones du moment", () => {
     const s = session(at(2026, 10, 5), { heartRate: hr(150) });
-    expect(sessionLoad(s, bounds)).toBeCloseTo(60, 6);
-    expect(sessionLoad(session(at(2026, 10, 5)), bounds)).toBeNull();
+    expect(sessionLoad(s, bounds, weights)).toBeCloseTo(60, 6);
+    expect(sessionLoad(session(at(2026, 10, 5)), bounds, weights)).toBeNull();
     // Zones plus hautes : les 130 tombent en Z1, les 170 en Z3.
-    expect(sessionLoad(s, [125, 140, 160, 175, 185])).toBeCloseTo(10 * 1 + 10 * 3, 6);
+    expect(sessionLoad(s, [125, 140, 160, 175, 185], weights)).toBeCloseTo(10 * 1 + 10 * 3, 6);
+    // Zones plus hautes encore : les 130 tombent sous Z1 et comptent à 0,5.
+    expect(sessionLoad(s, [135, 150, 165, 175, 185], weights)).toBeCloseTo(10 * 0.5 + 10 * 3, 6);
   });
 
   it('fait les totaux sur les seules sessions à FC', () => {
     const list = [session(at(2026, 10, 5), { heartRate: hr(150) }), session(at(2026, 10, 6), { heartRate: hr(130) }), session(at(2026, 10, 7))];
-    const t = cardioTotals(list, bounds);
+    const t = cardioTotals(list, bounds, weights);
     expect(t.sessions).toBe(2);
     expect(t.coveredS).toBe(2400);
     expect(t.avgBpm).toBeCloseTo(140, 6);
     expect(t.maxBpm).toBe(171);
     expect(t.zoneTimesS).toEqual([0, 0, 1200, 0, 1200, 0]);
     expect(t.load).toBeCloseTo(120, 6);
-    expect(cardioTotals(list, null)).toMatchObject({ zoneTimesS: null, load: null, sessions: 2 });
+    expect(cardioTotals(list, null, weights)).toMatchObject({ zoneTimesS: null, load: null, sessions: 2 });
   });
 
   it('range la charge par semaine et la FC par session', () => {
     const list = [session(at(2026, 10, 5), { heartRate: hr(150) }), session(at(2026, 10, 14), { heartRate: hr(130) })];
     const reg = regularity(list, { fromMs: at(2026, 10, 5, 0), toMs: at(2026, 10, 19, 0) }, at(2026, 10, 18), ['course']);
-    const bars = cardioLoadBars(reg.bars, list, bounds);
+    const bars = cardioLoadBars(reg.bars, list, bounds, weights);
     expect(bars.map((b) => Math.round(b.load))).toEqual([60, 60]);
     expect(heartRatePoints([...list].reverse()).map((p) => p.avgBpm)).toEqual([150, 130]);
   });

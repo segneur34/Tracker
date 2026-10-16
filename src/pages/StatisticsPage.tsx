@@ -8,8 +8,10 @@ import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { IconChevronRight } from '../components/icons';
+import CardioLoadHelp from '../components/CardioLoadHelp';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from '../components/heartRateColors';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
+import HelpButton from '../components/ui/HelpButton';
 import PageHeader from '../components/ui/PageHeader';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, sessionActivity, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, SPORT_PROFILES, type SportFamily } from '../core/sportProfiles';
@@ -58,8 +60,9 @@ const STATS_SECTIONS: SectionDefinition<StatsSection>[] = [
 
 const STATS_SECTION_DEFAULTS: Record<StatsSection, boolean> = { general: true, vitesse: true, regularite: true, records: false, cardio: false };
 
-/** Fractions des zones cardiaques : les mêmes dans tous les calculs (`HeartRateProfile`). */
+/** Fractions des zones cardiaques et coefficients de la charge : les mêmes dans tous les calculs (`HeartRateProfile`). */
 const ZONE_FRACTIONS = SPORT_PROFILES.running.heartRate.zoneFractions;
+const LOAD_WEIGHTS = SPORT_PROFILES.running.heartRate.loadWeights;
 
 const STORAGE_ID = 'statistiques';
 const panelId = (name: string) => `${STORAGE_ID}.${name}`;
@@ -93,7 +96,7 @@ const shortDate = (ms: number): string =>
 const distanceText = (m: number, unit: DistanceUnit): string =>
   formatDistance(m, unit, m / (unit === 'km' ? 1000 : 1852) < 10 ? 2 : 1);
 
-const Stat = ({ label, value, title }: { label: string; value: ReactNode; title?: string }) => (
+const Stat = ({ label, value, title }: { label: ReactNode; value: ReactNode; title?: string }) => (
   <div className="an-sheet__stat" title={title}>
     <span className="an-sheet__stat-label">{label}</span>
     <strong className="an-sheet__stat-value">{value}</strong>
@@ -149,6 +152,7 @@ function StatisticsPage() {
   const narrow = useNarrowScreen();
   const [nowMs] = useState(() => Date.now());
   const [picked, setPicked] = useState<string | null>(null);
+  const [loadHelp, setLoadHelp] = useState(false);
   const { open, toggle } = useOpenSections<StatsSection>(STORAGE_ID, STATS_SECTION_DEFAULTS);
 
   // Le choix, lu dans l'adresse.
@@ -226,8 +230,8 @@ function StatisticsPage() {
   const { profile: runner } = useRunnerProfile();
   const hrZones = useMemo(() => runnerHeartRateZones(runner, ZONE_FRACTIONS), [runner]);
   const hasCardio = inPeriod.some((s) => s.heartRate !== null);
-  const cardio = useMemo(() => cardioTotals(inPeriod, hrZones?.bounds ?? null), [inPeriod, hrZones]);
-  const loadBars = useMemo(() => (hrZones ? cardioLoadBars(regular.bars, inPeriod, hrZones.bounds) : []), [hrZones, regular.bars, inPeriod]);
+  const cardio = useMemo(() => cardioTotals(inPeriod, hrZones?.bounds ?? null, LOAD_WEIGHTS), [inPeriod, hrZones]);
+  const loadBars = useMemo(() => (hrZones ? cardioLoadBars(regular.bars, inPeriod, hrZones.bounds, LOAD_WEIGHTS) : []), [hrZones, regular.bars, inPeriod]);
   const hrPoints = useMemo(() => heartRatePoints(inPeriod), [inPeriod]);
   const hrSeries = useMemo(() => {
     const byActivity = new Map<string, typeof hrPoints>();
@@ -504,9 +508,10 @@ function StatisticsPage() {
                   <Stat label="Temps mesuré" value={formatDuration(cardio.coveredS * 1000)} />
                   {cardio.avgBpm !== null && <Stat label="FC moyenne" value={`${Math.round(cardio.avgBpm)} bpm`} title="Pondérée par le temps mesuré de chaque session" />}
                   {cardio.maxBpm !== null && <Stat label="FC max" value={`${cardio.maxBpm} bpm`} />}
-                  {cardio.load !== null && <Stat label="Charge" value={Math.round(cardio.load)} title="Minutes en Z1 × 1, … en Z5 × 5 (Edwards)" />}
+                  {cardio.load !== null && <Stat label={<>Charge <HelpButton size="xs" open={loadHelp} onToggle={() => setLoadHelp(!loadHelp)} label="Qu'est-ce que la charge ?" /></>} value={Math.round(cardio.load)} />}
                   {cardio.load !== null && regular.weeks > 0 && <Stat label="Charge par semaine" value={Math.round(cardio.load / regular.weeks)} />}
                 </div>
+                {loadHelp && hrZones && <CardioLoadHelp bounds={hrZones.bounds} weights={LOAD_WEIGHTS} period />}
 
                 {cardio.zoneTimesS && cardio.coveredS > 0 && (
                   <div style={{ marginTop: '10px' }}>

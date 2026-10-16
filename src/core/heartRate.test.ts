@@ -114,7 +114,16 @@ describe('zones et charge', () => {
     const times = timeInZones(points, analyze(points), bounds, P.gapS);
     expect(times[2]).toBeCloseTo(600, -1);
     expect(times[4]).toBeCloseTo(600, -1);
-    expect(edwardsLoad(times)).toBeCloseTo(10 * 2 + 10 * 4, 0);
+    expect(edwardsLoad(times, P.loadWeights)).toBeCloseTo(10 * 2 + 10 * 4, 0);
+  });
+
+  it('compte aussi le temps sous Z1 dans la charge', () => {
+    // 10 min à 90, sous Z1 : la marche compte, à son coefficient.
+    const points = series(0, 600, 1, () => 90);
+    const times = timeInZones(points, analyze(points), bounds, P.gapS);
+    expect(times[0]).toBeCloseTo(600, -1);
+    expect(edwardsLoad(times, P.loadWeights)).toBeCloseTo(10 * P.loadWeights[0], 0);
+    expect(edwardsLoad(times, P.loadWeights)).toBeGreaterThan(0);
   });
 
   it("retrouve les mêmes temps par zone depuis l'histogramme", () => {
