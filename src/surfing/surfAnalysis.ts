@@ -274,6 +274,8 @@ export interface SurfSummary {
   rameS: number;
   attenteS: number;
   trouS: number;
+  /** Distance parcourue en glisse : avec `glisseS`, la moyenne en action des statistiques. */
+  glisseDistanceM: number;
   waveCount: number;
   wavesPerHour: number | null;
   /** Temps et distance sur les vagues (sur foil : au-dessus du seuil de vague). */
@@ -305,9 +307,11 @@ export const summarizeSurf = (track: TrackPoint[], cum: CumulativeTrack, analysi
   const time: Record<SurfPhase, number> = { glisse: 0, rame: 0, attente: 0, trou: 0 };
   let paddleS = 0;
   let paddleDistanceM = 0;
+  let glisseDistanceM = 0;
   for (let i = 1; i < track.length; i++) {
     const dt = stepS(track, i);
     time[phases[i]] += dt;
+    if (phases[i] === 'glisse') glisseDistanceM += cum.cumDist[i] - cum.cumDist[i - 1];
     if (isPaddling(track, phases, i, stillMs)) {
       paddleS += dt;
       paddleDistanceM += cum.cumDist[i] - cum.cumDist[i - 1];
@@ -325,6 +329,7 @@ export const summarizeSurf = (track: TrackPoint[], cum: CumulativeTrack, analysi
     rameS: time.rame,
     attenteS: time.attente,
     trouS: time.trou,
+    glisseDistanceM,
     waveCount: waves.length,
     wavesPerHour: totalS > 0 ? waves.length / (totalS / 3600) : null,
     waveS,

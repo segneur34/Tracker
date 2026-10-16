@@ -222,19 +222,24 @@ function SailingModule() {
   const [allActivities] = useState(readStoredActivities);
   const changeSessionActivity = useChangeSessionActivity('voile', setActivity);
 
-  // Nombre de manœuvres recopié dans la fiche, pour la liste des sessions. Seulement quand un
-  // vent est connu (sinon l'analyse des manœuvres est suspendue), et pour la trace de ce fichier.
-  const maneuverCount = maneuverStats
-    ? maneuverStats.tackSuccess + maneuverStats.tackFail + maneuverStats.jibeSuccess + maneuverStats.jibeFail
-    : null;
+  // Nombre et réussite des manœuvres recopiés dans la fiche, pour la liste des sessions et les
+  // statistiques. Seulement quand un vent est connu (sinon l'analyse des manœuvres est suspendue),
+  // et pour la trace de ce fichier.
+  const tackSuccess = maneuverStats?.tackSuccess ?? null;
+  const tackFail = maneuverStats?.tackFail ?? null;
+  const jibeSuccess = maneuverStats?.jibeSuccess ?? null;
+  const jibeFail = maneuverStats?.jibeFail ?? null;
   // Pas pendant un brouillon : la liste doit refléter l'état enregistré.
   const loadedFromMemory = sessionFile !== null && fileName === sessionFile && trackData.length > 0;
   const { dirty } = draft;
   useEffect(() => {
-    if (loadedFromMemory && sessionFile && !dirty && currentWindValue !== null && maneuverCount !== null) {
-      updateSessionRecord(sessionFile, { maneuverCount });
-    }
-  }, [loadedFromMemory, sessionFile, dirty, currentWindValue, maneuverCount]);
+    if (!loadedFromMemory || !sessionFile || dirty || currentWindValue === null) return;
+    if (tackSuccess === null || tackFail === null || jibeSuccess === null || jibeFail === null) return;
+    updateSessionRecord(sessionFile, {
+      maneuverCount: tackSuccess + tackFail + jibeSuccess + jibeFail,
+      maneuverResults: { tackSuccess, tackFail, jibeSuccess, jibeFail },
+    });
+  }, [loadedFromMemory, sessionFile, dirty, currentWindValue, tackSuccess, tackFail, jibeSuccess, jibeFail]);
 
   // Sauts mesurés par les capteurs du téléphone : ceux de la fiche, sinon calculés depuis le `.imu`.
   const jumpsState = useSessionJumps(loadedFromMemory ? sessionFile : null, track, profile.id);

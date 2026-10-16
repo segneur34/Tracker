@@ -16,8 +16,8 @@ import PageHeader from '../components/ui/PageHeader';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, sessionActivity, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, SPORT_PROFILES, type SportFamily } from '../core/sportProfiles';
 import {
-  SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, isInverseUnit, toDisplaySpeed,
-  type DistanceUnit, type SpeedUnit,
+  DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, isInverseUnit,
+  toDisplayDistance, toDisplaySpeed, type DistanceUnit, type SpeedUnit,
 } from '../core/units';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
@@ -26,11 +26,12 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { readStoredRecord, useStoredRecord } from '../hooks/useStoredRecord';
-import { effectiveDistanceUnit, effectiveSpeedUnit, useVisibility } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, effectiveFoil, effectiveSpeedUnit, useVisibility } from '../hooks/useSportSettings';
 import {
-  STATS_PERIODS, averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, heartRatePoints, formatDateTick, groupTotals, inBounds, isStatsPeriod, maxSpeedSeries, recordKindsOf,
-  regularity, statSessionOf, statsPeriodBounds, statsTotals, topSessions, type MaxSpeedPoint, type StatSession, type StatsPeriod,
-  type StatsRecordKind, type StatsTotals,
+  STATS_PERIODS, TREND_SESSIONS, averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, defaultMetricKey, heartRatePoints, formatDateTick,
+  groupTotals, inBounds, isStatsMetricKey, isStatsPeriod, metricSeries, metricsOf, recordKindsOf, regularity, statSessionOf, statsMetric,
+  statsPeriodBounds, statsTotals, topSessions, type MetricPoint, type StatSession, type StatsMetricKey, type StatsPeriod, type StatsRecordKind,
+  type StatsTotals,
 } from '../library/stats';
 import './analysisMobile.css';
 import './StatisticsPage.css';
@@ -46,15 +47,17 @@ import './StatisticsPage.css';
  * à classer ; une famille cachée ouverte par son adresse montre tout.
  *
  * Onglets et panneaux comme les pages d'analyse (`docs/MISE_EN_PAGE.md`),
- * sans carte. La vitesse max et les records demandent une famille : mêlées,
- * les unités ne se comparent pas.
+ * sans carte. Le graphique trace une donnée au choix par session ; dans la vue
+ * d'ensemble, la durée seule, et pas de records : mêlées, les unités ne se
+ * comparent pas.
  */
 
 type StatsSection = 'general' | 'vitesse' | 'regularite' | 'records' | 'cardio';
 
 const STATS_SECTIONS: SectionDefinition<StatsSection>[] = [
   { key: 'general', label: 'général' },
-  { key: 'vitesse', label: 'vitesse max' },
+  // Clé d'avant le choix de la donnée, gardée : elle porte l'état et la taille mémorisés du panneau.
+  { key: 'vitesse', label: 'graphique' },
   { key: 'regularite', label: 'régularité' },
   { key: 'records', label: 'records' },
   // Seulement quand une session de la période a de la FC ; les bpm se comparent d'une famille à l'autre.
@@ -69,16 +72,18 @@ const LOAD_WEIGHTS = SPORT_PROFILES.running.heartRate.loadWeights;
 
 const STORAGE_ID = 'statistiques';
 
-/** Dernier affichage, retenu sur l'appareil (`tracker.statistiques`) ; `null` : « Tout ». */
+/** Dernier affichage, retenu sur l'appareil (`tracker.statistiques`) ; `null` : « Tout », ou la donnée par défaut. */
 interface StatsView {
   famille: SportFamily | null;
   activite: string | null;
   periode: StatsPeriod;
+  /** Donnée du graphique ; absente de la sélection, celle par défaut est montrée sans l'oublier. */
+  donnee: StatsMetricKey | null;
 }
 
 const VIEW_NAMESPACE = 'tracker.statistiques';
 const VIEW_KEY = 'affichage';
-const VIEW_DEFAULTS: StatsView = { famille: null, activite: null, periode: 'tout' };
+const VIEW_DEFAULTS: StatsView = { famille: null, activite: null, periode: 'tout', donnee: null };
 const panelId = (name: string) => `${STORAGE_ID}.${name}`;
 const panelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: '14px' } as const;
 const chartPanelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'hidden' } as const;
@@ -118,15 +123,16 @@ const Stat = ({ label, value, title }: { label: ReactNode; value: ReactNode; tit
 );
 
 /** Rangée de pastilles : un choix parmi plusieurs. */
-function Chips<K extends string>({ label, items, value, onChoose, accent }: {
+function Chips<K extends string>({ label, items, value, onChoose, accent, className }: {
   label: string;
   items: { key: K; label: string }[];
   value: K;
   onChoose: (key: K) => void;
   accent: string;
+  className?: string;
 }) {
   return (
-    <div className="ui-tabs ui-tabs--compact stats-chips" role="group" aria-label={label} style={{ '--tab-accent': accent } as React.CSSProperties}>
+    <div className={`ui-tabs ui-tabs--compact stats-chips${className ? ` ${className}` : ''}`} role="group" aria-label={label} style={{ '--tab-accent': accent } as React.CSSProperties}>
       {items.map((item) => (
         <button key={item.key} type="button" className="ui-tab" aria-pressed={value === item.key} onClick={() => onChoose(item.key)}>
           {item.label}
@@ -152,11 +158,17 @@ const GroupRow = ({ color, name, totals, distanceUnit, onOpen }: {
   </li>
 );
 
-/** Ligne du graphe de la vitesse max : un point par session, valeurs dans l'unité. */
-interface SpeedRow extends MaxSpeedPoint {
-  speed: number;
-  best: number;
+/** Ligne du graphique : un point par session et par série, valeur et ligne grise dans l'unité de l'axe. */
+interface ChartRow extends MetricPoint {
+  y: number;
+  lineY: number;
+  /** Rang de la série (virements, empannages). */
+  serie: number;
 }
+
+/** Forme des points de chaque série. */
+const SERIE_SHAPES = ['circle', 'triangle'] as const;
+const SERIE_DASHES = ['4 3', '1 3'];
 
 function StatisticsPage() {
   const [params, setParams] = useSearchParams();
@@ -168,7 +180,7 @@ function StatisticsPage() {
   const [picked, setPicked] = useState<string | null>(null);
   const [loadHelp, setLoadHelp] = useState(false);
   const { open, toggle } = useOpenSections<StatsSection>(STORAGE_ID, STATS_SECTION_DEFAULTS);
-  const { update: rememberView } = useStoredRecord<StatsView>(VIEW_NAMESPACE, VIEW_KEY, VIEW_DEFAULTS);
+  const { value: view, update: rememberView } = useStoredRecord<StatsView>(VIEW_NAMESPACE, VIEW_KEY, VIEW_DEFAULTS);
 
   // À l'ouverture sans paramètre (barre, accueil), reprendre le dernier affichage, si sa famille est visible.
   useEffect(() => {
@@ -202,7 +214,7 @@ function StatisticsPage() {
       if (!a) continue;
       if (!isShown(a) && !(familyHidden && activityFamily(a) === family)) continue;
       if (!byId.has(a.id)) byId.set(a.id, a);
-      list.push(statSessionOf(s.file, s.record, a));
+      list.push(statSessionOf(s.file, s.record, a, s.record.analysis?.foil ?? effectiveFoil(a) ?? false));
     }
     return { all: list, activityById: byId };
   }, [sessions, activities, isShown, familyHidden, family]);
@@ -271,29 +283,84 @@ function StatisticsPage() {
   }, [hrPoints]);
   const hrTicks = hrPoints.length > 0 ? dateTicks(hrPoints[0].startMs - 86_400_000, hrPoints[hrPoints.length - 1].startMs + 86_400_000, narrow ? 4 : 6) : null;
 
-  const sections = STATS_SECTIONS.filter((s) => (family !== null || (s.key !== 'vitesse' && s.key !== 'records')) && (s.key !== 'cardio' || hasCardio));
+  const sections = STATS_SECTIONS.filter((s) => (family !== null || s.key !== 'records') && (s.key !== 'cardio' || hasCardio));
 
-  // Vitesse max : un point par session de la sélection (période comprise), le record en escalier.
-  const speedRows: SpeedRow[] = useMemo(
-    () => maxSpeedSeries(inPeriod).map((p) => ({ ...p, speed: toDisplaySpeed(p.maxSpeedMs, speedUnit), best: toDisplaySpeed(p.bestMs, speedUnit) })),
-    [inPeriod, speedUnit]
+  // Graphique : une donnée au choix, un point par session de la sélection (période comprise) et par série ; en
+  // pointillé, le record en escalier (vitesse max) ou la tendance. Le choix retenu, s'il n'existe pas ici, cède
+  // la place à la donnée par défaut sans être oublié.
+  const metrics = useMemo(() => metricsOf(family, inPeriod), [family, inPeriod]);
+  const metricKey: StatsMetricKey = isStatsMetricKey(view.donnee) && metrics.some((m) => m.key === view.donnee)
+    ? view.donnee
+    : metrics.some((m) => m.key === defaultMetricKey(family)) ? defaultMetricKey(family) : metrics[0]?.key ?? defaultMetricKey(family);
+  const metric = statsMetric(metricKey);
+  const series = useMemo(() => metricSeries(inPeriod, metric), [inPeriod, metric]);
+  // Durée en heures dès qu'une session atteint 2 h, sinon en minutes.
+  const inHours = metric.unit === 'duree' && series.some((serie) => serie.points.some((p) => p.value >= 7200));
+  const toAxis = (v: number): number => {
+    switch (metric.unit) {
+      case 'vitesse': return toDisplaySpeed(v, speedUnit);
+      case 'duree': return inHours ? v / 3600 : v / 60;
+      case 'distance': return toDisplayDistance(v, distanceUnit);
+      default: return v;
+    }
+  };
+  const axisLabel = metric.unit === 'vitesse' ? SPEED_UNIT_LABEL[speedUnit]
+    : metric.unit === 'duree' ? (inHours ? 'h' : 'min')
+    : metric.unit === 'distance' ? DISTANCE_UNIT_SYMBOL[distanceUnit]
+    : metric.unit === 'pourcent' ? '%'
+    : metric.unit === 'metres' ? 'm'
+    : metric.unit === 'secondes' ? 's'
+    : '';
+  const axisTick = (v: number): string =>
+    metric.unit === 'vitesse' ? formatSpeedValue(v, speedUnit) : v.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+  /** Valeur d'une session en clair, dans l'unité de la sélection. */
+  const metricText = (value: number): string => {
+    switch (metric.unit) {
+      case 'vitesse': return formatSpeed(value, speedUnit);
+      case 'duree': return formatDuration(value * 1000);
+      case 'distance': return distanceText(value, distanceUnit);
+      case 'pourcent': return `${Math.round(value)} %`;
+      case 'nombre': return String(value);
+      case 'metres': return `${Math.round(value)} m`;
+      case 'secondes': return formatShortDuration(value);
+    }
+  };
+  const chartSeries = useMemo(
+    () => series.map((serie, i) => {
+      const rows: ChartRow[] = serie.points.map((p) => ({ ...p, y: toAxis(p.value), lineY: toAxis(p.line), serie: i }));
+      const byActivity = new Map<string, ChartRow[]>();
+      for (const row of rows) byActivity.set(row.activityId, [...(byActivity.get(row.activityId) ?? []), row]);
+      return { key: serie.key, label: serie.label, rows, byActivity: [...byActivity.entries()] };
+    }),
+    // `toAxis` ne dépend que de l'unité, des unités de la sélection et de l'échelle des durées.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [series, speedUnit, distanceUnit, inHours]
   );
-  const speedFull = useMemo(() => {
-    if (speedRows.length === 0) return null;
+  const chartFull = useMemo(() => {
+    const starts = series.flatMap((serie) => serie.points.map((p) => p.startMs));
+    if (starts.length === 0) return null;
     // Une journée de marge de chaque côté : un point seul reste au milieu.
     const pad = 86_400_000;
-    return { min: speedRows[0].startMs - pad, max: speedRows[speedRows.length - 1].startMs + pad };
-  }, [speedRows]);
-  const zoom = useChartZoom(speedFull, `${family}|${activity?.id}|${period}`);
-  const speedTicks = zoom.shown ? dateTicks(zoom.shown.min, zoom.shown.max, narrow ? 4 : 6) : null;
-  const speedSeries = useMemo(() => {
-    const byActivity = new Map<string, SpeedRow[]>();
-    for (const row of speedRows) byActivity.set(row.activityId, [...(byActivity.get(row.activityId) ?? []), row]);
-    return [...byActivity.entries()];
-  }, [speedRows]);
-  const pickedRow = speedRows.find((r) => r.file === picked) ?? null;
-  const pickedSession = pickedRow ? inPeriod.find((s) => s.file === pickedRow.file) ?? null : null;
-  const inverse = isInverseUnit(speedUnit);
+    return { min: Math.min(...starts) - pad, max: Math.max(...starts) + pad };
+  }, [series]);
+  const zoom = useChartZoom(chartFull, `${family}|${activity?.id}|${period}|${metricKey}`);
+  const chartTicks = zoom.shown ? dateTicks(zoom.shown.min, zoom.shown.max, narrow ? 4 : 6) : null;
+  const pickedSession = picked ? inPeriod.find((s) => s.file === picked) ?? null : null;
+  const pickedPoints = pickedSession
+    ? series.flatMap((serie) => serie.points.filter((p) => p.file === pickedSession.file).map((p) => ({ label: serie.label, point: p })))
+    : [];
+  const inverse = metric.unit === 'vitesse' && isInverseUnit(speedUnit);
+  const twoSeries = series.length > 1;
+  /** Valeur d'une session pour une série, avec le détail des manœuvres. */
+  const pointText = (serieLabel: string, p: MetricPoint): string => {
+    const s = metric.key === 'reussite' ? inPeriod.find((x) => x.file === p.file) : undefined;
+    const r = s?.maneuverResults;
+    const detail = r
+      ? serieLabel === 'Virements' ? ` (${r.tackSuccess} / ${r.tackSuccess + r.tackFail})` : ` (${r.jibeSuccess} / ${r.jibeSuccess + r.jibeFail})`
+      : '';
+    return `${twoSeries ? `${serieLabel.toLowerCase()} ` : ''}${metricText(p.value)}${detail}`;
+  };
+  const voileWithoutResults = metric.key === 'reussite' ? inPeriod.filter((s) => s.family === 'voile' && s.maneuverResults === null).length : 0;
 
   // Régularité : une colonne par activité, empilées.
   const barRows = useMemo(
@@ -422,12 +489,16 @@ function StatisticsPage() {
               </ResizablePanel>
             )}
 
-            {open.vitesse && family !== null && (
+            {open.vitesse && (
               <ResizablePanel id={panelId('vitesse')} defaultHeight={380} minHeight={220} direction="vertical" style={chartPanelStyle}>
                 <div style={{ marginBottom: '8px', paddingRight: '28px' }}>
-                  <PanelTitle label="Vitesse max" open={open.vitesse} onToggle={() => toggle('vitesse')} />
+                  <PanelTitle label="Graphique" open={open.vitesse} onToggle={() => toggle('vitesse')} />
                 </div>
-                {speedRows.length === 0 ? (
+                {metrics.length > 1 && (
+                  <Chips label="Donnée" items={metrics.map((m) => ({ key: m.key, label: m.label }))} value={metricKey} accent={accent}
+                    className="stats-metric-chips" onChoose={(key) => { rememberView({ donnee: key }); setPicked(null); }} />
+                )}
+                {chartFull === null ? (
                   <p className="stats-hint">Aucune session sur la période.</p>
                 ) : (
                   <>
@@ -438,49 +509,56 @@ function StatisticsPage() {
                           <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
                           <XAxis dataKey="startMs" type="number" allowDataOverflow
                             domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
-                            ticks={speedTicks?.ticks}
-                            tickFormatter={(v: number) => formatDateTick(v, speedTicks?.unit ?? 'jour')}
+                            ticks={chartTicks?.ticks}
+                            tickFormatter={(v: number) => formatDateTick(v, chartTicks?.unit ?? 'jour')}
                             tick={{ fill: '#555', fontSize: 11 }} />
-                          <YAxis type="number" domain={inverse ? ['auto', 'auto'] : [0, 'auto']} reversed={inverse}
-                            tickFormatter={(v: number) => formatSpeedValue(v, speedUnit)} width={46}
+                          <YAxis type="number" reversed={inverse}
+                            domain={inverse ? ['auto', 'auto'] : metric.unit === 'pourcent' ? [0, 100] : [0, 'auto']}
+                            allowDecimals={metric.unit !== 'nombre'}
+                            tickFormatter={axisTick} width={46}
                             tick={{ fill: '#555', fontSize: 11 }}
-                            label={{ value: SPEED_UNIT_LABEL[speedUnit], angle: -90, position: 'insideLeft', fill: '#555', fontSize: 11 }} />
+                            label={{ value: axisLabel, angle: -90, position: 'insideLeft', fill: '#555', fontSize: 11 }} />
                           <Tooltip cursor={false} isAnimationActive={false}
                             content={({ active, payload }) => {
-                              const row = active ? (payload?.[0]?.payload as SpeedRow | undefined) : undefined;
-                              if (!row) return null;
+                              const row = active ? (payload?.[0]?.payload as ChartRow | undefined) : undefined;
+                              if (!row || row.y === undefined) return null;
                               return (
                                 <div className="stats-tooltip">
                                   <strong>{shortDate(row.startMs)}</strong>
-                                  <span>{activityName(row.activityId)} · {formatSpeed(row.maxSpeedMs, speedUnit)}</span>
+                                  <span>{activityName(row.activityId)} · {pointText(series[row.serie]?.label ?? '', row)}</span>
                                 </div>
                               );
                             }} />
-                          <Line data={speedRows} dataKey="best" type="stepAfter" stroke="#9aa0a6" strokeDasharray="4 3" strokeWidth={1.5}
-                            dot={false} activeDot={false} isAnimationActive={false} name="Record" />
-                          {speedSeries.map(([activityId, rows]) => (
-                            <Scatter key={activityId} data={rows} dataKey="speed" fill={activityColor(activityId)} isAnimationActive={false}
-                              name={activityName(activityId)}
-                              onClick={(_, index) => setPicked(rows[index]?.file ?? null)} style={{ cursor: 'pointer' }} />
+                          {chartSeries.map((serie, i) => (
+                            <Line key={`ligne-${serie.key}`} data={serie.rows} dataKey="lineY" type={metric.record ? 'stepAfter' : 'linear'}
+                              stroke="#9aa0a6" strokeDasharray={SERIE_DASHES[i] ?? SERIE_DASHES[0]} strokeWidth={1.5}
+                              dot={false} activeDot={false} isAnimationActive={false} name={metric.record ? 'Record' : 'Tendance'} />
                           ))}
+                          {chartSeries.flatMap((serie, i) => serie.byActivity.map(([activityId, rows]) => (
+                            <Scatter key={`${serie.key}-${activityId}`} data={rows} dataKey="y" fill={activityColor(activityId)} isAnimationActive={false}
+                              shape={SERIE_SHAPES[i] ?? SERIE_SHAPES[0]} name={activityName(activityId)}
+                              onClick={(_, index) => setPicked(rows[index]?.file ?? null)} style={{ cursor: 'pointer' }} />
+                          )))}
                         </ComposedChart>
                       </ResponsiveContainer>
                     </ZoomableChart>
                     <div className="stats-picked">
-                      {pickedRow && pickedSession ? (
-                        <button type="button" className="stats-row" onClick={() => openSession(pickedRow.file, pickedSession.family)}>
-                          <span className="stats-row__swatch" style={{ background: activityColor(pickedRow.activityId) }} />
-                          <span className="stats-row__name">{shortDate(pickedRow.startMs)}</span>
+                      {pickedSession && pickedPoints.length > 0 ? (
+                        <button type="button" className="stats-row" onClick={() => openSession(pickedSession.file, pickedSession.family)}>
+                          <span className="stats-row__swatch" style={{ background: activityColor(pickedSession.activityId) }} />
+                          <span className="stats-row__name">{shortDate(pickedSession.startMs)}</span>
                           <span className="stats-row__meta num">
-                            {pickedSession.name ?? activityName(pickedRow.activityId)} · {formatSpeed(pickedRow.maxSpeedMs, speedUnit)}
-                            {pickedRow.isRecord ? ' · record' : ''}
+                            {pickedSession.name ?? activityName(pickedSession.activityId)} · {pickedPoints.map(({ label, point }) => pointText(label, point)).join(' · ')}
+                            {pickedPoints.some(({ point }) => point.isRecord) ? ' · record' : ''}
                           </span>
                           <span className="stats-row__open">Ouvrir</span>
                           <IconChevronRight size={16} className="stats-row__chevron" />
                         </button>
                       ) : (
                         <span style={noteStyle}>
-                          Un point par session, à la couleur de son activité ; en pointillé, le record établi jusque-là.
+                          Un point par session, à la couleur de son activité{twoSeries ? ' (ronds : virements, triangles : empannages)' : ''} ;
+                          {metric.record ? ' en pointillé, le record établi jusque-là.' : ` en pointillé, la moyenne des ${TREND_SESSIONS} dernières sessions.`}
+                          {voileWithoutResults > 0 && ` Réussite connue des sessions rouvertes dans l'analyse depuis la version 0.3.5 : ${plural(voileWithoutResults, 'session')} à rouvrir.`}
                           {narrow ? ' Toucher un point pour le détail, écarter deux doigts pour zoomer.' : ' Cliquer un point pour le détail, tirer une zone pour zoomer.'}
                         </span>
                       )}

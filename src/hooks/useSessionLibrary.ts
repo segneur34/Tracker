@@ -403,11 +403,14 @@ const newRecord = (gpx: string, analyzed: AnalyzedGpx, source: SessionSource, ac
   analysis: null,
 });
 
-/** Nouveau résumé, en gardant le nombre de manœuvres de la dernière analyse. */
+/** Nouveau résumé, en gardant le nombre et la réussite des manœuvres de la dernière analyse. */
 const withSummary = (record: RecordWithoutSummary, summary: SessionSummary): SessionRecord => ({
   ...record,
-  summary:
-    record.summary?.maneuverCount === undefined ? summary : { ...summary, maneuverCount: record.summary.maneuverCount },
+  summary: {
+    ...summary,
+    ...(record.summary?.maneuverCount !== undefined ? { maneuverCount: record.summary.maneuverCount } : {}),
+    ...(record.summary?.maneuverResults !== undefined ? { maneuverResults: record.summary.maneuverResults } : {}),
+  },
 });
 
 // --- Écritures différées des fiches ---

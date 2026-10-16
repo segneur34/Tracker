@@ -1,6 +1,6 @@
 /**
- * Statistiques des sessions (lot 5, étape 1) : totaux, évolution de la vitesse
- * max, régularité et records, tirés du résumé des fiches (`SessionSummary`),
+ * Statistiques des sessions (lot 5, étape 1) : totaux, graphique d'une donnée
+ * par session, régularité et records, tirés du résumé des fiches (`SessionSummary`),
  * sans relire un seul GPX. Logique pure, en unités SI ; l'heure est celle de
  * l'appareil, comme le graphe de l'accueil, dont on reprend les périodes et
  * les semaines ISO (`activityChart.ts`).
@@ -10,7 +10,7 @@ import type { Activity } from '../core/activities';
 import { edwardsLoad, histogramZoneTimes } from '../core/heartRate';
 import { sportFamily, sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
 import { CHART_PERIODS, addDays, chartPeriodBounds, isoWeek, startOfDay, startOfIsoWeek, type ChartPeriod } from './activityChart';
-import type { SessionRecord, SummaryHeartRate } from './record';
+import type { ManeuverResults, SessionRecord, SummaryHeartRate } from './record';
 
 export type StatsPeriod = ChartPeriod | 'tout';
 
@@ -41,6 +41,8 @@ export interface StatSession {
   endMs: number;
   distanceM: number;
   movingTimeS: number | null;
+  /** Distance pendant le temps en action, `null` sur une fiche d'avant la version 5 du résumé. */
+  movingDistanceM: number | null;
   elevationGainM: number | null;
   maxSpeedMs: number;
   activityId: string;
@@ -48,17 +50,26 @@ export interface StatSession {
   treatment: Treatment;
   /** Voile : manœuvres classées à la dernière analyse, `null` si la session n'a jamais été ouverte. */
   maneuverCount: number | null;
+  /** Voile : leur réussite, `null` si la session n'a pas été ouverte depuis qu'elle est retenue. */
+  maneuverResults: ManeuverResults | null;
+  /** Support sur foil (voile, surf) : celui de la session, sinon de son activité. */
+  foil: boolean;
   waveCount: number | null;
   longestWaveM: number | null;
   longestFlightS: number | null;
+  /** Surf sur foil : temps total en vol. */
+  flightS: number | null;
   /** Répétitions du compteur (fractionné). */
   reps: number;
   /** FC du résumé, `null` pour une session sans FC. */
   heartRate: SummaryHeartRate | null;
 }
 
-/** Session des statistiques, d'après sa fiche et son activité (`sessionActivity`). */
-export const statSessionOf = (file: string, record: SessionRecord, activity: Activity): StatSession => {
+/**
+ * Session des statistiques, d'après sa fiche et son activité (`sessionActivity`) ;
+ * `foil` : celui de la session, sinon de son activité, donné par l'appelant.
+ */
+export const statSessionOf = (file: string, record: SessionRecord, activity: Activity, foil = false): StatSession => {
   const { summary } = record;
   return {
     file,
@@ -67,15 +78,19 @@ export const statSessionOf = (file: string, record: SessionRecord, activity: Act
     endMs: summary.endMs,
     distanceM: summary.distanceM,
     movingTimeS: summary.movingTimeS,
+    movingDistanceM: summary.movingDistanceM ?? null,
     elevationGainM: summary.elevationGainM,
     maxSpeedMs: summary.maxSpeedMs,
     activityId: activity.id,
     family: sportFamily(activity.base),
     treatment: sportTreatment(activity.base),
     maneuverCount: summary.maneuverCount ?? null,
+    maneuverResults: summary.maneuverResults ?? null,
+    foil,
     waveCount: summary.waveCount ?? null,
     longestWaveM: summary.longestWaveM ?? null,
     longestFlightS: summary.longestFlightS ?? null,
+    flightS: summary.flightS ?? null,
     reps: record.intervals?.reduce((n, series) => n + series.laps.filter((l) => l.kind === 'travail').length, 0) ?? 0,
     heartRate: summary.heartRate ?? null,
   };
@@ -88,7 +103,7 @@ export interface StatsTotals {
   durationS: number;
   /** Temps en action, sur les sessions qui le connaissent. */
   movingTimeS: number;
-  /** Distance de ces mêmes sessions : elle donne la vitesse moyenne en action. */
+  /** Distance en action de ces mêmes sessions : elle donne la vitesse moyenne en action. */
   movingDistanceM: number;
   distanceM: number;
   /** D+ cumulé, sur les sessions qui en ont un (`elevationSessions`). */
@@ -118,7 +133,8 @@ export const statsTotals = (sessions: readonly StatSession[]): StatsTotals => {
     t.distanceM += s.distanceM;
     if (s.movingTimeS !== null && s.movingTimeS > 0) {
       t.movingTimeS += s.movingTimeS;
-      t.movingDistanceM += s.distanceM;
+      // La distance entière, le temps que la fiche soit recalculée (version 5 du résumé).
+      t.movingDistanceM += s.movingDistanceM ?? s.distanceM;
     }
     if (s.elevationGainM !== null) {
       t.elevationGainM += s.elevationGainM;
@@ -162,28 +178,146 @@ export const groupTotals = <K extends string>(
   return keys.map((key) => ({ key, totals: statsTotals(groups.get(key)!) }));
 };
 
-/** Un point du graphe de la vitesse max : une session, et le record établi jusqu'à elle comprise. */
-export interface MaxSpeedPoint {
+// --- Graphique : une donnée par session ---
+
+/** Données du graphique. */
+export type StatsMetricKey = 'vmax' | 'moyenne' | 'duree' | 'distance' | 'denivele' | 'vol' | 'reussite' | 'vagues' | 'vague' | 'volMax';
+
+/** Sorte de valeur, qui donne l'axe et le format ; toutes en SI (m/s, s, m), le pourcentage de 0 à 100. */
+export type StatsMetricUnit = 'vitesse' | 'duree' | 'distance' | 'pourcent' | 'nombre' | 'metres' | 'secondes';
+
+export interface StatsMetricSeries {
+  key: string;
+  label: string;
+  /** Valeur d'une session, `null` si elle n'en a pas. */
+  value: (s: StatSession) => number | null;
+}
+
+export interface StatsMetric {
+  key: StatsMetricKey;
+  label: string;
+  unit: StatsMetricUnit;
+  /** Familles où la donnée a un sens ; `null` : toutes. */
+  families: readonly SportFamily[] | null;
+  /** Proposée dans la vue d'ensemble, où les unités se mêlent. */
+  overview: boolean;
+  /** Une série, ou deux (virements et empannages). */
+  series: StatsMetricSeries[];
+  /** Ligne du record qui court (vitesse max) ; sinon, une tendance. */
+  record: boolean;
+}
+
+const durationOf = (s: StatSession): number | null => (s.endMs > s.startMs ? (s.endMs - s.startMs) / 1000 : null);
+
+const positive = (value: number | null): number | null => (value !== null && Number.isFinite(value) && value > 0 ? value : null);
+
+const percent = (part: number, whole: number | null): number | null =>
+  whole !== null && whole > 0 && Number.isFinite(part) ? Math.min(100, Math.max(0, (part / whole) * 100)) : null;
+
+/** Réussite d'une sorte de manœuvre, en %, `null` sans manœuvre de cette sorte. */
+const successRate = (success: number, fail: number): number | null => percent(success, success + fail);
+
+const LAND_FAMILIES: readonly SportFamily[] = ['course', 'velo', 'fractionne'];
+
+const single = (key: string, label: string, value: StatsMetricSeries['value']): StatsMetricSeries[] => [{ key, label, value }];
+
+/** Les données du graphique, dans l'ordre des pastilles. */
+export const STATS_METRICS: readonly StatsMetric[] = [
+  {
+    key: 'vmax', label: 'Vitesse max', unit: 'vitesse', families: null, overview: false, record: true,
+    series: single('vmax', 'Vitesse max', (s) => positive(s.maxSpeedMs)),
+  },
+  {
+    key: 'moyenne', label: 'Moyenne en action', unit: 'vitesse', families: null, overview: false, record: false,
+    series: single('moyenne', 'Moyenne en action', (s) =>
+      s.movingDistanceM !== null && s.movingTimeS !== null && s.movingTimeS > 0 ? positive(s.movingDistanceM / s.movingTimeS) : null),
+  },
+  { key: 'duree', label: 'Durée', unit: 'duree', families: null, overview: true, record: false, series: single('duree', 'Durée', durationOf) },
+  { key: 'distance', label: 'Distance', unit: 'distance', families: null, overview: false, record: false, series: single('distance', 'Distance', (s) => positive(s.distanceM)) },
+  {
+    key: 'denivele', label: 'Dénivelé positif', unit: 'metres', families: LAND_FAMILIES, overview: false, record: false,
+    series: single('denivele', 'Dénivelé positif', (s) => (s.elevationGainM !== null && Number.isFinite(s.elevationGainM) ? Math.max(0, s.elevationGainM) : null)),
+  },
+  {
+    // Voile : le « Ratio de vol » de l'analyse (temps en action sur la durée), sur foil seulement ; surf : le temps des vols.
+    key: 'vol', label: '% de vol', unit: 'pourcent', families: ['voile', 'surf'], overview: false, record: false,
+    series: single('vol', '% de vol', (s) => {
+      if (s.family === 'surf') return s.flightS !== null ? percent(s.flightS, durationOf(s)) : null;
+      return s.foil && s.movingTimeS !== null ? percent(s.movingTimeS, durationOf(s)) : null;
+    }),
+  },
+  {
+    key: 'reussite', label: '% de manœuvres réussies', unit: 'pourcent', families: ['voile'], overview: false, record: false,
+    series: [
+      { key: 'virements', label: 'Virements', value: (s) => (s.maneuverResults ? successRate(s.maneuverResults.tackSuccess, s.maneuverResults.tackFail) : null) },
+      { key: 'empannages', label: 'Empannages', value: (s) => (s.maneuverResults ? successRate(s.maneuverResults.jibeSuccess, s.maneuverResults.jibeFail) : null) },
+    ],
+  },
+  { key: 'vagues', label: 'Vagues', unit: 'nombre', families: ['surf'], overview: false, record: false, series: single('vagues', 'Vagues', (s) => s.waveCount) },
+  { key: 'vague', label: 'Plus longue vague', unit: 'metres', families: ['surf'], overview: false, record: false, series: single('vague', 'Plus longue vague', (s) => positive(s.longestWaveM)) },
+  { key: 'volMax', label: 'Plus long vol', unit: 'secondes', families: ['surf'], overview: false, record: false, series: single('volMax', 'Plus long vol', (s) => positive(s.longestFlightS)) },
+];
+
+export const isStatsMetricKey = (value: unknown): value is StatsMetricKey => STATS_METRICS.some((m) => m.key === value);
+
+export const statsMetric = (key: StatsMetricKey): StatsMetric => STATS_METRICS.find((m) => m.key === key)!;
+
+/** Donnée par défaut : la vitesse max dans une famille, la durée dans la vue d'ensemble. */
+export const defaultMetricKey = (family: SportFamily | null): StatsMetricKey => (family === null ? 'duree' : 'vmax');
+
+/**
+ * Données proposées pour une famille (`null` : la vue d'ensemble) : celles qui
+ * y ont un sens et une valeur pour au moins une des sessions données.
+ */
+export const metricsOf = (family: SportFamily | null, sessions: readonly StatSession[]): StatsMetric[] =>
+  STATS_METRICS.filter(
+    (m) => (family === null ? m.overview : m.families === null || m.families.includes(family))
+      && sessions.some((s) => m.series.some((serie) => serie.value(s) !== null))
+  );
+
+/** Un point du graphique : une session, sa valeur, et la ligne grise (record qui court, ou tendance) à sa date. */
+export interface MetricPoint {
   file: string;
   startMs: number;
-  maxSpeedMs: number;
   activityId: string;
-  bestMs: number;
-  /** La session a battu le record d'avant (la première le fait). */
+  value: number;
+  line: number;
+  /** Vitesse max : la session a battu le record d'avant (la première le fait). */
   isRecord: boolean;
 }
 
-/** Les sessions dans l'ordre des dates, avec le record qui court ; une session sans vitesse est écartée. */
-export const maxSpeedSeries = (sessions: readonly StatSession[]): MaxSpeedPoint[] => {
-  let best = 0;
-  return sessions
-    .filter((s) => Number.isFinite(s.maxSpeedMs) && s.maxSpeedMs > 0)
-    .sort((a, b) => a.startMs - b.startMs)
-    .map((s) => {
-      const isRecord = s.maxSpeedMs > best;
-      if (isRecord) best = s.maxSpeedMs;
-      return { file: s.file, startMs: s.startMs, maxSpeedMs: s.maxSpeedMs, activityId: s.activityId, bestMs: best, isRecord };
-    });
+/** Sessions moyennées par la tendance : la session et les précédentes de sa série. */
+export const TREND_SESSIONS = 5;
+
+/**
+ * Points d'une donnée, par série, dans l'ordre des dates ; une session sans
+ * valeur est écartée. La ligne grise est le record qui court pour la vitesse
+ * max, sinon la moyenne des `trendSessions` dernières sessions de la série.
+ */
+export const metricSeries = (
+  sessions: readonly StatSession[], metric: StatsMetric, trendSessions = TREND_SESSIONS
+): { key: string; label: string; points: MetricPoint[] }[] => {
+  const sorted = [...sessions].sort((a, b) => a.startMs - b.startMs);
+  return metric.series.map((serie) => {
+    const points: MetricPoint[] = [];
+    let best = -Infinity;
+    for (const s of sorted) {
+      const value = serie.value(s);
+      if (value === null || !Number.isFinite(value)) continue;
+      let line: number;
+      let isRecord = false;
+      if (metric.record) {
+        isRecord = value > best;
+        if (isRecord) best = value;
+        line = best;
+      } else {
+        const window = [...points.slice(Math.max(0, points.length - trendSessions + 1)).map((p) => p.value), value];
+        line = window.reduce((a, b) => a + b, 0) / window.length;
+      }
+      points.push({ file: s.file, startMs: s.startMs, activityId: s.activityId, value, line, isRecord });
+    }
+    return { key: serie.key, label: serie.label, points };
+  });
 };
 
 /** Une barre du graphe de la régularité : une semaine ou un mois. */

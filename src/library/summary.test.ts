@@ -86,6 +86,21 @@ describe('summarizeSession', () => {
     expect(summary.movingTimeS).toBeLessThan(610);
   });
 
+  it('mesure la distance parcourue en action, avec le même masque que le temps', () => {
+    // 10 min à 3 m/s, 5 min à 0,5 m/s (sous le seuil de la course) : seuls les 1 800 m courus comptent.
+    const summary = summarizeSession(buildTrack([[600, 3], [300, 0.5]]), 'running')!;
+    expect(summary.distanceM).toBeCloseTo(1950, -1);
+    expect(summary.movingDistanceM!).toBeGreaterThan(1750);
+    expect(summary.movingDistanceM!).toBeLessThan(1850);
+    expect(summary.movingDistanceM! / summary.movingTimeS!).toBeCloseTo(3, 1);
+    // Toute en action : la distance entière.
+    const all = summarizeSession(buildTrack([[600, 3]]), 'running')!;
+    expect(all.movingDistanceM!).toBeGreaterThan(all.distanceM - 20);
+    // Voile : seul le vol.
+    const wing = summarizeSession(buildTrack([[600, 10.3], [300, 1]]), 'wingfoil')!;
+    expect(wing.movingDistanceM! / wing.movingTimeS!).toBeCloseTo(10.3, 0);
+  });
+
   it('suit un seuil imposé', () => {
     // À 10,8 km/h, un seuil de 12 km/h ne voit jamais la session en mouvement.
     const summary = summarizeSession(buildTrack([[600, 3]]), 'running', { activeThreshold: 12 })!;
@@ -98,6 +113,7 @@ describe('summarizeSession', () => {
     const at5 = summarizeSession(buildTrack(phases, 5), 'running')!;
     expect(at5.distanceM).toBeCloseTo(at1.distanceM, -1);
     expect(Math.abs(at5.movingTimeS! - at1.movingTimeS!)).toBeLessThan(3);
+    expect(Math.abs(at5.movingDistanceM! - at1.movingDistanceM!)).toBeLessThan(10);
     expect(at5.endMs - at5.startMs).toBe(at1.endMs - at1.startMs);
   });
 
@@ -124,6 +140,7 @@ describe('summarizeSession', () => {
     const summary = summarizeSession(buildTrack([[600, 3]]), null)!;
     expect(summary.distanceM).toBeCloseTo(1800, -1);
     expect(summary.movingTimeS).toBeNull();
+    expect(summary.movingDistanceM).toBeNull();
   });
 
   it('rend `null` pour une trace de moins de deux points', () => {

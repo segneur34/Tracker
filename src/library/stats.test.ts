@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { Activity } from '../core/activities';
 import type { SessionRecord } from './record';
 import {
-  averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, groupTotals, heartRatePoints, maxSpeedSeries, recordKindsOf, regularity,
-  sessionLoad, statSessionOf, statsPeriodBounds, statsTotals, topSessions, type StatSession,
+  averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, groupTotals, heartRatePoints, metricSeries, metricsOf, recordKindsOf, regularity,
+  sessionLoad, statSessionOf, statsMetric, statsPeriodBounds, statsTotals, topSessions, type StatSession,
 } from './stats';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
@@ -16,15 +16,19 @@ const session = (startMs: number, over: Partial<StatSession> = {}): StatSession 
   endMs: startMs + 3_600_000,
   distanceM: 10_000,
   movingTimeS: 3000,
+  movingDistanceM: 9000,
   elevationGainM: null,
   maxSpeedMs: 5,
   activityId: 'course',
   family: 'course',
   treatment: 'course',
   maneuverCount: null,
+  maneuverResults: null,
+  foil: false,
   waveCount: null,
   longestWaveM: null,
   longestFlightS: null,
+  flightS: null,
   reps: 0,
   heartRate: null,
   ...over,
@@ -46,6 +50,9 @@ describe('statSessionOf', () => {
     const activity: Activity = { id: 'frac', name: 'Fractionné à pied', base: 'run-intervals', color: '#c25700' };
     const s = statSessionOf('a.json', record, activity);
     expect(s).toMatchObject({ file: 'a.json', name: 'Piste', family: 'fractionne', treatment: 'course', reps: 2, maneuverCount: null });
+    // Fiche d'avant la version 5 : ni distance en action, ni temps de vol, ni réussite.
+    expect(s).toMatchObject({ movingDistanceM: null, flightS: null, maneuverResults: null, foil: false });
+    expect(statSessionOf('a.json', record, activity, true).foil).toBe(true);
   });
 });
 
@@ -60,13 +67,19 @@ describe('statsTotals', () => {
     expect(t.durationS).toBe(3 * 3600);
     expect(t.distanceM).toBe(25_000);
     expect(t.movingTimeS).toBe(6000);
-    expect(t.movingDistanceM).toBe(20_000);
-    expect(averageMovingSpeedMs(t)).toBeCloseTo(20_000 / 6000);
+    // La distance en action, pas la distance entière.
+    expect(t.movingDistanceM).toBe(18_000);
+    expect(averageMovingSpeedMs(t)).toBeCloseTo(18_000 / 6000);
     expect(t.elevationGainM).toBe(120);
     expect(t.elevationSessions).toBe(1);
     expect(t.maxSpeedMs).toBe(6);
     expect(t.maneuvers).toBe(12);
     expect(t.maneuverSessions).toBe(1);
+  });
+
+  it('reprend la distance entière d\'une fiche pas encore recalculée', () => {
+    const t = statsTotals([session(at(2026, 3, 1), { movingDistanceM: null })]);
+    expect(t.movingDistanceM).toBe(10_000);
   });
 
   it('rend des totaux nuls sans session, sans vitesse moyenne', () => {
@@ -85,15 +98,79 @@ describe('statsTotals', () => {
   });
 });
 
-describe('maxSpeedSeries', () => {
-  it('trie par date, suit le record établi et écarte les sessions sans vitesse', () => {
-    const points = maxSpeedSeries([
+describe('metricSeries', () => {
+  it('vitesse max : trie par date, suit le record établi et écarte les sessions sans vitesse', () => {
+    const [serie] = metricSeries([
       session(at(2026, 3, 3), { maxSpeedMs: 7 }),
       session(at(2026, 3, 1), { maxSpeedMs: 5 }),
       session(at(2026, 3, 2), { maxSpeedMs: 4 }),
       session(at(2026, 3, 4), { maxSpeedMs: 0 }),
-    ]);
-    expect(points.map((p) => [p.maxSpeedMs, p.bestMs, p.isRecord])).toEqual([[5, 5, true], [4, 5, false], [7, 7, true]]);
+    ], statsMetric('vmax'));
+    expect(serie.points.map((p) => [p.value, p.line, p.isRecord])).toEqual([[5, 5, true], [4, 5, false], [7, 7, true]]);
+  });
+
+  it('les autres données : une tendance sur les 5 dernières sessions', () => {
+    const list = [1, 2, 3, 4, 5, 6, 7].map((d) => session(at(2026, 3, d), { distanceM: d * 1000 }));
+    const [serie] = metricSeries(list, statsMetric('distance'));
+    expect(serie.points.map((p) => p.line)).toEqual([1000, 1500, 2000, 2500, 3000, 4000, 5000]);
+    expect(serie.points.every((p) => !p.isRecord)).toBe(true);
+    // Une tendance d'une seule session : la valeur elle-même.
+    expect(metricSeries(list, statsMetric('distance'), 1)[0].points.map((p) => p.line)).toEqual(list.map((s) => s.distanceM));
+  });
+
+  it('moyenne en action : distance sur temps en action, rien sans eux', () => {
+    const [serie] = metricSeries([
+      session(at(2026, 3, 1)),
+      session(at(2026, 3, 2), { movingDistanceM: null }),
+      session(at(2026, 3, 3), { movingTimeS: null }),
+    ], statsMetric('moyenne'));
+    expect(serie.points.map((p) => p.value)).toEqual([3]);
+  });
+
+  it('% de vol : sur foil seulement en voile, le temps des vols en surf, borné à 100', () => {
+    const voile = { family: 'voile', treatment: 'voile' } as const;
+    const [serie] = metricSeries([
+      session(at(2026, 3, 1), { ...voile, foil: true, movingTimeS: 1800 }),
+      session(at(2026, 3, 2), { ...voile, foil: false, movingTimeS: 1800 }),
+      session(at(2026, 3, 3), { family: 'surf', treatment: 'surf', flightS: 900 }),
+      session(at(2026, 3, 4), { family: 'surf', treatment: 'surf', flightS: null }),
+      session(at(2026, 3, 5), { ...voile, foil: true, movingTimeS: 99_999 }),
+    ], statsMetric('vol'));
+    expect(serie.points.map((p) => p.value)).toEqual([50, 25, 100]);
+  });
+
+  it('% de manœuvres réussies : virements et empannages en deux séries', () => {
+    const voile = { family: 'voile', treatment: 'voile' } as const;
+    const series = metricSeries([
+      session(at(2026, 3, 1), { ...voile, maneuverResults: { tackSuccess: 3, tackFail: 1, jibeSuccess: 0, jibeFail: 0 } }),
+      session(at(2026, 3, 2), { ...voile, maneuverResults: { tackSuccess: 0, tackFail: 2, jibeSuccess: 1, jibeFail: 1 } }),
+      session(at(2026, 3, 3), { ...voile, maneuverCount: 6 }),
+    ], statsMetric('reussite'));
+    expect(series.map((s) => s.key)).toEqual(['virements', 'empannages']);
+    expect(series[0].points.map((p) => p.value)).toEqual([75, 0]);
+    expect(series[1].points.map((p) => p.value)).toEqual([50]);
+  });
+});
+
+describe('metricsOf', () => {
+  const keys = (family: Parameters<typeof metricsOf>[0], list: StatSession[]) => metricsOf(family, list).map((m) => m.key);
+
+  it('propose les données de la famille qui ont une valeur', () => {
+    expect(keys('course', [session(at(2026, 3, 1), { elevationGainM: 80 })])).toEqual(['vmax', 'moyenne', 'duree', 'distance', 'denivele']);
+    expect(keys('course', [session(at(2026, 3, 1))])).toEqual(['vmax', 'moyenne', 'duree', 'distance']);
+    const voile = { family: 'voile', treatment: 'voile' } as const;
+    expect(keys('voile', [session(at(2026, 3, 1), voile)])).toEqual(['vmax', 'moyenne', 'duree', 'distance']);
+    expect(keys('voile', [session(at(2026, 3, 1), { ...voile, foil: true, maneuverResults: { tackSuccess: 1, tackFail: 0, jibeSuccess: 0, jibeFail: 0 } })]))
+      .toEqual(['vmax', 'moyenne', 'duree', 'distance', 'vol', 'reussite']);
+    const surf = { family: 'surf', treatment: 'surf', waveCount: 4, longestWaveM: 80 } as const;
+    expect(keys('surf', [session(at(2026, 3, 1), surf)])).toEqual(['vmax', 'moyenne', 'duree', 'distance', 'vagues', 'vague']);
+    expect(keys('surf', [session(at(2026, 3, 1), { ...surf, flightS: 600, longestFlightS: 120 })]))
+      .toEqual(['vmax', 'moyenne', 'duree', 'distance', 'vol', 'vagues', 'vague', 'volMax']);
+  });
+
+  it('vue d\'ensemble : la durée seule ; rien sans session', () => {
+    expect(keys(null, [session(at(2026, 3, 1))])).toEqual(['duree']);
+    expect(keys('course', [])).toEqual([]);
   });
 });
 

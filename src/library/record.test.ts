@@ -61,6 +61,21 @@ const session = (file: string, patch: Partial<SessionRecord> = {}): LibrarySessi
 });
 
 describe('parseRecord et serializeRecord', () => {
+  it('relisent la distance en action, le temps de vol et la réussite des manœuvres, et écartent ce qui est mal formé', () => {
+    const maneuverResults = { tackSuccess: 5, tackFail: 2, jibeSuccess: 4, jibeFail: 0 };
+    const r = record({ summary: { ...record().summary, movingDistanceM: 9000, flightS: null, maneuverResults } });
+    const back = parseRecord(serializeRecord(r))!.summary;
+    expect(back.movingDistanceM).toBe(9000);
+    expect(back.flightS).toBeNull();
+    expect(back.maneuverResults).toEqual(maneuverResults);
+    const abimee = { ...record(), summary: { ...record().summary, movingDistanceM: 'x', maneuverResults: { ...maneuverResults, tackFail: -1 } } };
+    const lue = parseRecord(JSON.stringify(abimee))!.summary;
+    expect(lue.movingDistanceM).toBeNull();
+    expect(lue.maneuverResults).toBeUndefined();
+    // Fiche d'avant la version 5 : rien.
+    expect('movingDistanceM' in parseRecord(serializeRecord(record()))!.summary).toBe(false);
+  });
+
   it('relisent la FC du résumé, et écartent une FC mal formée', () => {
     const heartRate = { avgBpm: 148, maxBpm: 171, coveredS: 2400, histogram: { fromBpm: 120, seconds: [10, 20, 30] } };
     const r = record({ summary: { ...record().summary, heartRate } });
@@ -516,6 +531,12 @@ describe('applyRecordPatch', () => {
     const counted = applyRecordPatch(record(), { maneuverCount: 12 });
     expect(counted.record.summary.maneuverCount).toBe(12);
     expect(counted.resummarize).toBe(false);
+    const results = { tackSuccess: 5, tackFail: 2, jibeSuccess: 4, jibeFail: 1 };
+    const scored = applyRecordPatch(record(), { maneuverCount: 12, maneuverResults: results });
+    expect(scored.record.summary.maneuverResults).toEqual(results);
+    expect(scored.resummarize).toBe(false);
+    // Les mêmes nombres : la fiche d'origine, sans réécriture.
+    expect(applyRecordPatch(scored.record, { maneuverCount: 12, maneuverResults: { ...results } }).record).toBe(scored.record);
   });
 });
 

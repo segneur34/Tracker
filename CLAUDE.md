@@ -116,6 +116,7 @@ Décisions transverses :
   - une vue d'ensemble, puis une famille, puis une activité ; chaque famille a sa rangée d'activités, toutes ses activités visibles comprises ;
   - périodes de l'accueil, plus « Tout », par défaut ; le dernier affichage (famille, activité, période) est retenu sur l'appareil et repris à l'ouverture sans paramètre ;
   - régularité comptée depuis la plus vieille session de la sélection quand elle est plus récente que le début de la période ;
-  - onglets général, vitesse max (un point par session, record en pointillé), régularité, records et cardio (si une session de la période a de la FC : charge, temps par zone, FC par session) ; pas de vitesse max ni de records dans la vue d'ensemble, où les unités se mêlent ;
+  - onglets général, graphique, régularité, records et cardio (si une session de la période a de la FC : charge, temps par zone, FC par session) ; pas de records dans la vue d'ensemble, où les unités se mêlent ;
+  - graphique : un point par session, la donnée choisie par des pastilles et retenue : vitesse max (record en pointillé), moyenne en action, durée, distance ; D+ à pied et à vélo ; % de vol (foil) et % de manœuvres réussies en voile ; % de vol, vagues, plus longue vague et plus long vol en surf ; la durée seule dans la vue d'ensemble ; tendance en pointillé hors vitesse max ;
   - tout tiré du résumé des fiches, sessions cachées et à classer écartées ;
   - d'autres onglets viendront, et une étape 2 (W/kg, poids passé ; la FC est faite) à décider avec l'utilisateur.

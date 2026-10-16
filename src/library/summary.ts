@@ -6,6 +6,7 @@ import {
   MIN_ELEVATION_COVERAGE,
   buildCumulativeTrack,
   computeActivityMask,
+  computeActiveDistanceM,
   computeActiveTimeMs,
 } from '../core/sessionStats';
 import { SAILING_SPORTS, defaultActiveThresholdOf, getActiveThresholds, getSportProfile, type ElevationProfile, type HeartRateProfile } from '../core/sportProfiles';
@@ -25,8 +26,8 @@ import { SUMMARY_CALC_VERSION, type SessionSummary, type SummaryHeartRate } from
  * - en voile, filtres et seuil d'activité accordés à l'allure de la session
  *   (`useSailingSession`, règle 4), sauf surcharge de l'utilisateur ;
  * - en course, filtres et seuil du profil, sauf surcharge ;
- * - en surf, les vagues de la page d'analyse (`runSurfSession`) : le temps en
- *   action est le temps de glisse, et le résumé compte les vagues.
+ * - en surf, les vagues de la page d'analyse (`runSurfSession`) : le temps et
+ *   la distance en action sont ceux de la glisse, et le résumé compte les vagues.
  *
  * Sans support connu, ni filtre de support ni seuil d'activité : distance et
  * durée restent justes, le temps en action attend que la session soit classée.
@@ -96,13 +97,18 @@ export const surfRides = (
   return (foil ? analysis.flights : analysis.waves).map((r) => ({ startMs: r.startMs, endMs: r.endMs }));
 };
 
-/** Trace enrichie et temps en action, selon le support. */
+/** Trace enrichie, temps et distance en action, selon le support. */
 const analyze = (
   rawPoints: RawTrackPoint[],
   sport: SportType | null,
   options: SummaryOptions
-): { track: TrackPoint[]; movingTimeS: number | null; surf?: Pick<SessionSummary, 'waveCount' | 'longestWaveM' | 'longestFlightS'> } => {
-  if (sport === null) return { track: computeKinematics(rawPoints), movingTimeS: null };
+): {
+  track: TrackPoint[];
+  movingTimeS: number | null;
+  movingDistanceM: number | null;
+  surf?: Pick<SessionSummary, 'waveCount' | 'longestWaveM' | 'longestFlightS' | 'flightS'>;
+} => {
+  if (sport === null) return { track: computeKinematics(rawPoints), movingTimeS: null, movingDistanceM: null };
 
   const profile = getSportProfile(sport);
   const isSailing = SAILING_SPORTS.includes(sport);
@@ -121,7 +127,11 @@ const analyze = (
     return {
       track,
       movingTimeS: summary.glisseS,
-      surf: { waveCount: summary.waveCount, longestWaveM: summary.longestWaveM, longestFlightS: foil ? summary.longestFlightS : null },
+      movingDistanceM: summary.glisseDistanceM,
+      surf: {
+        waveCount: summary.waveCount, longestWaveM: summary.longestWaveM,
+        longestFlightS: foil ? summary.longestFlightS : null, flightS: foil ? summary.flightS : null,
+      },
     };
   }
   const { enter, exit } = getActiveThresholds(profile, threshold);
@@ -130,7 +140,7 @@ const analyze = (
     exitThresholdMs: fromDisplaySpeed(exit, profile.thresholdUnit),
     minStateDurationS: profile.minStateDurationS,
   });
-  return { track, movingTimeS: computeActiveTimeMs(track, mask) / 1000 };
+  return { track, movingTimeS: computeActiveTimeMs(track, mask) / 1000, movingDistanceM: computeActiveDistanceM(track, mask) };
 };
 
 /** Résumé d'une trace, ou `null` si elle a moins de deux points horodatés. */
@@ -140,7 +150,7 @@ export const summarizeSession = (
   options: SummaryOptions = {}
 ): SessionSummary | null => {
   const analyzed = analyze(rawPoints, sport, options);
-  const { movingTimeS } = analyzed;
+  const { movingTimeS, movingDistanceM } = analyzed;
   if (analyzed.track.length < 2) return null;
 
   const { cumDist } = buildCumulativeTrack(analyzed.track);
@@ -157,6 +167,7 @@ export const summarizeSession = (
     endMs: track[track.length - 1].timeMs,
     distanceM: cumDist[cumDist.length - 1],
     movingTimeS,
+    movingDistanceM,
     elevationGainM: elevation.coverage >= MIN_ELEVATION_COVERAGE ? elevation.gainM : null,
     maxSpeedMs,
     pointCount: track.length,

@@ -43,8 +43,11 @@ export const RECORD_VERSION = 1;
  * vitesse (`detourSpikes`), même suivie d'un trou.
  *
  * 4 (15 octobre 2026) : FC de la session (`heartRate`), pour les statistiques.
+ *
+ * 5 (16 octobre 2026) : distance en action (`movingDistanceM`) et temps de vol
+ * en surf (`flightS`), pour le graphique des statistiques.
  */
-export const SUMMARY_CALC_VERSION = 4;
+export const SUMMARY_CALC_VERSION = 5;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -58,6 +61,8 @@ export interface SessionSummary {
   distanceM: number;
   /** Temps en action au sens du support, `null` tant que le support est inconnu. */
   movingTimeS: number | null;
+  /** Distance parcourue pendant ce temps en action (en surf, en glisse) ; absente des fiches d'avant la version 5. */
+  movingDistanceM?: number | null;
   /** Dénivelé positif, `null` si la trace n'a pas assez d'altitudes. */
   elevationGainM: number | null;
   /** Plus haute vitesse lissée. */
@@ -67,13 +72,37 @@ export interface SessionSummary {
   samplingS: number;
   /** Virements et empannages classés à la dernière analyse, s'il y en a eu une. */
   maneuverCount?: number;
+  /** Réussite des virements et empannages à cette même analyse (Vmin au seuil de la session). */
+  maneuverResults?: ManeuverResults;
   /** Surf : vagues, plus longue vague, et plus long vol sur foil (`null` sans foil ou sans vague). */
   waveCount?: number;
   longestWaveM?: number | null;
   longestFlightS?: number | null;
+  /** Surf sur foil : temps total en vol (`null` sans foil). */
+  flightS?: number | null;
   /** FC de la session, si elle en a assez (`HeartRateProfile.minCoverageS`) ; indépendante des zones du pratiquant. */
   heartRate?: SummaryHeartRate;
 }
+
+/** Manœuvres réussies et manquées d'une session de voile. */
+export interface ManeuverResults {
+  tackSuccess: number;
+  tackFail: number;
+  jibeSuccess: number;
+  jibeFail: number;
+}
+
+const readManeuverResults = (raw: unknown): ManeuverResults | null => {
+  if (!isObject(raw)) return null;
+  const { tackSuccess, tackFail, jibeSuccess, jibeFail } = raw;
+  const counts = [tackSuccess, tackFail, jibeSuccess, jibeFail];
+  if (!counts.every((n) => isFiniteNumber(n) && Number.isInteger(n) && n >= 0)) return null;
+  return { tackSuccess, tackFail, jibeSuccess, jibeFail } as ManeuverResults;
+};
+
+export const sameManeuverResults = (a: ManeuverResults | undefined, b: ManeuverResults | undefined): boolean =>
+  a === b || (a !== undefined && b !== undefined && a.tackSuccess === b.tackSuccess && a.tackFail === b.tackFail
+    && a.jibeSuccess === b.jibeSuccess && a.jibeFail === b.jibeFail);
 
 /** FC d'une session dans son résumé : zones et charge s'en recalculent avec le profil du moment. */
 export interface SummaryHeartRate {
@@ -300,6 +329,11 @@ const readSummary = (raw: unknown): SessionSummary | null => {
     samplingS,
   };
   if (!isFiniteNumber(raw.maneuverCount)) delete summary.maneuverCount;
+  const maneuverResults = readManeuverResults(raw.maneuverResults);
+  if (maneuverResults) summary.maneuverResults = maneuverResults;
+  else delete summary.maneuverResults;
+  if ('movingDistanceM' in raw) summary.movingDistanceM = isFiniteNumber(raw.movingDistanceM) ? raw.movingDistanceM : null;
+  if ('flightS' in raw) summary.flightS = isFiniteNumber(raw.flightS) ? raw.flightS : null;
   if (!isFiniteNumber(raw.waveCount)) delete summary.waveCount;
   if ('longestWaveM' in raw) summary.longestWaveM = isFiniteNumber(raw.longestWaveM) ? raw.longestWaveM : null;
   if ('longestFlightS' in raw) summary.longestFlightS = isFiniteNumber(raw.longestFlightS) ? raw.longestFlightS : null;
@@ -644,6 +678,7 @@ export interface RecordPatch {
   notes?: StoredSessionNotes | null;
   analysis?: SessionAnalysis | null;
   maneuverCount?: number;
+  maneuverResults?: ManeuverResults;
   /** Voies trouvées pour la trace ; `null` les retire. */
   surfaces?: SessionSurfaces | null;
   /** Altitude du terrain ; `null` la retire. */
@@ -658,7 +693,7 @@ export interface RecordPatch {
 
 /**
  * Fiche après un changement : support, activité, nom, notes, réglages
- * d'analyse, nombre de manœuvres, voies suivies, altitude du terrain et sa
+ * d'analyse, nombre et réussite des manœuvres, voies suivies, altitude du terrain et sa
  * source, sauts, repères. Rend la fiche d'origine, à l'identique, si rien ne change.
  * `resummarize` : le résumé est à recalculer (support, activité, seuil, allure
  * imposée, altitude ou source de l'altitude changés).
@@ -711,6 +746,9 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   if (patch.analysis !== undefined) next = { ...next, analysis: patch.analysis };
   if (patch.maneuverCount !== undefined && patch.maneuverCount !== next.summary.maneuverCount) {
     next = { ...next, summary: { ...next.summary, maneuverCount: patch.maneuverCount } };
+  }
+  if (patch.maneuverResults !== undefined && !sameManeuverResults(patch.maneuverResults, next.summary.maneuverResults)) {
+    next = { ...next, summary: { ...next.summary, maneuverResults: patch.maneuverResults } };
   }
   const activityChanged = patch.activityId !== undefined && patch.activityId !== next.activityId;
   if (activityChanged) next = { ...next, activityId: patch.activityId ?? null };

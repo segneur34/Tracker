@@ -89,6 +89,11 @@
   color: var(--faint);
 }
 
+.stats-metric-chips {
+  flex-shrink: 0;
+  margin-bottom: var(--space-2);
+}
+
 .stats-picked {
   flex-shrink: 0;
   margin-top: var(--space-2);

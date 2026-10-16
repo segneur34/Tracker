@@ -199,6 +199,17 @@ describe('analyzeSurf, sur foil', () => {
     expect(second.waveCount).toBe(1);
     expect(summary.longestFlightS).toBe(first.durationS);
     expect(summary.maxWavesInFlight).toBe(3);
+    expect(summary.flightS).toBeCloseTo(first.durationS + second.durationS, 5);
+  });
+
+  it('mesure la distance en glisse, celle des pas en phase « glisse »', () => {
+    const track = buildSurfSession(FOIL);
+    const cum = buildCumulativeTrack(track);
+    let expected = 0;
+    for (let i = 1; i < track.length; i++) if (analysis.phases[i] === 'glisse') expected += cum.cumDist[i] - cum.cumDist[i - 1];
+    expect(summary.glisseDistanceM).toBeCloseTo(expected, 5);
+    expect(summary.glisseDistanceM).toBeGreaterThan(0);
+    expect(summary.glisseDistanceM).toBeLessThan(cum.cumDist[cum.cumDist.length - 1]);
   });
 
   it('numérote les vagues sur toute la session, chacune avec son vol', () => {
@@ -241,6 +252,13 @@ describe('runSurfSession et résumé de la bibliothèque', () => {
     expect(summary.longestWaveM).toBeCloseTo(120, -1);
     expect(summary.longestFlightS).toBeNull();
     expect(summary.movingTimeS).toBeCloseTo(40, -1);
+    // Distance en glisse : à peu près la vitesse sur la vague fois le temps de glisse.
+    expect(summary.movingDistanceM! / summary.movingTimeS!).toBeGreaterThan(3);
+    expect(summary.flightS).toBeNull();
+    // Sur foil : le temps total des vols.
+    const foil = summarizeSession(raw, 'surf', { foil: true })!;
+    expect(foil.flightS).not.toBeNull();
+    expect(foil.flightS!).toBeGreaterThanOrEqual(foil.longestFlightS ?? 0);
     // Sur une autre famille, pas de champ du surf.
     expect(summarizeSession(raw, 'running')!.waveCount).toBeUndefined();
   });

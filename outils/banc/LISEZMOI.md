@@ -204,8 +204,9 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - le compteur pendant un enregistrement de fractionné : phase au titre et décompte.
 - `statistiques.mjs <port> [<dossier des captures>]` : la page des statistiques (lot 5 des demandes du 10-13/10), sur un profil neuf, environ 1 min. Le script écrit lui-même douze sessions (course, vélo, wingfoil, kite sans activité créée pour lui, surf, deux fractionnés), datées en jours avant aujourd'hui, et les importe par la page Course. Le réseau n'est pas nécessaire ; l'analyse ouverte à l'étape du graphe demande seulement l'altitude à l'IGN s'il est là. Il vérifie :
   - l'accès par la barre du haut et la carte de l'accueil ;
-  - la vue d'ensemble (12 sessions, une ligne par famille, ni vitesse max ni records), la descente vers Course, la période « 30 jours », le retour arrière, puis « Fractionné vélo » ; les pastilles d'activité de chaque famille, celles sans session et « Kite », activité de base, comprises ;
-  - un point du graphe de la vitesse max, cliqué, puis « Ouvrir » qui mène à l'analyse ;
+  - la vue d'ensemble (12 sessions, une ligne par famille, pas de records, le graphique de la durée seule), la descente vers Course, la période « 30 jours », le retour arrière, puis « Fractionné vélo » ; les pastilles d'activité de chaque famille, celles sans session et « Kite », activité de base, comprises ;
+  - un point du graphique, cliqué, puis « Ouvrir » qui mène à l'analyse ; les données proposées en course, en voile (% de vol du wingfoil seul) et en surf, chacune tracée avec l'unité de son axe ; le choix retenu après rechargement, la vitesse max à sa place là où il n'existe pas ; les fiches en version 5 du résumé (point 122) ;
+  - une planche à voile de `make-gpx.mjs` importée puis ouverte dans son analyse : la réussite des manœuvres rangée dans sa fiche, « % de manœuvres réussies » tracé en deux séries, la note des sessions à rouvrir ;
   - Surf caché (écrit dans `tracker.sportSettings`) : absent des pastilles et des totaux, sa page ouverte par l'adresse ;
   - à 390×844 : rien ne déborde, « Statistiques » en case secondaire choisi dans Réglages, puis dans le menu de l'appui long (un `pointerdown` tenu).
 
