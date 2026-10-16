@@ -564,7 +564,7 @@ export const planningFamily = (activity: Activity): PlanningFamily | null => {
 };
 
 /** Familles proposées en planification. */
-export const PLANNING_FAMILIES: SportFamily[] = ['voile', 'course', 'velo'];
+export const PLANNING_FAMILIES: SportFamily[] = ['voile', 'course', 'velo', 'surf'];
 
 /** Type et poids du vélo d'une activité : ceux de Réglages, sinon le type par défaut et son poids. Utilisable hors composant. */
 export const effectiveBikeSetup = (activity: Activity): { bikeType: BikeType; bikeKg: number } => {

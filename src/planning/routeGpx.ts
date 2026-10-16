@@ -18,12 +18,12 @@ export const waypointLabel = (index: number): string => {
   return round === 0 ? letter : `${letter}${round + 1}`;
 };
 
-/** Nom d'une balise d'un parcours de voile : 1, 2, 3… */
+/** Nom d'une balise d'un parcours de balises (voile, surf) : 1, 2, 3… */
 export const markLabel = (index: number): string => String(index + 1);
 
 const fixed = (value: number, digits: number): string => String(Number(value.toFixed(digits)));
 
-/** `label` : nom de chaque point, des lettres par défaut, des numéros pour un parcours de voile (`markLabel`). */
+/** `label` : nom de chaque point, des lettres par défaut, des numéros pour un parcours de balises (`markLabel`). */
 export const buildRouteGpx = (route: PlannedRoute, name: string, label: (index: number) => string = waypointLabel): string => {
   const safeName = escapeXml(name);
   const waypoints = route.waypoints.map(

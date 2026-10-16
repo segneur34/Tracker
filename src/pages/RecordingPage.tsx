@@ -11,7 +11,7 @@ import PageHeader from '../components/ui/PageHeader';
 import { IconFlag, IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
-import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
+import { sportFamily, sportTreatment, usesMarkCourse, type SportFamily } from '../core/sportProfiles';
 import { formatClock, formatDistance, formatShortDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
@@ -21,6 +21,7 @@ import { useLongPress } from '../hooks/useLongPress';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { useBeltLive } from '../hooks/useBeltLive';
 import { useBeltWarmup } from '../hooks/useBeltWarmup';
+import { useSatellites } from '../hooks/useSatellites';
 import { useMissingPermissions } from '../hooks/usePermissions';
 import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../hooks/useMarkGuide';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -386,6 +387,8 @@ function RecordingPage() {
   // Ceinture cochée : connectée dès maintenant, avant le départ, pour voir qu'elle répond.
   const beltWarmup = useBeltWarmup(belt, native && sourceChoice === 'device' && measureHeartRate && !busy && pending === null);
   const beltLive = useBeltLive();
+  // Satellites : sur le téléphone, tant que le GPS tourne (coupé en pause manuelle).
+  const satellites = useSatellites(native && sourceChoice === 'device' && recorder.status === 'recording');
   const missingPermissions = useMissingPermissions();
   const [analyzing, setAnalyzing] = useState(false);
   const durationMs = recordingDurationMs(stats);
@@ -408,9 +411,9 @@ function RecordingPage() {
   // Calculé hors de la page, repris par la notification de l'enregistrement.
   const live = useLiveRecording();
 
-  // Parcours de voile : la trace suivie a des balises et l'activité est de voile. L'avancement se compte par balises.
+  // Parcours de balises : la trace suivie a des balises et l'activité navigue sur un parcours (voile, surf). L'avancement se compte par balises.
   const markGuide = useMarkGuide();
-  const courseMarksOf = followed?.marks && liveActivity && sportFamily(liveActivity.base) === 'voile' ? followed.marks : null;
+  const courseMarksOf = followed?.marks && liveActivity && usesMarkCourse(sportFamily(liveActivity.base)) ? followed.marks : null;
   /** Balises laissées derrière soi : toutes celles d'avant la visée. */
   const leftMarks = markGuide.active ? markGuide.target : 0;
 
@@ -418,7 +421,7 @@ function RecordingPage() {
   const followedLengthM = useMemo(() => (followed ? followedTraceLengthM(followed) : 0), [followed]);
   const progress = busy && followed && !courseMarksOf ? live.progress : null;
   const guide = useMemo(() => {
-    // En voile, le parcours va de balise en balise : fait jusqu'à la dernière laissée, à faire ensuite.
+    // Sur un parcours de balises, il va de balise en balise : fait jusqu'à la dernière laissée, à faire ensuite.
     if (courseMarksOf) return { done: courseMarksOf.slice(0, leftMarks), remaining: courseMarksOf.slice(Math.max(0, leftMarks - 1)) };
     return followed && progress ? splitFollowedTrace(followed, progress.progressM) : { done: [], remaining: followed?.points ?? [] };
   }, [followed, progress, courseMarksOf, leftMarks]);
@@ -661,6 +664,7 @@ function RecordingPage() {
           segments={busy ? live.segments : []} position={busy ? getLastFix() : null} height="45vh"
           guide={guide.remaining} guideDone={guide.done} travel={travel}
           marks={mapMarks} validationRadiusM={markGuide.active ? markGuide.validationRadiusM : undefined}
+          notes={busy ? recorder.marks : undefined}
           color={FAMILY_SHADES[liveActivity ? sportFamily(liveActivity.base) : 'voile'][0]}
           overlay={busy ? (
             <Button size="s" onClick={() => toggleShown('carte')} style={{ boxShadow: '0 1px 5px rgba(0, 0, 0, 0.25)' }}>
@@ -743,6 +747,9 @@ function RecordingPage() {
               <Stat label="Intervalle moyen" value={meanIntervalS === null ? '—' : `${meanIntervalS.toFixed(1)} s`} />
               <Stat label="Plus long trou" value={`${Math.round(stats.longestGapS)} s`} />
               <Stat label="Précision" value={stats.lastAccuracyM === null ? '—' : `${Math.round(stats.lastAccuracyM)} m`} />
+              {busy && native && sourceChoice === 'device' && (
+                <Stat label="Satellites utilisés" value={satellites === null ? '—' : `${satellites.used} sur ${satellites.visible}`} />
+              )}
             </div>
           </details>
         </Card>

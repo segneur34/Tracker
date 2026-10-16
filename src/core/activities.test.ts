@@ -6,6 +6,7 @@ import {
   newActivityId, nextActivityColor, pickNavFamily, pickNavSecond, readActivities, recolorActivities, sessionActivity, upgradeActivities,
   visibleActivities, visibleFamilies, withHidden, type Activity,
 } from './activities';
+import { SPORT_FAMILIES, usesMarkCourse } from './sportProfiles';
 
 const moth: Activity = { id: 'a-moth', name: 'Moth à foil', base: 'wingfoil', color: '#2e7d32' };
 const trail: Activity = { id: 'a-trail', name: 'Trail', base: 'running', color: '#ef6c00' };
@@ -307,5 +308,13 @@ describe('familles et activités cachées (point 100)', () => {
     expect(pickNavSecond('planifier', 'voile', ['voile'])).toBe('planifier');
     expect(pickNavSecond('statistiques', 'voile', ['voile', 'course'])).toBe('statistiques');
     expect(pickNavSecond('course', 'voile', ['voile'])).toBe('planifier');
+  });
+});
+
+describe('usesMarkCourse', () => {
+  it('voile et surf naviguent sur un parcours de balises, pas la course, le vélo ni le fractionné', () => {
+    expect(SPORT_FAMILIES.filter(usesMarkCourse)).toEqual(['voile', 'surf']);
+    expect(usesMarkCourse(activityFamily(SURF_FOIL_ACTIVITY))).toBe(true);
+    expect(usesMarkCourse(activityFamily(trail))).toBe(false);
   });
 });

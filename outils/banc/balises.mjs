@@ -262,7 +262,7 @@ await evaluate(`document.querySelector('.beep-editor').scrollIntoView({ block: '
 await wait(300);
 console.log('éditeur :', await editorRows(), '; rangé :', await stored());
 const pointAt = (i) => evaluate(`(() => { const c = document.querySelectorAll('.beep-editor__point')[${i}].querySelectorAll('circle')[1].getBoundingClientRect(); return [c.left + c.width / 2, c.top + c.height / 2]; })()`);
-const [lx, ly] = await pointAt(4);
+const [lx, ly] = await pointAt(await evaluate(`document.querySelectorAll('.beep-editor__point').length - 1`));
 await drag(lx, ly, lx + 40, ly - 15);
 console.log('dernier point tiré :', await editorRows(), '; rangé :', await stored());
 const chart = await evaluate(`(() => { const b = document.querySelector('.beep-editor__chart').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()`);

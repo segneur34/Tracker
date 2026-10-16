@@ -638,6 +638,13 @@ export const sportTreatment = (sport: SportType): Treatment => SPORT_TREATMENT[s
 
 export const sportFamily = (sport: SportType): SportFamily => SPORT_FAMILY[sport];
 
+/**
+ * Famille qui navigue sur un parcours de balises (voile, surf) : itinéraire
+ * de balises numérotées en ligne droite, validées dans l'ordre avec des bips
+ * d'approche. Le vent, les bords et les manœuvres restent propres à la voile.
+ */
+export const usesMarkCourse = (family: SportFamily): boolean => family === 'voile' || family === 'surf';
+
 /** Calculs d'une famille, dans l'ordre de `SPORT_PROFILES`. */
 export const familySports = (family: SportFamily): SportType[] =>
   (Object.keys(SPORT_PROFILES) as SportType[]).filter((sport) => SPORT_FAMILY[sport] === family);

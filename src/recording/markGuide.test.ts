@@ -38,19 +38,20 @@ const replay = (fixes: LatLon[], marks: LatLon[], state: MarkGuideState = START_
 
 describe('courbe des bips', () => {
   it('commence au point le plus lointain, valide au plus proche', () => {
-    expect(beepStartM(MARK_GUIDE_DEFAULTS)).toBe(200);
+    expect(beepStartM(MARK_GUIDE_DEFAULTS)).toBe(150);
     expect(validationRadiusM(MARK_GUIDE_DEFAULTS)).toBe(50);
   });
 
   it('se tait au-delà du début des bips', () => {
-    expect(beepIntervalMs(201, MARK_GUIDE_DEFAULTS)).toBeNull();
+    expect(beepIntervalMs(151, MARK_GUIDE_DEFAULTS)).toBeNull();
     expect(beepIntervalMs(NaN, MARK_GUIDE_DEFAULTS)).toBeNull();
   });
 
   it('rend la valeur de chaque point, et interpole entre deux', () => {
-    expect(beepIntervalMs(200, MARK_GUIDE_DEFAULTS)).toBe(2000);
+    expect(MARK_GUIDE_DEFAULTS.curve.map((p) => p.distanceM)).toEqual([50, 100, 150]);
     expect(beepIntervalMs(150, MARK_GUIDE_DEFAULTS)).toBe(1200);
-    expect(beepIntervalMs(175, MARK_GUIDE_DEFAULTS)).toBe(1600);
+    expect(beepIntervalMs(100, MARK_GUIDE_DEFAULTS)).toBe(600);
+    expect(beepIntervalMs(125, MARK_GUIDE_DEFAULTS)).toBe(900);
     expect(beepIntervalMs(75, MARK_GUIDE_DEFAULTS)).toBe(425);
   });
 

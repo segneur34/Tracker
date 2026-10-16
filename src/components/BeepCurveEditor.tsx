@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import './BeepCurveEditor.css';
 import Button from './ui/Button';
-import { knotsToMs } from '../core/units';
+import { formatSpeed, type SpeedUnit } from '../core/units';
 import { useRecorder } from '../hooks/useRecorder';
 import { BEEP_LONG_MS, getBeeper } from '../platform/beeper';
 import {
-  BEEP_CURVE_LIMITS, MARK_GUIDE_DEFAULTS, SIMULATED_APPROACH_KN, beepIntervalMs, beepStartM, sanitizeMarkGuide, validationRadiusM,
+  BEEP_CURVE_LIMITS, MARK_GUIDE_DEFAULTS, beepIntervalMs, beepStartM, sanitizeMarkGuide, validationRadiusM,
   type BeepPoint, type MarkGuideSettings,
 } from '../recording/markGuide';
 
 /**
- * Réglage des bips d'approche des balises, pour une activité de voile
+ * Réglage des bips d'approche des balises, pour une activité de voile ou de surf
  * (Réglages) ou pour un parcours (Itinéraires) : une courbe à points, distance à la balise en abscisse, intervalle entre deux
  * bips en ordonnée (choix de l'utilisateur). On tire un point au doigt ou à
  * la souris ; un toucher ailleurs sur le graphe en ajoute un ; le point
@@ -87,12 +87,15 @@ function CommitField({ value, unit, step, label, onCommit }: {
 }
 
 function BeepCurveEditor({
-  value, overridden, onChange, fallback = MARK_GUIDE_DEFAULTS, resetLabel = 'Par défaut', fallbackMark = 'défaut',
+  value, overridden, onChange, approachMs, speedUnit, fallback = MARK_GUIDE_DEFAULTS, resetLabel = 'Par défaut', fallbackMark = 'défaut',
 }: {
   value: MarkGuideSettings;
   overridden: boolean;
   /** Réglage nettoyé, ou `null` s'il revient à `fallback`. */
   onChange: (next: MarkGuideSettings | null) => void;
+  /** Vitesse de l'approche simulée par « Écouter », en m/s (`simulatedApproachMs`), et unité où l'annoncer. */
+  approachMs: number;
+  speedUnit: SpeedUnit;
   /** Réglage qui vaut sans surcharge : le défaut dans Réglages, celui de l'activité pour un parcours. */
   fallback?: MarkGuideSettings;
   /** Bouton qui revient à `fallback`, et mention affichée quand il s'applique. */
@@ -206,7 +209,7 @@ function BeepCurveEditor({
 
   const listen = () => {
     const beeper = getBeeper();
-    const speedMs = knotsToMs(SIMULATED_APPROACH_KN);
+    const speedMs = approachMs;
     const settings = value;
     const from = beepStartM(settings);
     const to = validationRadiusM(settings);
@@ -233,7 +236,7 @@ function BeepCurveEditor({
     }
   }, []);
 
-  const listenSeconds = Math.round((startM - radiusM) / knotsToMs(SIMULATED_APPROACH_KN));
+  const listenSeconds = Math.round((startM - radiusM) / approachMs);
 
   return (
     <div className="beep-editor">
@@ -300,7 +303,7 @@ function BeepCurveEditor({
           <Button size="s" onClick={stopListening}>Arrêter</Button>
         ) : (
           <Button size="s" onClick={listen} disabled={!idle}
-            title={idle ? `Approche à ${SIMULATED_APPROACH_KN} nœuds, ${listenSeconds} s` : 'Pas pendant un enregistrement'}>
+            title={idle ? `Approche à ${formatSpeed(approachMs, speedUnit)}, ${listenSeconds} s` : 'Pas pendant un enregistrement'}>
             Écouter
           </Button>
         )}

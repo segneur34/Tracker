@@ -29,7 +29,7 @@ export interface FollowedTrace {
   points: LatLon[];
   /**
    * Points posés de l'itinéraire, départ compris, dans l'ordre : les balises
-   * du guidage en voile (`markGuide.ts`). Absentes pour une session suivie.
+   * du guidage des balises (voile, surf) (`markGuide.ts`). Absentes pour une session suivie.
    */
   marks?: LatLon[];
   /** Bips d'approche propres au parcours suivi ; absents : ceux de l'activité. */

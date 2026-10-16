@@ -117,6 +117,8 @@ export interface RecorderState {
   measuringMotion: boolean;
   /** Ceinture cardio de l'enregistrement : état de la connexion et dernière fréquence ; `null` sans ceinture. */
   heartRate: { state: BeltState; bpm: number | null } | null;
+  /** Repères du bouton « Note » de l'enregistrement en cours, pour la carte du direct ; vide au repos. */
+  marks: SessionMark[];
   stats: RecordingStats;
   /** Session arrêtée qui attend « Analyser » ou « Jeter » ; aucun nouvel enregistrement d'ici là. */
   pending: PendingSession | null;
@@ -132,6 +134,7 @@ const INITIAL_STATE: RecorderState = {
   pausedReason: null,
   measuringMotion: false,
   heartRate: null,
+  marks: [],
   stats: EMPTY_RECORDING_STATS,
   pending: null,
   saved: null,
@@ -455,7 +458,7 @@ export const startRecording = async (
   intervalRuns = new Map();
   marks = [];
   setState({
-    status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, measuringMotion: false, heartRate: null, stats: EMPTY_RECORDING_STATS,
+    status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, measuringMotion: false, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
     saved: null, error: null,
   });
 
@@ -578,7 +581,8 @@ export const addRecordingMark = (): { mark: SessionMark; n: number } | null => {
   const fix = lastReceivedFix ?? getLastFix();
   if (!fix) return null;
   const mark: SessionMark = { timeMs: Date.now(), lat: fix.lat, lon: fix.lon, label: null };
-  marks.push(mark);
+  marks = [...marks, mark];
+  setState({ marks });
   pendingLines += journalNoteLine(mark);
   void flushJournal();
   return { mark, n: marks.length };
@@ -612,6 +616,7 @@ export const stopRecording = async (): Promise<void> => {
       status: 'idle',
       measuringMotion: false,
       heartRate: null,
+      marks: [],
       pending,
       error: pending ? state.error : 'Moins de deux positions reçues : rien à enregistrer.',
     });
@@ -620,6 +625,7 @@ export const stopRecording = async (): Promise<void> => {
       status: 'idle',
       measuringMotion: false,
       heartRate: null,
+      marks: [],
       error: `Construction du GPX impossible : ${errorMessage(err, 'erreur inconnue')}. Le journal est gardé et sera repris au prochain démarrage.`,
     });
   }

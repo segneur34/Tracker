@@ -5,7 +5,7 @@ import {
 } from '../core/activities';
 import {
   ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, isLandTreatment, sportFamily,
-  sportTreatment,
+  sportTreatment, usesMarkCourse,
   type SportFamily, type SportProfile, type Treatment,
 } from '../core/sportProfiles';
 import { analysisTabs, isTabShown, toggleTabChoice, type TabChoices } from '../core/analysisTabs';
@@ -28,6 +28,7 @@ import {
   DEFAULT_LIVE_FIELDS, DEFAULT_NOTIFICATION_FIELDS, MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, liveFieldLabel, liveFieldsOfTreatment,
   type LiveFieldKey, type LiveFieldUnits,
 } from '../recording/liveFields';
+import { simulatedApproachMs } from '../recording/markGuide';
 import {
   CUSTOM_FLAT_SPEED_BOUNDS_MS, DEFAULT_PACE_LEVEL, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PACE_LEVELS, PACE_LEVEL_LABEL,
   climbPowerWkgForFlatSpeed, isPaceLevel, type PaceLevel, type PlanningFamily,
@@ -686,11 +687,12 @@ function SettingsPage() {
                               )}
                             </ActivityPart>
                           )}
-                          {sailing && (
+                          {usesMarkCourse(family) && (
                             <ActivityPart label="Balises sonores" open={openPart.balises} onToggle={() => togglePart('balises')}>
                                 <div className="settings-row" title="En navigation sur un parcours planifié : bips de plus en plus rapides à l'approche de chaque balise, bip long à la validation">
                                   <span className="settings-row__label">Bips d'approche des balises</span>
                                   <BeepCurveEditor value={s.markGuide} overridden={s.isMarkGuideOverridden}
+                                    approachMs={simulatedApproachMs(family)} speedUnit={s.speedUnit}
                                     onChange={(guide) => setFor(id, 'markGuide', guide)} />
                                 </div>
                             </ActivityPart>

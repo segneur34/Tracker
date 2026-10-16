@@ -29,6 +29,7 @@ describe('liveFieldsOfTreatment', () => {
     }
     expect(liveFieldsOfTreatment('course')).toContain('power');
     expect(liveFieldsOfTreatment('voile')).toContain('markDistance');
+    expect(liveFieldsOfTreatment('surf')).toEqual(expect.arrayContaining(['markDistance', 'markBearing']));
     expect(liveFieldsOfTreatment('course')).not.toContain('markBearing');
     expect(liveFieldsOfTreatment('course')).not.toContain('heading');
     expect(liveFieldsOfTreatment('velo')).toContain('grade');

@@ -1,7 +1,9 @@
 import { distanceToSegmentM, haversineDistance, initialBearing } from '../core/kinematics';
+import type { SportFamily } from '../core/sportProfiles';
+import { knotsToMs } from '../core/units';
 
 /**
- * Guidage vers les balises d'un parcours de voile, pendant l'enregistrement :
+ * Guidage vers les balises d'un parcours (voile, surf), pendant l'enregistrement :
  * les points de l'itinéraire suivi, à valider dans l'ordre, départ compris.
  *
  * En approche, des bips de plus en plus rapprochés : l'intervalle entre deux
@@ -33,14 +35,12 @@ export interface MarkGuideSettings {
   vibrate: boolean;
 }
 
-/** Réglage par défaut : la demande de l'utilisateur, 200 m, 150, 130, 100, puis validation à 50 m. */
+/** Réglage par défaut, voile et surf : trois balises sonores, 150 m, 100 m, puis validation à 50 m (demande du 14/10). */
 export const MARK_GUIDE_DEFAULTS: MarkGuideSettings = {
   curve: [
     { distanceM: 50, intervalMs: 250 },
     { distanceM: 100, intervalMs: 600 },
-    { distanceM: 130, intervalMs: 1000 },
     { distanceM: 150, intervalMs: 1200 },
-    { distanceM: 200, intervalMs: 2000 },
   ],
   vibrate: true,
 };
@@ -55,8 +55,11 @@ export const BEEP_CURVE_LIMITS = {
   maxIntervalMs: 5000,
 } as const;
 
-/** Vitesse de l'approche simulée par « Écouter », en nœuds. */
-export const SIMULATED_APPROACH_KN = 15;
+/** Vitesse de l'approche simulée par « Écouter », en m/s : 15 nœuds en voile, 8 km/h (allure de paddle) en surf. */
+export const SIMULATED_APPROACH_MS: Record<'voile' | 'surf', number> = { voile: knotsToMs(15), surf: 8 / 3.6 };
+
+/** Vitesse de l'approche simulée pour une famille ; celle de la voile hors du surf. */
+export const simulatedApproachMs = (family: SportFamily): number => SIMULATED_APPROACH_MS[family === 'surf' ? 'surf' : 'voile'];
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);

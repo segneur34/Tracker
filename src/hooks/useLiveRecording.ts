@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { Activity } from '../core/activities';
-import { getSportProfile, sportFamily, sportTreatment } from '../core/sportProfiles';
+import { getSportProfile, sportFamily, sportTreatment, usesMarkCourse } from '../core/sportProfiles';
 import { METERS_PER_DISTANCE_UNIT } from '../core/units';
 import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
@@ -62,9 +62,9 @@ const liveEnergySetup = (activity: Activity): LiveEnergySetup | undefined => {
   return undefined;
 };
 
-/** Trace suivie dont l'avancement se compte le long d'elle : pas un parcours à balises de voile. */
+/** Trace suivie dont l'avancement se compte le long d'elle : pas un parcours à balises (voile, surf). */
 const tracedAlong = (trace: FollowedTrace | null, activity: Activity): FollowedTrace | null =>
-  trace && !(trace.marks && sportFamily(activity.base) === 'voile') ? trace : null;
+  trace && !(trace.marks && usesMarkCourse(sportFamily(activity.base))) ? trace : null;
 
 let live: LiveRecording = EMPTY;
 /** Ce qui a servi au dernier calcul : rien de neuf, pas de recalcul. */

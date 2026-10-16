@@ -16,6 +16,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ScreenPlugin.class);
         registerPlugin(HeartRatePlugin.class);
         registerPlugin(PermissionsPlugin.class);
+        registerPlugin(GnssPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

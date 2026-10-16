@@ -1,3 +1,4 @@
+import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import type { Location as PluginLocation } from '@capgo/background-geolocation';
 import { isNativeApp } from './runtime';
 
@@ -240,3 +241,40 @@ export const currentPosition = (timeoutMs = 30_000): Promise<LocationFix> =>
         (err) => finish(() => reject(err instanceof Error ? err : new Error('Localisation indisponible.')))
       );
   });
+
+/** Satellites du GPS : servant à la position, et en vue. */
+export interface SatelliteCount {
+  used: number;
+  visible: number;
+}
+
+interface GnssPlugin {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  addListener(event: 'satellites', listener: (data: SatelliteCount) => void): Promise<PluginListenerHandle>;
+}
+
+const gnss = registerPlugin<GnssPlugin>('Gnss');
+
+/**
+ * Suit les satellites du GPS sur le téléphone (`GnssPlugin.java`), une fois
+ * par seconde environ, tant que le GPS tourne ; rend l'arrêt. Sans effet dans
+ * le navigateur, qui n'en dit rien.
+ */
+export const watchSatellites = (listener: (count: SatelliteCount) => void): (() => void) => {
+  if (!isNativeApp()) return () => undefined;
+  let stopped = false;
+  let handle: PluginListenerHandle | null = null;
+  void gnss.addListener('satellites', (data) => {
+    if (!stopped) listener({ used: data.used, visible: data.visible });
+  }).then((h) => {
+    handle = h;
+    if (stopped) void h.remove();
+    else void gnss.start().catch(() => undefined);
+  });
+  return () => {
+    stopped = true;
+    void handle?.remove();
+    void gnss.stop().catch(() => undefined);
+  };
+};

@@ -42,10 +42,16 @@ const flagIcon = (n: number, shown: boolean) => {
   return icon;
 };
 
-const markTitle = (m: LocatedMark): string => m.mark.label ?? `Note ${m.n}`;
+/** Repère numéroté, ce qu'il faut aux fanions : l'analyse les situe sur la trace, la carte du direct non. */
+type NumberedMark = Pick<LocatedMark, 'mark' | 'n'>;
 
-/** Fanions de la carte ; `shownMs` : le repère montré (par son heure), en violet, au-dessus des autres. */
-export function SessionMarksLayer({ located, shownMs }: { located: LocatedMark[]; shownMs: number | null }) {
+const markTitle = (m: NumberedMark): string => m.mark.label ?? `Note ${m.n}`;
+
+/**
+ * Fanions de la carte, dans les analyses et sur la carte du direct ; `shownMs` :
+ * le repère montré (par son heure), en violet, au-dessus des autres.
+ */
+export function SessionMarksLayer({ located, shownMs }: { located: ReadonlyArray<NumberedMark>; shownMs: number | null }) {
   return (
     <>
       {located.map((m) => (

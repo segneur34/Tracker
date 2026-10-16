@@ -6,7 +6,9 @@ import { useCompassHeading } from '../hooks/useCompassHeading';
 import type { LocationFix } from '../platform/location';
 import { displayHeading, type TravelHeading } from '../recording/heading';
 import type { CourseMark } from '../recording/markGuide';
+import type { SessionMark } from '../core/sessionMarks';
 import OsmTileLayer from './OsmTileLayer';
+import { SessionMarksLayer } from './SessionMarks';
 import MapAutoResize from './MapAutoResize';
 import Button from './ui/Button';
 
@@ -26,9 +28,11 @@ interface LiveMapProps {
   travel?: TravelHeading;
   /** Commande posée en haut à droite de la carte (« Réduire la carte »). */
   overlay?: ReactNode;
-  /** Balises du parcours suivi, en voile, et rayon de validation autour de la balise visée, en mètres. */
+  /** Balises du parcours suivi (voile, surf), et rayon de validation autour de la balise visée, en mètres. */
   marks?: ReadonlyArray<CourseMark>;
   validationRadiusM?: number;
+  /** Repères du bouton « Note » posés pendant l'enregistrement, en fanions numérotés comme dans l'analyse. */
+  notes?: ReadonlyArray<SessionMark>;
 }
 
 /** Couleurs de la trace suivie, reste et partie faite (données de carte, donc en dur). */
@@ -122,12 +126,12 @@ const latLngs = (points: ReadonlyArray<{ lat: number; lon: number }>): [number, 
  * Carte de l'enregistrement en cours : la trace d'une seule couleur (un
  * dégradé demanderait un trait par point, trop lourd à redessiner) et la
  * position du moment (une flèche au cap, `PositionMarker`), et la trace
- * suivie s'il y en a une, la partie faite en gris, et en voile ses balises
+ * suivie s'il y en a une, la partie faite en gris, et sur un parcours ses balises
  * (la visée en orange, avec son cercle de validation et un pointillé depuis
- * la position). Sans position ni trace, la carte s'ouvre cadrée sur la trace
+ * la position), et les notes posées en fanions numérotés. Sans position ni trace, la carte s'ouvre cadrée sur la trace
  * suivie. Sans réseau, le fond manque mais traces et position restent.
  */
-function LiveMap({ segments, position, color, height, guide, guideDone, travel, overlay, marks, validationRadiusM }: LiveMapProps) {
+function LiveMap({ segments, position, color, height, guide, guideDone, travel, overlay, marks, validationRadiusM, notes }: LiveMapProps) {
   const [following, setFollowing] = useState(true);
   // Tracés mémorisés : `segments` ne change qu'au recalcul (toutes les 2 s, `useLiveRecording`), la position à chaque mesure.
   // Leaflet ne reprend un tracé que si son tableau de points change.
@@ -135,6 +139,7 @@ function LiveMap({ segments, position, color, height, guide, guideDone, travel, 
   const guidePath = useMemo(() => (guide && guide.length > 1 ? latLngs(guide) : null), [guide]);
   const guideDonePath = useMemo(() => (guideDone && guideDone.length > 1 ? latLngs(guideDone) : null), [guideDone]);
   const trackStyle = useMemo(() => ({ color, weight: 4, opacity: 0.9 }), [color]);
+  const numberedNotes = useMemo(() => (notes ?? []).map((mark, i) => ({ mark, n: i + 1 })), [notes]);
   // Le dernier segment, recalculé moins souvent que la position, est prolongé jusqu'à elle par un trait à part.
   const lastFix = segments[segments.length - 1]?.at(-1);
   const target = marks?.find((m) => m.state === 'target');
@@ -165,6 +170,7 @@ function LiveMap({ segments, position, color, height, guide, guideDone, travel, 
           <Marker key={i} position={[m.lat, m.lon]} icon={markIcon(m.label, m.state)} interactive={false} keyboard={false}
             zIndexOffset={m.state === 'target' ? 500 : 0} />
         ))}
+        <SessionMarksLayer located={numberedNotes} shownMs={null} />
         {position && <PositionMarker position={position} color={color} travel={travel} />}
         <FollowPosition position={position} following={following} onUserMove={() => setFollowing(false)} />
       </MapContainer>

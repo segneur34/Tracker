@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { activityFamily, findActivity } from '../core/activities';
+import { usesMarkCourse } from '../core/sportProfiles';
 import { ROUTES_DIR, routePath } from '../library/folderLayout';
 import type { PlannedRoute } from '../planning/route';
 import type { MarkGuideSettings } from '../recording/markGuide';
@@ -18,10 +19,10 @@ import { readStoredActivities } from './useSportSettings';
  * ne change plus ; renommer ne touche qu'au contenu.
  */
 
-/** Noms des points dans le GPX : numéros des balises en voile, lettres ailleurs. */
+/** Noms des points dans le GPX : numéros des balises (voile, surf), lettres ailleurs. */
 const gpxLabel = (activityId: string | null): ((index: number) => string) => {
   const activity = findActivity(readStoredActivities(), activityId);
-  return activity && activityFamily(activity) === 'voile' ? markLabel : waypointLabel;
+  return activity && usesMarkCourse(activityFamily(activity)) ? markLabel : waypointLabel;
 };
 
 export interface SavedRoute {

@@ -55,7 +55,7 @@ export interface RouteRecord {
   waypoints: Waypoint[];
   legs: StoredLeg[];
   /**
-   * Bips d'approche propres à ce parcours (voile), tels que rangés ; absents :
+   * Bips d'approche propres à ce parcours (voile, surf), tels que rangés ; absents :
    * ceux de l'activité. À relire par `routeMarkGuide`.
    */
   markGuide?: unknown;
