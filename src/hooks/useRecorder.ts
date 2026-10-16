@@ -10,7 +10,7 @@ import {
   stopMotionCapture, type MotionCapture, type MotionSetup,
 } from '../platform/motion';
 import {
-  beltState, holdBelt, latestHeartRate, releaseOrphanedBelt, subscribeBeltState, subscribeHeartRate, type BeltState, type HeartRateBelt,
+  RECORDING_BELT_HOLDER, beltState, holdBelt, latestHeartRate, releaseOrphanedBelt, subscribeBeltState, subscribeHeartRate, type BeltState, type HeartRateBelt,
 } from '../platform/heartRate';
 import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation } from '../platform/location';
 import { buildGpx } from '../recording/gpxWriter';
@@ -398,7 +398,7 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
 
 /** Prend la ceinture pour l'enregistrement et suit ses mesures dans l'état. */
 const takeBelt = async (belt: HeartRateBelt, maxAgeS: number): Promise<void> => {
-  const release = await holdBelt('enregistrement', belt);
+  const release = await holdBelt(RECORDING_BELT_HOLDER, belt);
   heartRateMaxAgeS = maxAgeS;
   setState({ heartRate: { state: beltState(), bpm: null } });
   const offSample = subscribeHeartRate((sample) => {

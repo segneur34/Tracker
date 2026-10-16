@@ -1,11 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  BELT_STATE_LABEL, beltState, heartRateSupported, holdBelt, releaseBelt, saveBelt, savedBelt, scanBelts, subscribeBeltState, subscribeHeartRate,
+  BELT_STATE_LABEL, RECORDING_BELT_HOLDER, beltHeldBy, beltState, bluetoothReady, heartRateSupported, holdBelt, releaseBelt, saveBelt, savedBelt,
+  scanBelts, subscribeBeltState, subscribeHeartRate,
   type BeltState, type FoundBelt, type HeartRateBelt,
 } from '../platform/heartRate';
 
 /** Nom de la connexion prise par l'essai, rendue en quittant la page. */
 const HOLDER = 'reglages';
+
+/** Force du signal, en dBm, au-dessus de laquelle un appareil est dit « proche », puis « à portée » ; en dessous, « loin ». */
+const SIGNAL_NEAR_DBM = -60;
+const SIGNAL_IN_RANGE_DBM = -80;
+const signalLabel = (rssi: number): string => (rssi >= SIGNAL_NEAR_DBM ? 'proche' : rssi >= SIGNAL_IN_RANGE_DBM ? 'à portée' : 'loin');
+
+/** Pastille de l'état : vert connectée, jaune en cours ou perdue, gris sinon. */
+const STATE_COLOR: Record<BeltState, string> = {
+  off: 'var(--muted)',
+  connecting: 'var(--warning-line)',
+  connected: 'var(--success)',
+  lost: 'var(--warning-line)',
+  unsupported: 'var(--muted)',
+};
 
 const errorText = (err: unknown): string => (err instanceof Error && err.message ? err.message : 'erreur inconnue');
 
@@ -14,6 +29,8 @@ const errorText = (err: unknown): string => (err instanceof Error && err.message
  * choisie, essayée (fréquence en direct) ou oubliée. Retenue sur l'appareil
  * (`platform/heartRate.ts`) ; chaque activité de course, de vélo ou de
  * fractionné la propose ensuite à l'enregistrement, si sa case est cochée.
+ * L'état de la connexion se lit toujours, essai ou enregistrement en cours ;
+ * une recherche montre la ceinture retenue à part des autres appareils à portée.
  */
 function HeartRateBeltSettings() {
   const [belt, setBelt] = useState<HeartRateBelt | null>(savedBelt);
@@ -22,6 +39,7 @@ function HeartRateBeltSettings() {
   const [testing, setTesting] = useState(false);
   const [state, setState] = useState<BeltState>(beltState);
   const [bpm, setBpm] = useState<number | null>(null);
+  const [bluetoothOff, setBluetoothOff] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
 
@@ -32,6 +50,9 @@ function HeartRateBeltSettings() {
       if (next !== 'connected') setBpm(null);
     });
     const offSample = subscribeHeartRate((sample) => setBpm(sample.contact === false || !(sample.bpm > 0) ? null : sample.bpm));
+    if (heartRateSupported()) {
+      bluetoothReady().then((ready) => { if (alive.current) setBluetoothOff(!ready); }).catch(() => undefined);
+    }
     return () => {
       alive.current = false;
       offState();
@@ -50,7 +71,10 @@ function HeartRateBeltSettings() {
     setFound(null);
     try {
       const list = await scanBelts();
-      if (alive.current) setFound(list);
+      if (alive.current) {
+        setFound(list);
+        setBluetoothOff(false);
+      }
     } catch (err) {
       if (alive.current) setError(`Recherche impossible : ${errorText(err)}.`);
     } finally {
@@ -73,6 +97,7 @@ function HeartRateBeltSettings() {
       await holdBelt(HOLDER, belt);
       setState(beltState());
       setTesting(true);
+      setBluetoothOff(false);
     } catch (err) {
       setError(`Connexion impossible : ${errorText(err)}.`);
     }
@@ -89,6 +114,13 @@ function HeartRateBeltSettings() {
     setBelt(null);
   };
 
+  const recording = beltHeldBy(RECORDING_BELT_HOLDER);
+  const stateText = state === 'off' && bluetoothOff ? 'Bluetooth éteint'
+    : state === 'connected' && bpm === null ? "connectée, en attente d'une mesure (contact avec la peau ?)"
+      : BELT_STATE_LABEL[state];
+  const mine = belt && found ? found.find((f) => f.address === belt.address) ?? null : null;
+  const others = found ? found.filter((f) => f.address !== belt?.address) : [];
+
   return (
     <>
       <p className="settings-block__intro">
@@ -96,6 +128,8 @@ function HeartRateBeltSettings() {
         sa marque. Portez-la, électrodes humidifiées, car elle n'émet qu'au contact de la peau, puis cherchez-la. Elle est
         ensuite proposée à l'enregistrement par les activités de course, de vélo et de fractionné dont la case « Ceinture
         cardio » est cochée (partie Enregistrement de leur carte) : la fréquence est écrite à chaque point de la trace.
+        La ligne « État » dit si elle est connectée, par l'essai ou par un enregistrement ; une recherche montre aussi les
+        autres ceintures à portée, de la plus proche à la plus loin.
       </p>
       <div className="settings-row">
         <span className="settings-row__label">Ceinture</span>
@@ -112,25 +146,37 @@ function HeartRateBeltSettings() {
           {belt && <button type="button" className="ui-btn ui-btn--secondary ui-btn--s" onClick={forget}>Oublier</button>}
         </div>
       </div>
-      {testing && (
+      {belt && (
         <div className="settings-row settings-row--sub">
-          <span className="settings-row__label">Essai</span>
-          <span>
-            {state === 'connected' && bpm !== null
-              ? <strong className="num">{Math.round(bpm)} bpm</strong>
-              : state === 'connected' ? "connectée, en attente d'une mesure (contact avec la peau ?)" : BELT_STATE_LABEL[state]}
+          <span className="settings-row__label">État</span>
+          <span className="settings-belt__state">
+            <span className="settings-belt__dot" style={{ backgroundColor: STATE_COLOR[state] }} />
+            <span>{stateText}</span>
+            {state === 'connected' && bpm !== null && <strong className="num">{Math.round(bpm)} bpm</strong>}
+            {recording && <span className="settings-sports__mark">utilisée par l'enregistrement</span>}
+          </span>
+        </div>
+      )}
+      {found && belt && (
+        <div className="settings-row settings-row--sub">
+          <span className="settings-row__label">La vôtre</span>
+          <span className="settings-sports__mark" title={mine ? `${mine.rssi} dBm` : undefined}>
+            {mine ? `trouvée, ${signalLabel(mine.rssi)}`
+              : state === 'connected' ? 'connectée, donc absente de la recherche : une ceinture connectée ne s\'annonce plus'
+                : 'pas trouvée : est-elle portée ?'}
           </span>
         </div>
       )}
       {found && (
         <div className="settings-row settings-row--sub">
-          <span className="settings-row__label">Trouvées</span>
+          <span className="settings-row__label">{belt ? 'Autres appareils à portée' : 'Trouvées'}</span>
           <div className="settings-sports__pair">
-            {found.length === 0
-              ? <span className="settings-sports__mark">aucune : la ceinture est-elle portée, et le Bluetooth allumé ?</span>
-              : found.map((f) => (
-                <button key={f.address} type="button" className="ui-btn ui-btn--secondary ui-btn--s" onClick={() => choose(f)}>
-                  {f.name}
+            {others.length === 0
+              ? <span className="settings-sports__mark">{belt ? 'aucun' : 'aucune : la ceinture est-elle portée, et le Bluetooth allumé ?'}</span>
+              : others.map((f) => (
+                <button key={f.address} type="button" className="ui-btn ui-btn--secondary ui-btn--s"
+                  title={`${f.rssi} dBm : la choisir`} onClick={() => choose(f)}>
+                  {f.name} · {signalLabel(f.rssi)}
                 </button>
               ))}
           </div>

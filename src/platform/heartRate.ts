@@ -166,6 +166,12 @@ export const releaseOrphanedBelt = async (): Promise<void> => {
 /** État de la connexion. */
 export const beltState = (): BeltState => state;
 
+/** Nom sous lequel l'enregistreur tient la connexion. */
+export const RECORDING_BELT_HOLDER = 'enregistrement';
+
+/** Vrai si `holder` tient la connexion (l'enregistreur, `RECORDING_BELT_HOLDER`, par exemple). */
+export const beltHeldBy = (holder: string): boolean => holders.has(holder);
+
 /** Dernière mesure reçue depuis la connexion, ou `null`. */
 export const latestHeartRate = (): HeartRateSample | null => latest;
 

@@ -251,7 +251,7 @@ await clickButton('Jeter');
 await wait(1000);
 
 // 4. Réglages : éditeur de la courbe.
-await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ settings: { activites: true } })); 'ok'`);
+await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ settings: { activites: true }, 'settings-families': { voile: true }, 'settings-activity-parts': { balises: true } })); 'ok'`);
 await send('Page.navigate', { url: `${BASE}/parametres` });
 await wait(2500);
 await evaluate(`[...document.querySelectorAll('.settings-activity__toggle')].find((b) => b.textContent.includes('Voile')).click(); 'ok'`);

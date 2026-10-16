@@ -277,6 +277,9 @@ console.log('Annuler :', await clickText('Annuler'));
 await go('/parametres');
 await clickText('Activités', '[role=button]');
 await wait(400);
+// Familles repliées depuis le lot 2 des demandes du 15/10 : toutes ouvertes.
+await evaluate(`document.querySelectorAll('.settings-activities__family-toggle[aria-expanded="false"]').forEach((b) => b.click()); 'ok'`);
+await wait(300);
 console.log('Réglages, familles :', await evaluate(`[...document.querySelectorAll('.settings-activities__family')].map((f) => f.textContent).join(', ')`));
 console.log('Réglages, activités :', await evaluate(`[...document.querySelectorAll('.settings-activity__name')].map((f) => f.textContent).join(', ')`));
 await setSelect('Famille', 'fractionne');

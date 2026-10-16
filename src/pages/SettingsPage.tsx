@@ -182,6 +182,8 @@ type ActivityPartKey = 'affichage' | 'analyse' | 'enregistrement' | 'notificatio
 const ACTIVITY_PART_DEFAULTS: Record<ActivityPartKey, boolean> = {
   affichage: false, analyse: false, enregistrement: false, notification: false, itineraires: false, balises: false,
 };
+/** Familles de la liste des activités, toutes repliées au départ ; plusieurs s'ouvrent à la fois, l'état est mémorisé. */
+const FAMILY_OPEN_DEFAULTS = Object.fromEntries(SPORT_FAMILIES.map((f) => [f, false])) as Record<SportFamily, boolean>;
 
 /**
  * Champ numérique optionnel, en `type="number"` avec flèches ↕, même
@@ -304,6 +306,7 @@ function SettingsPage() {
   const { open, toggle } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
   const { open: openActivity, toggle: toggleActivity } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
   const { open: openPart, toggle: togglePart } = useOpenSections<ActivityPartKey>('settings-activity-parts', ACTIVITY_PART_DEFAULTS);
+  const { open: openFamily, toggle: toggleFamily } = useOpenSections<SportFamily>('settings-families', FAMILY_OPEN_DEFAULTS);
   /**
    * Activités rangées par famille (Voile, Course à pied, Vélo, Fractionné, Surf), chacune dans l'ordre de
    * la liste, les cachées en bas de leur famille (§10, point 100).
@@ -324,10 +327,12 @@ function SettingsPage() {
     }
   };
 
-  /** Une activité ajoutée s'ouvre, pour la régler aussitôt. */
+  /** Une activité ajoutée s'ouvre, sa famille aussi, pour la régler aussitôt. */
   const addAndOpen = (name: string, base: SportType, color: string): string | null => {
     const id = addActivity(name, base, color);
-    if (id !== null && !openActivity[id]) toggleActivity(id);
+    if (id === null) return null;
+    if (!openActivity[id]) toggleActivity(id);
+    if (!openFamily[sportFamily(base)]) toggleFamily(sportFamily(base));
     return id;
   };
 
@@ -416,6 +421,14 @@ function SettingsPage() {
                     delayS: field === 'delayS' ? next : s.autoPause.delayS,
                   });
                 };
+                const heading = (k === 0 || sportFamily(familyOrdered[k - 1].base) !== family) && (
+                  <FamilyHeading family={family} hidden={familyHidden} disabled={!familyHidden && lastFamily}
+                    open={openFamily[family] === true} onOpen={() => toggleFamily(family)}
+                    names={familyOrdered.filter((a) => sportFamily(a.base) === family).map((a) => a.name)}
+                    onToggle={() => setFamilyHidden(family, !familyHidden)} />
+                );
+                // Famille repliée : son en-tête seul, ses activités ne sont pas montées.
+                if (openFamily[family] !== true) return <Fragment key={id}>{heading}</Fragment>;
                 const pauseKmh = parseFloat((s.autoPause.speedMs * 3.6).toFixed(1));
                 const summary = [
                   SPEED_UNIT_LABEL[s.speedUnit],
@@ -431,10 +444,7 @@ function SettingsPage() {
                 ].join(' · ');
                 return (
                   <Fragment key={id}>
-                    {(k === 0 || sportFamily(familyOrdered[k - 1].base) !== family) && (
-                      <FamilyHeading family={family} hidden={familyHidden} disabled={!familyHidden && lastFamily}
-                        onToggle={() => setFamilyHidden(family, !familyHidden)} />
-                    )}
+                    {heading}
                     <div className={`settings-activity${shownHidden ? ' settings-activity--hidden' : ''}`}>
                       <div className="settings-activity__head">
                         <button type="button" className="settings-activity__toggle" aria-expanded={isOpen} onClick={() => toggleActivity(id)}>
@@ -911,19 +921,28 @@ function PaceSettings({ family, view, onLevel, onCustomSpeed }: {
 
 /**
  * En-tête d'une famille dans la liste des activités, comme dans le choix d'une activité, avec son œil :
- * cachée, elle est grisée, ses activités aussi.
+ * cachée, elle est grisée, ses activités aussi. Le bandeau replie la famille ; repliée, il nomme ses
+ * activités. L'œil, à côté du bandeau et pas dedans, ne la replie pas.
  */
-function FamilyHeading({ family, hidden, disabled, onToggle }: {
+function FamilyHeading({ family, hidden, disabled, open, names, onOpen, onToggle }: {
   family: SportFamily;
   hidden: boolean;
   disabled: boolean;
+  open: boolean;
+  names: string[];
+  onOpen: () => void;
   onToggle: () => void;
 }) {
   const Icon = FAMILY_ICON[family];
   return (
-    <div className="settings-activities__family" style={{ color: hidden ? 'var(--muted)' : FAMILY_ACCENT[family] }}>
-      <Icon size={18} />
-      {FAMILY_LABEL[family]}
+    <div className={`settings-activities__family${open ? ' settings-activities__family--open' : ''}`}
+      style={{ color: hidden ? 'var(--muted)' : FAMILY_ACCENT[family] }}>
+      <button type="button" className="settings-activities__family-toggle" aria-expanded={open} onClick={onOpen}>
+        <IconChevronRight size={14} className="settings-activity__chevron" style={{ transform: open ? 'rotate(90deg)' : undefined }} />
+        <Icon size={18} />
+        <span className="settings-activities__family-name">{FAMILY_LABEL[family]}</span>
+        {!open && <span className="settings-activities__family-summary">{names.join(' · ')}</span>}
+      </button>
       <EyeButton name={FAMILY_LABEL[family]} hidden={hidden} disabled={disabled} onToggle={onToggle} />
     </div>
   );

@@ -65,10 +65,14 @@ const openVoile = () => evaluate(`(() => {
     title?.click();
   }
   return new Promise((r) => setTimeout(() => {
-    const card = [...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent.trim() === 'Voile');
-    if (!card) return r('carte absente');
-    card.querySelector('.settings-activity__toggle').click();
-    r('ok');
+    // Familles repliées depuis le lot 2 des demandes du 15/10 : toutes ouvertes.
+    document.querySelectorAll('.settings-activities__family-toggle[aria-expanded="false"]').forEach((b) => b.click());
+    setTimeout(() => {
+      const card = [...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent.trim() === 'Voile');
+      if (!card) return r('carte absente');
+      card.querySelector('.settings-activity__toggle').click();
+      r('ok');
+    }, 300);
   }, 300));
 })()`);
 const voileCard = `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__body') && c.querySelector('[value]'))`;

@@ -97,6 +97,7 @@ await evaluate(`(() => {
   localStorage.setItem('tracker.sections', JSON.stringify({
     settings: { activites: true },
     'settings-activities': { running: true, 'run-intervals': true, cycling: true },
+    'settings-families': { voile: true, course: true, velo: true, fractionne: true, surf: true },
     'settings-activity-parts': { analyse: true },
   }));
   return 'ok';

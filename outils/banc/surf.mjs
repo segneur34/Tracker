@@ -132,6 +132,9 @@ console.log('accueil :', await evaluate(`[...document.querySelectorAll('.shell-m
 await go('/parametres');
 await clickText('Activités', '[role=button]');
 await wait(400);
+// Familles repliées depuis le lot 2 des demandes du 15/10 : toutes ouvertes.
+await evaluate(`document.querySelectorAll('.settings-activities__family-toggle[aria-expanded="false"]').forEach((b) => b.click()); 'ok'`);
+await wait(300);
 console.log('Réglages, familles :', await evaluate(`[...document.querySelectorAll('.settings-activities__family')].map((f) => f.textContent).join(', ')`));
 console.log('Réglages, résumés surf :', await evaluate(`[...document.querySelectorAll('.settings-activity')].filter((c) => /Surf/.test(c.innerText)).map((c) => c.innerText.replace(/\\n+/g, ' ')).join(' | ')`));
 for (const name of ['Surf foil', 'Surf']) {

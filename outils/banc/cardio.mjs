@@ -271,6 +271,7 @@ const openSettings = async () => {
     const sections = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}');
     sections.settings = { ...sections.settings, activites: true, coureur: true };
     sections['settings-activities'] = { wingfoil: true, surf: true };
+    sections['settings-families'] = { voile: true, course: true, velo: true, fractionne: true, surf: true };
     sections['settings-activity-parts'] = { enregistrement: true };
     localStorage.setItem('tracker.sections', JSON.stringify(sections));
     return 'ok';

@@ -83,8 +83,11 @@ const recordAt = (startMs) => evaluate(`(async () => {
 })()`);
 /** Ouvre la section « Activités » de Réglages si elle est fermée (son état est mémorisé). */
 const openActivities = async () => {
-  if (!(await evaluate(`document.querySelector('.settings-activity__name') !== null`))) await clickText('Activités', '[role=button]');
+  if (!(await evaluate(`document.querySelector('.settings-activities') !== null`))) await clickText('Activités', '[role=button]');
   await wait(400);
+  // Familles repliées depuis le lot 2 des demandes du 15/10 : toutes ouvertes.
+  await evaluate(`document.querySelectorAll('.settings-activities__family-toggle[aria-expanded="false"]').forEach((b) => b.click()); 'ok'`);
+  await wait(300);
 };
 let failures = 0;
 const check = (label, ok, detail = '') => {

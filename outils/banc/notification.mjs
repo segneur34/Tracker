@@ -103,6 +103,9 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, de
 await go('/parametres', 4000);
 await evaluate(`(() => { const b = [...document.querySelectorAll('[role=button]')].find((el) => el.textContent.trim() === 'Activités'); if (b && !document.querySelector('.settings-activities')) b.click(); return 'ok'; })()`);
 await wait(300);
+// Familles repliées depuis le lot 2 des demandes du 15/10 : toutes ouvertes.
+await evaluate(`document.querySelectorAll('.settings-activities__family-toggle[aria-expanded="false"]').forEach((b) => b.click()); 'ok'`);
+await wait(300);
 await evaluate(`(() => { const b = [...document.querySelectorAll('.settings-activity__toggle')].find((x) => x.textContent.trim().startsWith('Voile')); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return 'ok'; })()`);
 await wait(300);
 console.log('partie Notification :', await clickText('Notification', '.settings-part__toggle'));

@@ -109,6 +109,9 @@ await go('/parametres');
 await openBlock('Barre du bas', '.settings-row select');
 await openBlock('Activités', '.settings-activities');
 await wait(300);
+// Familles repliées depuis le lot 2 des demandes du 15/10 : toutes ouvertes.
+await evaluate(`document.querySelectorAll('.settings-activities__family-toggle[aria-expanded="false"]').forEach((b) => b.click()); 'ok'`);
+await wait(300);
 console.log('favori Surf :', await evaluate(`(() => {
   const row = [...document.querySelectorAll('.settings-row')].find((r) => r.textContent.startsWith('Sport favori'));
   const select = row?.querySelector('select');

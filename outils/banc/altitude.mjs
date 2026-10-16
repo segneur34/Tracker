@@ -148,6 +148,9 @@ console.log('liste à l\'IGN :', await listGain());
 await go('/parametres', 2500);
 console.log('panneau Activités :', await evaluate(`(() => { const t = [...document.querySelectorAll('strong[role=button]')].find((x) => x.textContent.trim() === 'Activités'); if (!t) return 'absent'; if (!document.querySelector('.settings-activities')) t.click(); return 'ok'; })()`));
 await wait(500);
+// Familles repliées depuis le lot 2 des demandes du 15/10 : toutes ouvertes.
+await evaluate(`document.querySelectorAll('.settings-activities__family-toggle[aria-expanded="false"]').forEach((b) => b.click()); 'ok'`);
+await wait(300);
 console.log('carte Course :', await evaluate(`(() => { const b = [...document.querySelectorAll('.settings-activity__toggle')].find((x) => x.textContent.includes('Course')); if (!b) return 'absent'; if (b.getAttribute('aria-expanded') !== 'true') b.click(); return 'ok'; })()`));
 await wait(500);
 console.log('20 m :', await chooseIn('Altitude IGN', '20'));

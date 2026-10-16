@@ -189,6 +189,14 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - Surf puis Route cachés par leur œil dans Réglages : toujours listés, grisés ; Surf hors des barres, de l'accueil, d'Enregistrer et du choix du favori, le favori retombé sur la voile ; la session de Route retirée de la bibliothèque Vélo, une ligne le dit ; Route hors d'Enregistrer ; `/surf` s'ouvre et dit qu'il est caché ;
   - l'œil de la dernière famille visible désactivé ;
   - tout ré-affiché : barres, accueil, bibliothèque Vélo et Enregistrer identiques au relevé de départ, favori compris.
+- `familles.mjs <port> [<dossier des captures>]` : familles repliables dans Réglages (lot 2 des demandes du 15/10), sur un profil neuf, sans réseau, environ 30 s. Avec `DUMP=x.txt`, il ouvre toutes les familles, activités et parties et relève le texte des cartes d'activité ; avec `RELEVE_SEUL=1` en plus, il s'arrête là (relevé de la version d'avant). Il vérifie ensuite :
+  - les cinq familles fermées au départ, aucune carte d'activité montée ;
+  - Voile ouverte, son œil qui la cache sans la replier, puis la rend ;
+  - l'état retenu après rechargement (`settings-families` dans `tracker.sections`) ;
+  - une activité ajoutée en surf, qui ouvre la famille Surf et sa carte ;
+  - à 390×844, aucun débordement, familles fermées puis ouvertes.
+
+  Depuis ce lot, les scripts qui passent par les cartes d'activité ouvrent d'abord les familles (clic sur `.settings-activities__family-toggle`, ou `settings-families` dans la mémoire préremplie).
 - `notification.mjs <port> <dossier de travail>` : notification de l'enregistrement (point 101), sur un profil neuf, sans réseau, environ 1 min 30. La version navigateur de `platform/notification.ts` consigne chaque envoi en `console.debug` (« [notification] »). Le script vérifie :
   - la partie « Notification » de la carte Voile dans Réglages : trois menus, « défaut », puis une ligne changée et rangée ;
   - un rejeu ×10 de voile : titre, chiffres choisis, chronomètre de durée, 5 s au moins entre deux envois ;

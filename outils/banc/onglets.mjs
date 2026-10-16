@@ -185,6 +185,7 @@ const openSettings = async () => {
     sections.settings = { ...sections.settings, activites: true };
     sections['settings-activities'] = ${JSON.stringify(Object.fromEntries(Object.values(CARDS).map((k) => [k, true])))};
     sections['settings-activity-parts'] = { analyse: true };
+    sections['settings-families'] = { voile: true, course: true, velo: true, fractionne: true, surf: true };
     localStorage.setItem('tracker.sections', JSON.stringify(sections));
     return 'ok';
   })()`);
@@ -212,7 +213,7 @@ for (const name of Object.keys(CARDS)) {
   shown[name] = await pills(name);
   console.log(`${name} :`, shown[name], '·', await rowMark(name));
 }
-check('Voile : tous montrés, « tops » et « sauts » compris', shown.Voile === 'général tops manœuvres graphiques vmg sauts vent matos et conditions réglages');
+check('Voile : tous montrés, « tops » et « sauts » compris', shown.Voile === 'général tops manœuvres graphiques cardio vmg sauts vent matos et conditions réglages');
 check('Course : « tops » relâché', shown.Course.includes('(tops)') && shown.Course.includes(' sauts '));
 check('Route : « tops » enfoncé', / tops /.test(` ${shown.Route} `) && !shown.Route.includes('(tops)'));
 check('Fractionné à pied : pas de « sauts »', !shown['Fractionné à pied'].includes('sauts') && shown['Fractionné à pied'].includes('fractionné'));
