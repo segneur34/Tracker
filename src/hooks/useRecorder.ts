@@ -477,10 +477,9 @@ export const startRecording = async (
       setState({ error: `Mesure des capteurs impossible : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
     }
   }
-  const heartRateProfile = getSportProfile(sport).heartRate;
-  if (options.heartRate && heartRateProfile) {
+  if (options.heartRate) {
     try {
-      await takeBelt(options.heartRate, heartRateProfile.maxAgeS);
+      await takeBelt(options.heartRate, getSportProfile(sport).heartRate.maxAgeS);
     } catch (err) {
       releaseRecordingBelt();
       setState({ heartRate: null, error: `Ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });

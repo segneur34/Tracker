@@ -98,7 +98,7 @@ describe('toggleTabChoice', () => {
 });
 
 describe('maskHiddenTabs', () => {
-  const open = { general: true, vagues: true, rame: false, vols: false, tops: true, graphiques: false, notes: false, reglages: false };
+  const open = { general: true, vagues: true, rame: false, vols: false, tops: true, graphiques: false, cardio: false, notes: false, reglages: false };
 
   it('ferme les onglets cachés laissés ouverts', () => {
     const masked = maskHiddenTabs(open, SURF_TABS, { vagues: false });

@@ -8,10 +8,11 @@ import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { IconChevronRight } from '../components/icons';
+import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from '../components/heartRateColors';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import PageHeader from '../components/ui/PageHeader';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, sessionActivity, type Activity } from '../core/activities';
-import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
+import { SPORT_FAMILIES, SPORT_PROFILES, type SportFamily } from '../core/sportProfiles';
 import {
   SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, isInverseUnit, toDisplaySpeed,
   type DistanceUnit, type SpeedUnit,
@@ -20,10 +21,11 @@ import { useChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
+import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { effectiveDistanceUnit, effectiveSpeedUnit, useVisibility } from '../hooks/useSportSettings';
 import {
-  STATS_PERIODS, averageMovingSpeedMs, dateTicks, formatDateTick, groupTotals, inBounds, isStatsPeriod, maxSpeedSeries, recordKindsOf,
+  STATS_PERIODS, averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, heartRatePoints, formatDateTick, groupTotals, inBounds, isStatsPeriod, maxSpeedSeries, recordKindsOf,
   regularity, statSessionOf, statsPeriodBounds, statsTotals, topSessions, type MaxSpeedPoint, type StatSession, type StatsPeriod,
   type StatsRecordKind, type StatsTotals,
 } from '../library/stats';
@@ -43,16 +45,21 @@ import './StatisticsPage.css';
  * les unités ne se comparent pas.
  */
 
-type StatsSection = 'general' | 'vitesse' | 'regularite' | 'records';
+type StatsSection = 'general' | 'vitesse' | 'regularite' | 'records' | 'cardio';
 
 const STATS_SECTIONS: SectionDefinition<StatsSection>[] = [
   { key: 'general', label: 'général' },
   { key: 'vitesse', label: 'vitesse max' },
   { key: 'regularite', label: 'régularité' },
   { key: 'records', label: 'records' },
+  // Seulement quand une session de la période a de la FC ; les bpm se comparent d'une famille à l'autre.
+  { key: 'cardio', label: 'cardio' },
 ];
 
-const STATS_SECTION_DEFAULTS: Record<StatsSection, boolean> = { general: true, vitesse: true, regularite: true, records: false };
+const STATS_SECTION_DEFAULTS: Record<StatsSection, boolean> = { general: true, vitesse: true, regularite: true, records: false, cardio: false };
+
+/** Fractions des zones cardiaques : les mêmes dans tous les calculs (`HeartRateProfile`). */
+const ZONE_FRACTIONS = SPORT_PROFILES.running.heartRate.zoneFractions;
 
 const STORAGE_ID = 'statistiques';
 const panelId = (name: string) => `${STORAGE_ID}.${name}`;
@@ -215,7 +222,21 @@ function StatisticsPage() {
     return [...listed, ...extra].map((a) => ({ key: a.id, label: a.name }));
   }, [all, family, activities, isShown, familyHidden, activity, activityById]);
 
-  const sections = STATS_SECTIONS.filter((s) => family !== null || (s.key !== 'vitesse' && s.key !== 'records'));
+  // Cardio : la FC du résumé, zones et charge recalculées avec le profil du moment.
+  const { profile: runner } = useRunnerProfile();
+  const hrZones = useMemo(() => runnerHeartRateZones(runner, ZONE_FRACTIONS), [runner]);
+  const hasCardio = inPeriod.some((s) => s.heartRate !== null);
+  const cardio = useMemo(() => cardioTotals(inPeriod, hrZones?.bounds ?? null), [inPeriod, hrZones]);
+  const loadBars = useMemo(() => (hrZones ? cardioLoadBars(regular.bars, inPeriod, hrZones.bounds) : []), [hrZones, regular.bars, inPeriod]);
+  const hrPoints = useMemo(() => heartRatePoints(inPeriod), [inPeriod]);
+  const hrSeries = useMemo(() => {
+    const byActivity = new Map<string, typeof hrPoints>();
+    for (const p of hrPoints) byActivity.set(p.activityId, [...(byActivity.get(p.activityId) ?? []), p]);
+    return [...byActivity.entries()];
+  }, [hrPoints]);
+  const hrTicks = hrPoints.length > 0 ? dateTicks(hrPoints[0].startMs - 86_400_000, hrPoints[hrPoints.length - 1].startMs + 86_400_000, narrow ? 4 : 6) : null;
+
+  const sections = STATS_SECTIONS.filter((s) => (family !== null || (s.key !== 'vitesse' && s.key !== 'records')) && (s.key !== 'cardio' || hasCardio));
 
   // Vitesse max : un point par session de la sélection (période comprise), le record en escalier.
   const speedRows: SpeedRow[] = useMemo(
@@ -470,6 +491,97 @@ function StatisticsPage() {
                     <div style={noteStyle}>Sessions par {regular.barUnit}, empilées par activité.</div>
                   </>
                 )}
+              </ResizablePanel>
+            )}
+
+            {open.cardio && hasCardio && (
+              <ResizablePanel id={panelId('cardio')} style={panelStyle}>
+                <div style={{ marginBottom: '10px' }}>
+                  <PanelTitle label="Cardio" open={open.cardio} onToggle={() => toggle('cardio')} />
+                </div>
+                <div className="an-sheet__stats an-sheet__stats--always">
+                  <Stat label="Sessions avec FC" value={`${cardio.sessions} / ${totals.sessions}`} />
+                  <Stat label="Temps mesuré" value={formatDuration(cardio.coveredS * 1000)} />
+                  {cardio.avgBpm !== null && <Stat label="FC moyenne" value={`${Math.round(cardio.avgBpm)} bpm`} title="Pondérée par le temps mesuré de chaque session" />}
+                  {cardio.maxBpm !== null && <Stat label="FC max" value={`${cardio.maxBpm} bpm`} />}
+                  {cardio.load !== null && <Stat label="Charge" value={Math.round(cardio.load)} title="Minutes en Z1 × 1, … en Z5 × 5 (Edwards)" />}
+                  {cardio.load !== null && regular.weeks > 0 && <Stat label="Charge par semaine" value={Math.round(cardio.load / regular.weeks)} />}
+                </div>
+
+                {cardio.zoneTimesS && cardio.coveredS > 0 && (
+                  <div style={{ marginTop: '10px' }}>
+                    <div className="stats-records__title">Temps par zone</div>
+                    <div style={{ display: 'flex', height: '14px', borderRadius: '4px', overflow: 'hidden', margin: '6px 0' }}>
+                      {cardio.zoneTimesS.map((s, z) => s > 0 && (
+                        <div key={z} title={`${zoneLabel(z)} : ${formatShortDuration(s)}`} style={{ width: `${(s / cardio.coveredS) * 100}%`, backgroundColor: HEART_ZONE_COLORS[z] }} />
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', fontSize: '12px' }}>
+                      {cardio.zoneTimesS.map((s, z) => (
+                        <span key={z} style={{ opacity: s > 0 ? 1 : 0.45 }}>
+                          <span style={{ display: 'inline-block', width: '9px', height: '9px', borderRadius: '2px', backgroundColor: HEART_ZONE_COLORS[z], marginRight: '4px' }} />
+                          {zoneLabel(z)} {formatDuration(s * 1000)} ({Math.round((s / cardio.coveredS) * 100)} %)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {loadBars.length > 0 && (
+                  <div style={{ marginTop: '12px' }}>
+                    <div className="stats-records__title">Charge par {regular.barUnit}</div>
+                    <div style={{ height: '160px' }}>
+                      <ResponsiveContainer>
+                        <BarChart data={loadBars.map((b, i) => ({ i, load: Math.round(b.load) }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#ddd" vertical={false} />
+                          <XAxis dataKey="i" tickFormatter={(i: number) => loadBars[i]?.label ?? ''} interval="preserveStartEnd" minTickGap={16} tick={{ fill: '#555', fontSize: 11 }} />
+                          <YAxis allowDecimals={false} width={36} tick={{ fill: '#555', fontSize: 11 }} />
+                          <Tooltip isAnimationActive={false} cursor={{ fill: 'rgba(0,0,0,0.05)' }}
+                            labelFormatter={(i) => loadBars[Number(i)]?.title ?? ''} formatter={(value) => [value, 'Charge']} contentStyle={{ fontSize: '12px' }} />
+                          <Bar dataKey="load" fill={HEART_RATE_COLOR} isAnimationActive={false} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+
+                {hrPoints.length > 0 && hrTicks && (
+                  <div style={{ marginTop: '12px' }}>
+                    <div className="stats-records__title">FC moyenne par session</div>
+                    <div style={{ height: '160px' }}>
+                      <ResponsiveContainer>
+                        <ComposedChart margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                          <XAxis dataKey="startMs" type="number" domain={[hrTicks.ticks[0] ?? 'dataMin', hrTicks.ticks[hrTicks.ticks.length - 1] ?? 'dataMax']}
+                            ticks={hrTicks.ticks} tickFormatter={(v: number) => formatDateTick(v, hrTicks.unit)} tick={{ fill: '#555', fontSize: 11 }} />
+                          <YAxis type="number" domain={['dataMin - 5', 'dataMax + 5']} allowDecimals={false} width={40} tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }} />
+                          <Tooltip cursor={false} isAnimationActive={false}
+                            content={({ active, payload }) => {
+                              const row = active ? (payload?.[0]?.payload as (typeof hrPoints)[number] | undefined) : undefined;
+                              if (!row) return null;
+                              return (
+                                <div className="stats-tooltip">
+                                  <strong>{shortDate(row.startMs)}</strong>
+                                  <span>{activityName(row.activityId)} · moy. {row.avgBpm} bpm · max {row.maxBpm} bpm</span>
+                                </div>
+                              );
+                            }} />
+                          {hrSeries.map(([activityId, rows]) => (
+                            <Scatter key={activityId} data={rows} dataKey="avgBpm" fill={activityColor(activityId)} isAnimationActive={false}
+                              name={activityName(activityId)} onClick={(_, index) => { const r = rows[index]; const s = r ? inPeriod.find((x) => x.file === r.file) : undefined; if (r && s) openSession(r.file, s.family); }}
+                              style={{ cursor: 'pointer' }} />
+                          ))}
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+
+                <p style={noteStyle}>
+                  {hrZones
+                    ? 'Zones et charge recalculées avec les zones de Réglages › Pratiquant. Un point par session, à la couleur de son activité ; le toucher ouvre la session.'
+                    : 'Pour les zones et la charge, saisir la FC max ou l\'année de naissance dans Réglages › Pratiquant.'}
+                </p>
               </ResizablePanel>
             )}
 

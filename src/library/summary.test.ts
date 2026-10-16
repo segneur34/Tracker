@@ -37,6 +37,16 @@ const buildTrack = (phases: [number, number][], hz = 1, climbPerS?: number): Raw
 };
 
 describe('summarizeSession', () => {
+  it('range la FC de la session, rien sans FC', () => {
+    const points = buildTrack([[600, 3]]).map((p, i) => ({ ...p, hr: 140 + (i % 20) }));
+    const hr = summarizeSession(points, 'running')!.heartRate!;
+    expect(hr.avgBpm).toBeGreaterThan(140);
+    expect(hr.avgBpm).toBeLessThan(160);
+    expect(hr.coveredS).toBe(600);
+    expect(hr.histogram.seconds.reduce((a, b) => a + b, 0)).toBeCloseTo(600, -1);
+    expect(summarizeSession(buildTrack([[600, 3]]), 'running')!.heartRate).toBeUndefined();
+  });
+
   it('rend la distance intégrée, les bornes et la cadence', () => {
     const summary = summarizeSession(buildTrack([[600, 3]]), 'running')!;
     expect(summary.calcVersion).toBe(SUMMARY_CALC_VERSION);

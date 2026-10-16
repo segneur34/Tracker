@@ -42,6 +42,13 @@ describe('computeLiveStats', () => {
     expect(stats.recentTopsMs).toEqual([null, null]);
   });
 
+  it('donne la FC moyenne pondérée par le temps, sans franchir les pauses', () => {
+    const withHr = (fixes: LocationFix[], bpm: number) => fixes.map((f) => ({ ...f, heartRateBpm: bpm }));
+    const stats = computeLiveStats([withHr(trace(0, 300, 1, () => 3), 120), withHr(trace(600, 900, 1, () => 3, undefined, 43.51), 160)], wing);
+    expect(stats.averageHeartRateBpm).toBeCloseTo(140, 0);
+    expect(computeLiveStats([trace(0, 300, 1, () => 3)], running).averageHeartRateBpm).toBeNull();
+  });
+
   it('donne distance, vitesse moyenne et allure du dernier km à vitesse constante', () => {
     const stats = computeLiveStats([trace(0, 600, 1, () => 3)], running);
     expect(stats.distanceM).toBeCloseTo(1800, 0);

@@ -16,7 +16,9 @@ import {
 } from '../core/units';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
-import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
+import { runnerHeartRateZones, useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
+import { zoneLabel } from '../components/heartRateColors';
+import Button from '../components/ui/Button';
 import {
   DEFAULT_GEAR_LABELS, MAX_GEAR_LABEL_LENGTH, TERRAIN_LABEL, TREATMENT_SPEED_RANGE_MS, TREATMENT_UNITS, defaultBikeType, defaultFoil, defaultGradeRange, planningFamily,
   sanitizeGearLabels, useAllSportSettings, type NavSecond, type SportSettingsView, type TerrainType,
@@ -236,6 +238,54 @@ function NumberField({
   );
 }
 
+/** Fractions des zones cardiaques : les mêmes dans tous les calculs (`HeartRateProfile`). */
+const ZONE_FRACTIONS = SPORT_PROFILES.running.heartRate.zoneFractions;
+
+/**
+ * Zones cardiaques du pratiquant, dans « Pratiquant » : calculées d'office
+ * (réserve cardiaque, sinon FC max, estimée par l'âge s'il le faut), ou
+ * saisies à la main, borne basse de chaque zone, croissantes.
+ */
+function HeartRateZonesField({ profile, onChange }: { profile: RunnerProfile; onChange: (bounds: number[] | null) => void }) {
+  const computed = runnerHeartRateZones({ ...profile, hrZones: null }, ZONE_FRACTIONS);
+  const custom = profile.hrZones;
+  const method = computed === null ? null
+    : computed.method === 'reserve' ? '% de la réserve cardiaque' : '% de la FC max';
+  return (
+    <div style={{ marginBottom: '8px', fontSize: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
+        <span style={{ width: '190px' }}>Zones cardiaques</span>
+        {custom ? (
+          <Button size="s" onClick={() => onChange(null)}>Revenir au calcul</Button>
+        ) : computed ? (
+          <>
+            <span style={{ color: 'var(--muted)' }}>
+              {computed.bounds.map((b, k) => `${zoneLabel(k + 1)} ≥ ${b}`).join(' · ')}
+            </span>
+            <Button size="s" onClick={() => onChange(computed.bounds)}>Personnaliser</Button>
+          </>
+        ) : (
+          <span style={{ color: 'var(--muted)' }}>FC max ou année de naissance à saisir</span>
+        )}
+      </div>
+      {custom && custom.map((b, k) => (
+        <NumberField key={k} label={`Début de ${zoneLabel(k + 1)}`} unit="bpm" min={60} max={230} value={b}
+          onCommit={(next) => {
+            if (next === null) return;
+            onChange(custom.map((v, j) => (j === k ? next : v)));
+          }} />
+      ))}
+      <p className="settings-block__intro">
+        {custom
+          ? 'Zones saisies à la main : chaque borne au-dessus de la précédente. Elles servent à l\'onglet cardio de toutes les analyses et au chiffre « Zone cardiaque » de l\'enregistrement.'
+          : method
+            ? `Calculées en ${method}${computed!.estimated ? `, FC max estimée par l'âge (${computed!.hrMax} bpm)` : ''} : 50, 60, 70, 80 et 90 %. « Personnaliser » les règle à la main, après un test d'effort par exemple.`
+            : 'Sans FC max ni âge, pas de zones : l\'onglet cardio montre alors la courbe et la FC moyenne seulement.'}
+      </p>
+    </div>
+  );
+}
+
 /**
  * Page Paramètres : mémoire, activités et tous leurs réglages (affichage,
  * enregistrement, terrain, vélo, temps estimé des itinéraires),
@@ -250,7 +300,7 @@ function SettingsPage() {
     stopHoldMs, setStopHoldMs, navFamily, setNavFamily, navSecond, setNavSecond, navHoldMs, setNavHoldMs,
     hiddenFamilies, setActivityHidden, setFamilyHidden,
   } = useAllSportSettings();
-  const { profile, setNumber, setSex, age } = useRunnerProfile();
+  const { profile, setNumber, setSex, setZones, age } = useRunnerProfile();
   const { open, toggle } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
   const { open: openActivity, toggle: toggleActivity } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
   const { open: openPart, toggle: togglePart } = useOpenSections<ActivityPartKey>('settings-activity-parts', ACTIVITY_PART_DEFAULTS);
@@ -281,7 +331,7 @@ function SettingsPage() {
     return id;
   };
 
-  const profileField = (field: Exclude<keyof RunnerProfile, 'sex'>) => (next: number | null) => setNumber(field, next);
+  const profileField = (field: Exclude<keyof RunnerProfile, 'sex' | 'hrZones'>) => (next: number | null) => setNumber(field, next);
 
   return (
     <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto', boxSizing: 'border-box' }}>
@@ -571,15 +621,13 @@ function SettingsPage() {
                             {s.jumps !== null && (
                               <JumpsSetting jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => setFor(id, 'jumps', next)} />
                             )}
-                            {s.heartRate !== null && (
-                              <div className="settings-row" title="La ceinture choisie dans le bloc « Capteurs » est proposée, cochée, à chaque enregistrement de cette activité ; sa fréquence est écrite à chaque point de la trace">
-                                <span className="settings-row__label">Ceinture cardio</span>
-                                <label className="settings-sports__pair">
-                                  <input type="checkbox" checked={s.heartRate} onChange={(e) => setFor(id, 'heartRate', e.target.checked)} />
-                                  <span>Proposer la ceinture cardio</span>
-                                </label>
-                              </div>
-                            )}
+                            <div className="settings-row" title="La ceinture choisie dans le bloc « Capteurs » est proposée, cochée, à chaque enregistrement de cette activité ; sa fréquence est écrite à chaque point de la trace">
+                              <span className="settings-row__label">Ceinture cardio</span>
+                              <label className="settings-sports__pair">
+                                <input type="checkbox" checked={s.heartRate} onChange={(e) => setFor(id, 'heartRate', e.target.checked)} />
+                                <span>Proposer la ceinture cardio</span>
+                              </label>
+                            </div>
                           </ActivityPart>
                           <ActivityPart label="Notification" open={openPart.notification} onToggle={() => togglePart('notification')}>
                             <FieldsSetting label="Chiffres de la notification"
@@ -737,7 +785,7 @@ function SettingsPage() {
         {open.coureur && (
           <>
             <p className="settings-block__intro">
-              Ces caractéristiques servent à l'onglet énergie des analyses de course et de vélo, et serviront aux zones d'effort. Tout est facultatif.
+              Ces caractéristiques servent à l'onglet énergie des analyses de course et de vélo, et les fréquences cardiaques aux zones d'effort de l'onglet cardio, dans toutes les activités. Tout est facultatif.
             </p>
             <NumberField label="Poids" unit="kg" step={0.5} min={20} max={300} value={profile.weightKg} onCommit={profileField('weightKg')} placeholder="ex. 72" />
             <NumberField label="Taille" unit="cm" min={100} max={250} value={profile.heightCm} onCommit={profileField('heightCm')} placeholder="ex. 178" />
@@ -752,6 +800,7 @@ function SettingsPage() {
             </label>
             <NumberField label="Fréquence cardiaque max" unit="bpm" min={100} max={250} value={profile.hrMax} onCommit={profileField('hrMax')} placeholder="ex. 185" />
             <NumberField label="Fréquence cardiaque de repos" unit="bpm" min={25} max={120} value={profile.hrRest} onCommit={profileField('hrRest')} placeholder="ex. 55" />
+            <HeartRateZonesField profile={profile} onChange={setZones} />
             <NumberField label="Économie de course" unit="ml O₂/kg/km" min={120} max={320} value={profile.economyMlKgKm} onCommit={profileField('economyMlKgKm')} placeholder="200" />
             <p className="settings-block__intro">
               Oxygène consommé pour courir un kilomètre sur le plat, que donne un test d'effort en laboratoire. Sans valeur, 200 ml/kg/km : environ 1 kcal par kilo et par kilomètre.

@@ -1,0 +1,233 @@
+import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
+import HeartRateChart from './HeartRateChart';
+import PanelTitle from './PanelTitle';
+import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from './heartRateColors';
+import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
+import Button from './ui/Button';
+import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
+import { CHART_MAX_POINTS } from '../core/displayConfig';
+import {
+  edwardsLoad, efficiencyBlocks, heartRateDrift, timeInZones, type HeartRatePoint, type HeartRateZones,
+} from '../core/heartRate';
+import type { HeartRateProfile } from '../core/sportProfiles';
+import { SPEED_UNIT_LABEL, formatClock, formatShortDuration, isInverseUnit, toDisplaySpeed, type SpeedUnit } from '../core/units';
+import { useChartZoom } from '../hooks/useChartZoom';
+import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
+
+/** Vitesse et activité de la trace, pour la dérive et le nuage FC / vitesse (course et vélo). */
+export interface HeartRateEfficiency {
+  speedsMs: readonly number[];
+  active: readonly boolean[];
+  speedUnit: SpeedUnit;
+}
+
+interface Props {
+  track: readonly HeartRatePoint[];
+  heart: SessionHeartRate;
+  params: HeartRateProfile;
+  /** Zones du pratiquant, `null` sans FC max ni âge. */
+  zones: HeartRateZones | null;
+  /** FC max saisie dans Pratiquant. */
+  profileHrMax: number | null;
+  /** « La retenir » : la FC max de la sortie devient celle du pratiquant. */
+  onRetainHrMax: (bpm: number) => void;
+  /** Zone montrée sur la carte (1 à 5, 0 sous Z1), ou `null`. */
+  selectedZone: number | null;
+  onSelectZone: (zone: number | null) => void;
+  onHoverIndex: (index: number) => void;
+  onLeave: () => void;
+  /** Course et vélo seulement. */
+  efficiency?: HeartRateEfficiency;
+  /** Remet le zoom à « tout voir » quand la session change. */
+  resetKey: unknown;
+  open: boolean;
+  onToggle: () => void;
+}
+
+const METHOD_LABEL: Record<HeartRateZones['method'], string> = {
+  perso: 'personnalisées, saisies dans Réglages › Pratiquant',
+  reserve: '% de la réserve cardiaque (entre FC de repos et FC max)',
+  max: '% de la FC max',
+};
+
+const minutesLabel = (v: unknown) => formatClock(Number(v) * 60_000);
+const cell = { padding: '0.4em 0.6em', textAlign: 'center' } as const;
+const scatterTooltipStyle = { fontSize: '12px' } as const;
+
+/**
+ * Onglet « cardio » des trois modules : FC moyenne, max et charge, courbe
+ * reliée à la carte, temps par zone avec ses passages sur la carte, FC max
+ * observée à retenir ; en course et à vélo, dérive et nuage FC / vitesse.
+ * Posé dans le `ResizablePanel` du module.
+ */
+export default function HeartRatePanel({
+  track, heart, params, zones, profileHrMax, onRetainHrMax, selectedZone, onSelectZone, onHoverIndex, onLeave, efficiency,
+  resetKey, open, onToggle,
+}: Props) {
+  const { smoothed, stats } = heart;
+  const t0 = track[0]?.timeMs ?? 0;
+  const minutes = useMemo(() => track.map((p) => (p.timeMs - t0) / 60_000), [track, t0]);
+  const zoom = useChartZoom(minutes.length > 1 ? { min: minutes[0], max: minutes[minutes.length - 1] } : null, resetKey);
+  const rows = useMemo(() => {
+    if (minutes.length < 2) return [];
+    const [first, last] = visibleIndexRange(minutes, zoom.view);
+    return sampledIndices(first, last, CHART_MAX_POINTS).map((i) => ({
+      index: i,
+      minutes: parseFloat(minutes[i].toFixed(3)),
+      hr: smoothed[i] === null ? null : Math.round(smoothed[i]!),
+    }));
+  }, [minutes, zoom.view, smoothed]);
+
+  const zoneTimes = useMemo(() => (zones ? timeInZones(track, smoothed, zones.bounds, params.gapS) : null), [zones, track, smoothed, params.gapS]);
+  const countedS = zoneTimes?.reduce((a, b) => a + b, 0) ?? 0;
+  const drift = useMemo(
+    () => (efficiency ? heartRateDrift(track, smoothed, efficiency.speedsMs, efficiency.active, params.gapS, params.driftMinS) : null),
+    [efficiency, track, smoothed, params.gapS, params.driftMinS]
+  );
+  /** Vitesse du nuage : km/h quand l'unité est une allure, qui ferait un axe inversé. */
+  const scatterUnit: SpeedUnit | null = efficiency ? (isInverseUnit(efficiency.speedUnit) ? 'kmh' : efficiency.speedUnit) : null;
+  const blocks = useMemo(() => {
+    if (!efficiency || scatterUnit === null) return null;
+    const all = efficiencyBlocks(track, smoothed, efficiency.speedsMs, efficiency.active, params.gapS, params.scatterBlockS)
+      .map((b) => ({ speed: parseFloat(toDisplaySpeed(b.speedMs, scatterUnit).toFixed(1)), bpm: Math.round(b.bpm), half: b.half }));
+    return [all.filter((b) => b.half === 0), all.filter((b) => b.half === 1)];
+  }, [efficiency, scatterUnit, track, smoothed, params.gapS, params.scatterBlockS]);
+
+  if (!stats) return null;
+  const aboveProfile = profileHrMax === null || stats.maxBpm > profileHrMax;
+
+  return (
+    <>
+      <div style={{ marginBottom: '10px' }}>
+        <PanelTitle label="Cardio" open={open} onToggle={onToggle} />
+      </div>
+      <div className="an-sheet__stats an-sheet__stats--always">
+        <div className="an-sheet__stat"><span className="an-sheet__stat-label">FC moyenne</span><strong className="an-sheet__stat-value">{Math.round(stats.avgBpm)} bpm</strong></div>
+        <div className="an-sheet__stat"><span className="an-sheet__stat-label">FC max</span><strong className="an-sheet__stat-value">{stats.maxBpm} bpm</strong></div>
+        {zoneTimes && (
+          <div className="an-sheet__stat"><span className="an-sheet__stat-label">Charge</span><strong className="an-sheet__stat-value">{Math.round(edwardsLoad(zoneTimes))}</strong></div>
+        )}
+        <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps mesuré</span><strong className="an-sheet__stat-value">{formatShortDuration(stats.coveredS)}</strong></div>
+      </div>
+
+      {aboveProfile && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', margin: '8px 0', fontSize: 'var(--text-s)' }}>
+          <span>
+            {profileHrMax === null
+              ? `Aucune FC max dans Réglages › Pratiquant : celle de cette sortie est de ${stats.maxBpm} bpm.`
+              : `FC max de la sortie : ${stats.maxBpm} bpm, au-dessus de celle de Pratiquant (${profileHrMax}).`}
+          </span>
+          <Button size="s" onClick={() => onRetainHrMax(stats.maxBpm)}>La retenir</Button>
+        </div>
+      )}
+
+      {rows.length > 1 && (
+        <HeartRateChart data={rows} zoom={zoom} zones={zones?.bounds ?? null} onHoverIndex={onHoverIndex} onLeave={onLeave}
+          labelFormatter={minutesLabel} style={{ width: '100%', height: '200px', marginTop: '6px' }}
+          xAxis={(
+            <XAxis dataKey="minutes" type="number" allowDataOverflow
+              domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
+              ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
+              tickFormatter={(v: number) => formatClock(v * 60_000).replace(/:00$/, '')} tick={{ fill: '#555', fontSize: 11 }} />
+          )} />
+      )}
+
+      {zones && zoneTimes ? (
+        <>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginTop: '10px' }}>
+            <thead>
+              <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
+                <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
+                <th style={{ ...cell, fontWeight: 'normal', color: 'var(--muted)' }}>FC</th>
+                <th style={cell}>Temps</th>
+                <th style={{ ...cell, width: '30%' }}>Part</th>
+                <th style={cell}>Carte</th>
+              </tr>
+            </thead>
+            <tbody>
+              {zoneTimes.map((s, zone) => {
+                const share = countedS > 0 ? s / countedS : 0;
+                const shown = selectedZone === zone;
+                const range = zone === 0 ? `< ${zones.bounds[0]}` : zone === zones.bounds.length ? `≥ ${zones.bounds[zone - 1]}` : `${zones.bounds[zone - 1]}-${zones.bounds[zone] - 1}`;
+                return (
+                  <tr key={zone} style={{ borderTop: '1px solid var(--line-soft)', opacity: s > 0 ? 1 : 0.45 }}>
+                    <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>
+                      <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', backgroundColor: HEART_ZONE_COLORS[zone], marginRight: '6px' }} />
+                      {zoneLabel(zone)}
+                    </td>
+                    <td style={{ ...cell, color: 'var(--muted)', fontSize: '0.9em' }}>{range}</td>
+                    <td style={cell}>{formatShortDuration(s)}</td>
+                    <td style={cell}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ flex: 1, height: '8px', backgroundColor: 'var(--surface-sunken)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{ width: `${share * 100}%`, height: '100%', backgroundColor: HEART_ZONE_COLORS[zone] }} />
+                        </div>
+                        <span style={{ minWidth: '3em', textAlign: 'right', fontSize: '0.9em' }}>{Math.round(share * 100)} %</span>
+                      </div>
+                    </td>
+                    <td style={cell}>
+                      <button type="button" disabled={s <= 0} onClick={() => onSelectZone(shown ? null : zone)}
+                        style={{ padding: '2px 8px', fontSize: '11px', cursor: s > 0 ? 'pointer' : 'default', backgroundColor: shown ? HIGHLIGHT_SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                        {shown ? 'Masquer' : 'Voir'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
+            Zones : {METHOD_LABEL[zones.method]}
+            {zones.hrMax !== null && zones.method !== 'perso' && `, FC max ${zones.hrMax} bpm${zones.estimated ? ' estimée par l\'âge' : ''}`}.
+            {' '}« Voir » montre ses passages sur la carte, en violet. Charge : minutes en Z1 × 1, … en Z5 × 5 (méthode d'Edwards).
+          </div>
+        </>
+      ) : (
+        <p style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', marginTop: '10px' }}>
+          Pour les zones d'effort, saisir la FC max ou l'année de naissance dans <Link to="/parametres">Réglages</Link>, bloc « Pratiquant ».
+        </p>
+      )}
+
+      {efficiency && scatterUnit !== null && (
+        <div style={{ marginTop: '12px' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Dérive et efficacité</div>
+          <div style={{ fontSize: 'var(--text-s)', marginBottom: '6px' }}>
+            {drift === null
+              ? `Dérive cardiaque : il faut au moins ${Math.round(params.driftMinS / 60)} min en mouvement avec la FC.`
+              : Math.abs(drift.driftPct) < params.driftStablePct
+                ? `Dérive cardiaque de ${drift.driftPct.toFixed(1)} % : FC stable à vitesse égale d'une moitié à l'autre.`
+                : drift.driftPct > 0
+                  ? `Dérive cardiaque de ${drift.driftPct.toFixed(1)} % : à vitesse égale, le cœur bat plus vite en seconde moitié (fatigue, chaleur, déshydratation).`
+                  : `Dérive cardiaque de ${drift.driftPct.toFixed(1)} % : la seconde moitié est plus efficace que la première (échauffement, descente).`}
+          </div>
+          {blocks && blocks[0].length + blocks[1].length > 1 && (
+            <div style={{ width: '100%', height: '200px' }}>
+              <ResponsiveContainer>
+                <ScatterChart margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                  <XAxis dataKey="speed" type="number" name="Vitesse" domain={['auto', 'auto']} tick={{ fill: '#555', fontSize: 11 }}
+                    label={{ value: SPEED_UNIT_LABEL[scatterUnit], position: 'insideBottomRight', offset: -2, fill: '#555', fontSize: 11 }} />
+                  <YAxis dataKey="bpm" type="number" name="FC" domain={['auto', 'auto']} width={46} tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }}
+                    label={{ value: 'bpm', angle: -90, position: 'insideLeft', fill: HEART_RATE_COLOR, fontSize: 11 }} />
+                  <Tooltip contentStyle={scatterTooltipStyle} formatter={(value, name) => [name === 'FC' ? `${value} bpm` : `${value} ${SPEED_UNIT_LABEL[scatterUnit]}`, name]} />
+                  <Scatter name="Première moitié" data={blocks[0]} fill="#1e88e5" isAnimationActive={false} />
+                  <Scatter name="Seconde moitié" data={blocks[1]} fill="#fb8c00" isAnimationActive={false} />
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '4px' }}>
+            Un point par bloc de {params.scatterBlockS} s en mouvement : <span style={{ color: '#1e88e5' }}>première moitié</span>, <span style={{ color: '#fb8c00' }}>seconde moitié</span>.
+            {' '}D'une sortie à l'autre, le nuage qui glisse vers la droite à FC égale dit le progrès.
+          </div>
+        </div>
+      )}
+
+      <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '8px' }}>
+        FC lissée sur {params.smoothS} s ; un trou de plus de {params.gapS} s (ceinture retirée, pause) n'est pas compté. Le survol de la courbe déplace le repère sur la carte.
+      </div>
+    </>
+  );
+}

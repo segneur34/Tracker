@@ -495,11 +495,8 @@ const resolvePumping = (stored: StoredSettings, activity: Activity): boolean | n
   return stored.pumping?.[activity.id] === true;
 };
 
-/** Ceinture cardio d'une activité : celle réglée, sinon non ; `null` si son calcul ne la propose pas (voile, surf). */
-const resolveHeartRate = (stored: StoredSettings, activity: Activity): boolean | null => {
-  if (!getSportProfile(activity.base).heartRate) return null;
-  return stored.heartRate?.[activity.id] === true;
-};
+/** Ceinture cardio d'une activité : celle réglée, sinon non ; proposée dans tous les sports. */
+const resolveHeartRate = (stored: StoredSettings, activity: Activity): boolean => stored.heartRate?.[activity.id] === true;
 
 /** Sauts d'une activité : ceux réglés, sinon le défaut ; `null` si son calcul ne les mesure pas. */
 const resolveJumps = (stored: StoredSettings, activity: Activity): JumpSettings | null => {
@@ -514,8 +511,8 @@ export const effectiveFoil = (activity: Activity): boolean | null => resolveFoil
 /** Pumping foil d'une activité de surf, `null` ailleurs. Utilisable hors composant. */
 export const effectivePumping = (activity: Activity): boolean | null => resolvePumping(readStoredSettings(), activity);
 
-/** Ceinture cardio d'une activité, `null` si son calcul ne la propose pas. Utilisable hors composant. */
-export const effectiveHeartRate = (activity: Activity): boolean | null => resolveHeartRate(readStoredSettings(), activity);
+/** Ceinture cardio d'une activité. Utilisable hors composant. */
+export const effectiveHeartRate = (activity: Activity): boolean => resolveHeartRate(readStoredSettings(), activity);
 
 /** Réglages des sauts d'une activité, `null` si son calcul ne les mesure pas. Utilisable hors composant. */
 export const effectiveJumpSettings = (activity: Activity): JumpSettings | null => resolveJumps(readStoredSettings(), activity);
@@ -683,7 +680,7 @@ export interface SportSettingsView {
   /** Sauts mesurés par les capteurs ; `null` si le calcul ne les mesure pas (bateau, fractionné). */
   jumps: JumpSettings | null;
   /** Ceinture cardio proposée à l'enregistrement ; `null` en voile et en surf. */
-  heartRate: boolean | null;
+  heartRate: boolean;
   isJumpsOverridden: boolean;
   /** Type de vélo (activités vélo seulement, `defaultBikeType` par défaut). */
   bikeType: BikeType;
@@ -900,7 +897,7 @@ export const useAllSportSettings = () => {
         }
         case 'heartRate': {
           const activity = findActivity(activities, id);
-          if (!activity || resolveHeartRate(stored, activity) === null) return;
+          if (!activity) return;
           if (value !== null && typeof value !== 'boolean') return;
           next.heartRate = put(stored.heartRate, value === true ? true : null);
           break;

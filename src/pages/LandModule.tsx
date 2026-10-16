@@ -12,6 +12,8 @@ import ActivitySelect from '../components/ActivitySelect';
 import AnalysisMap from '../components/AnalysisMap';
 import EffortThresholdEditor from '../components/EffortThresholdEditor';
 import GradeGradientLegend from '../components/GradeGradientLegend';
+import HeartRateChart from '../components/HeartRateChart';
+import HeartRatePanel, { type HeartRateEfficiency } from '../components/HeartRatePanel';
 import IntervalAnalysis, { type IntervalSeriesView } from '../components/IntervalAnalysis';
 import JumpMapLayer from '../components/JumpMapLayer';
 import JumpsPanel from '../components/JumpsPanel';
@@ -19,6 +21,7 @@ import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
 import { HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
+import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import SectionTabs from '../components/SectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
@@ -50,6 +53,7 @@ import {
 } from '../core/sessionStats';
 import { sessionActivity } from '../core/activities';
 import { trackIndexAtTime } from '../core/jumps';
+import { heartRateZonePaths, timeSpanHeartRate } from '../core/heartRate';
 import { ELEVATION_PRESETS, getActiveThresholds, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import { meanFilterByTime } from '../core/speedFilter';
@@ -66,7 +70,8 @@ import { useSessionDraft } from '../hooks/useSessionDraft';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useMapHighlight } from '../hooks/useMapHighlight';
-import { useRunnerProfile } from '../hooks/useRunnerProfile';
+import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
+import { useSessionHeartRate } from '../hooks/useSessionHeartRate';
 import { useLibrarySession } from '../hooks/useSessionLibrary';
 import { useSessionJumps } from '../hooks/useSessionJumps';
 import { useSessionMarks } from '../hooks/useSessionMarks';
@@ -131,6 +136,7 @@ const LAND_SECTION_DEFAULTS: Record<LandSection, boolean> = {
   surface: false,
   energie: false,
   graphiques: false,
+  cardio: false,
   sauts: false,
   notes: false,
   reglages: false,
@@ -149,6 +155,8 @@ interface ChartRow {
   altitude: number | null;
   /** Pente locale en fraction, `null` là où elle manque. */
   grade: number | null;
+  /** FC lissée, `null` là où elle manque. */
+  hr: number | null;
 }
 
 /** Une ligne du graphe d'énergie, en fonction du temps écoulé. */
@@ -222,12 +230,15 @@ function LandModule({ family }: { family: LandFamily }) {
     speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, gearLabels,
   } = useSportSettings(family);
   const model = LAND_TREATMENTS[sportTreatment(sport) === 'velo' ? 'velo' : 'course'];
-  const { profile: runner, age } = useRunnerProfile();
+  const { profile: runner, age, setNumber: setRunnerNumber } = useRunnerProfile();
   const gpx = useGpxSession({
     medianWindowSeconds: profile.medianWindowSeconds,
     maxDetourRatio: profile.maxDetourRatio,
     maxSpeedMs: profile.maxPlausibleSpeedMs,
   });
+  /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans les graphes. */
+  const heart = useSessionHeartRate(gpx.track, profile.heartRate);
+  const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate.zoneFractions), [runner, profile.heartRate]);
 
   const { loadGpxContent } = gpx;
   // Session de la mémoire désignée par l'URL : son activité devient celle du module.
@@ -283,8 +294,8 @@ function LandModule({ family }: { family: LandFamily }) {
   const jumpsVisible = jumpsState.status !== 'none';
   const sections = useMemo(
     () => shownTabs(landTabs, tabChoices).filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals)
-      && (s.key !== 'sauts' || jumpsVisible)),
-    [landTabs, tabChoices, profile.topTargets, hasIntervals, jumpsVisible]
+      && (s.key !== 'sauts' || jumpsVisible) && (s.key !== 'cardio' || heart.present)),
+    [landTabs, tabChoices, profile.topTargets, hasIntervals, jumpsVisible, heart.present]
   );
   // Une seule surbrillance sur la carte : un top, une zone de pente, une
   // répétition ou un revêtement ; choisir l'une retire les autres, fermer son onglet l'efface.
@@ -295,6 +306,9 @@ function LandModule({ family }: { family: LandFamily }) {
   const setSelectedTop = (key: string | null) => highlight.show('tops', key);
   const setSelectedZone = (key: GradeZoneKey | null) => highlight.show('zones', key);
   const setSelectedLap = (key: string | null) => highlight.show('fractionne', key);
+  const shownHrZone = highlight.shownIn('cardio');
+  const selectedHrZone = shownHrZone === null ? null : Number(shownHrZone);
+  const setSelectedHrZone = (zone: number | null) => highlight.show('cardio', zone === null ? null : String(zone));
   const selectedSurface = highlight.shownIn('surface') as SurfaceCategory | null;
   const setSelectedSurface = (key: SurfaceCategory | null) => highlight.show('surface', key);
   /** Sauts montrés : le podium des trois plus hauts (`podium`), ou un saut, par l'heure de son décollage. */
@@ -408,6 +422,13 @@ function LandModule({ family }: { family: LandFamily }) {
     () => (grades.length > 0 ? computeZoneStats(gpx.track, grades, activityMask) : []),
     [gpx.track, grades, activityMask]
   );
+  /** Passages de la zone cardiaque choisie, tracés sur la carte tant que l'onglet « cardio » est ouvert. */
+  const hrZonePaths = useMemo(
+    () => (selectedHrZone !== null && open.cardio && heart.present && hrZones
+      ? heartRateZonePaths(gpx.track, heart.smoothed, hrZones.bounds, selectedHrZone, profile.heartRate.gapS)
+      : []),
+    [selectedHrZone, open.cardio, heart, hrZones, gpx.track, profile.heartRate.gapS]
+  );
   /** Passages de la zone de pente choisie, tracés sur la carte tant que son onglet est ouvert. */
   const zonePaths = useMemo(
     () => (selectedZone !== null && open.zones && grades.length > 0 ? gradeZonePaths(gpx.track, grades, activityMask, selectedZone) : []),
@@ -497,9 +518,16 @@ function LandModule({ family }: { family: LandFamily }) {
    */
   const intervalViews = useMemo(
     (): IntervalSeriesView[] => (open.fractionne && profile.intervals && gpx.track.length > 1
-      ? intervalSeries.map((s) => ({ workout: s.workout, detected: s.detected, ...analyzeIntervals(gpx.track, cumulative, s.laps, profile.intervals!) }))
+      ? intervalSeries.map((s) => {
+        const analyzed = analyzeIntervals(gpx.track, cumulative, s.laps, profile.intervals!);
+        // FC de chaque effort, si la session en a (ceinture, montre).
+        const heartRates = heart.present
+          ? analyzed.reps.map((r) => timeSpanHeartRate(gpx.track, heart.smoothed, r.work.startMs, r.work.endMs, profile.heartRate.gapS, profile.heartRate.recoveryS))
+          : undefined;
+        return { workout: s.workout, detected: s.detected, ...analyzed, heartRates };
+      })
       : []),
-    [open.fractionne, profile.intervals, intervalSeries, gpx.track, cumulative]
+    [open.fractionne, profile.intervals, intervalSeries, gpx.track, cumulative, heart, profile.heartRate]
   );
   /** Ce que dit l'onglet quand la vitesse ne livre aucune répétition. */
   const intervalEmptyText = (() => {
@@ -552,9 +580,12 @@ function LandModule({ family }: { family: LandFamily }) {
         speedMs: ms,
         altitude: stats?.hasElevation && isFinite(altitude) ? Math.round(altitude) : null,
         grade: isFinite(grades[i]) ? grades[i] : null,
+        hr: heart.smoothed[i] === null || heart.smoothed[i] === undefined ? null : Math.round(heart.smoothed[i]!),
       };
     });
-  }, [gpx.track, trackDist, zoom.view, chartSpeed, elevation, stats, grades, speedUnit, inverse]);
+  }, [gpx.track, trackDist, zoom.view, chartSpeed, elevation, stats, grades, speedUnit, inverse, heart.smoothed]);
+  /** Dérive et nuage FC / vitesse de l'onglet « cardio » : vitesse des graphes, temps en mouvement. */
+  const heartEfficiency = useMemo((): HeartRateEfficiency => ({ speedsMs: chartSpeed, active: activityMask, speedUnit }), [chartSpeed, activityMask, speedUnit]);
 
   /** Arrêts du dégradé de pente, sur l'étendue des lignes qui portent une altitude (celle de l'aire tracée). */
   const gradeStops = useMemo(
@@ -575,6 +606,9 @@ function LandModule({ family }: { family: LandFamily }) {
   const mapBounds = useMemo(() => trackBounds(gpx.track), [gpx.track]);
 
   const clearHover = () => setHoveredIndex(null);
+  const hoverIndex = (index: number) => {
+    if (index !== hoveredIndex) setHoveredIndex(index);
+  };
   const onChartHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, chartData);
     if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
@@ -614,6 +648,7 @@ function LandModule({ family }: { family: LandFamily }) {
     const row: ChartRow | undefined = item.payload;
     if (name === 'Vitesse' && row) return [formatSpeed(row.speedMs, speedUnit), name];
     if (name === 'Altitude') return [row?.grade != null ? `${value} m, pente ${Math.round(row.grade * 100)} %` : `${value} m`, name];
+    if (name === 'FC') return [`${value} bpm`, name];
     return [String(value ?? ''), name];
   };
 
@@ -654,6 +689,9 @@ function LandModule({ family }: { family: LandFamily }) {
       )) : <TrackSegmentsLayer segments={mapSegments} weight={5} />}
       {zonePaths.map((path, idx) => (
         <Polyline key={`zone-${selectedZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
+      ))}
+      {hrZonePaths.map((path, idx) => (
+        <Polyline key={`cardio-${selectedHrZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       ))}
       {selectedSurface && surfaces.paths && <SurfaceHighlight paths={surfaces.paths} category={selectedSurface} />}
       {selectedLapPath.length > 1 && (
@@ -744,7 +782,8 @@ function LandModule({ family }: { family: LandFamily }) {
                 onToggle={() => toggle('fractionne')}
                 selectedLap={selectedLap}
                 onSelectLap={setSelectedLap}
-                emptyText={intervalEmptyText} />
+                emptyText={intervalEmptyText}
+                recoveryS={profile.heartRate.recoveryS} />
             )}
 
             {open.tops && tops && (
@@ -935,7 +974,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.graphiques && chartData.length > 1 && (
-              <ResizablePanel id={panelId('graphiques')} defaultHeight={460} minHeight={220} direction="vertical"
+              <ResizablePanel id={panelId('graphiques')} defaultHeight={heart.present ? 620 : 460} minHeight={220} direction="vertical"
                 style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
                   <PanelTitle label="Vitesse et altitude" open={open.graphiques} onToggle={() => toggle('graphiques')} />
@@ -964,6 +1003,11 @@ function LandModule({ family }: { family: LandFamily }) {
                           <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${overlayGradientId})`} strokeWidth={1.5} fill={`url(#${overlayGradientId})`} fillOpacity={0.3} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
                         )}
                         <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
+                        {/* FC superposée sans axe à elle : sa valeur se lit dans l'infobulle. */}
+                        {heart.present && <YAxis yAxisId="hr" hide domain={['dataMin - 5', 'dataMax + 5']} />}
+                        {heart.present && (
+                          <Line yAxisId="hr" type="monotone" name="FC" dataKey="hr" stroke={HEART_RATE_COLOR} strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
+                        )}
                       </ComposedChart>
                     </ResponsiveContainer>
                   </ZoomableChart>
@@ -998,6 +1042,13 @@ function LandModule({ family }: { family: LandFamily }) {
                         </ResponsiveContainer>
                       </ZoomableChart>
                     )}
+                    {heart.present && (
+                      <HeartRateChart data={chartData} zoom={zoom} xAxis={xAxis} labelFormatter={distanceLabel} zones={hrZones?.bounds ?? null}
+                        onHoverIndex={hoverIndex} onLeave={clearHover} syncId={page.storageId} showReset={false}
+                        style={{ width: '100%', flex: 1, minHeight: 0, marginTop: '6px' }}>
+                        {markReferenceLines(marks.located, (m) => toDisplayDistance(m.distanceM, distanceUnit), shownMark, 'hr')}
+                      </HeartRateChart>
+                    )}
                   </>
                 )}
                 {stats?.hasElevation && (
@@ -1030,6 +1081,15 @@ function LandModule({ family }: { family: LandFamily }) {
               </ResizablePanel>
             )}
 
+
+            {open.cardio && heart.present && (
+              <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
+                <HeartRatePanel track={gpx.track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax}
+                  onRetainHrMax={(bpm) => setRunnerNumber('hrMax', bpm)} selectedZone={selectedHrZone} onSelectZone={setSelectedHrZone}
+                  onHoverIndex={hoverIndex} onLeave={clearHover} efficiency={heartEfficiency} resetKey={gpx.sessionKey}
+                  open={open.cardio} onToggle={() => toggle('cardio')} />
+              </ResizablePanel>
+            )}
 
             {open.sauts && jumpsVisible && (
               <JumpsPanel

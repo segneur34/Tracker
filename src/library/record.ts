@@ -1,3 +1,4 @@
+import type { HeartRateHistogram } from '../core/heartRate';
 import { isValidBikeWeight } from '../cycling/energy';
 import { JUMP_DOUBTS, type JumpDoubt, type SessionJump } from '../core/jumps';
 import { readSessionMarks, type SessionMark } from '../core/sessionMarks';
@@ -40,8 +41,10 @@ export const RECORD_VERSION = 1;
  *
  * 3 (14 octobre 2026) : une position qui saute puis revient est écartée de la
  * vitesse (`detourSpikes`), même suivie d'un trou.
+ *
+ * 4 (15 octobre 2026) : FC de la session (`heartRate`), pour les statistiques.
  */
-export const SUMMARY_CALC_VERSION = 3;
+export const SUMMARY_CALC_VERSION = 4;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -68,7 +71,28 @@ export interface SessionSummary {
   waveCount?: number;
   longestWaveM?: number | null;
   longestFlightS?: number | null;
+  /** FC de la session, si elle en a assez (`HeartRateProfile.minCoverageS`) ; indépendante des zones du pratiquant. */
+  heartRate?: SummaryHeartRate;
 }
+
+/** FC d'une session dans son résumé : zones et charge s'en recalculent avec le profil du moment. */
+export interface SummaryHeartRate {
+  avgBpm: number;
+  maxBpm: number;
+  /** Temps couvert par la FC, en secondes. */
+  coveredS: number;
+  /** Secondes par battement (`heartRateHistogram`). */
+  histogram: HeartRateHistogram;
+}
+
+const readSummaryHeartRate = (raw: unknown): SummaryHeartRate | null => {
+  if (!isObject(raw) || !isObject(raw.histogram)) return null;
+  const { avgBpm, maxBpm, coveredS } = raw;
+  const { fromBpm, seconds } = raw.histogram;
+  if (!isFiniteNumber(avgBpm) || !isFiniteNumber(maxBpm) || !isFiniteNumber(coveredS) || !isFiniteNumber(fromBpm)) return null;
+  if (!Array.isArray(seconds) || !seconds.every(isFiniteNumber)) return null;
+  return { avgBpm, maxBpm, coveredS, histogram: { fromBpm, seconds: seconds as number[] } };
+};
 
 /** Notes saisies, datées de leur dernier changement. */
 export type StoredSessionNotes = SailingSessionNotes & { savedAt: number };
@@ -279,6 +303,9 @@ const readSummary = (raw: unknown): SessionSummary | null => {
   if (!isFiniteNumber(raw.waveCount)) delete summary.waveCount;
   if ('longestWaveM' in raw) summary.longestWaveM = isFiniteNumber(raw.longestWaveM) ? raw.longestWaveM : null;
   if ('longestFlightS' in raw) summary.longestFlightS = isFiniteNumber(raw.longestFlightS) ? raw.longestFlightS : null;
+  const heartRate = readSummaryHeartRate(raw.heartRate);
+  if (heartRate) summary.heartRate = heartRate;
+  else delete summary.heartRate;
   return summary;
 };
 

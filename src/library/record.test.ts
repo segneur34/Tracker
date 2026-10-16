@@ -61,6 +61,14 @@ const session = (file: string, patch: Partial<SessionRecord> = {}): LibrarySessi
 });
 
 describe('parseRecord et serializeRecord', () => {
+  it('relisent la FC du résumé, et écartent une FC mal formée', () => {
+    const heartRate = { avgBpm: 148, maxBpm: 171, coveredS: 2400, histogram: { fromBpm: 120, seconds: [10, 20, 30] } };
+    const r = record({ summary: { ...record().summary, heartRate } });
+    expect(parseRecord(serializeRecord(r))?.summary.heartRate).toEqual(heartRate);
+    const abimee = { ...record(), summary: { ...record().summary, heartRate: { avgBpm: 148, maxBpm: 171, coveredS: 2400, histogram: { fromBpm: 120, seconds: ['x'] } } } };
+    expect(parseRecord(JSON.stringify(abimee))?.summary.heartRate).toBeUndefined();
+  });
+
   it('relisent une fiche à l\'identique', () => {
     const r = record({
       notes: {

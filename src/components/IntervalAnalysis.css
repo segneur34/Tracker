@@ -6,7 +6,9 @@
 }
 
 .an-ivl-launch,
-.an-ivl-hold {
+.an-ivl-hold,
+.an-ivl-hr,
+.an-ivl-rec {
   white-space: nowrap;
 }
 
@@ -43,12 +45,25 @@
   .an-ivl-spark-cell { grid-area: spark; }
   .an-ivl-rest { grid-area: rest; font-size: 0.9em; }
 
+  /* Avec la FC, une quatrième rangée : FC moyenne / max et récupération. */
+  .an-ivl-table--fc tbody tr {
+    grid-template-areas:
+      'rep speed dist map'
+      'rep launch hold dur'
+      'rep hr rec .'
+      'rep spark spark rest';
+  }
+  .an-ivl-hr { grid-area: hr; }
+  .an-ivl-rec { grid-area: rec; }
+
   .an-ivl-spark {
     margin: 0;
   }
 
   .an-ivl-launch::before,
-  .an-ivl-hold::before {
+  .an-ivl-hold::before,
+  .an-ivl-hr::before,
+  .an-ivl-rec::before {
     content: attr(data-label) ' ';
     color: var(--muted);
     font-size: 0.85em;

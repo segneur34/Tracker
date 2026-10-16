@@ -13,6 +13,7 @@ const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
   markDistanceM: null,
   markBearingDeg: null,
   heartRateBpm: null,
+  heartRateZoneBounds: null,
   speedUnit: 'kmh',
   distanceUnit: 'km',
   ...patch,

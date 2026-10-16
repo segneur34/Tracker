@@ -1,3 +1,4 @@
+import { zoneOf } from '../core/heartRate';
 import type { Treatment } from '../core/sportProfiles';
 import {
   J_PER_KCAL, formatClock, formatDistance, formatShortDistance, formatSpeed, formatTimeOfDay, isInverseUnit, type DistanceUnit, type SpeedUnit,
@@ -17,7 +18,7 @@ export type LiveFieldKey =
   | 'speed' | 'average' | 'max' | 'recentDistanceSpeed' | 'lastDistance' | 'distance' | 'duration' | 'clock'
   | 'remaining' | 'remainingTime'
   | 'recentTopShort' | 'recentTopLong' | 'heading' | 'legAverage' | 'markDistance' | 'markBearing'
-  | 'grade' | 'gain' | 'recentDistanceGain' | 'loss' | 'climbRate' | 'power' | 'effort' | 'heartRate';
+  | 'grade' | 'gain' | 'recentDistanceGain' | 'loss' | 'climbRate' | 'power' | 'effort' | 'heartRate' | 'averageHeartRate' | 'heartRateZone';
 
 const ALL: Treatment[] = ['voile', 'course', 'velo', 'surf'];
 const LAND: Treatment[] = ['course', 'velo'];
@@ -42,7 +43,9 @@ const LIVE_FIELD_TREATMENTS: Record<LiveFieldKey, readonly Treatment[]> = {
   climbRate: LAND,
   power: LAND,
   effort: LAND,
-  heartRate: LAND,
+  heartRate: ALL,
+  averageHeartRate: ALL,
+  heartRateZone: ALL,
   distance: ALL,
   duration: ALL,
   clock: ALL,
@@ -132,6 +135,8 @@ export const liveFieldLabel = (key: LiveFieldKey, { speedUnit, distanceUnit }: L
     case 'power': return `Puissance (${LIVE_STATS_DEFAULTS.powerWindowS} s)`;
     case 'effort': return 'Énergie';
     case 'heartRate': return 'Fréquence cardiaque';
+    case 'averageHeartRate': return 'FC moyenne';
+    case 'heartRateZone': return 'Zone cardiaque';
   }
 };
 
@@ -163,6 +168,8 @@ export const liveFieldShortLabel = (key: LiveFieldKey, { speedUnit, distanceUnit
     case 'power': return 'Puiss.';
     case 'effort': return 'Énergie';
     case 'heartRate': return 'FC';
+    case 'averageHeartRate': return 'FC moy.';
+    case 'heartRateZone': return 'Zone';
   }
 };
 
@@ -181,6 +188,8 @@ export interface LiveFieldContext extends LiveFieldUnits {
   markBearingDeg: number | null;
   /** Fréquence de la ceinture cardio, en battements par minute ; `null` sans ceinture ou sans mesure. */
   heartRateBpm: number | null;
+  /** Bornes basses des zones cardiaques 1 à 5 du pratiquant, en bpm ; `null` s'il n'en a pas. */
+  heartRateZoneBounds: readonly number[] | null;
 }
 
 const NONE = '—';
@@ -231,5 +240,12 @@ export const liveFieldValue = (key: LiveFieldKey, ctx: LiveFieldContext): string
       return stats.energyPerKg ? `${kcal.toFixed(1)} kcal/kg` : `${Math.round(kcal)} kcal`;
     }
     case 'heartRate': return ctx.heartRateBpm === null ? NONE : `${Math.round(ctx.heartRateBpm)} bpm`;
+    case 'averageHeartRate': return stats.averageHeartRateBpm === null ? NONE : `${Math.round(stats.averageHeartRateBpm)} bpm`;
+    case 'heartRateZone': {
+      if (ctx.heartRateBpm === null || ctx.heartRateZoneBounds === null) return NONE;
+      const bpm = Math.round(ctx.heartRateBpm);
+      const zone = zoneOf(bpm, ctx.heartRateZoneBounds);
+      return `${zone === 0 ? 'sous Z1' : `Z${zone}`} · ${bpm}`;
+    }
   }
 };

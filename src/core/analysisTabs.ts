@@ -22,7 +22,7 @@ export interface AnalysisTab<K extends string = string> {
 /** Choix d'une activité : seulement les onglets montrés ou cachés à l'écart de leur défaut. */
 export type TabChoices = Readonly<Record<string, boolean>>;
 
-export type SailingTab = 'general' | 'tops' | 'manoeuvres' | 'graphiques' | 'vmg' | 'sauts' | 'vent' | 'matos' | 'reglages';
+export type SailingTab = 'general' | 'tops' | 'manoeuvres' | 'graphiques' | 'cardio' | 'vmg' | 'sauts' | 'vent' | 'matos' | 'reglages';
 
 /** Voile : une seule barre, dans l'ordre voulu par l'utilisateur. */
 export const SAILING_TABS: AnalysisTab<SailingTab>[] = [
@@ -30,6 +30,8 @@ export const SAILING_TABS: AnalysisTab<SailingTab>[] = [
   { key: 'tops', label: 'tops' },
   { key: 'manoeuvres', label: 'manœuvres' },
   { key: 'graphiques', label: 'graphiques' },
+  // Seulement pour une session qui a de la FC (ceinture, montre).
+  { key: 'cardio', label: 'cardio' },
   { key: 'vmg', label: 'vmg' },
   // Seulement pour une session aux sauts mesurés par les capteurs du téléphone.
   { key: 'sauts', label: 'sauts' },
@@ -38,7 +40,7 @@ export const SAILING_TABS: AnalysisTab<SailingTab>[] = [
   { key: 'reglages', label: 'réglages' },
 ];
 
-export type LandTab = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'sauts' | 'notes' | 'reglages';
+export type LandTab = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'cardio' | 'sauts' | 'notes' | 'reglages';
 
 /** Course et vélo : « tops » est natif à vélo, générique à pied (course, marche). */
 const landTabs = (topsGeneric: boolean): AnalysisTab<LandTab>[] => [
@@ -49,6 +51,7 @@ const landTabs = (topsGeneric: boolean): AnalysisTab<LandTab>[] => [
   { key: 'surface', label: 'surface' },
   { key: 'energie', label: 'énergie' },
   { key: 'graphiques', label: 'vitesse et altitude' },
+  { key: 'cardio', label: 'cardio' },
   { key: 'sauts', label: 'sauts' },
   { key: 'notes', label: 'matériel et notes' },
   { key: 'reglages', label: 'réglages' },
@@ -59,7 +62,7 @@ export const LAND_TABS: Record<'course' | 'velo', AnalysisTab<LandTab>[]> = {
   velo: landTabs(false),
 };
 
-export type SurfTab = 'general' | 'vagues' | 'rame' | 'vols' | 'tops' | 'graphiques' | 'notes' | 'reglages';
+export type SurfTab = 'general' | 'vagues' | 'rame' | 'vols' | 'tops' | 'graphiques' | 'cardio' | 'notes' | 'reglages';
 
 /** Surf (surf, paddle, SUP foil, kayak, downwind) : « tops » est générique. */
 export const SURF_TABS: AnalysisTab<SurfTab>[] = [
@@ -70,6 +73,7 @@ export const SURF_TABS: AnalysisTab<SurfTab>[] = [
   { key: 'vols', label: 'vols' },
   { key: 'tops', label: 'tops', generic: true },
   { key: 'graphiques', label: 'graphiques' },
+  { key: 'cardio', label: 'cardio' },
   { key: 'notes', label: 'matériel et notes' },
   { key: 'reglages', label: 'réglages' },
 ];

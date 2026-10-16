@@ -7,9 +7,10 @@
  */
 
 import type { Activity } from '../core/activities';
+import { edwardsLoad, histogramZoneTimes } from '../core/heartRate';
 import { sportFamily, sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
 import { CHART_PERIODS, addDays, chartPeriodBounds, isoWeek, startOfDay, startOfIsoWeek, type ChartPeriod } from './activityChart';
-import type { SessionRecord } from './record';
+import type { SessionRecord, SummaryHeartRate } from './record';
 
 export type StatsPeriod = ChartPeriod | 'tout';
 
@@ -52,6 +53,8 @@ export interface StatSession {
   longestFlightS: number | null;
   /** Répétitions du compteur (fractionné). */
   reps: number;
+  /** FC du résumé, `null` pour une session sans FC. */
+  heartRate: SummaryHeartRate | null;
 }
 
 /** Session des statistiques, d'après sa fiche et son activité (`sessionActivity`). */
@@ -74,6 +77,7 @@ export const statSessionOf = (file: string, record: SessionRecord, activity: Act
     longestWaveM: summary.longestWaveM ?? null,
     longestFlightS: summary.longestFlightS ?? null,
     reps: record.intervals?.reduce((n, series) => n + series.laps.filter((l) => l.kind === 'travail').length, 0) ?? 0,
+    heartRate: summary.heartRate ?? null,
   };
 };
 
@@ -407,3 +411,64 @@ export const formatDateTick = (ms: number, unit: DateTickUnit): string => {
   if (unit === 'mois') return d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 };
+
+// --- Cardio : tiré de la FC du résumé, avec les zones du moment ---
+
+/** Charge d'Edwards d'une session, avec les zones du moment ; `null` sans FC. */
+export const sessionLoad = (s: StatSession, zoneBounds: readonly number[]): number | null =>
+  s.heartRate ? edwardsLoad(histogramZoneTimes(s.heartRate.histogram, zoneBounds)) : null;
+
+export interface CardioTotals {
+  /** Sessions qui ont de la FC. */
+  sessions: number;
+  /** Temps couvert par la FC, en secondes. */
+  coveredS: number;
+  /** FC moyenne pondérée par le temps couvert, `null` sans FC. */
+  avgBpm: number | null;
+  maxBpm: number | null;
+  /** Secondes par zone, de « sous Z1 » à Z5 ; `null` sans zones. */
+  zoneTimesS: number[] | null;
+  /** Charge d'Edwards cumulée ; `null` sans zones. */
+  load: number | null;
+}
+
+export const cardioTotals = (sessions: readonly StatSession[], zoneBounds: readonly number[] | null): CardioTotals => {
+  const t: CardioTotals = {
+    sessions: 0, coveredS: 0, avgBpm: null, maxBpm: null,
+    zoneTimesS: zoneBounds ? new Array<number>(zoneBounds.length + 1).fill(0) : null, load: zoneBounds ? 0 : null,
+  };
+  let weighted = 0;
+  for (const s of sessions) {
+    const hr = s.heartRate;
+    if (!hr) continue;
+    t.sessions++;
+    t.coveredS += hr.coveredS;
+    weighted += hr.avgBpm * hr.coveredS;
+    t.maxBpm = maxOrNull(t.maxBpm, hr.maxBpm);
+    if (zoneBounds && t.zoneTimesS) {
+      const times = histogramZoneTimes(hr.histogram, zoneBounds);
+      times.forEach((sec, z) => (t.zoneTimesS![z] += sec));
+      t.load! += edwardsLoad(times);
+    }
+  }
+  t.avgBpm = t.coveredS > 0 ? weighted / t.coveredS : null;
+  return t;
+};
+
+/** Charge d'une barre de la régularité (semaine ou mois) : celle des sessions qui y commencent. */
+export const cardioLoadBars = (
+  bars: readonly RegularityBar[], sessions: readonly StatSession[], zoneBounds: readonly number[]
+): { startMs: number; label: string; title: string; load: number }[] =>
+  bars.map((b) => ({
+    startMs: b.startMs,
+    label: b.label,
+    title: b.title,
+    load: sessions.reduce((sum, s) => (s.startMs >= b.startMs && s.startMs < b.endMs ? sum + (sessionLoad(s, zoneBounds) ?? 0) : sum), 0),
+  }));
+
+/** FC moyenne et max de chaque session qui en a, dans l'ordre des dates. */
+export const heartRatePoints = (sessions: readonly StatSession[]): { file: string; startMs: number; activityId: string; avgBpm: number; maxBpm: number }[] =>
+  sessions
+    .filter((s) => s.heartRate !== null)
+    .sort((a, b) => a.startMs - b.startMs)
+    .map((s) => ({ file: s.file, startMs: s.startMs, activityId: s.activityId, avgBpm: s.heartRate!.avgBpm, maxBpm: s.heartRate!.maxBpm }));

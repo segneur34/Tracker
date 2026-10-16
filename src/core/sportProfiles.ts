@@ -134,8 +134,8 @@ export interface IntervalDetectionProfile {
 }
 
 /**
- * Ceinture cardio Bluetooth à l'enregistrement (`platform/heartRate.ts`) :
- * course, vélo et fractionné, jamais en voile.
+ * Ceinture cardio Bluetooth à l'enregistrement (`platform/heartRate.ts`) et
+ * analyse de la FC (`core/heartRate.ts`), dans tous les sports.
  */
 export interface HeartRateProfile {
   /**
@@ -143,9 +143,35 @@ export interface HeartRateProfile {
    * à une position, en secondes : une ceinture émet environ une fois par seconde.
    */
   maxAgeS: number;
+  /** Lissage de la FC, en secondes. */
+  smoothS: number;
+  /** Intervalle sans FC au-delà duquel c'est un trou, ni compté ni tracé, en secondes. */
+  gapS: number;
+  /** Temps couvert par la FC au-dessous duquel la session est dite sans FC, en secondes. */
+  minCoverageS: number;
+  /** Bornes basses des zones 1 à 5, en fraction de la réserve cardiaque (ou de la FC max sans FC de repos). */
+  zoneFractions: readonly number[];
+  /** Temps actif à FC au-dessous duquel la dérive n'est pas donnée, en secondes. */
+  driftMinS: number;
+  /** Dérive sous laquelle la FC est dite stable, en %. */
+  driftStablePct: number;
+  /** Délai de la récupération d'une répétition, en secondes. */
+  recoveryS: number;
+  /** Durée d'un bloc du nuage FC / vitesse, en secondes. */
+  scatterBlockS: number;
 }
 
-const HEART_RATE: HeartRateProfile = { maxAgeS: 3 };
+const HEART_RATE: HeartRateProfile = {
+  maxAgeS: 3,
+  smoothS: 5,
+  gapS: 10,
+  minCoverageS: 60,
+  zoneFractions: [0.5, 0.6, 0.7, 0.8, 0.9],
+  driftMinS: 20 * 60,
+  driftStablePct: 5,
+  recoveryS: 60,
+  scatterBlockS: 30,
+};
 
 /** Sauts mesurés par les capteurs du téléphone (`core/jumps.ts`) : voile, course, vélo. */
 export interface JumpProfile {
@@ -319,8 +345,8 @@ export interface SportProfile {
   intervals: IntervalProfile | null;
   /** Sauts mesurés par les capteurs du téléphone ; `null` en bateau, en fractionné et en surf. */
   jumps: JumpProfile | null;
-  /** Ceinture cardio proposée à l'enregistrement ; `null` en voile et en surf. */
-  heartRate: HeartRateProfile | null;
+  /** Ceinture cardio proposée à l'enregistrement et analyse de la FC, dans tous les sports. */
+  heartRate: HeartRateProfile;
   /** Analyse des vagues ; `null` hors surf. */
   surf: SurfProfile | null;
 }
@@ -405,7 +431,7 @@ const SAILING_DEFAULTS = {
   recording: DEFAULT_RECORDING,
   intervals: null,
   foilDefault: false,
-  heartRate: null,
+  heartRate: HEART_RATE,
   surf: null,
 };
 
@@ -492,7 +518,7 @@ const SURF_PROFILE: SportProfile = {
   recording: { ...DEFAULT_RECORDING, autoPauseSpeedMs: 0 },
   intervals: null,
   jumps: null,
-  heartRate: null,
+  heartRate: HEART_RATE,
   surf: {
     stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15, maxGapS: 10,
     foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60, pump: PUMP_DETECTION,

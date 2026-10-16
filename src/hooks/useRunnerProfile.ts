@@ -1,4 +1,7 @@
 import { useCallback } from 'react';
+import { heartRateZones, isValidZoneBounds, type HeartRateZones } from '../core/heartRate';
+import { getSportProfile } from '../core/sportProfiles';
+import type { SportType } from '../core/types';
 import { readStoredRecord, useStoredRecord } from './useStoredRecord';
 
 /**
@@ -19,6 +22,8 @@ export interface RunnerProfile {
   hrMax: number | null;
   /** Fréquence cardiaque de repos, en battements par minute. */
   hrRest: number | null;
+  /** Bornes basses des zones cardiaques 1 à 5 saisies à la main, en bpm ; `null` : calculées. */
+  hrZones: number[] | null;
   /** Économie de course sur le plat, en ml d'O₂ par kg et par km (test en laboratoire). */
   economyMlKgKm: number | null;
 }
@@ -30,11 +35,14 @@ export const EMPTY_RUNNER_PROFILE: RunnerProfile = {
   sex: null,
   hrMax: null,
   hrRest: null,
+  hrZones: null,
   economyMlKgKm: null,
 };
 
 /** Plages plausibles de chaque champ numérique. */
-const BOUNDS: Record<Exclude<keyof RunnerProfile, 'sex'>, [number, number]> = {
+type NumberField = Exclude<keyof RunnerProfile, 'sex' | 'hrZones'>;
+
+const BOUNDS: Record<NumberField, [number, number]> = {
   weightKg: [20, 300],
   heightCm: [100, 250],
   birthYear: [1900, 2100],
@@ -49,12 +57,24 @@ const KEY = 'me';
 /** Profil du pratiquant, hors composant (statistiques du direct). */
 export const readRunnerProfile = (): RunnerProfile => readStoredRecord(NAMESPACE, KEY, EMPTY_RUNNER_PROFILE);
 
+/** Âge à la date du jour, si l'année de naissance est connue. */
+export const runnerAge = (profile: RunnerProfile, nowMs = Date.now()): number | null =>
+  profile.birthYear === null ? null : new Date(nowMs).getFullYear() - profile.birthYear;
+
+/** Zones cardiaques du pratiquant (`fractions` : `HeartRateProfile.zoneFractions`) ; `null` sans FC max ni âge. */
+export const runnerHeartRateZones = (profile: RunnerProfile, fractions: readonly number[]): HeartRateZones | null =>
+  heartRateZones(profile, runnerAge(profile), fractions);
+
+/** Bornes des zones cardiaques du pratiquant pour une activité, hors composant (chiffres du direct). */
+export const readHeartRateZoneBounds = (base: SportType): number[] | null =>
+  runnerHeartRateZones(readRunnerProfile(), getSportProfile(base).heartRate.zoneFractions)?.bounds ?? null;
+
 export const useRunnerProfile = () => {
   const { value, update } = useStoredRecord<RunnerProfile>(NAMESPACE, KEY, EMPTY_RUNNER_PROFILE);
 
   /** Écrit un champ numérique, `null` pour l'effacer ; les valeurs hors plage sont ignorées. */
   const setNumber = useCallback(
-    (field: Exclude<keyof RunnerProfile, 'sex'>, next: number | null) => {
+    (field: NumberField, next: number | null) => {
       if (next !== null) {
         const [lo, hi] = BOUNDS[field];
         if (!isFinite(next) || next < lo || next > hi) return;
@@ -66,8 +86,14 @@ export const useRunnerProfile = () => {
 
   const setSex = useCallback((sex: RunnerProfile['sex']) => update({ sex }), [update]);
 
-  /** Âge à la date du jour, si l'année de naissance est connue. */
-  const age = value.birthYear === null ? null : new Date().getFullYear() - value.birthYear;
+  /** Zones saisies à la main, `null` pour revenir au calcul ; des bornes non croissantes sont ignorées. */
+  const setZones = useCallback(
+    (bounds: number[] | null) => {
+      if (bounds !== null && !isValidZoneBounds(bounds)) return;
+      update({ hrZones: bounds === null ? null : bounds.map(Math.round) });
+    },
+    [update]
+  );
 
-  return { profile: value, setNumber, setSex, age };
+  return { profile: value, setNumber, setSex, setZones, age: runnerAge(value) };
 };

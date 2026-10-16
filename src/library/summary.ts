@@ -1,4 +1,5 @@
 import { computeElevationStats } from '../core/elevation';
+import { heartRateHistogram, heartRateStats, smoothHeartRate } from '../core/heartRate';
 import { computeKinematics } from '../core/kinematics';
 import { referenceSpeedMs, samplingIntervalS, sessionFilterThresholds } from '../core/sessionSpeed';
 import {
@@ -7,13 +8,13 @@ import {
   computeActivityMask,
   computeActiveTimeMs,
 } from '../core/sessionStats';
-import { SAILING_SPORTS, defaultActiveThresholdOf, getActiveThresholds, getSportProfile, type ElevationProfile } from '../core/sportProfiles';
+import { SAILING_SPORTS, defaultActiveThresholdOf, getActiveThresholds, getSportProfile, type ElevationProfile, type HeartRateProfile } from '../core/sportProfiles';
 import type { RawTrackPoint, SportType, TrackPoint } from '../core/types';
 import { applyTerrainElevation, type TerrainSamples } from '../core/terrainElevation';
 import { fromDisplaySpeed, msToKnots } from '../core/units';
 import { suggestActiveThresholdKn } from '../sailing/sailingConfig';
 import { runSurfSession, surfProfileOf } from '../surfing/surfSession';
-import { SUMMARY_CALC_VERSION, type SessionSummary } from './record';
+import { SUMMARY_CALC_VERSION, type SessionSummary, type SummaryHeartRate } from './record';
 
 /**
  * Résumé d'une session pour la bibliothèque : ce que la liste affiche sans
@@ -148,6 +149,7 @@ export const summarizeSession = (
   const elevation = computeElevationStats(track, elevationProfile);
   let maxSpeedMs = 0;
   for (const p of track) if (p.smoothedSpeedMs > maxSpeedMs) maxSpeedMs = p.smoothedSpeedMs;
+  const heartRate = summaryHeartRate(track, getSportProfile(sport ?? 'running').heartRate);
 
   return {
     calcVersion: SUMMARY_CALC_VERSION,
@@ -160,5 +162,15 @@ export const summarizeSession = (
     pointCount: track.length,
     samplingS: samplingIntervalS(rawPoints),
     ...analyzed.surf,
+    ...(heartRate ? { heartRate } : {}),
   };
+};
+
+/** FC du résumé, comme l'onglet « cardio » la mesure ; rien sous `minCoverageS`. */
+const summaryHeartRate = (track: TrackPoint[], params: HeartRateProfile): SummaryHeartRate | undefined => {
+  const smoothed = smoothHeartRate(track, params.smoothS, params.gapS);
+  const stats = heartRateStats(track, smoothed, params.gapS);
+  const histogram = heartRateHistogram(track, smoothed, params.gapS);
+  if (!stats || !histogram || stats.coveredS < params.minCoverageS) return undefined;
+  return { avgBpm: Math.round(stats.avgBpm), maxBpm: stats.maxBpm, coveredS: Math.round(stats.coveredS), histogram };
 };

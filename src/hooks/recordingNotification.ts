@@ -8,6 +8,7 @@ import { getIntervalRun, subscribeToIntervalCommands } from './useIntervalTimer'
 import { getLiveRecording, subscribeToLiveRecording } from './useLiveRecording';
 import { getMarkGuideView } from './useMarkGuide';
 import { getLiveFixes, getRecorderState, subscribeToFixes, subscribeToRecorder } from './useRecorder';
+import { readHeartRateZoneBounds } from './useRunnerProfile';
 import { effectiveDistanceUnit, effectiveNotificationFields, effectiveSpeedUnit } from './useSportSettings';
 
 /**
@@ -90,6 +91,7 @@ const update = (force: boolean) => {
     markDistanceM: mark.active ? mark.distanceM : null,
     markBearingDeg: mark.active ? mark.bearingDeg : null,
     heartRateBpm: recorder.heartRate?.bpm ?? null,
+    heartRateZoneBounds: fields.includes('heartRateZone') ? readHeartRateZoneBounds(activity.base) : null,
   };
   const paused = status === 'paused' ? recorder.pausedReason ?? 'auto' : null;
   const content = liveNotification({

@@ -1,7 +1,8 @@
 import { accumulateElevation, computeElevationStats } from '../core/elevation';
+import { heartRateStats, smoothHeartRate } from '../core/heartRate';
 import { computeKinematics } from '../core/kinematics';
 import { MIN_ELEVATION_COVERAGE, buildCumulativeTrack, segmentDistanceM } from '../core/sessionStats';
-import { SAILING_SPORTS, type SportProfile } from '../core/sportProfiles';
+import { SAILING_SPORTS, type HeartRateProfile, type SportProfile } from '../core/sportProfiles';
 import { computeTopSegments } from '../core/topSegments';
 import type { RawTrackPoint, TrackPoint } from '../core/types';
 import { computeCyclingEnergy, type CyclingEnergyParams } from '../cycling/energy';
@@ -94,6 +95,8 @@ export interface LiveStats {
   energyPerKg: boolean;
   /** Bord en cours et bord précédent, en voile seulement. */
   legs: LiveLegs;
+  /** FC moyenne depuis le départ, pondérée par le temps, en bpm ; `null` sans ceinture. */
+  averageHeartRateBpm: number | null;
 }
 
 export const EMPTY_LIVE_STATS: LiveStats = {
@@ -115,6 +118,7 @@ export const EMPTY_LIVE_STATS: LiveStats = {
   effortJ: null,
   energyPerKg: false,
   legs: EMPTY_LIVE_LEGS,
+  averageHeartRateBpm: null,
 };
 
 const toRawPoint = (fix: LocationFix): RawTrackPoint => ({
@@ -124,6 +128,20 @@ const toRawPoint = (fix: LocationFix): RawTrackPoint => ({
   ele: fix.altitudeM,
   speedMs: fix.speedMs,
 });
+
+/** FC moyenne de l'enregistrement, segment par segment, comme l'analyse ; `null` sans FC. */
+const averageHeartRate = (segments: LocationFix[][], params: HeartRateProfile): number | null => {
+  let sum = 0;
+  let coveredS = 0;
+  for (const segment of segments) {
+    const points = segment.map((fix) => ({ timeMs: fix.timeMs, hr: fix.heartRateBpm }));
+    const stats = heartRateStats(points, smoothHeartRate(points, params.smoothS, params.gapS), params.gapS);
+    if (stats === null) continue;
+    sum += stats.avgBpm * stats.coveredS;
+    coveredS += stats.coveredS;
+  }
+  return coveredS > 0 ? sum / coveredS : null;
+};
 
 /** Vitesse sur les `targetM` derniers mètres, en remontant les segments ; `null` s'ils ne suffisent pas. */
 const lastDistanceSpeed = (tracks: TrackPoint[][], targetM: number): number | null => {
@@ -327,5 +345,6 @@ export const computeLiveStats = (
     effortJ: energy?.effortJ ?? null,
     energyPerKg: options.energy?.family === 'course' && options.energy.massKg === null,
     legs: SAILING_SPORTS.includes(profile.id) ? computeLiveLegs(tracks) : EMPTY_LIVE_LEGS,
+    averageHeartRateBpm: averageHeartRate(segments, profile.heartRate),
   };
 };

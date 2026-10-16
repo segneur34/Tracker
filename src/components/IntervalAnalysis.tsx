@@ -1,3 +1,4 @@
+import type { SpanHeartRate } from '../core/heartRate';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import {
   CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -35,6 +36,8 @@ export interface IntervalSeriesView {
   detected: boolean;
   reps: IntervalRep[];
   summary: IntervalSummary;
+  /** FC de l'effort de chaque répétition, dans l'ordre de `reps` ; absente sans FC dans la session. */
+  heartRates?: (SpanHeartRate | null)[];
 }
 
 interface IntervalAnalysisProps {
@@ -56,6 +59,8 @@ interface IntervalAnalysisProps {
   onSelectLap: (key: string | null) => void;
   /** Rien à montrer : la phrase qui le dit, à la place des panneaux. */
   emptyText: string | null;
+  /** Délai de la récupération, en secondes (`HeartRateProfile.recoveryS`), pour l'en-tête. */
+  recoveryS?: number;
 }
 
 /** Répétition montrée sur la carte : le violet des tops et des zones de pente. */
@@ -177,7 +182,7 @@ function Sparkline({ points, length, domain }: { points: (number | null)[]; leng
 }
 
 function IntervalAnalysis({
-  series, stepS, launchFraction, samplingS, speedUnit, distanceUnit, panelId, open, onToggle, selectedLap, onSelectLap, emptyText,
+  series, stepS, launchFraction, samplingS, speedUnit, distanceUnit, panelId, open, onToggle, selectedLap, onSelectLap, emptyText, recoveryS,
 }: IntervalAnalysisProps) {
   const [help, setHelp] = useState(false);
   /**
@@ -272,6 +277,7 @@ function IntervalAnalysis({
         if (folded.has(seriesIndex)) return foldedSeries(s, seriesIndex);
         const { summary } = s;
         const sparks = new Map(s.reps.map((r) => [r.rep, sparkPoints(r, stepS)]));
+        const hasHr = s.heartRates?.some((h) => h !== null) ?? false;
         const sparkLength = Math.max(0, ...s.reps.map((r) => r.profile.length));
         const values = [...sparks.values()].flat().filter((v): v is number => v !== null);
         const domain = values.length > 0 ? { min: Math.min(...values), max: Math.max(...values) } : { min: 0, max: 1 };
@@ -301,7 +307,7 @@ function IntervalAnalysis({
               {summary.holdRatio !== null && stat('Maintien', signedPercent(summary.holdRatio - 1))}
             </div>
             <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
-              <table className="an-ivl-table" style={tableStyle}>
+              <table className={hasHr ? 'an-ivl-table an-ivl-table--fc' : 'an-ivl-table'} style={tableStyle}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                     <th style={{ ...cellStyle, textAlign: 'left' }}>Rép.</th>
@@ -311,6 +317,8 @@ function IntervalAnalysis({
                     <th style={cellStyle} title={`Temps pour atteindre ${Math.round(launchFraction * 100)} % de la vitesse de la répétition`}>Lancé</th>
                     <th style={cellStyle} title="Seconde moitié rapportée à la première, une fois lancé">Maintien</th>
                     <th style={cellStyle}>Profil</th>
+                    {hasHr && <th style={cellStyle} title="FC moyenne et maximale de l'effort">FC</th>}
+                    {hasHr && <th style={cellStyle} title={`Baisse de la FC ${recoveryS ?? 60} s après la fin de l'effort`}>Récup.</th>}
                     <th style={{ ...cellStyle, fontWeight: 'normal', color: 'var(--muted)' }}>Repos</th>
                     <th style={cellStyle}>Carte</th>
                   </tr>
@@ -329,6 +337,16 @@ function IntervalAnalysis({
                         <td className="an-ivl-launch" data-label="lancé" style={cellStyle}>{launchS === null ? '—' : `${Math.round(launchS)} s`}</td>
                         <td className="an-ivl-hold" data-label="maintien" style={cellStyle}>{holdRatio === null ? '—' : signedPercent(holdRatio - 1, 0)}</td>
                         <td className="an-ivl-spark-cell" style={cellStyle}>{sparks.get(rep)?.some((v) => v !== null) && <Sparkline points={sparks.get(rep) ?? []} length={sparkLength} domain={domain} />}</td>
+                        {hasHr && (
+                          <td className="an-ivl-hr" data-label="FC" style={cellStyle}>
+                            {s.heartRates?.[repIndex] ? `${s.heartRates[repIndex]!.avgBpm} / ${s.heartRates[repIndex]!.maxBpm}` : '—'}
+                          </td>
+                        )}
+                        {hasHr && (
+                          <td className="an-ivl-rec" data-label="récup." style={cellStyle}>
+                            {s.heartRates?.[repIndex]?.recoveryBpm != null ? `−${s.heartRates[repIndex]!.recoveryBpm} bpm` : '—'}
+                          </td>
+                        )}
                         <td className="an-ivl-rest" style={{ ...cellStyle, color: 'var(--muted)' }}>
                           {rest ? `${formatIntervalClock(Math.round(rest.durationS))}${rest.distanceM !== null ? ` · ${formatShortDistance(rest.distanceM, distanceUnit)}` : ''}` : '—'}
                         </td>

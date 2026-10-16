@@ -20,6 +20,7 @@ import { useLongPress } from '../hooks/useLongPress';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../hooks/useMarkGuide';
 import { useOpenSections } from '../hooks/useOpenSections';
+import { readHeartRateZoneBounds } from '../hooks/useRunnerProfile';
 import {
   effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs,
   lastRecordActivity, rememberRecordActivity, useVisibility,
@@ -663,6 +664,7 @@ function RecordingPage() {
               markDistanceM: markGuide.active ? markGuide.distanceM : null,
               markBearingDeg: markGuide.active ? markGuide.bearingDeg : null,
               heartRateBpm: recorder.heartRate?.bpm ?? null,
+              heartRateZoneBounds: readHeartRateZoneBounds(liveActivity.base),
             })} />
           )}
         </>

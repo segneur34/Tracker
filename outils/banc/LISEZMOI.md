@@ -121,6 +121,16 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - à 390×844 : Réglages et le surf sans débordement ; puis « Défaut » de la carte Surf, qui efface ses choix et garde ceux des autres.
 
   Il dure environ 2 min et finit par « Tout passe. » ou le nombre d'échecs. Il appelle `Network.enable` : sans lui, le blocage par hôte ne tient pas toujours, Overpass répond (504) et le relevé du vélo change.
+- `cardio.mjs <port> [<dossier des captures>]` : onglet « cardio » et FC dans les analyses (lot 7, étape analyse), sur un profil neuf, sans réseau. Le script écrit lui-même une course, une session de surf et une séance de fractionné, et prend celle de voile de `make-gpx.mjs`, toutes avec la FC (`gpxtpx:hr`), plus une course sans FC, et les importe par la page. Il vérifie :
+  - l'onglet juste après celui des graphes, FC moyenne et max, pas de zones sans FC max ni âge, « La retenir » qui range la FC max de la sortie ; pas d'onglet sur la course sans FC ;
+  - FC max et de repos posées : le tableau des zones (réserve cardiaque), la charge, la dérive et le nuage FC / vitesse en course, « Voir » qui trace les passages d'une zone en violet, effacés à la fermeture de l'onglet et pas ramenés ;
+  - la courbe de FC dans l'onglet des graphes des trois modules (trois graphes en course, deux sans FC) ;
+  - Réglages : « Zones cardiaques » (Personnaliser, Revenir au calcul), la case « Ceinture cardio » en voile et en surf, « FC moyenne » et « Zone cardiaque » parmi les chiffres de la voile ;
+  - une séance de fractionné sans compteur, avec la FC : colonnes « FC » (moyenne / max) et « Récup. » de chaque répétition ;
+  - la FC dans le résumé des fiches (`calcVersion` 4), rien pour la course sans FC, et l'onglet « cardio » des statistiques (sessions avec FC, charge, temps par zone, charge par semaine, FC par session) ;
+  - à 390×844, l'analyse de course, onglet cardio ouvert, et le fractionné, sans débordement.
+
+  Il dure environ 2 min et finit par « Tout passe. » ou le nombre d'échecs. La neutralité se prouve par `onglets.mjs` en `RELEVE_SEUL=1` : sans FC, le texte des quatre analyses ne change pas.
 - `reglages.mjs <port> [<dossier des captures>]` : un fichier de réglages par appareil (point 90), sur un profil neuf, sans réseau, dans la mémoire du navigateur. Il vérifie :
   - `reglages/pc.json` écrit au premier lancement ;
   - le passage depuis un ancien `reglages.json` plus récent : repris une dernière fois, puis retiré ;

@@ -14,6 +14,7 @@ const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
   markDistanceM: null,
   markBearingDeg: null,
   heartRateBpm: null,
+  heartRateZoneBounds: null,
   speedUnit: 'kmh',
   distanceUnit: 'km',
   ...patch,
@@ -23,6 +24,9 @@ describe('liveFieldsOfTreatment', () => {
   it('ne propose que les chiffres qui ont un sens pour le traitement', () => {
     expect(liveFieldsOfTreatment('voile')).toContain('recentTopShort');
     expect(liveFieldsOfTreatment('voile')).not.toContain('power');
+    for (const treatment of ['voile', 'course', 'velo', 'surf'] as const) {
+      expect(liveFieldsOfTreatment(treatment)).toEqual(expect.arrayContaining(['heartRate', 'averageHeartRate', 'heartRateZone']));
+    }
     expect(liveFieldsOfTreatment('course')).toContain('power');
     expect(liveFieldsOfTreatment('voile')).toContain('markDistance');
     expect(liveFieldsOfTreatment('course')).not.toContain('markBearing');
@@ -110,6 +114,12 @@ describe('liveFieldValue', () => {
     expect(liveFieldValue('markBearing', context({ markBearingDeg: 245.2 }))).toBe('245°');
     expect(liveFieldValue('heartRate', context({ heartRateBpm: 142.4 }))).toBe('142 bpm');
     expect(liveFieldValue('heartRate', context())).toBe('—');
+    expect(liveFieldValue('averageHeartRate', context({ stats: { ...EMPTY_LIVE_STATS, averageHeartRateBpm: 151.6 } }))).toBe('152 bpm');
+    expect(liveFieldValue('averageHeartRate', context())).toBe('—');
+    const bounds = [100, 120, 140, 160, 180];
+    expect(liveFieldValue('heartRateZone', context({ heartRateBpm: 152, heartRateZoneBounds: bounds }))).toBe('Z3 · 152');
+    expect(liveFieldValue('heartRateZone', context({ heartRateBpm: 92, heartRateZoneBounds: bounds }))).toBe('sous Z1 · 92');
+    expect(liveFieldValue('heartRateZone', context({ heartRateBpm: 152 }))).toBe('—');
     expect(liveFieldValue('markDistance', context({ markDistanceM: 143 }))).toBe('143 m');
   });
 });

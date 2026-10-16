@@ -17,6 +17,9 @@ import { effectiveJumpSettings, effectiveTabChoices, readStoredActivities } from
 import { useSessionJumps } from '../hooks/useSessionJumps';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useSessionMarks } from '../hooks/useSessionMarks';
+import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
+import { useSessionHeartRate } from '../hooks/useSessionHeartRate';
+import { heartRateZonePaths } from '../core/heartRate';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useMapHighlight } from '../hooks/useMapHighlight';
@@ -39,7 +42,9 @@ import { MANEUVER_METRICS, windChartRows, type ManeuverMetric, type ManeuverTop,
 import ActivitySelect from '../components/ActivitySelect';
 import JumpsPanel from '../components/JumpsPanel';
 import JumpMapLayer from '../components/JumpMapLayer';
-import { HIGHLIGHT_PODIUM_COLORS } from '../components/highlightColors';
+import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
+import HeartRateChart from '../components/HeartRateChart';
+import HeartRatePanel from '../components/HeartRatePanel';
 import AnalysisMap from '../components/AnalysisMap';
 import HoverMarker from '../components/HoverMarker';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
@@ -83,6 +88,7 @@ const SAILING_PANEL_DEFAULTS: Record<SailingPanel, boolean> = {
   tops: false,
   manoeuvres: false,
   graphiques: false,
+  cardio: false,
   vmg: false,
   sauts: false,
   vent: false,
@@ -240,11 +246,15 @@ function SailingModule() {
     return jumpsState.jumps.filter((j) => j.heightM >= jumpMinHeightM && (j.speedMs === null || j.speedMs >= thresholdMs));
   }, [jumpsState.jumps, jumpMinHeightM, activeThresholdKn]);
   const jumpsVisible = jumpsState.status !== 'none';
+  /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans « graphiques ». */
+  const { profile: runner, setNumber: setRunnerNumber } = useRunnerProfile();
+  const heart = useSessionHeartRate(track, profile.heartRate);
+  const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate.zoneFractions), [runner, profile.heartRate]);
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
   const sailingPanels = useMemo(
-    () => shownTabs(SAILING_TABS, tabChoices).filter((p) => p.key !== 'sauts' || jumpsVisible),
-    [tabChoices, jumpsVisible]
+    () => shownTabs(SAILING_TABS, tabChoices).filter((p) => (p.key !== 'sauts' || jumpsVisible) && (p.key !== 'cardio' || heart.present)),
+    [tabChoices, jumpsVisible, heart.present]
   );
 
   const notes = edits.notes;
@@ -263,6 +273,15 @@ function SailingModule() {
   const jumpHighlight = highlight.shownIn('sauts');
   const jumpPodiumShown = jumpHighlight === 'podium';
   const shownJump = jumpHighlight !== null && !jumpPodiumShown ? Number(jumpHighlight) : null;
+  /** Zone cardiaque montrée sur la carte (onglet « cardio »). */
+  const shownHrZone = highlight.shownIn('cardio');
+  const selectedHrZone = shownHrZone === null ? null : Number(shownHrZone);
+  const hrZonePaths = useMemo(
+    () => (selectedHrZone !== null && open.cardio && heart.present && hrZones
+      ? heartRateZonePaths(track, heart.smoothed, hrZones.bounds, selectedHrZone, profile.heartRate.gapS)
+      : []),
+    [selectedHrZone, open.cardio, heart, hrZones, track, profile.heartRate.gapS]
+  );
   // Repères du bouton « Note » : fanions, liste de « Général », traits des graphes.
   const cumulative = useMemo(() => buildCumulativeTrack(track), [track]);
   const marks = useSessionMarks(draft, track, cumulative.cumDist);
@@ -367,6 +386,9 @@ function SailingModule() {
     if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
   };
   const clearHover = () => setHoveredIndex(null);
+  const hoverIndex = (index: number) => {
+    if (index !== hoveredIndex) setHoveredIndex(index);
+  };
 
   const narrow = useNarrowScreen();
   /** Temps écoulé de chaque point, en minutes : l'axe des graphes de vitesse et du vent, et de leur zoom. */
@@ -385,6 +407,10 @@ function SailingModule() {
   const speedRows = useMemo(
     () => chartIndices.map((i) => ({ index: i, minutes: trackMinutes[i], vitesse: parseFloat(formatKnots(trackData[i].smoothedSpeed, speedUnit)) })),
     [chartIndices, trackMinutes, trackData, speedUnit]
+  );
+  const heartRows = useMemo(
+    () => (heart.present ? chartIndices.map((i) => ({ index: i, minutes: trackMinutes[i], hr: heart.smoothed[i] === null ? null : Math.round(heart.smoothed[i]!) })) : []),
+    [heart, chartIndices, trackMinutes]
   );
   const windRows = useMemo(
     () => (windStats ? windChartRows(trackData, windStats, chartIndices) : []),
@@ -648,6 +674,9 @@ function SailingModule() {
       {arrowLayers}
       {staticMapLayers}
       <JumpMapLayer track={trackData} jumps={shownJumps} shownJump={shownJump} podiumShown={jumpPodiumShown} />
+      {hrZonePaths.map((path, idx) => (
+        <Polyline key={`cardio-${selectedHrZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
+      ))}
 
       <SessionMarksLayer located={marks.located} shownMs={shownMark} />
       {hoveredIndex !== null && trackData[hoveredIndex] && (
@@ -830,6 +859,18 @@ function SailingModule() {
                   </div>
                 </ResizablePanel>
 
+                {heart.present && heartRows.length > 1 && (
+                  <ResizablePanel id="sailing.graph.fc" defaultHeight={250} minWidth={250} minHeight={160} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
+                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Fréquence cardiaque</strong>
+                    <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
+                      <HeartRateChart data={heartRows} zoom={chartZoom} xAxis={timeAxis} labelFormatter={() => ''} zones={hrZones?.bounds ?? null}
+                        onHoverIndex={hoverIndex} onLeave={clearHover} showReset={false} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                        {markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark, 'hr')}
+                      </HeartRateChart>
+                    </div>
+                  </ResizablePanel>
+                )}
+
                 <ResizablePanel id="sailing.graph.polaire" defaultHeight={350} minWidth={250} minHeight={250} style={{ flex: 'none', width: '350px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
                   <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Polaire de Vitesse (TWA)</strong>
                   <div style={{ position: 'absolute', top: 35, left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 10, pointerEvents: 'none' }}>
@@ -853,6 +894,16 @@ function SailingModule() {
                   </div>
                 </ResizablePanel>
               </div>
+            )}
+
+            {open.cardio && heart.present && (
+              <ResizablePanel id="sailing.cardio" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
+                <HeartRatePanel track={track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax}
+                  onRetainHrMax={(bpm) => setRunnerNumber('hrMax', bpm)} selectedZone={selectedHrZone}
+                  onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
+                  onHoverIndex={hoverIndex} onLeave={clearHover} resetKey={sessionKey}
+                  open={open.cardio} onToggle={() => toggle('cardio')} />
+              </ResizablePanel>
             )}
 
             {open.vmg && vmgStats && renderVmgPanel(vmgStats)}
