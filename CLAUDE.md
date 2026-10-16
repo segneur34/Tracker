@@ -58,7 +58,7 @@ Vérifications, toutes doivent passer :
 9. Un module ne reprend que les activités de sa famille : `useSportSettings(family)`.
 10. Cadence variable : une application économique peut compresser un virage entier dans un seul intervalle. Ne jamais supposer plusieurs points dans une fenêtre de quelques secondes.
 11. react-leaflet : le style d'un `Polyline` passe toujours par `pathOptions`, sinon il n'est pas réappliqué.
-12. Stockage, fichiers, position, son, vibreur, capteurs, notification et écran allumé : uniquement via `src/platform/` (`storage.ts`, `files.ts`, `memoryFolder.ts`, `location.ts`, `beeper.ts`, `motion.ts`, `notification.ts`, `screen.ts` ; jamais `localStorage`, `Filesystem`, `showDirectoryPicker`, `navigator.geolocation`, Web Audio, `navigator.vibrate`, `navigator.wakeLock` ni `DeviceMotionEvent` en direct). Chaque module y choisit sa version navigateur ou téléphone par `isNativeApp()`.
+12. Stockage, fichiers, position, son, vibreur, capteurs, ceinture cardio, autorisations, notification et écran allumé : uniquement via `src/platform/` (`storage.ts`, `files.ts`, `memoryFolder.ts`, `location.ts`, `beeper.ts`, `motion.ts`, `notification.ts`, `screen.ts`, `heartRate.ts`, `permissions.ts` ; jamais `localStorage`, `Filesystem`, `showDirectoryPicker`, `navigator.geolocation`, Web Audio, `navigator.vibrate`, `navigator.wakeLock` ni `DeviceMotionEvent` en direct). Chaque module y choisit sa version navigateur ou téléphone par `isNativeApp()`.
 
 ## Où ajouter quoi
 

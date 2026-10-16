@@ -40,6 +40,7 @@ import { CARD_STYLE } from '../components/styles';
 import { FAMILY_ICON } from '../components/familyIcons';
 import { IconChevronRight, IconEye, IconEyeOff } from '../components/icons';
 import MemoryStatus from '../components/MemoryStatus';
+import { PermissionsSettings } from '../components/PermissionsStatus';
 import PanelTitle from '../components/PanelTitle';
 import ShadePicker from '../components/ShadePicker';
 import WayTypeTabs from '../components/WayTypeTabs';
@@ -168,9 +169,9 @@ function ActivityPart({ label, open, onToggle, children }: { label: string; open
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
 
 /** Blocs repliables de la page, tous fermés au départ ; l'état est mémorisé. */
-type SettingsBlock = 'memoire' | 'activites' | 'enregistrement' | 'capteurs' | 'navigation' | 'cartes' | 'coureur';
+type SettingsBlock = 'memoire' | 'autorisations' | 'activites' | 'enregistrement' | 'capteurs' | 'navigation' | 'cartes' | 'coureur';
 const SETTINGS_BLOCK_DEFAULTS: Record<SettingsBlock, boolean> = {
-  memoire: false, activites: false, enregistrement: false, capteurs: false, navigation: false, cartes: false, coureur: false,
+  memoire: false, autorisations: false, activites: false, enregistrement: false, capteurs: false, navigation: false, cartes: false, coureur: false,
 };
 /** Plafonds proposés pour les cartes gardées, en Mo : une liste plutôt qu'un champ, qui effacerait des tuiles à chaque chiffre tapé. */
 const TILE_CAP_CHOICES_MB = [100, 250, 500, 1000, 2000, 5000];
@@ -348,6 +349,11 @@ function SettingsPage() {
 
       <div style={{ marginBottom: '15px' }}>
         <MemoryStatus detailed collapse={{ open: open.memoire, onToggle: () => toggle('memoire') }} />
+      </div>
+
+      <div style={cardStyle}>
+        <PanelTitle label="Autorisations" open={open.autorisations} onToggle={() => toggle('autorisations')} />
+        {open.autorisations && <PermissionsSettings />}
       </div>
 
       <div style={cardStyle}>

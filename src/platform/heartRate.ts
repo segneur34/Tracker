@@ -52,7 +52,8 @@ export const BELT_STATE_LABEL: Record<BeltState, string> = {
 
 /** Plugin maison, `android/app/src/main/java/io/github/segneur/tracker/HeartRatePlugin.java`. */
 interface HeartRatePlugin {
-  availability(): Promise<{ bluetooth: boolean; enabled: boolean; permitted: boolean }>;
+  availability(): Promise<{ bluetooth: boolean; enabled: boolean; permitted: boolean; permission?: string }>;
+  requestPermission(): Promise<{ permission: string }>;
   scan(options: { durationMs: number }): Promise<{ devices: FoundBelt[] }>;
   connect(options: { address: string; name: string }): Promise<void>;
   disconnect(): Promise<void>;
@@ -71,6 +72,17 @@ export const bluetoothReady = async (): Promise<boolean> => {
   const a = await plugin.availability();
   return a.bluetooth && a.enabled;
 };
+
+/**
+ * État de la permission Bluetooth, tel que Capacitor le donne (`granted`,
+ * `denied`, `prompt`…) ; `null` dans le navigateur. Pour la carte « Autorisations » (`platform/permissions.ts`).
+ */
+export const bluetoothPermission = async (): Promise<string | null> =>
+  isNativeApp() ? (await plugin.availability()).permission ?? null : null;
+
+/** Demande la permission Bluetooth ; rend son nouvel état, ou `null` dans le navigateur. */
+export const requestBluetoothPermission = async (): Promise<string | null> =>
+  isNativeApp() ? (await plugin.requestPermission()).permission : null;
 
 /** Ceintures à portée, cherchées pendant `durationMs` ; la plus proche en tête. */
 export const scanBelts = async (durationMs = 6000): Promise<FoundBelt[]> => {

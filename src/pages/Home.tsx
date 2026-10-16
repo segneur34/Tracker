@@ -2,6 +2,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
 import MemoryStatus from '../components/MemoryStatus';
+import { PermissionsPrompt } from '../components/PermissionsStatus';
 import { FAMILY_ICON } from '../components/familyIcons';
 import { IconChart, IconChevronRight, IconHelp, IconRoute } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
@@ -61,6 +62,8 @@ function Home() {
       <PageHeader title={<>Tracker<span className="home-version">v{__APP_VERSION__}</span></>} aside={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)' }}>{today}</span>} />
 
       {memoryNeedsAction && <MemoryStatus />}
+      {/* Le dossier de la mémoire d'abord, puis les autorisations (téléphone seulement, s'il en manque). */}
+      {!memoryNeedsAction && status === 'ready' && <PermissionsPrompt />}
 
       <div style={{ ...cardStyle, gap: '14px' }}>
         <span className="ui-eyebrow">Nouvelle session</span>

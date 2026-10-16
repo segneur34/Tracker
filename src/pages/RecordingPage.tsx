@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import ActivitySelect from '../components/ActivitySelect';
+import BeltStatus from '../components/BeltStatus';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import HoldDial from '../components/ui/HoldDial';
@@ -18,6 +19,9 @@ import { useIntervalTimerOpen } from '../hooks/useIntervalTimer';
 import { useStopwatchOpen } from '../hooks/useStopwatch';
 import { useLongPress } from '../hooks/useLongPress';
 import { useLiveRecording } from '../hooks/useLiveRecording';
+import { useBeltLive } from '../hooks/useBeltLive';
+import { useBeltWarmup } from '../hooks/useBeltWarmup';
+import { useMissingPermissions } from '../hooks/usePermissions';
 import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../hooks/useMarkGuide';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { readHeartRateZoneBounds } from '../hooks/useRunnerProfile';
@@ -28,6 +32,7 @@ import {
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
 import { BELT_STATE_LABEL, savedBelt } from '../platform/heartRate';
 import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
+import { PERMISSION_LABEL } from '../recording/permissionsPrompt';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import {
   addRecordingMark, analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording,
@@ -378,6 +383,10 @@ function RecordingPage() {
 
   const busy = recorder.status !== 'idle';
   const { stats, pending, saved } = recorder;
+  // Ceinture cochée : connectée dès maintenant, avant le départ, pour voir qu'elle répond.
+  const beltWarmup = useBeltWarmup(belt, native && sourceChoice === 'device' && measureHeartRate && !busy && pending === null);
+  const beltLive = useBeltLive();
+  const missingPermissions = useMissingPermissions();
   const [analyzing, setAnalyzing] = useState(false);
   const durationMs = recordingDurationMs(stats);
   const meanIntervalS = stats.pointCount > 1 ? durationMs / 1000 / (stats.pointCount - 1) : null;
@@ -464,7 +473,7 @@ function RecordingPage() {
         ? { placement: 'poitrine' as const, foil: true }
         : null;
     const heartRate = native && sourceChoice === 'device' && measureHeartRate ? belt : null;
-    void startRecording(chosen, source, { motion, heartRate });
+    void beltWarmup.handOver(() => startRecording(chosen, source, { motion, heartRate }));
   };
 
   return (
@@ -524,6 +533,16 @@ function RecordingPage() {
                   ? <>Aucune ceinture choisie : <Link to="/parametres">Réglages</Link>, bloc « Capteurs ».</>
                   : `${belt.name}, portée et humidifiée : elle n'émet qu'au contact de la peau.`}
               </span>
+              {measureHeartRate && sourceChoice === 'device' && (
+                <span style={{ fontSize: 'var(--text-s)', marginLeft: '26px' }}>
+                  <BeltStatus state={beltLive.state} bpm={beltLive.bpm}
+                    offText={beltWarmup.error ? `connexion impossible : ${beltWarmup.error}` : null}>
+                    {beltWarmup.error && (
+                      <button type="button" className="ui-btn ui-btn--secondary ui-btn--s" onClick={beltWarmup.retry}>Réessayer</button>
+                    )}
+                  </BeltStatus>
+                </span>
+              )}
             </div>
           )}
 
@@ -788,9 +807,13 @@ function RecordingPage() {
 
       {native && !busy && !pending && (
         <p style={{ margin: 0, fontSize: 'var(--text-s)', color: 'var(--muted)', lineHeight: 1.5 }}>
-          Pour un enregistrement écran éteint : autoriser la position et les notifications au premier démarrage ;
-          dans les réglages de l'application, activer le démarrage automatique et mettre la batterie en « Aucune
-          restriction ». Pendant l'enregistrement, ne pas balayer l'application hors des applications récentes.
+          {missingPermissions.length > 0 && (
+            <>
+              Pour un enregistrement écran éteint, il manque : {missingPermissions.map((key) => PERMISSION_LABEL[key].toLowerCase()).join(', ')}
+              {' '}(<Link to="/parametres">Réglages</Link>, bloc « Autorisations »).{' '}
+            </>
+          )}
+          Pendant l'enregistrement, ne pas balayer l'application hors des applications récentes.
         </p>
       )}
     </div>

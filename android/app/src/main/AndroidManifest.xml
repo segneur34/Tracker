@@ -61,4 +61,6 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- Carte « Autorisations » (PermissionsPlugin) : l'écran système qui lève l'optimisation de la batterie. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>

@@ -15,6 +15,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(RecordingNotificationPlugin.class);
         registerPlugin(ScreenPlugin.class);
         registerPlugin(HeartRatePlugin.class);
+        registerPlugin(PermissionsPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

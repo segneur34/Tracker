@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { useBeltLive } from '../hooks/useBeltLive';
 import {
-  BELT_STATE_LABEL, RECORDING_BELT_HOLDER, beltHeldBy, beltState, bluetoothReady, heartRateSupported, holdBelt, releaseBelt, saveBelt, savedBelt,
-  scanBelts, subscribeBeltState, subscribeHeartRate,
-  type BeltState, type FoundBelt, type HeartRateBelt,
+  RECORDING_BELT_HOLDER, beltHeldBy, bluetoothReady, heartRateSupported, holdBelt, releaseBelt, saveBelt, savedBelt, scanBelts,
+  type FoundBelt, type HeartRateBelt,
 } from '../platform/heartRate';
+import BeltStatus from './BeltStatus';
 
 /** Nom de la connexion prise par l'essai, rendue en quittant la page. */
 const HOLDER = 'reglages';
@@ -12,15 +13,6 @@ const HOLDER = 'reglages';
 const SIGNAL_NEAR_DBM = -60;
 const SIGNAL_IN_RANGE_DBM = -80;
 const signalLabel = (rssi: number): string => (rssi >= SIGNAL_NEAR_DBM ? 'proche' : rssi >= SIGNAL_IN_RANGE_DBM ? 'à portée' : 'loin');
-
-/** Pastille de l'état : vert connectée, jaune en cours ou perdue, gris sinon. */
-const STATE_COLOR: Record<BeltState, string> = {
-  off: 'var(--muted)',
-  connecting: 'var(--warning-line)',
-  connected: 'var(--success)',
-  lost: 'var(--warning-line)',
-  unsupported: 'var(--muted)',
-};
 
 const errorText = (err: unknown): string => (err instanceof Error && err.message ? err.message : 'erreur inconnue');
 
@@ -37,26 +29,19 @@ function HeartRateBeltSettings() {
   const [found, setFound] = useState<FoundBelt[] | null>(null);
   const [scanning, setScanning] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [state, setState] = useState<BeltState>(beltState);
-  const [bpm, setBpm] = useState<number | null>(null);
+  const live = useBeltLive();
+  const { state } = live;
   const [bluetoothOff, setBluetoothOff] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
 
   useEffect(() => {
     alive.current = true;
-    const offState = subscribeBeltState((next) => {
-      setState(next);
-      if (next !== 'connected') setBpm(null);
-    });
-    const offSample = subscribeHeartRate((sample) => setBpm(sample.contact === false || !(sample.bpm > 0) ? null : sample.bpm));
     if (heartRateSupported()) {
       bluetoothReady().then((ready) => { if (alive.current) setBluetoothOff(!ready); }).catch(() => undefined);
     }
     return () => {
       alive.current = false;
-      offState();
-      offSample();
       releaseBelt(HOLDER);
     };
   }, []);
@@ -95,7 +80,6 @@ function HeartRateBeltSettings() {
     setError(null);
     try {
       await holdBelt(HOLDER, belt);
-      setState(beltState());
       setTesting(true);
       setBluetoothOff(false);
     } catch (err) {
@@ -115,9 +99,6 @@ function HeartRateBeltSettings() {
   };
 
   const recording = beltHeldBy(RECORDING_BELT_HOLDER);
-  const stateText = state === 'off' && bluetoothOff ? 'Bluetooth éteint'
-    : state === 'connected' && bpm === null ? "connectée, en attente d'une mesure (contact avec la peau ?)"
-      : BELT_STATE_LABEL[state];
   const mine = belt && found ? found.find((f) => f.address === belt.address) ?? null : null;
   const others = found ? found.filter((f) => f.address !== belt?.address) : [];
 
@@ -149,12 +130,9 @@ function HeartRateBeltSettings() {
       {belt && (
         <div className="settings-row settings-row--sub">
           <span className="settings-row__label">État</span>
-          <span className="settings-belt__state">
-            <span className="settings-belt__dot" style={{ backgroundColor: STATE_COLOR[state] }} />
-            <span>{stateText}</span>
-            {state === 'connected' && bpm !== null && <strong className="num">{Math.round(bpm)} bpm</strong>}
+          <BeltStatus state={state} bpm={live.bpm} offText={bluetoothOff ? 'Bluetooth éteint' : null}>
             {recording && <span className="settings-sports__mark">utilisée par l'enregistrement</span>}
-          </span>
+          </BeltStatus>
         </div>
       )}
       {found && belt && (

@@ -1,0 +1,14 @@
+/* Ligne d'état : pastille de couleur, libellé, valeur (ceinture cardio, autorisations). */
+.status-line {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+
+.status-line__dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+}

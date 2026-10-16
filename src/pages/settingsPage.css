@@ -222,21 +222,6 @@
   font-size: 11px;
 }
 
-/* État de la ceinture cardio (bloc Capteurs) : pastille de couleur, libellé, fréquence en direct. */
-.settings-belt__state {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-2);
-}
-
-.settings-belt__dot {
-  flex-shrink: 0;
-  width: 10px;
-  height: 10px;
-  border-radius: var(--radius-pill);
-}
-
 @media (max-width: 767.98px) {
   .settings-row {
     justify-content: space-between;

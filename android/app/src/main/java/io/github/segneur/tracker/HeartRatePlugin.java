@@ -99,7 +99,12 @@ public class HeartRatePlugin extends Plugin {
 
     // --- Méthodes ---
 
-    /** Bluetooth présent et allumé, permission accordée. */
+    /** État de la permission : granted, denied ou prompt ; avant Android 12, toujours accordée. */
+    private String permissionText() {
+        return needsRuntimePermission() ? getPermissionState("bluetooth").toString() : "granted";
+    }
+
+    /** Bluetooth présent et allumé, permission accordée (et son état en clair, pour la carte « Autorisations »). */
     @PluginMethod
     public void availability(PluginCall call) {
         BluetoothAdapter adapter = adapter();
@@ -107,6 +112,24 @@ public class HeartRatePlugin extends Plugin {
         ret.put("bluetooth", adapter != null);
         ret.put("enabled", adapter != null && adapter.isEnabled());
         ret.put("permitted", permitted());
+        ret.put("permission", permissionText());
+        call.resolve(ret);
+    }
+
+    /** Demande la permission Bluetooth (carte « Autorisations ») ; rend son état. */
+    @PluginMethod
+    public void requestPermission(PluginCall call) {
+        if (permitted()) {
+            permissionAnswered(call);
+            return;
+        }
+        requestPermissionForAlias("bluetooth", call, "permissionAnswered");
+    }
+
+    @PermissionCallback
+    private void permissionAnswered(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("permission", permissionText());
         call.resolve(ret);
     }
 
