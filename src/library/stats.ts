@@ -200,7 +200,7 @@ export interface RegularityBar {
 }
 
 export interface Regularity {
-  /** Semaines de la période (pour « Tout », depuis celle de la première session). */
+  /** Semaines de la période, depuis celle de la plus vieille session si elle est plus récente que son début. */
   weeks: number;
   activeWeeks: number;
   /** Sessions par semaine, en moyenne sur la période. */
@@ -243,7 +243,8 @@ const stacksOf = (sessions: readonly StatSession[], rank: (id: string) => number
  * Régularité d'un ensemble de sessions sur une période qui se termine
  * aujourd'hui (`nowMs`). La suite en cours et les semaines depuis la dernière
  * session regardent toutes les sessions données, pas seulement la période.
- * `activityOrder` fixe l'ordre des piles.
+ * La période commence au plus tôt à la semaine de la plus vieille session
+ * donnée. `activityOrder` fixe l'ordre des piles.
  */
 export const regularity = (
   sessions: readonly StatSession[], bounds: StatsBounds, nowMs: number, activityOrder: readonly string[]
@@ -266,8 +267,10 @@ export const regularity = (
   const lastMs = past.reduce<number | null>((m, s) => (m === null || s.startMs > m ? s.startMs : m), null);
   const weeksSinceLast = lastMs === null ? null : Math.round((thisWeek - startOfIsoWeek(lastMs)) / WEEK_MS);
 
-  // Semaines de la période.
-  const firstMs = bounds.fromMs ?? inside[0]?.startMs ?? null;
+  // Semaines de la période, depuis la plus vieille session donnée si elle est plus récente que son début :
+  // une activité commencée il y a deux mois ne compte pas l'année entière.
+  const oldestMs = past.reduce<number | null>((m, s) => (m === null || s.startMs < m ? s.startMs : m), null);
+  const firstMs = inside.length === 0 ? bounds.fromMs : bounds.fromMs === null || oldestMs! > bounds.fromMs ? oldestMs : bounds.fromMs;
   const weekStarts: number[] = [];
   if (firstMs !== null) {
     const lastWeek = bounds.toMs === null ? thisWeek : Math.min(thisWeek, startOfIsoWeek(bounds.toMs - 1));

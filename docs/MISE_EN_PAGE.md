@@ -7,7 +7,7 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 1. **Feuille** (`.an-sheet`), réduite à l'en-tête (`.an-sheet__head`) : `PageHeader` avec le retour à la liste du sport, le titre « Analyse … », et `SessionNameEditor` en sous-titre (nom de la session, « Renommer » et un « … » qui télécharge le GPX).
 2. Barre « Non enregistré / Enregistrer la session » (`SessionSaveBar`), pendant un brouillon seulement (la course ne passe pas `kept`, et la voile non plus).
 3. **Rangée de la carte** (`.an-map-row`) : le bloc `AnalysisMap`, seul.
-4. **Colonne des onglets** (`.an-carte-col`), sous la carte : `SectionTabs`, puis leurs **panneaux** (`.an-carte-panels`), chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
+4. **Colonne des onglets** (`.an-carte-col`), sous la carte : `CollapsibleSectionTabs` (`SectionTabs` et, en fin de rangée, la flèche qui cache la barre ; cachée, un bouton fin « onglets » la rend ; panneaux inchangés, état commun à toutes les analyses, point 121), puis leurs **panneaux** (`.an-carte-panels`), chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
    - Le premier onglet, « général », est le seul ouvert au départ (avec « fractionné » quand la session en a, point 89) ; ensuite, les onglets ouverts sont mémorisés par module (`useOpenSections`). Il porte la synthèse de la session (`.an-sheet__stats an-sheet__stats--always`) : distances, temps, ratio actif, vitesses moyennes, et le dénivelé en course et à vélo ; en voile, le vent suit. On le replie pour comparer les tableaux à la carte.
    - Le dernier onglet, « réglages », porte ceux de la session : activité, seuils, terrain (course, vélo), source de vitesse ou d'altitude, bornes de couleur de la trace (`SpeedRangeEditor`). Seuil, terrain et couleurs passent par le brouillon ; l'activité et la source d'altitude s'appliquent tout de suite.
    - La même disposition en voile, en course, à vélo, en fractionné et en surf (points 86, 89 et 97).
@@ -40,7 +40,7 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 | `pages/analysisMobile.css` | Disposition téléphone (classes `an-*`) |
 | `components/PanelTitle.tsx` | Titre de panneau qui le replie |
 | `components/SessionNameEditor.tsx` | Nom de la session, « Renommer », et « … » (`ui/MoreMenu.tsx`) pour télécharger le GPX |
-| `components/SectionTabs.tsx`, `components/ResizablePanel.tsx` | Onglets, panneaux redimensionnables |
+| `components/SectionTabs.tsx`, `components/CollapsibleSectionTabs.tsx`, `components/ResizablePanel.tsx` | Onglets, barre d'onglets repliable des analyses, panneaux redimensionnables |
 | `components/SpeedGradientLegend.tsx`, `components/GradeGradientLegend.tsx` | Les légendes de la vitesse et de la pente, en lecture seule, passées à `AnalysisMap` |
 | `components/styles.ts` | `CARD_STYLE` des panneaux, `HALF_PANEL_STYLE` pour deux panneaux par ligne |
 | `components/SpeedRangeEditor.tsx` | Saisie des bornes de couleur de la trace, dans l'onglet réglages |

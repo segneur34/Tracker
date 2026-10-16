@@ -22,7 +22,7 @@ import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
 import { HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
-import SectionTabs from '../components/SectionTabs';
+import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SessionWeightField from '../components/SessionWeightField';
@@ -744,7 +744,7 @@ function LandModule({ family }: { family: LandFamily }) {
       {/* Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`). */}
       {stats && averages && (
         <div className="an-carte-col">
-          <SectionTabs sections={sections} open={open} onToggle={toggle} accent={page.accent} />
+          <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} accent={page.accent} />
           <div className="an-carte-panels">
             {open.general && (
               <ResizablePanel id={panelId('general')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>

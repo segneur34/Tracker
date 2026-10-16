@@ -107,6 +107,12 @@ export const IconChevronUp = ({ size = 20, ...props }: IconProps) => (
   </svg>
 );
 
+export const IconChevronDown = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+);
+
 /** Quatre carrés : le menu des sports de la barre du bas. */
 export const IconGrid = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>

@@ -104,16 +104,34 @@ describe('regularity', () => {
     // Semaines 30, 31, 32 actives, 33 vide, 34 active, puis rien jusqu'à la 38, active, et la 39 vide.
     const sessions = [at(2026, 7, 21), at(2026, 7, 28), at(2026, 7, 29), at(2026, 8, 4), at(2026, 8, 18), at(2026, 9, 15)].map((t) => session(t));
     const r = regularity(sessions, statsPeriodBounds('sixmois', now), now, ['course']);
-    expect(r.weeks).toBe(26);
+    // De la semaine 30, celle de la plus vieille session, à la 39 : pas les six mois.
+    expect(r.weeks).toBe(10);
     expect(r.activeWeeks).toBe(5);
     expect(r.longestStreak).toBe(3);
     // La semaine 39 n'est pas finie : la suite de la 38 tient toujours.
     expect(r.currentStreak).toBe(1);
     expect(r.weeksSinceLast).toBe(1);
-    expect(r.perWeek).toBeCloseTo(6 / 26);
+    expect(r.perWeek).toBeCloseTo(6 / 10);
     expect(r.barUnit).toBe('semaine');
-    expect(r.bars).toHaveLength(26);
+    expect(r.bars).toHaveLength(10);
+    expect(r.bars[0].label).toBe('S30');
     expect(r.bars.find((b) => b.label === 'S31')?.count).toBe(2);
+  });
+
+  it('compte toute la période quand une session la précède', () => {
+    const sessions = [at(2025, 1, 6), at(2026, 7, 21), at(2026, 9, 15)].map((t) => session(t));
+    const r = regularity(sessions, statsPeriodBounds('sixmois', now), now, ['course']);
+    expect(r.weeks).toBe(26);
+    expect(r.perWeek).toBeCloseTo(2 / 26);
+    expect(r.bars).toHaveLength(26);
+  });
+
+  it('part de la plus vieille session sur une année', () => {
+    // Première session le lundi de la semaine 32 : 8 semaines comptées jusqu'à la 39, pas 52.
+    const sessions = [at(2026, 8, 3), at(2026, 9, 21)].map((t) => session(t));
+    const r = regularity(sessions, statsPeriodBounds('annee', now), now, ['course']);
+    expect(r.weeks).toBe(8);
+    expect(r.perWeek).toBeCloseTo(2 / 8);
   });
 
   it('suit une suite à cheval sur deux années', () => {

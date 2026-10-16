@@ -15,7 +15,7 @@ import { markReferenceLines } from '../components/markReferenceLines';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
-import SectionTabs from '../components/SectionTabs';
+import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
@@ -455,7 +455,7 @@ function SurfModule() {
 
       {summary && analysis && surfProfile && (
         <div className="an-carte-col">
-          <SectionTabs sections={sections} open={open} onToggle={toggle} accent={ACCENT} />
+          <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} accent={ACCENT} />
           <div className="an-carte-panels">
             {open.general && (
               <ResizablePanel id={panelId('general')} style={panelStyle}>

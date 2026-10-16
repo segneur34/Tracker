@@ -200,6 +200,8 @@ await evaluate(`(() => {
   const s = JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}');
   s.hiddenFamilies = ['surf'];
   localStorage.setItem('tracker.sportSettings', JSON.stringify(s));
+  // Sans paramètre, la page reprend le dernier affichage (Fractionné vélo) : on repart de la vue d'ensemble.
+  localStorage.removeItem('tracker.statistiques');
 })()`);
 await go('/statistiques');
 check('Surf caché : 11 sessions', (await stat('Sessions')) === '11', await stat('Sessions'));
@@ -244,7 +246,8 @@ const second = await evaluate(`document.querySelector('.shell-tab--menu')?.textC
 check('case secondaire : Statistiques', second === 'Statistiques', second);
 await evaluate(`document.querySelector('.shell-tab--menu').click()`);
 await wait(1500);
-check('la case ouvre la page, allumée', (await search()) === '/statistiques' && (await evaluate(`document.querySelector('.shell-tab--menu').classList.contains('active')`)));
+// La page reprend le dernier affichage : l'adresse peut porter des paramètres.
+check('la case ouvre la page, allumée', (await search())?.startsWith('/statistiques') && (await evaluate(`document.querySelector('.shell-tab--menu').classList.contains('active')`)));
 
 // Planifier en secondaire par Réglages, puis Statistiques repris par le menu de l'appui long.
 await go('/parametres');
@@ -265,7 +268,7 @@ const menu = await evaluate(`[...document.querySelectorAll('.shell-sports-menu__
 check('menu de l\'appui long : Statistiques après Planifier', menu?.endsWith('Planifier, Statistiques'), menu);
 await click('.shell-sports-menu__item', 'Statistiques');
 await wait(1500);
-check('choisi dans le menu : retenu et ouvert', (await search()) === '/statistiques'
+check('choisi dans le menu : retenu et ouvert', (await search())?.startsWith('/statistiques')
   && (await evaluate(`document.querySelector('.shell-tab--menu')?.textContent.trim()`)) === 'Statistiques');
 
 console.log(logs.length ? `Console :\n${logs.join('\n')}` : 'Console : aucune erreur');

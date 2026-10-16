@@ -50,7 +50,7 @@ import HoverMarker from '../components/HoverMarker';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
-import SectionTabs from '../components/SectionTabs';
+import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
@@ -739,7 +739,7 @@ function SailingModule() {
       {/* Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`). */}
       {stats && (
         <div className="an-carte-col">
-          <SectionTabs sections={sailingPanels} open={open} onToggle={toggle} />
+          <CollapsibleSectionTabs sections={sailingPanels} open={open} onToggle={toggle} />
           <div className="an-carte-panels">
             {open.general && (
               <ResizablePanel id="sailing.general" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>

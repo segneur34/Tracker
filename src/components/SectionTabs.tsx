@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 /**
  * Rangée de boutons qui ouvrent et ferment les sections d'un module. Chaque
@@ -16,9 +16,11 @@ interface SectionTabsProps<K extends string> {
   onToggle: (key: K) => void;
   /** Couleur du bouton actif, celle du module (une variable de la DA). */
   accent?: string;
+  /** Élément ajouté en fin de rangée (la flèche qui cache la barre, `CollapsibleSectionTabs`). */
+  trailing?: ReactNode;
 }
 
-function SectionTabs<K extends string>({ sections, open, onToggle, accent = 'var(--voile)' }: SectionTabsProps<K>) {
+function SectionTabs<K extends string>({ sections, open, onToggle, accent = 'var(--voile)', trailing }: SectionTabsProps<K>) {
   return (
     <div className="ui-tabs" style={{ '--tab-accent': accent } as CSSProperties}>
       {sections.map((section) => (
@@ -31,6 +33,7 @@ function SectionTabs<K extends string>({ sections, open, onToggle, accent = 'var
           {section.label}
         </button>
       ))}
+      {trailing}
     </div>
   );
 }

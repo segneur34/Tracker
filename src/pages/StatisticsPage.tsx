@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Bar, BarChart, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis,
@@ -25,6 +25,7 @@ import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
+import { readStoredRecord, useStoredRecord } from '../hooks/useStoredRecord';
 import { effectiveDistanceUnit, effectiveSpeedUnit, useVisibility } from '../hooks/useSportSettings';
 import {
   STATS_PERIODS, averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, heartRatePoints, formatDateTick, groupTotals, inBounds, isStatsPeriod, maxSpeedSeries, recordKindsOf,
@@ -39,6 +40,8 @@ import './StatisticsPage.css';
  * une activité, sur une période au choix, tirées du résumé des fiches sans
  * relire un seul GPX (`library/stats.ts`). Le choix est dans l'adresse
  * (`?famille=&activite=&periode=`) : le retour arrière remonte d'un niveau.
+ * Le dernier choix est retenu sur l'appareil : une adresse sans paramètre le
+ * reprend à l'ouverture.
  * Les sessions d'une activité ou d'une famille cachée n'y sont pas, ni celles
  * à classer ; une famille cachée ouverte par son adresse montre tout.
  *
@@ -65,6 +68,17 @@ const ZONE_FRACTIONS = SPORT_PROFILES.running.heartRate.zoneFractions;
 const LOAD_WEIGHTS = SPORT_PROFILES.running.heartRate.loadWeights;
 
 const STORAGE_ID = 'statistiques';
+
+/** Dernier affichage, retenu sur l'appareil (`tracker.statistiques`) ; `null` : « Tout ». */
+interface StatsView {
+  famille: SportFamily | null;
+  activite: string | null;
+  periode: StatsPeriod;
+}
+
+const VIEW_NAMESPACE = 'tracker.statistiques';
+const VIEW_KEY = 'affichage';
+const VIEW_DEFAULTS: StatsView = { famille: null, activite: null, periode: 'tout' };
 const panelId = (name: string) => `${STORAGE_ID}.${name}`;
 const panelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: '14px' } as const;
 const chartPanelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'hidden' } as const;
@@ -154,6 +168,22 @@ function StatisticsPage() {
   const [picked, setPicked] = useState<string | null>(null);
   const [loadHelp, setLoadHelp] = useState(false);
   const { open, toggle } = useOpenSections<StatsSection>(STORAGE_ID, STATS_SECTION_DEFAULTS);
+  const { update: rememberView } = useStoredRecord<StatsView>(VIEW_NAMESPACE, VIEW_KEY, VIEW_DEFAULTS);
+
+  // À l'ouverture sans paramètre (barre, accueil), reprendre le dernier affichage, si sa famille est visible.
+  useEffect(() => {
+    if (params.toString() !== '') return;
+    const last = readStoredRecord<StatsView>(VIEW_NAMESPACE, VIEW_KEY, VIEW_DEFAULTS);
+    const p = new URLSearchParams();
+    if (isFamily(last.famille) && families.includes(last.famille)) {
+      p.set('famille', last.famille);
+      if (typeof last.activite === 'string' && last.activite !== '') p.set('activite', last.activite);
+    }
+    if (isStatsPeriod(last.periode) && last.periode !== 'tout') p.set('periode', last.periode);
+    if (p.toString() !== '') setParams(p, { replace: true });
+    // Une seule fois, à l'ouverture de la page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Le choix, lu dans l'adresse.
   const familyParam = params.get('famille');
@@ -191,6 +221,7 @@ function StatisticsPage() {
     if (f) p.set('famille', f);
     if (f && a) p.set('activite', a);
     if (per !== 'tout') p.set('periode', per);
+    rememberView({ famille: f, activite: f ? a : null, periode: per });
     setPicked(null);
     setParams(p, { replace });
   };
