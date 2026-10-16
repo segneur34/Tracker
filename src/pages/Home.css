@@ -7,10 +7,47 @@
   color: var(--muted);
 }
 
+/* Nouvelle session : deux grands boutons côte à côte. Sur un petit écran, le texte rétrécit,
+   puis le remplissage, et sous 340 px l'icône de « Planifier » s'efface ; le texte reste entier. */
+.home-new-session {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.home-new-session .ui-btn {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  font-size: var(--text-fit-l);
+}
+
+.home-new-session .ui-btn > * {
+  flex-shrink: 0;
+}
+
+@media (max-width: 359px) {
+  .home-new-session .ui-btn {
+    padding: 0 var(--space-3);
+  }
+}
+
+@media (max-width: 339px) {
+  .home-new-session__icon {
+    display: none;
+  }
+}
+
 .home-families {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-2);
+}
+
+/* Sous 340 px, deux colonnes ne logent plus « Course à pied » ni « Fractionné » en entier : une seule. */
+@media (max-width: 339px) {
+  .home-families {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .home-family {

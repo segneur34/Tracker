@@ -4,7 +4,7 @@ Tracker enregistre vos sessions de voile et de course avec le GPS du téléphone
 
 Il faut un téléphone Android 7 ou plus récent. Il n'y a pas de version iPhone.
 
-**Pour qui diffuse l'application** : l'APK est produit par la compilation, dans le dépôt, en `android/app/build/outputs/apk/release/app-release.apk` (sur le PC de développement : `C:\Users\segne\tracker\android\app\build\outputs\apk\release\app-release.apk`). C'est ce fichier qu'on dépose sur Drive ou WeTransfer, ou qu'on copie par câble dans le dossier Téléchargements du téléphone. Le dossier `Tracker` des sessions ne le contient pas.
+**Pour qui diffuse l'application** : l'APK est produit par la compilation, dans le dépôt, en `android/app/build/outputs/apk/release/`, nommé d'après sa version (`Tracker-0.3.0.apk`, par exemple ; sur le PC de développement : `C:\Users\segne\tracker\android\app\build\outputs\apk\release\`). C'est ce fichier qu'on dépose sur Drive ou WeTransfer, ou qu'on copie par câble dans le dossier Téléchargements du téléphone. Le dossier `Tracker` des sessions ne le contient pas.
 
 ## 1. Télécharger et installer
 

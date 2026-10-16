@@ -11,8 +11,9 @@ import {
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
 import { recordingDurationMs } from '../recording/session';
 import {
-  IconBike, IconChart, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconRun, IconSail, IconSettings, IconStopwatch, IconWave,
+  IconChart, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconSettings,
 } from './icons';
+import { FAMILY_ICON } from './familyIcons';
 import HoldDial from './ui/HoldDial';
 
 /**
@@ -51,11 +52,11 @@ interface Destination {
 }
 
 const HOME: Destination = { to: '/', label: 'Accueil', Icon: IconHome, accent: 'var(--ink)' };
-const VOILE: Destination = { to: '/voile', label: 'Voile', Icon: IconSail, accent: 'var(--voile)' };
-const COURSE: Destination = { to: '/course', label: 'Course', Icon: IconRun, accent: 'var(--course)' };
-const VELO: Destination = { to: '/velo', label: 'Vélo', Icon: IconBike, accent: 'var(--velo)' };
-const FRACTIONNE: Destination = { to: '/fractionne', label: 'Fractionné', Icon: IconStopwatch, accent: 'var(--fractionne)' };
-const SURF: Destination = { to: '/surf', label: 'Surf', Icon: IconWave, accent: 'var(--surf)' };
+const VOILE: Destination = { to: '/voile', label: 'Voile', Icon: FAMILY_ICON.voile, accent: 'var(--voile)' };
+const COURSE: Destination = { to: '/course', label: 'Course', Icon: FAMILY_ICON.course, accent: 'var(--course)' };
+const VELO: Destination = { to: '/velo', label: 'Vélo', Icon: FAMILY_ICON.velo, accent: 'var(--velo)' };
+const FRACTIONNE: Destination = { to: '/fractionne', label: 'Fractionné', Icon: FAMILY_ICON.fractionne, accent: 'var(--fractionne)' };
+const SURF: Destination = { to: '/surf', label: 'Surf', Icon: FAMILY_ICON.surf, accent: 'var(--surf)' };
 const SETTINGS: Destination = { to: '/parametres', label: 'Réglages', Icon: IconSettings, accent: 'var(--ink)' };
 const FAMILY_TABS: Record<SportFamily, Destination> = { voile: VOILE, course: COURSE, velo: VELO, fractionne: FRACTIONNE, surf: SURF };
 const RECORD_PATH = '/enregistrer';

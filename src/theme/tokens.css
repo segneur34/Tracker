@@ -66,6 +66,8 @@
   --text-title: 28px;
   /* Grands chiffres lus d'un coup d'œil (vitesses de l'enregistrement, carte réduite). */
   --text-display: 40px;
+  /* Texte d'un grand bouton qui partage sa ligne : rétrécit avec l'écran, de --text-l à --text-m. */
+  --text-fit-l: clamp(var(--text-m), 4.6vw, var(--text-l));
 
   /* Rayons */
   --radius-s: 8px;

@@ -52,6 +52,10 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    // L'APK porte la version : Tracker-<version>.apk en release, Tracker-<version>-debug.apk sinon.
+    applicationVariants.all { variant ->
+        variant.outputs.all { outputFileName = "Tracker-${appVersion}${variant.buildType.name == 'release' ? '' : '-' + variant.buildType.name}.apk" }
+    }
 }
 
 repositories {

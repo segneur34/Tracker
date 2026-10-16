@@ -35,11 +35,13 @@ export const IconSail = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
-/** Vague qui déferle vers la gauche, sur la ligne de l'eau. */
-export const IconWave = ({ size = 24, ...props }: IconProps) => (
+/** Planche en biais et pagaie croisée devant : surf, paddle et kayak. */
+export const IconSurf = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
-    <path d="M3 17c4 0 5.5-3 6.5-6s3-6 7-6c2.8 0 4.5 1.8 4.5 4-1.5-1-3.6-.9-4.5.7s-.2 3.8 2 4.8" />
-    <path d="M3 21c2.5-1.3 5-1.3 7.5 0s5 1.3 7.5 0" />
+    <path d="M4.5 19.5C3.5 15 9 7.5 19.5 4.5 20.5 9 15 16.5 4.5 19.5z" />
+    <path d="M4 7l3-3" />
+    <path d="M5.5 5.5l10 10" />
+    <path d="M15.5 15.5c1.8-.3 5.2 3.1 5.5 5.5-2.4-.3-5.8-3.7-5.5-5.5z" />
   </svg>
 );
 

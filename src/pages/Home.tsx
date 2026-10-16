@@ -64,13 +64,13 @@ function Home() {
 
       <div style={{ ...cardStyle, gap: '14px' }}>
         <span className="ui-eyebrow">Nouvelle session</span>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <Link to="/enregistrer" className="ui-btn ui-btn--record ui-btn--l" style={{ flex: 1 }}>
+        <div className="home-new-session">
+          <Link to="/enregistrer" className="ui-btn ui-btn--record ui-btn--l">
             <span className="ui-record-dot" />
             Enregistrer
           </Link>
-          <Link to="/itineraires" className="ui-btn ui-btn--secondary ui-btn--l" style={{ flex: 1 }}>
-            <IconRoute size={20} />
+          <Link to="/itineraires" className="ui-btn ui-btn--secondary ui-btn--l">
+            <IconRoute size={20} className="home-new-session__icon" />
             Planifier
           </Link>
         </div>
