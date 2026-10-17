@@ -114,6 +114,7 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
     /**
      * Démarre la capture : `startedAtMs` (instant de l'en-tête du journal, qui
      * nomme le fichier), `placement` et `foil` (réglages des sauts, gardés dans
+     * l'en-tête), `jumps` et `cadence` (ce que la capture mesure, gardé dans
      * l'en-tête). Une capture déjà en cours est d'abord close.
      */
     @PluginMethod
@@ -127,6 +128,8 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
         long startedAtMs = ((Number) rawStart).longValue();
         String placement = call.getString("placement", "poitrine");
         boolean foil = Boolean.TRUE.equals(call.getBoolean("foil", false));
+        boolean jumps = !Boolean.FALSE.equals(call.getBoolean("jumps", true));
+        boolean cadence = Boolean.TRUE.equals(call.getBoolean("cadence", false));
         handler().post(() -> {
             closeCapture();
             SensorManager sm = sensors();
@@ -148,7 +151,7 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
                 ImuWriter.Stream[] streams = pressure != null
                     ? new ImuWriter.Stream[] { accelStream(), gyroStream(), pressureStream() }
                     : new ImuWriter.Stream[] { accelStream(), gyroStream() };
-                writer = new ImuWriter(file, header(startedAtMs, startNs, wallMs, placement, foil, accel, gyro, pressure).toString(), streams);
+                writer = new ImuWriter(file, header(startedAtMs, startNs, wallMs, placement, foil, jumps, cadence, accel, gyro, pressure).toString(), streams);
                 accelCount = 0;
                 lastAccelNs = 0;
                 firstNs = 0;
@@ -338,7 +341,8 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
     }
 
     private static JSONObject header(
-        long startedAtMs, long startNs, long wallMs, String placement, boolean foil, Sensor accel, Sensor gyro, Sensor pressure
+        long startedAtMs, long startNs, long wallMs, String placement, boolean foil, boolean jumps, boolean cadence,
+        Sensor accel, Sensor gyro, Sensor pressure
     ) throws JSONException {
         JSONObject header = new JSONObject();
         header.put("format", "tracker-capteurs");
@@ -356,6 +360,8 @@ public class MotionPlugin extends Plugin implements SensorEventListener {
         JSONObject setup = new JSONObject();
         setup.put("placement", placement);
         setup.put("foil", foil);
+        setup.put("jumps", jumps);
+        setup.put("cadence", cadence);
         header.put("setup", setup);
         JSONArray streams = new JSONArray();
         streams.put(streamInfo(ACCEL, "accel", 3, 0.01, 0, accel));

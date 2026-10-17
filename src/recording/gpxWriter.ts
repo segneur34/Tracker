@@ -1,13 +1,15 @@
 import type { SportType } from '../core/types';
 import type { LocationFix } from '../platform/location';
+import { gpxStrideCadence } from '../running/cadence';
 
 /**
  * Écriture d'une session en GPX 1.1, le format pivot de l'application : ce
  * que l'enregistreur produit, `parseGpx` le relit sans rien de particulier, et
  * n'importe quelle autre application aussi.
  *
- * La vitesse du système va dans `gpxtpx:speed` (extension Garmin, en m/s), et
- * la fréquence cardiaque de la ceinture dans `gpxtpx:hr`. La précision,
+ * La vitesse du système va dans `gpxtpx:speed` (extension Garmin, en m/s), la
+ * fréquence cardiaque de la ceinture dans `gpxtpx:hr`, et la cadence à pied
+ * dans `gpxtpx:cad`, en foulées par minute comme Garmin et Strava (pas ÷ 2). La précision,
  * utiles seulement en direct pendant l'enregistrement, ne sont pas écrits :
  * ils alourdiraient le fichier sans être relus par personne.
  *
@@ -34,8 +36,9 @@ const trackPoint = (fix: LocationFix): string => {
 
   // Vitesse et cap du système (Doppler) ; le cap sert aux virages du surf (§10, point 97).
   const extension: string[] = [];
-  // Ordre du schéma Garmin : la fréquence cardiaque avant la vitesse.
+  // Ordre du schéma Garmin : la fréquence cardiaque, la cadence, puis la vitesse.
   if (fix.heartRateBpm !== undefined) extension.push(`<gpxtpx:hr>${fix.heartRateBpm}</gpxtpx:hr>`);
+  if (fix.cadenceSpm !== undefined) extension.push(`<gpxtpx:cad>${gpxStrideCadence(fix.cadenceSpm)}</gpxtpx:cad>`);
   if (fix.speedMs !== undefined) extension.push(`<gpxtpx:speed>${fix.speedMs}</gpxtpx:speed>`);
   if (fix.bearingDeg !== undefined && fix.speedMs !== undefined && fix.speedMs > 0) {
     extension.push(`<gpxtpx:course>${fix.bearingDeg}</gpxtpx:course>`);

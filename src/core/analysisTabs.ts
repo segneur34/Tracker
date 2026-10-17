@@ -40,26 +40,32 @@ export const SAILING_TABS: AnalysisTab<SailingTab>[] = [
   { key: 'reglages', label: 'réglages' },
 ];
 
-export type LandTab = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'cardio' | 'sauts' | 'notes' | 'reglages';
+export type LandTab = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'cardio' | 'cadence' | 'sauts' | 'notes' | 'reglages';
 
-/** Course et vélo : « tops » est natif à vélo, générique à pied (course, marche). */
-const landTabs = (topsGeneric: boolean): AnalysisTab<LandTab>[] => [
+/**
+ * Course et vélo : « tops » est natif à vélo, générique à pied (course, marche).
+ * « graphiques » à la place des zones de pente, « cardio » juste derrière lui
+ * (choix de l'utilisateur, 16/10), puis « cadence », à pied seulement.
+ */
+const landTabs = (topsGeneric: boolean, cadence: boolean): AnalysisTab<LandTab>[] => [
   { key: 'general', label: 'général' },
   { key: 'fractionne', label: 'fractionné' },
   topsGeneric ? { key: 'tops', label: 'tops', generic: true } : { key: 'tops', label: 'tops' },
-  { key: 'zones', label: 'zones de pente' },
+  { key: 'graphiques', label: 'graphiques' },
+  { key: 'cardio', label: 'cardio' },
+  // Seulement pour une session qui a de la cadence (capteurs du téléphone, montre).
+  ...(cadence ? [{ key: 'cadence' as const, label: 'cadence' }] : []),
   { key: 'surface', label: 'surface' },
   { key: 'energie', label: 'énergie' },
-  { key: 'graphiques', label: 'vitesse et altitude' },
-  { key: 'cardio', label: 'cardio' },
+  { key: 'zones', label: 'zones de pente' },
   { key: 'sauts', label: 'sauts' },
   { key: 'notes', label: 'matériel et notes' },
   { key: 'reglages', label: 'réglages' },
 ];
 
 export const LAND_TABS: Record<'course' | 'velo', AnalysisTab<LandTab>[]> = {
-  course: landTabs(true),
-  velo: landTabs(false),
+  course: landTabs(true, true),
+  velo: landTabs(false, false),
 };
 
 export type SurfTab = 'general' | 'vagues' | 'rame' | 'vols' | 'tops' | 'graphiques' | 'cardio' | 'notes' | 'reglages';
@@ -85,9 +91,9 @@ const TREATMENT_TABS: Record<Treatment, readonly AnalysisTab[]> = {
   surf: SURF_TABS,
 };
 
-/** Onglets d'un calcul, proposés dans Réglages : « sauts » seulement s'il les mesure (ni bateau ni fractionné). */
+/** Onglets d'un calcul, proposés dans Réglages : « sauts » seulement s'il les mesure (ni bateau ni fractionné), « cadence » de même. */
 export const analysisTabs = (profile: SportProfile): readonly AnalysisTab[] =>
-  TREATMENT_TABS[sportTreatment(profile.id)].filter((tab) => tab.key !== 'sauts' || profile.jumps !== null);
+  TREATMENT_TABS[sportTreatment(profile.id)].filter((tab) => (tab.key !== 'sauts' || profile.jumps !== null) && (tab.key !== 'cadence' || profile.cadence !== null));
 
 /** Onglet montré : le choix de l'activité, sinon son défaut (natif montré, générique caché). */
 export const isTabShown = (tab: AnalysisTab, choices: TabChoices | null | undefined): boolean => {

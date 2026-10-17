@@ -41,7 +41,8 @@ describe('fichier des capteurs', () => {
     const bytes = await encodeImu(HEADER, written);
     const read = await decodeImu(bytes);
     expect(read).not.toBeNull();
-    expect(read!.header).toEqual(HEADER);
+    // Ce que la capture mesure, absent du fichier : des sauts, pas de cadence (fichiers d'avant la cadence).
+    expect(read!.header).toEqual({ ...HEADER, setup: { ...HEADER.setup, jumps: true, cadence: false } });
     expect(read!.truncated).toBe(false);
     expect(read!.skippedChunks).toBe(0);
     for (const w of written) {

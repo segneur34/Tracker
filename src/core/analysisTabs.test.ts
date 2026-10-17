@@ -21,6 +21,19 @@ describe('analysisTabs : onglets proposés par calcul', () => {
     expect(keys(analysisTabs(SPORT_PROFILES['run-intervals']))).toContain('fractionne');
   });
 
+  it('course et vélo : « graphiques » à la place des zones de pente, « cardio » derrière lui (16/10)', () => {
+    expect(keys(LAND_TABS.course)).toEqual(['general', 'fractionne', 'tops', 'graphiques', 'cardio', 'cadence', 'surface', 'energie', 'zones', 'sauts', 'notes', 'reglages']);
+    expect(keys(LAND_TABS.velo)).toEqual(['general', 'fractionne', 'tops', 'graphiques', 'cardio', 'surface', 'energie', 'zones', 'sauts', 'notes', 'reglages']);
+    expect(tab(LAND_TABS.course, 'graphiques').label).toBe('graphiques');
+  });
+
+  it('« cadence » à pied seulement : course, marche, fractionné à pied', () => {
+    expect(keys(analysisTabs(SPORT_PROFILES.running))).toContain('cadence');
+    expect(keys(analysisTabs(SPORT_PROFILES['run-intervals']))).toContain('cadence');
+    expect(keys(analysisTabs(SPORT_PROFILES.cycling))).not.toContain('cadence');
+    expect(keys(analysisTabs(SPORT_PROFILES['bike-intervals']))).not.toContain('cadence');
+  });
+
   it('surf : « tops » entre « vols » et « graphiques »', () => {
     const surf = keys(analysisTabs(SPORT_PROFILES.surf));
     expect(surf).toEqual(keys(SURF_TABS));

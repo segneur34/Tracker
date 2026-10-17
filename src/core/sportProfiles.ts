@@ -1,5 +1,6 @@
 import type { JumpDetection } from './jumps';
 import type { PumpDetection } from '../surfing/pumping';
+import type { CadenceDetection } from '../running/cadence';
 import type { SportType, TopTarget } from './types';
 import type { SpeedUnit } from './units';
 
@@ -221,6 +222,20 @@ const PUMP_DETECTION: PumpDetection = {
   pruneCapture: false, pruneMarginS: 30,
 };
 
+/**
+ * Cadence à pied (`running/cadence.ts`, demande du 16/10) : provisoire, à
+ * régler sur de vraies sorties, téléphone porté comme d'habitude. De 70 pas
+ * par minute (marche lente) à 240 (sprint).
+ */
+const CADENCE: CadenceDetection = {
+  gridStepS: 0.02, maxGapS: 0.2, gravityWindowS: 2, windowS: 6, stepS: 1,
+  minSpm: 70, maxSpm: 240, minCorrelation: 0.3, peakFraction: 0.85, halfPeriodFraction: 0.5,
+  minRmsMs2: 0.5, minCoverage: 0.8, chartSmoothingS: 5, minCoverageS: 60, gapS: 10,
+  walkBands: [90, 100, 110, 120, 130], runBands: [150, 160, 170, 180, 190], runAboveSpm: 140,
+  maxWindowS: 30, speedBinKmh: 1, minBinS: 30, driftMinS: 10 * 60,
+  keepCapture: true,
+};
+
 /** Libellé du ratio de temps actif d'une session sur foil, quel que soit le calcul. */
 export const FOIL_RATIO_LABEL = 'Ratio de vol';
 
@@ -353,6 +368,8 @@ export interface SportProfile {
   jumps: JumpProfile | null;
   /** Ceinture cardio proposée à l'enregistrement et analyse de la FC, dans tous les sports. */
   heartRate: HeartRateProfile;
+  /** Cadence à pied mesurée par les capteurs du téléphone ; `null` hors course, marche et fractionné à pied. */
+  cadence: CadenceDetection | null;
   /** Analyse des vagues ; `null` hors surf. */
   surf: SurfProfile | null;
 }
@@ -438,6 +455,7 @@ const SAILING_DEFAULTS = {
   intervals: null,
   foilDefault: false,
   heartRate: HEART_RATE,
+  cadence: null,
   surf: null,
 };
 
@@ -465,6 +483,7 @@ const RUNNING_PROFILE: SportProfile = {
   foilDefault: false,
   jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
   heartRate: HEART_RATE,
+  cadence: CADENCE,
   surf: null,
 };
 
@@ -492,6 +511,7 @@ const CYCLING_PROFILE: SportProfile = {
   foilDefault: false,
   jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
   heartRate: HEART_RATE,
+  cadence: null,
   surf: null,
 };
 
@@ -525,6 +545,7 @@ const SURF_PROFILE: SportProfile = {
   intervals: null,
   jumps: null,
   heartRate: HEART_RATE,
+  cadence: null,
   surf: {
     stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15, maxGapS: 10,
     foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60, pump: PUMP_DETECTION,

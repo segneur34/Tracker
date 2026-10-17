@@ -142,6 +142,17 @@ check('carte de l\'accueil', await click('.shell-main a', 'Statistiques'));
 await wait(1500);
 check('la carte ouvre la page', (await search()) === '/statistiques', await search());
 
+// 1 bis. Pastilles repliées sous « Sélection », qui porte le choix en cours ; dépliées, retenues au rechargement.
+const choiceButton = `[...document.querySelectorAll('.stats-choice > button[data-chart-fold]')][0]`;
+check('Sélection repliée au départ, choix lisible', (await evaluate(`${choiceButton}?.getAttribute('aria-expanded')`)) === 'false'
+  && (await evaluate(`${choiceButton}?.textContent`)) === 'SélectionToutes les familles · depuis le début' && (await chips('Famille')) === '',
+  `${await evaluate(`${choiceButton}?.textContent`)} ; ${await chips('Famille')}`);
+await evaluate(`${choiceButton}.click()`);
+await wait(300);
+check('Sélection dépliée : trois rangées', (await chips('Famille'))?.startsWith('Tout, ') && (await chips('Période'))?.includes('30 jours'), await chips('Famille'));
+await go('/statistiques');
+check('Sélection dépliée retenue', (await evaluate(`${choiceButton}?.getAttribute('aria-expanded')`)) === 'true');
+
 // 2. Vue d'ensemble.
 check('12 sessions', (await stat('Sessions')) === '12', await stat('Sessions'));
 check('onglets de la vue d\'ensemble', (await tabs()) === 'général, graphique, régularité', await tabs());
@@ -172,6 +183,7 @@ await click('.stats-chips[aria-label="Période"] .ui-tab', '30 jours');
 await wait(800);
 check('30 jours : 2 sessions', (await stat('Sessions')) === '2', await stat('Sessions'));
 check('période dans l\'adresse', (await search()) === '/statistiques?famille=course&periode=trente', await search());
+check('le bouton « Sélection » porte le choix', (await evaluate(`${choiceButton}?.textContent`)) === 'SélectionCourse à pied · 30 jours', await evaluate(`${choiceButton}?.textContent`));
 await evaluate('history.back()');
 await wait(1000);
 check('retour arrière : vue d\'ensemble', (await search()) === '/statistiques' && (await stat('Sessions')) === '12', `${await search()} ; ${await stat('Sessions')}`);
@@ -216,7 +228,7 @@ if (picked) {
 
 // 4b. Les données du graphique.
 const fiches = await sessionRecords();
-check('fiches en version 5, distance en action', fiches.length === 12 && fiches.every((r) => r.summary.calcVersion === 5 && typeof r.summary.movingDistanceM === 'number'),
+check('fiches en version 5 ou plus, distance en action', fiches.length === 12 && fiches.every((r) => r.summary.calcVersion >= 5 && typeof r.summary.movingDistanceM === 'number'),
   fiches.map((r) => `${r.summary.calcVersion}/${r.summary.movingDistanceM}`).join(' '));
 // Par la pastille de la famille, pour que l'affichage soit retenu (la dernière vue retenue est Kite).
 await go('/statistiques');

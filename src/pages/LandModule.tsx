@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Polyline } from 'react-leaflet';
 import OsmTileLayer from '../components/OsmTileLayer';
@@ -9,6 +9,8 @@ import {
   type TooltipPayloadEntry, type TooltipValueType,
 } from 'recharts';
 import ActivitySelect from '../components/ActivitySelect';
+import CadencePanel from '../components/CadencePanel';
+import ChartFold from '../components/ChartFold';
 import AnalysisMap from '../components/AnalysisMap';
 import EffortThresholdEditor from '../components/EffortThresholdEditor';
 import GradeGradientLegend from '../components/GradeGradientLegend';
@@ -22,6 +24,7 @@ import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
 import { HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
+import { CADENCE_COLOR } from '../components/cadenceColors';
 import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionSaveBar from '../components/SessionSaveBar';
@@ -38,7 +41,6 @@ import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmen
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import HoverMarker from '../components/HoverMarker';
 import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
-import { IconChevronRight } from '../components/icons';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
@@ -83,6 +85,7 @@ import {
 import {
   averagePace, computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
 } from '../running/runningAnalytics';
+import { analyzeCadence, cadenceBandPaths, sessionCadence, timeSpanCadence } from '../running/cadence';
 import { isValidCarriedLoad, smoothMovingPower } from '../running/energy';
 import { detectIntervals } from '../running/intervalDetection';
 import { analyzeIntervals, type IntervalPhaseSpan } from '../running/intervalStats';
@@ -104,6 +107,14 @@ const ENERGY_POWER_SMOOTHING_S = 60;
  * prend la place gagnée.
  */
 const ENERGY_CHART_HEIGHT_PX = 200;
+/**
+ * Hauteur de base d'un graphe de l'onglet « graphiques » et de celui des
+ * zones de pente : le panneau suit le nombre de graphes dépliés. Une hauteur
+ * tirée à la poignée se partage entre eux.
+ */
+const CHART_HEIGHT_PX = 170;
+/** Hauteur de base du graphe superposé. */
+const OVERLAY_CHART_HEIGHT_PX = 320;
 
 /**
  * Sections du module, rangées dans `LAND_TABS` (`core/analysisTabs.ts`), où
@@ -137,6 +148,7 @@ const LAND_SECTION_DEFAULTS: Record<LandSection, boolean> = {
   energie: false,
   graphiques: false,
   cardio: false,
+  cadence: false,
   sauts: false,
   notes: false,
   reglages: false,
@@ -157,6 +169,8 @@ interface ChartRow {
   grade: number | null;
   /** FC lissée, `null` là où elle manque. */
   hr: number | null;
+  /** Cadence à pied lissée, en pas par minute, `null` là où elle manque. */
+  cadence: number | null;
 }
 
 /** Une ligne du graphe d'énergie, en fonction du temps écoulé. */
@@ -177,6 +191,16 @@ interface EnergyChartRow {
  * a pas repliés pour voir carte et graphe ensemble.
  */
 const ENERGY_FIGURES_DEFAULT = { chiffres: true, zones: true };
+
+/**
+ * Graphes de l'onglet « graphiques » dépliés, chacun replié à part pour ne
+ * comparer que ceux qui restent ouverts (demande du 16/10) ; un graphe replié
+ * n'est pas non plus tracé dans le mode superposé. Choix gardé sur l'appareil.
+ */
+const GRAPH_FOLDS_DEFAULT = { vitesse: true, altitude: true, fc: true, cadence: true };
+type GraphFold = keyof typeof GRAPH_FOLDS_DEFAULT;
+/** Graphe d'altitude de l'onglet « zones de pente », déplié tant qu'on ne le replie pas. */
+const ZONES_FOLDS_DEFAULT = { tableau: true, graphe: true };
 
 /** Temps écoulé, donné en minutes, écrit en h:mm, ou en h:mm:ss hors de la minute ronde (graphe zoomé). */
 const formatMinutes = (minutes: number): string => {
@@ -239,6 +263,13 @@ function LandModule({ family }: { family: LandFamily }) {
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans les graphes. */
   const heart = useSessionHeartRate(gpx.track, profile.heartRate);
   const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate.zoneFractions), [runner, profile.heartRate]);
+  /** Cadence à pied (`cad` du GPX : capteurs du téléphone, montre) : sa courbe dans les graphes et l'onglet « cadence ». */
+  const cadenceParams = profile.cadence;
+  const cadence = useMemo(
+    () => (cadenceParams && gpx.track.length > 1 ? sessionCadence(gpx.track, cadenceParams) : null),
+    [cadenceParams, gpx.track]
+  );
+  const cadencePresent = cadence?.present === true;
 
   const { loadGpxContent } = gpx;
   // Session de la mémoire désignée par l'URL : son activité devient celle du module.
@@ -294,8 +325,8 @@ function LandModule({ family }: { family: LandFamily }) {
   const jumpsVisible = jumpsState.status !== 'none';
   const sections = useMemo(
     () => shownTabs(landTabs, tabChoices).filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals)
-      && (s.key !== 'sauts' || jumpsVisible) && (s.key !== 'cardio' || heart.present)),
-    [landTabs, tabChoices, profile.topTargets, hasIntervals, jumpsVisible, heart.present]
+      && (s.key !== 'sauts' || jumpsVisible) && (s.key !== 'cardio' || heart.present) && (s.key !== 'cadence' || cadencePresent)),
+    [landTabs, tabChoices, profile.topTargets, hasIntervals, jumpsVisible, heart.present, cadencePresent]
   );
   // Une seule surbrillance sur la carte : un top, une zone de pente, une
   // répétition ou un revêtement ; choisir l'une retire les autres, fermer son onglet l'efface.
@@ -311,6 +342,9 @@ function LandModule({ family }: { family: LandFamily }) {
   const setSelectedHrZone = (zone: number | null) => highlight.show('cardio', zone === null ? null : String(zone));
   const selectedSurface = highlight.shownIn('surface') as SurfaceCategory | null;
   const setSelectedSurface = (key: SurfaceCategory | null) => highlight.show('surface', key);
+  const shownCadenceBand = highlight.shownIn('cadence');
+  const selectedCadenceBand = shownCadenceBand === null ? null : Number(shownCadenceBand);
+  const setSelectedCadenceBand = (band: number | null) => highlight.show('cadence', band === null ? null : String(band));
   /** Sauts montrés : le podium des trois plus hauts (`podium`), ou un saut, par l'heure de son décollage. */
   const jumpHighlight = highlight.shownIn('sauts');
   const jumpPodiumShown = jumpHighlight === 'podium';
@@ -399,6 +433,14 @@ function LandModule({ family }: { family: LandFamily }) {
    * éteint l'autre.
    */
   const [surfaceOnMap, setSurfaceOnMap] = useState(false);
+  /** Graphes dépliés de l'onglet « graphiques », et celui de l'onglet « zones de pente ». */
+  const graphFolds = useOpenSections(`${page.storageId}.graphes`, GRAPH_FOLDS_DEFAULT);
+  const zonesFold = useOpenSections(`${page.storageId}.zones`, ZONES_FOLDS_DEFAULT);
+  /**
+   * Un graphe d'altitude est montré, avec son « Voir sur la carte » : dans
+   * « graphiques », altitude dépliée, ou dans « zones de pente », graphe déplié.
+   */
+  const altitudeChartShown = (open.graphiques && graphFolds.open.altitude) || (open.zones && zonesFold.open.graphe);
   const [gradeOnMap, setGradeOnMap] = useState(false);
   const toggleSurfaceOnMap = () => {
     setSurfaceOnMap(!surfaceOnMap);
@@ -410,17 +452,31 @@ function LandModule({ family }: { family: LandFamily }) {
   };
   const surfaceMapPaths = open.surface && surfaceOnMap ? surfaces.paths : null;
 
-  /** Trace colorée par la pente, au palier près (`gradeColorPaths`), tant que l'onglet « vitesse et altitude » est ouvert. */
+  /** Trace colorée par la pente, au palier près (`gradeColorPaths`), tant qu'un graphe d'altitude est montré. */
   const gradeMapPaths = useMemo(
-    () => (gradeOnMap && open.graphiques && !surfaceMapPaths && grades.length > 0
+    () => (gradeOnMap && altitudeChartShown && !surfaceMapPaths && grades.length > 0
       ? gradeColorPaths(gpx.track.map((p): [number, number] => [p.lat, p.lon]), grades, gradeRange)
       : null),
-    [gradeOnMap, open.graphiques, surfaceMapPaths, grades, gpx.track, gradeRange]
+    [gradeOnMap, altitudeChartShown, surfaceMapPaths, grades, gpx.track, gradeRange]
   );
 
   const zoneStats = useMemo(
     () => (grades.length > 0 ? computeZoneStats(gpx.track, grades, activityMask) : []),
     [gpx.track, grades, activityMask]
+  );
+  /** Onglet « cadence » : chiffres, tranches, selon la vitesse et la pente, dérive. */
+  const cadenceAnalysis = useMemo(
+    () => (open.cadence && cadencePresent && cadenceParams && cadence
+      ? analyzeCadence(gpx.track, cadence.spm, activityMask, grades.length > 0 ? grades : null, cadenceParams)
+      : null),
+    [open.cadence, cadencePresent, cadenceParams, cadence, gpx.track, activityMask, grades]
+  );
+  /** Passages de la tranche de cadence choisie, tracés sur la carte tant que l'onglet « cadence » est ouvert. */
+  const cadencePaths = useMemo(
+    () => (selectedCadenceBand !== null && cadenceAnalysis && cadence && cadenceParams
+      ? cadenceBandPaths(gpx.track, cadence.spm, activityMask, cadenceAnalysis.bands.bounds, selectedCadenceBand, cadenceParams.gapS)
+      : []),
+    [selectedCadenceBand, cadenceAnalysis, cadence, cadenceParams, gpx.track, activityMask]
   );
   /** Passages de la zone cardiaque choisie, tracés sur la carte tant que l'onglet « cardio » est ouvert. */
   const hrZonePaths = useMemo(
@@ -524,10 +580,14 @@ function LandModule({ family }: { family: LandFamily }) {
         const heartRates = heart.present
           ? analyzed.reps.map((r) => timeSpanHeartRate(gpx.track, heart.smoothed, r.work.startMs, r.work.endMs, profile.heartRate.gapS, profile.heartRate.recoveryS))
           : undefined;
-        return { workout: s.workout, detected: s.detected, ...analyzed, heartRates };
+        // Cadence et longueur de pas de chaque effort, à pied, si la session a de la cadence.
+        const cadences = cadencePresent && cadence && cadenceParams
+          ? analyzed.reps.map((r) => timeSpanCadence(gpx.track, cadence.spm, r.work.startMs, r.work.endMs, cadenceParams.gapS))
+          : undefined;
+        return { workout: s.workout, detected: s.detected, ...analyzed, heartRates, cadences };
       })
       : []),
-    [open.fractionne, profile.intervals, intervalSeries, gpx.track, cumulative, heart, profile.heartRate]
+    [open.fractionne, profile.intervals, intervalSeries, gpx.track, cumulative, heart, profile.heartRate, cadencePresent, cadence, cadenceParams]
   );
   /** Ce que dit l'onglet quand la vitesse ne livre aucune répétition. */
   const intervalEmptyText = (() => {
@@ -581,9 +641,10 @@ function LandModule({ family }: { family: LandFamily }) {
         altitude: stats?.hasElevation && isFinite(altitude) ? Math.round(altitude) : null,
         grade: isFinite(grades[i]) ? grades[i] : null,
         hr: heart.smoothed[i] === null || heart.smoothed[i] === undefined ? null : Math.round(heart.smoothed[i]!),
+        cadence: cadencePresent && cadence!.smoothed[i] !== null ? Math.round(cadence!.smoothed[i]!) : null,
       };
     });
-  }, [gpx.track, trackDist, zoom.view, chartSpeed, elevation, stats, grades, speedUnit, inverse, heart.smoothed]);
+  }, [gpx.track, trackDist, zoom.view, chartSpeed, elevation, stats, grades, speedUnit, inverse, heart.smoothed, cadence, cadencePresent]);
   /** Dérive et nuage FC / vitesse de l'onglet « cardio » : vitesse des graphes, temps en mouvement. */
   const heartEfficiency = useMemo((): HeartRateEfficiency => ({ speedsMs: chartSpeed, active: activityMask, speedUnit }), [chartSpeed, activityMask, speedUnit]);
 
@@ -595,6 +656,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const gradientId = useId();
   const overlayGradientId = `${gradientId}-superpose`;
   const separateGradientId = `${gradientId}-separe`;
+  const zonesGradientId = `${gradientId}-zones`;
 
   /** Traits de la trace colorée par la vitesse, mémorisés : le survol d'un graphe ne les redessine pas (`TrackSegmentsLayer`). */
   const treatment = sportTreatment(sport);
@@ -649,6 +711,7 @@ function LandModule({ family }: { family: LandFamily }) {
     if (name === 'Vitesse' && row) return [formatSpeed(row.speedMs, speedUnit), name];
     if (name === 'Altitude') return [row?.grade != null ? `${value} m, pente ${Math.round(row.grade * 100)} %` : `${value} m`, name];
     if (name === 'FC') return [`${value} bpm`, name];
+    if (name === 'Cadence') return [`${value} pas/min`, name];
     return [String(value ?? ''), name];
   };
 
@@ -677,8 +740,134 @@ function LandModule({ family }: { family: LandFamily }) {
   );
 
   /** Traits des repères sur les graphes, en abscisse de distance. */
-  const markLines = (yAxisId: 'speed' | 'altitude') =>
+  const markLines = (yAxisId: 'speed' | 'altitude' | 'hr' | 'cadence') =>
     markReferenceLines(marks.located, (m) => toDisplayDistance(m.distanceM, distanceUnit), shownMark, yAxisId);
+
+  /** Graphes de l'onglet « graphiques » que la session peut montrer, dans l'ordre de la pile. */
+  const graphCharts: { key: GraphFold; label: string; color: string }[] = [
+    { key: 'vitesse', label: 'Vitesse', color: '#1e88e5' },
+    ...(stats?.hasElevation ? [{ key: 'altitude' as const, label: 'Altitude', color: '#e64a19' }] : []),
+    ...(heart.present ? [{ key: 'fc' as const, label: 'FC', color: HEART_RATE_COLOR }] : []),
+    ...(cadencePresent ? [{ key: 'cadence' as const, label: 'Cadence', color: CADENCE_COLOR }] : []),
+  ];
+  /** Un seul graphe (ni altitude ni FC) : pas de repli, il reste montré. */
+  const graphFoldable = graphCharts.length > 1;
+  const graphOpen = (key: GraphFold) => !graphFoldable || graphFolds.open[key];
+  const shownGraphs = graphCharts.filter((c) => graphOpen(c.key));
+  const graphShown = (key: GraphFold) => shownGraphs.some((c) => c.key === key);
+  /** Place d'un graphe de la pile : une hauteur de base, et sa part de la hauteur tirée à la poignée. */
+  const chartBox = (heightPx: number): CSSProperties => ({ width: '100%', flex: `1 0 ${heightPx}px`, height: `${heightPx}px`, marginTop: '4px' });
+
+  /** Graphe d'altitude coloré par la pente : onglet « graphiques » et onglet « zones de pente ». */
+  const altitudeChart = (gradientKey: string, showReset: boolean) => (
+    <ZoomableChart zoom={zoom} onLeave={clearHover} showReset={showReset} style={chartBox(CHART_HEIGHT_PX)}>
+      <ResponsiveContainer>
+        <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+          <ChartZoomProbe />
+          <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+          {xAxis}
+          {markLines('altitude')}
+          {altitudeAxis('left')}
+          <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
+          {gradeGradientDefs(gradientKey, gradeStops)}
+          <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${gradientKey})`} strokeWidth={2} fill={`url(#${gradientKey})`} fillOpacity={0.35} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </ZoomableChart>
+  );
+
+  /** Sous le graphe d'altitude : légende de la pente et « Voir sur la carte ». */
+  const gradeLegend = stats?.hasElevation ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
+      <span>Altitude colorée par la pente, montée ou descente :</span>
+      {gradeRange.min > 0 && (
+        <>
+          <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', backgroundColor: SLOW_COLOR }} />
+          <span>sous {Math.round(gradeRange.min * 100)} %,</span>
+        </>
+      )}
+      <span>{Math.round(gradeRange.min * 100)} %</span>
+      <span style={{ display: 'inline-block', width: '90px', height: '10px', borderRadius: '2px', background: gradientCss() }} />
+      <span>{Math.round(gradeRange.max * 100)} % et plus</span>
+      <Button size="s" aria-pressed={gradeOnMap} onClick={toggleGradeOnMap} style={{ marginLeft: 'auto' }}>
+        {gradeOnMap ? 'Masquer de la carte' : 'Voir sur la carte'}
+      </Button>
+    </div>
+  ) : null;
+
+  /** D'où vient l'altitude affichée. */
+  const elevationSource = gpx.track.length > 1 ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: terrainElevation.status === 'error' ? 'var(--danger)' : 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
+      <span>{elevationSourceText(terrainElevation.status, terrainElevation.stepM, terrainElevation.error)}</span>
+      {terrainElevation.status === 'error' && <Button size="s" onClick={terrainElevation.retry}>Réessayer</Button>}
+    </div>
+  ) : null;
+
+  /** Bouton de repli d'un graphe de l'onglet « graphiques ». */
+  const graphFold = (c: { key: GraphFold; label: string; color: string }, style?: CSSProperties) => graphFoldable && (
+    <ChartFold key={`pli-${c.key}`} label={c.label} color={c.color} open={graphFolds.open[c.key]} onToggle={() => graphFolds.toggle(c.key)}
+      title={graphFolds.open[c.key] ? `Replier le graphe ${c.label === 'FC' ? 'de FC' : `de ${c.label.toLowerCase()}`}` : `Montrer le graphe ${c.label === 'FC' ? 'de FC' : `de ${c.label.toLowerCase()}`}`}
+      style={style} />
+  );
+
+  /** Un graphe de la pile, en mode séparé ; « Tout voir » sur le premier montré. */
+  const separateChart = (key: GraphFold, showReset: boolean): ReactNode => {
+    switch (key) {
+      case 'vitesse':
+        return (
+          <ZoomableChart zoom={zoom} onLeave={clearHover} showReset={showReset} style={chartBox(CHART_HEIGHT_PX)}>
+            <ResponsiveContainer>
+              <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <ChartZoomProbe />
+                <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                {xAxis}
+                {markLines('speed')}
+                {speedAxis}
+                <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
+                <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </ZoomableChart>
+        );
+      case 'altitude':
+        return (
+          <>
+            {altitudeChart(separateGradientId, showReset)}
+            {gradeLegend}
+          </>
+        );
+      case 'fc':
+        return (
+          <HeartRateChart data={chartData} zoom={zoom} xAxis={xAxis} labelFormatter={distanceLabel} zones={hrZones?.bounds ?? null}
+            onHoverIndex={hoverIndex} onLeave={clearHover} syncId={page.storageId} showReset={showReset}
+            style={chartBox(CHART_HEIGHT_PX)}>
+            {markReferenceLines(marks.located, (m) => toDisplayDistance(m.distanceM, distanceUnit), shownMark, 'hr')}
+          </HeartRateChart>
+        );
+      case 'cadence':
+        return (
+          <ZoomableChart zoom={zoom} onLeave={clearHover} showReset={showReset} style={chartBox(CHART_HEIGHT_PX)}>
+            <ResponsiveContainer>
+              <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <ChartZoomProbe />
+                <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                {xAxis}
+                {markLines('cadence')}
+                <YAxis yAxisId="cadence" domain={['dataMin - 5', 'dataMax + 5']} allowDecimals={false} width={46}
+                  tickFormatter={(v: number) => `${Math.round(v)}`}
+                  tick={{ fill: CADENCE_COLOR, fontSize: 11 }}
+                  label={{ value: 'pas/min', angle: -90, position: 'insideLeft', fill: CADENCE_COLOR, fontSize: 11 }} />
+                <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
+                <Line yAxisId="cadence" type="monotone" name="Cadence" dataKey="cadence" stroke={CADENCE_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} isAnimationActive={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </ZoomableChart>
+        );
+    }
+  };
+
+  /** Axe des repères du graphe superposé : celui de la première série montrée. */
+  const overlayMarkAxis: 'speed' | 'altitude' | 'hr' | 'cadence' = graphShown('vitesse') ? 'speed' : graphShown('altitude') ? 'altitude' : graphShown('fc') ? 'hr' : 'cadence';
 
   /** Couches de la carte, partagées par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
@@ -692,6 +881,9 @@ function LandModule({ family }: { family: LandFamily }) {
       ))}
       {hrZonePaths.map((path, idx) => (
         <Polyline key={`cardio-${selectedHrZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
+      ))}
+      {cadencePaths.map((path, idx) => (
+        <Polyline key={`cadence-${selectedCadenceBand}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       ))}
       {selectedSurface && surfaces.paths && <SurfaceHighlight paths={surfaces.paths} category={selectedSurface} />}
       {selectedLapPath.length > 1 && (
@@ -793,51 +985,88 @@ function LandModule({ family }: { family: LandFamily }) {
               </ResizablePanel>
             )}
 
-            {open.zones && zoneStats.length > 0 && (
-              <ResizablePanel id={panelId('zones')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle
-                    label={model.zonesTitle}
-                    extra={<span style={{ color: 'var(--muted)', fontSize: '0.75em', fontWeight: 'normal' }}>(en mouvement)</span>}
-                    open={open.zones}
-                    onToggle={() => toggle('zones')} />
+            {open.graphiques && chartData.length > 1 && (
+              <ResizablePanel id={panelId('graphiques')} minHeight={120} direction="vertical"
+                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
+                  <PanelTitle label="Graphiques" open={open.graphiques} onToggle={() => toggle('graphiques')} />
+                  <span style={{ flex: 1 }} />
+                  {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
+                    <button key={mode} onClick={() => setChartMode(mode)}
+                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: chartMode === mode ? page.accent : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
+                      {mode === 'separate' ? 'Séparés' : 'Superposés'}
+                    </button>
+                  ))}
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                      <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
-                      <th style={{ padding: '0.4em 0.6em', fontWeight: 'normal', color: 'var(--muted)' }}>Pente</th>
-                      <th style={{ padding: '0.4em 0.6em' }}>Distance</th>
-                      <th style={{ padding: '0.4em 0.6em' }}>Temps</th>
-                      <th style={{ padding: '0.4em 0.6em' }}>Vitesse ({unitLabel})</th>
-                      <th style={{ padding: '0.4em 0.6em' }}>Carte</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {zoneStats.map((z) => {
-                      const reached = z.distanceM > 0;
-                      const shown = selectedZone === z.zone.key;
-                      return (
-                        <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.timeMs > 0 ? 1 : 0.45 }}>
-                          <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: '0.9em' }}>{z.zone.range}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
-                            <button type="button" disabled={!reached} onClick={() => setSelectedZone(shown ? null : z.zone.key)}
-                              style={{ padding: '2px 8px', fontSize: '11px', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? HIGHLIGHT_SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
-                              {shown ? 'Masquer' : 'Voir'}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
-                  Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone. « Voir » montre ses passages sur la carte, en violet.
+
+                {chartMode === 'overlay' ? (
+                  <>
+                    {/* Les mêmes replis : une série repliée n'est pas tracée. */}
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', flexShrink: 0 }}>
+                      {graphCharts.map((c) => graphFold(c))}
+                    </div>
+                    {shownGraphs.length > 0 && (
+                      <ZoomableChart zoom={zoom} onLeave={clearHover} style={chartBox(OVERLAY_CHART_HEIGHT_PX)}>
+                        <ResponsiveContainer>
+                          <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                            <ChartZoomProbe />
+                            <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                            {xAxis}
+                            {markLines(overlayMarkAxis)}
+                            {graphShown('vitesse') && speedAxis}
+                            {graphShown('altitude') && altitudeAxis(graphShown('vitesse') ? 'right' : 'left')}
+                            <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
+                            {graphShown('altitude') && gradeGradientDefs(overlayGradientId, gradeStops)}
+                            {graphShown('altitude') && (
+                              <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${overlayGradientId})`} strokeWidth={1.5} fill={`url(#${overlayGradientId})`} fillOpacity={0.3} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
+                            )}
+                            {graphShown('vitesse') && (
+                              <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
+                            )}
+                            {/* FC superposée sans axe à elle (sauf seule) : sa valeur se lit dans l'infobulle. */}
+                            {graphShown('fc') && <YAxis yAxisId="hr" hide={shownGraphs.length > 1} domain={['dataMin - 5', 'dataMax + 5']} width={46} tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }} />}
+                            {graphShown('fc') && (
+                              <Line yAxisId="hr" type="monotone" name="FC" dataKey="hr" stroke={HEART_RATE_COLOR} strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
+                            )}
+                            {/* Cadence superposée de même, sans axe à elle tant qu'elle n'est pas seule. */}
+                            {graphShown('cadence') && <YAxis yAxisId="cadence" hide={shownGraphs.length > 1} domain={['dataMin - 5', 'dataMax + 5']} width={46} tick={{ fill: CADENCE_COLOR, fontSize: 11 }} />}
+                            {graphShown('cadence') && (
+                              <Line yAxisId="cadence" type="monotone" name="Cadence" dataKey="cadence" stroke={CADENCE_COLOR} strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
+                            )}
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </ZoomableChart>
+                    )}
+                    {graphShown('altitude') && gradeLegend}
+                  </>
+                ) : graphCharts.map((c, k) => (
+                  <Fragment key={c.key}>
+                    {graphFold(c, { marginTop: k > 0 ? '8px' : 0 })}
+                    {graphOpen(c.key) && separateChart(c.key, shownGraphs[0]?.key === c.key)}
+                  </Fragment>
+                ))}
+                {(!stats?.hasElevation || graphShown('altitude')) && elevationSource}
+                <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
+                  Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte.
+                  {graphFoldable && ' Chaque graphe se replie par son nom.'}
+                  {narrow ? ' Écartez deux doigts sur un graphe pour zoomer.' : ' Tirez une zone à la souris pour zoomer, double-clic pour tout revoir. Poignée en bas à droite pour redimensionner.'}
                 </div>
+              </ResizablePanel>
+            )}
+
+            {open.cardio && heart.present && (
+              <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
+                <HeartRatePanel track={gpx.track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax}
+                  onRetainHrMax={(bpm) => setRunnerNumber('hrMax', bpm)} selectedZone={selectedHrZone} onSelectZone={setSelectedHrZone}
+                  onHoverIndex={hoverIndex} onLeave={clearHover} efficiency={heartEfficiency} resetKey={gpx.sessionKey}
+                  open={open.cardio} onToggle={() => toggle('cardio')} />
+              </ResizablePanel>
+            )}
+
+            {open.cadence && cadenceAnalysis && (
+              <ResizablePanel id={panelId('cadence')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
+                <CadencePanel analysis={cadenceAnalysis} speedUnit={speedUnit} selectedBand={selectedCadenceBand} onSelectBand={setSelectedCadenceBand}
+                  storagePrefix={page.storageId} open={open.cadence} onToggle={() => toggle('cadence')} />
               </ResizablePanel>
             )}
 
@@ -880,12 +1109,9 @@ function LandModule({ family }: { family: LandFamily }) {
                       {mode === 'power' ? 'Puissance' : 'Cumulée'}
                     </button>
                   ))}
-                  <button type="button" aria-expanded={energyFold.open.chiffres} onClick={() => energyFold.toggle('chiffres')}
+                  <ChartFold label="Chiffres" open={energyFold.open.chiffres} onToggle={() => energyFold.toggle('chiffres')}
                     title={energyFold.open.chiffres ? 'Replier les chiffres pour voir le graphe et la carte ensemble' : 'Montrer les chiffres'}
-                    style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px 4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: 'var(--surface-sunken)', color: 'var(--ink)' }}>
-                    Chiffres
-                    <IconChevronRight size={14} style={{ transform: `rotate(${energyFold.open.chiffres ? -90 : 90}deg)`, transition: 'transform 0.15s' }} />
-                  </button>
+                    style={{ alignSelf: 'auto', padding: '4px 8px 4px 12px' }} />
                 </div>
                 {energyFold.open.chiffres && (
                   <>
@@ -933,12 +1159,9 @@ function LandModule({ family }: { family: LandFamily }) {
 
                 {/* À la place du tableau : flèche vers le haut pour le replier, vers le bas pour le montrer. */}
                 {stats?.hasElevation && energy.zones.length > 0 && (
-                  <button type="button" aria-expanded={energyFold.open.zones} onClick={() => energyFold.toggle('zones')}
+                  <ChartFold label="Énergie par zone de pente" open={energyFold.open.zones} onToggle={() => energyFold.toggle('zones')}
                     title={energyFold.open.zones ? 'Replier le tableau des zones de pente' : 'Montrer le tableau des zones de pente'}
-                    style={{ alignSelf: 'flex-start', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '12px', padding: '4px 8px 4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: 'var(--surface-sunken)', color: 'var(--ink)' }}>
-                    Énergie par zone de pente
-                    <IconChevronRight size={14} style={{ transform: `rotate(${energyFold.open.zones ? -90 : 90}deg)`, transition: 'transform 0.15s' }} />
-                  </button>
+                    style={{ marginTop: '12px', padding: '4px 8px 4px 12px' }} />
                 )}
                 {stats?.hasElevation && energy.zones.length > 0 && energyFold.open.zones && (
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginTop: '6px', flexShrink: 0 }}>
@@ -973,121 +1196,73 @@ function LandModule({ family }: { family: LandFamily }) {
               </ResizablePanel>
             )}
 
-            {open.graphiques && chartData.length > 1 && (
-              <ResizablePanel id={panelId('graphiques')} defaultHeight={heart.present ? 620 : 460} minHeight={220} direction="vertical"
-                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
-                  <PanelTitle label="Vitesse et altitude" open={open.graphiques} onToggle={() => toggle('graphiques')} />
-                  <span style={{ flex: 1 }} />
-                  {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
-                    <button key={mode} onClick={() => setChartMode(mode)}
-                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: chartMode === mode ? page.accent : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
-                      {mode === 'separate' ? 'Séparés' : 'Superposés'}
-                    </button>
-                  ))}
+            {open.zones && zoneStats.length > 0 && (
+              <ResizablePanel id={panelId('zones')} direction="vertical"
+                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: '14px' }}>
+                <div style={{ marginBottom: '10px' }}>
+                  <PanelTitle
+                    label={model.zonesTitle}
+                    extra={<span style={{ color: 'var(--muted)', fontSize: '0.75em', fontWeight: 'normal' }}>(en mouvement)</span>}
+                    open={open.zones}
+                    onToggle={() => toggle('zones')} />
                 </div>
-
-                {chartMode === 'overlay' ? (
-                  <ZoomableChart zoom={zoom} onLeave={clearHover} style={{ width: '100%', flex: 1, minHeight: 0 }}>
-                    <ResponsiveContainer>
-                      <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                        <ChartZoomProbe />
-                        <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                        {xAxis}
-                        {markLines('speed')}
-                        {speedAxis}
-                        {stats?.hasElevation && altitudeAxis('right')}
-                        <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
-                        {stats?.hasElevation && gradeGradientDefs(overlayGradientId, gradeStops)}
-                        {stats?.hasElevation && (
-                          <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${overlayGradientId})`} strokeWidth={1.5} fill={`url(#${overlayGradientId})`} fillOpacity={0.3} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
-                        )}
-                        <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
-                        {/* FC superposée sans axe à elle : sa valeur se lit dans l'infobulle. */}
-                        {heart.present && <YAxis yAxisId="hr" hide domain={['dataMin - 5', 'dataMax + 5']} />}
-                        {heart.present && (
-                          <Line yAxisId="hr" type="monotone" name="FC" dataKey="hr" stroke={HEART_RATE_COLOR} strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
-                        )}
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </ZoomableChart>
-                ) : (
+                {chartData.length > 1 && (
+                  <ChartFold label="Tableau" open={zonesFold.open.tableau} onToggle={() => zonesFold.toggle('tableau')}
+                    title={zonesFold.open.tableau ? 'Replier le tableau des zones de pente' : 'Montrer le tableau des zones de pente'}
+                    style={{ marginBottom: '6px' }} />
+                )}
+                {(zonesFold.open.tableau || chartData.length <= 1) && (<>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', flexShrink: 0 }}>
+                  <thead>
+                    <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
+                      <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
+                      <th style={{ padding: '0.4em 0.6em', fontWeight: 'normal', color: 'var(--muted)' }}>Pente</th>
+                      <th style={{ padding: '0.4em 0.6em' }}>Distance</th>
+                      <th style={{ padding: '0.4em 0.6em' }}>Temps</th>
+                      <th style={{ padding: '0.4em 0.6em' }}>Vitesse ({unitLabel})</th>
+                      <th style={{ padding: '0.4em 0.6em' }}>Carte</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {zoneStats.map((z) => {
+                      const reached = z.distanceM > 0;
+                      const shown = selectedZone === z.zone.key;
+                      return (
+                        <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.timeMs > 0 ? 1 : 0.45 }}>
+                          <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: '0.9em' }}>{z.zone.range}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
+                            <button type="button" disabled={!reached} onClick={() => setSelectedZone(shown ? null : z.zone.key)}
+                              style={{ padding: '2px 8px', fontSize: '11px', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? HIGHLIGHT_SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                              {shown ? 'Masquer' : 'Voir'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
+                  Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone. « Voir » montre ses passages sur la carte, en violet.
+                </div>
+                </>)}
+                {/* Le graphe d'altitude de l'onglet « graphiques », avec ses options : même zoom, même survol, même « Voir sur la carte ». */}
+                {chartData.length > 1 && (
                   <>
-                    <ZoomableChart zoom={zoom} onLeave={clearHover} style={{ width: '100%', flex: stats?.hasElevation ? 1.1 : 1, minHeight: 0 }}>
-                      <ResponsiveContainer>
-                        <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                          <ChartZoomProbe />
-                          <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                          {xAxis}
-                          {markLines('speed')}
-                          {speedAxis}
-                          <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
-                          <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
-                        </ComposedChart>
-                      </ResponsiveContainer>
-                    </ZoomableChart>
-                    {stats?.hasElevation && (
-                      <ZoomableChart zoom={zoom} onLeave={clearHover} showReset={false} style={{ width: '100%', flex: 1, minHeight: 0, marginTop: '6px' }}>
-                        <ResponsiveContainer>
-                          <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                            <ChartZoomProbe />
-                            <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                            {xAxis}
-                            {markLines('altitude')}
-                            {altitudeAxis('left')}
-                            <Tooltip formatter={tooltipFormatter} labelFormatter={distanceLabel} contentStyle={chartTooltipStyle} />
-                            {gradeGradientDefs(separateGradientId, gradeStops)}
-                            <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${separateGradientId})`} strokeWidth={2} fill={`url(#${separateGradientId})`} fillOpacity={0.35} dot={false} activeDot={{ r: 5 }} connectNulls={false} />
-                          </ComposedChart>
-                        </ResponsiveContainer>
-                      </ZoomableChart>
-                    )}
-                    {heart.present && (
-                      <HeartRateChart data={chartData} zoom={zoom} xAxis={xAxis} labelFormatter={distanceLabel} zones={hrZones?.bounds ?? null}
-                        onHoverIndex={hoverIndex} onLeave={clearHover} syncId={page.storageId} showReset={false}
-                        style={{ width: '100%', flex: 1, minHeight: 0, marginTop: '6px' }}>
-                        {markReferenceLines(marks.located, (m) => toDisplayDistance(m.distanceM, distanceUnit), shownMark, 'hr')}
-                      </HeartRateChart>
+                    <ChartFold label="Altitude" color="#e64a19" open={zonesFold.open.graphe} onToggle={() => zonesFold.toggle('graphe')}
+                      title={zonesFold.open.graphe ? "Replier le graphe d'altitude" : "Montrer le graphe d'altitude"} style={{ marginTop: '12px' }} />
+                    {zonesFold.open.graphe && (
+                      <>
+                        {altitudeChart(zonesGradientId, true)}
+                        {gradeLegend}
+                        {elevationSource}
+                      </>
                     )}
                   </>
                 )}
-                {stats?.hasElevation && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
-                    <span>Altitude colorée par la pente, montée ou descente :</span>
-                    {gradeRange.min > 0 && (
-                      <>
-                        <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', backgroundColor: SLOW_COLOR }} />
-                        <span>sous {Math.round(gradeRange.min * 100)} %,</span>
-                      </>
-                    )}
-                    <span>{Math.round(gradeRange.min * 100)} %</span>
-                    <span style={{ display: 'inline-block', width: '90px', height: '10px', borderRadius: '2px', background: gradientCss() }} />
-                    <span>{Math.round(gradeRange.max * 100)} % et plus</span>
-                    <Button size="s" aria-pressed={gradeOnMap} onClick={toggleGradeOnMap} style={{ marginLeft: 'auto' }}>
-                      {gradeOnMap ? 'Masquer de la carte' : 'Voir sur la carte'}
-                    </Button>
-                  </div>
-                )}
-                {gpx.track.length > 1 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: terrainElevation.status === 'error' ? 'var(--danger)' : 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
-                    <span>{elevationSourceText(terrainElevation.status, terrainElevation.stepM, terrainElevation.error)}</span>
-                    {terrainElevation.status === 'error' && <Button size="s" onClick={terrainElevation.retry}>Réessayer</Button>}
-                  </div>
-                )}
-                <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
-                  Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte.
-                  {narrow ? ' Écartez deux doigts sur un graphe pour zoomer.' : ' Tirez une zone à la souris pour zoomer, double-clic pour tout revoir. Poignée en bas à droite pour redimensionner.'}
-                </div>
-              </ResizablePanel>
-            )}
-
-
-            {open.cardio && heart.present && (
-              <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
-                <HeartRatePanel track={gpx.track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax}
-                  onRetainHrMax={(bpm) => setRunnerNumber('hrMax', bpm)} selectedZone={selectedHrZone} onSelectZone={setSelectedHrZone}
-                  onHoverIndex={hoverIndex} onLeave={clearHover} efficiency={heartEfficiency} resetKey={gpx.sessionKey}
-                  open={open.cardio} onToggle={() => toggle('cardio')} />
               </ResizablePanel>
             )}
 

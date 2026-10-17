@@ -3,7 +3,7 @@
 // Sur un profil neuf. L'IGN, Overpass et BRouter sont bloqués, pour un résultat sans réseau et toujours le même ;
 // seules les tuiles OSM passent, pour les captures. Le script :
 //  1. écrit une course synthétique de 3 h à 1 Hz (10 800 points) et une session de voile (celle de `make-gpx.mjs`) ;
-//  2. importe la course, ouvre son analyse (onglets général et « vitesse et altitude ») ;
+//  2. importe la course, ouvre son analyse (onglets général et « graphiques ») ;
 //     compte les traits SVG de la carte et les canevas de la trace, puis mesure 50 survols du graphe de vitesse ;
 //  3. importe la voile, ouvre son analyse (tous les onglets) et mesure 10 clics « Voir (Carte) » d'un top ;
 //  4. avec `DUMP=x`, relève le texte des deux pages dans `x-course.txt` et `x-voile.txt`, avant tout survol ;

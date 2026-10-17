@@ -15,7 +15,8 @@ import { applyTerrainElevation, type TerrainSamples } from '../core/terrainEleva
 import { fromDisplaySpeed, msToKnots } from '../core/units';
 import { suggestActiveThresholdKn } from '../sailing/sailingConfig';
 import { runSurfSession, surfProfileOf } from '../surfing/surfSession';
-import { SUMMARY_CALC_VERSION, type SessionSummary, type SummaryHeartRate } from './record';
+import { SUMMARY_CALC_VERSION, type SessionSummary, type SummaryCadence, type SummaryHeartRate } from './record';
+import { analyzeCadence, sessionCadence, type CadenceDetection } from '../running/cadence';
 
 /**
  * Résumé d'une session pour la bibliothèque : ce que la liste affiche sans
@@ -106,6 +107,8 @@ const analyze = (
   track: TrackPoint[];
   movingTimeS: number | null;
   movingDistanceM: number | null;
+  /** Masque d'activité (hors surf), pour la cadence en mouvement. */
+  mask?: boolean[];
   surf?: Pick<SessionSummary, 'waveCount' | 'longestWaveM' | 'longestFlightS' | 'flightS'>;
 } => {
   if (sport === null) return { track: computeKinematics(rawPoints), movingTimeS: null, movingDistanceM: null };
@@ -140,7 +143,7 @@ const analyze = (
     exitThresholdMs: fromDisplaySpeed(exit, profile.thresholdUnit),
     minStateDurationS: profile.minStateDurationS,
   });
-  return { track, movingTimeS: computeActiveTimeMs(track, mask) / 1000, movingDistanceM: computeActiveDistanceM(track, mask) };
+  return { track, movingTimeS: computeActiveTimeMs(track, mask) / 1000, movingDistanceM: computeActiveDistanceM(track, mask), mask };
 };
 
 /** Résumé d'une trace, ou `null` si elle a moins de deux points horodatés. */
@@ -160,6 +163,8 @@ export const summarizeSession = (
   let maxSpeedMs = 0;
   for (const p of track) if (p.smoothedSpeedMs > maxSpeedMs) maxSpeedMs = p.smoothedSpeedMs;
   const heartRate = summaryHeartRate(track, getSportProfile(sport ?? 'running').heartRate);
+  const cadenceParams = sport ? getSportProfile(sport).cadence : null;
+  const cadence = cadenceParams ? summaryCadence(track, analyzed.mask ?? track.map(() => true), cadenceParams) : undefined;
 
   return {
     calcVersion: SUMMARY_CALC_VERSION,
@@ -174,7 +179,16 @@ export const summarizeSession = (
     samplingS: samplingIntervalS(rawPoints),
     ...analyzed.surf,
     ...(heartRate ? { heartRate } : {}),
+    ...(cadence ? { cadence } : {}),
   };
+};
+
+/** Cadence du résumé, comme l'onglet « cadence » la mesure ; rien sous `minCoverageS`. */
+const summaryCadence = (track: TrackPoint[], mask: boolean[], params: CadenceDetection): SummaryCadence | undefined => {
+  const cadence = sessionCadence(track, params);
+  if (!cadence.present) return undefined;
+  const analysis = analyzeCadence(track, cadence.spm, mask, null, params);
+  return analysis ? { avgSpm: Math.round(analysis.averageSpm * 10) / 10, steps: Math.round(analysis.steps) } : undefined;
 };
 
 /** FC du résumé, comme l'onglet « cardio » la mesure ; rien sous `minCoverageS`. */

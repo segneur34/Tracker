@@ -124,6 +124,8 @@ export interface StoredSettings {
   jumps?: ByActivity<JumpSettings>;
   /** Ceinture cardio proposée à l'enregistrement (course, vélo, fractionné) ; absente : non. */
   heartRate?: ByActivity<boolean>;
+  /** Cadence à pied mesurée par les capteurs du téléphone (course, marche, fractionné à pied) ; absente : oui (seul « non » est rangé). */
+  cadence?: ByActivity<boolean>;
   /** Type de vélo (vélo), qui fixe roulement et traînée ; absent : `defaultBikeType`. */
   bikeTypes?: ByActivity<BikeType>;
   /** Poids du vélo en kg (vélo) ; absent : celui du type. */
@@ -498,6 +500,12 @@ const resolvePumping = (stored: StoredSettings, activity: Activity): boolean | n
 /** Ceinture cardio d'une activité : celle réglée, sinon non ; proposée dans tous les sports. */
 const resolveHeartRate = (stored: StoredSettings, activity: Activity): boolean => stored.heartRate?.[activity.id] === true;
 
+/** Cadence d'une activité : mesurée sauf si on l'a décochée ; `null` si son calcul ne la mesure pas (hors pied). */
+const resolveCadence = (stored: StoredSettings, activity: Activity): boolean | null => {
+  if (getSportProfile(activity.base).cadence === null) return null;
+  return stored.cadence?.[activity.id] !== false;
+};
+
 /** Sauts d'une activité : ceux réglés, sinon le défaut ; `null` si son calcul ne les mesure pas. */
 const resolveJumps = (stored: StoredSettings, activity: Activity): JumpSettings | null => {
   const profile = getSportProfile(activity.base).jumps;
@@ -513,6 +521,9 @@ export const effectivePumping = (activity: Activity): boolean | null => resolveP
 
 /** Ceinture cardio d'une activité. Utilisable hors composant. */
 export const effectiveHeartRate = (activity: Activity): boolean => resolveHeartRate(readStoredSettings(), activity);
+
+/** Cadence d'une activité à pied, `null` ailleurs. Utilisable hors composant. */
+export const effectiveCadence = (activity: Activity): boolean | null => resolveCadence(readStoredSettings(), activity);
 
 /** Réglages des sauts d'une activité, `null` si son calcul ne les mesure pas. Utilisable hors composant. */
 export const effectiveJumpSettings = (activity: Activity): JumpSettings | null => resolveJumps(readStoredSettings(), activity);
@@ -681,6 +692,8 @@ export interface SportSettingsView {
   jumps: JumpSettings | null;
   /** Ceinture cardio proposée à l'enregistrement ; `null` en voile et en surf. */
   heartRate: boolean;
+  /** Cadence mesurée à l'enregistrement ; `null` hors pied (course, marche, fractionné à pied). */
+  cadence: boolean | null;
   isJumpsOverridden: boolean;
   /** Type de vélo (activités vélo seulement, `defaultBikeType` par défaut). */
   bikeType: BikeType;
@@ -707,7 +720,7 @@ export interface SportSettingsView {
 const PER_ACTIVITY_KEYS = [
   'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'gearLabels', 'tabs',
   'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
-  'heartRate',
+  'heartRate', 'cadence',
 ] as const;
 
 /** Réglages sans aucune surcharge rangée sous `id`. */
@@ -790,6 +803,7 @@ export const useAllSportSettings = () => {
         pumping: resolvePumping(stored, activity),
         jumps: resolveJumps(stored, activity),
         heartRate: resolveHeartRate(stored, activity),
+        cadence: resolveCadence(stored, activity),
         isJumpsOverridden: stored.jumps?.[id] !== undefined && profile.jumps !== null,
         bikeType: isBikeType(bikeType) ? bikeType : defaultBikeType(id),
         bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
@@ -808,7 +822,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'gearLabels' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'gearLabels' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -900,6 +914,13 @@ export const useAllSportSettings = () => {
           if (!activity) return;
           if (value !== null && typeof value !== 'boolean') return;
           next.heartRate = put(stored.heartRate, value === true ? true : null);
+          break;
+        }
+        case 'cadence': {
+          const activity = findActivity(activities, id);
+          if (!activity || resolveCadence(stored, activity) === null) return;
+          if (value !== null && typeof value !== 'boolean') return;
+          next.cadence = put(stored.cadence, value === false ? false : null);
           break;
         }
         case 'jumps': {

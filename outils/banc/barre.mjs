@@ -154,12 +154,17 @@ await wait(300);
 await desktop();
 
 // --- 3. Régularité ---
+// Pastilles repliées sous « Sélection » depuis le 17/10 : déplier d'abord.
 const chip = (group, label) => evaluate(`(() => {
+  const fold = document.querySelector('.stats-choice > button[data-chart-fold][aria-expanded=false]');
+  if (fold) fold.click();
+  return new Promise((r) => setTimeout(r, 300));
+})()`).then(() => evaluate(`(() => {
   const g = document.querySelector('[role=group][aria-label=${JSON.stringify(group)}]');
   const b = g && [...g.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(label)});
   if (!b) return 'absent'; b.click(); return 'ok';
-})()`);
-const stat = (label) => evaluate(`(() => {
+})()`));
+const stat =(label) => evaluate(`(() => {
   const s = [...document.querySelectorAll('.an-sheet__stat')].find((x) => x.querySelector('.an-sheet__stat-label')?.textContent.trim() === ${JSON.stringify(label)});
   return s?.querySelector('.an-sheet__stat-value')?.textContent.trim() ?? '(absent)';
 })()`);

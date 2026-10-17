@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from 'react';
 import { BASE_COLOR, baseActivity, findActivity, type Activity } from '../core/activities';
 import { marksWithin, type SessionMark } from '../core/sessionMarks';
+import { decodeImu } from '../core/imuFile';
 import { getSportProfile, type RecordingProfile } from '../core/sportProfiles';
+import { cadenceSeries, joinCadence } from '../running/cadence';
 import type { SportType } from '../core/types';
 import { effectiveFoil, effectiveRecordingProfile, readStoredActivities, rememberRecordActivity } from './useSportSettings';
 import { recordingJournal } from '../platform/files';
@@ -113,8 +115,10 @@ export interface RecorderState {
   sourceLabel: string | null;
   /** Raison de la pause en cours, `null` sinon. */
   pausedReason: 'manual' | 'auto' | null;
-  /** Vrai tant que les capteurs du téléphone mesurent (sauts, pumping). */
+  /** Vrai tant que les capteurs du téléphone mesurent (sauts, pumping, cadence). */
   measuringMotion: boolean;
+  /** Ce que la capture en cours mesure, `null` sans capture. */
+  motionSetup: MotionSetup | null;
   /** Ceinture cardio de l'enregistrement : état de la connexion et dernière fréquence ; `null` sans ceinture. */
   heartRate: { state: BeltState; bpm: number | null } | null;
   /** Repères du bouton « Note » de l'enregistrement en cours, pour la carte du direct ; vide au repos. */
@@ -133,6 +137,7 @@ const INITIAL_STATE: RecorderState = {
   sourceLabel: null,
   pausedReason: null,
   measuringMotion: false,
+  motionSetup: null,
   heartRate: null,
   marks: [],
   stats: EMPTY_RECORDING_STATS,
@@ -282,6 +287,25 @@ const receiveFix = (received: LocationFix): void => {
 };
 
 /**
+ * Cadence à pied mesurée sur la capture, si elle la mesurait, jointe à chaque
+ * position (`gpxtpx:cad` du GPX). Sans elle, ou si le calcul échoue, les
+ * positions telles quelles : la session n'est jamais bloquée par la cadence.
+ */
+const withMeasuredCadence = async (segments: LocationFix[][], sport: SportType, motion: MotionCapture | null): Promise<LocationFix[][]> => {
+  const params = getSportProfile(sport).cadence;
+  if (!params || !motion) return segments;
+  try {
+    const bytes = await readMotionCapture(motion.path);
+    const recording = bytes ? await decodeImu(bytes) : null;
+    if (!recording || !recording.header.setup.cadence) return segments;
+    const series = cadenceSeries(recording, params);
+    return series ? segments.map((segment) => joinCadence(segment, series)) : segments;
+  } catch {
+    return segments;
+  }
+};
+
+/**
  * Construit le GPX de segments, sans le ranger : le journal reste jusqu'à la
  * décision de l'utilisateur. Rend `null`, journal effacé, s'il y a moins de
  * deux positions au total : aucune trace ne s'en tire, il n'y a rien à garder.
@@ -303,7 +327,8 @@ const buildPendingSession = async (
   }
   const startMs = segments.find((s) => s.length > 0)![0].timeMs;
   const fileName = sessionFileName(startMs, sport);
-  const content = buildGpx(segments, { name: sessionTitle(startMs, activity.name), sport });
+  const measured = await withMeasuredCadence(segments, sport, motion);
+  const content = buildGpx(measured, { name: sessionTitle(startMs, activity.name), sport });
   return { fileName, content, sport, activity, pointCount, recovered, intervals, marks, motion };
 };
 
@@ -458,7 +483,7 @@ export const startRecording = async (
   intervalRuns = new Map();
   marks = [];
   setState({
-    status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, measuringMotion: false, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
+    status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
     saved: null, error: null,
   });
 
@@ -475,7 +500,7 @@ export const startRecording = async (
   if (options.motion) {
     try {
       await startMotionCapture(startedAtMs, options.motion);
-      setState({ measuringMotion: true });
+      setState({ measuringMotion: true, motionSetup: options.motion });
     } catch (err) {
       setState({ error: `Mesure des capteurs impossible : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
     }
@@ -615,6 +640,7 @@ export const stopRecording = async (): Promise<void> => {
     setState({
       status: 'idle',
       measuringMotion: false,
+      motionSetup: null,
       heartRate: null,
       marks: [],
       pending,
@@ -624,6 +650,7 @@ export const stopRecording = async (): Promise<void> => {
     setState({
       status: 'idle',
       measuringMotion: false,
+      motionSetup: null,
       heartRate: null,
       marks: [],
       error: `Construction du GPX impossible : ${errorMessage(err, 'erreur inconnue')}. Le journal est gardé et sera repris au prochain démarrage.`,

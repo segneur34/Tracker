@@ -62,8 +62,12 @@ export interface ImuHeader {
   /** Temps écoulé du système (µs) et heure (ms), lus ensemble au départ de la capture. */
   clock: { elapsedUs: number; wallMs: number };
   device?: { manufacturer?: string; model?: string; android?: number };
-  /** Réglages des sauts au départ : emplacement du téléphone et foil. */
-  setup: { placement: string; foil: boolean };
+  /**
+   * Réglages au départ : emplacement du téléphone et foil (sauts), et ce que
+   * la capture mesure : `jumps` (sauts ou pumping ; absent des fichiers
+   * d'avant la cadence, donc vrai) et `cadence` (cadence à pied).
+   */
+  setup: { placement: string; foil: boolean; jumps?: boolean; cadence?: boolean };
   streams: ImuStreamInfo[];
   /**
    * Fenêtres gardées, en µs comme les instants, quand le fichier a été élagué ;
@@ -155,6 +159,8 @@ const readHeader = (json: unknown): ImuHeader | null => {
     setup: {
       placement: typeof setup.placement === 'string' ? setup.placement : 'poitrine',
       foil: setup.foil === true,
+      jumps: setup.jumps !== false,
+      cadence: setup.cadence === true,
     },
     streams,
   } as ImuHeader;
@@ -166,20 +172,28 @@ const readHeader = (json: unknown): ImuHeader | null => {
  * paquet complet mais illisible est sauté (`skippedChunks`), les suivants
  * sont lus.
  */
-export const decodeImu = async (bytes: Uint8Array): Promise<ImuRecording | null> => {
+/** En-tête seul d'un fichier, sans en lire les mesures ; `null` s'il est illisible. */
+export const decodeImuHeader = (bytes: Uint8Array): ImuHeader | null => {
   const magic = asciiBytes(IMU_MAGIC);
   if (bytes.length < magic.length + 4 || magic.some((b, i) => bytes[i] !== b)) return null;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const headerLength = view.getUint32(magic.length, true);
   const headerStart = magic.length + 4;
   if (headerStart + headerLength > bytes.length) return null;
-  let header: ImuHeader | null;
   try {
-    header = readHeader(JSON.parse(new TextDecoder().decode(bytes.subarray(headerStart, headerStart + headerLength))));
+    return readHeader(JSON.parse(new TextDecoder().decode(bytes.subarray(headerStart, headerStart + headerLength))));
   } catch {
     return null;
   }
+};
+
+export const decodeImu = async (bytes: Uint8Array): Promise<ImuRecording | null> => {
+  const header = decodeImuHeader(bytes);
   if (!header) return null;
+  const magic = asciiBytes(IMU_MAGIC);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const headerLength = view.getUint32(magic.length, true);
+  const headerStart = magic.length + 4;
 
   const streams = new Map(header.streams.map((info) => [info.id, {
     info,

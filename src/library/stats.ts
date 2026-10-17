@@ -63,6 +63,8 @@ export interface StatSession {
   reps: number;
   /** FC du résumé, `null` pour une session sans FC. */
   heartRate: SummaryHeartRate | null;
+  /** Cadence moyenne en mouvement (à pied), en pas par minute, `null` sans cadence. */
+  cadenceSpm: number | null;
 }
 
 /**
@@ -93,6 +95,7 @@ export const statSessionOf = (file: string, record: SessionRecord, activity: Act
     flightS: summary.flightS ?? null,
     reps: record.intervals?.reduce((n, series) => n + series.laps.filter((l) => l.kind === 'travail').length, 0) ?? 0,
     heartRate: summary.heartRate ?? null,
+    cadenceSpm: summary.cadence?.avgSpm ?? null,
   };
 };
 
@@ -181,10 +184,10 @@ export const groupTotals = <K extends string>(
 // --- Graphique : une donnée par session ---
 
 /** Données du graphique. */
-export type StatsMetricKey = 'vmax' | 'moyenne' | 'duree' | 'distance' | 'denivele' | 'vol' | 'reussite' | 'vagues' | 'vague' | 'volMax';
+export type StatsMetricKey = 'vmax' | 'moyenne' | 'duree' | 'distance' | 'denivele' | 'cadence' | 'vol' | 'reussite' | 'vagues' | 'vague' | 'volMax';
 
 /** Sorte de valeur, qui donne l'axe et le format ; toutes en SI (m/s, s, m), le pourcentage de 0 à 100. */
-export type StatsMetricUnit = 'vitesse' | 'duree' | 'distance' | 'pourcent' | 'nombre' | 'metres' | 'secondes';
+export type StatsMetricUnit = 'vitesse' | 'duree' | 'distance' | 'pourcent' | 'nombre' | 'metres' | 'secondes' | 'cadence';
 
 export interface StatsMetricSeries {
   key: string;
@@ -237,6 +240,11 @@ export const STATS_METRICS: readonly StatsMetric[] = [
   {
     key: 'denivele', label: 'Dénivelé positif', unit: 'metres', families: LAND_FAMILIES, overview: false, record: false,
     series: single('denivele', 'Dénivelé positif', (s) => (s.elevationGainM !== null && Number.isFinite(s.elevationGainM) ? Math.max(0, s.elevationGainM) : null)),
+  },
+  {
+    // À pied (course, marche, fractionné à pied) : la cadence mesurée par le téléphone ou la montre.
+    key: 'cadence', label: 'Cadence moyenne', unit: 'cadence', families: ['course', 'fractionne'], overview: false, record: false,
+    series: single('cadence', 'Cadence moyenne', (s) => positive(s.cadenceSpm)),
   },
   {
     // Voile : le « Ratio de vol » de l'analyse (temps en action sur la durée), sur foil seulement ; surf : le temps des vols.

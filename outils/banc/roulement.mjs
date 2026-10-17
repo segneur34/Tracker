@@ -6,7 +6,7 @@
 //  2. ouvre l'analyse sans toucher à l'onglet « surface » : une requête à Overpass part quand même ;
 //  3. ouvre l'onglet « énergie » : roulement moyen pendant la recherche, puis roulement selon le
 //     revêtement, puissance moyenne changée, voies rangées dans la fiche ;
-//  4. recharge : mêmes chiffres, aucune nouvelle requête ; nom de l'onglet « vitesse et altitude ».
+//  4. recharge : mêmes chiffres, aucune nouvelle requête ; nom de l'onglet « graphiques ».
 import { writeFileSync } from 'node:fs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);

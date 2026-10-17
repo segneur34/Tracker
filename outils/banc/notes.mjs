@@ -99,7 +99,7 @@ const replayGpx = (family, speedMs) => {
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
 await go('/enregistrer', 4000);
 
-for (const [family, speedMs, graphTab] of [['Course à pied', 3, 'vitesse et altitude'], ['Voile', 8, 'graphiques'], ['Surf', 4, 'graphiques']]) {
+for (const [family, speedMs, graphTab] of [['Course à pied', 3, 'graphiques'], ['Voile', 8, 'graphiques'], ['Surf', 4, 'graphiques']]) {
   console.log(`\n=== ${family} ===`);
   await go('/enregistrer');
   console.log('famille :', await clickText(family, '[aria-label=Famille] button'));

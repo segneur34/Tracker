@@ -8,7 +8,9 @@
 .an-ivl-launch,
 .an-ivl-hold,
 .an-ivl-hr,
-.an-ivl-rec {
+.an-ivl-rec,
+.an-ivl-cad,
+.an-ivl-step {
   white-space: nowrap;
 }
 
@@ -56,6 +58,25 @@
   .an-ivl-hr { grid-area: hr; }
   .an-ivl-rec { grid-area: rec; }
 
+  /* Avec la cadence, une rangée de plus : cadence et longueur de pas. */
+  .an-ivl-table--cad tbody tr {
+    grid-template-areas:
+      'rep speed dist map'
+      'rep launch hold dur'
+      'rep cad step .'
+      'rep spark spark rest';
+  }
+  .an-ivl-table--fc.an-ivl-table--cad tbody tr {
+    grid-template-areas:
+      'rep speed dist map'
+      'rep launch hold dur'
+      'rep hr rec .'
+      'rep cad step .'
+      'rep spark spark rest';
+  }
+  .an-ivl-cad { grid-area: cad; }
+  .an-ivl-step { grid-area: step; }
+
   .an-ivl-spark {
     margin: 0;
   }
@@ -63,7 +84,9 @@
   .an-ivl-launch::before,
   .an-ivl-hold::before,
   .an-ivl-hr::before,
-  .an-ivl-rec::before {
+  .an-ivl-rec::before,
+  .an-ivl-cad::before,
+  .an-ivl-step::before {
     content: attr(data-label) ' ';
     color: var(--muted);
     font-size: 0.85em;

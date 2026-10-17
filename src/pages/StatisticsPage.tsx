@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Bar, BarChart, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis,
 } from 'recharts';
+import ChartFold from '../components/ChartFold';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
@@ -71,6 +72,7 @@ const ZONE_FRACTIONS = SPORT_PROFILES.running.heartRate.zoneFractions;
 const LOAD_WEIGHTS = SPORT_PROFILES.running.heartRate.loadWeights;
 
 const STORAGE_ID = 'statistiques';
+const CHOICE_DEFAULT = { choix: false };
 
 /** Dernier affichage, retenu sur l'appareil (`tracker.statistiques`) ; `null` : « Tout », ou la donnée par défaut. */
 interface StatsView {
@@ -180,6 +182,8 @@ function StatisticsPage() {
   const [picked, setPicked] = useState<string | null>(null);
   const [loadHelp, setLoadHelp] = useState(false);
   const { open, toggle } = useOpenSections<StatsSection>(STORAGE_ID, STATS_SECTION_DEFAULTS);
+  /** Pastilles de famille, d'activité et de période : repliées sous « Sélection » au départ, état retenu. */
+  const choice = useOpenSections(`${STORAGE_ID}.choix`, CHOICE_DEFAULT);
   const { value: view, update: rememberView } = useStoredRecord<StatsView>(VIEW_NAMESPACE, VIEW_KEY, VIEW_DEFAULTS);
 
   // À l'ouverture sans paramètre (barre, accueil), reprendre le dernier affichage, si sa famille est visible.
@@ -310,6 +314,7 @@ function StatisticsPage() {
     : metric.unit === 'pourcent' ? '%'
     : metric.unit === 'metres' ? 'm'
     : metric.unit === 'secondes' ? 's'
+    : metric.unit === 'cadence' ? 'pas/min'
     : '';
   const axisTick = (v: number): string =>
     metric.unit === 'vitesse' ? formatSpeedValue(v, speedUnit) : v.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
@@ -323,6 +328,7 @@ function StatisticsPage() {
       case 'nombre': return String(value);
       case 'metres': return `${Math.round(value)} m`;
       case 'secondes': return formatShortDuration(value);
+      case 'cadence': return `${Math.round(value)} pas/min`;
     }
   };
   const chartSeries = useMemo(
@@ -390,6 +396,8 @@ function StatisticsPage() {
 
   const title = activity ? activity.name : family ? FAMILY_LABEL[family] : 'Toutes les activités';
   const periodLabel = STATS_PERIODS.find((p) => p.id === period)!.label;
+  /** Le choix en cours, dans le bouton « Sélection » : lisible bloc replié. */
+  const choiceSummary = [family ? FAMILY_LABEL[family] : 'Toutes les familles', ...(activity ? [activity.name] : []), periodLabel === 'Tout' ? 'depuis le début' : periodLabel].join(' · ');
   const empty = inPeriod.length === 0;
   const lastText = regular.weeksSinceLast === null ? '—'
     : regular.weeksSinceLast === 0 ? 'cette semaine'
@@ -401,6 +409,14 @@ function StatisticsPage() {
       <PageHeader title="Statistiques" subtitle={`${title} · ${periodLabel === 'Tout' ? 'depuis le début' : periodLabel}`} />
 
       <div className="stats-choice">
+        <ChartFold open={choice.open.choix} onToggle={() => choice.toggle('choix')}
+          title={choice.open.choix ? 'Replier la sélection' : 'Choisir la famille, l’activité et la période'}
+          style={{ padding: '6px 10px 6px 12px', fontSize: '13px' }}
+          label={<>
+            <strong>Sélection</strong>
+            <span className="stats-choice__summary">{choiceSummary}</span>
+          </>} />
+        {choice.open.choix && (<>
         <Chips label="Famille" items={familyItems} value={family ?? 'tout'} accent={accent}
           onChoose={(key) => go({ famille: key === 'tout' ? null : key, activite: null })} />
         {family !== null && activityItems.length > 0 && (
@@ -409,6 +425,7 @@ function StatisticsPage() {
         )}
         <Chips label="Période" items={STATS_PERIODS.map((p) => ({ key: p.id, label: p.label }))} value={period} accent="var(--ink-2)"
           onChoose={(key) => go({ periode: key }, true)} />
+        </>)}
         {familyHidden && <p style={noteStyle}>Cette famille est cachée dans Réglages : elle n'apparaît ici que par son adresse.</p>}
       </div>
 

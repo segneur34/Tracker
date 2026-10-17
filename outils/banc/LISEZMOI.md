@@ -60,7 +60,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - la recherche des voies à l'ouverture de l'analyse, onglet « surface » fermé ;
   - l'onglet « énergie » : roulement moyen et avertissement pendant la recherche, puis roulement selon le revêtement dans la note, puissance moyenne recalculée, voies rangées dans la fiche ;
   - deux rechargements : mêmes chiffres, aucune nouvelle requête (une seule si la première a échoué) ; les réponses d'Overpass sont relevées ;
-  - le nom de l'onglet « vitesse et altitude ».
+  - le nom de l'onglet « graphiques » (« vitesse et altitude » jusqu'au 16/10).
 - `miseajour.mjs <port> <dossier de travail> [<dossier des captures>]` : « Mettre à jour » (point 88), sur un profil neuf, sans réseau. Le script écrit lui-même ses GPX et touche à la mémoire du navigateur pendant que la page est ouverte. Il vérifie :
   - une session retirée du dossier : la liste ne change qu'avec « Mettre à jour » (« 1 session en moins ») ;
   - un GPX et sa fiche posés à la racine, un GPX seul dans `sessions/` : les deux apparaissent, la fiche suit son GPX (nom et activité gardés), celle du GPX seul est créée ;
@@ -217,6 +217,22 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - le dernier affichage repris à l'ouverture sans paramètre, une adresse avec paramètres qui l'emporte, « Tout » retenu aussi.
 
   Il finit par « Tout passe. » ou le nombre d'échecs. Le texte des analyses ne change pas (la flèche n'a pas de texte) : `onglets.mjs` en `RELEVE_SEUL=1` le prouve.
+- `graphes.mjs <port> [<dossier des captures>]` : graphes repliables un par un et graphe d'altitude de l'onglet « zones de pente » (demandes du 16/10), sur un profil neuf, sans réseau, environ 1 min 30. Le script écrit lui-même une course avec la FC et une côte, une session de surf avec la FC, et prend la voile de `make-gpx.mjs` avec la FC. Il vérifie :
+  - l'ordre des onglets à pied (« graphiques » à la place des zones, « cardio » derrière lui) ;
+  - en course, les replis Vitesse, Altitude et FC : un graphe replié disparaît, avec la légende de pente et « Voir sur la carte » pour l'altitude ; le panneau rapetisse ; le repli est retenu après rechargement ;
+  - le mode superposé : la même rangée de replis, une série repliée n'est pas tracée, tout replié plus de graphe ;
+  - l'onglet « zones de pente » : le tableau puis le graphe d'altitude et son repli, le survol qui pose le repère sur la carte, « Voir sur la carte » qui colore la trace par la pente tant qu'un graphe d'altitude est montré ;
+  - le surf (Vitesse et FC) et la voile (les trois graphes, titre gardé replié) ; à 390×844, sans débordement.
+
+  Il finit par « Tout passe. » ou le nombre d'échecs.
+- `cadence.mjs <port> [<dossier des captures>]` : cadence à pied (demande du 16/10), sur un profil neuf, sans réseau, environ 1 min 30. La mesure sur l'accéléromètre ne se joue pas dans le navigateur (tests de `running/cadence.test.ts`) : le script écrit des GPX qui portent déjà `gpxtpx:cad`, en foulées par minute. Il vérifie :
+  - la cadence dans le résumé de la fiche ; l'onglet « cadence » juste après les graphes, la courbe repliable dans « graphiques » ;
+  - les chiffres (moyenne, max sur 30 s, pas, longueur de pas, dérive), les tranches de la course et « Voir » qui trace leurs passages, effacés à la fermeture de l'onglet ; selon la vitesse et selon la pente ;
+  - la marche (tranches de la marche), le vélo (`cad` en tours de pédale : ni onglet ni courbe), une course sans cadence ;
+  - les colonnes « Cadence » et « Pas » du fractionné ; la donnée « Cadence moyenne » des statistiques ;
+  - Réglages : « Mesurer la cadence » coché d'office à pied, absent à vélo, rangé seulement décoché ; à 390×844, sans débordement.
+
+  Il finit par « Tout passe. » ou le nombre d'échecs. Sans cadence, le texte des analyses ne change pas : `onglets.mjs` en `RELEVE_SEUL=1` le prouve.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

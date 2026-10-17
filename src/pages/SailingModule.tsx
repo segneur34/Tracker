@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useMemo, type ReactNode } from 'react';
+import ChartFold from '../components/ChartFold';
 import { Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
 import OsmTileLayer from '../components/OsmTileLayer';
 import L from 'leaflet';
@@ -82,6 +83,10 @@ const SAILING_GEAR_FIELDS_FOIL: GearField[] = [
  * une entrée là, une valeur par défaut dans `SAILING_PANEL_DEFAULTS`, et un bloc `{open.maCle && (...)}` dans la colonne.
  */
 type SailingPanel = SailingTab;
+
+/** Graphes de l'onglet « graphiques » dépliés tant qu'on ne les replie pas. */
+const SAILING_GRAPH_FOLDS_DEFAULT = { vitesse: true, fc: true, polaire: true };
+type SailingGraphFold = keyof typeof SAILING_GRAPH_FOLDS_DEFAULT;
 
 const SAILING_PANEL_DEFAULTS: Record<SailingPanel, boolean> = {
   general: true,
@@ -267,6 +272,23 @@ function SailingModule() {
   /** Support sur foil de la session : le sien s'il est réglé, sinon celui de l'activité. */
   const foil = edits.foil ?? activityFoil;
   const { open: storedOpen, toggle } = useOpenSections<SailingPanel>('sailing-onglets', SAILING_PANEL_DEFAULTS);
+  /**
+   * Graphes de l'onglet « graphiques » dépliés, chacun replié à part par son
+   * titre pour ne comparer que ceux qui restent ouverts (16/10). Replié, un
+   * graphe se réduit à son titre ; sa taille mémorisée l'attend.
+   */
+  const graphFolds = useOpenSections('sailing-graphes', SAILING_GRAPH_FOLDS_DEFAULT);
+  const graphTitle = (key: SailingGraphFold, label: string) => (
+    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px', flexShrink: 0 }}>
+      <ChartFold label={label} open={graphFolds.open[key]} onToggle={() => graphFolds.toggle(key)}
+        title={graphFolds.open[key] ? 'Replier ce graphe' : 'Montrer ce graphe'} style={{ fontSize: '14px', fontWeight: 700 }} />
+    </div>
+  );
+  const foldedGraph = (key: SailingGraphFold, label: string, widthPx: number) => (
+    <div style={{ flex: 'none', width: `${widthPx}px`, maxWidth: '100%', boxSizing: 'border-box', border: '1px dashed var(--line-strong)', padding: '10px 10px 0', backgroundColor: 'var(--surface)' }}>
+      {graphTitle(key, label)}
+    </div>
+  );
   const open = useMemo(() => maskHiddenTabs(storedOpen, SAILING_TABS, tabChoices), [storedOpen, tabChoices]);
   /** Une seule surbrillance sur la carte, effacée quand son onglet se ferme (`useMapHighlight`). */
   const highlight = useMapHighlight(open);
@@ -839,8 +861,9 @@ function SailingModule() {
                   <PanelTitle label="Graphiques" open={open.graphiques} onToggle={() => toggle('graphiques')} />
                 </div>
 
+                {graphFolds.open.vitesse ? (
                 <ResizablePanel id="sailing.graph.vitesse" defaultHeight={350} minWidth={250} minHeight={200} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Historique de Vitesse</strong>
+                  {graphTitle('vitesse', 'Historique de Vitesse')}
                   <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                     <ZoomableChart zoom={chartZoom} onLeave={clearHover} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
                       <ResponsiveContainer width="100%" height="100%">
@@ -863,10 +886,12 @@ function SailingModule() {
                     Le survol déplace le repère sur la carte. {zoomHint}
                   </div>
                 </ResizablePanel>
+                ) : foldedGraph('vitesse', 'Historique de Vitesse', 500)}
 
                 {heart.present && heartRows.length > 1 && (
+                  graphFolds.open.fc ? (
                   <ResizablePanel id="sailing.graph.fc" defaultHeight={250} minWidth={250} minHeight={160} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                    <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Fréquence cardiaque</strong>
+                    {graphTitle('fc', 'Fréquence cardiaque')}
                     <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                       <HeartRateChart data={heartRows} zoom={chartZoom} xAxis={timeAxis} labelFormatter={() => ''} zones={hrZones?.bounds ?? null}
                         onHoverIndex={hoverIndex} onLeave={clearHover} showReset={false} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
@@ -874,10 +899,12 @@ function SailingModule() {
                       </HeartRateChart>
                     </div>
                   </ResizablePanel>
+                  ) : foldedGraph('fc', 'Fréquence cardiaque', 500)
                 )}
 
+                {graphFolds.open.polaire ? (
                 <ResizablePanel id="sailing.graph.polaire" defaultHeight={350} minWidth={250} minHeight={250} style={{ flex: 'none', width: '350px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                  <strong style={{ display: 'block', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>Polaire de Vitesse (TWA)</strong>
+                  {graphTitle('polaire', 'Polaire de Vitesse (TWA)')}
                   <div style={{ position: 'absolute', top: 35, left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 10, pointerEvents: 'none' }}>
                     <span style={{ fontSize: 9, fontWeight: 'bold', color: '#d32f2f', marginBottom: -2 }}>VENT</span>
                     <svg width="12" height="16" viewBox="0 0 24 24">
@@ -898,6 +925,7 @@ function SailingModule() {
                     </div>
                   </div>
                 </ResizablePanel>
+                ) : foldedGraph('polaire', 'Polaire de Vitesse (TWA)', 350)}
               </div>
             )}
 

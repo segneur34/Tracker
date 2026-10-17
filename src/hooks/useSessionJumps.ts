@@ -12,10 +12,13 @@ import { hasSessionMotion, librarySession, readSessionMotion, updateSessionRecor
  * sans `.imu` ni sauts rangés n'en a pas : l'onglet « sauts » ne paraît pas.
  */
 
-/** Sauts calculés pendant ce lancement, par session et instant du premier point (fiche en lecture seule comprise). */
-const computed = new Map<string, SessionJump[]>();
+/**
+ * Sauts calculés pendant ce lancement, par session et instant du premier point (fiche en lecture seule comprise) ;
+ * `null` : la capture ne mesurait pas les sauts (cadence seule).
+ */
+const computed = new Map<string, SessionJump[] | null>();
 /** Calculs en cours, un seul par session. */
-const searching = new Map<string, Promise<SessionJump[]>>();
+const searching = new Map<string, Promise<SessionJump[] | null>>();
 
 /**
  * `none` : pas de mesure des sauts pour cette session ; `computing` : calcul
@@ -27,7 +30,7 @@ export type JumpsStatus = 'none' | 'computing' | 'ready' | 'error';
 /** Laisse la page se dessiner avant un calcul de quelques dixièmes de seconde. */
 const nextFrame = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-const compute = (key: string, file: string, track: TrackPoint[], detection: JumpDetection): Promise<SessionJump[]> => {
+const compute = (key: string, file: string, track: TrackPoint[], detection: JumpDetection): Promise<SessionJump[] | null> => {
   let pending = searching.get(key);
   if (!pending) {
     pending = (async () => {
@@ -36,13 +39,17 @@ const compute = (key: string, file: string, track: TrackPoint[], detection: Jump
       if (!bytes) throw new Error('Fichier des capteurs introuvable.');
       const recording = await decodeImu(bytes);
       if (!recording) throw new Error('Fichier des capteurs illisible.');
-      const jumps = measureJumps(recording, detection, track).jumps.map(toSessionJump);
-      computed.set(key, jumps);
+      // Capture de la seule cadence : pas de sauts à chercher, et la fiche le retient.
+      const measured = recording.header.setup.jumps !== false;
+      const jumps = measured ? measureJumps(recording, detection, track).jumps.map(toSessionJump) : [];
+      computed.set(key, measured ? jumps : null);
       const session = librarySession(file);
       if (session && !session.readOnly) {
-        updateSessionRecord(file, { jumps: { version: JUMPS_CALC_VERSION, computedAt: new Date().toISOString(), jumps } });
+        updateSessionRecord(file, {
+          jumps: { version: JUMPS_CALC_VERSION, computedAt: new Date().toISOString(), jumps, ...(measured ? {} : { measured: false as const }) },
+        });
       }
-      return jumps;
+      return measured ? jumps : null;
     })().finally(() => searching.delete(key));
     searching.set(key, pending);
   }
@@ -54,13 +61,14 @@ export const useSessionJumps = (file: string | null, track: TrackPoint[], sport:
   const detection = getSportProfile(sport).jumps?.detection ?? null;
   const key = file !== null && track.length > 1 ? `${file}|${track[0].timeMs}` : null;
   const stored = session?.record.jumps;
-  const current = stored && stored.version >= JUMPS_CALC_VERSION ? stored.jumps : null;
-  const local = key !== null ? computed.get(key) : undefined;
+  const notMeasured = stored?.measured === false || (key !== null && computed.get(key) === null);
+  const current = stored && stored.version >= JUMPS_CALC_VERSION && stored.measured !== false ? stored.jumps : null;
+  const local = key !== null ? computed.get(key) ?? undefined : undefined;
   const motion = file !== null && hasSessionMotion(file);
   const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
   const [, setComputedCount] = useState(computed.size);
   const failed = failure !== null && failure.key === key ? failure.message : null;
-  const eligible = key !== null && detection !== null && session !== undefined && motion && !current && !local && failed === null;
+  const eligible = key !== null && detection !== null && session !== undefined && motion && !current && !local && !notMeasured && failed === null;
   // Fiche allégée, pas encore relue en entier : elle porte peut-être déjà les sauts, rien n'est calculé avant.
   const wanted = eligible && session?.partial !== true;
 

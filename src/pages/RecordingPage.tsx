@@ -27,7 +27,7 @@ import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../ho
 import { useOpenSections } from '../hooks/useOpenSections';
 import { readHeartRateZoneBounds } from '../hooks/useRunnerProfile';
 import {
-  effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs,
+  effectiveCadence, effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs,
   lastRecordActivity, rememberRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
@@ -365,6 +365,11 @@ function RecordingPage() {
   const pumpingOffered = chosen !== null && effectiveFoil(chosen) === true && effectivePumping(chosen) === true;
   const [pumpChoice, setPumpChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
   const measurePumping = pumpingOffered && (pumpChoice?.activityId === chosen.id ? pumpChoice.measure : true);
+  // Cadence à pied : proposée par l'activité (course, marche, fractionné à pied), cochée d'office sauf si Réglages la décoche ; la case vaut pour cet enregistrement.
+  const cadenceSetting = chosen ? effectiveCadence(chosen) : null;
+  const [cadenceChoice, setCadenceChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
+  const measureCadence = chosen !== null && cadenceSetting !== null &&
+    (cadenceChoice?.activityId === chosen.id ? cadenceChoice.measure : cadenceSetting);
   // Ceinture cardio : proposée par l'activité (course, vélo, fractionné), cochée d'office si Réglages le dit ; la case vaut pour cet enregistrement.
   const heartRateSetting = chosen ? effectiveHeartRate(chosen) : null;
   const belt = useMemo(() => savedBelt(), []);
@@ -463,6 +468,15 @@ function RecordingPage() {
     }
   };
 
+  /** Ce que mesurent les capteurs pendant l'enregistrement : sauts (pumping en surf), cadence. */
+  const motionWhat = (() => {
+    const setup = recorder.motionSetup;
+    const what: string[] = [];
+    if (setup?.jumps !== false) what.push(liveActivity && sportTreatment(liveActivity.base) === 'surf' ? 'Pumping' : 'Sauts');
+    if (setup?.cadence) what.push(what.length > 0 ? 'cadence' : 'Cadence');
+    return what.join(' et ');
+  })();
+
   const handleStart = () => {
     if (!chosen) return;
     rememberRecordActivity(chosen.id);
@@ -470,11 +484,14 @@ function RecordingPage() {
       ? createReplaySource(replay.fixes, replaySpeed)
       : deviceLocationSource();
     const capture = motionCaps?.available === true && sourceChoice === 'device';
+    const cadence = capture && measureCadence;
     const motion = capture && measureJumps && jumpSettings
-      ? { placement: jumpSettings.placement, foil: effectiveFoil(chosen) ?? false }
+      ? { placement: jumpSettings.placement, foil: effectiveFoil(chosen) ?? false, jumps: true, cadence }
       : capture && measurePumping
-        ? { placement: 'poitrine' as const, foil: true }
-        : null;
+        ? { placement: 'poitrine' as const, foil: true, jumps: true, cadence: false }
+        : cadence
+          ? { placement: jumpSettings?.placement ?? ('taille' as const), foil: false, jumps: false, cadence: true }
+          : null;
     const heartRate = native && sourceChoice === 'device' && measureHeartRate ? belt : null;
     void beltWarmup.handOver(() => startRecording(chosen, source, { motion, heartRate }));
   };
@@ -520,6 +537,21 @@ function RecordingPage() {
                   : `Téléphone fixé au corps : ${JUMP_PLACEMENT_LABEL[jumpSettings.placement].toLowerCase()}${effectiveFoil(chosen) ? ', sur foil' : ''} (Réglages).`}
                 {motionCaps?.available && motionCaps.accelMaxG !== null && motionCaps.accelMaxG < 8 &&
                   ` L'accéléromètre plafonne à ${Math.round(motionCaps.accelMaxG)} g : les chocs à l'atterrissage seront écrêtés.`}
+              </span>
+            </div>
+          )}
+
+          {chosen && cadenceSetting !== null && native && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input type="checkbox" checked={measureCadence && motionCaps?.available === true} disabled={!motionCaps?.available}
+                  onChange={(e) => setCadenceChoice({ activityId: chosen.id, measure: e.target.checked })} />
+                <span>Mesurer la cadence</span>
+              </label>
+              <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', marginLeft: '26px' }}>
+                {motionCaps && !motionCaps.available
+                  ? motionCaps.reason
+                  : 'Téléphone porté sur soi, où vous voulez : poche, main, brassard, ceinture.'}
               </span>
             </div>
           )}
@@ -646,7 +678,7 @@ function RecordingPage() {
         </div>
       )}
       {busy && recorder.measuringMotion && recorder.status !== 'paused' && (
-        <div className="ui-alert">{liveActivity && sportTreatment(liveActivity.base) === 'surf' ? 'Pumping' : 'Sauts'} : les capteurs du téléphone mesurent.</div>
+        <div className="ui-alert">{motionWhat} : les capteurs du téléphone mesurent.</div>
       )}
       {recorder.status === 'paused' && recorder.pausedReason === 'auto' && (
         <div className="ui-alert ui-alert--warning">En pause automatique : aucun mouvement détecté. Reprend dès que vous bougez.</div>

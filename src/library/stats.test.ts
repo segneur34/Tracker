@@ -31,6 +31,7 @@ const session = (startMs: number, over: Partial<StatSession> = {}): StatSession 
   flightS: null,
   reps: 0,
   heartRate: null,
+  cadenceSpm: null,
   ...over,
 });
 
@@ -166,6 +167,13 @@ describe('metricsOf', () => {
     expect(keys('surf', [session(at(2026, 3, 1), surf)])).toEqual(['vmax', 'moyenne', 'duree', 'distance', 'vagues', 'vague']);
     expect(keys('surf', [session(at(2026, 3, 1), { ...surf, flightS: 600, longestFlightS: 120 })]))
       .toEqual(['vmax', 'moyenne', 'duree', 'distance', 'vol', 'vagues', 'vague', 'volMax']);
+  });
+
+  it('cadence moyenne : à pied, quand une session en a', () => {
+    expect(keys('course', [session(at(2026, 3, 1), { cadenceSpm: 168 })])).toEqual(['vmax', 'moyenne', 'duree', 'distance', 'cadence']);
+    expect(keys('fractionne', [session(at(2026, 3, 1), { family: 'fractionne', cadenceSpm: 176 })])).toContain('cadence');
+    expect(keys('velo', [session(at(2026, 3, 1), { family: 'velo', treatment: 'velo', cadenceSpm: 80 })])).not.toContain('cadence');
+    expect(metricSeries([session(at(2026, 3, 1), { cadenceSpm: 168 }), session(at(2026, 3, 2))], statsMetric('cadence'))[0].points).toHaveLength(1);
   });
 
   it('vue d\'ensemble : la durée seule ; rien sans session', () => {

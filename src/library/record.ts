@@ -46,8 +46,10 @@ export const RECORD_VERSION = 1;
  *
  * 5 (16 octobre 2026) : distance en action (`movingDistanceM`) et temps de vol
  * en surf (`flightS`), pour le graphique des statistiques.
+ *
+ * 6 (17 octobre 2026) : cadence à pied (`cadence`), pour les statistiques.
  */
-export const SUMMARY_CALC_VERSION = 5;
+export const SUMMARY_CALC_VERSION = 6;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -82,7 +84,22 @@ export interface SessionSummary {
   flightS?: number | null;
   /** FC de la session, si elle en a assez (`HeartRateProfile.minCoverageS`) ; indépendante des zones du pratiquant. */
   heartRate?: SummaryHeartRate;
+  /** Cadence à pied, si la session en a assez (`CadenceDetection.minCoverageS`). */
+  cadence?: SummaryCadence;
 }
+
+/** Cadence d'une session à pied dans son résumé, comme l'onglet « cadence » la mesure. */
+export interface SummaryCadence {
+  /** Cadence moyenne en mouvement, en pas par minute. */
+  avgSpm: number;
+  /** Pas comptés sur la session. */
+  steps: number;
+}
+
+const readSummaryCadence = (raw: unknown): SummaryCadence | null => {
+  if (!isObject(raw) || !isFiniteNumber(raw.avgSpm) || !isFiniteNumber(raw.steps)) return null;
+  return { avgSpm: raw.avgSpm, steps: raw.steps };
+};
 
 /** Manœuvres réussies et manquées d'une session de voile. */
 export interface ManeuverResults {
@@ -244,6 +261,11 @@ export interface SessionJumps {
    * qu'à l'affichage.
    */
   jumps: SessionJump[];
+  /**
+   * `false` : la capture ne mesurait pas les sauts (cadence à pied seule,
+   * `setup.jumps` de son en-tête) ; la session n'a pas d'onglet « sauts ».
+   */
+  measured?: false;
 }
 
 export interface SessionRecord {
@@ -340,6 +362,9 @@ const readSummary = (raw: unknown): SessionSummary | null => {
   const heartRate = readSummaryHeartRate(raw.heartRate);
   if (heartRate) summary.heartRate = heartRate;
   else delete summary.heartRate;
+  const cadence = readSummaryCadence(raw.cadence);
+  if (cadence) summary.cadence = cadence;
+  else delete summary.cadence;
   return summary;
 };
 
@@ -463,7 +488,7 @@ export const readSessionJumps = (raw: unknown): SessionJumps | null => {
   if (!isObject(raw) || !isFiniteNumber(raw.version) || typeof raw.computedAt !== 'string' || !Array.isArray(raw.jumps)) return null;
   const jumps = raw.jumps.map(readSessionJump);
   if (jumps.some((j) => j === null)) return null;
-  return { version: raw.version, computedAt: raw.computedAt, jumps: jumps as SessionJump[] };
+  return { version: raw.version, computedAt: raw.computedAt, jumps: jumps as SessionJump[], ...(raw.measured === false ? { measured: false as const } : {}) };
 };
 
 /**

@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from 'react';
 import { sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
+import { decodeImuHeader } from '../core/imuFile';
 import { pruneImuFile } from '../core/imuPrune';
+import { JUMPS_CALC_VERSION } from '../core/jumps';
 import { pruneSurfImu } from '../surfing/pumping';
 import type { SessionMark } from '../core/sessionMarks';
 import { ELEVATION_PRESETS, SAILING_SPORTS, getSportProfile, isLandTreatment, sportTreatment } from '../core/sportProfiles';
@@ -1202,14 +1204,22 @@ interface AddOptions {
  * des vols si le calcul de la session mesure les sauts, autour des glisses en
  * surf (vols sur foil, vagues sinon, au seuil de la fiche ou de l'activité)
  * si son profil le demande (`pump.pruneCapture`), sinon gardés entiers.
+ * Une capture qui mesurait la cadence (déjà écrite dans le GPX) est gardée
+ * entière tant que la mesure se règle (`cadence.keepCapture`) ; ensuite, sans
+ * sauts mesurés, elle n'est pas rangée (`null`).
  * En cas d'échec, la capture complète : on ne perd jamais de mesure par erreur.
  */
 const prunedMotion = async (
   motion: Uint8Array, sport: SportType | null, text: string, analysis?: SessionAnalysis | null, activityId?: string | null
-): Promise<Uint8Array> => {
+): Promise<Uint8Array | null> => {
   if (!sport) return motion;
   const profile = getSportProfile(sport);
   try {
+    const setup = decodeImuHeader(motion)?.setup;
+    if (setup?.cadence && profile.cadence) {
+      if (profile.cadence.keepCapture) return motion;
+      if (setup.jumps === false) return null;
+    }
     if (profile.surf) {
       if (!profile.surf.pump.pruneCapture) return motion;
       const rides = surfRides(parseGpx(text).rawPoints, sport, summaryOptions(sport, analysis, activityId));
@@ -1258,6 +1268,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     const motion = source === 'enregistrement'
       ? await prunedMotion(options.motion, analyzed.sport, text, existing.record.analysis, existing.record.activityId)
       : options.motion;
+    if (!motion) return { status: 'duplicate', file: existing.file, recordCompleted };
     await f.writeBytes(sessionPath(imuFileName(existing.file)), motion);
     knownNames.add(imuFileName(existing.file));
     return { status: 'duplicate', file: existing.file, motionAdded: true, recordCompleted };
@@ -1281,10 +1292,15 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
       ...newRecord(gpx, analyzed, source, options.activityId ?? null),
       ...(options.foil !== undefined ? { analysis: readAnalysis({ foil: options.foil, savedAt: Date.now() }) } : {}),
     };
+  // Capture de la seule cadence : la fiche dit tout de suite qu'il n'y a pas de sauts à chercher.
+  const jumpsUnmeasured = options.motion && decodeImuHeader(options.motion)?.setup.jumps === false;
   const record = {
     ...made,
     ...(options.intervals && options.intervals.length > 0 ? { intervals: options.intervals } : {}),
     ...(options.marks && options.marks.length > 0 ? { marks: options.marks } : {}),
+    ...(jumpsUnmeasured && !made.jumps
+      ? { jumps: { version: JUMPS_CALC_VERSION, computedAt: new Date().toISOString(), jumps: [], measured: false as const } }
+      : {}),
   };
   // Un enregistrement est élagué en entrant ; un dossier importé est rangé tel quel.
   const motion = options.motion && source === 'enregistrement'

@@ -192,7 +192,7 @@ for (const s of SESSIONS) {
 }
 
 // --- 2. Sans FC max ni âge ---
-const GRAPH_TAB = { course: 'vitesse et altitude', surf: 'graphiques', voile: 'graphiques' };
+const GRAPH_TAB = { course: 'graphiques', surf: 'graphiques', voile: 'graphiques' };
 for (const key of ['course', 'surf', 'voile']) {
   await go(paths[key], 6000);
   const labels = (await tabLabels()).split(' | ');
@@ -247,13 +247,13 @@ check('course : surbrillance pas ramenée', (await violetPaths()) === violetBefo
 
 // --- 4. Courbe dans les graphes ---
 await go(paths.course, 6000);
-console.log('  vitesse et altitude :', await clickTab('vitesse et altitude'));
+console.log('  graphiques :', await clickTab('graphiques'));
 await wait(1500);
-check(`course : trois graphes, vitesse, altitude et FC (${await chartsIn('Vitesse et altitude')})`, (await chartsIn('Vitesse et altitude')) === 3);
+check(`course : trois graphes, vitesse, altitude et FC (${await chartsIn('Graphiques')})`, (await chartsIn('Graphiques')) === 3);
 await go(paths.sansfc, 6000);
-await clickTab('vitesse et altitude');
+await clickTab('graphiques');
 await wait(1500);
-check(`course sans FC : deux graphes (${await chartsIn('Vitesse et altitude')})`, (await chartsIn('Vitesse et altitude')) === 2);
+check(`course sans FC : deux graphes (${await chartsIn('Graphiques')})`, (await chartsIn('Graphiques')) === 2);
 await go(paths.surf, 6000);
 await clickTab('graphiques');
 await wait(1500);
@@ -320,7 +320,7 @@ const recs = await records();
 const courseRec = recs.find((r) => Math.abs((r.summary?.startMs ?? 0) - T_RUN) < 2000);
 const plainRec = recs.find((r) => Math.abs((r.summary?.startMs ?? 0) - T_PLAIN) < 2000);
 console.log('  résumé de la course :', JSON.stringify({ ...courseRec?.summary?.heartRate, histogram: undefined }));
-check('résumé : FC de la course (calcVersion 4)', courseRec?.summary?.calcVersion === 4 && courseRec?.summary?.heartRate?.avgBpm > 140);
+check('résumé : FC de la course (calcVersion 4 ou plus)', courseRec?.summary?.calcVersion >= 4 && courseRec?.summary?.heartRate?.avgBpm > 140);
 check('résumé : rien pour la course sans FC', plainRec && plainRec.summary.heartRate === undefined);
 await go('/statistiques', 5000);
 console.log('  statistiques, onglets :', await evaluate(`[...document.querySelectorAll('.stats-col .ui-tab')].map((t) => t.textContent.trim()).join(' | ')`));

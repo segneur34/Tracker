@@ -45,6 +45,15 @@ describe('buildGpx', () => {
     expect(hr.match(/gpxtpx:hr>/g)).toHaveLength(2);
   });
 
+  it('écrit la cadence en foulées par minute, entre FC et vitesse', () => {
+    const cad = buildGpx([[
+      { timeMs: T0, lat: 43, lon: 3, speedMs: 3.2, heartRateBpm: 150, cadenceSpm: 171.2 },
+      { timeMs: T0 + 1000, lat: 43.0001, lon: 3, speedMs: 3.1 },
+    ]], { name: 'Footing', sport: 'running' });
+    expect(cad).toContain('<gpxtpx:hr>150</gpxtpx:hr><gpxtpx:cad>86</gpxtpx:cad><gpxtpx:speed>3.2</gpxtpx:speed>');
+    expect(cad.match(/gpxtpx:cad>/g)).toHaveLength(2);
+  });
+
   it('échappe le nom de la trace et indique le support', () => {
     expect(gpx).toContain('<name>Voile &amp; vent &lt;fort&gt;</name>');
     expect(gpx).toContain('<type>windsurf</type>');

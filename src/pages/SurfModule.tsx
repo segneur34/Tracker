@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import OsmTileLayer from '../components/OsmTileLayer';
 import 'leaflet/dist/leaflet.css';
@@ -8,6 +8,8 @@ import {
   type TooltipPayloadEntry, type TooltipValueType,
 } from 'recharts';
 import ActivitySelect from '../components/ActivitySelect';
+import ChartFold from '../components/ChartFold';
+import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import AnalysisMap from '../components/AnalysisMap';
 import HoverMarker from '../components/HoverMarker';
 import { SessionMarksLayer, SessionMarksList } from '../components/SessionMarks';
@@ -94,6 +96,15 @@ const SURF_SECTION_DEFAULTS: Record<SurfSection, boolean> = {
 /** Préfixe des identifiants mémorisés (tailles des panneaux, onglets ouverts) : ne pas le renommer. */
 const STORAGE_ID = 'surf';
 const panelId = (name: string) => `${STORAGE_ID}.${name}`;
+
+/**
+ * Graphes de l'onglet « graphiques » dépliés : avec la FC, chacun se replie à
+ * part pour ne comparer que ceux qui restent ouverts (16/10). Choix gardé sur l'appareil.
+ */
+const GRAPH_FOLDS_DEFAULT = { vitesse: true, fc: true };
+/** Hauteur de base d'un graphe : le panneau suit le nombre de graphes dépliés. */
+const CHART_HEIGHT_PX = 170;
+const chartBox = (heightPx: number): CSSProperties => ({ width: '100%', flex: `1 0 ${heightPx}px`, height: `${heightPx}px`, marginTop: '4px' });
 const ACCENT = 'var(--surf)';
 
 /** Couleurs de la répartition du temps (données, en dur) : glisse, rame, attente, sans signal. */
@@ -229,6 +240,7 @@ function SurfModule() {
   const waveThreshold = surfProfile ? effectiveWaveThreshold(surfProfile.surf, draft.edits.waveThreshold) : 0;
 
   const { open: storedOpen, toggle } = useOpenSections<SurfSection>(STORAGE_ID, SURF_SECTION_DEFAULTS);
+  const graphFolds = useOpenSections(`${STORAGE_ID}.graphes`, GRAPH_FOLDS_DEFAULT);
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
   const open = useMemo(() => maskHiddenTabs(storedOpen, SURF_TABS, tabChoices), [storedOpen, tabChoices]);
@@ -811,13 +823,23 @@ function SurfModule() {
               </ResizablePanel>
             )}
 
-            {open.graphiques && chartData.length > 1 && (
-              <ResizablePanel id={panelId('graphiques')} defaultHeight={heart.present ? 540 : 360} minHeight={200} direction="vertical"
-                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {open.graphiques && chartData.length > 1 && (() => {
+              // Sans FC, un seul graphe : pas de repli. Avec, chacun le sien, « Tout voir » sur le premier montré.
+              const folds = heart.present;
+              const speedShown = !folds || graphFolds.open.vitesse;
+              const hrShown = heart.present && graphFolds.open.fc;
+              return (
+              <ResizablePanel id={panelId('graphiques')} defaultHeight={folds ? undefined : 360} minHeight={folds ? 120 : 200} direction="vertical"
+                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: folds ? 'auto' : 'hidden' }}>
                 <div style={{ marginBottom: '8px', paddingRight: '28px' }}>
                   <PanelTitle label="Vitesse" open={open.graphiques} onToggle={() => toggle('graphiques')} />
                 </div>
-                <ZoomableChart zoom={zoom} onLeave={clearHover} style={{ width: '100%', flex: 1, minHeight: 0 }}>
+                {folds && (
+                  <ChartFold label="Vitesse" color="#1e88e5" open={graphFolds.open.vitesse} onToggle={() => graphFolds.toggle('vitesse')}
+                    title={graphFolds.open.vitesse ? 'Replier le graphe de vitesse' : 'Montrer le graphe de vitesse'} />
+                )}
+                {speedShown && (
+                <ZoomableChart zoom={zoom} onLeave={clearHover} style={folds ? chartBox(CHART_HEIGHT_PX) : { width: '100%', flex: 1, minHeight: 0 }}>
                   <ResponsiveContainer>
                     <ComposedChart data={chartData} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                       <ChartZoomProbe />
@@ -838,18 +860,25 @@ function SurfModule() {
                     </ComposedChart>
                   </ResponsiveContainer>
                 </ZoomableChart>
-                {heart.present && (
+                )}
+                {folds && (
+                  <ChartFold label="FC" color={HEART_RATE_COLOR} open={graphFolds.open.fc} onToggle={() => graphFolds.toggle('fc')}
+                    title={graphFolds.open.fc ? 'Replier le graphe de FC' : 'Montrer le graphe de FC'} style={{ marginTop: '8px' }} />
+                )}
+                {hrShown && (
                   <HeartRateChart data={chartData} zoom={zoom} xAxis={timeAxis} labelFormatter={timeLabel} zones={hrZones?.bounds ?? null}
-                    onHoverIndex={hoverIndex} onLeave={clearHover} showReset={false} style={{ width: '100%', flex: 1, minHeight: 0, marginTop: '6px' }}>
+                    onHoverIndex={hoverIndex} onLeave={clearHover} showReset={!speedShown} style={chartBox(CHART_HEIGHT_PX)}>
                     {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark, 'hr')}
                   </HeartRateChart>
                 )}
                 <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
                   Bandes bleues : les vagues{foil ? ', violettes : les vols' : ''}. Le survol déplace le repère sur la carte.
+                  {folds ? ' Chaque graphe se replie par son nom.' : ''}
                   {narrow ? ' Écartez deux doigts pour zoomer.' : ' Tirez une zone à la souris pour zoomer, double-clic pour tout revoir.'}
                 </div>
               </ResizablePanel>
-            )}
+              );
+            })()}
 
             {open.cardio && heart.present && (
               <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>

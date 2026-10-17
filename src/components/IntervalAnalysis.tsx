@@ -1,4 +1,5 @@
 import type { SpanHeartRate } from '../core/heartRate';
+import type { CadenceShare } from '../running/cadence';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import {
   CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -38,6 +39,8 @@ export interface IntervalSeriesView {
   summary: IntervalSummary;
   /** FC de l'effort de chaque répétition, dans l'ordre de `reps` ; absente sans FC dans la session. */
   heartRates?: (SpanHeartRate | null)[];
+  /** Cadence et longueur de pas de l'effort de chaque répétition (à pied) ; absentes sans cadence dans la session. */
+  cadences?: (CadenceShare | null)[];
 }
 
 interface IntervalAnalysisProps {
@@ -278,6 +281,8 @@ function IntervalAnalysis({
         const { summary } = s;
         const sparks = new Map(s.reps.map((r) => [r.rep, sparkPoints(r, stepS)]));
         const hasHr = s.heartRates?.some((h) => h !== null) ?? false;
+        const hasCadence = s.cadences?.some((c) => c !== null) ?? false;
+        const tableClass = ['an-ivl-table', ...(hasHr ? ['an-ivl-table--fc'] : []), ...(hasCadence ? ['an-ivl-table--cad'] : [])].join(' ');
         const sparkLength = Math.max(0, ...s.reps.map((r) => r.profile.length));
         const values = [...sparks.values()].flat().filter((v): v is number => v !== null);
         const domain = values.length > 0 ? { min: Math.min(...values), max: Math.max(...values) } : { min: 0, max: 1 };
@@ -307,7 +312,7 @@ function IntervalAnalysis({
               {summary.holdRatio !== null && stat('Maintien', signedPercent(summary.holdRatio - 1))}
             </div>
             <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
-              <table className={hasHr ? 'an-ivl-table an-ivl-table--fc' : 'an-ivl-table'} style={tableStyle}>
+              <table className={tableClass} style={tableStyle}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                     <th style={{ ...cellStyle, textAlign: 'left' }}>Rép.</th>
@@ -319,6 +324,8 @@ function IntervalAnalysis({
                     <th style={cellStyle}>Profil</th>
                     {hasHr && <th style={cellStyle} title="FC moyenne et maximale de l'effort">FC</th>}
                     {hasHr && <th style={cellStyle} title={`Baisse de la FC ${recoveryS ?? 60} s après la fin de l'effort`}>Récup.</th>}
+                    {hasCadence && <th style={cellStyle} title="Cadence moyenne de l'effort, en pas par minute">Cadence</th>}
+                    {hasCadence && <th style={cellStyle} title="Longueur de pas moyenne de l'effort : distance ÷ pas">Pas</th>}
                     <th style={{ ...cellStyle, fontWeight: 'normal', color: 'var(--muted)' }}>Repos</th>
                     <th style={cellStyle}>Carte</th>
                   </tr>
@@ -345,6 +352,16 @@ function IntervalAnalysis({
                         {hasHr && (
                           <td className="an-ivl-rec" data-label="récup." style={cellStyle}>
                             {s.heartRates?.[repIndex]?.recoveryBpm != null ? `−${s.heartRates[repIndex]!.recoveryBpm} bpm` : '—'}
+                          </td>
+                        )}
+                        {hasCadence && (
+                          <td className="an-ivl-cad" data-label="cadence" style={cellStyle}>
+                            {s.cadences?.[repIndex] ? `${Math.round(s.cadences[repIndex]!.spm)} pas/min` : '—'}
+                          </td>
+                        )}
+                        {hasCadence && (
+                          <td className="an-ivl-step" data-label="pas" style={cellStyle}>
+                            {s.cadences?.[repIndex]?.stepLengthM != null ? `${s.cadences[repIndex]!.stepLengthM!.toFixed(2)} m` : '—'}
                           </td>
                         )}
                         <td className="an-ivl-rest" style={{ ...cellStyle, color: 'var(--muted)' }}>

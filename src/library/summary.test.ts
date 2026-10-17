@@ -47,6 +47,15 @@ describe('summarizeSession', () => {
     expect(summarizeSession(buildTrack([[600, 3]]), 'running')!.heartRate).toBeUndefined();
   });
 
+  it('range la cadence à pied (cad du GPX, en foulées), rien sans elle ni à vélo', () => {
+    const points = buildTrack([[600, 3]]).map((p) => ({ ...p, cadence: 85 }));
+    const cad = summarizeSession(points, 'running')!.cadence!;
+    expect(cad.avgSpm).toBeCloseTo(170, 0);
+    expect(cad.steps).toBeCloseTo(1700, -1);
+    expect(summarizeSession(buildTrack([[600, 3]]), 'running')!.cadence).toBeUndefined();
+    expect(summarizeSession(points, 'cycling')!.cadence).toBeUndefined();
+  });
+
   it('rend la distance intégrée, les bornes et la cadence', () => {
     const summary = summarizeSession(buildTrack([[600, 3]]), 'running')!;
     expect(summary.calcVersion).toBe(SUMMARY_CALC_VERSION);

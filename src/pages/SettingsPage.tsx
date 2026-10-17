@@ -390,7 +390,7 @@ function SettingsPage() {
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
                   s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null || s.carriedLoad !== null || s.gearLabels !== null || s.tabs !== null ||
                   s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden ||
-                  s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.heartRate === true;
+                  s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.heartRate === true || s.cadence === false;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
                 const thresholdShown = parseFloat(
@@ -445,6 +445,7 @@ function SettingsPage() {
                   ...(s.foil ? ['foil'] : []),
                   ...(s.foil && s.pumping ? ['pumping'] : []),
                   ...(s.jumps?.enabled ? ['sauts'] : []),
+                  ...(s.cadence ? ['cadence'] : []),
                   ...(treatment === 'velo' ? [BIKE_TYPES[s.bikeType].noun] : []),
                   ...(paceFamily ? [`voies : ${s.wayTypes.map((w) => WAY_TYPE_LABEL[w].toLowerCase()).join(' + ')}`] : []),
                   ...(paceFamily ? [`niveau ${PACE_LEVEL_LABEL[s.paceLevel].toLowerCase()}`] : []),
@@ -645,6 +646,15 @@ function SettingsPage() {
                                 <span>Proposer la ceinture cardio</span>
                               </label>
                             </div>
+                            {s.cadence !== null && (
+                              <div className="settings-row" title="Sur Android : l'accéléromètre du téléphone, porté sur soi n'importe où, compte les pas ; la cadence est écrite à chaque point de la trace">
+                                <span className="settings-row__label">Cadence</span>
+                                <label className="settings-sports__pair">
+                                  <input type="checkbox" checked={s.cadence} onChange={(e) => setFor(id, 'cadence', e.target.checked ? null : false)} />
+                                  <span>Mesurer la cadence</span>
+                                </label>
+                              </div>
+                            )}
                           </ActivityPart>
                           <ActivityPart label="Notification" open={openPart.notification} onToggle={() => togglePart('notification')}>
                             <FieldsSetting label="Chiffres de la notification"
