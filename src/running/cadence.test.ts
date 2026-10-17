@@ -3,7 +3,7 @@ import { SYNTH_WALL_MS, noiseSource, synthImu } from '../core/imuSynthetic';
 import { SPORT_PROFILES } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import {
-  analyzeCadence, cadenceAt, cadenceBandPaths, cadenceSeries, gpxStrideCadence, joinCadence, sessionCadence, stepCadenceSpm, timeSpanCadence,
+  analyzeCadence, cadenceAt, cadenceBandPaths, cadenceSeries, gpxStrideCadence, joinCadence, sessionCadence, stepCadenceSpm, stepPeriod, timeSpanCadence,
   type CadenceDetection,
 } from './cadence';
 
@@ -50,6 +50,20 @@ describe('cadenceSeries : pas par minute sur la capture', () => {
   it('téléphone en poche : un appui fort, un faible, c\'est le pas qui ressort, pas la foulée', () => {
     const s = cadenceSeries(synthImu({ durationS: 60, az: impacts(170, 20, 7) }), P)!;
     expect(medianBetween(s.spm, 5, 55)).toBeCloseTo(170, 0);
+  });
+
+  it('marche en poche de pantalon : le téléphone ne sent que sa jambe, la foulée est doublée', () => {
+    const s = cadenceSeries(synthImu({ durationS: 60, az: impacts(106, 7, 0) }), P)!;
+    expect(medianBetween(s.spm, 5, 55)).toBeCloseTo(106, 0);
+    expect(shareMeasured(s.spm, 5, 55)).toBeGreaterThan(0.95);
+  });
+
+  it('crête sans demi-période, pas lent ou foulée : foulée sous les secousses de la course, pas lent sinon', () => {
+    // Une fenêtre de 6 s qui ne bat qu'à 82 par minute (une seule jambe, ou des pas lents).
+    const x = Float64Array.from({ length: 301 }, (_, k) => Math.sin(2 * Math.PI * (82 / 60) * k * P.gridStepS));
+    const spmOf = (rms: number) => 60 / (stepPeriod(x, P, rms)! * P.gridStepS);
+    expect(spmOf(P.strideRmsMs2 + 2)).toBeCloseTo(164, 0);
+    expect(spmOf(P.strideRmsMs2 - 7)).toBeCloseTo(82, 0);
   });
 
   it('un balancement à la foulée en plus des appuis (bras, poche) ne divise pas la cadence', () => {

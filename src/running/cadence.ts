@@ -20,7 +20,10 @@ import { GRADE_ZONES, classifyGrade, type GradeZoneKey } from './runningAnalytic
  * - pas ou foulée : un téléphone dans une poche marque plus l'appui de sa
  *   jambe que celui de l'autre, et la période qui ressort est celle de la
  *   foulée (deux pas). Si la demi-période corrèle encore assez, c'est elle
- *   qu'on retient ;
+ *   qu'on retient. Sinon, en poche de pantalon, le téléphone ne sent souvent
+ *   que sa jambe : la crête est une foulée si elle est trop longue pour un pas
+ *   (marche), ou si elle pourrait être l'un ou l'autre mais que les secousses
+ *   sont celles de la course (`strideRmsMs2`) ; marche du 17/10 ;
  * - interpolation parabolique de la crête, pour une cadence au dixième.
  *
  * Pas de cadence (`null`) à l'arrêt (secousses trop faibles), sur un signal
@@ -52,6 +55,12 @@ export interface CadenceDetection {
   peakFraction: number;
   /** La demi-période d'une crête est le pas si elle en atteint cette part. */
   halfPeriodFraction: number;
+  /**
+   * Écart type du module, sans pesanteur, au-dessus duquel une crête sans
+   * demi-période, qui pourrait être un pas lent ou une foulée de course, est
+   * une foulée, en m/s².
+   */
+  strideRmsMs2: number;
   /** Écart type du module, sans pesanteur, sous lequel on est à l'arrêt, en m/s². */
   minRmsMs2: number;
   /** Part de la fenêtre que la capture doit couvrir. */
@@ -171,8 +180,11 @@ const autocorrelation = (x: Float64Array, maxLag: number): Float64Array => {
 /** Crête locale de l'autocorrélation. */
 const isPeak = (r: Float64Array, k: number) => k > 0 && k < r.length - 1 && r[k] >= r[k - 1] && r[k] >= r[k + 1];
 
-/** Période d'un pas dans une fenêtre, en cases de la grille (fractionnaire), ou `null`. */
-export const stepPeriod = (x: Float64Array, p: CadenceDetection): number | null => {
+/**
+ * Période d'un pas dans une fenêtre, en cases de la grille (fractionnaire), ou
+ * `null` ; `rmsMs2` : écart type de la fenêtre.
+ */
+export const stepPeriod = (x: Float64Array, p: CadenceDetection, rmsMs2: number): number | null => {
   const minLag = Math.max(2, Math.floor(60 / p.maxSpm / p.gridStepS));
   const maxStepLag = Math.ceil(60 / p.minSpm / p.gridStepS);
   const maxLag = Math.min(x.length - 2, 2 * maxStepLag + 1);
@@ -191,15 +203,18 @@ export const stepPeriod = (x: Float64Array, p: CadenceDetection): number | null 
   for (let k = Math.max(minLag, Math.floor(half) - span); k <= Math.ceil(half) + span; k++) {
     if (isPeak(r, k) && (halfPeak < 0 || r[k] > r[halfPeak])) halfPeak = k;
   }
+  // Sans demi-période, une foulée : trop longue pour un pas, ou secousses de course.
+  let steps = 1;
   if (halfPeak >= minLag && r[halfPeak] >= p.halfPeriodFraction * r[chosen] && r[halfPeak] >= p.minCorrelation / 2) chosen = halfPeak;
-  if (chosen > maxStepLag) return null;
+  else if (chosen > maxStepLag || (half >= minLag && rmsMs2 >= p.strideRmsMs2)) steps = 2;
+  if (chosen / steps > maxStepLag) return null;
   // Crête affinée par une parabole sur ses deux voisines.
   const a = r[chosen - 1];
   const b = r[chosen];
   const c = r[chosen + 1];
   const denom = a - 2 * b + c;
   const shift = denom < 0 ? (0.5 * (a - c)) / denom : 0;
-  return chosen + Math.max(-0.5, Math.min(0.5, shift));
+  return (chosen + Math.max(-0.5, Math.min(0.5, shift))) / steps;
 };
 
 /** Cadence d'une capture, un pas tous les `stepS` ; `null` si elle n'a pas d'accéléromètre. */
@@ -228,8 +243,9 @@ export const cadenceSeries = (rec: ImuRecording, p: CadenceDetection): CadenceSe
       window[k] = Number.isFinite(v) ? v - mean : 0;
       sq += window[k] * window[k];
     }
-    if (Math.sqrt(sq / known) < p.minRmsMs2) { spm.push(null); continue; }
-    const period = stepPeriod(window.subarray(0, len), p);
+    const rms = Math.sqrt(sq / known);
+    if (rms < p.minRmsMs2) { spm.push(null); continue; }
+    const period = stepPeriod(window.subarray(0, len), p, rms);
     spm.push(period === null ? null : Math.round((600 / (period * p.gridStepS))) / 10);
   }
   const wallMs = rec.header.clock.wallMs + grid.startUs / 1000;
