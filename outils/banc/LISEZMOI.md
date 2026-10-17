@@ -210,7 +210,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - Surf caché (écrit dans `tracker.sportSettings`) : absent des pastilles et des totaux, sa page ouverte par l'adresse ;
   - à 390×844 : rien ne déborde, « Statistiques » en case secondaire choisi dans Réglages, puis dans le menu de l'appui long (un `pointerdown` tenu).
 
-  Depuis le lot 1 des demandes du 16/10, la page reprend le dernier affichage quand son adresse n'a pas de paramètre : le script efface `tracker.statistiques` avant l'étape de la famille cachée.
+  Depuis le lot 1 des demandes du 16/10, la page reprend le dernier affichage quand son adresse n'a pas de paramètre : le script efface `tracker.statistiques` avant l'étape de la famille cachée. Depuis le 17/10, les pastilles sont repliées sous « Sélection » : le script vérifie le bouton replié au départ et le choix qu'il affiche, le déplie et vérifie qu'il le reste au rechargement ; `barre.mjs` le déplie avant de cliquer une pastille.
 - `barre.mjs <port> [<dossier des captures>]` : barre d'onglets repliable, régularité et dernier affichage des statistiques (lot 1 des demandes du 16/10), sur un profil neuf, sans réseau, environ 1 min. Le script importe une course (10 jours avant aujourd'hui) et une session de voile de `make-gpx.mjs` (20 jours avant). Il vérifie :
   - la flèche en fin de barre, qui cache la barre seule (panneaux ouverts gardés) et laisse le bouton fin « onglets » ; l'état gardé après rechargement et d'une analyse à l'autre ; le bouton fin, qui rend la barre et disparaît ; à 390×844, sans débordement ;
   - Course sur « Année » : « Semaines actives » comptées depuis la course, pas sur 52 semaines ;
@@ -221,7 +221,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - l'ordre des onglets à pied (« graphiques » à la place des zones, « cardio » derrière lui) ;
   - en course, les replis Vitesse, Altitude et FC : un graphe replié disparaît, avec la légende de pente et « Voir sur la carte » pour l'altitude ; le panneau rapetisse ; le repli est retenu après rechargement ;
   - le mode superposé : la même rangée de replis, une série repliée n'est pas tracée, tout replié plus de graphe ;
-  - l'onglet « zones de pente » : le tableau puis le graphe d'altitude et son repli, le survol qui pose le repère sur la carte, « Voir sur la carte » qui colore la trace par la pente tant qu'un graphe d'altitude est montré ;
+  - l'onglet « zones de pente » : le tableau puis le graphe d'altitude, le repli de chacun (le tableau seul replié laisse le graphe), le survol qui pose le repère sur la carte, « Voir sur la carte » qui colore la trace par la pente tant qu'un graphe d'altitude est montré ;
   - le surf (Vitesse et FC) et la voile (les trois graphes, titre gardé replié) ; à 390×844, sans débordement.
 
   Il finit par « Tout passe. » ou le nombre d'échecs.

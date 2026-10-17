@@ -39,6 +39,7 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 | `components/AnalysisMap.tsx` | Carte, légende donnée par le module posée dessus, plein écran au toucher |
 | `pages/analysisMobile.css` | Disposition téléphone (classes `an-*`) |
 | `components/PanelTitle.tsx` | Titre de panneau qui le replie |
+| `components/ChartFold.tsx` | Repli d'une partie d'un panneau (un graphe parmi plusieurs, un tableau), état retenu par `useOpenSections` ; pas de bouton quand le panneau n'a qu'une partie |
 | `components/SessionNameEditor.tsx` | Nom de la session, « Renommer », et « … » (`ui/MoreMenu.tsx`) pour télécharger le GPX |
 | `components/SectionTabs.tsx`, `components/CollapsibleSectionTabs.tsx`, `components/ResizablePanel.tsx` | Onglets, barre d'onglets repliable des analyses, panneaux redimensionnables |
 | `components/SpeedGradientLegend.tsx`, `components/GradeGradientLegend.tsx` | Les légendes de la vitesse et de la pente, en lecture seule, passées à `AnalysisMap` |
