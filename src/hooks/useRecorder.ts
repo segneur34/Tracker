@@ -221,6 +221,13 @@ let marks: SessionMark[] = [];
 let heartRateMaxAgeS: number | null = null;
 /** Rend la ceinture et se désabonne de ses mesures ; `null` sans ceinture. */
 let dropBelt: (() => void) | null = null;
+/** Dernière erreur signalée par la source (localisation coupée…), effacée de l'état à la position suivante. */
+let sourceError: string | null = null;
+
+const onSourceError = (message: string): void => {
+  sourceError = message;
+  setState({ error: message });
+};
 
 const enqueueWrite = (write: () => Promise<void>): Promise<void> => {
   writes = writes.then(write).catch((err) => {
@@ -243,6 +250,11 @@ const receiveFix = (received: LocationFix): void => {
   const recording = currentProfile;
   if (!acceptedStatus || recording === null) return;
   if (!isNewerFix(lastReceivedMs, received)) return;
+  // La source envoie de nouveau : son erreur, encore affichée, n'a plus lieu d'être.
+  if (sourceError !== null) {
+    if (state.error === sourceError) setState({ error: null });
+    sourceError = null;
+  }
   // Comparée à l'heure de réception, pas à celle de la position : la même horloge que la ceinture, et un rejeu marche aussi.
   const heartRateBpm = heartRateMaxAgeS === null ? undefined : heartRateAt(latestHeartRate(), Date.now(), heartRateMaxAgeS);
   const fix = roundFix(heartRateBpm === undefined ? received : { ...received, heartRateBpm });
@@ -482,6 +494,7 @@ export const startRecording = async (
   startedAtMs = Date.now();
   intervalRuns = new Map();
   marks = [];
+  sourceError = null;
   setState({
     status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
     saved: null, error: null,
@@ -489,7 +502,7 @@ export const startRecording = async (
 
   try {
     await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity));
-    stopSource = await source.start(sourceOptions(activity, profile), receiveFix, (message) => setState({ error: message }));
+    stopSource = await source.start(sourceOptions(activity, profile), receiveFix, onSourceError);
     setState({ status: 'recording' });
   } catch (err) {
     stopSource = null;
@@ -545,9 +558,11 @@ export const resumeRecording = async (): Promise<void> => {
   const profile = currentProfile;
   try {
     pendingBreak = true;
-    stopSource = await source.start(sourceOptions(activity, profile), receiveFix, (message) => setState({ error: message }));
+    sourceError = null;
+    stopSource = await source.start(sourceOptions(activity, profile), receiveFix, onSourceError);
     if (state.measuringMotion) await resumeMotionCapture().catch(() => undefined);
-    setState({ status: 'recording', pausedReason: null, error: null });
+    // L'erreur de la source peut arriver avant la fin du démarrage (localisation coupée) : elle reste affichée.
+    setState({ status: 'recording', pausedReason: null, error: sourceError });
   } catch (err) {
     pendingBreak = false;
     setState({ error: `Reprise impossible : ${errorMessage(err, 'erreur inconnue')}` });
@@ -660,6 +675,7 @@ export const stopRecording = async (): Promise<void> => {
   segmentBreaks = [];
   intervalRuns = new Map();
   marks = [];
+  sourceError = null;
 };
 
 /** Trace de l'enregistrement en cours, un tableau par segment continu : la carte et les statistiques en direct. */

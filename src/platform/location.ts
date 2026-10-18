@@ -74,34 +74,64 @@ const fromPlugin = (location: PluginLocation): LocationFix => ({
   bearingDeg: optional(location.bearing),
 });
 
+/** Attente entre deux essais de démarrage du GPS, quand la localisation du téléphone est coupée. */
+const LOCATION_RETRY_MS = 2_000;
+
+/** Refus du plugin quand la localisation du téléphone est coupée, l'autorisation étant donnée (« Location services disabled. »). */
+const isLocationDisabled = (error: { message?: string }): boolean => /disabled/i.test(error.message ?? '');
+
 /**
  * GPS du téléphone, par `@capgo/background-geolocation` : un service de
  * premier plan, avec sa notification, qui continue écran éteint. Le plugin est
  * chargé à la demande, pour ne rien coûter au navigateur.
+ *
+ * Localisation coupée au démarrage : le plugin refuse sans rien lancer. Le
+ * démarrage est alors réessayé jusqu'à ce qu'elle revienne, pour que les
+ * positions arrivent dès qu'elle est activée, sans pause ni reprise.
  */
 const nativeSource: LocationSource = {
   label: 'GPS du téléphone',
   start: async (options, onFix, onError) => {
     const { BackgroundGeolocation } = await import('@capgo/background-geolocation');
-    await BackgroundGeolocation.start(
-      {
-        backgroundTitle: options.notificationTitle,
-        backgroundMessage: options.notificationText,
-        requestPermissions: true,
-        // Jamais de position périmée : une position ancienne fausserait le premier intervalle.
-        stale: false,
-        distanceFilter: options.distanceFilterM,
-        minIntervalMs: options.intervalMs,
-      },
-      (location, error) => {
-        if (error) {
-          onError(error.message || error.code || 'Localisation indisponible.');
-          return;
+    let stopped = false;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    let toldDisabled = false;
+    const launch = (): Promise<void> =>
+      BackgroundGeolocation.start(
+        {
+          backgroundTitle: options.notificationTitle,
+          backgroundMessage: options.notificationText,
+          requestPermissions: true,
+          // Jamais de position périmée : une position ancienne fausserait le premier intervalle.
+          stale: false,
+          distanceFilter: options.distanceFilterM,
+          minIntervalMs: options.intervalMs,
+        },
+        (location, error) => {
+          if (stopped) return;
+          if (error) {
+            if (isLocationDisabled(error)) {
+              if (!toldDisabled) onError("Localisation du téléphone coupée : activez-la, l'enregistrement démarre à la première position.");
+              toldDisabled = true;
+              retry = setTimeout(() => {
+                retry = null;
+                if (!stopped) launch().catch((err: unknown) => onError(err instanceof Error ? err.message : 'Localisation indisponible.'));
+              }, LOCATION_RETRY_MS);
+              return;
+            }
+            onError(error.message || error.code || 'Localisation indisponible.');
+            return;
+          }
+          if (location) onFix(fromPlugin(location));
         }
-        if (location) onFix(fromPlugin(location));
-      }
-    );
-    return () => BackgroundGeolocation.stop();
+      );
+    await launch();
+    return async () => {
+      stopped = true;
+      if (retry !== null) clearTimeout(retry);
+      retry = null;
+      await BackgroundGeolocation.stop();
+    };
   },
 };
 

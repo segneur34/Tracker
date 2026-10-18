@@ -42,7 +42,7 @@ const FAMILY_BLURB: Record<SportFamily, string> = {
   voile: 'Wingfoil, planche, kite, bateau : vitesse, tops, virements et empannages, vent, VMG.',
   course: 'Allure, dénivelé, zones de pente, vitesse et altitude.',
   velo: 'Vitesse, dénivelé, zones de pente, meilleurs segments, puissance et énergie.',
-  fractionne: "À pied ou à vélo : compteur de répétitions à l'enregistrement, avec bips, puis l'analyse de la course ou du vélo.",
+  fractionne: "À pied ou à vélo : compteur de répétitions à l'enregistrement, avec bips, puis la même analyse qu'à pied ou à vélo.",
   surf: 'Vagues, temps sur la vague, vitesse, rame et retour au pic ; sur foil, les vols enchaînés.',
 };
 

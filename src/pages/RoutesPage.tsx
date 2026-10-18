@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import MemoryStatus from '../components/MemoryStatus';
+import ActivityIcon from '../components/ActivityIcon';
 import RouteList from '../components/RouteList';
 import { IconRoute } from '../components/icons';
 import Card from '../components/ui/Card';
@@ -81,6 +82,7 @@ function RoutesPage() {
           </button>
           {counts.map(({ activity, count }) => (
             <button key={activity.id} type="button" className="ui-tab" aria-pressed={filter === activity.id} onClick={() => setFilter(activity.id)}>
+              <ActivityIcon activity={activity} className="ui-tab__icon" />
               {activity.name} ({count})
             </button>
           ))}

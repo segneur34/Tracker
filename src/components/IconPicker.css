@@ -1,0 +1,29 @@
+/* Seize icônes au choix pour une activité, sur le modèle des nuances (ShadePicker). */
+.icon-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.icon-picker__choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line-strong);
+  cursor: pointer;
+}
+
+.icon-picker__choice[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+.icon-picker__choice:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

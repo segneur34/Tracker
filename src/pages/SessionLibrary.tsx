@@ -5,6 +5,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import MapAutoResize from '../components/MapAutoResize';
 import { IconHelp } from '../components/icons';
+import ActivityArt from '../components/activityArt';
+import ActivityIcon from '../components/ActivityIcon';
 import ActivitySelect, { ActivitySheet } from '../components/ActivitySelect';
 import ImportButtons from '../components/ImportButtons';
 import MemoryStatus from '../components/MemoryStatus';
@@ -23,6 +25,7 @@ import { buildCumulativeTrack } from '../core/sessionStats';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import { coloredSegments, trackColorSpeedsMs } from '../core/trackColor';
 import { FAMILY_BASE, activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
+import { activityIcon, type ActivityIconId } from '../core/activityIcons';
 import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
 import { formatDistance, formatDuration, formatShortDuration, formatSpeed, msToKnots, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
@@ -53,7 +56,7 @@ import './SessionLibrary.css';
 
 const FAMILY: Record<SportFamily, { title: string; accent: string; of: string }> = {
   voile: { title: 'Voile', accent: 'var(--voile)', of: 'de voile' },
-  course: { title: 'Course à pied', accent: 'var(--course)', of: 'de course' },
+  course: { title: 'À pied', accent: 'var(--course)', of: 'à pied' },
   velo: { title: 'Vélo', accent: 'var(--velo)', of: 'de vélo' },
   fractionne: { title: 'Fractionné', accent: 'var(--fractionne)', of: 'de fractionné' },
   surf: { title: 'Surf', accent: 'var(--surf)', of: 'de surf' },
@@ -293,6 +296,7 @@ function SessionRow({
           {record.name && <span className="lib-row__name">{record.name}</span>}
           <span className="lib-row__head">
             <span className={record.name ? 'lib-row__sport lib-row__sport--sub' : 'lib-row__sport'}>
+              {activity && <ActivityIcon activity={activity} className="lib-row__icon" style={{ color: activity.color }} />}
               {activity ? activity.name : 'À classer'}
             </span>
             <span className="lib-row__date">{formatDate(startMs)} · {formatTime(startMs)}</span>
@@ -417,6 +421,17 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   const shown = activeFilter === 'all' ? familySessions : familySessions.filter((s) => activityByFile.get(s.file)?.id === activeFilter);
   const shownRoutes = activeFilter === 'all' ? familyRoutes : familyRoutes.filter((r) => routeActivity(r, activities)?.id === activeFilter);
   const native = isNativeApp();
+  /** Dessins de l'en-tête : l'activité filtrée, sinon toutes celles de la vue (à défaut, celles de la famille), une fois par dessin. */
+  const headerArt = useMemo(() => {
+    const filtered = counts.find((c) => c.activity.id === activeFilter)?.activity;
+    const listedHere = counts.length > 0 ? counts.map((c) => c.activity) : activitiesOfFamily(activities, family).filter(listed);
+    const byIcon = new Map<ActivityIconId, Activity>();
+    for (const activity of filtered ? [filtered] : listedHere) {
+      const icon = activityIcon(activity);
+      if (!byIcon.has(icon)) byIcon.set(icon, activity);
+    }
+    return [...byIcon];
+  }, [counts, activeFilter, activities, family, listed]);
 
   const row = (session: LibrarySession) => (
     <SessionRow
@@ -433,7 +448,16 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   return (
     <div className="ui-page" style={{ '--lib-accent': accent, '--help-accent': accent } as React.CSSProperties}>
       <PageHeader
-        title={title}
+        title={(
+          <span className="lib-title">
+            {title}
+            {headerArt.length > 0 && (
+              <span className={headerArt.length > 3 ? 'lib-title__art lib-title__art--many' : 'lib-title__art'}>
+                {headerArt.map(([icon, activity]) => <ActivityArt key={icon} icon={icon} style={{ color: activity.color }} />)}
+              </span>
+            )}
+          </span>
+        )}
         subtitle={`${familySessions.length} session${familySessions.length > 1 ? 's' : ''}`}
         aside={(
           // Imports et mise à jour, de moindre usage : derrière « … », pour que la liste vienne tout de suite.
@@ -485,6 +509,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
           </button>
           {counts.map(({ activity, count }) => (
             <button key={activity.id} type="button" className="ui-tab" aria-pressed={activeFilter === activity.id} onClick={() => setFilter(activity.id)}>
+              <ActivityIcon activity={activity} className="ui-tab__icon" />
               {activity.name} ({count})
             </button>
           ))}

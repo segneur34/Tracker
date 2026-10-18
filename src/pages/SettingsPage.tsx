@@ -44,6 +44,9 @@ import MemoryStatus from '../components/MemoryStatus';
 import { PermissionsSettings } from '../components/PermissionsStatus';
 import PanelTitle from '../components/PanelTitle';
 import ShadePicker from '../components/ShadePicker';
+import ActivityIcon from '../components/ActivityIcon';
+import IconPicker from '../components/IconPicker';
+import { activityIcon, guessActivityIcon, type ActivityIconId } from '../core/activityIcons';
 import WayTypeTabs from '../components/WayTypeTabs';
 import {
   JUMP_MIN_HEIGHT_RANGE, JUMP_PLACEMENTS, JUMP_PLACEMENT_HINT, JUMP_PLACEMENT_LABEL, type JumpPlacement, type JumpSettings,
@@ -310,7 +313,7 @@ function SettingsPage() {
   const { open: openPart, toggle: togglePart } = useOpenSections<ActivityPartKey>('settings-activity-parts', ACTIVITY_PART_DEFAULTS);
   const { open: openFamily, toggle: toggleFamily } = useOpenSections<SportFamily>('settings-families', FAMILY_OPEN_DEFAULTS);
   /**
-   * Activités rangées par famille (Voile, Course à pied, Vélo, Fractionné, Surf), chacune dans l'ordre de
+   * Activités rangées par famille (Voile, À pied, Vélo, Fractionné, Surf), chacune dans l'ordre de
    * la liste, les cachées en bas de leur famille (§10, point 100).
    */
   const familyOrdered = SPORT_FAMILIES.flatMap((f) => {
@@ -330,8 +333,8 @@ function SettingsPage() {
   };
 
   /** Une activité ajoutée s'ouvre, sa famille aussi, pour la régler aussitôt. */
-  const addAndOpen = (name: string, base: SportType, color: string): string | null => {
-    const id = addActivity(name, base, color);
+  const addAndOpen = (name: string, base: SportType, color: string, icon?: ActivityIconId): string | null => {
+    const id = addActivity(name, base, color, icon);
     if (id === null) return null;
     if (!openActivity[id]) toggleActivity(id);
     if (!openFamily[sportFamily(base)]) toggleFamily(sportFamily(base));
@@ -457,7 +460,7 @@ function SettingsPage() {
                       <div className="settings-activity__head">
                         <button type="button" className="settings-activity__toggle" aria-expanded={isOpen} onClick={() => toggleActivity(id)}>
                           <IconChevronRight size={14} className="settings-activity__chevron" style={{ transform: isOpen ? 'rotate(90deg)' : undefined }} />
-                          {!isOpen && <span className="settings-activity__dot" style={{ backgroundColor: activity.color }} />}
+                          {!isOpen && <ActivityIcon activity={activity} size={18} className="settings-activity__icon" style={{ color: activity.color }} />}
                           {!isOpen && <strong className="settings-activity__name">{activity.name}</strong>}
                           {!isOpen && <span className="settings-sports__mark">{p.label}</span>}
                           {!isOpen && (
@@ -482,6 +485,11 @@ function SettingsPage() {
                             <span className="settings-row__label">Couleur</span>
                             <ShadePicker shades={FAMILY_SHADES[family]} value={activity.color} onChange={(color) => updateActivity(id, { color })}
                               label={`Couleur de ${activity.name}`} />
+                          </div>
+                          <div className="settings-row" title="Icône de l'activité dans les listes, les onglets et l'accueil ; sans choix, elle suit le nom">
+                            <span className="settings-row__label">Icône</span>
+                            <IconPicker value={activityIcon(activity)} color={activity.color} onChange={(icon) => updateActivity(id, { icon })}
+                              label={`Icône de ${activity.name}`} />
                           </div>
                           <ActivityPart label="Affichage" open={openPart.affichage} onToggle={() => togglePart('affichage')}>
                             <div className="settings-row">
@@ -813,7 +821,7 @@ function SettingsPage() {
         {open.coureur && (
           <>
             <p className="settings-block__intro">
-              Ces caractéristiques servent à l'onglet énergie des analyses de course et de vélo, et les fréquences cardiaques aux zones d'effort de l'onglet cardio, dans toutes les activités. Tout est facultatif.
+              Ces caractéristiques servent à l'onglet énergie des analyses à pied et à vélo, et les fréquences cardiaques aux zones d'effort de l'onglet cardio, dans toutes les activités. Tout est facultatif.
             </p>
             <NumberField label="Poids" unit="kg" step={0.5} min={20} max={300} value={profile.weightKg} onCommit={profileField('weightKg')} placeholder="ex. 72" />
             <NumberField label="Taille" unit="cm" min={100} max={250} value={profile.heightCm} onCommit={profileField('heightCm')} placeholder="ex. 178" />
@@ -1029,7 +1037,7 @@ function ActivityNameField({
   };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-      <span className="settings-activity__dot" style={{ backgroundColor: activity.color }} />
+      <ActivityIcon activity={activity} size={18} className="settings-activity__icon" style={{ color: activity.color }} />
       <input value={draft} maxLength={40} aria-label="Nom de l'activité" className="ui-field ui-field--s"
         style={{ width: '120px', fontWeight: 600 }}
         onChange={(e) => setDraft(e.target.value)}
@@ -1073,25 +1081,28 @@ function GearLabelsField({
   );
 }
 
-/** Ajout d'une activité : nom, famille, calcul (en voile et en fractionné), nuance de la famille. */
+/** Ajout d'une activité : nom, famille, calcul (en voile et en fractionné), nuance de la famille, icône (devinée du nom tant qu'on n'en choisit pas). */
 function AddActivityForm({
   activities, onAdd,
 }: {
   activities: Activity[];
-  onAdd: (name: string, base: SportType, color: string) => string | null;
+  onAdd: (name: string, base: SportType, color: string, icon?: ActivityIconId) => string | null;
 }) {
   const [name, setName] = useState('');
   const [family, setFamily] = useState<SportFamily>('voile');
   const [base, setBase] = useState<SportType>(familySports('voile')[0]);
   const [color, setColor] = useState(() => nextActivityColor(activities, 'voile'));
+  const [icon, setIcon] = useState<ActivityIconId | null>(null);
   const pickFamily = (next: SportFamily) => {
     setFamily(next);
     setBase(familySports(next)[0]);
     setColor(nextActivityColor(activities, next));
+    setIcon(null);
   };
   const submit = () => {
-    if (onAdd(name, base, color) === null) return;
+    if (onAdd(name, base, color, icon ?? undefined) === null) return;
     setName('');
+    setIcon(null);
     setColor(nextActivityColor([...activities, { id: '', name, base, color }], family));
   };
   return (
@@ -1113,6 +1124,7 @@ function AddActivityForm({
         </label>
       )}
       <ShadePicker shades={FAMILY_SHADES[family]} value={color} onChange={setColor} label="Couleur de la nouvelle activité" />
+      <IconPicker value={icon ?? guessActivityIcon(name, base)} color={color} onChange={setIcon} label="Icône de la nouvelle activité" />
       <button onClick={submit} disabled={name.trim() === ''} className="ui-btn ui-btn--secondary ui-btn--s">Ajouter</button>
     </div>
   );

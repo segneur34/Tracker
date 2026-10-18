@@ -3,6 +3,7 @@ import {
   ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, SURF_FOIL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
   isActivityShown, isNavPage, newActivityId, insertActivity, pickNavFamily, pickNavSecond, readActivities, upgradeActivities, visibleActivities, visibleFamilies, withHidden, type Activity, type NavPage,
 } from '../core/activities';
+import type { ActivityIconId } from '../core/activityIcons';
 import {
   ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, defaultActiveThresholdOf, getSportProfile, sportTreatment, type ElevationProfile,
   type RecordingProfile, type SportFamily, type Treatment,
@@ -988,25 +989,28 @@ export const useAllSportSettings = () => {
 
   /** Ajoute une activité, rangée avec sa famille ; rend son identifiant, `null` si le nom est vide. */
   const addActivity = useCallback(
-    (name: string, base: SportType, color: string): string | null => {
+    (name: string, base: SportType, color: string, icon?: ActivityIconId): string | null => {
       const trimmed = name.trim();
       if (trimmed === '') return null;
       const id = newActivityId(trimmed, activities);
-      persist({ ...stored, activities: insertActivity(activities, { id, name: trimmed, base, color }), activitiesVersion: ACTIVITIES_VERSION });
+      const activity: Activity = { id, name: trimmed, base, color, ...(icon ? { icon } : {}) };
+      persist({ ...stored, activities: insertActivity(activities, activity), activitiesVersion: ACTIVITIES_VERSION });
       return id;
     },
     [activities, persist, stored]
   );
 
-  /** Renomme ou recolore une activité ; un nom vide est ignoré. */
+  /** Renomme, recolore ou change l'icône d'une activité ; un nom vide est ignoré. */
   const updateActivity = useCallback(
-    (id: string, patch: { name?: string; color?: string }) => {
+    (id: string, patch: { name?: string; color?: string; icon?: ActivityIconId }) => {
       const name = patch.name?.trim();
       persist({
         ...stored,
         activitiesVersion: ACTIVITIES_VERSION,
         activities: activities.map((a) =>
-          a.id === id ? { ...a, ...(name ? { name } : {}), ...(patch.color ? { color: patch.color } : {}) } : a
+          a.id === id
+            ? { ...a, ...(name ? { name } : {}), ...(patch.color ? { color: patch.color } : {}), ...(patch.icon ? { icon: patch.icon } : {}) }
+            : a
         ),
       });
     },

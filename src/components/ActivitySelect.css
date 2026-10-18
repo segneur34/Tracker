@@ -33,11 +33,9 @@
   transform: rotate(90deg);
 }
 
-.activity-select__dot {
+/* Icône de l'activité, à sa couleur. */
+.activity-select__icon {
   flex-shrink: 0;
-  width: 10px;
-  height: 10px;
-  border-radius: var(--radius-pill);
 }
 
 .activity-select__backdrop {

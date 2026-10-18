@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
 import { useVisibility } from '../hooks/useSportSettings';
+import ActivityIcon from './ActivityIcon';
 import { FAMILY_ICON } from './familyIcons';
 import { IconChevronRight } from './icons';
 import './ActivitySelect.css';
 
 /**
- * Choix d'une activité, groupées par famille (Voile, Course à pied, Vélo, Fractionné) :
+ * Choix d'une activité, groupées par famille (Voile, À pied, Vélo, Fractionné) :
  * planifier un itinéraire, classer une session, changer l'activité d'un
  * enregistrement en cours ou d'une session analysée. Passer d'une famille à
  * l'autre change le module qui analyse la session : c'est à l'appelant d'en
@@ -90,7 +91,7 @@ export function ActivitySheet({ activities, value, families = SPORT_FAMILIES, la
                     aria-selected={selected}
                     className="activity-select__option"
                     onClick={() => onChoose(a)}>
-                    <span className="activity-select__dot" style={{ backgroundColor: a.color }} />
+                    <ActivityIcon activity={a} size={20} className="activity-select__icon" style={{ color: a.color }} />
                     <span className="activity-select__option-name">{a.name}</span>
                     <span className="activity-select__radio" aria-hidden="true" />
                   </button>
@@ -143,7 +144,7 @@ function ActivitySelect({
         aria-label={label ? `${label} : ${current?.name ?? placeholder ?? 'à choisir'}` : undefined}
         disabled={disabled}
         onClick={() => setOpen(true)}>
-        {current && <span className="activity-select__dot" style={{ backgroundColor: current.color }} />}
+        {current && <ActivityIcon activity={current} size={18} className="activity-select__icon" style={{ color: current.color }} />}
         <span className={current ? 'activity-select__name' : 'activity-select__name activity-select__name--empty'}>
           {current?.name ?? placeholder ?? 'Choisir…'}
         </span>

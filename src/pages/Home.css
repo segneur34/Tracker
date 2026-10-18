@@ -43,7 +43,7 @@
   gap: var(--space-2);
 }
 
-/* Sous 340 px, deux colonnes ne logent plus « Course à pied » ni « Fractionné » en entier : une seule. */
+/* Sous 340 px, deux colonnes ne logent plus « Fractionné » en entier : une seule. */
 @media (max-width: 339px) {
   .home-families {
     grid-template-columns: minmax(0, 1fr);

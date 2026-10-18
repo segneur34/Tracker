@@ -226,6 +226,197 @@ export const IconFlag = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+/* Icônes d’activité (core/activityIcons.ts) : la course reprend IconRun. */
+
+/** Voilier : mât, grand-voile, foc et coque. */
+export const IconSailboat = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M12 3v13" />
+    <path d="M12 3.5l6.5 11H12" />
+    <path d="M10 6.5l-4.5 8H10" />
+    <path d="M3.5 17.5h17l-2.5 3H6z" />
+  </svg>
+);
+
+/** Planche à voile : voile et wishbone sur la planche. */
+export const IconWindsurf = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M9.5 18L14 3c4.5 4 6 9 5 14.5z" />
+    <path d="M11.5 11.5l6.5 1.5" />
+    <path d="M3 20.5c6 .6 12 0 18-2.5" />
+  </svg>
+);
+
+/** Wingfoil : la voile seule, de profil comme sur la grande illustration : bord d'attaque en arc, boudin central, panneaux (17/10). */
+export const IconWingfoil = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M4 3.5C14 2 21.5 9 19.5 20.5" />
+    <path d="M4 3.5c2.5 7 8 13 15.5 17" />
+    <path d="M16.8 7.5l-5.3 5.3" />
+    <path d="M11 3.9L7.8 8.6" />
+    <path d="M19.8 13.6l-4.6 3.6" />
+  </svg>
+);
+
+/** Kitesurf : aile en arc, lignes, rider sur sa planche. */
+export const IconKite = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M10 8.5C10.5 2.5 19.5 1 21.5 9" />
+    <path d="M10 8.5l-2 5" />
+    <path d="M21.5 9L8 13.5" />
+    <circle cx="5" cy="12.5" r="1.4" fill="currentColor" stroke="none" />
+    <path d="M6 15l1 2.5-1 2" />
+    <path d="M2.5 20.5c3 .7 6 .7 9-.5" />
+  </svg>
+);
+
+/** Marcheur au bâton, sac au dos. */
+export const IconWalk = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="11" cy="3.8" r="1.6" fill="currentColor" stroke="none" />
+    <path d="M10.5 7.5l-1 6" />
+    <path d="M9.5 13.5l2.5 3v4" />
+    <path d="M9.5 13.5l-2 3.5-1.5 3.5" />
+    <path d="M10.5 8.5l3.5 2.5" />
+    <path d="M15 9l1.5 12" />
+    <path d="M10 8H8v4.5h1.5" />
+  </svg>
+);
+
+/** Vélo de route, cintre recourbé. */
+export const IconRoadBike = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="5.5" cy="16" r="3.5" />
+    <circle cx="18.5" cy="16" r="3.5" />
+    <path d="M5.5 16l4-7h6l3 7" />
+    <path d="M9.5 9l3 7h6" />
+    <path d="M8 6h3" />
+    <path d="M15.5 9l-1-3h2.5a1.5 1.5 0 0 1 0 3" />
+  </svg>
+);
+
+/** VTT sur un sol accidenté. */
+export const IconMtb = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="5.5" cy="15" r="3.5" />
+    <circle cx="18.5" cy="15" r="3.5" />
+    <path d="M5.5 15l4-7h6l3 7" />
+    <path d="M9.5 8l3 7h6" />
+    <path d="M8 5h3" />
+    <path d="M15.5 8l-1-3h3" />
+    <path d="M2 21.5l3-1 3 .5 3-1.5 3 .5 3-1 4-.5" />
+  </svg>
+);
+
+/** Gravel : vélo et sacoche de selle. */
+export const IconGravel = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="5.5" cy="16" r="3.5" />
+    <circle cx="18.5" cy="16" r="3.5" />
+    <path d="M5.5 16l4-7h6l3 7" />
+    <path d="M9.5 9l3 7h6" />
+    <path d="M8 6h3" />
+    <path d="M15.5 9l-1-3h2" />
+    <rect x="2.5" y="8" width="4.5" height="3.5" rx="1" />
+  </svg>
+);
+
+/** Surf : vague qui déferle et planche. */
+export const IconSurfer = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M2.5 20.5C2.5 11 8 5 14.5 5c3 0 5.5 2 5.5 4.5-2.5-1.5-6-1-7.5 2" />
+    <path d="M9 20c3-3.5 7-6 12-6.5-1.5 3.5-6 6-12 6.5z" />
+  </svg>
+);
+
+/** Surf foil : surfeur debout, planche sur son foil. */
+export const IconSurfFoil = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="12" cy="3.5" r="1.6" fill="currentColor" stroke="none" />
+    <path d="M12 6.5v3.5" />
+    <path d="M8 8.5l4-1.5 4 1.5" />
+    <path d="M9.5 14l2.5-4 2.5 4" />
+    <path d="M4 14h16" />
+    <path d="M12.5 14v6" />
+    <path d="M9 20h7" />
+  </svg>
+);
+
+/** Kayak et pagaie double. */
+export const IconKayak = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M2.5 16c6 2.5 13 2.5 19 0-6-1.8-13-1.8-19 0z" />
+    <circle cx="12" cy="9.5" r="1.6" fill="currentColor" stroke="none" />
+    <path d="M12 12v2.5" />
+    <path d="M5.5 20L19 5" />
+    <path d="M18 3.5l2.5 2.5" />
+    <path d="M4 18.5l2.5 2.5" />
+  </svg>
+);
+
+/** Paddle : debout sur la planche, pagaie simple. */
+export const IconPaddle = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="10.5" cy="3.5" r="1.6" fill="currentColor" stroke="none" />
+    <path d="M10.5 6.5v6.5" />
+    <path d="M10.5 13l-2 6" />
+    <path d="M10.5 13l2 6" />
+    <path d="M10.5 8.5l4 1.5 3-2" />
+    <path d="M18.5 3.5l-2.5 14" />
+    <path d="M15 17l.5 3.5" />
+    <path d="M3 20.5h18" />
+  </svg>
+);
+
+/** Paddle foil : pagayeur debout, planche sur son foil. */
+export const IconPaddleFoil = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="10.5" cy="3" r="1.6" fill="currentColor" stroke="none" />
+    <path d="M10.5 5.5v4.5" />
+    <path d="M10.5 10l-1.5 4" />
+    <path d="M10.5 10l1.5 4" />
+    <path d="M10.5 7l3.5 1.5 2.5-2" />
+    <path d="M17.5 3l-2 11" />
+    <path d="M4 14h16" />
+    <path d="M12.5 14v6" />
+    <path d="M9 20h7" />
+  </svg>
+);
+
+/** Fractionné vélo : vélo et chronomètre. */
+export const IconBikeIntervals = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <g transform="translate(0 4.5) scale(.78)" strokeWidth="2.5">
+      <circle cx="5.5" cy="16" r="3.5" />
+      <circle cx="18.5" cy="16" r="3.5" />
+      <path d="M5.5 16l4-7h6l3 7" />
+      <path d="M9.5 9l3 7h6" />
+      <path d="M8 6h3" />
+      <path d="M15.5 9l-1-3h2" />
+    </g>
+    <circle cx="18.5" cy="6.5" r="4" />
+    <path d="M18.5 6.5V4.5" />
+    <path d="M17.5 1.5h2" />
+  </svg>
+);
+
+/** Fractionné à pied : coureur et chronomètre. */
+export const IconRunIntervals = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <g transform="translate(4.8 4.8) scale(.8)" strokeWidth="2.5">
+      <circle cx="16" cy="4" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M14.5 8l-2.5 6" />
+      <path d="M14 9.5l3 2.5h2.5" />
+      <path d="M14 9.5l-3.5.5-2 2.5" />
+      <path d="M12 14l3 2v4.5" />
+      <path d="M12 14l-2.5 4H5" />
+    </g>
+    <circle cx="6" cy="7" r="4" />
+    <path d="M6 7V5" />
+    <path d="M5 2h2" />
+  </svg>
+);
+
 /** Croix : supprimer. */
 export const IconClose = ({ size = 20, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>

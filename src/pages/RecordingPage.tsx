@@ -94,7 +94,7 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
 const STAT_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' } as const;
 
 /** Nom d'une famille dans « Aucune activité … ». */
-const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'course', velo: 'vélo', fractionne: 'de fractionné', surf: 'de surf' };
+const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'à pied', velo: 'vélo', fractionne: 'de fractionné', surf: 'de surf' };
 
 const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
 const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;

@@ -462,7 +462,7 @@ const SAILING_DEFAULTS = {
 
 const RUNNING_PROFILE: SportProfile = {
   id: 'running',
-  label: 'Course à pied',
+  label: 'À pied',
   speedUnit: 'minkm',
   thresholdUnit: 'kmh',
   // Reprise au-dessus de 4 km/h, pause en dessous de 2 km/h, confirmée sur 3 s.

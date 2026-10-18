@@ -7,6 +7,7 @@ import type { SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { effectiveDistanceUnit, effectiveDurationSettings, effectiveElevationProfile } from '../hooks/useSportSettings';
 import { routeActivity, routeDistanceM, routeDurationS } from '../planning/routeList';
+import ActivityIcon from './ActivityIcon';
 import Button from './ui/Button';
 import './RouteList.css';
 
@@ -55,7 +56,9 @@ function RouteList({ routes, activities, onOpen, currentBase = null, actions, go
           <>
             <strong>{saved.record.name}</strong>
             <span className="route-list__meta">
-              <span className="route-list__dot" style={{ background: activity?.color ?? 'var(--faint)' }} />
+              {activity
+                ? <ActivityIcon activity={activity} size={14} className="route-list__icon" style={{ color: activity.color }} />
+                : <span className="route-list__dot" style={{ background: 'var(--faint)' }} />}
               <span>{activity?.name ?? 'Sans activité'}</span>
               <span className="num">
                 {' · '}

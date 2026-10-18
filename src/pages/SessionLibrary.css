@@ -144,3 +144,44 @@
 .lib-row__actions > :not(.lib-row__rename) {
   flex-shrink: 0;
 }
+
+/* Titre et dessins des activités montrées (toutes, ou celle du filtre). */
+.lib-title {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.lib-title__art {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  --lib-art-size: 40px;
+}
+
+.lib-title__art svg {
+  width: var(--lib-art-size);
+  height: var(--lib-art-size);
+}
+
+.lib-title__art--many {
+  --lib-art-size: 30px;
+}
+
+@media (min-width: 768px) {
+  .lib-title__art {
+    --lib-art-size: 52px;
+  }
+
+  .lib-title__art--many {
+    --lib-art-size: 40px;
+  }
+}
+
+/* Petite icône de l'activité, devant son nom. */
+.lib-row__icon {
+  margin-right: var(--space-1);
+  vertical-align: -2px;
+}

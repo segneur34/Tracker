@@ -1,5 +1,6 @@
 import { SPORT_FAMILIES, SPORT_PROFILES, sportFamily, sportTreatment, type SportFamily, type Treatment } from './sportProfiles';
 import type { SportType } from './types';
+import { isActivityIconId, type ActivityIconId } from './activityIcons';
 
 /**
  * Activités : ce que l'utilisateur pratique, sous le nom qu'il choisit
@@ -27,6 +28,8 @@ export interface Activity {
    * rien n'est effacé, la ré-afficher rend tout (§10, point 100).
    */
   hidden?: true;
+  /** Icône choisie dans Réglages ; absente, elle est devinée du nom et du calcul (`activityIcon`). */
+  icon?: ActivityIconId;
 }
 
 /**
@@ -123,7 +126,7 @@ export const FAMILY_BASE: Record<SportFamily, SportType> = {
 
 /** Nom d'une famille, tel que l'interface l'affiche. */
 export const FAMILY_LABEL: Record<SportFamily, string> = {
-  voile: 'Voile', course: 'Course à pied', velo: 'Vélo', fractionne: 'Fractionné', surf: 'Surf',
+  voile: 'Voile', course: 'À pied', velo: 'Vélo', fractionne: 'Fractionné', surf: 'Surf',
 };
 
 /** Couleur d'interface d'une famille (variable du thème). */
@@ -147,11 +150,15 @@ export const readActivities = (raw: unknown): Activity[] => {
   const list: Activity[] = [];
   for (const item of raw) {
     if (typeof item !== 'object' || item === null) continue;
-    const { id, name, base, color, hidden } = item as Record<string, unknown>;
+    const { id, name, base, color, hidden, icon } = item as Record<string, unknown>;
     if (typeof id !== 'string' || id === '' || seen.has(id)) continue;
     if (typeof name !== 'string' || name.trim() === '' || !isSportType(base)) continue;
     seen.add(id);
-    list.push({ id, name: name.trim(), base, color: isColor(color) ? color : BASE_COLOR[base], ...(hidden === true ? { hidden } : {}) });
+    list.push({
+      id, name: name.trim(), base, color: isColor(color) ? color : BASE_COLOR[base],
+      ...(hidden === true ? { hidden } : {}),
+      ...(isActivityIconId(icon) ? { icon } : {}),
+    });
   }
   return list;
 };

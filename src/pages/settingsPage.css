@@ -132,10 +132,7 @@
   transition: transform 0.15s;
 }
 
-.settings-activity__dot {
-  width: 14px;
-  height: 14px;
-  border-radius: var(--radius-pill);
+.settings-activity__icon {
   flex-shrink: 0;
 }
 

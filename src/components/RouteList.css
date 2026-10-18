@@ -49,6 +49,10 @@
   font-size: var(--text-s);
 }
 
+.route-list__icon {
+  flex: 0 0 auto;
+}
+
 .route-list__dot {
   flex: 0 0 auto;
   width: 8px;

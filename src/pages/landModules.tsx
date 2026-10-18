@@ -266,8 +266,8 @@ const cyclingEnergy = ({ track, grades, activityMask, runner, age, bikeType, bik
 export const LAND_PAGES: Record<LandFamily, LandPageConfig> = {
   course: {
     family: 'course',
-    title: 'Analyse course à pied',
-    backLabel: 'Sessions course',
+    title: 'Analyse à pied',
+    backLabel: 'Sessions à pied',
     accent: 'var(--course)',
     storageId: 'running',
   },

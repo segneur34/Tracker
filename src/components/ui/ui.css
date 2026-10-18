@@ -209,6 +209,12 @@
   text-transform: uppercase;
 }
 
+/* Petite icône devant le libellé d'un onglet (activité). */
+.ui-tab__icon {
+  margin-right: var(--space-1);
+  vertical-align: -3px;
+}
+
 .ui-tab[aria-pressed='true'] {
   background: var(--tab-accent, var(--voile));
   border-color: var(--tab-accent, var(--voile));
