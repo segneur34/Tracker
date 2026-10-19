@@ -1,4 +1,4 @@
-/* Graphe d'activités de l'accueil (`ActivityChart.tsx`), sur les variables de `theme/tokens.css`.
+/* Graphe d'activités du profil (`ActivityChart.tsx`), sur les variables de `theme/tokens.css`.
    Les couleurs des barres sont celles des activités, posées en style par le composant. */
 
 .actchart {

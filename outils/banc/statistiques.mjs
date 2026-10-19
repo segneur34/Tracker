@@ -16,8 +16,7 @@
 //  5. une famille cachée (Surf) : absente des pastilles et des totaux, sa page ouverte par l'adresse le dit ;
 //  5b. une session de voile de `make-gpx.mjs`, ouverte dans son analyse : la réussite de ses manœuvres rangée
 //     dans sa fiche, et « % de manœuvres réussies » tracé en deux séries ;
-//  6. à 390×844 : rien ne déborde, « Statistiques » choisi en case secondaire dans Réglages puis dans le menu
-//     de l'appui long, la case allumée sur la page.
+//  6. à 390×844 : rien ne déborde ; la case « Statistiques » de la barre du bas ouvre la page, allumée.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -159,13 +158,13 @@ check('onglets de la vue d\'ensemble', (await tabs()) === 'général, graphique,
 check('graphique de la vue d\'ensemble : la durée seule, sans pastilles', (await chips('Donnée')) === '' && (await points()) === 12 && (await yLabel()) === 'min',
   `${await chips('Donnée')} ; ${await points()} ; ${await yLabel()}`);
 const familyRows = await evaluate(`[...document.querySelectorAll('.stats-rows .stats-row__name')].map((e) => e.textContent).join(', ')`);
-check('une ligne par famille', familyRows === 'Course à pied, Vélo, Voile, Fractionné, Surf' || familyRows?.split(', ').length === 5, familyRows);
+check('une ligne par famille', familyRows === 'À pied, Vélo, Voile, Fractionné, Surf' || familyRows?.split(', ').length === 5, familyRows);
 check('pas de distance mêlée', (await stat('Distance')) === null);
 check('régularité', (await stat('Semaines actives')) !== null && (await evaluate(`!!document.querySelector('.recharts-bar')`)));
 await shoot('stats-ensemble');
 
 // 3. Descente.
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'Course');
+await click('.stats-chips[aria-label="Famille"] .ui-tab', 'À pied');
 await wait(800);
 check('famille dans l\'adresse', (await search()) === '/statistiques?famille=course', await search());
 check('Course : 5 sessions', (await stat('Sessions')) === '5', await stat('Sessions'));
@@ -183,7 +182,7 @@ await click('.stats-chips[aria-label="Période"] .ui-tab', '30 jours');
 await wait(800);
 check('30 jours : 2 sessions', (await stat('Sessions')) === '2', await stat('Sessions'));
 check('période dans l\'adresse', (await search()) === '/statistiques?famille=course&periode=trente', await search());
-check('le bouton « Sélection » porte le choix', (await evaluate(`${choiceButton}?.textContent`)) === 'SélectionCourse à pied · 30 jours', await evaluate(`${choiceButton}?.textContent`));
+check('le bouton « Sélection » porte le choix', (await evaluate(`${choiceButton}?.textContent`)) === 'SélectionÀ pied · 30 jours', await evaluate(`${choiceButton}?.textContent`));
 await evaluate('history.back()');
 await wait(1000);
 check('retour arrière : vue d\'ensemble', (await search()) === '/statistiques' && (await stat('Sessions')) === '12', `${await search()} ; ${await stat('Sessions')}`);
@@ -232,7 +231,7 @@ check('fiches en version 5 ou plus, distance en action', fiches.length === 12 &&
   fiches.map((r) => `${r.summary.calcVersion}/${r.summary.movingDistanceM}`).join(' '));
 // Par la pastille de la famille, pour que l'affichage soit retenu (la dernière vue retenue est Kite).
 await go('/statistiques');
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'Course');
+await click('.stats-chips[aria-label="Famille"] .ui-tab', 'À pied');
 await wait(800);
 await openTab('graphique');
 const courseChips = await chips('Donnée');
@@ -250,7 +249,7 @@ await wait(800);
 check('voile : pas de D+, la vitesse max à sa place', (await pressed('Donnée')) === 'Vitesse max', await pressed('Donnée'));
 const voileChips = await chips('Donnée');
 check('données de la voile', voileChips === 'Vitesse max, Moyenne en action, Durée, Distance, % de vol', voileChips);
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'Course');
+await click('.stats-chips[aria-label="Famille"] .ui-tab', 'À pied');
 await wait(800);
 check('retour en course : le choix retrouvé', (await pressed('Donnée')) === 'Dénivelé positif', await pressed('Donnée'));
 await click('.stats-chips[aria-label="Famille"] .ui-tab', 'Voile');
@@ -335,51 +334,14 @@ await shoot('stats-telephone');
 await go('/statistiques');
 check('390 px : rien ne déborde (ensemble)', !(await overflow()));
 
-await go('/parametres');
-await evaluate(`(() => {
-  if (document.querySelector('.settings-row select')) return;
-  [...document.querySelectorAll('[role=button]')].find((el) => el.textContent.trim() === 'Barre du bas')?.click();
-})()`);
-await wait(300);
-const options = await evaluate(`(() => {
-  const row = [...document.querySelectorAll('.settings-row')].find((r) => r.textContent.startsWith('Sport secondaire'));
-  const select = row?.querySelector('select');
-  if (!select) return null;
-  const list = [...select.options].map((o) => o.textContent).join(', ');
-  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'statistiques');
-  select.dispatchEvent(new Event('change', { bubbles: true }));
-  return list;
-})()`);
-check('Réglages : Statistiques proposé en case secondaire', options?.includes('Statistiques'), options);
-await wait(300);
-const second = await evaluate(`document.querySelector('.shell-tab--menu')?.textContent.trim()`);
-check('case secondaire : Statistiques', second === 'Statistiques', second);
-await evaluate(`document.querySelector('.shell-tab--menu').click()`);
+await go('/');
+const tab = (label) => `[...document.querySelectorAll('.shell-tabbar .shell-tab')].find((t) => t.textContent.trim() === ${JSON.stringify(label)})`;
+check('barre du bas : case Statistiques', await evaluate(`!!${tab('Statistiques')}`));
+await evaluate(`${tab('Statistiques')}.click()`);
 await wait(1500);
 // La page reprend le dernier affichage : l'adresse peut porter des paramètres.
-check('la case ouvre la page, allumée', (await search())?.startsWith('/statistiques') && (await evaluate(`document.querySelector('.shell-tab--menu').classList.contains('active')`)));
-
-// Planifier en secondaire par Réglages, puis Statistiques repris par le menu de l'appui long.
-await go('/parametres');
-await evaluate(`(() => {
-  if (document.querySelector('.settings-row select')) return;
-  [...document.querySelectorAll('[role=button]')].find((el) => el.textContent.trim() === 'Barre du bas')?.click();
-})()`);
-await wait(300);
-await evaluate(`(() => {
-  const select = [...document.querySelectorAll('.settings-row')].find((r) => r.textContent.startsWith('Sport secondaire'))?.querySelector('select');
-  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'planifier');
-  select.dispatchEvent(new Event('change', { bubbles: true }));
-})()`);
-await wait(300);
-await evaluate(`document.querySelector('.shell-tab--menu').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, isPrimary: true }))`);
-await wait(1600);
-const menu = await evaluate(`[...document.querySelectorAll('.shell-sports-menu__item')].map((e) => e.textContent.trim()).join(', ')`);
-check('menu de l\'appui long : Statistiques après Planifier', menu?.endsWith('Planifier, Statistiques'), menu);
-await click('.shell-sports-menu__item', 'Statistiques');
-await wait(1500);
-check('choisi dans le menu : retenu et ouvert', (await search())?.startsWith('/statistiques')
-  && (await evaluate(`document.querySelector('.shell-tab--menu')?.textContent.trim()`)) === 'Statistiques');
+check('la case ouvre la page, allumée', (await search())?.startsWith('/statistiques')
+  && (await evaluate(`${tab('Statistiques')}.classList.contains('active')`)));
 
 console.log(logs.length ? `Console :\n${logs.join('\n')}` : 'Console : aucune erreur');
 console.log(failures === 0 ? 'Tout est bon.' : `${failures} échec(s).`);

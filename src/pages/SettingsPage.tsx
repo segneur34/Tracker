@@ -21,7 +21,7 @@ import { zoneLabel } from '../components/heartRateColors';
 import Button from '../components/ui/Button';
 import {
   DEFAULT_GEAR_LABELS, MAX_GEAR_LABEL_LENGTH, TERRAIN_LABEL, TREATMENT_SPEED_RANGE_MS, TREATMENT_UNITS, defaultBikeType, defaultFoil, defaultGradeRange, planningFamily,
-  sanitizeGearLabels, useAllSportSettings, type NavSecond, type SportSettingsView, type TerrainType,
+  sanitizeGearLabels, useAllSportSettings, type SportSettingsView, type TerrainType,
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
 import {
@@ -173,9 +173,9 @@ function ActivityPart({ label, open, onToggle, children }: { label: string; open
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
 
 /** Blocs repliables de la page, tous fermés au départ ; l'état est mémorisé. */
-type SettingsBlock = 'memoire' | 'autorisations' | 'activites' | 'enregistrement' | 'capteurs' | 'navigation' | 'cartes' | 'coureur';
+type SettingsBlock = 'memoire' | 'autorisations' | 'activites' | 'enregistrement' | 'capteurs' | 'cartes' | 'coureur';
 const SETTINGS_BLOCK_DEFAULTS: Record<SettingsBlock, boolean> = {
-  memoire: false, autorisations: false, activites: false, enregistrement: false, capteurs: false, navigation: false, cartes: false, coureur: false,
+  memoire: false, autorisations: false, activites: false, enregistrement: false, capteurs: false, cartes: false, coureur: false,
 };
 /** Plafonds proposés pour les cartes gardées, en Mo : une liste plutôt qu'un champ, qui effacerait des tuiles à chaque chiffre tapé. */
 const TILE_CAP_CHOICES_MB = [100, 250, 500, 1000, 2000, 5000];
@@ -304,8 +304,7 @@ function HeartRateZonesField({ profile, onChange }: { profile: RunnerProfile; on
 function SettingsPage() {
   const {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
-    stopHoldMs, setStopHoldMs, navFamily, setNavFamily, navSecond, setNavSecond, navHoldMs, setNavHoldMs,
-    hiddenFamilies, setActivityHidden, setFamilyHidden,
+    stopHoldMs, setStopHoldMs, hiddenFamilies, setActivityHidden, setFamilyHidden,
   } = useAllSportSettings();
   const { profile, setNumber, setSex, setZones, age } = useRunnerProfile();
   const { open, toggle } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
@@ -776,39 +775,6 @@ function SettingsPage() {
       <div style={cardStyle}>
         <PanelTitle label="Capteurs" open={open.capteurs} onToggle={() => toggle('capteurs')} />
         {open.capteurs && <HeartRateBeltSettings />}
-      </div>
-
-      <div style={cardStyle}>
-        <PanelTitle label="Barre du bas" open={open.navigation} onToggle={() => toggle('navigation')} />
-        {open.navigation && (
-          <>
-            <p className="settings-block__intro">
-              Sur téléphone, deux sports s'ouvrent directement depuis la barre du bas : le favori à gauche du bouton rond,
-              le secondaire à sa droite. Tenir le sport secondaire déplie le menu des autres sports, de la planification
-              des itinéraires et des statistiques : celui qu'on y choisit prend sa place.
-            </p>
-            <div className="settings-row">
-              <span className="settings-row__label">Sport favori</span>
-              <select value={navFamily} onChange={(e) => setNavFamily(e.target.value as SportFamily)} className="ui-field ui-field--s">
-                {shownFamilies.map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
-              </select>
-            </div>
-            <div className="settings-row">
-              <span className="settings-row__label">Sport secondaire</span>
-              <select value={navSecond} onChange={(e) => setNavSecond(e.target.value as NavSecond)} className="ui-field ui-field--s">
-                {shownFamilies.filter((f) => f !== navFamily).map((f) => <option key={f} value={f}>{FAMILY_LABEL[f]}</option>)}
-                <option value="planifier">Planifier (itinéraires)</option>
-                <option value="statistiques">Statistiques</option>
-              </select>
-            </div>
-            <div className="settings-row">
-              <span className="settings-row__label">Appui long pour changer de sport</span>
-              <NumberField unit="s" step={0.5} min={0.5} max={10}
-                value={navHoldMs / 1000}
-                onCommit={(v) => setNavHoldMs(v === null ? null : Math.round(v * 1000))} />
-            </div>
-          </>
-        )}
       </div>
 
       <div style={cardStyle}>

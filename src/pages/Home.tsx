@@ -1,10 +1,9 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import ActivityChart from '../components/ActivityChart';
 import MemoryStatus from '../components/MemoryStatus';
 import { PermissionsPrompt } from '../components/PermissionsStatus';
 import { FAMILY_ICON } from '../components/familyIcons';
-import { IconChart, IconChevronRight, IconHelp, IconRoute } from '../components/icons';
+import { IconChart, IconChevronRight, IconHelp, IconRoute, IconUser } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
 import { FAMILY_ACCENT, FAMILY_LABEL } from '../core/activities';
 import type { SportFamily } from '../core/sportProfiles';
@@ -16,11 +15,12 @@ import { shownRoutes } from '../planning/routeList';
 import './Home.css';
 
 /**
- * Accueil : enregistrer ou planifier un itinéraire, le graphe d'activités et
- * ses totaux, puis les familles visibles en grille de deux colonnes (un « ? »
- * déplie ce que chacune analyse), et sous elles, de la même épaisseur, l'entrée
- * de la liste des itinéraires planifiés (leur nombre dès que la mémoire est
- * prête) et celle des statistiques (dès qu'il y a des sessions). Une famille
+ * Accueil : enregistrer ou planifier un itinéraire, puis les familles visibles
+ * en grille de deux colonnes (un « ? » déplie ce que chacune analyse), et sous
+ * elles, de la même épaisseur, l'entrée de la liste des itinéraires planifiés
+ * (leur nombre dès que la mémoire est prête), celles du profil et des
+ * statistiques (dès qu'il y a des sessions). Le graphe d'activités est passé
+ * dans le profil. Une famille
  * cachée dans Réglages n'y a pas sa carte, une activité cachée pas ses
  * itinéraires dans le nombre (§10, point 100).
  */
@@ -79,8 +79,6 @@ function Home() {
         </div>
       </div>
 
-      {sessions.length > 0 && <ActivityChart />}
-
       <div className="home-families">
         {families.map((family) => {
           const Icon = FAMILY_ICON[family];
@@ -99,6 +97,11 @@ function Home() {
         <Link to="/itineraires/liste" className="home-link">
           <IconRoute /> <span>Itinéraires planifiés{status === 'ready' ? ` (${routes.length})` : ''}</span> <IconChevronRight />
         </Link>
+        {sessions.length > 0 && (
+          <Link to="/profil" className="home-link">
+            <IconUser /> <span>Profil</span> <IconChevronRight />
+          </Link>
+        )}
         {sessions.length > 0 && (
           <Link to="/statistiques" className="home-link">
             <IconChart /> <span>Statistiques</span> <IconChevronRight />

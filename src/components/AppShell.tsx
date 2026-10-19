@@ -1,18 +1,14 @@
-import { useCallback, useEffect, useState, type ComponentType } from 'react';
+import { useCallback, type ComponentType } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
+import type { SportFamily } from '../core/sportProfiles';
 import { formatClock } from '../core/units';
 import { useIntervalTimer } from '../hooks/useIntervalTimer';
 import { useLongPress } from '../hooks/useLongPress';
 import { togglePauseRecording, useRecorder } from '../hooks/useRecorder';
-import {
-  effectiveLongPressMs, effectiveNavHoldMs, rememberNavSecond, useNavFamily, useNavSecond, useVisibility, type NavSecond,
-} from '../hooks/useSportSettings';
+import { effectiveLongPressMs, useVisibility } from '../hooks/useSportSettings';
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
 import { recordingDurationMs } from '../recording/session';
-import {
-  IconChart, IconChevronUp, IconGrid, IconHome, IconPause, IconPlay, IconRoute, IconSettings,
-} from './icons';
+import { IconChart, IconHome, IconPause, IconPlay, IconRoute, IconSettings, IconUser } from './icons';
 import { FAMILY_ICON } from './familyIcons';
 import HoldDial from './ui/HoldDial';
 
@@ -20,20 +16,14 @@ import HoldDial from './ui/HoldDial';
  * Cadre de toutes les pages : navigation et bandeau d'enregistrement.
  *
  * Sur téléphone (moins de 768 px de large), une barre d'onglets en bas, en
- * cinq cases pour que le bouton rond reste au milieu : Accueil · sport favori
- * · Enregistrer · sport secondaire · Réglages. Les deux sports se choisissent
- * dans Réglages (voile, puis course par défaut) ; un appui long sur le sport
- * secondaire (1 s par défaut, réglable) montre un grand cadran, puis déplie
- * au-dessus de la barre le menu des autres sports : celui qu'on y choisit
- * devient le sport secondaire, retenu. La planification des itinéraires
- * (« Planifier ») ou les statistiques peuvent y prendre la place d'un sport. Le bouton rond est vert au repos,
- * rouge pendant un enregistrement.
- * Une famille cachée dans Réglages n'est ni dans les barres ni dans le menu ;
- * son adresse s'ouvre toujours (§10, point 100).
+ * cinq cases fixes, le bouton rond au milieu : Accueil · Statistiques ·
+ * Enregistrer · Profil · Réglages. Les sports et les itinéraires s'ouvrent
+ * depuis l'accueil. Le bouton rond est vert au repos, rouge pendant un
+ * enregistrement.
  * Sur ordinateur, toutes les destinations dans une barre en haut (les
- * statistiques avant Réglages), et
- * « Itinéraires » à côté du bouton Enregistrer (sur téléphone, on y va depuis
- * l'accueil). Le choix se fait en CSS (`AppShell.css`), sans lecture de la
+ * statistiques et le profil avant Réglages), et « Itinéraires » à côté du
+ * bouton Enregistrer. Une famille cachée dans Réglages n'y est pas ; son
+ * adresse s'ouvre toujours (§10, point 100). Le choix se fait en CSS (`AppShell.css`), sans lecture de la
  * taille d'écran en JavaScript.
  *
  * Pendant un enregistrement, un bandeau rouge rappelle sur chaque page qu'il
@@ -61,21 +51,8 @@ const SETTINGS: Destination = { to: '/parametres', label: 'Réglages', Icon: Ico
 const FAMILY_TABS: Record<SportFamily, Destination> = { voile: VOILE, course: COURSE, velo: VELO, fractionne: FRACTIONNE, surf: SURF };
 const RECORD_PATH = '/enregistrer';
 const PLAN_PATH = '/itineraires';
-/** Gris foncé : le bleu du tracé est déjà celui de la voile. */
-const PLANIFIER: Destination = { to: PLAN_PATH, label: 'Planifier', Icon: IconRoute, accent: 'var(--ink-2)' };
-const STATS_PATH = '/statistiques';
-const STATISTIQUES: Destination = { to: STATS_PATH, label: 'Statistiques', Icon: IconChart, accent: 'var(--ink-2)' };
-const SECOND_TABS: Record<NavSecond, Destination> = { ...FAMILY_TABS, planifier: PLANIFIER, statistiques: STATISTIQUES };
-
-const underPath = (pathname: string, to: string): boolean => pathname === to || pathname.startsWith(`${to}/`);
-
-/**
- * Case de la page ouverte : le sport dont la route préfixe l'adresse (bibliothèque ou analyse), la
- * planification (itinéraire et liste) ou les statistiques.
- */
-const secondOfPath = (pathname: string): NavSecond | null =>
-  SPORT_FAMILIES.find((f) => underPath(pathname, FAMILY_TABS[f].to))
-  ?? (underPath(pathname, PLAN_PATH) ? 'planifier' : underPath(pathname, STATS_PATH) ? 'statistiques' : null);
+const STATISTIQUES: Destination = { to: '/statistiques', label: 'Statistiques', Icon: IconChart, accent: 'var(--ink-2)' };
+const PROFIL: Destination = { to: '/profil', label: 'Profil', Icon: IconUser, accent: 'var(--ink-2)' };
 
 /**
  * Bandeau du compteur du fractionné sur les autres pages : phase et temps
@@ -129,26 +106,6 @@ function AppShell() {
   const { pressingMs, handlers } = useLongPress(onLongPress, effectiveLongPressMs, canToggle);
 
   const { families } = useVisibility();
-  const navFamily = useNavFamily();
-  const secondKey = useNavSecond();
-  const second = SECOND_TABS[secondKey];
-  const openSecond = secondOfPath(pathname);
-  // Menu des sports, ouvert pour l'adresse où on l'a déplié : un changement de page le referme.
-  const [menuPath, setMenuPath] = useState<string | null>(null);
-  const sportsOpen = menuPath === pathname;
-  const closeSports = useCallback(() => setMenuPath(null), []);
-  // Appui long sur le sport secondaire : le menu pour en changer.
-  const openSports = useCallback(() => setMenuPath(window.location.pathname), []);
-  const sportHold = useLongPress(openSports, effectiveNavHoldMs, true);
-
-  useEffect(() => {
-    if (!sportsOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeSports();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [sportsOpen, closeSports]);
 
   return (
     <div className="shell">
@@ -158,6 +115,7 @@ function AppShell() {
           {topLink(HOME)}
           {families.map((f) => topLink(FAMILY_TABS[f]))}
           {topLink(STATISTIQUES)}
+          {topLink(PROFIL)}
           {topLink(SETTINGS)}
         </nav>
         <div className="shell-topactions">
@@ -187,11 +145,9 @@ function AppShell() {
         <Outlet />
       </main>
 
-      {sportsOpen && <div className="shell-sports-backdrop" aria-hidden="true" onClick={closeSports} />}
-
       <nav aria-label="Navigation principale" className="shell-tabbar">
         {tabLink(HOME)}
-        {tabLink(FAMILY_TABS[navFamily])}
+        {tabLink(STATISTIQUES)}
         <div className="shell-tabbar__record">
           {canToggle ? (
             // Un bouton, pas un lien : la WebView d'Android affiche l'adresse d'un lien tenu longtemps.
@@ -221,52 +177,8 @@ function AppShell() {
             </NavLink>
           )}
         </div>
-        {/* Un bouton, pas un lien : la WebView d'Android affiche l'adresse d'un lien tenu longtemps. */}
-        <button
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={sportsOpen}
-          aria-label={`${second.label} ; appui long : changer de sport`}
-          className={`shell-tab shell-tab--menu${openSecond === secondKey ? ' active' : ''}`}
-          style={{ '--tab-color': second.accent } as React.CSSProperties}
-          {...sportHold.handlers}
-          onClick={(e) => {
-            sportHold.handlers.onClick(e);
-            if (e.defaultPrevented) return;
-            closeSports();
-            navigate(second.to);
-          }}>
-          <second.Icon size={24} />
-          <span className="shell-tab__label">
-            {second.label}
-            <IconChevronUp size={12} strokeWidth={2.5} className="shell-tab__chevron" />
-          </span>
-        </button>
+        {tabLink(PROFIL)}
         {tabLink(SETTINGS)}
-        {sportsOpen && (
-          <div className="shell-sports-menu" role="menu" aria-label="Sport secondaire">
-            <span className="shell-sports-menu__title">Sport secondaire</span>
-            {[...families.filter((f) => f !== navFamily), 'planifier' as const, 'statistiques' as const].map((key) => {
-              const d = SECOND_TABS[key];
-              return (
-                <NavLink
-                  key={d.to}
-                  to={d.to}
-                  role="menuitemradio"
-                  aria-checked={key === secondKey}
-                  className={`shell-sports-menu__item${key === 'planifier' ? ' shell-sports-menu__item--apart' : ''}`}
-                  style={{ '--tab-color': d.accent } as React.CSSProperties}
-                  onClick={() => {
-                    rememberNavSecond(key);
-                    closeSports();
-                  }}>
-                  <d.Icon size={22} />
-                  <span>{d.label}</span>
-                </NavLink>
-              );
-            })}
-          </div>
-        )}
       </nav>
 
       {pressingMs !== null && (
@@ -274,10 +186,6 @@ function AppShell() {
         <HoldDial pressMs={pressingMs} color={paused ? 'var(--record)' : 'var(--recording)'}
           icon={paused ? <IconPlay size={56} strokeWidth={2.5} /> : <IconPause size={56} strokeWidth={3} />}
           title={paused ? 'Reprise' : 'Pause'} hint="Maintenez le bouton" />
-      )}
-      {sportHold.pressingMs !== null && (
-        <HoldDial pressMs={sportHold.pressingMs} color={second.accent} icon={<IconGrid size={56} strokeWidth={2} />}
-          title="Changer de sport" hint="Maintenez le bouton" />
       )}
     </div>
   );

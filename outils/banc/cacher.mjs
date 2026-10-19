@@ -1,13 +1,13 @@
 // Banc de test : cacher une famille et une activité (§10, point 100).
 // Usage : node cacher.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Le script écrit lui-même une sortie à vélo, l'importe par la page Vélo
-// (rangée sous Route, la première activité de vélo), met le Surf en sport favori, et vérifie :
+// (rangée sous Route, la première activité de vélo), et vérifie :
 //  1. le relevé de départ : barre du haut, barre du bas, accueil, bibliothèque Vélo, Enregistrer ;
 //  2. Surf caché puis Route caché, depuis leur œil dans Réglages : Surf absent des barres, de l'accueil et
-//     d'Enregistrer, le favori retombé sur la voile ; la session de Route retirée de la bibliothèque, une ligne
+//     d'Enregistrer, la barre du bas inchangée (sans sport) ; la session de Route retirée de la bibliothèque, une ligne
 //     le dit ; Route absente d'Enregistrer ; tous deux toujours listés dans Réglages, grisés ;
 //  3. la dernière famille visible ne se cache pas : son œil est désactivé ;
-//  4. tout ré-affiché : chaque relevé redevient celui du départ, à la lettre (favori compris).
+//  4. tout ré-affiché : chaque relevé redevient celui du départ, à la lettre.
 import { writeFileSync } from 'node:fs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -106,28 +106,17 @@ console.log('import :', await evaluate(`(() => {
 await wait(5000);
 
 await go('/parametres');
-await openBlock('Barre du bas', '.settings-row select');
 await openBlock('Activités', '.settings-activities');
 await wait(300);
 // Familles repliées depuis le lot 2 des demandes du 15/10 : toutes ouvertes.
 await evaluate(`document.querySelectorAll('.settings-activities__family-toggle[aria-expanded="false"]').forEach((b) => b.click()); 'ok'`);
 await wait(300);
-console.log('favori Surf :', await evaluate(`(() => {
-  const row = [...document.querySelectorAll('.settings-row')].find((r) => r.textContent.startsWith('Sport favori'));
-  const select = row?.querySelector('select');
-  if (!select) return 'absent';
-  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'surf');
-  select.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`));
-await wait(300);
-
 // --- 1. Départ ---
 const before = await snapshot();
 console.log('\n--- départ ---');
 for (const [k, v] of Object.entries(before)) console.log(`${k} : ${String(v).replace(/\s+/g, ' ').slice(0, 220)}`);
 check('la session est sous Route', before.velo.includes('Route'));
-check('le favori est Surf', before.barreBas.split(' | ')[1] === 'Surf', before.barreBas);
+check('barre du bas : Accueil, Statistiques, Profil, Réglages', before.barreBas === 'Accueil | Statistiques | Profil | Réglages', before.barreBas);
 
 // --- 2. Surf, puis Route, cachés ---
 await go('/parametres');
@@ -139,14 +128,13 @@ const settingsText = await evaluate('document.querySelector(".shell-main").inner
 const greyed = await evaluate(`[...document.querySelectorAll('.settings-activity--hidden .settings-activity__name')].map((n) => n.textContent).join(', ')`);
 check('Surf et Route toujours listés dans Réglages', settingsText.includes('Surf foil') && settingsText.includes('Route'));
 check('grisés : Route, Surf, Surf foil', greyed === 'Route, Surf, Surf foil', greyed);
-check('Surf hors du choix du favori', !(await evaluate(`[...document.querySelectorAll('.settings-row select option')].some((o) => o.value === 'surf')`)));
 await shoot('cacher-reglages');
 
 const hidden = await snapshot();
 console.log('\n--- caché ---');
 for (const [k, v] of Object.entries(hidden)) console.log(`${k} : ${String(v).replace(/\s+/g, ' ').slice(0, 220)}`);
 check('barre du haut sans Surf', !hidden.barreHaut.includes('Surf'), hidden.barreHaut);
-check('favori retombé sur Voile', hidden.barreBas.split(' | ')[1] === 'Voile', hidden.barreBas);
+check('barre du bas inchangée', hidden.barreBas === before.barreBas, hidden.barreBas);
 check("accueil sans la carte Surf", !hidden.accueil.includes('Vagues, temps sur la vague'));
 check('bibliothèque Vélo : session retirée et signalée', hidden.velo.includes('Activités cachées : 1 session') && hidden.velo.includes('0 session'));
 check("Enregistrer sans l'onglet Surf", !/\bSurf\b/.test(hidden.enregistrer));
@@ -156,12 +144,12 @@ check('/surf s’ouvre toujours, et dit qu’il est caché', (await evaluate('do
 
 // --- 3. Dernière famille ---
 await go('/parametres');
-for (const f of ['Voile', 'Course à pied', 'Fractionné']) await click('.settings-eye', `Cacher ${f}`);
+for (const f of ['Voile', 'À pied', 'Fractionné']) await click('.settings-eye', `Cacher ${f}`);
 await wait(300);
 const lastDisabled = await evaluate(`[...document.querySelectorAll('.settings-eye')].find((b) => b.getAttribute('aria-label').startsWith('Vélo'))?.disabled`);
 check('le Vélo, dernière famille visible, ne se cache pas', lastDisabled === true);
 await shoot('cacher-derniere');
-for (const f of ['Voile', 'Course à pied', 'Fractionné']) await click('.settings-eye', `Afficher ${f}`);
+for (const f of ['Voile', 'À pied', 'Fractionné']) await click('.settings-eye', `Afficher ${f}`);
 
 // --- 4. Tout ré-affiché ---
 check('œil « Afficher Surf »', await click('.settings-eye', 'Afficher Surf'));

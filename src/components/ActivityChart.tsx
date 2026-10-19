@@ -12,7 +12,7 @@ import { CHART_PERIODS, buildActivityChart, type ChartPeriod, type ChartSession 
 import './ActivityChart.css';
 
 /**
- * Graphe d'activités de l'accueil (maquette du 23 septembre 2026) : une barre
+ * Graphe d'activités du profil, venu de l'accueil (maquette du 23 septembre 2026) : une barre
  * par jour ou par semaine, une couleur par activité, les sessions d'un même
  * jour empilées ; numéros de semaine ISO en dessous. Toucher une barre
  * affiche ses sessions, chacune ouvrant son analyse. Sous le graphe, les

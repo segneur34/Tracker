@@ -213,7 +213,8 @@ console.log(`réimport avec capteurs : ${await alerts()} | .imu rangé : ${(awai
 
 // 5. Stockage plein.
 console.log('— 5. stockage plein');
-await go('/');
+// Le graphe d'activités et ses totaux repliables sont dans le profil depuis le 19/10.
+await go('/profil');
 const filled = await evaluate(`(() => {
   let n = 0;
   for (let size = 1 << 20; size >= 1; size = Math.floor(size / 2)) {

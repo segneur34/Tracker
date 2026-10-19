@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, SURF_FOIL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
-  isActivityShown, isNavPage, newActivityId, insertActivity, pickNavFamily, pickNavSecond, readActivities, upgradeActivities, visibleActivities, visibleFamilies, withHidden, type Activity, type NavPage,
+  isActivityShown, newActivityId, insertActivity, readActivities, upgradeActivities, visibleActivities, visibleFamilies, withHidden, type Activity,
 } from '../core/activities';
 import type { ActivityIconId } from '../core/activityIcons';
 import {
@@ -152,16 +152,6 @@ export interface StoredSettings {
   longPressMs?: number;
   /** Durée de l'appui long sur « Arrêter » qui termine l'enregistrement, en millisecondes ; 0 : un simple appui. */
   stopHoldMs?: number;
-  /** Sport en accès direct dans la barre du bas, sur téléphone ; absent : voile. */
-  navFamily?: SportFamily;
-  /**
-   * Case secondaire de la barre du bas, à droite du bouton rond : un sport, la planification
-   * (`'planifier'`) ou les statistiques (`'statistiques'`) ; absente ou égale au favori, le premier
-   * autre sport. Nom gardé d'avant la planification, pour ne pas perdre le choix déjà fait.
-   */
-  navSecondFamily?: NavSecond;
-  /** Durée de l'appui long sur le sport secondaire qui ouvre le menu pour en changer, en millisecondes. */
-  navHoldMs?: number;
   /** Séances du compteur gardées pour être reprises toutes faites (fractionné), communes aux activités. */
   intervalPresets?: IntervalPreset[];
   /** Dernière séance lancée au compteur, proposée la fois suivante (choix retenu). */
@@ -170,8 +160,6 @@ export interface StoredSettings {
 
 /** Appui long par défaut : 2 s, assez pour ne pas partir d'un geste involontaire. */
 export const DEFAULT_LONG_PRESS_MS = 2000;
-/** Appui long qui change le sport secondaire : 1 s, plus court, un geste involontaire n'y coûte rien. */
-export const DEFAULT_NAV_HOLD_MS = 1000;
 /** Appui long qui arrête l'enregistrement : 2 s, pour qu'un geste involontaire ne coupe pas la session. */
 export const DEFAULT_STOP_HOLD_MS = 2000;
 
@@ -235,9 +223,6 @@ export const isKnownDistanceUnit = (value: unknown): value is DistanceUnit =>
 const isKnownFamily = (value: unknown): value is SportFamily =>
   typeof value === 'string' && (SPORT_FAMILIES as string[]).includes(value);
 
-/** Sport en accès direct dans la barre du bas, par défaut la voile. */
-const DEFAULT_NAV_FAMILY: SportFamily = 'voile';
-
 /** Familles cachées, valeurs inconnues écartées. */
 const readHiddenFamilies = (stored: StoredSettings): SportFamily[] =>
   Array.isArray(stored.hiddenFamilies) ? stored.hiddenFamilies.filter(isKnownFamily) : [];
@@ -247,29 +232,6 @@ const withVisibility = (stored: StoredSettings, activities: Activity[], hiddenFa
   visibleFamilies(activities, hiddenFamilies).length === 0
     ? null
     : { ...stored, activities, activitiesVersion: ACTIVITIES_VERSION, hiddenFamilies };
-
-/** Familles visibles des réglages rangés. */
-const shownFamilies = (stored: StoredSettings): SportFamily[] =>
-  visibleFamilies(readActivities(stored.activities), readHiddenFamilies(stored));
-
-/**
- * Sport favori : celui choisi, sinon la voile ; caché, la première famille
- * visible. Le choix rangé n'est pas récrit : ré-afficher la famille le rend.
- */
-const effectiveNavFamily = (stored: StoredSettings): SportFamily =>
-  pickNavFamily(isKnownFamily(stored.navFamily) ? stored.navFamily : DEFAULT_NAV_FAMILY, shownFamilies(stored));
-
-/** Case secondaire de la barre du bas : un sport, la planification des itinéraires ou les statistiques. */
-export type NavSecond = SportFamily | NavPage;
-
-const isNavSecond = (value: unknown): value is NavSecond => isNavPage(value) || isKnownFamily(value);
-
-/**
- * Case secondaire : celle choisie si elle n'est ni le favori ni cachée, sinon
- * le premier des autres sports visibles, sinon la planification.
- */
-const effectiveNavSecond = (stored: StoredSettings): NavSecond =>
-  pickNavSecond(isNavSecond(stored.navSecondFamily) ? stored.navSecondFamily : null, effectiveNavFamily(stored), shownFamilies(stored));
 
 /**
  * Réglages enregistrés, pour qui calcule hors d'un composant : les résumés de
@@ -337,24 +299,6 @@ export const effectiveLongPressMs = (): number => {
 export const effectiveStopHoldMs = (): number => {
   const value = readStoredSettings().stopHoldMs;
   return isValidStopHold(value) ? value : DEFAULT_STOP_HOLD_MS;
-};
-
-const readNavFamily = (): SportFamily => effectiveNavFamily(readStoredSettings());
-const readNavSecond = (): NavSecond => effectiveNavSecond(readStoredSettings());
-
-/**
- * Sport en accès direct de la barre du bas, suivi en direct : la barre se met
- * à jour dès que Réglages l'écrit, ou que `reglages.json` est repris du dossier.
- */
-export const useNavFamily = (): SportFamily => useSyncExternalStore(jsonStore.subscribe, readNavFamily);
-
-/** Case secondaire de la barre du bas, suivie en direct comme le favori. */
-export const useNavSecond = (): NavSecond => useSyncExternalStore(jsonStore.subscribe, readNavSecond);
-
-/** Retient la case secondaire choisie depuis la barre du bas (appui long). */
-export const rememberNavSecond = (second: NavSecond): void => {
-  const stored = readStoredSettings();
-  if (isNavSecond(second) && stored.navSecondFamily !== second) writeStored({ ...stored, navSecondFamily: second });
 };
 
 /** Ce qui est visible (§10, point 100) : la liste complète, les familles cachées, et de quoi filtrer. */
@@ -445,12 +389,6 @@ export const saveIntervalPreset = (name: string, workout: IntervalWorkout): void
 export const removeIntervalPreset = (id: string): void => {
   const stored = readStoredSettings();
   writeStored({ ...stored, intervalPresets: sanitizePresets(stored.intervalPresets).filter((p) => p.id !== id) });
-};
-
-/** Durée effective de l'appui long qui change le sport secondaire, lue à chaque appui. */
-export const effectiveNavHoldMs = (): number => {
-  const value = readStoredSettings().navHoldMs;
-  return isValidLongPress(value) ? value : DEFAULT_NAV_HOLD_MS;
 };
 
 /**
@@ -753,7 +691,7 @@ export const useAllSportSettings = () => {
     writeStored(next);
   }, []);
 
-  // Écrits d'ailleurs pendant que la page est ouverte (sport secondaire choisi depuis la barre du bas,
+  // Écrits d'ailleurs pendant que la page est ouverte (compteur du fractionné,
   // `reglages.json` repris du dossier) : relus, pour que le prochain changement ne les écrase pas.
   useEffect(() => jsonStore.subscribe((key) => {
     if (key === STORAGE_KEY) setStored(readStoredSettings());
@@ -1092,41 +1030,9 @@ export const useAllSportSettings = () => {
     [persist, stored]
   );
 
-  const navFamily = effectiveNavFamily(stored);
-  const setNavFamily = useCallback(
-    (family: SportFamily) => {
-      if (!isKnownFamily(family)) return;
-      persist({ ...stored, navFamily: family });
-    },
-    [persist, stored]
-  );
-
-  const navSecond = effectiveNavSecond(stored);
-  const setNavSecond = useCallback(
-    (second: NavSecond) => {
-      if (!isNavSecond(second)) return;
-      persist({ ...stored, navSecondFamily: second });
-    },
-    [persist, stored]
-  );
-
-  const navHoldMs = isValidLongPress(stored.navHoldMs) ? stored.navHoldMs : DEFAULT_NAV_HOLD_MS;
-  /** Durée de l'appui long qui change le sport secondaire, en millisecondes ; `null` revient au défaut. */
-  const setNavHoldMs = useCallback(
-    (value: number | null) => {
-      if (value !== null && !isValidLongPress(value)) return;
-      const next: StoredSettings = { ...stored };
-      if (value === null) delete next.navHoldMs;
-      else next.navHoldMs = value;
-      persist(next);
-    },
-    [persist, stored]
-  );
-
   return {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
     stopHoldMs, setStopHoldMs, hiddenFamilies: readHiddenFamilies(stored), setActivityHidden, setFamilyHidden,
-    navFamily, setNavFamily, navSecond, setNavSecond, navHoldMs, setNavHoldMs,
   };
 };
 

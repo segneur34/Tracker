@@ -10,6 +10,7 @@ import RecordingPage from './pages/RecordingPage';
 import PlanningPage from './pages/PlanningPage';
 import RoutesPage from './pages/RoutesPage';
 import StatisticsPage from './pages/StatisticsPage';
+import ProfilePage from './pages/ProfilePage';
 
 function App() {
   return (
@@ -33,6 +34,7 @@ function App() {
           <Route path="/itineraires" element={<PlanningPage />} />
           <Route path="/itineraires/liste" element={<RoutesPage />} />
           <Route path="/statistiques" element={<StatisticsPage />} />
+          <Route path="/profil" element={<ProfilePage />} />
           <Route path="/parametres" element={<SettingsPage />} />
         </Route>
       </Routes>

@@ -198,31 +198,6 @@ export const visibleFamilies = (
 export const isActivityShown = (activity: Activity, activities: Activity[], hiddenFamilies: readonly SportFamily[]): boolean =>
   !activity.hidden && !isFamilyHidden(activities, hiddenFamilies, activityFamily(activity));
 
-/**
- * Sport favori de la barre du bas : celui choisi s'il est visible, sinon la
- * première famille visible ; sans famille visible, celui choisi.
- */
-export const pickNavFamily = (chosen: SportFamily, shown: readonly SportFamily[]): SportFamily =>
-  shown.length === 0 || shown.includes(chosen) ? chosen : shown[0];
-
-/** Pages qui peuvent prendre la case secondaire de la barre du bas à la place d'un sport. */
-export type NavPage = 'planifier' | 'statistiques';
-
-export const isNavPage = (value: unknown): value is NavPage => value === 'planifier' || value === 'statistiques';
-
-/**
- * Case secondaire de la barre du bas : la planification ou les statistiques si
- * elles sont choisies ; le sport choisi s'il est visible et n'est pas le
- * favori ; sinon le premier autre sport visible, sinon la planification.
- */
-export const pickNavSecond = (
-  chosen: SportFamily | NavPage | null, favorite: SportFamily, shown: readonly SportFamily[]
-): SportFamily | NavPage => {
-  if (isNavPage(chosen)) return chosen;
-  if (chosen !== null && chosen !== favorite && shown.includes(chosen)) return chosen;
-  return shown.find((f) => f !== favorite) ?? 'planifier';
-};
-
 /** Activité cachée ou ré-affichée ; une activité visible ne porte pas le champ. */
 export const withHidden = (activity: Activity, hidden: boolean): Activity => {
   const { hidden: _was, ...rest } = activity;

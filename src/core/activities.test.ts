@@ -3,7 +3,7 @@ import {
   BIKE_INTERVALS_ACTIVITY, DEFAULT_ACTIVITIES, FAMILY_SHADES, GRAVEL_ACTIVITY, RUN_INTERVALS_ACTIVITY, SURF_ACTIVITY, SURF_FOIL_ACTIVITY,
   VTT_ACTIVITY, activitiesOfFamily,
   activityCounts, activityFamily, activityTreatment, baseActivity, findActivity, insertActivity, isActivityShown, isFamilyHidden,
-  newActivityId, nextActivityColor, pickNavFamily, pickNavSecond, readActivities, recolorActivities, sessionActivity, upgradeActivities,
+  newActivityId, nextActivityColor, readActivities, recolorActivities, sessionActivity, upgradeActivities,
   visibleActivities, visibleFamilies, withHidden, type Activity,
 } from './activities';
 import { SPORT_FAMILIES, usesMarkCourse } from './sportProfiles';
@@ -293,22 +293,6 @@ describe('familles et activités cachées (point 100)', () => {
     expect(isActivityShown(hiddenVtt, withVtt, [])).toBe(false);
   });
 
-  it('le favori caché retombe sur la première famille visible', () => {
-    expect(pickNavFamily('voile', ['voile', 'course'])).toBe('voile');
-    expect(pickNavFamily('surf', ['voile', 'course'])).toBe('voile');
-    expect(pickNavFamily('voile', ['course', 'velo'])).toBe('course');
-    expect(pickNavFamily('surf', [])).toBe('surf');
-  });
-
-  it('le secondaire caché, ou égal au favori, retombe sur un autre sport visible, sinon la planification', () => {
-    expect(pickNavSecond('course', 'voile', ['voile', 'course'])).toBe('course');
-    expect(pickNavSecond('surf', 'voile', ['voile', 'course', 'velo'])).toBe('course');
-    expect(pickNavSecond('voile', 'voile', ['voile', 'velo'])).toBe('velo');
-    expect(pickNavSecond(null, 'voile', ['voile', 'course'])).toBe('course');
-    expect(pickNavSecond('planifier', 'voile', ['voile'])).toBe('planifier');
-    expect(pickNavSecond('statistiques', 'voile', ['voile', 'course'])).toBe('statistiques');
-    expect(pickNavSecond('course', 'voile', ['voile'])).toBe('planifier');
-  });
 });
 
 describe('usesMarkCourse', () => {

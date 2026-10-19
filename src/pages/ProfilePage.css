@@ -1,0 +1,229 @@
+/* Profil (`ProfilePage.tsx`), sur les variables de `theme/tokens.css` ; les couleurs des parts de l'anneau
+   sont celles des activités, posées par le composant. */
+
+/* Année : ‹ 2026 ›, à droite du titre. */
+.profile-year {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.profile-year__label {
+  min-width: 3.2em;
+  text-align: center;
+  font-size: var(--text-l);
+  font-weight: 700;
+}
+
+.profile-year__arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.profile-year__arrow:disabled {
+  color: var(--faint);
+  background: transparent;
+  cursor: default;
+}
+
+.profile-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+/* Trois grands chiffres : une ligne de trois, empilés sur un écran étroit. */
+.profile-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+@media (max-width: 599px) {
+  .profile-figures {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.profile-figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.profile-figure__value {
+  font-size: var(--text-display);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.profile-figure__value small {
+  margin-left: var(--space-1);
+  font-size: var(--text-l);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.profile-figure__caption {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.profile-count {
+  margin: calc(-1 * var(--space-2)) 0 0;
+  color: var(--muted);
+  font-size: var(--text-s);
+  text-align: center;
+}
+
+/* Répartition : l'anneau, la légende à côté, dessous sur un écran étroit. */
+.profile-split {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.profile-split__body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+@media (max-width: 599px) {
+  .profile-split__body {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-4);
+  }
+}
+
+.profile-donut {
+  position: relative;
+  flex-shrink: 0;
+  width: 200px;
+  height: 200px;
+  align-self: center;
+}
+
+.profile-donut svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.profile-donut circle {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.profile-donut__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 46px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.profile-donut__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.profile-donut__value {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.profile-legend {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-legend li + li {
+  border-top: 1px solid var(--line-soft);
+}
+
+.profile-legend__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-m);
+  text-align: left;
+}
+
+button.profile-legend__row {
+  cursor: pointer;
+}
+
+.profile-legend li.is-active .profile-legend__row {
+  background: var(--surface-hover);
+}
+
+.profile-legend__dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+}
+
+.profile-legend__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-legend__time {
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.profile-legend__share {
+  min-width: 3.4em;
+  text-align: right;
+  color: var(--muted);
+  white-space: nowrap;
+}

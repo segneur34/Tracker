@@ -185,10 +185,10 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - la page à 390 × 844, sans débordement.
 
   Les onglets ouverts sont mémorisés : le script n'ouvre un onglet que s'il est fermé (`openTab`). Il dure environ 1 min.
-- `cacher.mjs <port> [<dossier des captures>]` : familles et activités cachées (point 100), sur un profil neuf, sans réseau. Le script importe par la page une sortie à vélo (rangée sous Route) et met le Surf en favori. Il vérifie :
-  - Surf puis Route cachés par leur œil dans Réglages : toujours listés, grisés ; Surf hors des barres, de l'accueil, d'Enregistrer et du choix du favori, le favori retombé sur la voile ; la session de Route retirée de la bibliothèque Vélo, une ligne le dit ; Route hors d'Enregistrer ; `/surf` s'ouvre et dit qu'il est caché ;
+- `cacher.mjs <port> [<dossier des captures>]` : familles et activités cachées (point 100), sur un profil neuf, sans réseau. Le script importe par la page une sortie à vélo (rangée sous Route). Il vérifie :
+  - Surf puis Route cachés par leur œil dans Réglages : toujours listés, grisés ; Surf hors de la barre du haut, de l'accueil et d'Enregistrer, la barre du bas inchangée (Accueil, Statistiques, Profil, Réglages) ; la session de Route retirée de la bibliothèque Vélo, une ligne le dit ; Route hors d'Enregistrer ; `/surf` s'ouvre et dit qu'il est caché ;
   - l'œil de la dernière famille visible désactivé ;
-  - tout ré-affiché : barres, accueil, bibliothèque Vélo et Enregistrer identiques au relevé de départ, favori compris.
+  - tout ré-affiché : barres, accueil, bibliothèque Vélo et Enregistrer identiques au relevé de départ.
 - `familles.mjs <port> [<dossier des captures>]` : familles repliables dans Réglages (lot 2 des demandes du 15/10), sur un profil neuf, sans réseau, environ 30 s. Avec `DUMP=x.txt`, il ouvre toutes les familles, activités et parties et relève le texte des cartes d'activité ; avec `RELEVE_SEUL=1` en plus, il s'arrête là (relevé de la version d'avant). Il vérifie ensuite :
   - les cinq familles fermées au départ, aucune carte d'activité montée ;
   - Voile ouverte, son œil qui la cache sans la replier, puis la rend ;
@@ -208,9 +208,9 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - un point du graphique, cliqué, puis « Ouvrir » qui mène à l'analyse ; les données proposées en course, en voile (% de vol du wingfoil seul) et en surf, chacune tracée avec l'unité de son axe ; le choix retenu après rechargement, la vitesse max à sa place là où il n'existe pas ; les fiches en version 5 du résumé (point 122) ;
   - une planche à voile de `make-gpx.mjs` importée puis ouverte dans son analyse : la réussite des manœuvres rangée dans sa fiche, « % de manœuvres réussies » tracé en deux séries, la note des sessions à rouvrir ;
   - Surf caché (écrit dans `tracker.sportSettings`) : absent des pastilles et des totaux, sa page ouverte par l'adresse ;
-  - à 390×844 : rien ne déborde, « Statistiques » en case secondaire choisi dans Réglages, puis dans le menu de l'appui long (un `pointerdown` tenu).
+  - à 390×844 : rien ne déborde ; la case « Statistiques » de la barre du bas ouvre la page, allumée.
 
-  Depuis le lot 1 des demandes du 16/10, la page reprend le dernier affichage quand son adresse n'a pas de paramètre : le script efface `tracker.statistiques` avant l'étape de la famille cachée. Depuis le 17/10, les pastilles sont repliées sous « Sélection » : le script vérifie le bouton replié au départ et le choix qu'il affiche, le déplie et vérifie qu'il le reste au rechargement ; `barre.mjs` le déplie avant de cliquer une pastille.
+  Depuis le lot 1 des demandes du 16/10, la page reprend le dernier affichage quand son adresse n'a pas de paramètre : le script efface `tracker.statistiques` avant l'étape de la famille cachée. Depuis le 17/10, les pastilles sont repliées sous « Sélection » : le script vérifie le bouton replié au départ et le choix qu'il affiche, le déplie et vérifie qu'il le reste au rechargement ; `barre.mjs` le déplie avant de cliquer une pastille. Depuis le 17/10 aussi, la famille s'appelle « À pied » (pastille, ligne de la vue d'ensemble, bouton « Sélection ») ; sa clé reste `course` dans l'adresse. `barre.mjs`, `cacher.mjs` et `notes.mjs` suivent le même nom.
 - `barre.mjs <port> [<dossier des captures>]` : barre d'onglets repliable, régularité et dernier affichage des statistiques (lot 1 des demandes du 16/10), sur un profil neuf, sans réseau, environ 1 min. Le script importe une course (10 jours avant aujourd'hui) et une session de voile de `make-gpx.mjs` (20 jours avant). Il vérifie :
   - la flèche en fin de barre, qui cache la barre seule (panneaux ouverts gardés) et laisse le bouton fin « onglets » ; l'état gardé après rechargement et d'une analyse à l'autre ; le bouton fin, qui rend la barre et disparaît ; à 390×844, sans débordement ;
   - Course sur « Année » : « Semaines actives » comptées depuis la course, pas sur 52 semaines ;
@@ -233,6 +233,20 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - Réglages : « Mesurer la cadence » coché d'office à pied, absent à vélo, rangé seulement décoché ; à 390×844, sans débordement.
 
   Il finit par « Tout passe. » ou le nombre d'échecs. Sans cadence, le texte des analyses ne change pas : `onglets.mjs` en `RELEVE_SEUL=1` le prouve.
+- `partage.mjs <port> <dossier de travail> [<dossier des captures>]` : « Partager » du menu « … », image de la trace et des chiffres choisis (demande du 18/10), sur un profil neuf, environ 1 min 30. Réseau : les tuiles d'OpenStreetMap seulement (fond de l'image) ; IGN, Overpass et BRouter bloqués. Le script importe une boucle de course et la voile de `make-gpx.mjs`. Il vérifie :
+  - dans chaque analyse : « Partager » en tête du menu « … », la fenêtre, l'aperçu carré de 1080 px, les pastilles égales aux chiffres de l'onglet « général » (sans les « — »), les six premières enfoncées ; l'image est gardée dans le dossier des captures (`partage-<page>.png`) ;
+  - en course : deux pastilles seulement (image toujours carrée), fond de carte décoché, choix rangés sous l'activité (`tracker.partage`) et retrouvés à la réouverture ; « Partager » par le partage du navigateur (simulé), puis sans lui (téléchargement et message) ; Échap qui ferme ;
+  - à 390×844 : la fenêtre tient dans l'écran ; fin d'enregistrement (rejeu de la boucle, Arrêter, « … » › « Partager » de « Session terminée ») : aperçu carré, chiffres du résumé, choix de la course repris.
+
+  Il finit par « Tout passe. » ou le nombre d'échecs. Menu fermé, le texte des analyses ne change pas : `onglets.mjs` en `RELEVE_SEUL=1` le prouve.
+- `profil.mjs <port> [<dossier des captures>]` : la page « Profil » (demande du 18/10), sur un profil neuf, sans réseau, environ 40 s. Le script écrit lui-même six sessions de 20 min, datées en jours avant aujourd'hui : quatre dans l'année en cours (deux courses, une sortie à vélo en côte de 200 m, une de wingfoil) et deux l'an passé. Il les importe par la page Course. Il vérifie :
+  - l'accueil sans graphe d'activités, et sa ligne « Profil » qui ouvre la page ; « Profil » allumé dans la barre du haut ;
+  - l'année en cours : la distance en km (à 5 % de la somme des vitesses × durées), « 1 h 20 », le D+ de la côte, le nombre de sessions ; l'ordre chiffres › répartition › graphe ; l'anneau (une part par activité) et sa légende (la course à 50 %), le total au centre, la part d'une ligne survolée ;
+  - les flèches : « suivante » désactivée sur l'année en cours, l'an passé et ses chiffres (D+ à 0 sur le plat), « précédente » désactivée sur la plus vieille année, le graphe toujours là ;
+  - une ligne de la légende qui ouvre la bibliothèque filtrée sur son activité ;
+  - à 390×844 : rien ne déborde, chiffres empilés ; la barre du bas (Accueil, Statistiques, Profil, Réglages), dont la case « Profil » ouvre la page, allumée.
+
+  Il finit par « Tout est bon. » ou le nombre d'échecs. Le graphe d'activités ayant quitté l'accueil, l'étape 5 de `donnees.mjs` (stockage plein) passe par `/profil`.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 
