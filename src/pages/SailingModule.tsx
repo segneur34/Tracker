@@ -56,6 +56,8 @@ import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHove
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import SessionNameEditor from '../components/SessionNameEditor';
+import GeneralStats from '../components/GeneralStats';
+import { shareableStats, type ShareStat } from '../core/shareImage';
 import SessionSaveBar from '../components/SessionSaveBar';
 import { SessionMarksLayer, SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
@@ -341,6 +343,16 @@ function SailingModule() {
     (): TrackSegment[] => trackColorSegments(track, 'voile', { minMs: colorRange.minMs, maxMs: colorRange.maxMs }),
     [track, colorRange.minMs, colorRange.maxMs]
   );
+  /** Chiffres de l'onglet « général », proposés aussi pour l'image de partage. */
+  const generalStats: ShareStat[] = stats ? [
+    { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
+    { key: 'activeDistance', label: 'Distance active', value: formatDistance(stats.activeDistanceM, distanceUnit) },
+    { key: 'totalTime', label: 'Temps total', value: stats.totalTime },
+    { key: 'activeTime', label: `Temps actif (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: stats.activeTime },
+    { key: 'activeRatio', label: activeRatioLabel(profile, foil), value: `${stats.activeRatio}%` },
+    { key: 'averageSpeed', label: 'Vitesse moyenne', value: formatSpeed(stats.avgSpeedMs, speedUnit) },
+    { key: 'activeAverage', label: `Moyenne active (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: formatSpeed(stats.activeAvgSpeedMs, speedUnit) },
+  ] : [];
   const arrowLayers = useMemo(
     () => arrowIndices(trackData, ARROW_EVERY_S).map((index, idx) => {
       const point = trackData[index];
@@ -716,7 +728,10 @@ function SailingModule() {
     <div className="an-page" style={{ padding: '20px' }}>
       <div className="an-sheet">
         <div className="an-sheet__head">
-          <PageHeader title="Analyse voile" subtitle={requestedFile ? <SessionNameEditor file={requestedFile} /> : undefined} back={{ to: libraryPath('voile'), label: 'Sessions voile' }} />
+          <PageHeader title="Analyse voile" subtitle={requestedFile ? (
+            <SessionNameEditor file={requestedFile}
+              share={generalStats.length > 0 ? { family: 'voile', segments: mapSegments, stats: shareableStats(generalStats) } : undefined} />
+          ) : undefined} back={{ to: libraryPath('voile'), label: 'Sessions voile' }} />
           {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
         </div>
       </div>
@@ -773,15 +788,7 @@ function SailingModule() {
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Général" extra={<SessionDate track={trackData} />} open={open.general} onToggle={() => toggle('general')} />
                 </div>
-                <div className="an-sheet__stats an-sheet__stats--always">
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance active</span><strong className="an-sheet__stat-value">{formatDistance(stats.activeDistanceM, distanceUnit)}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps total</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps actif (&ge;{showThreshold(activeThresholdKn)} {speedSymbol})</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">{activeRatioLabel(profile, foil)}</span><strong className="an-sheet__stat-value">{stats.activeRatio}%</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Vitesse moyenne</span><strong className="an-sheet__stat-value">{formatSpeed(stats.avgSpeedMs, speedUnit)}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne active (&ge;{showThreshold(activeThresholdKn)} {speedSymbol})</span><strong className="an-sheet__stat-value">{formatSpeed(stats.activeAvgSpeedMs, speedUnit)}</strong></div>
-                </div>
+                <GeneralStats stats={generalStats} />
                 <div className="an-sheet__wind" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                   {/* Boussole à gauche, calcul et saisie à sa droite : le bloc tient dans la hauteur de la boussole. */}
                   <Compass windAngle={currentWindValue ?? autoWind ?? 0} />

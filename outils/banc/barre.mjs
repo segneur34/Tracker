@@ -170,7 +170,7 @@ const stat =(label) => evaluate(`(() => {
 })()`);
 const search = () => evaluate('location.search');
 await go('/statistiques', 4000);
-await chip('Famille', 'Course à pied');
+await chip('Famille', 'À pied');
 await wait(800);
 await chip('Période', 'Année');
 await wait(800);
@@ -182,7 +182,7 @@ check('Course sur « Année » : semaines comptées depuis la course', weeks >= 
 await go('/', 3000);
 await go('/statistiques', 4000);
 check('reprise sans paramètre : Course, Année', (await search()) === '?famille=course&periode=annee', await search());
-check('sous-titre de Course', (await evaluate(`document.querySelector('.ui-page-header')?.innerText ?? ''`)).includes('Course à pied'));
+check('sous-titre de Course', (await evaluate(`document.querySelector('.ui-page-header')?.innerText ?? ''`)).includes('À pied'));
 await go('/statistiques?famille=voile', 4000);
 check('une adresse avec paramètres l’emporte', (await search()) === '?famille=voile', await search());
 await chip('Famille', 'Tout');

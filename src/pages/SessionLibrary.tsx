@@ -12,33 +12,28 @@ import ImportButtons from '../components/ImportButtons';
 import MemoryStatus from '../components/MemoryStatus';
 import RefreshLibraryButton from '../components/RefreshLibraryButton';
 import RouteList from '../components/RouteList';
+import { sessionColorTrack, sessionSpeedRange, type SessionColorTrack } from '../components/sessionTrack';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import MoreMenu from '../components/ui/MoreMenu';
 import PageHeader from '../components/ui/PageHeader';
 import { sampledIndices } from '../core/chartZoom';
-import { PREVIEW_MAX_POINTS, trackBounds, type TrackBounds } from '../core/displayConfig';
-import { parseGpx } from '../core/gpxParser';
-import { referenceSpeedMs as sessionReferenceSpeedMs } from '../core/sessionSpeed';
-import { buildCumulativeTrack } from '../core/sessionStats';
-import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
-import { coloredSegments, trackColorSpeedsMs } from '../core/trackColor';
-import { FAMILY_BASE, activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
+import { PREVIEW_MAX_POINTS } from '../core/displayConfig';
+import { coloredSegments } from '../core/trackColor';
+import { activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
 import { activityIcon, type ActivityIconId } from '../core/activityIcons';
 import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
-import { formatDistance, formatDuration, formatShortDuration, formatSpeed, msToKnots, toDisplayDistance } from '../core/units';
+import { formatDistance, formatDuration, formatShortDuration, formatSpeed, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
 import {
-  PLANNING_FAMILIES, TREATMENT_SPEED_RANGE_MS, effectiveDistanceUnit, effectiveSpeedUnit, readStoredSettings, useVisibility,
+  PLANNING_FAMILIES, effectiveDistanceUnit, effectiveSpeedUnit, useVisibility,
 } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
-import { analysisTrack } from '../library/summary';
 import { routeActivity, routesOfFamily } from '../planning/routeList';
 import { isNativeApp } from '../platform/runtime';
-import { suggestSpeedRangeMs } from '../sailing/sailingConfig';
 import './SessionLibrary.css';
 
 /**
@@ -101,42 +96,6 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
   return stats;
 };
 
-/**
- * Bornes de couleur d'une vignette d'aperçu, dans cet ordre, comme le module d'analyse :
- * 0. celles enregistrées dans la fiche de la session (`analysis.speedRange`) ;
- * 1. celles réglées pour son activité dans Réglages (`tracker.sportSettings`) ;
- * 2. en voile, les bornes suggérées par l'allure de la session (`suggestSpeedRangeMs`,
- *    mesurées sur la trace entière comme dans l'analyse) ;
- * 3. à défaut, le défaut du traitement de son calcul (celui du calcul par défaut de la
- *    famille pour une session à classer).
- */
-const previewSpeedRange = (
-  session: LibrarySession,
-  activity: Activity | null,
-  family: SportFamily,
-  suggested: SpeedRangeMs | null
-): SpeedRangeMs => {
-  const { record } = session;
-  if (record.analysis?.speedRange) return record.analysis.speedRange;
-  if (activity) {
-    const override = readStoredSettings().speedRanges?.[activity.id];
-    if (override && isValidSpeedRange(override)) return override;
-  }
-  if (suggested) return suggested;
-  return TREATMENT_SPEED_RANGE_MS[sportTreatment(record.sport ?? FAMILY_BASE[family])];
-};
-
-/**
- * Trace d'une vignette : au plus `PREVIEW_MAX_POINTS` points, chacun avec sa vitesse
- * de couleur calculée sur la trace entière, l'emprise de la trace et, en voile, les
- * bornes suggérées par l'allure.
- */
-interface PreviewTrack {
-  points: { lat: number; lon: number; colorMs: number }[];
-  bounds: TrackBounds;
-  suggested: SpeedRangeMs | null;
-}
-
 /** Marge sous l'écran où une vignette se charge déjà, pour être prête quand on y arrive. */
 const PREVIEW_PRELOAD_MARGIN = '200px';
 
@@ -156,7 +115,7 @@ function SessionPreviewMap({ session, activity, family, onOpen }: {
   const frame = useRef<HTMLDivElement>(null);
   // Sans IntersectionObserver, chargée tout de suite.
   const [near, setNear] = useState(() => typeof IntersectionObserver === 'undefined');
-  const [track, setTrack] = useState<PreviewTrack | null>(null);
+  const [track, setTrack] = useState<SessionColorTrack | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const { file } = session;
   const sport = session.record.sport;
@@ -180,22 +139,10 @@ function SessionPreviewMap({ session, activity, family, onOpen }: {
       if (cancelled) return;
       if (gpx === null) { setStatus('error'); return; }
       try {
-        // La trace et sa couleur telles que l'analyse les calcule : filtres du support, allure de la session.
-        const { rawPoints } = parseGpx(gpx);
-        const referenceMs = referenceOverrideMs ?? sessionReferenceSpeedMs(rawPoints);
-        const points = analysisTrack(rawPoints, sport, referenceMs);
-        const bounds = trackBounds(points);
-        if (points.length < 2 || bounds === null) { setStatus('error'); return; }
-        const treatment = sportTreatment(sport ?? FAMILY_BASE[family]);
-        const colorMs = trackColorSpeedsMs(points, treatment);
-        setTrack({
-          points: sampledIndices(0, points.length - 1, PREVIEW_MAX_POINTS)
-            .map((i) => ({ lat: points[i].lat, lon: points[i].lon, colorMs: colorMs[i] })),
-          bounds,
-          suggested: sport !== null && treatment === 'voile'
-            ? suggestSpeedRangeMs(sport, msToKnots(referenceMs), points, buildCumulativeTrack(points))
-            : null,
-        });
+        // La trace et sa couleur telles que l'analyse les calcule, réduite à PREVIEW_MAX_POINTS points.
+        const full = sessionColorTrack(gpx, sport, referenceOverrideMs, family);
+        if (full === null) { setStatus('error'); return; }
+        setTrack({ ...full, points: sampledIndices(0, full.points.length - 1, PREVIEW_MAX_POINTS).map((i) => full.points[i]) });
         setStatus('ready');
       } catch {
         if (!cancelled) setStatus('error');
@@ -205,7 +152,7 @@ function SessionPreviewMap({ session, activity, family, onOpen }: {
   }, [near, file, sport, referenceOverrideMs, family]);
 
   const range = useMemo(
-    () => (track ? previewSpeedRange(session, activity, family, track.suggested) : null),
+    () => (track ? sessionSpeedRange(session.record, activity, family, track.suggested) : null),
     [track, session, activity, family]
   );
   /** Traits de la vignette, mémorisés : un balayage de la bibliothèque ne les redessine pas. */

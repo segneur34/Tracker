@@ -133,6 +133,13 @@ export const IconChart = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+export const IconUser = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 20c1.5-3.5 4.4-5 8-5s6.5 1.5 8 5" />
+  </svg>
+);
+
 export const IconHelp = ({ size = 20, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
     <circle cx="12" cy="12" r="9" />
@@ -210,6 +217,16 @@ export const IconDownload = ({ size = 20, ...props }: IconProps) => (
   </svg>
 );
 
+/** Trois points reliés, comme le partage d'Android : partager l'image d'une session. */
+export const IconShare = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <circle cx="18" cy="5" r="2.5" />
+    <circle cx="6" cy="12" r="2.5" />
+    <circle cx="18" cy="19" r="2.5" />
+    <path d="M8.2 10.8l7.6-4.5M8.2 13.2l7.6 4.5" />
+  </svg>
+);
+
 /** Flèche qui tourne : « Mettre à jour », relire le dossier mémoire. */
 export const IconRefresh = ({ size = 20, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
@@ -247,14 +264,10 @@ export const IconWindsurf = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
-/** Wingfoil : la voile seule, de profil comme sur la grande illustration : bord d'attaque en arc, boudin central, panneaux (17/10). */
+/** Wingfoil : l'aile, en aplat, vectorisée sur le modèle fourni par l'utilisateur (18/10) : bord d'attaque, boudin central, deux panneaux. */
 export const IconWingfoil = ({ size = 24, ...props }: IconProps) => (
-  <svg {...strokeProps(size)} {...props}>
-    <path d="M4 3.5C14 2 21.5 9 19.5 20.5" />
-    <path d="M4 3.5c2.5 7 8 13 15.5 17" />
-    <path d="M16.8 7.5l-5.3 5.3" />
-    <path d="M11 3.9L7.8 8.6" />
-    <path d="M19.8 13.6l-4.6 3.6" />
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden focusable={false} {...props}>
+    <path fillRule="evenodd" d="M14.9 1C12.2 1.6 9.4 3 7.4 4.8C5.4 6.6 4 8.3 3.1 10C0.1 15.2 0.2 19.5 3.3 22.5C3.9 23 4.5 23.3 4.5 23C4.4 22.9 4.2 22.5 4 22.1C1.6 18 2 14.6 5.3 10.2C7.2 7.7 6.7 7.7 9.4 10.3C10.8 11.6 11.1 11.9 11.5 12.2C11.7 12.4 12.1 12.7 12.3 12.9C12.5 13.1 13 13.5 13.3 13.8C13.6 14.1 14 14.4 14.2 14.6C15.3 15.6 15.8 15.9 15.8 15.4C15.8 15.3 14.9 14.2 14 13.2C13.8 13 13.4 12.5 13.1 12.2C12.8 11.9 12.4 11.5 12.2 11.2C11.9 10.9 11.6 10.6 11.5 10.5C11.5 10.4 11.3 10.1 11.1 9.9C10.3 9.1 10 8.7 9.6 8.2C9.3 7.9 9 7.6 8.9 7.4C8.4 6.9 8.4 6.8 9.3 6C13.5 1.9 17.8 1.1 21.9 3.6C23.4 4.5 23.5 4 22 2.8C19.9 1.2 17.3 0.5 14.9 1M17 2.9C17 2.9 16.8 3 16.6 3C15.8 3.1 14.4 3.6 13.4 4.1C13.1 4.3 12.6 4.6 12.4 4.7C10.3 5.9 10 7 11.3 8.6C11.4 8.7 11.6 8.9 11.6 9C11.7 9 12 9.5 12.4 9.9C13 10.7 13.2 10.9 14.1 11.9C14.3 12.2 14.7 12.6 14.8 12.7C15.6 13.7 15.9 13.7 16.2 12.9C17 10.3 18.5 8.4 21 6.6C22.9 5.1 22.3 3.8 19.3 3.1C18.7 3 17.1 2.8 17 2.9M6.8 10.3C5.9 10.6 5 11.8 3.9 14.1C2.7 16.4 2.9 20 4.2 21.4C5.1 22.2 5.6 22 7.1 20.2C8.3 18.7 9.4 17.8 10.9 17.1C11.8 16.6 11.9 16.5 12.9 16.2C14.1 15.8 14.2 15.8 10.3 12.3C10.1 12.2 9.8 11.9 9.6 11.7C9.4 11.6 9.1 11.3 9 11.2C7.8 10.2 7.5 10.1 6.8 10.3" />
   </svg>
 );
 

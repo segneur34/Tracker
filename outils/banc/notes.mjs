@@ -99,7 +99,7 @@ const replayGpx = (family, speedMs) => {
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
 await go('/enregistrer', 4000);
 
-for (const [family, speedMs, graphTab] of [['Course à pied', 3, 'graphiques'], ['Voile', 8, 'graphiques'], ['Surf', 4, 'graphiques']]) {
+for (const [family, speedMs, graphTab] of [['À pied', 3, 'graphiques'], ['Voile', 8, 'graphiques'], ['Surf', 4, 'graphiques']]) {
   console.log(`\n=== ${family} ===`);
   await go('/enregistrer');
   console.log('famille :', await clickText(family, '[aria-label=Famille] button'));
@@ -138,7 +138,7 @@ for (const [family, speedMs, graphTab] of [['Course à pied', 3, 'graphiques'], 
   const rec = recs.map((r) => r.record).sort((a, b) => b.summary.startMs - a.summary.startMs)[0];
   console.log('fiche :', rec ? `${rec.sport}, ${rec.marks?.length ?? 0} repères (${rec.marks?.map((m) => `${new Date(m.timeMs).toISOString().slice(11, 19)} ${m.label}`).join(', ')})` : '(aucune)');
 
-  if (family !== 'Course à pied') continue;
+  if (family !== 'À pied') continue;
   // Nommer, supprimer, enregistrer.
   const analysis = await evaluate('location.pathname + location.search');
   console.log('nom :', await typeInto('Nom de la note 1', 'Saut'));

@@ -8,6 +8,7 @@ import HoldDial from '../components/ui/HoldDial';
 import FollowTracePicker from '../components/FollowTracePicker';
 import IntervalCard from '../components/IntervalCard';
 import PageHeader from '../components/ui/PageHeader';
+import SavedSessionShare from '../components/SavedSessionShare';
 import { IconFlag, IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
@@ -788,7 +789,12 @@ function RecordingPage() {
       )}
 
       {pending && (
-        <Card heading={pending.recovered ? 'Session interrompue récupérée' : 'Session terminée'}>
+        <Card heading={(
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+            {pending.recovered ? 'Session interrompue récupérée' : 'Session terminée'}
+            <SavedSessionShare gpx={pending.content} activity={pending.activity} fileName={pending.fileName} libraryFile={null} />
+          </span>
+        )}>
           <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
             {pending.activity.name}, {pending.pointCount} points.<br />
             <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)' }}>
@@ -813,7 +819,12 @@ function RecordingPage() {
       )}
 
       {saved && (
-        <Card heading="Session rangée">
+        <Card heading={(
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+            Session rangée
+            <SavedSessionShare gpx={saved.content} activity={saved.activity} fileName={saved.fileName} libraryFile={saved.libraryFile} />
+          </span>
+        )}>
           <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
             {saved.activity.name}, {saved.pointCount} points.<br />
             <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', wordBreak: 'break-all' }}>Rangée dans : {saved.location}</span>

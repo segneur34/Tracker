@@ -1,0 +1,230 @@
+import { fitView, mapHeight, projectPoint, SHARE_IMAGE, statColumns, viewTiles, type ShareStat } from '../core/shareImage';
+import { tileKey, type TileCoord } from '../core/tiles';
+import { loadMapTile } from './mapTiles';
+import type { TrackSegment } from './TrackSegmentsLayer';
+
+/**
+ * Image de partage d'une session, carrée, dessinée sur un canevas : un bandeau à la
+ * couleur de la famille (titre, activité et date), la trace colorée comme
+ * dans l'analyse sur son fond de carte, puis les chiffres retenus. Le
+ * cadrage et la mise en page se calculent dans `core/shareImage.ts`.
+ */
+
+export interface ShareImageContent {
+  /** Nom de la session, ou de l'activité si elle n'en a pas. */
+  title: string;
+  /** Activité et date. */
+  subtitle: string;
+  /** Couleur de la famille, qui porte du texte blanc. */
+  accent: string;
+  segments: ReadonlyArray<TrackSegment>;
+  stats: ReadonlyArray<ShareStat>;
+  /** Fond OpenStreetMap sous la trace ; sans lui, un aplat. */
+  withMap: boolean;
+}
+
+/** Tuile du fond prête à dessiner, `null` si elle manque. */
+export type TileImageLoader = (tile: TileCoord) => Promise<CanvasImageSource | null>;
+
+const blobImage = (content: Blob | string): Promise<CanvasImageSource> => {
+  if (typeof content !== 'string') return createImageBitmap(content);
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('tuile illisible'));
+    image.src = content;
+  });
+};
+
+/**
+ * Chargeur de tuiles qui garde chacune le temps d'une fenêtre de partage :
+ * cocher un chiffre redessine l'image sans redemander le fond.
+ */
+export const createTileImageLoader = (): TileImageLoader => {
+  const images = new Map<string, Promise<CanvasImageSource | null>>();
+  return (tile) => {
+    const key = tileKey(tile);
+    let image = images.get(key);
+    if (!image) {
+      image = loadMapTile(tile).then((content) => (content === null ? null : blobImage(content))).catch(() => null);
+      images.set(key, image);
+    }
+    return image;
+  };
+};
+
+/** Valeur d'une variable du thème, pour peindre l'image aux couleurs de l'interface. */
+const token = (name: string, fallback: string): string =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+
+/** Police de l'interface (Figtree), chargée avant de dessiner : sans elle, le canevas prend celle du système. */
+const fontFamily = (): string => token('--font', 'system-ui, sans-serif');
+
+const ensureFonts = async (family: string): Promise<void> => {
+  try {
+    await Promise.all([document.fonts.load(`700 40px ${family}`), document.fonts.load(`400 40px ${family}`)]);
+  } catch {
+    // Police indisponible : celle du système fait l'affaire.
+  }
+};
+
+/** Texte tronqué d'une ellipse pour tenir dans `maxWidth`. */
+const fitText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string => {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let end = text.length;
+  while (end > 1 && ctx.measureText(`${text.slice(0, end)}…`).width > maxWidth) end--;
+  return `${text.slice(0, end)}…`;
+};
+
+/** Texte réduit de `maxPx` jusqu'à `minPx` pour tenir dans sa colonne, tronqué au-delà. */
+const drawFitted = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  font: { weight: number; maxPx: number; minPx: number; family: string }
+) => {
+  let size = font.maxPx;
+  ctx.font = `${font.weight} ${size}px ${font.family}`;
+  while (size > font.minPx && ctx.measureText(text).width > maxWidth) {
+    size -= 2;
+    ctx.font = `${font.weight} ${size}px ${font.family}`;
+  }
+  ctx.fillText(fitText(ctx, text, maxWidth), x, y);
+};
+
+const drawTrack = (ctx: CanvasRenderingContext2D, content: ShareImageContent, mapPx: number) => {
+  const view = fitView(content.segments.flatMap((s) => s.positions), SHARE_IMAGE.sizePx, mapPx);
+  return { view, draw: () => {
+    if (!view || content.segments.length === 0) return;
+    const at = ([lat, lon]: readonly [number, number]) => projectPoint(view, lat, lon);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Liseré blanc sous la trace : elle reste lisible sur les routes et les couleurs du fond.
+    ctx.beginPath();
+    for (const s of content.segments) {
+      const a = at(s.positions[0]);
+      const b = at(s.positions[1]);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = 15;
+    ctx.stroke();
+    ctx.lineWidth = 8;
+    for (const s of content.segments) {
+      const a = at(s.positions[0]);
+      const b = at(s.positions[1]);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = s.color;
+      ctx.stroke();
+    }
+    // Départ en blanc cerclé, arrivée pleine.
+    const ink = token('--ink', '#1b1f24');
+    const dot = (p: { x: number; y: number }, fill: string, ring: string) => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 13, 0, 2 * Math.PI);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = ring;
+      ctx.stroke();
+    };
+    dot(at(content.segments[0].positions[0]), '#ffffff', ink);
+    dot(at(content.segments[content.segments.length - 1].positions[1]), ink, '#ffffff');
+  } };
+};
+
+/** L'image, en PNG. */
+export const drawShareImage = async (content: ShareImageContent, tileImage: TileImageLoader): Promise<Blob> => {
+  const { sizePx: widthPx, headerPx, statRowPx, statPaddingPx, footerPx, maxStats } = SHARE_IMAGE;
+  const heightPx = widthPx;
+  const stats = content.stats.slice(0, maxStats);
+  const mapPx = mapHeight(stats.length);
+  const canvas = document.createElement('canvas');
+  canvas.width = widthPx;
+  canvas.height = heightPx;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Dessin impossible sur cet appareil.');
+  const family = fontFamily();
+  await ensureFonts(family);
+  const ink = token('--ink', '#1b1f24');
+  const muted = token('--muted', '#5b6470');
+  const margin = 60;
+
+  ctx.fillStyle = token('--surface', '#ffffff');
+  ctx.fillRect(0, 0, widthPx, heightPx);
+
+  // Bandeau.
+  ctx.fillStyle = content.accent;
+  ctx.fillRect(0, 0, widthPx, headerPx);
+  ctx.fillStyle = token('--on-accent', '#ffffff');
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `700 58px ${family}`;
+  ctx.fillText(fitText(ctx, content.title, widthPx - 2 * margin), margin, 80);
+  ctx.globalAlpha = 0.88;
+  ctx.font = `400 32px ${family}`;
+  ctx.fillText(fitText(ctx, content.subtitle, widthPx - 2 * margin), margin, 126);
+  ctx.globalAlpha = 1;
+
+  // Carte.
+  ctx.save();
+  ctx.translate(0, headerPx);
+  ctx.beginPath();
+  ctx.rect(0, 0, widthPx, mapPx);
+  ctx.clip();
+  ctx.fillStyle = token('--surface-sunken', '#e9e7e2');
+  ctx.fillRect(0, 0, widthPx, mapPx);
+  const track = drawTrack(ctx, content, mapPx);
+  if (content.withMap && track.view) {
+    const placed = viewTiles(track.view);
+    const images = await Promise.all(placed.map((p) => tileImage(p.tile)));
+    placed.forEach((p, i) => {
+      const image = images[i];
+      // Un pixel de plus : pas de liseré entre deux tuiles agrandies.
+      if (image) ctx.drawImage(image, p.x, p.y, p.sizePx + 1, p.sizePx + 1);
+    });
+  }
+  track.draw();
+  if (content.withMap) {
+    // Mention qu'exigent les conditions d'usage des tuiles d'OpenStreetMap.
+    ctx.font = `400 22px ${family}`;
+    const text = '© OpenStreetMap';
+    const w = ctx.measureText(text).width + 20;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.fillRect(widthPx - w, mapPx - 34, w, 34);
+    ctx.fillStyle = ink;
+    ctx.fillText(text, widthPx - w + 10, mapPx - 10);
+  }
+  ctx.restore();
+
+  // Chiffres.
+  const count = stats.length;
+  if (count > 0) {
+    const columns = statColumns(count);
+    const columnPx = (widthPx - 2 * margin) / columns;
+    const top = headerPx + mapPx + statPaddingPx;
+    stats.forEach((stat, i) => {
+      const x = margin + (i % columns) * columnPx;
+      const y = top + Math.floor(i / columns) * statRowPx;
+      ctx.fillStyle = muted;
+      drawFitted(ctx, stat.label, x, y + 36, columnPx - 24, { weight: 400, maxPx: 28, minPx: 20, family });
+      ctx.fillStyle = ink;
+      drawFitted(ctx, stat.value, x, y + 94, columnPx - 24, { weight: 700, maxPx: 50, minPx: 32, family });
+    });
+  }
+
+  // Pied.
+  ctx.fillStyle = token('--line', '#e3e1dc');
+  ctx.fillRect(margin, heightPx - footerPx, widthPx - 2 * margin, 2);
+  ctx.fillStyle = token('--faint', '#8a9099');
+  ctx.font = `600 26px ${family}`;
+  ctx.fillText('Tracker', margin, heightPx - 22);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Image impossible à produire.'))), 'image/png');
+  });
+};

@@ -27,6 +27,8 @@ import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import { CADENCE_COLOR } from '../components/cadenceColors';
 import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
+import GeneralStats from '../components/GeneralStats';
+import { shareableStats, type ShareStat } from '../core/shareImage';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SessionWeightField from '../components/SessionWeightField';
 import { SessionMarksLayer, SessionMarksList } from '../components/SessionMarks';
@@ -667,6 +669,18 @@ function LandModule({ family }: { family: LandFamily }) {
 
   const mapBounds = useMemo(() => trackBounds(gpx.track), [gpx.track]);
 
+  /** Chiffres de l'onglet « général », proposés aussi pour l'image de partage. */
+  const generalStats: ShareStat[] = stats && averages ? [
+    { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
+    { key: 'activeDistance', label: 'Distance en mouvement', value: formatDistance(stats.activeDistanceM, distanceUnit) },
+    { key: 'totalTime', label: 'Temps de parcours', value: stats.totalTime },
+    { key: 'activeTime', label: `Temps en mouvement (${stats.activeRatio} %)`, value: stats.activeTime },
+    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(averages.moving.speedMs, speedUnit) },
+    { key: 'overallAverage', label: 'Moyenne sur le temps total', value: formatSpeed(averages.overall.speedMs, speedUnit) },
+    { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
+    { key: 'altitude', label: 'Altitude', value: stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—' },
+  ] : [];
+
   const clearHover = () => setHoveredIndex(null);
   const hoverIndex = (index: number) => {
     if (index !== hoveredIndex) setHoveredIndex(index);
@@ -902,7 +916,10 @@ function LandModule({ family }: { family: LandFamily }) {
     <div className="an-page" style={{ padding: '20px' }}>
       <div className="an-sheet">
         <div className="an-sheet__head">
-          <PageHeader title={page.title} subtitle={gpx.fileName ? <SessionNameEditor file={gpx.fileName} /> : undefined} back={{ to: libraryPath(family), label: page.backLabel }} />
+          <PageHeader title={page.title} subtitle={gpx.fileName ? (
+            <SessionNameEditor file={gpx.fileName}
+              share={generalStats.length > 0 ? { family, segments: mapSegments, stats: shareableStats(generalStats) } : undefined} />
+          ) : undefined} back={{ to: libraryPath(family), label: page.backLabel }} />
           {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
         </div>
       </div>
@@ -943,16 +960,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={() => toggle('general')} />
                 </div>
-                <div className="an-sheet__stats an-sheet__stats--always">
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance</span><strong className="an-sheet__stat-value">{formatDistance(stats.distanceM, distanceUnit)}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Distance en mouvement</span><strong className="an-sheet__stat-value">{formatDistance(stats.activeDistanceM, distanceUnit)}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps de parcours</span><strong className="an-sheet__stat-value">{stats.totalTime}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps en mouvement ({stats.activeRatio} %)</span><strong className="an-sheet__stat-value">{stats.activeTime}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne en mouvement</span><strong className="an-sheet__stat-value">{formatSpeed(averages.moving.speedMs, speedUnit)}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Moyenne sur le temps total</span><strong className="an-sheet__stat-value">{formatSpeed(averages.overall.speedMs, speedUnit)}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Dénivelé</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—'}</strong></div>
-                  <div className="an-sheet__stat"><span className="an-sheet__stat-label">Altitude</span><strong className="an-sheet__stat-value">{stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—'}</strong></div>
-                </div>
+                <GeneralStats stats={generalStats} />
                 {!stats.hasElevation && (
                   <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
                 )}

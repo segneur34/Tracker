@@ -1,0 +1,108 @@
+/* Fenêtre « Partager la session » (`ShareDialog.tsx`) : au milieu de l'écran, au-dessus des barres (1100)
+   et du menu « … » (1150) ; sur téléphone, presque tout l'écran. */
+
+.share-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: color-mix(in srgb, var(--ink) 40%, transparent);
+}
+
+.share-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(520px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: var(--space-4);
+  background: var(--surface);
+  border-radius: var(--radius-l);
+  box-shadow: 0 10px 40px color-mix(in srgb, var(--ink) 25%, transparent);
+  color: var(--ink);
+  font-size: var(--text-m);
+  font-weight: 400;
+  text-align: left;
+  white-space: normal;
+}
+
+.share-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-l);
+}
+
+.share-dialog__close {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--text-xl);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.share-dialog__close:hover {
+  background: var(--surface-hover);
+}
+
+.share-dialog__preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+
+.share-dialog__preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 52vh;
+  transition: opacity 0.15s;
+}
+
+.share-dialog__wait,
+.share-dialog__note {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.share-dialog__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.share-dialog__label {
+  margin-bottom: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+/* Six chiffres déjà cochés : les autres attendent qu'on en décoche un. */
+.share-dialog .ui-tab:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.share-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+@media (max-width: 767px) {
+  .share-dialog__backdrop {
+    padding: var(--space-3);
+  }
+}

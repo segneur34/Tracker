@@ -9,7 +9,8 @@ import { isNativeApp } from './runtime';
  *   l'application sur le téléphone : personne n'a à le voir, il ne sert qu'à
  *   survivre à un arrêt brutal. Dans le navigateur, il vit en mémoire.
  * - Les fichiers choisis par l'utilisateur (`readPickedFile`) et le
- *   téléchargement d'un GPX dans le navigateur (`downloadTextFile`), ou
+ *   téléchargement d'un GPX ou d'une image dans le navigateur
+ *   (`downloadTextFile`, `downloadBlob`), ou
  *   dans Téléchargements, téléphone compris (`saveToDownloads`).
  */
 
@@ -79,8 +80,12 @@ export const recordingJournal: TextFile = isNativeApp()
 export const canDownloadFiles = (): boolean => !isNativeApp();
 
 /** Propose un fichier texte au téléchargement, dans le navigateur. */
-export const downloadTextFile = (fileName: string, content: string, mimeType = 'application/gpx+xml'): void => {
-  const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+export const downloadTextFile = (fileName: string, content: string, mimeType = 'application/gpx+xml'): void =>
+  downloadBlob(fileName, new Blob([content], { type: mimeType }));
+
+/** Propose un fichier au téléchargement, dans le navigateur (l'image de partage, faute de partage). */
+export const downloadBlob = (fileName: string, blob: Blob): void => {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;

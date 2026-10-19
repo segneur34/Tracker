@@ -19,6 +19,8 @@ import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
 import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
+import GeneralStats from '../components/GeneralStats';
+import { shareableStats, type ShareStat } from '../core/shareImage';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
@@ -299,6 +301,25 @@ function SurfModule() {
   );
   const mapBounds = useMemo(() => trackBounds(track), [track]);
 
+  /** Chiffres de l'onglet « général », proposés aussi pour l'image de partage. */
+  const generalStats: ShareStat[] = summary ? [
+    { key: 'totalTime', label: 'Durée de la session', value: formatDuration(summary.totalS * 1000) },
+    { key: 'waveTime', label: `Sur la vague (${summary.totalS > 0 ? ((summary.waveS / summary.totalS) * 100).toFixed(1) : '0'} %)`, value: formatShortDuration(summary.waveS) },
+    { key: 'waves', label: 'Vagues', value: `${summary.waveCount}${summary.wavesPerHour !== null && summary.waveCount > 0 ? ` (${summary.wavesPerHour.toFixed(1)} / h)` : ''}` },
+    { key: 'averageWave', label: 'Distance moyenne', value: orDash(summary.avgWaveDistanceM, (m) => `${Math.round(m)} m`) },
+    { key: 'longestWave', label: 'Plus longue vague', value: orDash(summary.longestWaveM, (m) => `${Math.round(m)} m`) },
+    { key: 'maxSpeed', label: 'Vitesse max', value: orDash(summary.maxWaveSpeedMs, (v) => formatSpeed(v, speedUnit)) },
+    { key: 'waveSpeed', label: 'Moyenne sur la vague', value: orDash(summary.avgWaveSpeedMs, (v) => formatSpeed(v, speedUnit)) },
+    { key: 'paddleSpeed', label: 'Vitesse de rame', value: orDash(summary.paddleSpeedMs, (v) => formatSpeed(v, speedUnit)), title: 'Moyenne en mouvement, arrêts courts exclus' },
+    { key: 'return', label: 'Retour au pic (moyen)', value: orDash(summary.avgReturnS, formatShortDuration), title: "De la fin d'une vague à la première attente" },
+    ...(foil ? [
+      { key: 'longestFlight', label: 'Plus long vol', value: orDash(summary.longestFlightS, formatShortDuration) },
+      { key: 'flightTime', label: `Ratio de vol (${summary.totalS > 0 ? ((summary.flightS / summary.totalS) * 100).toFixed(1) : '0'} %)`, value: formatShortDuration(summary.flightS) },
+      { key: 'wavesInFlight', label: 'Vagues en un vol', value: String(summary.maxWavesInFlight ?? '—'), title: 'Le plus de vagues reliées par un même vol' },
+    ] : []),
+    { key: 'distance', label: 'Distance totale', value: formatDistance(totalDistanceM, distanceUnit) },
+  ] : [];
+
   // Une seule surbrillance : une vague (son numéro) ou le podium, un vol, une remontée.
   const waveShown = highlight.shownIn('vagues');
   const flightShown = highlight.shownIn('vols');
@@ -438,7 +459,10 @@ function SurfModule() {
     <div className="an-page" style={{ padding: '20px' }}>
       <div className="an-sheet">
         <div className="an-sheet__head">
-          <PageHeader title="Analyse Surf" subtitle={gpx.fileName ? <SessionNameEditor file={gpx.fileName} /> : undefined} back={{ to: libraryPath('surf'), label: 'Surf' }} />
+          <PageHeader title="Analyse Surf" subtitle={gpx.fileName ? (
+            <SessionNameEditor file={gpx.fileName}
+              share={generalStats.length > 0 ? { family: 'surf', segments: mapSegments, stats: shareableStats(generalStats) } : undefined} />
+          ) : undefined} back={{ to: libraryPath('surf'), label: 'Surf' }} />
           {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
         </div>
       </div>
@@ -474,25 +498,7 @@ function SurfModule() {
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={() => toggle('general')} />
                 </div>
-                <div className="an-sheet__stats an-sheet__stats--always">
-                  <Stat label="Durée de la session" value={formatDuration(summary.totalS * 1000)} />
-                  <Stat label={`Sur la vague (${summary.totalS > 0 ? ((summary.waveS / summary.totalS) * 100).toFixed(1) : '0'} %)`} value={formatShortDuration(summary.waveS)} />
-                  <Stat label="Vagues" value={`${summary.waveCount}${summary.wavesPerHour !== null && summary.waveCount > 0 ? ` (${summary.wavesPerHour.toFixed(1)} / h)` : ''}`} />
-                  <Stat label="Distance moyenne" value={orDash(summary.avgWaveDistanceM, (m) => `${Math.round(m)} m`)} />
-                  <Stat label="Plus longue vague" value={orDash(summary.longestWaveM, (m) => `${Math.round(m)} m`)} />
-                  <Stat label="Vitesse max" value={orDash(summary.maxWaveSpeedMs, (v) => formatSpeed(v, speedUnit))} />
-                  <Stat label="Moyenne sur la vague" value={orDash(summary.avgWaveSpeedMs, (v) => formatSpeed(v, speedUnit))} />
-                  <Stat label="Vitesse de rame" value={orDash(summary.paddleSpeedMs, (v) => formatSpeed(v, speedUnit))} title="Moyenne en mouvement, arrêts courts exclus" />
-                  <Stat label="Retour au pic (moyen)" value={orDash(summary.avgReturnS, formatShortDuration)} title="De la fin d'une vague à la première attente" />
-                  {foil && (
-                    <>
-                      <Stat label="Plus long vol" value={orDash(summary.longestFlightS, formatShortDuration)} />
-                      <Stat label={`Ratio de vol (${summary.totalS > 0 ? ((summary.flightS / summary.totalS) * 100).toFixed(1) : '0'} %)`} value={formatShortDuration(summary.flightS)} />
-                      <Stat label="Vagues en un vol" value={summary.maxWavesInFlight ?? '—'} title="Le plus de vagues reliées par un même vol" />
-                    </>
-                  )}
-                  <Stat label="Distance totale" value={formatDistance(totalDistanceM, distanceUnit)} />
-                </div>
+                <GeneralStats stats={generalStats} />
                 {draft.edits.foil === null && (
                   <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '8px' }}>
                     {foil ? 'Sur foil' : 'Sans foil'}, supposé d'après l'activité : la session ne le dit pas. Il se règle dans l'onglet réglages.
