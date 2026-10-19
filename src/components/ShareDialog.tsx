@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { FAMILY_ACCENT } from '../core/activities';
 import { pickShareStats, SHARE_IMAGE, type ShareStat } from '../core/shareImage';
 import type { SportFamily } from '../core/sportProfiles';
+import { readRunnerProfile, runnerName } from '../hooks/useRunnerProfile';
 import { shareFile } from '../platform/share';
 import { jsonStore } from '../platform/storage';
 import { createTileImageLoader, drawShareImage } from './drawShareImage';
@@ -50,6 +51,8 @@ interface ShareDialogProps {
  */
 function ShareDialog({ family, activityId, title, subtitle, fileName, segments, stats, onClose }: ShareDialogProps) {
   const [choice, setChoice] = useState<ShareChoice>(() => readChoice(activityId));
+  /** Nom ou pseudo de Réglages, au pied de l'image. */
+  const [author] = useState(() => runnerName(readRunnerProfile()));
   /** Dernière image dessinée, et ce qu'elle montre (`drawKey`). */
   const [image, setImage] = useState<{ blob: Blob; url: string; key: string } | null>(null);
   /** Échec du dessin, pour ce qu'il devait montrer. */
@@ -76,7 +79,7 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
     let cancelled = false;
     const accent = getComputedStyle(document.documentElement).getPropertyValue(`--${family}`).trim() || '#1976d2';
     const [shown, map] = JSON.parse(drawKey) as [ShareStat[], boolean];
-    drawShareImage({ title, subtitle, accent, segments, stats: shown, withMap: map }, tileImage)
+    drawShareImage({ title, subtitle, accent, segments, stats: shown, withMap: map, author }, tileImage)
       .then((blob) => {
         if (cancelled) return;
         setImage((previous) => {
@@ -90,7 +93,7 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
     return () => {
       cancelled = true;
     };
-  }, [family, title, subtitle, segments, drawKey, tileImage]);
+  }, [family, title, subtitle, segments, drawKey, tileImage, author]);
 
   /** Aperçu libéré à la fermeture. */
   const imageRef = useRef(image);

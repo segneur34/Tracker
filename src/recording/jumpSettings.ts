@@ -23,14 +23,6 @@ export const JUMP_PLACEMENT_LABEL: Record<JumpPlacement, string> = {
   dos: 'Dos (sac)',
 };
 
-/** Précision à attendre, en clair, selon l'emplacement (estimation, à confirmer sur l'eau). */
-export const JUMP_PLACEMENT_HINT: Record<JumpPlacement, string> = {
-  poitrine: 'conseillé : le buste suit le corps',
-  taille: 'bien : près du centre du corps',
-  bras: 'moins précis : le bras bouge pendant le saut (±0,3 à 0,5 m de plus)',
-  dos: 'moins précis si le sac ballotte',
-};
-
 export const DEFAULT_JUMP_PLACEMENT: JumpPlacement = 'poitrine';
 
 /** Hauteur minimale réglable, en mètres. */

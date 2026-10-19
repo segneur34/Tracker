@@ -9,10 +9,10 @@
 import type { Activity } from '../core/activities';
 import { edwardsLoad, histogramZoneTimes } from '../core/heartRate';
 import { sportFamily, sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
-import { CHART_PERIODS, addDays, chartPeriodBounds, isoWeek, startOfDay, startOfIsoWeek, type ChartPeriod } from './activityChart';
+import { CHART_PERIODS, addDays, chartPeriodBounds, isoWeek, startOfDay, startOfIsoWeek, type ChartRange } from './activityChart';
 import type { ManeuverResults, SessionRecord, SummaryHeartRate } from './record';
 
-export type StatsPeriod = ChartPeriod | 'tout';
+export type StatsPeriod = ChartRange;
 
 /** Les périodes du graphe de l'accueil, et toutes les sessions. */
 export const STATS_PERIODS: { id: StatsPeriod; label: string }[] = [...CHART_PERIODS, { id: 'tout', label: 'Tout' }];

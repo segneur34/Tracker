@@ -21,6 +21,8 @@ export interface ShareImageContent {
   stats: ReadonlyArray<ShareStat>;
   /** Fond OpenStreetMap sous la trace ; sans lui, un aplat. */
   withMap: boolean;
+  /** Nom ou pseudo du pratiquant, à droite du pied ; `null` : rien. */
+  author: string | null;
 }
 
 /** Tuile du fond prête à dessiner, `null` si elle manque. */
@@ -223,6 +225,11 @@ export const drawShareImage = async (content: ShareImageContent, tileImage: Tile
   ctx.fillStyle = token('--faint', '#8a9099');
   ctx.font = `600 26px ${family}`;
   ctx.fillText('Tracker', margin, heightPx - 22);
+  if (content.author !== null) {
+    ctx.textAlign = 'right';
+    ctx.fillText(fitText(ctx, content.author, widthPx / 2 - margin), widthPx - margin, heightPx - 22);
+    ctx.textAlign = 'left';
+  }
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Image impossible à produire.'))), 'image/png');

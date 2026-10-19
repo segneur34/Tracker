@@ -14,11 +14,18 @@ describe('analysisTabs : onglets proposés par calcul', () => {
   });
 
   it('course et vélo : la même barre, sans « sauts » en fractionné', () => {
-    expect(keys(analysisTabs(SPORT_PROFILES.running))).toEqual(keys(LAND_TABS.course));
-    expect(keys(analysisTabs(SPORT_PROFILES.cycling))).toEqual(keys(LAND_TABS.velo));
+    expect(keys(analysisTabs(SPORT_PROFILES.running))).toEqual(keys(LAND_TABS.course).filter((k) => k !== 'fractionne'));
+    expect(keys(analysisTabs(SPORT_PROFILES.cycling))).toEqual(keys(LAND_TABS.velo).filter((k) => k !== 'fractionne'));
     expect(keys(analysisTabs(SPORT_PROFILES['run-intervals']))).not.toContain('sauts');
     expect(keys(analysisTabs(SPORT_PROFILES['bike-intervals']))).not.toContain('sauts');
     expect(keys(analysisTabs(SPORT_PROFILES['run-intervals']))).toContain('fractionne');
+  });
+
+  it('« fractionné » en famille Fractionné seulement, ni à pied ni à vélo (19/10)', () => {
+    expect(keys(analysisTabs(SPORT_PROFILES.running))).not.toContain('fractionne');
+    expect(keys(analysisTabs(SPORT_PROFILES.cycling))).not.toContain('fractionne');
+    expect(keys(analysisTabs(SPORT_PROFILES['run-intervals']))).toContain('fractionne');
+    expect(keys(analysisTabs(SPORT_PROFILES['bike-intervals']))).toContain('fractionne');
   });
 
   it('course et vélo : « graphiques » à la place des zones de pente, « cardio » derrière lui (16/10)', () => {

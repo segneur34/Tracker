@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BIKE_INTERVALS_ACTIVITY, DEFAULT_ACTIVITIES, FAMILY_SHADES, GRAVEL_ACTIVITY, RUN_INTERVALS_ACTIVITY, SURF_ACTIVITY, SURF_FOIL_ACTIVITY,
   VTT_ACTIVITY, activitiesOfFamily,
-  activityCounts, activityFamily, activityTreatment, baseActivity, findActivity, insertActivity, isActivityShown, isFamilyHidden,
+  activityCounts, activityFamily, activityTreatment, baseActivity, findActivity, insertActivity, intervalActivityFor, isActivityShown, isFamilyHidden,
   newActivityId, nextActivityColor, readActivities, recolorActivities, sessionActivity, upgradeActivities,
   visibleActivities, visibleFamilies, withHidden, type Activity,
 } from './activities';
@@ -300,5 +300,22 @@ describe('usesMarkCourse', () => {
     expect(SPORT_FAMILIES.filter(usesMarkCourse)).toEqual(['voile', 'surf']);
     expect(usesMarkCourse(activityFamily(SURF_FOIL_ACTIVITY))).toBe(true);
     expect(usesMarkCourse(activityFamily(trail))).toBe(false);
+  });
+});
+
+describe('intervalActivityFor (19/10)', () => {
+  const fractionne = [RUN_INTERVALS_ACTIVITY, BIKE_INTERVALS_ACTIVITY];
+
+  it('à pied : Fractionné à pied ; à vélo : Fractionné vélo', () => {
+    expect(intervalActivityFor(trail, fractionne)).toBe(RUN_INTERVALS_ACTIVITY);
+    expect(intervalActivityFor(GRAVEL_ACTIVITY, fractionne)).toBe(BIKE_INTERVALS_ACTIVITY);
+  });
+
+  it('rien à demander en Fractionné, en voile, en surf, ni sans activité qui convienne', () => {
+    expect(intervalActivityFor(RUN_INTERVALS_ACTIVITY, fractionne)).toBeNull();
+    expect(intervalActivityFor(voile, fractionne)).toBeNull();
+    expect(intervalActivityFor(SURF_ACTIVITY, fractionne)).toBeNull();
+    expect(intervalActivityFor(trail, [BIKE_INTERVALS_ACTIVITY])).toBeNull();
+    expect(intervalActivityFor(trail, [])).toBeNull();
   });
 });

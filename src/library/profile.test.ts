@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { activityShares, calendarYearBounds, profileYears } from './profile';
-import { inBounds, type StatSession } from './stats';
+import { activityShares } from './profile';
+import type { StatSession } from './stats';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
 const at = (y: number, m: number, d: number, h = 12, min = 0) => new Date(y, m - 1, d, h, min).getTime();
@@ -29,27 +29,6 @@ const session = (startMs: number, over: Partial<StatSession> = {}): StatSession 
   heartRate: null,
   cadenceSpm: null,
   ...over,
-});
-
-describe('calendarYearBounds', () => {
-  it("va du 1er janvier à minuit au 1er janvier suivant, exclu", () => {
-    const b = calendarYearBounds(2026);
-    expect(inBounds(at(2025, 12, 31, 23, 59), b)).toBe(false);
-    expect(inBounds(at(2026, 1, 1, 0, 0), b)).toBe(true);
-    expect(inBounds(at(2026, 12, 31, 23, 59), b)).toBe(true);
-    expect(inBounds(at(2027, 1, 1, 0, 0), b)).toBe(false);
-  });
-});
-
-describe('profileYears', () => {
-  it("va de l'année de la plus vieille session à l'année en cours, années vides comprises", () => {
-    const sessions = [session(at(2026, 3, 1)), session(at(2024, 6, 1))];
-    expect(profileYears(sessions, at(2026, 10, 19))).toEqual([2024, 2025, 2026]);
-  });
-
-  it("donne l'année en cours seule, sans session", () => {
-    expect(profileYears([], at(2026, 10, 19))).toEqual([2026]);
-  });
 });
 
 describe('activityShares', () => {

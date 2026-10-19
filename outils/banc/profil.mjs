@@ -1,15 +1,16 @@
-// Banc de test : la page « Profil » (demande du 18/10), l'année en un coup d'œil.
+// Banc de test : la page « Profil » (demandes du 18/10 et du 19/10), une période en un coup d'œil.
 // Usage : node profil.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Le script écrit lui-même six sessions synthétiques de 20 min, datées en jours
 // avant aujourd'hui (deux courses, une sortie à vélo en côte et une de wingfoil récentes, une course et une sortie à
 // vélo de l'an passé), les importe par la page Course, et vérifie :
 //  1. l'accueil : plus de graphe d'activités, une ligne « Profil » qui ouvre la page ; « Profil » dans la barre du haut ;
-//  2. l'année en cours : distance (somme des vitesses × durées, à 5 % près), temps, D+ de la côte seule, nombre de
-//     sessions ; l'anneau et sa légende (une part par activité, la course à 50 %) ; le graphe d'activités en bas ;
-//  3. les flèches : « suivante » désactivée sur l'année en cours, l'année d'avant et ses chiffres, « précédente »
-//     désactivée sur la plus vieille année ;
+//  2. la période en tête, « Année » au départ : distance (somme des vitesses × durées, à 5 % près), temps, D+ de la
+//     côte seule, nombre de sessions du graphe ; l'anneau et sa légende (une part par activité, la course à 50 %) ;
+//     le graphe d'activités en bas, sans barre de période à lui ;
+//  3. les autres périodes règlent toute la page : « 30 jours » (trois sessions), « Depuis le début » (les six, une
+//     barre par mois), choix retenu au rechargement ;
 //  4. une ligne de la légende ouvre la bibliothèque filtrée sur son activité ;
-//  5. à 390×844 : rien ne déborde, chiffres empilés ; la case « Profil » de la barre du bas ouvre la page, allumée.
+//  5. à 390×844 : rien ne déborde, chiffres sur une ligne, détail par activité retenu déplié ; la case « Profil » de la barre du bas ouvre la page, allumée.
 import { writeFileSync } from 'node:fs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -89,7 +90,14 @@ const figures = () => evaluate(`[...document.querySelectorAll('.profile-figure')
 const legend = () => evaluate(`[...document.querySelectorAll('.profile-legend li')].map((li) => li.textContent)`);
 const search = () => evaluate('location.pathname + location.search');
 const overflow = () => evaluate('document.documentElement.scrollWidth > window.innerWidth');
-const arrow = (label) => `document.querySelector('.profile-year__arrow[aria-label=${JSON.stringify(label)}]')`;
+const pick = (label) => evaluate(`(() => {
+  const b = [...document.querySelectorAll('.profile-periods button')].find((el) => el.textContent.trim() === ${JSON.stringify(label)});
+  if (!b) return false;
+  b.click();
+  return true;
+})()`);
+const pressed = () => evaluate(`document.querySelector('.profile-periods button[aria-pressed=true]')?.textContent.trim() ?? null`);
+const chartCount = () => text('.actchart__head span');
 /** Nombre lu à la française : espaces fines de milliers, virgule décimale. */
 const parseFr = (s) => Number((s ?? '').replace(/[^\d,]/g, '').replace(',', '.'));
 
@@ -124,17 +132,24 @@ check('la ligne ouvre la page', (await search()) === '/profil', await search());
 check('barre du haut : Profil, allumé', await evaluate(`[...document.querySelectorAll('.shell-toplink')].some((a) => a.textContent.trim() === 'Profil' && a.classList.contains('active'))`));
 
 // 2. L'année en cours.
-check('titre et année', (await text('.ui-page-header h1')) === 'Profil' && (await text('.profile-year__label')) === String(thisYear),
-  `${await text('.ui-page-header h1')} ; ${await text('.profile-year__label')}`);
+check('titre', (await text('.ui-page-header h1')) === 'Profil', await text('.ui-page-header h1'));
+check('périodes en tête, « Année » au départ', (await evaluate(`[...document.querySelectorAll('.profile-periods button')].map((b) => b.textContent.trim()).join(' | ')`))
+  === 'Semaine | 30 jours | 6 mois | Année | Depuis le début' && (await pressed()) === 'Année', await pressed());
+check("plus de flèches d'année", (await evaluate(`!!document.querySelector('.profile-year')`)) === false);
+check("le graphe n'a plus sa propre barre de période", (await evaluate(`!!document.querySelector('.actchart__periods')`)) === false);
 let [distance, time, gain] = await figures();
 const km = parseFr(distance);
 check('distance de l\'année, en km', distance?.endsWith('km') && Math.abs(km - kmOf(current)) / kmOf(current) < 0.05, `${distance} pour ${kmOf(current).toFixed(1)} attendus`);
 check('temps de l\'année', time === '1 h 20', time);
 const gainM = parseFr(gain);
 check('D+ de l\'année : la côte', gain?.endsWith('m') && gainM > 150 && gainM < 230, gain);
-check('nombre de sessions', (await text('.profile-count')) === `4 sessions en ${thisYear}`, await text('.profile-count'));
+check('nombre de sessions (graphe)', (await chartCount()) === '4 sessions', await chartCount());
 const ordre = await evaluate(`[...document.querySelectorAll('.profile > *')].map((el) => el.className.split(' ')[0] || el.tagName).join(' > ')`);
-check('ordre : chiffres, répartition, graphe', /profile-figures.*profile-split.*actchart/.test(ordre ?? ''), ordre);
+check('ordre : période, chiffres, répartition, graphe', /profile-periods.*profile-figures.*profile-split.*actchart/.test(ordre ?? ''), ordre);
+check('détail par activité replié au départ', (await evaluate(`document.querySelector('.profile-fold')?.getAttribute('aria-expanded')`)) === 'false'
+  && (await legend()).length === 0);
+await evaluate(`document.querySelector('.profile-fold').click()`);
+await wait(300);
 let rows = await legend();
 check('légende : une ligne par activité, la course en tête à 50 %', rows?.length === 3 && rows[0].endsWith('50 %') && rows[0].includes('40 min')
   && rows.slice(1).every((r) => r.endsWith('25 %')), JSON.stringify(rows));
@@ -144,24 +159,30 @@ await evaluate(`document.querySelector('.profile-legend li').dispatchEvent(new M
 await wait(200);
 check('survol d\'une ligne : sa part au centre', (await text('.profile-donut__center'))?.endsWith('40 min50 %'), await text('.profile-donut__center'));
 await evaluate(`document.querySelector('.profile-legend li').dispatchEvent(new MouseEvent('mouseout', { bubbles: true }))`);
-check('flèche « suivante » désactivée sur l\'année en cours', await evaluate(`${arrow('Année suivante')}.disabled`));
 await shoot('profil-ordinateur');
 
-// 3. L'an passé.
-await evaluate(`${arrow('Année précédente')}.click()`);
+// 3. Les autres périodes règlent toute la page.
+const recent = SESSIONS.filter(([, d]) => d <= 29);
+check('« 30 jours »', await pick('30 jours'));
 await wait(500);
 [distance, time, gain] = await figures();
-check('année précédente', (await text('.profile-year__label')) === String(thisYear - 1), await text('.profile-year__label'));
-check('ses chiffres', Math.abs(parseFr(distance) - kmOf(previous)) / kmOf(previous) < 0.05 && time === '40 min' && (await text('.profile-count')) === `2 sessions en ${thisYear - 1}`,
-  `${distance} ; ${time} ; ${await text('.profile-count')}`);
-check('D+ nul sur un terrain plat', gain === '0m', gain);
+check('30 jours : chiffres', Math.abs(parseFr(distance) - kmOf(recent)) / kmOf(recent) < 0.05 && time === '1 h 00' && (await chartCount()) === '3 sessions',
+  `${distance} ; ${time} ; ${await chartCount()}`);
 rows = await legend();
-check('sa légende', rows?.length === 2 && rows.every((r) => r.endsWith('50 %')), JSON.stringify(rows));
-check('flèche « précédente » désactivée sur la plus vieille année', await evaluate(`${arrow('Année précédente')}.disabled`));
-check('graphe d\'activités toujours là', await evaluate(`!!document.querySelector('.actchart')`));
-await evaluate(`${arrow('Année suivante')}.click()`);
+check('30 jours : légende sans le wingfoil', rows?.length === 2, JSON.stringify(rows));
+check('30 jours : une barre par jour', (await evaluate(`document.querySelectorAll('.actchart__bar').length`)) === 30);
+check('« Depuis le début »', await pick('Depuis le début'));
 await wait(500);
-check('retour à l\'année en cours', (await text('.profile-year__label')) === String(thisYear));
+[distance, time, gain] = await figures();
+check('depuis le début : les six sessions', Math.abs(parseFr(distance) - kmOf(SESSIONS)) / kmOf(SESSIONS) < 0.05 && time === '2 h 00' && (await chartCount()) === '6 sessions',
+  `${distance} ; ${time} ; ${await chartCount()}`);
+check('depuis le début : un mois par barre', (await text('.actchart__head h2')) === 'Depuis le début, par mois'
+  && (await evaluate(`document.querySelectorAll('.actchart__bar').length`)) >= 14, await text('.actchart__head h2'));
+await go('/profil');
+check('choix retenu au rechargement', (await pressed()) === 'Depuis le début', await pressed());
+check('« Année » de nouveau', await pick('Année'));
+await wait(500);
+check("retour à l'année", (await chartCount()) === '4 sessions', await chartCount());
 
 // 4. Une ligne de la légende ouvre la bibliothèque de son activité.
 await evaluate(`document.querySelector('.profile-legend__row').click()`);
@@ -172,10 +193,11 @@ check('la ligne ouvre la bibliothèque filtrée', (await search())?.startsWith('
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go('/profil');
 check('390 px : rien ne déborde', !(await overflow()));
-check('390 px : chiffres empilés', await evaluate(`(() => {
-  const [a, b] = document.querySelectorAll('.profile-figure');
-  return !!a && !!b && b.getBoundingClientRect().top > a.getBoundingClientRect().bottom - 1;
+check('390 px : chiffres sur une ligne', await evaluate(`(() => {
+  const f = [...document.querySelectorAll('.profile-figure')].map((el) => el.getBoundingClientRect());
+  return f.length === 3 && f.every((r) => Math.abs(r.top - f[0].top) < 1);
 })()`));
+check('390 px : détail par activité toujours déplié (état retenu)', (await legend()).length === 3);
 await shoot('profil-telephone');
 await go('/');
 const tab = `[...document.querySelectorAll('.shell-tabbar .shell-tab')].find((t) => t.textContent.trim() === 'Profil')`;

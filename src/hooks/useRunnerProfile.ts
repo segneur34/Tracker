@@ -11,6 +11,8 @@ import { readStoredRecord, useStoredRecord } from './useStoredRecord';
  * cardiaques des fréquences de repos et maximale.
  */
 export interface RunnerProfile {
+  /** Nom ou pseudo, affiché en titre du Profil et au pied de l'image partagée. */
+  name: string | null;
   /** Masse en kilogrammes. */
   weightKg: number | null;
   /** Taille en centimètres. */
@@ -29,6 +31,7 @@ export interface RunnerProfile {
 }
 
 export const EMPTY_RUNNER_PROFILE: RunnerProfile = {
+  name: null,
   weightKg: null,
   heightCm: null,
   birthYear: null,
@@ -40,7 +43,19 @@ export const EMPTY_RUNNER_PROFILE: RunnerProfile = {
 };
 
 /** Plages plausibles de chaque champ numérique. */
-type NumberField = Exclude<keyof RunnerProfile, 'sex' | 'hrZones'>;
+export type RunnerNumberField = Exclude<keyof RunnerProfile, 'name' | 'sex' | 'hrZones'>;
+type NumberField = RunnerNumberField;
+
+/** Longueur maximale du nom ou pseudo. */
+export const RUNNER_NAME_MAX = 40;
+
+/** Nom ou pseudo à afficher, `null` s'il n'est pas saisi ; relu avec contrôle de type (fichier de réglages importé). */
+export const runnerName = (profile: Pick<RunnerProfile, 'name'>): string | null => {
+  const raw: unknown = profile.name;
+  if (typeof raw !== 'string') return null;
+  const name = raw.trim().slice(0, RUNNER_NAME_MAX).trim();
+  return name === '' ? null : name;
+};
 
 const BOUNDS: Record<NumberField, [number, number]> = {
   weightKg: [20, 300],
@@ -84,6 +99,12 @@ export const useRunnerProfile = () => {
     [update]
   );
 
+  /** Nom ou pseudo tel que tapé (espaces compris, pour la frappe en cours), tronqué ; vide : effacé. */
+  const setName = useCallback(
+    (name: string) => update({ name: name.trim() === '' ? null : name.slice(0, RUNNER_NAME_MAX) }),
+    [update]
+  );
+
   const setSex = useCallback((sex: RunnerProfile['sex']) => update({ sex }), [update]);
 
   /** Zones saisies à la main, `null` pour revenir au calcul ; des bornes non croissantes sont ignorées. */
@@ -95,5 +116,5 @@ export const useRunnerProfile = () => {
     [update]
   );
 
-  return { profile: value, setNumber, setSex, setZones, age: runnerAge(value) };
+  return { profile: value, setName, setNumber, setSex, setZones, age: runnerAge(value) };
 };

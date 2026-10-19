@@ -8,12 +8,12 @@ import { libraryPath, useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { effectiveDistanceUnit, useVisibility } from '../hooks/useSportSettings';
-import { CHART_PERIODS, buildActivityChart, type ChartPeriod, type ChartSession } from '../library/activityChart';
+import { buildActivityChart, type ChartRange, type ChartSession } from '../library/activityChart';
 import './ActivityChart.css';
 
 /**
- * Graphe d'activités du profil, venu de l'accueil (maquette du 23 septembre 2026) : une barre
- * par jour ou par semaine, une couleur par activité, les sessions d'un même
+ * Graphe d'activités du profil, venu de l'accueil (maquette du 23 septembre 2026), sur la
+ * période choisie en tête de la page : une barre par jour, par semaine ou par mois, une couleur par activité, les sessions d'un même
  * jour empilées ; numéros de semaine ISO en dessous. Toucher une barre
  * affiche ses sessions, chacune ouvrant son analyse. Sous le graphe, les
  * totaux de la période par activité, chacun ouvrant la bibliothèque filtrée
@@ -40,13 +40,12 @@ const formatTime = (ms: number): string =>
 
 const plural = (n: number): string => `${n} session${n > 1 ? 's' : ''}`;
 
-function ActivityChart() {
+function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number }) {
   const { sessions } = useSessionLibrary();
   const openSession = useOpenSession();
   const navigate = useNavigate();
   const { activities, isShown } = useVisibility();
-  const [nowMs] = useState(() => Date.now());
-  const [period, setPeriod] = useState<ChartPeriod>('trente');
+  // Barre touchée ; la page remonte le graphe à chaque période (`key`), ce qui la referme.
   const [picked, setPicked] = useState<number | null>(null);
   // Totaux par activité : repliés ou dépliés d'un seul geste, choix gardé sur l'appareil.
   const { open, toggle } = useOpenSections('accueil.graphe', TOTALS_DEFAULT);
@@ -74,24 +73,11 @@ function ActivityChart() {
   const unitH = Math.min(UNIT_MAX_H, Math.floor((PLOT_H - 4) / maxCount));
   const totalSessions = chart.totals.reduce((n, t) => n + t.sessions, 0);
   const bar = picked === null ? null : chart.bars[picked] ?? null;
-  // Une barre par semaine : le détail donne aussi le jour de chaque session.
-  const weekly = period === 'sixmois' || period === 'annee';
-
-  const choosePeriod = (next: ChartPeriod) => {
-    setPeriod(next);
-    setPicked(null);
-  };
+  // Une barre par semaine ou par mois : le détail donne aussi le jour de chaque session.
+  const weekly = period === 'sixmois' || period === 'annee' || period === 'tout';
 
   return (
     <section className="actchart" aria-label="Activités">
-      <div className="actchart__periods" role="group" aria-label="Période">
-        {CHART_PERIODS.map((p) => (
-          <button key={p.id} type="button" aria-pressed={period === p.id} onClick={() => choosePeriod(p.id)}>
-            {p.label}
-          </button>
-        ))}
-      </div>
-
       <div className="actchart__head">
         <h2>{chart.title}</h2>
         <span className="num">{plural(totalSessions)}</span>

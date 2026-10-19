@@ -121,7 +121,13 @@ const foilRows = await rows('Surf foil');
 check('case Pumping sur Surf foil', /Pumping/.test(foilRows ?? ''), foilRows);
 const surfRows = await rows('Surf');
 check('pas de case Pumping sur Surf (sans foil)', !/Pumping/.test(surfRows ?? ''), surfRows);
-console.log('aide du seuil de vol :', await evaluate(`[...(${card('Surf foil')}?.querySelectorAll('.settings-row') ?? [])].find((r) => r.textContent.includes('Seuil de vol'))?.title ?? '(absente)'`));
+// L'aide du seuil est sous son « ? » (lot 3 des demandes du 19/10) : ouverte, lue, refermée.
+console.log('aide du seuil de vol :', await evaluate(`(() => {
+  const row = [...(${card('Surf foil')}?.querySelectorAll('.settings-row') ?? [])].find((r) => r.textContent.includes('Seuil de vol'));
+  const help = row?.querySelector('.ui-help'); if (!help) return '(absente)';
+  help.click();
+  return new Promise((ok) => setTimeout(() => { const text = row.querySelector('.settings-help')?.textContent ?? '(absente)'; help.click(); ok(text); }, 100));
+})()`));
 console.log('cocher Pumping foil :', await evaluate(`(() => {
   const row = [...(${card('Surf foil')}?.querySelectorAll('.settings-row') ?? [])].find((r) => r.querySelector('.settings-row__label')?.textContent === 'Pumping');
   const box = row?.querySelector('input[type=checkbox]'); if (!box) return 'absente'; box.click(); return box.checked ? 'cochée' : 'décochée';

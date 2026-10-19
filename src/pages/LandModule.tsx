@@ -314,7 +314,9 @@ function LandModule({ family }: { family: LandFamily }) {
   const open = useMemo(() => maskHiddenTabs(storedOpen, landTabs, tabChoices), [storedOpen, landTabs, tabChoices]);
   /** Répétitions retrouvées dans la vitesse : en famille Fractionné, pour une session faite sans le compteur. */
   const detectionOn = family === 'fractionne' && sessionIntervals.length === 0 && profile.intervals !== null;
-  const hasIntervals = sessionIntervals.length > 0 || detectionOn;
+  // Onglet « fractionné » en famille Fractionné seulement (19/10) : une sortie à pied ou à vélo faite avec le compteur
+  // garde ses répétitions dans sa fiche, et les retrouve si elle passe en Fractionné.
+  const hasIntervals = family === 'fractionne' && (sessionIntervals.length > 0 || detectionOn);
   // Sauts mesurés par les capteurs du téléphone : ceux de la fiche, sinon calculés depuis le `.imu`.
   const jumpsState = useSessionJumps(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null, gpx.track, profile.id);
   const jumpMinHeightM = effectiveJumpSettings(activity)?.minHeightM ?? profile.jumps?.defaultMinHeightM ?? 0;

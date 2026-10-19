@@ -81,4 +81,23 @@ describe('buildActivityChart', () => {
     );
     expect(chart.bars[2].stacks.map((s) => s.activityId)).toEqual(['voile', 'kite']);
   });
+
+  it('depuis le début : un mois par barre, de la plus vieille session au mois en cours', () => {
+    const sessions = [session('a', at(2024, 11, 5)), session('b', at(2024, 11, 20), 'trail'), session('c', at(2026, 9, 1))];
+    const chart = buildActivityChart(sessions, 'tout', now, ['voile', 'trail']);
+    expect(chart.bars).toHaveLength(23); // novembre 2024 à septembre 2026
+    expect(chart.bars[0].stacks).toEqual([{ activityId: 'voile', count: 1 }, { activityId: 'trail', count: 1 }]);
+    expect(chart.bars[22].sessions.map((s) => s.file)).toEqual(['c']);
+    // Janvier porte l'année ; la première barre non, janvier la suit de trop près.
+    expect(chart.bars.filter((b) => b.label !== '').map((b) => b.label)).toEqual(['2025', '2026']);
+    expect(chart.bars[2].weekStart).toBe(true);
+    expect(chart.range).toBe('depuis novembre 2024');
+    expect(chart.totals.map((t) => [t.activityId, t.sessions])).toEqual([['voile', 2], ['trail', 1]]);
+  });
+
+  it("depuis le début : l'initiale de chaque mois sur un an au plus, le mois en cours seul sans session", () => {
+    const chart = buildActivityChart([session('a', at(2026, 6, 10))], 'tout', now, []);
+    expect(chart.bars.map((b) => b.label)).toEqual(['J', 'J', 'A', 'S']);
+    expect(buildActivityChart([], 'tout', now, []).bars.map((b) => b.title)).toEqual(['septembre 2026']);
+  });
 });

@@ -10,6 +10,9 @@
 
 export type ChartPeriod = 'semaine' | 'trente' | 'sixmois' | 'annee';
 
+/** Une période, ou toutes les sessions (`'tout'`, une barre par mois depuis la plus vieille). */
+export type ChartRange = ChartPeriod | 'tout';
+
 export const CHART_PERIODS: { id: ChartPeriod; label: string }[] = [
   { id: 'semaine', label: 'Semaine' },
   { id: 'trente', label: '30 jours' },
@@ -112,6 +115,11 @@ const shortDate = (ms: number): string =>
 const longDay = (ms: number): string =>
   new Date(ms).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
+const monthYear = (ms: number): string =>
+  new Date(ms).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+
+const MONTH_LETTERS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+
 interface Slot {
   startMs: number;
   endMs: number;
@@ -121,8 +129,41 @@ interface Slot {
   future: boolean;
 }
 
+/**
+ * Toutes les sessions : un mois par case, de celui de la plus vieille session
+ * (`oldestMs`, le mois en cours sans session) au mois en cours. Sur un an au
+ * plus, chaque mois porte son initiale ; au-delà, janvier porte l'année, et
+ * la première case aussi si le premier janvier est assez loin.
+ */
+const monthSlotsOf = (nowMs: number, oldestMs: number | null): { slots: Slot[]; title: string; range: string } => {
+  const now = new Date(nowMs);
+  const oldest = new Date(Math.min(oldestMs ?? nowMs, nowMs));
+  const count = (now.getFullYear() - oldest.getFullYear()) * 12 + now.getMonth() - oldest.getMonth() + 1;
+  const firstJanuaryIndex = (12 - oldest.getMonth()) % 12;
+  const labelFirst = firstJanuaryIndex === 0 || firstJanuaryIndex >= FIRST_LABEL_MIN_SLOTS;
+  const slots: Slot[] = [];
+  for (let i = 0; i < count; i++) {
+    const start = new Date(oldest.getFullYear(), oldest.getMonth() + i, 1);
+    const january = start.getMonth() === 0;
+    const label = count <= 12
+      ? MONTH_LETTERS[start.getMonth()]
+      : january || (i === 0 && labelFirst) ? String(start.getFullYear()) : '';
+    slots.push({
+      startMs: start.getTime(),
+      endMs: new Date(start.getFullYear(), start.getMonth() + 1, 1).getTime(),
+      label, title: monthYear(start.getTime()), weekStart: january && i > 0, future: false,
+    });
+  }
+  return {
+    slots,
+    title: 'Depuis le début, par mois',
+    range: `depuis ${monthYear(slots[0].startMs)}`,
+  };
+};
+
 /** Cases de la période, de la plus ancienne à la plus récente. */
-const slotsOf = (period: ChartPeriod, nowMs: number): { slots: Slot[]; title: string; range: string } => {
+const slotsOf = (period: ChartRange, nowMs: number, oldestMs: number | null = null): { slots: Slot[]; title: string; range: string } => {
+  if (period === 'tout') return monthSlotsOf(nowMs, oldestMs);
   const today = startOfDay(nowMs);
   const slots: Slot[] = [];
   if (period === 'semaine') {
@@ -186,17 +227,19 @@ export const chartPeriodBounds = (period: ChartPeriod, nowMs: number): { fromMs:
 };
 
 /**
- * Barres et totaux d'une période qui se termine aujourd'hui (`nowMs`).
+ * Barres et totaux d'une période qui se termine aujourd'hui (`nowMs`), ou de
+ * toutes les sessions (`'tout'`, à partir du mois de la plus vieille).
  * `activityOrder` fixe l'ordre des piles et des totaux ; une activité absente
  * de cet ordre vient après, dans l'ordre d'apparition.
  */
 export const buildActivityChart = (
   sessions: ChartSession[],
-  period: ChartPeriod,
+  period: ChartRange,
   nowMs: number,
   activityOrder: string[]
 ): ActivityChartData => {
-  const { slots, title, range } = slotsOf(period, nowMs);
+  const oldestMs = sessions.length > 0 ? Math.min(...sessions.map((s) => s.startMs)) : null;
+  const { slots, title, range } = slotsOf(period, nowMs, oldestMs);
   const from = slots[0].startMs;
   const to = slots[slots.length - 1].endMs;
   const inside = sessions.filter((s) => s.startMs >= from && s.startMs < to).sort((a, b) => a.startMs - b.startMs);

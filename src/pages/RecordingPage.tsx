@@ -11,7 +11,7 @@ import PageHeader from '../components/ui/PageHeader';
 import SavedSessionShare from '../components/SavedSessionShare';
 import { IconFlag, IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
-import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
+import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, intervalActivityFor, type Activity } from '../core/activities';
 import { sportFamily, sportTreatment, usesMarkCourse, type SportFamily } from '../core/sportProfiles';
 import { formatClock, formatDistance, formatShortDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
@@ -36,6 +36,7 @@ import { BELT_STATE_LABEL, savedBelt } from '../platform/heartRate';
 import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
 import { PERMISSION_LABEL } from '../recording/permissionsPrompt';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
+import { updateSessionRecord } from '../hooks/useSessionLibrary';
 import {
   addRecordingMark, analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording,
   resumeRecording, startRecording, stopRecording, useRecorder, type RecorderState,
@@ -452,14 +453,32 @@ function RecordingPage() {
     }
   };
 
-  /** « Analyser » : range la session, puis l'ouvre si elle est entrée dans la mémoire. */
+  /**
+   * « Analyser » : range la session, puis l'ouvre si elle est entrée dans la mémoire. Une sortie à pied
+   * ou à vélo faite avec le compteur d'intervalles : on demande d'abord si elle passe en Fractionné, seule
+   * famille à avoir l'onglet « fractionné » (19/10) ; sinon elle reste dans la sienne, sans cet onglet.
+   */
   const handleAnalyze = async () => {
+    const pending = recorder.pending;
+    const intervalActivity = pending && pending.intervals.length > 0
+      ? intervalActivityFor(pending.activity, activitiesOfFamily(shownActivities, 'fractionne'))
+      : null;
+    const toIntervals = intervalActivity !== null && pending !== null && window.confirm(
+      `Le compteur d'intervalles a servi pendant cette session. La ranger en « ${intervalActivity.name} » ? `
+      + `Elle aura l'onglet fractionné ; sinon elle reste en « ${pending.activity.name} », sans cet onglet.`
+    );
     setAnalyzing(true);
     const result = await analyzePendingSession();
     setAnalyzing(false);
     if (result?.libraryFile) {
       dismissRecorderResult();
-      openSession(result.libraryFile, sportFamily(result.sport));
+      if (toIntervals && intervalActivity) {
+        const listed = activities.some((a) => a.id === intervalActivity.id);
+        updateSessionRecord(result.libraryFile, { sport: intervalActivity.base, activityId: listed ? intervalActivity.id : null });
+        openSession(result.libraryFile, 'fractionne');
+      } else {
+        openSession(result.libraryFile, sportFamily(result.sport));
+      }
     }
   };
 

@@ -7,13 +7,13 @@
   margin: var(--space-2) 0 var(--space-3);
 }
 
-.settings-block__note {
-  color: var(--muted);
-  font-size: var(--text-xs);
-  margin-top: var(--space-2);
+/* Contenu d'un bloc ouvert, sous son titre (et son aide, dépliée). */
+.settings-block__body {
+  margin-top: var(--space-3);
 }
 
 .settings-activities {
+  margin-top: var(--space-3);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--line);
@@ -167,6 +167,18 @@
   color: var(--ink-2);
 }
 
+/* Libellé et son « ? » (`SettingRow`) : le couple prend la largeur du libellé. */
+.settings-row__name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 170px;
+}
+
+.settings-row__name .settings-row__label {
+  width: auto;
+}
+
 /* Sous-option d'un réglage coché (sauts) : en retrait sous lui. */
 .settings-row--sub {
   padding-left: var(--space-4);
@@ -199,6 +211,18 @@
   padding: 0 0 var(--space-2) 22px;
 }
 
+/* Intertitre à l'intérieur d'une partie (la notification, dans Enregistrement). */
+.settings-part__subtitle {
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .settings-activity__actions {
   display: flex;
   justify-content: flex-end;
@@ -229,6 +253,10 @@
     font-size: var(--text-s);
     color: var(--muted);
   }
+
+  .settings-row__name {
+    width: auto;
+  }
 }
 
 /* Ajout d'une activité, sous la liste. */
@@ -244,6 +272,9 @@
 }
 
 .settings-add__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
   width: 100%;
   font-size: var(--text-s);
 }

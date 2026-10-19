@@ -16,7 +16,7 @@ import {
 } from '../core/units';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
-import { runnerHeartRateZones, useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
+import { RUNNER_NAME_MAX, runnerHeartRateZones, useRunnerProfile, type RunnerNumberField, type RunnerProfile } from '../hooks/useRunnerProfile';
 import { zoneLabel } from '../components/heartRateColors';
 import Button from '../components/ui/Button';
 import {
@@ -49,9 +49,11 @@ import IconPicker from '../components/IconPicker';
 import { activityIcon, guessActivityIcon, type ActivityIconId } from '../core/activityIcons';
 import WayTypeTabs from '../components/WayTypeTabs';
 import {
-  JUMP_MIN_HEIGHT_RANGE, JUMP_PLACEMENTS, JUMP_PLACEMENT_HINT, JUMP_PLACEMENT_LABEL, type JumpPlacement, type JumpSettings,
+  JUMP_MIN_HEIGHT_RANGE, JUMP_PLACEMENTS, JUMP_PLACEMENT_LABEL, type JumpPlacement, type JumpSettings,
 } from '../recording/jumpSettings';
 import PageHeader from '../components/ui/PageHeader';
+import { HelpText, HelpToggle, SettingRow, SettingsHelpProvider } from '../components/SettingsHelp';
+import { useSettingsCollapseAll } from '../components/settingsHelpContext';
 import './settingsPage.css';
 
 /**
@@ -59,39 +61,38 @@ import './settingsPage.css';
  * puis, cochée, l'emplacement du téléphone et la hauteur minimale montrée. Le
  * foil, juste au-dessus, est un réglage de l'activité à part entière.
  */
-function JumpsSetting({ jumps, overridden, onChange }: {
+function JumpsSetting({ id, jumps, overridden, onChange }: {
+  /** Identifiant de l'activité, qui préfixe les clés des aides. */
+  id: string;
   jumps: JumpSettings;
   overridden: boolean;
   onChange: (next: JumpSettings) => void;
 }) {
   return (
     <>
-      <div className="settings-row" title="Hauteur des sauts mesurée par l'accéléromètre et le gyroscope du téléphone, fixé au corps ; proposée à chaque enregistrement, sur le téléphone">
-        <span className="settings-row__label">Sauts</span>
+      <SettingRow label="Sauts" helpKey={`${id}:sauts`}
+        help="Hauteur des sauts, par les capteurs du téléphone fixé au corps ; proposée à chaque enregistrement.">
         <label className="settings-sports__pair">
           <input type="checkbox" checked={jumps.enabled} onChange={(e) => onChange({ ...jumps, enabled: e.target.checked })} />
           <span>Mesurer les sauts</span>
           {!overridden && <span className="settings-sports__mark">défaut</span>}
         </label>
-      </div>
+      </SettingRow>
       {jumps.enabled && (
         <>
-          <div className="settings-row settings-row--sub">
-            <span className="settings-row__label">Emplacement du téléphone</span>
-            <div className="settings-sports__pair">
-              <select value={jumps.placement} className="ui-field ui-field--s"
-                onChange={(e) => onChange({ ...jumps, placement: e.target.value as JumpPlacement })}>
-                {JUMP_PLACEMENTS.map((p) => <option key={p} value={p}>{JUMP_PLACEMENT_LABEL[p]}</option>)}
-              </select>
-              <span className="settings-sports__mark">{JUMP_PLACEMENT_HINT[jumps.placement]}</span>
-            </div>
-          </div>
-          <div className="settings-row settings-row--sub" title="Les sauts plus bas ne sont pas montrés ; tous restent mesurés">
-            <span className="settings-row__label">Hauteur minimale</span>
+          <SettingRow sub label="Emplacement du téléphone" helpKey={`${id}:sauts-emplacement`}
+            help="Où il est fixé : la poitrine est conseillée ; le bras et le dos sont moins précis.">
+            <select value={jumps.placement} className="ui-field ui-field--s"
+              onChange={(e) => onChange({ ...jumps, placement: e.target.value as JumpPlacement })}>
+              {JUMP_PLACEMENTS.map((p) => <option key={p} value={p}>{JUMP_PLACEMENT_LABEL[p]}</option>)}
+            </select>
+          </SettingRow>
+          <SettingRow sub label="Hauteur minimale" helpKey={`${id}:sauts-hauteur`}
+            help="Les sauts plus bas ne sont pas montrés ; tous restent mesurés.">
             <NumberField unit="m" step={0.1} min={JUMP_MIN_HEIGHT_RANGE.min} max={JUMP_MIN_HEIGHT_RANGE.max}
               value={jumps.minHeightM}
               onCommit={(v) => { if (v !== null && v >= JUMP_MIN_HEIGHT_RANGE.min && v <= JUMP_MIN_HEIGHT_RANGE.max) onChange({ ...jumps, minHeightM: v }); }} />
-          </div>
+          </SettingRow>
         </>
       )}
     </>
@@ -109,8 +110,8 @@ function WayTypesSetting({ view, treatment, onChange }: { view: SportSettingsVie
     if (next.length > 0) onChange(next);
   };
   return (
-    <div className="settings-row" title="Cochés d'office en planification quand on choisit cette activité ; ils se changent ensuite pour chaque itinéraire">
-      <span className="settings-row__label">Types de voie</span>
+    <SettingRow label="Types de voie" helpKey={`${view.activity.id}:voies`}
+      help="Cochés d'office quand on planifie avec cette activité ; ils se changent ensuite pour chaque itinéraire.">
       <div className="settings-sports__pair">
         <WayTypeTabs compact checked={view.wayTypes} onToggle={toggle} label={`Types de voie de ${view.activity.name}`}
           style={{ '--tab-accent': FAMILY_ACCENT[activityFamily(view.activity)] } as CSSProperties} />
@@ -118,7 +119,7 @@ function WayTypesSetting({ view, treatment, onChange }: { view: SportSettingsVie
           <span className="settings-sports__mark">{treatment === 'velo' ? 'selon le vélo' : 'selon le terrain'}</span>
         )}
       </div>
-    </div>
+    </SettingRow>
   );
 }
 
@@ -134,15 +135,13 @@ function AnalysisTabsSetting({ view, profile, onChange }: {
 }) {
   const tabs = analysisTabs(profile).filter((tab) => tab.key !== 'vols' || view.foil === true);
   return (
-    <div className="settings-row"
-      title="Onglets montrés dans les analyses de cette activité : enfoncés, montrés. Un onglet caché garde ses calculs, il revient en l'enfonçant de nouveau. Sans « réglages », l'activité et le seuil d'une session ne se changent plus depuis son analyse">
-      <span className="settings-row__label">Onglets</span>
+    <SettingRow label="Onglets" helpKey={`${view.activity.id}:onglets`}
+      help="Enfoncé : montré dans les analyses. Ceux venus d'un autre module (« tops ») sont cachés d'office ; sans « réglages », l'activité et le seuil d'une session ne se changent plus depuis son analyse.">
       <div className="settings-sports__pair">
         <div className="ui-tabs ui-tabs--compact" role="group" aria-label={`Onglets des analyses de ${view.activity.name}`}
           style={{ '--tab-accent': FAMILY_ACCENT[activityFamily(view.activity)] } as CSSProperties}>
           {tabs.map((tab) => (
             <button key={tab.key} type="button" className="ui-tab" aria-pressed={isTabShown(tab, view.tabs)}
-              title={tab.generic ? "Onglet en plus, caché tant qu'on ne le coche pas" : undefined}
               onClick={() => onChange(toggleTabChoice(view.tabs, tab))}>
               {tab.label}
             </button>
@@ -150,7 +149,7 @@ function AnalysisTabsSetting({ view, profile, onChange }: {
         </div>
         {view.tabs === null && <span className="settings-sports__mark">défaut</span>}
       </div>
-    </div>
+    </SettingRow>
   );
 }
 
@@ -183,9 +182,10 @@ const DISTANCE_UNITS = Object.keys(DISTANCE_UNIT_LABEL) as DistanceUnit[];
 /** Activités ouvertes, par identifiant ; absente : fermée. */
 const NO_ACTIVITY_OPEN: Record<string, boolean> = {};
 /** Parties d'une carte d'activité, toutes fermées au départ ; l'état, mémorisé, vaut pour toutes les activités. */
-type ActivityPartKey = 'affichage' | 'analyse' | 'enregistrement' | 'notification' | 'itineraires' | 'balises';
+// La notification est une sous-partie d'Enregistrement (19/10) ; la clé « itineraires » garde son nom pour l'état mémorisé.
+type ActivityPartKey = 'affichage' | 'analyse' | 'enregistrement' | 'itineraires' | 'balises';
 const ACTIVITY_PART_DEFAULTS: Record<ActivityPartKey, boolean> = {
-  affichage: false, analyse: false, enregistrement: false, notification: false, itineraires: false, balises: false,
+  affichage: false, analyse: false, enregistrement: false, itineraires: false, balises: false,
 };
 /** Familles de la liste des activités, toutes repliées au départ ; plusieurs s'ouvrent à la fois, l'état est mémorisé. */
 const FAMILY_OPEN_DEFAULTS = Object.fromEntries(SPORT_FAMILIES.map((f) => [f, false])) as Record<SportFamily, boolean>;
@@ -199,9 +199,12 @@ const FAMILY_OPEN_DEFAULTS = Object.fromEntries(SPORT_FAMILIES.map((f) => [f, fa
  * un rendu ; à la sortie du champ, le brouillon revient à la valeur commise.
  */
 function NumberField({
-  label, unit, value, onCommit, placeholder, step = 1, min, max,
+  label, help, helpKey, unit, value, onCommit, placeholder, step = 1, min, max,
 }: {
   label?: string;
+  /** Aide du champ à libellé, sous son « ? » (`helpKey` : sa clé). */
+  help?: ReactNode;
+  helpKey?: string;
   unit?: string;
   value: number | null;
   onCommit: (next: number | null) => void;
@@ -225,9 +228,9 @@ function NumberField({
     if (!isNaN(parsed)) onCommit(parsed);
   };
 
-  return (
+  const field = (
     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: label ? '8px' : 0, fontSize: '14px' }}>
-      {label && <span style={{ width: '190px' }}>{label}</span>}
+      {label && <span style={{ width: '190px' }}>{label}{helpKey && <HelpToggle helpKey={helpKey} label={label} />}</span>}
       <input
         type="number"
         step={step}
@@ -242,6 +245,13 @@ function NumberField({
         style={{ width: '84px', textAlign: 'right' }} />
       {unit && <span style={{ color: 'var(--muted)' }}>{unit}</span>}
     </label>
+  );
+  if (!helpKey) return field;
+  return (
+    <>
+      {field}
+      <HelpText helpKey={helpKey}>{help}</HelpText>
+    </>
   );
 }
 
@@ -261,7 +271,7 @@ function HeartRateZonesField({ profile, onChange }: { profile: RunnerProfile; on
   return (
     <div style={{ marginBottom: '8px', fontSize: '14px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
-        <span style={{ width: '190px' }}>Zones cardiaques</span>
+        <span style={{ width: '190px' }}>Zones cardiaques<HelpToggle helpKey="pratiquant:zones" label="Zones cardiaques" /></span>
         {custom ? (
           <Button size="s" onClick={() => onChange(null)}>Revenir au calcul</Button>
         ) : computed ? (
@@ -282,13 +292,13 @@ function HeartRateZonesField({ profile, onChange }: { profile: RunnerProfile; on
             onChange(custom.map((v, j) => (j === k ? next : v)));
           }} />
       ))}
-      <p className="settings-block__intro">
+      <HelpText helpKey="pratiquant:zones">
         {custom
-          ? 'Zones saisies à la main : chaque borne au-dessus de la précédente. Elles servent à l\'onglet cardio de toutes les analyses et au chiffre « Zone cardiaque » de l\'enregistrement.'
+          ? 'Chaque borne au-dessus de la précédente.'
           : method
-            ? `Calculées en ${method}${computed!.estimated ? `, FC max estimée par l'âge (${computed!.hrMax} bpm)` : ''} : 50, 60, 70, 80 et 90 %. « Personnaliser » les règle à la main, après un test d'effort par exemple.`
-            : 'Sans FC max ni âge, pas de zones : l\'onglet cardio montre alors la courbe et la FC moyenne seulement.'}
-      </p>
+            ? `En ${method}${computed!.estimated ? `, FC max estimée par l'âge (${computed!.hrMax} bpm)` : ''} : 50, 60, 70, 80 et 90 %. « Personnaliser » les règle à la main.`
+            : "Pas de zones : l'onglet cardio montre la courbe et la FC moyenne seulement."}
+      </HelpText>
     </div>
   );
 }
@@ -306,11 +316,18 @@ function SettingsPage() {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
     stopHoldMs, setStopHoldMs, hiddenFamilies, setActivityHidden, setFamilyHidden,
   } = useAllSportSettings();
-  const { profile, setNumber, setSex, setZones, age } = useRunnerProfile();
-  const { open, toggle } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
-  const { open: openActivity, toggle: toggleActivity } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
-  const { open: openPart, toggle: togglePart } = useOpenSections<ActivityPartKey>('settings-activity-parts', ACTIVITY_PART_DEFAULTS);
-  const { open: openFamily, toggle: toggleFamily } = useOpenSections<SportFamily>('settings-families', FAMILY_OPEN_DEFAULTS);
+  const { profile, setName, setNumber, setSex, setZones, age } = useRunnerProfile();
+  const { open, toggle, closeAll: closeBlocks } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
+  const { open: openActivity, toggle: toggleActivity, closeAll: closeActivities } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
+  const { open: openPart, toggle: togglePart, closeAll: closeParts } = useOpenSections<ActivityPartKey>('settings-activity-parts', ACTIVITY_PART_DEFAULTS);
+  const { open: openFamily, toggle: toggleFamily, closeAll: closeFamilies } = useOpenSections<SportFamily>('settings-families', FAMILY_OPEN_DEFAULTS);
+  /** « Tout réduire » : blocs, familles, activités et leurs parties (les aides et le choix d'icône, par `CollapseAllButton`). */
+  const collapseAll = () => {
+    closeBlocks();
+    closeFamilies();
+    closeActivities();
+    closeParts();
+  };
   /**
    * Activités rangées par famille (Voile, À pied, Vélo, Fractionné, Surf), chacune dans l'ordre de
    * la liste, les cachées en bas de leur famille (§10, point 100).
@@ -340,14 +357,14 @@ function SettingsPage() {
     return id;
   };
 
-  const profileField = (field: Exclude<keyof RunnerProfile, 'sex' | 'hrZones'>) => (next: number | null) => setNumber(field, next);
+  const profileField = (field: RunnerNumberField) => (next: number | null) => setNumber(field, next);
 
   return (
+    <SettingsHelpProvider>
     <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto', boxSizing: 'border-box' }}>
       <div style={{ marginBottom: '15px' }}>
-        <PageHeader
-          title="Réglages"
-          subtitle="Enregistrés sur cet appareil et dans le dossier mémoire, appliqués à l'ouverture de chaque module. Le bouton Défaut d'une activité revient aux valeurs de son calcul." />
+        <PageHeader title="Réglages" subtitle="Enregistrés sur cet appareil et dans le dossier mémoire."
+          aside={<CollapseAllButton onCollapse={collapseAll} />} />
       </div>
 
       <div style={{ marginBottom: '15px' }}>
@@ -355,20 +372,16 @@ function SettingsPage() {
       </div>
 
       <div style={cardStyle}>
-        <PanelTitle label="Autorisations" open={open.autorisations} onToggle={() => toggle('autorisations')} />
-        {open.autorisations && <PermissionsSettings />}
+        <BlockTitle label="Autorisations" open={open.autorisations} onToggle={() => toggle('autorisations')} helpKey="autorisations"
+          help="Ce qu'il faut pour enregistrer écran éteint. Refusée deux fois, une autorisation ne se redemande plus : « Ouvrir les réglages » mène à celles de l'application." />
+        {open.autorisations && <div className="settings-block__body"><PermissionsSettings /></div>}
       </div>
 
       <div style={cardStyle}>
-        <PanelTitle label="Activités" open={open.activites} onToggle={() => toggle('activites')} />
+        <BlockTitle label="Activités" open={open.activites} onToggle={() => toggle('activites')} helpKey="activites"
+          help="Chaque activité part des valeurs de son calcul (wingfoil, course, vélo…) ; « Défaut » les lui rend. L'œil cache une famille ou une activité partout, sessions comprises, sans rien effacer." />
         {open.activites && (
           <>
-            <p className="settings-block__intro">
-              Celles proposées à l'enregistrement, dans les analyses et dans la bibliothèque. Chacune repose sur un calcul
-              (wingfoil, planche, kite, bateau, course, vélo, fractionné à pied ou à vélo, surf), qui fixe ses valeurs de départ ; ses réglages d'affichage et
-              d'enregistrement lui sont propres. L'œil cache une famille ou une activité partout, sessions comprises ;
-              rien n'est effacé, et la ré-afficher rend tout.
-            </p>
             <div className="settings-activities">
               {familyOrdered.map((activity, k) => {
                 const s = view(activity);
@@ -480,31 +493,28 @@ function SettingsPage() {
                       </div>
                       {isOpen && (
                         <div className="settings-activity__body">
-                          <div className="settings-row" title="Couleur de l'activité dans le graphe de l'accueil et les listes, parmi les nuances de sa famille">
-                            <span className="settings-row__label">Couleur</span>
+                          <SettingRow label="Couleur" helpKey={`${id}:couleur`}
+                            help="Sa couleur dans les listes et les graphes, parmi les nuances de sa famille.">
                             <ShadePicker shades={FAMILY_SHADES[family]} value={activity.color} onChange={(color) => updateActivity(id, { color })}
                               label={`Couleur de ${activity.name}`} />
-                          </div>
-                          <div className="settings-row" title="Icône de l'activité dans les listes, les onglets et l'accueil ; sans choix, elle suit le nom">
-                            <span className="settings-row__label">Icône</span>
+                          </SettingRow>
+                          <SettingRow label="Icône" helpKey={`${id}:icone`} help="Son icône dans les listes ; sans choix, elle suit le nom.">
                             <IconPicker value={activityIcon(activity)} color={activity.color} onChange={(icon) => updateActivity(id, { icon })}
                               label={`Icône de ${activity.name}`} />
-                          </div>
+                          </SettingRow>
                           <ActivityPart label="Affichage" open={openPart.affichage} onToggle={() => togglePart('affichage')}>
-                            <div className="settings-row">
-                              <span className="settings-row__label">Unité de vitesse</span>
+                            <SettingRow label="Unité de vitesse" helpKey={`${id}:unite-vitesse`} help={UNIT_HELP}>
                               <select value={s.speedUnit} onChange={(e) => setFor(id, 'speedUnit', e.target.value as SpeedUnit)} className="ui-field ui-field--s">
                                 {units.map((u) => <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>)}
                               </select>
-                            </div>
-                            <div className="settings-row">
-                              <span className="settings-row__label">Unité de distance</span>
+                            </SettingRow>
+                            <SettingRow label="Unité de distance" helpKey={`${id}:unite-distance`} help={UNIT_HELP}>
                               <select value={s.distanceUnit} onChange={(e) => setFor(id, 'distanceUnit', e.target.value as DistanceUnit)} className="ui-field ui-field--s">
                                 {DISTANCE_UNITS.map((u) => <option key={u} value={u}>{DISTANCE_UNIT_LABEL[u]}</option>)}
                               </select>
-                            </div>
-                            <div className="settings-row" title="Bornes du dégradé de couleur, pour les traces qui n'ont pas les leurs">
-                              <span className="settings-row__label">Couleur de trace</span>
+                            </SettingRow>
+                            <SettingRow label="Colorisation de la trace" helpKey={`${id}:couleurs-trace`}
+                              help="Grise sous la première vitesse, du bleu au rouge jusqu'à la seconde. Une trace peut avoir les siennes, dans son analyse ; en voile, sans valeur, elles suivent l'allure de la session.">
                               <div className="settings-sports__pair">
                                 <NumberField step={0.5} min={0}
                                   value={rangeEmpty ? null : displayBound(shownRange.minMs)}
@@ -517,10 +527,10 @@ function SettingsPage() {
                                   onCommit={(v) => setRangeBound('maxMs', v)} />
                                 {s.speedRange === null && <span className="settings-sports__mark">{sailing ? "selon l'allure" : 'défaut'}</span>}
                               </div>
-                            </div>
+                            </SettingRow>
                             {land && (
-                              <div className="settings-row" title="Dégradé de la courbe d'altitude selon la raideur de la pente, montée ou descente ; gris sous la borne basse">
-                                <span className="settings-row__label">Couleur de pente</span>
+                              <SettingRow label="Colorisation pente" helpKey={`${id}:couleurs-pente`}
+                                help="Couleur de la courbe d'altitude selon la pente, montée ou descente : grise sous la première valeur, la plus vive à la seconde.">
                                 <div className="settings-sports__pair">
                                   <NumberField step={1} min={0}
                                     value={s.gradeRange === null ? null : percent(shownGrades.min)}
@@ -533,16 +543,11 @@ function SettingsPage() {
                                     onCommit={(v) => setGradeBound('max', v)} />
                                   {s.gradeRange === null && <span className="settings-sports__mark">défaut</span>}
                                 </div>
-                              </div>
+                              </SettingRow>
                             )}
                           </ActivityPart>
                           <ActivityPart label="Onglet analyse" open={openPart.analyse} onToggle={() => togglePart('analyse')}>
-                            <div className="settings-row" title={treatment === 'surf'
-                              ? (s.foil
-                                ? "Vitesse à laquelle votre aile décolle, de 10 à 15 km/h selon l'aile : au-dessus, la planche vole. Chaque session peut avoir le sien, dans l'onglet réglages de son analyse"
-                                : "Vitesse au-dessus de laquelle la planche est sur la vague. Chaque session peut avoir le sien, dans l'onglet réglages de son analyse")
-                              : "Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, réussite des manœuvres, VMG ; en course, temps de pause"}>
-                              <span className="settings-row__label">{thresholdLabel}</span>
+                            <SettingRow label={thresholdLabel} helpKey={`${id}:seuil`} help={thresholdHelp(treatment, s.foil === true)}>
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                                 <NumberField unit={SPEED_UNIT_LABEL[thresholdUnit]} step={thresholdUnit === 'ms' ? 0.1 : 0.5} min={0}
                                   value={thresholdEmpty ? null : thresholdShown}
@@ -552,31 +557,30 @@ function SettingsPage() {
                                   <span className="settings-sports__mark">{sailing ? "selon l'allure" : 'défaut'}</span>
                                 )}
                               </span>
-                            </div>
+                            </SettingRow>
                             {s.foil !== null && (
-                              <div className="settings-row" title={treatment === 'surf'
-                                ? "Surf foil : vols qui relient les vagues, ratio de vol, seuil de vol. Chaque session peut avoir le sien, dans l'onglet réglages de son analyse"
-                                : "Support sur foil : sauts, champs « Foil » et « Mât » du matériel, « Ratio de vol ». Chaque session peut avoir le sien, dans l'onglet réglages de son analyse"}>
-                                <span className="settings-row__label">Foil</span>
+                              <SettingRow label="Foil" helpKey={`${id}:foil`} help={treatment === 'surf'
+                                ? 'Vols entre les vagues, ratio et seuil de vol. Chaque session peut avoir le sien.'
+                                : 'Ratio de vol, sauts, champs « Foil » et « Mât » du matériel. Chaque session peut avoir le sien.'}>
                                 <label className="settings-sports__pair">
                                   <input type="checkbox" checked={s.foil} onChange={(e) => setFor(id, 'foil', e.target.checked === defaultFoil(activity) ? null : e.target.checked)} />
                                   <span>Support sur foil</span>
                                   {!s.isFoilOverridden && <span className="settings-sports__mark">défaut</span>}
                                 </label>
-                              </div>
+                              </SettingRow>
                             )}
                             {s.foil && s.pumping !== null && (
-                              <div className="settings-row" title="Fréquence de pumping, distance par coup et décollage de chaque vol, par les capteurs du téléphone fixé sur la poitrine : « Mesurer le pumping » est alors proposé dans Enregistrer. Chaque session peut avoir le sien, dans l'onglet réglages de son analyse">
-                                <span className="settings-row__label">Pumping</span>
+                              <SettingRow label="Pumping" helpKey={`${id}:pumping`}
+                                help="Fréquence de pumping et décollage de chaque vol, téléphone fixé sur la poitrine : « Mesurer le pumping » est alors proposé dans Enregistrer.">
                                 <label className="settings-sports__pair">
                                   <input type="checkbox" checked={s.pumping} onChange={(e) => setFor(id, 'pumping', e.target.checked)} />
                                   <span>Pumping foil</span>
                                 </label>
-                              </div>
+                              </SettingRow>
                             )}
                             {land && (
-                              <div className="settings-row" title="Lissage de l'altitude et seuil du dénivelé, dans les analyses et les itinéraires">
-                                <span className="settings-row__label">Terrain</span>
+                              <SettingRow label="Terrain" helpKey={`${id}:terrain`}
+                                help="Lissage de l'altitude et plus petit dénivelé compté, dans les analyses et la planification. Chaque session peut avoir le sien.">
                                 <div className="settings-sports__pair">
                                   <select value={s.terrain} onChange={(e) => setFor(id, 'terrain', e.target.value as TerrainType)} className="ui-field ui-field--s">
                                     {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>)}
@@ -585,33 +589,31 @@ function SettingsPage() {
                                     lissage {ELEVATION_PRESETS[s.terrain].smoothingSeconds} s, seuil de dénivelé {ELEVATION_PRESETS[s.terrain].minGainM} m
                                   </span>
                                 </div>
-                              </div>
+                              </SettingRow>
                             )}
                             {treatment === 'course' && (
-                              <div className="settings-row"
-                                title="Sac, eau, affaires : portés avec le corps, ils augmentent le coût du déplacement dans l'énergie des sessions (pas le repos). Chaque session peut avoir la sienne, dans l'onglet réglages de son analyse">
-                                <span className="settings-row__label">Charge portée</span>
+                              <SettingRow label="Charge portée" helpKey={`${id}:charge`}
+                                help="Sac, eau, affaires : ils augmentent l'énergie des sessions. Chaque session peut avoir la sienne.">
                                 <div className="settings-sports__pair">
                                   <NumberField unit="kg" step={0.5} min={0} max={50}
                                     value={s.carriedLoad} placeholder="0" onCommit={(kg) => setFor(id, 'carriedLoad', kg)} />
                                   {s.carriedLoad === null && <span className="settings-sports__mark">aucune</span>}
                                 </div>
-                              </div>
+                              </SettingRow>
                             )}
                             {!sailing && (
-                              <div className="settings-row"
-                                title="Intitulés des deux champs de matériel de l'onglet « matériel et notes » des analyses de cette activité (chaussures, vélo, planche…)">
-                                <span className="settings-row__label">Matériel</span>
+                              <SettingRow label="Matériel" helpKey={`${id}:materiel`}
+                                help="Noms des deux champs de matériel de l'onglet « matériel et notes » (chaussures, vélo…).">
                                 <div className="settings-sports__pair">
                                   <GearLabelsField labels={s.gearLabels}
                                     onCommit={(labels) => setFor(id, 'gearLabels', labels)} />
                                   {s.gearLabels === null && <span className="settings-sports__mark">défaut</span>}
                                 </div>
-                              </div>
+                              </SettingRow>
                             )}
                             {s.terrainStepM !== null && (
-                              <div className="settings-row" title="Altitude du terrain demandée à l'IGN pour les sessions de cette activité : un point tous les … le long de la trace">
-                                <span className="settings-row__label">Altitude IGN</span>
+                              <SettingRow label="Altitude IGN" helpKey={`${id}:altitude-ign`}
+                                help="L'altitude du terrain est demandée à l'IGN, un point tous les tant de mètres le long de la trace.">
                                 <div className="settings-sports__pair">
                                   <span className="settings-sports__mark">un point tous les</span>
                                   <select value={s.terrainStepM} onChange={(e) => setFor(id, 'terrainStepM', Number(e.target.value))} className="ui-field ui-field--s">
@@ -619,13 +621,13 @@ function SettingsPage() {
                                   </select>
                                   {s.terrainStepM === p.terrainElevationStepM && <span className="settings-sports__mark">défaut</span>}
                                 </div>
-                              </div>
+                              </SettingRow>
                             )}
                             <AnalysisTabsSetting view={s} profile={p} onChange={(choices) => setFor(id, 'tabs', choices)} />
                           </ActivityPart>
                           <ActivityPart label="Enregistrement" open={openPart.enregistrement} onToggle={() => togglePart('enregistrement')}>
-                            <div className="settings-row" title="À l'enregistrement : immobilité qui coupe la trace toute seule ; 0 km/h la désactive">
-                              <span className="settings-row__label">Pause automatique</span>
+                            <SettingRow label="Pause automatique" helpKey={`${id}:pause`}
+                              help="La trace se met en pause seule sous cette vitesse, au bout de ce temps. 0 km/h la désactive.">
                               <div className="settings-sports__pair">
                                 <span className="settings-sports__mark">sous</span>
                                 <NumberField unit="km/h" step={0.1} min={0}
@@ -637,46 +639,42 @@ function SettingsPage() {
                                   onCommit={(v) => setAutoPauseField('delayS', v)} />
                                 {!s.isAutoPauseOverridden && <span className="settings-sports__mark">défaut</span>}
                               </div>
-                            </div>
-                            <FieldsSetting label="Carte réduite à l'enregistrement"
-                              title="À l'enregistrement, quand la carte est réduite : les chiffres affichés en grand, de haut en bas"
+                            </SettingRow>
+                            <FieldsSetting label="Carte réduite à l'enregistrement" helpKey={`${id}:carte-reduite`}
+                              help="Les chiffres en grand quand la carte est réduite, de haut en bas."
                               treatment={treatment} units={s} fields={s.liveFields} overridden={s.isLiveFieldsOverridden}
                               defaults={DEFAULT_LIVE_FIELDS[treatment]} max={MAX_LIVE_FIELDS}
                               onChange={(fields) => setFor(id, 'liveFields', fields)} />
                             {s.jumps !== null && (
-                              <JumpsSetting jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => setFor(id, 'jumps', next)} />
+                              <JumpsSetting id={id} jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => setFor(id, 'jumps', next)} />
                             )}
-                            <div className="settings-row" title="La ceinture choisie dans le bloc « Capteurs » est proposée, cochée, à chaque enregistrement de cette activité ; sa fréquence est écrite à chaque point de la trace">
-                              <span className="settings-row__label">Ceinture cardio</span>
+                            <SettingRow label="Ceinture cardio" helpKey={`${id}:ceinture`}
+                              help="La ceinture du bloc « Capteurs » est proposée, cochée, à chaque enregistrement ; la fréquence cardiaque est écrite dans la trace.">
                               <label className="settings-sports__pair">
                                 <input type="checkbox" checked={s.heartRate} onChange={(e) => setFor(id, 'heartRate', e.target.checked)} />
                                 <span>Proposer la ceinture cardio</span>
                               </label>
-                            </div>
+                            </SettingRow>
                             {s.cadence !== null && (
-                              <div className="settings-row" title="Sur Android : l'accéléromètre du téléphone, porté sur soi n'importe où, compte les pas ; la cadence est écrite à chaque point de la trace">
-                                <span className="settings-row__label">Cadence</span>
+                              <SettingRow label="Cadence" helpKey={`${id}:cadence`}
+                                help="Le téléphone, porté sur soi, compte les pas (Android) ; la cadence est écrite dans la trace.">
                                 <label className="settings-sports__pair">
                                   <input type="checkbox" checked={s.cadence} onChange={(e) => setFor(id, 'cadence', e.target.checked ? null : false)} />
                                   <span>Mesurer la cadence</span>
                                 </label>
-                              </div>
+                              </SettingRow>
                             )}
-                          </ActivityPart>
-                          <ActivityPart label="Notification" open={openPart.notification} onToggle={() => togglePart('notification')}>
-                            <FieldsSetting label="Chiffres de la notification"
-                              title="Pendant l'enregistrement, sur Android : les chiffres de la notification, lisible écran verrouillé, dans cet ordre"
-                              treatment={treatment} units={s} fields={s.notificationFields} overridden={s.isNotificationFieldsOverridden}
-                              defaults={DEFAULT_NOTIFICATION_FIELDS[treatment]} max={MAX_NOTIFICATION_FIELDS}
-                              onChange={(fields) => setFor(id, 'notificationFields', fields)} />
-                            <p className="settings-block__intro" style={{ margin: 0 }}>
-                              Sur Android, la notification de l'enregistrement donne le nom de l'activité, la durée qui tourne et ces
-                              deux chiffres, au plus, qu'Android laisse lisibles sur la ligne repliée ; en fractionné, la répétition et le décompte du compteur ; en pause, les derniers chiffres. Pour la
-                              lire écran verrouillé, le téléphone doit y montrer le contenu des notifications.
-                            </p>
+                            <div className="settings-part__sub">
+                              <h4 className="settings-part__subtitle">Notification</h4>
+                              <FieldsSetting label="Chiffres de la notification" helpKey={`${id}:notification`}
+                                help="Deux chiffres au plus, lisibles écran verrouillé avec le nom de l'activité et la durée. Le téléphone doit montrer le contenu des notifications sur l'écran verrouillé."
+                                treatment={treatment} units={s} fields={s.notificationFields} overridden={s.isNotificationFieldsOverridden}
+                                defaults={DEFAULT_NOTIFICATION_FIELDS[treatment]} max={MAX_NOTIFICATION_FIELDS}
+                                onChange={(fields) => setFor(id, 'notificationFields', fields)} />
+                            </div>
                           </ActivityPart>
                           {(treatment === 'velo' || paceFamily !== null || s.loopReturnRatio !== null) && (
-                            <ActivityPart label={treatment === 'velo' ? (paceFamily ? 'Vélo et itinéraires' : 'Vélo') : 'Itinéraires'} open={openPart.itineraires} onToggle={() => togglePart('itineraires')}>
+                            <ActivityPart label={treatment === 'velo' ? (paceFamily ? 'Vélo et planification' : 'Vélo') : 'Planification'} open={openPart.itineraires} onToggle={() => togglePart('itineraires')}>
                               {treatment === 'velo' && (
                                 <BikeSettings view={s}
                                   onBikeType={(t) => setFor(id, 'bikeType', t)}
@@ -686,16 +684,15 @@ function SettingsPage() {
                                 <WayTypesSetting view={s} treatment={treatment} onChange={(ways) => setFor(id, 'wayTypes', ways)} />
                               )}
                               {s.loopReturnRatio !== null && (
-                                <div className="settings-row"
-                                  title="Itinéraires en mode « Boucle » : le retour évite les voies de l'aller tant qu'il ne dépasse pas tant de fois sa longueur ; au-delà, c'est le retour le plus court">
-                                  <span className="settings-row__label">Retour de boucle</span>
+                                <SettingRow label="Retour de boucle" helpKey={`${id}:boucle`}
+                                  help="En boucle, le retour évite les voies de l'aller tant qu'il n'est pas plus long que tant de fois l'aller ; au-delà, il prend le plus court.">
                                   <div className="settings-sports__pair">
                                     <span className="settings-sports__mark">au plus</span>
                                     <NumberField unit="× l'aller" step={0.1} min={LOOP_RETURN_RATIO_RANGE.min} max={LOOP_RETURN_RATIO_RANGE.max}
                                       value={s.loopReturnRatio} onCommit={(v) => setFor(id, 'loopReturnRatio', v)} />
                                     {s.loopReturnRatio === p.loopReturnMaxRatio && <span className="settings-sports__mark">défaut</span>}
                                   </div>
-                                </div>
+                                </SettingRow>
                               )}
                               {paceFamily && (
                                 <PaceSettings family={paceFamily} view={s}
@@ -706,12 +703,12 @@ function SettingsPage() {
                           )}
                           {usesMarkCourse(family) && (
                             <ActivityPart label="Balises sonores" open={openPart.balises} onToggle={() => togglePart('balises')}>
-                                <div className="settings-row" title="En navigation sur un parcours planifié : bips de plus en plus rapides à l'approche de chaque balise, bip long à la validation">
-                                  <span className="settings-row__label">Bips d'approche des balises</span>
+                                <SettingRow label="Bips d'approche des balises" helpKey={`${id}:bips`} helpFirst
+                                  help="En navigation sur un parcours : bips de plus en plus rapprochés à l'approche de chaque balise, bip long à la validation. Tirez un point pour le déplacer, touchez le graphe pour en ajouter un.">
                                   <BeepCurveEditor value={s.markGuide} overridden={s.isMarkGuideOverridden}
                                     approachMs={simulatedApproachMs(family)} speedUnit={s.speedUnit}
                                     onChange={(guide) => setFor(id, 'markGuide', guide)} />
-                                </div>
+                                </SettingRow>
                             </ActivityPart>
                           )}
                           <div className="settings-activity__actions">
@@ -728,26 +725,6 @@ function SettingsPage() {
               })}
             </div>
             <AddActivityForm activities={activities} onAdd={addAndOpen} />
-            <div className="settings-block__note">
-              Seuil d'activité, en voile (dans l'unité choisie) : la vitesse qui sépare « en action » de « à l'arrêt ».
-              Il donne le temps et la distance actifs, dit si une manœuvre est réussie (sa vitesse la plus basse reste
-              au-dessus) et ne garde que la navigation au-dessus pour la VMG. Celui d'une session, réglé dans son analyse,
-              prime ; sinon celui saisi ici ; sinon il est suggéré par l'allure de la session (celui du support quand elle
-              est rapide, 1 nœud quand elle est lente ou en bateau). En course, en km/h, il ne sert qu'aux temps de pause
-              (reprise à seuil + 1, pause sous seuil − 1) ; à vélo de même (reprise à seuil + 1, pause sous seuil − 2).
-              <br />
-              Couleur de trace : gris sous la borne lente, dégradé du bleu au rouge jusqu'à la borne rapide. En voile, sans
-              réglage, les bornes suivent l'allure de chaque session. Une trace peut avoir les siennes, réglées depuis sa
-              légende : elles ne changent qu'elle et priment sur celles-ci.
-              <br />
-              Temps estimé des itinéraires : le niveau donne la vitesse sur le plat. En course, chaque 100 m de D+ compte
-              comme 1 km de plus (règle du km-effort). À vélo, en montée, la puissance que tient un cycliste de ce niveau, en
-              watts par kilo de votre poids (bloc Pratiquant) ; en descente, la roue libre, jamais moins vite que sur le
-              plat, plafonnée selon le type de vélo. Le type de vélo, c'est-à-dire ses pneus et la position, fixe la
-              résistance au roulement sur chaque revêtement et la prise au vent ; avec son poids et le vôtre, ils donnent la
-              puissance et l'énergie de l'analyse, selon le revêtement des voies suivies (OpenStreetMap). Le temps estimé
-              et l'enregistrement en direct prennent son roulement moyen.
-            </div>
           </>
         )}
       </div>
@@ -755,64 +732,111 @@ function SettingsPage() {
       <div style={cardStyle}>
         <PanelTitle label="Enregistrement" open={open.enregistrement} onToggle={() => toggle('enregistrement')} />
         {open.enregistrement && (
-          <>
-            <p className="settings-block__intro">
-              Pendant un enregistrement, tenir le bouton rond de la barre du bas met en pause ou relance, depuis n'importe
-              quelle page. Un appui court ouvre la page d'enregistrement. Le bouton « Arrêter » se tient aussi, pour qu'un geste
-              involontaire ne coupe pas la session ; à 0, un simple appui suffit. La pause automatique se règle par activité, comme
-              les chiffres affichés en grand quand la carte est réduite et ceux de la notification.
-            </p>
-            <NumberField label="Appui long pour la pause" unit="s" step={0.5} min={0.5} max={10}
+          <div className="settings-block__body">
+            <NumberField label="Appui long pour la pause" unit="s" step={0.5} min={0.5} max={10} helpKey="appui-pause"
+              help="Pendant un enregistrement, tenir le bouton rond de la barre du bas met en pause ou relance, depuis n'importe quelle page."
               value={longPressMs / 1000}
               onCommit={(v) => setLongPressMs(v === null ? null : Math.round(v * 1000))} />
-            <NumberField label="Appui long pour arrêter" unit="s" step={0.5} min={0} max={10}
+            <NumberField label="Appui long pour arrêter" unit="s" step={0.5} min={0} max={10} helpKey="appui-arret"
+              help="Le bouton « Arrêter » se tient ce temps-là, pour ne pas couper la session par mégarde ; à 0, un appui suffit."
               value={stopHoldMs / 1000}
               onCommit={(v) => setStopHoldMs(v === null ? null : Math.round(v * 1000))} />
-          </>
+          </div>
         )}
       </div>
 
       <div style={cardStyle}>
         <PanelTitle label="Capteurs" open={open.capteurs} onToggle={() => toggle('capteurs')} />
-        {open.capteurs && <HeartRateBeltSettings />}
+        {open.capteurs && <div className="settings-block__body"><HeartRateBeltSettings /></div>}
       </div>
 
       <div style={cardStyle}>
-        <PanelTitle label="Cartes hors ligne" open={open.cartes} onToggle={() => toggle('cartes')} />
-        {open.cartes && <OfflineMapsSettings />}
+        <BlockTitle label="Cartes hors ligne" open={open.cartes} onToggle={() => toggle('cartes')} helpKey="cartes"
+          help="Chaque morceau de carte vu avec le réseau reste visible sans réseau. Pour préparer une sortie, parcourez la zone en ligne, de loin puis de près." />
+        {open.cartes && <div className="settings-block__body"><OfflineMapsSettings /></div>}
       </div>
 
       <div style={cardStyle}>
-        <PanelTitle label="Pratiquant" open={open.coureur} onToggle={() => toggle('coureur')} />
+        <BlockTitle label="Pratiquant" open={open.coureur} onToggle={() => toggle('coureur')} helpKey="pratiquant"
+          help="Pour l'énergie des analyses à pied et à vélo, et les zones cardiaques de toutes les activités. Tout est facultatif." />
         {open.coureur && (
-          <>
-            <p className="settings-block__intro">
-              Ces caractéristiques servent à l'onglet énergie des analyses à pied et à vélo, et les fréquences cardiaques aux zones d'effort de l'onglet cardio, dans toutes les activités. Tout est facultatif.
-            </p>
-            <NumberField label="Poids" unit="kg" step={0.5} min={20} max={300} value={profile.weightKg} onCommit={profileField('weightKg')} placeholder="ex. 72" />
-            <NumberField label="Taille" unit="cm" min={100} max={250} value={profile.heightCm} onCommit={profileField('heightCm')} placeholder="ex. 178" />
-            <NumberField label="Année de naissance" unit={age !== null ? `${age} ans` : undefined} min={1900} max={2100} value={profile.birthYear} onCommit={profileField('birthYear')} placeholder="ex. 1985" />
+          <div className="settings-block__body">
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
-              <span style={{ width: '190px' }}>Sexe</span>
+              <span style={{ width: '190px' }}>Nom ou pseudo<HelpToggle helpKey="pratiquant:nom" label="Nom ou pseudo" /></span>
+              <input type="text" value={profile.name ?? ''} maxLength={RUNNER_NAME_MAX} placeholder="ex. Tom" autoComplete="nickname"
+                onChange={(e) => setName(e.target.value)} className="ui-field ui-field--s" style={{ width: '200px', maxWidth: '100%' }} />
+            </label>
+            <HelpText helpKey="pratiquant:nom">En titre de la page Profil et au pied des images partagées.</HelpText>
+            <NumberField label="Poids" unit="kg" step={0.5} min={20} max={300} value={profile.weightKg} onCommit={profileField('weightKg')} placeholder="ex. 72"
+              helpKey="pratiquant:poids" help="Pour l'énergie, et la puissance à vélo." />
+            <NumberField label="Taille" unit="cm" min={100} max={250} value={profile.heightCm} onCommit={profileField('heightCm')} placeholder="ex. 178"
+              helpKey="pratiquant:taille" help="Avec le poids, l'âge et le sexe, pour la dépense au repos." />
+            <NumberField label="Année de naissance" unit={age !== null ? `${age} ans` : undefined} min={1900} max={2100} value={profile.birthYear} onCommit={profileField('birthYear')} placeholder="ex. 1985"
+              helpKey="pratiquant:naissance" help="Pour la dépense au repos, et la FC max estimée quand elle n'est pas saisie." />
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
+              <span style={{ width: '190px' }}>Sexe<HelpToggle helpKey="pratiquant:sexe" label="Sexe" /></span>
               <select value={profile.sex ?? ''} onChange={(e) => setSex(e.target.value === '' ? null : (e.target.value as 'f' | 'm'))} className="ui-field ui-field--s">
                 <option value="">Non renseigné</option>
                 <option value="f">Femme</option>
                 <option value="m">Homme</option>
               </select>
             </label>
-            <NumberField label="Fréquence cardiaque max" unit="bpm" min={100} max={250} value={profile.hrMax} onCommit={profileField('hrMax')} placeholder="ex. 185" />
-            <NumberField label="Fréquence cardiaque de repos" unit="bpm" min={25} max={120} value={profile.hrRest} onCommit={profileField('hrRest')} placeholder="ex. 55" />
+            <HelpText helpKey="pratiquant:sexe">Pour la dépense au repos.</HelpText>
+            <NumberField label="Fréquence cardiaque max" unit="bpm" min={100} max={250} value={profile.hrMax} onCommit={profileField('hrMax')} placeholder="ex. 185"
+              helpKey="pratiquant:fc-max" help="Pour les zones cardiaques." />
+            <NumberField label="Fréquence cardiaque de repos" unit="bpm" min={25} max={120} value={profile.hrRest} onCommit={profileField('hrRest')} placeholder="ex. 55"
+              helpKey="pratiquant:fc-repos" help="Avec la FC max, les zones se calculent sur la réserve cardiaque, plus juste." />
             <HeartRateZonesField profile={profile} onChange={setZones} />
-            <NumberField label="Économie de course" unit="ml O₂/kg/km" min={120} max={320} value={profile.economyMlKgKm} onCommit={profileField('economyMlKgKm')} placeholder="200" />
-            <p className="settings-block__intro">
-              Oxygène consommé pour courir un kilomètre sur le plat, que donne un test d'effort en laboratoire. Sans valeur, 200 ml/kg/km : environ 1 kcal par kilo et par kilomètre.
-            </p>
-          </>
+            <NumberField label="Économie de course" unit="ml O₂/kg/km" min={120} max={320} value={profile.economyMlKgKm} onCommit={profileField('economyMlKgKm')} placeholder="200"
+              helpKey="pratiquant:economie" help="Oxygène pour courir 1 km sur le plat, donné par un test en laboratoire. Sans valeur, 200 : environ 1 kcal par kilo et par kilomètre." />
+          </div>
         )}
       </div>
     </div>
+    </SettingsHelpProvider>
   );
 }
+
+/** « Tout réduire », en haut de la page : replie tout, aides et choix d'icône compris. */
+function CollapseAllButton({ onCollapse }: { onCollapse: () => void }) {
+  const collapseHelp = useSettingsCollapseAll();
+  return (
+    <Button size="s" onClick={() => { onCollapse(); collapseHelp(); }}>Tout réduire</Button>
+  );
+}
+
+/** Titre d'un bloc de la page, avec son « ? » une fois le bloc ouvert, et l'aide dépliée dessous. */
+function BlockTitle({ label, open, onToggle, helpKey, help }: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  helpKey: string;
+  help: ReactNode;
+}) {
+  return (
+    <>
+      <PanelTitle label={label} open={open} onToggle={onToggle}
+        extra={open ? <HelpToggle helpKey={helpKey} label={label} size="s" /> : undefined} />
+      {open && <HelpText helpKey={helpKey}>{help}</HelpText>}
+    </>
+  );
+}
+
+/** Aide des deux unités d'une activité. */
+const UNIT_HELP = 'Utilisée partout pour cette activité : analyses, enregistrement, bibliothèque.';
+
+/** Aide du seuil d'une activité, selon son calcul : en voile, à pied ou à vélo, en surf (vague ou vol). */
+const thresholdHelp = (treatment: Treatment, foil: boolean): string => {
+  if (treatment === 'surf') {
+    return foil
+      ? "Vitesse à laquelle votre aile décolle, de 10 à 15 km/h selon l'aile. Chaque session peut avoir le sien, dans son analyse."
+      : 'Vitesse au-dessus de laquelle la planche est sur la vague. Chaque session peut avoir le sien, dans son analyse.';
+  }
+  if (treatment === 'voile') {
+    return "Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, manœuvres réussies, VMG. Vide, il suit l'allure de chaque session ; celui d'une session, réglé dans son analyse, prime.";
+  }
+  return "Sous cette vitesse, la session est comptée en pause. Celui d'une session, réglé dans son analyse, prime.";
+};
 
 /**
  * Chiffres de l'enregistrement, choisis dans le catalogue du direct : ceux en
@@ -820,9 +844,10 @@ function SettingsPage() {
  * premier toujours rempli ; un chiffre déjà placé n'est pas proposé ailleurs.
  * La liste est rangée sans trou ; revenue au défaut, elle est effacée.
  */
-function FieldsSetting({ label, title, treatment, units, fields, overridden, defaults, max, onChange }: {
+function FieldsSetting({ label, help, helpKey, treatment, units, fields, overridden, defaults, max, onChange }: {
   label: string;
-  title: string;
+  help: string;
+  helpKey: string;
   treatment: Treatment;
   units: LiveFieldUnits;
   fields: LiveFieldKey[];
@@ -839,8 +864,7 @@ function FieldsSetting({ label, title, treatment, units, fields, overridden, def
     onChange(isDefault ? null : next);
   };
   return (
-    <div className="settings-row" title={title}>
-      <span className="settings-row__label">{label}</span>
+    <SettingRow label={label} helpKey={helpKey} help={help}>
       <div className="settings-sports__pair">
         {slots.map((key, i) => (
           <select key={i} value={key ?? ''} aria-label={`Ligne ${i + 1}`} className="ui-field ui-field--s"
@@ -853,7 +877,7 @@ function FieldsSetting({ label, title, treatment, units, fields, overridden, def
         ))}
         {!overridden && <span className="settings-sports__mark">défaut</span>}
       </div>
-    </div>
+    </SettingRow>
   );
 }
 
@@ -881,8 +905,9 @@ function PaceSettings({ family, view, onLevel, onCustomSpeed }: {
   const custom = view.customFlatSpeedMs;
   return (
     <>
-      <div className="settings-row" title="Vitesse du temps estimé des itinéraires, sur le plat (voir la note sous la liste)">
-        <span className="settings-row__label">Niveau (temps estimé)</span>
+      <SettingRow label="Niveau (temps estimé)" helpKey={`${view.activity.id}:niveau`} help={family === 'course'
+        ? 'Vitesse sur le plat du temps estimé ; chaque 100 m de D+ compte comme 1 km de plus.'
+        : 'Vitesse sur le plat du temps estimé, et puissance tenue en montée, par kilo de votre poids ; en descente, roue libre.'}>
         <select value={view.paceLevel} onChange={(e) => isPaceLevel(e.target.value) && onLevel(e.target.value)} className="ui-field ui-field--s">
           {PACE_LEVELS.map((level) => (
             <option key={level} value={level}>
@@ -892,10 +917,9 @@ function PaceSettings({ family, view, onLevel, onCustomSpeed }: {
             </option>
           ))}
         </select>
-      </div>
+      </SettingRow>
       {view.paceLevel === 'perso' && (
-        <div className="settings-row">
-          <span className="settings-row__label">Vitesse sur le plat</span>
+        <SettingRow label="Vitesse sur le plat" helpKey={`${view.activity.id}:vitesse-plat`} help="Votre vitesse sur le plat, pour le temps estimé.">
           <div className="settings-sports__pair">
             <NumberField unit="km/h" step={0.5}
               min={parseFloat((lo * 3.6).toFixed(1))} max={parseFloat((hi * 3.6).toFixed(1))}
@@ -905,7 +929,7 @@ function PaceSettings({ family, view, onLevel, onCustomSpeed }: {
               {custom === null ? 'sans vitesse saisie, le niveau moyen' : `soit ${paceDetail(family, custom)}`}
             </span>
           </div>
-        </div>
+        </SettingRow>
       )}
     </>
   );
@@ -962,9 +986,8 @@ function BikeSettings({ view, onBikeType, onBikeWeight }: {
   const spec = BIKE_TYPES[view.bikeType];
   return (
     <>
-      <div className="settings-row"
-        title="Pneus et position : roulement selon le revêtement pour la puissance et l'énergie des sessions, roulement moyen pour le direct et le temps estimé ; prise au vent">
-        <span className="settings-row__label">Type de vélo</span>
+      <SettingRow label="Type de vélo" helpKey={`${view.activity.id}:type-velo`}
+        help="Pneus et position : ils fixent le roulement sur chaque revêtement et la prise au vent, pour la puissance, l'énergie et le temps estimé.">
         <div className="settings-sports__pair">
           <select value={view.bikeType} onChange={(e) => onBikeType(e.target.value as BikeType)} className="ui-field ui-field--s">
             {(Object.keys(BIKE_TYPES) as BikeType[]).map((t) => <option key={t} value={t}>{BIKE_TYPES[t].label}</option>)}
@@ -974,12 +997,12 @@ function BikeSettings({ view, onBikeType, onBikeWeight }: {
             (moyen {formatCrr(spec.crr)}), traînée {formatCrr(spec.cdaM2)} m²
           </span>
         </div>
-      </div>
-      <div className="settings-row">
-        <span className="settings-row__label">Poids du vélo</span>
+      </SettingRow>
+      <SettingRow label="Poids du vélo" helpKey={`${view.activity.id}:poids-velo`}
+        help="Avec le vôtre (Pratiquant), pour la puissance et l'énergie. Vide : celui du type de vélo.">
         <NumberField unit="kg" step={0.5} min={3} max={60}
           value={view.bikeWeight} placeholder={String(spec.bikeKg)} onCommit={onBikeWeight} />
-      </div>
+      </SettingRow>
     </>
   );
 }
@@ -1073,7 +1096,7 @@ function AddActivityForm({
   };
   return (
     <div className="settings-add">
-      <strong className="settings-add__title">Ajouter une activité</strong>
+      <strong className="settings-add__title">Ajouter une activité<HelpToggle helpKey="ajout" label="Ajouter une activité" /></strong>
       <input value={name} maxLength={40} placeholder="Nom, ex. Moth à foil" aria-label="Nom de la nouvelle activité"
         className="ui-field ui-field--s" style={{ width: '180px' }}
         onChange={(e) => setName(e.target.value)}
@@ -1092,6 +1115,7 @@ function AddActivityForm({
       <ShadePicker shades={FAMILY_SHADES[family]} value={color} onChange={setColor} label="Couleur de la nouvelle activité" />
       <IconPicker value={icon ?? guessActivityIcon(name, base)} color={color} onChange={setIcon} label="Icône de la nouvelle activité" />
       <button onClick={submit} disabled={name.trim() === ''} className="ui-btn ui-btn--secondary ui-btn--s">Ajouter</button>
+      <HelpText helpKey="ajout">Elle part des valeurs de son calcul ; tout se règle ensuite dans sa carte.</HelpText>
     </div>
   );
 }
@@ -1112,12 +1136,6 @@ function OfflineMapsSettings() {
 
   return (
     <>
-      <p className="settings-block__intro">
-        Chaque morceau de carte affiché avec le réseau est gardé sur cet appareil et reste visible sans réseau, en mer
-        par exemple. Pour préparer une sortie, parcourez la zone en ligne, une fois de loin et une fois de près : sans
-        réseau, on peut encore zoomer de trois crans au-delà, en image agrandie. Les plus anciens morceaux sont effacés
-        au-delà du plafond.
-      </p>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
         <span style={{ width: '190px' }}>Place occupée</span>
         <span className="num">
@@ -1125,11 +1143,12 @@ function OfflineMapsSettings() {
         </span>
       </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
-        <span style={{ width: '190px' }}>Plafond</span>
+        <span style={{ width: '190px' }}>Plafond<HelpToggle helpKey="cartes:plafond" label="Plafond" /></span>
         <select value={capMb} onChange={(e) => void setCapMb(Number(e.target.value))} className="ui-field ui-field--s">
           {choices.map((mb) => <option key={mb} value={mb}>{mb >= 1000 ? `${mb / 1000} Go` : `${mb} Mo`}</option>)}
         </select>
       </label>
+      <HelpText helpKey="cartes:plafond">Au-delà, les plus anciens morceaux sont effacés.</HelpText>
       <button type="button" onClick={askClear} disabled={usage?.tiles === 0} className="ui-btn ui-btn--secondary ui-btn--s">
         Vider
       </button>

@@ -198,6 +198,20 @@ export const visibleFamilies = (
 export const isActivityShown = (activity: Activity, activities: Activity[], hiddenFamilies: readonly SportFamily[]): boolean =>
   !activity.hidden && !isFamilyHidden(activities, hiddenFamilies, activityFamily(activity));
 
+/**
+ * Activité de Fractionné proposée pour une sortie à pied ou à vélo faite avec
+ * le compteur d'intervalles (19/10) : la première de `candidates` (les
+ * activités visibles du Fractionné) au même traitement, à pied ou à vélo.
+ * `null` pour une session déjà en Fractionné, en voile ou en surf, ou sans
+ * activité qui convienne : rien à demander.
+ */
+export const intervalActivityFor = (activity: Activity, candidates: readonly Activity[]): Activity | null => {
+  if (activityFamily(activity) === 'fractionne') return null;
+  const treatment = activityTreatment(activity);
+  if (treatment !== 'course' && treatment !== 'velo') return null;
+  return candidates.find((a) => activityFamily(a) === 'fractionne' && activityTreatment(a) === treatment) ?? null;
+};
+
 /** Activité cachée ou ré-affichée ; une activité visible ne porte pas le champ. */
 export const withHidden = (activity: Activity, hidden: boolean): Activity => {
   const { hidden: _was, ...rest } = activity;

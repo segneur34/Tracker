@@ -5,6 +5,7 @@ import {
   type FoundBelt, type HeartRateBelt,
 } from '../platform/heartRate';
 import BeltStatus from './BeltStatus';
+import { SettingRow } from './SettingsHelp';
 
 /** Nom de la connexion prise par l'essai, rendue en quittant la page. */
 const HOLDER = 'reglages';
@@ -47,7 +48,7 @@ function HeartRateBeltSettings() {
   }, []);
 
   if (!heartRateSupported()) {
-    return <p className="settings-block__intro">Sur l'application Android seulement : le navigateur ne parle pas aux ceintures cardio.</p>;
+    return <p className="settings-block__intro">Sur l'application Android seulement.</p>;
   }
 
   const search = async () => {
@@ -104,16 +105,8 @@ function HeartRateBeltSettings() {
 
   return (
     <>
-      <p className="settings-block__intro">
-        Ceinture cardio Bluetooth (« Bluetooth Smart ») : inutile de l'appairer dans Android ou d'installer l'application de
-        sa marque. Portez-la, électrodes humidifiées, car elle n'émet qu'au contact de la peau, puis cherchez-la. Elle est
-        ensuite proposée à l'enregistrement par les activités de course, de vélo et de fractionné dont la case « Ceinture
-        cardio » est cochée (partie Enregistrement de leur carte) : la fréquence est écrite à chaque point de la trace.
-        La ligne « État » dit si elle est connectée, par l'essai ou par un enregistrement ; une recherche montre aussi les
-        autres ceintures à portée, de la plus proche à la plus loin.
-      </p>
-      <div className="settings-row">
-        <span className="settings-row__label">Ceinture</span>
+      <SettingRow label="Ceinture" helpKey="capteurs:ceinture"
+        help="Ceinture Bluetooth Smart, sans appairage ni application de sa marque : portez-la, électrodes humidifiées, puis cherchez-la. Elle est proposée à l'enregistrement des activités où « Ceinture cardio » est cochée.">
         <div className="settings-sports__pair">
           <span>{belt ? belt.name : 'aucune'}</span>
           <button type="button" className="ui-btn ui-btn--secondary ui-btn--s" disabled={scanning} onClick={() => void search()}>
@@ -126,14 +119,14 @@ function HeartRateBeltSettings() {
           )}
           {belt && <button type="button" className="ui-btn ui-btn--secondary ui-btn--s" onClick={forget}>Oublier</button>}
         </div>
-      </div>
+      </SettingRow>
       {belt && (
-        <div className="settings-row settings-row--sub">
-          <span className="settings-row__label">État</span>
+        <SettingRow sub label="État" helpKey="capteurs:etat"
+          help="Connectée par l'essai ou par un enregistrement ; une recherche montre aussi les autres ceintures à portée.">
           <BeltStatus state={state} bpm={live.bpm} offText={bluetoothOff ? 'Bluetooth éteint' : null}>
             {recording && <span className="settings-sports__mark">utilisée par l'enregistrement</span>}
           </BeltStatus>
-        </div>
+        </SettingRow>
       )}
       {found && belt && (
         <div className="settings-row settings-row--sub">

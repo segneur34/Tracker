@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
 import { savedBelt } from '../platform/heartRate';
 import {
@@ -9,6 +9,8 @@ import {
   PERMISSION_LABEL, missingPermissions, requiredPermissions, shouldPromptPermissions,
   type PermissionKey, type PermissionState, type PermissionsStatus as Status,
 } from '../recording/permissionsPrompt';
+import { HelpToggle } from './SettingsHelp';
+import { useSettingsHelp } from './settingsHelpContext';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import './PermissionsStatus.css';
@@ -25,9 +27,9 @@ import './StatusLine.css';
 
 const WHY: Record<PermissionKey, string> = {
   location: "Pour enregistrer la trace. « Pendant l'utilisation de l'application » suffit, écran éteint compris.",
-  notifications: "La notification de l'enregistrement, lisible écran verrouillé, et celle du compteur du fractionné.",
+  notifications: "Pour la notification de l'enregistrement, lisible écran verrouillé, et celle du compteur du fractionné.",
   battery: "Pour qu'Android ne coupe pas l'enregistrement écran éteint : « Autoriser », ou « Aucune restriction ».",
-  bluetooth: 'Pour la ceinture cardio, cherchée et connectée sans appairage.',
+  bluetooth: 'Pour la ceinture cardio seulement.',
 };
 
 const STATE_TEXT: Record<PermissionState, string> = {
@@ -55,43 +57,46 @@ const ask = async (key: PermissionKey, state: PermissionState, refresh: () => Pr
   await refresh();
 };
 
+/**
+ * Une ligne : le nom, le pourquoi, l'état et le bouton. Dans Réglages, le pourquoi
+ * passe sous un « ? » ; sur la carte de l'accueil, il reste à découvert.
+ */
+function PermissionRow({ helpKey, label, why, children }: { helpKey: string; label: string; why: string; children: ReactNode }) {
+  const help = useSettingsHelp(helpKey);
+  return (
+    <div className="permissions__row">
+      <div className="permissions__text">
+        <span className="permissions__label">{label}<HelpToggle helpKey={helpKey} label={label} /></span>
+        {(help === null || help.open) && <span className="permissions__why">{why}</span>}
+      </div>
+      <div className="permissions__action">{children}</div>
+    </div>
+  );
+}
+
 function PermissionRows({ keys, status, refresh }: { keys: PermissionKey[]; status: Status; refresh: () => Promise<Status> }) {
   return (
     <div className="permissions">
       {keys.map((key) => {
         const state = status[key];
         return (
-          <div key={key} className="permissions__row">
-            <div className="permissions__text">
-              <span className="permissions__label">{PERMISSION_LABEL[key]}</span>
-              <span className="permissions__why">{WHY[key]}</span>
-            </div>
-            <div className="permissions__action">
-              <span className="status-line">
-                <span className="status-line__dot" style={{ backgroundColor: STATE_COLOR[state] }} />
-                <span>{key === 'battery' && state === 'denied' ? 'restreinte' : STATE_TEXT[state]}</span>
-              </span>
-              {state !== 'granted' && state !== 'unavailable' && (
-                <Button size="s" onClick={() => void ask(key, state, refresh)}>
-                  {state === 'denied' && key !== 'battery' ? 'Ouvrir les réglages' : 'Autoriser'}
-                </Button>
-              )}
-            </div>
-          </div>
+          <PermissionRow key={key} helpKey={`autorisations:${key}`} label={PERMISSION_LABEL[key]} why={WHY[key]}>
+            <span className="status-line">
+              <span className="status-line__dot" style={{ backgroundColor: STATE_COLOR[state] }} />
+              <span>{key === 'battery' && state === 'denied' ? 'restreinte' : STATE_TEXT[state]}</span>
+            </span>
+            {state !== 'granted' && state !== 'unavailable' && (
+              <Button size="s" onClick={() => void ask(key, state, refresh)}>
+                {state === 'denied' && key !== 'battery' ? 'Ouvrir les réglages' : 'Autoriser'}
+              </Button>
+            )}
+          </PermissionRow>
         );
       })}
-      <div className="permissions__row">
-        <div className="permissions__text">
-          <span className="permissions__label">Démarrage automatique</span>
-          <span className="permissions__why">
-            Sur Xiaomi (HyperOS, MIUI), pour que l'enregistrement tienne en arrière-plan. Android ne dit pas s'il est
-            activé : à cocher soi-même.
-          </span>
-        </div>
-        <div className="permissions__action">
-          <Button size="s" onClick={() => void openAutostart().catch(() => undefined)}>Ouvrir</Button>
-        </div>
-      </div>
+      <PermissionRow helpKey="autorisations:demarrage" label="Démarrage automatique"
+        why="Sur Xiaomi, pour que l'enregistrement tienne en arrière-plan. Android ne dit pas s'il est activé : à vérifier soi-même.">
+        <Button size="s" onClick={() => void openAutostart().catch(() => undefined)}>Ouvrir</Button>
+      </PermissionRow>
     </div>
   );
 }
@@ -167,17 +172,13 @@ export function PermissionsPrompt() {
 export function PermissionsSettings() {
   const { status, refresh } = usePermissions();
   if (!isNativeApp()) {
-    return <p className="permissions__intro">Sur l'application Android seulement : le navigateur demande la position lui-même, au besoin.</p>;
+    return <p className="permissions__intro">Sur l'application Android seulement.</p>;
   }
   if (status === null) return <p className="permissions__intro">Lecture des autorisations…</p>;
   const keys = requiredPermissions(true);
   const missing = missingPermissions(status, true);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-      <p className="permissions__intro">
-        Ce dont l'enregistrement a besoin, écran éteint compris. Le Bluetooth ne sert qu'à la ceinture cardio. Une
-        autorisation refusée deux fois ne se demande plus : « Ouvrir les réglages » mène à celles de l'application.
-      </p>
       <PermissionRows keys={keys} status={status} refresh={refresh} />
       {missing.length > 0 && (
         <div>

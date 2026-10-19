@@ -148,16 +148,23 @@ await go('/parametres');
 await evaluate(`[...document.querySelectorAll('.settings-activity__toggle')].find((b) => b.textContent.includes('Voile'))?.click()`);
 await wait(400);
 const picker = `document.querySelector('.icon-picker[aria-label="Icône de Voile"]')`;
-check('Réglages : seize icônes', (await evaluate(`${picker}?.querySelectorAll('button').length`)) === 16);
-check('Réglages : Wingfoil cochée d\'office', (await evaluate(`${picker}?.querySelector('[aria-pressed=true]')?.getAttribute('aria-label')`)) === 'Wingfoil');
+// Depuis le 19/10, la grille est repliée sous « Changer » : seule l'icône en cours se voit.
+const current = (p) => evaluate(`${p}?.querySelector('.icon-picker__current')?.getAttribute('title')`);
+const choices = () => evaluate(`${picker}?.querySelectorAll('.icon-picker__choice').length`);
+check('Réglages : grille repliée, Wingfoil d\'office', (await choices()) === 0 && (await current(picker)) === 'Wingfoil');
+await evaluate(`[...${picker}.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Changer')?.click()`);
+await wait(300);
+check('Réglages : « Changer » déplie seize icônes', (await choices()) === 16);
+check('Réglages : Wingfoil cochée', (await evaluate(`${picker}?.querySelector('[aria-pressed=true]')?.getAttribute('aria-label')`)) === 'Wingfoil');
 await shoot('icones-reglages');
 await evaluate(`${picker}?.querySelector('[aria-label="Planche à voile"]')?.click()`);
 await wait(400);
 check('Planche à voile rangée', (await stored())?.find((a) => a.id === 'wingfoil')?.icon === 'planche');
+check('un choix replie la grille', (await choices()) === 0 && (await current(picker)) === 'Planche à voile');
 await go('/parametres');
 await evaluate(`[...document.querySelectorAll('.settings-activity__toggle')].find((b) => b.textContent.includes('Voile'))?.click()`);
 await wait(400);
-check('gardée après rechargement', (await evaluate(`${picker}?.querySelector('[aria-pressed=true]')?.getAttribute('aria-label')`)) === 'Planche à voile');
+check('gardée après rechargement', (await current(picker)) === 'Planche à voile');
 
 // Activité ajoutée en surf : l'icône devinée suit le nom.
 await evaluate(`(() => {
@@ -174,7 +181,7 @@ await evaluate(`(() => {
   return 'ok';
 })()`);
 await wait(200);
-check('ajout : Paddle devinée', (await evaluate(`document.querySelector('.icon-picker[aria-label="Icône de la nouvelle activité"] [aria-pressed=true]')?.getAttribute('aria-label')`)) === 'Paddle');
+check('ajout : Paddle devinée', (await current(`document.querySelector('.icon-picker[aria-label="Icône de la nouvelle activité"]')`)) === 'Paddle');
 await evaluate(`[...document.querySelectorAll('.settings-add button')].find((b) => b.textContent.trim() === 'Ajouter')?.click()`);
 await wait(600);
 const paddle = (await stored())?.find((a) => a.name === 'Paddle');

@@ -76,6 +76,10 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - le groupe dans Réglages, sur l'accueil et dans la barre du haut, son absence en planification, la page à 390 px sans débordement.
 
   Il dure environ 2 min.
+- `compteur-course.mjs <port> <dossier de travail> [<dossier des captures>]` : sortie à pied enregistrée avec le compteur d'intervalles (lot 2 des demandes du 19/10), sur un profil neuf, sans réseau, environ 40 s. Le compteur est lancé depuis l'onglet Fractionné d'Enregistrer, puis une Course est enregistrée en rejeu ×10, deux fois. Le script vérifie :
+  - la question posée à « Analyser » : passer la session en « Fractionné à pied » ;
+  - oui : fiche en `run-intervals`, séances gardées, analyse ouverte dans le Fractionné avec l'onglet « fractionné » ;
+  - non : fiche en `running`, séances gardées quand même, analyse à pied sans l'onglet « fractionné » (il n'existe plus qu'en famille Fractionné, Réglages compris).
 - `chrono.mjs <port> [<dossier des captures>]` : chronomètre de la carte du compteur (lot 2 des demandes du 10-14/10), sur un profil neuf, sans réseau, à 390×844 puis à 1400×1000. Il vérifie :
   - la bascule « Compteur | Chrono » ;
   - Départ, deux tours (le dernier en haut), Arrêt (temps figé), Reprendre ;
@@ -247,6 +251,15 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - à 390×844 : rien ne déborde, chiffres empilés ; la barre du bas (Accueil, Statistiques, Profil, Réglages), dont la case « Profil » ouvre la page, allumée.
 
   Il finit par « Tout est bon. » ou le nombre d'échecs. Le graphe d'activités ayant quitté l'accueil, l'étape 5 de `donnees.mjs` (stockage plein) passe par `/profil`.
+- `reglages-aide.mjs <port> [<dossier des captures>]` : les aides de Réglages sous des « ? » (lot 3 des demandes du 19/10), sur un profil neuf, sans réseau, environ 40 s. Tout ouvert (blocs, familles, activités, parties), il vérifie :
+  - plus aucun `title` sur une ligne de réglage, plus de grande note sous les activités, aucune aide dépliée au départ, chaque « ? » nommé « Aide : … » ;
+  - chaque « ? » de la page, un par un : son texte apparaît seul (le suivant referme le précédent), court ; un second appui referme ;
+  - le « ? » du seuil de Voile : libellé inchangé, aide sous sa ligne ; celui du bloc Activités ne replie pas le bloc ;
+  - à 390×844 : aucun débordement, une aide ouverte comprise ;
+  - hors de Réglages, l'éditeur des bips d'un parcours (Itinéraires) garde son mode d'emploi, sans « ? ».
+
+  Il finit par « Tout est passé. » ou le nombre d'échecs. Seuls des textes d'aide ont quitté la page : le relevé `familles.mjs` en `DUMP=… RELEVE_SEUL=1`, avant et après, le prouve.
+- `reduire.mjs <port> [<dossier des captures>]` : « Tout réduire » et nom ou pseudo de Réglages (demandes du 19/10 au soir), sur un profil neuf, sans réseau, environ 20 s. Il vérifie que « Tout réduire » replie tout (blocs, familles, activités, parties, aide ouverte, choix d'icône), mémoire comprise, et que le choix d'icône se rouvre ensuite ; que le pseudo saisi dans Pratiquant devient le titre du Profil, et « Profil » une fois effacé ; l'en-tête sans débordement à 390×844.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

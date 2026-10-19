@@ -12,6 +12,8 @@ import ImportButtons from './ImportButtons';
 import PanelTitle from './PanelTitle';
 import RefreshLibraryButton from './RefreshLibraryButton';
 import SettingsFiles, { SettingsOfferBanner } from './SettingsFiles';
+import { HelpText, HelpToggle } from './SettingsHelp';
+import { useInSettingsHelp } from './settingsHelpContext';
 import Button from './ui/Button';
 import Card from './ui/Card';
 
@@ -25,7 +27,8 @@ import Card from './ui/Card';
  * Réglages en version détaillée (changer de dossier, fichiers de réglages
  * par appareil par `SettingsFiles`, mode d'emploi du copier-coller). Avec `collapse`, la carte se replie par son titre et ne
  * garde, fermée, que sa ligne d'état et ses alertes, dont la proposition d'un
- * nouveau fichier de réglages (`SettingsOfferBanner`).
+ * nouveau fichier de réglages (`SettingsOfferBanner`). Dans Réglages, les
+ * explications passent sous des « ? » (`SettingsHelp`) ; ailleurs, elles restent à découvert.
  *
  * Dans Réglages, « Mettre à jour » (`RefreshLibraryButton`) et « Ajouter les
  * sessions d'un dossier » (`ImportButtons`) suivent la ligne d'état, carte
@@ -49,6 +52,8 @@ function MemoryStatus({
   const { status, folderKind, folderLabel } = library;
   const canChoose = canChooseMemoryFolder();
   const native = isNativeApp();
+  /** Dans Réglages : explications sous des « ? ». */
+  const inSettings = useInSettingsHelp();
 
   const headline = (() => {
     switch (status) {
@@ -96,7 +101,10 @@ function MemoryStatus({
     );
   }
 
-  const heading = collapse ? <PanelTitle label="Mémoire" open={collapse.open} onToggle={collapse.onToggle} /> : detailed ? 'Mémoire' : undefined;
+  const heading = collapse
+    ? <PanelTitle label="Mémoire" open={collapse.open} onToggle={collapse.onToggle}
+      extra={collapse.open ? <HelpToggle helpKey="memoire" label="Mémoire" size="s" /> : undefined} />
+    : detailed ? 'Mémoire' : undefined;
 
   if (collapse && !collapse.open) {
     return (
@@ -113,6 +121,11 @@ function MemoryStatus({
   return (
     <Card heading={heading}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <HelpText helpKey="memoire">
+          Le dossier garde chaque session (sa trace GPX et sa fiche) et un fichier de réglages par appareil. Pour
+          sauvegarder ou changer d'appareil, copiez le dossier Tracker entier : sur le téléphone, Stockage interne ›
+          Documents › Tracker.
+        </HelpText>
         {statusLine}
 
         {library.scanning && (
@@ -130,11 +143,22 @@ function MemoryStatus({
 
         {status === 'unavailable' && native && (
           <>
-            <p style={mutedStyle}>
+            {inSettings ? (
+              <>
+                <p style={mutedStyle}>
+                  Choisissez où garder vos sessions.
+                  <HelpToggle helpKey="memoire:choisir" label="Choisir le dossier" />
+                </p>
+                <HelpText helpKey="memoire:choisir">
+                  Dans le sélecteur : Documents, puis le dossier Tracker (créez-le s'il n'existe pas), « Utiliser ce
+                  dossier », « Autoriser ».
+                </HelpText>
+              </>
+            ) : <p style={mutedStyle}>
               Tracker garde vos sessions dans un dossier du téléphone, que vous pouvez copier sur le PC pour les
               sauvegarder ou les retrouver. Dans le sélecteur qui va s'ouvrir : Documents, puis le dossier Tracker
               (créez-le s'il n'existe pas), « Utiliser ce dossier », et « Autoriser ».
-            </p>
+            </p>}
             <div style={rowStyle}>
               <Button variant="primary" onClick={() => void chooseFolder()}>Choisir le dossier</Button>
             </div>
@@ -150,7 +174,26 @@ function MemoryStatus({
           </div>
         )}
 
-        {status === 'ready' && folderKind === 'browser' && !compact && (
+        {status === 'ready' && folderKind === 'browser' && !compact && inSettings && (
+          <>
+            <p style={mutedStyle}>
+              Emplacement : la mémoire de ce navigateur.
+              <HelpToggle helpKey="memoire:emplacement" label="Emplacement" />
+            </p>
+            <HelpText helpKey="memoire:emplacement">
+              {canChoose
+                ? "Invisible dans l'explorateur de fichiers. Choisissez un dossier (conseil : Documents › Tracker) pour sauvegarder les sessions ou les passer au téléphone."
+                : "Invisible dans l'explorateur de fichiers. Pour un dossier du PC, ouvrez Tracker dans Chrome ou Edge."}
+            </HelpText>
+            {canChoose && (
+              <div style={rowStyle}>
+                <Button variant="primary" onClick={() => void chooseFolder()}>Choisir un dossier</Button>
+              </div>
+            )}
+          </>
+        )}
+
+        {status === 'ready' && folderKind === 'browser' && !compact && !inSettings && (
           <>
             <p style={mutedStyle}>
               {detailed ? 'Emplacement : la mémoire interne de ce navigateur. ' : ''}
@@ -171,10 +214,13 @@ function MemoryStatus({
         {detailed && status === 'ready' && folderKind === 'picked' && (
           <>
             <p style={mutedStyle}>
-              Emplacement : {folderLabel}, sur ce PC. Le navigateur ne donne que le nom du dossier, pas son chemin
-              complet : « Voir ou changer le dossier » ouvre la fenêtre de choix sur ce dossier, et son chemin
-              s'affiche dans la barre d'adresse de la fenêtre. Annuler le laisse tel quel.
+              Emplacement : {folderLabel}, sur ce PC.
+              <HelpToggle helpKey="memoire:emplacement" label="Emplacement" />
             </p>
+            <HelpText helpKey="memoire:emplacement">
+              Le navigateur ne donne que le nom du dossier : son chemin s'affiche dans la fenêtre de « Voir ou changer
+              le dossier ». Annuler n'y change rien.
+            </HelpText>
             <div style={rowStyle}>
               <Button onClick={() => void chooseFolder()}>Voir ou changer le dossier</Button>
               <Button onClick={() => void switchToBrowserMemory()}>Revenir à la mémoire du navigateur</Button>
@@ -205,16 +251,6 @@ function MemoryStatus({
 
         <SettingsOfferBanner />
         {detailed && status === 'ready' && <SettingsFiles />}
-
-        {detailed && (
-          <p style={mutedStyle}>
-            Le dossier contient chaque session (sa trace GPX et une fiche avec son résumé et vos notes) et un fichier de
-            réglages par appareil. Pour sauvegarder, ou pour passer d'un appareil à l'autre, copiez le dossier Tracker entier.
-            {native
-              ? ' Sur ce téléphone, il se trouve dans Stockage interne › Documents › Tracker.'
-              : ' Sur le téléphone, il se trouve dans Stockage interne › Documents › Tracker : copiez-le sur le PC par câble USB, puis choisissez-le ici.'}
-          </p>
-        )}
 
         {alert}
       </div>

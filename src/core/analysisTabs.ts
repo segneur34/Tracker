@@ -1,4 +1,4 @@
-import { sportTreatment, type SportProfile, type Treatment } from './sportProfiles';
+import { sportFamily, sportTreatment, type SportProfile, type Treatment } from './sportProfiles';
 
 /**
  * Onglets des analyses, par module, dans l'ordre de leur barre. Chaque
@@ -91,9 +91,13 @@ const TREATMENT_TABS: Record<Treatment, readonly AnalysisTab[]> = {
   surf: SURF_TABS,
 };
 
-/** Onglets d'un calcul, proposés dans Réglages : « sauts » seulement s'il les mesure (ni bateau ni fractionné), « cadence » de même. */
+/**
+ * Onglets d'un calcul, proposés dans Réglages : « sauts » seulement s'il les mesure (ni bateau ni fractionné),
+ * « cadence » de même, « fractionné » en famille Fractionné seulement (19/10).
+ */
 export const analysisTabs = (profile: SportProfile): readonly AnalysisTab[] =>
-  TREATMENT_TABS[sportTreatment(profile.id)].filter((tab) => (tab.key !== 'sauts' || profile.jumps !== null) && (tab.key !== 'cadence' || profile.cadence !== null));
+  TREATMENT_TABS[sportTreatment(profile.id)].filter((tab) => (tab.key !== 'sauts' || profile.jumps !== null) && (tab.key !== 'cadence' || profile.cadence !== null)
+    && (tab.key !== 'fractionne' || sportFamily(profile.id) === 'fractionne'));
 
 /** Onglet montré : le choix de l'activité, sinon son défaut (natif montré, générique caché). */
 export const isTabShown = (tab: AnalysisTab, choices: TabChoices | null | undefined): boolean => {

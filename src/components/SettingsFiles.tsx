@@ -3,6 +3,7 @@ import {
   adoptSettingsFile, dismissSettingsOffer, importSettingsFile, renameDevice, useSessionLibrary, type SettingsFileInfo,
 } from '../hooks/useSessionLibrary';
 import { DEVICE_NAME_MAX } from '../library/settingsFile';
+import { HelpText, HelpToggle } from './SettingsHelp';
 import Button from './ui/Button';
 
 /**
@@ -26,7 +27,7 @@ const mutedStyle = { margin: 0, color: 'var(--muted)', fontSize: 'var(--text-s)'
 /** « Reprendre », après confirmation : depuis la liste, le bandeau ou un import. Rend faux si l'on a renoncé. */
 const adopt = (file: SettingsFileInfo): boolean => {
   const question = `Reprendre les réglages de « ${file.name} » ?\n\n`
-    + 'Ils remplacent ceux de cet appareil : activités et leurs réglages, profil du pratiquant, séances du compteur, barre du bas. '
+    + 'Ils remplacent ceux de cet appareil : activités et leurs réglages, profil du pratiquant, séances du compteur. '
     + "Une session dont l'activité n'existe pas dans ces réglages s'affichera sous le nom de son calcul.";
   if (!window.confirm(question)) return false;
   void adoptSettingsFile(file.fileName);
@@ -76,22 +77,16 @@ function SettingsFiles() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-      <strong style={{ fontSize: 'var(--text-m)' }}>Réglages</strong>
-      {folderKind === 'browser' ? (
-        <p style={mutedStyle}>
-          Chaque appareil range ses réglages sous son nom (Tracker › reglages). Pour prendre ceux d'un autre appareil,
-          ou de quelqu'un d'autre : « Importer un fichier de réglages », puis choisissez son fichier, pris dans le
-          dossier Tracker › reglages de cet appareil.
-        </p>
-      ) : (
-        <p style={mutedStyle}>
-          Chaque appareil range ses réglages dans le dossier, sous son nom (Tracker › reglages). Pour prendre ceux d'un
-          autre appareil, ou de quelqu'un d'autre : copiez son fichier dans ce dossier, ou tout le dossier Tracker, puis
-          « Mettre à jour » et « Reprendre » ; ou « Importer un fichier de réglages ».
-        </p>
-      )}
+      <strong style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', fontSize: 'var(--text-m)' }}>
+        Réglages<HelpToggle helpKey="memoire:reglages" label="Réglages par appareil" />
+      </strong>
+      <HelpText helpKey="memoire:reglages">
+        {folderKind === 'browser'
+          ? "Chaque appareil range ses réglages sous son nom (Tracker › reglages). Pour reprendre ceux d'un autre : « Importer un fichier de réglages », puis choisissez son fichier."
+          : "Chaque appareil range ses réglages sous son nom (Tracker › reglages). Pour reprendre ceux d'un autre : copiez son fichier dans ce dossier, puis « Mettre à jour » et « Reprendre », ou « Importer un fichier de réglages »."}
+      </HelpText>
       <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', fontSize: 'var(--text-s)' }}>
-        <span>Nom de cet appareil</span>
+        <span>Nom de cet appareil<HelpToggle helpKey="memoire:appareil" label="Nom de cet appareil" /></span>
         <input value={draft ?? deviceName} maxLength={DEVICE_NAME_MAX} className="ui-field ui-field--s" style={{ width: '180px' }}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => void commit()}
@@ -100,6 +95,7 @@ function SettingsFiles() {
             if (e.key === 'Escape') { setDraft(null); setRefusal(null); }
           }} />
       </label>
+      <HelpText helpKey="memoire:appareil">Nomme le fichier de réglages de cet appareil.</HelpText>
       {refusal && <p style={{ ...mutedStyle, color: 'var(--danger)' }}>{refusal}</p>}
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
         {settingsFiles.map((file) => (

@@ -2,7 +2,7 @@
 // Usage : node notification.mjs <port> <dossier de travail, chemin Windows>
 // Sur un profil neuf, sans réseau. Dure environ 1 min 30. La version navigateur de `platform/notification.ts`
 // consigne chaque envoi en `console.debug` (« [notification] titre | texte [chronomètre] (seule) »). Le script vérifie :
-//  1. Réglages : la partie « Notification » de la carte Voile, trois menus, « défaut » ; la troisième ligne passée à
+//  1. Réglages : la notification, dans la partie Enregistrement de la carte Voile, deux menus, « défaut » ; la seconde ligne passée à
 //     « Max (2 s) », rangée dans les réglages ;
 //  2. un rejeu ×10 de voile : titre « Voile », chiffres choisis, chronomètre de durée, et au moins 5 s entre deux
 //     envois sans changement d'état ;
@@ -99,7 +99,7 @@ await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'
 await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 
-// 1. Réglages : partie « Notification » de la carte Voile.
+// 1. Réglages : notification, dans la partie Enregistrement de la carte Voile.
 await go('/parametres', 4000);
 await evaluate(`(() => { const b = [...document.querySelectorAll('[role=button]')].find((el) => el.textContent.trim() === 'Activités'); if (b && !document.querySelector('.settings-activities')) b.click(); return 'ok'; })()`);
 await wait(300);
@@ -108,20 +108,22 @@ await evaluate(`document.querySelectorAll('.settings-activities__family-toggle[a
 await wait(300);
 await evaluate(`(() => { const b = [...document.querySelectorAll('.settings-activity__toggle')].find((x) => x.textContent.trim().startsWith('Voile')); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return 'ok'; })()`);
 await wait(300);
-console.log('partie Notification :', await clickText('Notification', '.settings-part__toggle'));
+// Depuis le 19/10, la notification est une sous-partie d'Enregistrement.
+console.log('partie Enregistrement :', await clickText('Enregistrement', '.settings-part__toggle'));
 await wait(300);
 const notifRow = () => evaluate(`(() => {
-  const part = [...document.querySelectorAll('.settings-part')].find((p) => p.querySelector('.settings-part__toggle')?.textContent.trim() === 'Notification');
+  const part = [...document.querySelectorAll('.settings-part__sub')].find((p) => p.querySelector('.settings-part__subtitle')?.textContent.trim() === 'Notification');
   if (!part) return null;
   const selects = [...part.querySelectorAll('select')];
   return { menus: selects.length, values: selects.map((s) => s.options[s.selectedIndex]?.textContent ?? ''), text: part.innerText.replace(/\\n+/g, ' / ') };
 })()`);
 const before = await notifRow();
-check('trois menus, défaut vitesse, moyenne, distance', before?.menus === 3 && before.values.join(',') === 'Vitesse,Moyenne,Distance' && before.text.includes('défaut'),
+// Deux chiffres au plus depuis le 15/10 (Android coupe la ligne au-delà) : vitesse et distance par défaut.
+check('deux menus, défaut vitesse, distance', before?.menus === 2 && before.values.join(',') === 'Vitesse,Distance' && before.text.includes('défaut'),
   JSON.stringify(before?.values));
 await evaluate(`(() => {
-  const part = [...document.querySelectorAll('.settings-part')].find((p) => p.querySelector('.settings-part__toggle')?.textContent.trim() === 'Notification');
-  const s = part.querySelectorAll('select')[2];
+  const part = [...document.querySelectorAll('.settings-part__sub')].find((p) => p.querySelector('.settings-part__subtitle')?.textContent.trim() === 'Notification');
+  const s = part.querySelectorAll('select')[1];
   Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, 'max');
   s.dispatchEvent(new Event('change', { bubbles: true }));
   return s.value;
@@ -129,7 +131,7 @@ await evaluate(`(() => {
 await wait(300);
 const after = await notifRow();
 const stored = await evaluate(`JSON.stringify(JSON.parse(localStorage.getItem('tracker.sportSettings'))?.notificationFields)`);
-check('troisième ligne « Max », rangée, plus « défaut »', after?.values[2]?.startsWith('Max') && !after.text.includes('défaut') && /"max"/.test(stored ?? ''), stored);
+check('seconde ligne « Max », rangée, plus « défaut »', after?.values[1]?.startsWith('Max') && !after.text.includes('défaut') && /"max"/.test(stored ?? ''), stored);
 
 // 2. Rejeu ×10 de voile.
 const sailPath = `${workDir}\\notification-voile.gpx`;
@@ -140,7 +142,7 @@ await wait(16000);
 // Le chargement de la page efface une notification restée d'un arrêt brutal : hors du compte.
 const run = sent.slice(s0).filter((s) => s.text !== 'effacée');
 console.log('envois :', run.map((s) => s.text).slice(0, 4).join('\n        '));
-check('titre et chiffres choisis', run.length > 0 && run.every((s) => s.text.startsWith('Voile | Vit. ') && s.text.includes(' · Moy. ') && s.text.includes(' · Max ')),
+check('titre et chiffres choisis', run.length > 0 && run.every((s) => s.text.startsWith('Voile | Vit. ') && s.text.includes(' · Max ')),
   run[run.length - 1]?.text);
 check('chronomètre de durée', run.length > 0 && run.every((s) => s.text.includes('[durée ')));
 // Les premiers envois partent tout de suite : départ, récriture à la première position (le service GPS vient de
@@ -154,7 +156,7 @@ let mark = sent.length;
 console.log('Pause :', await clickText('Pause'));
 await wait(800);
 const paused = sent.slice(mark);
-check('pause : envoi immédiat, « en pause », durée figée, posé seul', paused.length === 1 && paused[0].text.startsWith('Voile · en pause | 0:0')
+check('pause : envoi immédiat, « en pause », durée figée, posé seul', paused.length === 1 && /^Voile · en pause 0:\d\d:\d\d \| /.test(paused[0].text)
   && paused[0].text.endsWith('(seule)') && !paused[0].text.includes('[durée'), paused[0]?.text);
 await wait(3000);
 check('rien pendant la pause', sent.length === mark + 1);

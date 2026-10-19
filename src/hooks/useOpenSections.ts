@@ -13,5 +13,13 @@ export const useOpenSections = <K extends string>(moduleId: string, defaults: Re
     [update]
   );
 
-  return { open: value, toggle };
+  /** Tout fermer, clés mémorisées hors des défauts comprises (activités de Réglages). */
+  const closeAll = useCallback(
+    () => update((current) => Object.fromEntries(Object.keys({ ...defaults, ...current }).map((k) => [k, false])) as Record<K, boolean>),
+    // `defaults` est une constante de module chez tous les appelants.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [update]
+  );
+
+  return { open: value, toggle, closeAll };
 };

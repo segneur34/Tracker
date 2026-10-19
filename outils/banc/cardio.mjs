@@ -279,6 +279,9 @@ const openSettings = async () => {
   await go('/parametres', 3000);
 };
 await openSettings();
+// La méthode de calcul est dans l'aide des zones, sous son « ? » (lot 3 des demandes du 19/10).
+await evaluate(`document.querySelector('button.ui-help[aria-label="Aide : Zones cardiaques"]')?.click()`);
+await wait(200);
 const zonesRow = () => evaluate(`(() => {
   const l = [...document.querySelectorAll('span')].find((s) => s.textContent.trim() === 'Zones cardiaques');
   return l ? l.parentElement.parentElement.innerText.replace(/\\n+/g, ' / ') : '(absent)';
