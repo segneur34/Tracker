@@ -4,7 +4,7 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 
 ## Structure, de haut en bas
 
-1. **Feuille** (`.an-sheet`), réduite à l'en-tête (`.an-sheet__head`) : `PageHeader` avec le retour à la liste du sport, le titre « Analyse … », et `SessionNameEditor` en sous-titre (nom de la session, « Renommer » et un « … » qui télécharge le GPX).
+1. **Feuille** (`.an-sheet`), réduite à l'en-tête (`.an-sheet__head`) : `PageHeader` avec le retour à la liste du sport, le titre « Analyse … », et `SessionNameEditor` en sous-titre (nom de la session, « Renommer » et un « … » qui partage la session en image ou télécharge le GPX).
 2. Barre « Non enregistré / Enregistrer la session » (`SessionSaveBar`), pendant un brouillon seulement (la course ne passe pas `kept`, et la voile non plus).
 3. **Rangée de la carte** (`.an-map-row`) : le bloc `AnalysisMap`, seul.
 4. **Colonne des onglets** (`.an-carte-col`), sous la carte : `CollapsibleSectionTabs` (`SectionTabs` et, en fin de rangée, la flèche qui cache la barre ; cachée, un bouton fin « onglets » la rend ; panneaux inchangés, état commun à toutes les analyses, point 121), puis leurs **panneaux** (`.an-carte-panels`), chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
@@ -40,7 +40,7 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 | `pages/analysisMobile.css` | Disposition téléphone (classes `an-*`) |
 | `components/PanelTitle.tsx` | Titre de panneau qui le replie |
 | `components/ChartFold.tsx` | Repli d'une partie d'un panneau (un graphe parmi plusieurs, un tableau), état retenu par `useOpenSections` ; pas de bouton quand le panneau n'a qu'une partie |
-| `components/SessionNameEditor.tsx` | Nom de la session, « Renommer », et « … » (`ui/MoreMenu.tsx`) pour télécharger le GPX |
+| `components/SessionNameEditor.tsx` | Nom de la session, « Renommer », et « … » (`ui/MoreMenu.tsx`) pour partager la session en image (`ShareDialog`) ou télécharger le GPX |
 | `components/SectionTabs.tsx`, `components/CollapsibleSectionTabs.tsx`, `components/ResizablePanel.tsx` | Onglets, barre d'onglets repliable des analyses, panneaux redimensionnables |
 | `components/SpeedGradientLegend.tsx`, `components/GradeGradientLegend.tsx` | Les légendes de la vitesse et de la pente, en lecture seule, passées à `AnalysisMap` |
 | `components/styles.ts` | `CARD_STYLE` des panneaux, `HALF_PANEL_STYLE` pour deux panneaux par ligne |
