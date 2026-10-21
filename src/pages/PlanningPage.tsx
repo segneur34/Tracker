@@ -234,15 +234,18 @@ function PlanBlock({ id, label, open, onToggle, aside, children }: {
  * part. Toucher un type le coche ou le décoche (le dernier reste coché) ;
  * toucher « Ligne droite » la choisit seule. Sert à la barre au-dessus de la
  * carte (tout l'itinéraire et les points suivants) et au tronçon d'un point sélectionné ; sur
- * une trace importée, rien n'est coché, et choisir refait le tronçon. `children` suit la
- * ligne droite, dans la même rangée (le bouton « Boucle », au-dessus de la carte).
+ * une trace importée, rien n'est coché, et choisir refait le tronçon. `straightOff` : mode
+ * rendu quand on retouche « Ligne droite » allumée (le tronçon d'un point) ; sans lui, elle
+ * reste allumée. `children` suit la ligne droite, dans la même rangée (le bouton « Boucle »,
+ * au-dessus de la carte).
  */
-function WayPicker({ mode, label, compact, className, style, onChange, children }: {
+function WayPicker({ mode, label, compact, className, style, straightOff, onChange, children }: {
   mode: RouteMode;
   label: string;
   compact?: boolean;
   className?: string;
   style?: React.CSSProperties;
+  straightOff?: RouteMode;
   onChange: (mode: RouteMode) => void;
   children?: ReactNode;
 }) {
@@ -250,7 +253,7 @@ function WayPicker({ mode, label, compact, className, style, onChange, children 
     <WayTypeTabs checked={isWaysMode(mode) ? wayTypesOf(mode) : []} onToggle={(t) => onChange(toggleWayType(mode, t))} label={label}
       compact={compact} className={className} style={style}>
       <button type="button" className="ui-tab plan-modes__straight" aria-pressed={mode === 'straight'} title={STRAIGHT_HINT}
-        onClick={() => onChange('straight')}>
+        onClick={() => onChange(mode === 'straight' && straightOff ? straightOff : 'straight')}>
         {STRAIGHT_LABEL}
       </button>
       {children}
@@ -848,6 +851,7 @@ function PlanningPage() {
                   <div className="plan-overlay__field">
                     <span>Pour y venir{selectedLeg.mode === 'imported' && ' (trace importée)'}</span>
                     <WayPicker mode={selectedLeg.mode} label={`Façon de venir au point ${pointLabel(selected)}`} compact
+                      straightOff={editMode !== 'straight' ? editMode : activityMode(activity)}
                       onChange={(m) => planner.setLegMode(selected - 1, m)} />
                   </div>
                 )}

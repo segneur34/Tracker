@@ -323,9 +323,10 @@ export const moveWaypoint = (route: PlannedRoute, index: number, waypoint: Waypo
 
 /**
  * Retire un point. Au milieu, ses deux tronçons sont remplacés par un seul,
- * qui garde le mode de celui qui arrivait au point ; deux tronçons importés
- * sont recollés, tracé intact. Un tronçon importé à refaire l'est dans
- * `fallback`.
+ * qui garde le mode de celui qui partait du point : la façon de venir au
+ * point retiré (une ligne droite, par exemple) part avec lui, celle du point
+ * d'après reste. Deux tronçons importés sont recollés, tracé intact. Un
+ * tronçon importé à refaire l'est dans `fallback`.
  */
 export const removeWaypoint = (route: PlannedRoute, index: number, fallback: RouteMode = 'straight'): PlannedRoute => {
   const n = route.waypoints.length;
@@ -337,7 +338,7 @@ export const removeWaypoint = (route: PlannedRoute, index: number, fallback: Rou
   const after = route.legs[index];
   const merged: RouteLeg = before.mode === 'imported' && after.mode === 'imported'
     ? { mode: 'imported', status: 'ready', points: joinPaths(before.points, after.points) }
-    : newLeg(route.waypoints[index - 1], route.waypoints[index + 1], rebuiltMode(before.mode, fallback));
+    : newLeg(route.waypoints[index - 1], route.waypoints[index + 1], rebuiltMode(after.mode, fallback));
   return { waypoints, legs: [...route.legs.slice(0, index - 1), merged, ...route.legs.slice(index + 1)] };
 };
 

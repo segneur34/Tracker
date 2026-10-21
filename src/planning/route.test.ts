@@ -77,9 +77,13 @@ describe('édition d\'un itinéraire', () => {
     expect(removeWaypoint(build([A]), 0)).toEqual(EMPTY_ROUTE);
   });
 
-  it('au milieu, le tronçon fusionné garde le mode du tronçon qui arrivait au point', () => {
-    const route = setLegMode(build([A, B, C]), 0, 'straight');
-    expect(removeWaypoint(route, 1).legs[0].mode).toBe('straight');
+  it('au milieu, le tronçon fusionné garde la façon de venir au point d\'après, celle du point retiré part avec lui', () => {
+    // B venait en ligne droite : retiré, C garde sa façon de venir, par les voies.
+    const straightToB = setLegMode(build([A, B, C]), 0, 'straight');
+    expect(removeWaypoint(straightToB, 1).legs[0]).toMatchObject({ mode: 'sentier', status: 'pending' });
+    // C venait en ligne droite : il la garde.
+    const straightToC = setLegMode(build([A, B, C]), 1, 'straight');
+    expect(removeWaypoint(straightToC, 1).legs[0]).toMatchObject({ mode: 'straight', status: 'ready' });
   });
 
   it('change le mode d\'un tronçon', () => {
@@ -358,9 +362,13 @@ describe('trace importée', () => {
     expect(moved.legs[1]).toMatchObject({ mode: 'route', status: 'pending' });
     // Sans mode donné, la ligne droite.
     expect(moveWaypoint(cut, 2, { lat: 43.62, lon: 3.81 }).legs[1]).toMatchObject({ mode: 'straight', status: 'ready' });
-    // Retirer un point entre une part importée et une ligne droite : refait dans le mode choisi.
+    // Retirer un point entre une part importée et une ligne droite : la ligne droite du point d'après reste.
     const mixed = addWaypoint(routeFromTrack(track)!, C, 'straight');
-    expect(removeWaypoint(mixed, 1, 'piste').legs[0]).toMatchObject({ mode: 'piste', status: 'pending' });
+    expect(removeWaypoint(mixed, 1, 'piste').legs[0]).toMatchObject({ mode: 'straight', status: 'ready' });
+    // Entre une ligne droite et une part importée : refait dans le mode choisi.
+    const imported = routeFromTrack(track)!;
+    const before = { waypoints: [C, ...imported.waypoints], legs: [...build([C, A], 'straight').legs, ...imported.legs] };
+    expect(removeWaypoint(before, 1, 'piste').legs[0]).toMatchObject({ mode: 'piste', status: 'pending' });
   });
 
   it('inverser retourne la trace sans la recalculer', () => {

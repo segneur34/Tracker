@@ -97,6 +97,27 @@ console.log('Boucler en ligne droite :', await clickText('Boucler en ligne droit
 await log('boucle en ligne droite');
 console.log('Tout effacer :', await clickText('Tout effacer'));
 
+// 1b. Ligne droite d'un seul point, en sentier : elle s'allume et s'éteint dans son panneau, et part avec lui quand on le retire.
+const tapMarker = async (i) => {
+  const m = await evaluate(`(() => { const r = document.querySelectorAll('.plan-marker')[${i}]?.getBoundingClientRect(); return r ? [r.left + r.width / 2, r.top + r.height / 2] : null; })()`);
+  if (m) await clickAt(m[0], m[1]);
+  return m ? 'ok' : 'absent';
+};
+const overlayWays = () => evaluate(`[...document.querySelectorAll('.plan-overlay button[aria-pressed="true"]')].map((x) => x.textContent).join(', ') || '(aucun)'`);
+const overlayStraight = () => clickText('Ligne droite', '.plan-overlay button');
+await tapMap(0.3, 0.3);
+await tapMap(0.6, 0.35);
+await tapMap(0.55, 0.7);
+console.log('panneau de B :', await tapMarker(1), await overlayWays());
+console.log('B en ligne droite :', await overlayStraight(), await overlayWays());
+console.log('B ligne droite éteinte :', await overlayStraight(), await overlayWays());
+console.log('B en ligne droite :', await overlayStraight(), await overlayWays());
+await log('B en ligne droite');
+console.log('Retirer B :', await clickText('Retirer', '.plan-overlay button'));
+await log('B retiré');
+console.log('panneau du point d\'après :', await tapMarker(1), await overlayWays());
+console.log('Tout effacer :', await clickText('Tout effacer'));
+
 // 2. GPX qui n'en est pas un, route <rte>, trace sans heure, boucle.
 await setFile('.plan-actions input[type=file]', gpx('pas-un-gpx.gpx'));
 await wait(800);
