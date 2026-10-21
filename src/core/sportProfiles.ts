@@ -1,8 +1,9 @@
 import type { JumpDetection } from './jumps';
 import type { PumpDetection } from '../surfing/pumping';
 import type { CadenceDetection } from '../running/cadence';
+import type { SpeedRangeMs } from './speedGradient';
 import type { SportType, TopTarget } from './types';
-import type { SpeedUnit } from './units';
+import { knotsToMs, type SpeedUnit } from './units';
 
 /**
  * Profil d'un support. Regroupe tout ce qui varie d'une activité à l'autre :
@@ -34,14 +35,15 @@ export const DEFAULT_LOOP_RETURN_MAX_RATIO = 1.5;
 /** Bornes du réglage du retour de boucle, en fois l'aller. */
 export const LOOP_RETURN_RATIO_RANGE = { min: 1, max: 3 } as const;
 
-/**
- * Deux terrains, deux réglages. Le parcours roulant demande un seuil bas pour
- * ne pas effacer les faux plats, le terrain accidenté demande un seuil haut
- * pour absorber le bruit.
- */
 /** Pas proposés pour l'altitude du terrain, en mètres. */
 export const TERRAIN_STEP_CHOICES_M = [5, 10, 20] as const;
 
+/**
+ * Lissage de l'altitude et plus petit dénivelé compté. Le réglage « route »
+ * sert partout depuis le 21/10 : l'altitude de l'IGN est déjà propre, et le
+ * choix du terrain par activité et par session a été retiré ; « trail » reste
+ * pour mémoire et pour les tests.
+ */
 export const ELEVATION_PRESETS: Record<'route' | 'trail', ElevationProfile> = {
   route: { smoothingSeconds: 20, minGainM: 3 },
   trail: { smoothingSeconds: 30, minGainM: 5 },
@@ -90,6 +92,12 @@ export const DEFAULT_RECORDING: RecordingProfile = {
  * couperait la trace (§10, point 89). Le délai reste, pour qui la rallume.
  */
 const INTERVAL_RECORDING: RecordingProfile = { ...DEFAULT_RECORDING, autoPauseSpeedMs: 0 };
+
+/**
+ * Bateau (21/10) : pause automatique sous 0,2 km/h pendant 60 s, plus bas que
+ * le défaut : un bord lent, sous 1 km/h, ne doit pas mettre la trace en pause.
+ */
+const BOAT_RECORDING: RecordingProfile = { ...DEFAULT_RECORDING, autoPauseSpeedMs: 0.2 / 3.6 };
 
 /**
  * Répétitions retrouvées dans la vitesse d'une session faite sans le compteur
@@ -301,6 +309,13 @@ export interface SportProfile {
   /** Unité dans laquelle le seuil d'activité est saisi, stocké et comparé. */
   thresholdUnit: SpeedUnit;
   /**
+   * Calcul sans seuil d'activité (bateau, 21/10) : toute la session compte en
+   * navigation, sans temps actif, ratio ni moyenne active ; la réussite des
+   * manœuvres se lit à ce seuil fixe, non réglable, dans `thresholdUnit`.
+   * `null` : seuil d'activité réglable (`defaultActiveThreshold`).
+   */
+  withoutActiveThreshold: { maneuverSuccess: number } | null;
+  /**
    * Seuil séparant « en action » de « à l'arrêt », exprimé dans `thresholdUnit`.
    * Selon l'activité il correspond au début de vol, au début de planing ou à
    * la sortie de l'arrêt : ces notions ne se recouvrent pas, d'où un réglage
@@ -330,6 +345,11 @@ export interface SportProfile {
   maxPlausibleSpeedMs: number;
   /** Vitesse minimale, dans `thresholdUnit`, pour qu'un point alimente le diagramme polaire. */
   defaultPolarMinSpeed: number;
+  /**
+   * Bornes de couleur de la trace par défaut, fixes, en m/s ; `null` : celles
+   * du traitement, et en voile la suggestion faite selon l'allure de la session.
+   */
+  speedRange: SpeedRangeMs | null;
   /**
    * Libellé du ratio de temps actif, propre au vocabulaire du support, hors
    * foil : sur foil, c'est `FOIL_RATIO_LABEL` (`activeRatioLabel`).
@@ -448,6 +468,8 @@ const SAILING_DEFAULTS = {
   // 30 m/s font 58 nœuds : hors de portée en session ordinaire.
   maxPlausibleSpeedMs: 30,
   defaultPolarMinSpeed: 5,
+  withoutActiveThreshold: null,
+  speedRange: null,
   elevation: ELEVATION_PRESETS.route,
   terrainElevationStepM: null,
   loopReturnMaxRatio: null,
@@ -474,6 +496,8 @@ const RUNNING_PROFILE: SportProfile = {
   // 12 m/s font 43 km/h, au-delà du sprint humain.
   maxPlausibleSpeedMs: 12,
   defaultPolarMinSpeed: 0,
+  withoutActiveThreshold: null,
+  speedRange: null,
   activeRatioLabel: 'Ratio en mouvement',
   elevation: ELEVATION_PRESETS.route,
   terrainElevationStepM: 10,
@@ -502,6 +526,8 @@ const CYCLING_PROFILE: SportProfile = {
   // 25 m/s font 90 km/h, au-delà d'une descente de col ordinaire.
   maxPlausibleSpeedMs: 25,
   defaultPolarMinSpeed: 0,
+  withoutActiveThreshold: null,
+  speedRange: null,
   activeRatioLabel: 'Ratio en mouvement',
   elevation: ELEVATION_PRESETS.route,
   terrainElevationStepM: 10,
@@ -536,6 +562,8 @@ const SURF_PROFILE: SportProfile = {
   // 20 m/s font 72 km/h, au-delà d'une grosse vague ordinaire.
   maxPlausibleSpeedMs: 20,
   defaultPolarMinSpeed: 0,
+  withoutActiveThreshold: null,
+  speedRange: null,
   activeRatioLabel: 'Ratio sur la vague',
   foilDefault: false,
   elevation: ELEVATION_PRESETS.route,
@@ -584,8 +612,13 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     ...SAILING_DEFAULTS,
     id: 'bateau',
     label: 'Bateau',
-    defaultActiveThreshold: 3,
+    // Sans seuil (21/10) : un bord peut passer sous 1 nœud ; une manœuvre sous 1 nœud est ratée.
+    defaultActiveThreshold: 1,
+    withoutActiveThreshold: { maneuverSuccess: 1 },
     defaultPolarMinSpeed: 2,
+    // Couleurs de 1 à 15 nœuds, fixes, plutôt que selon l'allure (21/10).
+    speedRange: { minMs: knotsToMs(1), maxMs: knotsToMs(15) },
+    recording: BOAT_RECORDING,
     activeRatioLabel: 'Ratio de navigation',
     jumps: null,
   },
@@ -612,6 +645,12 @@ export const getSportProfile = (sport: SportType): SportProfile => SPORT_PROFILE
  */
 export const defaultActiveThresholdOf = (profile: SportProfile, foil: boolean): number =>
   foil && profile.surf ? profile.surf.foilActiveThreshold : profile.defaultActiveThreshold;
+
+/**
+ * Calcul au seuil d'activité réglable : tous sauf le bateau (`withoutActiveThreshold`).
+ * Un seuil réglé à 0 veut dire « aucun seuil » (`thresholdActivityMask`).
+ */
+export const hasActiveThreshold = (profile: SportProfile): boolean => profile.withoutActiveThreshold === null;
 
 /** Libellé du ratio de temps actif d'une session : « Ratio de vol » sur foil, sinon celui du calcul. */
 export const activeRatioLabel = (profile: SportProfile, foil: boolean): string =>

@@ -226,6 +226,15 @@ export const computeKinematics = (
     bearings.push(initialBearing(p0.lat, p0.lon, p1.lat, p1.lon));
   }
 
+  // Reprise après une pause : le pas qui y mène enjambe la pause, ni sa vitesse
+  // ni son cap ne disent rien. Le point prend ceux du pas suivant, comme le
+  // premier point de la trace.
+  for (let i = points.length - 2; i >= 1; i--) {
+    if (!points[i].segmentStart) continue;
+    derivedSpeeds[i] = derivedSpeeds[i + 1];
+    bearings[i] = bearings[i + 1];
+  }
+
   // Position qui saute puis revient : les deux intervalles du point prennent
   // la vitesse et le cap du chemin direct entre ses voisins. Le point reste
   // sur la carte ; seule sa vitesse tirée des positions change. Un point qui a
@@ -283,5 +292,6 @@ export const computeKinematics = (
     bearing: bearings[i],
     ...(p.courseDeg !== undefined ? { courseDeg: p.courseDeg } : {}),
     speedSource,
+    ...(p.segmentStart ? { segmentStart: true as const } : {}),
   }));
 };

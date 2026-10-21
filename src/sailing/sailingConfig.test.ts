@@ -34,10 +34,6 @@ describe('suggestActiveThresholdKn', () => {
     expect(suggestActiveThresholdKn('windsurf', 20)).toBe(SPORT_PROFILES.windsurf.defaultActiveThreshold);
   });
 
-  it('régime rapide, bateau : 1 nœud, pas le défaut du profil (3)', () => {
-    expect(suggestActiveThresholdKn('bateau', 15)).toBe(SLOW_SESSION_ACTIVE_THRESHOLD_KN);
-  });
-
   it('régime lent, wingfoil : 1 nœud', () => {
     expect(suggestActiveThresholdKn('wingfoil', 6)).toBe(SLOW_SESSION_ACTIVE_THRESHOLD_KN);
   });
@@ -48,7 +44,6 @@ describe('suggestActiveThresholdKn', () => {
 
   it('pas de trace chargée (allure nulle) : défaut du profil', () => {
     expect(suggestActiveThresholdKn('wingfoil', 0)).toBe(SPORT_PROFILES.wingfoil.defaultActiveThreshold);
-    expect(suggestActiveThresholdKn('bateau', 0)).toBe(SPORT_PROFILES.bateau.defaultActiveThreshold);
   });
 });
 
@@ -68,6 +63,13 @@ describe('suggestSpeedRangeMs', () => {
   it('trace vide : repli sur la plage par défaut', () => {
     const range = suggestSpeedRangeMs('wingfoil', 0, [], buildCumulativeTrack([]));
     expect(range).toEqual(DEFAULT_SAILING_SPEED_RANGE_MS);
+  });
+
+  it('bateau : de 1 à 15 nœuds, quelle que soit la session', () => {
+    const track = buildTrack(new Array(30).fill(knotsToMs(4)));
+    const range = suggestSpeedRangeMs('bateau', 4, track, buildCumulativeTrack(track));
+    expect(range.minMs).toBeCloseTo(knotsToMs(1), 6);
+    expect(range.maxMs).toBeCloseTo(knotsToMs(15), 6);
   });
 
   it('trace trop courte pour 2 s : repli sur la plage par défaut', () => {

@@ -254,7 +254,8 @@ await wait(800);
 await openTab('graphique');
 const courseChips = await chips('Donnée');
 check('données de la course', courseChips === 'Vitesse max, Moyenne en action, Durée, Distance, Dénivelé positif', courseChips);
-for (const [chip, label] of [['Moyenne en action', 'min/km'], ['Durée', 'min'], ['Distance', 'km'], ['Dénivelé positif', 'm']]) {
+// Course en km/h depuis les pré-réglages du 21/10.
+for (const [chip, label] of [['Moyenne en action', 'km/h'], ['Durée', 'min'], ['Distance', 'km'], ['Dénivelé positif', 'm']]) {
   await click('.stats-chips[aria-label="Donnée"] .ui-tab', chip);
   await wait(500);
   check(`course, ${chip} : 5 points, axe en ${label}`, (await points()) === 5 && (await yLabel()) === label, `${await points()} ; ${await yLabel()}`);

@@ -1,7 +1,7 @@
 import { computeElevationStats, type ElevationStats } from './elevation';
-import { ELEVATION_PRESETS, type ElevationProfile } from './sportProfiles';
+import { ELEVATION_PRESETS, getActiveThresholds, hasActiveThreshold, type ElevationProfile, type SportProfile } from './sportProfiles';
 import type { BaseSessionStats, CumulativeTrack, TrackPoint } from './types';
-import { formatDuration } from './units';
+import { formatDuration, fromDisplaySpeed } from './units';
 
 /**
  * Distance parcourue sur le segment qui mène au point `i`, en mètres.
@@ -18,7 +18,8 @@ import { formatDuration } from './units';
  * plus utilisée.
  */
 export const segmentDistanceM = (track: TrackPoint[], i: number): number => {
-  if (i <= 0) return 0;
+  // Reprise après une pause : le pas couvre la pause, rien n'y est parcouru.
+  if (i <= 0 || track[i].segmentStart) return 0;
   const dt = (track[i].timeMs - track[i - 1].timeMs) / 1000;
   return dt > 0 ? track[i].speedMs * dt : 0;
 };
@@ -63,6 +64,9 @@ export interface ActivityMaskOptions {
  *
  * Une durée minimale de confirmation évite en plus qu'un point isolé ne
  * déclenche un changement d'état.
+ *
+ * Le pas qui reprend après une pause de l'enregistrement (`segmentStart`)
+ * n'est jamais en action : ni temps, ni distance, ni énergie n'y sont comptés.
  */
 export const computeActivityMask = (
   track: TrackPoint[],
@@ -92,10 +96,25 @@ export const computeActivityMask = (
       pendingSinceMs = null;
     }
 
-    mask[i] = active;
+    mask[i] = active && !track[i].segmentStart;
   }
 
   return mask;
+};
+
+/**
+ * Masque d'activité d'un calcul à ce seuil, dans l'unité de son profil. Sans
+ * seuil (bateau, ou seuil réglé à 0) : toute la trace est en action, hors
+ * pauses de l'enregistrement.
+ */
+export const thresholdActivityMask = (track: TrackPoint[], profile: SportProfile, threshold: number): boolean[] => {
+  if (!hasActiveThreshold(profile) || threshold <= 0) return track.map((p) => !p.segmentStart);
+  const { enter, exit } = getActiveThresholds(profile, threshold);
+  return computeActivityMask(track, {
+    enterThresholdMs: fromDisplaySpeed(enter, profile.thresholdUnit),
+    exitThresholdMs: fromDisplaySpeed(exit, profile.thresholdUnit),
+    minStateDurationS: profile.minStateDurationS,
+  });
 };
 
 /**

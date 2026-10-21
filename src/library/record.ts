@@ -3,7 +3,7 @@ import { isValidBikeWeight } from '../cycling/energy';
 import { JUMP_DOUBTS, type JumpDoubt, type SessionJump } from '../core/jumps';
 import { readSessionMarks, type SessionMark } from '../core/sessionMarks';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
-import { ELEVATION_PRESETS, sportTreatment } from '../core/sportProfiles';
+import { sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import type { TerrainSamples } from '../core/terrainElevation';
 import { readSurfaceRuns, type SurfaceRuns } from '../planning/surface';
@@ -48,8 +48,11 @@ export const RECORD_VERSION = 1;
  * en surf (`flightS`), pour le graphique des statistiques.
  *
  * 6 (17 octobre 2026) : cadence à pied (`cadence`), pour les statistiques.
+ *
+ * 7 (21 octobre 2026) : bateau sans seuil d'activité, toute la session en
+ * navigation (`movingTimeS`, `movingDistanceM`).
  */
-export const SUMMARY_CALC_VERSION = 6;
+export const SUMMARY_CALC_VERSION = 8;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -143,12 +146,6 @@ const readSummaryHeartRate = (raw: unknown): SummaryHeartRate | null => {
 /** Notes saisies, datées de leur dernier changement. */
 export type StoredSessionNotes = SailingSessionNotes & { savedAt: number };
 
-/** Terrain du dénivelé, une clé de `ELEVATION_PRESETS`. */
-export type SessionTerrain = keyof typeof ELEVATION_PRESETS;
-
-export const isSessionTerrain = (value: unknown): value is SessionTerrain =>
-  typeof value === 'string' && Object.prototype.hasOwnProperty.call(ELEVATION_PRESETS, value);
-
 /**
  * Réglages d'analyse propres à la session, saisis par l'utilisateur et
  * enregistrés par lui. `null` : la valeur par défaut (vent estimé, seuil du
@@ -192,12 +189,6 @@ export interface SessionAnalysis {
    * un vol est porté par une vague ; `null` : celui du profil. Absent des fiches plus anciennes.
    */
   waveThreshold: number | null;
-  /**
-   * Terrain du dénivelé (route, trail) pour cette session, course et vélo ;
-   * `null` : celui de son activité (Réglages). Il décrit le parcours : un
-   * changement d'activité le garde. Absent des fiches plus anciennes.
-   */
-  terrain: SessionTerrain | null;
   /**
    * Poids du vélo et des bagages pour cette session, en kg (vélo, énergie) ;
    * `null` : celui de son activité (Réglages). Il décrit le matériel du jour :
@@ -417,7 +408,6 @@ export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
     foil: typeof raw.foil === 'boolean' ? raw.foil : null,
     pumping: typeof raw.pumping === 'boolean' ? raw.pumping : null,
     waveThreshold: isFiniteNumber(raw.waveThreshold) && raw.waveThreshold > 0 ? raw.waveThreshold : null,
-    terrain: isSessionTerrain(raw.terrain) ? raw.terrain : null,
     bikeWeightKg: isValidBikeWeight(raw.bikeWeightKg) ? raw.bikeWeightKg : null,
     loadKg: isValidCarriedLoad(raw.loadKg) ? raw.loadKg : null,
     savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
@@ -764,7 +754,6 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   }
   const thresholdBefore = next.analysis?.activeThreshold ?? null;
   const referenceBefore = next.analysis?.referenceSpeedMs ?? null;
-  const terrainBefore = next.analysis?.terrain ?? null;
   // En surf, le foil et le seuil de vague changent les vagues du résumé.
   const foilBefore = next.analysis?.foil ?? null;
   const waveBefore = next.analysis?.waveThreshold ?? null;
@@ -802,7 +791,6 @@ export const applyRecordPatch = (record: SessionRecord, patch: RecordPatch): { r
   const analysisChanged =
     (next.analysis?.activeThreshold ?? null) !== thresholdBefore ||
     (next.analysis?.referenceSpeedMs ?? null) !== referenceBefore ||
-    (next.analysis?.terrain ?? null) !== terrainBefore ||
     (next.analysis?.foil ?? null) !== foilBefore ||
     (next.analysis?.waveThreshold ?? null) !== waveBefore;
   return { record: next, resummarize: sportChanged || activityChanged || analysisChanged || elevationChanged };

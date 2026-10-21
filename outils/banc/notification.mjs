@@ -107,7 +107,8 @@ await wait(300);
 await evaluate(`document.querySelectorAll('.settings-activities__family-toggle[aria-expanded="false"]').forEach((b) => b.click()); 'ok'`);
 await wait(300);
 await evaluate(`(() => { const b = [...document.querySelectorAll('.settings-activity__toggle')].find((x) => x.textContent.trim().startsWith('Voile')); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return 'ok'; })()`);
-await wait(300);
+// La carte ouverte monte ses parties : 300 ms ne suffisent pas toujours.
+await wait(800);
 // Depuis le 19/10, la notification est une sous-partie d'Enregistrement.
 console.log('partie Enregistrement :', await clickText('Enregistrement', '.settings-part__toggle'));
 await wait(300);

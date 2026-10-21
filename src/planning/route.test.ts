@@ -463,14 +463,13 @@ describe('trace importée', () => {
     expect(routeVehicle('voile')).toBe('pieton');
   });
 
-  it('propose des types de voie selon le type de vélo, ou le terrain à pied ; aucun en voile', () => {
-    expect(presetWayTypes('velo', 'route', 'trail')).toEqual(['route']);
-    expect(presetWayTypes('velo', 'ville', 'route')).toEqual(['route']);
-    expect(presetWayTypes('velo', 'gravel', 'route')).toEqual(['piste']);
-    expect(presetWayTypes('velo', 'vtt', 'route')).toEqual(['sentier', 'piste']);
-    expect(presetWayTypes('course', 'vtt', 'route')).toEqual(['route']);
-    expect(presetWayTypes('course', 'route', 'trail')).toEqual(['sentier', 'piste']);
-    expect(presetWayTypes('voile', 'route', 'route')).toEqual([]);
+  it('propose des types de voie selon le type de vélo, la route à pied ; aucun en voile', () => {
+    expect(presetWayTypes('velo', 'route')).toEqual(['route']);
+    expect(presetWayTypes('velo', 'ville')).toEqual(['route']);
+    expect(presetWayTypes('velo', 'gravel')).toEqual(['piste']);
+    expect(presetWayTypes('velo', 'vtt')).toEqual(['sentier', 'piste']);
+    expect(presetWayTypes('course', 'vtt')).toEqual(['route']);
+    expect(presetWayTypes('voile', 'route')).toEqual([]);
   });
 
   it('lit les types de voie d\'un réglage : remis dans l\'ordre, sans doublon, jamais vides', () => {

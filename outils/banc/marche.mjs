@@ -1,8 +1,8 @@
 // Banc de test : activité « Marche » de départ (demande du 19/10, lot 3 du 20/10).
 // Usage : node marche.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Dure environ 30 s. Vérifie :
-//  1. installation neuve : Marche dans À pied, juste après Course, icône du marcheur, couleurs de 1,5 à 8 km/h
-//     et temps estimé « Personnalisé » à 5 km/h, sans « · modifié » ; Course garde 4 à 15 km/h ;
+//  1. installation neuve : Marche dans À pied, juste après Course, icône du marcheur, couleurs de 1 à 8 km/h
+//     et temps estimé « Personnalisé » à 5 km/h, sans « · modifié » ; Course de 1 à 13 km/h (pré-réglages du 21/10) ;
 //  2. liste de la version 5 sans Marche : elle est ajoutée une fois, après les activités à pied, version 6 rangée ;
 //  3. liste de la version 5 avec une « marche » créée par l'utilisateur : pas de doublon, la sienne reste ;
 //  4. liste de la version 6 sans Marche (supprimée) : elle ne revient pas ;
@@ -86,8 +86,8 @@ const card = (name) => `[...document.querySelectorAll('.settings-activity')].fin
 const rowOf = (name, label) => `[...(${card(name)}?.querySelectorAll('.setting-row, .settings-row, [class*=row]') ?? [])].find((r) => r.textContent.startsWith('${label}'))`;
 const colors = (name) => evaluate(`[...(${rowOf(name, 'Colorisation de la trace')}?.querySelectorAll('input') ?? [])].map((i) => i.value || i.placeholder)`);
 check('Marche : icône du marcheur', (await evaluate(`${card('Marche')}?.querySelector('.settings-activity__icon') !== null`)) === true);
-check('Marche : couleurs de 1,5 à 8 km/h', JSON.stringify(await colors('Marche')) === '["1.5","8"]', JSON.stringify(await colors('Marche')));
-check('Course : couleurs de 4 à 15 km/h', JSON.stringify(await colors('Course')) === '["4","15"]', JSON.stringify(await colors('Course')));
+check('Marche : couleurs de 1 à 8 km/h', JSON.stringify(await colors('Marche')) === '["1","8"]', JSON.stringify(await colors('Marche')));
+check('Course : couleurs de 1 à 13 km/h', JSON.stringify(await colors('Course')) === '["1","13"]', JSON.stringify(await colors('Course')));
 const pace = await evaluate(`(() => {
   const c = ${card('Marche')};
   const select = [...(c?.querySelectorAll('select') ?? [])].find((s) => [...s.options].some((o) => o.value === 'perso'));

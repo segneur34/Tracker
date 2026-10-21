@@ -95,6 +95,9 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
   const trkpts = doc.getElementsByTagName('trkpt');
   const rawPoints: RawTrackPoint[] = [];
   let hasDeviceSpeed = false;
+  // Segment du dernier point retenu : un point d'un autre `<trkseg>` reprend
+  // après une pause de l'enregistrement (un `<trkseg>` par pause, `gpxWriter.ts`).
+  let lastSegment: Element | null = null;
 
   for (let i = 0; i < trkpts.length; i++) {
     const trkpt = trkpts[i];
@@ -109,6 +112,10 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
     const speedMs = readDeviceSpeed(trkpt);
     if (speedMs !== undefined) hasDeviceSpeed = true;
 
+    const segment = trkpt.parentElement;
+    const resumes = lastSegment !== null && segment !== lastSegment;
+    lastSegment = segment;
+
     rawPoints.push({
       lat,
       lon,
@@ -118,6 +125,7 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
       courseDeg: readCourse(trkpt),
       hr: readNumber(trkpt, 'hr'),
       cadence: readNumber(trkpt, 'cad'),
+      ...(resumes ? { segmentStart: true as const } : {}),
     });
   }
 

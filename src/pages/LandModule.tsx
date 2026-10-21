@@ -54,7 +54,7 @@ import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
 import {
   buildCumulativeTrack, buildBaseSessionStats, computeActiveDistanceM, computeActiveTimeMs,
-  computeActivityMask, computeTotalTimeMs,
+  computeTotalTimeMs, thresholdActivityMask,
 } from '../core/sessionStats';
 import { sessionActivity } from '../core/activities';
 import { trackIndexAtTime } from '../core/jumps';
@@ -83,7 +83,7 @@ import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import { useTerrainElevation, type TerrainElevationStatus } from '../hooks/useTerrainElevation';
 import {
-  TERRAIN_LABEL, effectiveJumpSettings, effectiveTabChoices, isKnownTerrain, readStoredActivities, useSportSettings, type TerrainType,
+  effectiveJumpSettings, effectiveTabChoices, readStoredActivities, useSportSettings,
 } from '../hooks/useSportSettings';
 import {
   averagePace, computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
@@ -252,7 +252,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const panelId = (name: string) => `${page.storageId}.${name}`;
   const {
     activity, setActivity, sport,
-    profile, activeThreshold, terrain: activityTerrain, terrainStepM,
+    profile, activeThreshold, terrainStepM,
     speedUnit, distanceUnit,
     speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, gearLabels,
   } = useSportSettings(family);
@@ -294,12 +294,11 @@ function LandModule({ family }: { family: LandFamily }) {
    */
   const shownRecord = useLibrarySession(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null)?.record;
   const sessionIntervals = shownRecord?.intervals ?? NO_INTERVALS;
-  /** Terrain du dénivelé : celui de la session (brouillon, puis fiche), sinon celui de l'activité. */
-  const terrain = draft.edits.terrain ?? activityTerrain;
   /** Poids du vélo et des bagages, charge portée : ceux de la session (brouillon, puis fiche), sinon ceux de l'activité. */
   const bikeWeightKg = draft.edits.bikeWeightKg ?? activityBikeKg;
   const loadKg = draft.edits.loadKg ?? carriedLoadKg;
-  const elevationProfile = ELEVATION_PRESETS[terrain];
+  /** Lissage de l'altitude et plus petit dénivelé compté : le réglage « route », partout (21/10). */
+  const elevationProfile = ELEVATION_PRESETS.route;
 
   /**
    * Changer d'activité l'écrit aussi dans la fiche de la session (comme en
@@ -384,14 +383,8 @@ function LandModule({ family }: { family: LandFamily }) {
     [terrainElevation.track, elevationProfile]
   );
 
-  const activityMask = useMemo(() => {
-    const thresholds = getActiveThresholds(profile, activeThreshold);
-    return computeActivityMask(gpx.track, {
-      enterThresholdMs: fromDisplaySpeed(thresholds.enter, profile.thresholdUnit),
-      exitThresholdMs: fromDisplaySpeed(thresholds.exit, profile.thresholdUnit),
-      minStateDurationS: profile.minStateDurationS,
-    });
-  }, [gpx.track, profile, activeThreshold]);
+  // Seuil à 0 : aucun seuil, toute la session est en mouvement, pauses de l'enregistrement ôtées.
+  const activityMask = useMemo(() => thresholdActivityMask(gpx.track, profile, activeThreshold), [gpx.track, profile, activeThreshold]);
 
   const stats: RunningSessionStats | null = useMemo(() => {
     if (gpx.track.length === 0) return null;
@@ -1348,19 +1341,6 @@ function LandModule({ family }: { family: LandFamily }) {
                       extra={activity}
                       families={sessionFile ? undefined : [family]}
                       onChange={(next) => changeSessionActivity(sessionFile, next)} />
-                  </label>
-
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <strong>Terrain :</strong>
-                    <select
-                      value={draft.edits.terrain ?? ''}
-                      onChange={(e) => draft.update({ terrain: isKnownTerrain(e.target.value) ? e.target.value : null })}
-                      className="ui-field ui-field--s">
-                      <option value="">Celui de l'activité ({TERRAIN_LABEL[activityTerrain]})</option>
-                      {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => (
-                        <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>
-                      ))}
-                    </select>
                   </label>
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title="Altitude du terrain (IGN), ou celle enregistrée par le GPS">

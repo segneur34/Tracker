@@ -3,12 +3,12 @@ import { trackBounds, type TrackBounds } from '../core/displayConfig';
 import { parseGpx } from '../core/gpxParser';
 import { referenceSpeedMs as sessionReferenceSpeedMs } from '../core/sessionSpeed';
 import { buildCumulativeTrack } from '../core/sessionStats';
-import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
+import type { SpeedRangeMs } from '../core/speedGradient';
 import { sportTreatment, type SportFamily } from '../core/sportProfiles';
 import { trackColorSpeedsMs } from '../core/trackColor';
 import type { SportType } from '../core/types';
 import { msToKnots } from '../core/units';
-import { TREATMENT_SPEED_RANGE_MS, defaultSpeedRangeOf, readStoredSettings } from '../hooks/useSportSettings';
+import { TREATMENT_SPEED_RANGE_MS, activitySpeedRange, defaultSpeedRangeOf } from '../hooks/useSportSettings';
 import type { SessionRecord } from '../library/record';
 import { analysisTrack } from '../library/summary';
 import { suggestSpeedRangeMs } from '../sailing/sailingConfig';
@@ -56,7 +56,7 @@ export const sessionColorTrack = (
 /**
  * Bornes de couleur d'une session hors de son analyse, dans cet ordre, comme le module d'analyse :
  * 0. celles enregistrées dans la fiche de la session (`analysis.speedRange`) ;
- * 1. celles réglées pour son activité dans Réglages (`tracker.sportSettings`) ;
+ * 1. celles réglées pour son activité dans Réglages (`tracker.sportSettings`), sinon pré-réglées (`activitySpeedRange`) ;
  * 2. en voile, les bornes suggérées par l'allure de la session (`suggestSpeedRangeMs`,
  *    mesurées sur la trace entière comme dans l'analyse) ;
  * 3. à défaut, celui de son activité (`defaultSpeedRangeOf`), sinon celui du traitement de
@@ -69,10 +69,8 @@ export const sessionSpeedRange = (
   suggested: SpeedRangeMs | null
 ): SpeedRangeMs => {
   if (record.analysis?.speedRange) return record.analysis.speedRange;
-  if (activity) {
-    const override = readStoredSettings().speedRanges?.[activity.id];
-    if (override && isValidSpeedRange(override)) return override;
-  }
+  const fixed = activity ? activitySpeedRange(activity) : null;
+  if (fixed) return fixed;
   if (suggested) return suggested;
   if (activity) return defaultSpeedRangeOf(activity);
   return TREATMENT_SPEED_RANGE_MS[sportTreatment(record.sport ?? FAMILY_BASE[family])];

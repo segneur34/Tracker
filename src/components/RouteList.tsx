@@ -1,11 +1,12 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Activity } from '../core/activities';
+import { ELEVATION_PRESETS } from '../core/sportProfiles';
 import { formatDistance, formatDuration } from '../core/units';
 import { useGoOnRoute } from '../hooks/useGoOnRoute';
 import type { SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
-import { effectiveDistanceUnit, effectiveDurationSettings, effectiveElevationProfile } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, effectiveDurationSettings } from '../hooks/useSportSettings';
 import { routeActivity, routeDistanceM, routeDurationS } from '../planning/routeList';
 import ActivityIcon from './ActivityIcon';
 import Button from './ui/Button';
@@ -43,7 +44,7 @@ function RouteList({ routes, activities, onOpen, currentBase = null, actions, go
   const durations = useMemo(() => new Map(routes.map((s) => {
     const activity = routeActivity(s, activities);
     const settings = activity ? effectiveDurationSettings(activity, riderKg) : null;
-    return [s.base, activity && settings ? routeDurationS(s.record, effectiveElevationProfile(activity).minGainM, settings) : null];
+    return [s.base, activity && settings ? routeDurationS(s.record, ELEVATION_PRESETS.route.minGainM, settings) : null];
   })), [routes, activities, riderKg]);
   const { go, canGo } = useGoOnRoute();
 

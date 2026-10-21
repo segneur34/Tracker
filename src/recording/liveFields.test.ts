@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_LIVE_FIELDS, DEFAULT_NOTIFICATION_FIELDS, MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, liveFieldLabel, liveFieldShortLabel, liveFieldValue,
-  liveFieldsOfTreatment, sanitizeLiveFields, type LiveFieldContext,
+  DEFAULT_LIVE_FIELDS, DEFAULT_NOTIFICATION_FIELDS, MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, defaultLiveFieldsOf, defaultNotificationFieldsOf,
+  liveFieldLabel, liveFieldShortLabel, liveFieldValue, liveFieldsOfTreatment, sanitizeLiveFields, type LiveFieldContext,
 } from './liveFields';
+import { SPORT_PROFILES, sportTreatment } from '../core/sportProfiles';
+import type { SportType } from '../core/types';
 import { EMPTY_LIVE_STATS } from './liveStats';
 
 const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
@@ -41,6 +43,20 @@ describe('liveFieldsOfTreatment', () => {
       for (const key of DEFAULT_NOTIFICATION_FIELDS[treatment]) expect(liveFieldsOfTreatment(treatment)).toContain(key);
       expect(DEFAULT_NOTIFICATION_FIELDS[treatment].length).toBeLessThanOrEqual(MAX_NOTIFICATION_FIELDS);
     }
+  });
+
+  it('propose les défauts de chaque calcul, permis par son traitement', () => {
+    for (const sport of Object.keys(SPORT_PROFILES) as SportType[]) {
+      const treatment = sportTreatment(sport);
+      expect(sanitizeLiveFields(defaultLiveFieldsOf(sport), treatment)).toEqual(defaultLiveFieldsOf(sport));
+      expect(sanitizeLiveFields(defaultNotificationFieldsOf(sport), treatment, MAX_NOTIFICATION_FIELDS)).toEqual(defaultNotificationFieldsOf(sport));
+    }
+  });
+
+  it('bateau : vitesse, moyenne, distance et cap ; notification vitesse et distance', () => {
+    expect(defaultLiveFieldsOf('bateau')).toEqual(['speed', 'average', 'distance', 'heading']);
+    expect(defaultNotificationFieldsOf('bateau')).toEqual(['speed', 'distance']);
+    expect(defaultLiveFieldsOf('wingfoil')).toEqual(DEFAULT_LIVE_FIELDS.voile);
   });
 });
 

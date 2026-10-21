@@ -1,4 +1,4 @@
-import { buildCumulativeTrack, buildBaseSessionStats, computeActivityMask } from '../core/sessionStats';
+import { buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
 import { getActiveThresholds, getSportProfile } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import type { SportType, TrackPoint } from '../core/types';
@@ -11,7 +11,8 @@ export interface SailingStatsOptions {
   sport?: SportType;
   /**
    * Seuil d'activité en nœuds. Paramètre injecté : il vaut 8 en wingfoil mais
-   * change selon le support, et l'utilisateur peut le régler.
+   * change selon le support, et l'utilisateur peut le régler. Ignoré en
+   * bateau, sans seuil : toute la session y compte en navigation.
    */
   activeThresholdKn?: number;
 }
@@ -32,11 +33,8 @@ export const buildSailingSessionStats = (
   const thresholds = getActiveThresholds(profile, activeThresholdKn);
 
   const cumulative = buildCumulativeTrack(track);
-  const activityMask = computeActivityMask(track, {
-    enterThresholdMs: knotsToMs(thresholds.enter),
-    exitThresholdMs: knotsToMs(thresholds.exit),
-    minStateDurationS: profile.minStateDurationS,
-  });
+  // Sans seuil (bateau) : toute la session en navigation, pauses de l'enregistrement ôtées.
+  const activityMask = thresholdActivityMask(track, profile, activeThresholdKn);
 
   const base = buildBaseSessionStats(track, {
     enterThresholdMs: knotsToMs(thresholds.enter),

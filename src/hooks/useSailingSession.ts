@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { buildCumulativeTrack } from '../core/sessionStats';
+import { hasActiveThreshold } from '../core/sportProfiles';
 import { msToKnots } from '../core/units';
 import {
   sessionManeuverThresholds,
@@ -80,11 +81,14 @@ export const useSailingSession = ({
    * effectif : celui de la session s'il y en a un, sinon la surcharge du
    * support, sinon la suggestion, jamais le défaut fixe du profil (§10,
    * point 29 ; une trace lente au seuil wingfoil n'affichait aucune
-   * manœuvre, cf. point 27).
+   * manœuvre, cf. point 27). Sans seuil (bateau, 21/10), le seuil fixe de
+   * réussite des manœuvres, qui ne se règle ni dans Réglages ni par session.
    */
+  const withThreshold = hasActiveThreshold(profile);
+  const fixedThresholdKn = profile.withoutActiveThreshold?.maneuverSuccess ?? null;
   const suggestedActiveThresholdKn = suggestActiveThresholdKn(sport, referenceSpeedKn);
-  const defaultActiveThresholdKn = isThresholdOverridden ? rawActiveThresholdKn : suggestedActiveThresholdKn;
-  const activeThresholdKn = sessionThresholdKn ?? defaultActiveThresholdKn;
+  const defaultActiveThresholdKn = fixedThresholdKn ?? (isThresholdOverridden ? rawActiveThresholdKn : suggestedActiveThresholdKn);
+  const activeThresholdKn = fixedThresholdKn ?? sessionThresholdKn ?? defaultActiveThresholdKn;
 
   const suggestedSpeedRangeMs = useMemo(
     () => suggestSpeedRangeMs(sport, referenceSpeedKn, gpx.track, cumulative),
@@ -225,6 +229,8 @@ export const useSailingSession = ({
     speedUnit,
     distanceUnit,
     activeThresholdKn,
+    /** Seuil d'activité réglable : faux en bateau, où toute la session compte en navigation. */
+    hasActiveThreshold: withThreshold,
     /** Seuil hors réglage de la session : celui du support s'il est surchargé, sinon la suggestion. */
     defaultActiveThresholdKn,
     /** Bornes du dégradé réglées pour le support dans Réglages, ou `null` pour la suggestion accordée à la session. */

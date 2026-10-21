@@ -13,7 +13,7 @@ import { startRecordingNotification } from './hooks/recordingNotification';
 import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { openLibrary, settingsUpgraded, startLibraryUi } from './hooks/useSessionLibrary';
-import { upgradeStoredActivities } from './hooks/useSportSettings';
+import { upgradeStoredActivities, upgradeStoredPresets } from './hooks/useSportSettings';
 import { installBackButton } from './platform/backButton';
 import { initStorage } from './platform/storage';
 
@@ -29,8 +29,11 @@ const LIBRARY_OPEN_WAIT_MS = 1500;
 void initStorage()
   .then(() => Promise.race([openLibrary(), new Promise((resolve) => setTimeout(resolve, LIBRARY_OPEN_WAIT_MS))]))
   .then(() => {
-    // Liste d'activités d'une version d'avant mise à jour, une fois les réglages du dossier repris ; le fichier de l'appareil suit.
-    if (upgradeStoredActivities()) void settingsUpgraded();
+    // Liste d'activités et pré-réglages d'une version d'avant mis à jour, une fois les réglages du dossier repris ;
+    // le fichier de l'appareil suit. Les deux mises à jour se font, d'où les deux appels avant le test.
+    const activitiesUpgraded = upgradeStoredActivities();
+    const presetsUpgraded = upgradeStoredPresets();
+    if (activitiesUpgraded || presetsUpgraded) void settingsUpgraded();
     ReactDOM.createRoot(document.getElementById('root')!).render(
       <React.StrictMode>
         <App />

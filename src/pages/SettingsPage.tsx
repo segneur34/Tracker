@@ -4,7 +4,7 @@ import {
   type Activity,
 } from '../core/activities';
 import {
-  ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, isLandTreatment, sportFamily,
+  LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, hasActiveThreshold, isLandTreatment, sportFamily,
   sportTreatment, usesMarkCourse,
   type SportFamily, type SportProfile, type Treatment,
 } from '../core/sportProfiles';
@@ -20,12 +20,13 @@ import { RUNNER_NAME_MAX, runnerHeartRateZones, useRunnerProfile, type RunnerNum
 import { zoneLabel } from '../components/heartRateColors';
 import Button from '../components/ui/Button';
 import {
-  DEFAULT_GEAR_LABELS, MAX_GEAR_LABEL_LENGTH, TERRAIN_LABEL, TREATMENT_UNITS, defaultBikeType, defaultPaceOf, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, planningFamily,
-  sanitizeGearLabels, useAllSportSettings, type SportSettingsView, type TerrainType,
+  DEFAULT_GEAR_LABELS, MAX_GEAR_LABEL_LENGTH, TREATMENT_UNITS, defaultBikeKg, defaultBikeType, defaultLiveFieldsFor, defaultMarkGuideOf,
+  defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, defaultTerrainStepOf, planningFamily,
+  rangeFollowsPace, sanitizeGearLabels, thresholdFollowsPace, useAllSportSettings, type SportSettingsView,
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
 import {
-  DEFAULT_LIVE_FIELDS, DEFAULT_NOTIFICATION_FIELDS, MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, liveFieldLabel, liveFieldsOfTreatment,
+  MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, liveFieldLabel, liveFieldsOfTreatment,
   type LiveFieldKey, type LiveFieldUnits,
 } from '../recording/liveFields';
 import { simulatedApproachMs } from '../recording/markGuide';
@@ -147,7 +148,7 @@ function AnalysisTabsSetting({ view, profile, onChange }: {
             </button>
           ))}
         </div>
-        {view.tabs === null && <span className="settings-sports__mark">défaut</span>}
+        {!view.isTabsOverridden && <span className="settings-sports__mark">défaut</span>}
       </div>
     </SettingRow>
   );
@@ -396,6 +397,8 @@ function SettingsPage() {
                 /** À pied ou à vélo : pente, terrain, dénivelé. */
                 const land = isLandTreatment(treatment);
                 /** Seuil d'activité, sous son nom : de vague ou de vol en surf. */
+                /** Seuil d'activité réglable : pas en bateau, où toute la session compte en navigation. */
+                const withThreshold = hasActiveThreshold(p);
                 const thresholdLabel = treatment === 'surf' ? (s.foil ? 'Seuil de vol' : 'Seuil de vague') : "Seuil d'activité";
                 /** Famille du temps estimé des itinéraires, `null` en voile et en fractionné. */
                 const paceFamily = planningFamily(activity);
@@ -406,25 +409,28 @@ function SettingsPage() {
                 /** Grisée : cachée elle-même, ou par sa famille. */
                 const shownHidden = activity.hidden === true || familyHidden;
                 const overridden =
-                  s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
-                  s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null || s.carriedLoad !== null || s.gearLabels !== null || s.tabs !== null ||
-                  s.paceLevel !== defaultPaceOf(id).level || s.customFlatSpeedMs !== defaultPaceOf(id).customFlatSpeedMs || s.isWayTypesOverridden ||
-                  s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.heartRate === true || s.cadence === false;
+                  s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || (withThreshold && s.isThresholdOverridden) || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
+                  s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrainStepM !== defaultTerrainStepOf(activity) || s.bikeType !== defaultBikeType(activity) || s.bikeWeight !== null || s.carriedLoad !== null || s.gearLabels !== null || s.isTabsOverridden ||
+                  s.paceLevel !== defaultPaceOf(activity).level || s.customFlatSpeedMs !== defaultPaceOf(activity).customFlatSpeedMs || s.isWayTypesOverridden ||
+                  s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.isHeartRateOverridden || s.cadence === false;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
                 const thresholdShown = parseFloat(
                   toDisplaySpeed(fromDisplaySpeed(s.activeThreshold, p.thresholdUnit), thresholdUnit).toFixed(thresholdUnit === 'ms' ? 2 : 1)
                 );
-                // Voile sans réglage : champ vide, le seuil est suggéré par l'allure de chaque session.
-                const thresholdEmpty = sailing && !s.isThresholdOverridden;
+                // Voile sans réglage ni pré-réglage : champ vide, le seuil est suggéré par l'allure de chaque session.
+                const thresholdEmpty = thresholdFollowsPace(activity) && !s.isThresholdOverridden;
+                /** Seuil à 0 : aucun seuil, toute la session compte en mouvement, pauses ôtées. */
+                const noThreshold = s.activeThreshold === 0;
                 const setThreshold = (next: number | null) =>
                   setFor(id, 'activeThreshold', next === null ? null : toDisplaySpeed(fromDisplaySpeed(next, thresholdUnit), p.thresholdUnit));
                 // Bornes de couleur, saisies en km/h quand l'unité est une allure (min/km).
                 const rangeUnit: SpeedUnit = s.speedUnit === 'minkm' ? 'kmh' : s.speedUnit;
                 const fallbackRange = defaultSpeedRangeOf(activity);
                 const shownRange = s.speedRange ?? fallbackRange;
-                // Voile sans réglage : champs vides, les bornes suivent l'allure de chaque session.
-                const rangeEmpty = sailing && s.speedRange === null;
+                // Voile sans réglage : champs vides, les bornes suivent l'allure de chaque session, sauf bornes fixes (pré-réglage, bateau).
+                const followsPace = rangeFollowsPace(activity);
+                const rangeEmpty = followsPace && s.speedRange === null;
                 const displayBound = (ms: number) => parseFloat(formatSpeedValue(toDisplaySpeed(ms, rangeUnit), rangeUnit));
                 const setRangeBound = (bound: 'minMs' | 'maxMs', next: number | null) => {
                   if (next === null) { setFor(id, 'speedRange', null); return; }
@@ -432,7 +438,7 @@ function SettingsPage() {
                   if (candidate.maxMs > candidate.minMs) setFor(id, 'speedRange', candidate);
                 };
                 // Couleur de pente de la courbe d'altitude (course, vélo), saisie en %, rangée en fraction.
-                const fallbackGrades = defaultGradeRange(activity.base);
+                const fallbackGrades = defaultGradeRange(activity);
                 const shownGrades = s.gradeRange ?? fallbackGrades;
                 const percent = (fraction: number) => parseFloat((fraction * 100).toFixed(1));
                 const setGradeBound = (bound: 'min' | 'max', next: number | null) => {
@@ -459,7 +465,9 @@ function SettingsPage() {
                 const summary = [
                   SPEED_UNIT_LABEL[s.speedUnit],
                   DISTANCE_UNIT_SYMBOL[s.distanceUnit],
-                  thresholdEmpty ? "seuil selon l'allure" : `seuil ${thresholdShown} ${SPEED_UNIT_LABEL[thresholdUnit]}`,
+                  ...(!withThreshold ? [] : [
+                    thresholdEmpty ? "seuil selon l'allure" : noThreshold ? 'sans seuil' : `seuil ${thresholdShown} ${SPEED_UNIT_LABEL[thresholdUnit]}`,
+                  ]),
                   s.autoPause.speedMs > 0 ? `pause sous ${pauseKmh} km/h après ${s.autoPause.delayS} s` : 'sans pause automatique',
                   ...(s.foil ? ['foil'] : []),
                   ...(s.foil && s.pumping ? ['pumping'] : []),
@@ -538,7 +546,7 @@ function SettingsPage() {
                                   value={rangeEmpty ? null : displayBound(shownRange.maxMs)}
                                   placeholder={String(displayBound(fallbackRange.maxMs))}
                                   onCommit={(v) => setRangeBound('maxMs', v)} />
-                                {s.speedRange === null && <span className="settings-sports__mark">{sailing ? "selon l'allure" : 'défaut'}</span>}
+                                {s.speedRange === null && <span className="settings-sports__mark">{followsPace ? "selon l'allure" : 'défaut'}</span>}
                               </div>
                             </SettingRow>
                             {land && (
@@ -560,17 +568,20 @@ function SettingsPage() {
                             )}
                           </ActivityPart>
                           <ActivityPart label="Onglet analyse" open={openPart.analyse} onToggle={() => togglePart('analyse')}>
+                            {withThreshold && (
                             <SettingRow label={thresholdLabel} helpKey={`${id}:seuil`} help={thresholdHelp(treatment, s.foil === true)}>
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                                 <NumberField unit={SPEED_UNIT_LABEL[thresholdUnit]} step={thresholdUnit === 'ms' ? 0.1 : 0.5} min={0}
                                   value={thresholdEmpty ? null : thresholdShown}
                                   placeholder={String(thresholdShown)}
                                   onCommit={setThreshold} />
+                                {noThreshold && <span className="settings-sports__mark">aucun seuil</span>}
                                 {!s.isThresholdOverridden && (
-                                  <span className="settings-sports__mark">{sailing ? "selon l'allure" : 'défaut'}</span>
+                                  <span className="settings-sports__mark">{thresholdEmpty ? "selon l'allure" : 'défaut'}</span>
                                 )}
                               </span>
                             </SettingRow>
+                            )}
                             {s.foil !== null && (
                               <SettingRow label="Foil" helpKey={`${id}:foil`} help={treatment === 'surf'
                                 ? 'Vols entre les vagues, ratio et seuil de vol. Chaque session peut avoir le sien.'
@@ -589,19 +600,6 @@ function SettingsPage() {
                                   <input type="checkbox" checked={s.pumping} onChange={(e) => setFor(id, 'pumping', e.target.checked)} />
                                   <span>Pumping foil</span>
                                 </label>
-                              </SettingRow>
-                            )}
-                            {land && (
-                              <SettingRow label="Terrain" helpKey={`${id}:terrain`}
-                                help="Lissage de l'altitude et plus petit dénivelé compté, dans les analyses et la planification. Chaque session peut avoir le sien.">
-                                <div className="settings-sports__pair">
-                                  <select value={s.terrain} onChange={(e) => setFor(id, 'terrain', e.target.value as TerrainType)} className="ui-field ui-field--s">
-                                    {(Object.keys(ELEVATION_PRESETS) as TerrainType[]).map((t) => <option key={t} value={t}>{TERRAIN_LABEL[t]}</option>)}
-                                  </select>
-                                  <span className="settings-sports__mark">
-                                    lissage {ELEVATION_PRESETS[s.terrain].smoothingSeconds} s, seuil de dénivelé {ELEVATION_PRESETS[s.terrain].minGainM} m
-                                  </span>
-                                </div>
                               </SettingRow>
                             )}
                             {treatment === 'course' && (
@@ -632,7 +630,7 @@ function SettingsPage() {
                                   <select value={s.terrainStepM} onChange={(e) => setFor(id, 'terrainStepM', Number(e.target.value))} className="ui-field ui-field--s">
                                     {TERRAIN_STEP_CHOICES_M.map((m) => <option key={m} value={m}>{m} m</option>)}
                                   </select>
-                                  {s.terrainStepM === p.terrainElevationStepM && <span className="settings-sports__mark">défaut</span>}
+                                  {s.terrainStepM === defaultTerrainStepOf(activity) && <span className="settings-sports__mark">défaut</span>}
                                 </div>
                               </SettingRow>
                             )}
@@ -656,7 +654,7 @@ function SettingsPage() {
                             <FieldsSetting label="Carte réduite à l'enregistrement" helpKey={`${id}:carte-reduite`}
                               help="Les chiffres en grand quand la carte est réduite, de haut en bas."
                               treatment={treatment} units={s} fields={s.liveFields} overridden={s.isLiveFieldsOverridden}
-                              defaults={DEFAULT_LIVE_FIELDS[treatment]} max={MAX_LIVE_FIELDS}
+                              defaults={defaultLiveFieldsFor(activity)} max={MAX_LIVE_FIELDS}
                               onChange={(fields) => setFor(id, 'liveFields', fields)} />
                             {s.jumps !== null && (
                               <JumpsSetting id={id} jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => setFor(id, 'jumps', next)} />
@@ -682,7 +680,7 @@ function SettingsPage() {
                               <FieldsSetting label="Chiffres de la notification" helpKey={`${id}:notification`}
                                 help="Deux chiffres au plus, lisibles écran verrouillé avec le nom de l'activité et la durée. Le téléphone doit montrer le contenu des notifications sur l'écran verrouillé."
                                 treatment={treatment} units={s} fields={s.notificationFields} overridden={s.isNotificationFieldsOverridden}
-                                defaults={DEFAULT_NOTIFICATION_FIELDS[treatment]} max={MAX_NOTIFICATION_FIELDS}
+                                defaults={defaultNotificationFieldsFor(activity)} max={MAX_NOTIFICATION_FIELDS}
                                 onChange={(fields) => setFor(id, 'notificationFields', fields)} />
                             </div>
                           </ActivityPart>
@@ -718,7 +716,7 @@ function SettingsPage() {
                             <ActivityPart label="Planification : balise sonore" open={openPart.balises} onToggle={() => togglePart('balises')}>
                                 <SettingRow label="Bips d'approche des balises" helpKey={`${id}:bips`} helpFirst
                                   help="En navigation sur un parcours : bips de plus en plus rapprochés à l'approche de chaque balise, bip long à la validation. Tirez un point pour le déplacer, touchez le graphe pour en ajouter un.">
-                                  <BeepCurveEditor value={s.markGuide} overridden={s.isMarkGuideOverridden}
+                                  <BeepCurveEditor value={s.markGuide} overridden={s.isMarkGuideOverridden} fallback={defaultMarkGuideOf(activity)}
                                     approachMs={simulatedApproachMs(family)} speedUnit={s.speedUnit}
                                     onChange={(guide) => setFor(id, 'markGuide', guide)} />
                                 </SettingRow>
@@ -846,9 +844,9 @@ const thresholdHelp = (treatment: Treatment, foil: boolean): string => {
       : 'Vitesse au-dessus de laquelle la planche est sur la vague. Chaque session peut avoir le sien, dans son analyse.';
   }
   if (treatment === 'voile') {
-    return "Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, manœuvres réussies, VMG. Vide, il suit l'allure de chaque session ; celui d'une session, réglé dans son analyse, prime.";
+    return "Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, manœuvres réussies, VMG. Vide, il suit l'allure de chaque session (8 nd d'office en wing et en planche) ; celui d'une session, réglé dans son analyse, prime.";
   }
-  return "Sous cette vitesse, la session est comptée en pause. Celui d'une session, réglé dans son analyse, prime.";
+  return "Sous cette vitesse, la session est comptée à l'arrêt. 0 : aucun seuil, tout le temps enregistré compte, pauses de l'enregistrement ôtées.";
 };
 
 /**
@@ -1012,9 +1010,9 @@ function BikeSettings({ view, onBikeType, onBikeWeight }: {
         </div>
       </SettingRow>
       <SettingRow label="Poids du vélo" helpKey={`${view.activity.id}:poids-velo`}
-        help="Avec le vôtre (Pratiquant), pour la puissance et l'énergie. Vide : celui du type de vélo.">
+        help="Avec le vôtre (Pratiquant), pour la puissance et l'énergie. Vide : celui de l'activité, ou du type de vélo s'il a changé.">
         <NumberField unit="kg" step={0.5} min={3} max={60}
-          value={view.bikeWeight} placeholder={String(spec.bikeKg)} onCommit={onBikeWeight} />
+          value={view.bikeWeight} placeholder={String(defaultBikeKg(view.activity, view.bikeType))} onCommit={onBikeWeight} />
       </SettingRow>
     </>
   );

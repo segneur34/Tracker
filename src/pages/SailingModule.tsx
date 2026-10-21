@@ -184,6 +184,7 @@ function SailingModule() {
     speedUnit,
     distanceUnit,
     activeThresholdKn,
+    hasActiveThreshold,
     defaultActiveThresholdKn,
     speedRange,
     suggestedSpeedRangeMs,
@@ -344,15 +345,22 @@ function SailingModule() {
     (): TrackSegment[] => trackColorSegments(track, 'voile', { minMs: colorRange.minMs, maxMs: colorRange.maxMs }),
     [track, colorRange.minMs, colorRange.maxMs]
   );
-  /** Chiffres de l'onglet « général », proposés aussi pour l'image de partage. */
+  /**
+   * Chiffres de l'onglet « général », proposés aussi pour l'image de partage. Sans seuil (bateau),
+   * toute la session compte en navigation : ni distance, temps, ratio ni moyenne actifs.
+   */
   const generalStats: ShareStat[] = stats ? [
     { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
-    { key: 'activeDistance', label: 'Distance active', value: formatDistance(stats.activeDistanceM, distanceUnit) },
+    ...(hasActiveThreshold ? [{ key: 'activeDistance', label: 'Distance active', value: formatDistance(stats.activeDistanceM, distanceUnit) }] : []),
     { key: 'totalTime', label: 'Temps total', value: stats.totalTime },
-    { key: 'activeTime', label: `Temps actif (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: stats.activeTime },
-    { key: 'activeRatio', label: activeRatioLabel(profile, foil), value: `${stats.activeRatio}%` },
+    ...(hasActiveThreshold ? [
+      { key: 'activeTime', label: `Temps actif (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: stats.activeTime },
+      { key: 'activeRatio', label: activeRatioLabel(profile, foil), value: `${stats.activeRatio}%` },
+    ] : []),
     { key: 'averageSpeed', label: 'Vitesse moyenne', value: formatSpeed(stats.avgSpeedMs, speedUnit) },
-    { key: 'activeAverage', label: `Moyenne active (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: formatSpeed(stats.activeAvgSpeedMs, speedUnit) },
+    ...(hasActiveThreshold ? [
+      { key: 'activeAverage', label: `Moyenne active (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: formatSpeed(stats.activeAvgSpeedMs, speedUnit) },
+    ] : []),
   ] : [];
   const arrowLayers = useMemo(
     () => arrowIndices(trackData, ARROW_EVERY_S).map((index, idx) => {
@@ -1085,6 +1093,7 @@ function SailingModule() {
                       onChange={(next) => changeSessionActivity(sessionFile, next)} />
                   </label>
 
+                  {hasActiveThreshold && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
                     <strong>Seuil d'activité :</strong>
                     <input
@@ -1111,6 +1120,7 @@ function SailingModule() {
                       </Button>
                     )}
                   </label>
+                  )}
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}
                     title="Support sur foil pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">

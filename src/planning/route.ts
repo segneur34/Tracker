@@ -1,6 +1,6 @@
 import { accumulateElevation } from '../core/elevation';
 import { EARTH_RADIUS_M, haversineDistance, initialBearing, toRad } from '../core/kinematics';
-import type { ELEVATION_PRESETS, Treatment } from '../core/sportProfiles';
+import type { Treatment } from '../core/sportProfiles';
 import type { BikeType } from '../cycling/energy';
 import { computeGrades } from '../running/runningAnalytics';
 import { WAY_TYPES, type WayType } from './brouterProfile';
@@ -155,20 +155,15 @@ export const BIKE_WAY_TYPES: Record<BikeType, WayType[]> = {
   vtt: ['sentier', 'piste'],
 };
 
-/** À pied, types de voie cochés d'office selon le terrain de l'activité. */
-export const TERRAIN_WAY_TYPES: Record<keyof typeof ELEVATION_PRESETS, WayType[]> = {
-  route: ['route'],
-  trail: ['sentier', 'piste'],
-};
-
 /**
  * Types de voie cochés d'office en planification pour une activité qui n'en
- * a pas de réglés : selon son type de vélo, ou son terrain à pied ; aucun en
- * voile, où les balises sont reliées en ligne droite.
+ * a pas de réglés ni de pré-réglés (`core/activityPresets.ts`) : selon son
+ * type de vélo, la route à pied ; aucun en voile, où les balises sont
+ * reliées en ligne droite.
  */
-export const presetWayTypes = (treatment: Treatment, bikeType: BikeType, terrain: keyof typeof ELEVATION_PRESETS): WayType[] => {
+export const presetWayTypes = (treatment: Treatment, bikeType: BikeType): WayType[] => {
   if (treatment === 'velo') return BIKE_WAY_TYPES[bikeType];
-  return treatment === 'course' ? TERRAIN_WAY_TYPES[terrain] : [];
+  return treatment === 'course' ? ['route'] : [];
 };
 
 /** Types de voie d'un réglage : connus, dans l'ordre, sans doublon ; `null` si la valeur n'en est pas une liste non vide. */

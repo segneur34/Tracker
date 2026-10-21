@@ -8,12 +8,15 @@ import type { SessionSummary } from './record';
  * Chiffres de l'image de partage tirés du résumé d'une fiche, là où l'analyse
  * n'est pas ouverte (fin d'un enregistrement). Les clés sont celles des
  * onglets « général » des analyses : le choix retenu pour l'activité vaut
- * aux deux endroits ; un chiffre que la session n'a pas vaut « — ».
+ * aux deux endroits ; un chiffre que la session n'a pas vaut « — ». Sans
+ * seuil d'activité (`withActiveThreshold` faux, bateau), la voile n'a ni
+ * distance, temps ni moyenne actifs, comme son onglet « général ».
  */
 export const summaryShareStats = (
   summary: SessionSummary,
   treatment: Treatment,
-  units: { speed: SpeedUnit; distance: DistanceUnit }
+  units: { speed: SpeedUnit; distance: DistanceUnit },
+  withActiveThreshold = true
 ): ShareStat[] => {
   const totalS = Math.max((summary.endMs - summary.startMs) / 1000, 0);
   const movingS = summary.movingTimeS;
@@ -23,6 +26,7 @@ export const summaryShareStats = (
   const per = (m: number | null, s: number | null) => (m === null || s === null || s <= 0 ? null : m / s);
 
   if (treatment === 'voile') {
+    const active = new Set(['activeDistance', 'activeTime', 'activeAverage']);
     return [
       { key: 'distance', label: 'Distance', value: distance },
       { key: 'activeDistance', label: 'Distance active', value: movingM === null ? '—' : formatDistance(movingM, units.distance) },
@@ -32,7 +36,7 @@ export const summaryShareStats = (
       { key: 'activeAverage', label: 'Moyenne active', value: speed(per(movingM, movingS)) },
       { key: 'maxSpeed', label: 'Vitesse max', value: speed(summary.maxSpeedMs) },
       { key: 'maneuvers', label: 'Manœuvres', value: summary.maneuverCount === undefined ? '—' : String(summary.maneuverCount) },
-    ];
+    ].filter((stat) => withActiveThreshold || !active.has(stat.key));
   }
   if (treatment === 'surf') {
     return [

@@ -1,5 +1,6 @@
 import { zoneOf } from '../core/heartRate';
-import type { Treatment } from '../core/sportProfiles';
+import { sportTreatment, type Treatment } from '../core/sportProfiles';
+import type { SportType } from '../core/types';
 import {
   J_PER_KCAL, formatClock, formatDistance, formatShortDistance, formatSpeed, formatTimeOfDay, isInverseUnit, type DistanceUnit, type SpeedUnit,
 } from '../core/units';
@@ -70,6 +71,18 @@ export const DEFAULT_LIVE_FIELDS: Record<Treatment, LiveFieldKey[]> = {
   surf: ['speed', 'max', 'duration'],
 };
 
+/**
+ * Lignes propres à un calcul, avant celles de son traitement : en bateau
+ * (21/10), vitesse, moyenne, distance et cap.
+ */
+const SPORT_LIVE_FIELDS: Partial<Record<SportType, LiveFieldKey[]>> = {
+  bateau: ['speed', 'average', 'distance', 'heading'],
+};
+
+/** Lignes d'un calcul à défaut de choix : les siennes, sinon celles de son traitement. */
+export const defaultLiveFieldsOf = (sport: SportType): LiveFieldKey[] =>
+  SPORT_LIVE_FIELDS[sport] ?? DEFAULT_LIVE_FIELDS[sportTreatment(sport)];
+
 /** Chiffres de la notification de l'enregistrement au plus : écran verrouillé, Android coupe la ligne au-delà de deux. */
 export const MAX_NOTIFICATION_FIELDS = 2;
 
@@ -80,6 +93,13 @@ export const DEFAULT_NOTIFICATION_FIELDS: Record<Treatment, LiveFieldKey[]> = {
   velo: ['speed', 'distance'],
   surf: ['speed', 'distance'],
 };
+
+/** Chiffres de la notification propres à un calcul, avant ceux de son traitement ; aucun pour l'instant. */
+const SPORT_NOTIFICATION_FIELDS: Partial<Record<SportType, LiveFieldKey[]>> = {};
+
+/** Chiffres de la notification d'un calcul à défaut de choix : les siens, sinon ceux de son traitement. */
+export const defaultNotificationFieldsOf = (sport: SportType): LiveFieldKey[] =>
+  SPORT_NOTIFICATION_FIELDS[sport] ?? DEFAULT_NOTIFICATION_FIELDS[sportTreatment(sport)];
 
 const isLiveFieldKey = (value: unknown): value is LiveFieldKey =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(LIVE_FIELD_TREATMENTS, value);

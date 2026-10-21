@@ -2,12 +2,12 @@ import { sessionActivity, type Activity } from '../core/activities';
 import type { SessionMark } from '../core/sessionMarks';
 import type { SpeedRangeMs } from '../core/speedGradient';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
-import { normalizeDeg, type SessionAnalysis, type SessionRecord, type SessionTerrain, type StoredSessionNotes } from './record';
+import { normalizeDeg, type SessionAnalysis, type SessionRecord, type StoredSessionNotes } from './record';
 
 /**
  * Ce que l'utilisateur change sur une session dans le module d'analyse : vent
  * saisi, seuil d'activité, allure imposée, couleurs de la trace, seuil
- * d'effort du fractionné, foil, pumping, seuil de vague en foil (surf), terrain, poids
+ * d'effort du fractionné, foil, pumping, seuil de vague en foil (surf), poids
  * du vélo et charge portée, notes, repères du bouton « Note » (nommés ou supprimés). Les changements restent en brouillon jusqu'à
  * « Enregistrer la session », qui les écrit dans la fiche.
  */
@@ -29,8 +29,6 @@ export interface SessionEdits {
   pumping: boolean | null;
   /** Seuil de vague en foil de la session (surf), dans l'unité du profil ; `null` : celui du profil. */
   waveThreshold: number | null;
-  /** Terrain du dénivelé pour la session ; `null` : celui de l'activité. */
-  terrain: SessionTerrain | null;
   /** Poids du vélo et des bagages, en kg ; `null` : celui de l'activité. */
   bikeWeightKg: number | null;
   /** Charge portée en course, en kg ; `null` : celle de l'activité. */
@@ -88,7 +86,6 @@ export const savedEdits = (record: SessionRecord | null, gear: StoredSessionNote
     foil: record?.analysis?.foil ?? null,
     pumping: record?.analysis?.pumping ?? null,
     waveThreshold: record?.analysis?.waveThreshold ?? null,
-    terrain: record?.analysis?.terrain ?? null,
     bikeWeightKg: record?.analysis?.bikeWeightKg ?? null,
     loadKg: record?.analysis?.loadKg ?? null,
     marks: record?.marks ?? NO_MARKS,
@@ -100,7 +97,7 @@ const NO_MARKS: SessionMark[] = [];
 const pickNotes = (notes: SailingSessionNotes): SailingSessionNotes =>
   Object.fromEntries(NOTE_FIELDS.map((field) => [field, notes[field]])) as unknown as SailingSessionNotes;
 
-export type EditedPart = 'vent' | 'seuil' | 'allure' | 'couleurs' | 'effort' | 'foil' | 'pumping' | 'vague' | 'terrain' | 'charge' | 'notes' | 'reperes';
+export type EditedPart = 'vent' | 'seuil' | 'allure' | 'couleurs' | 'effort' | 'foil' | 'pumping' | 'vague' | 'charge' | 'notes' | 'reperes';
 
 /** Nom de chaque partie, tel que l'écran l'annonce. */
 export const EDITED_PART_LABEL: Record<EditedPart, string> = {
@@ -112,7 +109,6 @@ export const EDITED_PART_LABEL: Record<EditedPart, string> = {
   foil: 'foil',
   pumping: 'pumping',
   vague: 'seuil de vague',
-  terrain: 'terrain',
   charge: 'charge',
   notes: 'notes',
   reperes: 'repères',
@@ -138,7 +134,6 @@ export const changedParts = (saved: SessionEdits, edits: SessionEdits): EditedPa
   if (saved.foil !== edits.foil) parts.push('foil');
   if (saved.pumping !== edits.pumping) parts.push('pumping');
   if (saved.waveThreshold !== edits.waveThreshold) parts.push('vague');
-  if (saved.terrain !== edits.terrain) parts.push('terrain');
   if (saved.bikeWeightKg !== edits.bikeWeightKg || saved.loadKg !== edits.loadKg) parts.push('charge');
   if (!sameNotes(saved.notes, edits.notes)) parts.push('notes');
   if (!sameMarks(saved.marks, edits.marks)) parts.push('reperes');
@@ -173,7 +168,6 @@ export const editsPatch = (record: SessionRecord, saved: SessionEdits, edits: Se
       foil: edits.foil,
       pumping: edits.pumping,
       waveThreshold: edits.waveThreshold,
-      terrain: edits.terrain,
       bikeWeightKg: edits.bikeWeightKg,
       loadKg: edits.loadKg,
       savedAt: now,

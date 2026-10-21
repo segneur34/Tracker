@@ -5,14 +5,14 @@ import { referenceSpeedMs, samplingIntervalS, sessionFilterThresholds } from '..
 import {
   MIN_ELEVATION_COVERAGE,
   buildCumulativeTrack,
-  computeActivityMask,
   computeActiveDistanceM,
   computeActiveTimeMs,
+  thresholdActivityMask,
 } from '../core/sessionStats';
-import { SAILING_SPORTS, defaultActiveThresholdOf, getActiveThresholds, getSportProfile, type ElevationProfile, type HeartRateProfile } from '../core/sportProfiles';
+import { SAILING_SPORTS, defaultActiveThresholdOf, getSportProfile, type ElevationProfile, type HeartRateProfile } from '../core/sportProfiles';
 import type { RawTrackPoint, SportType, TrackPoint } from '../core/types';
 import { applyTerrainElevation, type TerrainSamples } from '../core/terrainElevation';
-import { fromDisplaySpeed, msToKnots } from '../core/units';
+import { msToKnots } from '../core/units';
 import { suggestActiveThresholdKn } from '../sailing/sailingConfig';
 import { runSurfSession, surfProfileOf } from '../surfing/surfSession';
 import { SUMMARY_CALC_VERSION, type SessionSummary, type SummaryCadence, type SummaryHeartRate } from './record';
@@ -137,12 +137,8 @@ const analyze = (
       },
     };
   }
-  const { enter, exit } = getActiveThresholds(profile, threshold);
-  const mask = computeActivityMask(track, {
-    enterThresholdMs: fromDisplaySpeed(enter, profile.thresholdUnit),
-    exitThresholdMs: fromDisplaySpeed(exit, profile.thresholdUnit),
-    minStateDurationS: profile.minStateDurationS,
-  });
+  // Sans seuil (bateau, ou seuil à 0) : toute la session compte en action, pauses de l'enregistrement ôtées.
+  const mask = thresholdActivityMask(track, profile, threshold);
   return { track, movingTimeS: computeActiveTimeMs(track, mask) / 1000, movingDistanceM: computeActiveDistanceM(track, mask), mask };
 };
 

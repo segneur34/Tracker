@@ -110,10 +110,46 @@ describe('summarizeSession', () => {
     expect(wing.movingDistanceM! / wing.movingTimeS!).toBeCloseTo(10.3, 0);
   });
 
+  it('compte toute une session bateau en navigation, sans seuil, bords lents compris', () => {
+    // 10 min à 4 nœuds, 5 min à 0,5 nœud : rien n'est écarté, même un seuil imposé.
+    const raw = buildTrack([[600, 2.06], [300, 0.26]]);
+    for (const summary of [summarizeSession(raw, 'bateau')!, summarizeSession(raw, 'bateau', { activeThreshold: 3 })!]) {
+      expect(summary.movingTimeS).toBeCloseTo((summary.endMs - summary.startMs) / 1000, 5);
+      expect(summary.movingDistanceM).toBeCloseTo(summary.distanceM, 5);
+    }
+  });
+
   it('suit un seuil imposé', () => {
     // À 10,8 km/h, un seuil de 12 km/h ne voit jamais la session en mouvement.
     const summary = summarizeSession(buildTrack([[600, 3]]), 'running', { activeThreshold: 12 })!;
     expect(summary.movingTimeS).toBe(0);
+  });
+
+  it('sans seuil (réglé à 0), compte toute la session en mouvement', () => {
+    const summary = summarizeSession(buildTrack([[600, 3], [300, 0]]), 'running', { activeThreshold: 0 })!;
+    expect(summary.movingTimeS).toBeCloseTo(900, 5);
+    expect(summary.movingDistanceM).toBeCloseTo(summary.distanceM, 5);
+  });
+
+  it("ne compte ni la distance ni le temps en mouvement d'une pause de l'enregistrement, à 1 Hz comme à 5 Hz", () => {
+    // 5 min à 3 m/s, pause de 10 min (un second `<trkseg>`), 5 min à 3 m/s ; vitesse Doppler sur chaque point,
+    // celle de la reprise comprise : intégrée sur la pause, elle ajoutait 1 800 m (bug du 17/10).
+    const paused = (hz: number): RawTrackPoint[] => {
+      const pauseStart = START_MS + 300_000;
+      const pauseEnd = START_MS + 900_000;
+      return buildTrack([[300, 3], [600, 0], [300, 3]], hz)
+        .filter((p) => Date.parse(p.time as string) <= pauseStart || Date.parse(p.time as string) >= pauseEnd)
+        .map((p) => ({ ...p, speedMs: 3, ...(Date.parse(p.time as string) === pauseEnd ? { segmentStart: true as const } : {}) }));
+    };
+    for (const hz of [1, 5]) {
+      for (const activeThreshold of [0, undefined]) {
+        const summary = summarizeSession(paused(hz), 'running', { activeThreshold })!;
+        expect(summary.distanceM).toBeCloseTo(1800, -1);
+        expect(summary.movingTimeS!).toBeGreaterThan(590);
+        expect(summary.movingTimeS!).toBeLessThan(601);
+        expect(summary.endMs - summary.startMs).toBe(1_200_000);
+      }
+    }
   });
 
   it('donne le même résumé à 1 Hz et à 5 Hz', () => {

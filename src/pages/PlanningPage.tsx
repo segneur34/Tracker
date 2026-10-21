@@ -43,7 +43,7 @@ import { getLastFix, useRecorder } from '../hooks/useRecorder';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  effectiveDistanceUnit, effectiveDurationSettings, effectiveElevationProfile, effectiveGradeRange, effectiveLoopReturnRatio, effectiveMarkGuide,
+  effectiveDistanceUnit, effectiveDurationSettings, effectiveGradeRange, effectiveLoopReturnRatio, effectiveMarkGuide,
   effectivePace, effectiveSpeedUnit, effectiveWayTypes, lastRecordActivity, useVisibility, PLANNING_FAMILIES,
 } from '../hooks/useSportSettings';
 import { ROUTES_DIR } from '../library/folderLayout';
@@ -283,7 +283,7 @@ function PlanningPage() {
   /** Parcours de balises (voile, surf) : balises numérotées, tronçons en ligne droite, bloc « Parcours » au lieu du dénivelé. */
   const markCourse = activity !== null && usesMarkCourse(activityFamily(activity));
   const distanceUnit = activity ? effectiveDistanceUnit(activity) : 'km';
-  const minGainM = (activity ? effectiveElevationProfile(activity) : ELEVATION_PRESETS.route).minGainM;
+  const minGainM = ELEVATION_PRESETS.route.minGainM;
   const gradeRange = useMemo(() => (activity ? effectiveGradeRange(activity) : null), [activity]);
   const color = safeColor(activity?.color ?? FALLBACK_COLOR);
   /** Famille de l'activité planifiée : son fond de carte, celui de ses analyses. */

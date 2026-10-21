@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { FAMILY_LABEL, type Activity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
 import { shareableStats } from '../core/shareImage';
-import { sportFamily, sportTreatment } from '../core/sportProfiles';
+import { getSportProfile, hasActiveThreshold, sportFamily, sportTreatment } from '../core/sportProfiles';
 import { coloredSegments } from '../core/trackColor';
 import { librarySession } from '../hooks/useSessionLibrary';
 import { effectiveDistanceUnit, effectiveSpeedUnit } from '../hooks/useSportSettings';
@@ -62,7 +62,7 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
           title: labels.title,
           subtitle: labels.subtitle,
           fileName: safeFileName(labels.baseName),
-          stats: shareableStats(summaryShareStats(summary, sportTreatment(sport), units)),
+          stats: shareableStats(summaryShareStats(summary, sportTreatment(sport), units, hasActiveThreshold(getSportProfile(sport)))),
         },
       });
     } catch (err) {

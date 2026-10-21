@@ -1,12 +1,12 @@
 import { useSyncExternalStore } from 'react';
-import { sessionActivity } from '../core/activities';
+import { baseActivity, sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
 import { decodeImuHeader } from '../core/imuFile';
 import { pruneImuFile } from '../core/imuPrune';
 import { JUMPS_CALC_VERSION } from '../core/jumps';
 import { pruneSurfImu } from '../surfing/pumping';
 import type { SessionMark } from '../core/sessionMarks';
-import { ELEVATION_PRESETS, SAILING_SPORTS, getSportProfile, isLandTreatment, sportTreatment } from '../core/sportProfiles';
+import { SAILING_SPORTS, getSportProfile, isLandTreatment, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
   MARKER_FILE,
@@ -87,7 +87,7 @@ import { isNativeApp } from '../platform/runtime';
 import { jsonStore } from '../platform/storage';
 import type { IntervalSeries } from '../recording/intervalTimer';
 import { sessionFileName } from '../recording/session';
-import { effectiveFoil, isKnownTerrain, readStoredActivities, readStoredSettings } from './useSportSettings';
+import { effectiveFoil, effectiveThresholdOverride, readStoredActivities } from './useSportSettings';
 
 /**
  * Bibliothèque des sessions : la mémoire de l'application, tenue dans un
@@ -340,19 +340,15 @@ const summaryOptions = (
   elevation?: SessionElevation | null
 ): SummaryOptions => {
   if (sport === null) return {};
-  const stored = readStoredSettings();
-  const activity = sessionActivity(readStoredActivities(), activityId, sport);
-  const key = activity?.id ?? sport;
-  // Le terrain de la session prime sur celui de son activité.
-  const terrain = analysis?.terrain ?? stored.terrains?.[key];
+  const activity = sessionActivity(readStoredActivities(), activityId, sport) ?? baseActivity(sport);
   return {
-    activeThreshold: analysis?.activeThreshold ?? stored.thresholds?.[key],
+    // Le seuil de la session, sinon celui réglé ou pré-réglé pour son activité (0 : aucun seuil).
+    activeThreshold: analysis?.activeThreshold ?? effectiveThresholdOverride(activity),
     referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? analysis?.referenceSpeedMs ?? undefined : undefined,
-    elevation: isKnownTerrain(terrain) ? ELEVATION_PRESETS[terrain] : undefined,
     terrainElevation:
       isLandTreatment(sportTreatment(sport)) && elevation?.elevationSource !== 'gps' ? elevation?.terrainElevation : undefined,
     // Surf : le foil de la session, sinon celui de son activité ; son seuil de vague en foil.
-    foil: analysis?.foil ?? (activity ? effectiveFoil(activity) ?? undefined : undefined),
+    foil: analysis?.foil ?? effectiveFoil(activity) ?? undefined,
     waveThreshold: analysis?.waveThreshold ?? undefined,
   };
 };

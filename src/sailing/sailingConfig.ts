@@ -115,11 +115,7 @@ export const sessionManeuverThresholds = (
 /** Allure de session, en nœuds, au-dessus de laquelle une session est tenue pour rapide. */
 export const FAST_SESSION_REFERENCE_KN = 12;
 
-/**
- * Seuil d'activité suggéré, en nœuds, pour une session lente — et pour le
- * bateau quelle que soit son allure, dont le défaut de profil (3 nds) reste
- * trop haut pour compter la session presque entière comme active.
- */
+/** Seuil d'activité suggéré, en nœuds, pour une session lente. */
 export const SLOW_SESSION_ACTIVE_THRESHOLD_KN = 1;
 
 /** Marge, en nœuds, ajoutée au pic de vitesse pour suggérer la borne haute de couleur. */
@@ -131,17 +127,13 @@ export const SPEED_RANGE_MAX_MARGIN_KN = 1;
  * Au-dessus de `FAST_SESSION_REFERENCE_KN`, la session a globalement volé ou
  * plané : le seuil du profil du support reste pertinent. En dessous, exiger
  * ce même seuil écarterait la session presque entière (§10, point 27) : le
- * seuil retombe à `SLOW_SESSION_ACTIVE_THRESHOLD_KN`. Le bateau n'a pas de
- * régime rapide propre — son allure dépasse rarement ce seuil, et son défaut
- * de profil est de toute façon trop haut — il retombe donc lui aussi à
- * `SLOW_SESSION_ACTIVE_THRESHOLD_KN`.
+ * seuil retombe à `SLOW_SESSION_ACTIVE_THRESHOLD_KN`. Le bateau, sans seuil
+ * depuis le 21/10, n'en a pas l'usage (`withoutActiveThreshold`).
  */
 export const suggestActiveThresholdKn = (sport: SportType, referenceSpeedKn: number): number => {
   const profile = SPORT_PROFILES[sport];
   if (!(referenceSpeedKn > 0)) return profile.defaultActiveThreshold;
-  if (referenceSpeedKn > FAST_SESSION_REFERENCE_KN && sport !== 'bateau') {
-    return profile.defaultActiveThreshold;
-  }
+  if (referenceSpeedKn > FAST_SESSION_REFERENCE_KN) return profile.defaultActiveThreshold;
   return SLOW_SESSION_ACTIVE_THRESHOLD_KN;
 };
 
@@ -162,7 +154,8 @@ const maxWindowSpeedMs = (track: TrackPoint[], cum: CumulativeTrack): number | n
  * Bornes de couleur suggérées, en m/s, à partir de l'allure de la session :
  * borne basse alignée sur le seuil d'activité suggéré, borne haute au pic de
  * vitesse sur 2 s plus une marge. Repli sur `DEFAULT_SAILING_SPEED_RANGE_MS`
- * si la trace est trop courte pour mesurer ce pic.
+ * si la trace est trop courte pour mesurer ce pic. Un calcul aux bornes fixes
+ * (bateau, de 1 à 15 nœuds) garde les siennes, quelle que soit la session.
  */
 export const suggestSpeedRangeMs = (
   sport: SportType,
@@ -170,6 +163,8 @@ export const suggestSpeedRangeMs = (
   track: TrackPoint[],
   cum: CumulativeTrack
 ): SpeedRangeMs => {
+  const fixed = SPORT_PROFILES[sport].speedRange;
+  if (fixed) return fixed;
   const peakMs = maxWindowSpeedMs(track, cum);
   if (peakMs === null) return DEFAULT_SAILING_SPEED_RANGE_MS;
   return {

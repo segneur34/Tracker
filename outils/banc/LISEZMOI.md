@@ -279,6 +279,14 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - à 390×844 : bouton présent, rien ne déborde, un toucher sur le bouton n'ouvre pas le plein écran, la vue agrandie suit le fond avec son bouton.
 
   Il finit par « Tout passe. » ou le nombre d'échecs.
+- `prereglages.mjs <port> [<dossier des captures>]` : pré-réglages du bateau, puis de tous les sports hors surf (demandes du 21/10), sur un profil neuf, sans réseau, environ 1 min. Le script écrit dans `localStorage` des réglages d'avant (bateau, Voile, Course, kite), puis il vérifie :
+  - la mise à jour au démarrage : ceux du bateau, de la Voile et de la Course effacés une fois, l'unité du bateau et ceux du kite gardés, `presetsVersion` à 2 ;
+  - Réglages : le bateau colore de 1 à 15 nd, avec une pause sous 0,2 km/h pendant 60 s, ses chiffres et aucune ligne « Seuil d'activité » ; la Voile à 8 nd (seuil, couleurs de 8 à 24) ; Course, Route, Gravel, VTT et les deux fractionnés « aucun seuil », la Marche à 0,5 km/h ; leurs couleurs, leur pause et le poids du vélo pré-réglés ; plus de ligne « Terrain » ; aucune carte « modifié » ;
+  - deux allers-retours lents importés par la page, l'un en bateau, l'autre en Voile : le résumé du bateau compte toute la session en navigation, son « général » n'a ni chiffres actifs ni ratio, et son onglet réglages n'a pas de seuil ; la Voile les garde ;
+  - une course de deux `<trkseg>` séparés par 10 min de pause, vitesse Doppler comprise : 1,80 km et 10 min en mouvement sur 20, dans la fiche et dans l'analyse (bug du 17/10) ;
+  - un réglage du bateau fait après la mise à jour, qui reste au rechargement.
+
+  Sur un profil déjà servi, le fichier de réglages du dossier mémoire reprend la place des valeurs écrites : il faut prendre un profil neuf à chaque passage.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

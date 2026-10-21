@@ -33,6 +33,11 @@ export interface RawTrackPoint {
   hr?: number;
   /** Cadence, si présente. */
   cadence?: number;
+  /**
+   * Premier point d'un `<trkseg>` après le premier : la trace reprend après une
+   * pause de l'enregistrement. Le pas qui y mène n'est ni parcouru ni en action.
+   */
+  segmentStart?: true;
 }
 
 /** Origine de la vitesse retenue pour un point. */
@@ -58,6 +63,8 @@ export interface TrackPoint {
   courseDeg?: number;
   /** D'où vient `speedMs`. */
   speedSource: SpeedSource;
+  /** Reprise après une pause de l'enregistrement (`RawTrackPoint.segmentStart`). */
+  segmentStart?: true;
 }
 
 /** Meilleur segment sur une cible de temps ou de distance. */

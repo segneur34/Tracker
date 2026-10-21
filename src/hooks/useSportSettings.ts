@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
-  ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, MARCHE_ACTIVITY, SURF_FOIL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
+  ACTIVITIES_VERSION, FAMILY_BASE, SURF_FOIL_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
   isActivityShown, newActivityId, insertActivity, readActivities, upgradeActivities, visibleActivities, visibleFamilies, withHidden, type Activity,
 } from '../core/activities';
 import type { ActivityIconId } from '../core/activityIcons';
+import { DEFAULT_INTERVAL_PRESETS, PRESET_BASES, presetOf } from '../core/activityPresets';
 import {
-  ELEVATION_PRESETS, LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, defaultActiveThresholdOf, getSportProfile, sportTreatment, type ElevationProfile,
+  LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, defaultActiveThresholdOf, getSportProfile,
   type RecordingProfile, type SportFamily, type Treatment,
 } from '../core/sportProfiles';
 import { sanitizeTabChoices, type TabChoices } from '../core/analysisTabs';
@@ -18,14 +19,14 @@ import {
   type IntervalPreset, type IntervalWorkout,
 } from '../recording/intervalTimer';
 import {
-  DEFAULT_LIVE_FIELDS, DEFAULT_NOTIFICATION_FIELDS, MAX_NOTIFICATION_FIELDS, sanitizeLiveFields, type LiveFieldKey,
+  MAX_NOTIFICATION_FIELDS, defaultLiveFieldsOf, defaultNotificationFieldsOf, sanitizeLiveFields, type LiveFieldKey,
 } from '../recording/liveFields';
 import { MARK_GUIDE_DEFAULTS, sanitizeMarkGuide, type MarkGuideSettings } from '../recording/markGuide';
 import { defaultJumpSettings, sanitizeJumpSettings, type JumpSettings } from '../recording/jumpSettings';
 import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, isValidBikeWeight, type BikeType } from '../cycling/energy';
 import { isValidCarriedLoad } from '../running/energy';
 import { DEFAULT_CYCLING_GRADE_RANGE, DEFAULT_CYCLING_SPEED_RANGE_MS } from '../cycling/cyclingConfig';
-import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, DEFAULT_WALK_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
+import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
 import { DEFAULT_SAILING_SPEED_RANGE_MS } from '../sailing/sailingConfig';
 import { DEFAULT_SURF_SPEED_RANGE_MS } from '../surfing/surfConfig';
 import {
@@ -34,13 +35,6 @@ import {
 } from '../planning/duration';
 import type { WayType } from '../planning/brouterProfile';
 import { presetWayTypes, sanitizeWayTypes } from '../planning/route';
-
-export type TerrainType = keyof typeof ELEVATION_PRESETS;
-
-export const TERRAIN_LABEL: Record<TerrainType, string> = {
-  route: 'Route / chemin roulant',
-  trail: 'Trail / montagne',
-};
 
 /** Unités d'affichage proposées selon le traitement du calcul. */
 export const SAILING_UNITS: SpeedUnit[] = ['kn', 'kmh', 'ms'];
@@ -63,13 +57,64 @@ export const TREATMENT_SPEED_RANGE_MS: Record<Treatment, SpeedRangeMs> = {
   surf: DEFAULT_SURF_SPEED_RANGE_MS,
 };
 
-/** Bornes de couleur d'une activité à défaut de réglage : celles de la Marche de départ pour elle, sinon celles du traitement. */
+/**
+ * Bornes de couleur d'une activité à défaut de réglage : celles de son pré-réglage
+ * (`core/activityPresets.ts`), sinon celles de son calcul s'il en a de fixes (bateau),
+ * sinon celles du traitement.
+ */
 export const defaultSpeedRangeOf = (activity: Activity): SpeedRangeMs =>
-  activity.id === MARCHE_ACTIVITY.id ? DEFAULT_WALK_SPEED_RANGE_MS : TREATMENT_SPEED_RANGE_MS[activityTreatment(activity)];
+  presetOf(activity).speedRangeMs ?? getSportProfile(activity.base).speedRange ?? TREATMENT_SPEED_RANGE_MS[activityTreatment(activity)];
 
-/** Bornes de la couleur de pente à défaut de réglage. */
-export const defaultGradeRange = (sport: SportType): GradeRange =>
-  sportTreatment(sport) === 'velo' ? DEFAULT_CYCLING_GRADE_RANGE : DEFAULT_GRADE_RANGE;
+/**
+ * Voile : les couleurs suivent l'allure de chaque session tant que ni le
+ * pré-réglage ni le calcul (bateau) n'en fixent ; le seuil de même.
+ */
+export const rangeFollowsPace = (activity: Activity): boolean =>
+  activityTreatment(activity) === 'voile' && presetOf(activity).speedRangeMs === undefined && getSportProfile(activity.base).speedRange === null;
+
+export const thresholdFollowsPace = (activity: Activity): boolean =>
+  activityTreatment(activity) === 'voile' && presetOf(activity).threshold === undefined;
+
+/** Bornes de la couleur de pente à défaut de réglage : celles du pré-réglage, sinon celles du traitement. */
+export const defaultGradeRange = (activity: Activity): GradeRange =>
+  presetOf(activity).gradeRange ?? (activityTreatment(activity) === 'velo' ? DEFAULT_CYCLING_GRADE_RANGE : DEFAULT_GRADE_RANGE);
+
+/** Seuil d'activité à défaut de réglage, dans l'unité du profil : celui du pré-réglage (0 : aucun), sinon celui du calcul. */
+export const defaultThresholdOf = (activity: Activity, foil: boolean): number =>
+  presetOf(activity).threshold ?? defaultActiveThresholdOf(getSportProfile(activity.base), foil);
+
+/** Unité de vitesse à défaut de réglage. */
+export const defaultSpeedUnitOf = (activity: Activity): SpeedUnit =>
+  presetOf(activity).speedUnit ?? getSportProfile(activity.base).speedUnit;
+
+/** Pause automatique à défaut de réglage (m/s, secondes). */
+export const defaultAutoPauseOf = (activity: Activity): { speedMs: number; delayS: number } => {
+  const { recording } = getSportProfile(activity.base);
+  return presetOf(activity).autoPause ?? { speedMs: recording.autoPauseSpeedMs, delayS: recording.autoPauseDelayS };
+};
+
+/** Chiffres du direct à défaut de réglage. */
+export const defaultLiveFieldsFor = (activity: Activity): LiveFieldKey[] =>
+  presetOf(activity).liveFields ?? defaultLiveFieldsOf(activity.base);
+
+/** Chiffres de la notification à défaut de réglage. */
+export const defaultNotificationFieldsFor = (activity: Activity): LiveFieldKey[] =>
+  presetOf(activity).notificationFields ?? defaultNotificationFieldsOf(activity.base);
+
+/** Bips d'approche des balises à défaut de réglage. */
+export const defaultMarkGuideOf = (activity: Activity): MarkGuideSettings => presetOf(activity).markGuide ?? MARK_GUIDE_DEFAULTS;
+
+/** Ceinture cardio à défaut de réglage. */
+export const defaultHeartRateOf = (activity: Activity): boolean => presetOf(activity).heartRate ?? false;
+
+/** Pas d'altitude du terrain à défaut de réglage, `null` en voile et en surf. */
+export const defaultTerrainStepOf = (activity: Activity): number | null => {
+  const profileStep = getSportProfile(activity.base).terrainElevationStepM;
+  return profileStep === null ? null : presetOf(activity).terrainStepM ?? profileStep;
+};
+
+/** Onglets à défaut de réglage : ceux du pré-réglage, `null` : ceux du module. */
+const defaultTabsOf = (activity: Activity): TabChoices | null => sanitizeTabChoices(presetOf(activity).tabs);
 
 /**
  * Réglages par activité (`core/activities.ts`) : unité, seuil d'activité,
@@ -97,12 +142,12 @@ export interface StoredSettings {
   activities?: Activity[];
   /** Version de la liste des activités (`ACTIVITIES_VERSION`) ; absente : 1. */
   activitiesVersion?: number;
+  /** Version des pré-réglages (`PRESETS_VERSION`) des réglages écrits ; absente : 0. */
+  presetsVersion?: number;
   /** Familles cachées dans Réglages (§10, point 100) : ni proposées, ni listées ; rien n'est effacé. */
   hiddenFamilies?: SportFamily[];
-  /** Surcharges du seuil d'activité, dans l'unité du profil du calcul. */
+  /** Surcharges du seuil d'activité, dans l'unité du profil du calcul ; 0 : aucun seuil. */
   thresholds?: ByActivity<number>;
-  /** Terrain retenu pour le dénivelé. */
-  terrains?: ByActivity<TerrainType>;
   /** Pas des échantillons d'altitude du terrain (IGN), en mètres (course, vélo) ; absent : celui du profil. */
   terrainSteps?: ByActivity<number>;
   /** Unité d'affichage des vitesses. */
@@ -115,9 +160,9 @@ export interface StoredSettings {
   gradeRanges?: ByActivity<GradeRange>;
   /** Surcharge de la pause automatique à l'enregistrement. */
   autoPause?: ByActivity<{ speedMs: number; delayS: number }>;
-  /** Chiffres en grand de l'enregistrement, carte réduite ; absents : ceux de la famille. */
+  /** Chiffres en grand de l'enregistrement, carte réduite ; absents : ceux du calcul (`defaultLiveFieldsOf`). */
   liveFields?: ByActivity<LiveFieldKey[]>;
-  /** Chiffres de la notification de l'enregistrement, écran verrouillé ; absents : `DEFAULT_NOTIFICATION_FIELDS`. */
+  /** Chiffres de la notification de l'enregistrement, écran verrouillé ; absents : ceux du calcul (`defaultNotificationFieldsOf`). */
   notificationFields?: ByActivity<LiveFieldKey[]>;
   /** Bips d'approche des balises (voile) : courbe et vibration ; absent : `MARK_GUIDE_DEFAULTS`. */
   markGuide?: ByActivity<MarkGuideSettings>;
@@ -174,18 +219,48 @@ const isValidLongPress = (value: unknown): value is number =>
 const isValidStopHold = (value: unknown): value is number =>
   value === 0 || (typeof value === 'number' && isFinite(value) && value >= 500 && value <= 10_000);
 
-export const isKnownTerrain = (value: unknown): value is TerrainType =>
-  typeof value === 'string' && value in ELEVATION_PRESETS;
-
 export const isTerrainStep = (value: unknown): value is number =>
   typeof value === 'number' && (TERRAIN_STEP_CHOICES_M as readonly number[]).includes(value);
 
-/** Pas d'altitude du terrain : celui réglé, sinon celui du profil ; `null` en voile. */
+/** Pas d'altitude du terrain : celui réglé, sinon son défaut ; `null` en voile. */
 const resolveTerrainStepM = (stored: StoredSettings, activity: Activity): number | null => {
-  const profileStep = getSportProfile(activity.base).terrainElevationStepM;
-  if (profileStep === null) return null;
+  const fallback = defaultTerrainStepOf(activity);
+  if (fallback === null) return null;
   const step = stored.terrainSteps?.[activity.id];
-  return isTerrainStep(step) ? step : profileStep;
+  return isTerrainStep(step) ? step : fallback;
+};
+
+/** Seuil fixé pour une activité, réglé ou pré-réglé ; `null` : le défaut du calcul (en voile, la suggestion selon l'allure). */
+const resolveThresholdOverride = (stored: StoredSettings, activity: Activity): number | null =>
+  stored.thresholds?.[activity.id] ?? presetOf(activity).threshold ?? null;
+
+/** Seuil fixé pour une activité, hors composant (résumés de la bibliothèque) ; `undefined` sans réglage ni pré-réglage. */
+export const effectiveThresholdOverride = (activity: Activity): number | undefined =>
+  resolveThresholdOverride(readStoredSettings(), activity) ?? undefined;
+
+/**
+ * Bornes de couleur fixes d'une activité : celles réglées, sinon celles de son
+ * pré-réglage ; `null` sans l'un ni l'autre (le défaut du module, en voile la
+ * suggestion selon l'allure).
+ */
+const resolveSpeedRange = (stored: StoredSettings, activity: Activity): SpeedRangeMs | null => {
+  const range = stored.speedRanges?.[activity.id];
+  return range && isValidSpeedRange(range) ? range : presetOf(activity).speedRangeMs ?? null;
+};
+
+/** Bornes de couleur fixes d'une activité, hors composant (vignettes). */
+export const activitySpeedRange = (activity: Activity): SpeedRangeMs | null => resolveSpeedRange(readStoredSettings(), activity);
+
+/** Unité de vitesse d'une activité : celle réglée, sinon son défaut. */
+const resolveSpeedUnit = (stored: StoredSettings, activity: Activity): SpeedUnit => {
+  const unit = stored.speedUnits?.[activity.id];
+  return isKnownSpeedUnit(unit) ? unit : defaultSpeedUnitOf(activity);
+};
+
+/** Bornes de la couleur de pente : celles réglées, sinon leur défaut. */
+const resolveGradeRange = (stored: StoredSettings, activity: Activity): GradeRange => {
+  const range = stored.gradeRanges?.[activity.id];
+  return range && isValidGradeRange(range) ? range : defaultGradeRange(activity);
 };
 
 /** Intitulés des champs de matériel des notes à défaut de réglage. */
@@ -250,7 +325,34 @@ export const readStoredSettings = (): StoredSettings => {
   return settings;
 };
 
-const writeStored = (settings: StoredSettings): void => jsonStore.write(STORAGE_KEY, settings);
+/**
+ * Version des pré-réglages. 1 (21/10) : bateau (couleurs de 1 à 15 nœuds,
+ * sans seuil d'activité, pause sous 0,2 km/h, chiffres du direct). 2 (21/10) :
+ * wing, planche, à pied, vélo et fractionné (`core/activityPresets.ts`).
+ */
+export const PRESETS_VERSION = 2;
+
+/**
+ * Réglages effacés une fois, à la mise à jour, pour que les pré-réglages
+ * repris s'appliquent (choix de l'utilisateur, 21/10) : ces clés, pour toute
+ * activité dont le calcul est listé, activité de base comprise. Les réglages
+ * écrits ensuite portent `PRESETS_VERSION` et restent.
+ */
+const PRESET_RESETS: { version: number; bases: SportType[]; keys: PerActivityKey[] }[] = [
+  { version: 1, bases: ['bateau'], keys: ['speedRanges', 'autoPause', 'liveFields', 'notificationFields', 'thresholds'] },
+  {
+    version: 2,
+    bases: PRESET_BASES,
+    keys: [
+      'thresholds', 'speedUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'liveFields', 'notificationFields', 'markGuide', 'jumps',
+      'heartRate', 'bikeTypes', 'bikeWeights', 'wayTypes', 'terrainSteps', 'tabs', 'paceLevels', 'customFlatSpeeds',
+    ],
+  },
+];
+
+/** Toute écriture porte la version des pré-réglages : ce qu'elle contient est choisi avec eux. */
+const writeStored = (settings: StoredSettings): void =>
+  jsonStore.write(STORAGE_KEY, { ...settings, presetsVersion: PRESETS_VERSION });
 
 /**
  * Met à jour, une fois, une liste d'activités d'une version d'avant
@@ -273,10 +375,59 @@ export const upgradeStoredActivities = (): boolean => {
   return true;
 };
 
-/** Type de vélo d'une activité sans réglage : celui de Gravel et de VTT pour elles, route sinon. */
-export const defaultBikeType = (activityId: string): BikeType => {
-  if (activityId === GRAVEL_ACTIVITY.id) return 'gravel';
-  return activityId === VTT_ACTIVITY.id ? 'vtt' : 'route';
+/**
+ * Réglages d'une version de pré-réglages d'avant mis à jour (`PRESET_RESETS`) :
+ * les réglages des calculs repris depuis sont effacés. Rend `stored` lui-même
+ * s'il n'y a rien à effacer.
+ */
+export const resetStoredPresets = (stored: StoredSettings): StoredSettings => {
+  const from = stored.presetsVersion ?? 0;
+  if (from >= PRESETS_VERSION) return stored;
+  const activities = readActivities(stored.activities);
+  let next = stored;
+  for (const { version, bases, keys } of PRESET_RESETS) {
+    if (version <= from) continue;
+    const ids = new Set<string>([...bases, ...activities.filter((a) => bases.includes(a.base)).map((a) => a.id)]);
+    for (const key of keys) {
+      const map = next[key];
+      if (!map || !Object.keys(map).some((id) => ids.has(id))) continue;
+      const copy: Record<string, unknown> = { ...map };
+      for (const id of ids) delete copy[id];
+      next = { ...next, [key]: copy };
+    }
+  }
+  return next;
+};
+
+/**
+ * Efface, une fois, les réglages des calculs dont les pré-réglages ont été
+ * repris (`resetStoredPresets`). À appeler au démarrage, comme
+ * `upgradeStoredActivities` ; rend vrai si les réglages ont été récrits.
+ */
+export const upgradeStoredPresets = (): boolean => {
+  const stored = readStoredSettings();
+  const next = resetStoredPresets(stored);
+  if (next === stored) return false;
+  writeStored(next);
+  return true;
+};
+
+/** Type de vélo d'une activité sans réglage : celui de son pré-réglage (Gravel, VTT), route sinon. */
+export const defaultBikeType = (activity: Activity): BikeType => presetOf(activity).bikeType ?? 'route';
+
+/** Type de vélo d'une activité : celui réglé, sinon son défaut. */
+const resolveBikeType = (stored: StoredSettings, activity: Activity): BikeType => {
+  const type = stored.bikeTypes?.[activity.id];
+  return isBikeType(type) ? type : defaultBikeType(activity);
+};
+
+/**
+ * Poids du vélo à défaut de réglage : celui du pré-réglage tant que le type
+ * est celui du pré-réglage, sinon celui du type.
+ */
+export const defaultBikeKg = (activity: Activity, bikeType: BikeType): number => {
+  const preset = presetOf(activity).bikeKg;
+  return preset !== undefined && bikeType === defaultBikeType(activity) ? preset : BIKE_TYPES[bikeType].bikeKg;
 };
 
 /** Activités de l'utilisateur, hors composant (enregistrement, bibliothèque). */
@@ -361,7 +512,7 @@ const readIntervalSettings = (): IntervalSettings => {
     intervalSettingsCache = {
       key,
       value: {
-        presets: sanitizePresets(stored.intervalPresets),
+        presets: sanitizePresets(stored.intervalPresets ?? DEFAULT_INTERVAL_PRESETS),
         last: sanitizeWorkout(stored.lastIntervalWorkout) ?? DEFAULT_INTERVAL_WORKOUT,
       },
     };
@@ -382,7 +533,7 @@ export const rememberIntervalWorkout = (workout: IntervalWorkout): void => {
 /** Garde une séance, sous le nom donné (vide : son libellé) ; sans effet au-delà de `MAX_INTERVAL_PRESETS`. */
 export const saveIntervalPreset = (name: string, workout: IntervalWorkout): void => {
   const stored = readStoredSettings();
-  const presets = sanitizePresets(stored.intervalPresets);
+  const presets = sanitizePresets(stored.intervalPresets ?? DEFAULT_INTERVAL_PRESETS);
   const clean = sanitizeWorkout(workout);
   if (!clean || presets.length >= MAX_INTERVAL_PRESETS) return;
   const preset: IntervalPreset = { id: newPresetId(presets), name: name.trim() || workoutLabel(clean), workout: clean };
@@ -392,7 +543,7 @@ export const saveIntervalPreset = (name: string, workout: IntervalWorkout): void
 /** Retire une séance gardée. */
 export const removeIntervalPreset = (id: string): void => {
   const stored = readStoredSettings();
-  writeStored({ ...stored, intervalPresets: sanitizePresets(stored.intervalPresets).filter((p) => p.id !== id) });
+  writeStored({ ...stored, intervalPresets: sanitizePresets(stored.intervalPresets ?? DEFAULT_INTERVAL_PRESETS).filter((p) => p.id !== id) });
 };
 
 /**
@@ -401,26 +552,22 @@ export const removeIntervalPreset = (id: string): void => {
  */
 export const effectiveRecordingProfile = (activity: Activity): RecordingProfile => {
   const profile = getSportProfile(activity.base);
-  const override = readStoredSettings().autoPause?.[activity.id];
-  return override ? { ...profile.recording, autoPauseSpeedMs: override.speedMs, autoPauseDelayS: override.delayS } : profile.recording;
+  const pause = readStoredSettings().autoPause?.[activity.id] ?? defaultAutoPauseOf(activity);
+  return { ...profile.recording, autoPauseSpeedMs: pause.speedMs, autoPauseDelayS: pause.delayS };
 };
 
-/** Chiffres en grand de l'enregistrement, carte réduite : ceux choisis dans Réglages, sinon ceux du traitement. */
-export const effectiveLiveFields = (activity: Activity): LiveFieldKey[] => {
-  const treatment = activityTreatment(activity);
-  return sanitizeLiveFields(readStoredSettings().liveFields?.[activity.id], treatment) ?? DEFAULT_LIVE_FIELDS[treatment];
-};
+/** Chiffres en grand de l'enregistrement, carte réduite : ceux choisis dans Réglages, sinon ceux du calcul. */
+export const effectiveLiveFields = (activity: Activity): LiveFieldKey[] =>
+  sanitizeLiveFields(readStoredSettings().liveFields?.[activity.id], activityTreatment(activity)) ?? defaultLiveFieldsFor(activity);
 
-/** Chiffres de la notification de l'enregistrement : ceux choisis dans Réglages, sinon ceux du traitement. */
-export const effectiveNotificationFields = (activity: Activity): LiveFieldKey[] => {
-  const treatment = activityTreatment(activity);
-  return sanitizeLiveFields(readStoredSettings().notificationFields?.[activity.id], treatment, MAX_NOTIFICATION_FIELDS)
-    ?? DEFAULT_NOTIFICATION_FIELDS[treatment];
-};
+/** Chiffres de la notification de l'enregistrement : ceux choisis dans Réglages, sinon ceux du calcul. */
+export const effectiveNotificationFields = (activity: Activity): LiveFieldKey[] =>
+  sanitizeLiveFields(readStoredSettings().notificationFields?.[activity.id], activityTreatment(activity), MAX_NOTIFICATION_FIELDS)
+    ?? defaultNotificationFieldsFor(activity);
 
 /** Bips d'approche des balises d'un parcours : ceux réglés pour l'activité, sinon le défaut. */
 export const effectiveMarkGuide = (activity: Activity): MarkGuideSettings =>
-  sanitizeMarkGuide(readStoredSettings().markGuide?.[activity.id]) ?? MARK_GUIDE_DEFAULTS;
+  sanitizeMarkGuide(readStoredSettings().markGuide?.[activity.id]) ?? defaultMarkGuideOf(activity);
 
 /** Foil d'une activité sans réglage : coché pour « Surf foil » (point 97), sinon le défaut du calcul. */
 export const defaultFoil = (activity: Activity): boolean =>
@@ -440,8 +587,11 @@ const resolvePumping = (stored: StoredSettings, activity: Activity): boolean | n
   return stored.pumping?.[activity.id] === true;
 };
 
-/** Ceinture cardio d'une activité : celle réglée, sinon non ; proposée dans tous les sports. */
-const resolveHeartRate = (stored: StoredSettings, activity: Activity): boolean => stored.heartRate?.[activity.id] === true;
+/** Ceinture cardio d'une activité : celle réglée, sinon son défaut ; proposée dans tous les sports. */
+const resolveHeartRate = (stored: StoredSettings, activity: Activity): boolean => {
+  const own = stored.heartRate?.[activity.id];
+  return typeof own === 'boolean' ? own : defaultHeartRateOf(activity);
+};
 
 /** Cadence d'une activité : mesurée sauf si on l'a décochée ; `null` si son calcul ne la mesure pas (hors pied). */
 const resolveCadence = (stored: StoredSettings, activity: Activity): boolean | null => {
@@ -453,7 +603,7 @@ const resolveCadence = (stored: StoredSettings, activity: Activity): boolean | n
 const resolveJumps = (stored: StoredSettings, activity: Activity): JumpSettings | null => {
   const profile = getSportProfile(activity.base).jumps;
   if (!profile) return null;
-  return sanitizeJumpSettings(stored.jumps?.[activity.id], profile) ?? defaultJumpSettings(profile);
+  return sanitizeJumpSettings(stored.jumps?.[activity.id], profile) ?? sanitizeJumpSettings(presetOf(activity).jumps, profile) ?? defaultJumpSettings(profile);
 };
 
 /** Support sur foil d'une activité de voile ou de surf, `null` ailleurs. Utilisable hors composant. */
@@ -472,27 +622,19 @@ export const effectiveCadence = (activity: Activity): boolean | null => resolveC
 export const effectiveJumpSettings = (activity: Activity): JumpSettings | null => resolveJumps(readStoredSettings(), activity);
 
 /** Onglets choisis pour les analyses d'une activité, `null` sans choix. Utilisable hors composant. */
-export const effectiveTabChoices = (activity: Activity): TabChoices | null => sanitizeTabChoices(readStoredSettings().tabs?.[activity.id]);
+export const effectiveTabChoices = (activity: Activity): TabChoices | null =>
+  sanitizeTabChoices(readStoredSettings().tabs?.[activity.id]) ?? defaultTabsOf(activity);
 
 /**
  * Unité de vitesse effective d'une activité : celle choisie dans Réglages,
  * sinon celle du profil. Utilisable hors composant.
  */
-export const effectiveSpeedUnit = (activity: Activity): SpeedUnit => {
-  const unit = readStoredSettings().speedUnits?.[activity.id];
-  return isKnownSpeedUnit(unit) ? unit : getSportProfile(activity.base).speedUnit;
-};
+export const effectiveSpeedUnit = (activity: Activity): SpeedUnit => resolveSpeedUnit(readStoredSettings(), activity);
 
 /** Unité de distance effective d'une activité : celle choisie dans Réglages, sinon le kilomètre. */
 export const effectiveDistanceUnit = (activity: Activity): DistanceUnit => {
   const unit = readStoredSettings().distanceUnits?.[activity.id];
   return isKnownDistanceUnit(unit) ? unit : 'km';
-};
-
-/** Réglage du dénivelé effectif d'une activité : celui du terrain choisi pour elle, route par défaut. Utilisable hors composant. */
-export const effectiveElevationProfile = (activity: Activity): ElevationProfile => {
-  const terrain = readStoredSettings().terrains?.[activity.id];
-  return ELEVATION_PRESETS[isKnownTerrain(terrain) ? terrain : 'route'];
 };
 
 /** Pas des échantillons d'altitude du terrain d'une activité, `null` en voile. Utilisable hors composant. */
@@ -502,10 +644,7 @@ export const effectiveTerrainStepM = (activity: Activity): number | null => reso
 export const effectiveLoopReturnRatio = (activity: Activity): number | null => resolveLoopReturnRatio(readStoredSettings(), activity);
 
 /** Bornes de la couleur de pente d'une activité : celles de Réglages, sinon le défaut. Utilisable hors composant. */
-export const effectiveGradeRange = (activity: Activity): GradeRange => {
-  const range = readStoredSettings().gradeRanges?.[activity.id];
-  return range && isValidGradeRange(range) ? range : defaultGradeRange(activity.base);
-};
+export const effectiveGradeRange = (activity: Activity): GradeRange => resolveGradeRange(readStoredSettings(), activity);
 
 /**
  * Famille d'une activité qui se planifie avec un temps estimé (course, vélo) ;
@@ -523,10 +662,9 @@ export const PLANNING_FAMILIES: SportFamily[] = ['voile', 'course', 'velo', 'sur
 /** Type et poids du vélo d'une activité : ceux de Réglages, sinon le type par défaut et son poids. Utilisable hors composant. */
 export const effectiveBikeSetup = (activity: Activity): { bikeType: BikeType; bikeKg: number } => {
   const stored = readStoredSettings();
-  const type = stored.bikeTypes?.[activity.id];
-  const bikeType: BikeType = isBikeType(type) ? type : defaultBikeType(activity.id);
+  const bikeType = resolveBikeType(stored, activity);
   const weight = stored.bikeWeights?.[activity.id];
-  return { bikeType, bikeKg: isValidBikeWeight(weight) ? weight : BIKE_TYPES[bikeType].bikeKg };
+  return { bikeType, bikeKg: isValidBikeWeight(weight) ? weight : defaultBikeKg(activity, bikeType) };
 };
 
 /** Charge portée réglée pour une activité, en kg ; 0 sans réglage. Utilisable hors composant. */
@@ -535,18 +673,18 @@ export const effectiveCarriedLoad = (activity: Activity): number => {
   return isValidCarriedLoad(load) ? load : 0;
 };
 
-/** Types de voie cochés d'office pour une activité, réglés ou proposés (`presetWayTypes`). */
+/**
+ * Types de voie cochés d'office pour une activité : réglés, sinon ceux de son
+ * pré-réglage tant que son type de vélo est celui du pré-réglage, sinon
+ * proposés selon le type de vélo (`presetWayTypes`).
+ */
 const resolveWayTypes = (stored: StoredSettings, activity: Activity): { wayTypes: WayType[]; overridden: boolean } => {
   const own = sanitizeWayTypes(stored.wayTypes?.[activity.id]);
   if (own) return { wayTypes: own, overridden: true };
-  const bikeType = stored.bikeTypes?.[activity.id];
-  const terrain = stored.terrains?.[activity.id];
+  const bikeType = resolveBikeType(stored, activity);
+  const preset = presetOf(activity).wayTypes;
   return {
-    wayTypes: presetWayTypes(
-      activityTreatment(activity),
-      isBikeType(bikeType) ? bikeType : defaultBikeType(activity.id),
-      isKnownTerrain(terrain) ? terrain : 'route'
-    ),
+    wayTypes: preset && bikeType === defaultBikeType(activity) ? preset : presetWayTypes(activityTreatment(activity), bikeType),
     overridden: false,
   };
 };
@@ -554,15 +692,12 @@ const resolveWayTypes = (stored: StoredSettings, activity: Activity): { wayTypes
 /** Types de voie cochés d'office en planification ; aucun en voile. Utilisable hors composant. */
 export const effectiveWayTypes = (activity: Activity): WayType[] => resolveWayTypes(readStoredSettings(), activity).wayTypes;
 
-/** Vitesse sur le plat du temps estimé de la Marche de départ (20/10), en m/s : 5 km/h. */
-export const WALK_FLAT_SPEED_MS = 5 / 3.6;
-
 /**
- * Niveau du temps estimé d'une activité sans réglage : « Personnalisé » à
- * 5 km/h pour la Marche de départ, le niveau par défaut sinon.
+ * Niveau du temps estimé d'une activité sans réglage : celui de son
+ * pré-réglage (« Personnalisé » à 5 km/h pour la Marche), le niveau par défaut sinon.
  */
-export const defaultPaceOf = (activityId: string): { level: PaceLevel; customFlatSpeedMs: number | null } =>
-  activityId === MARCHE_ACTIVITY.id ? { level: 'perso', customFlatSpeedMs: WALK_FLAT_SPEED_MS } : { level: DEFAULT_PACE_LEVEL, customFlatSpeedMs: null };
+export const defaultPaceOf = (activity: Activity): { level: PaceLevel; customFlatSpeedMs: number | null } =>
+  presetOf(activity).pace ?? { level: DEFAULT_PACE_LEVEL, customFlatSpeedMs: null };
 
 /**
  * Niveau effectif et vitesse sur le plat qui en découle, en m/s ; un
@@ -583,7 +718,7 @@ export const effectivePace = (activity: Activity): { level: PaceLevel; flatSpeed
   const family = planningFamily(activity);
   if (!family) return null;
   const stored = readStoredSettings();
-  const fallback = defaultPaceOf(activity.id);
+  const fallback = defaultPaceOf(activity);
   return resolvePace(family, stored.paceLevels?.[activity.id] ?? fallback.level, stored.customFlatSpeeds?.[activity.id] ?? fallback.customFlatSpeedMs);
 };
 
@@ -617,9 +752,9 @@ export interface SportSettingsView {
   isSpeedUnitOverridden: boolean;
   distanceUnit: DistanceUnit;
   isDistanceUnitOverridden: boolean;
+  /** Seuil d'activité dans l'unité du profil ; 0 : aucun seuil. */
   activeThreshold: number;
   isThresholdOverridden: boolean;
-  terrain: TerrainType;
   /** Pas des échantillons d'altitude du terrain, en mètres ; `null` en voile. */
   terrainStepM: number | null;
   speedRange: { minMs: number; maxMs: number } | null;
@@ -657,8 +792,11 @@ export interface SportSettingsView {
   carriedLoad: number | null;
   /** Intitulés de matériel réglés (hors voile), un texte vide pour celui par défaut ; `null` sans réglage. */
   gearLabels: [string, string] | null;
-  /** Onglets des analyses montrés ou cachés à l'écart de leur défaut ; `null` sans choix. */
+  /** Onglets des analyses montrés ou cachés à l'écart de ceux du module ; `null` sans choix ni pré-réglage. */
   tabs: TabChoices | null;
+  isTabsOverridden: boolean;
+  /** Ceinture cardio réglée à l'écart de son défaut. */
+  isHeartRateOverridden: boolean;
   /** Niveau du temps estimé (course, vélo) ; moyen par défaut. */
   paceLevel: PaceLevel;
   /** Vitesse sur le plat saisie pour « Personnalisé », en m/s, ou `null`. */
@@ -671,8 +809,9 @@ export interface SportSettingsView {
 }
 
 /** Tables de réglages rangées par activité. */
+type PerActivityKey = (typeof PER_ACTIVITY_KEYS)[number];
 const PER_ACTIVITY_KEYS = [
-  'thresholds', 'terrains', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'gearLabels', 'tabs',
+  'thresholds', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'gearLabels', 'tabs',
   'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
   'heartRate', 'cadence',
 ] as const;
@@ -719,11 +858,9 @@ export const useAllSportSettings = () => {
       const unit = stored.speedUnits?.[id];
       const distanceUnit = stored.distanceUnits?.[id];
       const threshold = stored.thresholds?.[id];
-      const terrain = stored.terrains?.[id];
       const range = stored.speedRanges?.[id];
       const grades = stored.gradeRanges?.[id];
       const autoPauseOverride = stored.autoPause?.[id];
-      const bikeType = stored.bikeTypes?.[id];
       const bikeWeight = stored.bikeWeights?.[id];
       const carriedLoad = stored.carriedLoads?.[id];
       const paceLevel = stored.paceLevels?.[id];
@@ -734,38 +871,39 @@ export const useAllSportSettings = () => {
       const ways = resolveWayTypes(stored, activity);
       return {
         activity,
-        speedUnit: isKnownSpeedUnit(unit) ? unit : profile.speedUnit,
-        isSpeedUnitOverridden: isKnownSpeedUnit(unit),
+        speedUnit: resolveSpeedUnit(stored, activity),
+        isSpeedUnitOverridden: isKnownSpeedUnit(unit) && unit !== defaultSpeedUnitOf(activity),
         distanceUnit: isKnownDistanceUnit(distanceUnit) ? distanceUnit : 'km',
         isDistanceUnitOverridden: isKnownDistanceUnit(distanceUnit),
-        activeThreshold: threshold ?? defaultActiveThresholdOf(profile, resolveFoil(stored, activity) ?? false),
+        activeThreshold: threshold ?? defaultThresholdOf(activity, resolveFoil(stored, activity) ?? false),
         isThresholdOverridden: threshold !== undefined,
-        terrain: isKnownTerrain(terrain) ? terrain : 'route',
         terrainStepM: resolveTerrainStepM(stored, activity),
         speedRange: range && isValidSpeedRange(range) ? range : null,
         gradeRange: grades && isValidGradeRange(grades) ? grades : null,
-        autoPause: autoPauseOverride ?? { speedMs: profile.recording.autoPauseSpeedMs, delayS: profile.recording.autoPauseDelayS },
+        autoPause: autoPauseOverride ?? defaultAutoPauseOf(activity),
         isAutoPauseOverridden: autoPauseOverride !== undefined,
-        liveFields: liveFields ?? DEFAULT_LIVE_FIELDS[activityTreatment(activity)],
+        liveFields: liveFields ?? defaultLiveFieldsFor(activity),
         isLiveFieldsOverridden: liveFields !== null,
-        notificationFields: notificationFields ?? DEFAULT_NOTIFICATION_FIELDS[activityTreatment(activity)],
+        notificationFields: notificationFields ?? defaultNotificationFieldsFor(activity),
         isNotificationFieldsOverridden: notificationFields !== null,
-        markGuide: markGuide ?? MARK_GUIDE_DEFAULTS,
+        markGuide: markGuide ?? defaultMarkGuideOf(activity),
         isMarkGuideOverridden: markGuide !== null,
         foil: resolveFoil(stored, activity),
         isFoilOverridden: typeof stored.foils?.[id] === 'boolean',
         pumping: resolvePumping(stored, activity),
         jumps: resolveJumps(stored, activity),
         heartRate: resolveHeartRate(stored, activity),
+        isHeartRateOverridden: typeof stored.heartRate?.[id] === 'boolean' && stored.heartRate[id] !== defaultHeartRateOf(activity),
         cadence: resolveCadence(stored, activity),
         isJumpsOverridden: stored.jumps?.[id] !== undefined && profile.jumps !== null,
-        bikeType: isBikeType(bikeType) ? bikeType : defaultBikeType(id),
+        bikeType: resolveBikeType(stored, activity),
         bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
         carriedLoad: isValidCarriedLoad(carriedLoad) ? carriedLoad : null,
         gearLabels: sanitizeGearLabels(stored.gearLabels?.[id]),
-        tabs: sanitizeTabChoices(stored.tabs?.[id]),
-        paceLevel: isPaceLevel(paceLevel) ? paceLevel : defaultPaceOf(id).level,
-        customFlatSpeedMs: typeof customSpeed === 'number' && isFinite(customSpeed) ? customSpeed : defaultPaceOf(id).customFlatSpeedMs,
+        tabs: sanitizeTabChoices(stored.tabs?.[id]) ?? defaultTabsOf(activity),
+        isTabsOverridden: sanitizeTabChoices(stored.tabs?.[id]) !== null,
+        paceLevel: isPaceLevel(paceLevel) ? paceLevel : defaultPaceOf(activity).level,
+        customFlatSpeedMs: typeof customSpeed === 'number' && isFinite(customSpeed) ? customSpeed : defaultPaceOf(activity).customFlatSpeedMs,
         wayTypes: ways.wayTypes,
         isWayTypesOverridden: ways.overridden,
         loopReturnRatio: resolveLoopReturnRatio(stored, activity),
@@ -776,7 +914,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrain' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'gearLabels' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'gearLabels' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -800,10 +938,6 @@ export const useAllSportSettings = () => {
         case 'activeThreshold':
           if (value !== null && (typeof value !== 'number' || !isFinite(value) || value < 0)) return;
           next.thresholds = put(stored.thresholds, value as number | null);
-          break;
-        case 'terrain':
-          if (value !== null && !isKnownTerrain(value)) return;
-          next.terrains = put(stored.terrains, value as TerrainType | null);
           break;
         case 'terrainStepM':
           if (value !== null && !isTerrainStep(value)) return;
@@ -867,7 +1001,8 @@ export const useAllSportSettings = () => {
           const activity = findActivity(activities, id);
           if (!activity) return;
           if (value !== null && typeof value !== 'boolean') return;
-          next.heartRate = put(stored.heartRate, value === true ? true : null);
+          // Seul l'écart à son défaut est rangé : décocher une ceinture pré-réglée range « non ».
+          next.heartRate = put(stored.heartRate, value === null || value === defaultHeartRateOf(activity) ? null : value as boolean);
           break;
         }
         case 'cadence': {
@@ -1106,36 +1241,31 @@ export const useSportSettings = (family: SportFamily) => {
   /** Pumping foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
   const pumping = resolvePumping(stored, activity) ?? false;
 
-  /** Seuil réglé pour l'activité, `null` sans réglage ; en surf, le défaut dépend du foil de la session. */
-  const thresholdOverride = stored.thresholds?.[id] ?? null;
+  /**
+   * Seuil réglé ou pré-réglé pour l'activité (0 : aucun seuil), `null` sans l'un ni l'autre : en voile,
+   * la suggestion selon l'allure ; en surf, le défaut dépend du foil de la session.
+   */
+  const thresholdOverride = resolveThresholdOverride(stored, activity);
   const activeThreshold = thresholdOverride ?? defaultActiveThresholdOf(profile, foil);
   const isThresholdOverridden = thresholdOverride !== null;
 
-  // Lecture seule : le terrain de l'activité se règle dans Réglages, celui
-  // d'une session dans sa fiche (brouillon du module).
-  const storedTerrain = stored.terrains?.[id];
-  const terrain: TerrainType = isKnownTerrain(storedTerrain) ? storedTerrain : 'route';
   /** Pas des échantillons d'altitude du terrain, réglé dans Réglages ; `null` en voile. */
   const terrainStepM = resolveTerrainStepM(stored, activity);
 
   // Lecture seule : les unités se choisissent dans Réglages, par activité.
-  const storedUnit = stored.speedUnits?.[id];
-  const speedUnit: SpeedUnit = isKnownSpeedUnit(storedUnit) ? storedUnit : profile.speedUnit;
+  const speedUnit = resolveSpeedUnit(stored, activity);
   const storedDistanceUnit = stored.distanceUnits?.[id];
   const distanceUnit: DistanceUnit = isKnownDistanceUnit(storedDistanceUnit) ? storedDistanceUnit : 'km';
 
   // Lecture seule ici : les bornes de l'activité se règlent dans Réglages, celles
   // d'une trace dans sa fiche (brouillon du module).
-  const storedRange = stored.speedRanges?.[id];
-  const speedRange = storedRange && isValidSpeedRange(storedRange) ? storedRange : null;
-  const storedGradeRange = stored.gradeRanges?.[id];
-  const gradeRange: GradeRange = storedGradeRange && isValidGradeRange(storedGradeRange) ? storedGradeRange : defaultGradeRange(sport);
+  const speedRange = resolveSpeedRange(stored, activity);
+  const gradeRange = resolveGradeRange(stored, activity);
 
   // Vélo : type et poids, réglés dans Réglages.
-  const storedBikeType = stored.bikeTypes?.[id];
-  const bikeType: BikeType = isBikeType(storedBikeType) ? storedBikeType : defaultBikeType(id);
+  const bikeType = resolveBikeType(stored, activity);
   const storedBikeWeight = stored.bikeWeights?.[id];
-  const bikeWeightKg = isValidBikeWeight(storedBikeWeight) ? storedBikeWeight : BIKE_TYPES[bikeType].bikeKg;
+  const bikeWeightKg = isValidBikeWeight(storedBikeWeight) ? storedBikeWeight : defaultBikeKg(activity, bikeType);
   // Course : charge portée, réglée dans Réglages.
   const storedLoad = stored.carriedLoads?.[id];
   const carriedLoadKg = isValidCarriedLoad(storedLoad) ? storedLoad : 0;
@@ -1150,12 +1280,10 @@ export const useSportSettings = (family: SportFamily) => {
     activeThreshold,
     thresholdOverride,
     isThresholdOverridden,
-    /** Terrain du dénivelé de l'activité ; une session peut avoir le sien. */
-    terrain,
     terrainStepM,
     speedUnit,
     distanceUnit,
-    /** Bornes du dégradé réglées pour l'activité dans Réglages, ou `null` pour le défaut du module. */
+    /** Bornes du dégradé réglées pour l'activité dans Réglages ou pré-réglées, ou `null` pour le défaut du module. */
     speedRange,
     /** Bornes de la couleur de pente de la courbe d'altitude, réglées dans Réglages ou par défaut. */
     gradeRange,

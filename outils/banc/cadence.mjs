@@ -186,7 +186,8 @@ console.log('  Voir :', await clickVoir('Cadence', 0));
 await wait(800);
 check(`« Voir » trace les passages d'une tranche (${await violetPaths()})`, (await violetPaths()) >= 1);
 await shoot('cadence-course');
-const speeds = await tableRows('Cadence', 'min/km');
+// Course en km/h depuis les pré-réglages du 21/10.
+const speeds = await tableRows('Cadence', 'km/h');
 console.log('  selon la vitesse :', speeds?.join(' | '));
 check('selon la vitesse : deux tranches, cadence et pas plus grands à la plus rapide',
   speeds?.length === 2 && speeds[0].includes('160 pas/min') && speeds[1].includes('176 pas/min') && speeds[0].includes('0.97 m') && speeds[1].includes('1.23 m'));
