@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Bar, BarChart, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import ChartFold from '../components/ChartFold';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
@@ -14,6 +13,7 @@ import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from '../components/he
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import HelpButton from '../components/ui/HelpButton';
 import PageHeader from '../components/ui/PageHeader';
+import SegmentedControl from '../components/ui/SegmentedControl';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, sessionActivity, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, SPORT_PROFILES, type SportFamily } from '../core/sportProfiles';
 import {
@@ -72,7 +72,6 @@ const ZONE_FRACTIONS = SPORT_PROFILES.running.heartRate.zoneFractions;
 const LOAD_WEIGHTS = SPORT_PROFILES.running.heartRate.loadWeights;
 
 const STORAGE_ID = 'statistiques';
-const CHOICE_DEFAULT = { choix: false };
 
 /** Dernier affichage, retenu sur l'appareil (`tracker.statistiques`) ; `null` : « Tout », ou la donnée par défaut. */
 interface StatsView {
@@ -124,7 +123,7 @@ const Stat = ({ label, value, title }: { label: ReactNode; value: ReactNode; tit
   </div>
 );
 
-/** Rangée de pastilles : un choix parmi plusieurs. */
+/** Rangée de pastilles : la donnée du graphique. */
 function Chips<K extends string>({ label, items, value, onChoose, accent, className }: {
   label: string;
   items: { key: K; label: string }[];
@@ -182,8 +181,6 @@ function StatisticsPage() {
   const [picked, setPicked] = useState<string | null>(null);
   const [loadHelp, setLoadHelp] = useState(false);
   const { open, toggle } = useOpenSections<StatsSection>(STORAGE_ID, STATS_SECTION_DEFAULTS);
-  /** Pastilles de famille, d'activité et de période : repliées sous « Sélection » au départ, état retenu. */
-  const choice = useOpenSections(`${STORAGE_ID}.choix`, CHOICE_DEFAULT);
   const { value: view, update: rememberView } = useStoredRecord<StatsView>(VIEW_NAMESPACE, VIEW_KEY, VIEW_DEFAULTS);
 
   // À l'ouverture sans paramètre (barre, accueil), reprendre le dernier affichage, si sa famille est visible.
@@ -259,7 +256,7 @@ function StatisticsPage() {
   const distanceUnit: DistanceUnit = unitActivity ? effectiveDistanceUnit(unitActivity) : 'km';
   const accent = family ? FAMILY_ACCENT[family] : 'var(--ink-2)';
 
-  // Pastilles : les familles visibles (et celle ouverte par l'adresse), puis toutes les activités visibles de la
+  // Boutons glissants : les familles visibles (et celle ouverte par l'adresse), puis toutes les activités visibles de la
   // famille, avec ou sans session, et celles de base qui en ont.
   const familyItems: { key: SportFamily | 'tout'; label: string }[] = [
     { key: 'tout', label: 'Tout' },
@@ -396,8 +393,6 @@ function StatisticsPage() {
 
   const title = activity ? activity.name : family ? FAMILY_LABEL[family] : 'Toutes les activités';
   const periodLabel = STATS_PERIODS.find((p) => p.id === period)!.label;
-  /** Le choix en cours, dans le bouton « Sélection » : lisible bloc replié. */
-  const choiceSummary = [family ? FAMILY_LABEL[family] : 'Toutes les familles', ...(activity ? [activity.name] : []), periodLabel === 'Tout' ? 'depuis le début' : periodLabel].join(' · ');
   const empty = inPeriod.length === 0;
   const lastText = regular.weeksSinceLast === null ? '—'
     : regular.weeksSinceLast === 0 ? 'cette semaine'
@@ -409,23 +404,14 @@ function StatisticsPage() {
       <PageHeader title="Statistiques" subtitle={`${title} · ${periodLabel === 'Tout' ? 'depuis le début' : periodLabel}`} />
 
       <div className="stats-choice">
-        <ChartFold open={choice.open.choix} onToggle={() => choice.toggle('choix')}
-          title={choice.open.choix ? 'Replier la sélection' : 'Choisir la famille, l’activité et la période'}
-          style={{ padding: '6px 10px 6px 12px', fontSize: '13px' }}
-          label={<>
-            <strong>Sélection</strong>
-            <span className="stats-choice__summary">{choiceSummary}</span>
-          </>} />
-        {choice.open.choix && (<>
-        <Chips label="Famille" items={familyItems} value={family ?? 'tout'} accent={accent}
-          onChoose={(key) => go({ famille: key === 'tout' ? null : key, activite: null })} />
+        <SegmentedControl label="Famille" items={familyItems} value={family ?? 'tout'} accent={accent}
+          onChange={(key) => go({ famille: key === 'tout' ? null : key, activite: null })} />
         {family !== null && activityItems.length > 0 && (
-          <Chips label="Activité" items={[{ key: '', label: 'Toute la famille' }, ...activityItems]} value={activity?.id ?? ''} accent={accent}
-            onChoose={(key) => go({ activite: key === '' ? null : key })} />
+          <SegmentedControl label="Activité" items={[{ key: '', label: 'Toutes' }, ...activityItems]} value={activity?.id ?? ''} accent={accent}
+            onChange={(key) => go({ activite: key === '' ? null : key })} />
         )}
-        <Chips label="Période" items={STATS_PERIODS.map((p) => ({ key: p.id, label: p.label }))} value={period} accent="var(--ink-2)"
-          onChoose={(key) => go({ periode: key }, true)} />
-        </>)}
+        <SegmentedControl label="Période" items={STATS_PERIODS.map((p) => ({ key: p.id, label: p.label }))} value={period}
+          onChange={(key) => go({ periode: key }, true)} />
         {familyHidden && <p style={noteStyle}>Cette famille est cachée dans Réglages : elle n'apparaît ici que par son adresse.</p>}
       </div>
 

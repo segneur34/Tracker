@@ -1,16 +1,18 @@
-// Banc de test : la page « Profil » (demandes du 18/10 et du 19/10), une période en un coup d'œil.
+// Banc de test : la page « Profil » (demandes du 18/10, du 19/10 et du 20/10), une période en un coup d'œil.
 // Usage : node profil.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Le script écrit lui-même six sessions synthétiques de 20 min, datées en jours
 // avant aujourd'hui (deux courses, une sortie à vélo en côte et une de wingfoil récentes, une course et une sortie à
 // vélo de l'an passé), les importe par la page Course, et vérifie :
 //  1. l'accueil : plus de graphe d'activités, une ligne « Profil » qui ouvre la page ; « Profil » dans la barre du haut ;
-//  2. la période en tête, « Année » au départ : distance (somme des vitesses × durées, à 5 % près), temps, D+ de la
-//     côte seule, nombre de sessions du graphe ; l'anneau et sa légende (une part par activité, la course à 50 %) ;
+//  2. la période en tête (bouton glissant), « Année » au départ : distance (somme des vitesses × durées, à 5 % près),
+//     sport préféré (la course, avec son dessin, qui ouvre sa bibliothèque), D+ de la côte seule, nombre de sessions du graphe ; l'anneau et sa légende (une part par activité, la course à 50 %) ;
 //     le graphe d'activités en bas, sans barre de période à lui ;
 //  3. les autres périodes règlent toute la page : « 30 jours » (trois sessions), « Depuis le début » (les six, une
 //     barre par mois), choix retenu au rechargement ;
 //  4. une ligne de la légende ouvre la bibliothèque filtrée sur son activité ;
-//  5. à 390×844 : rien ne déborde, chiffres sur une ligne, détail par activité retenu déplié ; la case « Profil » de la barre du bas ouvre la page, allumée.
+//  5. à 390×844 : rien ne déborde, chiffres sur une ligne, détail par activité retenu déplié ; la case « Profil » de la barre du bas ouvre la page, allumée ;
+//  6. cinq activités de plus (huit en tout) : « Autres (3) » dans l'anneau ; le toucher ouvre le détail replié et y
+//     déplie ses trois activités, en retrait, dont une ouvre sa bibliothèque ; la ligne « Autres » les replie.
 import { writeFileSync } from 'node:fs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -91,12 +93,13 @@ const legend = () => evaluate(`[...document.querySelectorAll('.profile-legend li
 const search = () => evaluate('location.pathname + location.search');
 const overflow = () => evaluate('document.documentElement.scrollWidth > window.innerWidth');
 const pick = (label) => evaluate(`(() => {
-  const b = [...document.querySelectorAll('.profile-periods button')].find((el) => el.textContent.trim() === ${JSON.stringify(label)});
+  const b = [...document.querySelectorAll('.profile-periods [role=radio]')].find((el) => el.textContent.trim() === ${JSON.stringify(label)});
   if (!b) return false;
   b.click();
   return true;
 })()`);
-const pressed = () => evaluate(`document.querySelector('.profile-periods button[aria-pressed=true]')?.textContent.trim() ?? null`);
+const pressed = () => evaluate(`document.querySelector('.profile-periods [role=radio][aria-checked=true]')?.textContent.trim() ?? null`);
+const favorite = () => text('.profile-figure__name');
 const chartCount = () => text('.actchart__head span');
 /** Nombre lu à la française : espaces fines de milliers, virgule décimale. */
 const parseFr = (s) => Number((s ?? '').replace(/[^\d,]/g, '').replace(',', '.'));
@@ -120,32 +123,35 @@ await wait(10000);
 // 1. Accueil.
 await go('/');
 check('accueil : plus de graphe d\'activités', (await evaluate(`!!document.querySelector('.actchart')`)) === false);
+check('accueil : plus de ligne « Profil » (demande du 19/10)', !(await evaluate(`[...document.querySelectorAll('.home-link')].some((el) => el.textContent.trim() === 'Profil')`)));
 const opened = await evaluate(`(() => {
-  const a = [...document.querySelectorAll('.home-link')].find((el) => el.textContent.trim() === 'Profil');
+  const a = [...document.querySelectorAll('.shell-toplink')].find((el) => el.textContent.trim() === 'Profil');
   if (!a) return false;
   a.click();
   return true;
 })()`);
-check('accueil : ligne « Profil »', opened);
+check('barre du haut : lien « Profil »', opened);
 await wait(1500);
-check('la ligne ouvre la page', (await search()) === '/profil', await search());
+check('le lien ouvre la page', (await search()) === '/profil', await search());
 check('barre du haut : Profil, allumé', await evaluate(`[...document.querySelectorAll('.shell-toplink')].some((a) => a.textContent.trim() === 'Profil' && a.classList.contains('active'))`));
 
 // 2. L'année en cours.
 check('titre', (await text('.ui-page-header h1')) === 'Profil', await text('.ui-page-header h1'));
-check('périodes en tête, « Année » au départ', (await evaluate(`[...document.querySelectorAll('.profile-periods button')].map((b) => b.textContent.trim()).join(' | ')`))
+check('périodes en tête, « Année » au départ', (await evaluate(`[...document.querySelectorAll('.profile-periods [role=radio]')].map((b) => b.textContent.trim()).join(' | ')`))
   === 'Semaine | 30 jours | 6 mois | Année | Depuis le début' && (await pressed()) === 'Année', await pressed());
 check("plus de flèches d'année", (await evaluate(`!!document.querySelector('.profile-year')`)) === false);
 check("le graphe n'a plus sa propre barre de période", (await evaluate(`!!document.querySelector('.actchart__periods')`)) === false);
-let [distance, time, gain] = await figures();
+let [distance, , gain] = await figures();
 const km = parseFr(distance);
 check('distance de l\'année, en km', distance?.endsWith('km') && Math.abs(km - kmOf(current)) / kmOf(current) < 0.05, `${distance} pour ${kmOf(current).toFixed(1)} attendus`);
-check('temps de l\'année', time === '1 h 20', time);
+check('plus de case « Temps »', !(await evaluate(`[...document.querySelectorAll('.profile-figure .ui-eyebrow')].some((e) => e.textContent === 'Temps')`)));
+check('sport préféré : la course, avec son dessin', (await favorite()) === 'Course'
+  && (await evaluate(`!!document.querySelector('.profile-figure--link svg.profile-figure__art path')`)), await favorite());
 const gainM = parseFr(gain);
 check('D+ de l\'année : la côte', gain?.endsWith('m') && gainM > 150 && gainM < 230, gain);
 check('nombre de sessions (graphe)', (await chartCount()) === '4 sessions', await chartCount());
 const ordre = await evaluate(`[...document.querySelectorAll('.profile > *')].map((el) => el.className.split(' ')[0] || el.tagName).join(' > ')`);
-check('ordre : période, chiffres, répartition, graphe', /profile-periods.*profile-figures.*profile-split.*actchart/.test(ordre ?? ''), ordre);
+check('ordre : période, chiffres, répartition, graphe', /ui-segmented.*profile-figures.*profile-split.*actchart/.test(ordre ?? ''), ordre);
 check('détail par activité replié au départ', (await evaluate(`document.querySelector('.profile-fold')?.getAttribute('aria-expanded')`)) === 'false'
   && (await legend()).length === 0);
 await evaluate(`document.querySelector('.profile-fold').click()`);
@@ -165,17 +171,17 @@ await shoot('profil-ordinateur');
 const recent = SESSIONS.filter(([, d]) => d <= 29);
 check('« 30 jours »', await pick('30 jours'));
 await wait(500);
-[distance, time, gain] = await figures();
-check('30 jours : chiffres', Math.abs(parseFr(distance) - kmOf(recent)) / kmOf(recent) < 0.05 && time === '1 h 00' && (await chartCount()) === '3 sessions',
-  `${distance} ; ${time} ; ${await chartCount()}`);
+[distance] = await figures();
+check('30 jours : chiffres', Math.abs(parseFr(distance) - kmOf(recent)) / kmOf(recent) < 0.05 && (await favorite()) === 'Course' && (await chartCount()) === '3 sessions',
+  `${distance} ; ${await favorite()} ; ${await chartCount()}`);
 rows = await legend();
 check('30 jours : légende sans le wingfoil', rows?.length === 2, JSON.stringify(rows));
 check('30 jours : une barre par jour', (await evaluate(`document.querySelectorAll('.actchart__bar').length`)) === 30);
 check('« Depuis le début »', await pick('Depuis le début'));
 await wait(500);
-[distance, time, gain] = await figures();
-check('depuis le début : les six sessions', Math.abs(parseFr(distance) - kmOf(SESSIONS)) / kmOf(SESSIONS) < 0.05 && time === '2 h 00' && (await chartCount()) === '6 sessions',
-  `${distance} ; ${time} ; ${await chartCount()}`);
+[distance] = await figures();
+check('depuis le début : les six sessions', Math.abs(parseFr(distance) - kmOf(SESSIONS)) / kmOf(SESSIONS) < 0.05 && (await text('.profile-donut__center')) === 'Total2 h 00'
+  && (await chartCount()) === '6 sessions', `${distance} ; ${await text('.profile-donut__center')} ; ${await chartCount()}`);
 check('depuis le début : un mois par barre', (await text('.actchart__head h2')) === 'Depuis le début, par mois'
   && (await evaluate(`document.querySelectorAll('.actchart__bar').length`)) >= 14, await text('.actchart__head h2'));
 await go('/profil');
@@ -184,7 +190,11 @@ check('« Année » de nouveau', await pick('Année'));
 await wait(500);
 check("retour à l'année", (await chartCount()) === '4 sessions', await chartCount());
 
-// 4. Une ligne de la légende ouvre la bibliothèque de son activité.
+// 4. Le sport préféré, puis une ligne de la légende, ouvrent la bibliothèque de leur activité.
+await evaluate(`document.querySelector('.profile-figure--link').click()`);
+await wait(1500);
+check('le sport préféré ouvre sa bibliothèque', (await search())?.startsWith('/course?activite=running'), await search());
+await go('/profil');
 await evaluate(`document.querySelector('.profile-legend__row').click()`);
 await wait(1500);
 check('la ligne ouvre la bibliothèque filtrée', (await search())?.startsWith('/course?activite='), await search());
@@ -201,12 +211,50 @@ check('390 px : détail par activité toujours déplié (état retenu)', (await 
 await shoot('profil-telephone');
 await go('/');
 const tab = `[...document.querySelectorAll('.shell-tabbar .shell-tab')].find((t) => t.textContent.trim() === 'Profil')`;
-check('barre du bas : Accueil, Statistiques, Profil, Réglages',
-  (await evaluate(`[...document.querySelectorAll('.shell-tabbar .shell-tab')].map((t) => t.textContent.trim()).join(' | ')`)) === 'Accueil | Statistiques | Profil | Réglages');
+check('barre du bas : Accueil, Profil, Statistiques, Réglages',
+  (await evaluate(`[...document.querySelectorAll('.shell-tabbar .shell-tab')].map((t) => t.textContent.trim()).join(' | ')`)) === 'Accueil | Profil | Statistiques | Réglages');
 await evaluate(`${tab}.click()`);
 await wait(1000);
 check('la case Profil ouvre la page, allumée', (await search()) === '/profil' && (await evaluate(`${tab}.classList.contains('active')`)), await search());
 check('390 px : barre du bas sans débordement', !(await overflow()));
+
+// 6. « Autres » : cinq activités de plus, 20 min chacune, cette semaine.
+await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+const EXTRA = [['windsurf', 3, 8], ['kite', 4, 9], ['bateau', 5, 4], ['run-intervals', 6, 3.5], ['surf', 7, 3]];
+await go('/course', 4000);
+console.log('import des cinq de plus :', await evaluate(`(() => {
+  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  if (!input) return 'absent';
+  const dt = new DataTransfer();
+  for (const [name, text] of ${JSON.stringify(EXTRA.map(([type, d, v]) => [`${type}-${d}.gpx`, gpxOf(type, d, v)]))}) {
+    dt.items.add(new File([text], name, { type: 'application/gpx+xml' }));
+  }
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return 'ok';
+})()`));
+await wait(10000);
+await go('/profil');
+// Détail replié d'abord, pour voir le toucher sur « Autres » l'ouvrir.
+if ((await evaluate(`document.querySelector('.profile-fold')?.getAttribute('aria-expanded')`)) === 'true') await evaluate(`document.querySelector('.profile-fold').click()`);
+await wait(300);
+check('anneau : six parts, la dernière grise', (await evaluate(`document.querySelectorAll('.profile-donut circle').length`)) === 6
+  && (await evaluate(`[...document.querySelectorAll('.profile-donut circle')].at(-1).getAttribute('stroke')`)) === '#9aa0a6');
+await evaluate(`[...document.querySelectorAll('.profile-donut circle')].at(-1).dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
+await wait(400);
+check('toucher « Autres » : centre sur son total', (await text('.profile-donut__center')) === 'Autres (3)1 h 0033 %', await text('.profile-donut__center'));
+check('toucher « Autres » : le détail s\'ouvre', (await evaluate(`document.querySelector('.profile-fold')?.getAttribute('aria-expanded')`)) === 'true');
+const subs = () => evaluate(`[...document.querySelectorAll('.profile-legend__sub')].map((li) => li.textContent)`);
+check('… et ses trois activités dépliées, en retrait', (await subs())?.length === 3 && (await subs()).every((r) => r.includes('20 min')), JSON.stringify(await subs()));
+await shoot('profil-autres');
+await evaluate(`[...document.querySelectorAll('.profile-legend li')].find((li) => li.textContent.startsWith('Autres')).querySelector('button').click()`);
+await wait(300);
+check('la ligne « Autres » les replie', (await subs())?.length === 0);
+await evaluate(`[...document.querySelectorAll('.profile-legend li')].find((li) => li.textContent.startsWith('Autres')).querySelector('button').click()`);
+await wait(300);
+await evaluate(`document.querySelector('.profile-legend__sub button').click()`);
+await wait(1500);
+check('une activité d\'« Autres » ouvre sa bibliothèque', /^\/(voile|course|fractionne|surf|velo)\?activite=/.test((await search()) ?? ''), await search());
 
 console.log(logs.length ? `Console :\n${logs.join('\n')}` : 'Console : aucune erreur');
 console.log(failures === 0 ? 'Tout est bon.' : `${failures} échec(s).`);

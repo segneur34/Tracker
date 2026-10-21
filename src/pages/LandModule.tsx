@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Polyline } from 'react-leaflet';
-import OsmTileLayer from '../components/OsmTileLayer';
+import BaseTileLayer from '../components/BaseTileLayer';
 import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
 import {
@@ -20,6 +20,7 @@ import IntervalAnalysis, { type IntervalSeriesView } from '../components/Interva
 import JumpMapLayer from '../components/JumpMapLayer';
 import JumpsPanel from '../components/JumpsPanel';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
+import EmptyTabPanel from '../components/EmptyTabPanel';
 import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
 import { HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
@@ -812,6 +813,23 @@ function LandModule({ family }: { family: LandFamily }) {
   ) : null;
 
   /** D'où vient l'altitude affichée. */
+  /** Pourquoi « zones de pente » n'a rien à montrer : d'où viendrait l'altitude, et ce qu'il en est (demande du 19/10). */
+  const zonesEmptyText = (() => {
+    if (stats?.hasElevation) return 'Pas assez de mouvement pour des zones de pente.';
+    switch (terrainElevation.status) {
+      case 'searching':
+        return "Pas d'altitude dans le fichier : celle de l'IGN est en cours de chargement…";
+      case 'outside':
+        return "Pas d'altitude dans le fichier, et la trace est hors de la couverture de l'IGN (France).";
+      case 'error':
+        return `Pas d'altitude dans le fichier, et celle de l'IGN n'a pas pu être chargée. ${terrainElevation.error ?? ''}`.trim();
+      case 'off':
+        return "Pas d'altitude dans le fichier, et celle de l'IGN est écartée dans l'onglet réglages de la session.";
+      case 'ready':
+        return "L'altitude de l'IGN ne couvre pas assez de la trace pour des zones de pente.";
+    }
+  })();
+
   const elevationSource = gpx.track.length > 1 ? (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: terrainElevation.status === 'error' ? 'var(--danger)' : 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
       <span>{elevationSourceText(terrainElevation.status, terrainElevation.stepM, terrainElevation.error)}</span>
@@ -888,10 +906,10 @@ function LandModule({ family }: { family: LandFamily }) {
   /** Couches de la carte, partagées par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
     <>
-      <OsmTileLayer />
+      <BaseTileLayer family={family} />
       {surfaceMapPaths ? <SurfaceLayer paths={surfaceMapPaths} /> : gradeMapPaths ? gradeMapPaths.map((path, idx) => (
         <Polyline key={`grade-${idx}`} positions={path.positions} pathOptions={{ color: path.color, weight: 5 }} />
-      )) : <TrackSegmentsLayer segments={mapSegments} weight={5} />}
+      )) : <TrackSegmentsLayer segments={mapSegments} weight={5} family={family} />}
       {zonePaths.map((path, idx) => (
         <Polyline key={`zone-${selectedZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       ))}
@@ -1206,6 +1224,14 @@ function LandModule({ family }: { family: LandFamily }) {
               </ResizablePanel>
             )}
 
+            {open.zones && zoneStats.length === 0 && stats && (
+              <EmptyTabPanel id={panelId('zones.vide')} label={model.zonesTitle} open={open.zones} onToggle={() => toggle('zones')}
+                action={!stats.hasElevation && terrainElevation.status === 'error'
+                  ? <Button size="s" onClick={terrainElevation.retry}>Réessayer</Button>
+                  : undefined}>
+                {zonesEmptyText}
+              </EmptyTabPanel>
+            )}
             {open.zones && zoneStats.length > 0 && (
               <ResizablePanel id={panelId('zones')} direction="vertical"
                 style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: '14px' }}>

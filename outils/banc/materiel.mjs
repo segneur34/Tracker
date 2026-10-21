@@ -109,12 +109,12 @@ await evaluate(`(() => {
   return 'ok';
 })()`);
 await go('/parametres', 3000);
-const nameSelector = `input[aria-label="Nom de l\\'activité"]`;
-const rows = await evaluate(`[...document.querySelectorAll('.settings-activity')].filter((c) => [...c.querySelectorAll('.settings-row__label')].some((l) => l.textContent.trim() === 'Matériel')).map((c) => c.querySelector(${JSON.stringify(nameSelector)})?.value).join(', ')`);
-console.log('cartes ouvertes :', await evaluate(`[...document.querySelectorAll(${JSON.stringify(nameSelector)})].map((i) => i.value).join(', ')`));
+const nameSelector = '.settings-activity__name';
+const rows = await evaluate(`[...document.querySelectorAll('.settings-activity')].filter((c) => [...c.querySelectorAll('.settings-row__label')].some((l) => l.textContent.trim() === 'Matériel')).map((c) => c.querySelector(${JSON.stringify(nameSelector)})?.textContent).join(', ')`);
+console.log('cartes ouvertes :', await evaluate(`[...document.querySelectorAll('.settings-activity__toggle[aria-expanded="true"] .settings-activity__name')].map((i) => i.textContent).join(', ')`));
 console.log('cartes avec « Matériel » :', rows);
 check('pas de ligne « Matériel » en Voile, une en Course', !rows.split(', ').includes('Voile') && rows.split(', ').includes('Course'));
-const courseCard = `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector(${JSON.stringify(nameSelector)})?.value === 'Course')`;
+const courseCard = `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector(${JSON.stringify(nameSelector)})?.textContent === 'Course')`;
 console.log('intitulé 1 :', await setText(`${courseCard}?.querySelector('input[aria-label="Intitulé du matériel 1"]')`, ' Chaussures '));
 await wait(300);
 console.log('intitulé 2 :', await setText(`${courseCard}?.querySelector('input[aria-label="Intitulé du matériel 2"]')`, 'Sac'));

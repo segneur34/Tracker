@@ -187,6 +187,9 @@ export const averagePace = (distanceM: number, timeMs: number): { pace: string; 
  */
 export const DEFAULT_SPEED_RANGE_MS: SpeedRangeMs = { minMs: 4 / 3.6, maxMs: 15 / 3.6 };
 
+/** Bornes par défaut du dégradé de l'activité Marche de départ (20/10) : 1,5 et 8 km/h. */
+export const DEFAULT_WALK_SPEED_RANGE_MS: SpeedRangeMs = { minMs: 1.5 / 3.6, maxMs: 8 / 3.6 };
+
 /** Bornes du dégradé de couleur de la pente, en fraction (0,25 = 25 %). */
 export interface GradeRange {
   min: number;

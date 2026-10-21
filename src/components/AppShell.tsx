@@ -16,8 +16,8 @@ import HoldDial from './ui/HoldDial';
  * Cadre de toutes les pages : navigation et bandeau d'enregistrement.
  *
  * Sur téléphone (moins de 768 px de large), une barre d'onglets en bas, en
- * cinq cases fixes, le bouton rond au milieu : Accueil · Statistiques ·
- * Enregistrer · Profil · Réglages. Les sports et les itinéraires s'ouvrent
+ * cinq cases fixes, le bouton rond au milieu : Accueil · Profil ·
+ * Enregistrer · Statistiques · Réglages. Les sports et les itinéraires s'ouvrent
  * depuis l'accueil. Le bouton rond est vert au repos, rouge pendant un
  * enregistrement.
  * Sur ordinateur, toutes les destinations dans une barre en haut (les
@@ -147,7 +147,7 @@ function AppShell() {
 
       <nav aria-label="Navigation principale" className="shell-tabbar">
         {tabLink(HOME)}
-        {tabLink(STATISTIQUES)}
+        {tabLink(PROFIL)}
         <div className="shell-tabbar__record">
           {canToggle ? (
             // Un bouton, pas un lien : la WebView d'Android affiche l'adresse d'un lien tenu longtemps.
@@ -177,7 +177,7 @@ function AppShell() {
             </NavLink>
           )}
         </div>
-        {tabLink(PROFIL)}
+        {tabLink(STATISTIQUES)}
         {tabLink(SETTINGS)}
       </nav>
 

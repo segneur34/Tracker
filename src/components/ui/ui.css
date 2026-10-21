@@ -234,6 +234,75 @@
   padding: 0 var(--space-2);
 }
 
+/* --- Bouton glissant (`SegmentedControl`) : gouttière creuse, case blanche sous le choix --- */
+
+.ui-segmented {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-m);
+  background: var(--surface-sunken);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ui-segmented::-webkit-scrollbar {
+  display: none;
+}
+
+.ui-segmented__thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  pointer-events: none;
+}
+
+.ui-segmented.is-ready .ui-segmented__thumb {
+  transition: transform 0.18s ease, width 0.18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-segmented.is-ready .ui-segmented__thumb {
+    transition: none;
+  }
+}
+
+.ui-segmented button {
+  position: relative;
+  flex: 1 0 auto;
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.18s;
+}
+
+@media (max-width: 359px) {
+  .ui-segmented button {
+    padding: 0 var(--space-1);
+  }
+}
+
+.ui-segmented button[aria-checked='true'] {
+  color: var(--seg-accent, var(--ink));
+}
+
+.ui-segmented button:focus-visible {
+  outline: 2px solid var(--seg-accent, var(--ink-2));
+  outline-offset: -2px;
+}
+
 /* --- Point d'interrogation qui déplie une explication (`HelpButton`) --- */
 
 .ui-help {

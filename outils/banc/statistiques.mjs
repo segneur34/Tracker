@@ -4,10 +4,12 @@
 // à vélo, une de wingfoil, une de kite sans activité créée pour lui, une de surf, un fractionné à pied et un à vélo),
 // datées en jours avant aujourd'hui,
 // les importe par la page Course, et vérifie :
-//  1. l'accès : « Statistiques » dans la barre du haut, la carte de l'accueil qui ouvre la page ;
+//  1. l'accès : « Statistiques » dans la barre du haut, qui ouvre la page ; plus de lien sur l'accueil ;
 //  2. la vue d'ensemble : 12 sessions, une ligne par famille, pas de records, le graphique de la durée seule ;
+//  1 bis. les boutons glissants (demande du 20/10) : familles et période visibles d'emblée, sans bouton
+//     « Sélection », pas de rangée d'activités sur « Tout » ; la flèche droite du clavier passe à la famille suivante ;
 //  3. la descente : Course (5 sessions, graphique et records), 30 jours (2 sessions), le retour arrière
-//     qui remonte à la vue d'ensemble ; Fractionné puis « Fractionné vélo » (1 session) ; les pastilles
+//     qui remonte à la vue d'ensemble ; Fractionné puis « Fractionné vélo » (1 session) ; les boutons
 //     d'activité de chaque famille (Vélo : ses trois activités ; Voile : « Kite », de base, avec sa session) ;
 //  4. le graphique (lot 2 des demandes du 16/10) : un point cliqué donne sa session, « Ouvrir » mène à son
 //     analyse ; les données proposées par famille (course, voile : % de vol du wingfoil seul, surf), chacune
@@ -98,10 +100,14 @@ const stat = (label) => evaluate(`(() => {
   return s?.querySelector('.an-sheet__stat-value')?.textContent ?? null;
 })()`);
 const tabs = () => evaluate(`[...document.querySelectorAll('.stats-col > .ui-tabs .ui-tab')].map((b) => b.textContent).join(', ')`);
-const chips = (label) => evaluate(`[...document.querySelectorAll('.stats-chips[aria-label=${JSON.stringify(label)}] .ui-tab')].map((b) => b.textContent).join(', ')`);
+/** Choix d'une rangée : pastilles de la donnée du graphique, boutons glissants de la sélection. */
+const rowButtons = (label) => label === 'Donnée'
+  ? `.stats-chips[aria-label=${JSON.stringify(label)}] .ui-tab`
+  : `.ui-segmented[aria-label=${JSON.stringify(label)}] [role=radio]`;
+const chips = (label) => evaluate(`[...document.querySelectorAll(${JSON.stringify(rowButtons(label))})].map((b) => b.textContent).join(', ')`);
 const search = () => evaluate('location.pathname + location.search');
 const points = () => evaluate(`document.querySelectorAll('.recharts-scatter-symbol').length`);
-const pressed = (label) => evaluate(`document.querySelector('.stats-chips[aria-label=${JSON.stringify(label)}] .ui-tab[aria-pressed=true]')?.textContent ?? null`);
+const pressed = (label) => evaluate(`[...document.querySelectorAll(${JSON.stringify(rowButtons(label))})].find((b) => b.getAttribute('aria-pressed') === 'true' || b.getAttribute('aria-checked') === 'true')?.textContent ?? null`);
 // Seul l'axe vertical a une étiquette ; Recharts la pose dans une couche à part, hors du groupe de l'axe.
 const yLabel = () => evaluate(`document.querySelector('.recharts-label')?.textContent ?? null`);
 const sessionRecords = () => evaluate(`(async () => {
@@ -137,20 +143,31 @@ await wait(12000);
 // 1. Accès.
 await go('/');
 check('lien dans la barre du haut', (await evaluate(`document.querySelector('.shell-toplinks')?.textContent`))?.includes('Statistiques'));
-check('carte de l\'accueil', await click('.shell-main a', 'Statistiques'));
+check('plus de lien sur l\'accueil (demande du 19/10)', !(await evaluate(`[...document.querySelectorAll('.shell-main a')].some((a) => a.textContent.trim().startsWith('Statistiques'))`)));
+check('lien de la barre du haut', await click('.shell-toplinks a', 'Statistiques'));
 await wait(1500);
-check('la carte ouvre la page', (await search()) === '/statistiques', await search());
+check('le lien ouvre la page', (await search()) === '/statistiques', await search());
 
-// 1 bis. Pastilles repliées sous « Sélection », qui porte le choix en cours ; dépliées, retenues au rechargement.
-const choiceButton = `[...document.querySelectorAll('.stats-choice > button[data-chart-fold]')][0]`;
-check('Sélection repliée au départ, choix lisible', (await evaluate(`${choiceButton}?.getAttribute('aria-expanded')`)) === 'false'
-  && (await evaluate(`${choiceButton}?.textContent`)) === 'SélectionToutes les familles · depuis le début' && (await chips('Famille')) === '',
-  `${await evaluate(`${choiceButton}?.textContent`)} ; ${await chips('Famille')}`);
-await evaluate(`${choiceButton}.click()`);
-await wait(300);
-check('Sélection dépliée : trois rangées', (await chips('Famille'))?.startsWith('Tout, ') && (await chips('Période'))?.includes('30 jours'), await chips('Famille'));
-await go('/statistiques');
-check('Sélection dépliée retenue', (await evaluate(`${choiceButton}?.getAttribute('aria-expanded')`)) === 'true');
+// 1 bis. Boutons glissants, visibles d'emblée.
+check('plus de bouton « Sélection »', !(await evaluate(`!!document.querySelector('.stats-choice button[data-chart-fold]')`)));
+check('rangée des familles', (await chips('Famille')) === 'Tout, À pied, Vélo, Voile, Fractionné, Surf' || (await chips('Famille'))?.startsWith('Tout, '), await chips('Famille'));
+check('« Tout » choisi, pas de rangée d\'activités', (await pressed('Famille')) === 'Tout' && (await chips('Activité')) === '', `${await pressed('Famille')} ; ${await chips('Activité')}`);
+check('rangée des périodes, « Tout » choisi', (await chips('Période')) === 'Semaine, 30 jours, 6 mois, Année, Tout' && (await pressed('Période')) === 'Tout', await chips('Période'));
+check('case blanche sous le choix', await evaluate(`(() => {
+  const row = document.querySelector('.ui-segmented[aria-label="Famille"]');
+  const thumb = row?.querySelector('.ui-segmented__thumb')?.getBoundingClientRect();
+  const on = row?.querySelector('[aria-checked=true]')?.getBoundingClientRect();
+  return !!thumb && !!on && Math.abs(thumb.left - on.left) < 1 && Math.abs(thumb.width - on.width) < 1;
+})()`));
+await evaluate(`document.querySelector('.ui-segmented[aria-label="Famille"] [aria-checked=true]').focus()`);
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+await wait(800);
+const keyed = await pressed('Famille');
+check('flèche droite : famille suivante, rangée d\'activités', keyed !== 'Tout' && (await chips('Activité'))?.startsWith('Toutes, ')
+  && (await evaluate(`document.activeElement?.getAttribute('aria-checked')`)) === 'true', `${keyed} ; ${await chips('Activité')}`);
+await evaluate('history.back()');
+await wait(800);
 
 // 2. Vue d'ensemble.
 check('12 sessions', (await stat('Sessions')) === '12', await stat('Sessions'));
@@ -164,7 +181,7 @@ check('régularité', (await stat('Semaines actives')) !== null && (await evalua
 await shoot('stats-ensemble');
 
 // 3. Descente.
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'À pied');
+await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'À pied');
 await wait(800);
 check('famille dans l\'adresse', (await search()) === '/statistiques?famille=course', await search());
 check('Course : 5 sessions', (await stat('Sessions')) === '5', await stat('Sessions'));
@@ -178,30 +195,31 @@ check('records de la course', records === 'Vitesse max, Distance, Durée', recor
 check('trois par record', (await evaluate(`document.querySelector('.stats-records ol')?.children.length`)) === 3);
 await shoot('stats-course');
 
-await click('.stats-chips[aria-label="Période"] .ui-tab', '30 jours');
+await click('.ui-segmented[aria-label="Période"] [role=radio]', '30 jours');
 await wait(800);
 check('30 jours : 2 sessions', (await stat('Sessions')) === '2', await stat('Sessions'));
 check('période dans l\'adresse', (await search()) === '/statistiques?famille=course&periode=trente', await search());
-check('le bouton « Sélection » porte le choix', (await evaluate(`${choiceButton}?.textContent`)) === 'SélectionÀ pied · 30 jours', await evaluate(`${choiceButton}?.textContent`));
+check('le sous-titre porte le choix', (await evaluate(`document.querySelector('.ui-page-header')?.textContent`))?.includes('À pied · 30 jours'),
+  await evaluate(`document.querySelector('.ui-page-header')?.textContent`));
 await evaluate('history.back()');
 await wait(1000);
 check('retour arrière : vue d\'ensemble', (await search()) === '/statistiques' && (await stat('Sessions')) === '12', `${await search()} ; ${await stat('Sessions')}`);
 
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'Fractionné');
+await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Fractionné');
 await wait(800);
-check('activités du fractionné', (await chips('Activité')) === 'Toute la famille, Fractionné à pied, Fractionné vélo', await chips('Activité'));
-await click('.stats-chips[aria-label="Activité"] .ui-tab', 'Fractionné vélo');
+check('activités du fractionné', (await chips('Activité')) === 'Toutes, Fractionné à pied, Fractionné vélo', await chips('Activité'));
+await click('.ui-segmented[aria-label="Activité"] [role=radio]', 'Fractionné vélo');
 await wait(800);
 check('Fractionné vélo : 1 session', (await stat('Sessions')) === '1' && (await search())?.includes('activite='), `${await stat('Sessions')} ; ${await search()}`);
 
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'Vélo');
+await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Vélo');
 await wait(800);
-check('activités du vélo, sessions ou non', (await chips('Activité')) === 'Toute la famille, Route, Gravel, VTT', await chips('Activité'));
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'Voile');
+check('activités du vélo, sessions ou non', (await chips('Activité')) === 'Toutes, Route, Gravel, VTT', await chips('Activité'));
+await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Voile');
 await wait(800);
 const voile = await chips('Activité');
-check('activité de base de la voile', voile?.startsWith('Toute la famille, Voile') && voile.includes('Kite'), voile);
-await click('.stats-chips[aria-label="Activité"] .ui-tab', 'Kite');
+check('activité de base de la voile', voile?.startsWith('Toutes, Voile') && voile.includes('Kite'), voile);
+await click('.ui-segmented[aria-label="Activité"] [role=radio]', 'Kite');
 await wait(800);
 check('Kite : 1 session', (await stat('Sessions')) === '1', await stat('Sessions'));
 
@@ -231,7 +249,7 @@ check('fiches en version 5 ou plus, distance en action', fiches.length === 12 &&
   fiches.map((r) => `${r.summary.calcVersion}/${r.summary.movingDistanceM}`).join(' '));
 // Par la pastille de la famille, pour que l'affichage soit retenu (la dernière vue retenue est Kite).
 await go('/statistiques');
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'À pied');
+await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'À pied');
 await wait(800);
 await openTab('graphique');
 const courseChips = await chips('Donnée');
@@ -244,21 +262,21 @@ for (const [chip, label] of [['Moyenne en action', 'min/km'], ['Durée', 'min'],
 await go('/statistiques', 3000);
 check('choix retenu après rechargement', (await search()) === '/statistiques?famille=course' && (await pressed('Donnée')) === 'Dénivelé positif',
   `${await search()} ; ${await pressed('Donnée')}`);
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'Voile');
+await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Voile');
 await wait(800);
 check('voile : pas de D+, la vitesse max à sa place', (await pressed('Donnée')) === 'Vitesse max', await pressed('Donnée'));
 const voileChips = await chips('Donnée');
 check('données de la voile', voileChips === 'Vitesse max, Moyenne en action, Durée, Distance, % de vol', voileChips);
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'À pied');
+await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'À pied');
 await wait(800);
 check('retour en course : le choix retrouvé', (await pressed('Donnée')) === 'Dénivelé positif', await pressed('Donnée'));
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'Voile');
+await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Voile');
 await wait(800);
 await click('.stats-chips[aria-label="Donnée"] .ui-tab', '% de vol');
 await wait(500);
 check('% de vol : le wingfoil seul (kite sans foil), axe en %', (await points()) === 1 && (await yLabel()) === '%', `${await points()} ; ${await yLabel()}`);
 await shoot('stats-graphique');
-await click('.stats-chips[aria-label="Famille"] .ui-tab', 'Surf');
+await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Surf');
 await wait(800);
 const surfChips = await chips('Donnée');
 check('données du surf (sans foil)', surfChips === 'Vitesse max, Moyenne en action, Durée, Distance, Vagues, Plus longue vague', surfChips);
@@ -279,7 +297,7 @@ await evaluate(`(() => {
 })()`);
 await go('/statistiques');
 check('Surf caché : 11 sessions', (await stat('Sessions')) === '11', await stat('Sessions'));
-check('Surf absent des pastilles', !(await chips('Famille'))?.includes('Surf'), await chips('Famille'));
+check('Surf absent de la rangée des familles', !(await chips('Famille'))?.includes('Surf'), await chips('Famille'));
 await go('/statistiques?famille=surf');
 check('Surf par l\'adresse', (await stat('Sessions')) === '1' && (await evaluate(`document.querySelector('.shell-main').innerText.includes('cachée dans Réglages')`)),
   await stat('Sessions'));
@@ -333,6 +351,17 @@ check('390 px : rien ne déborde (famille)', !(await overflow()));
 await shoot('stats-telephone');
 await go('/statistiques');
 check('390 px : rien ne déborde (ensemble)', !(await overflow()));
+// 320 px : la rangée des familles défile en elle-même si elle ne tient pas, sans élargir la page.
+await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });
+await go('/statistiques?famille=surf');
+const fit = await evaluate(`(() => {
+  const row = document.querySelector('.ui-segmented[aria-label="Famille"]');
+  const on = row?.querySelector('[aria-checked=true]')?.getBoundingClientRect();
+  const box = row?.getBoundingClientRect();
+  return { scroll: row ? row.scrollWidth - row.clientWidth : null, visible: !!on && !!box && on.left >= box.left - 1 && on.right <= box.right + 1 };
+})()`);
+check('320 px : rien ne déborde, le choix en vue', !(await overflow()) && fit?.visible, JSON.stringify(fit));
+await shoot('stats-320');
 
 await go('/');
 const tab = (label) => `[...document.querySelectorAll('.shell-tabbar .shell-tab')].find((t) => t.textContent.trim() === ${JSON.stringify(label)})`;

@@ -30,6 +30,10 @@ export interface TileStore {
 }
 
 const TILE_DIR = 'tuiles';
+/**
+ * Type par défaut d'une tuile. Toutes sont nommées `.png`, les photos du fond
+ * satellite (JPEG) comprises : le décodeur d'image reconnaît le format au contenu.
+ */
 const TILE_TYPE = 'image/png';
 
 const filesystem = () => import('@capacitor/filesystem');
@@ -157,7 +161,7 @@ const browserStore: TileStore = {
   },
   write: async (key, blob) => {
     const cache = await openCache();
-    const headers = { 'content-type': TILE_TYPE, 'content-length': String(blob.size), [SAVED_AT_HEADER]: String(Date.now()) };
+    const headers = { 'content-type': blob.type || TILE_TYPE, 'content-length': String(blob.size), [SAVED_AT_HEADER]: String(Date.now()) };
     await cache?.put(cacheUrl(key), new Response(blob, { headers })).catch(() => undefined);
   },
   list: async () => {

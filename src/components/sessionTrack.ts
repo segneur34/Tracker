@@ -8,7 +8,7 @@ import { sportTreatment, type SportFamily } from '../core/sportProfiles';
 import { trackColorSpeedsMs } from '../core/trackColor';
 import type { SportType } from '../core/types';
 import { msToKnots } from '../core/units';
-import { TREATMENT_SPEED_RANGE_MS, readStoredSettings } from '../hooks/useSportSettings';
+import { TREATMENT_SPEED_RANGE_MS, defaultSpeedRangeOf, readStoredSettings } from '../hooks/useSportSettings';
 import type { SessionRecord } from '../library/record';
 import { analysisTrack } from '../library/summary';
 import { suggestSpeedRangeMs } from '../sailing/sailingConfig';
@@ -59,8 +59,8 @@ export const sessionColorTrack = (
  * 1. celles réglées pour son activité dans Réglages (`tracker.sportSettings`) ;
  * 2. en voile, les bornes suggérées par l'allure de la session (`suggestSpeedRangeMs`,
  *    mesurées sur la trace entière comme dans l'analyse) ;
- * 3. à défaut, le défaut du traitement de son calcul (celui du calcul par défaut de la
- *    famille pour une session à classer).
+ * 3. à défaut, celui de son activité (`defaultSpeedRangeOf`), sinon celui du traitement de
+ *    son calcul (celui du calcul par défaut de la famille pour une session à classer).
  */
 export const sessionSpeedRange = (
   record: Pick<SessionRecord, 'analysis' | 'sport'>,
@@ -74,5 +74,6 @@ export const sessionSpeedRange = (
     if (override && isValidSpeedRange(override)) return override;
   }
   if (suggested) return suggested;
+  if (activity) return defaultSpeedRangeOf(activity);
   return TREATMENT_SPEED_RANGE_MS[sportTreatment(record.sport ?? FAMILY_BASE[family])];
 };

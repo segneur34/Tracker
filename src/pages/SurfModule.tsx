@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import OsmTileLayer from '../components/OsmTileLayer';
+import BaseTileLayer from '../components/BaseTileLayer';
 import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
 import {
@@ -438,8 +438,8 @@ function SurfModule() {
 
   const mapLayers = (
     <>
-      <OsmTileLayer />
-      <TrackSegmentsLayer segments={mapSegments} weight={5} />
+      <BaseTileLayer family={'surf'} />
+      <TrackSegmentsLayer segments={mapSegments} weight={5} family={'surf'} />
       <SurfSpanLayer track={track} spans={shownSpans} />
       <TopsHighlight tops={tops} selected={topShown} />
       {hrZonePaths.map((path, idx) => (
@@ -518,10 +518,13 @@ function SurfModule() {
                         const s = phase === 'glisse' ? summary.glisseS : phase === 'rame' ? summary.rameS : phase === 'attente' ? summary.attenteS : summary.trouS;
                         if (s <= 0) return null;
                         const label = phase === 'glisse' && foil ? 'en vol' : PHASE_LABELS[phase];
+                        // Sans foil, la glisse est faite des vagues : son temps est déjà « Sur la vague » au-dessus,
+                        // la légende ne le redit pas (demande du 19/10). Sur foil, « en vol » est une autre durée.
+                        const repeated = phase === 'glisse' && !foil;
                         return (
                           <span key={phase} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                             <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: PHASE_COLORS[phase], border: '1px solid var(--line)' }} />
-                            {label} {Math.round((s / summary.totalS) * 100)} %
+                            {label}{repeated ? '' : ` ${Math.round((s / summary.totalS) * 100)} %`}
                           </span>
                         );
                       })}

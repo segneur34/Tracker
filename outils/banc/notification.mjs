@@ -121,6 +121,7 @@ const before = await notifRow();
 // Deux chiffres au plus depuis le 15/10 (Android coupe la ligne au-delà) : vitesse et distance par défaut.
 check('deux menus, défaut vitesse, distance', before?.menus === 2 && before.values.join(',') === 'Vitesse,Distance' && before.text.includes('défaut'),
   JSON.stringify(before?.values));
+check('rien de changé : pas de « Défaut » dans la carte Voile', !(await evaluate(`[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__toggle')?.textContent.trim().startsWith('Voile'))?.querySelector('.settings-activity__actions')?.textContent.includes('Défaut') ?? false`)));
 await evaluate(`(() => {
   const part = [...document.querySelectorAll('.settings-part__sub')].find((p) => p.querySelector('.settings-part__subtitle')?.textContent.trim() === 'Notification');
   const s = part.querySelectorAll('select')[1];
@@ -132,6 +133,13 @@ await wait(300);
 const after = await notifRow();
 const stored = await evaluate(`JSON.stringify(JSON.parse(localStorage.getItem('tracker.sportSettings'))?.notificationFields)`);
 check('seconde ligne « Max », rangée, plus « défaut »', after?.values[1]?.startsWith('Max') && !after.text.includes('défaut') && /"max"/.test(stored ?? ''), stored);
+// Seuls les chiffres de la notification changés : la carte a son « Défaut », et repliée, « · modifié » (demande du 19/10).
+const voileCard = `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__toggle')?.textContent.trim().startsWith('Voile'))`;
+check('bouton « Défaut » de la carte Voile', await evaluate(`[...(${voileCard})?.querySelectorAll('.settings-activity__actions button') ?? []].some((b) => b.textContent.trim() === 'Défaut')`));
+await evaluate(`${voileCard}.querySelector('.settings-activity__toggle').click(); 'ok'`);
+await wait(300);
+const voileSummary = await evaluate(`${voileCard}?.querySelector('.settings-activity__summary')?.textContent ?? ''`);
+check('carte repliée : « · modifié »', voileSummary.includes('· modifié'), voileSummary);
 
 // 2. Rejeu ×10 de voile.
 const sailPath = `${workDir}\\notification-voile.gpx`;

@@ -1,0 +1,61 @@
+/* Choix du fond de carte, plan ou satellite (`BaseTileLayer.tsx`) : un bouton sous le + et le − de Leaflet,
+   de leur taille, et son menu à sa droite. */
+.map-base-switch {
+  position: relative;
+}
+
+.map-base-switch__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.map-base-switch__button:hover,
+.map-base-switch__button[aria-expanded='true'] {
+  background: var(--surface-hover);
+}
+
+.map-base-switch__menu {
+  position: absolute;
+  top: -2px;
+  left: calc(100% + var(--space-2));
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  padding: var(--space-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.map-base-switch__choice {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-s);
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-base-switch__choice:hover {
+  background: var(--surface-hover);
+}
+
+.map-base-switch__choice[aria-checked='true'] {
+  background: var(--ink);
+  color: var(--surface);
+  font-weight: 600;
+}

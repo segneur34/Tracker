@@ -718,6 +718,7 @@ function RecordingPage() {
           marks={mapMarks} validationRadiusM={markGuide.active ? markGuide.validationRadiusM : undefined}
           notes={busy ? recorder.marks : undefined}
           color={FAMILY_SHADES[liveActivity ? sportFamily(liveActivity.base) : 'voile'][0]}
+          family={liveActivity ? activityFamily(liveActivity) : family}
           overlay={busy ? (
             <Button size="s" onClick={() => toggleShown('carte')} style={{ boxShadow: '0 1px 5px rgba(0, 0, 0, 0.25)' }}>
               Réduire la carte

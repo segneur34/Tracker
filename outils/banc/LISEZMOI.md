@@ -190,7 +190,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 
   Les onglets ouverts sont mémorisés : le script n'ouvre un onglet que s'il est fermé (`openTab`). Il dure environ 1 min.
 - `cacher.mjs <port> [<dossier des captures>]` : familles et activités cachées (point 100), sur un profil neuf, sans réseau. Le script importe par la page une sortie à vélo (rangée sous Route). Il vérifie :
-  - Surf puis Route cachés par leur œil dans Réglages : toujours listés, grisés ; Surf hors de la barre du haut, de l'accueil et d'Enregistrer, la barre du bas inchangée (Accueil, Statistiques, Profil, Réglages) ; la session de Route retirée de la bibliothèque Vélo, une ligne le dit ; Route hors d'Enregistrer ; `/surf` s'ouvre et dit qu'il est caché ;
+  - Surf puis Route cachés par leur œil dans Réglages : toujours listés, grisés ; Surf hors de la barre du haut, de l'accueil et d'Enregistrer, la barre du bas inchangée (Accueil, Profil, Statistiques, Réglages) ; la session de Route retirée de la bibliothèque Vélo, une ligne le dit ; Route hors d'Enregistrer ; `/surf` s'ouvre et dit qu'il est caché ;
   - l'œil de la dernière famille visible désactivé ;
   - tout ré-affiché : barres, accueil, bibliothèque Vélo et Enregistrer identiques au relevé de départ.
 - `familles.mjs <port> [<dossier des captures>]` : familles repliables dans Réglages (lot 2 des demandes du 15/10), sur un profil neuf, sans réseau, environ 30 s. Avec `DUMP=x.txt`, il ouvre toutes les familles, activités et parties et relève le texte des cartes d'activité ; avec `RELEVE_SEUL=1` en plus, il s'arrête là (relevé de la version d'avant). Il vérifie ensuite :
@@ -202,12 +202,12 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 
   Depuis ce lot, les scripts qui passent par les cartes d'activité ouvrent d'abord les familles (clic sur `.settings-activities__family-toggle`, ou `settings-families` dans la mémoire préremplie).
 - `notification.mjs <port> <dossier de travail>` : notification de l'enregistrement (point 101), sur un profil neuf, sans réseau, environ 1 min 30. La version navigateur de `platform/notification.ts` consigne chaque envoi en `console.debug` (« [notification] »). Le script vérifie :
-  - la partie « Notification » de la carte Voile dans Réglages : trois menus, « défaut », puis une ligne changée et rangée ;
+  - la partie « Notification » de la carte Voile dans Réglages : deux menus, « défaut », puis une ligne changée et rangée, qui suffit à faire paraître le « Défaut » de la carte et, repliée, « · modifié » ;
   - un rejeu ×10 de voile : titre, chiffres choisis, chronomètre de durée, 5 s au moins entre deux envois ;
   - pause manuelle (envoi immédiat, « en pause », posé seul), reprise, puis effacement à l'arrêt ;
   - le compteur pendant un enregistrement de fractionné : phase au titre et décompte.
 - `statistiques.mjs <port> [<dossier des captures>]` : la page des statistiques (lot 5 des demandes du 10-13/10), sur un profil neuf, environ 1 min. Le script écrit lui-même douze sessions (course, vélo, wingfoil, kite sans activité créée pour lui, surf, deux fractionnés), datées en jours avant aujourd'hui, et les importe par la page Course. Le réseau n'est pas nécessaire ; l'analyse ouverte à l'étape du graphe demande seulement l'altitude à l'IGN s'il est là. Il vérifie :
-  - l'accès par la barre du haut et la carte de l'accueil ;
+  - l'accès par la barre du haut, plus de lien sur l'accueil (lot 1 des demandes du 20/10) ;
   - la vue d'ensemble (12 sessions, une ligne par famille, pas de records, le graphique de la durée seule), la descente vers Course, la période « 30 jours », le retour arrière, puis « Fractionné vélo » ; les pastilles d'activité de chaque famille, celles sans session et « Kite », activité de base, comprises ;
   - un point du graphique, cliqué, puis « Ouvrir » qui mène à l'analyse ; les données proposées en course, en voile (% de vol du wingfoil seul) et en surf, chacune tracée avec l'unité de son axe ; le choix retenu après rechargement, la vitesse max à sa place là où il n'existe pas ; les fiches en version 5 du résumé (point 122) ;
   - une planche à voile de `make-gpx.mjs` importée puis ouverte dans son analyse : la réussite des manœuvres rangée dans sa fiche, « % de manœuvres réussies » tracé en deux séries, la note des sessions à rouvrir ;
@@ -244,11 +244,11 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 
   Il finit par « Tout passe. » ou le nombre d'échecs. Menu fermé, le texte des analyses ne change pas : `onglets.mjs` en `RELEVE_SEUL=1` le prouve.
 - `profil.mjs <port> [<dossier des captures>]` : la page « Profil » (demande du 18/10), sur un profil neuf, sans réseau, environ 40 s. Le script écrit lui-même six sessions de 20 min, datées en jours avant aujourd'hui : quatre dans l'année en cours (deux courses, une sortie à vélo en côte de 200 m, une de wingfoil) et deux l'an passé. Il les importe par la page Course. Il vérifie :
-  - l'accueil sans graphe d'activités, et sa ligne « Profil » qui ouvre la page ; « Profil » allumé dans la barre du haut ;
+  - l'accueil sans graphe d'activités ni ligne « Profil » (retirée le 20/10) ; le lien « Profil » de la barre du haut ouvre la page, allumé ;
   - l'année en cours : la distance en km (à 5 % de la somme des vitesses × durées), « 1 h 20 », le D+ de la côte, le nombre de sessions ; l'ordre chiffres › répartition › graphe ; l'anneau (une part par activité) et sa légende (la course à 50 %), le total au centre, la part d'une ligne survolée ;
   - les flèches : « suivante » désactivée sur l'année en cours, l'an passé et ses chiffres (D+ à 0 sur le plat), « précédente » désactivée sur la plus vieille année, le graphe toujours là ;
   - une ligne de la légende qui ouvre la bibliothèque filtrée sur son activité ;
-  - à 390×844 : rien ne déborde, chiffres empilés ; la barre du bas (Accueil, Statistiques, Profil, Réglages), dont la case « Profil » ouvre la page, allumée.
+  - à 390×844 : rien ne déborde, chiffres empilés ; la barre du bas (Accueil, Profil, Statistiques, Réglages), dont la case « Profil » ouvre la page, allumée.
 
   Il finit par « Tout est bon. » ou le nombre d'échecs. Le graphe d'activités ayant quitté l'accueil, l'étape 5 de `donnees.mjs` (stockage plein) passe par `/profil`.
 - `reglages-aide.mjs <port> [<dossier des captures>]` : les aides de Réglages sous des « ? » (lot 3 des demandes du 19/10), sur un profil neuf, sans réseau, environ 40 s. Tout ouvert (blocs, familles, activités, parties), il vérifie :
@@ -260,6 +260,25 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 
   Il finit par « Tout est passé. » ou le nombre d'échecs. Seuls des textes d'aide ont quitté la page : le relevé `familles.mjs` en `DUMP=… RELEVE_SEUL=1`, avant et après, le prouve.
 - `reduire.mjs <port> [<dossier des captures>]` : « Tout réduire » et nom ou pseudo de Réglages (demandes du 19/10 au soir), sur un profil neuf, sans réseau, environ 20 s. Il vérifie que « Tout réduire » replie tout (blocs, familles, activités, parties, aide ouverte, choix d'icône), mémoire comprise, et que le choix d'icône se rouvre ensuite ; que le pseudo saisi dans Pratiquant devient le titre du Profil, et « Profil » une fois effacé ; l'en-tête sans débordement à 390×844.
+- `vides.mjs <port> [<dossier des captures>]` : lot 1 des demandes du 20/10, sur un profil neuf, sans réseau, environ 1 min. Le script écrit lui-même une voile en aller simple (vent impossible à estimer), une course sans altitude et la matinée de surf de `surf.mjs`, et les importe par la page. Il vérifie :
+  - voile : « manœuvres », « vmg » et « vent » ouverts disent « Vent inconnu » et ce qui en dépend, avec « Ouvrir l'onglet général » tant que « général » est fermé, qui l'ouvre ;
+  - course : « zones de pente » dit pourquoi elle est vide (pas d'altitude dans le fichier, IGN injoignable) et propose « Réessayer » ;
+  - surf : « Sur la vague (x %) » dans les chiffres, et la légende de la répartition qui ne redit pas son pourcentage ;
+  - à 360×800 : l'accueil sans lien Profil ni Statistiques, la barre du bas Accueil · Profil · Statistiques · Réglages ; dans Réglages, la carte Voile ouverte montre son nom en texte (un toucher replie la carte), « Renommer » et l'œil sur la même ligne ; Échap n'enregistre rien, Entrée renomme, le nom est relu après rechargement ; rien ne déborde.
+
+  Il finit par « Tout est bon. » ou le nombre d'échecs.
+- `marche.mjs <port> [<dossier des captures>]` : activité « Marche » de départ (lot 3 des demandes du 20/10), sur un profil neuf, sans réseau, environ 30 s. Il vérifie :
+  - installation neuve : la Marche juste après Course dans À pied, son icône, ses couleurs de 1,5 à 8 km/h et son temps estimé « Personnalisé » à 5 km/h, sans « · modifié » ; Course garde 4 à 15 km/h ;
+  - des réglages d'avant écrits dans `localStorage` : une liste de la version 5 reçoit la Marche une fois, une « marché » créée par l'utilisateur empêche le doublon, une liste de la version 6 sans Marche ne la voit pas revenir ;
+  - à 390×844, la liste d'activités d'Enregistrer pour À pied (Course, Marche), sans débordement.
+- `satellite.mjs <port> [<dossier des captures>]` : vue satellite (lot 4 des demandes du 20/10), sur un profil neuf, avec réseau vers `server.arcgisonline.com` seulement (IGN, Overpass, BRouter et OSM bloqués), environ 1 min 30. Le script écrit lui-même quatre allers-retours le long de la côte à Palavas (voile, course, vélo, surf) et les importe par la page. Il vérifie :
+  - dans chaque analyse : un bouton « Vue satellite » sous le + et le −, mention OSM ; un clic passe au satellite (mention Esri, tuiles affichées), le texte de la page ne change pas hors mention ; le fond rangé pour la famille seule (`tracker.fondCarte`), retrouvé après rechargement ; la voile en satellite laisse la course en plan ;
+  - vignettes de la bibliothèque : pas de bouton, plan ; planification : le fond de la famille de son activité (la Voile, en satellite), son bouton, qui ne pose pas de point, et deux points posés sur la photo ;
+  - l'aperçu de l'image de partage de la voile (capture, à regarder : photo et mention Esri) ;
+  - hors ligne : tuiles `sat_…` gardées, réaffichées sans Esri ;
+  - à 390×844 : bouton présent, rien ne déborde, un toucher sur le bouton n'ouvre pas le plein écran, la vue agrandie suit le fond avec son bouton.
+
+  Il finit par « Tout passe. » ou le nombre d'échecs.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

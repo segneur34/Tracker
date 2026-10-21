@@ -116,7 +116,7 @@ const before = await snapshot();
 console.log('\n--- départ ---');
 for (const [k, v] of Object.entries(before)) console.log(`${k} : ${String(v).replace(/\s+/g, ' ').slice(0, 220)}`);
 check('la session est sous Route', before.velo.includes('Route'));
-check('barre du bas : Accueil, Statistiques, Profil, Réglages', before.barreBas === 'Accueil | Statistiques | Profil | Réglages', before.barreBas);
+check('barre du bas : Accueil, Profil, Statistiques, Réglages', before.barreBas === 'Accueil | Profil | Statistiques | Réglages', before.barreBas);
 
 // --- 2. Surf, puis Route, cachés ---
 await go('/parametres');

@@ -8,7 +8,7 @@ import './PlanningPage.css';
 import ActivitySelect from '../components/ActivitySelect';
 import BeepCurveEditor from '../components/BeepCurveEditor';
 import MapAutoResize from '../components/MapAutoResize';
-import OsmTileLayer from '../components/OsmTileLayer';
+import BaseTileLayer from '../components/BaseTileLayer';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import RouteList from '../components/RouteList';
@@ -36,6 +36,7 @@ import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, toDisplayDistance
 import { useLeaveWarning } from '../hooks/leaveGuard';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useGoOnRoute } from '../hooks/useGoOnRoute';
+import { useMapBase } from '../hooks/useMapBase';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { usePlannedRoute } from '../hooks/usePlannedRoute';
 import { getLastFix, useRecorder } from '../hooks/useRecorder';
@@ -123,6 +124,8 @@ const FALLBACK_COLOR = '#6a1b9a';
  * départ ou l'arrivée.
  */
 const ROUTE_COLOR = '#1565c0';
+/** Liseré blanc sous le tracé, sur le fond satellite (donnée de carte, donc en dur). */
+const HALO_STYLE = { color: '#ffffff', weight: 9, opacity: 0.85, interactive: false } as const;
 /** Départ en vert, arrivée en rouge sombre (distinct du rouge des tronçons en échec). */
 const START_COLOR = '#2e7d32';
 const END_COLOR = '#b71c1c';
@@ -283,6 +286,9 @@ function PlanningPage() {
   const minGainM = (activity ? effectiveElevationProfile(activity) : ELEVATION_PRESETS.route).minGainM;
   const gradeRange = useMemo(() => (activity ? effectiveGradeRange(activity) : null), [activity]);
   const color = safeColor(activity?.color ?? FALLBACK_COLOR);
+  /** Famille de l'activité planifiée : son fond de carte, celui de ses analyses. */
+  const mapFamily = activity ? activityFamily(activity) : 'course';
+  const satellite = useMapBase(mapFamily)[0] === 'satellite';
   const riderKg = useRunnerProfile().profile.weightKg;
   /** Réglage du temps estimé : niveau de l'activité dans Réglages ; `null` en voile. */
   const durationSettings = useMemo(() => (activity ? effectiveDurationSettings(activity, riderKg) : null), [activity, riderKg]);
@@ -779,8 +785,12 @@ function PlanningPage() {
           <ResizablePanel id="planning.carte" direction="vertical" minHeight={240} className="plan-map" style={{ overflow: 'hidden' }}>
             <MapContainer ref={setMap} center={[initialView.lat, initialView.lon]} zoom={initialView.zoom} style={{ height: '100%', width: '100%' }}>
               <MapAutoResize />
-              <OsmTileLayer />
+              {/* Fond de la famille de l'activité planifiée : celui de ses analyses, changé ici aussi. */}
+              <BaseTileLayer family={mapFamily} />
               <MapEvents onTap={onMapTap} onTakeOver={takeOver} />
+              {satellite && route.legs.map((leg, i) => (
+                <Polyline key={`halo-${i}`} positions={leg.points.map((p) => [p.lat, p.lon] as [number, number])} pathOptions={HALO_STYLE} />
+              ))}
               {/* Sous les tronçons : un tronçon en calcul ou en échec garde son pointillé par-dessus. */}
               {gradePaths?.map((path, idx) => (
                 <Polyline key={`grade-${idx}`} positions={path.positions} pathOptions={{ color: path.color, weight: 5, opacity: 0.9, interactive: false }} />

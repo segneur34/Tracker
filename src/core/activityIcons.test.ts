@@ -15,11 +15,17 @@ describe('icônes des activités', () => {
 
   it('donne la sienne à chaque activité de départ', () => {
     expect(DEFAULT_ACTIVITIES.map(activityIcon)).toEqual([
-      'wingfoil', 'course', 'route', 'gravel', 'vtt', 'fractionne-pied', 'fractionne-velo', 'surf', 'surf-foil',
+      'wingfoil', 'course', 'marche', 'route', 'gravel', 'vtt', 'fractionne-pied', 'fractionne-velo', 'surf', 'surf-foil',
     ]);
   });
 
+  it('garde à la Marche de départ son icône quand elle est renommée', () => {
+    const marche = DEFAULT_ACTIVITIES.find((a) => a.id === 'a-marche')!;
+    expect(activityIcon({ ...marche, name: 'Sortie du dimanche' })).toBe('marche');
+  });
+
   it('devine du nom, du plus précis au plus large', () => {
+
     expect(guessActivityIcon('Paddle foil', 'surf')).toBe('paddle-foil');
     expect(guessActivityIcon('SUP', 'surf')).toBe('paddle');
     expect(guessActivityIcon('Super session', 'surf')).toBe('surf');

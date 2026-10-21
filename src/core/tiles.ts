@@ -2,7 +2,7 @@
  * Tuiles de carte gardées sur l'appareil, pour les cartes sans réseau :
  * calculs purs (nom d'une tuile, parent à agrandir, fraîcheur, place à
  * libérer). Le stockage est dans `platform/tileCache.ts`, la couche Leaflet
- * dans `components/OsmTileLayer.tsx`.
+ * dans `components/BaseTileLayer.tsx`, les fonds dans `core/mapBase.ts`.
  *
  * Les règles d'OpenStreetMap interdisent de télécharger une zone à l'avance :
  * on ne garde que les tuiles affichées en ligne, et on les redemande quand
@@ -18,8 +18,6 @@ export interface TileCoord {
 export const TILE_CACHE_DEFAULTS = {
   /** Âge au-delà duquel une tuile gardée est redemandée, si le réseau répond. */
   refreshAgeMs: 7 * 24 * 3600 * 1000,
-  /** Zooms au-dessus d'une tuile gardée où on l'agrandit plutôt que de laisser une case vide. */
-  overzoomDepth: 3,
   /** Place occupée au plus, en mégaoctets. */
   capMb: 500,
   /** Intervalle minimal entre deux contrôles de la place occupée. */
@@ -28,12 +26,13 @@ export const TILE_CACHE_DEFAULTS = {
   fetchTimeoutMs: 8000,
 } as const;
 
-/** Nom de fichier d'une tuile, sans extension. */
-export const tileKey = ({ z, x, y }: TileCoord): string => `${z}_${x}_${y}`;
+/** Nom de fichier d'une tuile, sans extension, précédé du préfixe de son fond (`core/mapBase.ts`). */
+export const tileKey = ({ z, x, y }: TileCoord, prefix = ''): string => `${prefix}${z}_${x}_${y}`;
 
-/** Tuile d'un nom de fichier (`z_x_y` ou `z_x_y.png`), `null` s'il n'en est pas un. */
-export const parseTileKey = (name: string): TileCoord | null => {
-  const match = /^(\d+)_(\d+)_(\d+)(?:\.png)?$/.exec(name);
+/** Tuile d'un nom de fichier (`[prefix]z_x_y`, extension `.png` permise), `null` s'il n'en est pas un. */
+export const parseTileKey = (name: string, prefix = ''): TileCoord | null => {
+  if (!name.startsWith(prefix)) return null;
+  const match = /^(\d+)_(\d+)_(\d+)(?:\.png)?$/.exec(name.slice(prefix.length));
   if (!match) return null;
   return { z: Number(match[1]), x: Number(match[2]), y: Number(match[3]) };
 };

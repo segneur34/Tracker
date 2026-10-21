@@ -1,4 +1,5 @@
 import { fitView, mapHeight, projectPoint, SHARE_IMAGE, statColumns, viewTiles, type ShareStat } from '../core/shareImage';
+import { MAP_BASES, type MapBase } from '../core/mapBase';
 import { tileKey, type TileCoord } from '../core/tiles';
 import { loadMapTile } from './mapTiles';
 import type { TrackSegment } from './TrackSegmentsLayer';
@@ -19,8 +20,10 @@ export interface ShareImageContent {
   accent: string;
   segments: ReadonlyArray<TrackSegment>;
   stats: ReadonlyArray<ShareStat>;
-  /** Fond OpenStreetMap sous la trace ; sans lui, un aplat. */
+  /** Fond de carte sous la trace ; sans lui, un aplat. */
   withMap: boolean;
+  /** Fond retenu pour la famille de la session (`useMapBase`), dont la mention est dessinée. */
+  base: MapBase;
   /** Nom ou pseudo du pratiquant, à droite du pied ; `null` : rien. */
   author: string | null;
 }
@@ -39,16 +42,16 @@ const blobImage = (content: Blob | string): Promise<CanvasImageSource> => {
 };
 
 /**
- * Chargeur de tuiles qui garde chacune le temps d'une fenêtre de partage :
- * cocher un chiffre redessine l'image sans redemander le fond.
+ * Chargeur des tuiles de `base` qui garde chacune le temps d'une fenêtre de
+ * partage : cocher un chiffre redessine l'image sans redemander le fond.
  */
-export const createTileImageLoader = (): TileImageLoader => {
+export const createTileImageLoader = (base: MapBase): TileImageLoader => {
   const images = new Map<string, Promise<CanvasImageSource | null>>();
   return (tile) => {
     const key = tileKey(tile);
     let image = images.get(key);
     if (!image) {
-      image = loadMapTile(tile).then((content) => (content === null ? null : blobImage(content))).catch(() => null);
+      image = loadMapTile(tile, base).then((content) => (content === null ? null : blobImage(content))).catch(() => null);
       images.set(key, image);
     }
     return image;
@@ -192,9 +195,9 @@ export const drawShareImage = async (content: ShareImageContent, tileImage: Tile
   }
   track.draw();
   if (content.withMap) {
-    // Mention qu'exigent les conditions d'usage des tuiles d'OpenStreetMap.
+    // Mention qu'exigent les conditions d'usage des tuiles du fond.
     ctx.font = `400 22px ${family}`;
-    const text = '© OpenStreetMap';
+    const text = MAP_BASES[content.base].credit;
     const w = ctx.measureText(text).width + 20;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
     ctx.fillRect(widthPx - w, mapPx - 34, w, 34);

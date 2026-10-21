@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
+import ActivityArt from '../components/activityArt';
 import { IconChevronRight } from '../components/icons';
 import PageHeader from '../components/ui/PageHeader';
+import SegmentedControl from '../components/ui/SegmentedControl';
 import { activityFamily, sessionActivity, type Activity } from '../core/activities';
+import { activityIcon } from '../core/activityIcons';
 import { toDisplayDistance } from '../core/units';
 import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -12,7 +15,7 @@ import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { useStoredRecord } from '../hooks/useStoredRecord';
 import { useVisibility } from '../hooks/useSportSettings';
 import { CHART_PERIODS, type ChartRange } from '../library/activityChart';
-import { activityShares } from '../library/profile';
+import { activityShares, favoriteActivity } from '../library/profile';
 import { inBounds, isStatsPeriod, statSessionOf, statsPeriodBounds, statsTotals, type StatSession } from '../library/stats';
 import './ProfilePage.css';
 
@@ -20,9 +23,10 @@ import './ProfilePage.css';
  * Profil : une période en un coup d'œil (`library/profile.ts`). En tête, la
  * période, qui règle toute la page : semaine, 30 jours, 6 mois, année (les
  * bornes du graphe d'activités et des statistiques) ou depuis le début ; choix
- * retenu sur l'appareil. Puis, dans l'ordre : kilomètres parcourus, temps en
- * activité, D+, la répartition du temps par activité en anneau, et le graphe
- * d'activités de la même période.
+ * retenu sur l'appareil. Puis, dans l'ordre : kilomètres parcourus, sport
+ * préféré (l'activité qui a le plus de temps, avec son dessin), D+, la
+ * répartition du temps par activité en anneau (le total au centre ; « Autres »
+ * se déplie dans le détail), et le graphe d'activités de la même période.
  * Mêmes sessions que les statistiques : ni celles d'une activité ou d'une
  * famille cachée, ni celles à classer. Distance en km quelle que soit l'unité
  * des activités : une somme de toutes les familles ne tient qu'en une unité.
@@ -44,6 +48,7 @@ const DETAIL_DEFAULT = { detail: false };
 /** Au-delà, les plus petites parts se regroupent en « Autres » : un anneau ne se lit plus. */
 const MAX_SLICES = 6;
 const OTHERS_COLOR = '#9aa0a6';
+const OTHERS_KEY = '__autres';
 
 /** Anneau : rayon médian et épaisseur, en unités du dessin (200 de côté). */
 const RING_R = 78;
@@ -70,6 +75,16 @@ const hoursText = (s: number): string => {
 const percentText = (share: number): string =>
   share > 0 && share < 0.01 ? '< 1 %' : `${Math.round(share * 100)} %`;
 
+/** Pastille, nom, temps et part d'une ligne du détail. */
+const LegendContent = ({ slice: s }: { slice: Slice }) => (
+  <>
+    <span className="profile-legend__dot" style={{ background: s.color }} />
+    <span className="profile-legend__name">{s.label}</span>
+    <span className="profile-legend__time num">{hoursText(s.durationS)}</span>
+    <span className="profile-legend__share num">{percentText(s.share)}</span>
+  </>
+);
+
 function ProfilePage() {
   const navigate = useNavigate();
   const { status, sessions, scanning } = useSessionLibrary();
@@ -80,6 +95,8 @@ function ProfilePage() {
   const { value: view, update: rememberView } = useStoredRecord<ProfileView>(VIEW_NAMESPACE, VIEW_KEY, VIEW_DEFAULTS);
   const period: ChartRange = isStatsPeriod(view.periode) ? view.periode : 'annee';
   const [active, setActive] = useState<string | null>(null);
+  /** Activités regroupées dans « Autres », dépliées sous sa ligne : non retenu. */
+  const [othersOpen, setOthersOpen] = useState(false);
   const { open, toggle } = useOpenSections('profil', DETAIL_DEFAULT);
 
   // Sessions classées et visibles. Une session peut tenir d'une activité de base, hors de la liste : elle est
@@ -103,22 +120,37 @@ function ProfilePage() {
   const totals = useMemo(() => statsTotals(inPeriod), [inPeriod]);
   const activityOrder = useMemo(() => activities.map((a) => a.id), [activities]);
 
-  const slices = useMemo((): Slice[] => {
+  const { slices, others } = useMemo((): { slices: Slice[]; others: Slice[] } => {
     const shares = activityShares(inPeriod, activityOrder).filter((s) => s.totals.durationS > 0);
     const ofShare = (s: (typeof shares)[number]): Slice => {
       const a = activityById.get(s.activityId) ?? null;
       return { key: s.activityId, label: a?.name ?? s.activityId, color: a?.color ?? OTHERS_COLOR, durationS: s.totals.durationS, share: s.share, activity: a };
     };
-    if (shares.length <= MAX_SLICES) return shares.map(ofShare);
+    if (shares.length <= MAX_SLICES) return { slices: shares.map(ofShare), others: [] };
     const rest = shares.slice(MAX_SLICES - 1);
-    return [
-      ...shares.slice(0, MAX_SLICES - 1).map(ofShare),
-      {
-        key: '__autres', label: `Autres (${rest.length})`, color: OTHERS_COLOR, activity: null,
-        durationS: rest.reduce((n, s) => n + s.totals.durationS, 0), share: rest.reduce((n, s) => n + s.share, 0),
-      },
-    ];
+    return {
+      slices: [
+        ...shares.slice(0, MAX_SLICES - 1).map(ofShare),
+        {
+          key: OTHERS_KEY, label: `Autres (${rest.length})`, color: OTHERS_COLOR, activity: null,
+          durationS: rest.reduce((n, s) => n + s.totals.durationS, 0), share: rest.reduce((n, s) => n + s.share, 0),
+        },
+      ],
+      others: rest.map(ofShare),
+    };
   }, [inPeriod, activityOrder, activityById]);
+  const favoriteId = useMemo(() => favoriteActivity(inPeriod, activityOrder), [inPeriod, activityOrder]);
+  const favorite = favoriteId ? activityById.get(favoriteId) ?? null : null;
+  const openLibrary = (a: Activity) => navigate(libraryPath(activityFamily(a), a.id));
+
+  /** Toucher une part l'éclaire ; « Autres » ouvre aussi le détail et y déplie ses activités. */
+  const pickSlice = (key: string) => {
+    if (key === OTHERS_KEY && active !== key) {
+      if (!open.detail) toggle('detail');
+      setOthersOpen(true);
+    }
+    setActive(active === key ? null : key);
+  };
 
   const km = toDisplayDistance(totals.distanceM, 'km');
   const activeSlice = slices.find((s) => s.key === active) ?? null;
@@ -136,13 +168,8 @@ function ProfilePage() {
     <div className="ui-page profile">
       <PageHeader title={name ?? 'Profil'} />
 
-      <div className="profile-periods" role="group" aria-label="Période">
-        {PROFILE_PERIODS.map((p) => (
-          <button key={p.id} type="button" aria-pressed={period === p.id} onClick={() => rememberView({ periode: p.id })}>
-            {p.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl className="profile-periods" label="Période" items={PROFILE_PERIODS.map((p) => ({ key: p.id, label: p.label }))}
+        value={period} onChange={(key) => rememberView({ periode: key })} />
 
       {status === 'opening' ? (
         <p className="profile-hint">Lecture de la mémoire…</p>
@@ -158,11 +185,22 @@ function ProfilePage() {
               </span>
               <span className="profile-figure__caption">parcourus</span>
             </div>
-            <div className="profile-figure">
-              <span className="ui-eyebrow">Temps</span>
-              <span className="profile-figure__value num">{hoursText(totals.durationS)}</span>
-              <span className="profile-figure__caption">en activité</span>
-            </div>
+            {favorite ? (
+              <button type="button" className="profile-figure profile-figure--link" onClick={() => openLibrary(favorite)}
+                title={`${favorite.name} : voir ses sessions`}>
+                <span className="ui-eyebrow">Sport préféré</span>
+                <span className="profile-figure__value">
+                  <ActivityArt icon={activityIcon(favorite)} className="profile-figure__art" style={{ color: favorite.color }} />
+                </span>
+                <span className="profile-figure__caption profile-figure__name">{favorite.name}</span>
+              </button>
+            ) : (
+              <div className="profile-figure">
+                <span className="ui-eyebrow">Sport préféré</span>
+                <span className="profile-figure__value">—</span>
+                <span className="profile-figure__caption">aucune session</span>
+              </div>
+            )}
             <div className="profile-figure">
               <span className="ui-eyebrow">Dénivelé</span>
               <span className="profile-figure__value num">
@@ -185,7 +223,7 @@ function ProfilePage() {
                         <circle key={slice.key} cx="100" cy="100" r={RING_R} fill="none" stroke={slice.color} strokeWidth={RING_W}
                           strokeDasharray={dash} strokeDashoffset={o}
                           opacity={active === null || active === slice.key ? 1 : 0.35}
-                          onMouseEnter={() => setActive(slice.key)} onClick={() => setActive(active === slice.key ? null : slice.key)} />
+                          onMouseEnter={() => setActive(slice.key)} onClick={() => pickSlice(slice.key)} />
                       ))}
                     </g>
                   </svg>
@@ -203,28 +241,37 @@ function ProfilePage() {
                   </button>
                   {open.detail && (
                     <ul className="profile-legend">
-                      {slices.map((s) => {
-                        const content = (
-                          <>
-                            <span className="profile-legend__dot" style={{ background: s.color }} />
-                            <span className="profile-legend__name">{s.label}</span>
-                            <span className="profile-legend__time num">{hoursText(s.durationS)}</span>
-                            <span className="profile-legend__share num">{percentText(s.share)}</span>
-                          </>
-                        );
-                        return (
+                      {slices.flatMap((s) => {
+                        const row = (
                           <li key={s.key} onMouseEnter={() => setActive(s.key)} onMouseLeave={() => setActive(null)}
                             className={active === s.key ? 'is-active' : undefined}>
                             {s.activity ? (
-                              <button type="button" className="profile-legend__row"
-                                onClick={() => navigate(libraryPath(activityFamily(s.activity!), s.activity!.id))}>
-                                {content}
+                              <button type="button" className="profile-legend__row" onClick={() => openLibrary(s.activity!)}>
+                                <LegendContent slice={s} />
                               </button>
                             ) : (
-                              <div className="profile-legend__row">{content}</div>
+                              <button type="button" className="profile-legend__row" aria-expanded={othersOpen}
+                                onClick={() => setOthersOpen(!othersOpen)}>
+                                <LegendContent slice={s} />
+                                <IconChevronRight size={14} className="profile-fold__chevron" style={{ transform: `rotate(${othersOpen ? -90 : 90}deg)` }} />
+                              </button>
                             )}
                           </li>
                         );
+                        if (s.key !== OTHERS_KEY || !othersOpen) return [row];
+                        // Sous « Autres », ses activités en retrait ; leur survol éclaire sa part de l'anneau.
+                        return [row, ...others.map((o) => (
+                          <li key={o.key} className={`profile-legend__sub${active === OTHERS_KEY ? ' is-active' : ''}`}
+                            onMouseEnter={() => setActive(OTHERS_KEY)} onMouseLeave={() => setActive(null)}>
+                            {o.activity ? (
+                              <button type="button" className="profile-legend__row" onClick={() => openLibrary(o.activity!)}>
+                                <LegendContent slice={o} />
+                              </button>
+                            ) : (
+                              <div className="profile-legend__row"><LegendContent slice={o} /></div>
+                            )}
+                          </li>
+                        ))];
                       })}
                     </ul>
                   )}

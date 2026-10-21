@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
-  ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, SURF_FOIL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
+  ACTIVITIES_VERSION, FAMILY_BASE, GRAVEL_ACTIVITY, MARCHE_ACTIVITY, SURF_FOIL_ACTIVITY, VTT_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
   isActivityShown, newActivityId, insertActivity, readActivities, upgradeActivities, visibleActivities, visibleFamilies, withHidden, type Activity,
 } from '../core/activities';
 import type { ActivityIconId } from '../core/activityIcons';
@@ -25,7 +25,7 @@ import { defaultJumpSettings, sanitizeJumpSettings, type JumpSettings } from '..
 import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, isValidBikeWeight, type BikeType } from '../cycling/energy';
 import { isValidCarriedLoad } from '../running/energy';
 import { DEFAULT_CYCLING_GRADE_RANGE, DEFAULT_CYCLING_SPEED_RANGE_MS } from '../cycling/cyclingConfig';
-import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
+import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, DEFAULT_WALK_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
 import { DEFAULT_SAILING_SPEED_RANGE_MS } from '../sailing/sailingConfig';
 import { DEFAULT_SURF_SPEED_RANGE_MS } from '../surfing/surfConfig';
 import {
@@ -62,6 +62,10 @@ export const TREATMENT_SPEED_RANGE_MS: Record<Treatment, SpeedRangeMs> = {
   velo: DEFAULT_CYCLING_SPEED_RANGE_MS,
   surf: DEFAULT_SURF_SPEED_RANGE_MS,
 };
+
+/** Bornes de couleur d'une activité à défaut de réglage : celles de la Marche de départ pour elle, sinon celles du traitement. */
+export const defaultSpeedRangeOf = (activity: Activity): SpeedRangeMs =>
+  activity.id === MARCHE_ACTIVITY.id ? DEFAULT_WALK_SPEED_RANGE_MS : TREATMENT_SPEED_RANGE_MS[activityTreatment(activity)];
 
 /** Bornes de la couleur de pente à défaut de réglage. */
 export const defaultGradeRange = (sport: SportType): GradeRange =>
@@ -550,6 +554,16 @@ const resolveWayTypes = (stored: StoredSettings, activity: Activity): { wayTypes
 /** Types de voie cochés d'office en planification ; aucun en voile. Utilisable hors composant. */
 export const effectiveWayTypes = (activity: Activity): WayType[] => resolveWayTypes(readStoredSettings(), activity).wayTypes;
 
+/** Vitesse sur le plat du temps estimé de la Marche de départ (20/10), en m/s : 5 km/h. */
+export const WALK_FLAT_SPEED_MS = 5 / 3.6;
+
+/**
+ * Niveau du temps estimé d'une activité sans réglage : « Personnalisé » à
+ * 5 km/h pour la Marche de départ, le niveau par défaut sinon.
+ */
+export const defaultPaceOf = (activityId: string): { level: PaceLevel; customFlatSpeedMs: number | null } =>
+  activityId === MARCHE_ACTIVITY.id ? { level: 'perso', customFlatSpeedMs: WALK_FLAT_SPEED_MS } : { level: DEFAULT_PACE_LEVEL, customFlatSpeedMs: null };
+
 /**
  * Niveau effectif et vitesse sur le plat qui en découle, en m/s ; un
  * « Personnalisé » sans vitesse valable revient au niveau par défaut.
@@ -569,7 +583,8 @@ export const effectivePace = (activity: Activity): { level: PaceLevel; flatSpeed
   const family = planningFamily(activity);
   if (!family) return null;
   const stored = readStoredSettings();
-  return resolvePace(family, stored.paceLevels?.[activity.id], stored.customFlatSpeeds?.[activity.id]);
+  const fallback = defaultPaceOf(activity.id);
+  return resolvePace(family, stored.paceLevels?.[activity.id] ?? fallback.level, stored.customFlatSpeeds?.[activity.id] ?? fallback.customFlatSpeedMs);
 };
 
 /**
@@ -749,8 +764,8 @@ export const useAllSportSettings = () => {
         carriedLoad: isValidCarriedLoad(carriedLoad) ? carriedLoad : null,
         gearLabels: sanitizeGearLabels(stored.gearLabels?.[id]),
         tabs: sanitizeTabChoices(stored.tabs?.[id]),
-        paceLevel: isPaceLevel(paceLevel) ? paceLevel : DEFAULT_PACE_LEVEL,
-        customFlatSpeedMs: typeof customSpeed === 'number' && isFinite(customSpeed) ? customSpeed : null,
+        paceLevel: isPaceLevel(paceLevel) ? paceLevel : defaultPaceOf(id).level,
+        customFlatSpeedMs: typeof customSpeed === 'number' && isFinite(customSpeed) ? customSpeed : defaultPaceOf(id).customFlatSpeedMs,
         wayTypes: ways.wayTypes,
         isWayTypesOverridden: ways.overridden,
         loopReturnRatio: resolveLoopReturnRatio(stored, activity),
@@ -1145,7 +1160,7 @@ export const useSportSettings = (family: SportFamily) => {
     /** Bornes de la couleur de pente de la courbe d'altitude, réglées dans Réglages ou par défaut. */
     gradeRange,
     /** Bornes du dégradé à défaut de réglage, propres au traitement du calcul. */
-    defaultSpeedRange: TREATMENT_SPEED_RANGE_MS[sportTreatment(sport)],
+    defaultSpeedRange: defaultSpeedRangeOf(activity),
     bikeType,
     /** Poids du vélo effectif, en kg (celui du type à défaut de réglage). */
     bikeWeightKg,

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { FAMILY_ACCENT } from '../core/activities';
 import { pickShareStats, SHARE_IMAGE, type ShareStat } from '../core/shareImage';
 import type { SportFamily } from '../core/sportProfiles';
+import { useMapBase } from '../hooks/useMapBase';
 import { readRunnerProfile, runnerName } from '../hooks/useRunnerProfile';
 import { shareFile } from '../platform/share';
 import { jsonStore } from '../platform/storage';
@@ -58,11 +59,13 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
   /** Échec du dessin, pour ce qu'il devait montrer. */
   const [failure, setFailure] = useState<{ text: string; key: string } | null>(null);
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
-  const tileImage = useMemo(() => createTileImageLoader(), []);
+  /** Fond de carte de la famille, celui de l'analyse : plan ou satellite. */
+  const [base] = useMapBase(family);
+  const tileImage = useMemo(() => createTileImageLoader(base), [base]);
   const withMap = choice.map ?? true;
   const chosen = pickShareStats(stats, choice.stats ?? null);
   /** Ce que l'image montre, en texte : un rendu de l'analyse (survol d'un graphe) ne la redessine pas. */
-  const drawKey = JSON.stringify([chosen, withMap]);
+  const drawKey = JSON.stringify([chosen, withMap, base]);
   const drawing = image?.key !== drawKey && failure?.key !== drawKey;
 
   const update = (next: ShareChoice) => {
@@ -79,7 +82,7 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
     let cancelled = false;
     const accent = getComputedStyle(document.documentElement).getPropertyValue(`--${family}`).trim() || '#1976d2';
     const [shown, map] = JSON.parse(drawKey) as [ShareStat[], boolean];
-    drawShareImage({ title, subtitle, accent, segments, stats: shown, withMap: map, author }, tileImage)
+    drawShareImage({ title, subtitle, accent, segments, stats: shown, withMap: map, base, author }, tileImage)
       .then((blob) => {
         if (cancelled) return;
         setImage((previous) => {
@@ -93,7 +96,7 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
     return () => {
       cancelled = true;
     };
-  }, [family, title, subtitle, segments, drawKey, tileImage, author]);
+  }, [family, title, subtitle, segments, drawKey, tileImage, base, author]);
 
   /** Aperçu libéré à la fermeture. */
   const imageRef = useRef(image);

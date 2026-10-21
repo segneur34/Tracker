@@ -145,7 +145,7 @@ await evaluate(`[...document.querySelectorAll('.settings-add button')].find((b) 
 await wait(600);
 check(`ajout (${added}) : famille Surf ouverte`, (await evaluate(`${familyToggle('Surf')}?.getAttribute('aria-expanded')`)) === 'true');
 check('carte de l\'activité ajoutée ouverte',
-  (await evaluate(`[...document.querySelectorAll('input[aria-label="Nom de l\\'activité"]')].some((i) => i.value === 'Kayak de mer')`)) === true);
+  (await evaluate(`[...document.querySelectorAll('.settings-activity__toggle[aria-expanded="true"] .settings-activity__name')].some((i) => i.textContent === 'Kayak de mer')`)) === true);
 await shoot('familles-ajout');
 
 // --- 6. À 390×844 ---

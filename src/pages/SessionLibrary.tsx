@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer } from 'react-leaflet';
-import OsmTileLayer from '../components/OsmTileLayer';
+import BaseTileLayer from '../components/BaseTileLayer';
 import { Link, useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import MapAutoResize from '../components/MapAutoResize';
@@ -183,7 +183,7 @@ function SessionPreviewMap({ session, activity, family, onOpen }: {
           zoomControl={false}
           style={{ position: 'absolute', inset: 0 }}>
           <MapAutoResize />
-          <OsmTileLayer />
+          <BaseTileLayer />
           <TrackSegmentsLayer segments={segments} weight={3} />
         </MapContainer>
       ) : (

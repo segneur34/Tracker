@@ -296,8 +296,8 @@ check('Réglages : cinq champs, zones rangées', (await evaluate(`[...document.q
 console.log('  Revenir au calcul :', await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Revenir au calcul'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
 await wait(500);
 check('Réglages : zones de nouveau calculées', (await runner())?.hrZones === null);
-const nameSelector = `input[aria-label="Nom de l\\'activité"]`;
-const card = (name) => `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector(${JSON.stringify(nameSelector)})?.value === ${JSON.stringify(name)})`;
+const nameSelector = '.settings-activity__name';
+const card = (name) => `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector(${JSON.stringify(nameSelector)})?.textContent === ${JSON.stringify(name)})`;
 for (const name of ['Voile', 'Surf']) {
   check(`Réglages, ${name} : case « Ceinture cardio »`, Boolean(await evaluate(`[...(${card(name)}?.querySelectorAll('.settings-row__label') ?? [])].some((l) => l.textContent.trim() === 'Ceinture cardio')`)));
 }

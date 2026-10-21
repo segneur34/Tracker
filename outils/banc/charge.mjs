@@ -105,7 +105,7 @@ await evaluate(`(() => {
 await go('/parametres', 3000);
 const loadFields = () => evaluate(`[...document.querySelectorAll('.settings-row')].filter((r) => r.querySelector('.settings-row__label')?.textContent.startsWith('Charge portée')).length`);
 console.log('champs « Charge portée » (Course, Fractionné à pied attendus, pas Route) :', await loadFields());
-console.log('cartes ouvertes :', await evaluate(`[...document.querySelectorAll('input[aria-label="Nom de l\\'activité"]')].map((i) => i.value).join(', ')`));
+console.log('cartes ouvertes :', await evaluate(`[...document.querySelectorAll('.settings-activity__toggle[aria-expanded="true"] .settings-activity__name')].map((i) => i.textContent).join(', ')`));
 console.log('charge Course à 5 kg :', await typeInto(`[...document.querySelectorAll('.settings-row')].find((r) => r.querySelector('.settings-row__label')?.textContent.startsWith('Charge portée'))?.querySelector('input')`, '5'));
 await wait(500);
 console.log('rangée :', await evaluate(`JSON.stringify(JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}').carriedLoads)`));

@@ -245,6 +245,14 @@ describe('runSurfSession et résumé de la bibliothèque', () => {
     expect(high.summary.flightCount).toBeGreaterThan(0);
   });
 
+  it('sans foil, la glisse est faite des vagues : même durée que « sur la vague » (la légende ne la redit pas)', () => {
+    for (const cadenceS of [1, 0.2]) {
+      const { summary } = analyze(buildSurfSession(MORNING, cadenceS));
+      expect(summary.waveCount).toBeGreaterThan(0);
+      expect(summary.glisseS).toBeCloseTo(summary.waveS, 6);
+    }
+  });
+
   it('résume une session de surf pour la liste : vagues, plus longue, temps sur la vague', () => {
     const raw: RawTrackPoint[] = buildSurfSession(MORNING).map((p) => ({ lat: p.lat, lon: p.lon, time: p.time, speedMs: p.speedMs }));
     const summary = summarizeSession(raw, 'surf')!;

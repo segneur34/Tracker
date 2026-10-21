@@ -191,8 +191,8 @@ const openSettings = async () => {
   })()`);
   await go('/parametres', 3000);
 };
-const nameSelector = `input[aria-label="Nom de l\\'activité"]`;
-const card = (name) => `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector(${JSON.stringify(nameSelector)})?.value === ${JSON.stringify(name)})`;
+const nameSelector = '.settings-activity__name';
+const card = (name) => `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector(${JSON.stringify(nameSelector)})?.textContent === ${JSON.stringify(name)})`;
 const tabsRow = (name) => `[...(${card(name)}?.querySelectorAll('.settings-row') ?? [])].find((r) => r.querySelector('.settings-row__label')?.textContent.trim() === 'Onglets')`;
 /** Pastilles de la ligne « Onglets » : « libellé » enfoncé, « (libellé) » relâché. */
 const pills = (name) => evaluate(`(() => {

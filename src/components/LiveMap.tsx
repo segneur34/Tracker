@@ -7,7 +7,9 @@ import type { LocationFix } from '../platform/location';
 import { displayHeading, type TravelHeading } from '../recording/heading';
 import type { CourseMark } from '../recording/markGuide';
 import type { SessionMark } from '../core/sessionMarks';
-import OsmTileLayer from './OsmTileLayer';
+import type { SportFamily } from '../core/sportProfiles';
+import { useMapBase } from '../hooks/useMapBase';
+import BaseTileLayer from './BaseTileLayer';
 import { SessionMarksLayer } from './SessionMarks';
 import MapAutoResize from './MapAutoResize';
 import Button from './ui/Button';
@@ -19,6 +21,8 @@ interface LiveMapProps {
   position: LocationFix | null;
   /** Couleur de la trace, celle de la famille du support. */
   color: string;
+  /** Famille de l'activité : son fond de carte, plan ou satellite (`BaseTileLayer`). */
+  family: SportFamily;
   height: string;
   /** Trace suivie, ce qu'il en reste : en pointillé sous la trace en cours. */
   guide?: ReadonlyArray<{ lat: number; lon: number }>;
@@ -38,6 +42,8 @@ interface LiveMapProps {
 /** Couleurs de la trace suivie, reste et partie faite (données de carte, donc en dur). */
 const GUIDE_STYLE = { color: '#37474f', weight: 5, opacity: 0.6, dashArray: '8 8', interactive: false } as const;
 const GUIDE_DONE_STYLE = { color: '#9e9e9e', weight: 4, opacity: 0.5, interactive: false } as const;
+/** Liseré blanc sous la trace, sur le fond satellite. */
+const HALO_STYLE = { color: '#ffffff', weight: 7, opacity: 0.85, interactive: false } as const;
 
 /** Balises : fond, bordure et chiffre selon leur état (données de carte, donc en dur). */
 const MARK_STYLE: Record<CourseMark['state'], { fill: string; border: string; ink: string; dashed?: boolean }> = {
@@ -131,8 +137,9 @@ const latLngs = (points: ReadonlyArray<{ lat: number; lon: number }>): [number, 
  * la position), et les notes posées en fanions numérotés. Sans position ni trace, la carte s'ouvre cadrée sur la trace
  * suivie. Sans réseau, le fond manque mais traces et position restent.
  */
-function LiveMap({ segments, position, color, height, guide, guideDone, travel, overlay, marks, validationRadiusM, notes }: LiveMapProps) {
+function LiveMap({ segments, position, color, family, height, guide, guideDone, travel, overlay, marks, validationRadiusM, notes }: LiveMapProps) {
   const [following, setFollowing] = useState(true);
+  const halo = useMapBase(family)[0] === 'satellite';
   // Tracés mémorisés : `segments` ne change qu'au recalcul (toutes les 2 s, `useLiveRecording`), la position à chaque mesure.
   // Leaflet ne reprend un tracé que si son tableau de points change.
   const paths = useMemo(() => segments.map(latLngs), [segments]);
@@ -153,7 +160,7 @@ function LiveMap({ segments, position, color, height, guide, guideDone, travel, 
         {...(start ? { center: [start.lat, start.lon] as [number, number], zoom: 16 } : { bounds: guideBounds!, boundsOptions: { padding: [24, 24] } })}
         style={{ height: '100%', width: '100%' }}>
         <MapAutoResize />
-        <OsmTileLayer />
+        <BaseTileLayer family={family} />
         {guideDonePath && <Polyline positions={guideDonePath} pathOptions={GUIDE_DONE_STYLE} />}
         {guidePath && <Polyline positions={guidePath} pathOptions={GUIDE_STYLE} />}
         {target && validationRadiusM !== undefined && validationRadiusM > 0 && (
@@ -161,6 +168,10 @@ function LiveMap({ segments, position, color, height, guide, guideDone, travel, 
         )}
         {target && position && (
           <Polyline positions={[[position.lat, position.lon], [target.lat, target.lon]]} pathOptions={AIM_STYLE} />
+        )}
+        {halo && paths.map((positions, i) => <Polyline key={`halo-${i}`} positions={positions} pathOptions={HALO_STYLE} />)}
+        {halo && lastFix && position && (
+          <Polyline positions={[[lastFix.lat, lastFix.lon], [position.lat, position.lon]]} pathOptions={HALO_STYLE} />
         )}
         {paths.map((positions, i) => <Polyline key={i} positions={positions} pathOptions={trackStyle} />)}
         {lastFix && position && (

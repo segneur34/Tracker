@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useMemo, type ReactNode } from 'react';
 import ChartFold from '../components/ChartFold';
 import { Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
-import OsmTileLayer from '../components/OsmTileLayer';
+import BaseTileLayer from '../components/BaseTileLayer';
 import L from 'leaflet';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -49,6 +49,7 @@ import HeartRatePanel from '../components/HeartRatePanel';
 import AnalysisMap from '../components/AnalysisMap';
 import HoverMarker from '../components/HoverMarker';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
+import EmptyTabPanel from '../components/EmptyTabPanel';
 import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
 import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
@@ -487,6 +488,19 @@ function SailingModule() {
     </div>
   );
 
+  /**
+   * Onglet ouvert sans rien à montrer : sans vent, les manœuvres, la VMG et le vent ne se calculent pas ;
+   * l'onglet le dit, avec de quoi ouvrir « général » où on le saisit (demande du 19/10).
+   */
+  const renderEmptyPanel = (key: 'manoeuvres' | 'vmg' | 'vent', label: string, what: string, otherwise: string) => (
+    <EmptyTabPanel id={`sailing.carte.${key}.vide`} label={label} open={open[key]} onToggle={() => toggle(key)}
+      action={windInputRequired && !open.general
+        ? <Button size="s" onClick={() => toggle('general')}>Ouvrir l'onglet général</Button>
+        : undefined}>
+      {windInputRequired ? `Vent inconnu : ${what} par rapport à lui. Saisissez-le dans l'onglet général.` : otherwise}
+    </EmptyTabPanel>
+  );
+
   /** Panneaux VMG et manœuvres, parmi les onglets sous la carte. */
   const renderVmgPanel = (v: NonNullable<typeof vmgStats>) => (
     <ResizablePanel id="sailing.carte.vmg" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
@@ -707,9 +721,9 @@ function SailingModule() {
   /** Contenu partagé par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
     <>
-      <OsmTileLayer />
+      <BaseTileLayer family={'voile'} />
 
-      {trackData.length > 0 && <TrackSegmentsLayer segments={mapSegments} weight={5} />}
+      {trackData.length > 0 && <TrackSegmentsLayer segments={mapSegments} weight={5} family={'voile'} />}
       {arrowLayers}
       {staticMapLayers}
       <JumpMapLayer track={trackData} jumps={shownJumps} shownJump={shownJump} podiumShown={jumpPodiumShown} />
@@ -860,7 +874,9 @@ function SailingModule() {
               </ResizablePanel>
             )}
 
-            {open.manoeuvres && maneuverStats && renderManeuversPanel(maneuverStats)}
+            {open.manoeuvres && trackData.length > 0 && (maneuverStats
+              ? renderManeuversPanel(maneuverStats)
+              : renderEmptyPanel('manoeuvres', 'Manœuvres', 'virements et empannages se reconnaissent', 'Aucune manœuvre reconnue sur cette session.'))}
 
             {open.graphiques && (
               <div style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
@@ -946,7 +962,9 @@ function SailingModule() {
               </ResizablePanel>
             )}
 
-            {open.vmg && vmgStats && renderVmgPanel(vmgStats)}
+            {open.vmg && trackData.length > 0 && (vmgStats
+              ? renderVmgPanel(vmgStats)
+              : renderEmptyPanel('vmg', 'Analyse VMG', 'la VMG se mesure', 'Pas de VMG mesurable sur cette session.'))}
 
             {open.sauts && jumpsVisible && (
               <JumpsPanel
@@ -970,6 +988,8 @@ function SailingModule() {
               />
             )}
 
+            {open.vent && trackData.length > 0 && !windStats && renderEmptyPanel('vent', 'Variations du Vent', 'ses variations se lisent aux manœuvres, qui se classent',
+              'Il faut au moins deux manœuvres pour suivre le vent au fil de la session.')}
             {open.vent && windStats && (
               <div style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <div style={{ flex: '1 1 300px', minWidth: '250px' }}>

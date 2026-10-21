@@ -20,7 +20,7 @@ import { RUNNER_NAME_MAX, runnerHeartRateZones, useRunnerProfile, type RunnerNum
 import { zoneLabel } from '../components/heartRateColors';
 import Button from '../components/ui/Button';
 import {
-  DEFAULT_GEAR_LABELS, MAX_GEAR_LABEL_LENGTH, TERRAIN_LABEL, TREATMENT_SPEED_RANGE_MS, TREATMENT_UNITS, defaultBikeType, defaultFoil, defaultGradeRange, planningFamily,
+  DEFAULT_GEAR_LABELS, MAX_GEAR_LABEL_LENGTH, TERRAIN_LABEL, TREATMENT_UNITS, defaultBikeType, defaultPaceOf, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, planningFamily,
   sanitizeGearLabels, useAllSportSettings, type SportSettingsView, type TerrainType,
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
@@ -30,7 +30,7 @@ import {
 } from '../recording/liveFields';
 import { simulatedApproachMs } from '../recording/markGuide';
 import {
-  CUSTOM_FLAT_SPEED_BOUNDS_MS, DEFAULT_PACE_LEVEL, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PACE_LEVELS, PACE_LEVEL_LABEL,
+  CUSTOM_FLAT_SPEED_BOUNDS_MS, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PACE_LEVELS, PACE_LEVEL_LABEL,
   climbPowerWkgForFlatSpeed, isPaceLevel, type PaceLevel, type PlanningFamily,
 } from '../planning/duration';
 import type { WayType } from '../planning/brouterProfile';
@@ -321,12 +321,15 @@ function SettingsPage() {
   const { open: openActivity, toggle: toggleActivity, closeAll: closeActivities } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
   const { open: openPart, toggle: togglePart, closeAll: closeParts } = useOpenSections<ActivityPartKey>('settings-activity-parts', ACTIVITY_PART_DEFAULTS);
   const { open: openFamily, toggle: toggleFamily, closeAll: closeFamilies } = useOpenSections<SportFamily>('settings-families', FAMILY_OPEN_DEFAULTS);
+  /** Activité dont le nom est en cours de saisie (« Renommer »), carte ouverte ; une seule à la fois. */
+  const [renaming, setRenaming] = useState<string | null>(null);
   /** « Tout réduire » : blocs, familles, activités et leurs parties (les aides et le choix d'icône, par `CollapseAllButton`). */
   const collapseAll = () => {
     closeBlocks();
     closeFamilies();
     closeActivities();
     closeParts();
+    setRenaming(null);
   };
   /**
    * Activités rangées par famille (Voile, À pied, Vélo, Fractionné, Surf), chacune dans l'ordre de
@@ -398,13 +401,14 @@ function SettingsPage() {
                 const paceFamily = planningFamily(activity);
                 const units = TREATMENT_UNITS[treatment];
                 const isOpen = openActivity[id] === true;
+                const renamingThis = isOpen && renaming === id;
                 const familyHidden = isFamilyHidden(activities, hiddenFamilies, family);
                 /** Grisée : cachée elle-même, ou par sa famille. */
                 const shownHidden = activity.hidden === true || familyHidden;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || s.isThresholdOverridden || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
-                  s.isLiveFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null || s.carriedLoad !== null || s.gearLabels !== null || s.tabs !== null ||
-                  s.paceLevel !== DEFAULT_PACE_LEVEL || s.customFlatSpeedMs !== null || s.isWayTypesOverridden ||
+                  s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrain !== 'route' || s.terrainStepM !== p.terrainElevationStepM || s.bikeType !== defaultBikeType(id) || s.bikeWeight !== null || s.carriedLoad !== null || s.gearLabels !== null || s.tabs !== null ||
+                  s.paceLevel !== defaultPaceOf(id).level || s.customFlatSpeedMs !== defaultPaceOf(id).customFlatSpeedMs || s.isWayTypesOverridden ||
                   s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.heartRate === true || s.cadence === false;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
@@ -417,7 +421,7 @@ function SettingsPage() {
                   setFor(id, 'activeThreshold', next === null ? null : toDisplaySpeed(fromDisplaySpeed(next, thresholdUnit), p.thresholdUnit));
                 // Bornes de couleur, saisies en km/h quand l'unité est une allure (min/km).
                 const rangeUnit: SpeedUnit = s.speedUnit === 'minkm' ? 'kmh' : s.speedUnit;
-                const fallbackRange = TREATMENT_SPEED_RANGE_MS[treatment];
+                const fallbackRange = defaultSpeedRangeOf(activity);
                 const shownRange = s.speedRange ?? fallbackRange;
                 // Voile sans réglage : champs vides, les bornes suivent l'allure de chaque session.
                 const rangeEmpty = sailing && s.speedRange === null;
@@ -470,22 +474,31 @@ function SettingsPage() {
                     {heading}
                     <div className={`settings-activity${shownHidden ? ' settings-activity--hidden' : ''}`}>
                       <div className="settings-activity__head">
-                        <button type="button" className="settings-activity__toggle" aria-expanded={isOpen} onClick={() => toggleActivity(id)}>
+                        {/* Le nom fait partie du bouton qui déplie et replie, ouvert comme fermé : seul « Renommer » le met
+                            dans un champ, pour ne pas le changer par mégarde en voulant replier la carte (demande du 20/10). */}
+                        <button type="button" className="settings-activity__toggle" aria-expanded={isOpen}
+                          onClick={() => {
+                            toggleActivity(id);
+                            if (renamingThis) setRenaming(null);
+                          }}>
                           <IconChevronRight size={14} className="settings-activity__chevron" style={{ transform: isOpen ? 'rotate(90deg)' : undefined }} />
-                          {!isOpen && <ActivityIcon activity={activity} size={18} className="settings-activity__icon" style={{ color: activity.color }} />}
-                          {!isOpen && <strong className="settings-activity__name">{activity.name}</strong>}
-                          {!isOpen && <span className="settings-sports__mark">{p.label}</span>}
+                          {!renamingThis && <ActivityIcon activity={activity} size={18} className="settings-activity__icon" style={{ color: activity.color }} />}
+                          {!renamingThis && <strong className="settings-activity__name">{activity.name}</strong>}
+                          {!renamingThis && <span className="settings-sports__mark">{p.label}</span>}
                           {!isOpen && (
                             <span className="settings-activity__summary">
                               {summary}{overridden ? ' · modifié' : ''}
                             </span>
                           )}
                         </button>
-                        {isOpen && (
+                        {renamingThis && (
                           <>
-                            <ActivityNameField key={activity.name} activity={activity} onRename={(name) => updateActivity(id, { name })} />
+                            <ActivityNameField activity={activity} onRename={(name) => updateActivity(id, { name })} onDone={() => setRenaming(null)} />
                             <span className="settings-sports__mark">{p.label}</span>
                           </>
+                        )}
+                        {isOpen && !renamingThis && (
+                          <Button size="s" variant="ghost" onClick={() => setRenaming(id)}>Renommer</Button>
                         )}
                         <EyeButton name={activity.name} hidden={activity.hidden === true}
                           disabled={!activity.hidden && !familyHidden && lastActivity}
@@ -702,7 +715,7 @@ function SettingsPage() {
                             </ActivityPart>
                           )}
                           {usesMarkCourse(family) && (
-                            <ActivityPart label="Balises sonores" open={openPart.balises} onToggle={() => togglePart('balises')}>
+                            <ActivityPart label="Planification : balise sonore" open={openPart.balises} onToggle={() => togglePart('balises')}>
                                 <SettingRow label="Bips d'approche des balises" helpKey={`${id}:bips`} helpFirst
                                   help="En navigation sur un parcours : bips de plus en plus rapprochés à l'approche de chaque balise, bip long à la validation. Tirez un point pour le déplacer, touchez le graphe pour en ajouter un.">
                                   <BeepCurveEditor value={s.markGuide} overridden={s.isMarkGuideOverridden}
@@ -1008,30 +1021,40 @@ function BikeSettings({ view, onBikeType, onBikeWeight }: {
 }
 
 /**
- * Nom d'une activité, après sa pastille de couleur (choisie dans la ligne
- * « Couleur »). Le nom s'enregistre en quittant le champ ou sur Entrée ;
- * vide, il revient au précédent. Le parent le remonte (clé : le nom) quand le
- * nom enregistré change, ce qui remet le brouillon à jour.
+ * Nom d'une activité en cours de saisie, ouvert par « Renommer », après son
+ * icône. Le nom s'enregistre en quittant le champ ou sur Entrée ; vide, ou
+ * sur Échap, le précédent reste. Dans les deux cas le champ se referme
+ * (`onDone`).
  */
 function ActivityNameField({
-  activity, onRename,
+  activity, onRename, onDone,
 }: {
   activity: Activity;
   onRename: (name: string) => void;
+  onDone: () => void;
 }) {
   const [draft, setDraft] = useState(activity.name);
-  const commit = () => {
-    if (draft.trim() === '') setDraft(activity.name);
-    else if (draft.trim() !== activity.name) onRename(draft);
+  // Entrée et Échap ferment le champ eux-mêmes, sans attendre la perte du focus : la sortie qui suit ne refait rien.
+  const closed = useRef(false);
+  const close = (save: boolean) => {
+    if (closed.current) return;
+    closed.current = true;
+    if (save && draft.trim() !== '' && draft.trim() !== activity.name) onRename(draft);
+    onDone();
   };
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
       <ActivityIcon activity={activity} size={18} className="settings-activity__icon" style={{ color: activity.color }} />
       <input value={draft} maxLength={40} aria-label="Nom de l'activité" className="ui-field ui-field--s"
         style={{ width: '120px', fontWeight: 600 }}
+        autoFocus
+        onFocus={(e) => e.target.select()}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+        onBlur={() => close(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') close(true);
+          else if (e.key === 'Escape') close(false);
+        }} />
     </span>
   );
 }
@@ -1120,12 +1143,14 @@ function AddActivityForm({
   );
 }
 
+const megabytes = (bytes: number): string => (bytes / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+
 /**
- * Cartes gardées sur l'appareil : place occupée, plafond, vidage. Monté
+ * Cartes gardées sur l'appareil (plan et satellite) : place occupée, plafond, vidage. Monté
  * seulement bloc ouvert, parce que compter les tuiles lit tout leur dossier.
  */
 function OfflineMapsSettings() {
-  const { usage, capMb, setCapMb, clear } = useTileCache();
+  const { usage, satellite, capMb, setCapMb, clear } = useTileCache();
   const choices = TILE_CAP_CHOICES_MB.includes(capMb) ? TILE_CAP_CHOICES_MB : [...TILE_CAP_CHOICES_MB, capMb].sort((a, b) => a - b);
 
   const askClear = () => {
@@ -1139,7 +1164,8 @@ function OfflineMapsSettings() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
         <span style={{ width: '190px' }}>Place occupée</span>
         <span className="num">
-          {usage === null ? '…' : `${(usage.bytes / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo (${usage.tiles.toLocaleString('fr-FR')} morceaux)`}
+          {usage === null ? '…' : `${megabytes(usage.bytes)} Mo (${usage.tiles.toLocaleString('fr-FR')} morceaux)`}
+          {satellite && satellite.tiles > 0 && `, dont satellite ${megabytes(satellite.bytes)} Mo`}
         </span>
       </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
@@ -1148,7 +1174,7 @@ function OfflineMapsSettings() {
           {choices.map((mb) => <option key={mb} value={mb}>{mb >= 1000 ? `${mb / 1000} Go` : `${mb} Mo`}</option>)}
         </select>
       </label>
-      <HelpText helpKey="cartes:plafond">Au-delà, les plus anciens morceaux sont effacés.</HelpText>
+      <HelpText helpKey="cartes:plafond">Au-delà, les plus anciens morceaux sont effacés. Les photos du fond satellite pèsent plus que le plan.</HelpText>
       <button type="button" onClick={askClear} disabled={usage?.tiles === 0} className="ui-btn ui-btn--secondary ui-btn--s">
         Vider
       </button>

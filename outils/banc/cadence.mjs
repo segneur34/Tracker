@@ -245,8 +245,8 @@ await evaluate(`(() => {
   return 'ok';
 })()`);
 await go('/parametres', 3000);
-const nameSelector = `input[aria-label="Nom de l\\'activité"]`;
-const card = (name) => `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector(${JSON.stringify(nameSelector)})?.value === ${JSON.stringify(name)})`;
+const nameSelector = '.settings-activity__name';
+const card = (name) => `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector(${JSON.stringify(nameSelector)})?.textContent === ${JSON.stringify(name)})`;
 const cadenceBox = (name) => `[...(${card(name)}?.querySelectorAll('label') ?? [])].find((l) => l.textContent.trim() === 'Mesurer la cadence')?.querySelector('input')`;
 check('Réglages : « Mesurer la cadence » coché d\'office en Course', await evaluate(`${cadenceBox('Course')}?.checked === true`));
 check('Réglages : rien à vélo (Route)', await evaluate(`${cadenceBox('Route')} === undefined`));

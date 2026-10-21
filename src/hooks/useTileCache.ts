@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { tileCacheUsageByBase } from '../core/mapBase';
 import { TILE_CACHE_DEFAULTS, tileCacheUsage, tilesToEvict, type TileCacheUsage } from '../core/tiles';
 import { jsonStore } from '../platform/storage';
 import { tileStore } from '../platform/tileCache';
@@ -43,6 +44,8 @@ export const noteTileSaved = (): void => {
 /** Place occupée, plafond et vidage, pour la page Réglages. */
 export const useTileCache = () => {
   const [usage, setUsage] = useState<TileCacheUsage | null>(null);
+  /** Part du fond satellite, dont les photos pèsent plus que le plan. */
+  const [satellite, setSatellite] = useState<TileCacheUsage | null>(null);
   const [capMb, setCapMbState] = useState(tileCapMb);
   /** Incrémenté après chaque changement : la place occupée est recomptée. */
   const [version, setVersion] = useState(0);
@@ -51,7 +54,9 @@ export const useTileCache = () => {
   useEffect(() => {
     let cancelled = false;
     void tileStore.list().then((entries) => {
-      if (!cancelled) setUsage(tileCacheUsage(entries));
+      if (cancelled) return;
+      setUsage(tileCacheUsage(entries));
+      setSatellite(tileCacheUsageByBase(entries).satellite);
     });
     return () => {
       cancelled = true;
@@ -72,5 +77,5 @@ export const useTileCache = () => {
     refresh();
   }, [refresh]);
 
-  return { usage, capMb, setCapMb, clear };
+  return { usage, satellite, capMb, setCapMb, clear };
 };

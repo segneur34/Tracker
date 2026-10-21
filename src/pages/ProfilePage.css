@@ -1,35 +1,6 @@
 /* Profil (`ProfilePage.tsx`), sur les variables de `theme/tokens.css` ; les couleurs des parts de l'anneau
    sont celles des activités, posées par le composant. */
 
-/* Période de toute la page : cinq segments dans une gouttière, chacun à la largeur de son texte au moins. */
-.profile-periods {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(min-content, 1fr)) minmax(min-content, 1.6fr);
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius-m);
-  background: var(--surface-sunken);
-}
-
-.profile-periods button {
-  min-height: 30px;
-  padding: 0 var(--space-1);
-  border: none;
-  border-radius: var(--radius-s);
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: var(--text-xs);
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.profile-periods button[aria-pressed='true'] {
-  background: var(--surface);
-  color: var(--ink);
-}
-
 .profile-hint {
   margin: 0;
   color: var(--muted);
@@ -40,12 +11,17 @@
 .profile-figures {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, auto);
   gap: var(--space-3);
 }
 
+/* Libellé, valeur et légende sur trois rangées communes aux trois cases : un libellé sur deux lignes
+   (« Sport préféré » au téléphone) n'en décale pas la valeur. */
 .profile-figure {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  align-items: start;
   gap: var(--space-1);
   padding: var(--space-4) var(--space-5);
   border-radius: var(--radius-l);
@@ -54,6 +30,7 @@
 }
 
 .profile-figure__value {
+  align-self: center;
   font-size: var(--text-display);
   font-weight: 700;
   line-height: 1.1;
@@ -71,6 +48,31 @@
 .profile-figure__caption {
   color: var(--muted);
   font-size: var(--text-s);
+}
+
+/* Sport préféré : la case mène à la bibliothèque de l'activité ; son dessin a la hauteur du chiffre voisin. */
+.profile-figure--link {
+  min-width: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-figure--link:hover {
+  background: var(--surface-hover);
+}
+
+.profile-figure__art {
+  display: block;
+  width: 1.25em;
+  height: 1.25em;
+}
+
+.profile-figure__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Répartition : l'anneau, la légende à côté, dessous sur un écran étroit. */
@@ -181,6 +183,17 @@ button.profile-legend__row {
 
 .profile-legend li.is-active .profile-legend__row {
   background: var(--surface-hover);
+}
+
+/* Activités regroupées dans « Autres », en retrait sous sa ligne. */
+.profile-legend li.profile-legend__sub {
+  border-top: none;
+}
+
+.profile-legend__sub .profile-legend__row {
+  min-height: 34px;
+  padding-left: var(--space-6);
+  font-size: var(--text-s);
 }
 
 .profile-legend__dot {

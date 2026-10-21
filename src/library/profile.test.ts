@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityShares } from './profile';
+import { activityShares, favoriteActivity } from './profile';
 import type { StatSession } from './stats';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
@@ -52,5 +52,27 @@ describe('activityShares', () => {
 
   it('est vide sans session', () => {
     expect(activityShares([], ['course'])).toEqual([]);
+  });
+});
+
+describe('favoriteActivity', () => {
+  it('prend l’activité qui a le plus de temps', () => {
+    expect(favoriteActivity([
+      session(at(2026, 3, 1)),
+      session(at(2026, 3, 2), { activityId: 'velo', endMs: at(2026, 3, 2) + 3 * 3_600_000 }),
+      session(at(2026, 3, 3)),
+      session(at(2026, 3, 4), { activityId: 'voile' }),
+    ], ['course', 'velo', 'voile'])).toBe('velo');
+  });
+
+  it('à durée égale, la plus récemment pratiquée', () => {
+    expect(favoriteActivity([
+      session(at(2026, 3, 5), { activityId: 'voile' }),
+      session(at(2026, 3, 1)),
+    ], ['course', 'voile'])).toBe('voile');
+  });
+
+  it('sans session, aucun', () => {
+    expect(favoriteActivity([], ['course'])).toBeNull();
   });
 });

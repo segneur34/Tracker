@@ -65,6 +65,8 @@ export const BASE_COLOR: Record<SportType, string> = {
 
 /** Activité vélo de départ, sur l'identifiant du calcul ; appelée « Vélo » avant le point 81. */
 const ROUTE_ACTIVITY: Activity = { id: 'cycling', name: 'Route', base: 'cycling', color: BASE_COLOR.cycling };
+/** Activité à pied de départ à côté de Course (20/10) ; ses bornes de couleur et son temps estimé par défaut suivent (`useSportSettings.ts`). */
+export const MARCHE_ACTIVITY: Activity = { id: 'a-marche', name: 'Marche', base: 'running', color: FAMILY_SHADES.course[1] };
 /** Activités vélo de départ à côté de Route (§10, point 81) ; leur type de vélo par défaut suit (`useSportSettings.ts`). */
 export const GRAVEL_ACTIVITY: Activity = { id: 'a-gravel', name: 'Gravel', base: 'cycling', color: FAMILY_SHADES.velo[1] };
 export const VTT_ACTIVITY: Activity = { id: 'a-vtt', name: 'VTT', base: 'cycling', color: FAMILY_SHADES.velo[2] };
@@ -81,12 +83,13 @@ export const SURF_FOIL_ACTIVITY: Activity = { id: 'a-surf-foil', name: 'Surf foi
 
 /**
  * Au premier lancement : une activité par famille, sur l'identifiant de son
- * calcul (celui des anciens réglages), plus Gravel et VTT, les deux du
- * fractionné et les deux du surf.
+ * calcul (celui des anciens réglages), plus la Marche, Gravel et VTT, les
+ * deux du fractionné et les deux du surf.
  */
 export const DEFAULT_ACTIVITIES: Activity[] = [
   { id: 'wingfoil', name: 'Voile', base: 'wingfoil', color: BASE_COLOR.wingfoil },
   { id: 'running', name: 'Course', base: 'running', color: BASE_COLOR.running },
+  MARCHE_ACTIVITY,
   ROUTE_ACTIVITY,
   GRAVEL_ACTIVITY,
   VTT_ACTIVITY,
@@ -100,11 +103,11 @@ export const DEFAULT_ACTIVITIES: Activity[] = [
  * Version de la liste des activités rangée dans les réglages. 2 : Route,
  * Gravel et VTT dans la famille Vélo (point 81) ; 3 : les deux activités du
  * fractionné (point 89) ; 4 : couleurs prises dans les nuances de la famille
- * (point 90) ; 5 : Surf et Surf foil (point 97). Une liste d'avant est mise à jour une fois
+ * (point 90) ; 5 : Surf et Surf foil (point 97) ; 6 : Marche (20/10). Une liste d'avant est mise à jour une fois
  * (`upgradeActivities`) ; toute liste écrite ensuite porte ce numéro, pour
  * qu'une activité supprimée ne revienne pas.
  */
-export const ACTIVITIES_VERSION = 5;
+export const ACTIVITIES_VERSION = 6;
 
 /** Activités ajoutées à une liste d'avant, avec la version de la liste qui les a apportées. */
 const ACTIVITY_SEEDS: { version: number; activity: Activity }[] = [
@@ -114,6 +117,7 @@ const ACTIVITY_SEEDS: { version: number; activity: Activity }[] = [
   { version: 3, activity: BIKE_INTERVALS_ACTIVITY },
   { version: 5, activity: SURF_ACTIVITY },
   { version: 5, activity: SURF_FOIL_ACTIVITY },
+  { version: 6, activity: MARCHE_ACTIVITY },
 ];
 
 /** Ancien nom de l'activité vélo de départ, devenue « Route ». */
@@ -253,6 +257,10 @@ export const sessionActivity = (
   return activities.find((a) => a.id === sport) ?? activities.find((a) => a.base === sport) ?? baseActivity(sport);
 };
 
+/** Nom sans casse, accents ni espaces autour, pour reconnaître une activité déjà créée. */
+const foldName = (name: string): string =>
+  name.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr');
+
 /**
  * Liste de la version `fromVersion` mise à jour (`ACTIVITIES_VERSION`) : seul
  * ce qu'ont apporté les versions suivantes s'ajoute, pour qu'une activité
@@ -265,13 +273,15 @@ export const sessionActivity = (
  *   famille, ou en porte une déjà prise plus haut dans la liste, reçoit la
  *   première nuance libre de sa famille (`recolorActivities`).
  * - Version 5 : les deux activités du surf.
+ * - Version 6 : la Marche.
  *
  * Une activité ajoutée se range avec sa famille, sauf si une autre porte déjà
- * son identifiant, ou son nom dans la même famille ; sa couleur, si une autre
+ * son identifiant, ou son nom dans la même famille (casse et accents ignorés :
+ * une « marche » créée avant reste seule) ; sa couleur, si une autre
  * la porte déjà, est la première nuance libre.
  */
 export const upgradeActivities = (activities: Activity[], fromVersion: number): Activity[] => {
-  const sameName = (a: string, b: string) => a.toLocaleLowerCase('fr') === b.toLocaleLowerCase('fr');
+  const sameName = (a: string, b: string) => foldName(a) === foldName(b);
   let list = fromVersion >= 2 ? activities : activities.map((a) =>
     a.id === ROUTE_ACTIVITY.id && a.name === LEGACY_CYCLING_NAME ? { ...a, name: ROUTE_ACTIVITY.name } : a
   );
@@ -333,7 +343,7 @@ export const newActivityId = (name: string, existing: Activity[]): string => {
   const slug =
     name
       .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
+      .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')

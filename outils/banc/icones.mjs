@@ -162,7 +162,8 @@ await wait(400);
 check('Planche à voile rangée', (await stored())?.find((a) => a.id === 'wingfoil')?.icon === 'planche');
 check('un choix replie la grille', (await choices()) === 0 && (await current(picker)) === 'Planche à voile');
 await go('/parametres');
-await evaluate(`[...document.querySelectorAll('.settings-activity__toggle')].find((b) => b.textContent.includes('Voile'))?.click()`);
+// La carte ouverte est retenue d'un chargement à l'autre : ne la rouvrir que si elle est fermée.
+await evaluate(`[...document.querySelectorAll('.settings-activity__toggle')].find((b) => b.textContent.includes('Voile') && b.getAttribute('aria-expanded') !== 'true')?.click()`);
 await wait(400);
 check('gardée après rechargement', (await current(picker)) === 'Planche à voile');
 

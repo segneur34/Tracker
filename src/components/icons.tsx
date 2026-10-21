@@ -235,6 +235,14 @@ export const IconRefresh = ({ size = 20, ...props }: IconProps) => (
   </svg>
 );
 
+/** Deux couches empilées : le bouton qui change le fond de carte, plan ou satellite. */
+export const IconLayers = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M12 3l9 5-9 5-9-5z" />
+    <path d="M3 13l9 5 9-5" />
+  </svg>
+);
+
 /** Fanion : le bouton « Note » de l'enregistrement, et les repères qu'il pose. */
 export const IconFlag = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
@@ -255,12 +263,15 @@ export const IconSailboat = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
-/** Planche à voile : voile et wishbone sur la planche. */
+/**
+ * Planche à voile : contour de la voile relevé sur la photo fournie par l'utilisateur (21/10), voile penchée,
+ * mât courbe ; deux lattes, et le wishbone qui dépasse du point d'écoute. Voile vide, traits pleins (son choix).
+ */
 export const IconWindsurf = ({ size = 24, ...props }: IconProps) => (
-  <svg {...strokeProps(size)} {...props}>
-    <path d="M9.5 18L14 3c4.5 4 6 9 5 14.5z" />
-    <path d="M11.5 11.5l6.5 1.5" />
-    <path d="M3 20.5c6 .6 12 0 18-2.5" />
+  <svg {...strokeProps(size)} strokeWidth={1.6} {...props}>
+    <path d="M8.7 1.3L11.9 1C15 5.4 16.6 9.2 17.2 13.2L17.4 22.9C14 21.6 11 20.8 9.9 20.4L7.6 18L6.3 17.7Z" />
+    <path d="M8 6.6l6.5-.7M7.3 11.4l9.4-.8" strokeWidth={1.3} />
+    <path d="M17.6 15.8L4.3 17.9" strokeWidth={1.8} />
   </svg>
 );
 
@@ -271,15 +282,12 @@ export const IconWingfoil = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
-/** Kitesurf : aile en arc, lignes, rider sur sa planche. */
+/** Kite : aile pleine en croissant, bride en V, deux lignes jusqu'à la barre ; d'après le modèle de l'utilisateur (21/10), lignes raccourcies. */
 export const IconKite = ({ size = 24, ...props }: IconProps) => (
-  <svg {...strokeProps(size)} {...props}>
-    <path d="M10 8.5C10.5 2.5 19.5 1 21.5 9" />
-    <path d="M10 8.5l-2 5" />
-    <path d="M21.5 9L8 13.5" />
-    <circle cx="5" cy="12.5" r="1.4" fill="currentColor" stroke="none" />
-    <path d="M6 15l1 2.5-1 2" />
-    <path d="M2.5 20.5c3 .7 6 .7 9-.5" />
+  <svg {...strokeProps(size)} strokeWidth={1.2} {...props}>
+    <path d="M9.2 6.8C10.4 1.2 19.6-.6 22.6 3.6C24.8 6.8 23.2 12.8 18.6 16.4C20.2 12.4 20.4 7.6 18.4 5.4C16.2 3.2 12.4 3.6 9.2 6.8Z" fill="currentColor" stroke="none" />
+    <path d="M9.2 6.8L12.9 12L18.6 16.4M9.2 6.8L3.2 18.4M18.6 16.4L5.4 20.6" />
+    <path d="M3.2 18.4L5.4 20.6" strokeWidth={2.2} />
   </svg>
 );
 
