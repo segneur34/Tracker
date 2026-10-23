@@ -20,6 +20,51 @@
   max-width: none;
 }
 
+/* Page à fond dessiné (`PageBackdrop`) : le dessin couvre au moins l'écran et passe sous le contenu.
+   `:where` ne pèse rien : la position propre d'un enfant (collant, absolu) l'emporte. */
+.ui-page--backdrop {
+  position: relative;
+  min-height: calc(100dvh - var(--tabbar-h) - var(--inset-bottom));
+}
+
+:where(.ui-page--backdrop > :not(.page-backdrop)) {
+  position: relative;
+}
+
+.page-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.page-backdrop path {
+  fill: none;
+  stroke: var(--backdrop-ink, var(--contour));
+  stroke-width: var(--backdrop-stroke, 3);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.page-backdrop--contours {
+  --backdrop-stroke: 1.3;
+}
+
+.page-backdrop .page-backdrop__major {
+  stroke-width: 2.4;
+}
+
+.page-backdrop .page-backdrop__dots {
+  stroke-width: 4;
+  stroke-dasharray: 0.1 12;
+}
+
+.page-backdrop .page-backdrop__fill {
+  fill: var(--backdrop-ink, var(--contour));
+  stroke: none;
+}
+
 .ui-page-header {
   display: flex;
   flex-direction: column;
@@ -36,9 +81,12 @@
 
 .ui-page-header h1 {
   margin: 0;
+  font-family: var(--font-title);
   font-size: var(--text-title);
-  font-weight: 700;
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-spacing);
   line-height: 1.15;
+  text-transform: uppercase;
 }
 
 .ui-page-header__subtitle {
@@ -71,8 +119,20 @@
 
 .ui-card__title {
   margin: 0 0 var(--space-3);
+  font-family: var(--font-title);
   font-size: var(--text-l);
-  font-weight: 700;
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-spacing);
+  text-transform: uppercase;
+}
+
+/* Intertitre dans un panneau ou une carte (« Tops distance », « Conditions ») : le style des titres, en plus petit. */
+.ui-subtitle {
+  font-family: var(--font-title);
+  font-size: var(--text-m);
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-spacing);
+  text-transform: uppercase;
 }
 
 .ui-eyebrow {
@@ -80,7 +140,7 @@
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.6px;
+  letter-spacing: var(--title-spacing);
 }
 
 /* --- Boutons --- */
@@ -95,10 +155,13 @@
   padding: 0 var(--space-5);
   border: 1.5px solid transparent;
   border-radius: var(--radius-pill);
-  font-size: var(--text-m);
-  font-weight: 600;
+  /* Comme les boutons de l'accueil : capitales grasses, en petit. */
+  font-size: var(--text-s);
+  font-weight: var(--action-weight);
+  letter-spacing: var(--action-spacing);
   line-height: 1.2;
   text-align: center;
+  text-transform: uppercase;
   text-decoration: none;
   cursor: pointer;
   transition: filter 0.15s ease, background-color 0.15s ease;
@@ -129,8 +192,9 @@
 
 .ui-btn--l {
   min-height: 56px;
-  font-size: var(--text-l);
-  font-weight: 700;
+  /* En capitales, un cran sous --text-l, et plus petit sur un écran étroit : « Suivre une trace » tient à côté de
+     « Démarrer ». */
+  font-size: clamp(var(--text-s), 4vw, var(--text-m));
 }
 
 .ui-btn--s {
@@ -245,6 +309,9 @@
   background: var(--surface-sunken);
   overflow-x: auto;
   scrollbar-width: none;
+  /* La case s'attrape au doigt ou à la souris : pas de sélection du texte en glissant. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .ui-segmented::-webkit-scrollbar {
@@ -263,6 +330,11 @@
 
 .ui-segmented.is-ready .ui-segmented__thumb {
   transition: transform 0.18s ease, width 0.18s ease;
+}
+
+/* Case tenue : elle suit le doigt sans retard ; elle glisse à sa place au lâcher. */
+.ui-segmented.is-ready.is-dragging .ui-segmented__thumb {
+  transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -294,8 +366,20 @@
   }
 }
 
-.ui-segmented button[aria-checked='true'] {
+/* Choix en couleur : le choix en cours, ou celui sous la case pendant qu'on la glisse. */
+.ui-segmented button.is-lit {
   color: var(--seg-accent, var(--ink));
+}
+
+/* La case se prend sur le choix en cours : le geste horizontal est à elle, pas au défilement de la page. */
+.ui-segmented button[aria-checked='true'] {
+  touch-action: pan-y;
+  cursor: grab;
+}
+
+.ui-segmented.is-dragging,
+.ui-segmented.is-dragging button {
+  cursor: grabbing;
 }
 
 .ui-segmented button:focus-visible {

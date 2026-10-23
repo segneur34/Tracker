@@ -1,0 +1,11 @@
+/*
+ * Polices de l'application, chargées ici seulement : en changer, c'est ce
+ * fichier et les variables --font, --font-title et --font-logo de `tokens.css`.
+ * Montserrat pour les textes (refonte du 22/10), Shrikhand pour le logo.
+ */
+
+@import '@fontsource/montserrat/latin-400.css';
+@import '@fontsource/montserrat/latin-500.css';
+@import '@fontsource/montserrat/latin-600.css';
+@import '@fontsource/montserrat/latin-700.css';
+@import '@fontsource/shrikhand/latin-400.css';

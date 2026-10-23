@@ -42,6 +42,7 @@ import { CARD_STYLE } from '../components/styles';
 import { FAMILY_ICON } from '../components/familyIcons';
 import { IconChevronRight, IconEye, IconEyeOff } from '../components/icons';
 import MemoryStatus from '../components/MemoryStatus';
+import PageBackdrop from '../components/PageBackdrop';
 import { PermissionsSettings } from '../components/PermissionsStatus';
 import PanelTitle from '../components/PanelTitle';
 import ShadePicker from '../components/ShadePicker';
@@ -230,7 +231,7 @@ function NumberField({
   };
 
   const field = (
-    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: label ? '8px' : 0, fontSize: '14px' }}>
+    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: label ? '8px' : 0, fontSize: 'var(--text-s)' }}>
       {label && <span style={{ width: '190px' }}>{label}{helpKey && <HelpToggle helpKey={helpKey} label={label} />}</span>}
       <input
         type="number"
@@ -270,7 +271,7 @@ function HeartRateZonesField({ profile, onChange }: { profile: RunnerProfile; on
   const method = computed === null ? null
     : computed.method === 'reserve' ? '% de la réserve cardiaque' : '% de la FC max';
   return (
-    <div style={{ marginBottom: '8px', fontSize: '14px' }}>
+    <div style={{ marginBottom: '8px', fontSize: 'var(--text-s)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
         <span style={{ width: '190px' }}>Zones cardiaques<HelpToggle helpKey="pratiquant:zones" label="Zones cardiaques" /></span>
         {custom ? (
@@ -365,7 +366,8 @@ function SettingsPage() {
 
   return (
     <SettingsHelpProvider>
-    <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto', boxSizing: 'border-box' }}>
+    <div className="ui-page--backdrop" style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto', boxSizing: 'border-box' }}>
+      <PageBackdrop variant="contours" />
       <div style={{ marginBottom: '15px' }}>
         <PageHeader title="Réglages" subtitle="Enregistrés sur cet appareil et dans le dossier mémoire."
           aside={<CollapseAllButton onCollapse={collapseAll} />} />
@@ -772,7 +774,7 @@ function SettingsPage() {
           help="Pour l'énergie des analyses à pied et à vélo, et les zones cardiaques de toutes les activités. Tout est facultatif." />
         {open.coureur && (
           <div className="settings-block__body">
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: 'var(--text-s)' }}>
               <span style={{ width: '190px' }}>Nom ou pseudo<HelpToggle helpKey="pratiquant:nom" label="Nom ou pseudo" /></span>
               <input type="text" value={profile.name ?? ''} maxLength={RUNNER_NAME_MAX} placeholder="ex. Tom" autoComplete="nickname"
                 onChange={(e) => setName(e.target.value)} className="ui-field ui-field--s" style={{ width: '200px', maxWidth: '100%' }} />
@@ -784,7 +786,7 @@ function SettingsPage() {
               helpKey="pratiquant:taille" help="Avec le poids, l'âge et le sexe, pour la dépense au repos." />
             <NumberField label="Année de naissance" unit={age !== null ? `${age} ans` : undefined} min={1900} max={2100} value={profile.birthYear} onCommit={profileField('birthYear')} placeholder="ex. 1985"
               helpKey="pratiquant:naissance" help="Pour la dépense au repos, et la FC max estimée quand elle n'est pas saisie." />
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: 'var(--text-s)' }}>
               <span style={{ width: '190px' }}>Sexe<HelpToggle helpKey="pratiquant:sexe" label="Sexe" /></span>
               <select value={profile.sex ?? ''} onChange={(e) => setSex(e.target.value === '' ? null : (e.target.value as 'f' | 'm'))} className="ui-field ui-field--s">
                 <option value="">Non renseigné</option>
@@ -1127,7 +1129,7 @@ function AddActivityForm({
       </select>
       {familySports(family).length > 1 && (
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ color: 'var(--muted)', fontSize: '12px' }}>calcul</span>
+          <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>calcul</span>
           <select value={base} onChange={(e) => setBase(e.target.value as SportType)} className="ui-field ui-field--s">
             {familySports(family).map((b) => <option key={b} value={b}>{SPORT_PROFILES[b].label}</option>)}
           </select>
@@ -1159,14 +1161,14 @@ function OfflineMapsSettings() {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: 'var(--text-s)' }}>
         <span style={{ width: '190px' }}>Place occupée</span>
         <span className="num">
           {usage === null ? '…' : `${megabytes(usage.bytes)} Mo (${usage.tiles.toLocaleString('fr-FR')} morceaux)`}
           {satellite && satellite.tiles > 0 && `, dont satellite ${megabytes(satellite.bytes)} Mo`}
         </span>
       </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: 'var(--text-s)' }}>
         <span style={{ width: '190px' }}>Plafond<HelpToggle helpKey="cartes:plafond" label="Plafond" /></span>
         <select value={capMb} onChange={(e) => void setCapMb(Number(e.target.value))} className="ui-field ui-field--s">
           {choices.map((mb) => <option key={mb} value={mb}>{mb >= 1000 ? `${mb / 1000} Go` : `${mb} Mo`}</option>)}

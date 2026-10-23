@@ -42,9 +42,9 @@ export interface Activity {
  * une famille ne se montre jamais par sa seule couleur.
  */
 export const FAMILY_SHADES: Record<SportFamily, readonly string[]> = {
-  voile: ['#1976d2', '#014e86', '#5b87f2', '#4458c2', '#192f94', '#0c92ce'],
-  course: ['#d42a3c', '#970029', '#f0504a', '#b9045d', '#6e1020', '#d6336c'],
-  velo: ['#1e7a3c', '#015215', '#0a9469', '#6f9a3a', '#056245', '#2e9d2a'],
+  voile: ['#004aad', '#014e86', '#5b87f2', '#4458c2', '#192f94', '#0c92ce'],
+  course: ['#d11a1a', '#970029', '#f0504a', '#b9045d', '#6e1020', '#d6336c'],
+  velo: ['#2c7231', '#015215', '#0a9469', '#6f9a3a', '#056245', '#2e9d2a'],
   fractionne: ['#c25700', '#873e04', '#dc7810', '#9f6c00', '#5f3104', '#b8860b'],
   // Gris un peu teintés, bleutés ou chauds : des gris purs ne se sépareraient que par leur clarté (point 97).
   surf: ['#5b6670', '#8292a6', '#847c6e', '#223246', '#2e2610', '#0a1a2e'],
@@ -93,10 +93,10 @@ export const DEFAULT_ACTIVITIES: Activity[] = [
   ROUTE_ACTIVITY,
   GRAVEL_ACTIVITY,
   VTT_ACTIVITY,
-  RUN_INTERVALS_ACTIVITY,
-  BIKE_INTERVALS_ACTIVITY,
   SURF_ACTIVITY,
   SURF_FOIL_ACTIVITY,
+  RUN_INTERVALS_ACTIVITY,
+  BIKE_INTERVALS_ACTIVITY,
 ];
 
 /**
@@ -107,7 +107,7 @@ export const DEFAULT_ACTIVITIES: Activity[] = [
  * (`upgradeActivities`) ; toute liste écrite ensuite porte ce numéro, pour
  * qu'une activité supprimée ne revienne pas.
  */
-export const ACTIVITIES_VERSION = 6;
+export const ACTIVITIES_VERSION = 7;
 
 /** Activités ajoutées à une liste d'avant, avec la version de la liste qui les a apportées. */
 const ACTIVITY_SEEDS: { version: number; activity: Activity }[] = [
@@ -274,6 +274,9 @@ const foldName = (name: string): string =>
  *   première nuance libre de sa famille (`recolorActivities`).
  * - Version 5 : les deux activités du surf.
  * - Version 6 : la Marche.
+ * - Version 7 (refonte du 22/10) : nouvelle première nuance de la voile, de
+ *   la course et du vélo ; la couleur de chaque activité repasse par
+ *   `recolorActivities`, comme en version 4.
  *
  * Une activité ajoutée se range avec sa famille, sauf si une autre porte déjà
  * son identifiant, ou son nom dans la même famille (casse et accents ignorés :
@@ -292,7 +295,7 @@ export const upgradeActivities = (activities: Activity[], fromVersion: number): 
     const color = list.some((a) => a.color.toLowerCase() === seed.color) ? nextActivityColor(list, family) : seed.color;
     list = insertActivity(list, { ...seed, color });
   }
-  return fromVersion >= 4 ? list : recolorActivities(list);
+  return fromVersion >= 7 ? list : recolorActivities(list);
 };
 
 /**

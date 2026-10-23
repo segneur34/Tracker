@@ -3,10 +3,10 @@
  * l'application, en variables. C'est le seul fichier à modifier pour changer
  * de DA : pages et composants ne lisent que ces variables.
  *
- * Point de départ : la maquette validée le 23 septembre 2026 (police
- * Figtree, fond gris chaud, cartes blanches, vert Enregistrer). Couleurs des
- * familles validées le 8 octobre 2026 (§10, point 90) : bleu voile, rouge
- * course, vert vélo, orange fractionné, gris surf (point 97). Chacune est la
+ * Refonte du 22 octobre 2026, sur la maquette Canva (police Montserrat, logo
+ * en Shrikhand, fond gris bleuté, cartes blanches, vert Enregistrer). Couleurs
+ * des familles : bleu roi voile, rouge à pied, vert vélo de la maquette ;
+ * orange fractionné et gris surf gardés (point 97). Chacune est la
  * première nuance de sa famille (`FAMILY_SHADES` de `core/activities.ts`,
  * égalité vérifiée par `palette.test.ts`) et porte du texte blanc : contraste
  * d'au moins 4,5 sur blanc. Rouge, orange et vert ne se séparent que par leur
@@ -17,15 +17,15 @@
   color-scheme: light;
 
   /* Fonds et surfaces */
-  --bg: #f6f5f2;
+  --bg: #eaeff3;
   --surface: #ffffff;
-  --surface-sunken: #e9e7e2;
-  --surface-hover: #ecebe7;
+  --surface-sunken: #dfe5ea;
+  --surface-hover: #e6ebef;
 
   /* Traits */
-  --line: #e3e1dc;
-  --line-soft: #ecebe7;
-  --line-strong: #d6d3cc;
+  --line: #dbe1e6;
+  --line-soft: #e6ebef;
+  --line-strong: #cbd3da;
 
   /* Encres */
   --ink: #1b1f24;
@@ -35,16 +35,22 @@
   --on-accent: #ffffff;
 
   /* Familles et actions */
-  --voile: #1976d2;
-  --voile-soft: #e7f1fe;
-  --course: #d42a3c;
-  --course-soft: #feebea;
-  --velo: #1e7a3c;
-  --velo-soft: #e1f7e4;
+  --voile: #004aad;
+  --voile-soft: #e5eefb;
+  --course: #d11a1a;
+  --course-soft: #fdeaea;
+  --velo: #2c7231;
+  --velo-soft: #e4f2e5;
   --fractionne: #c25700;
   --fractionne-soft: #feece3;
   --surf: #5b6670;
   --surf-soft: #eceff2;
+  /* Boutons de planification de l'accueil (ardoise de la maquette). */
+  --home-action: #374c75;
+  /* Liseré du bouton « Créer un parcours » de l'accueil. */
+  --home-action-edge: #d11a1a;
+  /* Courbes de niveau du fond des pages (accueil, Profil, Statistiques, Réglages). */
+  --contour: #b6c4d1;
   --record: #2e7d32;
   --recording: #c62828;
 
@@ -57,7 +63,10 @@
   --focus: #1565c0;
 
   /* Typographie */
-  --font: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Une variable par rôle ; les polices se chargent dans `fonts.css`. */
+  --font: 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-title: var(--font);
+  --font-logo: 'Shrikhand', Georgia, serif;
   --text-xs: 12px;
   --text-s: 13px;
   --text-m: 15px;
@@ -66,8 +75,13 @@
   --text-title: 28px;
   /* Grands chiffres lus d'un coup d'œil (vitesses de l'enregistrement, carte réduite). */
   --text-display: 40px;
-  /* Texte d'un grand bouton qui partage sa ligne : rétrécit avec l'écran, de --text-l à --text-m. */
-  --text-fit-l: clamp(var(--text-m), 4.6vw, var(--text-l));
+  /* Rôles du texte, sur le modèle de l'accueil (`Home.css`) : titres en capitales espacées et légères, boutons
+     d'action en capitales grasses, logo en Shrikhand. */
+  --title-weight: 500;
+  --title-spacing: 0.04em;
+  --action-weight: 700;
+  --action-spacing: 0.02em;
+  --logo-size: 34px;
 
   /* Rayons */
   --radius-s: 8px;

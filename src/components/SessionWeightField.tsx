@@ -45,7 +45,7 @@ function SessionWeightField({ label, valueKg, activityKg, isValid, onChange, tit
         aria-label={label} className="ui-field ui-field--s num" style={{ width: '68px', textAlign: 'right' }} />
       kg
       {valueKg === null
-        ? <span style={{ color: 'var(--muted)', fontSize: '0.9em' }}>valeur de l'activité</span>
+        ? <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>valeur de l'activité</span>
         : <Button size="s" onClick={() => { setText(''); onChange(null); }}>Revenir à l'activité</Button>}
     </label>
   );

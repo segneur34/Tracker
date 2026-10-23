@@ -8,7 +8,7 @@ import type { ChartZoom } from '../hooks/useChartZoom';
 /** Haut de la bande de la zone 5. */
 const TOP_BPM = 250;
 
-const tooltipStyle = { fontSize: '12px' } as const;
+const tooltipStyle = { fontSize: 'var(--text-xs)' } as const;
 
 /**
  * Courbe de FC, zoomable, reliée à la carte par l'indice de chaque ligne

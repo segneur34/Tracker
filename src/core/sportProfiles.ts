@@ -675,7 +675,7 @@ export const isLandTreatment = (treatment: Treatment): boolean => treatment === 
 export type SportFamily = Treatment | 'fractionne';
 
 /** Les familles, dans l'ordre de l'interface. */
-export const SPORT_FAMILIES: SportFamily[] = ['voile', 'course', 'velo', 'fractionne', 'surf'];
+export const SPORT_FAMILIES: SportFamily[] = ['voile', 'course', 'velo', 'surf', 'fractionne'];
 
 const SPORT_TREATMENT: Record<SportType, Treatment> = {
   wingfoil: 'voile',

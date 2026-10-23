@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Bar, BarChart, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis,
 } from 'recharts';
+import PageBackdrop from '../components/PageBackdrop';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
@@ -86,9 +87,9 @@ const VIEW_NAMESPACE = 'tracker.statistiques';
 const VIEW_KEY = 'affichage';
 const VIEW_DEFAULTS: StatsView = { famille: null, activite: null, periode: 'tout', donnee: null };
 const panelId = (name: string) => `${STORAGE_ID}.${name}`;
-const panelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: '14px' } as const;
+const panelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' } as const;
 const chartPanelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'hidden' } as const;
-const noteStyle = { color: 'var(--muted)', fontSize: '12px', marginTop: '8px' } as const;
+const noteStyle = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' } as const;
 
 const RECORD_LABEL: Record<StatsRecordKind, string> = {
   vitesse: 'Vitesse max',
@@ -224,6 +225,21 @@ function StatisticsPage() {
     family !== null && activityParam !== null && activityById.get(activityParam) && activityFamily(activityById.get(activityParam)!) === family
       ? activityById.get(activityParam)!
       : null;
+
+  // Une adresse changée hors de `go` (touche retour d'Android, qui remonte d'un cran) est retenue aussi. Pas tant
+  // que la page, ouverte sans paramètre, attend la reprise du dernier affichage : elle l'effacerait.
+  const awaitingResume = useRef(params.toString() === '');
+  useEffect(() => {
+    if (awaitingResume.current) {
+      if (params.toString() === '') return;
+      awaitingResume.current = false;
+    }
+    const activite = family ? activityParam : null;
+    if (view.famille === family && view.activite === activite && view.periode === period) return;
+    rememberView({ famille: family, activite, periode: period });
+    // Seule l'adresse compte : la mémoire la suit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
 
   /** Change l'adresse : famille et activité s'empilent dans l'historique, la période le remplace. */
   const go = (next: { famille?: SportFamily | null; activite?: string | null; periode?: StatsPeriod }, replace = false) => {
@@ -400,7 +416,8 @@ function StatisticsPage() {
     : `il y a ${regular.weeksSinceLast} semaines`;
 
   return (
-    <div className="ui-page ui-page--wide an-page stats-page">
+    <div className="ui-page ui-page--wide ui-page--backdrop an-page stats-page">
+      <PageBackdrop variant="contours" />
       <PageHeader title="Statistiques" subtitle={`${title} · ${periodLabel === 'Tout' ? 'depuis le début' : periodLabel}`} />
 
       <div className="stats-choice">
@@ -597,7 +614,7 @@ function StatisticsPage() {
                           <Tooltip isAnimationActive={false} cursor={{ fill: 'rgba(0,0,0,0.05)' }}
                             labelFormatter={(i) => regular.bars[Number(i)]?.title ?? ''}
                             formatter={(value, name) => [value, activityName(String(name))]}
-                            contentStyle={{ fontSize: '12px' }} />
+                            contentStyle={{ fontSize: 'var(--text-xs)' }} />
                           {barActivities.map((id) => (
                             <Bar key={id} dataKey={id} stackId="sessions" fill={activityColor(id)} isAnimationActive={false} />
                           ))}
@@ -633,7 +650,7 @@ function StatisticsPage() {
                         <div key={z} title={`${zoneLabel(z)} : ${formatShortDuration(s)}`} style={{ width: `${(s / cardio.coveredS) * 100}%`, backgroundColor: HEART_ZONE_COLORS[z] }} />
                       ))}
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', fontSize: '12px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', fontSize: 'var(--text-xs)' }}>
                       {cardio.zoneTimesS.map((s, z) => (
                         <span key={z} style={{ opacity: s > 0 ? 1 : 0.45 }}>
                           <span style={{ display: 'inline-block', width: '9px', height: '9px', borderRadius: '2px', backgroundColor: HEART_ZONE_COLORS[z], marginRight: '4px' }} />
@@ -654,7 +671,7 @@ function StatisticsPage() {
                           <XAxis dataKey="i" tickFormatter={(i: number) => loadBars[i]?.label ?? ''} interval="preserveStartEnd" minTickGap={16} tick={{ fill: '#555', fontSize: 11 }} />
                           <YAxis allowDecimals={false} width={36} tick={{ fill: '#555', fontSize: 11 }} />
                           <Tooltip isAnimationActive={false} cursor={{ fill: 'rgba(0,0,0,0.05)' }}
-                            labelFormatter={(i) => loadBars[Number(i)]?.title ?? ''} formatter={(value) => [value, 'Charge']} contentStyle={{ fontSize: '12px' }} />
+                            labelFormatter={(i) => loadBars[Number(i)]?.title ?? ''} formatter={(value) => [value, 'Charge']} contentStyle={{ fontSize: 'var(--text-xs)' }} />
                           <Bar dataKey="load" fill={HEART_RATE_COLOR} isAnimationActive={false} />
                         </BarChart>
                       </ResponsiveContainer>

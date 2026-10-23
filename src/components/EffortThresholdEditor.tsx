@@ -48,7 +48,7 @@ function EffortThresholdEditor({ unit, valueMs, suggestedMs, isOverridden, onCha
         aria-label="Seuil d'effort" className="ui-field ui-field--s num" style={{ width: '68px', textAlign: 'right' }} />
       {SPEED_UNIT_LABEL[unit]}
       {suggestedMs !== null && (
-        <span style={{ color: 'var(--muted)', fontSize: '0.9em' }}>
+        <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
           {isOverridden ? `tiré de la session : ${formatSpeed(suggestedMs, unit)}` : 'tiré de la session'}
         </span>
       )}

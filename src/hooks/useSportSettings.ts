@@ -367,7 +367,8 @@ const writeStored = (settings: StoredSettings): void =>
 export const upgradeStoredActivities = (): boolean => {
   const stored = readStoredSettings();
   if (stored.activities === undefined || (stored.activitiesVersion ?? 1) >= ACTIVITIES_VERSION) return false;
-  writeStored({
+  // Version des pré-réglages laissée telle quelle : `upgradeStoredPresets`, qui suit, a encore à effacer.
+  jsonStore.write(STORAGE_KEY, {
     ...stored,
     activities: upgradeActivities(readActivities(stored.activities), stored.activitiesVersion ?? 1),
     activitiesVersion: ACTIVITIES_VERSION,

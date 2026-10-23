@@ -1,134 +1,143 @@
-/* Accueil : version à côté du nom, familles en grille de deux colonnes, puis itinéraires, profil et statistiques. */
+/* Accueil : en-tête photo, cartes des familles à photo fondue, boutons de planification, fond de courbes de niveau. */
+
+/* Colonne plus étroite que les autres pages sur ordinateur (la maquette est au format téléphone). */
+.ui-page.home {
+  max-width: 560px;
+  overflow: hidden;
+}
+
+/* En-tête : la photo déborde des marges de la page, en haut et sur les côtés. */
+.home-header {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  /* Plus haute que la photo (1079 × 432), recadrée sur les côtés. */
+  aspect-ratio: 1079 / 580;
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) 0;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  background-size: cover;
+  background-position: center;
+  color: var(--on-accent);
+  text-shadow: 0 1px 6px rgb(0 0 0 / 0.45);
+}
+
+.home-logo {
+  margin: 0;
+  font-family: var(--font-logo);
+  font-size: var(--logo-size);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
 
 .home-version {
   margin-left: var(--space-2);
+  font-family: var(--font);
   font-size: var(--text-s);
-  font-weight: 400;
-  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.85;
 }
 
-/* Nouvelle session : deux grands boutons côte à côte. Sur un petit écran, le texte rétrécit,
-   puis le remplissage, et sous 340 px l'icône de « Planifier » s'efface ; le texte reste entier. */
-.home-new-session {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.home-new-session .ui-btn {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  font-size: var(--text-fit-l);
-}
-
-.home-new-session .ui-btn > * {
-  flex-shrink: 0;
-}
-
-@media (max-width: 359px) {
-  .home-new-session .ui-btn {
-    padding: 0 var(--space-3);
-  }
-}
-
-@media (max-width: 339px) {
-  .home-new-session__icon {
-    display: none;
-  }
+.home-welcome {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: var(--text-l);
+  font-weight: 700;
 }
 
 .home-families {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
-/* Sous 340 px, deux colonnes ne logent plus « Fractionné » en entier : une seule. */
-@media (max-width: 339px) {
-  .home-families {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
+/* Carte de famille : icône, nom en capitales, activités ; la photo à droite, fondue dans la couleur. */
 .home-family {
   position: relative;
   display: flex;
-}
-
-.home-family__link {
-  flex: 1;
-  display: flex;
   align-items: center;
-  gap: var(--space-2);
-  min-height: 52px;
-  padding: 0 40px 0 var(--space-3);
+  gap: var(--space-4);
+  min-height: 56px;
+  padding: var(--space-1) 34% var(--space-1) var(--space-4);
   border-radius: var(--radius-m);
   background: var(--family-color);
   color: var(--on-accent);
-  font-size: var(--text-m);
-  font-weight: 700;
   text-decoration: none;
   overflow: hidden;
 }
 
-.home-family__link span {
+.home-family__icon {
+  flex-shrink: 0;
+}
+
+.home-family__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home-family__name {
+  font-family: var(--font-title);
+  /* Rétrécit sous 390 px, pour loger « Fractionné » entier. */
+  font-size: clamp(var(--text-l), 5.6vw, var(--text-xl));
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-spacing);
+  text-transform: uppercase;
+}
+
+.home-family__activities {
+  font-size: var(--text-s);
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.home-family__help {
+.home-family__photo {
   position: absolute;
-  top: 50%;
-  right: var(--space-1);
-  transform: translateY(-50%);
+  top: 0;
+  right: 0;
+  width: 34%;
+  height: 100%;
+  object-fit: cover;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40%);
+  mask-image: linear-gradient(to right, transparent, #000 40%);
+}
+
+.home-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.home-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-pill);
-  background: none;
-  color: var(--on-accent);
-  opacity: 0.8;
-  cursor: pointer;
-}
-
-.home-family__help[aria-expanded='true'] {
-  opacity: 1;
-}
-
-.home-family__blurb {
-  grid-column: 1 / -1;
-  margin: 0;
-  padding: var(--space-3);
-  border-radius: var(--radius-m);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font-size: var(--text-m);
-  line-height: 1.5;
-}
-
-/* Itinéraires planifiés et statistiques : sous les familles, pleine largeur, de leur épaisseur. */
-.home-link {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 52px;
+  gap: var(--space-3);
+  width: min(100%, 272px);
+  box-sizing: border-box;
+  min-height: 42px;
   padding: 0 var(--space-3);
   border-radius: var(--radius-m);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--ink);
-  font-size: var(--text-m);
-  font-weight: 700;
+  background: var(--home-action);
+  color: var(--on-accent);
+  font-size: var(--text-s);
+  font-weight: var(--action-weight);
+  letter-spacing: var(--action-spacing);
+  text-transform: uppercase;
   text-decoration: none;
 }
 
-.home-link span {
-  flex: 1;
+.home-action--edge {
+  border: 2px solid var(--home-action-edge);
+}
+
+.home-action svg {
+  flex-shrink: 0;
 }

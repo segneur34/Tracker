@@ -67,9 +67,9 @@ export interface JumpsPanelProps {
   sailing?: boolean;
 }
 
-const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' };
+const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' };
 const cellStyle: CSSProperties = { padding: '0.4em 0.6em', textAlign: 'center' };
-const noteStyle: CSSProperties = { color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px', lineHeight: 1.45 };
+const noteStyle: CSSProperties = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', lineHeight: 1.45 };
 
 const meters = (m: number) => `${m.toFixed(2)} m`;
 const seconds = (s: number) => `${s.toFixed(2)} s`;
@@ -96,9 +96,9 @@ function JumpsPanel({
   /** Sauts de la courbe, par l'heure de leur décollage : le premier (le plus haut d'office), et celui qu'on lui compare. */
   const [curveFirst, setCurveFirst] = useState<number | null>(null);
   const [curveSecond, setCurveSecond] = useState<number | null>(null);
-  const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: '14px' };
+  const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' };
   const buttonStyle = (active: boolean, color: string): CSSProperties => ({
-    padding: '2px 8px', fontSize: '11px', cursor: 'pointer', backgroundColor: active ? color : 'var(--surface-sunken)',
+    padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: 'pointer', backgroundColor: active ? color : 'var(--surface-sunken)',
     color: active ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px',
   });
   const heading = (label: string, withHelp = false) => (
@@ -140,7 +140,7 @@ function JumpsPanel({
       <span className="an-sheet__stat-label">{label}</span>
       <strong className="an-sheet__stat-value">
         {value}
-        {detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: '0.75em' }}> {detail}</span>}
+        {detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: 'var(--text-xs)' }}> {detail}</span>}
       </strong>
     </div>
   );
@@ -217,9 +217,9 @@ function JumpsPanel({
               const onCurve = j.takeoffMs === first.takeoffMs || j.takeoffMs === second?.takeoffMs;
               return (
                 <tr key={j.takeoffMs} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                  <td className="an-jump-num" style={{ ...cellStyle, textAlign: 'left', fontWeight: 'bold' }}>{order.get(j.takeoffMs)}</td>
+                  <td className="an-jump-num" style={{ ...cellStyle, textAlign: 'left', fontWeight: 700 }}>{order.get(j.takeoffMs)}</td>
                   <td className="an-jump-time num" style={cellStyle}>{formatTimeOfDay(j.takeoffMs)}</td>
-                  <td className="an-jump-height" style={{ ...cellStyle, fontWeight: 'bold' }} title={doubtful ? doubtText(j) : undefined}>
+                  <td className="an-jump-height" style={{ ...cellStyle, fontWeight: 700 }} title={doubtful ? doubtText(j) : undefined}>
                     {doubtful && <span className="an-jump-doubt" aria-label="mesure douteuse">≈ </span>}
                     {meters(j.heightM)}
                   </td>
@@ -290,12 +290,12 @@ function JumpsPanel({
             <YAxis width={42} tickFormatter={(v: number) => `${Math.round(v * 10) / 10} m`} tick={{ fontSize: 11 }} />
             <Tooltip
               formatter={(value, name) => [`${value} m`, name === 'premier' ? `n° ${order.get(first.takeoffMs)}` : `n° ${second ? order.get(second.takeoffMs) : ''}`]}
-              labelFormatter={(label) => `${label} s depuis le décollage`} contentStyle={{ fontSize: '12px' }} />
+              labelFormatter={(label) => `${label} s depuis le décollage`} contentStyle={{ fontSize: 'var(--text-xs)' }} />
             <ReferenceLine y={0} stroke="var(--line-strong)" />
-            <ReferenceLine x={0} stroke="var(--muted)" strokeDasharray="4 3" label={{ value: 'décollage', fontSize: 10, position: 'insideTopLeft' }} />
+            <ReferenceLine x={0} stroke="var(--muted)" strokeDasharray="4 3" label={{ value: 'décollage', fontSize: 11, position: 'insideTopLeft' }} />
             {shown.map((j, k) => (
               <ReferenceLine key={j.takeoffMs} x={Math.round(j.flightS * 100) / 100} stroke={CURVE_COLORS[k]} strokeDasharray="4 3"
-                label={k === 0 ? { value: 'atterrissage', fontSize: 10, position: 'insideTopRight' } : undefined} />
+                label={k === 0 ? { value: 'atterrissage', fontSize: 11, position: 'insideTopRight' } : undefined} />
             ))}
             <Line type="monotone" dataKey="premier" stroke={CURVE_COLORS[0]} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
             {second && <Line type="monotone" dataKey="second" stroke={CURVE_COLORS[1]} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />}

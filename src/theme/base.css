@@ -5,10 +5,7 @@
  * le focus sont posés ici.
  */
 
-@import '@fontsource/figtree/latin-400.css';
-@import '@fontsource/figtree/latin-500.css';
-@import '@fontsource/figtree/latin-600.css';
-@import '@fontsource/figtree/latin-700.css';
+@import './fonts.css';
 
 html,
 body {
@@ -31,10 +28,11 @@ textarea {
   font-family: inherit;
 }
 
-h1,
-h2,
-h3 {
-  letter-spacing: -0.01em;
+/* Cartes : la police de l'application, pas l'Helvetica de Leaflet (bulles, repères, légende). Doublé pour passer
+   devant `leaflet.css`, importé après ce fichier. */
+.leaflet-container.leaflet-container {
+  font-family: var(--font);
+  font-size: var(--text-xs);
 }
 
 a {

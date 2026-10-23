@@ -15,7 +15,7 @@ describe('icônes des activités', () => {
 
   it('donne la sienne à chaque activité de départ', () => {
     expect(DEFAULT_ACTIVITIES.map(activityIcon)).toEqual([
-      'wingfoil', 'course', 'marche', 'route', 'gravel', 'vtt', 'fractionne-pied', 'fractionne-velo', 'surf', 'surf-foil',
+      'wingfoil', 'course', 'marche', 'route', 'gravel', 'vtt', 'surf', 'surf-foil', 'fractionne-pied', 'fractionne-velo',
     ]);
   });
 

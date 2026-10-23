@@ -4,8 +4,8 @@ import BaseTileLayer from '../components/BaseTileLayer';
 import { Link, useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import MapAutoResize from '../components/MapAutoResize';
-import { IconHelp } from '../components/icons';
-import ActivityArt from '../components/activityArt';
+import PageBackdrop from '../components/PageBackdrop';
+import { FAMILY_ICON } from '../components/familyIcons';import { IconHelp } from '../components/icons';
 import ActivityIcon from '../components/ActivityIcon';
 import ActivitySelect, { ActivitySheet } from '../components/ActivitySelect';
 import ImportButtons from '../components/ImportButtons';
@@ -17,12 +17,10 @@ import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmen
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import MoreMenu from '../components/ui/MoreMenu';
-import PageHeader from '../components/ui/PageHeader';
 import { sampledIndices } from '../core/chartZoom';
 import { PREVIEW_MAX_POINTS } from '../core/displayConfig';
 import { coloredSegments } from '../core/trackColor';
 import { activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
-import { activityIcon, type ActivityIconId } from '../core/activityIcons';
 import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
 import { formatDistance, formatDuration, formatShortDuration, formatSpeed, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
@@ -34,6 +32,11 @@ import {
 import type { LibrarySession } from '../library/record';
 import { routeActivity, routesOfFamily } from '../planning/routeList';
 import { isNativeApp } from '../platform/runtime';
+import bannerCourse from '../assets/bandeaux/course.webp';
+import bannerFractionne from '../assets/bandeaux/fractionne.webp';
+import bannerSurf from '../assets/bandeaux/surf.webp';
+import bannerVelo from '../assets/bandeaux/velo.webp';
+import bannerVoile from '../assets/bandeaux/voile.webp';
 import './SessionLibrary.css';
 
 /**
@@ -49,12 +52,13 @@ import './SessionLibrary.css';
  * adresse, montre tout et le rappelle (§10, point 100).
  */
 
-const FAMILY: Record<SportFamily, { title: string; accent: string; of: string }> = {
-  voile: { title: 'Voile', accent: 'var(--voile)', of: 'de voile' },
-  course: { title: 'À pied', accent: 'var(--course)', of: 'à pied' },
-  velo: { title: 'Vélo', accent: 'var(--velo)', of: 'de vélo' },
-  fractionne: { title: 'Fractionné', accent: 'var(--fractionne)', of: 'de fractionné' },
-  surf: { title: 'Surf', accent: 'var(--surf)', of: 'de surf' },
+/** Nom, couleur et photo du bandeau de chaque famille (refonte du 22/10). */
+const FAMILY: Record<SportFamily, { title: string; accent: string; of: string; banner: string }> = {
+  voile: { title: 'Voile', accent: 'var(--voile)', of: 'de voile', banner: bannerVoile },
+  course: { title: 'À pied', accent: 'var(--course)', of: 'à pied', banner: bannerCourse },
+  velo: { title: 'Vélo', accent: 'var(--velo)', of: 'de vélo', banner: bannerVelo },
+  fractionne: { title: 'Fractionné', accent: 'var(--fractionne)', of: 'de fractionné', banner: bannerFractionne },
+  surf: { title: 'Surf', accent: 'var(--surf)', of: 'de surf', banner: bannerSurf },
 };
 
 /** Activité d'une session d'après sa fiche (`sessionActivity`), `null` pour une session à classer. */
@@ -311,7 +315,7 @@ function SessionRow({
 
 function SessionLibrary({ family }: { family: SportFamily }) {
   const library = useSessionLibrary();
-  const { title, accent } = FAMILY[family];
+  const { title, accent, banner } = FAMILY[family];
   const { activities, families, isShown } = useVisibility();
   /** Famille cachée, ouverte par son adresse : tout y est montré. */
   const familyHidden = !families.includes(family);
@@ -368,17 +372,12 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   const shown = activeFilter === 'all' ? familySessions : familySessions.filter((s) => activityByFile.get(s.file)?.id === activeFilter);
   const shownRoutes = activeFilter === 'all' ? familyRoutes : familyRoutes.filter((r) => routeActivity(r, activities)?.id === activeFilter);
   const native = isNativeApp();
-  /** Dessins de l'en-tête : l'activité filtrée, sinon toutes celles de la vue (à défaut, celles de la famille), une fois par dessin. */
-  const headerArt = useMemo(() => {
-    const filtered = counts.find((c) => c.activity.id === activeFilter)?.activity;
-    const listedHere = counts.length > 0 ? counts.map((c) => c.activity) : activitiesOfFamily(activities, family).filter(listed);
-    const byIcon = new Map<ActivityIconId, Activity>();
-    for (const activity of filtered ? [filtered] : listedHere) {
-      const icon = activityIcon(activity);
-      if (!byIcon.has(icon)) byIcon.set(icon, activity);
-    }
-    return [...byIcon];
-  }, [counts, activeFilter, activities, family, listed]);
+  /** Activités nommées dans le bandeau : celles de la famille montrées ici, dans l'ordre de Réglages. */
+  const bannerActivities = useMemo(
+    () => activitiesOfFamily(activities, family).filter(listed).map((a) => a.name).join(', '),
+    [activities, family, listed]
+  );
+  const FamilyIcon = FAMILY_ICON[family];
 
   const row = (session: LibrarySession) => (
     <SessionRow
@@ -393,21 +392,12 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   );
 
   return (
-    <div className="ui-page" style={{ '--lib-accent': accent, '--help-accent': accent } as React.CSSProperties}>
-      <PageHeader
-        title={(
-          <span className="lib-title">
-            {title}
-            {headerArt.length > 0 && (
-              <span className={headerArt.length > 3 ? 'lib-title__art lib-title__art--many' : 'lib-title__art'}>
-                {headerArt.map(([icon, activity]) => <ActivityArt key={icon} icon={icon} style={{ color: activity.color }} />)}
-              </span>
-            )}
-          </span>
-        )}
-        subtitle={`${familySessions.length} session${familySessions.length > 1 ? 's' : ''}`}
-        aside={(
-          // Imports et mise à jour, de moindre usage : derrière « … », pour que la liste vienne tout de suite.
+    <div className="ui-page ui-page--backdrop lib-page" style={{ '--lib-accent': accent, '--help-accent': accent } as React.CSSProperties}>
+      <PageBackdrop variant={family} />
+      {/* Bandeau photo de la famille : son icône, son nom, ses activités et le nombre de sessions ; « … » en haut à droite. */}
+      <header className="lib-banner" style={{ '--banner': `url(${banner})` } as React.CSSProperties}>
+        <div className="lib-banner__more">
+          {/* Imports et mise à jour, de moindre usage : derrière « … », pour que la liste vienne tout de suite. */}
           <MoreMenu label="Importer, mettre à jour">
             {library.status === 'ready' && (
               <span className="ui-more__note">
@@ -421,7 +411,16 @@ function SessionLibrary({ family }: { family: SportFamily }) {
               À quoi sert « Ajouter les sessions d'un dossier » ?
             </Button>
           </MoreMenu>
-        )} />
+        </div>
+        <div className="lib-banner__title">
+          <FamilyIcon size={44} />
+          <div>
+            <h1>{title}</h1>
+            {bannerActivities && <p className="lib-banner__activities">{bannerActivities}</p>}
+            <p className="lib-banner__count">{familySessions.length} session{familySessions.length > 1 ? 's' : ''}</p>
+          </div>
+        </div>
+      </header>
 
       <MemoryStatus compact />
       {helpOpen && (

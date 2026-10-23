@@ -21,8 +21,9 @@ function ChartFold({ label, open, onToggle, color, title, style }: {
       title={title ?? (open ? 'Replier' : 'Montrer')}
       style={{
         alignSelf: 'flex-start', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px',
-        padding: '3px 8px 3px 10px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px',
+        padding: '3px 8px 3px 10px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)',
         backgroundColor: 'var(--surface-sunken)', color: color ?? 'var(--ink)', fontWeight: color ? 600 : undefined,
+        letterSpacing: 'var(--title-spacing)', textTransform: 'uppercase',
         ...style,
       }}>
       {label}

@@ -18,5 +18,5 @@ export const markReferenceLines = (
   located.map((m) => (
     <ReferenceLine key={`note-${m.mark.timeMs}`} x={xOf(m)} ifOverflow="hidden" {...(yAxisId ? { yAxisId } : {})}
       stroke={m.mark.timeMs === shownMs ? HIGHLIGHT_SHOWN_COLOR : MARK_FLAG_COLOR} strokeWidth={1} strokeDasharray="3 3"
-      label={{ value: String(m.n), position: 'insideTopLeft', fontSize: 10, fill: m.mark.timeMs === shownMs ? HIGHLIGHT_SHOWN_COLOR : MARK_FLAG_COLOR }} />
+      label={{ value: String(m.n), position: 'insideTopLeft', fontSize: 11, fill: m.mark.timeMs === shownMs ? HIGHLIGHT_SHOWN_COLOR : MARK_FLAG_COLOR }} />
   ));

@@ -983,7 +983,7 @@ function PlanningPage() {
                           tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`} tick={{ fill: '#555', fontSize: 11 }} />
                         <YAxis domain={['auto', 'auto']} width={44} tick={{ fill: '#e64a19', fontSize: 11 }} tickFormatter={(v) => `${v}`} />
                         <Tooltip
-                          contentStyle={{ fontSize: '12px' }}
+                          contentStyle={{ fontSize: 'var(--text-xs)' }}
                           labelFormatter={(l) => `${parseFloat(Number(l).toFixed(2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`}
                           formatter={(value, _name, item) => {
                             const row: ChartRow | undefined = item.payload;

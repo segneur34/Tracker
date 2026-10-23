@@ -21,7 +21,7 @@ function CardioLoadHelp({ bounds, weights, period = false }: Props) {
       : zone === bounds.length ? `${bounds[zone - 1]} bpm et plus`
         : `${bounds[zone - 1]} à ${bounds[zone] - 1} bpm`;
   return (
-    <div style={{ color: 'var(--muted)', fontSize: '0.8em', lineHeight: 1.45, margin: '8px 0 4px' }}>
+    <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', lineHeight: 1.45, margin: '8px 0 4px' }}>
       La charge résume en un chiffre l'effort cardiaque {period ? 'de la période' : 'de la sortie'}, sa durée et son
       intensité ensemble : chaque minute compte, d'autant plus que la FC est haute (méthode d'Edwards, temps sous Z1
       compris). Minutes{' '}

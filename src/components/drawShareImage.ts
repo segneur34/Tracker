@@ -62,12 +62,18 @@ export const createTileImageLoader = (base: MapBase): TileImageLoader => {
 const token = (name: string, fallback: string): string =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 
-/** Police de l'interface (Figtree), chargée avant de dessiner : sans elle, le canevas prend celle du système. */
+/** Police de l'interface (`--font`), chargée avant de dessiner : sans elle, le canevas prend celle du système. */
 const fontFamily = (): string => token('--font', 'system-ui, sans-serif');
 
-const ensureFonts = async (family: string): Promise<void> => {
+/** Police du logo (`--font-logo`), pour « Tracker » au pied de l'image, comme sur l'accueil. */
+const logoFamily = (): string => token('--font-logo', 'Georgia, serif');
+
+const ensureFonts = async (family: string, logo: string): Promise<void> => {
   try {
-    await Promise.all([document.fonts.load(`700 40px ${family}`), document.fonts.load(`400 40px ${family}`)]);
+    await Promise.all([
+      document.fonts.load(`700 40px ${family}`), document.fonts.load(`600 40px ${family}`), document.fonts.load(`400 40px ${family}`),
+      document.fonts.load(`400 40px ${logo}`),
+    ]);
   } catch {
     // Police indisponible : celle du système fait l'affaire.
   }
@@ -155,7 +161,8 @@ export const drawShareImage = async (content: ShareImageContent, tileImage: Tile
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Dessin impossible sur cet appareil.');
   const family = fontFamily();
-  await ensureFonts(family);
+  const logo = logoFamily();
+  await ensureFonts(family, logo);
   const ink = token('--ink', '#1b1f24');
   const muted = token('--muted', '#5b6470');
   const margin = 60;
@@ -226,8 +233,9 @@ export const drawShareImage = async (content: ShareImageContent, tileImage: Tile
   ctx.fillStyle = token('--line', '#e3e1dc');
   ctx.fillRect(margin, heightPx - footerPx, widthPx - 2 * margin, 2);
   ctx.fillStyle = token('--faint', '#8a9099');
+  ctx.font = `400 26px ${logo}`;
+  ctx.fillText('TRACKER', margin, heightPx - 22);
   ctx.font = `600 26px ${family}`;
-  ctx.fillText('Tracker', margin, heightPx - 22);
   if (content.author !== null) {
     ctx.textAlign = 'right';
     ctx.fillText(fitText(ctx, content.author, widthPx / 2 - margin), widthPx - margin, heightPx - 22);

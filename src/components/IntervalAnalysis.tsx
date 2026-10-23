@@ -114,7 +114,7 @@ function RepGradientLegend({ count }: { count: number }) {
   if (count < 2) return null;
   const band = `linear-gradient(to right, ${repColor(0, 3)}, ${repColor(1, 3)}, ${repColor(2, 3)})`;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--muted)', fontSize: '11px', fontWeight: 'normal' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}>
       rép. 1
       <span aria-hidden="true" style={{ width: '48px', height: '6px', borderRadius: '3px', background: band }} />
       rép. {count}
@@ -129,10 +129,10 @@ const signedPercent = (fraction: number, decimals = 1): string => {
   return `${fraction < 0 ? '−' : '+'}${value} %`;
 };
 
-const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' };
+const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' };
 const cellStyle: CSSProperties = { padding: '0.4em 0.6em', textAlign: 'center' };
-const noteStyle: CSSProperties = { color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px', lineHeight: 1.45 };
-const chartTooltipStyle = { fontSize: '12px' } as const;
+const noteStyle: CSSProperties = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', lineHeight: 1.45 };
+const chartTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
 
 /**
  * Points de la mini-courbe d'une répétition : son profil une fois lancé
@@ -204,7 +204,7 @@ function IntervalAnalysis({
   const noun = inverse ? 'allure' : 'vitesse';
   /** Accélération et seuils : en km/h pour une allure, comme les tops. */
   const rateUnit: SpeedUnit = speedUnit === 'minkm' ? 'kmh' : speedUnit;
-  const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: '14px' };
+  const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' };
   const display = (ms: number | null): number | null =>
     ms === null || !isFinite(ms) || (inverse && ms < MIN_PACE_SPEED_MS) ? null : parseFloat(toDisplaySpeed(ms, speedUnit).toFixed(2));
   const formatRate = (ms2: number): string =>
@@ -264,7 +264,7 @@ function IntervalAnalysis({
         </div>
       )}
       {samplingS > SPARSE_SAMPLING_S && (
-        <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px', fontSize: '0.9em' }}>
+        <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px', fontSize: 'var(--text-xs)' }}>
           Un point toutes les {samplingS.toFixed(1)} s en médiane : la trace est trop clairsemée pour le détail d'une
           répétition. Les efforts paraissent plus courts et plus lents qu'ils ne l'étaient, une partie tombant dans le long
           segment de la récupération ; lancé, maintien et profils sont approximatifs.
@@ -292,7 +292,7 @@ function IntervalAnalysis({
             <span className="an-sheet__stat-label">{label}</span>
             <strong className="an-sheet__stat-value">
               {value}
-              {detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: '0.75em' }}> {detail}</span>}
+              {detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: 'var(--text-xs)' }}> {detail}</span>}
             </strong>
           </div>
         );
@@ -337,10 +337,10 @@ function IntervalAnalysis({
                     const reached = work.path.length > 1;
                     return (
                       <tr key={key} style={{ borderTop: '1px solid var(--line-soft)', opacity: reached ? 1 : 0.45 }}>
-                        <td className="an-ivl-rep" style={{ ...cellStyle, textAlign: 'left', fontWeight: 'bold', color: repColor(repIndex, s.reps.length) }}>{rep}</td>
+                        <td className="an-ivl-rep" style={{ ...cellStyle, textAlign: 'left', fontWeight: 700, color: repColor(repIndex, s.reps.length) }}>{rep}</td>
                         {showDuration && <td className="an-ivl-dur num" style={cellStyle}>{formatIntervalClock(Math.round(work.durationS))}</td>}
                         <td className="an-ivl-dist" style={cellStyle}>{work.distanceM === null ? '—' : formatShortDistance(work.distanceM, distanceUnit)}</td>
-                        <td className="an-ivl-speed" style={{ ...cellStyle, fontWeight: 'bold' }}>{formatSpeed(work.speedMs, speedUnit)}</td>
+                        <td className="an-ivl-speed" style={{ ...cellStyle, fontWeight: 700 }}>{formatSpeed(work.speedMs, speedUnit)}</td>
                         <td className="an-ivl-launch" data-label="lancé" style={cellStyle}>{launchS === null ? '—' : `${Math.round(launchS)} s`}</td>
                         <td className="an-ivl-hold" data-label="maintien" style={cellStyle}>{holdRatio === null ? '—' : signedPercent(holdRatio - 1, 0)}</td>
                         <td className="an-ivl-spark-cell" style={cellStyle}>{sparks.get(rep)?.some((v) => v !== null) && <Sparkline points={sparks.get(rep) ?? []} length={sparkLength} domain={domain} />}</td>
@@ -369,7 +369,7 @@ function IntervalAnalysis({
                         </td>
                         <td className="an-ivl-map" style={cellStyle}>
                           <button type="button" disabled={!reached} onClick={() => onSelectLap(shown ? null : key)}
-                            style={{ padding: '2px 8px', fontSize: '11px', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                            style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
                             {shown ? 'Masquer' : 'Voir'}
                           </button>
                         </td>

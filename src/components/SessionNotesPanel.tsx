@@ -34,7 +34,7 @@ export default function SessionNotesPanel({ notes, setNotes, family, gearFields,
   const accent = `var(--${family})`;
   const accentSoft = `var(--${family}-soft)`;
   const choiceStyle = (chosen: boolean) => ({
-    padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: '12px',
+    padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: 'var(--text-xs)',
     backgroundColor: chosen ? accent : '#fff', color: chosen ? '#fff' : 'var(--ink)',
   });
   return (
@@ -44,7 +44,7 @@ export default function SessionNotesPanel({ notes, setNotes, family, gearFields,
           <PanelTitle label="Matériel" open={open} onToggle={onToggle} />
         </div>
         {gearFields.map(({ field, label, placeholder }) => (
-          <label key={field} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '14px' }}>
+          <label key={field} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: 'var(--text-s)' }}>
             <span style={{ width: '90px' }}>{label}</span>
             <input
               type="text"
@@ -57,11 +57,11 @@ export default function SessionNotesPanel({ notes, setNotes, family, gearFields,
       </div>
 
       <div style={{ flex: '1 1 260px' }}>
-        <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Conditions</strong>
+        <strong className="ui-subtitle" style={{ display: 'block', marginBottom: '10px' }}>Conditions</strong>
         {conditions === 'voile' ? (
           <>
             <div style={{ marginBottom: '10px' }}>
-              <span style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>Vent</span>
+              <span style={{ display: 'block', fontSize: 'var(--text-s)', marginBottom: '4px' }}>Vent</span>
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {WIND_LEVELS.map((w) => (
                   <button key={w.value} onClick={() => setNotes({ windLevel: notes.windLevel === w.value ? null : w.value })}
@@ -72,7 +72,7 @@ export default function SessionNotesPanel({ notes, setNotes, family, gearFields,
               </div>
             </div>
             <div>
-              <span style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>Plan d'eau</span>
+              <span style={{ display: 'block', fontSize: 'var(--text-s)', marginBottom: '4px' }}>Plan d'eau</span>
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {WATER_STATES.map((s) => (
                   <button key={s.value} onClick={() => setNotes({ waterState: notes.waterState === s.value ? null : s.value })}
@@ -90,12 +90,12 @@ export default function SessionNotesPanel({ notes, setNotes, family, gearFields,
             placeholder="Météo, état du terrain…"
             aria-label="Conditions"
             rows={3}
-            style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: '13px', boxSizing: 'border-box' }} />
+            style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: 'var(--text-s)', boxSizing: 'border-box' }} />
         )}
       </div>
 
       <div style={{ flex: '1 1 260px' }}>
-        <strong style={{ display: 'block', marginBottom: '10px', fontSize: '16px' }}>Appréciation de la séance</strong>
+        <strong className="ui-subtitle" style={{ display: 'block', marginBottom: '10px' }}>Appréciation de la séance</strong>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
           {RATINGS.map((r) => (
             <button key={r.value} onClick={() => setNotes({ rating: notes.rating === r.value ? null : r.value })}
@@ -106,15 +106,15 @@ export default function SessionNotesPanel({ notes, setNotes, family, gearFields,
           ))}
         </div>
         {notes.rating !== null && (
-          <div style={{ fontSize: '13px', marginBottom: '8px' }}>{RATINGS.find((r) => r.value === notes.rating)?.label}</div>
+          <div style={{ fontSize: 'var(--text-s)', marginBottom: '8px' }}>{RATINGS.find((r) => r.value === notes.rating)?.label}</div>
         )}
         <textarea
           value={notes.comment}
           onChange={(e) => setNotes({ comment: e.target.value })}
           placeholder="Commentaire libre"
           rows={3}
-          style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: '13px', boxSizing: 'border-box' }} />
-        <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '6px' }}>
+          style={{ width: '100%', padding: '6px', fontFamily: 'inherit', fontSize: 'var(--text-s)', boxSizing: 'border-box' }} />
+        <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
           {!draft.savable
             ? 'Notes indisponibles : cette trace n\'est pas dans la mémoire.'
             : draft.changed.includes('notes')

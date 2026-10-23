@@ -31,7 +31,7 @@ export default function TopsPanel({ targets, tops, unit, selected, onSelect, acc
       <div style={{ marginBottom: '10px' }}>
         <PanelTitle label="Meilleurs segments" open={open} onToggle={onToggle} />
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
         <thead>
           <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
             <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Sur</th>
@@ -50,13 +50,13 @@ export default function TopsPanel({ targets, tops, unit, selected, onSelect, acc
                 const shown = selected === target.key;
                 return (
                   <tr key={target.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: reached ? 1 : 0.45 }}>
-                    <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{target.label}</td>
+                    <td style={{ padding: '0.4em 0.6em', fontWeight: 700 }}>{target.label}</td>
                     {[0, 1, 2].map((idx) => (
                       <td key={idx} style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: idx === 0 ? 'bold' : 'normal' }}>{values[idx]?.val ?? '-'}</td>
                     ))}
                     <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
                       <button type="button" disabled={!reached} onClick={() => onSelect(shown ? null : target.key)}
-                        style={{ padding: '2px 8px', fontSize: '11px', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? accent : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                        style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? accent : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
                         {shown ? 'Masquer' : 'Voir'}
                       </button>
                     </td>
@@ -67,7 +67,7 @@ export default function TopsPanel({ targets, tops, unit, selected, onSelect, acc
           ))}
         </tbody>
       </table>
-      <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
+      <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
         Vitesse moyenne du meilleur passage sur chaque durée ou distance, sans chevauchement, pauses comprises.
       </div>
     </>

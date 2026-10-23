@@ -145,39 +145,70 @@
   flex-shrink: 0;
 }
 
-/* Titre et dessins des activités montrées (toutes, ou celle du filtre). */
-.lib-title {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
+/* Fond de la page : motif de la famille, dans une teinte pâle de sa couleur (`PageBackdrop`). */
+.ui-page.lib-page {
+  overflow: hidden;
+  --backdrop-ink: color-mix(in srgb, var(--lib-accent) 34%, transparent);
+}
+
+/* Bandeau photo : déborde des marges de la page en haut et sur les côtés ; nom et activités en bas à gauche. */
+.lib-banner {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  aspect-ratio: 1080 / 430;
+  min-height: 170px;
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) 0;
+  padding: var(--space-2) var(--space-3) var(--space-4) var(--space-4);
+  /* Voile sombre en bas de la photo, sous le nom et les activités. */
+  background-image: linear-gradient(to top, rgb(0 0 0 / 0.5), transparent 65%), var(--banner);
+  background-size: cover;
+  background-position: center;
+  color: var(--on-accent);
+  text-shadow: 0 1px 6px rgb(0 0 0 / 0.55);
+}
+
+.lib-banner__more {
+  align-self: flex-end;
+}
+
+.lib-banner__more .ui-more__button {
+  background: rgb(255 255 255 / 0.85);
+  color: var(--ink);
+}
+
+.lib-banner__title {
+  display: flex;
+  align-items: flex-end;
   gap: var(--space-3);
 }
 
-.lib-title__art {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  --lib-art-size: 40px;
+.lib-banner__title svg {
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 4px rgb(0 0 0 / 0.5));
 }
 
-.lib-title__art svg {
-  width: var(--lib-art-size);
-  height: var(--lib-art-size);
+.lib-banner h1 {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: var(--text-title);
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-spacing);
+  line-height: 1.1;
+  text-transform: uppercase;
 }
 
-.lib-title__art--many {
-  --lib-art-size: 30px;
+.lib-banner__activities,
+.lib-banner__count {
+  margin: 0;
+  font-size: var(--text-s);
+  font-weight: 500;
 }
 
-@media (min-width: 768px) {
-  .lib-title__art {
-    --lib-art-size: 52px;
-  }
-
-  .lib-title__art--many {
-    --lib-art-size: 40px;
-  }
+.lib-banner__count {
+  font-size: var(--text-s);
+  font-weight: 500;
+  opacity: 0.9;
 }
 
 /* Petite icône de l'activité, devant son nom. */

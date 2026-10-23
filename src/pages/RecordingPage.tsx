@@ -89,7 +89,7 @@ interface ReplayTrack {
 const Stat = ({ label, value }: { label: string; value: string }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '12px 14px', borderRadius: 'var(--radius-m)', background: 'var(--bg)' }}>
     <span style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>{label}</span>
-    <span className="num" style={{ fontSize: '24px', fontWeight: 700 }}>{value}</span>
+    <span className="num" style={{ fontSize: 'var(--text-xl)', fontWeight: 700 }}>{value}</span>
   </div>
 );
 

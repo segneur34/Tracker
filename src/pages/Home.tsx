@@ -1,100 +1,91 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
+import headerPhoto from '../assets/accueil/entete-accueil.webp';
+import vignetteAPied from '../assets/accueil/vignette-a-pied.webp';
+import vignetteFractionne from '../assets/accueil/vignette-fractionne.webp';
+import vignetteSurf from '../assets/accueil/vignette-surf.webp';
+import vignetteVelo from '../assets/accueil/vignette-velo.webp';
+import vignetteVoile from '../assets/accueil/vignette-voile.webp';
 import MemoryStatus from '../components/MemoryStatus';
+import PageBackdrop from '../components/PageBackdrop';
 import { PermissionsPrompt } from '../components/PermissionsStatus';
 import { FAMILY_ICON } from '../components/familyIcons';
-import { IconChevronRight, IconHelp, IconRoute } from '../components/icons';
-import PageHeader from '../components/ui/PageHeader';
+import { IconFlag, IconRoute } from '../components/icons';
 import { FAMILY_ACCENT, FAMILY_LABEL } from '../core/activities';
 import type { SportFamily } from '../core/sportProfiles';
 import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
+import { runnerName, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
 import { shownRoutes } from '../planning/routeList';
 import './Home.css';
 
 /**
- * Accueil : enregistrer ou planifier un itinéraire, puis les familles visibles
- * en grille de deux colonnes (un « ? » déplie ce que chacune analyse), et sous
- * elles, de la même épaisseur, l'entrée de la liste des itinéraires planifiés
- * (leur nombre dès que la mémoire est prête). Profil et statistiques sont
- * dans les barres du haut et du bas (§10, point 129). Une famille
- * cachée dans Réglages n'y a pas sa carte, une activité cachée pas ses
- * itinéraires dans le nombre (§10, point 100).
+ * Accueil, sur la maquette du 22/10 : en-tête photo avec le logo, la version
+ * et le salut au pseudo ; une carte par famille visible, ses activités visibles
+ * en sous-titre et sa photo fondue dans sa couleur ; puis créer un parcours et
+ * la liste des itinéraires planifiés (leur nombre dès que la mémoire est prête),
+ * sur un fond de courbes de niveau. Enregistrer est le bouton rond de la barre
+ * du bas. Une famille cachée dans Réglages n'y a pas sa carte, une activité
+ * cachée ni son nom ni ses itinéraires (§10, point 100).
  */
 
-const cardStyle = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '8px',
-  padding: '18px',
-  borderRadius: 'var(--radius-l)',
-  background: 'var(--surface)',
-  border: '1px solid var(--line)',
-  color: 'var(--ink)',
-  textDecoration: 'none',
-} as const;
-
-/** Ce que chaque famille analyse, déplié par son « ? ». */
-const FAMILY_BLURB: Record<SportFamily, string> = {
-  voile: 'Wingfoil, planche, kite, bateau : vitesse, tops, virements et empannages, vent, VMG.',
-  course: 'Allure, dénivelé, zones de pente, vitesse et altitude.',
-  velo: 'Vitesse, dénivelé, zones de pente, meilleurs segments, puissance et énergie.',
-  fractionne: "À pied ou à vélo : compteur de répétitions à l'enregistrement, avec bips, puis la même analyse qu'à pied ou à vélo.",
-  surf: 'Vagues, temps sur la vague, vitesse, rame et retour au pic ; sur foil, les vols enchaînés.',
+const FAMILY_PHOTO: Record<SportFamily, string> = {
+  voile: vignetteVoile,
+  course: vignetteAPied,
+  velo: vignetteVelo,
+  surf: vignetteSurf,
+  fractionne: vignetteFractionne,
 };
 
 function Home() {
-  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
   const { status, error } = useSessionLibrary();
   const { routes: allRoutes } = useRouteLibrary();
-  const { activities, families, isShown } = useVisibility();
-  const [blurbOf, setBlurbOf] = useState<SportFamily | null>(null);
+  const { activities, families, isShown, shownActivities } = useVisibility();
+  const { profile } = useRunnerProfile();
+  const name = runnerName(profile);
   const routes = useMemo(() => shownRoutes(allRoutes, activities, isShown), [allRoutes, activities, isShown]);
   // Premier lancement sur le téléphone, ou dossier devenu inaccessible : la mémoire d'abord. Une erreur
   // (écriture refusée, réglages du dossier illisibles) se voit aussi dès l'accueil.
   const memoryNeedsAction = status === 'unavailable' || status === 'needs-permission' || error !== null;
 
   return (
-    <div className="ui-page">
-      <PageHeader title={<>Tracker<span className="home-version">v{__APP_VERSION__}</span></>} aside={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-m)' }}>{today}</span>} />
+    <div className="ui-page ui-page--backdrop home">
+      <PageBackdrop variant="contours" />
+      <header className="home-header" style={{ backgroundImage: `url(${headerPhoto})` }}>
+        <h1 className="home-logo">Tracker<span className="home-version">v{__APP_VERSION__}</span></h1>
+        <p className="home-welcome">{name ? `Bienvenue ${name}` : 'Bienvenue'}</p>
+      </header>
 
       {memoryNeedsAction && <MemoryStatus />}
       {/* Le dossier de la mémoire d'abord, puis les autorisations (téléphone seulement, s'il en manque). */}
       {!memoryNeedsAction && status === 'ready' && <PermissionsPrompt />}
 
-      <div style={{ ...cardStyle, gap: '14px' }}>
-        <span className="ui-eyebrow">Nouvelle session</span>
-        <div className="home-new-session">
-          <Link to="/enregistrer" className="ui-btn ui-btn--record ui-btn--l">
-            <span className="ui-record-dot" />
-            Enregistrer
-          </Link>
-          <Link to="/itineraires" className="ui-btn ui-btn--secondary ui-btn--l">
-            <IconRoute size={20} className="home-new-session__icon" />
-            Planifier
-          </Link>
-        </div>
-      </div>
-
-      <div className="home-families">
+      <nav className="home-families" aria-label="Sports">
         {families.map((family) => {
           const Icon = FAMILY_ICON[family];
-          const open = blurbOf === family;
+          const names = shownActivities(family).map((a) => a.name).join(', ');
           return (
-            <div key={family} className="home-family" style={{ '--family-color': FAMILY_ACCENT[family] } as CSSProperties}>
-              <Link to={libraryPath(family)} className="home-family__link"><Icon /> <span>{FAMILY_LABEL[family]}</span></Link>
-              <button type="button" className="home-family__help" aria-expanded={open}
-                aria-label={`Ce qu'analyse ${FAMILY_LABEL[family]}`} onClick={() => setBlurbOf(open ? null : family)}>
-                <IconHelp size={18} />
-              </button>
-            </div>
+            <Link key={family} to={libraryPath(family)} className="home-family"
+              style={{ '--family-color': FAMILY_ACCENT[family] } as CSSProperties}>
+              <Icon size={29} className="home-family__icon" />
+              <span className="home-family__text">
+                <span className="home-family__name">{FAMILY_LABEL[family]}</span>
+                {names && <span className="home-family__activities">{names}</span>}
+              </span>
+              <img className="home-family__photo" src={FAMILY_PHOTO[family]} alt="" />
+            </Link>
           );
         })}
-        {blurbOf !== null && families.includes(blurbOf) && <p className="home-family__blurb">{FAMILY_BLURB[blurbOf]}</p>}
-        <Link to="/itineraires/liste" className="home-link">
-          <IconRoute /> <span>Itinéraires planifiés{status === 'ready' ? ` (${routes.length})` : ''}</span> <IconChevronRight />
+      </nav>
+
+      <div className="home-actions">
+        <Link to="/itineraires" className="home-action home-action--edge">
+          <IconRoute size={18} /> <span>Créer un parcours</span>
+        </Link>
+        <Link to="/itineraires/liste" className="home-action">
+          <IconFlag size={18} /> <span>Itinéraires planifiés{status === 'ready' ? ` (${routes.length})` : ''}</span>
         </Link>
       </div>
     </div>

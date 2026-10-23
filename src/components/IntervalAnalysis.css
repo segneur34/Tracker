@@ -45,7 +45,7 @@
   .an-ivl-hold { grid-area: hold; }
   .an-ivl-dur { grid-area: dur; }
   .an-ivl-spark-cell { grid-area: spark; }
-  .an-ivl-rest { grid-area: rest; font-size: 0.9em; }
+  .an-ivl-rest { grid-area: rest; font-size: var(--text-xs); }
 
   /* Avec la FC, une quatrième rangée : FC moyenne / max et récupération. */
   .an-ivl-table--fc tbody tr {
@@ -89,6 +89,6 @@
   .an-ivl-step::before {
     content: attr(data-label) ' ';
     color: var(--muted);
-    font-size: 0.85em;
+    font-size: var(--text-xs);
   }
 }

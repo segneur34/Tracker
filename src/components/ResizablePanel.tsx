@@ -165,7 +165,7 @@ function ResizablePanel({
         <button
           onClick={reset}
           title="Revenir à la taille par défaut"
-          style={{ position: 'absolute', top: 4, right: 4, padding: '0 6px', fontSize: '11px', lineHeight: '18px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: 'var(--radius-pill)', backgroundColor: 'rgba(255,255,255,0.9)', color: 'var(--muted)' }}>
+          style={{ position: 'absolute', top: 4, right: 4, padding: '0 6px', fontSize: 'var(--text-xs)', lineHeight: '18px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: 'var(--radius-pill)', backgroundColor: 'rgba(255,255,255,0.9)', color: 'var(--muted)' }}>
           ↺
         </button>
       )}

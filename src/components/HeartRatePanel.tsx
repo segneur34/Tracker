@@ -56,7 +56,7 @@ const METHOD_LABEL: Record<HeartRateZones['method'], string> = {
 
 const minutesLabel = (v: unknown) => formatClock(Number(v) * 60_000);
 const cell = { padding: '0.4em 0.6em', textAlign: 'center' } as const;
-const scatterTooltipStyle = { fontSize: '12px' } as const;
+const scatterTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
 
 /**
  * Onglet « cardio » des trois modules : FC moyenne, max et charge, courbe
@@ -143,7 +143,7 @@ export default function HeartRatePanel({
 
       {zones && zoneTimes ? (
         <>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginTop: '10px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginTop: '10px' }}>
             <thead>
               <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                 <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
@@ -160,23 +160,23 @@ export default function HeartRatePanel({
                 const range = zone === 0 ? `< ${zones.bounds[0]}` : zone === zones.bounds.length ? `≥ ${zones.bounds[zone - 1]}` : `${zones.bounds[zone - 1]}-${zones.bounds[zone] - 1}`;
                 return (
                   <tr key={zone} style={{ borderTop: '1px solid var(--line-soft)', opacity: s > 0 ? 1 : 0.45 }}>
-                    <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>
+                    <td style={{ padding: '0.4em 0.6em', fontWeight: 700 }}>
                       <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', backgroundColor: HEART_ZONE_COLORS[zone], marginRight: '6px' }} />
                       {zoneLabel(zone)}
                     </td>
-                    <td style={{ ...cell, color: 'var(--muted)', fontSize: '0.9em' }}>{range}</td>
+                    <td style={{ ...cell, color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>{range}</td>
                     <td style={cell}>{formatShortDuration(s)}</td>
                     <td style={cell}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <div style={{ flex: 1, height: '8px', backgroundColor: 'var(--surface-sunken)', borderRadius: '4px', overflow: 'hidden' }}>
                           <div style={{ width: `${share * 100}%`, height: '100%', backgroundColor: HEART_ZONE_COLORS[zone] }} />
                         </div>
-                        <span style={{ minWidth: '3em', textAlign: 'right', fontSize: '0.9em' }}>{Math.round(share * 100)} %</span>
+                        <span style={{ minWidth: '3em', textAlign: 'right', fontSize: 'var(--text-xs)' }}>{Math.round(share * 100)} %</span>
                       </div>
                     </td>
                     <td style={cell}>
                       <button type="button" disabled={s <= 0} onClick={() => onSelectZone(shown ? null : zone)}
-                        style={{ padding: '2px 8px', fontSize: '11px', cursor: s > 0 ? 'pointer' : 'default', backgroundColor: shown ? HIGHLIGHT_SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                        style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: s > 0 ? 'pointer' : 'default', backgroundColor: shown ? HIGHLIGHT_SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
                         {shown ? 'Masquer' : 'Voir'}
                       </button>
                     </td>
@@ -185,7 +185,7 @@ export default function HeartRatePanel({
               })}
             </tbody>
           </table>
-          <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
+          <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
             Zones : {METHOD_LABEL[zones.method]}
             {zones.hrMax !== null && zones.method !== 'perso' && `, FC max ${zones.hrMax} bpm${zones.estimated ? ' estimée par l\'âge' : ''}`}.
             {' '}« Voir » montre ses passages sur la carte, en violet.
@@ -199,7 +199,7 @@ export default function HeartRatePanel({
 
       {efficiency && scatterUnit !== null && (
         <div style={{ marginTop: '12px' }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Dérive et efficacité</div>
+          <div style={{ fontWeight: 700, marginBottom: '4px' }}>Dérive et efficacité</div>
           <div style={{ fontSize: 'var(--text-s)', marginBottom: '6px' }}>
             {drift === null
               ? `Dérive cardiaque : il faut au moins ${Math.round(params.driftMinS / 60)} min en mouvement avec la FC.`
@@ -225,14 +225,14 @@ export default function HeartRatePanel({
               </ResponsiveContainer>
             </div>
           )}
-          <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '4px' }}>
+          <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '4px' }}>
             Un point par bloc de {params.scatterBlockS} s en mouvement : <span style={{ color: '#1e88e5' }}>première moitié</span>, <span style={{ color: '#fb8c00' }}>seconde moitié</span>.
             {' '}D'une sortie à l'autre, le nuage qui glisse vers la droite à FC égale dit le progrès.
           </div>
         </div>
       )}
 
-      <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '8px' }}>
+      <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' }}>
         FC lissée sur {params.smoothS} s ; un trou de plus de {params.gapS} s (ceinture retirée, pause) n'est pas compté. Le survol de la courbe déplace le repère sur la carte.
       </div>
     </>

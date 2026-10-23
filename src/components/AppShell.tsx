@@ -1,5 +1,6 @@
-import { useCallback, type ComponentType } from 'react';
+import { useCallback, useEffect, useRef, type ComponentType } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { parentPage } from '../core/parentPage';
 import type { SportFamily } from '../core/sportProfiles';
 import { formatClock } from '../core/units';
 import { useIntervalTimer } from '../hooks/useIntervalTimer';
@@ -7,6 +8,7 @@ import { useLongPress } from '../hooks/useLongPress';
 import { togglePauseRecording, useRecorder } from '../hooks/useRecorder';
 import { effectiveLongPressMs, useVisibility } from '../hooks/useSportSettings';
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
+import { setBackNavigator } from '../platform/backButton';
 import { recordingDurationMs } from '../recording/session';
 import { IconChart, IconHome, IconPause, IconPlay, IconRoute, IconSettings, IconUser } from './icons';
 import { FAMILY_ICON } from './familyIcons';
@@ -96,8 +98,18 @@ const topLink = (d: Destination) => (
 
 function AppShell() {
   const { status, stats } = useRecorder();
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const { pathname } = location;
   const navigate = useNavigate();
+  // Touche retour d'Android : vers la page au-dessus, en remplaçant l'adresse (l'historique n'y sert plus).
+  const locationRef = useRef(location);
+  useEffect(() => { locationRef.current = location; }, [location]);
+  useEffect(() => setBackNavigator(() => {
+    const to = parentPage(locationRef.current.pathname, locationRef.current.search);
+    if (to === null) return false;
+    navigate(to, { replace: true });
+    return true;
+  }), [navigate]);
   const busy = status !== 'idle';
   const paused = status === 'paused';
   const clock = formatClock(recordingDurationMs(stats));

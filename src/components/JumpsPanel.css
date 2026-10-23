@@ -99,11 +99,11 @@
   .an-jump-map { grid-area: map; }
   .an-jump-flight { grid-area: flight; }
   .an-jump-length { grid-area: length; }
-  .an-jump-speed { grid-area: speed; font-size: 0.9em; }
+  .an-jump-speed { grid-area: speed; font-size: var(--text-xs); }
 
   .an-jump-flight::before {
     content: attr(data-label) ' ';
     color: var(--muted);
-    font-size: 0.85em;
+    font-size: var(--text-xs);
   }
 }
