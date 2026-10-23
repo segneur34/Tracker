@@ -121,3 +121,26 @@ export const readPickedFile = (file: File): Promise<string> => file.text();
 
 /** Contenu binaire d'un fichier choisi par l'utilisateur (capteurs d'une session importée). */
 export const readPickedBytes = async (file: File): Promise<Uint8Array> => new Uint8Array(await file.arrayBuffer());
+
+/**
+ * Image choisie par l'utilisateur (photo du Profil), recadrée au carré central
+ * et réduite à `sizePx` de côté, en data URL JPEG : quelques dizaines de Ko,
+ * qui tiennent dans le stockage. L'orientation de l'appareil photo (EXIF) est
+ * appliquée au décodage. Un fichier qui n'est pas une image lève une erreur.
+ */
+export const readPickedImage = async (file: File, sizePx: number): Promise<string> => {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const side = Math.min(bitmap.width, bitmap.height);
+    const canvas = document.createElement('canvas');
+    canvas.width = sizePx;
+    canvas.height = sizePx;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Image impossible à réduire.');
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, sizePx, sizePx);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } finally {
+    bitmap.close();
+  }
+};

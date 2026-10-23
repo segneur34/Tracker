@@ -1,16 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ActivityChart from '../components/ActivityChart';
 import ActivityArt from '../components/activityArt';
+import PageBackdrop from '../components/PageBackdrop';
+import { AvatarPicker, ProfileAvatar } from '../components/ProfileAvatar';
+import ProfileRoot, { RootSlot } from '../components/ProfileRoot';
 import { IconChevronRight } from '../components/icons';
-import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { activityFamily, sessionActivity, type Activity } from '../core/activities';
 import { activityIcon } from '../core/activityIcons';
 import { toDisplayDistance } from '../core/units';
 import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { runnerName, useRunnerProfile } from '../hooks/useRunnerProfile';
+import { useProfileRoot } from '../hooks/useProfileRoot';
+import { runnerAvatar, runnerName, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { useStoredRecord } from '../hooks/useStoredRecord';
 import { useVisibility } from '../hooks/useSportSettings';
@@ -20,19 +23,25 @@ import { inBounds, isStatsPeriod, statSessionOf, statsPeriodBounds, statsTotals,
 import './ProfilePage.css';
 
 /**
- * Profil : une période en un coup d'œil (`library/profile.ts`). En tête, la
- * période, qui règle toute la page : semaine, 30 jours, 6 mois, année (les
+ * Profil : une période en un coup d'œil (`library/profile.ts`), sur la
+ * maquette du 22/10 et un fond de courbes de niveau. En tête, la photo ronde
+ * (un dessin d'activité ou une image importée, choisis en la touchant ; sans
+ * choix, le dessin du sport préféré de toutes les sessions) et le pseudo. Puis
+ * la période, qui règle toute la page : semaine, 30 jours, 6 mois, année (les
  * bornes du graphe d'activités et des statistiques) ou depuis le début ; choix
- * retenu sur l'appareil. Puis, dans l'ordre : kilomètres parcourus, sport
- * préféré (l'activité qui a le plus de temps, avec son dessin), D+, la
- * répartition du temps par activité en anneau (le total au centre ; « Autres »
- * se déplie dans le détail), et le graphe d'activités de la même période.
+ * retenu sur l'appareil. Puis, dans une seule bande : nombre d'activités (et
+ * leur temps), kilomètres parcourus, D+, sport préféré (l'activité qui a le
+ * plus de temps, avec son dessin) ; la répartition du temps par activité en
+ * anneau (le total au centre ; « Autres » se déplie dans le détail), et le
+ * graphe d'activités de la même période.
  * Mêmes sessions que les statistiques : ni celles d'une activité ou d'une
  * famille cachée, ni celles à classer. Distance en km quelle que soit l'unité
  * des activités : une somme de toutes les familles ne tient qu'en une unité.
  */
 
-const PROFILE_PERIODS: { id: ChartRange; label: string }[] = [...CHART_PERIODS, { id: 'tout', label: 'Depuis le début' }];
+/** Espaces insécables, sauf après « Depuis » : sur un téléphone étroit, seul ce libellé passe sur deux lignes. */
+const PROFILE_PERIODS: { id: ChartRange; label: string }[] = [...CHART_PERIODS, { id: 'tout' as const, label: 'Depuis le début' }]
+  .map((p) => ({ ...p, label: p.label.replace(/ /g, '\u00a0').replace('Depuis\u00a0', 'Depuis ') }));
 
 /** Période retenue sur l'appareil ; l'année au départ. */
 interface ProfileView {
@@ -44,6 +53,9 @@ const VIEW_DEFAULTS: ProfileView = { periode: 'annee' };
 
 /** Détail par activité sous l'anneau : replié au départ, état retenu sur l'appareil. */
 const DETAIL_DEFAULT = { detail: false };
+
+/** Cadres que la racine entoure (`ProfileRoot`), dans l'ordre de la page. */
+const ROOT_CARDS = ['.profile-periods', '.profile-figures', '.profile-split', '.actchart'];
 
 /** Au-delà, les plus petites parts se regroupent en « Autres » : un anneau ne se lit plus. */
 const MAX_SLICES = 6;
@@ -90,7 +102,11 @@ function ProfilePage() {
   const { status, sessions, scanning } = useSessionLibrary();
   const { activities, isShown } = useVisibility();
   /** Le nom ou pseudo de Réglages en titre, « Profil » sans lui. */
-  const name = runnerName(useRunnerProfile().profile);
+  const { profile, setAvatar } = useRunnerProfile();
+  const name = runnerName(profile);
+  const avatar = runnerAvatar(profile);
+  /** Choix de la photo ouvert sous l'en-tête : non retenu. */
+  const [picking, setPicking] = useState(false);
   const [nowMs] = useState(() => Date.now());
   const { value: view, update: rememberView } = useStoredRecord<ProfileView>(VIEW_NAMESPACE, VIEW_KEY, VIEW_DEFAULTS);
   const period: ChartRange = isStatsPeriod(view.periode) ? view.periode : 'annee';
@@ -112,6 +128,11 @@ function ProfilePage() {
     }
     return { all: list, activityById: byId };
   }, [sessions, activities, isShown]);
+
+  // Racine : toutes les sessions, quelle que soit la période ; son détail s'ouvre sous le carré, non retenu.
+  const root = useProfileRoot(all, profile, nowMs);
+  const [rootOpen, setRootOpen] = useState(false);
+  const closeRoot = useCallback(() => setRootOpen(false), []);
 
   const inPeriod = useMemo(() => {
     const bounds = statsPeriodBounds(period, nowMs);
@@ -141,6 +162,9 @@ function ProfilePage() {
   }, [inPeriod, activityOrder, activityById]);
   const favoriteId = useMemo(() => favoriteActivity(inPeriod, activityOrder), [inPeriod, activityOrder]);
   const favorite = favoriteId ? activityById.get(favoriteId) ?? null : null;
+  // Photo par défaut : le sport préféré de toutes les sessions, qui ne change pas avec la période.
+  const overallFavoriteId = useMemo(() => favoriteActivity(all, activityOrder), [all, activityOrder]);
+  const overallFavorite = overallFavoriteId ? activityById.get(overallFavoriteId) ?? null : null;
   const openLibrary = (a: Activity) => navigate(libraryPath(activityFamily(a), a.id));
 
   /** Toucher une part l'éclaire ; « Autres » ouvre aussi le détail et y déplie ses activités. */
@@ -165,8 +189,18 @@ function ProfilePage() {
   });
 
   return (
-    <div className="ui-page profile">
-      <PageHeader title={name ?? 'Profil'} />
+    <div className="ui-page ui-page--backdrop profile">
+      <PageBackdrop variant="contours" />
+      <header className="profile-head">
+        <button type="button" className="profile-head__avatar" aria-label="Changer la photo de profil" aria-expanded={picking}
+          onClick={() => setPicking(!picking)}>
+          <ProfileAvatar avatar={avatar}
+            fallback={overallFavorite ? { icon: activityIcon(overallFavorite), color: overallFavorite.color } : null} />
+        </button>
+        <h1 className="profile-head__title">{name ?? 'Profil'}</h1>
+        <RootSlot growth={root.growth} open={rootOpen} onToggle={() => setRootOpen(!rootOpen)} />
+      </header>
+      {picking && <AvatarPicker avatar={avatar} onPick={setAvatar} onClose={() => setPicking(false)} />}
 
       <SegmentedControl className="profile-periods" label="Période" items={PROFILE_PERIODS.map((p) => ({ key: p.id, label: p.label }))}
         value={period} onChange={(key) => rememberView({ periode: key })} />
@@ -179,11 +213,25 @@ function ProfilePage() {
 
           <section className="profile-figures" aria-label="Totaux de la période">
             <div className="profile-figure">
+              <span className="ui-eyebrow">Activités</span>
+              <span className="profile-figure__value num">{totals.sessions.toLocaleString('fr-FR')}</span>
+              <span className="profile-figure__caption">{totals.sessions > 0 ? `en ${hoursText(totals.durationS)}` : 'aucune session'}</span>
+            </div>
+            <div className="profile-figure">
               <span className="ui-eyebrow">Distance</span>
               <span className="profile-figure__value num">
                 {km.toLocaleString('fr-FR', { maximumFractionDigits: km < 100 ? 1 : 0 })}<small>km</small>
               </span>
               <span className="profile-figure__caption">parcourus</span>
+            </div>
+            <div className="profile-figure">
+              <span className="ui-eyebrow">Dénivelé</span>
+              <span className="profile-figure__value num">
+                {totals.elevationSessions > 0 ? <>{Math.round(totals.elevationGainM).toLocaleString('fr-FR')}<small>m</small></> : '—'}
+              </span>
+              <span className="profile-figure__caption">
+                D+{totals.elevationSessions > 0 && totals.elevationSessions < totals.sessions ? `, sur ${totals.elevationSessions} sessions` : ''}
+              </span>
             </div>
             {favorite ? (
               <button type="button" className="profile-figure profile-figure--link" onClick={() => openLibrary(favorite)}
@@ -201,20 +249,11 @@ function ProfilePage() {
                 <span className="profile-figure__caption">aucune session</span>
               </div>
             )}
-            <div className="profile-figure">
-              <span className="ui-eyebrow">Dénivelé</span>
-              <span className="profile-figure__value num">
-                {totals.elevationSessions > 0 ? <>{Math.round(totals.elevationGainM).toLocaleString('fr-FR')}<small>m</small></> : '—'}
-              </span>
-              <span className="profile-figure__caption">
-                D+{totals.elevationSessions > 0 && totals.elevationSessions < totals.sessions ? `, sur ${totals.elevationSessions} sessions` : ''}
-              </span>
-            </div>
           </section>
 
           {slices.length > 0 && (
             <section className="profile-split" aria-label="Répartition par activité">
-              <span className="ui-eyebrow">Répartition du temps</span>
+              <h2 className="profile-card__title">Répartition du temps</h2>
               <div className="profile-split__body">
                 <div className="profile-donut">
                   <svg viewBox="0 0 200 200" role="img" aria-label="Part de chaque activité dans le temps de la période">
@@ -283,6 +322,8 @@ function ProfilePage() {
       )}
 
       {sessions.length > 0 && <ActivityChart key={period} period={period} nowMs={nowMs} />}
+      <ProfileRoot growth={root.growth} settings={root.settings} cardSelectors={ROOT_CARDS}
+        ready={status === 'ready' && !scanning} open={rootOpen} onClose={closeRoot} />
     </div>
   );
 }

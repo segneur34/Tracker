@@ -7,31 +7,76 @@
   font-size: var(--text-s);
 }
 
-/* Trois grands chiffres sur une ligne, téléphone compris : plus petits sur un écran étroit. */
-.profile-figures {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: repeat(3, auto);
-  gap: var(--space-3);
+/* En-tête de la maquette : la photo ronde, cerclée de blanc, et le pseudo en capitales. */
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
 }
 
-/* Libellé, valeur et légende sur trois rangées communes aux trois cases : un libellé sur deux lignes
-   (« Sport préféré » au téléphone) n'en décale pas la valeur. */
+.profile-head__avatar {
+  flex: 0 0 auto;
+  width: 88px;
+  height: 88px;
+  padding: 0;
+  border: 3px solid var(--surface);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 18%, transparent);
+  cursor: pointer;
+}
+
+.profile-head__avatar[aria-expanded='true'] {
+  outline: 2px solid var(--ink-2);
+  outline-offset: 2px;
+}
+
+.profile-head__title {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-title);
+  font-size: var(--text-title);
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-spacing);
+  line-height: 1.1;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+/* Les chiffres de la période dans une seule bande blanche, cases séparées d'un trait : quatre de front,
+   deux sur deux au téléphone ; rien ne dépasse de la page. */
+.profile-figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(3, auto);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+/* Libellé, valeur et légende sur trois rangées communes aux cases d'une ligne : un libellé sur deux lignes
+   n'en décale pas la valeur. */
 .profile-figure {
   display: grid;
   grid-row: span 3;
   grid-template-rows: subgrid;
   align-items: start;
   gap: var(--space-1);
+  min-width: 0;
   padding: var(--space-4) var(--space-5);
-  border-radius: var(--radius-l);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  border: none;
+  background: none;
+}
+
+.profile-figure + .profile-figure {
+  border-left: 1px solid var(--line-soft);
 }
 
 .profile-figure__value {
   align-self: center;
-  font-size: var(--text-display);
+  font-size: var(--text-title);
   font-weight: 700;
   line-height: 1.1;
   color: var(--ink);
@@ -73,6 +118,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Titre d'une carte, comme ceux des cartes de l'accueil. */
+.profile-card__title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: var(--text-l);
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-spacing);
+  text-transform: uppercase;
+  color: var(--ink);
 }
 
 /* Répartition : l'anneau, la légende à côté, dessous sur un écran étroit. */
@@ -224,13 +280,42 @@ button.profile-legend__row {
 }
 
 @media (max-width: 599px) {
+  /* Les cinq périodes tiennent dans la largeur au lieu de défiler : un libellé long passe sur deux lignes. */
+  .ui-segmented.profile-periods button {
+    flex: 1 1 auto;
+    white-space: normal;
+    line-height: 1.15;
+  }
+
+  .profile-head {
+    gap: var(--space-3);
+  }
+
+  .profile-head__avatar {
+    width: 72px;
+    height: 72px;
+  }
+
+  .profile-head__title {
+    font-size: var(--text-xl);
+  }
+
   .profile-figures {
-    gap: var(--space-2);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(6, auto);
   }
 
   .profile-figure {
-    padding: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     gap: 2px;
+  }
+
+  .profile-figure:nth-child(odd) {
+    border-left: none;
+  }
+
+  .profile-figure:nth-child(n + 3) {
+    border-top: 1px solid var(--line-soft);
   }
 
   .profile-figure .ui-eyebrow,
@@ -239,12 +324,18 @@ button.profile-legend__row {
   }
 
   .profile-figure__value {
-    font-size: clamp(var(--text-l), 5vw, var(--text-xl));
-    white-space: normal;
+    font-size: clamp(var(--text-l), 6.4vw, var(--text-title));
   }
 
   .profile-figure__value small {
     font-size: var(--text-xs);
+  }
+}
+
+/* Écran le plus étroit : les périodes se serrent pour tenir sans défiler. */
+@media (max-width: 359px) {
+  .ui-segmented.profile-periods button {
+    padding: 0 2px;
   }
 }
 

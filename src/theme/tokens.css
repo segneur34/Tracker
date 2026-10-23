@@ -51,6 +51,22 @@
   --home-action-edge: #d11a1a;
   /* Courbes de niveau du fond des pages (accueil, Profil, Statistiques, Réglages). */
   --contour: #b6c4d1;
+  /* Racine du Profil (`components/drawRoot.ts`, lues par le canevas) : racine vivante, bourgeon, radicelles
+     de la période et leur coiffe, radicelle flétrie, partie sèche, pousse, sol, graine, fleur. */
+  --root-live: #4c8a43;
+  --root-edge: #2d5a29;
+  --root-bud: #d5ecc2;
+  --root-fresh: #6fbf45;
+  --root-fresh-tip: #f1fbe8;
+  --root-withered: #b9a487;
+  --root-dry: #d3cab9;
+  --root-dry-edge: #b0a691;
+  --root-sprout: #3f8a3a;
+  --root-soil: #9a8570;
+  --root-seed: #8a5a32;
+  --root-flower: #f2c94c;
+  --root-flower-edge: #c99a1a;
+  --root-flower-heart: #b8641d;
   --record: #2e7d32;
   --recording: #c62828;
 

@@ -140,6 +140,15 @@ export const IconUser = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+/** Image : importer une photo. */
+export const IconImage = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <circle cx="9" cy="10" r="1.6" />
+    <path d="M21 16l-5-5-7 8" />
+  </svg>
+);
+
 export const IconHelp = ({ size = 20, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
     <circle cx="12" cy="12" r="9" />
