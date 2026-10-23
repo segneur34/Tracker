@@ -238,7 +238,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 
   Il finit par « Tout passe. » ou le nombre d'échecs. Sans cadence, le texte des analyses ne change pas : `onglets.mjs` en `RELEVE_SEUL=1` le prouve.
 - `partage.mjs <port> <dossier de travail> [<dossier des captures>]` : « Partager » du menu « … », image de la trace et des chiffres choisis (demande du 18/10), sur un profil neuf, environ 1 min 30. Réseau : les tuiles d'OpenStreetMap seulement (fond de l'image) ; IGN, Overpass et BRouter bloqués. Le script importe une boucle de course et la voile de `make-gpx.mjs`. Il vérifie :
-  - dans chaque analyse : « Partager » en tête du menu « … », la fenêtre, l'aperçu carré de 1080 px, les pastilles égales aux chiffres de l'onglet « général » (sans les « — »), les six premières enfoncées ; l'image est gardée dans le dossier des captures (`partage-<page>.png`) ;
+  - dans chaque analyse : « Partager » en tête du menu « … », la fenêtre, l'aperçu carré de 1080 px, les pastilles égales à la liste entière des chiffres de l'image (l'onglet « général » n'en montre plus que l'essentiel depuis le 22/10 ; l'essentiel s'y retrouve), les six premières enfoncées ; l'image est gardée dans le dossier des captures (`partage-<page>.png`) ;
   - en course : deux pastilles seulement (image toujours carrée), fond de carte décoché, choix rangés sous l'activité (`tracker.partage`) et retrouvés à la réouverture ; « Partager » par le partage du navigateur (simulé), puis sans lui (téléchargement et message) ; Échap qui ferme ;
   - à 390×844 : la fenêtre tient dans l'écran ; fin d'enregistrement (rejeu de la boucle, Arrêter, « … » › « Partager » de « Session terminée ») : aperçu carré, chiffres du résumé, choix de la course repris.
 
@@ -294,6 +294,18 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - à 390×844 : aucun débordement, « Régler » qui ouvre la carte en plein écran avec la boussole.
 
   Les autres scripts ouvrent la rangée « avancé » d'office à chaque page (`Page.addScriptToEvaluateOnNewDocument`) : seul celui-ci l'éprouve fermée.
+- `glisser.mjs <port> [<dossier des captures>]` : le bouton glissant qu'on fait glisser (demande du 22/10), sur le Profil (période) et les Statistiques (famille), sur un profil neuf, sans réseau ni session, à 390×844 en écran tactile puis sur ordinateur. Il vérifie :
+  - à la souris, la case tenue sur le choix en cours et glissée de deux crans : elle suit le pointeur, le choix sous elle s'allume, rien n'est choisi avant le lâcher, qui prend le choix sous la case ;
+  - au doigt, la même chose dans l'autre sens, sans que la page défile de côté ;
+  - un toucher sur un autre choix le prend toujours ; un appui qui bouge à peine ne change rien ; un glisser parti d'un autre choix ne déplace pas la case ;
+  - Statistiques : l'adresse ne change qu'au lâcher, la vue est retenue au rechargement.
+- `racine.mjs <port> [<dossier des captures>]` : la racine du Profil (22/10), sur un profil neuf, sans réseau. Le script écrit lui-même cinq courses de 20 min sur les six derniers jours, un jour manqué, et une sixième aujourd'hui s'il est plus de 0 h 40, importées par la page Course ; il suppose les valeurs d'essai (une période par jour, 15 min, tour en 15, tout perdu en 30). Il vérifie :
+  - le carré à droite du pseudo (4,5 étapes) et le canevas dessiné sur toute la page ; la bulle du carré, qu'Échap ferme ;
+  - Réglages › Pratiquant : un recul plus fort, la partie sèche, une période de 7 jours (« Cette semaine »), le retour aux valeurs d'essai une fois les champs vidés ;
+  - le rejeu à l'ouverture depuis une visite d'hier retenue sur l'appareil, puis rien qui bouge sans changement ;
+  - à 390 et 320 px : rien ne déborde, carré et bulle dans l'écran.
+
+  Les valeurs de la racine remises à la semaine, ses chiffres attendus seront à reprendre.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

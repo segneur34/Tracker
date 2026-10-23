@@ -7,9 +7,10 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 1. **Feuille** (`.an-sheet`), réduite à l'en-tête (`.an-sheet__head`) : `PageHeader` avec le retour à la liste du sport, le titre « Analyse … », et `SessionNameEditor` en sous-titre (nom de la session, « Renommer » et un « … » qui partage la session en image ou télécharge le GPX).
 2. Barre « Non enregistré / Enregistrer la session » (`SessionSaveBar`), pendant un brouillon seulement (la course ne passe pas `kept`, et la voile non plus).
 3. **Rangée de la carte** (`.an-map-row`) : le bloc `AnalysisMap`, seul.
-4. **Colonne des onglets** (`.an-carte-col`), sous la carte : `CollapsibleSectionTabs` (`SectionTabs` et, en fin de rangée, la flèche qui cache la barre ; cachée, un bouton fin « onglets » la rend ; panneaux inchangés, état commun à toutes les analyses, point 121), puis leurs **panneaux** (`.an-carte-panels`), chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
-   - Le premier onglet, « général », est le seul ouvert au départ (avec « fractionné » quand la session en a, point 89) ; ensuite, les onglets ouverts sont mémorisés par module (`useOpenSections`). Il porte la synthèse de la session (`.an-sheet__stats an-sheet__stats--always`) : distances, temps, ratio actif, vitesses moyennes, et le dénivelé en course et à vélo ; en voile, le vent suit. On le replie pour comparer les tableaux à la carte.
-   - Le dernier onglet, « réglages », porte ceux de la session : activité, seuils, terrain (course, vélo), source de vitesse ou d'altitude, bornes de couleur de la trace (`SpeedRangeEditor`). Seuil, terrain et couleurs passent par le brouillon ; l'activité et la source d'altitude s'appliquent tout de suite.
+4. **Colonne des onglets** (`.an-carte-col`), sous la carte : `CollapsibleSectionTabs`, en deux rangées (point 137). La première porte les onglets `primary` (« général », et « fractionné » en famille Fractionné), la pastille « avancé » et, en fin de rangée, la flèche qui cache la barre ; cachée, un bouton fin « onglets » la rend, panneaux inchangés, état commun à toutes les analyses (point 121). « Avancé » (`useAdvancedTabs`, un état pour toutes les analyses) déplie dessous les autres onglets ; refermé, le module masque leurs panneaux (`maskAdvancedTabs`). Puis leurs **panneaux** (`.an-carte-panels`), chacun dans un `ResizablePanel` d'`id` unique, titré par `PanelTitle`, qui le replie.
+   - Le premier onglet, « général », est le seul ouvert au départ (avec « fractionné » quand la session en a, point 89) ; ensuite, les onglets ouverts sont mémorisés par module (`useOpenSections`). Il porte l'essentiel de la session (`GeneralStats`, liste `overviewStats` du module, à part de celle de l'image de partage) : distance, temps, moyennes, et ce qui compte dans le sport (manœuvres et tops en voile, meilleurs segments, D+ et profil d'altitude compact `ElevationProfileMini` à pied et à vélo) ; en voile, le vent en mini-boussole (`WindCompass`) et « Régler », qui pose `WindAdjustOverlay` sur la carte (prop `overlay` d'`AnalysisMap`). On le replie pour comparer les tableaux à la carte.
+   - Un onglet ouvert qui n'a rien à montrer pour la session dit pourquoi (`EmptyTabPanel`), sans être caché.
+   - Le dernier onglet, « réglages », porte ceux de la session : activité, seuils, source de vitesse ou d'altitude, bornes de couleur de la trace (`SpeedRangeEditor`). Seuil et couleurs passent par le brouillon ; l'activité et la source d'altitude s'appliquent tout de suite.
    - La même disposition en voile, en course, à vélo, en fractionné et en surf (points 86, 89 et 97).
 
 ## Règles communes
@@ -36,7 +37,10 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 
 | Pièce | Rôle |
 |---|---|
-| `components/AnalysisMap.tsx` | Carte, légende donnée par le module posée dessus, plein écran au toucher |
+| `components/AnalysisMap.tsx` | Carte, légende donnée par le module posée dessus, outil posé dessus (`overlay`), plein écran au toucher ou piloté par le module |
+| `components/BaseTileLayer.tsx` | Fond de la carte (plan ou satellite) de la famille, et son choix sous le + et le − |
+| `components/GeneralStats.tsx`, `components/ElevationProfileMini.tsx` | Chiffres de « général », profil d'altitude compact relié à la carte |
+| `components/EmptyTabPanel.tsx` | Onglet ouvert sans rien à montrer : pourquoi, et de quoi y remédier |
 | `pages/analysisMobile.css` | Disposition téléphone (classes `an-*`) |
 | `components/PanelTitle.tsx` | Titre de panneau qui le replie |
 | `components/ChartFold.tsx` | Repli d'une partie d'un panneau (un graphe parmi plusieurs, un tableau), état retenu par `useOpenSections` ; pas de bouton quand le panneau n'a qu'une partie |
