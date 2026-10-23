@@ -70,6 +70,8 @@ let failures = 0;
 const check = (what, ok, detail = '') => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}${detail ? ` (${detail})` : ''}`); if (!ok) failures++; };
 
 await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
+// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
 await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://brouter.de/*'] });
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 
@@ -91,8 +93,9 @@ execFileSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'm
 const T_RUN = Date.UTC(2026, 9, 1, 8, 0, 0);
 const T_VOILE = Date.UTC(2026, 8, 20, 13, 0, 0);
 const SESSIONS = [
-  { page: 'course', start: T_RUN, gpx: loopGpx(T_RUN) },
-  { page: 'voile', start: T_VOILE, gpx: readFileSync(voilePath, 'utf8') },
+  // `share` : chiffres de l'image (22/10 : la liste entière d'avant, l'onglet « général » n'en montrant plus que l'essentiel).
+  { page: 'course', start: T_RUN, gpx: loopGpx(T_RUN), share: ['Distance', 'Distance en mouvement', 'Temps de parcours', /^Temps en mouvement/, 'Moyenne en mouvement', 'Moyenne sur le temps total', 'Dénivelé', 'Altitude'] },
+  { page: 'voile', start: T_VOILE, gpx: readFileSync(voilePath, 'utf8'), share: ['Distance', 'Distance active', 'Temps total', /^Temps actif/, 'Ratio de vol', 'Vitesse moyenne', /^Moyenne active/] },
 ];
 
 const paths = {};
@@ -161,8 +164,11 @@ for (const s of SESSIONS) {
   // Relu une fois l'image prête : l'altitude (IGN bloqué, repli sur le GPS) arrive après l'ouverture.
   const general = await generalStats();
   const c = await chips();
-  const expected = general.filter((g) => g.value !== '—').map((g) => g.label);
-  check(`${s.page} : pastilles = chiffres de « général »`, JSON.stringify(c.map((x) => x.label)) === JSON.stringify(expected), c.map((x) => x.label).join(' | '));
+  const sameLabels = c.length === s.share.length && s.share.every((l, k) => (typeof l === 'string' ? c[k].label === l : l.test(c[k].label)));
+  check(`${s.page} : pastilles = chiffres de l'image`, sameLabels, c.map((x) => x.label).join(' | '));
+  // L'essentiel de « général » se retrouve dans l'image (distance, temps, moyenne).
+  const shared = general.filter((g) => g.value !== '—' && c.some((x) => x.label === g.label));
+  check(`${s.page} : chiffres communs avec « général »`, shared.length >= 3, shared.map((g) => g.label).join(' | '));
   check(`${s.page} : les six premières enfoncées`, c.filter((x) => x.on).length === Math.min(6, c.length) && c.slice(0, 6).every((x) => x.on));
   const size = await imageSize();
   check(`${s.page} : image carrée de 1080 × 1080`, isSquare(size), JSON.stringify(size));

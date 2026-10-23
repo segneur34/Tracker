@@ -11,18 +11,20 @@ export interface SectionDefinition<K extends string> {
 }
 
 interface SectionTabsProps<K extends string> {
-  sections: SectionDefinition<K>[];
+  sections: ReadonlyArray<SectionDefinition<K>>;
   open: Record<K, boolean>;
   onToggle: (key: K) => void;
   /** Couleur du bouton actif, celle du module (une variable de la DA). */
   accent?: string;
   /** Élément ajouté en fin de rangée (la flèche qui cache la barre, `CollapsibleSectionTabs`). */
   trailing?: ReactNode;
+  /** Classe ajoutée à la rangée (la rangée « avancé » des analyses). */
+  className?: string;
 }
 
-function SectionTabs<K extends string>({ sections, open, onToggle, accent = 'var(--voile)', trailing }: SectionTabsProps<K>) {
+function SectionTabs<K extends string>({ sections, open, onToggle, accent = 'var(--voile)', trailing, className }: SectionTabsProps<K>) {
   return (
-    <div className="ui-tabs" style={{ '--tab-accent': accent } as CSSProperties}>
+    <div className={className ? `ui-tabs ${className}` : 'ui-tabs'} style={{ '--tab-accent': accent } as CSSProperties}>
       {sections.map((section) => (
         <button
           key={section.key}

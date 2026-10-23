@@ -44,6 +44,8 @@ const readOpfs = (path) => evaluate(`(async () => { let d = await (await navigat
 const writeOpfs = (path, text) => evaluate(`(async () => { let d = await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker'); const parts = ${JSON.stringify(path)}.split('/'); const name = parts.pop(); for (const p of parts) d = await d.getDirectoryHandle(p); const w = await (await d.getFileHandle(name, { create: true })).createWritable(); await w.write(${JSON.stringify(text)}); await w.close(); return 'ok'; })()`);
 
 await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
+// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
 const NAME = '2026-09-20_15-00-00_wingfoil';
 
 console.log('== 1. Export de la paire, suppression, réimport');

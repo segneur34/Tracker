@@ -131,6 +131,8 @@ const guideCard = () => evaluate(`(() => {
 const followedStats = () => evaluate(`document.body.innerText.split('\\n').filter((l, i, all) => /^(Restant|Balises validées)$/.test(all[i - 1] ?? '')).join(' | ')`);
 
 await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
+// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 
 // 1. Itinéraires en Voile.

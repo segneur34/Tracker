@@ -4,13 +4,13 @@
 // Course (deux courses, une sortie à vélo, une de wingfoil, une de kite sans activité créée pour lui, une sans type,
 // à classer), puis vérifie :
 //  1. l'accueil : boutons de famille sans petites icônes d'activité (retirées le 17/10), « À pied » pour la course ;
-//  2. la bibliothèque Voile : à droite du titre, les dessins des deux activités listées (Voile, Kite) à leur couleur,
-//     le titre lui-même inchangé ; une icône devant chaque ligne et dans chaque onglet d'activité ; l'onglet
-//     « Kite » ne laisse que son dessin ; « tous » les rend ;
-//  3. la bibliothèque Vélo : le dessin de la seule activité listée (Route) ;
+//  2. la bibliothèque Voile : le bandeau (refonte du 22/10, plus de dessins à droite du titre) nomme les
+//     activités créées (Voile seule : le kite n'en a pas), le titre lui-même inchangé ; une icône devant chaque ligne et dans chaque
+//     onglet d'activité ; l'onglet « Kite » ne laisse que sa ligne ; « tous » les rend ;
+//  3. la bibliothèque Vélo : le bandeau nomme ses trois activités (Route, Gravel, VTT) ;
 //  4. la liste de choix d'activité (session à classer) : une icône par activité, à sa couleur ;
 //  5. Réglages : seize icônes au choix, celle devinée cochée (Wingfoil pour « Voile »), « Planche à voile »
-//     choisie, rangée dans la liste des activités, gardée après rechargement, reprise par la bibliothèque ;
+//     choisie, rangée dans la liste des activités, gardée après rechargement, reprise par l'onglet de la bibliothèque ;
 //     une activité « Paddle » ajoutée en surf, son icône devinée cochée pendant la saisie, rangée sans choix ;
 //  6. à 390×844 : bibliothèque et accueil sans débordement.
 import { writeFileSync } from 'node:fs';
@@ -40,6 +40,8 @@ ws.onmessage = (e) => {
 };
 await new Promise((r) => { ws.onopen = r; });
 await send('Page.enable');
+// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
 await send('Runtime.enable');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
@@ -74,8 +76,10 @@ const gpxOf = (type, daysAgo, speedMs) => {
 };
 const SESSIONS = [['running', 5, 3.2], ['running', 2, 3.5], ['cycling', 4, 7], ['wingfoil', 3, 9], ['kite', 1, 10], [null, 6, 3]];
 
-const artCount = () => evaluate(`document.querySelectorAll('h1 .lib-title__art svg').length`);
-const artColors = () => evaluate(`[...document.querySelectorAll('h1 .lib-title__art svg')].map((s) => s.style.color).join(', ')`);
+const bannerActivities = () => evaluate(`document.querySelector('.lib-banner__activities')?.textContent ?? ''`);
+const rowIcons = () => evaluate(`document.querySelectorAll('.lib-row .lib-row__icon').length`);
+/** Dessin de l'icône de l'onglet d'une activité de la bibliothèque. */
+const tabIcon = (label) => evaluate(`[...document.querySelectorAll('.ui-tab')].find((t) => t.textContent.trim().startsWith(${JSON.stringify(label + ' (')}))?.querySelector('.ui-tab__icon')?.innerHTML ?? ''`);
 const h1 = () => evaluate(`document.querySelector('h1')?.textContent ?? null`);
 const tab = (label) => `[...document.querySelectorAll('.ui-tab')].find((b) => b.textContent.trim().startsWith(${JSON.stringify(label)}))`;
 const overflow = () => evaluate('document.documentElement.scrollWidth > window.innerWidth');
@@ -99,29 +103,30 @@ await wait(8000);
 
 // 1. Accueil.
 await go('/');
-const homeLabels = await evaluate(`[...document.querySelectorAll('.home-family__link span')].map((s) => s.textContent)`);
-check('accueil : noms des familles', JSON.stringify(homeLabels) === JSON.stringify(['Voile', 'À pied', 'Vélo', 'Fractionné', 'Surf']), JSON.stringify(homeLabels));
+const homeLabels = await evaluate(`[...document.querySelectorAll('.home-family__name')].map((s) => s.textContent)`);
+check('accueil : noms des familles', JSON.stringify(homeLabels) === JSON.stringify(['Voile', 'À pied', 'Vélo', 'Surf', 'Fractionné']), JSON.stringify(homeLabels));
 check('accueil : pas de petites icônes', (await evaluate(`document.querySelectorAll('.home-family__acts').length`)) === 0);
 await shoot('icones-accueil');
 
 // 2. Bibliothèque Voile.
 await go('/voile');
 check('Voile : titre inchangé', (await h1()) === 'Voile', await h1());
-check('Voile : deux dessins', (await artCount()) === 2, `${await artCount()} (${await artColors()})`);
-check('Voile : une icône par ligne', (await evaluate(`document.querySelectorAll('.lib-row .lib-row__icon').length`)) === 2);
+check('Voile : bandeau de la seule activité créée', (await bannerActivities()) === 'Voile', await bannerActivities());
+check('Voile : une icône par ligne', (await rowIcons()) === 2);
+const wingIcon = await tabIcon('Voile');
 check('Voile : icônes des onglets', (await evaluate(`document.querySelectorAll('.ui-tab .ui-tab__icon').length`)) === 2);
 await shoot('icones-voile-tous');
 await evaluate(`${tab('Kite')}?.click()`);
 await wait(400);
-check('onglet Kite : son seul dessin', (await artCount()) === 1);
+check('onglet Kite : sa seule ligne', (await rowIcons()) === 1);
 await shoot('icones-voile-kite');
 await evaluate(`${tab('tous')}?.click()`);
 await wait(400);
-check('« tous » rend les deux dessins', (await artCount()) === 2);
+check('« tous » rend les deux lignes', (await rowIcons()) === 2);
 
 // 3. Bibliothèque Vélo.
 await go('/velo');
-check('Vélo : un dessin (Route)', (await artCount()) === 1);
+check('Vélo : bandeau des trois activités', (await bannerActivities()) === 'Route, Gravel, VTT', await bannerActivities());
 
 // 4. Liste de choix : la session à classer.
 await go('/course');
@@ -189,7 +194,8 @@ const paddle = (await stored())?.find((a) => a.name === 'Paddle');
 check('Paddle rangée, sans icône imposée', paddle !== undefined && paddle.icon === undefined, JSON.stringify(paddle));
 
 await go('/voile');
-check('bibliothèque : dessin de la planche', (await evaluate(`[...document.querySelectorAll('h1 .lib-title__art svg path')].length`)) === 2);
+const boardIcon = await tabIcon('Voile');
+check('bibliothèque : dessin de la planche dans son onglet', boardIcon !== '' && boardIcon !== wingIcon);
 
 // 6. Téléphone.
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });

@@ -8,7 +8,7 @@ import {
   suggestSpeedRangeMs,
 } from '../sailing/sailingConfig';
 import { WIND_LOCAL_MAX_GAP_MIN, analyzeManeuvers, estimateWind, windSamplesFrom } from '../sailing/maneuvers';
-import { buildWindTimeline } from '../sailing/wind';
+import { buildWindTimeline, speedPolar } from '../sailing/wind';
 import { calculateVmgStats, calculateWindStats, summarizeManeuvers } from '../sailing/sailingAnalytics';
 import { buildSailingSessionStats } from '../sailing/sailingStats';
 import { trackToPointData } from '../utils/kinematics';
@@ -179,22 +179,10 @@ export const useSailingSession = ({
     return calculateVmgStats(trackData, windAt, activeThresholdKn);
   }, [trackData, windAt, activeThresholdKn]);
 
-  const polarGraphData = useMemo(() => {
-    if (!trackData.length || currentWindValue === null) return [];
-    const bins = new Array(36).fill(0);
-    trackData.forEach(p => {
-      if (p.smoothedSpeed > profile.defaultPolarMinSpeed) {
-        let relAngle = p.bearing - currentWindValue;
-        relAngle = ((relAngle % 360) + 360) % 360;
-        const binIdx = Math.floor(relAngle / 10);
-        if (p.smoothedSpeed > bins[binIdx]) bins[binIdx] = p.smoothedSpeed;
-      }
-    });
-    return bins.map((maxSpd, i) => ({
-      angle: `${i * 10}°`,
-      vitesse: parseFloat(maxSpd.toFixed(1))
-    }));
-  }, [trackData, currentWindValue, profile.defaultPolarMinSpeed]);
+  const polarGraphData = useMemo(
+    () => (trackData.length > 0 && currentWindValue !== null ? speedPolar(trackData, currentWindValue, profile.defaultPolarMinSpeed) : []),
+    [trackData, currentWindValue, profile.defaultPolarMinSpeed]
+  );
 
   return {
     trackData,

@@ -40,7 +40,7 @@ import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
 import { sessionActivity } from '../core/activities';
-import { SURF_TABS, maskHiddenTabs, shownTabs, type SurfTab } from '../core/analysisTabs';
+import { SURF_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type SurfTab } from '../core/analysisTabs';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { buildCumulativeTrack } from '../core/sessionStats';
@@ -59,6 +59,7 @@ import { useMapHighlight } from '../hooks/useMapHighlight';
 import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useOpenSections } from '../hooks/useOpenSections';
+import { useAdvancedTabs } from '../hooks/useAdvancedTabs';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useSessionPumping } from '../hooks/useSessionPumping';
 import { effectiveTabChoices, readStoredActivities, useSportSettings } from '../hooks/useSportSettings';
@@ -120,17 +121,17 @@ type WaveSort = 'ordre' | 'distance' | 'vitesse' | 'duree';
 const WAVE_SORT_LABEL: Record<WaveSort, string> = { ordre: 'ordre', distance: 'distance', vitesse: 'vitesse max', duree: 'durée' };
 
 const cardStyle = CARD_STYLE;
-const panelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: '14px' } as const;
+const panelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' } as const;
 
 /** Champs du matériel, sous les intitulés de l'activité. */
 const gearFields = (labels: [string, string]): GearField[] => [
   { field: 'gear1', label: labels[0], placeholder: 'ex. modèle, taille' },
   { field: 'gear2', label: labels[1], placeholder: 'ex. modèle, taille' },
 ];
-const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' } as const;
+const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' } as const;
 const thStyle = { padding: '0.4em 0.5em', whiteSpace: 'nowrap' } as const;
 const tdStyle = { padding: '0.35em 0.5em', textAlign: 'center', whiteSpace: 'nowrap' } as const;
-const noteStyle = { color: 'var(--muted)', fontSize: '0.8em', marginTop: '8px' } as const;
+const noteStyle = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' } as const;
 
 const Stat = ({ label, value, title }: { label: string; value: ReactNode; title?: string }) => (
   <div className="an-sheet__stat" title={title}>
@@ -144,7 +145,7 @@ const orDash = (value: number | null, format: (v: number) => string): string => 
 /** Bouton « Voir » d'une ligne de tableau : montre ou masque son passage sur la carte. */
 const ShowButton = ({ shown, onClick, disabled }: { shown: boolean; onClick: () => void; disabled?: boolean }) => (
   <button type="button" disabled={disabled} onClick={onClick}
-    style={{ padding: '2px 8px', fontSize: '11px', cursor: disabled ? 'default' : 'pointer', backgroundColor: shown ? ACCENT : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+    style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: disabled ? 'default' : 'pointer', backgroundColor: shown ? ACCENT : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
     {shown ? 'Masquer' : 'Voir'}
   </button>
 );
@@ -245,7 +246,9 @@ function SurfModule() {
   const graphFolds = useOpenSections(`${STORAGE_ID}.graphes`, GRAPH_FOLDS_DEFAULT);
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
-  const open = useMemo(() => maskHiddenTabs(storedOpen, SURF_TABS, tabChoices), [storedOpen, tabChoices]);
+  /** Rangée « avancé » : refermée, ses onglets et leurs panneaux se replient, mémorisés pour sa réouverture. */
+  const advanced = useAdvancedTabs();
+  const open = useMemo(() => maskAdvancedTabs(maskHiddenTabs(storedOpen, SURF_TABS, tabChoices), SURF_TABS, advanced.open), [storedOpen, tabChoices, advanced.open]);
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe sous la vitesse. */
   const { profile: runner, setNumber: setRunnerNumber } = useRunnerProfile();
   const heart = useSessionHeartRate(gpx.track, profile.heartRate);
@@ -319,6 +322,13 @@ function SurfModule() {
     ] : []),
     { key: 'distance', label: 'Distance totale', value: formatDistance(totalDistanceM, distanceUnit) },
   ] : [];
+
+  /**
+   * Chiffres de l'onglet « général » (22/10) : l'essentiel, le détail restant dans « avancé ».
+   * L'image de partage garde la liste entière (`generalStats`).
+   */
+  const overviewKeys = ['totalTime', 'waves', 'waveTime', 'longestWave', 'maxSpeed', ...(foil ? ['flightTime', 'longestFlight'] : [])];
+  const overviewStats = overviewKeys.flatMap((key) => generalStats.filter((stat) => stat.key === key));
 
   // Une seule surbrillance : une vague (son numéro) ou le podium, un vol, une remontée.
   const waveShown = highlight.shownIn('vagues');
@@ -491,16 +501,16 @@ function SurfModule() {
 
       {summary && analysis && surfProfile && (
         <div className="an-carte-col">
-          <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} accent={ACCENT} />
+          <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} advancedOpen={advanced.open} onToggleAdvanced={advanced.toggle} accent={ACCENT} />
           <div className="an-carte-panels">
             {open.general && (
               <ResizablePanel id={panelId('general')} style={panelStyle}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={() => toggle('general')} />
                 </div>
-                <GeneralStats stats={generalStats} />
+                <GeneralStats stats={overviewStats} />
                 {draft.edits.foil === null && (
-                  <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '8px' }}>
+                  <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' }}>
                     {foil ? 'Sur foil' : 'Sans foil'}, supposé d'après l'activité : la session ne le dit pas. Il se règle dans l'onglet réglages.
                   </div>
                 )}
@@ -513,7 +523,7 @@ function SurfModule() {
                         return s > 0 ? <span key={phase} style={{ width: `${(s / summary.totalS) * 100}%`, backgroundColor: PHASE_COLORS[phase] }} /> : null;
                       })}
                     </div>
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '6px', fontSize: '12px', color: 'var(--muted)' }}>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '6px', fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
                       {(Object.keys(PHASE_COLORS) as SurfPhase[]).map((phase) => {
                         const s = phase === 'glisse' ? summary.glisseS : phase === 'rame' ? summary.rameS : phase === 'attente' ? summary.attenteS : summary.trouS;
                         if (s <= 0) return null;
@@ -543,7 +553,7 @@ function SurfModule() {
                   <span style={{ flex: 1 }} />
                   {waves.length > 1 && (
                     <>
-                      <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <label style={{ fontSize: 'var(--text-xs)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         Tri
                         <select className="ui-field ui-field--s" value={waveSort} onChange={(e) => setWaveSort(e.target.value as WaveSort)}>
                           {(Object.keys(WAVE_SORT_LABEL) as WaveSort[]).map((k) => <option key={k} value={k}>{WAVE_SORT_LABEL[k]}</option>)}
@@ -580,10 +590,10 @@ function SurfModule() {
                           const shown = waveShown === String(w.n);
                           return (
                             <tr key={w.n} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                              <td style={{ ...tdStyle, fontWeight: 'bold' }}>{w.n}</td>
+                              <td style={{ ...tdStyle, fontWeight: 700 }}>{w.n}</td>
                               <td style={tdStyle}>{formatTimeOfDay(w.startMs).slice(0, 5)}</td>
                               <td style={tdStyle}>{formatShortDuration(w.durationS)}</td>
-                              <td style={{ ...tdStyle, fontWeight: 'bold' }}>{Math.round(w.distanceM)} m</td>
+                              <td style={{ ...tdStyle, fontWeight: 700 }}>{Math.round(w.distanceM)} m</td>
                               <td style={tdStyle}>{formatSpeedValue(toDisplaySpeed(w.maxSpeedMs, speedUnit), speedUnit)}</td>
                               <td style={tdStyle}>{formatSpeedValue(toDisplaySpeed(w.avgSpeedMs, speedUnit), speedUnit)}</td>
                               <td style={tdStyle}>{w.turns}</td>
@@ -641,7 +651,7 @@ function SurfModule() {
                           const shown = returnShown === String(r.after);
                           return (
                             <tr key={r.after} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                              <td style={{ ...tdStyle, fontWeight: 'bold' }}>{r.after === 0 ? 'départ' : `${rideWord} ${r.after}`}</td>
+                              <td style={{ ...tdStyle, fontWeight: 700 }}>{r.after === 0 ? 'départ' : `${rideWord} ${r.after}`}</td>
                               <td style={tdStyle}>{r.returnS === null ? 'enchaîné' : formatShortDuration(r.returnS)}</td>
                               <td style={tdStyle}>{r.straightM === null ? '—' : `${Math.round(r.straightM)} m`}</td>
                               <td style={tdStyle}>{orDash(r.returnSpeedMs, (v) => formatSpeed(v, speedUnit))}</td>
@@ -716,11 +726,11 @@ function SurfModule() {
                           const pump = flightPumping?.get(f.n) ?? null;
                           return (
                             <tr key={f.n} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                              <td style={{ ...tdStyle, fontWeight: 'bold' }}>
+                              <td style={{ ...tdStyle, fontWeight: 700 }}>
                                 <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: HIGHLIGHT_PODIUM_COLORS[k], marginRight: '6px' }} />
                                 {flightLabel(f, pump)}
                               </td>
-                              <td style={{ ...tdStyle, fontWeight: 'bold' }}>{formatShortDuration(f.durationS)}</td>
+                              <td style={{ ...tdStyle, fontWeight: 700 }}>{formatShortDuration(f.durationS)}</td>
                               <td style={tdStyle}>{Math.round(f.distanceM)} m</td>
                               {flightPumping ? (
                                 <>
@@ -780,9 +790,9 @@ function SurfModule() {
                           const pump = flightPumping?.get(f.n) ?? null;
                           return (
                             <tr key={f.n} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                              <td style={{ ...tdStyle, fontWeight: 'bold' }}>{flightLabel(f, pump, false)}</td>
+                              <td style={{ ...tdStyle, fontWeight: 700 }}>{flightLabel(f, pump, false)}</td>
                               <td style={tdStyle}>{formatTimeOfDay(f.startMs).slice(0, 5)}</td>
-                              <td style={{ ...tdStyle, fontWeight: 'bold' }}>{formatShortDuration(f.durationS)}</td>
+                              <td style={{ ...tdStyle, fontWeight: 700 }}>{formatShortDuration(f.durationS)}</td>
                               <td style={tdStyle}>{Math.round(f.distanceM)} m</td>
                               {flightPumping && <td style={tdStyle}>{speedCell(pump?.takeoffSpeedMs ?? null)}</td>}
                               <td style={tdStyle}>{f.waveCount}</td>
@@ -864,7 +874,7 @@ function SurfModule() {
                       {waves.map((w) => (
                         <ReferenceArea key={`vague-${w.n}`} x1={minutesOf(w.startMs)} x2={minutesOf(w.endMs)} fill={WAVE_BAND_COLOR} fillOpacity={0.18} ifOverflow="hidden" />
                       ))}
-                      <Tooltip formatter={tooltipFormatter} labelFormatter={timeLabel} contentStyle={{ fontSize: '12px' }} />
+                      <Tooltip formatter={tooltipFormatter} labelFormatter={timeLabel} contentStyle={{ fontSize: 'var(--text-xs)' }} />
                       <Line type="monotone" name="Vitesse" dataKey="speed" stroke="#1e88e5" strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
                     </ComposedChart>
                   </ResponsiveContainer>
@@ -880,7 +890,7 @@ function SurfModule() {
                     {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark, 'hr')}
                   </HeartRateChart>
                 )}
-                <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
+                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', flexShrink: 0 }}>
                   Bandes bleues : les vagues{foil ? ', violettes : les vols' : ''}. Le survol déplace le repère sur la carte.
                   {folds ? ' Chaque graphe se replie par son nom.' : ''}
                   {narrow ? ' Écartez deux doigts pour zoomer.' : ' Tirez une zone à la souris pour zoomer, double-clic pour tout revoir.'}
@@ -890,7 +900,7 @@ function SurfModule() {
             })()}
 
             {open.cardio && heart.present && (
-              <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
+              <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <HeartRatePanel track={track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax}
                   onRetainHrMax={(bpm) => setRunnerNumber('hrMax', bpm)} selectedZone={selectedHrZone}
                   onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
@@ -925,14 +935,14 @@ function SurfModule() {
                     title="Surf foil pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">
                     <input type="checkbox" checked={foil} onChange={(e) => draft.update({ foil: e.target.checked })} />
                     <strong>Foil</strong>
-                    {draft.edits.foil === null && <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(supposé : celui de l'activité)</span>}
+                    {draft.edits.foil === null && <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>(supposé : celui de l'activité)</span>}
                   </label>
                   {foil && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                       title="Pumping des vols par les capteurs du téléphone, pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">
                       <input type="checkbox" checked={pumping} onChange={(e) => draft.update({ pumping: e.target.checked === activityPumping ? null : e.target.checked })} />
                       <strong>Pumping</strong>
-                      {draft.edits.pumping === null && <span style={{ color: 'var(--muted)', fontSize: '12px' }}>(celui de l'activité)</span>}
+                      {draft.edits.pumping === null && <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>(celui de l'activité)</span>}
                     </label>
                   )}
                 </div>
@@ -967,7 +977,7 @@ function SurfModule() {
                       onChange={(next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); }} />
                   )}
                 </div>
-                <div style={{ color: 'var(--muted)', fontSize: '0.85em', marginTop: '10px' }}>
+                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '10px' }}>
                   Vitesse : {gpx.hasDeviceSpeed
                     ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
                     : 'dérivée des positions, filtrée'}

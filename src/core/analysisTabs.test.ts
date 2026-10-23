@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LAND_TABS, SAILING_TABS, SURF_TABS, analysisTabs, isTabShown, maskHiddenTabs, sanitizeTabChoices, shownTabs, toggleTabChoice,
+  LAND_TABS, SAILING_TABS, SURF_TABS, analysisTabs, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, toggleTabChoice,
 } from './analysisTabs';
 import { SPORT_PROFILES } from './sportProfiles';
 
@@ -133,5 +133,31 @@ describe('maskHiddenTabs', () => {
     const allShown = { ...open, tops: false };
     expect(maskHiddenTabs(allShown, SURF_TABS, null)).toBe(allShown);
     expect(maskHiddenTabs(open, SURF_TABS, { tops: true })).toBe(open);
+  });
+});
+
+describe('maskAdvancedTabs', () => {
+  const open = { general: true, vagues: true, rame: false, vols: false, tops: true, graphiques: false, cardio: false, notes: false, reglages: false };
+
+  it('« avancé » fermé : ses onglets se replient, « général » reste', () => {
+    const masked = maskAdvancedTabs(open, SURF_TABS, false);
+    expect(masked.general).toBe(true);
+    expect(masked.vagues).toBe(false);
+    expect(masked.tops).toBe(false);
+    // La mémoire n'est pas touchée : les panneaux reviennent à la réouverture.
+    expect(open.vagues).toBe(true);
+  });
+
+  it('« fractionné » est de la première rangée, comme « général »', () => {
+    const land = { general: true, fractionne: true, tops: false, zones: false, surface: false, energie: false, graphiques: true, cardio: false, cadence: false, sauts: false, notes: false, reglages: false };
+    const masked = maskAdvancedTabs(land, LAND_TABS.course, false);
+    expect(masked.fractionne).toBe(true);
+    expect(masked.graphiques).toBe(false);
+  });
+
+  it('rend le même objet quand rien ne change', () => {
+    expect(maskAdvancedTabs(open, SURF_TABS, true)).toBe(open);
+    const onlyGeneral = { ...open, vagues: false, tops: false };
+    expect(maskAdvancedTabs(onlyGeneral, SURF_TABS, false)).toBe(onlyGeneral);
   });
 });

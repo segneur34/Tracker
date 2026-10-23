@@ -3,7 +3,7 @@
 // Sur un profil neuf, sans réseau. Dure environ 30 s. Vérifie :
 //  1. installation neuve : Marche dans À pied, juste après Course, icône du marcheur, couleurs de 1 à 8 km/h
 //     et temps estimé « Personnalisé » à 5 km/h, sans « · modifié » ; Course de 1 à 13 km/h (pré-réglages du 21/10) ;
-//  2. liste de la version 5 sans Marche : elle est ajoutée une fois, après les activités à pied, version 6 rangée ;
+//  2. liste de la version 5 sans Marche : elle est ajoutée une fois, après les activités à pied, version 7 rangée (refonte du 22/10) ;
 //  3. liste de la version 5 avec une « marche » créée par l'utilisateur : pas de doublon, la sienne reste ;
 //  4. liste de la version 6 sans Marche (supprimée) : elle ne revient pas ;
 //  5. la liste de choix d'activité d'Enregistrer la propose, à 390×844, sans débordement.
@@ -34,6 +34,8 @@ ws.onmessage = (e) => {
 };
 await new Promise((r) => { ws.onopen = r; });
 await send('Page.enable');
+// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
 await send('Runtime.enable');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
@@ -103,7 +105,7 @@ await shoot('marche-reglages');
 await seed([SAIL, RUN, TRAIL, ROUTE], 5);
 const v5 = await names();
 check('version 5 : Marche ajoutée après les activités à pied', JSON.stringify(v5) === JSON.stringify(['Voile', 'Course', 'Trail', 'Marche', 'Route']), JSON.stringify(v5));
-check('version 6 rangée', (await stored())?.activitiesVersion === 6);
+check('version 7 rangée', (await stored())?.activitiesVersion === 7);
 await go('/');
 check('rechargée : une seule Marche', (await names())?.filter((n) => n === 'Marche').length === 1);
 

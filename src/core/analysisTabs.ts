@@ -17,6 +17,8 @@ export interface AnalysisTab<K extends string = string> {
   label: string;
   /** Onglet générique : caché tant que l'activité ne le coche pas. */
   generic?: true;
+  /** Onglet de la première rangée, hors d'« avancé » : « général », et « fractionné » (22/10). */
+  primary?: true;
 }
 
 /** Choix d'une activité : seulement les onglets montrés ou cachés à l'écart de leur défaut. */
@@ -26,7 +28,7 @@ export type SailingTab = 'general' | 'tops' | 'manoeuvres' | 'graphiques' | 'car
 
 /** Voile : une seule barre, dans l'ordre voulu par l'utilisateur. */
 export const SAILING_TABS: AnalysisTab<SailingTab>[] = [
-  { key: 'general', label: 'général' },
+  { key: 'general', label: 'général', primary: true },
   { key: 'tops', label: 'tops' },
   { key: 'manoeuvres', label: 'manœuvres' },
   { key: 'graphiques', label: 'graphiques' },
@@ -48,8 +50,8 @@ export type LandTab = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 
  * (choix de l'utilisateur, 16/10), puis « cadence », à pied seulement.
  */
 const landTabs = (topsGeneric: boolean, cadence: boolean): AnalysisTab<LandTab>[] => [
-  { key: 'general', label: 'général' },
-  { key: 'fractionne', label: 'fractionné' },
+  { key: 'general', label: 'général', primary: true },
+  { key: 'fractionne', label: 'fractionné', primary: true },
   topsGeneric ? { key: 'tops', label: 'tops', generic: true } : { key: 'tops', label: 'tops' },
   { key: 'graphiques', label: 'graphiques' },
   { key: 'cardio', label: 'cardio' },
@@ -72,7 +74,7 @@ export type SurfTab = 'general' | 'vagues' | 'rame' | 'vols' | 'tops' | 'graphiq
 
 /** Surf (surf, paddle, SUP foil, kayak, downwind) : « tops » est générique. */
 export const SURF_TABS: AnalysisTab<SurfTab>[] = [
-  { key: 'general', label: 'général' },
+  { key: 'general', label: 'général', primary: true },
   { key: 'vagues', label: 'vagues' },
   { key: 'rame', label: 'rame' },
   // Sur foil seulement.
@@ -147,6 +149,27 @@ export const maskHiddenTabs = <K extends string>(
   let masked: Record<K, boolean> | null = null;
   for (const tab of tabs) {
     if (open[tab.key] && !isTabShown(tab, choices)) {
+      masked ??= { ...open };
+      masked[tab.key] = false;
+    }
+  }
+  return masked ?? open;
+};
+
+/**
+ * Sections ouvertes, celles de la rangée « avancé » fermées tant qu'elle l'est :
+ * refermer « avancé » replie ses onglets et leurs panneaux, mémorisés pour sa
+ * réouverture (demande du 22/10). Rend l'objet reçu tel quel quand rien ne change.
+ */
+export const maskAdvancedTabs = <K extends string>(
+  open: Record<K, boolean>,
+  tabs: readonly AnalysisTab<K>[],
+  advancedOpen: boolean
+): Record<K, boolean> => {
+  if (advancedOpen) return open;
+  let masked: Record<K, boolean> | null = null;
+  for (const tab of tabs) {
+    if (open[tab.key] && tab.primary !== true) {
       masked ??= { ...open };
       masked[tab.key] = false;
     }

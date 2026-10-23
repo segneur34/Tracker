@@ -287,6 +287,13 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - un réglage du bateau fait après la mise à jour, qui reste au rechargement.
 
   Sur un profil déjà servi, le fichier de réglages du dossier mémoire reprend la place des valeurs écrites : il faut prendre un profil neuf à chaque passage.
+- `general.mjs <port> [<dossier des captures>]` : onglet « général » complet et rangée « avancé » (demande du 22/10), sur un profil neuf, sans réseau, environ 1 min 30. Le script écrit lui-même une wing (la trace de `make-gpx.mjs`), une course et une sortie à vélo en côte, et la matinée de surf de `surf.mjs`, et les importe par la page. Il vérifie :
+  - la première rangée « général · avancé », « avancé » fermé au départ, les chiffres du nouveau général dans chaque module (voile : distance en vol, manœuvres réussies, top 2 s et 100 m ; à pied et à vélo : meilleurs segments et profil d'altitude compact ; surf : chiffres réduits) ;
+  - « avancé » qui déplie les onglets, puis, refermé, replie rangée et panneaux, rendus à la réouverture ; la flèche qui cache la barre sans toucher aux panneaux ;
+  - le réglage du vent sur la carte : flèche tirée à la souris (90°), écrite au lâcher dans le brouillon, « Inverser », « Polaire », « Calculé », « Terminé » ;
+  - à 390×844 : aucun débordement, « Régler » qui ouvre la carte en plein écran avec la boussole.
+
+  Les autres scripts ouvrent la rangée « avancé » d'office à chaque page (`Page.addScriptToEvaluateOnNewDocument`) : seul celui-ci l'éprouve fermée.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

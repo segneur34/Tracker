@@ -30,6 +30,9 @@ export type LandFamily = 'course' | 'velo' | 'fractionne';
 /** Traitements terrestres. */
 export type LandTreatment = 'course' | 'velo';
 
+/** Libellé de la dépense totale, repos compris : celle que reprend l'onglet « général » à vélo. */
+export const TOTAL_ENERGY_LABEL = 'Dépense totale, repos compris';
+
 /** Un chiffre du panneau Énergie : sa valeur, et en plus petit un complément. */
 export interface EnergyStat {
   label: string;
@@ -142,7 +145,7 @@ const runningEnergy = ({ track, grades, activityMask, runner, age, loadKg }: Ene
     cumulativeUnit: `kcal${perKg}`,
     stats: [
       { label: 'Énergie de course', value: `${kcal(energy.netJkg)} kcal${perKg}`, detail: `${kj(energy.netJkg)} kJ${perKg}` },
-      { label: 'Dépense totale, repos compris', value: `${kcal(energy.totalJkg)} kcal${perKg}`, detail: `${kj(energy.totalJkg)} kJ${perKg}` },
+      { label: TOTAL_ENERGY_LABEL, value: `${kcal(energy.totalJkg)} kcal${perKg}`, detail: `${kj(energy.totalJkg)} kJ${perKg}` },
       {
         label: 'Puissance moyenne en mouvement',
         value: energy.movingTimeS > 0 ? `${Math.round((energy.mechanicalJkg / energy.movingTimeS) * massFactor)} W${perKg}` : '—',
@@ -201,7 +204,7 @@ const uncomputedCyclingEnergy = (bikeType: BikeType, bikeWeightKg: number): Ener
   powerUnit: 'W',
   cumulative: [],
   cumulativeUnit: 'kcal',
-  stats: ['Puissance moyenne en mouvement', 'Travail mécanique', 'Énergie de pédalage', 'Dépense totale, repos compris']
+  stats: ['Puissance moyenne en mouvement', 'Travail mécanique', 'Énergie de pédalage', TOTAL_ENERGY_LABEL]
     .map((label) => ({ label, value: '—' })),
   zones: [],
   warning: <>Poids non renseigné : énergie non calculée. Il se saisit dans <Link to="/parametres">Réglages</Link>, bloc Pratiquant.</>,
@@ -244,7 +247,7 @@ const cyclingEnergy = ({ track, grades, activityMask, runner, age, bikeType, bik
       },
       { label: 'Travail mécanique', value: kj(energy.mechanicalJ) },
       { label: 'Énergie de pédalage', value: `${kcal(energy.netJ)} kcal`, detail: kj(energy.netJ) },
-      { label: 'Dépense totale, repos compris', value: `${kcal(energy.totalJ)} kcal`, detail: kj(energy.totalJ) },
+      { label: TOTAL_ENERGY_LABEL, value: `${kcal(energy.totalJ)} kcal`, detail: kj(energy.totalJ) },
     ],
     zones: energy.zones.map((z) => ({
       zone: z.zone,

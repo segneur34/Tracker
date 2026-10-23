@@ -2,8 +2,8 @@
 // Usage : node vides.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau (IGN, Overpass, tuiles bloqués). Dure environ 1 min. Le script :
 //  1. importe une voile en aller simple (vent impossible à estimer), une course sans altitude et une session de surf ;
-//  2. voile : « manœuvres », « vmg » et « vent » ouverts disent « Vent inconnu », avec « Ouvrir l'onglet général »
-//     quand « général » est fermé, qui l'ouvre ;
+//  2. voile : « manœuvres », « vmg » et « vent » ouverts disent « Vent inconnu », avec « Régler le vent », qui ouvre
+//     la boussole sur la carte (22/10 ; « Ouvrir l'onglet général » avant) ;
 //  3. course : « zones de pente » dit pourquoi elle est vide (pas d'altitude, IGN injoignable) et propose « Réessayer » ;
 //  4. surf : la légende de la répartition ne redit pas le pourcentage « sur la vague » ; la rame garde le sien ;
 //  5. à 360×800 : accueil sans lien Profil ni Statistiques, barre du bas Accueil · Profil · rond · Statistiques ·
@@ -66,7 +66,6 @@ const setTab = (label, wanted) => evaluate(`(() => {
   if ((t.getAttribute('aria-pressed') === 'true') !== ${wanted}) t.click();
   return 'ok';
 })()`);
-const tabOpen = (label) => evaluate(`[...document.querySelectorAll('.an-carte-col .ui-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)})?.getAttribute('aria-pressed') === 'true'`);
 /** Texte du panneau d'analyse dont le titre commence ainsi. */
 const panelOf = (title) => `[...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith(${JSON.stringify(title)}))?.closest('.an-carte-panels > *')`;
 const panel = async (title) => (await evaluate(`${panelOf(title)}?.innerText.replace(/\\n+/g, ' / ') ?? '(absent)'`));
@@ -80,6 +79,8 @@ let failures = 0;
 const check = (what, ok, detail) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}${!ok && detail !== undefined ? ` (${detail})` : ''}`); if (!ok) failures++; };
 
 await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
+// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
 await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 
@@ -149,11 +150,11 @@ await setTab('général', false);
 await wait(1000);
 for (const [title, word] of [['Manœuvres', 'virements et empannages'], ['Analyse VMG', 'la VMG'], ['Variations du Vent', 'ses variations']]) {
   const text = await panel(title);
-  check(`voile, « ${title} » : « Vent inconnu », ${word}`, text.includes('Vent inconnu') && text.includes(word) && text.includes("Ouvrir l'onglet général"), text);
+  check(`voile, « ${title} » : « Vent inconnu », ${word}`, text.includes('Vent inconnu') && text.includes(word) && text.toLowerCase().includes('régler le vent'), text);
 }
 await shoot('vides-voile');
-check('« Ouvrir l\'onglet général » ouvre « général »', (await clickIn('Manœuvres', "Ouvrir l'onglet général")) && (await wait(500), await tabOpen('général')));
-check('« général » ouvert : plus de bouton', !(await panel('Manœuvres')).includes("Ouvrir l'onglet général"));
+check('« Régler le vent » ouvre la boussole sur la carte', (await clickIn('Manœuvres', 'Régler le vent')) && (await wait(800), await evaluate(`Boolean(document.querySelector('.an-map-panel .an-wind__dial'))`)));
+check('boussole ouverte : plus de bouton', !(await panel('Manœuvres')).toLowerCase().includes('régler le vent'));
 
 // --- 3. Course sans altitude ---
 await go(paths.course, 8000);
@@ -161,7 +162,7 @@ await setTab('zones de pente', true);
 await wait(1000);
 const zones = await panel('Allure par zone de pente');
 check('course, zones de pente : pourquoi elle est vide', zones.includes("Pas d'altitude dans le fichier") && zones.includes('IGN'), zones);
-check('course, zones de pente : « Réessayer »', zones.includes('Réessayer'), zones);
+check('course, zones de pente : « Réessayer »', zones.toLowerCase().includes('réessayer'), zones);
 await shoot('vides-course');
 
 // --- 4. Surf : légende de la répartition ---
@@ -178,9 +179,9 @@ check('surf : la rame garde le sien', /rame \d+ %/.test(legend), legend);
 // --- 5. Téléphone : accueil, barre, Renommer ---
 await send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 2, mobile: true });
 await go('/', 3000);
-const homeLinks = await evaluate(`[...document.querySelectorAll('.home-link')].map((a) => a.textContent.trim()).join(' | ')`);
+const homeLinks = await evaluate(`[...document.querySelectorAll('.home-link, .home-action')].map((a) => a.textContent.trim()).join(' | ')`);
 check('accueil : ni Profil ni Statistiques', !/Profil|Statistiques/.test(homeLinks), homeLinks);
-check('accueil : itinéraires planifiés gardés', homeLinks.startsWith('Itinéraires planifiés'), homeLinks);
+check('accueil : itinéraires planifiés gardés', homeLinks.includes('Itinéraires planifiés'), homeLinks);
 const bar = await evaluate(`[...document.querySelectorAll('.shell-tabbar .shell-tab')].map((t) => t.textContent.trim()).join(' | ')`);
 check('barre du bas : Accueil, Profil, Statistiques, Réglages', bar === 'Accueil | Profil | Statistiques | Réglages', bar);
 

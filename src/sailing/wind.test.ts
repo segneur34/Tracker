@@ -8,6 +8,8 @@ import {
   estimateWindFromPolar,
   interpolateDirection,
   observeTurns,
+  pointerWindDeg,
+  speedPolar,
   scoreWindCandidate,
 } from './wind';
 
@@ -209,5 +211,41 @@ describe('observeTurns', () => {
 
     const turns = observeTurns(buildPoints(samples));
     expect(turns.filter((t) => t.slow)).toHaveLength(0);
+  });
+});
+
+describe('pointerWindDeg', () => {
+  it('0° en haut, sens horaire, comme une boussole', () => {
+    expect(pointerWindDeg(0, -10)).toBe(0);
+    expect(pointerWindDeg(10, 0)).toBe(90);
+    expect(pointerWindDeg(0, 10)).toBe(180);
+    expect(pointerWindDeg(-10, 0)).toBe(270);
+  });
+
+  it('arrondit au degré et ne rend jamais 360', () => {
+    expect(pointerWindDeg(Math.sin(0.3 * Math.PI / 180) * -1, -1)).toBe(0);
+    expect(pointerWindDeg(10, -10)).toBe(45);
+  });
+});
+
+describe('speedPolar', () => {
+  const at = (bearing: number, speed: number): PointData => ({ lat: 0, lon: 0, time: new Date(0), timeMs: 0, speed, smoothedSpeed: speed, bearing });
+
+  it('range chaque point par son angle au vent, la vitesse max par case', () => {
+    const polar = speedPolar([at(95, 12), at(99, 15), at(300, 20)], 90, 3);
+    expect(polar).toHaveLength(36);
+    expect(polar[0]).toEqual({ angle: '0°', vitesse: 15 });
+    // 300 − 90 = 210° au vent.
+    expect(polar[21].vitesse).toBe(20);
+  });
+
+  it('suit le vent : le tourner décale la polaire', () => {
+    const track = [at(95, 12)];
+    expect(speedPolar(track, 90, 3)[0].vitesse).toBe(12);
+    expect(speedPolar(track, 100, 3)[35].vitesse).toBe(12);
+  });
+
+  it('écarte les points sous la vitesse minimale', () => {
+    expect(speedPolar([at(95, 2)], 90, 3).every((b) => b.vitesse === 0)).toBe(true);
   });
 });

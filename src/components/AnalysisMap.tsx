@@ -28,6 +28,15 @@ interface AnalysisMapProps {
   defaultHeight: number;
   /** Style propre au module ; la largeur, elle, est commune (`--analysis-map-width`, `analysisMobile.css`). */
   style?: CSSProperties;
+  /**
+   * Outil posé sur la carte, dans la carte et dans sa vue agrandie (réglage du
+   * vent de la voile) : transparent aux gestes hors de ses pièces, marquées
+   * `an-map-tool` pour qu'un toucher sur elles n'agrandisse pas la carte.
+   */
+  overlay?: ReactNode;
+  /** Vue agrandie pilotée par le module (téléphone) ; sinon, la carte la tient seule. */
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 /** Cadrage initial : sur la trace s'il y en a une, sinon sur le centre par défaut. */
@@ -64,10 +73,16 @@ function MapCornerControl({ children }: { children: ReactNode }) {
  * écran. Commune à tous les modules
  * (`docs/MISE_EN_PAGE.md`).
  */
-function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, defaultHeight, style }: AnalysisMapProps) {
+function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, defaultHeight, style, overlay, expanded: expandedProp, onExpandedChange }: AnalysisMapProps) {
   /** Carte agrandie en plein écran (toucher sur la carte compacte, écran étroit seulement). */
-  const [expanded, setExpanded] = useState(false);
+  const [ownExpanded, setOwnExpanded] = useState(false);
+  const expanded = expandedProp ?? ownExpanded;
+  const setExpanded = (next: boolean) => {
+    if (expandedProp === undefined) setOwnExpanded(next);
+    onExpandedChange?.(next);
+  };
   const legendControl = legend && <MapCornerControl>{legend}</MapCornerControl>;
+  const tools = overlay && <div className="an-map-tools">{overlay}</div>;
 
   return (
     <>
@@ -78,27 +93,29 @@ function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, de
         <div
           className="an-map-frame an-map-corner"
           onClick={(e) => {
-            if ((e.target as HTMLElement).closest('.leaflet-control')) return;
+            if ((e.target as Element).closest('.leaflet-control, .an-map-tool')) return;
             if (window.matchMedia(NARROW_QUERY).matches) setExpanded(true);
           }}
-          style={{ flex: '1 1 auto', minHeight: 0, overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--line-strong)' }}>
+          style={{ position: 'relative', flex: '1 1 auto', minHeight: 0, overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--line-strong)' }}>
           <MapContainer key={sessionKey ?? 'empty'} {...initialView(bounds)} style={{ height: '100%', width: '100%' }}>
             <MapAutoResize />
             {layers}
             {legendControl}
           </MapContainer>
+          {tools}
         </div>
       </ResizablePanel>
 
       {expanded && (
         <div className="an-map-overlay" onClick={() => setExpanded(false)}>
           <button type="button" className="an-map-overlay__close" onClick={() => setExpanded(false)} aria-label="Fermer la carte">×</button>
-          <div className="an-map-overlay__map an-map-corner" onClick={(e) => e.stopPropagation()}>
+          <div className="an-map-overlay__map an-map-corner" onClick={(e) => e.stopPropagation()} style={{ position: 'relative' }}>
             <MapContainer key={`expanded-${sessionKey ?? 'empty'}`} {...initialView(bounds)} style={{ height: '100%', width: '100%' }}>
               <MapAutoResize />
               {layers}
               {legendControl}
             </MapContainer>
+            {tools}
           </div>
         </div>
       )}

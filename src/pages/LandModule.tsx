@@ -29,6 +29,7 @@ import { CADENCE_COLOR } from '../components/cadenceColors';
 import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import GeneralStats from '../components/GeneralStats';
+import ElevationProfileMini, { type ElevationProfileRow } from '../components/ElevationProfileMini';
 import { shareableStats, type ShareStat } from '../core/shareImage';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SessionWeightField from '../components/SessionWeightField';
@@ -48,7 +49,7 @@ import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
-import { LAND_TABS, maskHiddenTabs, shownTabs, type LandTab } from '../core/analysisTabs';
+import { LAND_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type LandTab } from '../core/analysisTabs';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
@@ -74,6 +75,7 @@ import { useGpxSession } from '../hooks/useGpxSession';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
+import { useAdvancedTabs } from '../hooks/useAdvancedTabs';
 import { useMapHighlight } from '../hooks/useMapHighlight';
 import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionHeartRate } from '../hooks/useSessionHeartRate';
@@ -98,7 +100,7 @@ import type { LibrarySession } from '../library/record';
 import type { IntervalSeries, IntervalWorkout } from '../recording/intervalTimer';
 import type { SurfaceCategory } from '../planning/surface';
 import { WAY_MATCH_DEFAULTS } from '../planning/wayMatch';
-import { LAND_PAGES, LAND_TREATMENTS, type LandFamily } from './landModules';
+import { LAND_PAGES, LAND_TREATMENTS, TOTAL_ENERGY_LABEL, type LandFamily, type LandTreatment } from './landModules';
 
 /** Lissage supplémentaire de la vitesse pour le graphe, en secondes. */
 const CHART_SPEED_SMOOTHING_S = 10;
@@ -222,7 +224,12 @@ const gearFields = (labels: [string, string]): GearField[] => [
   { field: 'gear1', label: labels[0], placeholder: 'ex. modèle, taille' },
   { field: 'gear2', label: labels[1], placeholder: 'ex. modèle, taille' },
 ];
-const chartTooltipStyle = { fontSize: '12px' } as const;
+const chartTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
+
+/** Meilleurs segments repris dans l'onglet « général », par traitement (22/10). */
+const OVERVIEW_TOP_KEYS: Record<LandTreatment, readonly string[]> = { course: ['d1km'], velo: ['t5min', 'd10km'] };
+/** Lignes du profil compact de l'onglet « général ». */
+const PROFILE_MAX_POINTS = 400;
 
 /** Ligne sous le graphe d'altitude : d'où vient l'altitude affichée. */
 const elevationSourceText = (status: TerrainElevationStatus, stepM: number, error: string | null): string => {
@@ -311,7 +318,9 @@ function LandModule({ family }: { family: LandFamily }) {
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const landTabs = LAND_TABS[model.treatment];
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
-  const open = useMemo(() => maskHiddenTabs(storedOpen, landTabs, tabChoices), [storedOpen, landTabs, tabChoices]);
+  /** Rangée « avancé » : refermée, ses onglets et leurs panneaux se replient, mémorisés pour sa réouverture. */
+  const advanced = useAdvancedTabs();
+  const open = useMemo(() => maskAdvancedTabs(maskHiddenTabs(storedOpen, landTabs, tabChoices), landTabs, advanced.open), [storedOpen, landTabs, tabChoices, advanced.open]);
   /** Répétitions retrouvées dans la vitesse : en famille Fractionné, pour une session faite sans le compteur. */
   const detectionOn = family === 'fractionne' && sessionIntervals.length === 0 && profile.intervals !== null;
   // Onglet « fractionné » en famille Fractionné seulement (19/10) : une sortie à pied ou à vélo faite avec le compteur
@@ -464,10 +473,10 @@ function LandModule({ family }: { family: LandFamily }) {
   );
   /** Onglet « cadence » : chiffres, tranches, selon la vitesse et la pente, dérive. */
   const cadenceAnalysis = useMemo(
-    () => (open.cadence && cadencePresent && cadenceParams && cadence
+    () => ((open.cadence || open.general) && cadencePresent && cadenceParams && cadence
       ? analyzeCadence(gpx.track, cadence.spm, activityMask, grades.length > 0 ? grades : null, cadenceParams)
       : null),
-    [open.cadence, cadencePresent, cadenceParams, cadence, gpx.track, activityMask, grades]
+    [open.cadence, open.general, cadencePresent, cadenceParams, cadence, gpx.track, activityMask, grades]
   );
   /** Passages de la tranche de cadence choisie, tracés sur la carte tant que l'onglet « cadence » est ouvert. */
   const cadencePaths = useMemo(
@@ -547,6 +556,18 @@ function LandModule({ family }: { family: LandFamily }) {
       ? computeAllTopSegments(gpx.track, cumulative, profile.topTargets, (ms) => toDisplaySpeed(ms, topUnit), { decimals: 1 })
       : null),
     [profile.topTargets, gpx.track, cumulative, open.tops, topUnit]
+  );
+
+  /** Meilleurs segments de l'onglet « général », en m/s : ceux de `OVERVIEW_TOP_KEYS`, onglet « tops » caché compris. */
+  const overviewTargets = useMemo(
+    () => profile.topTargets.filter((t) => OVERVIEW_TOP_KEYS[model.treatment].includes(t.key)),
+    [profile.topTargets, model.treatment]
+  );
+  const overviewTops = useMemo(
+    () => (open.general && overviewTargets.length > 0 && gpx.track.length > 1
+      ? computeAllTopSegments(gpx.track, cumulative, overviewTargets, (ms) => ms, { decimals: 3 })
+      : null),
+    [open.general, overviewTargets, gpx.track, cumulative]
   );
 
   /**
@@ -651,9 +672,27 @@ function LandModule({ family }: { family: LandFamily }) {
     () => gradeGradientStops(chartData.filter((row) => row.altitude !== null), gradeRange),
     [chartData, gradeRange]
   );
+  /** Profil compact de l'onglet « général » : toute la trace, sans zoom, au plus `PROFILE_MAX_POINTS` lignes. */
+  const profileRows = useMemo((): ElevationProfileRow[] => {
+    if (!open.general || !stats?.hasElevation || gpx.track.length < 2) return [];
+    return sampledIndices(0, gpx.track.length - 1, PROFILE_MAX_POINTS).map((i) => {
+      const altitude = elevation.smoothed[i];
+      return {
+        index: i,
+        dist: parseFloat(trackDist[i].toFixed(3)),
+        altitude: isFinite(altitude) ? Math.round(altitude) : null,
+        grade: isFinite(grades[i]) ? grades[i] : null,
+      };
+    });
+  }, [open.general, stats, gpx.track, elevation, trackDist, grades]);
+  const profileStops = useMemo(
+    () => gradeGradientStops(profileRows.filter((row) => row.altitude !== null), gradeRange),
+    [profileRows, gradeRange]
+  );
   const gradientId = useId();
   const overlayGradientId = `${gradientId}-superpose`;
   const separateGradientId = `${gradientId}-separe`;
+  const profileGradientId = `${gradientId}-profil`;
   const zonesGradientId = `${gradientId}-zones`;
 
   /** Traits de la trace colorée par la vitesse, mémorisés : le survol d'un graphe ne les redessine pas (`TrackSegmentsLayer`). */
@@ -675,6 +714,30 @@ function LandModule({ family }: { family: LandFamily }) {
     { key: 'overallAverage', label: 'Moyenne sur le temps total', value: formatSpeed(averages.overall.speedMs, speedUnit) },
     { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
     { key: 'altitude', label: 'Altitude', value: stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—' },
+  ] : [];
+
+  /**
+   * Chiffres de l'onglet « général » (22/10) : l'essentiel, le détail restant dans « avancé ».
+   * L'image de partage garde la liste entière (`generalStats`).
+   */
+  const energyTotal = model.treatment === 'velo' ? energy?.stats.find((stat) => stat.label === TOTAL_ENERGY_LABEL && stat.value !== '—') ?? null : null;
+  const overviewStats: ShareStat[] = stats && averages ? [
+    { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
+    { key: 'totalTime', label: 'Temps de parcours', value: stats.totalTime },
+    { key: 'activeTime', label: `Temps en mouvement (${stats.activeRatio} %)`, value: stats.activeTime },
+    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(averages.moving.speedMs, speedUnit) },
+    { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
+    ...overviewTargets.map((target) => {
+      const top = overviewTops?.[target.key]?.[0];
+      return {
+        key: `top-${target.key}`,
+        label: `${target.kind === 'time' ? 'Meilleures' : 'Meilleur'} ${target.label}`,
+        value: top && top.val !== '-' ? formatSpeed(parseFloat(top.val), speedUnit) : '—',
+      };
+    }),
+    ...(heart.present && heart.stats ? [{ key: 'heartRate', label: 'FC moyenne', value: `${Math.round(heart.stats.avgBpm)} bpm` }] : []),
+    ...(cadenceAnalysis ? [{ key: 'cadence', label: 'Cadence moyenne', value: `${Math.round(cadenceAnalysis.averageSpm)} pas/min` }] : []),
+    ...(energyTotal ? [{ key: 'energy', label: 'Dépense totale', value: energyTotal.value }] : []),
   ] : [];
 
   const clearHover = () => setHoveredIndex(null);
@@ -788,7 +851,7 @@ function LandModule({ family }: { family: LandFamily }) {
 
   /** Sous le graphe d'altitude : légende de la pente et « Voir sur la carte ». */
   const gradeLegend = stats?.hasElevation ? (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', flexShrink: 0 }}>
       <span>Altitude colorée par la pente, montée ou descente :</span>
       {gradeRange.min > 0 && (
         <>
@@ -824,7 +887,7 @@ function LandModule({ family }: { family: LandFamily }) {
   })();
 
   const elevationSource = gpx.track.length > 1 ? (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: terrainElevation.status === 'error' ? 'var(--danger)' : 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: terrainElevation.status === 'error' ? 'var(--danger)' : 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', flexShrink: 0 }}>
       <span>{elevationSourceText(terrainElevation.status, terrainElevation.stepM, terrainElevation.error)}</span>
       {terrainElevation.status === 'error' && <Button size="s" onClick={terrainElevation.retry}>Réessayer</Button>}
     </div>
@@ -966,14 +1029,18 @@ function LandModule({ family }: { family: LandFamily }) {
       {/* Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`). */}
       {stats && averages && (
         <div className="an-carte-col">
-          <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} accent={page.accent} />
+          <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} advancedOpen={advanced.open} onToggleAdvanced={advanced.toggle} accent={page.accent} />
           <div className="an-carte-panels">
             {open.general && (
-              <ResizablePanel id={panelId('general')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
+              <ResizablePanel id={panelId('general')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={() => toggle('general')} />
                 </div>
-                <GeneralStats stats={generalStats} />
+                <GeneralStats stats={overviewStats} />
+                {profileRows.length > 1 && (
+                  <ElevationProfileMini rows={profileRows} stops={profileStops} gradientId={profileGradientId} distanceSymbol={distanceSymbol}
+                    onHoverIndex={hoverIndex} onLeave={clearHover} />
+                )}
                 {!stats.hasElevation && (
                   <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
                 )}
@@ -1000,7 +1067,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.tops && tops && (
-              <ResizablePanel id={panelId('tops')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
+              <ResizablePanel id={panelId('tops')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <TopsPanel targets={profile.topTargets} tops={tops} unit={topUnit} selected={selectedTop} onSelect={setSelectedTop}
                   accent={page.accent} open={open.tops} onToggle={() => toggle('tops')} />
               </ResizablePanel>
@@ -1014,7 +1081,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   <span style={{ flex: 1 }} />
                   {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setChartMode(mode)}
-                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: chartMode === mode ? page.accent : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
+                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)', backgroundColor: chartMode === mode ? page.accent : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
                       {mode === 'separate' ? 'Séparés' : 'Superposés'}
                     </button>
                   ))}
@@ -1067,7 +1134,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   </Fragment>
                 ))}
                 {(!stats?.hasElevation || graphShown('altitude')) && elevationSource}
-                <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '6px', flexShrink: 0 }}>
+                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', flexShrink: 0 }}>
                   Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte.
                   {graphFoldable && ' Chaque graphe se replie par son nom.'}
                   {narrow ? ' Écartez deux doigts sur un graphe pour zoomer.' : ' Tirez une zone à la souris pour zoomer, double-clic pour tout revoir. Poignée en bas à droite pour redimensionner.'}
@@ -1076,7 +1143,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.cardio && heart.present && (
-              <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
+              <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <HeartRatePanel track={gpx.track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax}
                   onRetainHrMax={(bpm) => setRunnerNumber('hrMax', bpm)} selectedZone={selectedHrZone} onSelectZone={setSelectedHrZone}
                   onHoverIndex={hoverIndex} onLeave={clearHover} efficiency={heartEfficiency} resetKey={gpx.sessionKey}
@@ -1085,14 +1152,14 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.cadence && cadenceAnalysis && (
-              <ResizablePanel id={panelId('cadence')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
+              <ResizablePanel id={panelId('cadence')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <CadencePanel analysis={cadenceAnalysis} speedUnit={speedUnit} selectedBand={selectedCadenceBand} onSelectBand={setSelectedCadenceBand}
                   storagePrefix={page.storageId} open={open.cadence} onToggle={() => toggle('cadence')} />
               </ResizablePanel>
             )}
 
             {open.surface && (
-              <ResizablePanel id={panelId('surface')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
+              <ResizablePanel id={panelId('surface')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Surface" open={open.surface} onToggle={() => toggle('surface')} />
                 </div>
@@ -1110,7 +1177,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     <Button size="s" onClick={surfaces.retry}>Réessayer</Button>
                   </div>
                 )}
-                <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '10px' }}>
+                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '10px' }}>
                   Revêtement des voies d'OpenStreetMap à moins de {WAY_MATCH_DEFAULTS.radiusM} m de la trace, demandées à la première
                   ouverture de cet onglet puis gardées avec la session. Hors de toute voie : « Inconnu ». « Voir sur la carte » y colore
                   la trace selon le revêtement, à la place de la vitesse.
@@ -1120,13 +1187,13 @@ function LandModule({ family }: { family: LandFamily }) {
 
             {open.energie && energy && (
               <ResizablePanel id={panelId('energie')} minHeight={320} direction="vertical"
-                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: '14px' }}>
+                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', paddingRight: '28px' }}>
                   <PanelTitle label={model.energyLabel} open={open.energie} onToggle={() => toggle('energie')} />
                   <span style={{ flex: 1 }} />
                   {energy.power.length > 0 && (['power', 'cumulative'] as EnergyChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setEnergyMode(mode)}
-                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: '12px', backgroundColor: energyMode === mode ? page.accent : 'var(--surface-sunken)', color: energyMode === mode ? '#fff' : 'var(--ink)' }}>
+                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)', backgroundColor: energyMode === mode ? page.accent : 'var(--surface-sunken)', color: energyMode === mode ? '#fff' : 'var(--ink)' }}>
                       {mode === 'power' ? 'Puissance' : 'Cumulée'}
                     </button>
                   ))}
@@ -1145,7 +1212,7 @@ function LandModule({ family }: { family: LandFamily }) {
                       {energy.stats.map((stat) => (
                         <div key={stat.label} className="an-sheet__stat">
                           <span className="an-sheet__stat-label">{stat.label}</span>
-                          <strong className="an-sheet__stat-value">{stat.value}{stat.detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: '0.75em' }}> {stat.detail}</span>}</strong>
+                          <strong className="an-sheet__stat-value">{stat.value}{stat.detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: 'var(--text-xs)' }}> {stat.detail}</span>}</strong>
                         </div>
                       ))}
                     </div>
@@ -1185,7 +1252,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     style={{ marginTop: '12px', padding: '4px 8px 4px 12px' }} />
                 )}
                 {stats?.hasElevation && energy.zones.length > 0 && energyFold.open.zones && (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginTop: '6px', flexShrink: 0 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginTop: '6px', flexShrink: 0 }}>
                     <thead>
                       <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                         <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
@@ -1198,10 +1265,10 @@ function LandModule({ family }: { family: LandFamily }) {
                     <tbody>
                       {energy.zones.map((z) => (
                         <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.distanceM > 0 ? 1 : 0.45 }}>
-                          <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label} <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: '0.85em' }}>{z.zone.range}</span></td>
+                          <td style={{ padding: '0.4em 0.6em', fontWeight: 700 }}>{z.zone.label} <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: 'var(--text-xs)' }}>{z.zone.range}</span></td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.energy}</td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{Math.round(z.share * 100)} %</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{z.perKm}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 700 }}>{z.perKm}</td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.power}</td>
                         </tr>
                       ))}
@@ -1209,7 +1276,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   </table>
                 )}
 
-                <div style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px', flexShrink: 0 }}>
+                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px', flexShrink: 0 }}>
                   {energy.note}
                   {' '}Puissance lissée sur {ENERGY_POWER_SMOOTHING_S} s, moins près du départ et des arrêts, interrompue aux pauses.
                   {stats?.hasElevation && ' Puissance d\'une zone : sa moyenne en mouvement, roue libre et arrêts courts compris.'}
@@ -1227,11 +1294,11 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
             {open.zones && zoneStats.length > 0 && (
               <ResizablePanel id={panelId('zones')} direction="vertical"
-                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: '14px' }}>
+                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle
                     label={model.zonesTitle}
-                    extra={<span style={{ color: 'var(--muted)', fontSize: '0.75em', fontWeight: 'normal' }}>(en mouvement)</span>}
+                    extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}>(en mouvement)</span>}
                     open={open.zones}
                     onToggle={() => toggle('zones')} />
                 </div>
@@ -1241,7 +1308,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     style={{ marginBottom: '6px' }} />
                 )}
                 {(zonesFold.open.tableau || chartData.length <= 1) && (<>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.93em', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', flexShrink: 0 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', flexShrink: 0 }}>
                   <thead>
                     <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                       <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
@@ -1258,14 +1325,14 @@ function LandModule({ family }: { family: LandFamily }) {
                       const shown = selectedZone === z.zone.key;
                       return (
                         <tr key={z.zone.key} style={{ borderTop: '1px solid var(--line-soft)', opacity: z.timeMs > 0 ? 1 : 0.45 }}>
-                          <td style={{ padding: '0.4em 0.6em', fontWeight: 'bold' }}>{z.zone.label}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: '0.9em' }}>{z.zone.range}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: '0.85em' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
+                          <td style={{ padding: '0.4em 0.6em', fontWeight: 700 }}>{z.zone.label}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>{z.zone.range}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 'bold' }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 700 }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
                             <button type="button" disabled={!reached} onClick={() => setSelectedZone(shown ? null : z.zone.key)}
-                              style={{ padding: '2px 8px', fontSize: '11px', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? HIGHLIGHT_SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
+                              style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? HIGHLIGHT_SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
                               {shown ? 'Masquer' : 'Voir'}
                             </button>
                           </td>
@@ -1274,7 +1341,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     })}
                   </tbody>
                 </table>
-                <div style={{ color: 'var(--muted)', fontSize: '0.8em', marginTop: '6px' }}>
+                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
                   Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone. « Voir » montre ses passages sur la carte, en violet.
                 </div>
                 </>)}
@@ -1328,11 +1395,11 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {stats && open.reglages && (
-              <ResizablePanel id={panelId('reglages')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: '14px' }}>
+              <ResizablePanel id={panelId('reglages')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} />
                 </div>
-                <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap', fontSize: '14px' }}>
+                <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--text-s)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <strong>Activité :</strong>
                     <ActivitySelect
@@ -1355,7 +1422,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     </select>
                   </label>
                 </div>
-                <div style={{ marginTop: '12px', fontSize: '14px' }}>
+                <div style={{ marginTop: '12px', fontSize: 'var(--text-s)' }}>
                   {model.treatment === 'velo' ? (
                     <SessionWeightField label="Poids du vélo et des bagages" valueKg={draft.edits.bikeWeightKg} activityKg={activityBikeKg}
                       isValid={isValidBikeWeight} onChange={(kg) => draft.update({ bikeWeightKg: kg })}
@@ -1367,7 +1434,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   )}
                 </div>
                 {gpx.track.length > 0 && (
-                  <div style={{ marginTop: '12px', fontSize: '14px' }}>
+                  <div style={{ marginTop: '12px', fontSize: 'var(--text-s)' }}>
                     <SpeedRangeEditor
                       unit={speedUnit}
                       range={range}
@@ -1376,7 +1443,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   </div>
                 )}
                 {detected && (
-                  <div style={{ marginTop: '12px', fontSize: '14px' }}>
+                  <div style={{ marginTop: '12px', fontSize: 'var(--text-s)' }}>
                     <EffortThresholdEditor
                       unit={speedUnit === 'minkm' ? 'kmh' : speedUnit}
                       valueMs={detected.thresholdMs}
@@ -1385,7 +1452,7 @@ function LandModule({ family }: { family: LandFamily }) {
                       onChange={(next) => draft.update({ effortThresholdMs: next })} />
                   </div>
                 )}
-                <div style={{ color: 'var(--muted)', fontSize: '0.85em', marginTop: '10px' }}>
+                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '10px' }}>
                   Vitesse : {gpx.hasDeviceSpeed
                     ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
                     : 'dérivée des positions, filtrée'}

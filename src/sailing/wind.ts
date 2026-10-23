@@ -28,6 +28,38 @@ export const angleDiff = (a: number, b: number): number => {
 
 export const normalizeAngle = (angle: number): number => ((angle % 360) + 360) % 360;
 
+/**
+ * Vent montré par un pointeur posé à (`dx`, `dy`) du centre d'une boussole,
+ * `dy` compté vers le bas comme à l'écran : 0° en haut (nord), sens horaire,
+ * arrondi au degré, dans [0, 360[. La flèche de la boussole part de là vers le centre.
+ */
+export const pointerWindDeg = (dx: number, dy: number): number =>
+  normalizeAngle(Math.round((Math.atan2(dx, -dy) * 180) / Math.PI));
+
+/** Une case de la polaire de vitesse : angle au vent (« 30° ») et vitesse max, en nœuds. */
+export interface PolarBin {
+  angle: string;
+  vitesse: number;
+}
+
+/** Largeur d'une case de la polaire, en degrés. */
+const POLAR_BIN_DEG = 10;
+
+/**
+ * Polaire de vitesse : la vitesse filtrée la plus haute dans chaque case
+ * d'angle au vent `windDeg`, au-dessus de `minSpeedKn`. Pure, pour suivre le
+ * vent pendant qu'on le règle sur la carte.
+ */
+export const speedPolar = (track: readonly PointData[], windDeg: number, minSpeedKn: number): PolarBin[] => {
+  const bins = new Array<number>(360 / POLAR_BIN_DEG).fill(0);
+  for (const p of track) {
+    if (p.smoothedSpeed <= minSpeedKn) continue;
+    const binIdx = Math.floor(normalizeAngle(p.bearing - windDeg) / POLAR_BIN_DEG);
+    if (p.smoothedSpeed > bins[binIdx]) bins[binIdx] = p.smoothedSpeed;
+  }
+  return bins.map((maxSpd, i) => ({ angle: `${i * POLAR_BIN_DEG}°`, vitesse: parseFloat(maxSpd.toFixed(1)) }));
+};
+
 // ---------------------------------------------------------------------------
 // Statistiques circulaires
 // ---------------------------------------------------------------------------

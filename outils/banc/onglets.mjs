@@ -93,6 +93,8 @@ const check = (what, ok) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}`);
 
 // Le blocage par hôte ne vaut qu'avec `Network.enable` : sans lui, Overpass répond parfois (504), et le relevé change.
 await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
+// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
 await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 
@@ -214,7 +216,8 @@ for (const name of Object.keys(CARDS)) {
   console.log(`${name} :`, shown[name], '·', await rowMark(name));
 }
 check('Voile : tous montrés, « tops » et « sauts » compris', shown.Voile === 'général tops manœuvres graphiques cardio vmg sauts vent matos et conditions réglages');
-check('Course : « tops » relâché', shown.Course.includes('(tops)') && shown.Course.includes(' sauts '));
+// « sauts » caché d'office en Course par son pré-réglage (point 130).
+check('Course : « tops » relâché', shown.Course.includes('(tops)') && shown.Course.includes('(sauts)'));
 check('Route : « tops » enfoncé', / tops /.test(` ${shown.Route} `) && !shown.Route.includes('(tops)'));
 check('Fractionné à pied : pas de « sauts »', !shown['Fractionné à pied'].includes('sauts') && shown['Fractionné à pied'].includes('fractionné'));
 check('Surf : « tops » relâché, pas de « vols »', shown.Surf.includes('(tops)') && !shown.Surf.includes('vols'));
@@ -228,7 +231,7 @@ console.log('Course, tops :', await pressPill('Course', 'tops')); await wait(300
 console.log('Voile, vmg :', await pressPill('Voile', 'vmg')); await wait(500);
 const stored = await storedTabs();
 console.log('rangés :', stored);
-check('choix rangés par activité', stored === JSON.stringify({ surf: { tops: true, vagues: false }, running: { tops: true }, wingfoil: { vmg: false } }));
+check('choix rangés par activité', stored === JSON.stringify({ surf: { tops: true, vagues: false }, running: { sauts: false, tops: true }, wingfoil: { vmg: false } }));
 check('Surf : « défaut » retiré', (await rowMark('Surf')) === '(aucune)');
 console.log('Surf :', await pills('Surf'));
 await shoot('onglets-reglages');
@@ -266,7 +269,8 @@ check('rouvert : rien de ramené', (await shownButtons()) === 0);
 await go(paths.course, 6000);
 const runTabs = await tabLabels();
 console.log('\ncourse, onglets :', runTabs);
-check('course : « tops » après « général »', /^général \| tops \|/.test(runTabs));
+// « avancé » entre « général » et les autres onglets (22/10).
+check('course : « tops » juste après « général · avancé »', /^général \| avancé \| tops \|/.test(runTabs));
 console.log('tops :', await clickTab('tops'));
 await wait(1500);
 const runTops = await panel('Meilleurs segments');
@@ -296,7 +300,7 @@ console.log('\nDéfaut :', await evaluate(`(() => { const b = [...(${card('Surf'
 await wait(500);
 const afterReset = await storedTabs();
 console.log('rangés :', afterReset);
-check('Surf effacé, les autres gardés', afterReset === JSON.stringify({ running: { tops: true }, wingfoil: { vmg: false } }));
+check('Surf effacé, les autres gardés', afterReset === JSON.stringify({ running: { sauts: false, tops: true }, wingfoil: { vmg: false } }));
 check('Surf : « défaut », « tops » relâché', (await rowMark('Surf')) === 'défaut' && (await pills('Surf')).includes('(tops)'));
 await go(paths.surf, 6000);
 const resetTabs = await tabLabels();

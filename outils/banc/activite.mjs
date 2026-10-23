@@ -81,6 +81,8 @@ const recordChoice = () => evaluate(`JSON.stringify({
 })`);
 
 await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
+// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
 await send('Page.navigate', { url: `${BASE}/` });
 await wait(2500);
 // Onglets réglages ouverts dans les deux modules.

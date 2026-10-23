@@ -40,6 +40,8 @@ ws.onmessage = (e) => {
 };
 await new Promise((r) => { ws.onopen = r; });
 await send('Page.enable');
+// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
 await send('Runtime.enable');
 await send('Network.enable');
 await send('Network.setBlockedURLs', { urls: ['*://*.openstreetmap.org/*', '*://server.arcgisonline.com/*', '*://data.geopf.fr/*', '*://overpass-api.de/*'] });
@@ -228,13 +230,14 @@ for (const s of SESSIONS) {
   await go(paths[s.name], 6000);
   const text = await evaluate(`document.body.innerText`);
   const has = (word) => text.includes(word);
-  const shown = ['Distance active', 'Temps actif', 'Ratio de navigation', 'Moyenne active', "Seuil d'activité"].filter(has);
+  // « Distance en vol » et « Moyenne en vol » en foil, dans le « général » du 22/10.
+  const shown = ['Distance active', 'Distance en vol', 'Temps actif', 'Ratio de navigation', 'Moyenne active', 'Moyenne en vol', "Seuil d'activité"].filter(has);
   if (s.name === 'bateau') {
     check('analyse bateau : ni distance, temps, ratio, moyenne actifs, ni seuil', shown.length === 0, JSON.stringify(shown));
     check('analyse bateau : distance, temps total et moyenne', has('Temps total') && has('Vitesse moyenne'));
     await shoot('prereglages-analyse-bateau');
   } else {
-    check('analyse Voile : chiffres actifs et seuil gardés', ['Distance active', 'Temps actif', 'Moyenne active', "Seuil d'activité"].every(has), JSON.stringify(shown));
+    check('analyse Voile : chiffres actifs et seuil gardés', ['Distance en vol', 'Temps actif', 'Moyenne en vol', "Seuil d'activité"].every(has), JSON.stringify(shown));
   }
 }
 
