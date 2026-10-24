@@ -34,8 +34,8 @@ ws.onmessage = (e) => {
 };
 await new Promise((r) => { ws.onopen = r; });
 await send('Page.enable');
-// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
+// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
 await send('Runtime.enable');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
@@ -124,10 +124,10 @@ await evaluate(`(() => { localStorage.clear(); return 'ok'; })()`);
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go('/enregistrer');
 await go('/enregistrer');
-// Pastille de la famille, puis la liste de ses activités.
+// Bouton glissant de la famille, puis celui de ses activités (23/10).
 await evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'À pied')?.click()`);
 await wait(500);
-const offered = await evaluate(`[...document.querySelectorAll('select option')].map((o) => o.textContent).join(',')`);
+const offered = await evaluate(`[...document.querySelectorAll('[aria-label=Activité] button')].map((o) => o.textContent).join(',')`);
 
 check('Enregistrer : la Marche proposée dans À pied', offered === 'Course,Marche', offered);
 

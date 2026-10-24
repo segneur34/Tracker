@@ -104,8 +104,8 @@ const timeline = (fromIndex) => {
 };
 
 await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
-// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
+// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
 await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 
@@ -113,7 +113,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, de
 await go('/enregistrer');
 console.log('onglet Fractionné :', await clickText('Fractionné'));
 await wait(400);
-console.log('activités :', await evaluate(`[...document.querySelector('select.ui-field').options].map((o) => o.textContent).join(', ')`));
+console.log('activités :', await evaluate(`[...document.querySelectorAll('[aria-label=Activité] button')].map((o) => o.textContent).join(', ')`));
 console.log('compteur :', await evaluate(`(document.querySelector('.ivl .ivl-switch__pick[aria-pressed=true]')?.textContent ?? '(absent)') + ' / ' + (document.querySelector('.ivl-summary')?.textContent ?? '')`));
 
 // 2. Séance 2 × 0:05 / 0:05, gardée.

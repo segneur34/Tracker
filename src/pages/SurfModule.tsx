@@ -242,12 +242,13 @@ function SurfModule() {
   const surfProfile = surfProfileOf(profile);
   const waveThreshold = surfProfile ? effectiveWaveThreshold(surfProfile.surf, draft.edits.waveThreshold) : 0;
 
-  const { open: storedOpen, toggle } = useOpenSections<SurfSection>(STORAGE_ID, SURF_SECTION_DEFAULTS);
+  const { open: storedOpen, toggle, set: setSections } = useOpenSections<SurfSection>(STORAGE_ID, SURF_SECTION_DEFAULTS);
   const graphFolds = useOpenSections(`${STORAGE_ID}.graphes`, GRAPH_FOLDS_DEFAULT);
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
   /** Rangée « avancé » : refermée, ses onglets et leurs panneaux se replient, mémorisés pour sa réouverture. */
-  const advanced = useAdvancedTabs();
+  const setGeneral = useCallback((shown: boolean) => setSections({ general: shown }), [setSections]);
+  const advanced = useAdvancedTabs(gpx.sessionKey, setGeneral);
   const open = useMemo(() => maskAdvancedTabs(maskHiddenTabs(storedOpen, SURF_TABS, tabChoices), SURF_TABS, advanced.open), [storedOpen, tabChoices, advanced.open]);
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe sous la vitesse. */
   const { profile: runner, setNumber: setRunnerNumber } = useRunnerProfile();

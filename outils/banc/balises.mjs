@@ -95,6 +95,9 @@ const chooseOption = (text) => evaluate(`(async () => {
     select.dispatchEvent(new Event('change', { bubbles: true }));
     return 'ok';
   }
+  // Bouton glissant d'Enregistrer (23/10) : le choix par son texte.
+  const radio = [...document.querySelectorAll('[role=radiogroup] button[role=radio]')].find((b) => b.textContent.trim() === ${JSON.stringify(text)});
+  if (radio) { radio.click(); return 'ok'; }
   // Choix d'activité (ActivitySelect) : le bouton ouvre la liste, puis l'activité s'y choisit.
   for (const button of document.querySelectorAll('button.activity-select:not(:disabled)')) {
     button.click();
@@ -131,8 +134,8 @@ const guideCard = () => evaluate(`(() => {
 const followedStats = () => evaluate(`document.body.innerText.split('\\n').filter((l, i, all) => /^(Restant|Balises validées)$/.test(all[i - 1] ?? '')).join(' | ')`);
 
 await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
-// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
+// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 
 // 1. Itinéraires en Voile.

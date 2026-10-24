@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LAND_TABS, SAILING_TABS, SURF_TABS, analysisTabs, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, toggleTabChoice,
+  LAND_TABS, SAILING_TABS, SURF_TABS, analysisTabs, generalOpenAfterAdvanced, isNewAnalysisSession, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, toggleTabChoice,
 } from './analysisTabs';
 import { SPORT_PROFILES } from './sportProfiles';
 
@@ -159,5 +159,24 @@ describe('maskAdvancedTabs', () => {
     expect(maskAdvancedTabs(open, SURF_TABS, true)).toBe(open);
     const onlyGeneral = { ...open, vagues: false, tops: false };
     expect(maskAdvancedTabs(onlyGeneral, SURF_TABS, false)).toBe(onlyGeneral);
+  });
+});
+
+describe('« avancé » et « général »', () => {
+  it('ouvrir « avancé » ferme « général », le refermer le rouvre', () => {
+    expect(generalOpenAfterAdvanced(true)).toBe(false);
+    expect(generalOpenAfterAdvanced(false)).toBe(true);
+  });
+
+  it('une autre session est neuve, la même ne l’est pas', () => {
+    expect(isNewAnalysisSession('a|1', 'b|2')).toBe(true);
+    expect(isNewAnalysisSession(undefined, 'a|1')).toBe(true);
+    expect(isNewAnalysisSession(null, 'a|1')).toBe(true);
+    expect(isNewAnalysisSession('a|1', 'a|1')).toBe(false);
+  });
+
+  it('une trace pas encore lue ne compte pas', () => {
+    expect(isNewAnalysisSession('a|1', null)).toBe(false);
+    expect(isNewAnalysisSession(undefined, null)).toBe(false);
   });
 });

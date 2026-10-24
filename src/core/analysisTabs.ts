@@ -176,3 +176,13 @@ export const maskAdvancedTabs = <K extends string>(
   }
   return masked ?? open;
 };
+
+/** « général » après un toucher sur « avancé » : l'ouvrir ferme « général », le refermer le rouvre (23/10). */
+export const generalOpenAfterAdvanced = (advancedOpen: boolean): boolean => !advancedOpen;
+
+/**
+ * Session autre que la dernière analysée (`sessionKey` de la trace) : elle s'ouvre
+ * sur « général », « avancé » fermé (23/10). Une trace pas encore lue n'en est pas une.
+ */
+export const isNewAnalysisSession = (last: string | null | undefined, key: string | null): boolean =>
+  key !== null && key !== (last ?? null);

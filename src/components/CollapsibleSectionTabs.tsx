@@ -6,7 +6,8 @@ import { useStoredRecord } from '../hooks/useStoredRecord';
  * Barre d'onglets d'une analyse, sous la carte : la première rangée porte
  * « général » (et « fractionné »), puis « avancé », qui déplie dessous les
  * autres onglets ; le refermer replie ces onglets et leurs panneaux, que le
- * module masque (`maskAdvancedTabs`). Une flèche en fin de rangée cache la
+ * module masque (`maskAdvancedTabs`) ; l'ouvrir ferme « général », le refermer
+ * le rouvre (`useAdvancedTabs`). Une flèche en fin de rangée cache la
  * barre ; cachée, il ne reste qu'un bouton fin « onglets » qui la ramène et
  * disparaît. Seule la barre se cache : les panneaux ouverts restent.
  * Un seul état pour toutes les analyses, retenu sur l'appareil.

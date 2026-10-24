@@ -196,11 +196,12 @@ await shoot('general-voile');
 await setAdvanced(true);
 const adv = await row(1);
 check('« avancé » déplie les onglets', adv.startsWith('tops | manœuvres | graphiques') && adv.endsWith('réglages'), adv);
+check('« avancé » ouvert ferme « général » (23/10)', (await panel('Général')) === '(absent)');
 await setTab('tops', true);
 await wait(600);
 check('« tops » ouvert', (await panel('Tops Temps')) !== '(absent)');
 await setAdvanced(false);
-check('« avancé » refermé : rangée et panneau repliés', (await row(1)) === '' && (await panel('Tops Temps')) === '(absent)' && (await panel('Général')) !== '(absent)');
+check('« avancé » refermé : rangée et panneau repliés, « général » rouvert', (await row(1)) === '' && (await panel('Tops Temps')) === '(absent)' && (await panel('Général')) !== '(absent)');
 await setAdvanced(true);
 check('« avancé » rouvert : « tops » revient', (await panel('Tops Temps')) !== '(absent)');
 const before = await panelCount();
@@ -246,7 +247,10 @@ check('« Terminé » ferme la boussole', !(await evaluate(`Boolean(document.que
 
 // --- 4. Course, vélo, surf ---
 const profileShown = () => evaluate(`Boolean((${panelOf('Général')})?.querySelector('.recharts-area'))`);
+// Une session neuve s'ouvre sur « général », « avancé » fermé, quel que soit l'état laissé (23/10).
+await setAdvanced(true);
 await go(paths.course, 8000);
+check('session neuve : « général » ouvert, « avancé » fermé', !(await advancedOpen()) && (await panel('Général')) !== '(absent)');
 general = await panel('Général');
 console.log('général course :', general);
 for (const label of ['Distance', 'Temps de parcours', 'Temps en mouvement', 'Moyenne en mouvement', 'Dénivelé', 'Meilleur 1 km']) {
@@ -256,6 +260,12 @@ check('course, général : ni moyenne sur le temps total ni altitude min–max',
 check('course : profil d\'altitude compact', await profileShown());
 check('course : première rangée « général · avancé »', (await row(0)) === 'général | avancé', await row(0));
 await shoot('general-course');
+// La même session rouverte après une autre page garde son état.
+await setAdvanced(true);
+await go('/statistiques', 2000);
+await go(paths.course, 8000);
+check('même session rouverte : « avancé » gardé ouvert, « général » fermé', (await advancedOpen()) && (await panel('Général')) === '(absent)');
+await setAdvanced(false);
 
 await go(paths.velo, 8000);
 general = await panel('Général');

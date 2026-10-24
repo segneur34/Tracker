@@ -314,12 +314,13 @@ function LandModule({ family }: { family: LandFamily }) {
   const [allActivities] = useState(readStoredActivities);
   const changeSessionActivity = useChangeSessionActivity(family, setActivity);
 
-  const { open: storedOpen, toggle } = useOpenSections<LandSection>(page.storageId, LAND_SECTION_DEFAULTS);
+  const { open: storedOpen, toggle, set: setSections } = useOpenSections<LandSection>(page.storageId, LAND_SECTION_DEFAULTS);
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const landTabs = LAND_TABS[model.treatment];
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
   /** Rangée « avancé » : refermée, ses onglets et leurs panneaux se replient, mémorisés pour sa réouverture. */
-  const advanced = useAdvancedTabs();
+  const setGeneral = useCallback((shown: boolean) => setSections({ general: shown }), [setSections]);
+  const advanced = useAdvancedTabs(gpx.sessionKey, setGeneral);
   const open = useMemo(() => maskAdvancedTabs(maskHiddenTabs(storedOpen, landTabs, tabChoices), landTabs, advanced.open), [storedOpen, landTabs, tabChoices, advanced.open]);
   /** Répétitions retrouvées dans la vitesse : en famille Fractionné, pour une session faite sans le compteur. */
   const detectionOn = family === 'fractionne' && sessionIntervals.length === 0 && profile.intervals !== null;

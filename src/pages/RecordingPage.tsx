@@ -8,6 +8,7 @@ import HoldDial from '../components/ui/HoldDial';
 import FollowTracePicker from '../components/FollowTracePicker';
 import IntervalCard from '../components/IntervalCard';
 import PageHeader from '../components/ui/PageHeader';
+import SegmentedControl from '../components/ui/SegmentedControl';
 import SavedSessionShare from '../components/SavedSessionShare';
 import { IconFlag, IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
@@ -522,23 +523,16 @@ function RecordingPage() {
 
       {!busy && !pending && <Card>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 'var(--text-m)' }}>
-          <div className="ui-tabs" role="group" aria-label="Famille" style={{ paddingBottom: 0 }}>
-            {families.map((f) => (
-              <button key={f} type="button" className="ui-tab" aria-pressed={family === f}
-                style={{ '--tab-accent': FAMILY_ACCENT[f] } as React.CSSProperties}
-                onClick={() => pickFamily(f)}>
-                {FAMILY_LABEL[f]}
-              </button>
-            ))}
+          {/* Boutons glissants en cascade : la famille, puis ses activités (une rangée « Test » viendra en Fractionné). */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            <SegmentedControl label="Famille" items={families.map((f) => ({ key: f, label: FAMILY_LABEL[f] }))} value={family}
+              accent={FAMILY_ACCENT[family]} onChange={pickFamily} />
+            {familyActivities.length > 0 && (
+              <SegmentedControl label="Activité" items={familyActivities.map((a) => ({ key: a.id, label: a.name }))} value={chosenId ?? ''}
+                accent={FAMILY_ACCENT[family]} onChange={setChosenId} />
+            )}
           </div>
-          {familyActivities.length > 0 ? (
-            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <span className="ui-eyebrow">Activité</span>
-              <select value={chosenId ?? ''} disabled={busy} onChange={(e) => setChosenId(e.target.value)} className="ui-field">
-                {familyActivities.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            </label>
-          ) : (
+          {familyActivities.length === 0 && (
             <div className="ui-alert ui-alert--warning">
               Aucune activité {FAMILY_NOUN[family]} : ajoutez-en une dans <Link to="/parametres">Réglages</Link>.
             </div>

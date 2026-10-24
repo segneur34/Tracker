@@ -13,6 +13,9 @@ export const useOpenSections = <K extends string>(moduleId: string, defaults: Re
     [update]
   );
 
+  /** Ouvrir ou fermer des clés données, sans les basculer. */
+  const set = useCallback((patch: Partial<Record<K, boolean>>) => update(patch), [update]);
+
   /** Tout fermer, clés mémorisées hors des défauts comprises (activités de Réglages). */
   const closeAll = useCallback(
     () => update((current) => Object.fromEntries(Object.keys({ ...defaults, ...current }).map((k) => [k, false])) as Record<K, boolean>),
@@ -21,5 +24,5 @@ export const useOpenSections = <K extends string>(moduleId: string, defaults: Re
     [update]
   );
 
-  return { open: value, toggle, closeAll };
+  return { open: value, toggle, set, closeAll };
 };

@@ -293,7 +293,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - le réglage du vent sur la carte : flèche tirée à la souris (90°), écrite au lâcher dans le brouillon, « Inverser », « Polaire », « Calculé », « Terminé » ;
   - à 390×844 : aucun débordement, « Régler » qui ouvre la carte en plein écran avec la boussole.
 
-  Les autres scripts ouvrent la rangée « avancé » d'office à chaque page (`Page.addScriptToEvaluateOnNewDocument`) : seul celui-ci l'éprouve fermée.
+  Les autres scripts ouvrent la rangée « avancé » d'office à chaque page et à chaque session neuve, « général » rouvert avec elle (`Page.addScriptToEvaluateOnNewDocument`, un observateur du bouton « avancé ») : seul celui-ci l'éprouve fermée. Il vérifie aussi qu'ouvrir « avancé » ferme « général » et que le refermer le rouvre, qu'une session neuve s'ouvre sur « général » seul, et que la même session rouverte après une autre page garde son état (23/10).
 - `glisser.mjs <port> [<dossier des captures>]` : le bouton glissant qu'on fait glisser (demande du 22/10), sur le Profil (période) et les Statistiques (famille), sur un profil neuf, sans réseau ni session, à 390×844 en écran tactile puis sur ordinateur. Il vérifie :
   - à la souris, la case tenue sur le choix en cours et glissée de deux crans : elle suit le pointeur, le choix sous elle s'allume, rien n'est choisi avant le lâcher, qui prend le choix sous la case ;
   - au doigt, la même chose dans l'autre sens, sans que la page défile de côté ;

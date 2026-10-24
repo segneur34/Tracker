@@ -260,7 +260,7 @@ function SailingModule() {
   const setNotes = draft.updateNotes;
   /** Support sur foil de la session : le sien s'il est réglé, sinon celui de l'activité. */
   const foil = edits.foil ?? activityFoil;
-  const { open: storedOpen, toggle } = useOpenSections<SailingPanel>('sailing-onglets', SAILING_PANEL_DEFAULTS);
+  const { open: storedOpen, toggle, set: setSections } = useOpenSections<SailingPanel>('sailing-onglets', SAILING_PANEL_DEFAULTS);
   /**
    * Graphes de l'onglet « graphiques » dépliés, chacun replié à part par son
    * titre pour ne comparer que ceux qui restent ouverts (16/10). Replié, un
@@ -279,7 +279,8 @@ function SailingModule() {
     </div>
   );
   /** Rangée « avancé » : refermée, ses onglets et leurs panneaux se replient, mémorisés pour sa réouverture. */
-  const advanced = useAdvancedTabs();
+  const setGeneral = useCallback((shown: boolean) => setSections({ general: shown }), [setSections]);
+  const advanced = useAdvancedTabs(sessionKey, setGeneral);
   const open = useMemo(() => maskAdvancedTabs(maskHiddenTabs(storedOpen, SAILING_TABS, tabChoices), SAILING_TABS, advanced.open), [storedOpen, tabChoices, advanced.open]);
   /** Une seule surbrillance sur la carte, effacée quand son onglet se ferme (`useMapHighlight`). */
   const highlight = useMapHighlight(open);
