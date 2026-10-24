@@ -14,8 +14,8 @@ describe('analysisTabs : onglets proposés par calcul', () => {
   });
 
   it('course et vélo : la même barre, sans « sauts » en fractionné', () => {
-    expect(keys(analysisTabs(SPORT_PROFILES.running))).toEqual(keys(LAND_TABS.course).filter((k) => k !== 'fractionne'));
-    expect(keys(analysisTabs(SPORT_PROFILES.cycling))).toEqual(keys(LAND_TABS.velo).filter((k) => k !== 'fractionne'));
+    expect(keys(analysisTabs(SPORT_PROFILES.running))).toEqual(keys(LAND_TABS.course).filter((k) => k !== 'fractionne' && k !== 'test'));
+    expect(keys(analysisTabs(SPORT_PROFILES.cycling))).toEqual(keys(LAND_TABS.velo).filter((k) => k !== 'fractionne' && k !== 'test'));
     expect(keys(analysisTabs(SPORT_PROFILES['run-intervals']))).not.toContain('sauts');
     expect(keys(analysisTabs(SPORT_PROFILES['bike-intervals']))).not.toContain('sauts');
     expect(keys(analysisTabs(SPORT_PROFILES['run-intervals']))).toContain('fractionne');
@@ -28,9 +28,17 @@ describe('analysisTabs : onglets proposés par calcul', () => {
     expect(keys(analysisTabs(SPORT_PROFILES['bike-intervals']))).toContain('fractionne');
   });
 
+  it('« test » aux seuls calculs de test, sans « fractionné » ni « sauts » (24/10)', () => {
+    const testTabs = keys(analysisTabs(SPORT_PROFILES['run-test']));
+    expect(testTabs).toContain('test');
+    expect(testTabs).not.toContain('fractionne');
+    expect(testTabs).not.toContain('sauts');
+    expect(keys(analysisTabs(SPORT_PROFILES['run-intervals']))).not.toContain('test');
+  });
+
   it('course et vélo : « graphiques » à la place des zones de pente, « cardio » derrière lui (16/10)', () => {
-    expect(keys(LAND_TABS.course)).toEqual(['general', 'fractionne', 'tops', 'graphiques', 'cardio', 'cadence', 'surface', 'energie', 'zones', 'sauts', 'notes', 'reglages']);
-    expect(keys(LAND_TABS.velo)).toEqual(['general', 'fractionne', 'tops', 'graphiques', 'cardio', 'surface', 'energie', 'zones', 'sauts', 'notes', 'reglages']);
+    expect(keys(LAND_TABS.course)).toEqual(['general', 'fractionne', 'test', 'tops', 'graphiques', 'cardio', 'cadence', 'surface', 'energie', 'zones', 'sauts', 'notes', 'reglages']);
+    expect(keys(LAND_TABS.velo)).toEqual(['general', 'fractionne', 'test', 'tops', 'graphiques', 'cardio', 'surface', 'energie', 'zones', 'sauts', 'notes', 'reglages']);
     expect(tab(LAND_TABS.course, 'graphiques').label).toBe('graphiques');
   });
 
@@ -149,9 +157,10 @@ describe('maskAdvancedTabs', () => {
   });
 
   it('« fractionné » est de la première rangée, comme « général »', () => {
-    const land = { general: true, fractionne: true, tops: false, zones: false, surface: false, energie: false, graphiques: true, cardio: false, cadence: false, sauts: false, notes: false, reglages: false };
+    const land = { general: true, fractionne: true, test: true, tops: false, zones: false, surface: false, energie: false, graphiques: true, cardio: false, cadence: false, sauts: false, notes: false, reglages: false };
     const masked = maskAdvancedTabs(land, LAND_TABS.course, false);
     expect(masked.fractionne).toBe(true);
+    expect(masked.test).toBe(true);
     expect(masked.graphiques).toBe(false);
   });
 

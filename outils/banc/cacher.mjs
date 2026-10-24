@@ -146,12 +146,12 @@ check('/surf s’ouvre toujours, et dit qu’il est caché', (await evaluate('do
 
 // --- 3. Dernière famille ---
 await go('/parametres');
-for (const f of ['Voile', 'À pied', 'Fractionné']) await click('.settings-eye', `Cacher ${f}`);
+for (const f of ['Voile', 'À pied', 'Entraînement']) await click('.settings-eye', `Cacher ${f}`);
 await wait(300);
 const lastDisabled = await evaluate(`[...document.querySelectorAll('.settings-eye')].find((b) => b.getAttribute('aria-label').startsWith('Vélo'))?.disabled`);
 check('le Vélo, dernière famille visible, ne se cache pas', lastDisabled === true);
 await shoot('cacher-derniere');
-for (const f of ['Voile', 'À pied', 'Fractionné']) await click('.settings-eye', `Afficher ${f}`);
+for (const f of ['Voile', 'À pied', 'Entraînement']) await click('.settings-eye', `Afficher ${f}`);
 
 // --- 4. Tout ré-affiché ---
 check('œil « Afficher Surf »', await click('.settings-eye', 'Afficher Surf'));

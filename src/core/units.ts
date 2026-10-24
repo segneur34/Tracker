@@ -178,6 +178,12 @@ export const formatClock = (ms: number): string => {
 /** Joules par kilocalorie. */
 export const J_PER_KCAL = 4184;
 
+/** Durée en secondes au format `m:ss` (de 0 à 59 min), pour un décompte. */
+export const formatMinSec = (s: number): string => {
+  const total = Math.max(0, Math.round(s));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+};
+
 /** Heure locale `hh:mm:ss` d'un instant, pour désigner un moment de la session. */
 export const formatTimeOfDay = (ms: number): string => {
   const date = new Date(ms);

@@ -49,6 +49,7 @@ const BASE_ICON: Record<SportType, ActivityIconId> = {
   cycling: 'route',
   'run-intervals': 'fractionne-pied',
   'bike-intervals': 'fractionne-velo',
+  'run-test': 'fractionne-pied',
   surf: 'surf',
 };
 

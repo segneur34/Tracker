@@ -1,0 +1,263 @@
+/* Pages de la famille Entraînement (24/10) : tuiles de la page de la famille, séances du compteur. */
+
+/* Tuiles sous le bandeau : une carte blanche par type d'entraînement, qui mène à sa page. */
+.train-hub {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: var(--space-3);
+}
+
+.train-tile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 64px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.train-tile__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-pill);
+  background: var(--fractionne);
+  color: var(--on-accent);
+}
+
+.train-tile__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.train-tile__title {
+  font-family: var(--font-title);
+  font-size: var(--text-l);
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-spacing);
+  text-transform: uppercase;
+}
+
+.train-tile__sub {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.train-tile__go {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+/* Page Fractionné : les séances du compteur. */
+.train-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.train-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.train-editor__name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.train-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.train-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.train-item__text {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.train-item__name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.train-item__detail {
+  color: var(--muted);
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+}
+
+.train-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Page d'un test (FC max) : déroulé, bips, graphique annoté, réglages. */
+.fit-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding-left: 1.4em;
+}
+
+.fit-beeps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.fit-beeps li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.fit-beeps__sound {
+  min-width: 11rem;
+  font-weight: 700;
+}
+
+.fit-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fit-settings__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.fit-plan {
+  margin: 0;
+  min-width: 0;
+}
+
+.fit-plan__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.fit-plan__legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.fit-plan__key {
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.fit-plan__key--dash {
+  height: 0;
+  border-top: 2px dashed;
+  border-radius: 0;
+}
+
+.fit-plan__note {
+  flex-basis: 100%;
+  font-style: italic;
+}
+
+/* Page du test de FC repos : le décompte, la FC en direct, le résultat. */
+.rest-belt {
+  margin: 0 0 var(--space-3);
+}
+
+.rest-belt__bpm {
+  font-variant-numeric: tabular-nums;
+}
+
+.rest-live {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.rest-count {
+  margin: 0;
+  font-size: var(--text-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rest-live__bpm {
+  margin: 0;
+  font-size: var(--text-l);
+  font-variant-numeric: tabular-nums;
+}
+
+.rest-result {
+  margin: 0;
+  font-size: var(--text-l);
+}
+
+.rest-result__bpm {
+  font-size: var(--text-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.rest-actions {
+  margin-top: var(--space-3);
+}
+
+.rest-chart {
+  margin: var(--space-2) 0;
+  min-width: 0;
+}
+
+.rest-history__item {
+  align-items: flex-start;
+}
+
+.rest-history__chart {
+  flex-basis: 100%;
+  min-width: 0;
+}

@@ -284,7 +284,7 @@ export const LAND_PAGES: Record<LandFamily, LandPageConfig> = {
   fractionne: {
     family: 'fractionne',
     title: 'Analyse fractionné',
-    backLabel: 'Sessions fractionné',
+    backLabel: 'Entraînement',
     accent: 'var(--fractionne)',
     storageId: 'intervals',
   },

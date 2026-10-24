@@ -13,7 +13,7 @@ import { startRecordingNotification } from './hooks/recordingNotification';
 import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { openLibrary, settingsUpgraded, startLibraryUi } from './hooks/useSessionLibrary';
-import { upgradeStoredActivities, upgradeStoredPresets } from './hooks/useSportSettings';
+import { startBeepSound, upgradeStoredActivities, upgradeStoredPresets } from './hooks/useSportSettings';
 import { installBackButton } from './platform/backButton';
 import { initStorage } from './platform/storage';
 
@@ -55,4 +55,6 @@ void initStorage()
     startLiveRecording();
     // Notification de l'enregistrement, écran verrouillé : chiffres choisis dans Réglages.
     startRecordingNotification();
+    // Son de tous les bips (grave à très aigu), choisi dans Réglages.
+    startBeepSound();
   });

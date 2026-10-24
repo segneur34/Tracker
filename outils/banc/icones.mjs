@@ -104,7 +104,7 @@ await wait(8000);
 // 1. Accueil.
 await go('/');
 const homeLabels = await evaluate(`[...document.querySelectorAll('.home-family__name')].map((s) => s.textContent)`);
-check('accueil : noms des familles', JSON.stringify(homeLabels) === JSON.stringify(['Voile', 'À pied', 'Vélo', 'Surf', 'Fractionné']), JSON.stringify(homeLabels));
+check('accueil : noms des familles', JSON.stringify(homeLabels) === JSON.stringify(['Voile', 'À pied', 'Vélo', 'Surf', 'Entraînement']), JSON.stringify(homeLabels));
 check('accueil : pas de petites icônes', (await evaluate(`document.querySelectorAll('.home-family__acts').length`)) === 0);
 await shoot('icones-accueil');
 

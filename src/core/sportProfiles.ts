@@ -631,6 +631,10 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
   'bike-intervals': {
     ...CYCLING_PROFILE, id: 'bike-intervals', label: 'Fractionné vélo', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING, jumps: null,
   },
+  // Tests guidés à pied (FC max, 24/10) : la course sans pause automatique, ni planification, ni sauts, ni répétitions.
+  'run-test': {
+    ...RUNNING_PROFILE, id: 'run-test', label: 'Test à pied', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING, jumps: null, intervals: null,
+  },
   surf: SURF_PROFILE,
 };
 
@@ -669,8 +673,8 @@ export const isLandTreatment = (treatment: Treatment): boolean => treatment === 
 /**
  * Famille d'un calcul : où ses sessions se rangent (bibliothèque, accueil,
  * barre de navigation, listes d'activités, Réglages). Une famille de
- * traitement porte son nom ; « Fractionné » range des calculs traités à pied
- * ou à vélo (§10, point 89).
+ * traitement porte son nom ; `fractionne`, nommée « Entraînement » depuis le
+ * 24/10, range des calculs traités à pied ou à vélo (§10, point 89).
  */
 export type SportFamily = Treatment | 'fractionne';
 
@@ -686,6 +690,7 @@ const SPORT_TREATMENT: Record<SportType, Treatment> = {
   cycling: 'velo',
   'run-intervals': 'course',
   'bike-intervals': 'velo',
+  'run-test': 'course',
   surf: 'surf',
 };
 
@@ -693,11 +698,36 @@ const SPORT_FAMILY: Record<SportType, SportFamily> = {
   ...SPORT_TREATMENT,
   'run-intervals': 'fractionne',
   'bike-intervals': 'fractionne',
+  'run-test': 'fractionne',
 };
 
 export const sportTreatment = (sport: SportType): Treatment => SPORT_TREATMENT[sport];
 
 export const sportFamily = (sport: SportType): SportFamily => SPORT_FAMILY[sport];
+
+/**
+ * Calcul du fractionné, à pied ou à vélo : le seul de la famille Entraînement
+ * à avoir l'onglet « fractionné », la détection des répétitions et le compteur
+ * proposé d'office (24/10).
+ */
+export const isIntervalSport = (sport: SportType): boolean => sport === 'run-intervals' || sport === 'bike-intervals';
+
+/**
+ * Type d'entraînement d'un calcul de la famille Entraînement (24/10) : la
+ * rangée « Fractionné · Tests · Muscu » d'Enregistrer, au-dessus des
+ * activités du type (à pied, vélo). `null` hors de la famille.
+ */
+export type TrainingKind = 'fractionne' | 'tests' | 'muscu';
+
+export const TRAINING_KINDS: readonly TrainingKind[] = ['fractionne', 'tests', 'muscu'];
+
+export const TRAINING_KIND_LABEL: Record<TrainingKind, string> = { fractionne: 'Fractionné', tests: 'Tests', muscu: 'Muscu' };
+
+export const trainingKind = (sport: SportType): TrainingKind | null =>
+  isIntervalSport(sport) ? 'fractionne' : sport === 'run-test' ? 'tests' : null;
+
+/** Calcul d'un test guidé (`recording/fitnessTest.ts`) : la rangée « Test » d'Enregistrer, l'onglet « test » de l'analyse. */
+export const isTestSport = (sport: SportType): boolean => trainingKind(sport) === 'tests';
 
 /**
  * Famille qui navigue sur un parcours de balises (voile, surf) : itinéraire

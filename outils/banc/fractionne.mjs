@@ -111,7 +111,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, de
 
 // 1. Enregistrer, onglet Fractionné.
 await go('/enregistrer');
-console.log('onglet Fractionné :', await clickText('Fractionné'));
+console.log('famille Entraînement :', await clickText('Entraînement'));
 await wait(400);
 console.log('activités :', await evaluate(`[...document.querySelectorAll('[aria-label=Activité] button')].map((o) => o.textContent).join(', ')`));
 console.log('compteur :', await evaluate(`(document.querySelector('.ivl .ivl-switch__pick[aria-pressed=true]')?.textContent ?? '(absent)') + ' / ' + (document.querySelector('.ivl-summary')?.textContent ?? '')`));
@@ -126,7 +126,7 @@ await wait(200);
 console.log('nom :', await typeInto('Nom de la séance', 'Essai court'), '| Garder :', await clickText('Garder'));
 await wait(300);
 await go('/enregistrer');
-await clickText('Fractionné');
+await clickText('Entraînement');
 await wait(400);
 console.log('après rechargement, séances gardées :', await evaluate(`[...document.querySelectorAll('.ivl-preset__pick')].map((b) => b.innerText.replace(/\\n/g, ' ') + (b.getAttribute('aria-pressed') === 'true' ? ' (choisie)' : '')).join(' ; ')`));
 console.log('choisir « Essai court » :', await clickText('Essai court', '.ivl-preset__pick'));
@@ -182,7 +182,7 @@ for (let k = 0; k <= 45; k++) {
 }
 const replayPath = `${workDir}\\fractionne-rejeu.gpx`;
 writeFileSync(replayPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Rejeu</name><type>run-intervals</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`);
-console.log('onglet Fractionné :', await clickText('Fractionné'));
+console.log('famille Entraînement :', await clickText('Entraînement'));
 await wait(300);
 await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click(); 'ok'`);
 await wait(300);
@@ -288,7 +288,7 @@ await setSelect('Famille', 'fractionne');
 await wait(200);
 console.log('ajout, calculs du fractionné :', await evaluate(`[...document.querySelectorAll('.settings-add select')].map((s) => [...s.options].map((o) => o.textContent).join('/')).join(' | ')`));
 await go('/');
-console.log('accueil :', await evaluate(`[...document.querySelectorAll('.shell-main a')].map((a) => a.innerText.split('\\n')[0]).filter((t) => /Voile|Course|Vélo|Fractionné/.test(t)).join(', ')`),
+console.log('accueil :', await evaluate(`[...document.querySelectorAll('.home-family__name')].map((n) => n.textContent).join(', ')`),
   '| barre :', await evaluate(`[...document.querySelectorAll('.shell-toplink')].map((a) => a.textContent).join(', ')`));
 await go('/itineraires', 4000);
 await evaluate(`document.querySelector('.plan-toolbar button.ui-field, .plan-toolbar .activity-select button')?.click(); 'ok'`);
@@ -299,7 +299,7 @@ console.log('planification, familles proposées :', await evaluate(`[...document
 // Téléphone : la carte du compteur et l'analyse à 390 × 844.
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go('/enregistrer');
-await clickText('Fractionné');
+await clickText('Entraînement');
 await wait(400);
 await shoot('fractionne-telephone-compteur');
 console.log('largeur au téléphone :', await evaluate('document.documentElement.scrollWidth'));

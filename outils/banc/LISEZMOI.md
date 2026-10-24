@@ -4,7 +4,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 
 ## Mise en place
 
-1. Un serveur, sur un port à part pour ne pas gêner celui de l'utilisateur : `npx vite --port 4190 --strictPort --host 127.0.0.1` (ou le build : `npx vite preview --port 4199 --strictPort --host 127.0.0.1`). Chaque script lit `BASE` (par exemple `BASE=http://127.0.0.1:4190`).
+1. Un serveur, sur un port à part pour ne pas gêner celui de l'utilisateur : `npx vite --port 4191 --strictPort --host 127.0.0.1` (4190 est refusé par Chrome et Node, « bad port » ; ou le build : `npx vite preview --port 4199 --strictPort --host 127.0.0.1`). Chaque script lit `BASE` (par exemple `BASE=http://127.0.0.1:4191`).
 2. Un Chrome sans fenêtre, sur un **profil neuf** (mémoire du navigateur vide) :
    `"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --remote-debugging-port=9400 --user-data-dir=<dossier de brouillon>/chrome-profil --window-size=1400,1000 --no-first-run about:blank`, en arrière-plan. On le ferme par `Browser.close` du protocole. Le Chrome de l'utilisateur n'est pas touché.
 3. Les chemins de fichiers passés aux scripts sont au format Windows (`DOM.setFileInputFiles`). Sous Git Bash, préfixer par `MSYS_NO_PATHCONV=1`.
@@ -287,6 +287,18 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - un réglage du bateau fait après la mise à jour, qui reste au rechargement.
 
   Sur un profil déjà servi, le fichier de réglages du dossier mémoire reprend la place des valeurs écrites : il faut prendre un profil neuf à chaque passage.
+- `test-fcmax.mjs <port> [<dossier des captures>]` : test de FC max de l'Entraînement (lot B du chantier du 24/10, étape 2), sur un profil neuf, sans réseau, environ 40 s. Il vérifie :
+  - la tuile « Tests », la liste des tests, la page du protocole (déroulé, bips, graphique annoté à deux graphes, réglages) ; l'échauffement réglé à 3 min, retenu après rechargement ;
+  - « Lancer » : Enregistrer ouvert prêt (Entraînement › Tests › FC max), sans compteur, lien vers le protocole ; le type Fractionné rend le compteur ;
+  - à 390 et 320 px : les pages sans débordement.
+- `test-fcrepos.mjs <port> [<dossier des captures>]` : test de FC repos de l'Entraînement (24/10), sur un profil neuf, sans réseau, environ 35 s. Pas de ceinture dans le navigateur : la page joue la FC d'exemple de `exampleRestingHr`, à ×1 puis à ×30 (`?vitesse=30`). Il vérifie :
+  - la tuile « FC repos » dans Tests, la page (déroulé, sans GPS) ;
+  - à ×1 : le décompte de préparation, la mesure (courbe qui se remplit, FC lue, un bip court), « Annuler » qui ne garde rien ;
+  - à ×30 : un bip court et un long, la moyenne de 10 s la plus basse et sa fenêtre, **comparées à un calcul refait dans le script** sur la même FC, la courbe de 180 secondes (axe 0:00 à 3:00, fenêtre surlignée), le test gardé (`tracker.restingHr`) ;
+  - « La retenir » (FC repos de Pratiquant), « Refaire », « Vos tests » avec sa courbe, « Retirer » ;
+  - à 390 et 320 px : les pages sans débordement.
+
+  `innerText` rend les titres et boutons en capitales : les contrôles de texte sont insensibles à la casse. La ceinture elle-même (prise à l'ouverture de la page, bips écran allumé) ne se prouve qu'avec l'APK.
 - `general.mjs <port> [<dossier des captures>]` : onglet « général » complet et rangée « avancé » (demande du 22/10), sur un profil neuf, sans réseau, environ 1 min 30. Le script écrit lui-même une wing (la trace de `make-gpx.mjs`), une course et une sortie à vélo en côte, et la matinée de surf de `surf.mjs`, et les importe par la page. Il vérifie :
   - la première rangée « général · avancé », « avancé » fermé au départ, les chiffres du nouveau général dans chaque module (voile : distance en vol, manœuvres réussies, top 2 s et 100 m ; à pied et à vélo : meilleurs segments et profil d'altitude compact ; surf : chiffres réduits) ;
   - « avancé » qui déplie les onglets, puis, refermé, replie rangée et panneaux, rendus à la réouverture ; la flèche qui cache la barre sans toucher aux panneaux ;

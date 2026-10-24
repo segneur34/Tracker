@@ -12,6 +12,7 @@ import ImportButtons from '../components/ImportButtons';
 import MemoryStatus from '../components/MemoryStatus';
 import RefreshLibraryButton from '../components/RefreshLibraryButton';
 import RouteList from '../components/RouteList';
+import TrainingHub from '../components/TrainingHub';
 import { sessionColorTrack, sessionSpeedRange, type SessionColorTrack } from '../components/sessionTrack';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import Button from '../components/ui/Button';
@@ -40,7 +41,7 @@ import bannerVoile from '../assets/bandeaux/voile.webp';
 import './SessionLibrary.css';
 
 /**
- * Bibliothèque d'une famille : Voile, Course, Vélo, Fractionné, Surf. La liste des
+ * Bibliothèque d'une famille : Voile, À pied, Vélo, Surf, Entraînement (l'ancien Fractionné, 24/10). La liste des
  * sessions de la mémoire, filtrable par activité (`?activite=<id>` pour
  * arriver filtré, depuis l'accueil), les sessions à classer, l'import de GPX
  * ou d'un dossier entier, la suppression. La vue « Planifiées »
@@ -57,7 +58,7 @@ const FAMILY: Record<SportFamily, { title: string; accent: string; of: string; b
   voile: { title: 'Voile', accent: 'var(--voile)', of: 'de voile', banner: bannerVoile },
   course: { title: 'À pied', accent: 'var(--course)', of: 'à pied', banner: bannerCourse },
   velo: { title: 'Vélo', accent: 'var(--velo)', of: 'de vélo', banner: bannerVelo },
-  fractionne: { title: 'Fractionné', accent: 'var(--fractionne)', of: 'de fractionné', banner: bannerFractionne },
+  fractionne: { title: 'Entraînement', accent: 'var(--fractionne)', of: "d'entraînement", banner: bannerFractionne },
   surf: { title: 'Surf', accent: 'var(--surf)', of: 'de surf', banner: bannerSurf },
 };
 
@@ -423,6 +424,8 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       </header>
 
       <MemoryStatus compact />
+      {/* Entraînement : les types d'entraînement en tuiles, avant les sessions (24/10). */}
+      {family === 'fractionne' && <TrainingHub />}
       {helpOpen && (
         <p className="lib-hint">
           {native
@@ -485,7 +488,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       {!planned && unclassified.length > 0 && (
         <Card heading="À classer">
           <p className="lib-hint">
-            Traces dont l'activité n'est pas connue : choisissez-la pour les ranger en voile, en course, à vélo ou en fractionné. Ouvrir l'une d'elles la demande d'abord.
+            Traces dont l'activité n'est pas connue : choisissez-la pour les ranger en voile, à pied, à vélo, en surf ou en entraînement. Ouvrir l'une d'elles la demande d'abord.
           </p>
           <ul className="lib-list">{unclassified.map(row)}</ul>
         </Card>

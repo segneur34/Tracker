@@ -1,6 +1,7 @@
 package io.github.segneur.tracker;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioTrack;
@@ -19,6 +20,11 @@ import android.os.VibratorManager;
  * volume des alarmes. Les sons sont synthétisés une fois (sinus, fondus de
  * quelques millisecondes pour éviter les claquements), puis rejoués. Chaque
  * utilisateur a son instance, appelée depuis un seul fil.
+ *
+ * Leur hauteur se choisit dans Réglages (src/recording/beepSound.ts, 24/10) :
+ * gardée dans les préférences de l'application, elle vaut pour toutes les
+ * instances, celle du service du compteur comprise ; une instance refait ses
+ * sons au premier bip qui suit un changement.
  */
 final class TonePlayer {
 
@@ -30,32 +36,72 @@ final class TonePlayer {
     static final int SHORT_VIBRATION_MS = 80;
     static final int LONG_VIBRATION_MS = 600;
     static final int FINAL_VIBRATION_MS = 1300;
-    /** Hauteur des bips : vers 2 kHz, un haut-parleur de téléphone porte le mieux. */
-    private static final double TONE_HZ = 2000;
+    /** Hauteur des bips par défaut : vers 2 kHz, un haut-parleur de téléphone porte le mieux. */
+    static final int DEFAULT_PITCH_HZ = 2000;
+    private static final int MIN_PITCH_HZ = 300;
+    private static final int MAX_PITCH_HZ = 5000;
+    private static final String PREFS = "tracker.sons";
+    private static final String PREF_PITCH = "pitchHz";
     private static final int SAMPLE_RATE = 44100;
     private static final int FADE_MS = 5;
+
+    /** Hauteur choisie, en hertz ; -1 tant qu'elle n'a pas été lue des préférences. */
+    private static volatile int pitchHz = -1;
 
     private final Context context;
     private AudioTrack shortTone;
     private AudioTrack longTone;
     private AudioTrack finalTone;
+    /** Hauteur des sons synthétisés de cette instance. */
+    private int builtHz = 0;
 
     TonePlayer(Context context) {
         this.context = context.getApplicationContext();
     }
 
+    /** Hauteur de tous les bips, gardée pour les prochains lancements. */
+    static void setPitch(Context context, int hz) {
+        int clamped = Math.max(MIN_PITCH_HZ, Math.min(MAX_PITCH_HZ, hz));
+        pitchHz = clamped;
+        prefs(context).edit().putInt(PREF_PITCH, clamped).apply();
+    }
+
+    private static SharedPreferences prefs(Context context) {
+        return context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    private static int pitch(Context context) {
+        int hz = pitchHz;
+        if (hz < 0) {
+            hz = prefs(context).getInt(PREF_PITCH, DEFAULT_PITCH_HZ);
+            pitchHz = hz;
+        }
+        return hz;
+    }
+
+    /** Sons refaits si la hauteur a changé depuis leur synthèse. */
+    private void ensurePitch() {
+        int hz = pitch(context);
+        if (hz == builtHz) return;
+        release();
+        builtHz = hz;
+    }
+
     void playShort(boolean vibrate) {
-        if (shortTone == null) shortTone = buildTone(SHORT_MS);
+        ensurePitch();
+        if (shortTone == null) shortTone = buildTone(SHORT_MS, builtHz);
         play(shortTone, vibrate ? SHORT_VIBRATION_MS : 0);
     }
 
     void playLong(boolean vibrate) {
-        if (longTone == null) longTone = buildTone(LONG_MS);
+        ensurePitch();
+        if (longTone == null) longTone = buildTone(LONG_MS, builtHz);
         play(longTone, vibrate ? LONG_VIBRATION_MS : 0);
     }
 
     void playFinal(boolean vibrate) {
-        if (finalTone == null) finalTone = buildTone(FINAL_MS);
+        ensurePitch();
+        if (finalTone == null) finalTone = buildTone(FINAL_MS, builtHz);
         play(finalTone, vibrate ? FINAL_VIBRATION_MS : 0);
     }
 
@@ -68,14 +114,14 @@ final class TonePlayer {
         finalTone = null;
     }
 
-    /** Sinus de `durationMs`, fondu à l'entrée et à la sortie, prêt à être rejoué. */
-    private static AudioTrack buildTone(int durationMs) {
+    /** Sinus de `durationMs` à `hz`, fondu à l'entrée et à la sortie, prêt à être rejoué. */
+    private static AudioTrack buildTone(int durationMs, int hz) {
         int n = SAMPLE_RATE * durationMs / 1000;
         int fade = SAMPLE_RATE * FADE_MS / 1000;
         short[] pcm = new short[n];
         for (int i = 0; i < n; i++) {
             double envelope = Math.min(1.0, Math.min(i, n - 1 - i) / (double) fade);
-            pcm[i] = (short) (Math.sin(2 * Math.PI * TONE_HZ * i / SAMPLE_RATE) * envelope * Short.MAX_VALUE * 0.9);
+            pcm[i] = (short) (Math.sin(2 * Math.PI * hz * i / SAMPLE_RATE) * envelope * Short.MAX_VALUE * 0.9);
         }
         AudioTrack track = new AudioTrack.Builder()
             .setAudioAttributes(

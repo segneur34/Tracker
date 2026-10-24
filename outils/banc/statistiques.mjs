@@ -161,7 +161,7 @@ await evaluate(`${selection}.click()`);
 await wait(400);
 await go('/statistiques');
 check('« Sélection » ouvert, retenu après rechargement', (await evaluate(`${selection}?.getAttribute('aria-expanded')`)) === 'true');
-check('rangée des familles', (await chips('Famille')) === 'Tout, À pied, Vélo, Voile, Fractionné, Surf' || (await chips('Famille'))?.startsWith('Tout, '), await chips('Famille'));
+check('rangée des familles', (await chips('Famille')) === 'Tout, À pied, Vélo, Voile, Entraînement, Surf' || (await chips('Famille'))?.startsWith('Tout, '), await chips('Famille'));
 check('« Tout » choisi, pas de rangée d\'activités', (await pressed('Famille')) === 'Tout' && (await chips('Activité')) === '', `${await pressed('Famille')} ; ${await chips('Activité')}`);
 check('rangée des périodes, « Tout » choisi', (await chips('Période')) === 'Semaine, 30 jours, 6 mois, Année, Tout' && (await pressed('Période')) === 'Tout', await chips('Période'));
 check('case blanche sous le choix', await evaluate(`(() => {
@@ -189,7 +189,7 @@ check('onglets de la vue d\'ensemble', (await tabs()) === 'général, graphique,
 check('graphique de la vue d\'ensemble : la durée seule, sans pastilles', (await chips('Donnée')) === '' && (await points()) === 12 && (await yLabel()) === 'min',
   `${await chips('Donnée')} ; ${await points()} ; ${await yLabel()}`);
 const familyRows = await evaluate(`[...document.querySelectorAll('.stats-rows .stats-row__name')].map((e) => e.textContent).join(', ')`);
-check('une ligne par famille', familyRows === 'À pied, Vélo, Voile, Fractionné, Surf' || familyRows?.split(', ').length === 5, familyRows);
+check('une ligne par famille', familyRows === 'À pied, Vélo, Voile, Entraînement, Surf' || familyRows?.split(', ').length === 5, familyRows);
 check('pas de distance mêlée', (await stat('Distance')) === null);
 check('régularité', (await stat('Semaines actives')) !== null && (await evaluate(`!!document.querySelector('.recharts-bar')`)));
 await shoot('stats-ensemble');
@@ -220,10 +220,10 @@ await evaluate('history.back()');
 await wait(1000);
 check('retour arrière : vue d\'ensemble', (await search()) === '/statistiques' && (await stat('Sessions')) === '12', `${await search()} ; ${await stat('Sessions')}`);
 
-await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Fractionné');
+await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Entraînement');
 await wait(800);
 check('Fractionné : fond de la famille', (await backdrop()) === 'page-backdrop page-backdrop--fractionne', await backdrop());
-check('activités du fractionné', (await chips('Activité')) === 'Toutes, Fractionné à pied, Fractionné vélo', await chips('Activité'));
+check('activités du fractionné', (await chips('Activité')) === 'Toutes, Fractionné à pied, Fractionné vélo, Tests', await chips('Activité'));
 await click('.ui-segmented[aria-label="Activité"] [role=radio]', 'Fractionné vélo');
 await wait(800);
 check('Fractionné vélo : 1 session', (await stat('Sessions')) === '1' && (await search())?.includes('activite='), `${await stat('Sessions')} ; ${await search()}`);

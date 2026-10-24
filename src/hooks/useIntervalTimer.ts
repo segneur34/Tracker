@@ -109,7 +109,7 @@ const reschedule = (announce: boolean): void => {
     const lastToneMs = tones.reduce((m, t) => Math.max(m, t.delayMs), 0);
     clock.schedule({ tones, cues, stopAfterMs: lastToneMs + END_GRACE_MS }, VIBRATE).catch(onError);
   } else if (state.status === 'paused' && state.phase) {
-    const title = `En pause · ${phaseName(state.phase, run.workout.reps)}`;
+    const title = `En pause · ${phaseName(state.phase)}`;
     clock.schedule({ tones: [], cues: [{ delayMs: 0, title, phaseMs: 0 }], stopAfterMs: 0 }, VIBRATE).catch(onError);
   } else {
     clock.stop().catch(onError);

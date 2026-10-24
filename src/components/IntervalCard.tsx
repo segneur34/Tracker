@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import { IconPause, IconPlay } from './icons';
@@ -11,58 +12,30 @@ import {
 } from '../hooks/useStopwatch';
 import { removeIntervalPreset, saveIntervalPreset, useIntervalSettings } from '../hooks/useSportSettings';
 import {
-  INTERVAL_LEAD_IN_S, INTERVAL_LIMITS, MAX_INTERVAL_PRESETS, formatIntervalClock, phaseName, sameWorkout, sanitizeWorkout, workoutDurationS, workoutLabel,
-  type IntervalWorkout,
+  INTERVAL_LEAD_IN_S, MAX_INTERVAL_PRESETS, formatIntervalClock, phaseName, sameWorkout, workoutBlocks, workoutDurationS, workoutFromBlocks, workoutLabel,
+  type IntervalBlock,
 } from '../recording/intervalTimer';
 import { formatStopwatch, type StopwatchState } from '../recording/stopwatch';
+import WorkoutBlocksEditor from './WorkoutBlocksEditor';
 import './IntervalCard.css';
 
 /**
  * Compteur du fractionné, sur la page Enregistrer (§10, point 89) : la
- * séance (répétitions, travail, repos), les séances gardées, « Lancer le
- * compteur », puis la phase en cours en grand et ses commandes. Il vit à côté
+ * séance, bloc par bloc (`WorkoutBlocksEditor`), les séances gardées
+ * (gérées aussi sur la page Séances), « Lancer le compteur », puis la phase
+ * en cours en grand et ses commandes. Il vit à côté
  * de l'enregistrement sans en dépendre : lancé avant, pendant ou sans lui.
  * Une bascule montre à sa place le chronomètre libre (`useStopwatch`).
  */
 
-const range = (from: number, to: number, step = 1): number[] =>
-  Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
-
-const REPS = range(INTERVAL_LIMITS.reps.min, INTERVAL_LIMITS.reps.max);
-const MINUTES = range(0, Math.floor(INTERVAL_LIMITS.workS.max / 60));
-/** Secondes proposées, de 5 en 5 : la précision d'une séance de fractionné. */
-const SECONDS = range(0, 55, 5);
-
-/** Une durée en minutes et secondes, deux listes. */
-function DurationField({ label, seconds, onChange }: { label: string; seconds: number; onChange: (s: number) => void }) {
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-  // Une valeur gardée hors du pas de 5 s reste proposée telle quelle.
-  const secondChoices = SECONDS.includes(rest) ? SECONDS : [...SECONDS, rest].sort((a, b) => a - b);
-  return (
-    <div className="ivl-field">
-      <span className="ui-eyebrow">{label}</span>
-      <span className="ivl-field__pair">
-        <select value={minutes} aria-label={`${label}, minutes`} className="ui-field" onChange={(e) => onChange(Number(e.target.value) * 60 + rest)}>
-          {MINUTES.map((m) => <option key={m} value={m}>{m} min</option>)}
-        </select>
-        <select value={rest} aria-label={`${label}, secondes`} className="ui-field" onChange={(e) => onChange(minutes * 60 + Number(e.target.value))}>
-          {secondChoices.map((s) => <option key={s} value={s}>{String(s).padStart(2, '0')} s</option>)}
-        </select>
-      </span>
-    </div>
-  );
-}
-
 /** Choix de la séance, séances gardées, lancement. */
 function WorkoutEditor({ recording }: { recording: boolean }) {
   const { presets, last } = useIntervalSettings();
-  const [workout, setWorkout] = useState<IntervalWorkout>(last);
+  const [blocks, setBlocks] = useState<IntervalBlock[]>(() => workoutBlocks(last));
   const [naming, setNaming] = useState<string | null>(null);
-  const valid = sanitizeWorkout(workout) !== null;
-  const set = (patch: Partial<IntervalWorkout>) => setWorkout((w) => ({ ...w, ...patch }));
+  const workout = workoutFromBlocks(blocks);
   const save = () => {
-    if (naming === null || !valid) return;
+    if (naming === null || !workout) return;
     saveIntervalPreset(naming, workout);
     setNaming(null);
   };
@@ -76,8 +49,8 @@ function WorkoutEditor({ recording }: { recording: boolean }) {
         <div className="ivl-presets" aria-label="Séances gardées">
           {presets.map((p) => (
             <span key={p.id} className="ivl-preset">
-              <button type="button" className="ivl-preset__pick" aria-pressed={sameWorkout(p.workout, workout)} onClick={() => setWorkout(p.workout)}
-                title={workoutLabel(p.workout)}>
+              <button type="button" className="ivl-preset__pick" aria-pressed={workout !== null && sameWorkout(p.workout, workout)}
+                onClick={() => setBlocks(workoutBlocks(p.workout))} title={workoutLabel(p.workout)}>
                 {p.name}
                 {p.name !== workoutLabel(p.workout) && <span className="ivl-preset__detail">{workoutLabel(p.workout)}</span>}
               </button>
@@ -86,42 +59,29 @@ function WorkoutEditor({ recording }: { recording: boolean }) {
           ))}
         </div>
       )}
-      <div className="ivl-fields">
-        <div className="ivl-field">
-          <span className="ui-eyebrow">Répétitions</span>
-          <select value={workout.reps} aria-label="Répétitions" className="ui-field" onChange={(e) => set({ reps: Number(e.target.value) })}>
-            {REPS.map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </div>
-        <DurationField label="Travail" seconds={workout.workS} onChange={(workS) => set({ workS })} />
-        <DurationField label="Repos" seconds={workout.restS} onChange={(restS) => set({ restS })} />
-      </div>
-      <p className="ivl-summary">
-        {valid
-          ? <>{workoutLabel(workout)} · {formatIntervalClock(workoutDurationS(workout))} en tout</>
-          : `Travail de ${INTERVAL_LIMITS.workS.min} s à ${INTERVAL_LIMITS.workS.max / 60} min, repos de ${INTERVAL_LIMITS.restS.max / 60} min au plus.`}
-      </p>
+      <WorkoutBlocksEditor blocks={blocks} onChange={setBlocks} />
       {naming !== null ? (
         <div className="ivl-actions">
-          <input value={naming} maxLength={40} autoFocus placeholder={workoutLabel(workout)} aria-label="Nom de la séance"
+          <input value={naming} maxLength={40} autoFocus placeholder={workout ? workoutLabel(workout) : ''} aria-label="Nom de la séance"
             className="ui-field ivl-name" onChange={(e) => setNaming(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setNaming(null); }} />
-          <Button onClick={save} disabled={!valid}>Garder</Button>
+          <Button onClick={save} disabled={!workout}>Garder</Button>
           <Button variant="ghost" onClick={() => setNaming(null)}>Annuler</Button>
         </div>
       ) : (
         <div className="ivl-actions">
-          <Button variant="primary" size="l" className="ivl-launch" disabled={!valid} onClick={() => startIntervals(workout)}>
+          <Button variant="primary" size="l" className="ivl-launch" disabled={!workout} onClick={() => workout && startIntervals(workout)}>
             <IconPlay size={20} />
             Lancer le compteur
           </Button>
-          <Button onClick={() => setNaming('')} disabled={!valid || presets.length >= MAX_INTERVAL_PRESETS}>Garder cette séance</Button>
+          <Button onClick={() => setNaming('')} disabled={!workout || presets.length >= MAX_INTERVAL_PRESETS}>Garder cette séance</Button>
         </div>
       )}
       <p className="ivl-note">
         {recording
-          ? 'Les répétitions faites pendant l\'enregistrement sont rangées avec la session.'
+          ? "Les répétitions faites pendant l'enregistrement sont rangées avec la session."
           : 'Le compteur tourne seul ou avec un enregistrement, lancé avant ou après lui.'}
+        {' '}<Link to="/fractionne/seances">Gérer les séances</Link>
       </p>
     </>
   );
@@ -133,7 +93,6 @@ function CounterView({ recording, timer }: { recording: boolean; timer: Interval
 
   if (!run || !state) return <WorkoutEditor recording={recording} />;
 
-  const reps = run.workout.reps;
   if (state.status === 'finished' || state.status === 'stopped') {
     return (
       <>
@@ -157,7 +116,7 @@ function CounterView({ recording, timer }: { recording: boolean; timer: Interval
   return (
     <>
       <div className="ivl-live" aria-live="polite">
-        <span className="ivl-live__phase">{phaseName(phase, reps)}{paused ? ' · en pause' : ''}</span>
+        <span className="ivl-live__phase">{phaseName(phase)}{paused ? ' · en pause' : ''}</span>
         <span className="ivl-live__clock num">{formatIntervalClock(state.remainingMs / 1000)}</span>
         <span className="ivl-live__bar" aria-hidden="true"><span style={{ width: `${Math.round(done * 100)}%` }} /></span>
         <span className="ivl-live__left">{workoutLabel(run.workout)} · reste {formatIntervalClock(leftS)}</span>
@@ -248,7 +207,7 @@ function IntervalCard({ recording }: { recording: boolean }) {
   const [shown, setShown] = useState<CardView>(() => (chrono && !timer.run ? 'chrono' : 'compteur'));
 
   const counterBadge = shown === 'chrono' && counterLive && timer.run && timer.state?.phase
-    ? phaseName(timer.state.phase, timer.run.workout.reps) : null;
+    ? phaseName(timer.state.phase) : null;
   const chronoBadge = shown === 'compteur' && chrono
     ? `${formatStopwatch(chrono.elapsedMs)}${chrono.status === 'paused' ? ' · arrêt' : ''}` : null;
   const phaseClass = shown === 'compteur' && counterLive && timer.state?.phase ? ` ivl--${timer.state.phase.kind}` : '';

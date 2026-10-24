@@ -59,7 +59,7 @@ for (const [width, height, mobile] of [[390, 844, true], [1400, 1000, false]]) {
 
   // 1. Enregistrer, Fractionné : la bascule.
   await go('/enregistrer');
-  console.log('onglet Fractionné :', await clickText('Fractionné'));
+  console.log('famille Entraînement :', await clickText('Entraînement'));
   await wait(300);
   console.log('bascule :', await evaluate(`[...document.querySelectorAll('.ivl-switch__pick')].map((b) => b.textContent + (b.getAttribute('aria-pressed') === 'true' ? ' (choisi)' : '')).join(' | ')`));
   console.log('Chrono :', await clickText('Chrono', '.ivl-switch__pick'));

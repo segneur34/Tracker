@@ -27,7 +27,7 @@ export interface LiveNotificationInput {
   /** Premier point de la session, en ms ; `null` avant lui. */
   startedAtMs: number | null;
   /** Séance du compteur qui court ou attend en pause, avec son nombre de répétitions ; `null` sinon. */
-  interval: { state: IntervalTimerState; reps: number } | null;
+  interval: { state: IntervalTimerState } | null;
   /** Instant présent, en ms. */
   nowMs: number;
 }
@@ -44,7 +44,7 @@ export const liveNotification = ({
   const counterRunning = phase !== null && interval?.state.status === 'running';
 
   const titleParts = [activityName];
-  if (phase && interval) titleParts.push(interval.state.status === 'paused' ? `${phaseName(phase, interval.reps)} en pause` : phaseName(phase, interval.reps));
+  if (phase && interval) titleParts.push(interval.state.status === 'paused' ? `${phaseName(phase)} en pause` : phaseName(phase));
   if (paused === 'manual') titleParts.push(`en pause ${formatClock(context.durationMs)}`);
   else if (paused === 'auto') titleParts.push('pause auto');
 

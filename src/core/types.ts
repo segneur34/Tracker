@@ -13,7 +13,7 @@
  * L'identifiant va dans le `<type>` du GPX enregistré et dans le nom de son fichier.
  */
 export type SportType =
-  | 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running' | 'cycling' | 'run-intervals' | 'bike-intervals' | 'surf';
+  | 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running' | 'cycling' | 'run-intervals' | 'bike-intervals' | 'run-test' | 'surf';
 
 /** Point brut tel que lu dans le fichier de trace, avant tout calcul. */
 export interface RawTrackPoint {

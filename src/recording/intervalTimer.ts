@@ -1,6 +1,9 @@
 /**
- * Compteur du fractionné (§10, point 89) : une séance de répétitions, chacune
- * un temps de travail suivi d'un temps de repos (aucun après la dernière).
+ * Compteur du fractionné (§10, point 89) : une séance faite de blocs, dans
+ * l'ordre. Un bloc de séries est une suite de répétitions, chacune un temps
+ * de travail suivi d'un temps de repos (aucun après la dernière) ; un bloc
+ * libre est une phase d'un seul tenant (échauffement, récupération, retour au
+ * calme), hors des répétitions.
  *
  * Il suit l'horloge, pas les positions GPS : il tourne avec ou sans
  * enregistrement. Tout se déduit de la séance, de l'instant de son lancement
@@ -12,6 +15,34 @@
  * « Passer » compris ; les instants, en millisecondes de l'horloge.
  */
 
+/** Bloc de répétitions : travail, repos, travail… sans repos après la dernière. */
+export interface IntervalSeriesBlock {
+  kind: 'series';
+  reps: number;
+  workS: number;
+  restS: number;
+}
+
+/** Nom d'un bloc libre. */
+export type IntervalFreeLabel = 'Échauffement' | 'Récupération' | 'Retour au calme';
+
+export const INTERVAL_FREE_LABELS: readonly IntervalFreeLabel[] = ['Échauffement', 'Récupération', 'Retour au calme'];
+
+/** Bloc libre : une seule phase, hors des répétitions. */
+export interface IntervalFreeBlock {
+  kind: 'libre';
+  label: IntervalFreeLabel;
+  durationS: number;
+}
+
+export type IntervalBlock = IntervalSeriesBlock | IntervalFreeBlock;
+
+/**
+ * Une séance. `reps`, `workS` et `restS` sont ceux de son premier bloc de
+ * séries : une séance d'un seul bloc n'a pas de `blocks`, comme avant les
+ * blocs (24/10), et une version d'avant lit encore le premier bloc d'une
+ * séance qui en a plusieurs.
+ */
 export interface IntervalWorkout {
   /** Nombre de répétitions. */
   reps: number;
@@ -19,6 +50,8 @@ export interface IntervalWorkout {
   workS: number;
   /** Temps de repos entre deux répétitions, en secondes ; 0 : aucun. */
   restS: number;
+  /** Les blocs, dans l'ordre, quand la séance n'est pas un seul bloc de séries. */
+  blocks?: IntervalBlock[];
 }
 
 /** Bornes de la saisie : des secondes entières. */
@@ -26,6 +59,10 @@ export const INTERVAL_LIMITS = {
   reps: { min: 1, max: 99 },
   workS: { min: 5, max: 3600 },
   restS: { min: 0, max: 3600 },
+  /** Durée d'un bloc libre. */
+  freeS: { min: 5, max: 3600 },
+  /** Blocs d'une séance. */
+  blocks: { min: 1, max: 20 },
 } as const;
 
 /** Séance proposée la première fois : 10 × 1 min, 1 min de repos. */
@@ -56,17 +93,68 @@ const TONE_GRACE_S = 0.25;
 const inRange = (value: unknown, range: { min: number; max: number }): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= range.min && value <= range.max;
 
-/** Séance lue du stockage ou d'une saisie ; `null` si elle n'en est pas une. */
-export const sanitizeWorkout = (value: unknown): IntervalWorkout | null => {
-  if (typeof value !== 'object' || value === null) return null;
-  const { reps, workS, restS } = value as Record<string, unknown>;
+const sanitizeSeries = (value: Record<string, unknown>): IntervalSeriesBlock | null => {
+  const { reps, workS, restS } = value;
   return inRange(reps, INTERVAL_LIMITS.reps) && inRange(workS, INTERVAL_LIMITS.workS) && inRange(restS, INTERVAL_LIMITS.restS)
-    ? { reps, workS, restS }
+    ? { kind: 'series', reps, workS, restS }
     : null;
 };
 
-export const sameWorkout = (a: IntervalWorkout, b: IntervalWorkout): boolean =>
-  a.reps === b.reps && a.workS === b.workS && a.restS === b.restS;
+const sanitizeBlock = (value: unknown): IntervalBlock | null => {
+  if (typeof value !== 'object' || value === null) return null;
+  const block = value as Record<string, unknown>;
+  if (block.kind === 'series') return sanitizeSeries(block);
+  if (block.kind !== 'libre' || !INTERVAL_FREE_LABELS.includes(block.label as IntervalFreeLabel)) return null;
+  return inRange(block.durationS, INTERVAL_LIMITS.freeS)
+    ? { kind: 'libre', label: block.label as IntervalFreeLabel, durationS: block.durationS }
+    : null;
+};
+
+/**
+ * Séance faite de ces blocs ; `null` si l'un n'est pas valable, s'ils sont
+ * trop nombreux, ou sans bloc de séries. Un seul bloc de séries donne une
+ * séance sans `blocks`.
+ */
+export const workoutFromBlocks = (blocks: readonly IntervalBlock[]): IntervalWorkout | null => {
+  if (blocks.length < INTERVAL_LIMITS.blocks.min || blocks.length > INTERVAL_LIMITS.blocks.max) return null;
+  const clean = blocks.map(sanitizeBlock);
+  if (clean.some((b) => b === null)) return null;
+  const kept = clean as IntervalBlock[];
+  const first = kept.find((b): b is IntervalSeriesBlock => b.kind === 'series');
+  if (!first) return null;
+  const head = { reps: first.reps, workS: first.workS, restS: first.restS };
+  return kept.length === 1 ? head : { ...head, blocks: kept };
+};
+
+/** Blocs d'une séance : les siens, ou son seul bloc de séries. */
+export const workoutBlocks = (workout: IntervalWorkout): IntervalBlock[] =>
+  workout.blocks ?? [{ kind: 'series', reps: workout.reps, workS: workout.workS, restS: workout.restS }];
+
+/**
+ * Séance lue du stockage ou d'une saisie ; `null` si elle n'en est pas une.
+ * Des blocs abîmés (ou d'une version future) laissent le premier bloc de séries.
+ */
+export const sanitizeWorkout = (value: unknown): IntervalWorkout | null => {
+  if (typeof value !== 'object' || value === null) return null;
+  const { blocks } = value as Record<string, unknown>;
+  if (Array.isArray(blocks)) {
+    const fromBlocks = workoutFromBlocks(blocks as IntervalBlock[]);
+    if (fromBlocks) return fromBlocks;
+  }
+  const head = sanitizeSeries(value as Record<string, unknown>);
+  return head ? { reps: head.reps, workS: head.workS, restS: head.restS } : null;
+};
+
+const sameBlock = (a: IntervalBlock, b: IntervalBlock): boolean =>
+  a.kind === 'series' && b.kind === 'series'
+    ? a.reps === b.reps && a.workS === b.workS && a.restS === b.restS
+    : a.kind === 'libre' && b.kind === 'libre' && a.label === b.label && a.durationS === b.durationS;
+
+export const sameWorkout = (a: IntervalWorkout, b: IntervalWorkout): boolean => {
+  const blocksA = workoutBlocks(a);
+  const blocksB = workoutBlocks(b);
+  return blocksA.length === blocksB.length && blocksA.every((block, i) => sameBlock(block, blocksB[i]));
+};
 
 /** Durée en m:ss, h:mm:ss au-delà d'une heure. */
 export const formatIntervalClock = (seconds: number): string => {
@@ -77,13 +165,22 @@ export const formatIntervalClock = (seconds: number): string => {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 };
 
-/** Nom d'une séance : « 10 × 1:00 / 0:30 », sans repos « 10 × 1:00 ». */
-export const workoutLabel = (workout: IntervalWorkout): string =>
-  `${workout.reps} × ${formatIntervalClock(workout.workS)}${workout.restS > 0 ? ` / ${formatIntervalClock(workout.restS)}` : ''}`;
+/** Nom d'un bloc : « 10 × 1:00 / 0:30 », sans repos « 10 × 1:00 » ; un bloc libre, « Échauffement 10:00 ». */
+export const blockLabel = (block: IntervalBlock): string =>
+  block.kind === 'libre'
+    ? `${block.label} ${formatIntervalClock(block.durationS)}`
+    : `${block.reps} × ${formatIntervalClock(block.workS)}${block.restS > 0 ? ` / ${formatIntervalClock(block.restS)}` : ''}`;
+
+/** Nom d'une séance : celui de chaque bloc, dans l'ordre, liés par « + ». */
+export const workoutLabel = (workout: IntervalWorkout): string => workoutBlocks(workout).map(blockLabel).join(' + ');
+
+/** Durée d'un bloc, en secondes. */
+export const blockDurationS = (block: IntervalBlock): number =>
+  block.kind === 'libre' ? block.durationS : block.reps * block.workS + (block.reps - 1) * block.restS;
 
 /** Durée totale d'une séance, en secondes. */
 export const workoutDurationS = (workout: IntervalWorkout): number =>
-  workout.reps * workout.workS + (workout.reps - 1) * workout.restS;
+  workoutBlocks(workout).reduce((sum, block) => sum + blockDurationS(block), 0);
 
 // --- Séances gardées ---
 
@@ -120,36 +217,70 @@ export const newPresetId = (existing: IntervalPreset[]): string => {
 
 // --- Phases ---
 
-/** `pret` : le compte à rebours du départ, qui n'est pas une répétition. */
-export type IntervalPhaseKind = 'pret' | 'travail' | 'repos';
+/** `pret` : le compte à rebours du départ, qui n'est pas une répétition ; `libre` : un bloc libre. */
+export type IntervalPhaseKind = 'pret' | 'travail' | 'repos' | 'libre';
 
 export interface IntervalPhase {
   kind: IntervalPhaseKind;
-  /** Répétition, de 1 à `reps` ; un repos porte celle qu'il suit. */
+  /** Répétition, de 1 à `of` ; un repos porte celle qu'il suit ; 1 pour le départ et un bloc libre. */
   rep: number;
+  /** Répétitions du bloc de la phase ; 1 pour le départ et un bloc libre. */
+  of: number;
+  /** Indice du bloc de la phase, à partir de 0 (celui du premier bloc pour le départ). */
+  block: number;
+  /** Rang du bloc parmi les blocs de séries, à partir de 1 ; 0 hors d'un bloc de séries. */
+  series: number;
+  /** Nombre de blocs de séries de la séance. */
+  seriesCount: number;
+  /** Nom d'un bloc libre. */
+  label?: IntervalFreeLabel;
   /** Bornes en temps de séance, en secondes. */
   startS: number;
   endS: number;
 }
 
-/** Phases d'une séance, dans l'ordre : départ, travail, repos, travail… sans repos à la fin. */
+/**
+ * Phases d'une séance, dans l'ordre : départ, puis chaque bloc, un bloc de
+ * séries en travail, repos, travail… sans repos après sa dernière répétition.
+ */
 export const workoutPhases = (workout: IntervalWorkout): IntervalPhase[] => {
-  const phases: IntervalPhase[] = [{ kind: 'pret', rep: 1, startS: 0, endS: INTERVAL_LEAD_IN_S }];
+  const blocks = workoutBlocks(workout);
+  const seriesCount = blocks.filter((b) => b.kind === 'series').length;
+  const phases: IntervalPhase[] = [
+    { kind: 'pret', rep: 1, of: 1, block: 0, series: 0, seriesCount, startS: 0, endS: INTERVAL_LEAD_IN_S },
+  ];
   let t = INTERVAL_LEAD_IN_S;
-  for (let rep = 1; rep <= workout.reps; rep++) {
-    phases.push({ kind: 'travail', rep, startS: t, endS: t + workout.workS });
-    t += workout.workS;
-    if (rep < workout.reps && workout.restS > 0) {
-      phases.push({ kind: 'repos', rep, startS: t, endS: t + workout.restS });
-      t += workout.restS;
+  let series = 0;
+  blocks.forEach((block, index) => {
+    if (block.kind === 'libre') {
+      phases.push({ kind: 'libre', rep: 1, of: 1, block: index, series: 0, seriesCount, label: block.label, startS: t, endS: t + block.durationS });
+      t += block.durationS;
+      return;
     }
-  }
+    series++;
+    const at = { of: block.reps, block: index, series, seriesCount };
+    for (let rep = 1; rep <= block.reps; rep++) {
+      phases.push({ kind: 'travail', rep, ...at, startS: t, endS: t + block.workS });
+      t += block.workS;
+      if (rep < block.reps && block.restS > 0) {
+        phases.push({ kind: 'repos', rep, ...at, startS: t, endS: t + block.restS });
+        t += block.restS;
+      }
+    }
+  });
   return phases;
 };
 
-/** Nom d'une phase : « Départ », « Travail 3/10 », « Repos 3/10 ». */
-export const phaseName = (phase: IntervalPhase, reps: number): string =>
-  phase.kind === 'pret' ? 'Départ' : `${phase.kind === 'travail' ? 'Travail' : 'Repos'} ${phase.rep}/${reps}`;
+/**
+ * Nom d'une phase : « Départ », « Travail 3/10 », « Repos 3/10 », le nom d'un
+ * bloc libre ; « Série 2 · Travail 3/5 » quand la séance a plusieurs blocs de séries.
+ */
+export const phaseName = (phase: IntervalPhase): string => {
+  if (phase.kind === 'pret') return 'Départ';
+  if (phase.kind === 'libre') return phase.label ?? 'Libre';
+  const name = `${phase.kind === 'travail' ? 'Travail' : 'Repos'} ${phase.rep}/${phase.of}`;
+  return phase.seriesCount > 1 ? `Série ${phase.series} · ${name}` : name;
+};
 
 // --- Séance lancée ---
 
@@ -265,7 +396,7 @@ export interface IntervalTone {
 /** Changement de phase à venir, pour la notification : son nom, et le temps qu'elle durera. */
 export interface IntervalPhaseCue {
   delayMs: number;
-  /** « Travail 3/10 », « Repos 3/10 », ou « Terminé ». */
+  /** Nom de la phase (`phaseName`), ou « Terminé ». */
   title: string;
   /** Temps de la phase à partir de ce changement, en ms (le reste, pour celle en cours) ; 0 pour la fin. */
   phaseMs: number;
@@ -306,13 +437,12 @@ const signalTones = (kinds: IntervalToneKind[]): { atS: number; tone: IntervalTo
 export const upcomingSchedule = (run: IntervalRun, nowMs: number, announce: boolean): IntervalSchedule => {
   const { phases, ends, elapsedS, status } = walk(run, nowMs);
   if (status !== 'running') return { tones: [], cues: [] };
-  const reps = run.workout.reps;
   const tones: IntervalTone[] = [];
   const cues: IntervalPhaseCue[] = [];
   const current = ends.length;
   const delayOf = (s: number) => Math.max(0, Math.round((s - elapsedS) * 1000));
   const cue = (phase: IntervalPhase, delayMs: number, phaseMs: number) =>
-    cues.push({ delayMs, title: phaseName(phase, reps), phaseMs });
+    cues.push({ delayMs, title: phaseName(phase), phaseMs });
 
   cue(phases[current], 0, delayOf(phases[current].endS));
   if (announce) tones.push({ delayMs: 0, tone: 'long' });
@@ -332,12 +462,18 @@ export const upcomingSchedule = (run: IntervalRun, nowMs: number, announce: bool
 
 // --- Phases accomplies ---
 
-/** Une phase telle qu'elle s'est déroulée, en instants de l'horloge ; le départ n'en est pas une. */
+/**
+ * Une phase telle qu'elle s'est déroulée, en instants de l'horloge ; le départ
+ * n'en est pas une. Un bloc libre en est une, hors des répétitions : une
+ * version d'avant les blocs l'écarte à la lecture.
+ */
 export interface IntervalLap {
-  kind: 'travail' | 'repos';
+  kind: 'travail' | 'repos' | 'libre';
   rep: number;
   startMs: number;
   endMs: number;
+  /** Indice du bloc de la séance ; absent dans une fiche d'avant les blocs : le premier. */
+  block?: number;
 }
 
 /** Une séance telle qu'elle a été faite pendant un enregistrement. */
@@ -360,8 +496,8 @@ export const runLaps = (run: IntervalRun, nowMs: number): IntervalLap[] => {
   for (let j = 0; j < phases.length && j <= ends.length; j++) {
     const startMs = j === 0 ? run.startedAtMs : ends[j - 1];
     const endMs = j < ends.length ? ends[j] : closeMs;
-    const { kind, rep } = phases[j];
-    if (kind !== 'pret' && endMs > startMs) laps.push({ kind, rep, startMs, endMs });
+    const { kind, rep, block } = phases[j];
+    if (kind !== 'pret' && endMs > startMs) laps.push({ kind, rep, startMs, endMs, block });
   }
   return laps;
 };
@@ -384,9 +520,10 @@ export const seriesWithin = (runs: IntervalRun[], fromMs: number, toMs: number):
 
 const isLap = (value: unknown): value is IntervalLap => {
   if (typeof value !== 'object' || value === null) return false;
-  const { kind, rep, startMs, endMs } = value as Record<string, unknown>;
-  return (kind === 'travail' || kind === 'repos') && typeof rep === 'number' && Number.isInteger(rep) && rep >= 1 &&
-    typeof startMs === 'number' && typeof endMs === 'number' && isFinite(startMs) && endMs > startMs;
+  const { kind, rep, startMs, endMs, block } = value as Record<string, unknown>;
+  return (kind === 'travail' || kind === 'repos' || kind === 'libre') && typeof rep === 'number' && Number.isInteger(rep) && rep >= 1 &&
+    typeof startMs === 'number' && typeof endMs === 'number' && isFinite(startMs) && endMs > startMs &&
+    (block === undefined || (typeof block === 'number' && Number.isInteger(block) && block >= 0));
 };
 
 /** Séances d'une fiche ; une entrée abîmée est écartée, une liste sans séance valable rend `null`. */
@@ -398,10 +535,45 @@ export const readIntervalSeries = (value: unknown): IntervalSeries[] | null => {
     const { workout, laps } = item as Record<string, unknown>;
     const clean = sanitizeWorkout(workout);
     if (clean === null || !Array.isArray(laps)) continue;
-    const kept = laps.filter(isLap).map(({ kind, rep, startMs, endMs }) => ({ kind, rep, startMs, endMs }));
+    const kept = laps.filter(isLap).map(({ kind, rep, startMs, endMs, block }) => ({ kind, rep, startMs, endMs, ...(block !== undefined ? { block } : {}) }));
     if (kept.length > 0) list.push({ workout: clean, laps: kept });
   }
   return list.length > 0 ? list : null;
+};
+
+/** Une phase d'une répétition : travail ou repos. */
+export type IntervalRepLap = IntervalLap & { kind: 'travail' | 'repos' };
+
+const isRepLap = (lap: IntervalLap): lap is IntervalRepLap => lap.kind !== 'libre';
+
+/** Un bloc de séries d'une séance faite, à part : de quoi l'analyser comme une séance d'un seul bloc. */
+export interface IntervalBlockSeries {
+  /** Le bloc, en séance d'un seul bloc. */
+  workout: IntervalWorkout;
+  /** Ses répétitions : travail et repos, numérotés dans le bloc. */
+  laps: IntervalRepLap[];
+  /** Rang du bloc parmi les blocs de séries, à partir de 1. */
+  series: number;
+  /** Nombre de blocs de séries de la séance. */
+  seriesCount: number;
+}
+
+/**
+ * Blocs de séries d'une séance faite, chacun avec ses répétitions ; les blocs
+ * libres sont hors des répétitions. Un bloc sans phase faite est omis.
+ */
+export const seriesBlocks = (series: IntervalSeries): IntervalBlockSeries[] => {
+  const blocks = workoutBlocks(series.workout);
+  const seriesCount = blocks.filter((b) => b.kind === 'series').length;
+  const out: IntervalBlockSeries[] = [];
+  let rank = 0;
+  blocks.forEach((block, index) => {
+    if (block.kind !== 'series') return;
+    rank++;
+    const laps = series.laps.filter(isRepLap).filter((lap) => (lap.block ?? 0) === index);
+    if (laps.length > 0) out.push({ workout: { reps: block.reps, workS: block.workS, restS: block.restS }, laps, series: rank, seriesCount });
+  });
+  return out;
 };
 
 /** Séance relue d'une ligne de journal ; `null` si elle n'en est pas une. */

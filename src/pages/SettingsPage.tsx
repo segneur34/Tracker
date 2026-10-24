@@ -21,6 +21,9 @@ import { RUNNER_NAME_MAX, runnerHeartRateZones, useRunnerProfile, type RunnerNum
 import { ROOT_DEFAULTS } from '../library/rootGrowth';
 import { zoneLabel } from '../components/heartRateColors';
 import Button from '../components/ui/Button';
+import SegmentedControl from '../components/ui/SegmentedControl';
+import { playPattern, setBeepPitch, type ClockTone } from '../platform/beeper';
+import { BEEP_SOUNDS, beepSoundHz } from '../recording/beepSound';
 import {
   DEFAULT_GEAR_LABELS, MAX_GEAR_LABEL_LENGTH, TREATMENT_UNITS, defaultBikeKg, defaultBikeType, defaultLiveFieldsFor, defaultMarkGuideOf,
   defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, defaultTerrainStepOf, planningFamily,
@@ -182,6 +185,8 @@ const SETTINGS_BLOCK_DEFAULTS: Record<SettingsBlock, boolean> = {
 };
 /** Plafonds proposés pour les cartes gardées, en Mo : une liste plutôt qu'un champ, qui effacerait des tuiles à chaque chiffre tapé. */
 const TILE_CAP_CHOICES_MB = [100, 250, 500, 1000, 2000, 5000];
+/** « Écouter » le son des bips : le signal d'un changement de phase du compteur, court, court, long, une seconde entre deux. */
+const LISTEN_PATTERN: ClockTone[] = [{ delayMs: 0, tone: 'court' }, { delayMs: 1000, tone: 'court' }, { delayMs: 2000, tone: 'long' }];
 const DISTANCE_UNITS = Object.keys(DISTANCE_UNIT_LABEL) as DistanceUnit[];
 /** Activités ouvertes, par identifiant ; absente : fermée. */
 const NO_ACTIVITY_OPEN: Record<string, boolean> = {};
@@ -319,7 +324,7 @@ function SettingsPage() {
   const backdrop = useFavoriteBackdrop();
   const {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
-    stopHoldMs, setStopHoldMs, hiddenFamilies, setActivityHidden, setFamilyHidden,
+    stopHoldMs, setStopHoldMs, beepSound, setBeepSound, hiddenFamilies, setActivityHidden, setFamilyHidden,
   } = useAllSportSettings();
   const { profile, setName, setNumber, setSex, setZones, age } = useRunnerProfile();
   const { open, toggle, closeAll: closeBlocks } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
@@ -757,6 +762,14 @@ function SettingsPage() {
               help="Le bouton « Arrêter » se tient ce temps-là, pour ne pas couper la session par mégarde ; à 0, un appui suffit."
               value={stopHoldMs / 1000}
               onCommit={(v) => setStopHoldMs(v === null ? null : Math.round(v * 1000))} />
+            <SettingRow label="Son des bips" helpKey="son-bips"
+              help="Pour tous les bips : compteur d'intervalles, balises, tests. Un haut-parleur de téléphone porte le mieux vers l'aigu ; plus grave, le bip s'entend moins fort. « Écouter » joue le signal d'un changement de phase.">
+              <div className="settings-inline">
+                <SegmentedControl label="Son des bips" items={BEEP_SOUNDS.map((s) => ({ key: s.key, label: s.label }))} value={beepSound}
+                  onChange={(next) => { setBeepSound(next); void setBeepPitch(beepSoundHz(next)).then(() => playPattern(LISTEN_PATTERN, false)); }} />
+                <Button size="s" onClick={() => void setBeepPitch(beepSoundHz(beepSound)).then(() => playPattern(LISTEN_PATTERN, false))}>Écouter</Button>
+              </div>
+            </SettingRow>
           </div>
         )}
       </div>

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BIKE_INTERVALS_ACTIVITY, DEFAULT_ACTIVITIES, FAMILY_SHADES, GRAVEL_ACTIVITY, MARCHE_ACTIVITY, RUN_INTERVALS_ACTIVITY, SURF_ACTIVITY, SURF_FOIL_ACTIVITY,
+  BIKE_INTERVALS_ACTIVITY, DEFAULT_ACTIVITIES, FAMILY_SHADES, GRAVEL_ACTIVITY, MARCHE_ACTIVITY, RUN_INTERVALS_ACTIVITY, SURF_ACTIVITY, SURF_FOIL_ACTIVITY, TESTS_ACTIVITY,
   VTT_ACTIVITY, activitiesOfFamily,
   activityCounts, activityFamily, activityTreatment, baseActivity, findActivity, insertActivity, intervalActivityFor, isActivityShown, isFamilyHidden,
+  kindActivityLabel, trainingKindsOf,
   newActivityId, nextActivityColor, readActivities, recolorActivities, sessionActivity, upgradeActivities,
   visibleActivities, visibleFamilies, withHidden, type Activity,
 } from './activities';
@@ -20,11 +21,11 @@ describe('readActivities', () => {
   it('rend celles du premier lancement quand la liste est absente', () => {
     expect(readActivities(undefined)).toEqual(DEFAULT_ACTIVITIES);
     expect(DEFAULT_ACTIVITIES.map((a) => a.name)).toEqual([
-      'Voile', 'Course', 'Marche', 'Route', 'Gravel', 'VTT', 'Surf', 'Surf foil', 'Fractionné à pied', 'Fractionné vélo',
+      'Voile', 'Course', 'Marche', 'Route', 'Gravel', 'VTT', 'Surf', 'Surf foil', 'Fractionné à pied', 'Fractionné vélo', 'Tests',
     ]);
     expect(DEFAULT_ACTIVITIES[2].base).toBe('running');
     expect(DEFAULT_ACTIVITIES.slice(3, 6).every((a) => a.base === 'cycling')).toBe(true);
-    expect(DEFAULT_ACTIVITIES.slice(6).map((a) => a.base)).toEqual(['surf', 'surf', 'run-intervals', 'bike-intervals']);
+    expect(DEFAULT_ACTIVITIES.slice(6).map((a) => a.base)).toEqual(['surf', 'surf', 'run-intervals', 'bike-intervals', 'run-test']);
   });
 
   it('garde une liste vide, écarte les entrées abîmées et les doublons', () => {
@@ -43,7 +44,7 @@ describe('readActivities', () => {
 describe('upgradeActivities', () => {
   const [sail, run, route] = [sail5, run5, route5];
   const oldCycling: Activity = { ...route, name: 'Vélo' };
-  const intervals = [...surfs, RUN_INTERVALS_ACTIVITY.name, BIKE_INTERVALS_ACTIVITY.name];
+  const intervals = [...surfs, RUN_INTERVALS_ACTIVITY.name, BIKE_INTERVALS_ACTIVITY.name, TESTS_ACTIVITY.name];
 
   it('renomme « Vélo » en « Route », même identifiant, et ajoute Gravel et VTT après lui, puis le fractionné', () => {
     const upgraded = upgradeActivities([sail, run, oldCycling], 1);
@@ -64,7 +65,7 @@ describe('upgradeActivities', () => {
     // Un « Gravel » de course n'empêche pas celui du vélo.
     const runningGravel: Activity = { id: 'a-x', name: 'Gravel', base: 'running', color: '#00838f' };
     expect(upgradeActivities([runningGravel], 1).map((a) => a.id)).toEqual([
-      'a-x', MARCHE_ACTIVITY.id, GRAVEL_ACTIVITY.id, VTT_ACTIVITY.id, SURF_ACTIVITY.id, SURF_FOIL_ACTIVITY.id, RUN_INTERVALS_ACTIVITY.id, BIKE_INTERVALS_ACTIVITY.id,
+      'a-x', MARCHE_ACTIVITY.id, GRAVEL_ACTIVITY.id, VTT_ACTIVITY.id, SURF_ACTIVITY.id, SURF_FOIL_ACTIVITY.id, RUN_INTERVALS_ACTIVITY.id, BIKE_INTERVALS_ACTIVITY.id, TESTS_ACTIVITY.id,
     ]);
   });
 
@@ -77,36 +78,43 @@ describe('upgradeActivities', () => {
   it("n'ajoute pas une activité de fractionné qui existe déjà sous ce nom dans sa famille", () => {
     const mine: Activity = { id: 'a-seance', name: 'fractionné à pied', base: 'bike-intervals', color: '#00838f' };
     expect(upgradeActivities([sail, mine], 2).map((a) => a.id)).toEqual([
-      'wingfoil', MARCHE_ACTIVITY.id, SURF_ACTIVITY.id, SURF_FOIL_ACTIVITY.id, 'a-seance', BIKE_INTERVALS_ACTIVITY.id,
+      'wingfoil', MARCHE_ACTIVITY.id, SURF_ACTIVITY.id, SURF_FOIL_ACTIVITY.id, 'a-seance', BIKE_INTERVALS_ACTIVITY.id, TESTS_ACTIVITY.id,
     ]);
   });
 
   it('une liste de la version 4 reçoit le surf, avant le fractionné, dans ses nuances, et la Marche', () => {
     const upgraded = upgradeActivities([sail, run, RUN_INTERVALS_ACTIVITY], 4);
-    expect(upgraded.map((a) => a.name)).toEqual(['Voile', 'Course', 'Marche', 'Surf', 'Surf foil', 'Fractionné à pied']);
+    expect(upgraded.map((a) => a.name)).toEqual(['Voile', 'Course', 'Marche', 'Surf', 'Surf foil', 'Fractionné à pied', 'Tests']);
     expect(upgraded.slice(3, 5).map((a) => a.color)).toEqual([FAMILY_SHADES.surf[0], FAMILY_SHADES.surf[1]]);
     // Un « Surf » déjà créé par l'utilisateur, sur ce calcul, n'est pas doublé.
     const mine: Activity = { id: 'a-surf', name: 'surf', base: 'surf', color: FAMILY_SHADES.surf[2] };
-    expect(upgradeActivities([sail, mine], 4).map((a) => a.id)).toEqual(['wingfoil', MARCHE_ACTIVITY.id, 'a-surf', SURF_FOIL_ACTIVITY.id]);
+    expect(upgradeActivities([sail, mine], 4).map((a) => a.id)).toEqual(['wingfoil', MARCHE_ACTIVITY.id, 'a-surf', SURF_FOIL_ACTIVITY.id, TESTS_ACTIVITY.id]);
   });
 
-  it('une liste de la version 5 ne reçoit que la Marche, rangée après la dernière activité à pied, une seule fois', () => {
+  it('une liste de la version 5 reçoit la Marche, rangée après la dernière activité à pied, une seule fois, et Tests', () => {
     const upgraded = upgradeActivities([sail, run, trail, route, pied5], 5);
-    expect(upgraded.map((a) => a.name)).toEqual(['Voile', 'Course', 'Trail', 'Marche', 'Route', 'Fractionné à pied']);
+    expect(upgraded.map((a) => a.name)).toEqual(['Voile', 'Course', 'Trail', 'Marche', 'Route', 'Fractionné à pied', 'Tests']);
     expect(upgraded[3]).toEqual(MARCHE_ACTIVITY);
     expect(upgradeActivities(upgraded, 6)).toEqual(upgraded);
     // Supprimée ensuite, elle ne revient pas.
-    expect(upgradeActivities([sail, run], 6).map((a) => a.name)).toEqual(['Voile', 'Course']);
+    expect(upgradeActivities([sail, run], 8).map((a) => a.name)).toEqual(['Voile', 'Course']);
+  });
+
+  it('une liste de la version 7 ne reçoit que Tests, après la dernière activité de l’Entraînement, dans sa nuance', () => {
+    const upgraded = upgradeActivities([sail, run, pied5, velo5, route], 7);
+    expect(upgraded.map((a) => a.id)).toEqual(['wingfoil', 'running', 'run-intervals', 'bike-intervals', TESTS_ACTIVITY.id, 'cycling']);
+    expect(upgraded[4]).toEqual(TESTS_ACTIVITY);
+    expect(upgradeActivities([sail, run], 8)).toEqual([sail, run]);
   });
 
   it("n'ajoute pas la Marche si une activité à pied porte déjà ce nom, casse, accents et espaces ignorés", () => {
     for (const name of ['Marche', 'marche', ' MARCHÉ ', 'Marché']) {
       const mine: Activity = { id: 'a-ma-marche', name, base: 'running', color: FAMILY_SHADES.course[3] };
-      expect(upgradeActivities([run, mine], 5).map((a) => a.id)).toEqual(['running', 'a-ma-marche']);
+      expect(upgradeActivities([run, mine], 5).map((a) => a.id)).toEqual(['running', 'a-ma-marche', TESTS_ACTIVITY.id]);
     }
     // Une « Marche » d'une autre famille ne l'empêche pas.
     const other: Activity = { id: 'a-marche-velo', name: 'Marche', base: 'cycling', color: FAMILY_SHADES.velo[3] };
-    expect(upgradeActivities([run, other], 5).map((a) => a.id)).toEqual(['running', MARCHE_ACTIVITY.id, 'a-marche-velo']);
+    expect(upgradeActivities([run, other], 5).map((a) => a.id)).toEqual(['running', MARCHE_ACTIVITY.id, 'a-marche-velo', TESTS_ACTIVITY.id]);
     // Sa couleur prise, elle reçoit la première nuance libre.
     const red: Activity = { ...trail, color: MARCHE_ACTIVITY.color };
     expect(upgradeActivities([run, red], 5).find((a) => a.id === MARCHE_ACTIVITY.id)!.color).toBe(FAMILY_SHADES.course[2]);
@@ -146,7 +154,7 @@ describe('famille et traitement', () => {
 describe('insertActivity', () => {
   const [sail, run, route, gravel, vtt] = [sail5, run5, route5, gravel5, vtt5];
   const names = (list: Activity[]) => list.map((a) => a.name);
-  const intervals = [RUN_INTERVALS_ACTIVITY.name, BIKE_INTERVALS_ACTIVITY.name];
+  const intervals = [RUN_INTERVALS_ACTIVITY.name, BIKE_INTERVALS_ACTIVITY.name, TESTS_ACTIVITY.name];
 
   it('range une activité après la dernière de sa famille', () => {
     expect(names(insertActivity(DEFAULT_ACTIVITIES, moth))).toEqual(['Voile', 'Moth à foil', 'Course', 'Marche', 'Route', 'Gravel', 'VTT', ...surfs, ...intervals]);
@@ -261,7 +269,7 @@ describe('recolorActivities (version 4)', () => {
 
   it('passe par upgradeActivities pour une liste de la version 3', () => {
     expect(upgradeActivities([old(sail, '#1565c0'), old(run, '#bf360c')], 3).map((a) => a.color)).toEqual([
-      FAMILY_SHADES.voile[0], FAMILY_SHADES.course[0], FAMILY_SHADES.course[1], FAMILY_SHADES.surf[0], FAMILY_SHADES.surf[1],
+      FAMILY_SHADES.voile[0], FAMILY_SHADES.course[0], FAMILY_SHADES.course[1], FAMILY_SHADES.surf[0], FAMILY_SHADES.surf[1], FAMILY_SHADES.fractionne[2],
     ]);
 
   });
@@ -327,6 +335,22 @@ describe('usesMarkCourse', () => {
     expect(SPORT_FAMILIES.filter(usesMarkCourse)).toEqual(['voile', 'surf']);
     expect(usesMarkCourse(activityFamily(SURF_FOIL_ACTIVITY))).toBe(true);
     expect(usesMarkCourse(activityFamily(trail))).toBe(false);
+  });
+});
+
+describe('types d’entraînement (24/10)', () => {
+  it('rangent le fractionné à pied et à vélo sous « Fractionné »', () => {
+    expect(trainingKindsOf([RUN_INTERVALS_ACTIVITY, BIKE_INTERVALS_ACTIVITY])).toEqual(['fractionne']);
+    expect(trainingKindsOf([trail, voile])).toEqual([]);
+    expect(trainingKindsOf([TESTS_ACTIVITY, RUN_INTERVALS_ACTIVITY])).toEqual(['fractionne', 'tests']);
+    expect(kindActivityLabel(TESTS_ACTIVITY, 'tests')).toBe('Tests');
+  });
+
+  it('nomment une activité sous son type sans le nom du type', () => {
+    expect(kindActivityLabel(RUN_INTERVALS_ACTIVITY, 'fractionne')).toBe('à pied');
+    expect(kindActivityLabel(BIKE_INTERVALS_ACTIVITY, 'fractionne')).toBe('vélo');
+    expect(kindActivityLabel({ ...RUN_INTERVALS_ACTIVITY, name: 'Piste du stade' }, 'fractionne')).toBe('Piste du stade');
+    expect(kindActivityLabel({ ...RUN_INTERVALS_ACTIVITY, name: 'Fractionné' }, 'fractionne')).toBe('Fractionné');
   });
 });
 

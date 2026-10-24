@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { jsonStore } from '../platform/storage';
 
 /**
@@ -25,31 +25,34 @@ export const useStoredRecord = <T extends object>(
   defaults: T
 ) => {
   const [value, setValue] = useState<T>(defaults);
+  // Dernière valeur, pour enchaîner deux `update` sans attendre le rendu et écrire hors d'un updater
+  // (React les exécute pendant le rendu : l'écriture notifie des abonnés d'autres composants).
+  const latest = useRef(value);
+
+  const apply = useCallback((next: T) => {
+    latest.current = next;
+    setValue(next);
+  }, []);
 
   // Relecture à chaque changement de clé, donc de session.
   useEffect(() => {
-    if (key === null) {
-      setValue(defaults);
-      return;
-    }
-    setValue(readStoredRecord(namespace, key, defaults));
+    apply(key === null ? defaults : readStoredRecord(namespace, key, defaults));
     // `defaults` est une constante de module chez tous les appelants.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [namespace, key]);
 
   const update = useCallback(
     (patch: Partial<T> | ((current: T) => Partial<T>)) => {
-      setValue((current) => {
-        const next = { ...current, ...(typeof patch === 'function' ? patch(current) : patch) };
-        if (key !== null) {
-          const all = readAll<T>(namespace);
-          all[key] = next;
-          writeAll(namespace, all);
-        }
-        return next;
-      });
+      const current = latest.current;
+      const next = { ...current, ...(typeof patch === 'function' ? patch(current) : patch) };
+      apply(next);
+      if (key !== null) {
+        const all = readAll<T>(namespace);
+        all[key] = next;
+        writeAll(namespace, all);
+      }
     },
-    [namespace, key]
+    [namespace, key, apply]
   );
 
   return { value, update };

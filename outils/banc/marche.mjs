@@ -3,7 +3,7 @@
 // Sur un profil neuf, sans réseau. Dure environ 30 s. Vérifie :
 //  1. installation neuve : Marche dans À pied, juste après Course, icône du marcheur, couleurs de 1 à 8 km/h
 //     et temps estimé « Personnalisé » à 5 km/h, sans « · modifié » ; Course de 1 à 13 km/h (pré-réglages du 21/10) ;
-//  2. liste de la version 5 sans Marche : elle est ajoutée une fois, après les activités à pied, version 7 rangée (refonte du 22/10) ;
+//  2. liste de la version 5 sans Marche : elle est ajoutée une fois, après les activités à pied, version 8 rangée, avec « Tests » ajouté une fois (refonte du 22/10, test de FC max du 24/10) ;
 //  3. liste de la version 5 avec une « marche » créée par l'utilisateur : pas de doublon, la sienne reste ;
 //  4. liste de la version 6 sans Marche (supprimée) : elle ne revient pas ;
 //  5. la liste de choix d'activité d'Enregistrer la propose, à 390×844, sans débordement.
@@ -104,8 +104,8 @@ await shoot('marche-reglages');
 // 2. Liste de la version 5, sans Marche.
 await seed([SAIL, RUN, TRAIL, ROUTE], 5);
 const v5 = await names();
-check('version 5 : Marche ajoutée après les activités à pied', JSON.stringify(v5) === JSON.stringify(['Voile', 'Course', 'Trail', 'Marche', 'Route']), JSON.stringify(v5));
-check('version 7 rangée', (await stored())?.activitiesVersion === 7);
+check('version 5 : Marche ajoutée après les activités à pied', JSON.stringify(v5) === JSON.stringify(['Voile', 'Course', 'Trail', 'Marche', 'Route', 'Tests']), JSON.stringify(v5));
+check('version 8 rangée', (await stored())?.activitiesVersion === 8);
 await go('/');
 check('rechargée : une seule Marche', (await names())?.filter((n) => n === 'Marche').length === 1);
 
@@ -113,11 +113,11 @@ check('rechargée : une seule Marche', (await names())?.filter((n) => n === 'Mar
 const mine = { id: 'a-ma-marche', name: 'marché', base: 'running', color: '#6e1020' };
 await seed([SAIL, RUN, mine, ROUTE], 5);
 const own = (await stored())?.activities?.map((a) => a.id);
-check('« marché » déjà créée : pas de doublon', JSON.stringify(own) === JSON.stringify(['wingfoil', 'running', 'a-ma-marche', 'cycling']), JSON.stringify(own));
+check('« marché » déjà créée : pas de doublon', JSON.stringify(own) === JSON.stringify(['wingfoil', 'running', 'a-ma-marche', 'cycling', 'run-test']), JSON.stringify(own));
 
 // 4. Liste de la version 6 sans Marche : supprimée, elle ne revient pas.
 await seed([SAIL, RUN, ROUTE], 6);
-check('version 6 sans Marche : elle ne revient pas', JSON.stringify(await names()) === JSON.stringify(['Voile', 'Course', 'Route']));
+check('version 6 sans Marche : elle ne revient pas', JSON.stringify(await names()) === JSON.stringify(['Voile', 'Course', 'Route', 'Tests']));
 
 // 5. Enregistrer, à 390×844 : la Marche dans la liste de choix.
 await evaluate(`(() => { localStorage.clear(); return 'ok'; })()`);

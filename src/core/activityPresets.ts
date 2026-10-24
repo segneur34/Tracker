@@ -89,6 +89,14 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
     liveFields: ['speed', 'average', 'heartRate', 'heartRateZone'],
     heartRate: true,
   },
+  'run-test': {
+    threshold: 0,
+    speedUnit: 'kmh',
+    speedRangeMs: { minMs: kmhToMs(4), maxMs: kmhToMs(20) },
+    gradeRange: { min: 0, max: 0.1 },
+    liveFields: ['speed', 'average', 'heartRate', 'heartRateZone'],
+    heartRate: true,
+  },
   'bike-intervals': {
     threshold: 0,
     speedRangeMs: { minMs: kmhToMs(10), maxMs: kmhToMs(30) },

@@ -14,6 +14,14 @@ describe('parentPage', () => {
     expect(parentPage('/surf/analyse', '?session=d.gpx')).toBe('/surf');
   });
 
+  it("une page de l'Entraînement remonte d'un cran, jusqu'à sa bibliothèque", () => {
+    expect(parentPage('/fractionne/seances', '')).toBe('/fractionne');
+    expect(parentPage('/fractionne/tests', '')).toBe('/fractionne');
+    expect(parentPage('/fractionne/tests/fc-max', '')).toBe('/fractionne/tests');
+    expect(parentPage('/fractionne/tests/fc-repos', '')).toBe('/fractionne/tests');
+    expect(parentPage('/course/seances', '')).toBe('/');
+  });
+
   it("une bibliothèque renvoie à l'accueil, filtre compris", () => {
     expect(parentPage('/voile', '')).toBe('/');
     expect(parentPage('/course', '?activite=a-marche')).toBe('/');

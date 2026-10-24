@@ -189,7 +189,7 @@ await wait(800);
 // 5. Compteur pendant un enregistrement de fractionné.
 const runPath = `${workDir}\\notification-fractionne.gpx`;
 nowTrace(runPath, 60, 'run-intervals');
-console.log('Démarrer (fractionné, ×1) :', await startReplay('Fractionné', runPath, 1));
+console.log('Démarrer (fractionné, ×1) :', await startReplay('Entraînement', runPath, 1));
 await wait(2500);
 console.log('séance :', await setSelect('Répétitions', 2), await setSelect('Travail, minutes', 0), await setSelect('Travail, secondes', 10),
   await setSelect('Repos, minutes', 0), await setSelect('Repos, secondes', 5));

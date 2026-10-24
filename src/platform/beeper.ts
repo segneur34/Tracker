@@ -2,9 +2,11 @@ import { registerPlugin } from '@capacitor/core';
 import { isNativeApp } from './runtime';
 
 /**
- * Bips et vibrations : seul accès au son et au vibreur (règle 12). Trois
+ * Bips et vibrations : seul accès au son et au vibreur (règle 12). Quatre
  * usages : le guidage vers les balises (`getBeeper`), le compteur du
- * fractionné (`getIntervalClock`) et le retour du bouton « Note » (`buzz`).
+ * fractionné (`getIntervalClock`), un motif joué une fois (`playPattern` :
+ * « Écouter » de Réglages) et le retour du bouton « Note » (`buzz`). La
+ * hauteur de tous les sons se règle d'un coup (`setBeepPitch`, 24/10).
  *
  * Sur le téléphone, un greffon Android tient le rythme sur un fil à lui :
  * écran éteint, les minuteries de la WebView sont bridées (point 40), pas
@@ -78,6 +80,8 @@ interface BeeperPlugin {
   scheduleIntervals(options: ClockPlan & { vibrate: boolean }): Promise<void>;
   stopIntervals(): Promise<void>;
   buzz(options: { durationMs: number }): Promise<void>;
+  pattern(options: { tones: ClockTone[]; vibrate: boolean }): Promise<void>;
+  setPitch(options: { hz: number }): Promise<void>;
 }
 
 const nativePlugin = registerPlugin<BeeperPlugin>('Beeper');
@@ -89,8 +93,8 @@ const nativeBeeper: Beeper = {
   stop: () => nativePlugin.stop(),
 };
 
-/** Hauteur des bips du navigateur, en hertz. */
-const TONE_HZ = 880;
+/** Hauteur des bips du navigateur, en hertz : celle choisie dans Réglages, reçue par `setBeepPitch`. */
+let browserHz = 2000;
 
 /** Contexte audio du navigateur, partagé par les bips et le compteur. */
 let browserAudio: AudioContext | null = null;
@@ -104,7 +108,7 @@ const browserTone = (durationMs: number, vibrate: boolean, label: string) => {
     const start = browserAudio.currentTime;
     const oscillator = browserAudio.createOscillator();
     const gain = browserAudio.createGain();
-    oscillator.frequency.value = TONE_HZ;
+    oscillator.frequency.value = browserHz;
     gain.gain.setValueAtTime(0.3, start);
     gain.gain.setValueAtTime(0, start + durationMs / 1000);
     oscillator.connect(gain).connect(browserAudio.destination);
@@ -169,6 +173,30 @@ const createBrowserBeeper = (): Beeper => {
   };
 };
 
+const TONE_DURATION_MS: Record<ClockTone['tone'], number> = { court: BEEP_SHORT_MS, long: BEEP_LONG_MS, final: BEEP_FINAL_MS };
+
+/**
+ * Un motif joué une fois, chaque son à son délai : ne touche ni au rythme des
+ * balises ni au programme du compteur. Sur le téléphone, joué sur le fil des
+ * bips, écran éteint compris tant qu'un service garde le processeur éveillé.
+ */
+export const playPattern = (tones: ClockTone[], vibrate: boolean): Promise<void> => {
+  if (isNativeApp()) return nativePlugin.pattern({ tones, vibrate });
+  for (const t of tones) {
+    const play = () => browserTone(TONE_DURATION_MS[t.tone], vibrate, t.tone);
+    if (t.delayMs > 0) setTimeout(play, t.delayMs);
+    else play();
+  }
+  return Promise.resolve();
+};
+
+/** Hauteur de tous les sons, en hertz (Réglages) ; le téléphone la garde pour ses services. */
+export const setBeepPitch = (hz: number): Promise<void> => {
+  if (isNativeApp()) return nativePlugin.setPitch({ hz });
+  browserHz = hz;
+  return Promise.resolve();
+};
+
 /** Vibration brève, sans son : n'interrompt pas les bips des balises. */
 export const buzz = (durationMs: number): Promise<void> => {
   if (isNativeApp()) return nativePlugin.buzz({ durationMs });
@@ -204,8 +232,7 @@ const createBrowserIntervalClock = (): IntervalClock => {
   return {
     schedule: async (plan, vibrate) => {
       clear();
-      const durations = { court: BEEP_SHORT_MS, long: BEEP_LONG_MS, final: BEEP_FINAL_MS };
-      const play = (tone: ClockTone['tone']) => browserTone(durations[tone], vibrate, tone);
+      const play = (tone: ClockTone['tone']) => browserTone(TONE_DURATION_MS[tone], vibrate, tone);
       // Les minuteries d'abord : le premier son ouvre le contexte audio, ce qui prend un moment.
       for (const t of plan.tones) if (t.delayMs > 0) timers.push(setTimeout(() => play(t.tone), t.delayMs));
       for (const c of plan.cues) {

@@ -35,6 +35,8 @@ export interface IntervalSeriesView {
   /** Séance lancée au compteur, ou déduite des répétitions détectées. */
   workout: IntervalWorkout;
   detected: boolean;
+  /** Bloc d'une séance à plusieurs blocs de séries : « Série 2 ». */
+  name?: string;
   reps: IntervalRep[];
   summary: IntervalSummary;
   /** FC de l'effort de chaque répétition, dans l'ordre de `reps` ; absente sans FC dans la session. */
@@ -210,7 +212,7 @@ function IntervalAnalysis({
   const formatRate = (ms2: number): string =>
     rateUnit === 'ms' ? `${ms2.toFixed(2)} m/s²` : `${toDisplaySpeed(ms2, rateUnit).toFixed(1)} ${SPEED_UNIT_LABEL[rateUnit]} par s`;
   const title = (s: IntervalSeriesView) =>
-    s.detected ? `≈ ${workoutLabel(s.workout)}, répétitions détectées` : `Séance ${workoutLabel(s.workout)}`;
+    s.detected ? `≈ ${workoutLabel(s.workout)}, répétitions détectées` : `${s.name ?? 'Séance'} ${workoutLabel(s.workout)}`;
   /** Titre d'une séance : un bouton à chevron qui la replie ou la déplie dans les trois panneaux. */
   const seriesTitle = (s: IntervalSeriesView, index: number, legend = false) => {
     const isOpen = !folded.has(index);

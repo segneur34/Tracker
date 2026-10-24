@@ -47,7 +47,7 @@ const HOME: Destination = { to: '/', label: 'Accueil', Icon: IconHome, accent: '
 const VOILE: Destination = { to: '/voile', label: 'Voile', Icon: FAMILY_ICON.voile, accent: 'var(--voile)' };
 const COURSE: Destination = { to: '/course', label: 'À pied', Icon: FAMILY_ICON.course, accent: 'var(--course)' };
 const VELO: Destination = { to: '/velo', label: 'Vélo', Icon: FAMILY_ICON.velo, accent: 'var(--velo)' };
-const FRACTIONNE: Destination = { to: '/fractionne', label: 'Fractionné', Icon: FAMILY_ICON.fractionne, accent: 'var(--fractionne)' };
+const FRACTIONNE: Destination = { to: '/fractionne', label: 'Entraînement', Icon: FAMILY_ICON.fractionne, accent: 'var(--fractionne)' };
 const SURF: Destination = { to: '/surf', label: 'Surf', Icon: FAMILY_ICON.surf, accent: 'var(--surf)' };
 const SETTINGS: Destination = { to: '/parametres', label: 'Réglages', Icon: IconSettings, accent: 'var(--ink)' };
 const FAMILY_TABS: Record<SportFamily, Destination> = { voile: VOILE, course: COURSE, velo: VELO, fractionne: FRACTIONNE, surf: SURF };
@@ -67,7 +67,7 @@ function IntervalBanner() {
   const paused = state.status === 'paused';
   return (
     <Link to={RECORD_PATH} className="shell-banner shell-banner--intervals">
-      <span className="shell-banner__text">{paused ? 'Fractionné en pause' : 'Fractionné'} · {phaseName(state.phase, run.workout.reps)}</span>
+      <span className="shell-banner__text">{paused ? 'Fractionné en pause' : 'Fractionné'} · {phaseName(state.phase)}</span>
       <span className="num">{formatIntervalClock(state.remainingMs / 1000)}</span>
     </Link>
   );

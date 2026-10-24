@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type MouseEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import ActivitySelect from '../components/ActivitySelect';
 import BeltStatus from '../components/BeltStatus';
 import Button from '../components/ui/Button';
@@ -12,8 +12,12 @@ import SegmentedControl from '../components/ui/SegmentedControl';
 import SavedSessionShare from '../components/SavedSessionShare';
 import { IconFlag, IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
-import { FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, intervalActivityFor, type Activity } from '../core/activities';
-import { sportFamily, sportTreatment, usesMarkCourse, type SportFamily } from '../core/sportProfiles';
+import {
+  FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, intervalActivityFor, kindActivityLabel, trainingKindsOf, type Activity,
+} from '../core/activities';
+import {
+  TRAINING_KIND_LABEL, isIntervalSport, isTestSport, sportFamily, sportTreatment, trainingKind, usesMarkCourse, type SportFamily, type TrainingKind,
+} from '../core/sportProfiles';
 import { formatClock, formatDistance, formatShortDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
@@ -56,6 +60,7 @@ import { buzz } from '../platform/beeper';
 import { isNativeApp } from '../platform/runtime';
 import { keepScreenOn } from '../platform/screen';
 import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
+import { FITNESS_TESTS, FITNESS_TEST_IDS, isFitnessTestId, type FitnessTestId } from '../recording/fitnessTest';
 
 /**
  * Enregistrement d'une session : support, démarrer, arrêter, et ce qu'il faut
@@ -97,7 +102,7 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
 const STAT_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' } as const;
 
 /** Nom d'une famille dans « Aucune activité … ». */
-const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'à pied', velo: 'vélo', fractionne: 'de fractionné', surf: 'de surf' };
+const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'à pied', velo: 'vélo', fractionne: "d'entraînement", surf: 'de surf' };
 
 const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
 const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
@@ -330,13 +335,16 @@ function RecordingPage() {
   const native = isNativeApp();
   const { open: shown, toggle: toggleShown } = useOpenSections<'carte'>('recording', RECORDING_SECTION_DEFAULTS);
 
-  // Famille puis activité : celle de la trace suivie d'abord, sinon la dernière enregistrée.
+  // Famille puis activité : celle demandée par l'adresse (« Lancer » d'une page de l'Entraînement, `?activite=`),
+  // sinon celle de la trace suivie, sinon la dernière enregistrée.
   // Seules les visibles sont proposées : une activité cachée dans Réglages n'est pas reprise (§10, point 100).
+  const [params] = useSearchParams();
   const { activities, families, isShown } = useVisibility();
   const shownActivities = useMemo(() => activities.filter(isShown), [activities, isShown]);
   const [chosenId, setChosenId] = useState<string | null>(() => {
     const last = lastRecordActivity();
-    return (shownActivities.find((a) => a.id === followed?.activityId) ?? (last && isShown(last) ? last : null) ?? shownActivities[0])?.id ?? null;
+    const asked = shownActivities.find((a) => a.id === params.get('activite'));
+    return (asked ?? shownActivities.find((a) => a.id === followed?.activityId) ?? (last && isShown(last) ? last : null) ?? shownActivities[0])?.id ?? null;
   });
   const chosen = activities.find((a) => a.id === chosenId) ?? null;
   const [family, setFamily] = useState<SportFamily>(chosen ? sportFamily(chosen.base) : families[0] ?? 'voile');
@@ -349,6 +357,22 @@ function RecordingPage() {
     setFamily(sportFamily(activity.base));
     setChosenId(activity.id);
   };
+  // Entraînement : le type d'abord (Fractionné, Tests, Muscu), puis ses activités (à pied, vélo), 24/10.
+  const kinds = family === 'fractionne' ? trainingKindsOf(familyActivities) : [];
+  const chosenKind = kinds.length > 0 && chosen ? trainingKind(chosen.base) : null;
+  const rowActivities = chosenKind ? familyActivities.filter((a) => trainingKind(a.base) === chosenKind) : familyActivities;
+  /** Un type choisi : la dernière activité enregistrée de ce type, sinon la première. */
+  const pickKind = (kind: TrainingKind) => {
+    const own = familyActivities.filter((a) => trainingKind(a.base) === kind);
+    const last = lastRecordActivity();
+    setChosenId((own.find((a) => a.id === last?.id) ?? own[0])?.id ?? null);
+  };
+  // Tests : le test choisi sous « Tests » (rangée « Test »), celui de l'adresse (`&test=`, « Lancer » d'un protocole), sinon la FC max.
+  const [testId, setTestId] = useState<FitnessTestId>(() => {
+    const asked = params.get('test');
+    return isFitnessTestId(asked) ? asked : 'fc-max';
+  });
+  const isTest = chosen !== null && isTestSport(chosen.base);
   /** Une trace choisie propose son activité (celle de l'itinéraire, ou de la session). */
   const proposeActivityOf = (trace: FollowedTrace) => {
     const activity = shownActivities.find((a) => a.id === trace.activityId);
@@ -373,8 +397,10 @@ function RecordingPage() {
   const [cadenceChoice, setCadenceChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
   const measureCadence = chosen !== null && cadenceSetting !== null &&
     (cadenceChoice?.activityId === chosen.id ? cadenceChoice.measure : cadenceSetting);
-  // Ceinture cardio : proposée par l'activité (course, vélo, fractionné), cochée d'office si Réglages le dit ; la case vaut pour cet enregistrement.
-  const heartRateSetting = chosen ? effectiveHeartRate(chosen) : null;
+  // Ceinture cardio : proposée par l'activité (course, vélo, fractionné), cochée d'office si Réglages le dit, et toujours pour un test ;
+  // la case vaut pour cet enregistrement.
+  const heartRateOffered = chosen ? effectiveHeartRate(chosen) : null;
+  const heartRateSetting = heartRateOffered === null ? null : heartRateOffered || isTest;
   const belt = useMemo(() => savedBelt(), []);
   const [heartRateChoice, setHeartRateChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
   const measureHeartRate = chosen !== null && heartRateSetting !== null && belt !== null &&
@@ -404,11 +430,13 @@ function RecordingPage() {
   const canStart = !busy && pending === null && chosen !== null && (sourceChoice === 'device' || replay !== null);
   const liveActivity = recorder.activity ?? chosen;
   const mapReduced = busy && !shown.carte;
-  // Compteur : pour le fractionné choisi (au repos) ou enregistré, et tant qu'une séance ou le chrono est lancé.
+  // Compteur : pour le fractionné choisi (au repos) ou enregistré, pas pour un test, et tant qu'une séance ou le chrono est lancé.
   const counterOpen = useIntervalTimerOpen();
   const stopwatchOpen = useStopwatchOpen();
+  const counterActivity = busy ? liveActivity : pending ? null : chosen;
   const counterFamily = busy ? (liveActivity ? activityFamily(liveActivity) : null) : pending ? null : family;
-  const showCounter = counterOpen || stopwatchOpen || counterFamily === 'fractionne';
+  const showCounter = counterOpen || stopwatchOpen
+    || (counterFamily === 'fractionne' && (counterActivity === null || isIntervalSport(counterActivity.base)));
   // Écran allumé tant qu'un enregistrement (pause comprise), une séance du compteur ou le chrono tourne, sur cette page seulement.
   const screenOn = busy || counterOpen || stopwatchOpen;
   useEffect(() => {
@@ -500,6 +528,13 @@ function RecordingPage() {
 
   const handleStart = () => {
     if (!chosen) return;
+    // Test sans ceinture connectée (ni FC dans le fichier rejoué) : on demande, sans bloquer.
+    const replayHasHr = sourceChoice === 'replay' && replay !== null && replay.fixes.some((f) => f.heartRateBpm !== undefined);
+    const beltReady = native && sourceChoice === 'device' && measureHeartRate && beltLive.state === 'connected';
+    if (isTest && !beltReady && !replayHasHr && !window.confirm(
+      `Aucune ceinture cardio connectée. Le test ${FITNESS_TESTS[testId].label} guide l'échauffement sur la FC et en mesure le maximum : `
+      + "sans elle, ni l'un ni l'autre. Démarrer quand même ?"
+    )) return;
     rememberRecordActivity(chosen.id);
     const source = sourceChoice === 'replay' && replay
       ? createReplaySource(replay.fixes, replaySpeed)
@@ -523,13 +558,25 @@ function RecordingPage() {
 
       {!busy && !pending && <Card>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 'var(--text-m)' }}>
-          {/* Boutons glissants en cascade : la famille, puis ses activités (une rangée « Test » viendra en Fractionné). */}
+          {/* Boutons glissants en cascade : la famille, puis ses activités ; en Entraînement, le type d'entraînement entre les deux,
+              et ses activités seulement s'il en a plusieurs ; sous Tests, le test et son protocole. */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             <SegmentedControl label="Famille" items={families.map((f) => ({ key: f, label: FAMILY_LABEL[f] }))} value={family}
               accent={FAMILY_ACCENT[family]} onChange={pickFamily} />
-            {familyActivities.length > 0 && (
-              <SegmentedControl label="Activité" items={familyActivities.map((a) => ({ key: a.id, label: a.name }))} value={chosenId ?? ''}
-                accent={FAMILY_ACCENT[family]} onChange={setChosenId} />
+            {kinds.length > 0 && (
+              <SegmentedControl label="Type" items={kinds.map((k) => ({ key: k, label: TRAINING_KIND_LABEL[k] }))} value={chosenKind ?? kinds[0]}
+                accent={FAMILY_ACCENT[family]} onChange={pickKind} />
+            )}
+            {rowActivities.length > (chosenKind ? 1 : 0) && (
+              <SegmentedControl label="Activité" value={chosenId ?? ''} accent={FAMILY_ACCENT[family]} onChange={setChosenId}
+                items={rowActivities.map((a) => ({ key: a.id, label: chosenKind ? kindActivityLabel(a, chosenKind) : a.name, title: a.name }))} />
+            )}
+            {isTest && (
+              <>
+                <SegmentedControl label="Test" value={testId} accent={FAMILY_ACCENT[family]} onChange={setTestId}
+                  items={FITNESS_TEST_IDS.map((id) => ({ key: id, label: FITNESS_TESTS[id].label }))} />
+                <Link to={`/fractionne/tests/${testId}`} style={{ fontSize: 'var(--text-s)' }}>Voir le protocole</Link>
+              </>
             )}
           </div>
           {familyActivities.length === 0 && (

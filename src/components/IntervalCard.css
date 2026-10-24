@@ -1,4 +1,4 @@
-/* Compteur du fractionné (IntervalCard), sur la page Enregistrer. */
+/* Compteur du fractionné (IntervalCard), sur la page Enregistrer, et l'éditeur de ses séances (WorkoutBlocksEditor), partagé avec la page Séances. */
 
 .ivl-fields {
   display: flex;
@@ -150,6 +150,11 @@
   --ivl-color: var(--ink-2);
 }
 
+/* Bloc libre : échauffement, récupération, retour au calme. */
+.ivl--libre {
+  --ivl-color: var(--ink-2);
+}
+
 .ivl-done {
   display: flex;
   flex-direction: column;
@@ -227,4 +232,76 @@
 .ivl-laps__best td {
   color: var(--success);
   font-weight: 700;
+}
+
+/* Blocs d'une séance : un cadre par bloc, ses outils (monter, descendre, retirer) à droite de son nom. */
+.ivl-blocks__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ivl-block {
+  min-width: 0;
+}
+
+.ivl-blocks__list:has(> :nth-child(2)) .ivl-block {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--fractionne);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+}
+
+.ivl-blocks__list:has(> :nth-child(2)) .ivl-block--libre {
+  border-left-color: var(--line-strong);
+}
+
+.ivl-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.ivl-block__title {
+  font-size: var(--text-s);
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.ivl-block__tools {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.ivl-block__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.ivl-block__tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Ajouts d'un geste, à la suite. */
+.ivl-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }

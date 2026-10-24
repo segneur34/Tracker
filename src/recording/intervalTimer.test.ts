@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  INTERVAL_TONE_MS, lapsWithin, newPresetId, readIntervalRun, readIntervalSeries, runCommand, runLaps, sanitizePresets,
-  sanitizeWorkout, seriesWithin, startRun, timerStateAt, upcomingSchedule, workoutDurationS, workoutLabel, workoutPhases,
-  type IntervalRun, type IntervalTone, type IntervalWorkout,
+  INTERVAL_TONE_MS, lapsWithin, newPresetId, phaseName, readIntervalRun, readIntervalSeries, runCommand, runLaps, sameWorkout, sanitizePresets,
+  sanitizeWorkout, seriesBlocks, seriesWithin, startRun, timerStateAt, upcomingSchedule, workoutBlocks, workoutDurationS, workoutFromBlocks,
+  workoutLabel, workoutPhases,
+  type IntervalBlock, type IntervalRun, type IntervalTone, type IntervalWorkout,
 } from './intervalTimer';
 
 const T0 = 1_700_000_000_000;
@@ -195,5 +196,87 @@ describe('séances gardées et relecture', () => {
     const r = withCommands(run, ['pause', 30], ['resume', 50]);
     expect(readIntervalRun(JSON.parse(JSON.stringify(r)))).toEqual(r);
     expect(readIntervalRun({ workout, startedAtMs: 'hier', commands: [] })).toBeNull();
+  });
+});
+
+describe('séance à blocs', () => {
+  /** Échauffement 1:00, 2 × 0:30 / 0:15, récupération 0:20, 2 × 0:10 sans repos. */
+  const blocks: IntervalBlock[] = [
+    { kind: 'libre', label: 'Échauffement', durationS: 60 },
+    { kind: 'series', reps: 2, workS: 30, restS: 15 },
+    { kind: 'libre', label: 'Récupération', durationS: 20 },
+    { kind: 'series', reps: 2, workS: 10, restS: 0 },
+  ];
+  const multi = workoutFromBlocks(blocks)!;
+  const multiRun = startRun(multi, T0);
+
+  it('tient le premier bloc de séries en tête, pour les versions d’avant ; un seul bloc reste une séance simple', () => {
+    expect(multi).toEqual({ reps: 2, workS: 30, restS: 15, blocks });
+    expect(workoutFromBlocks([{ kind: 'series', reps: 3, workS: 60, restS: 30 }])).toEqual(workout);
+    expect(workoutBlocks(workout)).toEqual([{ kind: 'series', reps: 3, workS: 60, restS: 30 }]);
+  });
+
+  it('écarte une séance sans bloc de séries, trop longue ou au bloc abîmé', () => {
+    expect(workoutFromBlocks([{ kind: 'libre', label: 'Échauffement', durationS: 600 }])).toBeNull();
+    expect(workoutFromBlocks([])).toBeNull();
+    expect(workoutFromBlocks(Array.from({ length: 21 }, () => blocks[1]))).toBeNull();
+    expect(workoutFromBlocks([blocks[1], { kind: 'libre', label: 'Sieste' as 'Récupération', durationS: 60 }])).toBeNull();
+    expect(workoutFromBlocks([blocks[1], { kind: 'libre', label: 'Récupération', durationS: 2 }])).toBeNull();
+  });
+
+  it('relit les blocs gardés ; des blocs abîmés laissent le premier bloc de séries', () => {
+    expect(sanitizeWorkout(JSON.parse(JSON.stringify(multi)))).toEqual(multi);
+    expect(sanitizeWorkout({ reps: 2, workS: 30, restS: 15, blocks: [{ kind: 'allure', speed: 4 }] })).toEqual({ reps: 2, workS: 30, restS: 15 });
+    expect(sameWorkout(multi, sanitizeWorkout(JSON.parse(JSON.stringify(multi)))!)).toBe(true);
+    expect(sameWorkout(multi, { reps: 2, workS: 30, restS: 15 })).toBe(false);
+  });
+
+  it('enchaîne les blocs : un bloc libre en une phase, chaque bloc de séries sans repos après sa dernière répétition', () => {
+    expect(workoutPhases(multi).map((p) => [p.kind, p.block, p.rep, p.startS, p.endS])).toEqual([
+      ['pret', 0, 1, 0, 3],
+      ['libre', 0, 1, 3, 63],
+      ['travail', 1, 1, 63, 93], ['repos', 1, 1, 93, 108], ['travail', 1, 2, 108, 138],
+      ['libre', 2, 1, 138, 158],
+      ['travail', 3, 1, 158, 168], ['travail', 3, 2, 168, 178],
+    ]);
+    expect(workoutDurationS(multi)).toBe(175);
+    expect(workoutLabel(multi)).toBe('Échauffement 1:00 + 2 × 0:30 / 0:15 + Récupération 0:20 + 2 × 0:10');
+    expect(workoutPhases(multi).map(phaseName)).toEqual([
+      'Départ', 'Échauffement', 'Série 1 · Travail 1/2', 'Série 1 · Repos 1/2', 'Série 1 · Travail 2/2', 'Récupération', 'Série 2 · Travail 1/2', 'Série 2 · Travail 2/2',
+    ]);
+    expect(phaseName(workoutPhases(workout)[1])).toBe('Travail 1/3');
+  });
+
+  it('signale la fin de chaque phase, bloc libre compris, par le même signal', () => {
+    const { tones, cues } = upcomingSchedule(multiRun, T0, false);
+    const ends = (fromS: number, toS: number) => tones.filter((t) => t.delayMs > fromS * 1000 && t.delayMs < toS * 1000).map((t) => t.tone);
+    expect(ends(60, 63)).toEqual(['court', 'court', 'long']);
+    expect(ends(135, 138)).toEqual(['court', 'court', 'long']);
+    expect(ends(173, 178)).toEqual(['court', 'long', 'final']);
+    expect(cues.map((c) => c.title)).toEqual([
+      'Départ', 'Échauffement', 'Série 1 · Travail 1/2', 'Série 1 · Repos 1/2', 'Série 1 · Travail 2/2', 'Récupération', 'Série 2 · Travail 1/2', 'Série 2 · Travail 2/2', 'Terminé',
+    ]);
+  });
+
+  it('garde les blocs libres dans la fiche, hors des répétitions de chaque bloc', () => {
+    const laps = runLaps(multiRun, at(500));
+    expect(laps.map((l) => [l.kind, l.block, l.rep])).toEqual([
+      ['libre', 0, 1], ['travail', 1, 1], ['repos', 1, 1], ['travail', 1, 2], ['libre', 2, 1], ['travail', 3, 1], ['travail', 3, 2],
+    ]);
+    const series = { workout: multi, laps };
+    expect(readIntervalSeries(JSON.parse(JSON.stringify([series])))).toEqual([series]);
+    const split = seriesBlocks(series);
+    expect(split.map((b) => [b.series, b.seriesCount, b.workout.reps, b.laps.map((l) => `${l.kind} ${l.rep}`).join(', ')])).toEqual([
+      [1, 2, 2, 'travail 1, repos 1, travail 2'],
+      [2, 2, 2, 'travail 1, travail 2'],
+    ]);
+  });
+
+  it('une fiche d’avant les blocs reste une seule séance', () => {
+    const old = { workout, laps: runLaps(run, at(500)).map(({ kind, rep, startMs, endMs }) => ({ kind, rep, startMs, endMs })) };
+    const split = seriesBlocks(old);
+    expect(split).toHaveLength(1);
+    expect(split[0].laps).toHaveLength(5);
+    expect(split[0].seriesCount).toBe(1);
   });
 });

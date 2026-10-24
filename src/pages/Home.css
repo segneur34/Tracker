@@ -82,7 +82,7 @@
 
 .home-family__name {
   font-family: var(--font-title);
-  /* Rétrécit sous 390 px, pour loger « Fractionné » entier. */
+  /* Rétrécit sous 390 px, pour loger « Entraînement » entier. */
   font-size: clamp(var(--text-l), 5.6vw, var(--text-xl));
   font-weight: var(--title-weight);
   letter-spacing: var(--title-spacing);

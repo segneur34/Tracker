@@ -100,7 +100,7 @@ const update = (force: boolean) => {
     context,
     paused,
     startedAtMs: recorder.stats.firstMs,
-    interval: timer?.phase && run && (timer.status === 'running' || timer.status === 'paused') ? { state: timer, reps: run.workout.reps } : null,
+    interval: timer?.phase && run && (timer.status === 'running' || timer.status === 'paused') ? { state: timer } : null,
     nowMs,
   });
   const standalone = paused === 'manual';

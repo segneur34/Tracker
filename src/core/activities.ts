@@ -1,4 +1,7 @@
-import { SPORT_FAMILIES, SPORT_PROFILES, sportFamily, sportTreatment, type SportFamily, type Treatment } from './sportProfiles';
+import {
+  SPORT_FAMILIES, SPORT_PROFILES, TRAINING_KINDS, TRAINING_KIND_LABEL, isIntervalSport, sportFamily, sportTreatment, trainingKind,
+  type SportFamily, type TrainingKind, type Treatment,
+} from './sportProfiles';
 import type { SportType } from './types';
 import { isActivityIconId, type ActivityIconId } from './activityIcons';
 
@@ -60,6 +63,7 @@ export const BASE_COLOR: Record<SportType, string> = {
   cycling: FAMILY_SHADES.velo[0],
   'run-intervals': FAMILY_SHADES.fractionne[0],
   'bike-intervals': FAMILY_SHADES.fractionne[1],
+  'run-test': FAMILY_SHADES.fractionne[2],
   surf: FAMILY_SHADES.surf[0],
 };
 
@@ -77,6 +81,8 @@ export const RUN_INTERVALS_ACTIVITY: Activity = {
 export const BIKE_INTERVALS_ACTIVITY: Activity = {
   id: 'bike-intervals', name: 'Fractionné vélo', base: 'bike-intervals', color: BASE_COLOR['bike-intervals'],
 };
+/** Activité des tests guidés de l'Entraînement (FC max, 24/10), sur l'identifiant de son calcul. */
+export const TESTS_ACTIVITY: Activity = { id: 'run-test', name: 'Tests', base: 'run-test', color: BASE_COLOR['run-test'] };
 /** Activités de la famille Surf (§10, point 97) ; le foil de « Surf foil » est coché d'office (`useSportSettings.ts`). */
 export const SURF_ACTIVITY: Activity = { id: 'surf', name: 'Surf', base: 'surf', color: BASE_COLOR.surf };
 export const SURF_FOIL_ACTIVITY: Activity = { id: 'a-surf-foil', name: 'Surf foil', base: 'surf', color: FAMILY_SHADES.surf[1] };
@@ -84,7 +90,7 @@ export const SURF_FOIL_ACTIVITY: Activity = { id: 'a-surf-foil', name: 'Surf foi
 /**
  * Au premier lancement : une activité par famille, sur l'identifiant de son
  * calcul (celui des anciens réglages), plus la Marche, Gravel et VTT, les
- * deux du fractionné et les deux du surf.
+ * deux du fractionné, Tests et les deux du surf.
  */
 export const DEFAULT_ACTIVITIES: Activity[] = [
   { id: 'wingfoil', name: 'Voile', base: 'wingfoil', color: BASE_COLOR.wingfoil },
@@ -97,17 +103,19 @@ export const DEFAULT_ACTIVITIES: Activity[] = [
   SURF_FOIL_ACTIVITY,
   RUN_INTERVALS_ACTIVITY,
   BIKE_INTERVALS_ACTIVITY,
+  TESTS_ACTIVITY,
 ];
 
 /**
  * Version de la liste des activités rangée dans les réglages. 2 : Route,
  * Gravel et VTT dans la famille Vélo (point 81) ; 3 : les deux activités du
  * fractionné (point 89) ; 4 : couleurs prises dans les nuances de la famille
- * (point 90) ; 5 : Surf et Surf foil (point 97) ; 6 : Marche (20/10). Une liste d'avant est mise à jour une fois
+ * (point 90) ; 5 : Surf et Surf foil (point 97) ; 6 : Marche (20/10) ; 7 : couleurs de la
+ * refonte (22/10) ; 8 : Tests (24/10). Une liste d'avant est mise à jour une fois
  * (`upgradeActivities`) ; toute liste écrite ensuite porte ce numéro, pour
  * qu'une activité supprimée ne revienne pas.
  */
-export const ACTIVITIES_VERSION = 7;
+export const ACTIVITIES_VERSION = 8;
 
 /** Activités ajoutées à une liste d'avant, avec la version de la liste qui les a apportées. */
 const ACTIVITY_SEEDS: { version: number; activity: Activity }[] = [
@@ -118,6 +126,7 @@ const ACTIVITY_SEEDS: { version: number; activity: Activity }[] = [
   { version: 5, activity: SURF_ACTIVITY },
   { version: 5, activity: SURF_FOIL_ACTIVITY },
   { version: 6, activity: MARCHE_ACTIVITY },
+  { version: 8, activity: TESTS_ACTIVITY },
 ];
 
 /** Ancien nom de l'activité vélo de départ, devenue « Route ». */
@@ -130,7 +139,7 @@ export const FAMILY_BASE: Record<SportFamily, SportType> = {
 
 /** Nom d'une famille, tel que l'interface l'affiche. */
 export const FAMILY_LABEL: Record<SportFamily, string> = {
-  voile: 'Voile', course: 'À pied', velo: 'Vélo', fractionne: 'Fractionné', surf: 'Surf',
+  voile: 'Voile', course: 'À pied', velo: 'Vélo', fractionne: 'Entraînement', surf: 'Surf',
 };
 
 /** Couleur d'interface d'une famille (variable du thème). */
@@ -182,6 +191,21 @@ export const activityTreatment = (activity: Activity): Treatment => sportTreatme
 export const activitiesOfFamily = (activities: Activity[], family: SportFamily): Activity[] =>
   activities.filter((a) => activityFamily(a) === family);
 
+/** Types d'entraînement présents parmi ces activités, dans l'ordre de `TRAINING_KINDS`. */
+export const trainingKindsOf = (activities: readonly Activity[]): TrainingKind[] =>
+  TRAINING_KINDS.filter((kind) => activities.some((a) => trainingKind(a.base) === kind));
+
+/**
+ * Nom d'une activité sous son type d'entraînement : sans le nom du type en
+ * tête (« Fractionné à pied » → « à pied » sous « Fractionné »), ou entier
+ * s'il ne commence pas par lui.
+ */
+export const kindActivityLabel = (activity: Activity, kind: TrainingKind): string => {
+  const prefix = TRAINING_KIND_LABEL[kind];
+  const rest = activity.name.slice(prefix.length).trim();
+  return activity.name.toLowerCase().startsWith(prefix.toLowerCase()) && rest !== '' ? rest : activity.name;
+};
+
 /**
  * Famille cachée (§10, point 100) : cachée dans Réglages, ou sans activité
  * visible, qu'elles soient toutes cachées ou qu'elle n'en ait aucune (choix de
@@ -203,17 +227,17 @@ export const isActivityShown = (activity: Activity, activities: Activity[], hidd
   !activity.hidden && !isFamilyHidden(activities, hiddenFamilies, activityFamily(activity));
 
 /**
- * Activité de Fractionné proposée pour une sortie à pied ou à vélo faite avec
+ * Activité de fractionné proposée pour une sortie à pied ou à vélo faite avec
  * le compteur d'intervalles (19/10) : la première de `candidates` (les
- * activités visibles du Fractionné) au même traitement, à pied ou à vélo.
- * `null` pour une session déjà en Fractionné, en voile ou en surf, ou sans
- * activité qui convienne : rien à demander.
+ * activités visibles de l'Entraînement) sur un calcul de fractionné, au même
+ * traitement, à pied ou à vélo. `null` pour une session déjà en Entraînement,
+ * en voile ou en surf, ou sans activité qui convienne : rien à demander.
  */
 export const intervalActivityFor = (activity: Activity, candidates: readonly Activity[]): Activity | null => {
   if (activityFamily(activity) === 'fractionne') return null;
   const treatment = activityTreatment(activity);
   if (treatment !== 'course' && treatment !== 'velo') return null;
-  return candidates.find((a) => activityFamily(a) === 'fractionne' && activityTreatment(a) === treatment) ?? null;
+  return candidates.find((a) => isIntervalSport(a.base) && activityTreatment(a) === treatment) ?? null;
 };
 
 /** Activité cachée ou ré-affichée ; une activité visible ne porte pas le champ. */
@@ -277,6 +301,7 @@ const foldName = (name: string): string =>
  * - Version 7 (refonte du 22/10) : nouvelle première nuance de la voile, de
  *   la course et du vélo ; la couleur de chaque activité repasse par
  *   `recolorActivities`, comme en version 4.
+ * - Version 8 : Tests, dans l'Entraînement.
  *
  * Une activité ajoutée se range avec sa famille, sauf si une autre porte déjà
  * son identifiant, ou son nom dans la même famille (casse et accents ignorés :

@@ -32,7 +32,7 @@ const input = (patch: Partial<LiveNotificationInput> = {}): LiveNotificationInpu
   ...patch,
 });
 
-const work3: IntervalTimerState = { status: 'running', phase: { kind: 'travail', rep: 3, startS: 100, endS: 160 }, remainingMs: 42_300, elapsedS: 117.7 };
+const work3: IntervalTimerState = { status: 'running', phase: { kind: 'travail', rep: 3, of: 8, block: 0, series: 1, seriesCount: 1, startS: 100, endS: 160 }, remainingMs: 42_300, elapsedS: 117.7 };
 
 describe('liveNotification', () => {
   it("donne l'activité, les chiffres en une ligne et la durée au chronomètre", () => {
@@ -68,13 +68,13 @@ describe('liveNotification', () => {
   });
 
   it('avec le compteur : la répétition au titre, le décompte de la phase au chronomètre', () => {
-    const n = liveNotification(input({ activityName: 'Fractionné à pied', interval: { state: work3, reps: 8 } }));
+    const n = liveNotification(input({ activityName: 'Fractionné à pied', interval: { state: work3 } }));
     expect(n.title).toBe('Fractionné à pied · Travail 3/8');
     expect(n.chrono).toEqual({ baseMs: NOW + 42_000, countDown: true });
   });
 
   it('compteur en pause : la phase le dit, la durée reprend le chronomètre', () => {
-    const n = liveNotification(input({ interval: { state: { ...work3, status: 'paused' }, reps: 8 } }));
+    const n = liveNotification(input({ interval: { state: { ...work3, status: 'paused' } } }));
     expect(n.title).toBe('Wingfoil · Travail 3/8 en pause');
     expect(n.chrono?.countDown).toBe(false);
   });
@@ -86,8 +86,8 @@ describe('liveNotification', () => {
 
 describe('liveNotificationKey', () => {
   it('ne change pas pour un même décompte recalculé un peu plus tard', () => {
-    const a = liveNotification(input({ interval: { state: work3, reps: 8 } }));
-    const b = liveNotification(input({ nowMs: NOW + 1000, interval: { state: { ...work3, remainingMs: 41_300 }, reps: 8 } }));
+    const a = liveNotification(input({ interval: { state: work3 } }));
+    const b = liveNotification(input({ nowMs: NOW + 1000, interval: { state: { ...work3, remainingMs: 41_300 } } }));
     expect(liveNotificationKey(a, false)).toBe(liveNotificationKey(b, false));
   });
 

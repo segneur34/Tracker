@@ -58,7 +58,7 @@ import {
 import { sessionActivity } from '../core/activities';
 import { trackIndexAtTime } from '../core/jumps';
 import { heartRateZonePaths, timeSpanHeartRate } from '../core/heartRate';
-import { ELEVATION_PRESETS, getActiveThresholds, sportTreatment } from '../core/sportProfiles';
+import { ELEVATION_PRESETS, getActiveThresholds, isTestSport, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import { meanFilterByTime } from '../core/speedFilter';
 import { SLOW_COLOR, gradientCss, isValidSpeedRange } from '../core/speedGradient';
@@ -96,7 +96,7 @@ import { analyzeIntervals, type IntervalPhaseSpan } from '../running/intervalSta
 import type { RunningSessionStats } from '../running/types';
 import { BIKE_TYPES, isValidBikeWeight } from '../cycling/energy';
 import type { LibrarySession } from '../library/record';
-import type { IntervalSeries, IntervalWorkout } from '../recording/intervalTimer';
+import { seriesBlocks, type IntervalSeries, type IntervalWorkout } from '../recording/intervalTimer';
 import type { SurfaceCategory } from '../planning/surface';
 import { WAY_MATCH_DEFAULTS } from '../planning/wayMatch';
 import { LAND_PAGES, LAND_TREATMENTS, TOTAL_ENERGY_LABEL, type LandFamily, type LandTreatment } from './landModules';
@@ -151,6 +151,7 @@ type LandSection = LandTab;
 const LAND_SECTION_DEFAULTS: Record<LandSection, boolean> = {
   general: true,
   fractionne: true,
+  test: true,
   tops: false,
   zones: false,
   surface: false,
@@ -341,9 +342,9 @@ function LandModule({ family }: { family: LandFamily }) {
   );
   const jumpsVisible = jumpsState.status !== 'none';
   const sections = useMemo(
-    () => shownTabs(landTabs, tabChoices).filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals)
+    () => shownTabs(landTabs, tabChoices).filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals) && (s.key !== 'test' || isTestSport(profile.id))
       && (s.key !== 'sauts' || jumpsVisible) && (s.key !== 'cardio' || heart.present) && (s.key !== 'cadence' || cadencePresent)),
-    [landTabs, tabChoices, profile.topTargets, hasIntervals, jumpsVisible, heart.present, cadencePresent]
+    [landTabs, tabChoices, profile.topTargets, profile.id, hasIntervals, jumpsVisible, heart.present, cadencePresent]
   );
   // Une seule surbrillance sur la carte : un top, une zone de pente, une
   // répétition ou un revêtement ; choisir l'une retire les autres, fermer son onglet l'efface.
@@ -587,8 +588,13 @@ function LandModule({ family }: { family: LandFamily }) {
     [detectionOn, profile.intervals, gpx.track, cumulative, activityMask, effortOverrideMs]
   );
   /** Séances de la session : celles du compteur, sinon celles retrouvées dans la vitesse. */
-  const intervalSeries = useMemo((): { workout: IntervalWorkout; laps: IntervalPhaseSpan[]; detected: boolean }[] => {
-    if (sessionIntervals.length > 0) return sessionIntervals.map((s) => ({ workout: s.workout, laps: s.laps, detected: false }));
+  const intervalSeries = useMemo((): { workout: IntervalWorkout; laps: IntervalPhaseSpan[]; detected: boolean; name?: string }[] => {
+    // Une séance à plusieurs blocs de séries : chaque bloc à part, comme une séance d'un seul bloc ; les blocs libres sont hors des répétitions.
+    if (sessionIntervals.length > 0) {
+      return sessionIntervals.flatMap((s) => seriesBlocks(s).map((b) => (
+        { workout: b.workout, laps: b.laps, detected: false, ...(b.seriesCount > 1 ? { name: `Série ${b.series}` } : {}) }
+      )));
+    }
     return (detected?.series ?? []).map((s) => ({ workout: s.workout, laps: s.phases, detected: true }));
   }, [sessionIntervals, detected]);
   /**
@@ -607,7 +613,7 @@ function LandModule({ family }: { family: LandFamily }) {
         const cadences = cadencePresent && cadence && cadenceParams
           ? analyzed.reps.map((r) => timeSpanCadence(gpx.track, cadence.spm, r.work.startMs, r.work.endMs, cadenceParams.gapS))
           : undefined;
-        return { workout: s.workout, detected: s.detected, ...analyzed, heartRates, cadences };
+        return { workout: s.workout, detected: s.detected, name: s.name, ...analyzed, heartRates, cadences };
       })
       : []),
     [open.fractionne, profile.intervals, intervalSeries, gpx.track, cumulative, heart, profile.heartRate, cadencePresent, cadence, cadenceParams]

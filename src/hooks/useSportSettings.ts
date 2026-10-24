@@ -14,6 +14,9 @@ import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { DISTANCE_UNIT_LABEL, SPEED_UNIT_LABEL, type DistanceUnit, type SpeedUnit } from '../core/units';
 import { jsonStore } from '../platform/storage';
+import { setBeepPitch } from '../platform/beeper';
+import { DEFAULT_BEEP_SOUND, beepSoundHz, isBeepSound, type BeepSound } from '../recording/beepSound';
+import { FITNESS_TESTS, sanitizeFitnessTestSettings, type FitnessTestId, type FitnessTestSettings } from '../recording/fitnessTest';
 import {
   DEFAULT_INTERVAL_WORKOUT, MAX_INTERVAL_PRESETS, newPresetId, sameWorkout, sanitizePresets, sanitizeWorkout, workoutLabel,
   type IntervalPreset, type IntervalWorkout,
@@ -205,6 +208,10 @@ export interface StoredSettings {
   intervalPresets?: IntervalPreset[];
   /** Dernière séance lancée au compteur, proposée la fois suivante (choix retenu). */
   lastIntervalWorkout?: IntervalWorkout;
+  /** Son de tous les bips, plus ou moins grave (24/10) ; absent : `DEFAULT_BEEP_SOUND`. */
+  beepSound?: BeepSound;
+  /** Réglages des tests guidés (durée d'échauffement, pourcentage de la cible), communs aux activités ; absents : ceux du protocole. */
+  fitnessTests?: Partial<Record<FitnessTestId, Partial<FitnessTestSettings>>>;
 }
 
 /** Appui long par défaut : 2 s, assez pour ne pas partir d'un geste involontaire. */
@@ -445,6 +452,29 @@ export const rememberRecordActivity = (id: string): void => {
   if (stored.recordActivity !== id) writeStored({ ...stored, recordActivity: id });
 };
 
+let appliedBeepHz: number | null = null;
+
+/** Donne aux bips la hauteur du son choisi, s'il a changé depuis la dernière fois. */
+const applyBeepSound = (): void => {
+  const hz = beepSoundHz(readStoredSettings().beepSound);
+  if (hz === appliedBeepHz) return;
+  appliedBeepHz = hz;
+  setBeepPitch(hz).catch(() => {
+    appliedBeepHz = null;
+  });
+};
+
+/**
+ * Son des bips, branché une fois au démarrage : appliqué tout de suite, puis
+ * à chaque changement des réglages (Réglages, réglages repris d'un autre appareil).
+ */
+export const startBeepSound = (): void => {
+  applyBeepSound();
+  jsonStore.subscribe((key) => {
+    if (key === STORAGE_KEY) applyBeepSound();
+  });
+};
+
 /** Durée effective de l'appui long, lue à chaque appui. */
 export const effectiveLongPressMs = (): number => {
   const value = readStoredSettings().longPressMs;
@@ -541,10 +571,58 @@ export const saveIntervalPreset = (name: string, workout: IntervalWorkout): void
   writeStored({ ...stored, intervalPresets: [...presets, preset] });
 };
 
+/** Modifie une séance gardée : son nom (vide : son libellé) et ses blocs ; sans effet si elle n'existe plus ou n'est pas valable. */
+export const updateIntervalPreset = (id: string, name: string, workout: IntervalWorkout): void => {
+  const stored = readStoredSettings();
+  const presets = sanitizePresets(stored.intervalPresets ?? DEFAULT_INTERVAL_PRESETS);
+  const clean = sanitizeWorkout(workout);
+  if (!clean || !presets.some((p) => p.id === id)) return;
+  writeStored({
+    ...stored,
+    intervalPresets: presets.map((p) => (p.id === id ? { id, name: name.trim() || workoutLabel(clean), workout: clean } : p)),
+  });
+};
+
 /** Retire une séance gardée. */
 export const removeIntervalPreset = (id: string): void => {
   const stored = readStoredSettings();
   writeStored({ ...stored, intervalPresets: sanitizePresets(stored.intervalPresets ?? DEFAULT_INTERVAL_PRESETS).filter((p) => p.id !== id) });
+};
+
+/** Réglages des tests, rendus tels quels tant que rien n'a changé (`useSyncExternalStore` compare les références). */
+let fitnessTestCache: { key: string; value: Record<FitnessTestId, FitnessTestSettings> } | null = null;
+
+const readAllFitnessTestSettings = (): Record<FitnessTestId, FitnessTestSettings> => {
+  const stored = readStoredSettings().fitnessTests ?? null;
+  const key = JSON.stringify(stored);
+  if (fitnessTestCache?.key !== key) {
+    fitnessTestCache = {
+      key,
+      value: { 'fc-max': sanitizeFitnessTestSettings(stored?.['fc-max'], FITNESS_TESTS['fc-max']) },
+    };
+  }
+  return fitnessTestCache.value;
+};
+
+/** Réglages d'un test, hors composant (guidage du direct). */
+export const readFitnessTestSettings = (id: FitnessTestId): FitnessTestSettings => readAllFitnessTestSettings()[id];
+
+/** Réglages d'un test, suivis en direct. */
+export const useFitnessTestSettings = (id: FitnessTestId): FitnessTestSettings =>
+  useSyncExternalStore(jsonStore.subscribe, () => readAllFitnessTestSettings()[id]);
+
+/** Change les réglages d'un test ; une valeur égale à celle du protocole n'est pas écrite. */
+export const saveFitnessTestSettings = (id: FitnessTestId, patch: Partial<FitnessTestSettings>): void => {
+  const stored = readStoredSettings();
+  const protocol = FITNESS_TESTS[id];
+  const next = sanitizeFitnessTestSettings({ ...readFitnessTestSettings(id), ...patch }, protocol);
+  const own: Partial<FitnessTestSettings> = {};
+  if (next.warmupS !== protocol.warmupS) own.warmupS = next.warmupS;
+  if (Math.abs(next.warmupPct - protocol.warmupPct) > 1e-9) own.warmupPct = next.warmupPct;
+  const tests = { ...stored.fitnessTests };
+  if (Object.keys(own).length > 0) tests[id] = own;
+  else delete tests[id];
+  writeStored({ ...stored, fitnessTests: tests });
 };
 
 /**
@@ -1181,9 +1259,21 @@ export const useAllSportSettings = () => {
     [persist, stored]
   );
 
+  const beepSound = isBeepSound(stored.beepSound) ? stored.beepSound : DEFAULT_BEEP_SOUND;
+  /** Son de tous les bips ; celui par défaut n'est pas écrit. */
+  const setBeepSound = useCallback(
+    (value: BeepSound) => {
+      const next: StoredSettings = { ...stored };
+      if (value === DEFAULT_BEEP_SOUND) delete next.beepSound;
+      else next.beepSound = value;
+      persist(next);
+    },
+    [persist, stored]
+  );
+
   return {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
-    stopHoldMs, setStopHoldMs, hiddenFamilies: readHiddenFamilies(stored), setActivityHidden, setFamilyHidden,
+    stopHoldMs, setStopHoldMs, beepSound, setBeepSound, hiddenFamilies: readHiddenFamilies(stored), setActivityHidden, setFamilyHidden,
   };
 };
 

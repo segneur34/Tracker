@@ -79,6 +79,14 @@ export const IconStopwatch = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+/** Cœur traversé d'un pouls : les tests de l'Entraînement (FC max). */
+export const IconPulse = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z" />
+    <path d="M3 12.5h4l1.5-2.5 2.5 5 2-3.5h8" />
+  </svg>
+);
+
 export const IconSettings = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
     <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />

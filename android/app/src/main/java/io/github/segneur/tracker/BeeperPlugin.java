@@ -113,6 +113,50 @@ public class BeeperPlugin extends Plugin {
         call.resolve();
     }
 
+    /**
+     * Un motif joué une fois, chaque son (court, long, final) à son délai en
+     * millisecondes : « Écouter » de Réglages, signaux des tests. Il ne touche
+     * ni au rythme des balises ni au service du compteur.
+     */
+    @PluginMethod
+    public void pattern(PluginCall call) {
+        JSArray list = call.getArray("tones", new JSArray());
+        boolean vibrateRequested = Boolean.TRUE.equals(call.getBoolean("vibrate", false));
+        try {
+            long[] delays = new long[list.length()];
+            int[] kinds = new int[list.length()];
+            for (int i = 0; i < list.length(); i++) {
+                JSONObject tone = list.getJSONObject(i);
+                delays[i] = Math.max(0, tone.getLong("delayMs"));
+                kinds[i] = IntervalTimerService.toneKind(tone.optString("tone", "court"));
+            }
+            Handler h = handler();
+            for (int i = 0; i < delays.length; i++) {
+                int kind = kinds[i];
+                h.postDelayed(() -> {
+                    if (kind == IntervalTimerService.TONE_FINAL) tones().playFinal(vibrateRequested);
+                    else if (kind == IntervalTimerService.TONE_LONG) tones().playLong(vibrateRequested);
+                    else tones().playShort(vibrateRequested);
+                }, delays[i]);
+            }
+            call.resolve();
+        } catch (JSONException e) {
+            call.reject("Motif illisible : " + e.getMessage());
+        }
+    }
+
+    /** Hauteur de tous les bips, en hertz (Réglages) : ceux d'ici et ceux du compteur. */
+    @PluginMethod
+    public void setPitch(PluginCall call) {
+        Integer hz = call.getInt("hz");
+        if (hz == null) {
+            call.reject("Hauteur manquante.");
+            return;
+        }
+        TonePlayer.setPitch(getContext(), hz);
+        call.resolve();
+    }
+
     /** Vibration seule, sans son ni effet sur le rythme des balises : le bouton « Note ». */
     @PluginMethod
     public void buzz(PluginCall call) {

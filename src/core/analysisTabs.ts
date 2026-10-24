@@ -1,4 +1,4 @@
-import { sportFamily, sportTreatment, type SportProfile, type Treatment } from './sportProfiles';
+import { isIntervalSport, isTestSport, sportTreatment, type SportProfile, type Treatment } from './sportProfiles';
 
 /**
  * Onglets des analyses, par module, dans l'ordre de leur barre. Chaque
@@ -17,7 +17,7 @@ export interface AnalysisTab<K extends string = string> {
   label: string;
   /** Onglet générique : caché tant que l'activité ne le coche pas. */
   generic?: true;
-  /** Onglet de la première rangée, hors d'« avancé » : « général », et « fractionné » (22/10). */
+  /** Onglet de la première rangée, hors d'« avancé » : « général », « fractionné » (22/10) et « test » (24/10). */
   primary?: true;
 }
 
@@ -42,7 +42,7 @@ export const SAILING_TABS: AnalysisTab<SailingTab>[] = [
   { key: 'reglages', label: 'réglages' },
 ];
 
-export type LandTab = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'cardio' | 'cadence' | 'sauts' | 'notes' | 'reglages';
+export type LandTab = 'general' | 'fractionne' | 'test' | 'tops' | 'zones' | 'surface' | 'energie' | 'graphiques' | 'cardio' | 'cadence' | 'sauts' | 'notes' | 'reglages';
 
 /**
  * Course et vélo : « tops » est natif à vélo, générique à pied (course, marche).
@@ -52,6 +52,8 @@ export type LandTab = 'general' | 'fractionne' | 'tops' | 'zones' | 'surface' | 
 const landTabs = (topsGeneric: boolean, cadence: boolean): AnalysisTab<LandTab>[] => [
   { key: 'general', label: 'général', primary: true },
   { key: 'fractionne', label: 'fractionné', primary: true },
+  // Seulement pour une session qui a son test guidé (`record.test`).
+  { key: 'test', label: 'test', primary: true },
   topsGeneric ? { key: 'tops', label: 'tops', generic: true } : { key: 'tops', label: 'tops' },
   { key: 'graphiques', label: 'graphiques' },
   { key: 'cardio', label: 'cardio' },
@@ -95,11 +97,11 @@ const TREATMENT_TABS: Record<Treatment, readonly AnalysisTab[]> = {
 
 /**
  * Onglets d'un calcul, proposés dans Réglages : « sauts » seulement s'il les mesure (ni bateau ni fractionné),
- * « cadence » de même, « fractionné » en famille Fractionné seulement (19/10).
+ * « cadence » de même, « fractionné » aux seuls calculs de fractionné (19/10), « test » aux seuls calculs de test (24/10).
  */
 export const analysisTabs = (profile: SportProfile): readonly AnalysisTab[] =>
   TREATMENT_TABS[sportTreatment(profile.id)].filter((tab) => (tab.key !== 'sauts' || profile.jumps !== null) && (tab.key !== 'cadence' || profile.cadence !== null)
-    && (tab.key !== 'fractionne' || sportFamily(profile.id) === 'fractionne'));
+    && (tab.key !== 'fractionne' || isIntervalSport(profile.id)) && (tab.key !== 'test' || isTestSport(profile.id)));
 
 /** Onglet montré : le choix de l'activité, sinon son défaut (natif montré, générique caché). */
 export const isTabShown = (tab: AnalysisTab, choices: TabChoices | null | undefined): boolean => {
