@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { MapContainer, useMap } from 'react-leaflet';
 import { DEFAULT_MAP_CENTER, type TrackBounds } from '../core/displayConfig';
 import { NARROW_QUERY } from '../hooks/useNarrowScreen';
+import type { MapFocus } from '../hooks/useZoomOnMap';
 import MapAutoResize from './MapAutoResize';
 import ResizablePanel from './ResizablePanel';
 
@@ -37,13 +38,33 @@ interface AnalysisMapProps {
   /** Vue agrandie pilotée par le module (téléphone) ; sinon, la carte la tient seule. */
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  /**
+   * Cadrage demandé par le module (« Sur la carte » d'un graphe zoomé,
+   * `useZoomOnMap`) : chaque nouvelle demande cadre la carte et sa vue
+   * agrandie, qui s'ouvre aussi dessus.
+   */
+  focus?: MapFocus | null;
+  /** Graphes posés sous la carte agrandie (plein écran carte + graphes du téléphone) ; sinon, la carte seule. */
+  companion?: ReactNode;
 }
+
+/** Marge et zoom maximal d'un cadrage, à l'ouverture comme à la demande. */
+const FIT_OPTIONS = { padding: [24, 24] as [number, number], maxZoom: 18 };
 
 /** Cadrage initial : sur la trace s'il y en a une, sinon sur le centre par défaut. */
 const initialView = (bounds: TrackBounds | null) =>
   bounds
-    ? { bounds, boundsOptions: { padding: [24, 24] as [number, number], maxZoom: 18 } }
+    ? { bounds, boundsOptions: FIT_OPTIONS }
     : { center: DEFAULT_MAP_CENTER, zoom: 14 };
+
+/** Cadre la carte qui la contient sur chaque nouvelle demande, et sur celle en cours à son montage. Ne dessine rien. */
+function MapFocusControl({ focus }: { focus: MapFocus | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (focus) map.fitBounds(focus.bounds, FIT_OPTIONS);
+  }, [map, focus]);
+  return null;
+}
 
 /**
  * Contrôle Leaflet du coin bas droit qui porte `children`. Leaflet place un
@@ -70,10 +91,13 @@ function MapCornerControl({ children }: { children: ReactNode }) {
  * à droite, à gauche de la mention OSM. Sur ordinateur, en haut de la page,
  * centrée, plus étroite que la page et redimensionnable en hauteur ; sur
  * téléphone, pleine largeur en tête de page, et un toucher l'ouvre en plein
- * écran. Commune à tous les modules
- * (`docs/MISE_EN_PAGE.md`).
+ * écran, éventuellement avec des graphes dessous (`companion`). Commune à
+ * tous les modules (`docs/MISE_EN_PAGE.md`).
  */
-function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, defaultHeight, style, overlay, expanded: expandedProp, onExpandedChange }: AnalysisMapProps) {
+function AnalysisMap({
+  panelId, anchorId, sessionKey, bounds, layers, legend, defaultHeight, style, overlay, expanded: expandedProp, onExpandedChange,
+  focus = null, companion,
+}: AnalysisMapProps) {
   /** Carte agrandie en plein écran (toucher sur la carte compacte, écran étroit seulement). */
   const [ownExpanded, setOwnExpanded] = useState(false);
   const expanded = expandedProp ?? ownExpanded;
@@ -83,6 +107,7 @@ function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, de
   };
   const legendControl = legend && <MapCornerControl>{legend}</MapCornerControl>;
   const tools = overlay && <div className="an-map-tools">{overlay}</div>;
+  const focusControl = <MapFocusControl focus={focus} />;
 
   return (
     <>
@@ -99,6 +124,7 @@ function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, de
           style={{ position: 'relative', flex: '1 1 auto', minHeight: 0, overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--line-strong)' }}>
           <MapContainer key={sessionKey ?? 'empty'} {...initialView(bounds)} style={{ height: '100%', width: '100%' }}>
             <MapAutoResize />
+            {focusControl}
             {layers}
             {legendControl}
           </MapContainer>
@@ -107,16 +133,20 @@ function AnalysisMap({ panelId, anchorId, sessionKey, bounds, layers, legend, de
       </ResizablePanel>
 
       {expanded && (
-        <div className="an-map-overlay" onClick={() => setExpanded(false)}>
+        <div className={companion ? 'an-map-overlay an-map-overlay--charts' : 'an-map-overlay'} onClick={() => setExpanded(false)}>
           <button type="button" className="an-map-overlay__close" onClick={() => setExpanded(false)} aria-label="Fermer la carte">×</button>
           <div className="an-map-overlay__map an-map-corner" onClick={(e) => e.stopPropagation()} style={{ position: 'relative' }}>
-            <MapContainer key={`expanded-${sessionKey ?? 'empty'}`} {...initialView(bounds)} style={{ height: '100%', width: '100%' }}>
+            <MapContainer key={`expanded-${sessionKey ?? 'empty'}`} {...initialView(focus?.bounds ?? bounds)} style={{ height: '100%', width: '100%' }}>
               <MapAutoResize />
+              {focusControl}
               {layers}
               {legendControl}
             </MapContainer>
             {tools}
           </div>
+          {companion && (
+            <div className="an-map-overlay__charts" onClick={(e) => e.stopPropagation()}>{companion}</div>
+          )}
         </div>
       )}
     </>

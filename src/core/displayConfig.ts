@@ -16,6 +16,9 @@ export const PREVIEW_MAX_POINTS = 300;
 /** Plage la plus étroite d'un graphe zoomé, en part de son étendue : 1 %. */
 export const CHART_ZOOM_MIN_FRACTION = 0.01;
 
+/** Zoom d'un double-clic ou d'un double toucher sur un graphe : la plage divisée par 2. */
+export const CHART_TAP_ZOOM_FACTOR = 2;
+
 /** Centre de la carte avant le chargement d'une trace : Montpellier. */
 export const DEFAULT_MAP_CENTER: [number, number] = [43.6108, 3.8767];
 

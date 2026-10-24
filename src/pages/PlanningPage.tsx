@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import './PlanningPage.css';
 import ActivitySelect from '../components/ActivitySelect';
 import BeepCurveEditor from '../components/BeepCurveEditor';
+import ChartReadout, { type Readout } from '../components/ChartReadout';
 import MapAutoResize from '../components/MapAutoResize';
 import BaseTileLayer from '../components/BaseTileLayer';
 import PanelTitle from '../components/PanelTitle';
@@ -19,7 +20,7 @@ import SurfaceLayer from '../components/SurfaceLayer';
 import WayTypeTabs from '../components/WayTypeTabs';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import HoverMarker from '../components/HoverMarker';
-import { hoveredTrackIndex, type ChartHoverEvent } from '../components/chartHover';
+import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, inChartView, type ChartHoverEvent } from '../components/chartHover';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { IconChevronRight, IconFile, IconUndo } from '../components/icons';
 import { CARD_STYLE } from '../components/styles';
@@ -483,6 +484,18 @@ function PlanningPage() {
     const index = hoveredTrackIndex(e, chartRows);
     if (index !== hoveredIndex) setHoveredIndex(index);
   };
+  /** Altitude et pente lues au-dessus du profil (`ChartReadout`), au point survolé de la plage zoomée. */
+  const profileReadout: Readout | null = hovered && hoveredIndex !== null && inChartView(zoom.view, profileDist[hoveredIndex])
+    ? {
+      values: [{
+        text: hovered.eleM !== null
+          ? `${Math.round(hovered.eleM)} m${hovered.grade !== null && isFinite(hovered.grade) ? `, pente ${Math.round(hovered.grade * 100)} %` : ''}`
+          : '—',
+        color: '#e64a19',
+      }],
+      at: `${parseFloat(profileDist[hoveredIndex].toFixed(2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`,
+    }
+    : null;
 
   // --- Carte ---
 
@@ -972,6 +985,7 @@ function PlanningPage() {
 
               {hasElevation && gradeRange ? (
                 <div className="plan-profile" onMouseLeave={() => setHoveredIndex(null)}>
+                  <ChartReadout line readout={profileReadout} label="Altitude" color="#e64a19" />
                   <ZoomableChart zoom={zoom} style={{ width: '100%', height: '170px' }}>
                     <ResponsiveContainer>
                       <AreaChart data={chartRows} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
@@ -982,13 +996,7 @@ function PlanningPage() {
                           ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
                           tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`} tick={{ fill: '#555', fontSize: 11 }} />
                         <YAxis domain={['auto', 'auto']} width={44} tick={{ fill: '#e64a19', fontSize: 11 }} tickFormatter={(v) => `${v}`} />
-                        <Tooltip
-                          contentStyle={{ fontSize: 'var(--text-xs)' }}
-                          labelFormatter={(l) => `${parseFloat(Number(l).toFixed(2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`}
-                          formatter={(value, _name, item) => {
-                            const row: ChartRow | undefined = item.payload;
-                            return [row?.grade != null ? `${value} m, pente ${Math.round(row.grade * 100)} %` : `${value} m`, 'Altitude'];
-                          }} />
+                        <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
                         {gradeGradientDefs(gradientId, gradeStops)}
                         <Area type="monotone" dataKey="altitude" name="Altitude" stroke={`url(#${gradientId})`} strokeWidth={2}
                           fill={`url(#${gradientId})`} fillOpacity={0.35} dot={false} activeDot={{ r: 4 }} connectNulls={false}
@@ -1011,7 +1019,7 @@ function PlanningPage() {
                       {gradeOnMap ? 'Masquer de la carte' : 'Voir sur la carte'}
                     </Button>
                   </div>
-                  <div className="plan-legend">Pour zoomer : écartez deux doigts sur la courbe, ou tirez une zone à la souris.</div>
+                  <div className="plan-legend">Pour zoomer : écartez deux doigts ou touchez deux fois la courbe ; à la souris, tirez une zone ou double-cliquez.</div>
                 </div>
               ) : (
                 route.waypoints.length >= 2 && totals.pendingLegs === 0 && (

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { clampRange, niceTicks, pinchRange, pxSelectionRange, sampledIndices, visibleIndexRange } from './chartZoom';
+import { trackBounds } from './displayConfig';
+import {
+  axisRangePath, clampRange, niceTicks, pinchRange, pxSelectionRange, sampledIndices, visibleIndexRange, zoomAtRange,
+} from './chartZoom';
 
 const FULL = { min: 0, max: 10 };
 
@@ -40,6 +43,76 @@ describe('geste à deux doigts', () => {
   it('pincer jusqu\'à tout couvrir revient à tout voir, doigts croisés : plage inchangée', () => {
     expect(pinchRange({ min: 4, max: 6 }, [20, 80], [45, 55], 100, FULL, 0.1)).toBeNull();
     expect(pinchRange({ min: 4, max: 6 }, [20, 80], [80, 20], 100, FULL, 0.1)).toEqual({ min: 4, max: 6 });
+  });
+});
+
+describe('double-clic', () => {
+  it('divise la plage par le facteur, la valeur sous le doigt restant sous lui', () => {
+    // Zone de 100 px sur 2–6 : toucher à 25 px, valeur 3.
+    const r = zoomAtRange({ min: 2, max: 6 }, 25, 100, 2, FULL, 0.1)!;
+    expect(r.max - r.min).toBeCloseTo(2, 9);
+    expect(r.min + 0.25 * (r.max - r.min)).toBeCloseTo(3, 9);
+  });
+
+  it('deux fois au même endroit zoome sur le même point', () => {
+    const once = zoomAtRange(FULL, 80, 100, 2, FULL, 0.1)!;
+    const twice = zoomAtRange(once, 80, 100, 2, FULL, 0.1)!;
+    expect(twice.max - twice.min).toBeCloseTo(2.5, 9);
+    expect(twice.min + 0.8 * (twice.max - twice.min)).toBeCloseTo(8, 9);
+  });
+
+  it('reste dans l\'étendue et ne descend pas sous la plage minimale', () => {
+    expect(zoomAtRange(FULL, 0, 100, 2, FULL, 0.1)).toEqual({ min: 0, max: 5 });
+    const r = zoomAtRange({ min: 4, max: 4.15 }, 50, 100, 2, FULL, 0.1)!;
+    expect(r.max - r.min).toBeCloseTo(0.1, 9);
+  });
+});
+
+describe('tronçon de la trace d\'une plage', () => {
+  // Ligne droite vers le nord-est, axe en distance : un point par unité.
+  const line = (step: number) => {
+    const points: { lat: number; lon: number }[] = [];
+    const axis: number[] = [];
+    for (let v = 0; v <= 10 + 1e-9; v += step) {
+      points.push({ lat: 43 + v * 0.001, lon: 3 + v * 0.002 });
+      axis.push(v);
+    }
+    return { points, axis };
+  };
+
+  it('les points de la plage et ses deux bouts interpolés', () => {
+    const { points, axis } = line(1);
+    const path = axisRangePath(points, axis, { min: 2.5, max: 5.5 });
+    expect(path).toHaveLength(5);
+    expect(path[0][0]).toBeCloseTo(43.0025, 9);
+    expect(path[0][1]).toBeCloseTo(3.005, 9);
+    expect(path[4][0]).toBeCloseTo(43.0055, 9);
+  });
+
+  it('la même emprise quelle que soit la cadence (règle 2)', () => {
+    const slow = line(1);
+    const fast = line(0.2);
+    const a = trackBounds(axisRangePath(slow.points, slow.axis, { min: 2.3, max: 7.9 }).map(([lat, lon]) => ({ lat, lon })))!;
+    const b = trackBounds(axisRangePath(fast.points, fast.axis, { min: 2.3, max: 7.9 }).map(([lat, lon]) => ({ lat, lon })))!;
+    for (let k = 0; k < 2; k++) {
+      for (let j = 0; j < 2; j++) expect(a[k][j]).toBeCloseTo(b[k][j], 9);
+    }
+  });
+
+  it('un seul intervalle couvre la plage (règle 10) : deux points sur ce segment', () => {
+    const points = [{ lat: 43, lon: 3 }, { lat: 43.01, lon: 3.02 }];
+    const path = axisRangePath(points, [0, 10], { min: 4, max: 6 });
+    expect(path).toHaveLength(2);
+    expect(path[0][0]).toBeCloseTo(43.004, 9);
+    expect(path[1][1]).toBeCloseTo(3.012, 9);
+  });
+
+  it('une pause (valeurs égales de l\'axe) ne divise pas par zéro, la plage est bornée à la trace', () => {
+    const points = [{ lat: 43, lon: 3 }, { lat: 43.001, lon: 3 }, { lat: 43.0011, lon: 3 }, { lat: 43.002, lon: 3 }];
+    const path = axisRangePath(points, [0, 1, 1, 2], { min: 1, max: 5 });
+    expect(path.every(([lat, lon]) => isFinite(lat) && isFinite(lon))).toBe(true);
+    expect(path[path.length - 1]).toEqual([43.002, 3]);
+    expect(axisRangePath([], [], { min: 0, max: 1 })).toEqual([]);
   });
 });
 

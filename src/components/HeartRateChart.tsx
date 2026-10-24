@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { CartesianGrid, ComposedChart, Line, ReferenceArea, ResponsiveContainer, Tooltip, YAxis } from 'recharts';
-import { hoveredTrackIndex, type ChartHoverEvent } from './chartHover';
+import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, type ChartHoverEvent } from './chartHover';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS } from './heartRateColors';
 import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
 import type { ChartZoom } from '../hooks/useChartZoom';
@@ -8,27 +8,27 @@ import type { ChartZoom } from '../hooks/useChartZoom';
 /** Haut de la bande de la zone 5. */
 const TOP_BPM = 250;
 
-const tooltipStyle = { fontSize: 'var(--text-xs)' } as const;
-
 /**
  * Courbe de FC, zoomable, reliée à la carte par l'indice de chaque ligne
  * (`hoveredTrackIndex`) ; les zones du pratiquant en bandes pâles. L'axe des
  * abscisses vient de la page : la distance dans l'onglet des graphes de la
- * course et du vélo, le temps ailleurs. Partagée par l'onglet « cardio » et
+ * course et du vélo, le temps ailleurs. La valeur se lit au-dessus, dans la
+ * lecture de la page (`ChartReadout`). Partagée par l'onglet « cardio » et
  * les onglets des graphes des trois modules.
  */
 export default function HeartRateChart<R extends { index: number; hr: number | null }>({
-  data, zoom, xAxis, labelFormatter, zones, onHoverIndex, onLeave, syncId, showReset, style, children,
+  data, zoom, xAxis, zones, onHoverIndex, onLeave, onShowOnMap, syncId, showReset, style, children,
 }: {
   data: R[];
   zoom: ChartZoom;
   /** `XAxis` de la page, sur une clé des lignes. */
   xAxis: ReactElement;
-  labelFormatter: (label: unknown) => string;
   /** Bornes basses des zones 1 à 5, ou `null` sans zones. */
   zones: readonly number[] | null;
   onHoverIndex: (index: number) => void;
   onLeave?: () => void;
+  /** « Sur la carte » une fois zoomé. */
+  onShowOnMap?: () => void;
   syncId?: string;
   showReset?: boolean;
   style?: CSSProperties;
@@ -40,7 +40,7 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
     if (index !== null) onHoverIndex(index);
   };
   return (
-    <ZoomableChart zoom={zoom} onLeave={onLeave} showReset={showReset} style={style}>
+    <ZoomableChart zoom={zoom} onLeave={onLeave} showReset={showReset} onShowOnMap={onShowOnMap} style={style}>
       <ResponsiveContainer>
         <ComposedChart data={data} syncId={syncId} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
           <ChartZoomProbe />
@@ -54,7 +54,7 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
               stroke="none" ifOverflow="hidden" />
           ))}
           {children}
-          <Tooltip formatter={(value) => [`${value} bpm`, 'FC']} labelFormatter={labelFormatter} contentStyle={tooltipStyle} />
+          <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
           <Line yAxisId="hr" type="monotone" name="FC" dataKey="hr" stroke={HEART_RATE_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 5 }}
             connectNulls={false} isAnimationActive={false} />
         </ComposedChart>

@@ -80,7 +80,8 @@ const SCOPE = (title) => `([...document.querySelectorAll('.an-carte-panels [role
 const chartsIn = (title) => evaluate(`(() => { const s = ${SCOPE(title)}; return s ? s.querySelectorAll('.recharts-surface').length : -1; })()`);
 const areasIn = (title) => evaluate(`(() => { const s = ${SCOPE(title)}; return s ? s.querySelectorAll('.recharts-area').length : -1; })()`);
 const linesIn = (title) => evaluate(`(() => { const s = ${SCOPE(title)}; return s ? s.querySelectorAll('.recharts-line').length : -1; })()`);
-const textIn = (title) => evaluate(`(() => { const s = ${SCOPE(title)}; return s ? s.innerText : ''; })()`);
+/** Texte du panneau tel qu'écrit : `innerText` rendrait les capitales de la refonte (boutons, noms des graphes). */
+const textIn = (title) => evaluate(`(() => { const s = ${SCOPE(title)}; return s ? s.textContent : ''; })()`);
 const heightOf = (title) => evaluate(`(() => { const s = ${SCOPE(title)}; return s ? Math.round(s.getBoundingClientRect().height) : -1; })()`);
 /** Boutons de repli du panneau : nom et état. */
 const folds = (title) => evaluate(`(() => { const s = ${SCOPE(title)}; return s ? [...s.querySelectorAll('[data-chart-fold]')].map((b) => b.textContent.trim() + (b.getAttribute('aria-expanded') === 'true' ? '+' : '-')).join(' ') : '(absent)'; })()`);

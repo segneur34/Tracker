@@ -227,6 +227,8 @@
 
   .an-map-panel {
     width: var(--analysis-map-width);
+    /* Ramenée à l'écran (« Sur la carte »), elle s'arrête sous la barre du haut, qui colle. */
+    scroll-margin-top: calc(var(--topbar-h) + var(--space-2));
   }
 }
 
@@ -353,6 +355,28 @@
   .an-map-overlay__map {
     width: 100%;
     height: 100%;
+  }
+
+  /* Plein écran carte + graphes (« Sur la carte », 23/10) : la carte en haut, les graphes de l'onglet dessous, qui défilent. */
+  .an-map-overlay--charts {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .an-map-overlay--charts .an-map-overlay__map {
+    flex: 0 0 55%;
+    height: auto;
+  }
+
+  .an-map-overlay__charts {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    /* La barre d'onglets du bas passe au-dessus (`AppShell.css`) : le dernier graphe défile jusqu'au-dessus d'elle. */
+    padding: var(--space-2) var(--space-4) calc(var(--space-4) + var(--tabbar-h) + var(--inset-bottom));
+    border-top: 1px solid var(--line-strong);
   }
 
   /* Réglage du vent en plein écran : le bandeau laisse la place au zoom à gauche, au × de fermeture à droite. */

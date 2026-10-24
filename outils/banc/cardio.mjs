@@ -209,7 +209,7 @@ for (const key of ['course', 'surf', 'voile']) {
 }
 await go(paths.course, 6000);
 const before = await panel('Cardio');
-check('course : FC max de la sortie proposée', before.includes('Aucune FC max') && before.includes('La retenir'));
+check('course : FC max de la sortie proposée', before.includes('Aucune FC max') && before.toLowerCase().includes('la retenir'));
 console.log('  La retenir :', await clickButton('Cardio', 'La retenir'));
 await wait(800);
 const kept = await runner();
@@ -263,7 +263,7 @@ check(`surf : vitesse et FC (${await chartsIn('Vitesse')})`, (await chartsIn('Vi
 await go(paths.voile, 8000);
 await clickTab('graphiques');
 await wait(1500);
-check('voile : « Fréquence cardiaque » dans graphiques', (await panel('Graphiques')).includes('Fréquence cardiaque'));
+check('voile : « Fréquence cardiaque » dans graphiques', (await panel('Graphiques')).toLowerCase().includes('fréquence cardiaque'));
 await shoot('cardio-voile');
 
 // --- 5. Réglages ---

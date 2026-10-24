@@ -32,10 +32,63 @@
   border-right: 1px solid rgba(30, 136, 229, 0.6);
 }
 
-.zoom-chart__reset {
+/* « Sur la carte » et « Tout voir », en haut à droite du graphe zoomé. */
+.zoom-chart__actions {
   position: absolute;
   top: var(--space-1);
   right: var(--space-3);
   z-index: 1;
+  display: flex;
+  gap: var(--space-1);
+}
+
+.zoom-chart__actions .ui-btn {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+/*
+ * Nom d'un graphe et sa lecture (`ChartReadout`), au-dessus de lui : une
+ * seule ligne, qui ne passe jamais à la ligne, pour que le graphe ne bouge
+ * pas sous le doigt quand la valeur change.
+ */
+.chart-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.chart-readout {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+
+/* Ligne de lecture seule (graphe sans nom au-dessus de lui, Superposés) : la hauteur d'une ligne, même vide. */
+.chart-readout--line {
+  flex: none;
+  display: block;
+  min-height: 1.6em;
+}
+
+.chart-readout__value {
+  font-weight: 600;
+}
+
+.chart-readout__at {
+  color: var(--muted);
+}
+
+/* Étiquette d'un graphe sans bouton de repli, à la manière de `ChartFold`. */
+.chart-readout__label {
+  font-weight: 600;
+  letter-spacing: var(--title-spacing);
+  text-transform: uppercase;
+  margin-right: var(--space-2);
 }

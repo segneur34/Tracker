@@ -7,6 +7,15 @@
  * que la carte attend.
  */
 
+import type { XRange } from '../core/chartZoom';
+
+/**
+ * Contenu de l'infobulle de Recharts : rien. La valeur se lit au-dessus du
+ * graphe (`ChartReadout`, 23/10) ; l'infobulle reste pour son trait vertical,
+ * le point actif et l'indice survolé.
+ */
+export const NO_TOOLTIP_CONTENT = () => null;
+
 /** Sous-ensemble de l'événement de souris de Recharts utilisé pour le survol. */
 export interface ChartHoverEvent {
   isTooltipActive?: boolean;
@@ -29,3 +38,6 @@ export const hoveredTrackIndex = (
   if (!Number.isInteger(chartIndex)) return null;
   return data[chartIndex]?.index ?? null;
 };
+
+/** Vrai si l'abscisse `value` du point survolé est dans la plage zoomée (ou s'il n'y a pas de zoom) : sinon, rien à lire. */
+export const inChartView = (view: XRange | null, value: number): boolean => !view || (value >= view.min && value <= view.max);

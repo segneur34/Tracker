@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
 import CardioLoadHelp from './CardioLoadHelp';
+import ChartReadout, { type Readout } from './ChartReadout';
 import HeartRateChart from './HeartRateChart';
+import { inChartView } from './chartHover';
 import PanelTitle from './PanelTitle';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from './heartRateColors';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
@@ -15,7 +17,7 @@ import {
 } from '../core/heartRate';
 import type { HeartRateProfile } from '../core/sportProfiles';
 import { SPEED_UNIT_LABEL, formatClock, formatShortDuration, isInverseUnit, toDisplaySpeed, type SpeedUnit } from '../core/units';
-import { useChartZoom } from '../hooks/useChartZoom';
+import type { ChartZoom } from '../hooks/useChartZoom';
 import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
 
 /** Vitesse et activité de la trace, pour la dérive et le nuage FC / vitesse (course et vélo). */
@@ -38,12 +40,16 @@ interface Props {
   /** Zone montrée sur la carte (1 à 5, 0 sous Z1), ou `null`. */
   selectedZone: number | null;
   onSelectZone: (zone: number | null) => void;
+  /** Point de trace survolé, d'un graphe ou d'un autre : la lecture de la courbe. */
+  hoveredIndex: number | null;
   onHoverIndex: (index: number) => void;
   onLeave: () => void;
   /** Course et vélo seulement. */
   efficiency?: HeartRateEfficiency;
-  /** Remet le zoom à « tout voir » quand la session change. */
-  resetKey: unknown;
+  /** Zoom de la courbe, tenu par le module (« Sur la carte », plein écran carte + graphes) ; « tout voir » à chaque session. */
+  zoom: ChartZoom;
+  /** « Sur la carte » de la courbe zoomée. */
+  onShowOnMap?: () => void;
   open: boolean;
   onToggle: () => void;
 }
@@ -59,19 +65,23 @@ const cell = { padding: '0.4em 0.6em', textAlign: 'center' } as const;
 const scatterTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
 
 /**
- * Onglet « cardio » des trois modules : FC moyenne, max et charge, courbe
- * reliée à la carte, temps par zone avec ses passages sur la carte, FC max
- * observée à retenir ; en course et à vélo, dérive et nuage FC / vitesse.
- * Posé dans le `ResizablePanel` du module.
+ * Courbe de FC de l'onglet « cardio », sur le temps écoulé, avec sa lecture
+ * au-dessus : dans le panneau, et sous la carte en plein écran.
  */
-export default function HeartRatePanel({
-  track, heart, params, zones, profileHrMax, onRetainHrMax, selectedZone, onSelectZone, onHoverIndex, onLeave, efficiency,
-  resetKey, open, onToggle,
-}: Props) {
-  const { smoothed, stats } = heart;
+export function CardioCurve({ track, smoothed, zoom, zones, hoveredIndex, onHoverIndex, onLeave, onShowOnMap, style }: {
+  track: readonly HeartRatePoint[];
+  smoothed: readonly (number | null)[];
+  zoom: ChartZoom;
+  /** Bornes basses des zones 1 à 5, ou `null` sans zones. */
+  zones: readonly number[] | null;
+  hoveredIndex: number | null;
+  onHoverIndex: (index: number) => void;
+  onLeave: () => void;
+  onShowOnMap?: () => void;
+  style?: CSSProperties;
+}) {
   const t0 = track[0]?.timeMs ?? 0;
   const minutes = useMemo(() => track.map((p) => (p.timeMs - t0) / 60_000), [track, t0]);
-  const zoom = useChartZoom(minutes.length > 1 ? { min: minutes[0], max: minutes[minutes.length - 1] } : null, resetKey);
   const rows = useMemo(() => {
     if (minutes.length < 2) return [];
     const [first, last] = visibleIndexRange(minutes, zoom.view);
@@ -81,6 +91,37 @@ export default function HeartRatePanel({
       hr: smoothed[i] === null ? null : Math.round(smoothed[i]!),
     }));
   }, [minutes, zoom.view, smoothed]);
+  if (rows.length < 2) return null;
+  const bpm = hoveredIndex !== null ? smoothed[hoveredIndex] : null;
+  const readout: Readout | null = hoveredIndex !== null && minutes[hoveredIndex] !== undefined && inChartView(zoom.view, minutes[hoveredIndex])
+    ? { values: [{ text: bpm === null || bpm === undefined ? '—' : `${Math.round(bpm)} bpm`, color: HEART_RATE_COLOR }], at: minutesLabel(minutes[hoveredIndex]) }
+    : null;
+  return (
+    <>
+      <ChartReadout readout={readout} label="FC" color={HEART_RATE_COLOR} line />
+      <HeartRateChart data={rows} zoom={zoom} zones={zones} onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap}
+        style={style}
+        xAxis={(
+          <XAxis dataKey="minutes" type="number" allowDataOverflow
+            domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
+            ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
+            tickFormatter={(v: number) => formatClock(v * 60_000).replace(/:00$/, '')} tick={{ fill: '#555', fontSize: 11 }} />
+        )} />
+    </>
+  );
+}
+
+/**
+ * Onglet « cardio » des trois modules : FC moyenne, max et charge, courbe
+ * reliée à la carte, temps par zone avec ses passages sur la carte, FC max
+ * observée à retenir ; en course et à vélo, dérive et nuage FC / vitesse.
+ * Posé dans le `ResizablePanel` du module.
+ */
+export default function HeartRatePanel({
+  track, heart, params, zones, profileHrMax, onRetainHrMax, selectedZone, onSelectZone, hoveredIndex, onHoverIndex, onLeave, efficiency,
+  zoom, onShowOnMap, open, onToggle,
+}: Props) {
+  const { smoothed, stats } = heart;
 
   const zoneTimes = useMemo(() => (zones ? timeInZones(track, smoothed, zones.bounds, params.gapS) : null), [zones, track, smoothed, params.gapS]);
   const countedS = zoneTimes?.reduce((a, b) => a + b, 0) ?? 0;
@@ -130,16 +171,10 @@ export default function HeartRatePanel({
         </div>
       )}
 
-      {rows.length > 1 && (
-        <HeartRateChart data={rows} zoom={zoom} zones={zones?.bounds ?? null} onHoverIndex={onHoverIndex} onLeave={onLeave}
-          labelFormatter={minutesLabel} style={{ width: '100%', height: '200px', marginTop: '6px' }}
-          xAxis={(
-            <XAxis dataKey="minutes" type="number" allowDataOverflow
-              domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
-              ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-              tickFormatter={(v: number) => formatClock(v * 60_000).replace(/:00$/, '')} tick={{ fill: '#555', fontSize: 11 }} />
-          )} />
-      )}
+      <div style={{ marginTop: '6px' }}>
+        <CardioCurve track={track} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} hoveredIndex={hoveredIndex}
+          onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap} style={{ width: '100%', height: '200px' }} />
+      </div>
 
       {zones && zoneTimes ? (
         <>

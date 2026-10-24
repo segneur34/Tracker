@@ -3,7 +3,8 @@ import {
   type CSSProperties, type MouseEvent, type ReactNode, type TouchEvent,
 } from 'react';
 import { usePlotArea } from 'recharts';
-import { pinchRange, pxSelectionRange, type XRange } from '../core/chartZoom';
+import { pinchRange, pxSelectionRange, zoomAtRange, type XRange } from '../core/chartZoom';
+import { CHART_TAP_ZOOM_FACTOR } from '../core/displayConfig';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import Button from './ui/Button';
 import './ZoomableChart.css';
@@ -12,10 +13,12 @@ import './ZoomableChart.css';
  * Graphe zoomable sur l'axe des abscisses (`useChartZoom`). Sur téléphone,
  * deux doigts : écarter zoome, pincer dézoome, glisser déplace ; un seul
  * doigt garde le survol, qui déplace le repère sur la carte. Sur ordinateur,
- * tirer une zone à la souris zoome dessus ; un double-clic revient à tout
- * voir, comme le bouton « Tout voir » qui paraît une fois zoomé. La souris
- * qui sort du graphe appelle `onLeave`, qui efface le repère ; au doigt, il
- * reste où on l'a laissé.
+ * tirer une zone à la souris zoome dessus. Un double-clic, ou deux touchers
+ * rapprochés, zooment ×2 autour du point visé (23/10). Une fois zoomé
+ * paraissent « Tout voir », qui revient à toute l'étendue, et, si le module
+ * le branche (`onShowOnMap`), « Sur la carte », qui y montre la partie
+ * zoomée. La souris qui sort du graphe appelle `onLeave`, qui efface le
+ * repère ; au doigt, il reste où on l'a laissé.
  *
  * Le graphe Recharts va dedans, avec `ChartZoomProbe` parmi ses enfants :
  * elle lit la zone de tracé (`usePlotArea`), qui convertit les positions à
@@ -49,18 +52,35 @@ export function ChartZoomProbe() {
 /** Écart minimal, en pixels, d'une sélection à la souris : en deçà, c'est un clic. */
 const MIN_SELECTION_PX = 8;
 
+/** Toucher bref : moins de 300 ms, et moins de 10 px de mouvement. */
+const TAP_MAX_MS = 300;
+const TAP_MAX_MOVE_PX = 10;
+/** Double toucher, comme sur Android : le second commence moins de 300 ms après la fin du premier, à moins de 30 px. */
+const DOUBLE_TAP_MAX_GAP_MS = 300;
+const DOUBLE_TAP_MAX_DISTANCE_PX = 30;
+/** Un double-clic qui suit de si près un toucher vient de lui (Android) : il est déjà compté. */
+const TOUCH_MOUSE_GUARD_MS = 800;
+
 interface Pinch {
   ids: [number, number];
   startPx: [number, number];
   start: XRange;
 }
 
-function ZoomableChart({ zoom, showReset = true, onLeave, className, style, children }: {
+interface Tap {
+  x: number;
+  y: number;
+  timeMs: number;
+}
+
+function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, className, style, children }: {
   zoom: ChartZoom;
   /** Souris sortie du graphe. */
   onLeave?: () => void;
-  /** Bouton « Tout voir » sur ce graphe ; à retirer sur le second de deux graphes superposés. */
+  /** Boutons « Tout voir » et « Sur la carte » sur ce graphe ; à retirer sur le second de deux graphes superposés. */
   showReset?: boolean;
+  /** « Sur la carte », à côté de « Tout voir » : montre la partie zoomée sur la carte. */
+  onShowOnMap?: () => void;
   className?: string;
   style?: CSSProperties;
   children: ReactNode;
@@ -70,6 +90,10 @@ function ZoomableChart({ zoom, showReset = true, onLeave, className, style, chil
   const pinch = useRef<Pinch | null>(null);
   const frame = useRef<number | null>(null);
   const pending = useRef<XRange | null>(null);
+  /** Toucher d'un doigt en cours, tant qu'il peut être bref ; dernier toucher bref ; fin du dernier toucher. */
+  const tapStart = useRef<Tap | null>(null);
+  const lastTap = useRef<(Tap & { endMs: number }) | null>(null);
+  const lastTouchMs = useRef(-Infinity);
   /** Sélection à la souris, en pixels de la zone de tracé, avec la zone lue au début. */
   const [drag, setDrag] = useState<{ from: number; to: number; area: PlotArea } | null>(null);
   const reportPlot = useCallback((area: PlotArea | null) => {
@@ -96,7 +120,18 @@ function ZoomableChart({ zoom, showReset = true, onLeave, className, style, chil
     });
   };
 
+  /** Zoom ×2 autour de la position `clientX` (double-clic, double toucher). */
+  const zoomAt = (clientX: number) => {
+    const px = plotPx(clientX);
+    if (px === null || !plot.current || !zoom.shown || !zoom.full) return;
+    zoom.set(zoomAtRange(zoom.shown, px, plot.current.width, CHART_TAP_ZOOM_FACTOR, zoom.full, zoom.minSpan));
+  };
+
   const onTouchStart = (e: TouchEvent<HTMLDivElement>) => {
+    const onButton = (e.target as HTMLElement).closest('button') !== null;
+    tapStart.current = e.touches.length === 1 && !onButton
+      ? { x: e.touches[0].clientX, y: e.touches[0].clientY, timeMs: e.timeStamp }
+      : null;
     if (e.touches.length !== 2 || !zoom.shown) {
       if (e.touches.length > 2) pinch.current = null;
       return;
@@ -108,6 +143,11 @@ function ZoomableChart({ zoom, showReset = true, onLeave, className, style, chil
   };
 
   const onTouchMove = (e: TouchEvent<HTMLDivElement>) => {
+    const start = tapStart.current;
+    if (start && e.touches.length === 1
+      && Math.hypot(e.touches[0].clientX - start.x, e.touches[0].clientY - start.y) > TAP_MAX_MOVE_PX) {
+      tapStart.current = null;
+    }
     const p = pinch.current;
     if (!p || !zoom.full || !plot.current) return;
     const touches = Array.from(e.touches);
@@ -122,6 +162,21 @@ function ZoomableChart({ zoom, showReset = true, onLeave, className, style, chil
 
   const onTouchEnd = (e: TouchEvent<HTMLDivElement>) => {
     if (e.touches.length < 2) pinch.current = null;
+    if (e.touches.length > 0) return;
+    lastTouchMs.current = e.timeStamp;
+    const start = tapStart.current;
+    tapStart.current = null;
+    if (!start || e.timeStamp - start.timeMs > TAP_MAX_MS) return;
+    const previous = lastTap.current;
+    if (previous && start.timeMs - previous.endMs < DOUBLE_TAP_MAX_GAP_MS
+      && Math.hypot(start.x - previous.x, start.y - previous.y) < DOUBLE_TAP_MAX_DISTANCE_PX) {
+      lastTap.current = null;
+      // Ni clic ni double-clic émulés derrière : le zoom est fait.
+      e.preventDefault();
+      zoomAt(start.x);
+      return;
+    }
+    lastTap.current = { ...start, endMs: e.timeStamp };
   };
 
   const onMouseDown = (e: MouseEvent<HTMLDivElement>) => {
@@ -143,6 +198,11 @@ function ZoomableChart({ zoom, showReset = true, onLeave, className, style, chil
     setDrag(null);
   };
 
+  const onDoubleClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.timeStamp - lastTouchMs.current < TOUCH_MOUSE_GUARD_MS || (e.target as HTMLElement).closest('button')) return;
+    zoomAt(e.clientX);
+  };
+
   const selection = drag ? (() => {
     const { area } = drag;
     const lo = Math.max(0, Math.min(drag.from, drag.to));
@@ -158,7 +218,10 @@ function ZoomableChart({ zoom, showReset = true, onLeave, className, style, chil
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
-      onTouchCancel={onTouchEnd}
+      onTouchCancel={() => {
+        pinch.current = null;
+        tapStart.current = null;
+      }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
@@ -166,11 +229,14 @@ function ZoomableChart({ zoom, showReset = true, onLeave, className, style, chil
         setDrag(null);
         onLeave?.();
       }}
-      onDoubleClick={() => zoom.reset()}>
+      onDoubleClick={onDoubleClick}>
       <PlotAreaContext.Provider value={reportPlot}>{children}</PlotAreaContext.Provider>
       {selection && <div className="zoom-chart__selection" style={selection} />}
       {showReset && zoom.view && (
-        <Button size="s" className="zoom-chart__reset" onClick={zoom.reset}>Tout voir</Button>
+        <div className="zoom-chart__actions">
+          {onShowOnMap && <Button size="s" className="zoom-chart__map" onClick={onShowOnMap}>Sur la carte</Button>}
+          <Button size="s" className="zoom-chart__reset" onClick={zoom.reset}>Tout voir</Button>
+        </div>
       )}
     </div>
   );

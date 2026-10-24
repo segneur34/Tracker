@@ -50,6 +50,64 @@ export const pinchRange = (
   return clampRange({ min, max: min + widthPx * scale }, full, minSpan);
 };
 
+/**
+ * Plage après un double-clic ou un double toucher à `px` : divisée par
+ * `factor`, la valeur sous le doigt ou la souris restant sous lui (deux
+ * doubles touchers au même endroit zooment sur le même point).
+ */
+export const zoomAtRange = (
+  view: XRange,
+  px: number,
+  widthPx: number,
+  factor: number,
+  full: XRange,
+  minSpan: number
+): XRange | null => {
+  if (!(widthPx > 0) || !(factor > 0)) return clampRange(view, full, minSpan);
+  const at = Math.max(0, Math.min(1, px / widthPx));
+  const value = view.min + at * (view.max - view.min);
+  const span = (view.max - view.min) / factor;
+  const min = value - at * span;
+  return clampRange({ min, max: min + span }, full, minSpan);
+};
+
+/**
+ * Tronçon de la trace que montre une plage de l'axe d'un graphe : `axis`
+ * donne la valeur croissante de chaque point (distance affichée, minutes).
+ * Les points dans la plage, et à chaque bout le point de la borne, placé sur
+ * le segment qui la coupe. Un seul intervalle peut couvrir toute la plage
+ * (règle 10) : deux points sur ce segment, jamais aucun. Vide sans trace.
+ */
+export const axisRangePath = (
+  points: ReadonlyArray<{ lat: number; lon: number }>,
+  axis: ArrayLike<number>,
+  range: XRange
+): [number, number][] => {
+  const n = Math.min(points.length, axis.length);
+  if (n === 0) return [];
+  // Position du point de la trace à la valeur `v` de l'axe, interpolée sur son segment.
+  const at = (v: number): [number, number] => {
+    if (v <= axis[0]) return [points[0].lat, points[0].lon];
+    if (v >= axis[n - 1]) return [points[n - 1].lat, points[n - 1].lon];
+    let lo = 0;
+    let hi = n - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (axis[mid] <= v) lo = mid;
+      else hi = mid;
+    }
+    const span = axis[hi] - axis[lo];
+    const t = span > 0 ? (v - axis[lo]) / span : 0;
+    return [points[lo].lat + t * (points[hi].lat - points[lo].lat), points[lo].lon + t * (points[hi].lon - points[lo].lon)];
+  };
+  const path: [number, number][] = [at(range.min)];
+  for (let i = 0; i < n; i++) {
+    if (axis[i] > range.min && axis[i] < range.max) path.push([points[i].lat, points[i].lon]);
+  }
+  path.push(at(range.max));
+  return path;
+};
+
 /** Plage désignée par une sélection à la souris entre deux positions, bornée à la zone de tracé. */
 export const pxSelectionRange = (aPx: number, bPx: number, view: XRange, widthPx: number): XRange => {
   const clampPx = (px: number) => Math.max(0, Math.min(widthPx, px));
