@@ -1,6 +1,8 @@
 /*
  * Cadre de l'application (`AppShell.tsx`) : barre d'onglets en bas sur
- * téléphone, barre en haut sur ordinateur, bandeau d'enregistrement.
+ * téléphone, rail à gauche sur téléphone tourné, barre en haut sur
+ * ordinateur, bandeau d'enregistrement. Téléphone et ordinateur : les
+ * requêtes de `hooks/useNarrowScreen.ts`, recopiées.
  *
  * Les barres passent au-dessus de la carte : Leaflet pose ses calques et
  * contrôles jusqu'à z-index 1000 dans le contexte de la page.
@@ -70,16 +72,37 @@
   border-top: 1px solid var(--line);
 }
 
+/* Libellé qui rétrécit avec l'écran (« Statistiques » tient dans sa case dès 340 px), coupé par « … » en dernier
+   recours (taille du texte d'Android agrandie) ; sous 340 px, les icônes seules, libellé gardé pour le lecteur d'écran. */
 .shell-tab {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
+  min-width: 0;
   color: var(--muted);
-  font-size: var(--text-xs);
+  font-size: clamp(10px, 3.1vw, var(--text-xs));
   font-weight: 500;
   text-decoration: none;
+}
+
+.shell-tab span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 339.98px) {
+  .shell-tab span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 .shell-tab.active {
@@ -169,7 +192,7 @@
   display: none;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (min-height: 500px), (min-width: 768px) and (pointer: fine) {
   .shell-tabbar {
     display: none;
   }
@@ -191,6 +214,47 @@
   /* Sous la barre du haut, les bandeaux restent visibles au défilement. */
   .shell-banners {
     top: var(--topbar-h);
+  }
+}
+
+/* --- Rail, téléphone tourné --- */
+
+/* Les cinq cases de la barre du bas, à la verticale, à gauche ; icônes seules (libellés gardés pour le lecteur
+   d'écran). La page commence à sa droite (`--shell-left`, `tokens.css`). */
+@media (orientation: landscape) and (max-height: 499.98px) and (pointer: coarse) {
+  .shell {
+    padding-left: var(--shell-left);
+    padding-right: var(--inset-right);
+  }
+
+  .shell-tabbar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--shell-left);
+    height: auto;
+    padding: 0 0 var(--inset-bottom) var(--inset-left);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(5, minmax(0, 1fr));
+    border-top: none;
+    border-right: 1px solid var(--line);
+  }
+
+  .shell-tab span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .shell-record {
+    width: 46px;
+    height: 46px;
+    margin-top: 0;
+    box-shadow: none;
   }
 }
 

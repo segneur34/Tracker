@@ -1,9 +1,9 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import L from 'leaflet';
 import { MapContainer, useMap } from 'react-leaflet';
 import { DEFAULT_MAP_CENTER, type TrackBounds } from '../core/displayConfig';
-import { NARROW_QUERY } from '../hooks/useNarrowScreen';
+import { NARROW_QUERY, usePhoneLandscape } from '../hooks/useNarrowScreen';
 import type { MapFocus } from '../hooks/useZoomOnMap';
 import MapAutoResize from './MapAutoResize';
 import ResizablePanel from './ResizablePanel';
@@ -91,8 +91,10 @@ function MapCornerControl({ children }: { children: ReactNode }) {
  * à droite, à gauche de la mention OSM. Sur ordinateur, en haut de la page,
  * centrée, plus étroite que la page et redimensionnable en hauteur ; sur
  * téléphone, pleine largeur en tête de page, et un toucher l'ouvre en plein
- * écran, éventuellement avec des graphes dessous (`companion`). Commune à
- * tous les modules (`docs/MISE_EN_PAGE.md`).
+ * écran, éventuellement avec des graphes dessous (`companion`). Tourner le
+ * téléphone l'ouvre en plein écran, le remettre droit la referme ; fermée, la
+ * carte du téléphone tourné tient le côté gauche. Commune à tous les modules
+ * (`docs/MISE_EN_PAGE.md`).
  */
 function AnalysisMap({
   panelId, anchorId, sessionKey, bounds, layers, legend, defaultHeight, style, overlay, expanded: expandedProp, onExpandedChange,
@@ -105,6 +107,14 @@ function AnalysisMap({
     if (expandedProp === undefined) setOwnExpanded(next);
     onExpandedChange?.(next);
   };
+  // Téléphone tourné : la carte en plein écran, à l'ouverture comme à chaque rotation ; remis droit, elle se referme.
+  const landscape = usePhoneLandscape();
+  const wasLandscape = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (wasLandscape.current !== landscape && (landscape || wasLandscape.current !== null)) setExpanded(landscape);
+    wasLandscape.current = landscape;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seule la rotation compte, pas l'identité de setExpanded
+  }, [landscape]);
   const legendControl = legend && <MapCornerControl>{legend}</MapCornerControl>;
   const tools = overlay && <div className="an-map-tools">{overlay}</div>;
   const focusControl = <MapFocusControl focus={focus} />;

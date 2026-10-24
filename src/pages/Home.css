@@ -141,3 +141,37 @@
 .home-action svg {
   flex-shrink: 0;
 }
+
+/* Téléphone tourné : photo en bandeau bas, cartes de famille sur deux colonnes, les deux boutons de planification
+   dans la case qui suit la dernière ; tout tient sur l'écran. La page devient la grille, les cartes y entrent
+   directement (`display: contents`). */
+@media (orientation: landscape) and (max-height: 499.98px) and (pointer: coarse) {
+  .ui-page.home {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+    gap: var(--space-3);
+    max-width: 760px;
+  }
+
+  .home > :not(.home-family, .home-actions) {
+    grid-column: 1 / -1;
+  }
+
+  .home-header {
+    aspect-ratio: auto;
+    height: clamp(72px, 22vh, 110px);
+  }
+
+  .home-families {
+    display: contents;
+  }
+
+  .home-actions {
+    gap: var(--space-1);
+  }
+
+  .home-action {
+    min-height: 40px;
+  }
+}

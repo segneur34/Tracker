@@ -268,6 +268,14 @@ export const IconFlag = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+/** Cadenas fermé ou ouvert : l'orientation de l'écran figée pendant l'enregistrement, ou libre. */
+export const IconLock = ({ size = 24, open = false, ...props }: IconProps & { open?: boolean }) => (
+  <svg {...strokeProps(size)} {...props}>
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d={open ? 'M8 11V7a4 4 0 0 1 7.5-2' : 'M8 11V7a4 4 0 0 1 8 0v4'} />
+  </svg>
+);
+
 /* Icônes d’activité (core/activityIcons.ts) : la course reprend IconRun. */
 
 /** Voilier : mât, grand-voile, foc et coque. */

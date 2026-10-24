@@ -9,6 +9,8 @@ interface SegmentedControlProps<K extends string> {
   /** Couleur du texte du choix (famille) ; l'encre sans elle. */
   accent?: string;
   className?: string;
+  /** Liste courte et fixe (familles, périodes) : les choix se resserrent jusqu'au « … » plutôt que de défiler. */
+  fit?: boolean;
 }
 
 /** Déplacement au-delà duquel un appui sur la case devient un glisser (px) ; en deçà, c'est un clic. */
@@ -21,7 +23,7 @@ const TAP_SLOP_PX = 6;
  * Flèches du clavier d'un choix à l'autre. Trop large, la rangée défile et
  * garde le choix en vue.
  */
-function SegmentedControl<K extends string>({ label, items, value, onChange, accent, className }: SegmentedControlProps<K>) {
+function SegmentedControl<K extends string>({ label, items, value, onChange, accent, className, fit }: SegmentedControlProps<K>) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null);
   /** Pas de glissement à la première mesure : la case apparaît à sa place. */
@@ -147,7 +149,7 @@ function SegmentedControl<K extends string>({ label, items, value, onChange, acc
   const lit = drag ? drag.under : value;
 
   return (
-    <div ref={rowRef} className={`ui-segmented${measured ? ' is-ready' : ''}${drag ? ' is-dragging' : ''}${className ? ` ${className}` : ''}`}
+    <div ref={rowRef} className={`ui-segmented${fit ? ' ui-segmented--fit' : ''}${measured ? ' is-ready' : ''}${drag ? ' is-dragging' : ''}${className ? ` ${className}` : ''}`}
       role="radiogroup" aria-label={label} onKeyDown={onKeyDown}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
       onClickCapture={onClickCapture}

@@ -9,6 +9,7 @@ import { togglePauseRecording, useRecorder } from '../hooks/useRecorder';
 import { effectiveLongPressMs, useVisibility } from '../hooks/useSportSettings';
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
 import { setBackNavigator } from '../platform/backButton';
+import { lockOrientation } from '../platform/screen';
 import { recordingDurationMs } from '../recording/session';
 import { IconChart, IconHome, IconPause, IconPlay, IconRoute, IconSettings, IconUser } from './icons';
 import { FAMILY_ICON } from './familyIcons';
@@ -17,8 +18,8 @@ import HoldDial from './ui/HoldDial';
 /**
  * Cadre de toutes les pages : navigation et bandeau d'enregistrement.
  *
- * Sur téléphone (moins de 768 px de large), une barre d'onglets en bas, en
- * cinq cases fixes, le bouton rond au milieu : Accueil · Profil ·
+ * Sur téléphone (moins de 768 px de large, ou tourné : `NARROW_QUERY`), une barre d'onglets en bas, en
+ * cinq cases fixes, à la verticale à gauche sur le téléphone tourné, le bouton rond au milieu : Accueil · Profil ·
  * Enregistrer · Statistiques · Réglages. Les sports et les itinéraires s'ouvrent
  * depuis l'accueil. Le bouton rond est vert au repos, rouge pendant un
  * enregistrement.
@@ -119,6 +120,25 @@ function AppShell() {
 
   const { families } = useVisibility();
 
+  // Orientation figée par le cadenas d'Enregistrer : rendue libre à la fin de l'enregistrement.
+  useEffect(() => {
+    if (status === 'idle') lockOrientation(false);
+  }, [status]);
+
+  // Hauteur des bandeaux, sous laquelle se fixe ce qui tient à l'écran (carte d'un téléphone tourné).
+  const bannersRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = bannersRef.current;
+    if (!el) return undefined;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => root.style.setProperty('--shell-top', `${el.offsetHeight}px`));
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--shell-top');
+    };
+  }, []);
+
   return (
     <div className="shell">
       <header className="shell-topbar">
@@ -142,7 +162,7 @@ function AppShell() {
         </div>
       </header>
 
-      <div className="shell-banners">
+      <div className="shell-banners" ref={bannersRef}>
         {busy && pathname !== RECORD_PATH && (
           <Link to={RECORD_PATH} className="shell-banner">
             <span className="shell-banner__dot" />

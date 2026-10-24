@@ -48,7 +48,7 @@ if (process.env.SETUP) {
 for (const path of paths) {
   await send('Page.navigate', { url: `${BASE}${path}` });
   await wait(WAIT);
-  const name = `${size}${path.replace(/\//g, '_') || '_'}.png`.replace(/^_/, '');
+  const name = `${size}${path.replace(/[/?=:&]/g, '_') || '_'}.png`.replace(/^_/, '');
   let params = { format: 'png' };
   if (process.env.FULL) {
     const metrics = await send('Page.getLayoutMetrics');

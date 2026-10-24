@@ -456,13 +456,13 @@ function StatisticsPage() {
             <span className="stats-choice__summary">{choiceSummary}</span>
           </>} />
         {choice.open.choix && (<>
-        <SegmentedControl label="Famille" items={familyItems} value={family ?? 'tout'} accent={accent}
+        <SegmentedControl fit label="Famille" items={familyItems} value={family ?? 'tout'} accent={accent}
           onChange={(key) => go({ famille: key === 'tout' ? null : key, activite: null })} />
         {family !== null && activityItems.length > 0 && (
           <SegmentedControl label="Activité" items={[{ key: '', label: 'Toutes' }, ...activityItems]} value={activity?.id ?? ''} accent={accent}
             onChange={(key) => go({ activite: key === '' ? null : key })} />
         )}
-        <SegmentedControl label="Période" items={STATS_PERIODS.map((p) => ({ key: p.id, label: p.label }))} value={period}
+        <SegmentedControl fit label="Période" items={STATS_PERIODS.map((p) => ({ key: p.id, label: p.label }))} value={period}
           onChange={(key) => go({ periode: key }, true)} />
         </>)}
         {familyHidden && <p style={noteStyle}>Cette famille est cachée dans Réglages : elle n'apparaît ici que par son adresse.</p>}

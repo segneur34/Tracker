@@ -204,7 +204,7 @@ function ProfilePage() {
       </header>
       {picking && <AvatarPicker avatar={avatar} onPick={setAvatar} onClose={() => setPicking(false)} />}
 
-      <SegmentedControl className="profile-periods" label="Période" items={PROFILE_PERIODS.map((p) => ({ key: p.id, label: p.label }))}
+      <SegmentedControl fit className="profile-periods" label="Période" items={PROFILE_PERIODS.map((p) => ({ key: p.id, label: p.label }))}
         value={period} onChange={(key) => rememberView({ periode: key })} />
 
       {status === 'opening' ? (

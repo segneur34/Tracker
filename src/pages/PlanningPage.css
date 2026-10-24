@@ -489,7 +489,7 @@
 }
 
 /* Téléphone : onglets en petites pastilles serrées, comme dans les analyses. */
-@media (max-width: 767.98px) {
+@media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
   .plan-panel > .ui-tabs {
     gap: var(--space-1);
     padding-bottom: 0;
@@ -502,7 +502,7 @@
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (min-height: 500px), (min-width: 768px) and (pointer: fine) {
   .plan-stat strong,
   .plan-stats--four .plan-stat strong {
     font-size: var(--text-xl);
@@ -548,4 +548,27 @@
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-2);
+}
+
+/* Téléphone tourné (lot 5 b des demandes du 23/10) : la carte fixe à gauche, sur toute la hauteur ; l'activité,
+   la recherche et les panneaux de l'itinéraire défilent à sa droite. */
+@media (orientation: landscape) and (max-height: 499.98px) and (pointer: coarse) {
+  .ui-page.plan-page {
+    --plan-map-w: clamp(calc(var(--land-w) * 0.4), calc(var(--land-w) - var(--land-side-min)), calc(var(--land-w) * 0.58));
+    padding-left: calc(var(--plan-map-w) + var(--space-3));
+  }
+
+  .plan-page .ui-page-header__subtitle {
+    display: none;
+  }
+
+  .plan-map {
+    position: fixed !important;
+    top: calc(var(--shell-top) + var(--space-3));
+    bottom: calc(var(--space-3) + var(--inset-bottom));
+    left: calc(var(--shell-left) + var(--space-3));
+    width: calc(var(--plan-map-w) - var(--space-3)) !important;
+    height: auto !important;
+    min-height: 0;
+  }
 }

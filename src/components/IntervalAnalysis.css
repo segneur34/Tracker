@@ -16,7 +16,7 @@
 
 /* Sur téléphone, chaque répétition passe sur trois rangées, comme les podiums des manœuvres :
    numéro à gauche, puis vitesse, distance et « Voir » ; lancé, maintien et durée ; la mini-courbe et le repos. */
-@media (max-width: 767.98px) {
+@media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
   .an-ivl-table thead {
     display: none;
   }

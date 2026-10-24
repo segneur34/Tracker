@@ -126,4 +126,25 @@
   --tabbar-h: 64px;
   /* Marge du bas sous Android : Capacitor injecte --safe-area-inset-bottom. */
   --inset-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  /* Téléphone tourné : barres du système et encoche passent sur les côtés. */
+  --inset-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --inset-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  /* Rail de navigation du téléphone tourné (`AppShell.css`), à gauche. */
+  --rail-w: 56px;
+  /* Bord gauche et haut de la page sous le cadre : rail du téléphone tourné, bandeaux d'enregistrement (hauteur
+     posée par `AppShell.tsx`). Ce qui se fixe à l'écran (carte d'analyse, plein écran) part de là. */
+  --shell-left: 0px;
+  --shell-top: 0px;
+}
+
+@media (orientation: landscape) and (max-height: 499.98px) and (pointer: coarse) {
+  :root {
+    /* Pas de barre du bas : ce qui s'arrêtait au-dessus d'elle descend jusqu'en bas. */
+    --tabbar-h: 0px;
+    --shell-left: calc(var(--rail-w) + var(--inset-left));
+    /* Largeur de la page à droite du rail, et place laissée à côté d'une carte fixe (panneaux, chiffres) : au moins
+       celle d'un téléphone droit. */
+    --land-w: calc(100vw - var(--shell-left) - var(--inset-right));
+    --land-side-min: 380px;
+  }
 }

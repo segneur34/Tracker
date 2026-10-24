@@ -1,7 +1,8 @@
 /* Disposition des modules d'analyse (`SailingModule.tsx`, `LandModule.tsx`), sur les variables de `theme/tokens.css`
    (`docs/MISE_EN_PAGE.md`). Sur ordinateur : la carte en haut, plus étroite que la page, puis la colonne
-   des onglets (`.an-carte-col`) et ses panneaux, deux par ligne (`HALF_PANEL_STYLE`). Sur téléphone, sous
-   768 px : la carte en tête, en pleine largeur, puis les panneaux un par ligne. Les chiffres de la session
+   des onglets (`.an-carte-col`) et ses panneaux, deux par ligne (`HALF_PANEL_STYLE`). Sur téléphone (sous
+   768 px, ou tourné : `NARROW_QUERY`) : la carte en tête, en pleine largeur, puis les panneaux un par ligne ;
+   tourné, la carte à gauche (fin du fichier). Les chiffres de la session
    sont dans l'onglet « général » de chaque module (`an-sheet__stats--always`). */
 
 .an-sheet__stats {
@@ -216,7 +217,7 @@
   pointer-events: auto;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (min-height: 500px), (min-width: 768px) and (pointer: fine) {
   /* Carte en haut, centrée, plus étroite que la page : la souris trouve de la place de chaque côté
      pour faire défiler la page sans zoomer la carte. */
   .an-map-row {
@@ -237,7 +238,7 @@
   margin-bottom: var(--space-4);
 }
 
-@media (max-width: 767.98px) {
+@media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
   .an-page {
     display: flex;
     flex-direction: column;
@@ -328,10 +329,12 @@
     margin-bottom: var(--space-4);
   }
 
+  /* Sous les bandeaux d'un enregistrement en cours (`--shell-top`), qui cacheraient le × et le zoom. */
   .an-map-overlay {
     display: block;
     position: fixed;
     inset: 0;
+    top: var(--shell-top);
     z-index: 1000;
     background: var(--surface);
   }
@@ -456,5 +459,55 @@
     grid-column: 1 / -1;
     padding-bottom: 0 !important;
     font-weight: 600;
+  }
+}
+
+/* Téléphone tourné (lot 5 b des demandes du 23/10) : la carte s'ouvre en plein écran en tournant (`AnalysisMap`) ;
+   fermée, elle tient le côté gauche, fixe, sur toute la hauteur, et l'en-tête, les onglets et les panneaux
+   défilent à sa droite. Le plein écran laisse le rail de navigation à gauche ; avec des graphes, ils passent à
+   droite de la carte. */
+@media (orientation: landscape) and (max-height: 499.98px) and (pointer: coarse) {
+  .an-page:has(.an-map-panel) {
+    /* 55 / 45 (demandé le 24/10) ; un petit téléphone garde 350 px aux panneaux. */
+    --an-map-w: clamp(calc(var(--land-w) * 0.4), calc(var(--land-w) - 350px), calc(var(--land-w) * 0.55));
+    padding-left: calc(var(--an-map-w) + var(--space-3)) !important;
+  }
+
+  .an-map-panel {
+    position: fixed !important;
+    top: calc(var(--shell-top) + var(--space-3));
+    bottom: calc(var(--space-3) + var(--inset-bottom));
+    left: calc(var(--shell-left) + var(--space-3));
+    width: calc(var(--an-map-w) - var(--space-3)) !important;
+    margin-bottom: 0;
+  }
+
+  .an-map-frame {
+    flex: 1 1 auto !important;
+    height: auto;
+  }
+
+  .an-map-overlay {
+    left: var(--shell-left);
+  }
+
+  .an-map-overlay--charts {
+    flex-direction: row;
+  }
+
+  .an-map-overlay--charts .an-map-overlay__map {
+    flex: 0 0 55%;
+    height: 100%;
+  }
+
+  .an-map-overlay--charts .an-map-overlay__close {
+    right: auto;
+    left: calc(55% - 36px - var(--space-3));
+  }
+
+  .an-map-overlay__charts {
+    padding-bottom: calc(var(--space-4) + var(--inset-bottom));
+    border-top: none;
+    border-left: 1px solid var(--line-strong);
   }
 }

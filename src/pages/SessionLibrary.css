@@ -215,3 +215,12 @@
   margin-right: var(--space-1);
   vertical-align: -2px;
 }
+
+/* Téléphone tourné : le bandeau photo réduit de moitié, pour laisser voir les sessions. */
+@media (orientation: landscape) and (max-height: 499.98px) and (pointer: coarse) {
+  .lib-banner {
+    aspect-ratio: auto;
+    min-height: 0;
+    height: clamp(96px, 30vh, 140px);
+  }
+}

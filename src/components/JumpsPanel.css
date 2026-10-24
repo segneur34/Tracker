@@ -73,7 +73,7 @@
 
 /* Sur téléphone, chaque saut passe sur deux rangées, comme les manœuvres :
    numéro à gauche, puis heure, hauteur et « Voir » ; vol, longueur et vitesse. */
-@media (max-width: 767.98px) {
+@media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
   .an-jump-table thead {
     display: none;
   }

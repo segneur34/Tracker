@@ -15,7 +15,7 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 
 ## Règles communes
 
-- **Deux dispositions, une seule rupture** : 768 px, la même que la barre de navigation (`AppShell.css`). `analysisMobile.css` porte les deux ; ses règles de téléphone valent sous cette largeur.
+- **Deux dispositions, une seule définition du téléphone** : moins de 768 px de large, ou moins de 500 px de haut sur un écran tactile (téléphone tourné) ; une fenêtre d'ordinateur basse reste un ordinateur. Les requêtes sont dans `hooks/useNarrowScreen.ts` (`NARROW_QUERY`, son contraire `WIDE_QUERY`, et `PHONE_LANDSCAPE_QUERY` pour le téléphone tourné), recopiées telles quelles dans chaque `@media` ; `mediaQueries.test.ts` y veille. `analysisMobile.css` porte les dispositions.
 - **Sur ordinateur** :
   - la carte est en haut, centrée, à `--analysis-map-width` (80 %, `theme/tokens.css`) : de chaque côté, la souris fait défiler la page sans zoomer la carte. Elle se redimensionne en hauteur ;
   - les panneaux vont deux par ligne (`HALF_PANEL_STYLE`, `components/styles.ts`), un seul quand la moitié n'atteint plus 420 px, alignés en haut ; un panneau qui a besoin de toute la largeur la prend (détails des manœuvres) ;
@@ -27,6 +27,11 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
   - les blocs `ResizablePanel` y sont en pleine largeur, sans poignée, à leur hauteur par défaut ; les explications longues se replient derrière `HelpButton` ;
   - un toucher sur la carte l'ouvre en plein écran (× pour fermer) ;
   - rien n'élargit la page : une colonne de panneaux ne dépasse pas l'écran (`min-width: 0`, `max-width: 100%`), un contenu de largeur fixe défile dans son panneau ; un tableau se resserre, ou passe ses lignes en grille (libellé sur sa propre ligne, valeurs dessous), comme le panneau Manœuvres (`an-man-*`).
+- **Sur téléphone tourné** (règles du téléphone, plus un bloc `PHONE_LANDSCAPE_QUERY` en fin de fichier) :
+  - la navigation est un rail à gauche (`AppShell.css`) ; `--shell-left` (`tokens.css`) dit où commence la page, `--shell-top` (posé par `AppShell.tsx`) la hauteur des bandeaux d'enregistrement ;
+  - tourner le téléphone ouvre la carte en plein écran, le remettre droit la referme (`AnalysisMap`) ; le plein écran commence sous les bandeaux et laisse le rail ; avec des graphes (« Sur la carte »), ils passent à droite de la carte ;
+  - fermée (×), la carte est fixe à gauche sur toute la hauteur, 55 % de la largeur à droite du rail (gardé à 350 px pour les panneaux sur un petit téléphone), et l'en-tête, les onglets et les panneaux défilent à sa droite ;
+  - même principe de carte fixe sur un côté pour Enregistrer (à droite, `RecordingPage.css`) et la planification (à gauche), avec `--land-w` et `--land-side-min` (`tokens.css`).
 - **La légende de couleur de la trace est posée sur la carte**, en une ligne compacte, en bas à droite, juste à gauche de la mention OSM (contrôle Leaflet d'`AnalysisMap`, coin mis en ligne par `.an-map-corner`), dans la carte et dans sa vue plein écran. Ce que dit le gris passe dans son titre. Elle ne fait qu'afficher : les bornes se saisissent dans l'onglet réglages.
 - **Une seule surbrillance sur la carte** (`useMapHighlight`) : montrer un top, un podium, une zone, une répétition, un saut ou un revêtement retire la précédente ; fermer son onglet l'efface. Couleurs de `components/highlightColors.ts`.
 - **Graphes reliés à la carte** : dans `ZoomableChart` (deux doigts, zone tirée à la souris, « Tout voir »), `onMouseMove` et `onTouchMove` vers `hoveredTrackIndex`, `onLeave` qui efface le repère (`HoverMarker`) ; deux graphes du même axe partagent un `useChartZoom`.
@@ -71,4 +76,4 @@ Ce que la page choisit, dans le cadre ci-dessus :
 2. En sous-titre du `PageHeader` : `SessionNameEditor` sur le fichier de la session.
 3. Des sections `*_SECTIONS` et `*_SECTION_DEFAULTS`, avec un `useOpenSections` propre au module. Chaque panneau est titré par `PanelTitle`.
 4. La rangée `.an-map-row`, qui contient `AnalysisMap` seul : `panelId` unique, couches de la carte, sa légende ; la largeur est commune. Puis `.an-carte-col` : `SectionTabs` et `.an-carte-panels`, chaque panneau en `HALF_PANEL_STYLE`.
-5. Au banc (`outils/banc/`), vérifier la page sur ordinateur et à 390×844.
+5. Au banc (`outils/banc/`), vérifier la page sur ordinateur, à 390×844 et tournée (834×375) ; `tailles.mjs` relève toutes les tailles.

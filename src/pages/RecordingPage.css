@@ -1,0 +1,68 @@
+/* Enregistrer sur un téléphone tourné (lot 5 b des demandes du 23/10). En cours : la carte fixe à droite, sur toute
+   la hauteur ; à sa gauche, Pause, Arrêter, Note et le cadenas, les grands chiffres, puis la carte « En cours » qui
+   défilent. Au repos : le choix à gauche, Démarrer et Suivre une trace à droite. Rien ne change droit. */
+@media (orientation: landscape) and (max-height: 499.98px) and (pointer: coarse) {
+  .rec-page .ui-page-header__subtitle {
+    display: none;
+  }
+
+  .ui-page.rec-page:has(.rec-map) {
+    /* Les chiffres demandent moins de place que des panneaux : la carte garde de quoi loger zoom et « Réduire la carte ». */
+    --rec-map-w: clamp(calc(var(--land-w) * 0.45), calc(var(--land-w) - var(--land-side-min)), calc(var(--land-w) * 0.5));
+    max-width: none;
+    margin: 0;
+    padding-right: calc(var(--rec-map-w) + var(--space-3));
+  }
+
+  .rec-map {
+    position: fixed;
+    z-index: 0;
+    top: calc(var(--shell-top) + var(--space-3));
+    bottom: calc(var(--space-3) + var(--inset-bottom));
+    right: calc(var(--inset-right) + var(--space-3));
+    width: calc(var(--rec-map-w) - var(--space-3));
+  }
+
+  .rec-map > div {
+    height: 100% !important;
+  }
+
+  .ui-page.rec-page:not(:has(.rec-map)) {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: start;
+  }
+
+  .rec-page:not(:has(.rec-map)) > * {
+    grid-column: 1 / -1;
+  }
+
+  .rec-page:not(:has(.rec-map)) > .ui-page-header {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .rec-page:not(:has(.rec-map)) > .rec-options {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .rec-page:not(:has(.rec-map)) > .rec-actions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    flex-direction: column;
+  }
+
+  .rec-page:not(:has(.rec-map)) > .rec-actions > * {
+    flex: none !important;
+    min-height: 56px;
+  }
+
+  /* Petit téléphone tourné : pas la place de deux colonnes, la page s'empile comme droite. */
+  @media (max-width: 699.98px) {
+    .ui-page.rec-page:not(:has(.rec-map)) {
+      display: flex;
+    }
+  }
+}

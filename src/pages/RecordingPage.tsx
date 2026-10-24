@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ChangeEvent, type MouseEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import ActivitySelect from '../components/ActivitySelect';
 import BeltStatus from '../components/BeltStatus';
@@ -10,7 +10,7 @@ import IntervalCard from '../components/IntervalCard';
 import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import SavedSessionShare from '../components/SavedSessionShare';
-import { IconFlag, IconPause, IconPlay, IconRoute } from '../components/icons';
+import { IconFlag, IconLock, IconPause, IconPlay, IconRoute } from '../components/icons';
 import { parseGpx } from '../core/gpxParser';
 import {
   FAMILY_ACCENT, FAMILY_LABEL, FAMILY_SHADES, activitiesOfFamily, activityFamily, intervalActivityFor, kindActivityLabel, trainingKindsOf, type Activity,
@@ -31,6 +31,7 @@ import { useSatellites } from '../hooks/useSatellites';
 import { useMissingPermissions } from '../hooks/usePermissions';
 import { setBeepsMuted, skipMark, useMarkGuide, type MarkGuideView } from '../hooks/useMarkGuide';
 import { useOpenSections } from '../hooks/useOpenSections';
+import { usePhoneLandscape } from '../hooks/useNarrowScreen';
 import { readHeartRateZoneBounds } from '../hooks/useRunnerProfile';
 import {
   effectiveCadence, effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs,
@@ -58,9 +59,10 @@ import { canDownloadFiles, downloadTextFile, readPickedFile } from '../platform/
 import { createReplaySource, deviceLocationSource, type LocationFix } from '../platform/location';
 import { buzz } from '../platform/beeper';
 import { isNativeApp } from '../platform/runtime';
-import { keepScreenOn } from '../platform/screen';
+import { canLockOrientation, isOrientationLocked, keepScreenOn, lockOrientation, subscribeOrientationLock } from '../platform/screen';
 import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
 import { FITNESS_TESTS, FITNESS_TEST_IDS, isFitnessTestId, type FitnessTestId } from '../recording/fitnessTest';
+import './RecordingPage.css';
 
 /**
  * Enregistrement d'une session : support, démarrer, arrêter, et ce qu'il faut
@@ -307,7 +309,7 @@ const NOTE_BUZZ_MS = 80;
  * nomme ensuite dans l'analyse. Le bouton dit lui-même « Note N posée »
  * quelques secondes, et le téléphone vibre.
  */
-function NoteButton() {
+function NoteButton({ style }: { style?: React.CSSProperties }) {
   const [feedback, setFeedback] = useState<string | null>(null);
   useEffect(() => {
     if (feedback === null) return;
@@ -320,9 +322,25 @@ function NoteButton() {
     if (added) void buzz(NOTE_BUZZ_MS).catch(() => undefined);
   };
   return (
-    <Button variant="secondary" size="l" block className="ui-btn--hold" onClick={note} aria-live="polite">
+    <Button variant="secondary" size="l" block className="ui-btn--hold" onClick={note} aria-live="polite" style={style}>
       <IconFlag size={20} />
       {feedback ?? 'Note'}
+    </Button>
+  );
+}
+
+/**
+ * Cadenas à droite de « Note » (téléphone seulement) : fige l'écran dans son orientation du moment, pour qu'un
+ * geste ne le fasse pas tourner pendant la séance ; un second toucher le libère, l'arrêt de l'enregistrement aussi
+ * (`AppShell`).
+ */
+function OrientationLockButton() {
+  const locked = useSyncExternalStore(subscribeOrientationLock, isOrientationLocked);
+  return (
+    <Button variant={locked ? 'primary' : 'secondary'} size="l" aria-pressed={locked} onClick={() => lockOrientation(!locked)}
+      aria-label={locked ? "Libérer l'orientation de l'écran" : "Figer l'écran dans son orientation"}
+      title={locked ? 'Orientation figée : toucher pour la libérer' : "Figer l'écran dans son orientation"}>
+      <IconLock size={20} open={!locked} />
     </Button>
   );
 }
@@ -430,6 +448,8 @@ function RecordingPage() {
   const canStart = !busy && pending === null && chosen !== null && (sourceChoice === 'device' || replay !== null);
   const liveActivity = recorder.activity ?? chosen;
   const mapReduced = busy && !shown.carte;
+  // Téléphone tourné : les grands chiffres à gauche de la carte, sans avoir à la réduire.
+  const landscape = usePhoneLandscape();
   // Compteur : pour le fractionné choisi (au repos) ou enregistré, pas pour un test, et tant qu'une séance ou le chrono est lancé.
   const counterOpen = useIntervalTimerOpen();
   const stopwatchOpen = useStopwatchOpen();
@@ -553,15 +573,15 @@ function RecordingPage() {
   };
 
   return (
-    <div className="ui-page">
+    <div className="ui-page rec-page">
       <PageHeader title="Enregistrer" subtitle="Une position par seconde, gardée brute : l'analyse se fait ensuite." />
 
-      {!busy && !pending && <Card>
+      {!busy && !pending && <Card className="rec-options">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: 'var(--text-m)' }}>
           {/* Boutons glissants en cascade : la famille, puis ses activités ; en Entraînement, le type d'entraînement entre les deux,
               et ses activités seulement s'il en a plusieurs ; sous Tests, le test et son protocole. */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            <SegmentedControl label="Famille" items={families.map((f) => ({ key: f, label: FAMILY_LABEL[f] }))} value={family}
+            <SegmentedControl fit label="Famille" items={families.map((f) => ({ key: f, label: FAMILY_LABEL[f] }))} value={family}
               accent={FAMILY_ACCENT[family]} onChange={pickFamily} />
             {kinds.length > 0 && (
               <SegmentedControl label="Type" items={kinds.map((k) => ({ key: k, label: TRAINING_KIND_LABEL[k] }))} value={chosenKind ?? kinds[0]}
@@ -705,20 +725,26 @@ function RecordingPage() {
           <StopButton status={recorder.status} />
         </div>
       ) : !pending && (
-        // Au repos, la moitié du bouton choisit une trace à suivre.
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <Button variant="record" size="l" style={{ flex: 1 }} onClick={handleStart} disabled={!canStart}>
+        // Au repos, la moitié du bouton choisit une trace à suivre ; l'un sous l'autre quand la place manque (écran
+        // étroit, texte d'Android agrandi).
+        <div className="rec-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+          <Button variant="record" size="l" style={{ flex: '1 1 130px' }} onClick={handleStart} disabled={!canStart}>
             <span className="ui-record-dot" />
             Démarrer
           </Button>
-          <Button variant="secondary" size="l" style={{ flex: 1 }} onClick={() => setPicking((p) => !p)} aria-expanded={picking}>
+          <Button variant="secondary" size="l" style={{ flex: '1 1 130px' }} onClick={() => setPicking((p) => !p)} aria-expanded={picking}>
             <IconRoute size={20} />
             Suivre une trace
           </Button>
         </div>
       )}
 
-      {(recorder.status === 'recording' || recorder.status === 'paused') && <NoteButton />}
+      {(recorder.status === 'recording' || recorder.status === 'paused') && (canLockOrientation() ? (
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <NoteButton style={{ flex: 1 }} />
+          <OrientationLockButton />
+        </div>
+      ) : <NoteButton />)}
 
       {picking && !busy && !pending && <FollowTracePicker onClose={() => setPicking(false)} onPicked={proposeActivityOf} />}
 
@@ -752,39 +778,38 @@ function RecordingPage() {
       {markGuide.active && liveActivity && <MarkGuideCard view={markGuide} activity={liveActivity} />}
 
       {(busy || (followed && !pending)) && !mapReduced && (
-        // Au repos, un aperçu de la trace suivie, sans position : remonté à chaque trace pour s'y cadrer.
-        <LiveMap key={busy ? 'direct' : `apercu-${followed?.name}-${followed?.points.length}`}
-          segments={busy ? live.segments : []} position={busy ? getLastFix() : null} height="45vh"
-          guide={guide.remaining} guideDone={guide.done} travel={travel}
-          marks={mapMarks} validationRadiusM={markGuide.active ? markGuide.validationRadiusM : undefined}
-          notes={busy ? recorder.marks : undefined}
-          color={FAMILY_SHADES[liveActivity ? sportFamily(liveActivity.base) : 'voile'][0]}
-          family={liveActivity ? activityFamily(liveActivity) : family}
-          overlay={busy ? (
-            <Button size="s" onClick={() => toggleShown('carte')} style={{ boxShadow: '0 1px 5px rgba(0, 0, 0, 0.25)' }}>
-              Réduire la carte
-            </Button>
-          ) : undefined} />
+        // Au repos, un aperçu de la trace suivie, sans position : remonté à chaque trace pour s'y cadrer. Sur un téléphone
+        // tourné, la carte se fixe à droite (`RecordingPage.css`).
+        <div className="rec-map">
+          <LiveMap key={busy ? 'direct' : `apercu-${followed?.name}-${followed?.points.length}`}
+            segments={busy ? live.segments : []} position={busy ? getLastFix() : null} height="45vh"
+            guide={guide.remaining} guideDone={guide.done} travel={travel}
+            marks={mapMarks} validationRadiusM={markGuide.active ? markGuide.validationRadiusM : undefined}
+            notes={busy ? recorder.marks : undefined}
+            color={FAMILY_SHADES[liveActivity ? sportFamily(liveActivity.base) : 'voile'][0]}
+            family={liveActivity ? activityFamily(liveActivity) : family}
+            overlay={busy ? (
+              <Button size="s" onClick={() => toggleShown('carte')} style={{ boxShadow: '0 1px 5px rgba(0, 0, 0, 0.25)' }}>
+                Réduire la carte
+              </Button>
+            ) : undefined} />
+        </div>
       )}
 
-      {mapReduced && (
-        // Carte réduite : elle n'est plus dessinée, les vitesses prennent sa place.
-        <>
-          <Button variant="secondary" block onClick={() => toggleShown('carte')}>Afficher la carte</Button>
-          {liveActivity && (
-            <LiveSummary items={liveSummaryItems(liveActivity, {
-              stats: live.stats,
-              durationMs,
-              nowMs: live.updatedMs,
-              remainingM: courseMarksOf ? (markGuide.active ? markGuide.remainingM : null) : progress?.remainingM ?? null,
-              headingDeg: travel?.headingDeg ?? null,
-              markDistanceM: markGuide.active ? markGuide.distanceM : null,
-              markBearingDeg: markGuide.active ? markGuide.bearingDeg : null,
-              heartRateBpm: recorder.heartRate?.bpm ?? null,
-              heartRateZoneBounds: readHeartRateZoneBounds(liveActivity.base),
-            })} />
-          )}
-        </>
+      {/* Carte réduite : elle n'est plus dessinée, les vitesses prennent sa place ; tourné, elles sont à côté d'elle. */}
+      {mapReduced && <Button variant="secondary" block onClick={() => toggleShown('carte')}>Afficher la carte</Button>}
+      {(mapReduced || (busy && landscape)) && liveActivity && (
+        <LiveSummary items={liveSummaryItems(liveActivity, {
+          stats: live.stats,
+          durationMs,
+          nowMs: live.updatedMs,
+          remainingM: courseMarksOf ? (markGuide.active ? markGuide.remainingM : null) : progress?.remainingM ?? null,
+          headingDeg: travel?.headingDeg ?? null,
+          markDistanceM: markGuide.active ? markGuide.distanceM : null,
+          markBearingDeg: markGuide.active ? markGuide.bearingDeg : null,
+          heartRateBpm: recorder.heartRate?.bpm ?? null,
+          heartRateZoneBounds: readHeartRateZoneBounds(liveActivity.base),
+        })} />
       )}
 
       {busy && (
