@@ -41,27 +41,56 @@
 
 .page-backdrop path {
   fill: none;
-  stroke: var(--backdrop-ink, var(--contour));
-  stroke-width: var(--backdrop-stroke, 3);
+  stroke: var(--backdrop-ink);
+  /* Épaisseur à l'écran : la tuile agrandie de son espacement (`--backdrop-scale`) n'épaissit pas le trait. */
+  stroke-width: calc(var(--backdrop-stroke) / var(--backdrop-scale, 1));
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
+/* Encre et épaisseur de chaque fond, réglées à l'œil sur la maquette du 23/10 : la couleur de la famille,
+   celle de l'image donnée par l'utilisateur (surf, vélo), le gris bleuté des courbes de niveau. */
 .page-backdrop--contours {
+  --backdrop-ink: var(--contour);
   --backdrop-stroke: 1.3;
 }
 
-.page-backdrop .page-backdrop__major {
-  stroke-width: 2.4;
+.page-backdrop--contours .page-backdrop__major {
+  --backdrop-stroke: 2.4;
+}
+
+.page-backdrop--voile {
+  --backdrop-ink: color-mix(in srgb, var(--voile) 41%, transparent);
+  --backdrop-stroke: 1.65;
+}
+
+.page-backdrop--course {
+  --backdrop-ink: color-mix(in srgb, var(--course) 34%, transparent);
+  --backdrop-stroke: 3;
+}
+
+.page-backdrop--velo {
+  --backdrop-ink: color-mix(in srgb, var(--backdrop-velo) 47%, transparent);
+  --backdrop-stroke: 2.4;
+}
+
+.page-backdrop--surf {
+  --backdrop-ink: color-mix(in srgb, var(--backdrop-surf) 59%, transparent);
+  --backdrop-stroke: 2.85;
+}
+
+.page-backdrop--fractionne {
+  --backdrop-ink: color-mix(in srgb, var(--fractionne) 34%, transparent);
+  --backdrop-stroke: 3;
 }
 
 .page-backdrop .page-backdrop__dots {
-  stroke-width: 4;
+  --backdrop-stroke: 4;
   stroke-dasharray: 0.1 12;
 }
 
 .page-backdrop .page-backdrop__fill {
-  fill: var(--backdrop-ink, var(--contour));
+  fill: var(--backdrop-ink);
   stroke: none;
 }
 

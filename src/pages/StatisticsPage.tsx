@@ -4,6 +4,7 @@ import {
   Bar, BarChart, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import PageBackdrop from '../components/PageBackdrop';
+import ChartFold from '../components/ChartFold';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
@@ -26,6 +27,7 @@ import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
+import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { readStoredRecord, useStoredRecord } from '../hooks/useStoredRecord';
 import { effectiveDistanceUnit, effectiveFoil, effectiveSpeedUnit, useVisibility } from '../hooks/useSportSettings';
@@ -164,17 +166,36 @@ const GroupRow = ({ color, name, totals, distanceUnit, onOpen }: {
 interface ChartRow extends MetricPoint {
   y: number;
   lineY: number;
-  /** Rang de la série (virements, empannages). */
-  serie: number;
+  /** Clé de la série (virements, empannages). */
+  serieKey: string;
 }
 
-/** Forme des points de chaque série. */
-const SERIE_SHAPES = ['circle', 'triangle'] as const;
-const SERIE_DASHES = ['4 3', '1 3'];
+/**
+ * Forme des points, pointillé de la tendance et mot de la légende de chaque série, par sa clé : l'empannage
+ * (jibe) en rond, le virement (tack) en triangle (23/10). Une série sans entrée prend celle d'une série seule.
+ */
+const SERIE_STYLE: Record<string, { shape: 'circle' | 'triangle'; dash: string; legend: string }> = {
+  empannages: { shape: 'circle', dash: '4 3', legend: 'empannage (jibe)' },
+  virements: { shape: 'triangle', dash: '1 3', legend: 'virement (tack)' },
+};
+const SINGLE_SERIE_STYLE = { shape: 'circle' as const, dash: '4 3', legend: '' };
+const serieStyle = (key: string) => SERIE_STYLE[key] ?? SINGLE_SERIE_STYLE;
+/** Ordre de la légende et du détail d'un point : les ronds d'abord. */
+const serieRank = (key: string) => (serieStyle(key).shape === 'circle' ? 0 : 1);
+
+/** Forme d'une série dans la légende, dessinée comme sur le graphe. */
+const SerieShape = ({ shape }: { shape: 'circle' | 'triangle' }) => (
+  <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
+    {shape === 'circle' ? <circle cx="5" cy="5" r="4" fill="currentColor" /> : <path d="M5 1 L9.5 9 L0.5 9 Z" fill="currentColor" />}
+  </svg>
+);
+
+const CHOICE_DEFAULT = { choix: false };
 
 function StatisticsPage() {
   const [params, setParams] = useSearchParams();
   const { status, sessions, scanning } = useSessionLibrary();
+  const favoriteBackdrop = useFavoriteBackdrop();
   const { activities, families, isShown, shownActivities } = useVisibility();
   const openSession = useOpenSession();
   const narrow = useNarrowScreen();
@@ -182,6 +203,8 @@ function StatisticsPage() {
   const [picked, setPicked] = useState<string | null>(null);
   const [loadHelp, setLoadHelp] = useState(false);
   const { open, toggle } = useOpenSections<StatsSection>(STORAGE_ID, STATS_SECTION_DEFAULTS);
+  /** Boutons glissants de famille, d'activité et de période : repliés sous « Sélection » au départ, état retenu. */
+  const choice = useOpenSections(`${STORAGE_ID}.choix`, CHOICE_DEFAULT);
   const { value: view, update: rememberView } = useStoredRecord<StatsView>(VIEW_NAMESPACE, VIEW_KEY, VIEW_DEFAULTS);
 
   // À l'ouverture sans paramètre (barre, accueil), reprendre le dernier affichage, si sa famille est visible.
@@ -345,8 +368,8 @@ function StatisticsPage() {
     }
   };
   const chartSeries = useMemo(
-    () => series.map((serie, i) => {
-      const rows: ChartRow[] = serie.points.map((p) => ({ ...p, y: toAxis(p.value), lineY: toAxis(p.line), serie: i }));
+    () => series.map((serie) => {
+      const rows: ChartRow[] = serie.points.map((p) => ({ ...p, y: toAxis(p.value), lineY: toAxis(p.line), serieKey: serie.key }));
       const byActivity = new Map<string, ChartRow[]>();
       for (const row of rows) byActivity.set(row.activityId, [...(byActivity.get(row.activityId) ?? []), row]);
       return { key: serie.key, label: serie.label, rows, byActivity: [...byActivity.entries()] };
@@ -366,10 +389,11 @@ function StatisticsPage() {
   const chartTicks = zoom.shown ? dateTicks(zoom.shown.min, zoom.shown.max, narrow ? 4 : 6) : null;
   const pickedSession = picked ? inPeriod.find((s) => s.file === picked) ?? null : null;
   const pickedPoints = pickedSession
-    ? series.flatMap((serie) => serie.points.filter((p) => p.file === pickedSession.file).map((p) => ({ label: serie.label, point: p })))
+    ? [...series].sort((a, b) => serieRank(a.key) - serieRank(b.key)).flatMap((serie) => serie.points.filter((p) => p.file === pickedSession.file).map((p) => ({ label: serie.label, point: p })))
     : [];
   const inverse = metric.unit === 'vitesse' && isInverseUnit(speedUnit);
   const twoSeries = series.length > 1;
+  const legendSeries = [...series].sort((a, b) => serieRank(a.key) - serieRank(b.key));
   /** Valeur d'une session pour une série, avec le détail des manœuvres. */
   const pointText = (serieLabel: string, p: MetricPoint): string => {
     const s = metric.key === 'reussite' ? inPeriod.find((x) => x.file === p.file) : undefined;
@@ -409,6 +433,8 @@ function StatisticsPage() {
 
   const title = activity ? activity.name : family ? FAMILY_LABEL[family] : 'Toutes les activités';
   const periodLabel = STATS_PERIODS.find((p) => p.id === period)!.label;
+  /** Le choix en cours, dans le bouton « Sélection » : lisible bloc replié. */
+  const choiceSummary = [family ? FAMILY_LABEL[family] : 'Toutes les familles', ...(activity ? [activity.name] : []), periodLabel === 'Tout' ? 'depuis le début' : periodLabel].join(' · ');
   const empty = inPeriod.length === 0;
   const lastText = regular.weeksSinceLast === null ? '—'
     : regular.weeksSinceLast === 0 ? 'cette semaine'
@@ -417,10 +443,19 @@ function StatisticsPage() {
 
   return (
     <div className="ui-page ui-page--wide ui-page--backdrop an-page stats-page">
-      <PageBackdrop variant="contours" />
+      {/* Le motif de la famille choisie ; dans « Tout », celui du sport préféré. */}
+      <PageBackdrop variant={family ?? favoriteBackdrop} />
       <PageHeader title="Statistiques" subtitle={`${title} · ${periodLabel === 'Tout' ? 'depuis le début' : periodLabel}`} />
 
       <div className="stats-choice">
+        <ChartFold open={choice.open.choix} onToggle={() => choice.toggle('choix')}
+          title={choice.open.choix ? 'Replier la sélection' : 'Choisir la famille, l’activité et la période'}
+          style={{ padding: '6px 10px 6px 12px', fontSize: 'var(--text-s)' }}
+          label={<>
+            <strong>Sélection</strong>
+            <span className="stats-choice__summary">{choiceSummary}</span>
+          </>} />
+        {choice.open.choix && (<>
         <SegmentedControl label="Famille" items={familyItems} value={family ?? 'tout'} accent={accent}
           onChange={(key) => go({ famille: key === 'tout' ? null : key, activite: null })} />
         {family !== null && activityItems.length > 0 && (
@@ -429,6 +464,7 @@ function StatisticsPage() {
         )}
         <SegmentedControl label="Période" items={STATS_PERIODS.map((p) => ({ key: p.id, label: p.label }))} value={period}
           onChange={(key) => go({ periode: key }, true)} />
+        </>)}
         {familyHidden && <p style={noteStyle}>Cette famille est cachée dans Réglages : elle n'apparaît ici que par son adresse.</p>}
       </div>
 
@@ -522,6 +558,15 @@ function StatisticsPage() {
                   <p className="stats-hint">Aucune session sur la période.</p>
                 ) : (
                   <>
+                    {twoSeries && (
+                      <div className="stats-legend" aria-label="Légende">
+                        {legendSeries.map((serie) => (
+                          <span key={serie.key} className="stats-legend__item">
+                            <SerieShape shape={serieStyle(serie.key).shape} /> {serieStyle(serie.key).legend || serie.label.toLowerCase()}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <ZoomableChart zoom={zoom} style={{ width: '100%', flex: 1, minHeight: 0 }}>
                       <ResponsiveContainer>
                         <ComposedChart margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
@@ -545,18 +590,18 @@ function StatisticsPage() {
                               return (
                                 <div className="stats-tooltip">
                                   <strong>{shortDate(row.startMs)}</strong>
-                                  <span>{activityName(row.activityId)} · {pointText(series[row.serie]?.label ?? '', row)}</span>
+                                  <span>{activityName(row.activityId)} · {pointText(series.find((serie) => serie.key === row.serieKey)?.label ?? '', row)}</span>
                                 </div>
                               );
                             }} />
-                          {chartSeries.map((serie, i) => (
+                          {chartSeries.map((serie) => (
                             <Line key={`ligne-${serie.key}`} data={serie.rows} dataKey="lineY" type={metric.record ? 'stepAfter' : 'linear'}
-                              stroke="#9aa0a6" strokeDasharray={SERIE_DASHES[i] ?? SERIE_DASHES[0]} strokeWidth={1.5}
+                              stroke="#9aa0a6" strokeDasharray={serieStyle(serie.key).dash} strokeWidth={1.5}
                               dot={false} activeDot={false} isAnimationActive={false} name={metric.record ? 'Record' : 'Tendance'} />
                           ))}
-                          {chartSeries.flatMap((serie, i) => serie.byActivity.map(([activityId, rows]) => (
+                          {chartSeries.flatMap((serie) => serie.byActivity.map(([activityId, rows]) => (
                             <Scatter key={`${serie.key}-${activityId}`} data={rows} dataKey="y" fill={activityColor(activityId)} isAnimationActive={false}
-                              shape={SERIE_SHAPES[i] ?? SERIE_SHAPES[0]} name={activityName(activityId)}
+                              shape={serieStyle(serie.key).shape} name={activityName(activityId)}
                               onClick={(_, index) => setPicked(rows[index]?.file ?? null)} style={{ cursor: 'pointer' }} />
                           )))}
                         </ComposedChart>
@@ -576,7 +621,7 @@ function StatisticsPage() {
                         </button>
                       ) : (
                         <span style={noteStyle}>
-                          Un point par session, à la couleur de son activité{twoSeries ? ' (ronds : virements, triangles : empannages)' : ''} ;
+                          Un point par session, à la couleur de son activité ;
                           {metric.record ? ' en pointillé, le record établi jusque-là.' : ` en pointillé, la moyenne des ${TREND_SESSIONS} dernières sessions.`}
                           {voileWithoutResults > 0 && ` Réussite connue des sessions rouvertes dans l'analyse depuis la version 0.3.5 : ${plural(voileWithoutResults, 'session')} à rouvrir.`}
                           {narrow ? ' Toucher un point pour le détail, écarter deux doigts pour zoomer.' : ' Cliquer un point pour le détail, tirer une zone pour zoomer.'}

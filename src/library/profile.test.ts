@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityShares, favoriteActivity } from './profile';
+import { activityShares, favoriteActivity, favoriteFamily } from './profile';
 import type { StatSession } from './stats';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
@@ -74,5 +74,20 @@ describe('favoriteActivity', () => {
 
   it('sans session, aucun', () => {
     expect(favoriteActivity([], ['course'])).toBeNull();
+  });
+});
+
+describe('favoriteFamily', () => {
+  it('donne la famille du sport préféré, pas celle qui a le plus de temps en tout', () => {
+    // Deux activités de vélo font plus de temps à elles deux, mais la course est l’activité préférée.
+    expect(favoriteFamily([
+      session(at(2026, 3, 1), { endMs: at(2026, 3, 1) + 2 * 3_600_000 }),
+      session(at(2026, 3, 2), { activityId: 'route', family: 'velo', endMs: at(2026, 3, 2) + 1.5 * 3_600_000 }),
+      session(at(2026, 3, 3), { activityId: 'vtt', family: 'velo', endMs: at(2026, 3, 3) + 1.5 * 3_600_000 }),
+    ], ['course', 'route', 'vtt'])).toBe('course');
+  });
+
+  it('sans session, aucune', () => {
+    expect(favoriteFamily([], ['course'])).toBeNull();
   });
 });

@@ -145,10 +145,9 @@
   flex-shrink: 0;
 }
 
-/* Fond de la page : motif de la famille, dans une teinte pâle de sa couleur (`PageBackdrop`). */
+/* Fond de la page : motif de la famille (`PageBackdrop`, encre dans `ui.css`). */
 .ui-page.lib-page {
   overflow: hidden;
-  --backdrop-ink: color-mix(in srgb, var(--lib-accent) 34%, transparent);
 }
 
 /* Bandeau photo : déborde des marges de la page en haut et sur les côtés ; nom et activités en bas à gauche. */

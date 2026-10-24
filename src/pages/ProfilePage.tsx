@@ -11,6 +11,7 @@ import { activityFamily, sessionActivity, type Activity } from '../core/activiti
 import { activityIcon } from '../core/activityIcons';
 import { toDisplayDistance } from '../core/units';
 import { libraryPath } from '../hooks/useLibraryNavigation';
+import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useProfileRoot } from '../hooks/useProfileRoot';
 import { runnerAvatar, runnerName, useRunnerProfile } from '../hooks/useRunnerProfile';
@@ -100,6 +101,7 @@ const LegendContent = ({ slice: s }: { slice: Slice }) => (
 function ProfilePage() {
   const navigate = useNavigate();
   const { status, sessions, scanning } = useSessionLibrary();
+  const backdrop = useFavoriteBackdrop();
   const { activities, isShown } = useVisibility();
   /** Le nom ou pseudo de Réglages en titre, « Profil » sans lui. */
   const { profile, setAvatar } = useRunnerProfile();
@@ -190,7 +192,7 @@ function ProfilePage() {
 
   return (
     <div className="ui-page ui-page--backdrop profile">
-      <PageBackdrop variant="contours" />
+      <PageBackdrop variant={backdrop} />
       <header className="profile-head">
         <button type="button" className="profile-head__avatar" aria-label="Changer la photo de profil" aria-expanded={picking}
           onClick={() => setPicking(!picking)}>

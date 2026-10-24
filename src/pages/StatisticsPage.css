@@ -11,6 +11,32 @@
   gap: var(--space-2);
 }
 
+/* Choix en cours dans « Sélection », en casse normale (`ChartFold` écrit en capitales). */
+.stats-choice__summary {
+  color: var(--muted);
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: normal;
+  text-align: left;
+  margin-left: var(--space-2);
+}
+
+/* Légende des séries du graphique (empannages, virements), formes dessinées comme sur le graphe. */
+.stats-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--text-s);
+}
+
+.stats-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .stats-col {
   display: flex;
   flex-direction: column;

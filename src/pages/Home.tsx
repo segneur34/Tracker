@@ -16,6 +16,7 @@ import type { SportFamily } from '../core/sportProfiles';
 import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { runnerName, useRunnerProfile } from '../hooks/useRunnerProfile';
+import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
 import { shownRoutes } from '../planning/routeList';
@@ -41,6 +42,7 @@ const FAMILY_PHOTO: Record<SportFamily, string> = {
 
 function Home() {
   const { status, error } = useSessionLibrary();
+  const backdrop = useFavoriteBackdrop();
   const { routes: allRoutes } = useRouteLibrary();
   const { activities, families, isShown, shownActivities } = useVisibility();
   const { profile } = useRunnerProfile();
@@ -52,7 +54,7 @@ function Home() {
 
   return (
     <div className="ui-page ui-page--backdrop home">
-      <PageBackdrop variant="contours" />
+      <PageBackdrop variant={backdrop} />
       <header className="home-header" style={{ backgroundImage: `url(${headerPhoto})` }}>
         <h1 className="home-logo">Tracker<span className="home-version">v{__APP_VERSION__}</span></h1>
         <p className="home-welcome">{name ? `Bienvenue ${name}` : 'Bienvenue'}</p>

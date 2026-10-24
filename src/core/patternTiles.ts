@@ -1,42 +1,65 @@
 import type { SportFamily } from './sportProfiles';
 
 /**
- * Tuiles des fonds de page (`components/PageBackdrop.tsx`), en pixels, à
- * l'échelle 1 : la tuile se répète en largeur et en hauteur, si bien que la
- * densité du fond ne dépend ni de la longueur de la page ni de la largeur de
- * l'écran (avant le 22/10, un seul dessin étiré sur toute la page grossissait
- * et s'éclaircissait sur une longue liste).
+ * Tuiles des fonds de page (`components/PageBackdrop.tsx`), en pixels : la
+ * tuile se répète en largeur et en hauteur, si bien que la densité du fond ne
+ * dépend ni de la longueur de la page ni de la largeur de l'écran (avant le
+ * 22/10, un seul dessin étiré sur toute la page grossissait et s'éclaircissait
+ * sur une longue liste).
  *
  * Chaque tracé se raccorde à lui-même d'un bord à l'autre : les courbes de
  * niveau sont celles d'un relief périodique dans les deux sens, les lignes
- * des motifs de famille des fonctions périodiques de la largeur (ou de la
- * hauteur pour les lacets du vélo), et les dessins isolés (volutes, repères,
- * traits de vitesse) restent loin des bords.
+ * des chemins à pied des fonctions périodiques de la largeur, et les dessins
+ * isolés (souffles, vague, repères, traits de vitesse) sont posés avec leurs
+ * copies d'une tuile à côté, ce qui dépasse d'un bord reprenant à l'autre.
+ *
+ * Dessins choisis par l'utilisateur sur maquette le 23/10 : voile, surf et
+ * vélo d'après ses images (souffle de vent, vague, dénivelé), à pied et
+ * fractionné ceux du 22/10. Chaque fond a sa taille de tuile et son
+ * espacement (`scale`, qui agrandit la tuile sans épaissir le trait) ; l'encre
+ * et l'épaisseur sont dans le CSS (`ui.css`, `.page-backdrop--<fond>`).
  */
 
 export const TILE_W = 390;
 export const TILE_H = 640;
 
-/** Un tracé du motif : `dots` en pointillé, `fill` plein (repères). */
+/** Un tracé du motif : `dots` en pointillé, `fill` plein (repères), `major` plus épais ; `alpha` éclaircit son encre. */
 export interface TilePath {
   d: string;
   kind?: 'dots' | 'fill' | 'major';
+  alpha?: number;
+}
+
+/** Tuile d'un fond : ses tracés, sa taille, et l'espacement qui l'agrandit à l'écran. */
+export interface BackdropTile {
+  paths: TilePath[];
+  width: number;
+  height: number;
+  scale: number;
 }
 
 const TAU = 2 * Math.PI;
 const r1 = (v: number): number => Math.round(v * 10) / 10;
+
+type Point = [number, number];
 
 /** Ligne brisée fine d'une suite de points, en tracé SVG. */
 const polyline = (points: readonly (readonly [number, number])[]): string =>
   points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${r1(x)} ${r1(y)}`).join('');
 
 /** Points d'une fonction `y(x)` de `from` à `to`, tous les `step` pixels. */
-const sampleX = (from: number, to: number, y: (x: number) => number, step = 6): [number, number][] => {
+const sampleX = (from: number, to: number, y: (x: number) => number, step = 6): Point[] => {
   const n = Math.max(1, Math.ceil((to - from) / step));
   return Array.from({ length: n + 1 }, (_, i) => {
     const x = from + ((to - from) * i) / n;
     return [x, y(x)];
   });
+};
+
+/** Suite pseudo-aléatoire fixe dans [0, 1[ : le motif est le même à chaque ouverture. */
+const jitter = (n: number): number => {
+  const v = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+  return v - Math.floor(v);
 };
 
 // --- Courbes de niveau ---
@@ -55,18 +78,20 @@ const RELIEF: readonly { k: number; l: number; a: number; phase: number }[] = [
 export const reliefHeight = (x: number, y: number): number =>
   RELIEF.reduce((h, t) => h + t.a * Math.cos(TAU * ((t.k * x) / TILE_W + (t.l * y) / TILE_H) + t.phase), 0);
 
-/** Pas de la grille des courbes de niveau, en pixels : il divise la largeur et la hauteur de la tuile. */
+/** Pas de la grille des courbes de niveau, en pixels : il divise la largeur et la hauteur de chaque tuile. */
 const GRID = 5;
 /** Nombre de niveaux tracés ; une courbe sur `MAJOR_EVERY` est maîtresse (plus épaisse), comme sur une carte. */
 const LEVELS = 16;
 const MAJOR_EVERY = 4;
 
-type Point = [number, number];
+/** Hauteurs d'un relief aux nœuds de la grille d'une tuile `width` × `height`. */
+const heightGrid = (h: (x: number, y: number) => number, width: number, height: number): number[][] =>
+  Array.from({ length: height / GRID + 1 }, (_, j) => Array.from({ length: width / GRID + 1 }, (_, i) => h(i * GRID, j * GRID)));
 
 /** Segments de la courbe de niveau `level` (carrés de proche en proche), aux bords exacts de la tuile. */
 const isolineSegments = (heights: number[][], level: number): [Point, Point][] => {
-  const nx = TILE_W / GRID;
-  const ny = TILE_H / GRID;
+  const ny = heights.length - 1;
+  const nx = heights[0].length - 1;
   const segments: [Point, Point][] = [];
   const cross = (x0: number, y0: number, h0: number, x1: number, y1: number, h1: number): Point => {
     const t = (level - h0) / (h1 - h0);
@@ -138,18 +163,20 @@ const joinSegments = (segments: [Point, Point][]): Point[][] => {
   return lines;
 };
 
+/** Tracé de la courbe de niveau `level` d'une grille de hauteurs. */
+const isoline = (heights: number[][], level: number): string =>
+  joinSegments(isolineSegments(heights, level)).map(polyline).join('');
+
 /** Courbes de niveau de la tuile : les ordinaires puis les maîtresses. */
-export const contourTile = (): TilePath[] => {
-  const heights = Array.from({ length: TILE_H / GRID + 1 }, (_, j) =>
-    Array.from({ length: TILE_W / GRID + 1 }, (_, i) => reliefHeight(i * GRID, j * GRID)));
+const contourTile = (): TilePath[] => {
+  const heights = heightGrid(reliefHeight, TILE_W, TILE_H);
   const flat = heights.flat();
   const lo = Math.min(...flat);
   const hi = Math.max(...flat);
   const minor: string[] = [];
   const major: string[] = [];
   for (let n = 1; n <= LEVELS; n++) {
-    const level = lo + ((hi - lo) * n) / (LEVELS + 1);
-    const d = joinSegments(isolineSegments(heights, level)).map(polyline).join('');
+    const d = isoline(heights, lo + ((hi - lo) * n) / (LEVELS + 1));
     (n % MAJOR_EVERY === 0 ? major : minor).push(d);
   }
   return [{ d: minor.join('') }, { d: major.join(''), kind: 'major' }];
@@ -157,17 +184,9 @@ export const contourTile = (): TilePath[] => {
 
 // --- Motifs des familles ---
 
-/** Ligne `y0 + houle(x)` sur `[from, to]`, coupée en deux au bord droit si elle le passe (la suite reprend à gauche). */
-const wrappedLine = (from: number, to: number, y: (x: number) => number): string => {
-  if (to <= TILE_W) return polyline(sampleX(from, to, y));
-  return polyline(sampleX(from, TILE_W, y)) + polyline(sampleX(0, to - TILE_W, y));
-};
-
-/** Suite pseudo-aléatoire fixe dans [0, 1[ : le motif est le même à chaque ouverture. */
-const jitter = (n: number): number => {
-  const v = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
-  return v - Math.floor(v);
-};
+/** Décalages d'une copie posée à côté de la tuile : ce qui dépasse d'un bord reprend à l'autre. */
+const neighbours = (width: number, height: number): Point[] =>
+  [[0, 0], [-width, 0], [width, 0], [0, -height], [0, height], [-width, -height]];
 
 /**
  * Dessin isolé posé en `(x, y)` (tracé relatif après son point de départ), répété une tuile plus à gauche
@@ -177,35 +196,27 @@ const wrappedShape = (x: number, y: number, relative: string): string =>
   [[0, 0], [-TILE_W, 0], [0, -TILE_H], [-TILE_W, -TILE_H]]
     .map(([dx, dy]) => `M${r1(x + dx)} ${r1(y + dy)}${relative}`).join('');
 
-/** Volute au bout d'une ligne de vent, qui part vers la droite et s'enroule vers le haut. */
-const curl = (x: number, y: number, size: number): string => {
-  const s = size / 44;
-  const c = (...v: number[]) => v.map((n) => r1(n * s)).join(' ');
-  return wrappedShape(x, y, `c${c(30, -6, 34, -40, 4, -44)}c${c(-30, -4, -36, 30, -6, 34)}`);
-};
+/**
+ * Souffle de vent, d'après l'image de l'utilisateur (23/10) : quatre longs traits, dont l'un finit en
+ * spirale. Tracés absolus dans un cadre de 1080 × 370, posés à l'échelle voulue par `placeSouffle`.
+ */
+const SOUFFLE = [
+  'M8 5C150 110 380 190 568 190',
+  'M262 28C380 120 560 145 700 160C820 172 910 210 915 270C918 330 860 365 780 366C700 368 668 320 680 285C690 255 730 240 770 250C795 256 808 265 817 278',
+  'M322 213C400 232 470 240 547 242',
+  'M665 70C760 115 880 130 960 165C1010 188 1050 215 1078 253',
+];
 
-/** Voile : lignes de vent ondulées en rangs serrés, interrompues, une sur deux finissant en volute. */
-const voileTile = (): TilePath[] => {
-  const paths: string[] = [];
-  for (let row = 0; row < 16; row++) {
-    const y0 = 20 + row * 40;
-    const phase = row * 1.3;
-    const k = row % 3 === 0 ? 2 : 1;
-    const wave = (x: number) => y0 + 7 * Math.sin((TAU * k * x) / TILE_W + phase);
-    const start = jitter(row) * TILE_W;
-    const first = 110 + jitter(row + 50) * 90;
-    const gap = 30 + jitter(row + 100) * 40;
-    const second = TILE_W - first - 2 * gap;
-    // Deux brins par rang ; le premier finit en volute un rang sur deux.
-    paths.push(wrappedLine(start, start + first, wave));
-    paths.push(wrappedLine(start + first + gap, start + first + gap + second, wave));
-    if (row % 2 === 1) {
-      const xe = (start + first) % TILE_W;
-      paths.push(curl(xe, wave(xe), 22));
-    }
-  }
-  return [{ d: paths.join('') }];
-};
+/** Le souffle à l'échelle `s`, son coin en `(ox, oy)`, avec ses copies autour de la tuile. */
+const placeSouffle = (ox: number, oy: number, s: number): string =>
+  neighbours(TILE_W, TILE_H).map(([dx, dy]) =>
+    SOUFFLE.map((d) => {
+      let i = 0;
+      return d.replace(/-?\d+(\.\d+)?/g, (n) => String(r1(i++ % 2 === 0 ? ox + dx + Number(n) * s : oy + dy + Number(n) * s)));
+    }).join('')).join('');
+
+/** Voile : trois souffles de tailles différentes par tuile, beaucoup de vide autour. */
+const voileTile = (): TilePath[] => [{ d: placeSouffle(24, 70, 0.3) + placeSouffle(150, 360, 0.24) + placeSouffle(-60, 540, 0.2) }];
 
 /** À pied : chemins pointillés qui serpentent, des repères ronds et des fanions posés dessus. */
 const courseTile = (): TilePath[] => {
@@ -226,43 +237,72 @@ const courseTile = (): TilePath[] => {
   return [{ d: dots.join(''), kind: 'dots' }, { d: marks.join(''), kind: 'fill' }, { d: flags.join('') }];
 };
 
-/** Vélo : quatre routes en lacets qui montent la page, chacune à deux bords. */
+/** Tuile du vélo : grande, pour que ses courbes restent peu nombreuses à l'écran. */
+const VELO_W = 780;
+const VELO_H = 1280;
+const VELO_LEVELS = 11;
+
+/**
+ * Relief du vélo, d'après l'image de l'utilisateur (23/10) : un sinus en largeur que deux ondes en hauteur
+ * déforment, d'où des courbes de niveau ouvertes en grands lacets ; périodique sur la tuile, dans les deux sens.
+ */
+export const veloHeight = (x: number, y: number): number =>
+  Math.sin(TAU * x / VELO_W + 3 * Math.sin(TAU * y / VELO_H + 1) + 1.2 * Math.sin(TAU * (x / VELO_W + 2 * y / VELO_H) + 2.5));
+
+/** Vélo : courbes de dénivelé, à niveaux égaux entre −1 et 1. */
 const veloTile = (): TilePath[] => {
-  const paths: string[] = [];
-  const roads = 4;
-  for (let n = 0; n < roads; n++) {
-    const x0 = ((n + 0.5) * TILE_W) / roads;
-    const phase = n * 2.2;
-    const x = (y: number, dx: number) => {
-      const t = (2 * TAU * y) / TILE_H + phase;
-      return x0 + dx + 30 * (Math.sin(t) + 0.25 * Math.sin(3 * t));
-    };
-    for (const dx of [-5, 5]) {
-      const points: Point[] = Array.from({ length: TILE_H / 4 + 1 }, (_, i) => [x(i * 4, dx), i * 4]);
-      paths.push(polyline(points));
-    }
-  }
-  return [{ d: paths.join('') }];
+  const heights = heightGrid(veloHeight, VELO_W, VELO_H);
+  const lines = Array.from({ length: VELO_LEVELS }, (_, n) => isoline(heights, -1 + (2 * (n + 0.5)) / VELO_LEVELS));
+  return [{ d: lines.join('') }];
 };
 
-/** Surf : houle en rangs serrés, décalés d'une demi-onde d'un rang à l'autre, quelques crêtes qui déferlent. */
-const surfTile = (): TilePath[] => {
-  const paths: string[] = [];
-  const crests: string[] = [];
-  const wavelength = TILE_W / 6;
-  for (let row = 0; row < 16; row++) {
-    const y0 = 20 + row * 40;
-    const amp = row % 2 === 0 ? 11 : 7;
-    const shift = row % 2 === 0 ? 0 : wavelength / 2;
-    // Une demi-onde par segment (bosse puis creux) : sept ondes couvrent la tuile, décalage compris.
-    const half = r1(wavelength / 2);
-    paths.push(`M${r1(-shift)} ${y0}q${r1(wavelength / 4)} ${-amp} ${half} 0` + `t${half} 0`.repeat(13));
-    if (row % 3 === 1) {
-      const xc = shift + wavelength * ((row * 2) % 5) + wavelength / 4 + 4;
-      crests.push(`M${r1(xc)} ${y0 - amp}c8 -4 16 0 14 7c-2 5 -9 4 -9 0`);
+/** Tuile du surf : une seule vague par tuile, donc à peu près une par écran. */
+const SURF_W = 600;
+const SURF_H = 520;
+
+/**
+ * Lignes de la vague, d'après l'image de l'utilisateur (23/10), dans un repère de 1520 × 1250 : droites à
+ * gauche, elles montent en colline puis tournent d'un quart de cercle vers le bas autour d'un même centre.
+ * Cette carte polaire est injective : des lignes qui ne se croisent pas avant le virage ne se croisent pas
+ * après. Les lignes du bas finissent par un crochet ; l'encre croît de la plus haute à la plus basse.
+ */
+const vagueLines = (): { points: Point[]; hook: number; alpha: number }[] => {
+  const n = 9;
+  const [top, gap, hill, u0, cy, radius, firstHook] = [490, 85, 480, 750, 1250, 400, 5];
+  const swell = (u: number) =>
+    Math.exp(-(((u - 370) / 200) ** 2)) + 0.32 * Math.exp(-(((u - 730) / 85) ** 2))
+    + 0.26 * Math.exp(-(((u - 1000) / 95) ** 2)) + 0.2 * Math.exp(-(((u - 1230) / 85) ** 2));
+  return Array.from({ length: n }, (_, k) => {
+    const v = top + k * gap;
+    const amp = hill * ((n - 1 - k) / (n - 1)) ** 1.4 + 25;
+    const points: Point[] = [];
+    for (let u = 0; u <= u0 + (radius * Math.PI) / 2; u += 8) {
+      const vv = v - amp * swell(u);
+      if (u <= u0) points.push([u, vv]);
+      else {
+        const rho = cy - vv;
+        const phi = (u - u0) / radius;
+        points.push([u0 + rho * Math.sin(phi), cy - rho * Math.cos(phi)]);
+      }
     }
-  }
-  return [{ d: paths.join('') + crests.join('') }];
+    return { points, hook: k >= firstHook ? 0.7 + 0.5 * jitter(k) : 0, alpha: 0.45 + (0.55 * k) / (n - 1) };
+  });
+};
+
+/** Surf : la vague à l'échelle 0,4 dans sa tuile, avec ses copies autour. */
+const surfTile = (): TilePath[] => {
+  const [ox, oy, s] = [0, 4, 0.4];
+  return vagueLines().map(({ points, hook, alpha }) => ({
+    alpha,
+    d: neighbours(SURF_W, SURF_H).slice(0, 5).map(([dx, dy]) => {
+      let d = polyline(points.map(([x, y]) => [ox + dx + x * s, oy + dy + y * s]));
+      if (hook) {
+        const c = (...v: number[]) => v.map((q) => r1(q * s * hook)).join(' ');
+        d += `c${c(0, 30, -14, 44, -36, 40)}c${c(-20, -4, -18, -28, 4, -26)}`;
+      }
+      return d;
+    }).join(''),
+  }));
 };
 
 /** Fractionné : rafales de trois traits de vitesse en diagonale, en quinconce. */
@@ -283,22 +323,25 @@ const fractionneTile = (): TilePath[] => {
   return [{ d: paths.join('') }];
 };
 
-const FAMILY_TILES: Record<SportFamily, () => TilePath[]> = {
-  voile: voileTile,
-  course: courseTile,
-  velo: veloTile,
-  surf: surfTile,
-  fractionne: fractionneTile,
-};
-
 export type BackdropVariant = 'contours' | SportFamily;
 
-/** Tracés de la tuile d'un fond ; calculés une fois, à la première demande. */
-const cache = new Map<BackdropVariant, TilePath[]>();
-export const backdropTile = (variant: BackdropVariant): TilePath[] => {
+/** Dessin, taille de tuile et espacement de chaque fond, réglés à l'œil par l'utilisateur sur la maquette du 23/10. */
+const BACKDROPS: Record<BackdropVariant, { draw: () => TilePath[]; width: number; height: number; scale: number }> = {
+  contours: { draw: contourTile, width: TILE_W, height: TILE_H, scale: 1 },
+  voile: { draw: voileTile, width: TILE_W, height: TILE_H, scale: 0.9 },
+  course: { draw: courseTile, width: TILE_W, height: TILE_H, scale: 1.3 },
+  velo: { draw: veloTile, width: VELO_W, height: VELO_H, scale: 1.8 },
+  surf: { draw: surfTile, width: SURF_W, height: SURF_H, scale: 0.9 },
+  fractionne: { draw: fractionneTile, width: TILE_W, height: TILE_H, scale: 1 },
+};
+
+/** Tuile d'un fond ; ses tracés sont calculés une fois, à la première demande. */
+const cache = new Map<BackdropVariant, BackdropTile>();
+export const backdropTile = (variant: BackdropVariant): BackdropTile => {
   let tile = cache.get(variant);
   if (!tile) {
-    tile = variant === 'contours' ? contourTile() : FAMILY_TILES[variant]();
+    const { draw, width, height, scale } = BACKDROPS[variant];
+    tile = { paths: draw(), width, height, scale };
     cache.set(variant, tile);
   }
   return tile;

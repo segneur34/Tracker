@@ -14,6 +14,7 @@ import {
   DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatPace, formatSpeedValue, fromDisplaySpeed, toDisplaySpeed,
   type DistanceUnit, type SpeedUnit,
 } from '../core/units';
+import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
 import { RUNNER_NAME_MAX, runnerHeartRateZones, useRunnerProfile, type RunnerNumberField, type RunnerProfile } from '../hooks/useRunnerProfile';
@@ -315,6 +316,7 @@ function HeartRateZonesField({ profile, onChange }: { profile: RunnerProfile; on
  * chaque module à son ouverture.
  */
 function SettingsPage() {
+  const backdrop = useFavoriteBackdrop();
   const {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
     stopHoldMs, setStopHoldMs, hiddenFamilies, setActivityHidden, setFamilyHidden,
@@ -368,7 +370,7 @@ function SettingsPage() {
   return (
     <SettingsHelpProvider>
     <div className="ui-page--backdrop" style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto', boxSizing: 'border-box' }}>
-      <PageBackdrop variant="contours" />
+      <PageBackdrop variant={backdrop} />
       <div style={{ marginBottom: '15px' }}>
         <PageHeader title="Réglages" subtitle="Enregistrés sur cet appareil et dans le dossier mémoire."
           aside={<CollapseAllButton onCollapse={collapseAll} />} />

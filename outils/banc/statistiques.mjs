@@ -6,8 +6,9 @@
 // les importe par la page Course, et vérifie :
 //  1. l'accès : « Statistiques » dans la barre du haut, qui ouvre la page ; plus de lien sur l'accueil ;
 //  2. la vue d'ensemble : 12 sessions, une ligne par famille, pas de records, le graphique de la durée seule ;
-//  1 bis. les boutons glissants (demande du 20/10) : familles et période visibles d'emblée, sans bouton
-//     « Sélection », pas de rangée d'activités sur « Tout » ; la flèche droite du clavier passe à la famille suivante ;
+//  1 bis. les boutons glissants (demande du 20/10), repliés sous « Sélection » (23/10) : replié au départ, le choix
+//     en cours affiché, ouvert et retenu après rechargement ; pas de rangée d'activités sur « Tout » ; la flèche
+//     droite du clavier passe à la famille suivante ;
 //  3. la descente : Course (5 sessions, graphique et records), 30 jours (2 sessions), le retour arrière
 //     qui remonte à la vue d'ensemble ; Fractionné puis « Fractionné vélo » (1 session) ; les boutons
 //     d'activité de chaque famille (Vélo : ses trois activités ; Voile : « Kite », de base, avec sa session) ;
@@ -17,7 +18,8 @@
 //     en version 5 du résumé (distance en action) ;
 //  5. une famille cachée (Surf) : absente des pastilles et des totaux, sa page ouverte par l'adresse le dit ;
 //  5b. une session de voile de `make-gpx.mjs`, ouverte dans son analyse : la réussite de ses manœuvres rangée
-//     dans sa fiche, et « % de manœuvres réussies » tracé en deux séries ;
+//     dans sa fiche, et « % de manœuvres réussies » tracé en deux séries, avec sa légende (empannage en rond,
+//     virement en triangle, 23/10) ;
 //  6. à 390×844 : rien ne déborde ; la case « Statistiques » de la barre du bas ouvre la page, allumée.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -50,8 +52,8 @@ ws.onmessage = (e) => {
 };
 await new Promise((r) => { ws.onopen = r; });
 await send('Page.enable');
-// Rangée « avancé » des analyses ouverte d'office (22/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {}` });
+// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
 await send('Runtime.enable');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
@@ -150,8 +152,15 @@ check('lien de la barre du haut', await click('.shell-toplinks a', 'Statistiques
 await wait(1500);
 check('le lien ouvre la page', (await search()) === '/statistiques', await search());
 
-// 1 bis. Boutons glissants, visibles d'emblée.
-check('plus de bouton « Sélection »', !(await evaluate(`!!document.querySelector('.stats-choice button[data-chart-fold]')`)));
+// 1 bis. Boutons glissants, sous « Sélection ».
+const selection = `document.querySelector('.stats-choice button[data-chart-fold]')`;
+check('« Sélection » replié au départ, le choix en cours affiché', (await evaluate(`${selection}?.getAttribute('aria-expanded')`)) === 'false'
+  && (await evaluate(`${selection}?.textContent`))?.includes('Toutes les familles · depuis le début')
+  && (await chips('Famille')) === '', await evaluate(`${selection}?.textContent`));
+await evaluate(`${selection}.click()`);
+await wait(400);
+await go('/statistiques');
+check('« Sélection » ouvert, retenu après rechargement', (await evaluate(`${selection}?.getAttribute('aria-expanded')`)) === 'true');
 check('rangée des familles', (await chips('Famille')) === 'Tout, À pied, Vélo, Voile, Fractionné, Surf' || (await chips('Famille'))?.startsWith('Tout, '), await chips('Famille'));
 check('« Tout » choisi, pas de rangée d\'activités', (await pressed('Famille')) === 'Tout' && (await chips('Activité')) === '', `${await pressed('Famille')} ; ${await chips('Activité')}`);
 check('rangée des périodes, « Tout » choisi', (await chips('Période')) === 'Semaine, 30 jours, 6 mois, Année, Tout' && (await pressed('Période')) === 'Tout', await chips('Période'));
@@ -173,6 +182,9 @@ await wait(800);
 
 // 2. Vue d'ensemble.
 check('12 sessions', (await stat('Sessions')) === '12', await stat('Sessions'));
+const backdrop = () => evaluate(`document.querySelector('.page-backdrop')?.getAttribute('class')`);
+// Fond (lot 3 du 23/10) : dans « Tout », le motif du sport préféré ; dans une famille, celui de la famille choisie.
+check('« Tout » : fond d’une famille, celle du sport préféré', /^page-backdrop page-backdrop--(voile|course|velo|surf|fractionne)$/.test((await backdrop()) ?? ''), await backdrop());
 check('onglets de la vue d\'ensemble', (await tabs()) === 'général, graphique, régularité', await tabs());
 check('graphique de la vue d\'ensemble : la durée seule, sans pastilles', (await chips('Donnée')) === '' && (await points()) === 12 && (await yLabel()) === 'min',
   `${await chips('Donnée')} ; ${await points()} ; ${await yLabel()}`);
@@ -187,6 +199,7 @@ await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'À pied');
 await wait(800);
 check('famille dans l\'adresse', (await search()) === '/statistiques?famille=course', await search());
 check('Course : 5 sessions', (await stat('Sessions')) === '5', await stat('Sessions'));
+check('À pied : fond de la famille', (await backdrop()) === 'page-backdrop page-backdrop--course', await backdrop());
 check('onglets d\'une famille', (await tabs()) === 'général, graphique, régularité, records', await tabs());
 check('vitesse max et D+', (await stat('Vitesse max')) !== null && (await stat('Vitesse moyenne en action')) !== null, `${await stat('Vitesse max')} ; ${await stat('Vitesse moyenne en action')}`);
 check('graphique : la vitesse max par défaut, 5 points', (await pressed('Donnée')) === 'Vitesse max' && (await points()) === 5, `${await pressed('Donnée')} ; ${await points()}`);
@@ -209,6 +222,7 @@ check('retour arrière : vue d\'ensemble', (await search()) === '/statistiques' 
 
 await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Fractionné');
 await wait(800);
+check('Fractionné : fond de la famille', (await backdrop()) === 'page-backdrop page-backdrop--fractionne', await backdrop());
 check('activités du fractionné', (await chips('Activité')) === 'Toutes, Fractionné à pied, Fractionné vélo', await chips('Activité'));
 await click('.ui-segmented[aria-label="Activité"] [role=radio]', 'Fractionné vélo');
 await wait(800);
@@ -341,8 +355,18 @@ await click('.stats-chips[aria-label="Donnée"] .ui-tab', '% de manœuvres réus
 await wait(600);
 const shapes = await evaluate(`[...document.querySelectorAll('.recharts-scatter-symbol path')].map((p) => p.getAttribute('d')?.slice(0, 1)).length`);
 const note = await evaluate(`document.querySelector('.stats-picked')?.textContent ?? ''`);
-check('réussite : deux points (virements, empannages), wing et kite à rouvrir', (await points()) === 2 && note.includes('triangles') && note.includes('2 sessions à rouvrir'),
+check('réussite : deux points (virements, empannages), wing et kite à rouvrir', (await points()) === 2 && !note.includes('triangles') && note.includes('2 sessions à rouvrir'),
   `${await points()} ; ${shapes} ; ${note}`);
+const legend = await evaluate(`[...document.querySelectorAll('.stats-legend__item')].map((i) => (i.querySelector('circle') ? '●' : i.querySelector('path') ? '▲' : '?') + ' ' + i.textContent.trim()).join(' · ')`);
+check('légende : ● empannage (jibe) · ▲ virement (tack)', legend === '● empannage (jibe) · ▲ virement (tack)', legend);
+// Recharts dessine le rond en arc (« A ») et le triangle en lignes seules : un point de chaque.
+const symbols = await evaluate(`[...document.querySelectorAll('.recharts-scatter-symbol path')].map((p) => (p.getAttribute('d') ?? '').includes('A') ? 'rond' : 'triangle').sort().join(',')`);
+check('graphe : un rond, un triangle', symbols === 'rond,triangle', symbols);
+await click('.stats-chips[aria-label="Donnée"] .ui-tab', 'Durée');
+await wait(400);
+check('légende absente pour une série seule', !(await evaluate(`!!document.querySelector('.stats-legend')`)));
+await click('.stats-chips[aria-label="Donnée"] .ui-tab', '% de manœuvres réussies');
+await wait(400);
 await shoot('stats-reussite');
 
 // 6. Téléphone.
