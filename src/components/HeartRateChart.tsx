@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
-import { CartesianGrid, ComposedChart, Line, ReferenceArea, ResponsiveContainer, Tooltip, YAxis } from 'recharts';
+import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from 'recharts';
 import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, type ChartHoverEvent } from './chartHover';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS } from './heartRateColors';
 import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
@@ -17,7 +17,7 @@ const TOP_BPM = 250;
  * les onglets des graphes des trois modules.
  */
 export default function HeartRateChart<R extends { index: number; hr: number | null }>({
-  data, zoom, xAxis, zones, onHoverIndex, onLeave, onShowOnMap, syncId, showReset, style, children,
+  data, zoom, xAxis, zones, thresholds, onHoverIndex, onLeave, onShowOnMap, syncId, showReset, style, children,
 }: {
   data: R[];
   zoom: ChartZoom;
@@ -25,6 +25,8 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
   xAxis: ReactElement;
   /** Bornes basses des zones 1 à 5, ou `null` sans zones. */
   zones: readonly number[] | null;
+  /** Seuils aérobie (S1) et anaérobie (S2), traits noirs ; `null` sans zones. */
+  thresholds?: { s1: number; s2: number } | null;
   onHoverIndex: (index: number) => void;
   onLeave?: () => void;
   /** « Sur la carte » une fois zoomé. */
@@ -42,7 +44,7 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
   return (
     <ZoomableChart zoom={zoom} onLeave={onLeave} showReset={showReset} onShowOnMap={onShowOnMap} style={style}>
       <ResponsiveContainer>
-        <ComposedChart data={data} syncId={syncId} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+        <ComposedChart data={data} syncId={syncId} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 5, right: thresholds ? 24 : 10, left: 0, bottom: 0 }}>
           <ChartZoomProbe />
           <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
           {xAxis}
@@ -52,6 +54,10 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
           {zones?.map((lower, k) => (
             <ReferenceArea key={k} yAxisId="hr" y1={lower} y2={zones[k + 1] ?? TOP_BPM} fill={HEART_ZONE_COLORS[k + 1]} fillOpacity={0.12}
               stroke="none" ifOverflow="hidden" />
+          ))}
+          {thresholds && ([['S1', thresholds.s1], ['S2', thresholds.s2]] as const).map(([name, bpm]) => (
+            <ReferenceLine key={name} yAxisId="hr" y={bpm} stroke="#000" strokeWidth={1.5} ifOverflow="hidden"
+              label={{ value: name, position: 'right', fill: '#000', fontSize: 10, fontWeight: 700 }} />
           ))}
           {children}
           <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />

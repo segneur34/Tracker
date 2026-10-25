@@ -993,7 +993,7 @@ function LandModule({ family }: { family: LandFamily }) {
         );
       case 'fc':
         return (
-          <HeartRateChart data={chartData} zoom={zoom} xAxis={xAxis} zones={hrZones?.bounds ?? null}
+          <HeartRateChart data={chartData} zoom={zoom} xAxis={xAxis} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
             onHoverIndex={hoverIndex} onLeave={clearHover} syncId={page.storageId} showReset={showReset} onShowOnMap={showGraphsOnMap}
             style={chartBox(CHART_HEIGHT_PX)}>
             {markReferenceLines(marks.located, (m) => toDisplayDistance(m.distanceM, distanceUnit), shownMark, 'hr')}
@@ -1141,7 +1141,7 @@ function LandModule({ family }: { family: LandFamily }) {
         return energyChart;
       case 'cardio':
         return heart.present ? (
-          <CardioCurve track={gpx.track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} hoveredIndex={hoveredIndex}
+          <CardioCurve track={gpx.track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null} hoveredIndex={hoveredIndex}
             onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={chartBox(CHART_HEIGHT_PX)} />
         ) : null;
       case 'test':

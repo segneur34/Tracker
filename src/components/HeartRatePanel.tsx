@@ -67,12 +67,13 @@ const scatterTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
  * Courbe de FC de l'onglet « cardio », sur le temps écoulé, avec sa lecture
  * au-dessus : dans le panneau, et sous la carte en plein écran.
  */
-export function CardioCurve({ track, smoothed, zoom, zones, hoveredIndex, onHoverIndex, onLeave, onShowOnMap, style }: {
+export function CardioCurve({ track, smoothed, zoom, zones, thresholds, hoveredIndex, onHoverIndex, onLeave, onShowOnMap, style }: {
   track: readonly HeartRatePoint[];
   smoothed: readonly (number | null)[];
   zoom: ChartZoom;
   /** Bornes basses des zones 1 à 5, ou `null` sans zones. */
   zones: readonly number[] | null;
+  thresholds?: { s1: number; s2: number } | null;
   hoveredIndex: number | null;
   onHoverIndex: (index: number) => void;
   onLeave: () => void;
@@ -98,7 +99,7 @@ export function CardioCurve({ track, smoothed, zoom, zones, hoveredIndex, onHove
   return (
     <>
       <ChartReadout readout={readout} label="FC" color={HEART_RATE_COLOR} line />
-      <HeartRateChart data={rows} zoom={zoom} zones={zones} onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap}
+      <HeartRateChart data={rows} zoom={zoom} zones={zones} thresholds={thresholds} onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap}
         style={style}
         xAxis={(
           <XAxis dataKey="minutes" type="number" allowDataOverflow
@@ -148,12 +149,16 @@ export default function HeartRatePanel({
       </div>
       <HelpText helpKey="analyse:cardio" note>
         FC lissée sur {params.smoothS} s ; un trou de plus de {params.gapS} s (ceinture retirée, pause) n'est pas compté. Le survol de la courbe déplace le repère sur la carte.
+        {zones && " Les traits noirs S1 et S2 de la courbe sont vos seuils aérobie et anaérobie."}
         {zones && " « Voir » montre les passages d'une zone sur la carte, en violet."}
         {efficiency && scatterUnit !== null && " D'une sortie à l'autre, le nuage qui glisse vers la droite à FC égale dit le progrès."}
       </HelpText>
       <div className="an-sheet__stats an-sheet__stats--always">
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">FC moyenne</span><strong className="an-sheet__stat-value">{Math.round(stats.avgBpm)} bpm</strong></div>
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">FC max</span><strong className="an-sheet__stat-value">{stats.maxBpm} bpm</strong></div>
+        {zones && (
+          <div className="an-sheet__stat"><span className="an-sheet__stat-label">S1 · S2</span><strong className="an-sheet__stat-value">{zones.s1} · {zones.s2} bpm</strong></div>
+        )}
         {zoneTimes && (
           <div className="an-sheet__stat">
             <span className="an-sheet__stat-label">Charge <HelpToggle helpKey="analyse:charge" label="Qu'est-ce que la charge ?" /></span>
@@ -176,7 +181,7 @@ export default function HeartRatePanel({
       )}
 
       <div style={{ marginTop: '6px' }}>
-        <CardioCurve track={track} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} hoveredIndex={hoveredIndex}
+        <CardioCurve track={track} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null} hoveredIndex={hoveredIndex}
           onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap} style={{ width: '100%', height: '200px' }} />
       </div>
 

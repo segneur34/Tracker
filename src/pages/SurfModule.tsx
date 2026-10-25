@@ -495,7 +495,7 @@ function SurfModule() {
   );
   /** Courbe de FC de « graphiques » ; ses boutons de zoom quand la vitesse est repliée. */
   const heartChart = (speedShown: boolean) => (
-    <HeartRateChart data={chartData} zoom={zoom} xAxis={timeAxis} zones={hrZones?.bounds ?? null}
+    <HeartRateChart data={chartData} zoom={zoom} xAxis={timeAxis} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
       onHoverIndex={hoverIndex} onLeave={clearHover} showReset={!speedShown} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
       {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark, 'hr')}
     </HeartRateChart>
@@ -524,7 +524,7 @@ function SurfModule() {
       }
       case 'cardio':
         return heart.present ? (
-          <CardioCurve track={track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} hoveredIndex={hoveredIndex}
+          <CardioCurve track={track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null} hoveredIndex={hoveredIndex}
             onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={chartBox(CHART_HEIGHT_PX)} />
         ) : null;
       default:

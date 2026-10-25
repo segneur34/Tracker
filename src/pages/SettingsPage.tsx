@@ -309,7 +309,9 @@ function HeartRateThresholdsField({ profile, onChange }: { profile: RunnerProfil
       )}
       {zones && (
         <div style={{ color: 'var(--muted)', marginBottom: '6px' }}>
-          Zones : {zones.bounds.map((b, k) => `${zoneLabel(k + 1)} ≥ ${b}`).join(' · ')}
+          Zones : {zones.bounds.map((b, k) => (
+            <span key={k}>{k > 0 && ' · '}<strong>{zoneLabel(k + 1)}</strong> ≥ {b}</span>
+          ))}
         </div>
       )}
       <HelpText helpKey="pratiquant:zones">

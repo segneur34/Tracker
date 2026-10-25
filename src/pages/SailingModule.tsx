@@ -579,7 +579,7 @@ function SailingModule() {
   );
   /** Courbe de FC de « graphiques », sur le temps de la session ; ses boutons de zoom quand la vitesse est repliée. */
   const heartChart = (style: CSSProperties) => (
-    <HeartRateChart data={heartRows} zoom={chartZoom} xAxis={timeAxis} zones={hrZones?.bounds ?? null}
+    <HeartRateChart data={heartRows} zoom={chartZoom} xAxis={timeAxis} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
       onHoverIndex={hoverIndex} onLeave={clearHover} showReset={!graphFolds.open.vitesse} onShowOnMap={() => zoomOnMap.show('graphiques')} style={style}>
       {markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark, 'hr')}
     </HeartRateChart>
@@ -613,7 +613,7 @@ function SailingModule() {
         ) : null;
       case 'cardio':
         return heart.present ? (
-          <CardioCurve track={track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} hoveredIndex={hoveredIndex}
+          <CardioCurve track={track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null} hoveredIndex={hoveredIndex}
             onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={COMPANION_CHART_STYLE} />
         ) : null;
       default:
