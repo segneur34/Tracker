@@ -7,7 +7,7 @@
 //     précédent ; un second appui referme ;
 //  3. le « ? » d'un bloc (Activités) ne replie pas le bloc, son texte se déplie sous le titre ;
 //  4. à 390×844 : aucun débordement, une aide ouverte comprise ;
-//  5. hors de Réglages, rien ne change : l'éditeur des bips d'un parcours (Itinéraires) garde son mode d'emploi.
+//  5. hors de Réglages, les aides valent aussi : le mode d'emploi des bips d'un parcours (Itinéraires) est sous le « ? » du bloc.
 import { writeFileSync } from 'node:fs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -157,8 +157,17 @@ console.log('Régler pour ce parcours :', await evaluate(`(() => {
 })()`));
 await wait(500);
 const routes = await evaluate(`document.body.innerText`);
-const routeHelps = await evaluate(`${helps}.filter((b) => b.getAttribute('aria-label')?.startsWith('Aide : ')).length`);
-check("Itinéraires : les bips du parcours gardent leur mode d'emploi, sans « ? » d'aide", routes.includes('Tirez un point') && routeHelps === 0, routeHelps);
+const routeHelp = await evaluate(`(() => {
+  const b = ${helps}.find((x) => x.getAttribute('aria-label') === 'Aide : Parcours');
+  if (!b) return null;
+  b.click();
+  return true;
+})()`);
+await wait(300);
+const routesOpen = await evaluate(`document.body.innerText`);
+// Depuis le lot 3 du 24/10, les aides valent partout : le mode d'emploi des bips d'un parcours passe sous le « ? » du bloc.
+check("Itinéraires : le mode d'emploi des bips sous le « ? » du bloc Parcours",
+  !/tirez un point/i.test(routes) && routeHelp === true && /tirez un point/i.test(routesOpen), routeHelp);
 
 console.log(`\n${failures === 0 ? 'Tout est passé.' : `${failures} échec(s).`}`);
 await finish();

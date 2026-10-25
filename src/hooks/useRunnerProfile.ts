@@ -131,6 +131,38 @@ export const runnerRootSettings = (
   };
 };
 
+/** Champs que le pop-up de l'accueil demande tant qu'ils manquent ; la FC max et la FC repos viennent des tests. */
+export const PROFILE_PROMPT_FIELDS = ['name', 'birthYear', 'sex', 'weightKg', 'heightCm'] as const;
+export type ProfilePromptField = (typeof PROFILE_PROMPT_FIELDS)[number];
+
+/** Une valeur numérique saisie et dans sa plage (relue avec contrôle : fichier de réglages importé). */
+const validNumber = (field: NumberField, raw: unknown): boolean => {
+  const [lo, hi] = BOUNDS[field];
+  return typeof raw === 'number' && isFinite(raw) && raw >= lo && raw <= hi;
+};
+
+/** Champs du pop-up qui manquent au profil, dans leur ordre ; vide : le profil est rempli. */
+export const missingProfileFields = (profile: Partial<RunnerProfile>): ProfilePromptField[] =>
+  PROFILE_PROMPT_FIELDS.filter((field) => {
+    switch (field) {
+      case 'name': return runnerName({ name: profile.name ?? null }) === null;
+      case 'sex': return profile.sex !== 'f' && profile.sex !== 'm';
+      default: return !validNumber(field, profile[field]);
+    }
+  });
+
+/**
+ * Le pop-up du profil s'ouvre-t-il sur l'accueil ? Dans l'application seulement,
+ * une fois par lancement, tant qu'un champ manque, et jamais par-dessus la carte
+ * de la mémoire ou celle des autorisations (il attend alors le lancement suivant).
+ */
+export const shouldPromptProfile = ({ native, missing, askedThisLaunch, otherCardShown }: {
+  native: boolean;
+  missing: readonly ProfilePromptField[];
+  askedThisLaunch: boolean;
+  otherCardShown: boolean;
+}): boolean => native && missing.length > 0 && !askedThisLaunch && !otherCardShown;
+
 const NAMESPACE = 'tracker.runnerProfile';
 const KEY = 'me';
 

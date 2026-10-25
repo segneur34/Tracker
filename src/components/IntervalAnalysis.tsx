@@ -18,10 +18,10 @@ import { NO_TOOLTIP_CONTENT, hoveredRow, inChartView, type ChartHoverEvent } fro
 import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
 import { HIGHLIGHT_PODIUM_COLORS } from './highlightColors';
 import { IconChevronRight } from './icons';
+import { HelpText } from './Help';
 import PanelTitle from './PanelTitle';
 import ResizablePanel from './ResizablePanel';
 import { CARD_STYLE, HALF_PANEL_STYLE } from './styles';
-import HelpButton from './ui/HelpButton';
 import './IntervalAnalysis.css';
 
 /**
@@ -252,7 +252,6 @@ function Sparkline({ points, length, domain }: { points: (number | null)[]; leng
 function IntervalAnalysis({
   series, stepS, launchFraction, samplingS, speedUnit, distanceUnit, panelId, open, onToggle, selectedLap, onSelectLap, emptyText, recoveryS,
 }: IntervalAnalysisProps) {
-  const [help, setHelp] = useState(false);
   /**
    * Séances repliées, par indice, dans les trois panneaux à la fois (pour ne garder que le profil des
    * 20-20, par exemple) ; remises à zéro quand les séances changent.
@@ -295,10 +294,10 @@ function IntervalAnalysis({
   const foldedSeries = (s: IntervalSeriesView, index: number) => (
     <div key={index} style={{ marginBottom: '8px' }}>{seriesTitle(s, index)}</div>
   );
-  const heading = (label: string, withHelp = false) => (
+  /** Titre d'un des trois panneaux ; `helpKey` : son « ? », dont le texte vient juste dessous. */
+  const heading = (label: string, helpKey?: string) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', paddingRight: '28px' }}>
-      <PanelTitle label={label} open={open} onToggle={onToggle} />
-      {withHelp && <HelpButton size="s" open={help} onToggle={() => setHelp(!help)} label="Ce que disent ces chiffres" />}
+      <PanelTitle label={label} open={open} onToggle={onToggle} helpKey={helpKey} />
     </div>
   );
 
@@ -313,9 +312,8 @@ function IntervalAnalysis({
 
   const repsPanel = (
     <ResizablePanel id={panelId('fractionne')} style={panelStyle}>
-      {heading('Répétitions', true)}
-      {help && (
-        <div style={{ ...noteStyle, marginTop: 0, marginBottom: '10px' }}>
+      {heading('Répétitions', 'analyse:repetitions')}
+      <HelpText helpKey="analyse:repetitions" note>
           {series.some((s) => s.detected)
             ? "Répétitions retrouvées dans la vitesse : efforts au-dessus du seuil d'effort, réglable dans l'onglet réglages, chacun parti du creux de vitesse qui le précède. "
             : "Répétitions du compteur, datées par l'horloge du téléphone ; une pause du compteur compte dans la durée de sa phase. "}
@@ -326,8 +324,7 @@ function IntervalAnalysis({
           écart-type des répétitions sur leur moyenne. Mini-courbe : la vitesse de chaque répétition une fois lancée, lissée
           sur {SPARK_SMOOTHING_S} s, à la même échelle pour toutes, plus haut plus vite. « Voir » montre la répétition sur la
           carte, en violet.
-        </div>
-      )}
+      </HelpText>
       {samplingS > SPARSE_SAMPLING_S && (
         <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px', fontSize: 'var(--text-xs)' }}>
           Un point toutes les {samplingS.toFixed(1)} s en médiane : la trace est trop clairsemée pour le détail d'une
@@ -466,7 +463,12 @@ function IntervalAnalysis({
 
   const evolutionPanel = (
     <ResizablePanel id={panelId('fractionne-evolution')} style={panelStyle}>
-      {heading('Évolution des répétitions')}
+      {heading('Évolution des répétitions', 'analyse:evolution')}
+      <HelpText helpKey="analyse:evolution" note>
+        {inverse ? 'Allure' : 'Vitesse'} de chaque répétition, de la première (verte) à la dernière (rouge), avec sa moyenne
+        (trait fin) et sa tendance (pointillé){inverse ? ', axe inversé : plus haut, plus vite' : ''}. Toucher une répétition
+        la montre sur la carte. Toucher le titre d'une séance la replie dans les trois panneaux.
+      </HelpText>
       {series.map((s, seriesIndex) => {
         if (folded.has(seriesIndex)) return foldedSeries(s, seriesIndex);
         const trend = s.summary.trend;
@@ -521,17 +523,17 @@ function IntervalAnalysis({
           </div>
         );
       })}
-      <div style={noteStyle}>
-        {inverse ? 'Allure' : 'Vitesse'} de chaque répétition, de la première (verte) à la dernière (rouge), avec sa moyenne
-        (trait fin) et sa tendance (pointillé){inverse ? ', axe inversé : plus haut, plus vite' : ''}. Toucher une répétition
-        la montre sur la carte. Toucher le titre d'une séance la replie dans les trois panneaux.
-      </div>
     </ResizablePanel>
   );
 
   const profilePanel = (
     <ResizablePanel id={panelId('fractionne-profil')} style={panelStyle}>
-      {heading("Profil d'une répétition")}
+      {heading("Profil d'une répétition", 'analyse:profil-repetition')}
+      <HelpText helpKey="analyse:profil-repetition" note>
+        {inverse ? 'Allure' : 'Vitesse'} seconde par seconde depuis le départ de chaque répétition : chacune en trait fin, de la
+        première (verte) à la dernière (rouge), et leur moyenne en trait épais. L'échelle est celle des répétitions une fois
+        lancées : le départ, plus lent, sort par le bas. Le pointillé marque la mise en vitesse moyenne.
+      </HelpText>
       {series.map((s, seriesIndex) => {
         if (folded.has(seriesIndex)) return foldedSeries(s, seriesIndex);
         const length = Math.max(0, ...s.reps.map((r) => r.profile.length));
@@ -568,11 +570,6 @@ function IntervalAnalysis({
           </div>
         );
       })}
-      <div style={noteStyle}>
-        {inverse ? 'Allure' : 'Vitesse'} seconde par seconde depuis le départ de chaque répétition : chacune en trait fin, de la
-        première (verte) à la dernière (rouge), et leur moyenne en trait épais. L'échelle est celle des répétitions une fois
-        lancées : le départ, plus lent, sort par le bas. Le pointillé marque la mise en vitesse moyenne.
-      </div>
     </ResizablePanel>
   );
 

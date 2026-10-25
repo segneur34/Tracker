@@ -9,6 +9,7 @@ import { FAMILY_ICON } from '../components/familyIcons';import { IconHelp } from
 import ActivityIcon from '../components/ActivityIcon';
 import ActivitySelect, { ActivitySheet } from '../components/ActivitySelect';
 import ImportButtons from '../components/ImportButtons';
+import { useHelp } from '../components/helpContext';
 import MemoryStatus from '../components/MemoryStatus';
 import RefreshLibraryButton from '../components/RefreshLibraryButton';
 import RouteList from '../components/RouteList';
@@ -335,7 +336,8 @@ function SessionLibrary({ family }: { family: SportFamily }) {
     return updated;
   }, { replace: true });
   const { routes } = useRouteLibrary();
-  const [helpOpen, setHelpOpen] = useState(false);
+  const folderHelp = useHelp('biblio:dossier');
+  const helpOpen = folderHelp?.open ?? false;
   const [confirmFile, setConfirmFile] = useState<string | null>(null);
 
   /** Activité de chaque session, calculée une fois par liste. */
@@ -411,7 +413,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
             )}
             <ImportButtons />
             <RefreshLibraryButton />
-            <Button aria-expanded={helpOpen} onClick={() => setHelpOpen(!helpOpen)}>
+            <Button aria-expanded={helpOpen} onClick={() => folderHelp?.toggle()}>
               <IconHelp size={18} />
               À quoi sert « Ajouter les sessions d'un dossier » ?
             </Button>

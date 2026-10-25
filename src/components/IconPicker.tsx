@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSettingsCollapsed } from './settingsHelpContext';
+import { useHelpCollapsed } from './helpContext';
 import { ACTIVITY_ICON_IDS, ACTIVITY_ICON_LABEL, type ActivityIconId } from '../core/activityIcons';
 import { ACTIVITY_ICON } from './familyIcons';
 import './IconPicker.css';
@@ -18,7 +18,7 @@ function IconPicker({
   onChange: (icon: ActivityIconId) => void;
   label: string;
 }) {
-  const collapsed = useSettingsCollapsed();
+  const collapsed = useHelpCollapsed();
   /** Repère du « Tout réduire » au moment de l'ouverture ; un appui suivant le rend périmé, donc replié. */
   const [openedAt, setOpenedAt] = useState<number | null>(null);
   const open = openedAt === collapsed;

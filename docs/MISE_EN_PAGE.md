@@ -36,6 +36,7 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 - **Une seule surbrillance sur la carte** (`useMapHighlight`) : montrer un top, un podium, une zone, une répétition, un saut ou un revêtement retire la précédente ; fermer son onglet l'efface. Couleurs de `components/highlightColors.ts`.
 - **Graphes reliés à la carte** : dans `ZoomableChart` (deux doigts, zone tirée à la souris, « Tout voir »), `onMouseMove` et `onTouchMove` vers `hoveredTrackIndex`, `onLeave` qui efface le repère (`HoverMarker`) ; deux graphes du même axe partagent un `useChartZoom`. Double-clic ou double toucher : zoom ×2 autour du point. Pas de bulle : la valeur se lit au-dessus du graphe, à droite de son nom (`ChartReadout`) ; un graphe dont les lignes ne renvoient pas à un point de trace (profil du fractionné) lit sa ligne par `hoveredRow`. Un panneau de graphes zoomables a son « Sur la carte » (`useZoomOnMap`) : tronçon en violet par `useMapHighlight`, carte cadrée par `focus` d'`AnalysisMap`, et au téléphone, carte hors de vue, plein écran carte + graphes du panneau (`companion`). Pas de « Sur la carte » sur une courbe qui n'est pas un tronçon de la trace (profil superposé des répétitions, courbe des sauts). Boutons du zoom à 24 px, 20 % sous `.ui-btn--s` (`ZoomableChart.css`).
 - **Tailles dans les analyses** : titres des panneaux à 13 px et noms des graphes à 10 px, 2 px sous les autres pages (`--panel-title-size`, `--chart-name-size` sur `.an-page`, `analysisMobile.css` ; Statistiques exclue).
+- **Explications sous un « ? »** (règle des aides de `CLAUDE.md`, point 148) : `PanelTitle helpKey="…"` pose le « ? » à droite du titre, une fois le panneau ouvert ; le texte, `<HelpText helpKey="…" note>`, vient juste sous la ligne du titre, pas en bas du panneau. Restent à découvert, à leur place : clés de données, avertissements, états vides. Clés `analyse:…` pour un panneau commun (cardio, tops, sauts), `voile:…`, `surf:…` sinon.
 - **Tout panneau est repliable par son titre** (`PanelTitle`) et par son onglet, et redimensionnable (`ResizablePanel`). L'`id` d'un panneau est la clé de sa taille mémorisée : ne pas le renommer.
 - Couleurs, rayons, espacements : les variables de `theme/tokens.css`. Les couleurs de données des graphes et de la carte restent en dur.
 
@@ -48,7 +49,8 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 | `components/GeneralStats.tsx`, `components/ElevationProfileMini.tsx` | Chiffres de « général », profil d'altitude compact relié à la carte, zoomable |
 | `components/EmptyTabPanel.tsx` | Onglet ouvert sans rien à montrer : pourquoi, et de quoi y remédier |
 | `pages/analysisMobile.css` | Disposition téléphone (classes `an-*`) |
-| `components/PanelTitle.tsx` | Titre de panneau qui le replie |
+| `components/PanelTitle.tsx` | Titre de panneau qui le replie, et son « ? » (`helpKey`) |
+| `components/Help.tsx` | Aides « ? » (`HelpToggle`, `HelpText`), une ouverte à la fois |
 | `components/ChartFold.tsx` | Repli d'une partie d'un panneau (un graphe parmi plusieurs, un tableau), état retenu par `useOpenSections` ; pas de bouton quand le panneau n'a qu'une partie |
 | `components/SessionNameEditor.tsx` | Nom de la session, « Renommer », et « … » (`ui/MoreMenu.tsx`) pour partager la session en image (`ShareDialog`) ou télécharger le GPX |
 | `components/SectionTabs.tsx`, `components/CollapsibleSectionTabs.tsx`, `components/ResizablePanel.tsx` | Onglets, barre d'onglets repliable des analyses, panneaux redimensionnables |

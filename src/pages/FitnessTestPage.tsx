@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import FitnessTestPlanChart from '../components/FitnessTestPlanChart';
+import { HelpText, HelpToggle } from '../components/Help';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
@@ -76,7 +77,8 @@ function FitnessTestPage() {
         Ceinture cardio (ou autre capteur de FC) connectée avant de commencer : sans elle, ni guidage de l'échauffement, ni FC max.
       </div>
 
-      <Card heading="Déroulé">
+      <Card heading={<>Déroulé<HelpToggle helpKey="test:deroule" label="Déroulé" size="s" /></>}>
+        <HelpText helpKey="test:deroule" note>Résultats dans l'analyse de la session : FC max, vitesse du dernier palier tenu, vitesse max, récupération.</HelpText>
         <ol className="fit-steps">
           <li><strong>Échauffement, {warmupMin} min</strong>, la FC en zones {from} à {to} du cardio : de {params.warmupLowBpm} à
             {' '}{params.warmupHighBpm} bpm. En trottinant, ou en marchant vite.</li>
@@ -85,10 +87,13 @@ function FitnessTestPage() {
           <li><strong>Fin de la rampe</strong> : quand la vitesse reste 0,5 km/h sous la cible pendant 20 s, ou par « Finir la rampe ».</li>
           <li><strong>Récupération, 2 min</strong>, en marchant : la baisse de la FC est mesurée.</li>
         </ol>
-        <p className="train-hint">Résultats dans l'analyse de la session : FC max, vitesse du dernier palier tenu, vitesse max, récupération.</p>
       </Card>
 
-      <Card heading="Les bips">
+      <Card heading={<>Les bips<HelpToggle helpKey="test:bips" label="Les bips" size="s" /></>}>
+        <HelpText helpKey="test:bips" note>
+          Un bip court au départ. Les corrections viennent au plus toutes les 10 s, et toutes les 30 s quand la même revient trois fois de suite ; « bien » au plus toutes les 30 s ; rien dans les 10 s qui suivent un palier.
+          Pendant l'échauffement, les bips suivent la FC ; pendant la rampe, la vitesse.
+        </HelpText>
         <ul className="fit-beeps">
           <li><span className="fit-beeps__sound">1 court</span>bien</li>
           <li><span className="fit-beeps__sound">2 courts</span>trop vite</li>
@@ -97,8 +102,6 @@ function FitnessTestPage() {
           <li><span className="fit-beeps__sound">court, long, long double</span>fin de la rampe</li>
           <li><span className="fit-beeps__sound">1 long</span>fin du test, après la récupération</li>
         </ul>
-        <p className="train-hint">Un bip court au départ. Les corrections viennent au plus toutes les 10 s, et toutes les 30 s quand la même revient trois fois de suite ; « bien » au plus toutes les 30 s ; rien dans les 10 s qui suivent un palier.
-          Pendant l'échauffement, les bips suivent la FC ; pendant la rampe, la vitesse.</p>
       </Card>
 
       <Card heading="En image">

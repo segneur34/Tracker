@@ -59,8 +59,8 @@ import {
   JUMP_MIN_HEIGHT_RANGE, JUMP_PLACEMENTS, JUMP_PLACEMENT_LABEL, type JumpPlacement, type JumpSettings,
 } from '../recording/jumpSettings';
 import PageHeader from '../components/ui/PageHeader';
-import { HelpText, HelpToggle, SettingRow, SettingsHelpProvider } from '../components/SettingsHelp';
-import { useSettingsCollapseAll } from '../components/settingsHelpContext';
+import { HelpText, HelpToggle, SettingRow, SettingsScope } from '../components/Help';
+import { useHelpCollapseAll } from '../components/helpContext';
 import './settingsPage.css';
 
 /**
@@ -373,7 +373,7 @@ function SettingsPage() {
   const profileField = (field: RunnerNumberField) => (next: number | null) => setNumber(field, next);
 
   return (
-    <SettingsHelpProvider>
+    <SettingsScope>
     <div className="ui-page--backdrop" style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto', boxSizing: 'border-box' }}>
       <PageBackdrop variant={backdrop} />
       <div style={{ marginBottom: '15px' }}>
@@ -835,13 +835,13 @@ function SettingsPage() {
         )}
       </div>
     </div>
-    </SettingsHelpProvider>
+    </SettingsScope>
   );
 }
 
 /** « Tout réduire », en haut de la page : replie tout, aides et choix d'icône compris. */
 function CollapseAllButton({ onCollapse }: { onCollapse: () => void }) {
-  const collapseHelp = useSettingsCollapseAll();
+  const collapseHelp = useHelpCollapseAll();
   return (
     <Button size="s" onClick={() => { onCollapse(); collapseHelp(); }}>Tout réduire</Button>
   );

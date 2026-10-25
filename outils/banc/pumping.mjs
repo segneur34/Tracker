@@ -196,7 +196,7 @@ console.log('vols :', await openTab('vols'));
 await wait(2000);
 const vols = await panel('Vols');
 console.log('panneau :', vols);
-check('quatre vols', /Vols \(4\)/.test(vols ?? ''));
+check('quatre vols', /Vols \(4\)/i.test(vols ?? ''));
 const freq = Number(/Fréquence \/ (\d+) \/min/.exec(vols ?? '')?.[1]);
 check('fréquence vers 90 coups par minute', Math.abs(freq - 90) <= 5, String(freq));
 check('distance par coup', /Par coup \/ 3\.\d m/.test(vols ?? ''), /Par coup \/ [^/]+/.exec(vols ?? '')?.[0]);

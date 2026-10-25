@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
 import { savedBelt } from '../platform/heartRate';
 import {
@@ -9,8 +9,8 @@ import {
   PERMISSION_LABEL, missingPermissions, requiredPermissions, shouldPromptPermissions,
   type PermissionKey, type PermissionState, type PermissionsStatus as Status,
 } from '../recording/permissionsPrompt';
-import { HelpToggle } from './SettingsHelp';
-import { useSettingsHelp } from './settingsHelpContext';
+import { HelpToggle } from './Help';
+import { useHelp } from './helpContext';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import './PermissionsStatus.css';
@@ -62,7 +62,7 @@ const ask = async (key: PermissionKey, state: PermissionState, refresh: () => Pr
  * passe sous un « ? » ; sur la carte de l'accueil, il reste à découvert.
  */
 function PermissionRow({ helpKey, label, why, children }: { helpKey: string; label: string; why: string; children: ReactNode }) {
-  const help = useSettingsHelp(helpKey);
+  const help = useHelp(helpKey);
   return (
     <div className="permissions__row">
       <div className="permissions__text">
@@ -119,18 +119,28 @@ const askAll = async (keys: PermissionKey[], refresh: () => Promise<Status>): Pr
   if (keys.includes('battery') && status.battery !== 'granted') await ask('battery', status.battery, refresh);
 };
 
-/** Carte de l'accueil : seulement s'il faut (`shouldPromptPermissions`) ; « Plus tard » la renvoie à la version suivante. */
-export function PermissionsPrompt() {
+/**
+ * Carte de l'accueil : seulement s'il faut (`shouldPromptPermissions`) ; « Plus tard » la renvoie à la version suivante.
+ * `onDecided` apprend une fois, après la lecture des autorisations, si la carte paraît (le pop-up du profil attend alors).
+ */
+export function PermissionsPrompt({ onDecided }: { onDecided?: (shown: boolean) => void }) {
   const { status, refresh } = usePermissions();
   const [dismissed, setDismissed] = useState(false);
   const beltSaved = savedBelt() !== null;
   const [shown, setShown] = useState<boolean | null>(null);
+  const onDecidedRef = useRef(onDecided);
+  useEffect(() => {
+    onDecidedRef.current = onDecided;
+  });
 
   // Décidé une fois, sur l'état lu à l'ouverture : la carte reste ensuite tant qu'on ne la ferme pas.
   useEffect(() => {
     let alive = true;
     void readPermissions().then((first) => {
-      if (alive) setShown(shouldPromptPermissions({ seenVersion: permissionsSeenVersion(), appVersion: __APP_VERSION__, status: first, beltSaved: savedBelt() !== null }));
+      if (!alive) return;
+      const decided = shouldPromptPermissions({ seenVersion: permissionsSeenVersion(), appVersion: __APP_VERSION__, status: first, beltSaved: savedBelt() !== null });
+      setShown(decided);
+      onDecidedRef.current?.(isNativeApp() && decided);
     });
     return () => {
       alive = false;

@@ -3,6 +3,7 @@ import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, Respo
 import ChartReadout, { type Readout } from './ChartReadout';
 import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, inChartView, type ChartHoverEvent } from './chartHover';
 import { HEART_RATE_COLOR } from './heartRateColors';
+import { HelpText } from './Help';
 import PanelTitle from './PanelTitle';
 import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
 import Button from './ui/Button';
@@ -220,8 +221,12 @@ export default function FitnessTestPanel({
   return (
     <>
       <div style={{ marginBottom: '10px' }}>
-        <PanelTitle label={`Test ${protocol.label}`} open={open} onToggle={onToggle} />
+        <PanelTitle label={`Test ${protocol.label}`} open={open} onToggle={onToggle} helpKey="analyse:test" />
       </div>
+      <HelpText helpKey="analyse:test" note>
+        FC max : pic de la FC lissée sur {protocol.resultHrSmoothS} s. Dernier palier tenu : le dernier dont le suivant a commencé avant que la
+        vitesse lâche. Le survol des courbes déplace le repère sur la carte.
+      </HelpText>
       <div className="an-sheet__stats an-sheet__stats--always">
         {stat('FC max', bpm(results.hrMaxBpm))}
         {stat('Dernier palier tenu', speed(results.lastStepSpeedMs))}
@@ -254,10 +259,8 @@ export default function FitnessTestPanel({
 
       <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' }}>
         {test.endReason ? `Fin de la rampe : ${END_REASON_LABEL[test.endReason]}. ` : 'Rampe non terminée. '}
-        FC max : pic de la FC lissée sur {protocol.resultHrSmoothS} s. Dernier palier tenu : le dernier dont le suivant a commencé avant que la
-        vitesse lâche. En haut, <span style={{ color: SPEED_COLOR }}>vitesse lissée</span> et <span style={{ color: TARGET_COLOR }}>cible</span> ;
+        En haut, <span style={{ color: SPEED_COLOR }}>vitesse lissée</span> et <span style={{ color: TARGET_COLOR }}>cible</span> ;
         en bas, <span style={{ color: HEART_RATE_COLOR }}>FC</span> et sa bande d'échauffement ; traits : {DRAWN_SIGNALS.map((s) => TEST_SIGNAL_LABEL[s].toLowerCase()).join(', ')}.
-        Le survol déplace le repère sur la carte.
       </div>
     </>
   );

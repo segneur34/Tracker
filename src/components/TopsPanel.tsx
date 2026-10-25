@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import { Polyline } from 'react-leaflet';
+import { HelpText } from './Help';
 import PanelTitle from './PanelTitle';
 import { HIGHLIGHT_PODIUM_COLORS } from './highlightColors';
 import type { TopSegment, TopTarget } from '../core/types';
@@ -29,8 +30,11 @@ export default function TopsPanel({ targets, tops, unit, selected, onSelect, acc
   return (
     <>
       <div style={{ marginBottom: '10px' }}>
-        <PanelTitle label="Meilleurs segments" open={open} onToggle={onToggle} />
+        <PanelTitle label="Meilleurs segments" open={open} onToggle={onToggle} helpKey="analyse:tops" />
       </div>
+      <HelpText helpKey="analyse:tops" note>
+        Vitesse moyenne du meilleur passage sur chaque durée ou distance, sans chevauchement, pauses comprises.
+      </HelpText>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
         <thead>
           <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
@@ -67,9 +71,6 @@ export default function TopsPanel({ targets, tops, unit, selected, onSelect, acc
           ))}
         </tbody>
       </table>
-      <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
-        Vitesse moyenne du meilleur passage sur chaque durée ou distance, sans chevauchement, pauses comprises.
-      </div>
     </>
   );
 }

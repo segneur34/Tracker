@@ -18,6 +18,7 @@ import HeartRatePanel, { CardioCurve, type HeartRateEfficiency } from '../compon
 import IntervalAnalysis, { type IntervalSeriesView } from '../components/IntervalAnalysis';
 import JumpMapLayer from '../components/JumpMapLayer';
 import JumpsPanel from '../components/JumpsPanel';
+import { HelpText } from '../components/Help';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import EmptyTabPanel from '../components/EmptyTabPanel';
 import ResizablePanel from '../components/ResizablePanel';
@@ -1293,7 +1294,7 @@ function LandModule({ family }: { family: LandFamily }) {
               <ResizablePanel id={panelId('graphiques')} minHeight={120} direction="vertical"
                 style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
-                  <PanelTitle label="Graphiques" open={open.graphiques} onToggle={() => toggle('graphiques')} />
+                  <PanelTitle label="Graphiques" open={open.graphiques} onToggle={() => toggle('graphiques')} helpKey="analyse:graphiques" />
                   <span style={{ flex: 1 }} />
                   {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setChartMode(mode)}
@@ -1302,14 +1303,14 @@ function LandModule({ family }: { family: LandFamily }) {
                     </button>
                   ))}
                 </div>
-
-                {graphStack('')}
-                {(!stats?.hasElevation || graphShown('altitude')) && elevationSource}
-                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', flexShrink: 0 }}>
+                <HelpText helpKey="analyse:graphiques" note>
                   Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte.
                   {graphFoldable && ' Chaque graphe se replie par son nom.'}
                   {narrow ? ` ${ZOOM_HINT_NARROW}` : ` ${ZOOM_HINT_WIDE} Poignée en bas à droite pour redimensionner.`}
-                </div>
+                </HelpText>
+
+                {graphStack('')}
+                {(!stats?.hasElevation || graphShown('altitude')) && elevationSource}
               </ResizablePanel>
             )}
 
@@ -1333,8 +1334,13 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.surface && (
               <ResizablePanel id={panelId('surface')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Surface" open={open.surface} onToggle={() => toggle('surface')} />
+                  <PanelTitle label="Surface" open={open.surface} onToggle={() => toggle('surface')} helpKey="analyse:surface" />
                 </div>
+                <HelpText helpKey="analyse:surface" note>
+                  Revêtement des voies d'OpenStreetMap à moins de {WAY_MATCH_DEFAULTS.radiusM} m de la trace, demandées à la première
+                  ouverture de cet onglet puis gardées avec la session. Hors de toute voie : « Inconnu ». « Voir sur la carte » y colore
+                  la trace selon le revêtement, à la place de la vitesse.
+                </HelpText>
                 {surfaces.totals && (
                   <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit}
                     shownOnMap={surfaceOnMap} onToggleMap={toggleSurfaceOnMap}
@@ -1349,11 +1355,6 @@ function LandModule({ family }: { family: LandFamily }) {
                     <Button size="s" onClick={surfaces.retry}>Réessayer</Button>
                   </div>
                 )}
-                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '10px' }}>
-                  Revêtement des voies d'OpenStreetMap à moins de {WAY_MATCH_DEFAULTS.radiusM} m de la trace, demandées à la première
-                  ouverture de cet onglet puis gardées avec la session. Hors de toute voie : « Inconnu ». « Voir sur la carte » y colore
-                  la trace selon le revêtement, à la place de la vitesse.
-                </div>
               </ResizablePanel>
             )}
 
@@ -1361,7 +1362,7 @@ function LandModule({ family }: { family: LandFamily }) {
               <ResizablePanel id={panelId('energie')} minHeight={320} direction="vertical"
                 style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', paddingRight: '28px' }}>
-                  <PanelTitle label={model.energyLabel} open={open.energie} onToggle={() => toggle('energie')} />
+                  <PanelTitle label={model.energyLabel} open={open.energie} onToggle={() => toggle('energie')} helpKey="analyse:energie" />
                   <span style={{ flex: 1 }} />
                   {energy.power.length > 0 && (['power', 'cumulative'] as EnergyChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setEnergyMode(mode)}
@@ -1373,6 +1374,11 @@ function LandModule({ family }: { family: LandFamily }) {
                     title={energyFold.open.chiffres ? 'Replier les chiffres pour voir le graphe et la carte ensemble' : 'Montrer les chiffres'}
                     style={{ alignSelf: 'auto', padding: '4px 8px 4px 12px' }} />
                 </div>
+                <HelpText helpKey="analyse:energie" note>
+                  {energy.note}
+                  {' '}Puissance lissée sur {ENERGY_POWER_SMOOTHING_S} s, moins près du départ et des arrêts, interrompue aux pauses.
+                  {stats?.hasElevation && ' Puissance d\'une zone : sa moyenne en mouvement, roue libre et arrêts courts compris.'}
+                </HelpText>
                 {energyFold.open.chiffres && (
                   <>
                     {energy.warning && (
@@ -1426,12 +1432,6 @@ function LandModule({ family }: { family: LandFamily }) {
                     </tbody>
                   </table>
                 )}
-
-                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px', flexShrink: 0 }}>
-                  {energy.note}
-                  {' '}Puissance lissée sur {ENERGY_POWER_SMOOTHING_S} s, moins près du départ et des arrêts, interrompue aux pauses.
-                  {stats?.hasElevation && ' Puissance d\'une zone : sa moyenne en mouvement, roue libre et arrêts courts compris.'}
-                </div>
               </ResizablePanel>
             )}
 
@@ -1451,8 +1451,12 @@ function LandModule({ family }: { family: LandFamily }) {
                     label={model.zonesTitle}
                     extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}>(en mouvement)</span>}
                     open={open.zones}
-                    onToggle={() => toggle('zones')} />
+                    onToggle={() => toggle('zones')}
+                    helpKey="analyse:zones" />
                 </div>
+                <HelpText helpKey="analyse:zones" note>
+                  Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone. « Voir » montre ses passages sur la carte, en violet.
+                </HelpText>
                 {chartData.length > 1 && (
                   <ChartFold label="Tableau" open={zonesFold.open.tableau} onToggle={() => zonesFold.toggle('tableau')}
                     title={zonesFold.open.tableau ? 'Replier le tableau des zones de pente' : 'Montrer le tableau des zones de pente'}
@@ -1492,9 +1496,6 @@ function LandModule({ family }: { family: LandFamily }) {
                     })}
                   </tbody>
                 </table>
-                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
-                  Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone. « Voir » montre ses passages sur la carte, en violet.
-                </div>
                 </>)}
                 {/* Le graphe d'altitude de l'onglet « graphiques », avec ses options : même zoom, même survol, même « Voir sur la carte ». */}
                 {chartData.length > 1 && (
@@ -1550,8 +1551,15 @@ function LandModule({ family }: { family: LandFamily }) {
             {stats && open.reglages && (
               <ResizablePanel id={panelId('reglages')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} />
+                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} helpKey="analyse:reglages" />
                 </div>
+                <HelpText helpKey="analyse:reglages" note>
+                  Vitesse : {gpx.hasDeviceSpeed
+                    ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
+                    : 'dérivée des positions, filtrée'}
+                  {model.treatment === 'velo' && ` · Vélo : ${BIKE_TYPES[bikeType].noun} (Réglages)`}
+                  {runner.weightKg !== null && ` · Poids : ${runner.weightKg} kg`}.
+                </HelpText>
                 <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--text-s)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <strong>Activité :</strong>
@@ -1605,13 +1613,9 @@ function LandModule({ family }: { family: LandFamily }) {
                       onChange={(next) => draft.update({ effortThresholdMs: next })} />
                   </div>
                 )}
-                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '10px' }}>
-                  Vitesse : {gpx.hasDeviceSpeed
-                    ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
-                    : 'dérivée des positions, filtrée'}
-                  {model.treatment === 'velo' && ` · Vélo : ${BIKE_TYPES[bikeType].noun} (Réglages)`}
-                  {runner.weightKg !== null ? ` · Poids : ${runner.weightKg} kg` : ' · Poids non renseigné, voir Paramètres'}
-                </div>
+                {runner.weightKg === null && (
+                  <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '10px' }}>Poids non renseigné : voir Réglages › Pratiquant.</div>
+                )}
               </ResizablePanel>
             )}
           </div>

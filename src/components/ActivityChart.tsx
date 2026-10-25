@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { sessionActivity, type Activity } from '../core/activities';
 import { sportFamily } from '../core/sportProfiles';
 import { DISTANCE_UNIT_SYMBOL, formatDuration, toDisplayDistance } from '../core/units';
+import { HelpText, HelpToggle } from './Help';
 import { IconChevronRight } from './icons';
 import { libraryPath, useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -79,9 +80,10 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
   return (
     <section className="actchart" aria-label="Activités">
       <div className="actchart__head">
-        <h2>{chart.title}</h2>
+        <h2>{chart.title}<HelpToggle helpKey="profil:activites" label={chart.title} /></h2>
         <span className="num">{plural(totalSessions)}</span>
       </div>
+      <HelpText helpKey="profil:activites" note>Toucher une barre pour le détail de ses sessions.</HelpText>
 
       <div className="actchart__plot" style={{ height: `${PLOT_H}px`, gap: chart.bars.length > 30 ? '2px' : '3px' }}>
         {chart.bars.map((b, i) => (
@@ -147,7 +149,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
       )}
       {chart.totals.length > 0 && open.totaux && (
         <ul className="actchart__totals">
-          <li className="actchart__hint actchart__legend">{chart.range}. Toucher une barre pour le détail.</li>
+          <li className="actchart__hint actchart__legend">{chart.range}.</li>
           {chart.totals.map((t) => {
             const activity = activityById.get(t.activityId)!;
             return (

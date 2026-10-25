@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { RUNNER_NAME_MAX, runnerAvatar, runnerName, type RunnerAvatar } from './useRunnerProfile';
+import {
+  EMPTY_RUNNER_PROFILE, PROFILE_PROMPT_FIELDS, RUNNER_NAME_MAX, missingProfileFields, runnerAvatar, runnerName, shouldPromptProfile,
+  type RunnerAvatar,
+} from './useRunnerProfile';
 
 describe('runnerName', () => {
   it('rend le nom saisi, sans les espaces autour', () => {
@@ -34,5 +37,45 @@ describe('runnerAvatar', () => {
     expect(runnerAvatar({ avatar: { kind: 'dessin', icon: 'pétanque' } as unknown as RunnerAvatar })).toBeNull();
     expect(runnerAvatar({ avatar: { kind: 'photo', dataUrl: 'https://exemple.fr/moi.jpg' } })).toBeNull();
     expect(runnerAvatar({ avatar: { kind: 'photo', dataUrl: `data:image/jpeg;base64,${'A'.repeat(300_000)}` } })).toBeNull();
+  });
+});
+
+describe('missingProfileFields', () => {
+  const full = { ...EMPTY_RUNNER_PROFILE, name: 'Tom', birthYear: 1985, sex: 'm' as const, weightKg: 72, heightCm: 178 };
+
+  it('rend les cinq champs pour un profil vide, dans leur ordre', () => {
+    expect(missingProfileFields(EMPTY_RUNNER_PROFILE)).toEqual([...PROFILE_PROMPT_FIELDS]);
+  });
+
+  it('ne rend rien pour un profil rempli, FC comprises ou non', () => {
+    expect(missingProfileFields(full)).toEqual([]);
+    expect(missingProfileFields({ ...full, hrMax: null, hrRest: null })).toEqual([]);
+  });
+
+  it("compte un nom fait d'espaces comme manquant", () => {
+    expect(missingProfileFields({ ...full, name: '   ' })).toEqual(['name']);
+  });
+
+  it("compte une valeur importée hors plage ou d'un autre type comme manquante", () => {
+    expect(missingProfileFields({ ...full, weightKg: 5, heightCm: '178' as unknown as number })).toEqual(['weightKg', 'heightCm']);
+    expect(missingProfileFields({ ...full, sex: 'x' as unknown as 'f' })).toEqual(['sex']);
+  });
+});
+
+describe('shouldPromptProfile', () => {
+  const base = { native: true, missing: ['name'] as const, askedThisLaunch: false, otherCardShown: false };
+
+  it("s'ouvre dans l'application, un champ manquant, pas encore ouvert à ce lancement", () => {
+    expect(shouldPromptProfile(base)).toBe(true);
+  });
+
+  it("ne s'ouvre ni dans le navigateur, ni profil rempli, ni deux fois par lancement", () => {
+    expect(shouldPromptProfile({ ...base, native: false })).toBe(false);
+    expect(shouldPromptProfile({ ...base, missing: [] })).toBe(false);
+    expect(shouldPromptProfile({ ...base, askedThisLaunch: true })).toBe(false);
+  });
+
+  it("ne s'ouvre pas par-dessus la carte de la mémoire ou des autorisations", () => {
+    expect(shouldPromptProfile({ ...base, otherCardShown: true })).toBe(false);
   });
 });

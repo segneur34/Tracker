@@ -13,6 +13,7 @@ import { lockOrientation } from '../platform/screen';
 import { recordingDurationMs } from '../recording/session';
 import { IconChart, IconHome, IconPause, IconPlay, IconRoute, IconSettings, IconUser } from './icons';
 import { FAMILY_ICON } from './familyIcons';
+import { HelpProvider } from './Help';
 import HoldDial from './ui/HoldDial';
 
 /**
@@ -144,7 +145,6 @@ function AppShell() {
       <header className="shell-topbar">
         <Link to="/" className="shell-brand">Tracker</Link>
         <nav aria-label="Navigation principale" className="shell-toplinks">
-          {topLink(HOME)}
           {families.map((f) => topLink(FAMILY_TABS[f]))}
           {topLink(STATISTIQUES)}
           {topLink(PROFIL)}
@@ -174,7 +174,9 @@ function AppShell() {
       </div>
 
       <main className="shell-main">
-        <Outlet />
+        <HelpProvider resetKey={pathname}>
+          <Outlet />
+        </HelpProvider>
       </main>
 
       <nav aria-label="Navigation principale" className="shell-tabbar">

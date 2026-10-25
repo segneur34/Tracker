@@ -1,8 +1,0 @@
-/* Aide d'un réglage (`SettingsHelp.tsx`), dépliée par son « ? » : sur toute la largeur de sa ligne. */
-.settings-help {
-  flex-basis: 100%;
-  margin: var(--space-1) 0;
-  color: var(--muted);
-  font-size: var(--text-xs);
-  line-height: 1.5;
-}

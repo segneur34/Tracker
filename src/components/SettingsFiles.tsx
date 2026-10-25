@@ -3,7 +3,7 @@ import {
   adoptSettingsFile, dismissSettingsOffer, importSettingsFile, renameDevice, useSessionLibrary, type SettingsFileInfo,
 } from '../hooks/useSessionLibrary';
 import { DEVICE_NAME_MAX } from '../library/settingsFile';
-import { HelpText, HelpToggle } from './SettingsHelp';
+import { HelpText, HelpToggle } from './Help';
 import Button from './ui/Button';
 
 /**

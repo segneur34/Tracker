@@ -5,7 +5,7 @@ import {
   type FoundBelt, type HeartRateBelt,
 } from '../platform/heartRate';
 import BeltStatus from './BeltStatus';
-import { SettingRow } from './SettingsHelp';
+import { SettingRow } from './Help';
 
 /** Nom de la connexion prise par l'essai, rendue en quittant la page. */
 const HOLDER = 'reglages';

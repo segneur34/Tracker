@@ -12,8 +12,8 @@ import ImportButtons from './ImportButtons';
 import PanelTitle from './PanelTitle';
 import RefreshLibraryButton from './RefreshLibraryButton';
 import SettingsFiles, { SettingsOfferBanner } from './SettingsFiles';
-import { HelpText, HelpToggle } from './SettingsHelp';
-import { useInSettingsHelp } from './settingsHelpContext';
+import { HelpText, HelpToggle } from './Help';
+import { useInSettings } from './helpContext';
 import Button from './ui/Button';
 import Card from './ui/Card';
 
@@ -28,7 +28,7 @@ import Card from './ui/Card';
  * par appareil par `SettingsFiles`, mode d'emploi du copier-coller). Avec `collapse`, la carte se replie par son titre et ne
  * garde, fermée, que sa ligne d'état et ses alertes, dont la proposition d'un
  * nouveau fichier de réglages (`SettingsOfferBanner`). Dans Réglages, les
- * explications passent sous des « ? » (`SettingsHelp`) ; ailleurs, elles restent à découvert.
+ * explications passent sous des « ? » (`Help.tsx`) ; ailleurs, elles restent à découvert.
  *
  * Dans Réglages, « Mettre à jour » (`RefreshLibraryButton`) et « Ajouter les
  * sessions d'un dossier » (`ImportButtons`) suivent la ligne d'état, carte
@@ -53,7 +53,7 @@ function MemoryStatus({
   const canChoose = canChooseMemoryFolder();
   const native = isNativeApp();
   /** Dans Réglages : explications sous des « ? ». */
-  const inSettings = useInSettingsHelp();
+  const inSettings = useInSettings();
 
   const headline = (() => {
     switch (status) {

@@ -5,6 +5,8 @@ import {
 } from 'recharts';
 import PageBackdrop from '../components/PageBackdrop';
 import ChartFold from '../components/ChartFold';
+import { HelpText, HelpToggle } from '../components/Help';
+import { useHelp } from '../components/helpContext';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
@@ -13,7 +15,6 @@ import { IconChevronRight } from '../components/icons';
 import CardioLoadHelp from '../components/CardioLoadHelp';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from '../components/heartRateColors';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
-import HelpButton from '../components/ui/HelpButton';
 import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, sessionActivity, type Activity } from '../core/activities';
@@ -201,7 +202,7 @@ function StatisticsPage() {
   const narrow = useNarrowScreen();
   const [nowMs] = useState(() => Date.now());
   const [picked, setPicked] = useState<string | null>(null);
-  const [loadHelp, setLoadHelp] = useState(false);
+  const loadHelp = useHelp('stats:charge');
   const { open, toggle } = useOpenSections<StatsSection>(STORAGE_ID, STATS_SECTION_DEFAULTS);
   /** Boutons glissants de famille, d'activité et de période : repliés sous « Sélection » au départ, état retenu. */
   const choice = useOpenSections(`${STORAGE_ID}.choix`, CHOICE_DEFAULT);
@@ -480,8 +481,13 @@ function StatisticsPage() {
             {open.general && (
               <ResizablePanel id={panelId('general')} style={panelStyle}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" open={open.general} onToggle={() => toggle('general')} />
+                  <PanelTitle label="Général" open={open.general} onToggle={() => toggle('general')}
+                    helpKey={family === 'voile' && totals.maneuverSessions < totals.sessions ? 'stats:general' : undefined} />
                 </div>
+                <HelpText helpKey="stats:general" note>
+                  Manœuvres comptées sur les {plural(totals.maneuverSessions, 'session')} déjà ouverte{totals.maneuverSessions > 1 ? 's' : ''} dans l'analyse
+                  ({totals.sessions - totals.maneuverSessions} jamais ouverte{totals.sessions - totals.maneuverSessions > 1 ? 's' : ''}).
+                </HelpText>
                 {empty ? (
                   <p className="stats-hint">Aucune session sur la période.</p>
                 ) : (
@@ -512,12 +518,6 @@ function StatisticsPage() {
                       {family === 'surf' && totals.longestFlightS !== null && <Stat label="Plus long vol" value={formatShortDuration(totals.longestFlightS)} />}
                       {totals.reps > 0 && <Stat label="Répétitions du compteur" value={totals.reps} />}
                     </div>
-                    {family === 'voile' && totals.maneuverSessions < totals.sessions && (
-                      <p style={noteStyle}>
-                        Manœuvres comptées sur les {plural(totals.maneuverSessions, 'session')} déjà ouverte{totals.maneuverSessions > 1 ? 's' : ''} dans l'analyse
-                        ({totals.sessions - totals.maneuverSessions} jamais ouverte{totals.sessions - totals.maneuverSessions > 1 ? 's' : ''}).
-                      </p>
-                    )}
                     {family === null && (
                       <ul className="stats-rows">
                         {groupTotals(inPeriod, (s) => s.family, SPORT_FAMILIES).map(({ key, totals: t }) => {
@@ -548,8 +548,13 @@ function StatisticsPage() {
             {open.vitesse && (
               <ResizablePanel id={panelId('vitesse')} defaultHeight={380} minHeight={220} direction="vertical" style={chartPanelStyle}>
                 <div style={{ marginBottom: '8px', paddingRight: '28px' }}>
-                  <PanelTitle label="Graphique" open={open.vitesse} onToggle={() => toggle('vitesse')} />
+                  <PanelTitle label="Graphique" open={open.vitesse} onToggle={() => toggle('vitesse')} helpKey={chartFull === null ? undefined : 'stats:graphique'} />
                 </div>
+                <HelpText helpKey="stats:graphique" note>
+                  Un point par session, à la couleur de son activité ;
+                  {metric.record ? ' en pointillé, le record établi jusque-là.' : ` en pointillé, la moyenne des ${TREND_SESSIONS} dernières sessions.`}
+                  {narrow ? ' Toucher un point pour le détail, écarter deux doigts pour zoomer.' : ' Cliquer un point pour le détail, tirer une zone pour zoomer.'}
+                </HelpText>
                 {metrics.length > 1 && (
                   <Chips label="Donnée" items={metrics.map((m) => ({ key: m.key, label: m.label }))} value={metricKey} accent={accent}
                     className="stats-metric-chips" onChoose={(key) => { rememberView({ donnee: key }); setPicked(null); }} />
@@ -619,12 +624,9 @@ function StatisticsPage() {
                           <span className="stats-row__open">Ouvrir</span>
                           <IconChevronRight size={16} className="stats-row__chevron" />
                         </button>
-                      ) : (
+                      ) : voileWithoutResults > 0 && (
                         <span style={noteStyle}>
-                          Un point par session, à la couleur de son activité ;
-                          {metric.record ? ' en pointillé, le record établi jusque-là.' : ` en pointillé, la moyenne des ${TREND_SESSIONS} dernières sessions.`}
-                          {voileWithoutResults > 0 && ` Réussite connue des sessions rouvertes dans l'analyse depuis la version 0.3.5 : ${plural(voileWithoutResults, 'session')} à rouvrir.`}
-                          {narrow ? ' Toucher un point pour le détail, écarter deux doigts pour zoomer.' : ' Cliquer un point pour le détail, tirer une zone pour zoomer.'}
+                          Réussite connue des sessions rouvertes dans l'analyse depuis la version 0.3.5 : {plural(voileWithoutResults, 'session')} à rouvrir.
                         </span>
                       )}
                     </div>
@@ -636,8 +638,9 @@ function StatisticsPage() {
             {open.regularite && (
               <ResizablePanel id={panelId('regularite')} defaultHeight={380} minHeight={220} direction="vertical" style={chartPanelStyle}>
                 <div style={{ marginBottom: '10px', paddingRight: '28px' }}>
-                  <PanelTitle label="Régularité" open={open.regularite} onToggle={() => toggle('regularite')} />
+                  <PanelTitle label="Régularité" open={open.regularite} onToggle={() => toggle('regularite')} helpKey={regular.weeks === 0 ? undefined : 'stats:regularite'} />
                 </div>
+                <HelpText helpKey="stats:regularite" note>Sessions par {regular.barUnit}, empilées par activité.</HelpText>
                 {regular.weeks === 0 ? (
                   <p className="stats-hint">Aucune session sur la période.</p>
                 ) : (
@@ -666,7 +669,6 @@ function StatisticsPage() {
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
-                    <div style={noteStyle}>Sessions par {regular.barUnit}, empilées par activité.</div>
                   </>
                 )}
               </ResizablePanel>
@@ -675,17 +677,20 @@ function StatisticsPage() {
             {open.cardio && hasCardio && (
               <ResizablePanel id={panelId('cardio')} style={panelStyle}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Cardio" open={open.cardio} onToggle={() => toggle('cardio')} />
+                  <PanelTitle label="Cardio" open={open.cardio} onToggle={() => toggle('cardio')} helpKey={hrZones ? 'stats:cardio' : undefined} />
                 </div>
+                <HelpText helpKey="stats:cardio" note>
+                  Zones et charge recalculées avec les zones de Réglages › Pratiquant. Un point par session, à la couleur de son activité ; le toucher ouvre la session.
+                </HelpText>
                 <div className="an-sheet__stats an-sheet__stats--always">
                   <Stat label="Sessions avec FC" value={`${cardio.sessions} / ${totals.sessions}`} />
                   <Stat label="Temps mesuré" value={formatDuration(cardio.coveredS * 1000)} />
                   {cardio.avgBpm !== null && <Stat label="FC moyenne" value={`${Math.round(cardio.avgBpm)} bpm`} title="Pondérée par le temps mesuré de chaque session" />}
                   {cardio.maxBpm !== null && <Stat label="FC max" value={`${cardio.maxBpm} bpm`} />}
-                  {cardio.load !== null && <Stat label={<>Charge <HelpButton size="xs" open={loadHelp} onToggle={() => setLoadHelp(!loadHelp)} label="Qu'est-ce que la charge ?" /></>} value={Math.round(cardio.load)} />}
+                  {cardio.load !== null && <Stat label={<>Charge <HelpToggle helpKey="stats:charge" label="Qu'est-ce que la charge ?" /></>} value={Math.round(cardio.load)} />}
                   {cardio.load !== null && regular.weeks > 0 && <Stat label="Charge par semaine" value={Math.round(cardio.load / regular.weeks)} />}
                 </div>
-                {loadHelp && hrZones && <CardioLoadHelp bounds={hrZones.bounds} weights={LOAD_WEIGHTS} period />}
+                {loadHelp?.open && hrZones && <CardioLoadHelp bounds={hrZones.bounds} weights={LOAD_WEIGHTS} period />}
 
                 {cardio.zoneTimesS && cardio.coveredS > 0 && (
                   <div style={{ marginTop: '10px' }}>
@@ -756,11 +761,7 @@ function StatisticsPage() {
                   </div>
                 )}
 
-                <p style={noteStyle}>
-                  {hrZones
-                    ? 'Zones et charge recalculées avec les zones de Réglages › Pratiquant. Un point par session, à la couleur de son activité ; le toucher ouvre la session.'
-                    : 'Pour les zones et la charge, saisir la FC max ou l\'année de naissance dans Réglages › Pratiquant.'}
-                </p>
+                {!hrZones && <p style={noteStyle}>Pour les zones et la charge, saisir la FC max ou l'année de naissance dans Réglages › Pratiquant.</p>}
               </ResizablePanel>
             )}
 

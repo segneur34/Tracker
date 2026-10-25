@@ -1,15 +1,16 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
 import CardioLoadHelp from './CardioLoadHelp';
 import ChartReadout, { type Readout } from './ChartReadout';
 import HeartRateChart from './HeartRateChart';
 import { inChartView } from './chartHover';
+import { HelpText, HelpToggle } from './Help';
+import { useHelp } from './helpContext';
 import PanelTitle from './PanelTitle';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from './heartRateColors';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 import Button from './ui/Button';
-import HelpButton from './ui/HelpButton';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import {
@@ -125,7 +126,7 @@ export default function HeartRatePanel({
 
   const zoneTimes = useMemo(() => (zones ? timeInZones(track, smoothed, zones.bounds, params.gapS) : null), [zones, track, smoothed, params.gapS]);
   const countedS = zoneTimes?.reduce((a, b) => a + b, 0) ?? 0;
-  const [loadHelp, setLoadHelp] = useState(false);
+  const loadHelp = useHelp('analyse:charge');
   const drift = useMemo(
     () => (efficiency ? heartRateDrift(track, smoothed, efficiency.speedsMs, efficiency.active, params.gapS, params.driftMinS) : null),
     [efficiency, track, smoothed, params.gapS, params.driftMinS]
@@ -145,20 +146,25 @@ export default function HeartRatePanel({
   return (
     <>
       <div style={{ marginBottom: '10px' }}>
-        <PanelTitle label="Cardio" open={open} onToggle={onToggle} />
+        <PanelTitle label="Cardio" open={open} onToggle={onToggle} helpKey="analyse:cardio" />
       </div>
+      <HelpText helpKey="analyse:cardio" note>
+        FC lissée sur {params.smoothS} s ; un trou de plus de {params.gapS} s (ceinture retirée, pause) n'est pas compté. Le survol de la courbe déplace le repère sur la carte.
+        {zones && " « Voir » montre les passages d'une zone sur la carte, en violet."}
+        {efficiency && scatterUnit !== null && " D'une sortie à l'autre, le nuage qui glisse vers la droite à FC égale dit le progrès."}
+      </HelpText>
       <div className="an-sheet__stats an-sheet__stats--always">
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">FC moyenne</span><strong className="an-sheet__stat-value">{Math.round(stats.avgBpm)} bpm</strong></div>
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">FC max</span><strong className="an-sheet__stat-value">{stats.maxBpm} bpm</strong></div>
         {zoneTimes && (
           <div className="an-sheet__stat">
-            <span className="an-sheet__stat-label">Charge <HelpButton size="xs" open={loadHelp} onToggle={() => setLoadHelp(!loadHelp)} label="Qu'est-ce que la charge ?" /></span>
+            <span className="an-sheet__stat-label">Charge <HelpToggle helpKey="analyse:charge" label="Qu'est-ce que la charge ?" /></span>
             <strong className="an-sheet__stat-value">{Math.round(edwardsLoad(zoneTimes, params.loadWeights))}</strong>
           </div>
         )}
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps mesuré</span><strong className="an-sheet__stat-value">{formatShortDuration(stats.coveredS)}</strong></div>
       </div>
-      {loadHelp && zones && <CardioLoadHelp bounds={zones.bounds} weights={params.loadWeights} />}
+      {loadHelp?.open && zones && <CardioLoadHelp bounds={zones.bounds} weights={params.loadWeights} />}
 
       {aboveProfile && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', margin: '8px 0', fontSize: 'var(--text-s)' }}>
@@ -223,7 +229,6 @@ export default function HeartRatePanel({
           <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
             Zones : {METHOD_LABEL[zones.method]}
             {zones.hrMax !== null && zones.method !== 'perso' && `, FC max ${zones.hrMax} bpm${zones.estimated ? ' estimée par l\'âge' : ''}`}.
-            {' '}« Voir » montre ses passages sur la carte, en violet.
           </div>
         </>
       ) : (
@@ -262,14 +267,9 @@ export default function HeartRatePanel({
           )}
           <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '4px' }}>
             Un point par bloc de {params.scatterBlockS} s en mouvement : <span style={{ color: '#1e88e5' }}>première moitié</span>, <span style={{ color: '#fb8c00' }}>seconde moitié</span>.
-            {' '}D'une sortie à l'autre, le nuage qui glisse vers la droite à FC égale dit le progrès.
           </div>
         </div>
       )}
-
-      <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' }}>
-        FC lissée sur {params.smoothS} s ; un trou de plus de {params.gapS} s (ceinture retirée, pause) n'est pas compté. Le survol de la courbe déplace le repère sur la carte.
-      </div>
     </>
   );
 }

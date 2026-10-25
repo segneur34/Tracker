@@ -1,4 +1,5 @@
 import ChartFold from './ChartFold';
+import { HelpText } from './Help';
 import PanelTitle from './PanelTitle';
 import { CADENCE_BAND_COLORS } from './cadenceColors';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
@@ -70,8 +71,13 @@ export default function CadencePanel({ analysis, speedUnit, selectedBand, onSele
   return (
     <>
       <div style={{ marginBottom: '10px' }}>
-        <PanelTitle label="Cadence" extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}>(en mouvement)</span>} open={open} onToggle={onToggle} />
+        <PanelTitle label="Cadence" extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}>(en mouvement)</span>} open={open} onToggle={onToggle} helpKey="analyse:cadence" />
       </div>
+      <HelpText helpKey="analyse:cadence" note>
+        Cadence comptée par l'accéléromètre du téléphone (ou la montre), en pas par minute ; la courbe est dans l'onglet « graphiques ».
+        {bands && ` Tranches de la ${bands.running ? 'course' : 'marche'}, choisies par la cadence moyenne ; « Voir » montre leurs passages sur la carte, en violet.`}
+        {bySpeed.length > 0 && " Pour aller plus vite, on presse le pas (cadence) ou on l'allonge (longueur) : la longueur de pas est la distance divisée par les pas."}
+      </HelpText>
       <div className="an-sheet__stats an-sheet__stats--always">
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">Cadence moyenne</span><strong className="an-sheet__stat-value">{spmText(analysis.averageSpm)}</strong></div>
         {analysis.maxSpm !== null && (
@@ -134,9 +140,6 @@ export default function CadencePanel({ analysis, speedUnit, selectedBand, onSele
               })}
             </tbody>
           </table>
-          <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
-            Tranches de la {bands.running ? 'course' : 'marche'}, choisies par la cadence moyenne. « Voir » montre ses passages sur la carte, en violet.
-          </div>
         </>
       )}
 
@@ -144,15 +147,10 @@ export default function CadencePanel({ analysis, speedUnit, selectedBand, onSele
         <>
           <ChartFold label="Selon la vitesse" open={folds.open.vitesse} onToggle={() => folds.toggle('vitesse')} style={{ marginTop: '12px' }} />
           {folds.open.vitesse && (
-            <>
-              <table style={tableStyle}>
-                {shareHead(unit)}
-                <tbody>{bySpeed.map((b) => shareRow(String(b.fromMs), speedRange(b.fromMs, b.toMs), b))}</tbody>
-              </table>
-              <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
-                Pour aller plus vite, on presse le pas (cadence) ou on l'allonge (longueur) : la longueur de pas est la distance divisée par les pas.
-              </div>
-            </>
+            <table style={tableStyle}>
+              {shareHead(unit)}
+              <tbody>{bySpeed.map((b) => shareRow(String(b.fromMs), speedRange(b.fromMs, b.toMs), b))}</tbody>
+            </table>
           )}
         </>
       )}
@@ -173,10 +171,6 @@ export default function CadencePanel({ analysis, speedUnit, selectedBand, onSele
           )}
         </>
       )}
-
-      <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '10px' }}>
-        Cadence comptée par l'accéléromètre du téléphone (ou la montre), en pas par minute ; la courbe est dans l'onglet « graphiques ».
-      </div>
     </>
   );
 }

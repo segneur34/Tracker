@@ -9,10 +9,10 @@ import ChartReadout, { type Readout } from './ChartReadout';
 import { NO_TOOLTIP_CONTENT, hoveredRow, inChartView, type ChartHoverEvent } from './chartHover';
 import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
+import { HelpText, HelpToggle } from './Help';
 import PanelTitle from './PanelTitle';
 import ResizablePanel from './ResizablePanel';
 import { CARD_STYLE, HALF_PANEL_STYLE } from './styles';
-import HelpButton from './ui/HelpButton';
 import './JumpsPanel.css';
 
 /**
@@ -165,7 +165,6 @@ function JumpsPanel({
 }: JumpsPanelProps) {
   /** Ancre de la courbe, pour « Détail ». */
   const curveAnchorId = `${panelPrefix}-jump-curve`;
-  const [help, setHelp] = useState(false);
   const [sort, setSort] = useState<JumpSort>('hauteur');
   /** Sauts de la courbe, par l'heure de leur décollage : le premier (le plus haut d'office), et celui qu'on lui compare. */
   const [curveFirst, setCurveFirst] = useState<number | null>(null);
@@ -175,10 +174,9 @@ function JumpsPanel({
     padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: 'pointer', backgroundColor: active ? color : 'var(--surface-sunken)',
     color: active ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px',
   });
-  const heading = (label: string, withHelp = false) => (
+  const heading = (label: string, helpKey?: string) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', paddingRight: '28px' }}>
-      <PanelTitle label={label} open={open} onToggle={onToggle} />
-      {withHelp && <HelpButton size="s" open={help} onToggle={() => setHelp(!help)} label="Ce que disent ces chiffres" />}
+      <PanelTitle label={label} open={open} onToggle={onToggle} helpKey={helpKey} />
     </div>
   );
   const hiddenNote = hiddenCount > 0
@@ -227,9 +225,8 @@ function JumpsPanel({
 
   const jumpsPanel = (
     <ResizablePanel id={`${panelPrefix}.sauts`} style={panelStyle}>
-      {heading('Sauts', true)}
-      {help && (
-        <div style={{ ...noteStyle, marginTop: 0, marginBottom: '10px' }}>
+      {heading('Sauts', 'analyse:sauts')}
+      <HelpText helpKey="analyse:sauts" note>
           Hauteur gagnée par le téléphone, donc par le buste, au-dessus de son niveau au décollage, mesurée par
           l'accéléromètre et le gyroscope : ce n'est pas la hauteur {sailing ? "de la planche au-dessus de l'eau" : 'des pieds ou des roues au-dessus du sol'}. Précision attendue,
           téléphone sur la poitrine : {sailing ? '±0,1 à 0,2 m sans foil, ±0,2 à 0,3 m sur foil' : '±0,1 à 0,2 m'} ; davantage au bras. Vol : du décollage
@@ -237,8 +234,7 @@ function JumpsPanel({
           une mesure douteuse, dont la raison s'affiche au survol. « Voir » montre le saut sur la carte, « Détail » sur la
           courbe. Sont montrés les sauts d'au moins {meters(minHeightM)} (Réglages, carte de l'activité) pris à {thresholdLabel}
           ou plus (seuil d'activité de la session).
-        </div>
-      )}
+      </HelpText>
       <div className="an-sheet__stats an-sheet__stats--always">
         {stat('Sauts', `${jumps.length}`)}
         {stat('Plus haut', meters(highest.heightM), formatTimeOfDay(highest.takeoffMs))}
@@ -348,7 +344,11 @@ function JumpsPanel({
           <span className="an-jump-compare__dot" style={{ backgroundColor: CURVE_COLORS[1] }} />
           comparer avec {select(second?.takeoffMs ?? null, (v) => setCurveSecond(v), true, first.takeoffMs)}
         </label>
+        <HelpToggle helpKey="analyse:sauts-courbe" label="Courbe des sauts" size="s" />
       </div>
+      <HelpText helpKey="analyse:sauts-courbe" note>
+        Hauteur du téléphone au-dessus de son niveau au décollage. Les deux sauts comparés partent du même instant.
+      </HelpText>
       <div style={{ color: 'var(--muted)', marginBottom: '6px' }}>
         {shown.map((j, k) => (
           <span key={j.takeoffMs} style={{ marginRight: '14px', color: CURVE_COLORS[k] }}>
@@ -358,9 +358,6 @@ function JumpsPanel({
       </div>
       <JumpCurveChart rows={rows} jumps={shown} numbers={shown.map((j) => order.get(j.takeoffMs) ?? 0)}
         onCurveHover={onCurveHover(rows)} onCurveLeave={onCurveLeave} />
-      <div style={noteStyle}>
-        Hauteur du téléphone au-dessus de son niveau au décollage. Les deux sauts comparés partent du même instant.
-      </div>
     </ResizablePanel>
   );
 

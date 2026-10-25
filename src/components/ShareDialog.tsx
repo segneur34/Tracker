@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { createPortal } from 'react-dom';
 import { FAMILY_ACCENT } from '../core/activities';
 import { pickShareStats, SHARE_IMAGE, type ShareStat } from '../core/shareImage';
 import type { SportFamily } from '../core/sportProfiles';
@@ -11,6 +10,7 @@ import { createTileImageLoader, drawShareImage } from './drawShareImage';
 import { IconShare } from './icons';
 import type { TrackSegment } from './TrackSegmentsLayer';
 import Button from './ui/Button';
+import Dialog from './ui/Dialog';
 import './ShareDialog.css';
 
 /** Choix retenus sur l'appareil, par activité : les chiffres de l'image et le fond de carte. */
@@ -107,18 +107,6 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
     if (imageRef.current) URL.revokeObjectURL(imageRef.current.url);
   }, []);
 
-  const closeRef = useRef(onClose);
-  useEffect(() => {
-    closeRef.current = onClose;
-  });
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeRef.current();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
   const share = async () => {
     if (!image) return;
     setNote(null);
@@ -130,56 +118,49 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
     }
   };
 
-  return createPortal(
-    <div className="share-dialog__backdrop" onClick={onClose}>
-      <div className="share-dialog" role="dialog" aria-modal="true" aria-label="Partager la session" onClick={(e) => e.stopPropagation()}>
-        <div className="share-dialog__head">
-          <strong>Partager la session</strong>
-          <button type="button" className="share-dialog__close" onClick={onClose} aria-label="Fermer">×</button>
-        </div>
+  return (
+    <Dialog title="Partager la session" onClose={onClose} className="share-dialog">
 
-        <div className="share-dialog__preview" aria-busy={drawing}>
-          {image
-            ? <img src={image.url} alt="Aperçu de l'image partagée" style={{ opacity: drawing ? 0.5 : 1 }} />
-            : <span className="share-dialog__wait">Préparation de l'image…</span>}
-        </div>
-
-        <label className="share-dialog__check">
-          <input type="checkbox" checked={withMap} onChange={(e) => update({ ...choice, map: e.target.checked })} />
-          Fond de carte
-        </label>
-
-        {stats.length > 0 && (
-          <div>
-            <div className="share-dialog__label">Chiffres sur l'image ({chosen.length} sur {SHARE_IMAGE.maxStats} au plus)</div>
-            <div className="ui-tabs ui-tabs--compact" role="group" aria-label="Chiffres sur l'image"
-              style={{ '--tab-accent': FAMILY_ACCENT[family] } as CSSProperties}>
-              {stats.map((stat) => {
-                const on = chosen.some((s) => s.key === stat.key);
-                return (
-                  <button key={stat.key} type="button" className="ui-tab" aria-pressed={on}
-                    disabled={!on && chosen.length >= SHARE_IMAGE.maxStats} onClick={() => toggleStat(stat.key)}>
-                    {stat.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {failure?.key === drawKey && <div role="status" className="ui-alert ui-alert--danger">{failure.text}</div>}
-        {note && <div role="status" className={note.error ? 'ui-alert ui-alert--danger' : 'share-dialog__note'}>{note.text}</div>}
-
-        <div className="share-dialog__actions">
-          <Button variant="ghost" onClick={onClose}>Fermer</Button>
-          <Button variant="primary" disabled={!image || image.key !== drawKey} onClick={() => void share()}>
-            <IconShare size={18} />
-            Partager
-          </Button>
-        </div>
+      <div className="share-dialog__preview" aria-busy={drawing}>
+        {image
+          ? <img src={image.url} alt="Aperçu de l'image partagée" style={{ opacity: drawing ? 0.5 : 1 }} />
+          : <span className="share-dialog__wait">Préparation de l'image…</span>}
       </div>
-    </div>,
-    document.body
+
+      <label className="share-dialog__check">
+        <input type="checkbox" checked={withMap} onChange={(e) => update({ ...choice, map: e.target.checked })} />
+        Fond de carte
+      </label>
+
+      {stats.length > 0 && (
+        <div>
+          <div className="share-dialog__label">Chiffres sur l'image ({chosen.length} sur {SHARE_IMAGE.maxStats} au plus)</div>
+          <div className="ui-tabs ui-tabs--compact" role="group" aria-label="Chiffres sur l'image"
+            style={{ '--tab-accent': FAMILY_ACCENT[family] } as CSSProperties}>
+            {stats.map((stat) => {
+              const on = chosen.some((s) => s.key === stat.key);
+              return (
+                <button key={stat.key} type="button" className="ui-tab" aria-pressed={on}
+                  disabled={!on && chosen.length >= SHARE_IMAGE.maxStats} onClick={() => toggleStat(stat.key)}>
+                  {stat.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {failure?.key === drawKey && <div role="status" className="ui-alert ui-alert--danger">{failure.text}</div>}
+      {note && <div role="status" className={note.error ? 'ui-alert ui-alert--danger' : 'share-dialog__note'}>{note.text}</div>}
+
+      <div className="share-dialog__actions">
+        <Button variant="ghost" onClick={onClose}>Fermer</Button>
+        <Button variant="primary" disabled={!image || image.key !== drawKey} onClick={() => void share()}>
+          <IconShare size={18} />
+          Partager
+        </Button>
+      </div>
+    </Dialog>
   );
 }
 

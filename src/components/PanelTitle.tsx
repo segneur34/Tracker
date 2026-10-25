@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { formatSessionDate } from '../core/units';
+import { HelpToggle } from './Help';
 import { IconChevronRight } from './icons';
 
 /**
@@ -7,9 +8,17 @@ import { IconChevronRight } from './icons';
  * rangée d'onglets : utile quand le panneau ouvert dépasse l'écran, surtout
  * sur téléphone. Le nom en capitales espacées, comme les titres de l'accueil ;
  * `extra` (date, mention) garde sa casse. Plus petit dans les analyses
- * (`--panel-title-size`, `analysisMobile.css`).
+ * (`--panel-title-size`, `analysisMobile.css`). `helpKey` pose le « ? » de
+ * l'aide du panneau à droite du titre, une fois ouvert ; son texte (`HelpText`
+ * en `note`) se place juste sous le titre.
  */
-function PanelTitle({ label, extra, open, onToggle }: { label: ReactNode; extra?: ReactNode; open: boolean; onToggle: () => void }) {
+function PanelTitle({ label, extra, open, onToggle, helpKey }: {
+  label: ReactNode;
+  extra?: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  helpKey?: string;
+}) {
   return (
     <strong
       role="button"
@@ -22,6 +31,7 @@ function PanelTitle({ label, extra, open, onToggle }: { label: ReactNode; extra?
         {label}
       </span>
       {extra}
+      {helpKey && open && <HelpToggle helpKey={helpKey} label={typeof label === 'string' ? label : 'ce panneau'} size="s" />}
     </strong>
   );
 }

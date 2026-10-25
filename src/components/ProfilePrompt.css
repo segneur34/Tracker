@@ -1,0 +1,45 @@
+/* Pop-up du profil sur l'accueil (`ProfilePrompt.tsx`), dans une `Dialog` : une ligne par champ. */
+
+.profile-prompt {
+  width: min(440px, 100%);
+}
+
+.profile-prompt__intro {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-s);
+  line-height: 1.5;
+}
+
+.profile-prompt__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-s);
+}
+
+.profile-prompt__label {
+  flex: 0 0 9.5em;
+}
+
+.profile-prompt__text {
+  flex: 1 1 10em;
+  min-width: 0;
+}
+
+.profile-prompt__number {
+  width: 6em;
+  text-align: right;
+}
+
+.profile-prompt__unit {
+  color: var(--muted);
+}
+
+.profile-prompt__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}

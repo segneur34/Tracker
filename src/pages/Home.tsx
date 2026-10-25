@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import headerPhoto from '../assets/accueil/entete-accueil.webp';
 import vignetteAPied from '../assets/accueil/vignette-a-pied.webp';
@@ -9,6 +9,7 @@ import vignetteVoile from '../assets/accueil/vignette-voile.webp';
 import MemoryStatus from '../components/MemoryStatus';
 import PageBackdrop from '../components/PageBackdrop';
 import { PermissionsPrompt } from '../components/PermissionsStatus';
+import ProfilePrompt from '../components/ProfilePrompt';
 import { FAMILY_ICON } from '../components/familyIcons';
 import { IconFlag, IconRoute } from '../components/icons';
 import { FAMILY_ACCENT, FAMILY_LABEL } from '../core/activities';
@@ -51,6 +52,8 @@ function Home() {
   // Premier lancement sur le téléphone, ou dossier devenu inaccessible : la mémoire d'abord. Une erreur
   // (écriture refusée, réglages du dossier illisibles) se voit aussi dès l'accueil.
   const memoryNeedsAction = status === 'unavailable' || status === 'needs-permission' || error !== null;
+  /** La carte des autorisations paraît-elle ? `null` tant qu'elle n'a pas lu les autorisations. */
+  const [permissionsShown, setPermissionsShown] = useState<boolean | null>(null);
 
   return (
     <div className="ui-page ui-page--backdrop home">
@@ -62,7 +65,11 @@ function Home() {
 
       {memoryNeedsAction && <MemoryStatus />}
       {/* Le dossier de la mémoire d'abord, puis les autorisations (téléphone seulement, s'il en manque). */}
-      {!memoryNeedsAction && status === 'ready' && <PermissionsPrompt />}
+      {!memoryNeedsAction && status === 'ready' && <PermissionsPrompt onDecided={setPermissionsShown} />}
+      {/* Puis le profil, s'il manque un champ, une fois par lancement ; jamais par-dessus ces deux cartes. */}
+      {(memoryNeedsAction || (status === 'ready' && permissionsShown !== null)) && (
+        <ProfilePrompt otherCardShown={memoryNeedsAction || permissionsShown === true} />
+      )}
 
       <nav className="home-families" aria-label="Sports">
         {families.map((family) => {

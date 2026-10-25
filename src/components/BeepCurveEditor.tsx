@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import './BeepCurveEditor.css';
 import Button from './ui/Button';
-import { useInSettingsHelp } from './settingsHelpContext';
 import { formatSpeed, type SpeedUnit } from '../core/units';
 import { useRecorder } from '../hooks/useRecorder';
 import { BEEP_LONG_MS, getBeeper } from '../platform/beeper';
@@ -105,7 +104,6 @@ function BeepCurveEditor({
   fallbackMark?: string;
 }) {
   const idle = useRecorder().status === 'idle';
-  const inSettings = useInSettingsHelp();
   /** Courbe pendant un glisser, rangée au lâcher seulement. */
   const [draft, setDraft] = useState<BeepPoint[] | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
@@ -272,14 +270,7 @@ function BeepCurveEditor({
           </g>
         ))}
       </svg>
-      <p className="beep-editor__hint">
-        {inSettings
-          ? <>Bips dès {startM} m ; validée à {radiusM} m.</>
-          : <>
-            Bips dès {startM} m de la balise, de plus en plus rapprochés ; validée à {radiusM} m, d'un bip long. Tirez un point pour le
-            déplacer, touchez le graphe pour en ajouter un ({L.maxPoints} au plus).
-          </>}
-      </p>
+      <p className="beep-editor__hint">Bips dès {startM} m ; validée à {radiusM} m.</p>
 
       <ol className="beep-editor__points">
         <li className="beep-editor__row beep-editor__row--head" aria-hidden="true">

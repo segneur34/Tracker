@@ -69,6 +69,13 @@ for (let s = 0; s + 10 <= 180; s++) {
 }
 const expectedLowest = Math.round(best);
 
+/** Ouvre l'aide « ? » nommée (lot 3 du 24/10 : les explications sont sous un « ? »). */
+const openHelp = async (label) => {
+  const done = await evaluate(`(() => { const b = document.querySelector('button.ui-help[aria-label="Aide : ${label}"]'); if (!b) return false; if (b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()`);
+  await wait(200);
+  return done;
+};
+
 await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
 await send('Network.setBlockedURLs', { urls: ['https://*'] });
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -80,6 +87,7 @@ check('liste des tests : FC max, FC repos', tiles === 'FC max, FC repos', tiles)
 console.log('tuile :', await clickText('FC repos', '.train-tile'));
 await wait(1000);
 check('page du test', (await evaluate('location.pathname')) === '/fractionne/tests/fc-repos', await evaluate('location.pathname'));
+check('« ? » du déroulé', await openHelp('Déroulé'), '');
 const text = await pageText();
 check('déroulé : 10 s, 3 min, bip court puis long, moyenne de 10 s', /10 s pour vous poser, puis un bip court/.test(text) && /3 min/.test(text) && /bip long à la fin/.test(text) && /moyenne de 10 s la plus basse/.test(text), '');
 check('sans GPS, rien ne peut le couper', /aucun GPS ni enregistrement/.test(text), '');
@@ -107,6 +115,7 @@ sounds = [];
 await go('/fractionne/tests/fc-repos?vitesse=30');
 console.log('exemple ×30 :', await clickText("Essayer avec une FC d'exemple"));
 await wait(9500);
+check('« ? » du résultat', await openHelp('Résultat'), '');
 const text3 = await pageText();
 check('résultat affiché', /Résultat/i.test(text3) && /Moyenne de 10 s la plus basse/i.test(text3), text3.slice(0, 120));
 const shown = await evaluate(`Number(document.querySelector('.rest-result__bpm')?.textContent)`);

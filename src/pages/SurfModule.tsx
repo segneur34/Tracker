@@ -12,6 +12,7 @@ import AnalysisMap from '../components/AnalysisMap';
 import HoverMarker from '../components/HoverMarker';
 import { SessionMarksLayer, SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
+import { HelpText } from '../components/Help';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
@@ -645,7 +646,7 @@ function SurfModule() {
             {open.vagues && (
               <ResizablePanel id={panelId('vagues')} style={panelStyle}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                  <PanelTitle label={`Vagues (${waves.length})`} open={open.vagues} onToggle={() => toggle('vagues')} />
+                  <PanelTitle label={`Vagues (${waves.length})`} open={open.vagues} onToggle={() => toggle('vagues')} helpKey="surf:vagues" />
                   <span style={{ flex: 1 }} />
                   {waves.length > 1 && (
                     <>
@@ -661,6 +662,12 @@ function SurfModule() {
                     </>
                   )}
                 </div>
+                <HelpText helpKey="surf:vagues" note>
+                  {foil
+                    ? `Vague : un passage d'au moins ${surfProfile.surf.minWaveS} s au-dessus du seuil de vague en foil, pendant un vol.`
+                    : `Vague : au moins ${surfProfile.surf.minWaveS} s et ${surfProfile.surf.minWaveM} m au-dessus du seuil de vague.`}
+                  {' '}* Virages : seuls les grands changements de direction (au moins {surfProfile.surf.turnMinDeg}°) se voient à une position par seconde ; un bottom turn ou un top turn bref peut échapper au GPS. Valeur expérimentale.
+                </HelpText>
                 {waves.length === 0 ? (
                   <div style={{ color: 'var(--muted)' }}>
                     Aucune vague : rien n'a dépassé le seuil {foil ? 'de vague en foil' : 'de vague'} ({formatSpeed(fromDisplaySpeed(foil ? waveThreshold : threshold, profile.thresholdUnit), speedUnit)}) pendant {surfProfile.surf.minWaveS} s. Il se règle dans l'onglet réglages.
@@ -704,20 +711,18 @@ function SurfModule() {
                     </table>
                   </div>
                 )}
-                <div style={noteStyle}>
-                  {foil
-                    ? `Vague : un passage d'au moins ${surfProfile.surf.minWaveS} s au-dessus du seuil de vague en foil, pendant un vol.`
-                    : `Vague : au moins ${surfProfile.surf.minWaveS} s et ${surfProfile.surf.minWaveM} m au-dessus du seuil de vague.`}
-                  {' '}* Virages : seuls les grands changements de direction (au moins {surfProfile.surf.turnMinDeg}°) se voient à une position par seconde ; un bottom turn ou un top turn bref peut échapper au GPS. Valeur expérimentale.
-                </div>
               </ResizablePanel>
             )}
 
             {open.rame && (
               <ResizablePanel id={panelId('rame')} style={panelStyle}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Rame et retour au pic" open={open.rame} onToggle={() => toggle('rame')} />
+                  <PanelTitle label="Rame et retour au pic" open={open.rame} onToggle={() => toggle('rame')} helpKey="surf:rame" />
                 </div>
+                <HelpText helpKey="surf:rame" note>
+                  Retour au pic : de la fin {foil ? "d'un vol" : "d'une vague"} au début de la première attente (immobile au moins {surfProfile.surf.minWaitS} s) ; un arrêt plus court (canard, série) compte dans la rame.
+                  {' '}Remontée : distance à vol d'oiseau jusqu'au pic, divisée par ce temps. Rame : vitesse en mouvement.
+                </HelpText>
                 <div className="an-sheet__stats an-sheet__stats--always">
                   <Stat label="Vitesse de rame" value={orDash(summary.paddleSpeedMs, (v) => formatSpeed(v, speedUnit))} title="Moyenne en mouvement, arrêts courts exclus" />
                   <Stat label="Vitesse de remontée" value={orDash(summary.avgReturnSpeedMs, (v) => formatSpeed(v, speedUnit))} title="Distance à vol d'oiseau de la fin de la vague au pic, divisée par le temps du retour" />
@@ -763,17 +768,13 @@ function SurfModule() {
                     </table>
                   </div>
                 )}
-                <div style={noteStyle}>
-                  Retour au pic : de la fin {foil ? "d'un vol" : "d'une vague"} au début de la première attente (immobile au moins {surfProfile.surf.minWaitS} s) ; un arrêt plus court (canard, série) compte dans la rame.
-                  {' '}Remontée : distance à vol d'oiseau jusqu'au pic, divisée par ce temps. Rame : vitesse en mouvement.
-                </div>
               </ResizablePanel>
             )}
 
             {open.vols && foil && (
               <ResizablePanel id={panelId('vols')} style={panelStyle}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                  <PanelTitle label={`Vols (${flights.length})`} open={open.vols} onToggle={() => toggle('vols')} />
+                  <PanelTitle label={`Vols (${flights.length})`} open={open.vols} onToggle={() => toggle('vols')} helpKey="surf:vols" />
                   <span style={{ flex: 1 }} />
                   {flights.length > 1 && (
                     <Button size="s" aria-pressed={flightShown === 'podium'} onClick={() => highlight.show('vols', flightShown === 'podium' ? null : 'podium')}>
@@ -781,6 +782,12 @@ function SurfModule() {
                     </Button>
                   )}
                 </div>
+                <HelpText helpKey="surf:vols" note>
+                  Vol : au-dessus du seuil de vol, d'une traite ; ses vagues sont ses passages au-dessus du seuil de vague en foil.
+                  {flightPumping
+                    ? " Pumping : mesuré par les capteurs du téléphone, sur les séries de coups. Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)."
+                    : ' Le reste du vol est pompé.'}
+                </HelpText>
                 <div className="an-sheet__stats an-sheet__stats--always">
                   <Stat label="Plus long vol" value={orDash(summary.longestFlightS, formatShortDuration)} />
                   <Stat label="Temps de vol" value={formatShortDuration(summary.flightS)} />
@@ -916,13 +923,9 @@ function SurfModule() {
                     </table>
                   </div>
                 )}
-                <div style={noteStyle}>
-                  Vol : au-dessus du seuil de vol, d'une traite ; ses vagues sont ses passages au-dessus du seuil de vague en foil.
-                  {flightPumping
-                    ? " Pumping : mesuré par les capteurs du téléphone, sur les séries de coups. Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)."
-                    : ' Le reste du vol est pompé.'}
-                  {flightPumping && [...flightPumping.values()].some((x) => !x.covered) && ' * : capteurs sur une partie du vol seulement.'}
-                </div>
+                {flightPumping && [...flightPumping.values()].some((x) => !x.covered) && (
+                  <div style={noteStyle}>* : capteurs sur une partie du vol seulement.</div>
+                )}
                 {pumping && sensors.status === 'none' && (
                   <div style={noteStyle}>Cette session n'a pas les capteurs : cochez « Mesurer le pumping » dans Enregistrer, téléphone fixé sur la poitrine.</div>
                 )}
@@ -947,9 +950,14 @@ function SurfModule() {
               <ResizablePanel id={panelId('graphiques')} defaultHeight={folds ? undefined : 360} minHeight={folds ? 120 : 200} direction="vertical"
                 style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: folds ? 'auto' : 'hidden' }}>
                 <div className="chart-head" style={{ marginBottom: '8px', paddingRight: '28px' }}>
-                  <PanelTitle label="Vitesse" open={open.graphiques} onToggle={() => toggle('graphiques')} />
+                  <PanelTitle label="Vitesse" open={open.graphiques} onToggle={() => toggle('graphiques')} helpKey="surf:graphiques" />
                   {!folds && <ChartReadout readout={speedReadout} />}
                 </div>
+                <HelpText helpKey="surf:graphiques" note>
+                  Le survol déplace le repère sur la carte.
+                  {folds ? ' Chaque graphe se replie par son nom.' : ''}
+                  {narrow ? ' Écartez deux doigts ou touchez deux fois un graphe pour zoomer.' : ' Tirez une zone à la souris ou double-cliquez pour zoomer ; « Sur la carte » montre la partie zoomée, « Tout voir » revient.'}
+                </HelpText>
                 {folds && (
                   <div className="chart-head">
                     <ChartFold label="Vitesse" color="#1e88e5" open={graphFolds.open.vitesse} onToggle={() => graphFolds.toggle('vitesse')}
@@ -967,9 +975,7 @@ function SurfModule() {
                 )}
                 {hrShown && heartChart(speedShown)}
                 <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', flexShrink: 0 }}>
-                  Bandes bleues : les vagues{foil ? ', violettes : les vols' : ''}. Le survol déplace le repère sur la carte.
-                  {folds ? ' Chaque graphe se replie par son nom.' : ''}
-                  {narrow ? ' Écartez deux doigts ou touchez deux fois un graphe pour zoomer.' : ' Tirez une zone à la souris ou double-cliquez pour zoomer ; « Sur la carte » montre la partie zoomée, « Tout voir » revient.'}
+                  Bandes bleues : les vagues{foil ? ', violettes : les vols' : ''}.
                 </div>
               </ResizablePanel>
               );
@@ -996,8 +1002,14 @@ function SurfModule() {
             {open.reglages && (
               <ResizablePanel id={panelId('reglages')} style={panelStyle}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} />
+                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} helpKey="surf:reglages" />
                 </div>
+                <HelpText helpKey="surf:reglages" note>
+                  Vitesse : {gpx.hasDeviceSpeed
+                    ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
+                    : 'dérivée des positions, filtrée'}
+                  {' · '}Cap : {track.some((p) => p.courseDeg !== undefined) ? "fourni par l'appareil" : 'tiré des positions'}.
+                </HelpText>
                 <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <strong>Activité :</strong>
@@ -1053,12 +1065,6 @@ function SurfModule() {
                       isOverridden={draft.edits.speedRange !== null}
                       onChange={(next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); }} />
                   )}
-                </div>
-                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '10px' }}>
-                  Vitesse : {gpx.hasDeviceSpeed
-                    ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
-                    : 'dérivée des positions, filtrée'}
-                  {' · '}Cap : {track.some((p) => p.courseDeg !== undefined) ? "fourni par l'appareil" : 'tiré des positions'}
                 </div>
               </ResizablePanel>
             )}

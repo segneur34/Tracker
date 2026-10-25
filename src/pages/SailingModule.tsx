@@ -59,6 +59,8 @@ import SessionNotesPanel, { type GearField } from '../components/SessionNotesPan
 import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, inChartView, type ChartHoverEvent } from '../components/chartHover';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
+import { HelpText } from '../components/Help';
+import { useHelp } from '../components/helpContext';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import SessionNameEditor from '../components/SessionNameEditor';
 import GeneralStats from '../components/GeneralStats';
@@ -74,7 +76,6 @@ import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmen
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
-import HelpButton from '../components/ui/HelpButton';
 
 /** Champs du matériel en voile : l'aile ou la voile, plus le foil et le mât sur foil. */
 const SAILING_GEAR_FIELDS: GearField[] = [{ field: 'wing', label: 'Aile / voile', placeholder: 'ex. 5 m²' }];
@@ -320,8 +321,8 @@ function SailingModule() {
   const [showJibesOnMap, setShowJibesOnMap] = useState<boolean>(false);
   const [showManeuverDetails, setShowManeuverDetails] = useState<boolean>(false);
   /** Explications repliées derrière un « ? » (enregistrement et virages écartés ; lecture du vent). */
-  const [maneuverHelpOpen, setManeuverHelpOpen] = useState(false);
-  const [windHelpOpen, setWindHelpOpen] = useState(false);
+  const maneuverHelpOpen = useHelp('voile:manoeuvres')?.open ?? false;
+  const windHelpOpen = useHelp('voile:vent')?.open ?? false;
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   /** Réglage du vent sur la carte, ouvert par « Régler » ; sur téléphone, dans la carte en plein écran. */
   const [windAdjust, setWindAdjust] = useState(false);
@@ -707,10 +708,8 @@ function SailingModule() {
   const renderManeuversPanel = (m: NonNullable<typeof maneuverStats>) => (
     <ResizablePanel id={showManeuverDetails ? 'sailing.carte.manoeuvres.details' : 'sailing.carte.manoeuvres'} style={{ ...CARD_STYLE, ...(showManeuverDetails ? { flex: '1 1 100%' } : HALF_PANEL_STYLE), padding: '12px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
-        <PanelTitle label="Manœuvres" open={open.manoeuvres} onToggle={() => toggle('manoeuvres')} />
+        <PanelTitle label="Manœuvres" open={open.manoeuvres} onToggle={() => toggle('manoeuvres')} helpKey="voile:manoeuvres" />
         <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>réussie si Vmin &ge; {showThreshold(activeThresholdKn)} {speedSymbol}</span>
-        <HelpButton size="s" open={maneuverHelpOpen} onToggle={() => setManeuverHelpOpen(!maneuverHelpOpen)}
-          label="Enregistrement et virages écartés" />
       </div>
 
       <div className="an-man-scroll">
@@ -789,6 +788,11 @@ function SailingModule() {
               <strong>{m.rejected.tooShort}</strong> sur place, moins de 10 m parcourus : à cette distance le cap n'est que du bruit de position.
             </>
           )}
+        </p>
+      )}
+      {showManeuverDetails && (
+        <p style={{ margin: '0 0 10px', color: 'var(--muted)', fontSize: 'var(--text-xs)', lineHeight: 1.45 }}>
+          Survolez une ligne pour la définition, une case du podium pour l'heure de la manœuvre. Le podium retient la meilleure valeur : conservation la plus haute, relance la plus courte, cap (virements seulement) et distance les plus faibles, gain au vent le plus grand ; à égalité, la meilleure conservation.
         </p>
       )}
       </>)}
@@ -871,11 +875,6 @@ function SailingModule() {
           </div>
         ))}
       </div>
-      )}
-      {showManeuverDetails && (
-        <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' }}>
-          Survolez une ligne pour la définition, une case du podium pour l'heure de la manœuvre. Le podium retient la meilleure valeur : conservation la plus haute, relance la plus courte, cap (virements seulement) et distance les plus faibles, gain au vent le plus grand ; à égalité, la meilleure conservation.
-        </div>
       )}
     </ResizablePanel>
   );
@@ -1035,7 +1034,8 @@ function SailingModule() {
             {open.graphiques && (
               <div style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <div style={{ flex: '1 1 100%' }}>
-                  <PanelTitle label="Graphiques" open={open.graphiques} onToggle={() => toggle('graphiques')} />
+                  <PanelTitle label="Graphiques" open={open.graphiques} onToggle={() => toggle('graphiques')} helpKey="voile:graphiques" />
+                  <HelpText helpKey="voile:graphiques" note>Le survol déplace le repère sur la carte. {zoomHint}</HelpText>
                 </div>
 
                 {graphFolds.open.vitesse ? (
@@ -1043,9 +1043,6 @@ function SailingModule() {
                   {graphTitle('vitesse', 'Historique de Vitesse', speedReadout)}
                   <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                     {speedChart(FILL_STYLE)}
-                  </div>
-                  <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
-                    Le survol déplace le repère sur la carte. {zoomHint}
                   </div>
                 </ResizablePanel>
                 ) : foldedGraph('vitesse', 'Historique de Vitesse', 500)}
@@ -1119,9 +1116,8 @@ function SailingModule() {
                       label="Variations du Vent"
                       open={open.vent}
                       onToggle={() => toggle('vent')}
-                      extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}> (mesurées sur {windStats.count} manœuvres)</span>} />
-                    <HelpButton size="s" open={windHelpOpen} onToggle={() => setWindHelpOpen(!windHelpOpen)}
-                      label="Comment le vent est-il mesuré ?" />
+                      extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}> (mesurées sur {windStats.count} manœuvres)</span>}
+                      helpKey="voile:vent" />
                   </div>
                   <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8' }}>
                     <li><strong>Moyenne :</strong> {windStats.avgWind}°</li>
@@ -1140,7 +1136,8 @@ function SailingModule() {
                     plus symétriques pèsent davantage dans la moyenne et l'écart-type, et l'ensemble compense. Entre
                     deux manœuvres la courbe est interpolée ; avant la première et après la dernière, elle garde la
                     valeur la plus proche. Elle s'interrompt au-delà de 30 minutes sans manœuvre. Sur le graphe, les
-                    points marquent les manœuvres : c'est là, et là seulement, que le vent est mesuré.
+                    points marquent les manœuvres : c'est là, et là seulement, que le vent est mesuré. Le graphe garde le
+                    même zoom que celui de la vitesse. {zoomHint}
                   </p>}
                 </div>
 
@@ -1151,9 +1148,6 @@ function SailingModule() {
                   </div>
                   <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                     {windChart(FILL_STYLE)}
-                  </div>
-                  <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
-                    Même zoom que le graphe de vitesse. {zoomHint}
                   </div>
                 </ResizablePanel>
               </div>
@@ -1171,8 +1165,9 @@ function SailingModule() {
             {open.reglages && (
               <ResizablePanel id="sailing.reglages" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} />
+                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} helpKey="voile:reglages" />
                 </div>
+                <HelpText helpKey="voile:reglages" note>Vitesse : {hasDeviceSpeed ? "Doppler de l'appareil" : 'dérivée des positions, filtrée'}.</HelpText>
                 <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-s)' }}>
                     <strong>Activité :</strong>
@@ -1255,9 +1250,6 @@ function SailingModule() {
                       onChange={(next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); }} />
                   </div>
                 )}
-                <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '10px' }}>
-                  Vitesse : {hasDeviceSpeed ? "Doppler de l'appareil" : 'dérivée des positions, filtrée'}
-                </div>
               </ResizablePanel>
             )}
           </div>

@@ -10,6 +10,8 @@ import BeepCurveEditor from '../components/BeepCurveEditor';
 import ChartReadout, { type Readout } from '../components/ChartReadout';
 import MapAutoResize from '../components/MapAutoResize';
 import BaseTileLayer from '../components/BaseTileLayer';
+import { HelpText } from '../components/Help';
+import { useHelp } from '../components/helpContext';
 import PanelTitle from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import RouteList from '../components/RouteList';
@@ -25,7 +27,6 @@ import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { IconChevronRight, IconFile, IconUndo } from '../components/icons';
 import { CARD_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
-import HelpButton from '../components/ui/HelpButton';
 import PageHeader from '../components/ui/PageHeader';
 import { activityFamily, activityTreatment, findActivity, type Activity } from '../core/activities';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
@@ -213,19 +214,21 @@ const PLANNING_SECTION_DEFAULTS: Record<PlanningSection, boolean> = {
  * titre le ferme. Il se redimensionne en hauteur sur ordinateur
  * (`ResizablePanel`, taille mémorisée sous `id`, à ne pas renommer).
  */
-function PlanBlock({ id, label, open, onToggle, aside, children }: {
+function PlanBlock({ id, label, open, onToggle, aside, helpKey, children }: {
   id: string;
   label: string;
   open: boolean;
   onToggle: () => void;
   aside?: ReactNode;
+  /** Le « ? » du bloc, à droite de son titre ; son texte (`HelpText`) vient en tête des enfants. */
+  helpKey?: string;
   children: ReactNode;
 }) {
   if (!open) return null;
   return (
     <ResizablePanel id={id} direction="vertical" minHeight={80} style={CARD_STYLE}>
       <div className="plan-block__head">
-        <PanelTitle label={label} open={open} onToggle={onToggle} />
+        <PanelTitle label={label} open={open} onToggle={onToggle} helpKey={helpKey} />
         {aside}
       </div>
       {children}
@@ -339,7 +342,7 @@ function PlanningPage() {
   const [map, setMap] = useState<L.Map | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [helpOpen, setHelpOpen] = useState(false);
+  const helpOpen = useHelp('plan:trace')?.open ?? false;
   const { open, toggle } = useOpenSections<PlanningSection>('planning', PLANNING_SECTION_DEFAULTS);
 
   // Itinéraire enregistré en cours d'édition, et l'état enregistré, pour savoir s'il a changé.
@@ -924,7 +927,17 @@ function PlanningPage() {
         <div className="plan-panel">
           <SectionTabs sections={sections} open={open} onToggle={toggle} accent={color} />
           {markCourse ? (
-            <PlanBlock id="planning.parcours" label="Parcours" open={open.parcours} onToggle={() => toggle('parcours')}>
+            <PlanBlock id="planning.parcours" label="Parcours" open={open.parcours} onToggle={() => toggle('parcours')}
+              helpKey={guide && activity ? 'plan:parcours' : undefined}>
+              {guide && activity && (
+                <HelpText helpKey="plan:parcours" note>
+                  En navigation, chaque balise, départ compris, se valide à moins de {validationRadiusM(guide)} m. Bips dès{' '}
+                  {beepStartM(guide)} m : {courseGuide
+                    ? 'propres à ce parcours.'
+                    : <>ceux de l'activité {activity.name}, réglés dans <Link to="/parametres">Réglages</Link>.</>}
+                  {' '}« Régler pour ce parcours » ouvre leur courbe : tirez un point pour le déplacer, touchez le graphe pour en ajouter un.
+                </HelpText>
+              )}
               <div className="plan-stats">
                 <div className="plan-stat"><span>Distance</span><strong className="num">{formatDistance(totals.distanceM, distanceUnit, toDisplayDistance(totals.distanceM, distanceUnit) >= 100 ? 1 : 2)}</strong></div>
                 <div className="plan-stat"><span>Balises</span><strong className="num">{route.waypoints.length - (looped ? 1 : 0)}</strong></div>
@@ -949,12 +962,6 @@ function PlanningPage() {
               {guide && activity && (
                 <div className="plan-beeps">
                   <div className="plan-beeps__head">
-                    <p className="plan-note">
-                      En navigation, chaque balise, départ compris, se valide à moins de {validationRadiusM(guide)} m. Bips dès{' '}
-                      {beepStartM(guide)} m : {courseGuide
-                        ? 'propres à ce parcours.'
-                        : <>ceux de l'activité {activity.name}, réglés dans <Link to="/parametres">Réglages</Link>.</>}
-                    </p>
                     <Button size="s" onClick={() => setBeepsOpen((o) => !o)} aria-expanded={beepsOpen}>
                       {beepsOpen ? 'Fermer' : 'Régler pour ce parcours'}
                     </Button>
@@ -969,7 +976,17 @@ function PlanningPage() {
               )}
             </PlanBlock>
           ) : (
-            <PlanBlock id="planning.profil" label="Général" open={open.profil} onToggle={() => toggle('profil')}>
+            <PlanBlock id="planning.profil" label="Général" open={open.profil} onToggle={() => toggle('profil')}
+              helpKey={(hasElevation && gradeRange) || (durationSettings && pace) ? 'plan:general' : undefined}>
+              <HelpText helpKey="plan:general" note>
+                {hasElevation && gradeRange && 'Pour zoomer : écartez deux doigts ou touchez deux fois la courbe ; à la souris, tirez une zone ou double-cliquez. '}
+                {durationSettings && pace && (
+                  <>
+                    Temps estimé au niveau {PACE_LEVEL_LABEL[pace.level].toLowerCase()}, {parseFloat((pace.flatSpeedMs * 3.6).toFixed(1))} km/h sur le plat
+                    {durationSettings.family === 'course' ? ', chaque 100 m de D+ comptant 1 km' : ''} : à régler dans <Link to="/parametres">Réglages</Link>.
+                  </>
+                )}
+              </HelpText>
               <div className={durationSettings ? 'plan-stats plan-stats--four' : 'plan-stats'}>
                 {/* Au-delà de 100 km, une décimale : le chiffre tient dans sa case sur téléphone. */}
                 <div className="plan-stat"><span>Distance</span><strong className="num">{formatDistance(totals.distanceM, distanceUnit, toDisplayDistance(totals.distanceM, distanceUnit) >= 100 ? 1 : 2)}</strong></div>
@@ -1019,24 +1036,21 @@ function PlanningPage() {
                       {gradeOnMap ? 'Masquer de la carte' : 'Voir sur la carte'}
                     </Button>
                   </div>
-                  <div className="plan-legend">Pour zoomer : écartez deux doigts ou touchez deux fois la courbe ; à la souris, tirez une zone ou double-cliquez.</div>
                 </div>
               ) : (
                 route.waypoints.length >= 2 && totals.pendingLegs === 0 && (
                   <p className="plan-note">Pas d'altitude sur ce tracé (lignes droites seulement) : pas de courbe de dénivelé.</p>
                 )
               )}
-              {durationSettings && pace && (
-                <p className="plan-note">
-                  Temps estimé au niveau {PACE_LEVEL_LABEL[pace.level].toLowerCase()}, {parseFloat((pace.flatSpeedMs * 3.6).toFixed(1))} km/h sur le plat
-                  {durationSettings.family === 'course' ? ', chaque 100 m de D+ comptant 1 km' : ''} : à régler dans <Link to="/parametres">Réglages</Link>.
-                </p>
-              )}
             </PlanBlock>
           )}
 
           {!markCourse && (
-            <PlanBlock id="planning.surface" label="Surface" open={open.surface} onToggle={() => toggle('surface')}>
+            <PlanBlock id="planning.surface" label="Surface" open={open.surface} onToggle={() => toggle('surface')} helpKey="plan:surface">
+              <HelpText helpKey="plan:surface" note>
+                Revêtement des voies d'OpenStreetMap. Lignes droites et traces importées : « Inconnu ». « Voir sur la carte » y colore
+                le tracé selon le revêtement.
+              </HelpText>
               {surfaces.totals.length > 0 ? (
                 <SurfaceBar totals={surfaces.totals} distanceUnit={distanceUnit}
                   shownOnMap={surfaceOnMap} onToggleMap={toggleSurfaceOnMap}
@@ -1057,15 +1071,10 @@ function PlanningPage() {
                   <Button size="s" onClick={planner.recomputeSurfaces}>Calculer</Button>
                 </div>
               )}
-              <p className="plan-note">
-                Revêtement des voies d'OpenStreetMap. Lignes droites et traces importées : « Inconnu ». « Voir sur la carte » y colore
-                le tracé selon le revêtement.
-              </p>
             </PlanBlock>
           )}
 
-          <PlanBlock id="planning.trace" label="Tracé" open={open.trace} onToggle={() => toggle('trace')}
-            aside={<HelpButton open={helpOpen} onToggle={() => setHelpOpen((o) => !o)} label="Comment planifier ?" size="s" />}>
+          <PlanBlock id="planning.trace" label="Tracé" open={open.trace} onToggle={() => toggle('trace')} helpKey="plan:trace">
             {helpOpen && markCourse && (
               <ul className="plan-help">
                 <li>Touchez la carte pour poser les balises : 1, puis 2, puis 3… Le départ est en vert, l'arrivée en rouge.</li>
@@ -1191,7 +1200,11 @@ function PlanningPage() {
             )}
           </PlanBlock>
 
-          <PlanBlock id="planning.ranger" label={current ? 'Itinéraire enregistré' : 'Enregistrer l\'itinéraire'} open={open.ranger} onToggle={() => toggle('ranger')}>
+          <PlanBlock id="planning.ranger" label={current ? 'Itinéraire enregistré' : 'Enregistrer l\'itinéraire'} open={open.ranger} onToggle={() => toggle('ranger')}
+            helpKey={canDownloadFiles() ? undefined : 'plan:ranger'}>
+            <HelpText helpKey="plan:ranger" note>
+              Le GPX est enregistré avec l'itinéraire, dans le dossier Tracker/{ROUTES_DIR}, pour l'emporter dans une autre application.
+            </HelpText>
             <div className="plan-form">
               <label className="plan-form__field">
                 <span className="ui-eyebrow">Nom</span>
@@ -1228,9 +1241,6 @@ function PlanningPage() {
               ))}
             </div>
             {message && <p className="plan-note">{message}</p>}
-            {!canDownloadFiles() && (
-              <p className="plan-note">Le GPX est enregistré avec l'itinéraire, dans le dossier Tracker/{ROUTES_DIR}, pour l'emporter dans une autre application.</p>
-            )}
           </PlanBlock>
 
           <PlanBlock id="planning.liste" label={`Mes itinéraires (${listedRoutes.length})`} open={open.liste} onToggle={() => toggle('liste')}>

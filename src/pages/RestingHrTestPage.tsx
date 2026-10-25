@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { HelpText, HelpToggle } from '../components/Help';
 import RestingHrChart from '../components/RestingHrChart';
 import { BluetoothSettingsButton } from '../components/BeltStatus';
 import Button from '../components/ui/Button';
@@ -100,7 +101,11 @@ function RestingHrTestPage() {
 
       {phase === null && (
         <>
-          <Card heading="Déroulé">
+          <Card heading={<>Déroulé<HelpToggle helpKey="repos:deroule" label="Déroulé" size="s" /></>}>
+            <HelpText helpKey="repos:deroule" note>
+              Le téléphone reste allumé pendant le test ; aucun GPS ni enregistrement, rien ne peut le couper.
+              Si la ceinture lâche, le test va quand même à son terme, et dit la part du temps mesurée.
+            </HelpText>
             <ol className="fit-steps">
               <li><strong>Installez-vous</strong>, allongé ou assis, au calme, depuis quelques minutes (le matin au réveil est idéal),
                 la ceinture posée et connectée.</li>
@@ -108,8 +113,6 @@ function RestingHrTestPage() {
               <li><strong>{PROTOCOL.durationS / 60} min</strong> sans bouger ni parler, en respirant calmement. Un bip long à la fin.</li>
               <li><strong>Résultat</strong> : la moyenne de {PROTOCOL.windowS} s la plus basse des {PROTOCOL.durationS / 60} minutes, avec la courbe.</li>
             </ol>
-            <p className="train-hint">Le téléphone reste allumé pendant le test ; aucun GPS ni enregistrement, rien ne peut le couper.
-              Si la ceinture lâche, le test va quand même à son terme, et dit la part du temps mesurée.</p>
           </Card>
           <Card heading="Mesure">
             {native ? (
@@ -161,11 +164,15 @@ function RestingHrTestPage() {
       )}
 
       {phase === 'fini' && run && result && (
-        <Card heading="Résultat">
+        <Card heading={<>Résultat{result.fromS !== null && result.toS !== null && <HelpToggle helpKey="repos:resultat" label="Résultat" size="s" />}</>}>
+          {result.fromS !== null && result.toS !== null && (
+            <HelpText helpKey="repos:resultat" note>
+              Moyenne de {PROTOCOL.windowS} s la plus basse, de {formatMinSec(result.fromS)} à {formatMinSec(result.toS)}.
+            </HelpText>
+          )}
           {result.lowestBpm !== null && result.fromS !== null && result.toS !== null ? (
             <>
               <p className="rest-result"><strong className="rest-result__bpm">{result.lowestBpm}</strong> bpm</p>
-              <p className="train-hint">Moyenne de {PROTOCOL.windowS} s la plus basse, de {formatMinSec(result.fromS)} à {formatMinSec(result.toS)}.</p>
               <RestingHrChart series={result.series} durationS={PROTOCOL.durationS}
                 lowest={{ fromS: result.fromS, toS: result.toS, bpm: result.lowestBpm }} />
               <p className="train-hint">
@@ -194,11 +201,11 @@ function RestingHrTestPage() {
       )}
 
       {results.length > 0 && phase === null && (
-        <Card heading="Vos tests">
+        <Card heading={<>Vos tests<HelpToggle helpKey="repos:historique" label="Vos tests" size="s" /></>}>
+          <HelpText helpKey="repos:historique" note>Gardés sur cet appareil (les 60 derniers).</HelpText>
           <ul className="train-list rest-history">
             {results.map((r) => <StoredResultRow key={r.startedAtMs} result={r} onRemove={() => remove(r.startedAtMs)} />)}
           </ul>
-          <p className="train-hint">Gardés sur cet appareil (les 60 derniers).</p>
         </Card>
       )}
     </div>

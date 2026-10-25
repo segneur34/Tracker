@@ -285,6 +285,7 @@
   font-size: var(--text-m);
   font-weight: 600;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .shell-toplink:hover {
@@ -301,6 +302,30 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  white-space: nowrap;
+}
+
+/* Ordinateur étroit (768 à 1200 px) : tout tient sur une ligne, liens et boutons resserrés. */
+@media (max-width: 1199.98px) {
+  .shell-topbar {
+    gap: var(--space-3);
+    padding: 0 var(--space-3);
+  }
+
+  .shell-toplinks {
+    gap: 0;
+  }
+
+  .shell-toplink {
+    padding: 0 var(--space-2);
+    font-size: var(--text-s);
+  }
+
+  .shell-topplan,
+  .shell-toprecord {
+    padding: 0 var(--space-3);
+    font-size: var(--text-s);
+  }
 }
 
 .shell-topplan {

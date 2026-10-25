@@ -256,7 +256,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - chaque « ? » de la page, un par un : son texte apparaît seul (le suivant referme le précédent), court ; un second appui referme ;
   - le « ? » du seuil de Voile : libellé inchangé, aide sous sa ligne ; celui du bloc Activités ne replie pas le bloc ;
   - à 390×844 : aucun débordement, une aide ouverte comprise ;
-  - hors de Réglages, l'éditeur des bips d'un parcours (Itinéraires) garde son mode d'emploi, sans « ? ».
+  - hors de Réglages (Itinéraires), le mode d'emploi des bips d'un parcours est sous le « ? » du bloc Parcours (aides partout depuis le point 148).
 
   Il finit par « Tout est passé. » ou le nombre d'échecs. Seuls des textes d'aide ont quitté la page : le relevé `familles.mjs` en `DUMP=… RELEVE_SEUL=1`, avant et après, le prouve.
 - `reduire.mjs <port> [<dossier des captures>]` : « Tout réduire » et nom ou pseudo de Réglages (demandes du 19/10 au soir), sur un profil neuf, sans réseau, environ 20 s. Il vérifie que « Tout réduire » replie tout (blocs, familles, activités, parties, aide ouverte, choix d'icône), mémoire comprise, et que le choix d'icône se rouvre ensuite ; que le pseudo saisi dans Pratiquant devient le titre du Profil, et « Profil » une fois effacé ; l'en-tête sans débordement à 390×844.
@@ -304,7 +304,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - rejeu ×10 d'une sortie synthétique avec FC : la carte « Test » suit les phases, les signaux sont ceux de `stepFitnessTest` rejoué dans la page, les bips ceux de leurs motifs ; « Analyser » range le test ; titre « Analyse test », onglet « test » et ses deux courbes, « Retenir cette FC max », ligne de la bibliothèque ;
   - à 390 et 320 px : les pages sans débordement.
 - `test-fcrepos.mjs <port> [<dossier des captures>]` : test de FC repos de l'Entraînement (24/10), sur un profil neuf, sans réseau, environ 35 s. Pas de ceinture dans le navigateur : la page joue la FC d'exemple de `exampleRestingHr`, à ×1 puis à ×30 (`?vitesse=30`). Il vérifie :
-  - la tuile « FC repos » dans Tests, la page (déroulé, sans GPS) ;
+  - la tuile « FC repos » dans Tests, la page (déroulé, et « sans GPS » sous le « ? » du déroulé) ;
   - à ×1 : le décompte de préparation, la mesure (courbe qui se remplit, FC lue, un bip court), « Annuler » qui ne garde rien ;
   - à ×30 : un bip court et un long, la moyenne de 10 s la plus basse et sa fenêtre, **comparées à un calcul refait dans le script** sur la même FC, la courbe de 180 secondes (axe 0:00 à 3:00, fenêtre surlignée), le test gardé (`tracker.restingHr`) ;
   - « La retenir » (FC repos de Pratiquant), « Refaire », « Vos tests » avec sa courbe, « Retirer » ;
@@ -331,6 +331,13 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 
   Les valeurs de la racine remises à la semaine, ses chiffres attendus seront à reprendre.
 - `tailles.mjs <port> <dossier de travail> [<dossier des captures>]` : relevé de toutes les pages à toutes les tailles de téléphone, droit et tourné (point 139 ; mode d'emploi détaillé en tête du fichier), sur un profil neuf, sans réseau, 8 à 12 min. Il importe une session de chaque famille, passe chaque page par douze tailles d'écran (dont 375×834 et 834×375, le téléphone de l'utilisateur) et trois tailles de texte (100, 115, 130 %), et relève : page plus large que l'écran, élément qui en sort, texte coupé, rangée qui défile, cibles qui se recouvrent ; pour information, cibles de moins de 40 px et surface prise par les barres. Une analyse tournée s'ouvre sur sa carte en plein écran : le script la referme avant de mesurer. Il écrit `rapport.md` et `rapport.json`, et la capture de la pire combinaison de chaque page. `SIZES`, `FONTS` et `PAGES` restreignent le relevé.
+- `aides.mjs <port> [<dossier des captures>]` : aides « ? » partout et barre du haut (lot 3 des demandes du 24/10, point 148), sur un profil neuf, sans réseau, environ 1 min. Le script écrit lui-même une wing et une course. Il vérifie :
+  - course : aucune explication à l'ouverture des graphiques, le « ? » du titre l'ouvre juste sous le titre sans replier le panneau, celui des réglages referme le premier, un second appui referme ;
+  - voile : le « ? » des manœuvres, puis celui du vent, qui referme le premier ;
+  - Statistiques : la note du graphique sous son « ? » ; passer par Profil et revenir, par la barre, referme l'aide ;
+  - barre du haut sans « Accueil », le logo qui y mène, une ligne sans rien de coupé à 1400 et 1000 px (800 px relevé pour information : la barre n'y tient pas) ; « Accueil » dans la barre du bas au téléphone, pas de pop-up du profil dans le navigateur.
+
+  Le pop-up du profil ne paraît que dans l'application : il s'éprouve sur le téléphone.
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`), toucher compris (pointeur grossier, donc disposition téléphone tournée au-delà de 768 px de large). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes. Le nom de la capture vient du chemin, `?`, `=`, `:` et `&` remplacés.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 

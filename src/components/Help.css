@@ -1,0 +1,16 @@
+/* Aide d'un réglage (`Help.tsx`), dépliée par son « ? » : sur toute la largeur de sa ligne. */
+.settings-help {
+  flex-basis: 100%;
+  margin: var(--space-1) 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+/* Aide d'un panneau ou d'un graphe, dépliée sous son titre par son « ? ». */
+.help-note {
+  margin: 0 0 var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
