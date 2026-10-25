@@ -2,46 +2,29 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import Dialog from '../components/ui/Dialog';
 import PageHeader from '../components/ui/PageHeader';
-import WorkoutBlocksEditor from '../components/WorkoutBlocksEditor';
-import { IconChevronDown, IconChevronUp, IconClose, IconPlay } from '../components/icons';
+import { IconChevronDown, IconChevronUp, IconPlay } from '../components/icons';
 import { FAMILY_ACCENT, activitiesOfFamily } from '../core/activities';
 import { isIntervalSport } from '../core/sportProfiles';
 import {
-  lastRecordActivity, rememberIntervalWorkout, removeIntervalPreset, saveIntervalPreset, updateIntervalPreset, useIntervalSettings, useVisibility,
+  lastRecordActivity, rememberIntervalWorkout, removeIntervalPreset, saveIntervalPreset, useIntervalSettings, useVisibility,
 } from '../hooks/useSportSettings';
 import {
-  MAX_INTERVAL_PRESETS, formatIntervalClock, workoutBlocks, workoutDurationS, workoutFromBlocks, workoutLabel,
-  type IntervalBlock, type IntervalPreset,
+  MAX_INTERVAL_PRESETS, formatIntervalClock, workoutDurationS, workoutLabel,
+  type IntervalPreset,
 } from '../recording/intervalTimer';
 import './TrainingPages.css';
 
 /**
  * Fractionné (24/10), depuis la page Entraînement : les séances du compteur
- * d'intervalles, gardées, à créer, modifier, dupliquer ou retirer, bloc par
- * bloc (`WorkoutBlocksEditor`), et « Lancer », qui ouvre Enregistrer prêt en
+ * d'intervalles, gardées, en liste simplifiée (titre, « Lancer », flèche) ;
+ * « Créer un compteur » et « Modifier » ouvrent la page d'édition
+ * (`TrainingSessionEditPage`, 25/10), « Dupliquer » et « Retirer » restent ici ;
+ * « Lancer » ouvre Enregistrer prêt en
  * Fractionné (la dernière activité de fractionné enregistrée, sinon la
  * première ; à pied ou vélo se change là), la séance dans la carte du
  * compteur (retenue comme la dernière lancée). Le bouton rond démarre.
  */
-
-/** Séance en cours d'écriture : une nouvelle, ou une gardée qu'on modifie. */
-interface Draft {
-  id: string | null;
-  name: string;
-  blocks: IntervalBlock[];
-  /** Nom et blocs à l'ouverture : pour savoir si la croix a des changements à signaler. */
-  initial: string;
-}
-
-const snapshot = (name: string, blocks: IntervalBlock[]) => JSON.stringify([name, blocks]);
-
-const NEW_BLOCKS: IntervalBlock[] = [
-  { kind: 'libre', label: 'Échauffement', durationS: 600 },
-  { kind: 'series', reps: 3, workS: 180, restS: 60 },
-  { kind: 'libre', label: 'Retour au calme', durationS: 600 },
-];
 
 function TrainingSessionsPage() {
   const navigate = useNavigate();
@@ -56,31 +39,12 @@ function TrainingSessionsPage() {
     const last = lastRecordActivity();
     return intervalActivities.find((a) => a.id === last?.id) ?? intervalActivities[0] ?? null;
   }, [intervalActivities]);
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [askClose, setAskClose] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
-  const draftWorkout = draft ? workoutFromBlocks(draft.blocks) : null;
 
   const launch = (preset: { workout: IntervalPreset['workout'] }) => {
     if (!activity) return;
     rememberIntervalWorkout(preset.workout);
     navigate(`/enregistrer?activite=${encodeURIComponent(activity.id)}`);
-  };
-  const saveDraft = () => {
-    if (!draft || !draftWorkout) return;
-    if (draft.id) updateIntervalPreset(draft.id, draft.name, draftWorkout);
-    else saveIntervalPreset(draft.name, draftWorkout);
-    setDraft(null);
-    setAskClose(false);
-  };
-  const closeDraft = () => {
-    setDraft(null);
-    setAskClose(false);
-  };
-  // La croix ferme tout de suite s'il n'y a rien à perdre, sinon demande.
-  const requestClose = () => {
-    if (draft && snapshot(draft.name, draft.blocks) !== draft.initial) setAskClose(true);
-    else closeDraft();
   };
   const askRemove = (preset: IntervalPreset) => {
     if (window.confirm(`Retirer la séance « ${preset.name} » ?`)) {
@@ -99,40 +63,6 @@ function TrainingSessionsPage() {
       {intervalActivities.length === 0 && (
         <div className="ui-alert ui-alert--warning">
           Aucune activité de fractionné visible : ajoutez-en une, ou ré-affichez-la, dans <Link to="/parametres">Réglages</Link>.
-        </div>
-      )}
-
-      {draft && (
-        <Card heading={draft.id ? 'Modifier la séance' : 'Nouvelle séance'} className="train-editor">
-          <button type="button" className="train-editor__close" aria-label="Fermer l'éditeur" onClick={requestClose}><IconClose size={18} /></button>
-          <label className="train-editor__name">
-            <span className="ui-eyebrow">Nom</span>
-            <input value={draft.name} maxLength={40} placeholder={draftWorkout ? workoutLabel(draftWorkout) : ''} aria-label="Nom de la séance"
-              className="ui-field" onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-          </label>
-          <WorkoutBlocksEditor blocks={draft.blocks} onChange={(blocks) => setDraft({ ...draft, blocks })} />
-          <div className="ivl-actions">
-            <Button variant="primary" disabled={!draftWorkout} onClick={saveDraft}>{draft.id ? 'Enregistrer les changements' : 'Garder la séance'}</Button>
-            <Button variant="ghost" onClick={closeDraft}>Annuler</Button>
-          </div>
-        </Card>
-      )}
-
-      {draft && askClose && (
-        <Dialog title="Fermer l'éditeur ?" onClose={() => setAskClose(false)}>
-          <p className="train-hint">La séance a des changements non enregistrés.</p>
-          <div className="ivl-actions">
-            <Button variant="primary" disabled={!draftWorkout} onClick={saveDraft}>Enregistrer</Button>
-            <Button onClick={closeDraft}>Ne pas enregistrer</Button>
-            <Button variant="ghost" onClick={() => setAskClose(false)}>Continuer</Button>
-          </div>
-        </Dialog>
-      )}
-
-      {!draft && (
-        <div className="train-actions">
-          <Button variant="primary" disabled={full} onClick={() => setDraft({ id: null, name: '', blocks: NEW_BLOCKS, initial: snapshot('', NEW_BLOCKS) })}>Nouvelle séance</Button>
-          {full && <span className="train-hint">{MAX_INTERVAL_PRESETS} séances au plus : retirez-en une.</span>}
         </div>
       )}
 
@@ -159,7 +89,7 @@ function TrainingSessionsPage() {
                     <span className="train-item__detail num">{formatIntervalClock(workoutDurationS(preset.workout))} en tout</span>
                   </div>
                   <div className="train-item__actions">
-                    <Button size="s" onClick={() => setDraft({ id: preset.id, name: preset.name, blocks: workoutBlocks(preset.workout), initial: snapshot(preset.name, workoutBlocks(preset.workout)) })}>Modifier</Button>
+                    <Button size="s" onClick={() => navigate(`/fractionne/seances/editer?id=${encodeURIComponent(preset.id)}`)}>Modifier</Button>
                     <Button size="s" disabled={full} onClick={() => saveIntervalPreset(`${preset.name} (copie)`.slice(0, 40), preset.workout)}>Dupliquer</Button>
                     <Button size="s" variant="ghost" onClick={() => askRemove(preset)}>Retirer</Button>
                   </div>
@@ -171,6 +101,11 @@ function TrainingSessionsPage() {
       ) : (
         <Card><p className="train-hint">Aucune séance gardée : créez-en une, ou gardez celle que vous lancez au compteur d'Enregistrer.</p></Card>
       )}
+
+      <div className="train-actions">
+        <Button variant="primary" disabled={full} onClick={() => navigate('/fractionne/seances/editer')}>Créer un compteur</Button>
+        {full && <span className="train-hint">{MAX_INTERVAL_PRESETS} séances au plus : retirez-en une.</span>}
+      </div>
     </div>
   );
 }

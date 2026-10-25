@@ -16,6 +16,7 @@ describe('parentPage', () => {
 
   it("une page de l'Entraînement remonte d'un cran, jusqu'à sa bibliothèque", () => {
     expect(parentPage('/fractionne/seances', '')).toBe('/fractionne');
+    expect(parentPage('/fractionne/seances/editer', '?id=a')).toBe('/fractionne/seances');
     expect(parentPage('/fractionne/tests', '')).toBe('/fractionne');
     expect(parentPage('/fractionne/tests/fc-max', '')).toBe('/fractionne/tests');
     expect(parentPage('/fractionne/tests/fc-repos', '')).toBe('/fractionne/tests');

@@ -6,7 +6,7 @@ const isFamily = (s: string): s is SportFamily => (SPORT_FAMILIES as string[]).i
  * Page au-dessus d'une adresse, où renvoie la touche retour d'Android (et le
  * geste du bord de l'écran) : l'analyse d'une session renvoie à la
  * bibliothèque de sa famille, comme le lien « ← » de son en-tête, et une page
- * de l'Entraînement (séances du fractionné, tests) à la page au-dessus d'elle ; les
+ * de l'Entraînement (séances du fractionné et leur édition, tests) à la page au-dessus d'elle ; les
  * Statistiques remontent d'un cran (activité, famille, vue d'ensemble), la
  * période gardée ; toute autre page renvoie à l'accueil. `null` à l'accueil :
  * rien au-dessus.

@@ -12,6 +12,7 @@ import RoutesPage from './pages/RoutesPage';
 import StatisticsPage from './pages/StatisticsPage';
 import ProfilePage from './pages/ProfilePage';
 import TrainingSessionsPage from './pages/TrainingSessionsPage';
+import TrainingSessionEditPage from './pages/TrainingSessionEditPage';
 import TestsPage from './pages/TestsPage';
 import FitnessTestPage from './pages/FitnessTestPage';
 import RestingHrTestPage from './pages/RestingHrTestPage';
@@ -34,6 +35,7 @@ function App() {
           <Route path="/fractionne/analyse" element={<LandModule key="fractionne" family="fractionne" />} />
           {/* Entraînement : ses pages à lui, sous sa bibliothèque (24/10). */}
           <Route path="/fractionne/seances" element={<TrainingSessionsPage />} />
+          <Route path="/fractionne/seances/editer" element={<TrainingSessionEditPage />} />
           <Route path="/fractionne/tests" element={<TestsPage />} />
           <Route path="/fractionne/tests/fc-max" element={<FitnessTestPage />} />
           <Route path="/fractionne/tests/fc-repos" element={<RestingHrTestPage />} />
