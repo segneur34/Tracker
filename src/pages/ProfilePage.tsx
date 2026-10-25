@@ -324,7 +324,7 @@ function ProfilePage() {
       )}
 
       {sessions.length > 0 && <ActivityChart key={period} period={period} nowMs={nowMs} />}
-      <ProfileRoot growth={root.growth} settings={root.settings} cardSelectors={ROOT_CARDS}
+      <ProfileRoot growth={root.growth} goalMin={root.goalMin} cardSelectors={ROOT_CARDS}
         ready={status === 'ready' && !scanning} open={rootOpen} onClose={closeRoot} />
     </div>
   );

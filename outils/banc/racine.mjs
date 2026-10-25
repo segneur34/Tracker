@@ -1,16 +1,16 @@
-// Banc de test : la racine du Profil (22/10), une série de périodes d'activité qui pousse autour des cadres.
+// Banc de test : la racine du Profil, règle à la semaine du 25/10 (une étape par semaine tenue, 26 pour le tour ;
+// semaines manquées d'affilée : −3, −6, puis la graine ; objectif par semaine, 45 min par défaut).
 // Usage : node racine.mjs <port> [<dossier des captures>]
-// Sur un profil neuf, sans réseau. Le script écrit lui-même cinq courses de 20 min, il y a 6, 5, 4, 2 et 1 jours
-// (le 3e jour manqué), et une sixième aujourd'hui s'il est plus de 0 h 40 ; il les importe par la page Course. Réglages
-// d'essai par défaut : une période par jour, 15 min, le tour en 15 jours tenus, tout perdu en 30 jours manqués. Il vérifie :
-//  1. le carré à droite du pseudo : 4,5 étapes (3, −0,5 pour le jour manqué, puis 2) ; le canevas couvre la page, dessiné ;
-//  2. la bulle du carré : niveau, étapes restantes, temps du jour et radicelles, objectif tenu ; Échap la ferme ;
-//  3. Réglages, « Pratiquant » : tout perdre en 2 jours (7,5 étapes par jour manqué) : 2 étapes, partie sèche d'une étape ;
-//     la durée d'une période à 7 jours : « Cette semaine » ; champs vidés : retour aux valeurs d'essai ;
-//  4. le rejeu à l'ouverture : une visite d'hier retenue sur l'appareil (3,5 étapes) ; la racine part de là et avance
-//     sous les yeux jusqu'à 4,5 (niveau dessiné lu sur le canevas, `data-niveau`), puis l'état vu est mis à jour ;
-//     sans changement depuis la dernière visite, rien ne bouge ;
+// Sur un profil neuf, sans réseau. Le script écrit un historique de courses de 45 min, le lundi, sur les semaines 0 à 29,
+// 33 et 34 (la semaine 0 commence 50 semaines avant celle d'aujourd'hui), et trois de 15 min les mardi, mercredi et jeudi
+// de la semaine 35 ; il les importe par la page Course. Puis il ouvre le Profil à des dates choisies, l'heure de la page
+// décalée par un script posé avant son chargement (`Date` remplacé), et vérifie :
+//  1. le niveau : semaines 1, 6, 13, 26, 30 ; 1, 2, 3 semaines manquées (27, 21, 0), la reprise (1, puis 2) ;
+//  2. la bulle : recul de 3, « de 6 de plus », « revient à sa graine », feuilles tombées, temps de la semaine et radicelles ;
+//  3. Réglages, « Pratiquant » : une seule ligne « Objectif par semaine » ; à 60 min, plus rien de tenu ; vidée, 45 ;
+//  4. un état vu d'avant la règle (sans version) est ignoré ; le rejeu d'un recul de 9 (30 → 21) à l'ouverture ;
 //  5. à 390 et 320 px : rien ne déborde, le carré et la bulle restent dans l'écran.
+// Avec un dossier, il y écrit les captures et une planche (`planche.html`) qui les rassemble.
 import { writeFileSync } from 'node:fs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -53,24 +53,22 @@ const check = (label, ok, detail = '') => {
   console.log(`${ok ? 'OK ' : 'ÉCHEC'} ${label}${detail ? ` : ${detail}` : ''}`);
 };
 
-// --- Sessions synthétiques : 20 min de course à 1 Hz ---
-const startOf = (daysAgo) => {
-  const d = new Date(Date.now() - daysAgo * 86_400_000);
-  d.setHours(10, 0, 0, 0);
-  return d.getTime();
-};
-const gpxOf = (t0, name) => {
+// --- Historique synthétique ---
+const today = new Date();
+const dow = (today.getDay() + 6) % 7;
+const mon0 = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dow - 50 * 7);
+/** Instant local : jour `d` (0 : lundi) de la semaine `w`, à `h` heures. */
+const dayAt = (w, d = 0, h = 12) => new Date(mon0.getFullYear(), mon0.getMonth(), mon0.getDate() + w * 7 + d, h).getTime();
+const gpxOf = (t0, minutes, name) => {
   const points = [];
-  for (let k = 0; k <= 1200; k++) {
-    points.push(`<trkpt lat="43.7000000" lon="${(3.8 + (k * 3) / 80500).toFixed(7)}"><ele>50</ele><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`);
+  for (let k = 0; k <= minutes * 6; k++) {
+    points.push(`<trkpt lat="43.7000000" lon="${(3.8 + (k * 30) / 80500).toFixed(7)}"><ele>50</ele><time>${new Date(t0 + k * 10_000).toISOString()}</time></trkpt>`);
   }
   return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${name}</name><type>running</type><trkseg>\n${points.join('\n')}\n</trkseg></trk></gpx>\n`;
 };
-const now = new Date();
-const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-const withToday = Date.now() - 40 * 60_000 > midnight;
-const files = [6, 5, 4, 2, 1].map((d) => [`course-${d}.gpx`, gpxOf(startOf(d), `course ${d}`)]);
-if (withToday) files.push(['course-0.gpx', gpxOf(Date.now() - 30 * 60_000, 'course 0')]);
+const files = [];
+for (const w of [...Array.from({ length: 30 }, (_, k) => k), 33, 34]) files.push([`course-s${w}.gpx`, gpxOf(dayAt(w, 0, 10), 45, `course s${w}`)]);
+for (const d of [1, 2, 3]) files.push([`course-s35-${d}.gpx`, gpxOf(dayAt(35, d, 10), 15, `course s35 j${d}`)]);
 
 const slotText = () => evaluate(`document.querySelector('.profile-root-slot')?.textContent ?? null`);
 /** Texte de la bulle, espaces insécables (entre un nombre et son mot) ramenées à des espaces. */
@@ -95,6 +93,35 @@ const setField = (label, value) => evaluate(`(() => {
   return true;
 })()`);
 const seen = () => evaluate(`JSON.parse(localStorage.getItem('tracker.profil') ?? '{}').racine ?? null`);
+const openBubble = async () => { await evaluate(`document.querySelector('.profile-root-slot')?.click()`); await wait(300); return bubbleText(); };
+
+// --- Heure de la page ---
+let clockScript = null;
+/** Les pages suivantes croient être à `fakeMs` ; `forget` : l'état vu de la racine est effacé avant chargement (pas de rejeu). */
+const setClock = async (fakeMs, forget = true) => {
+  if (clockScript) await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: clockScript });
+  const source = `(() => {
+    const off = ${fakeMs - Date.now()};
+    const R = Date;
+    class D extends R { constructor(...a) { if (a.length === 0) super(R.now() + off); else super(...a); } static now() { return R.now() + off; } }
+    window.Date = D;
+    ${forget ? `try { const all = JSON.parse(localStorage.getItem('tracker.profil') ?? '{}'); delete all.racine; localStorage.setItem('tracker.profil', JSON.stringify(all)); } catch {}` : ''}
+  })();`;
+  clockScript = (await send('Page.addScriptToEvaluateOnNewDocument', { source })).result.identifier;
+};
+const profileAt = async (fakeMs, forget = true, ms = 4500) => { await setClock(fakeMs, forget); await go('/profil', ms); };
+
+// --- Captures et planche ---
+const plate = [];
+/** Capture de la page, et gros plan de la pousse (carré du pseudo), avec sa légende sur la planche. */
+const shootState = async (name, label) => {
+  if (!shotDir) return;
+  await shoot(name);
+  const r = await evaluate(`(() => { const b = document.querySelector('.profile-root-slot').getBoundingClientRect(); return { x: b.left + scrollX - 10, y: b.top + scrollY - 40, w: b.width + 20, h: b.height + 50 }; })()`);
+  const shot = await send('Page.captureScreenshot', { format: 'png', clip: { x: r.x, y: r.y, width: r.w, height: r.h, scale: 3 } });
+  writeFileSync(`${shotDir}/${name}-pousse.png`, Buffer.from(shot.result.data, 'base64'));
+  plate.push({ name, label });
+};
 
 // --- Mise en place ---
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -107,104 +134,88 @@ console.log('import :', await evaluate(`(() => {
   input.files = dt.files;
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return 'ok';
-})()`), withToday ? '(avec une course aujourd\'hui)' : '(sans course aujourd\'hui : avant 0 h 40)');
-await wait(10000);
+})()`), `${files.length} fichiers`);
+await wait(20000);
 
-// 1. Le carré et le canevas.
-await go('/profil', 4000);
-check('carré à droite du pseudo : 4,5 étapes', (await slotText()) === '4,5étapes', await slotText());
-check('le carré est dans l\'en-tête, à droite du titre', await evaluate(`(() => {
-  const s = document.querySelector('.profile-head .profile-root-slot')?.getBoundingClientRect();
-  const t = document.querySelector('.profile-head__title')?.getBoundingClientRect();
-  return !!s && !!t && s.left >= t.right;
-})()`));
-check('canevas de la taille de la page', await evaluate(`(() => {
-  const c = document.querySelector('canvas.profile-root'), p = document.querySelector('.profile');
-  return !!c && Math.abs(c.offsetWidth - p.offsetWidth) < 1 && Math.abs(c.offsetHeight - p.offsetHeight) < 1;
-})()`));
-const ink1 = await inked();
-check('la racine est dessinée', ink1 > 2000, String(ink1));
-check('le canevas ne capte pas le toucher', (await evaluate(`getComputedStyle(document.querySelector('canvas.profile-root')).pointerEvents`)) === 'none');
-await shoot('racine-ordinateur');
-
-// 2. La bulle.
-await evaluate(`document.querySelector('.profile-root-slot').click()`);
-await wait(300);
-let bubble = await bubbleText();
-check('bulle : niveau et étapes restantes', !!bubble?.includes('Racine : 4,5 étapes') && bubble.includes('Encore 10,5 étapes pour entourer tous les cadres.'), bubble);
-if (withToday) {
-  check('bulle : le temps du jour, ses radicelles, objectif tenu', !!bubble?.includes("Aujourd'hui : 20 min sur 15 min · 4 radicelles") && bubble.includes('Objectif tenu : la racine gagne une étape à minuit.'), bubble);
-} else {
-  check('bulle : rien aujourd\'hui, la menace du recul', !!bubble?.includes("Aujourd'hui : 0 min sur 15 min") && bubble.includes("Sans 15 min de plus d'ici minuit, elle recule de 0,5 étape."), bubble);
+// 1 et 2. Niveaux et bulle, à des dates choisies (le lundi à 8 h, avant la course de 10 h ; à midi les autres jours).
+const states = [
+  { w: 1, level: '1étape', label: 'Semaine 1 : une étape', bubble: ['Encore 25 semaines tenues', "Sans 45 min de plus d'ici dimanche soir, elle revient à sa graine."] },
+  { w: 6, level: '6étapes', label: 'Semaine 6' },
+  { w: 13, level: '13étapes', label: 'Semaine 13 : la moitié du tour' },
+  { w: 26, level: '26étapes', label: 'Semaine 26 : tour complet', bubble: ['Tous les cadres sont entourés'] },
+  { w: 30, level: '30étapes', label: 'Semaine 30 : racine mûre', bubble: ['elle recule de 3 étapes.'] },
+  { w: 31, level: '27étapes', label: '1 semaine manquée : −3, feuilles tombées', bubble: ['Partie sèche : 3 étapes', 'elle recule de 6 étapes de plus.', 'Semaine dernière manquée : ses feuilles sont tombées'] },
+  { w: 32, level: '21étapes', label: '2 semaines manquées : −9', bubble: ['elle revient à sa graine.', "2 semaines manquées d'affilée"] },
+  { w: 33, level: '0étape', label: '3 semaines manquées : la graine', bubble: ['elle reste à sa graine.', "3 semaines manquées d'affilée", 'Partie sèche : 30 étapes'] },
+  { w: 34, level: '1étape', label: 'Reprise : une semaine tenue', bubble: ['elle revient à sa graine.'] },
+  { w: 35, d: 0, level: '2étapes', label: 'Semaine 35, lundi : 0 min, pas de fleur', bubble: ['Cette semaine : 0 min sur 45 min'] },
+  { w: 35, d: 1, level: '2étapes', label: 'Mardi : 15 min, bouton', bubble: ['Cette semaine : 15 min sur 45 min · 3 radicelles'] },
+  { w: 35, d: 2, level: '2étapes', label: 'Mercredi : 30 min, fleur entrouverte', bubble: ['Cette semaine : 30 min sur 45 min · 6 radicelles'] },
+  { w: 35, d: 3, level: '2étapes', label: 'Jeudi : 45 min, fleur ouverte', bubble: ['Cette semaine : 45 min sur 45 min · 9 radicelles', 'Objectif tenu : la racine gagne une étape dimanche soir.'] },
+];
+for (const st of states) {
+  await profileAt(dayAt(st.w, st.d ?? 0, st.d ? 12 : 8));
+  const tag = `s${st.w}${st.d ? `-j${st.d}` : ''}`;
+  check(`${st.label} : ${st.level}`, (await slotText()) === st.level, await slotText());
+  await shootState(`racine-${tag}`, st.label);
+  if (st.bubble) {
+    const b = await openBubble();
+    check(`${st.label} : bulle`, st.bubble.every((t) => b?.includes(t)), b);
+    await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+    await wait(200);
+  }
 }
-check('bulle : sous le carré', await evaluate(`(() => {
-  const b = document.querySelector('.profile-root__bubble').getBoundingClientRect(), s = document.querySelector('.profile-root-slot').getBoundingClientRect();
-  return b.top >= s.bottom && Math.abs(b.right - s.right) < 2;
-})()`));
-await shoot('racine-bulle');
-await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
-await wait(200);
 check('Échap ferme la bulle', (await bubbleText()) === null);
 
 // 3. Réglages.
+await setClock(dayAt(30, 0, 12));
 await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); s.settings = { ...s.settings, coureur: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); })()`);
 await go('/parametres', 3000);
-check('Réglages : les quatre champs de la racine', (await evaluate(`["Objectif d'une période", "Durée d'une période", 'Tour complet en', 'Tout perdre en'].every((t) => [...document.querySelectorAll('label')].some((l) => l.textContent.startsWith(t)))`)) === true);
-check('Réglages : « Tout perdre en » à 2', await setField('Tout perdre en', '2'));
+const labels = await evaluate(`[...document.querySelectorAll('label')].map((l) => l.textContent)`);
+check('Réglages : la ligne « Objectif par semaine »', labels.some((t) => t.startsWith('Objectif par semaine')));
+check('Réglages : plus de durée, de tour ni de recul', !labels.some((t) => /Durée d'une période|Tour complet en|Tout perdre en|Objectif d'une période/.test(t)));
+check('Réglages : objectif à 60 min', await setField('Objectif par semaine', '60'));
 await wait(300);
-await go('/profil', 4000);
-check('perdu en 2 jours : 2 étapes', (await slotText()) === '2étapes', await slotText());
-await evaluate(`document.querySelector('.profile-root-slot').click()`);
-await wait(300);
-bubble = await bubbleText();
-check('partie sèche d\'une étape', !!bubble?.includes('Partie sèche : 1 étape à regagner.'), bubble);
-await shoot('racine-seche');
+await go('/profil', 4500);
+check('à 60 min, aucune semaine tenue : la graine', (await slotText()) === '0étape', await slotText());
 await go('/parametres', 3000);
-await setField('Tout perdre en', '');
-await setField("Durée d'une période", '7');
+await setField('Objectif par semaine', '');
 await wait(300);
-await go('/profil', 4000);
-await evaluate(`document.querySelector('.profile-root-slot').click()`);
-await wait(300);
-bubble = await bubbleText();
-check('à la semaine : « Cette semaine », fin le dimanche soir', !!bubble?.includes('Cette semaine :') && /dimanche soir/.test(bubble ?? ''), bubble);
-await go('/parametres', 3000);
-await setField("Durée d'une période", '');
-await wait(300);
-await go('/profil', 4000);
-check('champs vidés : retour aux valeurs d\'essai', (await slotText()) === '4,5étapes', await slotText());
+await go('/profil', 4500);
+check('vidé : 45 min par défaut', (await slotText()) === '30étapes', await slotText());
 
-// 4. Rejeu à l'ouverture.
-const state = await seen();
-check('état vu retenu sur l\'appareil', state?.level === 4.5 && typeof state?.period === 'number', JSON.stringify(state));
-const still0 = await inked();
-await wait(1500);
-check('sans changement depuis la dernière visite, rien ne bouge', (await inked()) === still0);
-await evaluate(`(() => {
-  const all = JSON.parse(localStorage.getItem('tracker.profil') ?? '{}');
-  all.racine = { level: 3.5, period: all.racine.period - 1, minutes: 20 };
-  localStorage.setItem('tracker.profil', JSON.stringify(all));
-})()`);
+// 4. État vu d'avant la règle, puis rejeu d'un recul de 9.
+const recordDrawn = async (shots) => {
+  const drawn = [];
+  for (let k = 0; k < 50; k++) {
+    await wait(100);
+    const v = await evaluate(`document.querySelector('canvas.profile-root')?.dataset.niveau ?? null`);
+    if (v !== null && v !== undefined) drawn.push(Number(v));
+    if (shots && shotDir && [8, 16, 24].includes(k)) await shoot(`racine-rejeu-${k}`);
+  }
+  return drawn;
+};
+await setClock(dayAt(32, 0, 12), false);
+await evaluate(`(() => { const all = JSON.parse(localStorage.getItem('tracker.profil') ?? '{}'); all.racine = { level: 3, period: 1, minutes: 20 }; localStorage.setItem('tracker.profil', JSON.stringify(all)); })()`);
 await send('Page.navigate', { url: `${BASE}/profil` });
-// Le canevas porte le niveau dessiné (`data-niveau`) : relevé toutes les 100 ms pendant 5 s.
-const drawn = [];
-for (let k = 0; k < 50; k++) {
-  await wait(100);
-  const v = await evaluate(`document.querySelector('canvas.profile-root')?.dataset.niveau ?? null`);
-  if (v !== null && v !== undefined) drawn.push(Number(v));
-}
-const firstDrawn = drawn[0];
-const between = drawn.some((v) => v > 3.55 && v < 4.45);
-check('rejeu : la racine part de la visite d\'hier (3,5), passe par l\'entre-deux et finit à 4,5', firstDrawn === 3.5 && between && drawn.at(-1) === 4.5,
-  [...new Set(drawn)].join(' → '));
-check('rejeu : jamais au nouveau niveau avant d\'y pousser', drawn.indexOf(4.5) > drawn.findIndex((v) => v > 3.55 && v < 4.45));
-const after = await seen();
-check('rejeu : l\'état vu est mis à jour', after?.level === 4.5 && after?.period === state?.period, JSON.stringify(after));
+let drawn = await recordDrawn(false);
+check('état vu sans version (valeurs d\'essai) ignoré : rien de rejoué', drawn.length > 0 && drawn.every((v) => v === 21), [...new Set(drawn)].join(' → '));
+check('état vu réécrit avec la version de la règle', (await seen())?.rules === 2, JSON.stringify(await seen()));
+
+await profileAt(dayAt(30, 0, 12));
+const at30 = await seen();
+check('visite de la semaine 30 retenue', at30?.level === 30 && at30?.rules === 2, JSON.stringify(at30));
+await setClock(dayAt(32, 0, 12), false);
+await send('Page.navigate', { url: `${BASE}/profil` });
+drawn = await recordDrawn(true);
+check('rejeu : de 30 à 21, par l\'entre-deux', drawn[0] === 30 && drawn.some((v) => v > 21.5 && v < 29.5) && drawn.at(-1) === 21, [...new Set(drawn.map((v) => Math.round(v)))].join(' → '));
+if (shotDir) plate.push({ name: 'racine-rejeu-8', label: 'Rejeu du recul de 9 : 0,9 s', full: true }, { name: 'racine-rejeu-16', label: '1,7 s', full: true }, { name: 'racine-rejeu-24', label: '2,5 s', full: true });
 
 // 5. Téléphone.
+await setClock(dayAt(35, 3, 12));
 for (const width of [390, 320]) {
   await send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 2, mobile: true });
-  await go('/profil', 4000);
+  await go('/profil', 4500);
   check(`${width} px : rien ne déborde`, (await overflow()) === false);
   await evaluate(`document.querySelector('.profile-root-slot').click()`);
   await wait(300);
@@ -214,6 +225,15 @@ for (const width of [390, 320]) {
   })()`));
   check(`${width} px : la racine est dessinée`, (await inked()) > 1000);
   await shoot(`racine-${width}`);
+}
+if (shotDir) plate.push({ name: 'racine-390', label: '390 px, bulle ouverte', full: true });
+
+if (shotDir) {
+  const cells = plate.map(({ name, label, full }) => `<figure><img src="${full ? name : `${name}-pousse`}.png"><figcaption>${label}</figcaption>${full ? '' : `<a href="${name}.png">page entière</a>`}</figure>`).join('\n');
+  writeFileSync(`${shotDir}/planche.html`, `<!doctype html><meta charset="utf-8"><title>Racine : planche</title>
+<style>body{font:14px system-ui;margin:16px;background:#eef1f5}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+figure{margin:0;background:#fff;border-radius:12px;padding:8px}img{width:100%;display:block}figcaption{margin-top:6px;font-weight:600}a{font-size:12px}</style>
+<h1>Racine du Profil, règle à la semaine</h1><main>${cells}</main>`);
 }
 
 console.log(logs.length ? `Console :\n${logs.join('\n')}` : 'Console : rien');

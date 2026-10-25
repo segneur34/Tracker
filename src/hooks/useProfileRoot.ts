@@ -1,22 +1,18 @@
 import { useMemo } from 'react';
 import type { StatSession } from '../library/stats';
-import { rootGrowth, type RootGrowth, type RootSettings } from '../library/rootGrowth';
-import { runnerRootSettings, type RunnerProfile } from './useRunnerProfile';
+import { rootGrowth, type RootGrowth } from '../library/rootGrowth';
+import { runnerRootGoalMin, type RunnerProfile } from './useRunnerProfile';
 
 /**
  * Racine du Profil : son niveau, rejoué sur les sessions du Profil (classées,
- * visibles), toutes périodes confondues, avec les réglages du pratiquant. Le
- * temps d'une session est son temps en mouvement, sinon sa durée.
+ * visibles), toutes périodes confondues, avec l'objectif par semaine du
+ * pratiquant. Le temps d'une session est son temps en mouvement, sinon sa durée.
  */
-export const useProfileRoot = (sessions: readonly StatSession[], profile: RunnerProfile, nowMs: number): { growth: RootGrowth; settings: RootSettings } => {
-  const { rootGoalMin, rootPeriodDays, rootGrowthPeriods, rootLossPeriods } = profile;
-  const settings = useMemo(
-    () => runnerRootSettings({ rootGoalMin, rootPeriodDays, rootGrowthPeriods, rootLossPeriods }),
-    [rootGoalMin, rootPeriodDays, rootGrowthPeriods, rootLossPeriods]
-  );
+export const useProfileRoot = (sessions: readonly StatSession[], profile: RunnerProfile, nowMs: number): { growth: RootGrowth; goalMin: number } => {
+  const goalMin = runnerRootGoalMin(profile);
   const growth = useMemo(
-    () => rootGrowth(sessions.map((s) => ({ startMs: s.startMs, durationS: s.movingTimeS ?? (s.endMs - s.startMs) / 1000 })), settings, nowMs),
-    [sessions, settings, nowMs]
+    () => rootGrowth(sessions.map((s) => ({ startMs: s.startMs, durationS: s.movingTimeS ?? (s.endMs - s.startMs) / 1000 })), goalMin, nowMs),
+    [sessions, goalMin, nowMs]
   );
-  return { growth, settings };
+  return { growth, goalMin };
 };

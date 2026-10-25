@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { buildRootModel, layoutKey, ROOT_STYLE, ROOTLET_MINUTES, MAX_ROOTLETS, type Box, type RootLayout, type RootModel } from '../core/rootPath';
 import { useStoredRecord, readStoredRecord } from '../hooks/useStoredRecord';
-import { levelText, type RootGrowth, type RootSettings } from '../library/rootGrowth';
+import { levelText, type RootGrowth } from '../library/rootGrowth';
 import { drawRoot, readRootColors, type RootColors, type RootFrame } from './drawRoot';
 import './ProfileRoot.css';
 
 /**
  * Racine du Profil (maquette validée le 22/10) : elle part du carré à droite
  * du pseudo (`RootSlot`) et pousse autour des cadres de la page, d'une étape
- * par période tenue (`library/rootGrowth.ts`) ; elle recule d'une période
- * manquée, la partie perdue restant dessinée sèche. Le temps de la période en
- * cours fait pousser des radicelles et la pousse au-dessus du sol, dont la
- * fleur s'ouvre quand l'objectif est tenu ; ses feuilles pendent tant que la
- * dernière période close a été manquée et que l'objectif n'est pas tenu.
+ * par semaine tenue (`library/rootGrowth.ts`) ; elle recule des semaines
+ * manquées (−3, −6, puis la graine), la partie perdue restant dessinée sèche.
+ * Le temps de la semaine fait pousser des radicelles et la pousse au-dessus du
+ * sol, dont la fleur paraît à la première minute et s'ouvre jusqu'à l'objectif ;
+ * après une semaine manquée, ses feuilles tombent et restent mortes au sol, de
+ * nouvelles repoussant avec le temps fait.
  *
  * Un canevas posé sur toute la page, au-dessus des cadres (la racine peut en
  * mordre le bord), sans capter le toucher. Les cadres sont lus sur la page
@@ -24,13 +25,22 @@ import './ProfileRoot.css';
 
 /** Dernier état vu sur cet appareil, pour rejouer ce qui a changé depuis. */
 interface LastSeen {
+  /** Version de la règle sous laquelle l'état a été vu : un autre est ignoré (pas de faux recul rejoué). */
+  rules?: number;
   level: number | null;
   period: number | null;
   minutes: number;
 }
 const SEEN_NAMESPACE = 'tracker.profil';
 const SEEN_KEY = 'racine';
+/** 2 : la semaine du 25/10 (1 : valeurs d'essai d'un jour, sans version). */
+const SEEN_RULES = 2;
+/** Sans version : un état d'avant la règle, lu par-dessus ce défaut, n'en prend pas. */
 const SEEN_DEFAULT: LastSeen = { level: null, period: null, minutes: 0 };
+const readSeen = (): LastSeen => {
+  const seen = readStoredRecord(SEEN_NAMESPACE, SEEN_KEY, SEEN_DEFAULT);
+  return seen.rules === SEEN_RULES ? seen : SEEN_DEFAULT;
+};
 
 const SLOT_CLASS = 'profile-root-slot';
 
@@ -56,18 +66,15 @@ export function RootSlot({ growth, open, onToggle }: { growth: RootGrowth; open:
   );
 }
 
-/** Fin de la période en clair, pour la bulle. */
-const endOf = (growth: RootGrowth, settings: RootSettings): { at: string; by: string; name: string; past: string } => {
-  const days = Math.max(1, Math.round(settings.periodDays));
-  if (days === 1) return { at: 'à minuit', by: "d'ici minuit", name: "Aujourd'hui", past: 'hier' };
-  if (days === 7) return { at: 'dimanche soir', by: "d'ici dimanche soir", name: 'Cette semaine', past: 'la semaine dernière' };
-  const last = new Date(growth.periodEndMs - 1).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-  return { at: `le ${last} au soir`, by: `d'ici le ${last} au soir`, name: 'Cette période', past: 'à la période passée' };
+/** Ce qu'une semaine manquée coûterait, en clair. */
+const lossText = (growth: RootGrowth): string => {
+  if (!isFinite(growth.lossStep) || growth.lossStep >= growth.level) return 'elle revient à sa graine';
+  return `elle recule de ${count(growth.lossStep, 'étape')}${growth.missedInRow > 0 ? ' de plus' : ''}`;
 };
 
-function RootBubble({ growth, settings, top, right, onClose }: {
+function RootBubble({ growth, goalMin, top, right, onClose }: {
   growth: RootGrowth;
-  settings: RootSettings;
+  goalMin: number;
   top: number;
   right: number;
   onClose: () => void;
@@ -88,17 +95,16 @@ function RootBubble({ growth, settings, top, right, onClose }: {
     };
   }, [onClose]);
 
-  const growthSteps = Math.max(1, Math.round(settings.growthPeriods));
-  const left = growthSteps - growth.level;
-  const end = endOf(growth, settings);
+  const left = growth.growthSteps - growth.level;
   const rootlets = Math.min(MAX_ROOTLETS, Math.floor(growth.minutes / ROOTLET_MINUTES));
+  const missing = minutesText(goalMin - growth.minutes);
   return (
     <div ref={ref} className="profile-root__bubble" role="status" style={{ top, right }}>
       <strong>Racine : {count(growth.level, 'étape')}</strong>
       <span className="profile-root__muted">
         {left <= 0
           ? "Tous les cadres sont entourés : elle s'épaissit et se ramifie."
-          : `Encore ${count(left, 'étape')} pour entourer tous les cadres.`}
+          : `Encore ${count(left, 'semaine')} ${plural(left, 'tenue')} pour entourer tous les cadres.`}
       </span>
       {growth.maxLevel > growth.level && (
         <span className="profile-root__muted">
@@ -106,39 +112,44 @@ function RootBubble({ growth, settings, top, right, onClose }: {
         </span>
       )}
       <span>
-        {end.name} : {minutesText(growth.minutes)} sur {minutesText(settings.goalMin)}
+        Cette semaine : {minutesText(growth.minutes)} sur {minutesText(goalMin)}
         {rootlets > 0 && ` · ${count(rootlets, 'radicelle')}`}
       </span>
       <span className="profile-root__bar"><span style={{ width: `${Math.round(growth.progress * 100)}%` }} /></span>
       <span className="profile-root__muted">
         {growth.held
-          ? `Objectif tenu : la racine gagne une étape ${end.at}.`
+          ? 'Objectif tenu : la racine gagne une étape dimanche soir.'
           : growth.level <= 0
-            ? `Sans ${minutesText(settings.goalMin - growth.minutes)} de plus ${end.by}, elle reste à sa graine.`
-            : `Sans ${minutesText(settings.goalMin - growth.minutes)} de plus ${end.by}, elle recule de ${count(Math.min(growth.level, growth.lossStep), 'étape')}.`}
+            ? `Sans ${missing} de plus d'ici dimanche soir, elle reste à sa graine.`
+            : `Sans ${missing} de plus d'ici dimanche soir, ${lossText(growth)}.`}
       </span>
-      {growth.losing && !growth.held && (
-        <span className="profile-root__muted">Elle a reculé {end.past} : ses feuilles pendent jusqu'à l'objectif tenu.</span>
+      {growth.losing && (
+        <span className="profile-root__muted">
+          {growth.missedInRow >= 2 ? `${count(growth.missedInRow, 'semaine')} manquées d'affilée` : 'Semaine dernière manquée'} : ses
+          feuilles sont tombées ; de nouvelles repoussent avec le temps de la semaine.
+        </span>
       )}
     </div>
   );
 }
 
 /** Ce qui se dessine hors animation. */
-const restFrame = (growth: RootGrowth, settings: RootSettings): RootFrame => ({
-  level: growth.level, maxLevel: growth.maxLevel, growthSteps: Math.max(1, Math.round(settings.growthPeriods)),
-  minutes: growth.minutes, wither: 0, progress: growth.progress, buds: growth.held, wilting: growth.losing ? 1 : 0,
+const restFrame = (growth: RootGrowth): RootFrame => ({
+  level: growth.level, maxLevel: growth.maxLevel, growthSteps: growth.growthSteps,
+  minutes: growth.minutes, wither: 0, progress: growth.progress, fallen: growth.losing ? 1 : 0,
 });
 
 /** L'état vu à la dernière visite, sur le dessin du moment ; celui-ci tel quel sans visite retenue. */
-const seenFrame = (rest: RootFrame, seen: LastSeen, settings: RootSettings): RootFrame => (seen.level === null ? rest : {
+const seenFrame = (rest: RootFrame, seen: LastSeen, goalMin: number, period: number): RootFrame => (seen.level === null ? rest : {
   ...rest, level: seen.level, maxLevel: Math.max(seen.level, rest.maxLevel), minutes: seen.minutes,
-  progress: Math.min(1, seen.minutes / Math.max(1, settings.goalMin)), buds: false,
+  progress: Math.min(1, seen.minutes / Math.max(1, goalMin)),
+  // Une semaine close depuis : ses feuilles ne tombent qu'en rejouant le recul.
+  fallen: seen.period === period ? rest.fallen : 0,
 });
 
-function ProfileRoot({ growth, settings, cardSelectors, ready, open, onClose }: {
+function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
   growth: RootGrowth;
-  settings: RootSettings;
+  goalMin: number;
   /** Cadres de la page, dans l'ordre ; ceux qui manquent sont sautés. */
   cardSelectors: readonly string[];
   /** Bibliothèque lue et fiches calculées : la racine peut rejouer ce qui a changé depuis la dernière visite. */
@@ -150,9 +161,9 @@ function ProfileRoot({ growth, settings, cardSelectors, ready, open, onClose }: 
   const modelRef = useRef<{ key: string; model: RootModel | null; width: number; height: number } | null>(null);
   const colorsRef = useRef<RootColors | null>(null);
   /** État vu à la dernière visite, relu une fois à l'ouverture ; `playedRef` : ce qui a changé depuis est rejoué. */
-  const [seenAtOpen] = useState(() => readStoredRecord(SEEN_NAMESPACE, SEEN_KEY, SEEN_DEFAULT));
+  const [seenAtOpen] = useState(readSeen);
   /** Dès le premier dessin, l'état vu (le nouveau niveau ne se montre qu'en y poussant). */
-  const frameRef = useRef<RootFrame>(seenFrame(restFrame(growth, settings), seenAtOpen, settings));
+  const frameRef = useRef<RootFrame>(seenFrame(restFrame(growth), seenAtOpen, goalMin, growth.periodIndex));
   /** Place de la bulle, sous le carré, calée sur son bord droit. */
   const [anchor, setAnchor] = useState({ top: 0, right: 0 });
   const playedRef = useRef(false);
@@ -221,14 +232,14 @@ function ProfileRoot({ growth, settings, cardSelectors, ready, open, onClose }: 
   // une fois ce qui a changé depuis cette visite ; il est alors retenu. L'animation vit avec l'effet : un nouveau rendu
   // (ou le double montage du mode strict) l'annule et la reprend.
   useEffect(() => {
-    const rest = restFrame(growth, settings);
+    const rest = restFrame(growth);
     const seen = playedRef.current || seenAtOpen.level === null ? null : { ...seenAtOpen, level: seenAtOpen.level };
     if (!ready) {
-      frameRef.current = seen === null ? rest : seenFrame(rest, seen, settings);
+      frameRef.current = seen === null ? rest : seenFrame(rest, seen, goalMin, growth.periodIndex);
       paint();
       return;
     }
-    remember({ level: growth.level, period: growth.periodIndex, minutes: growth.minutes });
+    remember({ rules: SEEN_RULES, level: growth.level, period: growth.periodIndex, minutes: growth.minutes });
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     const newPeriod = seen !== null && seen.period !== growth.periodIndex;
     if (seen === null || reduced || (!newPeriod && seen.minutes >= growth.minutes)) {
@@ -252,14 +263,13 @@ function ProfileRoot({ growth, settings, cardSelectors, ready, open, onClose }: 
           minutes: t < 2400 ? seen.minutes : growth.minutes * fresh,
           wither: t < 2400 ? Math.min(1, t / 1100) : 0,
           progress: t < 2400 ? 0 : growth.progress * fresh,
-          buds: false,
-          // La fleur d'hier se ferme ; si la période close est manquée, les feuilles tombent avec le recul.
-          wilting: rest.wilting * ease((t - 700) / 1700),
+          // La fleur de la semaine passée se fane avec les radicelles ; si elle est manquée, les feuilles tombent avec le recul.
+          fallen: rest.fallen * ease((t - 700) / 1700),
         };
         done = t >= 3200;
       } else {
         const minutes = seen.minutes + (growth.minutes - seen.minutes) * ease(t / 900);
-        frameRef.current = { ...rest, minutes, buds: false, progress: Math.min(1, minutes / Math.max(1, settings.goalMin)) };
+        frameRef.current = { ...rest, minutes, progress: Math.min(1, minutes / Math.max(1, goalMin)) };
         done = t >= 900;
       }
       if (done) {
@@ -272,12 +282,12 @@ function ProfileRoot({ growth, settings, cardSelectors, ready, open, onClose }: 
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [ready, growth, settings, seenAtOpen, remember, paint]);
+  }, [ready, growth, goalMin, seenAtOpen, remember, paint]);
 
   return (
     <>
       <canvas ref={canvasRef} className="profile-root" aria-hidden="true" />
-      {open && <RootBubble growth={growth} settings={settings} top={anchor.top} right={anchor.right} onClose={onClose} />}
+      {open && <RootBubble growth={growth} goalMin={goalMin} top={anchor.top} right={anchor.right} onClose={onClose} />}
     </>
   );
 }

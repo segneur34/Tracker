@@ -1,101 +1,92 @@
 import { describe, expect, it } from 'vitest';
-import { levelText, periodIndex, periodStart, rootGrowth, ROOT_DEFAULTS, type RootSession, type RootSettings } from './rootGrowth';
+import { levelText, periodIndex, periodStart, rootGrowth, ROOT_GOAL, ROOT_RULES, type RootSession } from './rootGrowth';
 
-/** Instant local : `day` d'octobre 2026, à `hour` heures. */
-const at = (day: number, hour = 10, minute = 0): number => new Date(2026, 9, day, hour, minute).getTime();
-const session = (day: number, minutes: number, hour = 10): RootSession => ({ startMs: at(day, hour), durationS: minutes * 60 });
-
-const DAILY: RootSettings = { goalMin: 15, periodDays: 1, growthPeriods: 15, lossPeriods: 30 };
-const WEEKLY: RootSettings = { goalMin: 15, periodDays: 7, growthPeriods: 26, lossPeriods: 6.5 };
+/** Instant local : `day` jours après le lundi 5 janvier 2026, à `hour` heures. */
+const at = (day: number, hour = 10, minute = 0): number => new Date(2026, 0, 5 + day, hour, minute).getTime();
+/** Lundi de la semaine `w` (0 : celle du 5 janvier 2026), à midi. */
+const week = (w: number, day = 0): number => at(w * 7 + day, 12);
+const session = (w: number, minutes: number, day = 0): RootSession => ({ startMs: at(w * 7 + day), durationS: minutes * 60 });
+/** Une session tenue (45 min) chaque semaine de `from` à `to` inclus. */
+const held = (from: number, to: number): RootSession[] => Array.from({ length: to - from + 1 }, (_, k) => session(from + k, 45));
+const GOAL = ROOT_GOAL.defaultMin;
 
 describe('périodes', () => {
-  it('une période d\'un jour va de minuit à minuit', () => {
-    const i = periodIndex(at(20, 23, 59), 1);
-    expect(periodIndex(at(21, 0, 1), 1)).toBe(i + 1);
-    expect(periodStart(i, 1)).toBe(new Date(2026, 9, 20).getTime());
-  });
-
   it('à 7 jours, la période est la semaine du lundi au dimanche', () => {
     // Le 19/10/2026 est un lundi, le 25 un dimanche.
-    const monday = periodIndex(at(19, 0, 5), 7);
-    expect(periodIndex(at(25, 23, 55), 7)).toBe(monday);
-    expect(periodIndex(at(26, 0, 5), 7)).toBe(monday + 1);
+    const monday = periodIndex(new Date(2026, 9, 19, 0, 5).getTime(), 7);
+    expect(periodIndex(new Date(2026, 9, 25, 23, 55).getTime(), 7)).toBe(monday);
+    expect(periodIndex(new Date(2026, 9, 26, 0, 5).getTime(), 7)).toBe(monday + 1);
     expect(periodStart(monday, 7)).toBe(new Date(2026, 9, 19).getTime());
   });
 
   it('le passage à l\'heure d\'hiver (25/10) ne décale pas les jours', () => {
-    const i = periodIndex(at(24, 12), 1);
-    expect(periodIndex(at(25, 12), 1)).toBe(i + 1);
-    expect(periodIndex(at(26, 0, 30), 1)).toBe(i + 2);
+    const i = periodIndex(new Date(2026, 9, 24, 12).getTime(), 1);
+    expect(periodIndex(new Date(2026, 9, 25, 12).getTime(), 1)).toBe(i + 1);
+    expect(periodIndex(new Date(2026, 9, 26, 0, 30).getTime(), 1)).toBe(i + 2);
   });
 });
 
 describe('rootGrowth', () => {
+  it('la règle du 25/10 : 26 semaines, −3, −6, la graine ; 45 min par défaut', () => {
+    expect(ROOT_RULES).toEqual({ periodDays: 7, growthSteps: 26, losses: [3, 6, Infinity] });
+    expect(ROOT_GOAL).toEqual({ defaultMin: 45, min: 15, max: 600 });
+  });
+
   it('sans session : la graine', () => {
-    const g = rootGrowth([], DAILY, at(22, 12));
-    expect(g).toMatchObject({ level: 0, maxLevel: 0, fraction: 0, minutes: 0, held: false, progress: 0 });
+    const g = rootGrowth([], GOAL, week(0));
+    expect(g).toMatchObject({ level: 0, maxLevel: 0, fraction: 0, minutes: 0, held: false, progress: 0, missedInRow: 0, lossStep: 3, losing: false });
   });
 
-  it('une étape par jour tenu ; la période en cours ne compte qu\'à sa fin', () => {
-    const g = rootGrowth([session(19, 20), session(20, 30), session(21, 16)], DAILY, at(22, 12));
-    expect(g.level).toBe(3);
-    expect(g.fraction).toBeCloseTo(3 / 15);
-    const today = rootGrowth([session(19, 20), session(20, 30), session(21, 16), session(22, 40, 8)], DAILY, at(22, 12));
-    expect(today.level).toBe(3);
-    expect(today).toMatchObject({ minutes: 40, held: true, progress: 1 });
+  it('une étape par semaine tenue ; la semaine en cours ne compte qu\'à sa fin', () => {
+    const g = rootGrowth(held(0, 2), GOAL, week(3));
+    expect(g).toMatchObject({ level: 3, growthSteps: 26 });
+    expect(g.fraction).toBeCloseTo(3 / 26);
+    const now = rootGrowth([...held(0, 2), session(3, 30)], GOAL, week(3, 2));
+    expect(now).toMatchObject({ level: 3, minutes: 30, held: false });
+    expect(now.progress).toBeCloseTo(30 / 45);
   });
 
-  it('l\'objectif se tient à plusieurs sessions dans la période', () => {
-    const g = rootGrowth([session(20, 8, 9), session(20, 8, 18)], DAILY, at(22, 12));
-    // Le 20 tenu (16 min), le 21 manqué : 1 − 0,5.
-    expect(g.level).toBe(0.5);
+  it('l\'objectif se tient à plusieurs sessions dans la semaine, du lundi au dimanche', () => {
+    expect(rootGrowth([session(0, 20, 0), session(0, 25, 6)], GOAL, week(1)).level).toBe(1);
+    expect(rootGrowth([session(0, 44)], GOAL, week(1)).level).toBe(0);
   });
 
-  it('sous l\'objectif, la période est manquée', () => {
-    const g = rootGrowth([session(20, 14)], DAILY, at(21, 12));
-    expect(g.level).toBe(0);
+  it('semaines manquées d\'affilée : −3, puis −6 de plus, puis la graine', () => {
+    const sessions = held(0, 19);
+    expect(rootGrowth(sessions, GOAL, week(20)).level).toBe(20);
+    expect(rootGrowth(sessions, GOAL, week(21))).toMatchObject({ level: 17, maxLevel: 20, missedInRow: 1, lossStep: 6, losing: true });
+    expect(rootGrowth(sessions, GOAL, week(22))).toMatchObject({ level: 11, missedInRow: 2, lossStep: Infinity, losing: true });
+    expect(rootGrowth(sessions, GOAL, week(23))).toMatchObject({ level: 0, maxLevel: 20, missedInRow: 3, losing: true });
+    // À la graine, plus rien à perdre.
+    expect(rootGrowth(sessions, GOAL, week(24))).toMatchObject({ level: 0, losing: false });
   });
 
-  it('un jour manqué recule d\'un trentième de tour (15 / 30 = 0,5 étape), jamais sous la graine', () => {
-    const sessions = [18, 19, 20, 21].map((d) => session(d, 20));
-    expect(rootGrowth(sessions, DAILY, at(22, 12)).level).toBe(4);
-    // Le 22 et le 23 manqués.
-    const later = rootGrowth(sessions, DAILY, at(24, 12));
-    expect(later).toMatchObject({ level: 3, maxLevel: 4, lossStep: 0.5 });
-    expect(rootGrowth(sessions, DAILY, at(31, 12)).level).toBe(0);
+  it('une semaine tenue remet le compte à zéro', () => {
+    // 10 tenues, 1 manquée (−3), 1 tenue, 1 manquée : de nouveau −3.
+    const sessions = [...held(0, 9), session(11, 45)];
+    expect(rootGrowth(sessions, GOAL, week(12))).toMatchObject({ level: 8, missedInRow: 0, lossStep: 3, losing: false });
+    expect(rootGrowth(sessions, GOAL, week(13))).toMatchObject({ level: 5, missedInRow: 1 });
   });
 
-  it('en train de tuer la racine : la dernière période close manquée, avec de quoi perdre', () => {
-    const sessions = [18, 19, 20, 21].map((d) => session(d, 20));
-    expect(rootGrowth(sessions, DAILY, at(22, 12)).losing).toBe(false);
-    expect(rootGrowth(sessions, DAILY, at(23, 12)).losing).toBe(true);
-    // Le 23 tenu : la racine repart, plus rien ne pend.
-    expect(rootGrowth([...sessions, session(23, 20)], DAILY, at(24, 12)).losing).toBe(false);
-    // Revenue à la graine : plus rien à perdre.
-    expect(rootGrowth(sessions, DAILY, at(31, 12))).toMatchObject({ level: 0, losing: false });
-  });
-
-  it('à la semaine, une semaine manquée coûte 4 étapes (26 / 6,5)', () => {
-    // Semaines du 28/09, du 05/10 et du 12/10 tenues, celle du 19/10 vide ; on est le lundi 26.
-    const sessions = [session(1, 20), session(7, 20), session(14, 20)];
-    const g = rootGrowth(sessions, WEEKLY, at(26, 12));
-    expect(g).toMatchObject({ level: 0, maxLevel: 3, lossStep: 4 });
-    expect(rootGrowth([...sessions, session(21, 20)], WEEKLY, at(26, 12)).level).toBe(4);
+  it('jamais sous la graine', () => {
+    expect(rootGrowth(held(0, 1), GOAL, week(3)).level).toBe(0);
+    expect(rootGrowth(held(0, 1), GOAL, week(3)).maxLevel).toBe(2);
   });
 
   it('au-delà du tour, la racine continue de compter (racine mûre)', () => {
-    const sessions = Array.from({ length: 20 }, (_, k) => session(2 + k, 20));
-    const g = rootGrowth(sessions, DAILY, at(22, 12));
-    expect(g.level).toBe(20);
-    expect(g.fraction).toBeCloseTo(20 / 15);
+    const g = rootGrowth(held(0, 29), GOAL, week(30));
+    expect(g.level).toBe(30);
+    expect(g.fraction).toBeCloseTo(30 / 26);
   });
 
   it('les sessions à venir sont ignorées', () => {
-    expect(rootGrowth([session(25, 30)], DAILY, at(22, 12)).level).toBe(0);
+    expect(rootGrowth([session(5, 45)], GOAL, week(2)).level).toBe(0);
   });
 
-  it('les valeurs d\'essai par défaut', () => {
-    expect(ROOT_DEFAULTS).toEqual(DAILY);
+  it('une règle passée en paramètre', () => {
+    const rules = { periodDays: 1, growthSteps: 10, losses: [1] };
+    const g = rootGrowth([0, 1, 2].map((d) => ({ startMs: at(d), durationS: 1200 })), 15, at(5, 12), rules);
+    expect(g).toMatchObject({ level: 1, maxLevel: 3, growthSteps: 10, lossStep: 1 });
   });
 });
 

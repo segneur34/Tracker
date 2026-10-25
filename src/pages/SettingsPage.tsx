@@ -18,7 +18,7 @@ import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
 import { RUNNER_NAME_MAX, runnerHeartRateZones, runnerHrSource, useRunnerProfile, type RunnerNumberField, type RunnerProfile } from '../hooks/useRunnerProfile';
-import { ROOT_DEFAULTS } from '../library/rootGrowth';
+import { ROOT_GOAL } from '../library/rootGrowth';
 import { zoneLabel } from '../components/heartRateColors';
 import { hrSourceLabel } from '../components/heartRateOrigin';
 import Button from '../components/ui/Button';
@@ -845,18 +845,9 @@ function SettingsPage() {
             <NumberField label="Économie de course" unit="ml O₂/kg/km" min={120} max={320} value={profile.economyMlKgKm} onCommit={profileField('economyMlKgKm')} placeholder="200"
               helpKey="pratiquant:economie" help="Oxygène pour courir 1 km sur le plat, donné par un test en laboratoire. Sans valeur, 200 : environ 1 kcal par kilo et par kilomètre." />
             <p className="ui-eyebrow" style={{ margin: '16px 0 8px' }}>Racine du Profil</p>
-            <NumberField label="Objectif d'une période" unit="min" min={1} max={600} value={profile.rootGoalMin} onCommit={profileField('rootGoalMin')}
-              placeholder={String(ROOT_DEFAULTS.goalMin)} helpKey="pratiquant:racine-objectif"
-              help="Temps d'activité, toutes activités confondues, qui fait tenir une période : à sa fin, la racine gagne une étape." />
-            <NumberField label="Durée d'une période" unit="jours" min={1} max={28} value={profile.rootPeriodDays} onCommit={profileField('rootPeriodDays')}
-              placeholder={String(ROOT_DEFAULTS.periodDays)} helpKey="pratiquant:racine-periode"
-              help="1 : chaque jour, de minuit à minuit ; 7 : la semaine, du lundi au dimanche. La période en cours ne compte qu'à sa fin ; son temps fait pousser les radicelles." />
-            <NumberField label="Tour complet en" unit="périodes tenues" min={1} max={200} value={profile.rootGrowthPeriods} onCommit={profileField('rootGrowthPeriods')}
-              placeholder={String(ROOT_DEFAULTS.growthPeriods)} helpKey="pratiquant:racine-tour"
-              help="Périodes tenues pour que la racine entoure tous les cadres du Profil ; au-delà, elle s'épaissit et se ramifie." />
-            <NumberField label="Tout perdre en" unit="périodes manquées" min={1} max={400} value={profile.rootLossPeriods} onCommit={profileField('rootLossPeriods')}
-              placeholder={String(ROOT_DEFAULTS.lossPeriods)} helpKey="pratiquant:racine-recul"
-              help="Une période manquée fait reculer la racine d'un tour divisé par ce nombre : avec 15 et 30, une demi-étape. La partie perdue reste dessinée sèche." />
+            <NumberField label="Objectif par semaine" unit="min" min={ROOT_GOAL.min} max={ROOT_GOAL.max} value={profile.rootWeeklyGoalMin} onCommit={profileField('rootWeeklyGoalMin')}
+              placeholder={String(ROOT_GOAL.defaultMin)} helpKey="pratiquant:racine-objectif"
+              help={`Temps d'activité, toutes activités confondues, à faire du lundi au dimanche (de ${ROOT_GOAL.min} min à ${ROOT_GOAL.max / 60} h) : la semaine tenue, la racine gagne une étape, et fait le tour du Profil en 26 semaines. Semaines manquées d'affilée : −3 étapes, puis −6, puis retour à la graine.`} />
           </div>
         )}
       </div>

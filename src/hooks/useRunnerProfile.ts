@@ -3,7 +3,7 @@ import { isActivityIconId, type ActivityIconId } from '../core/activityIcons';
 import type { Activity } from '../core/activities';
 import { heartRateZones, isValidThresholds, type HeartRateZones } from '../core/heartRate';
 import { getSportProfile, type HeartRateProfile } from '../core/sportProfiles';
-import { ROOT_DEFAULTS, type RootSettings } from '../library/rootGrowth';
+import { ROOT_GOAL } from '../library/rootGrowth';
 import { effectiveHrOffset } from './useSportSettings';
 import { readStoredRecord, useStoredRecord } from './useStoredRecord';
 
@@ -56,14 +56,8 @@ export interface RunnerProfile {
   hrZones: number[] | null;
   /** Économie de course sur le plat, en ml d'O₂ par kg et par km (test en laboratoire). */
   economyMlKgKm: number | null;
-  /** Racine du Profil (`library/rootGrowth.ts`) : minutes qui font tenir une période ; `null` : celles de `ROOT_DEFAULTS`. */
-  rootGoalMin: number | null;
-  /** Durée d'une période de la racine, en jours. */
-  rootPeriodDays: number | null;
-  /** Périodes tenues pour que la racine entoure tous les cadres. */
-  rootGrowthPeriods: number | null;
-  /** Périodes manquées pour qu'elle perde un tour complet. */
-  rootLossPeriods: number | null;
+  /** Racine du Profil (`library/rootGrowth.ts`) : objectif par semaine, en minutes ; `null` : `ROOT_GOAL.defaultMin`. */
+  rootWeeklyGoalMin: number | null;
 }
 
 export const EMPTY_RUNNER_PROFILE: RunnerProfile = {
@@ -80,10 +74,7 @@ export const EMPTY_RUNNER_PROFILE: RunnerProfile = {
   hrThresholds: null,
   hrZones: null,
   economyMlKgKm: null,
-  rootGoalMin: null,
-  rootPeriodDays: null,
-  rootGrowthPeriods: null,
-  rootLossPeriods: null,
+  rootWeeklyGoalMin: null,
 };
 
 /** Plages plausibles de chaque champ numérique. */
@@ -119,31 +110,19 @@ const BOUNDS: Record<NumberField, [number, number]> = {
   hrMax: [100, 250],
   hrRest: [25, 120],
   economyMlKgKm: [120, 320],
-  rootGoalMin: [1, 600],
-  rootPeriodDays: [1, 28],
-  rootGrowthPeriods: [1, 200],
-  rootLossPeriods: [1, 400],
+  rootWeeklyGoalMin: [ROOT_GOAL.min, ROOT_GOAL.max],
 };
 
 /**
- * Réglages de la racine du Profil, ceux de `ROOT_DEFAULTS` à défaut ; relus
- * avec contrôle (fichier de réglages importé) : une valeur hors plage est
- * ignorée, la durée d'une période et le tour se comptent en entiers.
+ * Objectif par semaine de la racine du Profil, `ROOT_GOAL.defaultMin` à défaut ;
+ * relu avec contrôle (fichier de réglages importé) : une valeur hors plage est
+ * ignorée. Les anciens réglages de la racine (période, tour, recul, objectif
+ * par période d'essai du 22/10) sont sans effet.
  */
-export const runnerRootSettings = (
-  profile: Partial<Pick<RunnerProfile, 'rootGoalMin' | 'rootPeriodDays' | 'rootGrowthPeriods' | 'rootLossPeriods'>>
-): RootSettings => {
-  const read = (field: 'rootGoalMin' | 'rootPeriodDays' | 'rootGrowthPeriods' | 'rootLossPeriods', fallback: number): number => {
-    const raw: unknown = profile[field];
-    const [lo, hi] = BOUNDS[field];
-    return typeof raw === 'number' && isFinite(raw) && raw >= lo && raw <= hi ? raw : fallback;
-  };
-  return {
-    goalMin: read('rootGoalMin', ROOT_DEFAULTS.goalMin),
-    periodDays: Math.round(read('rootPeriodDays', ROOT_DEFAULTS.periodDays)),
-    growthPeriods: Math.round(read('rootGrowthPeriods', ROOT_DEFAULTS.growthPeriods)),
-    lossPeriods: read('rootLossPeriods', ROOT_DEFAULTS.lossPeriods),
-  };
+export const runnerRootGoalMin = (profile: Partial<Pick<RunnerProfile, 'rootWeeklyGoalMin'>>): number => {
+  const raw: unknown = profile.rootWeeklyGoalMin;
+  const [lo, hi] = BOUNDS.rootWeeklyGoalMin;
+  return typeof raw === 'number' && isFinite(raw) && raw >= lo && raw <= hi ? raw : ROOT_GOAL.defaultMin;
 };
 
 /** Champs que le pop-up de l'accueil demande tant qu'ils manquent ; la FC max et la FC repos viennent des tests. */
