@@ -12,7 +12,10 @@ import {
 } from '../core/units';
 import { formatIntervalClock, workoutLabel, type IntervalWorkout } from '../recording/intervalTimer';
 import type { IntervalRep, IntervalSummary } from '../running/intervalStats';
-import type { ChartHoverEvent } from './chartHover';
+import { useChartZoom } from '../hooks/useChartZoom';
+import ChartReadout, { type Readout } from './ChartReadout';
+import { NO_TOOLTIP_CONTENT, hoveredRow, inChartView, type ChartHoverEvent } from './chartHover';
+import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
 import { HIGHLIGHT_PODIUM_COLORS } from './highlightColors';
 import { IconChevronRight } from './icons';
 import PanelTitle from './PanelTitle';
@@ -121,6 +124,66 @@ function RepGradientLegend({ count }: { count: number }) {
       <span aria-hidden="true" style={{ width: '48px', height: '6px', borderRadius: '3px', background: band }} />
       rép. {count}
     </span>
+  );
+}
+
+/** Ligne du profil d'une répétition : `t` en secondes depuis le départ, puis `mean`, `r<n>` et leur vitesse en m/s (`<clé>Ms`). */
+type ProfileRow = Record<string, number | null>;
+
+/**
+ * Profil superposé des répétitions d'une séance (25/10) : zoom (double-clic,
+ * zone tirée, deux doigts) et lecture au-dessus du graphe, comme les graphes
+ * sur la trace, mais sans « Sur la carte » : les courbes partent toutes du
+ * départ de leur répétition, aucune n'est un tronçon de la trace. La lecture
+ * donne la moyenne ; les répétitions, trop nombreuses pour une ligne, se
+ * lisent sur leurs traits.
+ */
+function IntervalProfileChart({ data, spanS, launchS, reps, speedAxis, formatMs, resetKey }: {
+  data: ProfileRow[];
+  /** Durée couverte par le profil, en secondes. */
+  spanS: number;
+  /** Fin de la mise en vitesse moyenne, en secondes, ou `null`. */
+  launchS: number | null;
+  reps: IntervalRep[];
+  speedAxis: ReactNode;
+  formatMs: (ms: number) => string;
+  /** Change avec la séance : le zoom revient à tout voir. */
+  resetKey: string;
+}) {
+  const zoom = useChartZoom({ min: 0, max: spanS }, resetKey);
+  const [hovered, setHovered] = useState<ProfileRow | null>(null);
+  const onHover = (e: ChartHoverEvent) => setHovered(hoveredRow(e, data));
+  const t = hovered?.t ?? null;
+  const meanMs = hovered?.meanMs ?? null;
+  const readout: Readout | null = t !== null && inChartView(zoom.view, t)
+    ? { values: [{ text: `Moyenne ${meanMs !== null ? formatMs(meanMs) : '—'}`, color: MEAN_COLOR }], at: `${formatIntervalClock(t)} après le départ` }
+    : null;
+  return (
+    <>
+      <ChartReadout line readout={readout} />
+      <ZoomableChart zoom={zoom} onLeave={() => setHovered(null)} style={{ width: '100%', height: `${PROFILE_HEIGHT_PX}px` }}>
+        <ResponsiveContainer>
+          <ComposedChart data={data} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+            <ChartZoomProbe />
+            <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+            <XAxis dataKey="t" type="number" allowDataOverflow domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : [0, spanS]}
+              ticks={zoom.view ? niceTicks(zoom.view) : undefined}
+              tickFormatter={(v: number) => formatIntervalClock(v)} tick={{ fill: '#555', fontSize: 11 }} />
+            {speedAxis}
+            <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
+            {reps.map((r, i) => (
+              <Line key={r.rep} type="monotone" name={`Rép. ${r.rep}`} dataKey={`r${r.rep}`} stroke={repColor(i, reps.length)}
+                strokeWidth={1.5} dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} />
+            ))}
+            <Line type="monotone" name="Moyenne" dataKey="mean" stroke={MEAN_COLOR} strokeWidth={3} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
+            {launchS !== null && launchS > 0 && (
+              <ReferenceLine x={launchS} stroke={TREND_COLOR} strokeDasharray="4 3"
+                label={{ value: 'lancé', position: 'insideTopLeft', fill: TREND_COLOR, fontSize: 11 }} />
+            )}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </ZoomableChart>
+    </>
   );
 }
 
@@ -497,26 +560,8 @@ function IntervalAnalysis({
           <div key={seriesIndex} style={{ marginBottom: '10px' }}>
             {seriesTitle(s, seriesIndex, true)}
             {data.length > 1 ? (
-              <div style={{ width: '100%', height: `${PROFILE_HEIGHT_PX}px` }}>
-                <ResponsiveContainer>
-                  <ComposedChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                    <XAxis dataKey="t" type="number" domain={[0, length * stepS]}
-                      tickFormatter={(v: number) => formatIntervalClock(v)} tick={{ fill: '#555', fontSize: 11 }} />
-                    {speedAxis(domain)}
-                    <Tooltip formatter={speedFormatter} labelFormatter={(l) => `${formatIntervalClock(Number(l))} après le départ`} contentStyle={chartTooltipStyle} />
-                    {s.reps.map((r, i) => (
-                      <Line key={r.rep} type="monotone" name={`Rép. ${r.rep}`} dataKey={`r${r.rep}`} stroke={repColor(i, s.reps.length)}
-                        strokeWidth={1.5} dot={false} activeDot={false} connectNulls={false} tooltipType="none" isAnimationActive={false} />
-                    ))}
-                    <Line type="monotone" name="Moyenne" dataKey="mean" stroke={MEAN_COLOR} strokeWidth={3} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
-                    {launch !== null && launch > 0 && (
-                      <ReferenceLine x={launch} stroke={TREND_COLOR} strokeDasharray="4 3"
-                        label={{ value: 'lancé', position: 'insideTopLeft', fill: TREND_COLOR, fontSize: 11 }} />
-                    )}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
+              <IntervalProfileChart data={data} spanS={length * stepS} launchS={launch} reps={s.reps} speedAxis={speedAxis(domain)}
+                formatMs={(ms) => formatSpeed(ms, speedUnit)} resetKey={`${seriesIndex}-${s.reps.length}-${length}`} />
             ) : (
               <div style={{ color: 'var(--muted)' }}>Répétitions trop courtes pour un profil.</div>
             )}

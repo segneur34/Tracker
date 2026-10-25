@@ -73,7 +73,11 @@ const openVoile = () => evaluate(`(() => {
       const card = [...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent.trim() === 'Voile');
       if (!card) return r('carte absente');
       card.querySelector('.settings-activity__toggle').click();
-      r('ok');
+      // Parties de la carte (affichage, onglet analyse…) repliées au départ (21/10) : toutes ouvertes.
+      setTimeout(() => {
+        card.querySelectorAll('.settings-part__toggle[aria-expanded="false"]').forEach((b) => b.click());
+        setTimeout(() => r('ok'), 300);
+      }, 300);
     }, 300);
   }, 300));
 })()`);
@@ -101,8 +105,8 @@ console.log('carte Voile :', await openVoile());
 await wait(500);
 let list = await rows();
 const labels = list.map((r) => r.label);
-const scaleAt = labels.indexOf('Taille du texte');
-check('Foil puis Sauts sous « Taille du texte »', labels[scaleAt + 1] === 'Foil' && labels[scaleAt + 2] === 'Sauts', labels.slice(scaleAt, scaleAt + 4).join(' | '));
+// « Taille du texte » retirée le 09/10 : Foil, puis Sauts plus bas.
+check('Foil puis Sauts', labels.indexOf('Foil') >= 0 && labels.indexOf('Sauts') > labels.indexOf('Foil'), labels.join(' | '));
 check('Foil coché d\'office (wingfoil)', list.find((r) => r.label === 'Foil')?.checked === true);
 check('Sauts décochés, sans sous-option', list.find((r) => r.label === 'Sauts')?.checked === false && !list.some((r) => r.sub));
 
@@ -294,6 +298,27 @@ console.log('comparer :', await evaluate(`(() => {
 await wait(600);
 // Seule courbe de la page à ce moment : les onglets à graphes sont fermés.
 check('deux courbes comparées', await evaluate(`[...document.querySelectorAll('.recharts-line path')].map((p) => p.getAttribute('stroke')).join(',')`) === '#1565c0,#ef6c00');
+// Courbe zoomable et lue au-dessus (lot 2 des demandes du 24/10) : survol, puis double-clic.
+const curvePoint = await evaluate(`(async () => {
+  const c = document.getElementById('sailing-jump-curve')?.closest('.an-carte-panels > *')?.querySelector('.zoom-chart');
+  if (!c) return null;
+  c.scrollIntoView({ block: 'center' });
+  await new Promise((r) => setTimeout(r, 300));
+  const r = (c.querySelector('.recharts-cartesian-grid') ?? c).getBoundingClientRect();
+  return { x: r.left + r.width * 0.4, y: r.top + r.height / 2 };
+})()`);
+const curveMouse = (type, clickCount = 1) => send('Input.dispatchMouseEvent', { type, x: curvePoint.x, y: curvePoint.y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount });
+if (curvePoint) {
+  await curveMouse('mouseMoved');
+  await wait(300);
+  const curveRead = await evaluate(`document.getElementById('sailing-jump-curve')?.closest('.an-carte-panels > *')?.querySelector('[data-chart-readout]')?.textContent.trim()`);
+  check('courbe : lecture au-dessus, sans bulle', /^n° \d : [\d.—]+( m)? · n° \d : [\d.—]+( m)? · [\d.]+ s depuis le décollage$/.test(curveRead ?? '')
+    && await evaluate(`[...document.querySelectorAll('.recharts-tooltip-wrapper')].every((w) => w.textContent.trim() === '')`), curveRead);
+  for (const n of [1, 2]) { await curveMouse('mousePressed', n); await curveMouse('mouseReleased', n); }
+  await wait(600);
+  const curveButtons = await evaluate(`[...(document.getElementById('sailing-jump-curve')?.closest('.an-carte-panels > *')?.querySelectorAll('.zoom-chart__actions button') ?? [])].map((b) => b.textContent.trim()).join(' | ')`);
+  check('courbe : double-clic qui zoome, « Tout voir » sans « Sur la carte »', curveButtons === 'Tout voir', curveButtons);
+} else check('courbe zoomable', false, 'absente');
 const withJumps = await evaluate(`(async () => JSON.parse(await (await (await ${sessionsDir}.getFileHandle(${JSON.stringify((gpxName ?? '').replace(/\.gpx$/, '.json'))})).getFile()).text()))()`);
 check('fiche : sauts rangés', withJumps?.jumps?.jumps?.length === 2, JSON.stringify(withJumps?.jumps?.jumps?.map((j) => j.heightM)));
 await shoot('sauts-onglet');

@@ -68,7 +68,7 @@ import {
   DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
   isInverseUnit, toDisplayDistance, toDisplaySpeed,
 } from '../core/units';
-import { useChartZoom } from '../hooks/useChartZoom';
+import { useChartZoom, type ChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { useSessionDraft } from '../hooks/useSessionDraft';
@@ -651,6 +651,8 @@ function LandModule({ family }: { family: LandFamily }) {
   const trackDist = useMemo(() => cumulative.cumDist.map((m) => toDisplayDistance(m, distanceUnit)), [cumulative, distanceUnit]);
   /** Zoom des graphes de vitesse et d'altitude, qui partagent leur axe ; « tout voir » à chaque session. */
   const zoom = useChartZoom(trackDist.length > 1 ? { min: trackDist[0], max: trackDist[trackDist.length - 1] } : null, gpx.sessionKey);
+  /** Zoom du profil de « général », à part : zoomer « général » ne zoome pas « graphiques ». */
+  const profileZoom = useChartZoom(trackDist.length > 1 ? { min: trackDist[0], max: trackDist[trackDist.length - 1] } : null, gpx.sessionKey);
   /** Zoom de la courbe de l'onglet « cardio », sur le temps : tenu ici pour « Sur la carte ». */
   const cardioZoom = useChartZoom(
     trackMinutes.length > 1 ? { min: trackMinutes[0], max: trackMinutes[trackMinutes.length - 1] } : null,
@@ -668,6 +670,7 @@ function LandModule({ family }: { family: LandFamily }) {
     highlight,
     points: gpx.track,
     charts: {
+      general: { zoom: profileZoom, axis: trackDist },
       graphiques: { zoom, axis: trackDist },
       zones: { zoom, axis: trackDist },
       energie: { zoom: energyZoom, axis: trackMinutes },
@@ -713,10 +716,11 @@ function LandModule({ family }: { family: LandFamily }) {
     () => gradeGradientStops(chartData.filter((row) => row.altitude !== null), gradeRange),
     [chartData, gradeRange]
   );
-  /** Profil compact de l'onglet « général » : toute la trace, sans zoom, au plus `PROFILE_MAX_POINTS` lignes. */
+  /** Profil compact de l'onglet « général » : sa plage zoomée, au plus `PROFILE_MAX_POINTS` lignes. */
   const profileRows = useMemo((): ElevationProfileRow[] => {
     if (!open.general || !stats?.hasElevation || gpx.track.length < 2) return [];
-    return sampledIndices(0, gpx.track.length - 1, PROFILE_MAX_POINTS).map((i) => {
+    const [first, last] = visibleIndexRange(trackDist, profileZoom.view);
+    return sampledIndices(first, last, PROFILE_MAX_POINTS).map((i) => {
       const altitude = elevation.smoothed[i];
       return {
         index: i,
@@ -725,7 +729,7 @@ function LandModule({ family }: { family: LandFamily }) {
         grade: isFinite(grades[i]) ? grades[i] : null,
       };
     });
-  }, [open.general, stats, gpx.track, elevation, trackDist, grades]);
+  }, [open.general, stats, gpx.track, elevation, trackDist, grades, profileZoom.view]);
   const profileStops = useMemo(
     () => gradeGradientStops(profileRows.filter((row) => row.altitude !== null), gradeRange),
     [profileRows, gradeRange]
@@ -825,9 +829,9 @@ function LandModule({ family }: { family: LandFamily }) {
       }
     }
   };
-  /** Lecture des graphes sur la distance (`ChartReadout`) au point survolé, s'il est dans la plage zoomée. */
-  const graphReadout = (keys: readonly GraphFold[]): Readout | null =>
-    hoveredIndex !== null && trackDist[hoveredIndex] !== undefined && inChartView(zoom.view, trackDist[hoveredIndex])
+  /** Lecture des graphes sur la distance (`ChartReadout`) au point survolé, s'il est dans la plage zoomée de `chartZoom`. */
+  const graphReadout = (keys: readonly GraphFold[], chartZoom: ChartZoom = zoom): Readout | null =>
+    hoveredIndex !== null && trackDist[hoveredIndex] !== undefined && inChartView(chartZoom.view, trackDist[hoveredIndex])
       ? { values: keys.map((key) => graphValue(key, hoveredIndex)), at: distanceLabel(trackDist[hoveredIndex]) }
       : null;
   /** Lecture du graphe d'énergie : puissance ou cumul, puis vitesse et pente. */
@@ -1112,8 +1116,17 @@ function LandModule({ family }: { family: LandFamily }) {
   );
 
   /** Graphes de l'onglet d'où vient « Sur la carte », sous la carte en plein écran (téléphone). */
+  /** Profil d'altitude de « général », dans son panneau ou sous la carte en plein écran (`gradientSuffix`). */
+  const generalProfile = (gradientSuffix: string) => (
+    <ElevationProfileMini rows={profileRows} stops={profileStops} gradientId={`${profileGradientId}${gradientSuffix}`} distanceSymbol={distanceSymbol}
+      zoom={profileZoom} readout={graphReadout(['altitude'], profileZoom)}
+      onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('general')} />
+  );
+
   const companionCharts = (panel: LandTab | null): ReactNode => {
     switch (panel) {
+      case 'general':
+        return profileRows.length > 1 ? generalProfile('-plein') : null;
       case 'graphiques':
         return graphStack('-plein');
       case 'zones':
@@ -1230,10 +1243,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={() => toggle('general')} />
                 </div>
                 <GeneralStats stats={overviewStats} />
-                {profileRows.length > 1 && (
-                  <ElevationProfileMini rows={profileRows} stops={profileStops} gradientId={profileGradientId} distanceSymbol={distanceSymbol}
-                    onHoverIndex={hoverIndex} onLeave={clearHover} />
-                )}
+                {profileRows.length > 1 && generalProfile('')}
                 {!stats.hasElevation && (
                   <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
                 )}

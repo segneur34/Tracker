@@ -71,7 +71,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - une séance de 2 × 0:05 / 0:05 gardée sous un nom, retrouvée après rechargement ;
   - le compteur seul : les phases à l'écran, et les sons relevés (« [bips] ») comparés à leur heure attendue ;
   - pause, reprise, « Passer », puis un rechargement en pleine séance : séance reprise, bandeau sur /course, arrêt ;
-  - le compteur pendant un enregistrement en rejeu ×1 : répétitions rangées dans la fiche, onglet « fractionné » de l'analyse (synthèse, tableau, graphes d'évolution et de profil) et « Voir », « 2 rép. » dans la bibliothèque ;
+  - le compteur pendant un enregistrement en rejeu ×1 : répétitions rangées dans la fiche, onglet « fractionné » de l'analyse (synthèse, tableau, graphes d'évolution et de profil ; profil lu au-dessus, sans bulle, double-clic qui zoome, « Tout voir » sans « Sur la carte ») et « Voir », « 2 rép. » dans la bibliothèque ;
   - une séance sans compteur importée, 8 efforts d'une minute : répétitions retrouvées dans la vitesse ; seuil d'effort imposé dans l'onglet réglages, trop haut (aucun effort) puis plus bas, enregistré dans la fiche et relu ; retour au seuil tiré de la session. Ce GPX passe par la page, dans un `File` : le Chrome sans fenêtre peut refuser de lire le dossier de travail (`NotReadableError`) ;
   - le groupe dans Réglages, sur l'accueil et dans la barre du haut, son absence en planification, la page à 390 px sans débordement.
 
@@ -145,13 +145,13 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - des activités de la version 3 au lancement : le fichier de l'appareil passe aux nouvelles couleurs sans changer de date ;
   - « Importer un fichier de réglages » : un JSON quelconque et le fichier de l'appareil refusés ; celui d'une tablette rangé sous son nom, reprise refusée puis faite depuis la liste.
 - `sauts.mjs <port> [<dossier des captures>]` : sauts en voile et case « Foil » (point 91), sur un profil neuf, sans réseau. Le script fabrique dans la page une session de voile et ses capteurs (`.imu`, par l'encodeur de l'application). Il vérifie :
-  - dans Réglages, « Foil » et « Sauts » sous « Taille du texte », leurs sous-options, relus après rechargement ;
+  - dans Réglages, « Foil » puis « Sauts » (parties de la carte ouvertes), leurs sous-options, relus après rechargement ;
   - l'import d'une session avec ses capteurs : `.imu` rangé à côté du GPX ;
   - le foil de l'activité, puis celui de la session : « Ratio de navigation » ou « Ratio de vol », champs Foil et Mât ;
-  - l'onglet « sauts » : chiffres, podium, tableau et son tri, courbe, « Voir », « Détail », comparaison, sauts rangés dans la fiche, sur ordinateur et à 390×844 ;
+  - l'onglet « sauts » : chiffres, podium, tableau et son tri, courbe (lue au-dessus, double-clic qui zoome, « Tout voir » sans « Sur la carte »), « Voir », « Détail », comparaison, sauts rangés dans la fiche, sur ordinateur et à 390×844 ;
   - l'absence de « Mesurer les sauts » dans le navigateur, et la suppression de la session avec son `.imu`.
 
-  La partie Réglages est périmée depuis le 09/10 : elle cherche « Taille du texte », retiré, et la carte de l'activité par son nom, qui disparaît quand la carte est ouverte (voir `pumping.mjs`). Le foil de la session échoue à sa suite ; l'onglet « sauts » et le reste passent.
+  La partie Réglages reste périmée depuis les pré-réglages du 21/10 : les sauts y sont cochés d'office et la carte retient son état, si bien que les cases s'inversent et la relecture ne retrouve pas la carte. Le foil de la session échoue à sa suite ; l'onglet « sauts » et le reste passent (le 25/10, sur une copie sans la partie Réglages).
 - `pumping.mjs <port> [<dossier des captures>]` : pumping foil en surf (point 104), sur un profil neuf, sans réseau, serveur de développement (le script importe `/src/...` dans la page). Le script fabrique dans la page une session de surf foil de quatre vols et ses capteurs (`core/imuSynthetic.ts` : chocs de l'eau hors des vols, pumping à 1,5 Hz en vol), et vérifie :
   - dans Réglages, la case « Pumping foil » de Surf foil (pas de Surf), l'aide du seuil de vol, le résumé de la carte repliée ;
   - l'import de la session avec ses capteurs, Foil et Pumping cochés pour la session, l'onglet « vols » : coups, fréquence vers 90 /min, distance par coup, podium des 3 plus longs vols avec décollage, « Tous les vols (4) » replié puis déplié, « Voir » ;
@@ -296,7 +296,8 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 - `zoom-carte.mjs <port> [<dossier des captures>]` : graphe zoomé vu sur la carte (lot 2 des demandes du 23/10), sur un profil neuf, sans réseau, environ 2 min 30. Il vérifie :
   - course, voile et surf : la valeur lue au-dessus du graphe sans bulle ni décalage ; le double-clic qui zoome ×2 autour du point ; « Sur la carte » qui allume le tronçon en violet et cadre la carte, mis à jour au zoom suivant, effacé par « Tout voir » ou la fermeture de l'onglet ;
   - les onglets cardio, énergie et zones de pente ;
-  - à 390 × 844, au doigt : double toucher, plein écran carte + graphes quand la carte est hors de vue, cadrage sur place sinon.
+  - le profil d'altitude de « général » (lot 2 du 24/10) : nom et lecture, double-clic, « Sur la carte », zoom à part de « graphiques » ; boutons du zoom à 24 px ; titres à 13 px et noms des graphes à 10 px ;
+  - à 390 × 844, au doigt : double toucher, plein écran carte + graphes quand la carte est hors de vue (depuis « graphiques » et depuis « général »), cadrage sur place sinon.
 - `test-fcmax.mjs <port> [<dossier des captures>]` : test de FC max de l'Entraînement (lot B du chantier du 24/10), sur un profil neuf (un second passage sur le même profil échoue : la FC max retenue change les zones), sans réseau. Il vérifie :
   - la tuile « Tests », la liste des tests, la page du protocole (déroulé, bips, graphique annoté à deux graphes, réglages) ; l'échauffement réglé à 3 min, retenu après rechargement ;
   - « Lancer » : Enregistrer ouvert prêt (Entraînement › Tests › FC max), sans compteur, lien vers le protocole ; le type Fractionné rend le compteur ; la case « FC repos » qui mène à sa page ;

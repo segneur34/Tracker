@@ -5,6 +5,14 @@
    tourné, la carte à gauche (fin du fichier). Les chiffres de la session
    sont dans l'onglet « général » de chaque module (`an-sheet__stats--always`). */
 
+/* Dans les analyses, 2 px sous la taille des autres pages (demande du 24/10) : titres des panneaux
+   (`PanelTitle`) et noms des graphes (`ChartFold`, `ChartReadout`). La carte en plein écran est dans la page ;
+   Statistiques, qui reprend la disposition, garde les siennes. */
+.an-page:not(.stats-page) {
+  --panel-title-size: var(--text-s);
+  --chart-name-size: var(--text-2xs);
+}
+
 .an-sheet__stats {
   display: none;
 }

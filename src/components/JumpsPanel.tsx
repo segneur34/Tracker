@@ -3,7 +3,11 @@ import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Too
 import { JUMP_DOUBT_LABEL, type SessionJump } from '../core/jumps';
 import { formatShortDistance, formatSpeed, formatTimeOfDay, type DistanceUnit, type SpeedUnit } from '../core/units';
 import type { JumpsStatus } from '../hooks/useSessionJumps';
-import type { ChartHoverEvent } from './chartHover';
+import { niceTicks } from '../core/chartZoom';
+import { useChartZoom } from '../hooks/useChartZoom';
+import ChartReadout, { type Readout } from './ChartReadout';
+import { NO_TOOLTIP_CONTENT, hoveredRow, inChartView, type ChartHoverEvent } from './chartHover';
+import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 import PanelTitle from './PanelTitle';
 import ResizablePanel from './ResizablePanel';
@@ -83,6 +87,76 @@ const curvePoints = (j: SessionJump): Map<number, number> => {
   j.curve.heightsM.forEach((h, k) => points.set(Math.round((j.curve.startS + k * j.curve.stepS) * 100), h));
   return points;
 };
+
+/** Ligne de la courbe : `t` en secondes depuis le décollage, la hauteur de chaque saut, le point de trace. */
+interface CurveRow {
+  t: number;
+  premier: number | null;
+  second: number | null;
+  index: number;
+}
+
+/**
+ * Courbe d'un saut, ou de deux calés sur leur décollage (25/10) : zoom
+ * (double-clic, zone tirée, deux doigts) et lecture au-dessus du graphe ; le
+ * survol déplace le repère sur la carte. Pas de « Sur la carte » : « Voir »
+ * y montre déjà le saut.
+ */
+function JumpCurveChart({ rows, jumps, numbers, onCurveHover, onCurveLeave }: {
+  rows: CurveRow[];
+  /** Le saut de la courbe, et celui qu'on lui compare. */
+  jumps: SessionJump[];
+  /** Numéro de chaque saut dans la séance. */
+  numbers: number[];
+  onCurveHover: (e: ChartHoverEvent) => void;
+  onCurveLeave: () => void;
+}) {
+  const full = rows.length > 1 ? { min: rows[0].t, max: rows[rows.length - 1].t } : null;
+  const zoom = useChartZoom(full, jumps.map((j) => j.takeoffMs).join('-'));
+  const [hovered, setHovered] = useState<CurveRow | null>(null);
+  const onHover = (e: ChartHoverEvent) => {
+    setHovered(hoveredRow(e, rows));
+    onCurveHover(e);
+  };
+  const readout: Readout | null = hovered && inChartView(zoom.view, hovered.t)
+    ? {
+      values: jumps.map((_, k) => {
+        const h = k === 0 ? hovered.premier : hovered.second;
+        return { text: `n° ${numbers[k]} : ${h === null ? '—' : `${Math.round(h * 100) / 100} m`}`, color: CURVE_COLORS[k] };
+      }),
+      at: `${hovered.t} s depuis le décollage`,
+    }
+    : null;
+  return (
+    <>
+      <ChartReadout line readout={readout} />
+      <ZoomableChart zoom={zoom} style={{ height: `${CURVE_HEIGHT_PX}px` }} onLeave={() => {
+        setHovered(null);
+        onCurveLeave();
+      }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }} onMouseMove={onHover} onTouchMove={onHover}>
+            <ChartZoomProbe />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--line-soft)" />
+            <XAxis dataKey="t" type="number" allowDataOverflow domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
+              ticks={zoom.view ? niceTicks(zoom.view) : undefined}
+              tickFormatter={(v: number) => `${parseFloat(v.toFixed(2))} s`} tick={{ fontSize: 11 }} />
+            <YAxis width={42} tickFormatter={(v: number) => `${Math.round(v * 10) / 10} m`} tick={{ fontSize: 11 }} />
+            <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
+            <ReferenceLine y={0} stroke="var(--line-strong)" />
+            <ReferenceLine x={0} stroke="var(--muted)" strokeDasharray="4 3" label={{ value: 'décollage', fontSize: 11, position: 'insideTopLeft' }} />
+            {jumps.map((j, k) => (
+              <ReferenceLine key={j.takeoffMs} x={Math.round(j.flightS * 100) / 100} stroke={CURVE_COLORS[k]} strokeDasharray="4 3"
+                label={k === 0 ? { value: 'atterrissage', fontSize: 11, position: 'insideTopRight' } : undefined} />
+            ))}
+            <Line type="monotone" dataKey="premier" stroke={CURVE_COLORS[0]} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
+            {jumps.length > 1 && <Line type="monotone" dataKey="second" stroke={CURVE_COLORS[1]} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />}
+          </LineChart>
+        </ResponsiveContainer>
+      </ZoomableChart>
+    </>
+  );
+}
 
 function JumpsPanel({
   status, error, jumps, hiddenCount, minHeightM, thresholdLabel, speedUnit, distanceUnit, open, onToggle,
@@ -282,26 +356,8 @@ function JumpsPanel({
           </span>
         ))}
       </div>
-      <div style={{ height: `${CURVE_HEIGHT_PX}px` }} onMouseLeave={onCurveLeave}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }} onMouseMove={onCurveHover(rows)}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--line-soft)" />
-            <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(v: number) => `${v} s`} tick={{ fontSize: 11 }} />
-            <YAxis width={42} tickFormatter={(v: number) => `${Math.round(v * 10) / 10} m`} tick={{ fontSize: 11 }} />
-            <Tooltip
-              formatter={(value, name) => [`${value} m`, name === 'premier' ? `n° ${order.get(first.takeoffMs)}` : `n° ${second ? order.get(second.takeoffMs) : ''}`]}
-              labelFormatter={(label) => `${label} s depuis le décollage`} contentStyle={{ fontSize: 'var(--text-xs)' }} />
-            <ReferenceLine y={0} stroke="var(--line-strong)" />
-            <ReferenceLine x={0} stroke="var(--muted)" strokeDasharray="4 3" label={{ value: 'décollage', fontSize: 11, position: 'insideTopLeft' }} />
-            {shown.map((j, k) => (
-              <ReferenceLine key={j.takeoffMs} x={Math.round(j.flightS * 100) / 100} stroke={CURVE_COLORS[k]} strokeDasharray="4 3"
-                label={k === 0 ? { value: 'atterrissage', fontSize: 11, position: 'insideTopRight' } : undefined} />
-            ))}
-            <Line type="monotone" dataKey="premier" stroke={CURVE_COLORS[0]} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
-            {second && <Line type="monotone" dataKey="second" stroke={CURVE_COLORS[1]} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+      <JumpCurveChart rows={rows} jumps={shown} numbers={shown.map((j) => order.get(j.takeoffMs) ?? 0)}
+        onCurveHover={onCurveHover(rows)} onCurveLeave={onCurveLeave} />
       <div style={noteStyle}>
         Hauteur du téléphone au-dessus de son niveau au décollage. Les deux sauts comparés partent du même instant.
       </div>

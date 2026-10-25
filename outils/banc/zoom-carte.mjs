@@ -9,10 +9,12 @@
 //     3 km), un second à 1,35 km (1,5 et 2 km) ; « Sur la carte » et « Tout voir » paraissent ; « Sur la carte »
 //     allume le tronçon en violet et cadre la carte dessus, ramenée à l'écran ; un nouveau zoom met le violet à jour
 //     sans recadrer ; « Tout voir » l'efface, et il ne revient pas au zoom suivant ; fermer l'onglet l'efface aussi ;
-//  3. course : « Sur la carte » des onglets cardio, énergie et zones de pente ;
+//  3. course : « Sur la carte » des onglets cardio, énergie et zones de pente ; profil d'altitude de « général »
+//     (24/10) : nom et lecture, double-clic, « Sur la carte », zoom à part de « graphiques », boutons du zoom à 24 px,
+//     titres à 13 px et noms des graphes à 10 px ;
 //  4. voile (vitesse, vent) et surf : lecture, double-clic, « Sur la carte » ;
 //  5. à 390×844, au doigt : double toucher qui zoome ; carte hors de vue : « Sur la carte » ouvre le plein écran
-//     carte + graphes, × le ferme ; carte entière à l'écran (« général » replié) : elle se cadre sur place.
+//     carte + graphes, × le ferme ; de même depuis le profil de « général » ; carte entière à l'écran (« général » replié) : elle se cadre sur place.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -292,6 +294,32 @@ for (const [tab, title] of [['cardio', 'Cardio'], ['énergie', 'Énergie'], ['zo
   await wait(600);
 }
 
+// --- 3 b. Course : profil d'altitude de « général » (lot 2 des demandes du 24/10) ---
+check(`général : graduations de départ (${await ticks('Général', 0)})`, (await ticks('Général', 0)) === '0 km | 2 km | 4 km');
+await hover('Général', 0, 0.5);
+const generalRead = await readouts('Général');
+check(`général : nom et lecture au-dessus du profil (${generalRead})`, /^Altitude\d+ m, pente -?\d+ % · [\d.]+ km$/.test(generalRead));
+check(`général : aucune bulle (« ${await tooltipText()} »)`, (await tooltipText()) === '');
+await doubleClick('Général', 0, 0.25);
+check(`général : zoom ×2 autour du point visé (${await ticks('Général', 0)})`, (await ticks('Général', 0)) === '1 km | 2 km | 3 km');
+check(`général : « Sur la carte » et « Tout voir » (${await zoomButtons('Général', 0)})`, (await zoomButtons('Général', 0)) === 'Sur la carte | Tout voir');
+const buttonBox = await evaluate(`(() => { const b = ${CHART('Général', 0)}?.querySelector('.zoom-chart__actions button'); if (!b) return null; const s = getComputedStyle(b); return { h: Math.round(b.getBoundingClientRect().height), font: s.fontSize }; })()`);
+check(`boutons du zoom 20 % plus petits (${JSON.stringify(buttonBox)})`, buttonBox?.h === 24 && buttonBox?.font === '10.4px');
+await clickZoomButton('Général', 0, 'Sur la carte');
+await wait(1800);
+const generalV = await violet();
+check(`général : tronçon violet cadré (${generalV.count}, ${generalV.cover})`, generalV.count >= 1 && generalV.cover > 0.45);
+await clickTab('graphiques');
+await wait(1500);
+check(`général : « graphiques » pas zoomé pour autant (${await ticks('Graphiques', 0)})`, (await ticks('Graphiques', 0)) === '0 km | 2 km | 4 km');
+await clickTab('graphiques', true);
+await wait(600);
+await clickZoomButton('Général', 0, 'Tout voir');
+await wait(600);
+check(`général : « Tout voir » efface le violet et les boutons (${(await violet()).count}, « ${await zoomButtons('Général', 0)} »)`, (await violet()).count === 0 && (await zoomButtons('Général', 0)) === '');
+const sizes = await evaluate(`(() => { const t = ${SCOPE('Général')}?.querySelector('[role=button]'); const n = document.querySelector('.chart-readout__label'); return { titre: t && getComputedStyle(t).fontSize, nom: n && getComputedStyle(n).fontSize }; })()`);
+check(`analyses : titres à 13 px, noms des graphes à 10 px (${JSON.stringify(sizes)})`, sizes?.titre === '13px' && sizes?.nom === '10px');
+
 // --- 4. Voile et surf ---
 await go(paths.voile, 8000);
 await clickTab('graphiques');
@@ -355,6 +383,18 @@ check(`390 px : le violet suit (${overV.cover} → ${overV2.cover})`, overV2.cou
 await evaluate(`document.querySelector('.an-map-overlay__close')?.click()`);
 await wait(800);
 check('390 px : × ferme le plein écran', (await evaluate(`Boolean(document.querySelector('.an-map-overlay'))`)) === false);
+// Profil de « général » : double toucher, puis plein écran carte + profil.
+console.log('  double toucher sur le profil de « général » :', await doubleTap('Général', 0, 0.25));
+check(`390 px : le profil de « général » zoome ×2 (${await ticks('Général', 0)})`, (await ticks('Général', 0)) === '1 km | 2 km | 3 km');
+await clickZoomButton('Général', 0, 'Sur la carte');
+await wait(1800);
+const generalOverlay = await evaluate(`(() => { const o = document.querySelector('.an-map-overlay'); return o ? { charts: o.querySelectorAll('.an-map-overlay__charts .zoom-chart').length, name: o.querySelector('.an-map-overlay__charts .chart-readout__label')?.textContent ?? '' } : null; })()`);
+check(`390 px : plein écran carte + profil de « général » (${JSON.stringify(generalOverlay)})`, generalOverlay?.charts === 1 && generalOverlay?.name === 'Altitude' && (await violet('.an-map-overlay')).count >= 1);
+await shoot('zoom-general-plein-ecran');
+await evaluate(`document.querySelector('.an-map-overlay__close')?.click()`);
+await wait(800);
+await clickZoomButton('Général', 0, 'Tout voir');
+await wait(600);
 // Tout replié sauf « graphiques », en haut de page : la carte est à l'écran, elle se cadre sur place.
 await clickTab('général', true);
 await evaluate(`window.scrollTo(0, 0)`);

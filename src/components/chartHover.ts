@@ -24,20 +24,27 @@ export interface ChartHoverEvent {
 }
 
 /**
+ * Ligne du graphe survolée, ou `null` si aucune infobulle n'est active ou si
+ * l'indice ne correspond à aucune ligne : la lecture d'un graphe dont les
+ * lignes ne renvoient pas à un point de trace (profil superposé du fractionné).
+ */
+export const hoveredRow = <T>(e: ChartHoverEvent | null | undefined, data: ReadonlyArray<T>): T | null => {
+  if (!e || !e.isTooltipActive || e.activeTooltipIndex === undefined || e.activeTooltipIndex === null) {
+    return null;
+  }
+  const chartIndex = Number(e.activeTooltipIndex);
+  if (!Number.isInteger(chartIndex)) return null;
+  return data[chartIndex] ?? null;
+};
+
+/**
  * Indice de trace du point survolé, ou `null` si aucune infobulle n'est
  * active ou si l'indice ne correspond à aucune entrée du graphe.
  */
 export const hoveredTrackIndex = (
   e: ChartHoverEvent | null | undefined,
   data: ReadonlyArray<{ index: number }>
-): number | null => {
-  if (!e || !e.isTooltipActive || e.activeTooltipIndex === undefined || e.activeTooltipIndex === null) {
-    return null;
-  }
-  const chartIndex = Number(e.activeTooltipIndex);
-  if (!Number.isInteger(chartIndex)) return null;
-  return data[chartIndex]?.index ?? null;
-};
+): number | null => hoveredRow(e, data)?.index ?? null;
 
 /** Vrai si l'abscisse `value` du point survolé est dans la plage zoomée (ou s'il n'y a pas de zoom) : sinon, rien à lire. */
 export const inChartView = (view: XRange | null, value: number): boolean => !view || (value >= view.min && value <= view.max);

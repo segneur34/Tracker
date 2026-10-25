@@ -86,6 +86,8 @@
   --font: 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-title: var(--font);
   --font-logo: 'Shrikhand', Georgia, serif;
+  /* Noms des graphes dans les analyses (`analysisMobile.css`, `--chart-name-size`). */
+  --text-2xs: 10px;
   --text-xs: 12px;
   --text-s: 13px;
   --text-m: 15px;

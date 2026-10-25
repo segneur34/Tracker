@@ -6,7 +6,8 @@ import { IconChevronRight } from './icons';
  * parmi d'autres (onglets « graphiques », « zones de pente »), le tableau des
  * zones de l'énergie ou de pente, les pastilles des statistiques. Chevron vers le haut quand la partie est montrée, vers
  * le bas quand elle est repliée. `color` teinte le nom, celle de la série du
- * graphe ; `aria-expanded` dit l'état (banc compris).
+ * graphe ; `aria-expanded` dit l'état (banc compris). Plus petit dans les
+ * analyses (`--chart-name-size`, `analysisMobile.css`).
  */
 function ChartFold({ label, open, onToggle, color, title, style }: {
   label: ReactNode;
@@ -21,7 +22,7 @@ function ChartFold({ label, open, onToggle, color, title, style }: {
       title={title ?? (open ? 'Replier' : 'Montrer')}
       style={{
         alignSelf: 'flex-start', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px',
-        padding: '3px 8px 3px 10px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)',
+        padding: '3px 8px 3px 10px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--chart-name-size, var(--text-xs))',
         backgroundColor: 'var(--surface-sunken)', color: color ?? 'var(--ink)', fontWeight: color ? 600 : undefined,
         letterSpacing: 'var(--title-spacing)', textTransform: 'uppercase',
         ...style,

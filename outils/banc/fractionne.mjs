@@ -204,6 +204,29 @@ console.log('panneau :', await panel('Répétitions'));
 console.log('graphes :', await charts());
 console.log('Voir :', await clickText('Voir'), '| tracé violet :', await evaluate(`[...document.querySelectorAll('path.leaflet-interactive')].filter((p) => p.getAttribute('stroke') === '#7b1fa2').length`));
 await shoot('fractionne-analyse');
+// Profil d'une répétition zoomable et lu au-dessus (lot 2 des demandes du 24/10) : survol, puis double-clic.
+const profileScope = `[...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim() === "Profil d'une répétition")?.closest('.an-carte-panels > *')`;
+const profilePoint = await evaluate(`(async () => {
+  const c = ${profileScope}?.querySelector('.zoom-chart');
+  if (!c) return null;
+  c.scrollIntoView({ block: 'center' });
+  await new Promise((r) => setTimeout(r, 300));
+  const r = (c.querySelector('.recharts-cartesian-grid') ?? c).getBoundingClientRect();
+  return { x: r.left + r.width * 0.5, y: r.top + r.height / 2 };
+})()`);
+if (profilePoint) {
+  const m = (type, clickCount = 1) => send('Input.dispatchMouseEvent', { type, x: profilePoint.x, y: profilePoint.y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount });
+  await m('mouseMoved');
+  await wait(300);
+  const read = await evaluate(`${profileScope}?.querySelector('[data-chart-readout]')?.textContent.trim()`);
+  const bubble = await evaluate(`[...(${profileScope}?.querySelectorAll('.recharts-tooltip-wrapper') ?? [])].map((w) => w.textContent.trim()).join('')`);
+  console.log(`${/^Moyenne [\d.,]+ km\/h · \d+:\d\d après le départ$/.test(read ?? '') && bubble === '' ? 'ok   ' : 'ÉCHEC'} profil : lecture au-dessus, sans bulle (${read} | « ${bubble} »)`);
+  for (const n of [1, 2]) { await m('mousePressed', n); await m('mouseReleased', n); }
+  await wait(600);
+  const buttons = await evaluate(`[...(${profileScope}?.querySelectorAll('.zoom-chart__actions button') ?? [])].map((b) => b.textContent.trim()).join(' | ')`);
+  console.log(`${buttons === 'Tout voir' ? 'ok   ' : 'ÉCHEC'} profil : double-clic qui zoome, « Tout voir » sans « Sur la carte » (${buttons})`);
+  await shoot('fractionne-profil-zoom');
+} else console.log('ÉCHEC profil zoomable absent');
 const recs = await records();
 const rec = recs.find((r) => r.record.sport === 'run-intervals')?.record;
 console.log('fiche :', rec ? `${rec.sport}, activité ${rec.activityId}, séances ${rec.intervals?.length ?? 0}, phases ${rec.intervals?.[0]?.laps.map((l) => `${l.kind}${l.rep} ${Math.round((l.endMs - l.startMs) / 1000)} s`).join(', ')}` : '(aucune)');
