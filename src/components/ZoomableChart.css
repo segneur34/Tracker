@@ -43,7 +43,7 @@
 }
 
 /*
- * « +carte » (25/10) : hors du tracé, sur la ligne du nom du graphe juste
+ * « Afficher » ou « +carte » (25/10) : hors du tracé, sur la ligne du nom du graphe juste
  * au-dessus, collé à droite ; la lecture de cette ligne lui laisse la place.
  */
 .zoom-chart__map.ui-btn {
@@ -59,12 +59,7 @@
 
 .chart-head:has(+ .zoom-chart > .zoom-chart__map),
 .chart-readout--line:has(+ .zoom-chart > .zoom-chart__map) {
-  padding-right: 72px;
-}
-
-/* Sans zoom (téléphone), « +carte » ouvre carte + graphes : inutile dans cette vue même. */
-.an-map-overlay__charts .zoom-chart__map--whole {
-  display: none;
+  padding-right: 84px;
 }
 
 /* 20 % sous `.ui-btn--s` (demande du 24/10) : ils couvraient trop du graphe. */

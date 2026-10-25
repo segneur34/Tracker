@@ -7,6 +7,7 @@ import { NARROW_QUERY, usePhoneLandscape } from '../hooks/useNarrowScreen';
 import type { MapFocus } from '../hooks/useZoomOnMap';
 import { pushBackLayer } from '../platform/backButton';
 import MapAutoResize from './MapAutoResize';
+import { MapOverlayContext } from './mapOverlayContext';
 import ResizablePanel from './ResizablePanel';
 
 interface AnalysisMapProps {
@@ -160,7 +161,9 @@ function AnalysisMap({
             {tools}
           </div>
           {companion && (
-            <div className="an-map-overlay__charts" onClick={(e) => e.stopPropagation()}>{companion}</div>
+            <div className="an-map-overlay__charts" onClick={(e) => e.stopPropagation()}>
+              <MapOverlayContext.Provider value>{companion}</MapOverlayContext.Provider>
+            </div>
           )}
         </div>
       )}

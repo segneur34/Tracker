@@ -537,7 +537,7 @@ function SailingModule() {
   })() : null;
   const zoomHint = narrow
     ? 'Écartez deux doigts ou touchez deux fois un graphe pour zoomer.'
-    : 'Tirez une zone à la souris ou double-cliquez pour zoomer ; « +carte » montre la partie zoomée, « Tout voir » revient.';
+    : 'Tirez une zone à la souris ou double-cliquez pour zoomer ; « Afficher » montre sur la carte la partie vue du graphe, un second clic la retire ; « Tout voir » revient.';
 
   /** Graphe de vitesse : dans l'onglet « graphiques », et sous la carte en plein écran. */
   const speedChart = (style: CSSProperties) => (

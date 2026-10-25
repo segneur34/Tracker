@@ -121,7 +121,7 @@ const ENERGY_CHART_HEIGHT_PX = 200;
 const CHART_HEIGHT_PX = 170;
 /** Aide du zoom sous les graphes, sur téléphone et sur ordinateur. */
 const ZOOM_HINT_NARROW = 'Écartez deux doigts ou touchez deux fois un graphe pour zoomer.';
-const ZOOM_HINT_WIDE = 'Tirez une zone à la souris ou double-cliquez pour zoomer ; « +carte » montre la partie zoomée, « Tout voir » revient.';
+const ZOOM_HINT_WIDE = 'Tirez une zone à la souris ou double-cliquez pour zoomer ; « Afficher » montre sur la carte la partie vue du graphe, un second clic la retire ; « Tout voir » revient.';
 /** Ancre du bloc de la carte, que « +carte » ramène à l'écran. */
 const MAP_ANCHOR_ID = 'map-view';
 /** Hauteur de base du graphe superposé. */

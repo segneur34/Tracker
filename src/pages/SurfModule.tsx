@@ -956,7 +956,7 @@ function SurfModule() {
                 <HelpText helpKey="surf:graphiques" note>
                   Le survol déplace le repère sur la carte.
                   {folds ? ' Chaque graphe se replie par son nom.' : ''}
-                  {narrow ? ' Écartez deux doigts ou touchez deux fois un graphe pour zoomer.' : ' Tirez une zone à la souris ou double-cliquez pour zoomer ; « +carte » montre la partie zoomée, « Tout voir » revient.'}
+                  {narrow ? ' Écartez deux doigts ou touchez deux fois un graphe pour zoomer.' : ' Tirez une zone à la souris ou double-cliquez pour zoomer ; « Afficher » montre sur la carte la partie vue du graphe, un second clic la retire ; « Tout voir » revient.'}
                 </HelpText>
                 {folds && (
                   <div className="chart-head">
