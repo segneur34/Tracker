@@ -3,17 +3,17 @@
 /* Tuiles sous le bandeau : une carte blanche par type d'entraînement, qui mène à sa page. */
 .train-hub {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
   gap: var(--space-3);
 }
 
 .train-tile {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   min-width: 0;
-  min-height: 64px;
-  padding: var(--space-3) var(--space-4);
+  min-height: 45px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   background: var(--surface);
@@ -26,8 +26,8 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-pill);
   background: var(--fractionne);
   color: var(--on-accent);
@@ -42,7 +42,7 @@
 
 .train-tile__title {
   font-family: var(--font-title);
-  font-size: var(--text-l);
+  font-size: var(--text-m);
   font-weight: var(--title-weight);
   letter-spacing: var(--title-spacing);
   text-transform: uppercase;
@@ -50,7 +50,7 @@
 
 .train-tile__sub {
   color: var(--muted);
-  font-size: var(--text-s);
+  font-size: var(--text-xs);
 }
 
 .train-tile__go {
@@ -72,6 +72,27 @@
   font-size: var(--text-s);
 }
 
+.train-editor {
+  position: relative;
+}
+
+.train-editor__close {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
 .train-editor__name {
   display: flex;
   flex-direction: column;
@@ -89,6 +110,40 @@
 }
 
 .train-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Ligne repliée : titre, « Lancer », flèche. */
+.train-item__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.train-item__head .train-item__name {
+  flex: 1;
+  min-width: 0;
+}
+
+.train-item__toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* Partie dépliée : la mise en page d'avant. */
+.train-item__body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

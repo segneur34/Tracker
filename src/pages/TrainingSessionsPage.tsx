@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
+import Dialog from '../components/ui/Dialog';
 import PageHeader from '../components/ui/PageHeader';
 import WorkoutBlocksEditor from '../components/WorkoutBlocksEditor';
-import { IconPlay } from '../components/icons';
+import { IconChevronDown, IconChevronUp, IconClose, IconPlay } from '../components/icons';
 import { FAMILY_ACCENT, activitiesOfFamily } from '../core/activities';
 import { isIntervalSport } from '../core/sportProfiles';
 import {
@@ -30,7 +31,11 @@ interface Draft {
   id: string | null;
   name: string;
   blocks: IntervalBlock[];
+  /** Nom et blocs à l'ouverture : pour savoir si la croix a des changements à signaler. */
+  initial: string;
 }
+
+const snapshot = (name: string, blocks: IntervalBlock[]) => JSON.stringify([name, blocks]);
 
 const NEW_BLOCKS: IntervalBlock[] = [
   { kind: 'libre', label: 'Échauffement', durationS: 600 },
@@ -52,6 +57,8 @@ function TrainingSessionsPage() {
     return intervalActivities.find((a) => a.id === last?.id) ?? intervalActivities[0] ?? null;
   }, [intervalActivities]);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [askClose, setAskClose] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
   const draftWorkout = draft ? workoutFromBlocks(draft.blocks) : null;
 
   const launch = (preset: { workout: IntervalPreset['workout'] }) => {
@@ -64,9 +71,22 @@ function TrainingSessionsPage() {
     if (draft.id) updateIntervalPreset(draft.id, draft.name, draftWorkout);
     else saveIntervalPreset(draft.name, draftWorkout);
     setDraft(null);
+    setAskClose(false);
+  };
+  const closeDraft = () => {
+    setDraft(null);
+    setAskClose(false);
+  };
+  // La croix ferme tout de suite s'il n'y a rien à perdre, sinon demande.
+  const requestClose = () => {
+    if (draft && snapshot(draft.name, draft.blocks) !== draft.initial) setAskClose(true);
+    else closeDraft();
   };
   const askRemove = (preset: IntervalPreset) => {
-    if (window.confirm(`Retirer la séance « ${preset.name} » ?`)) removeIntervalPreset(preset.id);
+    if (window.confirm(`Retirer la séance « ${preset.name} » ?`)) {
+      removeIntervalPreset(preset.id);
+      setOpenId(null);
+    }
   };
   const full = presets.length >= MAX_INTERVAL_PRESETS;
   const accent = FAMILY_ACCENT.fractionne;
@@ -84,6 +104,7 @@ function TrainingSessionsPage() {
 
       {draft && (
         <Card heading={draft.id ? 'Modifier la séance' : 'Nouvelle séance'} className="train-editor">
+          <button type="button" className="train-editor__close" aria-label="Fermer l'éditeur" onClick={requestClose}><IconClose size={18} /></button>
           <label className="train-editor__name">
             <span className="ui-eyebrow">Nom</span>
             <input value={draft.name} maxLength={40} placeholder={draftWorkout ? workoutLabel(draftWorkout) : ''} aria-label="Nom de la séance"
@@ -92,14 +113,25 @@ function TrainingSessionsPage() {
           <WorkoutBlocksEditor blocks={draft.blocks} onChange={(blocks) => setDraft({ ...draft, blocks })} />
           <div className="ivl-actions">
             <Button variant="primary" disabled={!draftWorkout} onClick={saveDraft}>{draft.id ? 'Enregistrer les changements' : 'Garder la séance'}</Button>
-            <Button variant="ghost" onClick={() => setDraft(null)}>Annuler</Button>
+            <Button variant="ghost" onClick={closeDraft}>Annuler</Button>
           </div>
         </Card>
       )}
 
+      {draft && askClose && (
+        <Dialog title="Fermer l'éditeur ?" onClose={() => setAskClose(false)}>
+          <p className="train-hint">La séance a des changements non enregistrés.</p>
+          <div className="ivl-actions">
+            <Button variant="primary" disabled={!draftWorkout} onClick={saveDraft}>Enregistrer</Button>
+            <Button onClick={closeDraft}>Ne pas enregistrer</Button>
+            <Button variant="ghost" onClick={() => setAskClose(false)}>Continuer</Button>
+          </div>
+        </Dialog>
+      )}
+
       {!draft && (
         <div className="train-actions">
-          <Button variant="primary" disabled={full} onClick={() => setDraft({ id: null, name: '', blocks: NEW_BLOCKS })}>Nouvelle séance</Button>
+          <Button variant="primary" disabled={full} onClick={() => setDraft({ id: null, name: '', blocks: NEW_BLOCKS, initial: snapshot('', NEW_BLOCKS) })}>Nouvelle séance</Button>
           {full && <span className="train-hint">{MAX_INTERVAL_PRESETS} séances au plus : retirez-en une.</span>}
         </div>
       )}
@@ -108,20 +140,31 @@ function TrainingSessionsPage() {
         <ul className="train-list" aria-label="Séances gardées">
           {presets.map((preset) => (
             <li key={preset.id} className="ui-card train-item">
-              <div className="train-item__text">
+              <div className="train-item__head">
                 <span className="train-item__name">{preset.name}</span>
-                {preset.name !== workoutLabel(preset.workout) && <span className="train-item__detail">{workoutLabel(preset.workout)}</span>}
-                <span className="train-item__detail num">{formatIntervalClock(workoutDurationS(preset.workout))} en tout</span>
-              </div>
-              <div className="train-item__actions">
-                <Button variant="primary" disabled={!activity} onClick={() => launch(preset)}>
-                  <IconPlay size={18} />
+                <Button variant="primary" size="s" disabled={!activity} onClick={() => launch(preset)}>
+                  <IconPlay size={16} />
                   Lancer
                 </Button>
-                <Button size="s" onClick={() => setDraft({ id: preset.id, name: preset.name, blocks: workoutBlocks(preset.workout) })}>Modifier</Button>
-                <Button size="s" disabled={full} onClick={() => saveIntervalPreset(`${preset.name} (copie)`.slice(0, 40), preset.workout)}>Dupliquer</Button>
-                <Button size="s" variant="ghost" onClick={() => askRemove(preset)}>Retirer</Button>
+                <button type="button" className="train-item__toggle" aria-expanded={openId === preset.id}
+                  aria-label={`${openId === preset.id ? 'Replier' : 'Déplier'} : ${preset.name}`}
+                  onClick={() => setOpenId(openId === preset.id ? null : preset.id)}>
+                  {openId === preset.id ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
+                </button>
               </div>
+              {openId === preset.id && (
+                <div className="train-item__body">
+                  <div className="train-item__text">
+                    {preset.name !== workoutLabel(preset.workout) && <span className="train-item__detail">{workoutLabel(preset.workout)}</span>}
+                    <span className="train-item__detail num">{formatIntervalClock(workoutDurationS(preset.workout))} en tout</span>
+                  </div>
+                  <div className="train-item__actions">
+                    <Button size="s" onClick={() => setDraft({ id: preset.id, name: preset.name, blocks: workoutBlocks(preset.workout), initial: snapshot(preset.name, workoutBlocks(preset.workout)) })}>Modifier</Button>
+                    <Button size="s" disabled={full} onClick={() => saveIntervalPreset(`${preset.name} (copie)`.slice(0, 40), preset.workout)}>Dupliquer</Button>
+                    <Button size="s" variant="ghost" onClick={() => askRemove(preset)}>Retirer</Button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
