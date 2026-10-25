@@ -178,6 +178,20 @@ export const shouldPromptProfile = ({ native, missing, askedThisLaunch, otherCar
   otherCardShown: boolean;
 }): boolean => native && missing.length > 0 && !askedThisLaunch && !otherCardShown;
 
+/**
+ * Ordre de l'accueil : la mémoire, puis les autorisations, puis le profil. Le pop-up
+ * n'est posé qu'une fois les deux décidées (`permissionsShown` : `null` tant que les
+ * autorisations ne sont pas lues) ; `otherCardShown` : l'une d'elles est à l'écran.
+ */
+export const profilePromptGate = ({ memoryNeedsAction, memoryReady, permissionsShown }: {
+  memoryNeedsAction: boolean;
+  memoryReady: boolean;
+  permissionsShown: boolean | null;
+}): { mount: boolean; otherCardShown: boolean } => ({
+  mount: memoryNeedsAction || (memoryReady && permissionsShown !== null),
+  otherCardShown: memoryNeedsAction || permissionsShown === true,
+});
+
 const NAMESPACE = 'tracker.runnerProfile';
 const KEY = 'me';
 

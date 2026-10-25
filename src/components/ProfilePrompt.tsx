@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { HelpText, HelpToggle } from './Help';
 import Button from './ui/Button';
 import Dialog from './ui/Dialog';
 import SegmentedControl from './ui/SegmentedControl';
 import {
-  RUNNER_NAME_MAX, missingProfileFields, shouldPromptProfile, useRunnerProfile, type RunnerProfile,
+  RUNNER_NAME_MAX, missingProfileFields, readRunnerProfile, shouldPromptProfile, useRunnerProfile, type RunnerProfile,
 } from '../hooks/useRunnerProfile';
 import { isNativeApp } from '../platform/runtime';
 import './ProfilePrompt.css';
@@ -43,15 +43,18 @@ const draftOf = (profile: RunnerProfile): Draft => ({
  * l'une d'elles est à l'écran, et il attend le lancement suivant.
  */
 function ProfilePrompt({ otherCardShown }: { otherCardShown: boolean }) {
-  const { profile, setName, setNumber, setSex } = useRunnerProfile();
-  const [shown] = useState(() => shouldPromptProfile({
-    native: isNativeApp(), missing: missingProfileFields(profile), askedThisLaunch, otherCardShown,
-  }));
-  useEffect(() => {
+  const { setName, setNumber, setSex } = useRunnerProfile();
+  // Le profil du hook est vide au premier rendu (il se relit dans un effet) : la décision lit le stockage.
+  const [stored] = useState(readRunnerProfile);
+  const [shown] = useState(() => {
+    const open = shouldPromptProfile({
+      native: isNativeApp(), missing: missingProfileFields(stored), askedThisLaunch, otherCardShown,
+    });
     askedThisLaunch = true;
-  }, []);
+    return open;
+  });
   const [closed, setClosed] = useState(false);
-  const [draft, setDraft] = useState<Draft>(() => draftOf(profile));
+  const [draft, setDraft] = useState<Draft>(() => draftOf(stored));
 
   if (!shown || closed) return null;
   const close = () => setClosed(true);

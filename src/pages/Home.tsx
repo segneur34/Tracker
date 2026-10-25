@@ -16,7 +16,7 @@ import { FAMILY_ACCENT, FAMILY_LABEL } from '../core/activities';
 import type { SportFamily } from '../core/sportProfiles';
 import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
-import { runnerName, useRunnerProfile } from '../hooks/useRunnerProfile';
+import { profilePromptGate, runnerName, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
@@ -54,6 +54,7 @@ function Home() {
   const memoryNeedsAction = status === 'unavailable' || status === 'needs-permission' || error !== null;
   /** La carte des autorisations paraît-elle ? `null` tant qu'elle n'a pas lu les autorisations. */
   const [permissionsShown, setPermissionsShown] = useState<boolean | null>(null);
+  const gate = profilePromptGate({ memoryNeedsAction, memoryReady: status === 'ready', permissionsShown });
 
   return (
     <div className="ui-page ui-page--backdrop home">
@@ -67,9 +68,7 @@ function Home() {
       {/* Le dossier de la mémoire d'abord, puis les autorisations (téléphone seulement, s'il en manque). */}
       {!memoryNeedsAction && status === 'ready' && <PermissionsPrompt onDecided={setPermissionsShown} />}
       {/* Puis le profil, s'il manque un champ, une fois par lancement ; jamais par-dessus ces deux cartes. */}
-      {(memoryNeedsAction || (status === 'ready' && permissionsShown !== null)) && (
-        <ProfilePrompt otherCardShown={memoryNeedsAction || permissionsShown === true} />
-      )}
+      {gate.mount && <ProfilePrompt otherCardShown={gate.otherCardShown} />}
 
       <nav className="home-families" aria-label="Sports">
         {families.map((family) => {
