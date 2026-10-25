@@ -1,6 +1,7 @@
 import { readSessionMark, sortMarks, type SessionMark } from '../core/sessionMarks';
 import type { SportType } from '../core/types';
 import type { LocationFix } from '../platform/location';
+import { readSessionTest, type SessionTest } from './fitnessTest';
 import { readIntervalRun, type IntervalRun } from './intervalTimer';
 import { isSportType } from './session';
 
@@ -91,6 +92,14 @@ export const journalIntervalsLine = (run: IntervalRun): string => `${JSON.string
  */
 export const journalNoteLine = (mark: SessionMark): string => `${JSON.stringify(['note', mark])}\n`;
 
+/**
+ * Test guidé (`fitnessTest.ts`) tel qu'il est à cet instant, réécrit à chaque
+ * changement de phase et à chaque palier : la dernière ligne l'emporte.
+ * Tableau à deux éléments, marqué par `'test'` en tête, ignoré par les
+ * versions qui ne le connaissent pas.
+ */
+export const journalTestLine = (test: SessionTest): string => `${JSON.stringify(['test', test])}\n`;
+
 export interface ParsedJournal {
   /** En-tête, ou `null` s'il manque ou est illisible : les positions restent récupérables. */
   header: JournalHeader | null;
@@ -103,6 +112,8 @@ export interface ParsedJournal {
   intervalRuns: IntervalRun[];
   /** Repères du bouton « Note », dans l'ordre du temps. */
   marks: SessionMark[];
+  /** Test guidé, dans son dernier état lisible ; `null` sans test. */
+  test: SessionTest | null;
 }
 
 const optionalNumber = (value: unknown): number | undefined =>
@@ -153,6 +164,12 @@ const toNoteMarker = (value: unknown): { marker: boolean; mark: SessionMark | nu
     ? { marker: true, mark: readSessionMark(value[1]) }
     : { marker: false, mark: null };
 
+/** Ligne de test : `true` si c'en est une (même abîmée), et le test s'il est lisible. */
+const toTestMarker = (value: unknown): { marker: boolean; test: SessionTest | null } =>
+  Array.isArray(value) && value.length === 2 && value[0] === 'test'
+    ? { marker: true, test: readSessionTest(value[1]) }
+    : { marker: false, test: null };
+
 const toFix = (value: unknown): LocationFix | null => {
   if (!Array.isArray(value) || value.length < 3) return null;
   const [timeMs, lat, lon, accuracyM, altitudeM, speedMs, bearingDeg, heartRateBpm] = value;
@@ -175,7 +192,7 @@ const toFix = (value: unknown): LocationFix | null => {
  * Relit un journal. Les lignes illisibles sont ignorées, de même qu'une
  * position qui n'est pas plus récente que la précédente, comme à
  * l'enregistrement. Le dernier changement d'activité lisible l'emporte, de
- * même que le dernier état de chaque séance du compteur.
+ * même que le dernier état de chaque séance du compteur et du test.
  */
 export const parseJournal = (text: string): ParsedJournal => {
   let header: JournalHeader | null = null;
@@ -184,6 +201,7 @@ export const parseJournal = (text: string): ParsedJournal => {
   let activityChange: JournalActivity | null = null;
   const runs = new Map<number, IntervalRun>();
   const marks: SessionMark[] = [];
+  let test: SessionTest | null = null;
 
   text.split('\n').forEach((line, i) => {
     if (line.trim() === '') return;
@@ -211,10 +229,15 @@ export const parseJournal = (text: string): ParsedJournal => {
       if (note.mark) marks.push(note.mark);
       return;
     }
+    const tested = toTestMarker(value);
+    if (tested.marker) {
+      if (tested.test) test = tested.test;
+      return;
+    }
     const fix = toFix(value);
     if (fix && (fixes.length === 0 || fix.timeMs > fixes[fixes.length - 1].timeMs)) fixes.push(fix);
   });
 
   const intervalRuns = [...runs.values()].sort((a, b) => a.startedAtMs - b.startedAtMs);
-  return { header, fixes, breaks, activityChange, intervalRuns, marks: sortMarks(marks) };
+  return { header, fixes, breaks, activityChange, intervalRuns, marks: sortMarks(marks), test };
 };

@@ -15,6 +15,8 @@ import { applyTerrainElevation, type TerrainSamples } from '../core/terrainEleva
 import { msToKnots } from '../core/units';
 import { suggestActiveThresholdKn } from '../sailing/sailingConfig';
 import { runSurfSession, surfProfileOf } from '../surfing/surfSession';
+import { FITNESS_TESTS, type SessionTest } from '../recording/fitnessTest';
+import { fitnessTestResults, summaryOfTest } from '../running/fitnessTestResults';
 import { SUMMARY_CALC_VERSION, type SessionSummary, type SummaryCadence, type SummaryHeartRate } from './record';
 import { analyzeCadence, sessionCadence, type CadenceDetection } from '../running/cadence';
 
@@ -50,6 +52,8 @@ export interface SummaryOptions {
   foil?: boolean;
   /** Seuil de vague en foil de la session, dans l'unité du profil (surf). */
   waveThreshold?: number;
+  /** Test guidé de la fiche, dont le résumé garde la FC max et le dernier palier tenu. */
+  test?: SessionTest;
 }
 
 /**
@@ -161,6 +165,7 @@ export const summarizeSession = (
   const heartRate = summaryHeartRate(track, getSportProfile(sport ?? 'running').heartRate);
   const cadenceParams = sport ? getSportProfile(sport).cadence : null;
   const cadence = cadenceParams ? summaryCadence(track, analyzed.mask ?? track.map(() => true), cadenceParams) : undefined;
+  const test = options.test ? summaryOfTest(fitnessTestResults(track, options.test, FITNESS_TESTS[options.test.protocol])) : null;
 
   return {
     calcVersion: SUMMARY_CALC_VERSION,
@@ -176,6 +181,7 @@ export const summarizeSession = (
     ...analyzed.surf,
     ...(heartRate ? { heartRate } : {}),
     ...(cadence ? { cadence } : {}),
+    ...(test ? { test } : {}),
   };
 };
 

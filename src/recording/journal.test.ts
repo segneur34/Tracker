@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { LocationFix } from '../platform/location';
 import { buildGpx } from './gpxWriter';
+import type { SessionTest } from './fitnessTest';
 import { runCommand, startRun } from './intervalTimer';
-import { journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalIntervalsLine, journalNoteLine, parseJournal } from './journal';
+import {
+  journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalIntervalsLine, journalNoteLine, journalTestLine, parseJournal,
+} from './journal';
 import { roundFix, splitIntoSegments } from './session';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
@@ -164,5 +167,35 @@ describe('notes du journal', () => {
     expect(parsed.marks).toEqual([]);
     expect(parsed.fixes).toHaveLength(3);
     expect(parseJournal(journalOf(fixes)).marks).toEqual([]);
+  });
+});
+
+describe('test du journal', () => {
+  const TEST: SessionTest = {
+    protocol: 'fc-max',
+    version: 1,
+    settings: { warmupS: 480, age: 35, ageSource: 'profil', lowBpm: 110, highBpm: 147, zoneMethod: 'max' },
+    startMs: T0,
+    rampStartMs: T0 + 480_000,
+    v0Ms: 2.5,
+    steps: [{ startMs: T0 + 480_000, targetMs: 2.5 }],
+    rampEndMs: null,
+    dropMs: null,
+    endReason: null,
+    endMs: null,
+    signals: [{ t: T0, s: 'debut' }, { t: T0 + 480_000, s: 'palier' }],
+  };
+
+  it('relit le dernier état lisible du test, sans gêner les positions', () => {
+    const later: SessionTest = { ...TEST, steps: [...TEST.steps, { startMs: T0 + 540_000, targetMs: 2.67 }] };
+    const text = journalOf(fixes.slice(0, 2)) + journalTestLine(TEST) + journalFixLine(fixes[2]) + journalTestLine(later) + '["test",{"protocol":"fc-max"';
+    const parsed = parseJournal(text);
+    expect(parsed.test).toEqual(later);
+    expect(parsed.fixes).toHaveLength(3);
+  });
+
+  it('rend null sans test, ou si le seul est abîmé', () => {
+    expect(parseJournal(journalOf(fixes)).test).toBeNull();
+    expect(parseJournal(journalOf(fixes) + '["test",{"protocol":"vma"}]\n').test).toBeNull();
   });
 });

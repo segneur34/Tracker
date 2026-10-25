@@ -4,6 +4,7 @@ import {
   FITNESS_TESTS,
   TEST_SIGNAL_TONES,
   closeFitnessTest,
+  closeSessionTest,
   finishRamp,
   readSessionTest,
   resolveFitnessTestParams,
@@ -18,8 +19,12 @@ import {
 
 const PROTOCOL = FITNESS_TESTS['fc-max'];
 const T0 = Date.UTC(2026, 9, 24, 8, 0, 0);
-const DEFAULT_SETTINGS = { warmupS: PROTOCOL.warmupS, warmupPct: PROTOCOL.warmupPct };
-const params = (age: number | null = null) => resolveFitnessTestParams(PROTOCOL, DEFAULT_SETTINGS, age);
+const DEFAULT_SETTINGS = { warmupS: PROTOCOL.warmupS };
+const FRACTIONS = [0.5, 0.6, 0.7, 0.8, 0.9];
+const NO_HR = { hrMax: null, hrRest: null, hrZones: null };
+/** Zones saisies du scénario : zones 2 à 3 de 78 à 88 bpm. */
+const RUNNER = { athlete: { ...NO_HR, hrZones: [65, 78, 83, 88, 120] }, age: null, zoneFractions: FRACTIONS };
+const params = () => resolveFitnessTestParams(PROTOCOL, DEFAULT_SETTINGS, RUNNER);
 
 /** Vitesse d'un palier de la rampe du scénario (départ à 6 km/h). */
 const stepKmh = (k: number) => 6 + 0.6 * k;
@@ -64,19 +69,30 @@ const run = (list: TestSample[], state: FitnessTestState = startFitnessTest(para
 };
 
 describe('resolveFitnessTestParams', () => {
-  it('cible 45 % de 220 − âge, 35 ans sans âge', () => {
-    expect(params()).toMatchObject({ age: 35, ageSource: 'defaut', hrMaxRefBpm: 185, targetBpm: 83 });
-    expect(params(40)).toMatchObject({ age: 40, ageSource: 'profil', hrMaxRefBpm: 180, targetBpm: 81 });
+  const resolve = (athlete: typeof NO_HR | typeof RUNNER.athlete | { hrMax: number; hrRest: number | null; hrZones: null }, age: number | null) =>
+    resolveFitnessTestParams(PROTOCOL, DEFAULT_SETTINGS, { athlete, age, zoneFractions: FRACTIONS });
+
+  it('échauffement en zones 2 à 3 : FC max estimée par l’âge, 35 ans sans âge', () => {
+    // 208 − 0,7 × 35 = 184 : 60 % et 80 %.
+    expect(resolve(NO_HR, null)).toMatchObject({ age: 35, ageSource: 'defaut', hrMaxRefBpm: 184, warmupLowBpm: 110, warmupHighBpm: 147 });
+    expect(resolve(NO_HR, null).zones).toMatchObject({ method: 'max', estimated: true });
+    expect(resolve(NO_HR, 40)).toMatchObject({ age: 40, ageSource: 'profil', hrMaxRefBpm: 180, warmupLowBpm: 108, warmupHighBpm: 144 });
+  });
+
+  it('suit la réserve cardiaque avec la FC de repos, les zones saisies d’abord', () => {
+    expect(resolve({ hrMax: 190, hrRest: 50, hrZones: null }, 40)).toMatchObject({ hrMaxRefBpm: 190, warmupLowBpm: 134, warmupHighBpm: 162 });
+    expect(params()).toMatchObject({ warmupLowBpm: 78, warmupHighBpm: 88 });
+    expect(params().zones.method).toBe('perso');
   });
 
   it('écarte un âge invraisemblable', () => {
-    expect(params(3).ageSource).toBe('defaut');
+    expect(resolve(NO_HR, 3).ageSource).toBe('defaut');
   });
 });
 
 describe('sanitizeFitnessTestSettings', () => {
   it('garde les valeurs dans les bornes, remplace les autres', () => {
-    expect(sanitizeFitnessTestSettings({ warmupS: 300, warmupPct: 0.5 }, PROTOCOL)).toEqual({ warmupS: 300, warmupPct: 0.5 });
+    expect(sanitizeFitnessTestSettings({ warmupS: 300 }, PROTOCOL)).toEqual({ warmupS: 300 });
     expect(sanitizeFitnessTestSettings({ warmupS: 30, warmupPct: 0.9 }, PROTOCOL)).toEqual(DEFAULT_SETTINGS);
     expect(sanitizeFitnessTestSettings(null, PROTOCOL)).toEqual(DEFAULT_SETTINGS);
   });
@@ -108,6 +124,24 @@ describe('stepFitnessTest', () => {
     }
     const goods = signals.filter((x) => x.s === 'bien');
     for (let i = 1; i < goods.length; i++) expect(goods[i].t - goods[i - 1].t).toBeGreaterThanOrEqual(30);
+  });
+
+  it('espace de 30 s la même correction venue trois fois de suite, à 1 Hz comme à 5 Hz', () => {
+    // FC trop haute tout l'échauffement, puis dans la bande de 200 à 300 s, puis de nouveau trop haute.
+    const hrAt = (t: number) => (t >= 200 && t < 300 ? 84 : 120);
+    const list = (hz: number) => samples(hz, 400).map((x) => ({ ...x, hrBpm: hrAt((x.timeMs - T0) / 1000) }));
+    for (const hz of [1, 5]) {
+      const warmup = run(list(hz)).signals.filter((x) => x.s !== 'debut');
+      const times = warmup.map((x) => [Math.round(x.t), x.s]);
+      // Trois « trop vite » à 10 s, puis toutes les 30 s ; un « bien » remet le compte à zéro.
+      expect(times.slice(0, 6)).toEqual([[30, 'trop'], [40, 'trop'], [50, 'trop'], [80, 'trop'], [110, 'trop'], [140, 'trop']]);
+      const lastGood = warmup.map((x) => x.s).lastIndexOf('bien');
+      expect(warmup[lastGood].t).toBeGreaterThanOrEqual(200);
+      const afterGood = warmup.slice(lastGood + 1);
+      expect(afterGood.slice(0, 4).map((x) => x.s)).toEqual(['trop', 'trop', 'trop', 'trop']);
+      expect(afterGood[1].t - afterGood[0].t).toBeCloseTo(10, 0);
+      expect(afterGood[3].t - afterGood[2].t).toBeCloseTo(30, 0);
+    }
   });
 
   it('part à la vitesse de la dernière minute arrondie, un palier toutes les 60 s', () => {
@@ -188,6 +222,15 @@ describe('stepFitnessTest', () => {
     const test = closeFitnessTest(run(samples(1, 700)).state);
     expect(test).toMatchObject({ endReason: 'arret', rampEndMs: T0 + 700_000 });
     expect(closeFitnessTest(startFitnessTest(params()))).toBeNull();
+  });
+
+  it('un test relu, coupé pendant la rampe, finit à la dernière position ; fini, il reste tel quel', () => {
+    const during = run(samples(1, 700)).state.test!;
+    expect(closeSessionTest(during, T0 + 650_000)).toMatchObject({ endReason: 'arret', rampEndMs: T0 + 650_000, dropMs: T0 + 650_000 });
+    const warmup = run(samples(1, 100)).state.test!;
+    expect(closeSessionTest(warmup, T0 + 100_000)).toBe(warmup);
+    const ended = finishRamp(run(samples(1, 700)).state).state.test!;
+    expect(closeSessionTest(ended, T0 + 800_000)).toBe(ended);
   });
 
   it('ne rend pas d’état partagé avec le précédent', () => {

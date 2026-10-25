@@ -33,7 +33,7 @@ const steps = Array.from({ length: 7 }, (_, k) => ({ startMs: T0 + (480 + 60 * k
 const TEST: SessionTest = {
   protocol: 'fc-max',
   version: 1,
-  settings: { warmupS: 480, warmupPct: 0.45, age: 35, ageSource: 'defaut', targetBpm: 83, bandBpm: 5 },
+  settings: { warmupS: 480, age: 35, ageSource: 'defaut', lowBpm: 110, highBpm: 147, zoneMethod: 'max' },
   startMs: T0,
   rampStartMs: T0 + 480_000,
   v0Ms: kmhToMs(6),

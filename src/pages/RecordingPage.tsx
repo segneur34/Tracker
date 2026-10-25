@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ChangeEvent, type MouseEvent } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import ActivitySelect from '../components/ActivitySelect';
 import BeltStatus from '../components/BeltStatus';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import HoldDial from '../components/ui/HoldDial';
+import FitnessTestCard from '../components/FitnessTestCard';
 import FollowTracePicker from '../components/FollowTracePicker';
 import IntervalCard from '../components/IntervalCard';
 import PageHeader from '../components/ui/PageHeader';
@@ -21,6 +22,7 @@ import {
 import { formatClock, formatDistance, formatShortDistance, formatSpeed } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
+import { armFitnessTest, useFitnessTest } from '../hooks/useFitnessTest';
 import { useIntervalTimerOpen } from '../hooks/useIntervalTimer';
 import { useStopwatchOpen } from '../hooks/useStopwatch';
 import { useLongPress } from '../hooks/useLongPress';
@@ -62,6 +64,7 @@ import { isNativeApp } from '../platform/runtime';
 import { canLockOrientation, isOrientationLocked, keepScreenOn, lockOrientation, subscribeOrientationLock } from '../platform/screen';
 import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
 import { FITNESS_TESTS, FITNESS_TEST_IDS, isFitnessTestId, type FitnessTestId } from '../recording/fitnessTest';
+import { RESTING_HR_TEST, type RestingHrTestId } from '../recording/restingHrTest';
 import './RecordingPage.css';
 
 /**
@@ -386,11 +389,15 @@ function RecordingPage() {
     setChosenId((own.find((a) => a.id === last?.id) ?? own[0])?.id ?? null);
   };
   // Tests : le test choisi sous « Tests » (rangée « Test »), celui de l'adresse (`&test=`, « Lancer » d'un protocole), sinon la FC max.
-  const [testId, setTestId] = useState<FitnessTestId>(() => {
+  // La FC repos s'y choisit aussi, mais se fait sur sa page, sans enregistreur ni GPS (les sessions sans GPS viendront avec la muscu).
+  const [testId, setTestId] = useState<FitnessTestId | RestingHrTestId>(() => {
     const asked = params.get('test');
-    return isFitnessTestId(asked) ? asked : 'fc-max';
+    return isFitnessTestId(asked) || asked === RESTING_HR_TEST.id ? asked : 'fc-max';
   });
   const isTest = chosen !== null && isTestSport(chosen.base);
+  const restingChosen = isTest && testId === RESTING_HR_TEST.id;
+  const guidedTestId: FitnessTestId = isFitnessTestId(testId) ? testId : 'fc-max';
+  const navigate = useNavigate();
   /** Une trace choisie propose son activité (celle de l'itinéraire, ou de la session). */
   const proposeActivityOf = (trace: FollowedTrace) => {
     const activity = shownActivities.find((a) => a.id === trace.activityId);
@@ -421,7 +428,7 @@ function RecordingPage() {
   const heartRateSetting = heartRateOffered === null ? null : heartRateOffered || isTest;
   const belt = useMemo(() => savedBelt(), []);
   const [heartRateChoice, setHeartRateChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
-  const measureHeartRate = chosen !== null && heartRateSetting !== null && belt !== null &&
+  const measureHeartRate = chosen !== null && heartRateSetting !== null && belt !== null && !restingChosen &&
     (heartRateChoice?.activityId === chosen.id ? heartRateChoice.measure : heartRateSetting);
   const [motionCaps, setMotionCaps] = useState<MotionCapabilities | null>(null);
   useEffect(() => {
@@ -445,7 +452,7 @@ function RecordingPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const durationMs = recordingDurationMs(stats);
   const meanIntervalS = stats.pointCount > 1 ? durationMs / 1000 / (stats.pointCount - 1) : null;
-  const canStart = !busy && pending === null && chosen !== null && (sourceChoice === 'device' || replay !== null);
+  const canStart = !busy && pending === null && chosen !== null && !restingChosen && (sourceChoice === 'device' || replay !== null);
   const liveActivity = recorder.activity ?? chosen;
   const mapReduced = busy && !shown.carte;
   // Téléphone tourné : les grands chiffres à gauche de la carte, sans avoir à la réduire.
@@ -457,6 +464,9 @@ function RecordingPage() {
   const counterFamily = busy ? (liveActivity ? activityFamily(liveActivity) : null) : pending ? null : family;
   const showCounter = counterOpen || stopwatchOpen
     || (counterFamily === 'fractionne' && (counterActivity === null || isIntervalSport(counterActivity.base)));
+  // Carte du test : à la place du compteur, pour un test choisi au repos ou guidé pendant l'enregistrement.
+  const fitnessTest = useFitnessTest();
+  const showTest = busy ? fitnessTest.active : pending === null && isTest && !restingChosen;
   // Écran allumé tant qu'un enregistrement (pause comprise), une séance du compteur ou le chrono tourne, sur cette page seulement.
   const screenOn = busy || counterOpen || stopwatchOpen;
   useEffect(() => {
@@ -552,10 +562,11 @@ function RecordingPage() {
     const replayHasHr = sourceChoice === 'replay' && replay !== null && replay.fixes.some((f) => f.heartRateBpm !== undefined);
     const beltReady = native && sourceChoice === 'device' && measureHeartRate && beltLive.state === 'connected';
     if (isTest && !beltReady && !replayHasHr && !window.confirm(
-      `Aucune ceinture cardio connectée. Le test ${FITNESS_TESTS[testId].label} guide l'échauffement sur la FC et en mesure le maximum : `
+      `Aucune ceinture cardio connectée. Le test ${FITNESS_TESTS[guidedTestId].label} guide l'échauffement sur la FC et en mesure le maximum : `
       + "sans elle, ni l'un ni l'autre. Démarrer quand même ?"
     )) return;
     rememberRecordActivity(chosen.id);
+    if (isTest) armFitnessTest(guidedTestId);
     const source = sourceChoice === 'replay' && replay
       ? createReplaySource(replay.fixes, replaySpeed)
       : deviceLocationSource();
@@ -594,7 +605,10 @@ function RecordingPage() {
             {isTest && (
               <>
                 <SegmentedControl label="Test" value={testId} accent={FAMILY_ACCENT[family]} onChange={setTestId}
-                  items={FITNESS_TEST_IDS.map((id) => ({ key: id, label: FITNESS_TESTS[id].label }))} />
+                  items={[
+                    ...FITNESS_TEST_IDS.map((id) => ({ key: id, label: FITNESS_TESTS[id].label })),
+                    { key: RESTING_HR_TEST.id, label: RESTING_HR_TEST.label },
+                  ]} />
                 <Link to={`/fractionne/tests/${testId}`} style={{ fontSize: 'var(--text-s)' }}>Voir le protocole</Link>
               </>
             )}
@@ -605,7 +619,7 @@ function RecordingPage() {
             </div>
           )}
 
-          {chosen && jumpSettings && native && (
+          {chosen && jumpSettings && native && !restingChosen && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <input type="checkbox" checked={measureJumps && motionCaps?.available === true} disabled={!motionCaps?.available}
@@ -622,7 +636,7 @@ function RecordingPage() {
             </div>
           )}
 
-          {chosen && cadenceSetting !== null && native && (
+          {chosen && cadenceSetting !== null && native && !restingChosen && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <input type="checkbox" checked={measureCadence && motionCaps?.available === true} disabled={!motionCaps?.available}
@@ -637,7 +651,7 @@ function RecordingPage() {
             </div>
           )}
 
-          {chosen && heartRateSetting !== null && native && (
+          {chosen && heartRateSetting !== null && native && !restingChosen && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <input type="checkbox" checked={measureHeartRate} disabled={belt === null}
@@ -677,7 +691,7 @@ function RecordingPage() {
             </div>
           )}
 
-          {native ? (
+          {restingChosen ? null : native ? (
             <div><span className="ui-eyebrow">Source</span> <span style={{ marginLeft: '8px' }}>GPS du téléphone</span></div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -724,6 +738,16 @@ function RecordingPage() {
           )}
           <StopButton status={recorder.status} />
         </div>
+      ) : !pending && restingChosen ? (
+        // FC repos : pas d'enregistrement, le test se fait sur sa page.
+        <Card>
+          <p style={{ margin: '0 0 var(--space-3)', lineHeight: 1.5 }}>
+            Test de {RESTING_HR_TEST.durationS / 60} min, assis ou allongé, ceinture cardio portée, sans GPS : il se fait sur sa page.
+          </p>
+          <Button variant="record" size="l" block onClick={() => navigate(`/fractionne/tests/${RESTING_HR_TEST.id}`)}>
+            Ouvrir le test
+          </Button>
+        </Card>
       ) : !pending && (
         // Au repos, la moitié du bouton choisit une trace à suivre ; l'un sous l'autre quand la place manque (écran
         // étroit, texte d'Android agrandi).
@@ -774,6 +798,8 @@ function RecordingPage() {
       {recorder.error && <div className="ui-alert ui-alert--danger">{recorder.error}</div>}
 
       {showCounter && <IntervalCard recording={busy} />}
+
+      {showTest && <FitnessTestCard testId={guidedTestId} activity={liveActivity} />}
 
       {markGuide.active && liveActivity && <MarkGuideCard view={markGuide} activity={liveActivity} />}
 

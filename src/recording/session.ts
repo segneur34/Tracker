@@ -38,12 +38,12 @@ export const roundFix = (fix: LocationFix): LocationFix => ({
   heartRateBpm: round(fix.heartRateBpm, 0),
 });
 
-/** Points d'une trace lue, rendus sous forme de positions : l'entrée du rejeu. */
+/** Points d'une trace lue, rendus sous forme de positions, FC comprise : l'entrée du rejeu (un test se guide sur la FC du fichier). */
 export const fixesFromRawPoints = (points: RawTrackPoint[]): LocationFix[] =>
   points
     .map((p) => ({ p, timeMs: pointTimeMs(p.time) }))
     .filter(({ timeMs }) => isFinite(timeMs))
-    .map(({ p, timeMs }) => ({ timeMs, lat: p.lat, lon: p.lon, altitudeM: p.ele, speedMs: p.speedMs }));
+    .map(({ p, timeMs }) => ({ timeMs, lat: p.lat, lon: p.lon, altitudeM: p.ele, speedMs: p.speedMs, heartRateBpm: p.hr }));
 
 /**
  * Découpe une trace plate en segments continus, aux indices de `breaks` (le

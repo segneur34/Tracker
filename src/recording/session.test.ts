@@ -121,14 +121,14 @@ describe('evaluateAutoPause', () => {
 });
 
 describe('fixesFromRawPoints', () => {
-  it('reprend heure, position, altitude et vitesse, et écarte un point sans heure lisible', () => {
+  it('reprend heure, position, altitude, vitesse et FC, et écarte un point sans heure lisible', () => {
     const fixes = fixesFromRawPoints([
-      { lat: 43.5, lon: 3.9, time: '2026-09-23T12:00:00Z', ele: 12, speedMs: 4.2 },
+      { lat: 43.5, lon: 3.9, time: '2026-09-23T12:00:00Z', ele: 12, speedMs: 4.2, hr: 150 },
       { lat: 43.6, lon: 3.8, time: 'pas une date' },
       { lat: 43.7, lon: 3.7, time: new Date(T0 + 1000) },
     ]);
     expect(fixes).toEqual([
-      { timeMs: T0, lat: 43.5, lon: 3.9, altitudeM: 12, speedMs: 4.2 },
+      { timeMs: T0, lat: 43.5, lon: 3.9, altitudeM: 12, speedMs: 4.2, heartRateBpm: 150 },
       { timeMs: T0 + 1000, lat: 43.7, lon: 3.7, altitudeM: undefined, speedMs: undefined },
     ]);
   });

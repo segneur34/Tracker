@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeKinematics } from '../core/kinematics';
 import type { RawTrackPoint } from '../core/types';
+import type { SessionTest } from '../recording/fitnessTest';
 import { SUMMARY_CALC_VERSION } from './record';
 import { analysisTrack, summarizeSession } from './summary';
 
@@ -45,6 +46,23 @@ describe('summarizeSession', () => {
     expect(hr.coveredS).toBe(600);
     expect(hr.histogram.seconds.reduce((a, b) => a + b, 0)).toBeCloseTo(600, -1);
     expect(summarizeSession(buildTrack([[600, 3]]), 'running')!.heartRate).toBeUndefined();
+  });
+
+  it('range le test guidé de la fiche : FC max et dernier palier tenu, rien sans test', () => {
+    // 3 min à 2 m/s, puis des paliers de 60 s à 2,5 et 3 m/s ; le troisième, à 3,5, lâché tout de suite. FC de 120 à 180.
+    const points = buildTrack([[180, 2], [60, 2.5], [60, 3], [60, 2]]).map((p, i) => ({ ...p, hr: 120 + Math.min(60, i / 5) }));
+    const test: SessionTest = {
+      protocol: 'fc-max', version: 1,
+      settings: { warmupS: 180, age: 35, ageSource: 'defaut', lowBpm: 110, highBpm: 147, zoneMethod: 'max' },
+      startMs: START_MS, rampStartMs: START_MS + 180_000, v0Ms: 2.5,
+      steps: [0, 1, 2].map((k) => ({ startMs: START_MS + (180 + 60 * k) * 1000, targetMs: 2.5 + 0.5 * k })),
+      rampEndMs: START_MS + 330_000, dropMs: START_MS + 305_000, endReason: 'auto', endMs: START_MS + 360_000, signals: [],
+    };
+    const summary = summarizeSession(points, 'run-test', { test })!.test!;
+    expect(summary.steps).toBe(2);
+    expect(summary.lastStepSpeedMs).toBe(3);
+    expect(summary.hrMaxBpm).toBe(180);
+    expect(summarizeSession(points, 'run-test')!.test).toBeUndefined();
   });
 
   it('range la cadence à pied (cad du GPX, en foulées), rien sans elle ni à vélo', () => {

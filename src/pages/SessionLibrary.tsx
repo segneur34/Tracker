@@ -89,6 +89,10 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
     if (summary.waveCount !== undefined) stats.push(`${summary.waveCount} vague${summary.waveCount > 1 ? 's' : ''}`);
     if (summary.longestWaveM != null) stats.push(`plus longue ${Math.round(summary.longestWaveM)} m`);
     if (summary.longestFlightS != null) stats.push(`vol ${formatShortDuration(summary.longestFlightS)}`);
+  } else if (summary.test) {
+    // Test guidé : FC max et vitesse du dernier palier tenu.
+    if (summary.test.hrMaxBpm !== null) stats.push(`FC max ${summary.test.hrMaxBpm}`);
+    if (summary.test.lastStepSpeedMs !== null) stats.push(formatSpeed(summary.test.lastStepSpeedMs, effectiveSpeedUnit(activity)));
   } else {
     if (summary.movingTimeS && summary.distanceM > 0) {
       stats.push(formatSpeed(summary.distanceM / summary.movingTimeS, effectiveSpeedUnit(activity)));

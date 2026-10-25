@@ -86,6 +86,7 @@ import {
 import { isNativeApp } from '../platform/runtime';
 import { jsonStore } from '../platform/storage';
 import type { IntervalSeries } from '../recording/intervalTimer';
+import type { SessionTest } from '../recording/fitnessTest';
 import { sessionFileName } from '../recording/session';
 import { effectiveFoil, effectiveThresholdOverride, readStoredActivities } from './useSportSettings';
 
@@ -350,11 +351,12 @@ const summaryOptions = (
     // Surf : le foil de la session, sinon celui de son activité ; son seuil de vague en foil.
     foil: analysis?.foil ?? effectiveFoil(activity) ?? undefined,
     waveThreshold: analysis?.waveThreshold ?? undefined,
+    test: elevation?.test,
   };
 };
 
-/** Altitude de la fiche : celle du terrain, et la source choisie. */
-type SessionElevation = Pick<SessionRecord, 'terrainElevation' | 'elevationSource'>;
+/** Altitude de la fiche (celle du terrain, et la source choisie) et son test guidé. */
+type SessionElevation = Pick<SessionRecord, 'terrainElevation' | 'elevationSource' | 'test'>;
 
 interface AnalyzedGpx {
   summary: SessionSummary;
@@ -366,7 +368,7 @@ interface AnalyzedGpx {
  * Lit un GPX et le résume. `sport` absent : deviné depuis la trace.
  * `analysis` : réglages d'analyse de la fiche (seuil, allure), s'il y en a ;
  * `activityId` : son activité, dont les réglages s'appliquent ;
- * `elevation` : son altitude du terrain et la source choisie.
+ * `elevation` : son altitude du terrain, la source choisie et son test guidé.
  * Rend `null` si la trace a moins de deux points, lève une erreur si le XML
  * est illisible.
  */
@@ -1189,6 +1191,8 @@ interface AddOptions {
   intervals?: IntervalSeries[];
   /** Repères du bouton « Note », rangés dans la fiche. */
   marks?: SessionMark[];
+  /** Test guidé fait pendant l'enregistrement, rangé dans la fiche. */
+  test?: SessionTest;
   /** Capteurs de l'enregistrement (`.imu`), rangés à côté du GPX. */
   motion?: Uint8Array;
   /** Foil de l'activité à l'enregistrement, rangé dans les réglages de la session. */
@@ -1233,7 +1237,8 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   let analyzed: AnalyzedGpx | null;
   try {
     const sport = options.sport ?? options.record?.sport ?? undefined;
-    analyzed = analyzeGpx(text, sport, options.record?.analysis, options.activityId ?? options.record?.activityId, options.record);
+    const fields = options.test ? { ...options.record, test: options.test } : options.record;
+    analyzed = analyzeGpx(text, sport, options.record?.analysis, options.activityId ?? options.record?.activityId, fields);
   } catch (err) {
     return { status: 'invalid', file: null, message: errorMessage(err, 'GPX illisible.') };
   }
@@ -1294,6 +1299,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     ...made,
     ...(options.intervals && options.intervals.length > 0 ? { intervals: options.intervals } : {}),
     ...(options.marks && options.marks.length > 0 ? { marks: options.marks } : {}),
+    ...(options.test ? { test: options.test } : {}),
     ...(jumpsUnmeasured && !made.jumps
       ? { jumps: { version: JUMPS_CALC_VERSION, computedAt: new Date().toISOString(), jumps: [], measured: false as const } }
       : {}),
@@ -1323,7 +1329,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
 /**
  * Range une session qui vient d'être enregistrée, avec les séances du
  * compteur faites pendant elle, ses repères (`marks`), ses capteurs (`motion`, le contenu du
- * `.imu`) et le foil de son activité (`foil`, `null` hors voile et surf). Rend son nom dans la mémoire et, en clair, l'endroit où elle se
+ * `.imu`), le foil de son activité (`foil`, `null` hors voile et surf) et son test guidé (`test`). Rend son nom dans la mémoire et, en clair, l'endroit où elle se
  * trouve. Ne lève d'erreur que si l'écriture échoue : l'enregistreur garde
  * alors son journal. Une session mise en attente faute de dossier n'a pas
  * encore de fiche : ses séances et ses repères ne sont pas gardés ; ses capteurs attendent
@@ -1336,11 +1342,12 @@ export const saveRecordedSession = async (
   intervals: IntervalSeries[] = [],
   motion: Uint8Array | null = null,
   marks: SessionMark[] = [],
-  foil: boolean | null = null
+  foil: boolean | null = null,
+  test: SessionTest | null = null
 ): Promise<{ file: string | null; location: string }> => {
   await opening;
   const result = await addGpx(text, 'enregistrement', {
-    sport, activityId: activityId ?? undefined, intervals, marks, motion: motion ?? undefined, foil: foil ?? undefined,
+    sport, activityId: activityId ?? undefined, intervals, marks, motion: motion ?? undefined, foil: foil ?? undefined, test: test ?? undefined,
   });
   switch (result.status) {
     case 'added':

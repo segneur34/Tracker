@@ -7,6 +7,8 @@ import { sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import type { TerrainSamples } from '../core/terrainElevation';
 import { readSurfaceRuns, type SurfaceRuns } from '../planning/surface';
+import { readSessionTest, type SessionTest } from '../recording/fitnessTest';
+import type { SummaryTest } from '../running/fitnessTestResults';
 import { readIntervalSeries, type IntervalSeries } from '../recording/intervalTimer';
 import { isSportType } from '../recording/session';
 import { isValidCarriedLoad } from '../running/energy';
@@ -89,6 +91,8 @@ export interface SessionSummary {
   heartRate?: SummaryHeartRate;
   /** Cadence à pied, si la session en a assez (`CadenceDetection.minCoverageS`). */
   cadence?: SummaryCadence;
+  /** Test guidé de la fiche (`test`) : FC max et dernier palier tenu ; absent sans test. */
+  test?: SummaryTest;
 }
 
 /** Cadence d'une session à pied dans son résumé, comme l'onglet « cadence » la mesure. */
@@ -111,6 +115,12 @@ export interface ManeuverResults {
   jibeSuccess: number;
   jibeFail: number;
 }
+
+const readSummaryTest = (raw: unknown): SummaryTest | null => {
+  if (!isObject(raw) || !isFiniteNumber(raw.steps)) return null;
+  const orNull = (v: unknown): number | null => (isFiniteNumber(v) ? v : null);
+  return { hrMaxBpm: orNull(raw.hrMaxBpm), lastStepSpeedMs: orNull(raw.lastStepSpeedMs), steps: raw.steps };
+};
 
 const readManeuverResults = (raw: unknown): ManeuverResults | null => {
   if (!isObject(raw)) return null;
@@ -308,6 +318,11 @@ export interface SessionRecord {
    * supprimés dans l'analyse ; dans l'ordre du temps. Absent sans repère.
    */
   marks?: SessionMark[];
+  /**
+   * Test guidé fait pendant l'enregistrement (Entraînement › Tests) : phases,
+   * paliers et signaux, en heure des positions. Absent sans test, ou mal formé.
+   */
+  test?: SessionTest;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -356,6 +371,9 @@ const readSummary = (raw: unknown): SessionSummary | null => {
   const cadence = readSummaryCadence(raw.cadence);
   if (cadence) summary.cadence = cadence;
   else delete summary.cadence;
+  const test = readSummaryTest(raw.test);
+  if (test) summary.test = test;
+  else delete summary.test;
   return summary;
 };
 
@@ -504,12 +522,13 @@ export const parseRecordParts = (text: string): RecordWithoutSummary | null => {
   if (!isObject(raw) || raw.format !== RECORD_FORMAT || !isFiniteNumber(raw.version)) return null;
   if (typeof raw.gpx !== 'string' || raw.gpx === '') return null;
   const summary = readSummary(raw.summary);
-  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, intervals: rawIntervals, jumps: rawJumps, marks: rawMarks, ...rest } = raw;
+  const { surfaces: rawSurfaces, terrainElevation: rawTerrain, elevationSource: rawSource, intervals: rawIntervals, jumps: rawJumps, marks: rawMarks, test: rawTest, ...rest } = raw;
   const surfaces = readSessionSurfaces(rawSurfaces);
   const terrainElevation = readTerrainElevation(rawTerrain);
   const intervals = readIntervalSeries(rawIntervals);
   const jumps = readSessionJumps(rawJumps);
   const marks = readSessionMarks(rawMarks);
+  const test = readSessionTest(rawTest);
   return {
     ...rest,
     format: RECORD_FORMAT,
@@ -531,6 +550,7 @@ export const parseRecordParts = (text: string): RecordWithoutSummary | null => {
     ...(intervals ? { intervals } : {}),
     ...(jumps ? { jumps } : {}),
     ...(marks ? { marks } : {}),
+    ...(test ? { test } : {}),
   };
 };
 
@@ -549,11 +569,11 @@ export const isWritableRecord = (record: Pick<SessionRecord, 'version'>): boolea
 /**
  * Fiche de la mémoire complétée par celle d'une copie de la même session
  * (import d'un GPX complet, `library/sessionBundle.ts`, ou d'un GPX et de sa
- * fiche) : support et activité inconnus, séances du compteur, repères, nom,
+ * fiche) : support et activité inconnus, séances du compteur, repères, test, nom,
  * notes, réglages, sauts, voies et altitude qu'elle n'a pas encore. Rien de ce
  * qu'elle porte n'est écrasé ; rend la même fiche si rien ne manque.
- * `resummarize` : le résumé est à refaire (support, activité, réglages ou
- * altitude reçus).
+ * `resummarize` : le résumé est à refaire (support, activité, réglages,
+ * altitude ou test reçus).
  */
 export const completeRecord = (
   existing: SessionRecord,
@@ -566,6 +586,7 @@ export const completeRecord = (
   }
   if (!existing.intervals?.length && incoming.intervals?.length) patch.intervals = incoming.intervals;
   if (!existing.marks?.length && incoming.marks?.length) patch.marks = incoming.marks;
+  if (!existing.test && incoming.test) patch.test = incoming.test;
   if (existing.name === null && incoming.name !== null) patch.name = incoming.name;
   if (existing.notes === null && incoming.notes !== null) patch.notes = incoming.notes;
   if (existing.analysis === null && incoming.analysis !== null) patch.analysis = incoming.analysis;
@@ -574,7 +595,7 @@ export const completeRecord = (
   if (!existing.terrainElevation && incoming.terrainElevation) patch.terrainElevation = incoming.terrainElevation;
   if (!existing.elevationSource && incoming.elevationSource) patch.elevationSource = incoming.elevationSource;
   if (Object.keys(patch).length === 0) return { record: existing, resummarize: false };
-  const resummarize = ['sport', 'activityId', 'analysis', 'terrainElevation', 'elevationSource'].some((key) => key in patch);
+  const resummarize = ['sport', 'activityId', 'analysis', 'terrainElevation', 'elevationSource', 'test'].some((key) => key in patch);
   return { record: { ...existing, ...patch }, resummarize };
 };
 
@@ -617,7 +638,7 @@ export const findLegacyNotes = (
  */
 export const RECORD_LIGHT_FIELDS = [
   'format', 'version', 'gpx', 'sport', 'activityId', 'source', 'addedAt', 'title', 'name',
-  'summary', 'notes', 'analysis', 'elevationSource', 'intervals', 'marks',
+  'summary', 'notes', 'analysis', 'elevationSource', 'intervals', 'marks', 'test',
 ] as const satisfies readonly (keyof SessionRecord)[];
 
 const LIGHT_FIELDS: ReadonlySet<string> = new Set(RECORD_LIGHT_FIELDS);

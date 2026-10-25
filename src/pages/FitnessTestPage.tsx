@@ -8,9 +8,10 @@ import { IconPlay } from '../components/icons';
 import { FAMILY_ACCENT, activitiesOfFamily } from '../core/activities';
 import { isTestSport } from '../core/sportProfiles';
 import { kmhToMs } from '../core/units';
+import { fitnessTestRunner } from '../hooks/useFitnessTest';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { lastRecordActivity, saveFitnessTestSettings, useFitnessTestSettings, useVisibility } from '../hooks/useSportSettings';
-import { FITNESS_TESTS, FITNESS_TEST_LIMITS, resolveFitnessTestParams } from '../recording/fitnessTest';
+import { FITNESS_TESTS, FITNESS_TEST_LIMITS, resolveFitnessTestParams, type FitnessTestParams } from '../recording/fitnessTest';
 import './TrainingPages.css';
 
 const PROTOCOL = FITNESS_TESTS['fc-max'];
@@ -24,19 +25,30 @@ const range = (min: number, max: number, step: number): number[] => {
   return out;
 };
 const WARMUP_CHOICES_S = range(FITNESS_TEST_LIMITS.warmupS.min, FITNESS_TEST_LIMITS.warmupS.max, FITNESS_TEST_LIMITS.warmupS.step);
-const PCT_CHOICES = range(FITNESS_TEST_LIMITS.warmupPct.min, FITNESS_TEST_LIMITS.warmupPct.max, FITNESS_TEST_LIMITS.warmupPct.step);
+
+/** D'où viennent les zones de l'échauffement, en clair. */
+function ZonesSource({ params }: { params: FitnessTestParams }) {
+  const { zones, age, ageSource } = params;
+  const hrMax = zones.estimated
+    ? <>{zones.hrMax} bpm, estimée par l'âge ({age} ans{ageSource === 'defaut' ? " par défaut, faute d'année de naissance" : ''})</>
+    : <>{zones.hrMax} bpm</>;
+  const pratiquant = <>Pratiquant, dans <Link to="/parametres">Réglages</Link></>;
+  if (zones.method === 'perso') return <>Zones saisies dans {pratiquant}.</>;
+  if (zones.method === 'reserve') return <>Zones de la réserve cardiaque, de la FC de repos à la FC max ({hrMax}) : {pratiquant}.</>;
+  return <>Zones en part de la FC max ({hrMax}) ; avec la FC de repos, elles suivraient la réserve cardiaque : {pratiquant}.</>;
+}
 
 /**
  * Test de FC max (24/10), depuis Tests : le protocole (déroulé, bips,
- * ceinture, santé), son graphique annoté, ses réglages (durée et cible de
- * l'échauffement, âge de Pratiquant), et « Lancer », qui ouvre Enregistrer
+ * ceinture, santé), son graphique annoté, ses réglages (durée de
+ * l'échauffement ; sa bande vient des zones du cardio de Pratiquant), et « Lancer », qui ouvre Enregistrer
  * prêt (Entraînement › Tests › FC max, ceinture cochée). Le bouton rond démarre.
  */
 function FitnessTestPage() {
   const navigate = useNavigate();
   const settings = useFitnessTestSettings('fc-max');
-  const { age } = useRunnerProfile();
-  const params = useMemo(() => resolveFitnessTestParams(PROTOCOL, settings, age), [settings, age]);
+  const { profile } = useRunnerProfile();
+  const params = useMemo(() => resolveFitnessTestParams(PROTOCOL, settings, fitnessTestRunner(profile)), [settings, profile]);
   const { activities, isShown } = useVisibility();
   const activity = useMemo(() => {
     const tests = activitiesOfFamily(activities.filter(isShown), 'fractionne').filter((a) => isTestSport(a.base));
@@ -47,7 +59,7 @@ function FitnessTestPage() {
     if (activity) navigate(`/enregistrer?activite=${encodeURIComponent(activity.id)}&test=fc-max`);
   };
   const warmupMin = Math.round(params.warmupS / 60);
-  const pct = Math.round(params.warmupPct * 100);
+  const { from, to } = PROTOCOL.warmupZones;
 
   return (
     <div className="ui-page train-page" style={{ '--help-accent': FAMILY_ACCENT.fractionne } as React.CSSProperties}>
@@ -66,8 +78,8 @@ function FitnessTestPage() {
 
       <Card heading="Déroulé">
         <ol className="fit-steps">
-          <li><strong>Échauffement, {warmupMin} min</strong>, la FC autour de {params.targetBpm} bpm (± {PROTOCOL.hrBandBpm}) : {pct} % de
-            la FC max de référence ({params.hrMaxRefBpm} bpm, 220 − âge). Souvent en marchant vite.</li>
+          <li><strong>Échauffement, {warmupMin} min</strong>, la FC en zones {from} à {to} du cardio : de {params.warmupLowBpm} à
+            {' '}{params.warmupHighBpm} bpm. En trottinant, ou en marchant vite.</li>
           <li><strong>Rampe</strong> : elle part à la vitesse moyenne de la dernière minute d'échauffement, arrondie au 0,5 km/h, puis
             la vitesse cible monte de 0,6 km/h chaque minute. Suivez-la le plus longtemps possible.</li>
           <li><strong>Fin de la rampe</strong> : quand la vitesse reste 0,5 km/h sous la cible pendant 20 s, ou par « Finir la rampe ».</li>
@@ -85,7 +97,7 @@ function FitnessTestPage() {
           <li><span className="fit-beeps__sound">court, long, long double</span>fin de la rampe</li>
           <li><span className="fit-beeps__sound">1 long</span>fin du test, après la récupération</li>
         </ul>
-        <p className="train-hint">Un bip court au départ. Les corrections viennent au plus toutes les 10 s, « bien » au plus toutes les 30 s, et rien dans les 10 s qui suivent un palier.
+        <p className="train-hint">Un bip court au départ. Les corrections viennent au plus toutes les 10 s, et toutes les 30 s quand la même revient trois fois de suite ; « bien » au plus toutes les 30 s ; rien dans les 10 s qui suivent un palier.
           Pendant l'échauffement, les bips suivent la FC ; pendant la rampe, la vitesse.</p>
       </Card>
 
@@ -102,18 +114,8 @@ function FitnessTestPage() {
               {WARMUP_CHOICES_S.map((s) => <option key={s} value={s}>{s / 60} min</option>)}
             </select>
           </label>
-          <label className="fit-settings__row">
-            <span>Cible de l'échauffement</span>
-            <select className="ui-field ui-field--s" value={params.warmupPct}
-              onChange={(e) => saveFitnessTestSettings('fc-max', { warmupPct: Number(e.target.value) })}>
-              {PCT_CHOICES.map((p) => <option key={p} value={p}>{Math.round(p * 100)} % de la FC max</option>)}
-            </select>
-          </label>
           <p className="train-hint">
-            {params.ageSource === 'profil'
-              ? <>Âge : {params.age} ans (Pratiquant, dans <Link to="/parametres">Réglages</Link>).</>
-              : <>Âge inconnu : {params.age} ans par défaut. Votre année de naissance se règle dans Pratiquant (<Link to="/parametres">Réglages</Link>).</>}
-            {' '}Cible : {params.targetBpm} bpm.
+            Échauffement en zones {from} à {to} : {params.warmupLowBpm} à {params.warmupHighBpm} bpm. <ZonesSource params={params} />
           </p>
         </div>
       </Card>

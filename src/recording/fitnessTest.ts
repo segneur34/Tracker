@@ -1,9 +1,10 @@
+import { heartRateZones, type HeartRateAthlete, type HeartRateZones, type ZoneMethod } from '../core/heartRate';
 import { kmhToMs } from '../core/units';
 import type { ClockTone } from '../platform/beeper';
 
 /**
  * Tests guidés par bips (Entraînement › Tests, 24/10), d'abord la FC max :
- * un échauffement à une FC cible, une rampe de +0,6 km/h par minute tenue
+ * un échauffement dans une bande de FC, une rampe de +0,6 km/h par minute tenue
  * jusqu'à ce qu'on lâche, puis une récupération mesurée.
  *
  * Le test avance à chaque position, sur l'heure des positions (le rejeu le
@@ -16,8 +17,9 @@ import type { ClockTone } from '../platform/beeper';
  *
  * Signaux (réponses de l'utilisateur, 24/10) : 1 bip court = bien, 2 = trop
  * vite, 3 = accélère ; un bip long au début de la rampe et à chaque palier ;
- * corrections espacées de 10 s au moins, « bien » de 30 s. Début, fin de la
- * rampe et fin du test : choix montrés dans le plan du lot.
+ * corrections espacées de 10 s au moins, « bien » de 30 s ; la même correction
+ * trois fois de suite, les suivantes de 30 s. Échauffement en zones 2 à 3 du
+ * cardio. Début, fin de la rampe et fin du test : choix montrés dans le plan du lot.
  */
 
 export type FitnessTestId = 'fc-max';
@@ -35,14 +37,10 @@ export interface FitnessTestProtocol {
   version: number;
   /** Durée de l'échauffement par défaut, réglable. */
   warmupS: number;
-  /** Cible de l'échauffement, en part de la FC max de référence ; réglable. */
-  warmupPct: number;
-  /** FC max de référence : `hrMaxBase` − âge (220 − âge, pas l'estimation de Tanaka du cardio). */
-  hrMaxBase: number;
-  /** Âge pris sans année de naissance dans Pratiquant. */
+  /** Bande de FC de l'échauffement : du bas de la zone `from` au haut de la zone `to`, zones du cardio de Pratiquant. */
+  warmupZones: { from: number; to: number };
+  /** Âge pris sans année de naissance dans Pratiquant, pour estimer la FC max des zones. */
   defaultAge: number;
-  /** Demi-largeur de la bande de FC de l'échauffement, en bpm. */
-  hrBandBpm: number;
   /** Début de l'échauffement sans correction, le temps que la FC monte. */
   warmupGraceS: number;
   /** Durée d'un palier de la rampe. */
@@ -71,6 +69,10 @@ export interface FitnessTestProtocol {
   correctionGapS: number;
   /** Écart minimal entre deux « bien ». */
   goodGapS: number;
+  /** Après tant de fois de suite la même correction… */
+  repeatCount: number;
+  /** … les suivantes s'espacent d'autant. */
+  repeatGapS: number;
   /** Au-delà de ce trou entre deux positions, la mesure repart de zéro (aucun signal tant qu'elle n'est pas refaite). */
   fixGapS: number;
   /** Lissage de la FC des résultats (pic). */
@@ -85,10 +87,8 @@ export const FITNESS_TESTS: Record<FitnessTestId, FitnessTestProtocol> = {
     label: 'FC max',
     version: 1,
     warmupS: 480,
-    warmupPct: 0.45,
-    hrMaxBase: 220,
+    warmupZones: { from: 2, to: 3 },
     defaultAge: 35,
-    hrBandBpm: 5,
     warmupGraceS: 30,
     stepS: 60,
     stepMs: kmhToMs(0.6),
@@ -103,6 +103,8 @@ export const FITNESS_TESTS: Record<FitnessTestId, FitnessTestProtocol> = {
     recoveryS: 120,
     correctionGapS: 10,
     goodGapS: 30,
+    repeatCount: 3,
+    repeatGapS: 30,
     fixGapS: 5,
     resultHrSmoothS: 5,
     recoveryReadS: 60,
@@ -112,12 +114,10 @@ export const FITNESS_TESTS: Record<FitnessTestId, FitnessTestProtocol> = {
 /** Réglages de l'utilisateur, avant « Lancer ». */
 export interface FitnessTestSettings {
   warmupS: number;
-  warmupPct: number;
 }
 
 export const FITNESS_TEST_LIMITS = {
   warmupS: { min: 180, max: 1200, step: 60 },
-  warmupPct: { min: 0.3, max: 0.7, step: 0.05 },
 } as const;
 
 const inRange = (value: unknown, { min, max }: { min: number; max: number }): value is number =>
@@ -128,23 +128,31 @@ export const sanitizeFitnessTestSettings = (raw: unknown, protocol: FitnessTestP
   const r = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
   return {
     warmupS: inRange(r.warmupS, FITNESS_TEST_LIMITS.warmupS) ? Math.round(r.warmupS) : protocol.warmupS,
-    warmupPct: inRange(r.warmupPct, FITNESS_TEST_LIMITS.warmupPct) ? r.warmupPct : protocol.warmupPct,
   };
 };
 
 export type AgeSource = 'profil' | 'defaut';
 
-/** Ce qu'il faut pour guider un test : le protocole, les réglages et la cible tirée de l'âge. */
+/** Ce que le test lit de Pratiquant : âge, FC et zones du cardio, et les parts des zones du calcul de test. */
+export interface TestRunner {
+  athlete: HeartRateAthlete;
+  age: number | null;
+  zoneFractions: readonly number[];
+}
+
+/** Ce qu'il faut pour guider un test : le protocole, les réglages et la bande tirée des zones du cardio. */
 export interface FitnessTestParams {
   protocol: FitnessTestProtocol;
   warmupS: number;
-  warmupPct: number;
   age: number;
   ageSource: AgeSource;
-  /** FC max de référence (220 − âge). */
+  /** Zones du cardio, FC max estimée par l'âge (celui par défaut au besoin) si elle n'est pas saisie. */
+  zones: HeartRateZones;
+  /** FC max de référence : celle des zones. */
   hrMaxRefBpm: number;
-  /** Cible de l'échauffement. */
-  targetBpm: number;
+  /** Bande de FC de l'échauffement. */
+  warmupLowBpm: number;
+  warmupHighBpm: number;
 }
 
 /** Âge admis pour la FC max de référence. */
@@ -153,19 +161,23 @@ const isUsableAge = (age: number | null): age is number => age !== null && isFin
 export const resolveFitnessTestParams = (
   protocol: FitnessTestProtocol,
   settings: FitnessTestSettings,
-  age: number | null
+  runner: TestRunner
 ): FitnessTestParams => {
+  const { age } = runner;
   const usable = isUsableAge(age);
   const used = usable ? age : protocol.defaultAge;
-  const hrMaxRefBpm = protocol.hrMaxBase - used;
+  // Toujours des zones : l'âge (au besoin celui par défaut) donne une FC max.
+  const zones = heartRateZones(runner.athlete, used, runner.zoneFractions)!;
+  const { from, to } = protocol.warmupZones;
   return {
     protocol,
     warmupS: settings.warmupS,
-    warmupPct: settings.warmupPct,
     age: used,
     ageSource: usable ? 'profil' : 'defaut',
-    hrMaxRefBpm,
-    targetBpm: Math.round(settings.warmupPct * hrMaxRefBpm),
+    zones,
+    hrMaxRefBpm: zones.hrMax!,
+    warmupLowBpm: zones.bounds[from - 1],
+    warmupHighBpm: zones.bounds[to],
   };
 };
 
@@ -202,7 +214,8 @@ export interface TestStep {
 export interface SessionTest {
   protocol: FitnessTestId;
   version: number;
-  settings: { warmupS: number; warmupPct: number; age: number; ageSource: AgeSource; targetBpm: number; bandBpm: number };
+  /** Bande de l'échauffement, et d'où viennent les zones. */
+  settings: { warmupS: number; age: number; ageSource: AgeSource; lowBpm: number; highBpm: number; zoneMethod: ZoneMethod };
   startMs: number;
   rampStartMs: number | null;
   /** Vitesse du premier palier. */
@@ -226,7 +239,7 @@ export const readSessionTest = (raw: unknown): SessionTest | null => {
   const r = raw as Record<string, unknown>;
   if (!isFitnessTestId(r.protocol) || !isNum(r.version) || !isNum(r.startMs)) return null;
   const s = typeof r.settings === 'object' && r.settings !== null ? (r.settings as Record<string, unknown>) : null;
-  if (!s || !isNum(s.warmupS) || !isNum(s.warmupPct) || !isNum(s.age) || !isNum(s.targetBpm) || !isNum(s.bandBpm)) return null;
+  if (!s || !isNum(s.warmupS) || !isNum(s.age) || !isNum(s.lowBpm) || !isNum(s.highBpm)) return null;
   const steps = Array.isArray(r.steps)
     ? r.steps.filter((x): x is TestStep => typeof x === 'object' && x !== null && isNum((x as TestStep).startMs) && isNum((x as TestStep).targetMs))
       .map(({ startMs, targetMs }) => ({ startMs, targetMs }))
@@ -241,8 +254,8 @@ export const readSessionTest = (raw: unknown): SessionTest | null => {
     protocol: r.protocol,
     version: r.version,
     settings: {
-      warmupS: s.warmupS, warmupPct: s.warmupPct, age: s.age, ageSource: s.ageSource === 'profil' ? 'profil' : 'defaut',
-      targetBpm: s.targetBpm, bandBpm: s.bandBpm,
+      warmupS: s.warmupS, age: s.age, ageSource: s.ageSource === 'profil' ? 'profil' : 'defaut',
+      lowBpm: s.lowBpm, highBpm: s.highBpm, zoneMethod: s.zoneMethod === 'perso' || s.zoneMethod === 'reserve' ? s.zoneMethod : 'max',
     },
     startMs: r.startMs,
     rampStartMs: numOrNull(r.rampStartMs),
@@ -292,6 +305,8 @@ export interface FitnessTestState {
   graceUntilMs: number;
   lastSignalMs: number;
   lastGoodMs: number | null;
+  /** Dernier signal émis et combien de fois de suite. */
+  repeat: { signal: TestSignal | null; count: number };
   /** Dernier signal joué : pour la carte du direct. */
   lastSignal: { signal: TestSignal; timeMs: number } | null;
   test: SessionTest | null;
@@ -311,6 +326,7 @@ export const startFitnessTest = (params: FitnessTestParams): FitnessTestState =>
   graceUntilMs: 0,
   lastSignalMs: -Infinity,
   lastGoodMs: null,
+  repeat: { signal: null, count: 0 },
   lastSignal: null,
   test: null,
 });
@@ -337,22 +353,29 @@ const windowMean = (window: WindowSample[], field: 'speedMs' | 'hrBpm', windowS:
   return dur >= (windowS * 1000) / 2 ? sum / dur : null;
 };
 
-/** Signal de guidage, s'il respecte les écarts : 10 s après tout signal, et 30 s entre deux « bien ». */
+/**
+ * Signal de guidage, s'il respecte les écarts : 10 s après tout signal, 30 s
+ * entre deux « bien », et 30 s quand la même correction est déjà venue trois
+ * fois de suite.
+ */
 const allowed = (state: FitnessTestState, kind: 'bien' | 'trop' | 'accelere'): boolean => {
   const { protocol } = state.params;
   if (state.activeMs < state.graceUntilMs) return false;
-  if (state.activeMs - state.lastSignalMs < protocol.correctionGapS * 1000) return false;
+  const repeated = kind !== 'bien' && state.repeat.signal === kind && state.repeat.count >= protocol.repeatCount;
+  const gapS = repeated ? protocol.repeatGapS : protocol.correctionGapS;
+  if (state.activeMs - state.lastSignalMs < gapS * 1000) return false;
   return kind !== 'bien' || state.lastGoodMs === null || state.activeMs - state.lastGoodMs >= protocol.goodGapS * 1000;
 };
 
-/** Écart d'une valeur à sa cible, en signal : au-dessus, en dessous ou dans la tolérance. */
-const verdict = (value: number, target: number, tolerance: number): 'bien' | 'trop' | 'accelere' =>
-  value > target + tolerance ? 'trop' : value < target - tolerance ? 'accelere' : 'bien';
+/** Place d'une valeur par rapport à sa bande, en signal : au-dessus, en dessous ou dedans. */
+const verdict = (value: number, low: number, high: number): 'bien' | 'trop' | 'accelere' =>
+  value > high ? 'trop' : value < low ? 'accelere' : 'bien';
 
 /** Range un signal dans l'état (mutable : appelé sur une copie). */
 const emit = (state: FitnessTestState, signal: TestSignal, timeMs: number): TestSignal => {
   state.lastSignalMs = state.activeMs;
   if (signal === 'bien') state.lastGoodMs = state.activeMs;
+  state.repeat = state.repeat.signal === signal ? { signal, count: state.repeat.count + 1 } : { signal, count: 1 };
   state.lastSignal = { signal, timeMs };
   if (state.test) state.test.signals.push({ t: timeMs, s: signal });
   return signal;
@@ -370,8 +393,8 @@ const newTest = (params: FitnessTestParams, startMs: number): SessionTest => ({
   protocol: params.protocol.id,
   version: params.protocol.version,
   settings: {
-    warmupS: params.warmupS, warmupPct: params.warmupPct, age: params.age, ageSource: params.ageSource,
-    targetBpm: params.targetBpm, bandBpm: params.protocol.hrBandBpm,
+    warmupS: params.warmupS, age: params.age, ageSource: params.ageSource,
+    lowBpm: params.warmupLowBpm, highBpm: params.warmupHighBpm, zoneMethod: params.zones.method,
   },
   startMs,
   rampStartMs: null,
@@ -461,7 +484,7 @@ export const stepFitnessTest = (
     }
     const hr = windowMean(state.window, 'hrBpm', protocol.smoothS, state.activeMs);
     if (hr === null) return { state, signal: null };
-    const kind = verdict(hr, state.params.targetBpm, protocol.hrBandBpm);
+    const kind = verdict(hr, state.params.warmupLowBpm, state.params.warmupHighBpm);
     return { state, signal: allowed(state, kind) ? emit(state, kind, timeMs) : null };
   }
 
@@ -483,7 +506,7 @@ export const stepFitnessTest = (
       return { state, signal: emit(state, 'palier', timeMs) };
     }
     if (speed === null) return { state, signal: null };
-    const kind = verdict(speed, target, protocol.speedToleranceMs);
+    const kind = verdict(speed, target - protocol.speedToleranceMs, target + protocol.speedToleranceMs);
     return { state, signal: allowed(state, kind) ? emit(state, kind, timeMs) : null };
   }
 
@@ -521,11 +544,17 @@ export const finishRamp = (previous: FitnessTestState): { state: FitnessTestStat
  * cours finit à la dernière position, raison « arret ». Rend le test à ranger,
  * `null` s'il n'a pas commencé.
  */
-export const closeFitnessTest = (state: FitnessTestState): SessionTest | null => {
-  if (!state.test) return null;
-  if (state.phase !== 'rampe' || state.lastTimeMs === null) return state.test;
-  return { ...state.test, rampEndMs: state.lastTimeMs, dropMs: state.lastTimeMs, endReason: 'arret' };
-};
+export const closeFitnessTest = (state: FitnessTestState): SessionTest | null =>
+  state.test && state.lastTimeMs !== null ? closeSessionTest(state.test, state.lastTimeMs) : state.test;
+
+/**
+ * Test relu d'un journal (arrêt brutal) ou interrompu : une rampe commencée et
+ * pas finie finit à `lastMs`, la dernière position, raison « arret ».
+ */
+export const closeSessionTest = (test: SessionTest, lastMs: number): SessionTest =>
+  test.rampStartMs !== null && test.rampEndMs === null
+    ? { ...test, rampEndMs: lastMs, dropMs: lastMs, endReason: 'arret' }
+    : test;
 
 /** Temps restant de la phase en cours, en secondes ; `null` hors d'une phase minutée. */
 export const phaseRemainingS = (state: FitnessTestState): number | null => {
@@ -597,7 +626,9 @@ const PLAN_STEP_S = 5;
  * la FC max de référence, baisse en récupération), phases et bips.
  */
 export const testPlan = (params: FitnessTestParams, example: { v0Ms: number; steps: number }): TestPlan => {
-  const { protocol, warmupS, targetBpm, hrMaxRefBpm } = params;
+  const { protocol, warmupS, hrMaxRefBpm, warmupLowBpm, warmupHighBpm } = params;
+  // FC d'exemple de l'échauffement : le milieu de la bande.
+  const targetBpm = Math.round((warmupLowBpm + warmupHighBpm) / 2);
   const rampS = example.steps * protocol.stepS;
   const rampEndS = warmupS + rampS;
   const endS = rampEndS + protocol.recoveryS;
@@ -627,7 +658,7 @@ export const testPlan = (params: FitnessTestParams, example: { v0Ms: number; ste
       { phase: 'rampe', startS: warmupS, endS: rampEndS },
       { phase: 'recuperation', startS: rampEndS, endS },
     ],
-    hrBand: { lowBpm: targetBpm - protocol.hrBandBpm, highBpm: targetBpm + protocol.hrBandBpm },
+    hrBand: { lowBpm: warmupLowBpm, highBpm: warmupHighBpm },
     beeps,
   };
 };

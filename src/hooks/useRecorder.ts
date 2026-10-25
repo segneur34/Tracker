@@ -16,10 +16,11 @@ import {
 } from '../platform/heartRate';
 import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation } from '../platform/location';
 import { buildGpx } from '../recording/gpxWriter';
+import { closeSessionTest, type SessionTest } from '../recording/fitnessTest';
 import { heartRateAt } from '../recording/heartRate';
 import { seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
 import {
-  journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalIntervalsLine, journalNoteLine, parseJournal,
+  journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalIntervalsLine, journalNoteLine, journalTestLine, parseJournal,
 } from '../recording/journal';
 import {
   EMPTY_RECORDING_STATS,
@@ -46,7 +47,8 @@ import { saveRecordedSession } from './useSessionLibrary';
  * (`subscribeToFixes`) et à l'état (`subscribeToRecorder`). Le compteur du
  * fractionné (`useIntervalTimer`) lui confie ses séances (`noteIntervalRun`),
  * écrites dans le journal et rangées avec la session ; de même les repères
- * du bouton « Note » (`addRecordingMark`). La mesure des sauts,
+ * du bouton « Note » (`addRecordingMark`) et le test guidé (`useFitnessTest`,
+ * `noteFitnessTest`). La mesure des sauts,
  * demandée au départ, fait capter accéléromètre et gyroscope par le
  * téléphone (`platform/motion.ts`) ; la capture suit la pause manuelle et se
  * range à côté du GPX (`.imu`). La ceinture cardio, demandée au départ, est
@@ -89,6 +91,8 @@ export interface PendingSession {
   marks: SessionMark[];
   /** Capture des capteurs (sauts), dans le dossier privé, rangée avec la session ; `null` sans mesure. */
   motion: MotionCapture | null;
+  /** Test guidé fait pendant l'enregistrement ; `null` sans test. */
+  test: SessionTest | null;
 }
 
 /** Session rangée par « Analyser ». */
@@ -217,6 +221,8 @@ let startedAtMs = 0;
 let intervalRuns = new Map<number, IntervalRun>();
 /** Repères posés pendant l'enregistrement, dans l'ordre. */
 let marks: SessionMark[] = [];
+/** Test guidé de l'enregistrement, dans son dernier état ; `null` sans test. */
+let currentTest: SessionTest | null = null;
 /** Écart toléré entre une mesure de la ceinture et une position, en secondes ; `null` sans ceinture. */
 let heartRateMaxAgeS: number | null = null;
 /** Rend la ceinture et se désabonne de ses mesures ; `null` sans ceinture. */
@@ -328,7 +334,8 @@ const buildPendingSession = async (
   recovered: boolean,
   intervals: IntervalSeries[],
   marks: SessionMark[],
-  motion: MotionCapture | null
+  motion: MotionCapture | null,
+  test: SessionTest | null
 ): Promise<PendingSession | null> => {
   const sport = activity.base;
   const pointCount = segments.reduce((n, s) => n + s.length, 0);
@@ -341,7 +348,7 @@ const buildPendingSession = async (
   const fileName = sessionFileName(startMs, sport);
   const measured = await withMeasuredCadence(segments, sport, motion);
   const content = buildGpx(measured, { name: sessionTitle(startMs, activity.name), sport });
-  return { fileName, content, sport, activity, pointCount, recovered, intervals, marks, motion };
+  return { fileName, content, sport, activity, pointCount, recovered, intervals, marks, motion, test };
 };
 
 /**
@@ -357,7 +364,9 @@ export const analyzePendingSession = async (): Promise<SavedSession | null> => {
     const motion = pending.motion ? await readMotionCapture(pending.motion.path).catch(() => null) : null;
     // Le foil de l'activité au moment de l'enregistrement : le matériel du jour, pas une supposition.
     const foil = effectiveFoil(pending.activity);
-    const { file, location } = await saveRecordedSession(pending.content, pending.sport, pending.activity.id, pending.intervals, motion, pending.marks, foil);
+    const { file, location } = await saveRecordedSession(
+      pending.content, pending.sport, pending.activity.id, pending.intervals, motion, pending.marks, foil, pending.test
+    );
     await recordingJournal.remove();
     if (pending.motion) await removeMotionCapture(pending.motion.path);
     const saved: SavedSession = { ...pending, fileName: file ?? pending.fileName, libraryFile: file, location };
@@ -429,7 +438,11 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
     // Une note posée en pause manuelle, après la dernière position, est gardée.
     const recoveredMarks = marksWithin(parsed.marks, fromMs, Infinity);
     const motion = header ? (orphan?.path.endsWith(`/${header.startedAtMs}.imu`) ? orphan : await findMotionCapture(header.startedAtMs)) : null;
-    const pending = await buildPendingSession(journalActivity(sport, saved), splitIntoSegments(list, breaks), true, intervals, recoveredMarks, motion);
+    // Test coupé par l'arrêt : une rampe en cours finit à la dernière position.
+    const test = parsed.test ? closeSessionTest(parsed.test, toMs) : null;
+    const pending = await buildPendingSession(
+      journalActivity(sport, saved), splitIntoSegments(list, breaks), true, intervals, recoveredMarks, motion, test
+    );
     if (pending) setState({ pending, saved: null, error: null });
   } catch (err) {
     setState({ error: `Session interrompue non récupérée : ${errorMessage(err, 'erreur inconnue')}` });
@@ -494,6 +507,7 @@ export const startRecording = async (
   startedAtMs = Date.now();
   intervalRuns = new Map();
   marks = [];
+  currentTest = null;
   sourceError = null;
   setState({
     status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
@@ -612,6 +626,20 @@ export const noteIntervalRun = (run: IntervalRun): void => {
 };
 
 /**
+ * Test guidé (`useFitnessTest`), dans son état du moment : gardé pour la
+ * session et, si `journal`, écrit dans le journal pour survivre à un plantage
+ * (changements de phase, paliers, fin). Sans effet hors d'un enregistrement ;
+ * accepté pendant l'arrêt, le temps que le guidage range son dernier état.
+ */
+export const noteFitnessTest = (test: SessionTest, journal: boolean): void => {
+  if (state.status === 'idle') return;
+  currentTest = test;
+  if (!journal) return;
+  pendingLines += journalTestLine(test);
+  if (state.status === 'recording' || state.status === 'paused') void flushJournal();
+};
+
+/**
  * Bouton « Note » : pose un repère à cet instant, à la dernière position
  * reçue (pause comprise), écrit tout de suite dans le journal. Rend le repère
  * et son numéro, ou `null` hors d'un enregistrement ou sans position encore.
@@ -651,7 +679,9 @@ export const stopRecording = async (): Promise<void> => {
 
   try {
     const intervals = seriesWithin([...intervalRuns.values()], startedAtMs, stoppedAtMs);
-    const pending = await buildPendingSession(activity, splitIntoSegments(fixes, segmentBreaks), false, intervals, [...marks], motion);
+    const pending = await buildPendingSession(
+      activity, splitIntoSegments(fixes, segmentBreaks), false, intervals, [...marks], motion, currentTest
+    );
     setState({
       status: 'idle',
       measuringMotion: false,
@@ -675,6 +705,7 @@ export const stopRecording = async (): Promise<void> => {
   segmentBreaks = [];
   intervalRuns = new Map();
   marks = [];
+  currentTest = null;
   sourceError = null;
 };
 

@@ -13,6 +13,7 @@ import AnalysisMap from '../components/AnalysisMap';
 import EffortThresholdEditor from '../components/EffortThresholdEditor';
 import GradeGradientLegend from '../components/GradeGradientLegend';
 import HeartRateChart from '../components/HeartRateChart';
+import FitnessTestPanel, { FitnessTestCurves } from '../components/FitnessTestPanel';
 import HeartRatePanel, { CardioCurve, type HeartRateEfficiency } from '../components/HeartRatePanel';
 import IntervalAnalysis, { type IntervalSeriesView } from '../components/IntervalAnalysis';
 import JumpMapLayer from '../components/JumpMapLayer';
@@ -305,6 +306,8 @@ function LandModule({ family }: { family: LandFamily }) {
    */
   const shownRecord = useLibrarySession(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null)?.record;
   const sessionIntervals = shownRecord?.intervals ?? NO_INTERVALS;
+  /** Test guidé de la fiche (Entraînement › Tests) : l'onglet « test ». */
+  const sessionTest = shownRecord?.test ?? null;
   /** Poids du vélo et des bagages, charge portée : ceux de la session (brouillon, puis fiche), sinon ceux de l'activité. */
   const bikeWeightKg = draft.edits.bikeWeightKg ?? activityBikeKg;
   const loadKg = draft.edits.loadKg ?? carriedLoadKg;
@@ -653,6 +656,11 @@ function LandModule({ family }: { family: LandFamily }) {
     trackMinutes.length > 1 ? { min: trackMinutes[0], max: trackMinutes[trackMinutes.length - 1] } : null,
     gpx.sessionKey
   );
+  /** Zoom des courbes de l'onglet « test », sur le temps. */
+  const testZoom = useChartZoom(
+    trackMinutes.length > 1 ? { min: trackMinutes[0], max: trackMinutes[trackMinutes.length - 1] } : null,
+    gpx.sessionKey
+  );
   /** Carte en plein écran (téléphone), seule ou avec les graphes d'un onglet. */
   const [mapExpanded, setMapExpanded] = useState(false);
   /** « Sur la carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
@@ -664,6 +672,7 @@ function LandModule({ family }: { family: LandFamily }) {
       zones: { zoom, axis: trackDist },
       energie: { zoom: energyZoom, axis: trackMinutes },
       cardio: { zoom: cardioZoom, axis: trackMinutes },
+      test: { zoom: testZoom, axis: trackMinutes },
     },
     narrow,
     mapAnchorId: MAP_ANCHOR_ID,
@@ -1121,6 +1130,12 @@ function LandModule({ family }: { family: LandFamily }) {
           <CardioCurve track={gpx.track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} hoveredIndex={hoveredIndex}
             onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={chartBox(CHART_HEIGHT_PX)} />
         ) : null;
+      case 'test':
+        return sessionTest ? (
+          <FitnessTestCurves track={gpx.track} test={sessionTest} minutes={trackMinutes} speedsMs={chartSpeed} hrSmoothed={heart.smoothed}
+            speedUnit={speedUnit} zoom={testZoom} hoveredIndex={hoveredIndex} onHoverIndex={hoverIndex} onLeave={clearHover}
+            onShowOnMap={() => zoomOnMap.show('test')} />
+        ) : null;
       default:
         return null;
     }
@@ -1162,7 +1177,7 @@ function LandModule({ family }: { family: LandFamily }) {
     <div className="an-page" style={{ padding: '20px' }}>
       <div className="an-sheet">
         <div className="an-sheet__head">
-          <PageHeader title={page.title} subtitle={gpx.fileName ? (
+          <PageHeader title={isTestSport(profile.id) ? 'Analyse test' : page.title} subtitle={gpx.fileName ? (
             <SessionNameEditor file={gpx.fileName}
               share={generalStats.length > 0 ? { family, segments: mapSegments, stats: shareableStats(generalStats) } : undefined} />
           ) : undefined} back={{ to: libraryPath(family), label: page.backLabel }} />
@@ -1243,6 +1258,19 @@ function LandModule({ family }: { family: LandFamily }) {
                 emptyText={intervalEmptyText}
                 recoveryS={profile.heartRate.recoveryS} />
             )}
+
+            {open.test && isTestSport(profile.id) && (sessionTest ? (
+              <ResizablePanel id={panelId('test')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
+                <FitnessTestPanel track={gpx.track} test={sessionTest} minutes={trackMinutes} speedsMs={chartSpeed} hrSmoothed={heart.smoothed}
+                  speedUnit={speedUnit} profileHrMax={runner.hrMax} onRetainHrMax={(bpm) => setRunnerNumber('hrMax', bpm)}
+                  zoom={testZoom} hoveredIndex={hoveredIndex} onHoverIndex={hoverIndex} onLeave={clearHover}
+                  onShowOnMap={() => zoomOnMap.show('test')} open={open.test} onToggle={() => toggle('test')} />
+              </ResizablePanel>
+            ) : (
+              <EmptyTabPanel id={panelId('test.vide')} label="Test" open={open.test} onToggle={() => toggle('test')}>
+                Cette session n'a pas de test guidé dans sa fiche : un test se lance depuis Entraînement › Tests, et ses résultats arrivent ici.
+              </EmptyTabPanel>
+            ))}
 
             {open.tops && tops && (
               <ResizablePanel id={panelId('tops')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>

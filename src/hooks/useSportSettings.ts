@@ -618,7 +618,6 @@ export const saveFitnessTestSettings = (id: FitnessTestId, patch: Partial<Fitnes
   const next = sanitizeFitnessTestSettings({ ...readFitnessTestSettings(id), ...patch }, protocol);
   const own: Partial<FitnessTestSettings> = {};
   if (next.warmupS !== protocol.warmupS) own.warmupS = next.warmupS;
-  if (Math.abs(next.warmupPct - protocol.warmupPct) > 1e-9) own.warmupPct = next.warmupPct;
   const tests = { ...stored.fitnessTests };
   if (Object.keys(own).length > 0) tests[id] = own;
   else delete tests[id];

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { SessionTest } from '../recording/fitnessTest';
 import { EMPTY_NOTES } from '../sailing/sessionNotes';
 import {
   RECORD_FORMAT,
@@ -82,6 +83,16 @@ describe('parseRecord et serializeRecord', () => {
     expect(parseRecord(serializeRecord(r))?.summary.heartRate).toEqual(heartRate);
     const abimee = { ...record(), summary: { ...record().summary, heartRate: { avgBpm: 148, maxBpm: 171, coveredS: 2400, histogram: { fromBpm: 120, seconds: ['x'] } } } };
     expect(parseRecord(JSON.stringify(abimee))?.summary.heartRate).toBeUndefined();
+  });
+
+  it('relisent le test du résumé, et écartent un test mal formé', () => {
+    const test = { hrMaxBpm: 189, lastStepSpeedMs: 3.9, steps: 12 };
+    const r = record({ summary: { ...record().summary, test } });
+    expect(parseRecord(serializeRecord(r))?.summary.test).toEqual(test);
+    const sansFc = record({ summary: { ...record().summary, test: { ...test, hrMaxBpm: null } } });
+    expect(parseRecord(serializeRecord(sansFc))?.summary.test?.hrMaxBpm).toBeNull();
+    const abimee = { ...record(), summary: { ...record().summary, test: { hrMaxBpm: 189, steps: 'x' } } };
+    expect(parseRecord(JSON.stringify(abimee))?.summary.test).toBeUndefined();
   });
 
   it('relisent une fiche à l\'identique', () => {
@@ -560,6 +571,41 @@ describe('repères de la fiche', () => {
 
   it('restent dans la fiche allégée du cache', () => {
     expect(lightRecord(record({ marks })).marks).toEqual(marks);
+  });
+});
+
+describe('test guidé de la fiche', () => {
+  const TEST: SessionTest = {
+    protocol: 'fc-max',
+    version: 1,
+    settings: { warmupS: 480, age: 35, ageSource: 'profil', lowBpm: 110, highBpm: 147, zoneMethod: 'max' },
+    startMs: START_MS,
+    rampStartMs: START_MS + 480_000,
+    v0Ms: 2.5,
+    steps: [{ startMs: START_MS + 480_000, targetMs: 2.5 }],
+    rampEndMs: null,
+    dropMs: null,
+    endReason: null,
+    endMs: null,
+    signals: [{ t: START_MS, s: 'debut' }, { t: START_MS + 480_000, s: 'palier' }],
+  };
+
+  it("est relu à l'identique, absent sans test ou mal formé", () => {
+    expect(parseRecord(serializeRecord(record({ test: TEST })))?.test).toEqual(TEST);
+    expect(parseRecord(serializeRecord(record()))).not.toHaveProperty('test');
+    expect(parseRecord(JSON.stringify({ ...record(), test: { ...TEST, protocol: 'vma' } }))).not.toHaveProperty('test');
+  });
+
+  it('complète une fiche sans test et fait refaire son résumé, sans écraser le sien', () => {
+    const done = completeRecord(record(), record({ test: TEST }));
+    expect(done.record.test).toEqual(TEST);
+    expect(done.resummarize).toBe(true);
+    const own = { ...TEST, v0Ms: 3 };
+    expect(completeRecord(record({ test: own }), record({ test: TEST })).record.test).toEqual(own);
+  });
+
+  it('reste dans la fiche allégée du cache', () => {
+    expect(lightRecord(record({ test: TEST })).test).toEqual(TEST);
   });
 });
 
