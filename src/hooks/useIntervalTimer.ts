@@ -3,7 +3,7 @@ import { getIntervalClock } from '../platform/beeper';
 import { jsonStore } from '../platform/storage';
 import {
   phaseName, readIntervalRun, runCommand, startRun, timerStateAt, upcomingSchedule,
-  type IntervalCommand, type IntervalRun, type IntervalTimerState, type IntervalWorkout,
+  type IntervalCommand, type IntervalRun, type IntervalTimerState, type IntervalWorkout, type WorkoutKind,
 } from '../recording/intervalTimer';
 import { getRecorderState, noteIntervalRun, subscribeToRecorder } from './useRecorder';
 import { rememberIntervalWorkout } from './useSportSettings';
@@ -19,7 +19,8 @@ import { rememberIntervalWorkout } from './useSportSettings';
  * sont confiés en entier au téléphone à chaque commande (`getIntervalClock`) :
  * écran éteint, la page ne tourne plus, Android joue le programme. Pendant un
  * enregistrement, chaque état de la séance est confié à l'enregistreur
- * (`noteIntervalRun`), qui la range avec la session.
+ * (`noteIntervalRun`), qui la range avec la session ; jamais une séance du
+ * Timer (25/10), qu'aucune session ne reçoit.
  *
  * La séance est aussi gardée sur l'appareil (`tracker.intervalRun`) : si
  * Android ferme la page pendant qu'elle court, la page rouverte la reprend
@@ -119,27 +120,32 @@ const reschedule = (announce: boolean): void => {
 /** Garde la séance sur l'appareil, ou l'efface. */
 const persist = (): void => jsonStore.write(STORAGE_KEY, run);
 
+/** Confie la séance à l'enregistreur, s'il tourne ; pas une séance du Timer. */
+const note = (r: IntervalRun): void => {
+  if (r.kind !== 'timer') noteIntervalRun(r);
+};
+
 const command = (kind: IntervalCommand, announce: boolean): void => {
   if (!run) return;
   const next = runCommand(run, kind, Date.now());
   if (next === run) return;
   run = next;
   persist();
-  noteIntervalRun(run);
+  note(run);
   reschedule(announce);
   publish();
 };
 
-/** Lance une séance, tout de suite ; une séance en cours est remplacée. */
-export const startIntervals = (workout: IntervalWorkout): void => {
+/** Lance une séance du Fractionné ou du Timer, tout de suite ; une séance en cours est remplacée. */
+export const startIntervals = (workout: IntervalWorkout, kind: WorkoutKind = 'fractionne'): void => {
   if (run && isActive(timerStateAt(run, Date.now()))) {
     run = runCommand(run, 'stop', Date.now());
-    noteIntervalRun(run);
+    note(run);
   }
-  run = startRun(workout, Date.now());
+  run = startRun(workout, Date.now(), kind);
   persist();
-  rememberIntervalWorkout(workout);
-  noteIntervalRun(run);
+  rememberIntervalWorkout(kind, workout);
+  note(run);
   // Le compte à rebours du départ porte son propre signal.
   reschedule(false);
   publish();
@@ -182,7 +188,7 @@ export const startIntervalTimer = (): void => {
   publish();
   subscribeToRecorder(() => {
     const recording = getRecorderState().status !== 'idle';
-    if (recording && !wasRecording && run && isActive(timerStateAt(run, Date.now()))) noteIntervalRun(run);
+    if (recording && !wasRecording && run && isActive(timerStateAt(run, Date.now()))) note(run);
     wasRecording = recording;
   });
 };

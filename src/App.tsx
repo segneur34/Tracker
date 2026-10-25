@@ -34,8 +34,10 @@ function App() {
           <Route path="/fractionne" element={<SessionLibrary key="fractionne" family="fractionne" />} />
           <Route path="/fractionne/analyse" element={<LandModule key="fractionne" family="fractionne" />} />
           {/* Entraînement : ses pages à lui, sous sa bibliothèque (24/10). */}
-          <Route path="/fractionne/seances" element={<TrainingSessionsPage />} />
-          <Route path="/fractionne/seances/editer" element={<TrainingSessionEditPage />} />
+          <Route path="/fractionne/seances" element={<TrainingSessionsPage key="fractionne" kind="fractionne" />} />
+          <Route path="/fractionne/seances/editer" element={<TrainingSessionEditPage key="fractionne" kind="fractionne" />} />
+          <Route path="/fractionne/timer" element={<TrainingSessionsPage key="timer" kind="timer" />} />
+          <Route path="/fractionne/timer/editer" element={<TrainingSessionEditPage key="timer" kind="timer" />} />
           <Route path="/fractionne/tests" element={<TestsPage />} />
           <Route path="/fractionne/tests/fc-max" element={<FitnessTestPage />} />
           <Route path="/fractionne/tests/fc-repos" element={<RestingHrTestPage />} />

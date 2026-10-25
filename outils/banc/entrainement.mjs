@@ -194,7 +194,8 @@ check('premier travail nommé par sa série', (await text('.ivl-live__phase')) =
 check('signal du départ : court, court, long', sounds.slice(soundsBefore).filter((s) => s.startsWith('[bips]')).map((s) => /\[bips\] (\w+)/.exec(s)[1]).join(' ') === 'court court long',
   sounds.slice(soundsBefore).join(' | ').slice(0, 300));
 await shoot('entrainement-compteur');
-console.log('arrêter :', await evaluate(`(() => { const b = [...document.querySelectorAll('.ivl button')].find((x) => x.textContent === 'Arrêter'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+// « Arrêter » du compteur se tient 1 s (25/10).
+console.log('arrêter :', await evaluate(`(async () => { const b = document.querySelector('.ivl button.ui-btn--danger'); if (!b) return 'absent'; const ev = (t) => b.dispatchEvent(new PointerEvent(t, { bubbles: true, button: 0, pointerType: 'mouse' })); ev('pointerdown'); await new Promise((r) => setTimeout(r, 1200)); ev('pointerup'); b.click(); return 'ok'; })()`));
 await wait(300);
 console.log('fermer :', await clickText('Fermer', '.ivl button'));
 

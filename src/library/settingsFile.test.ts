@@ -200,15 +200,22 @@ describe('appareils et noms de fichier', () => {
 describe('adoptedValues', () => {
   it("prend les réglages de l'autre appareil, mais garde les choix retenus de celui-ci", () => {
     const theirs = {
-      'tracker.sportSettings': { thresholds: { wingfoil: 12 }, recordActivity: 'a-trail', moduleActivity: { voile: 'a-kite' }, intervalPresets: [1] },
+      'tracker.sportSettings': {
+        thresholds: { wingfoil: 12 }, recordActivity: 'a-trail', moduleActivity: { voile: 'a-kite' }, intervalPresets: [1], timerPresets: [2],
+        lastTimerWorkout: { reps: 9, workS: 20, restS: 10 },
+      },
       'tracker.runnerProfile': { me: { weightKg: 80 } },
     };
     const mine = {
-      'tracker.sportSettings': { thresholds: { wingfoil: 9 }, recordActivity: 'wingfoil', lastIntervalWorkout: { reps: 4, workS: 60, restS: 60 } },
+      'tracker.sportSettings': {
+        thresholds: { wingfoil: 9 }, recordActivity: 'wingfoil', lastIntervalWorkout: { reps: 4, workS: 60, restS: 60 },
+        lastTimerWorkout: { reps: 8, workS: 40, restS: 20 },
+      },
     };
     expect(adoptedValues(theirs, mine)).toEqual({
       'tracker.sportSettings': {
-        thresholds: { wingfoil: 12 }, intervalPresets: [1], recordActivity: 'wingfoil', lastIntervalWorkout: { reps: 4, workS: 60, restS: 60 },
+        thresholds: { wingfoil: 12 }, intervalPresets: [1], timerPresets: [2], recordActivity: 'wingfoil',
+        lastIntervalWorkout: { reps: 4, workS: 60, restS: 60 }, lastTimerWorkout: { reps: 8, workS: 40, restS: 20 },
       },
       'tracker.runnerProfile': { me: { weightKg: 80 } },
     });

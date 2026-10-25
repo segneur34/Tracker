@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  INTERVAL_TONE_MS, lapsWithin, newPresetId, phaseName, readIntervalRun, readIntervalSeries, runCommand, runLaps, sameWorkout, sanitizePresets,
-  sanitizeWorkout, seriesBlocks, seriesWithin, startRun, timerStateAt, upcomingSchedule, workoutBlocks, workoutDurationS, workoutFromBlocks,
-  workoutLabel, workoutPhases,
+  INTERVAL_TONE_MS, MAX_INTERVAL_PRESETS, addPreset, lapsWithin, newPresetId, phaseName, readIntervalRun, readIntervalSeries, replacePreset,
+  runCommand, runLaps, sameWorkout, sanitizePresets, sanitizeWorkout, seriesBlocks, seriesWithin, startRun, timerStateAt, upcomingSchedule,
+  withoutPreset, workoutBlocks, workoutDurationS, workoutFromBlocks, workoutLabel, workoutPhases,
   type IntervalBlock, type IntervalRun, type IntervalTone, type IntervalWorkout,
 } from './intervalTimer';
 
@@ -196,6 +196,37 @@ describe('séances gardées et relecture', () => {
     const r = withCommands(run, ['pause', 30], ['resume', 50]);
     expect(readIntervalRun(JSON.parse(JSON.stringify(r)))).toEqual(r);
     expect(readIntervalRun({ workout, startedAtMs: 'hier', commands: [] })).toBeNull();
+  });
+
+  it('ajoute, modifie et retire une séance gardée, plafond compris', () => {
+    const one = addPreset([], ' Gainage ', workout);
+    expect(one).toEqual([{ id: 's1', name: 'Gainage', workout }]);
+    const two = addPreset(one, '', { reps: 4, workS: 120, restS: 60 });
+    expect(two[1]).toEqual({ id: 's2', name: '4 × 2:00 / 1:00', workout: { reps: 4, workS: 120, restS: 60 } });
+    // Séance non valable : la liste rendue telle quelle, même référence.
+    expect(addPreset(two, 'x', { reps: 0, workS: 60, restS: 0 })).toBe(two);
+    const full = Array.from({ length: MAX_INTERVAL_PRESETS }, (_, i) => ({ id: `s${i + 1}`, name: `n${i}`, workout }));
+    expect(addPreset(full, 'de trop', workout)).toBe(full);
+
+    const renamed = replacePreset(two, 's1', '', { reps: 5, workS: 30, restS: 15 });
+    expect(renamed[0]).toEqual({ id: 's1', name: '5 × 0:30 / 0:15', workout: { reps: 5, workS: 30, restS: 15 } });
+    expect(renamed[1]).toBe(two[1]);
+    expect(replacePreset(two, 's9', 'x', workout)).toBe(two);
+
+    expect(withoutPreset(two, 's1')).toEqual([two[1]]);
+    // Un identifiant libre, pas celui d'une séance restante.
+    expect(addPreset(withoutPreset(two, 's1'), 'neuve', workout)[1].id).toBe('s3');
+  });
+
+  it('une séance du Timer garde son genre, une séance d’avant reste du fractionné', () => {
+    const timerRun = startRun(workout, T0, 'timer');
+    expect(timerRun.kind).toBe('timer');
+    expect(startRun(workout, T0, 'fractionne')).toEqual(run);
+    const paused = runCommand(timerRun, 'pause', at(10));
+    expect(paused.kind).toBe('timer');
+    expect(readIntervalRun(JSON.parse(JSON.stringify(paused)))).toEqual(paused);
+    expect(readIntervalRun({ workout, startedAtMs: T0, commands: [] })).toEqual(run);
+    expect(readIntervalRun({ workout, startedAtMs: T0, commands: [], kind: 'muscu' })).toEqual(run);
   });
 });
 

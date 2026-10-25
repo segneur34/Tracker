@@ -205,7 +205,8 @@ await wait(1500);
 await evaluate(`(() => { window.confirm = () => true; return 'ok'; })()`);
 await clickText('Jeter');
 await wait(500);
-await clickText('Arrêter', '.ivl button');
+// « Arrêter » du compteur se tient 1 s (25/10).
+await evaluate(`(async () => { const b = document.querySelector('.ivl button.ui-btn--danger'); if (!b) return 'absent'; const ev = (t) => b.dispatchEvent(new PointerEvent(t, { bubbles: true, button: 0, pointerType: 'mouse' })); ev('pointerdown'); await new Promise((r) => setTimeout(r, 1200)); ev('pointerup'); b.click(); return 'ok'; })()`);
 
 console.log(logs.length ? `console :\n  ${logs.join('\n  ')}` : 'console : rien');
 console.log(failures ? `${failures} échec(s)` : 'tout est bon');

@@ -215,6 +215,35 @@ export const newPresetId = (existing: IntervalPreset[]): string => {
   return `s${n}`;
 };
 
+/** Liste avec une séance de plus, sous ce nom (vide : son libellé) ; telle quelle au-delà de `MAX_INTERVAL_PRESETS` ou pour une séance non valable. */
+export const addPreset = (presets: IntervalPreset[], name: string, workout: IntervalWorkout): IntervalPreset[] => {
+  const clean = sanitizeWorkout(workout);
+  if (!clean || presets.length >= MAX_INTERVAL_PRESETS) return presets;
+  return [...presets, { id: newPresetId(presets), name: name.trim() || workoutLabel(clean), workout: clean }];
+};
+
+/** Liste où la séance `id` prend ce nom (vide : son libellé) et ces blocs ; telle quelle si elle n'y est plus ou n'est pas valable. */
+export const replacePreset = (presets: IntervalPreset[], id: string, name: string, workout: IntervalWorkout): IntervalPreset[] => {
+  const clean = sanitizeWorkout(workout);
+  if (!clean || !presets.some((p) => p.id === id)) return presets;
+  return presets.map((p) => (p.id === id ? { id, name: name.trim() || workoutLabel(clean), workout: clean } : p));
+};
+
+/** Liste sans la séance `id`. */
+export const withoutPreset = (presets: IntervalPreset[], id: string): IntervalPreset[] => presets.filter((p) => p.id !== id);
+
+// --- Genres de séances ---
+
+/**
+ * Deux listes de séances, une seule mécanique (25/10) : celles du Fractionné,
+ * lancées avec une activité et rangées avec la session, et celles du Timer,
+ * hors de toute activité, sans GPS ni session.
+ */
+export type WorkoutKind = 'fractionne' | 'timer';
+
+/** Séance proposée la première fois au Timer : 8 × 40 s, 20 s de repos. */
+export const DEFAULT_TIMER_WORKOUT: IntervalWorkout = { reps: 8, workS: 40, restS: 20 };
+
 // --- Phases ---
 
 /** `pret` : le compte à rebours du départ, qui n'est pas une répétition ; `libre` : un bloc libre. */
@@ -292,9 +321,12 @@ export interface IntervalRun {
   startedAtMs: number;
   /** Commandes acceptées, dans l'ordre. */
   commands: { kind: IntervalCommand; atMs: number }[];
+  /** Séance du Timer, qu'aucune session ne reçoit ; absent : du Fractionné. */
+  kind?: 'timer';
 }
 
-export const startRun = (workout: IntervalWorkout, nowMs: number): IntervalRun => ({ workout, startedAtMs: nowMs, commands: [] });
+export const startRun = (workout: IntervalWorkout, nowMs: number, kind: WorkoutKind = 'fractionne'): IntervalRun =>
+  kind === 'timer' ? { workout, startedAtMs: nowMs, commands: [], kind } : { workout, startedAtMs: nowMs, commands: [] };
 
 export type IntervalStatus = 'running' | 'paused' | 'finished' | 'stopped';
 
@@ -579,7 +611,7 @@ export const seriesBlocks = (series: IntervalSeries): IntervalBlockSeries[] => {
 /** Séance relue d'une ligne de journal ; `null` si elle n'en est pas une. */
 export const readIntervalRun = (value: unknown): IntervalRun | null => {
   if (typeof value !== 'object' || value === null) return null;
-  const { workout, startedAtMs, commands } = value as Record<string, unknown>;
+  const { workout, startedAtMs, commands, kind } = value as Record<string, unknown>;
   const clean = sanitizeWorkout(workout);
   if (clean === null || typeof startedAtMs !== 'number' || !isFinite(startedAtMs) || !Array.isArray(commands)) return null;
   const kinds: IntervalCommand[] = ['pause', 'resume', 'skip', 'stop'];
@@ -588,5 +620,6 @@ export const readIntervalRun = (value: unknown): IntervalRun | null => {
     const { kind, atMs } = c as Record<string, unknown>;
     return kinds.includes(kind as IntervalCommand) && typeof atMs === 'number' && isFinite(atMs);
   });
-  return { workout: clean, startedAtMs, commands: kept.map(({ kind, atMs }) => ({ kind, atMs })) };
+  const run: IntervalRun = { workout: clean, startedAtMs, commands: kept.map((c) => ({ kind: c.kind, atMs: c.atMs })) };
+  return kind === 'timer' ? { ...run, kind } : run;
 };

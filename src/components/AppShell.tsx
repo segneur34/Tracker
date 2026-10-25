@@ -8,6 +8,7 @@ import { useLongPress } from '../hooks/useLongPress';
 import { togglePauseRecording, useRecorder } from '../hooks/useRecorder';
 import { effectiveLongPressMs, useVisibility } from '../hooks/useSportSettings';
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
+import { TIMER_RECORD_PATH } from '../pages/workoutLists';
 import { setBackNavigator } from '../platform/backButton';
 import { lockOrientation } from '../platform/screen';
 import { recordingDurationMs } from '../recording/session';
@@ -59,17 +60,18 @@ const STATISTIQUES: Destination = { to: '/statistiques', label: 'Statistiques', 
 const PROFIL: Destination = { to: '/profil', label: 'Profil', Icon: IconUser, accent: 'var(--ink-2)' };
 
 /**
- * Bandeau du compteur du fractionné sur les autres pages : phase et temps
- * restant, un toucher ramène à Enregistrer. À part, pour que le rafraîchissement
- * du compteur ne redessine que lui.
+ * Bandeau du compteur sur les autres pages : phase et temps restant, un
+ * toucher ramène à Enregistrer (en mode Timer pour une séance du Timer). À
+ * part, pour que le rafraîchissement du compteur ne redessine que lui.
  */
 function IntervalBanner() {
   const { run, state } = useIntervalTimer();
   if (!run || !state?.phase) return null;
   const paused = state.status === 'paused';
+  const name = run.kind === 'timer' ? 'Timer' : 'Fractionné';
   return (
-    <Link to={RECORD_PATH} className="shell-banner shell-banner--intervals">
-      <span className="shell-banner__text">{paused ? 'Fractionné en pause' : 'Fractionné'} · {phaseName(state.phase)}</span>
+    <Link to={run.kind === 'timer' ? TIMER_RECORD_PATH : RECORD_PATH} className="shell-banner shell-banner--intervals">
+      <span className="shell-banner__text">{paused ? `${name} en pause` : name} · {phaseName(state.phase)}</span>
       <span className="num">{formatIntervalClock(state.remainingMs / 1000)}</span>
     </Link>
   );

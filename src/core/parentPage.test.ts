@@ -20,7 +20,14 @@ describe('parentPage', () => {
     expect(parentPage('/fractionne/tests', '')).toBe('/fractionne');
     expect(parentPage('/fractionne/tests/fc-max', '')).toBe('/fractionne/tests');
     expect(parentPage('/fractionne/tests/fc-repos', '')).toBe('/fractionne/tests');
+    expect(parentPage('/fractionne/timer', '')).toBe('/fractionne');
+    expect(parentPage('/fractionne/timer/editer', '?id=s1')).toBe('/fractionne/timer');
     expect(parentPage('/course/seances', '')).toBe('/');
+  });
+
+  it('Enregistrer en mode Timer renvoie à la liste du Timer', () => {
+    expect(parentPage('/enregistrer', '?minuterie=1')).toBe('/fractionne/timer');
+    expect(parentPage('/enregistrer', '?activite=a-course')).toBe('/');
   });
 
   it("une bibliothèque renvoie à l'accueil, filtre compris", () => {

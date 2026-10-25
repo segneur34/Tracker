@@ -112,7 +112,7 @@ const recordCourse = async (tag, offsetMin) => {
   console.log(`[${tag}] Arrêter :`, await holdStop());
   await wait(2500);
   // Le compteur d'abord arrêté et fermé, pour la session suivante.
-  await evaluate(`(() => { const c = document.querySelector('.ivl'); const b = c && [...c.querySelectorAll('button')].find((x) => x.textContent.includes('Arrêter')); b?.click(); return 'ok'; })()`);
+  await evaluate(`(async () => { const b = document.querySelector('.ivl button.ui-btn--danger'); if (!b) return 'absent'; const ev = (t) => b.dispatchEvent(new PointerEvent(t, { bubbles: true, button: 0, pointerType: 'mouse' })); ev('pointerdown'); await new Promise((r) => setTimeout(r, 1200)); ev('pointerup'); b.click(); return 'ok'; })()`);
   await wait(300);
   const before = dialogs.length;
   console.log(`[${tag}] Analyser :`, await clickText('Analyser'));

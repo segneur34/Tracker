@@ -18,8 +18,8 @@ import { setBeepPitch } from '../platform/beeper';
 import { DEFAULT_BEEP_SOUND, beepSoundHz, isBeepSound, type BeepSound } from '../recording/beepSound';
 import { FITNESS_TESTS, sanitizeFitnessTestSettings, type FitnessTestId, type FitnessTestSettings } from '../recording/fitnessTest';
 import {
-  DEFAULT_INTERVAL_WORKOUT, MAX_INTERVAL_PRESETS, newPresetId, sameWorkout, sanitizePresets, sanitizeWorkout, workoutLabel,
-  type IntervalPreset, type IntervalWorkout,
+  DEFAULT_INTERVAL_WORKOUT, DEFAULT_TIMER_WORKOUT, addPreset, replacePreset, sameWorkout, sanitizePresets, sanitizeWorkout, withoutPreset,
+  type IntervalPreset, type IntervalWorkout, type WorkoutKind,
 } from '../recording/intervalTimer';
 import {
   MAX_NOTIFICATION_FIELDS, defaultLiveFieldsOf, defaultNotificationFieldsOf, sanitizeLiveFields, type LiveFieldKey,
@@ -210,6 +210,10 @@ export interface StoredSettings {
   intervalPresets?: IntervalPreset[];
   /** Dernière séance lancée au compteur, proposée la fois suivante (choix retenu). */
   lastIntervalWorkout?: IntervalWorkout;
+  /** Séances du Timer (25/10), à part de celles du fractionné : hors de toute activité, sans GPS ni session. */
+  timerPresets?: IntervalPreset[];
+  /** Dernière séance lancée au Timer (choix retenu). */
+  lastTimerWorkout?: IntervalWorkout;
   /** Son de tous les bips, plus ou moins grave (24/10) ; absent : `DEFAULT_BEEP_SOUND`. */
   beepSound?: BeepSound;
   /** Réglages des tests guidés (durée d'échauffement, pourcentage de la cible), communs aux activités ; absents : ceux du protocole. */
@@ -553,61 +557,63 @@ export interface IntervalSettings {
   last: IntervalWorkout;
 }
 
-/** Dernière lecture, rendue telle quelle tant que rien n'a changé : `useSyncExternalStore` compare les références. */
-let intervalSettingsCache: { key: string; value: IntervalSettings } | null = null;
+/** Où chaque genre range ses séances : sa liste, sa dernière lancée, et ce qu'il a avant tout choix. */
+const WORKOUT_STORE = {
+  fractionne: { presets: 'intervalPresets', last: 'lastIntervalWorkout', defaults: DEFAULT_INTERVAL_PRESETS, defaultLast: DEFAULT_INTERVAL_WORKOUT },
+  timer: { presets: 'timerPresets', last: 'lastTimerWorkout', defaults: [] as IntervalPreset[], defaultLast: DEFAULT_TIMER_WORKOUT },
+} as const satisfies Record<WorkoutKind, {
+  presets: keyof StoredSettings; last: keyof StoredSettings; defaults: IntervalPreset[]; defaultLast: IntervalWorkout;
+}>;
 
-const readIntervalSettings = (): IntervalSettings => {
+const storedPresets = (stored: StoredSettings, kind: WorkoutKind): IntervalPreset[] =>
+  sanitizePresets(stored[WORKOUT_STORE[kind].presets] ?? WORKOUT_STORE[kind].defaults);
+
+const writePresets = (kind: WorkoutKind, change: (presets: IntervalPreset[]) => IntervalPreset[]): void => {
   const stored = readStoredSettings();
-  const key = JSON.stringify([stored.intervalPresets ?? null, stored.lastIntervalWorkout ?? null]);
-  if (intervalSettingsCache?.key !== key) {
-    intervalSettingsCache = {
-      key,
-      value: {
-        presets: sanitizePresets(stored.intervalPresets ?? DEFAULT_INTERVAL_PRESETS),
-        last: sanitizeWorkout(stored.lastIntervalWorkout) ?? DEFAULT_INTERVAL_WORKOUT,
-      },
-    };
-  }
-  return intervalSettingsCache.value;
+  const presets = storedPresets(stored, kind);
+  const next = change(presets);
+  if (next !== presets) writeStored({ ...stored, [WORKOUT_STORE[kind].presets]: next });
 };
 
-/** Séances du compteur, suivies en direct. */
-export const useIntervalSettings = (): IntervalSettings => useSyncExternalStore(jsonStore.subscribe, readIntervalSettings);
+/** Dernière lecture de chaque genre, rendue telle quelle tant que rien n'a changé : `useSyncExternalStore` compare les références. */
+const intervalSettingsCache: Partial<Record<WorkoutKind, { key: string; value: IntervalSettings }>> = {};
 
-/** Retient la séance lancée, proposée au prochain lancement. */
-export const rememberIntervalWorkout = (workout: IntervalWorkout): void => {
+const readIntervalSettings = (kind: WorkoutKind): IntervalSettings => {
   const stored = readStoredSettings();
-  const last = sanitizeWorkout(stored.lastIntervalWorkout);
-  if (!last || !sameWorkout(last, workout)) writeStored({ ...stored, lastIntervalWorkout: workout });
+  const { presets, last } = WORKOUT_STORE[kind];
+  const key = JSON.stringify([stored[presets] ?? null, stored[last] ?? null]);
+  const cached = intervalSettingsCache[kind];
+  if (cached?.key === key) return cached.value;
+  const value = { presets: storedPresets(stored, kind), last: sanitizeWorkout(stored[last]) ?? WORKOUT_STORE[kind].defaultLast };
+  intervalSettingsCache[kind] = { key, value };
+  return value;
+};
+
+const readFractionneSettings = () => readIntervalSettings('fractionne');
+const readTimerSettings = () => readIntervalSettings('timer');
+
+/** Séances du compteur d'un genre (Fractionné ou Timer), suivies en direct. */
+export const useIntervalSettings = (kind: WorkoutKind): IntervalSettings =>
+  useSyncExternalStore(jsonStore.subscribe, kind === 'timer' ? readTimerSettings : readFractionneSettings);
+
+/** Retient la séance lancée, proposée au prochain lancement de son genre. */
+export const rememberIntervalWorkout = (kind: WorkoutKind, workout: IntervalWorkout): void => {
+  const stored = readStoredSettings();
+  const field = WORKOUT_STORE[kind].last;
+  const last = sanitizeWorkout(stored[field]);
+  if (!last || !sameWorkout(last, workout)) writeStored({ ...stored, [field]: workout });
 };
 
 /** Garde une séance, sous le nom donné (vide : son libellé) ; sans effet au-delà de `MAX_INTERVAL_PRESETS`. */
-export const saveIntervalPreset = (name: string, workout: IntervalWorkout): void => {
-  const stored = readStoredSettings();
-  const presets = sanitizePresets(stored.intervalPresets ?? DEFAULT_INTERVAL_PRESETS);
-  const clean = sanitizeWorkout(workout);
-  if (!clean || presets.length >= MAX_INTERVAL_PRESETS) return;
-  const preset: IntervalPreset = { id: newPresetId(presets), name: name.trim() || workoutLabel(clean), workout: clean };
-  writeStored({ ...stored, intervalPresets: [...presets, preset] });
-};
+export const saveIntervalPreset = (kind: WorkoutKind, name: string, workout: IntervalWorkout): void =>
+  writePresets(kind, (presets) => addPreset(presets, name, workout));
 
 /** Modifie une séance gardée : son nom (vide : son libellé) et ses blocs ; sans effet si elle n'existe plus ou n'est pas valable. */
-export const updateIntervalPreset = (id: string, name: string, workout: IntervalWorkout): void => {
-  const stored = readStoredSettings();
-  const presets = sanitizePresets(stored.intervalPresets ?? DEFAULT_INTERVAL_PRESETS);
-  const clean = sanitizeWorkout(workout);
-  if (!clean || !presets.some((p) => p.id === id)) return;
-  writeStored({
-    ...stored,
-    intervalPresets: presets.map((p) => (p.id === id ? { id, name: name.trim() || workoutLabel(clean), workout: clean } : p)),
-  });
-};
+export const updateIntervalPreset = (kind: WorkoutKind, id: string, name: string, workout: IntervalWorkout): void =>
+  writePresets(kind, (presets) => replacePreset(presets, id, name, workout));
 
 /** Retire une séance gardée. */
-export const removeIntervalPreset = (id: string): void => {
-  const stored = readStoredSettings();
-  writeStored({ ...stored, intervalPresets: sanitizePresets(stored.intervalPresets ?? DEFAULT_INTERVAL_PRESETS).filter((p) => p.id !== id) });
-};
+export const removeIntervalPreset = (kind: WorkoutKind, id: string): void => writePresets(kind, (presets) => withoutPreset(presets, id));
 
 /** Réglages des tests, rendus tels quels tant que rien n'a changé (`useSyncExternalStore` compare les références). */
 let fitnessTestCache: { key: string; value: Record<FitnessTestId, FitnessTestSettings> } | null = null;

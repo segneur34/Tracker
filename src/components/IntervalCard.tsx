@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Button from './ui/Button';
 import Card from './ui/Card';
+import HoldButton from './ui/HoldButton';
 import { IconPause, IconPlay } from './icons';
 import {
   closeIntervals, pauseIntervals, resumeIntervals, skipIntervalPhase, startIntervals, stopIntervals, useIntervalTimer,
@@ -13,9 +14,10 @@ import {
 import { removeIntervalPreset, saveIntervalPreset, useIntervalSettings } from '../hooks/useSportSettings';
 import {
   INTERVAL_LEAD_IN_S, MAX_INTERVAL_PRESETS, formatIntervalClock, phaseName, sameWorkout, workoutBlocks, workoutDurationS, workoutFromBlocks, workoutLabel,
-  type IntervalBlock,
+  type IntervalBlock, type WorkoutKind,
 } from '../recording/intervalTimer';
 import { formatStopwatch, type StopwatchState } from '../recording/stopwatch';
+import { WORKOUT_LISTS } from '../pages/workoutLists';
 import WorkoutBlocksEditor from './WorkoutBlocksEditor';
 import './IntervalCard.css';
 
@@ -26,21 +28,23 @@ import './IntervalCard.css';
  * en cours en grand et ses commandes. Il vit à côté
  * de l'enregistrement sans en dépendre : lancé avant, pendant ou sans lui.
  * Une bascule montre à sa place le chronomètre libre (`useStopwatch`).
+ * Au Timer (25/10), les séances sont celles du Timer, et la séance lancée
+ * n'ira dans aucune session.
  */
 
-/** Choix de la séance, séances gardées, lancement. */
-function WorkoutEditor({ recording }: { recording: boolean }) {
-  const { presets, last } = useIntervalSettings();
+/** Choix de la séance, séances gardées du genre, lancement. */
+function WorkoutEditor({ kind, recording }: { kind: WorkoutKind; recording: boolean }) {
+  const { presets, last } = useIntervalSettings(kind);
   const [blocks, setBlocks] = useState<IntervalBlock[]>(() => workoutBlocks(last));
   const [naming, setNaming] = useState<string | null>(null);
   const workout = workoutFromBlocks(blocks);
   const save = () => {
     if (naming === null || !workout) return;
-    saveIntervalPreset(naming, workout);
+    saveIntervalPreset(kind, naming, workout);
     setNaming(null);
   };
   const askRemove = (id: string, name: string) => {
-    if (window.confirm(`Retirer la séance « ${name} » ?`)) removeIntervalPreset(id);
+    if (window.confirm(`Retirer la séance « ${name} » ?`)) removeIntervalPreset(kind, id);
   };
 
   return (
@@ -70,7 +74,7 @@ function WorkoutEditor({ recording }: { recording: boolean }) {
         </div>
       ) : (
         <div className="ivl-actions">
-          <Button variant="primary" size="l" className="ivl-launch" disabled={!workout} onClick={() => workout && startIntervals(workout)}>
+          <Button variant="primary" size="l" className="ivl-launch" disabled={!workout} onClick={() => workout && startIntervals(workout, kind)}>
             <IconPlay size={20} />
             Lancer le compteur
           </Button>
@@ -78,20 +82,26 @@ function WorkoutEditor({ recording }: { recording: boolean }) {
         </div>
       )}
       <p className="ivl-note">
-        {recording
-          ? "Les répétitions faites pendant l'enregistrement sont rangées avec la session."
-          : 'Le compteur tourne seul ou avec un enregistrement, lancé avant ou après lui.'}
-        {' '}<Link to="/fractionne/seances">Gérer les séances</Link>
+        {kind === 'timer'
+          ? 'Sans GPS ni session : le compteur seul.'
+          : recording
+            ? "Les répétitions faites pendant l'enregistrement sont rangées avec la session."
+            : 'Le compteur tourne seul ou avec un enregistrement, lancé avant ou après lui.'}
+        {' '}<Link to={WORKOUT_LISTS[kind].listPath}>Gérer les séances</Link>
       </p>
     </>
   );
 }
 
+/** Appui qui arrête la séance du compteur (25/10) : 1 s, pour qu'un geste involontaire ne la coupe pas. */
+const COUNTER_STOP_HOLD_MS = 1000;
+const counterStopHoldMs = () => COUNTER_STOP_HOLD_MS;
+
 /** Vue « Compteur » : la séance à lancer, ou celle en cours. `recording` : un enregistrement tourne. */
-function CounterView({ recording, timer }: { recording: boolean; timer: IntervalTimerView }) {
+function CounterView({ kind, recording, timer }: { kind: WorkoutKind; recording: boolean; timer: IntervalTimerView }) {
   const { run, state, error } = timer;
 
-  if (!run || !state) return <WorkoutEditor recording={recording} />;
+  if (!run || !state) return <WorkoutEditor kind={kind} recording={recording} />;
 
   if (state.status === 'finished' || state.status === 'stopped') {
     return (
@@ -128,7 +138,7 @@ function CounterView({ recording, timer }: { recording: boolean; timer: Interval
           <Button onClick={pauseIntervals}><IconPause size={18} />Pause</Button>
         )}
         <Button onClick={skipIntervalPhase}>Passer</Button>
-        <Button variant="danger" onClick={stopIntervals}>Arrêter</Button>
+        <HoldButton onHold={stopIntervals} getHoldMs={counterStopHoldMs} label="Arrêter" dialTitle="Arrêter la séance" />
       </div>
       {error && <div className="ui-alert ui-alert--danger">{error}</div>}
     </>
@@ -195,11 +205,12 @@ function StopwatchView({ state }: { state: StopwatchState | null }) {
 type CardView = 'compteur' | 'chrono';
 
 /**
- * Carte du compteur, deux vues par une bascule : le compteur du fractionné et
- * le chronomètre libre. Celle qu'on ne regarde pas, si elle tourne, se
- * rappelle en pastille sur son bouton. `recording` : un enregistrement tourne.
+ * Carte du compteur, deux vues par une bascule : le compteur (séances du
+ * fractionné, ou du Timer selon `kind`) et le chronomètre libre. Celle qu'on
+ * ne regarde pas, si elle tourne, se rappelle en pastille sur son bouton.
+ * `recording` : un enregistrement tourne.
  */
-function IntervalCard({ recording }: { recording: boolean }) {
+function IntervalCard({ kind = 'fractionne', recording }: { kind?: WorkoutKind; recording: boolean }) {
   const timer = useIntervalTimer();
   const { state: chrono } = useStopwatch();
   const counterLive = timer.state?.status === 'running' || timer.state?.status === 'paused';
@@ -224,7 +235,7 @@ function IntervalCard({ recording }: { recording: boolean }) {
           {chronoBadge && <span className="ivl-switch__badge num">{chronoBadge}</span>}
         </button>
       </div>
-      {shown === 'compteur' ? <CounterView recording={recording} timer={timer} /> : <StopwatchView state={chrono} />}
+      {shown === 'compteur' ? <CounterView kind={kind} recording={recording} timer={timer} /> : <StopwatchView state={chrono} />}
     </Card>
   );
 }

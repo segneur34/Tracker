@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ChangeEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ChangeEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import ActivitySelect from '../components/ActivitySelect';
 import BeltStatus from '../components/BeltStatus';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import HoldDial from '../components/ui/HoldDial';
+import HoldButton from '../components/ui/HoldButton';
 import FitnessTestCard from '../components/FitnessTestCard';
 import FollowTracePicker from '../components/FollowTracePicker';
 import IntervalCard from '../components/IntervalCard';
@@ -25,7 +25,6 @@ import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace'
 import { armFitnessTest, useFitnessTest } from '../hooks/useFitnessTest';
 import { useIntervalTimerOpen } from '../hooks/useIntervalTimer';
 import { useStopwatchOpen } from '../hooks/useStopwatch';
-import { useLongPress } from '../hooks/useLongPress';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { useBeltLive } from '../hooks/useBeltLive';
 import { useBeltWarmup } from '../hooks/useBeltWarmup';
@@ -65,6 +64,7 @@ import { canLockOrientation, isOrientationLocked, keepScreenOn, lockOrientation,
 import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
 import { FITNESS_TESTS, FITNESS_TEST_IDS, isFitnessTestId, type FitnessTestId } from '../recording/fitnessTest';
 import { RESTING_HR_TEST, type RestingHrTestId } from '../recording/restingHrTest';
+import { WORKOUT_LISTS } from './workoutLists';
 import './RecordingPage.css';
 
 /**
@@ -83,6 +83,10 @@ import './RecordingPage.css';
  *
  * En fractionné, le compteur (`IntervalCard`) vit à côté de l'enregistrement,
  * sans en dépendre : lancé avant, pendant ou sans lui.
+ *
+ * En mode Timer (`?minuterie`, « Lancer » d'une séance du Timer, 25/10), hors
+ * d'un enregistrement, la page n'est que le compteur : ni activité, ni carte,
+ * ni « Démarrer », donc ni GPS ni session.
  *
  * Dans le navigateur, une source « rejeu » relit un GPX en accéléré : toute la
  * chaîne s'éprouve sur le PC, jusqu'à l'analyse de la session obtenue.
@@ -259,45 +263,14 @@ const RECORDING_SECTION_DEFAULTS = { carte: true };
 /**
  * « Arrêter » : tenu le temps réglé dans Réglages (2 s par défaut), pour qu'un
  * geste involontaire ne coupe pas la session ; un appui court le rappelle. À 0,
- * un simple appui arrête. Le grand cadran montre l'appui sous le doigt.
+ * un simple appui arrête. Le grand cadran montre l'appui sous le doigt (`HoldButton`).
  */
 function StopButton({ status }: { status: RecorderState['status'] }) {
-  const busy = status === 'starting' || status === 'stopping';
-  // Lue au rendu, comme à chaque appui : un réglage changé dans Réglages vaut au retour sur la page.
-  const holdMs = effectiveStopHoldMs();
   const stop = useCallback(() => void stopRecording(), []);
-  const { pressingMs, handlers } = useLongPress(stop, effectiveStopHoldMs, holdMs > 0 && !busy);
-  /** Rappel du geste après un appui trop court, effacé au bout de quelques secondes. */
-  const [hint, setHint] = useState(false);
-  useEffect(() => {
-    if (!hint) return undefined;
-    const timer = window.setTimeout(() => setHint(false), 3000);
-    return () => window.clearTimeout(timer);
-  }, [hint]);
-
-  const onClick = (e: MouseEvent) => {
-    if (holdMs === 0) {
-      stop();
-      return;
-    }
-    handlers.onClick(e);
-    // Le clic qui suit un appui long abouti est annulé par `useLongPress` : seul un appui court rappelle le geste.
-    if (!e.defaultPrevented) setHint(true);
-  };
-
-  const holdS = (holdMs / 1000).toLocaleString('fr-FR');
   return (
-    <>
-      <Button variant="danger" size="l" className="ui-btn--hold" style={{ flex: 1 }} disabled={busy} {...handlers} onClick={onClick}>
-        <span className="ui-record-dot ui-record-dot--stop" />
-        {status === 'stopping' ? 'Enregistrement du fichier…' : hint ? `Maintenir ${holdS} s pour arrêter` : 'Arrêter'}
-      </Button>
-      {pressingMs !== null && (
-        <HoldDial pressMs={pressingMs} color="var(--recording)"
-          icon={<span className="ui-record-dot ui-record-dot--stop" style={{ width: '48px', height: '48px', borderRadius: '8px' }} />}
-          title="Arrêter" hint="Maintenez le bouton" />
-      )}
-    </>
+    <HoldButton onHold={stop} getHoldMs={effectiveStopHoldMs} disabled={status === 'starting' || status === 'stopping'}
+      size="l" style={{ flex: 1 }} lead={<span className="ui-record-dot ui-record-dot--stop" />} dialTitle="Arrêter"
+      label={status === 'stopping' ? 'Enregistrement du fichier…' : 'Arrêter'} />
   );
 }
 
@@ -348,7 +321,16 @@ function OrientationLockButton() {
   );
 }
 
-function RecordingPage() {
+/** Écran gardé allumé tant que `on`, sur la page qui le demande seulement. */
+const useScreenOnWhile = (on: boolean): void => {
+  useEffect(() => {
+    if (!on) return undefined;
+    keepScreenOn(true);
+    return () => keepScreenOn(false);
+  }, [on]);
+};
+
+function RecordingScreen() {
   const recorder = useRecorder();
   const openSession = useOpenSession();
   const followed = useFollowedTrace();
@@ -468,12 +450,7 @@ function RecordingPage() {
   const fitnessTest = useFitnessTest();
   const showTest = busy ? fitnessTest.active : pending === null && isTest && !restingChosen;
   // Écran allumé tant qu'un enregistrement (pause comprise), une séance du compteur ou le chrono tourne, sur cette page seulement.
-  const screenOn = busy || counterOpen || stopwatchOpen;
-  useEffect(() => {
-    if (!screenOn) return undefined;
-    keepScreenOn(true);
-    return () => keepScreenOn(false);
-  }, [screenOn]);
+  useScreenOnWhile(busy || counterOpen || stopwatchOpen);
   // Calculé hors de la page, repris par la notification de l'enregistrement.
   const live = useLiveRecording();
 
@@ -980,6 +957,32 @@ function RecordingPage() {
       )}
     </div>
   );
+}
+
+/**
+ * Enregistrer en mode Timer : la carte du compteur seule, sur les séances du
+ * Timer, écran allumé tant qu'une séance ou le chrono tourne. Rien n'y
+ * démarre le GPS ; « Enregistrer une session » rend la page ordinaire.
+ */
+function TimerScreen() {
+  const counterOpen = useIntervalTimerOpen();
+  const stopwatchOpen = useStopwatchOpen();
+  useScreenOnWhile(counterOpen || stopwatchOpen);
+  return (
+    <div className="ui-page rec-page" style={{ '--help-accent': FAMILY_ACCENT.fractionne } as React.CSSProperties}>
+      <PageHeader title="Timer" back={{ to: WORKOUT_LISTS.timer.listPath, label: 'Séances' }}
+        subtitle="Le compteur seul : sans GPS, aucune session n'est enregistrée." />
+      <IntervalCard kind="timer" recording={false} />
+      <Link to="/enregistrer" replace style={{ fontSize: 'var(--text-s)', alignSelf: 'flex-start' }}>Enregistrer une session</Link>
+    </div>
+  );
+}
+
+/** Enregistrer : en mode Timer (`?minuterie`) tant que rien n'enregistre, sinon la page ordinaire. */
+function RecordingPage() {
+  const [params] = useSearchParams();
+  const idle = useRecorder().status === 'idle';
+  return params.has('minuterie') && idle ? <TimerScreen /> : <RecordingScreen />;
 }
 
 export default RecordingPage;

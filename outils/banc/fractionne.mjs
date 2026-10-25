@@ -164,7 +164,8 @@ await go('/course');
 console.log('rechargé sur /course, bandeau :', await evaluate(`document.querySelector('.shell-banner--intervals')?.innerText.replace(/\\n/g, ' ') ?? '(aucun)'`));
 await go('/enregistrer');
 console.log('de retour :', await card());
-console.log('Arrêter :', await clickText('Arrêter'));
+// « Arrêter » du compteur se tient 1 s (25/10).
+console.log('Arrêter :', await evaluate(`(async () => { const b = document.querySelector('.ivl button.ui-btn--danger'); if (!b) return 'absent'; const ev = (t) => b.dispatchEvent(new PointerEvent(t, { bubbles: true, button: 0, pointerType: 'mouse' })); ev('pointerdown'); await new Promise((r) => setTimeout(r, 1200)); ev('pointerup'); b.click(); return 'ok'; })()`));
 await wait(300);
 console.log('arrêté :', await card(), '| gardée :', await evaluate(`JSON.parse(localStorage.getItem('tracker.intervalRun'))?.commands.map((c) => c.kind).join(',')`));
 console.log('Fermer :', await clickText('Fermer'), '| oubliée :', await evaluate(`localStorage.getItem('tracker.intervalRun')`));

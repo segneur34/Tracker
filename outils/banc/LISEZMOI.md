@@ -293,6 +293,10 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - « Lancer » : Enregistrer prêt (Entraînement, Fractionné, à pied), la séance dans le compteur, « Série 1 · Travail 1/3 » ;
   - Réglages › Enregistrement : « Son des bips » retenu, « Écouter » ;
   - à 390 × 844 : sans débordement.
+- `timer.mjs <port> [<dossier des captures>]` : le Timer de l'Entraînement (lot D des demandes du 25/10), sur un profil neuf, sans réseau, environ 30 s. Il vérifie :
+  - la tuile « Timer » sous Tests ; la liste du Timer, vide au départ, une séance créée, modifiée, dupliquée, la copie retirée, sans toucher aux séances du Fractionné ;
+  - « Lancer » : Enregistrer en mode Timer (ni famille, ni « Démarrer », ni carte), la séance dans le compteur, « Départ » puis le premier travail, le bandeau « Timer » qui y ramène ; un appui court sur « Arrêter » ne fait que rappeler le geste, tenu 1 s il arrête ; la position jamais demandée (sonde sur `navigator.geolocation`) ;
+  - « Enregistrer une session » rend la page ordinaire ; à 390 × 844 : sans débordement.
 - `zoom-carte.mjs <port> [<dossier des captures>]` : graphe zoomé vu sur la carte (lot 2 des demandes du 23/10), sur un profil neuf, sans réseau, environ 2 min 30. Il vérifie :
   - course, voile et surf : la valeur lue au-dessus du graphe sans bulle ni décalage ; le double-clic qui zoome ×2 autour du point ; « Sur la carte » qui allume le tronçon en violet et cadre la carte, mis à jour au zoom suivant, effacé par « Tout voir » ou la fermeture de l'onglet ;
   - les onglets cardio, énergie et zones de pente ;

@@ -79,6 +79,16 @@ export const IconStopwatch = ({ size = 24, ...props }: IconProps) => (
   </svg>
 );
 
+/** Sablier : le Timer de l'Entraînement, minuteries hors fractionné. */
+export const IconTimer = ({ size = 24, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M6 3h12M6 21h12" />
+    <path d="M7.5 3v2.5c0 2.5 4.5 4.5 4.5 6.5s-4.5 4-4.5 6.5V21" />
+    <path d="M16.5 3v2.5c0 2.5-4.5 4.5-4.5 6.5s4.5 4 4.5 6.5V21" />
+    <path d="M9.5 19h5" />
+  </svg>
+);
+
 /** Cœur traversé d'un pouls : les tests de l'Entraînement (FC max). */
 export const IconPulse = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>
