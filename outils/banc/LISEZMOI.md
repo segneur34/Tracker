@@ -287,9 +287,20 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - un réglage du bateau fait après la mise à jour, qui reste au rechargement.
 
   Sur un profil déjà servi, le fichier de réglages du dossier mémoire reprend la place des valeurs écrites : il faut prendre un profil neuf à chaque passage.
-- `test-fcmax.mjs <port> [<dossier des captures>]` : test de FC max de l'Entraînement (lot B du chantier du 24/10, étape 2), sur un profil neuf, sans réseau, environ 40 s. Il vérifie :
+- `entrainement.mjs <port> [<dossier des captures>]` : famille Entraînement, page Fractionné et compteur à blocs (chantier du 24/10, lot A), sur un profil neuf, sans réseau, environ 40 s. Il vérifie :
+  - le nom « Entraînement » sur l'accueil, dans la barre et sur la page de la famille, et sa tuile « Fractionné » ;
+  - la page Fractionné : une séance à blocs créée d'un geste, gardée, modifiée, dupliquée, la copie retirée ;
+  - « Lancer » : Enregistrer prêt (Entraînement, Fractionné, à pied), la séance dans le compteur, « Série 1 · Travail 1/3 » ;
+  - Réglages › Enregistrement : « Son des bips » retenu, « Écouter » ;
+  - à 390 × 844 : sans débordement.
+- `zoom-carte.mjs <port> [<dossier des captures>]` : graphe zoomé vu sur la carte (lot 2 des demandes du 23/10), sur un profil neuf, sans réseau, environ 2 min 30. Il vérifie :
+  - course, voile et surf : la valeur lue au-dessus du graphe sans bulle ni décalage ; le double-clic qui zoome ×2 autour du point ; « Sur la carte » qui allume le tronçon en violet et cadre la carte, mis à jour au zoom suivant, effacé par « Tout voir » ou la fermeture de l'onglet ;
+  - les onglets cardio, énergie et zones de pente ;
+  - à 390 × 844, au doigt : double toucher, plein écran carte + graphes quand la carte est hors de vue, cadrage sur place sinon.
+- `test-fcmax.mjs <port> [<dossier des captures>]` : test de FC max de l'Entraînement (lot B du chantier du 24/10), sur un profil neuf (un second passage sur le même profil échoue : la FC max retenue change les zones), sans réseau. Il vérifie :
   - la tuile « Tests », la liste des tests, la page du protocole (déroulé, bips, graphique annoté à deux graphes, réglages) ; l'échauffement réglé à 3 min, retenu après rechargement ;
-  - « Lancer » : Enregistrer ouvert prêt (Entraînement › Tests › FC max), sans compteur, lien vers le protocole ; le type Fractionné rend le compteur ;
+  - « Lancer » : Enregistrer ouvert prêt (Entraînement › Tests › FC max), sans compteur, lien vers le protocole ; le type Fractionné rend le compteur ; la case « FC repos » qui mène à sa page ;
+  - rejeu ×10 d'une sortie synthétique avec FC : la carte « Test » suit les phases, les signaux sont ceux de `stepFitnessTest` rejoué dans la page, les bips ceux de leurs motifs ; « Analyser » range le test ; titre « Analyse test », onglet « test » et ses deux courbes, « Retenir cette FC max », ligne de la bibliothèque ;
   - à 390 et 320 px : les pages sans débordement.
 - `test-fcrepos.mjs <port> [<dossier des captures>]` : test de FC repos de l'Entraînement (24/10), sur un profil neuf, sans réseau, environ 35 s. Pas de ceinture dans le navigateur : la page joue la FC d'exemple de `exampleRestingHr`, à ×1 puis à ×30 (`?vitesse=30`). Il vérifie :
   - la tuile « FC repos » dans Tests, la page (déroulé, sans GPS) ;

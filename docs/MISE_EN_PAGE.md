@@ -34,7 +34,7 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
   - même principe de carte fixe sur un côté pour Enregistrer (à droite, `RecordingPage.css`) et la planification (à gauche), avec `--land-w` et `--land-side-min` (`tokens.css`).
 - **La légende de couleur de la trace est posée sur la carte**, en une ligne compacte, en bas à droite, juste à gauche de la mention OSM (contrôle Leaflet d'`AnalysisMap`, coin mis en ligne par `.an-map-corner`), dans la carte et dans sa vue plein écran. Ce que dit le gris passe dans son titre. Elle ne fait qu'afficher : les bornes se saisissent dans l'onglet réglages.
 - **Une seule surbrillance sur la carte** (`useMapHighlight`) : montrer un top, un podium, une zone, une répétition, un saut ou un revêtement retire la précédente ; fermer son onglet l'efface. Couleurs de `components/highlightColors.ts`.
-- **Graphes reliés à la carte** : dans `ZoomableChart` (deux doigts, zone tirée à la souris, « Tout voir »), `onMouseMove` et `onTouchMove` vers `hoveredTrackIndex`, `onLeave` qui efface le repère (`HoverMarker`) ; deux graphes du même axe partagent un `useChartZoom`.
+- **Graphes reliés à la carte** : dans `ZoomableChart` (deux doigts, zone tirée à la souris, « Tout voir »), `onMouseMove` et `onTouchMove` vers `hoveredTrackIndex`, `onLeave` qui efface le repère (`HoverMarker`) ; deux graphes du même axe partagent un `useChartZoom`. Double-clic ou double toucher : zoom ×2 autour du point. Pas de bulle : la valeur se lit au-dessus du graphe, à droite de son nom (`ChartReadout`). Un panneau de graphes zoomables a son « Sur la carte » (`useZoomOnMap`) : tronçon en violet par `useMapHighlight`, carte cadrée par `focus` d'`AnalysisMap`, et au téléphone, carte hors de vue, plein écran carte + graphes du panneau (`companion`).
 - **Tout panneau est repliable par son titre** (`PanelTitle`) et par son onglet, et redimensionnable (`ResizablePanel`). L'`id` d'un panneau est la clé de sa taille mémorisée : ne pas le renommer.
 - Couleurs, rayons, espacements : les variables de `theme/tokens.css`. Les couleurs de données des graphes et de la carte restent en dur.
 
@@ -59,6 +59,7 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 | `hooks/useMapHighlight.ts`, `components/highlightColors.ts` | La surbrillance unique de la carte et ses couleurs |
 | `components/SurfaceHighlight.tsx` | Un revêtement choisi dans `SurfaceBar`, en violet sur la carte (analyse et planification) |
 | `components/ZoomableChart.tsx`, `hooks/useChartZoom.ts`, `components/HoverMarker.tsx` | Graphe zoomable, son zoom, le repère du survol sur la carte |
+| `components/ChartReadout.tsx`, `hooks/useZoomOnMap.ts` | Valeur lue au-dessus d'un graphe ; « Sur la carte » d'un graphe zoomé |
 
 ## Propre à chaque sport
 
