@@ -19,6 +19,12 @@ import { jsonStore } from './storage';
 export interface HeartRateBelt {
   address: string;
   name: string;
+  /**
+   * Adresse aléatoire (vrai) ou publique (faux), dite par la recherche
+   * d'Android 15 et plus ; absente si elle n'est pas connue. Le greffon la
+   * cherche de toute façon avant de s'y connecter.
+   */
+  random?: boolean;
 }
 
 export interface FoundBelt extends HeartRateBelt {
@@ -36,16 +42,18 @@ export interface HeartRateSample {
 
 /**
  * `off` : pas de connexion ; `connecting` : premier essai ; `connected` :
- * mesures reçues ; `lost` : connexion perdue, relancée en attendant la
- * ceinture ; `unsupported` : l'appareil n'a pas de fréquence cardiaque.
+ * mesures reçues ; `searching` : pas encore jointe, recherchée de nouveau ;
+ * `lost` : connexion perdue, relancée en attendant la ceinture ;
+ * `unsupported` : l'appareil n'a pas de fréquence cardiaque.
  */
-export type BeltState = 'off' | 'connecting' | 'connected' | 'lost' | 'unsupported';
+export type BeltState = 'off' | 'connecting' | 'connected' | 'searching' | 'lost' | 'unsupported';
 
 /** État de la connexion, en clair. */
 export const BELT_STATE_LABEL: Record<BeltState, string> = {
   off: 'non connectée',
   connecting: 'connexion…',
   connected: 'connectée',
+  searching: 'introuvable pour le moment : portez-la, électrodes humidifiées ; recherche en cours',
   lost: 'perdue, en attente de la ceinture',
   unsupported: "cet appareil ne donne pas de fréquence cardiaque",
 };
@@ -55,10 +63,11 @@ interface HeartRatePlugin {
   availability(): Promise<{ bluetooth: boolean; enabled: boolean; permitted: boolean; permission?: string }>;
   requestPermission(): Promise<{ permission: string }>;
   scan(options: { durationMs: number }): Promise<{ devices: FoundBelt[] }>;
-  connect(options: { address: string; name: string }): Promise<void>;
+  connect(options: { address: string; name: string; random?: boolean }): Promise<void>;
   disconnect(): Promise<void>;
+  openBluetoothSettings(): Promise<void>;
   addListener(event: 'heartRate', listener: (data: { bpm: number; timeMs: number; contact?: boolean }) => void): Promise<PluginListenerHandle>;
-  addListener(event: 'status', listener: (data: { state: BeltState }) => void): Promise<PluginListenerHandle>;
+  addListener(event: 'status', listener: (data: { state: BeltState; address?: string; random?: boolean }) => void): Promise<PluginListenerHandle>;
 }
 
 const plugin = registerPlugin<HeartRatePlugin>('HeartRate');
@@ -97,7 +106,8 @@ const BELT_KEY = 'tracker.heartRateBelt';
 
 const isBelt = (value: unknown): value is HeartRateBelt =>
   typeof value === 'object' && value !== null &&
-  typeof (value as HeartRateBelt).address === 'string' && typeof (value as HeartRateBelt).name === 'string';
+  typeof (value as HeartRateBelt).address === 'string' && typeof (value as HeartRateBelt).name === 'string' &&
+  ((value as HeartRateBelt).random === undefined || typeof (value as HeartRateBelt).random === 'boolean');
 
 /** Ceinture choisie dans Réglages, ou `null`. */
 export const savedBelt = (): HeartRateBelt | null => {
@@ -107,6 +117,17 @@ export const savedBelt = (): HeartRateBelt | null => {
 
 /** Retient la ceinture (`null` : l'oublie). */
 export const saveBelt = (belt: HeartRateBelt | null): void => jsonStore.write(BELT_KEY, belt);
+
+/** Ouvre les réglages Bluetooth d'Android : le secours d'une ceinture introuvable. */
+export const openBluetoothSettings = async (): Promise<void> => {
+  if (isNativeApp()) await plugin.openBluetoothSettings();
+};
+
+/** Retient le type d'adresse que la recherche du greffon a appris, si la ceinture retenue ne l'avait pas. */
+const learnAddressType = (address: string | undefined, random: boolean | undefined): void => {
+  const belt = savedBelt();
+  if (belt && random !== undefined && belt.random === undefined && belt.address === address) saveBelt({ ...belt, random });
+};
 
 // --- Connexion partagée ---
 
@@ -134,7 +155,10 @@ const listen = (): Promise<void> => {
       setState('connected');
       sampleListeners.forEach((listener) => listener(sample));
     }),
-    plugin.addListener('status', (data) => setState(data.state)),
+    plugin.addListener('status', (data) => {
+      learnAddressType(data.address, data.random);
+      setState(data.state);
+    }),
   ]).then(() => undefined);
   return listening;
 };
@@ -151,7 +175,7 @@ export const holdBelt = async (holder: string, belt: HeartRateBelt): Promise<() 
   holders.add(holder);
   if (first || state === 'off' || state === 'unsupported') {
     try {
-      await plugin.connect({ address: belt.address, name: belt.name });
+      await plugin.connect({ address: belt.address, name: belt.name, ...(belt.random !== undefined && { random: belt.random }) });
     } catch (err) {
       holders.delete(holder);
       throw err;

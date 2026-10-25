@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
-import { BELT_STATE_LABEL, type BeltState } from '../platform/heartRate';
+import { BELT_STATE_LABEL, openBluetoothSettings, type BeltState } from '../platform/heartRate';
 import './StatusLine.css';
 
-/** Pastille de l'état : vert connectée, jaune en cours ou perdue, gris sinon. */
+/** Pastille de l'état : vert connectée, jaune en cours, introuvable ou perdue, gris sinon. */
 const STATE_COLOR: Record<BeltState, string> = {
   off: 'var(--muted)',
   connecting: 'var(--warning-line)',
   connected: 'var(--success)',
+  searching: 'var(--warning-line)',
   lost: 'var(--warning-line)',
   unsupported: 'var(--muted)',
 };
@@ -15,7 +16,8 @@ const STATE_COLOR: Record<BeltState, string> = {
  * État de la ceinture cardio en une ligne : pastille, libellé, FC en direct.
  * Dans Réglages (bloc Capteurs) et sous la case « Ceinture cardio » de la page
  * Enregistrer. `offText` remplace « non connectée » (Bluetooth éteint,
- * permission refusée) ; `children` suit la ligne.
+ * permission refusée) ; `children` suit la ligne. Une ceinture introuvable
+ * offre en secours les réglages Bluetooth d'Android.
  */
 function BeltStatus({ state, bpm, offText, children }: {
   state: BeltState;
@@ -31,8 +33,19 @@ function BeltStatus({ state, bpm, offText, children }: {
       <span className="status-line__dot" style={{ backgroundColor: STATE_COLOR[state] }} />
       <span>{text}</span>
       {state === 'connected' && bpm !== null && <strong className="num">{Math.round(bpm)} bpm</strong>}
+      {state === 'searching' && <BluetoothSettingsButton />}
       {children}
     </span>
+  );
+}
+
+/** Bouton vers les réglages Bluetooth d'Android, en secours d'une ceinture introuvable. */
+export function BluetoothSettingsButton() {
+  return (
+    <button type="button" className="ui-btn ui-btn--secondary ui-btn--s"
+      onClick={() => void openBluetoothSettings().catch(() => undefined)}>
+      Réglages Bluetooth
+    </button>
   );
 }
 

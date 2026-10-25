@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import RestingHrChart from '../components/RestingHrChart';
+import { BluetoothSettingsButton } from '../components/BeltStatus';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
@@ -116,6 +117,7 @@ function RestingHrTestPage() {
                 Ceinture : {beltChosen ? <>{beltChosen.name}, {BELT_STATE_LABEL[belt.state]}</> : 'aucune'}
                 {beltReady && <strong className="rest-belt__bpm"> · {belt.bpm} bpm</strong>}
                 {belt.state === 'connected' && belt.bpm === null && ' · pas de contact avec la peau'}
+                {belt.state === 'searching' && <> <BluetoothSettingsButton /></>}
               </p>
             ) : (
               <p className="train-hint">Pas de ceinture dans le navigateur : l'exemple joue une FC d'exemple, pour voir le déroulé et le résultat.</p>

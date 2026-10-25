@@ -69,7 +69,7 @@ function HeartRateBeltSettings() {
   };
 
   const choose = (next: FoundBelt) => {
-    const chosen = { address: next.address, name: next.name };
+    const chosen: HeartRateBelt = { address: next.address, name: next.name, ...(next.random !== undefined && { random: next.random }) };
     stopTest();
     saveBelt(chosen);
     setBelt(chosen);

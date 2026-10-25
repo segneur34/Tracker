@@ -13,13 +13,18 @@ import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanRecord;
 import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelUuid;
+import android.provider.Settings;
+import android.util.Log;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -29,6 +34,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -40,6 +46,12 @@ import java.util.UUID;
  * et fréquence cardiaque, par le service standard Heart Rate (0x180D) que
  * toute ceinture « Bluetooth Smart » expose. Aucun appairage : une ceinture
  * ne le demande pas, la connexion se fait directement.
+ *
+ * Avant d'ouvrir la connexion, une recherche courte filtrée sur l'adresse
+ * retrouve la ceinture : l'appareil rendu porte le bon type d'adresse. Une
+ * ceinture à adresse aléatoire (la Decathlon) ouverte par la seule adresse
+ * passe pour publique, et la pile ne la joint que si elle en garde une fiche
+ * (après un passage par les réglages Bluetooth d'Android, par exemple).
  *
  * Chaque mesure (caractéristique 0x2A37) part vers la page par l'événement
  * `heartRate` ; l'enregistreur la joint à la position suivante. Écran éteint,
@@ -61,6 +73,12 @@ public class HeartRatePlugin extends Plugin {
     private static final UUID CLIENT_CONFIG = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     /** Durée de recherche par défaut, en millisecondes. */
     private static final long DEFAULT_SCAN_MS = 6000;
+    /** Recherche de la ceinture avant d'ouvrir la connexion, au plus, en millisecondes. */
+    private static final long LOCATE_MS = 5000;
+    /** Pause avant de la rechercher de nouveau quand elle n'a pas encore été jointe (Android refuse plus de 5 recherches par 30 s). */
+    private static final long RELOCATE_PAUSE_MS = 10000;
+    /** Étiquette du journal (`adb logcat -s TrackerHR`). */
+    private static final String TAG = "TrackerHR";
 
     private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -68,8 +86,18 @@ public class HeartRatePlugin extends Plugin {
     private BluetoothGatt gatt;
     private String address;
     private String name;
+    /** L'appareil à ouvrir ; celui rendu par la recherche porte le bon type d'adresse. */
+    private BluetoothDevice device;
+    /** Vrai si `device` vient d'une recherche : son type d'adresse est alors sûr. */
+    private boolean located = false;
     /** Vrai entre `connect` et `disconnect` : une coupure est alors relancée. */
     private boolean wanted = false;
+    /** Vrai dès que la ceinture a donné sa fréquence depuis `connect` : une coupure est alors une perte. */
+    private boolean joined = false;
+    /** Recherche en cours avant l'ouverture, ou `null`. */
+    private ScanCallback locating;
+    private final Runnable locateTimeout = () -> locatedBy(locating, null);
+    private final Runnable relocate = this::locate;
 
     // --- Permissions ---
 
@@ -172,6 +200,8 @@ public class HeartRatePlugin extends Plugin {
                 belt.put("address", device.getAddress());
                 belt.put("name", deviceName != null ? deviceName : device.getAddress());
                 belt.put("rssi", result.getRssi());
+                Boolean random = randomAddress(device);
+                if (random != null) belt.put("random", random);
                 main.post(() -> found.put(device.getAddress(), belt));
             }
         };
@@ -205,6 +235,25 @@ public class HeartRatePlugin extends Plugin {
         return lower.contains("hrm") || lower.contains("heart") || lower.contains("cardio") || lower.startsWith("hr ");
     }
 
+    /** Adresse aléatoire (vrai) ou publique (faux) d'un appareil rendu par une recherche ; `null` avant Android 15, qui ne le dit pas. */
+    private static Boolean randomAddress(BluetoothDevice device) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return null;
+        return device.getAddressType() == BluetoothDevice.ADDRESS_TYPE_RANDOM;
+    }
+
+    /** L'appareil d'adresse `target`, du type `random` s'il est connu (Android 13 et plus) ; sinon tel que la pile le connaît. */
+    private static BluetoothDevice remoteDevice(BluetoothAdapter adapter, String target, Boolean random) {
+        if (random != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return adapter.getRemoteLeDevice(target, random ? BluetoothDevice.ADDRESS_TYPE_RANDOM : BluetoothDevice.ADDRESS_TYPE_PUBLIC);
+        }
+        return adapter.getRemoteDevice(target);
+    }
+
+    private static String addressTypeText(BluetoothDevice device) {
+        Boolean random = randomAddress(device);
+        return random == null ? "type inconnu" : random ? "aléatoire" : "publique";
+    }
+
     /** Se connecte à la ceinture `address` et s'abonne à sa fréquence ; une connexion en cours est d'abord close. */
     @PluginMethod
     public void connect(PluginCall call) {
@@ -228,12 +277,20 @@ public class HeartRatePlugin extends Plugin {
             return;
         }
         String targetName = call.getString("name", target);
+        // Type d'adresse retenu par l'application (vrai : aléatoire), absent s'il n'est pas connu.
+        Object rawRandom = call.getData().opt("random");
+        Boolean random = rawRandom instanceof Boolean ? (Boolean) rawRandom : null;
         main.post(() -> {
+            stopLocating();
             closeGatt();
             address = target;
             name = targetName;
+            device = remoteDevice(adapter, target, random);
+            located = false;
             wanted = true;
-            open(adapter.getRemoteDevice(target), false);
+            joined = false;
+            sendStatus("connecting");
+            locate();
             call.resolve();
         });
     }
@@ -243,16 +300,31 @@ public class HeartRatePlugin extends Plugin {
     public void disconnect(PluginCall call) {
         main.post(() -> {
             wanted = false;
+            stopLocating();
             closeGatt();
             sendStatus("off");
             call.resolve();
         });
     }
 
+    /** Ouvre les réglages Bluetooth d'Android : le secours quand la ceinture reste introuvable. */
+    @PluginMethod
+    public void openBluetoothSettings(PluginCall call) {
+        Intent intent = new Intent(Settings.ACTION_BLUETOOTH_SETTINGS);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Réglages Bluetooth introuvables");
+        }
+    }
+
     @Override
     protected void handleOnDestroy() {
         main.post(() -> {
             wanted = false;
+            stopLocating();
             closeGatt();
         });
         super.handleOnDestroy();
@@ -261,13 +333,89 @@ public class HeartRatePlugin extends Plugin {
     // --- Connexion ---
 
     /**
-     * Ouvre la connexion. `autoConnect` faux la première fois, pour qu'elle
-     * soit rapide ; vrai pour une relance, qui attend sans limite le retour de
-     * la ceinture.
+     * Cherche la ceinture (`LOCATE_MS` au plus), puis ouvre la connexion sur
+     * l'appareil trouvé, ou sur celui déjà connu si la recherche ne la voit pas
+     * : une ceinture déjà connectée au téléphone ne s'annonce plus.
      */
     @SuppressLint("MissingPermission")
-    private void open(BluetoothDevice device, boolean autoConnect) {
-        sendStatus(autoConnect ? "lost" : "connecting");
+    private void locate() {
+        main.removeCallbacks(relocate);
+        if (!wanted || device == null) return;
+        BluetoothAdapter adapter = adapter();
+        BluetoothLeScanner scanner = adapter != null && adapter.isEnabled() ? adapter.getBluetoothLeScanner() : null;
+        if (scanner == null) {
+            open(false);
+            return;
+        }
+        ScanCallback cb = new ScanCallback() {
+            @Override
+            public void onScanResult(int callbackType, ScanResult result) {
+                BluetoothDevice found = result.getDevice();
+                if (found.getAddress().equalsIgnoreCase(address)) main.post(() -> locatedBy(this, found));
+            }
+
+            @Override
+            public void onScanFailed(int errorCode) {
+                Log.d(TAG, "recherche refusée, code " + errorCode);
+                main.post(() -> locatedBy(this, null));
+            }
+        };
+        // Des filtres, pour que la recherche tienne écran éteint ; ils s'ajoutent (l'un ou l'autre) :
+        // l'adresse, et le service cardio au cas où le filtre d'adresse, posé en publique, manquerait
+        // une adresse aléatoire. L'adresse est vérifiée à chaque résultat.
+        List<ScanFilter> filters = new ArrayList<>();
+        filters.add(new ScanFilter.Builder().setDeviceAddress(address).build());
+        filters.add(new ScanFilter.Builder().setServiceUuid(new ParcelUuid(HEART_RATE_SERVICE)).build());
+        ScanSettings settings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
+        try {
+            scanner.startScan(filters, settings, cb);
+        } catch (Exception e) {
+            Log.d(TAG, "recherche impossible : " + e.getMessage());
+            open(false);
+            return;
+        }
+        locating = cb;
+        main.postDelayed(locateTimeout, LOCATE_MS);
+    }
+
+    /** Fin de la recherche `cb` : `found` est la ceinture, ou `null` si elle n'a pas été vue. */
+    private void locatedBy(ScanCallback cb, BluetoothDevice found) {
+        if (cb == null || cb != locating) return;
+        stopLocating();
+        if (!wanted) return;
+        if (found != null) {
+            device = found;
+            located = true;
+        }
+        Log.d(TAG, found != null ? "trouvée par la recherche, adresse " + addressTypeText(found) : "pas vue par la recherche");
+        open(false);
+    }
+
+    @SuppressLint("MissingPermission")
+    private void stopLocating() {
+        main.removeCallbacks(locateTimeout);
+        main.removeCallbacks(relocate);
+        if (locating == null) return;
+        ScanCallback cb = locating;
+        locating = null;
+        try {
+            BluetoothAdapter adapter = adapter();
+            BluetoothLeScanner scanner = adapter == null ? null : adapter.getBluetoothLeScanner();
+            if (scanner != null) scanner.stopScan(cb);
+        } catch (Exception ignored) {
+            // Bluetooth coupé entre-temps : la recherche s'est arrêtée d'elle-même.
+        }
+    }
+
+    /**
+     * Ouvre la connexion sur `device`. `autoConnect` faux d'abord, pour
+     * qu'elle soit rapide ; vrai pour la relance d'une ceinture perdue, qui
+     * attend sans limite son retour.
+     */
+    @SuppressLint("MissingPermission")
+    private void open(boolean autoConnect) {
+        Log.d(TAG, "ouverture " + (autoConnect ? "en attente" : "directe") + ", adresse "
+            + (located ? addressTypeText(device) : "non vérifiée"));
         try {
             gatt = device.connectGatt(getContext(), autoConnect, callback, BluetoothDevice.TRANSPORT_LE);
         } catch (SecurityException e) {
@@ -294,6 +442,7 @@ public class HeartRatePlugin extends Plugin {
         public void onConnectionStateChange(BluetoothGatt g, int status, int newState) {
             main.post(() -> {
                 if (g != gatt) return;
+                Log.d(TAG, "connexion : état " + newState + ", statut " + status + (joined ? ", déjà jointe" : ", pas encore jointe"));
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     try {
                         g.discoverServices();
@@ -303,10 +452,16 @@ public class HeartRatePlugin extends Plugin {
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     closeGatt();
                     BluetoothAdapter adapter = adapter();
-                    if (wanted && address != null && adapter != null && adapter.isEnabled()) {
-                        open(adapter.getRemoteDevice(address), true);
-                    } else {
+                    if (!wanted || device == null || adapter == null || !adapter.isEnabled()) {
                         sendStatus(wanted ? "lost" : "off");
+                    } else if (joined) {
+                        // Perdue (hors de portée, retirée) : relance en attente de son retour, écran éteint compris.
+                        sendStatus("lost");
+                        open(true);
+                    } else {
+                        // Jamais jointe depuis `connect` : on la recherche de nouveau, après une pause.
+                        sendStatus("searching");
+                        main.postDelayed(relocate, RELOCATE_PAUSE_MS);
                     }
                 }
             });
@@ -330,6 +485,7 @@ public class HeartRatePlugin extends Plugin {
                     g.setCharacteristicNotification(measurement, true);
                     BluetoothGattDescriptor config = measurement.getDescriptor(CLIENT_CONFIG);
                     if (config != null) writeConfig(g, config);
+                    joined = true;
                     sendStatus("connected");
                 } catch (SecurityException ignored) {
                     sendStatus("lost");
@@ -387,6 +543,9 @@ public class HeartRatePlugin extends Plugin {
         data.put("state", state);
         if (address != null) data.put("address", address);
         if (name != null) data.put("name", name);
+        // Type d'adresse sûr seulement pour un appareil trouvé par la recherche : l'application le retient.
+        Boolean random = located && device != null ? randomAddress(device) : null;
+        if (random != null) data.put("random", random);
         notifyListeners("status", data);
     }
 }
