@@ -290,7 +290,7 @@ function HeartRateThresholdsField({ profile, onChange }: { profile: RunnerProfil
         <span style={{ width: '190px' }}>Seuils cardio<HelpToggle helpKey="pratiquant:zones" label="Seuils cardio" /></span>
         {zones ? (
           <>
-            <span>S1 {zones.s1} · S2 {zones.s2} bpm</span>
+            <span><strong>S1</strong> {zones.s1} · <strong>S2</strong> {zones.s2} bpm</span>
             {entered
               ? <Button size="s" onClick={() => onChange(null)}>Revenir au calcul</Button>
               : <Button size="s" onClick={() => onChange([zones.s1, zones.s2])}>Personnaliser</Button>}
