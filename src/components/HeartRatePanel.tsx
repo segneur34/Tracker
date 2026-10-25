@@ -19,7 +19,9 @@ import {
 import type { HeartRateProfile } from '../core/sportProfiles';
 import { SPEED_UNIT_LABEL, formatClock, formatShortDuration, isInverseUnit, toDisplaySpeed, type SpeedUnit } from '../core/units';
 import type { ChartZoom } from '../hooks/useChartZoom';
+import type { RunnerProfile } from '../hooks/useRunnerProfile';
 import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
+import { zonesOriginText } from './heartRateOrigin';
 
 /** Vitesse et activité de la trace, pour la dérive et le nuage FC / vitesse (course et vélo). */
 export interface HeartRateEfficiency {
@@ -36,6 +38,8 @@ interface Props {
   zones: HeartRateZones | null;
   /** FC max saisie dans Pratiquant. */
   profileHrMax: number | null;
+  /** Profil du pratiquant, pour dire d'où viennent les zones. */
+  runner: RunnerProfile;
   /** « La retenir » : la FC max de la sortie devient celle du pratiquant. */
   onRetainHrMax: (bpm: number) => void;
   /** Zone montrée sur la carte (1 à 5, 0 sous Z1), ou `null`. */
@@ -54,12 +58,6 @@ interface Props {
   open: boolean;
   onToggle: () => void;
 }
-
-const METHOD_LABEL: Record<HeartRateZones['method'], string> = {
-  perso: 'personnalisées, saisies dans Réglages › Pratiquant',
-  reserve: '% de la réserve cardiaque (entre FC de repos et FC max)',
-  max: '% de la FC max',
-};
 
 const minutesLabel = (v: unknown) => formatClock(Number(v) * 60_000);
 const cell = { padding: '0.4em 0.6em', textAlign: 'center' } as const;
@@ -119,7 +117,7 @@ export function CardioCurve({ track, smoothed, zoom, zones, hoveredIndex, onHove
  * Posé dans le `ResizablePanel` du module.
  */
 export default function HeartRatePanel({
-  track, heart, params, zones, profileHrMax, onRetainHrMax, selectedZone, onSelectZone, hoveredIndex, onHoverIndex, onLeave, efficiency,
+  track, heart, params, zones, profileHrMax, runner, onRetainHrMax, selectedZone, onSelectZone, hoveredIndex, onHoverIndex, onLeave, efficiency,
   zoom, onShowOnMap, open, onToggle,
 }: Props) {
   const { smoothed, stats } = heart;
@@ -227,8 +225,7 @@ export default function HeartRatePanel({
             </tbody>
           </table>
           <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
-            Zones : {METHOD_LABEL[zones.method]}
-            {zones.hrMax !== null && zones.method !== 'perso' && `, FC max ${zones.hrMax} bpm${zones.estimated ? ' estimée par l\'âge' : ''}`}.
+            Zones calées sur {zonesOriginText(zones, runner)}
           </div>
         </>
       ) : (

@@ -1,4 +1,5 @@
 import type { JumpDetection } from './jumps';
+import type { HeartRateZoneModel } from './heartRate';
 import type { PumpDetection } from '../surfing/pumping';
 import type { CadenceDetection } from '../running/cadence';
 import type { SpeedRangeMs } from './speedGradient';
@@ -158,8 +159,14 @@ export interface HeartRateProfile {
   gapS: number;
   /** Temps couvert par la FC au-dessous duquel la session est dite sans FC, en secondes. */
   minCoverageS: number;
-  /** Bornes basses des zones 1 à 5, en fraction de la réserve cardiaque (ou de la FC max sans FC de repos). */
-  zoneFractions: readonly number[];
+  /** Seuils S1 et S2, et zones 1 à 5 calées dessus (`heartRateZones`). */
+  zoneModel: HeartRateZoneModel;
+  /**
+   * Décalage de S1 et de S2 pour ce calcul, en bpm, par rapport à la course
+   * (Gemini, 25/10 : masse musculaire, posture, contraction) ; surchargeable
+   * par activité dans Réglages, la Marche a le sien en pré-réglage.
+   */
+  thresholdOffsetBpm: number;
   /**
    * Coefficients de la charge par minute, de « sous Z1 » à Z5 : ceux d'Edwards
    * (1 à 5), plus le temps sous Z1, qui compte aussi (choix de l'utilisateur).
@@ -175,12 +182,29 @@ export interface HeartRateProfile {
   scatterBlockS: number;
 }
 
+/**
+ * Seuils et zones (25/10, d'après la synthèse demandée à Gemini) : S1 à 70 %
+ * et S2 à 85 % de la réserve cardiaque (Karvonen), 78 et 89 % de la FC max
+ * sans FC de repos. Z3 commence à S1, Z4 aux 2/3 de S1 à S2 (seuil lactique
+ * stable), Z5 un peu au-dessus de S2. Z1 et Z2 sous S1, placées pour tomber
+ * au même endroit avec et sans FC de repos (Z2 environ 15 bpm sous S1).
+ */
+export const HEART_RATE_ZONE_MODEL: HeartRateZoneModel = {
+  reserveThresholds: [0.7, 0.85],
+  maxThresholds: [0.78, 0.89],
+  belowS1Reserve: [0.65, 0.85],
+  belowS1Max: [0.77, 0.9],
+  z4: 0.68,
+  z5: 0.22,
+};
+
 const HEART_RATE: HeartRateProfile = {
   maxAgeS: 3,
   smoothS: 5,
   gapS: 10,
   minCoverageS: 60,
-  zoneFractions: [0.5, 0.6, 0.7, 0.8, 0.9],
+  zoneModel: HEART_RATE_ZONE_MODEL,
+  thresholdOffsetBpm: 0,
   loadWeights: [0.5, 1, 2, 3, 4, 5],
   driftMinS: 20 * 60,
   driftStablePct: 5,
@@ -482,6 +506,9 @@ const SAILING_DEFAULTS = {
   surf: null,
 };
 
+/** Seuils cardio d'un calcul décalés de `offsetBpm` par rapport à la course. */
+const heartRateOffset = (offsetBpm: number): HeartRateProfile => ({ ...HEART_RATE, thresholdOffsetBpm: offsetBpm });
+
 const RUNNING_PROFILE: SportProfile = {
   id: 'running',
   label: 'À pied',
@@ -537,7 +564,7 @@ const CYCLING_PROFILE: SportProfile = {
   intervals: INTERVAL_ANALYSIS,
   foilDefault: false,
   jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
-  heartRate: HEART_RATE,
+  heartRate: heartRateOffset(-7),
   cadence: null,
   surf: null,
 };
@@ -573,7 +600,7 @@ const SURF_PROFILE: SportProfile = {
   recording: { ...DEFAULT_RECORDING, autoPauseSpeedMs: 0 },
   intervals: null,
   jumps: null,
-  heartRate: HEART_RATE,
+  heartRate: heartRateOffset(-10),
   cadence: null,
   surf: {
     stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15, maxGapS: 10,
@@ -590,6 +617,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     // Sans foil (case décochée), un wing se dit « en navigation » ; sur foil, « Ratio de vol ».
     activeRatioLabel: 'Ratio de navigation',
     foilDefault: true,
+    heartRate: heartRateOffset(-8),
     jumps: { defaultMinHeightM: 0.5, detection: JUMP_DETECTION },
   },
   windsurf: {
@@ -598,6 +626,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     label: 'Planche à voile',
     defaultActiveThreshold: 10,
     activeRatioLabel: 'Ratio de planing',
+    heartRate: heartRateOffset(-5),
     jumps: { defaultMinHeightM: 0.5, detection: JUMP_DETECTION },
   },
   kite: {
@@ -606,6 +635,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     label: 'Kitesurf',
     defaultActiveThreshold: 8,
     activeRatioLabel: 'Ratio de navigation',
+    heartRate: heartRateOffset(-8),
     jumps: { defaultMinHeightM: 1, detection: JUMP_DETECTION },
   },
   bateau: {
@@ -620,6 +650,8 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     speedRange: { minMs: knotsToMs(1), maxMs: knotsToMs(15) },
     recording: BOAT_RECORDING,
     activeRatioLabel: 'Ratio de navigation',
+    // Voile au rappel, comme la planche (25/10).
+    heartRate: heartRateOffset(-5),
     jumps: null,
   },
   running: RUNNING_PROFILE,

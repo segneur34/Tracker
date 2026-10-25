@@ -185,6 +185,8 @@ export interface StoredSettings {
   bikeWeights?: ByActivity<number>;
   /** Charge portée en kg, sac et affaires (course) ; absente : 0. */
   carriedLoads?: ByActivity<number>;
+  /** Décalage des seuils cardio S1 et S2 par rapport à la course, en bpm ; absent : `defaultHrOffsetOf`. */
+  hrOffsets?: ByActivity<number>;
   /** Intitulés des deux champs de matériel des notes (hors voile) ; un texte vide : celui par défaut. */
   gearLabels?: ByActivity<[string, string]>;
   /**
@@ -290,6 +292,24 @@ const resolveGearLabels = (stored: StoredSettings, id: string): [string, string]
 /** Rapport du retour de boucle admis, en fois l'aller. */
 export const isValidLoopReturnRatio = (value: unknown): value is number =>
   typeof value === 'number' && isFinite(value) && value >= LOOP_RETURN_RATIO_RANGE.min && value <= LOOP_RETURN_RATIO_RANGE.max;
+
+/** Décalage des seuils cardio admis, en bpm entiers. */
+export const HR_OFFSET_RANGE = { min: -30, max: 30 };
+
+export const isValidHrOffset = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= HR_OFFSET_RANGE.min && value <= HR_OFFSET_RANGE.max;
+
+/** Décalage des seuils cardio à défaut de réglage : le pré-réglage, sinon celui du calcul. */
+export const defaultHrOffsetOf = (activity: Activity): number =>
+  presetOf(activity).hrThresholdOffsetBpm ?? getSportProfile(activity.base).heartRate.thresholdOffsetBpm;
+
+const resolveHrOffset = (stored: StoredSettings, activity: Activity): number => {
+  const offset = stored.hrOffsets?.[activity.id];
+  return isValidHrOffset(offset) ? offset : defaultHrOffsetOf(activity);
+};
+
+/** Décalage des seuils cardio d'une activité, hors composant (direct, test guidé). */
+export const effectiveHrOffset = (activity: Activity): number => resolveHrOffset(readStoredSettings(), activity);
 
 /** Rapport du retour de boucle : celui réglé, sinon celui du profil ; `null` en voile. */
 const resolveLoopReturnRatio = (stored: StoredSettings, activity: Activity): number | null => {
@@ -868,6 +888,9 @@ export interface SportSettingsView {
   bikeWeight: number | null;
   /** Charge portée en kg (course), ou `null` sans réglage (0). */
   carriedLoad: number | null;
+  /** Décalage des seuils cardio, en bpm. */
+  hrOffset: number;
+  isHrOffsetOverridden: boolean;
   /** Intitulés de matériel réglés (hors voile), un texte vide pour celui par défaut ; `null` sans réglage. */
   gearLabels: [string, string] | null;
   /** Onglets des analyses montrés ou cachés à l'écart de ceux du module ; `null` sans choix ni pré-réglage. */
@@ -889,8 +912,8 @@ export interface SportSettingsView {
 /** Tables de réglages rangées par activité. */
 type PerActivityKey = (typeof PER_ACTIVITY_KEYS)[number];
 const PER_ACTIVITY_KEYS = [
-  'thresholds', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'gearLabels', 'tabs',
-  'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
+  'thresholds', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'hrOffsets', 'gearLabels',
+  'tabs', 'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
   'heartRate', 'cadence',
 ] as const;
 
@@ -977,6 +1000,8 @@ export const useAllSportSettings = () => {
         bikeType: resolveBikeType(stored, activity),
         bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
         carriedLoad: isValidCarriedLoad(carriedLoad) ? carriedLoad : null,
+        hrOffset: resolveHrOffset(stored, activity),
+        isHrOffsetOverridden: isValidHrOffset(stored.hrOffsets?.[id]),
         gearLabels: sanitizeGearLabels(stored.gearLabels?.[id]),
         tabs: sanitizeTabChoices(stored.tabs?.[id]) ?? defaultTabsOf(activity),
         isTabsOverridden: sanitizeTabChoices(stored.tabs?.[id]) !== null,
@@ -992,7 +1017,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'gearLabels' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'hrOffset' | 'gearLabels' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -1110,6 +1135,10 @@ export const useAllSportSettings = () => {
         case 'carriedLoad':
           if (value !== null && !isValidCarriedLoad(value)) return;
           next.carriedLoads = put(stored.carriedLoads, value === 0 ? null : value as number | null);
+          break;
+        case 'hrOffset':
+          if (value !== null && !isValidHrOffset(value)) return;
+          next.hrOffsets = put(stored.hrOffsets, value as number | null);
           break;
         case 'gearLabels': {
           const labels = value === null ? null : sanitizeGearLabels(value);
@@ -1360,6 +1389,8 @@ export const useSportSettings = (family: SportFamily) => {
   const storedLoad = stored.carriedLoads?.[id];
   const carriedLoadKg = isValidCarriedLoad(storedLoad) ? storedLoad : 0;
   const gearLabels = useMemo(() => resolveGearLabels(stored, id), [stored, id]);
+  // Cardio : décalage des seuils S1 et S2, réglé dans Réglages.
+  const hrOffsetBpm = resolveHrOffset(stored, activity);
 
   return {
     activity,
@@ -1387,6 +1418,8 @@ export const useSportSettings = (family: SportFamily) => {
     carriedLoadKg,
     /** Intitulés des deux champs de matériel des notes (hors voile), réglés dans Réglages ou par défaut. */
     gearLabels,
+    /** Décalage des seuils cardio de l'activité, en bpm. */
+    hrOffsetBpm,
     foil,
     pumping,
   };

@@ -37,6 +37,8 @@ export interface ActivityPreset {
   tabs?: Record<string, boolean>;
   /** Temps estimé des itinéraires : niveau, et vitesse sur le plat du niveau « Personnalisé », en m/s. */
   pace?: { level: PaceLevel; customFlatSpeedMs: number | null };
+  /** Décalage des seuils cardio par rapport à la course, en bpm. */
+  hrThresholdOffsetBpm?: number;
 }
 
 /** Pause automatique à 0,3 m/s, celle du calcul, au bout de ce temps. */
@@ -118,6 +120,8 @@ const ACTIVITY_PRESETS: Partial<Record<string, ActivityPreset>> = {
     wayTypes: ['sentier', 'piste'],
     terrainStepM: 5,
     pace: { level: 'perso', customFlatSpeedMs: kmhToMs(5) },
+    // Pas de phase de vol, moins de muscles à la fois que la course (Gemini, 25/10).
+    hrThresholdOffsetBpm: -4,
   },
   'a-gravel': {
     threshold: 0,

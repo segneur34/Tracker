@@ -91,7 +91,7 @@ const update = (force: boolean) => {
     markDistanceM: mark.active ? mark.distanceM : null,
     markBearingDeg: mark.active ? mark.bearingDeg : null,
     heartRateBpm: recorder.heartRate?.bpm ?? null,
-    heartRateZoneBounds: fields.includes('heartRateZone') ? readHeartRateZoneBounds(activity.base) : null,
+    heartRateZoneBounds: fields.includes('heartRateZone') ? readHeartRateZoneBounds(activity) : null,
   };
   const paused = status === 'paused' ? recorder.pausedReason ?? 'auto' : null;
   const content = liveNotification({

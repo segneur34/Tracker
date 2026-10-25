@@ -314,7 +314,7 @@ describe('cardio', () => {
 
   it('fait les totaux sur les seules sessions à FC', () => {
     const list = [session(at(2026, 10, 5), { heartRate: hr(150) }), session(at(2026, 10, 6), { heartRate: hr(130) }), session(at(2026, 10, 7))];
-    const t = cardioTotals(list, bounds, weights);
+    const t = cardioTotals(list, () => bounds, weights);
     expect(t.sessions).toBe(2);
     expect(t.coveredS).toBe(2400);
     expect(t.avgBpm).toBeCloseTo(140, 6);
@@ -324,10 +324,17 @@ describe('cardio', () => {
     expect(cardioTotals(list, null, weights)).toMatchObject({ zoneTimesS: null, load: null, sessions: 2 });
   });
 
+  it("prend les zones de chaque session, décalées pour son activité", () => {
+    const list = [session(at(2026, 10, 5), { heartRate: hr(150) }), session(at(2026, 10, 6), { heartRate: hr(150), activityId: 'velo' })];
+    // Zones du vélo plus hautes : ses 130 tombent en Z1, ses 170 restent en Z4.
+    const t = cardioTotals(list, (s) => (s.activityId === 'velo' ? [125, 140, 160, 165, 185] : bounds), weights);
+    expect(t.zoneTimesS).toEqual([0, 600, 600, 0, 1200, 0]);
+  });
+
   it('range la charge par semaine et la FC par session', () => {
     const list = [session(at(2026, 10, 5), { heartRate: hr(150) }), session(at(2026, 10, 14), { heartRate: hr(130) })];
     const reg = regularity(list, { fromMs: at(2026, 10, 5, 0), toMs: at(2026, 10, 19, 0) }, at(2026, 10, 18), ['course']);
-    const bars = cardioLoadBars(reg.bars, list, bounds, weights);
+    const bars = cardioLoadBars(reg.bars, list, () => bounds, weights);
     expect(bars.map((b) => Math.round(b.load))).toEqual([60, 60]);
     expect(heartRatePoints([...list].reverse()).map((p) => p.avgBpm)).toEqual([150, 130]);
   });

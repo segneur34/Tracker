@@ -82,10 +82,10 @@ console.log('FC max :', await clickText('FC max', '.train-tile'));
 await wait(1200);
 check('page du protocole', (await evaluate('location.pathname')) === '/fractionne/tests/fc-max', await evaluate('location.pathname'));
 const page = await evaluate('document.querySelector(".ui-page").innerText');
-check('déroulé : 8 min en zones 2 à 3, 110 à 147 bpm (FC max 184 estimée à 35 ans)', /Échauffement, 8 min/.test(page) && /zones 2 à 3 du cardio : de 110 à\s*147 bpm/.test(page), page.slice(0, 300));
+check('déroulé : 8 min en zones 2 à 3, 130 à 158 bpm (FC max 184 estimée à 35 ans : S1 144, S2 164)', /Échauffement, 8 min/.test(page) && /zones 2 à 3 du cardio : de 130 à\s*158 bpm/.test(page), page.slice(0, 300));
 check('les bips : 1, 2, 3 courts, long', /1 court\s*bien/.test(page) && /2 courts\s*trop vite/.test(page) && /3 courts\s*accélère/.test(page), '');
 check('ceinture et santé', /Ceinture cardio \(ou autre capteur de FC\) connectée/.test(page) && /Effort maximal/.test(page), '');
-check("zones estimées par l'âge par défaut, dit", /184 bpm, estimée par l'âge \(35 ans par défaut/.test(page), '');
+check("zones estimées par l'âge par défaut, dit", /S1 144 et S2 164 bpm, tirés de la FC max 184 \(estimée par l'âge\), sans FC repos\. Âge : 35 ans par défaut/.test(page), '');
 const chart = await evaluate(`(() => { const f = document.querySelector('.fit-plan'); return f ? { svgs: f.querySelectorAll('svg.recharts-surface').length, dots: f.querySelectorAll('.recharts-reference-dot').length, areas: f.querySelectorAll('.recharts-reference-area').length } : null; })()`);
 check('graphique annoté : deux graphes, 10 paliers, phases', chart?.svgs === 2 && chart?.dots === 10 && chart?.areas === 6, JSON.stringify(chart));
 await shoot('fcmax-protocole');
@@ -134,7 +134,7 @@ await go('/enregistrer?activite=run-test&test=fc-repos');
 check('&test=fc-repos accepté', (await segmented('Test')) === 'FC repos', await segmented('Test'));
 
 // --- 4. Rejeu ---
-// Échauffement de 3 min (réglé en 1) à 2 m/s, FC montée à 125 bpm (zones 2 à 3 : 110 à 147 à 35 ans) ; rampe de départ 7 km/h,
+// Échauffement de 3 min (réglé en 1) à 2 m/s, FC montée à 140 bpm (zones 2 à 3 : 130 à 158 à 35 ans) ; rampe de départ 7 km/h,
 // tenue sur 6 paliers puis lâchée de 0,5 m/s ; récupération à 1,2 m/s.
 const T0 = Date.now() - 3 * 3600_000;
 const LAT = 43.7;
@@ -142,7 +142,7 @@ const M_PER_DEG_LON = (Math.PI / 180) * 6371e3 * Math.cos((LAT * Math.PI) / 180)
 const V0 = 7 / 3.6;
 const STEP = 0.6 / 3.6;
 const speedAt = (t) => (t < 180 ? 2 : t < 540 ? V0 + Math.floor((t - 180) / 60) * STEP + 0.02 : t < 575 ? V0 + 6 * STEP - 0.5 : 1.2);
-const hrAt = (t) => (t < 60 ? 70 + (55 * t) / 60 : t < 180 ? 125 : t < 570 ? 125 + ((185 - 125) * (t - 180)) / 390 : 185 - (t - 570) / 2);
+const hrAt = (t) => (t < 60 ? 70 + (70 * t) / 60 : t < 180 ? 140 : t < 570 ? 140 + ((185 - 140) * (t - 180)) / 390 : 185 - (t - 570) / 2);
 let meters = 0;
 const pts = [];
 for (let t = 0; t <= 720; t++) {
@@ -168,7 +168,7 @@ const holdStop = async () => {
 };
 const cardText = () => evaluate(`[...document.querySelectorAll('.ivl-live')].map((n) => n.innerText.replace(/\\s+/g, ' ')).join(' | ')`);
 await go('/enregistrer?activite=run-test&test=fc-max');
-check('carte du test au repos : résumé à 3 min, zones 2 à 3', /Test FC max/.test(await cardText()) && /Échauffement 3 min en zones 2 à 3 \(110 à 147 bpm\)/.test(await cardText()), await cardText());
+check('carte du test au repos : résumé à 3 min, zones 2 à 3', /Test FC max/.test(await cardText()) && /Échauffement 3 min en zones 2 à 3 \(130 à 158 bpm\)/.test(await cardText()), await cardText());
 await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click(); 'ok'`);
 await wait(300);
 await setFile('input[type=file][accept=".gpx"]', replayPath);
@@ -204,7 +204,7 @@ const pure = await evaluate(`(async () => {
   const { getSportProfile } = await import('/src/core/sportProfiles.ts');
   const fixes = fixesFromRawPoints(parseGpx(${JSON.stringify(readFileSync(replayPath, 'utf8'))}).rawPoints).map(roundFix);
   let state = ft.startFitnessTest(ft.resolveFitnessTestParams(ft.FITNESS_TESTS['fc-max'], { warmupS: 180 },
-    { athlete: { hrMax: null, hrRest: null, hrZones: null }, age: null, zoneFractions: getSportProfile('run-test').heartRate.zoneFractions }));
+    { athlete: { hrMax: null, hrRest: null }, age: null, zoneModel: getSportProfile('run-test').heartRate.zoneModel, offsetBpm: 0 }));
   const out = [];
   for (const f of fixes) {
     const step = ft.stepFitnessTest(state, { timeMs: f.timeMs, speedMs: f.speedMs, hrBpm: f.heartRateBpm });

@@ -2,7 +2,7 @@ import type { RestingHrProtocol, RestingSample } from '../recording/restingHrTes
 
 /**
  * Résultat d'un test de FC repos (`recording/restingHrTest.ts`) : la moyenne
- * de 10 secondes la plus basse des 3 minutes, et la courbe à la seconde pour
+ * de 30 secondes la plus basse après la première minute, et la courbe à la seconde pour
  * le graphique. Tout se mesure en temps : chaque mesure vaut depuis son
  * instant jusqu'à la suivante (au plus `holdS`), donc une ceinture à 1 Hz et à
  * 5 Hz donnent la même courbe.
@@ -59,7 +59,7 @@ export const restingHrResult = (samples: readonly RestingSample[], startMs: numb
   const needed = Math.ceil(protocol.windowS * protocol.minWindowCoverage - 1e-9);
   let lowest: number | null = null;
   let fromS: number | null = null;
-  for (let s = 0; s + protocol.windowS <= series.length; s++) {
+  for (let s = protocol.settleS; s + protocol.windowS <= series.length; s++) {
     let total = 0;
     let count = 0;
     for (let k = s; k < s + protocol.windowS; k++) {

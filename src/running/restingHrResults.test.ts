@@ -51,29 +51,35 @@ describe('restingHrResult', () => {
   it('une FC constante donne cette FC, test complet', () => {
     const r = restingHrResult(samples(1, () => 58), START, P);
     expect(r.lowestBpm).toBe(58);
-    expect(r.fromS).toBe(0);
-    expect(r.toS).toBe(10);
+    expect(r.fromS).toBe(60);
+    expect(r.toS).toBe(90);
     expect(r.meanBpm).toBe(58);
     expect(r.maxBpm).toBe(58);
     expect(r.coverage).toBe(1);
     expect(r.complete).toBe(true);
   });
 
-  it('trouve la fenêtre de 10 s la plus basse, la première en cas d\'égalité', () => {
-    const r = restingHrResult(samples(1, (t) => (t >= 80 && t < 100 ? 52 : 66)), START, P);
+  it('trouve la fenêtre de 30 s la plus basse, la première en cas d\'égalité', () => {
+    const r = restingHrResult(samples(1, (t) => (t >= 100 && t < 140 ? 52 : 66)), START, P);
     expect(r.lowestBpm).toBe(52);
-    expect(r.fromS).toBe(80);
-    expect(r.toS).toBe(90);
+    expect(r.fromS).toBe(100);
+    expect(r.toS).toBe(130);
+  });
+
+  it('écarte la première minute, le temps que le cœur se pose', () => {
+    const r = restingHrResult(samples(1, (t) => (t < 60 ? 45 : 66)), START, P);
+    expect(r.lowestBpm).toBe(66);
+    expect(r.fromS).toBe(60);
   });
 
   it('une baisse plus courte que la fenêtre est moyennée avec ses voisines', () => {
-    // 5 s à 50 dans du 70 : la meilleure fenêtre de 10 s en contient 5 : (5 × 50 + 5 × 70) / 10 = 60.
-    const r = restingHrResult(samples(1, (t) => (t >= 100 && t < 105 ? 50 : 70)), START, P);
-    expect(r.lowestBpm).toBe(60);
+    // 10 s à 50 dans du 70 : la meilleure fenêtre de 30 s en contient 10 : (10 × 50 + 20 × 70) / 30 = 63,3.
+    const r = restingHrResult(samples(1, (t) => (t >= 100 && t < 110 ? 50 : 70)), START, P);
+    expect(r.lowestBpm).toBe(63);
   });
 
   it('1 Hz et 5 Hz donnent le même résultat (règle 2)', () => {
-    const fn = (t: number) => (t >= 40 && t < 55 ? 54 : 64 - Math.floor(t / 60));
+    const fn = (t: number) => (t >= 100 && t < 115 ? 54 : 64 - Math.floor(t / 60));
     const slow = restingHrResult(samples(1, fn), START, P);
     const fast = restingHrResult(samples(5, fn), START, P);
     expect(fast.lowestBpm).toBe(slow.lowestBpm);
@@ -90,8 +96,8 @@ describe('restingHrResult', () => {
   });
 
   it('une fenêtre trop peu couverte ne compte pas', () => {
-    // Deux secondes à 40 bpm, entre deux trous : aucune fenêtre de 10 s n'en a 7 de mesurées.
-    const fn = (t: number) => (t >= 98 && t < 100 ? 40 : (t >= 90 && t < 98) || (t >= 100 && t < 108) ? null : 70);
+    // Dix secondes à 40 bpm, entre deux trous : aucune fenêtre de 30 s qui les touche n'en a 21 de mesurées.
+    const fn = (t: number) => (t >= 100 && t < 110 ? 40 : (t >= 80 && t < 100) || (t >= 110 && t < 130) ? null : 70);
     const r = restingHrResult(samples(1, fn), START, P);
     expect(r.lowestBpm).toBe(70);
   });
@@ -112,7 +118,7 @@ describe('restingHrResult', () => {
 });
 
 describe('résultats gardés', () => {
-  const result = restingHrResult(samples(1, (t) => (t >= 30 && t < 50 ? 55.4 : 65)), START, P);
+  const result = restingHrResult(samples(1, (t) => (t >= 100 && t < 140 ? 55.4 : 65)), START, P);
 
   it('garde le résultat avec une courbe en entiers', () => {
     const stored = toStoredRestingResult(result, START, P)!;

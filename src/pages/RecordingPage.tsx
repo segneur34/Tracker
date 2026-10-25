@@ -834,7 +834,7 @@ function RecordingPage() {
           markDistanceM: markGuide.active ? markGuide.distanceM : null,
           markBearingDeg: markGuide.active ? markGuide.bearingDeg : null,
           heartRateBpm: recorder.heartRate?.bpm ?? null,
-          heartRateZoneBounds: readHeartRateZoneBounds(liveActivity.base),
+          heartRateZoneBounds: readHeartRateZoneBounds(liveActivity),
         })} />
       )}
 

@@ -267,10 +267,10 @@ function LandModule({ family }: { family: LandFamily }) {
     activity, setActivity, sport,
     profile, activeThreshold, terrainStepM,
     speedUnit, distanceUnit,
-    speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, gearLabels,
+    speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, gearLabels, hrOffsetBpm,
   } = useSportSettings(family);
   const model = LAND_TREATMENTS[sportTreatment(sport) === 'velo' ? 'velo' : 'course'];
-  const { profile: runner, age, setNumber: setRunnerNumber } = useRunnerProfile();
+  const { profile: runner, age, retainHr } = useRunnerProfile();
   const gpx = useGpxSession({
     medianWindowSeconds: profile.medianWindowSeconds,
     maxDetourRatio: profile.maxDetourRatio,
@@ -278,7 +278,7 @@ function LandModule({ family }: { family: LandFamily }) {
   });
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans les graphes. */
   const heart = useSessionHeartRate(gpx.track, profile.heartRate);
-  const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate.zoneFractions), [runner, profile.heartRate]);
+  const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate, hrOffsetBpm), [runner, profile.heartRate, hrOffsetBpm]);
   /** Cadence à pied (`cad` du GPX : capteurs du téléphone, montre) : sa courbe dans les graphes et l'onglet « cadence ». */
   const cadenceParams = profile.cadence;
   const cadence = useMemo(
@@ -1273,7 +1273,7 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.test && isTestSport(profile.id) && (sessionTest ? (
               <ResizablePanel id={panelId('test')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <FitnessTestPanel track={gpx.track} test={sessionTest} minutes={trackMinutes} speedsMs={chartSpeed} hrSmoothed={heart.smoothed}
-                  speedUnit={speedUnit} profileHrMax={runner.hrMax} onRetainHrMax={(bpm) => setRunnerNumber('hrMax', bpm)}
+                  speedUnit={speedUnit} profileHrMax={runner.hrMax} onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'test', atMs: sessionTest.startMs })}
                   zoom={testZoom} hoveredIndex={hoveredIndex} onHoverIndex={hoverIndex} onLeave={clearHover}
                   onShowOnMap={() => zoomOnMap.show('test')} open={open.test} onToggle={() => toggle('test')} />
               </ResizablePanel>
@@ -1316,8 +1316,8 @@ function LandModule({ family }: { family: LandFamily }) {
 
             {open.cardio && heart.present && (
               <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
-                <HeartRatePanel track={gpx.track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax}
-                  onRetainHrMax={(bpm) => setRunnerNumber('hrMax', bpm)} selectedZone={selectedHrZone} onSelectZone={setSelectedHrZone}
+                <HeartRatePanel track={gpx.track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
+                  onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: gpx.track[0]?.timeMs ?? null })} selectedZone={selectedHrZone} onSelectZone={setSelectedHrZone}
                   hoveredIndex={hoveredIndex} onHoverIndex={hoverIndex} onLeave={clearHover} efficiency={heartEfficiency}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
                   open={open.cardio} onToggle={() => toggle('cardio')} />

@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
 import { isActivityIconId, type ActivityIconId } from '../core/activityIcons';
-import { heartRateZones, isValidZoneBounds, type HeartRateZones } from '../core/heartRate';
-import { getSportProfile } from '../core/sportProfiles';
-import type { SportType } from '../core/types';
+import type { Activity } from '../core/activities';
+import { heartRateZones, isValidThresholds, type HeartRateZones } from '../core/heartRate';
+import { getSportProfile, type HeartRateProfile } from '../core/sportProfiles';
 import { ROOT_DEFAULTS, type RootSettings } from '../library/rootGrowth';
+import { effectiveHrOffset } from './useSportSettings';
 import { readStoredRecord, useStoredRecord } from './useStoredRecord';
 
 /**
@@ -17,6 +18,12 @@ export type RunnerAvatar = { kind: 'dessin'; icon: ActivityIconId } | { kind: 'p
 export const AVATAR_PHOTO_PX = 256;
 /** Au-delà, une photo n'est pas reprise : elle n'a pas été réduite par l'application. */
 const AVATAR_PHOTO_MAX_CHARS = 200_000;
+
+/** D'où vient une FC max ou de repos : un test guidé, une séance (« La retenir » du cardio), ou la saisie ; `atMs` : le jour du test ou de la séance. */
+export interface HrSource {
+  kind: 'test' | 'seance' | 'saisie';
+  atMs: number | null;
+}
 
 /**
  * Profil du coureur, persistant dans le navigateur. Ces caractéristiques
@@ -38,9 +45,14 @@ export interface RunnerProfile {
   sex: 'f' | 'm' | null;
   /** Fréquence cardiaque maximale, en battements par minute. */
   hrMax: number | null;
+  /** Son origine ; absente sur un profil d'avant le 25/10 : saisie. */
+  hrMaxSource: HrSource | null;
   /** Fréquence cardiaque de repos, en battements par minute. */
   hrRest: number | null;
-  /** Bornes basses des zones cardiaques 1 à 5 saisies à la main, en bpm ; `null` : calculées. */
+  hrRestSource: HrSource | null;
+  /** Seuils S1 et S2 saisis à la main (test en laboratoire), à pied, en bpm ; `null` : calculés. */
+  hrThresholds: number[] | null;
+  /** Bornes des zones saisies avant les seuils (avant le 25/10), relues seulement pour en tirer S1 et S2 ; effacées à la saisie des seuils. */
   hrZones: number[] | null;
   /** Économie de course sur le plat, en ml d'O₂ par kg et par km (test en laboratoire). */
   economyMlKgKm: number | null;
@@ -62,7 +74,10 @@ export const EMPTY_RUNNER_PROFILE: RunnerProfile = {
   birthYear: null,
   sex: null,
   hrMax: null,
+  hrMaxSource: null,
   hrRest: null,
+  hrRestSource: null,
+  hrThresholds: null,
   hrZones: null,
   economyMlKgKm: null,
   rootGoalMin: null,
@@ -72,7 +87,7 @@ export const EMPTY_RUNNER_PROFILE: RunnerProfile = {
 };
 
 /** Plages plausibles de chaque champ numérique. */
-export type RunnerNumberField = Exclude<keyof RunnerProfile, 'name' | 'avatar' | 'sex' | 'hrZones'>;
+export type RunnerNumberField = Exclude<keyof RunnerProfile, 'name' | 'avatar' | 'sex' | 'hrZones' | 'hrThresholds' | 'hrMaxSource' | 'hrRestSource'>;
 type NumberField = RunnerNumberField;
 
 /** Longueur maximale du nom ou pseudo. */
@@ -173,25 +188,55 @@ export const readRunnerProfile = (): RunnerProfile => readStoredRecord(NAMESPACE
 export const runnerAge = (profile: RunnerProfile, nowMs = Date.now()): number | null =>
   profile.birthYear === null ? null : new Date(nowMs).getFullYear() - profile.birthYear;
 
-/** Zones cardiaques du pratiquant (`fractions` : `HeartRateProfile.zoneFractions`) ; `null` sans FC max ni âge. */
-export const runnerHeartRateZones = (profile: RunnerProfile, fractions: readonly number[]): HeartRateZones | null =>
-  heartRateZones(profile, runnerAge(profile), fractions);
+/** Origine de la FC max ou de repos, `null` sans valeur ; relue avec contrôle (fichier de réglages importé, ancien profil : saisie). */
+export const runnerHrSource = (profile: Partial<RunnerProfile>, field: 'hrMax' | 'hrRest'): HrSource | null => {
+  if (!validNumber(field, profile[field])) return null;
+  const raw: unknown = profile[field === 'hrMax' ? 'hrMaxSource' : 'hrRestSource'];
+  if (typeof raw === 'object' && raw !== null) {
+    const { kind, atMs } = raw as Record<string, unknown>;
+    if (kind === 'test' || kind === 'seance' || kind === 'saisie') {
+      return { kind, atMs: typeof atMs === 'number' && isFinite(atMs) ? atMs : null };
+    }
+  }
+  return { kind: 'saisie', atMs: null };
+};
+
+/**
+ * Seuils et zones cardiaques du pratiquant pour un calcul (`heartRate` : son
+ * profil cardio) décalés de `offsetBpm` (`hrOffsetBpm` de l'activité) ; `null`
+ * sans seuils saisis, FC max ni âge.
+ */
+export const runnerHeartRateZones = (profile: RunnerProfile, heartRate: HeartRateProfile, offsetBpm: number): HeartRateZones | null =>
+  heartRateZones(profile, runnerAge(profile), heartRate.zoneModel, offsetBpm);
 
 /** Bornes des zones cardiaques du pratiquant pour une activité, hors composant (chiffres du direct). */
-export const readHeartRateZoneBounds = (base: SportType): number[] | null =>
-  runnerHeartRateZones(readRunnerProfile(), getSportProfile(base).heartRate.zoneFractions)?.bounds ?? null;
+export const readHeartRateZoneBounds = (activity: Activity): number[] | null =>
+  runnerHeartRateZones(readRunnerProfile(), getSportProfile(activity.base).heartRate, effectiveHrOffset(activity))?.bounds ?? null;
 
 export const useRunnerProfile = () => {
   const { value, update } = useStoredRecord<RunnerProfile>(NAMESPACE, KEY, EMPTY_RUNNER_PROFILE);
 
-  /** Écrit un champ numérique, `null` pour l'effacer ; les valeurs hors plage sont ignorées. */
+  /** Écrit un champ numérique, `null` pour l'effacer ; les valeurs hors plage sont ignorées. Une FC tapée est dite saisie. */
   const setNumber = useCallback(
     (field: NumberField, next: number | null) => {
       if (next !== null) {
         const [lo, hi] = BOUNDS[field];
         if (!isFinite(next) || next < lo || next > hi) return;
       }
-      update({ [field]: next } as Partial<RunnerProfile>);
+      const source: HrSource | null = next === null ? null : { kind: 'saisie', atMs: null };
+      update({
+        [field]: next,
+        ...(field === 'hrMax' ? { hrMaxSource: source } : field === 'hrRest' ? { hrRestSource: source } : {}),
+      } as Partial<RunnerProfile>);
+    },
+    [update]
+  );
+
+  /** Retient la FC max ou de repos d'un test ou d'une séance, avec son origine ; hors plage : ignorée. */
+  const retainHr = useCallback(
+    (field: 'hrMax' | 'hrRest', bpm: number, source: HrSource) => {
+      if (!validNumber(field, bpm)) return;
+      update(field === 'hrMax' ? { hrMax: Math.round(bpm), hrMaxSource: source } : { hrRest: Math.round(bpm), hrRestSource: source });
     },
     [update]
   );
@@ -213,14 +258,14 @@ export const useRunnerProfile = () => {
     [update]
   );
 
-  /** Zones saisies à la main, `null` pour revenir au calcul ; des bornes non croissantes sont ignorées. */
-  const setZones = useCallback(
-    (bounds: number[] | null) => {
-      if (bounds !== null && !isValidZoneBounds(bounds)) return;
-      update({ hrZones: bounds === null ? null : bounds.map(Math.round) });
+  /** S1 et S2 saisis à la main, `null` pour revenir au calcul ; S2 sous S1 : ignorés. Les zones d'avant les seuils s'effacent. */
+  const setThresholds = useCallback(
+    (thresholds: number[] | null) => {
+      if (thresholds !== null && !isValidThresholds(thresholds)) return;
+      update({ hrThresholds: thresholds === null ? null : thresholds.map(Math.round), hrZones: null });
     },
     [update]
   );
 
-  return { profile: value, setName, setAvatar, setNumber, setSex, setZones, age: runnerAge(value) };
+  return { profile: value, setName, setAvatar, setNumber, retainHr, setSex, setThresholds, age: runnerAge(value) };
 };

@@ -27,7 +27,7 @@ function TestsPage() {
           <span className="train-tile__icon" aria-hidden="true"><IconPulse size={22} /></span>
           <span className="train-tile__text">
             <span className="train-tile__title">FC repos</span>
-            <span className="train-tile__sub">3 minutes immobile, la ceinture seule, sans GPS : la moyenne de 10 s la plus basse</span>
+            <span className="train-tile__sub">3 minutes immobile, la ceinture seule, sans GPS : la moyenne de 30 s la plus basse, après la première minute</span>
           </span>
           <IconChevronRight size={18} className="train-tile__go" />
         </Link>

@@ -5,11 +5,12 @@
 //     (`gpxtpx:hr`), et une course sans FC ;
 //  2. sans FC max ni âge : l'onglet « cardio » juste après celui des graphes, FC moyenne et max, pas de zones,
 //     « La retenir » qui range la FC max de la sortie ; la course sans FC n'a pas l'onglet ;
-//  3. FC max et FC de repos saisies : le tableau des zones (réserve cardiaque), « Voir » qui trace les passages
+//  3. FC max et FC de repos saisies : le tableau des zones calées sur S1 et S2 (réserve cardiaque), « Voir » qui trace les passages
 //     d'une zone sur la carte, effacés à la fermeture de l'onglet ; dérive et nuage FC / vitesse en course ;
 //  4. la courbe de FC dans l'onglet des graphes des trois modules ;
-//  5. Réglages : « Zones cardiaques » (Personnaliser, Revenir au calcul), la case « Ceinture cardio » en voile et
-//     en surf, les chiffres « FC moyenne » et « Zone cardiaque » proposés en voile ;
+//  5. Réglages : « Seuils cardio » (S1 et S2, zones, Personnaliser, Revenir au calcul), la ligne « Seuils cardio »
+//     de la carte d'une activité (−8 en voile), la case « Ceinture cardio » en voile et en surf, les chiffres
+//     « FC moyenne » et « Zone cardiaque » proposés en voile ;
 //  6. une séance de fractionné sans compteur, avec la FC : colonnes « FC » et « Récup. » des répétitions ;
 //  7. la FC dans le résumé des fiches, et l'onglet « cardio » des statistiques ;
 //  8. à 390×844 : l'analyse de course, onglet cardio ouvert, et le fractionné, sans débordement.
@@ -225,12 +226,13 @@ await setRunner({ hrMax: 190, hrRest: 50 });
 await go(paths.course, 6000);
 const zones = await panel('Cardio');
 console.log('  cardio :', zones.slice(0, 600));
-check('course : tableau des zones', ['sous Z1', 'Z1', 'Z2', 'Z3', 'Z4', 'Z5'].every((z) => zones.includes(z)) && zones.includes('réserve cardiaque'));
+check('course : tableau des zones, calées sur S1 et S2', ['sous Z1', 'Z1', 'Z2', 'Z3', 'Z4', 'Z5'].every((z) => zones.includes(z))
+  && zones.includes('Zones calées sur S1 148 et S2 169 bpm, tirés de la FC repos 50 (saisie) et de la FC max 190 (saisie).'));
 check('course : charge', /Charge\s*\/ \d+/.test(zones));
 await evaluate(`document.querySelector('button.ui-help--xs')?.click()`);
 await wait(300);
 const loadHelp = await panel('Cardio');
-check('course : « ? » de la charge, sous Z1 compté', loadHelp.includes("méthode d'Edwards") && loadHelp.includes('sous Z1 (moins de 120 bpm) × 0,5'));
+check('course : « ? » de la charge, sous Z1 compté', loadHelp.includes("méthode d'Edwards") && loadHelp.includes('sous Z1 (moins de 114 bpm) × 0,5'));
 await evaluate(`document.querySelector('button.ui-help--xs')?.click()`);
 check('course : dérive mesurée', /Dérive cardiaque de \d+[.,]\d %/.test(zones));
 check('course : nuage FC / vitesse', (await chartsIn('Cardio')) >= 2);
@@ -274,7 +276,7 @@ const openSettings = async () => {
     sections.settings = { ...sections.settings, activites: true, coureur: true };
     sections['settings-activities'] = { wingfoil: true, surf: true };
     sections['settings-families'] = { voile: true, course: true, velo: true, fractionne: true, surf: true };
-    sections['settings-activity-parts'] = { enregistrement: true };
+    sections['settings-activity-parts'] = { enregistrement: true, analyse: true };
     localStorage.setItem('tracker.sections', JSON.stringify(sections));
     return 'ok';
   })()`);
@@ -282,24 +284,33 @@ const openSettings = async () => {
 };
 await openSettings();
 // La méthode de calcul est dans l'aide des zones, sous son « ? » (lot 3 des demandes du 19/10).
-await evaluate(`document.querySelector('button.ui-help[aria-label="Aide : Zones cardiaques"]')?.click()`);
+await evaluate(`[...document.querySelectorAll('button.ui-help[aria-label="Aide : Seuils cardio"]')].find((b) => !b.closest('.settings-activity'))?.click()`);
 await wait(200);
 const zonesRow = () => evaluate(`(() => {
-  const l = [...document.querySelectorAll('span')].find((s) => s.textContent.trim() === 'Zones cardiaques');
+  const l = [...document.querySelectorAll('span')].find((s) => s.textContent.trim() === 'Seuils cardio' && !s.closest('.settings-activity'));
   return l ? l.parentElement.parentElement.innerText.replace(/\\n+/g, ' / ') : '(absent)';
 })()`);
 const row = await zonesRow();
 console.log('  zones :', row);
-check('Réglages : zones calculées en réserve cardiaque', row.includes('Z1 ≥ 120') && row.includes('Z5 ≥ 176') && row.includes('réserve cardiaque'));
+check('Réglages : seuils et zones calculés en réserve cardiaque', row.includes('S1 148 · S2 169 bpm') && row.includes('Z1 ≥ 114') && row.includes('Z5 ≥ 174')
+  && row.includes('réserve cardiaque'));
 console.log('  Personnaliser :', await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Personnaliser'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
 await wait(500);
-check('Réglages : cinq champs, zones rangées', (await evaluate(`[...document.querySelectorAll('label span')].filter((s) => s.textContent.startsWith('Début de Z')).length`)) === 5
-  && JSON.stringify((await runner())?.hrZones) === JSON.stringify([120, 134, 148, 162, 176]));
+check('Réglages : deux champs, seuils rangés', (await evaluate(`[...document.querySelectorAll('label span')].filter((s) => /^S[12], seuil/.test(s.textContent)).length`)) === 2
+  && JSON.stringify((await runner())?.hrThresholds) === JSON.stringify([148, 169]));
 console.log('  Revenir au calcul :', await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Revenir au calcul'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
 await wait(500);
-check('Réglages : zones de nouveau calculées', (await runner())?.hrZones === null);
+check('Réglages : seuils de nouveau calculés', (await runner())?.hrThresholds === null);
 const nameSelector = '.settings-activity__name';
 const card = (name) => `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector(${JSON.stringify(nameSelector)})?.textContent === ${JSON.stringify(name)})`;
+const offsetPlaceholder = (name) => evaluate(`(() => {
+  const l = [...(${card(name)}?.querySelectorAll('.settings-row__label') ?? [])].find((x) => x.textContent.trim() === 'Seuils cardio');
+  return l ? l.closest('.settings-row')?.querySelector('input')?.placeholder ?? '(sans champ)' : '(absent)';
+})()`);
+for (const [name, expected] of [['Voile', '-8'], ['Surf', '-10']]) {
+  const got = await offsetPlaceholder(name);
+  check(`Réglages, ${name} : « Seuils cardio » décalés de ${expected} par défaut (${got})`, got === expected);
+}
 for (const name of ['Voile', 'Surf']) {
   check(`Réglages, ${name} : case « Ceinture cardio »`, Boolean(await evaluate(`[...(${card(name)}?.querySelectorAll('.settings-row__label') ?? [])].some((l) => l.textContent.trim() === 'Ceinture cardio')`)));
 }

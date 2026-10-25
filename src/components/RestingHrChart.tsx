@@ -19,7 +19,7 @@ interface Props {
 /**
  * La FC de la mesure sur toute sa durée (3 min) : une courbe à la seconde, un
  * axe du temps fixe pour qu'elle se remplisse de gauche à droite pendant le
- * test, et, au résultat, la fenêtre de 10 s la plus basse surlignée.
+ * test, et, au résultat, la fenêtre de 30 s la plus basse surlignée.
  */
 function RestingHrChart({ series, durationS, lowest = null, height = 220 }: Props) {
   const rows = useMemo(() => Array.from({ length: durationS }, (_, s) => ({ t: s + 0.5, hr: series[s] ?? null })), [series, durationS]);

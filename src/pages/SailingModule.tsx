@@ -14,7 +14,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
-import { effectiveJumpSettings, effectiveTabChoices, readStoredActivities } from '../hooks/useSportSettings';
+import { effectiveHrOffset, effectiveJumpSettings, effectiveTabChoices, readStoredActivities } from '../hooks/useSportSettings';
 import { useSessionJumps } from '../hooks/useSessionJumps';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useSessionMarks } from '../hooks/useSessionMarks';
@@ -252,9 +252,10 @@ function SailingModule() {
   }, [jumpsState.jumps, jumpMinHeightM, activeThresholdKn]);
   const jumpsVisible = jumpsState.status !== 'none';
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans « graphiques ». */
-  const { profile: runner, setNumber: setRunnerNumber } = useRunnerProfile();
+  const { profile: runner, retainHr } = useRunnerProfile();
   const heart = useSessionHeartRate(track, profile.heartRate);
-  const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate.zoneFractions), [runner, profile.heartRate]);
+  const hrOffsetBpm = effectiveHrOffset(activity);
+  const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate, hrOffsetBpm), [runner, profile.heartRate, hrOffsetBpm]);
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
   const sailingPanels = useMemo(
@@ -1071,8 +1072,8 @@ function SailingModule() {
 
             {open.cardio && heart.present && (
               <ResizablePanel id="sailing.cardio" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
-                <HeartRatePanel track={track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax}
-                  onRetainHrMax={(bpm) => setRunnerNumber('hrMax', bpm)} selectedZone={selectedHrZone}
+                <HeartRatePanel track={track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
+                  onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: track[0]?.timeMs ?? null })} selectedZone={selectedHrZone}
                   onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
                   hoveredIndex={hoveredIndex} onHoverIndex={hoverIndex} onLeave={clearHover}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}

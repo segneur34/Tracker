@@ -18,7 +18,7 @@ import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, sessionActivity, type Activity } from '../core/activities';
-import { SPORT_FAMILIES, SPORT_PROFILES, type SportFamily } from '../core/sportProfiles';
+import { SPORT_FAMILIES, SPORT_PROFILES, getSportProfile, type SportFamily } from '../core/sportProfiles';
 import {
   DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, isInverseUnit,
   toDisplayDistance, toDisplaySpeed, type DistanceUnit, type SpeedUnit,
@@ -27,16 +27,16 @@ import { useChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
+import { runnerHeartRateZones, useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { readStoredRecord, useStoredRecord } from '../hooks/useStoredRecord';
-import { effectiveDistanceUnit, effectiveFoil, effectiveSpeedUnit, useVisibility } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, effectiveFoil, effectiveHrOffset, effectiveSpeedUnit, useVisibility } from '../hooks/useSportSettings';
 import {
   STATS_PERIODS, TREND_SESSIONS, averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, defaultMetricKey, heartRatePoints, formatDateTick,
   groupTotals, inBounds, isStatsMetricKey, isStatsPeriod, metricSeries, metricsOf, recordKindsOf, regularity, statSessionOf, statsMetric,
   statsPeriodBounds, statsTotals, topSessions, type MetricPoint, type StatSession, type StatsMetricKey, type StatsPeriod, type StatsRecordKind,
-  type StatsTotals,
+  type StatsTotals, type ZoneBoundsOf,
 } from '../library/stats';
 import './analysisMobile.css';
 import './StatisticsPage.css';
@@ -71,9 +71,13 @@ const STATS_SECTIONS: SectionDefinition<StatsSection>[] = [
 
 const STATS_SECTION_DEFAULTS: Record<StatsSection, boolean> = { general: true, vitesse: true, regularite: true, records: false, cardio: false };
 
-/** Fractions des zones cardiaques et coefficients de la charge : les mêmes dans tous les calculs (`HeartRateProfile`). */
-const ZONE_FRACTIONS = SPORT_PROFILES.running.heartRate.zoneFractions;
+/** Coefficients de la charge : les mêmes dans tous les calculs (`HeartRateProfile`). */
 const LOAD_WEIGHTS = SPORT_PROFILES.running.heartRate.loadWeights;
+
+/** Seuils et zones du pratiquant pour une activité (décalés pour elle), ceux de la course sans activité. */
+const zonesFor = (runner: RunnerProfile, activity: Activity | null) => activity
+  ? runnerHeartRateZones(runner, getSportProfile(activity.base).heartRate, effectiveHrOffset(activity))
+  : runnerHeartRateZones(runner, SPORT_PROFILES.running.heartRate, 0);
 
 const STORAGE_ID = 'statistiques';
 
@@ -312,10 +316,23 @@ function StatisticsPage() {
 
   // Cardio : la FC du résumé, zones et charge recalculées avec le profil du moment.
   const { profile: runner } = useRunnerProfile();
-  const hrZones = useMemo(() => runnerHeartRateZones(runner, ZONE_FRACTIONS), [runner]);
+  // Zones montrées : celles de l'activité choisie, de la course sinon ; chaque session compte avec celles de son activité.
+  const hrZones = useMemo(() => zonesFor(runner, activity), [runner, activity]);
+  const zoneBoundsOf = useMemo((): ZoneBoundsOf | null => {
+    if (!hrZones) return null;
+    const byActivity = new Map<string, readonly number[]>();
+    return (s) => {
+      let bounds = byActivity.get(s.activityId);
+      if (!bounds) {
+        bounds = zonesFor(runner, activityById.get(s.activityId) ?? null)?.bounds ?? hrZones.bounds;
+        byActivity.set(s.activityId, bounds);
+      }
+      return bounds;
+    };
+  }, [hrZones, runner, activityById]);
   const hasCardio = inPeriod.some((s) => s.heartRate !== null);
-  const cardio = useMemo(() => cardioTotals(inPeriod, hrZones?.bounds ?? null, LOAD_WEIGHTS), [inPeriod, hrZones]);
-  const loadBars = useMemo(() => (hrZones ? cardioLoadBars(regular.bars, inPeriod, hrZones.bounds, LOAD_WEIGHTS) : []), [hrZones, regular.bars, inPeriod]);
+  const cardio = useMemo(() => cardioTotals(inPeriod, zoneBoundsOf, LOAD_WEIGHTS), [inPeriod, zoneBoundsOf]);
+  const loadBars = useMemo(() => (zoneBoundsOf ? cardioLoadBars(regular.bars, inPeriod, zoneBoundsOf, LOAD_WEIGHTS) : []), [zoneBoundsOf, regular.bars, inPeriod]);
   const hrPoints = useMemo(() => heartRatePoints(inPeriod), [inPeriod]);
   const hrSeries = useMemo(() => {
     const byActivity = new Map<string, typeof hrPoints>();
@@ -680,7 +697,7 @@ function StatisticsPage() {
                   <PanelTitle label="Cardio" open={open.cardio} onToggle={() => toggle('cardio')} helpKey={hrZones ? 'stats:cardio' : undefined} />
                 </div>
                 <HelpText helpKey="stats:cardio" note>
-                  Zones et charge recalculées avec les zones de Réglages › Pratiquant. Un point par session, à la couleur de son activité ; le toucher ouvre la session.
+                  Zones et charge recalculées avec les seuils de Réglages › Pratiquant, décalés pour l'activité de chaque session. Un point par session, à la couleur de son activité ; le toucher ouvre la session.
                 </HelpText>
                 <div className="an-sheet__stats an-sheet__stats--always">
                   <Stat label="Sessions avec FC" value={`${cardio.sessions} / ${totals.sessions}`} />

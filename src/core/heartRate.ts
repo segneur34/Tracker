@@ -89,24 +89,55 @@ export const heartRateStats = (points: readonly HeartRatePoint[], smoothed: read
   return { avgBpm: sum / coveredS, maxBpm: Math.round(maxBpm), coveredS };
 };
 
-/** Données du pratiquant qui fixent les zones (`RunnerProfile`). */
+/** Données du pratiquant qui fixent les seuils et les zones (`RunnerProfile`). */
 export interface HeartRateAthlete {
   hrMax: number | null;
   hrRest: number | null;
-  /** Bornes basses des zones 1 à 5 saisies à la main, en bpm. */
-  hrZones: readonly number[] | null;
+  /** S1 et S2 saisis à la main (test en laboratoire), à pied, en bpm. */
+  hrThresholds?: readonly number[] | null;
+  /** Bornes basses des zones 1 à 5 saisies avant les seuils (avant le 25/10), relues pour en tirer S1 et S2. */
+  hrZones?: readonly number[] | null;
 }
 
-export type ZoneMethod = 'perso' | 'reserve' | 'max';
+/**
+ * Modèle des seuils et des zones (`HeartRateProfile.zoneModel`). S1 et S2 en
+ * part de la réserve cardiaque, ou de la FC max sans FC de repos ; les zones
+ * calées dessus : Z1 et Z2 sous S1, Z3 à S1, Z4 entre S1 et S2, Z5 au-dessus.
+ */
+export interface HeartRateZoneModel {
+  /** S1 et S2 : repos + part × (FC max − repos). */
+  reserveThresholds: readonly [number, number];
+  /** S1 et S2 sans FC de repos : part × FC max. */
+  maxThresholds: readonly [number, number];
+  /** Débuts de Z1 et de Z2 : repos + part × (S1 − repos). */
+  belowS1Reserve: readonly [number, number];
+  /** Débuts de Z1 et de Z2 sans FC de repos : part × S1. */
+  belowS1Max: readonly [number, number];
+  /** Début de Z4 : S1 + part × (S2 − S1). */
+  z4: number;
+  /** Début de Z5 : S2 + part × (FC max − S2). */
+  z5: number;
+}
 
-export interface HeartRateZones {
-  /** Bornes basses des zones 1 à 5, en bpm, croissantes. */
-  bounds: number[];
+/** D'où viennent S1 et S2 : saisis, réserve cardiaque, FC max seule. */
+export type ZoneMethod = 'saisis' | 'reserve' | 'max';
+
+export interface HeartRateThresholds {
+  /** Seuils à pied, en bpm. */
+  s1: number;
+  s2: number;
   method: ZoneMethod;
-  /** FC max retenue ; `null` quand seules des zones personnalisées sont connues. */
+  /** FC max retenue ; `null` quand seuls des seuils saisis sont connus. */
   hrMax: number | null;
   /** FC max estimée par l'âge, faute d'être saisie. */
   estimated: boolean;
+}
+
+export interface HeartRateZones extends HeartRateThresholds {
+  /** Bornes basses des zones 1 à 5, en bpm, croissantes. */
+  bounds: number[];
+  /** Décalage du sport, déjà ajouté à `s1` et `s2`. */
+  offsetBpm: number;
 }
 
 /** Nombre de zones. */
@@ -115,25 +146,70 @@ export const ZONE_COUNT = 5;
 /** FC max estimée par l'âge (Tanaka, 2001). */
 export const estimateHrMax = (age: number): number => Math.round(208 - 0.7 * age);
 
+const plausible = (b: unknown): b is number => typeof b === 'number' && isFinite(b) && b >= MIN_PLAUSIBLE_BPM && b <= MAX_PLAUSIBLE_BPM;
+
 /** Bornes personnalisées valides : 5 valeurs croissantes. */
 export const isValidZoneBounds = (bounds: readonly number[] | null | undefined): bounds is readonly number[] =>
-  Array.isArray(bounds) && bounds.length === ZONE_COUNT &&
-  bounds.every((b, k) => isFinite(b) && b >= MIN_PLAUSIBLE_BPM && b <= MAX_PLAUSIBLE_BPM && (k === 0 || b > bounds[k - 1]));
+  Array.isArray(bounds) && bounds.length === ZONE_COUNT && bounds.every((b, k) => plausible(b) && (k === 0 || b > bounds[k - 1]));
+
+/** Seuils saisis valides : S1 puis S2, plus haut. */
+export const isValidThresholds = (thresholds: readonly number[] | null | undefined): thresholds is readonly [number, number] =>
+  Array.isArray(thresholds) && thresholds.length === 2 && plausible(thresholds[0]) && plausible(thresholds[1]) && thresholds[1] > thresholds[0];
 
 /**
- * Zones du pratiquant : personnalisées d'abord ; sinon `fractions` de la
- * réserve cardiaque (Karvonen) si la FC de repos est connue, de la FC max
- * sinon ; FC max estimée par l'âge si elle manque. `null` sans FC max ni âge.
+ * Seuils saisis : ceux de `hrThresholds`, sinon tirés des zones saisies avant
+ * eux (S1 au début de Z3, S2 là où Z4 le placerait).
  */
-export const heartRateZones = (athlete: HeartRateAthlete, age: number | null, fractions: readonly number[]): HeartRateZones | null => {
+const enteredThresholds = (athlete: HeartRateAthlete, model: HeartRateZoneModel): [number, number] | null => {
+  if (isValidThresholds(athlete.hrThresholds)) return [Math.round(athlete.hrThresholds[0]), Math.round(athlete.hrThresholds[1])];
+  if (!isValidZoneBounds(athlete.hrZones)) return null;
+  const [, , z3, z4] = athlete.hrZones;
+  return [Math.round(z3), Math.round(z3 + (z4 - z3) / model.z4)];
+};
+
+/**
+ * S1 et S2 à pied : saisis d'abord ; sinon en part de la réserve cardiaque
+ * (Karvonen) si la FC de repos est connue, de la FC max sinon ; FC max estimée
+ * par l'âge si elle manque. `null` sans seuils saisis, FC max ni âge.
+ */
+export const heartRateThresholds = (athlete: HeartRateAthlete, age: number | null, model: HeartRateZoneModel): HeartRateThresholds | null => {
   const given = athlete.hrMax;
   const hrMax = given ?? (age !== null && age > 0 ? estimateHrMax(age) : null);
-  if (isValidZoneBounds(athlete.hrZones)) return { bounds: [...athlete.hrZones], method: 'perso', hrMax, estimated: given === null && hrMax !== null };
+  const estimated = given === null && hrMax !== null;
+  const entered = enteredThresholds(athlete, model);
+  if (entered) return { s1: entered[0], s2: entered[1], method: 'saisis', hrMax, estimated };
   if (hrMax === null) return null;
   const rest = athlete.hrRest;
-  const reserve = rest !== null && rest < hrMax;
-  const bounds = fractions.map((f) => Math.round(reserve ? rest + f * (hrMax - rest) : f * hrMax));
-  return { bounds, method: reserve ? 'reserve' : 'max', hrMax, estimated: given === null };
+  if (rest !== null && rest < hrMax) {
+    const [f1, f2] = model.reserveThresholds;
+    return { s1: Math.round(rest + f1 * (hrMax - rest)), s2: Math.round(rest + f2 * (hrMax - rest)), method: 'reserve', hrMax, estimated };
+  }
+  const [f1, f2] = model.maxThresholds;
+  return { s1: Math.round(f1 * hrMax), s2: Math.round(f2 * hrMax), method: 'max', hrMax, estimated };
+};
+
+/**
+ * Zones du pratiquant pour un sport : S1 et S2 (`heartRateThresholds`)
+ * décalés de `offsetBpm`, puis les 5 bornes calées dessus (`model`). Sans FC
+ * max, Z5 commence juste au-dessus de S2. `null` sans seuils.
+ */
+export const heartRateZones = (
+  athlete: HeartRateAthlete, age: number | null, model: HeartRateZoneModel, offsetBpm = 0
+): HeartRateZones | null => {
+  const thresholds = heartRateThresholds(athlete, age, model);
+  if (thresholds === null) return null;
+  const s1 = thresholds.s1 + offsetBpm;
+  const s2 = thresholds.s2 + offsetBpm;
+  const { hrMax } = thresholds;
+  const rest = athlete.hrRest !== null && athlete.hrRest < s1 ? athlete.hrRest : null;
+  const below = rest !== null
+    ? model.belowS1Reserve.map((f) => rest + f * (s1 - rest))
+    : model.belowS1Max.map((f) => f * s1);
+  const z5 = hrMax !== null && hrMax > s2 ? s2 + model.z5 * (hrMax - s2) : s2 + 1;
+  const bounds = [...below, s1, s1 + model.z4 * (s2 - s1), z5].map(Math.round);
+  // Toujours croissantes, même resserrées par l'arrondi.
+  for (let k = 1; k < bounds.length; k++) bounds[k] = Math.max(bounds[k], bounds[k - 1] + 1);
+  return { ...thresholds, s1, s2, bounds, offsetBpm };
 };
 
 /** Zone d'une FC : 0 sous la zone 1, puis 1 à 5. */

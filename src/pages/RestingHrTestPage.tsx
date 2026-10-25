@@ -59,13 +59,13 @@ function StoredResultRow({ result, onRemove }: { result: StoredRestingResult; on
 /**
  * Test de FC repos (24/10), depuis Tests : 3 minutes immobile, la FC lue sur
  * la ceinture, sans GPS ni enregistreur (`useRestingHrTest`). Le résultat est
- * la moyenne de 10 s la plus basse, avec la courbe des 3 minutes ; on peut la
+ * la moyenne de 30 s la plus basse après la première minute, avec la courbe des 3 minutes ; on peut la
  * retenir comme FC repos de Pratiquant. Les tests faits restent sur l'appareil.
  */
 function RestingHrTestPage() {
   const { search } = useLocation();
   const { results, add, remove } = useRestingHrResults();
-  const { profile, setNumber } = useRunnerProfile();
+  const { profile, retainHr } = useRunnerProfile();
   const { run, belt, beltChosen, native, error, start, cancel } = useRestingHrTest(
     (result, startedAtMs) => {
       const stored = toStoredRestingResult(result, startedAtMs, PROTOCOL);
@@ -90,7 +90,7 @@ function RestingHrTestPage() {
   return (
     <div className="ui-page train-page" style={{ '--help-accent': FAMILY_ACCENT.fractionne } as React.CSSProperties}>
       <PageHeader title="FC repos" back={{ to: '/fractionne/tests', label: 'Tests' }}
-        subtitle="Trois minutes immobile, la FC lue sur la ceinture, sans GPS : la moyenne de 10 s la plus basse est votre FC de repos." />
+        subtitle={`Trois minutes immobile, la FC lue sur la ceinture, sans GPS : la moyenne de ${PROTOCOL.windowS} s la plus basse, après la première minute, est votre FC de repos.`} />
 
       {native && !beltChosen && (
         <div className="ui-alert ui-alert--warning">
@@ -111,7 +111,7 @@ function RestingHrTestPage() {
                 la ceinture posée et connectée.</li>
               <li><strong>« Démarrer »</strong> : {PROTOCOL.leadInS} s pour vous poser, puis un bip court.</li>
               <li><strong>{PROTOCOL.durationS / 60} min</strong> sans bouger ni parler, en respirant calmement. Un bip long à la fin.</li>
-              <li><strong>Résultat</strong> : la moyenne de {PROTOCOL.windowS} s la plus basse des {PROTOCOL.durationS / 60} minutes, avec la courbe.</li>
+              <li><strong>Résultat</strong> : la moyenne de {PROTOCOL.windowS} s la plus basse après les {PROTOCOL.settleS} premières secondes (le temps que le cœur se pose), avec la courbe.</li>
             </ol>
           </Card>
           <Card heading="Mesure">
@@ -190,7 +190,7 @@ function RestingHrTestPage() {
           )}
           <div className="train-actions rest-actions">
             {canRetain && (
-              <Button variant="primary" disabled={retained} onClick={() => setNumber('hrRest', result.lowestBpm)}>
+              <Button variant="primary" disabled={retained} onClick={() => retainHr('hrRest', result.lowestBpm!, { kind: 'test', atMs: run.state.startMs })}>
                 {retained ? 'Retenue comme FC repos' : 'La retenir comme FC repos'}
               </Button>
             )}

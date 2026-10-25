@@ -17,16 +17,17 @@ import {
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
-import { RUNNER_NAME_MAX, runnerHeartRateZones, useRunnerProfile, type RunnerNumberField, type RunnerProfile } from '../hooks/useRunnerProfile';
+import { RUNNER_NAME_MAX, runnerHeartRateZones, runnerHrSource, useRunnerProfile, type RunnerNumberField, type RunnerProfile } from '../hooks/useRunnerProfile';
 import { ROOT_DEFAULTS } from '../library/rootGrowth';
 import { zoneLabel } from '../components/heartRateColors';
+import { hrSourceLabel } from '../components/heartRateOrigin';
 import Button from '../components/ui/Button';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { playPattern, setBeepPitch, type ClockTone } from '../platform/beeper';
 import { BEEP_SOUNDS, beepSoundHz } from '../recording/beepSound';
 import {
-  DEFAULT_GEAR_LABELS, MAX_GEAR_LABEL_LENGTH, TREATMENT_UNITS, defaultBikeKg, defaultBikeType, defaultLiveFieldsFor, defaultMarkGuideOf,
-  defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, defaultTerrainStepOf, planningFamily,
+  DEFAULT_GEAR_LABELS, HR_OFFSET_RANGE, MAX_GEAR_LABEL_LENGTH, TREATMENT_UNITS, defaultBikeKg, defaultBikeType, defaultLiveFieldsFor, defaultMarkGuideOf,
+  defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, defaultHrOffsetOf, defaultTerrainStepOf, planningFamily,
   rangeFollowsPace, sanitizeGearLabels, thresholdFollowsPace, useAllSportSettings, type SportSettingsView,
 } from '../hooks/useSportSettings';
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
@@ -264,49 +265,58 @@ function NumberField({
   );
 }
 
-/** Fractions des zones cardiaques : les mêmes dans tous les calculs (`HeartRateProfile`). */
-const ZONE_FRACTIONS = SPORT_PROFILES.running.heartRate.zoneFractions;
+/** Seuils et zones de Pratiquant : ceux de la course, sans décalage (chaque activité décale les siens). */
+const RUNNING_HEART_RATE = SPORT_PROFILES.running.heartRate;
+
+const pct = (f: number): string => `${Math.round(f * 100)} %`;
 
 /**
- * Zones cardiaques du pratiquant, dans « Pratiquant » : calculées d'office
- * (réserve cardiaque, sinon FC max, estimée par l'âge s'il le faut), ou
- * saisies à la main, borne basse de chaque zone, croissantes.
+ * Seuils cardio du pratiquant, dans « Pratiquant » : S1 et S2 calculés
+ * d'office (réserve cardiaque, sinon FC max, estimée par l'âge s'il le faut),
+ * ou saisis à la main ; puis les zones calées dessus.
  */
-function HeartRateZonesField({ profile, onChange }: { profile: RunnerProfile; onChange: (bounds: number[] | null) => void }) {
-  const computed = runnerHeartRateZones({ ...profile, hrZones: null }, ZONE_FRACTIONS);
-  const custom = profile.hrZones;
-  const method = computed === null ? null
-    : computed.method === 'reserve' ? '% de la réserve cardiaque' : '% de la FC max';
+function HeartRateThresholdsField({ profile, onChange }: { profile: RunnerProfile; onChange: (thresholds: number[] | null) => void }) {
+  const zones = runnerHeartRateZones(profile, RUNNING_HEART_RATE, 0);
+  const entered = zones?.method === 'saisis' ? zones : null;
+  const model = RUNNING_HEART_RATE.zoneModel;
+  const method = zones === null ? null
+    : zones.method === 'saisis' ? 'S1 et S2 saisis, S2 au-dessus de S1 (test en laboratoire, par exemple).'
+      : zones.method === 'reserve'
+        ? `S1 à ${pct(model.reserveThresholds[0])} et S2 à ${pct(model.reserveThresholds[1])} de la réserve cardiaque, de la FC repos à la FC max${zones.estimated ? ` (estimée par l'âge : ${zones.hrMax} bpm)` : ''}.`
+        : `Sans FC repos : S1 à ${pct(model.maxThresholds[0])} et S2 à ${pct(model.maxThresholds[1])} de la FC max${zones.estimated ? ` (estimée par l'âge : ${zones.hrMax} bpm)` : ''} ; avec elle, ils suivraient la réserve cardiaque, plus juste.`;
   return (
     <div style={{ marginBottom: '8px', fontSize: 'var(--text-s)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
-        <span style={{ width: '190px' }}>Zones cardiaques<HelpToggle helpKey="pratiquant:zones" label="Zones cardiaques" /></span>
-        {custom ? (
-          <Button size="s" onClick={() => onChange(null)}>Revenir au calcul</Button>
-        ) : computed ? (
+        <span style={{ width: '190px' }}>Seuils cardio<HelpToggle helpKey="pratiquant:zones" label="Seuils cardio" /></span>
+        {zones ? (
           <>
-            <span style={{ color: 'var(--muted)' }}>
-              {computed.bounds.map((b, k) => `${zoneLabel(k + 1)} ≥ ${b}`).join(' · ')}
-            </span>
-            <Button size="s" onClick={() => onChange(computed.bounds)}>Personnaliser</Button>
+            <span>S1 {zones.s1} · S2 {zones.s2} bpm</span>
+            {entered
+              ? <Button size="s" onClick={() => onChange(null)}>Revenir au calcul</Button>
+              : <Button size="s" onClick={() => onChange([zones.s1, zones.s2])}>Personnaliser</Button>}
           </>
         ) : (
           <span style={{ color: 'var(--muted)' }}>FC max ou année de naissance à saisir</span>
         )}
       </div>
-      {custom && custom.map((b, k) => (
-        <NumberField key={k} label={`Début de ${zoneLabel(k + 1)}`} unit="bpm" min={60} max={230} value={b}
-          onCommit={(next) => {
-            if (next === null) return;
-            onChange(custom.map((v, j) => (j === k ? next : v)));
-          }} />
-      ))}
+      {entered && (
+        <>
+          <NumberField label="S1, seuil aérobie" unit="bpm" min={60} max={230} value={entered.s1}
+            onCommit={(next) => { if (next !== null) onChange([next, entered.s2]); }} />
+          <NumberField label="S2, seuil anaérobie" unit="bpm" min={60} max={230} value={entered.s2}
+            onCommit={(next) => { if (next !== null) onChange([entered.s1, next]); }} />
+        </>
+      )}
+      {zones && (
+        <div style={{ color: 'var(--muted)', marginBottom: '6px' }}>
+          Zones : {zones.bounds.map((b, k) => `${zoneLabel(k + 1)} ≥ ${b}`).join(' · ')}
+        </div>
+      )}
       <HelpText helpKey="pratiquant:zones">
-        {custom
-          ? 'Chaque borne au-dessus de la précédente.'
-          : method
-            ? `En ${method}${computed!.estimated ? `, FC max estimée par l'âge (${computed!.hrMax} bpm)` : ''} : 50, 60, 70, 80 et 90 %. « Personnaliser » les règle à la main.`
-            : "Pas de zones : l'onglet cardio montre la courbe et la FC moyenne seulement."}
+        {method
+          ? <>{method} Les zones sont calées dessus : Z1 et Z2 sous S1, Z3 commence à S1, Z4 aux deux tiers de S1 à S2, Z5 juste
+            au-dessus de S2. Ces valeurs sont celles de la course ; chaque activité les décale (sa carte, partie « onglet analyse »).</>
+          : "Pas de zones : l'onglet cardio montre la courbe et la FC moyenne seulement."}
       </HelpText>
     </div>
   );
@@ -326,7 +336,7 @@ function SettingsPage() {
     activities, view, setFor, resetActivity, addActivity, updateActivity, removeActivity, longPressMs, setLongPressMs,
     stopHoldMs, setStopHoldMs, beepSound, setBeepSound, hiddenFamilies, setActivityHidden, setFamilyHidden,
   } = useAllSportSettings();
-  const { profile, setName, setNumber, setSex, setZones, age } = useRunnerProfile();
+  const { profile, setName, setNumber, setSex, setThresholds, age } = useRunnerProfile();
   const { open, toggle, closeAll: closeBlocks } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
   const { open: openActivity, toggle: toggleActivity, closeAll: closeActivities } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
   const { open: openPart, toggle: togglePart, closeAll: closeParts } = useOpenSections<ActivityPartKey>('settings-activity-parts', ACTIVITY_PART_DEFAULTS);
@@ -371,6 +381,11 @@ function SettingsPage() {
   };
 
   const profileField = (field: RunnerNumberField) => (next: number | null) => setNumber(field, next);
+  /** Unité d'une FC de Pratiquant, suivie de son origine : « bpm · test du 24/10 ». */
+  const hrUnit = (field: 'hrMax' | 'hrRest'): string => {
+    const source = runnerHrSource(profile, field);
+    return source ? `bpm · ${hrSourceLabel(source)}` : 'bpm';
+  };
 
   return (
     <SettingsScope>
@@ -420,7 +435,7 @@ function SettingsPage() {
                 const shownHidden = activity.hidden === true || familyHidden;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || (withThreshold && s.isThresholdOverridden) || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
-                  s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrainStepM !== defaultTerrainStepOf(activity) || s.bikeType !== defaultBikeType(activity) || s.bikeWeight !== null || s.carriedLoad !== null || s.gearLabels !== null || s.isTabsOverridden ||
+                  s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrainStepM !== defaultTerrainStepOf(activity) || s.bikeType !== defaultBikeType(activity) || s.bikeWeight !== null || s.carriedLoad !== null || s.isHrOffsetOverridden || s.gearLabels !== null || s.isTabsOverridden ||
                   s.paceLevel !== defaultPaceOf(activity).level || s.customFlatSpeedMs !== defaultPaceOf(activity).customFlatSpeedMs || s.isWayTypesOverridden ||
                   s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.isHeartRateOverridden || s.cadence === false;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
@@ -622,6 +637,15 @@ function SettingsPage() {
                                 </div>
                               </SettingRow>
                             )}
+                            <SettingRow label="Seuils cardio" helpKey={`${id}:seuils-cardio`}
+                              help="S1, S2 et les zones cardio de cette activité, décalés par rapport à ceux de la course (Réglages › Pratiquant) : la FC y monte moins haut pour un même effort (vélo −7, marche −4, planche −5, wing et kite −8, surf −10 par défaut).">
+                              <div className="settings-sports__pair">
+                                <NumberField unit="bpm" step={1} min={HR_OFFSET_RANGE.min} max={HR_OFFSET_RANGE.max}
+                                  value={s.isHrOffsetOverridden ? s.hrOffset : null} placeholder={String(defaultHrOffsetOf(activity))}
+                                  onCommit={(bpm) => setFor(id, 'hrOffset', bpm === null ? null : Math.round(bpm))} />
+                                {!s.isHrOffsetOverridden && <span className="settings-sports__mark">défaut</span>}
+                              </div>
+                            </SettingRow>
                             {!sailing && (
                               <SettingRow label="Matériel" helpKey={`${id}:materiel`}
                                 help="Noms des deux champs de matériel de l'onglet « matériel et notes » (chaussures, vélo…).">
@@ -811,11 +835,11 @@ function SettingsPage() {
               </select>
             </label>
             <HelpText helpKey="pratiquant:sexe">Pour la dépense au repos.</HelpText>
-            <NumberField label="Fréquence cardiaque max" unit="bpm" min={100} max={250} value={profile.hrMax} onCommit={profileField('hrMax')} placeholder="ex. 185"
-              helpKey="pratiquant:fc-max" help="Pour les zones cardiaques." />
-            <NumberField label="Fréquence cardiaque de repos" unit="bpm" min={25} max={120} value={profile.hrRest} onCommit={profileField('hrRest')} placeholder="ex. 55"
-              helpKey="pratiquant:fc-repos" help="Avec la FC max, les zones se calculent sur la réserve cardiaque, plus juste." />
-            <HeartRateZonesField profile={profile} onChange={setZones} />
+            <NumberField label="Fréquence cardiaque max" unit={hrUnit('hrMax')} min={100} max={250} value={profile.hrMax} onCommit={profileField('hrMax')} placeholder="ex. 185"
+              helpKey="pratiquant:fc-max" help="Pour les seuils et les zones cardiaques. Le test de FC max (Entraînement › Tests) la mesure ; sans elle, elle est estimée par l'âge." />
+            <NumberField label="Fréquence cardiaque de repos" unit={hrUnit('hrRest')} min={25} max={120} value={profile.hrRest} onCommit={profileField('hrRest')} placeholder="ex. 55"
+              helpKey="pratiquant:fc-repos" help="Avec la FC max, les seuils se calculent sur la réserve cardiaque, plus juste. Le test de FC repos (Entraînement › Tests) la mesure." />
+            <HeartRateThresholdsField profile={profile} onChange={setThresholds} />
             <NumberField label="Économie de course" unit="ml O₂/kg/km" min={120} max={320} value={profile.economyMlKgKm} onCommit={profileField('economyMlKgKm')} placeholder="200"
               helpKey="pratiquant:economie" help="Oxygène pour courir 1 km sur le plat, donné par un test en laboratoire. Sans valeur, 200 : environ 1 kcal par kilo et par kilomètre." />
             <p className="ui-eyebrow" style={{ margin: '16px 0 8px' }}>Racine du Profil</p>

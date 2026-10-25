@@ -7,7 +7,7 @@
  */
 
 import type { Activity } from '../core/activities';
-import { edwardsLoad, histogramZoneTimes } from '../core/heartRate';
+import { ZONE_COUNT, edwardsLoad, histogramZoneTimes } from '../core/heartRate';
 import { sportFamily, sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
 import { CHART_PERIODS, addDays, chartPeriodBounds, isoWeek, startOfDay, startOfIsoWeek, type ChartRange } from './activityChart';
 import type { ManeuverResults, SessionRecord, SummaryHeartRate } from './record';
@@ -577,10 +577,14 @@ export interface CardioTotals {
   load: number | null;
 }
 
-export const cardioTotals = (sessions: readonly StatSession[], zoneBounds: readonly number[] | null, loadWeights: readonly number[]): CardioTotals => {
+/** Zones de chaque session : celles du pratiquant, décalées pour son activité (`HeartRateZones`). */
+export type ZoneBoundsOf = (s: StatSession) => readonly number[];
+
+/** Totaux cardio ; `zoneBoundsOf` `null` : pas de zones (ni FC max, ni âge, ni seuils saisis). */
+export const cardioTotals = (sessions: readonly StatSession[], zoneBoundsOf: ZoneBoundsOf | null, loadWeights: readonly number[]): CardioTotals => {
   const t: CardioTotals = {
     sessions: 0, coveredS: 0, avgBpm: null, maxBpm: null,
-    zoneTimesS: zoneBounds ? new Array<number>(zoneBounds.length + 1).fill(0) : null, load: zoneBounds ? 0 : null,
+    zoneTimesS: zoneBoundsOf ? new Array<number>(ZONE_COUNT + 1).fill(0) : null, load: zoneBoundsOf ? 0 : null,
   };
   let weighted = 0;
   for (const s of sessions) {
@@ -590,8 +594,8 @@ export const cardioTotals = (sessions: readonly StatSession[], zoneBounds: reado
     t.coveredS += hr.coveredS;
     weighted += hr.avgBpm * hr.coveredS;
     t.maxBpm = maxOrNull(t.maxBpm, hr.maxBpm);
-    if (zoneBounds && t.zoneTimesS) {
-      const times = histogramZoneTimes(hr.histogram, zoneBounds);
+    if (zoneBoundsOf && t.zoneTimesS) {
+      const times = histogramZoneTimes(hr.histogram, zoneBoundsOf(s));
       times.forEach((sec, z) => (t.zoneTimesS![z] += sec));
       t.load! += edwardsLoad(times, loadWeights);
     }
@@ -602,13 +606,13 @@ export const cardioTotals = (sessions: readonly StatSession[], zoneBounds: reado
 
 /** Charge d'une barre de la régularité (semaine ou mois) : celle des sessions qui y commencent. */
 export const cardioLoadBars = (
-  bars: readonly RegularityBar[], sessions: readonly StatSession[], zoneBounds: readonly number[], loadWeights: readonly number[]
+  bars: readonly RegularityBar[], sessions: readonly StatSession[], zoneBoundsOf: ZoneBoundsOf, loadWeights: readonly number[]
 ): { startMs: number; label: string; title: string; load: number }[] =>
   bars.map((b) => ({
     startMs: b.startMs,
     label: b.label,
     title: b.title,
-    load: sessions.reduce((sum, s) => (s.startMs >= b.startMs && s.startMs < b.endMs ? sum + (sessionLoad(s, zoneBounds, loadWeights) ?? 0) : sum), 0),
+    load: sessions.reduce((sum, s) => (s.startMs >= b.startMs && s.startMs < b.endMs ? sum + (sessionLoad(s, zoneBoundsOf(s), loadWeights) ?? 0) : sum), 0),
   }));
 
 /** FC moyenne et max de chaque session qui en a, dans l'ordre des dates. */

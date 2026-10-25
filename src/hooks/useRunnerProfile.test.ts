@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  EMPTY_RUNNER_PROFILE, PROFILE_PROMPT_FIELDS, RUNNER_NAME_MAX, missingProfileFields, runnerAvatar, runnerName, shouldPromptProfile,
-  type RunnerAvatar,
+  EMPTY_RUNNER_PROFILE, PROFILE_PROMPT_FIELDS, RUNNER_NAME_MAX, missingProfileFields, runnerAvatar, runnerHrSource, runnerName, shouldPromptProfile,
+  type RunnerAvatar, type RunnerProfile,
 } from './useRunnerProfile';
 
 describe('runnerName', () => {
@@ -77,5 +77,22 @@ describe('shouldPromptProfile', () => {
 
   it("ne s'ouvre pas par-dessus la carte de la mémoire ou des autorisations", () => {
     expect(shouldPromptProfile({ ...base, otherCardShown: true })).toBe(false);
+  });
+});
+
+describe('runnerHrSource', () => {
+  it("rend l'origine rangée avec la FC", () => {
+    const profile: Partial<RunnerProfile> = { hrMax: 192, hrMaxSource: { kind: 'test', atMs: 1_000 }, hrRest: 48, hrRestSource: { kind: 'seance', atMs: null } };
+    expect(runnerHrSource(profile, 'hrMax')).toEqual({ kind: 'test', atMs: 1_000 });
+    expect(runnerHrSource(profile, 'hrRest')).toEqual({ kind: 'seance', atMs: null });
+  });
+
+  it("dit saisie une FC d'avant les origines, ou à l'origine mal formée", () => {
+    expect(runnerHrSource({ hrMax: 185 }, 'hrMax')).toEqual({ kind: 'saisie', atMs: null });
+    expect(runnerHrSource({ hrMax: 185, hrMaxSource: { kind: 'labo' } as unknown as RunnerProfile['hrMaxSource'] }, 'hrMax')).toEqual({ kind: 'saisie', atMs: null });
+  });
+
+  it('rend null sans FC', () => {
+    expect(runnerHrSource({ ...EMPTY_RUNNER_PROFILE, hrMaxSource: { kind: 'test', atMs: 1 } }, 'hrMax')).toBeNull();
   });
 });

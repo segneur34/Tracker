@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import FitnessTestPlanChart from '../components/FitnessTestPlanChart';
 import { HelpText, HelpToggle } from '../components/Help';
+import { zonesOriginText } from '../components/heartRateOrigin';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
@@ -10,7 +11,7 @@ import { FAMILY_ACCENT, activitiesOfFamily } from '../core/activities';
 import { isTestSport } from '../core/sportProfiles';
 import { kmhToMs } from '../core/units';
 import { fitnessTestRunner } from '../hooks/useFitnessTest';
-import { useRunnerProfile } from '../hooks/useRunnerProfile';
+import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import { lastRecordActivity, saveFitnessTestSettings, useFitnessTestSettings, useVisibility } from '../hooks/useSportSettings';
 import { FITNESS_TESTS, FITNESS_TEST_LIMITS, resolveFitnessTestParams, type FitnessTestParams } from '../recording/fitnessTest';
 import './TrainingPages.css';
@@ -28,15 +29,15 @@ const range = (min: number, max: number, step: number): number[] => {
 const WARMUP_CHOICES_S = range(FITNESS_TEST_LIMITS.warmupS.min, FITNESS_TEST_LIMITS.warmupS.max, FITNESS_TEST_LIMITS.warmupS.step);
 
 /** D'où viennent les zones de l'échauffement, en clair. */
-function ZonesSource({ params }: { params: FitnessTestParams }) {
+function ZonesSource({ params, runner }: { params: FitnessTestParams; runner: RunnerProfile }) {
   const { zones, age, ageSource } = params;
-  const hrMax = zones.estimated
-    ? <>{zones.hrMax} bpm, estimée par l'âge ({age} ans{ageSource === 'defaut' ? " par défaut, faute d'année de naissance" : ''})</>
-    : <>{zones.hrMax} bpm</>;
-  const pratiquant = <>Pratiquant, dans <Link to="/parametres">Réglages</Link></>;
-  if (zones.method === 'perso') return <>Zones saisies dans {pratiquant}.</>;
-  if (zones.method === 'reserve') return <>Zones de la réserve cardiaque, de la FC de repos à la FC max ({hrMax}) : {pratiquant}.</>;
-  return <>Zones en part de la FC max ({hrMax}) ; avec la FC de repos, elles suivraient la réserve cardiaque : {pratiquant}.</>;
+  return (
+    <>
+      Zones calées sur {zonesOriginText(zones, runner)}
+      {zones.estimated && <> Âge : {age} ans{ageSource === 'defaut' ? " par défaut, faute d'année de naissance" : ''}.</>}
+      {' '}À régler dans Pratiquant, dans <Link to="/parametres">Réglages</Link>.
+    </>
+  );
 }
 
 /**
@@ -49,13 +50,13 @@ function FitnessTestPage() {
   const navigate = useNavigate();
   const settings = useFitnessTestSettings('fc-max');
   const { profile } = useRunnerProfile();
-  const params = useMemo(() => resolveFitnessTestParams(PROTOCOL, settings, fitnessTestRunner(profile)), [settings, profile]);
   const { activities, isShown } = useVisibility();
   const activity = useMemo(() => {
     const tests = activitiesOfFamily(activities.filter(isShown), 'fractionne').filter((a) => isTestSport(a.base));
     const last = lastRecordActivity();
     return tests.find((a) => a.id === last?.id) ?? tests[0] ?? null;
   }, [activities, isShown]);
+  const params = useMemo(() => resolveFitnessTestParams(PROTOCOL, settings, fitnessTestRunner(profile, activity)), [settings, profile, activity]);
   const launch = () => {
     if (activity) navigate(`/enregistrer?activite=${encodeURIComponent(activity.id)}&test=fc-max`);
   };
@@ -118,7 +119,7 @@ function FitnessTestPage() {
             </select>
           </label>
           <p className="train-hint">
-            Échauffement en zones {from} à {to} : {params.warmupLowBpm} à {params.warmupHighBpm} bpm. <ZonesSource params={params} />
+            Échauffement en zones {from} à {to} : {params.warmupLowBpm} à {params.warmupHighBpm} bpm. <ZonesSource params={params} runner={profile} />
           </p>
         </div>
       </Card>

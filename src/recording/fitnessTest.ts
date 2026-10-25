@@ -1,4 +1,4 @@
-import { heartRateZones, type HeartRateAthlete, type HeartRateZones, type ZoneMethod } from '../core/heartRate';
+import { heartRateZones, type HeartRateAthlete, type HeartRateZoneModel, type HeartRateZones, type ZoneMethod } from '../core/heartRate';
 import { kmhToMs } from '../core/units';
 import type { ClockTone } from '../platform/beeper';
 
@@ -133,11 +133,12 @@ export const sanitizeFitnessTestSettings = (raw: unknown, protocol: FitnessTestP
 
 export type AgeSource = 'profil' | 'defaut';
 
-/** Ce que le test lit de Pratiquant : âge, FC et zones du cardio, et les parts des zones du calcul de test. */
+/** Ce que le test lit de Pratiquant : âge, FC et seuils du cardio, et le modèle des zones et le décalage de l'activité de test. */
 export interface TestRunner {
   athlete: HeartRateAthlete;
   age: number | null;
-  zoneFractions: readonly number[];
+  zoneModel: HeartRateZoneModel;
+  offsetBpm: number;
 }
 
 /** Ce qu'il faut pour guider un test : le protocole, les réglages et la bande tirée des zones du cardio. */
@@ -167,7 +168,7 @@ export const resolveFitnessTestParams = (
   const usable = isUsableAge(age);
   const used = usable ? age : protocol.defaultAge;
   // Toujours des zones : l'âge (au besoin celui par défaut) donne une FC max.
-  const zones = heartRateZones(runner.athlete, used, runner.zoneFractions)!;
+  const zones = heartRateZones(runner.athlete, used, runner.zoneModel, runner.offsetBpm)!;
   const { from, to } = protocol.warmupZones;
   return {
     protocol,
@@ -255,7 +256,7 @@ export const readSessionTest = (raw: unknown): SessionTest | null => {
     version: r.version,
     settings: {
       warmupS: s.warmupS, age: s.age, ageSource: s.ageSource === 'profil' ? 'profil' : 'defaut',
-      lowBpm: s.lowBpm, highBpm: s.highBpm, zoneMethod: s.zoneMethod === 'perso' || s.zoneMethod === 'reserve' ? s.zoneMethod : 'max',
+      lowBpm: s.lowBpm, highBpm: s.highBpm, zoneMethod: s.zoneMethod === 'saisis' || s.zoneMethod === 'perso' ? 'saisis' : s.zoneMethod === 'reserve' ? 'reserve' : 'max',
     },
     startMs: r.startMs,
     rampStartMs: numOrNull(r.rampStartMs),

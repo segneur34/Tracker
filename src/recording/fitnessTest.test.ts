@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SPORT_PROFILES } from '../core/sportProfiles';
 import { kmhToMs, msToKmh } from '../core/units';
 import {
   FITNESS_TESTS,
@@ -20,10 +21,10 @@ import {
 const PROTOCOL = FITNESS_TESTS['fc-max'];
 const T0 = Date.UTC(2026, 9, 24, 8, 0, 0);
 const DEFAULT_SETTINGS = { warmupS: PROTOCOL.warmupS };
-const FRACTIONS = [0.5, 0.6, 0.7, 0.8, 0.9];
-const NO_HR = { hrMax: null, hrRest: null, hrZones: null };
-/** Zones saisies du scénario : zones 2 à 3 de 78 à 88 bpm. */
-const RUNNER = { athlete: { ...NO_HR, hrZones: [65, 78, 83, 88, 120] }, age: null, zoneFractions: FRACTIONS };
+const MODEL = SPORT_PROFILES['run-test'].heartRate.zoneModel;
+const NO_HR = { hrMax: null, hrRest: null, hrThresholds: null };
+/** Seuils saisis du scénario : zones 2 à 3 de 78 à 88 bpm. */
+const RUNNER = { athlete: { ...NO_HR, hrThresholds: [87, 88] }, age: null, zoneModel: MODEL, offsetBpm: 0 };
 const params = () => resolveFitnessTestParams(PROTOCOL, DEFAULT_SETTINGS, RUNNER);
 
 /** Vitesse d'un palier de la rampe du scénario (départ à 6 km/h). */
@@ -69,20 +70,20 @@ const run = (list: TestSample[], state: FitnessTestState = startFitnessTest(para
 };
 
 describe('resolveFitnessTestParams', () => {
-  const resolve = (athlete: typeof NO_HR | typeof RUNNER.athlete | { hrMax: number; hrRest: number | null; hrZones: null }, age: number | null) =>
-    resolveFitnessTestParams(PROTOCOL, DEFAULT_SETTINGS, { athlete, age, zoneFractions: FRACTIONS });
+  const resolve = (athlete: typeof NO_HR | typeof RUNNER.athlete | { hrMax: number; hrRest: number | null; hrThresholds: null }, age: number | null) =>
+    resolveFitnessTestParams(PROTOCOL, DEFAULT_SETTINGS, { athlete, age, zoneModel: MODEL, offsetBpm: 0 });
 
   it('échauffement en zones 2 à 3 : FC max estimée par l’âge, 35 ans sans âge', () => {
-    // 208 − 0,7 × 35 = 184 : 60 % et 80 %.
-    expect(resolve(NO_HR, null)).toMatchObject({ age: 35, ageSource: 'defaut', hrMaxRefBpm: 184, warmupLowBpm: 110, warmupHighBpm: 147 });
+    // 208 − 0,7 × 35 = 184 : S1 144, S2 164 ; Z2 à 90 % de S1, Z4 aux deux tiers de S1 à S2.
+    expect(resolve(NO_HR, null)).toMatchObject({ age: 35, ageSource: 'defaut', hrMaxRefBpm: 184, warmupLowBpm: 130, warmupHighBpm: 158 });
     expect(resolve(NO_HR, null).zones).toMatchObject({ method: 'max', estimated: true });
-    expect(resolve(NO_HR, 40)).toMatchObject({ age: 40, ageSource: 'profil', hrMaxRefBpm: 180, warmupLowBpm: 108, warmupHighBpm: 144 });
+    expect(resolve(NO_HR, 40)).toMatchObject({ age: 40, ageSource: 'profil', hrMaxRefBpm: 180, warmupLowBpm: 126, warmupHighBpm: 154 });
   });
 
-  it('suit la réserve cardiaque avec la FC de repos, les zones saisies d’abord', () => {
-    expect(resolve({ hrMax: 190, hrRest: 50, hrZones: null }, 40)).toMatchObject({ hrMaxRefBpm: 190, warmupLowBpm: 134, warmupHighBpm: 162 });
+  it('suit la réserve cardiaque avec la FC de repos, les seuils saisis d’abord', () => {
+    expect(resolve({ hrMax: 190, hrRest: 50, hrThresholds: null }, 40)).toMatchObject({ hrMaxRefBpm: 190, warmupLowBpm: 133, warmupHighBpm: 162 });
     expect(params()).toMatchObject({ warmupLowBpm: 78, warmupHighBpm: 88 });
-    expect(params().zones.method).toBe('perso');
+    expect(params().zones.method).toBe('saisis');
   });
 
   it('écarte un âge invraisemblable', () => {

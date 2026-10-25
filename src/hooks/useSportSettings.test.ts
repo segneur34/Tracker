@@ -6,7 +6,7 @@ import { DEFAULT_PACE_LEVEL } from '../planning/duration';
 import { BIKE_TYPES } from '../cycling/energy';
 import {
   MAX_GEAR_LABEL_LENGTH, PRESETS_VERSION, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultBikeType, defaultGradeRange,
-  defaultHeartRateOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
+  defaultHeartRateOf, defaultHrOffsetOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
   defaultTerrainStepOf, defaultThresholdOf, rangeFollowsPace, resetStoredPresets, sanitizeGearLabels, thresholdFollowsPace, type StoredSettings,
 } from './useSportSettings';
 
@@ -140,6 +140,19 @@ describe('pré-réglages des activités (21/10)', () => {
     expect(next.speedRanges).toEqual({ 'a-route': { minMs: 2, maxMs: 12 } });
     expect(next.tabs).toEqual({});
     expect(next.gearLabels).toEqual(stored.gearLabels);
+  });
+});
+
+describe('décalage des seuils cardio (25/10)', () => {
+  const [voile, course, marche, route, , , surf, , runIntervals, bikeIntervals] = DEFAULT_ACTIVITIES;
+  const kite = { id: 'a-kite', name: 'Kite', base: 'kite' as const, color: '#5b87f2' };
+  const pav = { id: 'a-pav', name: 'Pav', base: 'windsurf' as const, color: '#5b87f2' };
+
+  it("prend celui du calcul, la Marche le sien", () => {
+    expect([course, runIntervals].map(defaultHrOffsetOf)).toEqual([0, 0]);
+    expect(defaultHrOffsetOf(marche)).toBe(-4);
+    expect([route, bikeIntervals].map(defaultHrOffsetOf)).toEqual([-7, -7]);
+    expect([voile, kite, pav, surf].map(defaultHrOffsetOf)).toEqual([-8, -8, -5, -10]);
   });
 });
 

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
+import type { Activity } from '../core/activities';
 import { haversineDistance } from '../core/kinematics';
 import { getSportProfile, isTestSport } from '../core/sportProfiles';
-import type { SportType } from '../core/types';
 import { playPattern } from '../platform/beeper';
 import type { LocationFix } from '../platform/location';
 import {
@@ -11,7 +11,7 @@ import {
 } from '../recording/fitnessTest';
 import { getRecorderState, noteFitnessTest, subscribeToFixes, subscribeToRecorder } from './useRecorder';
 import { readRunnerProfile, runnerAge, type RunnerProfile } from './useRunnerProfile';
-import { readFitnessTestSettings } from './useSportSettings';
+import { effectiveHrOffset, readFitnessTestSettings } from './useSportSettings';
 
 /**
  * Guidage d'un test (Entraînement › Tests, d'abord la FC max) pendant
@@ -75,11 +75,12 @@ interface Session {
   sawPause: boolean;
 }
 
-/** Ce que le test lit de Pratiquant : âge, FC et zones, parts des zones du calcul de l'activité. */
-export const fitnessTestRunner = (profile: RunnerProfile, base: SportType = 'run-test'): TestRunner => ({
+/** Ce que le test lit de Pratiquant : âge, FC et seuils ; modèle des zones et décalage de l'activité de test (celui du calcul de test sans elle). */
+export const fitnessTestRunner = (profile: RunnerProfile, activity: Activity | null = null): TestRunner => ({
   athlete: profile,
   age: runnerAge(profile),
-  zoneFractions: getSportProfile(base).heartRate.zoneFractions,
+  zoneModel: getSportProfile(activity?.base ?? 'run-test').heartRate.zoneModel,
+  offsetBpm: activity ? effectiveHrOffset(activity) : getSportProfile('run-test').heartRate.thresholdOffsetBpm,
 });
 
 let armed: FitnessTestId = 'fc-max';
@@ -170,7 +171,7 @@ const sync = () => {
   if (!session) {
     if (closed?.rampStartMs != null) return;
     const protocol = FITNESS_TESTS[armed];
-    const params = resolveFitnessTestParams(protocol, readFitnessTestSettings(armed), fitnessTestRunner(readRunnerProfile(), recorder.activity!.base));
+    const params = resolveFitnessTestParams(protocol, readFitnessTestSettings(armed), fitnessTestRunner(readRunnerProfile(), recorder.activity!));
     session = { state: startFitnessTest(params), previous: null, sawPause: false };
     publish();
   }

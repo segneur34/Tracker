@@ -213,7 +213,7 @@ interface ChartRow {
 function SurfModule() {
   const {
     activity, setActivity, profile, thresholdOverride, speedUnit, distanceUnit, speedRange, defaultSpeedRange, foil: activityFoil,
-    pumping: activityPumping, gearLabels,
+    pumping: activityPumping, gearLabels, hrOffsetBpm,
   } = useSportSettings('surf');
   const gpx = useGpxSession({ medianWindowSeconds: profile.medianWindowSeconds, maxDetourRatio: profile.maxDetourRatio, maxSpeedMs: profile.maxPlausibleSpeedMs });
 
@@ -253,9 +253,9 @@ function SurfModule() {
   const advanced = useAdvancedTabs(gpx.sessionKey, setGeneral);
   const open = useMemo(() => maskAdvancedTabs(maskHiddenTabs(storedOpen, SURF_TABS, tabChoices), SURF_TABS, advanced.open), [storedOpen, tabChoices, advanced.open]);
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe sous la vitesse. */
-  const { profile: runner, setNumber: setRunnerNumber } = useRunnerProfile();
+  const { profile: runner, retainHr } = useRunnerProfile();
   const heart = useSessionHeartRate(gpx.track, profile.heartRate);
-  const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate.zoneFractions), [runner, profile.heartRate]);
+  const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate, hrOffsetBpm), [runner, profile.heartRate, hrOffsetBpm]);
   const sections = useMemo(
     () => shownTabs(SURF_TABS, tabChoices).filter((s) => (s.key !== 'vols' || foil) && (s.key !== 'cardio' || heart.present)),
     [tabChoices, foil, heart.present]
@@ -983,8 +983,8 @@ function SurfModule() {
 
             {open.cardio && heart.present && (
               <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
-                <HeartRatePanel track={track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax}
-                  onRetainHrMax={(bpm) => setRunnerNumber('hrMax', bpm)} selectedZone={selectedHrZone}
+                <HeartRatePanel track={track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
+                  onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: track[0]?.timeMs ?? null })} selectedZone={selectedHrZone}
                   onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
                   hoveredIndex={hoveredIndex} onHoverIndex={hoverIndex} onLeave={clearHover}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}

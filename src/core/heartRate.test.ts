@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  edwardsLoad, efficiencyBlocks, estimateHrMax, heartRateDrift, heartRateHistogram, heartRateStats, heartRateZonePaths, heartRateZones, histogramZoneTimes,
-  isValidZoneBounds, smoothHeartRate, spanHeartRate, timeInZones, timeSpanHeartRate, zoneOf, type HeartRatePoint,
+  edwardsLoad, efficiencyBlocks, estimateHrMax, heartRateDrift, heartRateHistogram, heartRateStats, heartRateThresholds, heartRateZonePaths, heartRateZones,
+  histogramZoneTimes, isValidThresholds, isValidZoneBounds, smoothHeartRate, spanHeartRate, timeInZones, timeSpanHeartRate, zoneOf, type HeartRatePoint,
 } from './heartRate';
 import { SPORT_PROFILES } from './sportProfiles';
 
@@ -63,38 +63,76 @@ describe('heartRateStats', () => {
   });
 });
 
-describe('heartRateZones', () => {
-  const fractions = P.zoneFractions;
+describe('heartRateThresholds', () => {
+  const model = P.zoneModel;
 
-  it('prend la réserve cardiaque quand FC max et FC de repos sont connues', () => {
-    const zones = heartRateZones({ hrMax: 190, hrRest: 50, hrZones: null }, 40, fractions)!;
-    expect(zones.method).toBe('reserve');
-    expect(zones.bounds).toEqual([120, 134, 148, 162, 176]);
-    expect(zones.estimated).toBe(false);
+  it('prend 70 et 85 % de la réserve cardiaque quand FC max et FC de repos sont connues', () => {
+    expect(heartRateThresholds({ hrMax: 190, hrRest: 50 }, 40, model)).toMatchObject({ s1: 148, s2: 169, method: 'reserve', estimated: false });
   });
 
-  it('prend la FC max seule sans FC de repos', () => {
-    const zones = heartRateZones({ hrMax: 200, hrRest: null, hrZones: null }, null, fractions)!;
-    expect(zones.method).toBe('max');
-    expect(zones.bounds).toEqual([100, 120, 140, 160, 180]);
+  it('prend 78 et 89 % de la FC max sans FC de repos', () => {
+    expect(heartRateThresholds({ hrMax: 190, hrRest: null }, null, model)).toMatchObject({ s1: 148, s2: 169, method: 'max' });
+    expect(heartRateThresholds({ hrMax: 200, hrRest: null }, null, model)).toMatchObject({ s1: 156, s2: 178 });
   });
 
   it("estime la FC max par l'âge et le dit", () => {
-    const zones = heartRateZones({ hrMax: null, hrRest: null, hrZones: null }, 40, fractions)!;
-    expect(zones.hrMax).toBe(estimateHrMax(40));
-    expect(zones.hrMax).toBe(180);
-    expect(zones.estimated).toBe(true);
+    const t = heartRateThresholds({ hrMax: null, hrRest: null }, 40, model)!;
+    expect(t.hrMax).toBe(estimateHrMax(40));
+    expect(t.hrMax).toBe(180);
+    expect(t.estimated).toBe(true);
   });
 
-  it('préfère des zones personnalisées valides, ignore les autres', () => {
-    const custom = [110, 130, 145, 160, 172];
-    expect(heartRateZones({ hrMax: 190, hrRest: 50, hrZones: custom }, null, fractions)!).toMatchObject({ method: 'perso', bounds: custom });
-    expect(heartRateZones({ hrMax: 190, hrRest: 50, hrZones: [110, 100, 145, 160, 172] }, null, fractions)!.method).toBe('reserve');
+  it('préfère des seuils saisis valides, ignore les autres', () => {
+    expect(heartRateThresholds({ hrMax: 190, hrRest: 50, hrThresholds: [150, 172] }, null, model)).toMatchObject({ s1: 150, s2: 172, method: 'saisis' });
+    expect(heartRateThresholds({ hrMax: 190, hrRest: 50, hrThresholds: [172, 150] }, null, model)!.method).toBe('reserve');
+    expect(isValidThresholds([150])).toBe(false);
+  });
+
+  it("reprend des zones saisies avant les seuils : S1 au début de Z3, S2 d'après Z4", () => {
+    const t = heartRateThresholds({ hrMax: 190, hrRest: 50, hrZones: [110, 130, 145, 160, 172] }, null, model)!;
+    expect(t).toMatchObject({ method: 'saisis', s1: 145, s2: Math.round(145 + 15 / 0.68) });
+    expect(heartRateThresholds({ hrMax: 190, hrRest: 50, hrZones: [110, 100, 145, 160, 172] }, null, model)!.method).toBe('reserve');
     expect(isValidZoneBounds([110, 130, 145, 160])).toBe(false);
   });
 
+  it('rend null sans seuils saisis, FC max ni âge', () => {
+    expect(heartRateThresholds({ hrMax: null, hrRest: 50 }, null, model)).toBeNull();
+  });
+});
+
+describe('heartRateZones', () => {
+  const model = P.zoneModel;
+
+  it('cale les zones sur S1 et S2 : Z3 à S1, Z4 aux deux tiers, Z5 au-dessus de S2', () => {
+    const zones = heartRateZones({ hrMax: 190, hrRest: 50 }, 40, model)!;
+    expect(zones.bounds).toEqual([114, 133, 148, 162, 174]);
+    expect(zones).toMatchObject({ s1: 148, s2: 169, method: 'reserve', offsetBpm: 0 });
+  });
+
+  it('donne les mêmes zones avec et sans FC de repos quand les seuils tombent au même endroit', () => {
+    expect(heartRateZones({ hrMax: 190, hrRest: null }, null, model)!.bounds).toEqual([114, 133, 148, 162, 174]);
+  });
+
+  it('décale S1, S2 et les zones du sport', () => {
+    const zones = heartRateZones({ hrMax: 190, hrRest: 50 }, null, model, -7)!;
+    expect(zones).toMatchObject({ s1: 141, s2: 162, offsetBpm: -7 });
+    expect(zones.bounds[2]).toBe(141);
+    expect(zones.bounds[4]).toBe(Math.round(162 + 0.22 * 28));
+  });
+
+  it('suit des seuils saisis, Z5 juste au-dessus de S2 sans FC max', () => {
+    const zones = heartRateZones({ hrMax: null, hrRest: null, hrThresholds: [150, 170] }, null, model)!;
+    expect(zones.bounds).toEqual([Math.round(0.77 * 150), 135, 150, Math.round(150 + 0.68 * 20), 171]);
+    expect(zones.hrMax).toBeNull();
+  });
+
+  it('rend des bornes toujours croissantes', () => {
+    const { bounds } = heartRateZones({ hrMax: 120, hrRest: null, hrThresholds: [118, 119] }, null, model)!;
+    for (let k = 1; k < bounds.length; k++) expect(bounds[k]).toBeGreaterThan(bounds[k - 1]);
+  });
+
   it('rend null sans FC max ni âge', () => {
-    expect(heartRateZones({ hrMax: null, hrRest: 50, hrZones: null }, null, fractions)).toBeNull();
+    expect(heartRateZones({ hrMax: null, hrRest: 50 }, null, model)).toBeNull();
   });
 });
 

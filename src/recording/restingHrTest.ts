@@ -2,8 +2,10 @@ import type { ClockTone } from '../platform/beeper';
 
 /**
  * Test de FC repos (Entraînement › Tests, 24/10) : 3 minutes immobile, la FC
- * lue sur la ceinture, sans GPS. Le résultat est la moyenne de 10 secondes la
- * plus basse des 3 minutes (`running/restingHrResults.ts`).
+ * lue sur la ceinture, sans GPS. Le résultat est la moyenne de 30 secondes la
+ * plus basse après la première minute, le temps que le cœur se pose
+ * (`running/restingHrResults.ts` ; 10 s sur les 3 minutes jusqu'au 25/10 : une
+ * fenêtre si courte saisit le creux d'une expiration, plus bas que le repos).
  *
  * Le test ne passe pas par l'enregistreur : pas de position, donc ni pause
  * automatique (immobile, on y serait vite), ni trou de GPS, ni service. Il
@@ -24,6 +26,8 @@ export interface RestingHrProtocol {
   leadInS: number;
   /** Durée mesurée. */
   durationS: number;
+  /** Début de la mesure écarté de la recherche : le cœur se pose. */
+  settleS: number;
   /** Fenêtre de la moyenne la plus basse. */
   windowS: number;
   /** Part minimale d'une fenêtre couverte par des mesures pour qu'elle compte. */
@@ -40,10 +44,11 @@ export interface RestingHrProtocol {
 export const RESTING_HR_TEST: RestingHrProtocol = {
   id: 'fc-repos',
   label: 'FC repos',
-  version: 1,
+  version: 2,
   leadInS: 10,
   durationS: 180,
-  windowS: 10,
+  settleS: 60,
+  windowS: 30,
   minWindowCoverage: 0.7,
   minCoverage: 0.8,
   holdS: 5,
