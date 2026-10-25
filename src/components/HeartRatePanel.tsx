@@ -51,9 +51,9 @@ interface Props {
   onLeave: () => void;
   /** Course et vélo seulement. */
   efficiency?: HeartRateEfficiency;
-  /** Zoom de la courbe, tenu par le module (« Sur la carte », plein écran carte + graphes) ; « tout voir » à chaque session. */
+  /** Zoom de la courbe, tenu par le module (« +carte », plein écran carte + graphes) ; « tout voir » à chaque session. */
   zoom: ChartZoom;
-  /** « Sur la carte » de la courbe zoomée. */
+  /** « +carte » de la courbe zoomée. */
   onShowOnMap?: () => void;
   open: boolean;
   onToggle: () => void;

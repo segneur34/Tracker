@@ -6,6 +6,7 @@ import { usePlotArea } from 'recharts';
 import { pinchRange, pxSelectionRange, zoomAtRange, type XRange } from '../core/chartZoom';
 import { CHART_TAP_ZOOM_FACTOR } from '../core/displayConfig';
 import type { ChartZoom } from '../hooks/useChartZoom';
+import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import Button from './ui/Button';
 import './ZoomableChart.css';
 
@@ -16,8 +17,8 @@ import './ZoomableChart.css';
  * tirer une zone à la souris zoome dessus. Un double-clic, ou deux touchers
  * rapprochés, zooment ×2 autour du point visé (23/10). Une fois zoomé
  * paraissent « Tout voir », qui revient à toute l'étendue, et, si le module
- * le branche (`onShowOnMap`), « Sur la carte », qui y montre la partie
- * zoomée. La souris qui sort du graphe appelle `onLeave`, qui efface le
+ * le branche (`onShowOnMap`), « +carte », sur la ligne du nom au-dessus du
+ * graphe, qui y montre la partie zoomée ; au téléphone, il est là dès le départ. La souris qui sort du graphe appelle `onLeave`, qui efface le
  * repère ; au doigt, il reste où on l'a laissé.
  *
  * Le graphe Recharts va dedans, avec `ChartZoomProbe` parmi ses enfants :
@@ -77,9 +78,13 @@ function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, className
   zoom: ChartZoom;
   /** Souris sortie du graphe. */
   onLeave?: () => void;
-  /** Boutons « Tout voir » et « Sur la carte » sur ce graphe ; à retirer sur le second de deux graphes superposés. */
+  /** « Tout voir » sur ce graphe ; à retirer sur les graphes suivants d'une pile au zoom commun. « +carte » reste sur chacun. */
   showReset?: boolean;
-  /** « Sur la carte », à côté de « Tout voir » : montre la partie zoomée sur la carte. */
+  /**
+   * « +carte », sur la ligne du nom du graphe, collé à droite : montre la
+   * partie zoomée sur la carte. Au téléphone, présent aussi sans zoom : il
+   * ouvre la carte avec les graphes de l'onglet (25/10).
+   */
   onShowOnMap?: () => void;
   className?: string;
   style?: CSSProperties;
@@ -96,6 +101,7 @@ function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, className
   const lastTouchMs = useRef(-Infinity);
   /** Sélection à la souris, en pixels de la zone de tracé, avec la zone lue au début. */
   const [drag, setDrag] = useState<{ from: number; to: number; area: PlotArea } | null>(null);
+  const narrow = useNarrowScreen();
   const reportPlot = useCallback((area: PlotArea | null) => {
     plot.current = area;
   }, []);
@@ -232,9 +238,12 @@ function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, className
       onDoubleClick={onDoubleClick}>
       <PlotAreaContext.Provider value={reportPlot}>{children}</PlotAreaContext.Provider>
       {selection && <div className="zoom-chart__selection" style={selection} />}
+      {onShowOnMap && (zoom.view || narrow) && (
+        <Button size="s" className={zoom.view ? 'zoom-chart__map' : 'zoom-chart__map zoom-chart__map--whole'} onClick={onShowOnMap}
+          aria-label="Voir sur la carte">+carte</Button>
+      )}
       {showReset && zoom.view && (
         <div className="zoom-chart__actions">
-          {onShowOnMap && <Button size="s" className="zoom-chart__map" onClick={onShowOnMap}>Sur la carte</Button>}
           <Button size="s" className="zoom-chart__reset" onClick={zoom.reset}>Tout voir</Button>
         </div>
       )}

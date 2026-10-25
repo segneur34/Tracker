@@ -99,7 +99,7 @@ interface CurveRow {
 /**
  * Courbe d'un saut, ou de deux calés sur leur décollage (25/10) : zoom
  * (double-clic, zone tirée, deux doigts) et lecture au-dessus du graphe ; le
- * survol déplace le repère sur la carte. Pas de « Sur la carte » : « Voir »
+ * survol déplace le repère sur la carte. Pas de « +carte » : « Voir »
  * y montre déjà le saut.
  */
 function JumpCurveChart({ rows, jumps, numbers, onCurveHover, onCurveLeave }: {

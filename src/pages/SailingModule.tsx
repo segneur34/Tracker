@@ -503,9 +503,9 @@ function SailingModule() {
   );
   /** Traits des repères sur les graphes, en minutes depuis le premier point. */
   const markLines = markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark);
-  /** Zoom de la courbe de l'onglet « cardio », sur le même temps : tenu ici pour « Sur la carte ». */
+  /** Zoom de la courbe de l'onglet « cardio », sur le même temps : tenu ici pour « +carte ». */
   const cardioZoom = useChartZoom(trackMinutes.length > 1 ? { min: 0, max: trackMinutes[trackMinutes.length - 1] } : null, sessionKey);
-  /** « Sur la carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
+  /** « +carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
   const zoomOnMap = useZoomOnMap({
     highlight,
     points: trackData,
@@ -537,7 +537,7 @@ function SailingModule() {
   })() : null;
   const zoomHint = narrow
     ? 'Écartez deux doigts ou touchez deux fois un graphe pour zoomer.'
-    : 'Tirez une zone à la souris ou double-cliquez pour zoomer ; « Sur la carte » montre la partie zoomée, « Tout voir » revient.';
+    : 'Tirez une zone à la souris ou double-cliquez pour zoomer ; « +carte » montre la partie zoomée, « Tout voir » revient.';
 
   /** Graphe de vitesse : dans l'onglet « graphiques », et sous la carte en plein écran. */
   const speedChart = (style: CSSProperties) => (
@@ -584,7 +584,7 @@ function SailingModule() {
       {markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark, 'hr')}
     </HeartRateChart>
   );
-  /** Graphes de l'onglet d'où vient « Sur la carte », sous la carte en plein écran (téléphone). */
+  /** Graphes de l'onglet d'où vient « +carte », sous la carte en plein écran (téléphone). */
   const companionCharts = (panel: SailingPanel | null): ReactNode => {
     switch (panel) {
       case 'graphiques':

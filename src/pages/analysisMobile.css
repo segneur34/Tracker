@@ -236,7 +236,7 @@
 
   .an-map-panel {
     width: var(--analysis-map-width);
-    /* Ramenée à l'écran (« Sur la carte »), elle s'arrête sous la barre du haut, qui colle. */
+    /* Ramenée à l'écran (« +carte »), elle s'arrête sous la barre du haut, qui colle. */
     scroll-margin-top: calc(var(--topbar-h) + var(--space-2));
   }
 }
@@ -368,7 +368,7 @@
     height: 100%;
   }
 
-  /* Plein écran carte + graphes (« Sur la carte », 23/10) : la carte en haut, les graphes de l'onglet dessous, qui défilent. */
+  /* Plein écran carte + graphes (« +carte », 23/10) : la carte en haut, les graphes de l'onglet dessous, qui défilent. */
   .an-map-overlay--charts {
     display: flex;
     flex-direction: column;

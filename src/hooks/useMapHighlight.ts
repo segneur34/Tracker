@@ -12,7 +12,7 @@ export interface MapHighlight<P extends string> {
   shownIn: (panel: P) => string | null;
   /** Montre `key` depuis `panel`, à la place de la précédente ; `null` l'efface. */
   show: (panel: P, key: string | null) => void;
-  /** Onglet dont le graphe zoomé est montré sur la carte (« Sur la carte », `useZoomOnMap`), sinon `null`. */
+  /** Onglet dont le graphe zoomé est montré sur la carte (« +carte », `useZoomOnMap`), sinon `null`. */
   zoomPanel: P | null;
   /** Montre le tronçon zoomé du graphe de `panel`, à la place de la surbrillance précédente. */
   showZoom: (panel: P) => void;

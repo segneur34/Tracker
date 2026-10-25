@@ -5,6 +5,7 @@ import { MapContainer, useMap } from 'react-leaflet';
 import { DEFAULT_MAP_CENTER, type TrackBounds } from '../core/displayConfig';
 import { NARROW_QUERY, usePhoneLandscape } from '../hooks/useNarrowScreen';
 import type { MapFocus } from '../hooks/useZoomOnMap';
+import { pushBackLayer } from '../platform/backButton';
 import MapAutoResize from './MapAutoResize';
 import ResizablePanel from './ResizablePanel';
 
@@ -39,7 +40,7 @@ interface AnalysisMapProps {
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   /**
-   * Cadrage demandé par le module (« Sur la carte » d'un graphe zoomé,
+   * Cadrage demandé par le module (« +carte » d'un graphe zoomé,
    * `useZoomOnMap`) : chaque nouvelle demande cadre la carte et sa vue
    * agrandie, qui s'ouvre aussi dessus.
    */
@@ -107,6 +108,10 @@ function AnalysisMap({
     if (expandedProp === undefined) setOwnExpanded(next);
     onExpandedChange?.(next);
   };
+  // Retour d'Android : il referme la vue agrandie, on retrouve la page telle qu'avant (onglet, défilement, zoom).
+  const setExpandedRef = useRef(setExpanded);
+  setExpandedRef.current = setExpanded;
+  useEffect(() => (expanded ? pushBackLayer(() => setExpandedRef.current(false)) : undefined), [expanded]);
   // Téléphone tourné : la carte en plein écran, à l'ouverture comme à chaque rotation ; remis droit, elle se referme.
   const landscape = usePhoneLandscape();
   const wasLandscape = useRef<boolean | null>(null);

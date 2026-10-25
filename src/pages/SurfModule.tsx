@@ -107,7 +107,7 @@ const panelId = (name: string) => `${STORAGE_ID}.${name}`;
 const GRAPH_FOLDS_DEFAULT = { vitesse: true, fc: true };
 /** Hauteur de base d'un graphe : le panneau suit le nombre de graphes dépliés. */
 const CHART_HEIGHT_PX = 170;
-/** Ancre du bloc de la carte, que « Sur la carte » ramène à l'écran. */
+/** Ancre du bloc de la carte, que « +carte » ramène à l'écran. */
 const MAP_ANCHOR_ID = 'map-view';
 const chartBox = (heightPx: number): CSSProperties => ({ width: '100%', flex: `1 0 ${heightPx}px`, height: `${heightPx}px`, marginTop: '4px' });
 const ACCENT = 'var(--surf)';
@@ -450,11 +450,11 @@ function SurfModule() {
     const bpm = heart.smoothed[readIndex];
     return { values: [{ text: bpm === null || bpm === undefined ? '—' : `${Math.round(bpm)} bpm`, color: HEART_RATE_COLOR }], at: readAt };
   })() : null;
-  /** Zoom de la courbe de l'onglet « cardio », sur le même temps : tenu ici pour « Sur la carte ». */
+  /** Zoom de la courbe de l'onglet « cardio », sur le même temps : tenu ici pour « +carte ». */
   const cardioZoom = useChartZoom(trackMinutes.length > 1 ? { min: 0, max: trackMinutes[trackMinutes.length - 1] } : null, gpx.sessionKey);
   /** Carte en plein écran (téléphone), seule ou avec les graphes d'un onglet. */
   const [mapExpanded, setMapExpanded] = useState(false);
-  /** « Sur la carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
+  /** « +carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
   const zoomOnMap = useZoomOnMap({
     highlight,
     points: track,
@@ -500,7 +500,7 @@ function SurfModule() {
       {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark, 'hr')}
     </HeartRateChart>
   );
-  /** Graphes de l'onglet d'où vient « Sur la carte », sous la carte en plein écran (téléphone). */
+  /** Graphes de l'onglet d'où vient « +carte », sous la carte en plein écran (téléphone). */
   const companionCharts = (panel: SurfTab | null): ReactNode => {
     switch (panel) {
       case 'graphiques': {
@@ -956,7 +956,7 @@ function SurfModule() {
                 <HelpText helpKey="surf:graphiques" note>
                   Le survol déplace le repère sur la carte.
                   {folds ? ' Chaque graphe se replie par son nom.' : ''}
-                  {narrow ? ' Écartez deux doigts ou touchez deux fois un graphe pour zoomer.' : ' Tirez une zone à la souris ou double-cliquez pour zoomer ; « Sur la carte » montre la partie zoomée, « Tout voir » revient.'}
+                  {narrow ? ' Écartez deux doigts ou touchez deux fois un graphe pour zoomer.' : ' Tirez une zone à la souris ou double-cliquez pour zoomer ; « +carte » montre la partie zoomée, « Tout voir » revient.'}
                 </HelpText>
                 {folds && (
                   <div className="chart-head">

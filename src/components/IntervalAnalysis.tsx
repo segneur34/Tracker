@@ -133,7 +133,7 @@ type ProfileRow = Record<string, number | null>;
 /**
  * Profil superposé des répétitions d'une séance (25/10) : zoom (double-clic,
  * zone tirée, deux doigts) et lecture au-dessus du graphe, comme les graphes
- * sur la trace, mais sans « Sur la carte » : les courbes partent toutes du
+ * sur la trace, mais sans « +carte » : les courbes partent toutes du
  * départ de leur répétition, aucune n'est un tronçon de la trace. La lecture
  * donne la moyenne ; les répétitions, trop nombreuses pour une ligne, se
  * lisent sur leurs traits.

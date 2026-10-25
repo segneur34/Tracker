@@ -121,8 +121,8 @@ const ENERGY_CHART_HEIGHT_PX = 200;
 const CHART_HEIGHT_PX = 170;
 /** Aide du zoom sous les graphes, sur téléphone et sur ordinateur. */
 const ZOOM_HINT_NARROW = 'Écartez deux doigts ou touchez deux fois un graphe pour zoomer.';
-const ZOOM_HINT_WIDE = 'Tirez une zone à la souris ou double-cliquez pour zoomer ; « Sur la carte » montre la partie zoomée, « Tout voir » revient.';
-/** Ancre du bloc de la carte, que « Sur la carte » ramène à l'écran. */
+const ZOOM_HINT_WIDE = 'Tirez une zone à la souris ou double-cliquez pour zoomer ; « +carte » montre la partie zoomée, « Tout voir » revient.';
+/** Ancre du bloc de la carte, que « +carte » ramène à l'écran. */
 const MAP_ANCHOR_ID = 'map-view';
 /** Hauteur de base du graphe superposé. */
 const OVERLAY_CHART_HEIGHT_PX = 320;
@@ -654,7 +654,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const zoom = useChartZoom(trackDist.length > 1 ? { min: trackDist[0], max: trackDist[trackDist.length - 1] } : null, gpx.sessionKey);
   /** Zoom du profil de « général », à part : zoomer « général » ne zoome pas « graphiques ». */
   const profileZoom = useChartZoom(trackDist.length > 1 ? { min: trackDist[0], max: trackDist[trackDist.length - 1] } : null, gpx.sessionKey);
-  /** Zoom de la courbe de l'onglet « cardio », sur le temps : tenu ici pour « Sur la carte ». */
+  /** Zoom de la courbe de l'onglet « cardio », sur le temps : tenu ici pour « +carte ». */
   const cardioZoom = useChartZoom(
     trackMinutes.length > 1 ? { min: trackMinutes[0], max: trackMinutes[trackMinutes.length - 1] } : null,
     gpx.sessionKey
@@ -666,7 +666,7 @@ function LandModule({ family }: { family: LandFamily }) {
   );
   /** Carte en plein écran (téléphone), seule ou avec les graphes d'un onglet. */
   const [mapExpanded, setMapExpanded] = useState(false);
-  /** « Sur la carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
+  /** « +carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
   const zoomOnMap = useZoomOnMap({
     highlight,
     points: gpx.track,
@@ -963,9 +963,9 @@ function LandModule({ family }: { family: LandFamily }) {
       style={style} />
   );
 
-  /** « Sur la carte » des graphes de « graphiques ». */
+  /** « +carte » des graphes de « graphiques ». */
   const showGraphsOnMap = () => zoomOnMap.show('graphiques');
-  /** Un graphe de la pile, en mode séparé ; « Tout voir » et « Sur la carte » sur le premier montré. */
+  /** Un graphe de la pile, en mode séparé ; « Tout voir » sur le premier montré, « +carte » sur chacun. */
   const separateChart = (key: GraphFold, showReset: boolean, altitudeGradientId: string): ReactNode => {
     switch (key) {
       case 'vitesse':
@@ -1116,7 +1116,7 @@ function LandModule({ family }: { family: LandFamily }) {
     </>
   );
 
-  /** Graphes de l'onglet d'où vient « Sur la carte », sous la carte en plein écran (téléphone). */
+  /** Graphes de l'onglet d'où vient « +carte », sous la carte en plein écran (téléphone). */
   /** Profil d'altitude de « général », dans son panneau ou sous la carte en plein écran (`gradientSuffix`). */
   const generalProfile = (gradientSuffix: string) => (
     <ElevationProfileMini rows={profileRows} stops={profileStops} gradientId={`${profileGradientId}${gradientSuffix}`} distanceSymbol={distanceSymbol}

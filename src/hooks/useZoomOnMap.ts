@@ -20,7 +20,7 @@ export interface ZoomOnMap<P extends string> {
   path: [number, number][];
   /** Dernier cadrage demandé, tant que le tronçon est montré. */
   focus: MapFocus | null;
-  /** « Sur la carte » du graphe de `panel`. */
+  /** « +carte » du graphe de `panel`, zoomé ou non (téléphone). */
   show: (panel: P) => void;
   /** Onglet dont les graphes accompagnent la carte en plein écran (téléphone), sinon `null`. */
   companionPanel: P | null;
@@ -29,7 +29,7 @@ export interface ZoomOnMap<P extends string> {
 }
 
 /**
- * « Sur la carte » d'un graphe zoomé, dans les trois modules (23/10). Le
+ * « +carte » d'un graphe zoomé, dans les trois modules (23/10). Le
  * tronçon de la plage zoomée s'allume, surbrillance unique de son onglet
  * (`MapHighlight.showZoom`), et suit le zoom ; il s'efface quand le zoom
  * revient à tout voir (« Tout voir », pincement, autre session), sans revenir
@@ -37,12 +37,14 @@ export interface ZoomOnMap<P extends string> {
  * la page remonte juste assez pour montrer la carte si elle n'est pas
  * entière à l'écran. Sur téléphone, une carte entière à l'écran (tout replié)
  * se cadre sur place ; sinon la carte s'ouvre en plein écran avec les
- * graphes de l'onglet dessous (`companionPanel`).
+ * graphes de l'onglet dessous (`companionPanel`). Sans zoom (25/10), le
+ * bouton du téléphone ouvre ce plein écran sur toute la trace ; le retour
+ * d'Android le referme (`AnalysisMap`).
  */
 export const useZoomOnMap = <P extends string>({ highlight, points, charts, narrow, mapAnchorId, mapExpanded, openMap }: {
   highlight: MapHighlight<P>;
   points: ReadonlyArray<{ lat: number; lon: number }>;
-  /** Graphe zoomable de chaque onglet qui a « Sur la carte ». */
+  /** Graphe zoomable de chaque onglet qui a « +carte ». */
   charts: Partial<Record<P, ZoomedChart>>;
   narrow: boolean;
   /** Ancre du bloc de la carte (`AnalysisMap`, `anchorId`). */
@@ -66,8 +68,16 @@ export const useZoomOnMap = <P extends string>({ highlight, points, charts, narr
 
   const show = (target: P) => {
     const c = charts[target];
-    const range = c?.zoom.view;
-    if (!c || !range) return;
+    if (!c) return;
+    const range = c.zoom.view;
+    // Graphe entier, au téléphone : carte et graphes de l'onglet ensemble, sur toute la trace, sans tronçon.
+    if (!range) {
+      if (narrow && !mapExpanded) {
+        setCompanionPanel(target);
+        openMap();
+      }
+      return;
+    }
     highlight.showZoom(target);
     const bounds = trackBounds(axisRangePath(points, c.axis, range).map(([lat, lon]) => ({ lat, lon })));
     if (!bounds) return;

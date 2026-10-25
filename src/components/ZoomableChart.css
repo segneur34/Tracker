@@ -32,7 +32,7 @@
   border-right: 1px solid rgba(30, 136, 229, 0.6);
 }
 
-/* « Sur la carte » et « Tout voir », en haut à droite du graphe zoomé. */
+/* « Tout voir », en haut à droite du graphe zoomé. */
 .zoom-chart__actions {
   position: absolute;
   top: var(--space-1);
@@ -40,6 +40,31 @@
   z-index: 1;
   display: flex;
   gap: var(--space-1);
+}
+
+/*
+ * « +carte » (25/10) : hors du tracé, sur la ligne du nom du graphe juste
+ * au-dessus, collé à droite ; la lecture de cette ligne lui laisse la place.
+ */
+.zoom-chart__map.ui-btn {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  z-index: 1;
+  min-height: 20px;
+  padding: 0 calc(var(--space-3) * 0.8);
+  font-size: calc(var(--text-s) * 0.8);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.chart-head:has(+ .zoom-chart > .zoom-chart__map),
+.chart-readout--line:has(+ .zoom-chart > .zoom-chart__map) {
+  padding-right: 72px;
+}
+
+/* Sans zoom (téléphone), « +carte » ouvre carte + graphes : inutile dans cette vue même. */
+.an-map-overlay__charts .zoom-chart__map--whole {
+  display: none;
 }
 
 /* 20 % sous `.ui-btn--s` (demande du 24/10) : ils couvraient trop du graphe. */
