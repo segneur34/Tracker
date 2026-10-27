@@ -102,12 +102,12 @@ Quand l'utilisateur donne des notes en vrac :
 - Questions : place ? → réponse (27/10) : fusionner les tuiles Fractionné et Tests de la page Entraînement en une seule (le dire dans son titre) et créer une tuile « Muscu » ; un calcul « Muscu » dans la famille Entraînement, type « Muscu » dans la rangée Type d'Enregistrer. Ceinture ? → réponse (27/10) : obligatoire, pas de session muscu sans ceinture jointe. Fichier ? → tranché par Claude : GPX dont les points n'ont que l'heure et la FC, lu par le lecteur maison. Le Timer reste-t-il tel quel à côté (compteur seul, sans session) ? → réponse (27/10) : « autre », sans précision : **à redire**.
 
 ### 11. Mode sombre et/ou économe en énergie · priorité 3 (proposée)
-- Noté le : 25/10 12:07 (WhatsApp) · reçu le : 25/10 · état : en lot 12 (lot H du 25/10), prête : maquette d'abord
+- Noté le : 25/10 12:07 (WhatsApp) · reçu le : 25/10 · état : en lot 12 (lot H du 25/10), prête (maquette tranchée le 28/10)
 - Tel que noté : « Crée un mode sombre et/ou économe en énergie »
 - Où : Réglages (par appareil) ; toute l'interface par les variables de `theme/tokens.css` ; cartes, graphes, photos, image de partage.
 - Aujourd'hui : un seul thème clair ; aucune variable sombre, pas de `prefers-color-scheme`.
 - Voulu : un thème sombre, et une option économe.
-- Questions : forme ? → réponse (27/10) : trois états Clair · Sombre · Auto (suit le téléphone), par appareil, retenus, plus une option « Économe » d'aspect (noir pur, moins d'effets) ; le GPS et l'écran pendant l'enregistrement ne sont pas touchés.
+- Questions : forme ? → réponse (27/10) : trois états Clair · Sombre · Auto (suit le téléphone), par appareil, retenus, plus une option « Économe » d'aspect (noir pur, moins d'effets) ; le GPS et l'écran pendant l'enregistrement ne sont pas touchés. Maquette (28/10, https://claude.ai/artifact/99u9R7hpNdxJmKphtnbqkN) tranchée : familles éclaircies d'un cran en sombre, texte blanc gardé ; carte laissée claire, sans filtre ; réglage de départ Auto ; en économe, vignettes des sessions sur fond noir comme les cartes. Palette proposée dans la maquette (fond #12161b, cartes #1c2229 ; économe : fond #000000, cartes #0d0f12).
 
 ### 12. Voile à foil : temps en vol, manœuvres comptées seulement en vol, virements et empannages mal classés · priorité 5 (proposée) · bogue
 - Noté le : 26/10 14:43, 14:44 et 17:41 (WhatsApp) · reçu le : 26/10 · état : en lot 10 (lot D du 26/10), bloqué : le GPX du 26/10 doit être copié hors du dépôt (`D:\memoire Tracker\essais\`)
@@ -145,6 +145,15 @@ Quand l'utilisateur donne des notes en vrac :
 - Aujourd'hui : un seul service Bluetooth lu, la FC ; cadence à pied par les capteurs du téléphone.
 - Voulu : lire d'autres capteurs, à faire si l'utilisateur en a un.
 - Questions : avez-vous un capteur (capteur de cadence ou de puissance vélo) ? Sinon la fiche dort.
+
+### 18. Matériel enregistré à l'avance, choisi en fin de session, statistiques par matériel · priorité 3 (proposée)
+- Reçu le : 27/10 · état : prête
+- Tel que noté : « créer une option qui permet de faire des pré-enregistrements de son matériel, ce qui permet facilement de les ajouter en fin de session, notamment à la voile, mais c'est pas valable que là, de façon également à avoir des stats en fonction de notre matériel. doit être une option à activer dans les paramètres de l'activité. De façon à ce qu'on puisse le faire si on a envie que pour certains sports. »
+- Où : Réglages › activité (nouvelle option, et la liste du matériel) ; analyses › onglet « matos et conditions » (voile) ou « matériel et notes » (ailleurs), `SessionNotesPanel` ; Statistiques.
+- Aujourd'hui : le matériel est du texte libre saisi à chaque session (`SessionNotesPanel`, champ `<input type="text">` sans suggestion) : en voile foil, mât, aile ; ailleurs deux champs `gear1`, `gear2` dont seuls les intitulés se règlent par activité (`gearLabels`, `hooks/useSportSettings.ts`). Rien n'est rangé par matériel dans Statistiques. Le matériel n'est jamais repris d'une autre session (DECISIONS §8).
+- Voulu : une option par activité, dans Réglages, désactivée par défaut. Activée, un bouton ouvre le menu du matériel de l'activité : on y crée des groupes (en wing : « Voile », « Aile avant », « Mât »… ; en planche, d'autres), puis dans chaque groupe des pièces. En fin de session, l'onglet « matos et conditions » (« matériel et notes » hors voile) montre un choix par groupe parmi les pièces existantes ; on peut y ajouter une pièce sur le moment et l'enregistrer dans la liste ou non. Une session neuve part vide. Statistiques : un filtre par matériel.
+- Pourquoi : saisir le matériel en fin de session sans le retaper, et comparer ses performances selon le matériel.
+- Questions : choix ? → réponse (27/10) : groupes de matériel créés par l'utilisateur dans un menu de Réglages, pièces dans chaque groupe, choix par groupe en fin de session, ajout sur le moment enregistré ou non (pas d'ensembles tout prêts). Pré-choix ? → réponse (27/10) : vide, on choisit (DECISIONS §8 inchangé). Statistiques ? → réponse (27/10) : un filtre par matériel dans la page Statistiques, à côté de famille et activité. Partage entre activités ? → réponse (27/10) : non, une liste par activité. Tranché par Claude (27/10) : option active, les groupes remplacent les champs fixes de l'onglet (foil, mât, aile en voile ; `gear1`, `gear2` ailleurs), option coupée, retour aux champs fixes ; le texte déjà saisi d'une ancienne session reste montré tel quel ; la pièce choisie s'écrit dans la fiche de la session (`library/record.ts`) par son identifiant, son nom et son groupe, pour que le filtre de Statistiques la retrouve renommée (par l'identifiant) ou retirée de la liste (par le nom).
 
 ## Archives
 
