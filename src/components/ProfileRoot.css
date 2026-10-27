@@ -73,7 +73,7 @@
   border-radius: var(--radius-m);
   background: var(--surface);
   border: 1px solid var(--line);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 16%, transparent);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow-color) 16%, transparent);
   font-size: var(--text-s);
   line-height: 1.35;
   color: var(--ink);

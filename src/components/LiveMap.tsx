@@ -206,10 +206,10 @@ function LiveMap({ segments, position, color, family, height, guide, guideDone, 
         <FollowPosition position={position} following={following} onUserMove={() => setFollowing(false)} />
       </MapContainer>
       {overlay && (
-        <div style={{ position: 'absolute', right: 'var(--space-3)', top: 'var(--space-3)', zIndex: 1000 }}>{overlay}</div>
+        <div className="theme-light" style={{ position: 'absolute', right: 'var(--space-3)', top: 'var(--space-3)', zIndex: 1000 }}>{overlay}</div>
       )}
       {!following && (
-        <Button variant="secondary" onClick={() => setFollowing(true)}
+        <Button variant="secondary" className="theme-light" onClick={() => setFollowing(true)}
           style={{ position: 'absolute', right: 'var(--space-3)', bottom: 'var(--space-3)', zIndex: 1000 }}>
           Recentrer
         </Button>

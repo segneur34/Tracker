@@ -3,7 +3,7 @@ import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, Respo
 import { formatMinSec } from '../core/units';
 import { HEART_RATE_COLOR } from './heartRateColors';
 
-const MARK_COLOR = '#37474f';
+const MARK_COLOR = 'var(--chart-mark)';
 /** Écart entre deux repères de l'axe du temps, en secondes. */
 const TICK_S = 30;
 
@@ -34,8 +34,8 @@ function RestingHrChart({ series, durationS, lowest = null, height = 220 }: Prop
     <figure className="rest-chart" aria-label="FC pendant le test, en battements par minute">
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={rows} margin={{ top: 22, right: 12, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#ddd" vertical={false} />
-          <XAxis dataKey="t" type="number" domain={[0, durationS]} ticks={ticks} tickFormatter={formatMinSec} tick={{ fill: '#555', fontSize: 11 }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+          <XAxis dataKey="t" type="number" domain={[0, durationS]} ticks={ticks} tickFormatter={formatMinSec} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
           <YAxis domain={[lo, hi]} ticks={yTicks} allowDecimals={false} width={40} tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }}
             label={{ value: 'bpm', angle: -90, position: 'insideLeft', fill: HEART_RATE_COLOR, fontSize: 11 }} />
           <Tooltip labelFormatter={(v) => formatMinSec(Math.floor(Number(v)))} formatter={(v) => [`${v} bpm`, 'FC']} />

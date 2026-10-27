@@ -122,7 +122,8 @@ function AnalysisMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seule la rotation compte, pas l'identité de setExpanded
   }, [landscape]);
   const legendControl = legend && <MapCornerControl>{legend}</MapCornerControl>;
-  const tools = overlay && <div className="an-map-tools">{overlay}</div>;
+  // Outils posés sur la carte : aux couleurs de la carte, qui reste claire en thème sombre (`tokens.css`).
+  const tools = overlay && <div className="an-map-tools theme-light">{overlay}</div>;
   const focusControl = <MapFocusControl focus={focus} />;
 
   return (
@@ -151,7 +152,7 @@ function AnalysisMap({
 
       {expanded && (
         <div className={companion ? 'an-map-overlay an-map-overlay--charts' : 'an-map-overlay'} onClick={() => setExpanded(false)}>
-          <button type="button" className="an-map-overlay__close" onClick={() => setExpanded(false)} aria-label="Fermer la carte">×</button>
+          <button type="button" className="an-map-overlay__close theme-light" onClick={() => setExpanded(false)} aria-label="Fermer la carte">×</button>
           <div className="an-map-overlay__map an-map-corner" onClick={(e) => e.stopPropagation()} style={{ position: 'relative' }}>
             <MapContainer key={`expanded-${sessionKey ?? 'empty'}`} {...initialView(focus?.bounds ?? bounds)} style={{ height: '100%', width: '100%' }}>
               <MapAutoResize />

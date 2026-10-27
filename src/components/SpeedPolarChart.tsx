@@ -19,9 +19,9 @@ function SpeedPolarChart({ data, unitSymbol, compact = false }: { data: PolarBin
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart cx="50%" cy="50%" outerRadius={compact ? '72%' : '80%'} data={data}>
-            <PolarGrid />
-            <PolarAngleAxis dataKey="angle" tick={{ fill: '#333', fontSize }} />
-            <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={{ fill: '#000', fontSize, fontWeight: 'bold' }} />
+            <PolarGrid stroke="var(--chart-grid)" />
+            <PolarAngleAxis dataKey="angle" tick={{ fill: 'var(--ink-2)', fontSize }} />
+            <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={{ fill: 'var(--ink)', fontSize, fontWeight: 'bold' }} />
             <Radar name="Vitesse Max" dataKey="vitesse" stroke="#e64a19" fill="#e64a19" fillOpacity={0.4} isAnimationActive={!compact} />
             <Tooltip formatter={(value: unknown): [string, string] => [`${value} ${unitSymbol}`, 'Vmax']} />
           </RadarChart>

@@ -78,7 +78,7 @@ const SHOWN_COLOR = '#7b1fa2';
 /** Vitesse : le bleu des autres graphes. */
 const SPEED_COLOR = '#1e88e5';
 const TREND_COLOR = '#757575';
-const MEAN_COLOR = '#263238';
+const MEAN_COLOR = 'var(--ink)';
 /**
  * Répétitions d'une séance, de la première à la dernière : vert, orange puis
  * rouge, les couleurs des podiums, pour voir la progression.
@@ -167,10 +167,10 @@ function IntervalProfileChart({ data, spanS, launchS, reps, speedAxis, formatMs,
         <ResponsiveContainer>
           <ComposedChart data={data} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
             <ChartZoomProbe />
-            <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
             <XAxis dataKey="t" type="number" allowDataOverflow domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : [0, spanS]}
               ticks={zoom.view ? niceTicks(zoom.view) : undefined}
-              tickFormatter={(v: number) => formatIntervalClock(v)} tick={{ fill: '#555', fontSize: 11 }} />
+              tickFormatter={(v: number) => formatIntervalClock(v)} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
             {speedAxis}
             <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
             {reps.map((r, i) => (
@@ -491,20 +491,20 @@ function IntervalAnalysis({
               <div style={{ width: '100%', height: `${EVOLUTION_HEIGHT_PX}px` }}>
                 <ResponsiveContainer>
                   <ComposedChart data={data} onClick={pick} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} style={{ cursor: 'pointer' }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                     <XAxis dataKey="rep" type="number" domain={[first - 0.5, last + 0.5]}
                       ticks={repTicks(first, last)}
-                      tickFormatter={(v: number) => `${v}`} tick={{ fill: '#555', fontSize: 11 }} />
+                      tickFormatter={(v: number) => `${v}`} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
                     {speedAxis()}
                     <Tooltip formatter={speedFormatter} labelFormatter={(l) => `Répétition ${l}`} contentStyle={chartTooltipStyle} />
                     <Line type="linear" name="Moyenne" dataKey="mean" stroke={TREND_COLOR} strokeWidth={1} dot={false} activeDot={false} isAnimationActive={false} />
                     {trend && <Line type="linear" name="Tendance" dataKey="trend" stroke={TREND_COLOR} strokeWidth={1.5} strokeDasharray="5 4" dot={false} activeDot={false} isAnimationActive={false} />}
                     <Line type="linear" name={inverse ? 'Allure' : 'Vitesse'} dataKey="speed" stroke={SPEED_COLOR} strokeWidth={2} isAnimationActive={false}
                       dot={({ cx, cy, index }) => (
-                        <circle key={index} cx={cx} cy={cy} r={4} fill={data[index]?.color ?? SPEED_COLOR} stroke="#fff" strokeWidth={1} />
+                        <circle key={index} cx={cx} cy={cy} r={4} fill={data[index]?.color ?? SPEED_COLOR} stroke="var(--surface)" strokeWidth={1} />
                       )}
                       activeDot={{ r: 6 }} />
-                    <Line type="linear" name="Sur la carte" dataKey="shown" stroke="none" dot={{ r: 7, fill: SHOWN_COLOR, stroke: '#fff', strokeWidth: 2 }} activeDot={false} tooltipType="none" isAnimationActive={false} />
+                    <Line type="linear" name="Sur la carte" dataKey="shown" stroke="none" dot={{ r: 7, fill: SHOWN_COLOR, stroke: 'var(--surface)', strokeWidth: 2 }} activeDot={false} tooltipType="none" isAnimationActive={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

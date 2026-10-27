@@ -8,6 +8,7 @@ import { IconChevronRight } from './icons';
 import { libraryPath, useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { effectiveDistanceUnit, useVisibility } from '../hooks/useSportSettings';
+import { useThemedShade } from '../hooks/useTheme';
 import { useVisibleStatSessions } from '../hooks/useVisibleStatSessions';
 import { activityBarUnit, buildActivityChart, type ChartRange, type ChartSession } from '../library/activityChart';
 import './ActivityChart.css';
@@ -49,6 +50,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
   const openSession = useOpenSession();
   const navigate = useNavigate();
   const { activities } = useVisibility();
+  const shown = useThemedShade();
   // Barre touchée ; la page remonte le graphe à chaque période (`key`), ce qui la referme.
   const [picked, setPicked] = useState<number | null>(null);
   // Totaux par activité : repliés ou dépliés d'un seul geste, choix gardé sur l'appareil.
@@ -117,7 +119,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
                 return (
                   <li key={s.file}>
                     <button type="button" onClick={() => openSession(s.file, sportFamily(activity.base))}>
-                      <span className="actchart__dot" style={{ background: activity.color }} />
+                      <span className="actchart__dot" style={{ background: shown(activity.color) }} />
                       <span className="actchart__name">{activity.name}</span>
                       <span className="actchart__meta num">
                         {weekly && `${new Date(s.startMs).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })} · `}
@@ -149,7 +151,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
             return (
               <li key={t.activityId}>
                 <button type="button" onClick={() => navigate(libraryPath(sportFamily(activity.base), activity.id))}>
-                  <span className="actchart__swatch" style={{ background: activity.color }} />
+                  <span className="actchart__swatch" style={{ background: shown(activity.color) }} />
                   <span className="actchart__name">{activity.name}</span>
                   <span className="actchart__meta num">
                     {plural(t.sessions, 'session')} · {formatDuration(t.durationS * 1000)} · {formatDistance(t.distanceM, activity)}

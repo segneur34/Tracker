@@ -7,6 +7,7 @@ import { useGoOnRoute } from '../hooks/useGoOnRoute';
 import type { SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { effectiveDistanceUnit, effectiveDurationSettings } from '../hooks/useSportSettings';
+import { useThemedShade } from '../hooks/useTheme';
 import { routeActivity, routeDistanceM, routeDurationS } from '../planning/routeList';
 import ActivityIcon from './ActivityIcon';
 import Button from './ui/Button';
@@ -41,6 +42,7 @@ const routePath = (saved: SavedRoute): string => `/itineraires?itineraire=${enco
 function RouteList({ routes, activities, onOpen, currentBase = null, actions, go: withGo = true }: RouteListProps) {
   const distances = useMemo(() => new Map(routes.map((s) => [s.base, routeDistanceM(s.record)])), [routes]);
   const riderKg = useRunnerProfile().profile.weightKg;
+  const shown = useThemedShade();
   const durations = useMemo(() => new Map(routes.map((s) => {
     const activity = routeActivity(s, activities);
     const settings = activity ? effectiveDurationSettings(activity, riderKg) : null;
@@ -58,7 +60,7 @@ function RouteList({ routes, activities, onOpen, currentBase = null, actions, go
             <strong>{saved.record.name}</strong>
             <span className="route-list__meta">
               {activity
-                ? <ActivityIcon activity={activity} size={14} className="route-list__icon" style={{ color: activity.color }} />
+                ? <ActivityIcon activity={activity} size={14} className="route-list__icon" style={{ color: shown(activity.color) }} />
                 : <span className="route-list__dot" style={{ background: 'var(--faint)' }} />}
               <span>{activity?.name ?? 'Sans activité'}</span>
               <span className="num">

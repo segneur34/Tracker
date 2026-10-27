@@ -65,12 +65,12 @@ function ElevationProfileMini({
         <ResponsiveContainer>
           <AreaChart data={rows} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 4, right: 6, left: 0, bottom: 0 }}>
             <ChartZoomProbe />
-            {grid && <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />}
+            {grid && <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />}
             {gradeGradientDefs(gradientId, stops)}
             <XAxis dataKey="dist" type="number" allowDataOverflow
               domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
               ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-              tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${distanceSymbol}`} tick={{ fill: '#555', fontSize: 11 }} />
+              tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${distanceSymbol}`} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
             <YAxis domain={['auto', 'auto']} width={38} tickFormatter={(v) => `${v}`} tick={{ fill: ALTITUDE_COLOR, fontSize: 11 }} />
             <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
             <Area type="monotone" dataKey="altitude" stroke={`url(#${gradientId})`} strokeWidth={2} fill={`url(#${gradientId})`} fillOpacity={0.35}

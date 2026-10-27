@@ -121,6 +121,11 @@
   z-index: 0;
 }
 
+/* Économe : la vignette, sans plan, sur le fond des cartes de la page. */
+:root[data-eco] .lib-row__preview {
+  background: var(--surface);
+}
+
 .lib-row__preview-status {
   position: absolute;
   inset: 0;
@@ -172,7 +177,7 @@
 }
 
 .lib-banner__more .ui-more__button {
-  background: rgb(255 255 255 / 0.85);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
   color: var(--ink);
 }
 

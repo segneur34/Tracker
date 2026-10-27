@@ -16,6 +16,7 @@ import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
 import { openLibrary, settingsUpgraded, startLibraryUi } from './hooks/useSessionLibrary';
 import { startBeepSound, upgradeStoredActivities, upgradeStoredPresets } from './hooks/useSportSettings';
+import { startTheme } from './hooks/useTheme';
 import { installBackButton } from './platform/backButton';
 import { initStorage } from './platform/storage';
 
@@ -25,11 +26,18 @@ import { initStorage } from './platform/storage';
  */
 const LIBRARY_OPEN_WAIT_MS = 1500;
 
+// Thème posé tout de suite, sans attendre le stockage : dans le navigateur, le réglage est déjà lisible ; sur le
+// téléphone, « Auto » (le défaut) suit déjà le système. Reposé une fois le stockage natif chargé.
+startTheme();
+
 // Le stockage natif doit être en mémoire avant le premier rendu : les hooks
 // le lisent pendant le rendu (`platform/storage.ts`). La mémoire aussi, si
 // possible : les réglages repris de son dossier `reglages/` sont alors en place.
 void initStorage()
-  .then(() => Promise.race([openLibrary(), new Promise((resolve) => setTimeout(resolve, LIBRARY_OPEN_WAIT_MS))]))
+  .then(() => {
+    startTheme();
+    return Promise.race([openLibrary(), new Promise((resolve) => setTimeout(resolve, LIBRARY_OPEN_WAIT_MS))]);
+  })
   .then(() => {
     // Liste d'activités et pré-réglages d'une version d'avant mis à jour, une fois les réglages du dossier repris ;
     // le fichier de l'appareil suit. Les deux mises à jour se font, d'où les deux appels avant le test.

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { buildRootModel, layoutKey, rootVisibility, ROOT_STYLE, ROOTLET_MINUTES, MAX_ROOTLETS, type Box, type RootLayout, type RootModel } from '../core/rootPath';
 import { useStoredRecord, readStoredRecord } from '../hooks/useStoredRecord';
+import { useAppliedTheme } from '../hooks/useTheme';
 import { pushBackLayer } from '../platform/backButton';
 import { levelText, type RootGrowth } from '../library/rootGrowth';
 import { drawRoot, readRootColors, type RootColors, type RootFrame } from './drawRoot';
@@ -244,6 +245,15 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
     modelRef.current = { key, model, width, height, dpr };
     paint();
   }, [cardSelectors, paint]);
+
+  // Thème changé (clair, sombre, économe) : les couleurs `--root-*` relues, la racine redessinée telle quelle.
+  const theme = useAppliedTheme();
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !colorsRef.current) return;
+    colorsRef.current = readRootColors(canvas);
+    paint();
+  }, [theme, paint]);
 
   useLayoutEffect(() => {
     const page = canvasRef.current?.parentElement;

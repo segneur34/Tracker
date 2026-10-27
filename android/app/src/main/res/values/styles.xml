@@ -9,9 +9,11 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
-    <!-- Thème clair imposé, même en mode sombre : l'interface web n'a qu'une DA claire,
-         et le fond de la fenêtre, visible derrière les barres système, reprend son fond. -->
-    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
+    <!-- Thème jour et nuit (lot 12) : la WebView ne dit « sombre » à prefers-color-scheme que si le
+         thème de l'activité l'est, d'où DayNight pour le réglage « Auto » de l'application. Le fond de
+         la fenêtre, visible au démarrage, suit le réglage du téléphone (values-night). L'assombrissement
+         automatique des pages reste coupé (cible 33 et plus) : l'interface pose ses propres couleurs. -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>

@@ -53,6 +53,32 @@ export const FAMILY_SHADES: Record<SportFamily, readonly string[]> = {
   surf: ['#5b6670', '#8292a6', '#847c6e', '#223246', '#2e2610', '#0a1a2e'],
 };
 
+/**
+ * Les mêmes nuances, au même rang, en thème sombre (lot 12, décision du
+ * 28/10) : la première est la couleur de famille sombre de `theme/tokens.css`,
+ * éclaircie d'un cran, texte blanc gardé (contraste d'au moins 4,5) ; une
+ * nuance lisible sur le fond sombre (contraste d'au moins 3 sur `--surface`)
+ * reste celle du clair, les autres sont éclaircies, teinte gardée, et restent
+ * distinctes (`palette.test.ts`). La fiche d'une activité garde sa couleur
+ * claire : seul l'affichage passe par `shadeForTheme`.
+ */
+export const FAMILY_SHADES_DARK: Record<SportFamily, readonly string[]> = {
+  voile: ['#2f6fd6', '#3c7cb7', '#5b87f2', '#7c98ff', '#86afff', '#0c92ce'],
+  course: ['#d93636', '#f66b75', '#f0504a', '#eb4886', '#ad4d53', '#d6336c'],
+  velo: ['#34823c', '#67ac6c', '#0a9469', '#6f9a3a', '#6dba98', '#2e9d2a'],
+  fractionne: ['#c25700', '#c07243', '#dc7810', '#9f6c00', '#c18c64', '#b8860b'],
+  surf: ['#627386', '#8292a6', '#847c6e', '#92a5be', '#746b52', '#a4b9d4'],
+};
+
+/** Nuance sombre de chaque nuance claire. */
+const DARK_SHADE = new Map(
+  SPORT_FAMILIES.flatMap((family) => FAMILY_SHADES[family].map((shade, i) => [shade, FAMILY_SHADES_DARK[family][i]] as const))
+);
+
+/** Couleur d'une activité à l'écran : en sombre, la nuance sombre de même rang ; une couleur hors palette reste telle quelle. */
+export const shadeForTheme = (color: string, dark: boolean): string =>
+  dark ? DARK_SHADE.get(color.toLowerCase()) ?? color : color;
+
 /** Couleur de chaque calcul, pour ses activités de base : une nuance de sa famille. */
 export const BASE_COLOR: Record<SportType, string> = {
   wingfoil: FAMILY_SHADES.voile[0],

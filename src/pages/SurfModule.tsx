@@ -381,7 +381,7 @@ function SurfModule() {
       domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
       ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
       tickFormatter={(v: number) => (track.length > 0 ? formatTimeOfDay(track[0].timeMs + v * 60000).slice(0, 5) : '')}
-      tick={{ fill: '#555', fontSize: 11 }} />
+      tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
   );
   const onChartHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, chartData);
@@ -423,7 +423,7 @@ function SurfModule() {
       <ResponsiveContainer>
         <ComposedChart data={chartData} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
           <ChartZoomProbe />
-          <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
           {timeAxis}
           {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark)}
           <YAxis domain={[0, 'auto']} tickFormatter={(v) => formatSpeedValue(v, speedUnit)} width={46}

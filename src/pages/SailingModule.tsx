@@ -131,7 +131,7 @@ const maneuverDot = (props: DotItemDotProps): ReactNode => {
   // Recharts ne type pas la ligne derrière le point : c'est un `WindGraphPoint`.
   const point: WindGraphPoint | undefined = props.payload;
   if (!point?.isManeuver) return null;
-  return <circle cx={props.cx} cy={props.cy} r={3} fill={WIND_COLOR} stroke="#fff" strokeWidth={1} />;
+  return <circle cx={props.cx} cy={props.cy} r={3} fill={WIND_COLOR} stroke="var(--surface)" strokeWidth={1} />;
 };
 
 const createArrowIcon = (bearing: number) => {
@@ -499,7 +499,7 @@ function SailingModule() {
       domain={chartZoom.shown ? [chartZoom.shown.min, chartZoom.shown.max] : ['dataMin', 'dataMax']}
       ticks={chartZoom.shown ? niceTicks(chartZoom.shown) : undefined}
       tickFormatter={(v: number) => (trackData.length > 0 ? formatTimeOfDay(trackData[0].timeMs + v * 60000).slice(0, 5) : '')}
-      tick={{ fill: '#555', fontSize: 11 }} />
+      tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
   );
   /** Traits des repères sur les graphes, en minutes depuis le premier point. */
   const markLines = markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark);
@@ -548,10 +548,10 @@ function SailingModule() {
           onTouchMove={onChartHover(speedRows)}
           margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
           <ChartZoomProbe />
-          <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
           {timeAxis}
           {markLines}
-          <YAxis domain={[0, 'auto']} tick={{fill: '#111', fontSize: 11, fontWeight: 700}} />
+          <YAxis domain={[0, 'auto']} tick={{fill: 'var(--ink)', fontSize: 11, fontWeight: 700}} />
           <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
           <Line type="monotone" dataKey="vitesse" stroke="#1976d2" dot={false} strokeWidth={2} />
         </LineChart>
@@ -567,10 +567,10 @@ function SailingModule() {
           onTouchMove={onChartHover(windRows)}
           margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
           <ChartZoomProbe />
-          <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
           {timeAxis}
           {markLines}
-          <YAxis domain={['dataMin - 15', 'dataMax + 15']} tickFormatter={(val: number) => `${normalizeAngle(Math.round(val))}°`} tick={{fill: '#111', fontSize: 11, fontWeight: 700}} />
+          <YAxis domain={['dataMin - 15', 'dataMax + 15']} tickFormatter={(val: number) => `${normalizeAngle(Math.round(val))}°`} tick={{fill: 'var(--ink)', fontSize: 11, fontWeight: 700}} />
           <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
           <Line type="monotone" dataKey="angle" stroke={WIND_COLOR} strokeWidth={2} dot={maneuverDot} activeDot={{ r: 6 }} connectNulls={false} />
         </LineChart>
@@ -799,7 +799,7 @@ function SailingModule() {
 
       <button
         onClick={() => setShowManeuverDetails(!showManeuverDetails)}
-        style={{ padding: '4px 10px', cursor: 'pointer', backgroundColor: showManeuverDetails ? 'var(--voile)' : 'var(--surface-sunken)', color: showManeuverDetails ? '#fff' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)' }}>
+        style={{ padding: '4px 10px', cursor: 'pointer', backgroundColor: showManeuverDetails ? 'var(--voile)' : 'var(--surface-sunken)', color: showManeuverDetails ? 'var(--on-accent)' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)' }}>
         {showManeuverDetails ? 'Replier les détails ▲' : 'Détails des manœuvres ▼'}
       </button>
 

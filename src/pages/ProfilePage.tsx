@@ -17,6 +17,7 @@ import { useProfileRoot } from '../hooks/useProfileRoot';
 import { runnerAvatar, runnerName, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { useStoredRecord } from '../hooks/useStoredRecord';
+import { useThemedShade } from '../hooks/useTheme';
 import { useNow } from '../hooks/useNow';
 import { useVisibility } from '../hooks/useSportSettings';
 import { useVisibleStatSessions } from '../hooks/useVisibleStatSessions';
@@ -134,11 +135,12 @@ function ProfilePage() {
   const totals = useMemo(() => statsTotals(inPeriod), [inPeriod]);
   const activityOrder = useMemo(() => activities.map((a) => a.id), [activities]);
 
+  const shown = useThemedShade();
   const { slices, others } = useMemo((): { slices: Slice[]; others: Slice[] } => {
     const shares = activityShares(inPeriod, activityOrder).filter((s) => s.totals.durationS > 0);
     const ofShare = (s: (typeof shares)[number]): Slice => {
       const a = activityById.get(s.activityId) ?? null;
-      return { key: s.activityId, label: a?.name ?? s.activityId, color: a?.color ?? OTHERS_COLOR, durationS: s.totals.durationS, share: s.share, activity: a };
+      return { key: s.activityId, label: a?.name ?? s.activityId, color: a ? shown(a.color) : OTHERS_COLOR, durationS: s.totals.durationS, share: s.share, activity: a };
     };
     if (shares.length <= MAX_SLICES) return { slices: shares.map(ofShare), others: [] };
     const rest = shares.slice(MAX_SLICES - 1);
@@ -152,7 +154,7 @@ function ProfilePage() {
       ],
       others: rest.map(ofShare),
     };
-  }, [inPeriod, activityOrder, activityById]);
+  }, [inPeriod, activityOrder, activityById, shown]);
   const favoriteId = useMemo(() => favoriteActivity(inPeriod, activityOrder), [inPeriod, activityOrder]);
   const favorite = favoriteId ? activityById.get(favoriteId) ?? null : null;
   // Photo par défaut : le sport préféré de toutes les sessions, qui ne change pas avec la période.

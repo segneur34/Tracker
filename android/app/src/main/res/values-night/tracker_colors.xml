@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fond de l'application en mode sombre du téléphone, repris de la variable bg du thème sombre
+         de src/theme/tokens.css. -->
+    <color name="tracker_background">#12161B</color>
+</resources>

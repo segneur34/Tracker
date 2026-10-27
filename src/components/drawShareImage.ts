@@ -1,6 +1,7 @@
 import { fitView, mapHeight, projectPoint, SHARE_IMAGE, statColumns, viewTiles, type ShareStat } from '../core/shareImage';
 import { MAP_BASES, type MapBase } from '../core/mapBase';
 import { tileKey, type TileCoord } from '../core/tiles';
+import { lightToken } from '../theme/lightToken';
 import { loadMapTile } from './mapTiles';
 import type { TrackSegment } from './TrackSegmentsLayer';
 
@@ -58,9 +59,8 @@ export const createTileImageLoader = (base: MapBase): TileImageLoader => {
   };
 };
 
-/** Valeur d'une variable du thème, pour peindre l'image aux couleurs de l'interface. */
-const token = (name: string, fallback: string): string =>
-  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+/** Valeur d'une variable du thème, pour peindre l'image aux couleurs de l'interface : toujours la palette claire, l'image restant claire en thème sombre. */
+const token = (name: string, fallback: string): string => lightToken(name, fallback);
 
 /** Police de l'interface (`--font`), chargée avant de dessiner : sans elle, le canevas prend celle du système. */
 const fontFamily = (): string => token('--font', 'system-ui, sans-serif');

@@ -175,3 +175,22 @@
     min-height: 40px;
   }
 }
+
+/* Économe : pas de photo, ni en tête ni sur les cartes de famille ; l'en-tête se réduit au logo et à l'accueil. */
+:root[data-eco] .home-header {
+  aspect-ratio: auto;
+  height: auto;
+  gap: var(--space-3);
+  /* La photo est posée en ligne (`Home.tsx`) : seul `!important` passe devant. */
+  background-image: none !important;
+  color: var(--ink);
+  text-shadow: none;
+}
+
+:root[data-eco] .home-family {
+  padding-right: var(--space-4);
+}
+
+:root[data-eco] .home-family__photo {
+  display: none;
+}

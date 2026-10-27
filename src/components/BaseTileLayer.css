@@ -34,7 +34,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-m);
   background: var(--surface);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--shadow-color) 25%, transparent);
 }
 
 .map-base-switch__choice {

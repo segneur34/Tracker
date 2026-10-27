@@ -106,7 +106,7 @@ export function CardioCurve({ track, smoothed, zoom, zones, thresholds, onHoverI
           <XAxis dataKey="minutes" type="number" allowDataOverflow
             domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
             ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-            tickFormatter={(v: number) => formatClockMinutes(v)} tick={{ fill: '#555', fontSize: 11 }} />
+            tickFormatter={(v: number) => formatClockMinutes(v)} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
         )} />
     </>
   );
@@ -252,9 +252,9 @@ export default function HeartRatePanel({
             <div style={{ width: '100%', height: '200px' }}>
               <ResponsiveContainer>
                 <ScatterChart margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                  <XAxis dataKey="speed" type="number" name="Vitesse" domain={['auto', 'auto']} tick={{ fill: '#555', fontSize: 11 }}
-                    label={{ value: SPEED_UNIT_LABEL[scatterUnit], position: 'insideBottomRight', offset: -2, fill: '#555', fontSize: 11 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                  <XAxis dataKey="speed" type="number" name="Vitesse" domain={['auto', 'auto']} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
+                    label={{ value: SPEED_UNIT_LABEL[scatterUnit], position: 'insideBottomRight', offset: -2, fill: 'var(--chart-axis)', fontSize: 11 }} />
                   <YAxis dataKey="bpm" type="number" name="FC" domain={['auto', 'auto']} width={46} tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }}
                     label={{ value: 'bpm', angle: -90, position: 'insideLeft', fill: HEART_RATE_COLOR, fontSize: 11 }} />
                   <Tooltip contentStyle={scatterTooltipStyle} formatter={(value, name) => [name === 'FC' ? `${value} bpm` : `${value} ${SPEED_UNIT_LABEL[scatterUnit]}`, name]} />

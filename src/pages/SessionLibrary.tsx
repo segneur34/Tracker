@@ -26,6 +26,7 @@ import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProf
 import { formatDistance, formatDuration, formatShortDuration, formatSpeed, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
+import { useAppliedTheme, useThemedShade } from '../hooks/useTheme';
 import { readSessionGpx, removeSession, updateSessionRecord, useLibraryFields } from '../hooks/useSessionLibrary';
 import {
   PLANNING_FAMILIES, effectiveDistanceUnit, effectiveSpeedUnit, useVisibility,
@@ -127,7 +128,9 @@ const PREVIEW_PRELOAD_MARGIN = '200px';
  * le GPX est relu quand la ligne approche de l'écran, une fois, puis la trace
  * est réduite à `PREVIEW_MAX_POINTS` points dessinés sur un canevas, pour que
  * toutes les vignettes visibles restent légères. Figée (ni glisser ni zoomer :
- * le doigt fait défiler la liste) ; un toucher ouvre l'analyse.
+ * le doigt fait défiler la liste) ; un toucher ouvre l'analyse. En économe
+ * (décision du 28/10), la trace seule, sur le fond noir des cartes de la page,
+ * sans le plan d'OSM.
  */
 function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
   session: LibrarySession;
@@ -138,6 +141,7 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
   onOpen: () => void;
 }) {
   const frame = useRef<HTMLDivElement>(null);
+  const { eco } = useAppliedTheme();
   const { file } = session;
   const sport = session.record.sport;
   const referenceOverrideMs = session.record.analysis?.referenceSpeedMs ?? null;
@@ -217,9 +221,10 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
           boxZoom={false}
           keyboard={false}
           zoomControl={false}
-          style={{ position: 'absolute', inset: 0 }}>
+          attributionControl={!eco}
+          style={{ position: 'absolute', inset: 0, ...(eco ? { background: 'transparent' } : {}) }}>
           <MapAutoResize />
-          <BaseTileLayer />
+          {!eco && <BaseTileLayer />}
           <TrackSegmentsLayer segments={segments} weight={3} />
         </MapContainer>
       ) : (
@@ -247,6 +252,7 @@ const SessionRow = memo(function SessionRow({
   onCancelDelete: () => void;
 }) {
   const openSession = useOpenSession();
+  const shown = useThemedShade();
   const { record } = session;
   const { startMs } = record.summary;
   const unclassified = record.sport === null;
@@ -284,7 +290,7 @@ const SessionRow = memo(function SessionRow({
           {record.name && <span className="lib-row__name">{record.name}</span>}
           <span className="lib-row__head">
             <span className={record.name ? 'lib-row__sport lib-row__sport--sub' : 'lib-row__sport'}>
-              {activity && <ActivityIcon activity={activity} className="lib-row__icon" style={{ color: activity.color }} />}
+              {activity && <ActivityIcon activity={activity} className="lib-row__icon" style={{ color: shown(activity.color) }} />}
               {activity ? activity.name : 'À classer'}
             </span>
             <span className="lib-row__date">{formatDate(startMs)} · {formatTime(startMs)}</span>

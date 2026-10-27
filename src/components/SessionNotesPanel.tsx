@@ -100,7 +100,7 @@ export default function SessionNotesPanel({ notes, setNotes, family, gearFields,
           {RATINGS.map((r) => (
             <button key={r.value} onClick={() => setNotes({ rating: notes.rating === r.value ? null : r.value })}
               title={r.label} aria-label={r.label}
-              style={{ fontSize: '26px', lineHeight: 1, padding: '6px', cursor: 'pointer', border: notes.rating === r.value ? `2px solid ${accent}` : '1px solid var(--line-strong)', borderRadius: '8px', backgroundColor: notes.rating === r.value ? accentSoft : '#fff', opacity: notes.rating === null || notes.rating === r.value ? 1 : 0.5 }}>
+              style={{ fontSize: '26px', lineHeight: 1, padding: '6px', cursor: 'pointer', border: notes.rating === r.value ? `2px solid ${accent}` : '1px solid var(--line-strong)', borderRadius: '8px', backgroundColor: notes.rating === r.value ? accentSoft : 'var(--surface)', opacity: notes.rating === null || notes.rating === r.value ? 1 : 0.5 }}>
               {r.emoji}
             </button>
           ))}

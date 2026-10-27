@@ -17,6 +17,8 @@ import {
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useTileCache } from '../hooks/useTileCache';
+import { useThemedShade, useThemeSettings } from '../hooks/useTheme';
+import { THEME_CHOICES } from '../theme/theme';
 import { RUNNER_NAME_MAX, runnerHeartRateZones, runnerHrSource, useRunnerProfile, type RunnerNumberField, type RunnerProfile } from '../hooks/useRunnerProfile';
 import { ROOT_GOAL } from '../library/rootGrowth';
 import { zoneLabel } from '../components/heartRateColors';
@@ -181,9 +183,10 @@ function ActivityPart({ label, open, onToggle, children }: { label: string; open
 const cardStyle = { ...CARD_STYLE, marginBottom: '15px' } as const;
 
 /** Blocs repliables de la page, tous fermés au départ ; l'état est mémorisé. */
-type SettingsBlock = 'memoire' | 'autorisations' | 'activites' | 'enregistrement' | 'capteurs' | 'cartes' | 'coureur';
+type SettingsBlock = 'memoire' | 'autorisations' | 'activites' | 'enregistrement' | 'capteurs' | 'affichage' | 'cartes' | 'coureur';
 const SETTINGS_BLOCK_DEFAULTS: Record<SettingsBlock, boolean> = {
-  memoire: false, autorisations: false, activites: false, enregistrement: false, capteurs: false, cartes: false, coureur: false,
+  memoire: false, autorisations: false, activites: false, enregistrement: false, capteurs: false, affichage: false, cartes: false,
+  coureur: false,
 };
 /** Plafonds proposés pour les cartes gardées, en Mo : une liste plutôt qu'un champ, qui effacerait des tuiles à chaque chiffre tapé. */
 const TILE_CAP_CHOICES_MB = [100, 250, 500, 1000, 2000, 5000];
@@ -340,6 +343,7 @@ function SettingsPage() {
     stopHoldMs, setStopHoldMs, beepSound, setBeepSound, hiddenFamilies, setActivityHidden, setFamilyHidden,
   } = useAllSportSettings();
   const { profile, setName, setNumber, setSex, setThresholds, age } = useRunnerProfile();
+  const shown = useThemedShade();
   const { open, toggle, closeAll: closeBlocks } = useOpenSections<SettingsBlock>('settings', SETTINGS_BLOCK_DEFAULTS);
   const { open: openActivity, toggle: toggleActivity, closeAll: closeActivities } = useOpenSections<string>('settings-activities', NO_ACTIVITY_OPEN);
   const { open: openPart, toggle: togglePart, closeAll: closeParts } = useOpenSections<ActivityPartKey>('settings-activity-parts', ACTIVITY_PART_DEFAULTS);
@@ -518,7 +522,7 @@ function SettingsPage() {
                             if (renamingThis) setRenaming(null);
                           }}>
                           <IconChevronRight size={14} className="settings-activity__chevron" style={{ transform: isOpen ? 'rotate(90deg)' : undefined }} />
-                          {!renamingThis && <ActivityIcon activity={activity} size={18} className="settings-activity__icon" style={{ color: activity.color }} />}
+                          {!renamingThis && <ActivityIcon activity={activity} size={18} className="settings-activity__icon" style={{ color: shown(activity.color) }} />}
                           {!renamingThis && <strong className="settings-activity__name">{activity.name}</strong>}
                           {!renamingThis && <span className="settings-sports__mark">{p.label}</span>}
                           {!isOpen && (
@@ -806,6 +810,12 @@ function SettingsPage() {
       </div>
 
       <div style={cardStyle}>
+        <BlockTitle label="Affichage" open={open.affichage} onToggle={() => toggle('affichage')} helpKey="affichage"
+          help="Propre à cet appareil : il n'est pas repris par un autre téléphone ni par le fichier de réglages." />
+        {open.affichage && <div className="settings-block__body"><DisplaySettings /></div>}
+      </div>
+
+      <div style={cardStyle}>
         <BlockTitle label="Cartes hors ligne" open={open.cartes} onToggle={() => toggle('cartes')} helpKey="cartes"
           help="Chaque morceau de carte vu avec le réseau reste visible sans réseau. Pour préparer une sortie, parcourez la zone en ligne, de loin puis de près." />
         {open.cartes && <div className="settings-block__body"><OfflineMapsSettings /></div>}
@@ -853,6 +863,30 @@ function SettingsPage() {
       </div>
     </div>
     </SettingsScope>
+  );
+}
+
+/**
+ * Thème de cet appareil (`theme/theme.ts`) : Clair, Sombre ou Auto, qui suit le téléphone, et la case Économe,
+ * qui impose le sombre (le bouton glissant reste là, sans effet, et la ligne sous la case le dit).
+ */
+function DisplaySettings() {
+  const [theme, setTheme] = useThemeSettings();
+  return (
+    <>
+      <SettingRow label="Thème" helpKey="affichage:theme"
+        help="Auto suit le réglage clair ou sombre du téléphone, ou de l'ordinateur, et change avec lui. La carte reste claire.">
+        <SegmentedControl label="Thème" items={[...THEME_CHOICES]} value={theme.choice} onChange={(choice) => setTheme({ choice })} />
+      </SettingRow>
+      <SettingRow label="Économe" helpKey="affichage:econome"
+        help="Noir pur et moins d'effets, pour l'écran et la batterie ; n'agit pas sur le GPS.">
+        <label className="settings-sports__pair">
+          <input type="checkbox" checked={theme.eco} onChange={(e) => setTheme({ eco: e.target.checked })} />
+          <span>Noir pur, moins d'effets</span>
+        </label>
+        {theme.eco && <p className="settings-display__note">Cochée, elle garde l'interface en sombre, quel que soit le thème choisi.</p>}
+      </SettingRow>
+    </>
   );
 }
 
@@ -1083,6 +1117,7 @@ function ActivityNameField({
   onDone: () => void;
 }) {
   const [draft, setDraft] = useState(activity.name);
+  const shown = useThemedShade();
   // Entrée et Échap ferment le champ eux-mêmes, sans attendre la perte du focus : la sortie qui suit ne refait rien.
   const closed = useRef(false);
   const close = (save: boolean) => {
@@ -1093,7 +1128,7 @@ function ActivityNameField({
   };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-      <ActivityIcon activity={activity} size={18} className="settings-activity__icon" style={{ color: activity.color }} />
+      <ActivityIcon activity={activity} size={18} className="settings-activity__icon" style={{ color: shown(activity.color) }} />
       <input value={draft} maxLength={40} aria-label="Nom de l'activité" className="ui-field ui-field--s"
         style={{ width: '120px', fontWeight: 600 }}
         autoFocus

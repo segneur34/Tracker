@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
 import { useVisibility } from '../hooks/useSportSettings';
+import { useThemedShade } from '../hooks/useTheme';
 import { pushBackLayer } from '../platform/backButton';
 import ActivityIcon from './ActivityIcon';
 import { FAMILY_ICON } from './familyIcons';
@@ -45,6 +46,7 @@ interface ActivitySheetProps {
 export function ActivitySheet({ activities, value, families = SPORT_FAMILIES, label, heading, onChoose, onClose }: ActivitySheetProps) {
   const selectedRef = useRef<HTMLButtonElement>(null);
   const { isShown } = useVisibility();
+  const shown = useThemedShade();
   const groups = families
     .map((family) => ({ family, items: activitiesOfFamily(activities, family).filter((a) => a.id === value || isShown(a)) }))
     .filter((g) => g.items.length > 0);
@@ -96,7 +98,7 @@ export function ActivitySheet({ activities, value, families = SPORT_FAMILIES, la
                     aria-selected={selected}
                     className="activity-select__option"
                     onClick={() => onChoose(a)}>
-                    <ActivityIcon activity={a} size={20} className="activity-select__icon" style={{ color: a.color }} />
+                    <ActivityIcon activity={a} size={20} className="activity-select__icon" style={{ color: shown(a.color) }} />
                     <span className="activity-select__option-name">{a.name}</span>
                     <span className="activity-select__radio" aria-hidden="true" />
                   </button>

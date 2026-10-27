@@ -863,7 +863,7 @@ function LandModule({ family }: { family: LandFamily }) {
     <XAxis dataKey="dist" type="number" allowDataOverflow
       domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
       ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-      tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${distanceSymbol}`} tick={{ fill: '#555', fontSize: 11 }} />
+      tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${distanceSymbol}`} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
   );
 
   /** Traits des repères sur les graphes, en abscisse de distance. */
@@ -891,7 +891,7 @@ function LandModule({ family }: { family: LandFamily }) {
       <ResponsiveContainer>
         <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
           <ChartZoomProbe />
-          <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
           {xAxis}
           {markLines('altitude')}
           {altitudeAxis('left')}
@@ -965,7 +965,7 @@ function LandModule({ family }: { family: LandFamily }) {
             <ResponsiveContainer>
               <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <ChartZoomProbe />
-                <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                 {xAxis}
                 {markLines('speed')}
                 {speedAxis}
@@ -996,7 +996,7 @@ function LandModule({ family }: { family: LandFamily }) {
             <ResponsiveContainer>
               <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <ChartZoomProbe />
-                <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                 {xAxis}
                 {markLines('cadence')}
                 <YAxis yAxisId="cadence" domain={['dataMin - 5', 'dataMax + 5']} allowDecimals={false} width={46}
@@ -1032,7 +1032,7 @@ function LandModule({ family }: { family: LandFamily }) {
           <ResponsiveContainer>
             <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
               <ChartZoomProbe />
-              <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
               {xAxis}
               {markLines(overlayMarkAxis)}
               {graphShown('vitesse') && speedAxis}
@@ -1080,11 +1080,11 @@ function LandModule({ family }: { family: LandFamily }) {
         <ResponsiveContainer>
           <ComposedChart data={energyChartData} onMouseMove={onEnergyChartHover} onTouchMove={onEnergyChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
             <ChartZoomProbe />
-            <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
             <XAxis dataKey="minutes" type="number" allowDataOverflow
               domain={energyZoom.shown ? [energyZoom.shown.min, energyZoom.shown.max] : ['dataMin', 'dataMax']}
               ticks={energyZoom.shown ? niceTicks(energyZoom.shown) : undefined}
-              tickFormatter={formatClockMinutes} tick={{ fill: '#555', fontSize: 11 }} />
+              tickFormatter={formatClockMinutes} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
             <YAxis domain={[0, 'auto']} width={50} tick={{ fill: '#e64a19', fontSize: 11 }}
               label={{ value: energyMode === 'power' ? energy.powerUnit : energy.cumulativeUnit, angle: -90, position: 'insideLeft', fill: '#e64a19', fontSize: 11 }} />
             <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
@@ -1234,7 +1234,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 <GeneralStats stats={overviewStats} />
                 {profileRows.length > 1 && generalProfile('')}
                 {!stats.hasElevation && (
-                  <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
+                  <div style={{ color: 'var(--danger)', fontSize: 'var(--text-s)' }}>Le fichier ne porte pas d'altitude sur assez de points : pas de dénivelé ni de zones de pente.</div>
                 )}
                 <SessionMarksList view={marks} distanceUnit={distanceUnit} shownMs={shownMark} accent={page.accent}
                   onShow={(ms) => highlight.show('general', ms === null ? null : String(ms))} />
@@ -1286,7 +1286,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   <span style={{ flex: 1 }} />
                   {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setChartMode(mode)}
-                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)', backgroundColor: chartMode === mode ? page.accent : 'var(--surface-sunken)', color: chartMode === mode ? '#fff' : 'var(--ink)' }}>
+                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)', backgroundColor: chartMode === mode ? page.accent : 'var(--surface-sunken)', color: chartMode === mode ? 'var(--on-accent)' : 'var(--ink)' }}>
                       {mode === 'separate' ? 'Séparés' : 'Superposés'}
                     </button>
                   ))}
@@ -1354,7 +1354,7 @@ function LandModule({ family }: { family: LandFamily }) {
                   <span style={{ flex: 1 }} />
                   {energy.power.length > 0 && (['power', 'cumulative'] as EnergyChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setEnergyMode(mode)}
-                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)', backgroundColor: energyMode === mode ? page.accent : 'var(--surface-sunken)', color: energyMode === mode ? '#fff' : 'var(--ink)' }}>
+                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)', backgroundColor: energyMode === mode ? page.accent : 'var(--surface-sunken)', color: energyMode === mode ? 'var(--on-accent)' : 'var(--ink)' }}>
                       {mode === 'power' ? 'Puissance' : 'Cumulée'}
                     </button>
                   ))}
@@ -1380,7 +1380,7 @@ function LandModule({ family }: { family: LandFamily }) {
                       ))}
                     </div>
                     {!stats?.hasElevation && (
-                      <div style={{ color: '#b71c1c', fontSize: 'var(--text-s)', marginBottom: '6px' }}>{model.flatWarning}</div>
+                      <div style={{ color: 'var(--danger)', fontSize: 'var(--text-s)', marginBottom: '6px' }}>{model.flatWarning}</div>
                     )}
                   </>
                 )}

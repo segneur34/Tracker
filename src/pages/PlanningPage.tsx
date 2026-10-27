@@ -926,7 +926,7 @@ function PlanningPage() {
               )}
               {hovered && <HoverMarker position={[hovered.lat, hovered.lon]} />}
             </MapContainer>
-            <div className="plan-map-tools">
+            <div className="plan-map-tools theme-light">
               <Button size="s" onClick={() => void locate()} disabled={locating}>
                 {locating ? 'Recherche…' : 'Ma position'}
               </Button>
@@ -937,7 +937,7 @@ function PlanningPage() {
             </div>
 
             {selected !== null && route.waypoints[selected] && (
-              <div className="plan-overlay">
+              <div className="plan-overlay theme-light">
                 <strong>{markCourse ? 'Balise' : 'Point'} {pointLabel(selected)}</strong>
                 {selectedLeg && !markCourse && (
                   <div className="plan-overlay__field">
@@ -961,7 +961,7 @@ function PlanningPage() {
               </div>
             )}
             {candidate && (
-              <div className="plan-overlay">
+              <div className="plan-overlay theme-light">
                 <span className="plan-overlay__place"><strong>{candidate.label}</strong>{candidate.detail && ` · ${candidate.detail}`}</span>
                 <Button size="s" variant="primary" onClick={() => { planner.add(candidate, editMode); setCandidate(null); }}>
                   {markCourse ? 'Ajouter cette balise' : 'Ajouter ce point'}

@@ -46,7 +46,7 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
       <ResponsiveContainer>
         <ComposedChart data={data} syncId={syncId} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 5, right: thresholds ? 24 : 10, left: 0, bottom: 0 }}>
           <ChartZoomProbe />
-          <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
           {xAxis}
           <YAxis yAxisId="hr" domain={['dataMin - 5', 'dataMax + 5']} allowDecimals={false} width={46}
             tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }}
@@ -56,8 +56,8 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
               stroke="none" ifOverflow="hidden" />
           ))}
           {thresholds && ([['S1', thresholds.s1], ['S2', thresholds.s2]] as const).map(([name, bpm]) => (
-            <ReferenceLine key={name} yAxisId="hr" y={bpm} stroke="#000" strokeWidth={1.5} ifOverflow="hidden"
-              label={{ value: name, position: 'right', fill: '#000', fontSize: 10, fontWeight: 700 }} />
+            <ReferenceLine key={name} yAxisId="hr" y={bpm} stroke="var(--ink)" strokeWidth={1.5} ifOverflow="hidden"
+              label={{ value: name, position: 'right', fill: 'var(--ink)', fontSize: 10, fontWeight: 700 }} />
           ))}
           {children}
           <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />

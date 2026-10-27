@@ -6,6 +6,7 @@ import { useMapBase } from '../hooks/useMapBase';
 import { readRunnerProfile, runnerName } from '../hooks/useRunnerProfile';
 import { shareFile } from '../platform/share';
 import { jsonStore } from '../platform/storage';
+import { lightToken } from '../theme/lightToken';
 import { createTileImageLoader, drawShareImage } from './drawShareImage';
 import { IconShare } from './icons';
 import type { TrackSegment } from './TrackSegmentsLayer';
@@ -80,7 +81,8 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
 
   useEffect(() => {
     let cancelled = false;
-    const accent = getComputedStyle(document.documentElement).getPropertyValue(`--${family}`).trim() || '#1976d2';
+    // Couleur de la famille dans la palette claire : l'image reste claire en thème sombre.
+    const accent = lightToken(`--${family}`, '#1976d2');
     const [shown, map] = JSON.parse(drawKey) as [ShareStat[], boolean];
     drawShareImage({ title, subtitle, accent, segments, stats: shown, withMap: map, base, author }, tileImage)
       .then((blob) => {

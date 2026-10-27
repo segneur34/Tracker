@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_COLOR, FAMILY_SHADES, activityFamily, baseActivity } from './activities';
+import { BASE_COLOR, FAMILY_SHADES, FAMILY_SHADES_DARK, activityFamily, baseActivity, shadeForTheme } from './activities';
 import { SPORT_FAMILIES, SPORT_PROFILES } from './sportProfiles';
 import type { SportType } from './types';
 
@@ -14,10 +14,16 @@ const channel = (hex: string, i: number) => {
   return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 };
 const linear = (hex: string) => [0, 1, 2].map((i) => channel(hex, i));
-/** Contraste WCAG d'une couleur sur blanc. */
-const contrastOnWhite = (hex: string) => {
+const luminance = (hex: string) => {
   const [r, g, b] = linear(hex);
-  return 1.05 / (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.05);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+/** Contraste WCAG d'une couleur sur blanc. */
+const contrastOnWhite = (hex: string) => 1.05 / (luminance(hex) + 0.05);
+/** Contraste WCAG de deux couleurs. */
+const contrast = (a: string, b: string) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
 };
 /** Écart perçu, distance dans OKLab (× 100). */
 const oklab = (hex: string) => {
@@ -86,5 +92,58 @@ describe('nuances des familles', () => {
     for (const sport of Object.keys(SPORT_PROFILES) as SportType[]) {
       expect(FAMILY_SHADES[activityFamily(baseActivity(sport))]).toContain(BASE_COLOR[sport]);
     }
+  });
+});
+
+/** Bloc du thème sombre de `tokens.css`, et une variable qui y est posée. */
+const darkBlock = (css: string): string => {
+  const start = css.indexOf(":root[data-theme='dark']");
+  return css.slice(start, css.indexOf('}', start));
+};
+const tokenIn = (block: string, name: string): string | undefined =>
+  block.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6});`))?.[1].toLowerCase();
+
+describe('nuances des familles en sombre', () => {
+  it('six nuances par famille, en minuscules', () => {
+    for (const family of SPORT_FAMILIES) {
+      expect(FAMILY_SHADES_DARK[family]).toHaveLength(6);
+      for (const shade of FAMILY_SHADES_DARK[family]) expect(shade).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+
+  it('la couleur de famille du thème sombre est la première nuance sombre, et porte du texte blanc', async () => {
+    const dark = darkBlock(await readTokensCss());
+    for (const family of SPORT_FAMILIES) {
+      expect(tokenIn(dark, TOKEN[family]), family).toBe(FAMILY_SHADES_DARK[family][0]);
+      expect(contrastOnWhite(FAMILY_SHADES_DARK[family][0]), family).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('lisibles sur les cartes sombres (contraste de 3) ; une nuance déjà lisible reste celle du clair', async () => {
+    const surface = tokenIn(darkBlock(await readTokensCss()), '--surface')!;
+    for (const family of SPORT_FAMILIES) {
+      FAMILY_SHADES_DARK[family].forEach((shade, i) => {
+        expect(contrast(shade, surface), shade).toBeGreaterThanOrEqual(3);
+        const light = FAMILY_SHADES[family][i];
+        if (i > 0 && contrast(light, surface) >= 3) expect(shade, light).toBe(light);
+      });
+    }
+  });
+
+  it('distinctes dans une famille et d\'une famille à l\'autre', () => {
+    const all = SPORT_FAMILIES.flatMap((family) => FAMILY_SHADES_DARK[family].map((shade) => ({ family, shade })));
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) {
+        const floor = all[i].family === all[j].family ? 6 : 8;
+        expect(distance(all[i].shade, all[j].shade), `${all[i].shade} / ${all[j].shade}`).toBeGreaterThanOrEqual(floor);
+      }
+    }
+  });
+
+  it('shadeForTheme : la nuance de même rang en sombre, la couleur telle quelle en clair ou hors palette', () => {
+    expect(shadeForTheme(FAMILY_SHADES.surf[5], true)).toBe(FAMILY_SHADES_DARK.surf[5]);
+    expect(shadeForTheme(FAMILY_SHADES.voile[0].toUpperCase(), true)).toBe(FAMILY_SHADES_DARK.voile[0]);
+    expect(shadeForTheme(FAMILY_SHADES.surf[5], false)).toBe(FAMILY_SHADES.surf[5]);
+    expect(shadeForTheme('#123456', true)).toBe('#123456');
   });
 });

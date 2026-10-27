@@ -267,7 +267,7 @@ function BeepCurveEditor({
             {/* Cible large et invisible : un doigt n'a pas à viser un rond de 6 px. */}
             <circle cx={xOf(p.distanceM)} cy={yOf(p.intervalMs)} r={14} fill="transparent" />
             <circle cx={xOf(p.distanceM)} cy={yOf(p.intervalMs)} r={selected === i ? 7 : 5.5}
-              fill={selected === i ? CURVE_COLOR : '#ffffff'} stroke={i === 0 ? VALIDATION_COLOR : CURVE_COLOR} strokeWidth={2} />
+              fill={selected === i ? CURVE_COLOR : 'var(--surface)'} stroke={i === 0 ? VALIDATION_COLOR : CURVE_COLOR} strokeWidth={2} />
           </g>
         ))}
       </svg>

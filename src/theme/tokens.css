@@ -14,72 +14,6 @@
  */
 
 :root {
-  color-scheme: light;
-
-  /* Fonds et surfaces */
-  --bg: #eaeff3;
-  --surface: #ffffff;
-  --surface-sunken: #dfe5ea;
-  --surface-hover: #e6ebef;
-
-  /* Traits */
-  --line: #dbe1e6;
-  --line-soft: #e6ebef;
-  --line-strong: #cbd3da;
-
-  /* Encres */
-  --ink: #1b1f24;
-  --ink-2: #3d444d;
-  --muted: #5b6470;
-  --faint: #8a9099;
-  --on-accent: #ffffff;
-
-  /* Familles et actions */
-  --voile: #004aad;
-  --voile-soft: #e5eefb;
-  --course: #d11a1a;
-  --course-soft: #fdeaea;
-  --velo: #2c7231;
-  --velo-soft: #e4f2e5;
-  --fractionne: #c25700;
-  --fractionne-soft: #feece3;
-  --surf: #5b6670;
-  --surf-soft: #eceff2;
-  /* Boutons de planification de l'accueil (ardoise de la maquette). */
-  --home-action: #374c75;
-  /* Liseré du bouton « Créer un parcours » de l'accueil. */
-  --home-action-edge: #d11a1a;
-  /* Courbes de niveau du fond des pages (accueil, Profil, Statistiques, Réglages). */
-  --contour: #b6c4d1;
-  /* Encre des fonds surf et vélo : couleurs des images données par l'utilisateur le 23/10. */
-  --backdrop-surf: #1ba1e2;
-  --backdrop-velo: #7f9f7c;
-  /* Racine du Profil (`components/drawRoot.ts`, lues par le canevas) : racine vivante, bourgeon, radicelles
-     de la période, radicelle flétrie, partie sèche, pousse, sol, graine, fleur. */
-  --root-live: #4c8a43;
-  --root-edge: #2d5a29;
-  --root-bud: #d5ecc2;
-  --root-fresh: #6fbf45;
-  --root-withered: #b9a487;
-  --root-dry: #d3cab9;
-  --root-dry-edge: #b0a691;
-  --root-sprout: #3f8a3a;
-  --root-soil: #9a8570;
-  --root-seed: #8a5a32;
-  --root-flower: #f2c94c;
-  --root-flower-edge: #c99a1a;
-  --root-flower-heart: #b8641d;
-  --record: #2e7d32;
-  --recording: #c62828;
-
-  /* États */
-  --success: #2e7d32;
-  --danger: #c62828;
-  --danger-soft: #fdecea;
-  --warning-soft: #fff8e1;
-  --warning-line: #f9a825;
-  --focus: #1565c0;
-
   /* Typographie */
   /* Une variable par rôle ; les polices se chargent dans `fonts.css`. */
   --font: 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -148,4 +82,196 @@
     --land-w: calc(100vw - var(--shell-left) - var(--inset-right));
     --land-side-min: 380px;
   }
+}
+
+/*
+ * Palettes (lot 12) : claire, sombre, économe. Le thème est posé sur `<html>`
+ * par `hooks/useTheme.ts` (`data-theme`, `data-eco`), seul endroit qui décide :
+ * pas de bloc `prefers-color-scheme` ici, « Auto » est résolu en JavaScript.
+ *
+ * La palette claire vaut aussi pour `.theme-light` (ce qui reste clair dans
+ * une interface sombre : outils posés sur une carte, lecture des couleurs de
+ * l'image de partage) et pour `.leaflet-container` : la carte reste claire,
+ * sans filtre (décision du 28/10), et ses boutons, sa légende et sa mention
+ * gardent les couleurs de la carte, pas celles du thème.
+ */
+
+:root,
+.theme-light,
+.leaflet-container {
+  color-scheme: light;
+
+  /* Fonds et surfaces */
+  --bg: #eaeff3;
+  --surface: #ffffff;
+  --surface-sunken: #dfe5ea;
+  --surface-hover: #e6ebef;
+
+  /* Traits */
+  --line: #dbe1e6;
+  --line-soft: #e6ebef;
+  --line-strong: #cbd3da;
+
+  /* Encres */
+  --ink: #1b1f24;
+  --ink-2: #3d444d;
+  --muted: #5b6470;
+  --faint: #8a9099;
+  --on-accent: #ffffff;
+
+  /* Familles et actions */
+  --voile: #004aad;
+  --voile-soft: #e5eefb;
+  --course: #d11a1a;
+  --course-soft: #fdeaea;
+  --velo: #2c7231;
+  --velo-soft: #e4f2e5;
+  --fractionne: #c25700;
+  --fractionne-soft: #feece3;
+  --surf: #5b6670;
+  --surf-soft: #eceff2;
+  /* Boutons de planification de l'accueil (ardoise de la maquette). */
+  --home-action: #374c75;
+  /* Liseré du bouton « Créer un parcours » de l'accueil. */
+  --home-action-edge: #d11a1a;
+  /* Fond d'un onglet allumé hors famille (Statistiques sans famille, Itinéraires), sous du texte blanc. */
+  --neutral-accent: #3d444d;
+  /* Courbes de niveau du fond des pages (accueil, Profil, Statistiques, Réglages). */
+  --contour: #b6c4d1;
+  /* Encre des fonds surf et vélo : couleurs des images données par l'utilisateur le 23/10. */
+  --backdrop-surf: #1ba1e2;
+  --backdrop-velo: #7f9f7c;
+  /* Racine du Profil (`components/drawRoot.ts`, lues par le canevas) : racine vivante, bourgeon, radicelles
+     de la période, radicelle flétrie, partie sèche, pousse, sol, graine, fleur. */
+  --root-live: #4c8a43;
+  --root-edge: #2d5a29;
+  --root-bud: #d5ecc2;
+  --root-fresh: #6fbf45;
+  --root-withered: #b9a487;
+  --root-dry: #d3cab9;
+  --root-dry-edge: #b0a691;
+  --root-sprout: #3f8a3a;
+  --root-soil: #9a8570;
+  --root-seed: #8a5a32;
+  --root-flower: #f2c94c;
+  --root-flower-edge: #c99a1a;
+  --root-flower-heart: #b8641d;
+  --record: #2e7d32;
+  --recording: #c62828;
+
+  /* États */
+  --success: #2e7d32;
+  --success-soft: #e8f3e9;
+  --danger: #c62828;
+  --danger-soft: #fdecea;
+  /* Texte d'un message d'erreur, sur `--danger-soft`. */
+  --danger-ink: #8e1c1c;
+  --warning-soft: #fff8e1;
+  --warning-line: #f9a825;
+  --focus: #1565c0;
+
+  /* Ombres : leur couleur, mêlée en transparence (`color-mix`) ; transparente en économe, où les ombres
+     disparaissent. */
+  --shadow-color: #1b1f24;
+
+  /* Graphes : quadrillage, graduations (texte et trait), repères neutres (lignes de phase, seuils), voile
+     sous le pointeur. Les couleurs des données restent en dur (`CLAUDE.md`). */
+  --chart-grid: #dddddd;
+  --chart-axis: #555555;
+  --chart-tick: #666666;
+  --chart-mark: #37474f;
+  --chart-cursor: rgb(0 0 0 / 0.05);
+}
+
+/*
+ * Sombre (maquette du 28/10). Familles éclaircies d'un cran, texte blanc
+ * gardé dessus (contraste d'au moins 4,5 : l'orange, déjà au plus clair,
+ * reste tel quel) ; chacune est la première nuance sombre de sa famille
+ * (`FAMILY_SHADES_DARK`, `palette.test.ts`).
+ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #12161b;
+  --surface: #1c2229;
+  --surface-sunken: #161b21;
+  --surface-hover: #242b33;
+
+  --line: #2c343d;
+  --line-soft: #252c34;
+  --line-strong: #3a434d;
+
+  --ink: #e8ecf0;
+  --ink-2: #c3cad2;
+  --muted: #98a2ad;
+  --faint: #6f7883;
+
+  --voile: #2f6fd6;
+  --voile-soft: #1a2a44;
+  --course: #d93636;
+  --course-soft: #3d1c1c;
+  --velo: #34823c;
+  --velo-soft: #1b2f1d;
+  --fractionne: #c25700;
+  --fractionne-soft: #3a2414;
+  --surf: #627386;
+  --surf-soft: #262c33;
+  --home-action: #4b64a0;
+  --home-action-edge: #e04848;
+  --neutral-accent: #4a5562;
+  --contour: #263039;
+  /* Sol et parties sèches plus foncés, fleur gardée. */
+  --root-live: #5a9a50;
+  --root-bud: #a8d48c;
+  --root-withered: #7d6c55;
+  --root-dry: #5e5649;
+  --root-dry-edge: #4a4338;
+  --root-sprout: #4f9a48;
+  --root-soil: #5a4b3e;
+  --record: #3a9a40;
+  --recording: #e04848;
+
+  --success: #5cb860;
+  --success-soft: #16301a;
+  --danger: #ef5350;
+  --danger-soft: #3a1d1d;
+  --danger-ink: #ff8a80;
+  --warning-soft: #3a3115;
+  --warning-line: #f9a825;
+  --focus: #64a0f0;
+
+  --shadow-color: #000000;
+
+  --chart-grid: #2c343d;
+  --chart-axis: #a3acb6;
+  --chart-tick: #98a2ad;
+  --chart-mark: #b0bec5;
+  --chart-cursor: rgb(255 255 255 / 0.06);
+}
+
+/*
+ * Économe : noir pur et moins d'effets (ni ombres, ni courbes de niveau, ni
+ * photos de l'accueil : `ui.css`, `Home.css`). Toujours avec le sombre, qu'il
+ * impose (`theme/theme.ts`) ; n'agit que sur l'aspect.
+ */
+:root[data-eco] {
+  --bg: #000000;
+  --surface: #0d0f12;
+  --surface-sunken: #07080a;
+  --surface-hover: #15181c;
+
+  --line: #22262b;
+  --line-soft: #1a1d21;
+  --line-strong: #2f353b;
+
+  --voile-soft: #121c2e;
+  --course-soft: #2a1313;
+  --velo-soft: #112014;
+  --fractionne-soft: #28180d;
+  --surf-soft: #16191d;
+  --contour: transparent;
+
+  --shadow-color: transparent;
+
+  --chart-grid: #1f2328;
 }

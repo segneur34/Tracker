@@ -52,7 +52,7 @@ function RoutesPage() {
   const tabCount = counts.length + (withoutActivity > 0 ? 1 : 0);
 
   return (
-    <div className="ui-page" style={{ '--tab-accent': 'var(--ink)' } as React.CSSProperties}>
+    <div className="ui-page" style={{ '--tab-accent': 'var(--neutral-accent)' } as React.CSSProperties}>
       <PageHeader
         title="Itinéraires planifiés"
         back={{ to: '/', label: 'Accueil' }}

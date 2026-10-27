@@ -12,7 +12,8 @@ const config: CapacitorConfig = {
     useLegacyBridge: true,
   },
   plugins: {
-    // Icônes sombres dans les barres système, sur le fond clair de la DA.
+    // Icônes sombres dans les barres système au lancement ; le thème les règle
+    // ensuite, claires en sombre (`platform/systemBars.ts`).
     // Les marges du bas passent par --safe-area-inset-bottom (tokens.css).
     SystemBars: {
       style: 'LIGHT',

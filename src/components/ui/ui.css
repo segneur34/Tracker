@@ -39,6 +39,11 @@
   pointer-events: none;
 }
 
+/* Économe : pas de fond dessiné, ni courbes de niveau ni motif de famille. */
+:root[data-eco] .page-backdrop {
+  display: none;
+}
+
 .page-backdrop path {
   fill: none;
   stroke: var(--backdrop-ink);
@@ -507,7 +512,7 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
-  box-shadow: 0 6px 24px color-mix(in srgb, var(--ink) 18%, transparent);
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--shadow-color) 18%, transparent);
   font-size: var(--text-m);
   font-weight: 400;
   color: var(--ink);
@@ -561,7 +566,7 @@
 .ui-alert--danger {
   background: var(--danger-soft);
   border: 1px solid var(--danger);
-  color: #8e1c1c;
+  color: var(--danger-ink);
 }
 
 .ui-alert--warning {
@@ -570,7 +575,7 @@
 }
 
 .ui-alert--success {
-  background: #e8f3e9;
+  background: var(--success-soft);
   border: 1px solid var(--success);
 }
 
@@ -628,4 +633,24 @@
   min-height: 30px;
   padding: 0 var(--space-2);
   font-size: var(--text-s);
+}
+
+/* --- Graphes (Recharts) --- */
+
+/* Ce que Recharts peint de lui-même (trait des axes, graduations sans couleur donnée, bulle) suit le thème :
+   en clair, les mêmes valeurs que Recharts. Une graduation colorée par sa donnée garde sa couleur. */
+.recharts-cartesian-axis-line,
+.recharts-cartesian-axis-tick-line {
+  stroke: var(--chart-tick);
+}
+
+.recharts-cartesian-axis-tick-value[fill='#666'] {
+  fill: var(--chart-tick);
+}
+
+/* La bulle pose son fond blanc en ligne : seul `!important` passe devant. */
+.recharts-default-tooltip {
+  background-color: var(--surface) !important;
+  border-color: var(--line-strong) !important;
+  color: var(--ink);
 }

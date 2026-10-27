@@ -22,7 +22,7 @@
   border: 3px solid var(--surface);
   border-radius: var(--radius-pill);
   background: var(--surface);
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 18%, transparent);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--shadow-color) 18%, transparent);
   cursor: pointer;
 }
 

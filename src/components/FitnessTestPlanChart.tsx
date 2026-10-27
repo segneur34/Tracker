@@ -9,7 +9,7 @@ import { HEART_RATE_COLOR } from './heartRateColors';
 /** Bleu des courbes de vitesse des analyses à pied. */
 const SPEED_COLOR = '#1e88e5';
 const PHASE_FILL = '#90a4ae';
-const MARK_COLOR = '#37474f';
+const MARK_COLOR = 'var(--chart-mark)';
 const PHASE_LABEL = { echauffement: 'Échauffement', rampe: 'Rampe', recuperation: 'Récup.' } as const;
 
 const kmhText = (kmh: number) => `${kmh.toFixed(1).replace('.', ',')} km/h`;
@@ -43,10 +43,10 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
   // Une liste d'éléments, pas un composant : Recharts ne voit pas un ReferenceArea rangé dans un composant à lui.
   const phaseAreas = (labelled: boolean) => plan.phases.map((p, i) => (
     <ReferenceArea key={p.phase} x1={p.startS / 60} x2={p.endS / 60} fill={PHASE_FILL} fillOpacity={i % 2 === 0 ? 0.12 : 0.04} ifOverflow="hidden"
-      label={labelled ? { value: PHASE_LABEL[p.phase], position: 'insideTop', fill: '#555', fontSize: 11 } : undefined} />
+      label={labelled ? { value: PHASE_LABEL[p.phase], position: 'insideTop', fill: 'var(--chart-axis)', fontSize: 11 } : undefined} />
   ));
   const xAxis = (hide: boolean) => (
-    <XAxis dataKey="minutes" type="number" domain={[0, endMin]} tickFormatter={formatClockMinutes} tick={{ fill: '#555', fontSize: 11 }} hide={hide} />
+    <XAxis dataKey="minutes" type="number" domain={[0, endMin]} tickFormatter={formatClockMinutes} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} hide={hide} />
   );
   const tooltipLabel = (v: unknown) => formatClockMinutes(Number(v));
 
@@ -54,7 +54,7 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
     <figure className="fit-plan" aria-label="Déroulé du test : vitesse cible et FC dans le temps">
       <ResponsiveContainer width="100%" height={170}>
         <ComposedChart data={rows} margin={{ top: 18, right: 12, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#ddd" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
           {phaseAreas(true)}
           {xAxis(true)}
           <YAxis domain={['dataMin - 1', 'dataMax + 1']} allowDecimals={false} width={40} tick={{ fill: SPEED_COLOR, fontSize: 11 }}
@@ -62,7 +62,7 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
           <Tooltip labelFormatter={tooltipLabel} formatter={(v) => [kmhText(Number(v)), 'Vitesse cible']} />
           <Line type="stepAfter" dataKey="speed" name="Vitesse cible" stroke={SPEED_COLOR} strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
           {paliers.map((b, k) => (
-            <ReferenceDot key={b.tS} x={b.tS / 60} y={Math.round((msToKmh(v0Ms) + 0.6 * k) * 10) / 10} r={4} fill={SPEED_COLOR} stroke="#fff" strokeWidth={2} />
+            <ReferenceDot key={b.tS} x={b.tS / 60} y={Math.round((msToKmh(v0Ms) + 0.6 * k) * 10) / 10} r={4} fill={SPEED_COLOR} stroke="var(--surface)" strokeWidth={2} />
           ))}
           {marks.map((b) => (
             <ReferenceLine key={b.signal} x={b.tS / 60} stroke={MARK_COLOR} strokeDasharray="3 3" ifOverflow="extendDomain" />
@@ -71,7 +71,7 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
       </ResponsiveContainer>
       <ResponsiveContainer width="100%" height={150}>
         <ComposedChart data={rows} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#ddd" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
           {phaseAreas(false)}
           {xAxis(false)}
           <YAxis domain={[50, 'dataMax + 5']} allowDecimals={false} width={40} tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }}
