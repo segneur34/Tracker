@@ -4,9 +4,9 @@ import { getSportProfile, sportFamily, sportTreatment, usesMarkCourse } from '..
 import { METERS_PER_DISTANCE_UNIT } from '../core/units';
 import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
-import { followProgress, type FollowProgress, type FollowedTrace } from '../recording/followedTrace';
+import { createFollowCursor, type FollowCursor, type FollowProgress, type FollowedTrace } from '../recording/followedTrace';
 import {
-  EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS, computeLiveStats, type LiveEnergySetup, type LiveStats,
+  EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, type LiveEnergySetup, type LiveStats, type LiveStatsMemory,
 } from '../recording/liveStats';
 import { runningEnergyParams } from '../running/energy';
 import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
@@ -70,6 +70,12 @@ const tracedAlong = (trace: FollowedTrace | null, activity: Activity): FollowedT
 let live: LiveRecording = EMPTY;
 /** Ce qui a servi au dernier calcul : rien de neuf, pas de recalcul. */
 let computedFor: { pointCount: number; activity: Activity; trace: FollowedTrace | null } | null = null;
+/**
+ * Mémoire du direct de la session en cours (segments fermés calculés une fois, cinématique reprise) et curseur
+ * sur la trace suivie, qui ne relit que les positions nouvelles (27/10) ; jetés au retour au repos.
+ */
+let memory: LiveStatsMemory = createLiveStatsMemory();
+let follow: { trace: FollowedTrace; cursor: FollowCursor } | null = null;
 let lastRunMs = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
 /** Pages qui lisent le direct (`useLiveRecording`). */
@@ -97,6 +103,8 @@ const clearTimer = () => {
 const reset = () => {
   clearTimer();
   computedFor = null;
+  memory = createLiveStatsMemory();
+  follow = null;
   if (live === EMPTY) return;
   live = EMPTY;
   publish();
@@ -118,9 +126,10 @@ const compute = () => {
   const lastDistanceM = METERS_PER_DISTANCE_UNIT[effectiveDistanceUnit(activity)];
   const computed = computeLiveStats(segments, getSportProfile(activity.base), {
     ...LIVE_STATS_DEFAULTS, lastDistanceM, energy: liveEnergySetup(activity),
-  });
+  }, memory);
   const along = tracedAlong(trace, activity);
-  live = { segments, stats: computed, updatedMs: lastRunMs, progress: along ? followProgress(along, segments) : null };
+  if (along && follow?.trace !== along) follow = { trace: along, cursor: createFollowCursor(along) };
+  live = { segments, stats: computed, updatedMs: lastRunMs, progress: along ? follow!.cursor.progress(segments) : null };
   publish();
 };
 

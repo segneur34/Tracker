@@ -6,7 +6,9 @@ import { hasSessionMotion, readSessionMotion, useLibrarySession } from './useSes
  * Capteurs d'une session de surf, pour le pumping des vols (`surfing/pumping.ts`) :
  * son `.imu` lu et décodé à l'ouverture de l'analyse, si le pumping est coché.
  * Le pumping se recalcule à chaque seuil (il suit les vols) : rien n'est rangé
- * dans la fiche. Un seul fichier gardé en mémoire, celui de la dernière session.
+ * dans la fiche. Un seul fichier gardé en mémoire, celui de la session
+ * ouverte, et libéré dès que plus aucune analyse ne le lit (27/10) : une
+ * capture décodée pèse des dizaines de Mo.
  */
 
 /**
@@ -18,6 +20,8 @@ export type PumpingStatus = 'none' | 'loading' | 'ready' | 'error';
 
 let cached: { file: string; recording: ImuRecording } | null = null;
 let loading: { file: string; promise: Promise<ImuRecording> } | null = null;
+/** Analyses montées qui lisent la capture : à zéro, elle est libérée. */
+let readers = 0;
 
 const load = (file: string): Promise<ImuRecording> => {
   if (loading?.file === file) return loading.promise;
@@ -41,6 +45,14 @@ export const useSessionPumping = (file: string | null, enabled: boolean) => {
   const wanted = enabled && motion && file !== null;
   const [state, setState] = useState<{ file: string; recording: ImuRecording | null; error: string | null } | null>(null);
   const hit = wanted && cached?.file === file ? cached.recording : null;
+
+  useEffect(() => {
+    readers++;
+    return () => {
+      readers--;
+      if (readers === 0) cached = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!wanted || file === null || hit) return;

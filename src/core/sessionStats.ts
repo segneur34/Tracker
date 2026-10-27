@@ -165,12 +165,22 @@ export interface ActiveRun {
 
 /**
  * Suites du masque d'activité. Un pas plus long que `maxGapS` (un trou de la
- * trace) n'est jamais en action : il coupe la suite en cours.
+ * trace) n'est jamais en action : il coupe la suite en cours. Avec `from` et
+ * `to`, seuls les pas qui mènent aux points `from` à `to` comptent (les vagues
+ * d'un vol en surf) : le même résultat qu'un masque faux hors de ces bornes,
+ * sans parcourir toute la trace.
  */
-export const activeRuns = (track: TrackPoint[], mask: boolean[], maxGapS = Infinity): ActiveRun[] => {
+export const activeRuns = (
+  track: TrackPoint[],
+  mask: boolean[],
+  maxGapS = Infinity,
+  from = 1,
+  to = track.length - 1
+): ActiveRun[] => {
   const runs: ActiveRun[] = [];
   let start: number | null = null;
-  for (let i = 1; i < track.length; i++) {
+  const last = Math.min(to, track.length - 1);
+  for (let i = Math.max(1, from); i <= last; i++) {
     const active = mask[i] && (track[i].timeMs - track[i - 1].timeMs) / 1000 <= maxGapS;
     if (active && start === null) start = i - 1;
     if (!active && start !== null) {
@@ -178,7 +188,7 @@ export const activeRuns = (track: TrackPoint[], mask: boolean[], maxGapS = Infin
       start = null;
     }
   }
-  if (start !== null) runs.push({ start, end: track.length - 1 });
+  if (start !== null) runs.push({ start, end: last });
   return runs;
 };
 

@@ -193,6 +193,63 @@ const anchorFrom = (
   return { anchor: best, minOffsetM };
 };
 
+/** État du suivi, position après position : l'avancement, et ce qui le fait bouger. */
+interface FollowState {
+  progressM: number | null;
+  /** Distance faite depuis le dernier accrochage, en mètres. */
+  travelledM: number;
+  previous: LatLon | null;
+  /** Hors trace : position du dernier essai, et écart minimal alors mesuré. */
+  probe: LatLon | null;
+  probeOffsetM: number;
+}
+
+const initialFollowState = (): FollowState => ({ progressM: null, travelledM: 0, previous: null, probe: null, probeOffsetM: 0 });
+
+/** Avance le suivi d'une position. */
+const stepFollow = (s: FollowState, p: LatLon, points: LatLon[], cum: number[], options: FollowOptions): void => {
+  if (s.previous) s.travelledM += haversineDistance(s.previous.lat, s.previous.lon, p.lat, p.lon);
+  s.previous = p;
+
+  /** Accroche à la suite de la trace, depuis `fromM` ; rend faux si elle reste hors de portée. */
+  const anchorAhead = (fromM: number): boolean => {
+    // Tant que la position n'a pas bougé de quoi rejoindre la trace, inutile de la chercher.
+    if (s.probe && haversineDistance(s.probe.lat, s.probe.lon, p.lat, p.lon) < s.probeOffsetM - options.maxOffsetM) return false;
+    const { anchor, minOffsetM } = anchorFrom(p, points, cum, options.maxOffsetM, fromM);
+    s.probe = p;
+    s.probeOffsetM = minOffsetM;
+    if (!anchor) return false;
+    s.progressM = anchor.alongM;
+    s.travelledM = 0;
+    s.probe = null;
+    return true;
+  };
+
+  if (s.progressM === null) {
+    anchorAhead(0);
+    return;
+  }
+
+  const lo = s.progressM - options.backM;
+  const hi = s.progressM + options.aheadM + s.travelledM;
+  let best: Projection | null = null;
+  for (let i = firstSegmentReaching(cum, lo); i < points.length - 1 && cum[i] <= hi; i++) {
+    const proj = projectOnSegment(p, points, cum, i);
+    if (proj.offsetM <= options.maxOffsetM && proj.alongM >= lo && proj.alongM <= hi
+      && (!best || proj.offsetM < best.offsetM)) best = proj;
+  }
+  if (best) {
+    s.progressM = best.alongM;
+    s.travelledM = 0;
+    s.probe = null;
+  } else {
+    anchorAhead(hi);
+  }
+};
+
+const progressOf = (s: FollowState, totalM: number): FollowProgress | null =>
+  s.progressM === null ? null : { progressM: s.progressM, totalM, remainingM: Math.max(0, totalM - s.progressM) };
+
 /**
  * Avancement le long de la trace suivie, rejoué sur toute la trace enregistrée
  * à chaque appel : sans état, il vaut aussi pour une session récupérée après
@@ -211,58 +268,53 @@ export const followProgress = (
 ): FollowProgress | null => {
   const { points } = trace;
   const cum = cumulativeOf(trace);
+  const state = initialFollowState();
+  for (const segment of segments) for (const p of segment) stepFollow(state, p, points, cum, options);
+  return progressOf(state, cum[cum.length - 1]);
+};
+
+/** Suivi repris d'un appel à l'autre (`createFollowCursor`). */
+export interface FollowCursor {
+  /** L'avancement sur ces segments : celui de `followProgress`, sans relire ce qui l'a déjà été. */
+  progress: (segments: ReadonlyArray<ReadonlyArray<LatLon>>) => FollowProgress | null;
+}
+
+/**
+ * `followProgress` repris d'un appel à l'autre, pour le direct (27/10) : tant
+ * que les segments ne font que s'allonger (segments fermés inchangés, dernier
+ * segment prolongé, la dernière position lue de chacun étant le même objet),
+ * seules les positions nouvelles sont lues ; sinon, tout est rejoué. Le
+ * résultat est celui de `followProgress`.
+ */
+export const createFollowCursor = (trace: FollowedTrace, options: FollowOptions = FOLLOW_DEFAULTS): FollowCursor => {
+  const { points } = trace;
+  const cum = cumulativeOf(trace);
   const totalM = cum[cum.length - 1];
-
-  let progressM: number | null = null;
-  let travelledM = 0;
-  let previous: LatLon | null = null;
-  // Hors trace : position du dernier essai, et écart minimal alors mesuré.
-  let probe: LatLon | null = null;
-  let probeOffsetM = 0;
-
-  for (const segment of segments) {
-    for (const p of segment) {
-      if (previous) travelledM += haversineDistance(previous.lat, previous.lon, p.lat, p.lon);
-      previous = p;
-
-      /** Accroche à la suite de la trace, depuis `fromM` ; rend faux si elle reste hors de portée. */
-      const anchorAhead = (fromM: number): boolean => {
-        // Tant que la position n'a pas bougé de quoi rejoindre la trace, inutile de la chercher.
-        if (probe && haversineDistance(probe.lat, probe.lon, p.lat, p.lon) < probeOffsetM - options.maxOffsetM) return false;
-        const { anchor, minOffsetM } = anchorFrom(p, points, cum, options.maxOffsetM, fromM);
-        probe = p;
-        probeOffsetM = minOffsetM;
-        if (!anchor) return false;
-        progressM = anchor.alongM;
-        travelledM = 0;
-        probe = null;
-        return true;
-      };
-
-      if (progressM === null) {
-        anchorAhead(0);
-        continue;
+  let state = initialFollowState();
+  /** Positions lues par segment, et la dernière lue de chacun. */
+  let consumed: { count: number; last: LatLon | null }[] = [];
+  return {
+    progress(segments) {
+      let resumable = segments.length >= consumed.length;
+      for (let k = 0; resumable && k < consumed.length; k++) {
+        const segment = segments[k];
+        const { count, last } = consumed[k];
+        const closed = k < consumed.length - 1;
+        if (segment.length < count || (closed && segment.length !== count)) resumable = false;
+        else if (count > 0 && segment[count - 1] !== last) resumable = false;
       }
-
-      const lo = progressM - options.backM;
-      const hi = progressM + options.aheadM + travelledM;
-      let best: Projection | null = null;
-      for (let i = firstSegmentReaching(cum, lo); i < points.length - 1 && cum[i] <= hi; i++) {
-        const proj = projectOnSegment(p, points, cum, i);
-        if (proj.offsetM <= options.maxOffsetM && proj.alongM >= lo && proj.alongM <= hi
-          && (!best || proj.offsetM < best.offsetM)) best = proj;
+      if (!resumable) {
+        state = initialFollowState();
+        consumed = [];
       }
-      if (best) {
-        progressM = best.alongM;
-        travelledM = 0;
-        probe = null;
-      } else {
-        anchorAhead(hi);
+      for (let k = 0; k < segments.length; k++) {
+        const segment = segments[k];
+        for (let i = consumed[k]?.count ?? 0; i < segment.length; i++) stepFollow(state, segment[i], points, cum, options);
+        consumed[k] = { count: segment.length, last: segment.length > 0 ? segment[segment.length - 1] : null };
       }
-    }
-  }
-
-  return progressM === null ? null : { progressM, totalM, remainingM: Math.max(0, totalM - progressM) };
+      return progressOf(state, totalM);
+    },
+  };
 };
 
 /**

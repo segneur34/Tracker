@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import { useHoveredIndex } from '../hooks/useChartHover';
 
 /** Une valeur lue, dans la couleur de sa série. */
 export interface ReadoutValue {
@@ -45,4 +46,20 @@ export default function ChartReadout({ readout, label, color, line = false }: {
       )}
     </span>
   );
+}
+
+/**
+ * Lecture au point survolé, lue dans le magasin du survol (`useChartHover`) :
+ * `read` donne la lecture d'un indice de trace, ou `null` hors de la plage
+ * zoomée. Seule cette lecture se redessine quand le doigt glisse sur un
+ * graphe ; le graphe et le module n'en savent rien.
+ */
+export function HoverReadout({ read, label, color, line = false }: {
+  read: (index: number) => Readout | null;
+  label?: string;
+  color?: string;
+  line?: boolean;
+}) {
+  const index = useHoveredIndex();
+  return <ChartReadout readout={index === null ? null : read(index)} label={label} color={color} line={line} />;
 }

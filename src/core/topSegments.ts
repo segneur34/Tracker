@@ -94,22 +94,32 @@ export const computeTopSegments = (
     }
   }
 
-  windows.sort((a, b) => b.val - a.val);
-
   const tops: TopSegment[] = [];
-  const selected: { start: number; end: number }[] = [];
+  const keep = (w: { start: number; end: number; val: number }) => {
+    const path = track.slice(w.start, w.end + 1).map((p) => [p.lat, p.lon] as [number, number]);
+    tops.push({ val: w.val.toFixed(decimals), speed: w.val, path });
+  };
 
-  for (const w of windows) {
-    if (tops.length >= count) break;
-    const overlap = selected.some((s) => Math.max(w.start, s.start) <= Math.min(w.end, s.end));
-    if (!overlap) {
-      const path = track.slice(w.start, w.end + 1).map((p) => [p.lat, p.lon] as [number, number]);
-      tops.push({ val: w.val.toFixed(decimals), path });
-      selected.push({ start: w.start, end: w.end });
+  if (count === 1) {
+    // Un seul segment (direct, borne de couleur) : le meilleur, sans trier toutes les fenêtres (27/10) ; à
+    // égalité, la première, comme le tri stable.
+    let best: { start: number; end: number; val: number } | null = null;
+    for (const w of windows) if (best === null || w.val > best.val) best = w;
+    if (best !== null) keep(best);
+  } else {
+    windows.sort((a, b) => b.val - a.val);
+    const selected: { start: number; end: number }[] = [];
+    for (const w of windows) {
+      if (tops.length >= count) break;
+      const overlap = selected.some((s) => Math.max(w.start, s.start) <= Math.min(w.end, s.end));
+      if (!overlap) {
+        keep(w);
+        selected.push({ start: w.start, end: w.end });
+      }
     }
   }
 
-  while (tops.length < count) tops.push({ val: '-', path: [] });
+  while (tops.length < count) tops.push({ val: '-', speed: null, path: [] });
   return tops;
 };
 

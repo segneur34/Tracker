@@ -22,11 +22,17 @@ export interface ChartZoom {
  * (point ajouté à un itinéraire) et revient à « tout voir » quand `resetKey`
  * change (autre session).
  */
-export const useChartZoom = (full: XRange | null, resetKey?: unknown): ChartZoom => {
+export const useChartZoom = (fullRange: XRange | null, resetKey?: unknown): ChartZoom => {
   const [stored, setStored] = useState<{ key: unknown; range: XRange | null }>({ key: resetKey, range: null });
+  const fullMin = fullRange?.min;
+  const fullMax = fullRange?.max;
+  // Un seul objet tant que les bornes ne changent pas : `shown`, les `domain` des axes et le tronçon
+  // d'« Afficher » (`useZoomOnMap`) ne sont pas refaits à chaque rendu (27/10).
+  const full = useMemo(
+    () => (fullMin === undefined || fullMax === undefined ? null : { min: fullMin, max: fullMax }),
+    [fullMin, fullMax]
+  );
   const minSpan = full ? (full.max - full.min) * CHART_ZOOM_MIN_FRACTION : 0;
-  const fullMin = full?.min;
-  const fullMax = full?.max;
 
   const view = useMemo(() => {
     if (stored.key !== resetKey || !stored.range || fullMin === undefined || fullMax === undefined) return null;

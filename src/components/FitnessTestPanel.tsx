@@ -1,6 +1,6 @@
 import { useMemo, type ReactElement } from 'react';
 import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import ChartReadout, { type Readout } from './ChartReadout';
+import { HoverReadout, type Readout } from './ChartReadout';
 import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, inChartView, type ChartHoverEvent } from './chartHover';
 import { HEART_RATE_COLOR } from './heartRateColors';
 import { HelpText } from './Help';
@@ -62,7 +62,7 @@ const targetAt = (test: SessionTest, t: number, rampEndMs: number): number | nul
  * du protocole ; zoom commun, survol relié à la carte (`hoveredTrackIndex`).
  * Partagées par l'onglet « test » et la carte en plein écran.
  */
-export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, speedUnit, zoom, hoveredIndex, onHoverIndex, onLeave, onShowOnMap }: {
+export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, speedUnit, zoom, onHoverIndex, onLeave, onShowOnMap }: {
   track: readonly TrackPoint[];
   test: SessionTest;
   /** Minutes de chaque point depuis le début de la trace : l'axe et son zoom. */
@@ -72,7 +72,6 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
   hrSmoothed: readonly (number | null)[];
   speedUnit: SpeedUnit;
   zoom: ChartZoom;
-  hoveredIndex: number | null;
   onHoverIndex: (index: number) => void;
   onLeave: () => void;
   onShowOnMap?: () => void;
@@ -88,7 +87,7 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
     if (minutes.length < 2) return [];
     const [first, last] = visibleIndexRange(minutes, zoom.view);
     const display = (ms: number) => parseFloat(toDisplaySpeed(ms, unit).toFixed(1));
-    return sampledIndices(first, last, CHART_MAX_POINTS).map((i) => {
+    return sampledIndices(first, last, CHART_MAX_POINTS, speedsMs).map((i) => {
       const target = targetAt(test, track[i].timeMs, rampEndMs);
       return {
         index: i,
@@ -126,8 +125,8 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
     if (index !== null) onHoverIndex(index);
   };
 
-  const hovered = hoveredIndex !== null && minutes[hoveredIndex] !== undefined && inChartView(zoom.view, minutes[hoveredIndex]) ? hoveredIndex : null;
-  const readout: Readout | null = hovered === null ? null : {
+  /** Lecture au point survolé (`HoverReadout`), s'il est dans la plage zoomée. */
+  const read = (hovered: number): Readout | null => (minutes[hovered] === undefined || !inChartView(zoom.view, minutes[hovered]) ? null : {
     values: [
       { text: formatSpeed(speedsMs[hovered], unit), color: SPEED_COLOR },
       ...(() => {
@@ -137,11 +136,11 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
       { text: hrSmoothed[hovered] === null ? '—' : `${Math.round(hrSmoothed[hovered]!)} bpm`, color: HEART_RATE_COLOR },
     ],
     at: minutesTick(minutes[hovered]),
-  };
+  });
 
   return (
     <>
-      <ChartReadout readout={readout} label="Test" line />
+      <HoverReadout read={read} label="Test" line />
       <ZoomableChart zoom={zoom} onLeave={onLeave} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${CURVE_HEIGHT_PX}px` }}>
         <ResponsiveContainer>
           <ComposedChart data={rows} syncId="test" onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 18, right: 10, left: 0, bottom: 0 }}>
@@ -188,7 +187,7 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
  * courbes annotées. Posé dans le `ResizablePanel` du module.
  */
 export default function FitnessTestPanel({
-  track, test, minutes, speedsMs, hrSmoothed, speedUnit, profileHrMax, onRetainHrMax, zoom, hoveredIndex, onHoverIndex, onLeave, onShowOnMap,
+  track, test, minutes, speedsMs, hrSmoothed, speedUnit, profileHrMax, onRetainHrMax, zoom, onHoverIndex, onLeave, onShowOnMap,
   open, onToggle,
 }: {
   track: TrackPoint[];
@@ -201,7 +200,6 @@ export default function FitnessTestPanel({
   profileHrMax: number | null;
   onRetainHrMax: (bpm: number) => void;
   zoom: ChartZoom;
-  hoveredIndex: number | null;
   onHoverIndex: (index: number) => void;
   onLeave: () => void;
   onShowOnMap?: () => void;
@@ -254,7 +252,7 @@ export default function FitnessTestPanel({
 
       <div style={{ marginTop: '6px' }}>
         <FitnessTestCurves track={track} test={test} minutes={minutes} speedsMs={speedsMs} hrSmoothed={hrSmoothed} speedUnit={speedUnit} zoom={zoom}
-          hoveredIndex={hoveredIndex} onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap} />
+          onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap} />
       </div>
 
       <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' }}>

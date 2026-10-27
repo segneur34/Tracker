@@ -76,6 +76,8 @@ export interface TrackPoint {
 export interface TopSegment {
   /** Valeur formatée dans l'unité d'affichage du support, ou "-" si non atteint. */
   val: string;
+  /** La même vitesse, en nombre, dans l'unité du convertisseur ; `null` si non atteint (27/10). */
+  speed: number | null;
   path: [number, number][];
 }
 

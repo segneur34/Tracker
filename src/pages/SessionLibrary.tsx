@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer } from 'react-leaflet';
 import BaseTileLayer from '../components/BaseTileLayer';
 import { Link, useSearchParams } from 'react-router-dom';
-import 'leaflet/dist/leaflet.css';
 import MapAutoResize from '../components/MapAutoResize';
 import PageBackdrop from '../components/PageBackdrop';
 import { FAMILY_ICON } from '../components/familyIcons';import { IconHelp } from '../components/icons';

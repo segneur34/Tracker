@@ -145,6 +145,54 @@ describe('indices tracés', () => {
     expect(sampledIndices(3, 5, 500)).toEqual([3, 4, 5]);
     expect(sampledIndices(4, 3, 500)).toEqual([]);
   });
+
+  /** Vitesse à `hz` points par seconde sur `seconds` s : 3 m/s, et un pic de 3 s à 8 m/s à la 100e seconde. */
+  const spiky = (seconds: number, hz: number) => {
+    const values: number[] = [];
+    const times: number[] = [];
+    for (let k = 0; k <= seconds * hz; k++) {
+      const t = k / hz;
+      times.push(t);
+      values.push(t >= 100 && t < 103 ? 8 : 3);
+    }
+    return { values, times };
+  };
+
+  it('garde un pic bref que le pas régulier sauterait, à 1 Hz comme à 5 Hz (règle 2)', () => {
+    for (const hz of [1, 5]) {
+      const { values, times } = spiky(3600, hz);
+      const regular = sampledIndices(0, values.length - 1, 500);
+      const kept = sampledIndices(0, values.length - 1, 500, values);
+      expect(regular.some((i) => values[i] === 8)).toBe(false);
+      const peaks = kept.filter((i) => values[i] === 8);
+      expect(peaks.length).toBeGreaterThan(0);
+      expect(times[peaks[0]]).toBe(100);
+      // Les indices réguliers sont tous gardés, dans l'ordre, et peu d'autres s'ajoutent.
+      expect(kept.filter((i) => regular.includes(i))).toEqual(regular);
+      expect(kept).toEqual([...kept].sort((a, b) => a - b));
+      expect(kept.length).toBeLessThanOrEqual(regular.length + 2);
+    }
+  });
+
+  it("n'ajoute rien à une série constante, monotone, ou plus courte que le plafond", () => {
+    const flat = new Array(3000).fill(3);
+    expect(sampledIndices(0, 2999, 500, flat)).toEqual(sampledIndices(0, 2999, 500));
+    const ramp = Array.from({ length: 3000 }, (_, i) => i * 0.1);
+    expect(sampledIndices(0, 2999, 500, ramp)).toEqual(sampledIndices(0, 2999, 500));
+    const { values } = spiky(400, 1);
+    expect(sampledIndices(0, 400, 500, values)).toEqual(sampledIndices(0, 400, 500));
+  });
+
+  it('ajoute le creux comme le pic, et ignore les valeurs absentes', () => {
+    const values: (number | null)[] = new Array(3000).fill(10);
+    values[1001] = 2;
+    values[2001] = 18;
+    values[2002] = null;
+    const kept = sampledIndices(0, 2999, 500, values);
+    expect(kept).toContain(1001);
+    expect(kept).toContain(2001);
+    expect(kept).not.toContain(2002);
+  });
 });
 
 describe('graduations rondes', () => {

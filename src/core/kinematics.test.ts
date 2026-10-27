@@ -8,7 +8,9 @@ import {
   haversineDistance,
   initialBearing,
   pointTimeMs,
+  resumeKinematics,
   spreadEqualTimes,
+  type KinematicsRun,
 } from './kinematics';
 import { segmentDistanceM } from './sessionStats';
 import type { RawTrackPoint } from './types';
@@ -207,6 +209,69 @@ describe('computeKinematics', () => {
     // Milieu de trace, loin des bords : les deux doivent lire 10 m/s.
     expect(at1Hz[15].smoothedSpeedMs).toBeCloseTo(10, 1);
     expect(at5Hz[75].smoothedSpeedMs).toBeCloseTo(10, 1);
+  });
+});
+
+describe('resumeKinematics', () => {
+  const lat = 43.6;
+  const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
+  const startTime = Date.parse('2026-01-01T10:00:00Z');
+
+  /**
+   * Trace de `seconds` s à `hz`, vitesse qui ondule, avec ce qui met chaque étape à l'épreuve : des positions qui
+   * sautent (toutes les 97 s), des dates tronquées à la seconde (de 200 à 230 s), une pause et un trou de 20 s
+   * (à 300 s), la vitesse Doppler sur un point sur deux si `doppler`, un point immobile répété (à 400 s).
+   */
+  const build = (seconds: number, hz: number, doppler: boolean): RawTrackPoint[] => {
+    const points: RawTrackPoint[] = [];
+    let meters = 0;
+    for (let k = 0; k <= seconds * hz; k++) {
+      const t = k / hz;
+      const speed = 3 + 2 * Math.sin(t / 25);
+      if (k > 0 && !(t >= 400 && t < 405)) meters += speed / hz;
+      let lon = 3.8 + meters / metersPerDegLon;
+      if (k % Math.round(97 * hz) === 0 && k > 0) lon += 40 / metersPerDegLon;
+      const timeMs = startTime + (t >= 300 ? (t + 20) * 1000 : t * 1000);
+      const time = new Date(t >= 200 && t < 230 ? Math.floor(timeMs / 1000) * 1000 : timeMs).toISOString();
+      points.push({
+        lat, lon, time,
+        ...(doppler && k % 2 === 0 ? { speedMs: speed } : {}),
+        ...(Math.abs(t - 300) < 1e-9 ? { segmentStart: true as const } : {}),
+      });
+    }
+    return points;
+  };
+  const options = { medianWindowSeconds: 3, maxDetourRatio: 3, maxSpeedMs: 20, maxGapS: 10 };
+
+  for (const hz of [1, 5]) {
+    for (const doppler of [false, true]) {
+      it(`donne la trace de computeKinematics à chaque point ajouté, à ${hz} Hz, ${doppler ? 'avec' : 'sans'} Doppler`, () => {
+        const points = build(480, hz, doppler);
+        let run: KinematicsRun | null = null;
+        let resumed = 0;
+        for (let n = 2; n <= points.length; n += n < 40 ? 1 : Math.max(1, Math.round(hz * 1.7))) {
+          const prefix = points.slice(0, n);
+          const next = resumeKinematics(prefix, options, run);
+          expect(next).not.toBeNull();
+          if (run && next!.track[0] === run.track[0] && n > 60 * hz) resumed++;
+          run = next;
+          expect(run!.track).toEqual(computeKinematics(prefix, options));
+        }
+        // La reprise a bien servi : passé le début, les premiers points sont repris tels quels.
+        expect(resumed).toBeGreaterThan(50);
+      });
+    }
+  }
+
+  it('refait tout si les points, les réglages ou la vitesse appareil changent', () => {
+    const points = build(120, 1, false);
+    const run = resumeKinematics(points.slice(0, 100), options, null)!;
+    const other = points.slice(0, 110).map((p) => ({ ...p }));
+    expect(resumeKinematics(other, options, run)!.track).toEqual(computeKinematics(other, options));
+    expect(resumeKinematics(points, { ...options, medianWindowSeconds: 5 }, run)!.track).toEqual(computeKinematics(points, { ...options, medianWindowSeconds: 5 }));
+    const withDoppler = [...points.slice(0, 110), { ...points[110], speedMs: 4 }];
+    expect(resumeKinematics(withDoppler, options, run)!.track).toEqual(computeKinematics(withDoppler, options));
+    expect(resumeKinematics([points[0]], options, run)).toBeNull();
   });
 });
 

@@ -147,7 +147,7 @@ export const suggestActiveThresholdKn = (sport: SportType, referenceSpeedKn: num
 const maxWindowSpeedMs = (track: TrackPoint[], cum: CumulativeTrack): number | null => {
   const t2s = SAILING_TOP_TARGETS.find((target) => target.key === 't2s')!;
   const [top] = computeTopSegments(track, cum, t2s, (speedMs) => speedMs, { count: 1, decimals: 6 });
-  return top && top.val !== '-' ? parseFloat(top.val) : null;
+  return top?.speed ?? null;
 };
 
 /**

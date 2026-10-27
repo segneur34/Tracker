@@ -3,7 +3,7 @@ import { SPORT_PROFILES } from '../core/sportProfiles';
 import { cyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
 import { DEFAULT_ENERGY_PARAMS, runningCostJkgM } from '../running/energy';
-import { LIVE_STATS_DEFAULTS, computeLiveStats, type LiveEnergySetup } from './liveStats';
+import { LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, type LiveEnergySetup } from './liveStats';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
 const M_PER_DEG_LAT = (6371e3 * Math.PI) / 180;
@@ -131,6 +131,64 @@ describe('computeLiveStats', () => {
     const a = computeLiveStats([trace(0, 600, 1, speed)], wing);
     const b = computeLiveStats([trace(0, 600, 5, speed)], wing);
     expect(b.maxSpeedMs!).toBeCloseTo(a.maxSpeedMs!, 1);
+  });
+});
+
+describe('computeLiveStats : mémoire du direct', () => {
+  const speed = (t: number) => 3 + 2 * Math.sin(t / 25) + (t >= 500 && t < 503 ? 6 : 0);
+  const ele = (t: number) => 50 + 20 * Math.sin(t / 120);
+  const withHr = (fixes: LocationFix[]) => fixes.map((f, k) => (k % 3 === 0 ? f : { ...f, heartRateBpm: 120 + Math.round(20 * Math.sin(k / 40)) }));
+  /** Trois segments (deux pauses), chaque position étant l'objet du segment rejoué. */
+  const replay = (hz: number): LocationFix[][] => {
+    const a = withHr(trace(0, 400, hz, speed, ele));
+    const b = withHr(trace(460, 900, hz, speed, ele, a[a.length - 1].lat));
+    const c = withHr(trace(960, 1300, hz, speed, ele, b[b.length - 1].lat));
+    return [a, b, c];
+  };
+  /** Les segments tels que l'enregistreur les donne après `n` positions reçues : les fermés entiers, le dernier en cours. */
+  const seenAfter = (segments: LocationFix[][], n: number): LocationFix[][] => {
+    const out: LocationFix[][] = [];
+    let left = n;
+    for (const segment of segments) {
+      if (left <= 0) break;
+      out.push(segment.slice(0, Math.min(left, segment.length)));
+      left -= segment.length;
+    }
+    return out;
+  };
+
+  for (const hz of [1, 5]) {
+    it(`donne à chaque position le résultat du calcul sans mémoire, pauses, énergie et bords compris, à ${hz} Hz`, () => {
+      const segments = replay(hz);
+      const total = segments.reduce((n, s) => n + s.length, 0);
+      const cases = [
+        { profile: running, options: { ...LIVE_STATS_DEFAULTS, energy: { family: 'course' as const, params: DEFAULT_ENERGY_PARAMS, massKg: 70 } } },
+        { profile: wing, options: LIVE_STATS_DEFAULTS },
+      ];
+      for (const { profile, options } of cases) {
+        const memory = createLiveStatsMemory();
+        for (let n = 1; n <= total; n += n < 30 ? 1 : Math.round(hz * hz * 2.3)) {
+          const seen = seenAfter(segments, n);
+          expect(computeLiveStats(seen, profile, options, memory)).toEqual(computeLiveStats(seen, profile, options));
+        }
+        const all = segments;
+        expect(computeLiveStats(all, profile, options, memory)).toEqual(computeLiveStats(all, profile, options));
+      }
+    });
+  }
+
+  it('repart de zéro si le profil, les réglages ou les positions changent', () => {
+    const segments = replay(1);
+    const memory = createLiveStatsMemory();
+    computeLiveStats(seenAfter(segments, 500), running, LIVE_STATS_DEFAULTS, memory);
+    expect(computeLiveStats(seenAfter(segments, 520), wing, LIVE_STATS_DEFAULTS, memory)).toEqual(computeLiveStats(seenAfter(segments, 520), wing));
+    const options = { ...LIVE_STATS_DEFAULTS, lastDistanceM: 1852 };
+    expect(computeLiveStats(seenAfter(segments, 540), wing, options, memory)).toEqual(computeLiveStats(seenAfter(segments, 540), wing, options));
+    // Les mêmes positions recopiées : d'autres objets, tout est relu.
+    const copy = seenAfter(segments, 560).map((s) => s.map((f) => ({ ...f })));
+    expect(computeLiveStats(copy, wing, options, memory)).toEqual(computeLiveStats(copy, wing, options));
+    // Un enregistrement plus court que le précédent.
+    expect(computeLiveStats(seenAfter(segments, 100), wing, options, memory)).toEqual(computeLiveStats(seenAfter(segments, 100), wing, options));
   });
 });
 

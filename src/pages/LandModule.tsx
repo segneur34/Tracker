@@ -2,13 +2,12 @@ import { Fragment, useCallback, useId, useMemo, useState, type CSSProperties, ty
 import { Link } from 'react-router-dom';
 import { Polyline } from 'react-leaflet';
 import BaseTileLayer from '../components/BaseTileLayer';
-import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import ActivitySelect from '../components/ActivitySelect';
 import CadencePanel from '../components/CadencePanel';
 import ChartFold from '../components/ChartFold';
-import ChartReadout, { type Readout, type ReadoutValue } from '../components/ChartReadout';
+import { HoverReadout, type Readout, type ReadoutValue } from '../components/ChartReadout';
 import AnalysisMap from '../components/AnalysisMap';
 import EffortThresholdEditor from '../components/EffortThresholdEditor';
 import GradeGradientLegend from '../components/GradeGradientLegend';
@@ -43,7 +42,7 @@ import SurfaceLayer from '../components/SurfaceLayer';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
-import HoverMarker from '../components/HoverMarker';
+import { HoveredTrackMarker } from '../components/HoverMarker';
 import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, inChartView, type ChartHoverEvent } from '../components/chartHover';
 import { gradeGradientDefs } from '../components/gradeGradientDefs';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
@@ -66,6 +65,7 @@ import {
   DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
   isInverseUnit, toDisplayDistance, toDisplaySpeed,
 } from '../core/units';
+import { setHoveredIndex, useResetChartHover } from '../hooks/useChartHover';
 import { useChartZoom, type ChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useGpxSession } from '../hooks/useGpxSession';
@@ -374,7 +374,8 @@ function LandModule({ family }: { family: LandFamily }) {
   const shownJump = jumpHighlight !== null && !jumpPodiumShown ? Number(jumpHighlight) : null;
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
   const [energyMode, setEnergyMode] = useState<EnergyChartMode>('power');
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  // Point survolé hors de l'état du module (`useChartHover`) : effacé à chaque session et au démontage.
+  useResetChartHover(gpx.sessionKey);
 
   const narrow = useNarrowScreen();
   const unitLabel = SPEED_UNIT_LABEL[speedUnit];
@@ -541,7 +542,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const energyChartData = useMemo(() => {
     if (!energy || smoothedPower.length === 0) return [];
     const [first, last] = visibleIndexRange(trackMinutes, energyZoom.view);
-    return sampledIndices(first, last, CHART_MAX_POINTS).map((i): EnergyChartRow => {
+    return sampledIndices(first, last, CHART_MAX_POINTS, smoothedPower).map((i): EnergyChartRow => {
       const power = smoothedPower[i];
       return {
         index: i,
@@ -688,7 +689,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const chartData = useMemo(() => {
     if (gpx.track.length === 0) return [];
     const [first, last] = visibleIndexRange(trackDist, zoom.view);
-    return sampledIndices(first, last, CHART_MAX_POINTS).map((i): ChartRow => {
+    return sampledIndices(first, last, CHART_MAX_POINTS, chartSpeed).map((i): ChartRow => {
       const altitude = elevation.smoothed[i];
       const ms = chartSpeed[i];
       // En min/km, l'arrêt tend vers l'infini : on laisse un trou plutôt qu'une valeur absurde.
@@ -717,7 +718,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const profileRows = useMemo((): ElevationProfileRow[] => {
     if (!open.general || !stats?.hasElevation || gpx.track.length < 2) return [];
     const [first, last] = visibleIndexRange(trackDist, profileZoom.view);
-    return sampledIndices(first, last, PROFILE_MAX_POINTS).map((i) => {
+    return sampledIndices(first, last, PROFILE_MAX_POINTS, elevation.smoothed).map((i) => {
       const altitude = elevation.smoothed[i];
       return {
         index: i,
@@ -774,7 +775,7 @@ function LandModule({ family }: { family: LandFamily }) {
       return {
         key: `top-${target.key}`,
         label: `${target.kind === 'time' ? 'Meilleures' : 'Meilleur'} ${target.label}`,
-        value: top && top.val !== '-' ? formatSpeed(parseFloat(top.val), speedUnit) : '—',
+        value: top && top.speed !== null ? formatSpeed(top.speed, speedUnit) : '—',
       };
     }),
     ...(heart.present && heart.stats ? [{ key: 'heartRate', label: 'FC moyenne', value: `${Math.round(heart.stats.avgBpm)} bpm` }] : []),
@@ -782,25 +783,24 @@ function LandModule({ family }: { family: LandFamily }) {
     ...(energyTotal ? [{ key: 'energy', label: 'Dépense totale', value: energyTotal.value }] : []),
   ] : [];
 
+  /** Survol des graphes : le point va au magasin du survol, lu par le repère de la carte et les lectures, pas par le module. */
   const clearHover = () => setHoveredIndex(null);
-  const hoverIndex = (index: number) => {
-    if (index !== hoveredIndex) setHoveredIndex(index);
-  };
+  const hoverIndex = setHoveredIndex;
   const onChartHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, chartData);
-    if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
+    if (index !== null) setHoveredIndex(index);
   };
 
   /** Point de trace le plus proche d'un instant : relie la courbe d'un saut à la carte. */
   const trackIndexAt = useCallback((ms: number): number => trackIndexAtTime(gpx.track, ms), [gpx.track]);
   const onJumpCurveHover = (rows: ReadonlyArray<{ index: number }>) => (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, rows);
-    if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
+    if (index !== null) setHoveredIndex(index);
   };
 
   const onEnergyChartHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, energyChartData);
-    if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
+    if (index !== null) setHoveredIndex(index);
   };
 
   /** Pente lue en un point, « , pente 6 % », ou rien. */
@@ -826,13 +826,13 @@ function LandModule({ family }: { family: LandFamily }) {
       }
     }
   };
-  /** Lecture des graphes sur la distance (`ChartReadout`) au point survolé, s'il est dans la plage zoomée de `chartZoom`. */
-  const graphReadout = (keys: readonly GraphFold[], chartZoom: ChartZoom = zoom): Readout | null =>
-    hoveredIndex !== null && trackDist[hoveredIndex] !== undefined && inChartView(chartZoom.view, trackDist[hoveredIndex])
+  /** Lecture des graphes sur la distance (`HoverReadout`) au point survolé, s'il est dans la plage zoomée de `chartZoom`. */
+  const graphReadout = (keys: readonly GraphFold[], chartZoom: ChartZoom = zoom) => (hoveredIndex: number): Readout | null =>
+    trackDist[hoveredIndex] !== undefined && inChartView(chartZoom.view, trackDist[hoveredIndex])
       ? { values: keys.map((key) => graphValue(key, hoveredIndex)), at: distanceLabel(trackDist[hoveredIndex]) }
       : null;
   /** Lecture du graphe d'énergie : puissance ou cumul, puis vitesse et pente. */
-  const energyReadout: Readout | null = energy && hoveredIndex !== null && trackMinutes[hoveredIndex] !== undefined
+  const energyReadout = (hoveredIndex: number): Readout | null => energy && trackMinutes[hoveredIndex] !== undefined
     && inChartView(energyZoom.view, trackMinutes[hoveredIndex])
     ? (() => {
       const i = hoveredIndex;
@@ -1031,7 +1031,7 @@ function LandModule({ family }: { family: LandFamily }) {
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', flexShrink: 0 }}>
         {graphCharts.map((c) => graphFold(c))}
       </div>
-      <ChartReadout line readout={graphReadout(shownGraphs.map((c) => c.key))} />
+      <HoverReadout line read={graphReadout(shownGraphs.map((c) => c.key))} />
       {shownGraphs.length > 0 && (
         <ZoomableChart zoom={zoom} onLeave={clearHover} onShowOnMap={showGraphsOnMap} style={chartBox(OVERLAY_CHART_HEIGHT_PX)}>
           <ResponsiveContainer>
@@ -1071,7 +1071,7 @@ function LandModule({ family }: { family: LandFamily }) {
       {/* Nom du graphe (son repli) et sa lecture à droite. */}
       <div className="chart-head" style={{ marginTop: k > 0 ? '8px' : 0 }}>
         {graphFold(c)}
-        {graphOpen(c.key) && <ChartReadout readout={graphReadout([c.key])} label={graphFoldable ? undefined : c.label} color={c.color} />}
+        {graphOpen(c.key) && <HoverReadout read={graphReadout([c.key])} label={graphFoldable ? undefined : c.label} color={c.color} />}
       </div>
       {graphOpen(c.key) && separateChart(c.key, shownGraphs[0]?.key === c.key, `${separateGradientId}${idSuffix}`)}
     </Fragment>
@@ -1080,7 +1080,7 @@ function LandModule({ family }: { family: LandFamily }) {
   /** Graphe de l'onglet énergie, avec sa lecture au-dessus : dans le panneau, et sous la carte en plein écran. */
   const energyChart = energy && energyChartData.length > 1 ? (
     <>
-      <ChartReadout line readout={energyReadout} label={energyMode === 'power' ? 'Puissance' : 'Énergie'} color="#e64a19" />
+      <HoverReadout line read={energyReadout} label={energyMode === 'power' ? 'Puissance' : 'Énergie'} color="#e64a19" />
       <ZoomableChart zoom={energyZoom} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('energie')} style={{ width: '100%', flex: `1 0 ${ENERGY_CHART_HEIGHT_PX}px`, height: `${ENERGY_CHART_HEIGHT_PX}px`, marginTop: '6px' }}>
         <ResponsiveContainer>
           <ComposedChart data={energyChartData} onMouseMove={onEnergyChartHover} onTouchMove={onEnergyChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
@@ -1116,7 +1116,7 @@ function LandModule({ family }: { family: LandFamily }) {
   /** Profil d'altitude de « général », dans son panneau ou sous la carte en plein écran (`gradientSuffix`). */
   const generalProfile = (gradientSuffix: string) => (
     <ElevationProfileMini rows={profileRows} stops={profileStops} gradientId={`${profileGradientId}${gradientSuffix}`} distanceSymbol={distanceSymbol}
-      zoom={profileZoom} readout={graphReadout(['altitude'], profileZoom)}
+      zoom={profileZoom} read={graphReadout(['altitude'], profileZoom)}
       onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('general')} />
   );
 
@@ -1129,7 +1129,7 @@ function LandModule({ family }: { family: LandFamily }) {
       case 'zones':
         return (
           <>
-            <ChartReadout line readout={graphReadout(['altitude'])} label="Altitude" color="#e64a19" />
+            <HoverReadout line read={graphReadout(['altitude'])} label="Altitude" color="#e64a19" />
             {zonesAltitude('-plein')}
           </>
         );
@@ -1137,13 +1137,13 @@ function LandModule({ family }: { family: LandFamily }) {
         return energyChart;
       case 'cardio':
         return heart.present ? (
-          <CardioCurve track={gpx.track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null} hoveredIndex={hoveredIndex}
+          <CardioCurve track={gpx.track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
             onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={chartBox(CHART_HEIGHT_PX)} />
         ) : null;
       case 'test':
         return sessionTest ? (
           <FitnessTestCurves track={gpx.track} test={sessionTest} minutes={trackMinutes} speedsMs={chartSpeed} hrSmoothed={heart.smoothed}
-            speedUnit={speedUnit} zoom={testZoom} hoveredIndex={hoveredIndex} onHoverIndex={hoverIndex} onLeave={clearHover}
+            speedUnit={speedUnit} zoom={testZoom} onHoverIndex={hoverIndex} onLeave={clearHover}
             onShowOnMap={() => zoomOnMap.show('test')} />
         ) : null;
       default:
@@ -1155,9 +1155,8 @@ function LandModule({ family }: { family: LandFamily }) {
   const mapLayers = (
     <>
       <BaseTileLayer family={family} />
-      {surfaceMapPaths ? <SurfaceLayer paths={surfaceMapPaths} /> : gradeMapPaths ? gradeMapPaths.map((path, idx) => (
-        <Polyline key={`grade-${idx}`} positions={path.positions} pathOptions={{ color: path.color, weight: 5 }} />
-      )) : <TrackSegmentsLayer segments={mapSegments} weight={5} family={family} />}
+      {/* Pente : ses tronçons colorés sur le même canevas que la vitesse, pas en milliers de traits SVG (27/10). */}
+      {surfaceMapPaths ? <SurfaceLayer paths={surfaceMapPaths} /> : <TrackSegmentsLayer segments={gradeMapPaths ?? mapSegments} weight={5} family={family} />}
       {zonePaths.map((path, idx) => (
         <Polyline key={`zone-${selectedZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       ))}
@@ -1177,9 +1176,7 @@ function LandModule({ family }: { family: LandFamily }) {
       <TopsHighlight tops={tops} selected={selectedTop} />
       {jumpsVisible && <JumpMapLayer track={gpx.track} jumps={shownJumps} shownJump={shownJump} podiumShown={jumpPodiumShown} />}
       <SessionMarksLayer located={marks.located} shownMs={shownMark} />
-      {hoveredIndex !== null && gpx.track[hoveredIndex] && (
-        <HoverMarker position={[gpx.track[hoveredIndex].lat, gpx.track[hoveredIndex].lon]} />
-      )}
+      <HoveredTrackMarker points={gpx.track} />
     </>
   );
 
@@ -1270,7 +1267,7 @@ function LandModule({ family }: { family: LandFamily }) {
               <ResizablePanel id={panelId('test')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <FitnessTestPanel track={gpx.track} test={sessionTest} minutes={trackMinutes} speedsMs={chartSpeed} hrSmoothed={heart.smoothed}
                   speedUnit={speedUnit} profileHrMax={runner.hrMax} onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'test', atMs: sessionTest.startMs })}
-                  zoom={testZoom} hoveredIndex={hoveredIndex} onHoverIndex={hoverIndex} onLeave={clearHover}
+                  zoom={testZoom} onHoverIndex={hoverIndex} onLeave={clearHover}
                   onShowOnMap={() => zoomOnMap.show('test')} open={open.test} onToggle={() => toggle('test')} />
               </ResizablePanel>
             ) : (
@@ -1314,7 +1311,7 @@ function LandModule({ family }: { family: LandFamily }) {
               <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <HeartRatePanel track={gpx.track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: gpx.track[0]?.timeMs ?? null })} selectedZone={selectedHrZone} onSelectZone={setSelectedHrZone}
-                  hoveredIndex={hoveredIndex} onHoverIndex={hoverIndex} onLeave={clearHover} efficiency={heartEfficiency}
+                  onHoverIndex={hoverIndex} onLeave={clearHover} efficiency={heartEfficiency}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
                   open={open.cardio} onToggle={() => toggle('cardio')} />
               </ResizablePanel>
@@ -1499,7 +1496,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     <div className="chart-head" style={{ marginTop: '12px' }}>
                       <ChartFold label="Altitude" color="#e64a19" open={zonesFold.open.graphe} onToggle={() => zonesFold.toggle('graphe')}
                         title={zonesFold.open.graphe ? "Replier le graphe d'altitude" : "Montrer le graphe d'altitude"} />
-                      {zonesFold.open.graphe && <ChartReadout readout={graphReadout(['altitude'])} />}
+                      {zonesFold.open.graphe && <HoverReadout read={graphReadout(['altitude'])} />}
                     </div>
                     {zonesFold.open.graphe && (
                       <>

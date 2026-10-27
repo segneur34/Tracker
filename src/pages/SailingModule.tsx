@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
 import ChartFold from '../components/ChartFold';
-import ChartReadout, { type Readout } from '../components/ChartReadout';
+import { HoverReadout, type Readout } from '../components/ChartReadout';
 import { Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
 import BaseTileLayer from '../components/BaseTileLayer';
 import L from 'leaflet';
@@ -8,7 +8,6 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   type DotItemDotProps,
 } from 'recharts';
-import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
 import { Link, useSearchParams } from 'react-router-dom';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
@@ -29,6 +28,7 @@ import { ARROW_EVERY_S, CHART_MAX_POINTS, arrowIndices, trackBounds } from '../c
 import { SAILING_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type SailingTab } from '../core/analysisTabs';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { trackIndexAtTime } from '../core/jumps';
+import { setHoveredIndex, useResetChartHover } from '../hooks/useChartHover';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { FAMILY_ACCENT, sessionActivity } from '../core/activities';
@@ -50,7 +50,7 @@ import HeartRateChart from '../components/HeartRateChart';
 import HeartRatePanel, { CardioCurve } from '../components/HeartRatePanel';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import AnalysisMap from '../components/AnalysisMap';
-import HoverMarker from '../components/HoverMarker';
+import { HoveredTrackMarker } from '../components/HoverMarker';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import EmptyTabPanel from '../components/EmptyTabPanel';
 import ResizablePanel from '../components/ResizablePanel';
@@ -274,11 +274,11 @@ function SailingModule() {
    * graphe se réduit à son titre ; sa taille mémorisée l'attend.
    */
   const graphFolds = useOpenSections('sailing-graphes', SAILING_GRAPH_FOLDS_DEFAULT);
-  const graphTitle = (key: SailingGraphFold, label: string, readout?: Readout | null) => (
-    <div className="chart-head" style={{ justifyContent: readout === undefined ? 'center' : undefined, marginBottom: '10px' }}>
+  const graphTitle = (key: SailingGraphFold, label: string, read?: (index: number) => Readout | null) => (
+    <div className="chart-head" style={{ justifyContent: read === undefined ? 'center' : undefined, marginBottom: '10px' }}>
       <ChartFold label={label} open={graphFolds.open[key]} onToggle={() => graphFolds.toggle(key)}
         title={graphFolds.open[key] ? 'Replier ce graphe' : 'Montrer ce graphe'} style={{ fontSize: 'var(--text-s)', fontWeight: 700 }} />
-      {readout !== undefined && graphFolds.open[key] && <ChartReadout readout={readout} />}
+      {read !== undefined && graphFolds.open[key] && <HoverReadout read={read} />}
     </div>
   );
   const foldedGraph = (key: SailingGraphFold, label: string, widthPx: number) => (
@@ -323,7 +323,8 @@ function SailingModule() {
   /** Explications repliées derrière un « ? » (enregistrement et virages écartés ; lecture du vent). */
   const maneuverHelpOpen = useHelp('voile:manoeuvres')?.open ?? false;
   const windHelpOpen = useHelp('voile:vent')?.open ?? false;
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  // Point survolé hors de l'état du module (`useChartHover`) : effacé à chaque session et au démontage.
+  useResetChartHover(sessionKey);
   /** Réglage du vent sur la carte, ouvert par « Régler » ; sur téléphone, dans la carte en plein écran. */
   const [windAdjust, setWindAdjust] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
@@ -401,7 +402,7 @@ function SailingModule() {
   const staticMapLayers = useMemo(() => {
     if (trackData.length === 0) return null;
 
-    let topArray: TopSegment[] | undefined;
+    let topArray: Pick<TopSegment, 'val' | 'path'>[] | undefined;
     if (selectedTopMap === 'vmgUpwind') topArray = vmgStats?.topsUpwind;
     else if (selectedTopMap === 'vmgDownwind') topArray = vmgStats?.topsDownwind;
     else topArray = stats?.tops[selectedTopMap as keyof typeof stats.tops];
@@ -456,15 +457,13 @@ function SailingModule() {
 
   const mapBounds = useMemo(() => trackBounds(trackData), [trackData]);
 
-  /** Survol d'un graphe : déplace le marqueur de la carte sur le point de trace correspondant. */
+  /** Survol d'un graphe : le point va au magasin du survol, lu par le repère de la carte et les lectures, pas par le module. */
   const onChartHover = (data: ReadonlyArray<{ index: number }>) => (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, data);
-    if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
+    if (index !== null) setHoveredIndex(index);
   };
   const clearHover = () => setHoveredIndex(null);
-  const hoverIndex = (index: number) => {
-    if (index !== hoveredIndex) setHoveredIndex(index);
-  };
+  const hoverIndex = setHoveredIndex;
 
   const narrow = useNarrowScreen();
   /** Temps écoulé de chaque point, en minutes : l'axe des graphes de vitesse et du vent, et de leur zoom. */
@@ -475,11 +474,12 @@ function SailingModule() {
   /** Zoom commun aux graphes de vitesse et du vent, qui partagent leur axe ; « tout voir » à chaque session. */
   const chartZoom = useChartZoom(trackMinutes.length > 1 ? { min: 0, max: trackMinutes[trackMinutes.length - 1] } : null, sessionKey);
   /** Points de trace des graphes sur la plage visible, au plus `CHART_MAX_POINTS` : zoomer montre plus de détail. */
+  const speedSeries = useMemo(() => trackData.map((p) => p.smoothedSpeed), [trackData]);
   const chartIndices = useMemo(() => {
     if (trackData.length === 0) return [];
     const [first, last] = visibleIndexRange(trackMinutes, chartZoom.view);
-    return sampledIndices(first, last, CHART_MAX_POINTS);
-  }, [trackData, trackMinutes, chartZoom.view]);
+    return sampledIndices(first, last, CHART_MAX_POINTS, speedSeries);
+  }, [trackData, trackMinutes, chartZoom.view, speedSeries]);
   const speedRows = useMemo(
     () => chartIndices.map((i) => ({ index: i, minutes: trackMinutes[i], vitesse: parseFloat(formatKnots(trackData[i].smoothedSpeed, speedUnit)) })),
     [chartIndices, trackMinutes, trackData, speedUnit]
@@ -518,22 +518,22 @@ function SailingModule() {
     mapExpanded,
     openMap: () => setMapExpanded(true),
   });
-  /** Point survolé lu au-dessus des graphes de vitesse, de FC et du vent, s'il est dans la plage zoomée. */
-  const readIndex = hoveredIndex !== null && trackMinutes[hoveredIndex] !== undefined && inChartView(chartZoom.view, trackMinutes[hoveredIndex])
-    ? hoveredIndex
-    : null;
-  const readAt = readIndex !== null ? formatTimeOfDay(trackData[readIndex].timeMs) : '';
-  const speedReadout: Readout | null = readIndex !== null
-    ? { values: [{ text: `${showKn(trackData[readIndex].smoothedSpeed)} ${speedSymbol}`, color: '#1976d2' }], at: readAt }
-    : null;
-  const heartReadout: Readout | null = readIndex !== null ? (() => {
-    const bpm = heart.smoothed[readIndex];
-    return { values: [{ text: bpm === null || bpm === undefined ? '—' : `${Math.round(bpm)} bpm`, color: HEART_RATE_COLOR }], at: readAt };
-  })() : null;
-  const windReadout: Readout | null = readIndex !== null && windStats ? (() => {
-    const direction = windStats.windAt(trackData[readIndex].timeMs);
-    return { values: [{ text: direction === null ? '—' : `${normalizeAngle(Math.round(direction))}°`, color: WIND_COLOR }], at: readAt };
-  })() : null;
+  /** Point survolé lu au-dessus des graphes de vitesse, de FC et du vent (`HoverReadout`), s'il est dans la plage zoomée. */
+  const readable = (i: number): boolean => trackMinutes[i] !== undefined && inChartView(chartZoom.view, trackMinutes[i]);
+  const readAt = (i: number): string => formatTimeOfDay(trackData[i].timeMs);
+  const speedReadout = (i: number): Readout | null => (readable(i)
+    ? { values: [{ text: `${showKn(trackData[i].smoothedSpeed)} ${speedSymbol}`, color: '#1976d2' }], at: readAt(i) }
+    : null);
+  const heartReadout = (i: number): Readout | null => {
+    if (!readable(i)) return null;
+    const bpm = heart.smoothed[i];
+    return { values: [{ text: bpm === null || bpm === undefined ? '—' : `${Math.round(bpm)} bpm`, color: HEART_RATE_COLOR }], at: readAt(i) };
+  };
+  const windReadout = (i: number): Readout | null => {
+    if (!readable(i) || !windStats) return null;
+    const direction = windStats.windAt(trackData[i].timeMs);
+    return { values: [{ text: direction === null ? '—' : `${normalizeAngle(Math.round(direction))}°`, color: WIND_COLOR }], at: readAt(i) };
+  };
   const zoomHint = narrow
     ? 'Écartez deux doigts ou touchez deux fois un graphe pour zoomer.'
     : 'Tirez une zone à la souris ou double-cliquez pour zoomer ; « Afficher » montre sur la carte la partie vue du graphe, un second clic la retire ; « Tout voir » revient.';
@@ -591,13 +591,13 @@ function SailingModule() {
           <>
             {graphFolds.open.vitesse && (
               <>
-                <ChartReadout line readout={speedReadout} label="Vitesse" color="#1976d2" />
+                <HoverReadout line read={speedReadout} label="Vitesse" color="#1976d2" />
                 {speedChart(COMPANION_CHART_STYLE)}
               </>
             )}
             {heart.present && heartRows.length > 1 && graphFolds.open.fc && (
               <>
-                <ChartReadout line readout={heartReadout} label="FC" color={HEART_RATE_COLOR} />
+                <HoverReadout line read={heartReadout} label="FC" color={HEART_RATE_COLOR} />
                 {heartChart(COMPANION_CHART_STYLE)}
               </>
             )}
@@ -606,13 +606,13 @@ function SailingModule() {
       case 'vent':
         return windStats ? (
           <>
-            <ChartReadout line readout={windReadout} label="Vent" color={WIND_COLOR} />
+            <HoverReadout line read={windReadout} label="Vent" color={WIND_COLOR} />
             {windChart(COMPANION_CHART_STYLE)}
           </>
         ) : null;
       case 'cardio':
         return heart.present ? (
-          <CardioCurve track={track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null} hoveredIndex={hoveredIndex}
+          <CardioCurve track={track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
             onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={COMPANION_CHART_STYLE} />
         ) : null;
       default:
@@ -621,7 +621,7 @@ function SailingModule() {
   };
 
   /** Podium de VMG (près, portant) : les tops de vitesse passent par `TopsPanel`. */
-  const renderTop3 = (panel: 'vmg', title: string, topKey: string, values: TopSegment[]) => (
+  const renderTop3 = (panel: 'vmg', title: string, topKey: string, values: Pick<TopSegment, 'val' | 'path'>[]) => (
     <div style={{ marginBottom: '10px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
         <strong>{title}</strong>
@@ -902,9 +902,7 @@ function SailingModule() {
       )}
 
       <SessionMarksLayer located={marks.located} shownMs={shownMark} />
-      {hoveredIndex !== null && trackData[hoveredIndex] && (
-        <HoverMarker position={[trackData[hoveredIndex].lat, trackData[hoveredIndex].lon]} />
-      )}
+      <HoveredTrackMarker points={trackData} />
     </>
   );
 
@@ -1063,7 +1061,7 @@ function SailingModule() {
                 <HeartRatePanel track={track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: track[0]?.timeMs ?? null })} selectedZone={selectedHrZone}
                   onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
-                  hoveredIndex={hoveredIndex} onHoverIndex={hoverIndex} onLeave={clearHover}
+                  onHoverIndex={hoverIndex} onLeave={clearHover}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
                   open={open.cardio} onToggle={() => toggle('cardio')} />
               </ResizablePanel>
@@ -1133,7 +1131,7 @@ function SailingModule() {
                 <ResizablePanel id="sailing.graph.vent" defaultHeight={250} minWidth={300} minHeight={180} style={{ flex: '2 1 500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
                   <div className="chart-head" style={{ marginBottom: '10px' }}>
                     <strong style={{ fontSize: 'var(--text-s)' }}>Évolution du Vent</strong>
-                    <ChartReadout readout={windReadout} />
+                    <HoverReadout read={windReadout} />
                   </div>
                   <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                     {windChart(FILL_STYLE)}

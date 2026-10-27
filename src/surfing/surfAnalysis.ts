@@ -228,8 +228,8 @@ export const analyzeSurf = (
     });
   } else {
     rides.forEach((r, k) => {
-      const inFlight = waveMask.map((w, i) => w && i > r.start && i <= r.end);
-      const flightWaves = keptRuns(track, cum, activeRuns(track, inFlight, p.maxGapS), p);
+      // Vagues du vol : les suites du masque de vague entre ses bornes, sans reparcourir la trace (27/10).
+      const flightWaves = keptRuns(track, cum, activeRuns(track, waveMask, p.maxGapS, r.start + 1, r.end), p);
       let waveS = 0;
       let waveDistanceM = 0;
       for (const w of flightWaves) {

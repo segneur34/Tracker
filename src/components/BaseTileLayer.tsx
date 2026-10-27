@@ -7,6 +7,9 @@ import type { SportFamily } from '../core/sportProfiles';
 import { useMapBase } from '../hooks/useMapBase';
 import { IconLayers } from './icons';
 import { resolveTile } from './mapTiles';
+// La feuille de Leaflet vient avec le fond, posé dans toutes les cartes (analyses, enregistrement, planification,
+// vignettes) : aucune page chargée à la demande ne peut l'oublier (27/10).
+import 'leaflet/dist/leaflet.css';
 import './BaseTileLayer.css';
 
 /**

@@ -32,7 +32,7 @@ export const median = (values: number[]): number => {
 };
 
 /** Durée, en secondes, sur laquelle la médiane initiale amorce l'écrêtage. */
-const SEED_WINDOW_S = 10;
+export const SEED_WINDOW_S = 10;
 
 export interface ClampOptions {
   /** Accélération maximale plausible, en m/s². */
@@ -75,21 +75,41 @@ export const clampByAcceleration = (
     typeof maxAccelOrOptions === 'number'
       ? { maxAccel: maxAccelOrOptions, maxOutlierSeconds: maxOutlierSecondsArg }
       : maxAccelOrOptions;
+  return clampByAccelerationFrom(speedsMs, timesMs, options, null, -1).out;
+};
+
+/** Reprise de l'écrêtage : à `from`, la valeur retenue au point d'avant, et les valeurs déjà retenues avant `from`. */
+export interface ClampResume {
+  from: number;
+  previous: number;
+  prefix: ArrayLike<number>;
+}
+
+/**
+ * `clampByAcceleration`, repris à `resume.from` quand le calcul précédent
+ * vaut encore jusque-là, et qui dit d'où le prochain pourra reprendre
+ * (`restart`) : le dernier passage de la boucle, au plus à `settledBefore`,
+ * dont la fenêtre de retour (`maxOutlierSeconds`) finit avant
+ * `settledBefore`, l'amorce étant figée (un point au-delà de ses
+ * `SEED_WINDOW_S` avant `settledBefore`) ; -1 sinon. Les décisions d'avant
+ * ce passage ne dépendent que de points figés : un calcul repris là donne la
+ * même sortie que le calcul entier (`resumeKinematics`).
+ */
+export const clampByAccelerationFrom = (
+  speedsMs: number[],
+  timesMs: number[],
+  options: ClampOptions,
+  resume: ClampResume | null,
+  settledBefore: number
+): { out: number[]; restart: number } => {
   const maxAccel = options.maxAccel ?? DEFAULT_MAX_ACCELERATION;
   const maxOutlierSeconds = options.maxOutlierSeconds ?? DEFAULT_MAX_OUTLIER_S;
   const maxSpeedMs = options.maxSpeedMs ?? Infinity;
 
   const n = speedsMs.length;
-  if (n === 0) return [];
+  if (n === 0) return { out: [], restart: -1 };
 
   const out = new Array<number>(n);
-
-  // Amorce : médiane des vitesses plausibles des premières secondes.
-  const seedValues: number[] = [];
-  for (let k = 0; k < n && timesMs[k] - timesMs[0] <= SEED_WINDOW_S * 1000; k++) {
-    if (speedsMs[k] <= maxSpeedMs) seedValues.push(speedsMs[k]);
-  }
-  const seed = seedValues.length > 0 ? median(seedValues) : Math.min(speedsMs[0], maxSpeedMs);
 
   const isPlausible = (fromIndex: number, toIndex: number, fromSpeed: number): boolean => {
     if (speedsMs[toIndex] > maxSpeedMs) return false;
@@ -98,13 +118,30 @@ export const clampByAcceleration = (
     return Math.abs(speedsMs[toIndex] - fromSpeed) / dt <= maxAccel;
   };
 
-  // Le premier point est jugé contre l'amorce, comme tous les autres, avec
-  // une seconde de référence faute d'intervalle précédent.
-  const firstDeviation = Math.abs(speedsMs[0] - seed);
-  out[0] = speedsMs[0] <= maxSpeedMs && firstDeviation <= maxAccel ? speedsMs[0] : seed;
+  let i: number;
+  if (resume) {
+    for (let k = 0; k < resume.from; k++) out[k] = resume.prefix[k];
+    i = resume.from;
+  } else {
+    // Amorce : médiane des vitesses plausibles des premières secondes.
+    const seedValues: number[] = [];
+    for (let k = 0; k < n && timesMs[k] - timesMs[0] <= SEED_WINDOW_S * 1000; k++) {
+      if (speedsMs[k] <= maxSpeedMs) seedValues.push(speedsMs[k]);
+    }
+    const seed = seedValues.length > 0 ? median(seedValues) : Math.min(speedsMs[0], maxSpeedMs);
 
-  let i = 1;
+    // Le premier point est jugé contre l'amorce, comme tous les autres, avec
+    // une seconde de référence faute d'intervalle précédent.
+    const firstDeviation = Math.abs(speedsMs[0] - seed);
+    out[0] = speedsMs[0] <= maxSpeedMs && firstDeviation <= maxAccel ? speedsMs[0] : seed;
+    i = 1;
+  }
+
+  const maxOutlierMs = maxOutlierSeconds * 1000;
+  const seedSettled = settledBefore >= 2 && timesMs[settledBefore - 1] - timesMs[0] > SEED_WINDOW_S * 1000;
+  let restart = -1;
   while (i < n) {
+    if (seedSettled && i <= settledBefore && timesMs[settledBefore] - timesMs[i - 1] > maxOutlierMs) restart = i;
     const previous = out[i - 1];
 
     if (timesMs[i] - timesMs[i - 1] <= 0) {
@@ -141,7 +178,7 @@ export const clampByAcceleration = (
     }
   }
 
-  return out;
+  return { out, restart };
 };
 
 /**
@@ -154,15 +191,31 @@ export const medianFilterByTime = (
   values: number[],
   timesMs: number[],
   windowSeconds = DEFAULT_MEDIAN_WINDOW_S
+): number[] => medianFilterByTimeFrom(values, timesMs, windowSeconds, 0, null);
+
+/**
+ * `medianFilterByTime` à partir de `from`, les valeurs d'avant reprises de
+ * `prefix` (calcul précédent, `resumeKinematics`) : la fenêtre étant
+ * centrée, les médianes d'avant `from` ne lisent que des valeurs figées
+ * quand `from` est pris une demi-fenêtre avant la première valeur changée.
+ */
+export const medianFilterByTimeFrom = (
+  values: number[],
+  timesMs: number[],
+  windowSeconds: number,
+  from: number,
+  prefix: ArrayLike<number> | null
 ): number[] => {
   if (values.length === 0) return [];
 
   const halfWindowMs = (windowSeconds * 1000) / 2;
   const out = new Array<number>(values.length);
-  let start = 0;
-  let end = 0;
+  for (let k = 0; k < from; k++) out[k] = prefix ? prefix[k] : NaN;
+  let start = from;
+  while (start > 0 && timesMs[from] - timesMs[start - 1] <= halfWindowMs) start--;
+  let end = from;
 
-  for (let i = 0; i < values.length; i++) {
+  for (let i = from; i < values.length; i++) {
     while (start < i && timesMs[i] - timesMs[start] > halfWindowMs) start++;
     if (end < i) end = i;
     while (end + 1 < values.length && timesMs[end + 1] - timesMs[i] <= halfWindowMs) end++;

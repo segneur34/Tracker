@@ -1,15 +1,14 @@
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import BaseTileLayer from '../components/BaseTileLayer';
-import 'leaflet/dist/leaflet.css';
 import './analysisMobile.css';
 import { CartesianGrid, ComposedChart, Line, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import ActivitySelect from '../components/ActivitySelect';
 import ChartFold from '../components/ChartFold';
-import ChartReadout, { type Readout } from '../components/ChartReadout';
+import { HoverReadout, type Readout } from '../components/ChartReadout';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import AnalysisMap from '../components/AnalysisMap';
-import HoverMarker from '../components/HoverMarker';
+import { HoveredTrackMarker } from '../components/HoverMarker';
 import { SessionMarksLayer, SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
 import { HelpText } from '../components/Help';
@@ -52,6 +51,7 @@ import {
   SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
   fromDisplaySpeed, toDisplaySpeed,
 } from '../core/units';
+import { setHoveredIndex, useResetChartHover } from '../hooks/useChartHover';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
@@ -218,7 +218,8 @@ function SurfModule() {
   );
   const highlight = useMapHighlight(open);
   const [waveSort, setWaveSort] = useState<WaveSort>('ordre');
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  // Point survolé hors de l'état du module (`useChartHover`) : effacé à chaque session et au démontage.
+  useResetChartHover(gpx.sessionKey);
   const narrow = useNarrowScreen();
 
   const track = gpx.track;
@@ -366,22 +367,22 @@ function SurfModule() {
   // Graphe de vitesse au fil de la session, en heure du jour, zoomable.
   const trackMinutes = useMemo(() => track.map((p) => (p.timeMs - track[0].timeMs) / 60000), [track]);
   const zoom = useChartZoom(trackMinutes.length > 1 ? { min: 0, max: trackMinutes[trackMinutes.length - 1] } : null, gpx.sessionKey);
+  const speedSeries = useMemo(() => track.map((p) => p.smoothedSpeedMs), [track]);
   const chartData = useMemo(() => {
     if (track.length === 0 || !open.graphiques) return [];
     const [first, last] = visibleIndexRange(trackMinutes, zoom.view);
-    return sampledIndices(first, last, CHART_MAX_POINTS).map((i): ChartRow => ({
+    return sampledIndices(first, last, CHART_MAX_POINTS, speedSeries).map((i): ChartRow => ({
       index: i,
       minutes: trackMinutes[i],
       speed: parseFloat(toDisplaySpeed(track[i].smoothedSpeedMs, speedUnit).toFixed(2)),
       speedMs: track[i].smoothedSpeedMs,
       hr: heart.smoothed[i] === null || heart.smoothed[i] === undefined ? null : Math.round(heart.smoothed[i]!),
     }));
-  }, [track, open.graphiques, trackMinutes, zoom.view, speedUnit, heart.smoothed]);
+  }, [track, open.graphiques, trackMinutes, zoom.view, speedUnit, heart.smoothed, speedSeries]);
   const minutesOf = (ms: number) => (track.length > 0 ? (ms - track[0].timeMs) / 60000 : 0);
+  /** Survol des graphes : le point va au magasin du survol, lu par le repère de la carte et les lectures, pas par le module. */
   const clearHover = () => setHoveredIndex(null);
-  const hoverIndex = (index: number) => {
-    if (index !== hoveredIndex) setHoveredIndex(index);
-  };
+  const hoverIndex = setHoveredIndex;
   /** Axe du temps des graphes, en heure du jour, graduations rondes zoom compris. */
   const timeAxis = (
     <XAxis dataKey="minutes" type="number" allowDataOverflow
@@ -392,20 +393,19 @@ function SurfModule() {
   );
   const onChartHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, chartData);
-    if (index !== null && index !== hoveredIndex) setHoveredIndex(index);
+    if (index !== null) setHoveredIndex(index);
   };
-  /** Point survolé lu au-dessus des graphes (`ChartReadout`), s'il est dans la plage zoomée. */
-  const readIndex = hoveredIndex !== null && trackMinutes[hoveredIndex] !== undefined && inChartView(zoom.view, trackMinutes[hoveredIndex])
-    ? hoveredIndex
-    : null;
-  const readAt = readIndex !== null ? formatTimeOfDay(track[readIndex].timeMs) : '';
-  const speedReadout: Readout | null = readIndex !== null
-    ? { values: [{ text: formatSpeed(track[readIndex].smoothedSpeedMs, speedUnit), color: '#1e88e5' }], at: readAt }
-    : null;
-  const heartReadout: Readout | null = readIndex !== null ? (() => {
-    const bpm = heart.smoothed[readIndex];
-    return { values: [{ text: bpm === null || bpm === undefined ? '—' : `${Math.round(bpm)} bpm`, color: HEART_RATE_COLOR }], at: readAt };
-  })() : null;
+  /** Point survolé lu au-dessus des graphes (`HoverReadout`), s'il est dans la plage zoomée. */
+  const readable = (i: number): boolean => trackMinutes[i] !== undefined && inChartView(zoom.view, trackMinutes[i]);
+  const readAt = (i: number): string => formatTimeOfDay(track[i].timeMs);
+  const speedReadout = (i: number): Readout | null => (readable(i)
+    ? { values: [{ text: formatSpeed(track[i].smoothedSpeedMs, speedUnit), color: '#1e88e5' }], at: readAt(i) }
+    : null);
+  const heartReadout = (i: number): Readout | null => {
+    if (!readable(i)) return null;
+    const bpm = heart.smoothed[i];
+    return { values: [{ text: bpm === null || bpm === undefined ? '—' : `${Math.round(bpm)} bpm`, color: HEART_RATE_COLOR }], at: readAt(i) };
+  };
   /** Zoom de la courbe de l'onglet « cardio », sur le même temps : tenu ici pour « +carte ». */
   const cardioZoom = useChartZoom(trackMinutes.length > 1 ? { min: 0, max: trackMinutes[trackMinutes.length - 1] } : null, gpx.sessionKey);
   /** Carte en plein écran (téléphone), seule ou avec les graphes d'un onglet. */
@@ -465,13 +465,13 @@ function SurfModule() {
           <>
             {speedShown && (
               <>
-                <ChartReadout line readout={speedReadout} label="Vitesse" color="#1e88e5" />
+                <HoverReadout line read={speedReadout} label="Vitesse" color="#1e88e5" />
                 {speedChart(chartBox(CHART_HEIGHT_PX))}
               </>
             )}
             {heart.present && graphFolds.open.fc && (
               <>
-                <ChartReadout line readout={heartReadout} label="FC" color={HEART_RATE_COLOR} />
+                <HoverReadout line read={heartReadout} label="FC" color={HEART_RATE_COLOR} />
                 {heartChart(speedShown)}
               </>
             )}
@@ -480,7 +480,7 @@ function SurfModule() {
       }
       case 'cardio':
         return heart.present ? (
-          <CardioCurve track={track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null} hoveredIndex={hoveredIndex}
+          <CardioCurve track={track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
             onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={chartBox(CHART_HEIGHT_PX)} />
         ) : null;
       default:
@@ -501,7 +501,7 @@ function SurfModule() {
         <Polyline key="zoom" positions={zoomOnMap.path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       )}
       <SessionMarksLayer located={marks.located} shownMs={shownMark} />
-      {hoveredIndex !== null && track[hoveredIndex] && <HoverMarker position={[track[hoveredIndex].lat, track[hoveredIndex].lon]} />}
+      <HoveredTrackMarker points={track} />
     </>
   );
 
@@ -907,7 +907,7 @@ function SurfModule() {
                 style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: folds ? 'auto' : 'hidden' }}>
                 <div className="chart-head" style={{ marginBottom: '8px', paddingRight: '28px' }}>
                   <PanelTitle label="Vitesse" open={open.graphiques} onToggle={() => toggle('graphiques')} helpKey="surf:graphiques" />
-                  {!folds && <ChartReadout readout={speedReadout} />}
+                  {!folds && <HoverReadout read={speedReadout} />}
                 </div>
                 <HelpText helpKey="surf:graphiques" note>
                   Le survol déplace le repère sur la carte.
@@ -918,7 +918,7 @@ function SurfModule() {
                   <div className="chart-head">
                     <ChartFold label="Vitesse" color="#1e88e5" open={graphFolds.open.vitesse} onToggle={() => graphFolds.toggle('vitesse')}
                       title={graphFolds.open.vitesse ? 'Replier le graphe de vitesse' : 'Montrer le graphe de vitesse'} />
-                    {speedShown && <ChartReadout readout={speedReadout} />}
+                    {speedShown && <HoverReadout read={speedReadout} />}
                   </div>
                 )}
                 {speedShown && speedChart(folds ? chartBox(CHART_HEIGHT_PX) : { width: '100%', flex: 1, minHeight: 0 })}
@@ -926,7 +926,7 @@ function SurfModule() {
                   <div className="chart-head" style={{ marginTop: '8px' }}>
                     <ChartFold label="FC" color={HEART_RATE_COLOR} open={graphFolds.open.fc} onToggle={() => graphFolds.toggle('fc')}
                       title={graphFolds.open.fc ? 'Replier le graphe de FC' : 'Montrer le graphe de FC'} />
-                    {hrShown && <ChartReadout readout={heartReadout} />}
+                    {hrShown && <HoverReadout read={heartReadout} />}
                   </div>
                 )}
                 {hrShown && heartChart(speedShown)}
@@ -942,7 +942,7 @@ function SurfModule() {
                 <HeartRatePanel track={track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: track[0]?.timeMs ?? null })} selectedZone={selectedHrZone}
                   onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
-                  hoveredIndex={hoveredIndex} onHoverIndex={hoverIndex} onLeave={clearHover}
+                  onHoverIndex={hoverIndex} onLeave={clearHover}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
                   open={open.cardio} onToggle={() => toggle('cardio')} />
               </ResizablePanel>

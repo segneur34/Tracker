@@ -109,8 +109,7 @@ const describeLeg = (track: TrackPoint[], s: StepSums, from: number, to: number,
       (ms) => ms,
       { count: 1, decimals: 6 }
     );
-    const value = Number(top?.val);
-    if (isFinite(value)) maxSpeedMs = value;
+    maxSpeedMs = top?.speed ?? null;
   }
   return {
     startMs: track[from].timeMs,
@@ -173,20 +172,32 @@ const splitTrack = (
   return { closed, open: turningSince === null ? describeLeg(track, s, legStart, last, options) : null };
 };
 
+/** Bords d'une trace continue (sans pause) : les fermés, et le dernier, ouvert (`null` pendant une manœuvre). */
+export interface LiveLegSplit {
+  closed: LiveLeg[];
+  open: LiveLeg | null;
+}
+
+/** Bords d'une trace continue ; calculés une fois par segment fermé dans le direct (`liveStats.ts`). */
+export const splitLiveLegs = (track: TrackPoint[], options: LiveLegOptions = LIVE_LEG_DEFAULTS): LiveLegSplit => splitTrack(track, options);
+
 /**
- * Bord en cours et bord précédent. Chaque trace est une portion sans pause :
- * une pause ferme le bord. Un bord trop court pour avoir un cap n'est pas
- * retenu comme précédent.
+ * Bord en cours et bord précédent, à partir des bords de chaque segment, dans
+ * l'ordre. Une pause ferme le bord. Un bord trop court pour avoir un cap n'est
+ * pas retenu comme précédent.
  */
-export const computeLiveLegs = (tracks: TrackPoint[][], options: LiveLegOptions = LIVE_LEG_DEFAULTS): LiveLegs => {
+export const combineLiveLegs = (splits: ReadonlyArray<LiveLegSplit>): LiveLegs => {
   let previous: LiveLeg | null = null;
   let current: LiveLeg | null = null;
-  tracks.forEach((track, t) => {
-    const { closed, open } = splitTrack(track, options);
-    const isLast = t === tracks.length - 1;
+  splits.forEach(({ closed, open }, t) => {
+    const isLast = t === splits.length - 1;
     const done = isLast || open === null ? closed : [...closed, open];
     for (const leg of done) if (leg.headingDeg !== null) previous = leg;
     if (isLast) current = open;
   });
   return { current, previous };
 };
+
+/** Bord en cours et bord précédent de l'enregistrement, chaque trace étant une portion sans pause. */
+export const computeLiveLegs = (tracks: TrackPoint[][], options: LiveLegOptions = LIVE_LEG_DEFAULTS): LiveLegs =>
+  combineLiveLegs(tracks.map((track) => splitTrack(track, options)));

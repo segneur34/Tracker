@@ -2,7 +2,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { niceTicks } from '../core/chartZoom';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import type { GradientStop } from '../running/runningAnalytics';
-import ChartReadout, { type Readout } from './ChartReadout';
+import ChartReadout, { HoverReadout, type Readout } from './ChartReadout';
 import { gradeGradientDefs } from './gradeGradientDefs';
 import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, type ChartHoverEvent } from './chartHover';
 import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
@@ -31,7 +31,7 @@ const ALTITUDE_COLOR = '#e64a19';
  * sans « +carte » (la carte est déjà au-dessus).
  */
 function ElevationProfileMini({
-  rows, stops, gradientId, distanceSymbol, zoom, readout, onHoverIndex, onLeave, onShowOnMap, height = PROFILE_HEIGHT_PX, grid = false,
+  rows, stops, gradientId, distanceSymbol, zoom, readout, read, onHoverIndex, onLeave, onShowOnMap, height = PROFILE_HEIGHT_PX, grid = false,
 }: {
   rows: ElevationProfileRow[];
   stops: GradientStop[];
@@ -39,8 +39,10 @@ function ElevationProfileMini({
   gradientId: string;
   distanceSymbol: string;
   zoom: ChartZoom;
-  /** Lecture au point survolé, `null` hors de la plage zoomée. */
-  readout: Readout | null;
+  /** Lecture au point survolé, `null` hors de la plage zoomée (page qui tient son survol : Itinéraires). */
+  readout?: Readout | null;
+  /** Lecture d'un indice de trace, lue dans le magasin du survol (`HoverReadout`) : les analyses. */
+  read?: (index: number) => Readout | null;
   onHoverIndex: (index: number) => void;
   onLeave: () => void;
   /** « +carte » ou « Afficher » ; aucun bouton s'il manque. */
@@ -56,7 +58,9 @@ function ElevationProfileMini({
   };
   return (
     <div style={{ marginTop: '10px' }}>
-      <ChartReadout line readout={readout} label="Altitude" color={ALTITUDE_COLOR} />
+      {read
+        ? <HoverReadout line read={read} label="Altitude" color={ALTITUDE_COLOR} />
+        : <ChartReadout line readout={readout ?? null} label="Altitude" color={ALTITUDE_COLOR} />}
       <ZoomableChart zoom={zoom} onLeave={onLeave} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${height}px` }}>
         <ResponsiveContainer>
           <AreaChart data={rows} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 4, right: 6, left: 0, bottom: 0 }}>

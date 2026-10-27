@@ -141,7 +141,8 @@ function AnalysisMap({
           <MapContainer key={sessionKey ?? 'empty'} {...initialView(bounds)} style={{ height: '100%', width: '100%' }}>
             <MapAutoResize />
             {focusControl}
-            {layers}
+            {/* Vue agrandie ouverte : elle seule dessine les couches, la carte compacte garde son cadrage sous elle (27/10). */}
+            {expanded ? null : layers}
             {legendControl}
           </MapContainer>
           {tools}

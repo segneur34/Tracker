@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_ROUTE, addWaypoint, legKey, withLegResult } from '../planning/route';
 import { routeToRecord } from '../planning/routeRecord';
 import {
-  FOLLOWED_TRACE_TOLERANCE_M, followProgress, followedTraceFromPoints, followedTraceFromRoute, followedTraceLengthM,
+  FOLLOWED_TRACE_TOLERANCE_M, createFollowCursor, followProgress, followedTraceFromPoints, followedTraceFromRoute, followedTraceLengthM,
   splitFollowedTrace, thinFollowedTrace, type FollowedTrace,
 } from './followedTrace';
 
@@ -116,6 +116,36 @@ describe('avancement sur la trace suivie', () => {
   it("traverse les pauses : chaque segment continue l'avancement", () => {
     const p = followProgress(line, [walk([[0, 0], [0, 300]], 5), walk([[0, 320], [0, 700]], 5)])!;
     expect(p.progressM).toBeCloseTo(700, -1);
+  });
+});
+
+describe('suivi repris (curseur du direct)', () => {
+  // Un U quitté puis rejoint, avec une pause : raccrochage, fenêtre élargie et reprise par segment sont tous parcourus.
+  const u = traceOf([[0, 0], [0, 1000], [300, 1000], [300, 0]]);
+  const first = walk([[0, 0], [0, 200], [150, 200], [300, 200], [300, 100]], 5);
+  const second = walk([[300, 80], [300, 0]], 5);
+
+  it("donne à chaque position l'avancement de followProgress, pauses comprises", () => {
+    const cursor = createFollowCursor(u);
+    for (let n = 1; n <= first.length; n++) {
+      const seen = [first.slice(0, n)];
+      expect(cursor.progress(seen)).toEqual(followProgress(u, seen));
+    }
+    for (let n = 1; n <= second.length; n++) {
+      const seen = [first, second.slice(0, n)];
+      expect(cursor.progress(seen)).toEqual(followProgress(u, seen));
+    }
+  });
+
+  it('repart de zéro si les segments ne sont pas ceux déjà lus', () => {
+    const cursor = createFollowCursor(u);
+    cursor.progress([first]);
+    // Un autre enregistrement, plus court, sur la même trace.
+    const other = walk([[0, 0], [0, 400]], 5);
+    expect(cursor.progress([other])).toEqual(followProgress(u, [other]));
+    // Le même segment, mais recopié point par point : les objets changent, tout est relu.
+    const copy = other.map((p) => ({ ...p }));
+    expect(cursor.progress([copy])).toEqual(followProgress(u, [copy]));
   });
 });
 

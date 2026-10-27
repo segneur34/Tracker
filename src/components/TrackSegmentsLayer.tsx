@@ -4,9 +4,9 @@ import { useMap } from 'react-leaflet';
 import type { SportFamily } from '../core/sportProfiles';
 import { useMapBase } from '../hooks/useMapBase';
 
-/** Un trait de la trace : deux points consécutifs et leur couleur. */
+/** Un trait de la trace : deux points consécutifs, ou une suite de points de même couleur (pente), et leur couleur. */
 export interface TrackSegment {
-  positions: [[number, number], [number, number]];
+  positions: ReadonlyArray<[number, number]>;
   color: string;
 }
 
@@ -43,9 +43,9 @@ function TrackSegmentsLayer({ segments, weight, family }: {
   useEffect(() => {
     if (!map.getPane(TRACE_PANE)) map.createPane(TRACE_PANE).style.zIndex = TRACE_PANE_Z_INDEX;
     const renderer = L.canvas({ pane: TRACE_PANE });
-    const lines = segments.map((s) => L.polyline(s.positions, { color: s.color, weight, renderer, interactive: false }));
+    const lines = segments.map((s) => L.polyline(s.positions as [number, number][], { color: s.color, weight, renderer, interactive: false }));
     const under = halo && segments.length > 0
-      ? [L.polyline(segments.map((s) => s.positions), { color: HALO_COLOR, weight: weight + 3, opacity: 0.85, renderer, interactive: false })]
+      ? [L.polyline(segments.map((s) => s.positions as [number, number][]), { color: HALO_COLOR, weight: weight + 3, opacity: 0.85, renderer, interactive: false })]
       : [];
     const group = L.layerGroup([...under, ...lines]).addTo(map);
     return () => {

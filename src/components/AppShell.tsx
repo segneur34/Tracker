@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type ComponentType } from 'react';
+import { Suspense, useCallback, useEffect, useRef, type ComponentType } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { parentPage } from '../core/parentPage';
 import type { SportFamily } from '../core/sportProfiles';
@@ -181,7 +181,10 @@ function AppShell() {
         <HelpProvider resetKey={pathname}>
           {/* Une exception au rendu d'une page n'emporte ni la barre, ni les bandeaux, ni le bouton rond. */}
           <ErrorBoundary key={pathname} onHome={goHome}>
-            <Outlet />
+            {/* Pages chargées à la demande (`App.tsx`) : le temps de lire le morceau, la page est vide, barre et bandeaux restent. */}
+            <Suspense fallback={<div className="ui-page" aria-busy="true" />}>
+              <Outlet />
+            </Suspense>
           </ErrorBoundary>
         </HelpProvider>
       </main>

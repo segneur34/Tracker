@@ -2,7 +2,6 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState, type ChangeEvent
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Marker, Polyline, useMapEvents } from 'react-leaflet';
 import { Link, useSearchParams } from 'react-router-dom';
-import 'leaflet/dist/leaflet.css';
 import './PlanningPage.css';
 import ActivitySelect from '../components/ActivitySelect';
 import BeepCurveEditor from '../components/BeepCurveEditor';
@@ -510,13 +509,14 @@ function PlanningPage() {
   const profileDist = useMemo(() => profile.map((row) => toDisplayDistance(row.distM, distanceUnit)), [profile, distanceUnit]);
   const zoom = useChartZoom(profileDist.length > 1 ? { min: profileDist[0], max: profileDist[profileDist.length - 1] } : null);
   /** Lignes tracées : celles de la plage visible, au plus `CHART_MAX_POINTS` : zoomer montre plus de détail. */
+  const profileEle = useMemo(() => profile.map((row) => row.eleM), [profile]);
   const chartRows = useMemo<ElevationProfileRow[]>(() => {
     const [first, last] = visibleIndexRange(profileDist, zoom.view);
-    return sampledIndices(first, last, CHART_MAX_POINTS).map((i) => {
+    return sampledIndices(first, last, CHART_MAX_POINTS, profileEle).map((i) => {
       const { eleM, grade } = profile[i];
       return { index: i, dist: parseFloat(profileDist[i].toFixed(3)), altitude: eleM !== null ? Math.round(eleM) : null, grade };
     });
-  }, [profile, profileDist, zoom.view]);
+  }, [profile, profileDist, profileEle, zoom.view]);
   const gradeStops = useMemo(
     () => (gradeRange ? gradeGradientStops(chartRows.filter((r) => r.altitude !== null), gradeRange) : []),
     [chartRows, gradeRange]

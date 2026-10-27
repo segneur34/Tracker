@@ -94,6 +94,23 @@ describe('computeTopSegments, cible de temps', () => {
     expect(parseFloat(tops[0].val)).toBeCloseTo(msToKnots(10), 1);
   });
 
+  it('rend aussi la vitesse en nombre, et un seul segment vaut le premier du tri', () => {
+    const speeds = new Array(40).fill(4);
+    for (let i = 10; i < 17; i++) speeds[i] = 15;
+    for (let i = 25; i < 32; i++) speeds[i] = 15;
+    const track = buildTrack(speeds);
+    const cum = buildCumulativeTrack(track);
+    const tops = computeTopSegments(track, cum, TIME_5S, msToKnots);
+    expect(tops[0].speed).not.toBeNull();
+    expect(tops[0].val).toBe(tops[0].speed!.toFixed(2));
+    const short = buildTrack(new Array(12).fill(4));
+    expect(computeTopSegments(short, buildCumulativeTrack(short), TIME_5S, msToKnots)[2].speed).toBeNull();
+    const [single] = computeTopSegments(track, cum, TIME_5S, msToKnots, { count: 1 });
+    expect(single.speed).toBe(tops[0].speed);
+    expect(single.path).toEqual(tops[0].path);
+    expect(computeTopSegments(buildTrack([5, 5]), buildCumulativeTrack(buildTrack([5, 5])), TIME_5S, msToKnots, { count: 1 })[0].speed).toBeNull();
+  });
+
   it('ne dépend pas de la fréquence d\'échantillonnage', () => {
     const at1Hz = buildTrack(new Array(30).fill(8), 1);
     const at5Hz = buildTrack(new Array(150).fill(8), 0.2);

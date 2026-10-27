@@ -2,7 +2,7 @@ import { useMemo, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
 import CardioLoadHelp from './CardioLoadHelp';
-import ChartReadout, { type Readout } from './ChartReadout';
+import { HoverReadout, type Readout } from './ChartReadout';
 import HeartRateChart from './HeartRateChart';
 import { inChartView } from './chartHover';
 import { HelpText, HelpToggle } from './Help';
@@ -45,8 +45,6 @@ interface Props {
   /** Zone montrée sur la carte (1 à 5, 0 sous Z1), ou `null`. */
   selectedZone: number | null;
   onSelectZone: (zone: number | null) => void;
-  /** Point de trace survolé, d'un graphe ou d'un autre : la lecture de la courbe. */
-  hoveredIndex: number | null;
   onHoverIndex: (index: number) => void;
   onLeave: () => void;
   /** Course et vélo seulement. */
@@ -67,14 +65,13 @@ const scatterTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
  * Courbe de FC de l'onglet « cardio », sur le temps écoulé, avec sa lecture
  * au-dessus : dans le panneau, et sous la carte en plein écran.
  */
-export function CardioCurve({ track, smoothed, zoom, zones, thresholds, hoveredIndex, onHoverIndex, onLeave, onShowOnMap, style }: {
+export function CardioCurve({ track, smoothed, zoom, zones, thresholds, onHoverIndex, onLeave, onShowOnMap, style }: {
   track: readonly HeartRatePoint[];
   smoothed: readonly (number | null)[];
   zoom: ChartZoom;
   /** Bornes basses des zones 1 à 5, ou `null` sans zones. */
   zones: readonly number[] | null;
   thresholds?: { s1: number; s2: number } | null;
-  hoveredIndex: number | null;
   onHoverIndex: (index: number) => void;
   onLeave: () => void;
   onShowOnMap?: () => void;
@@ -85,20 +82,22 @@ export function CardioCurve({ track, smoothed, zoom, zones, thresholds, hoveredI
   const rows = useMemo(() => {
     if (minutes.length < 2) return [];
     const [first, last] = visibleIndexRange(minutes, zoom.view);
-    return sampledIndices(first, last, CHART_MAX_POINTS).map((i) => ({
+    return sampledIndices(first, last, CHART_MAX_POINTS, smoothed).map((i) => ({
       index: i,
       minutes: parseFloat(minutes[i].toFixed(3)),
       hr: smoothed[i] === null ? null : Math.round(smoothed[i]!),
     }));
   }, [minutes, zoom.view, smoothed]);
   if (rows.length < 2) return null;
-  const bpm = hoveredIndex !== null ? smoothed[hoveredIndex] : null;
-  const readout: Readout | null = hoveredIndex !== null && minutes[hoveredIndex] !== undefined && inChartView(zoom.view, minutes[hoveredIndex])
-    ? { values: [{ text: bpm === null || bpm === undefined ? '—' : `${Math.round(bpm)} bpm`, color: HEART_RATE_COLOR }], at: minutesLabel(minutes[hoveredIndex]) }
-    : null;
+  /** Lecture au point survolé (`HoverReadout`), s'il est dans la plage zoomée. */
+  const read = (hoveredIndex: number): Readout | null => {
+    if (minutes[hoveredIndex] === undefined || !inChartView(zoom.view, minutes[hoveredIndex])) return null;
+    const bpm = smoothed[hoveredIndex];
+    return { values: [{ text: bpm === null || bpm === undefined ? '—' : `${Math.round(bpm)} bpm`, color: HEART_RATE_COLOR }], at: minutesLabel(minutes[hoveredIndex]) };
+  };
   return (
     <>
-      <ChartReadout readout={readout} label="FC" color={HEART_RATE_COLOR} line />
+      <HoverReadout read={read} label="FC" color={HEART_RATE_COLOR} line />
       <HeartRateChart data={rows} zoom={zoom} zones={zones} thresholds={thresholds} onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap}
         style={style}
         xAxis={(
@@ -118,7 +117,7 @@ export function CardioCurve({ track, smoothed, zoom, zones, thresholds, hoveredI
  * Posé dans le `ResizablePanel` du module.
  */
 export default function HeartRatePanel({
-  track, heart, params, zones, profileHrMax, runner, onRetainHrMax, selectedZone, onSelectZone, hoveredIndex, onHoverIndex, onLeave, efficiency,
+  track, heart, params, zones, profileHrMax, runner, onRetainHrMax, selectedZone, onSelectZone, onHoverIndex, onLeave, efficiency,
   zoom, onShowOnMap, open, onToggle,
 }: Props) {
   const { smoothed, stats } = heart;
@@ -181,7 +180,7 @@ export default function HeartRatePanel({
       )}
 
       <div style={{ marginTop: '6px' }}>
-        <CardioCurve track={track} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null} hoveredIndex={hoveredIndex}
+        <CardioCurve track={track} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null}
           onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap} style={{ width: '100%', height: '200px' }} />
       </div>
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeKinematics } from './kinematics';
-import { buildCumulativeTrack, computeActiveTimeMs, thresholdActivityMask } from './sessionStats';
+import { activeRuns, buildCumulativeTrack, computeActiveTimeMs, thresholdActivityMask } from './sessionStats';
 import { getActiveThresholds, SPORT_PROFILES, type SportProfile } from './sportProfiles';
 import type { RawTrackPoint, TrackPoint } from './types';
 
@@ -68,6 +68,26 @@ const totalDistanceM = (track: TrackPoint[]): number => {
 };
 
 const RUNNING = SPORT_PROFILES.running;
+
+describe('activeRuns', () => {
+  const track = analyzed(buildRaw([{ durationS: 120, speedMs: WALK_MS }]), RUNNING);
+  // Deux suites : 10 à 30, 50 à 80 ; un trou de 3 s dans la seconde la coupe à 65.
+  const mask = track.map((_, i) => (i >= 11 && i <= 30) || (i >= 51 && i <= 80));
+  const gapped = track.map((p, i) => (i === 65 ? { ...p, timeMs: p.timeMs + 2000 } : p));
+
+  it('trouve les suites, et un trou plus long que la limite les coupe', () => {
+    expect(activeRuns(track, mask)).toEqual([{ start: 10, end: 30 }, { start: 50, end: 80 }]);
+    expect(activeRuns(gapped, mask, 2)).toEqual([{ start: 10, end: 30 }, { start: 50, end: 64 }, { start: 65, end: 80 }]);
+  });
+
+  it('bornée, donne les suites du masque restreint aux bornes (vagues d’un vol)', () => {
+    const bounded = (from: number, to: number) => mask.map((m, i) => m && i >= from && i <= to);
+    for (const [from, to] of [[20, 60], [0, 120], [31, 49], [55, 70], [50, 80]] as const) {
+      expect(activeRuns(track, mask, Infinity, from, to)).toEqual(activeRuns(track, bounded(from, to)));
+      expect(activeRuns(gapped, mask, 2, from, to)).toEqual(activeRuns(gapped, bounded(from, to), 2));
+    }
+  });
+});
 
 describe('getActiveThresholds', () => {
   it('ne rend jamais une détente basse nulle sous un seuil plus petit que l’écart de sortie (A-B1)', () => {

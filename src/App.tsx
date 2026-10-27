@@ -1,24 +1,89 @@
+import { lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import AppShell from './components/AppShell';
 import { DevThrow } from './components/ErrorBoundary';
 import Home from './pages/Home';
-import SailingModule from './pages/SailingModule';
-import LandModule from './pages/LandModule';
-import SurfModule from './pages/SurfModule';
-import SessionLibrary from './pages/SessionLibrary';
-import SettingsPage from './pages/SettingsPage';
-import RecordingPage from './pages/RecordingPage';
-import PlanningPage from './pages/PlanningPage';
-import RoutesPage from './pages/RoutesPage';
-import StatisticsPage from './pages/StatisticsPage';
-import ProfilePage from './pages/ProfilePage';
-import TrainingSessionsPage from './pages/TrainingSessionsPage';
-import TrainingSessionEditPage from './pages/TrainingSessionEditPage';
-import TestsPage from './pages/TestsPage';
-import FitnessTestPage from './pages/FitnessTestPage';
-import RestingHrTestPage from './pages/RestingHrTestPage';
+
+/**
+ * Pages chargées à la demande (27/10) : seul l'accueil est dans le paquet
+ * d'entrée ; chaque autre page, et avec elle Recharts (`vendor-charts`) ou
+ * Leaflet (`vendor-map`), ne s'analyse qu'à sa première ouverture. `AppShell`
+ * pose le `Suspense` ; les chemins, les `key` et `core/parentPage.ts` ne
+ * changent pas. Dans l'application Android, les morceaux sont locaux au
+ * paquet : c'est du temps d'analyse JS déplacé hors du premier rendu.
+ */
+const loaders = {
+  SessionLibrary: () => import('./pages/SessionLibrary'),
+  RecordingPage: () => import('./pages/RecordingPage'),
+  LandModule: () => import('./pages/LandModule'),
+  SailingModule: () => import('./pages/SailingModule'),
+  SurfModule: () => import('./pages/SurfModule'),
+  SettingsPage: () => import('./pages/SettingsPage'),
+  PlanningPage: () => import('./pages/PlanningPage'),
+  RoutesPage: () => import('./pages/RoutesPage'),
+  StatisticsPage: () => import('./pages/StatisticsPage'),
+  ProfilePage: () => import('./pages/ProfilePage'),
+  TrainingSessionsPage: () => import('./pages/TrainingSessionsPage'),
+  TrainingSessionEditPage: () => import('./pages/TrainingSessionEditPage'),
+  TestsPage: () => import('./pages/TestsPage'),
+  FitnessTestPage: () => import('./pages/FitnessTestPage'),
+  RestingHrTestPage: () => import('./pages/RestingHrTestPage'),
+};
+
+const SessionLibrary = lazy(loaders.SessionLibrary);
+const RecordingPage = lazy(loaders.RecordingPage);
+const LandModule = lazy(loaders.LandModule);
+const SailingModule = lazy(loaders.SailingModule);
+const SurfModule = lazy(loaders.SurfModule);
+const SettingsPage = lazy(loaders.SettingsPage);
+const PlanningPage = lazy(loaders.PlanningPage);
+const RoutesPage = lazy(loaders.RoutesPage);
+const StatisticsPage = lazy(loaders.StatisticsPage);
+const ProfilePage = lazy(loaders.ProfilePage);
+const TrainingSessionsPage = lazy(loaders.TrainingSessionsPage);
+const TrainingSessionEditPage = lazy(loaders.TrainingSessionEditPage);
+const TestsPage = lazy(loaders.TestsPage);
+const FitnessTestPage = lazy(loaders.FitnessTestPage);
+const RestingHrTestPage = lazy(loaders.RestingHrTestPage);
+
+/** Délai avant le préchargement quand le navigateur n'a pas `requestIdleCallback`. */
+const PRELOAD_FALLBACK_MS = 1500;
+
+/**
+ * Précharge les pages une fois l'accueil rendu et le fil libre, dans l'ordre
+ * où l'utilisateur y va le plus : Enregistrer, une bibliothèque, les
+ * analyses, puis le reste ; un morceau à la fois, pour ne pas peser sur le
+ * premier rendu. Une page ouverte entre-temps ne l'attend pas : `React.lazy`
+ * la charge lui-même.
+ */
+const preloadPages = (): (() => void) => {
+  const order: (keyof typeof loaders)[] = [
+    'RecordingPage', 'SessionLibrary', 'LandModule', 'SailingModule', 'SurfModule', 'StatisticsPage', 'ProfilePage',
+    'SettingsPage', 'PlanningPage', 'RoutesPage', 'TrainingSessionsPage', 'TrainingSessionEditPage', 'TestsPage',
+    'FitnessTestPage', 'RestingHrTestPage',
+  ];
+  let cancelled = false;
+  let handle: number | null = null;
+  const schedule = (fn: () => void) => {
+    if (typeof requestIdleCallback === 'function') handle = requestIdleCallback(() => fn());
+    else handle = window.setTimeout(fn, PRELOAD_FALLBACK_MS);
+  };
+  const next = (k: number) => {
+    if (cancelled || k >= order.length) return;
+    void loaders[order[k]]().catch(() => undefined).then(() => schedule(() => next(k + 1)));
+  };
+  schedule(() => next(0));
+  return () => {
+    cancelled = true;
+    if (handle !== null) {
+      if (typeof cancelIdleCallback === 'function') cancelIdleCallback(handle);
+      window.clearTimeout(handle);
+    }
+  };
+};
 
 function App() {
+  useEffect(preloadPages, []);
   return (
     <Router>
       <Routes>

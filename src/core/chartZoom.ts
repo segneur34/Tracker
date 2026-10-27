@@ -141,17 +141,93 @@ export const visibleIndexRange = (values: ArrayLike<number>, range: XRange | nul
 };
 
 /**
+ * Écart minimal d'un extrême à la corde de ses deux voisins tracés pour
+ * qu'il soit ajouté au tracé, en part de l'étendue de la série sur la plage.
+ * À 5 %, un pic de 2 s à plus d'un nœud au-dessus du bord reste tracé, et le
+ * bruit du GPS n'ajoute que 10 à 25 % de points à la vitesse brute de la
+ * voile, presque rien à la vitesse lissée de la course (mesuré sur 22 traces
+ * réelles le 27/10 ; à 2 %, jusqu'à +75 % en voile).
+ */
+export const CHART_EXTREME_TOLERANCE = 0.05;
+
+/**
  * Indices de `first` à `last` à tracer, au plus `maxPoints` environ, à pas
  * régulier ; le dernier est toujours compris, pour que la courbe aille au
- * bout de la plage.
+ * bout de la plage. Avec `values` (la série principale du graphe), les
+ * extrêmes que le pas régulier sauterait sont ajoutés (27/10) : entre deux
+ * indices tracés, le maximum et le minimum de la série qui s'écartent de la
+ * corde entre ces deux voisins de plus de `CHART_EXTREME_TOLERANCE` de son
+ * étendue. Un top de 2 s reste ainsi visible sur une sortie de 3 h, sans
+ * tripler les points sur une trace bruitée ; une série constante ou monotone
+ * ne reçoit rien. Les indices restent ceux de la trace complète : le survol
+ * et le repère de la carte ne changent pas.
  */
-export const sampledIndices = (first: number, last: number, maxPoints: number): number[] => {
+export const sampledIndices = (
+  first: number,
+  last: number,
+  maxPoints: number,
+  values?: ArrayLike<number | null | undefined>
+): number[] => {
   if (last < first) return [];
   const step = Math.max(1, Math.ceil((last - first + 1) / Math.max(1, maxPoints)));
   const out: number[] = [];
   for (let i = first; i <= last; i += step) out.push(i);
   if (out[out.length - 1] !== last) out.push(last);
-  return out;
+  if (!values || step <= 1) return out;
+
+  const at = (i: number): number => {
+    const v = values[i];
+    return typeof v === 'number' && isFinite(v) ? v : NaN;
+  };
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = first; i <= last; i++) {
+    const v = at(i);
+    if (Number.isNaN(v)) continue;
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  const tolerance = (hi - lo) * CHART_EXTREME_TOLERANCE;
+  if (!(tolerance > 0)) return out;
+
+  const kept: number[] = [];
+  for (let k = 0; k < out.length - 1; k++) {
+    const a = out[k];
+    const b = out[k + 1];
+    kept.push(a);
+    let maxI = -1;
+    let minI = -1;
+    let maxV = -Infinity;
+    let minV = Infinity;
+    for (let i = a + 1; i < b; i++) {
+      const v = at(i);
+      if (Number.isNaN(v)) continue;
+      if (v > maxV) {
+        maxV = v;
+        maxI = i;
+      }
+      if (v < minV) {
+        minV = v;
+        minI = i;
+      }
+    }
+    if (maxI < 0) continue;
+    const va = at(a);
+    const vb = at(b);
+    // Corde entre les deux voisins tracés, à l'indice de l'extrême ; un seul voisin tracé : sa valeur ; aucun : rien à voir.
+    const chordAt = (i: number): number => {
+      if (Number.isNaN(va)) return vb;
+      if (Number.isNaN(vb)) return va;
+      return va + ((vb - va) * (i - a)) / (b - a);
+    };
+    const addMax = maxV - chordAt(maxI) > tolerance;
+    const addMin = chordAt(minI) - minV > tolerance;
+    if (addMax && addMin) kept.push(Math.min(maxI, minI), Math.max(maxI, minI));
+    else if (addMax) kept.push(maxI);
+    else if (addMin) kept.push(minI);
+  }
+  kept.push(out[out.length - 1]);
+  return kept;
 };
 
 /** Multiples d'une puissance de dix retenus comme pas de graduation. */
