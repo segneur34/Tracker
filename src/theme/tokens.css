@@ -55,12 +55,11 @@
   --backdrop-surf: #1ba1e2;
   --backdrop-velo: #7f9f7c;
   /* Racine du Profil (`components/drawRoot.ts`, lues par le canevas) : racine vivante, bourgeon, radicelles
-     de la période et leur coiffe, radicelle flétrie, partie sèche, pousse, sol, graine, fleur. */
+     de la période, radicelle flétrie, partie sèche, pousse, sol, graine, fleur. */
   --root-live: #4c8a43;
   --root-edge: #2d5a29;
   --root-bud: #d5ecc2;
   --root-fresh: #6fbf45;
-  --root-fresh-tip: #f1fbe8;
   --root-withered: #b9a487;
   --root-dry: #d3cab9;
   --root-dry-edge: #b0a691;

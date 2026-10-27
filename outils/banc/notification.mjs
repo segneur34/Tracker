@@ -124,7 +124,11 @@ const before = await notifRow();
 // Deux chiffres au plus depuis le 15/10 (Android coupe la ligne au-delà) : vitesse et distance par défaut.
 check('deux menus, défaut vitesse, distance', before?.menus === 2 && before.values.join(',') === 'Vitesse,Distance' && before.text.includes('défaut'),
   JSON.stringify(before?.values));
-check('rien de changé : pas de « Défaut » dans la carte Voile', !(await evaluate(`[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__toggle')?.textContent.trim().startsWith('Voile'))?.querySelector('.settings-activity__actions')?.textContent.includes('Défaut') ?? false`)));
+// Depuis le 27/10, « Par défaut » est une entrée du menu « … » de la carte : grisée, non absente, quand rien n'est modifié.
+const parDefaut = (card) => `(${card})?.querySelector('.settings-activity__head > .ui-more .ui-more__panel')?.querySelectorAll('button')`;
+const parDefautState = (card) => evaluate(`(() => { const b = [...(${parDefaut(card)} ?? [])].find((x) => x.textContent.trim() === 'Par défaut'); return b ? (b.disabled ? 'grisé' : 'actif') : 'absent'; })()`);
+const voileCardSel = `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__toggle')?.textContent.trim().startsWith('Voile'))`;
+check('rien de changé : « Par défaut » grisé dans la carte Voile', (await parDefautState(voileCardSel)) === 'grisé');
 await evaluate(`(() => {
   const part = [...document.querySelectorAll('.settings-part__sub')].find((p) => p.querySelector('.settings-part__subtitle')?.textContent.trim() === 'Notification');
   const s = part.querySelectorAll('select')[1];
@@ -138,7 +142,7 @@ const stored = await evaluate(`JSON.stringify(JSON.parse(localStorage.getItem('t
 check('seconde ligne « Max », rangée, plus « défaut »', after?.values[1]?.startsWith('Max') && !after.text.includes('défaut') && /"max"/.test(stored ?? ''), stored);
 // Seuls les chiffres de la notification changés : la carte a son « Défaut », et repliée, « · modifié » (demande du 19/10).
 const voileCard = `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__toggle')?.textContent.trim().startsWith('Voile'))`;
-check('bouton « Défaut » de la carte Voile', await evaluate(`[...(${voileCard})?.querySelectorAll('.settings-activity__actions button') ?? []].some((b) => b.textContent.trim() === 'Défaut')`));
+check('« Par défaut » de la carte Voile actif', (await parDefautState(voileCard)) === 'actif');
 await evaluate(`${voileCard}.querySelector('.settings-activity__toggle').click(); 'ok'`);
 await wait(300);
 const voileSummary = await evaluate(`${voileCard}?.querySelector('.settings-activity__summary')?.textContent ?? ''`);

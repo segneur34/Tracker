@@ -66,3 +66,54 @@
     }
   }
 }
+
+/* Ligne d'état de l'enregistrement (source du GPS, activité), sous « Note » et au-dessus de la carte : visible carte
+   ouverte. */
+.rec-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+
+.rec-status__source {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.rec-status__activity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+/* Tuile « BPM » de la carte « En cours » : allongée, sur une ligne, au-dessus de Durée et Vitesse, dans le style des
+   tuiles. */
+.rec-bpm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  padding: 14px 16px;
+  border-radius: var(--radius-m);
+  background: var(--bg);
+}
+
+.rec-bpm__label {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.rec-bpm__value {
+  font-size: var(--text-display);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.rec-bpm__state {
+  min-width: 0;
+  font-size: var(--text-s);
+  text-align: right;
+}

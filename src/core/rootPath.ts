@@ -13,6 +13,12 @@ import { clamp } from './basics';
  * racine et de ses branches partent des ramifications (racines latérales et
  * sous-racines) qui plongent vers le bas et s'arrêtent au bord d'un cadre.
  *
+ * Sa longueur, elle, ne suit pas la page (26/10) : une étape fait avancer la
+ * racine d'une longueur fixe, tirée d'une page de référence (`tourLength`), si
+ * bien qu'elle a la même taille quelle que soit la période affichée, dont
+ * dépend la hauteur des cadres. Plus courte que cette référence, la page
+ * prolonge la racine d'une queue sous le dernier cadre (`tail`).
+ *
  * Tout est tiré d'un hasard reproductible : la même page donne la même racine
  * d'une ouverture à l'autre. Maquette validée le 22/10 (ondulation 6,
  * ramifications 1,4, épaisseur 2,8).
@@ -72,6 +78,10 @@ export interface RootModel {
   mains: number;
   /** Longueur de la racine mère et des branches au tour complet, depuis la graine. */
   reach: number;
+  /** Longueur de la racine mère au tour complet (26 étapes) : celle de la page de référence, la même quelle que soit la période. */
+  tour: number;
+  /** Point le plus bas de la racine mère : la page doit descendre au moins jusque-là. */
+  bottom: number;
   rootlets: Rootlet[];
   /** Point de la graine, sur la ligne de sol du carré. */
   seed: { x: number; y: number };
@@ -209,9 +219,11 @@ interface Route {
 /**
  * Chemin de la racine mère et des branches qui ferment les cadres, sans
  * ondulation. `null` sans cadre. La marge de la racine est la moitié de la
- * gouttière de la page, 10 px au plus.
+ * gouttière de la page, 10 px au plus. `tail` : longueur ajoutée sous le
+ * dernier cadre, le long de la marge, quand la page est plus courte que la
+ * page de référence.
  */
-export const rootRoute = ({ slot, cards }: RootLayout): Route | null => {
+export const rootRoute = ({ slot, cards }: RootLayout, tail = 0): Route | null => {
   if (cards.length === 0) return null;
   const left = Math.min(...cards.map((c) => c.x));
   const right = Math.max(...cards.map((c) => c.r));
@@ -242,7 +254,45 @@ export const rootRoute = ({ slot, cards }: RootLayout): Route | null => {
   }
   vertices.push({ x: lane(side), y: yB }, { x: lane(-side) + side * 2, y: yB });
   radii.push(rc, 0);
+  if (tail > 0) {
+    const end = vertices[vertices.length - 1];
+    radii[radii.length - 1] = 12;
+    vertices.push({ x: end.x, y: end.y + tail });
+    radii.push(0);
+  }
   return { seed, trunk: { vertices, radii }, branches };
+};
+
+/**
+ * Hauteurs des quatre cadres du Profil (périodes, chiffres, répartition,
+ * graphe) sur la page de référence : le Profil en période « Année » à 390 px
+ * (relevé du 27/10 : 34, 178, 318 et 273 px, gouttière de 20 px). Elles fixent
+ * la longueur d'un tour de racine ; la racine y a l'allure qu'elle avait à
+ * cette période avant que la longueur cesse de suivre la page.
+ */
+export const REFERENCE_CARD_HEIGHTS: readonly number[] = [34, 178, 318, 273];
+/** Gouttière entre deux cadres de la page de référence. */
+export const REFERENCE_GAP = 20;
+
+const routeLength = (route: Route): number => sampleRoute(route.trunk.vertices, route.trunk.radii).at(-1)!.s;
+
+/**
+ * Longueur de la racine mère au tour complet : celle de la page de référence,
+ * qui garde du réel la largeur de la colonne, le carré et le haut du premier
+ * cadre, et pour le reste des cadres de hauteur fixe. `null` sans cadre.
+ */
+export const tourLength = ({ slot, cards }: RootLayout, heights: readonly number[] = REFERENCE_CARD_HEIGHTS): number | null => {
+  if (cards.length === 0) return null;
+  const x = Math.min(...cards.map((c) => c.x));
+  const r = Math.max(...cards.map((c) => c.r));
+  let y = cards[0].y;
+  const reference = heights.map((h): Box => {
+    const box = { x, y, r, b: y + h };
+    y += h + REFERENCE_GAP;
+    return box;
+  });
+  const route = rootRoute({ slot, cards: reference });
+  return route ? routeLength(route) : null;
 };
 
 /** Point dans un cadre, à `inset` pixels de son bord au moins (négatif : tout autour du cadre). */
@@ -312,9 +362,20 @@ const lateral = (parent: RootPiece, s: number, rng: () => number, cards: readonl
  * tirées à la densité la plus forte (le style n'en montre qu'une part, sans
  * retirer au hasard), places des radicelles. `null` sans cadre.
  */
-export const buildRootModel = (layout: RootLayout, style: RootStyle = ROOT_STYLE): RootModel | null => {
-  const route = rootRoute(layout);
-  if (!route) return null;
+export const buildRootModel = (
+  layout: RootLayout, style: RootStyle = ROOT_STYLE, referenceHeights: readonly number[] = REFERENCE_CARD_HEIGHTS,
+): RootModel | null => {
+  let route = rootRoute(layout);
+  const tour = tourLength(layout, referenceHeights);
+  if (!route || tour === null) return null;
+  // Une page plus courte que la référence prolonge la racine sous son dernier cadre, jusqu'à la longueur du tour.
+  let have = routeLength(route);
+  let tail = 0;
+  for (let k = 0; k < 3 && have < tour - 0.5; k++) {
+    tail += tour - have;
+    route = rootRoute(layout, tail)!;
+    have = routeLength(route);
+  }
   const { cards } = layout;
   const seed = 7;
   const rawTrunk = sampleRoute(route.trunk.vertices, route.trunk.radii);
@@ -365,6 +426,7 @@ export const buildRootModel = (layout: RootLayout, style: RootStyle = ROOT_STYLE
   }));
   return {
     pieces, mains, reach: Math.max(...pieces.slice(0, mains).map((p) => p.base + p.len)),
+    tour, bottom: Math.max(...trunk.pts.map((p) => p.y)),
     rootlets, seed: route.seed, slot: layout.slot, cards,
   };
 };
@@ -378,7 +440,7 @@ export const buildRootModel = (layout: RootLayout, style: RootStyle = ROOT_STYLE
  */
 export const rootVisibility = (model: RootModel, level: number, growthSteps: number, ramifications: number): (number | null)[] => {
   const steps = Math.max(1, growthSteps);
-  const step = (model.reach - ROOT_SEED_LENGTH) / steps;
+  const step = (model.tour - ROOT_SEED_LENGTH) / steps;
   const front = ROOT_SEED_LENGTH + step * Math.max(0, level);
   const vis: (number | null)[] = new Array(model.pieces.length);
   model.pieces.forEach((piece, i) => {

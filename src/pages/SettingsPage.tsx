@@ -22,6 +22,7 @@ import { ROOT_GOAL } from '../library/rootGrowth';
 import { zoneLabel } from '../components/heartRateColors';
 import { hrSourceLabel } from '../components/heartRateOrigin';
 import Button from '../components/ui/Button';
+import MoreMenu from '../components/ui/MoreMenu';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { playPattern, setBeepPitch, type ClockTone } from '../platform/beeper';
 import { BEEP_SOUNDS, beepSoundHz } from '../recording/beepSound';
@@ -509,7 +510,7 @@ function SettingsPage() {
                     {heading}
                     <div className={`settings-activity${shownHidden ? ' settings-activity--hidden' : ''}`}>
                       <div className="settings-activity__head">
-                        {/* Le nom fait partie du bouton qui déplie et replie, ouvert comme fermé : seul « Renommer » le met
+                        {/* Le nom fait partie du bouton qui déplie et replie, ouvert comme fermé : seul « Renommer » (menu « … ») le met
                             dans un champ, pour ne pas le changer par mégarde en voulant replier la carte (demande du 20/10). */}
                         <button type="button" className="settings-activity__toggle" aria-expanded={isOpen}
                           onClick={() => {
@@ -532,9 +533,14 @@ function SettingsPage() {
                             <span className="settings-sports__mark">{p.label}</span>
                           </>
                         )}
-                        {isOpen && !renamingThis && (
-                          <Button size="s" variant="ghost" onClick={() => setRenaming(id)}>Renommer</Button>
-                        )}
+                        <MoreMenu label={`Plus d'actions sur ${activity.name}`}>
+                          <Button onClick={() => {
+                            if (!isOpen) toggleActivity(id);
+                            setRenaming(id);
+                          }}>Renommer</Button>
+                          <Button onClick={() => askRemove(activity)}>Supprimer</Button>
+                          <Button disabled={!overridden} onClick={() => resetActivity(id)}>Par défaut</Button>
+                        </MoreMenu>
                         <EyeButton name={activity.name} hidden={activity.hidden === true}
                           disabled={!activity.hidden && !familyHidden && lastActivity}
                           onToggle={() => setActivityHidden(id, !activity.hidden)} />
@@ -758,12 +764,6 @@ function SettingsPage() {
                                 </SettingRow>
                             </ActivityPart>
                           )}
-                          <div className="settings-activity__actions">
-                            {overridden && (
-                              <button type="button" onClick={() => resetActivity(id)} className="ui-btn ui-btn--secondary ui-btn--s">Défaut</button>
-                            )}
-                            <button type="button" onClick={() => askRemove(activity)} className="ui-btn ui-btn--secondary ui-btn--s">Supprimer</button>
-                          </div>
                         </div>
                       )}
                     </div>

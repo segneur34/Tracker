@@ -12,7 +12,7 @@
 //     « Voir » puis « Masquer », surbrillance effacée quand l'onglet se ferme ; la course : « tops » et ses
 //     distances ; la voile : ni onglet ni panneau VMG ;
 //  5. à 390×844 : Réglages et l'analyse de surf sans débordement ;
-//  6. « Défaut » de la carte Surf : choix effacés, « tops » de nouveau caché.
+//  6. « Par défaut » (menu « … ») de la carte Surf : choix effacés, « tops » de nouveau caché.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -294,9 +294,10 @@ check(`à 390 px, surf avec « tops » : débordement ${await overflow()}`, (awa
 await shoot('onglets-surf-telephone');
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 
-// --- 6. « Défaut » ---
+// --- 6. « Par défaut » ---
 await openSettings();
-console.log('\nDéfaut :', await evaluate(`(() => { const b = [...(${card('Surf')}?.querySelectorAll('.settings-activity__actions button') ?? [])].find((x) => x.textContent.trim() === 'Défaut'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
+// Depuis le 27/10, « Par défaut » est une entrée du menu « … » de l'en-tête de la carte.
+console.log('\nPar défaut :', await evaluate(`(async () => { const c = ${card('Surf')}; c?.querySelector('.settings-activity__head > .ui-more .ui-more__button')?.click(); await new Promise((r) => setTimeout(r, 200)); const b = [...(c?.querySelectorAll('.ui-more__panel button') ?? [])].find((x) => x.textContent.trim() === 'Par défaut'); if (!b) return 'absent'; if (b.disabled) return 'grisé'; b.click(); return 'ok'; })()`));
 await wait(500);
 const afterReset = await storedTabs();
 console.log('rangés :', afterReset);

@@ -39,7 +39,7 @@ import {
   lastRecordActivity, rememberRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
-import { BELT_STATE_LABEL, savedBelt } from '../platform/heartRate';
+import { BELT_STATE_LABEL, savedBelt, type BeltState } from '../platform/heartRate';
 import { JUMP_PLACEMENT_LABEL } from '../recording/jumpSettings';
 import { PERMISSION_LABEL } from '../recording/permissionsPrompt';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
@@ -108,6 +108,21 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
     <span className="num" style={{ fontSize: 'var(--text-xl)', fontWeight: 700 }}>{value}</span>
   </div>
 );
+
+/** Fréquence cardiaque du direct : tuile allongée sur une ligne, plus grosse que les autres. Seulement avec une ceinture ;
+ *  hors mesure, l'état de la ceinture tient la place du chiffre. */
+const BpmTile = ({ belt }: { belt: { state: BeltState; bpm: number | null } }) => {
+  const measured = belt.state === 'connected' && belt.bpm !== null;
+  const text = measured
+    ? String(Math.round(belt.bpm as number))
+    : belt.state === 'connected' ? 'connectée, sans contact avec la peau' : BELT_STATE_LABEL[belt.state];
+  return (
+    <div className="rec-bpm">
+      <span className="rec-bpm__label">BPM</span>
+      <span className={measured ? 'num rec-bpm__value' : 'rec-bpm__state'}>{text}</span>
+    </div>
+  );
+};
 
 const STAT_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' } as const;
 
@@ -756,6 +771,26 @@ function RecordingScreen() {
         </div>
       ) : <NoteButton />)}
 
+      {busy && (
+        // Source du GPS et activité : au-dessus de la carte, pour rester visibles carte ouverte.
+        <div className="rec-status">
+          {recorder.sourceLabel && <span className="rec-status__source">{recorder.sourceLabel}</span>}
+          {liveActivity && (
+            // Changer d'activité en route, d'une famille à l'autre comprise : la session sera rangée sous la nouvelle.
+            <label className="rec-status__activity">
+              <span className="ui-eyebrow">Activité</span>
+              <ActivitySelect
+                activities={activities}
+                value={liveActivity.id}
+                extra={liveActivity}
+                className="ui-field"
+                disabled={recorder.status !== 'recording' && recorder.status !== 'paused'}
+                onChange={changeLiveActivity} />
+            </label>
+          )}
+        </div>
+      )}
+
       {picking && !busy && !pending && <FollowTracePicker onClose={() => setPicking(false)} onPicked={proposeActivityOf} />}
 
       {followed && (
@@ -826,30 +861,7 @@ function RecordingScreen() {
 
       {busy && (
         <Card heading="En cours">
-          {recorder.sourceLabel && (
-            <p style={{ margin: '-6px 0 12px', color: 'var(--muted)', fontSize: 'var(--text-s)' }}>{recorder.sourceLabel}</p>
-          )}
-          {liveActivity && (
-            // Changer d'activité en route, d'une famille à l'autre comprise : la session sera rangée sous la nouvelle.
-            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
-              <span className="ui-eyebrow">Activité</span>
-              <ActivitySelect
-                activities={activities}
-                value={liveActivity.id}
-                extra={liveActivity}
-                className="ui-field"
-                disabled={recorder.status !== 'recording' && recorder.status !== 'paused'}
-                onChange={changeLiveActivity} />
-            </label>
-          )}
-          {recorder.heartRate && (
-            <p style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-s)' }}>
-              <span className="ui-eyebrow">Ceinture cardio</span>{' '}
-              {recorder.heartRate.state === 'connected' && recorder.heartRate.bpm !== null
-                ? `${Math.round(recorder.heartRate.bpm)} bpm`
-                : recorder.heartRate.state === 'connected' ? 'connectée, sans contact avec la peau' : BELT_STATE_LABEL[recorder.heartRate.state]}
-            </p>
-          )}
+          {recorder.heartRate && <BpmTile belt={recorder.heartRate} />}
           <div style={STAT_GRID}>
             <Stat label="Durée" value={formatClock(durationMs)} />
             {liveActivity && followed && (courseMarksOf && markGuide.active

@@ -202,7 +202,8 @@ const head = (name) => evaluate(`(() => {
   if (!c) return null;
   const toggle = c.querySelector('.settings-activity__toggle');
   const nameEl = c.querySelector('.settings-activity__name');
-  const rename = [...c.querySelectorAll('.settings-activity__head > button')].find((b) => b.textContent.trim() === 'Renommer');
+  // Depuis le 27/10, « Renommer » est une entrée du menu « … » de l'en-tête.
+  const rename = c.querySelector('.settings-activity__head > .ui-more .ui-more__button');
   const box = (el) => el?.getBoundingClientRect();
   return {
     open: toggle?.getAttribute('aria-expanded') === 'true',
@@ -215,7 +216,7 @@ const head = (name) => evaluate(`(() => {
 })()`);
 let h = await head('Voile');
 check('carte Voile ouverte : nom en texte dans le bouton, pas de champ', h?.open && h.nameInToggle && !h.input, JSON.stringify(h));
-check('« Renommer » à droite, sur la ligne du nom', h?.rename && h.sameLine, JSON.stringify(h));
+check('menu « … » à droite, sur la ligne du nom', h?.rename && h.sameLine, JSON.stringify(h));
 check('l\'œil au bout de la même ligne', h?.eyeSameLine, JSON.stringify(h));
 check('360 px : rien ne déborde', (await overflow()) <= 0);
 await shoot('vides-renommer');
@@ -225,8 +226,13 @@ check('un toucher sur le nom replie la carte', (await head('Voile'))?.open === f
 await evaluate(`${voile('Voile')}.querySelector('.settings-activity__toggle').click(); 'ok'`);
 await wait(300);
 
-const startRename = () => evaluate(`(() => {
-  const b = [...(${voile('Voile')})?.querySelectorAll('.settings-activity__head > button') ?? []].find((x) => x.textContent.trim() === 'Renommer');
+const startRename = () => evaluate(`(async () => {
+  const c = ${voile('Voile')};
+  const more = c?.querySelector('.settings-activity__head > .ui-more .ui-more__button');
+  if (!more) return false;
+  more.click();
+  await new Promise((r) => setTimeout(r, 150));
+  const b = [...c.querySelectorAll('.ui-more__panel button')].find((x) => x.textContent.trim() === 'Renommer');
   if (!b) return false;
   b.click();
   return true;
@@ -240,7 +246,7 @@ const typeName = (value, key) => evaluate(`(() => {
   i.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }));
   return focused ? 'focus' : 'sans focus';
 })()`);
-check('« Renommer » ouvre le champ, curseur dedans', (await startRename()) && (await wait(300), (await typeName('Voile bis', 'Escape')) === 'focus'));
+check('« Renommer » du menu ouvre le champ, curseur dedans', (await startRename()) && (await wait(300), (await typeName('Voile bis', 'Escape')) === 'focus'));
 await wait(300);
 h = await head('Voile');
 check('Échap : nom inchangé, champ refermé', h !== null && !h.input && h.rename, JSON.stringify(h));

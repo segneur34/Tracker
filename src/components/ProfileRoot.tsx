@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { buildRootModel, layoutKey, ROOT_STYLE, ROOTLET_MINUTES, MAX_ROOTLETS, type Box, type RootLayout, type RootModel } from '../core/rootPath';
+import { buildRootModel, layoutKey, rootVisibility, ROOT_STYLE, ROOTLET_MINUTES, MAX_ROOTLETS, type Box, type RootLayout, type RootModel } from '../core/rootPath';
 import { useStoredRecord, readStoredRecord } from '../hooks/useStoredRecord';
 import { pushBackLayer } from '../platform/backButton';
 import { levelText, type RootGrowth } from '../library/rootGrowth';
@@ -137,6 +137,9 @@ function RootBubble({ growth, goalMin, top, right, onClose }: {
   );
 }
 
+/** Place laissée sous le point le plus bas de la racine, en pixels. */
+const ROOT_BOTTOM_MARGIN = 8;
+
 /** Pixels de l'appareil au plus pour le canevas, qui couvre toute la page : au-delà, sa densité baisse (jamais sous 1). */
 const CANVAS_MAX_PIXELS = 4_000_000;
 
@@ -173,6 +176,8 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const modelRef = useRef<{ key: string; model: RootModel | null; width: number; height: number; dpr: number } | null>(null);
+  /** Dernière racine construite, sur la disposition et la largeur seules : la hauteur de la page ne la change pas. */
+  const builtRef = useRef<{ key: string; model: RootModel | null } | null>(null);
   const colorsRef = useRef<RootColors | null>(null);
   /** État vu à la dernière visite, relu une fois à l'ouverture ; `playedRef` : ce qui a changé depuis est rejoué. */
   const [seenAtOpen] = useState(readSeen);
@@ -194,6 +199,10 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
     if (built.model && colorsRef.current) drawRoot(ctx, built.model, frameRef.current, colorsRef.current, ROOT_STYLE);
     // Niveau dessiné, lu par le banc (`outils/banc/racine.mjs`).
     canvas.dataset.niveau = frameRef.current.level.toFixed(2);
+    // Longueur visible de la racine mère, en pixels, lue par le banc : la même quelle que soit la période.
+    canvas.dataset.longueur = built.model
+      ? String(Math.round(rootVisibility(built.model, frameRef.current.level, frameRef.current.growthSteps, ROOT_STYLE.ramifications)[0] ?? 0))
+      : '0';
   }, []);
 
   /** Mesure la page et ses cadres ; reconstruit la racine quand la disposition change. */
@@ -211,8 +220,17 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
     const cards = cardSelectors.map((s) => page.querySelector(s)).filter((el): el is Element => el !== null).map(boxOf);
     const layout: RootLayout = { slot: boxOf(slotEl), cards };
     const width = page.offsetWidth;
+    const layoutId = `${layoutKey(layout)}|${width}`;
+    if (builtRef.current?.key !== layoutId) builtRef.current = { key: layoutId, model: buildRootModel(layout, ROOT_STYLE) };
+    const model = builtRef.current.model;
+    // Sa longueur ne suit pas la page : une page plus courte que la page de référence descend jusqu'au bas de la racine.
+    const style = getComputedStyle(page);
+    const padding = style.boxSizing === 'border-box' ? 0
+      : ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'].reduce((sum, k) => sum + (parseFloat(style[k as 'paddingTop']) || 0), 0);
+    if (model) page.style.setProperty('min-height', `${Math.ceil(model.bottom + ROOT_BOTTOM_MARGIN - padding)}px`);
+    else page.style.removeProperty('min-height');
     const height = page.offsetHeight;
-    const key = `${layoutKey(layout)}|${width}x${height}`;
+    const key = `${layoutId}x${height}`;
     const top = Math.round(layout.slot.b + 6);
     const right = Math.round(width - layout.slot.r);
     setAnchor((a) => (a.top === top && a.right === right ? a : { top, right }));
@@ -223,7 +241,7 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
     colorsRef.current = readRootColors(canvas);
-    modelRef.current = { key, model: buildRootModel(layout, ROOT_STYLE), width, height, dpr };
+    modelRef.current = { key, model, width, height, dpr };
     paint();
   }, [cardSelectors, paint]);
 
@@ -237,6 +255,7 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
     return () => {
       observer.disconnect();
       window.removeEventListener('resize', measure);
+      page.style.removeProperty('min-height');
     };
   }, [measure]);
 

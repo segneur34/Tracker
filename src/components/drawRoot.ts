@@ -15,7 +15,6 @@ export interface RootColors {
   edge: string;
   bud: string;
   fresh: string;
-  freshTip: string;
   withered: string;
   dry: string;
   dryEdge: string;
@@ -28,7 +27,7 @@ export interface RootColors {
 }
 
 const COLOR_VARS: Record<keyof RootColors, string> = {
-  live: '--root-live', edge: '--root-edge', bud: '--root-bud', fresh: '--root-fresh', freshTip: '--root-fresh-tip',
+  live: '--root-live', edge: '--root-edge', bud: '--root-bud', fresh: '--root-fresh',
   withered: '--root-withered', dry: '--root-dry', dryEdge: '--root-dry-edge', sprout: '--root-sprout', soil: '--root-soil',
   seed: '--root-seed', flower: '--root-flower', flowerEdge: '--root-flower-edge', flowerHeart: '--root-flower-heart',
 };
@@ -161,7 +160,6 @@ const drawRootlets = (
   const placed = placeRootlets(model, vis, frame.minutes);
   if (placed.length === 0) return;
   const color = mix(colors.fresh, colors.withered, frame.wither);
-  const tip = mix(colors.freshTip, colors.withered, frame.wither);
   ctx.globalAlpha = 1 - 0.85 * frame.wither;
   ctx.lineCap = 'round';
   for (const { rootlet: r, at: p, side, grow } of placed) {
@@ -180,7 +178,7 @@ const drawRootlets = (
     ctx.moveTo(p.x, p.y);
     ctx.quadraticCurveTo(cx, cy, ex, ey);
     ctx.stroke();
-    // Poils absorbants, puis la coiffe claire au bout.
+    // Poils absorbants ; le bout reste nu, sans coiffe (26/10).
     if (L > 5) {
       ctx.lineWidth = 0.8;
       for (const [f, a] of [[0.45, 1], [0.7, -1]]) {
@@ -193,12 +191,6 @@ const drawRootlets = (
         ctx.stroke();
       }
     }
-    ctx.fillStyle = tip;
-    ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    ctx.arc(ex, ey, Math.max(1.2, thickness * 0.42) * grow, 0, TAU);
-    ctx.fill();
-    ctx.stroke();
   }
   ctx.globalAlpha = 1;
 };

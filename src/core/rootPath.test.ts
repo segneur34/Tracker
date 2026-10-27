@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRootModel, inCard, MAX_ROOTLETS, placeRootlets, ROOT_SEED_LENGTH, ROOT_STYLE, rootMaturity, rootRoute, rootVisibility,
-  sampleRoute, type Box, type RootLayout,
+  sampleRoute, tourLength, type Box, type RootLayout,
 } from './rootPath';
 
 const box = (x: number, y: number, w: number, h: number): Box => ({ x, y, r: x + w, b: y + h });
@@ -136,5 +136,55 @@ describe('placeRootlets', () => {
 
   it('120 au plus (10 h)', () => {
     expect(placeRootlets(model, vis, 2000)).toHaveLength(MAX_ROOTLETS);
+  });
+});
+
+describe('longueur de la racine indépendante de la page', () => {
+  /** Mêmes carré et largeur, cadres empilés avec une gouttière de 20 px, de hauteurs données. */
+  const stacked = (heights: number[]): RootLayout => {
+    let y = 128;
+    return { slot: DESKTOP.slot, cards: heights.map((h) => { const b = box(20, y, 720, h); y += h + 20; return b; }) };
+  };
+  /** Année, 30 jours puis semaine sans répartition : des pages de hauteurs très différentes. */
+  const LAYOUTS = { annee: [34, 178, 318, 273], trente: [34, 178, 318, 253], semaine: [34, 174, 150], haute: [34, 300, 600, 500] };
+  const front = (heights: number[], level: number) => rootVisibility(buildRootModel(stacked(heights), FLAT)!, level, 26, 1.4)[0]!;
+
+  it('à niveau égal, la racine mère a la même longueur sur toutes les pages', () => {
+    for (const level of [1, 6, 13, 26]) {
+      const lengths = Object.values(LAYOUTS).map((h) => front(h, level));
+      for (const l of lengths) expect(l).toBeCloseTo(lengths[0], 6);
+    }
+  });
+
+  it('la longueur croît avec le niveau, d\'un même pas à chaque étape', () => {
+    const lengths = [0, 1, 2, 13, 26].map((level) => front(LAYOUTS.semaine, level));
+    for (let i = 1; i < lengths.length; i++) expect(lengths[i]).toBeGreaterThan(lengths[i - 1]);
+    expect(lengths[0]).toBe(ROOT_SEED_LENGTH);
+    expect(lengths[2] - lengths[1]).toBeCloseTo(lengths[1] - lengths[0]);
+    expect(lengths[4] - lengths[3]).toBeCloseTo((lengths[3] - lengths[0]));
+  });
+
+  it('une page plus courte que la référence prolonge la racine sous son dernier cadre jusqu\'à la longueur du tour', () => {
+    const short = buildRootModel(stacked(LAYOUTS.semaine), FLAT)!;
+    const trunk = short.pieces[0];
+    expect(trunk.len).toBeGreaterThanOrEqual(short.tour - 1);
+    expect(trunk.len).toBeLessThan(short.tour + 1);
+    const lastBottom = stacked(LAYOUTS.semaine).cards.at(-1)!.b;
+    expect(short.bottom).toBeGreaterThan(lastBottom + 20);
+    // Une page plus haute n'allonge pas la racine : elle ne couvre qu'une partie de la page au tour complet.
+    const tall = buildRootModel(stacked(LAYOUTS.haute), FLAT)!;
+    expect(tall.tour).toBeCloseTo(short.tour, 6);
+    expect(tall.pieces[0].len).toBeGreaterThan(tall.tour);
+  });
+
+  it('la page de référence ne dépend ni de la hauteur ni du nombre des cadres réels', () => {
+    expect(tourLength(stacked(LAYOUTS.annee))).toBeCloseTo(tourLength(stacked(LAYOUTS.semaine))!, 6);
+    expect(tourLength(stacked(LAYOUTS.haute))).toBeCloseTo(tourLength(stacked(LAYOUTS.annee))!, 6);
+    expect(tourLength({ slot: DESKTOP.slot, cards: [] })).toBeNull();
+  });
+
+  it('à la période de référence, la racine garde sa longueur d\'avant (la page entière en 26 étapes)', () => {
+    const reference = buildRootModel(stacked(LAYOUTS.annee), FLAT)!;
+    expect(reference.tour).toBeCloseTo(reference.pieces[0].len, 6);
   });
 });

@@ -122,7 +122,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - vérifie dans Réglages, partie Onglet analyse, la ligne « Onglets » de Voile, Course, Route, Fractionné à pied, Surf et Surf foil : « tops » enfoncé en voile et à vélo, relâché à pied et en surf, « vols » sur foil seulement, pas de « sauts » en fractionné ;
   - coche « tops » en surf et en course, cache « vagues » en surf et « vmg » en voile, et vérifie ce qui est rangé ;
   - en surf : « tops » entre « rame » et « graphiques », le panneau « Vagues » absent bien que laissé ouvert, le tableau, « Voir » qui trace le podium, la surbrillance effacée à la fermeture de l'onglet et pas ramenée ; en course : « tops » et ses distances (400 m vers 18 km/h) ; en voile : ni onglet ni panneau VMG ;
-  - à 390×844 : Réglages et le surf sans débordement ; puis « Défaut » de la carte Surf, qui efface ses choix et garde ceux des autres.
+  - à 390×844 : Réglages et le surf sans débordement ; puis « Par défaut » (menu « … » de la carte) de la carte Surf, qui efface ses choix et garde ceux des autres.
 
   Il dure environ 2 min et finit par « Tout passe. » ou le nombre d'échecs. Il appelle `Network.enable` : sans lui, le blocage par hôte ne tient pas toujours, Overpass répond (504) et le relevé du vélo change.
 - `cardio.mjs <port> [<dossier des captures>]` : onglet « cardio » et FC dans les analyses (lot 7, étape analyse), sur un profil neuf, sans réseau. Le script écrit lui-même une course, une session de surf et une séance de fractionné, et prend celle de voile de `make-gpx.mjs`, toutes avec la FC (`gpxtpx:hr`), plus une course sans FC, et les importe par la page. Il vérifie :
@@ -198,11 +198,12 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - Voile ouverte, son œil qui la cache sans la replier, puis la rend ;
   - l'état retenu après rechargement (`settings-families` dans `tracker.sections`) ;
   - une activité ajoutée en surf, qui ouvre la famille Surf et sa carte ;
+  - le menu « … » de la carte d'activité (Renommer, Supprimer, Par défaut), « Par défaut » grisé puis actif après un réglage changé ;
   - à 390×844, aucun débordement, familles fermées puis ouvertes.
 
   Depuis ce lot, les scripts qui passent par les cartes d'activité ouvrent d'abord les familles (clic sur `.settings-activities__family-toggle`, ou `settings-families` dans la mémoire préremplie).
 - `notification.mjs <port> <dossier de travail>` : notification de l'enregistrement (point 101), sur un profil neuf, sans réseau, environ 1 min 30. La version navigateur de `platform/notification.ts` consigne chaque envoi en `console.debug` (« [notification] »). Le script vérifie :
-  - la partie « Notification » de la carte Voile dans Réglages : deux menus, « défaut », puis une ligne changée et rangée, qui suffit à faire paraître le « Défaut » de la carte et, repliée, « · modifié » ;
+  - la partie « Notification » de la carte Voile dans Réglages : deux menus, « défaut », puis une ligne changée et rangée, qui suffit à dégriser « Par défaut » dans le menu « … » de la carte (grisé, non absent, tant que rien n'est changé) et, repliée, « · modifié » ;
   - un rejeu ×10 de voile : titre, chiffres choisis, chronomètre de durée, 5 s au moins entre deux envois ;
   - pause manuelle (envoi immédiat, « en pause », posé seul), reprise, puis effacement à l'arrêt ;
   - le compteur pendant un enregistrement de fractionné : phase au titre et décompte.
@@ -264,7 +265,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - voile : « manœuvres », « vmg » et « vent » ouverts disent « Vent inconnu » et ce qui en dépend, avec « Ouvrir l'onglet général » tant que « général » est fermé, qui l'ouvre ;
   - course : « zones de pente » dit pourquoi elle est vide (pas d'altitude dans le fichier, IGN injoignable) et propose « Réessayer » ;
   - surf : « Sur la vague (x %) » dans les chiffres, et la légende de la répartition qui ne redit pas son pourcentage ;
-  - à 360×800 : l'accueil sans lien Profil ni Statistiques, la barre du bas Accueil · Profil · Statistiques · Réglages ; dans Réglages, la carte Voile ouverte montre son nom en texte (un toucher replie la carte), « Renommer » et l'œil sur la même ligne ; Échap n'enregistre rien, Entrée renomme, le nom est relu après rechargement ; rien ne déborde.
+  - à 360×800 : l'accueil sans lien Profil ni Statistiques, la barre du bas Accueil · Profil · Statistiques · Réglages ; dans Réglages, la carte Voile ouverte montre son nom en texte (un toucher replie la carte), le menu « … » (dont « Renommer ») et l'œil sur la même ligne ; Échap n'enregistre rien, Entrée renomme, le nom est relu après rechargement ; rien ne déborde.
 
   Il finit par « Tout est bon. » ou le nombre d'échecs.
 - `marche.mjs <port> [<dossier des captures>]` : activité « Marche » de départ (lot 3 des demandes du 20/10), sur un profil neuf, sans réseau, environ 30 s. Il vérifie :
@@ -340,6 +341,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - à 390 et 320 px : rien ne déborde, carré et bulle dans l'écran.
 
   Les valeurs de la racine remises à la semaine, ses chiffres attendus seront à reprendre.
+- `racine-periodes.mjs <port> [<dossier des captures>]` : la racine du Profil ne dépend pas de la période (demande du 26/10, lot B), sur un profil neuf, sans réseau, environ 2 min. Treize courses d'un lundi chacune, page à la semaine 13 ; le Profil aux cinq périodes, à 390×844 et 1400×1000 : niveau, longueur visible de la racine mère (`data-longueur` du canevas), hauteurs de la page et des cadres, débordement. Il vérifie que la longueur est la même aux cinq périodes. Avec un dossier, une capture réduite (échelle 0,35) par période et par taille.
 - `tailles.mjs <port> <dossier de travail> [<dossier des captures>]` : relevé de toutes les pages à toutes les tailles de téléphone, droit et tourné (point 139 ; mode d'emploi détaillé en tête du fichier), sur un profil neuf, sans réseau, 8 à 12 min. Il importe une session de chaque famille, passe chaque page par douze tailles d'écran (dont 375×834 et 834×375, le téléphone de l'utilisateur) et trois tailles de texte (100, 115, 130 %), et relève : page plus large que l'écran, élément qui en sort, texte coupé, rangée qui défile, cibles qui se recouvrent ; pour information, cibles de moins de 40 px et surface prise par les barres. Une analyse tournée s'ouvre sur sa carte en plein écran : le script la referme avant de mesurer. Il écrit `rapport.md` et `rapport.json`, et la capture de la pire combinaison de chaque page. `SIZES`, `FONTS` et `PAGES` restreignent le relevé.
 - `aides.mjs <port> [<dossier des captures>]` : aides « ? » partout et barre du haut (lot 3 des demandes du 24/10, point 148), sur un profil neuf, sans réseau, environ 1 min. Le script écrit lui-même une wing et une course. Il vérifie :
   - course : aucune explication à l'ouverture des graphiques, le « ? » du titre l'ouvre juste sous le titre sans replier le panneau, celui des réglages referme le premier, un second appui referme ;

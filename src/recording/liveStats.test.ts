@@ -189,7 +189,8 @@ describe('computeLiveStats : mémoire du direct', () => {
     expect(computeLiveStats(copy, wing, options, memory)).toEqual(computeLiveStats(copy, wing, options));
     // Un enregistrement plus court que le précédent.
     expect(computeLiveStats(seenAfter(segments, 100), wing, options, memory)).toEqual(computeLiveStats(seenAfter(segments, 100), wing, options));
-  });
+    // Le rejeu à 5 Hz recalcule tout à chaque position : près de 5 s quand toute la suite tourne (délai dépassé le 27/10).
+  }, 20_000);
 });
 
 describe('computeLiveStats : derniers mètres, pente, vitesse ascensionnelle', () => {

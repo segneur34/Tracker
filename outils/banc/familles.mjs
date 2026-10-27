@@ -120,6 +120,28 @@ await evaluate(`${eye}?.click()`);
 await wait(400);
 check('l\'œil rend la famille', (await evaluate(`${eye}?.getAttribute('aria-pressed')`)) === 'false');
 
+// Menu « … » de la carte d'activité (27/10) : trois entrées, « Par défaut » grisé puis actif après une modification.
+const menuCard = `document.querySelector('.settings-activity')`;
+const menuState = () => evaluate(`(() => {
+  const c = ${menuCard};
+  if (!c?.querySelector('.settings-activity__head > .ui-more .ui-more__button')) return null;
+  return [...c.querySelectorAll('.ui-more__panel button')].map((b) => b.textContent.trim() + (b.disabled ? ' (grisé)' : '')).join(' | ');
+})()`);
+check("carte d'activité : menu « … » à trois entrées, « Par défaut » grisé", (await menuState()) === 'Renommer | Supprimer | Par défaut (grisé)', await menuState());
+await evaluate(`${menuCard}.querySelector('.settings-activity__toggle[aria-expanded="false"]')?.click()`);
+await wait(300);
+await evaluate(`[...${menuCard}.querySelectorAll('.settings-part__toggle')].find((b) => b.textContent.trim() === 'Affichage' && b.getAttribute('aria-expanded') === 'false')?.click()`);
+await wait(300);
+await evaluate(`(() => {
+  const sel = ${menuCard}.querySelector('.settings-activity__body select');
+  const other = [...sel.options].find((o) => o.value !== sel.value);
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(sel, other.value);
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  return 'ok';
+})()`);
+await wait(400);
+check('après une modification, « Par défaut » actif', (await menuState()) === 'Renommer | Supprimer | Par défaut', await menuState());
+
 // --- 4. Après rechargement ---
 await go('/parametres', 3000);
 check('Voile toujours ouverte après rechargement', (await evaluate(`${familyToggle('Voile')}?.getAttribute('aria-expanded')`)) === 'true');
