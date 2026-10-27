@@ -52,7 +52,7 @@ Tout autre sous-agent sans modèle dans son en-tête (fork, agent général) tou
 
 ## Autres leviers, à décider
 
-Repérés le 24/10, pas appliqués : tests et banc en sortie résumée dans la conversation principale (le sous-agent `verif` le fait déjà de son côté) ; point de reprise de `MEMORY.md` réduit à quelques lignes (environ 3 400 mots rechargés à chaque session) ; `CLAUDE.md` est sous les 200 lignes recommandées.
+Repérés le 24/10, pas appliqués : tests et banc en sortie résumée dans la conversation principale (le sous-agent `verif` le fait déjà de son côté) ; fait le 27/10 : `MEMORY.md` à 1 Ko et point de reprise à 4 Ko (au lieu d'environ 3 400 mots rechargés à chaque session) ; `CLAUDE.md` est sous les 200 lignes recommandées.
 
 ## Ajuster le tableau
 

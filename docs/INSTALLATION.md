@@ -1,10 +1,8 @@
 # Installer Tracker sur un téléphone Android
 
-Tracker enregistre vos sessions de voile et de course avec le GPS du téléphone, puis les analyse. L'application n'est pas sur le Play Store : elle s'installe à partir d'un fichier (un « APK ») que vous recevez par un lien. Comptez cinq minutes.
+Tracker enregistre vos sessions (voile, à pied, vélo, surf, entraînement) avec le GPS du téléphone, puis les analyse. L'application n'est pas sur le Play Store : elle s'installe à partir d'un fichier (un « APK ») que vous recevez par un lien. Comptez cinq minutes.
 
 Il faut un téléphone Android 7 ou plus récent. Il n'y a pas de version iPhone.
-
-**Pour qui diffuse l'application** : l'APK est produit par la compilation, dans le dépôt, en `android/app/build/outputs/apk/release/`, nommé d'après sa version (`Tracker-0.3.0.apk`, par exemple ; sur le PC de développement : `C:\Users\segne\tracker\android\app\build\outputs\apk\release\`). C'est ce fichier qu'on dépose sur Drive ou WeTransfer, ou qu'on copie par câble dans le dossier Téléchargements du téléphone. Le dossier `Tracker` des sessions ne le contient pas.
 
 ## 1. Télécharger et installer
 
@@ -30,14 +28,20 @@ Tracker ne demande jamais l'accès à tous vos fichiers : il ne voit que ce doss
 
 Ces réglages évitent que le téléphone coupe le GPS quand l'écran s'éteint. **Sans eux, la trace s'interrompt au bout de quelques minutes.**
 
-**Au premier enregistrement**, Tracker demande deux autorisations :
+**Au premier lancement**, une carte **Autorisations** apparaît sur l'accueil (elle est aussi dans Réglages). Elle liste ce qu'il faut accorder :
 
 - **Position** : choisissez **Lorsque vous utilisez l'appli**, et laissez **Position exacte** activée. Avec la position approximative, la trace est inutilisable.
-- **Notifications** : choisissez **Autoriser**. Pendant l'enregistrement, une notification reste affichée. C'est elle qui permet à Tracker de continuer à enregistrer écran éteint. Le compteur du fractionné s'en sert aussi : sa notification montre la répétition en cours, et lui permet de sonner écran éteint, même sans enregistrement.
+- **Notifications** : choisissez **Autoriser**. Pendant l'enregistrement, une notification reste affichée. C'est elle qui permet à Tracker de continuer à enregistrer écran éteint. Le compteur d'intervalles de l'Entraînement s'en sert aussi : sa notification montre la répétition en cours, et lui permet de sonner écran éteint, même sans enregistrement.
+- **Batterie non optimisée** : voir plus bas.
+- **Bluetooth** : seulement si vous utilisez une ceinture cardio (voir plus bas).
 
-**Batterie**. Ouvrez Paramètres, puis Applications, puis Tracker, puis Batterie (ou « Économiseur de batterie »), et choisissez **Aucune restriction** (ou « Non restreinte »).
+Si vous touchez **Plus tard**, la carte revient à la version suivante tant qu'il manque une autorisation.
 
-**Sur les téléphones Xiaomi, Redmi et POCO**, dans la même page Paramètres, puis Applications, puis Tracker : activez aussi **Démarrage automatique**.
+**Batterie**. Si la carte ne s'en charge pas, ouvrez Paramètres, puis Applications, puis Tracker, puis Batterie (ou « Économiseur de batterie »), et choisissez **Aucune restriction** (ou « Non restreinte »).
+
+**Sur les téléphones Xiaomi, Redmi et POCO**, la carte propose aussi un lien vers le réglage **Démarrage automatique** : activez-le (Paramètres, puis Applications, puis Tracker).
+
+**Ceinture cardio Bluetooth** (facultative) : dans Enregistrer, cochez la ceinture ; Tracker se connecte seul et accepte l'autorisation Bluetooth au passage. La fréquence cardiaque est alors gardée dans la session.
 
 **Sur les téléphones Samsung** : ouvrez Paramètres, puis Batterie, puis « Limites d'utilisation en arrière-plan ». Vérifiez que Tracker n'est pas dans les applications « en veille » ou « en veille prolongée ».
 
@@ -49,7 +53,7 @@ Avant une vraie sortie, faites un essai de dix minutes à pied, écran éteint, 
 
 1. Touchez le bouton rond, choisissez l'activité, puis **Démarrer**.
 2. Éteignez l'écran et marchez dix minutes.
-3. Rallumez l'écran, touchez **Arrêter**, puis **Analyser**.
+3. Rallumez l'écran, tenez le bouton **Arrêter** appuyé 2 secondes (un simple appui ne l'arrête pas), puis touchez **Analyser**.
 
 Si la trace présente de longues lignes droites qui coupent les virages, le téléphone a coupé le GPS. Reprenez l'étape 3.
 

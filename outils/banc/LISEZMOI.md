@@ -293,6 +293,12 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - « Lancer » : Enregistrer prêt (Entraînement, Fractionné, à pied), la séance dans le compteur, « Série 1 · Travail 1/3 » ;
   - Réglages › Enregistrement : « Son des bips » retenu, « Écouter » ;
   - à 390 × 844 : sans débordement.
+- `icones.mjs <port> [<dossier des captures>]` : icônes des activités (demande du 17/10), sur un profil neuf, sans réseau, environ 1 min. Il importe six sessions synthétiques par la page Course et vérifie :
+  - l'accueil : boutons de famille sans petites icônes d'activité, « À pied » pour la course ;
+  - les bibliothèques Voile et Vélo : bandeau qui nomme les activités créées, une icône devant chaque ligne et dans chaque onglet d'activité, l'onglet « Kite » qui ne laisse que sa ligne ;
+  - la liste de choix d'activité d'une session à classer : une icône par activité, à sa couleur ;
+  - Réglages : seize icônes au choix, celle devinée cochée, choix gardé après rechargement et repris par la bibliothèque, activité « Paddle » ajoutée en surf ;
+  - à 390×844 : bibliothèque et accueil sans débordement.
 - `timer.mjs <port> [<dossier des captures>]` : le Timer de l'Entraînement (lot D des demandes du 25/10), sur un profil neuf, sans réseau, environ 30 s. Il vérifie :
   - la tuile « Timer » sous Tests ; la liste du Timer, vide au départ, une séance créée, modifiée, dupliquée, la copie retirée, sans toucher aux séances du Fractionné ;
   - « Lancer » : Enregistrer en mode Timer (ni famille, ni « Démarrer », ni carte), la séance dans le compteur, « Départ » puis le premier travail, le bandeau « Timer » qui y ramène ; un appui court sur « Arrêter » ne fait que rappeler le geste, tenu 1 s il arrête ; la position jamais demandée (sonde sur `navigator.geolocation`) ;
@@ -345,7 +351,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 - `shots.mjs <port> <dossier> <L>x<H>[m] <chemins…>` : captures d'écran ; `m` émule un téléphone (par exemple `390x844m`), toucher compris (pointeur grossier, donc disposition téléphone tournée au-delà de 768 px de large). Variables : `FULL=1` pour la page entière, `SETUP` pour du code à exécuter avant (par exemple remplir `localStorage`), `WAIT` en millisecondes. Le nom de la capture vient du chemin, `?`, `=`, `:` et `&` remplacés.
 - `cdp.mjs <ws> <chemins…>` : charge des routes dans la WebView de debug du téléphone et lit la page. On y accède par `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>`.
 
-« Arrêter » se tient depuis le point 99 (2 s par défaut) : les scripts qui arrêtent un enregistrement le font par `holdStop`, un appui simulé (`pointerdown`, 2,3 s, `pointerup`).
+« Arrêter » se tient depuis le point 99 (2 s par défaut) : les scripts qui arrêtent un enregistrement le font par `holdStop`, un appui simulé (`pointerdown`, 2,3 s, `pointerup`). L'arrêt du compteur d'intervalles est distinct : tenu 1 s (point 154), simulé à 1,2 s sur `.ivl button.ui-btn--danger` dans `fractionne.mjs`, `compteur-course.mjs` et `timer.mjs`.
 
 ## Prouver qu'un changement est neutre
 
