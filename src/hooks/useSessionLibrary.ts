@@ -90,6 +90,8 @@ import type { IntervalSeries } from '../recording/intervalTimer';
 import type { SessionTest } from '../recording/fitnessTest';
 import { sessionFileName } from '../recording/session';
 import { effectiveFoil, effectiveThresholdOverride, readStoredActivities } from './useSportSettings';
+import { createListeners } from './createStore';
+import { plural } from '../core/basics';
 
 /**
  * Bibliothèque des sessions : la mémoire de l'application, tenue dans un
@@ -189,19 +191,14 @@ const INITIAL_STATE: LibraryState = {
 };
 
 let state = INITIAL_STATE;
-const listeners = new Set<() => void>();
+const listeners = createListeners();
 
 const setState = (patch: Partial<LibraryState>): void => {
   state = { ...state, ...patch };
-  listeners.forEach((listener) => listener());
+  listeners.notify();
 };
 
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
+const subscribe = listeners.subscribe;
 
 const errorMessage = (err: unknown, fallback: string): string =>
   err instanceof Error && err.message ? err.message : fallback;
@@ -1796,8 +1793,6 @@ export const switchToBrowserMemory = async (): Promise<void> => {
 
 /** Relecture en cours : un second appui attend la même. */
 let refreshing: Promise<void> | null = null;
-
-const plural = (n: number, word: string): string => `${n} ${word}${n > 1 ? 's' : ''}`;
 
 /**
  * Relit le dossier mémoire sans le refermer (« Mettre à jour ») : sessions et

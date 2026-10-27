@@ -1,4 +1,5 @@
 import type { RestingHrProtocol, RestingSample } from '../recording/restingHrTest';
+import { isFiniteNumber } from '../core/basics';
 
 /**
  * Résultat d'un test de FC repos (`recording/restingHrTest.ts`) : la moyenne
@@ -106,23 +107,22 @@ export interface StoredRestingResult {
 /** Nombre de tests gardés : les plus récents. */
 export const MAX_STORED_RESTING_RESULTS = 60;
 
-const isNum = (v: unknown): v is number => typeof v === 'number' && isFinite(v);
-const numOrNull = (v: unknown): number | null => (isNum(v) ? v : null);
+const numOrNull = (v: unknown): number | null => (isFiniteNumber(v) ? v : null);
 
 /** Un test gardé, relu ; `null` s'il est mal formé. */
 export const readStoredRestingResult = (raw: unknown): StoredRestingResult | null => {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
-  if (!isNum(r.startedAtMs) || !isNum(r.lowestBpm) || !isNum(r.fromS) || !isNum(r.toS) || !Array.isArray(r.series)) return null;
+  if (!isFiniteNumber(r.startedAtMs) || !isFiniteNumber(r.lowestBpm) || !isFiniteNumber(r.fromS) || !isFiniteNumber(r.toS) || !Array.isArray(r.series)) return null;
   return {
     startedAtMs: r.startedAtMs,
-    version: isNum(r.version) ? r.version : 1,
+    version: isFiniteNumber(r.version) ? r.version : 1,
     lowestBpm: r.lowestBpm,
     fromS: r.fromS,
     toS: r.toS,
     meanBpm: numOrNull(r.meanBpm),
     maxBpm: numOrNull(r.maxBpm),
-    coverage: isNum(r.coverage) ? Math.min(1, Math.max(0, r.coverage)) : 0,
+    coverage: isFiniteNumber(r.coverage) ? Math.min(1, Math.max(0, r.coverage)) : 0,
     series: r.series.map(numOrNull),
   };
 };

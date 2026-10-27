@@ -1,3 +1,4 @@
+import { firstIndexAtOrAfterTime } from './search';
 import { meanFilterByTime } from './speedFilter';
 
 /**
@@ -426,18 +427,6 @@ export const heartRateZonePaths = (
   return paths;
 };
 
-/** Premier point à `ms` ou après (`points.length` s'il n'y en a pas). */
-const firstIndexAtOrAfter = (points: readonly HeartRatePoint[], ms: number): number => {
-  let lo = 0;
-  let hi = points.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (points[mid].timeMs < ms) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-};
-
 /** FC d'une plage de temps (une répétition du fractionné), de `startMs` à `endMs` ; `null` sans FC. */
 export const timeSpanHeartRate = (
   points: readonly HeartRatePoint[],
@@ -447,7 +436,7 @@ export const timeSpanHeartRate = (
   gapS: number,
   recoveryS: number
 ): SpanHeartRate | null => {
-  const start = firstIndexAtOrAfter(points, startMs);
-  const end = firstIndexAtOrAfter(points, endMs + 1) - 1;
+  const start = firstIndexAtOrAfterTime(points, startMs);
+  const end = firstIndexAtOrAfterTime(points, endMs + 1) - 1;
   return end > start ? spanHeartRate(points, smoothed, start, end, gapS, recoveryS) : null;
 };

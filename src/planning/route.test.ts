@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_IMPORT_SMOOTHING_M, DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, acceptLoopReturn, addBeforeReturn, addWaypoint, closeLoop, courseLegs, insertWaypoint, isChoosableMode, isLooped, isRouteMode, isWaysMode, legKey,
-  moveWaypoint, nextPendingLeg, pendingLegRequests, readRouteMode, recomputeLegsWithoutSurfaces, removeWaypoint, reorderWaypoint, retryFailedLegs,
+  DEFAULT_IMPORT_SMOOTHING_M, DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, acceptLoopReturn, addBeforeReturn, addWaypoint, closeLoop, courseLegs, insertWaypoint, isLooped, isRouteMode, isWaysMode, legKey,
+  moveWaypoint, pendingLegRequests, readRouteMode, recomputeLegsWithoutSurfaces, removeWaypoint, reorderWaypoint, retryFailedLegs,
   presetWayTypes, reverseRoute, routeFromTrack, routeModeLabel, routePoints, sanitizeWayTypes, toggleWayType, wayTypesOf, waysMode,
   routeProfileRows, routeTotals, routeVehicle, setLegMode, setRouteMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
   nextReturnVariant, openLoop, outboundKey, removeLoopStart, returnRequest, withLoopReturn, withReturnError, withReturnResult,
@@ -12,6 +12,9 @@ const A: Waypoint = { lat: 43.6, lon: 3.8 };
 const B: Waypoint = { lat: 43.61, lon: 3.8 };
 const C: Waypoint = { lat: 43.62, lon: 3.8 };
 const D: Waypoint = { lat: 43.63, lon: 3.8 };
+
+/** Premier tronçon à calculer, ou `-1`. */
+const nextPendingLeg = (route: PlannedRoute): number => route.legs.findIndex((l) => l.status === 'pending');
 
 /** Un degré de latitude fait un peu plus de 111 km : 0,01° ≈ 1 112 m. */
 const STEP_M = 1112;
@@ -436,8 +439,6 @@ describe('trace importée', () => {
 
   it('le mode importé se relit mais ne se choisit pas', () => {
     expect(isRouteMode('imported')).toBe(true);
-    expect(isChoosableMode('imported')).toBe(false);
-    expect(isChoosableMode('sentier')).toBe(true);
     expect(isRouteMode('toString')).toBe(false);
   });
 
@@ -448,7 +449,6 @@ describe('trace importée', () => {
     expect(readRouteMode('grandeRoute')).toBe('grandeRoute');
     expect(readRouteMode('toString')).toBeNull();
     expect(readRouteMode(undefined)).toBeNull();
-    expect(isChoosableMode('foot')).toBe(false);
   });
 
   it('relit « Chemin », devenu « Sentier », seul ou avec d\x27autres types', () => {
@@ -479,8 +479,6 @@ describe('trace importée', () => {
     // Seule la forme dans l'ordre est un mode tel quel.
     expect(isRouteMode('route+grandeRoute')).toBe(true);
     expect(isRouteMode('grandeRoute+route')).toBe(false);
-    expect(isChoosableMode('sentier+piste')).toBe(true);
-    expect(isChoosableMode('straight')).toBe(true);
   });
 
   it('nomme un mode en clair', () => {

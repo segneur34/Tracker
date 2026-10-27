@@ -11,6 +11,7 @@ import { effectiveDistanceUnit, useVisibility } from '../hooks/useSportSettings'
 import { useVisibleStatSessions } from '../hooks/useVisibleStatSessions';
 import { activityBarUnit, buildActivityChart, type ChartRange, type ChartSession } from '../library/activityChart';
 import './ActivityChart.css';
+import { plural } from '../core/basics';
 
 /**
  * Graphe d'activités du profil, venu de l'accueil (maquette du 23 septembre 2026), sur la
@@ -42,7 +43,6 @@ const formatDistance = (m: number, activity: Activity): string => {
 const formatTime = (ms: number): string =>
   new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-const plural = (n: number): string => `${n} session${n > 1 ? 's' : ''}`;
 
 function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number }) {
   const { all, activityById } = useVisibleStatSessions();
@@ -75,7 +75,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
     <section className="actchart" aria-label="Activités">
       <div className="actchart__head">
         <h2>{chart.title}<HelpToggle helpKey="profil:activites" label={chart.title} /></h2>
-        <span className="num">{plural(totalSessions)}</span>
+        <span className="num">{plural(totalSessions, 'session')}</span>
       </div>
       <HelpText helpKey="profil:activites" note>Toucher une barre pour le détail de ses sessions.</HelpText>
 
@@ -85,7 +85,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
             key={b.startMs}
             type="button"
             className={`actchart__bar${picked === i ? ' actchart__bar--picked' : ''}${b.future ? ' actchart__bar--future' : ''}${b.weekStart ? ' actchart__bar--week' : ''}`}
-            aria-label={`${b.title} : ${b.sessions.length ? plural(b.sessions.length) : 'aucune session'}`}
+            aria-label={`${b.title} : ${b.sessions.length ? plural(b.sessions.length, 'session') : 'aucune session'}`}
             aria-pressed={picked === i}
             onClick={() => setPicked(picked === i ? null : i)}>
             {b.stacks.map((s) => (
@@ -152,7 +152,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
                   <span className="actchart__swatch" style={{ background: activity.color }} />
                   <span className="actchart__name">{activity.name}</span>
                   <span className="actchart__meta num">
-                    {plural(t.sessions)} · {formatDuration(t.durationS * 1000)} · {formatDistance(t.distanceM, activity)}
+                    {plural(t.sessions, 'session')} · {formatDuration(t.durationS * 1000)} · {formatDistance(t.distanceM, activity)}
                   </span>
                   <IconChevronRight size={16} className="actchart__chevron" />
                 </button>

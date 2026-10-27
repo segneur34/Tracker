@@ -1,10 +1,9 @@
 import type { ImuRecording, ImuSeries } from './imuFile';
+import { STANDARD_G } from './units';
 import {
-  STANDARD_G, captureBounds, centredMean, mergeWindows, rangeOf, verticalAcceleration, wallMsOf,
+  captureBounds, centredMean, mergeWindows, rangeOf, verticalAcceleration, wallMsOf,
   type AttitudeParams, type ImuWindow,
 } from './imuVertical';
-
-export type { ImuWindow } from './imuVertical';
 
 /**
  * Sauts mesurés par l'accéléromètre et le gyroscope du téléphone (voile, course, vélo),

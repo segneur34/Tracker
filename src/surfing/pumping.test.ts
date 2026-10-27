@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeImu, encodeImu, selectImuWindows, type ImuRecording } from '../core/imuFile';
-import { SYNTH_WALL_MS, synthImu } from '../core/imuSynthetic';
+import { SYNTH_WALL_MS, synthImu } from '../core/imuSynthetic.fixture';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { SPORT_PROFILES } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';

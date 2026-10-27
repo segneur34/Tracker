@@ -1,6 +1,7 @@
 import { heartRateZones, type HeartRateAthlete, type HeartRateZoneModel, type HeartRateZones, type ZoneMethod } from '../core/heartRate';
 import { kmhToMs } from '../core/units';
 import type { ClockTone } from '../platform/beeper';
+import { isFiniteNumber } from '../core/basics';
 
 /**
  * Tests guidés par bips (Entraînement › Tests, 24/10), d'abord la FC max :
@@ -231,23 +232,22 @@ export interface SessionTest {
   signals: { t: number; s: TestSignal }[];
 }
 
-const isNum = (v: unknown): v is number => typeof v === 'number' && isFinite(v);
-const numOrNull = (v: unknown): number | null => (isNum(v) ? v : null);
+const numOrNull = (v: unknown): number | null => (isFiniteNumber(v) ? v : null);
 
 /** Test d'une fiche ou d'un journal ; `null` s'il est mal formé. */
 export const readSessionTest = (raw: unknown): SessionTest | null => {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
-  if (!isFitnessTestId(r.protocol) || !isNum(r.version) || !isNum(r.startMs)) return null;
+  if (!isFitnessTestId(r.protocol) || !isFiniteNumber(r.version) || !isFiniteNumber(r.startMs)) return null;
   const s = typeof r.settings === 'object' && r.settings !== null ? (r.settings as Record<string, unknown>) : null;
-  if (!s || !isNum(s.warmupS) || !isNum(s.age) || !isNum(s.lowBpm) || !isNum(s.highBpm)) return null;
+  if (!s || !isFiniteNumber(s.warmupS) || !isFiniteNumber(s.age) || !isFiniteNumber(s.lowBpm) || !isFiniteNumber(s.highBpm)) return null;
   const steps = Array.isArray(r.steps)
-    ? r.steps.filter((x): x is TestStep => typeof x === 'object' && x !== null && isNum((x as TestStep).startMs) && isNum((x as TestStep).targetMs))
+    ? r.steps.filter((x): x is TestStep => typeof x === 'object' && x !== null && isFiniteNumber((x as TestStep).startMs) && isFiniteNumber((x as TestStep).targetMs))
       .map(({ startMs, targetMs }) => ({ startMs, targetMs }))
     : [];
   const signals = Array.isArray(r.signals)
     ? r.signals.filter((x): x is { t: number; s: TestSignal } =>
-      typeof x === 'object' && x !== null && isNum((x as { t: unknown }).t) && TEST_SIGNALS.includes((x as { s: TestSignal }).s))
+      typeof x === 'object' && x !== null && isFiniteNumber((x as { t: unknown }).t) && TEST_SIGNALS.includes((x as { s: TestSignal }).s))
       .map(({ t, s: kind }) => ({ t, s: kind }))
     : [];
   const endReason = r.endReason === 'auto' || r.endReason === 'manuel' || r.endReason === 'arret' ? r.endReason : null;

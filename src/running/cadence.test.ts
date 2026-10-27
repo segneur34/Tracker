@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SYNTH_WALL_MS, noiseSource, synthImu } from '../core/imuSynthetic';
+import { SYNTH_WALL_MS, noiseSource, synthImu } from '../core/imuSynthetic.fixture';
 import { SPORT_PROFILES, GRADE_ANALYSIS } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import {

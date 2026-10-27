@@ -35,7 +35,7 @@ export default function SessionNotesPanel({ notes, setNotes, family, gearFields,
   const accentSoft = `var(--${family}-soft)`;
   const choiceStyle = (chosen: boolean) => ({
     padding: '5px 10px', cursor: 'pointer', border: '1px solid var(--line-strong)', borderRadius: '4px', fontSize: 'var(--text-xs)',
-    backgroundColor: chosen ? accent : '#fff', color: chosen ? '#fff' : 'var(--ink)',
+    backgroundColor: chosen ? accent : 'var(--surface)', color: chosen ? 'var(--on-accent)' : 'var(--ink)',
   });
   return (
     <>

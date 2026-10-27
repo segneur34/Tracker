@@ -13,6 +13,7 @@ import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
 import { getLiveSegments, getRecorderState, subscribeToRecorder } from './useRecorder';
 import { readRunnerProfile } from './useRunnerProfile';
 import { effectiveBikeSetup, effectiveDistanceUnit } from './useSportSettings';
+import { createListeners } from './createStore';
 
 /**
  * Trace et statistiques de l'enregistrement en cours, hors des composants
@@ -79,12 +80,12 @@ let follow: { trace: FollowedTrace; cursor: FollowCursor } | null = null;
 let lastRunMs = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
 /** Pages qui lisent le direct (`useLiveRecording`). */
-const pageListeners = new Set<() => void>();
+const pageListeners = createListeners();
 /** Abonnés hors React (notification), qui ne pressent pas le rythme. */
 const backgroundListeners = new Set<() => void>();
 
 const publish = () => {
-  pageListeners.forEach((listener) => listener());
+  pageListeners.notify();
   backgroundListeners.forEach((listener) => {
     try {
       listener();
@@ -141,10 +142,10 @@ const request = () => {
     return;
   }
   if (timer !== null) return;
-  const refreshMs = pageListeners.size > 0 ? PAGE_REFRESH_MS : BACKGROUND_REFRESH_MS;
+  const refreshMs = pageListeners.size() > 0 ? PAGE_REFRESH_MS : BACKGROUND_REFRESH_MS;
   const waitMs = Math.max(0, refreshMs - (Date.now() - lastRunMs));
   if (waitMs === 0) compute();
-  else if (pageListeners.size > 0) {
+  else if (pageListeners.size() > 0) {
     timer = setTimeout(() => {
       timer = null;
       compute();
@@ -175,12 +176,10 @@ export const subscribeToLiveRecording = (listener: () => void): (() => void) => 
 };
 
 const subscribe = (listener: () => void) => {
-  pageListeners.add(listener);
+  const unsubscribe = pageListeners.subscribe(listener);
   // Une page qui arrive passe au rythme rapide.
   queueMicrotask(request);
-  return () => {
-    pageListeners.delete(listener);
-  };
+  return unsubscribe;
 };
 
 /** Trace et statistiques de l'enregistrement en cours, pour une page ; vides au repos. */

@@ -5,6 +5,7 @@ import PanelTitle from './PanelTitle';
 import { HIGHLIGHT_PODIUM_COLORS } from './highlightColors';
 import type { TopSegment, TopTarget } from '../core/types';
 import { SPEED_UNIT_LABEL, type SpeedUnit } from '../core/units';
+import MapToggle from './ui/MapToggle';
 
 interface Props {
   /** Cibles du calcul, en temps puis en distance. */
@@ -59,10 +60,7 @@ export default function TopsPanel({ targets, tops, unit, selected, onSelect, acc
                       <td key={idx} style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: idx === 0 ? 'bold' : 'normal' }}>{values[idx]?.val ?? '-'}</td>
                     ))}
                     <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
-                      <button type="button" disabled={!reached} onClick={() => onSelect(shown ? null : target.key)}
-                        style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? accent : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
-                        {shown ? 'Masquer' : 'Voir'}
-                      </button>
+                      <MapToggle shown={shown} disabled={!reached} color={accent} onClick={() => onSelect(shown ? null : target.key)} />
                     </td>
                   </tr>
                 );

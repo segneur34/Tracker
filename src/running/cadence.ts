@@ -1,5 +1,6 @@
 import { zoneOf } from '../core/heartRate';
 import type { ImuRecording } from '../core/imuFile';
+import { kmhToMs } from '../core/units';
 import { segmentDistanceM } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
 import type { GradeProfile } from '../core/sportProfiles';
@@ -500,7 +501,7 @@ export const analyzeCadence = (
   for (const s of moving) timesS[zoneOf(s.spm, bounds)] += s.dtS;
 
   // Selon la vitesse : tranches de `speedBinKmh`, sur la vitesse lissée du point.
-  const binMs = p.speedBinKmh / 3.6;
+  const binMs = kmhToMs(p.speedBinKmh);
   const bins = new Map<number, ShareSum>();
   for (const s of moving) {
     const k = Math.floor(track[s.i].smoothedSpeedMs / binMs);

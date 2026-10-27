@@ -1,4 +1,5 @@
 import { registerPlugin } from '@capacitor/core';
+import { STANDARD_G } from '../core/units';
 import type { JumpPlacement } from '../recording/jumpSettings';
 import { privateFileSize, readPrivateBytes, removePrivateFile } from './memoryFolder';
 import { isNativeApp } from './runtime';
@@ -50,8 +51,6 @@ export const MOTION_DIR = 'capteurs';
 
 /** Fichier de la capture d'un enregistrement, repéré par l'instant de l'en-tête de son journal. */
 export const motionCapturePath = (startedAtMs: number): string => `${MOTION_DIR}/${startedAtMs}.imu`;
-
-const STANDARD_G = 9.80665;
 
 /** Plugin maison, `android/app/src/main/java/io/github/segneur/tracker/MotionPlugin.java`. */
 interface MotionPlugin {

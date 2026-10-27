@@ -1,5 +1,6 @@
 import { fetchJson } from './fetchJson';
 import type { Waypoint } from './route';
+import { isObject } from '../core/basics';
 
 /**
  * Recherche d'un lieu par son nom (commune, sommet, refuge, adresse), par le
@@ -32,9 +33,6 @@ export const photonUrl = (query: string, near?: Waypoint, limit = 6): string => 
   }
   return `${PHOTON_URL}?${params.toString()}`;
 };
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const text = (value: unknown): string | null => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null);
 

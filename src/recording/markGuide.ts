@@ -1,6 +1,8 @@
-import { distanceToSegmentM, haversineDistance, initialBearing } from '../core/kinematics';
+import { distanceToSegmentM } from '../core/geoPlane';
+import { haversineDistance, initialBearing } from '../core/kinematics';
 import type { SportFamily } from '../core/sportProfiles';
-import { knotsToMs } from '../core/units';
+import { kmhToMs, knotsToMs } from '../core/units';
+import { clamp, isObject } from '../core/basics';
 
 /**
  * Guidage vers les balises d'un parcours (voile, surf), pendant l'enregistrement :
@@ -56,15 +58,11 @@ export const BEEP_CURVE_LIMITS = {
 } as const;
 
 /** Vitesse de l'approche simulée par « Écouter », en m/s : 15 nœuds en voile, 8 km/h (allure de paddle) en surf. */
-export const SIMULATED_APPROACH_MS: Record<'voile' | 'surf', number> = { voile: knotsToMs(15), surf: 8 / 3.6 };
+export const SIMULATED_APPROACH_MS: Record<'voile' | 'surf', number> = { voile: knotsToMs(15), surf: kmhToMs(8) };
 
 /** Vitesse de l'approche simulée pour une famille ; celle de la voile hors du surf. */
 export const simulatedApproachMs = (family: SportFamily): number => SIMULATED_APPROACH_MS[family === 'surf' ? 'surf' : 'voile'];
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
 /**
  * Courbe nettoyée : valeurs ramenées dans les bornes, distances au mètre et

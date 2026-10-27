@@ -5,6 +5,9 @@
 export const MS_TO_KNOTS = 1.94384;
 export const MS_TO_KMH = 3.6;
 
+/** Pesanteur normale, en m/s² : l'unité des seuils exprimés en g. */
+export const STANDARD_G = 9.80665;
+
 /** Unité dans laquelle une vitesse est présentée à l'utilisateur. */
 export type SpeedUnit = 'kn' | 'kmh' | 'ms' | 'minkm';
 
@@ -180,6 +183,20 @@ export const formatClock = (ms: number): string => {
   const total = Math.max(0, Math.round(ms / 1000));
   const pad = (n: number): string => String(n).padStart(2, '0');
   return `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
+};
+
+/** Axe de temps d'un graphe, donné en minutes : `h:mm`, ou `h:mm:ss` hors de la minute ronde (graphe zoomé). */
+export const formatClockMinutes = (minutes: number): string => formatClock(minutes * 60_000).replace(/:00$/, '');
+
+/**
+ * Secondes entières en `m:ss`, `h:mm:ss` à partir d'une heure ; `secondSuffix`
+ * s'accroche aux secondes (les dixièmes d'un chronomètre).
+ */
+export const formatMinSecHours = (totalSeconds: number, secondSuffix = ''): string => {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor(totalSeconds / 60) % 60;
+  const s = `${String(totalSeconds % 60).padStart(2, '0')}${secondSuffix}`;
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 };
 
 /** Joules par kilocalorie. */

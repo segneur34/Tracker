@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { jsonStore } from '../platform/storage';
 import { FOLLOWED_TRACE_TOLERANCE_M, followedTraceFromPoints, thinFollowedTrace, type FollowedTrace } from '../recording/followedTrace';
 import { sanitizeMarkGuide } from '../recording/markGuide';
+import { createListeners } from './createStore';
 
 /**
  * Trace suivie pendant l'enregistrement, gardée hors des pages : elle reste
@@ -28,14 +29,7 @@ const readStored = (): FollowedTrace | null => {
 
 // Lue au premier besoin, pas au chargement du module : `initStorage` doit avoir chargé le stockage natif.
 let followed: FollowedTrace | null | undefined;
-const listeners = new Set<() => void>();
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
+const listeners = createListeners();
 
 const getSnapshot = (): FollowedTrace | null => {
   if (followed === undefined) {
@@ -50,17 +44,17 @@ const getSnapshot = (): FollowedTrace | null => {
 const set = (next: FollowedTrace | null) => {
   followed = next && thinFollowedTrace(next, FOLLOWED_TRACE_TOLERANCE_M);
   jsonStore.write(STORAGE_KEY, followed);
-  for (const listener of listeners) listener();
+  listeners.notify();
 };
 
 export const followTrace = (trace: FollowedTrace): void => set(trace);
 
 export const clearFollowedTrace = (): void => set(null);
 
-export const useFollowedTrace = (): FollowedTrace | null => useSyncExternalStore(subscribe, getSnapshot);
+export const useFollowedTrace = (): FollowedTrace | null => useSyncExternalStore(listeners.subscribe, getSnapshot);
 
 /** Trace suivie, hors React (guidage vers les balises). */
 export const getFollowedTrace = (): FollowedTrace | null => getSnapshot();
 
 /** Changements de la trace suivie, hors React ; rend le désabonnement. */
-export const subscribeToFollowedTrace = (listener: () => void): (() => void) => subscribe(listener);
+export const subscribeToFollowedTrace = (listener: () => void): (() => void) => listeners.subscribe(listener);

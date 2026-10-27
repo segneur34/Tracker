@@ -4,7 +4,7 @@ import type { PumpDetection } from '../surfing/pumping';
 import type { CadenceDetection } from '../running/cadence';
 import type { SpeedRangeMs } from './speedGradient';
 import type { SportType, TopTarget } from './types';
-import { knotsToMs, type SpeedUnit } from './units';
+import { kmhToMs, knotsToMs, type SpeedUnit } from './units';
 
 /**
  * Profil d'un support. Regroupe tout ce qui varie d'une activité à l'autre :
@@ -124,7 +124,7 @@ const INTERVAL_RECORDING: RecordingProfile = { ...DEFAULT_RECORDING, autoPauseSp
  * Bateau (21/10) : pause automatique sous 0,2 km/h pendant 60 s, plus bas que
  * le défaut : un bord lent, sous 1 km/h, ne doit pas mettre la trace en pause.
  */
-const BOAT_RECORDING: RecordingProfile = { ...DEFAULT_RECORDING, autoPauseSpeedMs: 0.2 / 3.6 };
+const BOAT_RECORDING: RecordingProfile = { ...DEFAULT_RECORDING, autoPauseSpeedMs: kmhToMs(0.2) };
 
 /**
  * Répétitions retrouvées dans la vitesse d'une session faite sans le compteur

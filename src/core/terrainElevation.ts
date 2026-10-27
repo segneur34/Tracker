@@ -1,3 +1,4 @@
+import { median } from './speedFilter';
 import type { TrackPoint } from './types';
 
 /**
@@ -64,13 +65,6 @@ export const terrainSamplePoints = (
   const last = track[track.length - 1];
   push(last.lat, last.lon, last.timeMs);
   return points;
-};
-
-/** Médiane d'une liste non vide. */
-const median = (values: number[]): number => {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
 
 /**

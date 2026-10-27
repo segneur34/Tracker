@@ -68,6 +68,8 @@ import type { LibrarySession } from '../library/record';
 import { measureFlightPumping, summarizePumping, type FlightPumping } from '../surfing/pumping';
 import type { SurfFlight, SurfPhase, SurfReturn, SurfSpan } from '../surfing/surfAnalysis';
 import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfing/surfSession';
+import StatTile from '../components/ui/StatTile';
+import MapToggle from '../components/ui/MapToggle';
 
 /**
  * Analyse d'une session de surf (§10, point 97), selon le patron commun
@@ -136,21 +138,11 @@ const thStyle = { padding: '0.4em 0.5em', whiteSpace: 'nowrap' } as const;
 const tdStyle = { padding: '0.35em 0.5em', textAlign: 'center', whiteSpace: 'nowrap' } as const;
 const noteStyle = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' } as const;
 
-const Stat = ({ label, value, title }: { label: string; value: ReactNode; title?: string }) => (
-  <div className="an-sheet__stat" title={title}>
-    <span className="an-sheet__stat-label">{label}</span>
-    <strong className="an-sheet__stat-value">{value}</strong>
-  </div>
-);
-
 const orDash = (value: number | null, format: (v: number) => string): string => (value === null ? '—' : format(value));
 
 /** Bouton « Voir » d'une ligne de tableau : montre ou masque son passage sur la carte. */
 const ShowButton = ({ shown, onClick, disabled }: { shown: boolean; onClick: () => void; disabled?: boolean }) => (
-  <button type="button" disabled={disabled} onClick={onClick}
-    style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: disabled ? 'default' : 'pointer', backgroundColor: shown ? ACCENT : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
-    {shown ? 'Masquer' : 'Voir'}
-  </button>
+  <MapToggle shown={shown} disabled={disabled} color={ACCENT} onClick={onClick} />
 );
 
 /** Une ligne du graphe : `index` renvoie au point de trace d'origine. */
@@ -680,14 +672,14 @@ function SurfModule() {
                   {' '}Remontée : distance à vol d'oiseau jusqu'au pic, divisée par ce temps. Rame : vitesse en mouvement.
                 </HelpText>
                 <div className="an-sheet__stats an-sheet__stats--always">
-                  <Stat label="Vitesse de rame" value={orDash(summary.paddleSpeedMs, (v) => formatSpeed(v, speedUnit))} title="Moyenne en mouvement, arrêts courts exclus" />
-                  <Stat label="Vitesse de remontée" value={orDash(summary.avgReturnSpeedMs, (v) => formatSpeed(v, speedUnit))} title="Distance à vol d'oiseau de la fin de la vague au pic, divisée par le temps du retour" />
-                  <Stat label="Retour au pic (moyen)" value={orDash(summary.avgReturnS, formatShortDuration)} />
-                  <Stat label="Meilleur retour" value={orDash(summary.bestReturnS, formatShortDuration)} />
-                  <Stat label="Première sortie" value={orDash(summary.firstOutS, formatShortDuration)} title="Du premier mouvement à la première attente, marche sur la plage comprise" />
-                  <Stat label={`${foil ? 'Vols' : 'Vagues'} enchaîné${foil ? 's' : 'es'}`} value={summary.chainedCount} title="Prise sans attente depuis la précédente : pas de retour au pic mesuré" />
-                  <Stat label="Temps de rame" value={formatShortDuration(summary.rameS)} />
-                  <Stat label="Temps d'attente" value={formatShortDuration(summary.attenteS)} />
+                  <StatTile label="Vitesse de rame" value={orDash(summary.paddleSpeedMs, (v) => formatSpeed(v, speedUnit))} title="Moyenne en mouvement, arrêts courts exclus" />
+                  <StatTile label="Vitesse de remontée" value={orDash(summary.avgReturnSpeedMs, (v) => formatSpeed(v, speedUnit))} title="Distance à vol d'oiseau de la fin de la vague au pic, divisée par le temps du retour" />
+                  <StatTile label="Retour au pic (moyen)" value={orDash(summary.avgReturnS, formatShortDuration)} />
+                  <StatTile label="Meilleur retour" value={orDash(summary.bestReturnS, formatShortDuration)} />
+                  <StatTile label="Première sortie" value={orDash(summary.firstOutS, formatShortDuration)} title="Du premier mouvement à la première attente, marche sur la plage comprise" />
+                  <StatTile label={`${foil ? 'Vols' : 'Vagues'} enchaîné${foil ? 's' : 'es'}`} value={summary.chainedCount} title="Prise sans attente depuis la précédente : pas de retour au pic mesuré" />
+                  <StatTile label="Temps de rame" value={formatShortDuration(summary.rameS)} />
+                  <StatTile label="Temps d'attente" value={formatShortDuration(summary.attenteS)} />
                 </div>
                 {(measuredReturns.length > 0 || firstOut) && (
                   <div style={{ overflowX: 'auto', marginTop: '10px' }}>
@@ -745,14 +737,14 @@ function SurfModule() {
                     : ' Le reste du vol est pompé.'}
                 </HelpText>
                 <div className="an-sheet__stats an-sheet__stats--always">
-                  <Stat label="Plus long vol" value={orDash(summary.longestFlightS, formatShortDuration)} />
-                  <Stat label="Temps de vol" value={formatShortDuration(summary.flightS)} />
-                  <Stat label="Vagues en un vol" value={summary.maxWavesInFlight ?? '—'} />
+                  <StatTile label="Plus long vol" value={orDash(summary.longestFlightS, formatShortDuration)} />
+                  <StatTile label="Temps de vol" value={formatShortDuration(summary.flightS)} />
+                  <StatTile label="Vagues en un vol" value={summary.maxWavesInFlight ?? '—'} />
                   {pumpSummary && (
                     <>
-                      <Stat label="Coups de pompe" value={pumpSummary.strokes} />
-                      <Stat label="Fréquence" value={orDash(pumpSummary.strokesPerMin, (v) => `${Math.round(v)} /min`)} title="Coups de pompe par minute de pumping" />
-                      <Stat label="Par coup" value={orDash(pumpSummary.perStrokeM, (v) => `${v.toFixed(1)} m`)} title="Distance pompée divisée par le nombre de coups" />
+                      <StatTile label="Coups de pompe" value={pumpSummary.strokes} />
+                      <StatTile label="Fréquence" value={orDash(pumpSummary.strokesPerMin, (v) => `${Math.round(v)} /min`)} title="Coups de pompe par minute de pumping" />
+                      <StatTile label="Par coup" value={orDash(pumpSummary.perStrokeM, (v) => `${v.toFixed(1)} m`)} title="Distance pompée divisée par le nombre de coups" />
                     </>
                   )}
                 </div>

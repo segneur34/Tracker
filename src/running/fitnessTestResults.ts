@@ -1,4 +1,5 @@
 import { smoothHeartRate } from '../core/heartRate';
+import { lastIndexAtOrBeforeTime } from '../core/search';
 import { meanFilterByTime } from '../core/speedFilter';
 import type { TrackPoint } from '../core/types';
 import type { FitnessTestProtocol, SessionTest } from '../recording/fitnessTest';
@@ -36,26 +37,9 @@ export interface SummaryTest {
   steps: number;
 }
 
-/** Indice du dernier point à `t` au plus ; -1 avant le premier. */
-const indexAtOrBefore = (track: TrackPoint[], t: number): number => {
-  let lo = 0;
-  let hi = track.length - 1;
-  let found = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (track[mid].timeMs <= t) {
-      found = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return found;
-};
-
 /** Valeur au point le plus proche de `t`, s'il en est à moins de `gapMs`. */
 const valueAt = (track: TrackPoint[], values: (number | null)[], t: number, gapMs: number): number | null => {
-  const i = indexAtOrBefore(track, t);
+  const i = lastIndexAtOrBeforeTime(track, t);
   const candidates = [i, i + 1].filter((k) => k >= 0 && k < track.length && values[k] !== null);
   let best: number | null = null;
   let bestDist = Infinity;

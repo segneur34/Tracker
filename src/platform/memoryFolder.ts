@@ -1,5 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 import { base64ToBytes, bytesToBase64 } from './base64';
+import { filesystem } from './files';
 import { isNativeApp } from './runtime';
 import { jsonStore } from './storage';
 
@@ -507,8 +508,6 @@ export const openMemoryFolder = async (): Promise<MemoryAccess> => {
 };
 
 // --- Téléphone : sessions en attente d'un dossier ---
-
-const filesystem = () => import('@capacitor/filesystem');
 
 /**
  * Fichier binaire du dossier privé de l'application (`Directory.Data`), par

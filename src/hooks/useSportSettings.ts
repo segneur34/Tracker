@@ -750,9 +750,6 @@ export const effectiveDistanceUnit = (activity: Activity): DistanceUnit => {
   return isKnownDistanceUnit(unit) ? unit : 'km';
 };
 
-/** Pas des échantillons d'altitude du terrain d'une activité, `null` en voile. Utilisable hors composant. */
-export const effectiveTerrainStepM = (activity: Activity): number | null => resolveTerrainStepM(readStoredSettings(), activity);
-
 /** Retour de boucle d'une activité en planification, en fois l'aller ; `null` en voile. Utilisable hors composant. */
 export const effectiveLoopReturnRatio = (activity: Activity): number | null => resolveLoopReturnRatio(readStoredSettings(), activity);
 
@@ -778,12 +775,6 @@ export const effectiveBikeSetup = (activity: Activity): { bikeType: BikeType; bi
   const bikeType = resolveBikeType(stored, activity);
   const weight = stored.bikeWeights?.[activity.id];
   return { bikeType, bikeKg: isValidBikeWeight(weight) ? weight : defaultBikeKg(activity, bikeType) };
-};
-
-/** Charge portée réglée pour une activité, en kg ; 0 sans réglage. Utilisable hors composant. */
-export const effectiveCarriedLoad = (activity: Activity): number => {
-  const load = readStoredSettings().carriedLoads?.[activity.id];
-  return isValidCarriedLoad(load) ? load : 0;
 };
 
 /**

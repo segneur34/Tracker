@@ -37,6 +37,7 @@ import {
   type RecordingStats,
 } from '../recording/session';
 import { saveRecordedSession } from './useSessionLibrary';
+import { createListeners } from './createStore';
 
 /**
  * Enregistreur de session. Il vit hors des composants, dans ce module : on
@@ -158,19 +159,14 @@ const INITIAL_STATE: RecorderState = {
 };
 
 let state = INITIAL_STATE;
-const listeners = new Set<() => void>();
+const listeners = createListeners();
 
 const setState = (patch: Partial<RecorderState>): void => {
   state = { ...state, ...patch };
-  listeners.forEach((listener) => listener());
+  listeners.notify();
 };
 
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
+const subscribe = listeners.subscribe;
 
 /** État de l'enregistreur, hors React. */
 export const getRecorderState = (): RecorderState => state;

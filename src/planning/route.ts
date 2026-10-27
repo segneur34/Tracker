@@ -1,5 +1,6 @@
 import { accumulateElevation, smoothElevationAlong } from '../core/elevation';
-import { EARTH_RADIUS_M, haversineDistance, initialBearing, toRad } from '../core/kinematics';
+import { projectOnSegment } from '../core/geoPlane';
+import { haversineDistance, initialBearing } from '../core/kinematics';
 import { GRADE_ANALYSIS, type Treatment } from '../core/sportProfiles';
 import type { BikeType } from '../cycling/energy';
 import { computeGrades } from '../running/runningAnalytics';
@@ -172,9 +173,6 @@ export const sanitizeWayTypes = (value: unknown): WayType[] | null => {
   const mode = waysMode(value);
   return mode ? wayTypesOf(mode) : null;
 };
-
-/** Mode que l'utilisateur peut choisir : des types de voie, ou la ligne droite. */
-export const isChoosableMode = (value: unknown): value is RouteMode => isRouteMode(value) && value !== 'imported';
 
 /** Tronçon qui ne se calcule pas : ligne droite, ou trace importée. */
 const isFixedMode = (mode: RouteMode): boolean => !isWaysMode(mode);
@@ -681,18 +679,10 @@ const interpolatePoint = (a: RoutePoint, b: RoutePoint, t: number): RoutePoint =
  * que le mètre à l'échelle d'un toucher sur la carte.
  */
 const nearestOnPath = (points: ReadonlyArray<RoutePoint>, p: Waypoint): { index: number; t: number } => {
-  const cosLat = Math.cos(toRad(p.lat));
-  const x = (q: RoutePoint) => toRad(q.lon - p.lon) * cosLat * EARTH_RADIUS_M;
-  const y = (q: RoutePoint) => toRad(q.lat - p.lat) * EARTH_RADIUS_M;
   let best = { index: 0, t: 0, d2: Infinity };
   for (let i = 0; i + 1 < points.length; i++) {
-    const ax = x(points[i]);
-    const ay = y(points[i]);
-    const dx = x(points[i + 1]) - ax;
-    const dy = y(points[i + 1]) - ay;
-    const len2 = dx * dx + dy * dy;
-    const t = len2 > 0 ? Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len2)) : 0;
-    const d2 = (ax + t * dx) ** 2 + (ay + t * dy) ** 2;
+    const { t, offsetX, offsetY } = projectOnSegment(p, points[i], points[i + 1]);
+    const d2 = offsetX ** 2 + offsetY ** 2;
     if (d2 < best.d2) best = { index: i, t, d2 };
   }
   return best;
@@ -844,9 +834,6 @@ export const snapToWaypoints = (
   if (!surfaces) return { points, maxGapM };
   return { points, surfaces: gapStart > 0 ? shiftSurfaceRuns(surfaces, 1) : surfaces, maxGapM };
 };
-
-/** Premier tronçon à calculer, ou `-1`. */
-export const nextPendingLeg = (route: PlannedRoute): number => route.legs.findIndex((l) => l.status === 'pending');
 
 /** Tout l'itinéraire d'un seul trait, point de jonction entre deux tronçons compté une fois. */
 export const routePoints = (route: PlannedRoute): RoutePoint[] => legsPoints(route.legs);

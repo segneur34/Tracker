@@ -1,4 +1,5 @@
 import { readActivities } from '../core/activities';
+import { isObject } from '../core/basics';
 
 /**
  * Fichiers de réglages du dossier mémoire (§10, point 90) : un par appareil,
@@ -42,9 +43,6 @@ export interface SettingsFile {
   /** Valeur de chaque clé, telle que `jsonStore` la garde. */
   values: Record<string, unknown>;
 }
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const readDevice = (raw: unknown): SettingsDevice | null => {
   if (!isObject(raw) || typeof raw.id !== 'string' || typeof raw.name !== 'string') return null;

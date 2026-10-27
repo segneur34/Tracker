@@ -5,6 +5,7 @@ import {
 import { DEVICE_NAME_MAX } from '../library/settingsFile';
 import { HelpText, HelpToggle } from './Help';
 import Button from './ui/Button';
+import { plural } from '../core/basics';
 
 /**
  * Réglages par appareil (§10, point 90), dans Réglages › Mémoire : le nom de
@@ -17,7 +18,6 @@ import Button from './ui/Button';
  * Réglages).
  */
 
-const plural = (n: number, word: string): string => `${n} ${word}${n > 1 ? 's' : ''}`;
 
 const formatDateTime = (ms: number): string =>
   new Date(ms).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });

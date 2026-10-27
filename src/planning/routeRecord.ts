@@ -1,6 +1,7 @@
 import { sanitizeMarkGuide, type MarkGuideSettings } from '../recording/markGuide';
 import { DEFAULT_ROUTE_MODE, newLeg, readRouteMode, type PlannedRoute, type RouteLeg, type RouteMode, type RoutePoint, type Waypoint } from './route';
 import { readSurfaceRuns, type SurfaceRuns } from './surface';
+import { isFiniteNumber, isObject } from '../core/basics';
 
 /**
  * Fiche d'un itinéraire : le fichier JSON rangé dans `itineraires/` du
@@ -62,10 +63,6 @@ export interface RouteRecord {
   [unknown: string]: unknown;
 }
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && isFinite(value);
 
 const round = (value: number, digits: number): number => Number(value.toFixed(digits));
 

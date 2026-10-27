@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { baseOfTileKey, isMapBase, MAP_BASES, tileCacheUsageByBase, tileUrl } from './mapBase';
-import { parseTileKey, tileKey } from './tiles';
+import { tileKey } from './tiles';
 
 describe('tileUrl', () => {
   const tile = { z: 15, x: 16808, y: 11953 };
@@ -21,9 +21,6 @@ describe('clés des tuiles par fond', () => {
   it('garde la clé du plan, préfixe celle du satellite', () => {
     expect(tileKey(tile, MAP_BASES.plan.keyPrefix)).toBe('14_8310_5980');
     expect(tileKey(tile, MAP_BASES.satellite.keyPrefix)).toBe('sat_14_8310_5980');
-    expect(parseTileKey('sat_14_8310_5980.png', 'sat_')).toEqual(tile);
-    expect(parseTileKey('sat_14_8310_5980')).toBeNull();
-    expect(parseTileKey('14_8310_5980', 'sat_')).toBeNull();
   });
 
   it('range chaque tuile gardée sous son fond', () => {

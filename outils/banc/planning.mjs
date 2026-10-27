@@ -5,6 +5,7 @@
 // et `pas-un-gpx.gpx` (aucun point de trace ni de route).
 // Scénario : points posés en ligne droite, « Précédent », boucle en ligne droite, chargement des GPX,
 // point inséré sur la trace importée, point déplacé, rangement puis réouverture après rechargement.
+// `DUMP=fichier` relève le texte de la page rouverte.
 import { writeFileSync } from 'node:fs';
 
 const [port, gpxDir, shotDir] = process.argv.slice(2);
@@ -165,7 +166,11 @@ await log('inversé');
 console.log('Inverser :', await clickText('Inverser'));
 
 // 5. Enregistrer, recharger, rouvrir.
-await wait(1500);
+// Depuis le lot 7 (27/10), « Enregistrer » est grisé pendant « Calcul du tracé… » : on attend la fin du calcul (60 s au plus) avant de cliquer.
+const calculDeadline = Date.now() + 60_000;
+while (Date.now() < calculDeadline && await evaluate(`document.body.innerText.includes('Calcul du tracé') || document.body.innerText.includes('Calcul du retour')`)) await wait(500);
+console.log('calcul terminé :', !(await evaluate(`document.body.innerText.includes('Calcul du tracé')`)));
+await wait(500);
 console.log('Enregistrer :', await clickText('Enregistrer'));
 await wait(1500);
 console.log('message :', await evaluate(`[...document.querySelectorAll('.plan-note')].map((x) => x.textContent).join(' | ')`));
@@ -174,6 +179,9 @@ await wait(3000);
 console.log('rouvrir :', await clickText('Sentier des crêtes', '.route-list__open'));
 await wait(800);
 await log('rouvert');
+
+// Texte de la page rouverte, relevé pour comparer deux versions (DUMP=fichier, relatif au dossier courant).
+if (process.env.DUMP) writeFileSync(process.env.DUMP, await evaluate('document.body.innerText'));
 
 // 6. Téléphone : outils de la carte.
 if (shotDir) {

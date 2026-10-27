@@ -1,17 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ancestorTile, isStale, parseTileKey, tileCacheUsage, tileKey, tilesToEvict } from './tiles';
+import { ancestorTile, isStale, tileCacheUsage, tileKey, tilesToEvict } from './tiles';
 
 describe('tileKey', () => {
-  it('fait l’aller-retour avec parseTileKey, extension comprise', () => {
-    const tile = { z: 14, x: 8310, y: 5980 };
-    expect(tileKey(tile)).toBe('14_8310_5980');
-    expect(parseTileKey(tileKey(tile))).toEqual(tile);
-    expect(parseTileKey('14_8310_5980.png')).toEqual(tile);
-  });
-
-  it('refuse un nom qui n’est pas une tuile', () => {
-    expect(parseTileKey('reglages.json')).toBeNull();
-    expect(parseTileKey('14_8310.png')).toBeNull();
+  it('nomme la tuile par son zoom, sa colonne et sa ligne', () => {
+    expect(tileKey({ z: 14, x: 8310, y: 5980 })).toBe('14_8310_5980');
   });
 });
 

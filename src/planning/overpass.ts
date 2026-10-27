@@ -2,6 +2,7 @@ import { fetchJson } from './fetchJson';
 import type { Waypoint } from './route';
 import { wayTagsText } from './surface';
 import type { OsmWay } from './wayMatch';
+import { isObject } from '../core/basics';
 
 /**
  * Voies d'OpenStreetMap le long d'une trace enregistrée, demandées au
@@ -26,9 +27,6 @@ const OVERPASS_TIMEOUT_S = 90;
 
 const NO_NETWORK = 'Pas de réseau : la recherche des voies reprendra à la prochaine ouverture de l\'onglet.';
 const UNREADABLE = 'Réponse du serveur d\'OpenStreetMap illisible.';
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const coord = (p: Waypoint): string => `${p.lat.toFixed(6)},${p.lon.toFixed(6)}`;
 

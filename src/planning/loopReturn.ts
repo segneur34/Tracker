@@ -1,5 +1,5 @@
-import { EARTH_RADIUS_M, toRad } from '../core/kinematics';
-import { pointSegmentDistanceM, simplifyPlane, type PlanePoint } from '../core/simplify';
+import { planeProjection, pointSegmentDistanceM, type PlanePoint } from '../core/geoPlane';
+import { simplifyPlane } from '../core/simplify';
 import type { RouteLeg, RoutePoint, Waypoint } from './route';
 
 /**
@@ -59,16 +59,6 @@ export type AvoidancePolygon = Waypoint[];
 
 /** Point projeté dans un plan local, en mètres. */
 type XY = PlanePoint;
-
-/** Plan local équirectangulaire autour de `refLat` : exact à mieux que le pour cent sur quelques dizaines de kilomètres. */
-const projection = (refLat: number) => {
-  const kx = toRad(1) * EARTH_RADIUS_M * Math.cos(toRad(refLat));
-  const ky = toRad(1) * EARTH_RADIUS_M;
-  return {
-    to: (p: Waypoint): XY => ({ x: p.lon * kx, y: p.lat * ky }),
-    from: (q: XY): Waypoint => ({ lat: q.y / ky, lon: q.x / kx }),
-  };
-};
 
 const meanLat = (points: ReadonlyArray<Waypoint>): number =>
   points.length > 0 ? points.reduce((s, p) => s + p.lat, 0) / points.length : 0;
@@ -194,7 +184,7 @@ export const avoidancePolygons = (
   legs: ReadonlyArray<CorridorLeg>,
   params: LoopReturnParams = LOOP_RETURN_DEFAULTS
 ): { polygons: AvoidancePolygon[]; toleranceM: number } | null => {
-  const proj = projection(meanLat(legs.flatMap((l) => l.points)));
+  const proj = planeProjection(meanLat(legs.flatMap((l) => l.points)));
   const runs = corridorRuns(legs, params.openingM, proj.to);
   const heaviest = Math.max(0, ...params.weights);
   for (let toleranceM = params.toleranceM; toleranceM <= params.maxToleranceM; toleranceM *= 2) {
@@ -240,7 +230,7 @@ export const sharedDistanceM = (
 ): number => {
   const pieces = outbound.filter((piece) => piece.length >= 2);
   if (path.length < 2 || pieces.length === 0 || toleranceM <= 0) return 0;
-  const proj = projection(meanLat([...path, ...pieces.flat()]));
+  const proj = planeProjection(meanLat([...path, ...pieces.flat()]));
   const segments: [XY, XY][] = [];
   for (const piece of pieces) {
     const xy = piece.map(proj.to);

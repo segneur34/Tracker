@@ -1,3 +1,4 @@
+import { firstIndexAtOrAfter } from '../core/search';
 import type { PointData } from '../utils/kinematics';
 import { WIND_LOCAL_MAX_GAP_MIN, type ManeuverLocation, type ManeuverStats, type WindReference } from './maneuvers';
 import { VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
@@ -215,13 +216,7 @@ export const windChartRows = (
   for (const k of wind.maneuverIndices) {
     if (k < first || k > last) continue;
     // Première ligne au point k ou après, puis la plus proche des deux voisines.
-    let lo = 0;
-    let hi = indices.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (indices[mid] < k) lo = mid + 1;
-      else hi = mid;
-    }
+    const lo = firstIndexAtOrAfter(indices, k);
     const slot = lo > 0 && k - indices[lo - 1] < indices[lo] - k ? lo - 1 : lo;
     rows[slot].isManeuver = true;
   }

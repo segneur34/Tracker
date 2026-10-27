@@ -15,6 +15,7 @@
 //  6. Réglages : « Mesurer la cadence » coché d'office à pied, absent à vélo ; le décocher le range, « cadence »
 //     quitte le résumé de la carte ;
 //  7. à 390×844 : l'onglet « cadence » et le fractionné sans débordement.
+// `DUMP=fichier` relève le texte de la page de la course, onglet « cadence » ouvert.
 import { writeFileSync } from 'node:fs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -176,10 +177,13 @@ console.log('  cadence :', await clickTab('cadence'));
 await wait(1500);
 const panelText = await textIn('Cadence');
 console.log('  ' + panelText.split('\n').slice(0, 14).join(' / '));
+// Texte de la page de la course, onglet « cadence » ouvert, relevé pour comparer deux versions (DUMP=fichier, relatif au dossier courant).
+if (process.env.DUMP) writeFileSync(process.env.DUMP, await evaluate('document.body.innerText'));
 check('course : cadence moyenne 168 pas/min', panelText.includes('168 pas/min'));
 check('course : cadence max (30 s) 176 pas/min', /Cadence max \(30 s\)\s*176 pas\/min/.test(panelText));
 check('course : nombre de pas (environ 5 040)', /Pas\s*5\s?0[34]\d/.test(panelText.replace(/ /g, ' ')));
-check('course : tranches de la course', panelText.includes('Tranches (course)'));
+// innerText rend le texte tel que la feuille de style l'écrit : le repli est en capitales (`text-transform`), d'où la casse ignorée.
+check('course : tranches de la course', /tranches \(course\)/i.test(panelText));
 const bands = await tableRows('Cadence', 'Pas/min');
 console.log('  tranches :', bands?.join(' | '));
 check('course : environ 15 min dans 160-169 et dans 170-179', /^160-169 1[45] min/.test(bands?.[2] ?? '') && /^170-179 1[45] min/.test(bands?.[3] ?? ''));
@@ -209,7 +213,7 @@ await go(paths.marche, 6000);
 await clickTab('cadence');
 await wait(1200);
 const walkText = await textIn('Cadence');
-check('marche : 110 pas/min, tranches de la marche', walkText.includes('110 pas/min') && walkText.includes('Tranches (marche)'));
+check('marche : 110 pas/min, tranches de la marche', walkText.includes('110 pas/min') && /tranches \(marche\)/i.test(walkText));
 await go(paths.velo, 6000);
 check(`vélo : pas d'onglet « cadence » (${await tabLabels()})`, !(await tabLabels()).includes('cadence'));
 await clickTab('graphiques');

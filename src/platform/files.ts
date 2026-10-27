@@ -39,7 +39,8 @@ export const createMemoryFile = (): TextFile => {
   };
 };
 
-const filesystem = () => import('@capacitor/filesystem');
+/** Greffon de fichiers de Capacitor, chargé au premier besoin : le seul chargement, pour `files.ts`, `memoryFolder.ts` et `tileCache.ts`. */
+export const filesystem = () => import('@capacitor/filesystem');
 
 /** Fichier du dossier privé de l'application, sur le téléphone. */
 const createPrivateFile = (path: string): TextFile => ({

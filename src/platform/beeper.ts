@@ -1,4 +1,5 @@
 import { registerPlugin } from '@capacitor/core';
+import { BEEP_FINAL_MS, BEEP_FINISH_GAP_MS, BEEP_LONG_MS, BEEP_SHORT_MS } from '../core/beepDurations';
 import { isNativeApp } from './runtime';
 
 /**
@@ -32,13 +33,6 @@ export interface Beeper {
   /** Silence, ressources libérées. */
   stop(): Promise<void>;
 }
-
-/** Durées des sons, en millisecondes : bip d'approche, bip de validation, et pause entre les trois bips de fin. */
-export const BEEP_SHORT_MS = 120;
-export const BEEP_LONG_MS = 800;
-export const BEEP_FINISH_GAP_MS = 250;
-/** Long double, la fin d'une séance du compteur. */
-export const BEEP_FINAL_MS = 1600;
 
 /** Un son du compteur, après `delayMs` : court, long, ou le long double de la fin de séance. */
 export interface ClockTone {

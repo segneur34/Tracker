@@ -1,4 +1,5 @@
 import { EARTH_RADIUS_M, toRad } from './kinematics';
+import { pointSegmentDistanceM, type PlanePoint } from './geoPlane';
 
 /**
  * Simplification d'un tracé (Douglas-Peucker) : on garde les bouts et les
@@ -9,25 +10,10 @@ import { EARTH_RADIUS_M, toRad } from './kinematics';
  * Tout est pur. Unités SI (règle 1) : mètres, degrés décimaux.
  */
 
-/** Point projeté dans un plan local, en mètres. */
-export interface PlanePoint {
-  x: number;
-  y: number;
-}
-
 interface LatLon {
   lat: number;
   lon: number;
 }
-
-/** Distance de `p` au segment `[a, b]`, en mètres. */
-export const pointSegmentDistanceM = (p: PlanePoint, a: PlanePoint, b: PlanePoint): number => {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len2 = dx * dx + dy * dy;
-  const t = len2 > 0 ? Math.min(1, Math.max(0, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
-  return Math.hypot(a.x + t * dx - p.x, a.y + t * dy - p.y);
-};
 
 /** Rangs des points gardés par Douglas-Peucker, bouts compris, dans l'ordre ; sans récursion. */
 const keptIndices = (points: ReadonlyArray<PlanePoint>, toleranceM: number): number[] => {

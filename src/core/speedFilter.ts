@@ -22,6 +22,7 @@ export const DEFAULT_MAX_OUTLIER_S = 3;
 /** Largeur par défaut du filtre médian, en secondes. */
 export const DEFAULT_MEDIAN_WINDOW_S = 3;
 
+/** Médiane d'une liste (0 si elle est vide) : moyenne des deux valeurs centrales pour un nombre pair. */
 export const median = (values: number[]): number => {
   if (values.length === 0) return 0;
 

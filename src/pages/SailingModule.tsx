@@ -77,6 +77,7 @@ import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmen
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
+import MapToggle from '../components/ui/MapToggle';
 
 /** Champs du matériel en voile : l'aile ou la voile, plus le foil et le mât sur foil. */
 const SAILING_GEAR_FIELDS: GearField[] = [{ field: 'wing', label: 'Aile / voile', placeholder: 'ex. 5 m²' }];
@@ -625,11 +626,9 @@ function SailingModule() {
     <div style={{ marginBottom: '10px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
         <strong>{title}</strong>
-        <button
-          onClick={() => highlight.show(panel, selectedTopMap === topKey ? null : topKey)}
-          style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: 'pointer', backgroundColor: selectedTopMap === topKey ? 'var(--voile)' : 'var(--surface-sunken)', color: selectedTopMap === topKey ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
-          {selectedTopMap === topKey ? 'Masquer (Carte)' : 'Voir (Carte)'}
-        </button>
+        <MapToggle
+          shown={selectedTopMap === topKey} color="var(--voile)" labels={['Voir (Carte)', 'Masquer (Carte)']}
+          onClick={() => highlight.show(panel, selectedTopMap === topKey ? null : topKey)} />
       </div>
       <div style={{ display: 'flex', gap: '10px', fontSize: 'var(--text-s)', marginTop: '4px' }}>
         {['1er', '2e', '3e'].map((rank, idx) => (
@@ -738,9 +737,8 @@ function SailingModule() {
               <td style={{ padding: '7px 14px', textAlign: 'center' }}>{summary ? showKn(summary.vminAvg) : '-'}</td>
               <td style={{ padding: '7px 14px', textAlign: 'center', fontWeight: 700 }}>{summary ? showKn(summary.vminMax) : '-'}</td>
               <td style={{ padding: '4px 10px', textAlign: 'center' }}>
-                <button onClick={toggle} title={`Afficher les ${label.toLowerCase()} sur la carte`} style={{ padding: '3px 10px', cursor: 'pointer', backgroundColor: shown ? 'var(--voile)' : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)' }}>
-                  {shown ? 'Masquer' : 'Voir'}
-                </button>
+                <MapToggle shown={shown} color="var(--voile)" title={`Afficher les ${label.toLowerCase()} sur la carte`} onClick={toggle}
+                  style={{ padding: '3px 10px', border: 'none' }} />
               </td>
             </tr>
           ))}
@@ -861,12 +859,10 @@ function SailingModule() {
                           </td>
                         ))}
                         <td style={{ padding: '2px 4px', textAlign: 'right' }}>
-                          <button
-                            disabled={tops.length === 0}
+                          <MapToggle
+                            shown={active} color="var(--voile)" labels={['Carte', 'Masquer']} disabled={tops.length === 0}
                             onClick={() => highlight.show('manoeuvres', active ? null : key)}
-                            style={{ padding: '2px 7px', fontSize: 'var(--text-xs)', cursor: tops.length === 0 ? 'default' : 'pointer', backgroundColor: active ? 'var(--voile)' : 'var(--surface-sunken)', color: active ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px', opacity: tops.length === 0 ? 0.5 : 1 }}>
-                            {active ? 'Masquer' : 'Carte'}
-                          </button>
+                            style={{ padding: '2px 7px', opacity: tops.length === 0 ? 0.5 : 1 }} />
                         </td>
                       </tr>
                     );

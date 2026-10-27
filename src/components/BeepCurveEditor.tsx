@@ -3,11 +3,13 @@ import './BeepCurveEditor.css';
 import Button from './ui/Button';
 import { formatSpeed, type SpeedUnit } from '../core/units';
 import { useRecorderStatus } from '../hooks/useRecorder';
-import { BEEP_LONG_MS, getBeeper } from '../platform/beeper';
+import { BEEP_LONG_MS } from '../core/beepDurations';
+import { getBeeper } from '../platform/beeper';
 import {
   BEEP_CURVE_LIMITS, MARK_GUIDE_DEFAULTS, beepIntervalMs, beepStartM, sanitizeMarkGuide, validationRadiusM,
   type BeepPoint, type MarkGuideSettings,
 } from '../recording/markGuide';
+import { clamp } from '../core/basics';
 
 /**
  * Réglage des bips d'approche des balises, pour une activité de voile ou de surf
@@ -56,7 +58,6 @@ const ticks = (max: number, step: number): number[] => Array.from({ length: Math
 const xStep = (xMax: number): number => (xMax <= 300 ? 50 : xMax <= 600 ? 100 : xMax <= 1200 ? 250 : 500);
 const yStep = (yMax: number): number => (yMax <= 3000 ? 500 : 1000);
 
-const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
 const seconds = (ms: number): string => `${parseFloat((ms / 1000).toFixed(2))} s`;
 const sameGuide = (a: MarkGuideSettings, b: MarkGuideSettings): boolean => JSON.stringify(a) === JSON.stringify(b);
 

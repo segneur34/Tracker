@@ -1,4 +1,5 @@
 import { segmentDistanceM } from '../core/sessionStats';
+import { kmhToMs } from '../core/units';
 import type { TrackPoint } from '../core/types';
 import type { SurfaceCategory } from '../planning/surface';
 import { GRADE_ANALYSIS, type GradeProfile } from '../core/sportProfiles';
@@ -62,25 +63,25 @@ export interface BikeSpec {
  */
 export const BIKE_TYPES: Record<BikeType, BikeSpec> = {
   route: {
-    label: 'Route', noun: 'route', crr: 0.004, cdaM2: 0.32, bikeKg: 8.5, maxDescentMs: 55 / 3.6,
+    label: 'Route', noun: 'route', crr: 0.004, cdaM2: 0.32, bikeKg: 8.5, maxDescentMs: kmhToMs(55),
     crrBySurface: {
       asphalte: 0.004, pierresPlates: 0.006, paves: 0.012, gravillon: 0.01, nonPave: 0.014, terre: 0.016, herbe: 0.03, sable: 0.06, alpin: 0.03,
     },
   },
   gravel: {
-    label: 'Gravel', noun: 'gravel', crr: 0.008, cdaM2: 0.45, bikeKg: 12, maxDescentMs: 35 / 3.6,
+    label: 'Gravel', noun: 'gravel', crr: 0.008, cdaM2: 0.45, bikeKg: 12, maxDescentMs: kmhToMs(35),
     crrBySurface: {
       asphalte: 0.005, pierresPlates: 0.006, paves: 0.009, gravillon: 0.008, nonPave: 0.01, terre: 0.012, herbe: 0.02, sable: 0.04, alpin: 0.02,
     },
   },
   vtt: {
-    label: 'VTT', noun: 'VTT', crr: 0.012, cdaM2: 0.5, bikeKg: 13, maxDescentMs: 30 / 3.6,
+    label: 'VTT', noun: 'VTT', crr: 0.012, cdaM2: 0.5, bikeKg: 13, maxDescentMs: kmhToMs(30),
     crrBySurface: {
       asphalte: 0.008, pierresPlates: 0.009, paves: 0.01, gravillon: 0.01, nonPave: 0.011, terre: 0.012, herbe: 0.018, sable: 0.03, alpin: 0.016,
     },
   },
   ville: {
-    label: 'Ville', noun: 'ville', crr: 0.007, cdaM2: 0.55, bikeKg: 16, maxDescentMs: 30 / 3.6,
+    label: 'Ville', noun: 'ville', crr: 0.007, cdaM2: 0.55, bikeKg: 16, maxDescentMs: kmhToMs(30),
     crrBySurface: {
       asphalte: 0.006, pierresPlates: 0.007, paves: 0.011, gravillon: 0.01, nonPave: 0.013, terre: 0.015, herbe: 0.025, sable: 0.05, alpin: 0.025,
     },

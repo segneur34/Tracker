@@ -2,7 +2,7 @@ import { segmentDistanceM } from '../core/sessionStats';
 import { SLOW_COLOR, gradientColor, type SpeedRangeMs } from '../core/speedGradient';
 import type { GradeProfile } from '../core/sportProfiles';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
-import { formatDuration, formatPace, msToKmh } from '../core/units';
+import { formatDuration, formatPace, kmhToMs, msToKmh } from '../core/units';
 
 /**
  * Analyse propre à la course à pied : pente locale, zones de terrain, allures
@@ -207,10 +207,7 @@ export const averagePace = (distanceM: number, timeMs: number): { pace: string; 
  * Bornes par défaut du dégradé de couleur de la trace (`core/speedGradient.ts`),
  * en m/s : 4 km/h, la marche, et 15 km/h.
  */
-export const DEFAULT_SPEED_RANGE_MS: SpeedRangeMs = { minMs: 4 / 3.6, maxMs: 15 / 3.6 };
-
-/** Bornes par défaut du dégradé de l'activité Marche de départ (20/10) : 1,5 et 8 km/h. */
-export const DEFAULT_WALK_SPEED_RANGE_MS: SpeedRangeMs = { minMs: 1.5 / 3.6, maxMs: 8 / 3.6 };
+export const DEFAULT_SPEED_RANGE_MS: SpeedRangeMs = { minMs: kmhToMs(4), maxMs: kmhToMs(15) };
 
 /** Bornes du dégradé de couleur de la pente, en fraction (0,25 = 25 %). */
 export interface GradeRange {

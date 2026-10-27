@@ -14,6 +14,8 @@ import PanelTitle from './PanelTitle';
 import ResizablePanel from './ResizablePanel';
 import { CARD_STYLE, HALF_PANEL_STYLE } from './styles';
 import './JumpsPanel.css';
+import StatTile from './ui/StatTile';
+import MapToggle from './ui/MapToggle';
 
 /**
  * Onglet « sauts » des analyses (voile, course, vélo) : les sauts mesurés par les capteurs du
@@ -172,7 +174,7 @@ function JumpsPanel({
   const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' };
   const buttonStyle = (active: boolean, color: string): CSSProperties => ({
     padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: 'pointer', backgroundColor: active ? color : 'var(--surface-sunken)',
-    color: active ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px',
+    color: active ? 'var(--on-accent)' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px',
   });
   const heading = (label: string, helpKey?: string) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', paddingRight: '28px' }}>
@@ -207,15 +209,7 @@ function JumpsPanel({
   const first = jumps.find((j) => j.takeoffMs === curveFirst) ?? highest;
   const second = jumps.find((j) => j.takeoffMs === curveSecond && j.takeoffMs !== first.takeoffMs) ?? null;
   const jumpLabel = (j: SessionJump) => `n° ${order.get(j.takeoffMs)} · ${meters(j.heightM)} · ${formatTimeOfDay(j.takeoffMs)}`;
-  const stat = (label: string, value: ReactNode, detail?: string) => (
-    <div className="an-sheet__stat">
-      <span className="an-sheet__stat-label">{label}</span>
-      <strong className="an-sheet__stat-value">
-        {value}
-        {detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: 'var(--text-xs)' }}> {detail}</span>}
-      </strong>
-    </div>
-  );
+  const stat = (label: string, value: ReactNode, detail?: string) => <StatTile label={label} value={value} detail={detail} />;
   /** « Détail » : le saut sur la courbe, et la page descend jusqu'à elle. */
   const showDetail = (j: SessionJump) => {
     setCurveFirst(j.takeoffMs);
@@ -245,9 +239,7 @@ function JumpsPanel({
       <div style={{ margin: '10px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <strong>Les plus hauts</strong>
-          <button type="button" onClick={onTogglePodium} style={buttonStyle(podiumShown, accent)}>
-            {podiumShown ? 'Masquer (Carte)' : 'Voir (Carte)'}
-          </button>
+          <MapToggle shown={podiumShown} color={accent} labels={['Voir (Carte)', 'Masquer (Carte)']} onClick={onTogglePodium} />
         </div>
         <ol className="an-jump-podium">
           {byHeight.slice(0, 3).map((j, k) => (

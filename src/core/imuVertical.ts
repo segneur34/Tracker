@@ -1,4 +1,6 @@
 import type { ImuRecording, ImuSeries } from './imuFile';
+import { firstIndexAtOrAfter } from './search';
+import { STANDARD_G } from './units';
 
 /**
  * Accélération verticale du monde, tirée de l'accéléromètre et du gyroscope du
@@ -16,9 +18,6 @@ import type { ImuRecording, ImuSeries } from './imuFile';
  *    quand elle vaut à peu près g. Une passe aller, une passe retour,
  *    moyennées : le recalage ne traîne d'aucun côté.
  */
-
-/** Pesanteur normale, en m/s² : l'unité des seuils exprimés en g. */
-export const STANDARD_G = 9.80665;
 
 /** Constantes du calcul de la verticale, communes aux sauts et au pumping. */
 export interface AttitudeParams {
@@ -45,20 +44,8 @@ export type ImuWindow = [number, number];
 
 // --- Grille ---
 
-/** Premier indice dont l'instant est au moins `value`. */
-export const lowerBound = (t: Float64Array, value: number): number => {
-  let lo = 0;
-  let hi = t.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (t[mid] < value) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-};
-
 /** Mesures d'un flux entre deux instants, bornes comprises : indices [from, to). */
-export const rangeOf = (s: ImuSeries, fromUs: number, toUs: number): [number, number] => [lowerBound(s.t, fromUs), lowerBound(s.t, toUs + 0.5)];
+export const rangeOf = (s: ImuSeries, fromUs: number, toUs: number): [number, number] => [firstIndexAtOrAfter(s.t, fromUs), firstIndexAtOrAfter(s.t, toUs + 0.5)];
 
 /**
  * Valeurs d'un flux sur la grille, par interpolation linéaire entre les seules

@@ -1,3 +1,4 @@
+import { isObject } from './basics';
 /**
  * Fichier des capteurs d'une session (`.imu`), rangé à côté de son GPX :
  * accéléromètre et gyroscope bruts, et baromètre s'il existe, mesurés par le
@@ -112,9 +113,6 @@ const transform = async (bytes: Uint8Array, stream: CompressionStream | Decompre
 
 const inflateRaw = (bytes: Uint8Array): Promise<Uint8Array> => transform(bytes, new DecompressionStream('deflate-raw'));
 const deflateRaw = (bytes: Uint8Array): Promise<Uint8Array> => transform(bytes, new CompressionStream('deflate-raw'));
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
  * Tableau de nombres qui grandit, sans recopier à chaque ajout : instants en

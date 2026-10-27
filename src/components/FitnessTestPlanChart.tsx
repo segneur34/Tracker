@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import {
   Area, CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { formatClock, msToKmh } from '../core/units';
+import { formatClockMinutes, msToKmh } from '../core/units';
 import { TEST_SIGNAL_LABEL, testPlan, type FitnessTestParams } from '../recording/fitnessTest';
 import { HEART_RATE_COLOR } from './heartRateColors';
 
@@ -13,7 +13,6 @@ const MARK_COLOR = '#37474f';
 const PHASE_LABEL = { echauffement: 'Échauffement', rampe: 'Rampe', recuperation: 'Récup.' } as const;
 
 const kmhText = (kmh: number) => `${kmh.toFixed(1).replace('.', ',')} km/h`;
-const minutesTick = (v: number) => formatClock(v * 60_000).replace(/:00$/, '');
 
 interface Row {
   minutes: number;
@@ -47,9 +46,9 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
       label={labelled ? { value: PHASE_LABEL[p.phase], position: 'insideTop', fill: '#555', fontSize: 11 } : undefined} />
   ));
   const xAxis = (hide: boolean) => (
-    <XAxis dataKey="minutes" type="number" domain={[0, endMin]} tickFormatter={minutesTick} tick={{ fill: '#555', fontSize: 11 }} hide={hide} />
+    <XAxis dataKey="minutes" type="number" domain={[0, endMin]} tickFormatter={formatClockMinutes} tick={{ fill: '#555', fontSize: 11 }} hide={hide} />
   );
-  const tooltipLabel = (v: unknown) => minutesTick(Number(v));
+  const tooltipLabel = (v: unknown) => formatClockMinutes(Number(v));
 
   return (
     <figure className="fit-plan" aria-label="Déroulé du test : vitesse cible et FC dans le temps">

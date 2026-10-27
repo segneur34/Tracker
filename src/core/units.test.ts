@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  editSpeedUnit, formatDistance, formatSessionDate, formatKnots, formatShortDistance, fromDisplaySpeed, knotsToDisplay, toDisplayDistance, toDisplaySpeed,
+  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, fromDisplaySpeed, knotsToDisplay, toDisplayDistance, toDisplaySpeed,
 } from './units';
 
 describe('distances', () => {
@@ -67,5 +67,27 @@ describe('editSpeedUnit', () => {
     expect(ms).toBeCloseTo(11 / 3.6);
     expect(toDisplaySpeed(ms, unit)).toBeCloseTo(11);
     expect(toDisplaySpeed(ms, 'minkm')).toBeCloseTo(60 / 11);
+  });
+});
+
+describe('formatMinSecHours', () => {
+  it('écrit m:ss sous l\'heure et h:mm:ss au-delà', () => {
+    expect(formatMinSecHours(0)).toBe('0:00');
+    expect(formatMinSecHours(65)).toBe('1:05');
+    expect(formatMinSecHours(3600)).toBe('1:00:00');
+    expect(formatMinSecHours(3723)).toBe('1:02:03');
+  });
+
+  it('accroche un suffixe aux secondes', () => {
+    expect(formatMinSecHours(83, '.4')).toBe('1:23.4');
+    expect(formatMinSecHours(3723, '.4')).toBe('1:02:03.4');
+  });
+});
+
+describe('formatClockMinutes', () => {
+  it('écrit h:mm sur la minute ronde, h:mm:ss sinon', () => {
+    expect(formatClockMinutes(0)).toBe('0:00');
+    expect(formatClockMinutes(75)).toBe('1:15');
+    expect(formatClockMinutes(75.5)).toBe('1:15:30');
   });
 });

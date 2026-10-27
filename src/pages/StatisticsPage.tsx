@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Bar, BarChart, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis,
@@ -42,6 +42,8 @@ import {
 } from '../library/stats';
 import './analysisMobile.css';
 import './StatisticsPage.css';
+import { plural } from '../core/basics';
+import StatTile from '../components/ui/StatTile';
 
 /**
  * Statistiques (lot 5, étape 1) : une vue d'ensemble, puis une famille, puis
@@ -115,7 +117,6 @@ const isFamily = (value: unknown): value is SportFamily => SPORT_FAMILIES.some((
 /** Familles qui comptent le dénivelé et la vitesse moyenne en action. */
 const isLandFamily = (family: SportFamily | null): boolean => family === 'course' || family === 'velo' || family === 'fractionne';
 
-const plural = (n: number, word: string): string => `${n} ${word}${n > 1 ? 's' : ''}`;
 
 const decimal = (value: number, digits = 1): string => value.toFixed(digits).replace('.', ',');
 
@@ -124,14 +125,7 @@ const shortDate = (ms: number): string =>
 
 /** Distance, deux décimales sous 10 unités, une au-delà, comme la bibliothèque. */
 const distanceText = (m: number, unit: DistanceUnit): string =>
-  formatDistance(m, unit, m / (unit === 'km' ? 1000 : 1852) < 10 ? 2 : 1);
-
-const Stat = ({ label, value, title }: { label: ReactNode; value: ReactNode; title?: string }) => (
-  <div className="an-sheet__stat" title={title}>
-    <span className="an-sheet__stat-label">{label}</span>
-    <strong className="an-sheet__stat-value">{value}</strong>
-  </div>
-);
+  formatDistance(m, unit, toDisplayDistance(m, unit) < 10 ? 2 : 1);
 
 /** Rangée de pastilles : la donnée du graphique. */
 function Chips<K extends string>({ label, items, value, onChoose, accent, className }: {
@@ -524,30 +518,30 @@ function StatisticsPage() {
                 ) : (
                   <>
                     <div className="an-sheet__stats an-sheet__stats--always">
-                      <Stat label="Sessions" value={totals.sessions} />
-                      <Stat label="Durée totale" value={formatDuration(totals.durationS * 1000)} title="Du premier au dernier point de chaque session" />
-                      {totals.movingTimeS > 0 && <Stat label="Temps en action" value={formatDuration(totals.movingTimeS * 1000)} />}
-                      {family !== null && <Stat label="Distance" value={distanceText(totals.distanceM, distanceUnit)} />}
+                      <StatTile label="Sessions" value={totals.sessions} />
+                      <StatTile label="Durée totale" value={formatDuration(totals.durationS * 1000)} title="Du premier au dernier point de chaque session" />
+                      {totals.movingTimeS > 0 && <StatTile label="Temps en action" value={formatDuration(totals.movingTimeS * 1000)} />}
+                      {family !== null && <StatTile label="Distance" value={distanceText(totals.distanceM, distanceUnit)} />}
                       {isLandFamily(family) && averageMovingSpeedMs(totals) !== null && (
-                        <Stat label="Vitesse moyenne en action" value={formatSpeed(averageMovingSpeedMs(totals), speedUnit)} />
+                        <StatTile label="Vitesse moyenne en action" value={formatSpeed(averageMovingSpeedMs(totals), speedUnit)} />
                       )}
-                      {isLandFamily(family) && totals.elevationSessions > 0 && <Stat label="Dénivelé positif" value={`${Math.round(totals.elevationGainM)} m`} />}
-                      {family !== null && totals.maxSpeedMs !== null && <Stat label="Vitesse max" value={formatSpeed(totals.maxSpeedMs, speedUnit)} />}
+                      {isLandFamily(family) && totals.elevationSessions > 0 && <StatTile label="Dénivelé positif" value={`${Math.round(totals.elevationGainM)} m`} />}
+                      {family !== null && totals.maxSpeedMs !== null && <StatTile label="Vitesse max" value={formatSpeed(totals.maxSpeedMs, speedUnit)} />}
                       {family === 'voile' && totals.maneuverSessions > 0 && (
                         <>
-                          <Stat label="Manœuvres" value={totals.maneuvers} />
-                          <Stat label="Manœuvres par session" value={decimal(totals.maneuvers / totals.maneuverSessions)} />
+                          <StatTile label="Manœuvres" value={totals.maneuvers} />
+                          <StatTile label="Manœuvres par session" value={decimal(totals.maneuvers / totals.maneuverSessions)} />
                         </>
                       )}
                       {family === 'surf' && totals.waveSessions > 0 && (
                         <>
-                          <Stat label="Vagues" value={totals.waves} />
-                          <Stat label="Vagues par session" value={decimal(totals.waves / totals.waveSessions)} />
+                          <StatTile label="Vagues" value={totals.waves} />
+                          <StatTile label="Vagues par session" value={decimal(totals.waves / totals.waveSessions)} />
                         </>
                       )}
-                      {family === 'surf' && totals.longestWaveM !== null && <Stat label="Plus longue vague" value={`${Math.round(totals.longestWaveM)} m`} />}
-                      {family === 'surf' && totals.longestFlightS !== null && <Stat label="Plus long vol" value={formatShortDuration(totals.longestFlightS)} />}
-                      {totals.reps > 0 && <Stat label="Répétitions du compteur" value={totals.reps} />}
+                      {family === 'surf' && totals.longestWaveM !== null && <StatTile label="Plus longue vague" value={`${Math.round(totals.longestWaveM)} m`} />}
+                      {family === 'surf' && totals.longestFlightS !== null && <StatTile label="Plus long vol" value={formatShortDuration(totals.longestFlightS)} />}
+                      {totals.reps > 0 && <StatTile label="Répétitions du compteur" value={totals.reps} />}
                     </div>
                     {family === null && (
                       <ul className="stats-rows">
@@ -677,11 +671,11 @@ function StatisticsPage() {
                 ) : (
                   <>
                     <div className="an-sheet__stats an-sheet__stats--always">
-                      <Stat label="Sessions par semaine" value={decimal(regular.perWeek)} title="En moyenne sur les semaines de la période" />
-                      <Stat label="Semaines actives" value={`${regular.activeWeeks} / ${regular.weeks}`} />
-                      <Stat label="Plus longue série" value={plural(regular.longestStreak, 'semaine')} title="Semaines actives consécutives sur la période" />
-                      <Stat label="Série en cours" value={plural(regular.currentStreak, 'semaine')} title="Jusqu'à cette semaine, ou à la précédente si celle-ci est vide" />
-                      <Stat label="Dernière session" value={lastText} />
+                      <StatTile label="Sessions par semaine" value={decimal(regular.perWeek)} title="En moyenne sur les semaines de la période" />
+                      <StatTile label="Semaines actives" value={`${regular.activeWeeks} / ${regular.weeks}`} />
+                      <StatTile label="Plus longue série" value={plural(regular.longestStreak, 'semaine')} title="Semaines actives consécutives sur la période" />
+                      <StatTile label="Série en cours" value={plural(regular.currentStreak, 'semaine')} title="Jusqu'à cette semaine, ou à la précédente si celle-ci est vide" />
+                      <StatTile label="Dernière session" value={lastText} />
                     </div>
                     <div style={{ flex: 1, minHeight: 140 }}>
                       <ResponsiveContainer>
@@ -714,12 +708,12 @@ function StatisticsPage() {
                   Zones et charge recalculées avec les seuils de Réglages › Pratiquant, décalés pour l'activité de chaque session. Un point par session, à la couleur de son activité ; le toucher ouvre la session.
                 </HelpText>
                 <div className="an-sheet__stats an-sheet__stats--always">
-                  <Stat label="Sessions avec FC" value={`${cardio.sessions} / ${totals.sessions}`} />
-                  <Stat label="Temps mesuré" value={formatDuration(cardio.coveredS * 1000)} />
-                  {cardio.avgBpm !== null && <Stat label="FC moyenne" value={`${Math.round(cardio.avgBpm)} bpm`} title="Pondérée par le temps mesuré de chaque session" />}
-                  {cardio.maxBpm !== null && <Stat label="FC max" value={`${cardio.maxBpm} bpm`} />}
-                  {cardio.load !== null && <Stat label={<>Charge <HelpToggle helpKey="stats:charge" label="Qu'est-ce que la charge ?" /></>} value={Math.round(cardio.load)} />}
-                  {cardio.load !== null && regular.weeks > 0 && <Stat label="Charge par semaine" value={Math.round(cardio.load / regular.weeks)} />}
+                  <StatTile label="Sessions avec FC" value={`${cardio.sessions} / ${totals.sessions}`} />
+                  <StatTile label="Temps mesuré" value={formatDuration(cardio.coveredS * 1000)} />
+                  {cardio.avgBpm !== null && <StatTile label="FC moyenne" value={`${Math.round(cardio.avgBpm)} bpm`} title="Pondérée par le temps mesuré de chaque session" />}
+                  {cardio.maxBpm !== null && <StatTile label="FC max" value={`${cardio.maxBpm} bpm`} />}
+                  {cardio.load !== null && <StatTile label={<>Charge <HelpToggle helpKey="stats:charge" label="Qu'est-ce que la charge ?" /></>} value={Math.round(cardio.load)} />}
+                  {cardio.load !== null && regular.weeks > 0 && <StatTile label="Charge par semaine" value={Math.round(cardio.load / regular.weeks)} />}
                 </div>
                 {hrZones && <CardioLoadHelpSlot bounds={hrZones.bounds} />}
 

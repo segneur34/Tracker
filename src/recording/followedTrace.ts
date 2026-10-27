@@ -1,4 +1,5 @@
-import { EARTH_RADIUS_M, haversineDistance, toRad } from '../core/kinematics';
+import { projectOnSegment } from '../core/geoPlane';
+import { haversineDistance } from '../core/kinematics';
 import { simplifyLatLon } from '../core/simplify';
 import { cumulativeDistances, routePoints } from '../planning/route';
 import { recordToRoute, routeMarkGuide, type RouteRecord } from '../planning/routeRecord';
@@ -137,24 +138,12 @@ interface Projection {
 }
 
 /**
- * Projection de `p` sur le tronçon `i` de la trace, en plan local
- * équirectangulaire centré sur `p` : exact à mieux que le mètre aux échelles
- * d'un écart à la trace.
+ * Projection de `p` sur le tronçon `i` de la trace (plan local de
+ * `core/geoPlane.ts`), avec la distance le long de la trace du pied.
  */
-const projectOnSegment = (p: LatLon, points: LatLon[], cum: number[], i: number): Projection => {
-  const cosLat = Math.cos(toRad(p.lat));
-  const x = (q: LatLon) => toRad(q.lon - p.lon) * cosLat * EARTH_RADIUS_M;
-  const y = (q: LatLon) => toRad(q.lat - p.lat) * EARTH_RADIUS_M;
-  const ax = x(points[i]);
-  const ay = y(points[i]);
-  const dx = x(points[i + 1]) - ax;
-  const dy = y(points[i + 1]) - ay;
-  const len2 = dx * dx + dy * dy;
-  const t = len2 > 0 ? Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len2)) : 0;
-  return {
-    offsetM: Math.hypot(ax + t * dx, ay + t * dy),
-    alongM: cum[i] + t * (cum[i + 1] - cum[i]),
-  };
+const projectOnTrace = (p: LatLon, points: LatLon[], cum: number[], i: number): Projection => {
+  const { t, distanceM } = projectOnSegment(p, points[i], points[i + 1]);
+  return { offsetM: distanceM, alongM: cum[i] + t * (cum[i + 1] - cum[i]) };
 };
 
 /** Premier tronçon dont la fin est au-delà de `alongM` (recherche dichotomique). */
@@ -182,7 +171,7 @@ const anchorFrom = (
   let best: Projection | null = null;
   let minOffsetM = Infinity;
   for (let i = firstSegmentReaching(cum, fromM); i < points.length - 1; i++) {
-    const proj = projectOnSegment(p, points, cum, i);
+    const proj = projectOnTrace(p, points, cum, i);
     minOffsetM = Math.min(minOffsetM, proj.offsetM);
     if (proj.offsetM <= maxOffsetM && proj.alongM >= fromM) {
       if (!best || proj.offsetM < best.offsetM) best = proj;
@@ -234,7 +223,7 @@ const stepFollow = (s: FollowState, p: LatLon, points: LatLon[], cum: number[], 
   const hi = s.progressM + options.aheadM + s.travelledM;
   let best: Projection | null = null;
   for (let i = firstSegmentReaching(cum, lo); i < points.length - 1 && cum[i] <= hi; i++) {
-    const proj = projectOnSegment(p, points, cum, i);
+    const proj = projectOnTrace(p, points, cum, i);
     if (proj.offsetM <= options.maxOffsetM && proj.alongM >= lo && proj.alongM <= hi
       && (!best || proj.offsetM < best.offsetM)) best = proj;
   }

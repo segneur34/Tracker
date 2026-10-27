@@ -6,6 +6,8 @@
  * arrière-plan ou un écran éteint. La remise à zéro l'efface, sans commande.
  */
 
+import { formatMinSecHours } from '../core/units';
+
 export type StopwatchCommand = 'lap' | 'pause' | 'resume';
 
 export interface Stopwatch {
@@ -90,9 +92,5 @@ export const readStopwatch = (value: unknown): Stopwatch | null => {
 /** Temps du chrono, au dixième : « 1:23.4 », « 1:02:03.4 » au-delà d'une heure. */
 export const formatStopwatch = (ms: number): string => {
   const tenths = Math.floor(Math.max(0, ms) / 100);
-  const total = Math.floor(tenths / 10);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor(total / 60) % 60;
-  const s = `${String(total % 60).padStart(2, '0')}.${tenths % 10}`;
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+  return formatMinSecHours(Math.floor(tenths / 10), `.${tenths % 10}`);
 };

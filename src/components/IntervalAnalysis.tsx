@@ -23,6 +23,8 @@ import PanelTitle from './PanelTitle';
 import ResizablePanel from './ResizablePanel';
 import { CARD_STYLE, HALF_PANEL_STYLE } from './styles';
 import './IntervalAnalysis.css';
+import StatTile from './ui/StatTile';
+import MapToggle from './ui/MapToggle';
 
 /**
  * Onglet « fractionné » des analyses de course, de vélo et de fractionné
@@ -349,15 +351,7 @@ function IntervalAnalysis({
         const values = [...sparks.values()].flat().filter((v): v is number => v !== null);
         const domain = values.length > 0 ? { min: Math.min(...values), max: Math.max(...values) } : { min: 0, max: 1 };
         const showDuration = s.detected || s.reps.some((r) => Math.abs(r.work.durationS - s.workout.workS) > 1.5);
-        const stat = (label: string, value: ReactNode, detail?: string) => (
-          <div className="an-sheet__stat">
-            <span className="an-sheet__stat-label">{label}</span>
-            <strong className="an-sheet__stat-value">
-              {value}
-              {detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: 'var(--text-xs)' }}> {detail}</span>}
-            </strong>
-          </div>
-        );
+        const stat = (label: string, value: ReactNode, detail?: string) => <StatTile label={label} value={value} detail={detail} />;
         return (
           <div key={seriesIndex} style={{ marginBottom: '14px' }}>
             {seriesTitle(s, seriesIndex)}
@@ -430,10 +424,7 @@ function IntervalAnalysis({
                           {rest ? `${formatIntervalClock(Math.round(rest.durationS))}${rest.distanceM !== null ? ` · ${formatShortDistance(rest.distanceM, distanceUnit)}` : ''}` : '—'}
                         </td>
                         <td className="an-ivl-map" style={cellStyle}>
-                          <button type="button" disabled={!reached} onClick={() => onSelectLap(shown ? null : key)}
-                            style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
-                            {shown ? 'Masquer' : 'Voir'}
-                          </button>
+                          <MapToggle shown={shown} disabled={!reached} color={SHOWN_COLOR} onClick={() => onSelectLap(shown ? null : key)} />
                         </td>
                       </tr>
                     );

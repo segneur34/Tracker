@@ -1,6 +1,7 @@
 import {
   indexAt, placeRootlets, rootMaturity, rootVisibility, type RootModel, type RootPiece, type RootStyle,
 } from '../core/rootPath';
+import { clamp } from '../core/basics';
 
 /**
  * Dessin de la racine du Profil sur un canevas (`ProfileRoot.tsx`), d'après
@@ -58,7 +59,6 @@ export interface RootFrame {
 }
 
 const TAU = Math.PI * 2;
-const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 const rgb = (hex: string): number[] | null =>
   /^#[0-9a-f]{6}$/i.test(hex) ? [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) : null;

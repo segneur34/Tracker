@@ -28,8 +28,6 @@ import {
   type WindOrientationSource,
 } from './wind';
 
-export { angleDiff, type WindEstimate };
-
 export interface ManeuverOptions {
   /**
    * Vitesse minimale, en nœuds, en dessous de laquelle une manœuvre est ratée.

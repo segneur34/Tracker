@@ -3,6 +3,7 @@ import { fetchWithin, readErrorBody, readJson, type FetchMessages } from './fetc
 import { BROUTER_PROFILE_TEXT, profileCombination, type WayType } from './brouterProfile';
 import type { RoutePoint, RouteVehicle, Waypoint } from './route';
 import { buildSurfaceRuns, parseWayTags, wayTagsText, type SurfaceRuns } from './surface';
+import { isObject } from '../core/basics';
 
 /**
  * Calcul d'un tronçon sur les chemins de la carte, par le serveur public de
@@ -69,9 +70,6 @@ export const brouterUrl = (
   `${BROUTER_URL}?lonlats=${coord(from)}|${coord(to)}&profile=${profileId}` +
   `&profile:calcul=${profileCombination(ways, vehicle === 'velo')}&alternativeidx=${alternative}&format=geojson` +
   (polygons ? `&polygons=${polygons}` : '');
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** Id de profil envoyé : `custom_` suivi de lettres, chiffres ou soulignés. */
 const isProfileId = (value: unknown): value is string => typeof value === 'string' && /^custom_\w+$/.test(value);

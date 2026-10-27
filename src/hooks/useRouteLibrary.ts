@@ -6,7 +6,7 @@ import type { PlannedRoute } from '../planning/route';
 import type { MarkGuideSettings } from '../recording/markGuide';
 import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
 import {
-  isWritableRouteRecord, parseRouteRecord, recordToRoute, routeFileBase, routeToRecord, serializeRouteRecord,
+  isWritableRouteRecord, parseRouteRecord, routeFileBase, routeToRecord, serializeRouteRecord,
   type RouteRecord,
 } from '../planning/routeRecord';
 import { currentMemoryFolder, useLibraryFields } from './useSessionLibrary';
@@ -16,7 +16,7 @@ import { readStoredActivities } from './useSportSettings';
  * Itinéraires rangés dans `itineraires/` du dossier mémoire, à côté des
  * sessions : une fiche JSON qui fait foi et son GPX, réécrits ensemble. Le
  * nom de fichier est tiré du nom de l'itinéraire à son premier rangement et
- * ne change plus ; renommer ne touche qu'au contenu.
+ * ne change plus.
  */
 
 /** Noms des points dans le GPX : numéros des balises (voile, surf), lettres ailleurs. */
@@ -32,6 +32,9 @@ export interface SavedRoute {
   /** Fiche d'une version plus récente de l'application : lue, jamais réécrite. */
   readOnly: boolean;
 }
+
+/** Liste vide partagée : une référence stable tant que la mémoire n'est pas ouverte. */
+const NO_ROUTES: SavedRoute[] = [];
 
 const NO_FOLDER = 'Aucun dossier mémoire accessible : choisissez-le dans Réglages pour enregistrer vos itinéraires.';
 
@@ -110,11 +113,6 @@ export const useRouteLibrary = () => {
     [reload]
   );
 
-  const rename = useCallback(
-    (saved: SavedRoute, name: string) => save(recordToRoute(saved.record), { name, activityId: saved.record.activityId }, saved),
-    [save]
-  );
-
   const remove = useCallback(
     async (saved: SavedRoute) => {
       const folder = await requireFolder();
@@ -129,10 +127,9 @@ export const useRouteLibrary = () => {
     /** Faux tant qu'aucun dossier mémoire n'est accessible : l'itinéraire se planifie, mais ne se range pas. */
     canSave: status === 'ready',
     /** Vide tant que la mémoire n'est pas ouverte. */
-    routes: status === 'ready' ? routes : [],
+    routes: status === 'ready' ? routes : NO_ROUTES,
     error,
     save,
-    rename,
     remove,
   };
 };

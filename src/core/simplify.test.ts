@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pointSegmentDistanceM, simplifyLatLon, simplifyPlane } from './simplify';
-
-describe('pointSegmentDistanceM', () => {
-  it("mesure l'écart à un segment, et au bout le plus proche au-delà", () => {
-    expect(pointSegmentDistanceM({ x: 5, y: 3 }, { x: 0, y: 0 }, { x: 10, y: 0 })).toBeCloseTo(3);
-    expect(pointSegmentDistanceM({ x: 13, y: 4 }, { x: 0, y: 0 }, { x: 10, y: 0 })).toBeCloseTo(5);
-    expect(pointSegmentDistanceM({ x: 3, y: 4 }, { x: 0, y: 0 }, { x: 0, y: 0 })).toBeCloseTo(5);
-  });
-});
+import { simplifyLatLon, simplifyPlane } from './simplify';
 
 describe('simplifyPlane', () => {
   it('ne garde que les bouts d\'une ligne droite', () => {

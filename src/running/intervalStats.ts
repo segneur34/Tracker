@@ -1,3 +1,4 @@
+import { lastIndexAtOrBeforeTime } from '../core/search';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 
 /**
@@ -27,22 +28,9 @@ export interface IntervalPhaseStats extends IntervalPhaseSpan {
   path: [number, number][];
 }
 
-/** Indice du dernier point à l'instant `t` ou avant, `-1` avant la trace. */
-const lastIndexAtOrBefore = (track: TrackPoint[], t: number): number => {
-  let lo = 0;
-  let hi = track.length - 1;
-  if (track.length === 0 || t < track[0].timeMs) return -1;
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2);
-    if (track[mid].timeMs <= t) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo;
-};
-
 /** Distance cumulée et position à l'instant `t`, interpolées entre les deux points qui l'encadrent ; `t` est ramené dans la trace. */
 const sampleAt = (track: TrackPoint[], cum: CumulativeTrack, t: number): { distM: number; at: [number, number] } => {
-  const i = lastIndexAtOrBefore(track, t);
+  const i = lastIndexAtOrBeforeTime(track, t);
   if (i < 0) return { distM: 0, at: [track[0].lat, track[0].lon] };
   if (i >= track.length - 1) return { distM: cum.cumDist[track.length - 1], at: [track[i].lat, track[i].lon] };
   const a = track[i];
@@ -64,7 +52,7 @@ export const intervalPhaseStats = (track: TrackPoint[], cum: CumulativeTrack, ph
     const end = sampleAt(track, cum, phase.endMs);
     // Points strictement intérieurs, bornés par dichotomie plutôt que toute la trace filtrée par phase.
     const inner: [number, number][] = [];
-    for (let k = lastIndexAtOrBefore(track, phase.startMs) + 1; k < track.length && track[k].timeMs < phase.endMs; k++) {
+    for (let k = lastIndexAtOrBeforeTime(track, phase.startMs) + 1; k < track.length && track[k].timeMs < phase.endMs; k++) {
       if (track[k].timeMs > phase.startMs) inner.push([track[k].lat, track[k].lon]);
     }
     const distanceM = Math.max(0, end.distM - start.distM);

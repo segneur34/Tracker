@@ -11,7 +11,7 @@ import {
 import { analysisTabs, isTabShown, toggleTabChoice, type TabChoices } from '../core/analysisTabs';
 import type { SportType } from '../core/types';
 import {
-  DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, editSpeedUnit, formatPace, formatSpeedValue, fromDisplaySpeed, toDisplaySpeed,
+  DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, editSpeedUnit, formatPace, formatSpeedValue, fromDisplaySpeed, kmhToMs, msToKmh, toDisplaySpeed,
   type DistanceUnit, type SpeedUnit,
 } from '../core/units';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
@@ -476,7 +476,7 @@ function SettingsPage() {
                 const setAutoPauseField = (field: 'speedKmh' | 'delayS', next: number | null) => {
                   if (next === null) { setFor(id, 'autoPause', null); return; }
                   setFor(id, 'autoPause', {
-                    speedMs: field === 'speedKmh' ? next / 3.6 : s.autoPause.speedMs,
+                    speedMs: field === 'speedKmh' ? kmhToMs(next) : s.autoPause.speedMs,
                     delayS: field === 'delayS' ? next : s.autoPause.delayS,
                   });
                 };
@@ -488,7 +488,7 @@ function SettingsPage() {
                 );
                 // Famille repliée : son en-tête seul, ses activités ne sont pas montées.
                 if (openFamily[family] !== true) return <Fragment key={id}>{heading}</Fragment>;
-                const pauseKmh = parseFloat((s.autoPause.speedMs * 3.6).toFixed(1));
+                const pauseKmh = parseFloat(msToKmh(s.autoPause.speedMs).toFixed(1));
                 const summary = [
                   SPEED_UNIT_LABEL[s.speedUnit],
                   DISTANCE_UNIT_SYMBOL[s.distanceUnit],
@@ -941,7 +941,7 @@ function FieldsSetting({ label, help, helpKey, treatment, units, fields, overrid
 }
 
 /** Vitesse en km/h, sans décimale inutile. */
-const kmhLabel = (ms: number): string => `${parseFloat((ms * 3.6).toFixed(1))} km/h`;
+const kmhLabel = (ms: number): string => `${parseFloat(msToKmh(ms).toFixed(1))} km/h`;
 
 /** Ce que donne une vitesse sur le plat : l'allure en course, la puissance de montée à vélo. */
 const paceDetail = (family: PlanningFamily, speedMs: number, climbWkg?: number): string =>
@@ -981,9 +981,9 @@ function PaceSettings({ family, view, onLevel, onCustomSpeed }: {
         <SettingRow label="Vitesse sur le plat" helpKey={`${view.activity.id}:vitesse-plat`} help="Votre vitesse sur le plat, pour le temps estimé.">
           <div className="settings-sports__pair">
             <NumberField unit="km/h" step={0.5}
-              min={parseFloat((lo * 3.6).toFixed(1))} max={parseFloat((hi * 3.6).toFixed(1))}
-              value={custom === null ? null : parseFloat((custom * 3.6).toFixed(1))}
-              onCommit={(kmh) => onCustomSpeed(kmh === null ? null : kmh / 3.6)} />
+              min={parseFloat(msToKmh(lo).toFixed(1))} max={parseFloat(msToKmh(hi).toFixed(1))}
+              value={custom === null ? null : parseFloat(msToKmh(custom).toFixed(1))}
+              onCommit={(kmh) => onCustomSpeed(kmh === null ? null : kmhToMs(kmh))} />
             <span className="settings-sports__mark">
               {custom === null ? 'sans vitesse saisie, le niveau moyen' : `soit ${paceDetail(family, custom)}`}
             </span>

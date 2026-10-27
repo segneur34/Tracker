@@ -1,3 +1,6 @@
+import { firstIndexAtOrAfterTime } from './search';
+import { isFiniteNumber } from './basics';
+
 /**
  * Repères posés par le bouton « Note » pendant l'enregistrement : un instant
  * et une position, nommés ensuite dans l'analyse. Datés par l'horloge du
@@ -12,7 +15,6 @@ export interface SessionMark {
   label: string | null;
 }
 
-const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && isFinite(value);
 
 /** Un repère relu, `null` s'il est mal formé ; un nom vide vaut une absence. */
 export const readSessionMark = (raw: unknown): SessionMark | null => {
@@ -62,13 +64,7 @@ export const locateMarks = (
   if (track.length === 0) return [];
   return sortMarks(marks).map((mark, k) => {
     // Premier point qui n'est pas avant le repère.
-    let lo = 0;
-    let hi = track.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (track[mid].timeMs < mark.timeMs) lo = mid + 1;
-      else hi = mid;
-    }
+    const lo = firstIndexAtOrAfterTime(track, mark.timeMs);
     if (lo === 0) return { mark, n: k + 1, index: 0, distanceM: cumDist[0] ?? 0 };
     if (lo === track.length) return { mark, n: k + 1, index: track.length - 1, distanceM: cumDist[track.length - 1] ?? 0 };
     const before = track[lo - 1].timeMs;

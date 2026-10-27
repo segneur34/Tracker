@@ -1,4 +1,5 @@
 import { fetchJson } from './fetchJson';
+import { isObject } from '../core/basics';
 
 /**
  * Altitude du terrain, demandée à l'API de calcul altimétrique de la
@@ -32,9 +33,6 @@ const IGN_NO_DATA_BELOW_M = -1000;
 const NO_NETWORK = 'Pas de réseau : l\'altitude de l\'IGN sera redemandée à la prochaine ouverture.';
 const UNREADABLE = 'Réponse du service d\'altitude de l\'IGN illisible.';
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
 type LatLon = { lat: number; lon: number };
 
 /** Corps de la requête : longitudes et latitudes jointes par `|`. */
@@ -66,11 +64,15 @@ export const ignErrorMessage = (status: number): string =>
 
 const wait = (ms: number, signal?: AbortSignal): Promise<void> =>
   new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
+    const onAbort = () => {
       clearTimeout(timer);
       reject(new DOMException('Abandon', 'AbortError'));
-    });
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 
 /**

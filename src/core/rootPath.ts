@@ -1,3 +1,6 @@
+import { partitionPoint } from './search';
+import { clamp } from './basics';
+
 /**
  * Géométrie de la racine du Profil (`components/ProfileRoot.tsx`), en pixels
  * de la page, sans dessin : le canevas est l'affaire de `components/drawRoot.ts`.
@@ -116,7 +119,6 @@ export const seededRandom = (seed: number) => {
   };
 };
 
-const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 interface Vertex {
   x: number;
@@ -249,14 +251,7 @@ export const inCard = (cards: readonly Box[], x: number, y: number, inset: numbe
 
 /** Indice du premier point d'abscisse au moins `s`. */
 export const indexAt = (pts: readonly RootPoint[], s: number): number => {
-  let lo = 0;
-  let hi = pts.length - 1;
-  while (lo < hi) {
-    const m = (lo + hi) >> 1;
-    if (pts[m].s < s) lo = m + 1;
-    else hi = m;
-  }
-  return lo;
+  return Math.max(0, Math.min(pts.length - 1, partitionPoint(pts.length, (i) => pts[i].s < s)));
 };
 
 /** Côté libre d'un point de racine : +1 ou −1 selon la normale, 0 si des cadres sont des deux côtés. */

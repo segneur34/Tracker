@@ -29,14 +29,6 @@ export const TILE_CACHE_DEFAULTS = {
 /** Nom de fichier d'une tuile, sans extension, précédé du préfixe de son fond (`core/mapBase.ts`). */
 export const tileKey = ({ z, x, y }: TileCoord, prefix = ''): string => `${prefix}${z}_${x}_${y}`;
 
-/** Tuile d'un nom de fichier (`[prefix]z_x_y`, extension `.png` permise), `null` s'il n'en est pas un. */
-export const parseTileKey = (name: string, prefix = ''): TileCoord | null => {
-  if (!name.startsWith(prefix)) return null;
-  const match = /^(\d+)_(\d+)_(\d+)(?:\.png)?$/.exec(name.slice(prefix.length));
-  if (!match) return null;
-  return { z: Number(match[1]), x: Number(match[2]), y: Number(match[3]) };
-};
-
 /**
  * Tuile `depth` zooms plus haut qui contient `tile`, et la place de `tile` en
  * elle : agrandie `scale` fois, la parente montre `tile` dans sa case

@@ -15,6 +15,9 @@
  * « Passer » compris ; les instants, en millisecondes de l'horloge.
  */
 
+import { BEEP_FINAL_MS, BEEP_LONG_MS, BEEP_SHORT_MS } from '../core/beepDurations';
+import { formatMinSecHours } from '../core/units';
+
 /** Bloc de répétitions : travail, repos, travail… sans repos après la dernière. */
 export interface IntervalSeriesBlock {
   kind: 'series';
@@ -74,8 +77,8 @@ export const MAX_INTERVAL_PRESETS = 30;
 /** Sons du compteur : bip court, bip long, et le long double de la fin de séance. */
 export type IntervalToneKind = 'court' | 'long' | 'final';
 
-/** Durée de chaque son, en millisecondes (comme `platform/beeper.ts` et `TonePlayer.java`). */
-export const INTERVAL_TONE_MS: Record<IntervalToneKind, number> = { court: 120, long: 800, final: 1600 };
+/** Durée de chaque son, en millisecondes (`core/beepDurations.ts`). */
+export const INTERVAL_TONE_MS: Record<IntervalToneKind, number> = { court: BEEP_SHORT_MS, long: BEEP_LONG_MS, final: BEEP_FINAL_MS };
 
 /**
  * Compte à rebours avant le premier travail, en secondes : on lance le
@@ -158,11 +161,7 @@ export const sameWorkout = (a: IntervalWorkout, b: IntervalWorkout): boolean => 
 
 /** Durée en m:ss, h:mm:ss au-delà d'une heure. */
 export const formatIntervalClock = (seconds: number): string => {
-  const total = Math.max(0, Math.ceil(seconds));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor(total / 60) % 60;
-  const s = String(total % 60).padStart(2, '0');
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+  return formatMinSecHours(Math.max(0, Math.ceil(seconds)));
 };
 
 /** Nom d'un bloc : « 10 × 1:00 / 0:30 », sans repos « 10 × 1:00 » ; un bloc libre, « Échauffement 10:00 ». */

@@ -6,6 +6,8 @@ import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 import { SPEED_UNIT_LABEL, formatShortDuration, formatSpeedValue, toDisplaySpeed, type SpeedUnit } from '../core/units';
 import { useOpenSections } from '../hooks/useOpenSections';
 import type { CadenceAnalysis, CadenceShare } from '../running/cadence';
+import StatTile from './ui/StatTile';
+import MapToggle from './ui/MapToggle';
 
 interface Props {
   analysis: CadenceAnalysis;
@@ -78,13 +80,13 @@ export default function CadencePanel({ analysis, speedUnit, selectedBand, onSele
         {bySpeed.length > 0 && " Pour aller plus vite, on presse le pas (cadence) ou on l'allonge (longueur) : la longueur de pas est la distance divisée par les pas."}
       </HelpText>
       <div className="an-sheet__stats an-sheet__stats--always">
-        <div className="an-sheet__stat"><span className="an-sheet__stat-label">Cadence moyenne</span><strong className="an-sheet__stat-value">{spmText(analysis.averageSpm)}</strong></div>
+        <StatTile label="Cadence moyenne" value={spmText(analysis.averageSpm)} />
         {analysis.maxSpm !== null && (
-          <div className="an-sheet__stat"><span className="an-sheet__stat-label">Cadence max ({analysis.maxWindowS} s)</span><strong className="an-sheet__stat-value">{spmText(analysis.maxSpm)}</strong></div>
+          <StatTile label={<>Cadence max ({analysis.maxWindowS} s)</>} value={spmText(analysis.maxSpm)} />
         )}
-        <div className="an-sheet__stat"><span className="an-sheet__stat-label">Longueur de pas</span><strong className="an-sheet__stat-value">{stepText(analysis.stepLengthM)}</strong></div>
-        <div className="an-sheet__stat"><span className="an-sheet__stat-label">Pas</span><strong className="an-sheet__stat-value">{Math.round(analysis.steps).toLocaleString('fr-FR')}</strong></div>
-        <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps mesuré</span><strong className="an-sheet__stat-value">{Math.round(analysis.measuredShare * 100)} %</strong></div>
+        <StatTile label="Longueur de pas" value={stepText(analysis.stepLengthM)} />
+        <StatTile label="Pas" value={Math.round(analysis.steps).toLocaleString('fr-FR')} />
+        <StatTile label="Temps mesuré" value={<>{Math.round(analysis.measuredShare * 100)} %</>} />
       </div>
       {drift && (
         <div style={{ fontSize: 'var(--text-s)', margin: '4px 0 2px' }}>
@@ -129,10 +131,7 @@ export default function CadencePanel({ analysis, speedUnit, selectedBand, onSele
                       </div>
                     </td>
                     <td style={cell}>
-                      <button type="button" disabled={s <= 0} onClick={() => onSelectBand(shown ? null : band)}
-                        style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: s > 0 ? 'pointer' : 'default', backgroundColor: shown ? HIGHLIGHT_SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
-                        {shown ? 'Masquer' : 'Voir'}
-                      </button>
+                      <MapToggle shown={shown} disabled={s <= 0} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => onSelectBand(shown ? null : band)} />
                     </td>
                   </tr>
                 );

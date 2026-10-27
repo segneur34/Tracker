@@ -1,11 +1,10 @@
 import { IMU_FORMAT, IMU_VERSION, PHONE_STREAMS, type ImuHeader, type ImuRecording } from './imuFile';
+import { STANDARD_G } from './units';
 
 /**
  * Enregistrements synthétiques du téléphone, pour les tests des calculs sur
  * capteurs (sauts, pumping) : rien de l'application ne s'en sert.
  */
-
-const G = 9.80665;
 
 /** Heure du début de la capture. */
 export const SYNTH_WALL_MS = 1_791_465_895_000;
@@ -65,7 +64,7 @@ export const synthImu = (m: SynthMotion): ImuRecording => {
   for (const t of times) {
     const th = tilt(t);
     const h = m.ay?.(t) ?? 0;
-    const v = m.az(t) + G;
+    const v = m.az(t) + STANDARD_G;
     const k = 1 + (m.scale ?? 0);
     const noise = () => (m.noise ?? 0.05) * rand() * Math.sqrt(3);
     const clamp = (x: number) => Math.max(-range, Math.min(range, x));

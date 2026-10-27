@@ -131,16 +131,6 @@ export const IconChevronDown = ({ size = 20, ...props }: IconProps) => (
   </svg>
 );
 
-/** Quatre carrés : le menu des sports de la barre du bas. */
-export const IconGrid = ({ size = 24, ...props }: IconProps) => (
-  <svg {...strokeProps(size)} {...props}>
-    <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />
-    <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" />
-    <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" />
-    <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" />
-  </svg>
-);
-
 /** Trois barres montantes sur leur axe : les statistiques. */
 export const IconChart = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>

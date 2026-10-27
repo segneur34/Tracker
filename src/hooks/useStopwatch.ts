@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { jsonStore } from '../platform/storage';
+import { createTickingStore } from './createStore';
 import {
   readStopwatch, startStopwatch, stopwatchCommand, stopwatchState,
   type Stopwatch, type StopwatchCommand, type StopwatchState,
@@ -25,35 +26,15 @@ export interface StopwatchView {
 }
 
 let stopwatch: Stopwatch | null = null;
-let view: StopwatchView = { stopwatch: null, state: null };
-const listeners = new Set<() => void>();
-let refresh: ReturnType<typeof setInterval> | null = null;
-
-const publish = (): void => {
-  view = { stopwatch, state: stopwatch ? stopwatchState(stopwatch, Date.now()) : null };
-  listeners.forEach((listener) => listener());
-  syncRefresh();
-};
-
 /** Minuterie d'affichage : seulement quand une page regarde un chrono en marche. */
-const syncRefresh = (): void => {
-  const wanted = listeners.size > 0 && view.state?.status === 'running';
-  if (wanted && refresh === null) refresh = setInterval(publish, REFRESH_MS);
-  if (!wanted && refresh !== null) {
-    clearInterval(refresh);
-    refresh = null;
-  }
-};
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  if (stopwatch) queueMicrotask(publish);
-  syncRefresh();
-  return () => {
-    listeners.delete(listener);
-    syncRefresh();
-  };
-};
+const ticking = createTickingStore<StopwatchView>({
+  initial: { stopwatch: null, state: null },
+  compute: () => ({ stopwatch, state: stopwatch ? stopwatchState(stopwatch, Date.now()) : null }),
+  isRunning: (view) => view.state?.status === 'running',
+  hasWork: () => stopwatch !== null,
+  intervalMs: REFRESH_MS,
+});
+const { publish, subscribe } = ticking;
 
 const persist = (): void => jsonStore.write(STORAGE_KEY, stopwatch);
 
@@ -100,10 +81,10 @@ export const startStopwatchStore = (): void => {
 };
 
 /** Le chrono, relu à chaque commande et, en marche, au dixième de seconde. */
-export const useStopwatch = (): StopwatchView => useSyncExternalStore(subscribe, () => view);
+export const useStopwatch = (): StopwatchView => useSyncExternalStore(subscribe, ticking.get);
 
 /** Vrai tant qu'un chrono est lancé, en pause comprise ; ne redessine qu'à ce changement. */
-export const useStopwatchOpen = (): boolean => useSyncExternalStore(subscribe, () => view.stopwatch !== null);
+export const useStopwatchOpen = (): boolean => useSyncExternalStore(subscribe, () => ticking.get().stopwatch !== null);
 
 /** Vrai tant que le chrono est en marche, pas en pause : l'écran reste allumé ; ne redessine qu'à ce changement. */
-export const useStopwatchRunning = (): boolean => useSyncExternalStore(subscribe, () => view.state?.status === 'running');
+export const useStopwatchRunning = (): boolean => useSyncExternalStore(subscribe, () => ticking.get().state?.status === 'running');

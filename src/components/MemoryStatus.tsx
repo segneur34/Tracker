@@ -16,6 +16,7 @@ import { HelpText, HelpToggle } from './Help';
 import { useInSettings } from './helpContext';
 import Button from './ui/Button';
 import Card from './ui/Card';
+import { plural } from '../core/basics';
 
 /**
  * État de la mémoire : où elle est, combien de sessions, ce qu'il faut faire
@@ -35,7 +36,6 @@ import Card from './ui/Card';
  * repliée comprise ; dans les bibliothèques, ils sont dans le menu « … ».
  */
 
-const plural = (n: number, word: string): string => `${n} ${word}${n > 1 ? 's' : ''}`;
 
 const mutedStyle = { margin: 0, color: 'var(--muted)', fontSize: 'var(--text-s)', lineHeight: 1.5 } as const;
 const rowStyle = { display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' } as const;

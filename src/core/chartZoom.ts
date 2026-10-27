@@ -1,3 +1,5 @@
+import { firstIndexAfter, firstIndexAtOrAfter } from './search';
+
 /**
  * Zoom horizontal d'un graphe : plage visible de l'axe des abscisses, dans
  * l'unité de l'axe (distance affichée). Les positions à l'écran sont en
@@ -126,18 +128,7 @@ export const visibleIndexRange = (values: ArrayLike<number>, range: XRange | nul
   const n = values.length;
   if (n === 0) return [0, -1];
   if (!range) return [0, n - 1];
-  // Premier indice dont la valeur atteint `target` (ou la dépasse strictement si `strict`).
-  const search = (target: number, strict: boolean) => {
-    let lo = 0;
-    let hi = n;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (strict ? values[mid] > target : values[mid] >= target) hi = mid;
-      else lo = mid + 1;
-    }
-    return lo;
-  };
-  return [Math.max(0, search(range.min, false) - 1), Math.min(n - 1, search(range.max, true))];
+  return [Math.max(0, firstIndexAtOrAfter(values, range.min) - 1), Math.min(n - 1, firstIndexAfter(values, range.max))];
 };
 
 /**

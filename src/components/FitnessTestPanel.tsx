@@ -11,11 +11,12 @@ import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom'
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import type { TrackPoint } from '../core/types';
 import {
-  SPEED_UNIT_LABEL, formatClock, formatShortDuration, formatSpeed, isInverseUnit, toDisplaySpeed, type SpeedUnit,
+  SPEED_UNIT_LABEL, formatClockMinutes, formatShortDuration, formatSpeed, isInverseUnit, toDisplaySpeed, type SpeedUnit,
 } from '../core/units';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import { FITNESS_TESTS, TEST_SIGNAL_LABEL, type SessionTest, type TestEndReason, type TestSignal } from '../recording/fitnessTest';
 import { fitnessTestResults } from '../running/fitnessTestResults';
+import StatTile from './ui/StatTile';
 
 /** Bleu des courbes de vitesse des analyses à pied. */
 const SPEED_COLOR = '#1e88e5';
@@ -33,7 +34,6 @@ const END_REASON_LABEL: Record<TestEndReason, string> = {
   arret: "enregistrement arrêté avant la fin",
 };
 
-const minutesTick = (v: number) => formatClock(v * 60_000).replace(/:00$/, '');
 
 interface Row {
   index: number;
@@ -118,7 +118,7 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
     <XAxis dataKey="minutes" type="number" allowDataOverflow hide={hide}
       domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
       ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-      tickFormatter={minutesTick} tick={{ fill: '#555', fontSize: 11 }} />
+      tickFormatter={formatClockMinutes} tick={{ fill: '#555', fontSize: 11 }} />
   );
   const onHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, rows);
@@ -135,7 +135,7 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
       })(),
       { text: hrSmoothed[hovered] === null ? '—' : `${Math.round(hrSmoothed[hovered]!)} bpm`, color: HEART_RATE_COLOR },
     ],
-    at: minutesTick(minutes[hovered]),
+    at: formatClockMinutes(minutes[hovered]),
   });
 
   return (
@@ -211,9 +211,7 @@ export default function FitnessTestPanel({
   const speed = (ms: number | null) => (ms === null ? '—' : formatSpeed(ms, isInverseUnit(speedUnit) ? 'kmh' : speedUnit));
   const bpm = (v: number | null) => (v === null ? '—' : `${v} bpm`);
   const { lowBpm, highBpm } = test.settings;
-  const stat = (label: string, value: string) => (
-    <div className="an-sheet__stat"><span className="an-sheet__stat-label">{label}</span><strong className="an-sheet__stat-value">{value}</strong></div>
-  );
+  const stat = (label: string, value: string) => <StatTile label={label} value={value} />;
   const recoveryMin = protocol.recoveryReadS / 60;
 
   return (

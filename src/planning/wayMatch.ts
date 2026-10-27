@@ -1,3 +1,4 @@
+import { pointSegmentDistanceM, type PlanePoint } from '../core/geoPlane';
 import { EARTH_RADIUS_M, haversineDistance, toRad } from '../core/kinematics';
 import type { Waypoint } from './route';
 import { buildSurfaceRuns, type SurfaceRuns } from './surface';
@@ -69,19 +70,9 @@ export const queryLines = (
 
 interface Segment {
   way: number;
-  ax: number;
-  ay: number;
-  bx: number;
-  by: number;
+  a: PlanePoint;
+  b: PlanePoint;
 }
-
-const distanceToSegment = (x: number, y: number, s: Segment): number => {
-  const dx = s.bx - s.ax;
-  const dy = s.by - s.ay;
-  const len2 = dx * dx + dy * dy;
-  const t = len2 > 0 ? Math.min(1, Math.max(0, ((x - s.ax) * dx + (y - s.ay) * dy) / len2)) : 0;
-  return Math.hypot(s.ax + t * dx - x, s.ay + t * dy - y);
-};
 
 /**
  * Voie de chaque point : l'indice dans `ways` de la plus proche à moins de
@@ -106,9 +97,13 @@ export const matchTrackToWays = (
   const grid = new Map<string, Segment[]>();
   ways.forEach((way, w) => {
     for (let i = 1; i < way.geometry.length; i++) {
-      const s: Segment = { way: w, ax: px(way.geometry[i - 1]), ay: py(way.geometry[i - 1]), bx: px(way.geometry[i]), by: py(way.geometry[i]) };
-      for (let cx = Math.floor(Math.min(s.ax, s.bx) / cell); cx <= Math.floor(Math.max(s.ax, s.bx) / cell); cx++) {
-        for (let cy = Math.floor(Math.min(s.ay, s.by) / cell); cy <= Math.floor(Math.max(s.ay, s.by) / cell); cy++) {
+      const s: Segment = {
+        way: w,
+        a: { x: px(way.geometry[i - 1]), y: py(way.geometry[i - 1]) },
+        b: { x: px(way.geometry[i]), y: py(way.geometry[i]) },
+      };
+      for (let cx = Math.floor(Math.min(s.a.x, s.b.x) / cell); cx <= Math.floor(Math.max(s.a.x, s.b.x) / cell); cx++) {
+        for (let cy = Math.floor(Math.min(s.a.y, s.b.y) / cell); cy <= Math.floor(Math.max(s.a.y, s.b.y) / cell); cy++) {
           const key = `${cx},${cy}`;
           const list = grid.get(key);
           if (list) list.push(s);
@@ -121,8 +116,8 @@ export const matchTrackToWays = (
   const matched: number[] = [];
   let previous = -1;
   for (const p of points) {
-    const x = px(p);
-    const y = py(p);
+    const at: PlanePoint = { x: px(p), y: py(p) };
+    const { x, y } = at;
     const cx = Math.floor(x / cell);
     const cy = Math.floor(y / cell);
     // Tout segment à moins de `radiusM` passe par l'une des neuf cases autour du point.
@@ -130,7 +125,7 @@ export const matchTrackToWays = (
     for (let i = -1; i <= 1; i++) {
       for (let j = -1; j <= 1; j++) {
         for (const s of grid.get(`${cx + i},${cy + j}`) ?? []) {
-          const d = distanceToSegment(x, y, s);
+          const d = pointSegmentDistanceM(at, s.a, s.b);
           if (d < (nearest.get(s.way) ?? Infinity)) nearest.set(s.way, d);
         }
       }

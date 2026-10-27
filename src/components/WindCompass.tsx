@@ -12,7 +12,7 @@ function WindCompass({ windAngle, size = 120 }: { windAngle: number; size?: numb
     <span style={{ position: 'absolute', fontSize: small ? '9px' : '10px', fontWeight: 'bold', color: 'var(--muted)', ...style }}>{text}</span>
   );
   return (
-    <div style={{ position: 'relative', width: `${size}px`, height: `${size}px`, background: '#fff', borderRadius: '50%', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', flexShrink: 0, boxSizing: 'border-box' }}>
+    <div style={{ position: 'relative', width: `${size}px`, height: `${size}px`, background: 'var(--surface)', borderRadius: '50%', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', flexShrink: 0, boxSizing: 'border-box' }}>
       {label(small ? 'N' : 'N(0°)', { top: 2, left: '50%', transform: 'translateX(-50%)' })}
       {label(small ? 'S' : 'S(180°)', { bottom: 2, left: '50%', transform: 'translateX(-50%)' })}
       {label(small ? 'E' : 'E(90°)', { right: 3, top: '50%', transform: 'translateY(-50%)' })}

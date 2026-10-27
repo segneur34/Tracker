@@ -1,3 +1,4 @@
+import { kmhToMs as kmh } from '../core/units';
 import { resistiveForceN, type CyclingEnergyParams } from '../cycling/energy';
 import { routePoints, routeProfileRows, routeTotals, type PlannedRoute, type RouteTotals } from './route';
 
@@ -42,8 +43,6 @@ export const isPaceLevel = (value: unknown): value is PaceLevel =>
 
 /** Familles qui ont un temps estimé. */
 export type PlanningFamily = 'course' | 'velo';
-
-const kmh = (v: number): number => v / 3.6;
 
 /** Vitesse sur le plat de chaque niveau, en m/s. */
 export const LEVEL_FLAT_SPEED_MS: Record<PlanningFamily, Record<PresetPaceLevel, number>> = {

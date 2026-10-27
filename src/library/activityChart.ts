@@ -30,13 +30,6 @@ export interface ChartSession {
   activityId: string;
 }
 
-/** Une activité présente dans le graphe, ses couleur et nom. */
-export interface ChartActivity {
-  id: string;
-  name: string;
-  color: string;
-}
-
 export interface ChartBar {
   /** Début de la barre (minuit local du jour, ou du lundi de la semaine). */
   startMs: number;

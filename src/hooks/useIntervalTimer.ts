@@ -5,6 +5,7 @@ import {
   phaseName, readIntervalRun, runCommand, startRun, timerStateAt, upcomingSchedule,
   type IntervalCommand, type IntervalRun, type IntervalTimerState, type IntervalWorkout, type WorkoutKind,
 } from '../recording/intervalTimer';
+import { createTickingStore } from './createStore';
 import { getRecorderState, noteIntervalRun, subscribeToRecorder } from './useRecorder';
 import { rememberIntervalWorkout } from './useSportSettings';
 
@@ -49,41 +50,23 @@ export interface IntervalTimerView {
 
 let run: IntervalRun | null = null;
 let error: string | null = null;
-let view: IntervalTimerView = { run: null, state: null, nowMs: 0, error: null };
-const listeners = new Set<() => void>();
 /** Abonnés hors React, prévenus à chaque commande. */
 const commandListeners = new Set<() => void>();
-let refresh: ReturnType<typeof setInterval> | null = null;
 
 const isActive = (state: IntervalTimerState | null): boolean => state?.status === 'running' || state?.status === 'paused';
 
-const publish = (): void => {
-  const nowMs = Date.now();
-  view = { run, state: run ? timerStateAt(run, nowMs) : null, nowMs, error };
-  listeners.forEach((listener) => listener());
-  syncRefresh();
-};
-
 /** Minuterie d'affichage : seulement quand une page regarde une séance qui avance. */
-const syncRefresh = (): void => {
-  const wanted = listeners.size > 0 && view.state?.status === 'running';
-  if (wanted && refresh === null) refresh = setInterval(publish, REFRESH_MS);
-  if (!wanted && refresh !== null) {
-    clearInterval(refresh);
-    refresh = null;
-  }
-};
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  // Une page qui arrive voit l'état du moment, pas celui de la dernière fois qu'on a regardé.
-  if (run) queueMicrotask(publish);
-  syncRefresh();
-  return () => {
-    listeners.delete(listener);
-    syncRefresh();
-  };
-};
+const ticking = createTickingStore<IntervalTimerView>({
+  initial: { run: null, state: null, nowMs: 0, error: null },
+  compute: () => {
+    const nowMs = Date.now();
+    return { run, state: run ? timerStateAt(run, nowMs) : null, nowMs, error };
+  },
+  isRunning: (view) => view.state?.status === 'running',
+  hasWork: () => run !== null,
+  intervalMs: REFRESH_MS,
+});
+const { publish, subscribe } = ticking;
 
 /**
  * Confie au téléphone le programme de la séance à partir de maintenant :
@@ -209,11 +192,11 @@ export const subscribeToIntervalCommands = (listener: () => void): (() => void) 
 };
 
 /** Le compteur, relu à chaque changement et, pendant une séance qui avance, au quart de seconde. */
-export const useIntervalTimer = (): IntervalTimerView => useSyncExternalStore(subscribe, () => view);
+export const useIntervalTimer = (): IntervalTimerView => useSyncExternalStore(subscribe, ticking.get);
 
 /** Vrai tant qu'une séance est lancée, close comprise jusqu'à « Fermer » ; ne redessine qu'à ce changement. */
-export const useIntervalTimerOpen = (): boolean => useSyncExternalStore(subscribe, () => view.run !== null);
+export const useIntervalTimerOpen = (): boolean => useSyncExternalStore(subscribe, () => ticking.get().run !== null);
 
 /** Vrai tant qu'une séance avance ou est en pause, pas une fois finie : l'écran reste allumé ; ne redessine qu'à ce changement. */
 export const useIntervalTimerRunning = (): boolean =>
-  useSyncExternalStore(subscribe, () => isActive(view.state));
+  useSyncExternalStore(subscribe, () => isActive(ticking.get().state));

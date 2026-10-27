@@ -1,4 +1,5 @@
 import { segmentDistanceM } from '../core/sessionStats';
+import { J_PER_KCAL } from '../core/units';
 import type { TrackPoint } from '../core/types';
 import { GRADE_ANALYSIS, type GradeProfile } from '../core/sportProfiles';
 import { classifyGrade, gradeZones, type GradeZone, type GradeZoneKey } from './runningAnalytics';
@@ -92,7 +93,7 @@ export const restingPowerWkg = (
   const { weightKg, heightCm, sex } = runner;
   if (weightKg !== null && heightCm !== null && sex !== null && age !== null && age > 0) {
     const kcalPerDay = 10 * weightKg + 6.25 * heightCm - 5 * age + (sex === 'm' ? 5 : -161);
-    if (kcalPerDay > 0) return (kcalPerDay * 4184) / 86400 / weightKg;
+    if (kcalPerDay > 0) return (kcalPerDay * J_PER_KCAL) / 86400 / weightKg;
   }
   return (params.restingMlKgMin * params.joulesPerMlO2) / 60;
 };

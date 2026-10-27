@@ -12,6 +12,7 @@ import {
 import { getRecorderState, noteFitnessTest, subscribeToFixes, subscribeToRecorder } from './useRecorder';
 import { readRunnerProfile, runnerAge, type RunnerProfile } from './useRunnerProfile';
 import { effectiveHrOffset, readFitnessTestSettings } from './useSportSettings';
+import { createStore } from './createStore';
 
 /**
  * Guidage d'un test (Entraînement › Tests, d'abord la FC max) pendant
@@ -87,28 +88,26 @@ let armed: FitnessTestId = 'fc-max';
 let session: Session | null = null;
 /** Dernier test fini dans cet enregistrement, pour ne pas en relancer un après sa rampe ; effacé au repos. */
 let closed: SessionTest | null = null;
-let view: FitnessTestView = INACTIVE;
-const listeners = new Set<() => void>();
+const store = createStore<FitnessTestView>(INACTIVE);
 
 const publish = () => {
   if (!session) {
-    view = INACTIVE;
-  } else {
-    const { state } = session;
-    const readings = guideReadings(state);
-    view = {
-      active: true,
-      params: state.params,
-      phase: state.phase,
-      remainingS: phaseRemainingS(state),
-      step: state.phase === 'rampe' ? state.step + 1 : 0,
-      targetMs: state.phase === 'rampe' ? stepTargetMs(state) : null,
-      hrBpm: readings.hrBpm,
-      speedMs: readings.speedMs,
-      lastSignal: state.lastSignal,
-    };
+    store.set(INACTIVE);
+    return;
   }
-  listeners.forEach((listener) => listener());
+  const { state } = session;
+  const readings = guideReadings(state);
+  store.set({
+    active: true,
+    params: state.params,
+    phase: state.phase,
+    remainingS: phaseRemainingS(state),
+    step: state.phase === 'rampe' ? state.step + 1 : 0,
+    targetMs: state.phase === 'rampe' ? stepTargetMs(state) : null,
+    hrBpm: readings.hrBpm,
+    speedMs: readings.speedMs,
+    lastSignal: state.lastSignal,
+  });
 };
 
 const play = (signal: TestSignal, timeMs: number) => {
@@ -202,12 +201,5 @@ export const finishFitnessRamp = (): void => {
   publish();
 };
 
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
-
 /** État du guidage, relu à chaque position. */
-export const useFitnessTest = (): FitnessTestView => useSyncExternalStore(subscribe, () => view);
+export const useFitnessTest = (): FitnessTestView => useSyncExternalStore(store.subscribe, store.get);

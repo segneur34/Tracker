@@ -62,7 +62,7 @@ import { meanFilterByTime } from '../core/speedFilter';
 import { SLOW_COLOR, gradientCss, isValidSpeedRange } from '../core/speedGradient';
 import { trackColorSegments } from '../core/trackColor';
 import {
-  DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
+  DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatClockMinutes, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
   isInverseUnit, toDisplayDistance, toDisplaySpeed,
 } from '../core/units';
 import { setHoveredIndex, useResetChartHover } from '../hooks/useChartHover';
@@ -99,6 +99,8 @@ import { seriesBlocks, type IntervalSeries, type IntervalWorkout } from '../reco
 import type { SurfaceCategory } from '../planning/surface';
 import { WAY_MATCH_DEFAULTS } from '../planning/wayMatch';
 import { LAND_PAGES, LAND_TREATMENTS, TOTAL_ENERGY_LABEL, type LandFamily, type LandTreatment } from './landModules';
+import StatTile from '../components/ui/StatTile';
+import MapToggle from '../components/ui/MapToggle';
 
 /** Lissage supplémentaire de la vitesse pour le graphe, en secondes. */
 const CHART_SPEED_SMOOTHING_S = 10;
@@ -210,13 +212,6 @@ const GRAPH_FOLDS_DEFAULT = { vitesse: true, altitude: true, fc: true, cadence: 
 type GraphFold = keyof typeof GRAPH_FOLDS_DEFAULT;
 /** Graphe d'altitude de l'onglet « zones de pente », déplié tant qu'on ne le replie pas. */
 const ZONES_FOLDS_DEFAULT = { tableau: true, graphe: true };
-
-/** Temps écoulé, donné en minutes, écrit en h:mm, ou en h:mm:ss hors de la minute ronde (graphe zoomé). */
-const formatMinutes = (minutes: number): string => {
-  const totalS = Math.round(minutes * 60);
-  const hm = `${Math.floor(totalS / 3600)}:${String(Math.floor(totalS / 60) % 60).padStart(2, '0')}`;
-  return totalS % 60 === 0 ? hm : `${hm}:${String(totalS % 60).padStart(2, '0')}`;
-};
 
 /** Session sans séances du compteur : un tableau constant, pour ne pas relancer les calculs qui en dépendent. */
 const NO_INTERVALS: IntervalSeries[] = [];
@@ -842,7 +837,7 @@ function LandModule({ family }: { family: LandFamily }) {
         : `${energy.cumulative[i]} ${energy.cumulativeUnit}`;
       return {
         values: [{ text: main, color: '#e64a19' }, { text: `${formatSpeed(gpx.track[i].smoothedSpeedMs, speedUnit)}${gradeText(i)}` }],
-        at: formatMinutes(trackMinutes[i]),
+        at: formatClockMinutes(trackMinutes[i]),
       };
     })()
     : null;
@@ -1089,7 +1084,7 @@ function LandModule({ family }: { family: LandFamily }) {
             <XAxis dataKey="minutes" type="number" allowDataOverflow
               domain={energyZoom.shown ? [energyZoom.shown.min, energyZoom.shown.max] : ['dataMin', 'dataMax']}
               ticks={energyZoom.shown ? niceTicks(energyZoom.shown) : undefined}
-              tickFormatter={formatMinutes} tick={{ fill: '#555', fontSize: 11 }} />
+              tickFormatter={formatClockMinutes} tick={{ fill: '#555', fontSize: 11 }} />
             <YAxis domain={[0, 'auto']} width={50} tick={{ fill: '#e64a19', fontSize: 11 }}
               label={{ value: energyMode === 'power' ? energy.powerUnit : energy.cumulativeUnit, angle: -90, position: 'insideLeft', fill: '#e64a19', fontSize: 11 }} />
             <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
@@ -1381,10 +1376,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     )}
                     <div className="an-sheet__stats an-sheet__stats--always" style={{ flexShrink: 0 }}>
                       {energy.stats.map((stat) => (
-                        <div key={stat.label} className="an-sheet__stat">
-                          <span className="an-sheet__stat-label">{stat.label}</span>
-                          <strong className="an-sheet__stat-value">{stat.value}{stat.detail && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: 'var(--text-xs)' }}> {stat.detail}</span>}</strong>
-                        </div>
+                        <StatTile key={stat.label} label={stat.label} value={stat.value} detail={stat.detail} />
                       ))}
                     </div>
                     {!stats?.hasElevation && (
@@ -1479,10 +1471,7 @@ function LandModule({ family }: { family: LandFamily }) {
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 700 }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
-                            <button type="button" disabled={!reached} onClick={() => setSelectedZone(shown ? null : z.zone.key)}
-                              style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: reached ? 'pointer' : 'default', backgroundColor: shown ? HIGHLIGHT_SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
-                              {shown ? 'Masquer' : 'Voir'}
-                            </button>
+                            <MapToggle shown={shown} disabled={!reached} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => setSelectedZone(shown ? null : z.zone.key)} />
                           </td>
                         </tr>
                       );

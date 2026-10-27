@@ -1,5 +1,6 @@
 // Banc de test : pentes sur la carte et onglet énergie (§10, point 85).
 // Usage : node pentes.mjs <port> <dossier de travail, chemin Windows> [<dossier des captures>]
+// `DUMP=fichier` relève le texte de la page d'analyse (après l'énergie).
 // Sur un profil neuf, avec réseau (data.geopf.fr pour l'altitude, brouter.de pour l'itinéraire). Le script :
 //  1. importe une course synthétique au nord de Montpellier et l'ouvre, onglets graphiques et énergie ouverts ;
 //  2. « Voir sur la carte » sous le graphe d'altitude : trace en couleurs de pente, légende de pente sur la carte ;
@@ -60,12 +61,27 @@ const listOpfs = (path) => evaluate(`(async () => {
   for (const p of ${JSON.stringify(path)}.split('/')) dir = await dir.getDirectoryHandle(p);
   const names = []; for await (const [name] of dir.entries()) names.push(name); return names.sort();
 })()`);
-/** Traits de la carte (`frame` : son cadre) : nombre, couleurs distinctes, et légende posée dessus. */
+/**
+ * Carte (`frame` : son cadre) : depuis le 27/10 (lot 8, C-O2), la trace colorée est dessinée sur un canevas
+ * (`.leaflet-trace-pane canvas`), non plus en traits SVG. On relève donc le nombre de canevas, le nombre de couleurs
+ * distinctes lues dans leurs pixels (quantifiées par 16, blanc du liseré écarté), les tracés SVG restants
+ * (surbrillances, marqueurs : `svg`), et la légende posée sur la carte.
+ */
 const mapInfo = (frame) => evaluate(`(() => {
-  const paths = [...document.querySelectorAll(${JSON.stringify(`${frame} .leaflet-overlay-pane path`)})].filter((p) => p.getAttribute('stroke-opacity') !== '0');
-  const colors = new Set(paths.map((p) => p.getAttribute('stroke')));
-  const legend = document.querySelector(${JSON.stringify(`${frame} .an-map-legend`)})?.textContent.trim() ?? '(aucune)';
-  return JSON.stringify({ traits: paths.length, couleurs: colors.size, legende: legend });
+  const root = document.querySelector(${JSON.stringify(frame)});
+  const canvases = [...(root?.querySelectorAll('.leaflet-trace-pane canvas') ?? [])];
+  const colors = new Set();
+  for (const canvas of canvases) {
+    const { width, height } = canvas;
+    const px = canvas.getContext('2d').getImageData(0, 0, width, height).data;
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] < 200 || (px[i] > 245 && px[i + 1] > 245 && px[i + 2] > 245)) continue;
+      colors.add(((px[i] >> 4) << 8) | ((px[i + 1] >> 4) << 4) | (px[i + 2] >> 4));
+    }
+  }
+  const svg = [...(root?.querySelectorAll('.leaflet-overlay-pane path') ?? [])].filter((p) => p.getAttribute('stroke-opacity') !== '0').length;
+  const legend = root?.querySelector('.an-map-legend')?.textContent.trim() ?? '(aucune)';
+  return JSON.stringify({ canevas: canvases.length, couleurs: colors.size, svg, legende: legend });
 })()`);
 const buttonTexts = (scope) => evaluate(`[...document.querySelectorAll(${JSON.stringify(`${scope} button`)})].map((b) => b.textContent.trim()).filter((t) => /carte/.test(t)).join(' | ')`);
 const energyTable = () => evaluate(`(() => {
@@ -119,6 +135,8 @@ console.log('après rechargement :', await energyTable());
 console.log('Zones (déplier)    :', await clickButton('Énergie par zone de pente'));
 await wait(300);
 console.log('déplié             :', (await energyTable()).split('\n')[0]);
+// Texte de la page, relevé pour comparer deux versions (DUMP=fichier, relatif au dossier courant).
+if (process.env.DUMP) writeFileSync(process.env.DUMP, await evaluate('document.body.innerText'));
 
 // 4. Surface et pente exclusives (Overpass, si elle répond).
 console.log('Voir (pente)       :', await clickButton('Voir sur la carte'));

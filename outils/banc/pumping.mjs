@@ -2,7 +2,7 @@
 // Usage : node pumping.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau, serveur de développement (le script importe `/src/...` dans la page).
 // Le script fabrique lui-même, dans la page, une session de surf foil de quatre vols et ses capteurs
-// (`.imu` synthétique, `core/imuSynthetic.ts` : chocs de l'eau hors des vols, pumping à 1,5 Hz en vol), et vérifie :
+// (`.imu` synthétique, `core/imuSynthetic.fixture.ts` : chocs de l'eau hors des vols, pumping à 1,5 Hz en vol), et vérifie :
 //  1. Réglages, carte « Surf foil » : la case « Pumping foil » (partie Onglet analyse), cochée, puis le résumé de la carte ;
 //     carte « Surf » (sans foil) : pas de case ;
 //  2. l'import de la session avec ses capteurs, puis l'analyse : Foil et Pumping cochés pour la session (onglet
@@ -150,7 +150,7 @@ await shoot('pumping-reglages');
 await go('/surf', 4000);
 const imported = await evaluate(`(async () => {
   const { encodeImu } = await import('/src/core/imuFile.ts');
-  const { synthImu, SYNTH_WALL_MS } = await import('/src/core/imuSynthetic.ts');
+  const { synthImu, SYNTH_WALL_MS } = await import('/src/core/imuSynthetic.fixture.ts');
   const start = SYNTH_WALL_MS;
   const flights = [[64, 124], [200, 230], [300, 320], [400, 410]];
   const inFlight = (t) => flights.some(([a, b]) => t >= a && t < b);

@@ -17,11 +17,13 @@ import {
   edwardsLoad, efficiencyBlocks, heartRateDrift, timeInZones, type HeartRatePoint, type HeartRateZones,
 } from '../core/heartRate';
 import type { HeartRateProfile } from '../core/sportProfiles';
-import { SPEED_UNIT_LABEL, formatClock, formatShortDuration, isInverseUnit, toDisplaySpeed, type SpeedUnit } from '../core/units';
+import { SPEED_UNIT_LABEL, formatClock, formatClockMinutes, formatShortDuration, isInverseUnit, toDisplaySpeed, type SpeedUnit } from '../core/units';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import type { RunnerProfile } from '../hooks/useRunnerProfile';
 import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
 import { zonesOriginText } from './heartRateOrigin';
+import StatTile from './ui/StatTile';
+import MapToggle from './ui/MapToggle';
 
 /** Vitesse et activité de la trace, pour la dérive et le nuage FC / vitesse (course et vélo). */
 export interface HeartRateEfficiency {
@@ -104,7 +106,7 @@ export function CardioCurve({ track, smoothed, zoom, zones, thresholds, onHoverI
           <XAxis dataKey="minutes" type="number" allowDataOverflow
             domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
             ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-            tickFormatter={(v: number) => formatClock(v * 60_000).replace(/:00$/, '')} tick={{ fill: '#555', fontSize: 11 }} />
+            tickFormatter={(v: number) => formatClockMinutes(v)} tick={{ fill: '#555', fontSize: 11 }} />
         )} />
     </>
   );
@@ -153,18 +155,17 @@ export default function HeartRatePanel({
         {efficiency && scatterUnit !== null && " D'une sortie à l'autre, le nuage qui glisse vers la droite à FC égale dit le progrès."}
       </HelpText>
       <div className="an-sheet__stats an-sheet__stats--always">
-        <div className="an-sheet__stat"><span className="an-sheet__stat-label">FC moyenne</span><strong className="an-sheet__stat-value">{Math.round(stats.avgBpm)} bpm</strong></div>
-        <div className="an-sheet__stat"><span className="an-sheet__stat-label">FC max</span><strong className="an-sheet__stat-value">{stats.maxBpm} bpm</strong></div>
+        <StatTile label="FC moyenne" value={<>{Math.round(stats.avgBpm)} bpm</>} />
+        <StatTile label="FC max" value={<>{stats.maxBpm} bpm</>} />
         {zones && (
-          <div className="an-sheet__stat"><span className="an-sheet__stat-label">S1 · S2</span><strong className="an-sheet__stat-value">{zones.s1} · {zones.s2} bpm</strong></div>
+          <StatTile label="S1 · S2" value={<>{zones.s1} · {zones.s2} bpm</>} />
         )}
         {zoneTimes && (
-          <div className="an-sheet__stat">
-            <span className="an-sheet__stat-label">Charge <HelpToggle helpKey="analyse:charge" label="Qu'est-ce que la charge ?" /></span>
-            <strong className="an-sheet__stat-value">{Math.round(edwardsLoad(zoneTimes, params.loadWeights))}</strong>
-          </div>
+          <StatTile
+            label={<>Charge <HelpToggle helpKey="analyse:charge" label="Qu'est-ce que la charge ?" /></>}
+            value={Math.round(edwardsLoad(zoneTimes, params.loadWeights))} />
         )}
-        <div className="an-sheet__stat"><span className="an-sheet__stat-label">Temps mesuré</span><strong className="an-sheet__stat-value">{formatShortDuration(stats.coveredS)}</strong></div>
+        <StatTile label="Temps mesuré" value={formatShortDuration(stats.coveredS)} />
       </div>
       {loadHelp?.open && zones && <CardioLoadHelp bounds={zones.bounds} weights={params.loadWeights} />}
 
@@ -218,10 +219,7 @@ export default function HeartRatePanel({
                       </div>
                     </td>
                     <td style={cell}>
-                      <button type="button" disabled={s <= 0} onClick={() => onSelectZone(shown ? null : zone)}
-                        style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: s > 0 ? 'pointer' : 'default', backgroundColor: shown ? HIGHLIGHT_SHOWN_COLOR : 'var(--surface-sunken)', color: shown ? '#fff' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px' }}>
-                        {shown ? 'Masquer' : 'Voir'}
-                      </button>
+                      <MapToggle shown={shown} disabled={s <= 0} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => onSelectZone(shown ? null : zone)} />
                     </td>
                   </tr>
                 );

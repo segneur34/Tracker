@@ -1,4 +1,6 @@
 import type { CachedTileEntry } from '../core/tiles';
+import { base64ToBlob, blobToBase64 } from './base64';
+import { filesystem } from './files';
 import { isNativeApp } from './runtime';
 
 /**
@@ -36,22 +38,6 @@ const TILE_DIR = 'tuiles';
  */
 const TILE_TYPE = 'image/png';
 
-const filesystem = () => import('@capacitor/filesystem');
-
-const base64ToBlob = (data: string): Blob => {
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: TILE_TYPE });
-};
-
-const blobToBase64 = (blob: Blob): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).slice(String(reader.result).indexOf(',') + 1));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
 
 /**
  * Tuiles présentes et leur date, lues une fois dans le dossier puis tenues à
@@ -97,7 +83,7 @@ const nativeStore: TileStore = {
     const { Filesystem, Directory } = await filesystem();
     try {
       const { data } = await Filesystem.readFile({ path: `${TILE_DIR}/${key}.png`, directory: Directory.Data });
-      return typeof data === 'string' ? { blob: base64ToBlob(data), savedAtMs: entry.savedAtMs } : null;
+      return typeof data === 'string' ? { blob: base64ToBlob(data, TILE_TYPE), savedAtMs: entry.savedAtMs } : null;
     } catch {
       (await nativeEntries()).delete(key);
       return null;

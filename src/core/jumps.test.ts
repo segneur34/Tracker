@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeImu, encodeImu, selectImuWindows, type ImuRecording } from './imuFile';
-import { SYNTH_WALL_MS, synthImu as record, type SynthMotion as Motion } from './imuSynthetic';
+import { SYNTH_WALL_MS, synthImu as record, type SynthMotion as Motion } from './imuSynthetic.fixture';
 import { pruneImuFile } from './imuPrune';
 import { jumpTrackSpan, measureJumps, pruneWindows, trackIndexAtTime, type MeasuredJump } from './jumps';
 import { SPORT_PROFILES } from './sportProfiles';

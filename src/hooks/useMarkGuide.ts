@@ -10,6 +10,7 @@ import {
 import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
 import { getRecorderState, subscribeToFixes, subscribeToRecorder } from './useRecorder';
 import { effectiveMarkGuide } from './useSportSettings';
+import { createStore } from './createStore';
 
 /**
  * Guidage vers les balises pendant l'enregistrement, hors des composants
@@ -74,11 +75,10 @@ interface Session {
 }
 
 let session: Session | null = null;
-let view: MarkGuideView = INACTIVE;
-const listeners = new Set<() => void>();
+const store = createStore<MarkGuideView>(INACTIVE);
 
 const publish = () => {
-  view = session
+  store.set(session
     ? {
       active: true,
       marks: session.marks,
@@ -93,8 +93,7 @@ const publish = () => {
       muted: session.muted,
       validationRadiusM: validationRadiusM(session.settings),
     }
-    : INACTIVE;
-  listeners.forEach((listener) => listener());
+    : INACTIVE);
 };
 
 /** Règle le rythme d'approche de la balise visée, s'il a changé. */
@@ -220,18 +219,8 @@ export const setBeepsMuted = (muted: boolean): void => {
   publish();
 };
 
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
-
 /** État du guidage, hors React (notification de l'enregistrement). */
-export const getMarkGuideView = (): MarkGuideView => view;
-
-/** Changements du guidage, hors React ; rend le désabonnement. */
-export const subscribeToMarkGuide = (listener: () => void): (() => void) => subscribe(listener);
+export const getMarkGuideView = (): MarkGuideView => store.get();
 
 /** État du guidage, relu à chaque position. */
-export const useMarkGuide = (): MarkGuideView => useSyncExternalStore(subscribe, () => view);
+export const useMarkGuide = (): MarkGuideView => useSyncExternalStore(store.subscribe, store.get);

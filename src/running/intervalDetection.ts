@@ -1,3 +1,4 @@
+import { median } from '../core/speedFilter';
 import type { IntervalDetectionProfile } from '../core/sportProfiles';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { INTERVAL_LIMITS, type IntervalWorkout } from '../recording/intervalTimer';
@@ -131,12 +132,6 @@ export const otsuThreshold = (values: number[], weights: number[]): OtsuSplit | 
     }
   }
   return result;
-};
-
-const median = (values: number[]): number => {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
 
 /** Durée en secondes arrondie à 5 s, ramenée dans les bornes du compteur. */

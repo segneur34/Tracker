@@ -13,6 +13,7 @@ import { readIntervalSeries, type IntervalSeries } from '../recording/intervalTi
 import { isSportType } from '../recording/session';
 import { isValidCarriedLoad } from '../running/energy';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
+import { isFiniteNumber, isObject } from '../core/basics';
 
 /**
  * Fiche d'une session : le fichier JSON rangé à côté de son GPX dans le
@@ -334,10 +335,6 @@ export interface SessionRecord {
   test?: SessionTest;
 }
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && isFinite(value);
 
 const readSummary = (raw: unknown): SessionSummary | null => {
   if (!isObject(raw)) return null;

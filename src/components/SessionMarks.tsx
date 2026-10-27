@@ -97,7 +97,7 @@ export function SessionMarksList({ view, distanceUnit, shownMs, onShow, accent }
                 value={m.mark.label ?? ''} placeholder={`Note ${m.n}`} disabled={!editable} aria-label={`Nom de la note ${m.n}`}
                 onChange={(e) => rename(m.mark, e.target.value)} />
               <Button size="s" aria-pressed={shown} onClick={() => onShow(shown ? null : m.mark.timeMs)}
-                style={shown ? { backgroundColor: accent, color: '#fff', borderColor: accent } : undefined}>
+                style={shown ? { backgroundColor: accent, color: 'var(--on-accent)', borderColor: accent } : undefined}>
                 {shown ? 'Masquer' : 'Voir'}
               </Button>
               {editable && (
