@@ -6,7 +6,7 @@ L'utilisateur répond par numéro : « ok », ou ce qui ne va pas. Les numéros 
 
 ## À faire (paquets en attente de validation)
 
-APK 0.3.76 installée. Ces deux essais restent avant de marquer « validés » les lots de la revue du 27/10 et les lots A et B du 26/10 (file des lots), puis de passer la doc.
+APK 0.3.78 installée (28/10 : lots 13, boutons orange et « Étape », et 14, dépendances npm dont le greffon GPS 8.5.0). Ces deux essais restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14 (file des lots), puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14.
 
 | N° | Essai | Attendu |
 |---|---|---|
