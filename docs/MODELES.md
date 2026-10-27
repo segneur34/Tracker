@@ -57,3 +57,11 @@ Repérés le 24/10, pas appliqués : tests et banc en sortie résumée dans la c
 ## Ajuster le tableau
 
 Après trois ou quatre lots, noter ici les tâches qui ont dû remonter d'un modèle (Sonnet → Opus, Opus → Fable) et celles qui ont tenu un cran plus bas que prévu, et corriger le tableau.
+
+## Phrase à coller dans une demande
+
+En tête ou en fin de message, pour déclencher la vérification du modèle :
+
+> Avant de commencer : d'après docs/MODELES.md, dis-moi si le modèle de cette session (et son effort) convient à cette demande. S'il y a un gros décalage dans un sens ou dans l'autre, propose le modèle et l'effort adaptés en deux phrases et attends ma réponse ; sinon, dis « modèle ok » et enchaîne.
+
+Version courte : « Modèle ok pour ça ? (docs/MODELES.md) Sinon propose avant de commencer. »
