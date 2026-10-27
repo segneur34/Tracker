@@ -67,6 +67,46 @@ Quand l'utilisateur donne des notes en vrac :
 - Voulu : des couleurs lisibles par un daltonien.
 - Questions : quel type de daltonisme ? Pour qui ?
 
+### 5. Montre connectée Android · priorité 2 (proposée)
+- Noté le : 22/10 (WhatsApp) · reçu le : 27/10 · état : à clarifier
+- Tel que noté : « Lien avec montre connectée android possible ? »
+- Où : enregistrement (capteurs), ou import des sessions.
+- Aujourd'hui : seule la ceinture cardio Bluetooth est lue (§12 d'ETAT) ; une montre est citée parmi les capteurs à venir (ETAT §11, point 118) ; les GPX d'une montre s'importent déjà par le dossier mémoire.
+- Voulu : un lien avec la montre, à préciser.
+- Questions : quelle montre (marque, Wear OS ou non) ? Quoi : lire sa FC à la place de la ceinture, importer ses sessions sans passer par un fichier, ou piloter l'enregistrement depuis le poignet ?
+
+### 6. Tailles de police de Statistiques alignées · priorité 2 (proposée)
+- Noté le : 25/10 10:46 (WhatsApp) · reçu le : 27/10 · état : à clarifier
+- Tel que noté : « aligner les taille de police dans statistique »
+- Où : page Statistiques.
+- Aujourd'hui : plusieurs tailles (`--text-s`, `--text-xs`, titres de sections, chiffres des tuiles) ; rien n'a été touché depuis la note.
+- Voulu : des tailles cohérentes entre les blocs de la page.
+- Questions : quels blocs se contredisent (tuiles de chiffres, titres de sections, légende du graphe, liste) ? Sur téléphone, ordinateur ou les deux ?
+
+### 7. Boutons d'Entraînement dans l'orange de la famille · priorité 2 (proposée)
+- Noté le : 25/10 16:55 (WhatsApp) · reçu le : 27/10 · état : à clarifier
+- Tel que noté : « la couleur de bouton dans entrainement doit s'aligner avec le orange de l'entrainement »
+- Où : page Entraînement (`/fractionne`) et ses pages Séances, Timer, Tests.
+- Aujourd'hui : les icônes des tuiles sont déjà en orange (`--fractionne`) ; les boutons d'action (« Lancer », « Créer un compteur », éditeur) prennent la couleur commune.
+- Voulu : les boutons de la famille en orange.
+- Questions : quels boutons exactement (« Lancer » du Timer, « Créer un compteur », ceux de l'éditeur, tous) ? Le bouton rond de l'enregistrement garde son vert et son rouge (décision transverse).
+
+### 8. Notification propre à certains sports · priorité 1 (proposée)
+- Noté le : 25/10 21:56 (WhatsApp, fin de la note sur « Étape ») · reçu le : 27/10 · état : à clarifier
+- Tel que noté : « chantier pour plus tard faire des notif que pour certain sport »
+- Où : Réglages › activité › enregistrement › notification.
+- Aujourd'hui : les deux chiffres de la notification se règlent déjà par activité (« Étape » d'office en Entraînement depuis le point 171) ; la notification elle-même est toujours là pendant un enregistrement (Android l'exige pour le GPS en arrière-plan).
+- Voulu : à préciser.
+- Questions : s'agit-il de choisir les chiffres par sport (déjà fait), de ne pas montrer de notification pour certains sports (impossible pendant un enregistrement GPS), ou d'autre chose (bips, alertes de zone) ?
+
+### 9. Dépendances npm à mettre à jour · priorité 3 (proposée)
+- Noté le : 27/10 19:47 (WhatsApp, « verifier les dependance ») · reçu le : 27/10 · état : prête
+- Où : `package.json`, `npm outdated`, `npm audit`.
+- Aujourd'hui (relevé du 27/10 au soir) : aucune vulnérabilité dans les dépendances de production ; 7 dans celles de développement (2 hautes : `vite` 8.3.0 via `launch-editor`, `source-map-js` ; 5 modérées : `@vitest/mocker`, `uuid` via `@capacitor/cli`), toutes réparables par `npm audit fix`, sauf `uuid` qui demanderait `--force`. Quinze paquets ont une version plus récente dans la même majeure (Capacitor 8.5.3, Vite 8.3.5, Vitest 5.0.5, React 19.3.1, oxlint 1.90, `@capgo/background-geolocation` 8.5.0…) ; deux changent de majeure (TypeScript 7, `@types/node` 26), à ne pas prendre sans un lot dédié.
+- Voulu : mettre à jour dans la même majeure (`npm update` puis `npm audit fix`), puis verif complète, banc `general`, et un APK pour le greffon GPS.
+- Pourquoi : deux failles hautes côté outils de développement ; le greffon GPS et Capacitor ont des correctifs.
+- Questions : aucune ; c'est un petit lot Sonnet medium quand vous voulez.
+
 ## Archives
 
 (vide)
