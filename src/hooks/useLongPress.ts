@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import { buzz } from '../platform/beeper';
+
+/** Identifiant de l'appui au clavier, qu'aucun doigt ne porte (les `pointerId` sont positifs). */
+const KEYBOARD = -1;
 
 /**
  * Appui long sur un élément : `onLongPress` part quand le doigt est resté
@@ -7,7 +10,9 @@ import { buzz } from '../platform/beeper';
  * court laisse passer le clic ordinaire (le bouton garde son rôle). Relâcher,
  * sortir de l'élément ou laisser le système reprendre le geste (défilement)
  * abandonne l'appui. Seul le premier doigt compte : un second, posé pendant
- * l'appui, est ignoré, et ne peut ni le lancer ni l'abandonner.
+ * l'appui, est ignoré, et ne peut ni le lancer ni l'abandonner. Au clavier,
+ * Entrée ou Espace tenus valent un doigt posé (relâcher la touche ou quitter
+ * le bouton abandonne).
  *
  * @param getDurationMs lue à chaque appui, pour suivre un réglage changé entre-temps.
  * @param enabled faux : aucun appui long, le clic reste ordinaire.
@@ -20,13 +25,15 @@ export const useLongPress = (onLongPress: () => void, getDurationMs: () => numbe
   /** Durée de l'appui en cours, `null` au repos : sert à l'animation de l'anneau. */
   const [pressingMs, setPressingMs] = useState<number | null>(null);
 
-  const cancel = useCallback((e: PointerEvent) => {
-    if (pointer.current !== null && e.pointerId !== pointer.current) return;
+  /** Fin de l'appui de `id` (un doigt, ou le clavier) ; un autre appui en cours n'est pas touché. */
+  const release = useCallback((id: number) => {
+    if (pointer.current !== null && id !== pointer.current) return;
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
     pointer.current = null;
     setPressingMs(null);
   }, []);
+  const cancel = useCallback((e: PointerEvent) => release(e.pointerId), [release]);
 
   // Quand l'appui long cesse d'avoir un sens (arrêt) ou au démontage, le minuteur tombe, et le cadran avec lui.
   useEffect(() => {
@@ -39,11 +46,12 @@ export const useLongPress = (onLongPress: () => void, getDurationMs: () => numbe
     };
   }, [enabled]);
 
-  const onPointerDown = useCallback(
-    (e: PointerEvent) => {
-      if (!enabled || timer.current !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  /** Début d'un appui de `id`, ignoré pendant un autre. */
+  const press = useCallback(
+    (id: number) => {
+      if (!enabled || timer.current !== null) return;
       fired.current = false;
-      pointer.current = e.pointerId;
+      pointer.current = id;
       const duration = getDurationMs();
       setPressingMs(duration);
       timer.current = window.setTimeout(() => {
@@ -58,6 +66,33 @@ export const useLongPress = (onLongPress: () => void, getDurationMs: () => numbe
     [enabled, getDurationMs, onLongPress]
   );
 
+  const onPointerDown = useCallback(
+    (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      press(e.pointerId);
+    },
+    [press]
+  );
+
+  // Clavier : Entrée active le bouton dès l'appui (un appui court y garde son rôle), Espace au lâcher, annulé par
+  // `onClick` si l'appui long a abouti.
+  const onKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) press(KEYBOARD);
+    },
+    [press]
+  );
+  const onKeyUp = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      release(KEYBOARD);
+      // Entrée a déjà cliqué à l'appui : aucun clic ne suit son lâcher, à annuler.
+      if (e.key === 'Enter') fired.current = false;
+    },
+    [release]
+  );
+  const onBlur = useCallback(() => release(KEYBOARD), [release]);
+
   const onClick = useCallback((e: MouseEvent) => {
     if (!fired.current) return;
     fired.current = false;
@@ -71,6 +106,9 @@ export const useLongPress = (onLongPress: () => void, getDurationMs: () => numbe
       onPointerUp: cancel,
       onPointerLeave: cancel,
       onPointerCancel: cancel,
+      onKeyDown,
+      onKeyUp,
+      onBlur,
       onClick,
       // Par sécurité : Android ouvre sinon son menu contextuel sur un élément tenu.
       onContextMenu: (e: MouseEvent) => { if (enabled) e.preventDefault(); },

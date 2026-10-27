@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildActivityChart, isoWeek, startOfIsoWeek, type ChartSession } from './activityChart';
+import { activityBarUnit, buildActivityChart, chartPeriodBounds, isoWeek, startOfIsoWeek, type ChartSession } from './activityChart';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime();
@@ -99,5 +99,59 @@ describe('buildActivityChart', () => {
     const chart = buildActivityChart([session('a', at(2026, 6, 10))], 'tout', now, []);
     expect(chart.bars.map((b) => b.label)).toEqual(['J', 'J', 'A', 'S']);
     expect(buildActivityChart([], 'tout', now, []).bars.map((b) => b.title)).toEqual(['septembre 2026']);
+  });
+});
+
+describe('année civile', () => {
+  it('le 2 janvier 2027 : les jours de 2027 seulement, pas l’année ISO 2026', () => {
+    const now = at(2027, 1, 2, 18); // samedi, semaine 53 de 2026
+    const chart = buildActivityChart(
+      [session('a', at(2026, 12, 31)), session('b', at(2027, 1, 1)), session('c', at(2027, 1, 2, 9))],
+      'annee', now, ['voile']
+    );
+    expect(chart.title).toBe('Année 2027, par semaine');
+    expect(chart.bars).toHaveLength(1);
+    expect(chart.bars[0].startMs).toBe(new Date(2027, 0, 1).getTime());
+    expect(chart.totals[0].sessions).toBe(2);
+    expect(chartPeriodBounds('annee', now)).toEqual({ fromMs: new Date(2027, 0, 1).getTime(), toMs: new Date(2027, 0, 4).getTime() });
+  });
+
+  it('le 1er janvier 2026 : sans les 29 au 31 décembre 2025 de sa semaine', () => {
+    const now = at(2026, 1, 1, 18);
+    const chart = buildActivityChart([session('a', at(2025, 12, 30)), session('b', at(2026, 1, 1, 9))], 'annee', now, ['voile']);
+    expect(chart.title).toBe('Année 2026, par semaine');
+    expect(chart.bars.map((b) => b.label)).toEqual(['S1']);
+    expect(chart.totals[0].sessions).toBe(1);
+  });
+
+  it('le 30 décembre 2026 : la dernière semaine s’arrête au 31 décembre', () => {
+    const now = at(2026, 12, 30, 18);
+    const { fromMs, toMs } = chartPeriodBounds('annee', now);
+    expect(fromMs).toBe(new Date(2026, 0, 1).getTime());
+    expect(toMs).toBe(new Date(2027, 0, 1).getTime());
+    expect(buildActivityChart([], 'annee', now, []).bars).toHaveLength(53);
+  });
+});
+
+describe('activityBarUnit', () => {
+  const bar = (...counts: number[]) => ({ stacks: counts.map((count, i) => ({ activityId: String(i), count })) });
+
+  it('garde la hauteur maximale tant que tout tient', () => {
+    expect(activityBarUnit([bar(1), bar(2)], 58, 2, 17)).toBe(17);
+    expect(activityBarUnit([], 58, 2, 17)).toBe(17);
+  });
+
+  it('ne tombe jamais à zéro, à 59 et à 120 sessions dans une barre', () => {
+    for (const n of [59, 120]) {
+      const unit = activityBarUnit([bar(n), bar(3)], 58, 2, 17);
+      expect(unit).toBeGreaterThan(0);
+      expect(n * unit).toBeCloseTo(58);
+    }
+  });
+
+  it('compte les écarts entre les piles', () => {
+    // Cinq activités, dix sessions : 58 px moins 4 écarts de 2 px.
+    const unit = activityBarUnit([bar(2, 2, 2, 2, 2)], 58, 2, 17);
+    expect(10 * unit + 4 * 2).toBeCloseTo(58);
   });
 });

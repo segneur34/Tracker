@@ -7,7 +7,7 @@ import { AvatarPicker, ProfileAvatar } from '../components/ProfileAvatar';
 import ProfileRoot, { RootSlot } from '../components/ProfileRoot';
 import { IconChevronRight } from '../components/icons';
 import SegmentedControl from '../components/ui/SegmentedControl';
-import { activityFamily, sessionActivity, type Activity } from '../core/activities';
+import { activityFamily, type Activity } from '../core/activities';
 import { activityIcon } from '../core/activityIcons';
 import { toDisplayDistance } from '../core/units';
 import { libraryPath } from '../hooks/useLibraryNavigation';
@@ -17,10 +17,12 @@ import { useProfileRoot } from '../hooks/useProfileRoot';
 import { runnerAvatar, runnerName, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { useStoredRecord } from '../hooks/useStoredRecord';
+import { useNow } from '../hooks/useNow';
 import { useVisibility } from '../hooks/useSportSettings';
+import { useVisibleStatSessions } from '../hooks/useVisibleStatSessions';
 import { CHART_PERIODS, type ChartRange } from '../library/activityChart';
 import { activityShares, favoriteActivity } from '../library/profile';
-import { inBounds, isStatsPeriod, statSessionOf, statsPeriodBounds, statsTotals, type StatSession } from '../library/stats';
+import { inBounds, isStatsPeriod, statsPeriodBounds, statsTotals } from '../library/stats';
 import './ProfilePage.css';
 
 /**
@@ -102,14 +104,14 @@ function ProfilePage() {
   const navigate = useNavigate();
   const { status, sessions, scanning } = useSessionLibrary();
   const backdrop = useFavoriteBackdrop();
-  const { activities, isShown } = useVisibility();
+  const { activities } = useVisibility();
   /** Le nom ou pseudo de Réglages en titre, « Profil » sans lui. */
   const { profile, setAvatar } = useRunnerProfile();
   const name = runnerName(profile);
   const avatar = runnerAvatar(profile);
   /** Choix de la photo ouvert sous l'en-tête : non retenu. */
   const [picking, setPicking] = useState(false);
-  const [nowMs] = useState(() => Date.now());
+  const nowMs = useNow();
   const { value: view, update: rememberView } = useStoredRecord<ProfileView>(VIEW_NAMESPACE, VIEW_KEY, VIEW_DEFAULTS);
   const period: ChartRange = isStatsPeriod(view.periode) ? view.periode : 'annee';
   const [active, setActive] = useState<string | null>(null);
@@ -117,19 +119,8 @@ function ProfilePage() {
   const [othersOpen, setOthersOpen] = useState(false);
   const { open, toggle } = useOpenSections('profil', DETAIL_DEFAULT);
 
-  // Sessions classées et visibles. Une session peut tenir d'une activité de base, hors de la liste : elle est
-  // gardée, avec son nom et sa couleur.
-  const { all, activityById } = useMemo(() => {
-    const list: StatSession[] = [];
-    const byId = new Map(activities.map((a) => [a.id, a]));
-    for (const s of sessions) {
-      const a = sessionActivity(activities, s.record.activityId, s.record.sport);
-      if (!a || !isShown(a)) continue;
-      if (!byId.has(a.id)) byId.set(a.id, a);
-      list.push(statSessionOf(s.file, s.record, a));
-    }
-    return { all: list, activityById: byId };
-  }, [sessions, activities, isShown]);
+  // Sessions classées et visibles, avec les activités de base qu'elles emploient (nom et couleur).
+  const { all, activityById } = useVisibleStatSessions();
 
   // Racine : toutes les sessions, quelle que soit la période ; son détail s'ouvre sous le carré, non retenu.
   const root = useProfileRoot(all, profile, nowMs);

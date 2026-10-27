@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { buildRootModel, layoutKey, ROOT_STYLE, ROOTLET_MINUTES, MAX_ROOTLETS, type Box, type RootLayout, type RootModel } from '../core/rootPath';
 import { useStoredRecord, readStoredRecord } from '../hooks/useStoredRecord';
+import { pushBackLayer } from '../platform/backButton';
 import { levelText, type RootGrowth } from '../library/rootGrowth';
 import { drawRoot, readRootColors, type RootColors, type RootFrame } from './drawRoot';
 import './ProfileRoot.css';
@@ -89,9 +90,12 @@ function RootBubble({ growth, goalMin, top, right, onClose }: {
     const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('pointerdown', away);
     document.addEventListener('keydown', escape);
+    // Le retour d'Android ferme la bulle, sans quitter le Profil.
+    const removeLayer = pushBackLayer(onClose);
     return () => {
       document.removeEventListener('pointerdown', away);
       document.removeEventListener('keydown', escape);
+      removeLayer();
     };
   }, [onClose]);
 
@@ -133,6 +137,16 @@ function RootBubble({ growth, goalMin, top, right, onClose }: {
   );
 }
 
+/** Pixels de l'appareil au plus pour le canevas, qui couvre toute la page : au-delà, sa densité baisse (jamais sous 1). */
+const CANVAS_MAX_PIXELS = 4_000_000;
+
+/** Densité du canevas : celle de l'écran, 2 au plus, abaissée pour tenir dans `CANVAS_MAX_PIXELS`. */
+const canvasDensity = (width: number, height: number): number => {
+  const screen = Math.min(2, window.devicePixelRatio || 1);
+  const area = width * height;
+  return area <= 0 ? screen : Math.max(Math.min(1, screen), Math.min(screen, Math.sqrt(CANVAS_MAX_PIXELS / area)));
+};
+
 /** Ce qui se dessine hors animation. */
 const restFrame = (growth: RootGrowth): RootFrame => ({
   level: growth.level, maxLevel: growth.maxLevel, growthSteps: growth.growthSteps,
@@ -158,7 +172,7 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
   onClose: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const modelRef = useRef<{ key: string; model: RootModel | null; width: number; height: number } | null>(null);
+  const modelRef = useRef<{ key: string; model: RootModel | null; width: number; height: number; dpr: number } | null>(null);
   const colorsRef = useRef<RootColors | null>(null);
   /** État vu à la dernière visite, relu une fois à l'ouverture ; `playedRef` : ce qui a changé depuis est rejoué. */
   const [seenAtOpen] = useState(readSeen);
@@ -175,8 +189,7 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
     if (!canvas || !built) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(built.dpr, 0, 0, built.dpr, 0, 0);
     ctx.clearRect(0, 0, built.width, built.height);
     if (built.model && colorsRef.current) drawRoot(ctx, built.model, frameRef.current, colorsRef.current, ROOT_STYLE);
     // Niveau dessiné, lu par le banc (`outils/banc/racine.mjs`).
@@ -204,13 +217,13 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
     const right = Math.round(width - layout.slot.r);
     setAnchor((a) => (a.top === top && a.right === right ? a : { top, right }));
     if (modelRef.current?.key === key) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = canvasDensity(width, height);
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
     colorsRef.current = readRootColors(canvas);
-    modelRef.current = { key, model: buildRootModel(layout, ROOT_STYLE), width, height };
+    modelRef.current = { key, model: buildRootModel(layout, ROOT_STYLE), width, height, dpr };
     paint();
   }, [cardSelectors, paint]);
 

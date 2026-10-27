@@ -504,6 +504,9 @@ export const topSessions = (
 /** Pas des repères d'un axe des dates. */
 export type DateTickUnit = 'jour' | 'mois' | 'annee';
 
+const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
+
 const TICK_STEPS: { unit: DateTickUnit; days?: number; months?: number }[] = [
   { unit: 'jour', days: 1 },
   { unit: 'jour', days: 2 },
@@ -542,6 +545,10 @@ const ticksOfStep = (min: number, max: number, step: (typeof TICK_STEPS)[number]
  */
 export const dateTicks = (min: number, max: number, maxTicks = 6): { ticks: number[]; unit: DateTickUnit } => {
   for (const step of TICK_STEPS) {
+    // Un pas qui donne sûrement trop de repères est sauté sans les construire (sur dix ans, le pas d'un jour en
+    // ferait 3 650, à chaque image d'un zoom) : au moins `écart / pas le plus long` moins un, l'heure d'été comprise.
+    const longestStepMs = step.days !== undefined ? step.days * (DAY_MS + HOUR_MS) : step.months! * 31 * DAY_MS;
+    if (Math.floor((max - min) / longestStepMs) - 1 > maxTicks) continue;
     const ticks = ticksOfStep(min, max, step);
     if (ticks.length <= maxTicks) return { ticks, unit: step.unit };
   }

@@ -139,7 +139,11 @@ const joinSegments = (segments: [Point, Point][]): Point[][] => {
   const key = ([x, y]: Point) => `${Math.round(x * 100)},${Math.round(y * 100)}`;
   const byEnd = new Map<string, number[]>();
   segments.forEach(([p, q], i) => {
-    for (const k of [key(p), key(q)]) byEnd.set(k, [...(byEnd.get(k) ?? []), i]);
+    for (const k of [key(p), key(q)]) {
+      const list = byEnd.get(k);
+      if (list) list.push(i);
+      else byEnd.set(k, [i]);
+    }
   });
   const used = new Set<number>();
   const next = (point: Point): Point | null => {

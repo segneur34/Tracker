@@ -11,7 +11,7 @@ import {
 import { analysisTabs, isTabShown, toggleTabChoice, type TabChoices } from '../core/analysisTabs';
 import type { SportType } from '../core/types';
 import {
-  DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatPace, formatSpeedValue, fromDisplaySpeed, toDisplaySpeed,
+  DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, editSpeedUnit, formatPace, formatSpeedValue, fromDisplaySpeed, toDisplaySpeed,
   type DistanceUnit, type SpeedUnit,
 } from '../core/units';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
@@ -452,7 +452,7 @@ function SettingsPage() {
                 const setThreshold = (next: number | null) =>
                   setFor(id, 'activeThreshold', next === null ? null : toDisplaySpeed(fromDisplaySpeed(next, thresholdUnit), p.thresholdUnit));
                 // Bornes de couleur, saisies en km/h quand l'unité est une allure (min/km).
-                const rangeUnit: SpeedUnit = s.speedUnit === 'minkm' ? 'kmh' : s.speedUnit;
+                const rangeUnit = editSpeedUnit(s.speedUnit);
                 const fallbackRange = defaultSpeedRangeOf(activity);
                 const shownRange = s.speedRange ?? fallbackRange;
                 // Voile sans réglage : champs vides, les bornes suivent l'allure de chaque session, sauf bornes fixes (pré-réglage, bateau).

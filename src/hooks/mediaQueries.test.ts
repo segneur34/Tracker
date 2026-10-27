@@ -35,3 +35,33 @@ describe('rupture téléphone / ordinateur', () => {
     for (const { file, query } of landscape) expect(query, file).toBe(PHONE_LANDSCAPE_QUERY);
   });
 });
+
+/** Écran essayé : largeur, hauteur en px, pointeur principal. */
+interface Screen { width: number; height: number; pointer: 'fine' | 'coarse' | 'none' }
+
+/** Évalue une liste de requêtes simple (`(trait: valeur) and …, …`), le peu qu'emploie la rupture. */
+const matches = (query: string, screen: Screen): boolean =>
+  query.split(',').some((part) => [...part.matchAll(/\(([a-z-]+):\s*([^)]+)\)/g)].every(([, feature, value]) => {
+    switch (feature) {
+      case 'max-width': return screen.width <= parseFloat(value);
+      case 'min-width': return screen.width >= parseFloat(value);
+      case 'max-height': return screen.height <= parseFloat(value);
+      case 'min-height': return screen.height >= parseFloat(value);
+      case 'pointer': return screen.pointer === value.trim();
+      case 'orientation': return (screen.width > screen.height ? 'landscape' : 'portrait') === value.trim();
+      default: throw new Error(`trait inconnu : ${feature}`);
+    }
+  }));
+
+describe('NARROW_QUERY et WIDE_QUERY', () => {
+  it('sont le contraire exact l’une de l’autre, pointeur absent compris', () => {
+    for (const width of [320, 767, 767.98, 768, 834, 1024, 1920]) {
+      for (const height of [300, 375, 499, 499.98, 500, 800]) {
+        for (const pointer of ['fine', 'coarse', 'none'] as const) {
+          const screen = { width, height, pointer };
+          expect(matches(NARROW_QUERY, screen), JSON.stringify(screen)).toBe(!matches(WIDE_QUERY, screen));
+        }
+      }
+    }
+  });
+});

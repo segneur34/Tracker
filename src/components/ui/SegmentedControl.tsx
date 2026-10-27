@@ -155,10 +155,12 @@ function SegmentedControl<K extends string>({ label, items, value, onChange, acc
       onClickCapture={onClickCapture}
       style={accent ? ({ '--seg-accent': accent } as CSSProperties) : undefined}>
       {thumb && <span className="ui-segmented__thumb" aria-hidden style={{ transform: `translateX(${drag ? drag.left : thumb.left}px)`, width: thumb.width }} />}
-      {items.map((item) => {
+      {items.map((item, i) => {
         const checked = item.key === value;
+        // Sans choix coché (valeur absente des choix), le premier reste atteignable à la tabulation.
+        const focusable = checked || (i === 0 && !items.some((it) => it.key === value));
         return (
-          <button key={item.key} type="button" role="radio" aria-checked={checked} tabIndex={checked ? 0 : -1}
+          <button key={item.key} type="button" role="radio" aria-checked={checked} tabIndex={focusable ? 0 : -1}
             className={item.key === lit ? 'is-lit' : undefined}
             title={item.title} aria-label={item.title} onClick={() => onChange(item.key)}>
             {item.label}

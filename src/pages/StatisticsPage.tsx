@@ -17,7 +17,7 @@ import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from '../components/he
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
-import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, sessionActivity, type Activity } from '../core/activities';
+import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, SPORT_PROFILES, getSportProfile, type SportFamily } from '../core/sportProfiles';
 import {
   DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, isInverseUnit,
@@ -25,16 +25,18 @@ import {
 } from '../core/units';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
+import { useNow } from '../hooks/useNow';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { runnerHeartRateZones, useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { readStoredRecord, useStoredRecord } from '../hooks/useStoredRecord';
-import { effectiveDistanceUnit, effectiveFoil, effectiveHrOffset, effectiveSpeedUnit, useVisibility } from '../hooks/useSportSettings';
+import { useVisibleStatSessions, visibleStatSessions } from '../hooks/useVisibleStatSessions';
+import { effectiveDistanceUnit, effectiveHrOffset, effectiveSpeedUnit, useVisibility } from '../hooks/useSportSettings';
 import {
   STATS_PERIODS, TREND_SESSIONS, averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, defaultMetricKey, heartRatePoints, formatDateTick,
-  groupTotals, inBounds, isStatsMetricKey, isStatsPeriod, metricSeries, metricsOf, recordKindsOf, regularity, statSessionOf, statsMetric,
+  groupTotals, inBounds, isStatsMetricKey, isStatsPeriod, metricSeries, metricsOf, recordKindsOf, regularity, statsMetric,
   statsPeriodBounds, statsTotals, topSessions, type MetricPoint, type StatSession, type StatsMetricKey, type StatsPeriod, type StatsRecordKind,
   type StatsTotals, type ZoneBoundsOf,
 } from '../library/stats';
@@ -197,6 +199,15 @@ const SerieShape = ({ shape }: { shape: 'circle' | 'triangle' }) => (
 
 const CHOICE_DEFAULT = { choix: false };
 
+/**
+ * Aide de la charge, sous les chiffres du cardio : seul ce petit composant lit l'état des aides, pour qu'un « ? »
+ * ouvert ou fermé ailleurs ne redessine pas toute la page et ses graphes.
+ */
+function CardioLoadHelpSlot({ bounds }: { bounds: Parameters<typeof CardioLoadHelp>[0]['bounds'] }) {
+  const help = useHelp('stats:charge');
+  return help?.open ? <CardioLoadHelp bounds={bounds} weights={LOAD_WEIGHTS} period /> : null;
+}
+
 function StatisticsPage() {
   const [params, setParams] = useSearchParams();
   const { status, sessions, scanning } = useSessionLibrary();
@@ -204,9 +215,8 @@ function StatisticsPage() {
   const { activities, families, isShown, shownActivities } = useVisibility();
   const openSession = useOpenSession();
   const narrow = useNarrowScreen();
-  const [nowMs] = useState(() => Date.now());
+  const nowMs = useNow();
   const [picked, setPicked] = useState<string | null>(null);
-  const loadHelp = useHelp('stats:charge');
   const { open, toggle } = useOpenSections<StatsSection>(STORAGE_ID, STATS_SECTION_DEFAULTS);
   /** Boutons glissants de famille, d'activité et de période : repliés sous « Sélection » au départ, état retenu. */
   const choice = useOpenSections(`${STORAGE_ID}.choix`, CHOICE_DEFAULT);
@@ -236,18 +246,11 @@ function StatisticsPage() {
   // Sessions classées et visibles ; celles d'une famille cachée ouverte par son adresse aussi. Une session
   // peut tenir d'une activité de base, hors de la liste (son calcul sans activité créée, activité supprimée) :
   // elle est gardée avec les activités de la liste, pour avoir sa pastille, son nom et sa couleur.
-  const { all, activityById } = useMemo(() => {
-    const list: StatSession[] = [];
-    const byId = new Map(activities.map((a) => [a.id, a]));
-    for (const s of sessions) {
-      const a = sessionActivity(activities, s.record.activityId, s.record.sport);
-      if (!a) continue;
-      if (!isShown(a) && !(familyHidden && activityFamily(a) === family)) continue;
-      if (!byId.has(a.id)) byId.set(a.id, a);
-      list.push(statSessionOf(s.file, s.record, a, s.record.analysis?.foil ?? effectiveFoil(a) ?? false));
-    }
-    return { all: list, activityById: byId };
-  }, [sessions, activities, isShown, familyHidden, family]);
+  const visible = useVisibleStatSessions();
+  const { all, activityById } = useMemo(
+    () => (familyHidden ? visibleStatSessions(sessions, activities, isShown, family) : visible),
+    [visible, familyHidden, sessions, activities, isShown, family]
+  );
   const activityParam = params.get('activite');
   const activity: Activity | null =
     family !== null && activityParam !== null && activityById.get(activityParam) && activityFamily(activityById.get(activityParam)!) === family
@@ -336,10 +339,17 @@ function StatisticsPage() {
   const hrPoints = useMemo(() => heartRatePoints(inPeriod), [inPeriod]);
   const hrSeries = useMemo(() => {
     const byActivity = new Map<string, typeof hrPoints>();
-    for (const p of hrPoints) byActivity.set(p.activityId, [...(byActivity.get(p.activityId) ?? []), p]);
+    for (const p of hrPoints) {
+      const list = byActivity.get(p.activityId);
+      if (list) list.push(p);
+      else byActivity.set(p.activityId, [p]);
+    }
     return [...byActivity.entries()];
   }, [hrPoints]);
-  const hrTicks = hrPoints.length > 0 ? dateTicks(hrPoints[0].startMs - 86_400_000, hrPoints[hrPoints.length - 1].startMs + 86_400_000, narrow ? 4 : 6) : null;
+  const hrTicks = useMemo(
+    () => (hrPoints.length > 0 ? dateTicks(hrPoints[0].startMs - 86_400_000, hrPoints[hrPoints.length - 1].startMs + 86_400_000, narrow ? 4 : 6) : null),
+    [hrPoints, narrow]
+  );
 
   const sections = STATS_SECTIONS.filter((s) => (family !== null || s.key !== 'records') && (s.key !== 'cardio' || hasCardio));
 
@@ -389,7 +399,11 @@ function StatisticsPage() {
     () => series.map((serie) => {
       const rows: ChartRow[] = serie.points.map((p) => ({ ...p, y: toAxis(p.value), lineY: toAxis(p.line), serieKey: serie.key }));
       const byActivity = new Map<string, ChartRow[]>();
-      for (const row of rows) byActivity.set(row.activityId, [...(byActivity.get(row.activityId) ?? []), row]);
+      for (const row of rows) {
+        const list = byActivity.get(row.activityId);
+        if (list) list.push(row);
+        else byActivity.set(row.activityId, [row]);
+      }
       return { key: serie.key, label: serie.label, rows, byActivity: [...byActivity.entries()] };
     }),
     // `toAxis` ne dépend que de l'unité, des unités de la sélection et de l'échelle des durées.
@@ -707,7 +721,7 @@ function StatisticsPage() {
                   {cardio.load !== null && <Stat label={<>Charge <HelpToggle helpKey="stats:charge" label="Qu'est-ce que la charge ?" /></>} value={Math.round(cardio.load)} />}
                   {cardio.load !== null && regular.weeks > 0 && <Stat label="Charge par semaine" value={Math.round(cardio.load / regular.weeks)} />}
                 </div>
-                {loadHelp?.open && hrZones && <CardioLoadHelp bounds={hrZones.bounds} weights={LOAD_WEIGHTS} period />}
+                {hrZones && <CardioLoadHelpSlot bounds={hrZones.bounds} />}
 
                 {cardio.zoneTimesS && cardio.coveredS > 0 && (
                   <div style={{ marginTop: '10px' }}>

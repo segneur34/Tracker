@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import type { SpeedRangeMs } from '../core/speedGradient';
-import { SPEED_UNIT_LABEL, fromDisplaySpeed, toDisplaySpeed, type SpeedUnit } from '../core/units';
+import { SPEED_UNIT_LABEL, editSpeedUnit, fromDisplaySpeed, toDisplaySpeed, type SpeedUnit } from '../core/units';
 import Button from './ui/Button';
 
 /**
  * Saisie des deux bornes du dégradé de couleur de la trace, dans l'onglet
  * Réglages des modules course et voile. La légende, sous la carte
- * (`SpeedGradientLegend`), ne fait qu'afficher les bornes en vigueur.
+ * (`SpeedGradientLegend`), ne fait qu'afficher les bornes en vigueur. Une
+ * allure (min/km) se saisit en km/h, comme dans Réglages (`editSpeedUnit`).
  */
 
 interface SpeedRangeEditorProps {
-  /** Unité d'affichage des bornes. */
+  /** Unité de l'activité ; une allure se saisit en km/h. */
   unit: SpeedUnit;
   /** Bornes en vigueur, en m/s. */
   range: SpeedRangeMs;
@@ -20,7 +21,8 @@ interface SpeedRangeEditorProps {
   onChange: (range: SpeedRangeMs | null) => void;
 }
 
-function SpeedRangeEditor({ unit, range, isOverridden, onChange }: SpeedRangeEditorProps) {
+function SpeedRangeEditor({ unit: activityUnit, range, isOverridden, onChange }: SpeedRangeEditorProps) {
+  const unit = editSpeedUnit(activityUnit);
   const unitLabel = SPEED_UNIT_LABEL[unit];
 
   /** Valeur d'une borne dans l'unité choisie, arrondie pour le champ de saisie. */

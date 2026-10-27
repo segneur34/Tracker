@@ -193,27 +193,54 @@ const slotsOf = (period: ChartRange, nowMs: number, oldestMs: number | null = nu
     }
     return { slots, title: '30 derniers jours', range: `du ${shortDate(first)} à aujourd'hui` };
   }
-  // Par semaine : les 26 dernières, ou celles de l'année en cours.
+  // Par semaine : les 26 dernières, ou celles de l'année civile en cours (choix de l'utilisateur, 27/10), du 1er
+  // janvier au 31 décembre : la première et la dernière semaine, à cheval sur deux années, sont coupées à ses bords.
   const thisMonday = startOfIsoWeek(nowMs);
-  const { year, week: thisWeek } = isoWeek(nowMs);
-  const count = period === 'sixmois' ? 26 : thisWeek;
+  const { week: thisWeek } = isoWeek(nowMs);
+  const year = new Date(nowMs).getFullYear();
+  const yearStart = new Date(year, 0, 1).getTime();
+  const yearEnd = new Date(year + 1, 0, 1).getTime();
+  const count = period === 'sixmois' ? 26 : 1 + Math.round((thisMonday - startOfIsoWeek(yearStart)) / (7 * DAY_MS));
   for (let i = count - 1; i >= 0; i--) {
     const monday = addDays(thisMonday, -7 * i);
     const { week } = isoWeek(monday);
     const marked = period === 'sixmois' ? week % 4 === 0 : week === 1 || week % 5 === 0;
+    const startMs = period === 'annee' ? Math.max(monday, yearStart) : monday;
+    const endMs = period === 'annee' ? Math.min(addDays(monday, 7), yearEnd) : addDays(monday, 7);
     slots.push({
-      startMs: monday, endMs: addDays(monday, 7),
+      startMs, endMs,
       label: marked ? `S${week}` : '',
-      title: `Semaine ${week}, du ${shortDate(monday)} au ${shortDate(addDays(monday, 6))}`,
+      title: `Semaine ${week}, du ${shortDate(startMs)} au ${shortDate(addDays(endMs, -1))}`,
       weekStart: false, future: false,
     });
   }
+  if (period === 'annee') {
+    return { slots, title: `Année ${year}, par semaine`, range: `du ${shortDate(yearStart)} à aujourd'hui` };
+  }
   const firstWeek = isoWeek(slots[0].startMs).week;
-  return {
-    slots,
-    title: period === 'sixmois' ? '6 derniers mois, par semaine' : `Année ${year}, par semaine`,
-    range: `S${firstWeek} à S${thisWeek}`,
-  };
+  return { slots, title: '6 derniers mois, par semaine', range: `S${firstWeek} à S${thisWeek}` };
+};
+
+/**
+ * Hauteur d'une session dans le graphe, en pixels : la plus grande, jusqu'à
+ * `unitMaxPx`, qui fait tenir chaque barre dans `plotPx`, écarts de `gapPx`
+ * entre ses piles compris. Jamais nulle : une barre de 59 sessions ou plus
+ * se tasse au lieu d'effacer tout le graphe.
+ */
+export const activityBarUnit = (
+  bars: Pick<ChartBar, 'stacks'>[],
+  plotPx: number,
+  gapPx: number,
+  unitMaxPx: number
+): number => {
+  let unit = unitMaxPx;
+  for (const { stacks } of bars) {
+    const count = stacks.reduce((n, s) => n + s.count, 0);
+    if (count === 0) continue;
+    const room = plotPx - Math.max(0, stacks.length - 1) * gapPx;
+    unit = Math.min(unit, Math.max(0, room) / count);
+  }
+  return unit;
 };
 
 /**

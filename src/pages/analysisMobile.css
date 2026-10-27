@@ -225,7 +225,7 @@
   pointer-events: auto;
 }
 
-@media (min-width: 768px) and (min-height: 500px), (min-width: 768px) and (pointer: fine) {
+@media (min-width: 768px) and (min-height: 500px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   /* Carte en haut, centrée, plus étroite que la page : la souris trouve de la place de chaque côté
      pour faire défiler la page sans zoomer la carte. */
   .an-map-row {

@@ -525,16 +525,25 @@ export interface Visibility {
 }
 
 /** Dernière lecture, rendue telle quelle tant que rien n'a changé. */
-let visibilityCache: { key: string; value: Visibility } | null = null;
+let visibilityCache: { activities: unknown; hiddenFamilies: unknown; key: string; value: Visibility } | null = null;
 
 /** Ce qui est visible, hors composant. */
 export const readVisibility = (): Visibility => {
   const stored = readStoredSettings();
+  // Le magasin rend le même objet tant que le texte des réglages ne change pas : les mêmes références suffisent.
+  // Sinon (un autre réglage écrit), le texte des activités et des familles cachées dit si elles ont changé.
+  if (visibilityCache && visibilityCache.activities === stored.activities && visibilityCache.hiddenFamilies === stored.hiddenFamilies) {
+    return visibilityCache.value;
+  }
   const key = JSON.stringify([stored.activities ?? null, stored.hiddenFamilies ?? null]);
-  if (visibilityCache?.key !== key) {
+  if (visibilityCache?.key === key) {
+    visibilityCache = { ...visibilityCache, activities: stored.activities, hiddenFamilies: stored.hiddenFamilies };
+  } else {
     const activities = readActivities(stored.activities);
     const hiddenFamilies = readHiddenFamilies(stored);
     visibilityCache = {
+      activities: stored.activities,
+      hiddenFamilies: stored.hiddenFamilies,
       key,
       value: {
         activities,

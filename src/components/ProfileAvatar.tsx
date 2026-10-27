@@ -1,8 +1,9 @@
-import { useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { FAMILY_ACCENT } from '../core/activities';
 import { ACTIVITY_ICON_IDS, ACTIVITY_ICON_LABEL, type ActivityIconId } from '../core/activityIcons';
 import type { SportFamily } from '../core/sportProfiles';
 import { AVATAR_PHOTO_PX, type RunnerAvatar } from '../hooks/useRunnerProfile';
+import { pushBackLayer } from '../platform/backButton';
 import { readPickedImage } from '../platform/files';
 import ActivityArt from './activityArt';
 import { IconClose, IconImage, IconUser } from './icons';
@@ -60,6 +61,12 @@ export function AvatarPicker({ avatar, onPick, onClose }: {
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
+  // Le retour d'Android ferme le choix, sans quitter le Profil ; le dernier `onClose` est lu au moment du retour.
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+  useEffect(() => pushBackLayer(() => closeRef.current()), []);
 
   const importImage = async (file: File | undefined) => {
     if (!file) return;

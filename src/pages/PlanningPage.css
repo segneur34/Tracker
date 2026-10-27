@@ -502,7 +502,7 @@
   }
 }
 
-@media (min-width: 768px) and (min-height: 500px), (min-width: 768px) and (pointer: fine) {
+@media (min-width: 768px) and (min-height: 500px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .plan-stat strong,
   .plan-stats--four .plan-stat strong {
     font-size: var(--text-xl);

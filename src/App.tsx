@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import AppShell from './components/AppShell';
+import { DevThrow } from './components/ErrorBoundary';
 import Home from './pages/Home';
 import SailingModule from './pages/SailingModule';
 import LandModule from './pages/LandModule';
@@ -49,6 +50,8 @@ function App() {
           <Route path="/statistiques" element={<StatisticsPage />} />
           <Route path="/profil" element={<ProfilePage />} />
           <Route path="/parametres" element={<SettingsPage />} />
+          {/* Développement seulement : une page qui lève au rendu, pour essayer la limite d'erreur au banc. */}
+          {import.meta.env.DEV && <Route path="/essai/erreur" element={<DevThrow />} />}
         </Route>
       </Routes>
     </Router>

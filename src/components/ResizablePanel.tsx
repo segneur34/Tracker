@@ -98,17 +98,26 @@ function ResizablePanel({
   const onPointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
     const el = ref.current;
     if (!el) return;
+    // Seul un glisser commencé sur la poignée redimensionne : un appui ailleurs dans le panneau n'arme rien (sinon
+    // un `pointerup` venu bien plus tard retiendrait comme tirée une taille changée par le contenu).
+    const rect = el.getBoundingClientRect();
+    const onHandle = rect.right - e.clientX <= HANDLE_ZONE_PX && rect.bottom - e.clientY <= HANDLE_ZONE_PX;
+    if (!onHandle) return;
     const start: PanelSize = { width: el.offsetWidth, height: el.offsetHeight };
     dragStart.current = start;
 
-    // Glisser commencé sur la poignée : le panneau passe tout de suite en
-    // taille fixe, à sa taille courante, pour que le navigateur puisse
+    // Le panneau passe tout de suite en taille fixe, à sa taille courante, pour que le navigateur puisse
     // ensuite lui appliquer la largeur et la hauteur tirées à la souris.
-    const rect = el.getBoundingClientRect();
-    const onHandle = rect.right - e.clientX <= HANDLE_ZONE_PX && rect.bottom - e.clientY <= HANDLE_ZONE_PX;
-    if (onHandle) setDragSize(start);
+    setDragSize(start);
 
+    // Geste repris par le système (défilement tactile) : rien n'est retenu, et l'écouteur du lâcher tombe.
+    const onPointerCancel = () => {
+      document.removeEventListener('pointerup', onPointerUp);
+      dragStart.current = null;
+      setDragSize(null);
+    };
     const onPointerUp = () => {
+      document.removeEventListener('pointercancel', onPointerCancel);
       const begin = dragStart.current;
       dragStart.current = null;
       setDragSize(null);
@@ -123,6 +132,7 @@ function ResizablePanel({
       writeSize(id, size);
     };
     document.addEventListener('pointerup', onPointerUp, { once: true });
+    document.addEventListener('pointercancel', onPointerCancel, { once: true });
   }, [id, direction]);
 
   // La taille est portée par les props React : au retour au défaut, React

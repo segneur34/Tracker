@@ -78,6 +78,13 @@ export const SPEED_UNIT_SYMBOL: Record<SpeedUnit, string> = {
 /** Vrai si, dans cette unité, une valeur plus grande signifie plus lent. */
 export const isInverseUnit = (unit: SpeedUnit): boolean => unit === 'minkm';
 
+/**
+ * Unité de saisie d'une vitesse (bornes de couleur, seuils) : celle de
+ * l'activité, sauf une allure, saisie en km/h (des minutes décimales se liraient
+ * mal : « 5.30 » vaudrait 5 min 18 s).
+ */
+export const editSpeedUnit = (unit: SpeedUnit): SpeedUnit => (isInverseUnit(unit) ? 'kmh' : unit);
+
 /** Formate une vitesse en m/s dans l'unité choisie, avec son symbole. */
 export const formatSpeed = (ms: number | null, unit: SpeedUnit): string => {
   if (ms === null || !isFinite(ms)) return '-';

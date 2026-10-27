@@ -1,11 +1,13 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { pushBackLayer } from '../../platform/backButton';
 import './Dialog.css';
 
 /**
  * Fenêtre modale au milieu de l'écran, au-dessus des barres et du menu « … » :
  * un titre, ×, et son contenu. Le fond, × et Échap la ferment. `className`
- * s'ajoute à la fenêtre pour ce qui lui est propre (partage, profil).
+ * s'ajoute à la fenêtre pour ce qui lui est propre (partage, profil). Le
+ * retour d'Android la ferme aussi, sans quitter la page.
  */
 function Dialog({ title, onClose, className, children }: {
   title: string;
@@ -22,7 +24,11 @@ function Dialog({ title, onClose, className, children }: {
       if (e.key === 'Escape') closeRef.current();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const removeLayer = pushBackLayer(() => closeRef.current());
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      removeLayer();
+    };
   }, []);
 
   return createPortal(

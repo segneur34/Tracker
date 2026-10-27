@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { formatDistance, formatSessionDate, formatKnots, formatShortDistance, knotsToDisplay, toDisplayDistance } from './units';
+import {
+  editSpeedUnit, formatDistance, formatSessionDate, formatKnots, formatShortDistance, fromDisplaySpeed, knotsToDisplay, toDisplayDistance, toDisplaySpeed,
+} from './units';
 
 describe('distances', () => {
   it('convertit les mètres en kilomètres et en milles nautiques', () => {
@@ -49,5 +51,21 @@ describe('formatSessionDate', () => {
   it("donne le jour, la date et l'heure locale", () => {
     expect(formatSessionDate(new Date(2026, 9, 14, 10, 2, 41).getTime())).toBe('mer. 14/10/2026 · 10:02');
     expect(formatSessionDate(new Date(2026, 0, 4, 7, 5).getTime())).toBe('dim. 04/01/2026 · 07:05');
+  });
+});
+
+describe('editSpeedUnit', () => {
+  it('fait saisir une allure en km/h, les autres unités telles quelles', () => {
+    expect(editSpeedUnit('minkm')).toBe('kmh');
+    expect(editSpeedUnit('kn')).toBe('kn');
+    expect(editSpeedUnit('ms')).toBe('ms');
+  });
+
+  it('rend la borne saisie à l’aller-retour : 11 km/h, soit 5:27 au km', () => {
+    const unit = editSpeedUnit('minkm');
+    const ms = fromDisplaySpeed(11, unit);
+    expect(ms).toBeCloseTo(11 / 3.6);
+    expect(toDisplaySpeed(ms, unit)).toBeCloseTo(11);
+    expect(toDisplaySpeed(ms, 'minkm')).toBeCloseTo(60 / 11);
   });
 });

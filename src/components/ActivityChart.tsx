@@ -1,15 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { sessionActivity, type Activity } from '../core/activities';
+import type { Activity } from '../core/activities';
 import { sportFamily } from '../core/sportProfiles';
 import { DISTANCE_UNIT_SYMBOL, formatDuration, toDisplayDistance } from '../core/units';
 import { HelpText, HelpToggle } from './Help';
 import { IconChevronRight } from './icons';
 import { libraryPath, useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { effectiveDistanceUnit, useVisibility } from '../hooks/useSportSettings';
-import { buildActivityChart, type ChartRange, type ChartSession } from '../library/activityChart';
+import { useVisibleStatSessions } from '../hooks/useVisibleStatSessions';
+import { activityBarUnit, buildActivityChart, type ChartRange, type ChartSession } from '../library/activityChart';
 import './ActivityChart.css';
 
 /**
@@ -23,9 +23,12 @@ import './ActivityChart.css';
  * Les sessions d'une activité ou d'une famille cachée n'y sont pas (§10, point 100).
  */
 
-/** Hauteur de la zone des barres, en pixels, et hauteur maximale d'une session. */
+/** Hauteur de la zone des barres, en pixels (4 de marge en haut), hauteur maximale d'une session, et écart entre deux piles (`ActivityChart.css`). */
 const PLOT_H = 62;
 const UNIT_MAX_H = 17;
+const STACK_GAP = 2;
+/** Une pile reste visible, si tassée soit-elle. */
+const STACK_MIN_H = 1;
 
 /** Totaux par activité dépliés tant qu'on ne les a pas repliés. */
 const TOTALS_DEFAULT = { totaux: true };
@@ -42,36 +45,27 @@ const formatTime = (ms: number): string =>
 const plural = (n: number): string => `${n} session${n > 1 ? 's' : ''}`;
 
 function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number }) {
-  const { sessions } = useSessionLibrary();
+  const { all, activityById } = useVisibleStatSessions();
   const openSession = useOpenSession();
   const navigate = useNavigate();
-  const { activities, isShown } = useVisibility();
+  const { activities } = useVisibility();
   // Barre touchée ; la page remonte le graphe à chaque période (`key`), ce qui la referme.
   const [picked, setPicked] = useState<number | null>(null);
   // Totaux par activité : repliés ou dépliés d'un seul geste, choix gardé sur l'appareil.
   const { open, toggle } = useOpenSections('accueil.graphe', TOTALS_DEFAULT);
 
-  // Sessions classées et visibles, avec leur activité ; les sessions à classer n'apparaissent pas.
-  const { chartSessions, activityById } = useMemo(() => {
-    const byId = new Map<string, Activity>();
-    const list: ChartSession[] = [];
-    for (const s of sessions) {
-      const activity = sessionActivity(activities, s.record.activityId, s.record.sport);
-      if (!activity || !isShown(activity)) continue;
-      byId.set(activity.id, activity);
-      const { startMs, endMs, distanceM } = s.record.summary;
-      list.push({ file: s.file, startMs, durationS: (endMs - startMs) / 1000, distanceM, activityId: activity.id });
-    }
-    return { chartSessions: list, activityById: byId };
-  }, [sessions, activities, isShown]);
+  // Sessions classées et visibles (les mêmes que le Profil) ; les sessions à classer n'apparaissent pas.
+  const chartSessions = useMemo(
+    () => all.map((s): ChartSession => ({ file: s.file, startMs: s.startMs, durationS: (s.endMs - s.startMs) / 1000, distanceM: s.distanceM, activityId: s.activityId })),
+    [all]
+  );
 
   const chart = useMemo(
     () => buildActivityChart(chartSessions, period, nowMs, activities.map((a) => a.id)),
     [chartSessions, period, nowMs, activities]
   );
 
-  const maxCount = Math.max(1, ...chart.bars.map((b) => b.sessions.length));
-  const unitH = Math.min(UNIT_MAX_H, Math.floor((PLOT_H - 4) / maxCount));
+  const unitH = activityBarUnit(chart.bars, PLOT_H - 4, STACK_GAP, UNIT_MAX_H);
   const totalSessions = chart.totals.reduce((n, t) => n + t.sessions, 0);
   const bar = picked === null ? null : chart.bars[picked] ?? null;
   // Une barre par semaine ou par mois : le détail donne aussi le jour de chaque session.
@@ -98,7 +92,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
               <span
                 key={s.activityId}
                 className="actchart__stack"
-                style={{ height: `${s.count * unitH}px`, background: activityById.get(s.activityId)?.color }} />
+                style={{ height: `${Math.max(STACK_MIN_H, s.count * unitH)}px`, background: activityById.get(s.activityId)?.color }} />
             ))}
           </button>
         ))}

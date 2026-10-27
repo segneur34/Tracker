@@ -8,8 +8,11 @@ import { useEffect, useState } from 'react';
  */
 export const NARROW_QUERY = '(max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse)';
 
-/** Disposition ordinateur : le contraire exact de `NARROW_QUERY`. */
-export const WIDE_QUERY = '(min-width: 768px) and (min-height: 500px), (min-width: 768px) and (pointer: fine)';
+/**
+ * Disposition ordinateur : le contraire exact de `NARROW_QUERY` (un pointeur est `fine`, `coarse` ou `none` ; ce
+ * dernier, téléviseur ou certaines WebView, compte comme un ordinateur), sans le `not` des requêtes de niveau 4.
+ */
+export const WIDE_QUERY = '(min-width: 768px) and (min-height: 500px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none)';
 
 /** Téléphone tourné : rail de navigation à gauche, carte sur un côté (lot 5 b des demandes du 23/10). */
 export const PHONE_LANDSCAPE_QUERY = '(orientation: landscape) and (max-height: 499.98px) and (pointer: coarse)';

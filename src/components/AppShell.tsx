@@ -13,6 +13,7 @@ import { setBackNavigator } from '../platform/backButton';
 import { lockOrientation } from '../platform/screen';
 import { IconChart, IconHome, IconPause, IconPlay, IconRoute, IconSettings, IconUser } from './icons';
 import { FAMILY_ICON } from './familyIcons';
+import ErrorBoundary from './ErrorBoundary';
 import { HelpProvider } from './Help';
 import HoldDial from './ui/HoldDial';
 
@@ -119,6 +120,7 @@ function AppShell() {
   const clock = formatClock(durationMs);
   const canToggle = status === 'recording' || paused;
   const onLongPress = useCallback(() => void togglePauseRecording(), []);
+  const goHome = useCallback(() => navigate('/'), [navigate]);
   const { pressingMs, handlers } = useLongPress(onLongPress, effectiveLongPressMs, canToggle);
 
   const { families } = useVisibility();
@@ -177,7 +179,10 @@ function AppShell() {
 
       <main className="shell-main">
         <HelpProvider resetKey={pathname}>
-          <Outlet />
+          {/* Une exception au rendu d'une page n'emporte ni la barre, ni les bandeaux, ni le bouton rond. */}
+          <ErrorBoundary key={pathname} onHome={goHome}>
+            <Outlet />
+          </ErrorBoundary>
         </HelpProvider>
       </main>
 

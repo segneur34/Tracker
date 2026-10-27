@@ -294,6 +294,14 @@ describe('dateTicks', () => {
     expect(decade.unit).toBe('annee');
     expect(decade.ticks.every((t) => new Date(t).getMonth() === 0)).toBe(true);
   });
+
+  it('sur dix ans, un repère tous les deux ans ; sur trois ans, tous les six mois', () => {
+    const decade = dateTicks(at(2016, 5, 1), at(2026, 5, 1));
+    expect(decade.ticks.map((t) => new Date(t).getFullYear())).toEqual([2018, 2020, 2022, 2024, 2026]);
+    const three = dateTicks(at(2023, 2, 10), at(2026, 2, 10));
+    expect(three.unit).toBe('mois');
+    expect(three.ticks.map((t) => new Date(t).getMonth())).toEqual([6, 0, 6, 0, 6, 0]);
+  });
 });
 
 describe('cardio', () => {

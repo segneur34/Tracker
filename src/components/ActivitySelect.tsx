@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, type SportFamily } from '../core/sportProfiles';
 import { useVisibility } from '../hooks/useSportSettings';
+import { pushBackLayer } from '../platform/backButton';
 import ActivityIcon from './ActivityIcon';
 import { FAMILY_ICON } from './familyIcons';
 import { IconChevronRight } from './icons';
@@ -40,7 +41,7 @@ interface ActivitySheetProps {
   onClose: () => void;
 }
 
-/** Liste des activités par famille, par-dessus la page ; Échap ou un appui à côté la ferme. */
+/** Liste des activités par famille, par-dessus la page ; Échap, un appui à côté ou le retour d'Android la ferme. */
 export function ActivitySheet({ activities, value, families = SPORT_FAMILIES, label, heading, onChoose, onClose }: ActivitySheetProps) {
   const selectedRef = useRef<HTMLButtonElement>(null);
   const { isShown } = useVisibility();
@@ -60,7 +61,11 @@ export function ActivitySheet({ activities, value, families = SPORT_FAMILIES, la
       if (e.key === 'Escape') closeRef.current();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const removeLayer = pushBackLayer(() => closeRef.current());
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      removeLayer();
+    };
   }, []);
 
   return createPortal(
