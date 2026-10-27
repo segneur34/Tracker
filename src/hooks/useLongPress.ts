@@ -6,40 +6,49 @@ import { buzz } from '../platform/beeper';
  * posé `durationMs`, et le clic qui suit le relâcher est annulé. Un appui plus
  * court laisse passer le clic ordinaire (le bouton garde son rôle). Relâcher,
  * sortir de l'élément ou laisser le système reprendre le geste (défilement)
- * abandonne l'appui.
+ * abandonne l'appui. Seul le premier doigt compte : un second, posé pendant
+ * l'appui, est ignoré, et ne peut ni le lancer ni l'abandonner.
  *
  * @param getDurationMs lue à chaque appui, pour suivre un réglage changé entre-temps.
  * @param enabled faux : aucun appui long, le clic reste ordinaire.
  */
 export const useLongPress = (onLongPress: () => void, getDurationMs: () => number, enabled: boolean) => {
   const timer = useRef<number | null>(null);
+  /** Doigt de l'appui en cours, `null` au repos. */
+  const pointer = useRef<number | null>(null);
   const fired = useRef(false);
   /** Durée de l'appui en cours, `null` au repos : sert à l'animation de l'anneau. */
   const [pressingMs, setPressingMs] = useState<number | null>(null);
 
-  const cancel = useCallback(() => {
+  const cancel = useCallback((e: PointerEvent) => {
+    if (pointer.current !== null && e.pointerId !== pointer.current) return;
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
+    pointer.current = null;
     setPressingMs(null);
   }, []);
 
-  // Quand l'appui long cesse d'avoir un sens (arrêt) ou au démontage, le minuteur tombe.
+  // Quand l'appui long cesse d'avoir un sens (arrêt) ou au démontage, le minuteur tombe, et le cadran avec lui.
   useEffect(() => {
     if (!enabled) return undefined;
     return () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
       timer.current = null;
+      pointer.current = null;
+      setPressingMs(null);
     };
   }, [enabled]);
 
   const onPointerDown = useCallback(
     (e: PointerEvent) => {
-      if (!enabled || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (!enabled || timer.current !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
       fired.current = false;
+      pointer.current = e.pointerId;
       const duration = getDurationMs();
       setPressingMs(duration);
       timer.current = window.setTimeout(() => {
         timer.current = null;
+        pointer.current = null;
         fired.current = true;
         setPressingMs(null);
         void buzz(60).catch(() => undefined);

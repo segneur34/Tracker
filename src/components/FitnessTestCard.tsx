@@ -31,11 +31,14 @@ const PHASE_LABEL: Record<TestPhase, string> = {
 const bpm = (value: number | null): string => (value === null ? '—' : `${Math.round(value)} bpm`);
 
 /** Résumé du protocole avant le départ. */
-function TestPreview({ testId }: { testId: FitnessTestId }) {
+function TestPreview({ testId, activity }: { testId: FitnessTestId; activity: Activity | null }) {
   const protocol = FITNESS_TESTS[testId];
   const settings = useFitnessTestSettings(testId);
   const { profile } = useRunnerProfile();
-  const params = useMemo(() => resolveFitnessTestParams(protocol, settings, fitnessTestRunner(profile)), [protocol, settings, profile]);
+  // Avec l'activité, comme le guidage : son décalage de seuil donne la même bande d'échauffement.
+  const params = useMemo(
+    () => resolveFitnessTestParams(protocol, settings, fitnessTestRunner(profile, activity)), [protocol, settings, profile, activity]
+  );
   const { from, to } = protocol.warmupZones;
   return (
     <>
@@ -89,7 +92,7 @@ function FitnessTestCard({ testId, activity }: { testId: FitnessTestId; activity
   return (
     <Card>
       <div style={{ '--ivl-color': FAMILY_ACCENT.fractionne } as React.CSSProperties}>
-        {view.active && activity ? <TestLive view={view} activity={activity} /> : <TestPreview testId={testId} />}
+        {view.active && activity ? <TestLive view={view} activity={activity} /> : <TestPreview testId={testId} activity={activity} />}
       </div>
     </Card>
   );

@@ -23,8 +23,8 @@ import { formatClock, formatDistance, formatShortDistance, formatSpeed } from '.
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { armFitnessTest, useFitnessTest } from '../hooks/useFitnessTest';
-import { useIntervalTimerOpen } from '../hooks/useIntervalTimer';
-import { useStopwatchOpen } from '../hooks/useStopwatch';
+import { useIntervalTimerOpen, useIntervalTimerRunning } from '../hooks/useIntervalTimer';
+import { useStopwatchOpen, useStopwatchRunning } from '../hooks/useStopwatch';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { useBeltLive } from '../hooks/useBeltLive';
 import { useBeltWarmup } from '../hooks/useBeltWarmup';
@@ -47,6 +47,7 @@ import { updateSessionRecord } from '../hooks/useSessionLibrary';
 import {
   addRecordingMark, analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording,
   resumeRecording, startRecording, stopRecording, useRecorder, type RecorderState,
+  useRecordingClock, useRecorderStatus,
 } from '../hooks/useRecorder';
 import { followedTraceLengthM, splitFollowedTrace, type FollowProgress, type FollowedTrace } from '../recording/followedTrace';
 import { travelHeading } from '../recording/heading';
@@ -432,13 +433,17 @@ function RecordingScreen() {
   const satellites = useSatellites(native && sourceChoice === 'device' && recorder.status === 'recording');
   const missingPermissions = useMissingPermissions();
   const [analyzing, setAnalyzing] = useState(false);
-  const durationMs = recordingDurationMs(stats);
-  const meanIntervalS = stats.pointCount > 1 ? durationMs / 1000 / (stats.pointCount - 1) : null;
+  // Durée couverte par les positions : celle du GPS ; la durée affichée de la session suit l'horloge (`useRecordingClock`).
+  const pointsDurationMs = recordingDurationMs(stats);
+  const meanIntervalS = stats.pointCount > 1 ? pointsDurationMs / 1000 / (stats.pointCount - 1) : null;
   const canStart = !busy && pending === null && chosen !== null && !restingChosen && (sourceChoice === 'device' || replay !== null);
   const liveActivity = recorder.activity ?? chosen;
   const mapReduced = busy && !shown.carte;
   // Téléphone tourné : les grands chiffres à gauche de la carte, sans avoir à la réduire.
   const landscape = usePhoneLandscape();
+  const summaryShown = (mapReduced || (busy && landscape)) && liveActivity !== null;
+  // Horloge : la durée tourne en pause automatique ; l'heure, si la carte réduite l'affiche, bat chaque seconde.
+  const { nowMs, durationMs } = useRecordingClock(summaryShown && effectiveLiveFields(liveActivity).includes('clock'));
   // Compteur : pour le fractionné choisi (au repos) ou enregistré, pas pour un test, et tant qu'une séance ou le chrono est lancé.
   const counterOpen = useIntervalTimerOpen();
   const stopwatchOpen = useStopwatchOpen();
@@ -449,8 +454,10 @@ function RecordingScreen() {
   // Carte du test : à la place du compteur, pour un test choisi au repos ou guidé pendant l'enregistrement.
   const fitnessTest = useFitnessTest();
   const showTest = busy ? fitnessTest.active : pending === null && isTest && !restingChosen;
-  // Écran allumé tant qu'un enregistrement (pause comprise), une séance du compteur ou le chrono tourne, sur cette page seulement.
-  useScreenOnWhile(busy || counterOpen || stopwatchOpen);
+  // Écran allumé tant qu'un enregistrement (pause comprise), une séance du compteur (pause comprise) ou le chrono en marche, sur cette page seulement.
+  const counterRunning = useIntervalTimerRunning();
+  const stopwatchRunning = useStopwatchRunning();
+  useScreenOnWhile(busy || counterRunning || stopwatchRunning);
   // Calculé hors de la page, repris par la notification de l'enregistrement.
   const live = useLiveRecording();
 
@@ -463,11 +470,13 @@ function RecordingScreen() {
   // Avancement sur la trace suivie, recalculé avec la trace en direct (toutes les 2 s au plus).
   const followedLengthM = useMemo(() => (followed ? followedTraceLengthM(followed) : 0), [followed]);
   const progress = busy && followed && !courseMarksOf ? live.progress : null;
+  // Au mètre près : un nouveau calcul sans avancée ne redécoupe pas la trace suivie, et la carte ne la redessine pas.
+  const progressM = progress ? Math.round(progress.progressM) : null;
   const guide = useMemo(() => {
     // Sur un parcours de balises, il va de balise en balise : fait jusqu'à la dernière laissée, à faire ensuite.
     if (courseMarksOf) return { done: courseMarksOf.slice(0, leftMarks), remaining: courseMarksOf.slice(Math.max(0, leftMarks - 1)) };
-    return followed && progress ? splitFollowedTrace(followed, progress.progressM) : { done: [], remaining: followed?.points ?? [] };
-  }, [followed, progress, courseMarksOf, leftMarks]);
+    return followed && progressM !== null ? splitFollowedTrace(followed, progressM) : { done: [], remaining: followed?.points ?? [] };
+  }, [followed, progressM, courseMarksOf, leftMarks]);
   const mapMarks = useMemo(
     () => (courseMarksOf ? courseMarks(courseMarksOf, markGuide.active ? markGuide : null) : undefined),
     [courseMarksOf, markGuide]
@@ -801,11 +810,11 @@ function RecordingScreen() {
 
       {/* Carte réduite : elle n'est plus dessinée, les vitesses prennent sa place ; tourné, elles sont à côté d'elle. */}
       {mapReduced && <Button variant="secondary" block onClick={() => toggleShown('carte')}>Afficher la carte</Button>}
-      {(mapReduced || (busy && landscape)) && liveActivity && (
+      {summaryShown && liveActivity && (
         <LiveSummary items={liveSummaryItems(liveActivity, {
           stats: live.stats,
           durationMs,
-          nowMs: live.updatedMs,
+          nowMs,
           remainingM: courseMarksOf ? (markGuide.active ? markGuide.remainingM : null) : progress?.remainingM ?? null,
           headingDeg: travel?.headingDeg ?? null,
           markDistanceM: markGuide.active ? markGuide.distanceM : null,
@@ -864,7 +873,7 @@ function RecordingScreen() {
           <details open={!busy}>
             <summary className="ui-eyebrow" style={{ cursor: 'pointer', marginBottom: 'var(--space-2)' }}>GPS</summary>
             <div style={STAT_GRID}>
-              <Stat label="Durée" value={formatClock(durationMs)} />
+              <Stat label="Durée" value={formatClock(pointsDurationMs)} />
               <Stat label="Points" value={String(stats.pointCount)} />
               <Stat label="Intervalle moyen" value={meanIntervalS === null ? '—' : `${meanIntervalS.toFixed(1)} s`} />
               <Stat label="Plus long trou" value={`${Math.round(stats.longestGapS)} s`} />
@@ -965,9 +974,9 @@ function RecordingScreen() {
  * démarre le GPS ; « Enregistrer une session » rend la page ordinaire.
  */
 function TimerScreen() {
-  const counterOpen = useIntervalTimerOpen();
-  const stopwatchOpen = useStopwatchOpen();
-  useScreenOnWhile(counterOpen || stopwatchOpen);
+  const counterRunning = useIntervalTimerRunning();
+  const stopwatchRunning = useStopwatchRunning();
+  useScreenOnWhile(counterRunning || stopwatchRunning);
   return (
     <div className="ui-page rec-page" style={{ '--help-accent': FAMILY_ACCENT.fractionne } as React.CSSProperties}>
       <PageHeader title="Timer" back={{ to: WORKOUT_LISTS.timer.listPath, label: 'Séances' }}
@@ -981,7 +990,7 @@ function TimerScreen() {
 /** Enregistrer : en mode Timer (`?minuterie`) tant que rien n'enregistre, sinon la page ordinaire. */
 function RecordingPage() {
   const [params] = useSearchParams();
-  const idle = useRecorder().status === 'idle';
+  const idle = useRecorderStatus() === 'idle';
   return params.has('minuterie') && idle ? <TimerScreen /> : <RecordingScreen />;
 }
 

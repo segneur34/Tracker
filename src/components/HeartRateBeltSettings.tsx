@@ -80,11 +80,16 @@ function HeartRateBeltSettings() {
     if (!belt) return;
     setError(null);
     try {
-      await holdBelt(HOLDER, belt);
+      const release = await holdBelt(HOLDER, belt);
+      // Page quittée pendant la connexion : son nettoyage est déjà passé, la ceinture est rendue tout de suite.
+      if (!alive.current) {
+        release();
+        return;
+      }
       setTesting(true);
       setBluetoothOff(false);
     } catch (err) {
-      setError(`Connexion impossible : ${errorText(err)}.`);
+      if (alive.current) setError(`Connexion impossible : ${errorText(err)}.`);
     }
   };
 

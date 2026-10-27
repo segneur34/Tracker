@@ -5,13 +5,12 @@ import type { SportFamily } from '../core/sportProfiles';
 import { formatClock } from '../core/units';
 import { useIntervalTimer } from '../hooks/useIntervalTimer';
 import { useLongPress } from '../hooks/useLongPress';
-import { togglePauseRecording, useRecorder } from '../hooks/useRecorder';
+import { togglePauseRecording, useRecorderStatus, useRecordingClock } from '../hooks/useRecorder';
 import { effectiveLongPressMs, useVisibility } from '../hooks/useSportSettings';
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
 import { TIMER_RECORD_PATH } from '../pages/workoutLists';
 import { setBackNavigator } from '../platform/backButton';
 import { lockOrientation } from '../platform/screen';
-import { recordingDurationMs } from '../recording/session';
 import { IconChart, IconHome, IconPause, IconPlay, IconRoute, IconSettings, IconUser } from './icons';
 import { FAMILY_ICON } from './familyIcons';
 import { HelpProvider } from './Help';
@@ -101,7 +100,8 @@ const topLink = (d: Destination) => (
 );
 
 function AppShell() {
-  const { status, stats } = useRecorder();
+  const status = useRecorderStatus();
+  const { durationMs } = useRecordingClock(false);
   const location = useLocation();
   const { pathname } = location;
   const navigate = useNavigate();
@@ -116,7 +116,7 @@ function AppShell() {
   }), [navigate]);
   const busy = status !== 'idle';
   const paused = status === 'paused';
-  const clock = formatClock(recordingDurationMs(stats));
+  const clock = formatClock(durationMs);
   const canToggle = status === 'recording' || paused;
   const onLongPress = useCallback(() => void togglePauseRecording(), []);
   const { pressingMs, handlers } = useLongPress(onLongPress, effectiveLongPressMs, canToggle);

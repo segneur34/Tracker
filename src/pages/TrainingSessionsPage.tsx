@@ -6,7 +6,7 @@ import PageHeader from '../components/ui/PageHeader';
 import { IconChevronDown, IconChevronUp, IconPlay } from '../components/icons';
 import { FAMILY_ACCENT, activitiesOfFamily } from '../core/activities';
 import { isIntervalSport } from '../core/sportProfiles';
-import { useRecorder } from '../hooks/useRecorder';
+import { useRecorderStatus } from '../hooks/useRecorder';
 import {
   lastRecordActivity, rememberIntervalWorkout, removeIntervalPreset, saveIntervalPreset, useIntervalSettings, useVisibility,
 } from '../hooks/useSportSettings';
@@ -35,7 +35,7 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
   const list = WORKOUT_LISTS[kind];
   const timer = kind === 'timer';
   const { presets } = useIntervalSettings(kind);
-  const recording = useRecorder().status !== 'idle';
+  const recording = useRecorderStatus() !== 'idle';
   const { activities, isShown } = useVisibility();
   // Les activités de fractionné visibles : celles qu'on peut lancer avec le compteur.
   const intervalActivities = useMemo(

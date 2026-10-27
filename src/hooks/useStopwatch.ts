@@ -104,3 +104,6 @@ export const useStopwatch = (): StopwatchView => useSyncExternalStore(subscribe,
 
 /** Vrai tant qu'un chrono est lancé, en pause comprise ; ne redessine qu'à ce changement. */
 export const useStopwatchOpen = (): boolean => useSyncExternalStore(subscribe, () => view.stopwatch !== null);
+
+/** Vrai tant que le chrono est en marche, pas en pause : l'écran reste allumé ; ne redessine qu'à ce changement. */
+export const useStopwatchRunning = (): boolean => useSyncExternalStore(subscribe, () => view.state?.status === 'running');

@@ -3,7 +3,7 @@ import { timerStateAt } from '../recording/intervalTimer';
 import { travelHeading } from '../recording/heading';
 import type { LiveFieldContext } from '../recording/liveFields';
 import { liveNotification, liveNotificationKey } from '../recording/liveNotification';
-import { recordingDurationMs } from '../recording/session';
+import { displayedDurationMs } from '../recording/session';
 import { getIntervalRun, subscribeToIntervalCommands } from './useIntervalTimer';
 import { getLiveRecording, subscribeToLiveRecording } from './useLiveRecording';
 import { getMarkGuideView } from './useMarkGuide';
@@ -83,7 +83,7 @@ const update = (force: boolean) => {
     speedUnit: effectiveSpeedUnit(activity),
     distanceUnit: effectiveDistanceUnit(activity),
     stats: live.stats,
-    durationMs: recordingDurationMs(recorder.stats),
+    durationMs: displayedDurationMs(recorder.stats, recorder.pauseClock, nowMs),
     nowMs,
     remainingM: mark.active ? mark.remainingM : live.progress?.remainingM ?? null,
     // Le cap parcourt la trace : calculé seulement s'il est demandé.

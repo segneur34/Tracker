@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { BASE_COLOR, baseActivity, findActivity, type Activity } from '../core/activities';
 import { marksWithin, type SessionMark } from '../core/sessionMarks';
 import { decodeImu } from '../core/imuFile';
@@ -25,6 +25,7 @@ import {
 import {
   EMPTY_RECORDING_STATS,
   addFixToStats,
+  displayedDurationMs,
   evaluateAutoPause,
   isNewerFix,
   roundFix,
@@ -32,6 +33,7 @@ import {
   sessionTitle,
   shouldFlushJournal,
   splitIntoSegments,
+  type PauseClock,
   type RecordingStats,
 } from '../recording/session';
 import { saveRecordedSession } from './useSessionLibrary';
@@ -91,6 +93,8 @@ export interface PendingSession {
   marks: SessionMark[];
   /** Capture des capteurs (sauts), dans le dossier privé, rangée avec la session ; `null` sans mesure. */
   motion: MotionCapture | null;
+  /** Octets de la capture déjà lus à l'arrêt (cadence), pour ne pas les relire à « Analyser » ; `null` sinon. */
+  motionBytes: Uint8Array | null;
   /** Test guidé fait pendant l'enregistrement ; `null` sans test. */
   test: SessionTest | null;
 }
@@ -119,6 +123,8 @@ export interface RecorderState {
   sourceLabel: string | null;
   /** Raison de la pause en cours, `null` sinon. */
   pausedReason: 'manual' | 'auto' | null;
+  /** Horloge de la pause en cours, pour la durée affichée (`displayedDurationMs`) ; `null` hors pause. */
+  pauseClock: PauseClock | null;
   /** Vrai tant que les capteurs du téléphone mesurent (sauts, pumping, cadence). */
   measuringMotion: boolean;
   /** Ce que la capture en cours mesure, `null` sans capture. */
@@ -140,6 +146,7 @@ const INITIAL_STATE: RecorderState = {
   activity: null,
   sourceLabel: null,
   pausedReason: null,
+  pauseClock: null,
   measuringMotion: false,
   motionSetup: null,
   heartRate: null,
@@ -280,13 +287,13 @@ const receiveFix = (received: LocationFix): void => {
   });
   belowSinceMs = auto.belowSinceMs;
   if (auto.event === 'pause') {
-    setState({ status: 'paused', pausedReason: 'auto' });
+    setState({ status: 'paused', pausedReason: 'auto', pauseClock: { sinceMs: Date.now(), frozenAtMs: null } });
     void flushJournal();
     return;
   }
   if (auto.event === 'resume') {
     pendingBreak = true;
-    setState({ status: 'recording', pausedReason: null });
+    setState({ status: 'recording', pausedReason: null, pauseClock: null });
   }
   if (state.status === 'paused') return;
 
@@ -308,18 +315,23 @@ const receiveFix = (received: LocationFix): void => {
  * Cadence à pied mesurée sur la capture, si elle la mesurait, jointe à chaque
  * position (`gpxtpx:cad` du GPX). Sans elle, ou si le calcul échoue, les
  * positions telles quelles : la session n'est jamais bloquée par la cadence.
+ * Seul l'accéléromètre est décodé ; les octets lus sont rendus aussi, gardés
+ * pour « Analyser ».
  */
-const withMeasuredCadence = async (segments: LocationFix[][], sport: SportType, motion: MotionCapture | null): Promise<LocationFix[][]> => {
+const withMeasuredCadence = async (
+  segments: LocationFix[][], sport: SportType, motion: MotionCapture | null
+): Promise<{ segments: LocationFix[][]; bytes: Uint8Array | null }> => {
   const params = getSportProfile(sport).cadence;
-  if (!params || !motion) return segments;
+  if (!params || !motion) return { segments, bytes: null };
+  let bytes: Uint8Array | null = null;
   try {
-    const bytes = await readMotionCapture(motion.path);
-    const recording = bytes ? await decodeImu(bytes) : null;
-    if (!recording || !recording.header.setup.cadence) return segments;
+    bytes = await readMotionCapture(motion.path);
+    const recording = bytes ? await decodeImu(bytes, { streams: ['accel'] }) : null;
+    if (!recording || !recording.header.setup.cadence) return { segments, bytes };
     const series = cadenceSeries(recording, params);
-    return series ? segments.map((segment) => joinCadence(segment, series)) : segments;
+    return { segments: series ? segments.map((segment) => joinCadence(segment, series)) : segments, bytes };
   } catch {
-    return segments;
+    return { segments, bytes };
   }
 };
 
@@ -347,8 +359,8 @@ const buildPendingSession = async (
   const startMs = segments.find((s) => s.length > 0)![0].timeMs;
   const fileName = sessionFileName(startMs, sport);
   const measured = await withMeasuredCadence(segments, sport, motion);
-  const content = buildGpx(measured, { name: sessionTitle(startMs, activity.name), sport });
-  return { fileName, content, sport, activity, pointCount, recovered, intervals, marks, motion, test };
+  const content = buildGpx(measured.segments, { name: sessionTitle(startMs, activity.name), sport });
+  return { fileName, content, sport, activity, pointCount, recovered, intervals, marks, motion, motionBytes: measured.bytes, test };
 };
 
 /**
@@ -361,7 +373,7 @@ export const analyzePendingSession = async (): Promise<SavedSession | null> => {
   if (!pending) return null;
   try {
     // Capteurs illisibles ou absents : la session est rangée sans eux.
-    const motion = pending.motion ? await readMotionCapture(pending.motion.path).catch(() => null) : null;
+    const motion = pending.motion ? pending.motionBytes ?? await readMotionCapture(pending.motion.path).catch(() => null) : null;
     // Le foil de l'activité au moment de l'enregistrement : le matériel du jour, pas une supposition.
     const foil = effectiveFoil(pending.activity);
     const { file, location } = await saveRecordedSession(
@@ -406,6 +418,20 @@ const journalActivity = (sport: SportType, saved: { id: string; name: string } |
 };
 
 const isBusy = (): boolean => state.status !== 'idle';
+
+/** Démarrage, pause ou reprise en cours : un second appel pendant qu'elle se fait (double appui) est ignoré. */
+let commandBusy = false;
+
+/** La commande, réservée de son premier appel jusqu'à sa fin ; un appel pendant ce temps ne fait rien. */
+const exclusive = <A extends unknown[]>(command: (...args: A) => Promise<void>) => async (...args: A): Promise<void> => {
+  if (commandBusy) return;
+  commandBusy = true;
+  try {
+    await command(...args);
+  } finally {
+    commandBusy = false;
+  }
+};
 
 /** Vrai tant qu'un enregistrement est en cours : la touche retour ne doit pas fermer l'application. */
 export const isRecordingActive = (): boolean => isBusy();
@@ -482,7 +508,7 @@ const releaseRecordingBelt = (): void => {
  * (sauts, pumping en surf), avec l'emplacement du téléphone et le foil ; si les capteurs ne démarrent pas, l'enregistrement
  * continue sans eux, et le dit. `heartRate` : la ceinture cardio à joindre ; de même, sans elle si elle ne répond pas.
  */
-export const startRecording = async (
+export const startRecording = exclusive(async (
   activity: Activity,
   source: LocationSource,
   options: { motion?: MotionSetup | null; heartRate?: HeartRateBelt | null } = {}
@@ -510,7 +536,7 @@ export const startRecording = async (
   currentTest = null;
   sourceError = null;
   setState({
-    status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
+    status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, pauseClock: null, measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
     saved: null, error: null,
   });
 
@@ -540,16 +566,19 @@ export const startRecording = async (
       setState({ heartRate: null, error: `Ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}. L'enregistrement continue sans elle.` });
     }
   }
-};
+});
 
 /**
  * Pause manuelle : coupe la source GPS pour économiser la batterie sur un
  * arrêt volontaire. `resumeRecording` la relance. Depuis une pause
  * automatique, elle coupe aussi la source : la reprise devient manuelle.
  */
-export const pauseRecording = async (): Promise<void> => {
+export const pauseRecording = exclusive(async (): Promise<void> => {
   const autoPaused = state.status === 'paused' && state.pausedReason === 'auto';
   if (state.status !== 'recording' && !autoPaused) return;
+  // La durée se fige à cet instant ; depuis une pause automatique, celle-ci y reste comptée.
+  const frozenAtMs = Date.now();
+  const pauseClock: PauseClock = { sinceMs: autoPaused && state.pauseClock ? state.pauseClock.sinceMs : frozenAtMs, frozenAtMs };
   try {
     await stopSource?.();
   } catch {
@@ -559,11 +588,11 @@ export const pauseRecording = async (): Promise<void> => {
   belowSinceMs = null;
   await flushJournal();
   if (state.measuringMotion) await pauseMotionCapture().catch(() => undefined);
-  setState({ status: 'paused', pausedReason: 'manual' });
-};
+  setState({ status: 'paused', pausedReason: 'manual', pauseClock });
+});
 
 /** Relance la source coupée par `pauseRecording`. Le prochain point gardé ouvre un nouveau segment. */
-export const resumeRecording = async (): Promise<void> => {
+export const resumeRecording = exclusive(async (): Promise<void> => {
   if (state.status !== 'paused' || state.pausedReason !== 'manual' || state.activity === null || currentSource === null || currentProfile === null) {
     return;
   }
@@ -576,12 +605,12 @@ export const resumeRecording = async (): Promise<void> => {
     stopSource = await source.start(sourceOptions(activity, profile), receiveFix, onSourceError);
     if (state.measuringMotion) await resumeMotionCapture().catch(() => undefined);
     // L'erreur de la source peut arriver avant la fin du démarrage (localisation coupée) : elle reste affichée.
-    setState({ status: 'recording', pausedReason: null, error: sourceError });
+    setState({ status: 'recording', pausedReason: null, pauseClock: null, error: sourceError });
   } catch (err) {
     pendingBreak = false;
     setState({ error: `Reprise impossible : ${errorMessage(err, 'erreur inconnue')}` });
   }
-};
+});
 
 /**
  * Change l'activité de l'enregistrement en cours, d'une famille à l'autre
@@ -606,6 +635,7 @@ export const changeRecordingActivity = (activity: Activity): void => {
     pendingBreak = true;
     patch.status = 'recording';
     patch.pausedReason = null;
+    patch.pauseClock = null;
   }
   setState(patch);
   rememberRecordActivity(activity.id);
@@ -684,6 +714,8 @@ export const stopRecording = async (): Promise<void> => {
     );
     setState({
       status: 'idle',
+      pausedReason: null,
+      pauseClock: null,
       measuringMotion: false,
       motionSetup: null,
       heartRate: null,
@@ -694,6 +726,8 @@ export const stopRecording = async (): Promise<void> => {
   } catch (err) {
     setState({
       status: 'idle',
+      pausedReason: null,
+      pauseClock: null,
       measuringMotion: false,
       motionSetup: null,
       heartRate: null,
@@ -723,3 +757,31 @@ export const dismissRecorderResult = (): void => setState({ saved: null, error: 
 
 /** État de l'enregistreur, relu à chaque changement. */
 export const useRecorder = (): RecorderState => useSyncExternalStore(subscribe, () => state);
+
+/** Statut seul de l'enregistreur : ne redessine qu'à son changement, pas à chaque position ni mesure de la ceinture. */
+export const useRecorderStatus = (): RecorderStatus => useSyncExternalStore(subscribe, () => state.status);
+
+/**
+ * Horloge de l'enregistrement, pour une page : l'instant présent et la durée
+ * affichée (`displayedDurationMs`). Elle bat chaque seconde seulement quand
+ * c'est utile : en pause automatique, où la durée tourne sans position, et
+ * quand `clockShown` (chiffre « Heure » affiché) ; sinon la page est redessinée
+ * avec l'état.
+ */
+export const useRecordingClock = (clockShown: boolean): { nowMs: number; durationMs: number } => {
+  const { status, stats, pauseClock } = useRecorder();
+  const ticking = status !== 'idle' && ((pauseClock !== null && pauseClock.frozenAtMs === null) || clockShown);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!ticking) return undefined;
+    const tick = () => setNowMs(Date.now());
+    // Tout de suite, puis chaque seconde : l'instant gardé peut dater.
+    const first = setTimeout(tick, 0);
+    const every = setInterval(tick, 1000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+    };
+  }, [ticking]);
+  return { nowMs, durationMs: displayedDurationMs(stats, pauseClock, nowMs) };
+};

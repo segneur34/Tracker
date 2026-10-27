@@ -116,22 +116,38 @@ const deflateRaw = (bytes: Uint8Array): Promise<Uint8Array> => transform(bytes, 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** Tableau de nombres qui grandit, sans recopier à chaque ajout. */
-class Growable {
-  data: Float64Array;
+/**
+ * Tableau de nombres qui grandit, sans recopier à chaque ajout : instants en
+ * Float64 (entiers de microsecondes au-delà de la précision du Float32),
+ * valeurs directement en Float32, leur forme finale.
+ */
+class Growable<T extends Float64Array | Float32Array> {
+  data: T;
   length = 0;
-  constructor(capacity = 4096) {
-    this.data = new Float64Array(capacity);
+  private readonly make: (capacity: number) => T;
+  constructor(make: (capacity: number) => T, capacity: number) {
+    this.make = make;
+    this.data = make(Math.max(16, capacity));
   }
   push(value: number): void {
     if (this.length === this.data.length) {
-      const next = new Float64Array(this.data.length * 2);
+      const next = this.make(this.data.length * 2);
       next.set(this.data);
       this.data = next;
     }
     this.data[this.length++] = value;
   }
+  /** Les valeurs écrites ; sans recopie quand la place perdue est faible (capacité bien estimée). */
+  written(): T {
+    return (this.length >= this.data.length * 0.9 ? this.data.subarray(0, this.length) : this.data.slice(0, this.length)) as T;
+  }
 }
+
+const float64 = (capacity: number) => new Float64Array(capacity);
+const float32 = (capacity: number) => new Float32Array(capacity);
+
+/** Paquets décompressés ensemble : assez pour occuper le décompresseur, peu pour la mémoire. */
+const INFLATE_BATCH = 32;
 
 const readHeader = (json: unknown): ImuHeader | null => {
   if (!isObject(json) || json.format !== IMU_FORMAT || typeof json.version !== 'number') return null;
@@ -166,12 +182,6 @@ const readHeader = (json: unknown): ImuHeader | null => {
   } as ImuHeader;
 };
 
-/**
- * Lit un fichier `.imu`. Rend `null` s'il ne commence pas par la marque et un
- * en-tête lisible. Un dernier paquet incomplet est ignoré (`truncated`) ; un
- * paquet complet mais illisible est sauté (`skippedChunks`), les suivants
- * sont lus.
- */
 /** En-tête seul d'un fichier, sans en lire les mesures ; `null` s'il est illisible. */
 export const decodeImuHeader = (bytes: Uint8Array): ImuHeader | null => {
   const magic = asciiBytes(IMU_MAGIC);
@@ -187,78 +197,58 @@ export const decodeImuHeader = (bytes: Uint8Array): ImuHeader | null => {
   }
 };
 
-export const decodeImu = async (bytes: Uint8Array): Promise<ImuRecording | null> => {
-  const header = decodeImuHeader(bytes);
-  if (!header) return null;
-  const magic = asciiBytes(IMU_MAGIC);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const headerLength = view.getUint32(magic.length, true);
-  const headerStart = magic.length + 4;
+export interface ImuDecodeOptions {
+  /** Flux à décoder (la cadence : l'accéléromètre seul) ; les blocs des autres sont sautés. Absent : tous. */
+  streams?: readonly ImuStreamKind[];
+}
 
-  const streams = new Map(header.streams.map((info) => [info.id, {
-    info,
-    t: new Growable(),
-    values: Array.from({ length: info.axes }, () => new Growable()),
-  }]));
+/** Bloc d'un paquet, repéré sans être décodé : son flux, ses mesures, et où commencent ses écarts d'instant. */
+interface BlockSpan {
+  info: ImuStreamInfo;
+  n: number;
+  first: number;
+  at: number;
+}
 
-  let offset = headerStart + headerLength;
-  let chunks = 0;
-  let skippedChunks = 0;
-  let truncated = false;
-  while (offset < bytes.length) {
-    if (offset + 4 > bytes.length) { truncated = true; break; }
-    const length = view.getUint32(offset, true);
-    if (offset + 4 + length > bytes.length) { truncated = true; break; }
-    const compressed = bytes.subarray(offset + 4, offset + 4 + length);
-    offset += 4 + length;
-    let payload: Uint8Array;
-    try {
-      payload = await inflateRaw(compressed);
-    } catch {
-      skippedChunks += 1;
-      continue;
-    }
-    if (readPayload(payload, streams)) chunks += 1;
-    else skippedChunks += 1;
-  }
-
-  const series: ImuSeries[] = [...streams.values()].map((s) => ({
-    info: s.info,
-    t: s.t.data.slice(0, s.t.length),
-    values: s.values.map((v) => Float32Array.from(v.data.subarray(0, v.length))),
-  }));
-  return { header, series, chunks, truncated, skippedChunks };
-};
-
-type Accumulator = Map<number, { info: ImuStreamInfo; t: Growable; values: Growable[] }>;
-
-/** Lit les blocs d'un paquet ; faux si le paquet est mal formé (il est alors écarté en entier). */
-const readPayload = (payload: Uint8Array, streams: Accumulator): boolean => {
+/** Repère les blocs d'un paquet ; `null` si le paquet est mal formé (il est alors écarté en entier). */
+const payloadBlocks = (payload: Uint8Array, infos: Map<number, ImuStreamInfo>): BlockSpan[] | null => {
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
-  // Les blocs sont d'abord lus à part : un paquet mal formé n'ajoute rien.
-  const blocks: { id: number; t: number[]; values: number[][] }[] = [];
+  const blocks: BlockSpan[] = [];
   let at = 0;
   while (at < payload.length) {
-    if (at + 11 > payload.length) return false;
-    const id = view.getUint8(at);
+    if (at + 11 > payload.length) return null;
+    const info = infos.get(view.getUint8(at));
     const n = view.getUint16(at + 1, true);
     const first = view.getFloat64(at + 3, true);
     at += 11;
-    const info = streams.get(id)?.info;
-    const axes = info?.axes ?? 0;
-    const size = (n - 1) * 2 + axes * n * 2;
     // Un flux absent de l'en-tête a une taille inconnue : le paquet entier devient illisible.
-    if (n < 1 || at + size > payload.length || !info) return false;
-    const t: number[] = [first];
+    if (!info || n < 1) return null;
+    const size = (n - 1) * 2 + info.axes * n * 2;
+    if (at + size > payload.length) return null;
+    blocks.push({ info, n, first, at });
+    at += size;
+  }
+  return blocks;
+};
+
+type Accumulator = Map<number, { info: ImuStreamInfo; t: Growable<Float64Array>; values: Growable<Float32Array>[] }>;
+
+/** Décode les blocs repérés d'un paquet, ceux des flux demandés seulement, directement dans les tableaux. */
+const readBlocks = (payload: Uint8Array, blocks: BlockSpan[], streams: Accumulator): void => {
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  for (const { info, n, first, at: start } of blocks) {
+    const target = streams.get(info.id);
+    if (!target) continue;
+    let at = start;
+    target.t.push(first);
     let r = 0;
     for (let i = 1; i < n; i++) {
       r += view.getInt16(at, true);
       at += 2;
-      t.push(first + r * IMU_TIME_STEP_US);
+      target.t.push(first + r * IMU_TIME_STEP_US);
     }
-    const values: number[][] = [];
-    for (let a = 0; a < axes; a++) {
-      const axis: number[] = [];
+    for (let a = 0; a < info.axes; a++) {
+      const axis = target.values[a];
       let q = 0;
       for (let i = 0; i < n; i++) {
         const d = view.getInt16(at, true);
@@ -266,16 +256,81 @@ const readPayload = (payload: Uint8Array, streams: Accumulator): boolean => {
         q = i === 0 ? d : ((q + d) << 16) >> 16;
         axis.push(info.offset + q * info.unit);
       }
-      values.push(axis);
     }
-    blocks.push({ id, t, values });
   }
-  for (const block of blocks) {
-    const target = streams.get(block.id)!;
-    for (const t of block.t) target.t.push(t);
-    block.values.forEach((axis, a) => { for (const v of axis) target.values[a].push(v); });
+};
+
+/**
+ * Lit un fichier `.imu`. Rend `null` s'il ne commence pas par la marque et un
+ * en-tête lisible. Un dernier paquet incomplet est ignoré (`truncated`) ; un
+ * paquet complet mais illisible est sauté (`skippedChunks`), les suivants
+ * sont lus. Les paquets sont décompressés par lots, en parallèle ; la place
+ * des mesures est réservée d'après le premier lot, rapporté à la taille du
+ * fichier (une capture de 4 h en tient plus d'un million par flux).
+ */
+export const decodeImu = async (bytes: Uint8Array, options: ImuDecodeOptions = {}): Promise<ImuRecording | null> => {
+  const header = decodeImuHeader(bytes);
+  if (!header) return null;
+  const magic = asciiBytes(IMU_MAGIC);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const headerLength = view.getUint32(magic.length, true);
+  const headerStart = magic.length + 4;
+
+  // Paquets complets, sans les recopier ; un dernier incomplet est ignoré.
+  const packets: Uint8Array[] = [];
+  let truncated = false;
+  let offset = headerStart + headerLength;
+  while (offset < bytes.length) {
+    if (offset + 4 > bytes.length) { truncated = true; break; }
+    const length = view.getUint32(offset, true);
+    if (offset + 4 + length > bytes.length) { truncated = true; break; }
+    packets.push(bytes.subarray(offset + 4, offset + 4 + length));
+    offset += 4 + length;
   }
-  return true;
+  const totalBytes = packets.reduce((sum, packet) => sum + packet.length, 0);
+
+  const infos = new Map(header.streams.map((info) => [info.id, info]));
+  const wanted = header.streams.filter((info) => !options.streams || options.streams.includes(info.kind));
+  let streams: Accumulator | null = null;
+  let chunks = 0;
+  let skippedChunks = 0;
+  for (let i = 0; i < packets.length; i += INFLATE_BATCH) {
+    const batch = packets.slice(i, i + INFLATE_BATCH);
+    const payloads = await Promise.all(batch.map((packet) => inflateRaw(packet).catch(() => null)));
+    const spans = payloads.map((payload) => (payload ? payloadBlocks(payload, infos) : null));
+    if (streams === null) {
+      // Mesures du premier lot, rapportées à tout le fichier, avec un peu de marge ; au-delà, le tableau double.
+      const counts = new Map<number, number>();
+      for (const blocks of spans) for (const b of blocks ?? []) counts.set(b.info.id, (counts.get(b.info.id) ?? 0) + b.n);
+      const batchBytes = batch.reduce((sum, packet) => sum + packet.length, 0);
+      const scale = batchBytes > 0 ? (totalBytes / batchBytes) * 1.05 : 1;
+      streams = new Map(wanted.map((info) => {
+        const capacity = Math.ceil((counts.get(info.id) ?? 0) * scale);
+        return [info.id, {
+          info,
+          t: new Growable(float64, capacity),
+          values: Array.from({ length: info.axes }, () => new Growable(float32, capacity)),
+        }];
+      }));
+    }
+    payloads.forEach((payload, k) => {
+      const blocks = spans[k];
+      if (!payload || !blocks) {
+        skippedChunks += 1;
+        return;
+      }
+      readBlocks(payload, blocks, streams!);
+      chunks += 1;
+    });
+  }
+
+  const series: ImuSeries[] = wanted.map((info) => {
+    const s = streams?.get(info.id);
+    return s
+      ? { info, t: s.t.written(), values: s.values.map((v) => v.written()) }
+      : { info, t: new Float64Array(0), values: Array.from({ length: info.axes }, () => new Float32Array(0)) };
+  });
+  return { header, series, chunks, truncated, skippedChunks };
 };
 
 const quantize = (value: number, info: ImuStreamInfo): number =>

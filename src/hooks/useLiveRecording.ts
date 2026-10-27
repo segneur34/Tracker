@@ -10,7 +10,7 @@ import {
 } from '../recording/liveStats';
 import { runningEnergyParams } from '../running/energy';
 import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
-import { getLiveSegments, getRecorderState, subscribeToFixes, subscribeToRecorder } from './useRecorder';
+import { getLiveSegments, getRecorderState, subscribeToRecorder } from './useRecorder';
 import { readRunnerProfile } from './useRunnerProfile';
 import { effectiveBikeSetup, effectiveDistanceUnit } from './useSportSettings';
 
@@ -19,8 +19,9 @@ import { effectiveBikeSetup, effectiveDistanceUnit } from './useSportSettings';
  * comme l'enregistreur : la page Enregistrer les affiche, la notification de
  * l'enregistrement les reprend écran éteint, sans calcul en double.
  *
- * Recalculées à l'arrivée des positions (`subscribeToFixes`, seule boucle sûre
- * écran éteint), au plus toutes les `PAGE_REFRESH_MS` quand une page les lit,
+ * Recalculées à l'arrivée des positions, par l'état de l'enregistreur qui les
+ * garde (`subscribeToRecorder`, seule boucle sûre écran éteint), une fois la
+ * position comptée, au plus toutes les `PAGE_REFRESH_MS` quand une page les lit,
  * toutes les `BACKGROUND_REFRESH_MS` sinon : une longue trace coûte, et
  * l'enregistreur n'en porte pas le coût. Une page qui regarde a en plus un
  * dernier calcul différé, pour ne pas rester sur un état vieux de quelques
@@ -148,7 +149,6 @@ let started = false;
 export const startLiveRecording = (): void => {
   if (started) return;
   started = true;
-  subscribeToFixes(request);
   subscribeToRecorder(request);
   subscribeToFollowedTrace(request);
   request();

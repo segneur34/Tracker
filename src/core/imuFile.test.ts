@@ -64,6 +64,34 @@ describe('fichier des capteurs', () => {
     expect(Math.min(...r.values[0])).toBeCloseTo(-327.68, 2);
   });
 
+  it("ne décode que les flux demandés, à l'identique du décodage complet", async () => {
+    const bytes = await encodeImu(HEADER, [accel(), gyro(), pressure()]);
+    const whole = (await decodeImu(bytes))!;
+    const only = (await decodeImu(bytes, { streams: ['accel'] }))!;
+    expect(only.series.map((s) => s.info.kind)).toEqual(['accel']);
+    expect(only.series[0]).toEqual(whole.series.find((s) => s.info.kind === 'accel'));
+    expect(only.chunks).toBe(whole.chunks);
+    expect(only.skippedChunks).toBe(0);
+  });
+
+  it('dépasse sans rien perdre une capacité estimée trop basse (cadence qui monte après les premiers paquets)', async () => {
+    // 40 s à 5 Hz, puis 20 s à 200 Hz : l'estimation tirée des premiers paquets est bien en dessous.
+    const slow = series('accel', 5, 40, (t, a) => a + Math.sin(t));
+    const fast = series('accel', 200, 20, (t, a) => a - Math.cos(t), 40_000_000);
+    const joined: ImuSeries = {
+      info: slow.info,
+      t: Float64Array.from([...slow.t, ...fast.t]),
+      values: slow.values.map((v, a) => Float32Array.from([...v, ...fast.values[a]])),
+    };
+    const read = (await decodeImu(await encodeImu(HEADER, [joined]), { streams: ['accel'] }))!;
+    const r = read.series[0];
+    expect(r.t.length).toBe(joined.t.length);
+    for (let i = 0; i < joined.t.length; i++) {
+      expect(Math.abs(r.t[i] - joined.t[i])).toBeLessThanOrEqual(50);
+      for (let a = 0; a < 3; a++) expect(Math.abs(r.values[a][i] - joined.values[a][i])).toBeLessThanOrEqual(r.info.unit / 2 + 1e-4);
+    }
+  });
+
   it('ouvre un nouveau bloc après un trou de plus de 3,27 s, sans perdre les instants', async () => {
     const before = series('gyro', 100, 2, () => 1);
     const after = series('gyro', 100, 2, () => 2, 10_000_000);

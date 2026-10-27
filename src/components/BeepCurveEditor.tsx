@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as R
 import './BeepCurveEditor.css';
 import Button from './ui/Button';
 import { formatSpeed, type SpeedUnit } from '../core/units';
-import { useRecorder } from '../hooks/useRecorder';
+import { useRecorderStatus } from '../hooks/useRecorder';
 import { BEEP_LONG_MS, getBeeper } from '../platform/beeper';
 import {
   BEEP_CURVE_LIMITS, MARK_GUIDE_DEFAULTS, beepIntervalMs, beepStartM, sanitizeMarkGuide, validationRadiusM,
@@ -103,7 +103,7 @@ function BeepCurveEditor({
   resetLabel?: string;
   fallbackMark?: string;
 }) {
-  const idle = useRecorder().status === 'idle';
+  const idle = useRecorderStatus() === 'idle';
   /** Courbe pendant un glisser, rangée au lâcher seulement. */
   const [draft, setDraft] = useState<BeepPoint[] | null>(null);
   const [selected, setSelected] = useState<number | null>(null);

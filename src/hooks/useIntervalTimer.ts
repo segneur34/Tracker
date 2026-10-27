@@ -213,3 +213,7 @@ export const useIntervalTimer = (): IntervalTimerView => useSyncExternalStore(su
 
 /** Vrai tant qu'une séance est lancée, close comprise jusqu'à « Fermer » ; ne redessine qu'à ce changement. */
 export const useIntervalTimerOpen = (): boolean => useSyncExternalStore(subscribe, () => view.run !== null);
+
+/** Vrai tant qu'une séance avance ou est en pause, pas une fois finie : l'écran reste allumé ; ne redessine qu'à ce changement. */
+export const useIntervalTimerRunning = (): boolean =>
+  useSyncExternalStore(subscribe, () => isActive(view.state));

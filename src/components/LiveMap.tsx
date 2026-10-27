@@ -93,7 +93,8 @@ const arrowIcon = (color: string) => divIcon({
  * DOM, pour ne pas recréer l'icône à chaque mesure de la boussole.
  */
 function PositionMarker({ position, color, travel }: { position: LocationFix; color: string; travel?: TravelHeading }) {
-  const compass = useCompassHeading(true);
+  // La boussole ne sert qu'à l'arrêt : en marche, le cap vient de la trace.
+  const compass = useCompassHeading(travel?.moving === false);
   const heading = travel ? displayHeading(travel, compass) : null;
   const icon = useMemo(() => arrowIcon(color), [color]);
   const marker = useRef<LeafletMarker>(null);
@@ -129,6 +130,25 @@ function FollowPosition({ position, following, onUserMove }: {
 const latLngs = (points: ReadonlyArray<{ lat: number; lon: number }>): [number, number][] => points.map((p) => [p.lat, p.lon]);
 
 /**
+ * Tracés des segments, dans la forme de Leaflet, gardés d'un calcul à
+ * l'autre et retrouvés par la première position de leur segment : un segment
+ * fermé par une pause ne change plus et garde son tableau (Leaflet ne le
+ * reprojette pas), le dernier n'est prolongé que de ses nouveaux points.
+ */
+const pathCache = new WeakMap<LocationFix, [number, number][]>();
+
+const segmentPath = (segment: LocationFix[]): [number, number][] => {
+  const first = segment[0];
+  if (!first) return [];
+  const kept = pathCache.get(first);
+  const path = kept && kept.length === segment.length ? kept
+    : kept && kept.length < segment.length ? kept.concat(latLngs(segment.slice(kept.length)))
+    : latLngs(segment);
+  pathCache.set(first, path);
+  return path;
+};
+
+/**
  * Carte de l'enregistrement en cours : la trace d'une seule couleur (un
  * dégradé demanderait un trait par point, trop lourd à redessiner) et la
  * position du moment (une flèche au cap, `PositionMarker`), et la trace
@@ -141,8 +161,8 @@ function LiveMap({ segments, position, color, family, height, guide, guideDone, 
   const [following, setFollowing] = useState(true);
   const halo = useMapBase(family)[0] === 'satellite';
   // Tracés mémorisés : `segments` ne change qu'au recalcul (toutes les 2 s, `useLiveRecording`), la position à chaque mesure.
-  // Leaflet ne reprend un tracé que si son tableau de points change.
-  const paths = useMemo(() => segments.map(latLngs), [segments]);
+  // Leaflet ne reprend un tracé que si son tableau de points change : les segments fermés gardent le leur.
+  const paths = useMemo(() => segments.map(segmentPath), [segments]);
   const guidePath = useMemo(() => (guide && guide.length > 1 ? latLngs(guide) : null), [guide]);
   const guideDonePath = useMemo(() => (guideDone && guideDone.length > 1 ? latLngs(guideDone) : null), [guideDone]);
   const trackStyle = useMemo(() => ({ color, weight: 4, opacity: 0.9 }), [color]);

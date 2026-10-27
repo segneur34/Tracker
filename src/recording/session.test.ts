@@ -3,6 +3,7 @@ import type { LocationFix } from '../platform/location';
 import {
   EMPTY_RECORDING_STATS,
   addFixToStats,
+  displayedDurationMs,
   evaluateAutoPause,
   fixesFromRawPoints,
   isNewerFix,
@@ -152,6 +153,28 @@ describe('recordingDurationMs', () => {
     expect(recordingDurationMs(addFixToStats(EMPTY_RECORDING_STATS, fixAt(0)))).toBe(0);
     const stats = [fixAt(0), fixAt(1), fixAt(3725)].reduce(addFixToStats, EMPTY_RECORDING_STATS);
     expect(recordingDurationMs(stats)).toBe(3_725_000);
+  });
+});
+
+describe('displayedDurationMs', () => {
+  const stats = [fixAt(0), fixAt(600)].reduce(addFixToStats, EMPTY_RECORDING_STATS);
+  const wall = 5_000_000;
+
+  it('suit les positions hors pause', () => {
+    expect(displayedDurationMs(stats, null, wall)).toBe(600_000);
+  });
+
+  it("tourne en pause automatique, à l'horloge du téléphone", () => {
+    const pause = { sinceMs: wall, frozenAtMs: null };
+    expect(displayedDurationMs(stats, pause, wall)).toBe(600_000);
+    expect(displayedDurationMs(stats, pause, wall + 240_000)).toBe(840_000);
+    // Horloge en retard sur le début de la pause : jamais en dessous des positions.
+    expect(displayedDurationMs(stats, pause, wall - 1000)).toBe(600_000);
+  });
+
+  it("reste figée en pause manuelle, la pause automatique d'avant comprise", () => {
+    expect(displayedDurationMs(stats, { sinceMs: wall, frozenAtMs: wall }, wall + 999_000)).toBe(600_000);
+    expect(displayedDurationMs(stats, { sinceMs: wall, frozenAtMs: wall + 60_000 }, wall + 999_000)).toBe(660_000);
   });
 });
 

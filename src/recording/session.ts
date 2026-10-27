@@ -94,6 +94,25 @@ export const EMPTY_RECORDING_STATS: RecordingStats = {
 export const recordingDurationMs = (stats: RecordingStats): number =>
   stats.firstMs !== null && stats.lastMs !== null ? stats.lastMs - stats.firstMs : 0;
 
+/**
+ * Pause en cours, à l'horloge du téléphone : depuis quand, et l'instant où la
+ * durée s'est figée (pause manuelle) ; `frozenAtMs` nul en pause automatique.
+ */
+export interface PauseClock {
+  sinceMs: number;
+  frozenAtMs: number | null;
+}
+
+/**
+ * Durée affichée de l'enregistrement : celle des positions gardées, plus la
+ * pause en cours, qui tourne en pause automatique (aucune position gardée, la
+ * notification compte, elle) et reste figée en pause manuelle. Comptée à
+ * l'horloge du téléphone, pas à l'heure des positions : un rejeu garde les
+ * siennes.
+ */
+export const displayedDurationMs = (stats: RecordingStats, pause: PauseClock | null, nowMs: number): number =>
+  recordingDurationMs(stats) + (pause === null ? 0 : Math.max(0, (pause.frozenAtMs ?? nowMs) - pause.sinceMs));
+
 export const addFixToStats = (stats: RecordingStats, fix: LocationFix): RecordingStats => {
   const gapS = stats.lastMs === null ? 0 : (fix.timeMs - stats.lastMs) / 1000;
   return {

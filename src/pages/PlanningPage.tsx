@@ -41,7 +41,7 @@ import { useGoOnRoute } from '../hooks/useGoOnRoute';
 import { useMapBase } from '../hooks/useMapBase';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { usePlannedRoute } from '../hooks/usePlannedRoute';
-import { getLastFix, useRecorder } from '../hooks/useRecorder';
+import { getLastFix, useRecorderStatus } from '../hooks/useRecorder';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
@@ -363,7 +363,7 @@ function PlanningPage() {
   const [candidate, setCandidate] = useState<Place | null>(null);
 
   // Ma position : celle de l'enregistrement s'il tourne (il tient le GPS), sinon une lecture unique.
-  const recording = useRecorder().status !== 'idle';
+  const recording = useRecorderStatus() !== 'idle';
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
 
