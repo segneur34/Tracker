@@ -6,12 +6,14 @@ L'utilisateur répond par numéro : « ok », ou ce qui ne va pas. Les numéros 
 
 ## À faire (paquets en attente de validation)
 
-APK 0.3.78 installée (28/10 : lots 13, boutons orange et « Étape », et 14, dépendances npm dont le greffon GPS 8.5.0). Ces deux essais restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14 (file des lots), puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14.
+APK 0.3.79 installée (28/10 : lots 13, boutons orange et « Étape » ; 14, dépendances npm dont le greffon GPS 8.5.0 ; 12, thème sombre et économe). Les essais 28 + 34 et 37 + 43 restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14, puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14. Les essais 49 et 50 valident le lot 12.
 
 | N° | Essai | Attendu |
 |---|---|---|
 | 28 + 34 | Un vrai enregistrement d'une heure ou plus, avec la notification, une pause, et si possible une trace suivie. | Chiffres du direct, distance restante, bips et pause automatique justes et sans retard tout du long ; analyse normale ensuite. |
 | 37 + 43 | Un fractionné avec la ceinture, écran verrouillé. | Tuile « BPM » au-dessus de Durée et Vitesse, état de la ceinture lisible ; notification « Étape n/N · Vit. ». **Question : après « Étape », vitesse, distance ou FC ?** |
+| 49 | Lot 12 (APK 0.3.79) : Réglages › Affichage sur « Auto », puis basculer le thème d'Android clair/sombre ; relancer l'application en sombre. | L'application suit, icônes de la barre d'état lisibles ; rien de blanc au lancement en sombre. |
+| 50 | Lot 12 : « Sombre » puis « Économe » sur Accueil, une analyse, Enregistrer et Réglages. | Tout lisible ; la carte reste claire dans l'interface sombre ; en économe, fond noir, vignettes trace seule sans plan (à juger) ; le texte bleu voile sur fond sombre (« Renommer », onglet choisi) est à juger à l'œil. |
 
 ## Quand l'occasion se présente (terrain)
 
