@@ -41,8 +41,22 @@ Tous repartent à froid (ils rechargent `CLAUDE.md`), donc ils valent pour une �
 - `verif` (Haiku, low) : lint, typecheck, tests, build ; ne rend que les échecs.
 - `banc` (Sonnet, low) : un script du banc dans un Chrome sans fenêtre ; compteurs, erreurs, diff du texte avant/après.
 - `doc` (Sonnet, medium) : la passe de documentation d'un lot validé ; ne touche pas au code, ne committe pas.
+- `lot` (Opus, high par défaut ; modèle et effort redonnés à chaque appel d'après la colonne « Modèle | Réflexion » du brief) : exécute un lot d'après son brief, lance les vérifications courtes, rend un rapport FAIT / BLOQUÉ / ÉCHEC ; ne committe pas, ne pose pas la version, ne tranche aucune décision de l'utilisateur.
 
 Tout autre sous-agent sans modèle dans son en-tête (fork, agent général) tourne sur Sonnet (`CLAUDE_CODE_SUBAGENT_MODEL` dans `~/.claude/settings.json`), jamais sur le modèle de la session. Pour appeler un agent : « avec l'agent verif, lance les vérifications complètes », ou `@verif`.
+
+## Mode chaîne
+
+Une seule conversation Fable (high) enchaîne les lots et les confie aux sous-agents ; elle ne s'adresse à l'utilisateur que pour une vraie décision. La file ordonnée des lots, leurs dépendances, leur état et les questions en attente avec les réponses sont tenues dans `~/.claude/plans/FILE-DES-LOTS.md`, hors dépôt : c'est elle qui fait foi d'une conversation à l'autre. Démarrage : `claude --model fable`, puis « Mode chaîne : on reprend la file » (prompt complet dans `~/.claude/plans/MODE-CHAINE-PROMPT.md`).
+
+Boucle de l'orchestrateur :
+1. prendre le premier lot « à faire » dont les dépendances sont levées ; les lots passent l'un après l'autre (un seul dépôt : version et HISTORIQUE se croiseraient) ;
+2. lancer l'agent `lot` avec le brief, le modèle et l'effort de sa colonne, et les réponses déjà données ;
+3. rapport FAIT : `verif` complète, `banc` sur les scripts que le brief cite, version augmentée dans `package.json`, commit local marqué « à valider » dans la file ;
+4. rapport BLOQUÉ : poser la question à l'utilisateur (AskUserQuestion, et PushNotification vers le téléphone), noter le lot « bloqué (Q n) » et sa question dans la file, continuer avec le premier lot qui n'en dépend pas ; à la réponse, renvoyer la réponse au même agent ;
+5. rapport ÉCHEC : relancer une fois sur le modèle du dessus, sinon noter l'échec dans la file et passer au suivant.
+
+Arrêt et clôture : la conversation s'arrête quand un paquet de 2 ou 3 lots est « à valider » (APK construit, liste de ce que l'utilisateur doit essayer), quand une compaction a eu lieu ou que `/context` dépasse environ 60 %, ou quand tout ce qui reste est bloqué par ses réponses. Avant de proposer la fermeture, la file est mise à jour. La passe `doc` ne se fait qu'après la validation d'un paquet par l'utilisateur, lot par lot ; un lot refusé se corrige par un nouveau commit, jamais par une réécriture de l'historique. Rien n'est envoyé sur GitHub sans son accord.
 
 ## Réglages (`~/.claude/settings.json`, hors dépôt)
 
