@@ -90,6 +90,31 @@ describe('rootGrowth', () => {
   });
 });
 
+describe('fuseau et minuit', () => {
+  it('les tests tournent en heure de Paris, quelle que soit la machine (src/test/setup.ts)', () => {
+    expect(new Date(2026, 7, 31, 0, 30).getTime()).toBe(Date.UTC(2026, 7, 30, 22, 30));
+  });
+
+  it('une session à 00:30 locale du lundi compte dans la semaine de ce lundi, pas dans celle du dimanche précédent (UTC)', () => {
+    const monday = new Date(2026, 7, 31, 0, 30).getTime();
+    expect(periodIndex(monday, 7)).toBe(periodIndex(new Date(2026, 8, 3, 12).getTime(), 7));
+    expect(periodIndex(monday, 7)).toBe(periodIndex(monday - 3_600_000, 7) + 1);
+  });
+
+  it('une session à cheval sur minuit compte dans la période où elle commence', () => {
+    const sunday = new Date(2026, 7, 30, 23, 30).getTime();
+    const g = rootGrowth([{ startMs: sunday, durationS: 3600 }], GOAL, new Date(2026, 8, 2, 12).getTime());
+    expect(g.level).toBe(1);
+    expect(g.maxLevel).toBe(1);
+  });
+
+  it('une session avant l’origine de 2024 n’est pas perdue : ses semaines sont rejouées', () => {
+    const g = rootGrowth([{ startMs: new Date(2023, 11, 20, 10).getTime(), durationS: 3600 }], GOAL, new Date(2024, 0, 15, 12).getTime());
+    expect(g.maxLevel).toBe(1);
+    expect(g.missedInRow).toBe(3);
+  });
+});
+
 describe('levelText', () => {
   it('entier, ou une décimale', () => {
     expect(levelText(4)).toBe('4');

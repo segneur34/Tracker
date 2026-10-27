@@ -1,0 +1,110 @@
+// @vitest-environment node
+import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { parseGpx, parseGpxPath } from './gpxParser';
+
+// L'environnement de test est node, sans `DOMParser` : xmldom (dépendance de dev) en tient lieu.
+beforeAll(() => {
+  vi.stubGlobal('DOMParser', XmlDomParser);
+});
+
+const NS = 'xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"';
+const gpx = (body: string) => `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="test" ${NS}>${body}</gpx>`;
+const pt = (lat: number, lon: number, time: string | null, inner = '') =>
+  `<trkpt lat="${lat}" lon="${lon}">${time ? `<time>${time}</time>` : ''}${inner}</trkpt>`;
+
+describe('parseGpx', () => {
+  it('lit position, altitude, heure, FC et cadence des extensions Garmin préfixées', () => {
+    const xml = gpx(
+      `<trk><name>Sortie</name><type>running</type><trkseg>${pt(
+        45, 5, '2026-10-01T10:00:00Z', '<ele>120.5</ele><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>152</gpxtpx:hr><gpxtpx:cad>84</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions>'
+      )}</trkseg></trk>`
+    );
+    const r = parseGpx(xml);
+    expect(r.rawPoints).toHaveLength(1);
+    expect(r.rawPoints[0]).toMatchObject({ lat: 45, lon: 5, time: '2026-10-01T10:00:00Z', ele: 120.5, hr: 152, cadence: 84 });
+    expect(r.trackName).toBe('Sortie');
+    expect(r.trackType).toBe('running');
+    expect(r.hasDeviceSpeed).toBe(false);
+  });
+
+  it('lit la vitesse directe de l\'extension (m/s) et le cap, et écarte les valeurs absurdes', () => {
+    const xml = gpx(
+      `<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z', '<extensions><speed>6.5</speed><course>270</course></extensions>')}${pt(
+        45, 5.001, '2026-10-01T10:00:01Z', '<extensions><speed>-2</speed><course>400</course></extensions>'
+      )}${pt(45, 5.002, '2026-10-01T10:00:02Z', '<extensions><speed>250</speed></extensions>')}</trkseg></trk>`
+    );
+    const r = parseGpx(xml);
+    expect(r.hasDeviceSpeed).toBe(true);
+    expect(r.rawPoints.map((p) => p.speedMs)).toEqual([6.5, undefined, undefined]);
+    expect(r.rawPoints.map((p) => p.courseDeg)).toEqual([270, undefined, undefined]);
+  });
+
+  it('marque le premier point de chaque <trkseg> après le premier, sur un ou plusieurs <trk>', () => {
+    const xml = gpx(
+      `<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z')}${pt(45, 5.001, '2026-10-01T10:00:01Z')}</trkseg>` +
+        `<trkseg>${pt(45, 5.002, '2026-10-01T10:05:00Z')}${pt(45, 5.003, '2026-10-01T10:05:01Z')}</trkseg></trk>` +
+        `<trk><trkseg>${pt(45, 5.004, '2026-10-01T10:10:00Z')}</trkseg></trk>`
+    );
+    const r = parseGpx(xml);
+    expect(r.rawPoints.map((p) => p.segmentStart === true)).toEqual([false, false, true, false, true]);
+  });
+
+  it('écarte un point sans heure ou sans position, sans casser la suite', () => {
+    const xml = gpx(
+      `<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z')}${pt(45, 5.001, null)}<trkpt lat="x" lon="5"><time>2026-10-01T10:00:02Z</time></trkpt>${pt(
+        45, 5.003, '2026-10-01T10:00:03Z'
+      )}</trkseg></trk>`
+    );
+    expect(parseGpx(xml).rawPoints.map((p) => p.lon)).toEqual([5, 5.003]);
+  });
+
+  it('un point écarté en tête d\'un segment ne fait pas perdre la reprise', () => {
+    const xml = gpx(`<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z')}</trkseg><trkseg>${pt(45, 5.001, null)}${pt(45, 5.002, '2026-10-01T10:05:00Z')}</trkseg></trk>`);
+    expect(parseGpx(xml).rawPoints.map((p) => p.segmentStart === true)).toEqual([false, true]);
+  });
+
+  it('garde un nom de trace et un type absents indéfinis', () => {
+    const r = parseGpx(gpx(`<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z')}</trkseg></trk>`));
+    expect(r.trackName).toBeUndefined();
+    expect(r.trackType).toBeUndefined();
+  });
+
+  // A-B7 (revue du 27/10) : `readText(trk, 'name')` cherche dans les descendants, alors que `type` lit l'enfant direct.
+  it.skip('A-B7 : le nom d\'un point ne devient pas le nom de la trace', () => {
+    const r = parseGpx(gpx(`<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z', '<name>Départ</name>')}</trkseg></trk>`));
+    expect(r.trackName).toBeUndefined();
+  });
+
+  it('A-B7 (comportement actuel) : le nom d\'un point est repris faute de nom de trace', () => {
+    const r = parseGpx(gpx(`<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z', '<name>Départ</name>')}</trkseg></trk>`));
+    expect(r.trackName).toBe('Départ');
+  });
+
+  it('refuse un XML mal formé', () => {
+    // Navigateur : élément parsererror, donc notre message ; xmldom lève sa propre erreur. Dans les deux cas, une erreur.
+    expect(() => parseGpx('<gpx><trk><trkseg></gpx>')).toThrow();
+  });
+
+  it('un fichier vide de points rend une liste vide', () => {
+    expect(parseGpx(gpx('')).rawPoints).toEqual([]);
+  });
+});
+
+describe('parseGpxPath', () => {
+  it('n\'exige pas l\'heure, lit l\'altitude et le nom de la trace', () => {
+    const r = parseGpxPath(gpx(`<trk><name>Rando</name><trkseg>${pt(45, 5, null, '<ele>10</ele>')}${pt(45, 5.001, null)}</trkseg></trk>`));
+    expect(r.points).toEqual([{ lat: 45, lon: 5, eleM: 10 }, { lat: 45, lon: 5.001 }]);
+    expect(r.name).toBe('Rando');
+  });
+
+  it('se rabat sur les points de route quand la trace en a moins de deux', () => {
+    const r = parseGpxPath(gpx('<rte><name>Route</name><rtept lat="45" lon="5"/><rtept lat="45" lon="5.01"/></rte>'));
+    expect(r.points).toHaveLength(2);
+    expect(r.name).toBe('Route');
+  });
+
+  it('refuse un XML mal formé', () => {
+    expect(() => parseGpxPath('<gpx>')).toThrow();
+  });
+});

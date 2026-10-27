@@ -3,7 +3,7 @@ import type { Activity } from '../core/activities';
 import type { SessionRecord } from './record';
 import {
   averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, groupTotals, heartRatePoints, metricSeries, metricsOf, recordKindsOf, regularity,
-  sessionLoad, statSessionOf, statsMetric, statsPeriodBounds, statsTotals, topSessions, type StatSession,
+  inBounds, sessionLoad, statSessionOf, statsMetric, statsPeriodBounds, statsTotals, topSessions, type StatSession,
 } from './stats';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
@@ -269,6 +269,27 @@ describe('records', () => {
     expect(recordKindsOf('surf')).toEqual(expect.arrayContaining(['vague', 'vol']));
     expect(recordKindsOf('fractionne')).toContain('denivele');
     expect(recordKindsOf(null)).not.toContain('vitesse');
+  });
+});
+
+describe('session datée du futur', () => {
+  it('hors de la période courante, mais comptée sur « tout »', () => {
+    const now = at(2026, 10, 27);
+    const future = session(at(2026, 12, 25));
+    const week = statsPeriodBounds('semaine', now);
+    expect(inBounds(future.startMs, week)).toBe(false);
+    expect(inBounds(session(at(2026, 10, 28)).startMs, week)).toBe(true);
+    expect(inBounds(future.startMs, statsPeriodBounds('tout', now))).toBe(true);
+    expect(statsTotals([future]).sessions).toBe(1);
+  });
+});
+
+describe('dateTicks, fuseau', () => {
+  it('les repères tombent sur des minuits locales (Paris) : lundis et débuts de mois', () => {
+    const { ticks } = dateTicks(at(2026, 8, 1), at(2026, 8, 31));
+    expect(ticks.every((t) => new Date(t).getHours() === 0 && new Date(t).getDay() === 1)).toBe(true);
+    // 31 août 00:00 local = 30 août 22:00 UTC : un repère en UTC tomberait un dimanche.
+    expect(ticks).toContain(new Date(2026, 7, 31).getTime());
   });
 });
 

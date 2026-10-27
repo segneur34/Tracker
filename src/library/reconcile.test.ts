@@ -46,6 +46,13 @@ describe('planReconcile', () => {
     expect(plan.gpxFiles).toEqual(['a.gpx', 'copie-du-pc.gpx']);
   });
 
+  it('casse mêlée : un GPX en .GPX retrouve sa fiche .json ; une fiche en .JSON n’est pas la sienne (comportement actuel)', () => {
+    const plan = planReconcile([file('A.GPX'), file('A.json'), file('b.gpx'), file('b.JSON')], [], {});
+    expect(plan.read).toEqual(['A.GPX']);
+    expect(plan.summarize).toEqual(['b.gpx']);
+    expect(plan.orphanRecords).toEqual(['b.JSON']);
+  });
+
   it('laisse de côté une fiche sans GPX et les sous-dossiers', () => {
     const plan = planReconcile(
       [file('orpheline.json'), file('a.gpx'), { name: 'vieux', kind: 'directory', size: 0, mtimeMs: 0 }],

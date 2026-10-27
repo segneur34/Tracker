@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react'
 import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
@@ -10,6 +11,10 @@ export default defineConfig({
   plugins: [react()],
   define: {
     __APP_VERSION__: JSON.stringify(version),
+  },
+  test: {
+    // Fuseau fixé (src/test/setup.ts) : les dates locales des tests ne dépendent pas de la machine.
+    setupFiles: ['./src/test/setup.ts'],
   },
   build: {
     // Une seule feuille de style, dans l'ordre d'aujourd'hui : aucune page chargée à la demande ne peut en manquer
