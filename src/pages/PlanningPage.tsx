@@ -2,12 +2,12 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState, type ChangeEvent
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Marker, Polyline, useMapEvents } from 'react-leaflet';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import 'leaflet/dist/leaflet.css';
 import './PlanningPage.css';
 import ActivitySelect from '../components/ActivitySelect';
 import BeepCurveEditor from '../components/BeepCurveEditor';
-import ChartReadout, { type Readout } from '../components/ChartReadout';
+import type { Readout } from '../components/ChartReadout';
+import ElevationProfileMini, { type ElevationProfileRow } from '../components/ElevationProfileMini';
 import MapAutoResize from '../components/MapAutoResize';
 import BaseTileLayer from '../components/BaseTileLayer';
 import { HelpText } from '../components/Help';
@@ -20,21 +20,19 @@ import SurfaceBar from '../components/SurfaceBar';
 import SurfaceHighlight from '../components/SurfaceHighlight';
 import SurfaceLayer from '../components/SurfaceLayer';
 import WayTypeTabs from '../components/WayTypeTabs';
-import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import HoverMarker from '../components/HoverMarker';
-import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, inChartView, type ChartHoverEvent } from '../components/chartHover';
-import { gradeGradientDefs } from '../components/gradeGradientDefs';
+import { inChartView } from '../components/chartHover';
 import { IconChevronRight, IconFile, IconUndo } from '../components/icons';
 import { CARD_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
 import { activityFamily, activityTreatment, findActivity, type Activity } from '../core/activities';
-import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
+import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER, trackBounds } from '../core/displayConfig';
 import { parseGpxPath } from '../core/gpxParser';
 import { ELEVATION_PRESETS, usesMarkCourse } from '../core/sportProfiles';
 import { SLOW_COLOR, gradientCss } from '../core/speedGradient';
-import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, toDisplayDistance } from '../core/units';
+import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, formatSpeed, toDisplayDistance } from '../core/units';
 import { useLeaveWarning } from '../hooks/leaveGuard';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useGoOnRoute } from '../hooks/useGoOnRoute';
@@ -50,7 +48,7 @@ import {
 } from '../hooks/useSportSettings';
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
-import { PACE_LEVEL_LABEL, estimateRouteDurationS } from '../planning/duration';
+import { PACE_LEVEL_LABEL, estimateDurationFromProfile } from '../planning/duration';
 import { shownRoutes } from '../planning/routeList';
 import { searchPlaces, type Place } from '../planning/geocoding';
 import { WAY_TYPES } from '../planning/brouterProfile';
@@ -59,7 +57,7 @@ import {
   routeFromTrack,
   routeModeLabel, routePoints, routeProfileRows, routeTotals, routeVehicle, setRouteMode, straightenRoute, toggleWayType, wayTypesOf, waypointDistances,
   waysMode,
-  type PlannedRoute, type RouteMode, type Waypoint,
+  type PlannedRoute, type RouteMode, type RoutePoint, type Waypoint,
 } from '../planning/route';
 import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute, routeMarkGuide } from '../planning/routeRecord';
@@ -113,6 +111,9 @@ interface PlanningPrefs {
 const AUTO_LOCATE_TIMEOUT_MS = 15_000;
 const AUTO_LOCATE_MIN_ZOOM = 14;
 
+/** Hauteur du profil d'altitude du bloc Général, en px : plus haut que celui des analyses, seul graphe de la page. */
+const PROFILE_HEIGHT_PX = 170;
+
 const readPrefs = (): PlanningPrefs => jsonStore.read<PlanningPrefs>(PREFS_KEY) ?? {};
 const writePrefs = (patch: PlanningPrefs): void => jsonStore.write(PREFS_KEY, { ...readPrefs(), ...patch });
 
@@ -128,6 +129,53 @@ const FALLBACK_COLOR = '#6a1b9a';
 const ROUTE_COLOR = '#1565c0';
 /** Liseré blanc sous le tracé, sur le fond satellite (donnée de carte, donc en dur). */
 const HALO_STYLE = { color: '#ffffff', weight: 9, opacity: 0.85, interactive: false } as const;
+/**
+ * Styles du tracé, constants : Leaflet ne refait `setStyle` que si l'objet
+ * change. Un tronçon prêt garde `dashArray` explicite : Leaflet garderait
+ * sinon le pointillé du tronçon en attente.
+ */
+const READY_STYLE: L.PathOptions = { color: ROUTE_COLOR, weight: 5, opacity: 0.9, dashArray: undefined, interactive: false };
+const PENDING_STYLE: L.PathOptions = { color: ROUTE_COLOR, weight: 4, opacity: 0.55, dashArray: '6 8', interactive: false };
+const ERROR_STYLE: L.PathOptions = { color: ERROR_COLOR, weight: 4, opacity: 0.9, dashArray: '6 8', interactive: false };
+/** Trait invisible et large : le toucher qui insère un point n'a pas à viser un trait de 5 px. */
+const HIT_STYLE: L.PathOptions = { color: ROUTE_COLOR, weight: 24, opacity: 0, bubblingMouseEvents: false };
+const legStyle = (status: 'pending' | 'ready' | 'error'): L.PathOptions =>
+  status === 'ready' ? READY_STYLE : status === 'error' ? ERROR_STYLE : PENDING_STYLE;
+
+/** Style d'un morceau du tracé coloré par la pente, un par couleur. */
+const gradeStyles = new Map<string, L.PathOptions>();
+const gradeStyle = (color: string): L.PathOptions => {
+  let style = gradeStyles.get(color);
+  if (!style) {
+    style = { color, weight: 5, opacity: 0.9, interactive: false };
+    gradeStyles.set(color, style);
+  }
+  return style;
+};
+
+/**
+ * Positions Leaflet d'un tracé ou d'un point, gardées tant que la géométrie
+ * ne change pas : un rendu de la page (survol du profil, saisie, onglet) ne
+ * redonne pas à la carte des tableaux neufs, qu'elle reprojetterait.
+ */
+const pathPositions = new WeakMap<ReadonlyArray<RoutePoint>, [number, number][]>();
+const latLngsOf = (points: ReadonlyArray<RoutePoint>): [number, number][] => {
+  let positions = pathPositions.get(points);
+  if (!positions) {
+    positions = points.map((p): [number, number] => [p.lat, p.lon]);
+    pathPositions.set(points, positions);
+  }
+  return positions;
+};
+const pointPositions = new WeakMap<Waypoint, [number, number]>();
+const latLngOf = (w: Waypoint): [number, number] => {
+  let position = pointPositions.get(w);
+  if (!position) {
+    position = [w.lat, w.lon];
+    pointPositions.set(w, position);
+  }
+  return position;
+};
 /** Départ en vert, arrivée en rouge sombre (distinct du rouge des tronçons en échec). */
 const START_COLOR = '#2e7d32';
 const END_COLOR = '#b71c1c';
@@ -184,13 +232,6 @@ const sameGuide = (a: MarkGuideSettings | null, b: MarkGuideSettings | null): bo
 
 /** Aucune action à mener en quittant : l'itinéraire non enregistré est simplement abandonné. */
 const noop = () => {};
-
-interface ChartRow {
-  index: number;
-  dist: number;
-  altitude: number | null;
-  grade: number | null;
-}
 
 /**
  * Onglets sous la carte. `profil` : l'onglet « général » (ex-« Dénivelé »),
@@ -287,6 +328,9 @@ function PlanningPage() {
   /** Parcours de balises (voile, surf) : balises numérotées, tronçons en ligne droite, bloc « Parcours » au lieu du dénivelé. */
   const markCourse = activity !== null && usesMarkCourse(activityFamily(activity));
   const distanceUnit = activity ? effectiveDistanceUnit(activity) : 'km';
+  const speedUnit = activity ? effectiveSpeedUnit(activity) : 'kmh';
+  /** Le kilomètre-effort (100 m de D+ comptent 1 km), dit dans l'unité de distance de l'activité. */
+  const effortDistance = `${parseFloat(toDisplayDistance(1000, distanceUnit).toFixed(2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`;
   const minGainM = ELEVATION_PRESETS.route.minGainM;
   const gradeRange = useMemo(() => (activity ? effectiveGradeRange(activity) : null), [activity]);
   const color = safeColor(activity?.color ?? FALLBACK_COLOR);
@@ -303,7 +347,8 @@ function PlanningPage() {
   const loopRatio = useMemo(() => (activity ? effectiveLoopReturnRatio(activity) : null), [activity]);
   // Types de voie de l'activité à l'ouverture et à chaque changement d'activité, puis ceux que l'on coche ; mode « Boucle »
   // tel que laissé la dernière fois, jamais sur un parcours de balises.
-  const planner = usePlannedRoute(vehicle, activityMode(activity), readPrefs().loop === true && !markCourse, { maxReturnRatio: loopRatio });
+  const [initialLoop] = useState(() => readPrefs().loop === true);
+  const planner = usePlannedRoute(vehicle, activityMode(activity), initialLoop && !markCourse, { maxReturnRatio: loopRatio });
   const { route, mode } = planner;
   /** Mode « Boucle » : l'itinéraire reste bouclé, le retour évite l'aller. */
   const loopOn = planner.loop && !markCourse;
@@ -394,13 +439,16 @@ function PlanningPage() {
     if (!gradeOnMap) setSurfaceOnMap(false);
   };
   const surfaceShown = !markCourse && open.surface && surfaceOnMap;
-  const legSurfacePaths = useMemo(() => (surfaceShown ? routeSurfacePaths(route.legs) : null), [surfaceShown, route.legs]);
   /** Revêtement choisi dans la barre, en surbrillance sur la carte ; effacé quand le bloc Surface se ferme. */
   const [selectedSurface, setSelectedSurface] = useState<SurfaceCategory | null>(null);
   if (selectedSurface !== null && (markCourse || !open.surface)) setSelectedSurface(null);
+  /** Morceaux du tracé par revêtement, calculés une fois pour « Voir sur la carte » et la surbrillance. */
+  const surfacePathsWanted = surfaceShown || selectedSurface !== null;
+  const allSurfacePaths = useMemo(() => (surfacePathsWanted ? routeSurfacePaths(route.legs) : null), [surfacePathsWanted, route.legs]);
+  const legSurfacePaths = surfaceShown ? allSurfacePaths : null;
   const shownSurfacePaths = useMemo(
-    () => (selectedSurface ? routeSurfacePaths(route.legs).flatMap((paths) => paths ?? []) : null),
-    [selectedSurface, route.legs]
+    () => (selectedSurface && allSurfacePaths ? allSurfacePaths.flatMap((paths) => paths ?? []) : null),
+    [selectedSurface, allSurfacePaths]
   );
   const firstError = route.legs.find((l) => l.status === 'error')?.error ?? null;
   const distances = useMemo(() => waypointDistances(route), [route]);
@@ -445,7 +493,6 @@ function PlanningPage() {
   const pointFill = (i: number) => (i === 0 ? START_COLOR : i === route.waypoints.length - 1 ? END_COLOR : ROUTE_COLOR);
   /** Fond d'un repère sur la carte : sur une boucle, le repère unique A porte départ et arrivée. */
   const markerFill = (i: number) => (i === 0 && looped ? LOOP_FILL : pointFill(i));
-  const durationS = useMemo(() => estimateRouteDurationS(route, minGainM, durationSettings), [route, minGainM, durationSettings]);
 
   const dirty = current !== null
     ? route !== savedRoute || name.trim() !== current.record.name || (activity?.id ?? null) !== current.record.activityId
@@ -457,11 +504,13 @@ function PlanningPage() {
 
   /** Profil à pas régulier ; ses lignes portent la position du repère de survol sur la carte. */
   const profile = useMemo(() => routeProfileRows(points), [points]);
+  /** Temps estimé, sur les totaux et le profil déjà calculés. */
+  const durationS = useMemo(() => estimateDurationFromProfile(totals, profile, durationSettings), [totals, profile, durationSettings]);
   /** Distance de chaque ligne du profil, dans l'unité affichée : l'axe du graphe et de son zoom. */
   const profileDist = useMemo(() => profile.map((row) => toDisplayDistance(row.distM, distanceUnit)), [profile, distanceUnit]);
   const zoom = useChartZoom(profileDist.length > 1 ? { min: profileDist[0], max: profileDist[profileDist.length - 1] } : null);
   /** Lignes tracées : celles de la plage visible, au plus `CHART_MAX_POINTS` : zoomer montre plus de détail. */
-  const chartRows = useMemo<ChartRow[]>(() => {
+  const chartRows = useMemo<ElevationProfileRow[]>(() => {
     const [first, last] = visibleIndexRange(profileDist, zoom.view);
     return sampledIndices(first, last, CHART_MAX_POINTS).map((i) => {
       const { eleM, grade } = profile[i];
@@ -483,10 +532,6 @@ function PlanningPage() {
     [markCourse, open.profil, gradeOnMap, surfaceShown, hasElevation, gradeRange, profile]
   );
 
-  const onChartHover = (e: ChartHoverEvent) => {
-    const index = hoveredTrackIndex(e, chartRows);
-    if (index !== hoveredIndex) setHoveredIndex(index);
-  };
   /** Altitude et pente lues au-dessus du profil (`ChartReadout`), au point survolé de la plage zoomée. */
   const profileReadout: Readout | null = hovered && hoveredIndex !== null && inChartView(zoom.view, profileDist[hoveredIndex])
     ? {
@@ -528,6 +573,29 @@ function PlanningPage() {
     takeOver();
     if (map && bounds) map.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 });
   };
+
+  /**
+   * Gestionnaires des tracés et des repères, gardés d'un rendu à l'autre :
+   * react-leaflet les redétache et les rattache dès qu'ils changent.
+   */
+  const legCount = route.legs.length;
+  const insertPoint = planner.insert;
+  const legHandlers = useMemo(() => Array.from({ length: legCount }, (_, i): L.LeafletEventHandlerFnMap => ({
+    click: (e) => {
+      setSelected(null);
+      setCandidate(null);
+      insertPoint(i, toWaypoint(e.latlng));
+    },
+  })), [legCount, insertPoint]);
+  const waypointCount = route.waypoints.length;
+  const movePoint = planner.move;
+  const markerHandlers = useMemo(() => Array.from({ length: waypointCount }, (_, i): L.LeafletEventHandlerFnMap => ({
+    click: () => {
+      setCandidate(null);
+      setSelected(i);
+    },
+    dragend: (e) => movePoint(i, toWaypoint((e.target as L.Marker).getLatLng()), editMode),
+  })), [waypointCount, movePoint, editMode]);
 
   // --- Recherche ---
 
@@ -578,7 +646,20 @@ function PlanningPage() {
 
   // --- Enregistrement ---
 
+  /**
+   * Tronçons restés en ligne droite faute de calcul : on demande avant de les
+   * enregistrer ou de les exporter tels quels (« Partir » suivrait la ligne droite).
+   */
+  const confirmFailedLegs = (verb: string): boolean => {
+    const n = totals.errorLegs;
+    if (n === 0) return true;
+    return window.confirm(n > 1
+      ? `${n} tronçons n'ont pas pu être calculés : ils seront ${verb}s en ligne droite. Continuer ?`
+      : `Un tronçon n'a pas pu être calculé : il sera ${verb} en ligne droite. Continuer ?`);
+  };
+
   const handleSave = async () => {
+    if (!confirmFailedLegs('enregistré')) return;
     setSaving(true);
     setMessage(null);
     try {
@@ -650,14 +731,15 @@ function PlanningPage() {
       const loaded = routeFromTrack(parsed.points);
       if (!loaded) throw new Error(`${file.name} ne contient pas de trace : aucun point de trace ou de route.`);
       if (!confirmDiscard()) return;
+      // Activité devinée parmi celles qui se planifient (ni cachée, ni de l'Entraînement), ses types de voie cochés avec elle.
+      const sport = guessSport(parsed.trackType);
+      const guessed = sport ? activities.find((a) => a.base === sport && plannable(a)) : undefined;
       // La trace reste telle quelle : pas de mode « Boucle ».
-      planner.replace(loaded, undefined, false);
+      planner.replace(loaded, guessed ? activityMode(guessed) : undefined, false);
       setCurrent(null);
       setSavedRoute(EMPTY_ROUTE);
       setCourseGuide(null);
       setName(parsed.name ?? file.name.replace(/\.gpx$/i, ''));
-      const sport = guessSport(parsed.trackType);
-      const guessed = sport ? activities.find((a) => a.base === sport) : undefined;
       if (guessed) setActivityId(guessed.id);
       setSelected(null);
       setCandidate(null);
@@ -691,6 +773,7 @@ function PlanningPage() {
   };
 
   const exportGpx = () => {
+    if (!confirmFailedLegs('exporté')) return;
     const fileName = `${current?.base ?? safeFileName(name.trim() || defaultName())}.gpx`;
     downloadTextFile(fileName, buildRouteGpx(route, name.trim() || defaultName(), label));
   };
@@ -733,7 +816,10 @@ function PlanningPage() {
   }, [map]);
 
   const selectedLeg = selected !== null && selected > 0 ? route.legs[selected - 1] : undefined;
-  const canSave = library.canSave && route.waypoints.length >= 2 && !saving && !current?.readOnly;
+  /** Aller ou retour encore en calcul : rien à enregistrer ni à exporter avant la fin, sinon la ligne droite provisoire partirait. */
+  const computing = tracePending > 0 || returnPending;
+  const canSave = library.canSave && route.waypoints.length >= 2 && !saving && !current?.readOnly && !computing;
+  const waitTitle = computing ? 'Attendez la fin du calcul du tracé' : undefined;
 
   /** Onglets sous la carte : en voile et en surf, le parcours et ses balises ; ailleurs, le général, le revêtement et les points. */
   const pointCount = route.waypoints.length;
@@ -805,36 +891,22 @@ function PlanningPage() {
               <BaseTileLayer family={mapFamily} />
               <MapEvents onTap={onMapTap} onTakeOver={takeOver} />
               {satellite && route.legs.map((leg, i) => (
-                <Polyline key={`halo-${i}`} positions={leg.points.map((p) => [p.lat, p.lon] as [number, number])} pathOptions={HALO_STYLE} />
+                <Polyline key={`halo-${i}`} positions={latLngsOf(leg.points)} pathOptions={HALO_STYLE} />
               ))}
               {/* Sous les tronçons : un tronçon en calcul ou en échec garde son pointillé par-dessus. */}
               {gradePaths?.map((path, idx) => (
-                <Polyline key={`grade-${idx}`} positions={path.positions} pathOptions={{ color: path.color, weight: 5, opacity: 0.9, interactive: false }} />
+                <Polyline key={`grade-${idx}`} positions={path.positions} pathOptions={gradeStyle(path.color)} />
               ))}
               {route.legs.map((leg, i) => {
-                const positions = leg.points.map((p) => [p.lat, p.lon] as [number, number]);
-                const style = leg.status === 'ready'
-                  // dashArray explicite : Leaflet garderait sinon le pointillé du tronçon en attente.
-                  ? { color: ROUTE_COLOR, weight: 5, opacity: 0.9, dashArray: undefined }
-                  : { color: leg.status === 'error' ? ERROR_COLOR : ROUTE_COLOR, weight: 4, opacity: leg.status === 'error' ? 0.9 : 0.55, dashArray: '6 8' };
+                const positions = latLngsOf(leg.points);
                 const surfacePaths = legSurfacePaths?.[i];
                 return (
                   <Fragment key={i}>
                     {surfacePaths
                       ? <SurfaceLayer paths={surfacePaths} />
                       : gradePaths && leg.status === 'ready' ? null
-                        : <Polyline positions={positions} pathOptions={{ ...style, interactive: false }} />}
-                    {/* Trait invisible et large : le toucher qui insère un point n'a pas à viser un trait de 5 px. */}
-                    <Polyline
-                      positions={positions}
-                      pathOptions={{ color: ROUTE_COLOR, weight: 24, opacity: 0, bubblingMouseEvents: false }}
-                      eventHandlers={{
-                        click: (e) => {
-                          setSelected(null);
-                          setCandidate(null);
-                          planner.insert(i, toWaypoint(e.latlng));
-                        },
-                      }} />
+                        : <Polyline positions={positions} pathOptions={legStyle(leg.status)} />}
+                    <Polyline positions={positions} pathOptions={HIT_STYLE} eventHandlers={legHandlers[i]} />
                   </Fragment>
                 );
               })}
@@ -843,16 +915,10 @@ function PlanningPage() {
               {(looped ? route.waypoints.slice(0, -1) : route.waypoints).map((w, i) => (
                 <Marker
                   key={i}
-                  position={[w.lat, w.lon]}
+                  position={latLngOf(w)}
                   draggable
                   icon={waypointIcon(label(i), markerFill(i), selected === i)}
-                  eventHandlers={{
-                    click: () => {
-                      setCandidate(null);
-                      setSelected(i);
-                    },
-                    dragend: (e) => planner.move(i, toWaypoint((e.target as L.Marker).getLatLng()), editMode),
-                  }} />
+                  eventHandlers={markerHandlers[i]} />
               ))}
               {candidate && (
                 <CircleMarker center={[candidate.lat, candidate.lon]} radius={9}
@@ -982,8 +1048,8 @@ function PlanningPage() {
                 {hasElevation && gradeRange && 'Pour zoomer : écartez deux doigts ou touchez deux fois la courbe ; à la souris, tirez une zone ou double-cliquez. '}
                 {durationSettings && pace && (
                   <>
-                    Temps estimé au niveau {PACE_LEVEL_LABEL[pace.level].toLowerCase()}, {parseFloat((pace.flatSpeedMs * 3.6).toFixed(1))} km/h sur le plat
-                    {durationSettings.family === 'course' ? ', chaque 100 m de D+ comptant 1 km' : ''} : à régler dans <Link to="/parametres">Réglages</Link>.
+                    Temps estimé au niveau {PACE_LEVEL_LABEL[pace.level].toLowerCase()}, {formatSpeed(pace.flatSpeedMs, speedUnit)} sur le plat
+                    {durationSettings.family === 'course' ? `, chaque 100 m de D+ comptant ${effortDistance}` : ''} : à régler dans <Link to="/parametres">Réglages</Link>.
                   </>
                 )}
               </HelpText>
@@ -1001,26 +1067,10 @@ function PlanningPage() {
               </div>
 
               {hasElevation && gradeRange ? (
-                <div className="plan-profile" onMouseLeave={() => setHoveredIndex(null)}>
-                  <ChartReadout line readout={profileReadout} label="Altitude" color="#e64a19" />
-                  <ZoomableChart zoom={zoom} style={{ width: '100%', height: '170px' }}>
-                    <ResponsiveContainer>
-                      <AreaChart data={chartRows} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                        <ChartZoomProbe />
-                        <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-                        <XAxis dataKey="dist" type="number" allowDataOverflow
-                          domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
-                          ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-                          tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`} tick={{ fill: '#555', fontSize: 11 }} />
-                        <YAxis domain={['auto', 'auto']} width={44} tick={{ fill: '#e64a19', fontSize: 11 }} tickFormatter={(v) => `${v}`} />
-                        <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-                        {gradeGradientDefs(gradientId, gradeStops)}
-                        <Area type="monotone" dataKey="altitude" name="Altitude" stroke={`url(#${gradientId})`} strokeWidth={2}
-                          fill={`url(#${gradientId})`} fillOpacity={0.35} dot={false} activeDot={{ r: 4 }} connectNulls={false}
-                          isAnimationActive={false} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </ZoomableChart>
+                <div>
+                  <ElevationProfileMini rows={chartRows} stops={gradeStops} gradientId={gradientId} distanceSymbol={DISTANCE_UNIT_SYMBOL[distanceUnit]}
+                    zoom={zoom} readout={profileReadout} onHoverIndex={setHoveredIndex} onLeave={() => setHoveredIndex(null)}
+                    height={PROFILE_HEIGHT_PX} grid />
                   <div className="plan-legend">
                     <span>Pente, montée ou descente :</span>
                     {gradeRange.min > 0 && (
@@ -1218,7 +1268,7 @@ function PlanningPage() {
               <div className="ui-alert ui-alert--warning">Cet itinéraire vient d'une version plus récente de l'application : il se consulte sans se modifier.</div>
             )}
             <div className="plan-actions">
-              <Button variant="primary" onClick={() => void handleSave()} disabled={!canSave || (current !== null && !dirty)}>
+              <Button variant="primary" onClick={() => void handleSave()} disabled={!canSave || (current !== null && !dirty)} title={waitTitle}>
                 {saving ? 'Enregistrement…' : current ? 'Enregistrer les modifications' : 'Enregistrer'}
               </Button>
               {current !== null && (
@@ -1228,7 +1278,7 @@ function PlanningPage() {
                 </Button>
               )}
               {canDownloadFiles() && (
-                <Button onClick={exportGpx} disabled={route.waypoints.length < 2}>Exporter le GPX</Button>
+                <Button onClick={exportGpx} disabled={route.waypoints.length < 2 || computing} title={waitTitle}>Exporter le GPX</Button>
               )}
               {(current !== null || route.waypoints.length > 0) && <Button variant="ghost" onClick={startNew}>Nouvel itinéraire</Button>}
               {current !== null && (confirmingDelete === current.base ? (

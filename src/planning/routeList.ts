@@ -35,15 +35,47 @@ export const routesOfFamily = <T extends WithActivity>(routes: T[], activities: 
     return activity !== null && activityFamily(activity) === family;
   });
 
-/** Distance d'un itinéraire rangé, en mètres ; elle ne dépend pas du seuil de dénivelé, d'où 0. */
-export const routeDistanceM = (record: RouteRecord): number => routeTotals(recordToRoute(record), 0).distanceM;
+/**
+ * Distance et temps déjà calculés pour une fiche : une fiche rangée ne change
+ * pas tant que la liste n'est pas relue (une fiche relue est un autre objet).
+ * Trier, changer d'onglet ou rouvrir une liste ne refait donc rien. Le temps
+ * est gardé par réglage (niveau, poids, seuil de dénivelé).
+ */
+interface RecordFigures {
+  distanceM?: number;
+  durations: Map<string, number | null>;
+}
+
+const figures = new WeakMap<RouteRecord, RecordFigures>();
+
+const figuresOf = (record: RouteRecord): RecordFigures => {
+  let known = figures.get(record);
+  if (!known) {
+    known = { durations: new Map() };
+    figures.set(record, known);
+  }
+  return known;
+};
+
+/** Distance d'un itinéraire rangé, en mètres ; elle ne dépend pas du seuil de dénivelé, d'où 0. Calculée une fois par fiche. */
+export const routeDistanceM = (record: RouteRecord): number => {
+  const known = figuresOf(record);
+  known.distanceM ??= routeTotals(recordToRoute(record), 0).distanceM;
+  return known.distanceM;
+};
 
 /**
  * Temps estimé d'un itinéraire rangé, en secondes, ou `null` sans réglage
  * (voile) ; `minGainM` : seuil de dénivelé du terrain de son activité.
+ * Calculé une fois par fiche et par réglage.
  */
-export const routeDurationS = (record: RouteRecord, minGainM: number, settings: DurationSettings | null): number | null =>
-  estimateRouteDurationS(recordToRoute(record), minGainM, settings);
+export const routeDurationS = (record: RouteRecord, minGainM: number, settings: DurationSettings | null): number | null => {
+  if (!settings) return null;
+  const known = figuresOf(record);
+  const key = `${minGainM}|${JSON.stringify(settings)}`;
+  if (!known.durations.has(key)) known.durations.set(key, estimateRouteDurationS(recordToRoute(record), minGainM, settings));
+  return known.durations.get(key) ?? null;
+};
 
 export type RouteSort = 'recent' | 'ancien' | 'nom' | 'distance-croissante' | 'distance-decroissante';
 

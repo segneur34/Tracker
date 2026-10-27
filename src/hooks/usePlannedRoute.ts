@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { fetchLeg } from '../planning/brouter';
-import { LOOP_RETURN_DEFAULTS, avoidancePolygons, isAcceptableReturn, returnAttempts, sharedDistanceM, type LoopReturnParams } from '../planning/loopReturn';
+import { computeLeg, computeReturn, type LegResult, type ReturnResult } from '../planning/legCalculation';
+import { LOOP_RETURN_DEFAULTS, type LoopReturnParams } from '../planning/loopReturn';
 import {
-  DEFAULT_MAX_SNAP_M, EMPTY_ROUTE, addBeforeReturn, addWaypoint, closeLoop, cumulativeDistances, insertWaypoint, isLooped, isWaysMode, legsPoints,
+  DEFAULT_MAX_SNAP_M, EMPTY_ROUTE, addBeforeReturn, addWaypoint, closeLoop, insertWaypoint, isLooped,
   moveWaypoint, nextReturnVariant, openLoop, pendingLegRequests, recomputeLegsWithoutSurfaces, removeLoopStart, removeWaypoint, reorderWaypoint,
-  retryFailedLegs, returnRequest, reverseRoute, setLegMode, snapToWaypoints, wayTypesOf, withLegError, withLegResult, withLoopReturn, withReturnError,
+  retryFailedLegs, returnRequest, reverseRoute, setLegMode, withLegError, withLegResult, withLoopReturn, withReturnError,
   withReturnResult,
-  type LegRequest, type PlannedRoute, type ReturnRequest, type RouteMode, type RoutePoint, type RouteVehicle, type Waypoint,
+  type LegRequest, type PlannedRoute, type ReturnRequest, type RouteMode, type RouteVehicle, type Waypoint,
 } from '../planning/route';
-import type { SurfaceRuns } from '../planning/surface';
 
 /**
  * Itinéraire en cours de planification : les modifications de l'utilisateur,
@@ -24,7 +24,7 @@ import type { SurfaceRuns } from '../planning/surface';
  *
  * En mode « Boucle », chaque modification passe par `withLoopReturn` :
  * l'itinéraire reste bouclé, et le retour, demandé une fois tout l'aller
- * calculé, évite l'aller (`computeReturn`, `planning/loopReturn.ts`).
+ * calculé, évite l'aller (`computeReturn`, `planning/legCalculation.ts`).
  *
  * `vehicle` : règles d'accès de l'activité choisie. En changer ne touche pas
  * aux tronçons prêts ; ceux en attente se calculent avec les nouvelles (la
@@ -36,98 +36,14 @@ const HISTORY_LIMIT = 50;
 /** Tracés gardés en cache. */
 const CACHE_LIMIT = 200;
 
-/** Tracé calculé relié aux points, et ses voies si le serveur les a données. */
-interface LegResult {
-  points: RoutePoint[];
-  surfaces?: SurfaceRuns;
-}
-
-/** Résultat d'un calcul : le tracé, ou la raison de l'échec. */
-type LegOutcome = LegResult | { error: string };
-
-/** Retour d'une boucle calculé, et ce qu'en dit la ligne d'état. */
-interface ReturnResult extends LegResult {
-  outcome: 'avoided' | 'shortest';
-  sharedM: number;
-  tooLong?: boolean;
-}
-
-type ReturnOutcome = ReturnResult | { error: string };
-
-const tooFarMessage = (gapM: number): string =>
-  `Point à ${Math.round(gapM)} m du chemin le plus proche : rapprochez-le d'un chemin, ou passez ce tronçon en ligne droite.`;
-
-const isAbort = (err: unknown): boolean => err instanceof DOMException && err.name === 'AbortError';
-
-const computeLeg = async (request: LegRequest, vehicle: RouteVehicle, maxSnapM: number, signal: AbortSignal): Promise<LegOutcome> => {
-  // Une trace importée n'est jamais en attente : elle ne vient ici que par erreur, gardée en ligne droite.
-  if (!isWaysMode(request.mode)) return { points: [request.from, request.to] };
-  try {
-    const computed = await fetchLeg(request.from, request.to, wayTypesOf(request.mode), vehicle, signal);
-    const { maxGapM, ...result } = snapToWaypoints(request.from, request.to, computed.points, computed.surfaces);
-    if (maxGapM > maxSnapM) return { error: tooFarMessage(maxGapM) };
-    return result;
-  } catch (err) {
-    if (isAbort(err)) throw err;
-    return { error: err instanceof Error ? err.message : 'Calcul impossible.' };
-  }
-};
-
-const lengthM = (points: RoutePoint[]): number => {
-  const cum = cumulativeDistances(points);
-  return cum.length > 0 ? cum[cum.length - 1] : 0;
-};
-
-/**
- * Retour d'une boucle : essais avec le couloir le long de l'aller, du poids
- * le plus fort au plus faible, puis sans couloir (`returnAttempts`), l'un
- * après l'autre ; le premier qui ne dépasse pas `maxRatio` fois l'aller est
- * gardé, le dernier toujours. Un essai avec couloir qui échoue passe au
- * suivant. Sans rapport (`null`), pas de couloir : le retour le plus court.
- */
-const computeReturn = async (
-  request: ReturnRequest,
-  vehicle: RouteVehicle,
-  maxSnapM: number,
-  maxRatio: number | null,
-  params: LoopReturnParams,
-  signal: AbortSignal
-): Promise<ReturnOutcome> => {
-  const outbound = legsPoints(request.outbound);
-  const outboundM = lengthM(outbound);
-  const plan = maxRatio !== null ? avoidancePolygons(request.outbound, params) : { polygons: [], toleranceM: params.toleranceM };
-  let lastError = 'Calcul impossible.';
-  for (const polygons of returnAttempts(plan?.polygons ?? null, params.weights)) {
-    try {
-      const computed = await fetchLeg(request.from, request.to, wayTypesOf(request.mode), vehicle, signal, {
-        ...(polygons !== null ? { polygons } : {}),
-        alternative: request.variant,
-      });
-      const { maxGapM, ...result } = snapToWaypoints(request.from, request.to, computed.points, computed.surfaces);
-      if (maxGapM > maxSnapM) return { error: tooFarMessage(maxGapM) };
-      if (polygons !== null && maxRatio !== null && !isAcceptableReturn(lengthM(result.points), outboundM, maxRatio)) continue;
-      return {
-        ...result,
-        outcome: polygons !== null ? 'avoided' : 'shortest',
-        sharedM: sharedDistanceM(result.points, outbound, params.sharedToleranceM),
-        ...(plan === null ? { tooLong: true } : {}),
-      };
-    } catch (err) {
-      if (isAbort(err)) throw err;
-      lastError = err instanceof Error ? err.message : lastError;
-    }
-  }
-  return { error: lastError };
-};
-
 /** Ce que « Précédent » rend : l'itinéraire, les types de voie cochés et le mode « Boucle ». */
-interface Snapshot {
+export interface Snapshot {
   route: PlannedRoute;
   mode: RouteMode;
   loop: boolean;
 }
 
-interface State extends Snapshot {
+export interface PlannedRouteState extends Snapshot {
   /** États d'avant chaque modification de l'utilisateur, le plus récent à la fin. */
   history: Snapshot[];
 }
@@ -135,7 +51,7 @@ interface State extends Snapshot {
 /** Modification de l'utilisateur ; `loop` : le mode « Boucle » est allumé. */
 type Edit = (r: PlannedRoute, loop: boolean) => PlannedRoute;
 
-type Action =
+export type PlannedRouteAction =
   /** Modification de l'utilisateur : l'état d'avant entre dans l'annulation. */
   | { type: 'edit'; change: Edit }
   /**
@@ -156,7 +72,7 @@ type Action =
   | { type: 'replace'; route: PlannedRoute; mode?: RouteMode; loop?: boolean };
 
 /** État suivant, l'état d'avant gardé pour l'annulation. */
-const remember = (state: State, next: Snapshot): State => ({
+const remember = (state: PlannedRouteState, next: Snapshot): PlannedRouteState => ({
   ...next,
   history: [...state.history.slice(-(HISTORY_LIMIT - 1)), { route: state.route, mode: state.mode, loop: state.loop }],
 });
@@ -164,7 +80,8 @@ const remember = (state: State, next: Snapshot): State => ({
 /** Itinéraire remis en ordre en mode « Boucle » ; tel quel sinon. */
 const settle = (route: PlannedRoute, mode: RouteMode, loop: boolean): PlannedRoute => (loop ? withLoopReturn(route, mode) : route);
 
-const reducer = (state: State, action: Action): State => {
+/** Réducteur de l'état, exporté pour le test. */
+export const plannedRouteReducer = (state: PlannedRouteState, action: PlannedRouteAction): PlannedRouteState => {
   switch (action.type) {
     case 'edit': {
       const route = settle(action.change(state.route, state.loop), state.mode, state.loop);
@@ -223,9 +140,9 @@ export const usePlannedRoute = (
   { maxSnapM = DEFAULT_MAX_SNAP_M, maxReturnRatio, loopParams = LOOP_RETURN_DEFAULTS }: PlannedRouteOptions
 ) => {
   const [{ route, mode, loop, history }, dispatch] = useReducer(
-    reducer,
+    plannedRouteReducer,
     null,
-    (): State => ({ route: EMPTY_ROUTE, mode: initialMode, loop: initialLoop, history: [] })
+    (): PlannedRouteState => ({ route: EMPTY_ROUTE, mode: initialMode, loop: initialLoop, history: [] })
   );
   const inFlight = useRef<{ key: string; controller: AbortController } | null>(null);
   const cache = useRef(new Map<string, LegResult>());
@@ -251,7 +168,7 @@ export const usePlannedRoute = (
       }
       const controller = new AbortController();
       inFlight.current = { key, controller };
-      computeReturn(back, vehicle, maxSnapM, maxReturnRatio, loopParams, controller.signal).then(
+      computeReturn(fetchLeg, back, vehicle, maxSnapM, maxReturnRatio, loopParams, controller.signal).then(
         (outcome) => {
           if (inFlight.current?.controller !== controller) return;
           inFlight.current = null;
@@ -280,7 +197,7 @@ export const usePlannedRoute = (
 
     const controller = new AbortController();
     inFlight.current = { key, controller };
-    computeLeg(request, vehicle, maxSnapM, controller.signal).then(
+    computeLeg(fetchLeg, request, vehicle, maxSnapM, controller.signal).then(
       (outcome) => {
         if (inFlight.current?.controller !== controller) return;
         inFlight.current = null;

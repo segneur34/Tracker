@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, acceptLoopReturn, addBeforeReturn, addWaypoint, closeLoop, courseLegs, insertWaypoint, isChoosableMode, isLooped, isRouteMode, isWaysMode, legKey,
+  DEFAULT_IMPORT_SMOOTHING_M, DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, acceptLoopReturn, addBeforeReturn, addWaypoint, closeLoop, courseLegs, insertWaypoint, isChoosableMode, isLooped, isRouteMode, isWaysMode, legKey,
   moveWaypoint, nextPendingLeg, pendingLegRequests, readRouteMode, recomputeLegsWithoutSurfaces, removeWaypoint, reorderWaypoint, retryFailedLegs,
   presetWayTypes, reverseRoute, routeFromTrack, routeModeLabel, routePoints, sanitizeWayTypes, toggleWayType, wayTypesOf, waysMode,
   routeProfileRows, routeTotals, routeVehicle, setLegMode, setRouteMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
@@ -290,6 +290,19 @@ describe('totaux et profil', () => {
   });
 });
 
+describe('retrait d\'un point entre deux points confondus', () => {
+  it('hors mode « Boucle », A → B → A privé de B est le seul A', () => {
+    expect(removeWaypoint(closeLoop(build([A, B]), 'sentier'), 1)).toEqual({ waypoints: [A], legs: [] });
+  });
+
+  it('au milieu d\'un itinéraire, les deux voisins fusionnent et les tronçons d\'après restent', () => {
+    const route = resolveAll(build([A, B, A, C]), [0, 0, 0]);
+    const removed = removeWaypoint(route, 1);
+    expect(removed.waypoints).toEqual([A, C]);
+    expect(removed.legs).toEqual([route.legs[2]]);
+  });
+});
+
 describe('trace importée', () => {
   /** Trace de A vers le nord, puis vers l'est : cinq points, altitudes croissantes. */
   const track: RoutePoint[] = [
@@ -331,6 +344,41 @@ describe('trace importée', () => {
     // Au-delà du seuil, pas de boucle.
     expect(isLooped(routeFromTrack([...track, { lat: 43.605, lon: 3.81 }, back], { loopCloseM: 10 })!)).toBe(false);
     expect(DEFAULT_LOOP_CLOSE_M).toBeGreaterThan(20);
+  });
+
+  /**
+   * Trace plate (altitude 100 m) vers le nord, bruitée de ±5 m par un bruit
+   * pseudo-aléatoire fixe, un point tous les `stepM` mètres : 3 m pour une
+   * course à 1 Hz, 0,6 m à 5 Hz.
+   */
+  const noisyFlat = (stepM: number, lengthM: number): RoutePoint[] => {
+    let seed = 12345;
+    const noise = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return (seed / 2147483648) * 10 - 5;
+    };
+    const out: RoutePoint[] = [];
+    for (let d = 0; d <= lengthM; d += stepM) out.push({ lat: A.lat + d / (STEP_M * 100), lon: A.lon, eleM: 100 + noise() });
+    return out;
+  };
+
+  it('lisse l\'altitude GPS d\'une trace enregistrée : D+ proche de 0 sur le plat, à 1 Hz comme à 5 Hz', () => {
+    for (const stepM of [3, 0.6]) {
+      const track = noisyFlat(stepM, 5000);
+      const raw = routeTotals(routeFromTrack(track, { smoothingM: 0 })!, 3).gainM!;
+      const smoothed = routeTotals(routeFromTrack(track)!, 3).gainM!;
+      expect(raw).toBeGreaterThan(200);
+      expect(smoothed).toBeLessThan(10);
+    }
+    expect(DEFAULT_IMPORT_SMOOTHING_M).toBeGreaterThan(20);
+  });
+
+  it('une montée régulière sort intacte du lissage', () => {
+    const ramp: RoutePoint[] = [];
+    for (let d = 0; d <= 2000; d += 5) ramp.push({ lat: A.lat + d / (STEP_M * 100), lon: A.lon, eleM: 100 + d * 0.05 });
+    const route = routeFromTrack(ramp)!;
+    expect(routeTotals(route, 3).gainM).toBeCloseTo(100, 6);
+    expect(route.legs[0].points[200].eleM).toBeCloseTo(150, 6);
   });
 
   it('insérer un point le pose sur la trace et la coupe sans rien perdre', () => {
@@ -623,6 +671,17 @@ describe('mode « Boucle »', () => {
     expect(reversed.waypoints).toEqual([A, C, B, A]);
     expect(reversed.legs.map((l) => l.loopReturn !== undefined)).toEqual([false, false, true]);
     expect(pendingLegRequests(reversed).map((r) => r.from)).toEqual([A, C]);
+  });
+
+  it('retirer le seul point de l\'aller laisse le départ seul, pas trois points confondus', () => {
+    const done = resolveReturn(resolveOutbound(loopBuild([A, B])));
+    expect(done.waypoints).toEqual([A, B, A]);
+    const removed = withLoopReturn(removeWaypoint(done, 1, 'sentier'), 'sentier');
+    expect(removed).toEqual({ waypoints: [A], legs: [] });
+    expect(pendingLegRequests(removed)).toEqual([]);
+    // Garde-fou : deux points au même endroit ne se bouclent pas.
+    expect(withLoopReturn({ waypoints: [A, { ...A }], legs: [{ mode: 'sentier', status: 'pending', points: [A, A] }] }, 'sentier'))
+      .toEqual({ waypoints: [A], legs: [] });
   });
 
   it('retirer A fait du point suivant le départ, et la boucle s\'y referme', () => {

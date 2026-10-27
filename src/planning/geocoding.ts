@@ -1,3 +1,4 @@
+import { fetchJson } from './fetchJson';
 import type { Waypoint } from './route';
 
 /**
@@ -8,6 +9,9 @@ import type { Waypoint } from './route';
  */
 
 export const PHOTON_URL = 'https://photon.komoot.io/api/';
+
+/** Délai accordé à la recherche, en millisecondes : au-delà, elle échoue, et l'on peut relancer. */
+export const PHOTON_TIMEOUT_MS = 20_000;
 
 export interface Place extends Waypoint {
   /** Nom du lieu. */
@@ -58,14 +62,11 @@ export const parsePhoton = (json: unknown): Place[] => {
 };
 
 /** Lieux qui répondent à `query`. Lève une erreur au message lisible. */
-export const searchPlaces = async (query: string, near?: Waypoint, signal?: AbortSignal): Promise<Place[]> => {
-  let response: Response;
-  try {
-    response = await fetch(photonUrl(query, near), { signal });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') throw err;
-    throw new Error('Pas de réseau : la recherche de lieux est impossible.');
-  }
-  if (!response.ok) throw new Error(`La recherche de lieux n'a pas répondu (erreur ${response.status}).`);
-  return parsePhoton(await response.json());
-};
+export const searchPlaces = async (query: string, near?: Waypoint, signal?: AbortSignal): Promise<Place[]> =>
+  parsePhoton(await fetchJson(photonUrl(query, near), { signal }, {
+    noNetwork: 'Pas de réseau : la recherche de lieux est impossible.',
+    timeout: 'La recherche de lieux ne répond pas : réessayez.',
+    timeoutMs: PHOTON_TIMEOUT_MS,
+    unreadable: 'Réponse de la recherche de lieux illisible.',
+    httpError: (status) => `La recherche de lieux n'a pas répondu (erreur ${status}).`,
+  }));

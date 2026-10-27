@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { brouterErrorMessage, brouterUrl, parseBrouterGeojson, parseBrouterMessages, parseProfileUpload } from './brouter';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BROUTER_PROFILE_URL, brouterErrorMessage, brouterUrl, parseBrouterGeojson, parseBrouterMessages, parseProfileUpload } from './brouter';
 import {
   BROUTER_PROFILE_TEXT, PEDESTRIAN_HIGHWAY, UNRIDEABLE_TAGS, WAY_COSTS, WAY_TYPES, WAY_TYPE_HIGHWAYS, WAY_TYPE_LEVEL, WAY_TYPE_VARIABLE,
   buildBrouterProfile, profileCombination, type WayType,
 } from './brouterProfile';
-import { parsePhoton, photonUrl } from './geocoding';
+import { parsePhoton, photonUrl, searchPlaces } from './geocoding';
 
 /** Extrait réduit d'une réponse réelle de brouter.de (25/09/2026). */
 const BROUTER_RESPONSE = {
@@ -246,5 +246,93 @@ describe('profil de calcul', () => {
     const javaHash = (s: string) => [...s].reduce((h, ch) => (Math.imul(31, h) + ch.charCodeAt(0)) | 0, 0);
     const checksums = combinations().map(({ ways, velo }) => javaHash('calcul') + javaHash(String(profileCombination(ways, velo))));
     expect(new Set(checksums).size).toBe(checksums.length);
+  });
+});
+
+describe('calcul d\'un tronçon par le serveur', () => {
+  const A = { lat: 43.6, lon: 3.8 };
+  const B = { lat: 43.61, lon: 3.8 };
+
+  /** Module neuf à chaque essai : l'envoi du profil est retenu le temps d'un lancement. */
+  const loadBrouter = async () => {
+    vi.resetModules();
+    vi.doMock('../platform/storage', () => ({ jsonStore: { read: () => null, write: () => {} } }));
+    return import('./brouter');
+  };
+
+  /** Faux serveur : l'envoi du profil répond un id, chaque calcul rend la réponse suivante de `legs`. */
+  const server = (legs: (() => Response)[]) => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (url.startsWith(BROUTER_PROFILE_URL)) {
+        calls.push('profil');
+        return new Response('{"profileid":"custom_1"}', { status: 200 });
+      }
+      calls.push('calcul');
+      return legs[calls.filter((c) => c === 'calcul').length - 1]();
+    });
+    return calls;
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.doUnmock('../platform/storage');
+  });
+
+  it('un 500 qui dit « pas de chemin » ne renvoie pas le profil et ne refait pas le calcul', async () => {
+    const { fetchLeg } = await loadBrouter();
+    const calls = server([() => new Response('target island detected for section 0', { status: 500 })]);
+    await expect(fetchLeg(A, B, ['sentier'], 'pieton')).rejects.toThrow(/Aucun chemin/);
+    expect(calls).toEqual(['profil', 'calcul']);
+  });
+
+  it('un 500 au corps vide (profil effacé du serveur) renvoie le profil, puis refait le calcul une fois', async () => {
+    const { fetchLeg } = await loadBrouter();
+    const calls = server([() => new Response('', { status: 500 }), () => new Response(JSON.stringify(BROUTER_RESPONSE), { status: 200 })]);
+    const leg = await fetchLeg(A, B, ['sentier'], 'pieton');
+    expect(leg.points).toHaveLength(3);
+    expect(calls).toEqual(['profil', 'calcul', 'profil', 'calcul']);
+  });
+
+  it('deux 500 vides de suite : échec, sans boucle', async () => {
+    const { fetchLeg } = await loadBrouter();
+    const calls = server([() => new Response('', { status: 500 }), () => new Response('', { status: 500 })]);
+    await expect(fetchLeg(A, B, ['sentier'], 'pieton')).rejects.toThrow(/erreur 500/);
+    expect(calls).toEqual(['profil', 'calcul', 'profil', 'calcul']);
+  });
+
+  it('une page HTML au lieu du JSON : message en français', async () => {
+    const { fetchLeg } = await loadBrouter();
+    server([() => new Response('<!DOCTYPE html><html></html>', { status: 200 })]);
+    await expect(fetchLeg(A, B, ['sentier'], 'pieton')).rejects.toThrow('Réponse du serveur de calcul illisible.');
+  });
+
+  it('sans réponse en 60 s : échec lisible, que « Réessayer » relance', async () => {
+    const { fetchLeg, BROUTER_TIMEOUT_MS } = await loadBrouter();
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
+        if (url.startsWith(BROUTER_PROFILE_URL)) return Promise.resolve(new Response('{"profileid":"custom_1"}', { status: 200 }));
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Abandon', 'AbortError')));
+        });
+      });
+      const outcome = expect(fetchLeg(A, B, ['sentier'], 'pieton')).rejects.toThrow('Le serveur de calcul ne répond pas : réessayez.');
+      await vi.advanceTimersByTimeAsync(BROUTER_TIMEOUT_MS);
+      await outcome;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('recherche de lieux par le serveur', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('une réponse illisible donne un message en français', async () => {
+    vi.stubGlobal('fetch', async () => new Response('<html>', { status: 200 }));
+    await expect(searchPlaces('pic')).rejects.toThrow('Réponse de la recherche de lieux illisible.');
   });
 });

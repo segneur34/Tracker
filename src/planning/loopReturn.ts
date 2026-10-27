@@ -14,7 +14,8 @@ import type { RouteLeg, RoutePoint, Waypoint } from './route';
  * Le couloir reste ouvert aux deux bouts de l'aller, d'où part et où arrive
  * le retour : sans cela, le serveur ne trouve pas de quoi y accrocher ses
  * extrémités (« target island »). Seuls les tronçons calculés et les traces
- * importées le forment : une ligne droite ne suit aucune voie.
+ * importées le forment : une ligne droite ne suit aucune voie, pas plus que
+ * celle d'un tronçon en échec (`formsCorridor`).
  *
  * Essais sur brouter.de (06 et 07/10/2026, §10, point 87) : l'adresse est
  * refusée au-delà de 32 kB (414) ; des poids intermédiaires (50, 100) ne
@@ -109,12 +110,44 @@ const clipByDistance = (points: XY[], cum: number[], from: number, to: number): 
   return out;
 };
 
+/** Tronçon de l'aller tel que le couloir le lit : mode, géométrie, et état s'il est connu. */
+export type CorridorLeg = Pick<RouteLeg, 'mode' | 'points'> & Partial<Pick<RouteLeg, 'status'>>;
+
+/**
+ * Vrai pour un tronçon qui suit des voies : calculé et prêt, ou importé. Une
+ * ligne droite, choisie ou laissée par un calcul en échec, n'en suit aucune.
+ */
+export const formsCorridor = (leg: CorridorLeg): boolean => leg.mode !== 'straight' && leg.status !== 'error' && leg.points.length >= 2;
+
+/**
+ * Géométrie des morceaux de l'aller qui suivent des voies (`formsCorridor`),
+ * tronçons consécutifs mis bout à bout : ce que le retour peut emprunter.
+ */
+export const corridorPaths = (legs: ReadonlyArray<CorridorLeg>): RoutePoint[][] => {
+  const paths: RoutePoint[][] = [];
+  let current: RoutePoint[] | null = null;
+  for (const leg of legs) {
+    if (!formsCorridor(leg)) {
+      current = null;
+      continue;
+    }
+    if (!current) {
+      current = [];
+      paths.push(current);
+    }
+    const last = current[current.length - 1];
+    const skip = last && last.lat === leg.points[0].lat && last.lon === leg.points[0].lon ? 1 : 0;
+    for (let i = skip; i < leg.points.length; i++) current.push(leg.points[i]);
+  }
+  return paths;
+};
+
 /**
  * Morceaux de l'aller qui forment le couloir : les tronçons calculés ou
  * importés qui se suivent, mis bout à bout, en plan local, privés de
  * `openingM` à chaque bout de l'aller entier.
  */
-const corridorRuns = (legs: ReadonlyArray<Pick<RouteLeg, 'mode' | 'points'>>, openingM: number, to: (p: Waypoint) => XY): XY[][] => {
+const corridorRuns = (legs: ReadonlyArray<CorridorLeg>, openingM: number, to: (p: Waypoint) => XY): XY[][] => {
   const runs: { points: XY[]; cum: number[] }[] = [];
   let total = 0;
   let current: { points: XY[]; cum: number[] } | null = null;
@@ -124,7 +157,7 @@ const corridorRuns = (legs: ReadonlyArray<Pick<RouteLeg, 'mode' | 'points'>>, op
     const cum = [start];
     for (let i = 1; i < points.length; i++) cum.push(cum[i - 1] + dist(points[i - 1], points[i]));
     total = cum[cum.length - 1];
-    if (leg.mode === 'straight' || points.length < 2) {
+    if (!formsCorridor(leg)) {
       current = null;
       continue;
     }
@@ -158,7 +191,7 @@ export const polygonsParam = (polygons: ReadonlyArray<AvoidancePolygon>, weight:
  * un hors des bouts ouverts.
  */
 export const avoidancePolygons = (
-  legs: ReadonlyArray<Pick<RouteLeg, 'mode' | 'points'>>,
+  legs: ReadonlyArray<CorridorLeg>,
   params: LoopReturnParams = LOOP_RETURN_DEFAULTS
 ): { polygons: AvoidancePolygon[]; toleranceM: number } | null => {
   const proj = projection(meanLat(legs.flatMap((l) => l.points)));
@@ -191,21 +224,32 @@ export const isAcceptableReturn = (lengthM: number, outboundM: number, maxRatio:
 const SHARED_STEP_M = 5;
 
 /**
- * Longueur de `path` qui passe à moins de `toleranceM` de `outbound`, en
+ * Longueur de `path` qui passe à moins de `toleranceM` de l'aller, en
  * mètres : le retour mesuré par morceaux de 5 m au plus, chacun compté s'il
- * est près de l'aller en son milieu. Les segments de l'aller sont rangés dans
- * une grille de pas `toleranceM` : chaque morceau n'en regarde que quelques-uns.
+ * est près de l'aller en son milieu. `outbound` : les morceaux de l'aller,
+ * chacun d'un seul trait (`corridorPaths`), sans relier la fin de l'un au
+ * début du suivant. Les segments de l'aller sont rangés dans une grille de
+ * pas `toleranceM`, par bouts d'au plus `toleranceM` : chaque bout occupe au
+ * plus 4 × 4 cases, quelle que soit la longueur du segment, et chaque
+ * morceau du retour ne regarde que quelques segments.
  */
-export const sharedDistanceM = (path: ReadonlyArray<RoutePoint>, outbound: ReadonlyArray<RoutePoint>, toleranceM: number): number => {
-  if (path.length < 2 || outbound.length < 2 || toleranceM <= 0) return 0;
-  const proj = projection(meanLat([...path, ...outbound]));
-  const aller = outbound.map(proj.to);
+export const sharedDistanceM = (
+  path: ReadonlyArray<RoutePoint>,
+  outbound: ReadonlyArray<ReadonlyArray<RoutePoint>>,
+  toleranceM: number
+): number => {
+  const pieces = outbound.filter((piece) => piece.length >= 2);
+  if (path.length < 2 || pieces.length === 0 || toleranceM <= 0) return 0;
+  const proj = projection(meanLat([...path, ...pieces.flat()]));
+  const segments: [XY, XY][] = [];
+  for (const piece of pieces) {
+    const xy = piece.map(proj.to);
+    for (let i = 0; i + 1 < xy.length; i++) segments.push([xy[i], xy[i + 1]]);
+  }
   const cell = toleranceM;
   const cellKey = (cx: number, cy: number) => `${cx},${cy}`;
   const grid = new Map<string, number[]>();
-  for (let i = 0; i + 1 < aller.length; i++) {
-    const a = aller[i];
-    const b = aller[i + 1];
+  const mark = (a: XY, b: XY, index: number) => {
     const x0 = Math.floor((Math.min(a.x, b.x) - toleranceM) / cell);
     const x1 = Math.floor((Math.max(a.x, b.x) + toleranceM) / cell);
     const y0 = Math.floor((Math.min(a.y, b.y) - toleranceM) / cell);
@@ -214,14 +258,27 @@ export const sharedDistanceM = (path: ReadonlyArray<RoutePoint>, outbound: Reado
       for (let cy = y0; cy <= y1; cy++) {
         const key = cellKey(cx, cy);
         const list = grid.get(key);
-        if (list) list.push(i);
-        else grid.set(key, [i]);
+        if (!list) grid.set(key, [index]);
+        // Bouts consécutifs du même segment : rangé une fois par case.
+        else if (list[list.length - 1] !== index) list.push(index);
       }
     }
-  }
+  };
+  segments.forEach(([a, b], index) => {
+    const parts = Math.max(1, Math.ceil(dist(a, b) / toleranceM));
+    for (let k = 0; k < parts; k++) {
+      const t0 = k / parts;
+      const t1 = (k + 1) / parts;
+      mark(
+        { x: a.x + (b.x - a.x) * t0, y: a.y + (b.y - a.y) * t0 },
+        { x: a.x + (b.x - a.x) * t1, y: a.y + (b.y - a.y) * t1 },
+        index
+      );
+    }
+  });
   const near = (p: XY): boolean => {
     const list = grid.get(cellKey(Math.floor(p.x / cell), Math.floor(p.y / cell)));
-    return !!list && list.some((i) => pointSegmentDistanceM(p, aller[i], aller[i + 1]) < toleranceM);
+    return !!list && list.some((i) => pointSegmentDistanceM(p, segments[i][0], segments[i][1]) < toleranceM);
   };
 
   const points = path.map(proj.to);

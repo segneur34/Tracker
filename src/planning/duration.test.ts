@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { BIKE_TYPES, cyclingEnergyParams } from '../cycling/energy';
 import {
   KM_EFFORT_CLIMB_FACTOR, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PRESET_PACE_LEVELS, climbPowerWkgForFlatSpeed,
-  cyclingDurationS, cyclingRideSpeedMs, cyclingSpeedOnGradeMs, estimateRouteDurationS, runningDurationS,
+  cyclingDurationS, cyclingRideSpeedMs, cyclingSpeedOnGradeMs, estimateDurationFromProfile, estimateRouteDurationS, runningDurationS,
   type CyclingDurationSettings, type PresetPaceLevel,
 } from './duration';
-import type { PlannedRoute, RoutePoint } from './route';
+import { routePoints, routeProfileRows, routeTotals, type PlannedRoute, type RoutePoint } from './route';
 
 const RIDER_KG = 75;
 const params = cyclingEnergyParams('route', BIKE_TYPES.route.bikeKg, RIDER_KG);
@@ -122,5 +122,15 @@ describe('temps estimé d\'un itinéraire', () => {
     const s = estimateRouteDurationS(straightRoute(10, () => undefined), 3, { family: 'velo', ...bike('moyen') });
     expect(s).not.toBeNull();
     expect(s!).toBeCloseTo(10_000 / LEVEL_FLAT_SPEED_MS.velo.moyen, -1);
+  });
+
+  it('d\'après les totaux et le profil déjà calculés : le même temps', () => {
+    const route = straightRoute(10, (m) => 100 + 50 * Math.sin(m / 700));
+    const profile = routeProfileRows(routePoints(route));
+    const totals = routeTotals(route, 3);
+    for (const settings of [{ family: 'course' as const, flatSpeedMs: 3, climbFactor: KM_EFFORT_CLIMB_FACTOR }, { family: 'velo' as const, ...bike('bon') }]) {
+      expect(estimateDurationFromProfile(totals, profile, settings)).toBe(estimateRouteDurationS(route, 3, settings));
+    }
+    expect(estimateDurationFromProfile(totals, profile, null)).toBeNull();
   });
 });

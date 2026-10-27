@@ -1,3 +1,5 @@
+import { fetchJson } from './fetchJson';
+
 /**
  * Altitude du terrain, demandée à l'API de calcul altimétrique de la
  * Géoplateforme de l'IGN : modèle RGE ALTI (grille d'un mètre), France et
@@ -81,26 +83,12 @@ export const fetchIgnElevations = async (points: ReadonlyArray<LatLon>, signal?:
   for (let from = 0; from < points.length; from += IGN_MAX_POINTS) {
     if (from > 0) await wait(IGN_REQUEST_GAP_MS, signal);
     const batch = points.slice(from, from + IGN_MAX_POINTS);
-    let response: Response;
-    try {
-      response = await fetch(IGN_ALTI_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ignRequestBody(batch)),
-        signal,
-      });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') throw err;
-      throw new Error(NO_NETWORK);
-    }
-    if (!response.ok) throw new Error(ignErrorMessage(response.status));
-    let json: unknown;
-    try {
-      json = await response.json();
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') throw err;
-      throw new Error(UNREADABLE);
-    }
+    const json = await fetchJson(IGN_ALTI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ignRequestBody(batch)),
+      signal,
+    }, { noNetwork: NO_NETWORK, unreadable: UNREADABLE, httpError: ignErrorMessage });
     result.push(...parseIgnElevations(json, batch.length));
   }
   return result;

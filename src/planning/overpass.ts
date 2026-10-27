@@ -1,3 +1,4 @@
+import { fetchJson } from './fetchJson';
 import type { Waypoint } from './route';
 import { wayTagsText } from './surface';
 import type { OsmWay } from './wayMatch';
@@ -110,21 +111,11 @@ export const fetchWays = async (
 ): Promise<OsmWay[]> => {
   const byId = new Map<number, OsmWay>();
   for (const batch of batchLines(lines, OVERPASS_MAX_COORDS)) {
-    let response: Response;
-    try {
-      response = await fetch(OVERPASS_URL, { method: 'POST', body: new URLSearchParams({ data: overpassQuery(batch, radiusM) }), signal });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') throw err;
-      throw new Error(NO_NETWORK);
-    }
-    if (!response.ok) throw new Error(overpassErrorMessage(response.status));
-    let json: unknown;
-    try {
-      json = await response.json();
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') throw err;
-      throw new Error(UNREADABLE);
-    }
+    const json = await fetchJson(OVERPASS_URL, { method: 'POST', body: new URLSearchParams({ data: overpassQuery(batch, radiusM) }), signal }, {
+      noNetwork: NO_NETWORK,
+      unreadable: UNREADABLE,
+      httpError: overpassErrorMessage,
+    });
     for (const way of parseOverpassWays(json)) byId.set(way.id, way);
   }
   return [...byId.values()];

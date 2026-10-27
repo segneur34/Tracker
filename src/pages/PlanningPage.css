@@ -436,10 +436,6 @@
   margin: 0;
 }
 
-.plan-profile {
-  margin-top: var(--space-3);
-}
-
 .plan-legend {
   display: flex;
   flex-wrap: wrap;

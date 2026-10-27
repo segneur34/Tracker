@@ -1,4 +1,5 @@
 import { jsonStore } from '../platform/storage';
+import { fetchWithin, readErrorBody, readJson, type FetchMessages } from './fetchJson';
 import { BROUTER_PROFILE_TEXT, profileCombination, type WayType } from './brouterProfile';
 import type { RoutePoint, RouteVehicle, Waypoint } from './route';
 import { buildSurfaceRuns, parseWayTags, wayTagsText, type SurfaceRuns } from './surface';
@@ -29,11 +30,20 @@ const PROFILE_KEY = 'tracker.brouterProfile';
 
 /**
  * Réponse du serveur quand le profil demandé n'existe plus (effacé de son
- * côté) : 500, corps vide. On renvoie alors le profil, une fois.
+ * côté) : 500, corps vide. On renvoie alors le profil, une fois. Un 500 avec
+ * un message (« target island »…) est une vraie erreur : pas de renvoi.
  */
 const PROFILE_MISSING_STATUS = 500;
 
+/**
+ * Délai accordé au serveur pour un calcul ou l'envoi du profil, en
+ * millisecondes : au-delà, le tronçon passe en échec, et « Réessayer » paraît.
+ */
+export const BROUTER_TIMEOUT_MS = 60_000;
+
 const NO_NETWORK = 'Pas de réseau : le tronçon reste en ligne droite.';
+const UNREADABLE = 'Réponse du serveur de calcul illisible.';
+const CALL: FetchMessages = { noNetwork: NO_NETWORK, timeout: 'Le serveur de calcul ne répond pas : réessayez.', timeoutMs: BROUTER_TIMEOUT_MS };
 
 /** Six décimales : une dizaine de centimètres, bien assez pour un point posé au doigt. */
 const coord = (w: Waypoint): string => `${w.lon.toFixed(6)},${w.lat.toFixed(6)}`;
@@ -76,7 +86,7 @@ export const parseProfileUpload = (json: unknown): string => {
     throw new Error(`Le serveur de calcul refuse le profil : ${json.error}`);
   }
   const id = isObject(json) ? json.profileid : null;
-  if (!isProfileId(id)) throw new Error('Réponse du serveur de calcul illisible.');
+  if (!isProfileId(id)) throw new Error(UNREADABLE);
   return id;
 };
 
@@ -126,7 +136,7 @@ export const parseBrouterGeojson = (json: unknown): { points: RoutePoint[]; surf
   const feature = isObject(json) && Array.isArray(json.features) ? json.features[0] : null;
   const geometry = isObject(feature) ? feature.geometry : null;
   const coordinates = isObject(geometry) && geometry.type === 'LineString' ? geometry.coordinates : null;
-  if (!Array.isArray(coordinates)) throw new Error('Réponse du serveur de calcul illisible.');
+  if (!Array.isArray(coordinates)) throw new Error(UNREADABLE);
 
   const points: RoutePoint[] = [];
   for (const c of coordinates) {
@@ -155,17 +165,11 @@ export const brouterErrorMessage = (status: number, body: string): string =>
 /** Envoie le profil, sur l'id retenu s'il y en a un, et retient l'id rendu. */
 const uploadProfile = async (): Promise<string> => {
   const stored = jsonStore.read<{ id?: unknown }>(PROFILE_KEY)?.id;
-  let response: Response;
-  try {
-    response = await fetch(isProfileId(stored) ? `${BROUTER_PROFILE_URL}/${stored}` : BROUTER_PROFILE_URL, {
-      method: 'POST',
-      body: BROUTER_PROFILE_TEXT,
-    });
-  } catch {
-    throw new Error(NO_NETWORK);
-  }
-  if (!response.ok) throw new Error(brouterErrorMessage(response.status, await response.text().catch(() => '')));
-  const id = parseProfileUpload(await response.json());
+  const url = isProfileId(stored) ? `${BROUTER_PROFILE_URL}/${stored}` : BROUTER_PROFILE_URL;
+  const id = await fetchWithin(url, { method: 'POST', body: BROUTER_PROFILE_TEXT }, CALL, async (response) => {
+    if (!response.ok) throw new Error(brouterErrorMessage(response.status, await readErrorBody(response)));
+    return parseProfileUpload(await readJson(response, UNREADABLE));
+  });
   jsonStore.write(PROFILE_KEY, { id });
   return id;
 };
@@ -181,11 +185,15 @@ const ensureProfile = (): Promise<string> => {
   return profileUpload;
 };
 
+/** Le serveur ne connaît plus le profil demandé (`PROFILE_MISSING_STATUS`, corps vide). */
+const PROFILE_MISSING = Symbol('profil absent');
+
 /**
  * Calcule un tronçon, selon les types de voie cochés et les règles d'accès de
  * l'activité, et les options (`LegOptions`). `signal` annule la requête quand
  * le tronçon a changé entre-temps (l'envoi du profil, partagé, va à son
- * terme). Lève une erreur au message lisible.
+ * terme). Sans réponse en `BROUTER_TIMEOUT_MS`, échec. Lève une erreur au
+ * message lisible.
  */
 export const fetchLeg = async (
   from: Waypoint,
@@ -195,19 +203,18 @@ export const fetchLeg = async (
   signal?: AbortSignal,
   options?: LegOptions
 ): Promise<{ points: RoutePoint[]; surfaces?: SurfaceRuns }> => {
-  const request = async (profileId: string): Promise<Response> => {
-    try {
-      return await fetch(brouterUrl(from, to, ways, vehicle, profileId, options), { signal });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') throw err;
-      throw new Error(NO_NETWORK);
-    }
-  };
-  let response = await request(await ensureProfile());
-  if (response.status === PROFILE_MISSING_STATUS) {
+  const request = (profileId: string) =>
+    fetchWithin(brouterUrl(from, to, ways, vehicle, profileId, options), { signal }, CALL, async (response) => {
+      if (response.ok) return parseBrouterGeojson(await readJson(response, UNREADABLE));
+      const body = await readErrorBody(response);
+      if (response.status === PROFILE_MISSING_STATUS && body.trim() === '') return PROFILE_MISSING;
+      throw new Error(brouterErrorMessage(response.status, body));
+    });
+  let result = await request(await ensureProfile());
+  if (result === PROFILE_MISSING) {
     profileUpload = null;
-    response = await request(await ensureProfile());
+    result = await request(await ensureProfile());
   }
-  if (!response.ok) throw new Error(brouterErrorMessage(response.status, await response.text().catch(() => '')));
-  return parseBrouterGeojson(await response.json());
+  if (result === PROFILE_MISSING) throw new Error(brouterErrorMessage(PROFILE_MISSING_STATUS, ''));
+  return result;
 };

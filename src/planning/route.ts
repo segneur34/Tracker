@@ -1,4 +1,4 @@
-import { accumulateElevation } from '../core/elevation';
+import { accumulateElevation, smoothElevationAlong } from '../core/elevation';
 import { EARTH_RADIUS_M, haversineDistance, initialBearing, toRad } from '../core/kinematics';
 import { GRADE_ANALYSIS, type Treatment } from '../core/sportProfiles';
 import type { BikeType } from '../cycling/energy';
@@ -321,7 +321,9 @@ export const moveWaypoint = (route: PlannedRoute, index: number, waypoint: Waypo
  * qui garde le mode de celui qui partait du point : la façon de venir au
  * point retiré (une ligne droite, par exemple) part avec lui, celle du point
  * d'après reste. Deux tronçons importés sont recollés, tracé intact. Un
- * tronçon importé à refaire l'est dans `fallback`.
+ * tronçon importé à refaire l'est dans `fallback`. Si les deux voisins sont
+ * au même endroit (retour au départ), ils fusionnent : la boucle A → B → A
+ * privée de B est le seul A.
  */
 export const removeWaypoint = (route: PlannedRoute, index: number, fallback: RouteMode = 'straight'): PlannedRoute => {
   const n = route.waypoints.length;
@@ -329,6 +331,13 @@ export const removeWaypoint = (route: PlannedRoute, index: number, fallback: Rou
   const waypoints = route.waypoints.filter((_, i) => i !== index);
   if (index === 0) return { waypoints, legs: route.legs.slice(1) };
   if (index === n - 1) return { waypoints, legs: route.legs.slice(0, -1) };
+  // Ses deux voisins au même endroit (B dans A → B → A) : ils ne font plus qu'un point, sans tronçon de lui à lui-même.
+  if (samePlace(route.waypoints[index - 1], route.waypoints[index + 1])) {
+    return {
+      waypoints: route.waypoints.filter((_, i) => i !== index && i !== index + 1),
+      legs: [...route.legs.slice(0, index - 1), ...route.legs.slice(index + 1)],
+    };
+  }
   const before = route.legs[index - 1];
   const after = route.legs[index];
   const merged: RouteLeg = before.mode === 'imported' && after.mode === 'imported'
@@ -426,6 +435,8 @@ const pendingReturn = (route: PlannedRoute, index: number, mode: RouteMode, basi
  */
 export const withLoopReturn = (route: PlannedRoute, mode: RouteMode): PlannedRoute => {
   if (route.waypoints.length < 2) return route;
+  // Deux points au même endroit : pas d'aller, rien à boucler ; le départ seul reste.
+  if (route.waypoints.length === 2 && samePlace(route.waypoints[0], route.waypoints[1])) return { waypoints: [route.waypoints[0]], legs: [] };
   const closed = isLooped(route) ? route : addWaypoint(route, route.waypoints[0], mode);
   const last = closed.legs.length - 1;
   const basis = outboundKey(closed);
@@ -605,23 +616,36 @@ export const reorderWaypoint = (route: PlannedRoute, from: number, to: number, f
 export const DEFAULT_LOOP_CLOSE_M = 30;
 
 /**
+ * Fenêtre de lissage de l'altitude d'une trace chargée, en mètres le long
+ * d'elle (règle 2 : la trace n'a pas toujours d'heure). L'altitude d'un GPX
+ * enregistré est celle du GPS, bruitée de quelques mètres : sans lissage, le
+ * D+ et le temps estimé dépasseraient de loin ceux de son analyse. Cent
+ * mètres, de l'ordre de la maille du modèle de terrain des tronçons calculés.
+ * Défaut de `routeFromTrack`.
+ */
+export const DEFAULT_IMPORT_SMOOTHING_M = 100;
+
+/**
  * Itinéraire tiré d'une trace chargée (un GPX téléchargé ailleurs) : la trace
  * est gardée telle quelle, en tronçons `imported`, entre le départ et
  * l'arrivée, seuls points de passage. Points répétés et positions illisibles
- * retirés. Si l'arrivée est à moins de `loopCloseM` du départ, c'est une
+ * retirés ; altitude lissée sur `smoothingM` mètres le long de la trace. Si l'arrivée est à moins de `loopCloseM` du départ, c'est une
  * boucle : elle revient exactement au départ, par un point posé à mi-parcours
  * (une boucle a trois points, `isLooped`). `null` sous deux points distincts.
  */
 export const routeFromTrack = (
   points: ReadonlyArray<RoutePoint>,
-  { loopCloseM = DEFAULT_LOOP_CLOSE_M }: { loopCloseM?: number } = {}
+  { loopCloseM = DEFAULT_LOOP_CLOSE_M, smoothingM = DEFAULT_IMPORT_SMOOTHING_M }: { loopCloseM?: number; smoothingM?: number } = {}
 ): PlannedRoute | null => {
-  const kept: RoutePoint[] = [];
+  const read: RoutePoint[] = [];
   for (const p of points) {
-    if (!isFinite(p.lat) || !isFinite(p.lon) || samePlace(kept[kept.length - 1], p)) continue;
-    kept.push(p.eleM !== undefined && isFinite(p.eleM) ? { lat: p.lat, lon: p.lon, eleM: p.eleM } : { lat: p.lat, lon: p.lon });
+    if (!isFinite(p.lat) || !isFinite(p.lon) || samePlace(read[read.length - 1], p)) continue;
+    read.push(p);
   }
-  if (kept.length < 2) return null;
+  if (read.length < 2) return null;
+  const smoothed = smoothElevationAlong(read.map((p) => p.eleM ?? NaN), cumulativeDistances(read), smoothingM);
+  const kept = read.map((p, i): RoutePoint =>
+    isFinite(smoothed[i]) ? { lat: p.lat, lon: p.lon, eleM: smoothed[i] } : { lat: p.lat, lon: p.lon });
   const first = kept[0];
   const last = kept[kept.length - 1];
   const start: Waypoint = { lat: first.lat, lon: first.lon };
@@ -881,8 +905,9 @@ export interface RouteTotals {
 /**
  * Distance et dénivelés. `minGainM` : écart qui confirme une montée ou une
  * descente (`accumulateElevation`), celui du terrain de l'activité (règle 3).
- * L'altitude d'un tracé calculé vient d'un modèle de terrain, déjà lisse :
- * aucun lissage supplémentaire.
+ * L'altitude d'un tracé calculé vient d'un modèle de terrain, déjà lisse, et
+ * celle d'une trace chargée est lissée à la lecture (`routeFromTrack`) :
+ * aucun lissage ici.
  */
 export const routeTotals = (route: PlannedRoute, minGainM: number): RouteTotals => {
   const points = routePoints(route);

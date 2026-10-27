@@ -1,4 +1,4 @@
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { niceTicks } from '../core/chartZoom';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import type { GradientStop } from '../running/runningAnalytics';
@@ -15,20 +15,24 @@ export interface ElevationProfileRow {
   grade: number | null;
 }
 
-/** Hauteur du profil, en px. */
+/** Hauteur du profil par défaut, en px. */
 const PROFILE_HEIGHT_PX = 130;
 /** Altitude : l'orange des autres graphes. */
 const ALTITUDE_COLOR = '#e64a19';
 
 /**
  * Profil d'altitude compact de l'onglet « général », à pied et à vélo (22/10) :
- * coloré par la pente, sans grille ni repères. Comme les graphes de
+ * coloré par la pente, sans repères ni grille (sauf `grid`). Comme les graphes de
  * « graphiques » (25/10) : son nom et la valeur lue au-dessus de lui, zoom
  * propre (double-clic, zone tirée, deux doigts), « +carte » une fois
  * zoomé ; le survol déplace le repère sur la carte. Les lignes sont celles de
- * la plage zoomée, chacune avec son `index` de trace.
+ * la plage zoomée, chacune avec son `index` de trace. Repris par la page
+ * Itinéraires pour le profil de son bloc Général, plus haut, avec sa grille,
+ * sans « +carte » (la carte est déjà au-dessus).
  */
-function ElevationProfileMini({ rows, stops, gradientId, distanceSymbol, zoom, readout, onHoverIndex, onLeave, onShowOnMap }: {
+function ElevationProfileMini({
+  rows, stops, gradientId, distanceSymbol, zoom, readout, onHoverIndex, onLeave, onShowOnMap, height = PROFILE_HEIGHT_PX, grid = false,
+}: {
   rows: ElevationProfileRow[];
   stops: GradientStop[];
   /** Identifiant du dégradé, unique dans la page. */
@@ -39,7 +43,12 @@ function ElevationProfileMini({ rows, stops, gradientId, distanceSymbol, zoom, r
   readout: Readout | null;
   onHoverIndex: (index: number) => void;
   onLeave: () => void;
-  onShowOnMap: () => void;
+  /** « +carte » ou « Afficher » ; aucun bouton s'il manque. */
+  onShowOnMap?: () => void;
+  /** Hauteur du graphe, en px. */
+  height?: number;
+  /** Grille en pointillés derrière la courbe. */
+  grid?: boolean;
 }) {
   const onHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, rows);
@@ -48,10 +57,11 @@ function ElevationProfileMini({ rows, stops, gradientId, distanceSymbol, zoom, r
   return (
     <div style={{ marginTop: '10px' }}>
       <ChartReadout line readout={readout} label="Altitude" color={ALTITUDE_COLOR} />
-      <ZoomableChart zoom={zoom} onLeave={onLeave} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${PROFILE_HEIGHT_PX}px` }}>
+      <ZoomableChart zoom={zoom} onLeave={onLeave} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${height}px` }}>
         <ResponsiveContainer>
           <AreaChart data={rows} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 4, right: 6, left: 0, bottom: 0 }}>
             <ChartZoomProbe />
+            {grid && <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />}
             {gradeGradientDefs(gradientId, stops)}
             <XAxis dataKey="dist" type="number" allowDataOverflow
               domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}

@@ -1,11 +1,13 @@
 import { escapeXml } from '../recording/gpxWriter';
-import { routePoints, type PlannedRoute } from './route';
+import { isLooped, routePoints, type PlannedRoute } from './route';
 
 /**
  * GPX d'un itinéraire, pour l'emporter dans une autre application ou sur une
  * montre : GPX 1.1, sans heure (rien n'a encore été parcouru), un `<wpt>` par
  * point de passage et une trace d'un seul segment, la forme que Komoot,
- * Garmin et la plupart des montres suivent sans surprise.
+ * Garmin et la plupart des montres suivent sans surprise. L'arrivée d'une
+ * boucle, posée sur le départ, n'a pas de `<wpt>` à elle : la page la nomme
+ * comme le départ, et un point de plus au même endroit s'y confondrait.
  *
  * C'est un export : la fiche (`routeRecord.ts`) fait foi, elle seule porte
  * les tronçons et leur mode.
@@ -26,7 +28,8 @@ const fixed = (value: number, digits: number): string => String(Number(value.toF
 /** `label` : nom de chaque point, des lettres par défaut, des numéros pour un parcours de balises (`markLabel`). */
 export const buildRouteGpx = (route: PlannedRoute, name: string, label: (index: number) => string = waypointLabel): string => {
   const safeName = escapeXml(name);
-  const waypoints = route.waypoints.map(
+  const shown = isLooped(route) ? route.waypoints.slice(0, -1) : route.waypoints;
+  const waypoints = shown.map(
     (w, i) => `  <wpt lat="${fixed(w.lat, 7)}" lon="${fixed(w.lon, 7)}"><name>${label(i)}</name></wpt>`
   );
   const trackPoints = routePoints(route).map((p) => {

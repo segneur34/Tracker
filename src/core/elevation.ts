@@ -65,6 +65,32 @@ export const smoothElevation = (track: TrackPoint[], smoothingSeconds: number): 
 };
 
 /**
+ * Altitude lissée sur une fenêtre de `windowM` mètres le long d'un tracé sans
+ * temps (un itinéraire), par le même ajustement linéaire local que
+ * `smoothElevation` : une rampe ressort intacte. `cumDistM` : distance cumulée
+ * de chaque point ; `NaN` là où l'altitude manque, ignorée par le lissage.
+ */
+export const smoothElevationAlong = (altitudes: ReadonlyArray<number>, cumDistM: ReadonlyArray<number>, windowM: number): number[] => {
+  const indices: number[] = [];
+  const values: number[] = [];
+  const abscissa: number[] = [];
+  altitudes.forEach((a, i) => {
+    if (isFinite(a)) {
+      indices.push(i);
+      values.push(a);
+      abscissa.push(cumDistM[i]);
+    }
+  });
+  const out = new Array<number>(altitudes.length).fill(NaN);
+  // `linearSmoothByTime` ne lit que les écarts d'abscisse : des mètres lus comme des millisecondes, la fenêtre en milliers.
+  const filtered = linearSmoothByTime(values, abscissa, windowM / 1000);
+  indices.forEach((i, k) => {
+    out[i] = filtered[k];
+  });
+  return out;
+};
+
+/**
  * Cumul du dénivelé par détection de renversements confirmés.
  *
  * On suit l'extremum courant dans le sens de la pente. Quand l'altitude s'en

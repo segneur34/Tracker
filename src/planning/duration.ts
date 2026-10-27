@@ -1,5 +1,5 @@
 import { resistiveForceN, type CyclingEnergyParams } from '../cycling/energy';
-import { routePoints, routeProfileRows, routeTotals, type PlannedRoute } from './route';
+import { routePoints, routeProfileRows, routeTotals, type PlannedRoute, type RouteTotals } from './route';
 
 /**
  * Temps de parcours estimé d'un itinéraire, en course et à vélo, à partir
@@ -171,6 +171,21 @@ export const cyclingDurationS = (
 };
 
 /**
+ * Temps estimé d'après ce que la page a déjà calculé : les totaux
+ * (`routeTotals`, lus en course) et le profil à pas régulier
+ * (`routeProfileRows`, lu à vélo). `null` sans réglage (voile) ou sans tracé.
+ */
+export const estimateDurationFromProfile = (
+  totals: RouteTotals,
+  profile: ReadonlyArray<{ distM: number; grade: number | null }>,
+  settings: DurationSettings | null
+): number | null => {
+  if (!settings || profile.length < 2) return null;
+  const seconds = settings.family === 'course' ? runningDurationS(totals, settings) : cyclingDurationS(profile, settings);
+  return seconds > 0 && isFinite(seconds) ? seconds : null;
+};
+
+/**
  * Temps estimé d'un itinéraire, en secondes, ou `null` sans réglage (voile)
  * ou sans tracé. `minGainM` : écart qui confirme une montée, celui du terrain
  * de l'activité, pour que le D+ compté soit celui affiché (`routeTotals`).
@@ -183,8 +198,5 @@ export const estimateRouteDurationS = (
   if (!settings) return null;
   const points = routePoints(route);
   if (points.length < 2) return null;
-  const seconds = settings.family === 'course'
-    ? runningDurationS(routeTotals(route, minGainM), settings)
-    : cyclingDurationS(routeProfileRows(points), settings);
-  return seconds > 0 && isFinite(seconds) ? seconds : null;
+  return estimateDurationFromProfile(routeTotals(route, minGainM), routeProfileRows(points), settings);
 };

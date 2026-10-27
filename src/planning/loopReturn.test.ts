@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { EARTH_RADIUS_M, toRad } from '../core/kinematics';
 import {
-  LOOP_RETURN_DEFAULTS, avoidancePolygons, isAcceptableReturn, polygonsParam, returnAttempts, sharedDistanceM, type AvoidancePolygon,
+  LOOP_RETURN_DEFAULTS, avoidancePolygons, corridorPaths, isAcceptableReturn, polygonsParam, returnAttempts, sharedDistanceM,
+  type AvoidancePolygon, type CorridorLeg,
 } from './loopReturn';
 import type { RouteLeg, RoutePoint } from './route';
 
@@ -20,7 +21,8 @@ const wiggly = (fromM: number, toM: number, eastM = 0): RoutePoint[] => {
   return out;
 };
 
-const leg = (points: RoutePoint[], mode: RouteLeg['mode'] = 'sentier'): Pick<RouteLeg, 'mode' | 'points'> => ({ mode, points });
+const leg = (points: RoutePoint[], mode: RouteLeg['mode'] = 'sentier', status?: RouteLeg['status']): CorridorLeg =>
+  (status ? { mode, points, status } : { mode, points });
 
 /** Point dans un polygone (lancer de rayon, en degrés : assez juste à cette échelle). */
 const inside = (p: RoutePoint, poly: AvoidancePolygon): boolean => {
@@ -63,6 +65,19 @@ describe('couloir le long de l\'aller', () => {
     expect(covered(at(1500), plan.polygons)).toBe(false);
     expect(dense(500, 900).every((p) => covered(p, plan.polygons))).toBe(true);
     expect(dense(2100, 2600).every((p) => covered(p, plan.polygons))).toBe(true);
+  });
+
+  it('un tronçon en échec garde une ligne droite qui ne suit aucune voie : hors du couloir', () => {
+    const first = wiggly(0, 1000);
+    const failed = [at(1000), at(2000)];
+    const last = wiggly(2000, 3000);
+    const plan = avoidancePolygons([leg(first, 'sentier', 'ready'), leg(failed, 'sentier', 'error'), leg(last, 'sentier', 'ready')])!;
+    expect(covered(at(1500), plan.polygons)).toBe(false);
+    expect(dense(500, 900).every((p) => covered(p, plan.polygons))).toBe(true);
+    // Les morceaux de l'aller qui suivent des voies : deux, sans la ligne droite.
+    const paths = corridorPaths([leg(first, 'sentier', 'ready'), leg(failed, 'sentier', 'error'), leg(last, 'sentier', 'ready')]);
+    expect(paths).toEqual([first, last]);
+    expect(corridorPaths([leg(wiggly(0, 500)), leg(wiggly(500, 1000), 'imported')])).toEqual([wiggly(0, 1000)]);
   });
 
   it('les tronçons qui se suivent forment un seul couloir, sans trou à la jonction', () => {
@@ -109,11 +124,36 @@ describe('retour accepté et recouvrement', () => {
     const aller = [at(0), at(1000), at(2000)];
     const length = 2000;
     // Le même chemin en sens inverse : tout est commun.
-    expect(sharedDistanceM([...aller].reverse(), aller, 12)).toBeCloseTo(length, -1);
+    expect(sharedDistanceM([...aller].reverse(), [aller], 12)).toBeCloseTo(length, -1);
     // Une rue parallèle à 50 m : rien.
-    expect(sharedDistanceM([at(0, 50), at(2000, 50)], aller, 12)).toBe(0);
+    expect(sharedDistanceM([at(0, 50), at(2000, 50)], [aller], 12)).toBe(0);
     // La moitié sur l'aller, puis on s'en écarte.
-    expect(sharedDistanceM([at(0), at(1000), at(1000, 500)], aller, 12)).toBeGreaterThan(990);
-    expect(sharedDistanceM([at(0), at(1000), at(1000, 500)], aller, 12)).toBeLessThan(1020);
+    expect(sharedDistanceM([at(0), at(1000), at(1000, 500)], [aller], 12)).toBeGreaterThan(990);
+    expect(sharedDistanceM([at(0), at(1000), at(1000, 500)], [aller], 12)).toBeLessThan(1020);
+  });
+
+  it('l\'aller en morceaux : rien n\'est compté entre la fin de l\'un et le début du suivant', () => {
+    const before = [at(0), at(1000)];
+    const after = [at(2000), at(3000)];
+    // Le retour longe le trou entre les deux morceaux (une ligne droite de l'aller) : seuls les morceaux comptent.
+    // Deux morceaux de 1 km, chacun un peu plus avec la tolérance à ses bouts.
+    const shared = sharedDistanceM([at(0), at(3000)], [before, after], 12);
+    expect(shared).toBeGreaterThan(1990);
+    expect(shared).toBeLessThan(2050);
+    expect(sharedDistanceM([at(1100), at(1900)], [before, after], 12)).toBe(0);
+  });
+
+  it('une longue ligne droite en diagonale reste rapide (grille par bouts, pas par boîte englobante)', () => {
+    // 15 km en diagonale, deux points : l'ancienne grille rangeait le segment dans près d'un million de cases.
+    const aller = [at(0), at(10_600, 10_600)];
+    const t0 = performance.now();
+    const shared = sharedDistanceM([at(0), at(10_600, 10_600)], [aller], 12);
+    expect(performance.now() - t0).toBeLessThan(200);
+    expect(shared / Math.hypot(10_600, 10_600)).toBeCloseTo(1, 2);
+    // Un point à 11 m du milieu compte, à 13 m non : la grille par bouts ne perd rien.
+    const mid = { n: 5300, e: 5300 };
+    const off = (d: number) => [at(mid.n + d / Math.SQRT2, mid.e - d / Math.SQRT2), at(mid.n + d / Math.SQRT2 + 3, mid.e - d / Math.SQRT2 + 3)];
+    expect(sharedDistanceM(off(11), [aller], 12)).toBeGreaterThan(0);
+    expect(sharedDistanceM(off(13), [aller], 12)).toBe(0);
   });
 });
