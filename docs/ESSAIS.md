@@ -6,7 +6,7 @@ L'utilisateur répond par numéro : « ok », ou ce qui ne va pas. Les numéros 
 
 ## À faire (paquets en attente de validation)
 
-APK 0.3.79 installée (28/10 : lots 13, boutons orange et « Étape » ; 14, dépendances npm dont le greffon GPS 8.5.0 ; 12, thème sombre et économe). Les essais 28 + 34 et 37 + 43 restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14, puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14. Les essais 49 et 50 valident le lot 12.
+APK 0.3.79 construite le 28/10 à 0 h 18, **à installer** (téléphone débranché cette nuit : `adb install -r androidppuild\outputspkelease\Tracker-0.3.79.apk`, ou `npx cap run android`) ; elle porte (28/10 : lots 13, boutons orange et « Étape » ; 14, dépendances npm dont le greffon GPS 8.5.0 ; 12, thème sombre et économe). Les essais 28 + 34 et 37 + 43 restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14, puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14. Les essais 49 et 50 valident le lot 12.
 
 | N° | Essai | Attendu |
 |---|---|---|
