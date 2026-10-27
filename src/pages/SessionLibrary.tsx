@@ -433,7 +433,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   );
 
   return (
-    <div className="ui-page ui-page--backdrop lib-page" style={{ '--lib-accent': accent, '--help-accent': accent } as React.CSSProperties}>
+    <div className="ui-page ui-page--backdrop lib-page" style={{ '--lib-accent': accent, '--help-accent': accent, ...(family === 'fractionne' ? { '--btn-accent': accent } : {}) } as React.CSSProperties}>
       <PageBackdrop variant={family} />
       {/* Bandeau photo de la famille : son icône, son nom, ses activités et le nombre de sessions ; « … » en haut à droite. */}
       <header className="lib-banner" style={{ '--banner': `url(${banner})` } as React.CSSProperties}>

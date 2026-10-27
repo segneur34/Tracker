@@ -142,14 +142,21 @@ describe('liveFieldValue', () => {
 });
 
 describe('étape (26/10)', () => {
-  it('ne se propose que dans la notification, à pied et à vélo', () => {
-    expect(liveFieldsOfTreatment('course', 'notification')).toContain('step');
-    expect(liveFieldsOfTreatment('velo', 'notification')).toContain('step');
-    expect(liveFieldsOfTreatment('voile', 'notification')).not.toContain('step');
-    expect(liveFieldsOfTreatment('course')).not.toContain('step');
-    expect(sanitizeLiveFields(['step', 'speed'], 'course', MAX_NOTIFICATION_FIELDS, 'notification')).toEqual(['step', 'speed']);
-    // Dans la carte réduite, elle est écartée.
-    expect(sanitizeLiveFields(['step', 'speed'], 'course')).toEqual(['speed']);
+  it("ne se propose que dans la notification, et seulement à la famille Entraînement (27/10)", () => {
+    expect(liveFieldsOfTreatment('course', 'notification', 'fractionne')).toContain('step');
+    expect(liveFieldsOfTreatment('velo', 'notification', 'fractionne')).toContain('step');
+    expect(liveFieldsOfTreatment('course', 'notification', 'course')).not.toContain('step');
+    expect(liveFieldsOfTreatment('velo', 'notification', 'velo')).not.toContain('step');
+    expect(liveFieldsOfTreatment('course', 'notification')).not.toContain('step');
+    expect(liveFieldsOfTreatment('voile', 'notification', 'voile')).not.toContain('step');
+    expect(liveFieldsOfTreatment('course', 'live', 'fractionne')).not.toContain('step');
+    expect(sanitizeLiveFields(['step', 'speed'], 'course', MAX_NOTIFICATION_FIELDS, 'notification', 'fractionne')).toEqual(['step', 'speed']);
+    expect(sanitizeLiveFields(['step', 'speed'], 'velo', MAX_NOTIFICATION_FIELDS, 'notification', 'fractionne')).toEqual(['step', 'speed']);
+    // Un « Étape » mémorisé sur une course ou un vélo est nettoyé.
+    expect(sanitizeLiveFields(['step', 'speed'], 'course', MAX_NOTIFICATION_FIELDS, 'notification', 'course')).toEqual(['speed']);
+    expect(sanitizeLiveFields(['step'], 'velo', MAX_NOTIFICATION_FIELDS, 'notification', 'velo')).toBeNull();
+    // Dans la carte réduite, elle est écartée partout.
+    expect(sanitizeLiveFields(['step', 'speed'], 'course', MAX_LIVE_FIELDS, 'live', 'fractionne')).toEqual(['speed']);
   });
 
   it("se lit n/N au compteur, le palier seul pendant un test, « — » sans l'un ni l'autre", () => {

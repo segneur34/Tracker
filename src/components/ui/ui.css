@@ -238,8 +238,9 @@
   width: 100%;
 }
 
+/* La couleur d'action vient du conteneur (`--btn-accent`, comme `--tab-accent`) : l'orange de l'Entraînement, sinon le bleu. */
 .ui-btn--primary {
-  background: var(--voile);
+  background: var(--btn-accent, var(--voile));
   color: var(--on-accent);
 }
 

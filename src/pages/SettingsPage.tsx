@@ -695,7 +695,7 @@ function SettingsPage() {
                             </SettingRow>
                             <FieldsSetting label="Carte réduite à l'enregistrement" helpKey={`${id}:carte-reduite`}
                               help="Les chiffres en grand quand la carte est réduite, de haut en bas."
-                              treatment={treatment} units={s} fields={s.liveFields} overridden={s.isLiveFieldsOverridden}
+                              treatment={treatment} family={family} units={s} fields={s.liveFields} overridden={s.isLiveFieldsOverridden}
                               defaults={defaultLiveFieldsFor(activity)} max={MAX_LIVE_FIELDS}
                               onChange={(fields) => setFor(id, 'liveFields', fields)} />
                             {s.jumps !== null && (
@@ -721,7 +721,7 @@ function SettingsPage() {
                               <h4 className="settings-part__subtitle">Notification</h4>
                               <FieldsSetting label="Chiffres de la notification" helpKey={`${id}:notification`}
                                 help="Deux chiffres au plus, lisibles écran verrouillé avec le nom de l'activité et la durée. « Étape » : la répétition du compteur en cours sur toutes celles de la séance (5/20), ou le palier d'un test. Le téléphone doit montrer le contenu des notifications sur l'écran verrouillé."
-                                target="notification" treatment={treatment} units={s} fields={s.notificationFields} overridden={s.isNotificationFieldsOverridden}
+                                target="notification" treatment={treatment} family={family} units={s} fields={s.notificationFields} overridden={s.isNotificationFieldsOverridden}
                                 defaults={defaultNotificationFieldsFor(activity)} max={MAX_NOTIFICATION_FIELDS}
                                 onChange={(fields) => setFor(id, 'notificationFields', fields)} />
                             </div>
@@ -903,13 +903,14 @@ const thresholdHelp = (treatment: Treatment, foil: boolean): string => {
  * premier toujours rempli ; un chiffre déjà placé n'est pas proposé ailleurs.
  * La liste est rangée sans trou ; revenue au défaut, elle est effacée.
  */
-function FieldsSetting({ label, help, helpKey, target = 'live', treatment, units, fields, overridden, defaults, max, onChange }: {
+function FieldsSetting({ label, help, helpKey, target = 'live', treatment, family, units, fields, overridden, defaults, max, onChange }: {
   label: string;
   help: string;
   helpKey: string;
   /** Carte réduite (par défaut) ou notification, qui a ses chiffres à elle. */
   target?: LiveFieldTarget;
   treatment: Treatment;
+  family: SportFamily;
   units: LiveFieldUnits;
   fields: LiveFieldKey[];
   overridden: boolean;
@@ -917,7 +918,7 @@ function FieldsSetting({ label, help, helpKey, target = 'live', treatment, units
   max: number;
   onChange: (fields: LiveFieldKey[] | null) => void;
 }) {
-  const options = liveFieldsOfTreatment(treatment, target);
+  const options = liveFieldsOfTreatment(treatment, target, family);
   const slots = Array.from({ length: max }, (_, i) => fields[i] ?? null);
   const pick = (slot: number, key: LiveFieldKey | null) => {
     const next = slots.map((k, i) => (i === slot ? key : k)).filter((k): k is LiveFieldKey => k !== null);

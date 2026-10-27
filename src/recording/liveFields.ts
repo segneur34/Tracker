@@ -1,5 +1,5 @@
 import { zoneOf } from '../core/heartRate';
-import { sportTreatment, type Treatment } from '../core/sportProfiles';
+import { sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
   J_PER_KCAL, formatClock, formatDistance, formatShortDistance, formatSpeed, formatTimeOfDay, isInverseUnit, type DistanceUnit, type SpeedUnit,
@@ -67,14 +67,23 @@ const NOTIFICATION_ONLY_FIELDS: readonly LiveFieldKey[] = ['step'];
 /** Où un chiffre se lit : la carte réduite de l'enregistrement, ou la notification. */
 export type LiveFieldTarget = 'live' | 'notification';
 
-const allowedFor = (key: LiveFieldKey, treatment: Treatment, target: LiveFieldTarget): boolean =>
-  LIVE_FIELD_TREATMENTS[key].includes(treatment) && (target === 'notification' || !NOTIFICATION_ONLY_FIELDS.includes(key));
+/** Chiffres réservés à une famille (27/10) : l'étape n'est proposée qu'à l'Entraînement, à pied ou à vélo. */
+const LIVE_FIELD_FAMILIES: Partial<Record<LiveFieldKey, readonly SportFamily[]>> = {
+  step: ['fractionne'],
+};
+
+const allowedFor = (key: LiveFieldKey, treatment: Treatment, target: LiveFieldTarget, family?: SportFamily): boolean => {
+  const families = LIVE_FIELD_FAMILIES[key];
+  return LIVE_FIELD_TREATMENTS[key].includes(treatment)
+    && (target === 'notification' || !NOTIFICATION_ONLY_FIELDS.includes(key))
+    && (!families || (family !== undefined && families.includes(family)));
+};
 
 const LIVE_FIELD_KEYS = Object.keys(LIVE_FIELD_TREATMENTS) as LiveFieldKey[];
 
-/** Chiffres proposés pour un traitement, dans l'ordre des menus. */
-export const liveFieldsOfTreatment = (treatment: Treatment, target: LiveFieldTarget = 'live'): LiveFieldKey[] =>
-  LIVE_FIELD_KEYS.filter((key) => allowedFor(key, treatment, target));
+/** Chiffres proposés pour un traitement (et une famille, pour ceux qui en dépendent), dans l'ordre des menus. */
+export const liveFieldsOfTreatment = (treatment: Treatment, target: LiveFieldTarget = 'live', family?: SportFamily): LiveFieldKey[] =>
+  LIVE_FIELD_KEYS.filter((key) => allowedFor(key, treatment, target, family));
 
 /** Nombre de lignes au plus. */
 export const MAX_LIVE_FIELDS = 4;
@@ -126,13 +135,13 @@ const isLiveFieldKey = (value: unknown): value is LiveFieldKey =>
  * défaut s'applique).
  */
 export const sanitizeLiveFields = (
-  value: unknown, treatment: Treatment, max = MAX_LIVE_FIELDS, target: LiveFieldTarget = 'live',
+  value: unknown, treatment: Treatment, max = MAX_LIVE_FIELDS, target: LiveFieldTarget = 'live', family?: SportFamily,
 ): LiveFieldKey[] | null => {
   if (!Array.isArray(value)) return null;
   const kept: LiveFieldKey[] = [];
   for (const key of value) {
     if (kept.length === max) break;
-    if (isLiveFieldKey(key) && allowedFor(key, treatment, target) && !kept.includes(key)) kept.push(key);
+    if (isLiveFieldKey(key) && allowedFor(key, treatment, target, family) && !kept.includes(key)) kept.push(key);
   }
   return kept.length > 0 ? kept : null;
 };

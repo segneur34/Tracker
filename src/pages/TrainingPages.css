@@ -1,5 +1,10 @@
 /* Pages de la famille Entraînement (24/10) : tuiles de la page de la famille, séances du compteur. */
 
+/* Les boutons d'action de toutes les pages de l'Entraînement prennent l'orange de la famille (27/10). */
+.train-page {
+  --btn-accent: var(--fractionne);
+}
+
 /* Tuiles sous le bandeau : une carte blanche par type d'entraînement, qui mène à sa page. */
 .train-hub {
   display: grid;
