@@ -34,7 +34,7 @@ import {
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
 import {
   MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, liveFieldLabel, liveFieldsOfTreatment,
-  type LiveFieldKey, type LiveFieldUnits,
+  type LiveFieldKey, type LiveFieldTarget, type LiveFieldUnits,
 } from '../recording/liveFields';
 import { simulatedApproachMs } from '../recording/markGuide';
 import {
@@ -720,8 +720,8 @@ function SettingsPage() {
                             <div className="settings-part__sub">
                               <h4 className="settings-part__subtitle">Notification</h4>
                               <FieldsSetting label="Chiffres de la notification" helpKey={`${id}:notification`}
-                                help="Deux chiffres au plus, lisibles écran verrouillé avec le nom de l'activité et la durée. Le téléphone doit montrer le contenu des notifications sur l'écran verrouillé."
-                                treatment={treatment} units={s} fields={s.notificationFields} overridden={s.isNotificationFieldsOverridden}
+                                help="Deux chiffres au plus, lisibles écran verrouillé avec le nom de l'activité et la durée. « Étape » : la répétition du compteur en cours sur toutes celles de la séance (5/20), ou le palier d'un test. Le téléphone doit montrer le contenu des notifications sur l'écran verrouillé."
+                                target="notification" treatment={treatment} units={s} fields={s.notificationFields} overridden={s.isNotificationFieldsOverridden}
                                 defaults={defaultNotificationFieldsFor(activity)} max={MAX_NOTIFICATION_FIELDS}
                                 onChange={(fields) => setFor(id, 'notificationFields', fields)} />
                             </div>
@@ -903,10 +903,12 @@ const thresholdHelp = (treatment: Treatment, foil: boolean): string => {
  * premier toujours rempli ; un chiffre déjà placé n'est pas proposé ailleurs.
  * La liste est rangée sans trou ; revenue au défaut, elle est effacée.
  */
-function FieldsSetting({ label, help, helpKey, treatment, units, fields, overridden, defaults, max, onChange }: {
+function FieldsSetting({ label, help, helpKey, target = 'live', treatment, units, fields, overridden, defaults, max, onChange }: {
   label: string;
   help: string;
   helpKey: string;
+  /** Carte réduite (par défaut) ou notification, qui a ses chiffres à elle. */
+  target?: LiveFieldTarget;
   treatment: Treatment;
   units: LiveFieldUnits;
   fields: LiveFieldKey[];
@@ -915,7 +917,7 @@ function FieldsSetting({ label, help, helpKey, treatment, units, fields, overrid
   max: number;
   onChange: (fields: LiveFieldKey[] | null) => void;
 }) {
-  const options = liveFieldsOfTreatment(treatment);
+  const options = liveFieldsOfTreatment(treatment, target);
   const slots = Array.from({ length: max }, (_, i) => fields[i] ?? null);
   const pick = (slot: number, key: LiveFieldKey | null) => {
     const next = slots.map((k, i) => (i === slot ? key : k)).filter((k): k is LiveFieldKey => k !== null);

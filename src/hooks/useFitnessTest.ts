@@ -201,5 +201,8 @@ export const finishFitnessRamp = (): void => {
   publish();
 };
 
+/** État du guidage, hors React (notification de l'enregistrement : le palier). */
+export const getFitnessTestView = (): FitnessTestView => store.get();
+
 /** État du guidage, relu à chaque position. */
 export const useFitnessTest = (): FitnessTestView => useSyncExternalStore(store.subscribe, store.get);

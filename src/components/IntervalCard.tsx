@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import HoldButton from './ui/HoldButton';
 import { IconPause, IconPlay } from './icons';
 import {
-  closeIntervals, pauseIntervals, resumeIntervals, skipIntervalPhase, startIntervals, stopIntervals, useIntervalTimer,
+  closeIntervals, forgetClosedIntervals, pauseIntervals, resumeIntervals, skipIntervalPhase, startIntervals, stopAndCloseIntervals, stopIntervals,
+  useIntervalTimer,
   type IntervalTimerView,
 } from '../hooks/useIntervalTimer';
 import {
@@ -29,7 +30,11 @@ import './IntervalCard.css';
  * de l'enregistrement sans en dépendre : lancé avant, pendant ou sans lui.
  * Une bascule montre à sa place le chronomètre libre (`useStopwatch`).
  * Au Timer (25/10), les séances sont celles du Timer, et la séance lancée
- * n'ira dans aucune session.
+ * n'ira dans aucune session ; « Modifier », à droite d'« Arrêter », arrête
+ * la séance et rend l'éditeur sur elle (26/10).
+ * Une séance close (finie ou arrêtée) s'oublie quand la carte s'ouvre ou se
+ * ferme (on quitte la page) : en revenant, l'éditeur, jamais l'écran
+ * « terminée » (26/10).
  */
 
 /** Choix de la séance, séances gardées du genre, lancement. */
@@ -97,6 +102,11 @@ function WorkoutEditor({ kind, recording }: { kind: WorkoutKind; recording: bool
 const COUNTER_STOP_HOLD_MS = 1000;
 const counterStopHoldMs = () => COUNTER_STOP_HOLD_MS;
 
+/** « Modifier » au Timer : la séance en cours s'arrête, après confirmation. */
+const askEdit = () => {
+  if (window.confirm('Arrêter la séance pour la modifier ?')) stopAndCloseIntervals();
+};
+
 /** Vue « Compteur » : la séance à lancer, ou celle en cours. `recording` : un enregistrement tourne. */
 function CounterView({ kind, recording, timer }: { kind: WorkoutKind; recording: boolean; timer: IntervalTimerView }) {
   const { run, state, error } = timer;
@@ -139,6 +149,7 @@ function CounterView({ kind, recording, timer }: { kind: WorkoutKind; recording:
         )}
         <Button onClick={skipIntervalPhase}>Passer</Button>
         <HoldButton onHold={stopIntervals} getHoldMs={counterStopHoldMs} label="Arrêter" dialTitle="Arrêter la séance" />
+        {kind === 'timer' && <Button variant="ghost" onClick={askEdit}>Modifier</Button>}
       </div>
       {error && <div className="ui-alert ui-alert--danger">{error}</div>}
     </>
@@ -216,6 +227,11 @@ function IntervalCard({ kind = 'fractionne', recording }: { kind?: WorkoutKind; 
   const counterLive = timer.state?.status === 'running' || timer.state?.status === 'paused';
   // Ouverte sur le chrono quand lui seul est lancé.
   const [shown, setShown] = useState<CardView>(() => (chrono && !timer.run ? 'chrono' : 'compteur'));
+  // Séance close oubliée à l'ouverture et à la fermeture de la carte (on quitte la page).
+  useEffect(() => {
+    forgetClosedIntervals();
+    return forgetClosedIntervals;
+  }, []);
 
   const counterBadge = shown === 'chrono' && counterLive && timer.run && timer.state?.phase
     ? phaseName(timer.state.phase) : null;

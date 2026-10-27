@@ -1,6 +1,7 @@
 import { formatClock } from '../core/units';
 import type { RecordingNotificationContent } from '../platform/notification';
-import { phaseName, type IntervalTimerState } from './intervalTimer';
+import type { TestPhase } from './fitnessTest';
+import { phaseName, type IntervalStep, type IntervalTimerState } from './intervalTimer';
 import { liveFieldLabel, liveFieldShortLabel, liveFieldValue, type LiveFieldContext, type LiveFieldKey } from './liveFields';
 
 /**
@@ -16,6 +17,20 @@ import { liveFieldLabel, liveFieldShortLabel, liveFieldValue, type LiveFieldCont
  * - Ligne repliée : les chiffres choisis, libellé court et valeur.
  * - Texte déplié : un chiffre par ligne, libellé complet.
  */
+
+/**
+ * Étape de l'entraînement pour le chiffre « Étape » (26/10) : celle du
+ * compteur quand une séance avance ou attend en pause, sinon le palier de la
+ * rampe d'un test guidé, sans total ; `null` hors des deux.
+ */
+export const trainingStep = (
+  interval: IntervalStep | null,
+  test: { active: boolean; phase: TestPhase; step: number } | null,
+): LiveFieldContext['step'] => {
+  if (interval) return { rep: interval.rep, of: interval.of };
+  if (test?.active && test.phase === 'rampe' && test.step > 0) return { rep: test.step, of: null };
+  return null;
+};
 
 export interface LiveNotificationInput {
   activityName: string;

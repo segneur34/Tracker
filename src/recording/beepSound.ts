@@ -14,8 +14,11 @@ export const BEEP_SOUNDS: readonly { key: BeepSound; label: string; hz: number }
   { key: 'tres-aigu', label: 'très aigu', hz: 3000 },
 ];
 
-/** Son par défaut : celui d'avant le réglage. */
-export const DEFAULT_BEEP_SOUND: BeepSound = 'aigu';
+/**
+ * Son par défaut : médium (26/10, demande de l'utilisateur ; aigu avant).
+ * Un son choisi dans Réglages est écrit tel quel et ne suit pas ce défaut.
+ */
+export const DEFAULT_BEEP_SOUND: BeepSound = 'medium';
 
 export const isBeepSound = (value: unknown): value is BeepSound => BEEP_SOUNDS.some((s) => s.key === value);
 

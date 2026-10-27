@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  INTERVAL_TONE_MS, MAX_INTERVAL_PRESETS, addPreset, lapsWithin, newPresetId, phaseName, readIntervalRun, readIntervalSeries, replacePreset,
+  INTERVAL_TONE_MS, MAX_INTERVAL_PRESETS, addPreset, intervalStepAt, isRunClosed, lapsWithin, newPresetId, phaseName, readIntervalRun, readIntervalSeries, replacePreset,
   runCommand, runLaps, sameWorkout, sanitizePresets, sanitizeWorkout, seriesBlocks, seriesWithin, startRun, timerStateAt, upcomingSchedule,
   withoutPreset, workoutBlocks, workoutDurationS, workoutFromBlocks, workoutLabel, workoutPhases,
   type IntervalBlock, type IntervalRun, type IntervalTone, type IntervalWorkout,
@@ -309,5 +309,41 @@ describe('séance à blocs', () => {
     expect(split).toHaveLength(1);
     expect(split[0].laps).toHaveLength(5);
     expect(split[0].seriesCount).toBe(1);
+  });
+});
+
+describe('fin de séance et étape (26/10)', () => {
+  it('une séance est close une fois finie ou arrêtée, pas en cours ni en pause', () => {
+    expect(isRunClosed(run, at(10))).toBe(false);
+    expect(isRunClosed(withCommands(run, ['pause', 10]), at(500))).toBe(false);
+    expect(isRunClosed(run, at(243))).toBe(true);
+    expect(isRunClosed(withCommands(run, ['stop', 20]), at(21))).toBe(true);
+    // « Modifier » du Timer : arrêtée, la séance est close tout de suite.
+    expect(isRunClosed(withCommands(run, ['pause', 10], ['stop', 15]), at(15))).toBe(true);
+  });
+
+  it('compte la répétition en cours sur toute la séance, repos et blocs libres gardant la précédente', () => {
+    expect(intervalStepAt(run, at(1))).toEqual({ rep: 0, of: 3 });
+    expect(intervalStepAt(run, at(10))).toEqual({ rep: 1, of: 3 });
+    expect(intervalStepAt(run, at(70))).toEqual({ rep: 1, of: 3 });
+    expect(intervalStepAt(run, at(100))).toEqual({ rep: 2, of: 3 });
+    expect(intervalStepAt(run, at(200))).toEqual({ rep: 3, of: 3 });
+    expect(intervalStepAt(run, at(243))).toBeNull();
+    expect(intervalStepAt(withCommands(run, ['stop', 20]), at(30))).toBeNull();
+    // En pause : l'étape de la phase gelée.
+    expect(intervalStepAt(withCommands(run, ['pause', 100]), at(400))).toEqual({ rep: 2, of: 3 });
+  });
+
+  it('additionne les blocs de séries : échauffement à 0, retour de la récupération sur la dernière faite', () => {
+    const multi = workoutFromBlocks([
+      { kind: 'libre', label: 'Échauffement', durationS: 60 },
+      { kind: 'series', reps: 2, workS: 30, restS: 15 },
+      { kind: 'libre', label: 'Récupération', durationS: 20 },
+      { kind: 'series', reps: 2, workS: 10, restS: 0 },
+    ])!;
+    const multiRun = startRun(multi, T0);
+    // Échauffement 3-63, travail 63-93, repos 93-108, travail 108-138, récupération 138-158, travail 158-168, travail 168-178.
+    expect([10, 70, 100, 120, 150, 160, 170].map((s) => intervalStepAt(multiRun, at(s))?.rep)).toEqual([0, 1, 1, 2, 2, 3, 4]);
+    expect(intervalStepAt(multiRun, at(70))?.of).toBe(4);
   });
 });

@@ -140,3 +140,24 @@ describe('liveFieldValue', () => {
     expect(liveFieldValue('markDistance', context({ markDistanceM: 143 }))).toBe('143 m');
   });
 });
+
+describe('étape (26/10)', () => {
+  it('ne se propose que dans la notification, à pied et à vélo', () => {
+    expect(liveFieldsOfTreatment('course', 'notification')).toContain('step');
+    expect(liveFieldsOfTreatment('velo', 'notification')).toContain('step');
+    expect(liveFieldsOfTreatment('voile', 'notification')).not.toContain('step');
+    expect(liveFieldsOfTreatment('course')).not.toContain('step');
+    expect(sanitizeLiveFields(['step', 'speed'], 'course', MAX_NOTIFICATION_FIELDS, 'notification')).toEqual(['step', 'speed']);
+    // Dans la carte réduite, elle est écartée.
+    expect(sanitizeLiveFields(['step', 'speed'], 'course')).toEqual(['speed']);
+  });
+
+  it("se lit n/N au compteur, le palier seul pendant un test, « — » sans l'un ni l'autre", () => {
+    expect(liveFieldLabel('step', context())).toBe('Étape');
+    expect(liveFieldShortLabel('step', context())).toBe('Étape');
+    expect(liveFieldValue('step', context({ step: { rep: 5, of: 20 } }))).toBe('5/20');
+    expect(liveFieldValue('step', context({ step: { rep: 4, of: null } }))).toBe('4');
+    expect(liveFieldValue('step', context({ step: null }))).toBe('—');
+    expect(liveFieldValue('step', context())).toBe('—');
+  });
+});

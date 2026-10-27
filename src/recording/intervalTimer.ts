@@ -418,6 +418,34 @@ export const timerStateAt = (run: IntervalRun, nowMs: number): IntervalTimerStat
   return { status, phase, remainingMs: Math.max(0, (phase.endS - elapsedS) * 1000), elapsedS };
 };
 
+/**
+ * Séance close, finie ou arrêtée : il n'en reste que l'écran « terminée »,
+ * qu'on ne revoit pas en revenant sur la page (26/10).
+ */
+export const isRunClosed = (run: IntervalRun, nowMs: number): boolean => {
+  const { status } = timerStateAt(run, nowMs);
+  return status === 'finished' || status === 'stopped';
+};
+
+/** Étape d'une séance : la répétition de travail en cours, ou la dernière faite, sur toutes celles de la séance. */
+export interface IntervalStep {
+  rep: number;
+  of: number;
+}
+
+/**
+ * Étape à l'instant `nowMs`, pour la notification (26/10) : les répétitions
+ * sont comptées sur toute la séance, tous blocs de séries confondus ; un repos
+ * ou un bloc libre garde celle qui le précède, 0 avant la première (départ,
+ * échauffement). `null` une fois la séance close.
+ */
+export const intervalStepAt = (run: IntervalRun, nowMs: number): IntervalStep | null => {
+  const { phase } = timerStateAt(run, nowMs);
+  if (!phase) return null;
+  const work = workoutPhases(run.workout).filter((p) => p.kind === 'travail');
+  return { rep: work.filter((p) => p.startS <= phase.startS).length, of: work.length };
+};
+
 /** Un son programmé, après `delayMs`. */
 export interface IntervalTone {
   delayMs: number;

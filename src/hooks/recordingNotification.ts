@@ -1,9 +1,10 @@
 import { clearRecordingNotification, updateRecordingNotification } from '../platform/notification';
-import { timerStateAt } from '../recording/intervalTimer';
+import { intervalStepAt, timerStateAt } from '../recording/intervalTimer';
 import { travelHeading } from '../recording/heading';
 import type { LiveFieldContext } from '../recording/liveFields';
-import { liveNotification, liveNotificationKey } from '../recording/liveNotification';
+import { liveNotification, liveNotificationKey, trainingStep } from '../recording/liveNotification';
 import { displayedDurationMs } from '../recording/session';
+import { getFitnessTestView } from './useFitnessTest';
 import { getIntervalRun, subscribeToIntervalCommands } from './useIntervalTimer';
 import { getLiveRecording, subscribeToLiveRecording } from './useLiveRecording';
 import { getMarkGuideView } from './useMarkGuide';
@@ -79,6 +80,7 @@ const update = (force: boolean) => {
   const mark = getMarkGuideView();
   const run = getIntervalRun();
   const timer = run ? timerStateAt(run, nowMs) : null;
+  const counterActive = timer !== null && (timer.status === 'running' || timer.status === 'paused');
   const context: LiveFieldContext = {
     speedUnit: effectiveSpeedUnit(activity),
     distanceUnit: effectiveDistanceUnit(activity),
@@ -92,6 +94,7 @@ const update = (force: boolean) => {
     markBearingDeg: mark.active ? mark.bearingDeg : null,
     heartRateBpm: recorder.heartRate?.bpm ?? null,
     heartRateZoneBounds: fields.includes('heartRateZone') ? readHeartRateZoneBounds(activity) : null,
+    step: fields.includes('step') ? trainingStep(run && counterActive ? intervalStepAt(run, nowMs) : null, getFitnessTestView()) : null,
   };
   const paused = status === 'paused' ? recorder.pausedReason ?? 'auto' : null;
   const content = liveNotification({
@@ -100,7 +103,7 @@ const update = (force: boolean) => {
     context,
     paused,
     startedAtMs: recorder.stats.firstMs,
-    interval: timer?.phase && run && (timer.status === 'running' || timer.status === 'paused') ? { state: timer } : null,
+    interval: timer?.phase && run && counterActive ? { state: timer } : null,
     nowMs,
   });
   const standalone = paused === 'manual';

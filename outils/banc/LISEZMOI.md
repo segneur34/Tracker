@@ -206,7 +206,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - la partie « Notification » de la carte Voile dans Réglages : deux menus, « défaut », puis une ligne changée et rangée, qui suffit à dégriser « Par défaut » dans le menu « … » de la carte (grisé, non absent, tant que rien n'est changé) et, repliée, « · modifié » ;
   - un rejeu ×10 de voile : titre, chiffres choisis, chronomètre de durée, 5 s au moins entre deux envois ;
   - pause manuelle (envoi immédiat, « en pause », posé seul), reprise, puis effacement à l'arrêt ;
-  - le compteur pendant un enregistrement de fractionné : phase au titre et décompte.
+  - le compteur pendant un enregistrement de fractionné : phase au titre et décompte ; « Étape » d'office (0/2 au départ, 1/2 au premier travail, lot A du 26/10).
 - `statistiques.mjs <port> [<dossier des captures>]` : la page des statistiques (lot 5 des demandes du 10-13/10), sur un profil neuf, environ 1 min. Le script écrit lui-même douze sessions (course, vélo, wingfoil, kite sans activité créée pour lui, surf, deux fractionnés), datées en jours avant aujourd'hui, et les importe par la page Course. Le réseau n'est pas nécessaire ; l'analyse ouverte à l'étape du graphe demande seulement l'altitude à l'IGN s'il est là. Il vérifie :
   - l'accès par la barre du haut, plus de lien sur l'accueil (lot 1 des demandes du 20/10) ;
   - la vue d'ensemble (12 sessions, une ligne par famille, pas de records, le graphique de la durée seule), la descente vers Course, la période « 30 jours », le retour arrière, puis « Fractionné vélo » ; les pastilles d'activité de chaque famille, celles sans session et « Kite », activité de base, comprises ;
@@ -290,9 +290,9 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   Sur un profil déjà servi, le fichier de réglages du dossier mémoire reprend la place des valeurs écrites : il faut prendre un profil neuf à chaque passage.
 - `entrainement.mjs <port> [<dossier des captures>]` : famille Entraînement, page Fractionné et compteur à blocs (chantier du 24/10, lot A), sur un profil neuf, sans réseau, environ 40 s. Il vérifie :
   - le nom « Entraînement » sur l'accueil, dans la barre et sur la page de la famille, et sa tuile « Fractionné » ;
-  - la page Fractionné : une séance à blocs créée d'un geste, gardée, modifiée, dupliquée, la copie retirée ;
-  - « Lancer » : Enregistrer prêt (Entraînement, Fractionné, à pied), la séance dans le compteur, « Série 1 · Travail 1/3 » ;
-  - Réglages › Enregistrement : « Son des bips » retenu, « Écouter » ;
+  - la page Fractionné : une séance à blocs créée d'un geste (ajouts sans « 3 × 3 min / 1 min » ni « 10 × 30/30 », « + Échauffement » en tête, vraies flèches ↑ ↓ : lot A du 26/10), gardée, modifiée, dupliquée, la copie retirée ;
+  - « Lancer » : Enregistrer prêt (Entraînement, Fractionné, à pied), la séance dans le compteur, « Série 1 · Travail 1/3 » ; arrêtée, la page quittée puis retrouvée par le retour : séance close oubliée, l'éditeur et jamais « Séance arrêtée » ;
+  - Réglages › Enregistrement : « Son des bips » médium par défaut, retenu, « Écouter », un son choisi toujours écrit ;
   - à 390 × 844 : sans débordement.
 - `icones.mjs <port> [<dossier des captures>]` : icônes des activités (demande du 17/10), sur un profil neuf, sans réseau, environ 1 min. Il importe six sessions synthétiques par la page Course et vérifie :
   - l'accueil : boutons de famille sans petites icônes d'activité, « À pied » pour la course ;
@@ -302,8 +302,8 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - à 390×844 : bibliothèque et accueil sans débordement.
 - `timer.mjs <port> [<dossier des captures>]` : le Timer de l'Entraînement (lot D des demandes du 25/10), sur un profil neuf, sans réseau, environ 30 s. Il vérifie :
   - la tuile « Timer » sous Tests ; la liste du Timer, vide au départ, une séance créée, modifiée, dupliquée, la copie retirée, sans toucher aux séances du Fractionné ;
-  - « Lancer » : Enregistrer en mode Timer (ni famille, ni « Démarrer », ni carte), la séance dans le compteur, « Départ » puis le premier travail, le bandeau « Timer » qui y ramène ; un appui court sur « Arrêter » ne fait que rappeler le geste, tenu 1 s il arrête ; la position jamais demandée (sonde sur `navigator.geolocation`) ;
-  - « Enregistrer une session » rend la page ordinaire ; à 390 × 844 : sans débordement.
+  - « Lancer » (lot A du 26/10) : Enregistrer en mode Timer (ni famille, ni « Démarrer », ni carte), le compteur lancé d'emblée, « Départ » puis le premier travail, le bandeau « Timer » qui y ramène ; un appui court sur « Arrêter » ne fait que rappeler le geste ; « Modifier » à sa droite arrête la séance (confirmation acceptée) et rend l'éditeur sur elle, « Lancer le compteur » la relance ; tenu 1 s, « Arrêter » l'arrête ; la page quittée puis retrouvée par le retour : séance close oubliée, l'éditeur et jamais « Séance arrêtée » ; la position jamais demandée (sonde sur `navigator.geolocation`) ;
+  - « Enregistrer une session » rend la page ordinaire ; à 390 × 844 : sans débordement, compteur en marche compris.
 - `zoom-carte.mjs <port> [<dossier des captures>]` : graphe zoomé vu sur la carte (lot 2 des demandes du 23/10), sur un profil neuf, sans réseau, environ 2 min 30. Il vérifie :
   - course, voile et surf : la valeur lue au-dessus du graphe sans bulle ni décalage ; le double-clic qui zoome ×2 autour du point ; « Sur la carte » qui allume le tronçon en violet et cadre la carte, mis à jour au zoom suivant, effacé par « Tout voir » ou la fermeture de l'onglet ;
   - les onglets cardio, énergie et zones de pente ;

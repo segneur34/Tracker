@@ -2,12 +2,15 @@
 // Usage : node entrainement.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau, environ 40 s. Le script vérifie :
 //  1. le nom « Entraînement » sur l'accueil, dans la barre et sur la page de la famille, et sa tuile « Fractionné » ;
-//  2. la page Fractionné : les séances de départ ; une séance neuve à blocs (échauffement, 3 × 3 min, retour au calme,
-//     plus « 10 × 30/30 » ajouté d'un geste), gardée sous un nom ; modifiée (un bloc retiré, un monté) ; dupliquée ;
-//     la copie retirée ;
+//  2. la page Fractionné : les séances de départ ; une séance neuve à blocs (échauffement, 3 × 3 min, retour au calme) ;
+//     ajouts d'un geste sans « 3 × 3 min / 1 min » ni « 10 × 30/30 », « + Échauffement » posé en tête, « + Série » à la
+//     fin (26/10) ; flèches de déplacement en vraies flèches ; gardée sous un nom ; modifiée (un bloc retiré, un monté) ;
+//     dupliquée ; la copie retirée ;
 //  3. « Lancer » : Enregistrer ouvert prêt (Entraînement, type Fractionné, à pied ; vélo se choisit dessous), la séance
-//     dans la carte du compteur ; le compteur lancé : « Départ », puis « Série 1 · Travail 1/3 » ; arrêté ;
-//  4. Réglages › Enregistrement : « Son des bips » choisi grave, retenu dans les réglages, « Écouter » joue court, court, long ;
+//     dans la carte du compteur ; le compteur lancé : « Départ », puis « Série 1 · Travail 1/3 » ; arrêté ; la page quittée
+//     puis retrouvée par le retour : la séance close oubliée, l'éditeur et jamais « Séance arrêtée » (26/10) ;
+//  4. Réglages › Enregistrement : « Son des bips » médium par défaut (26/10), choisi grave, retenu dans les réglages,
+//     « Écouter » joue court, court, long ; un son choisi, même celui par défaut, est écrit tel quel ;
 //  5. à 390 × 844 : la page de la famille et la page Fractionné sans débordement.
 import { writeFileSync } from 'node:fs';
 
@@ -99,7 +102,8 @@ await wait(800);
 check('tuile : page Fractionné', (await evaluate('location.pathname')) === '/fractionne/seances', await evaluate('location.pathname'));
 check('séances de départ', (await presets())?.split(' ; ').length === 3, await presets());
 console.log('nouvelle séance :', await clickText('Créer un compteur'));
-await wait(300);
+// La page d'édition se charge à la demande (React.lazy) : un peu plus que les 300 ms d'avant.
+await wait(1000);
 const blocksTitles = () => evaluate(`[...document.querySelectorAll('.train-editor .ivl-block__title')].map((n) => n.textContent).join(', ')`);
 check('séance neuve : trois blocs', (await blocksTitles()) === 'Échauffement, Série, Retour au calme', await blocksTitles());
 // Croix de l'éditeur : fermeture directe sans changement, sinon la question Enregistrer / Ne pas enregistrer / Continuer.
@@ -135,11 +139,22 @@ console.log('retirer :', await evaluate(`(() => { const i = [...document.querySe
 await wait(400);
 console.log('nouvelle séance :', await clickText('Créer un compteur'));
 await wait(300);
-console.log('+ 10 × 30/30 :', await clickText('+ 10 × 30/30'));
+// Ajouts d'un geste (26/10) : plus de « 3 × 3 min / 1 min » ni de « 10 × 30/30 ».
+const quick = await evaluate(`[...document.querySelectorAll('.train-editor .ivl-quick button')].map((b) => b.textContent).join(', ')`);
+check("ajouts d'un geste", quick === '+ Échauffement 10 min, + Série, + Récupération 3 min, + Retour au calme 10 min', quick);
+// Monter et descendre : de vraies flèches (hampe et pointe), pas les chevrons de replier et déplier.
+const arrows = await evaluate(`[...document.querySelectorAll('.train-editor .ivl-block__tool')].filter((b) => /^(Monter|Descendre)/.test(b.getAttribute('aria-label'))).slice(0, 2).map((b) => b.querySelector('path')?.getAttribute('d')).join(' | ')`);
+check('flèches de déplacement', arrows === 'M12 19V5M6 11l6-6 6 6 | M12 5v14M6 13l6 6 6-6', arrows);
+console.log("retirer l'échauffement :", await clickLabel('Retirer : Échauffement'));
 await wait(200);
-check('bloc ajouté à la fin, séries numérotées', (await blocksTitles()) === 'Échauffement, Série 1, Retour au calme, Série 2', await blocksTitles());
+console.log('+ Échauffement :', await clickText('+ Échauffement 10 min'));
+await wait(200);
+check('échauffement ajouté en tête', (await blocksTitles()) === 'Échauffement, Série, Retour au calme', await blocksTitles());
+console.log('+ Série :', await clickText('+ Série'));
+await wait(200);
+check('série ajoutée à la fin, séries numérotées', (await blocksTitles()) === 'Échauffement, Série 1, Retour au calme, Série 2', await blocksTitles());
 const summary = await text('.train-editor .ivl-summary');
-check('résumé de la séance', summary.startsWith('Échauffement 10:00 + 3 × 3:00 / 1:00 + Retour au calme 10:00 + 10 × 0:30 / 0:30') && /40:30 en tout/.test(summary), summary);
+check('résumé de la séance', summary.startsWith('Échauffement 10:00 + 3 × 3:00 / 1:00 + Retour au calme 10:00 + 5 × 1:00 / 1:00') && /40:00 en tout/.test(summary), summary);
 console.log('nom :', await typeInto('Nom de la séance', 'Séance test'), '| garder :', await clickText('Enregistrer', '.train-editor button'));
 await wait(400);
 check('séance gardée', (await presets())?.split(' ; ').includes('Séance test'), await presets());
@@ -160,7 +175,7 @@ await wait(400);
 await unfold('Séance test');
 await wait(200);
 const detail = await evaluate(`(() => { const i = ${itemOf('Séance test')}; return i ? i.querySelector('.train-item__detail')?.textContent : '(absente)'; })()`);
-check('séance modifiée, même nom', detail === '3 × 3:00 / 1:00 + 10 × 0:30 / 0:30 + Retour au calme 10:00', detail);
+check('séance modifiée, même nom', detail === '3 × 3:00 / 1:00 + 5 × 1:00 / 1:00 + Retour au calme 10:00', detail);
 console.log('dupliquer :', await evaluate(`(() => { const i = ${itemOf('Séance test')}; const b = i && [...i.querySelectorAll('button')].find((x) => x.textContent === 'Dupliquer'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
 await wait(300);
 check('copie gardée', (await presets())?.includes('Séance test (copie)'), await presets());
@@ -183,7 +198,7 @@ console.log('vélo :', await clickText('vélo', '.ui-segmented[aria-label="Activ
 await wait(300);
 check('vélo choisi, la séance reste', (await segmented('Activité')) === 'vélo' && (await text('.ivl .ivl-summary')).startsWith('3 × 3:00'), await segmented('Activité'));
 const counterSummary = await text('.ivl .ivl-summary');
-check('la séance dans la carte du compteur', counterSummary.startsWith('3 × 3:00 / 1:00 + 10 × 0:30 / 0:30 + Retour au calme 10:00'), counterSummary);
+check('la séance dans la carte du compteur', counterSummary.startsWith('3 × 3:00 / 1:00 + 5 × 1:00 / 1:00 + Retour au calme 10:00'), counterSummary);
 check('lien vers les séances', (await evaluate(`[...document.querySelectorAll('.ivl a')].map((a) => a.getAttribute('href')).join(',')`)) === '/fractionne/seances');
 const soundsBefore = sounds.length;
 console.log('lancer le compteur :', await clickText('Lancer le compteur'));
@@ -197,14 +212,25 @@ await shoot('entrainement-compteur');
 // « Arrêter » du compteur se tient 1 s (25/10).
 console.log('arrêter :', await evaluate(`(async () => { const b = document.querySelector('.ivl button.ui-btn--danger'); if (!b) return 'absent'; const ev = (t) => b.dispatchEvent(new PointerEvent(t, { bubbles: true, button: 0, pointerType: 'mouse' })); ev('pointerdown'); await new Promise((r) => setTimeout(r, 1200)); ev('pointerup'); b.click(); return 'ok'; })()`));
 await wait(300);
-console.log('fermer :', await clickText('Fermer', '.ivl button'));
+check('séance arrêtée', /Séance arrêtée/.test(await text('.ivl-done')), await text('.ivl-done'));
+// La page quittée (lien de la barre), puis retrouvée par le retour, sans recharger : la séance close est oubliée (26/10).
+console.log('quitter :', await evaluate(`(() => { const a = [...document.querySelectorAll('a')].find((x) => x.getAttribute('href') === '/fractionne'); if (!a) return 'absent'; a.click(); return 'ok'; })()`));
+await wait(600);
+const forgotten = await evaluate(`JSON.parse(localStorage.getItem('tracker.intervalRun') ?? 'null') === null`);
+check('page quittée : séance close oubliée', forgotten === true, await evaluate(`localStorage.getItem('tracker.intervalRun')`));
+console.log('retour :', await evaluate(`(history.back(), 'ok')`));
+await wait(1000);
+const backPath = await evaluate('location.pathname');
+const doneShown = await evaluate(`!!document.querySelector('.ivl-done')`);
+const editorSummary = await text('.ivl .ivl-summary');
+check("retour : l'éditeur, pas « Séance arrêtée »", backPath === '/enregistrer' && !doneShown && editorSummary.startsWith('3 × 3:00'), `${backPath} | ${editorSummary}`);
 
 // --- 4. Son des bips ---
 await go('/parametres');
 // Le bloc Enregistrement de Réglages, ouvert s'il ne l'est pas (son état est retenu).
 if (!(await evaluate(`!!document.querySelector('.ui-segmented[aria-label="Son des bips"]')`))) console.log('bloc Enregistrement :', await clickText('Enregistrement', '[role=button]'));
 await wait(300);
-check('ligne « Son des bips »', (await segmented('Son des bips')) === 'aigu', await segmented('Son des bips'));
+check('ligne « Son des bips », médium par défaut', (await segmented('Son des bips')) === 'médium', await segmented('Son des bips'));
 const soundsAt = sounds.length;
 console.log('grave :', await clickText('grave', '.ui-segmented[aria-label="Son des bips"] [role=radio]'));
 await wait(2800);
@@ -220,10 +246,10 @@ await go('/parametres');
 if (!(await evaluate(`!!document.querySelector('.ui-segmented[aria-label="Son des bips"]')`))) console.log('bloc Enregistrement :', await clickText('Enregistrement', '[role=button]'));
 await wait(300);
 check('après rechargement, toujours grave', (await segmented('Son des bips')) === 'grave', await segmented('Son des bips'));
-console.log('aigu, par défaut :', await clickText('aigu', '.ui-segmented[aria-label="Son des bips"] [role=radio]'));
+console.log('médium, celui par défaut :', await clickText('médium', '.ui-segmented[aria-label="Son des bips"] [role=radio]'));
 await wait(300);
 const back = await evaluate(`JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}').beepSound ?? '(absent)'`);
-check('son par défaut : plus rien d\'écrit', back === '(absent)', back);
+check('un son choisi est écrit, même celui par défaut', back === 'medium', back);
 
 // --- 5. Téléphone ---
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });

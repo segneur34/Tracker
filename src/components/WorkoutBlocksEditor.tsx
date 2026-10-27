@@ -1,5 +1,5 @@
 import Button from './ui/Button';
-import { IconChevronDown, IconChevronUp, IconClose } from './icons';
+import { IconArrowDown, IconArrowUp, IconClose } from './icons';
 import {
   INTERVAL_FREE_LABELS, INTERVAL_LIMITS, formatIntervalClock, workoutDurationS, workoutFromBlocks, workoutLabel,
   type IntervalBlock, type IntervalFreeLabel,
@@ -9,8 +9,8 @@ import './IntervalCard.css';
 /**
  * Éditeur d'une séance du compteur, bloc par bloc (24/10) : chaque bloc se
  * règle, monte, descend ou se retire ; des ajouts d'un geste posent un
- * échauffement, une série toute faite (3 × 3 min, 10 × 30/30), une
- * récupération ou un retour au calme à la fin. Partagé par la page Séances
+ * échauffement en tête (26/10), une série, une récupération ou un retour au
+ * calme à la fin. Partagé par la page Séances
  * et la carte du compteur d'Enregistrer ; la séance se lit par `workoutFromBlocks`.
  */
 
@@ -43,15 +43,20 @@ export function DurationField({ label, seconds, onChange }: { label: string; sec
   );
 }
 
-/** Ajouts d'un geste, posés à la fin de la séance. */
-const QUICK_BLOCKS: { label: string; block: IntervalBlock }[] = [
-  { label: 'Échauffement 10 min', block: { kind: 'libre', label: 'Échauffement', durationS: 600 } },
-  { label: '3 × 3 min / 1 min', block: { kind: 'series', reps: 3, workS: 180, restS: 60 } },
-  { label: '10 × 30/30', block: { kind: 'series', reps: 10, workS: 30, restS: 30 } },
+/**
+ * Ajouts d'un geste : l'échauffement se pose en tête de la séance, les
+ * autres à la fin (26/10 : « 3 × 3 min / 1 min » et « 10 × 30/30 » retirés).
+ */
+const QUICK_BLOCKS: { label: string; block: IntervalBlock; atStart?: boolean }[] = [
+  { label: 'Échauffement 10 min', block: { kind: 'libre', label: 'Échauffement', durationS: 600 }, atStart: true },
   { label: 'Série', block: { kind: 'series', reps: 5, workS: 60, restS: 60 } },
   { label: 'Récupération 3 min', block: { kind: 'libre', label: 'Récupération', durationS: 180 } },
   { label: 'Retour au calme 10 min', block: { kind: 'libre', label: 'Retour au calme', durationS: 600 } },
 ];
+
+/** Les blocs après un ajout d'un geste : en tête ou à la fin selon le bloc. */
+const withQuickBlock = (blocks: IntervalBlock[], quick: { block: IntervalBlock; atStart?: boolean }): IntervalBlock[] =>
+  quick.atStart ? [quick.block, ...blocks] : [...blocks, quick.block];
 
 interface WorkoutBlocksEditorProps {
   blocks: IntervalBlock[];
@@ -86,10 +91,10 @@ function WorkoutBlocksEditor({ blocks, onChange }: WorkoutBlocksEditorProps) {
                   <span className="ivl-block__title">{title}</span>
                   <span className="ivl-block__tools">
                     <button type="button" className="ivl-block__tool" aria-label={`Monter : ${title}`} disabled={index === 0} onClick={() => move(index, -1)}>
-                      <IconChevronUp size={16} />
+                      <IconArrowUp size={16} />
                     </button>
                     <button type="button" className="ivl-block__tool" aria-label={`Descendre : ${title}`} disabled={index === blocks.length - 1} onClick={() => move(index, 1)}>
-                      <IconChevronDown size={16} />
+                      <IconArrowDown size={16} />
                     </button>
                     <button type="button" className="ivl-block__tool" aria-label={`Retirer : ${title}`} onClick={() => remove(index)}>
                       <IconClose size={16} />
@@ -126,8 +131,8 @@ function WorkoutBlocksEditor({ blocks, onChange }: WorkoutBlocksEditorProps) {
       </ol>
       <div className="ivl-quick" aria-label="Ajouter un bloc">
         <span className="ui-eyebrow">Ajouter</span>
-        {QUICK_BLOCKS.map(({ label, block }) => (
-          <Button key={label} size="s" disabled={full} onClick={() => onChange([...blocks, block])}>+ {label}</Button>
+        {QUICK_BLOCKS.map((quick) => (
+          <Button key={quick.label} size="s" disabled={full} onClick={() => onChange(withQuickBlock(blocks, quick))}>+ {quick.label}</Button>
         ))}
       </div>
       <p className="ivl-summary">

@@ -8,7 +8,7 @@
 //     envois sans changement d'état ;
 //  3. pause manuelle : envoi immédiat, « en pause », durée figée, posé seul ; reprise : envoi immédiat sans « en pause » ;
 //  4. arrêt : notification effacée ;
-//  5. compteur du fractionné pendant un enregistrement (rejeu ×1 daté de maintenant) : phase au titre et décompte.
+//  5. compteur du fractionné pendant un enregistrement (rejeu ×1 daté de maintenant) : phase au titre et décompte ; « Étape » d'office (26/10).
 import { writeFileSync } from 'node:fs';
 
 const [port, workDir] = process.argv.slice(2);
@@ -204,6 +204,9 @@ const counter = sent.slice(mark).map((s) => s.text);
 console.log('envois :', counter.join('\n        '));
 check('phase au titre, au changement de phase', counter.some((t) => t.includes('· Départ |')) && counter.some((t) => t.includes('· Travail 1/2 |')));
 check('décompte de la phase', counter.some((t) => t.includes('· Travail 1/2 |') && t.includes('[rebours ')));
+// Entraînement (26/10) : l'étape d'office, avec la vitesse ; 0/2 au départ, 1/2 au premier travail.
+check('étape d\'office : 0/2 au départ, 1/2 au premier travail', counter.some((t) => t.includes('· Départ |') && t.includes('Étape 0/2'))
+  && counter.some((t) => t.includes('· Travail 1/2 |') && t.includes('Étape 1/2')), counter.filter((t) => /Travail|Départ/.test(t)).join(' // ').slice(0, 300));
 console.log('Arrêter :', await holdStop());
 await wait(1500);
 await evaluate(`(() => { window.confirm = () => true; return 'ok'; })()`);

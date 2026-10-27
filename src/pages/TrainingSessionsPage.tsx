@@ -6,6 +6,7 @@ import PageHeader from '../components/ui/PageHeader';
 import { IconChevronDown, IconChevronUp, IconPlay } from '../components/icons';
 import { FAMILY_ACCENT, activitiesOfFamily } from '../core/activities';
 import { isIntervalSport } from '../core/sportProfiles';
+import { isIntervalTimerActive, startIntervals } from '../hooks/useIntervalTimer';
 import { useRecorderStatus } from '../hooks/useRecorder';
 import {
   lastRecordActivity, rememberIntervalWorkout, removeIntervalPreset, saveIntervalPreset, useIntervalSettings, useVisibility,
@@ -23,11 +24,13 @@ import './TrainingPages.css';
  * (`WORKOUT_LISTS`), en liste simplifiée (titre, « Lancer », flèche) ;
  * « Créer » et « Modifier » ouvrent la page d'édition
  * (`TrainingSessionEditPage`, 25/10), « Dupliquer » et « Retirer » restent ici.
- * « Lancer » met la séance dans la carte du compteur (retenue comme la
- * dernière lancée) et ouvre Enregistrer : en Fractionné, prêt sur la dernière
+ * « Lancer », en Fractionné, met la séance dans la carte du compteur (retenue
+ * comme la dernière lancée) et ouvre Enregistrer prêt sur la dernière
  * activité de fractionné enregistrée, sinon la première (à pied ou vélo se
- * change là), le bouton rond démarre ; au Timer, le compteur seul, sans GPS
- * ni session, et pas pendant un enregistrement.
+ * change là), le bouton rond démarre ; au Timer (26/10), il lance la séance
+ * tout de suite et ouvre la page du compteur, sans GPS ni session, et pas
+ * pendant un enregistrement ; une séance du compteur en cours n'est
+ * remplacée qu'après confirmation.
  */
 
 function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
@@ -54,7 +57,12 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
     : activity && `/enregistrer?activite=${encodeURIComponent(activity.id)}`;
   const launch = (preset: { workout: IntervalPreset['workout'] }) => {
     if (!launchPath) return;
-    rememberIntervalWorkout(kind, preset.workout);
+    if (timer) {
+      if (isIntervalTimerActive() && !window.confirm("Une séance du compteur est en cours : l'arrêter et lancer celle-ci ?")) return;
+      startIntervals(preset.workout, 'timer');
+    } else {
+      rememberIntervalWorkout(kind, preset.workout);
+    }
     navigate(launchPath);
   };
   const askRemove = (preset: IntervalPreset) => {

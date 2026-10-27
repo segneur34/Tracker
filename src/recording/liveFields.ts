@@ -11,7 +11,8 @@ import { LIVE_STATS_DEFAULTS, type LiveStats } from './liveStats';
  * par activité dans Réglages : jusqu'à `MAX_LIVE_FIELDS`, parmi ceux qui ont
  * un sens pour son traitement (le fractionné à pied a ceux de la course).
  * Ceux de la notification de l'enregistrement viennent du même catalogue,
- * choisis à part, `MAX_NOTIFICATION_FIELDS` au plus. Libellés et valeurs sont
+ * choisis à part, `MAX_NOTIFICATION_FIELDS` au plus, avec en plus ceux qui
+ * ne vont qu'à elle (`NOTIFICATION_ONLY_FIELDS`). Libellés et valeurs sont
  * formatés ici, dans les unités de l'activité.
  */
 
@@ -19,7 +20,8 @@ export type LiveFieldKey =
   | 'speed' | 'average' | 'max' | 'recentDistanceSpeed' | 'lastDistance' | 'distance' | 'duration' | 'clock'
   | 'remaining' | 'remainingTime'
   | 'recentTopShort' | 'recentTopLong' | 'heading' | 'legAverage' | 'markDistance' | 'markBearing'
-  | 'grade' | 'gain' | 'recentDistanceGain' | 'loss' | 'climbRate' | 'power' | 'effort' | 'heartRate' | 'averageHeartRate' | 'heartRateZone';
+  | 'grade' | 'gain' | 'recentDistanceGain' | 'loss' | 'climbRate' | 'power' | 'effort' | 'heartRate' | 'averageHeartRate' | 'heartRateZone'
+  | 'step';
 
 const ALL: Treatment[] = ['voile', 'course', 'velo', 'surf'];
 const LAND: Treatment[] = ['course', 'velo'];
@@ -52,13 +54,27 @@ const LIVE_FIELD_TREATMENTS: Record<LiveFieldKey, readonly Treatment[]> = {
   clock: ALL,
   remaining: ALL,
   remainingTime: ALL,
+  step: LAND,
 };
+
+/**
+ * Chiffres de la notification seulement, pas de la carte réduite : l'étape
+ * (26/10), répétition du compteur ou palier d'un test, que la carte du
+ * compteur ou du test montre déjà sur la page.
+ */
+const NOTIFICATION_ONLY_FIELDS: readonly LiveFieldKey[] = ['step'];
+
+/** Où un chiffre se lit : la carte réduite de l'enregistrement, ou la notification. */
+export type LiveFieldTarget = 'live' | 'notification';
+
+const allowedFor = (key: LiveFieldKey, treatment: Treatment, target: LiveFieldTarget): boolean =>
+  LIVE_FIELD_TREATMENTS[key].includes(treatment) && (target === 'notification' || !NOTIFICATION_ONLY_FIELDS.includes(key));
 
 const LIVE_FIELD_KEYS = Object.keys(LIVE_FIELD_TREATMENTS) as LiveFieldKey[];
 
 /** Chiffres proposés pour un traitement, dans l'ordre des menus. */
-export const liveFieldsOfTreatment = (treatment: Treatment): LiveFieldKey[] =>
-  LIVE_FIELD_KEYS.filter((key) => LIVE_FIELD_TREATMENTS[key].includes(treatment));
+export const liveFieldsOfTreatment = (treatment: Treatment, target: LiveFieldTarget = 'live'): LiveFieldKey[] =>
+  LIVE_FIELD_KEYS.filter((key) => allowedFor(key, treatment, target));
 
 /** Nombre de lignes au plus. */
 export const MAX_LIVE_FIELDS = 4;
@@ -105,16 +121,18 @@ const isLiveFieldKey = (value: unknown): value is LiveFieldKey =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(LIVE_FIELD_TREATMENTS, value);
 
 /**
- * Choix rangé, nettoyé : clés connues et permises pour le traitement, sans
- * doublon, `max` au plus ; `null` s'il n'en reste aucune (le défaut
- * s'applique).
+ * Choix rangé, nettoyé : clés connues et permises pour le traitement et la
+ * cible, sans doublon, `max` au plus ; `null` s'il n'en reste aucune (le
+ * défaut s'applique).
  */
-export const sanitizeLiveFields = (value: unknown, treatment: Treatment, max = MAX_LIVE_FIELDS): LiveFieldKey[] | null => {
+export const sanitizeLiveFields = (
+  value: unknown, treatment: Treatment, max = MAX_LIVE_FIELDS, target: LiveFieldTarget = 'live',
+): LiveFieldKey[] | null => {
   if (!Array.isArray(value)) return null;
   const kept: LiveFieldKey[] = [];
   for (const key of value) {
     if (kept.length === max) break;
-    if (isLiveFieldKey(key) && LIVE_FIELD_TREATMENTS[key].includes(treatment) && !kept.includes(key)) kept.push(key);
+    if (isLiveFieldKey(key) && allowedFor(key, treatment, target) && !kept.includes(key)) kept.push(key);
   }
   return kept.length > 0 ? kept : null;
 };
@@ -157,6 +175,7 @@ export const liveFieldLabel = (key: LiveFieldKey, { speedUnit, distanceUnit }: L
     case 'heartRate': return 'Fréquence cardiaque';
     case 'averageHeartRate': return 'FC moyenne';
     case 'heartRateZone': return 'Zone cardiaque';
+    case 'step': return 'Étape';
   }
 };
 
@@ -190,6 +209,7 @@ export const liveFieldShortLabel = (key: LiveFieldKey, { speedUnit, distanceUnit
     case 'heartRate': return 'FC';
     case 'averageHeartRate': return 'FC moy.';
     case 'heartRateZone': return 'Zone';
+    case 'step': return 'Étape';
   }
 };
 
@@ -210,6 +230,12 @@ export interface LiveFieldContext extends LiveFieldUnits {
   heartRateBpm: number | null;
   /** Bornes basses des zones cardiaques 1 à 5 du pratiquant, en bpm ; `null` s'il n'en a pas. */
   heartRateZoneBounds: readonly number[] | null;
+  /**
+   * Étape de l'entraînement (26/10) : répétition du compteur sur le total de la
+   * séance, ou palier d'un test, sans total ; absente ou `null` sans compteur
+   * en marche ni rampe de test.
+   */
+  step?: { rep: number; of: number | null } | null;
 }
 
 const NONE = '—';
@@ -267,5 +293,8 @@ export const liveFieldValue = (key: LiveFieldKey, ctx: LiveFieldContext): string
       const zone = zoneOf(bpm, ctx.heartRateZoneBounds);
       return `${zone === 0 ? 'sous Z1' : `Z${zone}`} · ${bpm}`;
     }
+    case 'step':
+      if (!ctx.step) return NONE;
+      return ctx.step.of === null ? String(ctx.step.rep) : `${ctx.step.rep}/${ctx.step.of}`;
   }
 };

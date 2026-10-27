@@ -675,7 +675,7 @@ export const effectiveLiveFields = (activity: Activity): LiveFieldKey[] =>
 
 /** Chiffres de la notification de l'enregistrement : ceux choisis dans Réglages, sinon ceux du calcul. */
 export const effectiveNotificationFields = (activity: Activity): LiveFieldKey[] =>
-  sanitizeLiveFields(readStoredSettings().notificationFields?.[activity.id], activityTreatment(activity), MAX_NOTIFICATION_FIELDS)
+  sanitizeLiveFields(readStoredSettings().notificationFields?.[activity.id], activityTreatment(activity), MAX_NOTIFICATION_FIELDS, 'notification')
     ?? defaultNotificationFieldsFor(activity);
 
 /** Bips d'approche des balises d'un parcours : ceux réglés pour l'activité, sinon le défaut. */
@@ -973,7 +973,7 @@ export const useAllSportSettings = () => {
       const paceLevel = stored.paceLevels?.[id];
       const customSpeed = stored.customFlatSpeeds?.[id];
       const liveFields = sanitizeLiveFields(stored.liveFields?.[id], activityTreatment(activity));
-      const notificationFields = sanitizeLiveFields(stored.notificationFields?.[id], activityTreatment(activity), MAX_NOTIFICATION_FIELDS);
+      const notificationFields = sanitizeLiveFields(stored.notificationFields?.[id], activityTreatment(activity), MAX_NOTIFICATION_FIELDS, 'notification');
       const markGuide = sanitizeMarkGuide(stored.markGuide?.[id]);
       const ways = resolveWayTypes(stored, activity);
       return {
@@ -1081,7 +1081,7 @@ export const useAllSportSettings = () => {
         case 'notificationFields': {
           const activity = findActivity(activities, id);
           if (!activity) return;
-          const fields = value === null ? null : sanitizeLiveFields(value, activityTreatment(activity), MAX_NOTIFICATION_FIELDS);
+          const fields = value === null ? null : sanitizeLiveFields(value, activityTreatment(activity), MAX_NOTIFICATION_FIELDS, 'notification');
           if (value !== null && fields === null) return;
           next.notificationFields = put(stored.notificationFields, fields);
           break;
@@ -1294,13 +1294,13 @@ export const useAllSportSettings = () => {
   );
 
   const beepSound = isBeepSound(stored.beepSound) ? stored.beepSound : DEFAULT_BEEP_SOUND;
-  /** Son de tous les bips ; celui par défaut n'est pas écrit. */
+  /**
+   * Son de tous les bips ; le choix est toujours écrit (26/10), pour qu'un
+   * changement du défaut ne touche pas un son choisi.
+   */
   const setBeepSound = useCallback(
     (value: BeepSound) => {
-      const next: StoredSettings = { ...stored };
-      if (value === DEFAULT_BEEP_SOUND) delete next.beepSound;
-      else next.beepSound = value;
-      persist(next);
+      persist({ ...stored, beepSound: value });
     },
     [persist, stored]
   );

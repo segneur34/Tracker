@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { getIntervalClock } from '../platform/beeper';
 import { jsonStore } from '../platform/storage';
 import {
-  phaseName, readIntervalRun, runCommand, startRun, timerStateAt, upcomingSchedule,
+  isRunClosed, phaseName, readIntervalRun, runCommand, startRun, timerStateAt, upcomingSchedule,
   type IntervalCommand, type IntervalRun, type IntervalTimerState, type IntervalWorkout, type WorkoutKind,
 } from '../recording/intervalTimer';
 import { createTickingStore } from './createStore';
@@ -13,8 +13,8 @@ import { rememberIntervalWorkout } from './useSportSettings';
  * Compteur du fractionné (§10, point 89), hors des composants : il continue
  * quand on change de page, avec ou sans enregistrement. Les pages le lisent
  * par `useIntervalTimer` et le pilotent par `startIntervals`,
- * `pauseIntervals`, `resumeIntervals`, `skipIntervalPhase`, `stopIntervals`
- * et `closeIntervals`.
+ * `pauseIntervals`, `resumeIntervals`, `skipIntervalPhase`, `stopIntervals`,
+ * `closeIntervals`, `forgetClosedIntervals` et `stopAndCloseIntervals`.
  *
  * L'état se déduit de l'heure (`recording/intervalTimer.ts`) ; les sons, eux,
  * sont confiés en entier au téléphone à chaque commande (`getIntervalClock`) :
@@ -147,6 +147,22 @@ export const closeIntervals = (): void => {
   persist();
   reschedule(false);
   publish();
+};
+
+/**
+ * Oublie une séance close (finie ou arrêtée), comme « Fermer » : la carte du
+ * compteur l'appelle en s'ouvrant et en se fermant, pour qu'on ne revienne
+ * jamais sur l'écran « terminée » (26/10). Sans effet sur une séance qui
+ * court ou attend en pause, celle d'un enregistrement comprise, ni sans séance.
+ */
+export const forgetClosedIntervals = (): void => {
+  if (run && isRunClosed(run, Date.now())) closeIntervals();
+};
+
+/** « Modifier » du Timer (26/10) : la séance s'arrête et se ferme, la carte rend l'éditeur sur elle (dernière lancée). */
+export const stopAndCloseIntervals = (): void => {
+  stopIntervals();
+  closeIntervals();
 };
 
 /** Vrai tant qu'une séance court ou attend en pause : la touche retour ne doit pas fermer l'application. */

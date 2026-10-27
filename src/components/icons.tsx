@@ -131,6 +131,20 @@ export const IconChevronDown = ({ size = 20, ...props }: IconProps) => (
   </svg>
 );
 
+/** Flèche vers le haut, avec sa hampe : monter un élément (pas replier, qui est le chevron). */
+export const IconArrowUp = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M12 19V5M6 11l6-6 6 6" />
+  </svg>
+);
+
+/** Flèche vers le bas, avec sa hampe : descendre un élément. */
+export const IconArrowDown = ({ size = 20, ...props }: IconProps) => (
+  <svg {...strokeProps(size)} {...props}>
+    <path d="M12 5v14M6 13l6 6 6-6" />
+  </svg>
+);
+
 /** Trois barres montantes sur leur axe : les statistiques. */
 export const IconChart = ({ size = 24, ...props }: IconProps) => (
   <svg {...strokeProps(size)} {...props}>

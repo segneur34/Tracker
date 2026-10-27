@@ -41,6 +41,12 @@ export interface ActivityPreset {
   hrThresholdOffsetBpm?: number;
 }
 
+/**
+ * Notification de l'Entraînement (26/10) : l'étape (répétition du compteur,
+ * palier d'un test) d'office, avec la vitesse, dans la limite des deux chiffres.
+ */
+const TRAINING_NOTIFICATION: LiveFieldKey[] = ['step', 'speed'];
+
 /** Pause automatique à 0,3 m/s, celle du calcul, au bout de ce temps. */
 const pauseAfter = (delayS: number) => ({ speedMs: 0.3, delayS });
 
@@ -89,6 +95,7 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
     speedRangeMs: { minMs: kmhToMs(4), maxMs: kmhToMs(20) },
     gradeRange: { min: 0, max: 0.1 },
     liveFields: ['speed', 'average', 'heartRate', 'heartRateZone'],
+    notificationFields: TRAINING_NOTIFICATION,
     heartRate: true,
   },
   'run-test': {
@@ -97,6 +104,7 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
     speedRangeMs: { minMs: kmhToMs(4), maxMs: kmhToMs(20) },
     gradeRange: { min: 0, max: 0.1 },
     liveFields: ['speed', 'average', 'heartRate', 'heartRateZone'],
+    notificationFields: TRAINING_NOTIFICATION,
     heartRate: true,
   },
   'bike-intervals': {
@@ -104,6 +112,7 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
     speedRangeMs: { minMs: kmhToMs(10), maxMs: kmhToMs(30) },
     gradeRange: { min: 0, max: 0.1 },
     liveFields: ['speed', 'average', 'heartRate', 'heartRateZone'],
+    notificationFields: TRAINING_NOTIFICATION,
   },
 };
 

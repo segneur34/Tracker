@@ -4,12 +4,14 @@
 //  1. la tuile « Timer » sous Tests, sans séance gardée au départ ;
 //  2. la page Timer : liste vide ; une séance créée (8 × 0:40 / 0:20 proposé), modifiée, dupliquée, la copie retirée ;
 //     la liste du Fractionné n'en est pas touchée, et rien du Timer n'y paraît ;
-//  3. « Lancer » : Enregistrer en mode Timer (titre « Timer », ni famille, ni « Démarrer », ni carte), la séance dans la
-//     carte du compteur, lien vers les séances du Timer ; le compteur lancé : « Départ », puis « Travail 1/… » ;
-//     le bandeau « Timer » sur une autre page, qui ramène au mode Timer ; arrêté ; la position jamais demandée,
-//     aucune séance confiée à un enregistrement ;
+//  3. « Lancer » (26/10) : Enregistrer en mode Timer (titre « Timer », ni famille, ni « Démarrer », ni carte), le
+//     compteur déjà lancé sur la séance : « Départ », puis « Travail 1/… » ; le bandeau « Timer » sur une autre page,
+//     qui ramène au mode Timer ; « Modifier » à droite d'« Arrêter » : la séance arrêtée et oubliée, l'éditeur sur
+//     elle (séance gardée proposée, lien vers les séances du Timer) ; « Lancer le compteur » la relance ; arrêtée,
+//     la page quittée puis retrouvée par le retour : la séance close oubliée, l'éditeur et jamais « Séance arrêtée » ;
+//     la position jamais demandée, aucune séance confiée à un enregistrement ;
 //  4. « Enregistrer une session » rend la page ordinaire ;
-//  5. à 390 × 844 : la page Timer et Enregistrer en mode Timer sans débordement.
+//  5. à 390 × 844 : la page Timer, Enregistrer en mode Timer et le compteur en marche sans débordement.
 import { writeFileSync } from 'node:fs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -121,7 +123,7 @@ check('séances du Fractionné inchangées', (await stored('intervalPresets')) =
 console.log('déplier :', await unfold('Gainage'), '| modifier :', await itemButton('Gainage', 'Modifier'));
 await wait(400);
 check('titre « Modifier la séance »', (await raw('.ui-page h1')) === 'Modifier la séance', await raw('.ui-page h1'));
-console.log('+ 10 × 30/30 :', await clickText('+ 10 × 30/30'));
+console.log('+ Série :', await clickText('+ Série'));
 await wait(200);
 check('bloc ajouté', (await blocksTitles()) === 'Série 1, Série 2', await blocksTitles());
 console.log('enregistrer :', await clickText('Enregistrer', '.train-editor button'));
@@ -129,7 +131,7 @@ await wait(400);
 await unfold('Gainage');
 await wait(200);
 const detail = await evaluate(`${itemOf('Gainage')}?.querySelector('.train-item__detail')?.textContent ?? '(absent)'`);
-check('séance modifiée', detail === '8 × 0:40 / 0:20 + 10 × 0:30 / 0:30', detail);
+check('séance modifiée', detail === '8 × 0:40 / 0:20 + 5 × 1:00 / 1:00', detail);
 console.log('dupliquer :', await itemButton('Gainage', 'Dupliquer'));
 await wait(300);
 check('copie gardée', (await presets()) === 'Gainage ; Gainage (copie)', await presets());
@@ -148,6 +150,7 @@ check('tuile Timer : 1 séance gardée', /1 séance gardée/.test(await raw('.tr
 // --- 3. « Lancer » ---
 await go('/fractionne/timer');
 const geoBefore = await geoCalls();
+const soundsAtLaunch = sounds.length;
 console.log('lancer :', await itemButton('Gainage', 'Lancer'));
 await wait(1200);
 check('Enregistrer en mode Timer', (await where()) === '/enregistrer?minuterie=1', await where());
@@ -158,16 +161,12 @@ const absent = await evaluate(`({
   carte: !!document.querySelector('.rec-map, .leaflet-container'),
 })`);
 check('ni famille, ni « Démarrer », ni carte', !absent.famille && !absent.demarrer && !absent.carte, JSON.stringify(absent));
-const counterSummary = await text('.ivl .ivl-summary');
-check('la séance dans la carte du compteur', counterSummary.startsWith('8 × 0:40 / 0:20 + 10 × 0:30 / 0:30'), counterSummary);
-check('séance gardée proposée', (await evaluate(`[...document.querySelectorAll('.ivl-preset__pick')].map((b) => b.firstChild.textContent).join(', ')`)) === 'Gainage');
-check('lien vers les séances du Timer', (await evaluate(`[...document.querySelectorAll('.ivl a')].map((a) => a.getAttribute('href')).join(',')`)) === '/fractionne/timer');
+const soundsBefore = soundsAtLaunch;
+check("compteur lancé d'emblée, sans éditeur", !(await evaluate(`!!document.querySelector('.ivl .ivl-summary')`)) && /Départ|Travail 1\/8/.test(await text('.ivl-live__phase')), await text('.ivl-live__phase'));
+const liveSummary = await text('.ivl-live__left');
+check('la séance dans la carte du compteur', liveSummary.startsWith('8 × 0:40 / 0:20 + 5 × 1:00 / 1:00'), liveSummary);
 check('dernière séance du Timer retenue à part', /"reps":8/.test(await stored('lastTimerWorkout')) && (await stored('lastIntervalWorkout')) === fractionneBefore.last,
   `${await stored('lastTimerWorkout')} | ${await stored('lastIntervalWorkout')}`);
-const soundsBefore = sounds.length;
-console.log('lancer le compteur :', await clickText('Lancer le compteur'));
-await wait(1000);
-check('départ', /Départ/.test(await text('.ivl-live__phase')), await text('.ivl-live__phase'));
 await wait(3000);
 check('premier travail', /Travail 1\/8/.test(await text('.ivl-live__phase')), await text('.ivl-live__phase'));
 check('signal du départ : court, court, long', sounds.slice(soundsBefore).filter((s) => s.startsWith('[bips]')).map((s) => /\[bips\] (\w+)/.exec(s)[1]).join(' ') === 'court court long',
@@ -188,11 +187,33 @@ console.log('appui court :', await clickText('Arrêter', '.ivl button'));
 await wait(300);
 check('appui court : la séance continue, le geste rappelé', /Travail/.test(await text('.ivl-live__phase'))
   && (await evaluate(`[...document.querySelectorAll('.ivl button')].some((b) => b.textContent === 'Maintenir 1 s pour arrêter')`)), await text('.ivl-live__phase'));
+const actions = await evaluate(`[...document.querySelectorAll('.ivl .ivl-actions button')].map((b) => b.textContent.trim()).join(', ')`);
+check("« Modifier » à droite d'« Arrêter »", /(Arrêter|Maintenir 1 s pour arrêter), Modifier$/.test(actions), actions);
+console.log('modifier :', await clickText('Modifier', '.ivl button'));
+await wait(400);
+check('modifier : séance arrêtée et oubliée', (await evaluate(`JSON.parse(localStorage.getItem('tracker.intervalRun') ?? 'null') === null`)) === true
+  && !(await evaluate(`!!document.querySelector('.ivl-done')`)), await evaluate(`localStorage.getItem('tracker.intervalRun')`));
+const editorSummary = await text('.ivl .ivl-summary');
+check("modifier : l'éditeur sur la séance", editorSummary.startsWith('8 × 0:40 / 0:20 + 5 × 1:00 / 1:00'), editorSummary);
+check('séance gardée proposée', (await evaluate(`[...document.querySelectorAll('.ivl-preset__pick')].map((b) => b.firstChild.textContent).join(', ')`)) === 'Gainage');
+check('lien vers les séances du Timer', (await evaluate(`[...document.querySelectorAll('.ivl a')].map((a) => a.getAttribute('href')).join(',')`)) === '/fractionne/timer');
+console.log('lancer le compteur :', await clickText('Lancer le compteur'));
+await wait(1000);
+check("relancée depuis l'éditeur", /Départ|Travail 1\/8/.test(await text('.ivl-live__phase')), await text('.ivl-live__phase'));
 console.log('arrêter :', await evaluate(`(async () => { const b = document.querySelector('.ivl button.ui-btn--danger'); if (!b) return 'absent'; const ev = (t) => b.dispatchEvent(new PointerEvent(t, { bubbles: true, button: 0, pointerType: 'mouse' })); ev('pointerdown'); await new Promise((r) => setTimeout(r, 1200)); ev('pointerup'); b.click(); return 'ok'; })()`));
 await wait(300);
 check('tenu 1 s : séance arrêtée', /Séance arrêtée/.test(await text('.ivl-done')), await text('.ivl-done'));
-console.log('fermer :', await clickText('Fermer', '.ivl button'));
-await wait(300);
+// La page quittée (lien « Séances » de l'en-tête), puis retrouvée par le retour, sans recharger : la séance close est oubliée (26/10).
+console.log('quitter :', await evaluate(`(() => { const a = [...document.querySelectorAll('a')].find((x) => x.getAttribute('href') === '/fractionne/timer'); if (!a) return 'absent'; a.click(); return 'ok'; })()`));
+await wait(600);
+check('page quittée : séance close oubliée', (await evaluate(`JSON.parse(localStorage.getItem('tracker.intervalRun') ?? 'null') === null`)) === true,
+  await evaluate(`localStorage.getItem('tracker.intervalRun')`));
+console.log('retour :', await evaluate(`(history.back(), 'ok')`));
+await wait(1000);
+const backPath = await where();
+const doneShown = await evaluate(`!!document.querySelector('.ivl-done')`);
+const editorBack = await text('.ivl .ivl-summary');
+check("retour : l'éditeur, pas « Séance arrêtée »", backPath === '/enregistrer?minuterie=1' && !doneShown && editorBack.startsWith('8 × 0:40 / 0:20'), `${backPath} | ${editorBack}`);
 check('position jamais demandée', (await geoCalls()) === geoBefore, `${(await geoCalls()) - geoBefore} demande(s)`);
 const journal = await evaluate(`Object.keys(localStorage).filter((k) => /journal|pending/i.test(k)).join(', ')`);
 check('aucun enregistrement en attente', journal === '', journal);
@@ -213,6 +234,13 @@ await shoot('timer-liste-390');
 await go('/enregistrer?minuterie=1');
 check('390 px : Enregistrer en mode Timer sans débordement', (await overflow()) <= 0, `${await overflow()} px`);
 await shoot('timer-enregistrer-390');
+await go('/fractionne/timer');
+console.log('lancer :', await itemButton('Gainage', 'Lancer'));
+await wait(1500);
+check('390 px : compteur en marche sans débordement', (await overflow()) <= 0 && (await evaluate(`!!document.querySelector('.ivl-live')`)), `${await overflow()} px`);
+await shoot('timer-compteur-390');
+console.log('modifier :', await clickText('Modifier', '.ivl button'));
+await wait(300);
 await go('/fractionne');
 check('390 px : tuiles sans débordement', (await overflow()) <= 0, `${await overflow()} px`);
 await shoot('timer-tuiles-390');

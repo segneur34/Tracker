@@ -50,6 +50,17 @@ describe('presetOf', () => {
   });
 });
 
+describe("notification de l'Entraînement (26/10)", () => {
+  it("fractionné à pied, à vélo et tests : l'étape d'office, avec la vitesse, deux chiffres au plus", () => {
+    for (const base of ['run-intervals', 'bike-intervals', 'run-test'] as const) {
+      expect(presetOf(baseActivity(base)).notificationFields).toEqual(['step', 'speed']);
+      // Une activité créée sur ces calculs les reprend.
+      expect(presetOf({ id: `a-${base}-2`, base }).notificationFields).toEqual(['step', 'speed']);
+    }
+    expect(presetOf(baseActivity('running')).notificationFields).toBeUndefined();
+  });
+});
+
 describe('PRESET_BASES', () => {
   it('liste les calculs qui ont un pré-réglage, voile à la planche comprise', () => {
     expect(PRESET_BASES).toEqual(expect.arrayContaining(['wingfoil', 'windsurf', 'running', 'cycling', 'run-intervals', 'run-test', 'bike-intervals']));

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { IntervalTimerState } from './intervalTimer';
 import type { LiveFieldContext } from './liveFields';
-import { liveNotification, liveNotificationKey, type LiveNotificationInput } from './liveNotification';
+import { liveNotification, liveNotificationKey, trainingStep, type LiveNotificationInput } from './liveNotification';
 import { EMPTY_LIVE_STATS } from './liveStats';
 
 const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
@@ -94,5 +94,24 @@ describe('liveNotificationKey', () => {
   it('distingue la notification posée seule', () => {
     const n = liveNotification(input());
     expect(liveNotificationKey(n, true)).not.toBe(liveNotificationKey(n, false));
+  });
+});
+
+describe('trainingStep (26/10)', () => {
+  const test = (phase: 'echauffement' | 'rampe' | 'recuperation', step: number) => ({ active: true, phase, step });
+
+  it("rend l'étape du compteur en priorité, sinon le palier de la rampe, sinon rien", () => {
+    expect(trainingStep({ rep: 5, of: 20 }, test('rampe', 3))).toEqual({ rep: 5, of: 20 });
+    expect(trainingStep(null, test('rampe', 3))).toEqual({ rep: 3, of: null });
+    expect(trainingStep(null, test('echauffement', 0))).toBeNull();
+    expect(trainingStep(null, test('recuperation', 7))).toBeNull();
+    expect(trainingStep(null, { active: false, phase: 'rampe', step: 2 })).toBeNull();
+    expect(trainingStep(null, null)).toBeNull();
+  });
+
+  it("met l'étape sur la ligne repliée, la phase restant dans le titre", () => {
+    const n = liveNotification(input({ activityName: 'Fractionné à pied', fields: ['step', 'speed'], context: context({ step: { rep: 5, of: 20 } }) }));
+    expect(n.text).toBe('Étape 5/20 · Vit. 36.0 km/h');
+    expect(n.lines[0]).toBe('Étape : 5/20');
   });
 });
