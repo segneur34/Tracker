@@ -15,10 +15,12 @@ Vérifié le 27/10/2026 sur `code.claude.com/docs` (model-config, sub-agents, co
 | Passe de doc après un lot validé (ETAT, HISTORIQUE, INVENTAIRE) | Sonnet | medium | sous-agent `doc` ou conversation Sonnet |
 | Lot « medium » : retouches, libellés, réglages, CSS, petit bug localisé, APK, mémoire, commit | Sonnet | medium | conversation `claude --model sonnet` |
 | Lot « medium » où la vérification compte (bug avec repro, banc à compléter) | Sonnet | high | conversation Sonnet |
+| Relire le diff d'un lot Opus ou Fable avant son commit « à valider » : défauts confirmés seulement, 20 lignes | Sonnet | high | sous-agent `relecture` |
 | Classer des demandes en lots, écrire les briefs | Opus | medium | conversation Opus |
 | Mode plan d'un lot « high » (maquette, découpage, fichiers touchés) | Opus | high | `claude --model opusplan` (plan sur Opus, exécution sur Sonnet) ou sous-agent `Plan` |
 | Lot « high » : page ou fonctionnalité neuve sur plusieurs fichiers, bug multi-fichiers, relecture (`/code-review`) | Opus | high | conversation `claude --model opus` |
 | Algorithmique du noyau (vent, manœuvres, cadence, sauts, pumping, résumé), bug sans cause connue (ex. pauses `trkseg` comptées dans la distance), refonte transverse (famille/traitement), audit général, décision d'architecture | Fable | high, xhigh si la première passe ne tranche pas | conversation `claude --model fable` |
+| Orchestrer un paquet du mode chaîne : lancer `lot`, `verif`, `relecture`, `banc`, poser la version, commiter, tenir la file, trancher les questions mineures | Fable | high | conversation `/chaine` ; Opus medium pour un paquet de routine (ni lot Fable ni question ouverte) |
 
 Effort (`/effort`) : `low` pour un échange court qu'on relit à chaque pas (renommage), `medium` pour un travail cadré (défaut d'Opus 5.5 et de Sonnet 5.5), `high` quand la vérification compte (bug), `xhigh` pour un raisonnement plus profond, `max` pour un problème dur, en session seulement. Une session d'Opus ou de Sonnet démarre à `medium` ; Fable à `high`.
 
@@ -34,12 +36,13 @@ Effort (`/effort`) : `low` pour un échange court qu'on relit à chaque pas (ren
 
 ## Sous-agents (`.claude/agents/`)
 
-Tous repartent à froid (ils rechargent `CLAUDE.md`), donc ils valent pour une étape autonome à sortie volumineuse, pas pour une retouche de deux lignes. Leur modèle et leur effort sont fixés dans leur en-tête et priment sur celui de la session.
+Tous repartent à froid, donc ils valent pour une étape autonome à sortie volumineuse, pas pour une retouche de deux lignes. Ils rechargent `CLAUDE.md`, sauf `verif`, `banc` et `Explore` qui s'en passent (`omitClaudeMd`) ; aucun ne voit la conversation ni la mémoire automatique (d'où les pièges du banc dans `outils/banc/LISEZMOI.md`, pas dans une mémoire) ; aucun ne peut appeler un autre agent (`Agent` absent de leurs outils) : seule la conversation qui tient `/chaine` ou `/clore` les enchaîne. Leur modèle et leur effort sont fixés dans leur en-tête et priment sur celui de la session ; les gros fichiers (INVENTAIRE, ETAT, HISTORIQUE, LISEZMOI du banc) se lisent par Grep puis `offset`, jamais en entier.
 
 - `Explore` (Haiku, medium) : surcharge de l'agent intégré ; recherche en lecture seule, rend des `chemin:ligne`.
 - `Plan` (Opus, high) : surcharge de l'agent intégré ; plan d'exécution d'un lot, lecture seule.
 - `verif` (Haiku, low) : lint, typecheck, tests, build ; ne rend que les échecs.
-- `banc` (Sonnet, low) : un script du banc dans un Chrome sans fenêtre ; compteurs, erreurs, diff du texte avant/après.
+- `banc` (Sonnet, low, 40 tours) : un script du banc dans un Chrome sans fenêtre ; compteurs, erreurs, diff du texte avant/après.
+- `relecture` (Sonnet, high) : relit le diff non commité d'un lot Opus ou Fable avant son commit « à valider » ; défauts confirmés seulement (scénario, appelant cassé, règle enfreinte), 20 lignes au plus ; ne corrige rien.
 - `doc` (Sonnet, medium) : la passe de documentation d'un lot validé ; ne touche pas au code, ne committe pas.
 - `lot` (Opus, high par défaut ; modèle et effort redonnés à chaque appel d'après la colonne « Modèle | Réflexion » du brief) : exécute un lot d'après son brief, lance les vérifications courtes, rend un rapport FAIT / BLOQUÉ / ÉCHEC ; ne committe pas, ne pose pas la version, ne tranche aucune décision de l'utilisateur.
 
@@ -56,26 +59,19 @@ Invocation manuelle seulement, tapées au début ou à la fin d'une session.
 
 ## Mode chaîne
 
-Une seule conversation Fable (high) enchaîne les lots et les confie aux sous-agents ; elle ne s'adresse à l'utilisateur que pour une vraie décision. La file ordonnée des lots, leurs dépendances, leur état et les questions en attente avec les réponses sont tenues dans `~/.claude/plans/FILE-DES-LOTS.md`, hors dépôt : c'est elle qui fait foi d'une conversation à l'autre. Démarrage : `claude --model fable`, puis « Mode chaîne : on reprend la file » (prompt complet dans `~/.claude/plans/MODE-CHAINE-PROMPT.md`). Les commandes l'encadrent : `/reprise` puis `/chaine` au démarrage, `/clore` à la clôture.
+Une conversation (Fable high ; Opus medium pour un paquet de routine, sans lot Fable ni question ouverte) enchaîne les lots de la file `~/.claude/plans/FILE-DES-LOTS.md`, hors dépôt, qui fait foi d'une conversation à l'autre (ordre, dépendances, états, questions et réponses), et les confie aux sous-agents `lot`, `verif`, `relecture`, `banc`. La boucle entière (FAIT, BLOQUÉ, ÉCHEC, arrêt, APK) est dans la commande `/chaine` (`.claude/skills/chaine/SKILL.md`), seule description qui fait foi. Démarrage : `claude --model fable` (ou `opus`), `/reprise`, puis `/chaine` ; clôture par `/clore`. Un lot vérifié est commité « à valider » ; l'utilisateur valide par paquets de 2 ou 3 lots sur le téléphone (une APK par paquet) ; la passe `doc` ne se fait qu'après ; un lot refusé se corrige par un nouveau commit, jamais par une réécriture de l'historique ; rien n'est envoyé sur GitHub sans son accord.
 
-Boucle de l'orchestrateur :
-1. prendre le premier lot « à faire » dont les dépendances sont levées ; les lots passent l'un après l'autre (un seul dépôt : version et HISTORIQUE se croiseraient) ;
-2. lancer l'agent `lot` avec le brief, le modèle et l'effort de sa colonne, et les réponses déjà données ;
-3. rapport FAIT : `verif` complète, `banc` sur les scripts que le brief cite, version augmentée dans `package.json`, commit local marqué « à valider » dans la file ;
-4. rapport BLOQUÉ : poser la question à l'utilisateur (AskUserQuestion, et PushNotification vers le téléphone), noter le lot « bloqué (Q n) » et sa question dans la file, continuer avec le premier lot qui n'en dépend pas ; à la réponse, renvoyer la réponse au même agent ;
-5. rapport ÉCHEC : relancer une fois sur le modèle du dessus, sinon noter l'échec dans la file et passer au suivant.
-
-Arrêt et clôture : la conversation s'arrête quand un paquet de 2 ou 3 lots est « à valider » (APK construit, liste de ce que l'utilisateur doit essayer), quand une compaction a eu lieu ou que `/context` dépasse environ 60 %, ou quand tout ce qui reste est bloqué par ses réponses. Avant de proposer la fermeture, la file est mise à jour. La passe `doc` ne se fait qu'après la validation d'un paquet par l'utilisateur, lot par lot ; un lot refusé se corrige par un nouveau commit, jamais par une réécriture de l'historique. Rien n'est envoyé sur GitHub sans son accord.
+Le point 157 d'HISTORIQUE écartait Fable comme chef d'orchestre d'Opus ; la décision du 27/10 l'a retenu quand même, pour son jugement sur les questions (il tranche les mineures, ne pose que les majeures), pas pour du volume : d'où Opus pour un paquet sans question. L'orchestrateur ne lit que des rapports bornés (40 lignes pour `lot`, 20 pour `relecture`), ses tours sont courts et cachés ; sa part d'un paquet reste de l'ordre de 10 à 15 %.
 
 ## Réglages (`~/.claude/settings.json`, hors dépôt)
 
-- `model` : `opus` par défaut ; Fable se demande à l'ouverture (`claude --model fable`).
+- `model` : `opus` par défaut ; Fable se demande à l'ouverture (`claude --model fable`), Sonnet de même pour un lot « medium ».
 - `env.CLAUDE_CODE_SUBAGENT_MODEL` : `sonnet`.
 - `modelSettings` : `medium` sur Opus 5.5 et Sonnet 5.5, `high` sur Fable 5.1.
 
 ## Autres leviers, à décider
 
-Repérés le 24/10, pas appliqués : tests et banc en sortie résumée dans la conversation principale (le sous-agent `verif` le fait déjà de son côté) ; fait le 27/10 : `MEMORY.md` à 1 Ko et point de reprise à 4 Ko (au lieu d'environ 3 400 mots rechargés à chaque session) ; `CLAUDE.md` est sous les 200 lignes recommandées.
+Repérés le 24/10, pas appliqués : tests et banc en sortie résumée dans la conversation principale (le sous-agent `verif` le fait déjà de son côté) ; fait le 27/10 : `MEMORY.md` à 1 Ko, point de reprise sans état (la file fait foi), `omitClaudeMd` sur `verif`, `banc`, `Explore`, lectures partielles des gros fichiers dans les agents ; `CLAUDE.md` est sous les 200 lignes recommandées. Reste à voir : `/fewer-permission-prompts` si des invites coupent une chaîne, et un hook `PreToolUse` propre à l'agent `lot` qui refuse `git commit`, `git push` et `package.json`.
 
 ## Ajuster le tableau
 

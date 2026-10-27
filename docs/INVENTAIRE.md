@@ -253,7 +253,7 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `docs/MODELES.md` : quel modèle de Claude et quel effort pour quelle tâche, le rôle des sous-agents et des commandes, le mode chaîne.
 - `docs/A-FAIRE.md` : les idées de l'utilisateur données en vrac, mises au propre en fiches, priorité de 1 à 5.
 - `docs/ESSAIS.md` : les seuls essais demandés à l'utilisateur sur le téléphone.
-- `.claude/agents/` : sous-agents de Claude Code, modèle et effort fixés dans leur en-tête : `Explore` et `Plan` (surcharges des intégrés), `lot`, `verif`, `banc`, `doc`.
+- `.claude/agents/` : sous-agents de Claude Code, modèle et effort fixés dans leur en-tête : `Explore` et `Plan` (surcharges des intégrés), `lot`, `verif`, `relecture` (diff d'un lot Opus ou Fable avant commit), `banc`, `doc` ; aucun ne peut en appeler un autre, `verif`, `banc` et `Explore` ne chargent pas `CLAUDE.md`.
 - `.claude/skills/` : commandes de Claude Code à invocation manuelle : `/reprise`, `/chaine`, `/todo`, `/clore` (`docs/MODELES.md`).
 - `outils/banc/` : banc de test, des scripts Node qui pilotent un Chrome sans fenêtre ou la WebView du téléphone ; mode d'emploi dans son `LISEZMOI.md`.
 - `.gitattributes` : fins de ligne (LF, CRLF pour les `.bat`).

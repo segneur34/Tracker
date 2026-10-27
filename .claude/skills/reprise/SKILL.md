@@ -13,7 +13,7 @@ Argument reçu : `$ARGUMENTS` (vide : « on reprend » sans précision ; sinon c
 
 ## 1. Lectures, dans cet ordre
 
-- La mémoire `point-de-reprise-cible-mobile.md` (`~/.claude/projects/c--Users-segne-tracker/memory/`) : paragraphe « État au … » et « Rythme ».
+- La mémoire `point-de-reprise-cible-mobile.md` (`~/.claude/projects/c--Users-segne-tracker/memory/`) : paragraphes « Rythme » et « Pièges du poste » seulement ; l'état des lots n'y est pas.
 - `~/.claude/plans/FILE-DES-LOTS.md` : table « Ordre et état », questions sans réponse, dernière ligne du journal des paquets.
 - `git status --short`, `git log --oneline -8`, `git log --oneline origin/main..main` : travail non commité, derniers commits, commits non envoyés. Un fichier modifié non commité au début d'une session est un signe qu'une clôture a été manquée : dis-le.
 - `docs/ESSAIS.md` : table « À faire ».
@@ -21,7 +21,7 @@ Argument reçu : `$ARGUMENTS` (vide : « on reprend » sans précision ; sinon c
 - Le dernier point de `docs/HISTORIQUE.md` (numéro, date), pour connaître le prochain.
 - Le §12 de `docs/ETAT_DU_PROJET.md` seulement si la mémoire renvoie à une étape du plan mobile.
 
-Si la mémoire et la file se contredisent (par exemple un lot « à valider » dans l'une, « validé » dans l'autre), la file fait foi ; signale l'écart.
+La file fait foi pour l'état des lots, `docs/ESSAIS.md` pour les essais ; si un autre fichier les contredit, signale l'écart.
 
 ## 2. Le modèle de la session
 

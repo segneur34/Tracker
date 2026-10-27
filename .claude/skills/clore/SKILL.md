@@ -26,7 +26,7 @@ Relève, sans rien modifier :
 ## 2. Travail non commité
 
 Classe les fichiers modifiés :
-- **Code** (`src/`, `outils/`, `android/`, `package.json`, configuration) : lance l'agent `verif` en vérification complète (lint, tous les tests, build). Si elle échoue : arrête-toi, donne la sortie à l'utilisateur, ne committe rien.
+- **Code** (`src/`, `outils/`, `android/`, `package.json`, configuration) : lance l'agent `verif` en vérification complète (lint, tous les tests, build). Si elle échoue : arrête-toi, donne la sortie à l'utilisateur, ne committe rien. Pour un lot Opus ou Fable, lance ensuite l'agent `relecture` sur le diff ; un défaut confirmé se corrige avant le commit, ou se note dans la file si la session ne peut pas le corriger.
   - Si le travail est un lot entier (sujet fini, vérifié, banc joué si le brief le demandait) : augmente la version dans `package.json` si `src/` a changé et qu'elle n'a pas déjà bougé depuis le dernier commit ; commit « à valider » dans le style des commits récents (`git log -5` : sujet du lot, décisions, tests, verif, banc, version) ; mets à jour la ligne du lot dans la file (état « à valider », commit, version).
   - Si ce n'est pas un lot entier : ne committe pas. Note le lot « en cours » dans la file avec ce qui est fait et ce qui reste, et dis-le dans le compte rendu.
 - **Doc et outillage seuls** (`docs/`, `CLAUDE.md`, `.claude/`, mémoire) : commit direct, sans vérification, message court en français.
@@ -49,8 +49,7 @@ Sans résultats dans l'argument : aucune passe doc (règle : doc après validati
 - `docs/ESSAIS.md` : les essais nés dans la session qui n'y sont pas encore ; seulement les critiques ou douteux (GPS, capteurs, ceinture, notification, écran éteint, rendu tactile, vrai doute, question à trancher) ; numéros qui se suivent, jamais réutilisés.
 - `docs/A-FAIRE.md` : une fiche « à clarifier » pour une idée lancée en passant dans la session et sans fiche ; rien d'autre.
 - `~/.claude/plans/FILE-DES-LOTS.md` : état de chaque lot touché, questions et réponses de la session (table « Questions »), une ligne dans « Journal des paquets ».
-- Mémoire `point-de-reprise-cible-mobile.md` (`~/.claude/projects/c--Users-segne-tracker/memory/`) : réécris le seul paragraphe « État au … » (main, dernier validé sur le téléphone, APK installée, essais restants, non envoyé ou envoyé) ; ne touche à rien d'autre, pas de journal.
-- `~/.claude/plans/MODE-CHAINE-PROMPT.md` : refais la ligne « Reprise courante » si le mode chaîne est en cours.
+- Mémoire `point-de-reprise-cible-mobile.md` (`~/.claude/projects/c--Users-segne-tracker/memory/`) : rien à écrire, l'état des lots est dans la file et les essais dans `docs/ESSAIS.md` ; seulement si le rythme de travail a changé dans la session, corriger son paragraphe « Rythme », sans journal.
 
 ## 5. Envoi sur GitHub
 

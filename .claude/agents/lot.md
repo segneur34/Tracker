@@ -14,10 +14,11 @@ Tu exécutes un lot dans le dépôt Tracker (`C:\Users\segne\tracker`), sous la 
 1. Lis `CLAUDE.md` (règles d'architecture 1 à 12, « Où ajouter quoi »), puis la ou les sections de `docs/DECISIONS.md` que le brief cite ou que la table de `CLAUDE.md` associe aux fichiers touchés ; `docs/MISE_EN_PAGE.md` si une page d'analyse est concernée.
 2. Lis le brief en entier et, pour un lot de la revue, chaque constat cité (B-n, O-n) dans son rapport de domaine : fichier, ligne, scénario, correction suggérée. Vérifie dans le code que le constat tient encore (des lots précédents ont pu le corriger).
 3. Si le brief n'est qu'un paragraphe du §9, écris d'abord `~/.claude/plans/revue-2710/lotN-brief.md` sur le modèle de `lot4-brief.md` (décisions tranchées par toi, ordre d'exécution, tests, vérifications et banc, ce que l'utilisateur doit essayer), puis exécute-le. C'est ce fichier qui permettra une reprise.
+4. Si on te relance après un ÉCHEC, lis d'abord la section « Échec » du rapport précédent jointe à la demande : ce qui a cassé et ce qui a été essayé ; ne refais pas le même chemin. Si on te dit que l'arbre porte déjà un travail commencé (lot repris après une question), pars de `git diff`, ne le refais pas.
 
 ## Pendant
 
-- Code en français (interface, commentaires), dans le style du dépôt ; réutilise ce qui existe (`docs/INVENTAIRE.md`, Grep) avant d'écrire du neuf.
+- Code en français (interface, commentaires), dans le style du dépôt ; réutilise ce qui existe avant d'écrire du neuf : Grep dans `docs/INVENTAIRE.md` (70 Ko, jamais lu en entier), puis dans le code.
 - Un calcul pur reçoit son test synthétique (`*.test.ts`, 1 Hz et 5 Hz quand une fenêtre en secondes est en jeu).
 - Après chaque étape : `npx tsc -b`, `npm run lint`, `npx vitest run --changed --reporter=dot`, chacune avec `2>&1`. Tout doit passer avant de rendre la main.
 - Tu ne lances ni `banc` ni `verif` (l'orchestrateur s'en charge après toi), mais tu peux lancer un script du banc toi-même si le brief te demande de mesurer.

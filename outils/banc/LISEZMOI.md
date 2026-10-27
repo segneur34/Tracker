@@ -360,3 +360,37 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 1. Avant le changement : `bench.mjs` avec `DUMP=avant.txt`, sur un profil neuf.
 2. Après le changement : la même chose sur un autre profil neuf, avec `DUMP=apres.txt`.
 3. Comparer les deux par `diff`. Pour un nettoyage ou une conversion, le texte doit être identique au caractère près (§10, point 44).
+
+## Pièges du poste
+
+Ce que l'agent `banc` et Claude doivent savoir sur ce poste, en plus de la mise en place. Tout est ici et nulle part ailleurs : un sous-agent ne voit pas la mémoire automatique de Claude.
+
+- Brouillon pour les GPX, profils Chrome et relevés : le scratchpad de la session, jamais le dépôt.
+- Un serveur lancé en arrière-plan par `npx vite …` survit à l'arrêt de la tâche (seul `npx` s'arrête) : vérifier le port (`netstat -ano`), et tuer le processus node à la fin. Tant qu'il tourne, `npx vitest run` peut échouer sur tous les fichiers (« reading 'config' ») : d'où `verif` et `banc` jamais en même temps.
+- Serveur Vite neuf : le premier chargement compile tout et dépasse les 3 s d'attente des scripts (page vide, « Cannot read properties of undefined ») : charger une page une fois avant de lancer un script.
+- Deux serveurs Vite sur une même jonction `node_modules` se disputent `node_modules/.vite` (504 « Outdated Optimize Dep ») : donner un `cacheDir` propre au serveur « avant ».
+- Le `npm run dev` de l'utilisateur écoute sur `[::1]:5173` (IPv6 seul) : le Chrome du PC l'atteint, pas un `adb reverse` (IPv4). La WebView de l'application refuse le HTTP en clair ; pour un serveur de développement sur le téléphone, passer par Chrome Android (`chrome_devtools_remote`) et un serveur `--host 127.0.0.1` sur un autre port. Ne jamais toucher aux autres onglets de l'utilisateur.
+- Sous Git Bash, un argument `/chemin` passé à un script devient un chemin Windows (« Cannot navigate to invalid URL ») : `MSYS_NO_PATHCONV=1`. `DUMP=` et `SHOT=` : chemin relatif au dossier courant ; un chemin `/c/...` sous `MSYS_NO_PATHCONV=1` devient `C:\c\...`.
+- `tailles`, `general`, `pentes` prennent le port Chrome en premier argument ; la plupart des scripts n'ont pas d'option `DUMP=` (copies `*-d.mjs` dans le brouillon).
+- Le texte de page n'inclut pas un tableau replié : pour les podiums de manœuvres, une copie du script dans le brouillon clique « Détails des manœuvres » avant le relevé.
+- `shots.mjs` nomme la capture d'après le chemin : une adresse avec `?session=` donne un nom refusé par Windows ; faire la capture par un petit script du brouillon.
+- Grosses captures (images de `partage.mjs`, jusqu'à 1,2 Mo) : lues en taille réelle, elles ont coupé deux sessions (ECONNRESET) ; les réduire d'abord en JPEG de 540 px dans le brouillon (System.Drawing en PowerShell : `Image.FromFile`, `Graphics.DrawImage`, `Save` en JPEG qualité 75), puis lire une copie à la fois.
+- Écran du vrai téléphone : `adb exec-out screencap -p > x.png`, puis lecture de l'image (pas de PIL). Prévenir l'utilisateur avant (écran possiblement verrouillé, notifications privées).
+- Un heredoc dont le texte compte un nombre impair d'apostrophes échoue sous le Bash de Claude (« unexpected EOF ») : écrire le script dans un fichier du brouillon. Un `\'` à écrire dans un fichier .ts depuis un script Node en heredoc ressort `'` : corriger ces lignes avec l'outil Edit. Un `node -e "…"` en Bash avale les accents graves.
+- Rejouer l'analyse hors navigateur, sans Vitest : `node --import <hook>` où le hook (`registerHooks` de `node:module`) ajoute `.ts` aux imports relatifs ; Node lit le TypeScript du projet tel quel. Les sessions réelles du PC se lisent en lecture seule dans la mémoire de l'utilisateur, avec les réglages du hook recopiés.
+- Neutralité contre la version commitée sans toucher au dépôt : `git worktree add --detach <brouillon>/avant <commit>`, jonction `node_modules` vers celle du dépôt (`New-Item -ItemType Junction` en PowerShell ; `mklink` sous Git Bash échoue), Vite sur un autre port ; à la fin, retirer la jonction (`rmdir`) **avant** `git worktree remove --force`. Un relevé qui quitte une page à itinéraire non enregistré doit accepter le dialogue `beforeunload`, sinon il se bloque.
+- Worktree « avant » à jonction `node_modules` : depuis le 22/10, les polices viennent de `@fontsource` et Vite refuse de les servir (« outside of Vite serving allow list ») ; la version d'avant retombe sur une police de secours et les relevés diffèrent pour rien. Lancer ce serveur avec un `vite.banc.config.ts` posé dans le worktree, qui reprend `./vite.config` et ajoute `server.fs.allow: ['.', 'C:/Users/segne/tracker/node_modules']`. Vérifier par `document.fonts` : tout en `loaded`.
+- Overpass (onglet surface) met de quelques secondes à plus d'une minute selon sa charge ; ne pas l'interroger en rafale.
+- Un bug non reproduit vient souvent d'un état de l'utilisateur (onglets graphiques ouverts, mémorisés dans `tracker.sections`) : demander tôt l'erreur de console et reproduire son état persistant.
+
+## Scripts à revoir
+
+Notes relevées en mode chaîne (27/10) sur des scripts périmés ou à compléter ; pas des défauts du code.
+
+- `sauts.mjs` échoue des deux côtés sur sa partie Réglages (périmée) ; `reglages.mjs` lit un seuil `undefined` des deux côtés ; `allure-session.mjs` est périmé.
+- `cadence.mjs` compare sans la casse depuis le lot 9 (ses deux échecs venaient des capitales de la feuille de style) ; à compléter d'une marche à `cad` 110.
+- `pentes.mjs` relève la pente sur le canevas de `TrackSegmentsLayer` (compteurs `traits` et `couleurs` SVG à zéro, légende de pente gardée) ; à compléter d'une sortie vélo à 1 point toutes les 4 s.
+- `planning.mjs` attend la fin de « Calcul du tracé… » avant « Enregistrer » (bouton grisé pendant le calcul).
+- `fractionne.mjs` en rejeu temps réel donne des vitesses de répétitions qui bougent de 0,1 km/h d'un passage à l'autre (analyse déterministe identique nombre à nombre) : pas un écart.
+- Écarts admis depuis le lot 8 (performances) : dernière graduation de cap 242° au lieu de 241° (extrême gardé par la décimation) ; une mention « © OpenStreetMap » de moins quand la carte est agrandie (la carte compacte, cachée dessous, ne dessine plus ses couches).
+- À ajouter un jour : `trackerBack()` avec un pop-up ouvert et `/essai/erreur` (lot 5).
