@@ -93,13 +93,13 @@ Quand l'utilisateur donne des notes en vrac :
 - Questions : aucune ; c'est un petit lot Sonnet medium quand vous voulez.
 
 ### 10. Muscu avec ceinture cardio, sur la base du Timer · priorité 4 (proposée)
-- Noté le : 25/10 09:22 (WhatsApp) · reçu le : 25/10 · état : en lot 11 (lot I du 25/10), à clarifier (le Timer)
+- Noté le : 25/10 09:22 (WhatsApp) · reçu le : 25/10 · état : en lot 11 (lot I du 25/10), prête (Timer tranché le 28/10)
 - Tel que noté : « dans entrainement cree un mode muscu avec ceinture cardiaque qui utlise le compteur d'inervalle pour les timer et qui garde principalement la fc dans un graph »
 - Où : Entraînement › nouvelle tuile ou type « Muscu » ; Enregistrer ; analyse sans carte.
 - Aujourd'hui : le Timer (point 154) fait tourner une séance à blocs sans GPS ni session ; rien n'est enregistré. Les tests de FC repos vivent dans une clé de l'appareil.
 - Voulu : une session sans GPS qui n'enregistre que la FC (1 Hz) et les phases du compteur ; GPX sans trace, analyse sans carte, graphe de FC avec les phases.
 - Pourquoi : suivre la FC en muscu et gainage avec les mêmes outils.
-- Questions : place ? → réponse (27/10) : fusionner les tuiles Fractionné et Tests de la page Entraînement en une seule (le dire dans son titre) et créer une tuile « Muscu » ; un calcul « Muscu » dans la famille Entraînement, type « Muscu » dans la rangée Type d'Enregistrer. Ceinture ? → réponse (27/10) : obligatoire, pas de session muscu sans ceinture jointe. Fichier ? → tranché par Claude : GPX dont les points n'ont que l'heure et la FC, lu par le lecteur maison. Le Timer reste-t-il tel quel à côté (compteur seul, sans session) ? → réponse (27/10) : « autre », sans précision : **à redire**.
+- Questions : place ? → réponse (27/10) : fusionner les tuiles Fractionné et Tests de la page Entraînement en une seule (le dire dans son titre) et créer une tuile « Muscu » ; un calcul « Muscu » dans la famille Entraînement, type « Muscu » dans la rangée Type d'Enregistrer. Ceinture ? → réponse (27/10) : obligatoire, pas de session muscu sans ceinture jointe. Fichier ? → tranché par Claude : GPX dont les points n'ont que l'heure et la FC, lu par le lecteur maison. Le Timer reste-t-il tel quel à côté (compteur seul, sans session) ? → réponse (27/10) : « autre » ; précisé le 28/10 : « À la fin, il ne restera que deux boutons. Un bouton fractionné plus test et un bouton muscu plus timer. Il faut toujours qu'on puisse lancer le timer séparément de la muscu. Mais par contre, la muscu doit a priori se lancer avec le timer. Pas forcément obligatoire, mais ce sera très souvent le cas. » Donc : deux tuiles, « Fractionné et tests » et « Muscu et timer » ; dans la seconde, chaque séance du Timer se lance en « Timer » (compteur seul, rien d'enregistré) ou en « Muscu » (session enregistrée avec la ceinture, compteur pendant) ; muscu sans séance possible depuis Enregistrer (FC et repères seuls) ; une seule liste de séances du Timer.
 
 ### 11. Mode sombre et/ou économe en énergie · priorité 3 (proposée)
 - Noté le : 25/10 12:07 (WhatsApp) · reçu le : 25/10 · état : en lot 12 (lot H du 25/10), prête (maquette tranchée le 28/10)
