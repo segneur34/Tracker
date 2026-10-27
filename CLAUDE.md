@@ -12,6 +12,7 @@ Chaque information a une seule place :
 - `docs/HISTORIQUE.md` : décisions et pièges, en points numérotés (« §10, point N ») ; le consulter par recherche sur le sujet, pas en entier.
 - `docs/INVENTAIRE.md` : carte des fichiers ; les signatures se lisent dans le code.
 - `docs/MISE_EN_PAGE.md` : patron commun des pages d'analyse (structure, règles ordinateur et téléphone, pièces partagées). Le suivre pour toute page d'analyse, existante ou nouvelle.
+- `docs/MODELES.md` : quel modèle (Fable, Opus, Sonnet, Haiku) et quel effort pour quelle tâche, et les sous-agents de `.claude/agents/`.
 
 ## Commandes
 
@@ -32,6 +33,8 @@ Vérifications, toutes doivent passer :
 - à la fin de chaque étape rendue à l'utilisateur, et avant tout commit, banc ou APK : lint, tous les tests, build (qui fait le typecheck) ;
 - rien pour une modification de la seule documentation.
 
+Vérifications, banc et passe de doc passent par les sous-agents `verif`, `banc` et `doc` (`.claude/agents/`, modèles légers), sauf une commande seule dont la sortie tient en quelques lignes.
+
 ## Documentation
 
 - Une passe après chaque lot que l'utilisateur a validé sur données réelles, jamais entre deux modifications, sans attendre la fin de session : sections touchées d'ETAT (jamais le récit du lot, qui va dans HISTORIQUE), un point daté de quelques lignes dans HISTORIQUE (décision, pourquoi, piège ; ni fichiers touchés ni récit de livraison, que git garde), la carte d'INVENTAIRE si un fichier apparaît ou change de rôle.
@@ -44,6 +47,7 @@ Vérifications, toutes doivent passer :
 - Windows 11, terminal `cmd` : ne jamais donner de commande PowerShell à recopier. L'utilisateur colle parfois lui-même la sortie.
 - Aucun GPX réel dans le projet : les tests sont synthétiques, la validation sur données réelles revient à l'utilisateur.
 - Une question d'algorithmique peut partir chez Gemini : la formuler de façon autonome et complète.
+- Choix du modèle et de l'effort par tâche : `docs/MODELES.md` ; la colonne « Modèle | Réflexion » des briefs s'en déduit. Si le modèle de la session est nettement inadapté à la demande (gros décalage, dans les deux sens), le dire dans le premier message, avant tout travail, et proposer le modèle adapté.
 
 ## Règles d'architecture
 

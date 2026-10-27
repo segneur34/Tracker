@@ -236,5 +236,7 @@ Hors de `sailing/`, à son service : `utils/kinematics.ts` (`PointData` et `trac
 - `outils/logo/icones-android.mjs` : tire d'`assets/icone.svg` l'icône Android, `public/favicon.png` et `outils/icone-tracker.ico`.
 - `docs/DECISIONS.md` : décisions de l'utilisateur propres à un domaine, sorties de `CLAUDE.md` (§10, point 102) ; `CLAUDE.md` dit quelle section lire avant de toucher à quoi.
 - `docs/INSTALLATION.md` : fiche d'installation de l'APK, écrite pour les testeurs.
+- `docs/MODELES.md` : quel modèle de Claude et quel effort pour quelle tâche, et le rôle des sous-agents.
+- `.claude/agents/` : sous-agents de Claude Code, modèle et effort fixés dans leur en-tête : `Explore` et `Plan` (surcharges des intégrés), `verif`, `banc`, `doc`.
 - `outils/banc/` : banc de test, des scripts Node qui pilotent un Chrome sans fenêtre ou la WebView du téléphone ; mode d'emploi dans son `LISEZMOI.md`.
 - `.gitattributes` : fins de ligne (LF, CRLF pour les `.bat`).
