@@ -12,6 +12,8 @@ Chaque information a une seule place :
 - `docs/HISTORIQUE.md` : décisions et pièges, en points numérotés (« §10, point N ») ; le consulter par recherche sur le sujet, pas en entier.
 - `docs/INVENTAIRE.md` : carte des fichiers ; les signatures se lisent dans le code.
 - `docs/MISE_EN_PAGE.md` : patron commun des pages d'analyse (structure, règles ordinateur et téléphone, pièces partagées). Le suivre pour toute page d'analyse, existante ou nouvelle.
+- `docs/A-FAIRE.md` : les idées de l'utilisateur données en vrac, mises au propre en fiches, priorité de 1 à 5 ; une idée qui devient un lot passe dans la file des lots.
+- `docs/ESSAIS.md` : les seuls essais demandés au téléphone (règle plus bas, Environnement).
 - `docs/MODELES.md` : quel modèle (Fable, Opus, Sonnet, Haiku) et quel effort pour quelle tâche, et les sous-agents de `.claude/agents/`.
 
 ## Commandes
@@ -44,6 +46,7 @@ Vérifications, banc et passe de doc passent par les sous-agents `verif`, `banc`
 
 - Dépôt git, doublé d'un dépôt GitHub privé (`segneur34/Tracker`) : un commit par lot vérifié, marqué « à valider » ; validation par paquets en mode chaîne (`docs/MODELES.md`, la file `~/.claude/plans/FILE-DES-LOTS.md` fait foi) ; un envoi après accord de l'utilisateur. Un lot couvre un sujet entier (plusieurs étapes), pas une petite étape isolée : peu de lots, donc peu de commits. Fins de ligne fixées par `.gitattributes` : LF partout, CRLF pour les `.bat`.
 - Banc de test dans `outils/banc/` (mode d'emploi dans son `LISEZMOI.md`) : Claude y éprouve lui-même l'application dans un Chrome sans fenêtre ; il prouve la neutralité d'un changement par le texte de la page relevé avant et après.
+- Essais au téléphone : n'en demander que peu, les vraiment critiques (ce que ni les tests ni le banc ne peuvent voir : GPS, capteurs, ceinture, notification, écran éteint, rendu tactile) et ceux où Claude a un vrai doute ; une question à trancher par l'utilisateur en fait partie. Tout ce que le banc ou les tests prouvent (changement neutre, chiffres identiques, mise en page relevée) n'y va pas. Quelques essais par paquet, jamais une longue liste. Ils vont dans `docs/ESSAIS.md`.
 - Windows 11, terminal `cmd` : ne jamais donner de commande PowerShell à recopier. L'utilisateur colle parfois lui-même la sortie.
 - Aucun GPX réel dans le projet : les tests sont synthétiques, la validation sur données réelles revient à l'utilisateur.
 - Une question d'algorithmique peut partir chez Gemini : la formuler de façon autonome et complète.

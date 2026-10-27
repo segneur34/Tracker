@@ -45,9 +45,18 @@ Tous repartent à froid (ils rechargent `CLAUDE.md`), donc ils valent pour une �
 
 Tout autre sous-agent sans modèle dans son en-tête (fork, agent général) tourne sur Sonnet (`CLAUDE_CODE_SUBAGENT_MODEL` dans `~/.claude/settings.json`), jamais sur le modèle de la session. Pour appeler un agent : « avec l'agent verif, lance les vérifications complètes », ou `@verif`.
 
+## Commandes (`.claude/skills/`)
+
+Invocation manuelle seulement, tapées au début ou à la fin d'une session.
+
+- `/reprise [ce qu'on veut faire]` : début de session ; relit mémoire, file des lots, git, essais et idées, dit où on en est, vérifie le modèle.
+- `/chaine [lot N | ok partout | ok sauf N : … | consignes]` : mode chaîne ; enchaîne les lots de la file jusqu'à un paquet à valider.
+- `/todo [notes en vrac | réponse N : … ]` : met au propre les notes en vrac dans `docs/A-FAIRE.md` ; sans argument, affiche la liste triée.
+- `/clore [ok partout | ok sauf N : … ] [sans envoi]` : fin de session ; commit, résultats d'essais et passe doc, file, essais, point de reprise, envoi GitHub, compte rendu et prompt de reprise.
+
 ## Mode chaîne
 
-Une seule conversation Fable (high) enchaîne les lots et les confie aux sous-agents ; elle ne s'adresse à l'utilisateur que pour une vraie décision. La file ordonnée des lots, leurs dépendances, leur état et les questions en attente avec les réponses sont tenues dans `~/.claude/plans/FILE-DES-LOTS.md`, hors dépôt : c'est elle qui fait foi d'une conversation à l'autre. Démarrage : `claude --model fable`, puis « Mode chaîne : on reprend la file » (prompt complet dans `~/.claude/plans/MODE-CHAINE-PROMPT.md`).
+Une seule conversation Fable (high) enchaîne les lots et les confie aux sous-agents ; elle ne s'adresse à l'utilisateur que pour une vraie décision. La file ordonnée des lots, leurs dépendances, leur état et les questions en attente avec les réponses sont tenues dans `~/.claude/plans/FILE-DES-LOTS.md`, hors dépôt : c'est elle qui fait foi d'une conversation à l'autre. Démarrage : `claude --model fable`, puis « Mode chaîne : on reprend la file » (prompt complet dans `~/.claude/plans/MODE-CHAINE-PROMPT.md`). Les commandes l'encadrent : `/reprise` puis `/chaine` au démarrage, `/clore` à la clôture.
 
 Boucle de l'orchestrateur :
 1. prendre le premier lot « à faire » dont les dépendances sont levées ; les lots passent l'un après l'autre (un seul dépôt : version et HISTORIQUE se croiseraient) ;
