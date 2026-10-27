@@ -117,6 +117,29 @@ describe('createJsonStore', () => {
   });
 });
 
+describe('createJsonStore, lecture mise en cache (E-O3)', () => {
+  it('rend le même objet tant que la valeur brute ne change pas, un neuf après une écriture', () => {
+    const backend = memoryBackend({ 'tracker.x': '{"a":{"b":1}}' });
+    const store = createJsonStore(() => backend);
+    const first = store.read<{ a: { b: number } }>('tracker.x');
+    expect(store.read('tracker.x')).toBe(first);
+    store.write('tracker.x', { a: { b: 2 } });
+    const second = store.read<{ a: { b: number } }>('tracker.x');
+    expect(second).not.toBe(first);
+    expect(second?.a.b).toBe(2);
+    // Valeur changée par un autre écrivain (autre onglet) : relue.
+    backend.data.set('tracker.x', '{"a":{"b":3}}');
+    expect(store.read<{ a: { b: number } }>('tracker.x')?.a.b).toBe(3);
+  });
+
+  it("gèle en profondeur l'objet rendu en développement : un appelant ne peut pas le modifier en douce", () => {
+    const store = createJsonStore(() => memoryBackend({ 'tracker.x': '{"a":{"b":1}}' }));
+    const value = store.read<{ a: { b: number } }>('tracker.x')!;
+    expect(Object.isFrozen(value)).toBe(true);
+    expect(Object.isFrozen(value.a)).toBe(true);
+  });
+});
+
 describe('createMirroredBackend', () => {
   it('lit depuis la mémoire amorcée et recopie chaque écriture', () => {
     const persisted: [string, string][] = [];

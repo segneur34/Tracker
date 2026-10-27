@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent } from 'react';
 import {
-  adoptSettingsFile, dismissSettingsOffer, importSettingsFile, renameDevice, useSessionLibrary, type SettingsFileInfo,
+  adoptSettingsFile, dismissSettingsOffer, importSettingsFile, renameDevice, useLibraryFields, type SettingsFileInfo,
 } from '../hooks/useSessionLibrary';
 import { DEVICE_NAME_MAX } from '../library/settingsFile';
 import { HelpText, HelpToggle } from './Help';
@@ -36,7 +36,7 @@ const adopt = (file: SettingsFileInfo): boolean => {
 
 /** Bandeau « Nouveau fichier de réglages » : « Reprendre » ou « Fermer » ; le fichier reste dans la liste. */
 export function SettingsOfferBanner() {
-  const { settingsOffer } = useSessionLibrary();
+  const { settingsOffer } = useLibraryFields('settingsOffer');
   if (!settingsOffer) return null;
   return (
     <div className="ui-alert ui-alert--warning" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
@@ -48,7 +48,7 @@ export function SettingsOfferBanner() {
 }
 
 function SettingsFiles() {
-  const { deviceName, settingsFiles, folderKind } = useSessionLibrary();
+  const { deviceName, settingsFiles, folderKind } = useLibraryFields('deviceName', 'settingsFiles', 'folderKind');
   /** Nom en cours de saisie ; `null` : celui de l'appareil. */
   const [draft, setDraft] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);

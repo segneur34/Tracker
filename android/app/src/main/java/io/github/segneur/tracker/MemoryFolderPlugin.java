@@ -55,6 +55,8 @@ public class MemoryFolderPlugin extends Plugin {
 
     /** Suffixe du fichier écrit à côté de celui qu'il remplace, le temps de l'échange. */
     private static final String TEMP_SUFFIX = ".tracker-tmp";
+    /** Fournisseur du stockage du téléphone, dont l'identifiant d'un document est son chemin. */
+    private static final String EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents";
 
     private static final String[] CHILD_COLUMNS = {
         Document.COLUMN_DOCUMENT_ID,
@@ -438,14 +440,23 @@ public class MemoryFolderPlugin extends Plugin {
      * Enfant d'un dossier, par son nom. Sur le stockage du téléphone,
      * l'identifiant d'un document est son chemin (« primary:Documents/Tracker/sessions ») :
      * on le construit et on vérifie qu'il existe, une requête au lieu de lire
-     * tout le dossier. Pour un autre fournisseur, repli sur la recherche par nom.
+     * tout le dossier. Chez ce fournisseur, un document absent l'est vraiment :
+     * pas de relecture du dossier (le temporaire d'une réécriture est presque
+     * toujours absent, et `sessions/` compte des centaines de fichiers). Pour
+     * un autre fournisseur, ou une autre erreur, repli sur la recherche par nom.
      */
     private String findChild(Uri tree, String parentId, String name) {
         String guess = parentId.endsWith(":") ? parentId + name : parentId + "/" + name;
+        boolean pathIds = EXTERNAL_STORAGE_AUTHORITY.equals(tree.getAuthority());
         try {
-            if (name.equals(displayName(tree, guess))) return guess;
+            String found = displayName(tree, guess);
+            if (name.equals(found)) return guess;
+            if (pathIds && found == null) return null;
+        } catch (IllegalArgumentException e) {
+            // Le fournisseur du stockage dit ainsi « aucun document à ce chemin ».
+            if (pathIds) return null;
         } catch (Exception e) {
-            // Document absent, ou fournisseur aux identifiants opaques : recherche par nom.
+            // Fournisseur aux identifiants opaques, ou erreur passagère : recherche par nom.
         }
         Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId);
         try (Cursor c = resolver().query(children, CHILD_COLUMNS, null, null, null)) {

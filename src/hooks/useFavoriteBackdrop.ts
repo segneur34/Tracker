@@ -3,7 +3,7 @@ import { sessionActivity } from '../core/activities';
 import type { BackdropVariant } from '../core/patternTiles';
 import { favoriteFamily } from '../library/profile';
 import { statSessionOf, type StatSession } from '../library/stats';
-import { useSessionLibrary } from './useSessionLibrary';
+import { useLibrarySelector } from './useSessionLibrary';
 import { useVisibility } from './useSportSettings';
 
 /**
@@ -14,7 +14,7 @@ import { useVisibility } from './useSportSettings';
  * sont déjà en mémoire : rien n'est lu en plus.
  */
 export function useFavoriteBackdrop(): BackdropVariant {
-  const { sessions } = useSessionLibrary();
+  const sessions = useLibrarySelector((s) => s.sessions);
   const { activities, isShown } = useVisibility();
   return useMemo(() => {
     const list: StatSession[] = [];

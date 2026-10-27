@@ -1351,14 +1351,22 @@ export const useSportSettings = (family: SportFamily) => {
     writeStored(next);
   }, []);
 
+  // Écrits d'ailleurs pendant que le module est ouvert (Réglages, réglages repris du dossier) : suivis,
+  // pour afficher les réglages du moment et ne pas les défaire au prochain changement (E-B6).
+  useEffect(() => jsonStore.subscribe((key) => {
+    if (key === STORAGE_KEY) setStored(readStoredSettings());
+  }), []);
+
   /** Change l'activité du module ; un identifiant d'une autre famille est ignoré. */
   const setActivity = useCallback(
     (nextId: string) => {
       const next = findActivity(activities, nextId);
       if (!next || activityFamily(next) !== family) return;
-      persist({ ...stored, moduleActivity: { ...stored.moduleActivity, [family]: next.id } });
+      // Relus à l'instant : une écriture d'ailleurs, faite depuis le dernier rendu, est gardée.
+      const current = readStoredSettings();
+      persist({ ...current, moduleActivity: { ...current.moduleActivity, [family]: next.id } });
     },
-    [persist, stored, activities, family]
+    [persist, activities, family]
   );
 
   /** Support sur foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */

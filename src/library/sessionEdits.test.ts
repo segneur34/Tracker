@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { baseActivity, type Activity } from '../core/activities';
 import { EMPTY_NOTES } from '../sailing/sessionNotes';
 import { RECORD_FORMAT, RECORD_VERSION, SUMMARY_CALC_VERSION, type SessionRecord, type StoredSessionNotes } from './record';
-import { changedParts, editsPatch, latestGearNotes, savedEdits } from './sessionEdits';
+import { changedParts, editsPatch, rebaseDraft, savedEdits } from './sessionEdits';
 
 const START_MS = Date.UTC(2026, 8, 24, 10, 0, 0);
 
@@ -34,19 +33,13 @@ const record = (patch: Partial<SessionRecord> = {}): SessionRecord => ({
 
 const notes = (patch: Partial<StoredSessionNotes> = {}): StoredSessionNotes => ({ ...EMPTY_NOTES, savedAt: START_MS, ...patch });
 
-const ACTIVITIES: Activity[] = [
-  { id: 'voile', name: 'Voile', base: 'wingfoil', color: '#1976d2' },
-  { id: 'course', name: 'Course', base: 'running', color: '#d42a3c' },
-  { id: 'trail', name: 'Trail', base: 'running', color: '#d42a3c' },
-];
-
 describe('savedEdits', () => {
   it("reprend le vent, le seuil, l'allure, les couleurs et les notes de la fiche", () => {
     const r = record({
       notes: notes({ comment: 'Belle session', rating: 4 }),
       analysis: { windDeg: 300, activeThreshold: 7, referenceSpeedMs: 2.5, speedRange: { minMs: 3, maxMs: 12 }, effortThresholdMs: 3.4, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS },
     });
-    const saved = savedEdits(r, null);
+    const saved = savedEdits(r);
     expect(saved.windDeg).toBe(300);
     expect(saved.activeThreshold).toBe(7);
     expect(saved.referenceSpeedMs).toBe(2.5);
@@ -55,44 +48,19 @@ describe('savedEdits', () => {
     expect(saved.notes).toEqual({ ...EMPTY_NOTES, comment: 'Belle session', rating: 4 });
   });
 
-  it('propose le matériel de la dernière session notée à une session enregistrée sans notes', () => {
-    const gear = latestGearNotes([
-      record({ notes: notes({ foil: 'Axis 900', savedAt: START_MS }) }),
-      record({ notes: notes({ foil: 'Axis 1100', wing: '5 m²', comment: 'x', savedAt: START_MS + 1 }) }),
-      record({ notes: notes({ comment: 'sans matériel', savedAt: START_MS + 2 }) }),
-    ], 'voile', ACTIVITIES);
-    expect(savedEdits(record({ source: 'enregistrement' }), gear).notes).toEqual({ ...EMPTY_NOTES, foil: 'Axis 1100', wing: '5 m²' });
-  });
-
-  it("n'emprunte pas de matériel pour une session importée ni pour un GPX hors de la mémoire", () => {
-    const gear = latestGearNotes([record({ notes: notes({ foil: 'Axis 900', savedAt: START_MS }) })], 'voile', ACTIVITIES);
-    expect(savedEdits(record({ source: 'import' }), gear).notes).toEqual(EMPTY_NOTES);
-    expect(savedEdits(null, gear).notes).toEqual(EMPTY_NOTES);
-  });
-
-  it("ne reprend pas le matériel d'une autre activité, même plus récent", () => {
-    const records = [
-      record({ notes: notes({ wing: '5 m²', savedAt: START_MS + 5 }) }),
-      record({ sport: 'running', activityId: 'trail', notes: notes({ gear1: 'Speedgoat', savedAt: START_MS + 3 }) }),
-      record({ sport: 'running', activityId: 'course', notes: notes({ gear1: 'Pegasus', gear2: 'Gilet', conditions: 'Chaud', savedAt: START_MS + 1 }) }),
-    ];
-    expect(latestGearNotes(records, 'course', ACTIVITIES)?.gear1).toBe('Pegasus');
-    expect(latestGearNotes(records, 'trail', ACTIVITIES)?.gear1).toBe('Speedgoat');
-    expect(latestGearNotes(records, 'voile', ACTIVITIES)?.wing).toBe('5 m²');
-    expect(latestGearNotes(records, baseActivity('cycling').id, ACTIVITIES)).toBeNull();
-    // Le matériel est repris, pas les conditions, propres à la sortie.
-    const gear = latestGearNotes(records, 'course', ACTIVITIES);
-    expect(savedEdits(record({ sport: 'running', activityId: 'course', source: 'enregistrement' }), gear).notes)
-      .toEqual({ ...EMPTY_NOTES, gear1: 'Pegasus', gear2: 'Gilet' });
+  it("ne reprend jamais le matériel d'une autre session : sans notes, tout est vide (décision du 27/10)", () => {
+    expect(savedEdits(record({ source: 'enregistrement' })).notes).toEqual(EMPTY_NOTES);
+    expect(savedEdits(record({ source: 'import' })).notes).toEqual(EMPTY_NOTES);
+    expect(savedEdits(null).notes).toEqual(EMPTY_NOTES);
   });
 
   it('rend les valeurs par défaut sans fiche', () => {
-    expect(savedEdits(null, null)).toEqual({ notes: EMPTY_NOTES, windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, marks: [] });
+    expect(savedEdits(null)).toEqual({ notes: EMPTY_NOTES, windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, marks: [] });
   });
 });
 
 describe('changedParts', () => {
-  const saved = savedEdits(record(), null);
+  const saved = savedEdits(record());
 
   it('ne voit aucun changement sur un état identique', () => {
     expect(changedParts(saved, { ...saved, notes: { ...saved.notes } })).toEqual([]);
@@ -112,30 +80,30 @@ describe('changedParts', () => {
 
   it('range le foil de la session, et le relit', () => {
     const r = record({ analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 0 } });
-    const before = savedEdits(r, null);
+    const before = savedEdits(r);
     expect(changedParts(before, { ...before, foil: false })).toEqual(['foil']);
     const patch = editsPatch(r, before, { ...before, foil: false }, START_MS + 3);
     expect(patch.analysis).toMatchObject({ foil: false, savedAt: START_MS + 3 });
-    expect(savedEdits({ ...r, analysis: patch.analysis! }, null).foil).toBe(false);
+    expect(savedEdits({ ...r, analysis: patch.analysis! }).foil).toBe(false);
   });
 
   it('range le pumping de la session, et le relit', () => {
     const r = record({ analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: true, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 0 } });
-    const before = savedEdits(r, null);
+    const before = savedEdits(r);
     expect(changedParts(before, { ...before, pumping: true })).toEqual(['pumping']);
     const patch = editsPatch(r, before, { ...before, pumping: true }, START_MS + 4);
     expect(patch.analysis).toMatchObject({ foil: true, pumping: true, savedAt: START_MS + 4 });
-    expect(savedEdits({ ...r, analysis: patch.analysis! }, null).pumping).toBe(true);
+    expect(savedEdits({ ...r, analysis: patch.analysis! }).pumping).toBe(true);
   });
 
   it('range le poids du vélo et la charge de la session, et les relit', () => {
     const r = record({ analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 0 } });
-    const before = savedEdits(r, null);
+    const before = savedEdits(r);
     expect(changedParts(before, { ...before, bikeWeightKg: 14 })).toEqual(['charge']);
     expect(changedParts(before, { ...before, loadKg: 8 })).toEqual(['charge']);
     const patch = editsPatch(r, before, { ...before, bikeWeightKg: 14, loadKg: 8 }, START_MS + 6);
     expect(patch.analysis).toMatchObject({ bikeWeightKg: 14, loadKg: 8, savedAt: START_MS + 6 });
-    const after = savedEdits({ ...r, analysis: patch.analysis! }, null);
+    const after = savedEdits({ ...r, analysis: patch.analysis! });
     expect([after.bikeWeightKg, after.loadKg]).toEqual([14, 8]);
   });
 
@@ -150,7 +118,7 @@ describe('changedParts', () => {
 describe('editsPatch', () => {
   it('écrit seulement les parties changées, datées', () => {
     const r = record({ notes: notes({ comment: 'avant' }) });
-    const saved = savedEdits(r, null);
+    const saved = savedEdits(r);
     expect(editsPatch(r, saved, { ...saved, windDeg: -90 }, START_MS + 5)).toEqual({
       analysis: { windDeg: 270, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS + 5 },
     });
@@ -161,7 +129,7 @@ describe('editsPatch', () => {
 
   it("écrit l'allure imposée seule, le vent et le seuil de la fiche intacts", () => {
     const r = record({ analysis: { windDeg: 45, activeThreshold: 3, referenceSpeedMs: null, speedRange: null, effortThresholdMs: 3.8, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 0 } });
-    const saved = savedEdits(r, null);
+    const saved = savedEdits(r);
     expect(editsPatch(r, saved, { ...saved, referenceSpeedMs: 2.2 }, START_MS + 7)).toEqual({
       analysis: { windDeg: 45, activeThreshold: 3, referenceSpeedMs: 2.2, speedRange: null, effortThresholdMs: 3.8, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS + 7 },
     });
@@ -169,7 +137,7 @@ describe('editsPatch', () => {
 
   it('écrit les bornes de couleur de la session', () => {
     const r = record();
-    const saved = savedEdits(r, null);
+    const saved = savedEdits(r);
     expect(editsPatch(r, saved, { ...saved, speedRange: { minMs: 2, maxMs: 9 } }, START_MS + 8)).toEqual({
       analysis: { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: { minMs: 2, maxMs: 9 }, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: START_MS + 8 },
     });
@@ -177,7 +145,7 @@ describe('editsPatch', () => {
 
   it("écrit le seuil d'effort de la session", () => {
     const r = record();
-    const saved = savedEdits(r, null);
+    const saved = savedEdits(r);
     expect(changedParts(saved, { ...saved, effortThresholdMs: 3.9 })).toEqual(['effort']);
     expect(editsPatch(r, saved, { ...saved, effortThresholdMs: 3.9 }, START_MS + 9).analysis).toMatchObject({ effortThresholdMs: 3.9, foil: null, savedAt: START_MS + 9 });
   });
@@ -187,7 +155,7 @@ describe('editsPatch', () => {
       notes: { ...notes(), futur: 1 } as StoredSessionNotes,
       analysis: { windDeg: 10, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 0, futur: 2 } as SessionRecord['analysis'],
     });
-    const saved = savedEdits(r, null);
+    const saved = savedEdits(r);
     const patch = editsPatch(r, saved, { ...saved, activeThreshold: 6, notes: { ...saved.notes, rating: 3 } }, 9);
     expect(patch.notes).toMatchObject({ futur: 1, rating: 3, savedAt: 9 });
     expect(patch.analysis).toMatchObject({ futur: 2, windDeg: 10, activeThreshold: 6, savedAt: 9 });
@@ -195,7 +163,7 @@ describe('editsPatch', () => {
 
   it("n'écrit rien quand rien n'a changé", () => {
     const r = record();
-    const saved = savedEdits(r, null);
+    const saved = savedEdits(r);
     expect(editsPatch(r, saved, saved, 1)).toEqual({});
   });
 });
@@ -206,7 +174,7 @@ describe('repères dans le brouillon', () => {
     { timeMs: START_MS + 120_000, lat: 43.51, lon: 3.91, label: 'Bouée' },
   ];
   const r = record({ marks });
-  const saved = savedEdits(r, null);
+  const saved = savedEdits(r);
 
   it('sont repris de la fiche', () => {
     expect(saved.marks).toEqual(marks);
@@ -223,5 +191,33 @@ describe('repères dans le brouillon', () => {
   it('supprimer un repère écrit la liste restante, vide comprise', () => {
     expect(editsPatch(r, saved, { ...saved, marks: [marks[1]] }, START_MS).marks).toEqual([marks[1]]);
     expect(editsPatch(r, saved, { ...saved, marks: [] }, START_MS)).toEqual({ marks: [] });
+  });
+});
+
+describe('rebaseDraft (E-B3)', () => {
+  const analysis = { windDeg: null, activeThreshold: 15, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 0 };
+  const before = savedEdits(record({ analysis }));
+  // Brouillon : un commentaire saisi, le seuil hérité de la fiche.
+  const draft = { ...before, notes: { ...before.notes, comment: 'Rafales' } };
+
+  it("suit la fiche pour un champ que le brouillon n'a pas changé, garde ceux qu'il a changés", () => {
+    // Changement d'activité : la fiche perd son seuil.
+    const after = savedEdits(record({ analysis: { ...analysis, activeThreshold: null } }));
+    const rebased = rebaseDraft(before, after, draft);
+    expect(rebased.activeThreshold).toBeNull();
+    expect(rebased.notes.comment).toBe('Rafales');
+    expect(changedParts(after, rebased)).toEqual(['notes']);
+  });
+
+  it('garde un seuil saisi dans le brouillon, et fusionne les notes champ par champ', () => {
+    const edited = { ...draft, activeThreshold: 12 };
+    const after = savedEdits(record({ analysis: { ...analysis, activeThreshold: null }, notes: notes({ foil: 'Axis 900' }) }));
+    const rebased = rebaseDraft(before, after, edited);
+    expect(rebased.activeThreshold).toBe(12);
+    expect(rebased.notes).toEqual({ ...EMPTY_NOTES, foil: 'Axis 900', comment: 'Rafales' });
+  });
+
+  it('rend le brouillon tel quel quand la fiche ne change pas', () => {
+    expect(rebaseDraft(before, before, draft)).toBe(draft);
   });
 });

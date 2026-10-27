@@ -1,5 +1,5 @@
 import type { ChangeEvent } from 'react';
-import { canImportSessions, importFiles, importFromFolder, useSessionLibrary } from '../hooks/useSessionLibrary';
+import { canImportSessions, importFiles, importFromFolder, useLibraryFields } from '../hooks/useSessionLibrary';
 import { isNativeApp } from '../platform/runtime';
 import { IconFile } from './icons';
 import Button from './ui/Button';
@@ -9,11 +9,14 @@ import Button from './ui/Button';
  * « Ajouter les sessions d'un dossier » (un dossier Tracker copié d'un autre
  * appareil, fiches comprises). Dans le menu « … » des bibliothèques, et dans
  * Réglages › Mémoire pour le dossier seul (`gpx` à faux). Grisés pendant un
- * import, d'où qu'il parte.
+ * import, d'où qu'il parte, et sans dossier mémoire : un import n'est jamais
+ * mis en attente (décision du 27/10).
  */
 function ImportButtons({ gpx = true }: { gpx?: boolean }) {
-  const library = useSessionLibrary();
+  const library = useLibraryFields('status', 'importing');
   const off = !canImportSessions(library) || library.importing;
+  /** Aucune mémoire accessible : on dit pourquoi les boutons sont grisés. */
+  const noFolder = library.status === 'unavailable' || library.status === 'needs-permission';
   // Un `label` porte le sélecteur de fichiers : il ne connaît pas `disabled`, d'où la classe.
   const labelClass = `ui-btn ui-btn--secondary${off ? ' ui-btn--off' : ''}`;
   const folderText = !gpx && library.importing ? 'Import en cours…' : "Ajouter les sessions d'un dossier";
@@ -26,6 +29,7 @@ function ImportButtons({ gpx = true }: { gpx?: boolean }) {
 
   return (
     <>
+      {noFolder && <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'var(--text-s)', lineHeight: 1.5 }}>Désignez d'abord le dossier mémoire (Réglages › Mémoire) pour importer des sessions.</p>}
       {gpx && (
         <label className={labelClass}>
           <IconFile size={18} />

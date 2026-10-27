@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { FAMILY_LABEL, type Activity } from '../core/activities';
-import { parseGpx } from '../core/gpxParser';
 import { shareableStats } from '../core/shareImage';
 import { getSportProfile, hasActiveThreshold, sportFamily, sportTreatment } from '../core/sportProfiles';
 import { coloredSegments } from '../core/trackColor';
-import { librarySession } from '../hooks/useSessionLibrary';
+import { librarySession, summarizeGpxText } from '../hooks/useSessionLibrary';
 import { effectiveDistanceUnit, effectiveSpeedUnit } from '../hooks/useSportSettings';
 import { shareLabels, summaryShareStats } from '../library/shareStats';
-import { summarizeSession } from '../library/summary';
 import { safeFileName } from '../platform/files';
 import { IconShare } from './icons';
 import { sessionColorTrack, sessionSpeedRange } from './sessionTrack';
@@ -36,7 +34,8 @@ interface SavedSessionShareProps {
  * « Session rangée ») : « Partager » ouvre la même fenêtre que dans
  * l'analyse (`ShareDialog`), la trace colorée comme l'analyse la colorerait
  * (`sessionColorTrack`) et les chiffres du résumé (`summaryShareStats`) : celui
- * de la fiche si la session est rangée, sinon calculé sur le GPX.
+ * de la fiche si la session est rangée, sinon calculé sur le GPX avec les
+ * réglages de son activité.
  */
 function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessionShareProps) {
   const [prepared, setPrepared] = useState<Prepared | null>(null);
@@ -48,7 +47,8 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
       const record = libraryFile === null ? undefined : librarySession(libraryFile)?.record;
       const sport = record?.sport ?? activity.base;
       const family = sportFamily(sport);
-      const summary = record?.summary ?? summarizeSession(parseGpx(gpx).rawPoints, sport);
+      // Hors de la mémoire : calculé avec les réglages de l'activité, comme la fiche le sera (E-B12).
+      const summary = record?.summary ?? summarizeGpxText(gpx, sport, activity.id);
       const track = sessionColorTrack(gpx, sport, record?.analysis?.referenceSpeedMs ?? null, family);
       if (track === null || summary === null) throw new Error('trace trop courte.');
       const range = sessionSpeedRange(record ?? { analysis: null, sport }, activity, family, track.suggested);

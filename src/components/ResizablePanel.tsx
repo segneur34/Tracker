@@ -35,7 +35,8 @@ interface PanelSize {
 const readSizes = (): Record<string, PanelSize> => jsonStore.read<Record<string, PanelSize>>(STORAGE_KEY) ?? {};
 
 const writeSize = (id: string, size: PanelSize | null): void => {
-  const all = readSizes();
+  // Copie : l'objet lu est celui du cache du stockage, partagé.
+  const all = { ...readSizes() };
   if (size === null) delete all[id];
   else all[id] = size;
   jsonStore.write(STORAGE_KEY, all);

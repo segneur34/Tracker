@@ -1,4 +1,3 @@
-import { sessionActivity, type Activity } from '../core/activities';
 import type { SessionMark } from '../core/sessionMarks';
 import type { SpeedRangeMs } from '../core/speedGradient';
 import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
@@ -43,54 +42,24 @@ const sameNotes = (a: SailingSessionNotes, b: SailingSessionNotes): boolean =>
   NOTE_FIELDS.every((field) => a[field] === b[field]);
 
 /**
- * Notes les plus récentes d'une session de l'activité `activityId` qui portent
- * du matériel : proposées à une session enregistrée encore sans notes. Les
- * autres activités sont écartées : une course ne reçoit pas l'aile de la
- * dernière session de wing.
+ * État enregistré d'une session, tel que le module l'affiche. Ce que sa fiche
+ * ne porte pas reste vide : aucune session n'emprunte le matériel d'une autre
+ * (décision du 27/10, « vide si pas donné »).
  */
-export const latestGearNotes = (
-  records: readonly SessionRecord[],
-  activityId: string,
-  activities: Activity[]
-): StoredSessionNotes | null => {
-  let latest: StoredSessionNotes | null = null;
-  for (const record of records) {
-    const n = record.notes;
-    if (!n || !(n.foil || n.mast || n.wing || n.gear1 || n.gear2) || (latest && n.savedAt <= latest.savedAt)) continue;
-    if (sessionActivity(activities, record.activityId, record.sport)?.id === activityId) latest = n;
-  }
-  return latest;
-};
-
-/**
- * État enregistré d'une session, tel que le module l'affiche. Une session
- * enregistrée sans notes reçoit le matériel de la dernière session notée de
- * son activité (`gear`) : on change rarement de foil entre deux sorties ; les
- * conditions, propres à la sortie, ne sont pas reprises. Une session
- * importée, ou un GPX hors de la mémoire, n'emprunte rien : ce que sa fiche ne
- * porte pas reste vide.
- */
-export const savedEdits = (record: SessionRecord | null, gear: StoredSessionNotes | null): SessionEdits => {
-  const notes: SailingSessionNotes = record?.notes
-    ? pickNotes(record.notes)
-    : gear && record?.source === 'enregistrement'
-      ? { ...EMPTY_NOTES, foil: gear.foil, mast: gear.mast, wing: gear.wing, gear1: gear.gear1, gear2: gear.gear2 }
-      : EMPTY_NOTES;
-  return {
-    notes,
-    windDeg: record?.analysis?.windDeg ?? null,
-    activeThreshold: record?.analysis?.activeThreshold ?? null,
-    referenceSpeedMs: record?.analysis?.referenceSpeedMs ?? null,
-    speedRange: record?.analysis?.speedRange ?? null,
-    effortThresholdMs: record?.analysis?.effortThresholdMs ?? null,
-    foil: record?.analysis?.foil ?? null,
-    pumping: record?.analysis?.pumping ?? null,
-    waveThreshold: record?.analysis?.waveThreshold ?? null,
-    bikeWeightKg: record?.analysis?.bikeWeightKg ?? null,
-    loadKg: record?.analysis?.loadKg ?? null,
-    marks: record?.marks ?? NO_MARKS,
-  };
-};
+export const savedEdits = (record: SessionRecord | null): SessionEdits => ({
+  notes: record?.notes ? pickNotes(record.notes) : EMPTY_NOTES,
+  windDeg: record?.analysis?.windDeg ?? null,
+  activeThreshold: record?.analysis?.activeThreshold ?? null,
+  referenceSpeedMs: record?.analysis?.referenceSpeedMs ?? null,
+  speedRange: record?.analysis?.speedRange ?? null,
+  effortThresholdMs: record?.analysis?.effortThresholdMs ?? null,
+  foil: record?.analysis?.foil ?? null,
+  pumping: record?.analysis?.pumping ?? null,
+  waveThreshold: record?.analysis?.waveThreshold ?? null,
+  bikeWeightKg: record?.analysis?.bikeWeightKg ?? null,
+  loadKg: record?.analysis?.loadKg ?? null,
+  marks: record?.marks ?? NO_MARKS,
+});
 
 const NO_MARKS: SessionMark[] = [];
 
@@ -138,6 +107,49 @@ export const changedParts = (saved: SessionEdits, edits: SessionEdits): EditedPa
   if (!sameNotes(saved.notes, edits.notes)) parts.push('notes');
   if (!sameMarks(saved.marks, edits.marks)) parts.push('reperes');
   return parts;
+};
+
+/** Égalité de chaque partie du brouillon (hors notes, comparées champ par champ). */
+const SAME: { [K in Exclude<keyof SessionEdits, 'notes'>]: (a: SessionEdits[K], b: SessionEdits[K]) => boolean } = {
+  windDeg: (a, b) => a === b,
+  activeThreshold: (a, b) => a === b,
+  referenceSpeedMs: (a, b) => a === b,
+  speedRange: sameRange,
+  effortThresholdMs: (a, b) => a === b,
+  foil: (a, b) => a === b,
+  pumping: (a, b) => a === b,
+  waveThreshold: (a, b) => a === b,
+  bikeWeightKg: (a, b) => a === b,
+  loadKg: (a, b) => a === b,
+  marks: sameMarks,
+};
+
+/**
+ * Brouillon reporté sur une fiche qui a changé sous lui (activité changée,
+ * qui efface le seuil ; fiche relue par « Mettre à jour ») : fusion à trois,
+ * partie par partie et note par note. Ce que le brouillon n'avait pas changé
+ * depuis `prevSaved` suit `nextSaved` ; ce qu'il avait changé est gardé. Rend
+ * `draft` lui-même quand rien ne bouge.
+ */
+export const rebaseDraft = (prevSaved: SessionEdits, nextSaved: SessionEdits, draft: SessionEdits): SessionEdits => {
+  if (prevSaved === nextSaved) return draft;
+  const next: SessionEdits = { ...draft };
+  let changed = false;
+  for (const key of Object.keys(SAME) as (keyof typeof SAME)[]) {
+    const same = SAME[key] as (a: unknown, b: unknown) => boolean;
+    if (same(draft[key], prevSaved[key]) && !same(draft[key], nextSaved[key])) {
+      (next as unknown as Record<string, unknown>)[key] = nextSaved[key];
+      changed = true;
+    }
+  }
+  const notes: SailingSessionNotes = { ...draft.notes };
+  for (const field of NOTE_FIELDS) {
+    if (draft.notes[field] === prevSaved.notes[field] && draft.notes[field] !== nextSaved.notes[field]) {
+      (notes as unknown as Record<string, unknown>)[field] = nextSaved.notes[field];
+      changed = true;
+    }
+  }
+  return changed ? { ...next, notes } : draft;
 };
 
 export interface EditsPatch {

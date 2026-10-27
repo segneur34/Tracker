@@ -147,6 +147,18 @@ describe('repères de la session dans le GPX complet', () => {
     expect(unbundleSessionGpx(bundled).gpx).toBe(GPX);
   });
 
+  it('paquet passé en CRLF : retouches ignorées, GPX gardé tel que reçu et lisible en entier (E-B8)', () => {
+    const multi = GPX.replace('</trkseg>', '<trkpt lat="43.61" lon="3.81"><time>2026-10-10T07:00:01Z</time></trkpt></trkseg>');
+    const crlf = bundleSessionGpx(multi, record({ name: 'Carnon', marks }), null).replace(/\n/g, '\r\n');
+    const back = unbundleSessionGpx(crlf);
+    expect(back.record?.name).toBe('Carnon');
+    // Les positions des retouches ne tombent plus juste : rien n'est coupé.
+    expect(back.gpx).toContain('<trk><name>Carnon</name>');
+    // Les deux points de trace, entiers.
+    expect(back.gpx.match(/<trkpt lat="[\d.]+" lon="[\d.]+"><time>[^<]+<\/time><\/trkpt>/g)).toHaveLength(2);
+    expect(back.gpx).not.toContain('tracker:');
+  });
+
   it('sans repère, n’écrit pas de <wpt>', () => {
     expect(bundleSessionGpx(GPX, record(), null)).not.toContain('<wpt');
   });

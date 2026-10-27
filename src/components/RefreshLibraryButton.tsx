@@ -1,4 +1,4 @@
-import { refreshLibrary, useSessionLibrary } from '../hooks/useSessionLibrary';
+import { refreshLibrary, useLibraryFields } from '../hooks/useSessionLibrary';
 import { IconRefresh } from './icons';
 import Button from './ui/Button';
 
@@ -10,7 +10,7 @@ import Button from './ui/Button';
  * pendant la relecture et le calcul des fiches.
  */
 function RefreshLibraryButton() {
-  const { status, refreshing, scanning } = useSessionLibrary();
+  const { status, refreshing, scanning } = useLibraryFields('status', 'refreshing', 'scanning');
   if (status !== 'ready') return null;
   return (
     <Button disabled={refreshing || scanning !== null} onClick={() => void refreshLibrary()}

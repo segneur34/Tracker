@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { jsonStore } from '../platform/storage';
 
 /**
@@ -24,35 +24,36 @@ export const useStoredRecord = <T extends object>(
   key: string | null,
   defaults: T
 ) => {
-  const [value, setValue] = useState<T>(defaults);
-  // Dernière valeur, pour enchaîner deux `update` sans attendre le rendu et écrire hors d'un updater
-  // (React les exécute pendant le rendu : l'écriture notifie des abonnés d'autres composants).
-  const latest = useRef(value);
-
-  const apply = useCallback((next: T) => {
-    latest.current = next;
-    setValue(next);
-  }, []);
-
-  // Relecture à chaque changement de clé, donc de session.
-  useEffect(() => {
-    apply(key === null ? defaults : readStoredRecord(namespace, key, defaults));
-    // `defaults` est une constante de module chez tous les appelants.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [namespace, key]);
+  /**
+   * Dernière valeur rendue, et l'objet rangé dont elle vient : tant que celui-ci
+   * ne change pas (le stockage rend le même objet tant que la valeur ne change
+   * pas), la même valeur est rendue, et le composant n'est pas redessiné.
+   */
+  const snapshot = useRef<{ namespace: string; key: string | null; stored: T | undefined; value: T } | null>(null);
+  const getValue = (): T => {
+    const stored = key === null ? undefined : readAll<T>(namespace)[key];
+    const last = snapshot.current;
+    if (last && last.namespace === namespace && last.key === key && last.stored === stored) return last.value;
+    const value = stored ? { ...defaults, ...stored } : defaults;
+    snapshot.current = { namespace, key, stored, value };
+    return value;
+  };
+  // Abonné au stockage : deux composants qui lisent la même clé (l'accueil et le pop-up du profil)
+  // voient chacun les écritures de l'autre, dès le premier rendu (E-B11).
+  const value = useSyncExternalStore(jsonStore.subscribe, getValue);
 
   const update = useCallback(
     (patch: Partial<T> | ((current: T) => Partial<T>)) => {
-      const current = latest.current;
+      if (key === null) return;
+      // Relue au moment d'écrire : deux `update` qui s'enchaînent sans rendu se cumulent.
+      const current = readStoredRecord(namespace, key, defaults);
       const next = { ...current, ...(typeof patch === 'function' ? patch(current) : patch) };
-      apply(next);
-      if (key !== null) {
-        const all = readAll<T>(namespace);
-        all[key] = next;
-        writeAll(namespace, all);
-      }
+      // Copie : l'objet lu est celui du cache du stockage, partagé.
+      writeAll(namespace, { ...readAll<T>(namespace), [key]: next });
     },
-    [namespace, key, apply]
+    // `defaults` est une constante de module chez tous les appelants.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [namespace, key]
   );
 
   return { value, update };

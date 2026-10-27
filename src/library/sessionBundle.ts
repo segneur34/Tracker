@@ -120,10 +120,18 @@ export const bundleSessionGpx = (gpx: string, record: SessionRecord, motion: Uin
   return named.gpx.slice(0, at) + block + named.gpx.slice(at);
 };
 
-/** Retouches (nom, repères) défaites, de la dernière à la première ; des notes incohérentes laissent le GPX tel quel. */
-const undoEdits = (gpx: string, body: string): string => {
+/**
+ * Retouches (nom, repères) défaites, de la dernière à la première. Le GPX
+ * rendu doit redonner exactement le texte reçu une fois retouché de nouveau
+ * avec le nom et les repères de la fiche (`record`) : sinon le texte a changé
+ * en route (fins de ligne passées en CRLF, réindentation), les positions ne
+ * tombent plus juste, et le GPX est gardé tel que reçu, qui reste lisible.
+ * Sans fiche lisible, de même.
+ */
+const undoEdits = (gpx: string, body: string, record: Pick<RecordWithoutSummary, 'name' | 'marks'> | null): string => {
   const edits = [...body.matchAll(/<tracker:edit at="(\d+)" length="(\d+)">([\s\S]*?)<\/tracker:edit>/g)]
     .map((m) => ({ at: Number(m[1]), length: Number(m[2]), original: unescapeXml(m[3]) }));
+  if (edits.length === 0 || !record) return gpx;
   let out = gpx;
   let limit = gpx.length;
   for (const e of edits.reverse()) {
@@ -131,7 +139,7 @@ const undoEdits = (gpx: string, body: string): string => {
     out = out.slice(0, e.at) + e.original + out.slice(e.at + e.length);
     limit = e.at;
   }
-  return out;
+  return retouchGpx(out, record.name?.trim() || null, record.marks ?? []).gpx === gpx ? out : gpx;
 };
 
 /** Retire le paquet d'un GPX et rend ce qu'il portait. Un bloc abîmé est retiré, puis ignoré. */
@@ -140,9 +148,9 @@ export const unbundleSessionGpx = (text: string): UnbundledGpx => {
   const end = start < 0 ? -1 : text.indexOf(CLOSE, start);
   if (end < 0) return { gpx: text, record: null, motion: null };
   const body = text.slice(start + OPEN.length, end);
-  const gpx = undoEdits(text.slice(0, start) + text.slice(end + CLOSE.length), body);
   const recordText = /<tracker:record>([\s\S]*?)<\/tracker:record>/.exec(body)?.[1];
   const parsed = recordText === undefined ? null : parseRecordParts(unescapeXml(recordText));
+  const gpx = undoEdits(text.slice(0, start) + text.slice(end + CLOSE.length), body, parsed && isWritableRecord(parsed) ? parsed : null);
   const imuText = /<tracker:imu>([A-Za-z0-9+/=\s]*)<\/tracker:imu>/.exec(body)?.[1];
   let motion: Uint8Array | null = null;
   try {

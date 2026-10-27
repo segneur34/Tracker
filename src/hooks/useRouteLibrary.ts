@@ -9,7 +9,7 @@ import {
   isWritableRouteRecord, parseRouteRecord, recordToRoute, routeFileBase, routeToRecord, serializeRouteRecord,
   type RouteRecord,
 } from '../planning/routeRecord';
-import { currentMemoryFolder, useSessionLibrary } from './useSessionLibrary';
+import { currentMemoryFolder, useLibraryFields } from './useSessionLibrary';
 import { readStoredActivities } from './useSportSettings';
 
 /**
@@ -57,7 +57,7 @@ const listRoutes = async (): Promise<SavedRoute[]> => {
 };
 
 export const useRouteLibrary = () => {
-  const { status, folderLabel, revision } = useSessionLibrary();
+  const { status, folderLabel, revision } = useLibraryFields('status', 'folderLabel', 'revision');
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
   const [error, setError] = useState<string | null>(null);
   /** Incrémenté après chaque écriture : la liste est relue. */

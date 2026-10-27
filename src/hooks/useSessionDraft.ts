@@ -1,18 +1,22 @@
 import { useCallback, useMemo, useState } from 'react';
-import { sessionActivity } from '../core/activities';
 import {
   EDITED_PART_LABEL,
   changedParts,
   editsPatch,
-  latestGearNotes,
+  rebaseDraft,
   savedEdits,
   type EditedPart,
   type SessionEdits,
 } from '../library/sessionEdits';
 import type { SailingSessionNotes } from '../sailing/sessionNotes';
 import { useLeaveWarning } from './leaveGuard';
-import { readStoredActivities } from './useSportSettings';
-import { updateSessionRecord, useLibrarySelector, useLibrarySession } from './useSessionLibrary';
+import { updateSessionRecord, useLibrarySession } from './useSessionLibrary';
+
+/** Brouillon et état enregistré sur lequel il a été fait, pour le reporter si la fiche change (`rebaseDraft`). */
+interface Draft {
+  base: SessionEdits;
+  edits: SessionEdits;
+}
 
 /**
  * Brouillon des changements faits sur une session (vent saisi, seuil
@@ -24,42 +28,44 @@ import { updateSessionRecord, useLibrarySelector, useLibrarySession } from './us
  * Le brouillon d'une session de la mémoire survit à un changement de page,
  * jusqu'à ce qu'on l'enregistre ou l'abandonne. Celui d'un GPX ouvert hors de
  * la mémoire (`file` à `null`) ne vit que le temps de la page : il ne peut pas
- * être enregistré.
+ * être enregistré. Si la fiche change sous lui (activité changée, relecture
+ * du dossier), il la suit là où il ne la contredit pas (`rebaseDraft`).
  */
-const drafts = new Map<string, SessionEdits>();
+const drafts = new Map<string, Draft>();
 
 export const useSessionDraft = (file: string | null) => {
   const session = useLibrarySession(file);
-  const sessions = useLibrarySelector((s) => s.sessions);
   const record = session?.record ?? null;
-  // Matériel repris de la dernière session notée de la même activité seulement.
-  const gear = useMemo(() => {
-    if (!record) return null;
-    const activities = readStoredActivities();
-    const activity = sessionActivity(activities, record.activityId, record.sport);
-    return activity ? latestGearNotes(sessions.map((s) => s.record), activity.id, activities) : null;
-  }, [sessions, record]);
-  const saved = useMemo(() => savedEdits(record, gear), [record, gear]);
+  const saved = useMemo(() => savedEdits(record), [record]);
 
   const key = file ?? '';
-  const [draft, setDraft] = useState<SessionEdits | null>(() => drafts.get(key) ?? null);
+  const [stored, setStored] = useState<Draft | null>(() => drafts.get(key) ?? null);
   const [draftKey, setDraftKey] = useState(key);
   // Autre session : son propre brouillon. Comparaison pendant le rendu plutôt qu'un `useEffect`.
+  let current = stored;
   if (key !== draftKey) {
+    current = drafts.get(key) ?? null;
     setDraftKey(key);
-    setDraft(drafts.get(key) ?? null);
+    setStored(current);
   }
+  // Fiche changée sous le brouillon (activité, relecture du dossier) : il la suit là où il ne la contredit pas.
+  if (current && current.base !== saved) {
+    current = { base: saved, edits: rebaseDraft(current.base, saved, current.edits) };
+    if (file !== null) drafts.set(file, current);
+    setStored(current);
+  }
+  const draft = current?.edits ?? null;
 
   const edits = draft ?? saved;
   const changed: EditedPart[] = useMemo(() => (draft ? changedParts(saved, draft) : []), [saved, draft]);
 
   const update = useCallback(
     (patch: Partial<SessionEdits>) => {
-      const next = { ...edits, ...patch };
+      const next = { base: saved, edits: { ...edits, ...patch } };
       if (file !== null) drafts.set(file, next);
-      setDraft(next);
+      setStored(next);
     },
-    [edits, file]
+    [edits, file, saved]
   );
 
   const updateNotes = useCallback(
@@ -69,7 +75,7 @@ export const useSessionDraft = (file: string | null) => {
 
   const cancel = useCallback(() => {
     if (file !== null) drafts.delete(file);
-    setDraft(null);
+    setStored(null);
   }, [file]);
 
   const savable = session !== undefined && !session.readOnly;

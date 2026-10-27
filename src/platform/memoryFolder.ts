@@ -384,12 +384,25 @@ export const folderImportPaths = (root: readonly NamedEntry[], sessions: readonl
 };
 
 /**
+ * Fichier à importer, lu seulement quand on en a besoin : un dossier entier
+ * n'est jamais chargé en mémoire d'un coup (E-B1, 27/10).
+ */
+export interface ImportEntry {
+  /** Nom du fichier, sans son dossier. */
+  name: string;
+  /** Clé qui rapproche un GPX de sa fiche et de ses capteurs : chemin sans extension, en minuscules. */
+  key: string;
+  readText(): Promise<string | null>;
+  readBytes(): Promise<Uint8Array | null>;
+}
+
+/**
  * Sur le téléphone, fait désigner un dossier (par exemple un dossier Tracker
- * copié depuis le PC) et en rend les GPX, les fiches et les capteurs, sous la même forme
- * que le sélecteur de fichiers du navigateur. `null` si l'utilisateur renonce.
+ * copié depuis le PC) et en rend les GPX, les fiches et les capteurs, à lire
+ * un par un au moment de les ranger. `null` si l'utilisateur renonce.
  * L'accès au dossier n'est pas gardé : il n'est lu qu'une fois.
  */
-export const pickFolderToImport = async (): Promise<File[] | null> => {
+export const pickFolderToImport = async (): Promise<ImportEntry[] | null> => {
   if (!isNativeApp()) return null;
   const { uri, name } = await nativeFolder.pickFolder({ persist: false });
   if (!uri) return null;
@@ -397,24 +410,18 @@ export const pickFolderToImport = async (): Promise<File[] | null> => {
   const base = shouldDescendIntoMemory(name ?? '', new Set(root.map((e) => e.name))) ? MEMORY_FOLDER_NAME : '';
   const full = (path: string) => [...splitPath(base), ...splitPath(path)].join('/');
   const list = async (path: string) => (await nativeFolder.list({ uri, path: full(path) })).entries;
-  const paths = folderImportPaths(base ? await list('') : root, await list('sessions'));
-  const files: File[] = [];
-  for (const path of paths) {
-    const name = path.split('/').pop()!;
-    if (/\.imu$/i.test(name)) {
-      const { data } = await nativeFolder.readBase64({ uri, path: full(path) });
-      if (data !== null) {
-        const bytes = base64ToBytes(data);
-        const copy = new Uint8Array(bytes.byteLength);
-        copy.set(bytes);
-        files.push(new File([copy], name));
-      }
-      continue;
-    }
-    const { text } = await nativeFolder.readText({ uri, path: full(path) });
-    if (text !== null) files.push(new File([text], name));
-  }
-  return files;
+  return folderImportPaths(base ? await list('') : root, await list('sessions')).map((path) => {
+    const fileName = path.split('/').pop()!;
+    return {
+      name: fileName,
+      key: fileName.replace(/\.(gpx|json|imu)$/i, '').toLowerCase(),
+      readText: async () => (await nativeFolder.readText({ uri, path: full(path) })).text,
+      readBytes: async () => {
+        const { data } = await nativeFolder.readBase64({ uri, path: full(path) });
+        return data === null ? null : base64ToBytes(data);
+      },
+    };
+  });
 };
 
 // --- Choix du dossier, navigateur et téléphone ---

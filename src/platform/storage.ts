@@ -23,7 +23,11 @@ export interface StorageBackend {
 }
 
 export interface JsonStore {
-  /** Valeur enregistrée sous `key`, ou `null` si elle est absente, illisible ou inaccessible. */
+  /**
+   * Valeur enregistrée sous `key`, ou `null` si elle est absente, illisible ou
+   * inaccessible. Le même objet est rendu tant que la valeur ne change pas :
+   * ne jamais le modifier (copier avant de changer).
+   */
   read<T>(key: string): T | null;
   /**
    * Enregistre `value` sous `key`, sérialisée en JSON. Si le stockage refuse,
@@ -42,6 +46,13 @@ export interface JsonStore {
   reportFailure(key: string): void;
 }
 
+/** Gèle un objet lu et tout ce qu'il contient : une modification lève une erreur au lieu de corrompre le cache. */
+const deepFreeze = (value: unknown): void => {
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return;
+  Object.freeze(value);
+  for (const child of Object.values(value)) deepFreeze(child);
+};
+
 /**
  * Le stockage est obtenu à chaque appel, et non une fois pour toutes : un
  * navigateur qui bloque les données de site lève une erreur dès l'accès à
@@ -52,13 +63,29 @@ export const createJsonStore = (getBackend: () => StorageBackend): JsonStore => 
   const failureListeners = new Set<(key: string) => void>();
   /** Valeurs refusées par le stockage, relues à la place de l'ancienne valeur jusqu'à la fermeture. */
   const unsaved = new Map<string, string>();
-  const parse = <T,>(raw: string | null): T | null => (raw === null ? null : (JSON.parse(raw) as T));
+  /**
+   * Dernière lecture de chaque clé : tant que la valeur brute ne change pas, le
+   * même objet est rendu, sans relire le JSON (les réglages, plusieurs dizaines
+   * de Ko, sont lus à chaque ligne de la bibliothèque). Partagé entre tous les
+   * appelants : il ne doit jamais être modifié, d'où le gel en développement.
+   */
+  const parsedCache = new Map<string, { raw: string; value: unknown }>();
+  const parse = <T,>(key: string, raw: string | null): T | null => {
+    if (raw === null) return null;
+    const cached = parsedCache.get(key);
+    if (cached?.raw === raw) return cached.value as T;
+    const value: unknown = JSON.parse(raw);
+    // `?.` : hors de Vite (scripts Node du banc), `import.meta.env` n'existe pas.
+    if (import.meta.env?.DEV) deepFreeze(value);
+    parsedCache.set(key, { raw, value });
+    return value as T;
+  };
   const reportFailure = (key: string): void => failureListeners.forEach((listener) => listener(key));
   return {
     read: <T,>(key: string): T | null => {
       try {
         const kept = unsaved.get(key);
-        return parse<T>(kept !== undefined ? kept : getBackend().getItem(key));
+        return parse<T>(key, kept !== undefined ? kept : getBackend().getItem(key));
       } catch {
         return null;
       }

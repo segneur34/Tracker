@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer } from 'react-leaflet';
 import BaseTileLayer from '../components/BaseTileLayer';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -27,7 +27,7 @@ import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProf
 import { formatDistance, formatDuration, formatShortDuration, formatSpeed, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
-import { readSessionGpx, removeSession, updateSessionRecord, useSessionLibrary } from '../hooks/useSessionLibrary';
+import { readSessionGpx, removeSession, updateSessionRecord, useLibraryFields } from '../hooks/useSessionLibrary';
 import {
   PLANNING_FAMILIES, effectiveDistanceUnit, effectiveSpeedUnit, useVisibility,
 } from '../hooks/useSportSettings';
@@ -106,6 +106,20 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
   return stats;
 };
 
+/**
+ * Vignettes déjà calculées, réduites à `PREVIEW_MAX_POINTS` points : revenir sur
+ * la bibliothèque, ou y refaire défiler une ligne, ne relit ni ne réanalyse
+ * son GPX (E-O7). La clé tient tout ce dont la trace dépend ; un GPX rangé
+ * n'est jamais réécrit.
+ */
+const previewCache = new Map<string, SessionColorTrack>();
+const PREVIEW_CACHE_MAX = 400;
+
+const rememberPreview = (key: string, track: SessionColorTrack): void => {
+  if (previewCache.size >= PREVIEW_CACHE_MAX) previewCache.delete(previewCache.keys().next().value!);
+  previewCache.set(key, track);
+};
+
 /** Marge sous l'écran où une vignette se charge déjà, pour être prête quand on y arrive. */
 const PREVIEW_PRELOAD_MARGIN = '200px';
 
@@ -116,20 +130,24 @@ const PREVIEW_PRELOAD_MARGIN = '200px';
  * toutes les vignettes visibles restent légères. Figée (ni glisser ni zoomer :
  * le doigt fait défiler la liste) ; un toucher ouvre l'analyse.
  */
-function SessionPreviewMap({ session, activity, family, onOpen }: {
+function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
   session: LibrarySession;
   activity: Activity | null;
   family: SportFamily;
+  /** Dossier mémoire en service : un autre dossier peut avoir un fichier de même nom. */
+  folderLabel: string | null;
   onOpen: () => void;
 }) {
   const frame = useRef<HTMLDivElement>(null);
-  // Sans IntersectionObserver, chargée tout de suite.
-  const [near, setNear] = useState(() => typeof IntersectionObserver === 'undefined');
-  const [track, setTrack] = useState<SessionColorTrack | null>(null);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const { file } = session;
   const sport = session.record.sport;
   const referenceOverrideMs = session.record.analysis?.referenceSpeedMs ?? null;
+  const cacheKey = `${folderLabel}|${file}|${sport}|${referenceOverrideMs}|${family}`;
+  const cached = previewCache.get(cacheKey) ?? null;
+  // Sans IntersectionObserver, chargée tout de suite ; déjà calculée, rien à attendre.
+  const [near, setNear] = useState(() => cached !== null || typeof IntersectionObserver === 'undefined');
+  const [track, setTrack] = useState<SessionColorTrack | null>(cached);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(cached ? 'ready' : 'loading');
 
   useEffect(() => {
     const el = frame.current;
@@ -145,21 +163,30 @@ function SessionPreviewMap({ session, activity, family, onOpen }: {
     if (!near) return;
     let cancelled = false;
     void (async () => {
-      const gpx = await readSessionGpx(file);
+      // Déjà calculée (autre réglage de la même ligne, revenu à une valeur vue) : reprise telle quelle.
+      const known = previewCache.get(cacheKey);
+      const gpx = known ? null : await readSessionGpx(file);
       if (cancelled) return;
+      if (known) {
+        setTrack(known);
+        setStatus('ready');
+        return;
+      }
       if (gpx === null) { setStatus('error'); return; }
       try {
         // La trace et sa couleur telles que l'analyse les calcule, réduite à PREVIEW_MAX_POINTS points.
         const full = sessionColorTrack(gpx, sport, referenceOverrideMs, family);
         if (full === null) { setStatus('error'); return; }
-        setTrack({ ...full, points: sampledIndices(0, full.points.length - 1, PREVIEW_MAX_POINTS).map((i) => full.points[i]) });
+        const reduced = { ...full, points: sampledIndices(0, full.points.length - 1, PREVIEW_MAX_POINTS).map((i) => full.points[i]) };
+        rememberPreview(cacheKey, reduced);
+        setTrack(reduced);
         setStatus('ready');
       } catch {
         if (!cancelled) setStatus('error');
       }
     })();
     return () => { cancelled = true; };
-  }, [near, file, sport, referenceOverrideMs, family]);
+  }, [near, file, sport, referenceOverrideMs, family, cacheKey]);
 
   const range = useMemo(
     () => (track ? sessionSpeedRange(session.record, activity, family, track.suggested) : null),
@@ -203,16 +230,21 @@ function SessionPreviewMap({ session, activity, family, onOpen }: {
   );
 }
 
-function SessionRow({
-  session, activity, activities, family, confirming, onAskDelete, onCancelDelete,
+/**
+ * Ligne d'une session. Mémorisée, rappels stables : un balayage de la
+ * bibliothèque ne redessine que les lignes dont la fiche change (E-O1).
+ */
+const SessionRow = memo(function SessionRow({
+  session, activity, activities, family, folderLabel, confirming, onAskDelete, onCancelDelete,
 }: {
   session: LibrarySession;
   activity: Activity | null;
   /** Toutes les activités, pour classer une session. */
   activities: Activity[];
   family: SportFamily;
+  folderLabel: string | null;
   confirming: boolean;
-  onAskDelete: () => void;
+  onAskDelete: (file: string) => void;
   onCancelDelete: () => void;
 }) {
   const openSession = useOpenSession();
@@ -262,7 +294,7 @@ function SessionRow({
           {record.notes?.comment && <span className="lib-row__note">{record.notes.comment}</span>}
           {session.warning && <span className="lib-row__warning">{session.warning}</span>}
         </button>
-        <SessionPreviewMap session={session} activity={activity} family={family} onOpen={open} />
+        <SessionPreviewMap session={session} activity={activity} family={family} folderLabel={folderLabel} onOpen={open} />
       </div>
       {asking && (
         <ActivitySheet
@@ -310,17 +342,18 @@ function SessionRow({
                 <Button size="s" variant="ghost" onClick={onCancelDelete}>Annuler</Button>
               </>
             ) : (
-              <Button size="s" variant="ghost" onClick={onAskDelete}>Supprimer</Button>
+              <Button size="s" variant="ghost" onClick={() => onAskDelete(session.file)}>Supprimer</Button>
             ))}
           </>
         )}
       </div>
     </li>
   );
-}
+});
 
 function SessionLibrary({ family }: { family: SportFamily }) {
-  const library = useSessionLibrary();
+  // Les champs lus seulement : ni le compteur du balayage ni les messages ne redessinent la liste.
+  const library = useLibraryFields('sessions', 'status', 'scanning', 'folderLabel');
   const { title, accent, banner } = FAMILY[family];
   const { activities, families, isShown } = useVisibility();
   /** Famille cachée, ouverte par son adresse : tout y est montré. */
@@ -339,6 +372,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   const folderHelp = useHelp('biblio:dossier');
   const helpOpen = folderHelp?.open ?? false;
   const [confirmFile, setConfirmFile] = useState<string | null>(null);
+  const cancelDelete = useCallback(() => setConfirmFile(null), []);
 
   /** Activité de chaque session, calculée une fois par liste. */
   const activityByFile = useMemo(
@@ -393,9 +427,10 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       activity={activityByFile.get(session.file) ?? null}
       activities={activities}
       family={family}
+      folderLabel={library.folderLabel}
       confirming={confirmFile === session.file}
-      onAskDelete={() => setConfirmFile(session.file)}
-      onCancelDelete={() => setConfirmFile(null)} />
+      onAskDelete={setConfirmFile}
+      onCancelDelete={cancelDelete} />
   );
 
   return (
