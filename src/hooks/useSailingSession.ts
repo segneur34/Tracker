@@ -8,9 +8,9 @@ import {
   suggestSpeedRangeMs,
 } from '../sailing/sailingConfig';
 import { WIND_LOCAL_MAX_GAP_MIN, analyzeManeuvers, estimateWind, windSamplesFrom } from '../sailing/maneuvers';
-import { buildWindTimeline, speedPolar } from '../sailing/wind';
+import { buildWindTimeline, normalizeAngle, speedPolar } from '../sailing/wind';
 import { calculateVmgStats, calculateWindStats, summarizeManeuvers } from '../sailing/sailingAnalytics';
-import { buildSailingSessionStats } from '../sailing/sailingStats';
+import { buildSailingSessionStats, computeSailingTops } from '../sailing/sailingStats';
 import { trackToPointData } from '../utils/kinematics';
 import { useGpxSession } from './useGpxSession';
 import { useSportSettings } from './useSportSettings';
@@ -96,9 +96,11 @@ export const useSailingSession = ({
     [sport, referenceSpeedKn, gpx.track, cumulative]
   );
 
+  // Les tops ne dépendent que de la trace : calculés une fois, pas à chaque mouvement du seuil.
+  const tops = useMemo(() => computeSailingTops(gpx.track, cumulative), [gpx.track, cumulative]);
   const stats = useMemo(
-    () => buildSailingSessionStats(gpx.track, { sport, activeThresholdKn }),
-    [gpx.track, sport, activeThresholdKn]
+    () => buildSailingSessionStats(gpx.track, { sport, activeThresholdKn, cumulative, tops }),
+    [gpx.track, sport, activeThresholdKn, cumulative, tops]
   );
 
   /**
@@ -128,7 +130,7 @@ export const useSailingSession = ({
   );
   const autoWind = windEstimate?.direction ?? null;
 
-  const manualWindValue = windDeg === null ? null : ((windDeg % 360) + 360) % 360;
+  const manualWindValue = windDeg === null ? null : normalizeAngle(windDeg);
 
   /** Vent global retenu, ou `null` si rien de fiable n'est disponible. */
   const currentWindValue = useMemo<number | null>(() => {
@@ -180,15 +182,21 @@ export const useSailingSession = ({
     return calculateVmgStats(trackData, windAt, activeThresholdKn);
   }, [trackData, windAt, activeThresholdKn]);
 
+  // Polaire au seuil accordé à l'allure de la session (règle 4), le même que
+  // celui de l'estimation du vent : sur une trace lente, le seuil fixe du
+  // profil laissait le radar presque vide.
+  const polarMinSpeedKn = maneuverThresholds.polarMinSpeedKn;
   const polarGraphData = useMemo(
-    () => (trackData.length > 0 && currentWindValue !== null ? speedPolar(trackData, currentWindValue, profile.defaultPolarMinSpeed) : []),
-    [trackData, currentWindValue, profile.defaultPolarMinSpeed]
+    () => (trackData.length > 0 && currentWindValue !== null ? speedPolar(trackData, currentWindValue, polarMinSpeedKn) : []),
+    [trackData, currentWindValue, polarMinSpeedKn]
   );
 
   return {
     trackData,
     /** Trace en unités SI, pour les calculs du noyau (sauts). */
     track: gpx.track,
+    /** Distance et temps cumulés le long de la trace, calculés une fois pour le hook et le module. */
+    cumulative,
     stats,
     currentWindValue,
     autoWind,

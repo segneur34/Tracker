@@ -199,11 +199,11 @@ check('« avancé » déplie les onglets', adv.startsWith('tops | manœuvres | g
 check('« avancé » ouvert ferme « général » (23/10)', (await panel('Général')) === '(absent)');
 await setTab('tops', true);
 await wait(600);
-check('« tops » ouvert', (await panel('Tops Temps')) !== '(absent)');
+check('« tops » ouvert', (await panel('Meilleurs segments')) !== '(absent)');
 await setAdvanced(false);
-check('« avancé » refermé : rangée et panneau repliés, « général » rouvert', (await row(1)) === '' && (await panel('Tops Temps')) === '(absent)' && (await panel('Général')) !== '(absent)');
+check('« avancé » refermé : rangée et panneau repliés, « général » rouvert', (await row(1)) === '' && (await panel('Meilleurs segments')) === '(absent)' && (await panel('Général')) !== '(absent)');
 await setAdvanced(true);
-check('« avancé » rouvert : « tops » revient', (await panel('Tops Temps')) !== '(absent)');
+check('« avancé » rouvert : « tops » revient', (await panel('Meilleurs segments')) !== '(absent)');
 const before = await panelCount();
 await evaluate(`document.querySelector('.an-tabs-hide')?.click()`);
 await wait(400);

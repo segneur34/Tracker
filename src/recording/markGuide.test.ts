@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MARK_GUIDE_DEFAULTS, START_MARK_GUIDE, beepIntervalMs, beepStartM, courseMarks, isCourseFinished, isLoopCourse, markName, remainingCourseM,
-  sanitizeBeepCurve, sanitizeMarkGuide, skipMark, stepMarkGuide, validationRadiusM, type LatLon, type MarkGuideState, type MarkGuideStep,
+  resumedGuideState, sanitizeBeepCurve, sanitizeMarkGuide, skipMark, stepMarkGuide, validationRadiusM, type LatLon, type MarkGuideState, type MarkGuideStep,
 } from './markGuide';
 
 /** Mètres par degré de latitude, et de longitude à la latitude de `O`. */
@@ -129,6 +129,20 @@ describe('guidage vers les balises', () => {
     const fixes = [at(300, 300), at(10, 590)];
     const { events } = replay(fixes, marks, { ...START_MARK_GUIDE, target: 1, outcomes: ['validated'] });
     expect(events).toEqual([{ event: 'validated', index: 1 }]);
+  });
+
+  it('à la reprise d\'une pause manuelle, ne valide pas une balise que seul le segment de la pause aurait frôlée', () => {
+    // Pause à 300 m au sud-est de la bouée ; à pied, le rider la contourne et
+    // relance 300 m au nord-ouest : le segment droit de la pause passe à 40 m
+    // de la bouée, qu'il n'a pas approchée.
+    const before: MarkGuideState = { target: 1, outcomes: ['validated'], previous: at(200, 380) };
+    const afterPause = at(-200, 820);
+    expect(stepMarkGuide(before, afterPause, marks, MARK_GUIDE_DEFAULTS).event).toBe('validated');
+    const resumed = resumedGuideState(before);
+    expect(resumed.previous).toBeNull();
+    expect(stepMarkGuide(resumed, afterPause, marks, MARK_GUIDE_DEFAULTS).event).toBeNull();
+    // Une pause automatique garde ses positions : rien à oublier.
+    expect(resumedGuideState(resumed)).toBe(resumed);
   });
 
   it('ne valide pas une balise laissée à plus de la distance de validation', () => {

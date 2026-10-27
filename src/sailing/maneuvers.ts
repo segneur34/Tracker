@@ -576,10 +576,15 @@ const findRelaunch = (points: PointData[], apexIndex: number, entrySpeed: number
   return null;
 };
 
-/** Distance parcourue entre deux indices, en mètres, par intégration de la vitesse. */
+/**
+ * Distance parcourue entre deux indices, en mètres, par intégration de la
+ * vitesse. Le pas qui reprend après une pause de l'enregistrement
+ * (`segmentStart`) ne compte pas : rien n'y a été parcouru (règle 6).
+ */
 const distanceBetween = (points: PointData[], from: number, to: number): number => {
   let meters = 0;
   for (let k = from + 1; k <= to; k++) {
+    if (points[k].segmentStart) continue;
     const dt = (points[k].timeMs - points[k - 1].timeMs) / 1000;
     if (dt > 0) meters += knotsToMs(points[k].smoothedSpeed) * dt;
   }
@@ -604,6 +609,7 @@ const distanceAlongBetween = (
 ): number => {
   let meters = 0;
   for (let k = Math.max(1, from); k <= to; k++) {
+    if (points[k].segmentStart) continue;
     const overlapS = (Math.min(points[k].timeMs, toMs) - Math.max(points[k - 1].timeMs, fromMs)) / 1000;
     if (overlapS > 0) meters += knotsToMs(points[k].smoothedSpeed) * overlapS * Math.cos((angleDiff(points[k].bearing, directionDeg) * Math.PI) / 180);
   }
@@ -815,8 +821,9 @@ export const analyzeManeuvers = (
       (points[j + 1].timeMs - points[i].timeMs <= windowMs ||
         // Enregistreur économique : la fenêtre est vide parce que l'appareil
         // s'est tu pendant le virage, quand la planche a ralenti. Toute la
-        // rotation tient alors dans ce seul pas, qu'il faut donc lire.
-        (j === i && points[j + 1].timeMs - points[i].timeMs <= maxStepMs))
+        // rotation tient alors dans ce seul pas, qu'il faut donc lire. Pas un
+        // pas de reprise de pause : rien n'y a été parcouru, ce n'est jamais un virage.
+        (j === i && !points[j + 1].segmentStart && points[j + 1].timeMs - points[i].timeMs <= maxStepMs))
     ) {
       const step = angleDiff(points[j + 1].bearing, points[j].bearing);
       cumulativeTurn += step;
@@ -919,7 +926,8 @@ export const analyzeManeuvers = (
           success,
           vmin: measure.vmin,
           // L'empannage se lit à l'opposé de la bissectrice : le vent y vient de l'arrière.
-          localWind: Math.round(normalizeAngle(type === 'tack' ? bisector : bisector + 180)),
+          // Arrondi puis normalisé : 359,7° donne 0, jamais 360.
+          localWind: normalizeAngle(Math.round(type === 'tack' ? bisector : bisector + 180)),
           timeMs,
           trackIndex: anchorIndex,
           stableHeadings,

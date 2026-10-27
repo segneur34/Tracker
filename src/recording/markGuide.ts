@@ -131,6 +131,16 @@ export interface MarkGuideState {
 
 export const START_MARK_GUIDE: MarkGuideState = { target: 0, outcomes: [], previous: null };
 
+/**
+ * Reprise après une pause manuelle (GPS coupé) : le segment entre la
+ * dernière position d'avant la pause et la première d'après n'a pas été
+ * parcouru (le rider a pu remonter la plage à pied), et il ne doit pas
+ * valider une balise qu'il frôle. La position suivante se juge donc seule,
+ * sans `previous`. Une pause automatique garde ses positions.
+ */
+export const resumedGuideState = (state: MarkGuideState): MarkGuideState =>
+  state.previous === null ? state : { ...state, previous: null };
+
 /** Vrai une fois la dernière balise laissée. */
 export const isCourseFinished = (state: MarkGuideState, marks: ReadonlyArray<LatLon>): boolean => state.target >= marks.length;
 

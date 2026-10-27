@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeKinematics } from '../core/kinematics';
 import type { RawTrackPoint } from '../core/types';
+import { knotsToMs } from '../core/units';
 import { sampledIndices } from '../core/chartZoom';
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import { trackToPointData, type PointData } from '../utils/kinematics';
@@ -211,10 +212,10 @@ const singleTackThroughNorth = (t: number): number => {
  * unique intervalle, parce que l'appareil cesse de poser des points quand la
  * planche ralentit. Les caps et les vitesses reproduisent le relevé de 13:07.
  */
-const buildSparseTurnTrack = (turnGapS: number): PointData[] => {
+const buildSparseTurnTrack = (turnGapS: number, resumeAfterGap = false): PointData[] => {
   const points: PointData[] = [];
   let t = 0;
-  const push = (bearing: number, speed: number) => {
+  const push = (bearing: number, speed: number, segmentStart = false) => {
     const timeMs = TRACK_START_MS + Math.round(t * 1000);
     points.push({
       lat: 43.553 + t * 0.00001,
@@ -224,13 +225,14 @@ const buildSparseTurnTrack = (turnGapS: number): PointData[] => {
       speed,
       smoothedSpeed: speed,
       bearing,
+      ...(segmentStart ? { segmentStart: true as const } : {}),
     });
   };
 
   // Bord au nord-ouest, puis le virage en un seul pas, puis bord au sud-est.
   for (let k = 0; k < 10; k++, t += 6) push(324, 4.7);
   t += turnGapS;
-  for (let k = 0; k < 10; k++, t += 6) push(109, 3.3);
+  for (let k = 0; k < 10; k++, t += 6) push(109, 3.3, resumeAfterGap && k === 0);
   return points;
 };
 
@@ -533,6 +535,28 @@ describe('analyzeManeuvers, enregistrement économique', () => {
     const stats = analyzeManeuvers(track, 0, { successThresholdKn: 8 });
 
     expect(stats.tackSuccess + stats.tackFail).toBe(1);
+  });
+
+  it('ne lit jamais un virage à travers une reprise de pause', () => {
+    // Le même pas de 20 s, mais c'est une reprise après une pause de
+    // l'enregistrement : rien n'y a été parcouru, ce n'est pas un virage.
+    expect(analyzeManeuvers(buildSparseTurnTrack(20), 23, { successThresholdKn: 8 }).locations).toHaveLength(1);
+    expect(analyzeManeuvers(buildSparseTurnTrack(20, true), 23, { successThresholdKn: 8 }).locations).toHaveLength(0);
+  });
+
+  it('ne compte pas le pas de reprise dans la distance de manœuvre', () => {
+    // Virement dense par le nord, relance lente coupée par une pause (dernier
+    // point à 39 s, reprise à 60 s) : la distance mesurée jusqu'à la relance,
+    // à 66 s, ne compte pas le pas de reprise, qui valait 32 m à 3 nœuds sur 21 s.
+    const withPause = (resume: boolean): PointData[] =>
+      buildTrack(90, 1, singleTackThroughNorth, (t) => (t >= 31 && t <= 65 ? 3 : 12))
+        .filter((p) => { const t = (p.timeMs - TRACK_START_MS) / 1000; return t < 40 || t >= 60; })
+        .map((p) => ((p.timeMs - TRACK_START_MS) / 1000 === 60 && resume ? { ...p, segmentStart: true as const } : p));
+    const plain = analyzeManeuvers(withPause(false), 0, { successThresholdKn: 8 }).locations[0];
+    const resumed = analyzeManeuvers(withPause(true), 0, { successThresholdKn: 8 }).locations[0];
+    expect(plain.relaunchS).not.toBeNull();
+    expect(resumed.relaunchS).toBe(plain.relaunchS);
+    expect(plain.distanceM! - resumed.distanceM!).toBeCloseTo(knotsToMs(3) * 21, 0);
   });
 });
 

@@ -1,5 +1,5 @@
 import type { PointData } from '../utils/kinematics';
-import type { ManeuverLocation, ManeuverStats, WindReference } from './maneuvers';
+import { WIND_LOCAL_MAX_GAP_MIN, type ManeuverLocation, type ManeuverStats, type WindReference } from './maneuvers';
 import { VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
 import {
   angleDiff,
@@ -79,8 +79,8 @@ export interface WindStats {
 const resolveWind = (wind: WindReference, timeMs: number): number =>
   typeof wind === 'function' ? wind(timeMs) : wind;
 
-/** Trou maximal, en minutes, à travers lequel on interpole encore entre deux manœuvres. */
-const MAX_INTERPOLATION_GAP_MIN = 30;
+/** Trou maximal, en minutes, à travers lequel on interpole encore entre deux manœuvres : celui du classement. */
+const MAX_INTERPOLATION_GAP_MIN = WIND_LOCAL_MAX_GAP_MIN;
 
 /**
  * Manœuvres retenues pour suivre le vent : toutes celles que la détection a
@@ -168,10 +168,11 @@ export const calculateWindStats = (
   const maxGapMs = MAX_INTERPOLATION_GAP_MIN * 60 * 1000;
   const windAt = (timeMs: number) => interpolateDirection(samples, timeMs, reference, maxGapMs);
 
+  // Arrondi puis normalisé : une moyenne à 359,7° s'affiche 0°, jamais 360°.
   return {
-    avgWind: Math.round(stats.mean),
-    minWind: Math.round(normalizeAngle(stats.mean + stats.minDev)),
-    maxWind: Math.round(normalizeAngle(stats.mean + stats.maxDev)),
+    avgWind: normalizeAngle(Math.round(stats.mean)),
+    minWind: normalizeAngle(Math.round(stats.mean + stats.minDev)),
+    maxWind: normalizeAngle(Math.round(stats.mean + stats.maxDev)),
     range: Math.round(stats.maxDev - stats.minDev),
     stdDev: Math.round(stats.stdDevDeg),
     slopePerHour: den !== 0 ? (num / den) * 60 : 0,
@@ -205,7 +206,7 @@ export const windChartRows = (
       minutes: (timeMs - startMs) / 60000,
       timeLabel: `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`,
       angle: direction === null ? null : reference + angleDiff(direction, reference),
-      display: direction === null ? null : Math.round(direction),
+      display: direction === null ? null : normalizeAngle(Math.round(direction)),
       isManeuver: false,
     };
   });
@@ -428,6 +429,14 @@ export const summarizeManeuvers = (maneuverStats: ManeuverStats | null): Maneuve
 
 /**
  * VMG par allure et par bord, sur fenêtre temporelle glissante.
+ *
+ * Un seul passage lit chaque point une fois (durée du pas, vitesse, VMG,
+ * bord, sous le minimum), puis des sommes cumulées rendent chaque fenêtre en
+ * O(1) : à 5 Hz sur 3 h, le vent local n'est plus relu 51 fois par point.
+ * La fenêtre `[i, j]` couvre les intervalles `i+1..j`, chacun pesant sa durée
+ * (règle 2 : une portion dense de points ne pèse pas plus qu'une portion
+ * creuse de même durée ; le point `i` apportait le cap de l'intervalle
+ * d'avant la fenêtre). Un pas de reprise de pause (`segmentStart`) pèse zéro.
  */
 export const calculateVmgStats = (
   trackData: PointData[],
@@ -439,60 +448,60 @@ export const calculateVmgStats = (
   if (trackData.length === 0 || wind === null) return null;
 
   const windowMs = windowSeconds * 1000;
+  const n = trackData.length;
+
+  // Sommes cumulées sur les intervalles : l'intervalle k arrive au point k (k ≥ 1).
+  const cumDt = new Float64Array(n);
+  const cumSpeedDt = new Float64Array(n);
+  const cumVmgDt = new Float64Array(n);
+  const cumStbdDt = new Float64Array(n);
+  // Nombre de points sous le minimum parmi les points 0..k.
+  const cumBelow = new Int32Array(n);
+  cumBelow[0] = trackData[0].smoothedSpeed < minSpeedKn ? 1 : 0;
+  for (let k = 1; k < n; k++) {
+    const p = trackData[k];
+    const dt = p.segmentStart ? 0 : Math.max(0, (p.timeMs - trackData[k - 1].timeMs) / 1000);
+    const diff = angleDiff(p.bearing, resolveWind(wind, p.timeMs));
+    const vmg = p.smoothedSpeed * Math.cos(diff * (Math.PI / 180));
+    cumDt[k] = cumDt[k - 1] + dt;
+    cumSpeedDt[k] = cumSpeedDt[k - 1] + p.smoothedSpeed * dt;
+    cumVmgDt[k] = cumVmgDt[k - 1] + vmg * dt;
+    cumStbdDt[k] = cumStbdDt[k - 1] + (diff < 0 ? dt : 0);
+    cumBelow[k] = cumBelow[k - 1] + (p.smoothedSpeed < minSpeedKn ? 1 : 0);
+  }
 
   let maxUpStbd = 0, maxUpPort = 0, maxDownStbd = 0, maxDownPort = 0;
   let sumUpStbd = 0, sumUpPort = 0, sumDownStbd = 0, sumDownPort = 0;
   let cUpStbd = 0, cUpPort = 0, cDownStbd = 0, cDownPort = 0;
 
-  /** Fenêtre [i, j] : moyenne de vitesse, de VMG et bord dominant. */
-  const evaluateWindow = (i: number, j: number) => {
-    let sumVmg = 0;
-    let sumSpeed = 0;
-    let portCount = 0;
-    let stbdCount = 0;
-    let allAboveMin = true;
-
-    for (let k = i; k <= j; k++) {
-      const p = trackData[k];
-      if (p.smoothedSpeed < minSpeedKn) allAboveMin = false;
-      sumSpeed += p.smoothedSpeed;
-      const diff = angleDiff(p.bearing, resolveWind(wind, p.timeMs));
-      sumVmg += p.smoothedSpeed * Math.cos(diff * (Math.PI / 180));
-      if (diff < 0) stbdCount++; else portCount++;
-    }
-
-    const n = j - i + 1;
-    return {
-      avgSpeed: sumSpeed / n,
-      avgVmg: sumVmg / n,
-      isStarboard: stbdCount > portCount,
-      allAboveMin,
-    };
-  };
-
-  const windows: { start: number; end: number; avgSpeed: number; avgVmg: number; isStarboard: boolean; allAboveMin: boolean }[] = [];
+  const windows: { start: number; end: number; avgVmg: number; allAboveMin: boolean }[] = [];
   let j = 0;
 
-  for (let i = 0; i < trackData.length; i++) {
+  for (let i = 0; i < n; i++) {
     if (j < i) j = i;
-    while (j + 1 < trackData.length && trackData[j + 1].timeMs - trackData[i].timeMs <= windowMs) j++;
+    while (j + 1 < n && trackData[j + 1].timeMs - trackData[i].timeMs <= windowMs) j++;
     // Fenêtre trop courte : fin de trace, ou trou d'enregistrement juste après i.
     // Dans le second cas on continue, la session reprend plus loin.
     if (trackData[j].timeMs - trackData[i].timeMs < windowMs * 0.8) {
-      if (j === trackData.length - 1) break;
+      if (j === n - 1) break;
       continue;
     }
 
-    const w = evaluateWindow(i, j);
-    windows.push({ start: i, end: j, ...w });
+    const durationS = cumDt[j] - cumDt[i];
+    if (durationS <= 0) continue;
+    const avgSpeed = (cumSpeedDt[j] - cumSpeedDt[i]) / durationS;
+    const avgVmg = (cumVmgDt[j] - cumVmgDt[i]) / durationS;
+    const isStarboard = cumStbdDt[j] - cumStbdDt[i] > durationS / 2;
+    const allAboveMin = cumBelow[j] - (i > 0 ? cumBelow[i - 1] : 0) === 0;
+    windows.push({ start: i, end: j, avgVmg, allAboveMin });
 
-    if (w.avgSpeed >= minSpeedKn) {
-      if (w.avgVmg > 0) {
-        if (w.isStarboard) { if (w.avgVmg > maxUpStbd) maxUpStbd = w.avgVmg; sumUpStbd += w.avgVmg; cUpStbd++; }
-        else { if (w.avgVmg > maxUpPort) maxUpPort = w.avgVmg; sumUpPort += w.avgVmg; cUpPort++; }
+    if (avgSpeed >= minSpeedKn) {
+      if (avgVmg > 0) {
+        if (isStarboard) { if (avgVmg > maxUpStbd) maxUpStbd = avgVmg; sumUpStbd += avgVmg; cUpStbd++; }
+        else { if (avgVmg > maxUpPort) maxUpPort = avgVmg; sumUpPort += avgVmg; cUpPort++; }
       } else {
-        const absVmg = -w.avgVmg;
-        if (w.isStarboard) { if (absVmg > maxDownStbd) maxDownStbd = absVmg; sumDownStbd += absVmg; cDownStbd++; }
+        const absVmg = -avgVmg;
+        if (isStarboard) { if (absVmg > maxDownStbd) maxDownStbd = absVmg; sumDownStbd += absVmg; cDownStbd++; }
         else { if (absVmg > maxDownPort) maxDownPort = absVmg; sumDownPort += absVmg; cDownPort++; }
       }
     }
@@ -500,31 +509,31 @@ export const calculateVmgStats = (
 
   const getTopVmg = (isUpwind: boolean) => {
     const candidates = windows
-      .filter(w => w.allAboveMin && (isUpwind ? w.avgVmg > 0 : w.avgVmg < 0))
-      .map(w => ({ start: w.start, end: w.end, val: Math.abs(w.avgVmg) }))
+      .filter((w) => w.allAboveMin && (isUpwind ? w.avgVmg > 0 : w.avgVmg < 0))
+      .map((w) => ({ start: w.start, end: w.end, val: Math.abs(w.avgVmg) }))
       .sort((a, b) => b.val - a.val);
 
     const tops: { val: string; path: [number, number][] }[] = [];
     const selected: { start: number; end: number }[] = [];
     for (const w of candidates) {
       if (tops.length >= 3) break;
-      const overlap = selected.some(s => Math.max(w.start, s.start) <= Math.min(w.end, s.end));
+      const overlap = selected.some((s) => Math.max(w.start, s.start) <= Math.min(w.end, s.end));
       if (!overlap) {
-        const path = trackData.slice(w.start, w.end + 1).map(p => [p.lat, p.lon] as [number, number]);
+        const path = trackData.slice(w.start, w.end + 1).map((p) => [p.lat, p.lon] as [number, number]);
         tops.push({ val: w.val.toFixed(1), path });
         selected.push({ start: w.start, end: w.end });
       }
     }
-    while (tops.length < 3) tops.push({ val: "-", path: [] });
+    while (tops.length < 3) tops.push({ val: '-', path: [] });
     return tops;
   };
 
   return {
-    upStbd: { max: maxUpStbd.toFixed(1), avg: cUpStbd > 0 ? (sumUpStbd / cUpStbd).toFixed(1) : "0.0" },
-    upPort: { max: maxUpPort.toFixed(1), avg: cUpPort > 0 ? (sumUpPort / cUpPort).toFixed(1) : "0.0" },
-    downStbd: { max: maxDownStbd.toFixed(1), avg: cDownStbd > 0 ? (sumDownStbd / cDownStbd).toFixed(1) : "0.0" },
-    downPort: { max: maxDownPort.toFixed(1), avg: cDownPort > 0 ? (sumDownPort / cDownPort).toFixed(1) : "0.0" },
+    upStbd: { max: maxUpStbd.toFixed(1), avg: cUpStbd > 0 ? (sumUpStbd / cUpStbd).toFixed(1) : '0.0' },
+    upPort: { max: maxUpPort.toFixed(1), avg: cUpPort > 0 ? (sumUpPort / cUpPort).toFixed(1) : '0.0' },
+    downStbd: { max: maxDownStbd.toFixed(1), avg: cDownStbd > 0 ? (sumDownStbd / cDownStbd).toFixed(1) : '0.0' },
+    downPort: { max: maxDownPort.toFixed(1), avg: cDownPort > 0 ? (sumDownPort / cDownPort).toFixed(1) : '0.0' },
     topsUpwind: getTopVmg(true),
-    topsDownwind: getTopVmg(false)
+    topsDownwind: getTopVmg(false),
   };
 };

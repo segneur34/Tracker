@@ -19,6 +19,8 @@ export interface PointData {
   /** Vitesse filtrée, en nœuds. */
   smoothedSpeed: number;
   bearing: number;
+  /** Reprise après une pause de l'enregistrement : rien n'est parcouru sur ce pas (`TrackPoint.segmentStart`). */
+  segmentStart?: true;
 }
 
 /** Convertit un point du noyau vers la forme historique en nœuds. */
@@ -30,6 +32,7 @@ export const toPointData = (point: TrackPoint): PointData => ({
   speed: msToKnots(point.speedMs),
   smoothedSpeed: msToKnots(point.smoothedSpeedMs),
   bearing: point.bearing,
+  ...(point.segmentStart ? { segmentStart: true as const } : {}),
 });
 
 /** Vue en nœuds d'une trace déjà calculée par le noyau. */

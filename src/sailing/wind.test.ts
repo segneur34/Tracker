@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { PointData } from '../utils/kinematics';
+import { sessionManeuverThresholds } from './sailingConfig';
 import {
   angleDiff,
+  buildWindTimeline,
   circularMean,
   circularStats,
   describeWindCandidate,
@@ -11,7 +13,47 @@ import {
   pointerWindDeg,
   speedPolar,
   scoreWindCandidate,
+  windDegFromText,
 } from './wind';
+
+describe('buildWindTimeline', () => {
+  const MIN = 60 * 1000;
+  const maxGap = 30 * MIN;
+
+  it('rend le repli au-delà du trou maximal, aux bords comme au milieu', () => {
+    const wind = buildWindTimeline([{ timeMs: 120 * MIN, direction: 40 }], 10, maxGap);
+    // Deux heures avant l'unique manœuvre : le vent global, pas la mesure la plus proche.
+    expect(wind(0)).toBe(10);
+    expect(wind(240 * MIN)).toBe(10);
+    // À moins de 30 min : la valeur la plus proche.
+    expect(wind(110 * MIN)).toBe(40);
+    expect(wind(140 * MIN)).toBe(40);
+    // Un trou de 31 min au milieu : le repli.
+    const twin = buildWindTimeline([{ timeMs: 0, direction: 40 }, { timeMs: 31 * MIN, direction: 50 }], 10, maxGap);
+    expect(twin(15 * MIN)).toBe(10);
+  });
+
+  it('rend le repli sans aucune mesure, et interpole entre deux', () => {
+    expect(buildWindTimeline([], 10, maxGap)(5 * MIN)).toBe(10);
+    const wind = buildWindTimeline([{ timeMs: 0, direction: 350 }, { timeMs: 10 * MIN, direction: 10 }], 180, maxGap);
+    expect(wind(5 * MIN)).toBeCloseTo(0, 6);
+  });
+});
+
+describe('windDegFromText', () => {
+  it('lit un entier et le ramène dans [0, 360[', () => {
+    expect(windDegFromText('245')).toBe(245);
+    expect(windDegFromText(' 370 ')).toBe(10);
+    expect(windDegFromText('-10')).toBe(350);
+    expect(windDegFromText('359.6')).toBe(0);
+  });
+
+  it('ne dit rien d\'un texte vide ou illisible', () => {
+    expect(windDegFromText('')).toBeNull();
+    expect(windDegFromText('abc')).toBeNull();
+    expect(windDegFromText('12a')).toBeNull();
+  });
+});
 
 describe('interpolateDirection', () => {
   const MIN = 60 * 1000;
@@ -247,5 +289,40 @@ describe('speedPolar', () => {
 
   it('écarte les points sous la vitesse minimale', () => {
     expect(speedPolar([at(95, 2)], 90, 3).every((b) => b.vitesse === 0)).toBe(true);
+  });
+});
+
+describe('speedPolar au seuil accordé à la session', () => {
+  it('remplit plus de cases au seuil de la session qu\'au seuil fixe du profil sur une trace lente', () => {
+    // Planche lente : tous les caps balayés en dix minutes, vitesse de 1,5 à 7 nœuds selon l'angle au vent.
+    const points: PointData[] = [];
+    for (let t = 0; t <= 600; t++) {
+      const bearing = (t * 0.6) % 360;
+      const twa = Math.abs(angleDiff(bearing, 0));
+      const speed = twa < 35 ? 1.5 : twa < 110 ? 7 : 4.4;
+      points.push({ lat: 43.6, lon: 3.8, time: '', timeMs: t * 1000, speed, smoothedSpeed: speed, bearing });
+    }
+    const profileKn = 5;
+    const sessionKn = sessionManeuverThresholds('windsurf', 4.4).polarMinSpeedKn;
+    expect(sessionKn).toBeLessThan(profileKn);
+    const filled = (minKn: number) => speedPolar(points, 0, minKn).filter((b) => b.vitesse > 0).length;
+    expect(filled(sessionKn)).toBeGreaterThan(filled(profileKn));
+  });
+});
+
+describe('observeTurns et reprise de pause', () => {
+  const buildTurn = (resume: boolean): PointData[] => {
+    const points: PointData[] = [];
+    const push = (t: number, bearing: number, segmentStart = false) =>
+      points.push({ lat: 43.6, lon: 3.8, time: '', timeMs: t * 1000, speed: 12, smoothedSpeed: 12, bearing, ...(segmentStart ? { segmentStart: true as const } : {}) });
+    for (let t = 0; t <= 60; t++) push(t, 90);
+    // Un pas de 20 s, à travers lequel le cap passe de 90° à 270°.
+    for (let t = 80; t <= 140; t++) push(t, 270, resume && t === 80);
+    return points;
+  };
+
+  it('lit un demi-tour compressé dans un seul pas, mais jamais à travers une reprise de pause', () => {
+    expect(observeTurns(buildTurn(false), 5).length).toBe(1);
+    expect(observeTurns(buildTurn(true), 5).length).toBe(0);
   });
 });

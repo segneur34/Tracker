@@ -22,9 +22,9 @@ interface Props {
 }
 
 /**
- * Onglet « tops » hors voile : les trois meilleurs passages sur chaque durée
- * ou distance du calcul, et le podium sur la carte (`TopsHighlight`). Partagé
- * par la course, le vélo et le surf ; posé dans le `ResizablePanel` du module.
+ * Onglet « tops » : les trois meilleurs passages sur chaque durée ou distance
+ * du calcul, et le podium sur la carte (`TopsHighlight`). Partagé par la
+ * voile, la course, le vélo et le surf ; posé dans le `ResizablePanel` du module.
  */
 export default function TopsPanel({ targets, tops, unit, selected, onSelect, accent, open, onToggle }: Props) {
   return (

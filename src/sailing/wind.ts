@@ -36,6 +36,16 @@ export const normalizeAngle = (angle: number): number => ((angle % 360) + 360) %
 export const pointerWindDeg = (dx: number, dy: number): number =>
   normalizeAngle(Math.round((Math.atan2(dx, -dy) * 180) / Math.PI));
 
+/**
+ * Vent saisi au clavier (« 245 », « -10 », « 370 ») : entier ramené dans
+ * [0, 360[, ou `null` si le texte ne dit rien.
+ */
+export const windDegFromText = (text: string): number | null => {
+  const trimmed = text.trim();
+  if (!/^[+-]?\d+(\.\d*)?$/.test(trimmed)) return null;
+  return normalizeAngle(Math.round(parseFloat(trimmed)));
+};
+
 /** Une case de la polaire de vitesse : angle au vent (« 30° ») et vitesse max, en nœuds. */
 export interface PolarBin {
   angle: string;
@@ -171,8 +181,10 @@ export const interpolateDirection = (
 
 /**
  * Vent en fonction du temps à partir de mesures ponctuelles : interpolation
- * entre deux mesures, valeur de la plus proche au-delà des bornes, et repli
- * fourni quand il n'y a aucune mesure.
+ * entre deux mesures, valeur de la plus proche à moins de `maxGapMs` des
+ * bornes, et repli fourni partout ailleurs : dans un trou trop large, au-delà
+ * de `maxGapMs` avant la première mesure ou après la dernière (même règle aux
+ * bords qu'au milieu, décision du 27/10), et sans aucune mesure.
  */
 export const buildWindTimeline = (
   samples: TimedDirection[],
@@ -183,13 +195,7 @@ export const buildWindTimeline = (
   if (sorted.length === 0) return () => fallback;
   const reference = circularMean(sorted.map((s) => s.direction)).mean;
 
-  return (timeMs: number) => {
-    const interpolated = interpolateDirection(sorted, timeMs, reference, maxGapMs);
-    if (interpolated !== null) return interpolated;
-    if (timeMs <= sorted[0].timeMs) return sorted[0].direction;
-    if (timeMs >= sorted[sorted.length - 1].timeMs) return sorted[sorted.length - 1].direction;
-    return fallback;
-  };
+  return (timeMs: number) => interpolateDirection(sorted, timeMs, reference, maxGapMs) ?? fallback;
 };
 
 // ---------------------------------------------------------------------------
@@ -406,8 +412,9 @@ export const observeTurns = (
       (points[j + 1].timeMs - points[i].timeMs <= windowMs ||
         // Fenêtre vide : un enregistreur économique s'est tu pendant le
         // virage, qui tient alors dans ce seul pas. Même lecture que dans
-        // `analyzeManeuvers`, pour que les deux voient les mêmes virages.
-        (j === i && points[j + 1].timeMs - points[i].timeMs <= MANEUVER_MAX_STEP_S * 1000))
+        // `analyzeManeuvers`, pour que les deux voient les mêmes virages ;
+        // comme elle, jamais à travers une reprise de pause.
+        (j === i && !points[j + 1].segmentStart && points[j + 1].timeMs - points[i].timeMs <= MANEUVER_MAX_STEP_S * 1000))
     ) {
       const step = angleDiff(points[j + 1].bearing, points[j].bearing);
       cumulativeTurn += step;

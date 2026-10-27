@@ -22,6 +22,7 @@ import GeneralStats from '../components/GeneralStats';
 import { shareableStats, type ShareStat } from '../core/shareImage';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
+import SessionThresholdField from '../components/SessionThresholdField';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import SurfSpanLayer, { type SurfSpanShown } from '../components/SurfSpanLayer';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
@@ -49,7 +50,7 @@ import { computeAllTopSegments } from '../core/topSegments';
 import { trackColorSegments } from '../core/trackColor';
 import {
   SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
-  fromDisplaySpeed, toDisplaySpeed, type SpeedUnit,
+  fromDisplaySpeed, toDisplaySpeed,
 } from '../core/units';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useGpxSession } from '../hooks/useGpxSession';
@@ -151,53 +152,6 @@ const ShowButton = ({ shown, onClick, disabled }: { shown: boolean; onClick: () 
     {shown ? 'Masquer' : 'Voir'}
   </button>
 );
-
-/**
- * Seuil propre à la session, saisi dans l'unité des vitesses et rangé dans
- * celle du profil (`thresholdUnit`). Texte local, comme `SpeedRangeEditor` :
- * une frappe intermédiaire n'est pas réécrite par le rendu suivant.
- */
-function SessionThresholdField({ label, title, value, defaultValue, isOverridden, unit, thresholdUnit, onChange }: {
-  label: string;
-  title: string;
-  /** Seuil appliqué, dans `thresholdUnit`. */
-  value: number;
-  defaultValue: number;
-  isOverridden: boolean;
-  unit: SpeedUnit;
-  thresholdUnit: SpeedUnit;
-  /** Nouveau seuil, dans `thresholdUnit`, ou `null` pour revenir au défaut. */
-  onChange: (next: number | null) => void;
-}) {
-  const shown = (v: number): string => String(Number(toDisplaySpeed(fromDisplaySpeed(v, thresholdUnit), unit).toFixed(unit === 'ms' ? 2 : 1)));
-  const [text, setText] = useState(() => shown(value));
-  const key = `${value}|${unit}`;
-  const [prevKey, setPrevKey] = useState(key);
-  if (key !== prevKey) {
-    setPrevKey(key);
-    setText(shown(value));
-  }
-  return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }} title={title}>
-      <strong>{label} :</strong>
-      <input type="number" min={0} step={unit === 'ms' ? 0.1 : 0.5} value={text} aria-label={label}
-        onChange={(e) => {
-          setText(e.target.value);
-          const parsed = parseFloat(e.target.value);
-          if (isNaN(parsed) || parsed <= 0) return;
-          const next = toDisplaySpeed(fromDisplaySpeed(parsed, unit), thresholdUnit);
-          if (isFinite(next) && next > 0) onChange(next);
-        }}
-        className="ui-field ui-field--s num" style={{ width: '68px', textAlign: 'right' }} />
-      {SPEED_UNIT_LABEL[unit]}
-      {isOverridden && (
-        <Button size="s" onClick={() => onChange(null)} title={`Revenir au défaut (${shown(defaultValue)} ${SPEED_UNIT_LABEL[unit]})`}>
-          Défaut
-        </Button>
-      )}
-    </label>
-  );
-}
 
 /** Une ligne du graphe : `index` renvoie au point de trace d'origine. */
 interface ChartRow {

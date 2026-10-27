@@ -4,7 +4,7 @@ import { usesMarkCourse } from '../core/sportProfiles';
 import { getBeeper } from '../platform/beeper';
 import type { LocationFix } from '../platform/location';
 import {
-  START_MARK_GUIDE, aimAtTarget, beepIntervalMs, isCourseFinished, remainingCourseM, skipMark as skipInState, stepMarkGuide, validationRadiusM,
+  START_MARK_GUIDE, aimAtTarget, beepIntervalMs, isCourseFinished, remainingCourseM, resumedGuideState, skipMark as skipInState, stepMarkGuide, validationRadiusM,
   type LatLon, type MarkGuideSettings, type MarkGuideState, type MarkOutcome,
 } from '../recording/markGuide';
 import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
@@ -69,6 +69,8 @@ interface Session {
   muted: boolean;
   /** Dernier rythme envoyé au greffon, pour ne pas le renvoyer à chaque position. */
   sent: { intervalMs: number | null; vibrate: boolean } | null;
+  /** Vrai pendant une pause manuelle : à la reprise, la position d'avant la pause est oubliée. */
+  manualPause: boolean;
 }
 
 let session: Session | null = null;
@@ -163,9 +165,18 @@ const sync = () => {
       bearingDeg: null,
       muted: false,
       sent: null,
+      manualPause: false,
     };
     publish();
     return;
+  }
+  // Pause manuelle : à la reprise, la position d'avant la pause est oubliée
+  // (le segment qui enjambe la pause n'a pas été parcouru).
+  if (recorder.status === 'paused' && recorder.pausedReason === 'manual') {
+    session.manualPause = true;
+  } else if (session.manualPause && recorder.status === 'recording') {
+    session.manualPause = false;
+    session.state = resumedGuideState(session.state);
   }
   if (session.activityId !== activity.id) {
     // Une autre activité de voile : ses propres bips, sauf si le parcours a les siens.

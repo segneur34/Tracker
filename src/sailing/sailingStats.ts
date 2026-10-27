@@ -1,7 +1,7 @@
 import { buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
 import { getActiveThresholds, getSportProfile } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
-import type { SportType, TrackPoint } from '../core/types';
+import type { CumulativeTrack, SportType, TrackPoint } from '../core/types';
 import { knotsToMs, msToKnots } from '../core/units';
 import type { SessionStats } from '../types/sailing';
 import { DEFAULT_SAILING_SPORT, SAILING_TOP_TARGETS, getDefaultThresholdKn } from './sailingConfig';
@@ -15,7 +15,28 @@ export interface SailingStatsOptions {
    * bateau, sans seuil : toute la session y compte en navigation.
    */
   activeThresholdKn?: number;
+  /** Cumuls déjà calculés, pour ne pas reparcourir la trace. */
+  cumulative?: CumulativeTrack;
+  /**
+   * Tops de vitesse déjà calculés (`computeSailingTops`) : ils ne dépendent
+   * que de la trace, pas du seuil, et ne sont pas refaits à chaque réglage.
+   */
+  tops?: SessionStats['tops'];
 }
+
+/** Tops de vitesse de la voile, en nœuds, sur les sept cibles du calcul. */
+export const computeSailingTops = (track: TrackPoint[], cumulative: CumulativeTrack): SessionStats['tops'] => {
+  const tops = computeAllTopSegments(track, cumulative, SAILING_TOP_TARGETS, msToKnots);
+  return {
+    t2s: tops.t2s,
+    t5s: tops.t5s,
+    t10s: tops.t10s,
+    d100m: tops.d100m,
+    d500m: tops.d500m,
+    d1000m: tops.d1000m,
+    d1NM: tops.d1NM,
+  };
+};
 
 /**
  * Statistiques d'une session à voile : la base générique, plus les tops de
@@ -32,7 +53,7 @@ export const buildSailingSessionStats = (
   const activeThresholdKn = options.activeThresholdKn ?? getDefaultThresholdKn(sport);
   const thresholds = getActiveThresholds(profile, activeThresholdKn);
 
-  const cumulative = buildCumulativeTrack(track);
+  const cumulative = options.cumulative ?? buildCumulativeTrack(track);
   // Sans seuil (bateau) : toute la session en navigation, pauses de l'enregistrement et trous immobiles ôtés.
   const activityMask = thresholdActivityMask(track, profile, activeThresholdKn);
 
@@ -44,18 +65,5 @@ export const buildSailingSessionStats = (
     activityMask,
   });
 
-  const tops = computeAllTopSegments(track, cumulative, SAILING_TOP_TARGETS, msToKnots);
-
-  return {
-    ...base,
-    tops: {
-      t2s: tops.t2s,
-      t5s: tops.t5s,
-      t10s: tops.t10s,
-      d100m: tops.d100m,
-      d500m: tops.d500m,
-      d1000m: tops.d1000m,
-      d1NM: tops.d1NM,
-    },
-  };
+  return { ...base, tops: options.tops ?? computeSailingTops(track, cumulative) };
 };

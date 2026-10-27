@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type PointerEvent } from 'react';
-import { pointerWindDeg, type PolarBin } from '../sailing/wind';
+import { pointerWindDeg, windDegFromText, type PolarBin } from '../sailing/wind';
 import SpeedPolarChart from './SpeedPolarChart';
 import Button from './ui/Button';
 
@@ -31,8 +31,9 @@ interface WindAdjustOverlayProps {
  * translucide, la trace visible dessous, dont on tire la flèche à la souris ou
  * au doigt ; un bandeau pour saisir l'angle, l'inverser ou revenir au calculé ;
  * la polaire à la demande, qui suit la flèche. Le vent n'est écrit qu'au
- * lâcher : manœuvres, VMG et vent ne se recalculent qu'une fois. Hors de la
- * boussole et du bandeau, la carte reste maniable.
+ * lâcher de la flèche, et à Entrée ou en quittant le champ de l'angle :
+ * manœuvres, VMG et vent ne se recalculent qu'une fois, pas à chaque chiffre.
+ * Hors de la boussole et du bandeau, la carte reste maniable.
  */
 function WindAdjustOverlay({ windDeg, autoWind, confidence, manual, onChange, onClose, polarAt, unitSymbol }: WindAdjustOverlayProps) {
   /** Angle pendant qu'on tire la flèche, avant d'être écrit. */
@@ -41,6 +42,23 @@ function WindAdjustOverlay({ windDeg, autoWind, confidence, manual, onChange, on
   const dialRef = useRef<SVGSVGElement>(null);
   const shownDeg = dragDeg ?? windDeg ?? autoWind ?? 0;
   const polar = useMemo(() => (polarShown ? polarAt(shownDeg) : []), [polarShown, polarAt, shownDeg]);
+  /** Texte du champ de l'angle, à part du vent retenu : il se vide et se retape sans être réécrit. */
+  const fieldValue = dragDeg ?? windDeg;
+  const [text, setText] = useState(() => (fieldValue === null ? '' : String(fieldValue)));
+  const [prevFieldValue, setPrevFieldValue] = useState(fieldValue);
+  if (fieldValue !== prevFieldValue) {
+    setPrevFieldValue(fieldValue);
+    setText(fieldValue === null ? '' : String(fieldValue));
+  }
+  const commitText = () => {
+    const deg = windDegFromText(text);
+    if (deg === null) {
+      setText(fieldValue === null ? '' : String(fieldValue));
+      return;
+    }
+    setText(String(deg));
+    if (deg !== windDeg) onChange(deg);
+  };
 
   const degAt = (e: PointerEvent<SVGSVGElement>): number | null => {
     const rect = dialRef.current?.getBoundingClientRect();
@@ -83,12 +101,10 @@ function WindAdjustOverlay({ windDeg, autoWind, confidence, manual, onChange, on
         </span>
         <label className="an-wind__field">
           <input type="number" min={0} max={359} className="ui-field ui-field--s num" aria-label="Vent en degrés"
-            value={dragDeg ?? windDeg ?? ''}
-            onChange={(e) => {
-              if (e.target.value === '') return;
-              const parsed = parseInt(e.target.value, 10);
-              if (!isNaN(parsed)) onChange(((parsed % 360) + 360) % 360);
-            }} />°
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={commitText}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitText(); } }} />°
         </label>
         <Button size="s" onClick={() => onChange((shownDeg + 180) % 360)}>Inverser</Button>
         {manual && <Button size="s" onClick={() => onChange(null)} title="Revenir au vent calculé">Calculé</Button>}
