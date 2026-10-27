@@ -53,8 +53,13 @@ export const RECORD_VERSION = 1;
  *
  * 7 (21 octobre 2026) : bateau sans seuil d'activité, toute la session en
  * navigation (`movingTimeS`, `movingDistanceM`).
+ *
+ * 9 (27 octobre 2026) : arrêts complets ôtés d'office à seuil 0
+ * (`stillThreshold`), détente basse jamais nulle, trous de trace (pas plus long
+ * que `maxGapS`) hors du temps en mouvement et distance bornée par la corde,
+ * points d'une même seconde répartis.
  */
-export const SUMMARY_CALC_VERSION = 8;
+export const SUMMARY_CALC_VERSION = 9;
 
 export type SessionSource = 'enregistrement' | 'import';
 

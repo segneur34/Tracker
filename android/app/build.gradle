@@ -4,7 +4,12 @@ apply plugin: 'com.android.application'
 // croître à chaque APK diffusé, sans quoi Android refuse la mise à jour.
 def appVersion = new groovy.json.JsonSlurper().parse(file('../../package.json')).version as String
 def versionParts = appVersion.tokenize('.').collect { it.replaceAll(/\D.*$/, '') as int }
-def appVersionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
+// Code croissant tant que le patch reste sous 1000 : 0.3.65 -> 3 065, 0.4.0 -> 4 000.
+// L'ancienne formule (x 10000, x 100) donnait un seul code pour 0.3.100 et 0.4.0.
+if (versionParts.size() != 3 || versionParts[2] > 999 || versionParts[1] > 999) {
+    throw new GradleException("Version ${appVersion} : il faut trois nombres, mineur et patch sous 1000 (versionCode)")
+}
+def appVersionCode = versionParts[0] * 1000000 + versionParts[1] * 1000 + versionParts[2]
 
 // Clé de signature, hors du dépôt : android/keystore.properties (ignoré par git)
 // désigne le fichier .jks et son mot de passe. Debug et release sont signés par

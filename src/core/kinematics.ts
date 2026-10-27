@@ -68,6 +68,45 @@ export const distanceToSegmentM = (
 export const pointTimeMs = (time: string | Date): number =>
   typeof time === 'string' ? new Date(time).getTime() : time.getTime();
 
+/**
+ * Dates des points, en millisecondes, avec les points d'une même date répartis
+ * régulièrement jusqu'à la date suivante. Certaines applications tronquent
+ * l'heure à la seconde : à 5 Hz, cinq points partagent alors la même date, les
+ * quatre pas de durée nulle n'ont pas de vitesse et celui qui franchit la
+ * seconde ne porte qu'un cinquième du chemin (27/10). Une suite de `n` points
+ * de date `T` suivie d'une date `T' > T` prend `T + k × (T' − T) / n` ; un point
+ * à la même position que le précédent de la suite (vrai doublon) garde la date
+ * de celui-ci, son pas reste nul. La dernière suite de la trace s'étale sur
+ * l'écart qui la précède ; rien si elle commence la trace.
+ */
+export const spreadEqualTimes = (
+  points: { lat: number; lon: number }[],
+  timesMs: number[]
+): number[] => {
+  const spread = timesMs.slice();
+  let start = 0;
+  while (start < timesMs.length) {
+    let end = start + 1;
+    while (end < timesMs.length && timesMs[end] === timesMs[start]) end++;
+    const n = end - start;
+    if (n >= 2) {
+      const t = timesMs[start];
+      let spanMs = 0;
+      if (end < timesMs.length) spanMs = timesMs[end] > t ? timesMs[end] - t : 0;
+      else if (start >= 1 && t > timesMs[start - 1]) spanMs = t - timesMs[start - 1];
+      if (spanMs > 0) {
+        for (let k = 1; k < n; k++) {
+          const i = start + k;
+          const same = points[i].lat === points[i - 1].lat && points[i].lon === points[i - 1].lon;
+          spread[i] = same ? spread[i - 1] : t + (k * spanMs) / n;
+        }
+      }
+    }
+    start = end;
+  }
+  return spread;
+};
+
 /** Unité dans laquelle un fichier exprime la vitesse de l'appareil. */
 export type DeviceSpeedUnit = 'ms' | 'kmh' | 'kn';
 
@@ -123,9 +162,10 @@ export const detectDeviceSpeedUnit = (
 /** Unité de la vitesse appareil d'une trace brute, ou `null` si elle n'en porte pas. */
 export const detectTrackDeviceSpeedUnit = (points: RawTrackPoint[]): DeviceSpeedUnit | null => {
   if (!points.some((p) => p.speedMs !== undefined)) return null;
+  const timesMs = spreadEqualTimes(points, points.map((p) => pointTimeMs(p.time)));
   const derived: number[] = [0];
   for (let i = 1; i < points.length; i++) {
-    const dt = (pointTimeMs(points[i].time) - pointTimeMs(points[i - 1].time)) / 1000;
+    const dt = (timesMs[i] - timesMs[i - 1]) / 1000;
     derived.push(
       dt > 0
         ? haversineDistance(points[i - 1].lat, points[i - 1].lon, points[i].lat, points[i].lon) / dt
@@ -153,16 +193,19 @@ const DETOUR_FLOOR_M = 1;
  * déplacé suivi d'un trou échappe à `clampByAcceleration`, qui cherche le
  * retour dans les 3 s (session Komoot à 41 nd, §10). La seconde condition
  * garde un vrai demi-tour serré, parcouru à vitesse constante. Deux points de
- * suite ne sont jamais écartés : le suivant d'un point écarté est sauté.
+ * suite ne sont jamais écartés : le suivant d'un point écarté est sauté. Un
+ * point de reprise après une pause (`segmentStart`), ou qui la précède, n'est
+ * pas testé : son pas enjambe la pause.
  */
 export const detourSpikes = (
-  points: { lat: number; lon: number }[],
+  points: { lat: number; lon: number; segmentStart?: boolean }[],
   timesMs: number[],
   maxDetourRatio: number = DEFAULT_MAX_DETOUR_RATIO,
   maxAccel: number = DEFAULT_MAX_ACCELERATION
 ): number[] => {
   const spikes: number[] = [];
   for (let i = 1; i < points.length - 1; i++) {
+    if (points[i].segmentStart || points[i + 1].segmentStart) continue;
     const dtIn = (timesMs[i] - timesMs[i - 1]) / 1000;
     const dtOut = (timesMs[i + 1] - timesMs[i]) / 1000;
     if (dtIn <= 0 || dtOut <= 0) continue;
@@ -191,7 +234,23 @@ export interface KinematicsOptions {
   maxSpeedMs?: number;
   /** Ignorer la vitesse de l'appareil et toujours dériver depuis les positions. */
   forceDerivedSpeed?: boolean;
+  /**
+   * Pas plus long que cette durée : trou de la trace, en secondes (`SportProfile.maxGapS`).
+   * Défaut `Infinity` : sans profil, aucun pas n'est un trou.
+   */
+  maxGapS?: number;
 }
+
+/**
+ * Pas d'un trou de la trace : sa distance est bornée par la corde du pas
+ * multipliée par ce facteur, sans dimension (27/10). La vitesse lue à la
+ * reprise ne dit rien de ce qui s'est passé pendant le trou : intégrée sur
+ * toute sa durée, une reprise à 20 nœuds après 45 min d'arrêt ajouterait 27 km.
+ */
+export const GAP_CHORD_FACTOR = 1.5;
+
+/** Pas plus court que cette corde, en mètres : positions identiques, le pas n'a pas de cap. */
+const NULL_STEP_M = 0.01;
 
 /**
  * Calcule vitesse et cap pour chaque point d'une trace, en m/s.
@@ -200,6 +259,10 @@ export interface KinematicsOptions {
  * du décalage Doppler du signal satellite et ne souffre pas des sauts de
  * position. À défaut, elle est dérivée des positions successives, puis
  * écrêtée sur l'accélération et filtrée par médiane temporelle.
+ *
+ * Les points d'une même date sont d'abord répartis dans leur intervalle
+ * (`spreadEqualTimes`) : les `timeMs` rendus sont ces dates réparties. Un pas
+ * plus long que `maxGapS` (trou de la trace) porte `gapDistanceM`.
  */
 export const computeKinematics = (
   points: RawTrackPoint[],
@@ -209,30 +272,47 @@ export const computeKinematics = (
 
   const medianWindowSeconds = options.medianWindowSeconds ?? DEFAULT_MEDIAN_WINDOW_S;
   const maxAcceleration = options.maxAcceleration ?? DEFAULT_MAX_ACCELERATION;
+  const maxGapS = options.maxGapS ?? Infinity;
 
   const useDeviceSpeed =
     !options.forceDerivedSpeed && points.some((p) => p.speedMs !== undefined);
   const speedSource: SpeedSource = useDeviceSpeed ? 'doppler' : 'derived';
 
-  const timesMs = points.map((p) => pointTimeMs(p.time));
+  const timesMs = spreadEqualTimes(points, points.map((p) => pointTimeMs(p.time)));
   const derivedSpeeds: number[] = [0];
-  const bearings: number[] = [0];
+  const chordsM: number[] = [0];
+  // Cap de chaque pas ; `NaN` pour un pas nul (positions identiques), qui n'a pas de direction.
+  const bearings: number[] = [NaN];
 
   for (let i = 1; i < points.length; i++) {
     const p0 = points[i - 1];
     const p1 = points[i];
     const dt = (timesMs[i] - timesMs[i - 1]) / 1000;
-    derivedSpeeds.push(dt > 0 ? haversineDistance(p0.lat, p0.lon, p1.lat, p1.lon) / dt : 0);
-    bearings.push(initialBearing(p0.lat, p0.lon, p1.lat, p1.lon));
+    const chordM = haversineDistance(p0.lat, p0.lon, p1.lat, p1.lon);
+    chordsM.push(chordM);
+    derivedSpeeds.push(dt > 0 ? chordM / dt : 0);
+    bearings.push(chordM < NULL_STEP_M ? NaN : initialBearing(p0.lat, p0.lon, p1.lat, p1.lon));
   }
 
   // Reprise après une pause : le pas qui y mène enjambe la pause, ni sa vitesse
   // ni son cap ne disent rien. Le point prend ceux du pas suivant, comme le
-  // premier point de la trace.
+  // premier point de la trace ; une reprise en dernier point, ceux du pas précédent.
   for (let i = points.length - 2; i >= 1; i--) {
     if (!points[i].segmentStart) continue;
     derivedSpeeds[i] = derivedSpeeds[i + 1];
     bearings[i] = bearings[i + 1];
+  }
+  const last = points.length - 1;
+  if (last >= 2 && points[last].segmentStart) {
+    derivedSpeeds[last] = derivedSpeeds[last - 1];
+    bearings[last] = bearings[last - 1];
+  }
+
+  // Pas nul : il garde le cap du pas précédent (un arrêt sur place ne tourne pas
+  // au nord) ; les premiers pas nuls prennent celui du premier pas qui avance.
+  const firstBearing = bearings.find((b) => !Number.isNaN(b)) ?? 0;
+  for (let i = 1; i < bearings.length; i++) {
+    if (Number.isNaN(bearings[i])) bearings[i] = i === 1 ? firstBearing : bearings[i - 1];
   }
 
   // Position qui saute puis revient : les deux intervalles du point prennent
@@ -279,6 +359,14 @@ export const computeKinematics = (
   });
   const smoothed = medianFilterByTime(clamped, timesMs, medianWindowSeconds);
 
+  // Trou de la trace : la distance du pas est bornée par sa corde (`GAP_CHORD_FACTOR`).
+  const gapDistances = points.map((p, i) => {
+    if (i === 0 || p.segmentStart) return undefined;
+    const dt = (timesMs[i] - timesMs[i - 1]) / 1000;
+    if (!(dt > maxGapS)) return undefined;
+    return Math.min(clamped[i] * dt, chordsM[i] * GAP_CHORD_FACTOR);
+  });
+
   return points.map((p, i) => ({
     lat: p.lat,
     lon: p.lon,
@@ -293,5 +381,6 @@ export const computeKinematics = (
     ...(p.courseDeg !== undefined ? { courseDeg: p.courseDeg } : {}),
     speedSource,
     ...(p.segmentStart ? { segmentStart: true as const } : {}),
+    ...(gapDistances[i] !== undefined ? { gapDistanceM: gapDistances[i] } : {}),
   }));
 };

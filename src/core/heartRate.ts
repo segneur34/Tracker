@@ -23,7 +23,9 @@ const validBpm = (hr: number | undefined): hr is number =>
 
 /**
  * FC lissée sur `windowS` secondes, centrée, point par point ; `null` là où le
- * point n'a pas de FC. Le lissage ne franchit pas un trou de plus de `gapS`.
+ * point n'a pas de FC. Le lissage porte sur la suite des seuls points à FC : un
+ * point sans FC entre deux ne la coupe pas (GPS à 5 Hz, FC à 1 Hz, 27/10) ;
+ * elle est coupée par un trou de plus de `gapS` entre deux FC successives.
  */
 export const smoothHeartRate = (points: readonly HeartRatePoint[], windowS: number, gapS: number): (number | null)[] => {
   const out: (number | null)[] = points.map(() => null);
@@ -35,10 +37,7 @@ export const smoothHeartRate = (points: readonly HeartRatePoint[], windowS: numb
     run = [];
   };
   for (let i = 0; i < points.length; i++) {
-    if (!validBpm(points[i].hr)) {
-      flush();
-      continue;
-    }
+    if (!validBpm(points[i].hr)) continue;
     const prev = run[run.length - 1];
     if (prev !== undefined && points[i].timeMs - points[prev].timeMs > gapS * 1000) flush();
     run.push(i);
@@ -48,21 +47,26 @@ export const smoothHeartRate = (points: readonly HeartRatePoint[], windowS: numb
 };
 
 /**
- * Chaque intervalle compté : de `i - 1` à `i`, tous deux à FC, sans trou ; la
- * durée va à la FC lissée de `i`, arrondie au battement.
+ * Chaque intervalle compté : de `from`, le point à FC précédent (`i - 1` quand
+ * tous les points ont la leur), à `i`, sans trou de plus de `gapS` entre les
+ * deux ; la durée va à la FC lissée de `i`, arrondie au battement.
  */
 const forEachCounted = (
   points: readonly HeartRatePoint[],
   smoothed: readonly (number | null)[],
   gapS: number,
-  visit: (i: number, bpm: number, dtS: number) => void
+  visit: (i: number, bpm: number, dtS: number, from: number) => void
 ) => {
-  for (let i = 1; i < points.length; i++) {
+  let from = -1;
+  for (let i = 0; i < points.length; i++) {
     const bpm = smoothed[i];
-    if (bpm === null || smoothed[i - 1] === null) continue;
-    const dtS = (points[i].timeMs - points[i - 1].timeMs) / 1000;
+    if (bpm === null) continue;
+    const previous = from;
+    from = i;
+    if (previous < 0) continue;
+    const dtS = (points[i].timeMs - points[previous].timeMs) / 1000;
     if (dtS <= 0 || dtS > gapS) continue;
-    visit(i, Math.round(bpm), dtS);
+    visit(i, Math.round(bpm), dtS, previous);
   }
 };
 
@@ -331,10 +335,10 @@ export const efficiencyBlocks = (
   let block: { index: number; speed: number; bpm: number; s: number } | null = null;
   let last = -1;
   let elapsedS = 0;
-  forEachCounted(points, smoothed, gapS, (i, bpm, dtS) => {
+  forEachCounted(points, smoothed, gapS, (i, bpm, dtS, from) => {
     if (!active[i] || !isFinite(speedsMs[i])) return;
-    if (block !== null && last !== i - 1) block = null;
-    block ??= { index: i - 1, speed: 0, bpm: 0, s: 0 };
+    if (block !== null && last !== from) block = null;
+    block ??= { index: from, speed: 0, bpm: 0, s: 0 };
     block.speed += speedsMs[i] * dtS;
     block.bpm += bpm * dtS;
     block.s += dtS;
@@ -367,10 +371,15 @@ export const spanHeartRate = (
   let sum = 0;
   let coveredS = 0;
   let maxBpm = 0;
-  for (let i = Math.max(start + 1, 1); i <= end && i < points.length; i++) {
+  // Comme `forEachCounted`, d'une FC à la suivante, sans exiger des points contigus.
+  let from = -1;
+  for (let i = Math.max(start, 0); i <= end && i < points.length; i++) {
     const bpm = smoothed[i];
-    if (bpm === null || smoothed[i - 1] === null) continue;
-    const dtS = (points[i].timeMs - points[i - 1].timeMs) / 1000;
+    if (bpm === null) continue;
+    const previous = from;
+    from = i;
+    if (previous < 0) continue;
+    const dtS = (points[i].timeMs - points[previous].timeMs) / 1000;
     if (dtS <= 0 || dtS > gapS) continue;
     sum += bpm * dtS;
     coveredS += dtS;
@@ -405,13 +414,13 @@ export const heartRateZonePaths = (
   const paths: [number, number][][] = [];
   let current: [number, number][] | null = null;
   let last = -1;
-  forEachCounted(points, smoothed, gapS, (i, bpm) => {
+  forEachCounted(points, smoothed, gapS, (i, bpm, _, from) => {
     if (zoneOf(bpm, bounds) !== zone) return;
-    if (current === null || last !== i - 1) {
-      current = [[points[i - 1].lat, points[i - 1].lon]];
+    if (current === null || last !== from) {
+      current = [[points[from].lat, points[from].lon]];
       paths.push(current);
     }
-    current.push([points[i].lat, points[i].lon]);
+    for (let k = from + 1; k <= i; k++) current.push([points[k].lat, points[k].lon]);
     last = i;
   });
   return paths;

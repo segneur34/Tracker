@@ -61,6 +61,21 @@ describe('heartRateStats', () => {
     expect(Math.abs(sb.maxBpm - sa.maxBpm)).toBeLessThanOrEqual(1);
     expect(Math.abs(sb.coveredS - sa.coveredS)).toBeLessThanOrEqual(1);
   });
+
+  it('compte une FC écrite sur un point sur cinq, GPS à 5 Hz (A-B11)', () => {
+    // FC à 1 Hz sur une trace à 5 Hz : 300 s à 130, puis 300 s à 150.
+    const hrAt = (t: number) => (Math.abs(t - Math.round(t)) < 1e-9 ? (t < 300 ? 130 : 150) : undefined);
+    const points = series(0, 600, 5, hrAt);
+    const smoothed = analyze(points);
+    const stats = heartRateStats(points, smoothed, P.gapS)!;
+    expect(stats).not.toBeNull();
+    expect(stats.avgBpm).toBeCloseTo(140, 0);
+    expect(stats.coveredS).toBeCloseTo(599, 5);
+    // Comme si tous les points avaient leur FC, une fois sur cinq.
+    const dense = series(0, 600, 1, (t) => (t < 300 ? 130 : 150));
+    expect(stats.avgBpm).toBeCloseTo(heartRateStats(dense, analyze(dense), P.gapS)!.avgBpm, 5);
+    expect(timeInZones(points, smoothed, [100, 120, 140, 160, 180], P.gapS).reduce((a, b) => a + b, 0)).toBeCloseTo(599, 5);
+  });
 });
 
 describe('heartRateThresholds', () => {

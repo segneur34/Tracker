@@ -66,6 +66,7 @@ export const useSailingSession = ({
     medianWindowSeconds: profile.medianWindowSeconds,
     maxDetourRatio: profile.maxDetourRatio,
     maxSpeedMs: profile.maxPlausibleSpeedMs,
+    maxGapS: profile.maxGapS,
     scaleFiltersToSession: true,
     referenceSpeedOverrideMs: sessionReferenceMs ?? undefined,
   });

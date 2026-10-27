@@ -13,7 +13,7 @@
  * résultat.
  */
 
-import { haversineDistance, detectTrackDeviceSpeedUnit, DEVICE_SPEED_FACTOR, pointTimeMs } from './kinematics';
+import { haversineDistance, detectTrackDeviceSpeedUnit, DEVICE_SPEED_FACTOR, pointTimeMs, spreadEqualTimes } from './kinematics';
 import { DEFAULT_MAX_ACCELERATION } from './speedFilter';
 import type { RawTrackPoint } from './types';
 
@@ -63,12 +63,11 @@ export const referenceSpeedMs = (points: RawTrackPoint[]): number => {
   const deviceFactor = deviceUnit === null ? 0 : DEVICE_SPEED_FACTOR[deviceUnit];
 
   const samples: { speed: number; weight: number }[] = [];
-  let previousMs = pointTimeMs(points[0].time);
+  // Points d'une même date répartis dans leur intervalle, comme dans `computeKinematics`.
+  const timesMs = spreadEqualTimes(points, points.map((p) => pointTimeMs(p.time)));
 
   for (let i = 1; i < points.length; i++) {
-    const timeMs = pointTimeMs(points[i].time);
-    const dt = (timeMs - previousMs) / 1000;
-    previousMs = timeMs;
+    const dt = (timesMs[i] - timesMs[i - 1]) / 1000;
     if (dt <= 0) continue;
 
     const p0 = points[i - 1];

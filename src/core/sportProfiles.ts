@@ -36,6 +36,12 @@ export const DEFAULT_LOOP_RETURN_MAX_RATIO = 1.5;
 /** Bornes du réglage du retour de boucle, en fois l'aller. */
 export const LOOP_RETURN_RATIO_RANGE = { min: 1, max: 3 } as const;
 
+/**
+ * Pas plus long que cette durée : trou de la trace (arrêt sans point, GPS
+ * perdu), en secondes, commun à tous les supports (décision du 27/10).
+ */
+const MAX_GAP_S = 10;
+
 /** Pas proposés pour l'altitude du terrain, en mètres. */
 export const TERRAIN_STEP_CHOICES_M = [5, 10, 20] as const;
 
@@ -313,7 +319,7 @@ export interface SurfProfile {
   minWaveM: number;
   /** Rame de départ : le mouvement continu qui précède la vague, cherché au plus cette durée, en secondes. */
   takeoffSearchS: number;
-  /** Écart entre deux points au-delà duquel la trace a un trou (téléphone sous l'eau), en secondes. */
+  /** Écart entre deux points au-delà duquel la trace a un trou (téléphone sous l'eau), en secondes ; le même que `SportProfile.maxGapS`. */
   maxGapS: number;
   /** Seuil de vol sur foil, dans `thresholdUnit` : le seuil d'activité par défaut d'une session sur foil. */
   foilActiveThreshold: number;
@@ -349,9 +355,21 @@ export interface SportProfile {
   /**
    * Écarts appliqués au seuil pour obtenir les deux détentes.
    * Démarrage au-dessus de seuil + `enterOffset`, arrêt en dessous de
-   * seuil + `exitOffset`, ce dernier étant négatif.
+   * seuil + `exitOffset`, ce dernier étant négatif. Quand seuil + `exitOffset`
+   * n'est pas positif (seuil bas, la marche à 0,5 km/h), l'arrêt se fait sous
+   * seuil × `EXIT_FLOOR_RATIO` : la détente basse n'est jamais nulle
+   * (`getActiveThresholds`).
    */
   activeHysteresis: { enterOffset: number; exitOffset: number };
+  /**
+   * Plancher d'arrêt, dans `thresholdUnit` : quand aucun seuil d'activité
+   * n'est réglé (seuil 0), un arrêt complet est ôté d'office du temps en
+   * mouvement sous ce plancher (décision du 27/10). En bateau, sans seuil, il
+   * ne sert qu'à juger un trou de la trace immobile.
+   */
+  stillThreshold: number;
+  /** Pas plus long que cette durée : trou de la trace (arrêt sans point, GPS perdu), en secondes. */
+  maxGapS: number;
   /** Durée de confirmation avant tout changement d'état d'activité, en secondes. */
   minStateDurationS: number;
   /** Largeur du filtre médian appliqué à la vitesse, en secondes. */
@@ -486,6 +504,8 @@ const SAILING_DEFAULTS = {
   speedUnit: 'kn' as SpeedUnit,
   thresholdUnit: 'kn' as SpeedUnit,
   activeHysteresis: { enterOffset: 0.5, exitOffset: -1 },
+  stillThreshold: 1,
+  maxGapS: MAX_GAP_S,
   minStateDurationS: 0,
   medianWindowSeconds: 3,
   maxDetourRatio: 3,
@@ -517,6 +537,9 @@ const RUNNING_PROFILE: SportProfile = {
   // Reprise au-dessus de 4 km/h, pause en dessous de 2 km/h, confirmée sur 3 s.
   defaultActiveThreshold: 3,
   activeHysteresis: { enterOffset: 1, exitOffset: -1 },
+  // Sans seuil réglé : arrêt complet sous 0,5 km/h, reprise au-dessus de 2 km/h.
+  stillThreshold: 1,
+  maxGapS: MAX_GAP_S,
   minStateDurationS: 3,
   medianWindowSeconds: 5,
   maxDetourRatio: 3,
@@ -547,6 +570,9 @@ const CYCLING_PROFILE: SportProfile = {
   // Reprise au-dessus de 6 km/h, pause en dessous de 3 km/h, confirmée sur 3 s.
   defaultActiveThreshold: 5,
   activeHysteresis: { enterOffset: 1, exitOffset: -2 },
+  // Sans seuil réglé : arrêt complet sous 1 km/h, reprise au-dessus de 3 km/h.
+  stillThreshold: 2,
+  maxGapS: MAX_GAP_S,
   minStateDurationS: 3,
   medianWindowSeconds: 3,
   maxDetourRatio: 3,
@@ -583,6 +609,8 @@ const SURF_PROFILE: SportProfile = {
   thresholdUnit: 'kmh',
   defaultActiveThreshold: 9,
   activeHysteresis: { enterOffset: 1, exitOffset: -2 },
+  stillThreshold: 2,
+  maxGapS: MAX_GAP_S,
   minStateDurationS: 0,
   medianWindowSeconds: 3,
   maxDetourRatio: 3,
@@ -603,7 +631,7 @@ const SURF_PROFILE: SportProfile = {
   heartRate: heartRateOffset(-10),
   cadence: null,
   surf: {
-    stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15, maxGapS: 10,
+    stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15, maxGapS: MAX_GAP_S,
     foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60, pump: PUMP_DETECTION,
   },
 };
@@ -684,7 +712,8 @@ export const defaultActiveThresholdOf = (profile: SportProfile, foil: boolean): 
 
 /**
  * Calcul au seuil d'activité réglable : tous sauf le bateau (`withoutActiveThreshold`).
- * Un seuil réglé à 0 veut dire « aucun seuil » (`thresholdActivityMask`).
+ * Un seuil réglé à 0 veut dire « aucun seuil réglé » ; les arrêts complets sont
+ * pourtant ôtés d'office, sous le plancher `stillThreshold` (`thresholdActivityMask`).
  */
 export const hasActiveThreshold = (profile: SportProfile): boolean => profile.withoutActiveThreshold === null;
 
@@ -772,11 +801,25 @@ export const usesMarkCourse = (family: SportFamily): boolean => family === 'voil
 export const familySports = (family: SportFamily): SportType[] =>
   (Object.keys(SPORT_PROFILES) as SportType[]).filter((sport) => SPORT_FAMILY[sport] === family);
 
-/** Les deux détentes du seuil d'activité, dans l'unité du profil. */
+/**
+ * Détente basse d'un seuil plus petit que l'écart `exitOffset`, en fois le
+ * seuil (rapport sans dimension, règle 4) : sans elle, la détente vaudrait 0 et
+ * le masque d'activité ne sortirait plus jamais une fois entré (27/10).
+ */
+export const EXIT_FLOOR_RATIO = 0.5;
+
+/**
+ * Les deux détentes du seuil d'activité, dans l'unité du profil. La détente
+ * basse vaut seuil + `exitOffset` si elle reste positive, sinon seuil ×
+ * `EXIT_FLOOR_RATIO` ; un seuil de 0 donne une détente basse nulle.
+ */
 export const getActiveThresholds = (
   profile: SportProfile,
   threshold: number
-): { enter: number; exit: number } => ({
-  enter: threshold + profile.activeHysteresis.enterOffset,
-  exit: Math.max(0, threshold + profile.activeHysteresis.exitOffset),
-});
+): { enter: number; exit: number } => {
+  const exit = threshold + profile.activeHysteresis.exitOffset;
+  return {
+    enter: threshold + profile.activeHysteresis.enterOffset,
+    exit: exit > 0 ? exit : threshold * EXIT_FLOOR_RATIO,
+  };
+};

@@ -77,6 +77,7 @@ export const analysisTrack = (
     maxDetourRatio: profile.maxDetourRatio,
     maxAcceleration: filters.maxAcceleration,
     maxSpeedMs: filters.maxSpeedMs,
+    maxGapS: profile.maxGapS,
   });
 };
 
@@ -141,7 +142,8 @@ const analyze = (
       },
     };
   }
-  // Sans seuil (bateau, ou seuil à 0) : toute la session compte en action, pauses de l'enregistrement ôtées.
+  // Seuil à 0 : arrêts complets ôtés d'office (`stillThreshold`) ; bateau : toute la session en navigation,
+  // pauses de l'enregistrement et trous immobiles ôtés.
   const mask = thresholdActivityMask(track, profile, threshold);
   return { track, movingTimeS: computeActiveTimeMs(track, mask) / 1000, movingDistanceM: computeActiveDistanceM(track, mask), mask };
 };

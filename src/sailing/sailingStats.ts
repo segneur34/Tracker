@@ -33,7 +33,7 @@ export const buildSailingSessionStats = (
   const thresholds = getActiveThresholds(profile, activeThresholdKn);
 
   const cumulative = buildCumulativeTrack(track);
-  // Sans seuil (bateau) : toute la session en navigation, pauses de l'enregistrement ôtées.
+  // Sans seuil (bateau) : toute la session en navigation, pauses de l'enregistrement et trous immobiles ôtés.
   const activityMask = thresholdActivityMask(track, profile, activeThresholdKn);
 
   const base = buildBaseSessionStats(track, {

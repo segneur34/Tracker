@@ -149,7 +149,7 @@ export interface StoredSettings {
   presetsVersion?: number;
   /** Familles cachées dans Réglages (§10, point 100) : ni proposées, ni listées ; rien n'est effacé. */
   hiddenFamilies?: SportFamily[];
-  /** Surcharges du seuil d'activité, dans l'unité du profil du calcul ; 0 : aucun seuil. */
+  /** Surcharges du seuil d'activité, dans l'unité du profil du calcul ; 0 : aucun seuil réglé, arrêts complets ôtés d'office. */
   thresholds?: ByActivity<number>;
   /** Pas des échantillons d'altitude du terrain (IGN), en mètres (course, vélo) ; absent : celui du profil. */
   terrainSteps?: ByActivity<number>;
@@ -856,7 +856,7 @@ export interface SportSettingsView {
   isSpeedUnitOverridden: boolean;
   distanceUnit: DistanceUnit;
   isDistanceUnitOverridden: boolean;
-  /** Seuil d'activité dans l'unité du profil ; 0 : aucun seuil. */
+  /** Seuil d'activité dans l'unité du profil ; 0 : aucun seuil réglé, arrêts complets ôtés d'office. */
   activeThreshold: number;
   isThresholdOverridden: boolean;
   /** Pas des échantillons d'altitude du terrain, en mètres ; `null` en voile. */
@@ -1367,8 +1367,9 @@ export const useSportSettings = (family: SportFamily) => {
   const pumping = resolvePumping(stored, activity) ?? false;
 
   /**
-   * Seuil réglé ou pré-réglé pour l'activité (0 : aucun seuil), `null` sans l'un ni l'autre : en voile,
-   * la suggestion selon l'allure ; en surf, le défaut dépend du foil de la session.
+   * Seuil réglé ou pré-réglé pour l'activité (0 : aucun seuil réglé, arrêts complets ôtés d'office),
+   * `null` sans l'un ni l'autre : en voile, la suggestion selon l'allure ; en surf, le défaut dépend du
+   * foil de la session.
    */
   const thresholdOverride = resolveThresholdOverride(stored, activity);
   const activeThreshold = thresholdOverride ?? defaultActiveThresholdOf(profile, foil);

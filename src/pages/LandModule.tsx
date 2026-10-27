@@ -275,6 +275,7 @@ function LandModule({ family }: { family: LandFamily }) {
     medianWindowSeconds: profile.medianWindowSeconds,
     maxDetourRatio: profile.maxDetourRatio,
     maxSpeedMs: profile.maxPlausibleSpeedMs,
+    maxGapS: profile.maxGapS,
   });
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans les graphes. */
   const heart = useSessionHeartRate(gpx.track, profile.heartRate);
@@ -401,7 +402,7 @@ function LandModule({ family }: { family: LandFamily }) {
     [terrainElevation.track, elevationProfile]
   );
 
-  // Seuil à 0 : aucun seuil, toute la session est en mouvement, pauses de l'enregistrement ôtées.
+  // Seuil à 0 : aucun seuil réglé ; pauses de l'enregistrement, arrêts complets et trous immobiles ôtés d'office.
   const activityMask = useMemo(() => thresholdActivityMask(gpx.track, profile, activeThreshold), [gpx.track, profile, activeThreshold]);
 
   const stats: RunningSessionStats | null = useMemo(() => {

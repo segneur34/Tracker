@@ -16,10 +16,16 @@ import { formatDuration, fromDisplaySpeed } from './units';
  * Conséquence voulue : une seule source de vérité pour la distance, cohérente
  * avec les vitesses affichées. La distance annoncée par le fichier GPX n'est
  * plus utilisée.
+ *
+ * Exception, le trou de la trace (pas plus long que `maxGapS`) : la vitesse
+ * lue à la reprise ne dit rien du trou, sa distance est bornée par la corde du
+ * pas (`gapDistanceM`, posé par `computeKinematics`).
  */
 export const segmentDistanceM = (track: TrackPoint[], i: number): number => {
   // Reprise après une pause : le pas couvre la pause, rien n'y est parcouru.
   if (i <= 0 || track[i].segmentStart) return 0;
+  const gap = track[i].gapDistanceM;
+  if (gap !== undefined) return gap;
   const dt = (track[i].timeMs - track[i - 1].timeMs) / 1000;
   return dt > 0 ? track[i].speedMs * dt : 0;
 };
@@ -51,6 +57,11 @@ export interface ActivityMaskOptions {
   exitThresholdMs: number;
   /** Durée minimale de confirmation avant tout changement d'état, en secondes. */
   minStateDurationS?: number;
+  /**
+   * Vitesse moyenne, en m/s, sous laquelle un trou de la trace (pas qui porte
+   * `gapDistanceM`) est un arrêt sans point, hors action. Défaut : `exitThresholdMs`.
+   */
+  gapMinSpeedMs?: number;
 }
 
 /**
@@ -67,15 +78,23 @@ export interface ActivityMaskOptions {
  *
  * Le pas qui reprend après une pause de l'enregistrement (`segmentStart`)
  * n'est jamais en action : ni temps, ni distance, ni énergie n'y sont comptés.
+ * Le pas d'un trou de la trace (`gapDistanceM`) ne l'est que si sa vitesse
+ * moyenne, distance retenue sur durée, atteint `gapMinSpeedMs` : l'appareil qui
+ * cesse d'écrire à l'arrêt laisse un trou immobile, qu'aucune vitesse lissée ne
+ * voit (celle du point de reprise est déjà celle du mouvement). Dans les deux
+ * cas, l'automate lit toujours la vitesse lissée du point.
  */
 export const computeActivityMask = (
   track: TrackPoint[],
   options: ActivityMaskOptions
 ): boolean[] => {
   const minStateDurationS = options.minStateDurationS ?? 0;
+  const gapMinSpeedMs = options.gapMinSpeedMs ?? options.exitThresholdMs;
   const mask = new Array<boolean>(track.length).fill(false);
 
-  let active = false;
+  // L'état de départ est celui du premier point : une trace qui commence en
+  // mouvement n'attend pas la confirmation pour compter ses premières secondes.
+  let active = track.length > 0 && track[0].smoothedSpeedMs >= options.enterThresholdMs;
   let pendingSinceMs: number | null = null;
 
   for (let i = 0; i < track.length; i++) {
@@ -96,24 +115,39 @@ export const computeActivityMask = (
       pendingSinceMs = null;
     }
 
-    mask[i] = active && !track[i].segmentStart;
+    const gap = track[i].gapDistanceM;
+    const stillGap = gap !== undefined && i > 0 && gap / ((track[i].timeMs - track[i - 1].timeMs) / 1000) < gapMinSpeedMs;
+    mask[i] = active && !track[i].segmentStart && !stillGap;
   }
 
   return mask;
 };
 
 /**
- * Masque d'activité d'un calcul à ce seuil, dans l'unité de son profil. Sans
- * seuil (bateau, ou seuil réglé à 0) : toute la trace est en action, hors
- * pauses de l'enregistrement.
+ * Masque d'activité d'un calcul à ce seuil, dans l'unité de son profil.
+ * Seuil réglé à 0 (aucun seuil) : un arrêt complet est tout de même ôté, au
+ * plancher d'arrêt du profil (`stillThreshold`, décision du 27/10). Bateau,
+ * sans seuil : toute la trace est en navigation, hors pauses de
+ * l'enregistrement et trous immobiles (jugés au même plancher). Partout, un
+ * trou de la trace n'est en action que si sa vitesse moyenne atteint la
+ * détente basse.
  */
 export const thresholdActivityMask = (track: TrackPoint[], profile: SportProfile, threshold: number): boolean[] => {
-  if (!hasActiveThreshold(profile) || threshold <= 0) return track.map((p) => !p.segmentStart);
-  const { enter, exit } = getActiveThresholds(profile, threshold);
+  if (!hasActiveThreshold(profile)) {
+    return computeActivityMask(track, {
+      enterThresholdMs: 0,
+      exitThresholdMs: 0,
+      gapMinSpeedMs: fromDisplaySpeed(getActiveThresholds(profile, profile.stillThreshold).exit, profile.thresholdUnit),
+    });
+  }
+  const effective = threshold > 0 ? threshold : profile.stillThreshold;
+  const { enter, exit } = getActiveThresholds(profile, effective);
+  const exitThresholdMs = fromDisplaySpeed(exit, profile.thresholdUnit);
   return computeActivityMask(track, {
     enterThresholdMs: fromDisplaySpeed(enter, profile.thresholdUnit),
-    exitThresholdMs: fromDisplaySpeed(exit, profile.thresholdUnit),
+    exitThresholdMs,
     minStateDurationS: profile.minStateDurationS,
+    gapMinSpeedMs: exitThresholdMs,
   });
 };
 

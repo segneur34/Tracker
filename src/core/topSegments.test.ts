@@ -6,10 +6,11 @@ import {
   computeActiveTimeMs,
   computeActivityMask,
 } from './sessionStats';
+import { computeKinematics } from './kinematics';
 import { computeAllTopSegments, computeTopSegments } from './topSegments';
-import type { TopTarget, TrackPoint } from './types';
+import type { RawTrackPoint, TopTarget, TrackPoint } from './types';
 import { msToKnots } from './units';
-import { RUNNING_TOP_TARGETS, SURF_TOP_TARGETS } from './sportProfiles';
+import { RUNNING_TOP_TARGETS, SPORT_PROFILES, SURF_TOP_TARGETS } from './sportProfiles';
 
 /**
  * Trace synthétique : vitesse imposée point par point, cadence réglable.
@@ -293,5 +294,24 @@ describe('cibles des tops à pied et en surf (onglet générique)', () => {
     expect(parseFloat(tops.t12min[0].val)).toBeGreaterThan(kmh(3));
     expect(tops.dsemi[0].val).toBe('-');
     expect(tops.dmarathon[0].val).toBe('-');
+  });
+});
+
+describe('computeTopSegments, trou de la trace', () => {
+  it('ne prend pas pour top 10 s la seule mesure Doppler lue après un trou (A-B4)', () => {
+    // Wingfoil à 1 Hz, Doppler constant à 10 m/s, 20 s sans point (pochette étanche), reprise lue à 14 m/s.
+    const startTime = Date.parse('2026-01-01T10:00:00Z');
+    const lat = 43.6;
+    const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
+    const raw: RawTrackPoint[] = [];
+    const push = (s: number, speedMs: number) =>
+      raw.push({ lat, lon: 3.8 + (10 * s) / metersPerDegLon, time: new Date(startTime + s * 1000).toISOString(), speedMs });
+    for (let s = 0; s <= 120; s++) push(s, 10);
+    push(141, 14);
+    for (let s = 142; s <= 260; s++) push(s, 10);
+    const wing = SPORT_PROFILES.wingfoil;
+    const track = computeKinematics(raw, { medianWindowSeconds: wing.medianWindowSeconds, maxGapS: wing.maxGapS });
+    const tops = computeTopSegments(track, buildCumulativeTrack(track), { key: 't10s', label: '10 s', value: 10, kind: 'time' }, (ms) => ms);
+    expect(parseFloat(tops[0].val)).toBeCloseTo(10, 1);
   });
 });

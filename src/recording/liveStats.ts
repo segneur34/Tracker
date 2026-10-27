@@ -282,6 +282,7 @@ export const computeLiveStats = (
       computeKinematics(segment.map(toRawPoint), {
         medianWindowSeconds: profile.medianWindowSeconds,
         maxSpeedMs: profile.maxPlausibleSpeedMs,
+        maxGapS: profile.maxGapS,
       })
     )
     .filter((t) => t.length >= 2);

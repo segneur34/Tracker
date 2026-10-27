@@ -143,10 +143,14 @@ describe('summarizeSession', () => {
     expect(summary.movingTimeS).toBe(0);
   });
 
-  it('sans seuil (réglé à 0), compte toute la session en mouvement', () => {
+  it('sans seuil (réglé à 0), ôte tout de même un arrêt complet du temps en mouvement (plancher, 27/10)', () => {
+    // 10 min à 3 m/s, 5 min immobile : l'arrêt sort au plancher d'arrêt de la course.
     const summary = summarizeSession(buildTrack([[600, 3], [300, 0]]), 'running', { activeThreshold: 0 })!;
-    expect(summary.movingTimeS).toBeCloseTo(900, 5);
-    expect(summary.movingDistanceM).toBeCloseTo(summary.distanceM, 5);
+    expect(summary.movingTimeS!).toBeGreaterThan(595);
+    expect(summary.movingTimeS!).toBeLessThan(605);
+    // Seuls manquent les mètres des premières secondes, le temps de confirmer le départ.
+    expect(summary.distanceM - summary.movingDistanceM!).toBeGreaterThanOrEqual(0);
+    expect(summary.distanceM - summary.movingDistanceM!).toBeLessThan(10);
   });
 
   it("ne compte ni la distance ni le temps en mouvement d'une pause de l'enregistrement, à 1 Hz comme à 5 Hz", () => {

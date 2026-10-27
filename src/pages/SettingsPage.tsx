@@ -447,7 +447,7 @@ function SettingsPage() {
                 );
                 // Voile sans réglage ni pré-réglage : champ vide, le seuil est suggéré par l'allure de chaque session.
                 const thresholdEmpty = thresholdFollowsPace(activity) && !s.isThresholdOverridden;
-                /** Seuil à 0 : aucun seuil, toute la session compte en mouvement, pauses ôtées. */
+                /** Seuil à 0 : aucun seuil réglé ; les pauses de l'enregistrement et les arrêts complets sont ôtés d'office. */
                 const noThreshold = s.activeThreshold === 0;
                 const setThreshold = (next: number | null) =>
                   setFor(id, 'activeThreshold', next === null ? null : toDisplaySpeed(fromDisplaySpeed(next, thresholdUnit), p.thresholdUnit));
@@ -894,7 +894,7 @@ const thresholdHelp = (treatment: Treatment, foil: boolean): string => {
   if (treatment === 'voile') {
     return "Vitesse qui sépare « en action » de « à l'arrêt » : temps actif, manœuvres réussies, VMG. Vide, il suit l'allure de chaque session (8 nd d'office en wing et en planche) ; celui d'une session, réglé dans son analyse, prime.";
   }
-  return "Sous cette vitesse, la session est comptée à l'arrêt. 0 : aucun seuil, tout le temps enregistré compte, pauses de l'enregistrement ôtées.";
+  return "Sous cette vitesse, la session est comptée à l'arrêt. 0 : aucun seuil réglé ; les pauses de l'enregistrement et les arrêts complets sont ôtés d'office.";
 };
 
 /**

@@ -65,6 +65,11 @@ export interface TrackPoint {
   speedSource: SpeedSource;
   /** Reprise après une pause de l'enregistrement (`RawTrackPoint.segmentStart`). */
   segmentStart?: true;
+  /**
+   * Pas plus long que `maxGapS` (trou de la trace) : distance retenue pour ce
+   * pas, bornée par la corde × 1,5 (`GAP_CHORD_FACTOR`) ; absent sur un pas ordinaire.
+   */
+  gapDistanceM?: number;
 }
 
 /** Meilleur segment sur une cible de temps ou de distance. */

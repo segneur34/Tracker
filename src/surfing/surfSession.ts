@@ -28,10 +28,13 @@ export interface SurfSessionResult {
 
 const maskAt = (track: TrackPoint[], profile: SportProfile, threshold: number): boolean[] => {
   const { enter, exit } = getActiveThresholds(profile, threshold);
+  const exitThresholdMs = fromDisplaySpeed(exit, profile.thresholdUnit);
   return computeActivityMask(track, {
     enterThresholdMs: fromDisplaySpeed(enter, profile.thresholdUnit),
-    exitThresholdMs: fromDisplaySpeed(exit, profile.thresholdUnit),
+    exitThresholdMs,
     minStateDurationS: profile.minStateDurationS,
+    // Un trou de la trace (téléphone sous l'eau) n'est en glisse que s'il avance à la détente basse.
+    gapMinSpeedMs: exitThresholdMs,
   });
 };
 

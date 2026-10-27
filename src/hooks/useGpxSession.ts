@@ -57,6 +57,7 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
     maxAcceleration,
     maxSpeedMs,
     forceDerivedSpeed,
+    maxGapS,
     scaleFiltersToSession,
     referenceSpeedOverrideMs,
   } = kinematicsOptions;
@@ -82,6 +83,7 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
       maxAcceleration: scaled.maxAcceleration,
       maxSpeedMs: scaled.maxSpeedMs,
       forceDerivedSpeed,
+      maxGapS,
     });
   }, [
     session.rawPoints,
@@ -90,6 +92,7 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
     maxAcceleration,
     maxSpeedMs,
     forceDerivedSpeed,
+    maxGapS,
     scaleFiltersToSession,
     referenceSpeedMs,
   ]);

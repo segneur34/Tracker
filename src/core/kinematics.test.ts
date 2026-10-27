@@ -8,7 +8,9 @@ import {
   haversineDistance,
   initialBearing,
   pointTimeMs,
+  spreadEqualTimes,
 } from './kinematics';
+import { segmentDistanceM } from './sessionStats';
 import type { RawTrackPoint } from './types';
 
 /** Construit une trace rectiligne vers l'est, à vitesse et cadence constantes. */
@@ -124,7 +126,7 @@ describe('computeKinematics', () => {
     expect(track[3].bearing).toBeCloseTo(90, 1);
   });
 
-  it('met une vitesse nulle quand deux points partagent le même horodatage', () => {
+  it('met une vitesse nulle quand toute la trace partage le même horodatage, faute d\'écart où répartir les points', () => {
     const points: RawTrackPoint[] = [
       { lat: 43.6, lon: 3.8, time: '2026-01-01T10:00:00Z' },
       { lat: 43.6, lon: 3.9, time: '2026-01-01T10:00:00Z' },
@@ -291,5 +293,95 @@ describe('detourSpikes', () => {
     const track = computeKinematics(points);
     const unfiltered = computeKinematics(points, { maxDetourRatio: Infinity });
     expect(track.map((p) => [p.speedMs, p.bearing])).toEqual(unfiltered.map((p) => [p.speedMs, p.bearing]));
+  });
+});
+
+/** Point brut à `eastM` mètres à l'est et `northM` au nord du départ, `s` secondes après lui. */
+const T0_MS = Date.parse('2026-01-01T10:00:00Z');
+const M_PER_DEG_LAT = (Math.PI / 180) * 6371e3;
+const M_PER_DEG_LON_43 = M_PER_DEG_LAT * Math.cos((43.6 * Math.PI) / 180);
+const pointAt = (eastM: number, s: number, northM = 0): RawTrackPoint => ({
+  lat: 43.6 + northM / M_PER_DEG_LAT,
+  lon: 3.8 + eastM / M_PER_DEG_LON_43,
+  time: new Date(T0_MS + s * 1000).toISOString(),
+});
+
+describe('spreadEqualTimes et points d\'une même seconde (A-B5)', () => {
+  it('répartit des points à 5 Hz datés à la seconde : distance et vitesse justes', () => {
+    // 600 s à 5 m/s, 5 Hz, heures tronquées à la seconde, sans vitesse de l'appareil.
+    const raw: RawTrackPoint[] = [];
+    for (let k = 0; k <= 3000; k++) raw.push(pointAt(k, Math.floor(k / 5)));
+    const track = computeKinematics(raw);
+    let distanceM = 0;
+    for (let i = 1; i < track.length; i++) distanceM += segmentDistanceM(track, i);
+    expect(Math.abs(distanceM - 3000) / 3000).toBeLessThan(0.01);
+    const smoothed = track.map((p) => p.smoothedSpeedMs).sort((a, b) => a - b);
+    expect(smoothed[Math.floor(smoothed.length / 2)]).toBeCloseTo(5, 1);
+  });
+
+  it('laisse un vrai doublon (même date, même position) à sa date, son pas nul', () => {
+    const raw = [0, 1, 2, 3].map((s) => pointAt(10 * s, s));
+    raw.splice(2, 0, { ...raw[2] });
+    const spread = spreadEqualTimes(raw, raw.map((p) => pointTimeMs(p.time)));
+    expect(spread[3]).toBe(spread[2]);
+    const track = computeKinematics(raw);
+    expect(segmentDistanceM(track, 3)).toBe(0);
+    expect(track[4].timeMs - track[3].timeMs).toBe(1000);
+  });
+
+  it('étale la dernière suite de la trace sur l\'écart qui la précède', () => {
+    const raw = [pointAt(0, 0), pointAt(10, 2), pointAt(15, 2)];
+    expect(spreadEqualTimes(raw, raw.map((p) => pointTimeMs(p.time)))).toEqual([T0_MS, T0_MS + 2000, T0_MS + 3000]);
+  });
+});
+
+describe('computeKinematics, positions répétées et reprises', () => {
+  it('garde le cap du pas précédent sur une position répétée (A-B6)', () => {
+    // Trace vers l'est ; le point de la 5e seconde est répété à la 6e (arrêt sur place).
+    const raw = [0, 10, 20, 30, 40, 40, 50, 60].map((m, s) => pointAt(m, s));
+    for (const p of computeKinematics(raw)) expect(p.bearing).toBeCloseTo(90, 1);
+    // Positions répétées dès le départ : le cap du premier pas qui avance.
+    const still = [0, 0, 0, 10, 20].map((m, s) => pointAt(m, s));
+    for (const p of computeKinematics(still)) expect(p.bearing).toBeCloseTo(90, 1);
+  });
+
+  it('ne prend pas un pic juste avant une reprise pour un saut de position (A-B8)', () => {
+    // Vers l'est à 3 m/s ; le point de la 10e seconde saute de 200 m au nord, puis pause de 10 min.
+    const raw: RawTrackPoint[] = [];
+    for (let s = 0; s < 10; s++) raw.push(pointAt(3 * s, s));
+    raw.push(pointAt(30, 10, 200));
+    raw.push({ ...pointAt(33, 610), segmentStart: true });
+    for (let s = 611; s < 620; s++) raw.push(pointAt(33 + 3 * (s - 610), s));
+    const times = raw.map((p) => pointTimeMs(p.time));
+    // Sans le drapeau de reprise, le point qui précède la pause passerait pour un saut.
+    expect(detourSpikes(raw.map((p) => ({ lat: p.lat, lon: p.lon })), times)).toContain(10);
+    expect(detourSpikes(raw, times)).not.toContain(10);
+    const track = computeKinematics(raw);
+    const resume = 11;
+    expect(track[resume].segmentStart).toBe(true);
+    // La reprise garde la vitesse et le cap du pas suivant, pas la corde de part et d'autre de la pause.
+    expect(track[resume].speedMs).toBeCloseTo(3, 1);
+    expect(track[resume].bearing).toBeCloseTo(90, 1);
+  });
+
+  it('donne au dernier point en reprise la vitesse et le cap du pas précédent (A-B9)', () => {
+    const raw: RawTrackPoint[] = [];
+    for (let s = 0; s < 20; s++) raw.push(pointAt(3 * s, s));
+    raw.push({ ...pointAt(57, 620, 100), segmentStart: true });
+    const track = computeKinematics(raw);
+    const last = track[track.length - 1];
+    expect(last.speedMs).toBeCloseTo(3, 1);
+    expect(last.bearing).toBeCloseTo(90, 1);
+  });
+
+  it('ne compte aucune distance sur le pas de reprise, même avec la vitesse de l\'appareil', () => {
+    const raw: RawTrackPoint[] = [];
+    for (let s = 0; s < 20; s++) raw.push({ ...pointAt(3 * s, s), speedMs: 3 });
+    raw.push({ ...pointAt(200, 620), speedMs: 3, segmentStart: true });
+    for (let s = 621; s < 640; s++) raw.push({ ...pointAt(200 + 3 * (s - 620), s), speedMs: 3 });
+    const track = computeKinematics(raw, { maxGapS: 10 });
+    expect(segmentDistanceM(track, 20)).toBe(0);
+    // Une reprise n'est pas un trou : la pause a déjà sa règle.
+    expect(track[20].gapDistanceM).toBeUndefined();
   });
 });

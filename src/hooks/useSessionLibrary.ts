@@ -241,7 +241,15 @@ const publish = (): void => {
 
 const findSession = (file: string): LibrarySession | undefined => all.find((s) => s.file === file);
 
+/**
+ * Fichiers en cours de suppression (`removeSession`) : un recalcul ou une
+ * relecture qui finit pendant ce temps ne les remet pas dans la liste et
+ * n'en réécrit pas la fiche.
+ */
+const removing = new Set<string>();
+
 const replaceSession = (session: LibrarySession): void => {
+  if (removing.has(session.file)) return;
   all = [...all.filter((s) => s.file !== session.file), session];
   publish();
 };
@@ -343,7 +351,7 @@ const summaryOptions = (
   if (sport === null) return {};
   const activity = sessionActivity(readStoredActivities(), activityId, sport) ?? baseActivity(sport);
   return {
-    // Le seuil de la session, sinon celui réglé ou pré-réglé pour son activité (0 : aucun seuil).
+    // Le seuil de la session, sinon celui réglé ou pré-réglé pour son activité (0 : aucun seuil réglé, arrêts complets ôtés d'office).
     activeThreshold: analysis?.activeThreshold ?? effectiveThresholdOverride(activity),
     referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? analysis?.referenceSpeedMs ?? undefined : undefined,
     terrainElevation:
@@ -437,12 +445,12 @@ const lastEdit = new Map<string, number>();
 const writeRecordNow = async (file: string): Promise<boolean> => {
   recordTimers.delete(file);
   const f = folder;
-  if (!f || !findSession(file)) return false;
+  if (!f || removing.has(file) || !findSession(file)) return false;
   writing.set(file, (writing.get(file) ?? 0) + 1);
   try {
     await hydrateSession(f, file);
     const session = findSession(file);
-    if (!session || session.readOnly || session.partial || folder !== f) return false;
+    if (!session || removing.has(file) || session.readOnly || session.partial || folder !== f) return false;
     await f.writeText(sessionPath(recordFileName(file)), serializeRecord(session.record));
     return true;
   } catch (err) {
@@ -947,6 +955,8 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
     return 'unreadable';
   }
   if (!analyzed) return 'unreadable';
+  // Supprimée pendant le calcul : ni remise dans la liste, ni fiche réécrite.
+  if (removing.has(job.file)) return 'done';
 
   if (current) {
     replaceSession({ ...current, record: withSummary(current.record, analyzed.summary) });
@@ -1582,27 +1592,36 @@ const resummarize = async (file: string): Promise<void> => {
 
 /**
  * Supprime une session : son GPX, sa fiche et ses capteurs, ainsi que les copies de la même
- * trace sous un autre nom, qui sans cela prendraient sa place dans la liste.
+ * trace sous un autre nom, qui sans cela prendraient sa place dans la liste. Elles quittent
+ * la liste avant les suppressions sur le disque, et restent dans `removing` jusqu'à la fin :
+ * un recalcul de fond qui les traite ne les y remet pas (E-B4, 27/10).
  */
 export const removeSession = async (file: string): Promise<void> => {
   const f = folder;
   const session = findSession(file);
   if (!f || !session) return;
-  const copies = all.filter((s) => s.record.summary.startMs === session.record.summary.startMs);
+  const files = all.filter((s) => s.record.summary.startMs === session.record.summary.startMs).map((s) => s.file);
+  for (const name of files) {
+    removing.add(name);
+    cancelRecordWrite(name);
+  }
+  all = all.filter((s) => !files.includes(s.file));
+  publish();
   try {
-    for (const copy of copies) {
-      cancelRecordWrite(copy.file);
-      await f.remove(sessionPath(recordFileName(copy.file)));
-      await f.remove(sessionPath(imuFileName(copy.file)));
-      await f.remove(sessionPath(copy.file));
-      knownNames.delete(copy.file);
-      knownNames.delete(recordFileName(copy.file));
-      knownNames.delete(imuFileName(copy.file));
+    for (const name of files) {
+      await f.remove(sessionPath(recordFileName(name)));
+      await f.remove(sessionPath(imuFileName(name)));
+      await f.remove(sessionPath(name));
+      knownNames.delete(name);
+      knownNames.delete(recordFileName(name));
+      knownNames.delete(imuFileName(name));
     }
   } catch (err) {
     setState({ error: `Suppression incomplète : ${errorMessage(err, 'erreur inconnue')}` });
+  } finally {
+    for (const name of files) removing.delete(name);
   }
-  all = all.filter((s) => !copies.includes(s));
+  all = all.filter((s) => !files.includes(s.file));
   publish();
   void refreshCache(f, generation).catch(() => undefined);
 };

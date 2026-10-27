@@ -39,6 +39,10 @@ const interpolateAt = (
  * La borne de fin est interpolée : pour un top sur 10 secondes, on ne prend
  * pas le point le plus proche de la dixième seconde, on calcule la distance à
  * la dixième seconde exactement.
+ *
+ * Une fenêtre qui contient un trou de la trace (pas qui porte `gapDistanceM`)
+ * est écartée : sur un pas plus long que la cible, sa vitesse n'est que celle
+ * du point de reprise, une seule mesure (27/10).
  */
 export const computeTopSegments = (
   track: TrackPoint[],
@@ -55,6 +59,13 @@ export const computeTopSegments = (
   const reference = isDistance ? cumDist : cumTime;
   const windows: { start: number; end: number; val: number }[] = [];
 
+  // Nombre de trous parmi les pas qui mènent aux points 1 à k : la fenêtre
+  // [i, j] en contient un si `gapCount[j] > gapCount[i]`.
+  const gapCount = new Array<number>(track.length).fill(0);
+  for (let k = 1; k < track.length; k++) {
+    gapCount[k] = gapCount[k - 1] + (track[k].gapDistanceM !== undefined ? 1 : 0);
+  }
+
   let j = 1;
 
   for (let i = 0; i < track.length - 1; i++) {
@@ -63,6 +74,7 @@ export const computeTopSegments = (
     if (j <= i) j = i + 1;
     while (j < track.length && reference[j] < threshold) j++;
     if (j >= track.length) break;
+    if (gapCount[j] > gapCount[i]) continue;
 
     let distance: number;
     let duration: number;

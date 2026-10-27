@@ -17,7 +17,7 @@ import type { GradeRange } from '../running/runningAnalytics';
  * (`sportProfiles.ts`) ; une surcharge de Réglages prime toujours.
  */
 export interface ActivityPreset {
-  /** Seuil d'activité, dans l'unité du profil du calcul (nœuds en voile, km/h ailleurs) ; 0 : aucun seuil. */
+  /** Seuil d'activité, dans l'unité du profil du calcul (nœuds en voile, km/h ailleurs) ; 0 : aucun seuil réglé, arrêts complets ôtés d'office (`stillThreshold`). */
   threshold?: number;
   speedUnit?: SpeedUnit;
   /** Bornes de couleur de la trace, fixes : en voile, elles remplacent la suggestion tirée de l'allure. */
