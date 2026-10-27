@@ -58,8 +58,12 @@ export const RECORD_VERSION = 1;
  * (`stillThreshold`), détente basse jamais nulle, trous de trace (pas plus long
  * que `maxGapS`) hors du temps en mouvement et distance bornée par la corde,
  * points d'une même seconde répartis.
+ *
+ * 10 (27 octobre 2026) : cadence à pied (`cadence`) en pas par minute selon
+ * la longueur de pas (un GPX déjà en pas n'est plus doublé), couverture sans
+ * les pauses ni les trous.
  */
-export const SUMMARY_CALC_VERSION = 9;
+export const SUMMARY_CALC_VERSION = 10;
 
 export type SessionSource = 'enregistrement' | 'import';
 

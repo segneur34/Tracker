@@ -1,6 +1,6 @@
 import { accumulateElevation } from '../core/elevation';
 import { EARTH_RADIUS_M, haversineDistance, initialBearing, toRad } from '../core/kinematics';
-import type { Treatment } from '../core/sportProfiles';
+import { GRADE_ANALYSIS, type Treatment } from '../core/sportProfiles';
 import type { BikeType } from '../cycling/energy';
 import { computeGrades } from '../running/runningAnalytics';
 import { WAY_TYPES, type WayType } from './brouterProfile';
@@ -941,8 +941,7 @@ export const routeProfileRows = (points: RoutePoint[], stepM = PROFILE_STEP_M): 
   sampleAt(total);
 
   const altitudes = samples.map((p) => p.ele);
-  // computeGrades ne lit que les distances : un itinéraire n'a pas de temps.
-  const grades = computeGrades(altitudes, { cumDist: samples.map((p) => p.distM), cumTime: [] });
+  const grades = computeGrades(altitudes, { cumDist: samples.map((p) => p.distM) }, GRADE_ANALYSIS.halfWindowM);
   return samples.map((p, i) => ({
     distM: p.distM,
     lat: p.lat,

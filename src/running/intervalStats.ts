@@ -62,7 +62,11 @@ export const intervalPhaseStats = (track: TrackPoint[], cum: CumulativeTrack, ph
     if (outside) return { ...phase, durationS, distanceM: null, speedMs: null, path: [] };
     const start = sampleAt(track, cum, phase.startMs);
     const end = sampleAt(track, cum, phase.endMs);
-    const inner = track.filter((p) => p.timeMs > phase.startMs && p.timeMs < phase.endMs).map((p): [number, number] => [p.lat, p.lon]);
+    // Points strictement intérieurs, bornés par dichotomie plutôt que toute la trace filtrée par phase.
+    const inner: [number, number][] = [];
+    for (let k = lastIndexAtOrBefore(track, phase.startMs) + 1; k < track.length && track[k].timeMs < phase.endMs; k++) {
+      if (track[k].timeMs > phase.startMs) inner.push([track[k].lat, track[k].lon]);
+    }
     const distanceM = Math.max(0, end.distM - start.distM);
     return { ...phase, durationS, distanceM, speedMs: durationS > 0 ? distanceM / durationS : null, path: [start.at, ...inner, end.at] };
   });

@@ -2,7 +2,8 @@ import { zoneOf } from '../core/heartRate';
 import type { ImuRecording } from '../core/imuFile';
 import { segmentDistanceM } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
-import { GRADE_ZONES, classifyGrade, type GradeZoneKey } from './runningAnalytics';
+import type { GradeProfile } from '../core/sportProfiles';
+import { classifyGrade, gradeZones, type GradeZone } from './runningAnalytics';
 
 /**
  * Cadence à pied : pas par minute, mesurés par l'accéléromètre du téléphone
@@ -71,6 +72,19 @@ export interface CadenceDetection {
   minCoverageS: number;
   /** Écart entre deux points au-delà duquel la cadence n'est pas comptée entre eux, en secondes. */
   gapS: number;
+  /**
+   * Unité de `cad` d'un GPX, pas ou foulées par minute (décision du 27/10) :
+   * longueur de pas divisée par la fréquence des pas (en pas par seconde),
+   * vraisemblable entre ces bornes, en m·s. Lue sur les segments mesurés :
+   * pris tels quels, puis doublés, un seul des deux sens doit y tomber.
+   */
+  stepLengthPerHz: { min: number; max: number };
+  /**
+   * Faute d'indice de longueur de pas (pas de mouvement, ou les deux sens
+   * aussi vraisemblables) : une médiane de `cad` au-dessus est déjà en pas par
+   * minute, en dessous en foulées.
+   */
+  spmAbove: number;
   /** Bornes basses des tranches de cadence de la marche et de la course, en pas par minute. */
   walkBands: readonly number[];
   runBands: readonly number[];
@@ -261,19 +275,52 @@ export const cadenceAt = (series: CadenceSeries, timeMs: number): number | null 
 /** Foulées par minute écrites dans le GPX (`gpxtpx:cad`, entier) pour une cadence en pas par minute. */
 export const gpxStrideCadence = (spm: number): number => Math.round(spm / 2);
 
+/** Valeur de `cad` utilisable : un nombre fini, positif. */
+const cadValue = (v: number | undefined): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
+
 /**
- * Cadence du GPX en pas par minute, point par point (`null` sans valeur ou à
- * 0) : `cad` est d'ordinaire en foulées par minute (Garmin, Strava, Tracker),
- * doublé ici ; un fichier dont la médiane dépasse `spmAbove` l'écrit déjà en
- * pas par minute, gardé tel quel.
+ * Facteur qui met `cad` en pas par minute : 2 en foulées par minute (Garmin,
+ * Strava, Tracker), 1 si le fichier l'écrit déjà en pas (décision du 27/10).
+ *
+ * Indice : la longueur de pas divisée par la fréquence des pas (L/f, en m·s),
+ * sur les segments où la cadence est connue aux deux bouts, hors trous et
+ * reprises. Avec D la distance, T le temps et N les pas comptés tels quels,
+ * L/f vaut D·T/N² ; doubler les pas la divise par 4. Le sens qui seul tombe
+ * dans `stepLengthPerHz` l'emporte : une marche à 1,4 m/s écrite à 110 pas/min
+ * donne 0,42 telle quelle, 0,10 doublée. Sans mouvement, ou si les deux sens
+ * sont aussi vraisemblables, la médiane décide (`spmAbove`).
  */
-export const stepCadenceSpm = (raw: readonly (number | undefined)[], spmAbove = 130): (number | null)[] => {
-  const values = raw.filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0).sort((a, b) => a - b);
-  if (values.length === 0) return raw.map(() => null);
-  const median = values[Math.floor(values.length / 2)];
-  const factor = median > spmAbove ? 1 : 2;
-  return raw.map((v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v * factor : null));
+export const cadenceFactor = (
+  track: readonly TrackPoint[],
+  p: Pick<CadenceDetection, 'gapS' | 'stepLengthPerHz' | 'spmAbove'>
+): 1 | 2 => {
+  const values = track.map((pt) => pt.cadence).filter(cadValue).sort((a, b) => a - b);
+  if (values.length === 0) return 2;
+  let d = 0;
+  let t = 0;
+  let steps = 0;
+  for (let i = 1; i < track.length; i++) {
+    const a = track[i - 1].cadence;
+    const b = track[i].cadence;
+    const dtS = (track[i].timeMs - track[i - 1].timeMs) / 1000;
+    if (!cadValue(a) || !cadValue(b) || dtS <= 0 || dtS > p.gapS || track[i].segmentStart) continue;
+    d += segmentDistanceM(track as TrackPoint[], i);
+    t += dtS;
+    steps += ((a + b) / 2 / 60) * dtS;
+  }
+  if (d > 0 && steps > 0) {
+    const asIs = (d * t) / (steps * steps);
+    const plausible = (v: number) => v >= p.stepLengthPerHz.min && v <= p.stepLengthPerHz.max;
+    const keep = plausible(asIs);
+    const double = plausible(asIs / 4);
+    if (keep !== double) return keep ? 1 : 2;
+  }
+  return values[Math.floor(values.length / 2)] > p.spmAbove ? 1 : 2;
 };
+
+/** Cadence du GPX en pas par minute, point par point (`null` sans valeur ou à 0), `cad` multiplié par `factor` (`cadenceFactor`). */
+export const stepCadenceSpm = (raw: readonly (number | undefined)[], factor: 1 | 2): (number | null)[] =>
+  raw.map((v) => (cadValue(v) ? v * factor : null));
 
 /**
  * Positions d'un enregistrement avec leur cadence (`cadenceSpm`), mesurée à
@@ -320,11 +367,15 @@ const smoothByTime = (values: readonly (number | null)[], times: readonly number
 };
 
 /** Cadence d'une trace (`cad` du GPX), en pas par minute, avec sa couverture. */
-export const sessionCadence = (track: readonly { timeMs: number; cadence?: number }[], p: CadenceDetection): SessionCadence => {
-  const spm = stepCadenceSpm(track.map((pt) => pt.cadence));
+export const sessionCadence = (track: readonly TrackPoint[], p: CadenceDetection): SessionCadence => {
+  const factor = cadenceFactor(track, p);
+  const spm = stepCadenceSpm(track.map((pt) => pt.cadence), factor);
+  // Temps couvert : pas les trous (plus de `gapS`) ni les pauses, comme `measuredSegments`.
   let coveredMs = 0;
   for (let i = 1; i < track.length; i++) {
-    if (spm[i] !== null && spm[i - 1] !== null) coveredMs += track[i].timeMs - track[i - 1].timeMs;
+    const dtMs = track[i].timeMs - track[i - 1].timeMs;
+    if (spm[i] === null || spm[i - 1] === null || dtMs <= 0 || dtMs > p.gapS * 1000 || track[i].segmentStart) continue;
+    coveredMs += dtMs;
   }
   const times = track.map((pt) => pt.timeMs);
   const coveredS = coveredMs / 1000;
@@ -346,6 +397,8 @@ export interface CadenceAnalysis {
   averageSpm: number;
   /** Meilleure cadence moyenne sur `maxWindowS`, ou `null` si la session est plus courte. */
   maxSpm: number | null;
+  /** Durée de la cadence maximale, en secondes (`CadenceDetection.maxWindowS`). */
+  maxWindowS: number;
   /** Pas comptés sur toute la session. */
   steps: number;
   /** Longueur de pas moyenne en mouvement, en mètres. */
@@ -356,8 +409,8 @@ export interface CadenceAnalysis {
   bands: { bounds: readonly number[]; timesS: number[]; running: boolean };
   /** Par tranche de vitesse, de la plus lente à la plus rapide (bornes en m/s). */
   bySpeed: (CadenceShare & { fromMs: number; toMs: number })[];
-  /** Par zone de pente, dans l'ordre de `GRADE_ZONES` ; `null` sans altitude. */
-  byGrade: (CadenceShare & { zone: GradeZoneKey })[] | null;
+  /** Par zone de pente, dans l'ordre de `gradeZones` ; `null` sans altitude. */
+  byGrade: (CadenceShare & { zone: GradeZone })[] | null;
   /** Premier et dernier tiers du temps mesuré en mouvement ; `null` sur une session trop courte. */
   drift: { first: CadenceShare; last: CadenceShare } | null;
 }
@@ -406,7 +459,7 @@ export const analyzeCadence = (
   track: readonly TrackPoint[],
   spm: readonly (number | null)[],
   active: readonly boolean[],
-  grades: readonly number[] | null,
+  grades: { values: readonly number[]; zones: GradeProfile } | null,
   p: CadenceDetection
 ): CadenceAnalysis | null => {
   const segments = measuredSegments(track, spm, p.gapS);
@@ -461,13 +514,14 @@ export const analyzeCadence = (
 
   // Selon la pente : les zones de l'onglet « zones de pente ».
   let byGrade: CadenceAnalysis['byGrade'] = null;
-  if (grades && grades.some((g) => Number.isFinite(g))) {
-    const zones = new Map<GradeZoneKey, ShareSum>(GRADE_ZONES.map((z) => [z.key, new ShareSum()]));
+  if (grades && grades.values.some((g) => Number.isFinite(g))) {
+    const list = gradeZones(grades.zones);
+    const zones = new Map(list.map((z) => [z.key, new ShareSum()]));
     for (const s of moving) {
-      const zone = classifyGrade(grades[s.i]);
+      const zone = classifyGrade(grades.values[s.i], grades.zones);
       if (zone) zones.get(zone)!.add(s.dtS, s.spm, s.d);
     }
-    byGrade = GRADE_ZONES.map((z) => ({ zone: z.key, ...zones.get(z.key)!.share() }));
+    byGrade = list.map((z) => ({ zone: z, ...zones.get(z.key)!.share() }));
   }
 
   // Dérive : premier et dernier tiers du temps mesuré en mouvement.
@@ -487,6 +541,7 @@ export const analyzeCadence = (
   return {
     averageSpm: average.spm,
     maxSpm,
+    maxWindowS: p.maxWindowS,
     steps,
     stepLengthM: average.stepLengthM,
     measuredShare: movingTimeS > 0 ? Math.min(1, total.timeS / movingTimeS) : 0,

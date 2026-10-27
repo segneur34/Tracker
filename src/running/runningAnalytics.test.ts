@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { haversineDistance } from '../core/kinematics';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { SLOW_COLOR, gradientColor, speedGradientColor } from '../core/speedGradient';
+import { GRADE_ANALYSIS as G } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import {
   DEFAULT_GRADE_RANGE,
@@ -49,13 +50,13 @@ const buildTrack = (
 
 describe('classifyGrade', () => {
   it('range chaque pente dans sa zone', () => {
-    expect(classifyGrade(0)).toBe('flat');
-    expect(classifyGrade(0.02)).toBe('flat');
-    expect(classifyGrade(0.05)).toBe('up');
-    expect(classifyGrade(0.15)).toBe('steepUp');
-    expect(classifyGrade(-0.05)).toBe('down');
-    expect(classifyGrade(-0.2)).toBe('steepDown');
-    expect(classifyGrade(NaN)).toBeNull();
+    expect(classifyGrade(0, G)).toBe('flat');
+    expect(classifyGrade(0.02, G)).toBe('flat');
+    expect(classifyGrade(0.05, G)).toBe('up');
+    expect(classifyGrade(0.15, G)).toBe('steepUp');
+    expect(classifyGrade(-0.05, G)).toBe('down');
+    expect(classifyGrade(-0.2, G)).toBe('steepDown');
+    expect(classifyGrade(NaN, G)).toBeNull();
   });
 });
 
@@ -64,7 +65,7 @@ describe('computeGrades', () => {
     // 3 m/s pendant 200 s = 600 m, altitude qui monte de 8 m tous les 100 m.
     const track = buildTrack(new Array(200).fill(3), (d) => 100 + 0.08 * d);
     const cum = buildCumulativeTrack(track);
-    const grades = computeGrades(track.map((p) => p.ele as number), cum);
+    const grades = computeGrades(track.map((p) => p.ele as number), cum, G.halfWindowM);
 
     // Loin des bords, la pente doit être exacte.
     expect(grades[100]).toBeCloseTo(0.08, 3);
@@ -73,7 +74,7 @@ describe('computeGrades', () => {
 
   it('lit une pente nulle sur du plat', () => {
     const track = buildTrack(new Array(100).fill(3));
-    const grades = computeGrades(track.map((p) => p.ele as number), buildCumulativeTrack(track));
+    const grades = computeGrades(track.map((p) => p.ele as number), buildCumulativeTrack(track), G.halfWindowM);
     expect(grades[50]).toBeCloseTo(0, 6);
   });
 
@@ -81,7 +82,7 @@ describe('computeGrades', () => {
     // Plat avec ±0,5 m de bruit d'un point à l'autre : entre deux points
     // consécutifs, la pente naïve atteindrait 15 %.
     const track = buildTrack(new Array(100).fill(3), (d) => 100 + (Math.round(d / 3) % 2 === 0 ? 0.5 : -0.5));
-    const grades = computeGrades(track.map((p) => p.ele as number), buildCumulativeTrack(track));
+    const grades = computeGrades(track.map((p) => p.ele as number), buildCumulativeTrack(track), G.halfWindowM);
     expect(Math.abs(grades[50])).toBeLessThan(0.03);
   });
 
@@ -89,9 +90,56 @@ describe('computeGrades', () => {
     const track = buildTrack(new Array(100).fill(3));
     const eles = track.map((p) => p.ele as number);
     for (let i = 40; i < 60; i++) eles[i] = NaN;
-    const grades = computeGrades(eles, buildCumulativeTrack(track));
+    const grades = computeGrades(eles, buildCumulativeTrack(track), G.halfWindowM);
     expect(Number.isNaN(grades[50])).toBe(true);
     expect(Number.isNaN(grades[10])).toBe(false);
+  });
+
+  /** Montée régulière à 5 % sur 2 400 m, à `speedMs`, un point tous les `intervalS`. */
+  const climb = (speedMs: number, intervalS: number) => {
+    const track = buildTrack(new Array(Math.round(2400 / speedMs / intervalS)).fill(speedMs), (d) => 100 + 0.05 * d, intervalS);
+    return { track, grades: computeGrades(track.map((p) => p.ele as number), buildCumulativeTrack(track), G.halfWindowM) };
+  };
+
+  it('même pente de 5 % à 1 Hz, à 5 Hz et à un point toutes les 4 s à 8 m/s (règles 2 et 10)', () => {
+    for (const { track, grades } of [climb(3, 1), climb(3, 0.2), climb(8, 4)]) {
+      const interior = grades.filter((_, i) => i > 0 && i < track.length - 1);
+      // Points espacés de 32 m : aucun voisin dans ±25 m, la pente vient de l'altitude interpolée.
+      expect(interior.every((g) => Math.abs(g - 0.05) < 1e-9)).toBe(true);
+    }
+  });
+
+  it('un point tous les 30 m : la pente partout, sauf là où la fenêtre déborde de la trace', () => {
+    const { track, grades } = climb(3, 10);
+    expect(grades[0]).toBeCloseTo(0.05, 9);
+    expect(grades[track.length - 1]).toBeCloseTo(0.05, 9);
+    expect(grades.every((g) => Math.abs(g - 0.05) < 1e-9)).toBe(true);
+  });
+
+  it('une trace plus courte que la demi-fenêtre n\'a pas de pente', () => {
+    const track = buildTrack(new Array(6).fill(3), (d) => 100 + 0.05 * d);
+    const grades = computeGrades(track.map((p) => p.ele as number), buildCumulativeTrack(track), G.halfWindowM);
+    expect(grades.every((g) => Number.isNaN(g))).toBe(true);
+  });
+
+  it('ne mesure pas un saut d\'altitude pendant une pause : la fenêtre s\'arrête à la reprise', () => {
+    // Plat à 100 m, 20 min de pause, plat à 115 m (altitude du GPS qui a dérivé sur place).
+    const before = buildTrack(new Array(200).fill(3));
+    const after = buildTrack(new Array(200).fill(3), () => 115).map((p, k) => ({
+      ...p,
+      timeMs: p.timeMs + 1400_000,
+      time: new Date(p.timeMs + 1400_000).toISOString(),
+      ...(k === 0 ? { segmentStart: true as const } : {}),
+    }));
+    const track = [...before, ...after];
+    const cum = buildCumulativeTrack(track);
+    const eles = track.map((p) => p.ele as number);
+    const cut = computeGrades(eles, cum, G.halfWindowM, track);
+    expect(cut.every((g) => Number.isNaN(g) || Math.abs(g) < 0.01)).toBe(true);
+    expect(cut.filter((g) => Number.isNaN(g))).toHaveLength(0);
+    // Sans les points, la fenêtre enjambe la pause : c'est le défaut corrigé.
+    const uncut = computeGrades(eles, cum, G.halfWindowM);
+    expect(Math.max(...uncut.filter((g) => !Number.isNaN(g)))).toBeGreaterThan(0.25);
   });
 });
 
@@ -102,8 +150,8 @@ describe('computeZoneStats', () => {
     const climb = new Array(150).fill(2);
     const track = buildTrack([...flat, ...climb], (d) => (d <= 300 ? 100 : 100 + 0.12 * (d - 300)));
     const cum = buildCumulativeTrack(track);
-    const grades = computeGrades(track.map((p) => p.ele as number), cum);
-    const zones = computeZoneStats(track, grades, new Array(track.length).fill(true));
+    const grades = computeGrades(track.map((p) => p.ele as number), cum, G.halfWindowM);
+    const zones = computeZoneStats(track, grades, new Array(track.length).fill(true), G);
 
     const flatZone = zones.find((z) => z.zone.key === 'flat')!;
     const steepZone = zones.find((z) => z.zone.key === 'steepUp')!;
@@ -117,10 +165,10 @@ describe('computeZoneStats', () => {
 
   it('exclut les segments à l\'arrêt de l\'allure de la zone', () => {
     const track = buildTrack(new Array(100).fill(3));
-    const grades = computeGrades(track.map((p) => p.ele as number), buildCumulativeTrack(track));
+    const grades = computeGrades(track.map((p) => p.ele as number), buildCumulativeTrack(track), G.halfWindowM);
     const mask = new Array(100).fill(true);
     for (let i = 50; i < 100; i++) mask[i] = false;
-    const zones = computeZoneStats(track, grades, mask);
+    const zones = computeZoneStats(track, grades, mask, G);
     const flatZone = zones.find((z) => z.zone.key === 'flat')!;
     expect(flatZone.timeMs).toBeLessThanOrEqual(50 * 1000);
   });
@@ -131,7 +179,7 @@ describe('gradeZonePaths', () => {
   const hillTrack = (intervalS: number) => {
     const altitudeAt = (d: number) => (d <= 300 ? 100 : d <= 600 ? 100 + 0.12 * (d - 300) : 136);
     const track = buildTrack(new Array(Math.round(300 / intervalS)).fill(3), altitudeAt, intervalS);
-    const grades = computeGrades(track.map((p) => p.ele as number), buildCumulativeTrack(track));
+    const grades = computeGrades(track.map((p) => p.ele as number), buildCumulativeTrack(track), G.halfWindowM);
     return { track, grades };
   };
   const lengthM = (paths: [number, number][][]) =>
@@ -140,15 +188,15 @@ describe('gradeZonePaths', () => {
   it('rend un tracé par passage dans la zone, bout à bout avec la trace', () => {
     const { track, grades } = hillTrack(1);
     const all = new Array(track.length).fill(true);
-    const steep = gradeZonePaths(track, grades, all, 'steepUp');
-    const flat = gradeZonePaths(track, grades, all, 'flat');
+    const steep = gradeZonePaths(track, grades, all, 'steepUp', G);
+    const flat = gradeZonePaths(track, grades, all, 'flat', G);
     expect(steep).toHaveLength(1);
     expect(flat).toHaveLength(2);
     // La montée suit la côte, aux bords près, que la fenêtre de 50 m arrondit.
     expect(lengthM(steep)).toBeGreaterThan(250);
     expect(lengthM(steep)).toBeLessThan(330);
     // Entre le plat et la côte, la pente passe par « Montée » ; chaque tracé reprend là où le précédent finit.
-    const up = gradeZonePaths(track, grades, all, 'up');
+    const up = gradeZonePaths(track, grades, all, 'up', G);
     expect(up[0][0]).toEqual(flat[0][flat[0].length - 1]);
     expect(steep[0][0]).toEqual(up[0][up[0].length - 1]);
   });
@@ -156,10 +204,10 @@ describe('gradeZonePaths', () => {
   it('les longueurs, comptées comme le tableau, sont celles de computeZoneStats', () => {
     const { track, grades } = hillTrack(1);
     const all = new Array(track.length).fill(true);
-    const zones = computeZoneStats(track, grades, all);
+    const zones = computeZoneStats(track, grades, all, G);
     for (const key of ['flat', 'up', 'steepUp'] as const) {
       const expected = zones.find((z) => z.zone.key === key)!.distanceM;
-      expect(lengthM(gradeZonePaths(track, grades, all, key))).toBeCloseTo(expected, -1);
+      expect(lengthM(gradeZonePaths(track, grades, all, key, G))).toBeCloseTo(expected, -1);
     }
   });
 
@@ -167,16 +215,16 @@ describe('gradeZonePaths', () => {
     const { track, grades } = hillTrack(1);
     const mask = new Array(track.length).fill(true);
     for (let i = 40; i < 45; i++) mask[i] = false;
-    expect(gradeZonePaths(track, grades, mask, 'flat')).toHaveLength(3);
+    expect(gradeZonePaths(track, grades, mask, 'flat', G)).toHaveLength(3);
     const holed = [...grades];
     holed[260] = NaN;
-    expect(gradeZonePaths(track, holed, new Array(track.length).fill(true), 'flat')).toHaveLength(3);
+    expect(gradeZonePaths(track, holed, new Array(track.length).fill(true), 'flat', G)).toHaveLength(3);
   });
 
   it('donne la même montée à 1 Hz et à 5 Hz', () => {
     const at = (intervalS: number) => {
       const { track, grades } = hillTrack(intervalS);
-      return lengthM(gradeZonePaths(track, grades, new Array(track.length).fill(true), 'steepUp'));
+      return lengthM(gradeZonePaths(track, grades, new Array(track.length).fill(true), 'steepUp', G));
     };
     expect(Math.abs(at(1) - at(0.2))).toBeLessThan(5);
   });

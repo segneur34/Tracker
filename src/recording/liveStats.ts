@@ -320,7 +320,7 @@ export const computeLiveStats = (
       const firstRecent = track.find((p) => p.timeMs >= sinceMs);
       if (firstRecent) recentTimeS += (track[track.length - 1].timeMs - firstRecent.timeMs) / 1000;
       smoothed.push(elevation.smoothed);
-      grades[s] = gradesUpToNow(computeGrades(elevation.smoothed, buildCumulativeTrack(track)));
+      grades[s] = gradesUpToNow(computeGrades(elevation.smoothed, buildCumulativeTrack(track), profile.grade.halfWindowM));
     });
   }
   const energy = options.energy ? liveEnergy(tracks, grades, options.energy, options.powerWindowS) : null;

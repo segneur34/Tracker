@@ -1,7 +1,8 @@
 import { segmentDistanceM } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
 import type { SurfaceCategory } from '../planning/surface';
-import { GRADE_ZONES, classifyGrade, type GradeZone, type GradeZoneKey } from '../running/runningAnalytics';
+import { GRADE_ANALYSIS, type GradeProfile } from '../core/sportProfiles';
+import { classifyGrade, gradeZones, type GradeZone, type GradeZoneKey } from '../running/runningAnalytics';
 
 /**
  * Dépense d'énergie à vélo, tout en unités SI. Contrairement à la course, la
@@ -115,6 +116,8 @@ export interface CyclingEnergyParams {
   muscleEfficiency: number;
   /** Pesanteur, en m/s². */
   gravityMs2: number;
+  /** Pente et zones de pente du bilan par zone (`SportProfile.grade`). */
+  gradeZones: GradeProfile;
 }
 
 /** Air à 15 °C au niveau de la mer ; transmission propre ; rendement net usuel. */
@@ -123,6 +126,7 @@ export const DEFAULT_CYCLING_PARAMS: Omit<CyclingEnergyParams, 'crr' | 'cdaM2' |
   drivetrainEfficiency: 0.97,
   muscleEfficiency: 0.25,
   gravityMs2: 9.81,
+  gradeZones: GRADE_ANALYSIS,
 };
 
 /** Réglage complet pour un type de vélo, une masse de vélo et une masse de cycliste. */
@@ -243,7 +247,7 @@ export const computeCyclingEnergy = (
       netJ += net;
       movingTimeS += dt;
       movingDistanceM += d;
-      const zone = byZone[classifyGrade(grade) ?? 'flat'];
+      const zone = byZone[classifyGrade(grade, params.gradeZones) ?? 'flat'];
       zone.mechanicalJ += work;
       zone.netJ += net;
       zone.distanceM += d;
@@ -262,7 +266,7 @@ export const computeCyclingEnergy = (
     movingTimeS,
     movingDistanceM,
     surfaceDistanceM,
-    zones: GRADE_ZONES.map((zone) => ({
+    zones: gradeZones(params.gradeZones).map((zone) => ({
       zone,
       ...byZone[zone.key],
       share: netJ > 0 ? byZone[zone.key].netJ / netJ : 0,

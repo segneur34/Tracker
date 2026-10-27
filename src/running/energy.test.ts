@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCumulativeTrack } from '../core/sessionStats';
+import { GRADE_ANALYSIS } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import {
   DEFAULT_ENERGY_PARAMS, computeEnergy, flatCostJkgM, minettiCost, restingPowerWkg, runningCostJkgM,
@@ -40,7 +41,7 @@ const buildTrack = (
 };
 
 const allMoving = (track: TrackPoint[]) => track.map(() => true);
-const gradesOf = (track: TrackPoint[]) => computeGrades(track.map((p) => p.ele ?? NaN), buildCumulativeTrack(track));
+const gradesOf = (track: TrackPoint[]) => computeGrades(track.map((p) => p.ele ?? NaN), buildCumulativeTrack(track), GRADE_ANALYSIS.halfWindowM);
 const NO_AIR: EnergyParams = { ...DEFAULT_ENERGY_PARAMS, airDragJs2M3Kg: 0 };
 
 describe('minettiCost', () => {
@@ -160,6 +161,15 @@ describe('computeEnergy', () => {
     const flat = result.zones.find((z) => z.zone.key === 'flat')!;
     // Minetti à 12 % : environ 1,8 fois le coût du plat, à la même vitesse.
     expect(up.mechanicalJkg / up.timeS).toBeGreaterThan(1.5 * (flat.mechanicalJkg / flat.timeS));
+  });
+  it('une montée clairsemée (un point tous les 30 m) ne sort pas plate', () => {
+    const at = (stepS: number) => buildTrack(1200, () => 3, stepS, (d) => 100 + 0.1 * d);
+    const dense = at(1);
+    const sparse = at(10);
+    const a = computeEnergy(dense, gradesOf(dense), allMoving(dense), NO_AIR, 0);
+    const b = computeEnergy(sparse, gradesOf(sparse), allMoving(sparse), NO_AIR, 0);
+    expect(b.zones.find((z) => z.zone.key === 'steepUp')!.share).toBe(1);
+    expect(Math.abs(b.netJkg - a.netJkg) / a.netJkg).toBeLessThan(0.01);
   });
 });
 

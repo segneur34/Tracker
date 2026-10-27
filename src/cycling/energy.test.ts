@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCumulativeTrack } from '../core/sessionStats';
+import { GRADE_ANALYSIS } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import type { SurfaceCategory } from '../planning/surface';
 import { computeGrades } from '../running/runningAnalytics';
@@ -40,7 +41,7 @@ const allMoving = (track: TrackPoint[]) => track.map(() => true);
 /** Revêtement de chaque segment, celui de son point de départ selon son instant (comme `trackSurfaceStretches`). */
 const surfacesByTime = (track: TrackPoint[], at: (tS: number) => SurfaceCategory): SurfaceCategory[] =>
   track.slice(0, -1).map((p) => at((p.timeMs - track[0].timeMs) / 1000));
-const gradesOf = (track: TrackPoint[]) => computeGrades(track.map((p) => p.ele ?? NaN), buildCumulativeTrack(track));
+const gradesOf = (track: TrackPoint[]) => computeGrades(track.map((p) => p.ele ?? NaN), buildCumulativeTrack(track), GRADE_ANALYSIS.halfWindowM);
 /** Vélo de route, 8,5 kg, cycliste de 70 kg. */
 const ROAD: CyclingEnergyParams = cyclingEnergyParams('route', 8.5, 70);
 
@@ -138,6 +139,16 @@ describe('computeCyclingEnergy', () => {
     expect(b.mechanicalJ).toBeCloseTo(a.mechanicalJ, -3);
     expect(Math.abs(b.mechanicalJ - a.mechanicalJ) / a.mechanicalJ).toBeLessThan(0.01);
     expect(b.restJ).toBeCloseTo(a.restJ, 3);
+  });
+
+  it('une montée clairsemée (un point toutes les 4 s à 8 m/s) ne sort pas plate', () => {
+    const at = (stepS: number) => buildTrack(1200, () => 8, stepS, (m) => 100 + 0.05 * m);
+    const dense = at(1);
+    const sparse = at(4);
+    const a = computeCyclingEnergy(dense, gradesOf(dense), allMoving(dense), ROAD, 0);
+    const b = computeCyclingEnergy(sparse, gradesOf(sparse), allMoving(sparse), ROAD, 0);
+    expect(b.zones.find((z) => z.zone.key === 'up')!.timeS).toBeCloseTo(b.movingTimeS, 6);
+    expect(Math.abs(b.mechanicalJ - a.mechanicalJ) / a.mechanicalJ).toBeLessThan(0.01);
   });
 
   it("à l'arrêt, seul le repos compte", () => {

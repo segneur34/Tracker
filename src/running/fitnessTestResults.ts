@@ -77,8 +77,11 @@ export const fitnessTestResults = (track: TrackPoint[], test: SessionTest, proto
 
   let hrMaxBpm: number | null = null;
   let hrMaxAtMs: number | null = null;
+  // FC moyenne de l'échauffement pondérée par le temps (règle 2) : chaque pas compte pour sa
+  // durée, bornée à `fixGapS`, la moitié à chacun de ses bouts ; un point seul vaut pour lui-même.
   let warmupSum = 0;
-  let warmupCount = 0;
+  let warmupWeight = 0;
+  let warmupLast: number | null = null;
   const warmupEndMs = test.rampStartMs ?? testEndMs;
   for (let i = 0; i < track.length; i++) {
     const p = track[i];
@@ -89,8 +92,16 @@ export const fitnessTestResults = (track: TrackPoint[], test: SessionTest, proto
       hrMaxAtMs = p.timeMs;
     }
     if (p.timeMs < warmupEndMs) {
-      warmupSum += v;
-      warmupCount++;
+      warmupLast = v;
+      const prev = i > 0 ? track[i - 1] : null;
+      const before = prev ? hr[i - 1] : null;
+      if (prev && before !== null && prev.timeMs >= test.startMs) {
+        const dtS = Math.min((p.timeMs - prev.timeMs) / 1000, protocol.fixGapS);
+        if (dtS > 0) {
+          warmupSum += ((before + v) / 2) * dtS;
+          warmupWeight += dtS;
+        }
+      }
     }
   }
 
@@ -125,7 +136,7 @@ export const fitnessTestResults = (track: TrackPoint[], test: SessionTest, proto
     hrAtRampEndBpm: hrAtRampEndBpm === null ? null : Math.round(hrAtRampEndBpm),
     hrAfterBpm: hrAfterBpm === null ? null : Math.round(hrAfterBpm),
     hrDropBpm: hrAtRampEndBpm !== null && hrAfterBpm !== null ? Math.round(hrAtRampEndBpm - hrAfterBpm) : null,
-    warmupAvgBpm: warmupCount > 0 ? Math.round(warmupSum / warmupCount) : null,
+    warmupAvgBpm: warmupWeight > 0 ? Math.round(warmupSum / warmupWeight) : warmupLast === null ? null : Math.round(warmupLast),
   };
 };
 

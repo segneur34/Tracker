@@ -1,21 +1,15 @@
 import { segmentDistanceM } from '../core/sessionStats';
 import { SLOW_COLOR, gradientColor, type SpeedRangeMs } from '../core/speedGradient';
+import type { GradeProfile } from '../core/sportProfiles';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { formatDuration, formatPace, msToKmh } from '../core/units';
 
 /**
  * Analyse propre à la course à pied : pente locale, zones de terrain, allures
  * par zone. Tout repose sur l'altitude lissée et la distance cumulée fournies
- * par le noyau.
+ * par le noyau ; la fenêtre et les seuils des zones viennent du profil
+ * (`SportProfile.grade`).
  */
-
-/** Demi-largeur, en mètres, de la fenêtre sur laquelle la pente est mesurée. */
-export const GRADE_HALF_WINDOW_M = 25;
-
-/** Pente, en fraction, au-dessous de laquelle le terrain est considéré plat. */
-export const FLAT_MAX_GRADE = 0.03;
-/** Pente, en fraction, à partir de laquelle une montée ou une descente est raide. */
-export const STEEP_MIN_GRADE = 0.1;
 
 export type GradeZoneKey = 'steepDown' | 'down' | 'flat' | 'up' | 'steepUp';
 
@@ -26,61 +20,87 @@ export interface GradeZone {
   range: string;
 }
 
-export const GRADE_ZONES: GradeZone[] = [
-  { key: 'steepUp', label: 'Montée raide', range: `≥ ${STEEP_MIN_GRADE * 100} %` },
-  { key: 'up', label: 'Montée', range: `${FLAT_MAX_GRADE * 100} à ${STEEP_MIN_GRADE * 100} %` },
-  { key: 'flat', label: 'À peu près plat', range: `± ${FLAT_MAX_GRADE * 100} %` },
-  { key: 'down', label: 'Descente', range: `-${FLAT_MAX_GRADE * 100} à -${STEEP_MIN_GRADE * 100} %` },
-  { key: 'steepDown', label: 'Descente raide', range: `≤ -${STEEP_MIN_GRADE * 100} %` },
-];
+/** Les zones de pente, de la montée raide à la descente raide, avec leurs plages. */
+export const gradeZones = (p: GradeProfile): GradeZone[] => {
+  const flat = p.flatMaxGrade * 100;
+  const steep = p.steepMinGrade * 100;
+  return [
+    { key: 'steepUp', label: 'Montée raide', range: `≥ ${steep} %` },
+    { key: 'up', label: 'Montée', range: `${flat} à ${steep} %` },
+    { key: 'flat', label: 'À peu près plat', range: `± ${flat} %` },
+    { key: 'down', label: 'Descente', range: `-${flat} à -${steep} %` },
+    { key: 'steepDown', label: 'Descente raide', range: `≤ -${steep} %` },
+  ];
+};
 
-export const classifyGrade = (grade: number): GradeZoneKey | null => {
+export const classifyGrade = (grade: number, p: GradeProfile): GradeZoneKey | null => {
   if (!isFinite(grade)) return null;
-  if (grade >= STEEP_MIN_GRADE) return 'steepUp';
-  if (grade >= FLAT_MAX_GRADE) return 'up';
-  if (grade > -FLAT_MAX_GRADE) return 'flat';
-  if (grade > -STEEP_MIN_GRADE) return 'down';
+  if (grade >= p.steepMinGrade) return 'steepUp';
+  if (grade >= p.flatMaxGrade) return 'up';
+  if (grade > -p.flatMaxGrade) return 'flat';
+  if (grade > -p.steepMinGrade) return 'down';
   return 'steepDown';
 };
 
 /**
- * Pente locale en chaque point, en fraction (0,05 = 5 %), mesurée entre les
- * points situés à `halfWindowM` avant et après le long de la trace.
+ * Pente locale en chaque point, en fraction (0,05 = 5 %), mesurée entre
+ * l'altitude à `halfWindowM` avant et après lui le long de la trace.
  *
  * Une pente calculée entre deux points consécutifs serait dominée par le bruit
  * de l'altitude : quelques dizaines de centimètres d'erreur sur cinq mètres
  * font dix pour cent. Sur cinquante mètres, l'erreur devient négligeable.
  *
- * `NaN` là où l'altitude manque ou la fenêtre ne peut pas être établie.
+ * L'altitude aux bornes de la fenêtre est interpolée entre les deux points
+ * qui les encadrent : des points espacés de plus de `halfWindowM` (montre
+ * économe, vélo rapide) ont leur pente comme les autres (règle 10). La fenêtre
+ * ne franchit pas une reprise après pause (`segmentStart` des `points`, s'ils
+ * sont donnés) : la distance n'y avance pas, l'altitude peut y sauter.
+ *
+ * `NaN` là où l'altitude manque à une borne, ou là où la fenêtre, tronquée au
+ * bord de la trace ou du segment, couvre moins de `halfWindowM`.
  */
 export const computeGrades = (
-  smoothedEle: number[],
-  cum: CumulativeTrack,
-  halfWindowM = GRADE_HALF_WINDOW_M
+  smoothedEle: readonly number[],
+  cum: Pick<CumulativeTrack, 'cumDist'>,
+  halfWindowM: number,
+  points?: ReadonlyArray<{ segmentStart?: true }>
 ): number[] => {
   const n = smoothedEle.length;
   const grades = new Array<number>(n).fill(NaN);
   if (n < 2) return grades;
+  const dist = cum.cumDist;
 
-  let back = 0;
-  let ahead = 0;
+  /** Altitude à la distance `x`, entre les points `k` et `k + 1` qui l'encadrent. */
+  const eleBetween = (k: number, x: number): number => {
+    const span = dist[k + 1] - dist[k];
+    const t = span > 0 ? (x - dist[k]) / span : 0;
+    return smoothedEle[k] + t * (smoothedEle[k + 1] - smoothedEle[k]);
+  };
 
-  for (let i = 0; i < n; i++) {
-    const d = cum.cumDist[i];
-    while (back < i && d - cum.cumDist[back] > halfWindowM) back++;
-    if (ahead < i) ahead = i;
-    while (ahead + 1 < n && cum.cumDist[ahead + 1] - d <= halfWindowM) ahead++;
-
-    // Aux extrémités, la fenêtre est tronquée d'un côté : on l'accepte tant
-    // qu'elle couvre au moins la moitié de la largeur voulue.
-    const span = cum.cumDist[ahead] - cum.cumDist[back];
-    if (span < halfWindowM) continue;
-
-    const eleBack = smoothedEle[back];
-    const eleAhead = smoothedEle[ahead];
-    if (!isFinite(eleBack) || !isFinite(eleAhead)) continue;
-
-    grades[i] = (eleAhead - eleBack) / span;
+  let first = 0;
+  while (first < n) {
+    // Segment [first, last] : jusqu'à la prochaine reprise.
+    let last = first;
+    while (last + 1 < n && !points?.[last + 1]?.segmentStart) last++;
+    const segStart = dist[first];
+    const segEnd = dist[last];
+    // Points encadrant les bornes basse et haute : ils n'avancent qu'avec la trace.
+    let lowK = first;
+    let highK = first;
+    for (let i = first; i <= last; i++) {
+      const d = dist[i];
+      const lo = Math.max(segStart, d - halfWindowM);
+      const hi = Math.min(segEnd, d + halfWindowM);
+      const span = hi - lo;
+      if (!(span >= halfWindowM) || last === first) continue;
+      while (lowK + 1 < last && dist[lowK + 1] <= lo) lowK++;
+      while (highK + 1 < last && dist[highK + 1] < hi) highK++;
+      const eleLo = eleBetween(lowK, lo);
+      const eleHi = eleBetween(highK, hi);
+      if (!isFinite(eleLo) || !isFinite(eleHi)) continue;
+      grades[i] = (eleHi - eleLo) / span;
+    }
+    first = last + 1;
   }
 
   return grades;
@@ -108,7 +128,8 @@ export interface ZoneStats {
 export const computeZoneStats = (
   track: TrackPoint[],
   grades: number[],
-  activityMask: boolean[]
+  activityMask: boolean[],
+  p: GradeProfile
 ): ZoneStats[] => {
   const acc: Record<GradeZoneKey, { distanceM: number; timeMs: number }> = {
     steepDown: { distanceM: 0, timeMs: 0 },
@@ -121,7 +142,7 @@ export const computeZoneStats = (
 
   for (let i = 1; i < track.length; i++) {
     if (!activityMask[i]) continue;
-    const zone = classifyGrade(grades[i]);
+    const zone = classifyGrade(grades[i], p);
     if (zone === null) continue;
     const d = segmentDistanceM(track, i);
     acc[zone].distanceM += d;
@@ -129,7 +150,7 @@ export const computeZoneStats = (
     movingDistanceM += d;
   }
 
-  return GRADE_ZONES.map((zone) => {
+  return gradeZones(p).map((zone) => {
     const { distanceM, timeMs } = acc[zone.key];
     const avgSpeedMs = timeMs > 0 ? distanceM / (timeMs / 1000) : null;
     return {
@@ -156,12 +177,13 @@ export const gradeZonePaths = (
   track: TrackPoint[],
   grades: number[],
   activityMask: boolean[],
-  zone: GradeZoneKey
+  zone: GradeZoneKey,
+  p: GradeProfile
 ): [number, number][][] => {
   const paths: [number, number][][] = [];
   let current: [number, number][] | null = null;
   for (let i = 1; i < track.length; i++) {
-    if (!activityMask[i] || classifyGrade(grades[i]) !== zone) {
+    if (!activityMask[i] || classifyGrade(grades[i], p) !== zone) {
       current = null;
       continue;
     }

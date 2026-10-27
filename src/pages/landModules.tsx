@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import type { GradeProfile } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import { J_PER_KCAL } from '../core/units';
 import {
@@ -70,6 +71,8 @@ export interface EnergyView {
 export interface EnergyInputs {
   track: TrackPoint[];
   grades: number[];
+  /** Seuils des zones de pente (`SportProfile.grade`). */
+  gradeZones: GradeProfile;
   activityMask: boolean[];
   runner: RunnerProfile;
   age: number | null;
@@ -122,8 +125,8 @@ const warningPerKg = (
  * l'affichage ; sans lui, les valeurs restent par kilo et la charge portée,
  * rapportée au poids du corps, est ignorée.
  */
-const runningEnergy = ({ track, grades, activityMask, runner, age, loadKg }: EnergyInputs): EnergyView => {
-  const params = runningEnergyParams(runner.economyMlKgKm);
+const runningEnergy = ({ track, grades, gradeZones, activityMask, runner, age, loadKg }: EnergyInputs): EnergyView => {
+  const params = { ...runningEnergyParams(runner.economyMlKgKm), gradeZones };
   const restWkg = restingPowerWkg(runner, age, params);
   const mass = runner.weightKg;
   const load = mass !== null && loadKg > 0 ? loadKg : 0;
@@ -217,10 +220,10 @@ const uncomputedCyclingEnergy = (bikeType: BikeType, bikeWeightKg: number): Ener
  * revêtement, une fois celui-ci connu. Sans le poids du pratiquant, rien
  * n'est calculé (`uncomputedCyclingEnergy`).
  */
-const cyclingEnergy = ({ track, grades, activityMask, runner, age, bikeType, bikeWeightKg, surfaces }: EnergyInputs): EnergyView => {
+const cyclingEnergy = ({ track, grades, gradeZones, activityMask, runner, age, bikeType, bikeWeightKg, surfaces }: EnergyInputs): EnergyView => {
   const riderKg = runner.weightKg;
   if (riderKg === null) return uncomputedCyclingEnergy(bikeType, bikeWeightKg);
-  const params = cyclingEnergyParams(bikeType, bikeWeightKg, riderKg);
+  const params = { ...cyclingEnergyParams(bikeType, bikeWeightKg, riderKg), gradeZones };
   const restW = restingPowerWkg(runner, age, DEFAULT_ENERGY_PARAMS) * riderKg;
   const energy = computeCyclingEnergy(track, grades, activityMask, params, restW, surfaces.stretches?.map((s) => s.category));
   const kcal = (j: number) => String(Math.round(j / J_PER_KCAL));

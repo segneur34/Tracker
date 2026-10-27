@@ -56,6 +56,26 @@ export const ELEVATION_PRESETS: Record<'route' | 'trail', ElevationProfile> = {
   trail: { smoothingSeconds: 30, minGainM: 5 },
 };
 
+/** Pente locale et zones de pente (`running/runningAnalytics.ts`). */
+export interface GradeProfile {
+  /**
+   * Demi-largeur, en mètres, de la fenêtre sur laquelle la pente est mesurée :
+   * entre deux points voisins, quelques dizaines de centimètres d'erreur
+   * d'altitude font dix pour cent ; sur cinquante mètres, elles s'effacent.
+   */
+  halfWindowM: number;
+  /** Pente, en fraction, au-dessous de laquelle le terrain est considéré plat. */
+  flatMaxGrade: number;
+  /** Pente, en fraction, à partir de laquelle une montée ou une descente est raide. */
+  steepMinGrade: number;
+}
+
+/**
+ * Pente et zones de pente, communes à tous les supports : course, vélo,
+ * énergie, cadence selon la pente, profil d'altitude de la planification.
+ */
+export const GRADE_ANALYSIS: GradeProfile = { halfWindowM: 25, flatMaxGrade: 0.03, steepMinGrade: 0.1 };
+
 /**
  * Réglage de l'enregistrement GPS sur téléphone. L'enregistreur ne filtre
  * rien : il demande au système une position par intervalle et garde tout ce
@@ -272,6 +292,9 @@ const CADENCE: CadenceDetection = {
   minRmsMs2: 0.5, minCoverage: 0.8, chartSmoothingS: 5, minCoverageS: 60, gapS: 10,
   walkBands: [90, 100, 110, 120, 130], runBands: [150, 160, 170, 180, 190], runAboveSpm: 140,
   maxWindowS: 30, speedBinKmh: 1, minBinS: 30, driftMinS: 10 * 60,
+  // Unité de `cad` d'un GPX (décision du 27/10) : longueur de pas ÷ fréquence des pas vraisemblable,
+  // marche 0,3 à 0,45, course 0,35 à 0,65 ; un facteur 2 faux la multiplie ou la divise par 4.
+  stepLengthPerHz: { min: 0.2, max: 0.8 }, spmAbove: 130,
   keepCapture: true,
 };
 
@@ -404,6 +427,8 @@ export interface SportProfile {
   foilDefault: boolean;
   /** Réglage du dénivelé. */
   elevation: ElevationProfile;
+  /** Pente locale et zones de pente. */
+  grade: GradeProfile;
   /**
    * Pas des échantillons d'altitude du terrain (IGN), en mètres, surchargeable
    * par activité ; `null` : pas d'altitude du terrain (voile).
@@ -515,6 +540,7 @@ const SAILING_DEFAULTS = {
   withoutActiveThreshold: null,
   speedRange: null,
   elevation: ELEVATION_PRESETS.route,
+  grade: GRADE_ANALYSIS,
   terrainElevationStepM: null,
   loopReturnMaxRatio: null,
   topTargets: SAILING_TOP_TARGETS,
@@ -550,6 +576,7 @@ const RUNNING_PROFILE: SportProfile = {
   speedRange: null,
   activeRatioLabel: 'Ratio en mouvement',
   elevation: ELEVATION_PRESETS.route,
+  grade: GRADE_ANALYSIS,
   terrainElevationStepM: 10,
   loopReturnMaxRatio: DEFAULT_LOOP_RETURN_MAX_RATIO,
   topTargets: RUNNING_TOP_TARGETS,
@@ -583,6 +610,7 @@ const CYCLING_PROFILE: SportProfile = {
   speedRange: null,
   activeRatioLabel: 'Ratio en mouvement',
   elevation: ELEVATION_PRESETS.route,
+  grade: GRADE_ANALYSIS,
   terrainElevationStepM: 10,
   loopReturnMaxRatio: DEFAULT_LOOP_RETURN_MAX_RATIO,
   topTargets: CYCLING_TOP_TARGETS,
@@ -622,6 +650,7 @@ const SURF_PROFILE: SportProfile = {
   activeRatioLabel: 'Ratio sur la vague',
   foilDefault: false,
   elevation: ELEVATION_PRESETS.route,
+  grade: GRADE_ANALYSIS,
   terrainElevationStepM: null,
   loopReturnMaxRatio: null,
   topTargets: SURF_TOP_TARGETS,

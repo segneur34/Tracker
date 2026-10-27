@@ -83,3 +83,29 @@ describe('fitnessTestResults', () => {
     expect(summaryOfTest({ ...fitnessTestResults(track(1), TEST, PROTOCOL), hrMaxBpm: null, stepsHeld: 0 })).toBeNull();
   });
 });
+
+describe('FC moyenne de l’échauffement', () => {
+  /** Échauffement à 80 bpm puis 100 bpm, points serrés (`denseHz`) puis espacés de `sparseS`, la suite comme `track`. */
+  const irregular = (denseHz: number, sparseS: number): TrackPoint[] => {
+    const times: number[] = [];
+    for (let t = 0; t < 240; t += 1 / denseHz) times.push(t);
+    for (let t = 240; t < 480; t += sparseS) times.push(t);
+    for (let t = 480; t <= 1000; t++) times.push(t);
+    return times.map((t) => {
+      const timeMs = T0 + Math.round(t * 1000);
+      const { kmh, hr } = at(t);
+      const v = kmhToMs(kmh);
+      return {
+        lat: 45, lon: 3, time: new Date(timeMs), timeMs, hr: t < 240 ? 80 : t < 480 ? 100 : hr,
+        speedMs: v, smoothedSpeedMs: v, bearing: 0, speedSource: 'doppler',
+      };
+    });
+  };
+
+  it('pondérée par le temps : la même à cadence régulière et irrégulière (règle 2)', () => {
+    const regular = fitnessTestResults(irregular(1, 1), TEST, PROTOCOL).warmupAvgBpm!;
+    const uneven = fitnessTestResults(irregular(5, 4), TEST, PROTOCOL).warmupAvgBpm!;
+    expect(Math.abs(regular - 90)).toBeLessThanOrEqual(1);
+    expect(Math.abs(uneven - regular)).toBeLessThanOrEqual(1);
+  });
+});

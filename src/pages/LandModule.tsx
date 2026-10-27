@@ -53,10 +53,7 @@ import { LAND_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type LandTab } 
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
-import {
-  buildCumulativeTrack, buildBaseSessionStats, computeActiveDistanceM, computeActiveTimeMs,
-  computeTotalTimeMs, thresholdActivityMask,
-} from '../core/sessionStats';
+import { buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
 import { sessionActivity } from '../core/activities';
 import { trackIndexAtTime } from '../core/jumps';
 import { heartRateZonePaths, timeSpanHeartRate } from '../core/heartRate';
@@ -89,7 +86,7 @@ import {
   effectiveJumpSettings, effectiveTabChoices, readStoredActivities, useSportSettings,
 } from '../hooks/useSportSettings';
 import {
-  averagePace, computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
+  computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
 } from '../running/runningAnalytics';
 import { analyzeCadence, cadenceBandPaths, sessionCadence, timeSpanCadence } from '../running/cadence';
 import { isValidCarriedLoad, smoothMovingPower } from '../running/energy';
@@ -227,6 +224,9 @@ const NO_INTERVALS: IntervalSeries[] = [];
 const cardStyle = CARD_STYLE;
 
 /** Champs du matériel hors voile, sous les intitulés de l'activité. */
+/** Vitesse moyenne montrée : `null` (« — ») sans distance ni temps. */
+const positiveSpeed = (ms: number | null): number | null => (ms !== null && ms > 0 ? ms : null);
+
 const gearFields = (labels: [string, string]): GearField[] => [
   { field: 'gear1', label: labels[0], placeholder: 'ex. modèle, taille' },
   { field: 'gear2', label: labels[1], placeholder: 'ex. modèle, taille' },
@@ -418,19 +418,9 @@ function LandModule({ family }: { family: LandFamily }) {
     });
   }, [gpx.track, profile, activeThreshold, cumulative, activityMask, elevation]);
 
-  /** Allures moyennes : sur le temps total, et sur le seul temps en mouvement. */
-  const averages = useMemo(() => {
-    if (gpx.track.length === 0) return null;
-    const totalDistanceM = cumulative.cumDist[cumulative.cumDist.length - 1] ?? 0;
-    return {
-      overall: averagePace(totalDistanceM, computeTotalTimeMs(gpx.track)),
-      moving: averagePace(computeActiveDistanceM(gpx.track, activityMask), computeActiveTimeMs(gpx.track, activityMask)),
-    };
-  }, [gpx.track, cumulative, activityMask]);
-
   const grades = useMemo(
-    () => (stats?.hasElevation ? computeGrades(elevation.smoothed, cumulative) : []),
-    [stats, elevation, cumulative]
+    () => (stats?.hasElevation ? computeGrades(elevation.smoothed, cumulative, profile.grade.halfWindowM, gpx.track) : []),
+    [stats, elevation, cumulative, profile.grade.halfWindowM, gpx.track]
   );
 
   /**
@@ -477,16 +467,18 @@ function LandModule({ family }: { family: LandFamily }) {
     [gradeOnMap, altitudeChartShown, surfaceMapPaths, grades, gpx.track, gradeRange]
   );
 
-  const zoneStats = useMemo(
-    () => (grades.length > 0 ? computeZoneStats(gpx.track, grades, activityMask) : []),
-    [gpx.track, grades, activityMask]
-  );
+  /** Zones de pente ; vide si aucune n'a de temps (pentes toutes inconnues) : l'onglet dit alors pourquoi. */
+  const zoneStats = useMemo(() => {
+    if (grades.length === 0) return [];
+    const zones = computeZoneStats(gpx.track, grades, activityMask, profile.grade);
+    return zones.some((z) => z.timeMs > 0) ? zones : [];
+  }, [gpx.track, grades, activityMask, profile.grade]);
   /** Onglet « cadence » : chiffres, tranches, selon la vitesse et la pente, dérive. */
   const cadenceAnalysis = useMemo(
     () => ((open.cadence || open.general) && cadencePresent && cadenceParams && cadence
-      ? analyzeCadence(gpx.track, cadence.spm, activityMask, grades.length > 0 ? grades : null, cadenceParams)
+      ? analyzeCadence(gpx.track, cadence.spm, activityMask, grades.length > 0 ? { values: grades, zones: profile.grade } : null, cadenceParams)
       : null),
-    [open.cadence, open.general, cadencePresent, cadenceParams, cadence, gpx.track, activityMask, grades]
+    [open.cadence, open.general, cadencePresent, cadenceParams, cadence, gpx.track, activityMask, grades, profile.grade]
   );
   /** Passages de la tranche de cadence choisie, tracés sur la carte tant que l'onglet « cadence » est ouvert. */
   const cadencePaths = useMemo(
@@ -504,25 +496,28 @@ function LandModule({ family }: { family: LandFamily }) {
   );
   /** Passages de la zone de pente choisie, tracés sur la carte tant que son onglet est ouvert. */
   const zonePaths = useMemo(
-    () => (selectedZone !== null && open.zones && grades.length > 0 ? gradeZonePaths(gpx.track, grades, activityMask, selectedZone) : []),
-    [selectedZone, open.zones, gpx.track, grades, activityMask]
+    () => (selectedZone !== null && open.zones && grades.length > 0 ? gradeZonePaths(gpx.track, grades, activityMask, selectedZone, profile.grade) : []),
+    [selectedZone, open.zones, gpx.track, grades, activityMask, profile.grade]
   );
 
   /**
    * Énergie dépensée, selon le modèle du traitement (`landModules.tsx`) :
    * pente, résistance de l'air, roulement selon le revêtement à vélo, et repos
-   * sur toute la durée. Recalculée quand le revêtement arrive.
+   * sur toute la durée. Recalculée quand le revêtement arrive. Calculée
+   * seulement onglet « énergie » ouvert, ou à vélo, dont « général » montre la
+   * dépense totale.
    */
   const surfaceStatus = surfaces.status;
   const surfaceStretches = surfaces.stretches;
+  const energyNeeded = open.energie || model.treatment === 'velo';
   const energy = useMemo(
-    () => (gpx.track.length > 1
+    () => (energyNeeded && gpx.track.length > 1
       ? model.energy({
-          track: gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg, loadKg,
+          track: gpx.track, grades, gradeZones: profile.grade, activityMask, runner, age, bikeType, bikeWeightKg, loadKg,
           surfaces: { status: surfaceStatus, stretches: surfaceStretches },
         })
       : null),
-    [model, gpx.track, grades, activityMask, runner, age, bikeType, bikeWeightKg, loadKg, surfaceStatus, surfaceStretches]
+    [energyNeeded, model, gpx.track, grades, profile.grade, activityMask, runner, age, bikeType, bikeWeightKg, loadKg, surfaceStatus, surfaceStretches]
   );
 
   /** Chiffres du panneau Énergie repliés ou dépliés, choix gardé sur l'appareil. */
@@ -752,13 +747,13 @@ function LandModule({ family }: { family: LandFamily }) {
   const mapBounds = useMemo(() => trackBounds(gpx.track), [gpx.track]);
 
   /** Chiffres de l'onglet « général », proposés aussi pour l'image de partage. */
-  const generalStats: ShareStat[] = stats && averages ? [
+  const generalStats: ShareStat[] = stats ? [
     { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
     { key: 'activeDistance', label: 'Distance en mouvement', value: formatDistance(stats.activeDistanceM, distanceUnit) },
     { key: 'totalTime', label: 'Temps de parcours', value: stats.totalTime },
     { key: 'activeTime', label: `Temps en mouvement (${stats.activeRatio} %)`, value: stats.activeTime },
-    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(averages.moving.speedMs, speedUnit) },
-    { key: 'overallAverage', label: 'Moyenne sur le temps total', value: formatSpeed(averages.overall.speedMs, speedUnit) },
+    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit) },
+    { key: 'overallAverage', label: 'Moyenne sur le temps total', value: formatSpeed(positiveSpeed(stats.avgSpeedMs), speedUnit) },
     { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
     { key: 'altitude', label: 'Altitude', value: stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—' },
   ] : [];
@@ -768,11 +763,11 @@ function LandModule({ family }: { family: LandFamily }) {
    * L'image de partage garde la liste entière (`generalStats`).
    */
   const energyTotal = model.treatment === 'velo' ? energy?.stats.find((stat) => stat.label === TOTAL_ENERGY_LABEL && stat.value !== '—') ?? null : null;
-  const overviewStats: ShareStat[] = stats && averages ? [
+  const overviewStats: ShareStat[] = stats ? [
     { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
     { key: 'totalTime', label: 'Temps de parcours', value: stats.totalTime },
     { key: 'activeTime', label: `Temps en mouvement (${stats.activeRatio} %)`, value: stats.activeTime },
-    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(averages.moving.speedMs, speedUnit) },
+    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit) },
     { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
     ...overviewTargets.map((target) => {
       const top = overviewTops?.[target.key]?.[0];
@@ -1235,7 +1230,7 @@ function LandModule({ family }: { family: LandFamily }) {
       </div>
 
       {/* Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`). */}
-      {stats && averages && (
+      {stats && (
         <div className="an-carte-col">
           <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} advancedOpen={advanced.open} onToggleAdvanced={advanced.toggle} accent={page.accent} />
           <div className="an-carte-panels">
@@ -1456,7 +1451,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     helpKey="analyse:zones" />
                 </div>
                 <HelpText helpKey="analyse:zones" note>
-                  Pente mesurée sur 50 m d'altitude lissée. Les pauses sont exclues de chaque zone. « Voir » montre ses passages sur la carte, en violet.
+                  Pente mesurée sur {2 * profile.grade.halfWindowM} m d'altitude lissée. Les pauses sont exclues de chaque zone. « Voir » montre ses passages sur la carte, en violet.
                 </HelpText>
                 {chartData.length > 1 && (
                   <ChartFold label="Tableau" open={zonesFold.open.tableau} onToggle={() => zonesFold.toggle('tableau')}

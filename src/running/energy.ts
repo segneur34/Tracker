@@ -1,6 +1,7 @@
 import { segmentDistanceM } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
-import { GRADE_ZONES, classifyGrade, type GradeZone, type GradeZoneKey } from './runningAnalytics';
+import { GRADE_ANALYSIS, type GradeProfile } from '../core/sportProfiles';
+import { classifyGrade, gradeZones, type GradeZone, type GradeZoneKey } from './runningAnalytics';
 
 /**
  * Dépense d'énergie de la course à pied, tout en unités SI et par kilo de
@@ -32,6 +33,8 @@ export interface EnergyParams {
   restingMlKgMin: number;
   /** Rendement : puissance mécanique sur puissance de course nette (repos déduit). */
   mechanicalEfficiency: number;
+  /** Pente et zones de pente du bilan par zone (`SportProfile.grade`). */
+  gradeZones: GradeProfile;
 }
 
 /**
@@ -47,6 +50,7 @@ export const DEFAULT_ENERGY_PARAMS: EnergyParams = {
   maxGrade: 0.45,
   restingMlKgMin: 3.5,
   mechanicalEfficiency: 0.25,
+  gradeZones: GRADE_ANALYSIS,
 };
 
 /** Charge portée plausible (sac, affaires), en kg ; 0 : aucune. */
@@ -178,7 +182,7 @@ export const computeEnergy = (
       netJkg += net;
       movingTimeS += dt;
       movingDistanceM += d;
-      const zone = byZone[classifyGrade(grade) ?? 'flat'];
+      const zone = byZone[classifyGrade(grade, params.gradeZones) ?? 'flat'];
       zone.netJkg += net;
       zone.distanceM += d;
       zone.timeS += dt;
@@ -195,7 +199,7 @@ export const computeEnergy = (
     totalJkg: netJkg + restJkg,
     movingTimeS,
     movingDistanceM,
-    zones: GRADE_ZONES.map((zone) => ({
+    zones: gradeZones(params.gradeZones).map((zone) => ({
       zone,
       ...byZone[zone.key],
       mechanicalJkg: byZone[zone.key].netJkg * params.mechanicalEfficiency,

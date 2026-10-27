@@ -6,7 +6,6 @@ import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 import { SPEED_UNIT_LABEL, formatShortDuration, formatSpeedValue, toDisplaySpeed, type SpeedUnit } from '../core/units';
 import { useOpenSections } from '../hooks/useOpenSections';
 import type { CadenceAnalysis, CadenceShare } from '../running/cadence';
-import { GRADE_ZONES } from '../running/runningAnalytics';
 
 interface Props {
   analysis: CadenceAnalysis;
@@ -81,7 +80,7 @@ export default function CadencePanel({ analysis, speedUnit, selectedBand, onSele
       <div className="an-sheet__stats an-sheet__stats--always">
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">Cadence moyenne</span><strong className="an-sheet__stat-value">{spmText(analysis.averageSpm)}</strong></div>
         {analysis.maxSpm !== null && (
-          <div className="an-sheet__stat"><span className="an-sheet__stat-label">Cadence max (30 s)</span><strong className="an-sheet__stat-value">{spmText(analysis.maxSpm)}</strong></div>
+          <div className="an-sheet__stat"><span className="an-sheet__stat-label">Cadence max ({analysis.maxWindowS} s)</span><strong className="an-sheet__stat-value">{spmText(analysis.maxSpm)}</strong></div>
         )}
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">Longueur de pas</span><strong className="an-sheet__stat-value">{stepText(analysis.stepLengthM)}</strong></div>
         <div className="an-sheet__stat"><span className="an-sheet__stat-label">Pas</span><strong className="an-sheet__stat-value">{Math.round(analysis.steps).toLocaleString('fr-FR')}</strong></div>
@@ -162,10 +161,7 @@ export default function CadencePanel({ analysis, speedUnit, selectedBand, onSele
             <table style={tableStyle}>
               {shareHead('Zone')}
               <tbody>
-                {byGrade.map((z) => {
-                  const zone = GRADE_ZONES.find((g) => g.key === z.zone)!;
-                  return shareRow(z.zone, zone.label, z, zone.range);
-                })}
+                {byGrade.map((z) => shareRow(z.zone.key, z.zone.label, z, z.zone.range))}
               </tbody>
             </table>
           )}

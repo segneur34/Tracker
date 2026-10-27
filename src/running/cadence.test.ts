@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { SYNTH_WALL_MS, noiseSource, synthImu } from '../core/imuSynthetic';
-import { SPORT_PROFILES } from '../core/sportProfiles';
+import { SPORT_PROFILES, GRADE_ANALYSIS } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import {
-  analyzeCadence, cadenceAt, cadenceBandPaths, cadenceSeries, gpxStrideCadence, joinCadence, sessionCadence, stepCadenceSpm, stepPeriod, timeSpanCadence,
+  analyzeCadence, cadenceAt, cadenceBandPaths, cadenceFactor, cadenceSeries, gpxStrideCadence, joinCadence, sessionCadence, stepCadenceSpm, stepPeriod, timeSpanCadence,
   type CadenceDetection,
 } from './cadence';
 
@@ -120,11 +120,42 @@ describe('cadence du GPX', () => {
     expect(gpxStrideCadence(108.4)).toBe(54);
   });
 
-  it('relue en pas par minute : doublée (Garmin, Strava, Tracker), sauf un fichier déjà en pas', () => {
-    expect(stepCadenceSpm([85, 86, undefined, 0, 88])).toEqual([170, 172, null, null, 176]);
-    expect(stepCadenceSpm([54, 55, 56])).toEqual([108, 110, 112]);
-    expect(stepCadenceSpm([168, 170, 172])).toEqual([168, 170, 172]);
-    expect(stepCadenceSpm([undefined, undefined])).toEqual([null, null]);
+  it('relue en pas par minute : multipliée par le facteur, rien sans valeur ou à 0', () => {
+    expect(stepCadenceSpm([85, 86, undefined, 0, 88], 2)).toEqual([170, 172, null, null, 176]);
+    expect(stepCadenceSpm([168, 170, 172], 1)).toEqual([168, 170, 172]);
+    expect(stepCadenceSpm([undefined, undefined], 2)).toEqual([null, null]);
+  });
+});
+
+describe('cadenceFactor : pas ou foulées, selon la longueur de pas (décision du 27/10)', () => {
+  /** Trace à `speedMs` dont `cad` vaut `cad` partout. */
+  const withCad = (speedMs: number, cad: number, seconds = 300) =>
+    trackOf(seconds, () => speedMs, () => null).track.map((p) => ({ ...p, cadence: cad }));
+
+  it('marche à 1,4 m/s : 110 déjà en pas, gardée ; 55 en foulées, doublée', () => {
+    expect(cadenceFactor(withCad(1.4, 110), P)).toBe(1);
+    expect(cadenceFactor(withCad(1.4, 55), P)).toBe(2);
+    // Marche lente, 0,8 m/s à 90 pas/min.
+    expect(cadenceFactor(withCad(0.8, 90), P)).toBe(1);
+    expect(cadenceFactor(withCad(0.8, 45), P)).toBe(2);
+  });
+
+  it('course : 170 en pas gardée, 85 en foulées doublée, même rapide', () => {
+    expect(cadenceFactor(withCad(3, 170), P)).toBe(1);
+    expect(cadenceFactor(withCad(3, 85), P)).toBe(2);
+    expect(cadenceFactor(withCad(5, 180), P)).toBe(1);
+    expect(cadenceFactor(withCad(5, 90), P)).toBe(2);
+  });
+
+  it('sans mouvement, la médiane décide', () => {
+    expect(cadenceFactor(withCad(0, 85), P)).toBe(2);
+    expect(cadenceFactor(withCad(0, 170), P)).toBe(1);
+    expect(cadenceFactor(withCad(0, 110), P)).toBe(2);
+  });
+
+  it('même choix à 1 Hz et à 5 Hz', () => {
+    const at5 = trackOf(300, () => 1.4, () => null, 5).track.map((p) => ({ ...p, cadence: 110 }));
+    expect(cadenceFactor(at5, P)).toBe(1);
   });
 });
 
@@ -177,6 +208,7 @@ describe('analyzeCadence : onglet « cadence »', () => {
     const { track, spm } = trackOf(600, () => 3, (k) => (k >= 200 && k < 240 ? 190 : 165));
     const a = analyzeCadence(track, spm, track.map(() => true), null, P)!;
     expect(a.maxSpm).toBeCloseTo(190, 0);
+    expect(a.maxWindowS).toBe(P.maxWindowS);
   });
 
   it('selon la vitesse : plus vite, la cadence et le pas montent', () => {
@@ -194,8 +226,8 @@ describe('analyzeCadence : onglet « cadence »', () => {
   it("selon la pente : les zones de l'onglet des pentes", () => {
     const { track, spm } = trackOf(1200, () => 3, (k) => (k < 600 ? 175 : 160));
     const grades = track.map((_, i) => (i < 600 ? 0 : 0.06));
-    const a = analyzeCadence(track, spm, track.map(() => true), grades, P)!;
-    const zone = (key: string) => a.byGrade!.find((z) => z.zone === key)!;
+    const a = analyzeCadence(track, spm, track.map(() => true), { values: grades, zones: GRADE_ANALYSIS }, P)!;
+    const zone = (key: string) => a.byGrade!.find((z) => z.zone.key === key)!;
     expect(zone('flat').spm).toBeCloseTo(175, 0);
     expect(zone('up').spm).toBeCloseTo(160, 0);
     expect(zone('steepUp').timeS).toBe(0);
@@ -253,5 +285,27 @@ describe('sessionCadence : la cadence du GPX', () => {
     expect(s.present).toBe(true);
     expect(s.smoothed[50]).toBeCloseTo(170, 6);
     expect(sessionCadence(track, P).present).toBe(false);
+  });
+});
+
+describe('sessionCadence : unité et couverture', () => {
+  it('une marche déjà écrite en pas par minute n\'est pas doublée', () => {
+    const { track } = trackOf(300, () => 1.4, () => null);
+    const s = sessionCadence(track.map((p) => ({ ...p, cadence: 110 })), P);
+    expect(s.spm[10]).toBe(110);
+  });
+
+  it('une pause ou un trou entre deux bouts de cadence ne compte pas dans la couverture', () => {
+    // 40 s de cadence, 20 min d'arrêt, encore 10 s : 50 s mesurées, sous `minCoverageS`.
+    const { track } = trackOf(50, () => 3, () => null);
+    const shifted = (withPause: boolean) => track.map((p, k) => {
+      const timeMs = k <= 40 ? p.timeMs : p.timeMs + 1200_000;
+      return { ...p, timeMs, time: new Date(timeMs), cadence: 85, ...(withPause && k === 41 ? { segmentStart: true as const } : {}) };
+    });
+    for (const withPause of [true, false]) {
+      const s = sessionCadence(shifted(withPause), P);
+      expect(s.coveredS).toBeCloseTo(49, 0);
+      expect(s.present).toBe(false);
+    }
   });
 });
