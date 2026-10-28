@@ -6,23 +6,7 @@ L'utilisateur répond par numéro : « ok », ou ce qui ne va pas. Les numéros 
 
 ## À faire (paquets en attente de validation)
 
-APK 0.3.93 (lots 10, vols et manœuvres en voile, essai 61, et 22, pumping en wing, essai 62) **construite le 28/10 au soir, à installer** (téléphone débranché) ; elle porte aussi tout ce que la 0.3.91 portait.
-
-APK 0.3.91 (correctifs du lot 20 : partie « Matériel » à part dans Réglages, liste des groupes en ligne et dépliable, « Créer groupe matériel ») construite et **installée** le 28/10, après la 0.3.88 : elle porte les lots 18 (fond à pied, essai 57), 19 (image de partage 1080 × 1920, essai 58), 20 (matériel par groupes, essai 59) et 21 (énergie de la marche, pistes non pavées, essai 60).
-
-APK 0.3.84 construite et **installée** le 28/10 au matin : elle porte les lots 15 (ligne du Timer, bouton « Enregistrer »), 16 (heures par semaine dans Statistiques) et 17 (thème Auto sans redémarrer, validé le 28/10), essai 55 ; l'APK 0.3.81, installée le 28/10 au matin (correctif Q9 et Q12 du lot 11), porte, comme la 0.3.80 : lots 13, boutons orange et « Étape » ; 14, dépendances npm dont le greffon GPS 8.5.0 ; 12, thème sombre et économe ; 11, muscu avec ceinture. Les essais 28 + 34 et 37 + 43 restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14, puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14. Les essais 49 et 50 valident le lot 12 ; 51 à 54 le lot 11 (muscu, 0b93147, correctif Q9 et Q12 en 0.3.81).
-
-| N° | Essai | Attendu |
-|---|---|---|
-| 28 + 34 | Un vrai enregistrement d'une heure ou plus, avec la notification, une pause, et si possible une trace suivie. | Chiffres du direct, distance restante, bips et pause automatique justes et sans retard tout du long ; analyse normale ensuite. |
-| 37 + 43 | Un fractionné avec la ceinture, écran verrouillé. | Tuile « BPM » au-dessus de Durée et Vitesse, état de la ceinture lisible ; notification « Étape n/N · FC » (Q9 tranchée le 28/10, 0.3.81). |
-| 50 | Lot 12 : « Sombre » puis « Économe » sur Accueil, une analyse, Enregistrer et Réglages. | Tout lisible ; la carte reste claire dans l'interface sombre ; en économe, fond noir, vignettes trace seule sans plan (à juger) ; le texte bleu voile sur fond sombre (« Renommer », onglet choisi) est à juger à l'œil. |
-| 52 | Lot 11 : Enregistrer › Type Muscu sans ceinture à portée. | « Démarrer » grisé avec la phrase qui dit pourquoi ; ceinture mise, il devient possible. |
-| 53 | Lot 11 : muscu sans séance (lien « Muscu sans séance ») avec deux « Note ». | Repères dans l'analyse, sur le graphe. |
-| 54 | APK 0.3.81 (Q9 et Q12) : un fractionné à pied, puis une muscu avec une séance du Timer ; « Arrêter » la session avant la fin de la séance. | Notification « Étape n/N · FC » en fractionné ; le compteur s'arrête avec la session (plus de bips), et l'analyse montre la séance arrêtée à l'heure de l'arrêt. |
-| 55 | Lot 16 (0.3.83) : Statistiques › Tout › graphique › Durée, sur vos vraies sessions. | Une ligne grise pleine des heures de chaque semaine, en plus du pointillé, légende « heures par semaine » ; à juger : lisible sur une vraie année (au banc, une session toutes les quelques semaines donne des dents de scie) ; sinon un escalier par semaine se fait en une ligne. |
-| 61 | Lot 10 (0.3.92) : rouvrir la session du 26/10 (seuil 7, vent 321), puis une autre session de wing. | Le 26/10 : « Ratio de vol » 66 % (sur le temps en mouvement) et « Temps en vol » ; 37 manœuvres, 13 virements réussis et 4 ratés, 19 empannages réussis et 1 raté ; sous le tableau, « 6 demi-tours hors vol » et « 1 tour complet ». À juger de mémoire : les virements de 18:17, 21:00 et le second virement de 21:24 (minutes depuis le départ) sont bien des virements en vol ; les quatre virements ratés (15:31, 29:19, 32:48, 47:30) avaient bien perdu le vol. L'autre session : comptes et classement crédibles, vent estimé inchangé ou presque. |
-| 62 | Lot 22 (0.3.93) : Réglages › carte Wingfoil › case « Pumping » sous Foil, puis une **nouvelle** session de wing enregistrée avec « Mesurer les sauts » et « Mesurer le pumping » cochés, quelques vols avec du pumping ; ensuite rouvrir la session du 26/10 avec Pumping coché dans son onglet réglages. | Nouvelle session : fichier `.imu` gardé entier (environ 3 Mo par heure, à voir dans Documents/Tracker), onglet « pumping » après « sauts » avec coups, fréquence et décollage par vol, podium des trois plus longs vols, surbrillance du vol sur la carte ; les seuils sont ceux du surf, à juger (trop ou pas assez de coups : le dire). Session du 26/10 : 6 vols étoilés (capture partielle), sans décollage. |
+Rien en attente : tout validé le 28/10 au soir (« ok partout »), APK 0.3.93 installée, qui porte tout depuis la 0.3.69.
 
 ## Quand l'occasion se présente (terrain)
 
@@ -31,13 +15,15 @@ APK 0.3.84 construite et **installée** le 28/10 au matin : elle porte les lots 
 | 1 | Ceinture, écran éteint : marche de 10 à 15 min, téléphone posé, pause automatique décochée ; trois ou quatre fois 2 min près du téléphone puis 1 à 2 min hors de portée. Remettre la pause automatique après. | Reprise seule à chaque retour ; onglet « cardio » avec un trou par sortie de portée. |
 | 2 | Test de FC max : Entraînement › Tests › FC max › Lancer, ceinture portée, sur terrain plat. | Échauffement guidé, rampe avec bips, onglet « test » avec FC max ; « Retenir cette FC max ». Débloque le lot des zones de FC. |
 | 4 | Cadence : une vraie course, téléphone dans la poche. **Données en main** (28/10) : courses du 21, 24 et 25/10 avec `.imu` sur le téléphone ; Claude les relit. | Environ 160 à 180 pas/min. |
-| 5 | Pumping : une vraie session de wing avec un premier vol. **Données en main** (28/10) : wing du 26/10 en vent léger, avec `.imu` ; le pumping n'est codé que pour le surf sur foil, son passage en wing est un lot (Fable, high). | Pumping et premier vol détectés. |
 | 46 | Surf : une vraie session. | Vagues, temps sur la vague et rame crédibles (seuils jamais validés). |
 | 47 | Racine du Profil sur quelques vraies semaines. | Recul, fleur et feuilles tombées qui suivent la semaine. |
 | 48 | Wingfoil avec des sauts, en notant à part les vrais sauts. | Sert au lot des faux sauts (demandes du 10/10, lot 2). |
 
 ## Faits
 
+- 61 (vols et manœuvres en voile, lot 10) et 62 (pumping en wing, lot 22) : ok le 28/10 au soir sur l'APK 0.3.93 ; lots 10 et 22 validés. L'essai 5 (pumping en wing, terrain) est couvert par le 62.
+- 28 + 34 (vrai enregistrement d'une heure avec notification, pause et trace suivie) et 37 + 43 (fractionné avec la ceinture, écran verrouillé, notification « Étape · FC ») : ok le 28/10 au soir ; lots 1 à 9 de la file (revue du 27/10, A et B du 26/10), 13 et 14 (greffon GPS 8.5.0 compris) validés.
+- 50 (thème sombre et économe, lot 12), 52, 53, 54 (muscu avec ceinture, repères, séance arrêtée avec la session, lot 11), 55 (heures par semaine dans Statistiques, lot 16) : ok le 28/10 au soir ; lots 11, 12, 15 et 16 validés.
 - 57 (fond À pied « Relief et sentier », lot 18), 58 (image de partage 1080 × 1920, lot 19), 60 (énergie de la marche et non pavé, lot 21) : ok le 28/10 sur l'APK 0.3.88 ; lots 18, 19, 21 validés.
 - 59 (matériel par groupes, lot 20) : ok le 28/10 sur l'APK 0.3.91, après deux correctifs demandés à l'essai (partie « Matériel » à part dans Réglages, liste des groupes en ligne et dépliable, « Créer liste matériel », « Créer groupe matériel ») ; lot 20 validé.
 - 56 (thème « Auto » qui suit le téléphone sans redémarrer, lot 17) : ok le 28/10 ; lot 17 validé.
