@@ -289,7 +289,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: radial-gradient(circle, var(--recording) 0 22.5%, var(--on-accent) 23%);
+  background: radial-gradient(circle closest-side, var(--recording) 0 82%, var(--on-accent) 85%);
 }
 
 .ui-record-dot--stop {

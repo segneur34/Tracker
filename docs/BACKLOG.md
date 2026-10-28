@@ -14,14 +14,14 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 APK 0.3.95 installée le 28/10 (versionCode 3095).
 
 - 32 · [idée] Icône « Enregistrer » : disque blanc avec un rond rouge, partout où l'action apparaît · noté 28/10 · petit · Sonnet/medium · à revoir : bogue n° 48 (0602700, 0.3.95 ; vu au téléphone le 28/10 : rond rouge trop petit, gros liseré blanc ; voulu un grand rond rouge et un fin liseré blanc) · détail : ~/.claude/plans/demandes-2810/lot32-icone-enregistrer.md
+- 48 · [bogue] Icône « Enregistrer » (lot 32, essai 63) : rond rouge trop petit dans un gros liseré blanc ; voulu un grand rond rouge et un fin liseré blanc, partout où l'icône apparaît · noté 28/10 · petit · Sonnet/low · à valider (COMMIT, 0.3.96 ; rouge sur 82 % du rayon, liseré d'environ 1,6 px sur le bouton rond, 1 px à 12 et 14 px) · détail : ~/.claude/plans/demandes-2810/lot32-icone-enregistrer.md
   - essai 63 : icône « Enregistrer » : bouton rond de la barre du bas au repos, puis pendant un enregistrement ; Entraînement › Muscu et timer, bouton « Enregistrer » d'une séance ; en clair et en sombre → grand rond rouge entouré d'un fin liseré blanc au repos, bouton rond toujours vert ; carré pendant l'enregistrement, comme avant ; dire si l'icône vous plaît.
 
 ## Ensuite
 
-1. 48 · [bogue] Icône « Enregistrer » (lot 32, essai 63) : rond rouge trop petit dans un gros liseré blanc ; voulu un grand rond rouge et un fin liseré blanc, partout où l'icône apparaît · noté 28/10 · petit · Sonnet/low · à briefer · détail : ~/.claude/plans/demandes-2810/lot32-icone-enregistrer.md
-2. 31 · [dette] Dépendances : TypeScript 7, @types/node 26, npm audit fix --force sur uuid (point 180) · noté 28/10 · petit · Opus/medium · à briefer ; APK à reconstruire
-3. 29 · [idée] Tests guidés : VMA par demi-Cooper et VAMeval (Q30 : les deux), bips de palier, protocole des zones, FC repos rangée dans les sessions sans position · noté 25/10 · gros · Opus/high · à briefer · dépend de : maquette si l'écran des tests change · détail : docs/backlog/29-tests-guides-vma.md
-4. 30 · [dette] Noyau voile : détection une seule fois puis classement par candidat de vent (observeTurns fusionné), confiance du vent rabattue sur couverture polaire maigre, bruit indépendant rééprouvé à 5 Hz · noté 26/09 · gros · Fable/xhigh · à briefer ; seul dans sa session, relevé du vent du banc avant et après · détail : docs/backlog/30-noyau-voile.md
+1. 31 · [dette] Dépendances : TypeScript 7, @types/node 26, npm audit fix --force sur uuid (point 180) · noté 28/10 · petit · Opus/medium · à briefer ; APK à reconstruire
+2. 29 · [idée] Tests guidés : VMA par demi-Cooper et VAMeval (Q30 : les deux), bips de palier, protocole des zones, FC repos rangée dans les sessions sans position · noté 25/10 · gros · Opus/high · à briefer · dépend de : maquette si l'écran des tests change · détail : docs/backlog/29-tests-guides-vma.md
+3. 30 · [dette] Noyau voile : détection une seule fois puis classement par candidat de vent (observeTurns fusionné), confiance du vent rabattue sur couverture polaire maigre, bruit indépendant rééprouvé à 5 Hz · noté 26/09 · gros · Fable/xhigh · à briefer ; seul dans sa session, relevé du vent du banc avant et après · détail : docs/backlog/30-noyau-voile.md
 
 ## Ça attend une occasion
 
