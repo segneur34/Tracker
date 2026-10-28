@@ -176,13 +176,13 @@ Quand l'utilisateur donne des notes en vrac :
 - Questions : aucune.
 
 ### 22. Image de partage au format de l'écran, comme Komoot · priorité 3 (proposée)
-- Noté le : 28/10 06:34 (WhatsApp) · reçu le : 28/10 · état : en lot 19 (`demandes-2810/lot19-partage-9-16.md`), maquette à choisir (lien ci-dessous, Questions)
+- Noté le : 28/10 06:34 (WhatsApp) · reçu le : 28/10 · état : en lot 19 (`demandes-2810/lot19-partage-9-16.md`), disposition A choisie le 28/10 sur la maquette
 - Tel que noté : « Revoir le système d'envois de trace en image : il faut un format type komoot ( taille écran) qui sortira mieux »
 - Où : analyses › « … » du nom de la session › Partager en image (`ShareDialog`) ; calculs dans `core/shareImage.ts` (`SHARE_IMAGE`), dessin dans `components/drawShareImage.ts`.
 - Aujourd'hui : une image carrée de 1080 × 1080 : bandeau du titre (150 px), carte de la trace, puis jusqu'à six chiffres en deux rangées de trois (130 px chacune), pied de 60 px ; fond de carte de la famille (DECISIONS §8) ; muscu sans carte.
 - Voulu : une image en hauteur, de la taille d'un écran de téléphone (1080 × 1920, 9:16), qui s'affiche en grand dans une messagerie ou une story.
 - Pourquoi : le carré sort petit à l'écran ; la carte gagne de la hauteur.
-- Questions : remplacer le carré ou laisser choisir le format ? → réponse (28/10) : remplace le carré, une seule image en 1080 × 1920. Disposition (carte plein cadre et chiffres posés dessus façon Komoot, ou carte puis chiffres) ? → réponse (28/10) : maquette d'abord, deux ou trois dispositions, l'utilisateur choisit. Maquette publiée le 28/10 : https://claude.ai/artifact/HN6HJvGAjGZTKWZDgh5kPz (A carte pleine et chiffres posés dessus, B bandeau + carte haute + grille, C carte pleine, bandeau translucide, colonne ; trois et six chiffres, muscu, fond satellite ; le choix s'enregistre dans la page, base `choix/partage`).
+- Questions : remplacer le carré ou laisser choisir le format ? → réponse (28/10) : remplace le carré, une seule image en 1080 × 1920. Disposition (carte plein cadre et chiffres posés dessus façon Komoot, ou carte puis chiffres) ? → réponse (28/10) : maquette d'abord, deux ou trois dispositions, l'utilisateur choisit. Maquette publiée le 28/10 : https://claude.ai/artifact/HN6HJvGAjGZTKWZDgh5kPz (A carte pleine et chiffres posés dessus, B bandeau + carte haute + grille, C carte pleine, bandeau translucide, colonne ; trois et six chiffres, muscu, fond satellite ; le choix s'enregistre dans la page, base `choix/partage`). → réponse (28/10, dans la maquette) : **disposition A**, carte pleine, titre en haut sur un voile clair avec le liseré de la famille, chiffres en bas dans un cartouche blanc translucide (barre de la famille en tête, grille de 3 colonnes, pied TRACKER + pseudo dans le cartouche).
 
 ### 24. Statistiques : ligne des heures totales par semaine dans le graphique · priorité 3 (proposée)
 - Noté le : 28/10 06:39 (deux messages, WhatsApp) · reçu le : 28/10 · état : en lot 16 (9f5ed36, 0.3.83, à valider)

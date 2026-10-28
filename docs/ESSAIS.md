@@ -16,6 +16,7 @@ APK 0.3.84 construite et **installée** le 28/10 au matin : elle porte les lots 
 | 52 | Lot 11 : Enregistrer › Type Muscu sans ceinture à portée. | « Démarrer » grisé avec la phrase qui dit pourquoi ; ceinture mise, il devient possible. |
 | 53 | Lot 11 : muscu sans séance (lien « Muscu sans séance ») avec deux « Note ». | Repères dans l'analyse, sur le graphe. |
 | 54 | APK 0.3.81 (Q9 et Q12) : un fractionné à pied, puis une muscu avec une séance du Timer ; « Arrêter » la session avant la fin de la séance. | Notification « Étape n/N · FC » en fractionné ; le compteur s'arrête avec la session (plus de bips), et l'analyse montre la séance arrêtée à l'heure de l'arrêt. |
+| 57 | Lot 18 (0.3.85) : le fond À pied « Relief et sentier » sur la bibliothèque À pied, l'accueil, le Profil et Réglages (sport préféré à pied). Le banc a prouvé le rendu (capture à 390 px conforme à la maquette) ; reste l'œil. | Lisible derrière les cartes, pas plus chargé que les autres familles ; sinon dire encre, épaisseur ou espacement à corriger. |
 | 55 | Lot 16 (0.3.83) : Statistiques › Tout › graphique › Durée, sur vos vraies sessions. | Une ligne grise pleine des heures de chaque semaine, en plus du pointillé, légende « heures par semaine » ; à juger : lisible sur une vraie année (au banc, une session toutes les quelques semaines donne des dents de scie) ; sinon un escalier par semaine se fait en une ligne. |
 
 ## Quand l'occasion se présente (terrain)
