@@ -88,11 +88,25 @@ export const SURF_TABS: AnalysisTab<SurfTab>[] = [
   { key: 'reglages', label: 'réglages' },
 ];
 
+export type MuscuTab = 'general' | 'cardio' | 'notes' | 'reglages';
+
+/**
+ * Muscu (lot I du 25/10), sans carte : « général » porte la FC et les phases
+ * du compteur, « cardio » le panneau commun (charge, zones, FC max à retenir).
+ */
+export const MUSCU_TABS: AnalysisTab<MuscuTab>[] = [
+  { key: 'general', label: 'général', primary: true },
+  { key: 'cardio', label: 'cardio' },
+  { key: 'notes', label: 'matériel et notes' },
+  { key: 'reglages', label: 'réglages' },
+];
+
 const TREATMENT_TABS: Record<Treatment, readonly AnalysisTab[]> = {
   voile: SAILING_TABS,
   course: LAND_TABS.course,
   velo: LAND_TABS.velo,
   surf: SURF_TABS,
+  muscu: MUSCU_TABS,
 };
 
 /**

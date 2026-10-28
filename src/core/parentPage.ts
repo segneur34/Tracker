@@ -6,7 +6,8 @@ const isFamily = (s: string): s is SportFamily => (SPORT_FAMILIES as string[]).i
  * Page au-dessus d'une adresse, où renvoie la touche retour d'Android (et le
  * geste du bord de l'écran) : l'analyse d'une session renvoie à la
  * bibliothèque de sa famille, comme le lien « ← » de son en-tête, et une page
- * de l'Entraînement (séances du fractionné ou du Timer et leur édition, tests) à la page au-dessus d'elle ;
+ * de l'Entraînement (séances du fractionné ou du Timer et leur édition, tests) à la page au-dessus d'elle,
+ * un test à « Fractionné et tests » (`/fractionne/seances`, où sont ses tuiles depuis le lot I) ;
  * Enregistrer en mode Timer (`?minuterie`) renvoie à la liste du Timer ; les
  * Statistiques remontent d'un cran (activité, famille, vue d'ensemble), la
  * période gardée ; toute autre page renvoie à l'accueil. `null` à l'accueil :
@@ -17,7 +18,9 @@ export const parentPage = (pathname: string, search: string): string | null => {
   if (path === '/') return null;
   const parts = path.split('/').filter(Boolean);
   if (parts.length === 2 && parts[1] === 'analyse' && isFamily(parts[0])) return `/${parts[0]}`;
-  // Pages de l'Entraînement (séances du fractionné, Timer, tests) : un cran plus haut, jusqu'à sa bibliothèque.
+  // Un test : « Fractionné et tests », où sont ses tuiles.
+  if (parts[0] === 'fractionne' && parts[1] === 'tests' && parts.length > 2) return '/fractionne/seances';
+  // Pages de l'Entraînement (séances du fractionné, Timer) : un cran plus haut, jusqu'à sa bibliothèque.
   if (parts[0] === 'fractionne' && ['seances', 'timer', 'tests'].includes(parts[1])) return `/${parts.slice(0, -1).join('/')}`;
   if (path === '/enregistrer' && new URLSearchParams(search).has('minuterie')) return '/fractionne/timer';
   if (path === '/statistiques') {

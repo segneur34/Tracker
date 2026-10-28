@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FAMILY_LABEL, type Activity } from '../core/activities';
 import { shareableStats } from '../core/shareImage';
-import { getSportProfile, hasActiveThreshold, sportFamily, sportTreatment } from '../core/sportProfiles';
+import { getSportProfile, hasActiveThreshold, hasPositions, sportFamily, sportTreatment } from '../core/sportProfiles';
 import { coloredSegments } from '../core/trackColor';
 import { librarySession, summarizeGpxText } from '../hooks/useSessionLibrary';
 import { effectiveDistanceUnit, effectiveSpeedUnit } from '../hooks/useSportSettings';
@@ -49,13 +49,15 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
       const family = sportFamily(sport);
       // Hors de la mémoire : calculé avec les réglages de l'activité, comme la fiche le sera (E-B12).
       const summary = record?.summary ?? summarizeGpxText(gpx, sport, activity.id);
-      const track = sessionColorTrack(gpx, sport, record?.analysis?.referenceSpeedMs ?? null, family);
-      if (track === null || summary === null) throw new Error('trace trop courte.');
-      const range = sessionSpeedRange(record ?? { analysis: null, sport }, activity, family, track.suggested);
+      // Sans trace (muscu) : les chiffres seuls, sans carte.
+      const withTrack = hasPositions(sport);
+      const track = withTrack ? sessionColorTrack(gpx, sport, record?.analysis?.referenceSpeedMs ?? null, family) : null;
+      if ((withTrack && track === null) || summary === null) throw new Error('trace trop courte.');
+      const range = track ? sessionSpeedRange(record ?? { analysis: null, sport }, activity, family, track.suggested) : null;
       const labels = shareLabels(record?.name ?? null, activity.name, FAMILY_LABEL[family], summary.startMs, libraryFile ?? fileName);
       const units = { speed: effectiveSpeedUnit(activity), distance: effectiveDistanceUnit(activity) };
       setPrepared({
-        segments: coloredSegments(track.points, range),
+        segments: track && range ? coloredSegments(track.points, range) : [],
         props: {
           family,
           activityId: record?.activityId ?? activity.id,

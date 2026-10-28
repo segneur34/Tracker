@@ -28,14 +28,18 @@ export function useBeltWarmup(belt: HeartRateBelt | null, active: boolean): {
   const [attempt, setAttempt] = useState(0);
   /** Vrai pendant le départ : la connexion n'est pas rendue quand la page cesse de la vouloir. */
   const handingOver = useRef(false);
+  /** Numéro de la dernière prise : une prise annulée ne rend pas la ceinture qu'une plus récente tient. */
+  const generation = useRef(0);
 
   useEffect(() => {
     if (!active || belt === null) return;
     let cancelled = false;
+    const mine = ++generation.current;
     holdBelt(HOLDER, belt)
       .then(() => {
-        // La page n'en veut plus depuis la demande : la rendre aussitôt.
-        if (cancelled && !handingOver.current) releaseBelt(HOLDER);
+        // La page n'en veut plus depuis la demande : la rendre aussitôt, sauf si une prise plus
+        // récente la tient sous le même nom (double passage d'effet de StrictMode, banc du 28/10).
+        if (cancelled && !handingOver.current && generation.current === mine) releaseBelt(HOLDER);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(errorText(err));

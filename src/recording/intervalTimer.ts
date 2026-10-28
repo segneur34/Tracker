@@ -324,6 +324,16 @@ export interface IntervalRun {
   kind?: 'timer';
 }
 
+/**
+ * Séance confiée à l'enregistrement en cours (écrite au journal, rangée dans
+ * la fiche) : toujours une séance du Fractionné ; une séance du Timer
+ * seulement si l'enregistrement est sans position (muscu, lot I du 25/10),
+ * sinon elle ne va jamais dans une session. `recordingHasPositions` : `null`
+ * sans enregistrement.
+ */
+export const handsOverToRecording = (run: Pick<IntervalRun, 'kind'>, recordingHasPositions: boolean | null): boolean =>
+  recordingHasPositions !== null && (run.kind !== 'timer' || !recordingHasPositions);
+
 export const startRun = (workout: IntervalWorkout, nowMs: number, kind: WorkoutKind = 'fractionne'): IntervalRun =>
   kind === 'timer' ? { workout, startedAtMs: nowMs, commands: [], kind } : { workout, startedAtMs: nowMs, commands: [] };
 

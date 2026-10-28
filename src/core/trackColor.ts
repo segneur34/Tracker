@@ -21,6 +21,8 @@ export const TRACK_COLOR_SMOOTHING_S: Record<Treatment, number> = {
   course: 15,
   velo: 15,
   surf: 0,
+  // Sans trace : sans objet.
+  muscu: 0,
 };
 
 /** Vitesse de couleur de chaque point, en m/s. */

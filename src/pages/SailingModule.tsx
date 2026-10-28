@@ -32,7 +32,7 @@ import { setHoveredIndex, useResetChartHover } from '../hooks/useChartHover';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { FAMILY_ACCENT, sessionActivity } from '../core/activities';
-import { activeRatioLabel } from '../core/sportProfiles';
+import { activeRatioLabel, hasPositions } from '../core/sportProfiles';
 import { isValidSpeedRange } from '../core/speedGradient';
 import { trackColorSegments } from '../core/trackColor';
 import type { TopSegment } from '../core/types';
@@ -1155,7 +1155,8 @@ function SailingModule() {
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-s)' }}>
                     <strong>Activité :</strong>
                     <ActivitySelect
-                      activities={allActivities}
+                      // Pas vers une activité sans trace (muscu) : la session a des positions.
+                      activities={allActivities.filter((a) => hasPositions(a.base))}
                       value={activity.id}
                       extra={activity}
                       families={sessionFile ? undefined : ['voile']}

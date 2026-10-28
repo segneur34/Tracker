@@ -22,6 +22,7 @@ const session = (startMs: number, over: Partial<StatSession> = {}): StatSession 
   activityId: 'course',
   family: 'course',
   treatment: 'course',
+  positions: true,
   maneuverCount: null,
   maneuverResults: null,
   foil: false,
@@ -366,5 +367,20 @@ describe('cardio', () => {
     const bars = cardioLoadBars(reg.bars, list, () => bounds, weights);
     expect(bars.map((b) => Math.round(b.load))).toEqual([60, 60]);
     expect(heartRatePoints([...list].reverse()).map((p) => p.avgBpm)).toEqual([150, 130]);
+  });
+});
+
+describe('muscu dans les statistiques (lot I du 25/10)', () => {
+  it('compte en sessions et en durée, ni en temps ni en vitesse en action, ni en distance', () => {
+    const run = session(at(2026, 3, 1));
+    const muscu = session(at(2026, 3, 2), {
+      family: 'fractionne', treatment: 'muscu', positions: false, distanceM: 0, movingDistanceM: null, maxSpeedMs: 0, movingTimeS: 1800,
+    });
+    const t = statsTotals([run, muscu]);
+    expect(t.sessions).toBe(2);
+    expect(t.durationS).toBe(7200);
+    expect(t.movingTimeS).toBe(3000);
+    expect(averageMovingSpeedMs(t)).toBeCloseTo(3, 6);
+    expect(metricsOf('fractionne', [muscu]).map((m) => m.key)).toEqual(['duree']);
   });
 });

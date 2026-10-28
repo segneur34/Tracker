@@ -18,6 +18,7 @@ const session = (startMs: number, over: Partial<StatSession> = {}): StatSession 
   activityId: 'course',
   family: 'course',
   treatment: 'course',
+  positions: true,
   maneuverCount: null,
   maneuverResults: null,
   foil: false,

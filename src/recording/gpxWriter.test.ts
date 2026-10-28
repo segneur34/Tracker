@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { buildGpx } from './gpxWriter';
+// @vitest-environment node
+import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { parseGpx } from '../core/gpxParser';
+import { buildGpx, buildHeartRateGpx } from './gpxWriter';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
 
@@ -88,5 +91,33 @@ describe('buildGpx', () => {
       { name: 'Segment vide', sport: 'kite' }
     );
     expect(withEmpty.match(/<trkseg>/g)).toHaveLength(2);
+  });
+});
+
+describe('buildHeartRateGpx (muscu, lot I du 25/10)', () => {
+  beforeAll(() => {
+    vi.stubGlobal('DOMParser', XmlDomParser);
+  });
+
+  const segments = [
+    [{ timeMs: T0, heartRateBpm: 92 }, { timeMs: T0 + 1000, heartRateBpm: 95 }],
+    [{ timeMs: T0 + 60_000, heartRateBpm: 120 }, { timeMs: T0 + 61_000 }],
+  ];
+  const gpx = buildHeartRateGpx(segments, { name: 'Muscu du soir', sport: 'muscu' });
+
+  it('écrit des points sans position, un <trkseg> par pause, le type muscu', () => {
+    expect(gpx).not.toContain('lat=');
+    expect(gpx.match(/<trkseg>/g)).toHaveLength(2);
+    expect(gpx.match(/<trkpt>/g)).toHaveLength(4);
+    expect(gpx).toContain('<type>muscu</type>');
+  });
+
+  it('relu par parseGpx, redonne heures et FC, pauses comprises, sans aucune position', () => {
+    const parsed = parseGpx(gpx);
+    expect(parsed.rawPoints).toEqual([]);
+    expect(parsed.trackType).toBe('muscu');
+    expect(parsed.timedPoints.map((p) => Date.parse(p.time))).toEqual([T0, T0 + 1000, T0 + 60_000, T0 + 61_000]);
+    expect(parsed.timedPoints.map((p) => p.hr)).toEqual([92, 95, 120, undefined]);
+    expect(parsed.timedPoints.map((p) => p.segmentStart === true)).toEqual([false, false, true, false]);
   });
 });

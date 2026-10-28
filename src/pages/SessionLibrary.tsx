@@ -22,7 +22,11 @@ import { sampledIndices } from '../core/chartZoom';
 import { PREVIEW_MAX_POINTS } from '../core/displayConfig';
 import { coloredSegments } from '../core/trackColor';
 import { activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
-import { sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
+import { smoothHeartRate } from '../core/heartRate';
+import { heartRatePointsFrom, heartRatePreviewPath, repsDone } from '../core/heartRateSession';
+import { parseGpx } from '../core/gpxParser';
+import { getSportProfile, hasPositions, sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
+import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import { formatDistance, formatDuration, formatShortDuration, formatSpeed, toDisplayDistance } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
@@ -77,6 +81,14 @@ const formatTime = (ms: number): string =>
 /** Chiffres d'une ligne, selon le traitement de son calcul. */
 const rowStats = (session: LibrarySession, activity: Activity | null): string[] => {
   const { summary } = session.record;
+  // Sans trace (muscu, lot I du 25/10) : durée, FC moyenne et max, répétitions ; ni distance ni vitesse.
+  if (session.record.sport !== null && !hasPositions(session.record.sport)) {
+    const stats = [formatDuration(summary.endMs - summary.startMs)];
+    if (summary.heartRate) stats.push(`FC moy. ${summary.heartRate.avgBpm}`, `FC max ${summary.heartRate.maxBpm}`);
+    const reps = repsDone(session.record.intervals);
+    if (reps > 0) stats.push(`${reps} rép.`);
+    return stats;
+  }
   // Deux décimales sous 10 unités, une au-delà.
   const distanceUnit = activity ? effectiveDistanceUnit(activity) : 'km';
   const decimals = toDisplayDistance(summary.distanceM, distanceUnit) < 10 ? 2 : 1;
@@ -119,6 +131,71 @@ const rememberPreview = (key: string, track: SessionColorTrack): void => {
   if (previewCache.size >= PREVIEW_CACHE_MAX) previewCache.delete(previewCache.keys().next().value!);
   previewCache.set(key, track);
 };
+
+/** Courbes de FC des vignettes sans trace (muscu), déjà calculées : comme `previewCache`. */
+const heartPreviewCache = new Map<string, string | null>();
+
+/** Cadre de la courbe de FC d'une vignette, en unités du dessin (étiré à la vignette). */
+const HEART_PREVIEW_VIEW = { width: 200, height: 100 } as const;
+
+/**
+ * Vignette d'une session sans trace (muscu, lot I du 25/10, question 1 : la
+ * courbe de FC à la place de la carte), lue quand la ligne approche de
+ * l'écran, une fois ; un toucher ouvre l'analyse, comme la carte.
+ */
+function SessionHeartRatePreview({ session, folderLabel, onOpen }: { session: LibrarySession; folderLabel: string | null; onOpen: () => void }) {
+  const frame = useRef<HTMLDivElement>(null);
+  const { file } = session;
+  const sport = session.record.sport;
+  const cacheKey = `${folderLabel}|${file}|${sport}`;
+  const [near, setNear] = useState(() => heartPreviewCache.has(cacheKey) || typeof IntersectionObserver === 'undefined');
+  const [path, setPath] = useState<string | null | undefined>(() => heartPreviewCache.get(cacheKey));
+
+  useEffect(() => {
+    const el = frame.current;
+    if (!el || near) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) setNear(true);
+    }, { rootMargin: PREVIEW_PRELOAD_MARGIN });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [near]);
+
+  useEffect(() => {
+    if (!near || heartPreviewCache.has(cacheKey) || sport === null) return;
+    let cancelled = false;
+    void (async () => {
+      const gpx = await readSessionGpx(file);
+      if (cancelled) return;
+      let drawn: string | null = null;
+      try {
+        if (gpx !== null) {
+          const points = heartRatePointsFrom(parseGpx(gpx).timedPoints);
+          const { smoothS, gapS } = getSportProfile(sport).heartRate;
+          drawn = heartRatePreviewPath(points, smoothHeartRate(points, smoothS, gapS), HEART_PREVIEW_VIEW.width, HEART_PREVIEW_VIEW.height, PREVIEW_MAX_POINTS);
+        }
+      } catch {
+        drawn = null;
+      }
+      heartPreviewCache.set(cacheKey, drawn);
+      setPath(drawn);
+    })();
+    return () => { cancelled = true; };
+  }, [near, file, sport, cacheKey]);
+
+  return (
+    <div ref={frame} className="lib-row__preview" role="link" aria-label="Ouvrir l'analyse" onClick={onOpen}>
+      {path ? (
+        <svg viewBox={`0 0 ${HEART_PREVIEW_VIEW.width} ${HEART_PREVIEW_VIEW.height}`} preserveAspectRatio="none" aria-hidden="true"
+          style={{ position: 'absolute', inset: '12% 6%', width: '88%', height: '76%', overflow: 'visible' }}>
+          <path d={path} fill="none" stroke={HEART_RATE_COLOR} strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <span className="lib-row__preview-status">{path === null ? 'Courbe indisponible' : 'FC…'}</span>
+      )}
+    </div>
+  );
+}
 
 /** Marge sous l'écran où une vignette se charge déjà, pour être prête quand on y arrive. */
 const PREVIEW_PRELOAD_MARGIN = '200px';
@@ -299,7 +376,9 @@ const SessionRow = memo(function SessionRow({
           {record.notes?.comment && <span className="lib-row__note">{record.notes.comment}</span>}
           {session.warning && <span className="lib-row__warning">{session.warning}</span>}
         </button>
-        <SessionPreviewMap session={session} activity={activity} family={family} folderLabel={folderLabel} onOpen={open} />
+        {record.sport !== null && !hasPositions(record.sport)
+          ? <SessionHeartRatePreview session={session} folderLabel={folderLabel} onOpen={open} />
+          : <SessionPreviewMap session={session} activity={activity} family={family} folderLabel={folderLabel} onOpen={open} />}
       </div>
       {asking && (
         <ActivitySheet

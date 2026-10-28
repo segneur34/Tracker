@@ -56,7 +56,7 @@ import { buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } fr
 import { sessionActivity } from '../core/activities';
 import { trackIndexAtTime } from '../core/jumps';
 import { heartRateZonePaths, timeSpanHeartRate } from '../core/heartRate';
-import { ELEVATION_PRESETS, getActiveThresholds, isTestSport, sportTreatment } from '../core/sportProfiles';
+import { ELEVATION_PRESETS, getActiveThresholds, hasPositions, isTestSport, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import { meanFilterByTime } from '../core/speedFilter';
 import { SLOW_COLOR, gradientCss, isValidSpeedRange } from '../core/speedGradient';
@@ -1546,7 +1546,8 @@ function LandModule({ family }: { family: LandFamily }) {
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <strong>Activité :</strong>
                     <ActivitySelect
-                      activities={allActivities}
+                      // Pas vers une activité sans trace (muscu) : la session a des positions.
+                      activities={allActivities.filter((a) => hasPositions(a.base))}
                       value={activity.id}
                       extra={activity}
                       families={sessionFile ? undefined : [family]}

@@ -3,7 +3,7 @@ import type { SportType } from '../core/types';
 import type { LocationFix } from '../platform/location';
 import { readSessionTest, type SessionTest } from './fitnessTest';
 import { readIntervalRun, type IntervalRun } from './intervalTimer';
-import { isSportType } from './session';
+import { isSportType, type HeartRateFix } from './session';
 
 /**
  * Journal d'un enregistrement en cours : une ligne JSON par position, ajoutée
@@ -56,6 +56,15 @@ export const journalFixLine = (fix: LocationFix): string => {
 };
 
 /**
+ * Mesure de la ceinture d'une session sans position (muscu, lot I du 25/10) :
+ * `['hr', heure, FC]`, la FC à `null` pour le point de l'arrêt. Marquée par
+ * `'hr'` en tête : ignorée des versions qui ne la connaissent pas (`toFix`
+ * exige un nombre en tête).
+ */
+export const journalHeartRateLine = (fix: HeartRateFix): string =>
+  `${JSON.stringify(['hr', fix.timeMs, fix.heartRateBpm ?? null])}\n`;
+
+/**
  * Frontière de segment : une pause, manuelle ou automatique, a repris à cet
  * horodatage. Tableau à deux éléments, marqué par `'break'` en tête : ne
  * collisionne ni avec l'en-tête (un objet), ni avec une position (`toFix`
@@ -106,6 +115,10 @@ export interface ParsedJournal {
   fixes: LocationFix[];
   /** Indices, dans `fixes`, où reprend un nouveau segment (voir `splitIntoSegments`). */
   breaks: number[];
+  /** Mesures de la ceinture d'une session sans position (muscu), dans l'ordre du temps. */
+  heartFixes: HeartRateFix[];
+  /** Indices, dans `heartFixes`, où reprend un nouveau segment. */
+  heartBreaks: number[];
   /** Dernier changement d'activité, qui prime sur l'en-tête ; `null` s'il n'y en a pas eu. */
   activityChange: JournalActivity | null;
   /** Séances du compteur, chacune dans son dernier état, dans l'ordre de leur lancement. */
@@ -170,6 +183,15 @@ const toTestMarker = (value: unknown): { marker: boolean; test: SessionTest | nu
     ? { marker: true, test: readSessionTest(value[1]) }
     : { marker: false, test: null };
 
+/** Ligne de mesure de la ceinture : `true` si c'en est une (même abîmée), et la mesure si elle est lisible. */
+const toHeartMarker = (value: unknown): { marker: boolean; fix: HeartRateFix | null } => {
+  if (!Array.isArray(value) || value[0] !== 'hr') return { marker: false, fix: null };
+  const timeMs = optionalNumber(value[1]);
+  if (value.length !== 3 || timeMs === undefined) return { marker: true, fix: null };
+  const heartRateBpm = optionalNumber(value[2]);
+  return { marker: true, fix: heartRateBpm === undefined ? { timeMs } : { timeMs, heartRateBpm } };
+};
+
 const toFix = (value: unknown): LocationFix | null => {
   if (!Array.isArray(value) || value.length < 3) return null;
   const [timeMs, lat, lon, accuracyM, altitudeM, speedMs, bearingDeg, heartRateBpm] = value;
@@ -198,6 +220,8 @@ export const parseJournal = (text: string): ParsedJournal => {
   let header: JournalHeader | null = null;
   const fixes: LocationFix[] = [];
   const breaks: number[] = [];
+  const heartFixes: HeartRateFix[] = [];
+  const heartBreaks: number[] = [];
   let activityChange: JournalActivity | null = null;
   const runs = new Map<number, IntervalRun>();
   const marks: SessionMark[] = [];
@@ -212,6 +236,13 @@ export const parseJournal = (text: string): ParsedJournal => {
     }
     if (toBreakMarker(value)) {
       if (fixes.length > 0) breaks.push(fixes.length);
+      if (heartFixes.length > 0) heartBreaks.push(heartFixes.length);
+      return;
+    }
+    const heart = toHeartMarker(value);
+    if (heart.marker) {
+      const last = heartFixes[heartFixes.length - 1];
+      if (heart.fix && (!last || heart.fix.timeMs > last.timeMs)) heartFixes.push(heart.fix);
       return;
     }
     const { marker, change } = toActivityMarker(value);
@@ -239,5 +270,5 @@ export const parseJournal = (text: string): ParsedJournal => {
   });
 
   const intervalRuns = [...runs.values()].sort((a, b) => a.startedAtMs - b.startedAtMs);
-  return { header, fixes, breaks, activityChange, intervalRuns, marks: sortMarks(marks), test };
+  return { header, fixes, breaks, heartFixes, heartBreaks, activityChange, intervalRuns, marks: sortMarks(marks), test };
 };

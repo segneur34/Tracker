@@ -725,6 +725,13 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     ...RUNNING_PROFILE, id: 'run-test', label: 'Test à pied', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING, jumps: null, intervals: null,
   },
   surf: SURF_PROFILE,
+  // Muscu (lot I du 25/10) : la ceinture cardio seule, sans position ni GPS ; la course pour le
+  // reste (FC, zones), sans pause automatique, planification, sauts, cadence ni répétitions
+  // retrouvées. Décalage de S1 et S2 à 0, faute de référence, surchargeable par activité.
+  muscu: {
+    ...RUNNING_PROFILE, id: 'muscu', label: 'Muscu', loopReturnMaxRatio: null, recording: INTERVAL_RECORDING,
+    jumps: null, intervals: null, cadence: null, terrainElevationStepM: null, topTargets: [], heartRate: heartRateOffset(0),
+  },
 };
 
 /** Supports dont l'analyse repose sur le vent. */
@@ -755,7 +762,7 @@ export const activeRatioLabel = (profile: SportProfile, foil: boolean): string =
  * s'affichent (unités, énergie, vélo, altitude du terrain, chiffres du direct,
  * module d'analyse). À ne pas confondre avec la famille, qui les range.
  */
-export type Treatment = 'voile' | 'course' | 'velo' | 'surf';
+export type Treatment = 'voile' | 'course' | 'velo' | 'surf' | 'muscu';
 
 /** Traitement à pied ou à vélo : dénivelé, altitude du terrain, pente, énergie. */
 export const isLandTreatment = (treatment: Treatment): boolean => treatment === 'course' || treatment === 'velo';
@@ -766,7 +773,7 @@ export const isLandTreatment = (treatment: Treatment): boolean => treatment === 
  * traitement porte son nom ; `fractionne`, nommée « Entraînement » depuis le
  * 24/10, range des calculs traités à pied ou à vélo (§10, point 89).
  */
-export type SportFamily = Treatment | 'fractionne';
+export type SportFamily = 'voile' | 'course' | 'velo' | 'surf' | 'fractionne';
 
 /** Les familles, dans l'ordre de l'interface. */
 export const SPORT_FAMILIES: SportFamily[] = ['voile', 'course', 'velo', 'surf', 'fractionne'];
@@ -782,13 +789,21 @@ const SPORT_TREATMENT: Record<SportType, Treatment> = {
   'bike-intervals': 'velo',
   'run-test': 'course',
   surf: 'surf',
+  muscu: 'muscu',
 };
 
 const SPORT_FAMILY: Record<SportType, SportFamily> = {
-  ...SPORT_TREATMENT,
+  wingfoil: 'voile',
+  windsurf: 'voile',
+  kite: 'voile',
+  bateau: 'voile',
+  running: 'course',
+  cycling: 'velo',
   'run-intervals': 'fractionne',
   'bike-intervals': 'fractionne',
   'run-test': 'fractionne',
+  surf: 'surf',
+  muscu: 'fractionne',
 };
 
 export const sportTreatment = (sport: SportType): Treatment => SPORT_TREATMENT[sport];
@@ -814,7 +829,16 @@ export const TRAINING_KINDS: readonly TrainingKind[] = ['fractionne', 'tests', '
 export const TRAINING_KIND_LABEL: Record<TrainingKind, string> = { fractionne: 'Fractionné', tests: 'Tests', muscu: 'Muscu' };
 
 export const trainingKind = (sport: SportType): TrainingKind | null =>
-  isIntervalSport(sport) ? 'fractionne' : sport === 'run-test' ? 'tests' : null;
+  isIntervalSport(sport) ? 'fractionne' : sport === 'run-test' ? 'tests' : sport === 'muscu' ? 'muscu' : null;
+
+/**
+ * Calcul enregistré avec des positions (GPS) : tous sauf la muscu, faite de
+ * la ceinture cardio seule (lot I du 25/10). Une session sans position n'a ni
+ * trace, ni carte, ni cinématique : son GPX ne porte que l'heure et la FC
+ * (`ParsedGpx.timedPoints`). C'est ce prédicat qu'on teste, pas le nom du
+ * calcul, pour qu'un autre calcul sans trace (test de FC repos) s'y range.
+ */
+export const hasPositions = (sport: SportType): boolean => sport !== 'muscu';
 
 /** Calcul d'un test guidé (`recording/fitnessTest.ts`) : la rangée « Test » d'Enregistrer, l'onglet « test » de l'analyse. */
 export const isTestSport = (sport: SportType): boolean => trainingKind(sport) === 'tests';

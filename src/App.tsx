@@ -1,7 +1,9 @@
 import { lazy, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useSearchParams } from 'react-router-dom';
 import AppShell from './components/AppShell';
 import { DevThrow } from './components/ErrorBoundary';
+import { hasPositions } from './core/sportProfiles';
+import { useLibrarySession } from './hooks/useSessionLibrary';
 import Home from './pages/Home';
 
 /**
@@ -16,6 +18,7 @@ const loaders = {
   SessionLibrary: () => import('./pages/SessionLibrary'),
   RecordingPage: () => import('./pages/RecordingPage'),
   LandModule: () => import('./pages/LandModule'),
+  MuscuModule: () => import('./pages/MuscuModule'),
   SailingModule: () => import('./pages/SailingModule'),
   SurfModule: () => import('./pages/SurfModule'),
   SettingsPage: () => import('./pages/SettingsPage'),
@@ -33,6 +36,7 @@ const loaders = {
 const SessionLibrary = lazy(loaders.SessionLibrary);
 const RecordingPage = lazy(loaders.RecordingPage);
 const LandModule = lazy(loaders.LandModule);
+const MuscuModule = lazy(loaders.MuscuModule);
 const SailingModule = lazy(loaders.SailingModule);
 const SurfModule = lazy(loaders.SurfModule);
 const SettingsPage = lazy(loaders.SettingsPage);
@@ -58,7 +62,7 @@ const PRELOAD_FALLBACK_MS = 1500;
  */
 const preloadPages = (): (() => void) => {
   const order: (keyof typeof loaders)[] = [
-    'RecordingPage', 'SessionLibrary', 'LandModule', 'SailingModule', 'SurfModule', 'StatisticsPage', 'ProfilePage',
+    'RecordingPage', 'SessionLibrary', 'LandModule', 'SailingModule', 'SurfModule', 'MuscuModule', 'StatisticsPage', 'ProfilePage',
     'SettingsPage', 'PlanningPage', 'RoutesPage', 'TrainingSessionsPage', 'TrainingSessionEditPage', 'TestsPage',
     'FitnessTestPage', 'RestingHrTestPage',
   ];
@@ -82,6 +86,18 @@ const preloadPages = (): (() => void) => {
   };
 };
 
+/**
+ * Analyse de l'Entraînement : `LandModule`, sauf pour une session sans trace
+ * (muscu, lot I du 25/10), analysée par `MuscuModule`, sans carte. Le calcul
+ * se lit dans la fiche de la session demandée (`?session=`) ; tant que la
+ * bibliothèque ne la connaît pas, rien n'est chargé (`useSessionFromUrl`).
+ */
+function TrainingAnalysis() {
+  const [params] = useSearchParams();
+  const sport = useLibrarySession(params.get('session'))?.record.sport ?? null;
+  return sport !== null && !hasPositions(sport) ? <MuscuModule /> : <LandModule key="fractionne" family="fractionne" />;
+}
+
 function App() {
   useEffect(preloadPages, []);
   return (
@@ -98,7 +114,7 @@ function App() {
           <Route path="/velo" element={<SessionLibrary key="velo" family="velo" />} />
           <Route path="/velo/analyse" element={<LandModule key="velo" family="velo" />} />
           <Route path="/fractionne" element={<SessionLibrary key="fractionne" family="fractionne" />} />
-          <Route path="/fractionne/analyse" element={<LandModule key="fractionne" family="fractionne" />} />
+          <Route path="/fractionne/analyse" element={<TrainingAnalysis />} />
           {/* Entraînement : ses pages à lui, sous sa bibliothèque (24/10). */}
           <Route path="/fractionne/seances" element={<TrainingSessionsPage key="fractionne" kind="fractionne" />} />
           <Route path="/fractionne/seances/editer" element={<TrainingSessionEditPage key="fractionne" kind="fractionne" />} />

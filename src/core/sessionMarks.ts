@@ -5,12 +5,15 @@ import { isFiniteNumber } from './basics';
  * Repères posés par le bouton « Note » pendant l'enregistrement : un instant
  * et une position, nommés ensuite dans l'analyse. Datés par l'horloge du
  * téléphone, comme les séances du compteur : ils ne se tirent pas du GPX.
+ * Une session sans position (muscu, lot I du 25/10) pose des repères à
+ * l'heure seule : latitude et longitude nulles, ni fanion ni `<wpt>`.
  */
 export interface SessionMark {
   /** Instant de l'appui, en millisecondes. */
   timeMs: number;
-  lat: number;
-  lon: number;
+  /** Position du repère ; `null` toutes deux pour un repère à l'heure seule. */
+  lat: number | null;
+  lon: number | null;
   /** Nom donné dans l'analyse, `null` s'il n'en a pas. */
   label: string | null;
 }
@@ -20,9 +23,12 @@ export interface SessionMark {
 export const readSessionMark = (raw: unknown): SessionMark | null => {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
   const { timeMs, lat, lon, label } = raw as Record<string, unknown>;
-  if (!isFiniteNumber(timeMs) || !isFiniteNumber(lat) || !isFiniteNumber(lon)) return null;
-  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  if (!isFiniteNumber(timeMs)) return null;
   const name = typeof label === 'string' ? label.trim() : '';
+  // À l'heure seule : les deux nulles.
+  if (lat === null && lon === null) return { timeMs, lat: null, lon: null, label: name === '' ? null : name };
+  if (!isFiniteNumber(lat) || !isFiniteNumber(lon)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
   return { timeMs, lat, lon, label: name === '' ? null : name };
 };
 

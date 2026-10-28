@@ -3,7 +3,7 @@ import {
   DEFAULT_LIVE_FIELDS, DEFAULT_NOTIFICATION_FIELDS, MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, defaultLiveFieldsOf, defaultNotificationFieldsOf,
   liveFieldLabel, liveFieldShortLabel, liveFieldValue, liveFieldsOfTreatment, sanitizeLiveFields, type LiveFieldContext,
 } from './liveFields';
-import { SPORT_PROFILES, sportTreatment } from '../core/sportProfiles';
+import { SPORT_PROFILES, sportFamily, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import { EMPTY_LIVE_STATS } from './liveStats';
 
@@ -49,7 +49,8 @@ describe('liveFieldsOfTreatment', () => {
     for (const sport of Object.keys(SPORT_PROFILES) as SportType[]) {
       const treatment = sportTreatment(sport);
       expect(sanitizeLiveFields(defaultLiveFieldsOf(sport), treatment)).toEqual(defaultLiveFieldsOf(sport));
-      expect(sanitizeLiveFields(defaultNotificationFieldsOf(sport), treatment, MAX_NOTIFICATION_FIELDS)).toEqual(defaultNotificationFieldsOf(sport));
+      expect(sanitizeLiveFields(defaultNotificationFieldsOf(sport), treatment, MAX_NOTIFICATION_FIELDS, 'notification', sportFamily(sport)))
+        .toEqual(defaultNotificationFieldsOf(sport));
     }
   });
 
@@ -138,6 +139,15 @@ describe('liveFieldValue', () => {
     expect(liveFieldValue('heartRateZone', context({ heartRateBpm: 92, heartRateZoneBounds: bounds }))).toBe('sous Z1 · 92');
     expect(liveFieldValue('heartRateZone', context({ heartRateBpm: 152 }))).toBe('—');
     expect(liveFieldValue('markDistance', context({ markDistanceM: 143 }))).toBe('143 m');
+  });
+});
+
+describe('muscu (lot I du 25/10)', () => {
+  it('ne propose que la FC, le temps et l’étape : ni vitesse, ni distance, ni pente', () => {
+    expect(liveFieldsOfTreatment('muscu', 'live', 'fractionne')).toEqual(['heartRate', 'averageHeartRate', 'heartRateZone', 'duration', 'clock']);
+    expect(liveFieldsOfTreatment('muscu', 'notification', 'fractionne')).toEqual(['heartRate', 'averageHeartRate', 'heartRateZone', 'duration', 'clock', 'step']);
+    expect(sanitizeLiveFields(['speed', 'distance', 'heartRate'], 'muscu')).toEqual(['heartRate']);
+    expect(defaultNotificationFieldsOf('muscu')).toEqual(['step', 'heartRate']);
   });
 });
 

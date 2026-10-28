@@ -4,7 +4,7 @@ import {
   type Activity,
 } from '../core/activities';
 import {
-  LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, hasActiveThreshold, isLandTreatment, sportFamily,
+  LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, SPORT_PROFILES, TERRAIN_STEP_CHOICES_M, familySports, hasActiveThreshold, hasPositions, isLandTreatment, sportFamily,
   sportTreatment, usesMarkCourse,
   type SportFamily, type SportProfile, type Treatment,
 } from '../core/sportProfiles';
@@ -428,9 +428,11 @@ function SettingsPage() {
                 const sailing = treatment === 'voile';
                 /** À pied ou à vélo : pente, terrain, dénivelé. */
                 const land = isLandTreatment(treatment);
+                /** Sans position (muscu) : ni unités, ni seuil, ni couleurs de trace, ni pause automatique ; la ceinture d'office. */
+                const positions = hasPositions(activity.base);
                 /** Seuil d'activité, sous son nom : de vague ou de vol en surf. */
                 /** Seuil d'activité réglable : pas en bateau, où toute la session compte en navigation. */
-                const withThreshold = hasActiveThreshold(p);
+                const withThreshold = hasActiveThreshold(p) && positions;
                 const thresholdLabel = treatment === 'surf' ? (s.foil ? 'Seuil de vol' : 'Seuil de vague') : "Seuil d'activité";
                 /** Famille du temps estimé des itinéraires, `null` en voile et en fractionné. */
                 const paceFamily = planningFamily(activity);
@@ -494,7 +496,7 @@ function SettingsPage() {
                 // Famille repliée : son en-tête seul, ses activités ne sont pas montées.
                 if (openFamily[family] !== true) return <Fragment key={id}>{heading}</Fragment>;
                 const pauseKmh = parseFloat(msToKmh(s.autoPause.speedMs).toFixed(1));
-                const summary = [
+                const summary = !positions ? ['sans GPS, ceinture cardio'].join(' · ') : [
                   SPEED_UNIT_LABEL[s.speedUnit],
                   DISTANCE_UNIT_SYMBOL[s.distanceUnit],
                   ...(!withThreshold ? [] : [
@@ -560,7 +562,7 @@ function SettingsPage() {
                             <IconPicker value={activityIcon(activity)} color={activity.color} onChange={(icon) => updateActivity(id, { icon })}
                               label={`Icône de ${activity.name}`} />
                           </SettingRow>
-                          <ActivityPart label="Affichage" open={openPart.affichage} onToggle={() => togglePart('affichage')}>
+                          {positions && <ActivityPart label="Affichage" open={openPart.affichage} onToggle={() => togglePart('affichage')}>
                             <SettingRow label="Unité de vitesse" helpKey={`${id}:unite-vitesse`} help={UNIT_HELP}>
                               <select value={s.speedUnit} onChange={(e) => setFor(id, 'speedUnit', e.target.value as SpeedUnit)} className="ui-field ui-field--s">
                                 {units.map((u) => <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>)}
@@ -603,7 +605,7 @@ function SettingsPage() {
                                 </div>
                               </SettingRow>
                             )}
-                          </ActivityPart>
+                          </ActivityPart>}
                           <ActivityPart label="Onglet analyse" open={openPart.analyse} onToggle={() => togglePart('analyse')}>
                             {withThreshold && (
                             <SettingRow label={thresholdLabel} helpKey={`${id}:seuil`} help={thresholdHelp(treatment, s.foil === true)}>
@@ -683,7 +685,7 @@ function SettingsPage() {
                             <AnalysisTabsSetting view={s} profile={p} onChange={(choices) => setFor(id, 'tabs', choices)} />
                           </ActivityPart>
                           <ActivityPart label="Enregistrement" open={openPart.enregistrement} onToggle={() => togglePart('enregistrement')}>
-                            <SettingRow label="Pause automatique" helpKey={`${id}:pause`}
+                            {positions && <SettingRow label="Pause automatique" helpKey={`${id}:pause`}
                               help="La trace se met en pause seule sous cette vitesse, au bout de ce temps. 0 km/h la désactive.">
                               <div className="settings-sports__pair">
                                 <span className="settings-sports__mark">sous</span>
@@ -696,22 +698,29 @@ function SettingsPage() {
                                   onCommit={(v) => setAutoPauseField('delayS', v)} />
                                 {!s.isAutoPauseOverridden && <span className="settings-sports__mark">défaut</span>}
                               </div>
-                            </SettingRow>
-                            <FieldsSetting label="Carte réduite à l'enregistrement" helpKey={`${id}:carte-reduite`}
+                            </SettingRow>}
+                            {positions && <FieldsSetting label="Carte réduite à l'enregistrement" helpKey={`${id}:carte-reduite`}
                               help="Les chiffres en grand quand la carte est réduite, de haut en bas."
                               treatment={treatment} family={family} units={s} fields={s.liveFields} overridden={s.isLiveFieldsOverridden}
                               defaults={defaultLiveFieldsFor(activity)} max={MAX_LIVE_FIELDS}
-                              onChange={(fields) => setFor(id, 'liveFields', fields)} />
+                              onChange={(fields) => setFor(id, 'liveFields', fields)} />}
                             {s.jumps !== null && (
                               <JumpsSetting id={id} jumps={s.jumps} overridden={s.isJumpsOverridden} onChange={(next) => setFor(id, 'jumps', next)} />
                             )}
-                            <SettingRow label="Ceinture cardio" helpKey={`${id}:ceinture`}
-                              help="La ceinture du bloc « Capteurs » est proposée, cochée, à chaque enregistrement ; la fréquence cardiaque est écrite dans la trace.">
-                              <label className="settings-sports__pair">
-                                <input type="checkbox" checked={s.heartRate} onChange={(e) => setFor(id, 'heartRate', e.target.checked)} />
-                                <span>Proposer la ceinture cardio</span>
-                              </label>
-                            </SettingRow>
+                            {positions ? (
+                              <SettingRow label="Ceinture cardio" helpKey={`${id}:ceinture`}
+                                help="La ceinture du bloc « Capteurs » est proposée, cochée, à chaque enregistrement ; la fréquence cardiaque est écrite dans la trace.">
+                                <label className="settings-sports__pair">
+                                  <input type="checkbox" checked={s.heartRate} onChange={(e) => setFor(id, 'heartRate', e.target.checked)} />
+                                  <span>Proposer la ceinture cardio</span>
+                                </label>
+                              </SettingRow>
+                            ) : (
+                              <SettingRow label="Ceinture cardio" helpKey={`${id}:ceinture`}
+                                help="Une session sans GPS se fait avec la ceinture du bloc « Capteurs » : « Démarrer » attend qu'elle soit connectée.">
+                                <span className="settings-sports__mark">obligatoire</span>
+                              </SettingRow>
+                            )}
                             {s.cadence !== null && (
                               <SettingRow label="Cadence" helpKey={`${id}:cadence`}
                                 help="Le téléphone, porté sur soi, compte les pas (Android) ; la cadence est écrite dans la trace.">

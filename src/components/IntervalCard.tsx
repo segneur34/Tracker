@@ -38,7 +38,7 @@ import './IntervalCard.css';
  */
 
 /** Choix de la séance, séances gardées du genre, lancement. */
-function WorkoutEditor({ kind, recording }: { kind: WorkoutKind; recording: boolean }) {
+function WorkoutEditor({ kind, recording, muscu }: { kind: WorkoutKind; recording: boolean; muscu: boolean }) {
   const { presets, last } = useIntervalSettings(kind);
   const [blocks, setBlocks] = useState<IntervalBlock[]>(() => workoutBlocks(last));
   const [naming, setNaming] = useState<string | null>(null);
@@ -87,7 +87,9 @@ function WorkoutEditor({ kind, recording }: { kind: WorkoutKind; recording: bool
         </div>
       )}
       <p className="ivl-note">
-        {kind === 'timer'
+        {kind === 'timer' && muscu
+          ? 'La séance faite pendant la muscu est rangée avec elle : ses phases se posent sur la courbe de FC.'
+          : kind === 'timer'
           ? 'Sans GPS ni session : le compteur seul.'
           : recording
             ? "Les répétitions faites pendant l'enregistrement sont rangées avec la session."
@@ -108,10 +110,10 @@ const askEdit = () => {
 };
 
 /** Vue « Compteur » : la séance à lancer, ou celle en cours. `recording` : un enregistrement tourne. */
-function CounterView({ kind, recording, timer }: { kind: WorkoutKind; recording: boolean; timer: IntervalTimerView }) {
+function CounterView({ kind, recording, muscu, timer }: { kind: WorkoutKind; recording: boolean; muscu: boolean; timer: IntervalTimerView }) {
   const { run, state, error } = timer;
 
-  if (!run || !state) return <WorkoutEditor kind={kind} recording={recording} />;
+  if (!run || !state) return <WorkoutEditor kind={kind} recording={recording} muscu={muscu} />;
 
   if (state.status === 'finished' || state.status === 'stopped') {
     return (
@@ -221,7 +223,12 @@ type CardView = 'compteur' | 'chrono';
  * ne regarde pas, si elle tourne, se rappelle en pastille sur son bouton.
  * `recording` : un enregistrement tourne.
  */
-function IntervalCard({ kind = 'fractionne', recording }: { kind?: WorkoutKind; recording: boolean }) {
+function IntervalCard({ kind = 'fractionne', recording, muscu = false }: {
+  kind?: WorkoutKind;
+  recording: boolean;
+  /** Séances du Timer pour une muscu (lot I du 25/10) : la séance va dans la session. */
+  muscu?: boolean;
+}) {
   const timer = useIntervalTimer();
   const { state: chrono } = useStopwatch();
   const counterLive = timer.state?.status === 'running' || timer.state?.status === 'paused';
@@ -251,7 +258,7 @@ function IntervalCard({ kind = 'fractionne', recording }: { kind?: WorkoutKind; 
           {chronoBadge && <span className="ivl-switch__badge num">{chronoBadge}</span>}
         </button>
       </div>
-      {shown === 'compteur' ? <CounterView kind={kind} recording={recording} timer={timer} /> : <StopwatchView state={chrono} />}
+      {shown === 'compteur' ? <CounterView kind={kind} recording={recording} muscu={muscu} timer={timer} /> : <StopwatchView state={chrono} />}
     </Card>
   );
 }

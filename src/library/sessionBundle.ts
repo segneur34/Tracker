@@ -48,11 +48,14 @@ interface GpxEdit {
 /** Nom d'abord : le premier enfant de `<metadata>` et de `<trk>`, selon le schéma GPX 1.1. */
 const LEADING_NAME = /^\s*<name>([\s\S]*?)<\/name>/;
 
-/** Repères en points de passage, nommés comme dans l'analyse : leur nom, sinon « Note N ». */
+/**
+ * Repères en points de passage, nommés comme dans l'analyse : leur nom, sinon « Note N ». Un repère à
+ * l'heure seule (muscu) n'en a pas, faute de position : il reste dans la fiche, en extension.
+ */
 const waypoints = (marks: readonly SessionMark[]): string =>
-  sortMarks(marks).map((m, k) =>
-    `<wpt lat="${m.lat}" lon="${m.lon}"><time>${new Date(m.timeMs).toISOString()}</time>`
-    + `<name>${escapeXml(m.label ?? `Note ${k + 1}`)}</name></wpt>`).join('');
+  sortMarks(marks).map((m, k) => (m.lat === null || m.lon === null ? ''
+    : `<wpt lat="${m.lat}" lon="${m.lon}"><time>${new Date(m.timeMs).toISOString()}</time>`
+      + `<name>${escapeXml(m.label ?? `Note ${k + 1}`)}</name></wpt>`)).join('');
 
 /**
  * Nom de la session écrit dans `<metadata>` (créé s'il manque) et dans la
@@ -63,9 +66,10 @@ const waypoints = (marks: readonly SessionMark[]): string =>
 const retouchGpx = (gpx: string, name: string | null, marks: readonly SessionMark[]): { gpx: string; edits: GpxEdit[] } => {
   /** Retouches sur le GPX d'origine : `from`..`to` remplacé par `insert`. */
   const changes: { from: number; to: number; insert: string }[] = [];
-  if (marks.length > 0) {
+  const points = waypoints(marks);
+  if (points !== '') {
     const first = /<(rte|trk)[\s>]/.exec(gpx);
-    if (first) changes.push({ from: first.index, to: first.index, insert: waypoints(marks) });
+    if (first) changes.push({ from: first.index, to: first.index, insert: points });
   }
   if (name !== null) writeName(gpx, escapeXml(name), changes);
 

@@ -55,6 +55,8 @@ interface Props {
   zoom: ChartZoom;
   /** « +carte » de la courbe zoomée. */
   onShowOnMap?: () => void;
+  /** Session sans trace (muscu) : ni colonne « Carte » des zones, ni mention de la carte. */
+  mapless?: boolean;
   open: boolean;
   onToggle: () => void;
 }
@@ -120,7 +122,7 @@ export function CardioCurve({ track, smoothed, zoom, zones, thresholds, onHoverI
  */
 export default function HeartRatePanel({
   track, heart, params, zones, profileHrMax, runner, onRetainHrMax, selectedZone, onSelectZone, onHoverIndex, onLeave, efficiency,
-  zoom, onShowOnMap, open, onToggle,
+  zoom, onShowOnMap, mapless = false, open, onToggle,
 }: Props) {
   const { smoothed, stats } = heart;
 
@@ -149,9 +151,10 @@ export default function HeartRatePanel({
         <PanelTitle label="Cardio" open={open} onToggle={onToggle} helpKey="analyse:cardio" />
       </div>
       <HelpText helpKey="analyse:cardio" note>
-        FC lissée sur {params.smoothS} s ; un trou de plus de {params.gapS} s (ceinture retirée, pause) n'est pas compté. Le survol de la courbe déplace le repère sur la carte.
+        FC lissée sur {params.smoothS} s ; un trou de plus de {params.gapS} s (ceinture retirée, pause) n'est pas compté.
+        {!mapless && ' Le survol de la courbe déplace le repère sur la carte.'}
         {zones && " Les traits noirs S1 et S2 de la courbe sont vos seuils aérobie et anaérobie."}
-        {zones && " « Voir » montre les passages d'une zone sur la carte, en violet."}
+        {zones && !mapless && " « Voir » montre les passages d'une zone sur la carte, en violet."}
         {efficiency && scatterUnit !== null && " D'une sortie à l'autre, le nuage qui glisse vers la droite à FC égale dit le progrès."}
       </HelpText>
       <div className="an-sheet__stats an-sheet__stats--always">
@@ -194,7 +197,7 @@ export default function HeartRatePanel({
                 <th style={{ ...cell, fontWeight: 'normal', color: 'var(--muted)' }}>FC</th>
                 <th style={cell}>Temps</th>
                 <th style={{ ...cell, width: '30%' }}>Part</th>
-                <th style={cell}>Carte</th>
+                {!mapless && <th style={cell}>Carte</th>}
               </tr>
             </thead>
             <tbody>
@@ -218,9 +221,11 @@ export default function HeartRatePanel({
                         <span style={{ minWidth: '3em', textAlign: 'right', fontSize: 'var(--text-xs)' }}>{Math.round(share * 100)} %</span>
                       </div>
                     </td>
-                    <td style={cell}>
-                      <MapToggle shown={shown} disabled={s <= 0} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => onSelectZone(shown ? null : zone)} />
-                    </td>
+                    {!mapless && (
+                      <td style={cell}>
+                        <MapToggle shown={shown} disabled={s <= 0} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => onSelectZone(shown ? null : zone)} />
+                      </td>
+                    )}
                   </tr>
                 );
               })}

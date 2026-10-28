@@ -103,7 +103,7 @@ export const referenceSpeedMs = (points: RawTrackPoint[]): number => {
  * d'analyser : un enregistrement économique, à plusieurs dizaines de secondes
  * par point, ne décrit ni une accélération ni le détail d'un virage.
  */
-export const samplingIntervalS = (points: RawTrackPoint[]): number => {
+export const samplingIntervalS = (points: ReadonlyArray<Pick<RawTrackPoint, 'time'>>): number => {
   if (points.length < 2) return 0;
 
   const gaps: number[] = [];

@@ -54,7 +54,7 @@ const markTitle = (m: NumberedMark): string => m.mark.label ?? `Note ${m.n}`;
 export function SessionMarksLayer({ located, shownMs }: { located: ReadonlyArray<NumberedMark>; shownMs: number | null }) {
   return (
     <>
-      {located.map((m) => (
+      {located.map((m) => m.mark.lat !== null && m.mark.lon !== null && (
         <Marker key={`note-${m.mark.timeMs}`} position={[m.mark.lat, m.mark.lon]} icon={flagIcon(m.n, m.mark.timeMs === shownMs)}
           zIndexOffset={m.mark.timeMs === shownMs ? 1000 : 0}>
           <Popup>{markTitle(m)} · {formatTimeOfDay(m.mark.timeMs)}</Popup>
@@ -68,9 +68,11 @@ export function SessionMarksLayer({ located, shownMs }: { located: ReadonlyArray
  * Liste des repères, pour l'onglet « Général » : n°, heure, distance depuis
  * le départ, nom à saisir, « Voir » et supprimer. Rien sans repère.
  */
-export function SessionMarksList({ view, distanceUnit, shownMs, onShow, accent }: {
+export function SessionMarksList({ view, distanceUnit, shownMs, onShow, accent, withDistance = true }: {
   view: SessionMarksView;
   distanceUnit: DistanceUnit;
+  /** Faux sans trace (muscu) : pas de distance depuis le départ. */
+  withDistance?: boolean;
   shownMs: number | null;
   /** Montre un repère sur la carte, par son heure ; `null` le masque. */
   onShow: (timeMs: number | null) => void;
@@ -92,7 +94,7 @@ export function SessionMarksList({ view, distanceUnit, shownMs, onShow, accent }
             <div key={`note-${m.mark.timeMs}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <strong style={{ minWidth: '1.5em' }}>{m.n}</strong>
               <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTimeOfDay(m.mark.timeMs)}</span>
-              <span style={{ color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>{formatDistance(m.distanceM, distanceUnit)}</span>
+              {withDistance && <span style={{ color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>{formatDistance(m.distanceM, distanceUnit)}</span>}
               <input type="text" className="ui-field ui-field--s" style={{ flex: '1 1 8em', minWidth: 0 }}
                 value={m.mark.label ?? ''} placeholder={`Note ${m.n}`} disabled={!editable} aria-label={`Nom de la note ${m.n}`}
                 onChange={(e) => rename(m.mark, e.target.value)} />

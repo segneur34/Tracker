@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  INTERVAL_TONE_MS, MAX_INTERVAL_PRESETS, addPreset, intervalStepAt, isRunClosed, lapsWithin, newPresetId, phaseName, readIntervalRun, readIntervalSeries, replacePreset,
+  handsOverToRecording, INTERVAL_TONE_MS, MAX_INTERVAL_PRESETS, addPreset, intervalStepAt, isRunClosed, lapsWithin, newPresetId, phaseName, readIntervalRun, readIntervalSeries, replacePreset,
   runCommand, runLaps, sameWorkout, sanitizePresets, sanitizeWorkout, seriesBlocks, seriesWithin, startRun, timerStateAt, upcomingSchedule,
   withoutPreset, workoutBlocks, workoutDurationS, workoutFromBlocks, workoutLabel, workoutPhases,
   type IntervalBlock, type IntervalRun, type IntervalTone, type IntervalWorkout,
@@ -345,5 +345,16 @@ describe('fin de séance et étape (26/10)', () => {
     // Échauffement 3-63, travail 63-93, repos 93-108, travail 108-138, récupération 138-158, travail 158-168, travail 168-178.
     expect([10, 70, 100, 120, 150, 160, 170].map((s) => intervalStepAt(multiRun, at(s))?.rep)).toEqual([0, 1, 1, 2, 2, 3, 4]);
     expect(intervalStepAt(multiRun, at(70))?.of).toBe(4);
+  });
+});
+
+describe('handsOverToRecording (muscu, lot I du 25/10)', () => {
+  it('le Fractionné va à tout enregistrement, le Timer seulement à une session sans position', () => {
+    expect(handsOverToRecording({}, true)).toBe(true);
+    expect(handsOverToRecording({}, false)).toBe(true);
+    expect(handsOverToRecording({ kind: 'timer' }, true)).toBe(false);
+    expect(handsOverToRecording({ kind: 'timer' }, false)).toBe(true);
+    expect(handsOverToRecording({ kind: 'timer' }, null)).toBe(false);
+    expect(handsOverToRecording({}, null)).toBe(false);
   });
 });

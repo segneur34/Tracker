@@ -3,9 +3,10 @@ import { DEFAULT_TIMER_WORKOUT, workoutBlocks, type IntervalBlock, type WorkoutK
 /**
  * Les deux listes de séances de l'Entraînement (25/10), sur les mêmes pages
  * (`TrainingSessionsPage`, `TrainingSessionEditPage`) : le Fractionné, lancé
- * avec une activité, et le Timer, hors de toute activité, sans GPS ni
- * session. Ce qui les distingue à l'écran : titres, mots, adresses, blocs
- * d'une séance neuve.
+ * avec une activité, avec les tests sous sa liste ; le Timer, lancé seul,
+ * sans GPS ni session, ou en Muscu, enregistré avec la ceinture (lot I du
+ * 25/10 : une seule liste pour les deux). Ce qui les distingue à l'écran :
+ * titres, mots, adresses, blocs d'une séance neuve.
  */
 export interface WorkoutList {
   title: string;
@@ -23,8 +24,8 @@ export interface WorkoutList {
 
 export const WORKOUT_LISTS: Record<WorkoutKind, WorkoutList> = {
   fractionne: {
-    title: 'Fractionné',
-    subtitle: "Le compteur d'intervalles : des séances faites de blocs, gardées pour être relancées toutes faites.",
+    title: 'Fractionné et tests',
+    subtitle: "Le compteur d'intervalles : des séances faites de blocs, gardées pour être relancées toutes faites ; et les tests à la ceinture cardio.",
     listPath: '/fractionne/seances',
     editPath: '/fractionne/seances/editer',
     create: 'Créer un compteur',
@@ -38,8 +39,8 @@ export const WORKOUT_LISTS: Record<WorkoutKind, WorkoutList> = {
     ],
   },
   timer: {
-    title: 'Timer',
-    subtitle: 'Des minuteries à blocs, hors fractionné (muscu, gainage…) : le compteur seul, sans GPS ni session.',
+    title: 'Muscu et timer',
+    subtitle: "Des minuteries à blocs, hors fractionné : « Timer » lance le compteur seul, sans GPS ni session ; « Muscu » enregistre la séance avec la ceinture cardio.",
     listPath: '/fractionne/timer',
     editPath: '/fractionne/timer/editer',
     create: 'Créer une séance',

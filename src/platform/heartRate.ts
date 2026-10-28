@@ -14,6 +14,13 @@ import { jsonStore } from './storage';
  * elle tombe quand plus personne ne la tient. La ceinture choisie est retenue
  * sur l'appareil, pas dans les réglages recopiés dans le dossier mémoire :
  * c'est un objet à portée de ce téléphone.
+ *
+ * Une muscu (lot I du 25/10) n'a pas de service GPS pour tenir l'application
+ * écran éteint : `keepBeltAlive` démarre un service au premier plan du greffon
+ * (`HeartRateService.java`), avec la notification de l'enregistrement.
+ *
+ * Dans le navigateur, la ceinture d'exemple (`EXAMPLE_BELT`) joue une FC
+ * chaque seconde, pour éprouver la muscu au banc ; aucune autre ne s'y connecte.
  */
 
 export interface HeartRateBelt {
@@ -66,11 +73,22 @@ interface HeartRatePlugin {
   connect(options: { address: string; name: string; random?: boolean }): Promise<void>;
   disconnect(): Promise<void>;
   openBluetoothSettings(): Promise<void>;
+  keepAlive(options: { title: string; text: string }): Promise<void>;
+  stopKeepAlive(): Promise<void>;
   addListener(event: 'heartRate', listener: (data: { bpm: number; timeMs: number; contact?: boolean }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'status', listener: (data: { state: BeltState; address?: string; random?: boolean }) => void): Promise<PluginListenerHandle>;
 }
 
 const plugin = registerPlugin<HeartRatePlugin>('HeartRate');
+
+/** Ceinture d'exemple du navigateur : une FC jouée chaque seconde, sans Bluetooth (banc de la muscu). */
+export const EXAMPLE_BELT: HeartRateBelt = { address: 'exemple', name: "FC d'exemple" };
+
+/** FC d'exemple à `tS` secondes de la connexion : de 95 à 135 bpm, une montée par minute. */
+const exampleBpm = (tS: number): number => Math.round(115 - 20 * Math.cos((2 * Math.PI * tS) / 60));
+
+/** Minuterie de la ceinture d'exemple, `null` sans elle. */
+let exampleTimer: ReturnType<typeof setInterval> | null = null;
 
 /** Vrai dans l'application Android, seule à parler au Bluetooth. */
 export const heartRateSupported = (): boolean => isNativeApp();
@@ -169,7 +187,12 @@ const listen = (): Promise<void> => {
  * (permission refusée, Bluetooth éteint).
  */
 export const holdBelt = async (holder: string, belt: HeartRateBelt): Promise<() => void> => {
-  if (!isNativeApp()) throw new Error("Ceinture cardio sur l'application Android seulement.");
+  if (!isNativeApp()) {
+    if (belt.address !== EXAMPLE_BELT.address) throw new Error("Ceinture cardio sur l'application Android seulement.");
+    holders.add(holder);
+    startExampleBelt();
+    return () => releaseBelt(holder);
+  }
   await listen();
   const first = holders.size === 0;
   holders.add(holder);
@@ -184,11 +207,47 @@ export const holdBelt = async (holder: string, belt: HeartRateBelt): Promise<() 
   return () => releaseBelt(holder);
 };
 
+/** Ceinture d'exemple : connectée tout de suite, une mesure par seconde. */
+const startExampleBelt = (): void => {
+  if (exampleTimer !== null) return;
+  const startMs = Date.now();
+  setState('connected');
+  const emit = () => {
+    const timeMs = Date.now();
+    const sample: HeartRateSample = { bpm: exampleBpm((timeMs - startMs) / 1000), timeMs, contact: true };
+    latest = sample;
+    sampleListeners.forEach((listener) => listener(sample));
+  };
+  emit();
+  exampleTimer = setInterval(emit, 1000);
+};
+
 /** Rend la connexion prise sous `holder` ; la dernière rendue la coupe. */
 export const releaseBelt = (holder: string): void => {
   if (!holders.delete(holder) || holders.size > 0) return;
   setState('off');
+  if (exampleTimer !== null) {
+    clearInterval(exampleTimer);
+    exampleTimer = null;
+    return;
+  }
   void plugin.disconnect().catch(() => undefined);
+};
+
+/**
+ * Garde l'application en vie écran éteint pendant une session sans GPS
+ * (muscu) : service au premier plan qui pose la notification de
+ * l'enregistrement (`title`, `text`), récrite ensuite par
+ * `platform/notification.ts`, et tient le processeur éveillé. Dans le
+ * navigateur, rien.
+ */
+export const keepBeltAlive = async (title: string, text: string): Promise<void> => {
+  if (isNativeApp()) await plugin.keepAlive({ title, text });
+};
+
+/** Arrête le service de `keepBeltAlive`, et sa notification ; sans effet s'il ne tourne pas. */
+export const stopBeltKeepAlive = async (): Promise<void> => {
+  if (isNativeApp()) await plugin.stopKeepAlive().catch(() => undefined);
 };
 
 /**
@@ -196,7 +255,10 @@ export const releaseBelt = (holder: string): void => {
  * dont la page a été rechargée (le greffon, lui, est resté connecté).
  */
 export const releaseOrphanedBelt = async (): Promise<void> => {
-  if (isNativeApp() && holders.size === 0) await plugin.disconnect().catch(() => undefined);
+  if (isNativeApp() && holders.size === 0) {
+    await plugin.disconnect().catch(() => undefined);
+    await stopBeltKeepAlive();
+  }
 };
 
 /** État de la connexion. */

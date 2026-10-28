@@ -59,6 +59,15 @@ describe("notification de l'Entraînement (26/10)", () => {
     }
     expect(presetOf(baseActivity('running')).notificationFields).toBeUndefined();
   });
+
+  it('muscu : ceinture d’office, FC et durée en direct, étape et FC dans la notification (lot I du 25/10)', () => {
+    const muscu = presetOf(baseActivity('muscu'));
+    expect(muscu.heartRate).toBe(true);
+    expect(muscu.liveFields).toEqual(['heartRate', 'heartRateZone', 'averageHeartRate', 'duration']);
+    expect(muscu.notificationFields).toEqual(['step', 'heartRate']);
+    expect(muscu.speedRangeMs).toBeUndefined();
+    expect(PRESET_BASES).toContain('muscu');
+  });
 });
 
 describe('PRESET_BASES', () => {

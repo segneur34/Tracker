@@ -25,6 +25,8 @@ export type LiveFieldKey =
 
 const ALL: Treatment[] = ['voile', 'course', 'velo', 'surf'];
 const LAND: Treatment[] = ['course', 'velo'];
+/** Chiffres sans position : la FC, le temps et l'étape, seuls proposés à la muscu (lot I du 25/10). */
+const WITH_MUSCU: Treatment[] = [...ALL, 'muscu'];
 
 /** Traitements où chaque chiffre a un sens ; l'ordre est celui des menus de Réglages. */
 const LIVE_FIELD_TREATMENTS: Record<LiveFieldKey, readonly Treatment[]> = {
@@ -46,15 +48,15 @@ const LIVE_FIELD_TREATMENTS: Record<LiveFieldKey, readonly Treatment[]> = {
   climbRate: LAND,
   power: LAND,
   effort: LAND,
-  heartRate: ALL,
-  averageHeartRate: ALL,
-  heartRateZone: ALL,
+  heartRate: WITH_MUSCU,
+  averageHeartRate: WITH_MUSCU,
+  heartRateZone: WITH_MUSCU,
   distance: ALL,
-  duration: ALL,
-  clock: ALL,
+  duration: WITH_MUSCU,
+  clock: WITH_MUSCU,
   remaining: ALL,
   remainingTime: ALL,
-  step: LAND,
+  step: [...LAND, 'muscu'],
 };
 
 /**
@@ -94,6 +96,7 @@ export const DEFAULT_LIVE_FIELDS: Record<Treatment, LiveFieldKey[]> = {
   course: ['speed', 'average', 'recentDistanceSpeed'],
   velo: ['speed', 'average', 'max'],
   surf: ['speed', 'max', 'duration'],
+  muscu: ['heartRate', 'heartRateZone', 'averageHeartRate', 'duration'],
 };
 
 /**
@@ -111,12 +114,14 @@ export const defaultLiveFieldsOf = (sport: SportType): LiveFieldKey[] =>
 /** Chiffres de la notification de l'enregistrement au plus : écran verrouillé, Android coupe la ligne au-delà de deux. */
 export const MAX_NOTIFICATION_FIELDS = 2;
 
-/** Chiffres de la notification à défaut de choix, les mêmes pour tous les traitements. */
+/** Chiffres de la notification à défaut de choix, les mêmes pour tous les traitements à positions. */
 export const DEFAULT_NOTIFICATION_FIELDS: Record<Treatment, LiveFieldKey[]> = {
   voile: ['speed', 'distance'],
   course: ['speed', 'distance'],
   velo: ['speed', 'distance'],
   surf: ['speed', 'distance'],
+  // L'étape du compteur et la FC : ni vitesse ni distance sans position.
+  muscu: ['step', 'heartRate'],
 };
 
 /** Chiffres de la notification propres à un calcul, avant ceux de son traitement ; aucun pour l'instant. */

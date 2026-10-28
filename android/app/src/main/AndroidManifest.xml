@@ -34,6 +34,12 @@
                 android:value="Compteur de fractionné : bips à heure fixe, écran éteint" />
         </service>
 
+        <!-- Muscu : session sans GPS tenue écran éteint par la ceinture cardio (HeartRateService). -->
+        <service
+            android:name=".HeartRateService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -61,6 +67,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- Muscu : service au premier plan de la ceinture (HeartRateService), type « appareil connecté ». -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <!-- Carte « Autorisations » (PermissionsPlugin) : l'écran système qui lève l'optimisation de la batterie. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>

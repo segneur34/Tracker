@@ -50,6 +50,8 @@ export const TREATMENT_UNITS: Record<Treatment, SpeedUnit[]> = {
   course: RUNNING_UNITS,
   velo: CYCLING_UNITS,
   surf: SURF_UNITS,
+  // Muscu, sans position : sans objet, ni proposé dans Réglages.
+  muscu: RUNNING_UNITS,
 };
 
 /** Bornes de couleur de la trace à défaut de réglage (en voile, avant toute suggestion tirée de la session). */
@@ -58,6 +60,8 @@ export const TREATMENT_SPEED_RANGE_MS: Record<Treatment, SpeedRangeMs> = {
   course: DEFAULT_SPEED_RANGE_MS,
   velo: DEFAULT_CYCLING_SPEED_RANGE_MS,
   surf: DEFAULT_SURF_SPEED_RANGE_MS,
+  // Muscu, sans trace : sans objet.
+  muscu: DEFAULT_SPEED_RANGE_MS,
 };
 
 /**

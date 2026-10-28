@@ -1,5 +1,6 @@
 import { computeElevationStats } from '../core/elevation';
-import { heartRateHistogram, heartRateStats, smoothHeartRate } from '../core/heartRate';
+import { heartRateHistogram, heartRateStats, smoothHeartRate, type HeartRatePoint } from '../core/heartRate';
+import { activeDurationS, heartRatePointsFrom } from '../core/heartRateSession';
 import { computeKinematics } from '../core/kinematics';
 import { referenceSpeedMs, samplingIntervalS, sessionFilterThresholds } from '../core/sessionSpeed';
 import {
@@ -10,7 +11,7 @@ import {
   thresholdActivityMask,
 } from '../core/sessionStats';
 import { SAILING_SPORTS, defaultActiveThresholdOf, getSportProfile, type ElevationProfile, type HeartRateProfile } from '../core/sportProfiles';
-import type { RawTrackPoint, SportType, TrackPoint } from '../core/types';
+import type { RawTrackPoint, SportType, TimedTrackPoint, TrackPoint } from '../core/types';
 import { applyTerrainElevation, type TerrainSamples } from '../core/terrainElevation';
 import { msToKnots } from '../core/units';
 import { suggestActiveThresholdKn } from '../sailing/sailingConfig';
@@ -187,6 +188,30 @@ export const summarizeSession = (
   };
 };
 
+/**
+ * Résumé d'une session sans trace (muscu, lot I du 25/10), ou `null` à moins
+ * de deux points horodatés : ni distance, ni vitesse, ni dénivelé ; la durée
+ * hors pauses en temps en action, et la FC comme l'onglet « cardio » la mesure.
+ */
+export const summarizeHeartRateSession = (timedPoints: readonly TimedTrackPoint[], sport: SportType): SessionSummary | null => {
+  const points = heartRatePointsFrom(timedPoints);
+  if (points.length < 2) return null;
+  const heartRate = summaryHeartRate(points, getSportProfile(sport).heartRate);
+  return {
+    calcVersion: SUMMARY_CALC_VERSION,
+    startMs: points[0].timeMs,
+    endMs: points[points.length - 1].timeMs,
+    distanceM: 0,
+    movingTimeS: activeDurationS(points),
+    movingDistanceM: null,
+    elevationGainM: null,
+    maxSpeedMs: 0,
+    pointCount: points.length,
+    samplingS: samplingIntervalS(timedPoints),
+    ...(heartRate ? { heartRate } : {}),
+  };
+};
+
 /** Cadence du résumé, comme l'onglet « cadence » la mesure ; rien sous `minCoverageS`. */
 const summaryCadence = (track: TrackPoint[], mask: boolean[], params: CadenceDetection): SummaryCadence | undefined => {
   const cadence = sessionCadence(track, params);
@@ -196,7 +221,7 @@ const summaryCadence = (track: TrackPoint[], mask: boolean[], params: CadenceDet
 };
 
 /** FC du résumé, comme l'onglet « cardio » la mesure ; rien sous `minCoverageS`. */
-const summaryHeartRate = (track: TrackPoint[], params: HeartRateProfile): SummaryHeartRate | undefined => {
+const summaryHeartRate = (track: readonly HeartRatePoint[], params: HeartRateProfile): SummaryHeartRate | undefined => {
   const smoothed = smoothHeartRate(track, params.smoothS, params.gapS);
   const stats = heartRateStats(track, smoothed, params.gapS);
   const histogram = heartRateHistogram(track, smoothed, params.gapS);

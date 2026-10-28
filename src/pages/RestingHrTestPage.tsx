@@ -15,6 +15,7 @@ import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { BELT_STATE_LABEL } from '../platform/heartRate';
 import { RESTING_HR_TEST, restingRemainingS } from '../recording/restingHrTest';
 import { restingHrSeries, toStoredRestingResult, type StoredRestingResult } from '../running/restingHrResults';
+import { WORKOUT_LISTS } from './workoutLists';
 import './TrainingPages.css';
 
 const PROTOCOL = RESTING_HR_TEST;
@@ -89,7 +90,7 @@ function RestingHrTestPage() {
 
   return (
     <div className="ui-page train-page" style={{ '--help-accent': FAMILY_ACCENT.fractionne } as React.CSSProperties}>
-      <PageHeader title="FC repos" back={{ to: '/fractionne/tests', label: 'Tests' }}
+      <PageHeader title="FC repos" back={{ to: WORKOUT_LISTS.fractionne.listPath, label: WORKOUT_LISTS.fractionne.title }}
         subtitle={`Trois minutes immobile, la FC lue sur la ceinture, sans GPS : la moyenne de ${PROTOCOL.windowS} s la plus basse, après la première minute, est votre FC de repos.`} />
 
       {native && !beltChosen && (

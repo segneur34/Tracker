@@ -3,7 +3,7 @@ import { computeKinematics } from '../core/kinematics';
 import type { RawTrackPoint } from '../core/types';
 import type { SessionTest } from '../recording/fitnessTest';
 import { SUMMARY_CALC_VERSION } from './record';
-import { analysisTrack, summarizeSession } from './summary';
+import { analysisTrack, summarizeHeartRateSession, summarizeSession } from './summary';
 
 const START_MS = Date.parse('2026-09-20T10:00:00Z');
 const LAT = 43.6;
@@ -213,5 +213,28 @@ describe('summarizeSession', () => {
   it('rend `null` pour une trace de moins de deux points', () => {
     expect(summarizeSession([], 'running')).toBeNull();
     expect(summarizeSession(buildTrack([]), 'running')).toBeNull();
+  });
+});
+
+describe('summarizeHeartRateSession (muscu, lot I du 25/10)', () => {
+  const T0 = Date.UTC(2026, 9, 28, 18, 0, 0);
+  const timed = Array.from({ length: 181 }, (_, k) => ({ time: new Date(T0 + k * 1000).toISOString(), hr: 100 + (k % 20) }));
+
+  it('donne un résumé non nul : distance 0, durée hors pauses, FC présente', () => {
+    const resumed = [...timed.slice(0, 91), ...timed.slice(91).map((p, k) => ({ ...p, time: new Date(T0 + (k + 120) * 1000).toISOString(), ...(k === 0 ? { segmentStart: true as const } : {}) }))];
+    const s = summarizeHeartRateSession(resumed, 'muscu')!;
+    expect(s.distanceM).toBe(0);
+    expect(s.maxSpeedMs).toBe(0);
+    expect(s.elevationGainM).toBeNull();
+    expect(s.movingDistanceM).toBeNull();
+    expect(s.movingTimeS).toBe(90 + 89);
+    expect(s.startMs).toBe(T0);
+    expect(s.heartRate?.maxBpm).toBeGreaterThan(110);
+    expect(s.samplingS).toBe(1);
+    expect(s.calcVersion).toBe(SUMMARY_CALC_VERSION);
+  });
+
+  it('moins de deux points : null', () => {
+    expect(summarizeHeartRateSession(timed.slice(0, 1), 'muscu')).toBeNull();
   });
 });

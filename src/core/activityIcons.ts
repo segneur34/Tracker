@@ -51,6 +51,8 @@ const BASE_ICON: Record<SportType, ActivityIconId> = {
   'bike-intervals': 'fractionne-velo',
   'run-test': 'fractionne-pied',
   surf: 'surf',
+  // Pas encore de dessin propre à la muscu : celui de l'Entraînement à pied.
+  muscu: 'fractionne-pied',
 };
 
 /** Activités de départ qui partagent leur calcul avec une autre (`DEFAULT_ACTIVITIES`). */

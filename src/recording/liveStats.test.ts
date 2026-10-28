@@ -3,7 +3,7 @@ import { SPORT_PROFILES } from '../core/sportProfiles';
 import { cyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
 import { DEFAULT_ENERGY_PARAMS, runningCostJkgM } from '../running/energy';
-import { LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, type LiveEnergySetup } from './liveStats';
+import { LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, heartOnlyLiveStats, type LiveEnergySetup } from './liveStats';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
 const M_PER_DEG_LAT = (6371e3 * Math.PI) / 180;
@@ -279,5 +279,22 @@ describe('computeLiveStats : puissance et énergie', () => {
     const stats = computeLiveStats([trace(0, 600, 1, () => 4)], running);
     expect(stats.recentPowerW).toBeNull();
     expect(stats.effortJ).toBeNull();
+  });
+});
+
+describe('heartOnlyLiveStats (muscu, lot I du 25/10)', () => {
+  it('FC moyenne pondérée par le temps et temps hors pauses, à 1 Hz comme à 5 Hz ; ni distance ni vitesse', () => {
+    const T = Date.UTC(2026, 9, 28, 18, 0, 0);
+    const seg = (fromS: number, toS: number, stepS: number, bpm: number) =>
+      Array.from({ length: Math.round((toS - fromS) / stepS) + 1 }, (_, k) => ({ timeMs: T + (fromS + k * stepS) * 1000, heartRateBpm: bpm }));
+    const params = SPORT_PROFILES.muscu.heartRate;
+    const at1Hz = heartOnlyLiveStats([seg(0, 60, 1, 100), seg(120, 180, 1, 140)], params);
+    const at5Hz = heartOnlyLiveStats([seg(0, 60, 0.2, 100), seg(120, 180, 0.2, 140)], params);
+    expect(at1Hz.averageHeartRateBpm).toBeCloseTo(120, 6);
+    expect(at5Hz.averageHeartRateBpm).toBeCloseTo(120, 6);
+    expect(at1Hz.movingTimeMs).toBe(120_000);
+    expect(at1Hz.distanceM).toBe(0);
+    expect(at1Hz.averageSpeedMs).toBeNull();
+    expect(heartOnlyLiveStats([], params).averageHeartRateBpm).toBeNull();
   });
 });

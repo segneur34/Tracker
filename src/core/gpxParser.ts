@@ -1,4 +1,4 @@
-import type { RawTrackPoint } from './types';
+import type { RawTrackPoint, TimedTrackPoint } from './types';
 
 /**
  * Lecture d'un fichier GPX, sans dépendance externe.
@@ -16,6 +16,12 @@ import type { RawTrackPoint } from './types';
 export interface ParsedGpx {
   /** Points bruts de la trace, dans l'ordre du fichier. */
   rawPoints: RawTrackPoint[];
+  /**
+   * Points horodatés sans position (muscu, lot I du 25/10 : l'heure et la
+   * FC), dans l'ordre du fichier. Vide pour une trace à positions, dont les
+   * points vont tous dans `rawPoints`.
+   */
+  timedPoints: TimedTrackPoint[];
   /** Nom de la trace, si le fichier en porte un. */
   trackName?: string;
   /**
@@ -94,10 +100,12 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
 
   const trkpts = doc.getElementsByTagName('trkpt');
   const rawPoints: RawTrackPoint[] = [];
+  const timedPoints: TimedTrackPoint[] = [];
   let hasDeviceSpeed = false;
   // Segment du dernier point retenu : un point d'un autre `<trkseg>` reprend
   // après une pause de l'enregistrement (un `<trkseg>` par pause, `gpxWriter.ts`).
   let lastSegment: Element | null = null;
+  let lastTimedSegment: Element | null = null;
 
   for (let i = 0; i < trkpts.length; i++) {
     const trkpt = trkpts[i];
@@ -105,9 +113,23 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
     const lon = parseFloat(trkpt.getAttribute('lon') ?? '');
     const time = readText(trkpt, 'time');
 
-    // Un point sans position exploitable ou sans horodatage ne sert à rien :
-    // toute la kinématique repose sur la différence de temps entre deux points.
-    if (!isFinite(lat) || !isFinite(lon) || !time) continue;
+    // Un point sans horodatage ne sert à rien : toute la kinématique repose
+    // sur la différence de temps entre deux points.
+    if (!time) continue;
+    // Sans position, mais à l'heure : un point d'une session sans trace (muscu),
+    // à part, jamais dans la cinématique.
+    if (!isFinite(lat) || !isFinite(lon)) {
+      const segment = trkpt.parentElement;
+      const resumes = lastTimedSegment !== null && segment !== lastTimedSegment;
+      lastTimedSegment = segment;
+      const hr = readNumber(trkpt, 'hr');
+      timedPoints.push({
+        time,
+        ...(hr !== undefined ? { hr } : {}),
+        ...(resumes ? { segmentStart: true as const } : {}),
+      });
+      continue;
+    }
 
     const speedMs = readDeviceSpeed(trkpt);
     if (speedMs !== undefined) hasDeviceSpeed = true;
@@ -133,6 +155,7 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
 
   return {
     rawPoints,
+    timedPoints,
     trackName: trk ? readText(trk, 'name') : undefined,
     trackType: trk ? readChildText(trk, 'type') : undefined,
     hasDeviceSpeed,

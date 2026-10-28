@@ -4,7 +4,8 @@ import { buildGpx } from './gpxWriter';
 import type { SessionTest } from './fitnessTest';
 import { runCommand, startRun } from './intervalTimer';
 import {
-  journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalIntervalsLine, journalNoteLine, journalTestLine, parseJournal,
+  journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine, journalTestLine,
+  parseJournal,
 } from './journal';
 import { roundFix, splitIntoSegments } from './session';
 
@@ -197,5 +198,35 @@ describe('test du journal', () => {
   it('rend null sans test, ou si le seul est abîmé', () => {
     expect(parseJournal(journalOf(fixes)).test).toBeNull();
     expect(parseJournal(journalOf(fixes) + '["test",{"protocol":"vma"}]\n').test).toBeNull();
+  });
+});
+
+describe('journal d’une session sans position (muscu, lot I du 25/10)', () => {
+  it('relit les mesures de la ceinture et leurs coupures, à part des positions ; une ligne abîmée est ignorée', () => {
+    const text = [
+      journalHeaderLine('muscu', T0),
+      journalHeartRateLine({ timeMs: T0, heartRateBpm: 90 }),
+      journalHeartRateLine({ timeMs: T0 + 1000, heartRateBpm: 92 }),
+      journalHeartRateLine({ timeMs: T0 + 1000, heartRateBpm: 93 }),
+      journalBreakLine(T0 + 30_000),
+      journalHeartRateLine({ timeMs: T0 + 30_000, heartRateBpm: 110 }),
+      journalHeartRateLine({ timeMs: T0 + 31_000 }),
+      '["hr","x",3]',
+      '["hr", 12',
+    ].join('');
+    const parsed = parseJournal(text);
+    expect(parsed.header?.sport).toBe('muscu');
+    expect(parsed.fixes).toEqual([]);
+    expect(parsed.breaks).toEqual([]);
+    expect(parsed.heartFixes).toEqual([
+      { timeMs: T0, heartRateBpm: 90 }, { timeMs: T0 + 1000, heartRateBpm: 92 }, { timeMs: T0 + 30_000, heartRateBpm: 110 }, { timeMs: T0 + 31_000 },
+    ]);
+    expect(parsed.heartBreaks).toEqual([2]);
+  });
+
+  it('un journal à positions n’a aucune mesure à part', () => {
+    const parsed = parseJournal(journalHeaderLine('running', T0) + journalFixLine({ timeMs: T0, lat: 43, lon: 3 }));
+    expect(parsed.heartFixes).toEqual([]);
+    expect(parsed.fixes).toHaveLength(1);
   });
 });

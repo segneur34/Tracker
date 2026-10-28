@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { BASE_COLOR, baseActivity, findActivity, type Activity } from '../core/activities';
 import { marksWithin, type SessionMark } from '../core/sessionMarks';
 import { decodeImu } from '../core/imuFile';
-import { getSportProfile, type RecordingProfile } from '../core/sportProfiles';
+import { getSportProfile, hasPositions, type RecordingProfile } from '../core/sportProfiles';
 import { cadenceSeries, joinCadence } from '../running/cadence';
 import type { SportType } from '../core/types';
 import { effectiveFoil, effectiveRecordingProfile, readStoredActivities, rememberRecordActivity } from './useSportSettings';
@@ -12,15 +12,17 @@ import {
   stopMotionCapture, type MotionCapture, type MotionSetup,
 } from '../platform/motion';
 import {
-  RECORDING_BELT_HOLDER, beltState, holdBelt, latestHeartRate, releaseOrphanedBelt, subscribeBeltState, subscribeHeartRate, type BeltState, type HeartRateBelt,
+  RECORDING_BELT_HOLDER, beltState, holdBelt, keepBeltAlive, latestHeartRate, releaseOrphanedBelt, stopBeltKeepAlive, subscribeBeltState, subscribeHeartRate,
+  type BeltState, type HeartRateBelt, type HeartRateSample,
 } from '../platform/heartRate';
 import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation } from '../platform/location';
-import { buildGpx } from '../recording/gpxWriter';
+import { buildGpx, buildHeartRateGpx } from '../recording/gpxWriter';
 import { closeSessionTest, type SessionTest } from '../recording/fitnessTest';
 import { heartRateAt } from '../recording/heartRate';
 import { seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
 import {
-  journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalIntervalsLine, journalNoteLine, journalTestLine, parseJournal,
+  journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine, journalTestLine,
+  parseJournal,
 } from '../recording/journal';
 import {
   EMPTY_RECORDING_STATS,
@@ -28,11 +30,14 @@ import {
   displayedDurationMs,
   evaluateAutoPause,
   isNewerFix,
+  keepHeartRateSample,
   roundFix,
   sessionFileName,
   sessionTitle,
   shouldFlushJournal,
   splitIntoSegments,
+  withStopPoint,
+  type HeartRateFix,
   type PauseClock,
   type RecordingStats,
 } from '../recording/session';
@@ -74,6 +79,15 @@ import { createListeners } from './createStore';
  * économisée, reprise explicite) et automatique (immobilité prolongée,
  * détectée par `evaluateAutoPause` — la source reste active pour détecter la
  * reprise du mouvement). Les deux ouvrent un nouveau segment à la reprise.
+ *
+ * Session sans position (muscu, lot I du 25/10, `hasPositions`) : aucune
+ * source GPS ; la ceinture est obligatoire et chaque mesure (une par seconde
+ * au plus, `keepHeartRateSample`) est gardée à part des positions
+ * (`heartFixes`), au journal (`journalHeartRateLine`) et dans un GPX sans
+ * position (`buildHeartRateGpx`). Un service au premier plan tient
+ * l'application écran éteint (`keepBeltAlive`). La pause manuelle garde la
+ * ceinture et ignore ses mesures ; pas de pause automatique. À l'arrêt, un
+ * dernier point sans FC fait aller la durée jusqu'à lui (`withStopPoint`).
  */
 
 export type RecorderStatus = 'idle' | 'starting' | 'recording' | 'paused' | 'stopping';
@@ -85,6 +99,7 @@ export interface PendingSession {
   content: string;
   sport: SportType;
   activity: Activity;
+  /** Positions gardées ; sans position (muscu), mesures de la ceinture. */
   pointCount: number;
   /** Vrai si elle a été reconstruite depuis le journal d'un enregistrement interrompu. */
   recovered: boolean;
@@ -197,6 +212,12 @@ const errorMessage = (err: unknown, fallback: string): string =>
 let fixes: LocationFix[] = [];
 /** Indices, dans `fixes`, où reprend un nouveau segment (une pause à chacun). */
 let segmentBreaks: number[] = [];
+/** Session sans position (muscu) : mesures de la ceinture gardées, à la place des positions. */
+let heartFixes: HeartRateFix[] = [];
+/** Indices, dans `heartFixes`, où reprend un nouveau segment. */
+let heartBreaks: number[] = [];
+/** Vrai pendant l'enregistrement d'une session sans position : ses points sont les mesures de la ceinture. */
+let heartOnly = false;
 let pendingLines = '';
 let lastFlushMs: number | null = null;
 let stopSource: StopLocation | null = null;
@@ -308,6 +329,30 @@ const receiveFix = (received: LocationFix): void => {
 };
 
 /**
+ * Reçoit une mesure de la ceinture d'une session sans position (muscu) : une
+ * par seconde au plus, gardée comme une position l'est. Ignorée en pause.
+ */
+const receiveHeartSample = (sample: HeartRateSample): void => {
+  const recording = currentProfile;
+  if (!heartOnly || recording === null || (state.status !== 'starting' && state.status !== 'recording')) return;
+  const fix = keepHeartRateSample(lastReceivedMs, sample, recording.intervalMs);
+  if (fix === null) return;
+  lastReceivedMs = fix.timeMs;
+  if (pendingBreak) {
+    heartBreaks.push(heartFixes.length);
+    pendingLines += journalBreakLine(fix.timeMs);
+    pendingBreak = false;
+  }
+  heartFixes.push(fix);
+  pendingLines += journalHeartRateLine(fix);
+  setState({ stats: addFixToStats(state.stats, fix) });
+  if (shouldFlushJournal(lastFlushMs, fix.timeMs, recording.journalFlushS)) {
+    lastFlushMs = fix.timeMs;
+    void flushJournal();
+  }
+};
+
+/**
  * Cadence à pied mesurée sur la capture, si elle la mesurait, jointe à chaque
  * position (`gpxtpx:cad` du GPX). Sans elle, ou si le calcul échoue, les
  * positions telles quelles : la session n'est jamais bloquée par la cadence.
@@ -331,14 +376,21 @@ const withMeasuredCadence = async (
   }
 };
 
+/** Ce qu'un enregistrement a gardé : ses positions, ou, sans position (muscu), les mesures de la ceinture. */
+interface RecordedTrack {
+  segments: LocationFix[][];
+  heart: HeartRateFix[][];
+}
+
 /**
  * Construit le GPX de segments, sans le ranger : le journal reste jusqu'à la
  * décision de l'utilisateur. Rend `null`, journal effacé, s'il y a moins de
- * deux positions au total : aucune trace ne s'en tire, il n'y a rien à garder.
+ * deux positions au total (sans position : deux mesures de la ceinture) :
+ * aucune trace ne s'en tire, il n'y a rien à garder.
  */
 const buildPendingSession = async (
   activity: Activity,
-  segments: LocationFix[][],
+  recorded: RecordedTrack,
   recovered: boolean,
   intervals: IntervalSeries[],
   marks: SessionMark[],
@@ -346,6 +398,21 @@ const buildPendingSession = async (
   test: SessionTest | null
 ): Promise<PendingSession | null> => {
   const sport = activity.base;
+  if (!hasPositions(sport)) {
+    // Mesures de la ceinture : le point de l'arrêt, sans FC, n'en est pas une.
+    const measures = recorded.heart.reduce((n, s) => n + s.filter((f) => f.heartRateBpm !== undefined).length, 0);
+    if (measures < 2) {
+      await recordingJournal.remove();
+      return null;
+    }
+    const firstMs = recorded.heart.find((s) => s.length > 0)![0].timeMs;
+    const gpx = buildHeartRateGpx(recorded.heart, { name: sessionTitle(firstMs, activity.name), sport });
+    return {
+      fileName: sessionFileName(firstMs, sport), content: gpx, sport, activity, pointCount: measures, recovered, intervals, marks,
+      motion: null, motionBytes: null, test,
+    };
+  }
+  const { segments } = recorded;
   const pointCount = segments.reduce((n, s) => n + s.length, 0);
   if (pointCount < 2) {
     await recordingJournal.remove();
@@ -358,6 +425,10 @@ const buildPendingSession = async (
   const content = buildGpx(measured.segments, { name: sessionTitle(startMs, activity.name), sport });
   return { fileName, content, sport, activity, pointCount, recovered, intervals, marks, motion, motionBytes: measured.bytes, test };
 };
+
+/** Message d'un arrêt sans rien à garder. */
+const nothingToKeep = (sport: SportType): string =>
+  hasPositions(sport) ? 'Moins de deux positions reçues : rien à enregistrer.' : 'Moins de deux mesures de la ceinture : rien à enregistrer.';
 
 /**
  * « Analyser » : range la session en attente dans la bibliothèque, puis
@@ -444,6 +515,7 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
   if (text === null) return;
   await stopOrphanedDeviceLocation();
   await releaseOrphanedBelt();
+  await stopBeltKeepAlive();
   // Capture restée ouverte après un rechargement de la page : fermée, elle attend avec la session.
   const orphan = await stopMotionCapture().catch(() => null);
   const parsed = parseJournal(text);
@@ -453,9 +525,11 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
     const { activityChange } = parsed;
     const sport = activityChange?.sport ?? header?.sport ?? 'wingfoil';
     const saved = activityChange?.activity ?? header?.activity;
+    // Sans position (muscu), les mesures de la ceinture tiennent lieu de positions.
+    const points: ReadonlyArray<{ timeMs: number }> = hasPositions(sport) ? list : parsed.heartFixes;
     // Séances du compteur : du démarrage à la dernière position gardée.
-    const fromMs = header?.startedAtMs ?? list[0]?.timeMs ?? 0;
-    const toMs = list[list.length - 1]?.timeMs ?? fromMs;
+    const fromMs = header?.startedAtMs ?? points[0]?.timeMs ?? 0;
+    const toMs = points[points.length - 1]?.timeMs ?? fromMs;
     const intervals = seriesWithin(parsed.intervalRuns, fromMs, toMs);
     // Une note posée en pause manuelle, après la dernière position, est gardée.
     const recoveredMarks = marksWithin(parsed.marks, fromMs, Infinity);
@@ -463,7 +537,9 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
     // Test coupé par l'arrêt : une rampe en cours finit à la dernière position.
     const test = parsed.test ? closeSessionTest(parsed.test, toMs) : null;
     const pending = await buildPendingSession(
-      journalActivity(sport, saved), splitIntoSegments(list, breaks), true, intervals, recoveredMarks, motion, test
+      journalActivity(sport, saved),
+      { segments: splitIntoSegments(list, breaks), heart: splitIntoSegments(parsed.heartFixes, parsed.heartBreaks) },
+      true, intervals, recoveredMarks, motion, test
     );
     if (pending) setState({ pending, saved: null, error: null });
   } catch (err) {
@@ -477,6 +553,7 @@ const takeBelt = async (belt: HeartRateBelt, maxAgeS: number): Promise<void> => 
   heartRateMaxAgeS = maxAgeS;
   setState({ heartRate: { state: beltState(), bpm: null } });
   const offSample = subscribeHeartRate((sample) => {
+    receiveHeartSample(sample);
     const bpm = sample.contact === false || !(sample.bpm > 0) ? null : sample.bpm;
     if (state.heartRate && (state.heartRate.bpm !== bpm || state.heartRate.state !== beltState())) {
       setState({ heartRate: { state: beltState(), bpm } });
@@ -500,27 +577,65 @@ const releaseRecordingBelt = (): void => {
 };
 
 /**
+ * Suite du départ d'une session sans position (muscu) : journal, ceinture,
+ * puis service au premier plan qui tient l'application écran éteint. Sans
+ * ceinture qui réponde, pas de session : le départ est annulé.
+ */
+const startHeartRateRecording = async (activity: Activity, belt: HeartRateBelt): Promise<void> => {
+  const sport = activity.base;
+  try {
+    await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity));
+    await takeBelt(belt, getSportProfile(sport).heartRate.maxAgeS);
+  } catch (err) {
+    releaseRecordingBelt();
+    heartOnly = false;
+    currentProfile = null;
+    await recordingJournal.remove();
+    setState({ status: 'idle', heartRate: null, error: `Démarrage impossible, ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}` });
+    return;
+  }
+  setState({ status: 'recording' });
+  try {
+    await keepBeltAlive('Tracker enregistre', `Session ${activity.name} en cours`);
+  } catch (err) {
+    setState({ error: `Service de l'enregistrement impossible : ${errorMessage(err, 'erreur inconnue')}. Gardez l'écran allumé.` });
+  }
+};
+
+/**
  * Démarre un enregistrement. `motion` : capter l'accéléromètre et le gyroscope
  * (sauts, pumping en surf), avec l'emplacement du téléphone et le foil ; si les capteurs ne démarrent pas, l'enregistrement
  * continue sans eux, et le dit. `heartRate` : la ceinture cardio à joindre ; de même, sans elle si elle ne répond pas.
+ *
+ * Sans position (muscu, `hasPositions`), `source` est ignorée : la ceinture
+ * est exigée, et le départ refusé sans elle ou si elle ne répond pas.
  */
 export const startRecording = exclusive(async (
   activity: Activity,
-  source: LocationSource,
+  source: LocationSource | null,
   options: { motion?: MotionSetup | null; heartRate?: HeartRateBelt | null } = {}
 ): Promise<void> => {
   if (isBusy()) return;
+  const sport = activity.base;
+  const withPositions = hasPositions(sport);
+  if (!withPositions && !options.heartRate) {
+    setState({ error: 'La muscu se fait avec la ceinture cardio : choisissez-la dans Réglages › Capteurs, portez-la, puis démarrez.' });
+    return;
+  }
+  if (withPositions && source === null) return;
   await recoverInterruptedRecording();
   // Le journal d'une session en attente serait écrasé : elle doit être analysée ou jetée d'abord.
   if (state.pending) return;
 
-  const sport = activity.base;
   const profile = effectiveRecordingProfile(activity);
   fixes = [];
   segmentBreaks = [];
+  heartFixes = [];
+  heartBreaks = [];
+  heartOnly = !withPositions;
   pendingLines = '';
   lastFlushMs = null;
-  currentSource = source;
+  currentSource = withPositions ? source : null;
   currentProfile = profile;
   lastReceivedMs = null;
   lastReceivedFix = null;
@@ -532,10 +647,16 @@ export const startRecording = exclusive(async (
   currentTest = null;
   sourceError = null;
   setState({
-    status: 'starting', sport, activity, sourceLabel: source.label, pausedReason: null, pauseClock: null, measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
+    status: 'starting', sport, activity, sourceLabel: withPositions ? source?.label ?? null : 'Ceinture cardio', pausedReason: null, pauseClock: null,
+    measuringMotion: false, motionSetup: null, heartRate: null, marks, stats: EMPTY_RECORDING_STATS,
     saved: null, error: null,
   });
 
+  if (!withPositions) {
+    await startHeartRateRecording(activity, options.heartRate!);
+    return;
+  }
+  if (source === null) return;
   try {
     await recordingJournal.write(journalHeaderLine(sport, startedAtMs, activity));
     stopSource = await source.start(sourceOptions(activity, profile), receiveFix, onSourceError);
@@ -589,6 +710,12 @@ export const pauseRecording = exclusive(async (): Promise<void> => {
 
 /** Relance la source coupée par `pauseRecording`. Le prochain point gardé ouvre un nouveau segment. */
 export const resumeRecording = exclusive(async (): Promise<void> => {
+  // Sans position (muscu), la ceinture est restée prise : la mesure suivante ouvre le segment.
+  if (heartOnly && state.status === 'paused' && state.pausedReason === 'manual') {
+    pendingBreak = true;
+    setState({ status: 'recording', pausedReason: null, pauseClock: null });
+    return;
+  }
   if (state.status !== 'paused' || state.pausedReason !== 'manual' || state.activity === null || currentSource === null || currentProfile === null) {
     return;
   }
@@ -616,11 +743,14 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
  * journal : une session récupérée après un plantage garde l'activité choisie.
  * La notification Android garde le nom du départ jusqu'à une reprise après
  * pause manuelle : la changer tout de suite demanderait de relancer la source
- * GPS, au risque d'un trou dans la trace.
+ * GPS, au risque d'un trou dans la trace. Jamais d'une session sans position
+ * (muscu) à une session à positions, ni l'inverse : l'une n'a pas de GPS en
+ * route, l'autre perdrait sa trace.
  */
 export const changeRecordingActivity = (activity: Activity): void => {
   // Pas pendant le démarrage : l'en-tête du journal n'est peut-être pas encore écrit.
   if ((state.status !== 'recording' && state.status !== 'paused') || state.activity?.id === activity.id) return;
+  if (hasPositions(activity.base) === heartOnly) return;
   const profile = effectiveRecordingProfile(activity);
   currentProfile = profile;
   belowSinceMs = null;
@@ -669,12 +799,14 @@ export const noteFitnessTest = (test: SessionTest, journal: boolean): void => {
  * Bouton « Note » : pose un repère à cet instant, à la dernière position
  * reçue (pause comprise), écrit tout de suite dans le journal. Rend le repère
  * et son numéro, ou `null` hors d'un enregistrement ou sans position encore.
+ * Sans position (muscu), le repère est à l'heure seule.
  */
 export const addRecordingMark = (): { mark: SessionMark; n: number } | null => {
   if (state.status !== 'recording' && state.status !== 'paused') return null;
-  const fix = lastReceivedFix ?? getLastFix();
-  if (!fix) return null;
-  const mark: SessionMark = { timeMs: Date.now(), lat: fix.lat, lon: fix.lon, label: null };
+  const fix = heartOnly ? null : lastReceivedFix ?? getLastFix();
+  if (!heartOnly && !fix) return null;
+  // Sans position (muscu) : un repère à l'heure seule.
+  const mark: SessionMark = { timeMs: Date.now(), lat: fix?.lat ?? null, lon: fix?.lon ?? null, label: null };
   marks = [...marks, mark];
   setState({ marks });
   pendingLines += journalNoteLine(mark);
@@ -690,6 +822,7 @@ export const stopRecording = async (): Promise<void> => {
   if ((state.status !== 'recording' && state.status !== 'paused') || state.activity === null) return;
   const activity = state.activity;
   const stoppedAtMs = Date.now();
+  const wasRecording = state.status === 'recording';
   setState({ status: 'stopping' });
   try {
     await stopSource?.();
@@ -699,14 +832,22 @@ export const stopRecording = async (): Promise<void> => {
   stopSource = null;
   currentSource = null;
   currentProfile = null;
+  // Sans position : la durée va jusqu'à l'arrêt (pas en pause manuelle, qui l'a figée), point écrit au journal.
+  let heart = splitIntoSegments(heartFixes, heartBreaks);
+  if (heartOnly && wasRecording) {
+    const ended = withStopPoint(heart, stoppedAtMs);
+    if (ended !== heart) pendingLines += journalHeartRateLine(ended[ended.length - 1][ended[ended.length - 1].length - 1]);
+    heart = ended;
+  }
   await flushJournal();
   const motion = state.measuringMotion ? await stopMotionCapture().catch(() => null) : null;
   releaseRecordingBelt();
+  if (heartOnly) await stopBeltKeepAlive();
 
   try {
     const intervals = seriesWithin([...intervalRuns.values()], startedAtMs, stoppedAtMs);
     const pending = await buildPendingSession(
-      activity, splitIntoSegments(fixes, segmentBreaks), false, intervals, [...marks], motion, currentTest
+      activity, { segments: splitIntoSegments(fixes, segmentBreaks), heart }, false, intervals, [...marks], motion, currentTest
     );
     setState({
       status: 'idle',
@@ -717,7 +858,7 @@ export const stopRecording = async (): Promise<void> => {
       heartRate: null,
       marks: [],
       pending,
-      error: pending ? state.error : 'Moins de deux positions reçues : rien à enregistrer.',
+      error: pending ? state.error : nothingToKeep(activity.base),
     });
   } catch (err) {
     setState({
@@ -733,11 +874,20 @@ export const stopRecording = async (): Promise<void> => {
   }
   fixes = [];
   segmentBreaks = [];
+  heartFixes = [];
+  heartBreaks = [];
+  heartOnly = false;
   intervalRuns = new Map();
   marks = [];
   currentTest = null;
   sourceError = null;
 };
+
+/**
+ * Mesures de la ceinture d'une session sans position (muscu) en cours, un
+ * tableau par segment continu : la FC moyenne du direct. Vide sinon.
+ */
+export const getLiveHeartSegments = (): HeartRateFix[][] => (isBusy() && heartOnly ? splitIntoSegments(heartFixes, heartBreaks) : []);
 
 /** Trace de l'enregistrement en cours, un tableau par segment continu : la carte et les statistiques en direct. */
 export const getLiveSegments = (): LocationFix[][] => (isBusy() ? splitIntoSegments(fixes, segmentBreaks) : []);

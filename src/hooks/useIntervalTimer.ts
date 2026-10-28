@@ -1,8 +1,9 @@
 import { useSyncExternalStore } from 'react';
+import { hasPositions } from '../core/sportProfiles';
 import { getIntervalClock } from '../platform/beeper';
 import { jsonStore } from '../platform/storage';
 import {
-  isRunClosed, phaseName, readIntervalRun, runCommand, startRun, timerStateAt, upcomingSchedule,
+  handsOverToRecording, isRunClosed, phaseName, readIntervalRun, runCommand, startRun, timerStateAt, upcomingSchedule,
   type IntervalCommand, type IntervalRun, type IntervalTimerState, type IntervalWorkout, type WorkoutKind,
 } from '../recording/intervalTimer';
 import { createTickingStore } from './createStore';
@@ -103,9 +104,14 @@ const reschedule = (announce: boolean): void => {
 /** Garde la séance sur l'appareil, ou l'efface. */
 const persist = (): void => jsonStore.write(STORAGE_KEY, run);
 
-/** Confie la séance à l'enregistreur, s'il tourne ; pas une séance du Timer. */
+/**
+ * Confie la séance à l'enregistreur, s'il tourne ; une séance du Timer
+ * seulement à un enregistrement sans position (muscu, lot I du 25/10).
+ */
 const note = (r: IntervalRun): void => {
-  if (r.kind !== 'timer') noteIntervalRun(r);
+  const { status, activity } = getRecorderState();
+  const recording = status === 'idle' || activity === null ? null : hasPositions(activity.base);
+  if (handsOverToRecording(r, recording)) noteIntervalRun(r);
 };
 
 const command = (kind: IntervalCommand, announce: boolean): void => {

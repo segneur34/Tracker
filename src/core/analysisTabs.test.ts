@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LAND_TABS, SAILING_TABS, SURF_TABS, analysisTabs, generalOpenAfterAdvanced, isNewAnalysisSession, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, toggleTabChoice,
+  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, analysisTabs, generalOpenAfterAdvanced, isNewAnalysisSession, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, toggleTabChoice,
 } from './analysisTabs';
 import { SPORT_PROFILES } from './sportProfiles';
 
@@ -54,6 +54,12 @@ describe('analysisTabs : onglets proposés par calcul', () => {
     expect(surf).toEqual(keys(SURF_TABS));
     expect(surf.indexOf('tops')).toBe(surf.indexOf('vols') + 1);
     expect(surf.indexOf('graphiques')).toBe(surf.indexOf('tops') + 1);
+  });
+
+  it('muscu : général, cardio, matériel et notes, réglages, sans carte (lot I du 25/10)', () => {
+    expect(keys(analysisTabs(SPORT_PROFILES.muscu))).toEqual(['general', 'cardio', 'notes', 'reglages']);
+    expect(keys(MUSCU_TABS)).toEqual(['general', 'cardio', 'notes', 'reglages']);
+    expect(MUSCU_TABS[0].primary).toBe(true);
   });
 
   it('chaque calcul qui propose « tops » a des cibles', () => {

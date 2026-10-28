@@ -38,6 +38,16 @@ export const summaryShareStats = (
       { key: 'maneuvers', label: 'Manœuvres', value: summary.maneuverCount === undefined ? '—' : String(summary.maneuverCount) },
     ].filter((stat) => withActiveThreshold || !active.has(stat.key));
   }
+  if (treatment === 'muscu') {
+    // Sans trace (lot I du 25/10) : la durée et la FC, comme l'onglet « général » de son analyse.
+    const hr = summary.heartRate;
+    return [
+      { key: 'totalTime', label: 'Durée', value: formatDuration(totalS * 1000) },
+      { key: 'activeTime', label: 'Hors pauses', value: movingS === null ? '—' : formatDuration(movingS * 1000) },
+      { key: 'heartRate', label: 'FC moyenne', value: hr ? `${Math.round(hr.avgBpm)} bpm` : '—' },
+      { key: 'heartRateMax', label: 'FC max', value: hr ? `${hr.maxBpm} bpm` : '—' },
+    ];
+  }
   if (treatment === 'surf') {
     return [
       { key: 'totalTime', label: 'Durée de la session', value: formatDuration(totalS * 1000) },

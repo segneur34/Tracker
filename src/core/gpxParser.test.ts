@@ -108,3 +108,34 @@ describe('parseGpxPath', () => {
     expect(() => parseGpxPath('<gpx>')).toThrow();
   });
 });
+
+describe('parseGpx : points sans position (muscu, lot I du 25/10)', () => {
+  const hrPt = (time: string | null, bpm?: number) =>
+    `<trkpt>${time ? `<time>${time}</time>` : ''}${bpm === undefined ? '' : `<extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>${bpm}</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>`}</trkpt>`;
+
+  it('range dans timedPoints les points à l’heure sans position, FC comprise ; rawPoints vide', () => {
+    const r = parseGpx(gpx(`<trk><type>muscu</type><trkseg>${hrPt('2026-10-01T10:00:00Z', 90)}${hrPt('2026-10-01T10:00:01Z')}</trkseg></trk>`));
+    expect(r.rawPoints).toEqual([]);
+    expect(r.timedPoints).toEqual([{ time: '2026-10-01T10:00:00Z', hr: 90 }, { time: '2026-10-01T10:00:01Z' }]);
+  });
+
+  it('un second <trkseg> pose segmentStart ; un point sans heure reste jeté', () => {
+    const r = parseGpx(gpx(
+      `<trk><trkseg>${hrPt('2026-10-01T10:00:00Z', 90)}${hrPt(null, 91)}</trkseg><trkseg>${hrPt(null, 92)}${hrPt('2026-10-01T10:05:00Z', 110)}</trkseg></trk>`
+    ));
+    expect(r.timedPoints.map((p) => p.hr)).toEqual([90, 110]);
+    expect(r.timedPoints.map((p) => p.segmentStart === true)).toEqual([false, true]);
+  });
+
+  it('un GPX à positions garde les mêmes rawPoints, et des timedPoints vides', () => {
+    const xml = gpx(`<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z', '<ele>3</ele>')}${pt(45, 5.001, '2026-10-01T10:00:01Z')}</trkseg>`
+      + `<trkseg>${pt(45, 5.002, '2026-10-01T10:05:00Z')}</trkseg></trk>`);
+    const r = parseGpx(xml);
+    expect(r.timedPoints).toEqual([]);
+    expect(r.rawPoints).toEqual([
+      { lat: 45, lon: 5, time: '2026-10-01T10:00:00Z', ele: 3, speedMs: undefined, courseDeg: undefined, hr: undefined, cadence: undefined },
+      { lat: 45, lon: 5.001, time: '2026-10-01T10:00:01Z', ele: undefined, speedMs: undefined, courseDeg: undefined, hr: undefined, cadence: undefined },
+      { lat: 45, lon: 5.002, time: '2026-10-01T10:05:00Z', ele: undefined, speedMs: undefined, courseDeg: undefined, hr: undefined, cadence: undefined, segmentStart: true },
+    ]);
+  });
+});

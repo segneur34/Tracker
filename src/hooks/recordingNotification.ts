@@ -1,3 +1,4 @@
+import { hasPositions } from '../core/sportProfiles';
 import { clearRecordingNotification, updateRecordingNotification } from '../platform/notification';
 import { intervalStepAt, timerStateAt } from '../recording/intervalTimer';
 import { travelHeading } from '../recording/heading';
@@ -29,6 +30,10 @@ import { effectiveDistanceUnit, effectiveNotificationFields, effectiveSpeedUnit 
  * reprise après une pause manuelle) : la première position qui suit la fait
  * récrire. En pause manuelle, le service est arrêté et la notification est
  * posée seule ; elle est effacée à l'arrêt de l'enregistrement.
+ *
+ * Sans position (muscu, lot I du 25/10), c'est le service de la ceinture
+ * (`keepBeltAlive`) qui la pose au départ, sur le même numéro : la première
+ * mesure gardée qui suit la fait récrire, comme la première position.
  */
 
 /** Intervalle minimal entre deux envois sans changement d'état, en millisecondes. */
@@ -44,7 +49,7 @@ let shown = false;
 /** Le service GPS vient de (re)démarrer : sa notification est à récrire à la prochaine position. */
 let rewriteOnFix = false;
 /** État de l'enregistreur au changement précédent. */
-let previous = { status: getRecorderState().status, pausedReason: getRecorderState().pausedReason };
+let previous = { status: getRecorderState().status, pausedReason: getRecorderState().pausedReason, pointCount: getRecorderState().stats.pointCount };
 
 /** État qui commande un envoi immédiat ; les premiers chiffres du direct aussi, pour ne pas attendre avec des « - ». */
 const stateKeyNow = (nowMs: number): string => {
@@ -117,11 +122,14 @@ const update = (force: boolean) => {
 };
 
 const onRecorder = () => {
-  const { status, pausedReason } = getRecorderState();
+  const { status, pausedReason, activity, stats } = getRecorderState();
   // Départ, ou reprise d'une pause manuelle : le service GPS va poser sa notification.
   if (status === 'recording' && (previous.status === 'starting' || previous.pausedReason === 'manual')) rewriteOnFix = true;
-  previous = { status, pausedReason };
-  update(false);
+  // Sans position, une mesure de la ceinture gardée tient lieu de position.
+  const measured = activity !== null && !hasPositions(activity.base) && stats.pointCount > previous.pointCount;
+  previous = { status, pausedReason, pointCount: stats.pointCount };
+  if (measured) onFix();
+  else update(false);
 };
 
 const onFix = () => {

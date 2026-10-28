@@ -25,6 +25,7 @@ import android.os.Looper;
 import android.os.ParcelUuid;
 import android.provider.Settings;
 import android.util.Log;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -56,7 +57,8 @@ import java.util.UUID;
  * Chaque mesure (caractéristique 0x2A37) part vers la page par l'événement
  * `heartRate` ; l'enregistreur la joint à la position suivante. Écran éteint,
  * le service au premier plan du GPS garde le processus en vie, et la pile
- * Bluetooth livre les mesures comme les positions. Une connexion perdue (hors
+ * Bluetooth livre les mesures comme les positions ; sans GPS (muscu), c'est
+ * HeartRateService, démarré par `keepAlive`. Une connexion perdue (hors
  * de portée, ceinture retirée) est relancée d'elle-même, en attente du retour
  * de la ceinture, jusqu'à `disconnect`.
  */
@@ -305,6 +307,36 @@ public class HeartRatePlugin extends Plugin {
             sendStatus("off");
             call.resolve();
         });
+    }
+
+    /**
+     * Muscu (lot I du 25/10) : démarre le service au premier plan qui tient
+     * l'application écran éteint pendant une session sans GPS, avec la
+     * notification de l'enregistrement (`title`, `text`). Refusé sans la
+     * permission Bluetooth, qu'Android 14 exige pour ce type de service.
+     */
+    @PluginMethod
+    public void keepAlive(PluginCall call) {
+        if (!permitted()) {
+            call.reject("permission Bluetooth refusée");
+            return;
+        }
+        Intent intent = new Intent(getContext(), HeartRateService.class)
+            .putExtra(HeartRateService.EXTRA_TITLE, call.getString("title", "Tracker enregistre"))
+            .putExtra(HeartRateService.EXTRA_TEXT, call.getString("text", ""));
+        try {
+            ContextCompat.startForegroundService(getContext(), intent);
+            call.resolve();
+        } catch (RuntimeException e) {
+            call.reject("service impossible à lancer : " + e.getMessage());
+        }
+    }
+
+    /** Arrête le service de `keepAlive`, et sa notification. */
+    @PluginMethod
+    public void stopKeepAlive(PluginCall call) {
+        getContext().stopService(new Intent(getContext(), HeartRateService.class));
+        call.resolve();
     }
 
     /** Ouvre les réglages Bluetooth d'Android : le secours quand la ceinture reste introuvable. */

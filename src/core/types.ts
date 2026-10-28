@@ -13,7 +13,7 @@
  * L'identifiant va dans le `<type>` du GPX enregistré et dans le nom de son fichier.
  */
 export type SportType =
-  | 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running' | 'cycling' | 'run-intervals' | 'bike-intervals' | 'run-test' | 'surf';
+  | 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running' | 'cycling' | 'run-intervals' | 'bike-intervals' | 'run-test' | 'surf' | 'muscu';
 
 /** Point brut tel que lu dans le fichier de trace, avant tout calcul. */
 export interface RawTrackPoint {
@@ -37,6 +37,19 @@ export interface RawTrackPoint {
    * Premier point d'un `<trkseg>` après le premier : la trace reprend après une
    * pause de l'enregistrement. Le pas qui y mène n'est ni parcouru ni en action.
    */
+  segmentStart?: true;
+}
+
+/**
+ * Point sans position, lu dans le GPX d'une session sans trace (muscu, lot I
+ * du 25/10) : l'heure, et la FC si la ceinture l'a donnée. Jamais dans la
+ * cinématique : seulement l'analyse de la FC (`core/heartRateSession.ts`).
+ */
+export interface TimedTrackPoint {
+  time: string;
+  /** Fréquence cardiaque en battements par minute, si présente. */
+  hr?: number;
+  /** Premier point d'un `<trkseg>` après le premier : reprise après une pause. */
   segmentStart?: true;
 }
 

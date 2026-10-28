@@ -6,7 +6,7 @@ import { pruneImuFile } from '../core/imuPrune';
 import { JUMPS_CALC_VERSION } from '../core/jumps';
 import { pruneSurfImu } from '../surfing/pumping';
 import type { SessionMark } from '../core/sessionMarks';
-import { SAILING_SPORTS, getSportProfile, isLandTreatment, sportTreatment } from '../core/sportProfiles';
+import { SAILING_SPORTS, getSportProfile, hasPositions, isLandTreatment, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
   MARKER_FILE,
@@ -68,7 +68,7 @@ import {
   unseenSettingsEntries,
   type SettingsEntry,
 } from '../library/settingsFile';
-import { summarizeSession, surfRides, type SummaryOptions } from '../library/summary';
+import { summarizeHeartRateSession, summarizeSession, surfRides, type SummaryOptions } from '../library/summary';
 import { readPickedBytes, readPickedFile } from '../platform/files';
 import {
   FolderRefusedError,
@@ -396,7 +396,10 @@ const analyzeGpx = (
 ): AnalyzedGpx | null => {
   const parsed = parseGpx(text);
   const resolved = sport === undefined ? guessSport(parsed.trackType) : sport;
-  const summary = summarizeSession(parsed.rawPoints, resolved, summaryOptions(resolved, analysis, activityId, elevation));
+  // Session sans trace (muscu) : ses points n'ont que l'heure et la FC.
+  const summary = resolved !== null && !hasPositions(resolved)
+    ? summarizeHeartRateSession(parsed.timedPoints, resolved)
+    : summarizeSession(parsed.rawPoints, resolved, summaryOptions(resolved, analysis, activityId, elevation));
   return summary ? { summary, sport: resolved, title: parsed.trackName ?? null } : null;
 };
 

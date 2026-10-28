@@ -91,6 +91,7 @@ export const BASE_COLOR: Record<SportType, string> = {
   'bike-intervals': FAMILY_SHADES.fractionne[1],
   'run-test': FAMILY_SHADES.fractionne[2],
   surf: FAMILY_SHADES.surf[0],
+  muscu: FAMILY_SHADES.fractionne[3],
 };
 
 /** Activité vélo de départ, sur l'identifiant du calcul ; appelée « Vélo » avant le point 81. */
@@ -109,6 +110,8 @@ export const BIKE_INTERVALS_ACTIVITY: Activity = {
 };
 /** Activité des tests guidés de l'Entraînement (FC max, 24/10), sur l'identifiant de son calcul. */
 export const TESTS_ACTIVITY: Activity = { id: 'run-test', name: 'Tests', base: 'run-test', color: BASE_COLOR['run-test'] };
+/** Activité de la muscu (lot I du 25/10), sur l'identifiant de son calcul : la ceinture cardio seule, sans GPS. */
+export const MUSCU_ACTIVITY: Activity = { id: 'muscu', name: 'Muscu', base: 'muscu', color: BASE_COLOR.muscu };
 /** Activités de la famille Surf (§10, point 97) ; le foil de « Surf foil » est coché d'office (`useSportSettings.ts`). */
 export const SURF_ACTIVITY: Activity = { id: 'surf', name: 'Surf', base: 'surf', color: BASE_COLOR.surf };
 export const SURF_FOIL_ACTIVITY: Activity = { id: 'a-surf-foil', name: 'Surf foil', base: 'surf', color: FAMILY_SHADES.surf[1] };
@@ -116,7 +119,7 @@ export const SURF_FOIL_ACTIVITY: Activity = { id: 'a-surf-foil', name: 'Surf foi
 /**
  * Au premier lancement : une activité par famille, sur l'identifiant de son
  * calcul (celui des anciens réglages), plus la Marche, Gravel et VTT, les
- * deux du fractionné, Tests et les deux du surf.
+ * deux du fractionné, Tests, Muscu et les deux du surf.
  */
 export const DEFAULT_ACTIVITIES: Activity[] = [
   { id: 'wingfoil', name: 'Voile', base: 'wingfoil', color: BASE_COLOR.wingfoil },
@@ -130,6 +133,7 @@ export const DEFAULT_ACTIVITIES: Activity[] = [
   RUN_INTERVALS_ACTIVITY,
   BIKE_INTERVALS_ACTIVITY,
   TESTS_ACTIVITY,
+  MUSCU_ACTIVITY,
 ];
 
 /**
@@ -137,11 +141,11 @@ export const DEFAULT_ACTIVITIES: Activity[] = [
  * Gravel et VTT dans la famille Vélo (point 81) ; 3 : les deux activités du
  * fractionné (point 89) ; 4 : couleurs prises dans les nuances de la famille
  * (point 90) ; 5 : Surf et Surf foil (point 97) ; 6 : Marche (20/10) ; 7 : couleurs de la
- * refonte (22/10) ; 8 : Tests (24/10). Une liste d'avant est mise à jour une fois
+ * refonte (22/10) ; 8 : Tests (24/10) ; 9 : Muscu (lot I du 25/10). Une liste d'avant est mise à jour une fois
  * (`upgradeActivities`) ; toute liste écrite ensuite porte ce numéro, pour
  * qu'une activité supprimée ne revienne pas.
  */
-export const ACTIVITIES_VERSION = 8;
+export const ACTIVITIES_VERSION = 9;
 
 /** Activités ajoutées à une liste d'avant, avec la version de la liste qui les a apportées. */
 const ACTIVITY_SEEDS: { version: number; activity: Activity }[] = [
@@ -153,6 +157,7 @@ const ACTIVITY_SEEDS: { version: number; activity: Activity }[] = [
   { version: 5, activity: SURF_FOIL_ACTIVITY },
   { version: 6, activity: MARCHE_ACTIVITY },
   { version: 8, activity: TESTS_ACTIVITY },
+  { version: 9, activity: MUSCU_ACTIVITY },
 ];
 
 /** Ancien nom de l'activité vélo de départ, devenue « Route ». */

@@ -26,6 +26,31 @@ vi.mock('../platform/files', async (importOriginal) => ({
   recordingJournal: journal,
 }));
 
+/** Ceinture simulée : prise et rendue sans Bluetooth, mesures émises à la demande ; le service au premier plan relevé. */
+const belt = vi.hoisted(() => {
+  const listeners = new Set<(sample: { bpm: number; timeMs: number; contact: boolean | null }) => void>();
+  return {
+    listeners,
+    keepAlive: 0,
+    stopKeepAlive: 0,
+    emit: (timeMs: number, bpm: number, contact: boolean | null = true) => listeners.forEach((l) => l({ bpm, timeMs, contact })),
+  };
+});
+vi.mock('../platform/heartRate', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../platform/heartRate')>()),
+  holdBelt: async () => () => undefined,
+  subscribeHeartRate: (listener: (sample: { bpm: number; timeMs: number; contact: boolean | null }) => void) => {
+    belt.listeners.add(listener);
+    return () => belt.listeners.delete(listener);
+  },
+  keepBeltAlive: async () => {
+    belt.keepAlive += 1;
+  },
+  stopBeltKeepAlive: async () => {
+    belt.stopKeepAlive += 1;
+  },
+}));
+
 const recorder = await import('./useRecorder');
 const live = await import('./useLiveRecording');
 
@@ -117,5 +142,95 @@ describe('enregistreur', () => {
     const pending = recorder.getRecorderState().pending;
     expect(pending).not.toBeNull();
     expect(pending!.content.match(/<trkseg>/g)).toHaveLength(2);
+  });
+});
+
+describe('enregistreur sans position (muscu, lot I du 25/10)', () => {
+  const muscu = baseActivity('muscu');
+  const ceinture = { address: '00:11:22:33:44:55', name: 'Ceinture' };
+  /** Mesure à `s` secondes de T0. */
+  const at = (s: number, bpm = 100, contact: boolean | null = true) => belt.emit(T0 + s * 1000, bpm, contact);
+
+  it('refuse le départ sans ceinture, et le dit', async () => {
+    await recorder.startRecording(muscu, null);
+    expect(recorder.getRecorderState().status).toBe('idle');
+    expect(recorder.getRecorderState().error).toMatch(/ceinture/);
+    expect(journal.headers).toBe(0);
+  });
+
+  it('garde une mesure par seconde au plus, sans mesure hors contact ; service au premier plan au départ et à l’arrêt', async () => {
+    const before = { start: belt.keepAlive, stop: belt.stopKeepAlive };
+    await recorder.startRecording(muscu, null, { heartRate: ceinture });
+    expect(recorder.getRecorderState().status).toBe('recording');
+    expect(belt.keepAlive).toBe(before.start + 1);
+    at(0, 90);
+    at(0.3, 91);
+    at(1, 92);
+    at(1.5, 93);
+    at(2.1, 94);
+    at(3.2, 0);
+    at(4.5, 120, false);
+    expect(recorder.getRecorderState().stats.pointCount).toBe(3);
+    await recorder.stopRecording();
+    // Journal gardé jusqu'à « Analyser » : les mesures, puis le point de l'arrêt.
+    expect(journal.text?.match(/\["hr",/g)).toHaveLength(4);
+    expect(belt.stopKeepAlive).toBeGreaterThan(before.stop);
+    const pending = recorder.getRecorderState().pending!;
+    expect(pending.pointCount).toBe(3);
+    expect(pending.sport).toBe('muscu');
+    expect(pending.content).not.toContain('lat=');
+    expect(pending.content.match(/<gpxtpx:hr>/g)).toHaveLength(3);
+    // Le point de l'arrêt, sans FC, après la dernière mesure.
+    expect(pending.content.match(/<trkpt>/g)).toHaveLength(4);
+  });
+
+  it('pause manuelle : mesures ignorées, la reprise ouvre un segment ; « Note » à l’heure seule', async () => {
+    await recorder.startRecording(muscu, null, { heartRate: ceinture });
+    for (let s = 0; s < 5; s++) at(s);
+    const note = recorder.addRecordingMark();
+    expect(note?.mark.lat).toBeNull();
+    await recorder.pauseRecording();
+    for (let s = 5; s < 10; s++) at(s);
+    await recorder.resumeRecording();
+    for (let s = 20; s < 25; s++) at(s);
+    expect(recorder.getRecorderState().stats.pointCount).toBe(10);
+    await recorder.stopRecording();
+    const pending = recorder.getRecorderState().pending!;
+    expect(pending.content.match(/<trkseg>/g)).toHaveLength(2);
+    expect(pending.marks).toHaveLength(1);
+  });
+
+  it('moins de deux mesures : rien à garder, et le dit', async () => {
+    await recorder.startRecording(muscu, null, { heartRate: ceinture });
+    at(0);
+    await recorder.stopRecording();
+    expect(recorder.getRecorderState().pending).toBeNull();
+    expect(recorder.getRecorderState().error).toMatch(/mesures de la ceinture/);
+  });
+
+  it('reprend le journal d’une muscu après un arrêt brutal', async () => {
+    journal.text = [
+      JSON.stringify({ format: 'tracker-journal', version: 1, sport: 'muscu', startedAtMs: T0, activity: { id: 'muscu', name: 'Muscu' } }),
+      JSON.stringify(['hr', T0, 95]),
+      JSON.stringify(['hr', T0 + 1000, 97]),
+      JSON.stringify(['break', T0 + 60_000]),
+      JSON.stringify(['hr', T0 + 60_000, 120]),
+      JSON.stringify(['hr', T0 + 61_000, 121]),
+      JSON.stringify(['note', { timeMs: T0 + 500, lat: null, lon: null, label: null }]),
+      '["hr", 17',
+    ].join('\n');
+    await recorder.recoverInterruptedRecording();
+    const pending = recorder.getRecorderState().pending!;
+    expect(pending.recovered).toBe(true);
+    expect(pending.sport).toBe('muscu');
+    expect(pending.pointCount).toBe(4);
+    expect(pending.content.match(/<trkseg>/g)).toHaveLength(2);
+    expect(pending.marks).toEqual([{ timeMs: T0 + 500, lat: null, lon: null, label: null }]);
+  });
+
+  it('ne passe pas d’une muscu à une activité à positions en cours de route', async () => {
+    await recorder.startRecording(muscu, null, { heartRate: ceinture });
+    recorder.changeRecordingActivity(activity);
+    expect(recorder.getRecorderState().activity?.id).toBe('muscu');
   });
 });

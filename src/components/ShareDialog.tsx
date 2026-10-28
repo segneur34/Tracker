@@ -129,10 +129,13 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
           : <span className="share-dialog__wait">Préparation de l'image…</span>}
       </div>
 
-      <label className="share-dialog__check">
-        <input type="checkbox" checked={withMap} onChange={(e) => update({ ...choice, map: e.target.checked })} />
-        Fond de carte
-      </label>
+      {/* Sans trace (muscu), pas de fond de carte à choisir. */}
+      {segments.length > 0 && (
+        <label className="share-dialog__check">
+          <input type="checkbox" checked={withMap} onChange={(e) => update({ ...choice, map: e.target.checked })} />
+          Fond de carte
+        </label>
+      )}
 
       {stats.length > 0 && (
         <div>

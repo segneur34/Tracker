@@ -3,9 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
-import { IconChevronDown, IconChevronUp, IconPlay } from '../components/icons';
+import { IconChevronDown, IconChevronUp, IconPlay, IconPulse } from '../components/icons';
 import { FAMILY_ACCENT, activitiesOfFamily } from '../core/activities';
-import { isIntervalSport } from '../core/sportProfiles';
+import { isIntervalSport, trainingKind } from '../core/sportProfiles';
 import { isIntervalTimerActive, startIntervals } from '../hooks/useIntervalTimer';
 import { useRecorderStatus } from '../hooks/useRecorder';
 import {
@@ -15,6 +15,7 @@ import {
   MAX_INTERVAL_PRESETS, formatIntervalClock, workoutDurationS, workoutLabel,
   type IntervalPreset, type WorkoutKind,
 } from '../recording/intervalTimer';
+import { TestTiles } from './TestsPage';
 import { TIMER_RECORD_PATH, WORKOUT_LISTS } from './workoutLists';
 import './TrainingPages.css';
 
@@ -31,6 +32,13 @@ import './TrainingPages.css';
  * tout de suite et ouvre la page du compteur, sans GPS ni session, et pas
  * pendant un enregistrement ; une séance du compteur en cours n'est
  * remplacée qu'après confirmation.
+ *
+ * Muscu et timer (lot I du 25/10) : chaque séance se lance en « Timer » (le
+ * compteur seul, comme avant) ou en « Muscu » : Enregistrer ouvert sur la
+ * dernière activité de muscu, la séance mise dans la carte du compteur, sans
+ * la démarrer ; « Démarrer » (ceinture connectée) lance la session, et le
+ * compteur se lance d'un geste. Un lien sous la liste ouvre la muscu sans
+ * séance. Fractionné et tests : la rangée des tests sous la liste.
  */
 
 function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
@@ -49,6 +57,19 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
     const last = lastRecordActivity();
     return intervalActivities.find((a) => a.id === last?.id) ?? intervalActivities[0] ?? null;
   }, [intervalActivities]);
+  // Muscu : la dernière activité de muscu enregistrée, sinon la première visible.
+  const muscu = useMemo(() => {
+    const own = activitiesOfFamily(activities.filter(isShown), 'fractionne').filter((a) => trainingKind(a.base) === 'muscu');
+    const last = lastRecordActivity();
+    return own.find((a) => a.id === last?.id) ?? own[0] ?? null;
+  }, [activities, isShown]);
+  const muscuPath = timer && !recording && muscu ? `/enregistrer?activite=${encodeURIComponent(muscu.id)}` : null;
+  /** « Muscu » : la séance dans la carte du compteur d'Enregistrer, prête, sans la démarrer. */
+  const launchMuscu = (preset: { workout: IntervalPreset['workout'] }) => {
+    if (!muscuPath) return;
+    rememberIntervalWorkout('timer', preset.workout);
+    navigate(muscuPath);
+  };
   const [openId, setOpenId] = useState<string | null>(null);
 
   // Où « Lancer » mène : le Timer, hors d'un enregistrement ; le Fractionné, sur son activité.
@@ -79,7 +100,12 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
       <PageHeader title={list.title} back={{ to: '/fractionne', label: 'Entraînement' }} subtitle={list.subtitle} />
 
       {timer && recording && (
-        <div className="ui-alert">Un enregistrement est en cours : le Timer se lance une fois la session arrêtée.</div>
+        <div className="ui-alert">Un enregistrement est en cours : le Timer et la muscu se lancent une fois la session arrêtée.</div>
+      )}
+      {timer && !muscu && (
+        <div className="ui-alert ui-alert--warning">
+          Aucune activité de muscu visible : ajoutez-en une, ou ré-affichez-la, dans <Link to="/parametres">Réglages</Link>.
+        </div>
       )}
       {!timer && intervalActivities.length === 0 && (
         <div className="ui-alert ui-alert--warning">
@@ -95,8 +121,15 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
                 <span className="train-item__name">{preset.name}</span>
                 <Button variant="primary" size="s" disabled={!launchPath} onClick={() => launch(preset)}>
                   <IconPlay size={16} />
-                  Lancer
+                  {timer ? 'Timer' : 'Lancer'}
                 </Button>
+                {timer && (
+                  <Button variant="primary" size="s" disabled={!muscuPath} onClick={() => launchMuscu(preset)}
+                    title="Enregistrer la séance avec la ceinture cardio">
+                    <IconPulse size={16} />
+                    Muscu
+                  </Button>
+                )}
                 <button type="button" className="train-item__toggle" aria-expanded={openId === preset.id}
                   aria-label={`${openId === preset.id ? 'Replier' : 'Déplier'} : ${preset.name}`}
                   onClick={() => setOpenId(openId === preset.id ? null : preset.id)}>
@@ -127,6 +160,17 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
         <Button variant="primary" disabled={full} onClick={() => navigate(list.editPath)}>{list.create}</Button>
         {full && <span className="train-hint">{MAX_INTERVAL_PRESETS} séances au plus : retirez-en une.</span>}
       </div>
+
+      {timer && muscuPath && (
+        <Link to={muscuPath} className="train-hint" style={{ alignSelf: 'flex-start' }}>Muscu sans séance</Link>
+      )}
+
+      {!timer && (
+        <section className="train-tests" aria-label="Tests">
+          <h2 className="ui-eyebrow" style={{ margin: 0 }}>Tests</h2>
+          <TestTiles />
+        </section>
+      )}
     </div>
   );
 }

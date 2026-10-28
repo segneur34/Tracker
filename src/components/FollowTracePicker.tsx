@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { sessionActivity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
+import { hasPositions } from '../core/sportProfiles';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { followTrace } from '../hooks/useFollowedTrace';
 import { readSessionGpx, useSessionLibrary } from '../hooks/useSessionLibrary';
@@ -62,7 +63,8 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
     () => [...sessions]
       .sort((a, b) => b.record.summary.startMs - a.record.summary.startMs)
       .map((session) => ({ ...session, activity: sessionActivity(activities, session.record.activityId, session.record.sport) }))
-      .filter((s) => s.activity === null || isShown(s.activity)),
+      // Une session sans trace (muscu) n'est pas une trace à suivre.
+      .filter((s) => (s.record.sport === null || hasPositions(s.record.sport)) && (s.activity === null || isShown(s.activity))),
     [sessions, activities, isShown]
   );
   /** Activités présentes parmi les sessions, dans l'ordre des Réglages. */

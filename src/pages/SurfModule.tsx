@@ -43,7 +43,7 @@ import { SURF_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type SurfTab } 
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { buildCumulativeTrack } from '../core/sessionStats';
-import { defaultActiveThresholdOf, sportTreatment } from '../core/sportProfiles';
+import { defaultActiveThresholdOf, hasPositions, sportTreatment } from '../core/sportProfiles';
 import { isValidSpeedRange } from '../core/speedGradient';
 import { computeAllTopSegments } from '../core/topSegments';
 import { trackColorSegments } from '../core/trackColor';
@@ -962,7 +962,8 @@ function SurfModule() {
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <strong>Activité :</strong>
                     <ActivitySelect
-                      activities={allActivities}
+                      // Pas vers une activité sans trace (muscu) : la session a des positions.
+                      activities={allActivities.filter((a) => hasPositions(a.base))}
                       value={activity.id}
                       extra={activity}
                       families={sessionFile ? undefined : ['surf']}

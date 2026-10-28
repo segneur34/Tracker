@@ -201,7 +201,8 @@ export const drawShareImage = async (content: ShareImageContent, tileImage: Tile
     });
   }
   track.draw();
-  if (content.withMap) {
+  // Sans trace (muscu), pas de fond de carte : pas de mention non plus.
+  if (content.withMap && track.view) {
     // Mention qu'exigent les conditions d'usage des tuiles du fond.
     ctx.font = `400 22px ${family}`;
     const text = MAP_BASES[content.base].credit;

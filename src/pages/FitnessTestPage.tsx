@@ -14,6 +14,7 @@ import { fitnessTestRunner } from '../hooks/useFitnessTest';
 import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import { lastRecordActivity, saveFitnessTestSettings, useFitnessTestSettings, useVisibility } from '../hooks/useSportSettings';
 import { FITNESS_TESTS, FITNESS_TEST_LIMITS, resolveFitnessTestParams, type FitnessTestParams } from '../recording/fitnessTest';
+import { WORKOUT_LISTS } from './workoutLists';
 import './TrainingPages.css';
 
 const PROTOCOL = FITNESS_TESTS['fc-max'];
@@ -65,7 +66,7 @@ function FitnessTestPage() {
 
   return (
     <div className="ui-page train-page" style={{ '--help-accent': FAMILY_ACCENT.fractionne } as React.CSSProperties}>
-      <PageHeader title="FC max" back={{ to: '/fractionne/tests', label: 'Tests' }}
+      <PageHeader title="FC max" back={{ to: WORKOUT_LISTS.fractionne.listPath, label: WORKOUT_LISTS.fractionne.title }}
         subtitle="Test guidé par bips : un échauffement, une rampe de vitesse jusqu'à ne plus tenir, une récupération." />
 
       {!activity && (

@@ -1,16 +1,17 @@
 import { useSyncExternalStore } from 'react';
 import type { Activity } from '../core/activities';
-import { getSportProfile, sportFamily, sportTreatment, usesMarkCourse } from '../core/sportProfiles';
+import { getSportProfile, hasPositions, sportFamily, sportTreatment, usesMarkCourse } from '../core/sportProfiles';
 import { METERS_PER_DISTANCE_UNIT } from '../core/units';
 import { REFERENCE_RIDER_KG, cyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
 import { createFollowCursor, type FollowCursor, type FollowProgress, type FollowedTrace } from '../recording/followedTrace';
 import {
-  EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, type LiveEnergySetup, type LiveStats, type LiveStatsMemory,
+  EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, heartOnlyLiveStats, type LiveEnergySetup, type LiveStats,
+  type LiveStatsMemory,
 } from '../recording/liveStats';
 import { runningEnergyParams } from '../running/energy';
 import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
-import { getLiveSegments, getRecorderState, subscribeToRecorder } from './useRecorder';
+import { getLiveHeartSegments, getLiveSegments, getRecorderState, subscribeToRecorder } from './useRecorder';
 import { readRunnerProfile } from './useRunnerProfile';
 import { effectiveBikeSetup, effectiveDistanceUnit } from './useSportSettings';
 import { createListeners } from './createStore';
@@ -31,6 +32,8 @@ import { createListeners } from './createStore';
  * Le « dernier kilomètre » (ou mille) suit l'unité de distance de l'activité ;
  * la puissance et l'énergie (course, vélo), le modèle de l'analyse. En dehors
  * d'un parcours de voile, l'avancement sur la trace suivie est calculé ici.
+ * Sans position (muscu), la FC moyenne seule, sur les mesures de la ceinture
+ * (`heartOnlyLiveStats`) : aucun calcul GPS.
  */
 
 /** Intervalle minimal entre deux recalculs quand une page regarde, en temps réel. */
@@ -123,6 +126,11 @@ const compute = () => {
   if (computedFor && computedFor.pointCount === stats.pointCount && computedFor.activity === activity && computedFor.trace === trace) return;
   computedFor = { pointCount: stats.pointCount, activity, trace };
   lastRunMs = Date.now();
+  if (!hasPositions(activity.base)) {
+    live = { segments: [], stats: heartOnlyLiveStats(getLiveHeartSegments(), getSportProfile(activity.base).heartRate), updatedMs: lastRunMs, progress: null };
+    publish();
+    return;
+  }
   const segments = getLiveSegments();
   const lastDistanceM = METERS_PER_DISTANCE_UNIT[effectiveDistanceUnit(activity)];
   const computed = computeLiveStats(segments, getSportProfile(activity.base), {

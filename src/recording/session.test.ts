@@ -8,6 +8,8 @@ import {
   fixesFromRawPoints,
   isNewerFix,
   isSportType,
+  keepHeartRateSample,
+  withStopPoint,
   recordingDurationMs,
   roundFix,
   sessionFileName,
@@ -209,5 +211,25 @@ describe('sessionFileName et sessionTitle', () => {
 
   it('titre la session par son activité et l\'heure à la minute', () => {
     expect(sessionTitle(start, 'Trail')).toBe('Trail, 03/09/2026 09:05');
+  });
+});
+
+describe('mesures de la ceinture sans position (muscu, lot I du 25/10)', () => {
+  const T = Date.UTC(2026, 9, 28, 18, 0, 0);
+  it('une par intervalle au plus, ni hors contact ni sans FC', () => {
+    expect(keepHeartRateSample(null, { bpm: 92.4, timeMs: T + 0.4, contact: true }, 1000)).toEqual({ timeMs: T, heartRateBpm: 92 });
+    expect(keepHeartRateSample(T, { bpm: 92, timeMs: T + 700, contact: null }, 1000)).toBeNull();
+    // Gigue Bluetooth : 998 ms après la dernière, la mesure est gardée (tolérance d'un quart d'intervalle).
+    expect(keepHeartRateSample(T, { bpm: 92, timeMs: T + 998, contact: null }, 1000)).toEqual({ timeMs: T + 998, heartRateBpm: 92 });
+    expect(keepHeartRateSample(T, { bpm: 92, timeMs: T + 1000, contact: null }, 1000)).toEqual({ timeMs: T + 1000, heartRateBpm: 92 });
+    expect(keepHeartRateSample(null, { bpm: 92, timeMs: T, contact: false }, 1000)).toBeNull();
+    expect(keepHeartRateSample(null, { bpm: 0, timeMs: T, contact: true }, 1000)).toBeNull();
+  });
+
+  it('le point de l’arrêt prolonge le dernier segment, pas avant la dernière mesure', () => {
+    const segments = [[{ timeMs: T, heartRateBpm: 90 }], [{ timeMs: T + 60_000, heartRateBpm: 100 }]];
+    expect(withStopPoint(segments, T + 65_000)).toEqual([segments[0], [{ timeMs: T + 60_000, heartRateBpm: 100 }, { timeMs: T + 65_000 }]]);
+    expect(withStopPoint(segments, T + 60_000)).toBe(segments);
+    expect(withStopPoint([], T)).toEqual([]);
   });
 });
