@@ -355,10 +355,6 @@ function SettingsPage() {
   const { open: openFamily, toggle: toggleFamily, closeAll: closeFamilies } = useOpenSections<SportFamily>('settings-families', FAMILY_OPEN_DEFAULTS);
   /** Activité dont le nom est en cours de saisie (« Renommer »), carte ouverte ; une seule à la fois. */
   const [renaming, setRenaming] = useState<string | null>(null);
-  /** Activité dont la liste du matériel enregistré est ouverte. */
-  const [gearEditing, setGearEditing] = useState<string | null>(null);
-  const gearActivity = gearEditing === null ? null : activities.find((a) => a.id === gearEditing) ?? null;
-  const gearGroups = gearActivity ? view(gearActivity).gearGroups : null;
   /** « Tout réduire » : blocs, familles, activités et leurs parties (les aides et le choix d'icône, par `CollapseAllButton`). */
   const collapseAll = () => {
     closeBlocks();
@@ -381,11 +377,10 @@ function SettingsPage() {
   const lastFamily = shownFamilies.length <= 1;
   const lastActivity = visibleActivities(activities, hiddenFamilies).length <= 1;
 
-  /** Option « Matériel enregistré » : cochée, une liste vide et l'éditeur ouvert ; décochée, la liste effacée, après confirmation si elle n'est pas vide. */
+  /** Case « Créer liste matériel » : cochée, une liste vide, éditée en ligne dessous ; décochée, la liste effacée, après confirmation si elle n'est pas vide. */
   const toggleGear = (a: Activity, groups: GearGroup[] | null, on: boolean) => {
     if (on) {
       if (groups === null) setFor(a.id, 'gearGroups', []);
-      setGearEditing(a.id);
       return;
     }
     const pieces = groups?.reduce((n, g) => n + g.items.length, 0) ?? 0;
@@ -711,19 +706,15 @@ function SettingsPage() {
                           <ActivityPart label="Matériel" open={openPart.materiel} onToggle={() => togglePart('materiel')}>
                             <SettingRow label="Matériel enregistré" helpKey={`${id}:materiel-enregistre`}
                               help={`Des groupes (voile, aile avant, mât…) et leurs pièces, choisis en fin de session dans l'onglet ${sailing ? '« matos et conditions »' : '« matériel et notes »'} à la place des champs de texte ; Statistiques filtre alors par pièce. « Par défaut » garde la liste.`}>
-                              <div className="settings-sports__pair">
-                                <label className="settings-sports__pair">
-                                  <input type="checkbox" data-testid="gear-option" checked={s.gearGroups !== null}
-                                    onChange={(e) => toggleGear(activity, s.gearGroups, e.target.checked)} />
-                                  <span>Choisir dans une liste</span>
-                                </label>
-                                {s.gearGroups !== null && (
-                                  <Button size="s" data-testid="gear-edit" onClick={() => setGearEditing(id)}>
-                                    Modifier la liste ({plural(s.gearGroups.reduce((n, g) => n + g.items.length, 0), 'pièce')})
-                                  </Button>
-                                )}
-                              </div>
+                              <label className="settings-sports__pair">
+                                <input type="checkbox" data-testid="gear-option" checked={s.gearGroups !== null}
+                                  onChange={(e) => toggleGear(activity, s.gearGroups, e.target.checked)} />
+                                <span>Créer liste matériel</span>
+                              </label>
                             </SettingRow>
+                            {s.gearGroups !== null && (
+                              <GearGroupsEditor groups={s.gearGroups} onChange={(groups) => setFor(id, 'gearGroups', groups)} />
+                            )}
                             {/* Champs de texte remplacés par les groupes dès qu'il y en a un (onglet du matériel). */}
                             {!sailing && !s.gearGroups?.length && (
                               <SettingRow label="Matériel" helpKey={`${id}:materiel`}
@@ -922,10 +913,6 @@ function SettingsPage() {
           </div>
         )}
       </div>
-      {gearActivity && gearGroups !== null && (
-        <GearGroupsEditor activityName={gearActivity.name} groups={gearGroups}
-          onChange={(groups) => setFor(gearActivity.id, 'gearGroups', groups)} onClose={() => setGearEditing(null)} />
-      )}
     </div>
     </SettingsScope>
   );

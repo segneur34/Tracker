@@ -1,17 +1,19 @@
 /* Matériel enregistré : la liste de Réglages (`GearGroupsEditor.tsx`) et le choix par groupe de
    l'onglet du matériel (`GearPicker.tsx`), dont la liste reprend celle des activités (`ActivitySelect.css`). */
 
-.gear-editor__hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--text-s);
+/* Posée en ligne sous la case « Créer liste matériel » de la partie « Matériel ». */
+.gear-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
 }
 
 .gear-editor__group {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-3);
+  padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
 }
@@ -32,19 +34,20 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding-left: var(--space-4);
+  padding-left: var(--space-6);
 }
 
 .gear-editor__name {
   font-weight: 700;
 }
 
-.gear-editor__empty {
+.gear-editor__count {
+  flex-shrink: 0;
   color: var(--muted);
   font-size: var(--text-s);
 }
 
-.gear-editor__remove {
+.gear-editor__icon {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -59,13 +62,8 @@
   cursor: pointer;
 }
 
-.gear-editor__remove:hover {
+.gear-editor__icon:hover {
   background: var(--surface-hover);
-}
-
-.gear-editor__foot {
-  display: flex;
-  justify-content: flex-end;
 }
 
 /* Choix d'une pièce dans l'onglet du matériel : le nom du groupe, puis le bouton au gabarit d'un champ. */
