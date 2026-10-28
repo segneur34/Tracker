@@ -62,7 +62,7 @@ import { meanFilterByTime } from '../core/speedFilter';
 import { SLOW_COLOR, gradientCss, isValidSpeedRange } from '../core/speedGradient';
 import { trackColorSegments } from '../core/trackColor';
 import {
-  DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatClockMinutes, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
+  DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, speedUnitLabel, formatClockMinutes, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
   isInverseUnit, toDisplayDistance, toDisplaySpeed,
 } from '../core/units';
 import { setHoveredIndex, useResetChartHover } from '../hooks/useChartHover';
@@ -373,7 +373,7 @@ function LandModule({ family }: { family: LandFamily }) {
   useResetChartHover(gpx.sessionKey);
 
   const narrow = useNarrowScreen();
-  const unitLabel = SPEED_UNIT_LABEL[speedUnit];
+  const unitLabel = speedUnitLabel(speedUnit, distanceUnit);
   const inverse = isInverseUnit(speedUnit);
 
   const cumulative = useMemo(() => buildCumulativeTrack(gpx.track), [gpx.track]);
@@ -466,9 +466,9 @@ function LandModule({ family }: { family: LandFamily }) {
   /** Zones de pente ; vide si aucune n'a de temps (pentes toutes inconnues) : l'onglet dit alors pourquoi. */
   const zoneStats = useMemo(() => {
     if (grades.length === 0) return [];
-    const zones = computeZoneStats(gpx.track, grades, activityMask, profile.grade);
+    const zones = computeZoneStats(gpx.track, grades, activityMask, profile.grade, distanceUnit);
     return zones.some((z) => z.timeMs > 0) ? zones : [];
-  }, [gpx.track, grades, activityMask, profile.grade]);
+  }, [gpx.track, grades, activityMask, profile.grade, distanceUnit]);
   /** Onglet « cadence » : chiffres, tranches, selon la vitesse et la pente, dérive. */
   const cadenceAnalysis = useMemo(
     () => ((open.cadence || open.general) && cadencePresent && cadenceParams && cadence
@@ -688,7 +688,7 @@ function LandModule({ family }: { family: LandFamily }) {
       const altitude = elevation.smoothed[i];
       const ms = chartSpeed[i];
       // En min/km, l'arrêt tend vers l'infini : on laisse un trou plutôt qu'une valeur absurde.
-      const speed = inverse && ms < 0.3 ? null : parseFloat(toDisplaySpeed(ms, speedUnit).toFixed(2));
+      const speed = inverse && ms < 0.3 ? null : parseFloat(toDisplaySpeed(ms, speedUnit, distanceUnit).toFixed(2));
       return {
         index: i,
         dist: parseFloat(trackDist[i].toFixed(3)),
@@ -700,7 +700,7 @@ function LandModule({ family }: { family: LandFamily }) {
         cadence: cadencePresent && cadence!.smoothed[i] !== null ? Math.round(cadence!.smoothed[i]!) : null,
       };
     });
-  }, [gpx.track, trackDist, zoom.view, chartSpeed, elevation, stats, grades, speedUnit, inverse, heart.smoothed, cadence, cadencePresent]);
+  }, [gpx.track, trackDist, zoom.view, chartSpeed, elevation, stats, grades, speedUnit, distanceUnit, inverse, heart.smoothed, cadence, cadencePresent]);
   /** Dérive et nuage FC / vitesse de l'onglet « cardio » : vitesse des graphes, temps en mouvement. */
   const heartEfficiency = useMemo((): HeartRateEfficiency => ({ speedsMs: chartSpeed, active: activityMask, speedUnit }), [chartSpeed, activityMask, speedUnit]);
 
@@ -748,8 +748,8 @@ function LandModule({ family }: { family: LandFamily }) {
     { key: 'activeDistance', label: 'Distance en mouvement', value: formatDistance(stats.activeDistanceM, distanceUnit) },
     { key: 'totalTime', label: 'Temps de parcours', value: stats.totalTime },
     { key: 'activeTime', label: `Temps en mouvement (${stats.activeRatio} %)`, value: stats.activeTime },
-    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit) },
-    { key: 'overallAverage', label: 'Moyenne sur le temps total', value: formatSpeed(positiveSpeed(stats.avgSpeedMs), speedUnit) },
+    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit, distanceUnit) },
+    { key: 'overallAverage', label: 'Moyenne sur le temps total', value: formatSpeed(positiveSpeed(stats.avgSpeedMs), speedUnit, distanceUnit) },
     { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
     { key: 'altitude', label: 'Altitude', value: stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—' },
   ] : [];
@@ -763,14 +763,14 @@ function LandModule({ family }: { family: LandFamily }) {
     { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
     { key: 'totalTime', label: 'Temps de parcours', value: stats.totalTime },
     { key: 'activeTime', label: `Temps en mouvement (${stats.activeRatio} %)`, value: stats.activeTime },
-    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit) },
+    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit, distanceUnit) },
     { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
     ...overviewTargets.map((target) => {
       const top = overviewTops?.[target.key]?.[0];
       return {
         key: `top-${target.key}`,
         label: `${target.kind === 'time' ? 'Meilleures' : 'Meilleur'} ${target.label}`,
-        value: top && top.speed !== null ? formatSpeed(top.speed, speedUnit) : '—',
+        value: top && top.speed !== null ? formatSpeed(top.speed, speedUnit, distanceUnit) : '—',
       };
     }),
     ...(heart.present && heart.stats ? [{ key: 'heartRate', label: 'FC moyenne', value: `${Math.round(heart.stats.avgBpm)} bpm` }] : []),
@@ -805,7 +805,7 @@ function LandModule({ family }: { family: LandFamily }) {
     switch (key) {
       case 'vitesse': {
         const ms = chartSpeed[i];
-        return { text: inverse && ms < 0.3 ? '—' : formatSpeed(ms, speedUnit), color: '#1e88e5' };
+        return { text: inverse && ms < 0.3 ? '—' : formatSpeed(ms, speedUnit, distanceUnit), color: '#1e88e5' };
       }
       case 'altitude': {
         const altitude = elevation.smoothed[i];
@@ -836,7 +836,7 @@ function LandModule({ family }: { family: LandFamily }) {
         ? (power !== undefined && isFinite(power) ? `${Math.round(power * 10) / 10} ${energy.powerUnit}` : '—')
         : `${energy.cumulative[i]} ${energy.cumulativeUnit}`;
       return {
-        values: [{ text: main, color: '#e64a19' }, { text: `${formatSpeed(gpx.track[i].smoothedSpeedMs, speedUnit)}${gradeText(i)}` }],
+        values: [{ text: main, color: '#e64a19' }, { text: `${formatSpeed(gpx.track[i].smoothedSpeedMs, speedUnit, distanceUnit)}${gradeText(i)}` }],
         at: formatClockMinutes(trackMinutes[i]),
       };
     })()
@@ -1314,7 +1314,7 @@ function LandModule({ family }: { family: LandFamily }) {
 
             {open.cadence && cadenceAnalysis && (
               <ResizablePanel id={panelId('cadence')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
-                <CadencePanel analysis={cadenceAnalysis} speedUnit={speedUnit} selectedBand={selectedCadenceBand} onSelectBand={setSelectedCadenceBand}
+                <CadencePanel analysis={cadenceAnalysis} speedUnit={speedUnit} distanceUnit={distanceUnit} selectedBand={selectedCadenceBand} onSelectBand={setSelectedCadenceBand}
                   storagePrefix={page.storageId} open={open.cadence} onToggle={() => toggle('cadence')} />
               </ResizablePanel>
             )}
@@ -1469,7 +1469,7 @@ function LandModule({ family }: { family: LandFamily }) {
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>{z.zone.range}</td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 700 }}>{formatSpeed(z.avgSpeedMs, speedUnit)}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 700 }}>{formatSpeed(z.avgSpeedMs, speedUnit, distanceUnit)}</td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
                             <MapToggle shown={shown} disabled={!reached} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => setSelectedZone(shown ? null : z.zone.key)} />
                           </td>

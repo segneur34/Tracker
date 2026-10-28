@@ -267,11 +267,11 @@ const formatGrade = (grade: number | null): string => {
 export const liveFieldValue = (key: LiveFieldKey, ctx: LiveFieldContext): string => {
   const { stats, speedUnit, distanceUnit } = ctx;
   switch (key) {
-    case 'speed': return formatSpeed(stats.currentSpeedMs, speedUnit);
-    case 'average': return formatSpeed(stats.averageSpeedMs, speedUnit);
-    case 'max': return formatSpeed(stats.maxSpeedMs, speedUnit);
-    case 'recentDistanceSpeed': return formatSpeed(stats.recentDistanceSpeedMs, speedUnit);
-    case 'lastDistance': return formatSpeed(stats.lastDistanceSpeedMs, speedUnit);
+    case 'speed': return formatSpeed(stats.currentSpeedMs, speedUnit, distanceUnit);
+    case 'average': return formatSpeed(stats.averageSpeedMs, speedUnit, distanceUnit);
+    case 'max': return formatSpeed(stats.maxSpeedMs, speedUnit, distanceUnit);
+    case 'recentDistanceSpeed': return formatSpeed(stats.recentDistanceSpeedMs, speedUnit, distanceUnit);
+    case 'lastDistance': return formatSpeed(stats.lastDistanceSpeedMs, speedUnit, distanceUnit);
     case 'distance': return formatDistance(stats.distanceM, distanceUnit);
     case 'duration': return formatClock(ctx.durationMs);
     case 'clock': return ctx.nowMs === null ? NONE : formatTimeOfDay(ctx.nowMs).slice(0, 5);
@@ -280,10 +280,10 @@ export const liveFieldValue = (key: LiveFieldKey, ctx: LiveFieldContext): string
       const speed = stats.averageSpeedMs;
       return ctx.remainingM === null || speed === null || speed <= 0 ? NONE : formatClock((ctx.remainingM / speed) * 1000);
     }
-    case 'recentTopShort': return formatSpeed(stats.recentTopsMs[0] ?? null, speedUnit);
-    case 'recentTopLong': return formatSpeed(stats.recentTopsMs[1] ?? null, speedUnit);
+    case 'recentTopShort': return formatSpeed(stats.recentTopsMs[0] ?? null, speedUnit, distanceUnit);
+    case 'recentTopLong': return formatSpeed(stats.recentTopsMs[1] ?? null, speedUnit, distanceUnit);
     case 'heading': return ctx.headingDeg === null ? NONE : `${Math.round(ctx.headingDeg) % 360}°`;
-    case 'legAverage': return stats.legs.current ? formatSpeed(stats.legs.current.averageSpeedMs, speedUnit) : NONE;
+    case 'legAverage': return stats.legs.current ? formatSpeed(stats.legs.current.averageSpeedMs, speedUnit, distanceUnit) : NONE;
     case 'markDistance': return ctx.markDistanceM === null ? NONE : formatShortDistance(ctx.markDistanceM, distanceUnit);
     case 'markBearing': return ctx.markBearingDeg === null ? NONE : `${Math.round(ctx.markBearingDeg) % 360}°`;
     case 'grade': return formatGrade(stats.currentGrade);

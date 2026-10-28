@@ -39,6 +39,18 @@ describe('planReconcile', () => {
     expect(plan.summarize).toEqual([]);
   });
 
+  it('rapproche une fiche .JSON en majuscules de son GPX, sans orpheline', () => {
+    const plan = planReconcile([file('a.gpx'), file('A1.gpx'), file('a.JSON'), file('A1.json')], [], {});
+    expect(plan.read).toEqual(['A1.gpx', 'a.gpx']);
+    expect(plan.summarize).toEqual([]);
+    expect(plan.orphanRecords).toEqual([]);
+  });
+
+  it('une fiche .JSON sans GPX reste orpheline sous son vrai nom', () => {
+    const plan = planReconcile([file('a.gpx'), file('a.json'), file('z.JSON')], [], {});
+    expect(plan.orphanRecords).toEqual(['z.JSON']);
+  });
+
   it('relit une fiche absente du cache, résume un GPX sans fiche', () => {
     const plan = planReconcile([file('a.gpx'), file('a.json'), file('copie-du-pc.gpx')], [], {});
     expect(plan.read).toEqual(['a.gpx']);
@@ -46,11 +58,11 @@ describe('planReconcile', () => {
     expect(plan.gpxFiles).toEqual(['a.gpx', 'copie-du-pc.gpx']);
   });
 
-  it('casse mêlée : un GPX en .GPX retrouve sa fiche .json ; une fiche en .JSON n’est pas la sienne (comportement actuel)', () => {
+  it('casse mêlée : un GPX en .GPX retrouve sa fiche .json ; une fiche en .JSON retrouve aussi son GPX', () => {
     const plan = planReconcile([file('A.GPX'), file('A.json'), file('b.gpx'), file('b.JSON')], [], {});
-    expect(plan.read).toEqual(['A.GPX']);
-    expect(plan.summarize).toEqual(['b.gpx']);
-    expect(plan.orphanRecords).toEqual(['b.JSON']);
+    expect(plan.read).toEqual(['A.GPX', 'b.gpx']);
+    expect(plan.summarize).toEqual([]);
+    expect(plan.orphanRecords).toEqual([]);
   });
 
   it('laisse de côté une fiche sans GPX et les sous-dossiers', () => {

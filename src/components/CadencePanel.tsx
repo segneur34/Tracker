@@ -3,7 +3,7 @@ import { HelpText } from './Help';
 import PanelTitle from './PanelTitle';
 import { CADENCE_BAND_COLORS } from './cadenceColors';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
-import { SPEED_UNIT_LABEL, formatShortDuration, formatSpeedValue, toDisplaySpeed, type SpeedUnit } from '../core/units';
+import { speedUnitLabel, formatShortDuration, formatSpeedValue, toDisplaySpeed, type DistanceUnit, type SpeedUnit } from '../core/units';
 import { useOpenSections } from '../hooks/useOpenSections';
 import type { CadenceAnalysis, CadenceShare } from '../running/cadence';
 import StatTile from './ui/StatTile';
@@ -12,6 +12,8 @@ import MapToggle from './ui/MapToggle';
 interface Props {
   analysis: CadenceAnalysis;
   speedUnit: SpeedUnit;
+  /** Unité de distance de l'activité : une allure est par kilomètre ou par mille nautique. */
+  distanceUnit?: DistanceUnit;
   /** Tranche montrée sur la carte (0 sous la première borne), ou `null`. */
   selectedBand: number | null;
   onSelectBand: (band: number | null) => void;
@@ -40,12 +42,12 @@ const signedPercent = (from: number, to: number) => {
  * cadence et longueur de pas selon la vitesse et selon la pente, dérive.
  * Posé dans le `ResizablePanel` du module ; la courbe est dans « graphiques ».
  */
-export default function CadencePanel({ analysis, speedUnit, selectedBand, onSelectBand, storagePrefix, open, onToggle }: Props) {
+export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km', selectedBand, onSelectBand, storagePrefix, open, onToggle }: Props) {
   const folds = useOpenSections(`${storagePrefix}.cadence`, FOLDS_DEFAULT);
   const { bands, bySpeed, byGrade, drift } = analysis;
   const bandTotal = bands.timesS.reduce((a, b) => a + b, 0);
-  const unit = SPEED_UNIT_LABEL[speedUnit];
-  const speedText = (ms: number) => formatSpeedValue(toDisplaySpeed(ms, speedUnit), speedUnit);
+  const unit = speedUnitLabel(speedUnit, distanceUnit);
+  const speedText = (ms: number) => formatSpeedValue(toDisplaySpeed(ms, speedUnit, distanceUnit), speedUnit);
   // La tranche la plus lente part de l'arrêt : « moins de » sa borne haute.
   const speedRange = (fromMs: number, toMs: number) => (fromMs < 0.5 ? `< ${speedText(toMs)}` : `${speedText(fromMs)} – ${speedText(toMs)}`);
   const shareRow = (key: string, label: string, s: CadenceShare, extra?: string) => (

@@ -24,7 +24,7 @@ export const summaryShareStats = (
   const movingS = summary.movingTimeS;
   const movingM = summary.movingDistanceM ?? null;
   const distance = formatDistance(summary.distanceM, units.distance);
-  const speed = (ms: number | null) => (ms === null || !Number.isFinite(ms) ? '—' : formatSpeed(ms, units.speed));
+  const speed = (ms: number | null) => (ms === null || !Number.isFinite(ms) ? '—' : formatSpeed(ms, units.speed, units.distance));
   const per = (m: number | null, s: number | null) => (m === null || s === null || s <= 0 ? null : m / s);
 
   if (treatment === 'voile') {

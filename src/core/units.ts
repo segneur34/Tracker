@@ -18,17 +18,18 @@ export const msToKmh = (ms: number): number => ms * MS_TO_KMH;
 export const kmhToMs = (kmh: number): number => kmh / MS_TO_KMH;
 
 /**
- * Allure en minutes par kilomètre. Grandeur inverse de la vitesse : elle tend
- * vers l'infini à l'arrêt, d'où le `null` en dessous d'un seuil de mouvement.
+ * Allure en minutes par kilomètre, ou par mille nautique (1 852 m) si la
+ * distance de l'activité est en `nm`. Grandeur inverse de la vitesse : elle
+ * tend vers l'infini à l'arrêt, d'où le `null` en dessous d'un seuil de mouvement.
  */
-export const msToPacePerKm = (ms: number, minSpeedMs = 0.1): number | null => {
+export const msToPace = (ms: number, distanceUnit: DistanceUnit = 'km', minSpeedMs = 0.1): number | null => {
   if (ms <= minSpeedMs) return null;
-  return 1000 / ms / 60;
+  return METERS_PER_DISTANCE_UNIT[distanceUnit] / ms / 60;
 };
 
 /** Formate une allure en `m:ss`, ou `-` si la vitesse est trop faible. */
-export const formatPace = (ms: number): string => {
-  const pace = msToPacePerKm(ms);
+export const formatPace = (ms: number, distanceUnit: DistanceUnit = 'km'): string => {
+  const pace = msToPace(ms, distanceUnit);
   if (pace === null || !isFinite(pace)) return '-';
   const min = Math.floor(pace);
   const sec = Math.round((pace - min) * 60);
@@ -36,7 +37,7 @@ export const formatPace = (ms: number): string => {
 };
 
 /** Convertit une vitesse en m/s vers une unité d'affichage. */
-export const toDisplaySpeed = (ms: number, unit: SpeedUnit): number => {
+export const toDisplaySpeed = (ms: number, unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): number => {
   switch (unit) {
     case 'kn':
       return msToKnots(ms);
@@ -45,12 +46,12 @@ export const toDisplaySpeed = (ms: number, unit: SpeedUnit): number => {
     case 'ms':
       return ms;
     case 'minkm':
-      return msToPacePerKm(ms) ?? 0;
+      return msToPace(ms, distanceUnit) ?? 0;
   }
 };
 
 /** Convertit une vitesse saisie dans une unité d'affichage vers des m/s. */
-export const fromDisplaySpeed = (value: number, unit: SpeedUnit): number => {
+export const fromDisplaySpeed = (value: number, unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): number => {
   switch (unit) {
     case 'kn':
       return knotsToMs(value);
@@ -59,7 +60,7 @@ export const fromDisplaySpeed = (value: number, unit: SpeedUnit): number => {
     case 'ms':
       return value;
     case 'minkm':
-      return value > 0 ? 1000 / (value * 60) : 0;
+      return value > 0 ? METERS_PER_DISTANCE_UNIT[distanceUnit] / (value * 60) : 0;
   }
 };
 
@@ -69,6 +70,14 @@ export const SPEED_UNIT_LABEL: Record<SpeedUnit, string> = {
   ms: 'm/s',
   minkm: 'min/km',
 };
+
+/** Libellé d'une unité de vitesse ; l'allure suit l'unité de distance (« min/km », « min/NM »). */
+export const speedUnitLabel = (unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): string =>
+  unit === 'minkm' ? `min/${DISTANCE_UNIT_SYMBOL[distanceUnit]}` : SPEED_UNIT_LABEL[unit];
+
+/** Symbole court d'une unité de vitesse ; l'allure suit l'unité de distance (« /km », « /NM »). */
+export const speedUnitSymbol = (unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): string =>
+  unit === 'minkm' ? `/${DISTANCE_UNIT_SYMBOL[distanceUnit]}` : SPEED_UNIT_SYMBOL[unit];
 
 /** Symbole court, accolé à une valeur (« 12.4 nds »). */
 export const SPEED_UNIT_SYMBOL: Record<SpeedUnit, string> = {
@@ -89,7 +98,7 @@ export const isInverseUnit = (unit: SpeedUnit): boolean => unit === 'minkm';
 export const editSpeedUnit = (unit: SpeedUnit): SpeedUnit => (isInverseUnit(unit) ? 'kmh' : unit);
 
 /** Formate une vitesse en m/s dans l'unité choisie, avec son symbole. */
-export const formatSpeed = (ms: number | null, unit: SpeedUnit): string => {
+export const formatSpeed = (ms: number | null, unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): string => {
   if (ms === null || !isFinite(ms)) return '-';
   switch (unit) {
     case 'kn':
@@ -99,7 +108,7 @@ export const formatSpeed = (ms: number | null, unit: SpeedUnit): string => {
     case 'ms':
       return `${ms.toFixed(2)} m/s`;
     case 'minkm':
-      return `${formatPace(ms)} /km`;
+      return `${formatPace(ms, distanceUnit)} ${speedUnitSymbol(unit, distanceUnit)}`;
   }
 };
 

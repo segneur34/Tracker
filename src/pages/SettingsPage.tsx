@@ -11,7 +11,7 @@ import {
 import { analysisTabs, isTabShown, toggleTabChoice, type TabChoices } from '../core/analysisTabs';
 import type { SportType } from '../core/types';
 import {
-  DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, editSpeedUnit, formatPace, formatSpeedValue, fromDisplaySpeed, kmhToMs, msToKmh, toDisplaySpeed,
+  DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, speedUnitLabel, speedUnitSymbol, editSpeedUnit, formatPace, formatSpeedValue, fromDisplaySpeed, kmhToMs, msToKmh, toDisplaySpeed,
   type DistanceUnit, type SpeedUnit,
 } from '../core/units';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
@@ -516,7 +516,7 @@ function SettingsPage() {
                 if (openFamily[family] !== true) return <Fragment key={id}>{heading}</Fragment>;
                 const pauseKmh = parseFloat(msToKmh(s.autoPause.speedMs).toFixed(1));
                 const summary = !positions ? ['sans GPS, ceinture cardio'].join(' · ') : [
-                  SPEED_UNIT_LABEL[s.speedUnit],
+                  speedUnitLabel(s.speedUnit, s.distanceUnit),
                   DISTANCE_UNIT_SYMBOL[s.distanceUnit],
                   ...(!withThreshold ? [] : [
                     thresholdEmpty ? "seuil selon l'allure" : noThreshold ? 'sans seuil' : `seuil ${thresholdShown} ${SPEED_UNIT_LABEL[thresholdUnit]}`,
@@ -584,7 +584,7 @@ function SettingsPage() {
                           {positions && <ActivityPart label="Affichage" open={openPart.affichage} onToggle={() => togglePart('affichage')}>
                             <SettingRow label="Unité de vitesse" helpKey={`${id}:unite-vitesse`} help={UNIT_HELP}>
                               <select value={s.speedUnit} onChange={(e) => setFor(id, 'speedUnit', e.target.value as SpeedUnit)} className="ui-field ui-field--s">
-                                {units.map((u) => <option key={u} value={u}>{SPEED_UNIT_LABEL[u]}</option>)}
+                                {units.map((u) => <option key={u} value={u}>{speedUnitLabel(u, s.distanceUnit)}</option>)}
                               </select>
                             </SettingRow>
                             <SettingRow label="Unité de distance" helpKey={`${id}:unite-distance`} help={UNIT_HELP}>
@@ -1034,9 +1034,9 @@ function FieldsSetting({ label, help, helpKey, target = 'live', treatment, famil
 const kmhLabel = (ms: number): string => `${parseFloat(msToKmh(ms).toFixed(1))} km/h`;
 
 /** Ce que donne une vitesse sur le plat : l'allure en course, la puissance de montée à vélo. */
-const paceDetail = (family: PlanningFamily, speedMs: number, climbWkg?: number): string =>
+const paceDetail = (family: PlanningFamily, speedMs: number, distanceUnit: DistanceUnit, climbWkg?: number): string =>
   family === 'course'
-    ? `${kmhLabel(speedMs)}, ${formatPace(speedMs)} /km`
+    ? `${kmhLabel(speedMs)}, ${formatPace(speedMs, distanceUnit)} ${speedUnitSymbol('minkm', distanceUnit)}`
     : `${kmhLabel(speedMs)}, ${parseFloat((climbWkg ?? climbPowerWkgForFlatSpeed(speedMs)).toFixed(1))} W/kg en montée`;
 
 /**
@@ -1062,7 +1062,7 @@ function PaceSettings({ family, view, onLevel, onCustomSpeed }: {
             <option key={level} value={level}>
               {level === 'perso'
                 ? PACE_LEVEL_LABEL.perso
-                : `${PACE_LEVEL_LABEL[level]} · ${paceDetail(family, LEVEL_FLAT_SPEED_MS[family][level], family === 'velo' ? LEVEL_CLIMB_POWER_WKG[level] : undefined)}`}
+                : `${PACE_LEVEL_LABEL[level]} · ${paceDetail(family, LEVEL_FLAT_SPEED_MS[family][level], view.distanceUnit, family === 'velo' ? LEVEL_CLIMB_POWER_WKG[level] : undefined)}`}
             </option>
           ))}
         </select>
@@ -1075,7 +1075,7 @@ function PaceSettings({ family, view, onLevel, onCustomSpeed }: {
               value={custom === null ? null : parseFloat(msToKmh(custom).toFixed(1))}
               onCommit={(kmh) => onCustomSpeed(kmh === null ? null : kmhToMs(kmh))} />
             <span className="settings-sports__mark">
-              {custom === null ? 'sans vitesse saisie, le niveau moyen' : `soit ${paceDetail(family, custom)}`}
+              {custom === null ? 'sans vitesse saisie, le niveau moyen' : `soit ${paceDetail(family, custom, view.distanceUnit)}`}
             </span>
           </div>
         </SettingRow>

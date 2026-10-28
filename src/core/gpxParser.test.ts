@@ -70,15 +70,14 @@ describe('parseGpx', () => {
     expect(r.trackType).toBeUndefined();
   });
 
-  // A-B7 (revue du 27/10) : `readText(trk, 'name')` cherche dans les descendants, alors que `type` lit l'enfant direct.
-  it.skip('A-B7 : le nom d\'un point ne devient pas le nom de la trace', () => {
+  it('A-B7 : le nom d\'un point ne devient pas le nom de la trace', () => {
     const r = parseGpx(gpx(`<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z', '<name>Départ</name>')}</trkseg></trk>`));
     expect(r.trackName).toBeUndefined();
   });
 
-  it('A-B7 (comportement actuel) : le nom d\'un point est repris faute de nom de trace', () => {
-    const r = parseGpx(gpx(`<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z', '<name>Départ</name>')}</trkseg></trk>`));
-    expect(r.trackName).toBe('Départ');
+  it('le nom de la trace est celui de son enfant direct, même avec un point nommé', () => {
+    const r = parseGpx(gpx(`<trk><name>Sortie</name><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z', '<name>Départ</name>')}</trkseg></trk>`));
+    expect(r.trackName).toBe('Sortie');
   });
 
   it('refuse un XML mal formé', () => {

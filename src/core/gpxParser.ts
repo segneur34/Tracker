@@ -156,7 +156,7 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
   return {
     rawPoints,
     timedPoints,
-    trackName: trk ? readText(trk, 'name') : undefined,
+    trackName: trk ? readChildText(trk, 'name') : undefined,
     trackType: trk ? readChildText(trk, 'type') : undefined,
     hasDeviceSpeed,
   };

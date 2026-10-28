@@ -47,7 +47,7 @@ import {
   type SessionSource,
   type SessionSummary,
 } from '../library/record';
-import { planReconcile, type LibraryCache } from '../library/reconcile';
+import { lowerRecordExtension, planReconcile, type LibraryCache } from '../library/reconcile';
 import { unbundleSessionGpx } from '../library/sessionBundle';
 import {
   TRAVELLING_KEYS,
@@ -864,12 +864,41 @@ const keptInMemory = (read: LibrarySession, editsBefore: number): LibrarySession
 };
 
 /**
+ * Une fiche `X.JSON` (extension en majuscules) à côté de `X.gpx` est renommée `X.json` : toute la
+ * suite relit et réécrit la fiche par `recordFileName(gpx)`, et sans cela une seconde fiche serait
+ * créée à côté. Sur un système qui ignore la casse, l'écriture retombe sur le même fichier : on ne
+ * supprime l'ancien nom que s'il figure encore, à côté du nouveau, dans la liste relue.
+ */
+const normalizeRecordExtensions = async (f: MemoryFolder, entries: FolderEntry[]): Promise<FolderEntry[]> => {
+  const names = new Set(entries.map((e) => e.name));
+  const gpxRecordNames = new Set(entries.filter((e) => e.kind === 'file' && isGpxFileName(e.name)).map((e) => recordFileName(e.name)));
+  const odd = entries.filter(
+    (e) => e.kind === 'file' && /\.json$/i.test(e.name) && !e.name.endsWith('.json') && gpxRecordNames.has(lowerRecordExtension(e.name)) && !names.has(lowerRecordExtension(e.name))
+  );
+  if (odd.length === 0) return entries;
+  for (const entry of odd) {
+    try {
+      const text = await f.readText(sessionPath(entry.name));
+      if (text === null) continue;
+      const target = lowerRecordExtension(entry.name);
+      await f.writeText(sessionPath(target), text);
+      const after = await f.list(SESSIONS_DIR);
+      if (after.some((e) => e.name === target) && after.some((e) => e.name === entry.name)) await f.remove(sessionPath(entry.name));
+    } catch (err) {
+      reportError(`${entry.name} n'a pas pu être renommée en .json : ${errorMessage(err, 'erreur inconnue')}`);
+    }
+  }
+  return f.list(SESSIONS_DIR);
+};
+
+/**
  * Lit `sessions/` et publie la liste. Rend les fiches à créer ou à
  * recalculer, que `completeScan` traite ensuite en tâche de fond.
  * `editsBefore` : numéro de la dernière saisie avant la relecture.
  */
 const scan = async (f: MemoryFolder, gen: number, editsBefore = editCount): Promise<SummaryJob[]> => {
   let entries = await f.list(SESSIONS_DIR);
+  entries = await normalizeRecordExtensions(f, entries);
   const rootEntries = await f.list('');
   const cache = readCache(f);
   let plan = planReconcile(entries, rootEntries, cache.entries);
@@ -1021,8 +1050,23 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
 /** Le compteur du balayage est publié au plus à ce rythme : chaque publication redessine les pages qui le lisent. */
 const SCAN_PROGRESS_INTERVAL_MS = 250;
 
+/**
+ * Lecture en cours des GPX sans fiche (`completeScan`), levée à sa fin ou à son arrêt (changement de
+ * `generation` compris). `addGpx` l'attend avant de créer une session : celles qu'elle n'a pas encore
+ * publiées ne sont pas dans `all`, et un enregistrement ou un import de la même session ferait un doublon.
+ */
+let scanCompletion: Promise<void> | null = null;
+
 /** Crée ou recalcule les fiches, une trace à la fois, en laissant l'interface répondre. */
-const completeScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[]): Promise<void> => {
+const completeScan = (f: MemoryFolder, gen: number, jobs: SummaryJob[]): Promise<void> => {
+  const run = runCompleteScan(f, gen, jobs).finally(() => {
+    if (scanCompletion === run) scanCompletion = null;
+  });
+  scanCompletion = run;
+  return run;
+};
+
+const runCompleteScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[]): Promise<void> => {
   const unreadable: string[] = [];
   let shownAt = -Infinity;
   for (let i = 0; i < jobs.length; i++) {
@@ -1313,6 +1357,11 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
 
   const startMs = analyzed.summary.startMs;
   let existing = all.find((s) => s.record.summary.startMs === startMs);
+  // Première lecture du dossier en cours : sa session n'est peut-être pas encore publiée, on l'attend (aucune attente sinon).
+  if (!existing && scanCompletion) {
+    await scanCompletion.then(() => undefined, () => undefined);
+    existing = all.find((s) => s.record.summary.startMs === startMs);
+  }
   // Fiche du cache allégé : relue en entier, pour ne pas croire absents ses sauts, ses voies ou son altitude.
   if (existing?.partial && options.record && folder) {
     await hydrateSession(folder, existing.file).catch(() => undefined);

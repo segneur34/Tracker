@@ -20,7 +20,7 @@ import SegmentedControl from '../components/ui/SegmentedControl';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, SPORT_PROFILES, getSportProfile, type SportFamily } from '../core/sportProfiles';
 import {
-  DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, isInverseUnit,
+  DISTANCE_UNIT_SYMBOL, speedUnitLabel, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, isInverseUnit,
   toDisplayDistance, toDisplaySpeed, type DistanceUnit, type SpeedUnit,
 } from '../core/units';
 import { useChartZoom } from '../hooks/useChartZoom';
@@ -405,13 +405,13 @@ function StatisticsPage() {
     && (series.some((serie) => serie.points.some((p) => p.value >= 7200)) || weekly.some((w) => w.durationS >= 7200));
   const toAxis = (v: number): number => {
     switch (metric.unit) {
-      case 'vitesse': return toDisplaySpeed(v, speedUnit);
+      case 'vitesse': return toDisplaySpeed(v, speedUnit, distanceUnit);
       case 'duree': return inHours ? v / 3600 : v / 60;
       case 'distance': return toDisplayDistance(v, distanceUnit);
       default: return v;
     }
   };
-  const axisLabel = metric.unit === 'vitesse' ? SPEED_UNIT_LABEL[speedUnit]
+  const axisLabel = metric.unit === 'vitesse' ? speedUnitLabel(speedUnit, distanceUnit)
     : metric.unit === 'duree' ? (inHours ? 'h' : 'min')
     : metric.unit === 'distance' ? DISTANCE_UNIT_SYMBOL[distanceUnit]
     : metric.unit === 'pourcent' ? '%'
@@ -424,7 +424,7 @@ function StatisticsPage() {
   /** Valeur d'une session en clair, dans l'unité de la sélection. */
   const metricText = (value: number): string => {
     switch (metric.unit) {
-      case 'vitesse': return formatSpeed(value, speedUnit);
+      case 'vitesse': return formatSpeed(value, speedUnit, distanceUnit);
       case 'duree': return formatDuration(value * 1000);
       case 'distance': return distanceText(value, distanceUnit);
       case 'pourcent': return `${Math.round(value)} %`;
@@ -497,7 +497,7 @@ function StatisticsPage() {
   const recordValue = (kind: StatsRecordKind, value: number, s: StatSession): string => {
     const a = activityById.get(s.activityId);
     switch (kind) {
-      case 'vitesse': return formatSpeed(value, a ? effectiveSpeedUnit(a) : speedUnit);
+      case 'vitesse': return formatSpeed(value, a ? effectiveSpeedUnit(a) : speedUnit, a ? effectiveDistanceUnit(a) : distanceUnit);
       case 'distance': return distanceText(value, a ? effectiveDistanceUnit(a) : distanceUnit);
       case 'duree': return formatDuration(value * 1000);
       case 'denivele': return `${Math.round(value)} m`;
@@ -578,10 +578,10 @@ function StatisticsPage() {
                       {totals.movingTimeS > 0 && <StatTile label="Temps en action" value={formatDuration(totals.movingTimeS * 1000)} />}
                       {family !== null && <StatTile label="Distance" value={distanceText(totals.distanceM, distanceUnit)} />}
                       {isLandFamily(family) && averageMovingSpeedMs(totals) !== null && (
-                        <StatTile label="Vitesse moyenne en action" value={formatSpeed(averageMovingSpeedMs(totals), speedUnit)} />
+                        <StatTile label="Vitesse moyenne en action" value={formatSpeed(averageMovingSpeedMs(totals), speedUnit, distanceUnit)} />
                       )}
                       {isLandFamily(family) && totals.elevationSessions > 0 && <StatTile label="Dénivelé positif" value={`${Math.round(totals.elevationGainM)} m`} />}
-                      {family !== null && totals.maxSpeedMs !== null && <StatTile label="Vitesse max" value={formatSpeed(totals.maxSpeedMs, speedUnit)} />}
+                      {family !== null && totals.maxSpeedMs !== null && <StatTile label="Vitesse max" value={formatSpeed(totals.maxSpeedMs, speedUnit, distanceUnit)} />}
                       {family === 'voile' && totals.maneuverSessions > 0 && (
                         <>
                           <StatTile label="Manœuvres" value={totals.maneuvers} />

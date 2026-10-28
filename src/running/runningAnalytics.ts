@@ -2,7 +2,7 @@ import { segmentDistanceM } from '../core/sessionStats';
 import { SLOW_COLOR, gradientColor, type SpeedRangeMs } from '../core/speedGradient';
 import type { GradeProfile } from '../core/sportProfiles';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
-import { formatDuration, formatPace, kmhToMs, msToKmh } from '../core/units';
+import { formatDuration, formatPace, kmhToMs, msToKmh, speedUnitSymbol, type DistanceUnit } from '../core/units';
 
 /**
  * Analyse propre à la course à pied : pente locale, zones de terrain, allures
@@ -129,7 +129,8 @@ export const computeZoneStats = (
   track: TrackPoint[],
   grades: number[],
   activityMask: boolean[],
-  p: GradeProfile
+  p: GradeProfile,
+  distanceUnit: DistanceUnit = 'km'
 ): ZoneStats[] => {
   const acc: Record<GradeZoneKey, { distanceM: number; timeMs: number }> = {
     steepDown: { distanceM: 0, timeMs: 0 },
@@ -160,7 +161,7 @@ export const computeZoneStats = (
       avgSpeedMs,
       distanceShare: movingDistanceM > 0 ? distanceM / movingDistanceM : 0,
       time: formatDuration(timeMs),
-      pace: avgSpeedMs === null ? '-' : `${formatPace(avgSpeedMs)} /km`,
+      pace: avgSpeedMs === null ? '-' : `${formatPace(avgSpeedMs, distanceUnit)} ${speedUnitSymbol('minkm', distanceUnit)}`,
       speedKmh: avgSpeedMs === null ? '-' : `${msToKmh(avgSpeedMs).toFixed(1)} km/h`,
     };
   });
@@ -197,10 +198,10 @@ export const gradeZonePaths = (
 };
 
 /** Allure et vitesse moyennes d'une distance parcourue en un temps donné. */
-export const averagePace = (distanceM: number, timeMs: number): { pace: string; speedKmh: string; speedMs: number | null } => {
+export const averagePace = (distanceM: number, timeMs: number, distanceUnit: DistanceUnit = 'km'): { pace: string; speedKmh: string; speedMs: number | null } => {
   if (timeMs <= 0 || distanceM <= 0) return { pace: '-', speedKmh: '-', speedMs: null };
   const speedMs = distanceM / (timeMs / 1000);
-  return { pace: `${formatPace(speedMs)} /km`, speedKmh: `${msToKmh(speedMs).toFixed(1)} km/h`, speedMs };
+  return { pace: `${formatPace(speedMs, distanceUnit)} ${speedUnitSymbol('minkm', distanceUnit)}`, speedKmh: `${msToKmh(speedMs).toFixed(1)} km/h`, speedMs };
 };
 
 /**

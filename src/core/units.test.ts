@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, fromDisplaySpeed, knotsToDisplay, toDisplayDistance, toDisplaySpeed,
+  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, fromDisplaySpeed, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed,
 } from './units';
 
 describe('distances', () => {
@@ -89,5 +89,22 @@ describe('formatClockMinutes', () => {
     expect(formatClockMinutes(0)).toBe('0:00');
     expect(formatClockMinutes(75)).toBe('1:15');
     expect(formatClockMinutes(75.5)).toBe('1:15:30');
+  });
+});
+
+describe('allure et unité de distance', () => {
+  it('1 852 m en 10 min font « 10:00 /NM », 1 km en 5 min « 5:00 /km » sans paramètre', () => {
+    expect(formatSpeed(1852 / 600, 'minkm', 'nm')).toBe('10:00 /NM');
+    expect(formatSpeed(1000 / 300, 'minkm')).toBe('5:00 /km');
+    expect(formatSpeed(1000 / 300, 'minkm', 'km')).toBe('5:00 /km');
+  });
+  it('la conversion aller-retour en milles nautiques rend la vitesse', () => {
+    const v = kmhToMs(11);
+    expect(fromDisplaySpeed(toDisplaySpeed(v, 'minkm', 'nm'), 'minkm', 'nm')).toBeCloseTo(v, 9);
+  });
+  it('le libellé suit la distance, les autres unités non', () => {
+    expect(speedUnitLabel('minkm', 'nm')).toBe('min/NM');
+    expect(speedUnitLabel('minkm')).toBe('min/km');
+    expect(speedUnitLabel('kmh', 'nm')).toBe('km/h');
   });
 });

@@ -46,13 +46,17 @@ export interface ReconcilePlan {
 
 const isRecordFileName = (name: string): boolean => /\.json$/i.test(name);
 
+/** Nom de fiche dont l'extension est ramenée à `.json` (le nom de base reste exact). */
+export const lowerRecordExtension = (name: string): string => name.replace(/\.json$/i, '.json');
+
 export const planReconcile = (
   sessionEntries: FolderEntry[],
   rootEntries: FolderEntry[],
   cache: LibraryCache
 ): ReconcilePlan => {
   const files = sessionEntries.filter((e) => e.kind === 'file');
-  const records = new Map(files.filter((e) => isRecordFileName(e.name)).map((e) => [e.name, e]));
+  // Fiches indexées par leur nom à l'extension en minuscules : `X.JSON` se rapproche de `X.gpx`.
+  const records = new Map(files.filter((e) => isRecordFileName(e.name)).map((e) => [lowerRecordExtension(e.name), e]));
   const gpxFiles = files
     .filter((e) => isGpxFileName(e.name))
     .map((e) => e.name)
@@ -70,7 +74,10 @@ export const planReconcile = (
     if (cached && cached.size === entry.size && cached.mtimeMs === entry.mtimeMs) plan.reuse[gpx] = cached.record;
     else plan.read.push(gpx);
   }
-  plan.orphanRecords = [...records.keys()].filter((name) => !gpxRecordNames.has(name)).sort();
+  plan.orphanRecords = [...records.entries()]
+    .filter(([key]) => !gpxRecordNames.has(key))
+    .map(([, entry]) => entry.name)
+    .sort();
   plan.rootGpx = rootEntries
     .filter((e) => e.kind === 'file' && isGpxFileName(e.name))
     .map((e) => e.name)
