@@ -54,12 +54,12 @@ Quand l'utilisateur donne des notes en vrac :
 - Voulu : un lien avec la montre, à préciser.
 - Questions : quoi faire avec la montre ? → réponse (27/10) : les trois, lire sa FC à la place de la ceinture, importer ses sessions sans fichier, piloter l'enregistrement du poignet, et d'abord savoir si c'est possible. Réponse de Claude (27/10) : la FC, oui si la montre diffuse la FC en Bluetooth standard (Garmin « diffusion FC », Polar, Coros, Suunto ; pas une montre Wear OS ni un bracelet Xiaomi sans application tierce) : rien à coder, c'est la ceinture d'aujourd'hui ; l'import sans fichier dépend de la marque et passe par son compte en ligne (gros chantier, à part) ; piloter du poignet demande une application Wear OS à part (très gros chantier). Reste : quelle montre (marque et modèle) ?
 
-### 14. VMA dans les tests guidés, protocole des zones · priorité 2 (proposée)
-- Noté le : 25/10 (« plus tard », LISEZMOI des demandes du 25/10) · état : à clarifier
+### 14. VMA dans les tests guidés, protocole des zones · priorité 2 (proposée, en attente de confirmation le 28/10)
+- Noté le : 25/10 (« plus tard », LISEZMOI des demandes du 25/10) · état : prête
 - Où : Entraînement › Tests.
 - Aujourd'hui : deux tests guidés, FC max (`fc-max`) et FC repos (`fc-repos`), ni l'un ni l'autre encore essayé avec la ceinture (essais 2 et 3).
 - Voulu : un test de VMA (VAMeval ou demi-Cooper), et une mise en forme du protocole des zones.
-- Questions : quel protocole (VAMeval par paliers, demi-Cooper 6 min, autre) ? Après les essais 2 et 3 seulement ?
+- Questions : quel protocole ? → réponse (28/10) : **les deux**, demi-Cooper et VAMeval, et la mécanique des bips de palier est à implémenter. Priorité en attente. Plan : lot 29 du doc « Reste à faire Tracker » (https://claude.ai/artifact/CoFqizqhNZMwm47DxPbLH7).
 
 ### 17. Autres capteurs Bluetooth (puissance, cadence et vitesse à vélo) · priorité 1 (proposée)
 - Noté le : HISTORIQUE point 118, repris le 25/10 (« capteurs du muscu au-delà de la FC ») · état : à clarifier
@@ -67,6 +67,14 @@ Quand l'utilisateur donne des notes en vrac :
 - Aujourd'hui : un seul service Bluetooth lu, la FC ; cadence à pied par les capteurs du téléphone.
 - Voulu : lire d'autres capteurs, à faire si l'utilisateur en a un.
 - Questions : avez-vous un capteur (capteur de cadence ou de puissance vélo) ? Sinon la fiche dort.
+
+### 26. Icône « Enregistrer » en rond rouge dans un cercle blanc · priorité 3 (proposée)
+- Noté le : 28/10 08:00 (WhatsApp) · reçu le : 28/10 soir · état : en lot 32
+- Tel que noté : « dans entrainement, muscu timer, il faut changer le logo de enregistrer, actuellement c'est un cœur avec graphe, il faut garder la logique et mettre un rond rouge, et il faut le mettre partout (cercle blanc avec rond rouge dedans) ».
+- Où : Entraînement › Muscu et timer, bouton « Enregistrer » de chaque séance ; et partout où l'action Enregistrer porte une icône (`components/icons.tsx`).
+- Aujourd'hui : un cœur avec une courbe.
+- Voulu : un cercle blanc avec un rond rouge dedans, même logique du bouton ; la même icône partout.
+- Lot : 32 de la file, Sonnet / medium, icône relevée au banc.
 
 ## Archives
 
