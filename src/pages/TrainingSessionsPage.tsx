@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
-import { IconChevronDown, IconChevronUp, IconPlay, IconPulse } from '../components/icons';
+import { IconChevronDown, IconChevronUp, IconPlay } from '../components/icons';
 import { FAMILY_ACCENT, activitiesOfFamily } from '../core/activities';
 import { isIntervalSport, trainingKind } from '../core/sportProfiles';
 import { isIntervalTimerActive, startIntervals } from '../hooks/useIntervalTimer';
@@ -132,7 +132,7 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
                   {timer && (
                     <Button variant="primary" size="s" disabled={!muscuPath} onClick={() => launchMuscu(preset)}
                       title="Enregistrer la séance avec la ceinture cardio">
-                      <IconPulse size={16} />
+                      <span className="ui-record-dot" />
                       Enregistrer
                     </Button>
                   )}

@@ -283,16 +283,18 @@
   color: var(--voile);
 }
 
-/* Rond blanc du bouton Enregistrer, carré pendant l'enregistrement. */
+/* Pictogramme d'enregistrement : disque blanc, rond rouge au centre (45 % du diamètre) ;
+   carré plein de la couleur du texte pendant l'enregistrement. */
 .ui-record-dot {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: currentColor;
+  background: radial-gradient(circle, var(--recording) 0 22.5%, var(--on-accent) 23%);
 }
 
 .ui-record-dot--stop {
   border-radius: 3px;
+  background: currentColor;
 }
 
 /* --- Onglets de section des modules d'analyse --- */

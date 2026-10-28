@@ -6,7 +6,11 @@ L'utilisateur répond par numéro : « ok », ou ce qui ne va pas. Les numéros 
 
 ## À faire (paquets en attente de validation)
 
-Rien en attente : tout validé le 28/10 au soir (« ok partout »), APK 0.3.93 installée, qui porte tout depuis la 0.3.69.
+Paquet 9 (lots 23 et 32, APK 0.3.95 à construire). Lot 23 (petites dettes) sans essai : prouvé par les tests et le banc.
+
+| N° | Essai | Attendu |
+|---|---|---|
+| 63 | Icône « Enregistrer » (lot 32) : bouton rond de la barre du bas au repos, puis pendant un enregistrement ; Entraînement › Muscu et timer, bouton « Enregistrer » d'une séance ; en clair et en sombre. | Disque blanc avec un rond rouge au repos, bouton rond toujours vert ; carré pendant l'enregistrement, comme avant. Dire si l'icône vous plaît. |
 
 ## Quand l'occasion se présente (terrain)
 
