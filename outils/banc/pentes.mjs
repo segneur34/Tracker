@@ -188,5 +188,44 @@ console.log('Masquer (pente)    :', await clickButton('Masquer de la carte', '.p
 await wait(500);
 console.log('carte, bleu        :', await mapInfo('.plan-map'));
 
+// 6. Sortie à vélo à 1 point toutes les 4 s (cadence d'une application économique, règle 10), sur le même relief : 24 m entre deux
+// points à 6 m/s. L'altitude vient de l'IGN, la pente se lit malgré le pas large : zones relevées, pente sur la carte, légende gardée.
+const bikeSeconds = 1200;
+const bikeT0 = Date.UTC(2026, 9, 8, 8, 0, 0);
+const bikePath = `${workDir}\\velo-pentes.gpx`;
+const bikeFixes = [];
+for (let k = 0; k <= bikeSeconds; k += 4) bikeFixes.push([43.655 + (6 * k) / 111_195, 3.8, k]);
+writeFileSync(bikePath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Velo pentes</name><type>cycling</type><trkseg>\n${
+  bikeFixes.map(([lat, lon, k]) => `<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><ele>150.0</ele><time>${new Date(bikeT0 + k * 1000).toISOString()}</time></trkpt>`).join('\n')
+}\n</trkseg></trk></gpx>\n`);
+console.log(`vélo : ${bikeFixes.length} points, un toutes les 4 s, 24 m entre deux`);
+await go('/velo');
+await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ cycling: { general: true, tops: false, zones: true, surface: false, energie: true, graphiques: true, reglages: false } })); 'ok'`);
+await setFile('input[type=file][accept=".gpx"][multiple]', bikePath);
+await wait(4000);
+const bikeName = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx') && n.includes('cycling'));
+await go(`/velo/analyse?session=${encodeURIComponent(bikeName ?? '')}`, 1500);
+for (let k = 0; k < 60; k++) {
+  if (await evaluate(`/Source : IGN|hors de la couverture|Réessayer/.test(document.body.innerText)`)) break;
+  await wait(500);
+}
+console.log('vélo, analyse ouverte :', bikeName);
+console.log('vélo, source       :', await evaluate(`(document.body.innerText.match(/Source : [^\\n]*/) ?? ['(aucune)'])[0]`));
+console.log('vélo, carte vitesse:', await mapInfo('.an-map-frame'));
+const zoneRows = () => evaluate(`(() => {
+  const t = [...document.querySelectorAll('table')].find((x) => [...x.querySelectorAll('th')].some((th) => th.textContent.trim() === 'Zone'));
+  if (!t) return '(aucun tableau de zones)';
+  return [...t.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((c) => c.textContent.trim()).join(' ; ')).join('\\n    ');
+})()`);
+console.log('vélo, zones de pente :\n    ' + await zoneRows());
+console.log('vélo, Voir (pente) :', await clickButton('Voir sur la carte'));
+await wait(800);
+const bikeSlope = JSON.parse(await mapInfo('.an-map-frame'));
+console.log('vélo, carte, pente :', JSON.stringify(bikeSlope), '| boutons', await buttonTexts('.an-page'));
+console.log(`vélo, pente lue malgré le pas de 4 s : ${bikeSlope.couleurs > 1 && /pente/.test(bikeSlope.legende) ? 'oui' : 'NON'}`);
+console.log('vélo, Masquer      :', await clickButton('Masquer de la carte'));
+await wait(800);
+console.log('vélo, carte vitesse:', await mapInfo('.an-map-frame'));
+
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
 ws.close();

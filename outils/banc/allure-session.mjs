@@ -4,6 +4,8 @@
 // d'avance dans les réglages de l'appareil, doit être ignorée puis effacée à la première écriture.
 // Profil Chrome neuf. Usage : node allure-session.mjs <port> <GPX 1> <GPX 2>, chemins Windows ;
 // les deux GPX : make-gpx.mjs sans décalage, puis avec un décalage d'une heure.
+// Depuis le 28/10, le champ « Allure de la session » est dans l'onglet « réglages » de l'analyse voile
+// (panneau « Réglages de la session ») : le script ouvre cet onglet avant de le lire.
 const [port, gpx1, gpx2] = process.argv.slice(2);
 const BASE = process.env.BASE ?? 'http://127.0.0.1:4190';
 
@@ -51,11 +53,15 @@ const setFile = async (selector, path) => {
 };
 // Saisie dans un champ contrôlé par React : setter natif, puis événement `input`.
 const typeInto = (selector, value) => evaluate(`(() => { const el = ${selector}; if (!el) return 'absent'; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()`);
-const setSelect = (selector, value) => evaluate(`(() => { const el = ${selector}; if (!el) return 'absent'; Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
 const ALLURE_LABEL = `[...document.querySelectorAll('label')].find((l) => l.textContent.includes('Allure de la session'))`;
 const ALLURE_INPUT = `${ALLURE_LABEL}?.querySelector('input')`;
-const SPORT_SELECT = `[...document.querySelectorAll('label')].find((l) => l.textContent.includes('Support'))?.querySelector('select')`;
 const allure = () => evaluate(`(() => { const l = ${ALLURE_LABEL}; if (!l) return 'pas de champ'; return l.querySelector('input').value + ' nds, ' + (l.textContent.includes('déduite') ? 'déduite' : l.textContent.includes('Défaut') ? 'imposée (bouton Défaut)' : '?'); })()`);
+/** Ouvre l'onglet « réglages » de l'analyse s'il est fermé (les onglets ouverts sont mémorisés). */
+const openSettingsTab = async () => {
+  const r = await evaluate(`(() => { const b = [...document.querySelectorAll('.an-tabs .ui-tab')].find((x) => x.textContent.trim() === 'réglages'); if (!b) return 'onglet absent'; if (b.getAttribute('aria-pressed') === 'true') return 'déjà ouvert'; b.click(); return 'ouvert'; })()`);
+  await wait(1200);
+  return r;
+};
 const bar = () => evaluate(`document.querySelector('.ui-savebar')?.innerText.replace(/\\n/g, ' ') ?? 'pas de barre'`);
 const readOpfs = (path) => evaluate(`(async () => { let d = await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker'); const parts = ${JSON.stringify(path)}.split('/'); const name = parts.pop(); for (const p of parts) d = await d.getDirectoryHandle(p); return await (await (await d.getFileHandle(name)).getFile()).text(); })()`);
 const fiche = async (file) => {
@@ -95,6 +101,7 @@ console.log('réglages :', await sportSettings());
 step('1. Session 1 : allure déduite, l\'ancienne allure par support ignorée');
 const s1 = await recordAndAnalyse(gpx1);
 console.log('url :', s1.url);
+console.log('onglet réglages :', await openSettingsTab());
 console.log('allure :', await allure(), '| barre :', await bar());
 console.log('fiche :', await fiche(s1.file));
 
@@ -112,20 +119,20 @@ console.log('fiche :', await fiche(s1.file));
 
 step('4. Rechargement : allure relue depuis la fiche');
 await go(s1.url, 7000);
+console.log('onglet réglages :', await openSettingsTab());
 console.log('allure :', await allure(), '| barre :', await bar());
 
 step('5. Session 2 : allure déduite de sa trace, pas celle de la session 1');
 const s2 = await recordAndAnalyse(gpx2);
 console.log('url :', s2.url);
+console.log('onglet réglages :', await openSettingsTab());
 console.log('allure :', await allure(), '| barre :', await bar());
 console.log('fiche :', await fiche(s2.file));
 
-step('6. Une écriture des réglages (support changé puis rétabli) efface l\'ancienne allure par support');
-console.log('kite :', await setSelect(SPORT_SELECT, 'kite'));
-await wait(2500);
-console.log('wingfoil :', await setSelect(SPORT_SELECT, 'wingfoil'));
-await wait(2500);
-console.log('réglages :', await sportSettings());
+step("6. L'ancienne allure par support est effacée des réglages de l'appareil (dès la première écriture, au lancement)");
+const finalSettings = await sportSettings();
+console.log('réglages :', finalSettings);
+console.log('referenceSpeeds absent (oui attendu) :', !/referenceSpeeds/.test(finalSettings ?? ''));
 
 step('Console');
 console.log('dialogues :', dialogs.length ? dialogs.join(' / ') : 'aucun');

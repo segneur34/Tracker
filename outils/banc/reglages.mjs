@@ -24,6 +24,8 @@ if (!port) {
   process.exit(1);
 }
 const BASE = process.env.BASE ?? 'http://127.0.0.1:4190';
+// Version des pré-réglages (PRESETS_VERSION) : un fichier d'avant sans elle voit ses seuils effacés une fois (point 168).
+const PRESETS_VERSION = 3;
 
 // --- Protocole ---
 const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
@@ -92,7 +94,7 @@ step('2. Passage depuis l\'ancien reglages.json');
 const before = await stored();
 const legacy = {
   format: 'tracker-reglages', version: 1, savedAt: Date.now() + 60_000,
-  values: { 'tracker.sportSettings': { ...(before ?? {}), thresholds: { wingfoil: 7 } } },
+  values: { 'tracker.sportSettings': { ...(before ?? {}), thresholds: { wingfoil: 7 }, presetsVersion: PRESETS_VERSION } },
 };
 console.log('pc.json retiré :', await removeFile('reglages/pc.json'), '| reglages.json écrit :', await writeFile('reglages.json', legacy));
 await go('/parametres', 4000);
@@ -111,7 +113,7 @@ const leaActivities = [
 const lea = {
   format: 'tracker-reglages', version: 2, savedAt: Date.now() - 3_600_000, device: { id: 'appareil-de-lea', name: 'Léa' },
   values: {
-    'tracker.sportSettings': { activities: leaActivities, activitiesVersion: 3, thresholds: { wingfoil: 13 }, recordActivity: 'a-trail' },
+    'tracker.sportSettings': { activities: leaActivities, activitiesVersion: 3, thresholds: { wingfoil: 13 }, presetsVersion: PRESETS_VERSION, recordActivity: 'a-trail' },
     'tracker.runnerProfile': { me: { weightKg: 58 } },
   },
 };

@@ -2,7 +2,7 @@
 // Usage : node cadence.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Dure environ 1 min 30. La mesure elle-même (accéléromètre du téléphone, à l'arrêt
 // de l'enregistrement) ne se joue pas dans le navigateur : ses tests sont dans `running/cadence.test.ts`. Le script :
-//  1. importe une course de 30 min dont le GPX porte `gpxtpx:cad` en foulées par minute (comme Garmin, Strava et
+//  1. (lot 24, 28/10 : une seconde marche dont `cad` vaut déjà 110, en pas, doit s'afficher à 110 pas/min et non 220) importe une course de 30 min dont le GPX porte `gpxtpx:cad` en foulées par minute (comme Garmin, Strava et
 //     Tracker) : 80 puis 88 foulées (160 puis 176 pas/min) avec la vitesse, et une côte au milieu ; une marche
 //     (55 foulées, 110 pas/min) ; un fractionné à pied (cadence plus haute dans les efforts) ; une sortie à vélo dont
 //     `cad` est en tours de pédale ; une course sans cadence ;
@@ -130,6 +130,7 @@ const T_WALK = Date.UTC(2026, 9, 2, 8, 0, 0);
 const T_IVL = Date.UTC(2026, 9, 3, 8, 0, 0);
 const T_BIKE = Date.UTC(2026, 9, 4, 8, 0, 0);
 const T_PLAIN = Date.UTC(2026, 9, 5, 8, 0, 0);
+const T_WALK_SPM = Date.UTC(2026, 9, 6, 8, 0, 0);
 // Fractionné sans compteur : 10 min d'échauffement, 8 × (1 min d'effort, 1 min de repos), 5 min de retour.
 const effortAt = (s) => {
   if (s < 600) return 2.8 + 0.1 * Math.sin(s / 13);
@@ -142,6 +143,9 @@ const SESSIONS = [
   // 15 min à 2,6 m/s et 80 foulées, puis 15 min à 3,6 m/s et 88 foulées ; une côte de la 5e à la 10e minute.
   { key: 'course', page: 'course', start: T_RUN, gpx: lineGpx('running', 1800, (k) => (k < 900 ? 2.6 : 3.6), (k) => (k < 900 ? 80 : 88), T_RUN, [300, 600]) },
   { key: 'marche', page: 'course', start: T_WALK, gpx: lineGpx('running', 900, () => 1.4, () => 55, T_WALK) },
+  // La même marche (1,4 m/s), mais `cad` déjà en pas par minute (110) : la longueur de pas par fréquence (0,42 telle quelle, 0,10 doublée)
+  // fait deviner le facteur 1, la cadence affichée reste 110 pas/min et non 220 (décision du 27/10).
+  { key: 'marche-pas', page: 'course', start: T_WALK_SPM, gpx: lineGpx('running', 900, () => 1.4, () => 110, T_WALK_SPM) },
   { key: 'fractionne', page: 'fractionne', start: T_IVL, gpx: lineGpx('run-intervals', 600 + 8 * 120 - 60 + 300, effortAt, (k) => (effortAt(k) > 4 ? 94 : 82), T_IVL) },
   { key: 'velo', page: 'velo', start: T_BIKE, gpx: lineGpx('cycling', 1200, () => 7, () => 85, T_BIKE) },
   { key: 'sanscad', page: 'course', start: T_PLAIN, gpx: lineGpx('running', 900, () => 3, () => null, T_PLAIN) },
@@ -157,6 +161,8 @@ for (const s of SESSIONS) {
   paths[s.key] = `/${s.page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
   check(`${s.key} rangée`, Boolean(rec));
   if (s.key === 'course') check(`course : cadence dans le résumé de la fiche (${JSON.stringify(rec?.summary?.cadence)})`, Math.abs((rec?.summary?.cadence?.avgSpm ?? 0) - 168) < 1);
+  if (s.key === 'marche') check(`marche (cad 55, foulées) : cadence du résumé 110 pas/min (${JSON.stringify(rec?.summary?.cadence)})`, Math.abs((rec?.summary?.cadence?.avgSpm ?? 0) - 110) < 1);
+  if (s.key === 'marche-pas') check(`marche (cad 110, déjà en pas) : cadence du résumé 110 pas/min, pas 220 (${JSON.stringify(rec?.summary?.cadence)})`, Math.abs((rec?.summary?.cadence?.avgSpm ?? 0) - 110) < 1);
   if (s.key === 'velo') check('vélo : pas de cadence dans le résumé', rec?.summary?.cadence === undefined);
 }
 
@@ -214,6 +220,12 @@ await clickTab('cadence');
 await wait(1200);
 const walkText = await textIn('Cadence');
 check('marche : 110 pas/min, tranches de la marche', walkText.includes('110 pas/min') && /tranches \(marche\)/i.test(walkText));
+await go(paths['marche-pas'], 6000);
+await clickTab('cadence');
+await wait(1200);
+const walkSpmText = await textIn('Cadence');
+console.log('  marche à cad 110 :', walkSpmText.split('\n').slice(0, 10).join(' / '));
+check('marche à cad 110 (pas par minute) : cadence affichée 110 pas/min, tranches de la marche', walkSpmText.includes('110 pas/min') && !walkSpmText.includes('220 pas/min') && /tranches \(marche\)/i.test(walkSpmText));
 await go(paths.velo, 6000);
 check(`vélo : pas d'onglet « cadence » (${await tabLabels()})`, !(await tabLabels()).includes('cadence'));
 await clickTab('graphiques');
@@ -237,7 +249,7 @@ check(`statistiques : « Cadence moyenne » parmi les données de la course (${s
 await evaluate(`(() => { const b = [...document.querySelectorAll('.stats-chips[aria-label="Donnée"] .ui-tab')].find((x) => x.textContent === 'Cadence moyenne'); b?.click(); return 'ok'; })()`);
 await wait(1200);
 const statPoints = await evaluate(`document.querySelectorAll('.recharts-scatter-symbol').length`);
-check(`statistiques : un point par session de course avec cadence (${statPoints})`, statPoints === 2);
+check(`statistiques : un point par session de course ou de marche avec cadence (course, deux marches : ${statPoints})`, statPoints === 3);
 await shoot('cadence-statistiques');
 
 // --- 6. Réglages ---

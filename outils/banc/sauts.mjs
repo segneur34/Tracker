@@ -2,9 +2,10 @@
 // Usage : node sauts.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Le script fabrique lui-même, dans la page, une session de voile et ses
 // capteurs (`.imu`, par l'encodeur de l'application), et vérifie :
-//  1. Réglages, carte de l'activité « Voile » : « Foil » (coché d'office en wingfoil) et « Sauts » sous « Taille du
-//     texte » ; sauts cochés, leurs sous-options (emplacement, hauteur minimale) ; foil décoché ; tout relu après
-//     rechargement, résumé de la carte repliée compris ;
+//  1. Réglages, carte de l'activité « Voile » (familles, carte et parties ouvertes, sans refermer ce que la mémoire a ouvert) :
+//     « Foil » (coché d'office en wingfoil, partie Onglet analyse) puis « Sauts » (cochés d'office depuis les pré-réglages du
+//     21/10, partie Enregistrement) et leurs sous-options (poitrine, 0,5 m) ; emplacement au bras, hauteur minimale 1,5 m,
+//     foil décoché ; tout relu après rechargement, résumé de la carte repliée compris ;
 //  2. l'import d'une session avec ses capteurs : `.imu` rangé à côté du GPX, relisible ;
 //  3. l'analyse, foil décoché pour l'activité : « Ratio de navigation », matériel sans « Foil » ni « Mât » ; foil coché
 //     pour la session : « Ratio de vol », champs revenus, `analysis.foil` dans la fiche après « Enregistrer la session » ;
@@ -72,7 +73,7 @@ const openVoile = () => evaluate(`(() => {
     setTimeout(() => {
       const card = [...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent.trim() === 'Voile');
       if (!card) return r('carte absente');
-      card.querySelector('.settings-activity__toggle').click();
+      if (card.querySelector('.settings-activity__toggle').getAttribute('aria-expanded') !== 'true') card.querySelector('.settings-activity__toggle').click();
       // Parties de la carte (affichage, onglet analyse…) repliées au départ (21/10) : toutes ouvertes.
       setTimeout(() => {
         card.querySelectorAll('.settings-part__toggle[aria-expanded="false"]').forEach((b) => b.click());
@@ -81,7 +82,7 @@ const openVoile = () => evaluate(`(() => {
     }, 300);
   }, 300));
 })()`);
-const voileCard = `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__body') && c.querySelector('[value]'))`;
+const voileCard = `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent.trim() === 'Voile' && c.querySelector('.settings-activity__body'))`;
 /** Lignes de la carte ouverte : libellé, état de la case éventuelle, sous-option. */
 const rows = () => evaluate(`(() => {
   const card = ${voileCard};
@@ -108,13 +109,11 @@ const labels = list.map((r) => r.label);
 // « Taille du texte » retirée le 09/10 : Foil, puis Sauts plus bas.
 check('Foil puis Sauts', labels.indexOf('Foil') >= 0 && labels.indexOf('Sauts') > labels.indexOf('Foil'), labels.join(' | '));
 check('Foil coché d\'office (wingfoil)', list.find((r) => r.label === 'Foil')?.checked === true);
-check('Sauts décochés, sans sous-option', list.find((r) => r.label === 'Sauts')?.checked === false && !list.some((r) => r.sub));
-
-console.log('cocher Sauts :', await clickBox('Sauts'));
-await wait(400);
-list = await rows();
+// Pré-réglages du 21/10 : les sauts de la Voile sont cochés d'office (poitrine, 0,5 m), avec leurs deux sous-options.
+check('Sauts cochés d\'office, avec leurs deux sous-options', list.find((r) => r.label === 'Sauts')?.checked === true && list.filter((r) => r.sub).length === 2);
 const subs = list.filter((r) => r.sub);
-check('sous-options visibles', subs.length === 2, subs.map((r) => r.text).join(' | '));
+const subValues = await evaluate(`[...(${voileCard}).querySelectorAll('.settings-row--sub')].map((r) => (r.querySelector('select') ?? r.querySelector('input'))?.value).join(' | ')`);
+check('sous-options : poitrine, 0,5 m', subs.length === 2 && subValues === 'poitrine | 0.5', subValues);
 console.log('emplacement → bras :', await evaluate(`(() => {
   const row = [...(${voileCard}).querySelectorAll('.settings-row--sub')].find((r) => r.textContent.includes('Emplacement'));
   const s = row?.querySelector('select');

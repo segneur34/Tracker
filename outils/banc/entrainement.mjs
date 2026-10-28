@@ -193,7 +193,7 @@ check('Enregistrer, activité demandée', (await evaluate('location.pathname + l
 check('famille, type et activité choisis', (await segmented('Famille')) === 'Entraînement' && (await segmented('Type')) === 'Fractionné' && (await segmented('Activité')) === 'à pied',
   `${await segmented('Famille')} / ${await segmented('Type')} / ${await segmented('Activité')}`);
 const rowItems = (label) => evaluate(`[...document.querySelectorAll('.ui-segmented[aria-label=${JSON.stringify(label)}] [role=radio]')].map((r) => r.textContent).join(', ')`);
-check('rangée des types, puis à pied et vélo', (await rowItems('Type')) === 'Fractionné, Tests' && (await rowItems('Activité')) === 'à pied, vélo', `${await rowItems('Type')} | ${await rowItems('Activité')}`);
+check('rangée des types (Fractionné, Tests, Muscu depuis le lot 11), puis à pied et vélo', (await rowItems('Type')) === 'Fractionné, Tests, Muscu' && (await rowItems('Activité')) === 'à pied, vélo', `${await rowItems('Type')} | ${await rowItems('Activité')}`);
 console.log('vélo :', await clickText('vélo', '.ui-segmented[aria-label="Activité"] [role=radio]'));
 await wait(300);
 check('vélo choisi, la séance reste', (await segmented('Activité')) === 'vélo' && (await text('.ivl .ivl-summary')).startsWith('3 × 3:00'), await segmented('Activité'));

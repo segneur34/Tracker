@@ -1,16 +1,19 @@
 // Banc de test : le Timer de l'Entraînement (lot D des demandes du 25/10).
 // Usage : node timer.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau, environ 30 s. Le script vérifie :
-//  1. la tuile « Timer » sous Tests, sans séance gardée au départ ;
-//  2. la page Timer : liste vide ; une séance créée (8 × 0:40 / 0:20 proposé), modifiée, dupliquée, la copie retirée ;
+//  1. les deux tuiles de l'Entraînement (« Fractionné et tests », « Muscu et timer »), sans séance gardée au départ pour la seconde ;
+//  2. la page « Muscu et timer » : liste vide ; une séance créée (8 × 0:40 / 0:20 proposé), modifiée, dupliquée, la copie retirée ;
 //     la liste du Fractionné n'en est pas touchée, et rien du Timer n'y paraît ;
-//  3. « Lancer » (26/10) : Enregistrer en mode Timer (titre « Timer », ni famille, ni « Démarrer », ni carte), le
+//  3. « Timer » d'une séance (ex-« Lancer », 26/10) : Enregistrer en mode Timer (titre « Timer », ni famille, ni « Démarrer », ni carte), le
 //     compteur déjà lancé sur la séance : « Départ », puis « Travail 1/… » ; le bandeau « Timer » sur une autre page,
 //     qui ramène au mode Timer ; « Modifier » à droite d'« Arrêter » : la séance arrêtée et oubliée, l'éditeur sur
 //     elle (séance gardée proposée, lien vers les séances du Timer) ; « Lancer le compteur » la relance ; arrêtée,
 //     la page quittée puis retrouvée par le retour : la séance close oubliée, l'éditeur et jamais « Séance arrêtée » ;
 //     la position jamais demandée, aucune séance confiée à un enregistrement ;
 //  4. « Enregistrer une session » rend la page ordinaire ;
+//  4 bis. (lot 24, 28/10) « Enregistrer » d'une séance, en muscu : Enregistrer sur Muscu, la séance dans la carte du compteur sans être
+//     lancée, ceinture cochée et grisée (FC d'exemple du navigateur), compteur lancé puis session démarrée, « Arrêter » de la session tenu
+//     2 s : le compteur est arrêté avec elle ; le lien « Enregistrer sans séance » ;
 //  5. à 390 × 844 : la page Timer, Enregistrer en mode Timer et le compteur en marche sans débordement.
 import { writeFileSync } from 'node:fs';
 
@@ -99,15 +102,15 @@ await go('/fractionne');
 // État du Fractionné au départ : le Timer ne doit pas y toucher.
 const fractionneBefore = { presets: await stored('intervalPresets'), last: await stored('lastIntervalWorkout') };
 const tiles = await evaluate(`[...document.querySelectorAll('.train-tile__title')].map((n) => n.textContent).join(', ')`);
-check('tuiles : Fractionné, Tests, Timer', tiles === 'Fractionné, Tests, Timer', tiles);
-const timerTile = await evaluate(`[...document.querySelectorAll('.train-tile')].find((t) => t.querySelector('.train-tile__title')?.textContent === 'Timer')?.textContent ?? '(absente)'`);
-check('tuile Timer : aucune séance gardée', /0 séance gardée/.test(timerTile), timerTile);
+check('tuiles : Fractionné et tests, Muscu et timer', tiles === 'Fractionné et tests, Muscu et timer', tiles);
+const timerTile = await evaluate(`[...document.querySelectorAll('.train-tile')].find((t) => t.querySelector('.train-tile__title')?.textContent === 'Muscu et timer')?.textContent ?? '(absente)'`);
+check('tuile Muscu et timer : aucune séance gardée', /0 séance gardée/.test(timerTile), timerTile);
 
 // --- 2. Page Timer ---
-console.log('tuile :', await clickText('Timer', '.train-tile'));
+console.log('tuile :', await clickText('Muscu et timer', '.train-tile'));
 await wait(800);
-check('tuile : page Timer', (await where()) === '/fractionne/timer', await where());
-check('titre « Timer »', (await raw('.ui-page h1')) === 'Timer', await raw('.ui-page h1'));
+check('tuile : page Muscu et timer', (await where()) === '/fractionne/timer', await where());
+check('titre « Muscu et timer »', (await raw('.ui-page h1')) === 'Muscu et timer', await raw('.ui-page h1'));
 check('liste vide', (await presets()) === '' && /Aucune séance gardée/.test(await text('.ui-page')), await presets());
 console.log('créer :', await clickText('Créer une séance'));
 await wait(400);
@@ -145,13 +148,13 @@ await go('/fractionne/seances');
 const fractionne = await presets();
 check('Fractionné : rien du Timer', fractionne !== '' && !fractionne.includes('Gainage'), fractionne);
 await go('/fractionne');
-check('tuile Timer : 1 séance gardée', /1 séance gardée/.test(await raw('.train-hub')), await raw('.train-hub'));
+check('tuile Muscu et timer : 1 séance gardée', /Muscu et timer.*1 séance gardée/.test(await raw('.train-hub')), await raw('.train-hub'));
 
 // --- 3. « Lancer » ---
 await go('/fractionne/timer');
 const geoBefore = await geoCalls();
 const soundsAtLaunch = sounds.length;
-console.log('lancer :', await itemButton('Gainage', 'Lancer'));
+console.log('Timer :', await itemButton('Gainage', 'Timer'));
 await wait(1200);
 check('Enregistrer en mode Timer', (await where()) === '/enregistrer?minuterie=1', await where());
 check('titre « Timer »', (await raw('.ui-page h1')) === 'Timer', await raw('.ui-page h1'));
@@ -224,6 +227,43 @@ await wait(600);
 check('page ordinaire', (await where()) === '/enregistrer' && (await raw('.ui-page h1')) === 'Enregistrer'
   && !!(await evaluate(`!!document.querySelector('.ui-segmented[aria-label="Famille"]')`)), `${await where()} | ${await raw('.ui-page h1')}`);
 
+// --- 4 bis. « Enregistrer » : la séance avec la ceinture, en muscu (lot I du 25/10, `handsOverToRecording`) ---
+await go('/fractionne/timer');
+const sansSeance = await evaluate(`[...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Enregistrer sans séance')?.getAttribute('href') ?? '(absent)'`);
+check('lien « Enregistrer sans séance » vers la muscu', sansSeance === '/enregistrer?activite=muscu', sansSeance);
+console.log('sans séance :', await clickText('Enregistrer sans séance', 'a'));
+await wait(1200);
+check('sans séance : Enregistrer sur Muscu, aucun compteur lancé', (await where()) === '/enregistrer?activite=muscu'
+  && (await evaluate(`JSON.parse(localStorage.getItem('tracker.intervalRun') ?? 'null') === null`)) === true, await where());
+await go('/fractionne/timer');
+console.log('Enregistrer :', await itemButton('Gainage', 'Enregistrer'));
+await wait(1500);
+check('Enregistrer sur Muscu', (await where()) === '/enregistrer?activite=muscu' && (await raw('.ui-page h1')) === 'Enregistrer', await where());
+const muscuSummary = await text('.ivl .ivl-summary');
+check('la séance dans la carte du compteur, sans être lancée', muscuSummary.startsWith('8 × 0:40 / 0:20 + 5 × 1:00 / 1:00')
+  && (await evaluate(`JSON.parse(localStorage.getItem('tracker.intervalRun') ?? 'null') === null`)) === true, muscuSummary);
+const belt = await evaluate(`(() => { const b = [...document.querySelectorAll('input[type=checkbox]')].find((i) => i.closest('label')?.textContent.includes('Ceinture cardio')); return b ? { checked: b.checked, disabled: b.disabled } : null; })()`);
+check("ceinture cardio cochée et grisée, FC d'exemple du navigateur", belt?.checked === true && belt?.disabled === true && /FC d'exemple du navigateur/.test(await text('.ui-page')), JSON.stringify(belt));
+console.log('lancer le compteur :', await clickText('Lancer le compteur'));
+await wait(1200);
+check('compteur lancé avant la session', /Départ|Travail 1[/]8/.test(await text('.ivl-live__phase')), await text('.ivl-live__phase'));
+console.log('démarrer :', await clickText('Démarrer'));
+await wait(3500);
+check('session démarrée, le compteur continue', /Travail 1[/]8/.test(await text('.ivl-live__phase'))
+  && (await evaluate(`[...document.querySelectorAll('button.ui-btn--danger')].some((b) => b.textContent.includes('Arrêter') && !b.closest('.ivl'))`)), await text('.ivl-live__phase'));
+await shoot('timer-muscu');
+// « Arrêter » de la session se tient 2 s : le compteur s'arrête avec elle (Q12 du 28/10).
+console.log('arrêter la session :', await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`));
+await wait(2300);
+await evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
+await wait(2500);
+check('session arrêtée : le compteur arrêté avec elle', /Séance arrêtée/.test(await text('.ivl-done'))
+  && /"kind":"stop"/.test(await evaluate(`localStorage.getItem('tracker.intervalRun') ?? ''`)), await text('.ivl-done'));
+check('session terminée, rangée seulement à « Analyser »', /Session terminée/i.test(await text('.ui-page')) && /Analyser/i.test(await text('.ui-page')), (await text('.ui-page')).slice(0, 160));
+check('muscu : position jamais demandée', (await geoCalls()) === geoBefore, `${(await geoCalls()) - geoBefore} demande(s)`);
+console.log('jeter :', await clickText('Jeter'));
+await wait(800);
+
 // --- 5. Téléphone ---
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go('/fractionne/timer');
@@ -235,7 +275,7 @@ await go('/enregistrer?minuterie=1');
 check('390 px : Enregistrer en mode Timer sans débordement', (await overflow()) <= 0, `${await overflow()} px`);
 await shoot('timer-enregistrer-390');
 await go('/fractionne/timer');
-console.log('lancer :', await itemButton('Gainage', 'Lancer'));
+console.log('Timer :', await itemButton('Gainage', 'Timer'));
 await wait(1500);
 check('390 px : compteur en marche sans débordement', (await overflow()) <= 0 && (await evaluate(`!!document.querySelector('.ivl-live')`)), `${await overflow()} px`);
 await shoot('timer-compteur-390');
