@@ -2,6 +2,7 @@ import type { PointData } from '../utils/kinematics';
 import {
   MANEUVER_MAX_STEP_S,
   ORIENTATION_MAX_CONSERVATION,
+  TURN_STRIDE_MIN_S,
   WIND_CONFIDENCE_MIN,
   WIND_ESTIMATION_MIN_SPEED_KN,
 } from './sailingConfig';
@@ -268,6 +269,43 @@ export interface PolarWindEstimate {
 export const CANDIDATE_MIN_SEPARATION = 45;
 
 /**
+ * Intervalle moyen entre deux points, en secondes, au-delà duquel la trace
+ * soutient de moins en moins la polaire : la durée d'un virage. Un enregistreur
+ * économique pose un point quand on avance et se tait dès qu'on ralentit (§10,
+ * point 27) : un virement entier tient dans un seul pas, dont la corde pointe
+ * face au vent, là où la polaire attend l'angle mort, et le point le plus lent
+ * n'est jamais enregistré, si bien que les manœuvres ne peuvent plus orienter
+ * le vent. Une telle trace (517 points en 2 h, un toutes les 14 s en moyenne)
+ * annonçait 90 % de confiance sur une direction fausse de 180°, que
+ * l'utilisateur corrigeait par « Inverser ».
+ */
+export const POLAR_SUPPORT_INTERVAL_S = 5;
+
+/**
+ * Soutien de la trace à la polaire, de 0 à 1 : `POLAR_SUPPORT_INTERVAL_S`
+ * rapporté à l'intervalle moyen entre deux points (la durée de la trace sur son
+ * nombre de pas, pas de reprise de pause exclus), plafonné à 1. Continu, sans
+ * marche : exactement 1 à 1 Hz comme à 5 Hz, 5/14 sur un point toutes les 14 s.
+ * La moyenne de toute la trace, et non la médiane des pas qui nourrissent la
+ * polaire : l'enregistreur économique pose ses points toutes les 6 s en marche
+ * (médiane 6 s, soutien 0,83) et se tait des minutes dès qu'on ralentit ; c'est
+ * ce silence qui lui cache les virages, et seule la moyenne le voit. Vaut 1
+ * sans aucun pas.
+ */
+export const polarSampling = (points: readonly PointData[]): number => {
+  let totalS = 0;
+  let steps = 0;
+  for (let k = 1; k < points.length; k++) {
+    if (points[k].segmentStart) continue;
+    totalS += (points[k].timeMs - points[k - 1].timeMs) / 1000;
+    steps++;
+  }
+  if (steps === 0) return 1;
+  const meanS = totalS / steps;
+  return meanS > POLAR_SUPPORT_INTERVAL_S ? POLAR_SUPPORT_INTERVAL_S / meanS : 1;
+};
+
+/**
  * Variété des caps parcourus : part des secteurs de 10° visités, saturée à
  * douze secteurs. Une session qui a balayé 120° de caps vaut déjà 1.
  */
@@ -368,8 +406,96 @@ const ORIENTATION_WINDOW_S = 12;
 export const TURN_MIN_COHERENCE = 0.6;
 /** Durée, en secondes, de cap stable exigée après un virage. */
 const EXIT_STABILITY_S = 5;
-/** Variation de cap maximale entre deux points, en degrés, pour un cap tenu. */
+/** Variation de cap maximale sur un pas d'au moins `TURN_STRIDE_MIN_S`, en degrés, pour un cap tenu. */
 const EXIT_MAX_STEP_DEG = 45;
+
+/**
+ * Vitesse de rotation minimale, en degrés par seconde, pour que le cap
+ * « tourne franchement » d'un pas au suivant : 2° par pas à 1 Hz, comme
+ * avant, et la même rotation à 5 Hz, où un pas de 2° voulait dire 10°/s.
+ */
+export const TURNING_RATE_MIN_DEG_S = 2;
+
+/**
+ * Indice du point qui clôt un pas d'au moins `TURN_STRIDE_MIN_S` depuis le
+ * point `k` : le premier dont l'horodatage est à 0,9 s au moins, borné à
+ * `last` (règle 2). À 1 Hz, c'est le point suivant ; à 5 Hz, le cinquième.
+ */
+export const strideEnd = (points: readonly PointData[], k: number, last: number): number => {
+  const untilMs = points[k].timeMs + TURN_STRIDE_MIN_S * 1000;
+  let next = k + 1;
+  while (next < last && points[next].timeMs < untilMs) next++;
+  return next;
+};
+
+/**
+ * Vrai si le cap tourne dans le sens `turnSign` du point `from` au point `to`,
+ * à `minRateDegS` au moins (par défaut, franchement : 2°/s).
+ */
+export const isTurningStep = (
+  points: readonly PointData[],
+  from: number,
+  to: number,
+  turnSign: number,
+  minRateDegS: number = TURNING_RATE_MIN_DEG_S
+): boolean => {
+  const step = angleDiff(points[to].bearing, points[from].bearing);
+  const dtS = (points[to].timeMs - points[from].timeMs) / 1000;
+  return Math.sign(step) === turnSign && Math.abs(step) >= minRateDegS * Math.max(dtS, 0);
+};
+
+/** Ce que la fenêtre d'observation ouverte au point `i` dit du virage, sans le vent. */
+export interface TurnWindowScan {
+  /** Dernier point de la fenêtre. */
+  j: number;
+  /** Virage net, en degrés signés, sommé point à point. */
+  cumulativeTurn: number;
+  /**
+   * Somme des rotations, en degrés, lue par pas d'au moins `TURN_STRIDE_MIN_S` :
+   * point à point, cinq pas bruités de 0,2 s sommaient à 5 Hz cinq fois le
+   * bruit d'un pas de 1 s, et la cohérence (virage net sur somme des rotations)
+   * tombait sous son seuil sur presque tous les virages.
+   */
+  totalRotation: number;
+}
+
+/**
+ * Balayage de la fenêtre d'observation d'un virage, commun à la détection des
+ * manœuvres (`analyzeManeuvers`) et à l'orientation du vent (`observeTurns`),
+ * pour que les deux voient les mêmes virages : les points qui tombent à
+ * `windowMs` au plus du point `i`, ou, fenêtre vide, un pas unique jusqu'à
+ * `maxStepMs`. Un enregistreur économique s'est alors tu pendant le virage,
+ * qui tient tout entier dans ce seul pas ; jamais à travers une reprise de
+ * pause, où rien n'a été parcouru.
+ */
+export const scanTurnWindow = (
+  points: readonly PointData[],
+  i: number,
+  windowMs: number,
+  maxStepMs: number
+): TurnWindowScan => {
+  const strideMs = TURN_STRIDE_MIN_S * 1000;
+  let cumulativeTurn = 0;
+  let totalRotation = 0;
+  let strideStart = i;
+  let j = i;
+  while (
+    j + 1 < points.length &&
+    (points[j + 1].timeMs - points[i].timeMs <= windowMs ||
+      (j === i && !points[j + 1].segmentStart && points[j + 1].timeMs - points[i].timeMs <= maxStepMs))
+  ) {
+    cumulativeTurn += angleDiff(points[j + 1].bearing, points[j].bearing);
+    j++;
+    if (points[j].timeMs - points[strideStart].timeMs >= strideMs) {
+      totalRotation += Math.abs(angleDiff(points[j].bearing, points[strideStart].bearing));
+      strideStart = j;
+    }
+  }
+  // Reste de fenêtre plus court qu'un pas : compté tel quel, pour que la somme
+  // des rotations couvre toujours le virage net.
+  if (strideStart < j) totalRotation += Math.abs(angleDiff(points[j].bearing, points[strideStart].bearing));
+  return { j, cumulativeTurn, totalRotation };
+};
 
 /** Un virage franc relevé dans la trace, avec ce qu'il dit du vent. */
 export interface TurnObservation {
@@ -401,59 +527,56 @@ export const observeTurns = (
   let i = 0;
 
   while (i < points.length - 1) {
-    let cumulativeTurn = 0;
-    let totalRotation = 0;
+    // Même balayage que `analyzeManeuvers`, pour que les deux voient les mêmes virages.
+    const scan = scanTurnWindow(points, i, windowMs, MANEUVER_MAX_STEP_S * 1000);
+    let { j, cumulativeTurn } = scan;
     let minSpd = points[i].smoothedSpeed;
     let minIndex = i;
-    let j = i;
-
-    while (
-      j + 1 < points.length &&
-      (points[j + 1].timeMs - points[i].timeMs <= windowMs ||
-        // Fenêtre vide : un enregistreur économique s'est tu pendant le
-        // virage, qui tient alors dans ce seul pas. Même lecture que dans
-        // `analyzeManeuvers`, pour que les deux voient les mêmes virages ;
-        // comme elle, jamais à travers une reprise de pause.
-        (j === i && !points[j + 1].segmentStart && points[j + 1].timeMs - points[i].timeMs <= MANEUVER_MAX_STEP_S * 1000))
-    ) {
-      const step = angleDiff(points[j + 1].bearing, points[j].bearing);
-      cumulativeTurn += step;
-      totalRotation += Math.abs(step);
-      j++;
-      if (points[j].smoothedSpeed < minSpd) {
-        minSpd = points[j].smoothedSpeed;
-        minIndex = j;
+    for (let k = i + 1; k <= j; k++) {
+      if (points[k].smoothedSpeed < minSpd) {
+        minSpd = points[k].smoothedSpeed;
+        minIndex = k;
       }
     }
 
-    const coherent = totalRotation > 0 && Math.abs(cumulativeTurn) / totalRotation >= TURN_MIN_COHERENCE;
+    const coherent = scan.totalRotation > 0 && Math.abs(cumulativeTurn) / scan.totalRotation >= TURN_MIN_COHERENCE;
     // Un virage commence en vol : la sortie d'une chute, où l'on repart
     // depuis un cap quelconque, n'est pas un virage.
     const entrySpeed = points[i].smoothedSpeed;
     const startsFlying = entrySpeed >= minEntrySpeedKn;
 
     if (Math.abs(cumulativeTurn) > ORIENTATION_MIN_TURN_DEG && coherent && startsFlying) {
+      // Prolongation tant que le cap tourne franchement dans le même sens, par
+      // pas d'au moins `TURN_STRIDE_MIN_S` (règle 2), le point le plus lent
+      // suivi sur tous les points du pas.
       const turnSign = Math.sign(cumulativeTurn);
-      while (j + 1 < points.length && points[j + 1].timeMs - points[i].timeMs <= 2 * windowMs) {
-        const step = angleDiff(points[j + 1].bearing, points[j].bearing);
-        if (Math.sign(step) !== turnSign || Math.abs(step) < 2) break;
-        cumulativeTurn += step;
-        j++;
-        if (points[j].smoothedSpeed < minSpd) {
-          minSpd = points[j].smoothedSpeed;
-          minIndex = j;
+      while (j + 1 < points.length) {
+        const next = strideEnd(points, j, points.length - 1);
+        if (points[next].timeMs - points[i].timeMs > 2 * windowMs) break;
+        if (!isTurningStep(points, j, next, turnSign)) break;
+        for (let k = j + 1; k <= next; k++) {
+          cumulativeTurn += angleDiff(points[k].bearing, points[k - 1].bearing);
+          if (points[k].smoothedSpeed < minSpd) {
+            minSpd = points[k].smoothedSpeed;
+            minIndex = k;
+          }
         }
+        j = next;
       }
 
       // Un virage débouche sur un nouveau cap tenu. Le premier pas d'une chute
       // ressemble à un virage propre, mais le cap part ensuite dans tous les
-      // sens : on exige quelques secondes de cap stable après le virage.
+      // sens : on exige quelques secondes de cap stable après le virage, lu
+      // par pas d'au moins `TURN_STRIDE_MIN_S`.
       let exitStable = true;
-      for (let k = j; k + 1 < points.length && points[k + 1].timeMs - points[j].timeMs <= EXIT_STABILITY_S * 1000; k++) {
-        if (Math.abs(angleDiff(points[k + 1].bearing, points[k].bearing)) > EXIT_MAX_STEP_DEG) {
+      for (let k = j; k + 1 < points.length; ) {
+        const next = strideEnd(points, k, points.length - 1);
+        if (points[next].timeMs - points[j].timeMs > EXIT_STABILITY_S * 1000) break;
+        if (Math.abs(angleDiff(points[next].bearing, points[k].bearing)) > EXIT_MAX_STEP_DEG) {
           exitStable = false;
           break;
         }
+        k = next;
       }
 
       if (exitStable) {

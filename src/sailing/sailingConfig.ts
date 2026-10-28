@@ -80,6 +80,18 @@ export const MANEUVER_WINDOW_S = 12;
 export const MANEUVER_MAX_STEP_S = 30;
 
 /**
+ * Durée minimale, en secondes, d'un pas de lecture du cap dans la détection
+ * des virages : somme des rotations (cohérence), prolongation du virage, cap
+ * tenu en sortie. Lus de point à point, cinq pas de 0,2 s cumulent à 5 Hz cinq
+ * fois le bruit d'un pas de 1 s : une session rééchantillonnée y perdait 62
+ * manœuvres sur 68. Lu par pas d'au moins cette durée, le résultat ne dépend
+ * plus de la cadence (règle 2). Un peu sous 1 s, parce qu'une vraie trace à
+ * 1 Hz a du jitter en millisecondes : à 1 s strict, un pas de 998 ms en
+ * avalerait deux. À 1 Hz, un pas est donc un point : rien ne change.
+ */
+export const TURN_STRIDE_MIN_S = 0.9;
+
+/**
  * Temps mort après une manœuvre validée, en secondes. Tout nouveau
  * franchissement d'axe pendant ce délai est ignoré : un virage hésitant ne
  * doit pas être compté deux fois.

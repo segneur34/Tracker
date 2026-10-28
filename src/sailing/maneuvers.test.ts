@@ -6,9 +6,12 @@ import { sampledIndices } from '../core/chartZoom';
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import { trackToPointData, type PointData } from '../utils/kinematics';
 import {
+  WIND_LOCAL_MAX_GAP_MIN,
   analyzeManeuvers,
+  classifyManeuvers,
   estimateWind,
   measureManeuver,
+  prepareManeuverDetection,
   selectWindCandidate,
   windSamplesFrom,
   type ManeuverLocation,
@@ -20,10 +23,13 @@ import { sessionManeuverThresholds } from './sailingConfig';
 import { calculateWindStats, summarizeManeuvers, windChartRows } from './sailingAnalytics';
 import {
   angleDiff,
+  buildWindTimeline,
   circularMean,
   describeWindCandidate,
   estimateWindFromPolar,
   estimateWindPolar,
+  observeTurns,
+  polarSampling,
 } from './wind';
 
 const TRACK_START_MS = Date.parse('2026-01-01T10:00:00Z');
@@ -812,23 +818,55 @@ describe('measureManeuver', () => {
     }
   });
 
-  it('donne les mêmes mesures à 1 Hz et à 5 Hz', () => {
-    // À bruit faible : au-delà, c'est la détection qui ne voit plus les
-    // virages à 5 Hz, un défaut connu qui ne relève pas de la mesure.
+  /** Mêmes manœuvres, mêmes types, mêmes réussites, mesures proches, à 1 Hz et à 5 Hz. */
+  const expectSameMeasures = (noise: NoiseLevel, tolerance: { relaunchS: number; headingDeg: number; gainM: number }) => {
     for (const tack of [false, true]) {
       for (const seed of [1, 2, 3]) {
-        const options = { tack, legKn: tack ? 15 : 18, noise: LOW_NOISE, seed };
+        const options = { tack, legKn: tack ? 15 : 18, noise, seed };
         const at1Hz = analyzeManeuvers(buildNoisySession(tack ? GOOD_TACKS : GOOD_JIBES, options).points, 0, { successThresholdKn: 2 }).locations;
         const at5Hz = analyzeManeuvers(buildNoisySession(tack ? GOOD_TACKS : GOOD_JIBES, { ...options, hz: 5 }).points, 0, { successThresholdKn: 2 }).locations;
 
         expect(at5Hz).toHaveLength(at1Hz.length);
         at1Hz.forEach((a, k) => {
           const b = at5Hz[k];
+          expect(b.type).toBe(a.type);
+          expect(b.success).toBe(a.success);
           expect(Math.abs(a.conservation - b.conservation)).toBeLessThanOrEqual(0.05);
-          expect(Math.abs(a.relaunchS! - b.relaunchS!)).toBeLessThanOrEqual(1.5);
-          expect(Math.abs(a.headingChange - b.headingChange)).toBeLessThanOrEqual(3);
-          expect(Math.abs(a.windwardGainM! - b.windwardGainM!)).toBeLessThanOrEqual(3);
+          expect(Math.abs(a.relaunchS! - b.relaunchS!)).toBeLessThanOrEqual(tolerance.relaunchS);
+          expect(Math.abs(a.headingChange - b.headingChange)).toBeLessThanOrEqual(tolerance.headingDeg);
+          expect(Math.abs(a.windwardGainM! - b.windwardGainM!)).toBeLessThanOrEqual(tolerance.gainM);
         });
+      }
+    }
+  };
+
+  it('donne les mêmes mesures à 1 Hz et à 5 Hz', () => {
+    expectSameMeasures(LOW_NOISE, { relaunchS: 1.5, headingDeg: 3, gainM: 3 });
+  });
+
+  it('donne les mêmes mesures à 1 Hz et à 5 Hz sous un bruit indépendant d\'un point à l\'autre', () => {
+    // Bruit réaliste, positions et Doppler compris : lue point à point, la
+    // somme des rotations cumulait à 5 Hz cinq fois le bruit d'un pas de 1 s,
+    // et la cohérence écartait presque tous les virages (lot 30). Nombre,
+    // types, réussites et conservation sont ceux du 1 Hz ; cap et gain gardent
+    // le bruit des bornes de la mesure au creux du virement le plus lent
+    // (3,75 nœuds, un pas de 0,4 m pour 0,5 m d'erreur de position), qui frappe
+    // une cadence comme l'autre : 67° à 1 Hz pour un virage de 90°, 69° à 5 Hz
+    // sur une autre graine.
+    expectSameMeasures(REALISTIC_NOISE, { relaunchS: 2, headingDeg: 20, gainM: 15 });
+  });
+
+  it('observeTurns relève les mêmes virages, vol perdu ou non, à 1 Hz et à 5 Hz', () => {
+    for (const tack of [false, true]) {
+      for (const seed of [1, 2, 3]) {
+        const options = { tack, legKn: tack ? 15 : 18, noise: REALISTIC_NOISE, seed };
+        const at1Hz = observeTurns(buildNoisySession(tack ? GOOD_TACKS : GOOD_JIBES, options).points, 5);
+        const at5Hz = observeTurns(buildNoisySession(tack ? GOOD_TACKS : GOOD_JIBES, { ...options, hz: 5 }).points, 5);
+
+        expect(at1Hz).toHaveLength(3);
+        expect(at5Hz.map((t) => t.slow)).toEqual(at1Hz.map((t) => t.slow));
+        // La bissectrice sommée pas à pas garde le bruit du cap au point le plus lent.
+        at1Hz.forEach((a, k) => expect(Math.abs(angleDiff(a.midHeading, at5Hz[k].midHeading))).toBeLessThanOrEqual(20));
       }
     }
   });
@@ -998,6 +1036,26 @@ describe('estimateWind', () => {
       expect(m.conservation).toBeGreaterThan(0.5);
     }
     expect(distanceTo(estimateWind(track).direction, 0)).toBeLessThanOrEqual(8);
+  });
+
+  it('rabat la confiance d\'une trace clairsemée sous le seuil de fiabilité', () => {
+    // Session dense par bords, puis la même telle qu'un enregistreur économique
+    // la rend (un point toutes les 17 s, caps relus en cordes par la chaîne
+    // réelle) : la polaire n'a presque rien à dire, le vent est demandé à
+    // l'utilisateur au lieu d'être affiché avec aplomb (§10, point 27).
+    const dense = buildLegSession(upwindDownwindLegs(6), () => 0, { integratePosition: true });
+    const raw: RawTrackPoint[] = dense
+      .filter((_, k) => k % 17 === 0)
+      .map((p) => ({ lat: p.lat, lon: p.lon, time: p.time as string, speedMs: knotsToMs(p.speed) }));
+    const sparse = trackToPointData(computeKinematics(raw, { medianWindowSeconds: 3 }));
+
+    expect(polarSampling(dense)).toBe(1);
+    expect(polarSampling(sparse)).toBeCloseTo(5 / 17, 6);
+    const denseEstimate = estimateWind(dense);
+    const sparseEstimate = estimateWind(sparse);
+    expect(denseEstimate.reliable).toBe(true);
+    expect(sparseEstimate.confidence).toBeLessThanOrEqual(denseEstimate.confidence / 2);
+    expect(sparseEstimate.reliable).toBe(false);
   });
 
   // Protocole 3 : courant traversier constant.
@@ -1457,5 +1515,65 @@ describe('analyzeManeuvers, détection robuste au bruit de cap', () => {
     expect(distanceTo(stats.locations[0].localWind, 0)).toBeLessThanOrEqual(10);
     // Les manœuvres nourrissent donc de nouveau l'estimation du vent.
     expect(windSamplesFrom(stats)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Détection préparée une fois, classée par vent (lot 30)
+// ---------------------------------------------------------------------------
+
+describe('prepareManeuverDetection et classifyManeuvers', () => {
+  /** Sessions de toutes natures : bruitées à 1 et 5 Hz, scriptées à 1 et 5 Hz, par bords, clairsemée. */
+  const sessions = (): [string, PointData[], ManeuverOptions][] => {
+    const all: [string, PointData[], ManeuverOptions][] = [];
+    for (const tack of [false, true]) {
+      for (const hz of [1, 5]) {
+        all.push([`bruitée ${tack ? 'virements' : 'empannages'} ${hz} Hz`, buildNoisySession(tack ? GOOD_TACKS : GOOD_JIBES, { tack, legKn: tack ? 15 : 18, seed: 2, hz }).points, { successThresholdKn: 2 }]);
+      }
+    }
+    for (const name of Object.keys(SCENARIOS)) {
+      const s = SCENARIOS[name];
+      all.push([`${name} 1 Hz`, scriptedSession(s.durationS, s.headings, s.speeds, 1), FLIGHT_OPTIONS]);
+      all.push([`${name} 5 Hz`, scriptedSession(s.durationS, s.headings, s.speeds, 0.2), FLIGHT_OPTIONS]);
+    }
+    all.push(['par bords', buildLegSession(upwindDownwindLegs(6), () => 0), { successThresholdKn: 8 }]);
+    all.push(['bords courts', buildLegSession(upwindDownwindLegs(10, 18), () => 0), { successThresholdKn: 8 }]);
+    all.push(['clairsemée', buildSparseTurnTrack(22), { successThresholdKn: 8 }]);
+    return all;
+  };
+
+  it('donne, vent après vent sur une même détection, exactement ce qu\'une analyse neuve donne', () => {
+    // Les vents se suivent dans un ordre varié : la borne basse de la recherche
+    // du cœur d'un virage dépend de la manœuvre précédente, donc du vent, et
+    // chaque lecture mémorisée doit valoir pour le vent qui la relit.
+    for (const [name, points, options] of sessions()) {
+      const detection = prepareManeuverDetection(points, options);
+      const timeline = buildWindTimeline(
+        windSamplesFrom(analyzeManeuvers(points, 0, options)).map((m) => ({ timeMs: m.timeMs, direction: m.localWind })),
+        0,
+        WIND_LOCAL_MAX_GAP_MIN * 60 * 1000
+      );
+      for (const wind of [0, 90, 180, 270, 23, timeline, 0]) {
+        expect(classifyManeuvers(detection, wind, options), name).toEqual(analyzeManeuvers(points, wind, options));
+      }
+    }
+  });
+
+  it('estime le même vent avec et sans détection préparée', () => {
+    for (const [name, points] of sessions()) {
+      const options: WindEstimationOptions = { minSpeedKn: 3, successThresholdKn: 8, minEntrySpeedKn: 2, flightThresholdKn: 8, stillSpeedKn: 1 };
+      const detection = prepareManeuverDetection(points, { minEntrySpeedKn: 2, stillSpeedKn: 1 });
+      expect(estimateWind(points, { ...options, detection }), name).toEqual(estimateWind(points, options));
+      expect(estimateWind(points, { detection: prepareManeuverDetection(points) }), name).toEqual(estimateWind(points));
+    }
+  });
+
+  it('refuse une détection préparée sur une autre trace ou avec d\'autres réglages', () => {
+    const points = buildLegSession(upwindDownwindLegs(6), () => 0);
+    const other = buildLegSession(upwindDownwindLegs(6), () => 0);
+    expect(() => estimateWind(points, { detection: prepareManeuverDetection(other) })).toThrow();
+    expect(() => estimateWind(points, { minEntrySpeedKn: 2, detection: prepareManeuverDetection(points) })).toThrow();
+    expect(() => estimateWind(points, { stillSpeedKn: 1, detection: prepareManeuverDetection(points, { stillSpeedKn: 2 }) })).toThrow();
+    expect(() => estimateWind(points, { minEntrySpeedKn: 2, detection: prepareManeuverDetection(points, { minEntrySpeedKn: 2 }) })).not.toThrow();
   });
 });

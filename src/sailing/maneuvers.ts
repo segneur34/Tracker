@@ -24,8 +24,12 @@ import {
   circularMean,
   describeWindCandidate,
   estimateWindPolar,
+  isTurningStep,
   normalizeAngle,
+  polarSampling,
   polarWindCandidates,
+  scanTurnWindow,
+  strideEnd,
   type PolarWindEstimate,
   type WindEstimate,
   type WindOrientationSource,
@@ -319,7 +323,41 @@ export interface WindEstimationOptions {
   flightThresholdKn?: number;
   /** Plancher d'arrêt, en nœuds (`ManeuverOptions.stillSpeedKn`). */
   stillSpeedKn?: number;
+  /**
+   * Détection préparée une fois sur `points` (`prepareManeuverDetection`), à
+   * classer par candidat et par passe ; absente, l'estimation la prépare
+   * elle-même. Elle doit porter sur la même trace, avec les mêmes réglages de
+   * détection (`minEntrySpeedKn`, `stillSpeedKn`), sans quoi elle est refusée.
+   */
+  detection?: ManeuverDetection;
 }
+
+/**
+ * Détection à classer : celle que les options apportent, vérifiée (même
+ * trace, mêmes réglages de détection), sinon préparée ici.
+ */
+const detectionFor = (points: PointData[], options: WindEstimationOptions): ManeuverDetection => {
+  const detectionOptions: ManeuverDetectionOptions = {
+    minEntrySpeedKn: options.minEntrySpeedKn,
+    stillSpeedKn: options.stillSpeedKn,
+  };
+  const given = options.detection;
+  if (!given) return prepareManeuverDetection(points, detectionOptions);
+  if (given.points !== points) throw new Error('La détection préparée ne porte pas sur cette trace.');
+  const expected = resolveDetectionSettings(detectionOptions);
+  for (const key of Object.keys(expected) as (keyof DetectionSettings)[]) {
+    if (given.settings[key] !== expected[key]) {
+      throw new Error(`La détection préparée n'a pas le réglage ${key} de cette estimation.`);
+    }
+  }
+  return given;
+};
+
+/** Réglages du classement, tirés de ceux de l'estimation du vent. */
+const classificationOptions = (options: WindEstimationOptions): ManeuverClassificationOptions => ({
+  successThresholdKn: options.successThresholdKn,
+  flightThresholdKn: options.flightThresholdKn,
+});
 
 /** Direction retenue parmi les candidats de la polaire, et ce qui la qualifie. */
 export interface CandidateSelection {
@@ -355,12 +393,6 @@ export const selectWindCandidate = (
   options: WindEstimationOptions = {}
 ): CandidateSelection => {
   const minSpeedKn = options.minSpeedKn ?? WIND_ESTIMATION_MIN_SPEED_KN;
-  const maneuverOptions: ManeuverOptions = {
-    successThresholdKn: options.successThresholdKn,
-    minEntrySpeedKn: options.minEntrySpeedKn,
-    flightThresholdKn: options.flightThresholdKn,
-    stillSpeedKn: options.stillSpeedKn,
-  };
   const fallback: CandidateSelection = {
     direction: polar.direction,
     orientedBy: polar.orientedBy,
@@ -368,6 +400,8 @@ export const selectWindCandidate = (
     agreementScore: 0,
   };
   if (points.length === 0) return fallback;
+  const detection = detectionFor(points, options);
+  const classification = classificationOptions(options);
 
   // Candidats : les maxima du score, plus l'opposé du meilleur, jumeau au
   // vent arrière que seules les manœuvres peuvent écarter avec certitude.
@@ -381,7 +415,7 @@ export const selectWindCandidate = (
   let chosen: PolarWindEstimate | null = null;
   let bestScore = -Infinity;
   for (const candidate of candidates) {
-    const stats = analyzeManeuvers(points, candidate.direction, maneuverOptions);
+    const stats = classifyManeuvers(detection, candidate.direction, classification);
     const { count, consistent, inconsistent } = maneuverAgreement(stats);
     if (count === 0) continue;
     const score = consistent - 2 * inconsistent;
@@ -430,17 +464,14 @@ export const estimateWind = (
   options: WindEstimationOptions = {}
 ): WindEstimate => {
   const minSpeedKn = options.minSpeedKn ?? WIND_ESTIMATION_MIN_SPEED_KN;
-  const maneuverOptions: ManeuverOptions = {
-    successThresholdKn: options.successThresholdKn,
-    minEntrySpeedKn: options.minEntrySpeedKn,
-    flightThresholdKn: options.flightThresholdKn,
-    stillSpeedKn: options.stillSpeedKn,
-  };
 
   const polar = estimateWindPolar(points, { minSpeedKn });
   if (points.length === 0) return polar;
 
-  const selection = selectWindCandidate(points, polar, options);
+  // La détection est préparée une fois, pour les candidats et les deux passes.
+  const detection = detectionFor(points, options);
+  const classification = classificationOptions(options);
+  const selection = selectWindCandidate(points, polar, { ...options, detection });
   const orientedBy = selection.orientedBy;
   const polarConfidence = selection.polarConfidence;
   let direction = selection.direction;
@@ -451,7 +482,7 @@ export const estimateWind = (
   let wind: WindReference = direction;
 
   for (let iteration = 0; iteration < WIND_REFINEMENT_ITERATIONS; iteration++) {
-    const samples = windSamplesFrom(analyzeManeuvers(points, wind, maneuverOptions));
+    const samples = windSamplesFrom(classifyManeuvers(detection, wind, classification));
     if (samples.length === 0) break;
 
     const { mean, R } = circularMean(samples.map((m) => m.localWind));
@@ -472,7 +503,12 @@ export const estimateWind = (
     );
   }
 
-  const confidence = Math.max(polarConfidence, maneuverConfidence * 0.9);
+  // Trace clairsemée (enregistreur économique) : la polaire comme les caps
+  // stabilisés sont lus sur des cordes qui traversent les virages, et la
+  // confiance annoncée se rabat sur le soutien de la trace (`polarSampling`),
+  // jusqu'à demander le vent à l'utilisateur. Les poids ci-dessus n'en
+  // tiennent pas compte : la direction reste la même, seule la confiance baisse.
+  const confidence = Math.max(polarConfidence, maneuverConfidence * 0.9) * polarSampling(points);
 
   return {
     direction: Math.round(direction) % 360,
@@ -598,27 +634,6 @@ const APPROACH_SPEED_FROM_S = 12;
 const APPROACH_SPEED_TO_S = 2;
 /** Recherche du point le plus lent au-delà de la rotation, en secondes. */
 const APEX_SEARCH_AFTER_S = 10;
-/**
- * Vitesse de rotation minimale, en degrés par seconde, pour que le cap
- * « tourne franchement » d'un point au suivant : 2° par pas à 1 Hz, comme
- * avant, et la même rotation à 5 Hz, où un pas de 2° voulait dire 10°/s.
- */
-const TURNING_RATE_MIN_DEG_S = 2;
-
-/**
- * Vrai si le cap tourne dans le sens `turnSign` du point `k` au suivant, à
- * `minRateDegS` au moins (par défaut, franchement : 2°/s).
- */
-const isTurningStep = (
-  points: PointData[],
-  k: number,
-  turnSign: number,
-  minRateDegS: number = TURNING_RATE_MIN_DEG_S
-): boolean => {
-  const step = angleDiff(points[k + 1].bearing, points[k].bearing);
-  const dtS = (points[k + 1].timeMs - points[k].timeMs) / 1000;
-  return Math.sign(step) === turnSign && Math.abs(step) >= minRateDegS * Math.max(dtS, 0);
-};
 
 /**
  * Départ du cœur d'un virage tournant dans le sens `turnSign`, entre les
@@ -863,9 +878,50 @@ const crossingMs = (points: PointData[], k: number, fromDeg: number, toDeg: numb
  */
 export const measureManeuver = (points: PointData[], turn: DetectedTurn, windDeg: number): ManeuverMeasure => {
   const { triggerIndex, endIndex, turnSign, type } = turn;
+  const rotation = measureRotation(points, triggerIndex, endIndex, turnSign, turnHeadings(points, triggerIndex, endIndex));
+  const { rotationStartMs: _startMs, rotationEndMs: _endMs, ...measure } = rotation;
+  return { ...measure, gainM: windwardGainM(points, rotation, type, windDeg) };
+};
 
+/** Mesures d'une manœuvre qui ne dépendent pas du vent : tout sauf le gain au vent. */
+export interface RotationMeasure extends Omit<ManeuverMeasure, 'gainM'> {
+  /** Instants où le cap quitte celui d'approche et atteint celui de sortie, pour le gain au vent. */
+  rotationStartMs: number;
+  rotationEndMs: number;
+}
+
+/**
+ * Gain au vent d'une rotation mesurée, en mètres : vers le vent pour un
+ * virement, à l'opposé pour un empannage, chacun compté dans le sens où il
+ * fait avancer. Seule mesure qui lise le vent : elle se refait par candidat,
+ * sur une rotation mesurée une fois.
+ */
+export const windwardGainM = (points: PointData[], rotation: RotationMeasure, type: 'tack' | 'jibe', windDeg: number): number => {
+  const gainDirection = type === 'tack' ? windDeg : windDeg + 180;
+  return distanceAlongBetween(
+    points,
+    rotation.rotationStartIndex,
+    rotation.rotationEndIndex,
+    rotation.rotationStartMs,
+    rotation.rotationEndMs,
+    gainDirection
+  );
+};
+
+/**
+ * Mesure de la rotation d'un virage détecté, du cap d'approche au cap de
+ * sortie (`headings`, lus sur `triggerIndex` et `endIndex`), sans le vent ni
+ * le type : ce que `measureManeuver` fait, le gain au vent mis à part.
+ */
+export const measureRotation = (
+  points: PointData[],
+  triggerIndex: number,
+  endIndex: number,
+  turnSign: number,
+  headings: TurnHeadings
+): RotationMeasure => {
   // Cap déroulé, du cap d'approche au cap de sortie, lus en médiane.
-  const { first, last, headingAt, approach, exit } = turnHeadings(points, triggerIndex, endIndex);
+  const { first, last, headingAt, approach, exit } = headings;
   const approachHeading = approach.heading;
   const exitHeading = exit.heading;
   /** Changement de cap compté dans le sens du virage. */
@@ -927,13 +983,12 @@ export const measureManeuver = (points: PointData[], turn: DetectedTurn, windDeg
 
   const relaunchIndex = entrySpeed > 0 ? findRelaunch(points, apexIndex, entrySpeed) : null;
   const exitIndex = relaunchIndex === null ? rotationEnd : Math.max(rotationEnd, relaunchIndex);
-  // Vers le vent pour un virement, à l'opposé pour un empannage : chacun est
-  // compté dans le sens où il fait avancer.
-  const gainDirection = type === 'tack' ? windDeg : windDeg + 180;
 
   return {
     rotationStartIndex: rotationStart,
     rotationEndIndex: rotationEnd,
+    rotationStartMs,
+    rotationEndMs,
     apexIndex,
     exitIndex,
     entrySpeed,
@@ -942,12 +997,119 @@ export const measureManeuver = (points: PointData[], turn: DetectedTurn, windDeg
     relaunchS: relaunchIndex === null ? null : (points[relaunchIndex].timeMs - points[apexIndex].timeMs) / 1000,
     headingChange: Math.abs(exitHeading - approachHeading),
     distanceM: relaunchIndex === null ? null : distanceBetween(points, rotationStart, exitIndex),
-    gainM: distanceAlongBetween(points, rotationStart, rotationEnd, rotationStartMs, rotationEndMs, gainDirection),
   };
 };
 
+// ---------------------------------------------------------------------------
+// Détection des virages, une fois par trace ; classement, par vent
+// ---------------------------------------------------------------------------
+
+/** Réglages de la détection, résolus : ceux de `ManeuverOptions` que le vent ne touche pas. */
+export interface DetectionSettings {
+  minEntrySpeedKn: number;
+  windowMs: number;
+  maxStepMs: number;
+  minDistanceM: number;
+  minCoherence: number;
+  fullTurnDeg: number;
+  coreRateDegS: number;
+  stillSpeedKn: number;
+}
+
+/** Réglages de la seule détection, parmi `ManeuverOptions`. */
+export type ManeuverDetectionOptions = Pick<
+  ManeuverOptions,
+  'minEntrySpeedKn' | 'windowSeconds' | 'maxStepSeconds' | 'minDistanceM' | 'minCoherence' | 'fullTurnDeg' | 'coreRateDegS' | 'stillSpeedKn'
+>;
+
+/** Réglages du seul classement, parmi `ManeuverOptions` : ceux qui vont avec le vent. */
+export type ManeuverClassificationOptions = Pick<ManeuverOptions, 'successThresholdKn' | 'flightThresholdKn' | 'cooldownSeconds'>;
+
+const resolveDetectionSettings = (options: ManeuverDetectionOptions): DetectionSettings => ({
+  minEntrySpeedKn: options.minEntrySpeedKn ?? MANEUVER_MIN_ENTRY_SPEED_KN,
+  windowMs: (options.windowSeconds ?? MANEUVER_WINDOW_S) * 1000,
+  maxStepMs: (options.maxStepSeconds ?? MANEUVER_MAX_STEP_S) * 1000,
+  minDistanceM: options.minDistanceM ?? MANEUVER_MIN_DISTANCE_M,
+  minCoherence: options.minCoherence ?? MANEUVER_MIN_COHERENCE,
+  fullTurnDeg: options.fullTurnDeg ?? MANEUVER_FULL_TURN_DEG,
+  coreRateDegS: options.coreRateDegS ?? MANEUVER_CORE_RATE_DEG_S,
+  stillSpeedKn: options.stillSpeedKn ?? getStillSpeedKn(),
+});
+
 /**
- * Détecte virements et empannages.
+ * Ce que la fenêtre d'observation ouverte au point `i` dit, sans le vent :
+ * rien d'observable, un virage écarté avant d'être lu, ou un virage à lire.
+ */
+export type WindowReading =
+  | { kind: 'nothing' }
+  | { kind: 'rejected'; motif: 'incoherent' | 'slowEntry' | 'tooShort'; endMs: number; turnDeg: number }
+  | {
+      kind: 'turn';
+      /** Dernier point de la fenêtre, prolongation comprise. */
+      j: number;
+      /** Virage sommé pas à pas, prolongation comprise, en degrés signés. */
+      cumulativeTurn: number;
+      turnSign: number;
+      /** Point le plus lent vu par la détection, et sa vitesse. */
+      anchorIndex: number;
+      anchorSpeed: number;
+      /** Borne basse de la recherche du cœur du virage quand aucune manœuvre précédente ne la limite. */
+      lowestFree: number;
+    };
+
+type TurnWindow = Extract<WindowReading, { kind: 'turn' }>;
+
+const NOTHING: WindowReading = { kind: 'nothing' };
+
+/**
+ * Virage lu depuis sa borne basse `lowest`, sans le vent : son verdict quand
+ * le vent n'y change rien (planche arrêtée, virage trop petit, tour complet),
+ * sinon tout ce que le classement et la mesure reçoivent.
+ */
+export type TurnReading =
+  | { verdict: 'still' }
+  | { verdict: 'small'; turn: number }
+  | { verdict: 'fullTurn'; turn: number; turnStart: number; turnEnd: number; turnEndMs: number }
+  | {
+      verdict: 'candidate';
+      /** Virage du cap d'approche au cap de sortie, compté dans le sens du virage. */
+      turn: number;
+      turnSign: number;
+      turnStart: number;
+      turnEnd: number;
+      turnEndMs: number;
+      headings: TurnHeadings;
+      /** Cap stabilisé avant le virage, ou sa fenêtre médiane ; `null` sans l'un ni l'autre. */
+      before: StableSegment | null;
+      stableHeadings: boolean;
+      bisector: number;
+      /** Mesure de la rotation, faite à la première manœuvre classée. */
+      rotation: RotationMeasure | null;
+    };
+
+type CandidateTurn = Extract<TurnReading, { verdict: 'candidate' }>;
+
+const STILL: TurnReading = { verdict: 'still' };
+
+/**
+ * Détection des virages d'une trace, préparée une fois pour tous les vents :
+ * la trace, ses réglages de détection, et ses lectures, mémorisées à la
+ * demande. Seuls le temps mort, le changement d'amures, le classement, le gain
+ * au vent et la réussite dépendent du vent (`classifyManeuvers`).
+ */
+export interface ManeuverDetection {
+  readonly points: PointData[];
+  readonly settings: DetectionSettings;
+  /** Lecture de la fenêtre ouverte au point `i`. */
+  readonly windowAt: (i: number) => WindowReading;
+  /** Lecture du virage de la fenêtre `i` (de genre `turn`) depuis la borne basse `lowest`. */
+  readonly turnAt: (i: number, lowest: number) => TurnReading;
+  /** Mesure de la rotation d'un virage candidat, faite une fois. */
+  readonly rotationOf: (reading: CandidateTurn) => RotationMeasure;
+}
+
+/**
+ * Prépare la détection des virages de `points`, une fois pour tous les vents.
  *
  * Fenêtre d'observation et temps mort sont en secondes : le même virage doit
  * être compté une fois, qu'il ait été enregistré à 1 Hz ou à 5 Hz.
@@ -955,31 +1117,230 @@ export const measureManeuver = (points: PointData[], turn: DetectedTurn, windDeg
  * La fenêtre se déclenche sur le virage sommé pas à pas ; le virage se juge
  * ensuite du cap d'approche au cap de sortie, lus en médiane (`turnHeadings`) :
  * son ampleur, sa bissectrice et son classement ne dépendent plus du bruit du
- * cap. Il doit changer d'amures (sinon c'est une abattée, un loff ou une
- * chute) ; un tour complet n'est pas compté, ni, quand le seuil de vol est
- * donné, un demi-tour entamé en dessous.
- *
- * Le vent local est la bissectrice des caps stabilisés avant et après le
+ * cap. Le vent local est la bissectrice des caps stabilisés avant et après le
  * virage, et non celle du virage brut : l'abattée qui suit une manœuvre est
- * souvent asymétrique et fausserait l'angle. Faute de segments stabilisés,
- * on retombe sur la bissectrice des caps médians.
+ * souvent asymétrique et fausserait l'angle. Faute de segments stabilisés, on
+ * retombe sur la bissectrice des caps médians.
+ *
+ * Rien ici ne lit le vent : l'estimation du vent classe cette détection par
+ * candidat, puis le module par vent global et par vent local, sans refaire le
+ * balayage de la trace (cinq à six fois, 0,5 s par mouvement du seuil sur 3 h
+ * à 5 Hz, §10 point 23). Les lectures sont mémorisées par fenêtre, et par
+ * borne basse de recherche du cœur du virage, qui seule dépend de la manœuvre
+ * précédente, donc du vent.
  */
-export const analyzeManeuvers = (
-  points: PointData[],
+export const prepareManeuverDetection = (points: PointData[], options: ManeuverDetectionOptions = {}): ManeuverDetection => {
+  const settings = resolveDetectionSettings(options);
+  const { minEntrySpeedKn, windowMs, maxStepMs, minDistanceM, minCoherence, fullTurnDeg, coreRateDegS, stillSpeedKn } = settings;
+  const n = points.length;
+  const windows = new Array<WindowReading | undefined>(n);
+  /** Virages lus depuis leur borne basse libre, par `i`. */
+  const turns = new Array<TurnReading | undefined>(n);
+  /** Virages lus depuis une borne basse limitée par la manœuvre précédente, par `i * (n + 1) + lowest`. */
+  const turnsFrom = new Map<number, TurnReading>();
+
+  const readWindow = (i: number): WindowReading => {
+    // Fenêtre d'observation : les points à `windowMs` au plus, ou, fenêtre
+    // vide (enregistreur économique qui s'est tu pendant le virage), un pas
+    // unique jusqu'à `maxStepMs`. Le virage net y est sommé point à point, la
+    // somme des rotations par pas d'au moins `TURN_STRIDE_MIN_S`.
+    const scan = scanTurnWindow(points, i, windowMs, maxStepMs);
+    let { j, cumulativeTurn } = scan;
+    // Point le plus lent vu par la détection. Il date la manœuvre, à l'instant
+    // où le classement lit le vent, et nourrit la lecture qu'en fait
+    // l'estimation du vent (`windCriteria`). Il omet le dernier point de la
+    // fenêtre initiale : il reste tel quel, car le déplacer changerait le
+    // classement et le vent (§10, points 21 et 70). La vitesse minimale
+    // affichée est celle de `measureRotation`, sur toute la rotation.
+    let anchorSpeed = Infinity;
+    let anchorIndex = i;
+    for (let k = i; k < j; k++) {
+      if (points[k].smoothedSpeed < anchorSpeed) {
+        anchorSpeed = points[k].smoothedSpeed;
+        anchorIndex = k;
+      }
+    }
+
+    // Rien d'observable : fin de trace, ou coupure d'enregistrement trop
+    // longue pour qu'un virage puisse encore s'y lire. Un pas unique retenu
+    // ci-dessus dure, lui, plus longtemps que la fenêtre entière.
+    if (points[j].timeMs - points[i].timeMs < windowMs * 0.5) return NOTHING;
+    if (!(Math.abs(cumulativeTurn) > MANEUVER_MIN_TURN_DEG)) return NOTHING;
+
+    // Une chute fait aussi tourner le cap de plus de 60°, mais dans tous les
+    // sens : le virage net est petit devant la somme des rotations. Un vrai
+    // virage tourne toujours du même côté.
+    const endMs = points[j].timeMs;
+    const coherent = scan.totalRotation > 0 && Math.abs(cumulativeTurn) / scan.totalRotation >= minCoherence;
+    if (!coherent) return { kind: 'rejected', motif: 'incoherent', endMs, turnDeg: cumulativeTurn };
+    if (!(points[i].smoothedSpeed > minEntrySpeedKn)) return { kind: 'rejected', motif: 'slowEntry', endMs, turnDeg: cumulativeTurn };
+    // Un virage déplace le bateau. Sur place, le cap n'est que du bruit de
+    // position, et un virage lu en un seul pas est toujours « cohérent ».
+    if (!(distanceBetween(points, i, j) >= minDistanceM)) return { kind: 'rejected', motif: 'tooShort', endMs, turnDeg: cumulativeTurn };
+
+    // La fenêtre s'est déclenchée dès 60° de virage, souvent avant la fin
+    // de celui-ci. On prolonge l'observation tant que le cap continue de
+    // tourner dans le même sens, par pas d'au moins `TURN_STRIDE_MIN_S`
+    // (règle 2), pour mesurer le virage complet ; le point le plus lent est
+    // suivi sur tous les points du pas.
+    const turnSign = Math.sign(cumulativeTurn);
+    while (j + 1 < n) {
+      const next = strideEnd(points, j, n - 1);
+      if (points[next].timeMs - points[i].timeMs > 2 * windowMs) break;
+      if (!isTurningStep(points, j, next, turnSign)) break;
+      for (let k = j + 1; k <= next; k++) {
+        cumulativeTurn += angleDiff(points[k].bearing, points[k - 1].bearing);
+        if (points[k].smoothedSpeed < anchorSpeed) {
+          anchorSpeed = points[k].smoothedSpeed;
+          anchorIndex = k;
+        }
+      }
+      j = next;
+    }
+
+    // Borne basse de la recherche du cœur du virage, cherchée en reculant
+    // depuis `i`, jamais depuis le début de la trace : le coût reste celui
+    // d'une fenêtre, quel que soit le nombre de virages écartés avant la
+    // première manœuvre retenue. La manœuvre précédente peut la relever.
+    let lowestFree = i;
+    while (lowestFree > 0 && points[lowestFree - 1].timeMs >= points[i].timeMs - windowMs) lowestFree--;
+
+    return { kind: 'turn', j, cumulativeTurn, turnSign, anchorIndex, anchorSpeed, lowestFree };
+  };
+
+  const readTurn = (i: number, window: TurnWindow, lowest: number): TurnReading => {
+    const { j, turnSign } = window;
+
+    // Début réel du virage : le départ de son cœur (`turnCoreStart`), qui
+    // peut précéder le déclenchement (virage enchaîné, déjà entamé à la fin
+    // du temps mort) ou le suivre (fenêtre déclenchée sur une dérive lente
+    // pendant le décollage). Sans cœur, premier pas de la fenêtre où le cap
+    // tourne franchement.
+    let turnStart = turnCoreStart(points, lowest, j, turnSign, coreRateDegS) ?? i;
+    if (turnStart === i) {
+      for (let k = i; k < j; ) {
+        const next = strideEnd(points, k, j);
+        if (isTurningStep(points, k, next, turnSign)) {
+          turnStart = k;
+          break;
+        }
+        k = next;
+      }
+    }
+
+    // Fin du virage : le premier point où le cap a presque fini de tourner
+    // dans son sens, à max(10°, 10 % du virage) près, comme la fin de la
+    // rotation de `measureRotation`. La fenêtre court 12 s après son
+    // déclenchement : quand celui-ci tombe au milieu du virage (fin d'un
+    // temps mort), elle déborde sur le bord suivant, où se lisait alors le
+    // cap de sortie, et le temps mort compté depuis elle mangeait la
+    // manœuvre enchaînée.
+    const rotations = [0];
+    let maxRotation = 0;
+    for (let k = turnStart + 1; k <= j; k++) {
+      const rotation = rotations[rotations.length - 1] + turnSign * angleDiff(points[k].bearing, points[k - 1].bearing);
+      rotations.push(rotation);
+      maxRotation = Math.max(maxRotation, rotation);
+    }
+    const endEdge = Math.max(ROTATION_EDGE_MIN_DEG, ROTATION_EDGE_SHARE * maxRotation);
+    let turnEnd = j;
+    for (let k = turnStart + 1; k <= j; k++) {
+      if (rotations[k - turnStart] >= maxRotation - endEdge) {
+        turnEnd = k;
+        break;
+      }
+    }
+    const turnEndMs = points[turnEnd].timeMs;
+
+    // Virage du cap d'approche au cap de sortie, compté dans le sens du
+    // virage : il juge l'ampleur, la bissectrice et le classement, à la place
+    // du virage sommé pas à pas, qui n'a servi qu'à déclencher.
+    const headings = turnHeadings(points, turnStart, turnEnd);
+    // Un cap ne se lit qu'en mouvement : planche arrêtée après une chute,
+    // il n'est que du bruit de position, et la « sortie » n'en est pas une.
+    if (headings.approach.meanSpeed < stillSpeedKn || headings.exit.meanSpeed < stillSpeedKn) return STILL;
+    const turn = turnSign * (headings.exit.heading - headings.approach.heading);
+    if (turn <= MANEUVER_MIN_TURN_DEG) return { verdict: 'small', turn };
+    if (turn >= fullTurnDeg) return { verdict: 'fullTurn', turn, turnStart, turnEnd, turnEndMs };
+
+    const before = stableSegment(points, turnStart, -1) ?? medianStableSegment(headings.approach);
+    const after = stableSegment(points, turnEnd, 1) ?? medianStableSegment(headings.exit);
+    const stableHeadings = before !== null && after !== null;
+
+    // Bissectrice des deux caps, parcourue dans le sens du virage : pour un
+    // virement cet arc contient la direction du vent, pour un empannage son
+    // opposé. Le sens compte : sur un virage de 180°, l'arc court est
+    // indéfini et seule la direction de rotation départage.
+    let bisector = normalizeAngle(headings.approach.heading + (turnSign * turn) / 2);
+    if (before && after) {
+      let delta = angleDiff(after.heading, before.heading);
+      if (Math.sign(delta) !== turnSign && Math.abs(delta) > 150) delta += turnSign * 360;
+      // Des caps stabilisés qui contredisent le sens du virage ne sont pas
+      // exploitables : on garde alors la bissectrice des caps médians.
+      if (Math.sign(delta) === turnSign) bisector = normalizeAngle(before.heading + delta / 2);
+    }
+
+    return { verdict: 'candidate', turn, turnSign, turnStart, turnEnd, turnEndMs, headings, before, stableHeadings, bisector, rotation: null };
+  };
+
+  const windowAt = (i: number): WindowReading => {
+    let reading = windows[i];
+    if (reading === undefined) {
+      reading = readWindow(i);
+      windows[i] = reading;
+    }
+    return reading;
+  };
+
+  const turnAt = (i: number, lowest: number): TurnReading => {
+    const window = windowAt(i);
+    if (window.kind !== 'turn') throw new Error('Pas de virage à lire dans cette fenêtre.');
+    if (lowest === window.lowestFree) {
+      let reading = turns[i];
+      if (reading === undefined) {
+        reading = readTurn(i, window, lowest);
+        turns[i] = reading;
+      }
+      return reading;
+    }
+    const key = i * (n + 1) + lowest;
+    let reading = turnsFrom.get(key);
+    if (reading === undefined) {
+      reading = readTurn(i, window, lowest);
+      turnsFrom.set(key, reading);
+    }
+    return reading;
+  };
+
+  const rotationOf = (reading: CandidateTurn): RotationMeasure => {
+    if (reading.rotation === null) {
+      reading.rotation = measureRotation(points, reading.turnStart, reading.turnEnd, reading.turnSign, reading.headings);
+    }
+    return reading.rotation;
+  };
+
+  return { points, settings, windowAt, turnAt, rotationOf };
+};
+
+/**
+ * Classe virements et empannages d'une détection préparée, par le vent.
+ *
+ * Un virage doit changer d'amures (sinon c'est une abattée, un loff ou une
+ * chute) ; un tour complet n'est pas compté, ni, quand le seuil de vol est
+ * donné, un demi-tour entamé en dessous. Le temps mort ne se pose qu'après
+ * une manœuvre classée : le balayage lui-même dépend donc du vent, et c'est
+ * ici qu'il se fait, sur les lectures mémorisées de la détection.
+ */
+export const classifyManeuvers = (
+  detection: ManeuverDetection,
   wind: WindReference,
-  options: ManeuverOptions = {}
+  options: ManeuverClassificationOptions = {}
 ): ManeuverStats => {
+  const { points, settings } = detection;
+  const { windowMs } = settings;
   const successThresholdKn = options.successThresholdKn ?? getDefaultThresholdKn();
-  const minEntrySpeedKn = options.minEntrySpeedKn ?? MANEUVER_MIN_ENTRY_SPEED_KN;
-  const windowMs = (options.windowSeconds ?? MANEUVER_WINDOW_S) * 1000;
   const cooldownMs = (options.cooldownSeconds ?? MANEUVER_COOLDOWN_S) * 1000;
-  const maxStepMs = (options.maxStepSeconds ?? MANEUVER_MAX_STEP_S) * 1000;
-  const minDistanceM = options.minDistanceM ?? MANEUVER_MIN_DISTANCE_M;
-  const minCoherence = options.minCoherence ?? MANEUVER_MIN_COHERENCE;
-  const fullTurnDeg = options.fullTurnDeg ?? MANEUVER_FULL_TURN_DEG;
-  const coreRateDegS = options.coreRateDegS ?? MANEUVER_CORE_RATE_DEG_S;
   const flightThresholdKn = options.flightThresholdKn;
-  const stillSpeedKn = options.stillSpeedKn ?? getStillSpeedKn();
 
   const stats: ManeuverStats = {
     tackSuccess: 0,
@@ -1032,241 +1393,124 @@ export const analyzeManeuvers = (
   for (let i = 0; i < points.length - 1; i++) {
     if (points[i].timeMs < ignoreUntilMs) continue;
 
-    let cumulativeTurn = 0;
-    let totalRotation = 0;
-    // Point le plus lent vu par la détection. Il date la manœuvre, à l'instant
-    // où le classement lit le vent, et nourrit la lecture qu'en fait
-    // l'estimation du vent (`windCriteria`). Il omet le dernier point de la
-    // fenêtre initiale : il reste tel quel, car le déplacer changerait le
-    // classement et le vent (§10, points 21 et 70). La vitesse minimale
-    // affichée est celle de `measureManeuver`, sur toute la rotation.
-    let anchorSpeed = Infinity;
-    let anchorIndex = i;
+    const window = detection.windowAt(i);
+    if (window.kind === 'nothing') continue;
+    if (window.kind === 'rejected') {
+      countRejection(window.motif, i, window.endMs, window.turnDeg);
+      continue;
+    }
+    const { j, cumulativeTurn, anchorIndex, anchorSpeed } = window;
 
-    let j = i;
-    while (
-      j + 1 < points.length &&
-      // Cas courant : le point suivant tombe dans la fenêtre d'observation.
-      (points[j + 1].timeMs - points[i].timeMs <= windowMs ||
-        // Enregistreur économique : la fenêtre est vide parce que l'appareil
-        // s'est tu pendant le virage, quand la planche a ralenti. Toute la
-        // rotation tient alors dans ce seul pas, qu'il faut donc lire. Pas un
-        // pas de reprise de pause : rien n'y a été parcouru, ce n'est jamais un virage.
-        (j === i && !points[j + 1].segmentStart && points[j + 1].timeMs - points[i].timeMs <= maxStepMs))
-    ) {
-      const step = angleDiff(points[j + 1].bearing, points[j].bearing);
-      cumulativeTurn += step;
-      totalRotation += Math.abs(step);
-      if (points[j].smoothedSpeed < anchorSpeed) {
-        anchorSpeed = points[j].smoothedSpeed;
-        anchorIndex = j;
-      }
-      j++;
+    // Borne basse de la recherche du cœur du virage : la fenêtre, relevée à
+    // la fin de la manœuvre précédente, qui dépend du vent.
+    let lowest = i;
+    while (lowest > previousEndIndex && points[lowest - 1].timeMs >= points[i].timeMs - windowMs) lowest--;
+    const reading = detection.turnAt(i, lowest);
+
+    const timeMs = points[anchorIndex].timeMs;
+    const windowEndMs = points[j].timeMs;
+    if (reading.verdict === 'still') {
+      countRejection('incoherent', i, windowEndMs, cumulativeTurn);
+      continue;
+    }
+    if (reading.verdict === 'small') {
+      countRejection('unclassified', i, windowEndMs, reading.turn);
+      continue;
+    }
+    if (reading.verdict === 'fullTurn') {
+      setAside('fullTurn', anchorIndex, reading.turn, points[reading.turnStart].smoothedSpeed);
+      ignoreUntilMs = reading.turnEndMs + cooldownMs;
+      previousEndIndex = reading.turnEnd;
+      continue;
     }
 
-    // Rien d'observable : fin de trace, ou coupure d'enregistrement trop
-    // longue pour qu'un virage puisse encore s'y lire. Un pas unique retenu
-    // ci-dessus dure, lui, plus longtemps que la fenêtre entière.
-    if (points[j].timeMs - points[i].timeMs < windowMs * 0.5) continue;
-
-    // Une chute fait aussi tourner le cap de plus de 60°, mais dans tous les
-    // sens : le virage net est petit devant la somme des rotations. Un vrai
-    // virage tourne toujours du même côté.
-    const coherent = totalRotation > 0 && Math.abs(cumulativeTurn) / totalRotation >= minCoherence;
-    const turnedEnough = Math.abs(cumulativeTurn) > MANEUVER_MIN_TURN_DEG;
-    const fastEnough = points[i].smoothedSpeed > minEntrySpeedKn;
-    // Un virage déplace le bateau. Sur place, le cap n'est que du bruit de
-    // position, et un virage lu en un seul pas est toujours « cohérent ».
-    const movedEnough = distanceBetween(points, i, j) >= minDistanceM;
-
-    if (turnedEnough && !coherent) countRejection('incoherent', i, points[j].timeMs, cumulativeTurn);
-    if (turnedEnough && coherent && !fastEnough) {
-      countRejection('slowEntry', i, points[j].timeMs, cumulativeTurn);
+    const { turn, turnStart, turnEnd, turnEndMs, headings, before, stableHeadings, bisector } = reading;
+    const windDeg = windAt(wind, timeMs);
+    // Un virement comme un empannage change d'amures : sans cela, c'est une
+    // abattée, un loff ou une chute, quel que soit l'axe le plus proche.
+    const tackChanged =
+      angleDiff(headings.approach.heading, windDeg) < 0 !== angleDiff(headings.exit.heading, windDeg) < 0;
+    if (!tackChanged) {
+      countRejection('unclassified', i, windowEndMs, turn);
+      continue;
     }
-    if (turnedEnough && coherent && fastEnough && !movedEnough) {
-      countRejection('tooShort', i, points[j].timeMs, cumulativeTurn);
+    const type = classifyTurn(bisector, turn, windDeg);
+    if (type === null) {
+      countRejection('unclassified', i, windowEndMs, turn);
+      continue;
     }
 
-    if (turnedEnough && coherent && fastEnough && movedEnough) {
-      // La fenêtre s'est déclenchée dès 60° de virage, souvent avant la fin
-      // de celui-ci. On prolonge l'observation tant que le cap continue de
-      // tourner dans le même sens, pour mesurer le virage complet.
-      const turnSign = Math.sign(cumulativeTurn);
-      while (j + 1 < points.length && points[j + 1].timeMs - points[i].timeMs <= 2 * windowMs) {
-        if (!isTurningStep(points, j, turnSign)) break;
-        cumulativeTurn += angleDiff(points[j + 1].bearing, points[j].bearing);
-        j++;
-        if (points[j].smoothedSpeed < anchorSpeed) {
-          anchorSpeed = points[j].smoothedSpeed;
-          anchorIndex = j;
-        }
-      }
-
-      // Début réel du virage : le départ de son cœur (`turnCoreStart`), qui
-      // peut précéder le déclenchement (virage enchaîné, déjà entamé à la fin
-      // du temps mort) ou le suivre (fenêtre déclenchée sur une dérive lente
-      // pendant le décollage). Sans cœur, premier point de la fenêtre où le
-      // cap tourne franchement.
-      // Borne basse cherchée en reculant depuis `i`, jamais depuis le début de
-      // la trace : le coût reste celui d'une fenêtre, quel que soit le nombre
-      // de virages écartés avant la première manœuvre retenue.
-      let lowest = i;
-      while (lowest > previousEndIndex && points[lowest - 1].timeMs >= points[i].timeMs - windowMs) lowest--;
-      let turnStart = turnCoreStart(points, lowest, j, turnSign, coreRateDegS) ?? i;
-      if (turnStart === i) {
-        for (let k = i; k < j; k++) {
-          if (isTurningStep(points, k, turnSign)) {
-            turnStart = k;
-            break;
-          }
-        }
-      }
-
-      // Fin du virage : le premier point où le cap a presque fini de tourner
-      // dans son sens, à max(10°, 10 % du virage) près, comme la fin de la
-      // rotation de `measureManeuver`. La fenêtre court 12 s après son
-      // déclenchement : quand celui-ci tombe au milieu du virage (fin d'un
-      // temps mort), elle déborde sur le bord suivant, où se lisait alors le
-      // cap de sortie, et le temps mort compté depuis elle mangeait la
-      // manœuvre enchaînée.
-      const rotations = [0];
-      let maxRotation = 0;
-      for (let k = turnStart + 1; k <= j; k++) {
-        const rotation = rotations[rotations.length - 1] + turnSign * angleDiff(points[k].bearing, points[k - 1].bearing);
-        rotations.push(rotation);
-        maxRotation = Math.max(maxRotation, rotation);
-      }
-      const endEdge = Math.max(ROTATION_EDGE_MIN_DEG, ROTATION_EDGE_SHARE * maxRotation);
-      let turnEnd = j;
-      for (let k = turnStart + 1; k <= j; k++) {
-        if (rotations[k - turnStart] >= maxRotation - endEdge) {
-          turnEnd = k;
-          break;
-        }
-      }
-
-      const timeMs = points[anchorIndex].timeMs;
-      const turnEndMs = points[turnEnd].timeMs;
-      const windowEndMs = points[j].timeMs;
-      const windDeg = windAt(wind, timeMs);
-
-      // Virage du cap d'approche au cap de sortie, compté dans le sens du
-      // virage : il juge l'ampleur, la bissectrice et le classement, à la place
-      // du virage sommé pas à pas, qui n'a servi qu'à déclencher.
-      const headings = turnHeadings(points, turnStart, turnEnd);
-      // Un cap ne se lit qu'en mouvement : planche arrêtée après une chute,
-      // il n'est que du bruit de position, et la « sortie » n'en est pas une.
-      if (headings.approach.meanSpeed < stillSpeedKn || headings.exit.meanSpeed < stillSpeedKn) {
-        countRejection('incoherent', i, windowEndMs, cumulativeTurn);
-        continue;
-      }
-      const turn = turnSign * (headings.exit.heading - headings.approach.heading);
-      if (turn <= MANEUVER_MIN_TURN_DEG) {
-        countRejection('unclassified', i, windowEndMs, turn);
-        continue;
-      }
-      if (turn >= fullTurnDeg) {
-        setAside('fullTurn', anchorIndex, turn, points[turnStart].smoothedSpeed);
-        ignoreUntilMs = turnEndMs + cooldownMs;
-        previousEndIndex = turnEnd;
-        continue;
-      }
-      // Un virement comme un empannage change d'amures : sans cela, c'est une
-      // abattée, un loff ou une chute, quel que soit l'axe le plus proche.
-      const tackChanged =
-        angleDiff(headings.approach.heading, windDeg) < 0 !== angleDiff(headings.exit.heading, windDeg) < 0;
-      if (!tackChanged) {
-        countRejection('unclassified', i, windowEndMs, turn);
-        continue;
-      }
-
-      const before = stableSegment(points, turnStart, -1) ?? medianStableSegment(headings.approach);
-      const after = stableSegment(points, turnEnd, 1) ?? medianStableSegment(headings.exit);
-      const stableHeadings = before !== null && after !== null;
-
-      // Bissectrice des deux caps, parcourue dans le sens du virage : pour un
-      // virement cet arc contient la direction du vent, pour un empannage son
-      // opposé. Le sens compte : sur un virage de 180°, l'arc court est
-      // indéfini et seule la direction de rotation départage.
-      let bisector = normalizeAngle(headings.approach.heading + (turnSign * turn) / 2);
-      if (before && after) {
-        let delta = angleDiff(after.heading, before.heading);
-        if (Math.sign(delta) !== turnSign && Math.abs(delta) > 150) delta += turnSign * 360;
-        // Des caps stabilisés qui contredisent le sens du virage ne sont pas
-        // exploitables : on garde alors la bissectrice des caps médians.
-        if (Math.sign(delta) === turnSign) bisector = normalizeAngle(before.heading + delta / 2);
-      }
-
-      const type = classifyTurn(bisector, turn, windDeg);
-
-      if (type !== null) {
-        // Métriques de qualité, sur des bornes propres à la mesure : celles de
-        // la détection ne servent qu'à trouver et classer le virage. Un virage
-        // entamé avant le déclenchement se mesure depuis son début.
-        // Le gain se projette au vent retenu, et non à la bissectrice de la
-        // manœuvre même, qui rendrait la mesure circulaire.
-        const measure = measureManeuver(
-          points,
-          { triggerIndex: turnStart, endIndex: turnEnd, turnSign, type },
-          windDeg
-        );
-        ignoreUntilMs = turnEndMs + cooldownMs;
-        previousEndIndex = measure.exitIndex;
-        // Entamé sous le seuil de vol : un demi-tour en archimédien, qui n'est
-        // ni réussi ni raté (décision du 28/10).
-        if (flightThresholdKn !== undefined && measure.entrySpeed < flightThresholdKn) {
-          setAside('noFlight', anchorIndex, turn, measure.entrySpeed, type);
-          continue;
-        }
-        const success = measure.vmin >= successThresholdKn;
-        // Lecture de la détection, pour l'estimation du vent : vitesse du bord
-        // stabilisé avant, sinon celle du début du virage détecté, et point le
-        // plus lent de la détection.
-        const windEntrySpeed = before ? before.meanSpeed : points[turnStart].smoothedSpeed;
-
-        const location: ManeuverLocation = {
-          lat: points[anchorIndex].lat,
-          lon: points[anchorIndex].lon,
-          type,
-          success,
-          vmin: measure.vmin,
-          // L'empannage se lit à l'opposé de la bissectrice : le vent y vient de l'arrière.
-          // Arrondi puis normalisé : 359,7° donne 0, jamais 360.
-          localWind: normalizeAngle(Math.round(type === 'tack' ? bisector : bisector + 180)),
-          timeMs,
-          trackIndex: anchorIndex,
-          stableHeadings,
-          windCriteria: {
-            conservation: windEntrySpeed > 0 ? Math.min(1, anchorSpeed / windEntrySpeed) : 0,
-            success: anchorSpeed >= successThresholdKn,
-          },
-          entrySpeed: measure.entrySpeed,
-          conservation: measure.conservation,
-          relaunchS: measure.relaunchS,
-          headingChange: measure.headingChange,
-          distanceM: measure.distanceM,
-          windwardGainM: success ? measure.gainM : null,
-          apexIndex: measure.apexIndex,
-          entryIndex: measure.rotationStartIndex,
-          exitIndex: measure.exitIndex,
-          entryHeading: points[turnStart].bearing,
-          exitHeading: points[turnEnd].bearing,
-          path: points
-            .slice(measure.rotationStartIndex, measure.exitIndex + 1)
-            .map((p) => [p.lat, p.lon] as [number, number]),
-        };
-
-        if (type === 'tack') {
-          if (success) stats.tackSuccess++; else stats.tackFail++;
-        } else {
-          if (success) stats.jibeSuccess++; else stats.jibeFail++;
-        }
-        stats.locations.push(location);
-      } else {
-        countRejection('unclassified', i, windowEndMs, turn);
-      }
+    // Métriques de qualité, sur des bornes propres à la mesure : celles de
+    // la détection ne servent qu'à trouver et classer le virage. Un virage
+    // entamé avant le déclenchement se mesure depuis son début.
+    const measure = detection.rotationOf(reading);
+    ignoreUntilMs = turnEndMs + cooldownMs;
+    previousEndIndex = measure.exitIndex;
+    // Entamé sous le seuil de vol : un demi-tour en archimédien, qui n'est
+    // ni réussi ni raté (décision du 28/10).
+    if (flightThresholdKn !== undefined && measure.entrySpeed < flightThresholdKn) {
+      setAside('noFlight', anchorIndex, turn, measure.entrySpeed, type);
+      continue;
     }
+    const success = measure.vmin >= successThresholdKn;
+    // Lecture de la détection, pour l'estimation du vent : vitesse du bord
+    // stabilisé avant, sinon celle du début du virage détecté, et point le
+    // plus lent de la détection.
+    const windEntrySpeed = before ? before.meanSpeed : points[turnStart].smoothedSpeed;
+
+    const location: ManeuverLocation = {
+      lat: points[anchorIndex].lat,
+      lon: points[anchorIndex].lon,
+      type,
+      success,
+      vmin: measure.vmin,
+      // L'empannage se lit à l'opposé de la bissectrice : le vent y vient de l'arrière.
+      // Arrondi puis normalisé : 359,7° donne 0, jamais 360.
+      localWind: normalizeAngle(Math.round(type === 'tack' ? bisector : bisector + 180)),
+      timeMs,
+      trackIndex: anchorIndex,
+      stableHeadings,
+      windCriteria: {
+        conservation: windEntrySpeed > 0 ? Math.min(1, anchorSpeed / windEntrySpeed) : 0,
+        success: anchorSpeed >= successThresholdKn,
+      },
+      entrySpeed: measure.entrySpeed,
+      conservation: measure.conservation,
+      relaunchS: measure.relaunchS,
+      headingChange: measure.headingChange,
+      distanceM: measure.distanceM,
+      // Le gain se projette au vent retenu, et non à la bissectrice de la
+      // manœuvre même, qui rendrait la mesure circulaire.
+      windwardGainM: success ? windwardGainM(points, measure, type, windDeg) : null,
+      apexIndex: measure.apexIndex,
+      entryIndex: measure.rotationStartIndex,
+      exitIndex: measure.exitIndex,
+      entryHeading: points[turnStart].bearing,
+      exitHeading: points[turnEnd].bearing,
+      path: points
+        .slice(measure.rotationStartIndex, measure.exitIndex + 1)
+        .map((p) => [p.lat, p.lon] as [number, number]),
+    };
+
+    if (type === 'tack') {
+      if (success) stats.tackSuccess++; else stats.tackFail++;
+    } else {
+      if (success) stats.jibeSuccess++; else stats.jibeFail++;
+    }
+    stats.locations.push(location);
   }
 
   return stats;
 };
+
+/**
+ * Détecte et classe virements et empannages, en une fois : la détection
+ * préparée (`prepareManeuverDetection`) puis classée par `wind`
+ * (`classifyManeuvers`). Pour classer une même trace par plusieurs vents,
+ * préparer la détection une fois et la classer autant de fois.
+ */
+export const analyzeManeuvers = (
+  points: PointData[],
+  wind: WindReference,
+  options: ManeuverOptions = {}
+): ManeuverStats => classifyManeuvers(prepareManeuverDetection(points, options), wind, options);

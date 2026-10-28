@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 49, essai 67, question Q31.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 50, essai 68, question Q31.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -12,10 +12,11 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 ## Maintenant
 
 APK 0.3.97 installée le 28/10 (versionCode 3097).
+- 30 · [dette] Noyau voile : détection une seule fois puis classement par candidat de vent (observeTurns fusionné), confiance du vent rabattue sur couverture polaire maigre, bruit indépendant rééprouvé à 5 Hz · noté 26/09 · gros · Fable/xhigh · à valider (version 0.3.98) ; vérif complète, relecture et banc propres, diagnostic identique sur 12 sessions réelles hors la confiance de deux traces clairsemées · détail : docs/backlog/30-noyau-voile.md
+  - essai 67 : sur le PC (Firefox) ou le téléphone, ouvrir la session de planche du 21/09 (Komoot, un point toutes les 14 s) → « Vent inconnu », vent à saisir, au lieu de 207° annoncé fiable ; puis la wing du 26/10 → vent 332° et 35 manœuvres, comme avant.
 
 ## Ensuite
 
-1. 30 · [dette] Noyau voile : détection une seule fois puis classement par candidat de vent (observeTurns fusionné), confiance du vent rabattue sur couverture polaire maigre, bruit indépendant rééprouvé à 5 Hz · noté 26/09 · gros · Fable/xhigh · à briefer ; seul dans sa session, relevé du vent du banc avant et après · détail : docs/backlog/30-noyau-voile.md
 
 ## Ça attend une occasion
 
@@ -63,6 +64,7 @@ APK 0.3.97 installée le 28/10 (versionCode 3097).
 - 45 · [outil] Tests et banc en sortie résumée dans la conversation principale, comme le fait déjà l'agent verif (mémoire « Optimisation des tokens », docs/MODELES.md « Autres leviers ») · noté 24/10 · petit
 - 46 · [idée] Planification : altitude de l'IGN pour une trace importée, à la place du D+ lissé sur 100 m (DECISIONS §7, remise à plus tard le 27/10, point 166) · noté 27/10 · petit
 - 47 · [idée] Itinéraires hors ligne par l'application BRouter pour Android, à la place du serveur public (point 59) · noté 25/09 · gros
+- 49 · [dette] Mesure d'une manœuvre sous bruit réaliste : cap et gain du virement le plus lent (creux vers 3,75 nd) varient de ±20° et 15 m selon la cadence ; ce sont les bornes de measureManeuver, pas la détection (relevé au lot 30) · noté 28/10 · petit
 
 ## Questions
 

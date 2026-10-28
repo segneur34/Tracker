@@ -7,7 +7,13 @@ import {
   suggestActiveThresholdKn,
   suggestSpeedRangeMs,
 } from '../sailing/sailingConfig';
-import { WIND_LOCAL_MAX_GAP_MIN, analyzeManeuvers, estimateWind, windSamplesFrom } from '../sailing/maneuvers';
+import {
+  WIND_LOCAL_MAX_GAP_MIN,
+  classifyManeuvers,
+  estimateWind,
+  prepareManeuverDetection,
+  windSamplesFrom,
+} from '../sailing/maneuvers';
 import { buildWindTimeline, normalizeAngle, speedPolar } from '../sailing/wind';
 import { calculateVmgStats, calculateWindStats, summarizeManeuvers } from '../sailing/sailingAnalytics';
 import { buildSailingSessionStats, computeSailingTops, sailingFlights } from '../sailing/sailingStats';
@@ -128,6 +134,18 @@ export const useSailingSession = ({
   const flightThresholdKn = withThreshold ? activeThresholdKn : undefined;
   /** Plancher d'arrêt du support : un cap lu plus lentement n'est que du bruit. */
   const stillSpeedKn = profile.stillThreshold;
+  const minEntrySpeedKn = maneuverThresholds.minEntrySpeedKn;
+
+  /**
+   * Détection des virages, préparée une fois par trace et par seuils de
+   * détection : l'estimation du vent (ses candidats et ses deux passes) et les
+   * deux passes des manœuvres affichées la classent sans la refaire. Bouger le
+   * seuil d'activité ne refait donc plus le balayage de la trace.
+   */
+  const detection = useMemo(
+    () => (trackData.length > 0 ? prepareManeuverDetection(trackData, { minEntrySpeedKn, stillSpeedKn }) : null),
+    [trackData, minEntrySpeedKn, stillSpeedKn]
+  );
 
   // Les seuils viennent du profil du support et de la surcharge de
   // l'utilisateur : changer de support, ou bouger le seuil d'activité,
@@ -135,16 +153,17 @@ export const useSailingSession = ({
   // toute l'application, la même ici que pour les manœuvres affichées.
   const windEstimate = useMemo(
     () =>
-      trackData.length > 0
+      detection
         ? estimateWind(trackData, {
             minSpeedKn: maneuverThresholds.polarMinSpeedKn,
             successThresholdKn: activeThresholdKn,
-            minEntrySpeedKn: maneuverThresholds.minEntrySpeedKn,
+            minEntrySpeedKn,
             flightThresholdKn,
             stillSpeedKn,
+            detection,
           })
         : null,
-    [trackData, maneuverThresholds, activeThresholdKn, flightThresholdKn, stillSpeedKn]
+    [trackData, detection, maneuverThresholds.polarMinSpeedKn, activeThresholdKn, minEntrySpeedKn, flightThresholdKn, stillSpeedKn]
   );
   const autoWind = windEstimate?.direction ?? null;
 
@@ -161,25 +180,20 @@ export const useSailingSession = ({
   const windInputRequired = trackData.length > 0 && currentWindValue === null;
 
   const maneuverStats = useMemo(() => {
-    if (trackData.length === 0 || currentWindValue === null) return null;
-    const options = {
-      successThresholdKn: activeThresholdKn,
-      minEntrySpeedKn: maneuverThresholds.minEntrySpeedKn,
-      flightThresholdKn,
-      stillSpeedKn,
-    };
+    if (!detection || currentWindValue === null) return null;
+    const options = { successThresholdKn: activeThresholdKn, flightThresholdKn };
 
     // Deux passes : la première classe avec le vent global, la seconde avec
     // le vent local interpolé entre les manœuvres de la première, pour rester
     // juste quand le vent a tourné au cours de la session.
-    const firstPass = analyzeManeuvers(trackData, currentWindValue, options);
+    const firstPass = classifyManeuvers(detection, currentWindValue, options);
     const timeline = buildWindTimeline(
       windSamplesFrom(firstPass).map((m) => ({ timeMs: m.timeMs, direction: m.localWind })),
       currentWindValue,
       WIND_LOCAL_MAX_GAP_MIN * 60 * 1000
     );
-    return analyzeManeuvers(trackData, timeline, options);
-  }, [trackData, currentWindValue, activeThresholdKn, maneuverThresholds, flightThresholdKn, stillSpeedKn]);
+    return classifyManeuvers(detection, timeline, options);
+  }, [detection, currentWindValue, activeThresholdKn, flightThresholdKn]);
 
   const maneuverSummary = useMemo(() => summarizeManeuvers(maneuverStats), [maneuverStats]);
 

@@ -11,6 +11,7 @@ import {
   interpolateDirection,
   observeTurns,
   pointerWindDeg,
+  polarSampling,
   speedPolar,
   scoreWindCandidate,
   windDegFromText,
@@ -253,6 +254,41 @@ describe('observeTurns', () => {
 
     const turns = observeTurns(buildPoints(samples));
     expect(turns.filter((t) => t.slow)).toHaveLength(0);
+  });
+});
+
+describe('polarSampling', () => {
+  const at = (stepS: number, count: number, resumeAt: number | null = null): PointData[] =>
+    Array.from({ length: count }, (_, k) => ({
+      lat: 43.6,
+      lon: 3.8,
+      time: '',
+      timeMs: Math.round(k * stepS * 1000),
+      speed: 12,
+      smoothedSpeed: 12,
+      bearing: 45,
+      ...(resumeAt === k ? { segmentStart: true as const } : {}),
+    }));
+
+  it('vaut exactement 1 à 1 Hz comme à 5 Hz', () => {
+    expect(polarSampling(at(1, 600))).toBe(1);
+    expect(polarSampling(at(0.2, 3000))).toBe(1);
+    // Jusqu'à la durée d'un virage, rien ne change.
+    expect(polarSampling(at(5, 120))).toBe(1);
+  });
+
+  it('se rabat continûment sur une trace clairsemée : 5/17 à un point toutes les 17 s', () => {
+    expect(polarSampling(at(17, 40))).toBeCloseTo(5 / 17, 10);
+    expect(polarSampling(at(10, 40))).toBeCloseTo(0.5, 10);
+    expect(polarSampling(at(10, 40))).toBeGreaterThan(polarSampling(at(11, 40)));
+  });
+
+  it('ne compte pas le pas de reprise de pause, et vaut 1 sans aucun pas', () => {
+    // Une pause de 10 min au milieu d'une trace à 1 Hz, marquée : la trace reste dense.
+    const points = [...at(1, 300), ...at(1, 300).map((p, k) => ({ ...p, timeMs: p.timeMs + 900 * 1000, ...(k === 0 ? { segmentStart: true as const } : {}) }))];
+    expect(polarSampling(points)).toBe(1);
+    expect(polarSampling(at(1, 1))).toBe(1);
+    expect(polarSampling([])).toBe(1);
   });
 });
 
