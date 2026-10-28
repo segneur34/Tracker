@@ -24,3 +24,9 @@ Q30 (lot 29, fiche 14) : « Protocole de VMA : demi-Cooper ou VAMeval ? » Recom
 - tests de FC max et de FC repos gardés sans essai avec la ceinture (25/10) : à éprouver sur le terrain, la session relue par adb si besoin ;
 - les tests de FC repos gardent la clé de l'appareil (`tracker.restingHr`) : ils pourront rejoindre les sessions sans position, que la muscu a ouvertes (point 182, prédicat `hasPositions`) ;
 - plus tard : la VMA dans les tests, le protocole des zones et sa mise en forme.
+
+## Tel que noté le 28/10
+
+« ça peut attendre : on va déjà tester le premier ; le problème que je vois avec la VMA c'est qu'il faut que ce soit plat et sur terrain dur et facile à courir, sinon ça n'a pas de sens »
+
+Conséquence : le lot attend l'essai du test de FC max. Au brief, prévoir que le test de VMA dise où le courir (piste ou route plate) et, à la relecture, signale un résultat douteux si la session a du dénivelé ou un revêtement non roulant (D+ et revêtement déjà calculés par l'application) ; à confirmer avec l'utilisateur.

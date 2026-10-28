@@ -15,10 +15,12 @@ APK 0.3.97 installée le 28/10 (versionCode 3097).
 
 ## Ensuite
 
-1. 29 · [idée] Tests guidés : VMA par demi-Cooper et VAMeval (Q30 : les deux), bips de palier, protocole des zones, FC repos rangée dans les sessions sans position · noté 25/10 · gros · Opus/high · à briefer · dépend de : maquette si l'écran des tests change · détail : docs/backlog/29-tests-guides-vma.md
-2. 30 · [dette] Noyau voile : détection une seule fois puis classement par candidat de vent (observeTurns fusionné), confiance du vent rabattue sur couverture polaire maigre, bruit indépendant rééprouvé à 5 Hz · noté 26/09 · gros · Fable/xhigh · à briefer ; seul dans sa session, relevé du vent du banc avant et après · détail : docs/backlog/30-noyau-voile.md
+1. 30 · [dette] Noyau voile : détection une seule fois puis classement par candidat de vent (observeTurns fusionné), confiance du vent rabattue sur couverture polaire maigre, bruit indépendant rééprouvé à 5 Hz · noté 26/09 · gros · Fable/xhigh · à briefer ; seul dans sa session, relevé du vent du banc avant et après · détail : docs/backlog/30-noyau-voile.md
 
 ## Ça attend une occasion
+
+**Le test de FC max essayé (essai 2)**
+- 29 · [idée] Tests guidés : VMA par demi-Cooper et VAMeval (Q30 : les deux), bips de palier, protocole des zones, FC repos rangée dans les sessions sans position · noté 25/10 · gros · Opus/high · en attente ; 28/10 : le test de FC max d'abord, la VMA n'a de sens que sur terrain plat, dur et roulant · dépend de : maquette si l'écran des tests change · détail : docs/backlog/29-tests-guides-vma.md
 
 **Une course avec la ceinture cardio**
 - essai 1 : ceinture, écran éteint : marche de 10 à 15 min, téléphone posé, pause automatique décochée ; trois ou quatre fois 2 min près du téléphone puis 1 à 2 min hors de portée ; remettre la pause automatique après → reprise seule à chaque retour ; onglet « cardio » avec un trou par sortie de portée.
