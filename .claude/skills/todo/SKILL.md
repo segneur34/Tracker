@@ -1,41 +1,53 @@
 ---
 name: todo
-description: Met au propre dans docs/A-FAIRE.md les notes en vrac de l'utilisateur (WhatsApp) en fiches datées avec priorité de 1 à 5, cherche les doublons et les contradictions, pose les questions utiles en une fois. Sans argument, affiche la liste triée.
-argument-hint: "[notes en vrac | réponse N : … | vide pour la liste]"
+description: Reste à faire de Tracker (docs/BACKLOG.md). Sans argument, la revue de la semaine (tableau de bord de node outils/backlog.mjs, puis une seule salve de questions). Avec des notes en vrac (WhatsApp), les met au propre en lignes rangées par trois questions posées en clair. Avec « réponse N : … » ou « Q n : … », note la réponse.
+argument-hint: "[notes en vrac | réponse N : … | Q n : … | vide pour la revue de la semaine]"
 disable-model-invocation: true
 ---
 
-# /todo : mettre au propre les idées
+# /todo : le reste à faire
 
-Tu travailles sur `docs/A-FAIRE.md` du dépôt Tracker (`C:\Users\segne\tracker`). Lis d'abord ce fichier en entier : sa règle « Mise au propre », son modèle de fiche, ses états et ses fiches existantes font loi. Tu ne touches à aucun fichier de code.
+Tu travailles sur `docs/BACKLOG.md` du dépôt Tracker (`C:\Users\segne\tracker`). Lis d'abord son en-tête de règles : forme d'une ligne, quatre zones, limites, rangement, essais, questions ; elles font loi. Tu ne touches à aucun fichier de code. Ce que l'utilisateur lit est en français courant, sans jargon (ni « backlog », ni « WIP », ni « kanban ») : il n'ouvre jamais le fichier.
 
 Argument reçu : `$ARGUMENTS`
 
-## Sans argument : la liste
+## Sans argument : la revue de la semaine
 
-Affiche les fiches non archivées, triées par priorité décroissante puis par état (`prête`, `à clarifier`, `en lot N`), en une table : numéro, titre, priorité (avec « (proposée) » si l'utilisateur ne l'a pas confirmée), état, questions encore ouvertes en quelques mots. Puis les archives sur une ligne (nombre de fiches faites, abandonnées). Rien n'est écrit.
+1. Lance `node outils/backlog.mjs` depuis la racine du dépôt et affiche sa sortie telle quelle : c'est le tableau de bord (Vous, Claude, Ça attend une occasion, Plus tard, Alertes). Une erreur de forme se corrige d'abord dans le fichier, puis le script se relance.
+2. Pose **une seule** `AskUserQuestion`, quatre questions au plus, les plus utiles d'abord, une recommandation en tête de chacune, choisies parmi :
+   - une condition d'occasion remplie (« avez-vous fait une sortie surf ? ») : ses essais et ses lots passent alors en Maintenant ou en tête d'Ensuite ;
+   - monter tel élément d'Ensuite en tête ;
+   - garder ou lâcher telle idée de Plus tard de plus de 90 jours ;
+   - trancher par défaut telle question de plus de 4 semaines.
+   Rien à demander : dis-le en une ligne, sans questionnaire.
+3. Applique les réponses dans `docs/BACKLOG.md` : élément déplacé, idée lâchée (ligne supprimée, une phrase dans le compte rendu), question tranchée (sa réponse dans l'élément, ou dans `docs/DECISIONS.md` si c'est une décision de domaine ; la ligne de la question disparaît). Relance le script : il doit finir sans erreur de forme.
 
-## `réponse N : …` : une réponse à une question
+Pas de commit : `/clore` s'en charge.
 
-Note la réponse dans la fiche N, datée du jour, à la suite de sa question (`→ réponse (jj/mm)`). Si la fiche n'a plus de question ouverte et qu'un autre que toi pourrait la réaliser sans rien demander, passe-la « prête ». Si la réponse est « abandonne » ou « laisse tomber », la fiche descend dans « Archives » sur une ligne, état `abandonnée`.
+## `réponse N : …` ou `Q n : …` : une réponse
+
+- `Q n : …` : la réponse va dans l'élément qu'elle débloque (champ d'état, ou son détail `docs/backlog/N-titre.md`), ou dans `docs/DECISIONS.md` si c'est une décision de domaine ; la ligne de la question disparaît, et le « dépend de : Q n » de l'élément aussi. L'élément débloqué passe en Ensuite, à la place que la règle de rangement lui donne.
+- `réponse N : …` : la réponse va dans l'élément N (état, ou son détail), datée du jour. « Abandonne » ou « laisse tomber » : la ligne est supprimée, et dite dans le compte rendu.
 
 ## Des notes en vrac : la mise au propre
 
-1. **Lis le contexte** avant d'écrire : les fiches existantes d'A-FAIRE, la table « Ordre et état » et les questions de `docs/FILE-DES-LOTS.md`, et la section de `docs/DECISIONS.md` du domaine de chaque note (table de `CLAUDE.md`, « Décisions de l'utilisateur »). Cherche le doublon et la contradiction.
-2. **Découpe** : une fiche par idée, même si une note en contient plusieurs ; une note qui regroupe deux sujets donne deux fiches, chacune avec le morceau de texte qui la concerne.
-3. **Date** : un export WhatsApp porte la date devant chaque message (`jj/mm/aaaa hh:mm - Nom : …`) : c'est le « Noté le ». Sans date, « reçu le » seulement, à la date du jour.
-4. **Priorité** : si la note en contient une (« p4 », « [4] », « prio 4 », « 4/5 », « priorité 4 », « important » = 4, « urgent » = 5), elle est prise telle quelle, sans « (proposée) ». Sinon propose-la d'après la grille d'A-FAIRE (5 : gêne l'usage ou faux chiffre ; 4 : à faire bientôt ; 3 : utile ; 2 : confort ; 1 : idée à garder), marquée « (proposée) ».
-5. **Type** : ajoute dans le titre, après la priorité, « · bogue » quand la note décrit un comportement faux ou cassé, rien quand c'est une idée.
-6. **Fiche** selon le modèle d'A-FAIRE : « Tel que noté » mot pour mot, « Où » (page › onglet › élément, cherché dans le code ou la doc si la note ne le dit pas), « Aujourd'hui » (ce que fait l'application, vérifié dans le code, pas supposé), « Voulu », « Pourquoi ». Numéro qui suit le dernier de la liste, archives comprises.
-7. **Doublon** : si l'idée existe déjà, complète la fiche existante (nouveau « Tel que noté » daté, priorité relevée si la note en donne une plus haute) au lieu d'en créer une autre, et dis-le.
-8. **Contradiction** : si l'idée va contre une décision de `DECISIONS.md` ou de `CLAUDE.md`, écris quand même la fiche, état `à clarifier`, avec la décision citée (section et phrase) dans « Questions », et signale-le dans le compte rendu.
-9. **Déjà fait** : si le code fait déjà ce qui est demandé, dis-le avec le fichier, et ne crée pas de fiche sauf si l'utilisateur confirme que ça ne marche pas chez lui (alors c'est un bogue).
-10. **État** : `prête` seulement si quelqu'un d'autre pourrait la réaliser sans rien demander ; sinon `à clarifier` avec ses questions.
+1. **Lis le contexte** avant d'écrire : `docs/BACKLOG.md` en entier, et la section de `docs/DECISIONS.md` du domaine de chaque note (table de `CLAUDE.md`, « Décisions de l'utilisateur »). Cherche le doublon et la contradiction.
+2. **Découpe** : une ligne par idée, même si une note en contient plusieurs.
+3. **Date** : un export WhatsApp porte la date devant chaque message (`jj/mm/aaaa hh:mm - Nom : …`) : c'est le « noté ». Sans date, celle du jour.
+4. **Type** : `[bogue]` quand la note décrit un comportement faux ou cassé, `[idée]` sinon (`[dette]` et `[outil]` sont pour Claude).
+5. **Ligne** selon la forme de l'en-tête, numéro donné par « Prochains numéros » (puis l'en-tête mis à jour). Titre : où dans l'application (page › onglet › élément, cherché dans le code ou la doc si la note ne le dit pas) et ce qui est voulu. Si la ligne ne suffit pas à quelqu'un d'autre pour la réaliser, un détail `docs/backlog/N-titre.md` : « Tel que noté » mot pour mot, où, aujourd'hui (vérifié dans le code, pas supposé), voulu, pourquoi, questions ; la ligne le cite (`détail : …`).
+6. **Doublon** : si l'idée existe déjà, complète la ligne ou son détail (nouveau « tel que noté » daté) au lieu d'en créer une autre, et dis-le.
+7. **Contradiction** : si l'idée va contre une décision de `DECISIONS.md` ou de `CLAUDE.md`, écris quand même la ligne, avec une question qui cite la décision (section et phrase), et signale-le.
+8. **Déjà fait** : si le code fait déjà ce qui est demandé, dis-le avec le fichier, et n'écris pas de ligne sauf si l'utilisateur confirme que ça ne marche pas chez lui (alors c'est un `[bogue]`).
 
-## Les questions : une seule salve, à la fin
+## Le rangement : une seule salve, à la fin
 
-Écris toutes les fiches d'abord, puis pose en une seule fois, par `AskUserQuestion` (quatre questions au plus par appel, les plus importantes d'abord) ou en clair quand il s'agit d'une donnée à fournir, seulement les questions qui changent ce qu'on ferait. Pas de question sur un détail que tu peux trancher seul (nommage, emplacement évident). Chaque réponse se note dans la fiche, datée, et l'état est revu. Ce qui reste sans réponse reste dans « Questions » de la fiche.
+Écris toutes les lignes d'abord, en Plus tard provisoirement, puis pose en une seule `AskUserQuestion` (quatre questions au plus) la règle de rangement, en clair, pour chaque idée qui le demande :
+- un bogue qui casse l'usage ou fausse un chiffre ? oui → tête d'Ensuite, sans autre question ;
+- « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ;
+- petit ou gros : c'est toi qui le proposes (petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles), l'utilisateur corrige s'il veut ; petit et utile passe avant gros et utile.
+La place proposée dans Ensuite se dit dans la question (« en 2e, après le n° 31 »). Une donnée qu'il détient (un GPX, un chiffre à l'écran) se demande en clair, pas par questionnaire. Les questions de fond restées ouvertes vont dans « Questions » (cinq au plus), chacune avec ta réponse par défaut et la date. Relance `node outils/backlog.mjs` : sans erreur de forme.
 
 ## Compte rendu
 
-Une table : numéro, titre, priorité, état ; puis, sur une ligne chacun, les doublons fusionnés, les contradictions, ce qui est déjà fait, et les questions restées ouvertes. Pas de commit : `/clore` s'en charge.
+Dix lignes au plus, en français courant : les lignes écrites (numéro, titre, zone, place), puis, sur une ligne chacun, les doublons fusionnés, les contradictions, ce qui est déjà fait, et les questions restées ouvertes. Pas de commit : `/clore` s'en charge.

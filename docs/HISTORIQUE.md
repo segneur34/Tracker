@@ -217,6 +217,7 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - La voile reste calculée en nœuds (règle 5) ; seul l'affichage convertit (`formatKnots`).
     - Le seuil d'activité voile sert à trois choses : temps et distance actifs ; réussite d'une manœuvre ; filtre de la VMG, et par elle le vent. Séparer « en vol » et « en mouvement » serait un chantier à part, à ouvrir seulement si l'utilisateur le demande.
     - **Piège** : Réglages affichait « 8 défaut », jamais appliqué. Le champ vide dit désormais « selon l'allure ».
+    - **Clos, à ne plus proposer** (noté dans la mémoire de reprise, reporté ici le 28/10) : le doute sur la définition du seuil d'activité, abandonné le 30/09 ; la trace Komoot du 21/07 et l'écart de distance des points datés de la même seconde.
 55. Retouches et logo (25/09, APK 0.2.16).
     - Totaux de l'accueil vers la bibliothèque filtrée.
     - Icône simplifiée dessinée par Claude (`assets/icone.svg`), déclinée par `outils/logo/icones-android.mjs`.
