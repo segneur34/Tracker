@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 49, essai 66, question Q31.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 49, essai 67, question Q31.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -14,14 +14,15 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 APK 0.3.95 installée le 28/10 (versionCode 3095).
 
 - 32 · [idée] Icône « Enregistrer » : disque blanc avec un rond rouge, partout où l'action apparaît · noté 28/10 · petit · Sonnet/medium · à revoir : bogue n° 48 (0602700, 0.3.95 ; vu au téléphone le 28/10 : rond rouge trop petit, gros liseré blanc ; voulu un grand rond rouge et un fin liseré blanc) · détail : ~/.claude/plans/demandes-2810/lot32-icone-enregistrer.md
-- 48 · [bogue] Icône « Enregistrer » (lot 32, essai 63) : rond rouge trop petit dans un gros liseré blanc ; voulu un grand rond rouge et un fin liseré blanc, partout où l'icône apparaît · noté 28/10 · petit · Sonnet/low · à valider (COMMIT, 0.3.96 ; rouge sur 82 % du rayon, liseré d'environ 1,6 px sur le bouton rond, 1 px à 12 et 14 px) · détail : ~/.claude/plans/demandes-2810/lot32-icone-enregistrer.md
+- 48 · [bogue] Icône « Enregistrer » (lot 32, essai 63) : rond rouge trop petit dans un gros liseré blanc ; voulu un grand rond rouge et un fin liseré blanc, partout où l'icône apparaît · noté 28/10 · petit · Sonnet/low · à valider (64e02c7, 0.3.96 ; rouge sur 82 % du rayon, liseré d'environ 1,6 px sur le bouton rond, 1 px à 12 et 14 px) · détail : ~/.claude/plans/demandes-2810/lot32-icone-enregistrer.md
   - essai 63 : icône « Enregistrer » : bouton rond de la barre du bas au repos, puis pendant un enregistrement ; Entraînement › Muscu et timer, bouton « Enregistrer » d'une séance ; en clair et en sombre → grand rond rouge entouré d'un fin liseré blanc au repos, bouton rond toujours vert ; carré pendant l'enregistrement, comme avant ; dire si l'icône vous plaît.
+- 31 · [dette] Dépendances : TypeScript 7, @types/node 26, npm audit fix --force sur uuid (point 180) · noté 28/10 · petit · Opus/medium · à valider (COMMIT, 0.3.97 ; TypeScript 7.0.2, @types/node 26, Capacitor 8.6.0 ; failles uuid parties avec @capacitor/cli 8.6.0, npm audit à 0 ; aucun fichier de src/ touché, bundle identique octet pour octet) · détail : docs/backlog/31-dependances.md
+  - essai 66 : Capacitor 8.6.0 : un court enregistrement GPS (quelques minutes, écran éteint un moment), puis son analyse → enregistrement et analyse comme avant.
 
 ## Ensuite
 
-1. 31 · [dette] Dépendances : TypeScript 7, @types/node 26, npm audit fix --force sur uuid (point 180) · noté 28/10 · petit · Opus/medium · à briefer ; APK à reconstruire
-2. 29 · [idée] Tests guidés : VMA par demi-Cooper et VAMeval (Q30 : les deux), bips de palier, protocole des zones, FC repos rangée dans les sessions sans position · noté 25/10 · gros · Opus/high · à briefer · dépend de : maquette si l'écran des tests change · détail : docs/backlog/29-tests-guides-vma.md
-3. 30 · [dette] Noyau voile : détection une seule fois puis classement par candidat de vent (observeTurns fusionné), confiance du vent rabattue sur couverture polaire maigre, bruit indépendant rééprouvé à 5 Hz · noté 26/09 · gros · Fable/xhigh · à briefer ; seul dans sa session, relevé du vent du banc avant et après · détail : docs/backlog/30-noyau-voile.md
+1. 29 · [idée] Tests guidés : VMA par demi-Cooper et VAMeval (Q30 : les deux), bips de palier, protocole des zones, FC repos rangée dans les sessions sans position · noté 25/10 · gros · Opus/high · à briefer · dépend de : maquette si l'écran des tests change · détail : docs/backlog/29-tests-guides-vma.md
+2. 30 · [dette] Noyau voile : détection une seule fois puis classement par candidat de vent (observeTurns fusionné), confiance du vent rabattue sur couverture polaire maigre, bruit indépendant rééprouvé à 5 Hz · noté 26/09 · gros · Fable/xhigh · à briefer ; seul dans sa session, relevé du vent du banc avant et après · détail : docs/backlog/30-noyau-voile.md
 
 ## Ça attend une occasion
 
