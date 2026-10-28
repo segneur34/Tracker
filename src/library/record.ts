@@ -213,7 +213,7 @@ export interface SessionAnalysis {
    */
   foil: boolean | null;
   /**
-   * Pumping foil pour cette session (surf, point 104) ; `null` : celui de son
+   * Pumping foil pour cette session (surf, point 104 ; voile sur foil, lot 22) ; `null` : celui de son
    * activité (Réglages). Absent des fiches plus anciennes.
    */
   pumping: boolean | null;

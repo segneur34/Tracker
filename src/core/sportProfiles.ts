@@ -1,6 +1,6 @@
 import type { JumpDetection } from './jumps';
 import type { HeartRateZoneModel } from './heartRate';
-import type { PumpDetection } from '../surfing/pumping';
+import type { PumpDetection } from './pumping';
 import type { CadenceDetection } from '../running/cadence';
 import type { SpeedRangeMs } from './speedGradient';
 import type { SportType, TopTarget } from './types';
@@ -278,6 +278,22 @@ const PUMP_DETECTION: PumpDetection = {
   liftoffHighPassS: 0.1, liftoffRoughWindowS: 0.5, liftoffCalmG: 0.08, liftoffCalmS: 1.5,
   liftoffSearchBeforeS: 10, liftoffSearchAfterS: 5,
   pruneCapture: false, pruneMarginS: 30,
+  // Le surf a ses vols à lui (`SurfFlight`) : tous listés.
+  minFlightS: 0,
+};
+
+/**
+ * Pumping en voile sur foil (wing, planche, kite ; lot 22, décision du 28/10) :
+ * au départ, copie de celui du surf, décollage compris. À régler sur une vraie
+ * session de wing capturée entière (Pumping coché) : celle du 26/10, élaguée
+ * autour des sauts, ne couvre que des bouts de vol. Pas d'élagage propre au
+ * pumping : Pumping coché, la capture est rangée entière
+ * (`keepsWholeCaptureForPumping`). Un vol est une suite au-dessus du seuil
+ * d'activité ; ceux de moins de 10 s ne sont pas listés (`minFlightS`).
+ */
+const SAILING_PUMP_DETECTION: PumpDetection = {
+  ...PUMP_DETECTION,
+  minFlightS: 10,
 };
 
 /**
@@ -350,8 +366,6 @@ export interface SurfProfile {
   foilWaveThreshold: number;
   /** Changement de direction compté par le GPS : rotation d'au moins cette valeur depuis l'extrême précédent, en degrés. */
   turnMinDeg: number;
-  /** Pumping sur foil, mesuré par les capteurs du téléphone (`surfing/pumping.ts`, point 104). */
-  pump: PumpDetection;
 }
 
 export interface SportProfile {
@@ -460,6 +474,11 @@ export interface SportProfile {
   cadence: CadenceDetection | null;
   /** Analyse des vagues ; `null` hors surf. */
   surf: SurfProfile | null;
+  /**
+   * Pumping sur foil, mesuré par les capteurs du téléphone (`core/pumping.ts`) :
+   * surf (point 104) et voile sur foil (lot 22) ; `null` en bateau, à pied, à vélo.
+   */
+  pump: PumpDetection | null;
 }
 
 /** Cibles de tops utilisées par tous les supports à voile. */
@@ -550,6 +569,7 @@ const SAILING_DEFAULTS = {
   heartRate: HEART_RATE,
   cadence: null,
   surf: null,
+  pump: SAILING_PUMP_DETECTION,
 };
 
 /** Seuils cardio d'un calcul décalés de `offsetBpm` par rapport à la course. */
@@ -587,6 +607,7 @@ const RUNNING_PROFILE: SportProfile = {
   heartRate: HEART_RATE,
   cadence: CADENCE,
   surf: null,
+  pump: null,
 };
 
 const CYCLING_PROFILE: SportProfile = {
@@ -621,6 +642,7 @@ const CYCLING_PROFILE: SportProfile = {
   heartRate: heartRateOffset(-7),
   cadence: null,
   surf: null,
+  pump: null,
 };
 
 /**
@@ -661,8 +683,9 @@ const SURF_PROFILE: SportProfile = {
   cadence: null,
   surf: {
     stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15, maxGapS: MAX_GAP_S,
-    foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60, pump: PUMP_DETECTION,
+    foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60,
   },
+  pump: PUMP_DETECTION,
 };
 
 export const SPORT_PROFILES: Record<SportType, SportProfile> = {
@@ -710,6 +733,8 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     // Voile au rappel, comme la planche (25/10).
     heartRate: heartRateOffset(-5),
     jumps: null,
+    // Ni foil pompé ni capteurs du pumping.
+    pump: null,
   },
   running: RUNNING_PROFILE,
   cycling: CYCLING_PROFILE,

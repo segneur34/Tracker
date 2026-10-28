@@ -15,6 +15,7 @@ import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
 import { effectiveHrOffset, effectiveJumpSettings, effectiveTabChoices, readStoredActivities } from '../hooks/useSportSettings';
 import { useSessionJumps } from '../hooks/useSessionJumps';
+import { useSessionPumping } from '../hooks/useSessionPumping';
 import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useSessionMarks } from '../hooks/useSessionMarks';
 import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
@@ -36,15 +37,20 @@ import { activeRatioLabel, hasPositions } from '../core/sportProfiles';
 import { isValidSpeedRange } from '../core/speedGradient';
 import { trackColorSegments } from '../core/trackColor';
 import type { TopSegment } from '../core/types';
+import { measureFlightPumping, summarizePumping, type FlightPumping } from '../core/pumping';
 import type { LibrarySession } from '../library/record';
 import {
-  SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatSpeed, formatTimeOfDay, knotsToMs, toDisplaySpeed,
+  SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
+  knotsToMs, toDisplaySpeed,
 } from '../core/units';
 import { normalizeAngle, speedPolar, type PolarBin } from '../sailing/wind';
 import { MANEUVER_METRICS, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
 import ActivitySelect from '../components/ActivitySelect';
 import JumpsPanel from '../components/JumpsPanel';
 import JumpMapLayer from '../components/JumpMapLayer';
+import FlightPumpingPanel from '../components/FlightPumpingPanel';
+import TrackSpanLayer, { type TrackSpanShown } from '../components/TrackSpanLayer';
+import StatTile from '../components/ui/StatTile';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import HeartRateChart from '../components/HeartRateChart';
 import HeartRatePanel, { CardioCurve } from '../components/HeartRatePanel';
@@ -109,6 +115,7 @@ const SAILING_PANEL_DEFAULTS: Record<SailingPanel, boolean> = {
   cardio: false,
   vmg: false,
   sauts: false,
+  pumping: false,
   vent: false,
   matos: false,
   reglages: false,
@@ -173,10 +180,12 @@ function SailingModule() {
     loadError,
     sessionKey,
     cumulative,
+    flights,
     activity,
     setActivity,
     profile,
     activityFoil,
+    activityPumping,
     gearGroups,
     speedUnit,
     distanceUnit,
@@ -253,6 +262,10 @@ function SailingModule() {
     return jumpsState.jumps.filter((j) => j.heightM >= jumpMinHeightM && (j.speedMs === null || j.speedMs >= thresholdMs));
   }, [jumpsState.jumps, jumpMinHeightM, activeThresholdKn]);
   const jumpsVisible = jumpsState.status !== 'none';
+  /** Support sur foil de la session : le sien s'il est réglé, sinon celui de l'activité. */
+  const foil = edits.foil ?? activityFoil;
+  /** Pumping de la session (brouillon, puis fiche), sinon celui de l'activité ; sur foil seulement (lot 22). */
+  const pumping = foil && profile.pump !== null && (edits.pumping ?? activityPumping);
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans « graphiques ». */
   const { profile: runner, retainHr } = useRunnerProfile();
   const heart = useSessionHeartRate(track, profile.heartRate);
@@ -260,15 +273,9 @@ function SailingModule() {
   const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate, hrOffsetBpm), [runner, profile.heartRate, hrOffsetBpm]);
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
-  const sailingPanels = useMemo(
-    () => shownTabs(SAILING_TABS, tabChoices).filter((p) => (p.key !== 'sauts' || jumpsVisible) && (p.key !== 'cardio' || heart.present)),
-    [tabChoices, jumpsVisible, heart.present]
-  );
 
   const notes = edits.notes;
   const setNotes = draft.updateNotes;
-  /** Support sur foil de la session : le sien s'il est réglé, sinon celui de l'activité. */
-  const foil = edits.foil ?? activityFoil;
   const { open: storedOpen, toggle, set: setSections } = useOpenSections<SailingPanel>('sailing-onglets', SAILING_PANEL_DEFAULTS);
   /**
    * Graphes de l'onglet « graphiques » dépliés, chacun replié à part par son
@@ -292,6 +299,17 @@ function SailingModule() {
   const setGeneral = useCallback((shown: boolean) => setSections({ general: shown }), [setSections]);
   const advanced = useAdvancedTabs(sessionKey, setGeneral);
   const open = useMemo(() => maskAdvancedTabs(maskHiddenTabs(storedOpen, SAILING_TABS, tabChoices), SAILING_TABS, advanced.open), [storedOpen, tabChoices, advanced.open]);
+  // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
+  // Capteurs lus à l'ouverture de l'onglet, Pumping coché : une capture entière pèse plusieurs Mo.
+  const pumpSensors = useSessionPumping(loadedFromMemory ? sessionFile : null, pumping && open.pumping);
+  /** Onglet « pumping » : sur foil, pour un calcul qui le mesure, si la session a ses capteurs ; Pumping décoché, il montre les vols. */
+  const pumpingVisible = foil && profile.pump !== null && pumpSensors.hasMotion;
+  const pumpingOpen = open.pumping && pumpingVisible;
+  const sailingPanels = useMemo(
+    () => shownTabs(SAILING_TABS, tabChoices).filter((p) => (p.key !== 'sauts' || jumpsVisible) && (p.key !== 'pumping' || pumpingVisible)
+      && (p.key !== 'cardio' || heart.present)),
+    [tabChoices, jumpsVisible, pumpingVisible, heart.present]
+  );
   /** Une seule surbrillance sur la carte, effacée quand son onglet se ferme (`useMapHighlight`). */
   const highlight = useMapHighlight(open);
   /** Top montré : de vitesse (onglet tops, `t2s`…) ou de VMG (onglet VMG, `vmgUpwind`, `vmgDownwind`), ou `none`. */
@@ -302,6 +320,26 @@ function SailingModule() {
   const jumpHighlight = highlight.shownIn('sauts');
   const jumpPodiumShown = jumpHighlight === 'podium';
   const shownJump = jumpHighlight !== null && !jumpPodiumShown ? Number(jumpHighlight) : null;
+  const pumpDetection = profile.pump;
+  const flightPumping = useMemo(() => {
+    if (!pumpSensors.recording || !pumpDetection || flights.length === 0) return null;
+    const list = measureFlightPumping(pumpSensors.recording, pumpDetection, track, cumulative, flights);
+    return new Map(list.flatMap((x): [number, FlightPumping][] => (x ? [[x.n, x]] : [])));
+  }, [pumpSensors.recording, pumpDetection, track, cumulative, flights]);
+  const pumpSummary = useMemo(() => (flightPumping ? summarizePumping([...flightPumping.values()]) : null), [flightPumping]);
+  /** Les 3 plus longs vols, le résumé de l'onglet. */
+  const podiumFlights = useMemo(() => [...flights].sort((a, b) => b.durationS - a.durationS).slice(0, 3), [flights]);
+  /** Vol montré sur la carte (onglet « pumping ») : son numéro, ou le podium (`podium`). */
+  const flightShown = highlight.shownIn('pumping');
+  const shownFlightSpans = useMemo((): TrackSpanShown[] => {
+    const spanLabel = (f: (typeof flights)[number]) =>
+      `Vol ${f.n} · ${formatTimeOfDay(f.startMs)} · ${formatShortDuration(f.durationS)} · ${Math.round(f.distanceM)} m`;
+    if (flightShown === 'podium') {
+      return podiumFlights.map((f, k) => ({ key: `vol-${f.n}`, start: f.start, end: f.end, color: HIGHLIGHT_PODIUM_COLORS[k], label: spanLabel(f) }));
+    }
+    const f = flightShown === null ? undefined : flights.find((x) => String(x.n) === flightShown);
+    return f ? [{ key: `vol-${f.n}`, start: f.start, end: f.end, color: HIGHLIGHT_SHOWN_COLOR, label: spanLabel(f) }] : [];
+  }, [flightShown, flights, podiumFlights]);
   /** Zone cardiaque montrée sur la carte (onglet « cardio »). */
   const shownHrZone = highlight.shownIn('cardio');
   const selectedHrZone = shownHrZone === null ? null : Number(shownHrZone);
@@ -906,6 +944,7 @@ function SailingModule() {
       {arrowLayers}
       {staticMapLayers}
       <JumpMapLayer track={trackData} jumps={shownJumps} shownJump={shownJump} podiumShown={jumpPodiumShown} />
+      <TrackSpanLayer track={track} spans={shownFlightSpans} />
       {hrZonePaths.map((path, idx) => (
         <Polyline key={`cardio-${selectedHrZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       ))}
@@ -1106,6 +1145,31 @@ function SailingModule() {
               />
             )}
 
+            {pumpingOpen && (
+              <ResizablePanel id="sailing.pumping" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
+                <FlightPumpingPanel
+                  label={`Pumping (${flights.length} vol${flights.length > 1 ? 's' : ''})`} helpKey="voile:pumping"
+                  open={open.pumping} onToggle={() => toggle('pumping')}
+                  help={<>
+                    Vol : au-dessus du seuil d'activité ({showThreshold(activeThresholdKn)} {speedSymbol}), d'une traite, d'au moins {pumpDetection?.minFlightS ?? 0} s.
+                    {flightPumping
+                      ? " Pumping : mesuré par les capteurs du téléphone fixé sur la poitrine, sur les séries de coups. Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)."
+                      : ''}
+                  </>}
+                  flights={flights} podium={podiumFlights}
+                  tiles={<>
+                    <StatTile label="Vols" value={flights.length} />
+                    <StatTile label="Plus long vol" value={podiumFlights.length > 0 ? formatShortDuration(podiumFlights[0].durationS) : '—'} />
+                  </>}
+                  pumping={flightPumping} pumpSummary={pumpSummary}
+                  shown={flightShown} onShow={(key) => highlight.show('pumping', key)} accent={FAMILY_ACCENT.voile}
+                  speedCell={(ms) => (ms === null ? '—' : formatSpeedValue(toDisplaySpeed(ms, speedUnit), speedUnit))}
+                  unitLabel={SPEED_UNIT_LABEL[speedUnit]}
+                  pumpingOn={pumping} sensors={pumpSensors}
+                  offNote="Cochez « Pumping » dans l'onglet réglages pour compter les coups de chaque vol, téléphone fixé sur la poitrine." />
+              </ResizablePanel>
+            )}
+
             {open.vent && trackData.length > 0 && !windStats && renderEmptyPanel('vent', 'Variations du Vent', 'ses variations se lisent aux manœuvres, qui se classent',
               'Il faut au moins deux manœuvres pour suivre le vent au fil de la session.')}
             {open.vent && windStats && (
@@ -1200,6 +1264,15 @@ function SailingModule() {
                     <strong>Foil</strong>
                     {edits.foil === null && <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>(supposé : celui de l'activité)</span>}
                   </label>
+
+                  {foil && profile.pump !== null && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-s)' }}
+                      title="Pumping des vols par les capteurs du téléphone, pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">
+                      <input type="checkbox" checked={pumping} onChange={(e) => draft.update({ pumping: e.target.checked === activityPumping ? null : e.target.checked })} />
+                      <strong>Pumping</strong>
+                      {edits.pumping === null && <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>(celui de l'activité)</span>}
+                    </label>
+                  )}
 
                   {trackData.length > 0 && (
                     <div style={{ fontSize: 'var(--text-s)' }}>

@@ -24,7 +24,7 @@ export interface SessionEdits {
   effortThresholdMs: number | null;
   /** Support sur foil pour la session ; `null` : celui de l'activité. */
   foil: boolean | null;
-  /** Pumping foil pour la session (surf) ; `null` : celui de l'activité. */
+  /** Pumping foil pour la session (surf, voile sur foil) ; `null` : celui de l'activité. */
   pumping: boolean | null;
   /** Seuil de vague en foil de la session (surf), dans l'unité du profil ; `null` : celui du profil. */
   waveThreshold: number | null;

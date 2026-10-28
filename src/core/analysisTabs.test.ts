@@ -8,9 +8,16 @@ const keys = (tabs: readonly { key: string }[]) => tabs.map((t) => t.key);
 const tab = (tabs: readonly { key: string; label: string; generic?: true }[], key: string) => tabs.find((t) => t.key === key)!;
 
 describe('analysisTabs : onglets proposés par calcul', () => {
-  it('voile : la barre de la voile, « sauts » compris, sauf en bateau', () => {
+  it('voile : la barre de la voile, « sauts » et « pumping » compris, sauf en bateau', () => {
     expect(keys(analysisTabs(SPORT_PROFILES.wingfoil))).toEqual(keys(SAILING_TABS));
     expect(keys(analysisTabs(SPORT_PROFILES.bateau))).not.toContain('sauts');
+    expect(keys(analysisTabs(SPORT_PROFILES.bateau))).not.toContain('pumping');
+  });
+
+  it('voile : « pumping » juste après « sauts » (lot 22)', () => {
+    const order = keys(SAILING_TABS);
+    expect(order.indexOf('pumping')).toBe(order.indexOf('sauts') + 1);
+    expect(keys(analysisTabs(SPORT_PROFILES.kite))).toContain('pumping');
   });
 
   it('course et vélo : la même barre, sans « sauts » en fractionné', () => {

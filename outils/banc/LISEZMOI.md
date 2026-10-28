@@ -160,7 +160,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - l'absence de « Mesurer le pumping » dans le navigateur, et la page à 390 × 844 sans débordement.
 
   Il dure environ 1 min et finit par « Tout passe. » ou le nombre d'échecs.
-- `sauts-diagnostic.mjs <fichier .imu> [<fichier .gpx>] [--tous] [--support=wingfoil]` : sans navigateur ni serveur (Node 22.18 ou plus, qui lit le TypeScript de l'application tel quel). Relit une capture des capteurs d'une vraie séance, rangée à côté de son GPX dans le dossier mémoire. Il donne :
+- `sauts-diagnostic.mjs <fichier .imu> [<fichier .gpx>] [--tous] [--support=wingfoil]` : sans navigateur ni serveur (Node 22.18 ou plus, qui lit le TypeScript de l'application tel quel, par `charge-ts.mjs`). Relit une capture des capteurs d'une vraie séance, rangée à côté de son GPX dans le dossier mémoire. Il donne :
   - le téléphone, les capteurs, l'emplacement et le foil choisis ;
   - la durée, la cadence et les trous de chaque flux ;
   - l'écart avec le GPX ;
@@ -174,6 +174,11 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - les demi-tours hors vol et les tours complets écartés ; avec `--ecartes`, tous les virages écartés, par motif.
 
   Il charge le TypeScript de l'application tel quel par `charge-ts.mjs`, un crochet de résolution (`registerHooks`) qui ajoute `.ts` aux imports relatifs sans extension ; un autre script s'en sert de même (`import './charge-ts.mjs'`, puis les modules par `await import`). Essai sans vraie session : `node make-gpx.mjs <brouillon>/voile.gpx`, puis `node manoeuvres-diagnostic.mjs <brouillon>/voile.gpx` (12 virements ratés, 12 empannages réussis, vent 4°).
+- `pumping-diagnostic.mjs <gpx> <imu> [--support=wingfoil] [--seuil=7] [--min-vol=10] [--coups] [--tous]` : sans navigateur ni serveur (Node 22.18 ou plus, par `charge-ts.mjs`). Relit une vraie session de voile sur foil et sa capture des capteurs, rangées dans le dossier mémoire (chemins en argument, jamais une copie dans le dépôt), pour régler le pumping en voile (`SAILING_PUMP_DETECTION`). Les vols sont ceux de l'onglet « pumping » (`sailingFlights`, au seuil de la fiche donné par `--seuil`, sinon la suggestion ; listés dès `--min-vol` secondes, sinon le profil). Il donne :
+  - les seuils du pumping, l'état de la capture (entière ou élaguée, et ses fenêtres en minutes depuis le début de la trace) ;
+  - par vol touché par la capture (`--tous` : tous) : début, heure, durée, part couverte (une étoile si partielle), décollage et sa vitesse, coups, fréquence, temps pompé, distance par coup ; le total ;
+  - les coups trouvés autour de chaque saut rangé (faux coups possibles) ;
+  - avec `--coups`, l'accélération verticale lissée, sans dérive, crête à crête par tranche de 5 s dans les vols couverts, et les coups de chaque tranche, à comparer à `strokeMinG`.
 - `donnees.mjs <port> <dossier de travail> [<dossier des captures>]` : données sûres (lot A, point 92), sur un profil neuf, dans la mémoire du navigateur. Il faut le serveur de développement, **redémarré depuis la dernière modification des sources** : le script importe `/src/hooks/useSessionLibrary.ts`, et après un rechargement à chaud, il obtiendrait une seconde copie du module, vide. Aucune demande à l'IGN ni à Overpass n'est attendue : elles sont relevées. Le script écrit lui-même ses GPX. Il vérifie :
   - le cache allégé : une sortie à vélo dont la fiche porte une altitude IGN et des voies. Après deux lancements, `tracker.libraryCache` ne les contient plus, et la session est partielle. Un renommage depuis la liste les laisse dans la fiche. L'analyse s'ouvre sans aucune demande, altitude « IGN » ;
   - le recalcul de fond : 30 fiches au résumé périmé. La dernière, renommée pendant le balayage, garde son nom et passe en `calcVersion` 2 ;

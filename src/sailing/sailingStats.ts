@@ -1,4 +1,5 @@
-import { buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
+import { flightSpans, type FlightSpan } from '../core/pumping';
+import { activeRuns, buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
 import { getActiveThresholds, getSportProfile, hasActiveThreshold } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import type { CumulativeTrack, SportType, TrackPoint } from '../core/types';
@@ -72,4 +73,20 @@ export const buildSailingSessionStats = (
   });
 
   return { ...base, tops: options.tops ?? computeSailingTops(track, cumulative) };
+};
+
+/**
+ * Vols d'une session de voile sur foil (pumping, lot 22) : les suites du
+ * masque d'activité au seuil de la session, celui des statistiques (temps et
+ * ratio de vol), coupées aux trous de la trace (`maxGapS`) ; celles de moins de
+ * `minFlightS` secondes ne sont pas listées. La détection n'est pas retouchée :
+ * c'est celle des chiffres « en vol ». Rien en bateau, sans seuil.
+ */
+export const sailingFlights = (
+  track: TrackPoint[], cumulative: CumulativeTrack, sport: SportType, activeThresholdKn: number, minFlightS: number
+): FlightSpan[] => {
+  const profile = getSportProfile(sport);
+  if (track.length < 2 || !hasActiveThreshold(profile)) return [];
+  const mask = thresholdActivityMask(track, profile, activeThresholdKn);
+  return flightSpans(track, cumulative, activeRuns(track, mask, profile.maxGapS), minFlightS);
 };

@@ -10,7 +10,7 @@ import {
 import { WIND_LOCAL_MAX_GAP_MIN, analyzeManeuvers, estimateWind, windSamplesFrom } from '../sailing/maneuvers';
 import { buildWindTimeline, normalizeAngle, speedPolar } from '../sailing/wind';
 import { calculateVmgStats, calculateWindStats, summarizeManeuvers } from '../sailing/sailingAnalytics';
-import { buildSailingSessionStats, computeSailingTops } from '../sailing/sailingStats';
+import { buildSailingSessionStats, computeSailingTops, sailingFlights } from '../sailing/sailingStats';
 import { trackToPointData } from '../utils/kinematics';
 import { useGpxSession } from './useGpxSession';
 import { useSportSettings } from './useSportSettings';
@@ -57,6 +57,7 @@ export const useSailingSession = ({
     speedUnit,
     distanceUnit,
     foil: activityFoil,
+    pumping: activityPumping,
     gearGroups,
   } = useSportSettings('voile');
 
@@ -102,6 +103,12 @@ export const useSailingSession = ({
   const stats = useMemo(
     () => buildSailingSessionStats(gpx.track, { sport, activeThresholdKn, cumulative, tops }),
     [gpx.track, sport, activeThresholdKn, cumulative, tops]
+  );
+  /** Vols, pour le pumping sur foil (lot 22) : suites au-dessus du seuil d'activité, les plus courtes non listées. */
+  const minFlightS = profile.pump?.minFlightS ?? null;
+  const flights = useMemo(
+    () => (minFlightS === null ? [] : sailingFlights(gpx.track, cumulative, sport, activeThresholdKn, minFlightS)),
+    [gpx.track, cumulative, sport, activeThresholdKn, minFlightS]
   );
 
   /**
@@ -211,6 +218,8 @@ export const useSailingSession = ({
     /** Distance et temps cumulés le long de la trace, calculés une fois pour le hook et le module. */
     cumulative,
     stats,
+    /** Vols de la session au seuil d'activité (pumping sur foil) ; vide si le calcul ne mesure pas le pumping. */
+    flights,
     currentWindValue,
     autoWind,
     windEstimate,
@@ -235,6 +244,8 @@ export const useSailingSession = ({
     profile,
     /** Support sur foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
     activityFoil,
+    /** Pumping de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
+    activityPumping,
     /** Matériel enregistré de l'activité, choisi par groupe dans « matos et conditions » ; `null` : option coupée. */
     gearGroups,
     /** Unités d'affichage, choisies dans Réglages pour l'activité. */

@@ -179,7 +179,7 @@ export interface StoredSettings {
   markGuide?: ByActivity<MarkGuideSettings>;
   /** Support sur foil (voile, surf) ; absent : `foilDefault` du calcul, coché pour « Surf foil ». */
   foils?: ByActivity<boolean>;
-  /** Pumping foil (surf, point 104) : capteurs proposés à l'enregistrement, pumping des vols dans l'analyse ; absent : non. */
+  /** Pumping foil (surf, point 104 ; voile sur foil, lot 22) : capteurs proposés à l'enregistrement, pumping des vols dans l'analyse ; absent : non. */
   pumping?: ByActivity<boolean>;
   /** Sauts mesurés par les capteurs du téléphone (voile sauf bateau, course, vélo) ; absents : non mesurés. */
   jumps?: ByActivity<JumpSettings>;
@@ -810,9 +810,9 @@ const resolveFoil = (stored: StoredSettings, activity: Activity): boolean | null
   return typeof foil === 'boolean' ? foil : defaultFoil(activity);
 };
 
-/** Pumping foil d'une activité : celui réglé, sinon non ; `null` hors surf. */
+/** Pumping foil d'une activité : celui réglé, sinon non ; `null` si son calcul ne le mesure pas (bateau, à pied, à vélo). */
 const resolvePumping = (stored: StoredSettings, activity: Activity): boolean | null => {
-  if (activityTreatment(activity) !== 'surf') return null;
+  if (getSportProfile(activity.base).pump === null) return null;
   return stored.pumping?.[activity.id] === true;
 };
 
@@ -838,7 +838,7 @@ const resolveJumps = (stored: StoredSettings, activity: Activity): JumpSettings 
 /** Support sur foil d'une activité de voile ou de surf, `null` ailleurs. Utilisable hors composant. */
 export const effectiveFoil = (activity: Activity): boolean | null => resolveFoil(readStoredSettings(), activity);
 
-/** Pumping foil d'une activité de surf, `null` ailleurs. Utilisable hors composant. */
+/** Pumping foil d'une activité de surf ou de voile (bateau excepté), `null` ailleurs. Utilisable hors composant. */
 export const effectivePumping = (activity: Activity): boolean | null => resolvePumping(readStoredSettings(), activity);
 
 /** Ceinture cardio d'une activité. Utilisable hors composant. */
@@ -995,7 +995,7 @@ export interface SportSettingsView {
   /** Support sur foil ; `null` hors voile et surf. */
   foil: boolean | null;
   isFoilOverridden: boolean;
-  /** Pumping foil ; `null` hors surf. */
+  /** Pumping foil ; `null` si le calcul ne le mesure pas (bateau, à pied, à vélo). */
   pumping: boolean | null;
   /** Sauts mesurés par les capteurs ; `null` si le calcul ne les mesure pas (bateau, fractionné). */
   jumps: JumpSettings | null;

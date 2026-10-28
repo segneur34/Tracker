@@ -15,10 +15,13 @@
 // ne filtrent qu'à l'affichage dans l'application : ils ne sont pas appliqués
 // ici.
 
+import './charge-ts.mjs';
 import { readFileSync, statSync } from 'node:fs';
-import { decodeImu, imuCaptureStats } from '../../src/core/imuFile.ts';
-import { measureJumps } from '../../src/core/jumps.ts';
-import { SPORT_PROFILES } from '../../src/core/sportProfiles.ts';
+
+// Modules de l'application après le crochet de `charge-ts.mjs` (imports relatifs sans extension).
+const { decodeImu, imuCaptureStats } = await import('../../src/core/imuFile.ts');
+const { measureJumps } = await import('../../src/core/jumps.ts');
+const { SPORT_PROFILES } = await import('../../src/core/sportProfiles.ts');
 
 const args = process.argv.slice(2);
 const flags = Object.fromEntries(args.filter((a) => a.startsWith('--')).map((a) => {

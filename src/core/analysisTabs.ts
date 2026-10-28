@@ -24,7 +24,7 @@ export interface AnalysisTab<K extends string = string> {
 /** Choix d'une activité : seulement les onglets montrés ou cachés à l'écart de leur défaut. */
 export type TabChoices = Readonly<Record<string, boolean>>;
 
-export type SailingTab = 'general' | 'tops' | 'manoeuvres' | 'graphiques' | 'cardio' | 'vmg' | 'sauts' | 'vent' | 'matos' | 'reglages';
+export type SailingTab = 'general' | 'tops' | 'manoeuvres' | 'graphiques' | 'cardio' | 'vmg' | 'sauts' | 'pumping' | 'vent' | 'matos' | 'reglages';
 
 /** Voile : une seule barre, dans l'ordre voulu par l'utilisateur. */
 export const SAILING_TABS: AnalysisTab<SailingTab>[] = [
@@ -37,6 +37,8 @@ export const SAILING_TABS: AnalysisTab<SailingTab>[] = [
   { key: 'vmg', label: 'vmg' },
   // Seulement pour une session aux sauts mesurés par les capteurs du téléphone.
   { key: 'sauts', label: 'sauts' },
+  // Sur foil seulement, pour une session qui a ses capteurs (lot 22) : mêmes capteurs que les sauts.
+  { key: 'pumping', label: 'pumping' },
   { key: 'vent', label: 'vent' },
   { key: 'matos', label: 'matos et conditions' },
   { key: 'reglages', label: 'réglages' },
@@ -111,10 +113,12 @@ const TREATMENT_TABS: Record<Treatment, readonly AnalysisTab[]> = {
 
 /**
  * Onglets d'un calcul, proposés dans Réglages : « sauts » seulement s'il les mesure (ni bateau ni fractionné),
- * « cadence » de même, « fractionné » aux seuls calculs de fractionné (19/10), « test » aux seuls calculs de test (24/10).
+ * « cadence » de même, « pumping » de même (voile sur foil, pas le bateau), « fractionné » aux seuls calculs
+ * de fractionné (19/10), « test » aux seuls calculs de test (24/10).
  */
 export const analysisTabs = (profile: SportProfile): readonly AnalysisTab[] =>
   TREATMENT_TABS[sportTreatment(profile.id)].filter((tab) => (tab.key !== 'sauts' || profile.jumps !== null) && (tab.key !== 'cadence' || profile.cadence !== null)
+    && (tab.key !== 'pumping' || profile.pump !== null)
     && (tab.key !== 'fractionne' || isIntervalSport(profile.id)) && (tab.key !== 'test' || isTestSport(profile.id)));
 
 /** Onglet montré : le choix de l'activité, sinon son défaut (natif montré, générique caché). */

@@ -23,7 +23,8 @@ import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SessionThresholdField from '../components/SessionThresholdField';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
-import SurfSpanLayer, { type SurfSpanShown } from '../components/SurfSpanLayer';
+import TrackSpanLayer, { type TrackSpanShown } from '../components/TrackSpanLayer';
+import FlightPumpingPanel, { type FlightColumn } from '../components/FlightPumpingPanel';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import HeartRateChart from '../components/HeartRateChart';
 import HeartRatePanel, { CardioCurve } from '../components/HeartRatePanel';
@@ -65,7 +66,7 @@ import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useSessionPumping } from '../hooks/useSessionPumping';
 import { effectiveTabChoices, readStoredActivities, useSportSettings } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
-import { measureFlightPumping, summarizePumping, type FlightPumping } from '../surfing/pumping';
+import { measureFlightPumping, summarizePumping, type FlightPumping } from '../core/pumping';
 import type { SurfFlight, SurfPhase, SurfReturn, SurfSpan } from '../surfing/surfAnalysis';
 import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfing/surfSession';
 import StatTile from '../components/ui/StatTile';
@@ -136,9 +137,15 @@ const gearFields = (labels: [string, string]): GearField[] => [
 const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' } as const;
 const thStyle = { padding: '0.4em 0.5em', whiteSpace: 'nowrap' } as const;
 const tdStyle = { padding: '0.35em 0.5em', textAlign: 'center', whiteSpace: 'nowrap' } as const;
-const noteStyle = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' } as const;
 
 const orDash = (value: number | null, format: (v: number) => string): string => (value === null ? '—' : format(value));
+
+/** Colonnes des vols propres au surf : vagues du vol, pompage vu par le GPS. */
+const SURF_FLIGHT_PODIUM_COLUMNS: FlightColumn<SurfFlight>[] = [
+  { header: 'Vagues', cell: (f) => f.waveCount },
+  { header: 'Pompage', cell: (f) => formatShortDuration(f.pumpS) },
+];
+const SURF_FLIGHT_ALL_COLUMNS: FlightColumn<SurfFlight>[] = [{ header: 'Vagues', cell: (f) => f.waveCount }];
 
 /** Bouton « Voir » d'une ligne de tableau : montre ou masque son passage sur la carte. */
 const ShowButton = ({ shown, onClick, disabled }: { shown: boolean; onClick: () => void; disabled?: boolean }) => (
@@ -292,7 +299,7 @@ function SurfModule() {
 
   // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
   const sensors = useSessionPumping(shownFile, pumping);
-  const pumpDetection = surfProfile?.surf.pump ?? null;
+  const pumpDetection = surfProfile?.pump ?? null;
   const flightPumping = useMemo(() => {
     if (!sensors.recording || !pumpDetection || flights.length === 0) return null;
     const list = measureFlightPumping(sensors.recording, pumpDetection, track, cumulative, flights);
@@ -301,11 +308,12 @@ function SurfModule() {
   const pumpSummary = useMemo(() => (flightPumping ? summarizePumping([...flightPumping.values()]) : null), [flightPumping]);
   /** Les 3 plus longs vols, le résumé de l'onglet. */
   const podiumFlights = useMemo(() => [...flights].sort((a, b) => b.durationS - a.durationS).slice(0, 3), [flights]);
-  const [allFlightsOpen, setAllFlightsOpen] = useState(false);
   const speedCell = (ms: number | null): string => (ms === null ? '—' : formatSpeedValue(toDisplaySpeed(ms, speedUnit), speedUnit));
-  /** Nom d'un vol dans les tableaux ; une étoile si les capteurs n'en couvrent qu'une partie. */
-  const flightLabel = (f: SurfFlight, pump: FlightPumping | null, named = true): string =>
-    `${named ? 'Vol ' : ''}${f.n}${pump && !pump.covered ? ' *' : ''}`;
+  /** Colonnes « Tous les vols » du GPS, sans pumping mesuré : pompage et vitesse de pompe (unité de l'activité). */
+  const surfFlightGpsColumns: FlightColumn<SurfFlight>[] = [
+    { header: 'Pompage', cell: (f) => formatShortDuration(f.pumpS) },
+    { header: `Pompe (${SPEED_UNIT_LABEL[speedUnit]})`, cell: (f) => speedCell(f.pumpSpeedMs) },
+  ];
 
   /** Point d'arrivée d'une remontée sur la carte : le pic (début de l'attente), sinon la glisse suivante. */
   const returnEnd = useCallback(
@@ -317,7 +325,7 @@ function SurfModule() {
     },
     [track]
   );
-  const shownSpans = useMemo((): SurfSpanShown[] => {
+  const shownSpans = useMemo((): TrackSpanShown[] => {
     const spanLabel = (kind: string, s: SurfSpan) =>
       `${kind} ${s.n} · ${formatTimeOfDay(s.startMs)} · ${formatShortDuration(s.durationS)} · ${Math.round(s.distanceM)} m · max ${formatSpeed(s.maxSpeedMs, speedUnit)}`;
     if (waveShown === 'podium') {
@@ -484,7 +492,7 @@ function SurfModule() {
     <>
       <BaseTileLayer family={'surf'} />
       <TrackSegmentsLayer segments={mapSegments} weight={5} family={'surf'} />
-      <SurfSpanLayer track={track} spans={shownSpans} />
+      <TrackSpanLayer track={track} spans={shownSpans} />
       <TopsHighlight tops={tops} selected={topShown} />
       {hrZonePaths.map((path, idx) => (
         <Polyline key={`cardio-${selectedHrZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
@@ -721,164 +729,27 @@ function SurfModule() {
 
             {open.vols && foil && (
               <ResizablePanel id={panelId('vols')} style={panelStyle}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                  <PanelTitle label={`Vols (${flights.length})`} open={open.vols} onToggle={() => toggle('vols')} helpKey="surf:vols" />
-                  <span style={{ flex: 1 }} />
-                  {flights.length > 1 && (
-                    <Button size="s" aria-pressed={flightShown === 'podium'} onClick={() => highlight.show('vols', flightShown === 'podium' ? null : 'podium')}>
-                      {flightShown === 'podium' ? 'Masquer les 3 plus longs' : 'Les 3 plus longs'}
-                    </Button>
-                  )}
-                </div>
-                <HelpText helpKey="surf:vols" note>
-                  Vol : au-dessus du seuil de vol, d'une traite ; ses vagues sont ses passages au-dessus du seuil de vague en foil.
-                  {flightPumping
-                    ? " Pumping : mesuré par les capteurs du téléphone, sur les séries de coups. Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)."
-                    : ' Le reste du vol est pompé.'}
-                </HelpText>
-                <div className="an-sheet__stats an-sheet__stats--always">
-                  <StatTile label="Plus long vol" value={orDash(summary.longestFlightS, formatShortDuration)} />
-                  <StatTile label="Temps de vol" value={formatShortDuration(summary.flightS)} />
-                  <StatTile label="Vagues en un vol" value={summary.maxWavesInFlight ?? '—'} />
-                  {pumpSummary && (
-                    <>
-                      <StatTile label="Coups de pompe" value={pumpSummary.strokes} />
-                      <StatTile label="Fréquence" value={orDash(pumpSummary.strokesPerMin, (v) => `${Math.round(v)} /min`)} title="Coups de pompe par minute de pumping" />
-                      <StatTile label="Par coup" value={orDash(pumpSummary.perStrokeM, (v) => `${v.toFixed(1)} m`)} title="Distance pompée divisée par le nombre de coups" />
-                    </>
-                  )}
-                </div>
-                {flights.length > 0 && (
-                  <div style={{ overflowX: 'auto', marginTop: '10px' }}>
-                    <table style={tableStyle}>
-                      <thead>
-                        <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                          <th style={thStyle}>{flights.length > 1 ? 'Plus longs' : 'Vol'}</th>
-                          <th style={thStyle}>Durée</th>
-                          <th style={thStyle}>Distance</th>
-                          {flightPumping ? (
-                            <>
-                              <th style={thStyle}>Décollage ({unitLabel})</th>
-                              <th style={thStyle}>Fréquence</th>
-                              <th style={thStyle}>m/coup</th>
-                            </>
-                          ) : (
-                            <>
-                              <th style={thStyle}>Vagues</th>
-                              <th style={thStyle}>Pompage</th>
-                            </>
-                          )}
-                          <th style={thStyle}>Carte</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {podiumFlights.map((f, k) => {
-                          const shown = flightShown === String(f.n);
-                          const pump = flightPumping?.get(f.n) ?? null;
-                          return (
-                            <tr key={f.n} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                              <td style={{ ...tdStyle, fontWeight: 700 }}>
-                                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: HIGHLIGHT_PODIUM_COLORS[k], marginRight: '6px' }} />
-                                {flightLabel(f, pump)}
-                              </td>
-                              <td style={{ ...tdStyle, fontWeight: 700 }}>{formatShortDuration(f.durationS)}</td>
-                              <td style={tdStyle}>{Math.round(f.distanceM)} m</td>
-                              {flightPumping ? (
-                                <>
-                                  <td style={tdStyle}>{speedCell(pump?.takeoffSpeedMs ?? null)}</td>
-                                  <td style={tdStyle}>{orDash(pump?.strokesPerMin ?? null, (v) => `${Math.round(v)} /min`)}</td>
-                                  <td style={tdStyle}>{orDash(pump?.perStrokeM ?? null, (v) => v.toFixed(1))}</td>
-                                </>
-                              ) : (
-                                <>
-                                  <td style={tdStyle}>{f.waveCount}</td>
-                                  <td style={tdStyle}>{formatShortDuration(f.pumpS)}</td>
-                                </>
-                              )}
-                              <td style={tdStyle}>
-                                <ShowButton shown={shown} onClick={() => highlight.show('vols', shown ? null : String(f.n))} />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {flights.length > 3 && (
-                  <Button size="s" style={{ marginTop: '10px' }} aria-expanded={allFlightsOpen} onClick={() => setAllFlightsOpen(!allFlightsOpen)}>
-                    {allFlightsOpen ? 'Replier les vols ▲' : `Tous les vols (${flights.length}) ▼`}
-                  </Button>
-                )}
-                {allFlightsOpen && flights.length > 3 && (
-                  <div style={{ overflowX: 'auto', marginTop: '10px' }}>
-                    <table style={tableStyle}>
-                      <thead>
-                        <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                          <th style={thStyle}>N°</th>
-                          <th style={thStyle}>Heure</th>
-                          <th style={thStyle}>Durée</th>
-                          <th style={thStyle}>Distance</th>
-                          {flightPumping && <th style={thStyle}>Décollage ({unitLabel})</th>}
-                          <th style={thStyle}>Vagues</th>
-                          <th style={thStyle}>Pompage</th>
-                          {flightPumping ? (
-                            <>
-                              <th style={thStyle}>Distance pompée</th>
-                              <th style={thStyle}>Coups</th>
-                              <th style={thStyle}>Fréquence</th>
-                              <th style={thStyle}>m/coup</th>
-                            </>
-                          ) : (
-                            <th style={thStyle}>Pompe ({unitLabel})</th>
-                          )}
-                          <th style={thStyle}>Carte</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {flights.map((f) => {
-                          const shown = flightShown === String(f.n);
-                          const pump = flightPumping?.get(f.n) ?? null;
-                          return (
-                            <tr key={f.n} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                              <td style={{ ...tdStyle, fontWeight: 700 }}>{flightLabel(f, pump, false)}</td>
-                              <td style={tdStyle}>{formatTimeOfDay(f.startMs).slice(0, 5)}</td>
-                              <td style={{ ...tdStyle, fontWeight: 700 }}>{formatShortDuration(f.durationS)}</td>
-                              <td style={tdStyle}>{Math.round(f.distanceM)} m</td>
-                              {flightPumping && <td style={tdStyle}>{speedCell(pump?.takeoffSpeedMs ?? null)}</td>}
-                              <td style={tdStyle}>{f.waveCount}</td>
-                              {flightPumping ? (
-                                <>
-                                  <td style={tdStyle}>{pump ? formatShortDuration(pump.pumpS) : '—'}</td>
-                                  <td style={tdStyle}>{pump ? `${Math.round(pump.pumpDistanceM)} m` : '—'}</td>
-                                  <td style={tdStyle}>{pump ? pump.strokes : '—'}</td>
-                                  <td style={tdStyle}>{orDash(pump?.strokesPerMin ?? null, (v) => `${Math.round(v)} /min`)}</td>
-                                  <td style={tdStyle}>{orDash(pump?.perStrokeM ?? null, (v) => v.toFixed(1))}</td>
-                                </>
-                              ) : (
-                                <>
-                                  <td style={tdStyle}>{formatShortDuration(f.pumpS)}</td>
-                                  <td style={tdStyle}>{speedCell(f.pumpSpeedMs)}</td>
-                                </>
-                              )}
-                              <td style={tdStyle}>
-                                <ShowButton shown={shown} onClick={() => highlight.show('vols', shown ? null : String(f.n))} />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {flightPumping && [...flightPumping.values()].some((x) => !x.covered) && (
-                  <div style={noteStyle}>* : capteurs sur une partie du vol seulement.</div>
-                )}
-                {pumping && sensors.status === 'none' && (
-                  <div style={noteStyle}>Cette session n'a pas les capteurs : cochez « Mesurer le pumping » dans Enregistrer, téléphone fixé sur la poitrine.</div>
-                )}
-                {sensors.status === 'loading' && <div style={noteStyle}>Lecture des capteurs…</div>}
-                {sensors.error && <div style={noteStyle}>Capteurs : {sensors.error}</div>}
+                <FlightPumpingPanel
+                  label={`Vols (${flights.length})`} helpKey="surf:vols" open={open.vols} onToggle={() => toggle('vols')}
+                  help={<>
+                    Vol : au-dessus du seuil de vol, d'une traite ; ses vagues sont ses passages au-dessus du seuil de vague en foil.
+                    {flightPumping
+                      ? " Pumping : mesuré par les capteurs du téléphone, sur les séries de coups. Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)."
+                      : ' Le reste du vol est pompé.'}
+                  </>}
+                  flights={flights} podium={podiumFlights}
+                  tiles={<>
+                    <StatTile label="Plus long vol" value={orDash(summary.longestFlightS, formatShortDuration)} />
+                    <StatTile label="Temps de vol" value={formatShortDuration(summary.flightS)} />
+                    <StatTile label="Vagues en un vol" value={summary.maxWavesInFlight ?? '—'} />
+                  </>}
+                  pumping={flightPumping} pumpSummary={pumpSummary}
+                  shown={flightShown} onShow={(key) => highlight.show('vols', key)} accent={ACCENT}
+                  speedCell={speedCell} unitLabel={unitLabel}
+                  podiumColumns={SURF_FLIGHT_PODIUM_COLUMNS}
+                  allColumns={SURF_FLIGHT_ALL_COLUMNS}
+                  allColumnsWithoutPumping={surfFlightGpsColumns}
+                  pumpingOn={pumping} sensors={sensors} />
               </ResizablePanel>
             )}
 

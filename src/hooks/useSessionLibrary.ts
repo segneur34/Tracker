@@ -4,6 +4,7 @@ import { parseGpx } from '../core/gpxParser';
 import { decodeImuHeader } from '../core/imuFile';
 import { pruneImuFile } from '../core/imuPrune';
 import { JUMPS_CALC_VERSION } from '../core/jumps';
+import { keepsWholeCaptureForPumping } from '../core/pumping';
 import { pruneSurfImu } from '../surfing/pumping';
 import type { SessionMark } from '../core/sessionMarks';
 import { SAILING_SPORTS, getSportProfile, hasPositions, isLandTreatment, sportTreatment } from '../core/sportProfiles';
@@ -89,7 +90,7 @@ import { jsonStore } from '../platform/storage';
 import type { IntervalSeries } from '../recording/intervalTimer';
 import type { SessionTest } from '../recording/fitnessTest';
 import { sessionFileName } from '../recording/session';
-import { effectiveFoil, effectiveThresholdOverride, readStoredActivities } from './useSportSettings';
+import { effectiveFoil, effectivePumping, effectiveThresholdOverride, readStoredActivities } from './useSportSettings';
 import { createListeners } from './createStore';
 import { newId, plural } from '../core/basics';
 
@@ -1261,7 +1262,9 @@ interface AddOptions {
  * Capteurs d'un enregistrement à leur entrée dans la mémoire : élagués autour
  * des vols si le calcul de la session mesure les sauts, autour des glisses en
  * surf (vols sur foil, vagues sinon, au seuil de la fiche ou de l'activité)
- * si son profil le demande (`pump.pruneCapture`), sinon gardés entiers.
+ * si son profil le demande (`pump.pruneCapture`), sinon gardés entiers. En
+ * voile sur foil, Pumping coché (fiche, sinon activité), gardés entiers aussi :
+ * le pumping se mesure sur tout le vol (décision du 28/10).
  * Une capture qui mesurait la cadence (déjà écrite dans le GPX) est gardée
  * entière tant que la mesure se règle (`cadence.keepCapture`) ; ensuite, sans
  * sauts mesurés, elle n'est pas rangée (`null`).
@@ -1279,9 +1282,15 @@ const prunedMotion = async (
       if (setup.jumps === false) return null;
     }
     if (profile.surf) {
-      if (!profile.surf.pump.pruneCapture) return motion;
+      if (!profile.pump?.pruneCapture) return motion;
       const rides = surfRides(parseGpx(text).rawPoints, sport, summaryOptions(sport, analysis, activityId));
-      return rides ? await pruneSurfImu(motion, rides, profile.surf.pump.pruneMarginS) : motion;
+      return rides ? await pruneSurfImu(motion, rides, profile.pump.pruneMarginS) : motion;
+    }
+    if (sportTreatment(sport) === 'voile') {
+      const activity = sessionActivity(readStoredActivities(), activityId, sport) ?? baseActivity(sport);
+      const foil = analysis?.foil ?? setup?.foil ?? false;
+      const pumping = analysis?.pumping ?? effectivePumping(activity) ?? false;
+      if (keepsWholeCaptureForPumping(profile.pump, foil, pumping)) return motion;
     }
     const detection = profile.jumps?.detection;
     return detection ? await pruneImuFile(motion, detection) : motion;

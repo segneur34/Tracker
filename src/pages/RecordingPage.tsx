@@ -427,7 +427,7 @@ function RecordingScreen() {
   const [jumpChoice, setJumpChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
   const measureJumps = chosen !== null && jumpSettings !== null &&
     (jumpChoice?.activityId === chosen.id ? jumpChoice.measure : jumpSettings.enabled);
-  // Pumping foil : proposé par l'activité de surf (foil et pumping cochés dans Réglages), coché d'office ; la case vaut pour cet enregistrement.
+  // Pumping foil : proposé par l'activité de surf ou de voile (foil et pumping cochés dans Réglages), coché d'office ; la case vaut pour cet enregistrement.
   const pumpingOffered = chosen !== null && effectiveFoil(chosen) === true && effectivePumping(chosen) === true;
   const [pumpChoice, setPumpChoice] = useState<{ activityId: string; measure: boolean } | null>(null);
   const measurePumping = pumpingOffered && (pumpChoice?.activityId === chosen.id ? pumpChoice.measure : true);
@@ -573,11 +573,13 @@ function RecordingScreen() {
     }
   };
 
-  /** Ce que mesurent les capteurs pendant l'enregistrement : sauts (pumping en surf), cadence. */
+  /** Ce que mesurent les capteurs pendant l'enregistrement : sauts (pumping en surf, sauts et pumping en voile sur foil), cadence. */
   const motionWhat = (() => {
     const setup = recorder.motionSetup;
     const what: string[] = [];
-    if (setup?.jumps !== false) what.push(liveActivity && sportTreatment(liveActivity.base) === 'surf' ? 'Pumping' : 'Sauts');
+    const treatment = liveActivity ? sportTreatment(liveActivity.base) : null;
+    const pumpingToo = treatment === 'voile' && setup?.foil === true && liveActivity !== null && effectivePumping(liveActivity) === true;
+    if (setup?.jumps !== false) what.push(treatment === 'surf' ? 'Pumping' : pumpingToo ? 'Sauts et pumping' : 'Sauts');
     if (setup?.cadence) what.push(what.length > 0 ? 'cadence' : 'Cadence');
     return what.join(' et ');
   })();

@@ -652,8 +652,9 @@ function SettingsPage() {
                               </SettingRow>
                             )}
                             {s.foil && s.pumping !== null && (
-                              <SettingRow label="Pumping" helpKey={`${id}:pumping`}
-                                help="Fréquence de pumping et décollage de chaque vol, téléphone fixé sur la poitrine : « Mesurer le pumping » est alors proposé dans Enregistrer.">
+                              <SettingRow label="Pumping" helpKey={`${id}:pumping`} help={treatment === 'voile'
+                                ? "Coups, fréquence et décollage de chaque vol, dans l'onglet « pumping » de l'analyse, téléphone fixé sur la poitrine : « Mesurer le pumping » est alors proposé dans Enregistrer, et la capture des capteurs est gardée entière (quelques Mo par heure). Chaque session peut avoir le sien."
+                                : 'Fréquence de pumping et décollage de chaque vol, téléphone fixé sur la poitrine : « Mesurer le pumping » est alors proposé dans Enregistrer.'}>
                                 <label className="settings-sports__pair">
                                   <input type="checkbox" checked={s.pumping} onChange={(e) => setFor(id, 'pumping', e.target.checked)} />
                                   <span>Pumping foil</span>

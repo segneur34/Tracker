@@ -8,7 +8,7 @@ import {
   MAX_GEAR_LABEL_LENGTH, PRESETS_VERSION, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultBikeType, defaultGradeRange,
   defaultHeartRateOf, defaultHrOffsetOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
   defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, rangeFollowsPace, resetStoredPresets, sanitizeGearLabels, thresholdFollowsPace, type StoredSettings,
-  addGearItem, readStoredSettings, resolveGearGroups, resetOverrides, sanitizeGearGroups, withGearItem, type GearGroup,
+  addGearItem, effectivePumping, readStoredSettings, resolveGearGroups, resetOverrides, sanitizeGearGroups, withGearItem, type GearGroup,
 } from './useSportSettings';
 import { jsonStore } from '../platform/storage';
 
@@ -267,6 +267,18 @@ describe('matériel enregistré (lot 20)', () => {
       expect(stored.gearGroups?.wing?.[1].items).toEqual([item]);
       expect(stored.gearGroups?.kite).toEqual([mast]);
       expect(addGearItem('wing', 'g-inconnu', 'Axis')).toBeNull();
+    });
+
+    it('propose le pumping en voile sur foil comme en surf, pas en bateau ni à pied (lot 22)', () => {
+      const wing = DEFAULT_ACTIVITIES.find((a) => a.base === 'wingfoil')!;
+      const boat = { id: 'a-voilier', name: 'Voilier', base: 'bateau' as const, color: '#014e86' };
+      const run = DEFAULT_ACTIVITIES.find((a) => a.base === 'running')!;
+      expect(effectivePumping(wing)).toBe(false);
+      expect(effectivePumping(boat)).toBeNull();
+      expect(effectivePumping(run)).toBeNull();
+      jsonStore.write('tracker.sportSettings', { pumping: { [wing.id]: true, [boat.id]: true } });
+      expect(effectivePumping(wing)).toBe(true);
+      expect(effectivePumping(boat)).toBeNull();
     });
 
   });

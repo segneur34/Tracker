@@ -2,23 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { computeKinematics } from '../core/kinematics';
 import type { RawTrackPoint } from '../core/types';
 import { knotsToMs } from '../core/units';
-import { buildSailingSessionStats } from './sailingStats';
+import { buildCumulativeTrack } from '../core/sessionStats';
+import { buildSailingSessionStats, sailingFlights } from './sailingStats';
 
 const START_MS = Date.parse('2026-10-21T10:00:00Z');
 const LAT = 43.6;
 const M_PER_DEG_LON = (Math.PI / 180) * 6371e3 * Math.cos((LAT * Math.PI) / 180);
 
-/** Trace vers l'est à 1 Hz, à la vitesse de chaque phase (`[durée en s, vitesse en nœuds]`). */
-const buildTrack = (phases: [number, number][]) => {
+/** Trace vers l'est à `hz` points par seconde (1 d'office), à la vitesse de chaque phase (`[durée en s, vitesse en nœuds]`). */
+const buildTrack = (phases: [number, number][], hz = 1) => {
   const points: RawTrackPoint[] = [];
   let meters = 0;
-  let t = 0;
-  const push = () => points.push({ lat: LAT, lon: 3.8 + meters / M_PER_DEG_LON, time: new Date(START_MS + t * 1000).toISOString() });
+  let k = 0;
+  const push = () => points.push({ lat: LAT, lon: 3.8 + meters / M_PER_DEG_LON, time: new Date(START_MS + (k * 1000) / hz).toISOString() });
   push();
   for (const [durationS, kn] of phases) {
-    for (let i = 0; i < durationS; i++) {
-      meters += knotsToMs(kn);
-      t += 1;
+    for (let i = 0; i < durationS * hz; i++) {
+      meters += knotsToMs(kn) / hz;
+      k += 1;
       push();
     }
   }
@@ -55,5 +56,25 @@ describe('buildSailingSessionStats', () => {
 
   it('bateau : pas de temps en mouvement à part, sans seuil ni ratio', () => {
     expect(buildSailingSessionStats(track, { sport: 'bateau' })!.inMotionTimeS).toBe(0);
+  });
+});
+
+describe('sailingFlights', () => {
+  // Départ lent, un vol de 2 min, un rebond de 5 s, un vol de 1 min 30.
+  const phases: [number, number][] = [[60, 3], [120, 15], [30, 3], [5, 15], [60, 3], [90, 15], [30, 3]];
+
+  it.each([1, 5])('vols au-dessus du seuil, ceux de moins de 10 s écartés, numérotés dans l’ordre (%s Hz)', (hz) => {
+    const track = buildTrack(phases, hz);
+    const flights = sailingFlights(track, buildCumulativeTrack(track), 'wingfoil', 8, 10);
+    expect(flights.map((f) => f.n)).toEqual([1, 2]);
+    expect(Math.abs(flights[0].durationS - 120)).toBeLessThanOrEqual(2);
+    expect(Math.abs(flights[1].durationS - 90)).toBeLessThanOrEqual(2);
+    expect(Math.abs(flights[0].distanceM - 120 * knotsToMs(15)) / (120 * knotsToMs(15))).toBeLessThan(0.03);
+    expect(sailingFlights(track, buildCumulativeTrack(track), 'wingfoil', 8, 0)).toHaveLength(3);
+  });
+
+  it('rien en bateau, sans seuil', () => {
+    const track = buildTrack(phases);
+    expect(sailingFlights(track, buildCumulativeTrack(track), 'bateau', 8, 10)).toEqual([]);
   });
 });

@@ -3,8 +3,9 @@ import { decodeImu, type ImuRecording } from '../core/imuFile';
 import { hasSessionMotion, readSessionMotion, useLibrarySession } from './useSessionLibrary';
 
 /**
- * Capteurs d'une session de surf, pour le pumping des vols (`surfing/pumping.ts`) :
- * son `.imu` lu et décodé à l'ouverture de l'analyse, si le pumping est coché.
+ * Capteurs d'une session sur foil, surf ou voile, pour le pumping des vols
+ * (`core/pumping.ts`) : son `.imu` lu et décodé à l'ouverture de l'analyse
+ * (de l'onglet « pumping » en voile), si le pumping est coché.
  * Le pumping se recalcule à chaque seuil (il suit les vols) : rien n'est rangé
  * dans la fiche. Un seul fichier gardé en mémoire, celui de la session
  * ouverte, et libéré dès que plus aucune analyse ne le lit (27/10) : une

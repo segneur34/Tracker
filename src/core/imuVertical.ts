@@ -5,8 +5,8 @@ import { STANDARD_G } from './units';
 /**
  * Accélération verticale du monde, tirée de l'accéléromètre et du gyroscope du
  * téléphone (`core/imuFile.ts`), quelle que soit son orientation : la base
- * commune des sauts (`core/jumps.ts`) et du pumping en surf
- * (`surfing/pumping.ts`). Tout est en SI : instants du fichier en
+ * commune des sauts (`core/jumps.ts`) et du pumping sur foil
+ * (`core/pumping.ts`). Tout est en SI : instants du fichier en
  * microsecondes, accélérations en m/s².
  *
  * 1. accéléromètre et gyroscope ramenés sur une grille fixe (`gridStepS`) :

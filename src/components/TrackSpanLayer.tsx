@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { CircleMarker, Polyline, Popup } from 'react-leaflet';
 
 /** Un passage de la trace à montrer : vague, vol ou remontée, entre deux index de points. */
-export interface SurfSpanShown {
+export interface TrackSpanShown {
   key: string;
   start: number;
   end: number;
@@ -12,14 +12,14 @@ export interface SurfSpanShown {
 }
 
 /**
- * Passages d'une session de surf sur la carte (`pages/SurfModule.tsx`) : la
- * vague, le vol ou la remontée choisis en violet, ou un podium aux couleurs
- * des tops ; un trait sur la trace et un point au départ, comme les sauts
- * (`JumpMapLayer`).
+ * Passages d'une trace sur la carte, en surf (vague, vol, remontée) et en voile
+ * (vol du pumping) : celui choisi en violet, ou un podium aux couleurs des
+ * tops ; un trait sur la trace et un point au départ, comme les sauts
+ * (`JumpMapLayer`). Les index sont ceux de la trace dessinée.
  */
-function SurfSpanLayer({ track, spans }: {
+function TrackSpanLayer({ track, spans }: {
   track: ReadonlyArray<{ lat: number; lon: number }>;
-  spans: SurfSpanShown[];
+  spans: TrackSpanShown[];
 }) {
   return useMemo(() => (
     <>
@@ -40,4 +40,4 @@ function SurfSpanLayer({ track, spans }: {
   ), [track, spans]);
 }
 
-export default SurfSpanLayer;
+export default TrackSpanLayer;
