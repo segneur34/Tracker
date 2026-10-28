@@ -16,6 +16,7 @@ APK 0.3.81 construite et **installée** le 28/10 au matin (correctif Q9 et Q12 d
 | 52 | Lot 11 : Enregistrer › Type Muscu sans ceinture à portée. | « Démarrer » grisé avec la phrase qui dit pourquoi ; ceinture mise, il devient possible. |
 | 53 | Lot 11 : muscu sans séance (lien « Muscu sans séance ») avec deux « Note ». | Repères dans l'analyse, sur le graphe. |
 | 54 | APK 0.3.81 (Q9 et Q12) : un fractionné à pied, puis une muscu avec une séance du Timer ; « Arrêter » la session avant la fin de la séance. | Notification « Étape n/N · FC » en fractionné ; le compteur s'arrête avec la session (plus de bips), et l'analyse montre la séance arrêtée à l'heure de l'arrêt. |
+| 55 | Lot 16 (0.3.83) : Statistiques › Tout › graphique › Durée, sur vos vraies sessions. | Une ligne grise pleine des heures de chaque semaine, en plus du pointillé, légende « heures par semaine » ; à juger : lisible sur une vraie année (au banc, une session toutes les quelques semaines donne des dents de scie) ; sinon un escalier par semaine se fait en une ligne. |
 
 ## Quand l'occasion se présente (terrain)
 

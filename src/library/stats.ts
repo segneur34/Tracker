@@ -332,6 +332,30 @@ export const metricSeries = (
   });
 };
 
+/**
+ * Heures totales de chaque semaine (lundi au dimanche) de la sélection, de la semaine de la première session à
+ * celle de la dernière ; une semaine sans session vaut 0. `midMs` : milieu de la semaine, où le graphe pose le point.
+ */
+export const weeklyDurations = (
+  sessions: readonly StatSession[]
+): { weekStartMs: number; midMs: number; durationS: number }[] => {
+  if (sessions.length === 0) return [];
+  const totals = new Map<number, number>();
+  let first = Infinity;
+  let last = -Infinity;
+  for (const s of sessions) {
+    const week = startOfIsoWeek(s.startMs);
+    first = Math.min(first, week);
+    last = Math.max(last, week);
+    totals.set(week, (totals.get(week) ?? 0) + (durationOf(s) ?? 0));
+  }
+  const weeks: { weekStartMs: number; midMs: number; durationS: number }[] = [];
+  for (let w = first; w <= last; w = addDays(w, 7)) {
+    weeks.push({ weekStartMs: w, midMs: addDays(w, 3) + 12 * 3_600_000, durationS: totals.get(w) ?? 0 });
+  }
+  return weeks;
+};
+
 /** Une barre du graphe de la régularité : une semaine ou un mois. */
 export interface RegularityBar {
   startMs: number;

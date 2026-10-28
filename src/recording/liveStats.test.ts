@@ -174,7 +174,7 @@ describe('computeLiveStats : mémoire du direct', () => {
         const all = segments;
         expect(computeLiveStats(all, profile, options, memory)).toEqual(computeLiveStats(all, profile, options));
       }
-    });
+    }, 20_000); // Le rejeu recalcule tout à chaque position : près de 5 s quand toute la suite tourne (délai dépassé le 28/10).
   }
 
   it('repart de zéro si le profil, les réglages ou les positions changent', () => {

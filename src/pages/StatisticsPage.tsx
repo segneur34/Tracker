@@ -38,7 +38,7 @@ import { effectiveDistanceUnit, effectiveHrOffset, effectiveSpeedUnit, useVisibi
 import {
   STATS_PERIODS, TREND_SESSIONS, averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, defaultMetricKey, heartRatePoints, formatDateTick,
   groupTotals, inBounds, isStatsMetricKey, isStatsPeriod, metricSeries, metricsOf, recordKindsOf, regularity, statsMetric,
-  statsPeriodBounds, statsTotals, topSessions, type MetricPoint, type StatSession, type StatsMetricKey, type StatsPeriod, type StatsRecordKind,
+  statsPeriodBounds, statsTotals, topSessions, weeklyDurations, type MetricPoint, type StatSession, type StatsMetricKey, type StatsPeriod, type StatsRecordKind,
   type StatsTotals, type ZoneBoundsOf,
 } from '../library/stats';
 import './analysisMobile.css';
@@ -180,6 +180,8 @@ const SERIE_STYLE: Record<string, { shape: 'circle' | 'triangle'; dash: string; 
   empannages: { shape: 'circle', dash: '4 3', legend: 'empannage (jibe)' },
   virements: { shape: 'triangle', dash: '1 3', legend: 'virement (tack)' },
 };
+/** Ligne des heures totales par semaine (donnée « Durée »). */
+const WEEK_LINE_COLOR = '#5f6b76';
 const SINGLE_SERIE_STYLE = { shape: 'circle' as const, dash: '4 3', legend: '' };
 const serieStyle = (key: string) => SERIE_STYLE[key] ?? SINGLE_SERIE_STYLE;
 /** Ordre de la légende et du détail d'un point : les ronds d'abord. */
@@ -189,6 +191,23 @@ const serieRank = (key: string) => (serieStyle(key).shape === 'circle' ? 0 : 1);
 const SerieShape = ({ shape }: { shape: 'circle' | 'triangle' }) => (
   <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
     {shape === 'circle' ? <circle cx="5" cy="5" r="4" fill="currentColor" /> : <path d="M5 1 L9.5 9 L0.5 9 Z" fill="currentColor" />}
+  </svg>
+);
+
+/** Point de la ligne des heures par semaine : posé au milieu de la semaine, `y` dans l'unité de l'axe. */
+interface WeekRow {
+  startMs: number;
+  y: number;
+  weekStartMs: number;
+  durationS: number;
+}
+
+const isWeekRow = (row: ChartRow | WeekRow): row is WeekRow => 'weekStartMs' in row;
+
+/** Trait de la ligne des heures par semaine dans la légende. */
+const WeekLineShape = () => (
+  <svg width="14" height="10" viewBox="0 0 14 10" aria-hidden>
+    <line x1="0" y1="5" x2="14" y2="5" stroke={WEEK_LINE_COLOR} strokeWidth="2" />
   </svg>
 );
 
@@ -360,7 +379,10 @@ function StatisticsPage() {
   const metric = statsMetric(metricKey);
   const series = useMemo(() => metricSeries(inPeriod, metric), [inPeriod, metric]);
   // Durée en heures dès qu'une session atteint 2 h, sinon en minutes.
-  const inHours = metric.unit === 'duree' && series.some((serie) => serie.points.some((p) => p.value >= 7200));
+  // Heures totales de chaque semaine de la sélection, pour la seule donnée « Durée ».
+  const weekly = useMemo(() => (metric.unit === 'duree' ? weeklyDurations(inPeriod) : []), [inPeriod, metric]);
+  const inHours = metric.unit === 'duree'
+    && (series.some((serie) => serie.points.some((p) => p.value >= 7200)) || weekly.some((w) => w.durationS >= 7200));
   const toAxis = (v: number): number => {
     switch (metric.unit) {
       case 'vitesse': return toDisplaySpeed(v, speedUnit);
@@ -406,6 +428,10 @@ function StatisticsPage() {
     // `toAxis` ne dépend que de l'unité, des unités de la sélection et de l'échelle des durées.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [series, speedUnit, distanceUnit, inHours]
+  );
+  const weekRows = useMemo<WeekRow[]>(
+    () => weekly.map((w) => ({ startMs: w.midMs, y: w.durationS / (inHours ? 3600 : 60), weekStartMs: w.weekStartMs, durationS: w.durationS })),
+    [weekly, inHours]
   );
   const chartFull = useMemo(() => {
     const starts = series.flatMap((serie) => serie.points.map((p) => p.startMs));
@@ -592,13 +618,16 @@ function StatisticsPage() {
                   <p className="stats-hint">Aucune session sur la période.</p>
                 ) : (
                   <>
-                    {twoSeries && (
+                    {(twoSeries || weekRows.length > 0) && (
                       <div className="stats-legend" aria-label="Légende">
-                        {legendSeries.map((serie) => (
+                        {twoSeries && legendSeries.map((serie) => (
                           <span key={serie.key} className="stats-legend__item">
                             <SerieShape shape={serieStyle(serie.key).shape} /> {serieStyle(serie.key).legend || serie.label.toLowerCase()}
                           </span>
                         ))}
+                        {weekRows.length > 0 && (
+                          <span className="stats-legend__item"><WeekLineShape /> heures par semaine</span>
+                        )}
                       </div>
                     )}
                     <ZoomableChart zoom={zoom} style={{ width: '100%', flex: 1, minHeight: 0 }}>
@@ -619,8 +648,17 @@ function StatisticsPage() {
                             label={{ value: axisLabel, angle: -90, position: 'insideLeft', fill: 'var(--chart-axis)', fontSize: 11 }} />
                           <Tooltip cursor={false} isAnimationActive={false}
                             content={({ active, payload }) => {
-                              const row = active ? (payload?.[0]?.payload as ChartRow | undefined) : undefined;
+                              const row = active ? (payload?.[0]?.payload as ChartRow | WeekRow | undefined) : undefined;
                               if (!row || row.y === undefined) return null;
+                              if (isWeekRow(row)) {
+                                const monday = new Date(row.weekStartMs).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+                                return (
+                                  <div className="stats-tooltip">
+                                    <strong>Semaine du {monday}</strong>
+                                    <span>{formatDuration(row.durationS * 1000)}</span>
+                                  </div>
+                                );
+                              }
                               return (
                                 <div className="stats-tooltip">
                                   <strong>{shortDate(row.startMs)}</strong>
@@ -633,6 +671,10 @@ function StatisticsPage() {
                               stroke="#9aa0a6" strokeDasharray={serieStyle(serie.key).dash} strokeWidth={1.5}
                               dot={false} activeDot={false} isAnimationActive={false} name={metric.record ? 'Record' : 'Tendance'} />
                           ))}
+                          {weekRows.length > 0 && (
+                            <Line key="heures-semaine" data={weekRows} dataKey="y" type="linear" stroke={WEEK_LINE_COLOR} strokeWidth={2}
+                              dot={false} activeDot={{ r: 3 }} isAnimationActive={false} name="Heures par semaine" />
+                          )}
                           {chartSeries.flatMap((serie) => serie.byActivity.map(([activityId, rows]) => (
                             <Scatter key={`${serie.key}-${activityId}`} data={rows} dataKey="y" fill={activityColor(activityId)} isAnimationActive={false}
                               shape={serieStyle(serie.key).shape} name={activityName(activityId)}

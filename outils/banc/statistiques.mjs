@@ -223,7 +223,7 @@ check('retour arrière : vue d\'ensemble', (await search()) === '/statistiques' 
 await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Entraînement');
 await wait(800);
 check('Fractionné : fond de la famille', (await backdrop()) === 'page-backdrop page-backdrop--fractionne', await backdrop());
-check('activités du fractionné', (await chips('Activité')) === 'Toutes, Fractionné à pied, Fractionné vélo, Tests', await chips('Activité'));
+check('activités du fractionné', (await chips('Activité')) === 'Toutes, Fractionné à pied, Fractionné vélo, Tests, Muscu', await chips('Activité'));
 await click('.ui-segmented[aria-label="Activité"] [role=radio]', 'Fractionné vélo');
 await wait(800);
 check('Fractionné vélo : 1 session', (await stat('Sessions')) === '1' && (await search())?.includes('activite='), `${await stat('Sessions')} ; ${await search()}`);
@@ -364,7 +364,11 @@ const symbols = await evaluate(`[...document.querySelectorAll('.recharts-scatter
 check('graphe : un rond, un triangle', symbols === 'rond,triangle', symbols);
 await click('.stats-chips[aria-label="Donnée"] .ui-tab', 'Durée');
 await wait(400);
-check('légende absente pour une série seule', !(await evaluate(`!!document.querySelector('.stats-legend')`)));
+// Lot 16 (fiche 24) : en « Durée », la ligne pleine des heures par semaine s'ajoute au pointillé, avec sa légende seule.
+const legendDuree = await evaluate(`[...document.querySelectorAll('.stats-legend__item')].map((i) => i.textContent.trim()).join(' · ')`);
+check('légende en Durée : heures par semaine seule', legendDuree === 'heures par semaine', legendDuree);
+const lignesDuree = await evaluate(`document.querySelectorAll('.recharts-line-curve').length`);
+check('Durée : deux lignes (tendance pointillée, heures par semaine)', lignesDuree === 2, String(lignesDuree));
 await click('.stats-chips[aria-label="Donnée"] .ui-tab', '% de manœuvres réussies');
 await wait(400);
 await shoot('stats-reussite');

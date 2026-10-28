@@ -3,7 +3,7 @@ import type { Activity } from '../core/activities';
 import type { SessionRecord } from './record';
 import {
   averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, groupTotals, heartRatePoints, metricSeries, metricsOf, recordKindsOf, regularity,
-  inBounds, sessionLoad, statSessionOf, statsMetric, statsPeriodBounds, statsTotals, topSessions, type StatSession,
+  inBounds, sessionLoad, statSessionOf, statsMetric, statsPeriodBounds, statsTotals, topSessions, weeklyDurations, type StatSession,
 } from './stats';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
@@ -382,5 +382,25 @@ describe('muscu dans les statistiques (lot I du 25/10)', () => {
     expect(t.movingTimeS).toBe(3000);
     expect(averageMovingSpeedMs(t)).toBeCloseTo(3, 6);
     expect(metricsOf('fractionne', [muscu]).map((m) => m.key)).toEqual(['duree']);
+  });
+});
+
+describe('weeklyDurations', () => {
+  it('somme les durées par semaine du lundi, zéros compris, dans l ordre', () => {
+    // Lundi 20/10/2025 et lundi 3/11/2025 : la semaine du 27/10 est vide.
+    const weeks = weeklyDurations([
+      session(at(2025, 11, 5), { endMs: at(2025, 11, 5) + 1_800_000 }),
+      session(at(2025, 10, 20, 0), { endMs: at(2025, 10, 20, 0) + 3_600_000 }),
+      session(at(2025, 10, 26, 23), { endMs: at(2025, 10, 26, 23) + 7_200_000 }),
+    ]);
+    expect(weeks.map((w) => w.weekStartMs)).toEqual([at(2025, 10, 20, 0), at(2025, 10, 27, 0), at(2025, 11, 3, 0)]);
+    expect(weeks.map((w) => w.durationS)).toEqual([10_800, 0, 1800]);
+  });
+  it('pose le point au milieu de la semaine', () => {
+    const [w] = weeklyDurations([session(at(2025, 10, 22))]);
+    expect(w.midMs).toBe(at(2025, 10, 23, 12));
+  });
+  it('une sélection vide donne un tableau vide', () => {
+    expect(weeklyDurations([])).toEqual([]);
   });
 });
