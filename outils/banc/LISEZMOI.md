@@ -102,6 +102,7 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
   - à 390×844, aucun débordement.
 
   Il dure environ 1 min.
+- `depense.mjs <port> [<dossier des captures>]` : énergie de la marche (Pandolf, descentes par Santee) et réglage « Dépense » (lot 21, 28/10), sur un profil neuf, sans réseau, poids de 70 kg posé par le script. La côte à 5 % de `charge.mjs`, à 1,4 m/s, passée en Marche : « Énergie de marche » vers 82 kcal et la note de Pandolf ; « Dépense » de la Marche passée sur Course dans Réglages : « Énergie de course » vers 115 kcal et la note de Minetti (la marche à 0,6 à 0,8 fois) ; remise sur Marche, plus rien de rangé. Il dure environ 40 s et finit par « tout est passé » ou le nombre d'échecs.
 - `imports.mjs <port> [<dossier des captures>]` : imports anciens sans artefact (lot 5 des demandes du 10-14/10), sur un profil neuf, sans réseau, poids du pratiquant non renseigné. Le script écrit lui-même ses GPX et leurs fiches, et les importe par la page. Il vérifie :
   - le matériel : une wing importée seule n'emprunte rien à la dernière session notée ; une wing enregistrée sans notes le reçoit ;
   - une fiche de la première version (24/09) : notes gardées, réglages, activité et nom nuls, session modifiable ;
@@ -281,11 +282,12 @@ Scripts Node qui pilotent un Chrome sans fenêtre (ou la WebView du téléphone)
 
   Il finit par « Tout passe. » ou le nombre d'échecs.
 - `prereglages.mjs <port> [<dossier des captures>]` : pré-réglages du bateau, puis de tous les sports hors surf (demandes du 21/10), sur un profil neuf, sans réseau, environ 1 min. Le script écrit dans `localStorage` des réglages d'avant (bateau, Voile, Course, kite), puis il vérifie :
-  - la mise à jour au démarrage : ceux du bateau, de la Voile et de la Course effacés une fois, l'unité du bateau et ceux du kite gardés, `presetsVersion` à 2 ;
-  - Réglages : le bateau colore de 1 à 15 nd, avec une pause sous 0,2 km/h pendant 60 s, ses chiffres et aucune ligne « Seuil d'activité » ; la Voile à 8 nd (seuil, couleurs de 8 à 24) ; Course, Route, Gravel, VTT et les deux fractionnés « aucun seuil », la Marche à 0,5 km/h ; leurs couleurs, leur pause et le poids du vélo pré-réglés ; plus de ligne « Terrain » ; aucune carte « modifié » ;
+  - la mise à jour au démarrage : ceux du bateau, de la Voile et de la Course effacés une fois, l'unité du bateau et ceux du kite gardés, `presetsVersion` à 3 ;
+  - Réglages : le bateau colore de 1 à 15 nd, avec une pause sous 0,2 km/h pendant 60 s, ses chiffres et aucune ligne « Seuil d'activité » ; la Voile à 8 nd (seuil, couleurs de 8 à 24) ; Course, Marche (depuis le 28/10), Route, Gravel, VTT et les deux fractionnés « aucun seuil » ; leurs couleurs, leur pause et le poids du vélo pré-réglés ; plus de ligne « Terrain » ; « Dépense » sur Marche pour la Marche, sur Course pour la Course et le Fractionné à pied, aucune ligne à vélo ; aucune carte « modifié » ;
   - deux allers-retours lents importés par la page, l'un en bateau, l'autre en Voile : le résumé du bateau compte toute la session en navigation, son « général » n'a ni chiffres actifs ni ratio, et son onglet réglages n'a pas de seuil ; la Voile les garde ;
   - une course de deux `<trkseg>` séparés par 10 min de pause, vitesse Doppler comprise : 1,80 km et 10 min en mouvement sur 20, dans la fiche et dans l'analyse (bug du 17/10) ;
-  - un réglage du bateau fait après la mise à jour, qui reste au rechargement.
+  - un réglage du bateau fait après la mise à jour, qui reste au rechargement ;
+  - la mise à jour 2 → 3 (28/10) : le seuil de 0,5 km/h rangé pour la Marche effacé, celui de la Course gardé.
 
   Sur un profil déjà servi, le fichier de réglages du dossier mémoire reprend la place des valeurs écrites : il faut prendre un profil neuf à chaque passage.
 - `entrainement.mjs <port> [<dossier des captures>]` : famille Entraînement, page Fractionné et compteur à blocs (chantier du 24/10, lot A), sur un profil neuf, sans réseau, environ 40 s. Il vérifie :
@@ -395,3 +397,5 @@ Notes relevées en mode chaîne (27/10) sur des scripts périmés ou à complét
 - Écarts admis depuis le lot 8 (performances) : dernière graduation de cap 242° au lieu de 241° (extrême gardé par la décimation) ; une mention « © OpenStreetMap » de moins quand la carte est agrandie (la carte compacte, cachée dessous, ne dessine plus ses couches).
 - `timer.mjs` (10 ok, 36 échecs) et `entrainement.mjs` (1 échec) sont périmés depuis le lot 11 (page Entraînement à deux tuiles « Fractionné et tests » et « Muscu et timer », boutons « Timer » et « Enregistrer » par séance, lien « Enregistrer sans séance ») : mêmes échecs avant et après le lot 15, sans erreur de console ; aucun `DUMP=`. À réécrire sur les pages d'aujourd'hui.
 - À ajouter un jour : `trackerBack()` avec un pop-up ouvert et `/essai/erreur` (lot 5).
+- `prereglages.mjs` (lot 21) : sur un profil déjà servi (second passage, ou préchauffage du serveur fait sur le même profil), le fichier de réglages du dossier mémoire rend les valeurs du passage d'avant (pause du bateau à 0,5, seuil de Course à 3 de l'étape 6) et 5 à 11 contrôles bateau, kite et Course échouent. Ce n'est pas un défaut : sur un profil neuf, tout passe. Préchauffer le serveur avec un autre profil.
+- `charge.mjs` appelle `Network.setBlockedURLs` sans `Network.enable` : rien n'est bloqué, et l'altitude de l'IGN (le vrai relief au nord de Montpellier) remplace la côte à 5 % ; ses chiffres d'énergie restent comparables d'un passage à l'autre, mais pas avec un calcul à la main. `depense.mjs` active le réseau d'abord.

@@ -6,13 +6,17 @@
 //     rien ne bouge ;
 //  2. Réglages : le bateau colore de 1 à 15 nd (« défaut »), pause sous 0,2 km/h pendant 60 s, chiffres vitesse,
 //     moyenne, distance et cap, notification vitesse et distance, pas de ligne « Seuil d'activité », sans « · modifié » ;
-//     la Voile à 8 nd (seuil, couleurs de 8 à 24) ; Course, Route, Gravel, VTT et fractionnés sans seuil, Marche à
-//     0,5 km/h ; couleurs, pause et poids du vélo pré-réglés ; plus de ligne « Terrain » ; aucune carte « modifié » ;
+//     la Voile à 8 nd (seuil, couleurs de 8 à 24) ; Course, Marche, Route, Gravel, VTT et fractionnés sans seuil
+//     (Marche sans seuil depuis le 28/10) ; couleurs, pause et poids du vélo pré-réglés ; plus de ligne « Terrain » ;
+//     « Dépense » sur Marche pour la Marche, sur Course pour la Course et le Fractionné à pied, aucune ligne à vélo ;
+//     aucune carte « modifié » ;
 //  3. analyse d'une session bateau : « général » sans distance, temps, ratio ni moyenne actifs, onglet réglages sans
 //     seuil ; une session Voile les garde ;
 //  4. une course de deux `<trkseg>` séparés par 10 min de pause, vitesse Doppler comprise : ni la distance ni le temps
 //     en mouvement de la pause ne sont comptés (bug du 17/10), dans le résumé comme dans l'analyse ;
-//  5. un réglage du bateau fait après la mise à jour reste au rechargement.
+//  5. un réglage du bateau fait après la mise à jour reste au rechargement ;
+//  6. mise à jour des pré-réglages 2 → 3 (28/10) : le seuil de 0,5 km/h rangé pour la Marche est effacé, celui
+//     de la Course gardé.
 import { writeFileSync } from 'node:fs';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -113,7 +117,7 @@ check('bateau : couleurs, seuil, pause et chiffres d\'avant effacés',
 check('Voile et Course : couleurs et seuil d\'avant effacés', !after?.speedRanges?.wingfoil && !after?.thresholds?.wingfoil && !after?.thresholds?.running);
 check('kite : couleurs et seuil gardés', after?.speedRanges?.kite?.maxMs === 12 && after?.thresholds?.kite === 9);
 check('bateau : unité gardée', after?.speedUnits?.['a-voilier'] === 'kmh');
-check('presetsVersion rangée', after?.presetsVersion === 2, String(after?.presetsVersion));
+check('presetsVersion rangée', after?.presetsVersion === 3, String(after?.presetsVersion));
 await go('/');
 check('rechargée : rien ne bouge', JSON.stringify(await stored()) === JSON.stringify(after));
 // L'unité remise aux nœuds pour lire les bornes en nœuds.
@@ -161,7 +165,7 @@ check('Voile : couleurs de 8 à 24 nd', same(await values('Voile', 'Colorisation
 check('Voile : pause sous 1,5 km/h pendant 60 s', same(await values('Voile', 'Pause automatique'), ['1.5', '60']));
 const EXPECTED = [
   { name: 'Course', threshold: '0', colors: ['1', '13'], pause: ['0.5', '20'] },
-  { name: 'Marche', threshold: '0.5', colors: ['1', '8'], pause: ['0.5', '20'] },
+  { name: 'Marche', threshold: '0', colors: ['1', '8'], pause: ['0.5', '20'] },
   { name: 'Route', threshold: '0', colors: ['8', '45'], pause: ['1.1', '30'], bikeKg: '12' },
   { name: 'Gravel', threshold: '0', colors: ['5', '40'], pause: ['1.1', '20'], bikeKg: '13' },
   { name: 'VTT', threshold: '0', colors: ['10', '40'], pause: ['1.1', '20'], bikeKg: '13' },
@@ -181,6 +185,17 @@ for (const e of EXPECTED) {
   }
   check(`${e.name} : plus de ligne « Terrain »`, (await rowText(e.name, 'Terrain')) === null);
 }
+// « Dépense » : Pandolf pour la Marche, Minetti pour les autres activités à pied, rien à vélo.
+const spending = (name) => evaluate(`(() => {
+  const row = ${rowOf(name, 'Dépense')};
+  if (!row) return null;
+  return { value: row.querySelector('[role=radio][aria-checked=true]')?.textContent ?? '', mark: row.textContent.includes('défaut') };
+})()`);
+for (const [name, expected] of [['Marche', 'Marche'], ['Course', 'Course'], ['Fractionné à pied', 'Course']]) {
+  const row = await spending(name);
+  check(`${name} : dépense « ${expected} », défaut`, row?.value === expected && row.mark === true, JSON.stringify(row));
+}
+for (const name of ['Route', 'Fractionné vélo']) check(`${name} : pas de ligne « Dépense »`, (await spending(name)) === null);
 const modified = await evaluate(`[...document.querySelectorAll('.settings-activity')].filter((c) => c.querySelector('.settings-activity__head')?.textContent.includes('modifié')).map((c) => c.querySelector('.settings-activity__name')?.textContent)`);
 check('aucune carte « modifié »', modified?.length === 0, JSON.stringify(modified));
 await shoot('prereglages-reglages');
@@ -291,6 +306,19 @@ check('bateau : pause réglée à 0,5 km/h rangée', set && Math.abs(set.speedMs
 await go('/');
 const kept = (await stored())?.autoPause?.['a-voilier'];
 check('rechargée : réglage gardé', kept && Math.abs(kept.speedMs * 3.6 - 0.5) < 1e-6, JSON.stringify(kept));
+
+// 6. Réglages écrits avec les pré-réglages de la version 2 : la Marche à 0,5 km/h rangée, la Course à 3 km/h.
+await evaluate(`(() => {
+  const s = JSON.parse(localStorage.getItem('tracker.sportSettings'));
+  s.presetsVersion = 2;
+  s.thresholds = { ...s.thresholds, 'a-marche': 0.5, running: 3 };
+  localStorage.setItem('tracker.sportSettings', JSON.stringify(s));
+  return 'ok';
+})()`);
+await go('/');
+const v3 = await stored();
+check('mise à jour 2 → 3 : seuil de la Marche effacé, celui de la Course gardé',
+  v3?.thresholds?.['a-marche'] === undefined && v3?.thresholds?.running === 3 && v3?.presetsVersion === 3, JSON.stringify(v3?.thresholds));
 
 console.log(logs.length ? `--- console ---\n${logs.join('\n')}` : 'console : rien');
 console.log(failures ? `${failures} échec(s)` : 'tout est passé');

@@ -6,7 +6,9 @@ import { kmhToMs, knotsToMs } from './units';
 describe('presetOf', () => {
   it('une activité de départ qui a son pré-réglage le garde en entier, sans reprendre celui du calcul', () => {
     const marche = presetOf(MARCHE_ACTIVITY);
-    expect(marche.threshold).toBe(0.5);
+    expect(marche.threshold).toBe(0);
+    expect(marche.energyModel).toBe('marche');
+    expect(presetOf(baseActivity('running')).energyModel).toBeUndefined();
     expect(marche.heartRate).toBeUndefined(); // la course, elle, le porte
     expect(presetOf(baseActivity('running')).heartRate).toBe(true);
     expect(presetOf(GRAVEL_ACTIVITY).bikeType).toBe('gravel');

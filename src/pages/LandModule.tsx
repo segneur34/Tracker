@@ -262,7 +262,7 @@ function LandModule({ family }: { family: LandFamily }) {
     activity, setActivity, sport,
     profile, activeThreshold, terrainStepM,
     speedUnit, distanceUnit,
-    speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, gearLabels, gearGroups, hrOffsetBpm,
+    speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, energyModel, gearLabels, gearGroups, hrOffsetBpm,
   } = useSportSettings(family);
   const model = LAND_TREATMENTS[sportTreatment(sport) === 'velo' ? 'velo' : 'course'];
   const { profile: runner, age, retainHr } = useRunnerProfile();
@@ -509,11 +509,11 @@ function LandModule({ family }: { family: LandFamily }) {
   const energy = useMemo(
     () => (energyNeeded && gpx.track.length > 1
       ? model.energy({
-          track: gpx.track, grades, gradeZones: profile.grade, activityMask, runner, age, bikeType, bikeWeightKg, loadKg,
+          track: gpx.track, grades, gradeZones: profile.grade, activityMask, runner, age, bikeType, bikeWeightKg, loadKg, energyModel,
           surfaces: { status: surfaceStatus, stretches: surfaceStretches },
         })
       : null),
-    [energyNeeded, model, gpx.track, grades, profile.grade, activityMask, runner, age, bikeType, bikeWeightKg, loadKg, surfaceStatus, surfaceStretches]
+    [energyNeeded, model, gpx.track, grades, profile.grade, activityMask, runner, age, bikeType, bikeWeightKg, loadKg, energyModel, surfaceStatus, surfaceStretches]
   );
 
   /** Chiffres du panneau Énergie repliés ou dépliés, choix gardé sur l'appareil. */

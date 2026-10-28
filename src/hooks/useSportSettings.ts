@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
-  ACTIVITIES_VERSION, FAMILY_BASE, SURF_FOIL_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
+  ACTIVITIES_VERSION, FAMILY_BASE, MARCHE_ACTIVITY, SURF_FOIL_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
   isActivityShown, newActivityId, insertActivity, readActivities, upgradeActivities, visibleActivities, visibleFamilies, withHidden, type Activity,
 } from '../core/activities';
 import type { ActivityIconId } from '../core/activityIcons';
@@ -28,7 +28,7 @@ import {
 import { MARK_GUIDE_DEFAULTS, sanitizeMarkGuide, type MarkGuideSettings } from '../recording/markGuide';
 import { defaultJumpSettings, sanitizeJumpSettings, type JumpSettings } from '../recording/jumpSettings';
 import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, isValidBikeWeight, type BikeType } from '../cycling/energy';
-import { isValidCarriedLoad } from '../running/energy';
+import { isEnergyModel, isValidCarriedLoad, type EnergyModel } from '../running/energy';
 import { DEFAULT_CYCLING_GRADE_RANGE, DEFAULT_CYCLING_SPEED_RANGE_MS } from '../cycling/cyclingConfig';
 import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
 import { DEFAULT_SAILING_SPEED_RANGE_MS } from '../sailing/sailingConfig';
@@ -193,6 +193,8 @@ export interface StoredSettings {
   bikeWeights?: ByActivity<number>;
   /** Charge portée en kg, sac et affaires (course) ; absente : 0. */
   carriedLoads?: ByActivity<number>;
+  /** Modèle de dépense à pied (course, marche) ; absent : `defaultEnergyModelOf`. */
+  energyModels?: ByActivity<EnergyModel>;
   /** Décalage des seuils cardio S1 et S2 par rapport à la course, en bpm ; absent : `defaultHrOffsetOf`. */
   hrOffsets?: ByActivity<number>;
   /** Intitulés des deux champs de matériel des notes (hors voile) ; un texte vide : celui par défaut. */
@@ -458,16 +460,18 @@ export const readStoredSettings = (): StoredSettings => {
  * Version des pré-réglages. 1 (21/10) : bateau (couleurs de 1 à 15 nœuds,
  * sans seuil d'activité, pause sous 0,2 km/h, chiffres du direct). 2 (21/10) :
  * wing, planche, à pied, vélo et fractionné (`core/activityPresets.ts`).
+ * 3 (28/10) : la Marche sans seuil d'activité.
  */
-export const PRESETS_VERSION = 2;
+export const PRESETS_VERSION = 3;
 
 /**
  * Réglages effacés une fois, à la mise à jour, pour que les pré-réglages
  * repris s'appliquent (choix de l'utilisateur, 21/10) : ces clés, pour toute
- * activité dont le calcul est listé, activité de base comprise. Les réglages
- * écrits ensuite portent `PRESETS_VERSION` et restent.
+ * activité dont le calcul est listé, activité de base comprise, et pour les
+ * activités de `ids`. Les réglages écrits ensuite portent `PRESETS_VERSION`
+ * et restent.
  */
-const PRESET_RESETS: { version: number; bases: SportType[]; keys: PerActivityKey[] }[] = [
+const PRESET_RESETS: { version: number; bases: SportType[]; ids?: string[]; keys: PerActivityKey[] }[] = [
   { version: 1, bases: ['bateau'], keys: ['speedRanges', 'autoPause', 'liveFields', 'notificationFields', 'thresholds'] },
   {
     version: 2,
@@ -477,6 +481,8 @@ const PRESET_RESETS: { version: number; bases: SportType[]; keys: PerActivityKey
       'heartRate', 'bikeTypes', 'bikeWeights', 'wayTypes', 'terrainSteps', 'tabs', 'paceLevels', 'customFlatSpeeds',
     ],
   },
+  // Le seuil de 0,5 km/h de la Marche, rangé tel quel par d'anciens réglages ; celui de la Course reste.
+  { version: 3, bases: [], ids: [MARCHE_ACTIVITY.id], keys: ['thresholds'] },
 ];
 
 /** Toute écriture porte la version des pré-réglages : ce qu'elle contient est choisi avec eux. */
@@ -515,9 +521,9 @@ export const resetStoredPresets = (stored: StoredSettings): StoredSettings => {
   if (from >= PRESETS_VERSION) return stored;
   const activities = readActivities(stored.activities);
   let next = stored;
-  for (const { version, bases, keys } of PRESET_RESETS) {
+  for (const { version, bases, ids: own = [], keys } of PRESET_RESETS) {
     if (version <= from) continue;
-    const ids = new Set<string>([...bases, ...activities.filter((a) => bases.includes(a.base)).map((a) => a.id)]);
+    const ids = new Set<string>([...bases, ...own, ...activities.filter((a) => bases.includes(a.base)).map((a) => a.id)]);
     for (const key of keys) {
       const map = next[key];
       if (!map || !Object.keys(map).some((id) => ids.has(id))) continue;
@@ -550,6 +556,18 @@ const resolveBikeType = (stored: StoredSettings, activity: Activity): BikeType =
   const type = stored.bikeTypes?.[activity.id];
   return isBikeType(type) ? type : defaultBikeType(activity);
 };
+
+/** Modèle de dépense d'une activité sans réglage : celui de son pré-réglage (la Marche), la course sinon. */
+export const defaultEnergyModelOf = (activity: Activity): EnergyModel => presetOf(activity).energyModel ?? 'course';
+
+/** Modèle de dépense d'une activité : celui réglé, sinon son défaut. */
+const resolveEnergyModel = (stored: StoredSettings, activity: Activity): EnergyModel => {
+  const model = stored.energyModels?.[activity.id];
+  return isEnergyModel(model) ? model : defaultEnergyModelOf(activity);
+};
+
+/** Modèle de dépense d'une activité, réglé ou par défaut. Utilisable hors composant (direct). */
+export const effectiveEnergyModel = (activity: Activity): EnergyModel => resolveEnergyModel(readStoredSettings(), activity);
 
 /**
  * Poids du vélo à défaut de réglage : celui du pré-réglage tant que le type
@@ -992,6 +1010,9 @@ export interface SportSettingsView {
   bikeWeight: number | null;
   /** Charge portée en kg (course), ou `null` sans réglage (0). */
   carriedLoad: number | null;
+  /** Modèle de dépense à pied (course, marche), `defaultEnergyModelOf` par défaut. */
+  energyModel: EnergyModel;
+  isEnergyModelOverridden: boolean;
   /** Décalage des seuils cardio, en bpm. */
   hrOffset: number;
   isHrOffsetOverridden: boolean;
@@ -1018,7 +1039,7 @@ export interface SportSettingsView {
 /** Tables de réglages rangées par activité. */
 type PerActivityKey = (typeof PER_ACTIVITY_KEYS)[number];
 const PER_ACTIVITY_KEYS = [
-  'thresholds', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'hrOffsets', 'gearLabels', 'gearGroups',
+  'thresholds', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'energyModels', 'hrOffsets', 'gearLabels', 'gearGroups',
   'tabs', 'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
   'heartRate', 'cadence',
 ] as const;
@@ -1117,6 +1138,8 @@ export const useAllSportSettings = () => {
         bikeType: resolveBikeType(stored, activity),
         bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
         carriedLoad: isValidCarriedLoad(carriedLoad) ? carriedLoad : null,
+        energyModel: resolveEnergyModel(stored, activity),
+        isEnergyModelOverridden: isEnergyModel(stored.energyModels?.[id]) && stored.energyModels[id] !== defaultEnergyModelOf(activity),
         hrOffset: resolveHrOffset(stored, activity),
         isHrOffsetOverridden: isValidHrOffset(stored.hrOffsets?.[id]),
         gearLabels: sanitizeGearLabels(stored.gearLabels?.[id]),
@@ -1135,7 +1158,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'hrOffset' | 'gearLabels' | 'gearGroups' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'energyModel' | 'hrOffset' | 'gearLabels' | 'gearGroups' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -1253,6 +1276,10 @@ export const useAllSportSettings = () => {
         case 'carriedLoad':
           if (value !== null && !isValidCarriedLoad(value)) return;
           next.carriedLoads = put(stored.carriedLoads, value === 0 ? null : value as number | null);
+          break;
+        case 'energyModel':
+          if (value !== null && !isEnergyModel(value)) return;
+          next.energyModels = put(stored.energyModels, value as EnergyModel | null);
           break;
         case 'hrOffset':
           if (value !== null && !isValidHrOffset(value)) return;
@@ -1521,6 +1548,8 @@ export const useSportSettings = (family: SportFamily) => {
   // Course : charge portée, réglée dans Réglages.
   const storedLoad = stored.carriedLoads?.[id];
   const carriedLoadKg = isValidCarriedLoad(storedLoad) ? storedLoad : 0;
+  // À pied : modèle de dépense, réglé dans Réglages.
+  const energyModel = resolveEnergyModel(stored, activity);
   const gearLabels = useMemo(() => resolveGearLabels(stored, id), [stored, id]);
   const gearGroups = useMemo(() => resolveGearGroups(stored, id), [stored, id]);
   // Cardio : décalage des seuils S1 et S2, réglé dans Réglages.
@@ -1550,6 +1579,8 @@ export const useSportSettings = (family: SportFamily) => {
     isBikeWeightOverridden: isValidBikeWeight(storedBikeWeight),
     /** Charge portée de l'activité, en kg (0 sans réglage) ; une session peut avoir la sienne. */
     carriedLoadKg,
+    /** Modèle de dépense à pied de l'activité : course (Minetti) ou marche (Pandolf). */
+    energyModel,
     /** Intitulés des deux champs de matériel des notes (hors voile), réglés dans Réglages ou par défaut. */
     gearLabels,
     /** Matériel enregistré de l'activité, choisi par groupe dans l'onglet du matériel ; `null` : option coupée ou aucun groupe. */

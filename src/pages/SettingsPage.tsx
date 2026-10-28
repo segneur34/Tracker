@@ -29,13 +29,14 @@ import SegmentedControl from '../components/ui/SegmentedControl';
 import { playPattern, setBeepPitch, type ClockTone } from '../platform/beeper';
 import { BEEP_SOUNDS, beepSoundHz } from '../recording/beepSound';
 import {
-  DEFAULT_GEAR_LABELS, HR_OFFSET_RANGE, MAX_GEAR_LABEL_LENGTH, TREATMENT_UNITS, defaultBikeKg, defaultBikeType, defaultLiveFieldsFor, defaultMarkGuideOf,
+  DEFAULT_GEAR_LABELS, HR_OFFSET_RANGE, MAX_GEAR_LABEL_LENGTH, TREATMENT_UNITS, defaultBikeKg, defaultBikeType, defaultEnergyModelOf, defaultLiveFieldsFor, defaultMarkGuideOf,
   defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, defaultHrOffsetOf, defaultTerrainStepOf, planningFamily,
   rangeFollowsPace, sanitizeGearLabels, thresholdFollowsPace, useAllSportSettings, type GearGroup, type SportSettingsView,
 } from '../hooks/useSportSettings';
 import GearGroupsEditor from '../components/GearGroupsEditor';
 import { plural } from '../core/basics';
 import { BIKE_TYPES, formatCrr, type BikeType } from '../cycling/energy';
+import type { EnergyModel } from '../running/energy';
 import {
   MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, liveFieldLabel, liveFieldsOfTreatment,
   type LiveFieldKey, type LiveFieldTarget, type LiveFieldUnits,
@@ -195,6 +196,8 @@ const TILE_CAP_CHOICES_MB = [100, 250, 500, 1000, 2000, 5000];
 /** « Écouter » le son des bips : le signal d'un changement de phase du compteur, court, court, long, une seconde entre deux. */
 const LISTEN_PATTERN: ClockTone[] = [{ delayMs: 0, tone: 'court' }, { delayMs: 1000, tone: 'court' }, { delayMs: 2000, tone: 'long' }];
 const DISTANCE_UNITS = Object.keys(DISTANCE_UNIT_LABEL) as DistanceUnit[];
+/** Modèles de dépense à pied (réglage « Dépense »). */
+const ENERGY_MODEL_CHOICES: { key: EnergyModel; label: string }[] = [{ key: 'course', label: 'Course' }, { key: 'marche', label: 'Marche' }];
 /** Activités ouvertes, par identifiant ; absente : fermée. */
 const NO_ACTIVITY_OPEN: Record<string, boolean> = {};
 /** Parties d'une carte d'activité, toutes fermées au départ ; l'état, mémorisé, vaut pour toutes les activités. */
@@ -465,7 +468,7 @@ function SettingsPage() {
                 const shownHidden = activity.hidden === true || familyHidden;
                 const overridden =
                   s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || (withThreshold && s.isThresholdOverridden) || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
-                  s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrainStepM !== defaultTerrainStepOf(activity) || s.bikeType !== defaultBikeType(activity) || s.bikeWeight !== null || s.carriedLoad !== null || s.isHrOffsetOverridden || s.gearLabels !== null || s.isTabsOverridden ||
+                  s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrainStepM !== defaultTerrainStepOf(activity) || s.bikeType !== defaultBikeType(activity) || s.bikeWeight !== null || s.carriedLoad !== null || s.isEnergyModelOverridden || s.isHrOffsetOverridden || s.gearLabels !== null || s.isTabsOverridden ||
                   s.paceLevel !== defaultPaceOf(activity).level || s.customFlatSpeedMs !== defaultPaceOf(activity).customFlatSpeedMs || s.isWayTypesOverridden ||
                   s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.isHeartRateOverridden || s.cadence === false;
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
@@ -660,6 +663,16 @@ function SettingsPage() {
                                   <input type="checkbox" checked={s.pumping} onChange={(e) => setFor(id, 'pumping', e.target.checked)} />
                                   <span>Pumping foil</span>
                                 </label>
+                              </SettingRow>
+                            )}
+                            {treatment === 'course' && (
+                              <SettingRow label="Dépense" helpKey={`${id}:depense`}
+                                help="Modèle de l'énergie des sessions : la course (Minetti, selon l'économie de course) ou la marche (Pandolf, descentes corrigées par Santee), qui coûte environ moitié moins sur le plat.">
+                                <div className="settings-sports__pair">
+                                  <SegmentedControl label="Dépense" items={ENERGY_MODEL_CHOICES} value={s.energyModel}
+                                    onChange={(model) => setFor(id, 'energyModel', model === defaultEnergyModelOf(activity) ? null : model)} />
+                                  {!s.isEnergyModelOverridden && <span className="settings-sports__mark">défaut</span>}
+                                </div>
                               </SettingRow>
                             )}
                             {treatment === 'course' && (

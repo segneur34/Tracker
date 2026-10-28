@@ -7,7 +7,7 @@ import { BIKE_TYPES } from '../cycling/energy';
 import {
   MAX_GEAR_LABEL_LENGTH, PRESETS_VERSION, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultBikeType, defaultGradeRange,
   defaultHeartRateOf, defaultHrOffsetOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
-  defaultTerrainStepOf, defaultThresholdOf, rangeFollowsPace, resetStoredPresets, sanitizeGearLabels, thresholdFollowsPace, type StoredSettings,
+  defaultEnergyModelOf, defaultTerrainStepOf, defaultThresholdOf, rangeFollowsPace, resetStoredPresets, sanitizeGearLabels, thresholdFollowsPace, type StoredSettings,
   addGearItem, readStoredSettings, resolveGearGroups, resetOverrides, sanitizeGearGroups, withGearItem, type GearGroup,
 } from './useSportSettings';
 import { jsonStore } from '../platform/storage';
@@ -77,11 +77,10 @@ describe('pré-réglages des activités (21/10)', () => {
     expect(rangeFollowsPace(kite)).toBe(true);
   });
 
-  it("sans seuil d'activité à pied, à vélo et en fractionné, sauf la marche", () => {
-    for (const activity of [course, route, gravel, vtt, runIntervals, bikeIntervals, trail]) {
+  it("sans seuil d'activité à pied, à vélo et en fractionné, marche comprise (28/10)", () => {
+    for (const activity of [course, marche, route, gravel, vtt, runIntervals, bikeIntervals, trail]) {
       expect(defaultThresholdOf(activity, false)).toBe(0);
     }
-    expect(defaultThresholdOf(marche, false)).toBe(0.5);
     // Le surf garde ses défauts.
     expect(defaultThresholdOf(surf, false)).toBe(getSportProfile('surf').defaultActiveThreshold);
   });
@@ -142,6 +141,24 @@ describe('pré-réglages des activités (21/10)', () => {
     expect(next.speedRanges).toEqual({ 'a-route': { minMs: 2, maxMs: 12 } });
     expect(next.tabs).toEqual({});
     expect(next.gearLabels).toEqual(stored.gearLabels);
+  });
+
+  it('dépense : la Marche sur Pandolf, les autres sur la course', () => {
+    expect(defaultEnergyModelOf(marche)).toBe('marche');
+    for (const activity of [course, trail, runIntervals, route]) expect(defaultEnergyModelOf(activity)).toBe('course');
+  });
+
+  it('efface une fois le seuil rangé de la Marche (version 2 → 3), garde celui de la Course', () => {
+    const stored: StoredSettings = {
+      activities: [...DEFAULT_ACTIVITIES],
+      presetsVersion: 2,
+      thresholds: { [marche.id]: 0.5, running: 2, kite: 12 },
+      speedRanges: { [marche.id]: { minMs: 0.3, maxMs: 2 } },
+    };
+    const next = resetStoredPresets(stored);
+    expect(next.thresholds).toEqual({ running: 2, kite: 12 });
+    expect(next.speedRanges).toBe(stored.speedRanges);
+    expect(PRESETS_VERSION).toBe(3);
   });
 });
 

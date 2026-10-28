@@ -63,8 +63,11 @@ export const RECORD_VERSION = 1;
  * 10 (27 octobre 2026) : cadence à pied (`cadence`) en pas par minute selon
  * la longueur de pas (un GPX déjà en pas n'est plus doublé), couverture sans
  * les pauses ni les trous.
+ *
+ * 11 (28 octobre 2026) : la Marche sans seuil d'activité (pré-réglage à 0) :
+ * son temps en mouvement est recalculé.
  */
-export const SUMMARY_CALC_VERSION = 10;
+export const SUMMARY_CALC_VERSION = 11;
 
 export type SessionSource = 'enregistrement' | 'import';
 

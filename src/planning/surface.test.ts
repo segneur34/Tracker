@@ -51,10 +51,24 @@ describe('catégorie d\'une voie', () => {
     expect(classifySurface('highway=residential')).toBe('asphalte');
     expect(classifySurface('highway=secondary')).toBe('asphalte');
     expect(classifySurface('highway=service')).toBe('asphalte');
-    expect(classifySurface('highway=track')).toBe('inconnu');
-    expect(classifySurface('highway=footway')).toBe('inconnu');
+    expect(classifySurface('highway=unclassified')).toBe('asphalte');
+    expect(classifySurface('highway=cycleway')).toBe('asphalte');
     expect(classifySurface('')).toBe('inconnu');
     expect(classifySurface(null)).toBe('inconnu');
+  });
+
+  it('compte une piste ou un sentier sans précision en non pavé (28/10)', () => {
+    expect(classifySurface('highway=track')).toBe('nonPave');
+    expect(classifySurface('highway=path')).toBe('nonPave');
+    expect(classifySurface('highway=footway')).toBe('nonPave');
+    expect(classifySurface('highway=bridleway')).toBe('nonPave');
+    // L'état de la piste et le revêtement déclaré priment, le sentier de montagne aussi.
+    expect(classifySurface('highway=track tracktype=grade1')).toBe('asphalte');
+    expect(classifySurface('highway=path surface=asphalt')).toBe('asphalte');
+    expect(classifySurface('highway=path sac_scale=mountain_hiking')).toBe('alpin');
+    // Ni les marches, ni une voie hors des types connus.
+    expect(classifySurface('highway=steps')).toBe('inconnu');
+    expect(classifySurface('highway=pedestrian')).toBe('inconnu');
   });
 });
 

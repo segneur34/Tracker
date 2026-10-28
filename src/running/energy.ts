@@ -19,9 +19,43 @@ import { classifyGrade, gradeZones, type GradeZone, type GradeZoneKey } from './
  * mécanique, cette dépense multipliée par un rendement, comme à vélo. Elle se
  * compare à celle d'un capteur de puissance de course (environ 1 W/kg par m/s
  * sur le plat), quatre fois moindre que la puissance dépensée.
+ *
+ * La marche a son propre modèle (`WalkingParams`, choisi par le réglage
+ * « Dépense » de l'activité) : Pandolf (1977), corrigé en descente par
+ * Santee (2001).
  */
 
+/** Modèle de dépense d'une activité à pied : course (Minetti) ou marche (Pandolf). */
+export type EnergyModel = 'course' | 'marche';
+
+export const isEnergyModel = (value: unknown): value is EnergyModel => value === 'course' || value === 'marche';
+
+/**
+ * Marche : équation de Pandolf, Givoni et Goldman (1977), J Appl Physiol
+ * 43(4):577-581, ramenée au kilo de corps, en W/kg :
+ *   M/W = 1,5 + 2,0·(1 + r)·r² + η·(1 + r)·(1,5·V² + 0,35·V·G)
+ * avec V en m/s, G la pente en % (positive en montée), r = L/W la charge
+ * portée sur le poids du corps, η le facteur de terrain (1 : route, tapis).
+ * En descente (G < 0), correction de Santee, Allison, Blanchard et Small
+ * (2001), Aviat Space Environ Med 72(6):562-566, ôtée de M :
+ *   CF = η·[ G·(W + L)·V / 3,5 − (W + L)·(G + 6)² / W + 25 − V² ]
+ * (en W), elle aussi ramenée au kilo. Pandolf seul donne en descente un coût
+ * qui chute sous celui de rester debout ; corrigé, le minimum est vers −10 %.
+ */
+export interface WalkingParams {
+  /** Facteur de terrain η de Pandolf (1 : route). */
+  terrainFactor: number;
+  /** Coût de la station debout, premier terme de Pandolf, en W/kg : déduit, comme le repos l'est en course. */
+  standingWkg: number;
+  /** Poids du corps supposé dans la correction de Santee, faute de poids saisi, en kg. */
+  referenceBodyKg: number;
+  /** Pente, en fraction, au-delà de laquelle le modèle est borné. */
+  maxGrade: number;
+}
+
 export interface EnergyParams {
+  /** Modèle de dépense : course (Minetti, les champs ci-dessous) ou marche (`walking`). */
+  model: EnergyModel;
   /** Économie de course sur le plat, en ml d'O₂ par kg et par km. */
   economyMlKgKm: number;
   /** Énergie libérée par millilitre d'O₂ consommé, en J. */
@@ -36,6 +70,10 @@ export interface EnergyParams {
   mechanicalEfficiency: number;
   /** Pente et zones de pente du bilan par zone (`SportProfile.grade`). */
   gradeZones: GradeProfile;
+  /** Modèle de la marche (`model` : 'marche'). */
+  walking: WalkingParams;
+  /** Poids du corps, en kg, pour la correction de descente de la marche ; `null` : non saisi. */
+  bodyKg: number | null;
 }
 
 /**
@@ -45,6 +83,7 @@ export interface EnergyParams {
  * est celui du vélo : 1,05 J/kg/m sur le plat, l'ordre des capteurs.
  */
 export const DEFAULT_ENERGY_PARAMS: EnergyParams = {
+  model: 'course',
   economyMlKgKm: 200,
   joulesPerMlO2: 20.9,
   airDragJs2M3Kg: 0.0065,
@@ -52,6 +91,8 @@ export const DEFAULT_ENERGY_PARAMS: EnergyParams = {
   restingMlKgMin: 3.5,
   mechanicalEfficiency: 0.25,
   gradeZones: GRADE_ANALYSIS,
+  walking: { terrainFactor: 1, standingWkg: 1.5, referenceBodyKg: 75, maxGrade: 0.25 },
+  bodyKg: null,
 };
 
 /** Charge portée plausible (sac, affaires), en kg ; 0 : aucune. */
@@ -62,6 +103,16 @@ export const isValidCarriedLoad = (value: unknown): value is number =>
 export const runningEnergyParams = (economyMlKgKm: number | null): EnergyParams => ({
   ...DEFAULT_ENERGY_PARAMS,
   economyMlKgKm: economyMlKgKm ?? DEFAULT_ENERGY_PARAMS.economyMlKgKm,
+});
+
+/**
+ * Paramètres de la marche (Pandolf) ; `bodyKg` : poids du pratiquant, `null`
+ * s'il n'est pas saisi. L'économie de course ne sert pas à la marche.
+ */
+export const walkingEnergyParams = (economyMlKgKm: number | null, bodyKg: number | null): EnergyParams => ({
+  ...runningEnergyParams(economyMlKgKm),
+  model: 'marche',
+  bodyKg: bodyKg !== null && isFinite(bodyKg) && bodyKg > 0 ? bodyKg : null,
 });
 
 /** Coût sur le plat du polynôme de Minetti, en J/kg/m. */
@@ -80,6 +131,48 @@ export const flatCostJkgM = (params: EnergyParams): number =>
 /** Coût de course hors air, en J/kg/m, à la pente donnée (`NaN` compte comme plat). */
 export const runningCostJkgM = (grade: number, params: EnergyParams): number =>
   (flatCostJkgM(params) * minettiCost(isFinite(grade) ? grade : 0, params.maxGrade)) / MINETTI_FLAT_JKGM;
+
+/**
+ * Puissance brute de la marche, en W/kg de corps (Pandolf, corrigé par
+ * Santee en descente). `speedMs` en m/s, `grade` en fraction (bornée à
+ * ±`maxGrade`, `NaN` compte comme plat), `loadRatio` la charge sur le poids
+ * du corps, `bodyKg` le poids du corps (`referenceBodyKg` s'il manque).
+ *
+ * La correction de Santee ne s'annule pas à 0 % : juste sous le plat, la
+ * marche coûte un peu plus que sur le plat (+0,19 W/kg à 1,4 m/s et 70 kg),
+ * un petit saut de la formule publiée, gardé tel quel.
+ */
+export const walkingGrossWkg = (
+  speedMs: number,
+  grade: number,
+  loadRatio: number,
+  bodyKg: number | null,
+  walking: WalkingParams
+): number => {
+  const v = Math.max(0, speedMs);
+  const g = 100 * Math.max(-walking.maxGrade, Math.min(walking.maxGrade, isFinite(grade) ? grade : 0));
+  const r = Math.max(0, loadRatio);
+  const eta = walking.terrainFactor;
+  const w = bodyKg !== null && bodyKg > 0 ? bodyKg : walking.referenceBodyKg;
+  let wkg = walking.standingWkg + 2 * (1 + r) * r * r + eta * (1 + r) * (1.5 * v * v + 0.35 * v * g);
+  if (g < 0) wkg -= eta * ((g * (1 + r) * v) / 3.5 - ((1 + r) * (g + 6) ** 2) / w + (25 - v * v) / w);
+  return wkg;
+};
+
+/**
+ * Coût net de la marche hors air, en J/kg/m : la puissance de Pandolf, station
+ * debout déduite, sur la vitesse ; 0 à l'arrêt.
+ */
+export const walkingCostJkgM = (
+  speedMs: number,
+  grade: number,
+  loadRatio: number,
+  bodyKg: number | null,
+  walking: WalkingParams
+): number => {
+  if (!(speedMs > 0)) return 0;
+  return Math.max(0, walkingGrossWkg(speedMs, grade, loadRatio, bodyKg, walking) - walking.standingWkg) / speedMs;
+};
 
 /**
  * Métabolisme de repos, en W/kg. Mifflin-St Jeor quand poids, taille, âge et
@@ -140,6 +233,9 @@ export interface EnergyResult {
  * `loadRatio` : charge portée (sac, affaires) sur le poids du corps. Le
  * déplacement coûte en proportion de la masse déplacée, corps et charge ; le
  * repos reste celui du corps. Les résultats restent par kilo de coureur.
+ *
+ * Marche (`params.model`) : le coût de Pandolf (`walkingCostJkgM`), qui
+ * porte déjà la charge, à la place de Minetti ; l'air comme en course.
  */
 export const computeEnergy = (
   track: TrackPoint[],
@@ -178,7 +274,9 @@ export const computeEnergy = (
       const d = segmentDistanceM(track, i);
       const v = track[i].speedMs;
       const grade = grades[i] ?? NaN;
-      net = (runningCostJkgM(grade, params) + params.airDragJs2M3Kg * v * v) * d * massRatio;
+      net = params.model === 'marche'
+        ? (walkingCostJkgM(v, grade, loadRatio, params.bodyKg, params.walking) + params.airDragJs2M3Kg * v * v * massRatio) * d
+        : (runningCostJkgM(grade, params) + params.airDragJs2M3Kg * v * v) * d * massRatio;
       mechanicalPowerWkg[i] = (net * params.mechanicalEfficiency) / dt;
       netJkg += net;
       movingTimeS += dt;

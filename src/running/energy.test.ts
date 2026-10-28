@@ -4,7 +4,7 @@ import { GRADE_ANALYSIS } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import {
   DEFAULT_ENERGY_PARAMS, computeEnergy, flatCostJkgM, minettiCost, restingPowerWkg, runningCostJkgM,
-  smoothMovingPower, type EnergyParams,
+  smoothMovingPower, walkingCostJkgM, walkingEnergyParams, walkingGrossWkg, type EnergyParams,
 } from './energy';
 import { computeGrades } from './runningAnalytics';
 
@@ -170,6 +170,89 @@ describe('computeEnergy', () => {
     const b = computeEnergy(sparse, gradesOf(sparse), allMoving(sparse), NO_AIR, 0);
     expect(b.zones.find((z) => z.zone.key === 'steepUp')!.share).toBe(1);
     expect(Math.abs(b.netJkg - a.netJkg) / a.netJkg).toBeLessThan(0.01);
+  });
+});
+
+describe('marche (Pandolf, Santee en descente)', () => {
+  const walking = DEFAULT_ENERGY_PARAMS.walking;
+
+  it('suit Pandolf sur le plat et en montée', () => {
+    // 1,5 + 1,5 × 1,4² = 1,5 + 2,94 = 4,44 W/kg.
+    expect(walkingGrossWkg(1.4, 0, 0, 70, walking)).toBeCloseTo(4.44, 6);
+    // + 0,35 × 1,4 × 10 = 4,9 W/kg de plus à 10 %.
+    expect(walkingGrossWkg(1.4, 0.1, 0, 70, walking)).toBeCloseTo(9.34, 6);
+    expect(walkingCostJkgM(1.4, 0, 0, 70, walking)).toBeCloseTo(2.94 / 1.4, 6);
+    expect(walkingCostJkgM(1.4, NaN, 0, 70, walking)).toBeCloseTo(2.94 / 1.4, 6);
+  });
+
+  it('corrige la descente par Santee : moins que le plat, plus que zéro', () => {
+    // Pandolf : 4,44 − 4,9 = −0,46 ; CF/W = −14/3,5 − 4²/70 + (25 − 1,96)/70 = −3,8994 ; −0,46 + 3,8994 = 3,4394.
+    const down10 = walkingGrossWkg(1.4, -0.1, 0, 70, walking);
+    expect(down10).toBeCloseTo(3.4394, 3);
+    expect(down10).toBeGreaterThan(walking.standingWkg);
+    expect(down10).toBeLessThan(walkingGrossWkg(1.4, 0, 0, 70, walking));
+    // −15 % : 4,44 − 7,35 + 6 + 81/70 − 23,04/70 = 3,918.
+    expect(walkingGrossWkg(1.4, -0.15, 0, 70, walking)).toBeCloseTo(3.918, 3);
+    // Juste sous le plat, la correction ne s'annule pas : (36 − 23,04)/70 = +0,185 W/kg.
+    expect(walkingGrossWkg(1.4, -1e-9, 0, 70, walking) - walkingGrossWkg(1.4, 0, 0, 70, walking)).toBeCloseTo(0.185, 3);
+  });
+
+  it('borne la pente à ±25 %', () => {
+    expect(walkingGrossWkg(1.2, -0.4, 0, 70, walking)).toBe(walkingGrossWkg(1.2, -0.25, 0, 70, walking));
+    expect(walkingGrossWkg(1.2, 0.4, 0, 70, walking)).toBe(walkingGrossWkg(1.2, 0.25, 0, 70, walking));
+  });
+
+  it('fait payer la charge portée selon la formule', () => {
+    // r = 10/70 : 2 × (1 + r) × r² de station chargée, et le déplacement × (1 + r).
+    const r = 10 / 70;
+    const loaded = walkingGrossWkg(1.4, 0, r, 70, walking);
+    expect(loaded).toBeCloseTo(1.5 + 2 * (1 + r) * r * r + (1 + r) * 2.94, 6);
+    expect(loaded - walkingGrossWkg(1.4, 0, 0, 70, walking)).toBeCloseTo(2 * (1 + r) * r * r + r * 2.94, 6);
+  });
+
+  it('prend le poids de référence sans poids saisi, dans la seule correction de descente', () => {
+    expect(walkingGrossWkg(1.4, 0.05, 0, null, walking)).toBe(walkingGrossWkg(1.4, 0.05, 0, 70, walking));
+    expect(walkingGrossWkg(1.4, -0.1, 0, null, walking)).toBe(walkingGrossWkg(1.4, -0.1, 0, walking.referenceBodyKg, walking));
+  });
+
+  it('coûte environ moitié de la course sur le plat, sans le repos', () => {
+    const track = buildTrack(1000, () => 1.4);
+    const params = { ...walkingEnergyParams(null, 70), airDragJs2M3Kg: 0 };
+    const result = computeEnergy(track, gradesOf(track), allMoving(track), params, 0);
+    expect(result.movingDistanceM).toBeCloseTo(1400, 3);
+    expect(result.netJkg).toBeCloseTo(2.94 * 1000, 3);
+    expect(result.mechanicalJkg).toBeCloseTo(result.netJkg * 0.25, 6);
+  });
+
+  it("ne multiplie pas Pandolf par la masse portée, seulement l'air", () => {
+    const track = buildTrack(1000, () => 1.4);
+    const params = walkingEnergyParams(null, 70);
+    const r = 10 / 70;
+    const result = computeEnergy(track, gradesOf(track), allMoving(track), params, 0, r);
+    const expected = (walkingCostJkgM(1.4, 0, r, 70, params.walking) + params.airDragJs2M3Kg * 1.96 * (1 + r)) * 1400;
+    expect(result.netJkg).toBeCloseTo(expected, 3);
+  });
+
+  it('donne la même énergie et les mêmes zones à 1 Hz et à 5 Hz', () => {
+    const hill = (d: number) => 100 + 30 * Math.sin(d / 300);
+    const speed = (t: number) => 1.3 + 0.2 * Math.sin(t / 90);
+    const slow = buildTrack(1800, speed, 1, hill);
+    const fast = buildTrack(1800, speed, 0.2, hill);
+    const params = walkingEnergyParams(null, 70);
+    const a = computeEnergy(slow, gradesOf(slow), allMoving(slow), params, 1.2);
+    const b = computeEnergy(fast, gradesOf(fast), allMoving(fast), params, 1.2);
+    expect(b.netJkg / a.netJkg).toBeCloseTo(1, 2);
+    for (let k = 0; k < a.zones.length; k++) expect(b.zones[k].share).toBeCloseTo(a.zones[k].share, 2);
+  });
+
+  it('laisse la course telle quelle, paramètres de marche présents', () => {
+    const track = buildTrack(1200, () => 3, 1, (m) => 100 + 0.05 * m);
+    const withBody = { ...DEFAULT_ENERGY_PARAMS, bodyKg: 70 };
+    const a = computeEnergy(track, gradesOf(track), allMoving(track), DEFAULT_ENERGY_PARAMS, 1.2, 0.1);
+    const b = computeEnergy(track, gradesOf(track), allMoving(track), withBody, 1.2, 0.1);
+    expect(b.netJkg).toBe(a.netJkg);
+    expect(walkingEnergyParams(210, 70)).toMatchObject({ model: 'marche', economyMlKgKm: 210, bodyKg: 70 });
+    expect(DEFAULT_ENERGY_PARAMS.model).toBe('course');
   });
 });
 

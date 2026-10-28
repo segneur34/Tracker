@@ -96,6 +96,13 @@ const TRACKTYPE_VALUES: Record<string, SurfaceCategory> = {
 /** Routes, petites et grandes : asphaltées quand rien ne dit le contraire, comme le veut l'usage d'OSM. */
 const ROAD_HIGHWAYS = new Set([...WAY_TYPE_HIGHWAYS.route, ...WAY_TYPE_HIGHWAYS.grandeRoute]);
 
+/**
+ * Pistes et sentiers : non pavés quand rien ne dit le contraire (choix de
+ * l'utilisateur, 28/10). Pas les marches (`steps`), rangées avec les sentiers
+ * en planification mais rarement de terre.
+ */
+const UNPAVED_HIGHWAYS = new Set(['track', 'path', 'footway', 'bridleway']);
+
 /** Étiquettes lues dans un texte `clé=valeur clé=valeur` (forme de BRouter). */
 export const parseWayTags = (text: string): Record<string, string> => {
   const tags: Record<string, string> = {};
@@ -124,7 +131,8 @@ const mainValue = (value: string | undefined): string | undefined => value?.spli
  * Catégorie d'une voie, d'après ses étiquettes (`wayTagsText`) ; `null` : aucune
  * voie connue. Dans l'ordre : sentier alpin (`sac_scale`), revêtement déclaré
  * (une valeur inconnue donne « Autre »), état d'une piste (`tracktype`), route
- * sans précision comptée asphaltée ; sinon « Inconnu ».
+ * sans précision comptée asphaltée, piste ou sentier sans précision compté non
+ * pavé ; sinon « Inconnu ».
  */
 export const classifySurface = (tagsText: string | null): SurfaceCategory => {
   if (tagsText === null) return 'inconnu';
@@ -136,7 +144,9 @@ export const classifySurface = (tagsText: string | null): SurfaceCategory => {
   const tracktype = mainValue(tags.tracktype);
   if (tracktype && TRACKTYPE_VALUES[tracktype]) return TRACKTYPE_VALUES[tracktype];
   const highway = mainValue(tags.highway);
-  return highway !== undefined && ROAD_HIGHWAYS.has(highway) ? 'asphalte' : 'inconnu';
+  if (highway === undefined) return 'inconnu';
+  if (ROAD_HIGHWAYS.has(highway)) return 'asphalte';
+  return UNPAVED_HIGHWAYS.has(highway) ? 'nonPave' : 'inconnu';
 };
 
 /**

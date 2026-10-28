@@ -9,7 +9,9 @@ import {
 import type { RunnerProfile } from '../hooks/useRunnerProfile';
 import type { SurfaceSearchStatus } from '../hooks/useSessionSurfaces';
 import { SURFACE_LABEL, type SurfaceCategory, type SurfaceStretch } from '../planning/surface';
-import { DEFAULT_ENERGY_PARAMS, computeEnergy, restingPowerWkg, runningEnergyParams } from '../running/energy';
+import {
+  DEFAULT_ENERGY_PARAMS, computeEnergy, restingPowerWkg, runningEnergyParams, walkingEnergyParams, type EnergyModel,
+} from '../running/energy';
 import type { GradeZone } from '../running/runningAnalytics';
 
 /**
@@ -81,6 +83,8 @@ export interface EnergyInputs {
   bikeWeightKg: number;
   /** Charge portée en course, en kg : celle de la session, sinon celle de l'activité. */
   loadKg: number;
+  /** Modèle de dépense à pied de l'activité (réglage « Dépense ») : course (Minetti) ou marche (Pandolf). */
+  energyModel: EnergyModel;
   /** Revêtement des voies suivies : état de la recherche, et revêtement de chaque segment une fois connu. */
   surfaces: { status: SurfaceSearchStatus; stretches: SurfaceStretch[] | null };
 }
@@ -123,10 +127,16 @@ const warningPerKg = (
 /**
  * Course : modèle par kilo (`running/energy.ts`), le poids ne multiplie qu'à
  * l'affichage ; sans lui, les valeurs restent par kilo et la charge portée,
- * rapportée au poids du corps, est ignorée.
+ * rapportée au poids du corps, est ignorée. La marche (réglage « Dépense »)
+ * prend Pandolf à la place de Minetti, le reste à l'identique.
  */
-const runningEnergy = ({ track, grades, gradeZones, activityMask, runner, age, loadKg }: EnergyInputs): EnergyView => {
-  const params = { ...runningEnergyParams(runner.economyMlKgKm), gradeZones };
+const runningEnergy = ({ track, grades, gradeZones, activityMask, runner, age, loadKg, energyModel }: EnergyInputs): EnergyView => {
+  const walking = energyModel === 'marche';
+  const params = {
+    ...(walking ? walkingEnergyParams(runner.economyMlKgKm, runner.weightKg) : runningEnergyParams(runner.economyMlKgKm)),
+    gradeZones,
+  };
+  const effort = walking ? 'marche' : 'course';
   const restWkg = restingPowerWkg(runner, age, params);
   const mass = runner.weightKg;
   const load = mass !== null && loadKg > 0 ? loadKg : 0;
@@ -147,7 +157,7 @@ const runningEnergy = ({ track, grades, gradeZones, activityMask, runner, age, l
     cumulative: energy.cumulativeTotalJkg.map((j) => parseFloat(((j * massFactor) / J_PER_KCAL).toFixed(cumulativeDecimals))),
     cumulativeUnit: `kcal${perKg}`,
     stats: [
-      { label: 'Énergie de course', value: `${kcal(energy.netJkg)} kcal${perKg}`, detail: `${kj(energy.netJkg)} kJ${perKg}` },
+      { label: `Énergie de ${effort}`, value: `${kcal(energy.netJkg)} kcal${perKg}`, detail: `${kj(energy.netJkg)} kJ${perKg}` },
       { label: TOTAL_ENERGY_LABEL, value: `${kcal(energy.totalJkg)} kcal${perKg}`, detail: `${kj(energy.totalJkg)} kJ${perKg}` },
       {
         label: 'Puissance moyenne en mouvement',
@@ -155,7 +165,7 @@ const runningEnergy = ({ track, grades, gradeZones, activityMask, runner, age, l
         detail: mass !== null && energy.movingTimeS > 0 ? `${(energy.mechanicalJkg / energy.movingTimeS).toFixed(1)} W/kg` : undefined,
       },
       {
-        label: 'Coût de course par km',
+        label: `Coût de ${effort} par km`,
         value: energy.movingDistanceM > 0 ? `${kcal((energy.netJkg / energy.movingDistanceM) * 1000)} kcal${perKg}` : '—',
       },
     ],
@@ -171,9 +181,17 @@ const runningEnergy = ({ track, grades, gradeZones, activityMask, runner, age, l
       ? (loadKg > 0 ? <>{warningPerKg} La charge portée ({loadKg} kg) n'est prise en compte qu'avec le poids.</> : warningPerKg)
       : null,
     note:
-      `Coût selon la pente de Minetti (2002), rapporté à l'économie de course (${params.economyMlKgKm} ml O₂/kg/km${runner.economyMlKgKm === null ? ', valeur par défaut' : ''}), plus la résistance de l'air par air calme ; rien à l'arrêt.` +
-      (load > 0 ? ` Charge portée : ${load} kg, déplacée avec le corps (masse ${Math.round(((mass ?? 0) + load) * 10) / 10} kg) ; le repos reste celui du corps.` : '') +
-      ` Puissance : mécanique, l'énergie de course sur un rendement de ${Math.round(params.mechanicalEfficiency * 100)} %, comparable à celle d'un capteur de puissance de course ; une estimation, pas une mesure.` +
+      (walking
+        ? `Coût de la marche selon Pandolf (1977), descentes corrigées par Santee (2001), pente bornée à ±${Math.round(params.walking.maxGrade * 100)} %` +
+          (mass === null ? ` ; sans poids saisi, ${params.walking.referenceBodyKg} kg pour la correction de descente` : '') +
+          `, plus la résistance de l'air par air calme ; rien à l'arrêt.`
+        : `Coût selon la pente de Minetti (2002), rapporté à l'économie de course (${params.economyMlKgKm} ml O₂/kg/km${runner.economyMlKgKm === null ? ', valeur par défaut' : ''}), plus la résistance de l'air par air calme ; rien à l'arrêt.`) +
+      (load > 0
+        ? walking
+          ? ` Charge portée : ${load} kg, dans l'équation de Pandolf (masse ${Math.round(((mass ?? 0) + load) * 10) / 10} kg) ; le repos reste celui du corps.`
+          : ` Charge portée : ${load} kg, déplacée avec le corps (masse ${Math.round(((mass ?? 0) + load) * 10) / 10} kg) ; le repos reste celui du corps.`
+        : '') +
+      ` Puissance : mécanique, l'énergie de ${effort} sur un rendement de ${Math.round(params.mechanicalEfficiency * 100)} %, comparable à celle d'un capteur de puissance de course ; une estimation, pas une mesure.` +
       ` Repos : ${Math.round(restWkg * massFactor * 10) / 10} W${perKg}, ${mass !== null && runner.heightCm !== null && runner.sex !== null && age !== null ? 'selon poids, taille, âge et sexe' : 'valeur moyenne (1 MET) faute de profil complet'}, sur toute la durée.`,
   };
 };

@@ -8,6 +8,7 @@ import type { IntervalPreset } from '../recording/intervalTimer';
 import type { JumpSettings } from '../recording/jumpSettings';
 import type { LiveFieldKey } from '../recording/liveFields';
 import type { MarkGuideSettings } from '../recording/markGuide';
+import type { EnergyModel } from '../running/energy';
 import type { GradeRange } from '../running/runningAnalytics';
 
 /**
@@ -39,6 +40,8 @@ export interface ActivityPreset {
   pace?: { level: PaceLevel; customFlatSpeedMs: number | null };
   /** Décalage des seuils cardio par rapport à la course, en bpm. */
   hrThresholdOffsetBpm?: number;
+  /** Modèle de dépense à pied (réglage « Dépense ») ; absent : course. */
+  energyModel?: EnergyModel;
 }
 
 /**
@@ -126,7 +129,8 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
 /** Par activité de départ (`core/activities.ts`) : remplace en entier celui de son calcul. */
 const ACTIVITY_PRESETS: Partial<Record<string, ActivityPreset>> = {
   'a-marche': {
-    threshold: 0.5,
+    // Aucun seuil (28/10) : le plancher d'arrêt ôte déjà les arrêts complets, comme en course.
+    threshold: 0,
     speedUnit: 'kmh',
     speedRangeMs: { minMs: kmhToMs(1), maxMs: kmhToMs(8) },
     gradeRange: { min: 0, max: 0.2 },
@@ -138,6 +142,8 @@ const ACTIVITY_PRESETS: Partial<Record<string, ActivityPreset>> = {
     pace: { level: 'perso', customFlatSpeedMs: kmhToMs(5) },
     // Pas de phase de vol, moins de muscles à la fois que la course (Gemini, 25/10).
     hrThresholdOffsetBpm: -4,
+    // Pandolf, pas Minetti (28/10).
+    energyModel: 'marche',
   },
   'a-gravel': {
     threshold: 0,

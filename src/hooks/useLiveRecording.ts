@@ -9,11 +9,11 @@ import {
   EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, heartOnlyLiveStats, type LiveEnergySetup, type LiveStats,
   type LiveStatsMemory,
 } from '../recording/liveStats';
-import { runningEnergyParams } from '../running/energy';
+import { runningEnergyParams, walkingEnergyParams } from '../running/energy';
 import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
 import { getLiveHeartSegments, getLiveSegments, getRecorderState, subscribeToRecorder } from './useRecorder';
 import { readRunnerProfile } from './useRunnerProfile';
-import { effectiveBikeSetup, effectiveDistanceUnit } from './useSportSettings';
+import { effectiveBikeSetup, effectiveDistanceUnit, effectiveEnergyModel } from './useSportSettings';
 import { createListeners } from './createStore';
 
 /**
@@ -59,7 +59,12 @@ const EMPTY: LiveRecording = { segments: [], stats: EMPTY_LIVE_STATS, updatedMs:
 const liveEnergySetup = (activity: Activity): LiveEnergySetup | undefined => {
   const treatment = sportTreatment(activity.base);
   const runner = readRunnerProfile();
-  if (treatment === 'course') return { family: treatment, params: runningEnergyParams(runner.economyMlKgKm), massKg: runner.weightKg };
+  if (treatment === 'course') {
+    const params = effectiveEnergyModel(activity) === 'marche'
+      ? walkingEnergyParams(runner.economyMlKgKm, runner.weightKg)
+      : runningEnergyParams(runner.economyMlKgKm);
+    return { family: treatment, params, massKg: runner.weightKg };
+  }
   if (treatment === 'velo') {
     const { bikeType, bikeKg } = effectiveBikeSetup(activity);
     return { family: treatment, params: cyclingEnergyParams(bikeType, bikeKg, runner.weightKg ?? REFERENCE_RIDER_KG) };
