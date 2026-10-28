@@ -61,7 +61,7 @@ function AddField({ placeholder, button, testId, onAdd }: {
 
 /**
  * Matériel enregistré d'une activité (Réglages, partie « Matériel », fiche 18), posé en ligne
- * sous la case : « Créer matériel » ajoute un groupe (« Voile », « Aile avant », « Mât »…),
+ * sous la case : « Créer groupe matériel » ajoute un groupe (« Voile », « Aile avant », « Mât »…),
  * chaque groupe se déplie (chevron, replié par défaut, un groupe neuf s'ouvre) sur ses
  * lignes et le champ d'ajout d'une ligne. Groupes et lignes se renomment et se suppriment.
  * Chaque changement est écrit tout de suite (`onChange`). Une pièce supprimée reste dans
@@ -109,7 +109,7 @@ function GearGroupsEditor({ groups, onChange }: {
 
   return (
     <div className="gear-editor">
-      <AddField placeholder="Nom du matériel (voile, mât…)" button="Créer matériel" testId="gear-group-add" onAdd={addGroup} />
+      <AddField placeholder="Nom du matériel (voile, mât…)" button="Créer groupe matériel" testId="gear-group-add" onAdd={addGroup} />
       {groups.map((group) => {
         const isOpen = open.has(group.id);
         return (
