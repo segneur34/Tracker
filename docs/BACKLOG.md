@@ -11,12 +11,12 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 ## Maintenant
 
-APK 0.3.95 installée le 28/10 (versionCode 3095).
+APK 0.3.97 installée le 28/10 (versionCode 3097).
 
 - 32 · [idée] Icône « Enregistrer » : disque blanc avec un rond rouge, partout où l'action apparaît · noté 28/10 · petit · Sonnet/medium · à revoir : bogue n° 48 (0602700, 0.3.95 ; vu au téléphone le 28/10 : rond rouge trop petit, gros liseré blanc ; voulu un grand rond rouge et un fin liseré blanc) · détail : ~/.claude/plans/demandes-2810/lot32-icone-enregistrer.md
 - 48 · [bogue] Icône « Enregistrer » (lot 32, essai 63) : rond rouge trop petit dans un gros liseré blanc ; voulu un grand rond rouge et un fin liseré blanc, partout où l'icône apparaît · noté 28/10 · petit · Sonnet/low · à valider (64e02c7, 0.3.96 ; rouge sur 82 % du rayon, liseré d'environ 1,6 px sur le bouton rond, 1 px à 12 et 14 px) · détail : ~/.claude/plans/demandes-2810/lot32-icone-enregistrer.md
   - essai 63 : icône « Enregistrer » : bouton rond de la barre du bas au repos, puis pendant un enregistrement ; Entraînement › Muscu et timer, bouton « Enregistrer » d'une séance ; en clair et en sombre → grand rond rouge entouré d'un fin liseré blanc au repos, bouton rond toujours vert ; carré pendant l'enregistrement, comme avant ; dire si l'icône vous plaît.
-- 31 · [dette] Dépendances : TypeScript 7, @types/node 26, npm audit fix --force sur uuid (point 180) · noté 28/10 · petit · Opus/medium · à valider (COMMIT, 0.3.97 ; TypeScript 7.0.2, @types/node 26, Capacitor 8.6.0 ; failles uuid parties avec @capacitor/cli 8.6.0, npm audit à 0 ; aucun fichier de src/ touché, bundle identique octet pour octet) · détail : docs/backlog/31-dependances.md
+- 31 · [dette] Dépendances : TypeScript 7, @types/node 26, npm audit fix --force sur uuid (point 180) · noté 28/10 · petit · Opus/medium · à valider (4098121, 0.3.97 ; TypeScript 7.0.2, @types/node 26, Capacitor 8.6.0 ; failles uuid parties avec @capacitor/cli 8.6.0, npm audit à 0 ; aucun fichier de src/ touché, bundle identique octet pour octet) · détail : docs/backlog/31-dependances.md
   - essai 66 : Capacitor 8.6.0 : un court enregistrement GPS (quelques minutes, écran éteint un moment), puis son analyse → enregistrement et analyse comme avant.
 
 ## Ensuite
