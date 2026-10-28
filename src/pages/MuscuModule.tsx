@@ -84,7 +84,7 @@ interface LoadedSession {
 
 function MuscuModule() {
   const panelId = (name: string) => `${PAGE.storageId}.${name}`;
-  const { activity, setActivity, profile, hrOffsetBpm, gearLabels } = useSportSettings(FAMILY);
+  const { activity, setActivity, profile, hrOffsetBpm, gearLabels, gearGroups } = useSportSettings(FAMILY);
   const { profile: runner, retainHr } = useRunnerProfile();
   const narrow = useNarrowScreen();
 
@@ -283,7 +283,7 @@ function MuscuModule() {
             {open.notes && (
               <ResizablePanel id={panelId('notes')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                 <SessionNotesPanel notes={draft.edits.notes} setNotes={draft.updateNotes} family={FAMILY} conditions="libre" draft={draft}
-                  gearFields={gearFields(gearLabels)} open={open.notes} onToggle={() => toggle('notes')} />
+                  gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={() => toggle('notes')} />
               </ResizablePanel>
             )}
 

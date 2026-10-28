@@ -34,10 +34,10 @@ import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useSessionLibrary } from '../hooks/useSessionLibrary';
 import { readStoredRecord, useStoredRecord } from '../hooks/useStoredRecord';
 import { useVisibleStatSessions, visibleStatSessions } from '../hooks/useVisibleStatSessions';
-import { effectiveDistanceUnit, effectiveHrOffset, effectiveSpeedUnit, useVisibility } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, effectiveHrOffset, effectiveSpeedUnit, useGearGroups, useVisibility } from '../hooks/useSportSettings';
 import {
   STATS_PERIODS, TREND_SESSIONS, averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, defaultMetricKey, heartRatePoints, formatDateTick,
-  groupTotals, inBounds, isStatsMetricKey, isStatsPeriod, metricSeries, metricsOf, recordKindsOf, regularity, statsMetric,
+  gearFilterItems, groupTotals, inBounds, isStatsMetricKey, matchesGear, isStatsPeriod, metricSeries, metricsOf, recordKindsOf, regularity, statsMetric,
   statsPeriodBounds, statsTotals, topSessions, weeklyDurations, type MetricPoint, type StatSession, type StatsMetricKey, type StatsPeriod, type StatsRecordKind,
   type StatsTotals, type ZoneBoundsOf,
 } from '../library/stats';
@@ -50,7 +50,9 @@ import StatTile from '../components/ui/StatTile';
  * Statistiques (lot 5, étape 1) : une vue d'ensemble, puis une famille, puis
  * une activité, sur une période au choix, tirées du résumé des fiches sans
  * relire un seul GPX (`library/stats.ts`). Le choix est dans l'adresse
- * (`?famille=&activite=&periode=`) : le retour arrière remonte d'un niveau.
+ * (`?famille=&activite=&materiel=&periode=`) : le retour arrière remonte d'un niveau.
+ * Le filtre « Matériel » (lot 20) garde les sessions d'une activité qui
+ * portent une pièce de son matériel enregistré.
  * Le dernier choix est retenu sur l'appareil : une adresse sans paramètre le
  * reprend à l'ouverture.
  * Les sessions d'une activité ou d'une famille cachée n'y sont pas, ni celles
@@ -93,11 +95,13 @@ interface StatsView {
   periode: StatsPeriod;
   /** Donnée du graphique ; absente de la sélection, celle par défaut est montrée sans l'oublier. */
   donnee: StatsMetricKey | null;
+  /** Pièce du matériel enregistré de l'activité (son identifiant) ; `null` : tout le matériel. */
+  materiel?: string | null;
 }
 
 const VIEW_NAMESPACE = 'tracker.statistiques';
 const VIEW_KEY = 'affichage';
-const VIEW_DEFAULTS: StatsView = { famille: null, activite: null, periode: 'tout', donnee: null };
+const VIEW_DEFAULTS: StatsView = { famille: null, activite: null, periode: 'tout', donnee: null, materiel: null };
 const panelId = (name: string) => `${STORAGE_ID}.${name}`;
 const panelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' } as const;
 const chartPanelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'hidden' } as const;
@@ -243,7 +247,10 @@ function StatisticsPage() {
     const p = new URLSearchParams();
     if (isFamily(last.famille) && families.includes(last.famille)) {
       p.set('famille', last.famille);
-      if (typeof last.activite === 'string' && last.activite !== '') p.set('activite', last.activite);
+      if (typeof last.activite === 'string' && last.activite !== '') {
+        p.set('activite', last.activite);
+        if (typeof last.materiel === 'string' && last.materiel !== '') p.set('materiel', last.materiel);
+      }
     }
     if (isStatsPeriod(last.periode) && last.periode !== 'tout') p.set('periode', last.periode);
     if (p.toString() !== '') setParams(p, { replace: true });
@@ -271,6 +278,12 @@ function StatisticsPage() {
       ? activityById.get(activityParam)!
       : null;
 
+  // Matériel : les pièces de l'activité choisie (Réglages), et celle de l'adresse si elle en est une.
+  const gearGroups = useGearGroups(activity);
+  const gearItems = useMemo(() => gearFilterItems(gearGroups ?? []), [gearGroups]);
+  const gearParam = params.get('materiel');
+  const gearItem = gearItems.find((it) => it.key === gearParam) ?? null;
+
   // Une adresse changée hors de `go` (touche retour d'Android, qui remonte d'un cran) est retenue aussi. Pas tant
   // que la page, ouverte sans paramètre, attend la reprise du dernier affichage : elle l'effacerait.
   const awaitingResume = useRef(params.toString() === '');
@@ -280,30 +293,37 @@ function StatisticsPage() {
       awaitingResume.current = false;
     }
     const activite = family ? activityParam : null;
-    if (view.famille === family && view.activite === activite && view.periode === period) return;
-    rememberView({ famille: family, activite, periode: period });
+    const materiel = activite ? gearParam : null;
+    if (view.famille === family && view.activite === activite && view.periode === period && (view.materiel ?? null) === materiel) return;
+    rememberView({ famille: family, activite, periode: period, materiel });
     // Seule l'adresse compte : la mémoire la suit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
-  /** Change l'adresse : famille et activité s'empilent dans l'historique, la période le remplace. */
-  const go = (next: { famille?: SportFamily | null; activite?: string | null; periode?: StatsPeriod }, replace = false) => {
+  /**
+   * Change l'adresse : famille, activité et matériel s'empilent dans l'historique, la période le remplace.
+   * Une autre famille ou une autre activité remet le matériel à « Tout ».
+   */
+  const go = (next: { famille?: SportFamily | null; activite?: string | null; materiel?: string | null; periode?: StatsPeriod }, replace = false) => {
     const p = new URLSearchParams();
     const f = next.famille !== undefined ? next.famille : family;
     const a = next.activite !== undefined ? next.activite : activity?.id ?? null;
+    const m = next.materiel !== undefined ? next.materiel : next.famille !== undefined || next.activite !== undefined ? null : gearItem?.key ?? null;
     const per = next.periode ?? period;
     if (f) p.set('famille', f);
     if (f && a) p.set('activite', a);
+    if (f && a && m) p.set('materiel', m);
     if (per !== 'tout') p.set('periode', per);
-    rememberView({ famille: f, activite: f ? a : null, periode: per });
+    rememberView({ famille: f, activite: f ? a : null, periode: per, materiel: f && a ? m : null });
     setPicked(null);
     setParams(p, { replace });
   };
 
-  const scoped = useMemo(
-    () => all.filter((s) => (family === null || s.family === family) && (activity === null || s.activityId === activity.id)),
-    [all, family, activity]
-  );
+  const scoped = useMemo(() => {
+    const known = new Set(gearItems.map((it) => it.key));
+    return all.filter((s) => (family === null || s.family === family) && (activity === null || s.activityId === activity.id)
+      && (gearItem === null || matchesGear(s, gearItem, known)));
+  }, [all, family, activity, gearItems, gearItem]);
   const bounds = useMemo(() => statsPeriodBounds(period, nowMs), [period, nowMs]);
   const inPeriod = useMemo(() => scoped.filter((s) => inBounds(s.startMs, bounds)), [scoped, bounds]);
   const totals = useMemo(() => statsTotals(inPeriod), [inPeriod]);
@@ -490,7 +510,7 @@ function StatisticsPage() {
   const title = activity ? activity.name : family ? FAMILY_LABEL[family] : 'Toutes les activités';
   const periodLabel = STATS_PERIODS.find((p) => p.id === period)!.label;
   /** Le choix en cours, dans le bouton « Sélection » : lisible bloc replié. */
-  const choiceSummary = [family ? FAMILY_LABEL[family] : 'Toutes les familles', ...(activity ? [activity.name] : []), periodLabel === 'Tout' ? 'depuis le début' : periodLabel].join(' · ');
+  const choiceSummary = [family ? FAMILY_LABEL[family] : 'Toutes les familles', ...(activity ? [activity.name] : []), ...(gearItem ? [gearItem.label] : []), periodLabel === 'Tout' ? 'depuis le début' : periodLabel].join(' · ');
   const empty = inPeriod.length === 0;
   const lastText = regular.weeksSinceLast === null ? '—'
     : regular.weeksSinceLast === 0 ? 'cette semaine'
@@ -517,6 +537,11 @@ function StatisticsPage() {
         {family !== null && activityItems.length > 0 && (
           <SegmentedControl label="Activité" items={[{ key: '', label: 'Toutes' }, ...activityItems]} value={activity?.id ?? ''} accent={accent}
             onChange={(key) => go({ activite: key === '' ? null : key })} />
+        )}
+        {activity !== null && gearItems.length > 0 && (
+          <SegmentedControl label="Matériel" items={[{ key: '', label: 'Tout' }, ...gearItems.map((it) => ({ key: it.key, label: it.label }))]}
+            value={gearItem?.key ?? ''} accent={accent} className="stats-gear"
+            onChange={(key) => go({ materiel: key === '' ? null : key })} />
         )}
         <SegmentedControl fit label="Période" items={STATS_PERIODS.map((p) => ({ key: p.id, label: p.label }))} value={period}
           onChange={(key) => go({ periode: key }, true)} />

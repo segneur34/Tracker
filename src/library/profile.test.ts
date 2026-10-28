@@ -29,6 +29,7 @@ const session = (startMs: number, over: Partial<StatSession> = {}): StatSession 
   reps: 0,
   heartRate: null,
   cadenceSpm: null,
+  gear: null,
   ...over,
 });
 

@@ -1,6 +1,6 @@
 import type { SessionMark } from '../core/sessionMarks';
 import type { SpeedRangeMs } from '../core/speedGradient';
-import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
+import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from '../sailing/sessionNotes';
 import { normalizeDeg, type SessionAnalysis, type SessionRecord, type StoredSessionNotes } from './record';
 
 /**
@@ -38,8 +38,19 @@ export interface SessionEdits {
 
 const NOTE_FIELDS = Object.keys(EMPTY_NOTES) as (keyof SailingSessionNotes)[];
 
+/** Même matériel choisi, au contenu près : une fiche relue en donne une copie. */
+const sameGear = (a: readonly GearChoice[] | null, b: readonly GearChoice[] | null): boolean =>
+  a === b || ((a?.length ?? 0) === 0 && (b?.length ?? 0) === 0) || (a !== null && b !== null && a.length === b.length && a.every((g, i) => {
+    const o = b[i];
+    return g.groupId === o.groupId && g.groupName === o.groupName && g.itemId === o.itemId && g.itemName === o.itemName;
+  }));
+
+/** Égalité d'un champ des notes : le matériel par son contenu, le reste tel quel. */
+const sameNoteField = <F extends keyof SailingSessionNotes>(field: F, a: SailingSessionNotes[F], b: SailingSessionNotes[F]): boolean =>
+  field === 'gear' ? sameGear(a as GearChoice[] | null, b as GearChoice[] | null) : a === b;
+
 const sameNotes = (a: SailingSessionNotes, b: SailingSessionNotes): boolean =>
-  NOTE_FIELDS.every((field) => a[field] === b[field]);
+  NOTE_FIELDS.every((field) => sameNoteField(field, a[field], b[field]));
 
 /**
  * État enregistré d'une session, tel que le module l'affiche. Ce que sa fiche
@@ -144,7 +155,7 @@ export const rebaseDraft = (prevSaved: SessionEdits, nextSaved: SessionEdits, dr
   }
   const notes: SailingSessionNotes = { ...draft.notes };
   for (const field of NOTE_FIELDS) {
-    if (draft.notes[field] === prevSaved.notes[field] && draft.notes[field] !== nextSaved.notes[field]) {
+    if (sameNoteField(field, draft.notes[field], prevSaved.notes[field]) && !sameNoteField(field, draft.notes[field], nextSaved.notes[field])) {
       (notes as unknown as Record<string, unknown>)[field] = nextSaved.notes[field];
       changed = true;
     }

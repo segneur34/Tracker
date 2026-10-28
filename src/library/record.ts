@@ -12,7 +12,7 @@ import type { SummaryTest } from '../running/fitnessTestResults';
 import { readIntervalSeries, type IntervalSeries } from '../recording/intervalTimer';
 import { isSportType } from '../recording/session';
 import { isValidCarriedLoad } from '../running/energy';
-import { EMPTY_NOTES, type SailingSessionNotes } from '../sailing/sessionNotes';
+import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from '../sailing/sessionNotes';
 import { isFiniteNumber, isObject } from '../core/basics';
 
 /**
@@ -383,6 +383,18 @@ const readSummary = (raw: unknown): SessionSummary | null => {
   return summary;
 };
 
+/** Matériel enregistré relu : les entrées sans identifiant ou sans nom sont écartées ; aucune : `null`. */
+export const readGear = (raw: unknown): GearChoice[] | null => {
+  if (!Array.isArray(raw)) return null;
+  const text = (value: unknown): string => (typeof value === 'string' ? value : '');
+  const gear = raw.flatMap((entry): GearChoice[] => {
+    if (!isObject(entry)) return [];
+    const choice = { groupId: text(entry.groupId), groupName: text(entry.groupName), itemId: text(entry.itemId), itemName: text(entry.itemName) };
+    return choice.groupId !== '' && choice.itemId !== '' && choice.itemName.trim() !== '' ? [choice] : [];
+  });
+  return gear.length > 0 ? gear : null;
+};
+
 /** Notes relues, champ par champ : un champ absent ou mal formé reprend sa valeur vide. */
 export const readNotes = (raw: unknown): StoredSessionNotes | null => {
   if (!isObject(raw)) return null;
@@ -397,6 +409,7 @@ export const readNotes = (raw: unknown): StoredSessionNotes | null => {
     gear1: text('gear1'),
     gear2: text('gear2'),
     conditions: text('conditions'),
+    gear: readGear(raw.gear),
     comment: text('comment'),
     windLevel: typeof raw.windLevel === 'string' ? (raw.windLevel as SailingSessionNotes['windLevel']) : null,
     waterState: typeof raw.waterState === 'string' ? (raw.waterState as SailingSessionNotes['waterState']) : null,

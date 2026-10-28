@@ -221,3 +221,40 @@ describe('rebaseDraft (E-B3)', () => {
     expect(rebaseDraft(before, before, draft)).toBe(draft);
   });
 });
+
+describe('matériel enregistré dans le brouillon (lot 20)', () => {
+  const wing = { groupId: 'g-aile', groupName: 'Aile', itemId: 'i-5', itemName: 'Duotone 5' };
+  const mast = { groupId: 'g-mat', groupName: 'Mât', itemId: 'i-85', itemName: '85 cm' };
+
+  it('voit un matériel changé dans la partie « notes », pas une copie identique', () => {
+    const r = record({ notes: notes({ gear: [wing] }) });
+    const saved = savedEdits(r);
+    expect(saved.notes.gear).toEqual([wing]);
+    expect(changedParts(saved, { ...saved, notes: { ...saved.notes, gear: [{ ...wing }] } })).toEqual([]);
+    expect(changedParts(saved, { ...saved, notes: { ...saved.notes, gear: [wing, mast] } })).toEqual(['notes']);
+    expect(changedParts(saved, { ...saved, notes: { ...saved.notes, gear: null } })).toEqual(['notes']);
+    expect(changedParts(saved, { ...saved, notes: { ...saved.notes, gear: [{ ...wing, itemName: 'Duotone 6' }] } })).toEqual(['notes']);
+  });
+
+  it('écrit le matériel choisi dans la fiche, et le relit', () => {
+    const r = record();
+    const saved = savedEdits(r);
+    expect(saved.notes.gear).toBeNull();
+    const patch = editsPatch(r, saved, { ...saved, notes: { ...saved.notes, gear: [wing, mast] } }, START_MS + 7);
+    expect(patch.notes).toMatchObject({ gear: [wing, mast], savedAt: START_MS + 7 });
+    expect(savedEdits({ ...r, notes: patch.notes! }).notes.gear).toEqual([wing, mast]);
+  });
+
+  it("ne reprend pas le matériel d'une autre session : une session neuve part vide", () => {
+    expect(savedEdits(record({ source: 'enregistrement' })).notes.gear).toBeNull();
+  });
+
+  it('suit la fiche relue pour un matériel inchangé dans le brouillon, garde celui qui a été choisi', () => {
+    const before = savedEdits(record({ notes: notes({ gear: [wing] }) }));
+    const after = savedEdits(record({ notes: notes({ gear: [{ ...wing }, mast] }) }));
+    const untouched = { ...before, notes: { ...before.notes, gear: [{ ...wing }], comment: 'Rafales' } };
+    expect(rebaseDraft(before, after, untouched).notes.gear).toEqual([wing, mast]);
+    const chosen = { ...before, notes: { ...before.notes, gear: null } };
+    expect(rebaseDraft(before, after, chosen).notes.gear).toBeNull();
+  });
+});

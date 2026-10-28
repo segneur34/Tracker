@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_ACTIVITIES } from '../core/activities';
 import { getSportProfile, hasActiveThreshold } from '../core/sportProfiles';
 import { knotsToMs } from '../core/units';
@@ -8,7 +8,9 @@ import {
   MAX_GEAR_LABEL_LENGTH, PRESETS_VERSION, TREATMENT_UNITS, defaultAutoPauseOf, defaultBikeKg, defaultBikeType, defaultGradeRange,
   defaultHeartRateOf, defaultHrOffsetOf, defaultLiveFieldsFor, defaultMarkGuideOf, defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultSpeedUnitOf,
   defaultTerrainStepOf, defaultThresholdOf, rangeFollowsPace, resetStoredPresets, sanitizeGearLabels, thresholdFollowsPace, type StoredSettings,
+  addGearItem, readStoredSettings, resolveGearGroups, resetOverrides, sanitizeGearGroups, withGearItem, type GearGroup,
 } from './useSportSettings';
+import { jsonStore } from '../platform/storage';
 
 describe('pré-réglages du bateau (21/10)', () => {
   const boat = { id: 'a-voilier', name: 'Voilier', base: 'bateau' as const, color: '#014e86' };
@@ -178,5 +180,84 @@ describe('sanitizeGearLabels', () => {
     expect(sanitizeGearLabels(['Vélo'])).toBeNull();
     expect(sanitizeGearLabels(['Vélo', 3])).toBeNull();
     expect(sanitizeGearLabels('Vélo')).toBeNull();
+  });
+});
+
+describe('matériel enregistré (lot 20)', () => {
+  const wing: GearGroup = { id: 'g-aile', name: 'Aile', items: [{ id: 'i-5', name: 'Duotone 5' }, { id: 'i-6', name: 'Duotone 6' }] };
+  const mast: GearGroup = { id: 'g-mat', name: 'Mât', items: [] };
+
+  it('rogne les noms et garde les identifiants', () => {
+    expect(sanitizeGearGroups([{ id: 'g-aile', name: '  Aile ', items: [{ id: 'i-5', name: ' Duotone 5 ' }, { id: 'i-6', name: 'Duotone 6' }] }]))
+      .toEqual([wing]);
+    expect(sanitizeGearGroups([{ id: 'g', name: 'x'.repeat(50), items: [] }])?.[0].name).toHaveLength(MAX_GEAR_LABEL_LENGTH);
+  });
+
+  it('écarte les groupes et les pièces sans identifiant ou sans nom, et les identifiants en double', () => {
+    expect(sanitizeGearGroups([
+      wing,
+      { id: '', name: 'Sans id', items: [] },
+      { id: 'g-vide', name: '  ', items: [] },
+      { name: 'Foil', items: [] },
+      'Planche',
+      null,
+      { id: 'g-aile', name: 'Doublon', items: [] },
+      { id: 'g-mat', name: 'Mât', items: [{ id: 'i-85' }, { name: '90 cm' }, { id: 'i-5', name: 'Doublon' }, { id: 'i-75', name: 75 }, 'x'] },
+      { id: 'g-sans', name: 'Sans pièces', items: 'non' },
+    ])).toEqual([wing, mast, { id: 'g-sans', name: 'Sans pièces', items: [] }]);
+  });
+
+  it('garde une liste vide (option cochée) et rend null hors liste (option coupée)', () => {
+    expect(sanitizeGearGroups([])).toEqual([]);
+    expect(sanitizeGearGroups(undefined)).toBeNull();
+    expect(sanitizeGearGroups({ id: 'g' })).toBeNull();
+  });
+
+  it('ajoute une pièce à un groupe, sans doubler un nom déjà là', () => {
+    const added = withGearItem([wing, mast], 'g-mat', ' 85 cm ', 'i-85');
+    expect(added?.item).toEqual({ id: 'i-85', name: '85 cm' });
+    expect(added?.groups).toEqual([wing, { ...mast, items: [{ id: 'i-85', name: '85 cm' }] }]);
+    expect(withGearItem([wing], 'g-aile', 'duotone 5 ', 'neuf')?.item).toEqual({ id: 'i-5', name: 'Duotone 5' });
+    expect(withGearItem([wing], 'g-aile', '  ')).toBeNull();
+    expect(withGearItem([wing], 'g-inconnu', 'Axis')).toBeNull();
+  });
+
+  it('« Par défaut » garde le matériel enregistré, et efface le reste', () => {
+    const stored: StoredSettings = { gearGroups: { wing: [wing], kite: [mast] }, gearLabels: { wing: ['A', 'B'] }, thresholds: { wing: 9 } };
+    const next = resetOverrides(stored, 'wing');
+    expect(next.gearGroups).toEqual({ wing: [wing], kite: [mast] });
+    expect(next.gearLabels).toEqual({});
+    expect(next.thresholds).toEqual({});
+  });
+
+  describe('écrit dans les réglages', () => {
+    const memory = new Map<string, string>();
+    beforeEach(() => {
+      memory.clear();
+      vi.stubGlobal('localStorage', {
+        getItem: (k: string) => memory.get(k) ?? null,
+        setItem: (k: string, v: string) => void memory.set(k, v),
+        removeItem: (k: string) => void memory.delete(k),
+      });
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("ajoute une pièce à la liste de l'activité seule, tout de suite", () => {
+      jsonStore.write('tracker.sportSettings', { gearGroups: { wing: [wing, mast], kite: [mast] } });
+      const item = addGearItem('wing', 'g-mat', '85 cm');
+      expect(item?.name).toBe('85 cm');
+      const stored = readStoredSettings();
+      expect(stored.gearGroups?.wing?.[1].items).toEqual([item]);
+      expect(stored.gearGroups?.kite).toEqual([mast]);
+      expect(addGearItem('wing', 'g-inconnu', 'Axis')).toBeNull();
+    });
+
+  });
+
+  it("ne voit l'option active dans l'analyse qu'avec au moins un groupe", () => {
+    expect(resolveGearGroups({}, 'wing')).toBeNull();
+    expect(resolveGearGroups({ gearGroups: { wing: [] } }, 'wing')).toBeNull();
+    expect(resolveGearGroups({ gearGroups: { wing: [mast] } }, 'wing')).toEqual([mast]);
+    expect(resolveGearGroups({ gearGroups: { kite: [mast] } }, 'wing')).toBeNull();
   });
 });

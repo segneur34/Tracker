@@ -177,6 +177,7 @@ function SailingModule() {
     setActivity,
     profile,
     activityFoil,
+    gearGroups,
     speedUnit,
     distanceUnit,
     activeThresholdKn,
@@ -1140,7 +1141,7 @@ function SailingModule() {
               <ResizablePanel id="sailing.matos" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                 {/* Foil et mât sur foil seulement ; ce qui est saisi reste dans la fiche, et revient si l'on recoche. */}
                 <SessionNotesPanel notes={notes} setNotes={setNotes} family="voile" conditions="voile" draft={draft}
-                  gearFields={foil ? SAILING_GEAR_FIELDS_FOIL : SAILING_GEAR_FIELDS}
+                  gearFields={foil ? SAILING_GEAR_FIELDS_FOIL : SAILING_GEAR_FIELDS} gearGroups={gearGroups} activityId={activity.id}
                   open={open.matos} onToggle={() => toggle('matos')} />
               </ResizablePanel>
             )}

@@ -262,7 +262,7 @@ function LandModule({ family }: { family: LandFamily }) {
     activity, setActivity, sport,
     profile, activeThreshold, terrainStepM,
     speedUnit, distanceUnit,
-    speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, gearLabels, hrOffsetBpm,
+    speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, gearLabels, gearGroups, hrOffsetBpm,
   } = useSportSettings(family);
   const model = LAND_TREATMENTS[sportTreatment(sport) === 'velo' ? 'velo' : 'course'];
   const { profile: runner, age, retainHr } = useRunnerProfile();
@@ -1526,7 +1526,7 @@ function LandModule({ family }: { family: LandFamily }) {
             {stats && open.notes && (
               <ResizablePanel id={panelId('notes')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                 <SessionNotesPanel notes={draft.edits.notes} setNotes={draft.updateNotes} family={family} conditions="libre" draft={draft}
-                  gearFields={gearFields(gearLabels)} open={open.notes} onToggle={() => toggle('notes')} />
+                  gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={() => toggle('notes')} />
               </ResizablePanel>
             )}
 

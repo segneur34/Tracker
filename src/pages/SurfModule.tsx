@@ -159,7 +159,7 @@ interface ChartRow {
 function SurfModule() {
   const {
     activity, setActivity, profile, thresholdOverride, speedUnit, distanceUnit, speedRange, defaultSpeedRange, foil: activityFoil,
-    pumping: activityPumping, gearLabels, hrOffsetBpm,
+    pumping: activityPumping, gearLabels, gearGroups, hrOffsetBpm,
   } = useSportSettings('surf');
   const gpx = useGpxSession({
     medianWindowSeconds: profile.medianWindowSeconds, maxDetourRatio: profile.maxDetourRatio, maxSpeedMs: profile.maxPlausibleSpeedMs, maxGapS: profile.maxGapS,
@@ -943,7 +943,7 @@ function SurfModule() {
             {open.notes && (
               <ResizablePanel id={panelId('notes')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                 <SessionNotesPanel notes={draft.edits.notes} setNotes={draft.updateNotes} family="surf" conditions="libre" draft={draft}
-                  gearFields={gearFields(gearLabels)} open={open.notes} onToggle={() => toggle('notes')} />
+                  gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={() => toggle('notes')} />
               </ResizablePanel>
             )}
 

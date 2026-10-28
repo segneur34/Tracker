@@ -99,6 +99,7 @@ describe('parseRecord et serializeRecord', () => {
     const r = record({
       notes: {
         foil: 'Axis 900', mast: '75', wing: 'Duotone 5', gear1: '', gear2: '', conditions: '', windLevel: 'moyen', waterState: 'clapot',
+        gear: [{ groupId: 'g1', groupName: 'Aile', itemId: 'i1', itemName: 'Duotone 5' }],
         rating: 4, comment: 'Belle session', savedAt: START_MS + 10,
       },
       summary: { ...record().summary, maneuverCount: 12 },
@@ -449,6 +450,22 @@ describe('readNotes', () => {
   it('lit le matériel et les conditions hors voile, et vide un champ mal formé', () => {
     const notes = readNotes({ gear1: 'Pegasus 41', gear2: 42, conditions: 'Boue, 28 °C', savedAt: 5 });
     expect(notes).toEqual({ ...EMPTY_NOTES, gear1: 'Pegasus 41', gear2: '', conditions: 'Boue, 28 °C', savedAt: 5 });
+  });
+
+  it('lit le matériel enregistré choisi, sans les entrées abîmées', () => {
+    const good = { groupId: 'g1', groupName: 'Mât', itemId: 'i1', itemName: '85 cm' };
+    const notes = readNotes({
+      gear: [good, { groupId: 'g2', groupName: 'Foil', itemId: '', itemName: 'Axis' }, { groupId: 'g3', itemId: 'i3', itemName: '  ' }, 'Axis', null, { ...good, extra: 1 }],
+      savedAt: 5,
+    });
+    expect(notes?.gear).toEqual([good, good]);
+  });
+
+  it('rend `null` pour un matériel absent, vide ou mal formé', () => {
+    expect(readNotes({ savedAt: 5 })?.gear).toBeNull();
+    expect(readNotes({ gear: [], savedAt: 5 })?.gear).toBeNull();
+    expect(readNotes({ gear: 'Axis 900', savedAt: 5 })?.gear).toBeNull();
+    expect(readNotes({ gear: [{ groupId: 'g1' }], savedAt: 5 })?.gear).toBeNull();
   });
 });
 

@@ -4,7 +4,9 @@ import type { SessionRecord } from './record';
 import {
   averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, groupTotals, heartRatePoints, metricSeries, metricsOf, recordKindsOf, regularity,
   inBounds, sessionLoad, statSessionOf, statsMetric, statsPeriodBounds, statsTotals, topSessions, weeklyDurations, type StatSession,
+  gearFilterItems, matchesGear,
 } from './stats';
+import type { GearGroup } from '../sailing/sessionNotes';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime();
@@ -33,6 +35,7 @@ const session = (startMs: number, over: Partial<StatSession> = {}): StatSession 
   reps: 0,
   heartRate: null,
   cadenceSpm: null,
+  gear: null,
   ...over,
 });
 
@@ -402,5 +405,61 @@ describe('weeklyDurations', () => {
   });
   it('une sélection vide donne un tableau vide', () => {
     expect(weeklyDurations([])).toEqual([]);
+  });
+});
+
+describe('filtre par matériel (lot 20)', () => {
+  const groups: GearGroup[] = [
+    { id: 'g-aile', name: 'Aile', items: [{ id: 'i-5', name: 'Duotone 5' }, { id: 'i-85', name: '85' }] },
+    { id: 'g-mat', name: 'Mât', items: [{ id: 'm-85', name: ' 85 ' }, { id: 'm-75', name: '75 cm' }] },
+  ];
+  const items = gearFilterItems(groups);
+  const knownIds = new Set(items.map((it) => it.key));
+  const item = (key: string) => items.find((it) => it.key === key)!;
+  const choice = (groupId: string, groupName: string, itemId: string, itemName: string) => ({ groupId, groupName, itemId, itemName });
+
+  it('statSessionOf porte le matériel choisi de la fiche, `null` sans notes', () => {
+    const gear = [choice('g-aile', 'Aile', 'i-5', 'Duotone 5')];
+    const record = {
+      summary: { calcVersion: 2, startMs: 1000, endMs: 61_000, distanceM: 400, movingTimeS: 50, elevationGainM: 2, maxSpeedMs: 7, pointCount: 60, samplingS: 1 },
+      notes: { gear },
+    } as unknown as SessionRecord;
+    const activity: Activity = { id: 'wing', name: 'Wing', base: 'wingfoil', color: '#004aad' };
+    expect(statSessionOf('a.json', record, activity).gear).toEqual(gear);
+    expect(statSessionOf('a.json', { ...record, notes: null }, activity).gear).toBeNull();
+  });
+
+  it('propose les pièces de tous les groupes, préfixées du groupe quand deux noms se ressemblent', () => {
+    expect(items.map((it) => it.label)).toEqual(['Duotone 5', 'Aile · 85', 'Mât ·  85 ', '75 cm']);
+    expect(items.map((it) => it.key)).toEqual(['i-5', 'i-85', 'm-85', 'm-75']);
+    expect(gearFilterItems([])).toEqual([]);
+  });
+
+  it("retrouve une pièce par son identifiant, même renommée depuis", () => {
+    const s = session(at(2026, 10, 1), { gear: [choice('g-aile', 'Aile', 'i-5', 'Duotone 5 m²')] });
+    expect(matchesGear(s, item('i-5'), knownIds)).toBe(true);
+    expect(matchesGear(s, item('m-75'), knownIds)).toBe(false);
+  });
+
+  it('retrouve par son nom une pièce retirée de la liste, dans le même groupe seulement', () => {
+    // Pièce retirée puis recréée : son ancien identifiant n'est plus dans la liste.
+    const removed = session(at(2026, 10, 2), { gear: [choice('g-mat', 'Mât', 'ancien', '75 CM ')] });
+    expect(matchesGear(removed, item('m-75'), knownIds)).toBe(true);
+    // Groupe recréé lui aussi : retrouvé par son nom.
+    const regrouped = session(at(2026, 10, 3), { gear: [choice('g-ancien', 'mât', 'ancien', '75 cm')] });
+    expect(matchesGear(regrouped, item('m-75'), knownIds)).toBe(true);
+    // Même nom dans un autre groupe : pas retenu.
+    const otherGroup = session(at(2026, 10, 4), { gear: [choice('g-aile', 'Aile', 'ancien', '85')] });
+    expect(matchesGear(otherGroup, item('m-85'), knownIds)).toBe(false);
+    expect(matchesGear(otherGroup, item('i-85'), knownIds)).toBe(true);
+  });
+
+  it("ne retrouve pas par le nom une pièce encore dans la liste sous un autre identifiant", () => {
+    const s = session(at(2026, 10, 5), { gear: [choice('g-aile', 'Aile', 'i-85', '85')] });
+    expect(matchesGear(s, item('m-85'), knownIds)).toBe(false);
+  });
+
+  it('écarte une session sans matériel', () => {
+    expect(matchesGear(session(at(2026, 10, 6)), item('i-5'), knownIds)).toBe(false);
   });
 });

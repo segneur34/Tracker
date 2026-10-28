@@ -10,6 +10,7 @@ import type { Activity } from '../core/activities';
 import { ZONE_COUNT, edwardsLoad, histogramZoneTimes } from '../core/heartRate';
 import { hasPositions, sportFamily, sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
 import { CHART_PERIODS, addDays, chartPeriodBounds, isoWeek, startOfDay, startOfIsoWeek, type ChartRange } from './activityChart';
+import type { GearChoice, GearGroup } from '../sailing/sessionNotes';
 import type { ManeuverResults, SessionRecord, SummaryHeartRate } from './record';
 
 export type StatsPeriod = ChartRange;
@@ -67,6 +68,8 @@ export interface StatSession {
   heartRate: SummaryHeartRate | null;
   /** Cadence moyenne en mouvement (à pied), en pas par minute, `null` sans cadence. */
   cadenceSpm: number | null;
+  /** Matériel enregistré choisi dans les notes (saisi, pas calculé : hors du résumé), `null` sans choix. */
+  gear: readonly GearChoice[] | null;
 }
 
 /**
@@ -99,8 +102,56 @@ export const statSessionOf = (file: string, record: SessionRecord, activity: Act
     reps: record.intervals?.reduce((n, series) => n + series.laps.filter((l) => l.kind === 'travail').length, 0) ?? 0,
     heartRate: summary.heartRate ?? null,
     cadenceSpm: summary.cadence?.avgSpm ?? null,
+    gear: record.notes?.gear ?? null,
   };
 };
+
+/** Pièce proposée par le filtre « Matériel » de Statistiques. */
+export interface GearFilterItem {
+  /** Identifiant de la pièce, clé du choix (adresse et mémoire). */
+  key: string;
+  label: string;
+  groupId: string;
+  groupName: string;
+  itemName: string;
+}
+
+const gearKey = (name: string): string => name.trim().toLocaleLowerCase('fr');
+
+/**
+ * Pièces du filtre « Matériel » : toutes celles des groupes de l'activité,
+ * dans leur ordre ; le nom seul, préfixé du groupe (« Mât · 85 ») quand une
+ * pièce d'un autre groupe porte le même nom (aux espaces et à la casse près).
+ */
+export const gearFilterItems = (groups: readonly GearGroup[]): GearFilterItem[] => {
+  const groupsOf = new Map<string, Set<string>>();
+  for (const group of groups) {
+    for (const item of group.items) {
+      const key = gearKey(item.name);
+      groupsOf.set(key, (groupsOf.get(key) ?? new Set()).add(group.id));
+    }
+  }
+  return groups.flatMap((group) => group.items.map((item) => ({
+    key: item.id,
+    label: (groupsOf.get(gearKey(item.name))?.size ?? 0) > 1 ? `${group.name} · ${item.name}` : item.name,
+    groupId: group.id,
+    groupName: group.name,
+    itemName: item.name,
+  })));
+};
+
+/**
+ * Session qui porte la pièce `item` : par son identifiant ; sinon par son nom,
+ * dans le même groupe (par identifiant ou par nom), pour un choix dont la
+ * pièce n'est plus dans la liste (`knownIds` : identifiants de la liste),
+ * retirée puis recréée, ou gardée pour une session seule.
+ */
+export const matchesGear = (session: StatSession, item: GearFilterItem, knownIds: ReadonlySet<string>): boolean =>
+  (session.gear ?? []).some((c) =>
+    c.itemId === item.key
+    || (!knownIds.has(c.itemId)
+      && gearKey(c.itemName) === gearKey(item.itemName)
+      && (c.groupId === item.groupId || gearKey(c.groupName) === gearKey(item.groupName))));
 
 /** Totaux d'un ensemble de sessions. */
 export interface StatsTotals {

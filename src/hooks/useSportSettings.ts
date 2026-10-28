@@ -13,6 +13,7 @@ import { sanitizeTabChoices, type TabChoices } from '../core/analysisTabs';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { DISTANCE_UNIT_LABEL, SPEED_UNIT_LABEL, type DistanceUnit, type SpeedUnit } from '../core/units';
+import { newId } from '../core/basics';
 import { jsonStore } from '../platform/storage';
 import { setBeepPitch } from '../platform/beeper';
 import { DEFAULT_BEEP_SOUND, beepSoundHz, isBeepSound, type BeepSound } from '../recording/beepSound';
@@ -32,6 +33,9 @@ import { DEFAULT_CYCLING_GRADE_RANGE, DEFAULT_CYCLING_SPEED_RANGE_MS } from '../
 import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
 import { DEFAULT_SAILING_SPEED_RANGE_MS } from '../sailing/sailingConfig';
 import { DEFAULT_SURF_SPEED_RANGE_MS } from '../surfing/surfConfig';
+import type { GearGroup, GearItem } from '../sailing/sessionNotes';
+
+export type { GearGroup, GearItem };
 import {
   DEFAULT_PACE_LEVEL, KM_EFFORT_CLIMB_FACTOR, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, climbPowerWkgForFlatSpeed, isPaceLevel,
   isValidFlatSpeed, type DurationSettings, type PaceLevel, type PlanningFamily, type PresetPaceLevel,
@@ -194,6 +198,11 @@ export interface StoredSettings {
   /** Intitulés des deux champs de matériel des notes (hors voile) ; un texte vide : celui par défaut. */
   gearLabels?: ByActivity<[string, string]>;
   /**
+   * Matériel enregistré de l'activité (fiche 18, lot 20) : groupes et pièces créés par l'utilisateur, choisis
+   * dans l'onglet du matériel de l'analyse ; absent : option coupée ; liste vide : option cochée, rien de créé.
+   */
+  gearGroups?: ByActivity<GearGroup[]>;
+  /**
    * Onglets des analyses montrés ou cachés à l'écart de leur défaut, par clé
    * d'onglet (`core/analysisTabs.ts`) ; absents : ceux du module, sans les génériques.
    */
@@ -295,6 +304,91 @@ export const sanitizeGearLabels = (value: unknown): [string, string] | null => {
 const resolveGearLabels = (stored: StoredSettings, id: string): [string, string] => {
   const own = sanitizeGearLabels(stored.gearLabels?.[id]);
   return [own?.[0] || DEFAULT_GEAR_LABELS[0], own?.[1] || DEFAULT_GEAR_LABELS[1]];
+};
+
+/** Nom d'un groupe ou d'une pièce : rogné, tronqué ; vide s'il n'est pas un texte. */
+export const cleanGearName = (value: unknown): string =>
+  typeof value === 'string' ? value.trim().slice(0, MAX_GEAR_LABEL_LENGTH) : '';
+
+/** Même nom, aux espaces et à la casse près. */
+export const sameGearName = (a: string, b: string): boolean => a.trim().toLocaleLowerCase('fr') === b.trim().toLocaleLowerCase('fr');
+
+/**
+ * Matériel enregistré relu : noms rognés et tronqués, groupes et pièces sans
+ * identifiant ou sans nom écartés, identifiants en double écartés, ceux qui
+ * restent gardés tels quels ; `null` s'il n'est pas une liste (option coupée).
+ * Une liste vide est gardée : l'option est cochée, rien n'est encore créé.
+ */
+export const sanitizeGearGroups = (value: unknown): GearGroup[] | null => {
+  if (!Array.isArray(value)) return null;
+  const seen = new Set<string>();
+  const fresh = (id: unknown): id is string => {
+    if (typeof id !== 'string' || id === '' || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  };
+  return value.flatMap((group): GearGroup[] => {
+    if (typeof group !== 'object' || group === null) return [];
+    const { id, name, items } = group as { id?: unknown; name?: unknown; items?: unknown };
+    const groupName = cleanGearName(name);
+    if (groupName === '' || !fresh(id)) return [];
+    const kept = (Array.isArray(items) ? items : []).flatMap((item): GearItem[] => {
+      if (typeof item !== 'object' || item === null) return [];
+      const itemName = cleanGearName((item as { name?: unknown }).name);
+      const itemId = (item as { id?: unknown }).id;
+      return itemName !== '' && fresh(itemId) ? [{ id: itemId, name: itemName }] : [];
+    });
+    return [{ id, name: groupName, items: kept }];
+  });
+};
+
+/**
+ * Liste avec une pièce de plus dans un groupe ; une pièce du même nom déjà
+ * dans le groupe est reprise plutôt que doublée. `null` si le nom est vide ou
+ * le groupe introuvable.
+ */
+export const withGearItem = (
+  groups: readonly GearGroup[], groupId: string, name: string, id: string = newId()
+): { groups: GearGroup[]; item: GearItem } | null => {
+  const clean = cleanGearName(name);
+  const group = groups.find((g) => g.id === groupId);
+  if (clean === '' || !group) return null;
+  const existing = group.items.find((item) => sameGearName(item.name, clean));
+  if (existing) return { groups: [...groups], item: existing };
+  const item = { id, name: clean };
+  return { groups: groups.map((g) => (g.id === groupId ? { ...g, items: [...g.items, item] } : g)), item };
+};
+
+/** Matériel enregistré en vigueur : `null` si l'option est coupée ou qu'aucun groupe n'est créé (champs de texte d'avant). */
+export const resolveGearGroups = (stored: StoredSettings, id: string): GearGroup[] | null => {
+  const groups = sanitizeGearGroups(stored.gearGroups?.[id]);
+  return groups && groups.length > 0 ? groups : null;
+};
+
+const readGearGroupsMap = (): StoredSettings['gearGroups'] => readStoredSettings().gearGroups;
+
+/**
+ * Matériel enregistré d'une activité, suivi en direct (Statistiques) ; `null`
+ * sans activité, option coupée ou sans groupe. Le magasin rend la même table
+ * tant que les réglages ne changent pas : la valeur ne bouge pas d'un rendu à l'autre.
+ */
+export const useGearGroups = (activity: Activity | null): GearGroup[] | null => {
+  const map = useSyncExternalStore(jsonStore.subscribe, readGearGroupsMap);
+  const id = activity?.id ?? null;
+  return useMemo(() => (id === null ? null : resolveGearGroups({ gearGroups: map }, id)), [map, id]);
+};
+
+/**
+ * Ajoute une pièce au matériel enregistré d'une activité, tout de suite, hors
+ * du brouillon de la session (« Ajouter à la liste » de l'analyse) ; le module
+ * suit par `jsonStore.subscribe`. Rend la pièce, `null` si rien n'est ajouté.
+ */
+export const addGearItem = (activityId: string, groupId: string, name: string): GearItem | null => {
+  const stored = readStoredSettings();
+  const next = withGearItem(sanitizeGearGroups(stored.gearGroups?.[activityId]) ?? [], groupId, name);
+  if (!next) return null;
+  writeStored({ ...stored, gearGroups: { ...stored.gearGroups, [activityId]: next.groups } });
+  return next.item;
 };
 
 /** Rapport du retour de boucle admis, en fois l'aller. */
@@ -903,6 +997,8 @@ export interface SportSettingsView {
   isHrOffsetOverridden: boolean;
   /** Intitulés de matériel réglés (hors voile), un texte vide pour celui par défaut ; `null` sans réglage. */
   gearLabels: [string, string] | null;
+  /** Matériel enregistré ; `null` : option coupée ; liste vide : option cochée, rien de créé. */
+  gearGroups: GearGroup[] | null;
   /** Onglets des analyses montrés ou cachés à l'écart de ceux du module ; `null` sans choix ni pré-réglage. */
   tabs: TabChoices | null;
   isTabsOverridden: boolean;
@@ -922,15 +1018,23 @@ export interface SportSettingsView {
 /** Tables de réglages rangées par activité. */
 type PerActivityKey = (typeof PER_ACTIVITY_KEYS)[number];
 const PER_ACTIVITY_KEYS = [
-  'thresholds', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'hrOffsets', 'gearLabels',
+  'thresholds', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'hrOffsets', 'gearLabels', 'gearGroups',
   'tabs', 'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
   'heartRate', 'cadence',
 ] as const;
 
-/** Réglages sans aucune surcharge rangée sous `id`. */
-const withoutOverrides = (stored: StoredSettings, id: string): StoredSettings => {
+/**
+ * Ce que « Par défaut » garde : le matériel enregistré, une liste de
+ * l'utilisateur et non une surcharge d'un défaut ; la suppression de
+ * l'activité l'efface.
+ */
+const KEPT_BY_RESET: readonly PerActivityKey[] = ['gearGroups'];
+
+/** Réglages sans aucune surcharge rangée sous `id`, hors des clés de `keep`. */
+const withoutOverrides = (stored: StoredSettings, id: string, keep: readonly PerActivityKey[] = []): StoredSettings => {
   const next: StoredSettings = { ...stored };
   for (const key of PER_ACTIVITY_KEYS) {
+    if (keep.includes(key)) continue;
     const map = stored[key];
     if (map && id in map) {
       const copy: Record<string, unknown> = { ...map };
@@ -940,6 +1044,9 @@ const withoutOverrides = (stored: StoredSettings, id: string): StoredSettings =>
   }
   return next;
 };
+
+/** « Par défaut » d'une activité : ses surcharges effacées, son matériel enregistré gardé. */
+export const resetOverrides = (stored: StoredSettings, id: string): StoredSettings => withoutOverrides(stored, id, KEPT_BY_RESET);
 
 /**
  * Accès à toutes les activités à la fois, pour la page Réglages : leurs
@@ -1013,6 +1120,7 @@ export const useAllSportSettings = () => {
         hrOffset: resolveHrOffset(stored, activity),
         isHrOffsetOverridden: isValidHrOffset(stored.hrOffsets?.[id]),
         gearLabels: sanitizeGearLabels(stored.gearLabels?.[id]),
+        gearGroups: sanitizeGearGroups(stored.gearGroups?.[id]),
         tabs: sanitizeTabChoices(stored.tabs?.[id]) ?? defaultTabsOf(activity),
         isTabsOverridden: sanitizeTabChoices(stored.tabs?.[id]) !== null,
         paceLevel: isPaceLevel(paceLevel) ? paceLevel : defaultPaceOf(activity).level,
@@ -1027,7 +1135,7 @@ export const useAllSportSettings = () => {
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
-    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'hrOffset' | 'gearLabels' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
+    <F extends 'speedUnit' | 'distanceUnit' | 'activeThreshold' | 'terrainStepM' | 'speedRange' | 'gradeRange' | 'autoPause' | 'liveFields' | 'notificationFields' | 'markGuide' | 'foil' | 'pumping' | 'jumps' | 'heartRate' | 'cadence' | 'bikeType' | 'bikeWeight' | 'carriedLoad' | 'hrOffset' | 'gearLabels' | 'gearGroups' | 'tabs' | 'paceLevel' | 'customFlatSpeedMs' | 'wayTypes' | 'loopReturnRatio'>(
       id: string,
       field: F,
       value: SportSettingsView[F] | null
@@ -1156,6 +1264,12 @@ export const useAllSportSettings = () => {
           next.gearLabels = put(stored.gearLabels, labels);
           break;
         }
+        case 'gearGroups': {
+          const groups = value === null ? null : sanitizeGearGroups(value);
+          if (value !== null && groups === null) return;
+          next.gearGroups = put(stored.gearGroups, groups);
+          break;
+        }
         case 'tabs': {
           const choices = value === null ? null : sanitizeTabChoices(value);
           if (value !== null && choices === null) return;
@@ -1189,8 +1303,8 @@ export const useAllSportSettings = () => {
     [activities, persist, stored]
   );
 
-  /** Remet tous les réglages d'une activité au défaut de son calcul. */
-  const resetActivity = useCallback((id: string) => persist(withoutOverrides(stored, id)), [persist, stored]);
+  /** Remet tous les réglages d'une activité au défaut de son calcul ; le matériel enregistré reste. */
+  const resetActivity = useCallback((id: string) => persist(resetOverrides(stored, id)), [persist, stored]);
 
   /** Ajoute une activité, rangée avec sa famille ; rend son identifiant, `null` si le nom est vide. */
   const addActivity = useCallback(
@@ -1408,6 +1522,7 @@ export const useSportSettings = (family: SportFamily) => {
   const storedLoad = stored.carriedLoads?.[id];
   const carriedLoadKg = isValidCarriedLoad(storedLoad) ? storedLoad : 0;
   const gearLabels = useMemo(() => resolveGearLabels(stored, id), [stored, id]);
+  const gearGroups = useMemo(() => resolveGearGroups(stored, id), [stored, id]);
   // Cardio : décalage des seuils S1 et S2, réglé dans Réglages.
   const hrOffsetBpm = resolveHrOffset(stored, activity);
 
@@ -1437,6 +1552,8 @@ export const useSportSettings = (family: SportFamily) => {
     carriedLoadKg,
     /** Intitulés des deux champs de matériel des notes (hors voile), réglés dans Réglages ou par défaut. */
     gearLabels,
+    /** Matériel enregistré de l'activité, choisi par groupe dans l'onglet du matériel ; `null` : option coupée ou aucun groupe. */
+    gearGroups,
     /** Décalage des seuils cardio de l'activité, en bpm. */
     hrOffsetBpm,
     foil,

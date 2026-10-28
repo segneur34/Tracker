@@ -57,6 +57,7 @@ export const useSailingSession = ({
     speedUnit,
     distanceUnit,
     foil: activityFoil,
+    gearGroups,
   } = useSportSettings('voile');
 
   // Les seuils de filtrage suivent l'allure de la session, pas seulement le
@@ -222,6 +223,8 @@ export const useSailingSession = ({
     profile,
     /** Support sur foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
     activityFoil,
+    /** Matériel enregistré de l'activité, choisi par groupe dans « matos et conditions » ; `null` : option coupée. */
+    gearGroups,
     /** Unités d'affichage, choisies dans Réglages pour l'activité. */
     speedUnit,
     distanceUnit,

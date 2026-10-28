@@ -1,0 +1,118 @@
+/* Matériel enregistré : la liste de Réglages (`GearGroupsEditor.tsx`) et le choix par groupe de
+   l'onglet du matériel (`GearPicker.tsx`), dont la liste reprend celle des activités (`ActivitySelect.css`). */
+
+.gear-editor__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.gear-editor__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+}
+
+.gear-editor__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.gear-editor__row .ui-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Les pièces, décalées sous le nom de leur groupe. */
+.gear-editor__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: var(--space-4);
+}
+
+.gear-editor__name {
+  font-weight: 700;
+}
+
+.gear-editor__empty {
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.gear-editor__remove {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.gear-editor__remove:hover {
+  background: var(--surface-hover);
+}
+
+.gear-editor__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Choix d'une pièce dans l'onglet du matériel : le nom du groupe, puis le bouton au gabarit d'un champ. */
+.gear-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-s);
+}
+
+.gear-picker__label {
+  flex-shrink: 0;
+  width: 90px;
+  overflow-wrap: anywhere;
+}
+
+.gear-picker__button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Liste sans famille au-dessus : les pièces ne sont pas décalées. */
+.gear-picker__sheet .activity-select__option {
+  padding-left: var(--space-4);
+}
+
+.gear-picker__option--add {
+  color: var(--ink-2);
+}
+
+.gear-picker__add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.gear-picker__add-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Texte saisi avant le matériel enregistré, montré tel quel sous les choix. */
+.gear-picker__legacy {
+  margin-top: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}

@@ -91,7 +91,7 @@ import type { SessionTest } from '../recording/fitnessTest';
 import { sessionFileName } from '../recording/session';
 import { effectiveFoil, effectiveThresholdOverride, readStoredActivities } from './useSportSettings';
 import { createListeners } from './createStore';
-import { plural } from '../core/basics';
+import { newId, plural } from '../core/basics';
 
 /**
  * Bibliothèque des sessions : la mémoire de l'application, tenue dans un
@@ -540,9 +540,7 @@ let lastSignature: string | null = null;
 const deviceId = (): string => {
   const stored = jsonStore.read<string>(DEVICE_ID_KEY);
   if (typeof stored === 'string' && stored !== '') return stored;
-  const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  const id = newId();
   jsonStore.write(DEVICE_ID_KEY, id);
   return id;
 };

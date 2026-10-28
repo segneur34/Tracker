@@ -10,6 +10,32 @@ export type WindLevel = 'tres-faible' | 'faible' | 'moyen' | 'fort' | 'tres-fort
 export type WaterState = 'plat' | 'clapot' | 'vagues';
 export type Rating = 1 | 2 | 3 | 4 | 5;
 
+/** Pièce du matériel enregistré d'une activité (Réglages, `gearGroups`). */
+export interface GearItem {
+  id: string;
+  name: string;
+}
+
+/** Groupe du matériel enregistré (« Voile », « Aile avant », « Mât »…), avec ses pièces ; une liste par activité. */
+export interface GearGroup {
+  id: string;
+  name: string;
+  items: GearItem[];
+}
+
+/**
+ * Pièce choisie dans un groupe du matériel enregistré de l'activité (Réglages),
+ * ou ajoutée pour la session seule (identifiant hors de la liste). Le nom et
+ * le groupe sont recopiés : la pièce se retrouve renommée (par l'identifiant)
+ * ou retirée de la liste (par le nom).
+ */
+export interface GearChoice {
+  groupId: string;
+  groupName: string;
+  itemId: string;
+  itemName: string;
+}
+
 export interface SailingSessionNotes {
   foil: string;
   mast: string;
@@ -19,6 +45,8 @@ export interface SailingSessionNotes {
   gear2: string;
   /** Conditions hors voile, en texte libre. */
   conditions: string;
+  /** Matériel enregistré choisi, une pièce par groupe au plus ; `null` : rien de choisi. */
+  gear: GearChoice[] | null;
   windLevel: WindLevel | null;
   waterState: WaterState | null;
   rating: Rating | null;
@@ -32,6 +60,7 @@ export const EMPTY_NOTES: SailingSessionNotes = {
   gear1: '',
   gear2: '',
   conditions: '',
+  gear: null,
   windLevel: null,
   waterState: null,
   rating: null,
