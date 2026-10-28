@@ -46,13 +46,6 @@ Quand l'utilisateur donne des notes en vrac :
 - Voulu : un logo à côté du nom.
 - Questions : quel logo (dessin, image donnée par l'utilisateur) ? Toujours voulu ?
 
-### 3. Pistes et sentiers sans étiquette comptés en « non pavé » · priorité 2 (proposée)
-- État : en lot 21 (`demandes-2810/lot21-energie-terre.md`, avec la fiche 15)
-- Où : analyses à pied et à vélo, revêtement ; énergie du vélo.
-- Aujourd'hui : une piste ou un sentier sans étiquette de revêtement dans OpenStreetMap reste « Inconnu », calculé avec un frottement moyen.
-- Voulu : les compter en « non pavé ».
-- Questions : oui ou non ? → réponse (28/10) : oui, non pavé (`track`, `path`, `footway`, `bridleway` sans `surface` ni `tracktype` ; une route sans précision reste asphaltée).
-
 ### 4. Mode daltonien · priorité 1 (proposée)
 - État : à clarifier, voulu « plus tard »
 - Où : couleurs des traces et des graphes.
@@ -110,13 +103,13 @@ Quand l'utilisateur donne des notes en vrac :
 - Questions : forme ? → réponse (27/10) : trois états Clair · Sombre · Auto (suit le téléphone), par appareil, retenus, plus une option « Économe » d'aspect (noir pur, moins d'effets) ; le GPS et l'écran pendant l'enregistrement ne sont pas touchés. Maquette (28/10, https://claude.ai/artifact/99u9R7hpNdxJmKphtnbqkN) tranchée : familles éclaircies d'un cran en sombre, texte blanc gardé ; carte laissée claire, sans filtre ; réglage de départ Auto ; en économe, vignettes des sessions sur fond noir comme les cartes. Palette proposée dans la maquette (fond #12161b, cartes #1c2229 ; économe : fond #000000, cartes #0d0f12).
 
 ### 12. Voile à foil : temps en vol, manœuvres comptées seulement en vol, virements et empannages mal classés · priorité 5 (proposée) · bogue
-- Noté le : 26/10 14:43, 14:44 et 17:41 (WhatsApp) · reçu le : 26/10 · état : en lot 10 (lot D du 26/10), bloqué : le GPX du 26/10 doit être copié hors du dépôt (`D:\memoire Tracker\essais\`)
+- Noté le : 26/10 14:43, 14:44 et 17:41 (WhatsApp) · reçu le : 26/10 · état : en lot 10 (lot D du 26/10), GPX du 26/10 dans `D:\memoire Tracker\Tracker\sessions\`, lot débloqué
 - Tel que noté : « Vérifier la logique de temps actif en wingfoil […] il n'y a qu'un tiers de la session en vol alors que j'ai quand même pas mal volé » ; « il faut que les jibes et les tacks ne soient comptés que pour ceux où le départ était en vol » ; « il y a des virements qui sont comptés en empannage et l'inverse, et il y a des virements qui ne sont pas comptés »
 - Où : analyses voile › général (temps actif), manœuvres, vent.
 - Aujourd'hui : pas de calcul de vol à part : « en vol » est le masque d'activité au seuil de 8 nd sans durée minimale ; le plancher d'entrée d'une manœuvre (4 nd ou 0,16 × l'allure) n'est pas lié au seuil de vol ; classement par la bissectrice (règle 7 de CLAUDE.md).
 - Voulu : un temps en vol crédible, des manœuvres comptées seulement au départ en vol, un classement juste sur la session du 26/10.
 - Pourquoi : chiffres faux sur une vraie session.
-- Questions : aucune de plus (réponses 4 à 6 du 26/10 données) ; il manque seulement le fichier GPX.
+- Questions : aucune de plus (réponses 4 à 6 du 26/10 données) ; le fichier GPX est là.
 
 ### 14. VMA dans les tests guidés, protocole des zones · priorité 2 (proposée)
 - Noté le : 25/10 (« plus tard », LISEZMOI des demandes du 25/10) · état : à clarifier
@@ -125,37 +118,12 @@ Quand l'utilisateur donne des notes en vrac :
 - Voulu : un test de VMA (VAMeval ou demi-Cooper), et une mise en forme du protocole des zones.
 - Questions : quel protocole (VAMeval par paliers, demi-Cooper 6 min, autre) ? Après les essais 2 et 3 seulement ?
 
-### 15. Marche : énergie propre et seuil d'activité · priorité 2 (proposée)
-- Noté le : 25/10 (« plus tard ») et HISTORIQUE point 133 · état : en lot 21 (`demandes-2810/lot21-energie-terre.md`, avec la fiche 3)
-- Où : analyses à pied, activité Marche.
-- Aujourd'hui : l'énergie de la marche est celle de la course (Minetti), qui ne vaut pas pour la marche ; seuil d'activité 0,5 km/h (DECISIONS §2), les arrêts complets ôtés d'office depuis le point 160.
-- Voulu : une énergie de marche (Pandolf ou ACSM) et un seuil décidé.
-- Questions : garder le seuil à 0,5 km/h maintenant que les arrêts sont ôtés d'office ? Formule d'énergie : ACSM (simple) ou Pandolf (charge portée, pente) ? → réponse (28/10) : Pandolf (charge portée déjà saisie, pente ; descentes corrigées par Santee), seuil de la marche retiré (0, comme la course : le plancher d'arrêt suffit). Tranché par Claude : un réglage d'activité « Dépense : course / marche », la Marche de départ sur « marche » (pré-réglage, `PRESET_RESETS`).
-
 ### 17. Autres capteurs Bluetooth (puissance, cadence et vitesse à vélo) · priorité 1 (proposée)
 - Noté le : HISTORIQUE point 118, repris le 25/10 (« capteurs du muscu au-delà de la FC ») · état : à clarifier
 - Où : Enregistrer › capteurs ; `platform/heartRate.ts` (seule la ceinture est lue).
 - Aujourd'hui : un seul service Bluetooth lu, la FC ; cadence à pied par les capteurs du téléphone.
 - Voulu : lire d'autres capteurs, à faire si l'utilisateur en a un.
 - Questions : avez-vous un capteur (capteur de cadence ou de puissance vélo) ? Sinon la fiche dort.
-
-### 18. Matériel enregistré à l'avance, choisi en fin de session, statistiques par matériel · priorité 3 (proposée)
-- Reçu le : 27/10 · état : en lot 20 (`demandes-2810/lot20-materiel-groupes.md`)
-- Tel que noté : « créer une option qui permet de faire des pré-enregistrements de son matériel, ce qui permet facilement de les ajouter en fin de session, notamment à la voile, mais c'est pas valable que là, de façon également à avoir des stats en fonction de notre matériel. doit être une option à activer dans les paramètres de l'activité. De façon à ce qu'on puisse le faire si on a envie que pour certains sports. »
-- Où : Réglages › activité (nouvelle option, et la liste du matériel) ; analyses › onglet « matos et conditions » (voile) ou « matériel et notes » (ailleurs), `SessionNotesPanel` ; Statistiques.
-- Aujourd'hui : le matériel est du texte libre saisi à chaque session (`SessionNotesPanel`, champ `<input type="text">` sans suggestion) : en voile foil, mât, aile ; ailleurs deux champs `gear1`, `gear2` dont seuls les intitulés se règlent par activité (`gearLabels`, `hooks/useSportSettings.ts`). Rien n'est rangé par matériel dans Statistiques. Le matériel n'est jamais repris d'une autre session (DECISIONS §8).
-- Voulu : une option par activité, dans Réglages, désactivée par défaut. Activée, un bouton ouvre le menu du matériel de l'activité : on y crée des groupes (en wing : « Voile », « Aile avant », « Mât »… ; en planche, d'autres), puis dans chaque groupe des pièces. En fin de session, l'onglet « matos et conditions » (« matériel et notes » hors voile) montre un choix par groupe parmi les pièces existantes ; on peut y ajouter une pièce sur le moment et l'enregistrer dans la liste ou non. Une session neuve part vide. Statistiques : un filtre par matériel.
-- Pourquoi : saisir le matériel en fin de session sans le retaper, et comparer ses performances selon le matériel.
-- Questions : choix ? → réponse (27/10) : groupes de matériel créés par l'utilisateur dans un menu de Réglages, pièces dans chaque groupe, choix par groupe en fin de session, ajout sur le moment enregistré ou non (pas d'ensembles tout prêts). Pré-choix ? → réponse (27/10) : vide, on choisit (DECISIONS §8 inchangé). Statistiques ? → réponse (27/10) : un filtre par matériel dans la page Statistiques, à côté de famille et activité. Partage entre activités ? → réponse (27/10) : non, une liste par activité. Tranché par Claude (27/10) : option active, les groupes remplacent les champs fixes de l'onglet (foil, mât, aile en voile ; `gear1`, `gear2` ailleurs), option coupée, retour aux champs fixes ; le texte déjà saisi d'une ancienne session reste montré tel quel ; la pièce choisie s'écrit dans la fiche de la session (`library/record.ts`) par son identifiant, son nom et son groupe, pour que le filtre de Statistiques la retrouve renommée (par l'identifiant) ou retirée de la liste (par le nom).
-
-### 19. Fond de page à pied à revoir · priorité 3 (proposée)
-- Noté le : 27/10 23:42 (WhatsApp) · reçu le : 28/10 · état : maquette publiée le 28/10 (https://claude.ai/artifact/GZrWwSSjsQCeSG15spGEp9 : cinq dessins, Sentier, Relief et sentier, Foulées, Balises, Chemins aérés, réglables à l'œil, à côté des autres familles ; le choix s'enregistre dans la maquette) ; choix relu le 28/10 : « Relief et sentier », encre 36, trait 1,4, échelle 1,65, aussi en bibliothèque ; état : en lot 18 (`demandes-2810/lot18-fond-a-pied.md`, à faire)
-- Tel que noté : « Il faut revoir le fond de l'application dans les contextes à pied tout , les autres sont vraiment bien celui-là d'étonne un peu et du coup c'est légèrement une punition quand on se retrouve à la voir partout si notre activité favorite c'est la marche ou la course »
-- Où : fond dessiné des pages (`PageBackdrop`, motif `course` de `core/patternTiles.ts`, encre `.page-backdrop--course` de `ui.css`) : bibliothèque à pied, et accueil, Profil, Réglages quand le sport préféré est à pied ; Statistiques sur la famille À pied.
-- Aujourd'hui : six chemins pointillés qui serpentent par tuile, chacun avec un rond plein et un fanion posés dessus (tuile 390 × 640 agrandie 1,3 fois). Les autres familles : souffles de vent (voile), courbes de dénivelé (vélo), vagues (surf), traits de vitesse (Entraînement), courbes de niveau sans session. Motifs choisis sur maquette le 23/10 (DECISIONS §11).
-- Voulu : un autre motif à pied, aussi réussi que les autres ; seul celui-là change.
-- Pourquoi : c'est le fond de presque toutes les pages quand le sport préféré est la course ou la marche.
-- Questions : quelle piste ? Tranché par Claude : une maquette de trois ou quatre motifs à pied, à côté des autres familles pour comparer, comme le 23/10 ; l'utilisateur choisit sur la maquette.
 
 ### 20. Séance du Timer : nom ou bouton coupé sur deux lignes · priorité 3 (proposée) · bogue
 - Noté le : 28/10 06:29 (WhatsApp) · reçu le : 28/10 · état : en lot 15 (95426d6, 0.3.82, à valider)
@@ -174,15 +142,6 @@ Quand l'utilisateur donne des notes en vrac :
 - Voulu : le bouton « Muscu » devient « Enregistrer », même action, même icône. Tranché par Claude : le sous-titre dit « « Enregistrer » enregistre la séance avec la ceinture cardio », le lien devient « Enregistrer sans séance » ; la tuile de la page Entraînement garde « Muscu et timer ». Avec la fiche 20.
 - Pourquoi : dit ce que fait le bouton (une session enregistrée) au lieu du nom de l'activité.
 - Questions : aucune.
-
-### 22. Image de partage au format de l'écran, comme Komoot · priorité 3 (proposée)
-- Noté le : 28/10 06:34 (WhatsApp) · reçu le : 28/10 · état : en lot 19 (`demandes-2810/lot19-partage-9-16.md`), disposition A choisie le 28/10 sur la maquette
-- Tel que noté : « Revoir le système d'envois de trace en image : il faut un format type komoot ( taille écran) qui sortira mieux »
-- Où : analyses › « … » du nom de la session › Partager en image (`ShareDialog`) ; calculs dans `core/shareImage.ts` (`SHARE_IMAGE`), dessin dans `components/drawShareImage.ts`.
-- Aujourd'hui : une image carrée de 1080 × 1080 : bandeau du titre (150 px), carte de la trace, puis jusqu'à six chiffres en deux rangées de trois (130 px chacune), pied de 60 px ; fond de carte de la famille (DECISIONS §8) ; muscu sans carte.
-- Voulu : une image en hauteur, de la taille d'un écran de téléphone (1080 × 1920, 9:16), qui s'affiche en grand dans une messagerie ou une story.
-- Pourquoi : le carré sort petit à l'écran ; la carte gagne de la hauteur.
-- Questions : remplacer le carré ou laisser choisir le format ? → réponse (28/10) : remplace le carré, une seule image en 1080 × 1920. Disposition (carte plein cadre et chiffres posés dessus façon Komoot, ou carte puis chiffres) ? → réponse (28/10) : maquette d'abord, deux ou trois dispositions, l'utilisateur choisit. Maquette publiée le 28/10 : https://claude.ai/artifact/HN6HJvGAjGZTKWZDgh5kPz (A carte pleine et chiffres posés dessus, B bandeau + carte haute + grille, C carte pleine, bandeau translucide, colonne ; trois et six chiffres, muscu, fond satellite ; le choix s'enregistre dans la page, base `choix/partage`). → réponse (28/10, dans la maquette) : **disposition A**, carte pleine, titre en haut sur un voile clair avec le liseré de la famille, chiffres en bas dans un cartouche blanc translucide (barre de la famille en tête, grille de 3 colonnes, pied TRACKER + pseudo dans le cartouche).
 
 ### 24. Statistiques : ligne des heures totales par semaine dans le graphique · priorité 3 (proposée)
 - Noté le : 28/10 06:39 (deux messages, WhatsApp) · reçu le : 28/10 · état : en lot 16 (9f5ed36, 0.3.83, à valider)
@@ -204,6 +163,11 @@ Quand l'utilisateur donne des notes en vrac :
 
 ## Archives
 
+- 3. Pistes et sentiers sans étiquette comptés en « non pavé » (28/10) : faite au lot 21 (f9d75a9, 0.3.88 ; point 178), validée sur le téléphone le 28/10 (essai 60).
+- 15. Marche : énergie propre et seuil d'activité (25/10) : faite au lot 21 (Pandolf et Santee, seuil retiré ; point 178), validée le 28/10 (essai 60).
+- 18. Matériel enregistré par groupes, statistiques par matériel (27/10) : faite au lot 20 (0.3.87 à 0.3.91 ; point 177), validée le 28/10 (essai 59).
+- 19. Fond de page à pied à revoir (27/10) : faite au lot 18 (38c4c2e, 0.3.85 ; point 175), validée le 28/10 (essai 57).
+- 22. Image de partage au format de l'écran (28/10) : faite au lot 19 (2ce02cd, 0.3.86 ; point 176), validée le 28/10 (essai 58).
 - 13. Surf : seuil de l'activité et case Foil de la session (constat de la revue du 27/10, C-B4, C-B5) : abandonnée le 28/10 (« un seul seuil, tel quel »).
 - 23. Thème « Auto » qui ne suivait le téléphone qu'au redémarrage (28/10, bogue) : faite au lot 17 (1b9be77, 0.3.84 : greffon Screen, événement darkModeChange), validée sur le téléphone le 28/10 (essai 56).
 - 16. Faux sauts en wingfoil (10/10) : mise de côté le 27/10 (« enlever pour le moment ») ; l'essai 48 d'ESSAIS reste, pour le jour où elle revient.

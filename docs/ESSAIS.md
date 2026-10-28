@@ -18,7 +18,6 @@ APK 0.3.84 construite et **installée** le 28/10 au matin : elle porte les lots 
 | 52 | Lot 11 : Enregistrer › Type Muscu sans ceinture à portée. | « Démarrer » grisé avec la phrase qui dit pourquoi ; ceinture mise, il devient possible. |
 | 53 | Lot 11 : muscu sans séance (lien « Muscu sans séance ») avec deux « Note ». | Repères dans l'analyse, sur le graphe. |
 | 54 | APK 0.3.81 (Q9 et Q12) : un fractionné à pied, puis une muscu avec une séance du Timer ; « Arrêter » la session avant la fin de la séance. | Notification « Étape n/N · FC » en fractionné ; le compteur s'arrête avec la session (plus de bips), et l'analyse montre la séance arrêtée à l'heure de l'arrêt. |
-| 59 | Lot 20 (0.3.91) : Réglages › carte Course (ou wing) › partie « Matériel » › « Créer liste matériel », « Créer groupe matériel », le déplier, « Ajouter une ligne » : créer deux groupes et quelques pièces ; dans une analyse, choisir une pièce par groupe, puis « Ajouter… » une pièce « pour cette session » ; fermer la liste par le retour d'Android ; « Enregistrer la session » ; Statistiques › cette activité › « Matériel ». | Listes et boîte faciles au toucher ; le retour ferme la liste sans quitter l'analyse ; le filtre garde les bonnes sessions. |
 | 55 | Lot 16 (0.3.83) : Statistiques › Tout › graphique › Durée, sur vos vraies sessions. | Une ligne grise pleine des heures de chaque semaine, en plus du pointillé, légende « heures par semaine » ; à juger : lisible sur une vraie année (au banc, une session toutes les quelques semaines donne des dents de scie) ; sinon un escalier par semaine se fait en une ligne. |
 
 ## Quand l'occasion se présente (terrain)
@@ -36,7 +35,7 @@ APK 0.3.84 construite et **installée** le 28/10 au matin : elle porte les lots 
 ## Faits
 
 - 57 (fond À pied « Relief et sentier », lot 18), 58 (image de partage 1080 × 1920, lot 19), 60 (énergie de la marche et non pavé, lot 21) : ok le 28/10 sur l'APK 0.3.88 ; lots 18, 19, 21 validés.
-- 59 (matériel par groupes, lot 20) : l'utilisateur veut une partie « Matériel » à part dans la carte d'activité de Réglages, au même niveau qu'« Affichage » et « Onglet analyse » (trop caché dans « Onglet analyse ») ; correctif en cours, essai à refaire.
+- 59 (matériel par groupes, lot 20) : ok le 28/10 sur l'APK 0.3.91, après deux correctifs demandés à l'essai (partie « Matériel » à part dans Réglages, liste des groupes en ligne et dépliable, « Créer liste matériel », « Créer groupe matériel ») ; lot 20 validé.
 - 56 (thème « Auto » qui suit le téléphone sans redémarrer, lot 17) : ok le 28/10 ; lot 17 validé.
 - 49 (thème Auto, lot 12) et 51 (muscu avec ceinture et Timer, lot 11) : ok le 28/10 ; la question du 51 (compteur après « Arrêter ») reste ouverte, Q12 de la file.
 - 3 (FC repos) : ok le 28/10, fait avant le protocole v2 (moyenne sur 30 s, 25/10) ; résultat dans la clé de l'appareil, pas dans les sessions.
