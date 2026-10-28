@@ -107,10 +107,10 @@ Ordre et orchestration seulement. Les seuils, fenêtres et formules sont nommés
 2. Le seuil d'activité effectif est celui de la session, sinon la surcharge de l'activité, sinon la suggestion accordée à l'allure (`suggestActiveThresholdKn`) ; jamais le défaut fixe du profil (§10, point 29). Les seuils de manœuvre s'accordent à l'allure par `sessionManeuverThresholds`.
 3. `buildSailingSessionStats` : la base, plus les tops de la voile (`core/topSegments.ts`), mémorisés sur la seule trace par le hook, qui rend aussi le cumul de distance. Le ratio (de vol sur foil, de navigation sinon) se rapporte au temps en mouvement, au-dessus du plancher d'arrêt du calcul (`ratioMask` et `inMotionTimeS` de `buildBaseSessionStats`, point 185), pas à toute la session ; le bateau, sans seuil, n'a pas de ratio.
 4. `estimateWind` (`sailing/maneuvers.ts`, polaire dans `sailing/wind.ts`, calculée au seuil de vitesse accordé à l'allure) donne l'estimation globale : la polaire, puis les manœuvres à caps stabilisés (`windSamplesFrom`), hors demi-tours hors vol (option `flightThresholdKn`).
-   - Confiance = max(polaire ; manœuvres × 0,9).
+   - Confiance = max(polaire ; manœuvres × 0,9), multipliée par `polarSampling` = min(1 ; 5 s / intervalle moyen de la trace, reprises de pause exclues ; `POLAR_SUPPORT_INTERVAL_S`). Le facteur ne touche que la confiance finale, jamais la direction ; il vaut 1 à 1 Hz et à 5 Hz. Sur une trace clairsemée (un point toutes les 14 s), la confiance tombe sous 0,4 et l'interface demande le vent au lieu d'afficher une direction fausse à l'aplomb.
    - L'estimation est fiable à partir de 0,4 (`WIND_CONFIDENCE_MIN`). En dessous, l'interface exige une saisie, et suspend manœuvres, VMG et polaire.
 5. Vent retenu : celui saisi pour la session, sinon l'estimation fiable, sinon `null`.
-6. `analyzeManeuvers` tourne en deux passes, dans le hook :
+6. `analyzeManeuvers` tourne en deux passes, dans le hook. La détection des virages est préparée une fois par trace et réglages (`prepareManeuverDetection`, `useMemo` sur trace, `minEntrySpeedKn`, `stillSpeedKn`), puis reclassée par candidat de vent (`classifyManeuvers`) pour l'estimation et les deux passes : bouger le seuil d'activité ne la refait pas. Les lectures de cap (rotation de la fenêtre, prolongation, cohérence d'`observeTurns`) se font par pas d'au moins 0,9 s (`TURN_STRIDE_MIN_S`), donc indépendantes de la cadence.
    - d'abord avec le vent global ;
    - puis avec le vent local (`buildWindTimeline`), interpolé entre les manœuvres à caps stabilisés de la première passe ; au-delà de 30 min sans manœuvre, y compris avant la première et après la dernière, il rend le vent global. Les distances et le pas unique d'un enregistreur économique sautent le pas de reprise d'une pause (`PointData.segmentStart`), dans les deux détections (`analyzeManeuvers`, `observeTurns`).
 
@@ -346,7 +346,7 @@ Plus de fichier mort, d'export ou de champ inutilisé, ni de `any` dans `src/` (
 - **Écriture en place de repli** : un fournisseur Android qui refuse le renommage d'un document fait écrire la fiche en place, comme avant le point 92 ; une coupure à ce moment la laisserait illisible. Le dossier `Documents` du téléphone renomme : jamais constaté.
 - **Brouillon de session** : le retour arrière du navigateur n'est pas intercepté ; le brouillon attend le retour sur la session → reste à faire n° 38.
 - **Recharts** type `Payload.payload` en `any` : les `formatter` d'infobulle (voile, course, itinéraires) annotent la ligne du type attendu. C'est une confiance accordée à Recharts, pas une vérification.
-- **Détection des virages écrite deux fois** (`analyzeManeuvers` et `observeTurns`), et sens d'un virage vu en un seul pas : voir le §11 → reste à faire n° 30 et 43.
+- **Détection des virages écrite deux fois** (`analyzeManeuvers` et `observeTurns`, qui ne partagent que `scanTurnWindow`), et sens d'un virage vu en un seul pas : voir le §11 → reste à faire n° 43.
 
 ## 10. Historique des décisions et pièges rencontrés
 
@@ -375,16 +375,15 @@ Des faits sur le code, sans intention : ce qui reste à faire est dans `docs/BAC
 - **Seuils par support** : la calibration récente s'est faite sur une trace lente et une trace de wingfoil ; planche, kite, bateau, course et vélo, et un enregistrement dense sur une planche rapide, n'ont pas été éprouvés sur des sessions réelles → essai 65.
 - **Tenus pour bons sans essai sur le terrain** : les bords en voile pendant l'enregistrement (point 62), « Précédent » et la boucle en ligne droite de la planification (point 63), l'activité d'une session changée en route (point 64).
 - **Défaut vu sur PC, non reproduit** (30/09) : vignette juste, analyse sans trace ni onglets ; s'il revient, demander l'erreur de console (F12).
-- **Coût du vent à 5 Hz** (point 23) : environ 0,5 s à chaque mouvement du seuil sur 3 h à 5 Hz, contre 28 ms à 1 Hz, parce que `analyzeManeuvers` refait la détection des virages pour chaque candidat de vent → reste à faire n° 30 (cahier dans `docs/backlog/30-noyau-voile.md`).
 - **Nommer un virage vu en un seul pas** (point 27) : on connaît le cap avant et le cap après, pas le chemin entre les deux. `angleDiff` retient l'arc court, si bien qu'un virement passé par le lit du vent ressort en empannage → reste à faire n° 43.
 - **Manœuvres, suites de l'audit du point 70** :
-  - **5 Hz bruité** : un bruit de cap qui ne dépend que du temps donne le même résultat à 1 Hz et à 5 Hz (testé, point 185) ; un bruit indépendant d'un point à l'autre n'a pas été rééprouvé à 5 Hz, et la cohérence dépend encore de la cadence → reste à faire n° 30.
+  - **`observeTurns` non fusionné** (point 193) : ses règles divergent de la détection commune (cohérence 0,6, pas de garde-fou de 10 m, stabilité de sortie, sans temps mort) ; les fusionner changerait les votes d'orientation.
+  - **Mesure sous bruit réaliste** : les bornes de `measureManeuver` sous bruit indépendant d'un point à l'autre restent à resserrer → reste à faire n° 49.
   - **Changement d'amures exigé** (point 185) : jugé contre le vent retenu, il tient jusqu'à 50° d'erreur de vent ; au-delà, un vrai virement ou empannage peut être écarté (`unclassified`).
   - **Orientation fragile** : le vent estimé tient aux lectures de la détection (`windCriteria`, qui omet le dernier point de sa fenêtre). Les remplacer par la mesure corrigée a fait tourner le vent du banc de 90°. Toute retouche de la détection doit refaire ce relevé (refait au point 165 pour le vent aux bords, `segmentStart` et les angles arrondis : identique, 3°, 12 virements, 12 empannages ; refait au point 185 : identique, le vent de synthèse de `general.mjs` passant de 208° à 210° parce que les manœuvres alimentent de nouveau l'estimation). Une vraie session se relit hors navigateur par `outils/banc/manoeuvres-diagnostic.mjs` (GPX en argument, jamais dans le dépôt).
   - **Filtre médian de 3 s** : il remonte les creux en V, conservation surestimée de 0,05 à 0,1 → reste à faire n° 44.
   - **Relance après changement d'allure** : la cible reste 90 % de la vitesse d'approche. Ressortir au près après une approche au largue peut ne jamais l'atteindre ; ces manœuvres sont comptées « sans relance ».
   - **Lot D du 26/10** : `maneuvers.ts` et `wind.ts` portent maintenant `segmentStart` dans le pas unique et les distances, `localWind` arrondi puis normalisé, `buildWindTimeline` avec repli aux bords : toute retouche de la détection doit les garder.
-- **Vent sur trace lente et peu échantillonnée** : la polaire annonce une confiance élevée sur une direction fausse de 180° (point 27) ; l'utilisateur corrige par « Inverser » → reste à faire n° 30.
 
 ## 12. Cible mobile (Capacitor)
 

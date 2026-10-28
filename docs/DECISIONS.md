@@ -11,7 +11,7 @@ Les décisions transverses sont dans `CLAUDE.md`, celles de la disposition des p
 - Courbe du vent : toute la session, par toutes les manœuvres sans exception, valeur la plus proche entre deux manœuvres ; au-delà de 30 min sans manœuvre, repli sur le vent global, aussi avant la première et après la dernière (27/10, point 165).
 - Polaire de vitesse : calculée au seuil de vitesse accordé à l'allure de la session, non à celui du profil.
 - Une seule notion de réussite : le vent est estimé au seuil d'activité effectif, surcharge comprise (bouger le seuil recalcule le vent, c'est accepté).
-- Coût du vent à 5 Hz (ETAT §11) : son refactor (détecter une fois, classer par candidat) ne se fait jamais seul, sans l'utilisateur.
+- Détection des virages préparée une fois par trace et reclassée par candidat de vent (accord de l'utilisateur le 28/10) : toute retouche exige une neutralité exacte (mêmes `ManeuverStats`). Confiance du vent rabattue par l'intervalle moyen de la trace (5 s) ; lectures de cap par pas d'au moins 0,9 s.
 - Manœuvres : gain au vent = chemin pendant la rotation, vers le vent au virement, sous le vent à l'empannage, le plus grand en tête ; pas de podium du changement de cap aux empannages ; pas de ligne « distance perdue ».
 - Ratio de vol (ou de navigation) : temps au-dessus du seuil rapporté au temps en mouvement (arrêts ôtés par le plancher d'arrêt), pas à toute la session ; le temps de vol ne change pas (28/10, Q22, point 185).
 - Manœuvre entamée sous le seuil d'activité de la session : « demi-tour hors vol », listé à part sous le tableau, ni réussi ni raté, hors du % de réussite et des Statistiques, sans case à cocher ; bateau, sans seuil : tout compte (28/10, Q23).

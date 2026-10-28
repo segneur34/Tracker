@@ -12,8 +12,6 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 ## Maintenant
 
 APK 0.3.97 installée le 28/10 (versionCode 3097).
-- 30 · [dette] Noyau voile : détection une seule fois puis classement par candidat de vent (observeTurns fusionné), confiance du vent rabattue sur couverture polaire maigre, bruit indépendant rééprouvé à 5 Hz · noté 26/09 · gros · Fable/xhigh · à valider (commit a0b565b, version 0.3.98) ; vérif complète, relecture et banc propres, diagnostic identique sur 12 sessions réelles hors la confiance de deux traces clairsemées · détail : docs/backlog/30-noyau-voile.md
-  - essai 67 : sur le PC (Firefox) ou le téléphone, ouvrir la session de planche du 21/09 (Komoot, un point toutes les 14 s) → « Vent inconnu », vent à saisir, au lieu de 207° annoncé fiable ; puis la wing du 26/10 → vent 332° et 35 manœuvres, comme avant.
 
 ## Ensuite
 
