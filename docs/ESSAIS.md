@@ -17,6 +17,7 @@ APK 0.3.81 construite et **installée** le 28/10 au matin (correctif Q9 et Q12 d
 | 53 | Lot 11 : muscu sans séance (lien « Muscu sans séance ») avec deux « Note ». | Repères dans l'analyse, sur le graphe. |
 | 54 | APK 0.3.81 (Q9 et Q12) : un fractionné à pied, puis une muscu avec une séance du Timer ; « Arrêter » la session avant la fin de la séance. | Notification « Étape n/N · FC » en fractionné ; le compteur s'arrête avec la session (plus de bips), et l'analyse montre la séance arrêtée à l'heure de l'arrêt. |
 | 55 | Lot 16 (0.3.83) : Statistiques › Tout › graphique › Durée, sur vos vraies sessions. | Une ligne grise pleine des heures de chaque semaine, en plus du pointillé, légende « heures par semaine » ; à juger : lisible sur une vraie année (au banc, une session toutes les quelques semaines donne des dents de scie) ; sinon un escalier par semaine se fait en une ligne. |
+| 56 | Lot 17 (0.3.84) : Réglages › thème « Auto », puis basculer le téléphone en sombre et en clair depuis les réglages rapides, application ouverte ; puis la même bascule application en arrière-plan, et revenir. Enfin « Sombre » choisi dans Réglages, et une bascule du téléphone. | L'application suit tout de suite, barres du téléphone comprises, sans relancer ; au retour de l'arrière-plan aussi ; « Sombre » ou « Clair » choisis ne bougent pas. Au lancement en Auto avec le téléphone en sombre, un bref passage par le clair est possible : à dire s'il gêne. |
 
 ## Quand l'occasion se présente (terrain)
 

@@ -7,8 +7,9 @@
  * GPS ni l'écran allumé pendant l'enregistrement ne changent.
  *
  * Calcul pur : la résolution d'« Auto » reçoit l'état du système en
- * paramètre ; la lecture de `matchMedia` et la pose sur `<html>` sont dans
- * `hooks/useTheme.ts`, seul endroit qui décide (aucun bloc
+ * paramètre ; la lecture du système est dans `platform/screen.ts`
+ * (greffon sur le téléphone, `matchMedia` dans le navigateur), la pose sur
+ * `<html>` dans `hooks/useTheme.ts`, seul endroit qui décide (aucun bloc
  * `prefers-color-scheme` dans les feuilles de style).
  */
 

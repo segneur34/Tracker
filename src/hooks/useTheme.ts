@@ -1,9 +1,10 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { shadeForTheme } from '../core/activities';
+import { systemPrefersDark, subscribeSystemDark } from '../platform/screen';
 import { jsonStore } from '../platform/storage';
 import { setSystemBarsDark } from '../platform/systemBars';
 import {
-  DARK_SCHEME_QUERY, THEME_STORAGE_KEY, parseThemeSettings, resolveTheme, sameAppliedTheme, type AppliedTheme, type ThemeSettings,
+  THEME_STORAGE_KEY, parseThemeSettings, resolveTheme, sameAppliedTheme, type AppliedTheme, type ThemeSettings,
 } from '../theme/theme';
 import { createListeners } from './createStore';
 
@@ -12,8 +13,10 @@ import { createListeners } from './createStore';
  * (`theme/theme.ts`) : seul endroit qui le pose sur `<html>` (`data-theme`,
  * `data-eco`, lus par `theme/tokens.css`), règle la couleur de la barre du
  * navigateur et les icônes des barres du téléphone, et suit le réglage du
- * système pour « Auto ». `startTheme` le pose avant le premier rendu
- * (`main.tsx`), puis le suit : réglage changé, thème du téléphone changé.
+ * système pour « Auto » (`platform/screen.ts` : greffon sur le téléphone,
+ * `matchMedia` dans le navigateur). `startTheme` le pose avant le premier
+ * rendu (`main.tsx`), puis le suit : réglage changé, thème du téléphone
+ * changé, application ouverte ou reprise de l'arrière-plan.
  */
 
 /** Dernière lecture : le même objet tant que la valeur stockée ne change pas (`useSyncExternalStore`). */
@@ -25,10 +28,6 @@ const readSettings = (): ThemeSettings => {
   lastRead = { raw, settings: parseThemeSettings(raw) };
   return lastRead.settings;
 };
-
-/** Requête du thème sombre du système ; `null` hors navigateur (tests). */
-const darkQuery = (): MediaQueryList | null =>
-  typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(DARK_SCHEME_QUERY) : null;
 
 let applied: AppliedTheme = { theme: 'light', eco: false };
 const listeners = createListeners();
@@ -44,7 +43,7 @@ const updateThemeColor = (): void => {
 /** Pose le thème du réglage et du système sur `<html>` ; prévient les abonnés s'il change. */
 const apply = (force = false): void => {
   if (typeof document === 'undefined') return;
-  const next = resolveTheme(readSettings(), darkQuery()?.matches ?? false);
+  const next = resolveTheme(readSettings(), systemPrefersDark());
   if (!force && sameAppliedTheme(next, applied)) return;
   applied = next;
   const root = document.documentElement;
@@ -66,7 +65,7 @@ export const startTheme = (): void => {
   apply(true);
   if (started) return;
   started = true;
-  darkQuery()?.addEventListener('change', () => apply());
+  subscribeSystemDark(() => apply());
   jsonStore.subscribe((key) => {
     if (key === THEME_STORAGE_KEY) apply();
   });
