@@ -8,14 +8,14 @@ import type { SportFamily } from './sportProfiles';
  * sur une longue liste).
  *
  * Chaque tracé se raccorde à lui-même d'un bord à l'autre : les courbes de
- * niveau sont celles d'un relief périodique dans les deux sens, les lignes
- * des chemins à pied des fonctions périodiques de la largeur, et les dessins
+ * niveau sont celles d'un relief périodique dans les deux sens, le sentier
+ * à pied une fonction périodique de la hauteur, et les dessins
  * isolés (souffles, vague, repères, traits de vitesse) sont posés avec leurs
  * copies d'une tuile à côté, ce qui dépasse d'un bord reprenant à l'autre.
  *
  * Dessins choisis par l'utilisateur sur maquette le 23/10 : voile, surf et
- * vélo d'après ses images (souffle de vent, vague, dénivelé), à pied et
- * fractionné ceux du 22/10. Chaque fond a sa taille de tuile et son
+ * vélo d'après ses images (souffle de vent, vague, dénivelé), fractionné
+ * celui du 22/10 ; à pied « Relief et sentier », choisi le 28/10. Chaque fond a sa taille de tuile et son
  * espacement (`scale`, qui agrandit la tuile sans épaissir le trait) ; l'encre
  * et l'épaisseur sont dans le CSS (`ui.css`, `.page-backdrop--<fond>`).
  */
@@ -23,10 +23,10 @@ import type { SportFamily } from './sportProfiles';
 export const TILE_W = 390;
 export const TILE_H = 640;
 
-/** Un tracé du motif : `dots` en pointillé, `fill` plein (repères), `major` plus épais ; `alpha` éclaircit son encre. */
+/** Un tracé du motif : `dots` en pointillé, `fill` plein (repères), `major` plus épais, `thin` plus fin (courbes de fond) ; `alpha` éclaircit son encre. */
 export interface TilePath {
   d: string;
-  kind?: 'dots' | 'fill' | 'major';
+  kind?: 'dots' | 'fill' | 'major' | 'thin';
   alpha?: number;
 }
 
@@ -47,12 +47,12 @@ type Point = [number, number];
 const polyline = (points: readonly (readonly [number, number])[]): string =>
   points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${r1(x)} ${r1(y)}`).join('');
 
-/** Points d'une fonction `y(x)` de `from` à `to`, tous les `step` pixels. */
-const sampleX = (from: number, to: number, y: (x: number) => number, step = 6): Point[] => {
+/** Points d'une fonction `x(y)` de `from` à `to`, tous les `step` pixels. */
+const sampleY = (from: number, to: number, x: (y: number) => number, step = 6): Point[] => {
   const n = Math.max(1, Math.ceil((to - from) / step));
   return Array.from({ length: n + 1 }, (_, i) => {
-    const x = from + ((to - from) * i) / n;
-    return [x, y(x)];
+    const y = from + ((to - from) * i) / n;
+    return [x(y), y];
   });
 };
 
@@ -75,8 +75,12 @@ const RELIEF: readonly { k: number; l: number; a: number; phase: number }[] = [
   { k: 2, l: 3, a: 0.2, phase: 5.1 },
 ];
 
-export const reliefHeight = (x: number, y: number): number =>
-  RELIEF.reduce((h, t) => h + t.a * Math.cos(TAU * ((t.k * x) / TILE_W + (t.l * y) / TILE_H) + t.phase), 0);
+/** Hauteur en `(x, y)` d'une somme d'ondes entières sur une tuile `width` × `height`. */
+export const reliefOf = (terms: readonly { k: number; l: number; a: number; phase: number }[], width: number, height: number) =>
+  (x: number, y: number): number =>
+    terms.reduce((h, t) => h + t.a * Math.cos(TAU * ((t.k * x) / width + (t.l * y) / height) + t.phase), 0);
+
+export const reliefHeight = reliefOf(RELIEF, TILE_W, TILE_H);
 
 /** Pas de la grille des courbes de niveau, en pixels : il divise la largeur et la hauteur de chaque tuile. */
 const GRID = 5;
@@ -222,23 +226,32 @@ const placeSouffle = (ox: number, oy: number, s: number): string =>
 /** Voile : trois souffles de tailles différentes par tuile, beaucoup de vide autour. */
 const voileTile = (): TilePath[] => [{ d: placeSouffle(24, 70, 0.3) + placeSouffle(150, 360, 0.24) + placeSouffle(-60, 540, 0.2) }];
 
-/** À pied : chemins pointillés qui serpentent, des repères ronds et des fanions posés dessus. */
+/** Relief doux de l'à pied : peu d'ondes, donc de larges courbes ; périodique sur la tuile comme `RELIEF`. */
+const RELIEF_SOFT = [
+  { k: 1, l: 1, a: 1, phase: 1.1 }, { k: 1, l: -1, a: 0.8, phase: 2.6 },
+  { k: 0, l: 1, a: 0.5, phase: 0.2 }, { k: 2, l: 1, a: 0.25, phase: 4.4 },
+];
+
+/** Abscisse du sentier à la hauteur `y` : périodique en hauteur, il se raccorde à lui-même d'une tuile à l'autre. */
+export const trailX = (y: number): number =>
+  TILE_W * 0.52 + 96 * Math.sin((TAU * y) / TILE_H + 0.6) + 34 * Math.sin((2 * TAU * y) / TILE_H + 2.4);
+
+/**
+ * À pied, « Relief et sentier » (choisi sur maquette le 28/10) : un seul sentier pointillé qui descend la tuile
+ * en serpentant, avec un départ (rond plein) et une arrivée (fanion), posé dans sept larges courbes de niveau fines.
+ */
 const courseTile = (): TilePath[] => {
-  const dots: string[] = [];
-  const marks: string[] = [];
-  const flags: string[] = [];
-  const rows = 6;
-  for (let row = 0; row < rows; row++) {
-    const y0 = ((row + 0.5) * TILE_H) / rows;
-    const phase = row * 2.1;
-    const y = (x: number) => y0 + 22 * Math.sin((TAU * x) / TILE_W + phase) + 9 * Math.sin((2 * TAU * x) / TILE_W + phase * 0.7);
-    dots.push(polyline(sampleX(0, TILE_W, y, 4)));
-    const xm = jitter(row) * TILE_W;
-    marks.push(wrappedShape(xm + 6, y(xm), 'a6 6 0 1 0 -12 0a6 6 0 1 0 12 0'));
-    const xf = (xm + 150 + jitter(row + 9) * 90) % TILE_W;
-    flags.push(wrappedShape(xf, y(xf), 'l0 -26l18 7l-18 7'));
-  }
-  return [{ d: dots.join(''), kind: 'dots' }, { d: marks.join(''), kind: 'fill' }, { d: flags.join('') }];
+  const heights = heightGrid(reliefOf(RELIEF_SOFT, TILE_W, TILE_H), TILE_W, TILE_H);
+  const flat = heights.flat();
+  const lo = Math.min(...flat);
+  const hi = Math.max(...flat);
+  const contours = Array.from({ length: 7 }, (_, n) => isoline(heights, lo + ((hi - lo) * (n + 1)) / 8)).join('');
+  return [
+    { d: contours, kind: 'thin' },
+    { d: polyline(sampleY(0, TILE_H, trailX, 4)), kind: 'dots' },
+    { d: wrappedShape(trailX(58) + 6, 58, 'a6 6 0 1 0 -12 0a6 6 0 1 0 12 0'), kind: 'fill' },
+    { d: wrappedShape(trailX(470), 470, 'l0 -26l18 7l-18 7') },
+  ];
 };
 
 /** Tuile du vélo : grande, pour que ses courbes restent peu nombreuses à l'écran. */
@@ -333,7 +346,7 @@ export type BackdropVariant = 'contours' | SportFamily;
 const BACKDROPS: Record<BackdropVariant, { draw: () => TilePath[]; width: number; height: number; scale: number }> = {
   contours: { draw: contourTile, width: TILE_W, height: TILE_H, scale: 1 },
   voile: { draw: voileTile, width: TILE_W, height: TILE_H, scale: 0.9 },
-  course: { draw: courseTile, width: TILE_W, height: TILE_H, scale: 1.3 },
+  course: { draw: courseTile, width: TILE_W, height: TILE_H, scale: 1.65 },
   velo: { draw: veloTile, width: VELO_W, height: VELO_H, scale: 1.8 },
   surf: { draw: surfTile, width: SURF_W, height: SURF_H, scale: 0.9 },
   fractionne: { draw: fractionneTile, width: TILE_W, height: TILE_H, scale: 1 },

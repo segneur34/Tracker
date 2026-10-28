@@ -70,8 +70,8 @@
 }
 
 .page-backdrop--course {
-  --backdrop-ink: color-mix(in srgb, var(--course) 34%, transparent);
-  --backdrop-stroke: 3;
+  --backdrop-ink: color-mix(in srgb, var(--course) 36%, transparent);
+  --backdrop-stroke: 4.2;
 }
 
 .page-backdrop--velo {
@@ -92,6 +92,19 @@
 .page-backdrop .page-backdrop__dots {
   --backdrop-stroke: 4;
   stroke-dasharray: 0.1 12;
+}
+
+.page-backdrop .page-backdrop__thin {
+  --backdrop-stroke: 1.3;
+}
+
+/* À pied (« Relief et sentier », 28/10) : traits de la maquette × 1,4. Après les règles globales, à poids égal. */
+.page-backdrop--course .page-backdrop__dots {
+  --backdrop-stroke: 5.6;
+}
+
+.page-backdrop--course .page-backdrop__thin {
+  --backdrop-stroke: 1.8;
 }
 
 .page-backdrop .page-backdrop__fill {

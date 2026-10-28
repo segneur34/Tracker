@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TILE_H, TILE_W, backdropTile, reliefHeight, veloHeight, type BackdropVariant } from './patternTiles';
+import { TILE_H, TILE_W, backdropTile, reliefHeight, trailX, veloHeight, type BackdropVariant } from './patternTiles';
 
 /** Points de départ et d'arrivée des lignes brisées d'un tracé (`M` et dernier `L` de chaque ligne). */
 const lineEnds = (d: string): [number, number][] =>
@@ -34,6 +34,17 @@ describe('tuiles des fonds de page', () => {
       expect(onEdge(ends, 0, tile.width), variant).toEqual(left);
       expect(onEdge(ends, 1, tile.height), variant).toEqual(onEdge(ends, 1, 0));
     }
+  });
+
+  it('à pied, le sentier se raccorde en hauteur et les courbes du relief doux aux bords', () => {
+    expect(Math.abs(trailX(0) - trailX(TILE_H))).toBeLessThan(0.1);
+    const tile = backdropTile('course');
+    expect(tile.paths.map((p) => p.kind)).toEqual(['thin', 'dots', 'fill', undefined]);
+    const ends = lineEnds(tile.paths[0].d);
+    const left = onEdge(ends, 0, 0);
+    expect(left.length).toBeGreaterThan(0);
+    expect(onEdge(ends, 0, tile.width)).toEqual(left);
+    expect(onEdge(ends, 1, tile.height)).toEqual(onEdge(ends, 1, 0));
   });
 
   it('chaque fond a ses tracés, sans valeur manquante, une taille et un espacement', () => {

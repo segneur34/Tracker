@@ -4,7 +4,7 @@ import { backdropTile, type BackdropVariant } from '../core/patternTiles';
 /**
  * Fond dessiné d'une page (refonte du 22/10, dessins du 23/10) : courbes de
  * niveau sans session, sinon le motif d'une famille (souffles de vent,
- * chemins pointillés, courbes de dénivelé, vague, traits de vitesse), celle de
+ * sentier dans des courbes de niveau, courbes de dénivelé, vague, traits de vitesse), celle de
  * la bibliothèque ou du sport préféré (`useFavoriteBackdrop`). Une tuile
  * répétée sur toute la page (`core/patternTiles.ts`), agrandie de son
  * espacement ; l'encre et l'épaisseur viennent de `.page-backdrop--<fond>`
