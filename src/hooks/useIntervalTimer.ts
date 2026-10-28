@@ -176,12 +176,13 @@ export const isIntervalTimerActive = (): boolean => run !== null && isActive(tim
 
 let started = false;
 let wasRecording = false;
+let wasStopping = false;
 
 /**
  * Branche le compteur, une fois, au démarrage de l'application : une séance
  * gardée qui court encore est reprise, et son programme rendu au téléphone ;
  * une séance close est oubliée, et un service resté seul, arrêté. Puis un
- * enregistrement lancé pendant une séance la reçoit.
+ * enregistrement lancé pendant une séance la reçoit, et l'arrête avec lui.
  */
 export const startIntervalTimer = (): void => {
   if (started) return;
@@ -192,9 +193,15 @@ export const startIntervalTimer = (): void => {
   reschedule(false);
   publish();
   subscribeToRecorder(() => {
-    const recording = getRecorderState().status !== 'idle';
-    if (recording && !wasRecording && run && isActive(timerStateAt(run, Date.now()))) note(run);
+    const { status, activity } = getRecorderState();
+    const recording = status !== 'idle';
+    const stopping = status === 'stopping';
+    const active = run !== null && isActive(timerStateAt(run, Date.now()));
+    if (recording && !wasRecording && active && run) note(run);
+    // La séance confiée à la session s'arrête avec elle (Q12, 28/10), l'arrêt écrit encore dans la session.
+    if (stopping && !wasStopping && active && run && activity && handsOverToRecording(run, hasPositions(activity.base))) stopIntervals();
     wasRecording = recording;
+    wasStopping = stopping;
   });
 };
 

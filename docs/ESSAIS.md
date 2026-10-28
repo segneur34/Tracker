@@ -6,7 +6,7 @@ L'utilisateur répond par numéro : « ok », ou ce qui ne va pas. Les numéros 
 
 ## À faire (paquets en attente de validation)
 
-APK 0.3.80 construite le 28/10 dans la nuit, **installée** le 28/10 ; elle porte (28/10) : lots 13, boutons orange et « Étape » ; 14, dépendances npm dont le greffon GPS 8.5.0 ; 12, thème sombre et économe ; 11, muscu avec ceinture. Les essais 28 + 34 et 37 + 43 restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14, puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14. Les essais 49 et 50 valident le lot 12 ; 51 à 53 le lot 11 (muscu, 0b93147).
+APK 0.3.80 construite le 28/10 dans la nuit, **installée** le 28/10 ; elle porte (28/10) : lots 13, boutons orange et « Étape » ; 14, dépendances npm dont le greffon GPS 8.5.0 ; 12, thème sombre et économe ; 11, muscu avec ceinture. Les essais 28 + 34 et 37 + 43 restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14, puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14. Les essais 49 et 50 valident le lot 12 ; 51 à 54 le lot 11 (muscu, 0b93147, correctif Q9 et Q12 en 0.3.81, APK à construire).
 
 | N° | Essai | Attendu |
 |---|---|---|
@@ -15,6 +15,7 @@ APK 0.3.80 construite le 28/10 dans la nuit, **installée** le 28/10 ; elle port
 | 50 | Lot 12 : « Sombre » puis « Économe » sur Accueil, une analyse, Enregistrer et Réglages. | Tout lisible ; la carte reste claire dans l'interface sombre ; en économe, fond noir, vignettes trace seule sans plan (à juger) ; le texte bleu voile sur fond sombre (« Renommer », onglet choisi) est à juger à l'œil. |
 | 52 | Lot 11 : Enregistrer › Type Muscu sans ceinture à portée. | « Démarrer » grisé avec la phrase qui dit pourquoi ; ceinture mise, il devient possible. |
 | 53 | Lot 11 : muscu sans séance (lien « Muscu sans séance ») avec deux « Note ». | Repères dans l'analyse, sur le graphe. |
+| 54 | APK 0.3.81 (Q9 et Q12) : un fractionné à pied, puis une muscu avec une séance du Timer ; « Arrêter » la session avant la fin de la séance. | Notification « Étape n/N · FC » en fractionné ; le compteur s'arrête avec la session (plus de bips), et l'analyse montre la séance arrêtée à l'heure de l'arrêt. |
 
 ## Quand l'occasion se présente (terrain)
 

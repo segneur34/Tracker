@@ -51,11 +51,11 @@ describe('presetOf', () => {
 });
 
 describe("notification de l'Entraînement (26/10)", () => {
-  it("fractionné à pied, à vélo et tests : l'étape d'office, avec la vitesse, deux chiffres au plus", () => {
+  it("fractionné à pied, à vélo et tests : l'étape d'office, avec la FC, deux chiffres au plus", () => {
     for (const base of ['run-intervals', 'bike-intervals', 'run-test'] as const) {
-      expect(presetOf(baseActivity(base)).notificationFields).toEqual(['step', 'speed']);
+      expect(presetOf(baseActivity(base)).notificationFields).toEqual(['step', 'heartRate']);
       // Une activité créée sur ces calculs les reprend.
-      expect(presetOf({ id: `a-${base}-2`, base }).notificationFields).toEqual(['step', 'speed']);
+      expect(presetOf({ id: `a-${base}-2`, base }).notificationFields).toEqual(['step', 'heartRate']);
     }
     expect(presetOf(baseActivity('running')).notificationFields).toBeUndefined();
   });

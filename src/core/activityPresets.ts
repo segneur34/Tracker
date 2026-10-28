@@ -43,9 +43,9 @@ export interface ActivityPreset {
 
 /**
  * Notification de l'Entraînement (26/10) : l'étape (répétition du compteur,
- * palier d'un test) d'office, avec la vitesse, dans la limite des deux chiffres.
+ * palier d'un test) d'office, avec la FC (Q9, 28/10), dans la limite des deux chiffres.
  */
-const TRAINING_NOTIFICATION: LiveFieldKey[] = ['step', 'speed'];
+const TRAINING_NOTIFICATION: LiveFieldKey[] = ['step', 'heartRate'];
 
 /** Pause automatique à 0,3 m/s, celle du calcul, au bout de ce temps. */
 const pauseAfter = (delayS: number) => ({ speedMs: 0.3, delayS });
