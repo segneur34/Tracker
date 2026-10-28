@@ -40,12 +40,6 @@ Quand l'utilisateur donne des notes en vrac :
 
 ## Idées
 
-### 2. Logo à côté de « Tracker » sur l'accueil · priorité 1 (proposée)
-- État : à clarifier
-- Où : accueil, titre « Tracker ».
-- Voulu : un logo à côté du nom.
-- Questions : quel logo (dessin, image donnée par l'utilisateur) ? Toujours voulu ?
-
 ### 4. Mode daltonien · priorité 1 (proposée)
 - État : à clarifier, voulu « plus tard »
 - Où : couleurs des traces et des graphes.
@@ -76,6 +70,7 @@ Quand l'utilisateur donne des notes en vrac :
 
 ## Archives
 
+- 2. Logo à côté de « Tracker » sur l'accueil : abandonnée le 28/10 (« n'est plus important »).
 - 25. Pumping en wing et dans toute voile sur foil (28/10) : faite au lot 22 (9005969, 0.3.93 ; point 186), validée le 28/10 (essai 62).
 - 12. Voile à foil : temps en vol, manœuvres comptées seulement en vol, virements et empannages mal classés (26/10, bogue) : faite au lot 10 (4daa54d, 0.3.92 ; point 185), validée le 28/10 (essai 61).
 - 20. Séance du Timer : nom ou bouton coupé sur deux lignes (28/10, bogue) : faite au lot 15 (95426d6, 0.3.82 ; point 183), validée le 28/10.
