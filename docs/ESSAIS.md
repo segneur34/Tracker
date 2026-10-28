@@ -6,7 +6,7 @@ L'utilisateur répond par numéro : « ok », ou ce qui ne va pas. Les numéros 
 
 ## À faire (paquets en attente de validation)
 
-APK 0.3.93 (lots 10, vols et manœuvres en voile, essai 61, et 22, pumping en wing, essai 62) : voir l'état en tête de la file des lots ; elle porte aussi tout ce que la 0.3.91 portait.
+APK 0.3.93 (lots 10, vols et manœuvres en voile, essai 61, et 22, pumping en wing, essai 62) **construite le 28/10 au soir, à installer** (téléphone débranché) ; elle porte aussi tout ce que la 0.3.91 portait.
 
 APK 0.3.91 (correctifs du lot 20 : partie « Matériel » à part dans Réglages, liste des groupes en ligne et dépliable, « Créer groupe matériel ») construite et **installée** le 28/10, après la 0.3.88 : elle porte les lots 18 (fond à pied, essai 57), 19 (image de partage 1080 × 1920, essai 58), 20 (matériel par groupes, essai 59) et 21 (énergie de la marche, pistes non pavées, essai 60).
 
