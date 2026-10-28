@@ -393,4 +393,5 @@ Notes relevées en mode chaîne (27/10) sur des scripts périmés ou à complét
 - `planning.mjs` attend la fin de « Calcul du tracé… » avant « Enregistrer » (bouton grisé pendant le calcul).
 - `fractionne.mjs` en rejeu temps réel donne des vitesses de répétitions qui bougent de 0,1 km/h d'un passage à l'autre (analyse déterministe identique nombre à nombre) : pas un écart.
 - Écarts admis depuis le lot 8 (performances) : dernière graduation de cap 242° au lieu de 241° (extrême gardé par la décimation) ; une mention « © OpenStreetMap » de moins quand la carte est agrandie (la carte compacte, cachée dessous, ne dessine plus ses couches).
+- `timer.mjs` (10 ok, 36 échecs) et `entrainement.mjs` (1 échec) sont périmés depuis le lot 11 (page Entraînement à deux tuiles « Fractionné et tests » et « Muscu et timer », boutons « Timer » et « Enregistrer » par séance, lien « Enregistrer sans séance ») : mêmes échecs avant et après le lot 15, sans erreur de console ; aucun `DUMP=`. À réécrire sur les pages d'aujourd'hui.
 - À ajouter un jour : `trackerBack()` avec un pop-up ouvert et `/essai/erreur` (lot 5).

@@ -139,7 +139,30 @@
   min-width: 0;
 }
 
+.train-item__buttons {
+  display: contents;
+}
+
+/* Séances du Timer : nom et flèche sur la première ligne, les deux boutons dessous, à droite. */
+.train-item__head--timer {
+  flex-wrap: wrap;
+}
+
+.train-item__head--timer .train-item__buttons {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  order: 3;
+}
+
+.train-item__head--timer .train-item__buttons .ui-btn {
+  white-space: nowrap;
+}
+
 .train-item__toggle {
+  order: 2;
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -173,7 +196,7 @@
 
 .train-item__name {
   font-weight: 700;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
 }
 
 .train-item__detail {

@@ -117,24 +117,26 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
         <ul className="train-list" aria-label="Séances gardées">
           {presets.map((preset) => (
             <li key={preset.id} className="ui-card train-item">
-              <div className="train-item__head">
+              <div className={`train-item__head${timer ? ' train-item__head--timer' : ''}`}>
                 <span className="train-item__name">{preset.name}</span>
-                <Button variant="primary" size="s" disabled={!launchPath} onClick={() => launch(preset)}>
-                  <IconPlay size={16} />
-                  {timer ? 'Timer' : 'Lancer'}
-                </Button>
-                {timer && (
-                  <Button variant="primary" size="s" disabled={!muscuPath} onClick={() => launchMuscu(preset)}
-                    title="Enregistrer la séance avec la ceinture cardio">
-                    <IconPulse size={16} />
-                    Muscu
-                  </Button>
-                )}
                 <button type="button" className="train-item__toggle" aria-expanded={openId === preset.id}
                   aria-label={`${openId === preset.id ? 'Replier' : 'Déplier'} : ${preset.name}`}
                   onClick={() => setOpenId(openId === preset.id ? null : preset.id)}>
                   {openId === preset.id ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
                 </button>
+                <div className="train-item__buttons">
+                  <Button variant="primary" size="s" disabled={!launchPath} onClick={() => launch(preset)}>
+                    <IconPlay size={16} />
+                    {timer ? 'Timer' : 'Lancer'}
+                  </Button>
+                  {timer && (
+                    <Button variant="primary" size="s" disabled={!muscuPath} onClick={() => launchMuscu(preset)}
+                      title="Enregistrer la séance avec la ceinture cardio">
+                      <IconPulse size={16} />
+                      Enregistrer
+                    </Button>
+                  )}
+                </div>
               </div>
               {openId === preset.id && (
                 <div className="train-item__body">
@@ -162,7 +164,7 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
       </div>
 
       {timer && muscuPath && (
-        <Link to={muscuPath} className="train-hint" style={{ alignSelf: 'flex-start' }}>Muscu sans séance</Link>
+        <Link to={muscuPath} className="train-hint" style={{ alignSelf: 'flex-start' }}>Enregistrer sans séance</Link>
       )}
 
       {!timer && (

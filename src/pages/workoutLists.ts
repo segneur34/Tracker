@@ -40,7 +40,7 @@ export const WORKOUT_LISTS: Record<WorkoutKind, WorkoutList> = {
   },
   timer: {
     title: 'Muscu et timer',
-    subtitle: "Des minuteries à blocs, hors fractionné : « Timer » lance le compteur seul, sans GPS ni session ; « Muscu » enregistre la séance avec la ceinture cardio.",
+    subtitle: "Des minuteries à blocs, hors fractionné : « Timer » lance le compteur seul, sans GPS ni session ; « Enregistrer » enregistre la séance avec la ceinture cardio.",
     listPath: '/fractionne/timer',
     editPath: '/fractionne/timer/editer',
     create: 'Créer une séance',
