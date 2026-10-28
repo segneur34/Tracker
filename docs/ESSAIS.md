@@ -6,7 +6,7 @@ L'utilisateur répond par numéro : « ok », ou ce qui ne va pas. Les numéros 
 
 ## À faire (paquets en attente de validation)
 
-APK 0.3.88 construite et **installée** le 28/10 : elle porte les lots 18 (fond à pied, essai 57), 19 (image de partage 1080 × 1920, essai 58), 20 (matériel par groupes, essai 59) et 21 (énergie de la marche, pistes non pavées, essai 60).
+APK 0.3.89 (correctif du lot 20 : partie « Matériel » à part dans Réglages) construite et **installée** le 28/10, après la 0.3.88 : elle porte les lots 18 (fond à pied, essai 57), 19 (image de partage 1080 × 1920, essai 58), 20 (matériel par groupes, essai 59) et 21 (énergie de la marche, pistes non pavées, essai 60).
 
 APK 0.3.84 construite et **installée** le 28/10 au matin : elle porte les lots 15 (ligne du Timer, bouton « Enregistrer »), 16 (heures par semaine dans Statistiques) et 17 (thème Auto sans redémarrer, validé le 28/10), essai 55 ; l'APK 0.3.81, installée le 28/10 au matin (correctif Q9 et Q12 du lot 11), porte, comme la 0.3.80 : lots 13, boutons orange et « Étape » ; 14, dépendances npm dont le greffon GPS 8.5.0 ; 12, thème sombre et économe ; 11, muscu avec ceinture. Les essais 28 + 34 et 37 + 43 restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14, puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14. Les essais 49 et 50 valident le lot 12 ; 51 à 54 le lot 11 (muscu, 0b93147, correctif Q9 et Q12 en 0.3.81).
 
@@ -18,10 +18,7 @@ APK 0.3.84 construite et **installée** le 28/10 au matin : elle porte les lots 
 | 52 | Lot 11 : Enregistrer › Type Muscu sans ceinture à portée. | « Démarrer » grisé avec la phrase qui dit pourquoi ; ceinture mise, il devient possible. |
 | 53 | Lot 11 : muscu sans séance (lien « Muscu sans séance ») avec deux « Note ». | Repères dans l'analyse, sur le graphe. |
 | 54 | APK 0.3.81 (Q9 et Q12) : un fractionné à pied, puis une muscu avec une séance du Timer ; « Arrêter » la session avant la fin de la séance. | Notification « Étape n/N · FC » en fractionné ; le compteur s'arrête avec la session (plus de bips), et l'analyse montre la séance arrêtée à l'heure de l'arrêt. |
-| 57 | Lot 18 (0.3.85) : le fond À pied « Relief et sentier » sur la bibliothèque À pied, l'accueil, le Profil et Réglages (sport préféré à pied). Le banc a prouvé le rendu (capture à 390 px conforme à la maquette) ; reste l'œil. | Lisible derrière les cartes, pas plus chargé que les autres familles ; sinon dire encre, épaisseur ou espacement à corriger. |
-| 58 | Lot 19 (0.3.86) : « … › Partager » une course (fond plan, six chiffres) et une session de voile, vers WhatsApp (statut) ou une story. Le banc a prouvé le format 1080 × 1920 et la mise en page ; reste le rendu dans la messagerie. | Image en plein écran, non recadrée, titre et chiffres lisibles ; l'aperçu tient dans la fenêtre de partage. |
-| 59 | Lot 20 (0.3.87) : Réglages › votre activité de wing (ou Course) › Onglet analyse › « Matériel enregistré » : créer deux groupes et quelques pièces ; dans une analyse, choisir une pièce par groupe, puis « Ajouter… » une pièce « pour cette session » ; fermer la liste par le retour d'Android ; « Enregistrer la session » ; Statistiques › cette activité › « Matériel ». | Listes et boîte faciles au toucher ; le retour ferme la liste sans quitter l'analyse ; le filtre garde les bonnes sessions. |
-| 60 | Lot 21 (0.3.88) : une vraie marche avec du dénivelé (avec et sans sac si possible), puis une sortie en ville à pied ou à vélo ; regarder aussi une ancienne Marche déjà rangée. | Énergie de marche plausible face à la montre (environ moitié de la course sur le plat), note Pandolf sous le « ? » ; trottoirs sans étiquette comptés « Non pavé » dans la barre de revêtement : à juger (Q14) ; l'ancienne Marche recalculée sans le seuil de 0,5 km/h. |
+| 59 | Lot 20 (0.3.89) : Réglages › carte Course (ou wing) › partie « Matériel » › « Choisir dans une liste » : créer deux groupes et quelques pièces ; dans une analyse, choisir une pièce par groupe, puis « Ajouter… » une pièce « pour cette session » ; fermer la liste par le retour d'Android ; « Enregistrer la session » ; Statistiques › cette activité › « Matériel ». | Listes et boîte faciles au toucher ; le retour ferme la liste sans quitter l'analyse ; le filtre garde les bonnes sessions. |
 | 55 | Lot 16 (0.3.83) : Statistiques › Tout › graphique › Durée, sur vos vraies sessions. | Une ligne grise pleine des heures de chaque semaine, en plus du pointillé, légende « heures par semaine » ; à juger : lisible sur une vraie année (au banc, une session toutes les quelques semaines donne des dents de scie) ; sinon un escalier par semaine se fait en une ligne. |
 
 ## Quand l'occasion se présente (terrain)
@@ -38,6 +35,8 @@ APK 0.3.84 construite et **installée** le 28/10 au matin : elle porte les lots 
 
 ## Faits
 
+- 57 (fond À pied « Relief et sentier », lot 18), 58 (image de partage 1080 × 1920, lot 19), 60 (énergie de la marche et non pavé, lot 21) : ok le 28/10 sur l'APK 0.3.88 ; lots 18, 19, 21 validés.
+- 59 (matériel par groupes, lot 20) : l'utilisateur veut une partie « Matériel » à part dans la carte d'activité de Réglages, au même niveau qu'« Affichage » et « Onglet analyse » (trop caché dans « Onglet analyse ») ; correctif en cours, essai à refaire.
 - 56 (thème « Auto » qui suit le téléphone sans redémarrer, lot 17) : ok le 28/10 ; lot 17 validé.
 - 49 (thème Auto, lot 12) et 51 (muscu avec ceinture et Timer, lot 11) : ok le 28/10 ; la question du 51 (compteur après « Arrêter ») reste ouverte, Q12 de la file.
 - 3 (FC repos) : ok le 28/10, fait avant le protocole v2 (moyenne sur 30 s, 25/10) ; résultat dans la clé de l'appareil, pas dans les sessions.

@@ -202,9 +202,9 @@ const ENERGY_MODEL_CHOICES: { key: EnergyModel; label: string }[] = [{ key: 'cou
 const NO_ACTIVITY_OPEN: Record<string, boolean> = {};
 /** Parties d'une carte d'activité, toutes fermées au départ ; l'état, mémorisé, vaut pour toutes les activités. */
 // La notification est une sous-partie d'Enregistrement (19/10) ; la clé « itineraires » garde son nom pour l'état mémorisé.
-type ActivityPartKey = 'affichage' | 'analyse' | 'enregistrement' | 'itineraires' | 'balises';
+type ActivityPartKey = 'affichage' | 'analyse' | 'materiel' | 'enregistrement' | 'itineraires' | 'balises';
 const ACTIVITY_PART_DEFAULTS: Record<ActivityPartKey, boolean> = {
-  affichage: false, analyse: false, enregistrement: false, itineraires: false, balises: false,
+  affichage: false, analyse: false, materiel: false, enregistrement: false, itineraires: false, balises: false,
 };
 /** Familles de la liste des activités, toutes repliées au départ ; plusieurs s'ouvrent à la fois, l'état est mémorisé. */
 const FAMILY_OPEN_DEFAULTS = Object.fromEntries(SPORT_FAMILIES.map((f) => [f, false])) as Record<SportFamily, boolean>;
@@ -694,6 +694,21 @@ function SettingsPage() {
                                 {!s.isHrOffsetOverridden && <span className="settings-sports__mark">défaut</span>}
                               </div>
                             </SettingRow>
+                            {s.terrainStepM !== null && (
+                              <SettingRow label="Altitude IGN" helpKey={`${id}:altitude-ign`}
+                                help="L'altitude du terrain est demandée à l'IGN, un point tous les tant de mètres le long de la trace.">
+                                <div className="settings-sports__pair">
+                                  <span className="settings-sports__mark">un point tous les</span>
+                                  <select value={s.terrainStepM} onChange={(e) => setFor(id, 'terrainStepM', Number(e.target.value))} className="ui-field ui-field--s">
+                                    {TERRAIN_STEP_CHOICES_M.map((m) => <option key={m} value={m}>{m} m</option>)}
+                                  </select>
+                                  {s.terrainStepM === defaultTerrainStepOf(activity) && <span className="settings-sports__mark">défaut</span>}
+                                </div>
+                              </SettingRow>
+                            )}
+                            <AnalysisTabsSetting view={s} profile={p} onChange={(choices) => setFor(id, 'tabs', choices)} />
+                          </ActivityPart>
+                          <ActivityPart label="Matériel" open={openPart.materiel} onToggle={() => togglePart('materiel')}>
                             <SettingRow label="Matériel enregistré" helpKey={`${id}:materiel-enregistre`}
                               help={`Des groupes (voile, aile avant, mât…) et leurs pièces, choisis en fin de session dans l'onglet ${sailing ? '« matos et conditions »' : '« matériel et notes »'} à la place des champs de texte ; Statistiques filtre alors par pièce. « Par défaut » garde la liste.`}>
                               <div className="settings-sports__pair">
@@ -720,19 +735,6 @@ function SettingsPage() {
                                 </div>
                               </SettingRow>
                             )}
-                            {s.terrainStepM !== null && (
-                              <SettingRow label="Altitude IGN" helpKey={`${id}:altitude-ign`}
-                                help="L'altitude du terrain est demandée à l'IGN, un point tous les tant de mètres le long de la trace.">
-                                <div className="settings-sports__pair">
-                                  <span className="settings-sports__mark">un point tous les</span>
-                                  <select value={s.terrainStepM} onChange={(e) => setFor(id, 'terrainStepM', Number(e.target.value))} className="ui-field ui-field--s">
-                                    {TERRAIN_STEP_CHOICES_M.map((m) => <option key={m} value={m}>{m} m</option>)}
-                                  </select>
-                                  {s.terrainStepM === defaultTerrainStepOf(activity) && <span className="settings-sports__mark">défaut</span>}
-                                </div>
-                              </SettingRow>
-                            )}
-                            <AnalysisTabsSetting view={s} profile={p} onChange={(choices) => setFor(id, 'tabs', choices)} />
                           </ActivityPart>
                           <ActivityPart label="Enregistrement" open={openPart.enregistrement} onToggle={() => togglePart('enregistrement')}>
                             {positions && <SettingRow label="Pause automatique" helpKey={`${id}:pause`}
