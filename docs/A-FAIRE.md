@@ -155,6 +155,60 @@ Quand l'utilisateur donne des notes en vrac :
 - Pourquoi : saisir le matériel en fin de session sans le retaper, et comparer ses performances selon le matériel.
 - Questions : choix ? → réponse (27/10) : groupes de matériel créés par l'utilisateur dans un menu de Réglages, pièces dans chaque groupe, choix par groupe en fin de session, ajout sur le moment enregistré ou non (pas d'ensembles tout prêts). Pré-choix ? → réponse (27/10) : vide, on choisit (DECISIONS §8 inchangé). Statistiques ? → réponse (27/10) : un filtre par matériel dans la page Statistiques, à côté de famille et activité. Partage entre activités ? → réponse (27/10) : non, une liste par activité. Tranché par Claude (27/10) : option active, les groupes remplacent les champs fixes de l'onglet (foil, mât, aile en voile ; `gear1`, `gear2` ailleurs), option coupée, retour aux champs fixes ; le texte déjà saisi d'une ancienne session reste montré tel quel ; la pièce choisie s'écrit dans la fiche de la session (`library/record.ts`) par son identifiant, son nom et son groupe, pour que le filtre de Statistiques la retrouve renommée (par l'identifiant) ou retirée de la liste (par le nom).
 
+### 19. Fond de page à pied à revoir · priorité 3 (proposée)
+- Noté le : 27/10 23:42 (WhatsApp) · reçu le : 28/10 · état : prête (maquette d'abord)
+- Tel que noté : « Il faut revoir le fond de l'application dans les contextes à pied tout , les autres sont vraiment bien celui-là d'étonne un peu et du coup c'est légèrement une punition quand on se retrouve à la voir partout si notre activité favorite c'est la marche ou la course »
+- Où : fond dessiné des pages (`PageBackdrop`, motif `course` de `core/patternTiles.ts`, encre `.page-backdrop--course` de `ui.css`) : bibliothèque à pied, et accueil, Profil, Réglages quand le sport préféré est à pied ; Statistiques sur la famille À pied.
+- Aujourd'hui : six chemins pointillés qui serpentent par tuile, chacun avec un rond plein et un fanion posés dessus (tuile 390 × 640 agrandie 1,3 fois). Les autres familles : souffles de vent (voile), courbes de dénivelé (vélo), vagues (surf), traits de vitesse (Entraînement), courbes de niveau sans session. Motifs choisis sur maquette le 23/10 (DECISIONS §11).
+- Voulu : un autre motif à pied, aussi réussi que les autres ; seul celui-là change.
+- Pourquoi : c'est le fond de presque toutes les pages quand le sport préféré est la course ou la marche.
+- Questions : quelle piste ? Tranché par Claude : une maquette de trois ou quatre motifs à pied, à côté des autres familles pour comparer, comme le 23/10 ; l'utilisateur choisit sur la maquette.
+
+### 20. Séance du Timer : nom ou bouton coupé sur deux lignes · priorité 3 (proposée) · bogue
+- Noté le : 28/10 06:29 (WhatsApp) · reçu le : 28/10 · état : prête
+- Tel que noté : « Dans entraînement muscu et timer la première tuile muscu le lus "muscu " est en 2 ligne et sort très mal »
+- Où : Entraînement › Muscu et timer (`/fractionne/timer`, `TrainingSessionsPage`) › ligne repliée d'une séance.
+- Aujourd'hui : sur une seule ligne, le nom (`.train-item__name` : `flex: 1`, `min-width: 0`, `overflow-wrap: anywhere`), puis « Timer » et « Muscu » (chacun avec son icône, sans `nowrap`), puis la flèche. Sur téléphone, la place manque : le nom se coupe au milieu d'un mot, ou le texte d'un bouton passe à la ligne. Depuis le lot 11 (0b93147, à valider), qui a ajouté le second bouton.
+- Voulu : rien de coupé au milieu d'un mot sur cette ligne. Tranché par Claude : le nom et la flèche sur la première ligne (nom coupé entre les mots seulement), les deux boutons dessous, alignés à droite, texte des boutons jamais coupé ; page du Timer seule, la ligne du Fractionné (un bouton) inchangée. Relevé au banc à largeur de téléphone (360 px), avec un nom long et un nom court. À faire avec la fiche 21, qui allonge le bouton.
+- Pourquoi : la première chose qu'on voit de la page, mal rendue.
+- Questions : aucune.
+
+### 21. « Muscu » renommé « Enregistrer » sur les séances du Timer · priorité 3 (proposée)
+- Noté le : 28/10 06:32 (WhatsApp) · reçu le : 28/10 · état : prête
+- Tel que noté : « Dans timer et muscu il y a 2 bouton sur les tuiles "timer " et "muscu" Et faut changer " muscu" en "enregistrer " ce sera plus claire »
+- Où : Entraînement › Muscu et timer › ligne d'une séance (`TrainingSessionsPage`), sous-titre de la page (`WORKOUT_LISTS.timer.subtitle`, `pages/workoutLists.ts`), lien « Muscu sans séance ».
+- Aujourd'hui : deux boutons, « Timer » (compteur seul, rien d'enregistré) et « Muscu » (Enregistrer ouvert sur la muscu, séance dans la carte du compteur, ceinture obligatoire) ; le sous-titre et le lien sous la liste disent « Muscu ».
+- Voulu : le bouton « Muscu » devient « Enregistrer », même action, même icône. Tranché par Claude : le sous-titre dit « « Enregistrer » enregistre la séance avec la ceinture cardio », le lien devient « Enregistrer sans séance » ; la tuile de la page Entraînement garde « Muscu et timer ». Avec la fiche 20.
+- Pourquoi : dit ce que fait le bouton (une session enregistrée) au lieu du nom de l'activité.
+- Questions : aucune.
+
+### 22. Image de partage au format de l'écran, comme Komoot · priorité 3 (proposée)
+- Noté le : 28/10 06:34 (WhatsApp) · reçu le : 28/10 · état : prête (maquette d'abord)
+- Tel que noté : « Revoir le système d'envois de trace en image : il faut un format type komoot ( taille écran) qui sortira mieux »
+- Où : analyses › « … » du nom de la session › Partager en image (`ShareDialog`) ; calculs dans `core/shareImage.ts` (`SHARE_IMAGE`), dessin dans `components/drawShareImage.ts`.
+- Aujourd'hui : une image carrée de 1080 × 1080 : bandeau du titre (150 px), carte de la trace, puis jusqu'à six chiffres en deux rangées de trois (130 px chacune), pied de 60 px ; fond de carte de la famille (DECISIONS §8) ; muscu sans carte.
+- Voulu : une image en hauteur, de la taille d'un écran de téléphone (1080 × 1920, 9:16), qui s'affiche en grand dans une messagerie ou une story.
+- Pourquoi : le carré sort petit à l'écran ; la carte gagne de la hauteur.
+- Questions : remplacer le carré ou laisser choisir le format ? → réponse (28/10) : remplace le carré, une seule image en 1080 × 1920. Disposition (carte plein cadre et chiffres posés dessus façon Komoot, ou carte puis chiffres) ? → réponse (28/10) : maquette d'abord, deux ou trois dispositions, l'utilisateur choisit.
+
+### 23. Thème « Auto » : ne suit le téléphone qu'au redémarrage · priorité 4 (proposée) · bogue
+- Noté le : 28/10 06:36 (WhatsApp) · reçu le : 28/10 · état : prête
+- Tel que noté : « Le mode sombre s'active ps tout seul il faut etaindre l'application et la relancer ce serait bien que non »
+- Où : Réglages › Affichage › thème (lot 12, 32f6ac7, à valider, porté par l'APK 0.3.80) ; `hooks/useTheme.ts` (`startTheme`), `android/app/src/main/AndroidManifest.xml`, `MainActivity`.
+- Aujourd'hui : le JavaScript suit bien `prefers-color-scheme` (écoute `change` dans `startTheme`) et le réglage de Réglages (`jsonStore.subscribe`). Mais l'activité Android déclare `uiMode` dans `configChanges` : elle n'est pas recréée quand le téléphone change de thème, et la WebView ne réévalue probablement pas `prefers-color-scheme` ; d'où le thème qui ne change qu'au redémarrage (cause supposée, à confirmer).
+- Voulu : en « Auto », le thème suit le téléphone tout de suite, application ouverte ou reprise de l'arrière-plan, sans redémarrer ; sans doute par `onConfigurationChanged` côté Android qui prévient la page. Essai au téléphone indispensable (le banc ne voit pas la WebView).
+- Pourquoi : le réglage « Auto » ne tient pas sa promesse.
+- Questions : dans quel cas (téléphone passé en sombre en « Auto », ou « Sombre » choisi dans Réglages) ? → réponse (28/10) : « il y a pas moyen que ça change sans relancer l'app ? » : le cas reste à préciser. Tranché par Claude : couvrir les deux ; le choix dans Réglages s'éprouve au banc, le changement du téléphone par un essai au téléphone (Auto, thème du téléphone basculé application ouverte, puis en arrière-plan).
+
+### 24. Statistiques : ligne des heures totales par semaine dans le graphique · priorité 3 (proposée)
+- Noté le : 28/10 06:39 (deux messages, WhatsApp) · reçu le : 28/10 · état : prête
+- Tel que noté : « Dans stat le graph qui donne les heures selon tout les sport il faudrait une ligne dedans avec les heures total par semaine » ; « La il n'y a que une ligne pointillés avec la moyenne je crois »
+- Où : Statistiques › vue d'ensemble (« Tout ») › onglet graphique, donnée « Durée » (`StatisticsPage`).
+- Aujourd'hui : un point par session, à la couleur de son activité, en heures dès qu'une session atteint 2 h ; en pointillé gris, la tendance : la moyenne des 5 dernières sessions (`TREND_SESSIONS`, `library/stats.ts`), pas un total par semaine. Les semaines n'apparaissent qu'en Régularité (barres empilées du nombre de sessions par activité).
+- Voulu : une ligne des heures totales de chaque semaine (toutes activités de la sélection), sur le même graphique, en plus du pointillé de la moyenne, avec une légende ; pour toute sélection (vue d'ensemble, famille, activité) dès que la donnée est « Durée ». Tranché par Claude : semaines du lundi au dimanche, comme Régularité ; une semaine sans session compte 0 h ; même axe que les sessions, en heures.
+- Pourquoi : voir son volume d'entraînement semaine après semaine, que le point par session ne montre pas.
+- Questions : s'ajoute au pointillé ou le remplace, et où ? → réponse (28/10) : s'ajoute, pour toute sélection quand la donnée est « Durée ».
+
 ## Archives
 
 - 16. Faux sauts en wingfoil (10/10) : mise de côté le 27/10 (« enlever pour le moment ») ; l'essai 48 d'ESSAIS reste, pour le jour où elle revient.
