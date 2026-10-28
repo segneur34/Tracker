@@ -47,11 +47,11 @@ Quand l'utilisateur donne des notes en vrac :
 - Questions : quel logo (dessin, image donnée par l'utilisateur) ? Toujours voulu ?
 
 ### 3. Pistes et sentiers sans étiquette comptés en « non pavé » · priorité 2 (proposée)
-- État : à clarifier (non tranché, §11 d'ETAT)
+- État : en lot 21 (`demandes-2810/lot21-energie-terre.md`, avec la fiche 15)
 - Où : analyses à pied et à vélo, revêtement ; énergie du vélo.
 - Aujourd'hui : une piste ou un sentier sans étiquette de revêtement dans OpenStreetMap reste « Inconnu », calculé avec un frottement moyen.
 - Voulu : les compter en « non pavé ».
-- Questions : oui ou non ?
+- Questions : oui ou non ? → réponse (28/10) : oui, non pavé (`track`, `path`, `footway`, `bridleway` sans `surface` ni `tracktype` ; une route sans précision reste asphaltée).
 
 ### 4. Mode daltonien · priorité 1 (proposée)
 - État : à clarifier, voulu « plus tard »
@@ -118,13 +118,6 @@ Quand l'utilisateur donne des notes en vrac :
 - Pourquoi : chiffres faux sur une vraie session.
 - Questions : aucune de plus (réponses 4 à 6 du 26/10 données) ; il manque seulement le fichier GPX.
 
-### 13. Surf : le seuil de l'activité ne suit pas la case Foil de la session · priorité 3 (proposée) · bogue
-- Noté le : constat de la revue du code du 27/10 (C-B4, C-B5), pas une note de l'utilisateur · état : à clarifier
-- Où : analyse surf › réglages (case Foil, seuil) ; Réglages › activité surf.
-- Aujourd'hui : le seuil réglé pour l'activité est appliqué tel quel, Foil coché ou non : un seuil de vol de 12 km/h peut servir de seuil de vague ; le seuil de vague en foil n'est réglable que par session, pas par activité (DECISIONS §4 dit les deux).
-- Voulu : à trancher.
-- Questions : le seuil de l'activité doit-il suivre la case Foil de la session (deux seuils par activité, vague et vol) ? Un seuil de vague par activité en foil ?
-
 ### 14. VMA dans les tests guidés, protocole des zones · priorité 2 (proposée)
 - Noté le : 25/10 (« plus tard », LISEZMOI des demandes du 25/10) · état : à clarifier
 - Où : Entraînement › Tests.
@@ -133,11 +126,11 @@ Quand l'utilisateur donne des notes en vrac :
 - Questions : quel protocole (VAMeval par paliers, demi-Cooper 6 min, autre) ? Après les essais 2 et 3 seulement ?
 
 ### 15. Marche : énergie propre et seuil d'activité · priorité 2 (proposée)
-- Noté le : 25/10 (« plus tard ») et HISTORIQUE point 133 · état : à clarifier
+- Noté le : 25/10 (« plus tard ») et HISTORIQUE point 133 · état : en lot 21 (`demandes-2810/lot21-energie-terre.md`, avec la fiche 3)
 - Où : analyses à pied, activité Marche.
 - Aujourd'hui : l'énergie de la marche est celle de la course (Minetti), qui ne vaut pas pour la marche ; seuil d'activité 0,5 km/h (DECISIONS §2), les arrêts complets ôtés d'office depuis le point 160.
 - Voulu : une énergie de marche (Pandolf ou ACSM) et un seuil décidé.
-- Questions : garder le seuil à 0,5 km/h maintenant que les arrêts sont ôtés d'office ? Formule d'énergie : ACSM (simple) ou Pandolf (charge portée, pente) ?
+- Questions : garder le seuil à 0,5 km/h maintenant que les arrêts sont ôtés d'office ? Formule d'énergie : ACSM (simple) ou Pandolf (charge portée, pente) ? → réponse (28/10) : Pandolf (charge portée déjà saisie, pente ; descentes corrigées par Santee), seuil de la marche retiré (0, comme la course : le plancher d'arrêt suffit). Tranché par Claude : un réglage d'activité « Dépense : course / marche », la Marche de départ sur « marche » (pré-réglage, `PRESET_RESETS`).
 
 ### 17. Autres capteurs Bluetooth (puissance, cadence et vitesse à vélo) · priorité 1 (proposée)
 - Noté le : HISTORIQUE point 118, repris le 25/10 (« capteurs du muscu au-delà de la FC ») · état : à clarifier
@@ -147,7 +140,7 @@ Quand l'utilisateur donne des notes en vrac :
 - Questions : avez-vous un capteur (capteur de cadence ou de puissance vélo) ? Sinon la fiche dort.
 
 ### 18. Matériel enregistré à l'avance, choisi en fin de session, statistiques par matériel · priorité 3 (proposée)
-- Reçu le : 27/10 · état : prête
+- Reçu le : 27/10 · état : en lot 20 (`demandes-2810/lot20-materiel-groupes.md`)
 - Tel que noté : « créer une option qui permet de faire des pré-enregistrements de son matériel, ce qui permet facilement de les ajouter en fin de session, notamment à la voile, mais c'est pas valable que là, de façon également à avoir des stats en fonction de notre matériel. doit être une option à activer dans les paramètres de l'activité. De façon à ce qu'on puisse le faire si on a envie que pour certains sports. »
 - Où : Réglages › activité (nouvelle option, et la liste du matériel) ; analyses › onglet « matos et conditions » (voile) ou « matériel et notes » (ailleurs), `SessionNotesPanel` ; Statistiques.
 - Aujourd'hui : le matériel est du texte libre saisi à chaque session (`SessionNotesPanel`, champ `<input type="text">` sans suggestion) : en voile foil, mât, aile ; ailleurs deux champs `gear1`, `gear2` dont seuls les intitulés se règlent par activité (`gearLabels`, `hooks/useSportSettings.ts`). Rien n'est rangé par matériel dans Statistiques. Le matériel n'est jamais repris d'une autre session (DECISIONS §8).
@@ -183,13 +176,13 @@ Quand l'utilisateur donne des notes en vrac :
 - Questions : aucune.
 
 ### 22. Image de partage au format de l'écran, comme Komoot · priorité 3 (proposée)
-- Noté le : 28/10 06:34 (WhatsApp) · reçu le : 28/10 · état : prête (maquette d'abord)
+- Noté le : 28/10 06:34 (WhatsApp) · reçu le : 28/10 · état : en lot 19 (`demandes-2810/lot19-partage-9-16.md`), maquette à choisir (lien ci-dessous, Questions)
 - Tel que noté : « Revoir le système d'envois de trace en image : il faut un format type komoot ( taille écran) qui sortira mieux »
 - Où : analyses › « … » du nom de la session › Partager en image (`ShareDialog`) ; calculs dans `core/shareImage.ts` (`SHARE_IMAGE`), dessin dans `components/drawShareImage.ts`.
 - Aujourd'hui : une image carrée de 1080 × 1080 : bandeau du titre (150 px), carte de la trace, puis jusqu'à six chiffres en deux rangées de trois (130 px chacune), pied de 60 px ; fond de carte de la famille (DECISIONS §8) ; muscu sans carte.
 - Voulu : une image en hauteur, de la taille d'un écran de téléphone (1080 × 1920, 9:16), qui s'affiche en grand dans une messagerie ou une story.
 - Pourquoi : le carré sort petit à l'écran ; la carte gagne de la hauteur.
-- Questions : remplacer le carré ou laisser choisir le format ? → réponse (28/10) : remplace le carré, une seule image en 1080 × 1920. Disposition (carte plein cadre et chiffres posés dessus façon Komoot, ou carte puis chiffres) ? → réponse (28/10) : maquette d'abord, deux ou trois dispositions, l'utilisateur choisit.
+- Questions : remplacer le carré ou laisser choisir le format ? → réponse (28/10) : remplace le carré, une seule image en 1080 × 1920. Disposition (carte plein cadre et chiffres posés dessus façon Komoot, ou carte puis chiffres) ? → réponse (28/10) : maquette d'abord, deux ou trois dispositions, l'utilisateur choisit. Maquette publiée le 28/10 : https://claude.ai/artifact/HN6HJvGAjGZTKWZDgh5kPz (A carte pleine et chiffres posés dessus, B bandeau + carte haute + grille, C carte pleine, bandeau translucide, colonne ; trois et six chiffres, muscu, fond satellite ; le choix s'enregistre dans la page, base `choix/partage`).
 
 ### 24. Statistiques : ligne des heures totales par semaine dans le graphique · priorité 3 (proposée)
 - Noté le : 28/10 06:39 (deux messages, WhatsApp) · reçu le : 28/10 · état : en lot 16 (9f5ed36, 0.3.83, à valider)
@@ -200,8 +193,18 @@ Quand l'utilisateur donne des notes en vrac :
 - Pourquoi : voir son volume d'entraînement semaine après semaine, que le point par session ne montre pas.
 - Questions : s'ajoute au pointillé ou le remplace, et où ? → réponse (28/10) : s'ajoute, pour toute sélection quand la donnée est « Durée ».
 
+### 25. Pumping en wing (et toute voile sur foil) · priorité 3 (proposée)
+- Noté le : 28/10 (essai 5 d'ESSAIS : « Pumping : une vraie session de wing avec un premier vol », données en main : wing du 26/10 avec `.imu`) · reçu le : 28/10 · état : en lot 22 (`demandes-2810/lot22-pumping-wing.md`), après le lot 10
+- Tel que noté : essai 5 attendu « Pumping et premier vol détectés » sur une session de wing ; constat du 28/10 : le pumping n'est codé que pour le surf sur foil.
+- Où : analyses voile › nouvel onglet « pumping » (après « sauts ») ; Réglages › activité de voile › case Pumping sous Foil ; onglet réglages de l'analyse (par session).
+- Aujourd'hui : `surfing/pumping.ts` mesure le pumping par vol de surf foil depuis le `.imu` (coups, fréquence, distance pompée, décollage) ; rien en voile, où le `.imu` ne sert qu'aux sauts.
+- Voulu : la même mesure par vol en voile sur foil, calcul commun (`core/`), seuils partagés et surchargeables par calcul, réglés sur la session du 26/10 lue hors dépôt (`D:\memoire Tracker\Tracker\sessions\2026-10-26_13-28-20_wingfoil.*`).
+- Pourquoi : c'est en wing que l'utilisateur pompe ; l'essai 5 l'attend.
+- Questions : maintenant ou après le lot 10 (vols) ? → réponse (28/10) : un lot maintenant ; il reste après le lot 10 dans la file, dont il dépend.
+
 ## Archives
 
+- 13. Surf : seuil de l'activité et case Foil de la session (constat de la revue du 27/10, C-B4, C-B5) : abandonnée le 28/10 (« un seul seuil, tel quel »).
 - 23. Thème « Auto » qui ne suivait le téléphone qu'au redémarrage (28/10, bogue) : faite au lot 17 (1b9be77, 0.3.84 : greffon Screen, événement darkModeChange), validée sur le téléphone le 28/10 (essai 56).
 - 16. Faux sauts en wingfoil (10/10) : mise de côté le 27/10 (« enlever pour le moment ») ; l'essai 48 d'ESSAIS reste, pour le jour où elle revient.
 - 6. Tailles de police de Statistiques alignées (25/10 10:46) : abandonnée le 27/10 (« on abandonne pour le moment »).
