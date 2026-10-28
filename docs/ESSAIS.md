@@ -6,7 +6,7 @@ L'utilisateur répond par numéro : « ok », ou ce qui ne va pas. Les numéros 
 
 ## À faire (paquets en attente de validation)
 
-Paquet 9 (lots 23 et 32, APK 0.3.95 à construire). Lot 23 (petites dettes) sans essai : prouvé par les tests et le banc.
+Paquet 9 (lots 23, 32, 24 et 25) : **APK 0.3.95 installée** le 28/10 au soir (versionCode 3095). Lot 23 (petites dettes) sans essai : prouvé par les tests et le banc.
 
 | N° | Essai | Attendu |
 |---|---|---|
