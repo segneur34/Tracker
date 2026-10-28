@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitView, mapHeight, pickShareStats, projectPoint, SHARE_IMAGE, shareableStats, statColumns, statRows, viewTiles, worldPx, type ShareStat } from './shareImage';
+import { cardHeight, cardTop, fitView, fullView, mapHeight,pickShareStats, projectPoint, SHARE_IMAGE, shareableStats, statColumns, statRows, viewTiles, worldPx, type ShareStat } from './shareImage';
 
 /** Une boucle d'environ 2 km au large de Marseille. */
 const loop: Array<[number, number]> = Array.from({ length: 60 }, (_, i) => {
@@ -118,28 +118,54 @@ describe('chiffres de l\'image', () => {
     expect([0, 1, 3, 4, 6].map(statRows)).toEqual([0, 1, 1, 2, 2]);
   });
 
-  it('garde l\'image carrée : la carte prend ce que laissent le bandeau, les chiffres et le pied', () => {
-    const { sizePx, headerPx, footerPx, statRowPx, statPaddingPx } = SHARE_IMAGE;
-    expect(mapHeight(0)).toBe(sizePx - headerPx - footerPx);
-    expect(mapHeight(3)).toBe(sizePx - headerPx - footerPx - statRowPx - 2 * statPaddingPx);
-    expect(mapHeight(6)).toBe(sizePx - headerPx - footerPx - 2 * statRowPx - 2 * statPaddingPx);
-    expect(mapHeight(9)).toBe(mapHeight(6));
-    expect(mapHeight(6)).toBeGreaterThan(sizePx / 2);
+  it('fait une image en hauteur, au format d\'un écran (1080 × 1920)', () => {
+    expect(SHARE_IMAGE.widthPx).toBe(1080);
+    expect(SHARE_IMAGE.heightPx).toBe(1920);
   });
 
-  it('tient la trace dans la carte quel que soit le nombre de chiffres', () => {
+  it('dimensionne le cartouche sur les rangées de chiffres, à 60 px du bas', () => {
+    expect([0, 3, 6].map(cardHeight)).toEqual([0, 270, 400]);
+    expect(cardHeight(9)).toBe(cardHeight(6));
+    for (const count of [1, 3, 4, 6]) expect(cardTop(count) + cardHeight(count)).toBe(SHARE_IMAGE.heightPx - 60);
+  });
+
+  it('cadre la trace entre le titre et le cartouche : plus de chiffres, zone plus basse', () => {
+    expect(mapHeight(0)).toBe(SHARE_IMAGE.heightPx - SHARE_IMAGE.footerVeilPx - SHARE_IMAGE.frameTopPx);
+    expect(mapHeight(3)).toBe(cardTop(3) - SHARE_IMAGE.frameTopPx);
+    expect(mapHeight(0)).toBeGreaterThan(mapHeight(3));
+    expect(mapHeight(3)).toBeGreaterThan(mapHeight(6));
+    expect(mapHeight(9)).toBe(mapHeight(6));
+    expect(mapHeight(6)).toBeGreaterThan(SHARE_IMAGE.heightPx / 2);
+  });
+
+  it('tient la trace entre le titre et le cartouche quel que soit le nombre de chiffres', () => {
     const points: [number, number][] = [[43.5, 3.8], [43.62, 3.95]];
+    const { widthPx, heightPx, frameTopPx, paddingPx } = SHARE_IMAGE;
     for (const count of [0, 4, 6]) {
-      const height = mapHeight(count);
-      const view = fitView(points, SHARE_IMAGE.sizePx, height)!;
+      const view = fullView(fitView(points, widthPx, mapHeight(count))!, frameTopPx, heightPx);
+      const bottom = count === 0 ? heightPx - SHARE_IMAGE.footerVeilPx : cardTop(count);
       for (const [lat, lon] of points) {
         const p = projectPoint(view, lat, lon);
-        expect(p.x).toBeGreaterThanOrEqual(SHARE_IMAGE.paddingPx - 1e-6);
-        expect(p.x).toBeLessThanOrEqual(SHARE_IMAGE.sizePx - SHARE_IMAGE.paddingPx + 1e-6);
-        expect(p.y).toBeGreaterThanOrEqual(SHARE_IMAGE.paddingPx - 1e-6);
-        expect(p.y).toBeLessThanOrEqual(height - SHARE_IMAGE.paddingPx + 1e-6);
+        expect(p.x).toBeGreaterThanOrEqual(paddingPx - 1e-6);
+        expect(p.x).toBeLessThanOrEqual(widthPx - paddingPx + 1e-6);
+        expect(p.y).toBeGreaterThanOrEqual(frameTopPx + paddingPx - 1e-6);
+        expect(p.y).toBeLessThanOrEqual(bottom - paddingPx + 1e-6);
       }
     }
+  });
+
+  it('étend le fond de carte à toute l\'image', () => {
+    const { widthPx, heightPx, frameTopPx } = SHARE_IMAGE;
+    const fitted = fitView(loop, widthPx, mapHeight(6))!;
+    const view = fullView(fitted, frameTopPx, heightPx);
+    expect(view.zoom).toBe(fitted.zoom);
+    expect(view.scale).toBe(fitted.scale);
+    expect(view.heightPx).toBe(heightPx);
+    const tiles = viewTiles(view);
+    expect(Math.min(...tiles.map((t) => t.x))).toBeLessThanOrEqual(0);
+    expect(Math.min(...tiles.map((t) => t.y))).toBeLessThanOrEqual(0);
+    expect(Math.max(...tiles.map((t) => t.x + t.sizePx))).toBeGreaterThanOrEqual(widthPx);
+    expect(Math.max(...tiles.map((t) => t.y + t.sizePx))).toBeGreaterThanOrEqual(heightPx);
   });
 });
 

@@ -1,4 +1,4 @@
-import { fitView, mapHeight, projectPoint, SHARE_IMAGE, statColumns, viewTiles, type ShareStat } from '../core/shareImage';
+import { cardHeight, cardTop, fitView, fullView, mapHeight, projectPoint, SHARE_IMAGE, statColumns, viewTiles, type ShareStat } from '../core/shareImage';
 import { MAP_BASES, type MapBase } from '../core/mapBase';
 import { tileKey, type TileCoord } from '../core/tiles';
 import { lightToken } from '../theme/lightToken';
@@ -6,10 +6,12 @@ import { loadMapTile } from './mapTiles';
 import type { TrackSegment } from './TrackSegmentsLayer';
 
 /**
- * Image de partage d'une session, carrée, dessinée sur un canevas : un bandeau à la
- * couleur de la famille (titre, activité et date), la trace colorée comme
- * dans l'analyse sur son fond de carte, puis les chiffres retenus. Le
- * cadrage et la mise en page se calculent dans `core/shareImage.ts`.
+ * Image de partage d'une session, en hauteur (1080 × 1920), dessinée sur un
+ * canevas : la trace colorée comme dans l'analyse sur son fond de carte, qui
+ * remplit l'image ; en haut, sur un voile blanc bordé de la couleur de la
+ * famille, le titre, l'activité et la date ; en bas, les chiffres retenus dans
+ * un cartouche blanc, puis le pied. Le cadrage et la mise en page se calculent
+ * dans `core/shareImage.ts`.
  */
 
 export interface ShareImageContent {
@@ -105,8 +107,10 @@ const drawFitted = (
   ctx.fillText(fitText(ctx, text, maxWidth), x, y);
 };
 
-const drawTrack = (ctx: CanvasRenderingContext2D, content: ShareImageContent, mapPx: number) => {
-  const view = fitView(content.segments.flatMap((s) => s.positions), SHARE_IMAGE.sizePx, mapPx);
+/** Trace cadrée entre le titre et le cartouche, la carte s'étendant à toute l'image. */
+const drawTrack = (ctx: CanvasRenderingContext2D, content: ShareImageContent, count: number) => {
+  const fitted = fitView(content.segments.flatMap((s) => s.positions), SHARE_IMAGE.widthPx, mapHeight(count));
+  const view = fitted && fullView(fitted, SHARE_IMAGE.frameTopPx, SHARE_IMAGE.heightPx);
   return { view, draw: () => {
     if (!view || content.segments.length === 0) return;
     const at = ([lat, lon]: readonly [number, number]) => projectPoint(view, lat, lon);
@@ -149,12 +153,21 @@ const drawTrack = (ctx: CanvasRenderingContext2D, content: ShareImageContent, ma
   } };
 };
 
+/** Rectangle aux coins arrondis, ajouté au chemin courant ; coins droits sur un canevas trop ancien. */
+const roundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+  if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, w, h, r);
+  else ctx.rect(x, y, w, h);
+};
+
 /** L'image, en PNG. */
 export const drawShareImage = async (content: ShareImageContent, tileImage: TileImageLoader): Promise<Blob> => {
-  const { sizePx: widthPx, headerPx, statRowPx, statPaddingPx, footerPx, maxStats } = SHARE_IMAGE;
-  const heightPx = widthPx;
+  const {
+    widthPx, heightPx, marginPx: margin, veilPx, edgePx, titleBaselinePx, subtitleBaselinePx, cardMarginXPx, cardRadiusPx,
+    cardBarPx, statsTopPx, statsMarginXPx, statRowPx, statLabelBaselinePx, statValueBaselinePx,
+    ruleFromBottomPx, footerFromBottomPx, footerVeilPx, maxStats,
+  } = SHARE_IMAGE;
   const stats = content.stats.slice(0, maxStats);
-  const mapPx = mapHeight(stats.length);
+  const count = stats.length;
   const canvas = document.createElement('canvas');
   canvas.width = widthPx;
   canvas.height = heightPx;
@@ -165,32 +178,12 @@ export const drawShareImage = async (content: ShareImageContent, tileImage: Tile
   await ensureFonts(family, logo);
   const ink = token('--ink', '#1b1f24');
   const muted = token('--muted', '#5b6470');
-  const margin = 60;
-
-  ctx.fillStyle = token('--surface', '#ffffff');
-  ctx.fillRect(0, 0, widthPx, heightPx);
-
-  // Bandeau.
-  ctx.fillStyle = content.accent;
-  ctx.fillRect(0, 0, widthPx, headerPx);
-  ctx.fillStyle = token('--on-accent', '#ffffff');
   ctx.textBaseline = 'alphabetic';
-  ctx.font = `700 58px ${family}`;
-  ctx.fillText(fitText(ctx, content.title, widthPx - 2 * margin), margin, 80);
-  ctx.globalAlpha = 0.88;
-  ctx.font = `400 32px ${family}`;
-  ctx.fillText(fitText(ctx, content.subtitle, widthPx - 2 * margin), margin, 126);
-  ctx.globalAlpha = 1;
 
-  // Carte.
-  ctx.save();
-  ctx.translate(0, headerPx);
-  ctx.beginPath();
-  ctx.rect(0, 0, widthPx, mapPx);
-  ctx.clip();
+  // Carte sur toute l'image ; sans fond (muscu, fond décoché), un aplat.
   ctx.fillStyle = token('--surface-sunken', '#e9e7e2');
-  ctx.fillRect(0, 0, widthPx, mapPx);
-  const track = drawTrack(ctx, content, mapPx);
+  ctx.fillRect(0, 0, widthPx, heightPx);
+  const track = drawTrack(ctx, content, count);
   if (content.withMap && track.view) {
     const placed = viewTiles(track.view);
     const images = await Promise.all(placed.map((p) => tileImage(p.tile)));
@@ -203,43 +196,78 @@ export const drawShareImage = async (content: ShareImageContent, tileImage: Tile
   track.draw();
   // Sans trace (muscu), pas de fond de carte : pas de mention non plus.
   if (content.withMap && track.view) {
-    // Mention qu'exigent les conditions d'usage des tuiles du fond.
+    // Mention qu'exigent les conditions d'usage des tuiles du fond, au ras du bas, sous le cartouche.
     ctx.font = `400 22px ${family}`;
     const text = MAP_BASES[content.base].credit;
     const w = ctx.measureText(text).width + 20;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.fillRect(widthPx - w, mapPx - 34, w, 34);
+    ctx.fillRect(widthPx - w, heightPx - 34, w, 34);
     ctx.fillStyle = ink;
-    ctx.fillText(text, widthPx - w + 10, mapPx - 10);
+    ctx.fillText(text, widthPx - w + 10, heightPx - 10);
   }
-  ctx.restore();
 
-  // Chiffres.
-  const count = stats.length;
+  // Voile du haut, liseré de la famille, titre et sous-titre.
+  const veil = ctx.createLinearGradient(0, 0, 0, veilPx);
+  veil.addColorStop(0, 'rgba(255, 255, 255, 0.96)');
+  veil.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  ctx.fillStyle = veil;
+  ctx.fillRect(0, 0, widthPx, veilPx);
+  ctx.fillStyle = content.accent;
+  ctx.fillRect(0, 0, edgePx, veilPx);
+  ctx.fillStyle = ink;
+  ctx.font = `700 58px ${family}`;
+  ctx.fillText(fitText(ctx, content.title, widthPx - 2 * margin), margin, titleBaselinePx);
+  ctx.fillStyle = muted;
+  ctx.font = `400 32px ${family}`;
+  ctx.fillText(fitText(ctx, content.subtitle, widthPx - 2 * margin), margin, subtitleBaselinePx);
+
+  // Cartouche des chiffres ; sans chiffre, un voile sous le pied seul.
+  const cardH = cardHeight(count);
+  const cardY = cardTop(count);
+  const cardW = widthPx - 2 * cardMarginXPx;
   if (count > 0) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    ctx.beginPath();
+    roundedRect(ctx, cardMarginXPx, cardY, cardW, cardH, cardRadiusPx);
+    ctx.fill();
+    // Barre de la famille découpée dans la forme du cartouche : elle épouse ses coins arrondis.
+    ctx.save();
+    ctx.beginPath();
+    roundedRect(ctx, cardMarginXPx, cardY, cardW, cardH, cardRadiusPx);
+    ctx.clip();
+    ctx.fillStyle = content.accent;
+    ctx.fillRect(cardMarginXPx, cardY, cardW, cardBarPx);
+    ctx.restore();
     const columns = statColumns(count);
-    const columnPx = (widthPx - 2 * margin) / columns;
-    const top = headerPx + mapPx + statPaddingPx;
+    const columnPx = (widthPx - 2 * statsMarginXPx) / columns;
+    const top = cardY + statsTopPx;
     stats.forEach((stat, i) => {
-      const x = margin + (i % columns) * columnPx;
+      const x = statsMarginXPx + (i % columns) * columnPx;
       const y = top + Math.floor(i / columns) * statRowPx;
       ctx.fillStyle = muted;
-      drawFitted(ctx, stat.label, x, y + 36, columnPx - 24, { weight: 400, maxPx: 28, minPx: 20, family });
+      drawFitted(ctx, stat.label, x, y + statLabelBaselinePx, columnPx - 24, { weight: 400, maxPx: 28, minPx: 20, family });
       ctx.fillStyle = ink;
-      drawFitted(ctx, stat.value, x, y + 94, columnPx - 24, { weight: 700, maxPx: 50, minPx: 32, family });
+      drawFitted(ctx, stat.value, x, y + statValueBaselinePx, columnPx - 24, { weight: 700, maxPx: 50, minPx: 32, family });
     });
+    ctx.fillStyle = token('--line', '#e3e1dc');
+    ctx.fillRect(statsMarginXPx, cardY + cardH - ruleFromBottomPx, widthPx - 2 * statsMarginXPx, 2);
+  } else {
+    const foot = ctx.createLinearGradient(0, heightPx - footerVeilPx, 0, heightPx);
+    foot.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    foot.addColorStop(1, 'rgba(255, 255, 255, 0.85)');
+    ctx.fillStyle = foot;
+    ctx.fillRect(0, heightPx - footerVeilPx, widthPx, footerVeilPx);
   }
 
-  // Pied.
-  ctx.fillStyle = token('--line', '#e3e1dc');
-  ctx.fillRect(margin, heightPx - footerPx, widthPx - 2 * margin, 2);
+  // Pied, à la même hauteur avec ou sans cartouche.
+  const footerY = cardY + cardH - footerFromBottomPx;
   ctx.fillStyle = token('--faint', '#8a9099');
   ctx.font = `400 26px ${logo}`;
-  ctx.fillText('TRACKER', margin, heightPx - 22);
+  ctx.fillText('TRACKER', margin, footerY);
   ctx.font = `600 26px ${family}`;
   if (content.author !== null) {
     ctx.textAlign = 'right';
-    ctx.fillText(fitText(ctx, content.author, widthPx / 2 - margin), widthPx - margin, heightPx - 22);
+    ctx.fillText(fitText(ctx, content.author, widthPx / 2 - margin), widthPx - margin, footerY);
     ctx.textAlign = 'left';
   }
 

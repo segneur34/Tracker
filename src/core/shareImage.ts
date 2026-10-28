@@ -17,22 +17,48 @@ export interface ShareStat {
 }
 
 export const SHARE_IMAGE = {
-  /** Image carrée, côté en pixels. */
-  sizePx: 1080,
-  /** Hauteur du bandeau du titre. */
-  headerPx: 150,
+  /** Image en hauteur, au format d'un écran de téléphone (9:16). */
+  widthPx: 1080,
+  heightPx: 1920,
+  /** Marge gauche du titre et du pied, et droite du pseudo. */
+  marginPx: 60,
+  /** Voile blanc dégradé du haut, sous le titre. */
+  veilPx: 300,
+  /** Liseré à la couleur de la famille, sur le bord gauche du voile. */
+  edgePx: 14,
+  /** Lignes de base du titre et du sous-titre. */
+  titleBaselinePx: 96,
+  subtitleBaselinePx: 146,
+  /** Haut de la zone où se cadre la trace, sous le sous-titre ; elle descend jusqu'au cartouche. */
+  frameTopPx: 180,
+  /** Cartouche des chiffres : marges à gauche et à droite, puis sous lui. */
+  cardMarginXPx: 40,
+  cardMarginBottomPx: 60,
+  /** Hauteur du cartouche au-dessus et au-dessous des rangées de chiffres. */
+  cardPaddingPx: 70,
+  cardRadiusPx: 28,
+  /** Barre à la couleur de la famille en haut du cartouche. */
+  cardBarPx: 12,
+  /** Haut de la grille des chiffres sous celui du cartouche, et ses marges à gauche et à droite. */
+  statsTopPx: 44,
+  statsMarginXPx: 90,
   /** Hauteur d'une rangée de chiffres. */
   statRowPx: 130,
-  /** Marges de la grille des chiffres, en haut et en bas. */
-  statPaddingPx: 30,
-  /** Pied de l'image. */
-  footerPx: 60,
+  /** Lignes de base du libellé et de la valeur dans une rangée. */
+  statLabelBaselinePx: 36,
+  statValueBaselinePx: 94,
+  /** Trait au-dessus du pied, depuis le bas du cartouche. */
+  ruleFromBottomPx: 64,
+  /** Ligne de base du pied, depuis le bas du cartouche. */
+  footerFromBottomPx: 24,
+  /** Sans aucun chiffre : voile blanc du bas, sous le pied seul. */
+  footerVeilPx: 160,
   /** Chiffres au plus sur l'image : deux rangées de trois. */
   maxStats: 6,
   tileSizePx: 256,
   /** Zoom le plus fort du fond : au-delà, une trace minuscule n'est pas plus lisible. */
   maxZoom: 17,
-  /** Marge entre la trace et le bord de la carte. */
+  /** Marge entre la trace et le bord de sa zone de cadrage. */
   paddingPx: 70,
   /** Chiffres retenus d'office, à la première ouverture : les premiers de la synthèse. */
   defaultStatCount: 6,
@@ -44,12 +70,22 @@ export const statColumns = (count: number): number => (count <= 3 ? Math.max(cou
 /** Rangées de la grille des chiffres. */
 export const statRows = (count: number): number => (count <= 0 ? 0 : Math.ceil(count / statColumns(count)));
 
-/** Hauteur de la carte pour `count` chiffres : ce que laissent le bandeau, la grille et le pied dans le carré. */
-export const mapHeight = (count: number): number => {
+/** Hauteur du cartouche des chiffres pour `count` chiffres ; 0 sans chiffre (pas de cartouche). */
+export const cardHeight = (count: number): number => {
   const rows = statRows(Math.min(count, SHARE_IMAGE.maxStats));
-  const statsPx = rows === 0 ? 0 : rows * SHARE_IMAGE.statRowPx + 2 * SHARE_IMAGE.statPaddingPx;
-  return SHARE_IMAGE.sizePx - SHARE_IMAGE.headerPx - statsPx - SHARE_IMAGE.footerPx;
+  return rows === 0 ? 0 : 2 * SHARE_IMAGE.cardPaddingPx + rows * SHARE_IMAGE.statRowPx;
 };
+
+/** Haut du cartouche des chiffres, posé à `cardMarginBottomPx` du bas de l'image. */
+export const cardTop = (count: number): number => SHARE_IMAGE.heightPx - SHARE_IMAGE.cardMarginBottomPx - cardHeight(count);
+
+/**
+ * Hauteur de la zone où se cadre la trace pour `count` chiffres : de
+ * `frameTopPx`, sous le titre, jusqu'au haut du cartouche, ou, sans chiffre,
+ * jusqu'au voile du pied. La carte, elle, remplit toute l'image (`fullView`).
+ */
+export const mapHeight = (count: number): number =>
+  (cardHeight(count) === 0 ? SHARE_IMAGE.heightPx - SHARE_IMAGE.footerVeilPx : cardTop(count)) - SHARE_IMAGE.frameTopPx;
 
 /** Point du monde en pixels de tuile au zoom `zoom` (Mercator sphérique, comme les tuiles d'OSM). */
 export const worldPx = (lat: number, lon: number, zoom: number): { x: number; y: number } => {
@@ -115,6 +151,19 @@ export const projectPoint = (view: ShareView, lat: number, lon: number): { x: nu
   const p = worldPx(lat, lon, view.zoom);
   return { x: (p.x - view.originX) * view.scale, y: (p.y - view.originY) * view.scale };
 };
+
+/**
+ * Cadre étendu à toute l'image : `view` cadre la trace dans une zone de
+ * `view.heightPx` qui commence à `topPx` du haut de l'image ; le cadre rendu
+ * commence en haut de l'image et descend sur `heightPx`, au même zoom. Les
+ * tuiles (`viewTiles`) couvrent alors toute l'image et `projectPoint` donne
+ * les coordonnées de l'image.
+ */
+export const fullView = (view: ShareView, topPx: number, heightPx: number = SHARE_IMAGE.heightPx): ShareView => ({
+  ...view,
+  originY: view.originY - topPx / view.scale,
+  heightPx,
+});
 
 /** Tuile de fond et sa place dans le cadre. */
 export interface PlacedTile {

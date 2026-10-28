@@ -3,16 +3,16 @@
 // Sur un profil neuf. Réseau : les tuiles d'OpenStreetMap seulement (fond de l'image) ; IGN, Overpass et BRouter
 // bloqués. Dure environ 1 min 30. Le script :
 //  1. importe une boucle de course et la voile de `make-gpx.mjs` ;
-//  2. pour chacune : « Partager » en tête du menu « … », la fenêtre, l'aperçu (carré de 1080 px), les pastilles
+//  2. pour chacune : « Partager » en tête du menu « … », la fenêtre, l'aperçu (1080 × 1920, en hauteur), les pastilles
 //     égales aux chiffres de l'onglet « général » (sans les « — »), les six premières enfoncées ; l'image est
 //     gardée dans le dossier des captures (`partage-<page>.png`) ;
-//  3. en course : deux pastilles seulement (image toujours carrée), fond de carte décoché, choix rangés sous
+//  3. en course : deux pastilles seulement (image toujours en 1080 × 1920), fond de carte décoché, choix rangés sous
 //     l'activité de la session (`tracker.partage`) et retrouvés à la réouverture ; « Partager » par le partage du
 //     navigateur (simulé : fichier PNG nommé d'après la session), puis sans partage (téléchargement et message) ;
 //     Échap ferme ;
 //  4. à 390×844 : la fenêtre tient dans l'écran, sans débordement de la page ;
 //  5. fin d'enregistrement, à 390×844 : rejeu ×600 de la boucle en À pied, Arrêter, puis « … » › « Partager » de la
-//     carte « Session terminée » : aperçu carré, chiffres du résumé, choix de la course repris (même activité).
+//     carte « Session terminée » : aperçu en 1080 × 1920, chiffres du résumé, choix de la course repris (même activité).
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -151,8 +151,8 @@ const saveImage = async (name) => {
 };
 const generalStats = () => evaluate(`[...document.querySelectorAll('.an-sheet__stats--always .an-sheet__stat')]
   .map((s) => ({ label: s.querySelector('.an-sheet__stat-label').textContent.trim(), value: s.querySelector('.an-sheet__stat-value').textContent.trim() }))`);
-/** L'image est carrée quel que soit le nombre de chiffres (`SHARE_IMAGE.sizePx`). */
-const isSquare = (size) => size?.[0] === 1080 && size?.[1] === 1080;
+/** L'image est en hauteur, 1080 × 1920, quel que soit le nombre de chiffres (`SHARE_IMAGE.widthPx`, `heightPx`). */
+const isPortrait = (size) => size?.[0] === 1080 && size?.[1] === 1920;
 
 // --- 2. Chaque analyse ---
 for (const s of SESSIONS) {
@@ -171,7 +171,7 @@ for (const s of SESSIONS) {
   check(`${s.page} : chiffres communs avec « général »`, shared.length >= 3, shared.map((g) => g.label).join(' | '));
   check(`${s.page} : les six premières enfoncées`, c.filter((x) => x.on).length === Math.min(6, c.length) && c.slice(0, 6).every((x) => x.on));
   const size = await imageSize();
-  check(`${s.page} : image carrée de 1080 × 1080`, isSquare(size), JSON.stringify(size));
+  check(`${s.page} : image en hauteur de 1080 × 1920`, isPortrait(size), JSON.stringify(size));
   await saveImage(`partage-${s.page}`);
   await shoot(`partage-fenetre-${s.page}`);
   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
@@ -188,7 +188,7 @@ for (const label of c.filter((x) => x.on).slice(2).map((x) => x.label)) await pr
 await waitImage();
 c = await chips();
 check('course : deux pastilles enfoncées', c.filter((x) => x.on).length === 2, c.filter((x) => x.on).map((x) => x.label).join(' | '));
-check('course : deux chiffres, image toujours carrée', isSquare(await imageSize()), JSON.stringify(await imageSize()));
+check('course : deux chiffres, image toujours en 1080 × 1920', isPortrait(await imageSize()), JSON.stringify(await imageSize()));
 await evaluate(`document.querySelector('.share-dialog__check input').click()`);
 await waitImage();
 await saveImage('partage-course-sans-carte');
@@ -277,7 +277,7 @@ const cardMenu = await evaluate(`(() => {
 check('fin d\'enregistrement : « Partager » dans le « … » de « Session terminée »', Boolean(cardMenu?.includes('Partager')), JSON.stringify(cardMenu));
 await evaluate(`[...document.querySelectorAll('.ui-card .ui-more__panel button')].find((x) => x.textContent.trim() === 'Partager')?.click()`);
 check('fin d\'enregistrement : aperçu dessiné', await waitImage());
-check('fin d\'enregistrement : image carrée de 1080 × 1080', isSquare(await imageSize()), JSON.stringify(await imageSize()));
+check('fin d\'enregistrement : image en hauteur de 1080 × 1920', isPortrait(await imageSize()), JSON.stringify(await imageSize()));
 c = await chips();
 console.log('pastilles :', c.map((x) => `${x.label}${x.on ? ' *' : ''}`).join(' | '));
 check('fin d\'enregistrement : chiffres du résumé', c.some((x) => x.label === 'Distance') && c.length >= 6, String(c.length));
