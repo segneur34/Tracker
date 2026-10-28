@@ -19,7 +19,7 @@ Argument reçu : `$ARGUMENTS`
 Relève, sans rien modifier :
 - `git status --short` : fichiers modifiés non commités ;
 - `git log --oneline origin/main..main` : commits locaux non envoyés ;
-- `~/.claude/plans/FILE-DES-LOTS.md` : lots « en cours », « à valider », « bloqué (Q n) », questions sans réponse ;
+- `docs/FILE-DES-LOTS.md` : lots « en cours », « à valider », « bloqué (Q n) », questions sans réponse ;
 - `docs/ESSAIS.md` : essais en attente ;
 - la conversation : questions posées à l'utilisateur restées sans réponse, idées lancées en passant, essais à demander nés pendant la session.
 
@@ -48,7 +48,7 @@ Sans résultats dans l'argument : aucune passe doc (règle : doc après validati
 Écris, puis committe ce qui est dans le dépôt :
 - `docs/ESSAIS.md` : les essais nés dans la session qui n'y sont pas encore ; seulement les critiques ou douteux (GPS, capteurs, ceinture, notification, écran éteint, rendu tactile, vrai doute, question à trancher) ; numéros qui se suivent, jamais réutilisés.
 - `docs/A-FAIRE.md` : une fiche « à clarifier » pour une idée lancée en passant dans la session et sans fiche ; rien d'autre.
-- `~/.claude/plans/FILE-DES-LOTS.md` : état de chaque lot touché, questions et réponses de la session (table « Questions »), une ligne dans « Journal des paquets ».
+- `docs/FILE-DES-LOTS.md` (part dans le commit de doc de la clôture) : état de chaque lot touché, questions et réponses de la session (table « Questions »), une ligne dans « Journal des paquets ».
 - Mémoire `point-de-reprise-cible-mobile.md` (`~/.claude/projects/c--Users-segne-tracker/memory/`) : rien à écrire, l'état des lots est dans la file et les essais dans `docs/ESSAIS.md` ; seulement si le rythme de travail a changé dans la session, corriger son paragraphe « Rythme », sans journal.
 
 ## 5. APK, si le téléphone est branché

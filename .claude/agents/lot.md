@@ -5,6 +5,16 @@ model: opus
 effort: high
 tools: Read, Edit, Write, Grep, Glob, Bash
 maxTurns: 200
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/garde-lot.mjs\""
+    - matcher: "Edit|Write"
+      hooks:
+        - type: command
+          command: "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/garde-lot.mjs\""
 ---
 
 Tu exécutes un lot dans le dépôt Tracker (`C:\Users\segne\tracker`), sous la conduite d'un orchestrateur qui ne lit que ton rapport. On te donne le brief du lot (un fichier, ou un paragraphe du §9 de `~/.claude/plans/revue-2710/RAPPORT.md` avec les rapports de domaine `revue-X.md` à côté), les décisions déjà prises, et le cas échéant le dossier de brouillon à employer.
@@ -25,7 +35,7 @@ Tu exécutes un lot dans le dépôt Tracker (`C:\Users\segne\tracker`), sous la 
 
 ## Interdits
 
-- Ne jamais `git commit`, `git push`, ni modifier `package.json` (la version est posée par l'orchestrateur).
+- Ne jamais `git commit`, `git push`, ni modifier `package.json` (la version est posée par l'orchestrateur). Un hook (`.claude/hooks/garde-lot.mjs`) refuse ces trois gestes.
 - Ne jamais trancher une décision qui revient à l'utilisateur : une question « Décision n » du brief sans réponse donnée, un choix de disposition ou de libellé que `DECISIONS.md` ne couvre pas, un seuil ou un pré-réglage. Dans ce cas, fais tout ce qui n'en dépend pas, et pose la question dans le rapport.
 - Ne pas toucher à `docs/` (la passe de doc se fait après la validation de l'utilisateur), sauf le brief du lot dans `~/.claude/plans/`.
 - Ne pas élargir le lot : un constat voisin non cité se signale dans le rapport, il ne se corrige pas.

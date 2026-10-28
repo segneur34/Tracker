@@ -14,7 +14,7 @@ Argument reçu : `$ARGUMENTS` (vide : « on reprend » sans précision ; sinon c
 ## 1. Lectures, dans cet ordre
 
 - La mémoire `point-de-reprise-cible-mobile.md` (`~/.claude/projects/c--Users-segne-tracker/memory/`) : paragraphes « Rythme » et « Pièges du poste » seulement ; l'état des lots n'y est pas.
-- `~/.claude/plans/FILE-DES-LOTS.md` : table « Ordre et état », questions sans réponse, dernière ligne du journal des paquets.
+- `docs/FILE-DES-LOTS.md` : table « Ordre et état », questions sans réponse, dernière ligne du journal des paquets.
 - `git status --short`, `git log --oneline -8`, `git log --oneline origin/main..main` : travail non commité, derniers commits, commits non envoyés. Un fichier modifié non commité au début d'une session est un signe qu'une clôture a été manquée : dis-le.
 - `docs/ESSAIS.md` : table « À faire ».
 - `docs/A-FAIRE.md` : fiches de priorité 4 et 5, et fiches « à clarifier ».

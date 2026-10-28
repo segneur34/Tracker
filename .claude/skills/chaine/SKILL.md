@@ -1,13 +1,13 @@
 ---
 name: chaine
-description: Mode chaîne sur Tracker : enchaîne les lots de la file (~/.claude/plans/FILE-DES-LOTS.md) en les confiant aux sous-agents lot, verif, relecture et banc, commite chaque lot vérifié « à valider », ne s'adresse à l'utilisateur que pour une vraie décision, s'arrête quand un paquet est prêt.
+description: Mode chaîne sur Tracker : enchaîne les lots de la file (docs/FILE-DES-LOTS.md) en les confiant aux sous-agents lot, verif, relecture et banc, commite chaque lot vérifié « à valider », ne s'adresse à l'utilisateur que pour une vraie décision, s'arrête quand un paquet est prêt.
 argument-hint: "[lot N | ok partout | ok sauf N : … | consignes]"
 disable-model-invocation: true
 ---
 
 # /chaine : on reprend la file
 
-Tu es l'orchestrateur du mode chaîne de Tracker (`C:\Users\segne\tracker`). Ce fichier décrit la boucle en entier ; `docs/MODELES.md` ne fait qu'y renvoyer. La file `~/.claude/plans/FILE-DES-LOTS.md` fait foi : ordre, dépendances, états, questions et réponses. Tu organises et délègues : tu écris le moins de code possible toi-même, et tu ne lis que les rapports des agents, jamais leur travail en détail.
+Tu es l'orchestrateur du mode chaîne de Tracker (`C:\Users\segne\tracker`). Ce fichier décrit la boucle en entier ; `docs/MODELES.md` ne fait qu'y renvoyer. La file `docs/FILE-DES-LOTS.md` fait foi : ordre, dépendances, états, questions et réponses. Tu organises et délègues : tu écris le moins de code possible toi-même, et tu ne lis que les rapports des agents, jamais leur travail en détail.
 
 Argument reçu : `$ARGUMENTS`
 - Vide : prendre le premier lot « à faire » dont les dépendances sont levées.
@@ -26,7 +26,7 @@ Comme dans `/clore` : essais ok dans « Faits » de `docs/ESSAIS.md`, lots « va
 ## 2. La boucle
 
 Pour chaque lot, l'un après l'autre (un seul dépôt : version et HISTORIQUE se croiseraient) :
-1. Prendre le premier lot « à faire » dont la colonne « Dépend de » est levée. `git status --short` doit être vide ; sinon un lot précédent a été mal clos (étape 4 ou 5) : le dire et s'arrêter. Passer le lot « en cours » dans la file.
+1. Prendre le premier lot « à faire » dont la colonne « Dépend de » est levée. `git status --short` doit être vide (hors `docs/FILE-DES-LOTS.md`, dont les changements partent avec le commit suivant, celui du lot ou de la doc) ; sinon un lot précédent a été mal clos (étape 4 ou 5) : le dire et s'arrêter. Passer le lot « en cours » dans la file.
 2. Deux garde-fous avant de coder, puis le lancement :
    - **Maquette d'abord** pour un lot qui change ce que l'utilisateur voit (page neuve, disposition, image de partage, thème) : si la file ou le brief ne cite pas une maquette validée, ne lance pas le lot ; traite-le comme BLOQUÉ par une question majeure (étape 4) et propose la maquette. C'est le plan de l'utilisateur, le seul qui vaille d'attendre.
    - **Plan par l'agent `Plan`** pour un lot Opus high ou Fable (page ou fonctionnalité neuve, bug multi-fichiers, noyau) : lance-le avec le brief, en lui demandant de rendre son plan d'un coup, en 60 lignes au plus ; lis-le, confronte-le à `docs/DECISIONS.md` et aux règles de `CLAUDE.md`, tranche les questions mineures (notées dans la file), pose une question majeure à l'utilisateur avant tout code (même règle qu'un BLOQUÉ), puis joins le plan au brief donné à `lot`. Rien de tout cela pour un lot Sonnet medium : le brief suffit.
@@ -39,8 +39,8 @@ Pour chaque lot, l'un après l'autre (un seul dépôt : version et HISTORIQUE se
 4. Rapport **BLOQUÉ** (une question « Décision n » sans réponse), trois cas :
    - question mineure (nommage, ordre, choix d'implémentation, seuil que `DECISIONS.md` encadre déjà) : tranche-la toi-même, note-la dans la table « Questions » de la file avec « tranchée par l'orchestrateur » et pourquoi, et renvoie la réponse au même agent par `SendMessage` ;
    - question majeure (produit, donnée perdue, seuil ou pré-réglage nouveau) et `git status --short` vide : pose-la à l'utilisateur (`AskUserQuestion`, et `PushNotification` vers le téléphone si l'outil est là) ; à la réponse, `SendMessage` au même agent ;
-   - question majeure et arbre modifié : `git stash push -u -m "lot N bloqué (Q n)"`, lot « bloqué (Q n) » et question dans la file, puis lot suivant qui n'en dépend pas ; les questions en attente se posent toutes ensemble à l'arrêt (étape 4). Reprise dans la même conversation : `git stash pop`, puis `SendMessage` au même agent avec la réponse ; dans une autre conversation : `git stash pop`, puis un agent `lot` neuf avec le brief, les réponses, et la mention que l'arbre porte déjà le travail commencé.
-5. Rapport **ÉCHEC** : lis sa section « Échec », vérifie que l'arbre ne porte que le travail de ce lot, remets-le au propre (`git checkout -- .` puis `git clean -fd -- src android outils`), et relance une fois sur le modèle du dessus (Sonnet → Opus → Fable, paramètre `model`) avec le brief et cette section « Échec » jointe ; au second échec, note-le dans la file et passe au suivant.
+   - question majeure et arbre modifié : `git stash push -u -m "lot N bloqué (Q n)" -- . ':!docs/FILE-DES-LOTS.md'`, lot « bloqué (Q n) » et question dans la file, puis lot suivant qui n'en dépend pas ; les questions en attente se posent toutes ensemble à l'arrêt (étape 4). Reprise dans la même conversation : `git stash pop`, puis `SendMessage` au même agent avec la réponse ; dans une autre conversation : `git stash pop`, puis un agent `lot` neuf avec le brief, les réponses, et la mention que l'arbre porte déjà le travail commencé.
+5. Rapport **ÉCHEC** : lis sa section « Échec », vérifie que l'arbre ne porte que le travail de ce lot, remets-le au propre (`git checkout -- src android outils` puis `git clean -fd -- src android outils`, jamais `git checkout -- .` : la file n'est jamais touchée), et relance une fois sur le modèle du dessus (Sonnet → Opus → Fable, paramètre `model`) avec le brief et cette section « Échec » jointe ; au second échec, note-le dans la file et passe au suivant.
 
 ## 3. Ce que tu demandes à l'utilisateur
 

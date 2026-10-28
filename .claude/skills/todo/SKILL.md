@@ -21,7 +21,7 @@ Note la réponse dans la fiche N, datée du jour, à la suite de sa question (`�
 
 ## Des notes en vrac : la mise au propre
 
-1. **Lis le contexte** avant d'écrire : les fiches existantes d'A-FAIRE, la table « Ordre et état » et les questions de `~/.claude/plans/FILE-DES-LOTS.md`, et la section de `docs/DECISIONS.md` du domaine de chaque note (table de `CLAUDE.md`, « Décisions de l'utilisateur »). Cherche le doublon et la contradiction.
+1. **Lis le contexte** avant d'écrire : les fiches existantes d'A-FAIRE, la table « Ordre et état » et les questions de `docs/FILE-DES-LOTS.md`, et la section de `docs/DECISIONS.md` du domaine de chaque note (table de `CLAUDE.md`, « Décisions de l'utilisateur »). Cherche le doublon et la contradiction.
 2. **Découpe** : une fiche par idée, même si une note en contient plusieurs ; une note qui regroupe deux sujets donne deux fiches, chacune avec le morceau de texte qui la concerne.
 3. **Date** : un export WhatsApp porte la date devant chaque message (`jj/mm/aaaa hh:mm - Nom : …`) : c'est le « Noté le ». Sans date, « reçu le » seulement, à la date du jour.
 4. **Priorité** : si la note en contient une (« p4 », « [4] », « prio 4 », « 4/5 », « priorité 4 », « important » = 4, « urgent » = 5), elle est prise telle quelle, sans « (proposée) ». Sinon propose-la d'après la grille d'A-FAIRE (5 : gêne l'usage ou faux chiffre ; 4 : à faire bientôt ; 3 : utile ; 2 : confort ; 1 : idée à garder), marquée « (proposée) ».

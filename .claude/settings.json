@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc -b)",
+      "Bash(npx tsc -b --force)",
+      "Bash(npm run lint)",
+      "mcp__claude_ai_Claude_Docs__read",
+      "mcp__claude_ai_Claude_Docs__guide"
+    ]
+  }
+}
