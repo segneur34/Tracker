@@ -6,18 +6,17 @@ L'utilisateur répond par numéro : « ok », ou ce qui ne va pas. Les numéros 
 
 ## À faire (paquets en attente de validation)
 
-APK 0.3.84 construite et **installée** le 28/10 au matin : elle porte les lots 15 (ligne du Timer, bouton « Enregistrer »), 16 (heures par semaine dans Statistiques) et 17 (thème Auto sans redémarrer), essais 55 et 56 ; l'APK 0.3.81, installée le 28/10 au matin (correctif Q9 et Q12 du lot 11), porte, comme la 0.3.80 : lots 13, boutons orange et « Étape » ; 14, dépendances npm dont le greffon GPS 8.5.0 ; 12, thème sombre et économe ; 11, muscu avec ceinture. Les essais 28 + 34 et 37 + 43 restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14, puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14. Les essais 49 et 50 valident le lot 12 ; 51 à 54 le lot 11 (muscu, 0b93147, correctif Q9 et Q12 en 0.3.81).
+APK 0.3.84 construite et **installée** le 28/10 au matin : elle porte les lots 15 (ligne du Timer, bouton « Enregistrer »), 16 (heures par semaine dans Statistiques) et 17 (thème Auto sans redémarrer, validé le 28/10), essai 55 ; l'APK 0.3.81, installée le 28/10 au matin (correctif Q9 et Q12 du lot 11), porte, comme la 0.3.80 : lots 13, boutons orange et « Étape » ; 14, dépendances npm dont le greffon GPS 8.5.0 ; 12, thème sombre et économe ; 11, muscu avec ceinture. Les essais 28 + 34 et 37 + 43 restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14, puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14. Les essais 49 et 50 valident le lot 12 ; 51 à 54 le lot 11 (muscu, 0b93147, correctif Q9 et Q12 en 0.3.81).
 
 | N° | Essai | Attendu |
 |---|---|---|
 | 28 + 34 | Un vrai enregistrement d'une heure ou plus, avec la notification, une pause, et si possible une trace suivie. | Chiffres du direct, distance restante, bips et pause automatique justes et sans retard tout du long ; analyse normale ensuite. |
-| 37 + 43 | Un fractionné avec la ceinture, écran verrouillé. | Tuile « BPM » au-dessus de Durée et Vitesse, état de la ceinture lisible ; notification « Étape n/N · Vit. ». **Question : après « Étape », vitesse, distance ou FC ?** |
+| 37 + 43 | Un fractionné avec la ceinture, écran verrouillé. | Tuile « BPM » au-dessus de Durée et Vitesse, état de la ceinture lisible ; notification « Étape n/N · FC » (Q9 tranchée le 28/10, 0.3.81). |
 | 50 | Lot 12 : « Sombre » puis « Économe » sur Accueil, une analyse, Enregistrer et Réglages. | Tout lisible ; la carte reste claire dans l'interface sombre ; en économe, fond noir, vignettes trace seule sans plan (à juger) ; le texte bleu voile sur fond sombre (« Renommer », onglet choisi) est à juger à l'œil. |
 | 52 | Lot 11 : Enregistrer › Type Muscu sans ceinture à portée. | « Démarrer » grisé avec la phrase qui dit pourquoi ; ceinture mise, il devient possible. |
 | 53 | Lot 11 : muscu sans séance (lien « Muscu sans séance ») avec deux « Note ». | Repères dans l'analyse, sur le graphe. |
 | 54 | APK 0.3.81 (Q9 et Q12) : un fractionné à pied, puis une muscu avec une séance du Timer ; « Arrêter » la session avant la fin de la séance. | Notification « Étape n/N · FC » en fractionné ; le compteur s'arrête avec la session (plus de bips), et l'analyse montre la séance arrêtée à l'heure de l'arrêt. |
 | 55 | Lot 16 (0.3.83) : Statistiques › Tout › graphique › Durée, sur vos vraies sessions. | Une ligne grise pleine des heures de chaque semaine, en plus du pointillé, légende « heures par semaine » ; à juger : lisible sur une vraie année (au banc, une session toutes les quelques semaines donne des dents de scie) ; sinon un escalier par semaine se fait en une ligne. |
-| 56 | Lot 17 (0.3.84) : Réglages › thème « Auto », puis basculer le téléphone en sombre et en clair depuis les réglages rapides, application ouverte ; puis la même bascule application en arrière-plan, et revenir. Enfin « Sombre » choisi dans Réglages, et une bascule du téléphone. | L'application suit tout de suite, barres du téléphone comprises, sans relancer ; au retour de l'arrière-plan aussi ; « Sombre » ou « Clair » choisis ne bougent pas. Au lancement en Auto avec le téléphone en sombre, un bref passage par le clair est possible : à dire s'il gêne. |
 
 ## Quand l'occasion se présente (terrain)
 
@@ -33,6 +32,7 @@ APK 0.3.84 construite et **installée** le 28/10 au matin : elle porte les lots 
 
 ## Faits
 
+- 56 (thème « Auto » qui suit le téléphone sans redémarrer, lot 17) : ok le 28/10 ; lot 17 validé.
 - 49 (thème Auto, lot 12) et 51 (muscu avec ceinture et Timer, lot 11) : ok le 28/10 ; la question du 51 (compteur après « Arrêter ») reste ouverte, Q12 de la file.
 - 3 (FC repos) : ok le 28/10, fait avant le protocole v2 (moyenne sur 30 s, 25/10) ; résultat dans la clé de l'appareil, pas dans les sessions.
 - 6, 25, 27, 35, 40 : ok le 27/10 (le vide sous la racine en « Semaine » et le redessin de la carte au retour du plein écran sont acceptés).

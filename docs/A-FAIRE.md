@@ -165,7 +165,7 @@ Quand l'utilisateur donne des notes en vrac :
 - Questions : quelle piste ? Tranché par Claude : une maquette de trois ou quatre motifs à pied, à côté des autres familles pour comparer, comme le 23/10 ; l'utilisateur choisit sur la maquette.
 
 ### 20. Séance du Timer : nom ou bouton coupé sur deux lignes · priorité 3 (proposée) · bogue
-- Noté le : 28/10 06:29 (WhatsApp) · reçu le : 28/10 · état : prête
+- Noté le : 28/10 06:29 (WhatsApp) · reçu le : 28/10 · état : en lot 15 (95426d6, 0.3.82, à valider)
 - Tel que noté : « Dans entraînement muscu et timer la première tuile muscu le lus "muscu " est en 2 ligne et sort très mal »
 - Où : Entraînement › Muscu et timer (`/fractionne/timer`, `TrainingSessionsPage`) › ligne repliée d'une séance.
 - Aujourd'hui : sur une seule ligne, le nom (`.train-item__name` : `flex: 1`, `min-width: 0`, `overflow-wrap: anywhere`), puis « Timer » et « Muscu » (chacun avec son icône, sans `nowrap`), puis la flèche. Sur téléphone, la place manque : le nom se coupe au milieu d'un mot, ou le texte d'un bouton passe à la ligne. Depuis le lot 11 (0b93147, à valider), qui a ajouté le second bouton.
@@ -174,7 +174,7 @@ Quand l'utilisateur donne des notes en vrac :
 - Questions : aucune.
 
 ### 21. « Muscu » renommé « Enregistrer » sur les séances du Timer · priorité 3 (proposée)
-- Noté le : 28/10 06:32 (WhatsApp) · reçu le : 28/10 · état : prête
+- Noté le : 28/10 06:32 (WhatsApp) · reçu le : 28/10 · état : en lot 15 (95426d6, 0.3.82, à valider)
 - Tel que noté : « Dans timer et muscu il y a 2 bouton sur les tuiles "timer " et "muscu" Et faut changer " muscu" en "enregistrer " ce sera plus claire »
 - Où : Entraînement › Muscu et timer › ligne d'une séance (`TrainingSessionsPage`), sous-titre de la page (`WORKOUT_LISTS.timer.subtitle`, `pages/workoutLists.ts`), lien « Muscu sans séance ».
 - Aujourd'hui : deux boutons, « Timer » (compteur seul, rien d'enregistré) et « Muscu » (Enregistrer ouvert sur la muscu, séance dans la carte du compteur, ceinture obligatoire) ; le sous-titre et le lien sous la liste disent « Muscu ».
@@ -191,17 +191,8 @@ Quand l'utilisateur donne des notes en vrac :
 - Pourquoi : le carré sort petit à l'écran ; la carte gagne de la hauteur.
 - Questions : remplacer le carré ou laisser choisir le format ? → réponse (28/10) : remplace le carré, une seule image en 1080 × 1920. Disposition (carte plein cadre et chiffres posés dessus façon Komoot, ou carte puis chiffres) ? → réponse (28/10) : maquette d'abord, deux ou trois dispositions, l'utilisateur choisit.
 
-### 23. Thème « Auto » : ne suit le téléphone qu'au redémarrage · priorité 4 (proposée) · bogue
-- Noté le : 28/10 06:36 (WhatsApp) · reçu le : 28/10 · état : prête
-- Tel que noté : « Le mode sombre s'active ps tout seul il faut etaindre l'application et la relancer ce serait bien que non »
-- Où : Réglages › Affichage › thème (lot 12, 32f6ac7, à valider, porté par l'APK 0.3.80) ; `hooks/useTheme.ts` (`startTheme`), `android/app/src/main/AndroidManifest.xml`, `MainActivity`.
-- Aujourd'hui : le JavaScript suit bien `prefers-color-scheme` (écoute `change` dans `startTheme`) et le réglage de Réglages (`jsonStore.subscribe`). Mais l'activité Android déclare `uiMode` dans `configChanges` : elle n'est pas recréée quand le téléphone change de thème, et la WebView ne réévalue probablement pas `prefers-color-scheme` ; d'où le thème qui ne change qu'au redémarrage (cause supposée, à confirmer).
-- Voulu : en « Auto », le thème suit le téléphone tout de suite, application ouverte ou reprise de l'arrière-plan, sans redémarrer ; sans doute par `onConfigurationChanged` côté Android qui prévient la page. Essai au téléphone indispensable (le banc ne voit pas la WebView).
-- Pourquoi : le réglage « Auto » ne tient pas sa promesse.
-- Questions : dans quel cas (téléphone passé en sombre en « Auto », ou « Sombre » choisi dans Réglages) ? → réponse (28/10) : « il y a pas moyen que ça change sans relancer l'app ? » : le cas reste à préciser. Tranché par Claude : couvrir les deux ; le choix dans Réglages s'éprouve au banc, le changement du téléphone par un essai au téléphone (Auto, thème du téléphone basculé application ouverte, puis en arrière-plan).
-
 ### 24. Statistiques : ligne des heures totales par semaine dans le graphique · priorité 3 (proposée)
-- Noté le : 28/10 06:39 (deux messages, WhatsApp) · reçu le : 28/10 · état : prête
+- Noté le : 28/10 06:39 (deux messages, WhatsApp) · reçu le : 28/10 · état : en lot 16 (9f5ed36, 0.3.83, à valider)
 - Tel que noté : « Dans stat le graph qui donne les heures selon tout les sport il faudrait une ligne dedans avec les heures total par semaine » ; « La il n'y a que une ligne pointillés avec la moyenne je crois »
 - Où : Statistiques › vue d'ensemble (« Tout ») › onglet graphique, donnée « Durée » (`StatisticsPage`).
 - Aujourd'hui : un point par session, à la couleur de son activité, en heures dès qu'une session atteint 2 h ; en pointillé gris, la tendance : la moyenne des 5 dernières sessions (`TREND_SESSIONS`, `library/stats.ts`), pas un total par semaine. Les semaines n'apparaissent qu'en Régularité (barres empilées du nombre de sessions par activité).
@@ -211,6 +202,7 @@ Quand l'utilisateur donne des notes en vrac :
 
 ## Archives
 
+- 23. Thème « Auto » qui ne suivait le téléphone qu'au redémarrage (28/10, bogue) : faite au lot 17 (1b9be77, 0.3.84 : greffon Screen, événement darkModeChange), validée sur le téléphone le 28/10 (essai 56).
 - 16. Faux sauts en wingfoil (10/10) : mise de côté le 27/10 (« enlever pour le moment ») ; l'essai 48 d'ESSAIS reste, pour le jour où elle revient.
 - 6. Tailles de police de Statistiques alignées (25/10 10:46) : abandonnée le 27/10 (« on abandonne pour le moment »).
 - 1. Pauses comptées dans la distance et le temps en mouvement (17/10) : faite au lot 1 de la revue du 27/10 (point 160 : arrêts complets ôtés d'office sous un plancher propre au calcul), validée sur le téléphone le 27/10.
