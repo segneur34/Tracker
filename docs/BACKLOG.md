@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 50, essai 68, question Q31.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 52, essai 68, question Q31.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -17,6 +17,8 @@ APK 0.3.97 installée le 28/10 (versionCode 3097).
 
 ## Ensuite
 
+1. 51 · [bogue] Profil › racine : il reste 2 ronds blancs au bout de la racine (un par pointe), à retirer ; décision du 27/10 « aucun rond blanc au bout des radicelles » non tenue ; piste : les bourgeons de drawBuds (--root-bud) au bout des branches en croissance, dans src/components/drawRoot.ts · noté 28/10 · petit · Sonnet/medium · à briefer
+2. 50 · [bogue] Wing foil › onglet pumping : séparer la série de pumping du vol sur le foil, en mettant la cadence au premier plan ; une série dure peu à ton niveau (moins de 30 s) mais peut être bien plus longue avec du meilleur matériel, donc aucune durée plafond ; aujourd'hui un vol entier compte comme du pumping, copié du surf foil (§1 « Pumping foil ») · noté 28/10 · gros · Fable/high · à briefer ; 28/10 : réponse à Q31 reçue (série + vol à part, cadence d'abord) ; la mise au point des seuils attend une capture wing entière (n° 27, essai 48) · détail : docs/backlog/50-pumping-wing.md
 
 ## Ça attend une occasion
 
@@ -33,7 +35,7 @@ APK 0.3.97 installée le 28/10 (versionCode 3097).
 - essai 46 : surf, une vraie session → vagues, temps sur la vague et rame crédibles ; seuils jamais validés : vague 9 km/h, attente, vol 10 km/h, vague en foil 18 km/h, retour au pic jusqu'à la première attente ; pumping : seuils de `PUMP_DETECTION` à régler sur un premier vol réel, `liftoffCalmG` à 0,08 g contre 0,03 à 0,05 g de rugosité à l'arrêt sur l'eau (décollage peut-être trouvé trop tôt) (§11 « Surf »).
 
 **Une sortie wing capturée entière, Pumping coché**
-- 27 · [idée] Pumping en wing : seuils de SAILING_PUMP_DETECTION (copie de ceux du surf) réglés, faux coups en série autour des sauts écartés, faux sauts en wing (ex-fiche 16, point 186) · noté 28/10 · gros · Fable/high · à briefer · dépend de : une session de wing capturée entière, Pumping coché
+- 27 · [idée] Pumping en wing : seuils de SAILING_PUMP_DETECTION (copie de ceux du surf) réglés, faux coups en série autour des sauts écartés, faux sauts en wing (ex-fiche 16, point 186) · noté 28/10 · gros · Fable/high · à briefer · dépend de : une session de wing capturée entière, Pumping coché ; à traiter avec le n° 50
   - essai 48 : wingfoil avec des sauts, en notant à part les vrais sauts → sert à régler les faux sauts en wing.
 
 **Une sortie VTT ou course avec des sauts**
