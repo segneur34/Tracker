@@ -6,7 +6,7 @@ L'utilisateur répond par numéro : « ok », ou ce qui ne va pas. Les numéros 
 
 ## À faire (paquets en attente de validation)
 
-APK 0.3.81 construite et **installée** le 28/10 au matin (correctif Q9 et Q12 du lot 11) ; elle porte aussi, comme la 0.3.80 : lots 13, boutons orange et « Étape » ; 14, dépendances npm dont le greffon GPS 8.5.0 ; 12, thème sombre et économe ; 11, muscu avec ceinture. Les essais 28 + 34 et 37 + 43 restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14, puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14. Les essais 49 et 50 valident le lot 12 ; 51 à 54 le lot 11 (muscu, 0b93147, correctif Q9 et Q12 en 0.3.81).
+APK 0.3.84 construite le 28/10 au matin, **à installer** (téléphone débranché) : elle porte les lots 15 (ligne du Timer, bouton « Enregistrer »), 16 (heures par semaine dans Statistiques) et 17 (thème Auto sans redémarrer), essais 55 et 56 ; l'APK 0.3.81, installée le 28/10 au matin (correctif Q9 et Q12 du lot 11), porte, comme la 0.3.80 : lots 13, boutons orange et « Étape » ; 14, dépendances npm dont le greffon GPS 8.5.0 ; 12, thème sombre et économe ; 11, muscu avec ceinture. Les essais 28 + 34 et 37 + 43 restent avant de marquer « validés » les lots de la revue du 27/10, les lots A et B du 26/10 et les lots 13 et 14, puis de passer la doc ; ils valent aussi pour le greffon GPS monté au lot 14. Les essais 49 et 50 valident le lot 12 ; 51 à 54 le lot 11 (muscu, 0b93147, correctif Q9 et Q12 en 0.3.81).
 
 | N° | Essai | Attendu |
 |---|---|---|
