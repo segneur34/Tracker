@@ -51,22 +51,29 @@ Sans résultats dans l'argument : aucune passe doc (règle : doc après validati
 - `~/.claude/plans/FILE-DES-LOTS.md` : état de chaque lot touché, questions et réponses de la session (table « Questions »), une ligne dans « Journal des paquets ».
 - Mémoire `point-de-reprise-cible-mobile.md` (`~/.claude/projects/c--Users-segne-tracker/memory/`) : rien à écrire, l'état des lots est dans la file et les essais dans `docs/ESSAIS.md` ; seulement si le rythme de travail a changé dans la session, corriger son paragraphe « Rythme », sans journal.
 
-## 5. Envoi sur GitHub
+## 5. APK, si le téléphone est branché
+
+Tu ne construis pas d'APK ici (procédure au §12 d'ETAT, à demander à part), mais tu installes celle qui existe déjà :
+- lis la version de `package.json` ; si `android/app/build/outputs/apk/release/Tracker-<version>.apk` existe, vérifie le téléphone : `"C:/Users/segne/AppData/Local/Android/Sdk/platform-tools/adb.exe" devices` doit lister `45LZ6LRSHIDIEUX8` avec l'état `device` ;
+- branché : `adb install -r <cette APK>`, puis `adb shell dumpsys package io.github.segneur.tracker | grep -m1 versionName` doit donner la version ; note « APK <version> installée le jj/mm » en tête de « À faire » de `docs/ESSAIS.md` et dans la ligne du paquet de la file (un commit de doc si ESSAIS change) ;
+- débranché, ou pas d'APK de cette version : ne fais rien, dis-le dans le compte rendu (« APK <version> construite, à installer » ou « à construire »).
+
+## 6. Envoi sur GitHub
 
 Sauf `sans envoi` : `git push origin main`, puis `git log --oneline origin/main..main` doit être vide ; cite ce résultat. Si le push échoue, donne l'erreur et ne retente pas autrement.
 
-## 6. Compte rendu
+## 7. Compte rendu
 
 Un message qui tient seul, pour quelqu'un qui n'a pas vu la session :
 - les commits de la session (hash court, sujet, version) et s'ils sont envoyés ;
 - ce qui est validé, ce qui attend l'utilisateur : essais par numéro, questions ouvertes (Q n de la file) ;
 - ce qui a été laissé de côté et pourquoi (lot en cours non commité, vérification en échec, doc non faite faute de résultats) ;
-- la version de `package.json` et si une APK est à construire (version plus haute que la dernière APK installée, notée dans la file) ;
+- la version de `package.json`, et l'APK : installée à l'étape 5, construite mais à installer (téléphone débranché), ou à construire (version plus haute que la dernière APK, notée dans la file) ;
 - le prompt de reprise à coller dans la prochaine conversation, entre guillemets, avec le modèle et l'effort conseillés d'après `docs/MODELES.md`.
 
 ## Ce que /clore ne fait pas
 
-Pas d'APK (procédure au §12 d'ETAT, à demander à part). Pas de passe doc sans résultats d'essais. Pas de commit d'un code non vérifié. Pas de question à l'utilisateur sauf vérification en échec ou doute sur ce qu'est un lot entier.
+Pas de construction d'APK (procédure au §12 d'ETAT, à demander à part) : seulement l'installation d'une APK déjà construite, étape 5. Pas de passe doc sans résultats d'essais. Pas de commit d'un code non vérifié. Pas de question à l'utilisateur sauf vérification en échec ou doute sur ce qu'est un lot entier.
 
 ## Pièges du poste
 
