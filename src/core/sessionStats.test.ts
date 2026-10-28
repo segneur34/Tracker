@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeKinematics } from './kinematics';
-import { activeRuns, buildCumulativeTrack, computeActiveTimeMs, thresholdActivityMask } from './sessionStats';
+import { activeRuns, buildBaseSessionStats, buildCumulativeTrack, computeActiveTimeMs, thresholdActivityMask } from './sessionStats';
 import { getActiveThresholds, SPORT_PROFILES, type SportProfile } from './sportProfiles';
 import type { RawTrackPoint, TrackPoint } from './types';
 
@@ -68,6 +68,30 @@ const totalDistanceM = (track: TrackPoint[]): number => {
 };
 
 const RUNNING = SPORT_PROFILES.running;
+
+describe('buildBaseSessionStats, dénominateur du ratio', () => {
+  // 10 min à 10 m/s, 10 min à 2 m/s, 10 min à l'arrêt.
+  const track = computeKinematics(buildRaw([
+    { durationS: 600, speedMs: 10 },
+    { durationS: 600, speedMs: 2 },
+    { durationS: 600, speedMs: 0 },
+  ]));
+  const active = track.map((p) => p.smoothedSpeedMs >= 5);
+  const moving = track.map((p) => p.smoothedSpeedMs >= 1);
+
+  it('sans masque de mouvement, rapporte le temps actif au temps total', () => {
+    const stats = buildBaseSessionStats(track, { enterThresholdMs: 5, exitThresholdMs: 5, activityMask: active });
+    expect(parseFloat(stats.activeRatio)).toBeCloseTo(33.3, 0);
+    expect(stats.inMotionTimeS).toBe(0);
+  });
+
+  it('avec un masque de mouvement, le rapporte au temps en mouvement, qu\'il rend aussi', () => {
+    const stats = buildBaseSessionStats(track, { enterThresholdMs: 5, exitThresholdMs: 5, activityMask: active, ratioMask: moving });
+    expect(parseFloat(stats.activeRatio)).toBeCloseTo(50, 0);
+    expect(stats.inMotionTimeS).toBeGreaterThan(1190);
+    expect(stats.inMotionTimeS).toBeLessThan(1210);
+  });
+});
 
 describe('activeRuns', () => {
   const track = analyzed(buildRaw([{ durationS: 120, speedMs: WALK_MS }]), RUNNING);

@@ -1,5 +1,5 @@
 import { buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
-import { getActiveThresholds, getSportProfile } from '../core/sportProfiles';
+import { getActiveThresholds, getSportProfile, hasActiveThreshold } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import type { CumulativeTrack, SportType, TrackPoint } from '../core/types';
 import { knotsToMs, msToKnots } from '../core/units';
@@ -56,6 +56,11 @@ export const buildSailingSessionStats = (
   const cumulative = options.cumulative ?? buildCumulativeTrack(track);
   // Sans seuil (bateau) : toute la session en navigation, pauses de l'enregistrement et trous immobiles ôtés.
   const activityMask = thresholdActivityMask(track, profile, activeThresholdKn);
+  // Ratio de vol (ou de navigation, de planing) sur le temps en mouvement,
+  // arrêts complets ôtés au plancher d'arrêt (décision du 28/10) : sur toute
+  // la session, une demi-heure passée à l'arrêt le divisait par deux. Le
+  // bateau, sans seuil, n'a pas de ratio.
+  const ratioMask = hasActiveThreshold(profile) ? thresholdActivityMask(track, profile, 0) : undefined;
 
   const base = buildBaseSessionStats(track, {
     enterThresholdMs: knotsToMs(thresholds.enter),
@@ -63,6 +68,7 @@ export const buildSailingSessionStats = (
     minStateDurationS: profile.minStateDurationS,
     cumulative,
     activityMask,
+    ratioMask,
   });
 
   return { ...base, tops: options.tops ?? computeSailingTops(track, cumulative) };

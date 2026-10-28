@@ -18,6 +18,7 @@ const session = (startMs: number, over: Partial<StatSession> = {}): StatSession 
   endMs: startMs + 3_600_000,
   distanceM: 10_000,
   movingTimeS: 3000,
+  inMotionS: null,
   movingDistanceM: 9000,
   elevationGainM: null,
   maxSpeedMs: 5,
@@ -142,6 +143,18 @@ describe('metricSeries', () => {
       session(at(2026, 3, 5), { ...voile, foil: true, movingTimeS: 99_999 }),
     ], statsMetric('vol'));
     expect(serie.points.map((p) => p.value)).toEqual([50, 25, 100]);
+  });
+
+  it('% de vol : sur le temps en mouvement quand la fiche le porte (version 12), sur la durée sinon', () => {
+    const voile = { family: 'voile', treatment: 'voile', foil: true } as const;
+    const [serie] = metricSeries([
+      session(at(2026, 3, 1), { ...voile, movingTimeS: 1200, inMotionS: 2000 }),
+      session(at(2026, 3, 2), { ...voile, movingTimeS: 1200, inMotionS: null }),
+    ], statsMetric('vol'));
+    const values = serie.points.map((p) => p.value!);
+    expect(values).toHaveLength(2);
+    expect(values[0]).toBeCloseTo(60, 6);
+    expect(values[1]).toBeCloseTo(100 / 3, 6);
   });
 
   it('% de manœuvres réussies : virements et empannages en deux séries', () => {

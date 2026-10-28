@@ -20,6 +20,10 @@ export const DEFAULT_SAILING_SPORT: SportType = 'wingfoil';
 export const getDefaultThresholdKn = (sport: SportType = DEFAULT_SAILING_SPORT): number =>
   SPORT_PROFILES[sport].defaultActiveThreshold;
 
+/** Plancher d'arrêt du support, en nœuds (`stillThreshold`) : en dessous, la planche est à l'arrêt. */
+export const getStillSpeedKn = (sport: SportType = DEFAULT_SAILING_SPORT): number =>
+  SPORT_PROFILES[sport].stillThreshold;
+
 /**
  * Bornes par défaut du dégradé de couleur de la trace (`core/speedGradient.ts`),
  * en m/s : gris sous 8 nœuds, rouge franc à partir de 28 nœuds. Réglables par
@@ -29,6 +33,32 @@ export const DEFAULT_SAILING_SPEED_RANGE_MS: SpeedRangeMs = { minMs: knotsToMs(8
 
 /** Virage cumulé minimal, en degrés, pour qu'une inflexion soit une manœuvre. */
 export const MANEUVER_MIN_TURN_DEG = 60;
+
+/**
+ * Virage, en degrés, du cap d'approche au cap de sortie, à partir duquel un
+ * demi-tour est un tour complet (un 360) : ni virement ni empannage, il n'est
+ * jamais compté (décision du 28/10).
+ */
+export const MANEUVER_FULL_TURN_DEG = 270;
+
+/**
+ * Cohérence minimale d'un virage de manœuvre : virage net sur somme des
+ * rotations pas à pas. Simple garde-fou contre la chute, où le cap part dans
+ * tous les sens : le changement d'amures exigé écarte déjà loffs, abattées et
+ * chutes. Plus bas que celui de la polaire (`TURN_MIN_COHERENCE`, 0,6), qui
+ * n'en dépend pas : à 1 Hz, le bruit de cap d'un wing suffisait à écarter un
+ * vrai virement (0,57).
+ */
+export const MANEUVER_MIN_COHERENCE = 0.5;
+
+/**
+ * Vitesse de rotation minimale, en degrés par seconde, du cœur d'un virage :
+ * la plus grande suite de rotation à au moins cette vitesse, dans le sens du
+ * virage, d'où se lisent le cap et la vitesse d'approche. Un vrai virage
+ * tourne à 10 à 30°/s ; une dérive de décollage ou un loff lent n'en font pas
+ * partie, et les y inclure faisait lire l'approche avant le décollage.
+ */
+export const MANEUVER_CORE_RATE_DEG_S = 5;
 
 /** Durée d'observation d'une manœuvre, en secondes. */
 export const MANEUVER_WINDOW_S = 12;

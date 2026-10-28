@@ -42,6 +42,8 @@ export interface StatSession {
   endMs: number;
   distanceM: number;
   movingTimeS: number | null;
+  /** Voile à seuil : temps en mouvement, dénominateur du ratio de vol ; `null` ailleurs et avant la version 12 du résumé. */
+  inMotionS: number | null;
   /** Distance pendant le temps en action, `null` sur une fiche d'avant la version 5 du résumé. */
   movingDistanceM: number | null;
   elevationGainM: number | null;
@@ -85,6 +87,7 @@ export const statSessionOf = (file: string, record: SessionRecord, activity: Act
     endMs: summary.endMs,
     distanceM: summary.distanceM,
     movingTimeS: summary.movingTimeS,
+    inMotionS: summary.inMotionS ?? null,
     movingDistanceM: summary.movingDistanceM ?? null,
     elevationGainM: summary.elevationGainM,
     maxSpeedMs: summary.maxSpeedMs,
@@ -302,11 +305,12 @@ export const STATS_METRICS: readonly StatsMetric[] = [
     series: single('cadence', 'Cadence moyenne', (s) => positive(s.cadenceSpm)),
   },
   {
-    // Voile : le « Ratio de vol » de l'analyse (temps en action sur la durée), sur foil seulement ; surf : le temps des vols.
+    // Voile : le « Ratio de vol » de l'analyse, temps en action sur le temps en mouvement (sur la durée pour
+    // une fiche d'avant la version 12), sur foil seulement ; surf : le temps des vols.
     key: 'vol', label: '% de vol', unit: 'pourcent', families: ['voile', 'surf'], overview: false, record: false,
     series: single('vol', '% de vol', (s) => {
       if (s.family === 'surf') return s.flightS !== null ? percent(s.flightS, durationOf(s)) : null;
-      return s.foil && s.movingTimeS !== null ? percent(s.movingTimeS, durationOf(s)) : null;
+      return s.foil && s.movingTimeS !== null ? percent(s.movingTimeS, s.inMotionS ?? durationOf(s)) : null;
     }),
   },
   {

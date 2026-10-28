@@ -113,6 +113,14 @@ export const useSailingSession = ({
     () => sessionManeuverThresholds(sport, referenceSpeedKn),
     [sport, referenceSpeedKn]
   );
+  /**
+   * Seuil de vol (ou de navigation) des manœuvres : le seuil d'activité de la
+   * session. Un demi-tour entamé en dessous n'est ni réussi ni raté (28/10).
+   * Le bateau, sans seuil, compte tout.
+   */
+  const flightThresholdKn = withThreshold ? activeThresholdKn : undefined;
+  /** Plancher d'arrêt du support : un cap lu plus lentement n'est que du bruit. */
+  const stillSpeedKn = profile.stillThreshold;
 
   // Les seuils viennent du profil du support et de la surcharge de
   // l'utilisateur : changer de support, ou bouger le seuil d'activité,
@@ -125,9 +133,11 @@ export const useSailingSession = ({
             minSpeedKn: maneuverThresholds.polarMinSpeedKn,
             successThresholdKn: activeThresholdKn,
             minEntrySpeedKn: maneuverThresholds.minEntrySpeedKn,
+            flightThresholdKn,
+            stillSpeedKn,
           })
         : null,
-    [trackData, maneuverThresholds, activeThresholdKn]
+    [trackData, maneuverThresholds, activeThresholdKn, flightThresholdKn, stillSpeedKn]
   );
   const autoWind = windEstimate?.direction ?? null;
 
@@ -148,6 +158,8 @@ export const useSailingSession = ({
     const options = {
       successThresholdKn: activeThresholdKn,
       minEntrySpeedKn: maneuverThresholds.minEntrySpeedKn,
+      flightThresholdKn,
+      stillSpeedKn,
     };
 
     // Deux passes : la première classe avec le vent global, la seconde avec
@@ -160,7 +172,7 @@ export const useSailingSession = ({
       WIND_LOCAL_MAX_GAP_MIN * 60 * 1000
     );
     return analyzeManeuvers(trackData, timeline, options);
-  }, [trackData, currentWindValue, activeThresholdKn, maneuverThresholds]);
+  }, [trackData, currentWindValue, activeThresholdKn, maneuverThresholds, flightThresholdKn, stillSpeedKn]);
 
   const maneuverSummary = useMemo(() => summarizeManeuvers(maneuverStats), [maneuverStats]);
 

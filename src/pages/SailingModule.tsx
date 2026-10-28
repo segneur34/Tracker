@@ -350,12 +350,14 @@ function SailingModule() {
    * Chiffres de l'onglet « général », proposés aussi pour l'image de partage. Sans seuil (bateau),
    * toute la session compte en navigation : ni distance, temps, ratio ni moyenne actifs.
    */
+  /** « Temps en vol » sur foil, « Temps actif » sinon : le libellé dit ce qu'il mesure. */
+  const activeTimeWord = foil ? 'Temps en vol' : 'Temps actif';
   const generalStats: ShareStat[] = stats ? [
     { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
     ...(hasActiveThreshold ? [{ key: 'activeDistance', label: 'Distance active', value: formatDistance(stats.activeDistanceM, distanceUnit) }] : []),
     { key: 'totalTime', label: 'Temps total', value: stats.totalTime },
     ...(hasActiveThreshold ? [
-      { key: 'activeTime', label: `Temps actif (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: stats.activeTime },
+      { key: 'activeTime', label: `${activeTimeWord} (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: stats.activeTime },
       { key: 'activeRatio', label: activeRatioLabel(profile, foil), value: `${stats.activeRatio}%` },
     ] : []),
     { key: 'averageSpeed', label: 'Vitesse moyenne', value: formatSpeed(stats.avgSpeedMs, speedUnit) },
@@ -380,7 +382,7 @@ function SailingModule() {
     ...(hasActiveThreshold ? [
       { key: 'activeDistance', label: foil ? 'Distance en vol' : 'Distance active', value: formatDistance(stats.activeDistanceM, distanceUnit) },
       { key: 'totalTime', label: 'Temps total', value: stats.totalTime },
-      { key: 'activeTime', label: `Temps actif (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: stats.activeTime },
+      { key: 'activeTime', label: `${activeTimeWord} (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: stats.activeTime },
       { key: 'activeRatio', label: activeRatioLabel(profile, foil), value: `${stats.activeRatio}%` },
       { key: 'activeAverage', label: `Moyenne ${activeWord}`, value: formatSpeed(stats.activeAvgSpeedMs, speedUnit) },
     ] : [
@@ -762,13 +764,27 @@ function SailingModule() {
       {(m.rejected.unclassified > 0 ||
         m.rejected.slowEntry > 0 ||
         m.rejected.incoherent > 0 ||
-        m.rejected.tooShort > 0) && (
+        m.rejected.tooShort > 0 ||
+        m.rejected.noFlight > 0 ||
+        m.rejected.fullTurn > 0) && (
         <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: 'var(--text-xs)', lineHeight: '1.6' }}>
           <strong>{m.locations.length} virage{m.locations.length > 1 ? 's' : ''} retenu{m.locations.length > 1 ? 's' : ''}</strong>, et d'autres écartés en chemin :
+          {m.rejected.noFlight > 0 && (
+            <>
+              <br />
+              <strong>{m.rejected.noFlight}</strong> demi-tour{m.rejected.noFlight > 1 ? 's' : ''} hors {foil ? 'vol' : 'navigation'} : entamé{m.rejected.noFlight > 1 ? 's' : ''} sous le seuil {foil ? 'de vol' : 'de navigation'}, ni réussi{m.rejected.noFlight > 1 ? 's' : ''} ni raté{m.rejected.noFlight > 1 ? 's' : ''}.
+            </>
+          )}
+          {m.rejected.fullTurn > 0 && (
+            <>
+              <br />
+              <strong>{m.rejected.fullTurn}</strong> tour{m.rejected.fullTurn > 1 ? 's' : ''} complet{m.rejected.fullTurn > 1 ? 's' : ''}, non compté{m.rejected.fullTurn > 1 ? 's' : ''}.
+            </>
+          )}
           {m.rejected.unclassified > 0 && (
             <>
               <br />
-              <strong>{m.rejected.unclassified}</strong> franc{m.rejected.unclassified > 1 ? 's' : ''} et net{m.rejected.unclassified > 1 ? 's' : ''}, mais ni face au vent ni au vent arrière : ce sont des abattées ou des remontées — ou le vent retenu est faux, ce qui range tous les demi-tours au travers.
+              <strong>{m.rejected.unclassified}</strong> franc{m.rejected.unclassified > 1 ? 's' : ''} et net{m.rejected.unclassified > 1 ? 's' : ''}, mais sans changer d'amures ou ni face au vent ni au vent arrière : ce sont des abattées ou des remontées — ou le vent retenu est faux, ce qui range tous les demi-tours au travers.
             </>
           )}
           {m.rejected.slowEntry > 0 && (
@@ -780,7 +796,7 @@ function SailingModule() {
           {m.rejected.incoherent > 0 && (
             <>
               <br />
-              <strong>{m.rejected.incoherent}</strong> dont le cap partait dans tous les sens : chute ou hésitation.
+              <strong>{m.rejected.incoherent}</strong> dont le cap partait dans tous les sens, ou se lisait à l'arrêt : chute ou hésitation.
             </>
           )}
           {m.rejected.tooShort > 0 && (

@@ -66,8 +66,12 @@ export const RECORD_VERSION = 1;
  *
  * 11 (28 octobre 2026) : la Marche sans seuil d'activité (pré-réglage à 0) :
  * son temps en mouvement est recalculé.
+ *
+ * 12 (28 octobre 2026) : voile à seuil, temps en mouvement (`inMotionS`),
+ * dénominateur du ratio de vol, de navigation ou de planing ; détection des
+ * manœuvres refaite (les comptes de la fiche suivent à la réouverture).
  */
-export const SUMMARY_CALC_VERSION = 11;
+export const SUMMARY_CALC_VERSION = 12;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -81,6 +85,12 @@ export interface SessionSummary {
   distanceM: number;
   /** Temps en action au sens du support, `null` tant que le support est inconnu. */
   movingTimeS: number | null;
+  /**
+   * Voile à seuil : temps en mouvement, en secondes, arrêts complets ôtés au
+   * plancher d'arrêt ; dénominateur du ratio de vol (ou de navigation, de
+   * planing). Absent ailleurs, et des fiches d'avant la version 12.
+   */
+  inMotionS?: number;
   /** Distance parcourue pendant ce temps en action (en surf, en glisse) ; absente des fiches d'avant la version 5. */
   movingDistanceM?: number | null;
   /** Dénivelé positif, `null` si la trace n'a pas assez d'altitudes. */
@@ -366,6 +376,7 @@ const readSummary = (raw: unknown): SessionSummary | null => {
     samplingS,
   };
   if (!isFiniteNumber(raw.maneuverCount)) delete summary.maneuverCount;
+  if (!isFiniteNumber(raw.inMotionS) || raw.inMotionS < 0) delete summary.inMotionS;
   const maneuverResults = readManeuverResults(raw.maneuverResults);
   if (maneuverResults) summary.maneuverResults = maneuverResults;
   else delete summary.maneuverResults;

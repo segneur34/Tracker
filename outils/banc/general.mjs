@@ -185,7 +185,7 @@ check('voile : première rangée « général · avancé »', (await row(0)) ===
 check('voile : « avancé » fermé au départ, pas de seconde rangée', !(await advancedOpen()) && (await row(1)) === '', await row(1));
 let general = await panel('Général');
 console.log('général voile :', general);
-for (const label of ['Distance en vol', 'Temps total', 'Temps actif', 'Ratio de vol', 'Moyenne en vol', 'Virements réussis', 'Empannages réussis', 'Top 2 s', 'Top 100 m', 'Vent', 'Régler']) {
+for (const label of ['Distance en vol', 'Temps total', 'Temps en vol', 'Ratio de vol', 'Moyenne en vol', 'Virements réussis', 'Empannages réussis', 'Top 2 s', 'Top 100 m', 'Vent', 'Régler']) {
   // Sans casse : les boutons et les titres sont en capitales (typographie de l'accueil, 22/10).
   check(`voile, général : « ${label} »`, general.toLowerCase().includes(label.toLowerCase()), general.slice(0, 200));
 }

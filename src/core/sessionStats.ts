@@ -219,6 +219,12 @@ export interface BaseSessionStatsOptions extends ActivityMaskOptions {
   elevation?: ElevationProfile;
   /** Dénivelé déjà calculé, pour éviter un second parcours. */
   elevationStats?: ElevationStats;
+  /**
+   * Masque du dénominateur du ratio : le ratio est alors le temps actif sur le
+   * temps où ce masque est vrai (le temps en mouvement, en voile), et non sur
+   * le temps total. Absent : temps total, comme partout ailleurs.
+   */
+  ratioMask?: boolean[];
 }
 
 /** Part minimale de points avec altitude pour publier un dénivelé. */
@@ -238,6 +244,8 @@ export const buildBaseSessionStats = (
   const activeDistanceM = computeActiveDistanceM(track, mask);
   const totalTimeMs = computeTotalTimeMs(track);
   const activeTimeMs = computeActiveTimeMs(track, mask);
+  const inMotionTimeMs = options.ratioMask ? computeActiveTimeMs(track, options.ratioMask) : 0;
+  const ratioBaseMs = options.ratioMask ? inMotionTimeMs : totalTimeMs;
   const hasElevation = elevation.coverage >= MIN_ELEVATION_COVERAGE;
 
   return {
@@ -245,7 +253,8 @@ export const buildBaseSessionStats = (
     activeDistanceM,
     totalTime: formatDuration(totalTimeMs),
     activeTime: formatDuration(activeTimeMs),
-    activeRatio: totalTimeMs > 0 ? ((activeTimeMs / totalTimeMs) * 100).toFixed(1) : '0.0',
+    activeRatio: ratioBaseMs > 0 ? (Math.min(100, (activeTimeMs / ratioBaseMs) * 100)).toFixed(1) : '0.0',
+    inMotionTimeS: inMotionTimeMs / 1000,
     avgSpeedMs: totalTimeMs > 0 ? totalDistanceM / (totalTimeMs / 1000) : null,
     activeAvgSpeedMs: activeTimeMs > 0 ? activeDistanceM / (activeTimeMs / 1000) : null,
     speedSource: track[0]?.speedSource ?? 'derived',

@@ -416,6 +416,16 @@ describe('isSummaryStale', () => {
     expect(isSummaryStale(record())).toBe(false);
     expect(isSummaryStale(record({ summary: { ...record().summary, calcVersion: SUMMARY_CALC_VERSION - 1 } }))).toBe(true);
   });
+
+  it('version 12 : une fiche de voile de la version 11 est recalculée, son temps en mouvement relu défensivement', () => {
+    expect(SUMMARY_CALC_VERSION).toBe(12);
+    expect(isSummaryStale(record({ summary: { ...record().summary, calcVersion: 11 } }))).toBe(true);
+    const withMotion = record({ summary: { ...record().summary, inMotionS: 2005 } });
+    expect(parseRecord(serializeRecord(withMotion))!.summary.inMotionS).toBe(2005);
+    const broken = { ...record(), summary: { ...record().summary, inMotionS: 'x' } };
+    expect('inMotionS' in parseRecord(JSON.stringify(broken))!.summary).toBe(false);
+    expect('inMotionS' in parseRecord(serializeRecord(record()))!.summary).toBe(false);
+  });
 });
 
 describe('recordFileName', () => {

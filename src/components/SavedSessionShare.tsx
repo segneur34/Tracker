@@ -4,7 +4,7 @@ import { shareableStats } from '../core/shareImage';
 import { getSportProfile, hasActiveThreshold, hasPositions, sportFamily, sportTreatment } from '../core/sportProfiles';
 import { coloredSegments } from '../core/trackColor';
 import { librarySession, summarizeGpxText } from '../hooks/useSessionLibrary';
-import { effectiveDistanceUnit, effectiveSpeedUnit } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, effectiveFoil, effectiveSpeedUnit } from '../hooks/useSportSettings';
 import { shareLabels, summaryShareStats } from '../library/shareStats';
 import { safeFileName } from '../platform/files';
 import { IconShare } from './icons';
@@ -56,6 +56,8 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
       const range = track ? sessionSpeedRange(record ?? { analysis: null, sport }, activity, family, track.suggested) : null;
       const labels = shareLabels(record?.name ?? null, activity.name, FAMILY_LABEL[family], summary.startMs, libraryFile ?? fileName);
       const units = { speed: effectiveSpeedUnit(activity), distance: effectiveDistanceUnit(activity) };
+      // Foil de la session, sinon celui de l'activité : « Temps en vol » au lieu de « Temps actif ».
+      const foil = record?.analysis?.foil ?? effectiveFoil(activity) ?? false;
       setPrepared({
         segments: track && range ? coloredSegments(track.points, range) : [],
         props: {
@@ -64,7 +66,7 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
           title: labels.title,
           subtitle: labels.subtitle,
           fileName: safeFileName(labels.baseName),
-          stats: shareableStats(summaryShareStats(summary, sportTreatment(sport), units, hasActiveThreshold(getSportProfile(sport)))),
+          stats: shareableStats(summaryShareStats(summary, sportTreatment(sport), units, hasActiveThreshold(getSportProfile(sport)), foil)),
         },
       });
     } catch (err) {

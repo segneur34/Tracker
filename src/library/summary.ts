@@ -10,7 +10,14 @@ import {
   computeActiveTimeMs,
   thresholdActivityMask,
 } from '../core/sessionStats';
-import { SAILING_SPORTS, defaultActiveThresholdOf, getSportProfile, type ElevationProfile, type HeartRateProfile } from '../core/sportProfiles';
+import {
+  SAILING_SPORTS,
+  defaultActiveThresholdOf,
+  getSportProfile,
+  hasActiveThreshold,
+  type ElevationProfile,
+  type HeartRateProfile,
+} from '../core/sportProfiles';
 import type { RawTrackPoint, SportType, TimedTrackPoint, TrackPoint } from '../core/types';
 import { applyTerrainElevation, type TerrainSamples } from '../core/terrainElevation';
 import { msToKnots } from '../core/units';
@@ -115,6 +122,8 @@ const analyze = (
   movingDistanceM: number | null;
   /** Masque d'activité (hors surf), pour la cadence en mouvement. */
   mask?: boolean[];
+  /** Voile à seuil : temps en mouvement, dénominateur du ratio (`SessionSummary.inMotionS`). */
+  inMotionS?: number;
   surf?: Pick<SessionSummary, 'waveCount' | 'longestWaveM' | 'longestFlightS' | 'flightS'>;
 } => {
   if (sport === null) return { track: computeKinematics(rawPoints), movingTimeS: null, movingDistanceM: null };
@@ -146,7 +155,17 @@ const analyze = (
   // Seuil à 0 : arrêts complets ôtés d'office (`stillThreshold`) ; bateau : toute la session en navigation,
   // pauses de l'enregistrement et trous immobiles ôtés.
   const mask = thresholdActivityMask(track, profile, threshold);
-  return { track, movingTimeS: computeActiveTimeMs(track, mask) / 1000, movingDistanceM: computeActiveDistanceM(track, mask), mask };
+  // Voile à seuil : le ratio se lit sur le temps en mouvement, comme dans l'analyse (`buildSailingSessionStats`).
+  const inMotionS = isSailing && hasActiveThreshold(profile)
+    ? computeActiveTimeMs(track, thresholdActivityMask(track, profile, 0)) / 1000
+    : undefined;
+  return {
+    track,
+    movingTimeS: computeActiveTimeMs(track, mask) / 1000,
+    movingDistanceM: computeActiveDistanceM(track, mask),
+    mask,
+    ...(inMotionS !== undefined ? { inMotionS } : {}),
+  };
 };
 
 /** Résumé d'une trace, ou `null` si elle a moins de deux points horodatés. */
@@ -177,6 +196,7 @@ export const summarizeSession = (
     distanceM: cumDist[cumDist.length - 1],
     movingTimeS,
     movingDistanceM,
+    ...(analyzed.inMotionS !== undefined ? { inMotionS: analyzed.inMotionS } : {}),
     elevationGainM: elevation.coverage >= MIN_ELEVATION_COVERAGE ? elevation.gainM : null,
     maxSpeedMs,
     pointCount: track.length,

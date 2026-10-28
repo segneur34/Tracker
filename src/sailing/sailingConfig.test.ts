@@ -5,10 +5,14 @@ import type { TrackPoint } from '../core/types';
 import { knotsToMs } from '../core/units';
 import {
   DEFAULT_SAILING_SPEED_RANGE_MS,
+  MANEUVER_FULL_TURN_DEG,
+  MANEUVER_MIN_COHERENCE,
   SLOW_SESSION_ACTIVE_THRESHOLD_KN,
+  getStillSpeedKn,
   suggestActiveThresholdKn,
   suggestSpeedRangeMs,
 } from './sailingConfig';
+import { TURN_MIN_COHERENCE } from './wind';
 
 /** Trace synthétique : vitesse imposée point par point, cadence réglable. */
 const buildTrack = (speedsMs: number[], stepSeconds = 1): TrackPoint[] => {
@@ -76,5 +80,21 @@ describe('suggestSpeedRangeMs', () => {
     const track = buildTrack([knotsToMs(10)]);
     const range = suggestSpeedRangeMs('wingfoil', 0, track, buildCumulativeTrack(track));
     expect(range).toEqual(DEFAULT_SAILING_SPEED_RANGE_MS);
+  });
+});
+
+describe('seuils de la détection des manœuvres (28/10)', () => {
+  it('garde-fou de cohérence plus large pour les manœuvres que pour la polaire, qui garde le sien', () => {
+    expect(MANEUVER_MIN_COHERENCE).toBe(0.5);
+    expect(TURN_MIN_COHERENCE).toBe(0.6);
+  });
+
+  it('tient un virage de 270° ou plus pour un tour complet', () => {
+    expect(MANEUVER_FULL_TURN_DEG).toBe(270);
+  });
+
+  it('lit le plancher d\'arrêt dans le profil du support, en nœuds', () => {
+    expect(getStillSpeedKn()).toBe(SPORT_PROFILES.wingfoil.stillThreshold);
+    expect(getStillSpeedKn('kite')).toBe(SPORT_PROFILES.kite.stillThreshold);
   });
 });

@@ -12,6 +12,8 @@ import {
   selectWindCandidate,
   windSamplesFrom,
   type ManeuverLocation,
+  type ManeuverOptions,
+  type ManeuverStats,
   type WindEstimationOptions,
 } from './maneuvers';
 import { sessionManeuverThresholds } from './sailingConfig';
@@ -839,7 +841,8 @@ describe('summarizeManeuvers', () => {
       tackFail: 0,
       jibeSuccess: 4,
       jibeFail: 0,
-      rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0 },
+      rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
+      rejectedTurns: [],
       locations: [
         fakeManeuver({ timeMs: TRACK_START_MS, relaunchS: 2, conservation: 0.6 }),
         fakeManeuver({ timeMs: TRACK_START_MS + 60000, relaunchS: 2, conservation: 0.8 }),
@@ -861,7 +864,8 @@ describe('summarizeManeuvers', () => {
       tackFail: 0,
       jibeSuccess: 3,
       jibeFail: 0,
-      rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0 },
+      rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
+      rejectedTurns: [],
       locations: [
         fakeManeuver({ relaunchS: 2 }),
         fakeManeuver({ relaunchS: 4 }),
@@ -1148,9 +1152,15 @@ describe('calculateWindStats', () => {
     // Bords de 18 s, transitions comprises : trop courts pour que `stableSegment`
     // trouve un cap stabilisé des deux côtés de chaque virage. C'est le cas qui
     // vidait la courbe, et sur lequel les tentatives d'assouplissement du §10-21
-    // avaient échoué.
+    // avaient échoué. Depuis le repli sur les caps médians (28/10), ces bords
+    // en donnent un : une manœuvre sur deux est marquée sans cap stabilisé,
+    // pour garder le cas.
     const track = buildLegSession(upwindDownwindLegs(10, 18), () => 0);
-    const maneuvers = analyzeManeuvers(track, 0, { successThresholdKn: 8 });
+    const detected = analyzeManeuvers(track, 0, { successThresholdKn: 8 });
+    const maneuvers: ManeuverStats = {
+      ...detected,
+      locations: detected.locations.map((m, k) => (k % 2 === 0 ? m : { ...m, stableHeadings: false })),
+    };
     const stats = calculateWindStats(track, maneuvers, 0);
 
     expect(stats).not.toBeNull();
@@ -1251,9 +1261,12 @@ describe('calculateWindStats', () => {
     for (const row of rows) if (row.angle !== null) expect(Math.abs(row.angle - stats!.referenceDeg)).toBeLessThanOrEqual(180);
   });
 
-  // Protocole 4 : bascule de vent.
-  it('voit une bascule de 60° sur les manœuvres', () => {
-    const wind = (t: number) => (t < 1200 ? 0 : t < 1380 ? ((t - 1200) / 180) * 60 : 60);
+  // Protocole 4 : bascule de vent. De 50° : au-delà, le vent global est tiré
+  // vers l'un des deux vents, et le changement d'amures exigé (28/10) écarte
+  // les virements de l'autre, à plus de 45° de lui (bords de près à 45°).
+  it('voit une bascule de 50° sur les manœuvres', () => {
+    const SHIFT = 50;
+    const wind = (t: number) => (t < 1200 ? 0 : t < 1380 ? ((t - 1200) / 180) * SHIFT : SHIFT);
     const track = buildLegSession(upwindDownwindLegs(16, 150), wind);
     const global = estimateWind(track);
     const maneuvers = analyzeManeuvers(track, global.direction);
@@ -1264,12 +1277,185 @@ describe('calculateWindStats', () => {
     // Les vents locaux des dernières manœuvres doivent lire le nouveau vent.
     const late = maneuvers.locations.filter((m) => m.timeMs - TRACK_START_MS > 1600 * 1000);
     expect(late.length).toBeGreaterThan(0);
-    for (const m of late) expect(distanceTo(m.localWind, 60)).toBeLessThanOrEqual(12);
+    for (const m of late) expect(distanceTo(m.localWind, SHIFT)).toBeLessThanOrEqual(12);
+    // Les premières, au vent d'avant la bascule, sont toujours comptées.
+    expect(maneuvers.locations.filter((m) => m.timeMs - TRACK_START_MS < 1100 * 1000).length).toBeGreaterThan(0);
 
-    // La courbe finit près de 60° et a couvert la bascule.
+    // La courbe finit près du nouveau vent et a couvert la bascule.
     const end = stats!.windAt(TRACK_START_MS + 2200 * 1000);
     expect(end).not.toBeNull();
-    expect(distanceTo(end!, 60)).toBeLessThanOrEqual(12);
-    expect(stats!.range).toBeGreaterThanOrEqual(45);
+    expect(distanceTo(end!, SHIFT)).toBeLessThanOrEqual(12);
+    expect(stats!.range).toBeGreaterThanOrEqual(SHIFT * 0.75);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Détection robuste au bruit de cap (session réelle du 26/10, lot 10)
+// ---------------------------------------------------------------------------
+
+/** Interpolation linéaire entre des repères `[t, valeur]`, constante au-delà. */
+const keyframes = (frames: [number, number][]) => (t: number): number => {
+  if (t <= frames[0][0]) return frames[0][1];
+  for (let k = 1; k < frames.length; k++) {
+    const [t1, v1] = frames[k];
+    if (t <= t1) {
+      const [t0, v0] = frames[k - 1];
+      return v0 + ((v1 - v0) * (t - t0)) / (t1 - t0);
+    }
+  }
+  return frames[frames.length - 1][1];
+};
+
+/**
+ * Bruit de cap d'un wing à 1 Hz, jusqu'à ±8° : lisse et fonction du seul
+ * temps, il est le même à toute cadence. Il suffit à priver la trace de tout
+ * segment sous 3°/s : comme sur la vraie session, seuls les caps médians
+ * jugent le virage.
+ */
+const headingNoise = (t: number): number => 5 * Math.sin(0.7 * t) + 3 * Math.sin(1.7 * t + 1);
+
+/**
+ * Session scriptée par repères de cap et de vitesse (nœuds), vent du nord.
+ * Planche arrêtée (vitesse nulle), le cap n'est que du bruit de position : il
+ * prend n'importe quelle valeur.
+ */
+const scriptedSession = (
+  durationS: number,
+  headings: [number, number][],
+  speeds: [number, number][],
+  stepS: number
+): PointData[] => {
+  const headingAt = keyframes(headings);
+  const speedAt = keyframes(speeds);
+  return buildTrack(
+    durationS,
+    stepS,
+    (t) => (speedAt(t) < 0.5 ? (t * 137.5) % 360 : headingAt(t) + headingNoise(t)),
+    (t) => speedAt(t)
+  );
+};
+
+/** Seuils d'une session de wing : réussite et vol à 8 nœuds, entrée dès 2 nœuds. */
+const FLIGHT_OPTIONS: ManeuverOptions = { successThresholdKn: 8, minEntrySpeedKn: 2, flightThresholdKn: 8 };
+
+const SCENARIOS: Record<string, { durationS: number; headings: [number, number][]; speeds: [number, number][] }> = {
+  // Deux virements à 15 s d'intervalle, comme à 21:12 le 26/10 : le premier
+  // finit en abattant un peu, le second en remontant ; le temps mort compté
+  // depuis la fin de la fenêtre mangeait le début du second.
+  deuxVirements: {
+    durationS: 160,
+    headings: [[0, -60], [60, -60], [64, 60], [67, 66], [75, 30], [80, -127], [87, -70]],
+    speeds: [[0, 12], [60, 12], [62, 9], [65, 12], [75, 12], [78, 9], [81, 12]],
+  },
+  // Un virement symétrique, de 45° à −45° au vent.
+  virementSymetrique: {
+    durationS: 130,
+    headings: [[0, 45], [60, 45], [65, -45]],
+    speeds: [[0, 18], [60, 18], [63, 10], [66, 18]],
+  },
+  // Un empannage lent, puis un virement tourné dans le même sens dès 6 s
+  // après, comme à 26:05 le 26/10.
+  empannageVirement: {
+    durationS: 170,
+    headings: [[0, 87], [60, 87], [76, 314], [78, 304], [82, 285], [88, 465]],
+    speeds: [[0, 12], [60, 12], [70, 11], [76, 12], [84, 12], [86, 9], [90, 12]],
+  },
+  // Un virement raté, un frétillement, puis la chute : planche arrêtée 30 s.
+  viramentRateChute: {
+    durationS: 180,
+    headings: [[0, 45], [60, 45], [66, -45], [73, -45], [75, -5], [77, -80], [79, -45]],
+    speeds: [[0, 18], [60, 18], [63, 4], [68, 12], [78, 12], [79, 0], [110, 0], [115, 18]],
+  },
+  // Un 360 étalé sur 16 s, sans perdre le vol.
+  tourComplet: {
+    durationS: 150,
+    headings: [[0, 45], [60, 45], [76, 405]],
+    speeds: [[0, 15], [60, 15], [68, 13], [76, 15]],
+  },
+  // Un empannage en vol, puis un demi-tour en archimédien à 3 nœuds avant de revoler.
+  empannageEtDemiTour: {
+    durationS: 240,
+    headings: [[0, 135], [60, 135], [65, 225], [160, 225], [168, 135]],
+    speeds: [[0, 16], [60, 16], [62, 12], [65, 16], [100, 16], [120, 3], [168, 3], [175, 16]],
+  },
+  // Approche à 5 nœuds, sous le seuil : le rider décolle pendant l'empannage.
+  decollagePendantLeVirage: {
+    durationS: 150,
+    headings: [[0, 120], [60, 120], [68, 240]],
+    speeds: [[0, 5], [60, 5], [68, 16]],
+  },
+};
+
+const scenarioStats = (name: string, stepS = 1, options: ManeuverOptions = FLIGHT_OPTIONS): ManeuverStats => {
+  const s = SCENARIOS[name];
+  return analyzeManeuvers(scriptedSession(s.durationS, s.headings, s.speeds, stepS), 0, options);
+};
+
+/** Ce qui doit être identique à 1 Hz et à 5 Hz : manœuvres comptées et mises de côté. */
+const signature = (stats: ManeuverStats) => ({
+  counted: stats.locations.map((m) => `${m.type}:${m.success ? 'ok' : 'raté'}`),
+  fullTurn: stats.rejected.fullTurn,
+  noFlight: stats.rejected.noFlight,
+});
+
+describe('analyzeManeuvers, détection robuste au bruit de cap', () => {
+  it('compte deux virements à 15 s d\'intervalle', () => {
+    const stats = scenarioStats('deuxVirements');
+    expect(signature(stats).counted).toEqual(['tack:ok', 'tack:ok']);
+  });
+
+  it('compte un virement 10 s après un empannage tourné dans le même sens', () => {
+    const stats = scenarioStats('empannageVirement');
+    expect(signature(stats).counted).toEqual(['jibe:ok', 'tack:ok']);
+  });
+
+  it('ne compte que le virement raté, pas la chute qui le suit', () => {
+    const stats = scenarioStats('viramentRateChute');
+    expect(signature(stats).counted).toEqual(['tack:raté']);
+  });
+
+  it('écarte un tour complet, ni virement ni empannage', () => {
+    const stats = scenarioStats('tourComplet');
+    expect(stats.locations).toHaveLength(0);
+    expect(stats.rejected.fullTurn).toBe(1);
+    expect(stats.rejectedTurns.find((r) => r.motif === 'fullTurn')!.turnDeg).toBeGreaterThanOrEqual(270);
+  });
+
+  it('met à part le demi-tour entamé hors vol, hors des comptes et du % de réussite', () => {
+    const stats = scenarioStats('empannageEtDemiTour');
+    expect(signature(stats)).toEqual({ counted: ['jibe:ok'], fullTurn: 0, noFlight: 1 });
+    expect(stats.jibeFail).toBe(0);
+    const summary = summarizeManeuvers(stats);
+    expect(summary.jibe!.count).toBe(1);
+    expect(summary.jibe!.success).toBe(1);
+    const aside = stats.rejectedTurns.find((r) => r.motif === 'noFlight')!;
+    expect(aside.type).toBe('jibe');
+    expect(aside.speedKn).toBeLessThan(8);
+  });
+
+  it('sans seuil de vol (bateau), compte le demi-tour lent comme une manœuvre ratée', () => {
+    const { flightThresholdKn: _ignored, ...withoutFlight } = FLIGHT_OPTIONS;
+    const stats = scenarioStats('empannageEtDemiTour', 1, withoutFlight);
+    expect(signature(stats)).toEqual({ counted: ['jibe:ok', 'jibe:raté'], fullTurn: 0, noFlight: 0 });
+  });
+
+  it('met à part l\'empannage où le rider décolle pendant le virage', () => {
+    const stats = scenarioStats('decollagePendantLeVirage');
+    expect(signature(stats)).toEqual({ counted: [], fullTurn: 0, noFlight: 1 });
+  });
+
+  it('donne le même résultat à 1 Hz et à 5 Hz', () => {
+    for (const name of Object.keys(SCENARIOS)) {
+      expect(signature(scenarioStats(name, 0.2)), name).toEqual(signature(scenarioStats(name, 1)));
+    }
+  });
+
+  it('lit des caps stabilisés sur les fenêtres médianes quand aucun segment ne tient 3°/s', () => {
+    const stats = scenarioStats('virementSymetrique');
+    expect(stats.locations).toHaveLength(1);
+    expect(stats.locations[0].stableHeadings).toBe(true);
+    expect(distanceTo(stats.locations[0].localWind, 0)).toBeLessThanOrEqual(10);
+    // Les manœuvres nourrissent donc de nouveau l'estimation du vent.
+    expect(windSamplesFrom(stats)).toHaveLength(1);
   });
 });

@@ -128,6 +128,20 @@ describe('summarizeSession', () => {
     expect(wing.movingDistanceM! / wing.movingTimeS!).toBeCloseTo(10.3, 0);
   });
 
+  it('range le temps en mouvement de la voile à seuil, dénominateur du ratio de vol (version 12)', () => {
+    // 5 min à l'arrêt, 10 min de vol à 20 nœuds, 5 min à 3 nœuds, 5 min à l'arrêt.
+    for (const hz of [1, 5]) {
+      const summary = summarizeSession(buildTrack([[300, 0], [600, 10.3], [300, 1.5], [300, 0]], hz), 'wingfoil', { activeThreshold: 7 })!;
+      expect(summary.calcVersion).toBe(12);
+      expect(summary.inMotionS!).toBeGreaterThan(890);
+      expect(summary.inMotionS!).toBeLessThan(910);
+      expect(summary.movingTimeS! / summary.inMotionS!).toBeCloseTo(2 / 3, 1);
+    }
+    // Ni la course ni le bateau, sans ratio de vol.
+    expect('inMotionS' in summarizeSession(buildTrack([[600, 3]]), 'running')!).toBe(false);
+    expect('inMotionS' in summarizeSession(buildTrack([[600, 2.06]]), 'bateau')!).toBe(false);
+  });
+
   it('compte toute une session bateau en navigation, sans seuil, bords lents compris', () => {
     // 10 min à 4 nœuds, 5 min à 0,5 nœud : rien n'est écarté, même un seuil imposé.
     const raw = buildTrack([[600, 2.06], [300, 0.26]]);

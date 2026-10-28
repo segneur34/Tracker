@@ -37,7 +37,23 @@ describe('buildSailingSessionStats', () => {
   });
 
   it('wingfoil : le seuil écarte le bord lent', () => {
-    const stats = buildSailingSessionStats(track, { sport: 'wingfoil', activeThresholdKn: 2 })!;
+    // Bord lent à 1,5 nœud : sous le seuil (3 nœuds, sortie à 2), mais en mouvement (au-dessus du
+    // plancher d'arrêt, 1 nœud), donc au dénominateur du ratio depuis le 28/10.
+    const stats = buildSailingSessionStats(buildTrack([[600, 4], [300, 1.5]]), { sport: 'wingfoil', activeThresholdKn: 3 })!;
     expect(parseFloat(stats.activeRatio)).toBeLessThan(80);
+  });
+
+  it('wingfoil : ratio de vol sur le temps en mouvement, 10 min d\'arrêt avant et après n\'y changent rien (28/10)', () => {
+    // 10 min de vol à 15 nœuds, 5 min en archimédien à 3 nœuds : 2/3 de vol.
+    const sailed = buildSailingSessionStats(buildTrack([[600, 15], [300, 3]]), { sport: 'wingfoil', activeThresholdKn: 7 })!;
+    const withStops = buildSailingSessionStats(buildTrack([[600, 0], [600, 15], [300, 3], [600, 0]]), { sport: 'wingfoil', activeThresholdKn: 7 })!;
+    expect(parseFloat(sailed.activeRatio)).toBeCloseTo(66.7, 0);
+    expect(Math.abs(parseFloat(withStops.activeRatio) - parseFloat(sailed.activeRatio))).toBeLessThanOrEqual(0.5);
+    expect(withStops.inMotionTimeS).toBeGreaterThan(890);
+    expect(withStops.inMotionTimeS).toBeLessThan(910);
+  });
+
+  it('bateau : pas de temps en mouvement à part, sans seuil ni ratio', () => {
+    expect(buildSailingSessionStats(track, { sport: 'bateau' })!.inMotionTimeS).toBe(0);
   });
 });

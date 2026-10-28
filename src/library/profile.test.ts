@@ -12,6 +12,7 @@ const session = (startMs: number, over: Partial<StatSession> = {}): StatSession 
   endMs: startMs + 3_600_000,
   distanceM: 10_000,
   movingTimeS: 3000,
+  inMotionS: null,
   movingDistanceM: 9000,
   elevationGainM: null,
   maxSpeedMs: 5,

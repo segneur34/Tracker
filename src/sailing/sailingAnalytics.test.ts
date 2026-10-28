@@ -238,7 +238,8 @@ describe('calculateWindStats', () => {
     const track = buildTrackAt(regularTimes(600, 1), () => 315, () => 12);
     const stats: ManeuverStats = {
       tackSuccess: 3, tackFail: 0, jibeSuccess: 0, jibeFail: 0,
-      rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0 },
+      rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
+      rejectedTurns: [],
       locations: [fakeManeuver(359.7, START_MS + 60_000), fakeManeuver(359.9, START_MS + 180_000), fakeManeuver(359.8, START_MS + 300_000)],
     };
     const wind = calculateWindStats(track, stats, 0)!;

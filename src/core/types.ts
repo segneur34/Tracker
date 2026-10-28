@@ -115,8 +115,17 @@ export interface BaseSessionStats {
   totalTime: string;
   /** Durée passée au-dessus du seuil d'activité, formatée. */
   activeTime: string;
-  /** Part du temps actif sur le temps total, en pourcentage formaté. */
+  /**
+   * Part du temps actif, en pourcentage formaté : sur le temps total, ou sur
+   * le temps en mouvement quand un masque de mouvement est donné (voile).
+   */
   activeRatio: string;
+  /**
+   * Temps en mouvement, en secondes, dénominateur du ratio en voile (arrêts
+   * ôtés au plancher d'arrêt) ; 0 sans masque de mouvement. Aucune page ne
+   * l'affiche : le résumé des fiches en a besoin.
+   */
+  inMotionTimeS: number;
   /** Vitesse moyenne sur le temps total, en m/s, ou `null` sans durée. */
   avgSpeedMs: number | null;
   /** Vitesse moyenne sur le seul temps actif (distance active ÷ temps actif), en m/s, ou `null` sans temps actif. */

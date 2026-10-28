@@ -10,13 +10,15 @@ import type { SessionSummary } from './record';
  * onglets « général » des analyses : le choix retenu pour l'activité vaut
  * aux deux endroits ; un chiffre que la session n'a pas vaut « — ». Sans
  * seuil d'activité (`withActiveThreshold` faux, bateau), la voile n'a ni
- * distance, temps ni moyenne actifs, comme son onglet « général ».
+ * distance, temps ni moyenne actifs, comme son onglet « général ». Sur foil
+ * (`foil`), le temps actif est le temps en vol, et le dit.
  */
 export const summaryShareStats = (
   summary: SessionSummary,
   treatment: Treatment,
   units: { speed: SpeedUnit; distance: DistanceUnit },
-  withActiveThreshold = true
+  withActiveThreshold = true,
+  foil = false
 ): ShareStat[] => {
   const totalS = Math.max((summary.endMs - summary.startMs) / 1000, 0);
   const movingS = summary.movingTimeS;
@@ -31,7 +33,7 @@ export const summaryShareStats = (
       { key: 'distance', label: 'Distance', value: distance },
       { key: 'activeDistance', label: 'Distance active', value: movingM === null ? '—' : formatDistance(movingM, units.distance) },
       { key: 'totalTime', label: 'Temps total', value: formatDuration(totalS * 1000) },
-      { key: 'activeTime', label: 'Temps actif', value: movingS === null ? '—' : formatDuration(movingS * 1000) },
+      { key: 'activeTime', label: foil ? 'Temps en vol' : 'Temps actif', value: movingS === null ? '—' : formatDuration(movingS * 1000) },
       { key: 'averageSpeed', label: 'Vitesse moyenne', value: speed(per(summary.distanceM, totalS)) },
       { key: 'activeAverage', label: 'Moyenne active', value: speed(per(movingM, movingS)) },
       { key: 'maxSpeed', label: 'Vitesse max', value: speed(summary.maxSpeedMs) },
