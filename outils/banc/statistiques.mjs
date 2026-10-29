@@ -22,47 +22,29 @@
 //     virement en triangle, 23/10) ;
 //  6. à 390×844 : rien ne déborde ; la case « Statistiques » de la barre du bas ouvre la page, allumée.
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node statistiques.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-    logs.push(`error: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go: goRaw, settle, waitFor, wait, importGpx, records: sessionRecords, shoot, logs, close } = await connect({ port, width: 1400, height: 1000, shotDir });
+/** Navigation, puis attente du premier rendu de l'application : sous charge, `settle` seul peut rendre la main avant. */
+const go = async (path, max) => {
+  const ms = await goRaw(path, max);
+  await waitFor(`Boolean(document.querySelector('.shell-main'))`, { timeout: 5000, every: 50, label: 'premier rendu' });
+  return ms;
 };
-await new Promise((r) => { ws.onopen = r; });
-await send('Page.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Runtime.enable');
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
+// Sortie propre à ce script (« OK » et « : détail » toujours montrés) : gardée telle quelle pour que le relevé reste comparable.
 let failures = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failures++;
@@ -114,12 +96,6 @@ const points = () => evaluate(`document.querySelectorAll('.recharts-scatter-symb
 const pressed = (label) => evaluate(`[...document.querySelectorAll(${JSON.stringify(rowButtons(label))})].find((b) => b.getAttribute('aria-pressed') === 'true' || b.getAttribute('aria-checked') === 'true')?.textContent ?? null`);
 // Seul l'axe vertical a une étiquette ; Recharts la pose dans une couche à part, hors du groupe de l'axe.
 const yLabel = () => evaluate(`document.querySelector('.recharts-label')?.textContent ?? null`);
-const sessionRecords = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
 const overflow = () => evaluate('document.documentElement.scrollWidth > window.innerWidth');
 /** Ouvre un onglet de la page s'il est fermé. */
 const openTab = (label) => evaluate(`(() => {
@@ -129,8 +105,8 @@ const openTab = (label) => evaluate(`(() => {
 })()`);
 
 // --- Mise en place ---
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 await go('/course', 5000);
+await waitFor(`Boolean(document.querySelector('input[type=file][accept=".gpx"]'))`, { timeout: 3000, every: 50 });
 console.log('import :', await evaluate(`(() => {
   const input = document.querySelector('input[type=file][accept=".gpx"]');
   if (!input) return 'absent';
@@ -142,14 +118,15 @@ console.log('import :', await evaluate(`(() => {
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return 'ok';
 })()`));
-await wait(12000);
+await waitFor(async () => (await sessionRecords())?.length === SESSIONS.length, { timeout: 15000, label: 'fiches' });
+await settle({ max: 2000, label: 'import' });
 
 // 1. Accès.
 await go('/');
 check('lien dans la barre du haut', (await evaluate(`document.querySelector('.shell-toplinks')?.textContent`))?.includes('Statistiques'));
 check('plus de lien sur l\'accueil (demande du 19/10)', !(await evaluate(`[...document.querySelectorAll('.shell-main a')].some((a) => a.textContent.trim().startsWith('Statistiques'))`)));
 check('lien de la barre du haut', await click('.shell-toplinks a', 'Statistiques'));
-await wait(1500);
+await settle({ max: 1500 });
 check('le lien ouvre la page', (await search()) === '/statistiques', await search());
 
 // 1 bis. Boutons glissants, sous « Sélection ».
@@ -159,7 +136,10 @@ check('« Sélection » replié au départ, le choix en cours affiché', (await 
   && (await chips('Famille')) === '', await evaluate(`${selection}?.textContent`));
 await evaluate(`${selection}.click()`);
 await wait(400);
+await waitFor(`${selection}?.getAttribute('aria-expanded') === 'true'`, { timeout: 3000, every: 50, label: 'sélection ouverte' });
 await go('/statistiques');
+// Le choix retenu est relu de la mémoire après le premier rendu : l'attendre, sous charge il peut suivre `go`.
+await waitFor(`${selection}?.getAttribute('aria-expanded') === 'true'`, { timeout: 3000, every: 50, label: 'sélection relue' });
 check('« Sélection » ouvert, retenu après rechargement', (await evaluate(`${selection}?.getAttribute('aria-expanded')`)) === 'true');
 check('rangée des familles', (await chips('Famille')) === 'Tout, À pied, Vélo, Voile, Entraînement, Surf' || (await chips('Famille'))?.startsWith('Tout, '), await chips('Famille'));
 check('« Tout » choisi, pas de rangée d\'activités', (await pressed('Famille')) === 'Tout' && (await chips('Activité')) === '', `${await pressed('Famille')} ; ${await chips('Activité')}`);
@@ -173,12 +153,12 @@ check('case blanche sous le choix', await evaluate(`(() => {
 await evaluate(`document.querySelector('.ui-segmented[aria-label="Famille"] [aria-checked=true]').focus()`);
 await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
 await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
-await wait(800);
+await settle({ max: 800 });
 const keyed = await pressed('Famille');
 check('flèche droite : famille suivante, rangée d\'activités', keyed !== 'Tout' && (await chips('Activité'))?.startsWith('Toutes, ')
   && (await evaluate(`document.activeElement?.getAttribute('aria-checked')`)) === 'true', `${keyed} ; ${await chips('Activité')}`);
 await evaluate('history.back()');
-await wait(800);
+await settle({ max: 800 });
 
 // 2. Vue d'ensemble.
 check('12 sessions', (await stat('Sessions')) === '12', await stat('Sessions'));
@@ -196,7 +176,7 @@ await shoot('stats-ensemble');
 
 // 3. Descente.
 await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'À pied');
-await wait(800);
+await settle({ max: 800 });
 check('famille dans l\'adresse', (await search()) === '/statistiques?famille=course', await search());
 check('Course : 5 sessions', (await stat('Sessions')) === '5', await stat('Sessions'));
 check('À pied : fond de la famille', (await backdrop()) === 'page-backdrop page-backdrop--course', await backdrop());
@@ -211,32 +191,32 @@ check('trois par record', (await evaluate(`document.querySelector('.stats-record
 await shoot('stats-course');
 
 await click('.ui-segmented[aria-label="Période"] [role=radio]', '30 jours');
-await wait(800);
+await settle({ max: 800 });
 check('30 jours : 2 sessions', (await stat('Sessions')) === '2', await stat('Sessions'));
 check('période dans l\'adresse', (await search()) === '/statistiques?famille=course&periode=trente', await search());
 check('le sous-titre porte le choix', (await evaluate(`document.querySelector('.ui-page-header')?.textContent`))?.includes('À pied · 30 jours'),
   await evaluate(`document.querySelector('.ui-page-header')?.textContent`));
 await evaluate('history.back()');
-await wait(1000);
+await settle({ max: 1000 });
 check('retour arrière : vue d\'ensemble', (await search()) === '/statistiques' && (await stat('Sessions')) === '12', `${await search()} ; ${await stat('Sessions')}`);
 
 await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Entraînement');
-await wait(800);
+await settle({ max: 800 });
 check('Fractionné : fond de la famille', (await backdrop()) === 'page-backdrop page-backdrop--fractionne', await backdrop());
 check('activités du fractionné', (await chips('Activité')) === 'Toutes, Fractionné à pied, Fractionné vélo, Tests, Muscu', await chips('Activité'));
 await click('.ui-segmented[aria-label="Activité"] [role=radio]', 'Fractionné vélo');
-await wait(800);
+await settle({ max: 800 });
 check('Fractionné vélo : 1 session', (await stat('Sessions')) === '1' && (await search())?.includes('activite='), `${await stat('Sessions')} ; ${await search()}`);
 
 await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Vélo');
-await wait(800);
+await settle({ max: 800 });
 check('activités du vélo, sessions ou non', (await chips('Activité')) === 'Toutes, Route, Gravel, VTT', await chips('Activité'));
 await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Voile');
-await wait(800);
+await settle({ max: 800 });
 const voile = await chips('Activité');
 check('activité de base de la voile', voile?.startsWith('Toutes, Voile') && voile.includes('Kite'), voile);
 await click('.ui-segmented[aria-label="Activité"] [role=radio]', 'Kite');
-await wait(800);
+await settle({ max: 800 });
 check('Kite : 1 session', (await stat('Sessions')) === '1', await stat('Sessions'));
 
 // 4. Un point du graphe.
@@ -255,7 +235,7 @@ const picked = await evaluate(`document.querySelector('.stats-picked .stats-row'
 check('point cliqué : sa session', clicked && picked?.includes('Ouvrir'), picked);
 if (picked) {
   await click('.stats-picked .stats-row', '');
-  await wait(2500);
+  await settle({ max: 2500 });
   check('« Ouvrir » mène à l\'analyse', (await search())?.startsWith('/course/analyse?session='), await search());
 }
 
@@ -266,7 +246,7 @@ check('fiches en version 5 ou plus, distance en action', fiches.length === 12 &&
 // Par la pastille de la famille, pour que l'affichage soit retenu (la dernière vue retenue est Kite).
 await go('/statistiques');
 await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'À pied');
-await wait(800);
+await settle({ max: 800 });
 await openTab('graphique');
 const courseChips = await chips('Donnée');
 check('données de la course', courseChips === 'Vitesse max, Moyenne en action, Durée, Distance, Dénivelé positif', courseChips);
@@ -280,21 +260,21 @@ await go('/statistiques', 3000);
 check('choix retenu après rechargement', (await search()) === '/statistiques?famille=course' && (await pressed('Donnée')) === 'Dénivelé positif',
   `${await search()} ; ${await pressed('Donnée')}`);
 await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Voile');
-await wait(800);
+await settle({ max: 800 });
 check('voile : pas de D+, la vitesse max à sa place', (await pressed('Donnée')) === 'Vitesse max', await pressed('Donnée'));
 const voileChips = await chips('Donnée');
 check('données de la voile', voileChips === 'Vitesse max, Moyenne en action, Durée, Distance, % de vol', voileChips);
 await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'À pied');
-await wait(800);
+await settle({ max: 800 });
 check('retour en course : le choix retrouvé', (await pressed('Donnée')) === 'Dénivelé positif', await pressed('Donnée'));
 await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Voile');
-await wait(800);
+await settle({ max: 800 });
 await click('.stats-chips[aria-label="Donnée"] .ui-tab', '% de vol');
 await wait(500);
 check('% de vol : le wingfoil seul (kite sans foil), axe en %', (await points()) === 1 && (await yLabel()) === '%', `${await points()} ; ${await yLabel()}`);
 await shoot('stats-graphique');
 await click('.ui-segmented[aria-label="Famille"] [role=radio]', 'Surf');
-await wait(800);
+await settle({ max: 800 });
 const surfChips = await chips('Donnée');
 check('données du surf (sans foil)', surfChips === 'Vitesse max, Moyenne en action, Durée, Distance, Vagues, Plus longue vague', surfChips);
 await click('.stats-chips[aria-label="Donnée"] .ui-tab', 'Vagues');
@@ -333,21 +313,16 @@ const shift = day(30) - firstTime;
 // Planche à voile : une session classée (sans `<type>`, elle serait à classer), sans foil.
 const voileGpx = voileRaw.replace('<trk><name>Synthétique</name>', '<trk><name>Synthétique</name><type>windsurf</type>').replace(/<time>([^<]+)<\/time>/g, (_, t) => `<time>${new Date(Date.parse(t) + shift).toISOString()}</time>`);
 await go('/voile', 3000);
-await evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(voileGpx)}], 'voile.gpx', { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-})()`);
-await wait(6000);
+await importGpx(voileGpx, 'voile.gpx');
+await waitFor(async () => (await sessionRecords())?.some((r) => Math.abs(r.summary.startMs - (firstTime + shift)) < 2000), { timeout: 8000, label: 'fiche voile' });
+await settle({ max: 1500, label: 'import voile' });
 const voileRec = (await sessionRecords()).find((r) => Math.abs(r.summary.startMs - (firstTime + shift)) < 2000);
 check('voile rangée, sans réussite avant l\'analyse', Boolean(voileRec) && voileRec.summary.maneuverResults === undefined);
 await go('/statistiques?famille=voile');
 await openTab('graphique');
 check('pas de réussite tant que la session n\'est pas ouverte', !(await chips('Donnée'))?.includes('réussies'), await chips('Donnée'));
 await go(`/voile/analyse?session=${encodeURIComponent(voileRec?.gpx ?? '')}`, 8000);
-await wait(2000);
+await waitFor(async () => (await sessionRecords()).find((r) => r.gpx === voileRec?.gpx)?.summary.maneuverResults, { timeout: 4000, label: 'réussite rangée' });
 const results = (await sessionRecords()).find((r) => r.gpx === voileRec?.gpx)?.summary.maneuverResults;
 check('réussite rangée dans la fiche par l\'analyse', results && results.tackSuccess + results.tackFail > 0 && results.jibeSuccess + results.jibeFail > 0, JSON.stringify(results));
 await go('/statistiques?famille=voile');
@@ -377,7 +352,7 @@ await shoot('stats-reussite');
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go('/statistiques?famille=course');
 for (const t of ['graphique', 'régularité', 'records']) await openTab(t);
-await wait(800);
+await settle({ max: 800 });
 check('390 px : rien ne déborde (famille)', !(await overflow()));
 await shoot('stats-telephone');
 await go('/statistiques');
@@ -398,11 +373,14 @@ await go('/');
 const tab = (label) => `[...document.querySelectorAll('.shell-tabbar .shell-tab')].find((t) => t.textContent.trim() === ${JSON.stringify(label)})`;
 check('barre du bas : case Statistiques', await evaluate(`!!${tab('Statistiques')}`));
 await evaluate(`${tab('Statistiques')}.click()`);
-await wait(1500);
+await settle({ max: 1500 });
 // La page reprend le dernier affichage : l'adresse peut porter des paramètres.
 check('la case ouvre la page, allumée', (await search())?.startsWith('/statistiques')
   && (await evaluate(`${tab('Statistiques')}.classList.contains('active')`)));
 
-console.log(logs.length ? `Console :\n${logs.join('\n')}` : 'Console : aucune erreur');
+// Ce script ne relève que les erreurs de console, pas les avertissements.
+const errors = logs.filter((l) => !l.startsWith('warning:'));
+console.log(errors.length ? `Console :\n${errors.join('\n')}` : 'Console : aucune erreur');
 console.log(failures === 0 ? 'Tout est bon.' : `${failures} échec(s).`);
+await close();
 process.exit(failures === 0 ? 0 : 1);

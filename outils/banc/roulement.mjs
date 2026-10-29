@@ -8,13 +8,13 @@
 //     revêtement, puissance moyenne changée, voies rangées dans la fiche ;
 //  4. recharge : mêmes chiffres, aucune nouvelle requête ; nom de l'onglet « graphiques ».
 import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
 if (!port || !workDir) {
   console.error('Usage : node roulement.mjs <port> <dossier de travail> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
 // --- Tracé ---
 const A = [3.8, 43.768];
@@ -38,50 +38,26 @@ writeFileSync(ridePath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1
 }\n</trkseg></trk></gpx>\n`);
 console.log(`sortie synthétique : ${fixes.length} points à ${SPEED} m/s`);
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, importFiles, shoot, onMessage, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 const requests = { overpass: 0 };
 /** Réponses d'Overpass : code HTTP, ou motif d'échec du réseau. */
 const overpassIds = new Set();
 const overpassAnswers = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Network.requestWillBeSent' && msg.params.request.method !== 'OPTIONS' && msg.params.request.url.startsWith('https://overpass-api.de/')) {
+onMessage((msg) => {
+  const p = msg.params;
+  if (msg.method === 'Network.requestWillBeSent' && p.request.method !== 'OPTIONS' && p.request.url.startsWith('https://overpass-api.de/')) {
     requests.overpass += 1;
-    overpassIds.add(msg.params.requestId);
+    overpassIds.add(p.requestId);
   }
-  if (msg.method === 'Network.responseReceived' && overpassIds.has(msg.params.requestId)) overpassAnswers.push(String(msg.params.response.status));
-  if (msg.method === 'Network.loadingFailed' && overpassIds.has(msg.params.requestId)) overpassAnswers.push(`échec : ${msg.params.errorText}`);
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+  if (msg.method === 'Network.responseReceived' && overpassIds.has(p.requestId)) overpassAnswers.push(String(p.response.status));
+  if (msg.method === 'Network.loadingFailed' && overpassIds.has(p.requestId)) overpassAnswers.push(`échec : ${p.errorText}`);
+});
+
 const clickButton = (text) => evaluate(`(() => {
   const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)} && !x.disabled);
   if (!b) return 'absent'; b.click(); return 'ok';
 })()`);
-const setFile = async (selector, file) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files: [file] });
-};
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
 const readOpfs = (file) => evaluate(`(async () => {
   let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker');
   const parts = ${JSON.stringify(file)}.split('/');
@@ -99,18 +75,15 @@ const energyWarning = () => evaluate(`[...document.querySelectorAll('.ui-alert--
 const energyNote = () => evaluate(`[...document.querySelectorAll('div')].map((d) => d.textContent).find((t) => /^Pesanteur, roulement et air/.test(t)) ?? '(absente)'`);
 const rollingPart = (note) => note.match(/(Roulement selon le revêtement|Revêtement inconnu)[^]*?(?= Énergie de pédalage)/)?.[0] ?? note;
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
-
 // 1. L'activité Route prend un vélo gravel ; la sortie est rangée.
 await go('/velo', 2000);
 await evaluate(`localStorage.setItem('tracker.sportSettings', JSON.stringify({ bikeTypes: { cycling: 'gravel' } })); 'ok'`);
 await go('/velo');
-await setFile('input[type=file][accept=".gpx"][multiple]', ridePath);
-await wait(4000);
-const gpxName = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx'));
+await importFiles(ridePath, 'input[type=file][accept=".gpx"][multiple]');
+const gpxName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx')), { timeout: 6000, label: 'fiche' });
+await settle({ max: 1500, label: 'import' });
 console.log('rangée :', gpxName);
 
 // 2. Analyse ouverte, onglet surface fermé : la recherche part quand même.
@@ -120,7 +93,7 @@ console.log('requêtes Overpass à l\'ouverture :', requests.overpass);
 
 // 3. Onglet énergie : roulement moyen en attendant, puis selon le revêtement.
 await clickButton('énergie');
-await wait(800);
+await settle({ max: 800 });
 const searchingPower = await energyStat('Puissance moyenne en mouvement');
 console.log('pendant la recherche :', searchingPower, '|', await energyWarning());
 console.log('  note :', rollingPart(await energyNote()));
@@ -131,7 +104,7 @@ console.log(`revêtement connu (${Math.round((Date.now() - searchStart) / 1000)}
 console.log('  note :', rollingPart(await energyNote()));
 console.log('  énergie de pédalage :', await energyStat('Énergie de pédalage'));
 await shoot('roulement-energie');
-await wait(1500);
+await waitFor(async () => JSON.parse(await readOpfs('sessions/' + gpxName.slice(0, -4) + '.json')).surfaces, { timeout: 1500, label: 'voies rangées' });
 const record = JSON.parse(await readOpfs(`sessions/${gpxName.replace(/\.gpx$/, '.json')}`));
 console.log('fiche :', record.surfaces ? `${record.surfaces.runs.length} morceaux, ${record.surfaces.tags.length} étiquettes` : 'sans voies');
 
@@ -146,4 +119,5 @@ for (let k = 1; k <= 2; k++) {
 
 console.log('réponses d\'Overpass :', overpassAnswers.join(', ') || '(aucune)');
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
-ws.close();
+await close();
+process.exit(0);

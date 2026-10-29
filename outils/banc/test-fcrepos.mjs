@@ -8,47 +8,27 @@
 //     refait ici sur la même FC d'exemple), la fenêtre surlignée, la courbe de 180 secondes, le test gardé ;
 //  4. « La retenir » (FC repos de Pratiquant), « Refaire », le test dans « Vos tests », « Retirer » ;
 //  5. à 390 et 320 px : les pages sans débordement.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node test-fcrepos.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, wait, blockNetwork, shoot, close, logs, onMessage } = await connect({ port, width: 1400, height: 1000, shotDir });
 let sounds = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled') {
-    const text = msg.params.args.map((a) => a.value ?? a.description).join(' ');
-    if (msg.params.type === 'debug' && /^\[bips\]/.test(text)) sounds.push(text);
-    if (['error', 'warning'].includes(msg.params.type)) logs.push(`${msg.params.type}: ${text.split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 2500) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+onMessage((msg) => {
+  if (msg.method !== 'Runtime.consoleAPICalled') return;
+  const text = msg.params.args.map((a) => a.value ?? a.description).join(' ');
+  if (msg.params.type === 'debug' && /^\[bips\]/.test(text)) sounds.push(text);
+});
 const clickText = (text, selector = 'button') => evaluate(`(() => {
   const all = [...document.querySelectorAll(${JSON.stringify(selector)})];
   const b = all.find((x) => x.textContent.trim() === ${JSON.stringify(text)}) ?? all.find((x) => x.textContent.includes(${JSON.stringify(text)}));
   if (!b) return 'absent'; if (b.disabled) return 'désactivé'; b.click(); return 'ok';
 })()`);
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
 const overflow = () => evaluate('document.documentElement.scrollWidth - window.innerWidth');
 const pageText = () => evaluate('document.querySelector(".ui-page").innerText');
 const stored = () => evaluate(`JSON.parse(localStorage.getItem('tracker.restingHr') ?? '[]')`);
@@ -78,9 +58,7 @@ const openHelp = async (label) => {
   return done;
 };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
-await send('Network.setBlockedURLs', { urls: ['https://*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork(['https://*']);
 
 // --- 1. Tuile et page ---
 await go('/fractionne/tests');
@@ -167,4 +145,4 @@ for (const [w, h] of [[390, 844], [320, 640]]) {
 
 console.log(logs.length ? `console :\n${[...new Set(logs)].join('\n')}` : 'console : aucune erreur');
 console.log(failures === 0 ? 'tout passe' : `${failures} échec(s)`);
-ws.close();
+await close();

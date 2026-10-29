@@ -6,36 +6,21 @@
 // les deux GPX : make-gpx.mjs sans décalage, puis avec un décalage d'une heure.
 // Depuis le 28/10, le champ « Allure de la session » est dans l'onglet « réglages » de l'analyse voile
 // (panneau « Réglages de la session ») : le script ouvre cet onglet avant de le lire.
-const [port, gpx1, gpx2] = process.argv.slice(2);
-const BASE = process.env.BASE ?? 'http://localhost:5173';
+import { connect } from './lib/cdp.mjs';
 
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
+const [port, gpx1, gpx2] = process.argv.slice(2);
+
 const dialogs = [];
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') {
-    dialogs.push(msg.params.message);
-    ws.send(JSON.stringify({ id: ++id, method: 'Page.handleJavaScriptDialog', params: { accept: true } }));
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const { send, go: libGo, settle, waitFor, wait, importFiles, onMessage, close, logs } = await connect({ port });
+onMessage((msg) => { if (msg.method === 'Page.javascriptDialogOpening') dialogs.push(msg.params.message); });
+// Ici une exception de la page rend un texte « ERREUR: … » au lieu de `undefined`.
 const evaluate = async (expression) => {
   const res = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
   if (res.result?.exceptionDetails) return `ERREUR: ${res.result.exceptionDetails.exception?.description?.split('\n')[0]}`;
   return res.result?.result?.value;
 };
-const go = async (path, ms = 2500) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+const go = (path, ms = 2500) => libGo(path, ms);
+
 // « Arrêter » se tient (appui long réglable, 2 s par défaut) : appui, attente, puis relâcher.
 const holdStop = async () => {
   const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
@@ -44,13 +29,6 @@ const holdStop = async () => {
   return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
 };
 const clickText = (text) => evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim().startsWith(${JSON.stringify(text)})); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
-const setFile = async (selector, path) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  if (!nodeId) return 'absent';
-  await send('DOM.setFileInputFiles', { nodeId, files: [path] });
-  return 'ok';
-};
 // Saisie dans un champ contrôlé par React : setter natif, puis événement `input`.
 const typeInto = (selector, value) => evaluate(`(() => { const el = ${selector}; if (!el) return 'absent'; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()`);
 const ALLURE_LABEL = `[...document.querySelectorAll('label')].find((l) => l.textContent.includes('Allure de la session'))`;
@@ -59,7 +37,7 @@ const allure = () => evaluate(`(() => { const l = ${ALLURE_LABEL}; if (!l) retur
 /** Ouvre l'onglet « réglages » de l'analyse s'il est fermé (les onglets ouverts sont mémorisés). */
 const openSettingsTab = async () => {
   const r = await evaluate(`(() => { const b = [...document.querySelectorAll('.an-tabs .ui-tab')].find((x) => x.textContent.trim() === 'réglages'); if (!b) return 'onglet absent'; if (b.getAttribute('aria-pressed') === 'true') return 'déjà ouvert'; b.click(); return 'ouvert'; })()`);
-  await wait(1200);
+  await settle({ max: 1200 });
   return r;
 };
 const bar = () => evaluate(`document.querySelector('.ui-savebar')?.innerText.replace(/\\n/g, ' ') ?? 'pas de barre'`);
@@ -76,20 +54,20 @@ const recordAndAnalyse = async (gpx) => {
   await go('/enregistrer');
   await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click(); 'ok'`);
   await wait(300);
-  await setFile('input[type=file]', gpx);
-  await wait(800);
+  await importFiles(gpx, 'input[type=file]');
+  await settle({ max: 800 });
   await evaluate(`(() => { const s = [...document.querySelectorAll('select')].pop(); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, '600'); s.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
   await clickText('Démarrer');
   await wait(8000);
   await holdStop();
-  await wait(2500);
+  await waitFor("[...document.querySelectorAll('button')].some((x) => x.textContent.trim().startsWith('Analyser'))", { timeout: 2500, label: 'bouton Analyser' });
   console.log('Analyser :', await clickText('Analyser'));
-  await wait(6000);
+  await waitFor("location.pathname.includes('/analyse')", { timeout: 6000, label: 'analyse ouverte' });
+  await settle({ max: 6000, label: 'analyse' });
   const url = await evaluate('location.pathname + location.search');
   return { url, file: decodeURIComponent(url.split('session=')[1] ?? '') };
 };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
 
@@ -107,7 +85,7 @@ console.log('fiche :', await fiche(s1.file));
 
 step('2. Allure imposée à 6 nds : brouillon, fiche intacte');
 console.log('saisie :', await typeInto(ALLURE_INPUT, '6'));
-await wait(3000);
+await settle({ max: 3000 });
 console.log('allure :', await allure(), '| barre :', await bar());
 console.log('fiche :', await fiche(s1.file));
 
@@ -137,4 +115,5 @@ console.log('referenceSpeeds absent (oui attendu) :', !/referenceSpeeds/.test(fi
 step('Console');
 console.log('dialogues :', dialogs.length ? dialogs.join(' / ') : 'aucun');
 console.log(logs.length ? logs.join('\n') : 'aucune erreur');
-ws.close();
+await close();
+process.exit(0);

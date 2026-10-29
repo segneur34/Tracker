@@ -2,31 +2,19 @@
 // relu après rechargement, affiché en tête de l'analyse, effacé par un nom vide, puis donné depuis
 // l'en-tête de l'analyse et relu dans la bibliothèque. Profil Chrome neuf.
 // Usage : node rename.mjs <port> <gpx de voile, produit par make-gpx.mjs>
-const [port, gpx] = process.argv.slice(2);
-const BASE = process.env.BASE ?? 'http://localhost:5173';
+import { connect } from './lib/cdp.mjs';
 
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-    logs.push(`error: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const [port, gpx] = process.argv.slice(2);
+
+// --- Protocole (lib/cdp.mjs) ---
+const lib = await connect({ port });
+const { send, settle, waitFor, wait, importFiles, close, logs } = lib;
 const evaluate = async (expression) => {
   const res = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
   if (res.result?.exceptionDetails) return `ERREUR: ${res.result.exceptionDetails.exception?.description?.split('\n')[0]}`;
   return res.result?.result?.value;
 };
-const go = async (path, ms = 2500) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+const go = (path, ms = 2500) => lib.go(path, ms);
 const clickText = (text) => evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)}); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
 const rows = () => evaluate(`JSON.stringify([...document.querySelectorAll('.lib-row__main')].map((r) => r.innerText.replace(/\\n/g, ' / ')))`);
 const record = () => evaluate(`(async () => { const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions'); for await (const [n, h] of d.entries()) if (n.endsWith('.json')) { const r = JSON.parse(await (await h.getFile()).text()); return JSON.stringify({ name: r.name, title: r.title, gpx: r.gpx }); } return 'aucune fiche'; })()`);
@@ -36,18 +24,18 @@ const typeName = async (value, key) => {
   await wait(200);
   if (key) await evaluate(`document.querySelector('.lib-row__rename').dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true })), 'ok'`);
 };
+/** La bibliothèque est lue depuis la mémoire (OPFS) après le chargement : on attend sa première ligne. */
+const listReady = async () => { await waitFor(async () => (await rows()) !== '[]', { timeout: 4000, label: 'liste' }); await settle({ max: 1000, label: 'liste' }); };
 const step = (title) => console.log(`\n== ${title}`);
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
 
 step('1. Import du GPX dans la bibliothèque voile');
 await go('/voile');
-const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: 'input[type=file][accept=".gpx"]' });
-await send('DOM.setFileInputFiles', { nodeId, files: [gpx] });
-await wait(4000);
+await importFiles([gpx]);
+await waitFor(async () => (await record()) !== 'aucune fiche' && (await rows()) !== '[]', { timeout: 4000, label: 'fiche et ligne' });
+await settle({ max: 4000, label: 'import' });
 console.log('lignes :', await rows());
 console.log('fiche :', await record());
 
@@ -59,32 +47,38 @@ console.log('lignes :', await rows());
 step('3. Renommer, Entrée');
 await clickText('Renommer');
 await typeName('  Sortie du soir  ', 'Enter');
-await wait(1500);
+await waitFor(async () => (await record()).includes('Sortie du soir'), { timeout: 1500, label: 'fiche renommée' });
+await settle({ max: 1500, label: 'renommage' });
 console.log('lignes :', await rows());
 console.log('fiche :', await record());
 console.log('fichiers :', await files());
 
 step('4. Rechargement');
 await go('/voile');
+await listReady();
 console.log('lignes :', await rows());
 
 step('5. Analyse : sous-titre de l\'en-tête');
 await evaluate(`document.querySelector('.lib-row__main').click(), 'ok'`);
-await wait(6000);
+await waitFor(`location.pathname.includes('/analyse')`, { timeout: 6000, label: 'analyse ouverte' });
+await settle({ max: 6000, label: 'analyse' });
 console.log('h1 :', await evaluate(`document.querySelector('h1')?.textContent`), '| sous-titre :', await evaluate(`document.querySelector('.ui-page-header__subtitle')?.textContent ?? 'aucun'`));
 
 step('6. Nom vide, bouton Valider : plus de nom');
 await go('/voile');
+await listReady();
 await clickText('Renommer');
 await typeName('   ');
 console.log('Valider :', await clickText('Valider'));
-await wait(1500);
+await waitFor(async () => JSON.parse(await record()).name === null, { timeout: 1500, label: 'nom effacé' });
+await settle({ max: 1500, label: 'renommage' });
 console.log('lignes :', await rows());
 console.log('fiche :', await record());
 
 step('7. Renommer depuis l\'en-tête de l\'analyse');
 await evaluate(`document.querySelector('.lib-row__main').click(), 'ok'`);
-await wait(6000);
+await waitFor(`location.pathname.includes('/analyse')`, { timeout: 6000, label: 'analyse ouverte' });
+await settle({ max: 6000, label: 'analyse' });
 const subtitle = () => evaluate(`document.querySelector('.ui-page-header__subtitle')?.innerText.split('\\n').join(' / ')`);
 console.log('en-tête avant :', await subtitle());
 console.log('Renommer :', await clickText('Renommer'));
@@ -94,8 +88,9 @@ await wait(1500);
 console.log('en-tête après :', await subtitle());
 console.log('fiche :', await record());
 await go('/voile');
+await listReady();
 console.log('lignes :', await rows());
 
-console.log('\n== Console :', logs.length ? logs.join('\n') : 'rien');
-await send('Browser.close').catch(() => {});
+console.log('\n== Console :', logs.some((l) => !l.startsWith('warning')) ? logs.filter((l) => !l.startsWith('warning')).join('\n') : 'rien');
+await close();
 process.exit(0);

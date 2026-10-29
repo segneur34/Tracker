@@ -15,42 +15,26 @@
 //     lancée, ceinture cochée et grisée (FC d'exemple du navigateur), compteur lancé puis session démarrée, « Arrêter » de la session tenu
 //     2 s : le compteur est arrêté avec elle ; le lien « Enregistrer sans séance » ;
 //  5. à 390 × 844 : la page Timer, Enregistrer en mode Timer et le compteur en marche sans débordement.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node timer.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
 // --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, wait, blockNetwork, shoot, close, logs, onMessage } = await connect({ port, width: 1400, height: 1000, shotDir });
 const sounds = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
+onMessage((msg) => {
   if (msg.method === 'Runtime.consoleAPICalled') {
     const text = msg.params.args.map((a) => a.value ?? a.description).join(' ');
     if (msg.params.type === 'debug' && /^\[(bips|compteur)\]/.test(text)) sounds.push(text);
-    if (['error', 'warning'].includes(msg.params.type)) logs.push(`${msg.params.type}: ${text.split('\n')[0].slice(0, 300)}`);
   }
-  // Les confirmations (« Retirer la séance ? ») sont acceptées.
-  if (msg.method === 'Page.javascriptDialogOpening') {
-    console.log(`  (dialogue accepté : ${msg.params.message.slice(0, 90)})`);
-    void send('Page.handleJavaScriptDialog', { accept: true });
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+  // Les confirmations (« Retirer la séance ? ») sont acceptées par la bibliothèque.
+  if (msg.method === 'Page.javascriptDialogOpening') console.log(`  (dialogue accepté : ${msg.params.message.slice(0, 90)})`);
+});
 const clickText = (text, selector = 'button') => evaluate(`(() => {
   const all = [...document.querySelectorAll(${JSON.stringify(selector)})];
   const b = all.find((x) => x.textContent.trim() === ${JSON.stringify(text)}) ?? all.find((x) => x.textContent.includes(${JSON.stringify(text)}));
@@ -63,11 +47,6 @@ const typeInto = (label, value) => evaluate(`(() => {
   i.dispatchEvent(new Event('input', { bubbles: true }));
   return i.value;
 })()`);
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
 const overflow = () => evaluate('document.documentElement.scrollWidth - window.innerWidth');
 const text = (selector) => evaluate(`(() => { const n = document.querySelector(${JSON.stringify(selector)}); return n ? n.innerText.replace(/\\n+/g, ' / ') : '(absent)'; })()`);
 const raw = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)})?.textContent ?? '(absent)'`);
@@ -84,9 +63,7 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'OK  ' : 'ÉCHEC'} ${name}${detail ? ` : ${detail}` : ''}`);
 };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
-await send('Network.setBlockedURLs', { urls: ['https://*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork(['https://*']);
 // Sonde : chaque demande de position est comptée, dans la page et d'une page à l'autre.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
   const g = navigator.geolocation; if (!g) return;
@@ -287,4 +264,4 @@ await shoot('timer-tuiles-390');
 
 console.log(logs.length ? `console :\n${[...new Set(logs)].join('\n')}` : 'console : aucune erreur');
 console.log(failures === 0 ? 'tout passe' : `${failures} échec(s)`);
-ws.close();
+await close();

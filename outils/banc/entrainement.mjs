@@ -12,42 +12,27 @@
 //  4. Réglages › Enregistrement : « Son des bips » médium par défaut (26/10), choisi grave, retenu dans les réglages,
 //     « Écouter » joue court, court, long ; un son choisi, même celui par défaut, est écrit tel quel ;
 //  5. à 390 × 844 : la page de la famille et la page Fractionné sans débordement.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node entrainement.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, shoot, onMessage, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 const sounds = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
+onMessage((msg) => {
+  // Les bips et le compteur écrivent dans la console (niveau debug) quand l'application est en développement.
   if (msg.method === 'Runtime.consoleAPICalled') {
     const text = msg.params.args.map((a) => a.value ?? a.description).join(' ');
     if (msg.params.type === 'debug' && /^\[(bips|compteur)\]/.test(text)) sounds.push(text);
-    if (['error', 'warning'].includes(msg.params.type)) logs.push(`${msg.params.type}: ${text.split('\n')[0].slice(0, 300)}`);
   }
-  // Les confirmations (« Retirer la séance ? ») sont acceptées.
-  if (msg.method === 'Page.javascriptDialogOpening') {
-    console.log(`  (dialogue accepté : ${msg.params.message.slice(0, 90)})`);
-    void send('Page.handleJavaScriptDialog', { accept: true });
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+  // Les confirmations (« Retirer la séance ? ») sont acceptées par la bibliothèque, et notées ici.
+  if (msg.method === 'Page.javascriptDialogOpening') console.log(`  (dialogue accepté : ${msg.params.message.slice(0, 90)})`);
+});
+
 const clickText = (text, selector = 'button') => evaluate(`(() => {
   const all = [...document.querySelectorAll(${JSON.stringify(selector)})];
   const b = all.find((x) => x.textContent.trim() === ${JSON.stringify(text)}) ?? all.find((x) => x.textContent.includes(${JSON.stringify(text)}));
@@ -64,32 +49,29 @@ const typeInto = (label, value) => evaluate(`(() => {
   i.dispatchEvent(new Event('input', { bubbles: true }));
   return i.value;
 })()`);
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
 const overflow = () => evaluate('document.documentElement.scrollWidth - window.innerWidth');
 const text = (selector) => evaluate(`(() => { const n = document.querySelector(${JSON.stringify(selector)}); return n ? n.innerText.replace(/\\n+/g, ' / ') : '(absent)'; })()`);
 const presets = () => evaluate(`[...document.querySelectorAll('.train-item__name')].map((n) => n.textContent).join(' ; ')`);
 const segmented = (label) => evaluate(`(() => { const r = document.querySelector('.ui-segmented[aria-label=${JSON.stringify(label)}] [role=radio][aria-checked=true]'); return r ? r.textContent : '(absent)'; })()`);
+/** La page se monte après le chargement (modules à la demande) : on attend son premier élément, 3 s au plus comme l'ancien sommeil. */
+const ready = (selector) => waitFor(`document.querySelector(${JSON.stringify(selector)}) !== null`, { timeout: 3000, label: selector });
 let failures = 0;
 const check = (name, ok, detail = '') => {
   if (!ok) failures++;
   console.log(`${ok ? 'OK  ' : 'ÉCHEC'} ${name}${detail ? ` : ${detail}` : ''}`);
 };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
-await send('Network.setBlockedURLs', { urls: ['https://*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork(['https://*']);
 
 // --- 1. Le nom de la famille ---
 await go('/');
+await ready('.home-family__name');
 const homeNames = await evaluate(`[...document.querySelectorAll('.home-family__name')].map((n) => n.textContent).join(', ')`);
 check('accueil : carte « Entraînement »', homeNames?.includes('Entraînement') && !homeNames.includes('Fractionné'), homeNames);
 const navNames = await evaluate(`[...document.querySelectorAll('nav a')].map((a) => a.textContent.trim()).filter(Boolean)`);
 check('barre du haut : « Entraînement »', navNames?.includes('Entraînement') && !navNames.includes('Fractionné'), navNames?.slice(0, 9).join(', '));
 await go('/fractionne');
+await ready('.lib-banner h1');
 const raw = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)})?.textContent ?? '(absent)'`);
 check('page de la famille : titre', (await raw('.lib-banner h1')) === 'Entraînement', await raw('.lib-banner h1'));
 const tile = await raw('.train-hub');
@@ -98,12 +80,12 @@ await shoot('entrainement-famille');
 
 // --- 2. Page Fractionné ---
 console.log('tuile :', await clickText('Fractionné', '.train-tile'));
-await wait(800);
+await settle({ max: 800 });
 check('tuile : page Fractionné', (await evaluate('location.pathname')) === '/fractionne/seances', await evaluate('location.pathname'));
 check('séances de départ', (await presets())?.split(' ; ').length === 3, await presets());
 console.log('nouvelle séance :', await clickText('Créer un compteur'));
 // La page d'édition se charge à la demande (React.lazy) : un peu plus que les 300 ms d'avant.
-await wait(1000);
+await settle({ max: 1000 });
 const blocksTitles = () => evaluate(`[...document.querySelectorAll('.train-editor .ivl-block__title')].map((n) => n.textContent).join(', ')`);
 check('séance neuve : trois blocs', (await blocksTitles()) === 'Échauffement, Série, Retour au calme', await blocksTitles());
 // Croix de l'éditeur : fermeture directe sans changement, sinon la question Enregistrer / Ne pas enregistrer / Continuer.
@@ -188,7 +170,7 @@ await shoot('entrainement-seances');
 
 // --- 3. « Lancer » ---
 console.log('lancer :', await evaluate(`(() => { const i = ${itemOf('Séance test')}; const b = i && [...i.querySelectorAll('button')].find((x) => x.textContent.includes('Lancer')); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
-await wait(1200);
+await settle({ max: 1200 });
 check('Enregistrer, activité demandée', (await evaluate('location.pathname + location.search')) === '/enregistrer?activite=run-intervals', await evaluate('location.pathname + location.search'));
 check('famille, type et activité choisis', (await segmented('Famille')) === 'Entraînement' && (await segmented('Type')) === 'Fractionné' && (await segmented('Activité')) === 'à pied',
   `${await segmented('Famille')} / ${await segmented('Type')} / ${await segmented('Activité')}`);
@@ -219,7 +201,7 @@ await wait(600);
 const forgotten = await evaluate(`JSON.parse(localStorage.getItem('tracker.intervalRun') ?? 'null') === null`);
 check('page quittée : séance close oubliée', forgotten === true, await evaluate(`localStorage.getItem('tracker.intervalRun')`));
 console.log('retour :', await evaluate(`(history.back(), 'ok')`));
-await wait(1000);
+await settle({ max: 1000 });
 const backPath = await evaluate('location.pathname');
 const doneShown = await evaluate(`!!document.querySelector('.ivl-done')`);
 const editorSummary = await text('.ivl .ivl-summary');
@@ -227,6 +209,7 @@ check("retour : l'éditeur, pas « Séance arrêtée »", backPath === '/enregis
 
 // --- 4. Son des bips ---
 await go('/parametres');
+await ready('[role=button]');
 // Le bloc Enregistrement de Réglages, ouvert s'il ne l'est pas (son état est retenu).
 if (!(await evaluate(`!!document.querySelector('.ui-segmented[aria-label="Son des bips"]')`))) console.log('bloc Enregistrement :', await clickText('Enregistrement', '[role=button]'));
 await wait(300);
@@ -242,6 +225,7 @@ console.log('écouter :', await clickText('Écouter'));
 await wait(2800);
 check('« Écouter » : court, court, long', sounds.slice(listenAt).map((s) => /\[bips\] (\w+)/.exec(s)?.[1]).join(' ') === 'court court long', sounds.slice(listenAt).join(' | ').slice(0, 300));
 await go('/parametres');
+await ready('[role=button]');
 // Le bloc Enregistrement de Réglages, ouvert s'il ne l'est pas (son état est retenu).
 if (!(await evaluate(`!!document.querySelector('.ui-segmented[aria-label="Son des bips"]')`))) console.log('bloc Enregistrement :', await clickText('Enregistrement', '[role=button]'));
 await wait(300);
@@ -254,9 +238,11 @@ check('un son choisi est écrit, même celui par défaut', back === 'medium', ba
 // --- 5. Téléphone ---
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go('/fractionne');
+await ready('.lib-banner h1');
 check('390 px : page de la famille sans débordement', (await overflow()) <= 0, `${await overflow()} px`);
 await shoot('entrainement-famille-390');
 await go('/fractionne/seances');
+await ready('.train-item');
 check('séance repliée au départ', (await evaluate(`${itemOf('Séance test')}?.querySelector('.train-item__body') === null`)) === true);
 console.log('déplier :', await unfold('Séance test'));
 await wait(200);
@@ -266,11 +252,14 @@ check('390 px : page Fractionné, éditeur ouvert, sans débordement', (await ov
 await shoot('entrainement-seances-390');
 await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });
 await go('/fractionne/seances');
+await ready('.train-item');
 check('320 px : page Fractionné sans débordement', (await overflow()) <= 0, `${await overflow()} px`);
 await go('/');
+await ready('.home-family__name');
 check('320 px : accueil sans débordement', (await overflow()) <= 0, `${await overflow()} px`);
 await shoot('entrainement-accueil-320');
 
 console.log(logs.length ? `console :\n${[...new Set(logs)].join('\n')}` : 'console : aucune erreur');
 console.log(failures === 0 ? 'tout passe' : `${failures} échec(s)`);
-ws.close();
+await close();
+process.exit(0);

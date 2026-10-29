@@ -10,52 +10,24 @@
 //  5. planification : deux points en Course, « Voir sur la carte » du bloc Général colore le tracé ;
 //  6. captures à 1400×1000 et à 390×844.
 import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
 if (!port || !workDir) {
   console.error('Usage : node pentes.mjs <port> <dossier de travail> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, importFiles, shoot, mouse, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+
 /** Clique le premier bouton de `scope` dont le texte vaut `text`. */
 const clickButton = (text, scope = 'body') => evaluate(`(() => {
   const root = document.querySelector(${JSON.stringify(scope)});
   const b = root && [...root.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)} && !x.disabled);
   if (!b) return 'absent'; b.click(); return 'ok';
 })()`);
-const setFile = async (selector, path) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files: [path] });
-};
-const mouse = (type, x, y) => send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
 const clickAt = async (x, y) => { await mouse('mousePressed', x, y); await mouse('mouseReleased', x, y); await wait(300); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
 const listOpfs = (path) => evaluate(`(async () => {
   let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker');
   for (const p of ${JSON.stringify(path)}.split('/')) dir = await dir.getDirectoryHandle(p);
@@ -90,10 +62,9 @@ const energyTable = () => evaluate(`(() => {
   return [...t.querySelectorAll('tr')].map((tr) => [...tr.children].map((c) => c.textContent.trim()).join(' ; ')).join('\\n    ');
 })()`);
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
-// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+/** La page se monte après le chargement (modules à la demande, bibliothèque relue) : on attend son premier élément, 3 s au plus comme l'ancien sommeil. */
+const ready = (selector) => waitFor(`document.querySelector(${JSON.stringify(selector)}) !== null`, { timeout: 3000, label: selector });
 
 // 1. Course synthétique vers le nord, de Grabels vers Saint-Gély-du-Fesc : l'IGN en donne le relief.
 const t0 = Date.UTC(2026, 9, 7, 8, 0, 0);
@@ -105,9 +76,9 @@ writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.
 }\n</trkseg></trk></gpx>\n`);
 await go('/course');
 await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ running: { general: true, tops: true, zones: true, surface: false, energie: true, graphiques: true, reglages: false } })); 'ok'`);
-await setFile('input[type=file][accept=".gpx"][multiple]', runPath);
-await wait(4000);
-const gpxName = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx'));
+await importFiles(runPath, 'input[type=file][accept=".gpx"][multiple]');
+const gpxName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx')), { timeout: 6000, label: 'fiche course' });
+await settle({ max: 1500, label: 'import course' });
 await go(`/course/analyse?session=${encodeURIComponent(gpxName)}`, 1500);
 for (let k = 0; k < 60; k++) {
   if (await evaluate(`/Source : IGN|hors de la couverture|Réessayer/.test(document.body.innerText)`)) break;
@@ -118,11 +89,11 @@ console.log('carte, vitesse     :', await mapInfo('.an-map-frame'));
 
 // 2. Pente sur la carte.
 console.log('Voir (pente)       :', await clickButton('Voir sur la carte'));
-await wait(800);
+await settle({ max: 800 });
 console.log('carte, pente       :', await mapInfo('.an-map-frame'), '| boutons', await buttonTexts('.an-page'));
 await shoot('pentes-analyse');
 console.log('Masquer (pente)    :', await clickButton('Masquer de la carte'));
-await wait(800);
+await settle({ max: 800 });
 console.log('carte, vitesse     :', await mapInfo('.an-map-frame'));
 
 // 3. Énergie : tableau, repli gardé.
@@ -131,6 +102,7 @@ console.log('Zones (replier)    :', await clickButton('Énergie par zone de pent
 await wait(300);
 console.log('après repli        :', await energyTable());
 await go(`/course/analyse?session=${encodeURIComponent(gpxName)}`, 4000);
+await ready('.an-carte-panels [role=button]');
 console.log('après rechargement :', await energyTable());
 console.log('Zones (déplier)    :', await clickButton('Énergie par zone de pente'));
 await wait(300);
@@ -148,10 +120,10 @@ for (let k = 0; k < 180 && !surfaceReady; k++) {
 }
 if (surfaceReady) {
   console.log('Voir (surface)     :', await evaluate(`(() => { const b = document.querySelector('.surface-bar button'); b.click(); return b.textContent; })()`));
-  await wait(800);
+  await settle({ max: 800 });
   console.log('après surface      :', await mapInfo('.an-map-frame'), '| boutons', await buttonTexts('.an-page'));
   console.log('Voir (pente)       :', await clickButton('Voir sur la carte', '.an-page'));
-  await wait(800);
+  await settle({ max: 800 });
   console.log('pente de nouveau   :', await mapInfo('.an-map-frame'), '| boutons', await buttonTexts('.an-page'));
 } else {
   console.log('surface            : Overpass sans réponse en 3 min, exclusion non vérifiée');
@@ -160,8 +132,9 @@ if (surfaceReady) {
 // Téléphone : la même analyse, pente sur la carte.
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go(`/course/analyse?session=${encodeURIComponent(gpxName)}`, 4000);
+await ready('.an-carte-panels [role=button]');
 console.log('téléphone, Voir    :', await clickButton('Voir sur la carte'));
-await wait(800);
+await settle({ max: 800 });
 console.log('téléphone, carte   :', await mapInfo('.an-map-frame'));
 await shoot('pentes-telephone');
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -171,6 +144,7 @@ await go('/itineraires');
 await evaluate(`localStorage.setItem('tracker.planning', JSON.stringify({ activityId: 'running', view: { lat: 43.67, lon: 3.80, zoom: 14 } }));
   localStorage.setItem('tracker.sections', JSON.stringify({ planning: { profil: true, surface: false, trace: false, points: false, ranger: false, liste: false } })); 'ok'`);
 await go('/itineraires');
+await ready('.plan-map .leaflet-container');
 const rect = await evaluate(`(() => { const b = document.querySelector('.plan-map .leaflet-container').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()`);
 await clickAt(rect[0] + rect[2] * 0.5, rect[1] + rect[3] * 0.8);
 await clickAt(rect[0] + rect[2] * 0.5, rect[1] + rect[3] * 0.2);
@@ -181,7 +155,7 @@ for (let k = 0; k < 40; k++) {
 console.log('itinéraire         :', await evaluate(`[...document.querySelectorAll('.plan-stat')].map((x) => x.innerText.replace(/\\n/g, ' ')).join(' | ')`));
 console.log('carte, bleu        :', await mapInfo('.plan-map'));
 console.log('Voir (pente)       :', await clickButton('Voir sur la carte', '.plan-legend'));
-await wait(800);
+await settle({ max: 800 });
 console.log('carte, pente       :', await mapInfo('.plan-map'));
 await shoot('pentes-planification');
 console.log('Masquer (pente)    :', await clickButton('Masquer de la carte', '.plan-legend'));
@@ -201,9 +175,9 @@ writeFileSync(bikePath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1
 console.log(`vélo : ${bikeFixes.length} points, un toutes les 4 s, 24 m entre deux`);
 await go('/velo');
 await evaluate(`localStorage.setItem('tracker.sections', JSON.stringify({ cycling: { general: true, tops: false, zones: true, surface: false, energie: true, graphiques: true, reglages: false } })); 'ok'`);
-await setFile('input[type=file][accept=".gpx"][multiple]', bikePath);
-await wait(4000);
-const bikeName = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx') && n.includes('cycling'));
+await importFiles(bikePath, 'input[type=file][accept=".gpx"][multiple]');
+const bikeName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx') && n.includes('cycling')), { timeout: 6000, label: 'fiche vélo' });
+await settle({ max: 1500, label: 'import vélo' });
 await go(`/velo/analyse?session=${encodeURIComponent(bikeName ?? '')}`, 1500);
 for (let k = 0; k < 60; k++) {
   if (await evaluate(`/Source : IGN|hors de la couverture|Réessayer/.test(document.body.innerText)`)) break;
@@ -219,13 +193,14 @@ const zoneRows = () => evaluate(`(() => {
 })()`);
 console.log('vélo, zones de pente :\n    ' + await zoneRows());
 console.log('vélo, Voir (pente) :', await clickButton('Voir sur la carte'));
-await wait(800);
+await settle({ max: 800 });
 const bikeSlope = JSON.parse(await mapInfo('.an-map-frame'));
 console.log('vélo, carte, pente :', JSON.stringify(bikeSlope), '| boutons', await buttonTexts('.an-page'));
 console.log(`vélo, pente lue malgré le pas de 4 s : ${bikeSlope.couleurs > 1 && /pente/.test(bikeSlope.legende) ? 'oui' : 'NON'}`);
 console.log('vélo, Masquer      :', await clickButton('Masquer de la carte'));
-await wait(800);
+await settle({ max: 800 });
 console.log('vélo, carte vitesse:', await mapInfo('.an-map-frame'));
 
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
-ws.close();
+await close();
+process.exit(0);

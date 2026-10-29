@@ -11,39 +11,23 @@
 //  3. Pumping décoché pour la session : colonnes du GPS revenues ; « Enregistrer la session » range `analysis.pumping` ;
 //  4. Enregistrer, dans le navigateur : pas de case « Mesurer le pumping » (téléphone seulement) ;
 //  5. la page à 390 × 844, sans débordement.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node pumping.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// --- Protocole (lib/cdp.mjs) ---
+const { send, go, settle, waitFor, wait, blockNetwork, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+// Ici une exception de la page rend un texte « ERREUR : … » au lieu de `undefined`.
 const evaluate = async (expression) => {
   const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
   if (r.result?.exceptionDetails) return `ERREUR : ${r.result.exceptionDetails.exception?.description?.split('\n')[0] ?? r.result.exceptionDetails.text}`;
   return r.result?.result?.value;
 };
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+
 const clickText = (text, selector = 'button') => evaluate(`(() => {
   const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.trim() === ${JSON.stringify(text)})
     ?? [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.includes(${JSON.stringify(text)}));
@@ -53,11 +37,6 @@ const openTab = (label) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-col .ui-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)});
   if (!t) return 'absent'; if (t.getAttribute('aria-pressed') === 'true') return 'déjà ouvert'; t.click(); return 'ok';
 })()`);
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
 const panel = (title) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith(${JSON.stringify(title)}));
   return t ? t.closest('.an-carte-panels > *').innerText.replace(/\\n+/g, ' / ').slice(0, 1400) : '(absent)';
@@ -95,11 +74,8 @@ const check = (label, ok, detail = '') => {
   console.log(`${ok ? 'OK ' : 'ÉCHEC'} ${label}${detail ? ` : ${detail}` : ''}`);
 };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
-// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork();
 
 // --- 1. Réglages ---
 await go('/parametres', 4000);
@@ -177,9 +153,9 @@ const imported = await evaluate(`(async () => {
   return { start, size: imu.length };
 })()`);
 console.log('import :', JSON.stringify(imported));
-await wait(6000);
 const startMs = imported?.start;
-const record = await recordAt(startMs);
+const record = await waitFor(() => recordAt(startMs), { timeout: 6000, label: 'fiche' });
+await settle({ max: 2000, label: 'import' });
 check('session rangée', record !== null, record ? `${record.gpx}, activité ${record.activityId}` : '');
 const path = `/surf/analyse?session=${encodeURIComponent(record?.gpx ?? '')}`;
 await go(path, 5000);
@@ -191,9 +167,9 @@ await wait(500);
 let pumpBox = await evaluate(`[...document.querySelectorAll('.an-carte-panels label')].find((l) => l.querySelector('strong')?.textContent === 'Pumping')?.querySelector('input')?.checked`);
 if (pumpBox !== true) pumpBox = await sessionBox('Pumping');
 console.log('Foil :', foilBox, '| Pumping :', pumpBox);
-await wait(1500);
+await settle({ max: 1500 });
 console.log('vols :', await openTab('vols'));
-await wait(2000);
+await settle({ max: 2000 });
 const vols = await panel('Vols');
 console.log('panneau :', vols);
 check('quatre vols', /Vols \(4\)/i.test(vols ?? ''));
@@ -222,13 +198,13 @@ await shoot('pumping-vols');
 
 // --- 3. Pumping décoché pour la session, puis enregistré ---
 console.log('Pumping :', await sessionBox('Pumping'));
-await wait(800);
+await settle({ max: 800 });
 const gpsHeads = await flightHeads();
 check('colonnes du GPS sans pumping', /Vagues, Pompage, Pompe \(km\/h\)/.test(gpsHeads ?? '') && !/Décollage/.test(gpsHeads ?? ''), gpsHeads);
 console.log('Pumping :', await sessionBox('Pumping'));
-await wait(800);
+await settle({ max: 800 });
 console.log('Enregistrer la session :', await clickText('Enregistrer la session'));
-await wait(2500);
+await waitFor(async () => (await recordAt(startMs))?.analysis?.pumping === true, { timeout: 2500, label: 'fiche enregistrée' });
 const saved = await recordAt(startMs);
 // Pumping coché pour Surf foil en 1 ; la session, sous Surf, n'a pas le pumping de son activité : le sien est rangé.
 check('foil et pumping rangés dans la fiche', saved?.analysis?.foil === true && saved?.analysis?.pumping === true, JSON.stringify({ foil: saved?.analysis?.foil, pumping: saved?.analysis?.pumping }));
@@ -246,11 +222,12 @@ check('pas de case « Mesurer le pumping » dans le navigateur', !(await evaluat
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go(path, 5000);
 await openTab('vols');
-await wait(1500);
+await settle({ max: 1500 });
 await shoot('pumping-telephone');
 const width = await evaluate('document.documentElement.scrollWidth');
 check('pas de débordement à 390 px', width <= 390, String(width));
 
 console.log(logs.length ? `console :\n${[...new Set(logs)].join('\n')}` : 'console : aucune erreur');
 console.log(failures === 0 ? 'Tout passe.' : `${failures} échec(s).`);
-ws.close();
+await close();
+process.exit(0);

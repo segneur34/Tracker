@@ -11,14 +11,13 @@
 //  4. une session de surf foil (un vol de trois vagues reliées en pompant, puis un vol court) : case Foil de la
 //     session, onglet « vols », plus long vol, ligne de la bibliothèque ;
 //  5. la page à 390 × 844, sans débordement.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node surf.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
 // --- Sessions synthétiques : phases à vitesse et cap constants, nord = le large ---
 const M_PER_DEG_LAT = 111_195;
@@ -54,26 +53,9 @@ const FOIL = [
 const T_MORNING = Date.UTC(2026, 9, 10, 7, 0, 0);
 const T_FOIL = Date.UTC(2026, 9, 9, 15, 0, 0);
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+
 const clickText = (text, selector = 'button') => evaluate(`(() => {
   const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.trim() === ${JSON.stringify(text)})
     ?? [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.includes(${JSON.stringify(text)}));
@@ -85,32 +67,12 @@ const openTab = (label) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-col .ui-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)});
   if (!t) return 'absent'; if (t.getAttribute('aria-pressed') === 'true') return 'déjà ouvert'; t.click(); return 'ok';
 })()`);
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
 /** Texte du panneau d'analyse dont le titre commence ainsi. */
 const panel = (title) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith(${JSON.stringify(title)}));
   return t ? t.closest('.an-carte-panels > *').innerText.replace(/\\n+/g, ' / ').slice(0, 900) : '(absent)';
 })()`);
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
 const recordAt = async (startMs) => (await records()).find((r) => r.summary?.startMs === startMs);
-const importGpx = (gpx, fileName) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(fileName)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
 /** Champ d'un seuil de la session, par son libellé. */
 const field = (label) => `document.querySelector('input[aria-label=${JSON.stringify(label)}]')`;
 const setField = (label, value) => evaluate(`(() => {
@@ -121,11 +83,9 @@ const setField = (label, value) => evaluate(`(() => {
   return i.value;
 })()`);
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork();
 
 // 1. Accueil, barre, Réglages.
 await go('/');
@@ -151,8 +111,8 @@ await shoot('surf-reglages');
 // 2. La matinée : import, bibliothèque, analyse.
 await go('/surf');
 console.log('import matinée :', await importGpx(buildGpx('Matinée', T_MORNING, MORNING), 'matinee.gpx'));
-await wait(4000);
-const morning = await recordAt(T_MORNING);
+const morning = await waitFor(() => recordAt(T_MORNING), { timeout: 6000, label: 'fiche matinée' });
+await settle({ max: 2000, label: 'import matinée' });
 console.log('fiche :', morning ? `${morning.gpx}, ${morning.sport}, activité ${morning.activityId}, vagues ${morning.summary.waveCount}, plus longue ${Math.round(morning.summary.longestWaveM)} m, glisse ${Math.round(morning.summary.movingTimeS)} s` : '(absente)');
 console.log('bibliothèque :', await evaluate(`document.querySelector('.lib-list')?.innerText.replace(/\\n+/g, ' / ').slice(0, 300) ?? '(vide)'`),
   '| vue planifiées :', await evaluate(`[...document.querySelectorAll('.ui-tab')].some((t) => /planifi/.test(t.textContent))`));
@@ -188,7 +148,7 @@ await wait(500);
 console.log('panneau :', await panel('Rame'));
 console.log('fermer vagues :', await tab('vagues'), '| surbrillance restante :', await evaluate(`document.querySelectorAll('.leaflet-overlay-pane path[stroke="#d32f2f"]').length`));
 console.log('graphiques :', await openTab('graphiques'));
-await wait(800);
+await settle({ max: 800 });
 console.log('graphe :', await evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim() === 'Vitesse');
   const p = t?.closest('.an-carte-panels > *');
@@ -201,10 +161,10 @@ console.log('réglages :', await openTab('réglages'));
 await wait(500);
 console.log('panneau :', await panel('Réglages de la session'));
 console.log('seuil de vague 20 km/h :', await setField('Seuil de vague', '20'));
-await wait(800);
+await settle({ max: 800 });
 console.log('vagues :', await evaluate(`document.querySelector('.an-carte-panels')?.innerText.match(/Vagues\\n?([^\\n]+)/)?.[1]`), '| barre :', await evaluate(`document.body.innerText.match(/Non enregistr[^\\n]*/)?.[0] ?? '(aucune)'`));
 console.log('Enregistrer la session :', await clickText('Enregistrer la session'));
-await wait(2500);
+await waitFor(async () => (await recordAt(T_MORNING))?.analysis?.activeThreshold !== undefined, { timeout: 2500, label: 'fiche seuil' });
 const saved = await recordAt(T_MORNING);
 console.log('fiche : seuil', saved?.analysis?.activeThreshold, '| vagues du résumé', saved?.summary?.waveCount);
 await go(morningPath, 5000);
@@ -219,8 +179,8 @@ await wait(400);
 // 4. Surf foil : case de la session, onglet vols.
 await go('/surf');
 console.log('import foil :', await importGpx(buildGpx('Foil', T_FOIL, FOIL), 'foil.gpx'));
-await wait(4000);
-const foil = await recordAt(T_FOIL);
+const foil = await waitFor(() => recordAt(T_FOIL), { timeout: 6000, label: 'fiche foil' });
+await settle({ max: 2000, label: 'import foil' });
 const foilPath = `/surf/analyse?session=${encodeURIComponent(foil?.gpx ?? '')}`;
 await go(foilPath, 5000);
 await openTab('réglages');
@@ -229,7 +189,7 @@ console.log('case Foil :', await evaluate(`(() => {
   const box = [...document.querySelectorAll('.an-carte-panels label')].find((l) => l.textContent.includes('Foil'))?.querySelector('input[type=checkbox]');
   if (!box) return 'absente'; box.click(); return box.checked ? 'cochée' : 'décochée';
 })()`));
-await wait(800);
+await settle({ max: 800 });
 console.log('champs :', await evaluate(`[...document.querySelectorAll('.an-carte-panels input[type=number]')].map((i) => i.getAttribute('aria-label') + ' = ' + i.value).join(' | ')`));
 console.log('onglets :', await evaluate(`[...document.querySelectorAll('.an-carte-col .ui-tab')].map((t) => t.textContent).join(', ')`));
 console.log('vols :', await openTab('vols'));
@@ -237,7 +197,7 @@ await wait(500);
 console.log('panneau :', await panel('Vols'));
 console.log('général :', await panel('Général'));
 console.log('Enregistrer la session :', await clickText('Enregistrer la session'));
-await wait(2500);
+await waitFor(async () => (await recordAt(T_FOIL))?.analysis?.foil !== undefined, { timeout: 2500, label: 'fiche foil enregistrée' });
 const foilSaved = await recordAt(T_FOIL);
 console.log('fiche : foil', foilSaved?.analysis?.foil, '| plus long vol', foilSaved?.summary?.longestFlightS, 's | vagues', foilSaved?.summary?.waveCount);
 await go('/surf');
@@ -252,4 +212,5 @@ await shoot('surf-telephone');
 console.log('largeur au téléphone :', await evaluate('document.documentElement.scrollWidth'));
 
 console.log(logs.length ? `console :\n${[...new Set(logs)].join('\n')}` : 'console : aucune erreur');
-ws.close();
+await close();
+process.exit(0);

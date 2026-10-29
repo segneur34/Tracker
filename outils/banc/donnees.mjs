@@ -13,13 +13,13 @@
 //     l'échec est nommé, et le GPX à moitié rangé est retiré ; importé de nouveau avec des capteurs, il les reçoit ;
 //  5. le stockage plein : un réglage refusé reste en place pour la session, et le bandeau le dit.
 import { writeFileSync } from 'node:fs';
+import { BASE, connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
 if (!port || !workDir) {
   console.error('Usage : node donnees.mjs <port> <dossier de travail> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
 // --- Traces ---
 /** Sortie à vélo en ligne droite vers l'est, 1 Hz, 5 m/s, à partir de l'instant donné. */
@@ -34,41 +34,17 @@ const T0 = Date.UTC(2026, 9, 5, 8, 0, 0);
 const firstPath = `${workDir}\\sortie-ign.gpx`;
 writeFileSync(firstPath, rideGpx('Sortie avec altitude', T0));
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
+// --- Protocole (lib/cdp.mjs) ---
+const { send, go, settle, waitFor, wait, importFiles, shoot, close, logs, onMessage } = await connect({ port, width: 1400, height: 1000, shotDir });
 const requests = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
+onMessage((msg) => {
   if (msg.method === 'Network.requestWillBeSent' && /geopf|overpass/i.test(msg.params.request.url) && !msg.params.request.url.startsWith(BASE)) requests.push(msg.params.request.url.slice(0, 80));
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+});
+/** Évalue dans la page ; une exception rend « ERREUR : … » (et non `undefined`) pour que le relevé la montre. */
 const evaluate = async (expression) => {
   const res = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-  if (res.result?.exceptionDetails) return `ERREUR : ${res.result.exceptionDetails.exception?.description?.split('\n')[0] ?? res.result.exceptionDetails.text}`;
+  if (res.result?.exceptionDetails) return `ERREUR : ${res.result.exceptionDetails.exception?.description?.split(String.fromCharCode(10))[0] ?? res.result.exceptionDetails.text}`;
   return res.result?.result?.value;
-};
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const setFiles = async (selector, files) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files });
-};
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
 };
 /** Dossier `Tracker` de la mémoire du navigateur, ou un de ses sous-dossiers. */
 const dirJs = (path) => `(async () => {
@@ -93,16 +69,15 @@ const waitScan = async (maxS = 60) => {
 };
 const fiche = async (gpx) => JSON.parse(await readOpfs('sessions', gpx.replace(/\.gpx$/, '.json')));
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 
 // 1. Cache allégé.
 console.log('— 1. cache allégé');
 await go('/velo');
-await setFiles('input[type=file][accept=".gpx"][multiple]', [firstPath]);
-await wait(3000);
+await importFiles([firstPath], 'input[type=file][accept=".gpx"][multiple]');
+await waitFor(async () => (await listOpfs('sessions')).some((n) => n.endsWith('.json')), { timeout: 3000, label: 'fiche' });
+await settle({ max: 3000, label: 'import' });
 const gpx = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx'));
 const base = await fiche(gpx);
 const t = [];
@@ -122,7 +97,7 @@ console.log('session partielle :', await evaluate(`(async () => (${LIB}).library
 console.log('Renommer :', await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Renommer'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
 await wait(300);
 await evaluate(`(() => { const i = document.querySelector('.lib-row__rename'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Renommée depuis la liste'); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return 'ok'; })()`);
-await wait(2000);
+await waitFor(async () => (await fiche(gpx)).name === 'Renommée depuis la liste', { timeout: 2000, label: 'fiche renommée' });
 const renamed = await fiche(gpx);
 console.log(`fiche après renommage : nom « ${renamed.name} », altitude ${renamed.terrainElevation?.t?.length ?? 'ABSENTE'} points, voies ${renamed.surfaces ? 'gardées' : 'ABSENTES'}`);
 await go('/velo');
@@ -157,7 +132,7 @@ const progress = await evaluate(`(document.body.innerText.match(/Lecture des tra
 await evaluate(`(async () => { (${LIB}).updateSessionRecord(${JSON.stringify(LAST)}, { name: 'Renommée pendant le balayage' }); return 'ok'; })()`);
 console.log(`renommée pendant : ${progress}`);
 await waitScan(120);
-await wait(1500);
+await waitFor(async () => (await fiche(LAST)).name === 'Renommée pendant le balayage' && (await fiche(LAST)).summary.calcVersion !== 1, { timeout: 1500, label: 'fiche recalculée' });
 const last = await fiche(LAST);
 const first = await fiche(staleName(0));
 console.log(`fiche de la dernière : nom « ${last.name} », calcVersion ${last.summary.calcVersion} | première : calcVersion ${first.summary.calcVersion}`);
@@ -180,7 +155,7 @@ const during = await evaluate(`(async () => {
   await done;
   return \`renommée à \${editedAt} ms, relecture finie à \${Math.round(performance.now() - start)} ms\`;
 })()`);
-await wait(1500);
+await waitFor(async () => (await fiche(EDITED)).name === 'Renommée pendant la relecture', { timeout: 1500, label: 'fiche relue' });
 console.log(`${during} | en mémoire : « ${await evaluate(`(async () => (${LIB}).librarySession(${JSON.stringify(EDITED)})?.record.name ?? '(sans nom)')()`)} » | fiche : « ${(await fiche(EDITED)).name} »`);
 
 // 4. Import : un illisible, un dont la fiche ne peut s'écrire.
@@ -198,8 +173,9 @@ await go('/velo');
 await waitScan();
 // Un dossier au nom de la fiche, posé après la lecture du dossier : l'application ne le connaît pas, et l'écriture de la fiche échoue.
 await evaluate(`(async () => { await (await ${dirJs('sessions')}).getDirectoryHandle(${JSON.stringify(blockedJson)}, { create: true }); return 'ok'; })()`);
-await setFiles('input[type=file][accept=".gpx"][multiple]', [okPath, brokenPath, blockedPath]);
-await wait(4000);
+await importFiles([okPath, brokenPath, blockedPath], 'input[type=file][accept=".gpx"][multiple]');
+await waitFor(async () => (await alerts()) !== '(aucun bandeau)', { timeout: 4000, label: 'bandeau de l’import' });
+await settle({ max: 4000, label: 'import' });
 console.log('bandeaux :', await alerts());
 const after = await listOpfs('sessions');
 console.log(`sessions/ : ${blockedGpx} ${after.includes(blockedGpx) ? 'RESTÉ' : 'retiré'}, autre nom du bloqué : ${after.filter((n) => n.startsWith(blockedGpx.slice(0, 19)) && n !== blockedGpx && n !== blockedJson + '/').join(', ') || 'aucun'}, rangé : ${after.some((n) => n.startsWith('2026-10-07')) ? 'oui' : 'NON'}`);
@@ -208,8 +184,9 @@ await evaluate(`(async () => { await (await ${dirJs('sessions')}).removeEntry(${
 const okImu = `${workDir}\\import-ok.imu`;
 writeFileSync(okImu, Buffer.from('capteurs du banc'));
 await evaluate(`(async () => { (${LIB}).dismissLibraryMessage(); return 'ok'; })()`);
-await setFiles('input[type=file][accept=".gpx"][multiple]', [okPath, okImu]);
-await wait(3000);
+await importFiles([okPath, okImu], 'input[type=file][accept=".gpx"][multiple]');
+await waitFor(async () => (await listOpfs('sessions')).some((n) => n.startsWith('2026-10-07') && n.endsWith('.imu')), { timeout: 3000, label: 'capteurs rangés' });
+await settle({ max: 3000, label: 'réimport' });
 const okGpx = (await listOpfs('sessions')).find((n) => n.startsWith('2026-10-07') && n.endsWith('.gpx'));
 console.log(`réimport avec capteurs : ${await alerts()} | .imu rangé : ${(await listOpfs('sessions')).includes(okGpx.replace(/\.gpx$/, '.imu'))}`);
 
@@ -235,4 +212,4 @@ await shoot('donnees-stockage-plein');
 await evaluate(`(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('banc.remplissage.')) localStorage.removeItem(k); return 'ok'; })()`);
 
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
-ws.close();
+await close();

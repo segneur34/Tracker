@@ -17,44 +17,25 @@
 //  7. la photo (22/10) : au départ le dessin du sport préféré ; toucher la photo ouvre le choix des seize dessins ;
 //     un dessin choisi, puis une image importée (réduite à 256 px, en JPEG), tous deux retenus au rechargement ;
 //     « Retirer » rend le dessin du sport préféré.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node profil.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-    logs.push(`error: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go: goRaw, settle, waitFor, wait, records, shoot, logs, close } = await connect({ port, width: 1400, height: 1000, shotDir });
+/** Navigation, puis attente du premier rendu de l'application : sous charge, `settle` seul peut rendre la main avant. */
+const go = async (path, max) => {
+  const ms = await goRaw(path, max);
+  await waitFor(`Boolean(document.querySelector('.shell-main'))`, { timeout: 5000, every: 50, label: 'premier rendu' });
+  return ms;
 };
-await new Promise((r) => { ws.onopen = r; });
-await send('Page.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Runtime.enable');
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
+// Sortie propre à ce script (« OK » et « : détail » toujours montrés) : gardée telle quelle pour que le relevé reste comparable.
 let failures = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failures++;
@@ -111,8 +92,8 @@ const chartCount = () => text('.actchart__head span');
 const parseFr = (s) => Number((s ?? '').replace(/[^\d,]/g, '').replace(',', '.'));
 
 // --- Mise en place ---
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 await go('/course', 5000);
+await waitFor(`Boolean(document.querySelector('input[type=file][accept=".gpx"]'))`, { timeout: 3000, every: 50 });
 console.log('import :', await evaluate(`(() => {
   const input = document.querySelector('input[type=file][accept=".gpx"]');
   if (!input) return 'absent';
@@ -124,7 +105,8 @@ console.log('import :', await evaluate(`(() => {
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return 'ok';
 })()`));
-await wait(10000);
+await waitFor(async () => (await records())?.length === SESSIONS.length, { timeout: 12000, label: 'fiches' });
+await settle({ max: 2000, label: 'import' });
 
 // 1. Accueil.
 await go('/');
@@ -140,7 +122,7 @@ const opened = await evaluate(`(() => {
   return true;
 })()`);
 check('barre du haut : lien « Profil »', opened);
-await wait(1500);
+await settle({ max: 1500 });
 check('le lien ouvre la page', (await search()) === '/profil', await search());
 check('barre du haut : Profil, allumé', await evaluate(`[...document.querySelectorAll('.shell-toplink')].some((a) => a.textContent.trim() === 'Profil' && a.classList.contains('active'))`));
 
@@ -204,11 +186,11 @@ check("retour à l'année", (await chartCount()) === '4 sessions', await chartCo
 
 // 4. Le sport préféré, puis une ligne de la légende, ouvrent la bibliothèque de leur activité.
 await evaluate(`document.querySelector('.profile-figure--link').click()`);
-await wait(1500);
+await settle({ max: 1500 });
 check('le sport préféré ouvre sa bibliothèque', (await search())?.startsWith('/course?activite=running'), await search());
 await go('/profil');
 await evaluate(`document.querySelector('.profile-legend__row').click()`);
-await wait(1500);
+await settle({ max: 1500 });
 check('la ligne ouvre la bibliothèque filtrée', (await search())?.startsWith('/course?activite='), await search());
 
 // 5. Téléphone.
@@ -238,7 +220,7 @@ const tab = `[...document.querySelectorAll('.shell-tabbar .shell-tab')].find((t)
 check('barre du bas : Accueil, Profil, Statistiques, Réglages',
   (await evaluate(`[...document.querySelectorAll('.shell-tabbar .shell-tab')].map((t) => t.textContent.trim()).join(' | ')`)) === 'Accueil | Profil | Statistiques | Réglages');
 await evaluate(`${tab}.click()`);
-await wait(1000);
+await settle({ max: 1000 });
 check('la case Profil ouvre la page, allumée', (await search()) === '/profil' && (await evaluate(`${tab}.classList.contains('active')`)), await search());
 check('390 px : barre du bas sans débordement', !(await overflow()));
 
@@ -246,6 +228,7 @@ check('390 px : barre du bas sans débordement', !(await overflow()));
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 const EXTRA = [['windsurf', 3, 8], ['kite', 4, 9], ['bateau', 5, 4], ['run-intervals', 6, 3.5], ['surf', 7, 3]];
 await go('/course', 4000);
+await waitFor(`Boolean(document.querySelector('input[type=file][accept=".gpx"]'))`, { timeout: 3000, every: 50 });
 console.log('import des cinq de plus :', await evaluate(`(() => {
   const input = document.querySelector('input[type=file][accept=".gpx"]');
   if (!input) return 'absent';
@@ -257,7 +240,8 @@ console.log('import des cinq de plus :', await evaluate(`(() => {
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return 'ok';
 })()`));
-await wait(10000);
+await waitFor(async () => (await records())?.length === SESSIONS.length + EXTRA.length, { timeout: 12000, label: 'fiches' });
+await settle({ max: 2000, label: 'import' });
 await go('/profil');
 // Détail replié d'abord, pour voir le toucher sur « Autres » l'ouvrir.
 if ((await evaluate(`document.querySelector('.profile-fold')?.getAttribute('aria-expanded')`)) === 'true') await evaluate(`document.querySelector('.profile-fold').click()`);
@@ -277,7 +261,7 @@ check('la ligne « Autres » les replie', (await subs())?.length === 0);
 await evaluate(`[...document.querySelectorAll('.profile-legend li')].find((li) => li.textContent.startsWith('Autres')).querySelector('button').click()`);
 await wait(300);
 await evaluate(`document.querySelector('.profile-legend__sub button').click()`);
-await wait(1500);
+await settle({ max: 1500 });
 check('une activité d\'« Autres » ouvre sa bibliothèque', /^\/(voile|course|fractionne|surf|velo)\?activite=/.test((await search()) ?? ''), await search());
 
 // 7. La photo.
@@ -317,7 +301,7 @@ console.log('image importée :', await evaluate(`(async () => {
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return 'ok';
 })()`));
-await wait(1500);
+await settle({ max: 1500 });
 check('image importée : réduite à 256 px, en JPEG, le choix fermé', (await avatarState()) === 'photo 256 data:image/jpeg' && !(await evaluate(`!!document.querySelector('.avatar-picker')`)), await avatarState());
 await go('/profil');
 check('… retenue au rechargement', (await avatarState()) === 'photo 256 data:image/jpeg', await avatarState());
@@ -328,6 +312,9 @@ await evaluate(`[...document.querySelectorAll('.avatar-picker button')].find((b)
 await wait(300);
 check('« Retirer » rend le dessin du sport préféré', (await avatarState()) === before, await avatarState());
 
-console.log(logs.length ? `Console :\n${logs.join('\n')}` : 'Console : aucune erreur');
+// Ce script ne relève que les erreurs de console, pas les avertissements.
+const errors = logs.filter((l) => !l.startsWith('warning:'));
+console.log(errors.length ? `Console :\n${errors.join('\n')}` : 'Console : aucune erreur');
 console.log(failures === 0 ? 'Tout est bon.' : `${failures} échec(s).`);
+await close();
 process.exit(failures === 0 ? 0 : 1);

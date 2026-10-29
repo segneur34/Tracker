@@ -13,44 +13,21 @@
 //     choisie, rangée dans la liste des activités, gardée après rechargement, reprise par l'onglet de la bibliothèque ;
 //     une activité « Paddle » ajoutée en surf, son icône devinée cochée pendant la saisie, rangée sans choix ;
 //  6. à 390×844 : bibliothèque et accueil sans débordement.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node icones.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-    logs.push(`error: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-await send('Page.enable');
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, records, shoot, close, logs: allLogs } = await connect({ port, width: 1400, height: 1000, shotDir });
+// Ce script ne relevait que les erreurs de console, pas les avertissements.
+const logs = { get length() { return allLogs.filter((l) => !l.startsWith('warning:')).length; }, join: (sep) => allLogs.filter((l) => !l.startsWith('warning:')).join(sep) };
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Runtime.enable');
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
+
 let failures = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failures++;
@@ -59,8 +36,7 @@ const check = (label, ok, detail = '') => {
 const finish = async () => {
   console.log(logs.length ? `--- console ---\n${logs.join('\n')}` : 'console : rien');
   console.log(failures ? `${failures} échec(s)` : 'tout est passé');
-  await send('Target.closeTarget', { targetId: target.id }).catch(() => {});
-  ws.close();
+  await close();
 };
 
 // --- Sessions synthétiques : 20 min en ligne droite vers l'est, à 1 Hz, à 10 h du jour voulu ---
@@ -85,8 +61,10 @@ const tab = (label) => `[...document.querySelectorAll('.ui-tab')].find((b) => b.
 const overflow = () => evaluate('document.documentElement.scrollWidth > window.innerWidth');
 const stored = () => evaluate(`JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}').activities ?? null`);
 
+/** La page se monte après le chargement (modules à la demande, bibliothèque relue) : on attend son premier élément, 3 s au plus comme l'ancien sommeil. */
+const ready = (selector) => waitFor(`document.querySelector(${JSON.stringify(selector)}) !== null`, { timeout: 3000, label: selector });
+
 // --- Mise en place ---
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 await go('/course', 5000);
 console.log('import :', await evaluate(`(() => {
   const input = document.querySelector('input[type=file][accept=".gpx"]');
@@ -99,10 +77,12 @@ console.log('import :', await evaluate(`(() => {
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return 'ok';
 })()`));
-await wait(8000);
+await waitFor(async () => ((await records()) ?? []).length >= SESSIONS.length, { timeout: 10000, label: 'six fiches' });
+await settle({ max: 2500, label: 'import' });
 
 // 1. Accueil.
 await go('/');
+await ready('.home-family__name');
 const homeLabels = await evaluate(`[...document.querySelectorAll('.home-family__name')].map((s) => s.textContent)`);
 check('accueil : noms des familles', JSON.stringify(homeLabels) === JSON.stringify(['Voile', 'À pied', 'Vélo', 'Surf', 'Entraînement']), JSON.stringify(homeLabels));
 check('accueil : pas de petites icônes', (await evaluate(`document.querySelectorAll('.home-family__acts').length`)) === 0);
@@ -110,6 +90,7 @@ await shoot('icones-accueil');
 
 // 2. Bibliothèque Voile.
 await go('/voile');
+await ready('.lib-row');
 check('Voile : titre inchangé', (await h1()) === 'Voile', await h1());
 check('Voile : bandeau de la seule activité créée', (await bannerActivities()) === 'Voile', await bannerActivities());
 check('Voile : une icône par ligne', (await rowIcons()) === 2);
@@ -126,10 +107,12 @@ check('« tous » rend les deux lignes', (await rowIcons()) === 2);
 
 // 3. Bibliothèque Vélo.
 await go('/velo');
+await ready('.lib-banner__activities');
 check('Vélo : bandeau des trois activités', (await bannerActivities()) === 'Route, Gravel, VTT', await bannerActivities());
 
 // 4. Liste de choix : la session à classer.
 await go('/course');
+await ready('.lib-row__main');
 await evaluate(`[...document.querySelectorAll('.lib-row__main')].find((b) => b.textContent.includes('À classer'))?.click()`);
 await wait(600);
 const sheet = await evaluate(`(() => {
@@ -150,6 +133,7 @@ await evaluate(`(() => {
   return 'ok';
 })()`);
 await go('/parametres');
+await ready('.settings-activity__toggle');
 await evaluate(`[...document.querySelectorAll('.settings-activity__toggle')].find((b) => b.textContent.includes('Voile'))?.click()`);
 await wait(400);
 const picker = `document.querySelector('.icon-picker[aria-label="Icône de Voile"]')`;
@@ -167,6 +151,7 @@ await wait(400);
 check('Planche à voile rangée', (await stored())?.find((a) => a.id === 'wingfoil')?.icon === 'planche');
 check('un choix replie la grille', (await choices()) === 0 && (await current(picker)) === 'Planche à voile');
 await go('/parametres');
+await ready('.settings-activity__toggle');
 // La carte ouverte est retenue d'un chargement à l'autre : ne la rouvrir que si elle est fermée.
 await evaluate(`[...document.querySelectorAll('.settings-activity__toggle')].find((b) => b.textContent.includes('Voile') && b.getAttribute('aria-expanded') !== 'true')?.click()`);
 await wait(400);
@@ -194,15 +179,18 @@ const paddle = (await stored())?.find((a) => a.name === 'Paddle');
 check('Paddle rangée, sans icône imposée', paddle !== undefined && paddle.icon === undefined, JSON.stringify(paddle));
 
 await go('/voile');
+await ready('.lib-row');
 const boardIcon = await tabIcon('Voile');
 check('bibliothèque : dessin de la planche dans son onglet', boardIcon !== '' && boardIcon !== wingIcon);
 
 // 6. Téléphone.
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go('/voile');
+await ready('.lib-row');
 check('390 : bibliothèque sans débordement', (await overflow()) === false);
 await shoot('icones-voile-390');
 await go('/');
+await ready('.home-family__name');
 check('390 : accueil sans débordement', (await overflow()) === false);
 await shoot('icones-accueil-390');
 

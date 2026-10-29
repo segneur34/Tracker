@@ -9,60 +9,36 @@
 //     l'ouvre et déplie l'onglet « surface » : une requête à Overpass, voies rangées dans la fiche ;
 //     recharge la page : mêmes chiffres, aucune nouvelle requête.
 import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
 if (!port || !workDir) {
   console.error('Usage : node surface.mjs <port> <dossier de travail> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, importFiles, shoot, mouse, onMessage, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 const requests = { brouter: 0, overpass: 0 };
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
+/** La page se monte après le chargement (modules à la demande, bibliothèque relue) : on attend son premier élément, 3 s au plus comme l'ancien sommeil. */
+const ready = (selector) => waitFor(`document.querySelector(${JSON.stringify(selector)}) !== null`, { timeout: 3000, label: selector });
+onMessage((msg) => {
   if (msg.method === 'Network.requestWillBeSent' && msg.params.request.method !== 'OPTIONS') {
     const url = msg.params.request.url;
     if (url.startsWith('https://brouter.de/brouter?')) requests.brouter += 1;
     if (url.startsWith('https://overpass-api.de/')) requests.overpass += 1;
   }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+});
+
 const clickButton = (text) => evaluate(`(() => {
   const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)} && !x.disabled);
   if (!b) return 'absent'; b.click(); return 'ok';
 })()`);
-const setFile = async (selector, path) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files: [path] });
-};
-const mouse = (type, x, y) => send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
 const tapMap = async (fx, fy) => {
   const r = await evaluate(`(() => { const b = document.querySelector('.plan-map .leaflet-container').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()`);
   await mouse('mousePressed', r[0] + r[2] * fx, r[1] + r[3] * fy);
   await mouse('mouseReleased', r[0] + r[2] * fx, r[1] + r[3] * fy);
   await wait(300);
-};
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
 };
 /** Lignes de la barre de revêtement : « Asphalte 1.23 km · Gravillon 450 m ». */
 const surfaceRows = () => evaluate(`[...document.querySelectorAll('.surface-bar__row')].map((r) => r.innerText.replace(/\\n/g, ' ')).join(' · ') || '(aucune)'`);
@@ -93,16 +69,13 @@ const waitComputed = async () => {
   }
 };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
-// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
-
 // 1. Itinéraire calculé, en Course, au nord de Montpellier (garrigue et routes).
 await go('/itineraires', 2000);
 await evaluate(`localStorage.setItem('tracker.planning', JSON.stringify({ activityId: 'running', mode: 'chemin', view: { lat: 43.7735, lon: 3.811, zoom: 15 } }));
   localStorage.setItem('tracker.sections', JSON.stringify({ planning: { profil: true, surface: true, trace: true, points: true, ranger: true, liste: true } })); 'ok'`);
 await go('/itineraires');
+await ready('.plan-map .leaflet-container');
 console.log('blocs :', await evaluate(`[...document.querySelectorAll('.plan-block__head')].map((x) => x.textContent.trim()).join(' | ')`));
 console.log('vide :', await planNotes('/revêtement s.affiche/'));
 await tapMap(0.3, 0.4);
@@ -112,13 +85,14 @@ console.log('calculé :', await surfaceRows(), '| requêtes BRouter', requests.b
 await shoot('surface-planification');
 await evaluate(`(() => { const i = document.querySelector('.plan-form input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Surface banc'); i.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()`);
 console.log('Enregistrer :', await clickButton('Enregistrer'));
-await wait(1500);
+await waitFor(async () => (typeof (await readOpfs('itineraires/Surface banc.json')) === 'string') && (await readOpfs('itineraires/Surface banc.json')).length > 2, { timeout: 1500, label: 'itinéraire rangé' });
 const saved = JSON.parse(await readOpfs('itineraires/Surface banc.json'));
 console.log('fiche :', saved.legs.map((l) => `${l.mode}, ${l.points.length} points, ${l.surfaces ? `${l.surfaces.runs.length} morceaux, ${l.surfaces.tags.length} étiquettes` : 'sans voies'}`).join(' ; '));
 
 // Fiche d'avant : voies retirées, puis rouverte.
 await writeOpfs('itineraires/Surface banc.json', JSON.stringify({ ...saved, legs: saved.legs.map(({ surfaces: _s, ...leg }) => leg) }));
 await go('/itineraires?itineraire=Surface%20banc', 4000);
+await ready('.plan-block__head');
 console.log('fiche d\'avant :', await surfaceRows());
 console.log('note :', await planNotes('/avant/'));
 const before = requests.brouter;
@@ -135,8 +109,9 @@ const importedPath = `${workDir}\\trace-importee.gpx`;
 writeFileSync(importedPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Importée</name><trkseg>\n${
   path.map(([lat, lon]) => `<trkpt lat="${lat}" lon="${lon}"></trkpt>`).join('\n')
 }\n</trkseg></trk></gpx>\n`);
-await setFile('.plan-panel input[type=file]', importedPath);
-await wait(1500);
+await importFiles(importedPath, '.plan-panel input[type=file]');
+await wait(300);
+await settle({ max: 1500, label: 'trace importée' });
 console.log('trace importée :', await surfaceRows(), '| Calculer :', await evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Calculer')`));
 
 // 3. Course synthétique le long du tracé, importée puis analysée.
@@ -157,11 +132,12 @@ writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.
 }\n</trkseg></trk></gpx>\n`);
 console.log(`course synthétique : ${fixes.length} points à ${SPEED} m/s`);
 await go('/course');
-await setFile('input[type=file][accept=".gpx"][multiple]', runPath);
-await wait(4000);
-const gpxName = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx'));
+await importFiles(runPath, 'input[type=file][accept=".gpx"][multiple]');
+const gpxName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx')), { timeout: 6000, label: 'fiche course' });
+await settle({ max: 1500, label: 'import course' });
 console.log('rangée :', gpxName);
 await go(`/course/analyse?session=${encodeURIComponent(gpxName)}`, 4000);
+await ready('.ui-tab');
 console.log('onglets :', await evaluate(`[...document.querySelectorAll('button')].map((b) => b.textContent.trim()).filter((t) => /^(général|tops|zones de pente|surface|énergie|graphiques|réglages)$/.test(t)).join(' | ')`));
 await clickButton('surface');
 await wait(500);
@@ -174,11 +150,13 @@ console.log('onglet surface :', await surfaceRows(), '| erreur', await surfaceEr
   `| ${Math.round((Date.now() - searchStart) / 1000)} s`);
 await shoot('surface-course');
 // La fiche s'écrit un instant après le changement (800 ms) : on lui laisse le temps.
-await wait(1500);
+await waitFor(async () => JSON.parse(await readOpfs('sessions/' + gpxName.slice(0, -4) + '.json')).surfaces, { timeout: 1500, label: 'voies rangées' });
 const record = JSON.parse(await readOpfs(`sessions/${gpxName.replace(/\.gpx$/, '.json')}`));
 console.log('fiche :', record.surfaces ? `${record.surfaces.source}, version ${record.surfaces.matchVersion}, ${record.surfaces.runs.length} morceaux, ${record.surfaces.tags.length} étiquettes` : 'sans voies');
 await go(`/course/analyse?session=${encodeURIComponent(gpxName)}`, 4000);
+await waitFor(async () => (await surfaceRows()) !== '(aucune)', { timeout: 4000, label: 'voies relues' });
 console.log('rechargée :', await surfaceRows(), '| requêtes Overpass', requests.overpass);
 
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
-ws.close();
+await close();
+process.exit(0);

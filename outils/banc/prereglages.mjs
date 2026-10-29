@@ -17,69 +17,25 @@
 //  5. un réglage du bateau fait après la mise à jour reste au rechargement ;
 //  6. mise à jour des pré-réglages 2 → 3 (28/10) : le seuil de 0,5 km/h rangé pour la Marche est effacé, celui
 //     de la Course gardé.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node prereglages.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-    logs.push(`error: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-await send('Page.enable');
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Runtime.enable');
-await send('Network.enable');
-await send('Network.setBlockedURLs', { urls: ['*://*.openstreetmap.org/*', '*://server.arcgisonline.com/*', '*://data.geopf.fr/*', '*://overpass-api.de/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
+await blockNetwork(['*://*.openstreetmap.org/*', '*://server.arcgisonline.com/*', '*://data.geopf.fr/*', '*://overpass-api.de/*']);
 let failures = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failures++;
   console.log(`${ok ? 'OK ' : 'ÉCHEC'} ${label}${detail ? ` : ${detail}` : ''}`);
 };
 const stored = () => evaluate(`JSON.parse(localStorage.getItem('tracker.sportSettings') ?? 'null')`);
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
-
 const SAIL = { id: 'wingfoil', name: 'Voile', base: 'wingfoil', color: '#1976d2' };
 const RUN = { id: 'running', name: 'Course', base: 'running', color: '#d42a3c' };
 const BOAT = { id: 'a-voilier', name: 'Voilier', base: 'bateau', color: '#014e86' };
@@ -140,6 +96,8 @@ await evaluate(`(() => {
 })()`);
 await go('/parametres');
 const card = (name) => `[...document.querySelectorAll('.settings-activity')].find((c) => c.querySelector('.settings-activity__name')?.textContent === ${JSON.stringify(name)})`;
+await waitFor(`Boolean(${card('Voilier')})`, { timeout: 3000, label: 'cartes des activités' });
+await settle({ max: 1000, label: 'cartes' });
 const rowOf = (name, label) => `[...(${card(name)}?.querySelectorAll('.setting-row, .settings-row, [class*=row]') ?? [])].find((r) => r.textContent.startsWith(${JSON.stringify(label)}))`;
 const inputs = (name, label) => evaluate(`[...(${rowOf(name, label)}?.querySelectorAll('input') ?? [])].map((i) => ({ value: i.value, placeholder: i.placeholder }))`);
 const selects = (name, label) => evaluate(`[...(${rowOf(name, label)}?.querySelectorAll('select') ?? [])].map((s) => s.value).filter(Boolean)`);
@@ -225,7 +183,8 @@ const paths = {};
 for (const s of SESSIONS) {
   await go('/voile', 3000);
   console.log(`import ${s.name} :`, await importGpx(loopGpx(s.type, s.start), `${s.name}.gpx`));
-  await wait(5000);
+  await waitFor(async () => (await records())?.find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000), { timeout: 5000, label: `fiche ${s.name}` });
+  await settle({ max: 2000, label: `import ${s.name}` });
   const rec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000);
   check(`${s.name} rangée`, Boolean(rec));
   paths[s.name] = `/voile/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
@@ -273,7 +232,8 @@ const pausedGpx = (t0) => {
 const runStart = Date.UTC(2026, 9, 12, 8);
 await go('/course', 3000);
 console.log('import course :', await importGpx(pausedGpx(runStart), 'pause.gpx'));
-await wait(5000);
+await waitFor(async () => (await records())?.find((r) => Math.abs((r.summary?.startMs ?? 0) - runStart) < 2000), { timeout: 5000, label: 'fiche course' });
+await settle({ max: 2000, label: 'import course' });
 const runRec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - runStart) < 2000);
 const runSum = runRec?.summary;
 check('course en pause : 1 800 m, pas 3 600', runSum && Math.abs(runSum.distanceM - 1800) < 20, String(runSum?.distanceM));
@@ -320,7 +280,7 @@ const v3 = await stored();
 check('mise à jour 2 → 3 : seuil de la Marche effacé, celui de la Course gardé',
   v3?.thresholds?.['a-marche'] === undefined && v3?.thresholds?.running === 3 && v3?.presetsVersion === 3, JSON.stringify(v3?.thresholds));
 
-console.log(logs.length ? `--- console ---\n${logs.join('\n')}` : 'console : rien');
+const errors = logs.filter((l) => !l.startsWith('warning'));
+console.log(errors.length ? `--- console ---\n${errors.join('\n')}` : 'console : rien');
 console.log(failures ? `${failures} échec(s)` : 'tout est passé');
-await send('Target.closeTarget', { targetId: target.id }).catch(() => {});
-ws.close();
+await close();

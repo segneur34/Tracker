@@ -8,38 +8,16 @@
 //     « Enregistrer la session », fiche relue, rechargement ;
 //  3. la même chose pour une sortie à vélo et une session de surf, sous les intitulés par défaut ;
 //  4. à 390×844 : pas de débordement.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node materiel.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const clickText = (text, selector = 'button') => evaluate(`(() => {
-  const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.trim() === ${JSON.stringify(text)});
-  if (!b) return 'absent'; if (b.disabled) return 'désactivé'; b.click(); return 'ok';
-})()`);
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, clickText, check, finish, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 /** Saisit un texte dans un champ ou une zone de texte, puis le quitte (`focusout`, l'`onBlur` de React). */
 const setText = (input, value) => evaluate(`(() => {
   const i = ${input};
@@ -50,42 +28,17 @@ const setText = (input, value) => evaluate(`(() => {
   i.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
   return i.value;
 })()`);
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
 const overflow = () => evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
 const openTab = (label) => evaluate(`(() => { const t = [...document.querySelectorAll('.an-carte-col .ui-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)}); if (!t) return 'absent'; if (t.getAttribute('aria-pressed') !== 'true' && t.getAttribute('aria-selected') !== 'true') t.click(); return 'ok'; })()`);
 const tabLabels = () => evaluate(`[...document.querySelectorAll('.an-carte-col .ui-tab')].map((t) => t.textContent.trim()).join(' | ')`);
 const saveBar = () => evaluate(`document.body.innerText.match(/Non enregistr[^\\n]*/)?.[0] ?? '(aucune)'`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
 /** Champ du matériel de l'onglet, par son intitulé. */
 const gearInput = (label) => `[...document.querySelectorAll('label')].find((l) => l.querySelector('span')?.textContent.trim() === ${JSON.stringify(label)})?.querySelector('input[type=text]')`;
 const gearLabels = () => evaluate(`[...document.querySelectorAll('label')].filter((l) => l.querySelector('input[type=text]') && l.querySelector('span')).map((l) => l.querySelector('span').textContent.trim()).join(', ')`);
 const conditionsArea = `document.querySelector('textarea[aria-label="Conditions"]')`;
-let failures = 0;
-const check = (what, ok) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}`); if (!ok) failures++; };
-
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*']);
 
 /** Trace droite à `speedMs` constante, `type` lu par l'import. */
 const lineGpx = (type, speedMs, t0) => {
@@ -126,20 +79,25 @@ console.log('rangés :', stored);
 check('intitulés de Course rangés, rognés', stored === JSON.stringify({ running: ['Chaussures', 'Sac'] }));
 await shoot('materiel-reglages');
 
+/** La barre d'onglets de l'analyse n'est montée qu'une fois la session relue (OPFS), ce que `settle` ne voit pas. */
+const tabsReady = async () => { await waitFor(`document.querySelectorAll('.an-carte-col .ui-tab').length > 0`, { timeout: 10000, label: 'onglets' }); await settle({ max: 1000, label: 'onglets' }); };
+
 /** Importe, ouvre l'onglet, saisit, enregistre, relit ; rend l'adresse de l'analyse. */
 const scenario = async ({ page, type, startIso, labels, values }) => {
   const start = Date.parse(startIso);
   await go(`/${page}`, 3000);
   console.log(`\nimport ${page} :`, await importGpx(lineGpx(type, 2.8, start), `${page}.gpx`));
-  await wait(4000);
+  await waitFor(async () => (await records())?.find((r) => r.summary?.startMs === start), { timeout: 4000, label: 'fiche' });
+  await settle({ max: 2000, label: 'import' });
   const rec = (await records()).find((r) => r.summary?.startMs === start);
   const path = `/${page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
   await go(path, 6000);
+  await tabsReady();
   const tabs = await tabLabels();
   console.log('onglets :', tabs);
   check('« matériel et notes » juste avant « réglages »', / matériel et notes \| réglages$/.test(tabs));
   console.log('ouvrir :', await openTab('matériel et notes'));
-  await wait(800);
+  await settle({ max: 800, label: 'onglet matériel' });
   const shown = await gearLabels();
   console.log('champs :', shown);
   check(`intitulés ${labels.join(', ')}`, shown === labels.join(', '));
@@ -152,12 +110,14 @@ const scenario = async ({ page, type, startIso, labels, values }) => {
   console.log('barre :', bar);
   check('partie « notes » à enregistrer', /notes/.test(bar));
   console.log('Enregistrer la session :', await clickText('Enregistrer la session'));
-  await wait(1500);
+  await waitFor(async () => { const all = await records(); return Array.isArray(all) && all.find((r) => r.summary?.startMs === start)?.notes?.gear1 === values[0]; }, { timeout: 1500, label: 'fiche écrite' });
+  await settle({ max: 1500, label: 'enregistrement' });
   const notes = (await records()).find((r) => r.summary?.startMs === start)?.notes;
   console.log('fiche :', JSON.stringify({ gear1: notes?.gear1, gear2: notes?.gear2, conditions: notes?.conditions, rating: notes?.rating }));
   check('fiche écrite', notes?.gear1 === values[0] && notes?.gear2 === values[1] && notes?.conditions === values[2] && notes?.rating === 4);
   await go(path, 6000);
-  await openTab('matériel et notes'); await wait(800);
+  await tabsReady();
+  await openTab('matériel et notes'); await settle({ max: 800, label: 'onglet matériel' });
   const again = await evaluate(`[${gearInput(labels[0])}?.value, ${gearInput(labels[1])}?.value, ${conditionsArea}?.value].join(' / ')`);
   console.log('après rechargement :', again);
   check('relu après rechargement', again === values.join(' / '));
@@ -175,7 +135,8 @@ const surfPath = await scenario({ page: 'surf', type: 'surf', startIso: '2026-10
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
 for (const path of [runPath, surfPath]) {
   await go(path, 5000);
-  await openTab('matériel et notes'); await wait(800);
+  await tabsReady();
+  await openTab('matériel et notes'); await settle({ max: 800, label: 'onglet matériel' });
   const o = await overflow();
   check(`à 390 px, ${path.split('/')[1]} : débordement ${o}`, o === 0);
 }
@@ -183,7 +144,4 @@ await shoot('materiel-telephone');
 
 console.log('\n--- console (erreurs, avertissements) ---');
 logs.forEach((l) => console.log(l));
-console.log(failures === 0 ? '\nTout passe.' : `\n${failures} échec(s).`);
-await send('Page.close').catch(() => undefined);
-ws.close();
-process.exit(0);
+await finish('\nTout passe.', { ko: (n) => `\n${n} échec(s).` });

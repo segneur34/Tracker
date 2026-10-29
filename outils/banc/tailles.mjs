@@ -18,6 +18,7 @@
 // (style en ligne), sur ce qui est affiché à ce moment-là.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
 if (!port || !workDir) {
@@ -26,50 +27,20 @@ if (!port || !workDir) {
 }
 mkdirSync(workDir, { recursive: true });
 if (shotDir) mkdirSync(shotDir, { recursive: true });
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go: goRaw, settle, waitFor, wait, blockNetwork, importGpx, importFiles, records, logs, close } = await connect({ port });
+/** Navigation, puis attente du premier rendu de l'application : sous charge, `settle` seul peut rendre la main avant. */
+const go = async (path, max) => {
+  const ms = await goRaw(path, max);
+  await waitFor(`Boolean(document.querySelector('.shell-main'))`, { timeout: 5000, every: 50, label: 'premier rendu' });
+  return ms;
 };
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
 const holdStop = async () => {
   const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled && !x.closest('.ivl')); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
   if (down !== 'ok') return down;
   await wait(2300);
   return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
-};
-const setFile = async (selector, path) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files: [path] });
 };
 
 // --- Tailles ---
@@ -253,9 +224,7 @@ const SESSIONS = [
   { key: 'surf', gpx: surfGpx(T.surf, MORNING) },
 ];
 
-// --- Préparation ---
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable'); await send('DOM.enable');
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*', '*://server.arcgisonline.com/*'] });
+await blockNetwork();
 // Rangée « avancé » des analyses rouverte d'office, comme dans les autres scripts : tous les onglets restent dans la barre.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
 await setSize(SIZES_ALL[0]);
@@ -264,7 +233,8 @@ const paths = {};
 for (const s of SESSIONS) {
   await go(`/${s.key === 'voile' ? 'voile' : s.key}`, 3000);
   const imported = await importGpx(s.gpx, `${s.key}.gpx`);
-  await wait(6000);
+  await waitFor(async () => (await records())?.some((r) => Math.abs((r.summary?.startMs ?? 0) - T[s.key]) < 2000), { timeout: 9000, label: `fiche ${s.key}` });
+  await settle({ max: 2000, label: `import ${s.key}` });
   const rec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - T[s.key]) < 2000);
   console.log(`import ${s.key} : ${imported}, rangée : ${Boolean(rec)}`);
   paths[s.key] = `/${s.key}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
@@ -354,15 +324,15 @@ if (!process.env.PAGES || 'enregistrement'.includes(process.env.PAGES)) {
   await go('/enregistrer', 2500);
   await evaluate(`[...document.querySelectorAll('input[type=radio]')][1]?.click(); 'ok'`);
   await wait(300);
-  await setFile('input[type=file]', replay);
-  await wait(800);
+  await importFiles(replay, 'input[type=file]');
+  await settle({ max: 800 });
   const started = await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Démarrer')); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
   console.log('rejeu :', started);
   if (started === 'ok') {
     await wait(5000);
     await sweep({ name: 'enregistrement en cours' });
     await holdStop();
-    await wait(1500);
+    await settle({ max: 1500 });
     await sweep({ name: 'enregistrement terminé' });
   }
 }
@@ -405,6 +375,5 @@ writeFileSync(join(workDir, 'rapport.md'), md);
 writeFileSync(join(workDir, 'rapport.json'), JSON.stringify(report, null, 1));
 console.log(`\nRapport : ${join(workDir, 'rapport.md')}`);
 console.log('--- console (erreurs) ---');
-[...new Set(logs)].slice(0, 10).forEach((l) => console.log(l));
-await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`);
-ws.close();
+[...new Set(logs.filter((l) => l.startsWith('EXCEPTION:')))].slice(0, 10).forEach((l) => console.log(l));
+await close();

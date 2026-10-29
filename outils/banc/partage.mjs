@@ -18,62 +18,23 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
 if (!port || !workDir) {
   console.error('Usage : node partage.mjs <port> <dossier de travail> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, importFiles, records, clickText, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+
 let failures = 0;
 const check = (what, ok, detail = '') => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}${detail ? ` (${detail})` : ''}`); if (!ok) failures++; };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://brouter.de/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://brouter.de/*']);
 
 // --- Sessions ---
 /** Boucle de course de 30 min au nord de Montpellier, à 3 m/s. */
@@ -104,8 +65,8 @@ const activityIds = {};
 for (const s of SESSIONS) {
   await go(`/${s.page}`, 3000);
   console.log(`import ${s.page} :`, await importGpx(s.gpx, `${s.page}.gpx`));
-  await wait(5000);
-  const rec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000);
+  const rec = await waitFor(async () => (await records())?.find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000), { timeout: 6000, label: `fiche ${s.page}` });
+  await settle({ max: 2000, label: `import ${s.page}` });
   paths[s.page] = `/${s.page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
   activityIds[s.page] = rec?.activityId ?? rec?.sport;
   check(`${s.page} rangée`, Boolean(rec));
@@ -238,20 +199,11 @@ await shoot('partage-telephone');
 await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
 
 // --- 5. Fin d'enregistrement ---
-const clickText = (text, selector = 'button') => evaluate(`(() => {
-  const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.trim() === ${JSON.stringify(text)});
-  if (!b) return 'absent'; if (b.disabled) return 'désactivé'; b.click(); return 'ok';
-})()`);
 const holdStop = async () => {
   const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
   if (down !== 'ok') return down;
   await wait(2300);
   return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
-};
-const setFile = async (selector, file) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files: [file] });
 };
 const replayPath = join(workDir, 'partage-rejeu.gpx');
 writeFileSync(replayPath, loopGpx(Date.now() - 1800 * 1000));
@@ -260,13 +212,13 @@ console.log('famille :', await clickText('À pied', '[aria-label=Famille] button
 await wait(300);
 await evaluate(`[...document.querySelectorAll('input[type=radio]')][1].click()`);
 await wait(300);
-await setFile('input[type=file][accept=".gpx"]', replayPath);
+await importFiles(replayPath, 'input[type=file][accept=".gpx"]');
 await wait(800);
 await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === '600')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, '600'); s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()`);
 console.log('Démarrer :', await clickText('Démarrer'));
 await wait(6000);
 console.log('Arrêter :', await holdStop());
-await wait(2500);
+await waitFor("[...document.querySelectorAll('.ui-card')].some((c) => c.textContent.includes('Session terminée') && c.querySelector('.ui-more__button'))", { timeout: 2500, label: 'session terminée' });
 const cardMenu = await evaluate(`(() => {
   const card = [...document.querySelectorAll('.ui-card')].find((c) => c.textContent.includes('Session terminée'));
   const b = card?.querySelector('.ui-more__button');
@@ -289,6 +241,5 @@ await shoot('partage-enregistrement-fenetre');
 console.log('\n--- console (erreurs, avertissements) ---');
 logs.forEach((l) => console.log(l));
 console.log(failures === 0 ? '\nTout passe.' : `\n${failures} échec(s).`);
-await send('Page.close').catch(() => undefined);
-ws.close();
+await close();
 process.exit(failures === 0 ? 0 : 1);

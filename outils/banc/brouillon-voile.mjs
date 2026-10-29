@@ -7,41 +7,19 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { connect } from './lib/cdp.mjs';
 
 const [port, workDir] = process.argv.slice(2);
 if (!port || !workDir) { console.error('Usage : node brouillon-voile.mjs <port> <dossier de travail>'); process.exit(1); }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 const here = dirname(fileURLToPath(import.meta.url));
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importFiles, close, logs } = await connect({ port, width: 1400, height: 1000 });
+
 const clickButton = (text) => evaluate(`(() => {
   const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)} && !x.disabled);
   if (!b) return 'absent'; b.click(); return 'ok';
 })()`);
-const setFile = async (selector, path) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files: [path] });
-};
 const readOpfs = (path) => evaluate(`(async () => {
   let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker');
   const parts = ${JSON.stringify(path)}.split('/');
@@ -66,9 +44,8 @@ const currentSession = () => evaluate(`new URLSearchParams(location.search).get(
 /** Navigation interne (sans rechargement) : le routeur écoute popstate. */
 const navigateInApp = (url) => evaluate(`(() => { history.pushState({}, '', ${JSON.stringify(url)}); dispatchEvent(new PopStateEvent('popstate')); return 'ok'; })()`);
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*', '*://server.arcgisonline.com/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork();
+
 
 // 1. Deux sessions de voile (même trace, départs sur deux jours différents).
 const paths = [];
@@ -85,11 +62,12 @@ for (let k = 0; k < 60 && !(await evaluate("!!document.querySelector('input[type
 const before = (await listOpfs('sessions')).filter((n) => n.endsWith('.gpx'));
 const names = [];
 for (const p of paths) {
-  await setFile('input[type=file][accept=".gpx"]', p);
+  await importFiles(p, 'input[type=file][accept=".gpx"]');
   let fresh;
   for (let k = 0; k < 40 && !fresh; k++) { await wait(1000); fresh = (await listOpfs('sessions')).filter((n) => n.endsWith('.gpx')).find((n) => !before.includes(n) && !names.includes(n)); }
   names.push(fresh);
-  await wait(2000);
+  await waitFor(async () => ((await listOpfs('sessions')) ?? []).includes(fresh.slice(0, -4) + '.json'), { timeout: 3000, label: 'fiche' });
+  await settle({ max: 1500, label: 'import' });
 }
 const [A, B] = [...names].sort(); // l'ordre du nom suit celui des départs
 console.log('rangées :', A, B);
@@ -104,17 +82,17 @@ console.log('A au départ :', autoA, '|', await windSource());
 const est = Number(autoA.match(/\d+/)?.[0] ?? 0);
 const WIND = (est + 100) % 360;
 console.log('Régler :', await clickButton('Régler'));
-await wait(800);
+await settle({ max: 800 });
 console.log('saisie', WIND, ':', await evaluate(`(() => { const el = document.querySelector('input[aria-label="Vent en degrés"]'); if (!el) return 'absent'; el.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(String(WIND))}); el.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()`));
 await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: String.fromCharCode(13) });
 await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-await wait(800);
+await settle({ max: 800 });
 console.log('Terminé :', await clickButton('Terminé'));
 await wait(500);
 console.log('A brouillon :', await windText(), '|', await windSource(), '| barre', await bar());
 check('A affiche le vent saisi', (await windText()) === `Vent ${WIND}°`);
 console.log('Enregistrer la session :', await clickButton('Enregistrer la session'));
-await wait(2500);
+await settle({ max: 2500 });
 console.log('barre :', await bar());
 
 // 3. Passer à B dans l'application (sans rechargement), relever le champ du vent à plusieurs instants.
@@ -156,4 +134,5 @@ check('fiche B sans vent', !/"windDeg":\s*\d/.test(ficheB), ficheB);
 
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
 console.log(failures === 0 ? 'RÉSULTAT : ok' : `RÉSULTAT : ${failures} échec(s)`);
-ws.close();
+await close();
+process.exit(0);

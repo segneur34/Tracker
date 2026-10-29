@@ -10,33 +10,22 @@
 // Usage : node recherche-sans-reponse.mjs <port> <dossier de travail, chemin Windows>
 // Le GPX écrit n'a pas d'altitude : l'IGN est donc interrogé d'office. Sur un profil neuf, avec réseau (overpass-api.de et data.geopf.fr) pour la fin. Dure environ 3 à 5 min.
 import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, workDir] = process.argv.slice(2);
 if (!port || !workDir) {
   console.error('Usage : node recherche-sans-reponse.mjs <port> <dossier de travail>');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, waitFor, wait, importFiles, onMessage, close, logs } = await connect({ port, width: 1400, height: 1000 });
 /** Requêtes interceptées : tenues sans réponse tant que `holding` est vrai. */
 let holding = true;
 const held = [];
 const firstHeld = { overpass: null, ign: null };
 const serviceOf = (url) => (!url.startsWith('https://') ? null : /overpass/i.test(url) ? 'overpass' : /geopf|(^|[/.])ign\./i.test(url) ? 'ign' : null);
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
+onMessage((msg) => {
   if (msg.method === 'Fetch.requestPaused') {
     const service = serviceOf(msg.params.request.url);
     if (service && holding) {
@@ -46,21 +35,12 @@ ws.onmessage = (e) => {
       void send('Fetch.continueRequest', { requestId: msg.params.requestId });
     }
   }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+});
+
 const clickButton = (text) => evaluate(`(() => {
   const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)} && !x.disabled);
   if (!b) return 'absent'; b.click(); return 'ok';
 })()`);
-const setFile = async (selector, path) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files: [path] });
-};
 const listOpfs = async (path) => (await evaluate(`(async () => { try {
   let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker');
   for (const p of ${JSON.stringify(path)}.split('/')) dir = await dir.getDirectoryHandle(p);
@@ -74,12 +54,9 @@ const retryTexts = () => evaluate(`[...document.querySelectorAll('button')].filt
 const surfaceRows = () => evaluate(`[...document.querySelectorAll('.surface-bar__row')].map((r) => r.innerText.replace(/\\n/g, ' ')).join(' · ') || '(aucune)'`);
 const sourceLine = () => evaluate(`[...document.querySelectorAll('span')].map((x) => x.textContent).find((t) => /^Altitude (du terrain|du GPS|enregistrée)/.test(t)) ?? '(aucune)'`);
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
 await send('Fetch.enable', { patterns: [{ urlPattern: 'https://*overpass*' }, { urlPattern: 'https://*geopf*' }, { urlPattern: 'https://*ign.fr*' }] });
 // Rangée « avancé » des analyses ouverte d'office : tous les onglets restent dans la barre.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
-
 // 1. Course synthétique vers le nord (celle d'altitude.mjs), importée.
 const t0 = Date.UTC(2026, 9, 7, 8, 0, 0);
 const fixes = [];
@@ -87,13 +64,12 @@ const fixes = [];
 for (let k = 0; k <= 1200; k++) fixes.push([43.655 + (3 * k) / 111_195, 3.8, 0]);
 const runPath = `${workDir}\\course-sans-reponse.gpx`;
 writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Course sans réponse</name><type>running</type><trkseg>\n${
-  fixes.map(([lat, lon, ele], k) => `<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`).join('\n')
+  fixes.map(([lat, lon, _ele], k) => `<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}"><time>${new Date(t0 + k * 1000).toISOString()}</time></trkpt>`).join('\n')
 }\n</trkseg></trk></gpx>\n`);
 await go('/course');
 const before = (await listOpfs('sessions')).filter((n) => n.endsWith('.gpx'));
-await setFile('input[type=file][accept=".gpx"][multiple]', runPath);
-await wait(4000);
-const gpxName = (await listOpfs('sessions')).filter((n) => n.endsWith('.gpx')).find((n) => !before.includes(n));
+await importFiles(runPath, 'input[type=file][accept=".gpx"][multiple]');
+const gpxName = await waitFor(async () => (await listOpfs('sessions')).filter((n) => n.endsWith('.gpx')).find((n) => !before.includes(n)), { timeout: 6000, label: 'fiche' });
 console.log('rangée :', gpxName);
 check('course importée', Boolean(gpxName));
 
@@ -154,4 +130,5 @@ check('plus de message d\'erreur', left.length === 0, left.join(' || '));
 
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
 console.log(failures === 0 ? 'RÉSULTAT : ok' : `RÉSULTAT : ${failures} échec(s)`);
-ws.close();
+await close();
+process.exit(0);

@@ -15,59 +15,27 @@
 //  7. la FC dans le résumé des fiches, et l'onglet « cardio » des statistiques ;
 //  8. à 390×844 : l'analyse de course, onglet cardio ouvert, et le fractionné, sans débordement.
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node cardio.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go: goRaw, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, check, finish, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+/** Navigation, puis attente du premier rendu de l'application : sous charge, `settle` seul peut rendre la main avant. */
+const go = async (path, max) => {
+  const ms = await goRaw(path, max);
+  await waitFor(`Boolean(document.querySelector('.shell-main'))`, { timeout: 5000, every: 50, label: 'premier rendu' });
+  return ms;
 };
 const overflow = () => evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
 const tabLabels = () => evaluate(`[...document.querySelectorAll('.an-carte-col .ui-tab')].map((t) => t.textContent.trim()).join(' | ')`);
 const clickTab = (label, close = false) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-col .ui-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)});
@@ -95,14 +63,10 @@ const clickButton = (scopeTitle, label, nth = 0) => evaluate(`(() => {
 })()`);
 const setRunner = (profile) => evaluate(`(() => { localStorage.setItem('tracker.runnerProfile', ${JSON.stringify(JSON.stringify({ me: profile }))}); return 'ok'; })()`);
 const runner = () => evaluate(`JSON.parse(localStorage.getItem('tracker.runnerProfile') ?? '{}').me ?? null`);
-let failures = 0;
-const check = (what, ok) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}`); if (!ok) failures++; };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*']);
 
 // --- Sessions synthétiques ---
 const lineGpx = (type, seconds, speedAt, t0) => {
@@ -188,7 +152,8 @@ const paths = {};
 for (const s of SESSIONS) {
   await go(`/${s.page}`, 3000);
   console.log(`import ${s.key} :`, await importGpx(s.gpx, `${s.key}.gpx`));
-  await wait(5000);
+  await waitFor(async () => (await records())?.some((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000), { timeout: 8000, label: `fiche ${s.key}` });
+  await settle({ max: 2000, label: `import ${s.key}` });
   const rec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000);
   paths[s.key] = `/${s.page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
   check(`${s.key} rangée`, Boolean(rec));
@@ -202,7 +167,7 @@ for (const key of ['course', 'surf', 'voile']) {
   const at = labels.indexOf('cardio');
   check(`${key} : « cardio » juste après « ${GRAPH_TAB[key]} » (${labels.join(', ')})`, at > 0 && labels[at - 1] === GRAPH_TAB[key]);
   console.log('  ouvre cardio :', await clickTab('cardio'));
-  await wait(1500);
+  await settle({ max: 1500 });
   const text = await panel('Cardio');
   check(`${key} : FC moyenne et max`, /FC moyenne \/ \d+ bpm/.test(text) && /FC max \/ \d+ bpm/.test(text));
   check(`${key} : pas de zones, et la raison`, text.includes('Pour les zones d\'effort'));
@@ -212,7 +177,7 @@ await go(paths.course, 6000);
 const before = await panel('Cardio');
 check('course : FC max de la sortie proposée', before.includes('Aucune FC max') && before.toLowerCase().includes('la retenir'));
 console.log('  La retenir :', await clickButton('Cardio', 'La retenir'));
-await wait(800);
+await settle({ max: 800 });
 const kept = await runner();
 console.log('  pratiquant :', JSON.stringify(kept));
 check('FC max rangée dans le profil (170 environ)', kept?.hrMax >= 165 && kept?.hrMax <= 175);
@@ -238,33 +203,33 @@ check('course : dérive mesurée', /Dérive cardiaque de \d+[.,]\d %/.test(zones
 check('course : nuage FC / vitesse', (await chartsIn('Cardio')) >= 2);
 const violetBefore = await violetPaths();
 console.log('  Voir Z3 :', await clickButton('Cardio', 'Voir', 3));
-await wait(1000);
+await settle({ max: 1000 });
 const violetShown = await violetPaths();
 check(`course : passages de Z3 sur la carte (${violetBefore} → ${violetShown})`, violetShown > violetBefore);
 await shoot('cardio-course');
 console.log('  ferme cardio :', await clickTab('cardio', true));
-await wait(800);
+await settle({ max: 800 });
 check('course : surbrillance effacée à la fermeture', (await violetPaths()) === violetBefore);
 console.log('  rouvre cardio :', await clickTab('cardio'));
-await wait(800);
+await settle({ max: 800 });
 check('course : surbrillance pas ramenée', (await violetPaths()) === violetBefore);
 
 // --- 4. Courbe dans les graphes ---
 await go(paths.course, 6000);
 console.log('  graphiques :', await clickTab('graphiques'));
-await wait(1500);
+await settle({ max: 1500 });
 check(`course : trois graphes, vitesse, altitude et FC (${await chartsIn('Graphiques')})`, (await chartsIn('Graphiques')) === 3);
 await go(paths.sansfc, 6000);
 await clickTab('graphiques');
-await wait(1500);
+await settle({ max: 1500 });
 check(`course sans FC : deux graphes (${await chartsIn('Graphiques')})`, (await chartsIn('Graphiques')) === 2);
 await go(paths.surf, 6000);
 await clickTab('graphiques');
-await wait(1500);
+await settle({ max: 1500 });
 check(`surf : vitesse et FC (${await chartsIn('Vitesse')})`, (await chartsIn('Vitesse')) === 2);
 await go(paths.voile, 8000);
 await clickTab('graphiques');
-await wait(1500);
+await settle({ max: 1500 });
 check('voile : « Fréquence cardiaque » dans graphiques', (await panel('Graphiques')).toLowerCase().includes('fréquence cardiaque'));
 await shoot('cardio-voile');
 
@@ -321,7 +286,7 @@ check('Réglages, Voile : « Fréquence cardiaque », « FC moyenne » et « Zon
 await go(paths.fractionne, 6000);
 console.log('  fractionné, onglets :', await tabLabels());
 await clickTab('fractionné');
-await wait(2000);
+await settle({ max: 2000 });
 const ivlText = await evaluate('document.body.innerText');
 const ivlCells = await evaluate(`[...document.querySelectorAll('.an-ivl-hr')].map((c) => c.textContent.trim())`);
 const recCells = await evaluate(`[...document.querySelectorAll('.an-ivl-rec')].map((c) => c.textContent.trim())`);
@@ -341,7 +306,7 @@ check('résumé : rien pour la course sans FC', plainRec && plainRec.summary.hea
 await go('/statistiques', 5000);
 console.log('  statistiques, onglets :', await evaluate(`[...document.querySelectorAll('.stats-col .ui-tab')].map((t) => t.textContent.trim()).join(' | ')`));
 console.log('  ouvre cardio :', await evaluate(`(() => { const t = [...document.querySelectorAll('.stats-col .ui-tab')].find((x) => x.textContent.trim() === 'cardio'); if (!t) return 'absent'; if (t.getAttribute('aria-pressed') !== 'true') t.click(); return 'ok'; })()`));
-await wait(1500);
+await settle({ max: 1500 });
 const statsText = await evaluate(`(() => {
   const t = [...document.querySelectorAll('.stats-panels [role=button]')].find((h) => h.textContent.trim().startsWith('Cardio'));
   return t ? t.closest('.stats-panels > *').innerText.replace(/\\n+/g, ' / ') : '(absent)';
@@ -361,17 +326,14 @@ await shoot('cardio-statistiques');
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
 await go(paths.course, 6000);
 await clickTab('cardio');
-await wait(1500);
+await settle({ max: 1500 });
 check(`à 390 px, course onglet cardio : débordement ${await overflow()}`, (await overflow()) === 0);
 await shoot('cardio-telephone');
 await go(paths.fractionne, 6000);
-await wait(1500);
+await settle({ max: 1500 });
 check(`à 390 px, fractionné : débordement ${await overflow()}`, (await overflow()) === 0);
 await shoot('cardio-fractionne-telephone');
 
 console.log('\n--- console (erreurs, avertissements) ---');
 logs.forEach((l) => console.log(l));
-console.log(failures === 0 ? '\nTout passe.' : `\n${failures} échec(s).`);
-await send('Page.close').catch(() => undefined);
-ws.close();
-process.exit(failures === 0 ? 0 : 1);
+await finish('\nTout passe.', { ko: (n) => `\n${n} échec(s).` });

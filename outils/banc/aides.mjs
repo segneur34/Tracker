@@ -10,55 +10,17 @@
 //     referme l'aide (une aide ne survit pas à un changement de page) ;
 //  5. barre du haut à 1400 et 1000 px (800 px relevé pour information) : plus de lien « Accueil » (le logo y mène), chaque lien sur une ligne,
 //     « Itinéraires » entier ; au téléphone, « Accueil » reste dans la barre du bas, et pas de pop-up du profil.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node aides.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+
 const clickTab = (label) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-col .ui-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)});
   if (!t) return false;
@@ -81,9 +43,8 @@ const panel = async (title) => (await evaluate(`${panelOf(title)}?.innerText.rep
 let failures = 0;
 const check = (what, ok, detail) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}${!ok && detail !== undefined ? ` (${detail})` : ''}`); if (!ok) failures++; };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*', '*://server.arcgisonline.com/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork();
+
 
 // --- Sessions synthétiques ---
 const gpxOf = (type, pts) => `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Banc</name><type>${type}</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`;
@@ -132,8 +93,8 @@ const paths = {};
 for (const s of SESSIONS) {
   await go(`/${s.page}`, 3000);
   console.log(`import ${s.key} :`, await importGpx(s.gpx, `${s.key}.gpx`));
-  await wait(6000);
-  const rec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000);
+  const rec = await waitFor(async () => (await records())?.find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000), { timeout: 7000, label: `fiche ${s.key}` });
+  await settle({ max: 2000, label: `import ${s.key}` });
   paths[s.key] = `/${s.page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
   check(`${s.key} rangée`, Boolean(rec));
 }
@@ -156,7 +117,7 @@ const text = () => evaluate(`document.body.innerText`);
 await go(paths.course, 7000);
 await setAdvanced(true);
 console.log('graphiques :', await setTab('graphiques', true));
-await wait(1500);
+await settle({ max: 1500 });
 check("course : pas d'explication à l'ouverture des graphiques", !(await text()).includes('Vitesse lissée sur 10 s') && (await openNotes()).length === 0, (await openNotes()).join(' | '));
 check('course : « ? » du titre des graphiques', (await helpLabels()).includes('Aide : Graphiques'), (await helpLabels()).join(', '));
 check("course : le « ? » ouvre l'explication", (await clickHelp('Graphiques')) && (await openNotes()).length === 1 && (await openNotes())[0].startsWith('Vitesse lissée sur 10 s'), (await openNotes()).join(' | '));
@@ -173,7 +134,7 @@ const placed = await evaluate(`(() => {
 check("course : l'explication sous le titre, avant les graphes", placed === 'ok', placed);
 await shoot('aides-course');
 console.log('réglages :', await setTab('réglages', true));
-await wait(800);
+await settle({ max: 800 });
 check('course : « ? » des réglages, qui referme le premier', (await clickHelp('Réglages de la session')) && (await openNotes()).length === 1 && (await openNotes())[0].startsWith('Vitesse :'), (await openNotes()).join(' | '));
 check('course : un second appui referme', (await clickHelp('Réglages de la session')) && (await openNotes()).length === 0, (await openNotes()).join(' | '));
 
@@ -182,7 +143,7 @@ await go(paths.voile, 7000);
 await setAdvanced(true);
 console.log('manœuvres :', await setTab('manœuvres', true));
 console.log('vent :', await setTab('vent', true));
-await wait(1500);
+await settle({ max: 1500 });
 check("voile : rien d'ouvert au départ", !(await text()).includes('Enregistrement :') && !(await text()).includes('Chaque virement et chaque empannage'), '');
 check('voile : « ? » des manœuvres', (await clickHelp('Manœuvres')) && (await text()).includes('Enregistrement :'), (await helpLabels()).join(', '));
 check('voile : « ? » du vent, qui referme celui des manœuvres', (await clickHelp('Variations du Vent')) && (await text()).includes('Chaque virement et chaque empannage') && !(await text()).includes('Enregistrement :'), '');
@@ -192,14 +153,14 @@ await shoot('aides-voile');
 await go('/statistiques', 4000);
 check("statistiques : rien d'ouvert", (await openNotes()).length === 0, (await openNotes()).join(' | '));
 console.log('onglet graphique :', await evaluate(`(() => { const t = [...document.querySelectorAll('.ui-tab')].find((x) => x.textContent.trim() === 'graphique'); if (!t) return 'absent'; if (t.getAttribute('aria-pressed') !== 'true') t.click(); return 'ok'; })()`));
-await wait(1200);
+await settle({ max: 1200 });
 check('statistiques : la note du graphique cachée', !(await text()).includes('Un point par session'), '');
 check("statistiques : le « ? » du graphique l'ouvre", (await clickHelp('Graphique')) && (await text()).includes('Un point par session'), (await helpLabels()).join(', '));
 const nav = (href) => evaluate(`(() => { const a = document.querySelector('.shell-toplinks a[href="${href}"]'); if (!a) return false; a.click(); return true; })()`);
 console.log('vers Profil :', await nav('/profil'));
-await wait(1200);
+await settle({ max: 1200 });
 console.log('retour aux Statistiques :', await nav('/statistiques'));
-await wait(1500);
+await settle({ max: 1500 });
 check("changer de page referme l'aide", (await evaluate('location.pathname')) === '/statistiques' && !(await text()).includes('Un point par session') && (await openNotes()).length === 0, await evaluate('location.pathname'));
 
 // --- 5. Barre du haut ---
@@ -231,5 +192,5 @@ check('navigateur : pas de pop-up du profil (téléphone seulement)', await eval
 console.log('\n--- console (erreurs, avertissements) ---');
 for (const l of logs) console.log(l);
 console.log(failures === 0 ? '\nTout passe.' : `\n${failures} échec(s).`);
-ws.close();
+await close();
 process.exit(failures === 0 ? 0 : 1);

@@ -17,55 +17,18 @@
 //  7. à 390×844 : l'onglet « cadence » et le fractionné sans débordement.
 // `DUMP=fichier` relève le texte de la page de la course, onglet « cadence » ouvert.
 import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node cadence.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, check, finish, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+
 const overflow = () => evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
 const tabLabels = () => evaluate(`[...document.querySelectorAll('.an-carte-col .ui-tab')].map((t) => t.textContent.trim()).join(' | ')`);
 const clickTab = (label, close = false) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-col .ui-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)});
@@ -96,14 +59,9 @@ const tableRows = (title, head) => evaluate(`(() => {
   const t = s ? [...s.querySelectorAll('table')].find((x) => [...x.querySelectorAll('th')].some((th) => th.textContent.trim() === ${JSON.stringify(head)})) : null;
   return t ? [...t.querySelectorAll('tbody tr')].map((r) => r.innerText.replace(/\\s+/g, ' ').trim()) : null;
 })()`);
-let failures = 0;
-const check = (what, ok) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}`); if (!ok) failures++; };
-
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork();
 
 // --- Sessions synthétiques ---
 /**
@@ -156,8 +114,8 @@ const paths = {};
 for (const s of SESSIONS) {
   await go(`/${s.page}`, 3000);
   console.log(`import ${s.key} :`, await importGpx(s.gpx, `${s.key}.gpx`));
-  await wait(5000);
-  const rec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000);
+  const rec = await waitFor(async () => (await records())?.find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000), { timeout: 6000, label: `fiche ${s.key}` });
+  await settle({ max: 2000, label: `import ${s.key}` });
   paths[s.key] = `/${s.page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
   check(`${s.key} rangée`, Boolean(rec));
   if (s.key === 'course') check(`course : cadence dans le résumé de la fiche (${JSON.stringify(rec?.summary?.cadence)})`, Math.abs((rec?.summary?.cadence?.avgSpm ?? 0) - 168) < 1);
@@ -171,7 +129,7 @@ await go(paths.course, 6000);
 const labels = (await tabLabels()).split(' | ');
 check(`course : « cadence » juste après « graphiques » (${labels.join(', ')})`, labels.indexOf('cadence') === labels.indexOf('graphiques') + 1);
 await clickTab('graphiques');
-await wait(1500);
+await settle({ max: 1500 });
 check(`course : courbe de cadence repliable dans « graphiques » (${await folds('Graphiques')}, ${await chartsIn('Graphiques')} graphes)`,
   (await folds('Graphiques')) === 'Vitesse+ Altitude+ Cadence+' && (await chartsIn('Graphiques')) === 3);
 await fold('Graphiques', 'Cadence');
@@ -180,7 +138,7 @@ check(`course : cadence repliée (${await chartsIn('Graphiques')} graphes)`, (aw
 await fold('Graphiques', 'Cadence');
 await clickTab('graphiques', true);
 console.log('  cadence :', await clickTab('cadence'));
-await wait(1500);
+await settle({ max: 1500 });
 const panelText = await textIn('Cadence');
 console.log('  ' + panelText.split('\n').slice(0, 14).join(' / '));
 // Texte de la page de la course, onglet « cadence » ouvert, relevé pour comparer deux versions (DUMP=fichier, relatif au dossier courant).
@@ -195,7 +153,7 @@ console.log('  tranches :', bands?.join(' | '));
 check('course : environ 15 min dans 160-169 et dans 170-179', /^160-169 1[45] min/.test(bands?.[2] ?? '') && /^170-179 1[45] min/.test(bands?.[3] ?? ''));
 check(`pas de violet avant « Voir » (${await violetPaths()})`, (await violetPaths()) === 0);
 console.log('  Voir :', await clickVoir('Cadence', 0));
-await wait(800);
+await settle({ max: 800 });
 check(`« Voir » trace les passages d'une tranche (${await violetPaths()})`, (await violetPaths()) >= 1);
 await shoot('cadence-course');
 // Course en km/h depuis les pré-réglages du 21/10.
@@ -211,25 +169,25 @@ await clickTab('cadence', true);
 await wait(600);
 check(`onglet fermé : surbrillance effacée (${await violetPaths()})`, (await violetPaths()) === 0);
 await clickTab('cadence');
-await wait(800);
+await settle({ max: 800 });
 check(`rouvert : surbrillance pas ramenée (${await violetPaths()})`, (await violetPaths()) === 0);
 
 // --- 3. Marche, vélo, course sans cadence ---
 await go(paths.marche, 6000);
 await clickTab('cadence');
-await wait(1200);
+await settle({ max: 1200 });
 const walkText = await textIn('Cadence');
 check('marche : 110 pas/min, tranches de la marche', walkText.includes('110 pas/min') && /tranches \(marche\)/i.test(walkText));
 await go(paths['marche-pas'], 6000);
 await clickTab('cadence');
-await wait(1200);
+await settle({ max: 1200 });
 const walkSpmText = await textIn('Cadence');
 console.log('  marche à cad 110 :', walkSpmText.split('\n').slice(0, 10).join(' / '));
 check('marche à cad 110 (pas par minute) : cadence affichée 110 pas/min, tranches de la marche', walkSpmText.includes('110 pas/min') && !walkSpmText.includes('220 pas/min') && /tranches \(marche\)/i.test(walkSpmText));
 await go(paths.velo, 6000);
 check(`vélo : pas d'onglet « cadence » (${await tabLabels()})`, !(await tabLabels()).includes('cadence'));
 await clickTab('graphiques');
-await wait(1000);
+await settle({ max: 1000 });
 check(`vélo : pas de courbe de cadence (${await folds('Graphiques')})`, !(await folds('Graphiques')).includes('Cadence'));
 await go(paths.sanscad, 6000);
 check(`course sans cadence : pas d'onglet (${await tabLabels()})`, !(await tabLabels()).includes('cadence'));
@@ -243,11 +201,11 @@ check(`fractionné : colonnes Cadence et Pas (${reps?.length ?? 0} répétitions
 // --- 5. Statistiques ---
 await go('/statistiques?famille=course', 4000);
 const statsTab = await evaluate(`(() => { const t = [...document.querySelectorAll('.ui-tab')].find((x) => x.textContent.trim() === 'graphique'); if (!t) return 'absent'; if (t.getAttribute('aria-pressed') !== 'true') t.click(); return 'ok'; })()`);
-await wait(1000);
+await settle({ max: 1000 });
 const chips = await evaluate(`[...document.querySelectorAll('.stats-chips[aria-label="Donnée"] .ui-tab')].map((b) => b.textContent).join(', ')`);
 check(`statistiques : « Cadence moyenne » parmi les données de la course (${statsTab}, ${chips})`, chips?.includes('Cadence moyenne'));
 await evaluate(`(() => { const b = [...document.querySelectorAll('.stats-chips[aria-label="Donnée"] .ui-tab')].find((x) => x.textContent === 'Cadence moyenne'); b?.click(); return 'ok'; })()`);
-await wait(1200);
+await settle({ max: 1200 });
 const statPoints = await evaluate(`document.querySelectorAll('.recharts-scatter-symbol').length`);
 check(`statistiques : un point par session de course ou de marche avec cadence (course, deux marches : ${statPoints})`, statPoints === 3);
 await shoot('cadence-statistiques');
@@ -271,7 +229,7 @@ check('Réglages : « Mesurer la cadence » coché d\'office en Course', await e
 check('Réglages : rien à vélo (Route)', await evaluate(`${cadenceBox('Route')} === undefined`));
 check('Réglages : « cadence » dans le résumé de la carte Course', await evaluate(`${card('Course')}?.innerText.includes('cadence')`));
 await evaluate(`(() => { ${cadenceBox('Course')}.click(); return 'ok'; })()`);
-await wait(800);
+await settle({ max: 800 });
 const stored = await evaluate(`JSON.parse(localStorage.getItem('tracker.sportSettings') ?? '{}').cadence`);
 check(`Réglages : décochée, rangée (${JSON.stringify(stored)})`, stored?.running === false && (await evaluate(`${cadenceBox('Course')}?.checked === false`)));
 await evaluate(`(() => { ${cadenceBox('Course')}.click(); return 'ok'; })()`);
@@ -282,7 +240,7 @@ check('Réglages : recochée, plus rien de rangé', (await evaluate(`JSON.parse(
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go(paths.course, 6000);
 await clickTab('cadence');
-await wait(1200);
+await settle({ max: 1200 });
 check(`390 px : onglet « cadence » sans débordement (${await overflow()} px)`, (await overflow()) <= 0);
 await shoot('cadence-390');
 await go(paths.fractionne, 7000);
@@ -291,6 +249,4 @@ await shoot('cadence-fractionne-390');
 
 console.log('\n--- console (erreurs, avertissements) ---');
 for (const l of logs) console.log(l);
-console.log(failures === 0 ? '\nTout passe.' : `\n${failures} échec(s).`);
-await send('Browser.close').catch(() => {});
-process.exit(failures === 0 ? 0 : 1);
+await finish('\nTout passe.', { ko: (n) => `\n${n} échec(s).` });

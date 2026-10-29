@@ -12,36 +12,17 @@
 //  5. à 390 et 320 px : rien ne déborde, le carré et la bulle restent dans l'écran.
 // Avec un dossier, il y écrit les captures et une planche (`planche.html`) qui les rassemble.
 import { writeFileSync } from 'node:fs';
+import { BASE, connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node racine.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-    logs.push(`error: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-await send('Page.enable');
-await send('Runtime.enable');
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, records, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+// Capture de la page entière (au-delà de la fenêtre), pour la planche.
 const shoot = async (name) => {
   if (!shotDir) return;
   const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
@@ -109,7 +90,12 @@ const setClock = async (fakeMs, forget = true) => {
   })();`;
   clockScript = (await send('Page.addScriptToEvaluateOnNewDocument', { source })).result.identifier;
 };
-const profileAt = async (fakeMs, forget = true, ms = 4500) => { await setClock(fakeMs, forget); await go('/profil', ms); };
+/** La racine est posée quand la bibliothèque est lue (OPFS), ce que `settle` ne voit pas : on attend son carré. */
+const rootReady = async (ms = 4500) => {
+  await waitFor(`Boolean(document.querySelector('.profile-root-slot')?.textContent)`, { timeout: ms, label: 'racine posée' });
+  await settle({ max: 1000, label: 'racine' });
+};
+const profileAt = async (fakeMs, forget = true, ms = 4500) => { await setClock(fakeMs, forget); await go('/profil', ms); await rootReady(ms); };
 
 // --- Captures et planche ---
 const plate = [];
@@ -124,8 +110,9 @@ const shootState = async (name, label) => {
 };
 
 // --- Mise en place ---
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 await go('/course', 5000);
+// Le champ de fichier n'est monté qu'une fois la bibliothèque relue (OPFS), ce que `settle` ne voit pas.
+await waitFor(`Boolean(document.querySelector('input[type=file][accept=".gpx"]'))`, { timeout: 5000, every: 50, label: 'champ de fichier' });
 console.log('import :', await evaluate(`(() => {
   const input = document.querySelector('input[type=file][accept=".gpx"]');
   if (!input) return 'absent';
@@ -135,7 +122,8 @@ console.log('import :', await evaluate(`(() => {
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return 'ok';
 })()`), `${files.length} fichiers`);
-await wait(20000);
+await waitFor(async () => ((await records())?.length ?? 0) >= files.length, { timeout: 20000, label: 'fiches importées' });
+await settle({ max: 3000, label: 'import' });
 
 // 1 et 2. Niveaux et bulle, à des dates choisies (le lundi à 8 h, avant la course de 10 h ; à midi les autres jours).
 const states = [
@@ -177,11 +165,13 @@ check('Réglages : plus de durée, de tour ni de recul', !labels.some((t) => /Du
 check('Réglages : objectif à 60 min', await setField('Objectif par semaine', '60'));
 await wait(300);
 await go('/profil', 4500);
+await rootReady();
 check('à 60 min, aucune semaine tenue : la graine', (await slotText()) === '0étape', await slotText());
 await go('/parametres', 3000);
 await setField('Objectif par semaine', '');
 await wait(300);
 await go('/profil', 4500);
+await rootReady();
 check('vidé : 45 min par défaut', (await slotText()) === '30étapes', await slotText());
 
 // 4. État vu d'avant la règle, puis rejeu d'un recul de 9.
@@ -216,6 +206,7 @@ await setClock(dayAt(35, 3, 12));
 for (const width of [390, 320]) {
   await send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 2, mobile: true });
   await go('/profil', 4500);
+await rootReady();
   check(`${width} px : rien ne déborde`, (await overflow()) === false);
   await evaluate(`document.querySelector('.profile-root-slot').click()`);
   await wait(300);
@@ -236,8 +227,9 @@ figure{margin:0;background:#fff;border-radius:12px;padding:8px}img{width:100%;di
 <h1>Racine du Profil, règle à la semaine</h1><main>${cells}</main>`);
 }
 
-console.log(logs.length ? `Console :\n${logs.join('\n')}` : 'Console : rien');
-check('aucune erreur de console', logs.length === 0);
+const errors = logs.filter((l) => !l.startsWith('warning'));
+console.log(errors.length ? `Console :\n${errors.join('\n')}` : 'Console : rien');
+check('aucune erreur de console', errors.length === 0);
 console.log(failures === 0 ? 'Tout est passé.' : `${failures} échec(s).`);
-await send('Browser.close').catch(() => {});
+await close();
 process.exit(failures === 0 ? 0 : 1);

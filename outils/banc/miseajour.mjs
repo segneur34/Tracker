@@ -8,13 +8,13 @@
 //     garde son nom et son activité, et crée la fiche du second ;
 //  3. relit une fois de plus : « rien de nouveau » ; enfin, le bouton est là dans Réglages › Mémoire, carte repliée comprise.
 import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
 if (!port || !workDir) {
   console.error('Usage : node miseajour.mjs <port> <dossier de travail> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
 // --- Traces ---
 /** Sortie à vélo en ligne droite vers l'est, 1 Hz, 5 m/s, à partir de l'instant donné. */
@@ -30,36 +30,8 @@ writeFileSync(firstPath, rideGpx('Sortie copiée', Date.UTC(2026, 9, 5, 8, 0, 0)
 const secondGpx = rideGpx('Seconde sortie', Date.UTC(2026, 9, 6, 8, 0, 0));
 const SECOND_NAME = '2026-10-06_10-00-00_cycling.gpx';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const setFile = async (selector, file) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files: [file] });
-};
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, importFiles, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 /** Dossier `Tracker` de la mémoire du navigateur, ou un de ses sous-dossiers. */
 const dirJs = (path) => `(async () => {
   let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker');
@@ -86,24 +58,21 @@ const refresh = async () => {
   if (!clicked) return 'bouton absent ou grisé';
   await wait(200);
   const during = await memory();
-  for (let k = 0; k < 60; k++) {
-    await wait(500);
-    if (await evaluate(`[...document.querySelectorAll('button')].some((x) => x.textContent.trim() === 'Mettre à jour' && !x.disabled)`)) break;
-  }
+  await waitFor(`[...document.querySelectorAll('button')].some((x) => x.textContent.trim() === 'Mettre à jour' && !x.disabled)`, { timeout: 30000, every: 100, label: 'relecture finie' });
+  await settle({ max: 500, label: 'relecture' });
   return `pendant : ${during}`;
 };
 const sessionNames = () => evaluate(`[...document.querySelectorAll('.lib-row__name')].map((x) => x.textContent.trim()).join(' | ') || '(aucune nommée)'`);
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 
 // 1. Une session importée, puis retirée du dossier derrière le dos de l'application.
 await go('/velo');
 console.log('au départ :', await memory());
-await setFile('input[type=file][accept=".gpx"][multiple]', firstPath);
-await wait(3000);
+await importFiles(firstPath, 'input[type=file][accept=".gpx"][multiple]');
+await waitFor(async () => (await listOpfs('sessions')).some((n) => n.endsWith('.json')), { timeout: 3000, label: 'fiche' });
+await settle({ max: 3000, label: 'import' });
 const gpx = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx'));
 const recordName = gpx.replace(/\.gpx$/, '.json');
 const gpxText = await readOpfs('sessions', gpx);
@@ -139,4 +108,4 @@ console.log('Réglages :', await memory(), '| import d\'un dossier :',
   await evaluate(`[...document.querySelectorAll('label, button')].some((x) => x.textContent.trim() === "Ajouter les sessions d'un dossier")`));
 
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
-ws.close();
+await close();

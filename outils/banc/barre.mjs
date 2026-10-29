@@ -10,66 +10,34 @@
 //  4. le dernier affichage repris à l'ouverture sans paramètre, une adresse avec paramètres qui l'emporte, « Tout »
 //     retenu aussi.
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node barre.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go: goRaw, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, logs, close } = await connect({ port, shotDir });
+/** Navigation, puis attente du premier rendu de l'application : sous charge, `settle` seul peut rendre la main avant. */
+const go = async (path, max) => {
+  const ms = await goRaw(path, max);
+  await waitFor(`Boolean(document.querySelector('.shell-main'))`, { timeout: 5000, every: 50, label: 'premier rendu' });
+  return ms;
 };
 const overflow = () => evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
+// Sortie propre à ce script (le détail est toujours montré) : gardée telle quelle pour que le relevé reste comparable.
 let failures = 0;
 const check = (what, ok, detail = '') => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}${detail ? ` (${detail})` : ''}`); if (!ok) failures++; };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
+await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*']);
 const desktop = () => send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 await desktop();
 
@@ -99,7 +67,8 @@ const paths = {};
 for (const [page, start, gpx] of [['course', T_RUN, lineGpx('running', 1800, 3, T_RUN)], ['voile', T_VOILE, voileGpx]]) {
   await go(`/${page}`, 3000);
   await importGpx(gpx, `${page}.gpx`);
-  await wait(5000);
+  await waitFor(async () => (await records())?.some((r) => Math.abs((r.summary?.startMs ?? 0) - start) < 2000), { timeout: 8000, label: `fiche ${page}` });
+  await settle({ max: 2000, label: `import ${page}` });
   const rec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - start) < 2000);
   paths[page] = `/${page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
   check(`${page} rangée`, Boolean(rec));
@@ -173,9 +142,9 @@ const stat =(label) => evaluate(`(() => {
 const search = () => evaluate('location.search');
 await go('/statistiques', 4000);
 await chip('Famille', 'À pied');
-await wait(800);
+await settle({ max: 800 });
 await chip('Période', 'Année');
-await wait(800);
+await settle({ max: 800 });
 const active = await stat('Semaines actives');
 const weeks = Number(active.split('/')[1]);
 check('Course sur « Année » : semaines comptées depuis la course', weeks >= 1 && weeks <= 3, active);
@@ -198,6 +167,5 @@ check('« Tout » retenu : pas de paramètre', (await search()) === '', await se
 console.log('\n--- console (erreurs, avertissements) ---');
 logs.forEach((l) => console.log(l));
 console.log(failures === 0 ? '\nTout passe.' : `\n${failures} échec(s).`);
-await send('Page.close').catch(() => undefined);
-ws.close();
+await close();
 process.exit(failures === 0 ? 0 : 1);

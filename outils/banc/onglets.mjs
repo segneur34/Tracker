@@ -18,57 +18,25 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node onglets.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 const DUMP = process.env.DUMP;
 const RELEVE_SEUL = process.env.RELEVE_SEUL === '1';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go: goRaw, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, check, finish, logs, close } = await connect({ port, width: 1400, height: 1000, shotDir });
+/** Navigation, puis attente du premier rendu de l'application : sous charge, `settle` seul peut rendre la main avant. */
+const go = async (path, max) => {
+  const ms = await goRaw(path, max);
+  await waitFor(`Boolean(document.querySelector('.shell-main'))`, { timeout: 5000, every: 50, label: 'premier rendu' });
+  return ms;
 };
 const overflow = () => evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
 const tabLabels = () => evaluate(`[...document.querySelectorAll('.an-carte-col .ui-tab')].map((t) => t.textContent.trim()).join(' | ')`);
 /** Ouvre un onglet s'il est fermé, le ferme s'il est ouvert et que `close` le demande. */
 const clickTab = (label, close = false) => evaluate(`(() => {
@@ -88,15 +56,11 @@ const panel = (title) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith(${JSON.stringify(title)}));
   return t ? t.closest('.an-carte-panels > *').innerText.replace(/\\n+/g, ' / ') : '(absent)';
 })()`);
-let failures = 0;
-const check = (what, ok) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}`); if (!ok) failures++; };
 
-// Le blocage par hôte ne vaut qu'avec `Network.enable` : sans lui, Overpass répond parfois (504), et le relevé change.
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
+// Le blocage par hôte ne vaut qu'avec `Network.enable` (fait par `connect`) : sans lui, Overpass répond parfois (504), et le relevé change.
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*']);
 
 // --- Sessions synthétiques ---
 /** Trace droite, vitesse par seconde donnée par `speedAt`, `type` lu par l'import. */
@@ -158,7 +122,8 @@ const paths = {};
 for (const s of SESSIONS) {
   await go(`/${s.page}`, 3000);
   console.log(`import ${s.page} :`, await importGpx(s.gpx, `${s.page}.gpx`));
-  await wait(5000);
+  await waitFor(async () => (await records())?.some((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000), { timeout: 8000, label: `fiche ${s.page}` });
+  await settle({ max: 2000, label: `import ${s.page}` });
   const rec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000);
   paths[s.page] = `/${s.page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
   check(`${s.page} rangée`, Boolean(rec));
@@ -167,14 +132,13 @@ for (const s of SESSIONS) {
   await go(paths[s.page], 6000);
   console.log(`${s.page}, onglets :`, await tabLabels());
   console.log('  ouverts :', await openAllTabs());
-  await wait(5000);
+  await settle({ max: 5000 });
   if (DUMP) writeFileSync(`${DUMP}-${s.page}.txt`, await evaluate('document.body.innerText'));
 }
 if (RELEVE_SEUL) {
   console.log('\n--- console (erreurs, avertissements) ---');
   logs.forEach((l) => console.log(l));
-  await send('Page.close').catch(() => undefined);
-  ws.close();
+  await close();
   process.exit(0);
 }
 
@@ -244,7 +208,7 @@ check('surf : « tops » entre « rame » et « graphiques », sans « vagues »
 const memorized = await evaluate(`JSON.parse(localStorage.getItem('tracker.sections') ?? '{}').surf?.vagues`);
 check(`« vagues » laissé ouvert (${memorized}), son panneau absent`, memorized === true && (await panel('Vagues')) === '(absent)');
 console.log('tops :', await clickTab('tops'));
-await wait(1500);
+await settle({ max: 1500 });
 const surfTops = await panel('Meilleurs segments');
 console.log('panneau :', surfTops.slice(0, 400));
 check('surf : tableau des tops, 2 s à 10 km', /Sur\s+1er \(km\/h\)/.test(surfTops) && /2 s/.test(surfTops) && /10 km/.test(surfTops));
@@ -256,14 +220,14 @@ const voir = () => evaluate(`(() => {
 const shownButtons = () => evaluate(`[...document.querySelectorAll('.an-carte-panels button')].filter((b) => b.textContent.trim() === 'Masquer').length`);
 const highlightPaths = () => evaluate(`document.querySelectorAll('.leaflet-overlay-pane path[stroke-width="10"]').length`);
 const before = await highlightPaths();
-console.log('Voir :', await voir()); await wait(800);
+console.log('Voir :', await voir()); await settle({ max: 800 });
 const during = await highlightPaths();
 console.log(`traits épais sur la carte : ${before} → ${during}`);
 check('« Voir » : « Masquer », podium tracé', (await shownButtons()) === 1 && during > before);
 await shoot('onglets-surf-tops');
 console.log('fermer tops :', await clickTab('tops', true)); await wait(500);
 check('onglet fermé : surbrillance effacée', (await highlightPaths()) === before);
-console.log('rouvrir tops :', await clickTab('tops')); await wait(800);
+console.log('rouvrir tops :', await clickTab('tops')); await settle({ max: 800 });
 check('rouvert : rien de ramené', (await shownButtons()) === 0);
 
 await go(paths.course, 6000);
@@ -272,7 +236,7 @@ console.log('\ncourse, onglets :', runTabs);
 // « avancé » entre « général » et les autres onglets (22/10).
 check('course : « tops » juste après « général · avancé »', /^général \| avancé \| tops \|/.test(runTabs));
 console.log('tops :', await clickTab('tops'));
-await wait(1500);
+await settle({ max: 1500 });
 const runTops = await panel('Meilleurs segments');
 console.log('panneau :', runTops.slice(0, 500));
 check('course : 400 m vers 18 km/h, semi et marathon', /400 m\s+18[.,]0/.test(runTops) && /semi/.test(runTops) && /marathon/.test(runTops));
@@ -289,7 +253,7 @@ await openSettings();
 check(`à 390 px, Réglages : débordement ${await overflow()}`, (await overflow()) === 0);
 await shoot('onglets-reglages-telephone');
 await go(paths.surf, 6000);
-await clickTab('tops'); await wait(1000);
+await clickTab('tops'); await settle({ max: 1000 });
 check(`à 390 px, surf avec « tops » : débordement ${await overflow()}`, (await overflow()) === 0);
 await shoot('onglets-surf-telephone');
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -310,7 +274,4 @@ check('surf : « vagues » revenu, « tops » parti', /vagues/.test(resetTabs) &
 
 console.log('\n--- console (erreurs, avertissements) ---');
 logs.forEach((l) => console.log(l));
-console.log(failures === 0 ? '\nTout passe.' : `\n${failures} échec(s).`);
-await send('Page.close').catch(() => undefined);
-ws.close();
-process.exit(0);
+await finish('\nTout passe.', { ko: (n) => `\n${n} échec(s).` });

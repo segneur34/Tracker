@@ -8,34 +8,16 @@
 // et il vérifie que la longueur de la racine est la même aux cinq périodes, pour chaque taille d'écran.
 // Avec un dossier, il y écrit une capture réduite (échelle 0,35) par période et par taille.
 import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node racine-periodes.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-    logs.push(`error: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-await send('Page.enable');
-await send('Runtime.enable');
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, records, close, logs } = await connect({ port, width: 1400, height: 1000 });
 let failures = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failures++;
@@ -69,8 +51,9 @@ const setClock = async (fakeMs) => {
   clockScript = (await send('Page.addScriptToEvaluateOnNewDocument', { source })).result.identifier;
 };
 
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 await go('/course', 5000);
+// Le champ de fichier n'est monté qu'une fois la bibliothèque relue (OPFS), ce que `settle` ne voit pas.
+await waitFor(`Boolean(document.querySelector('input[type=file][accept=".gpx"]'))`, { timeout: 5000, every: 50, label: 'champ de fichier' });
 console.log('import :', await evaluate(`(() => {
   const input = document.querySelector('input[type=file][accept=".gpx"]');
   if (!input) return 'absent';
@@ -80,7 +63,8 @@ console.log('import :', await evaluate(`(() => {
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return 'ok';
 })()`), `${files.length} fichiers`);
-await wait(12000);
+await waitFor(async () => ((await records())?.length ?? 0) >= files.length, { timeout: 12000, label: 'fiches importées' });
+await settle({ max: 3000, label: 'import' });
 await setClock(dayAt(13, 0, 12));
 
 const PERIODS = ['semaine', 'trente', 'sixmois', 'annee', 'tout'];
@@ -93,6 +77,9 @@ for (const size of sizes) {
   for (const period of PERIODS) {
     await evaluate(`(() => { const all = JSON.parse(localStorage.getItem('tracker.profil') ?? '{}'); all.affichage = { periode: ${JSON.stringify(period)} }; localStorage.setItem('tracker.profil', JSON.stringify(all)); })()`);
     await go('/profil', 4500);
+    // La racine se dessine quand la bibliothèque est lue (OPFS), ce que `settle` ne voit pas.
+    await waitFor(`Number(document.querySelector('canvas.profile-root')?.dataset.longueur) > 0`, { timeout: 4500, label: 'racine dessinée' });
+    await settle({ max: 1000, label: 'racine' });
     const m = await evaluate(`(() => {
       const c = document.querySelector('canvas.profile-root');
       const page = c?.parentElement;
@@ -118,8 +105,7 @@ for (const size of sizes) {
   check(`${size.name} : rien ne déborde`, overflows.every((t) => t === false));
 }
 console.log('\n--- console (erreurs) ---');
-logs.forEach((l) => console.log(l));
+logs.filter((l) => !l.startsWith('warning')).forEach((l) => console.log(l));
 console.log(failures === 0 ? '\nTout passe.' : `\n${failures} échec(s).`);
-await send('Page.close').catch(() => undefined);
-ws.close();
+await close();
 process.exit(failures === 0 ? 0 : 1);

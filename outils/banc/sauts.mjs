@@ -13,44 +13,19 @@
 //     « Voir », sauts rangés dans la fiche ; captures sur ordinateur et à 390×844 ;
 //  4. Enregistrer, dans le navigateur : pas de case « Mesurer les sauts » (téléphone seulement) ;
 //  5. la suppression de la session : GPX, fiche et `.imu` effacés.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node sauts.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-await send('Runtime.enable');
-await send('Page.enable');
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, shoot, close, logs } = await connect({ port, shotDir });
+
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
 const sessionsDir = `(await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions'))`;
 const sessionFiles = () => evaluate(`(async () => {
   const names = [];
@@ -191,7 +166,8 @@ console.log('import :', await evaluate(`(async () => {
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return 'ok, ' + imu.length + ' octets';
 })()`));
-await wait(5000);
+await waitFor(async () => { const f = await sessionFiles(); return f.some((n) => n.endsWith('.imu')) && f.some((n) => n.endsWith('.json')) && f.some((n) => n.endsWith('.gpx')); }, { timeout: 6000, label: 'fichiers rangés' });
+await settle({ max: 2000, label: 'import' });
 let files = await sessionFiles();
 // La session importée, par l'instant de son premier point (le profil peut en compter d'autres).
 const gpxName = await evaluate(`(async () => {
@@ -224,7 +200,7 @@ const openTab = (label) => evaluate(`(() => {
 })()`);
 await openTab('matos et conditions');
 await openTab('réglages');
-await wait(800);
+await settle({ max: 800 });
 const pageText = () => evaluate('document.body.innerText');
 let text = await pageText();
 check('foil décoché : « Ratio de navigation »', text.includes('Ratio de navigation') && !text.includes('Ratio de vol'));
@@ -245,7 +221,7 @@ console.log('enregistrer :', await evaluate(`(() => {
   b.click();
   return 'ok';
 })()`));
-await wait(1500);
+await waitFor(async () => (await evaluate(`(async () => JSON.parse(await (await (await ${sessionsDir}.getFileHandle(${JSON.stringify((gpxName ?? '').slice(0, -4) + '.json')})).getFile()).text()))()`))?.analysis?.foil === true, { timeout: 1500, label: 'fiche foil' });
 const record = await evaluate(`(async () => JSON.parse(await (await (await ${sessionsDir}.getFileHandle(${JSON.stringify((gpxName ?? '').replace(/\.gpx$/, '.json'))})).getFile()).text()))()`);
 check('fiche : analysis.foil vrai', record?.analysis?.foil === true, JSON.stringify(record?.analysis));
 await shoot('sauts-analyse');
@@ -253,7 +229,7 @@ await shoot('sauts-analyse');
 // --- 3 bis. Onglet « sauts » ---
 await go(analysePath, 6000);
 console.log('onglet sauts :', await openTab('sauts'));
-await wait(800);
+await settle({ max: 800 });
 text = await pageText();
 const jumpRows = await evaluate(`document.querySelectorAll('.an-jump-table tbody tr').length`);
 check('onglet « sauts » : 2 sauts, le plus haut vers 2,07 m', jumpRows === 2 && /2\.0\d m/.test(text), `${jumpRows} lignes, ${(text.match(/2\.0\d m/) ?? ['?'])[0]}`);
@@ -322,7 +298,7 @@ const withJumps = await evaluate(`(async () => JSON.parse(await (await (await ${
 check('fiche : sauts rangés', withJumps?.jumps?.jumps?.length === 2, JSON.stringify(withJumps?.jumps?.jumps?.map((j) => j.heightM)));
 await shoot('sauts-onglet');
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-await wait(1000);
+await settle({ max: 1000 });
 await evaluate('window.scrollTo(0, document.querySelector(".an-jump-table")?.getBoundingClientRect().top + window.scrollY - 200)');
 await wait(500);
 check('390 px : pas de défilement horizontal', await evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'));
@@ -341,10 +317,11 @@ console.log('supprimer :', await evaluate(`(async () => {
   await removeSession(${JSON.stringify(gpxName ?? '')});
   return 'ok';
 })()`));
-await wait(1000);
+await waitFor(async () => !(await sessionFiles()).some((f) => f.startsWith((gpxName ?? '').slice(0, -4))), { timeout: 1000, label: 'fichiers effacés' });
 files = await sessionFiles();
 check('GPX, fiche et .imu effacés', !files.some((f) => f.startsWith((gpxName ?? '').replace(/\.gpx$/, ''))), files.join(', ') || '(vide)');
 
 console.log('--- console (erreurs, avertissements) ---');
 for (const line of logs) console.log(line);
-ws.close();
+await close();
+process.exit(0);

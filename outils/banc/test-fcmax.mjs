@@ -1,6 +1,6 @@
 // Banc de test : test de FC max de l'Entraînement (chantier du 24/10, lot B).
 // Usage : node test-fcmax.mjs <port> [<dossier des captures>]
-// Sur un profil neuf, sans réseau. Le script vérifie :
+// Sur un profil neuf, sans réseau ; environ 1 min 45, 30 s avec `TEMPS=10` (horloge de la page accélérée). Le script vérifie :
 //  1. la tuile « Tests » de la page Entraînement, la liste des tests, la page du protocole (déroulé, bips, graphique,
 //     réglages) ; l'échauffement réglé à 3 min, retenu ;
 //  2. « Lancer » : Enregistrer ouvert prêt (Entraînement › Tests › FC max), sans le compteur ;
@@ -11,6 +11,7 @@
 //  5. à 390 × 844 et à 320 px : les pages sans débordement.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { connect } from './lib/cdp.mjs';
 import { join } from 'node:path';
 
 const [port, shotDir] = process.argv.slice(2);
@@ -18,45 +19,29 @@ if (!port) {
   console.error('Usage : node test-fcmax.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
 // --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, vwait, blockNetwork, importFiles, shoot, close, logs, onMessage } = await connect({ port, width: 1400, height: 1000, shotDir });
+// Le premier contexte audio du navigateur s'ouvre en 0,6 s de vrai temps (les suivants en 15 ms, mesuré le 29/10) : sous
+// l'horloge accélérée, le premier son de l'application figerait la page plusieurs secondes. Il est ouvert ici, une fois.
+await evaluate(`(() => { new AudioContext().close(); return 'ok'; })()`);
+/** Heure de la page (accélérée par `TEMPS`, lib/horloge.mjs), en ms. */
+const pageNow = () => evaluate('Date.now()');
 const sounds = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
+onMessage((msg) => {
   if (msg.method === 'Runtime.consoleAPICalled') {
     const text = msg.params.args.map((a) => a.value ?? a.description).join(' ');
     if (msg.params.type === 'debug' && /^\[(bips|compteur|test)\]/.test(text)) sounds.push(text);
-    if (['error', 'warning'].includes(msg.params.type)) logs.push(`${msg.params.type}: ${text.split('\n')[0].slice(0, 300)}`);
   }
-  // Les confirmations (« Retirer la séance ? ») sont acceptées.
-  if (msg.method === 'Page.javascriptDialogOpening') {
-    console.log(`  (dialogue accepté : ${msg.params.message.slice(0, 90)})`);
-    void send('Page.handleJavaScriptDialog', { accept: true });
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+  // Les confirmations (« Retirer la séance ? ») sont acceptées par la bibliothèque.
+  if (msg.method === 'Page.javascriptDialogOpening') console.log(`  (dialogue accepté : ${msg.params.message.slice(0, 90)})`);
+});
 const clickText = (text, selector = 'button') => evaluate(`(() => {
   const all = [...document.querySelectorAll(${JSON.stringify(selector)})];
   const b = all.find((x) => x.textContent.trim() === ${JSON.stringify(text)}) ?? all.find((x) => x.textContent.includes(${JSON.stringify(text)}));
   if (!b) return 'absent'; if (b.disabled) return 'désactivé'; b.click(); return 'ok';
 })()`);
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
 const overflow = () => evaluate('document.documentElement.scrollWidth - window.innerWidth');
 const segmented = (label) => evaluate(`(() => { const r = document.querySelector('.ui-segmented[aria-label=${JSON.stringify(label)}] [role=radio][aria-checked=true]'); return r ? r.textContent : '(absent)'; })()`);
 let failures = 0;
@@ -65,9 +50,7 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'OK  ' : 'ÉCHEC'} ${name}${detail ? ` : ${detail}` : ''}`);
 };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
-await send('Network.setBlockedURLs', { urls: ['https://*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork(['https://*']);
 
 
 // --- 1. Tuile, liste, protocole ---
@@ -136,7 +119,7 @@ check('&test=fc-repos accepté', (await segmented('Test')) === 'FC repos', await
 // --- 4. Rejeu ---
 // Échauffement de 3 min (réglé en 1) à 2 m/s, FC montée à 140 bpm (zones 2 à 3 : 130 à 158 à 35 ans) ; rampe de départ 7 km/h,
 // tenue sur 6 paliers puis lâchée de 0,5 m/s ; récupération à 1,2 m/s.
-const T0 = Date.now() - 3 * 3600_000;
+const T0 = (await pageNow()) - 3 * 3600_000;
 const LAT = 43.7;
 const M_PER_DEG_LON = (Math.PI / 180) * 6371e3 * Math.cos((LAT * Math.PI) / 180);
 const V0 = 7 / 3.6;
@@ -154,16 +137,12 @@ for (let t = 0; t <= 720; t++) {
 const replayPath = join(tmpdir(), 'banc-test-fcmax.gpx');
 writeFileSync(replayPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1" `
   + `xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"><trk><name>Rejeu</name><type>run-test</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`);
-const setFile = async (selector, file) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files: [file] });
-};
+const setFile = (selector, file) => importFiles(file, selector);
 // « Arrêter » se tient : appui, attente, puis relâcher.
 const holdStop = async () => {
   const down = await evaluate(`(() => { const b = [...document.querySelectorAll('button.ui-btn--danger')].find((x) => x.textContent.includes('Arrêter') && !x.disabled); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`);
   if (down !== 'ok') return down;
-  await wait(2300);
+  await vwait(2300);
   return evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
 };
 const cardText = () => evaluate(`[...document.querySelectorAll('.ivl-live')].map((n) => n.innerText.replace(/\\s+/g, ' ')).join(' | ')`);
@@ -177,10 +156,11 @@ await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find
 sounds.length = 0;
 console.log('démarrer :', await clickText('Démarrer'));
 const phasesSeen = new Set();
-const started = Date.now();
+const started = await pageNow();
 let rampSeen = false;
-while (Date.now() - started < 85_000) {
-  await wait(1000);
+// Une lecture par seconde de la page, 85 s de la page au plus.
+while ((await pageNow()) - started < 85_000) {
+  await vwait(1000);
   const text = await cardText();
   const phase = /Échauffement|Rampe · palier \d+|Récupération|Test fini/.exec(text)?.[0];
   if (phase) phasesSeen.add(phase.replace(/palier \d+/, 'palier'));
@@ -194,7 +174,7 @@ while (Date.now() - started < 85_000) {
 }
 check('la carte passe par toutes les phases', ['Échauffement', 'Rampe · palier', 'Récupération', 'Test fini'].every((p) => phasesSeen.has(p)), [...phasesSeen].join(', '));
 console.log('arrêter :', await holdStop());
-await wait(2500);
+await vwait(2500);
 const logged = sounds.filter((x) => x.startsWith('[test]')).map((x) => { const m = /^\[test\] (\w+) à (\d+)/.exec(x); return [m[1], Number(m[2])]; });
 // Le calcul pur rejoué dans la page, sur les positions du fichier telles que l'enregistreur les reçoit (arrondies).
 const pure = await evaluate(`(async () => {
@@ -222,7 +202,9 @@ check('un bip par son des motifs', bips === pure?.tones, `${bips} bips pour ${pu
 const signalsSeen = new Set(logged.map(([x]) => x));
 check('signaux : début, bien, palier, fin de rampe, fin du test', ['debut', 'bien', 'palier', 'finRampe', 'finTest'].every((x) => signalsSeen.has(x)), [...signalsSeen].join(' '));
 console.log('analyser :', await clickText('Analyser'));
-await wait(5000);
+// L'analyse se calcule en vrai temps : l'adresse de l'analyse, puis une page immobile.
+await waitFor(`location.pathname.endsWith('/analyse')`, { timeout: 5000, label: 'analyse' });
+await settle({ max: 5000, label: 'analyse' });
 const recs = await evaluate(`(async () => {
   const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
   const list = [];
@@ -264,4 +246,4 @@ for (const [w, h] of [[390, 844], [320, 640]]) {
 
 console.log(logs.length ? `console :\n${[...new Set(logs)].join('\n')}` : 'console : aucune erreur');
 console.log(failures === 0 ? 'tout passe' : `${failures} échec(s)`);
-ws.close();
+await close();

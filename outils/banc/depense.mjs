@@ -7,61 +7,25 @@
 //  3. Réglages, carte Marche : « Dépense » sur Marche, « défaut » ; passée sur Course, rangée ;
 //  4. l'analyse retrouve Minetti : « Énergie de course », environ 115 kcal (5,44 J/kg/m à 5 %), la marche à 0,6 à 0,8 fois ;
 //  5. « Dépense » remise sur Marche : le réglage rangé est effacé (« défaut »).
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node depense.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://127.0.0.1:4191';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-    logs.push(`error: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, close, logs: allLogs } = await connect({ port, width: 1400, height: 1000, shotDir });
+// Ce script ne relevait que les erreurs de console, pas les avertissements.
+const logs = { get length() { return allLogs.filter((l) => !l.startsWith('warning:')).length; }, join: (sep) => allLogs.filter((l) => !l.startsWith('warning:')).join(sep) };
+
 let failures = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failures++;
   console.log(`${ok ? 'OK ' : 'ÉCHEC'} ${label}${detail ? ` : ${detail}` : ''}`);
 };
 const stored = () => evaluate(`JSON.parse(localStorage.getItem('tracker.sportSettings') ?? 'null')`);
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
 const openTab = (label) => evaluate(`(() => { const t = [...document.querySelectorAll('.an-carte-col .ui-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)}); if (!t) return 'absent'; if (t.getAttribute('aria-pressed') !== 'true' && t.getAttribute('aria-selected') !== 'true') t.click(); return 'ok'; })()`);
 /** Ligne de texte de la page qui suit `label` (valeur d'une case de chiffres). */
 const figure = (label) => evaluate(`(() => { const lines = document.body.innerText.split('\\n').map((l) => l.trim()).filter(Boolean); const k = lines.indexOf(${JSON.stringify(label)}); return k < 0 ? '(absent)' : lines[k + 1]; })()`);
@@ -91,12 +55,9 @@ const chooseActivity = (text) => evaluate(`(async () => {
   return 'absent';
 })()`);
 
-// `Network.enable` d'abord : sans lui, `setBlockedURLs` ne bloque rien, et l'altitude de l'IGN remplace la côte à 5 %.
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
-// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+// Le réseau est déjà activé par connect : le blocage est effectif.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*']);
 
 /** Trace en côte à 5 %, `speedMs` constante, `type` lu par l'import (celle de `charge.mjs`). */
 const climbGpx = (type, speedMs, t0) => {
@@ -116,19 +77,19 @@ await evaluate(`(() => { localStorage.setItem('tracker.runnerProfile', JSON.stri
 const start = Date.parse('2026-10-03T08:00:00Z');
 await go('/course', 3000);
 console.log('import :', await importGpx(climbGpx('running', 1.4, start), 'cote-marche.gpx'));
-await wait(4000);
-const rec = (await records()).find((r) => r.summary?.startMs === start);
+const rec = await waitFor(async () => (await records())?.find((r) => r.summary?.startMs === start), { timeout: 6000, label: 'fiche' });
+await settle({ max: 2000, label: 'import' });
 check('session rangée', Boolean(rec));
 const path = `/course/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
 
 // --- 2. En Marche ---
 await go(path, 6000);
 await openTab('réglages');
-await wait(800);
+await settle({ max: 800 });
 console.log('vers Marche :', await chooseActivity('Marche'));
-await wait(4000);
+await settle({ max: 4000 });
 await openTab('énergie');
-await wait(1500);
+await settle({ max: 1500 });
 await openEnergyHelp();
 const terrain = (await records()).find((r) => r.summary?.startMs === start)?.terrainElevation;
 check("altitude du GPS, sans celle de l'IGN (bloquée)", terrain === undefined, terrain ? `${terrain.stepM} m, ${terrain.fetchedAt}` : '');
@@ -167,7 +128,7 @@ await shoot('depense-reglages');
 // --- 4. L'analyse retrouve Minetti ---
 await go(path, 6000);
 await openTab('énergie');
-await wait(1500);
+await settle({ max: 1500 });
 await openEnergyHelp();
 const runKcal = kcalOf(await figure('Énergie de course'));
 const runText = (await pageText()) ?? '';
@@ -185,6 +146,5 @@ check('Réglages : retour sur Marche, défaut, rien de rangé', back?.value === 
 
 console.log(logs.length ? `--- console ---\n${logs.join('\n')}` : 'console : rien');
 console.log(failures ? `${failures} échec(s)` : 'tout est passé');
-await send('Target.closeTarget', { targetId: target.id }).catch(() => {});
-ws.close();
+await close();
 process.exit(0);

@@ -16,47 +16,35 @@
 //     nuances de la version 4 sans changer de date ;
 //  8. « Importer un fichier de réglages » : un JSON quelconque et le fichier de l'appareil refusés ; celui d'une
 //     tablette rangé sous son nom, reprise refusée puis faite depuis la liste ; pas de bandeau ensuite.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node reglages.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 // Version des pré-réglages (PRESETS_VERSION) : un fichier d'avant sans elle voit ses seuils effacés une fois (point 168).
 const PRESETS_VERSION = 3;
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, shoot, onMessage, logs, close } = await connect({ port, width: 1400, height: 1000, shotDir });
 const dialogs = [];
-/** Réponse aux confirmations de la page : acceptées, sauf le temps d'y renoncer. */
-let acceptDialogs = true;
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Page.javascriptDialogOpening') {
-    dialogs.push(msg.params.message.split('\n')[0]);
-    void send('Page.handleJavaScriptDialog', { accept: acceptDialogs });
-  }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
+onMessage((msg) => { if (msg.method === 'Page.javascriptDialogOpening') dialogs.push(msg.params.message.split(String.fromCharCode(10))[0]); });
+/**
+ * Réponse aux confirmations de la page : acceptées d'office par la bibliothèque ; pour en refuser une, `confirm` de
+ * la page répond non (et note son message comme un dialogue), le temps d'y renoncer.
+ */
+const refuseDialogs = (refuse) => evaluate(refuse
+  ? `(() => { window.__confirmReel ??= window.confirm; window.confirm = (m) => { window.__refus = String(m); return false; }; return 'ok'; })()`
+  : `(() => { if (window.__confirmReel) window.confirm = window.__confirmReel; return 'ok'; })()`);
+const noteRefus = async () => { const m = await evaluate(`window.__refus ?? null`); if (m) dialogs.push(m.split(String.fromCharCode(10))[0]); };
+/** Lance `action` qui recharge la page, attend le nouveau document puis une page prête (`max` ms au plus). */
+const reloaded = async (action, max) => {
+  const before = await evaluate(`window.__banc?.doc ?? null`);
+  const res = await action();
+  await waitFor(`window.__banc?.doc !== ${JSON.stringify(before)}`, { timeout: max, label: 'rechargement' });
+  await settle({ max });
+  return res;
 };
 const opfs = (body) => evaluate(`(async () => { const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker'); ${body} })()`);
 const listSettings = () => opfs(`try { const d = await root.getDirectoryHandle('reglages'); const names = []; for await (const [n] of d.entries()) names.push(n); return names.sort().join(', '); } catch { return '(pas de dossier)'; }`);
@@ -69,9 +57,10 @@ const stored = () => evaluate(`JSON.parse(localStorage.getItem('tracker.sportSet
 const openMemory = () => evaluate(`(() => { if (document.querySelector('input[maxlength="40"].ui-field')) return 'déjà ouverte'; const b = [...document.querySelectorAll('[role=button]')].find((x) => x.textContent.trim() === 'Mémoire'); if (!b) return 'absente'; b.click(); return 'ouverte'; })()`);
 const fileList = () => evaluate(`(() => { const ul = [...document.querySelectorAll('ul')].find((u) => /cet appareil/.test(u.innerText)); return ul ? [...ul.children].map((li) => li.innerText.replace(/\\n/g, ' / ')).join(' || ') : '(pas de liste)'; })()`);
 const clickButton = (text, near) => evaluate(`(() => { const li = ${near ? `[...document.querySelectorAll('li')].find((x) => x.innerText.startsWith(${JSON.stringify(near)}))` : 'document'}; if (!li) return 'ligne absente'; const b = [...li.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)}); if (!b) return 'bouton absent'; b.click(); return 'ok'; })()`);
-const rename = async (name) => {
+const rename = async (name, until) => {
   await evaluate(`(() => { const i = document.querySelector('input[maxlength="40"].ui-field'); i.focus(); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, ${JSON.stringify(name)}); i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); return 'ok'; })()`);
-  await wait(1200);
+  if (until) await waitFor(until, { timeout: 1200, label: 'renommage' });
+  await settle({ max: 1200, label: 'renommage' });
 };
 /** Texte du bandeau « Nouveau fichier de réglages », ou « (aucun) ». */
 const banner = () => evaluate(`(() => { const a = [...document.querySelectorAll('.ui-alert')].find((x) => /Nouveau fichier de réglages/.test(x.innerText)); return a ? a.innerText.replace(/\\n/g, ' / ') : '(aucun)'; })()`);
@@ -79,10 +68,8 @@ const clickInBanner = (text) => evaluate(`(() => { const a = [...document.queryS
 const pageLines = (re) =>evaluate(`document.body.innerText.split('\\n').filter((l) => ${re}.test(l)).join(' | ')`);
 const step = (title) => console.log(`\n== ${title}`);
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 
 step('1. Premier lancement');
 await go('/parametres', 4000);
@@ -124,15 +111,15 @@ console.log('carte Mémoire :', await openMemory());
 await wait(500);
 console.log('liste avant « Mettre à jour » :', await fileList());
 console.log('Mettre à jour :', await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Mettre à jour'); if (!b) return 'absent'; b.click(); return 'ok'; })()`));
-await wait(2500);
+await waitFor(async () => /Léa/.test(await fileList()), { timeout: 2500, label: 'liste après la mise à jour' });
+await settle({ max: 2500 });
 console.log('liste après :', await fileList());
 console.log('seuil de l\'appareil, inchangé :', (await stored())?.thresholds?.wingfoil);
 console.log('bandeau :', await banner());
 await shoot('reglages-liste');
 
 step('4. Reprendre les réglages de Léa, depuis le bandeau');
-console.log('Reprendre :', await clickInBanner('Reprendre'));
-await wait(4500);
+console.log('Reprendre :', await reloaded(() => clickInBanner('Reprendre'), 4500));
 console.log('confirmation :', dialogs.at(-1) ?? '(aucune)');
 const after = await stored();
 console.log('activités :', after?.activities?.map((a) => `${a.name} ${a.color}`).join(', '), '| version', after?.activitiesVersion);
@@ -146,9 +133,9 @@ console.log('liste :', await fileList());
 console.log('bandeau après la reprise (aucun attendu) :', await banner());
 
 step('5. Renommer l\'appareil');
-await rename('PC du bureau');
+await rename('PC du bureau', async () => /pc-du-bureau/.test(await listSettings()));
 console.log('reglages/ :', await listSettings(), '| nom gardé :', await evaluate(`localStorage.getItem('tracker.deviceName')`));
-await rename('Léa');
+await rename('Léa', async () => Boolean(await pageLines('/choisissez un autre nom/')));
 console.log('refus :', await pageLines('/choisissez un autre nom/'), '| reglages/ :', await listSettings());
 await evaluate(`(() => { const i = document.querySelector('input[maxlength="40"].ui-field'); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return 'ok'; })()`);
 await shoot('reglages-renomme');
@@ -189,11 +176,13 @@ console.log('date du fichier inchangée :', upgraded.savedAt === savedAtBefore, 
 step('8. Importer un fichier de réglages');
 /** Choisit un fichier JSON dans « Importer un fichier de réglages », fabriqué dans la page. */
 const importJson = async (name, value) => {
+  const noteBefore = await importNote();
   const res = await evaluate(`(() => { const input = document.querySelector('input[type=file][accept*="json"]'); if (!input) return 'champ absent'; const dt = new DataTransfer(); dt.items.add(new File([${JSON.stringify(JSON.stringify(value))}], ${JSON.stringify(name)}, { type: 'application/json' })); input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
-  await wait(1500);
+  await waitFor(async () => (await importNote()) !== noteBefore, { timeout: 1500, label: 'message de l’import' });
+  await settle({ max: 1500 });
   return res;
 };
-const importNote = () => pageLines('/n\'est pas un fichier|fichier de réglages de cet appareil|est dans la liste/');
+function importNote() { return pageLines('/n\'est pas un fichier|fichier de réglages de cet appareil|est dans la liste/'); }
 console.log('carte Mémoire :', await openMemory());
 await wait(500);
 console.log('un JSON quelconque :', await importJson('notes.json', { bonjour: 1 }), '|', await importNote());
@@ -202,14 +191,14 @@ const tablet = {
   format: 'tracker-reglages', version: 2, savedAt: Date.now() - 600_000, device: { id: 'tablette-de-lea', name: 'Tablette' },
   values: { 'tracker.sportSettings': { ...(await stored()), thresholds: { wingfoil: 15 } } },
 };
-acceptDialogs = false;
+await refuseDialogs(true);
 console.log('la Tablette, reprise refusée :', await importJson('reglages-tablette.json', tablet), '|', await importNote());
-acceptDialogs = true;
+await noteRefus();
+await refuseDialogs(false);
 console.log('confirmation posée :', dialogs.at(-1));
 console.log('reglages/ :', await listSettings(), '| seuil de l\'appareil, inchangé :', (await stored())?.thresholds?.wingfoil);
 console.log('liste :', await fileList(), '| bandeau (aucun attendu) :', await banner());
-console.log('Reprendre dans la liste :', await clickButton('Reprendre', 'Tablette'));
-await wait(4500);
+console.log('Reprendre dans la liste :', await reloaded(() => clickButton('Reprendre', 'Tablette'), 4500));
 console.log('seuil wingfoil :', (await stored())?.thresholds?.wingfoil, '(15 attendu)');
 console.log('carte Mémoire :', await openMemory());
 await wait(500);
@@ -227,5 +216,5 @@ await shoot('reglages-390');
 
 console.log('\n--- console (erreurs, avertissements) ---');
 [...new Set(logs)].slice(0, 15).forEach((l) => console.log(l));
-await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`);
-ws.close();
+await close();
+process.exit(0);

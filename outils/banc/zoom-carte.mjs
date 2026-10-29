@@ -22,58 +22,21 @@
 //     toute la trace) ; « +carte » dans la page du téléphone ; un second clic à la même plage retire le violet,
 //     zoom et plein écran gardés ; la plage changée entre-temps, il recadre.
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node zoom-carte.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, check, finish, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+
 const clickTab = (label, close = false) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-col .ui-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)});
   if (!t) return 'absent';
@@ -117,7 +80,7 @@ const doubleClick = async (title, nth, fx) => {
   await mouse('mouseReleased', p.x, p.y, 1);
   await mouse('mousePressed', p.x, p.y, 2);
   await mouse('mouseReleased', p.x, p.y, 2);
-  await wait(800);
+  await settle({ max: 800 });
   return 'ok';
 };
 const hover = async (title, nth, fx) => {
@@ -138,7 +101,7 @@ const doubleTap = async (title, nth, fx) => {
   for (const [type, dt] of [['touchStart', 0], ['touchEnd', 0.04], ['touchStart', 0.13], ['touchEnd', 0.17]]) {
     await send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchStart' ? [{ x: p.x, y: p.y }] : [], timestamp: t0 + dt });
   }
-  await wait(900);
+  await settle({ max: 900 });
   return 'ok';
 };
 /** Tronçon violet dans la carte de la page (`.an-map-row`) ou du plein écran : part de la carte qu'il couvre (largeur ou hauteur). */
@@ -156,14 +119,9 @@ const violet = (where = '.an-map-row') => evaluate(`(() => {
 /** La carte de la page est-elle entière à l'écran, sous la barre du haut (sa marge de défilement) ? */
 const mapOnScreen = () => evaluate(`(() => { const el = document.getElementById('map-view'); if (!el) return null; const r = el.getBoundingClientRect(); const top = parseFloat(getComputedStyle(el).scrollMarginTop) || 0; return r.top >= top - 1 && r.bottom <= window.innerHeight + 1; })()`);
 const chartTop = (title, nth) => evaluate(`(() => { const c = ${CHART(title, nth)}; return c ? Math.round(c.getBoundingClientRect().top + window.scrollY) : null; })()`);
-let failures = 0;
-const check = (what, ok) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}`); if (!ok) failures++; };
-
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
 // Rangée « avancé » des analyses ouverte d'office, rouverte à chaque session neuve avec « général » (comme `graphes.mjs`).
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*', '*://server.arcgisonline.com/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork();
 
 // --- Sessions synthétiques ---
 /** Course en ligne droite vers l'est, 3 m/s, altitude qui monte puis redescend, FC qui croît. */
@@ -226,8 +184,8 @@ const paths = {};
 for (const s of SESSIONS) {
   await go(`/${s.page}`, 3000);
   console.log(`import ${s.key} :`, await importGpx(s.gpx, `${s.key}.gpx`));
-  await wait(5000);
-  const rec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000);
+  const rec = await waitFor(async () => (await records())?.find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000), { timeout: 6000, label: `fiche ${s.key}` });
+  await settle({ max: 2000, label: `import ${s.key}` });
   paths[s.key] = `/${s.page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
   check(`${s.key} rangée`, Boolean(rec));
 }
@@ -235,18 +193,18 @@ for (const s of SESSIONS) {
 // --- 2. Course, sur ordinateur ---
 await go(paths.course, 6000);
 console.log('  graphiques :', await clickTab('graphiques'));
-await wait(1500);
+await settle({ max: 1500 });
 check(`course : graduations de départ (${await ticks('Graphiques', 0)})`, (await ticks('Graphiques', 0)) === '0 km | 2 km | 4 km');
 check(`course : « Afficher » seul avant le zoom (${await zoomButtons('Graphiques', 0)})`, (await zoomButtons('Graphiques', 0)) === 'Afficher');
 const deskPerChart = await evaluate(`(() => { const p = ${SCOPE('Graphiques')}; return p ? [...p.querySelectorAll('.zoom-chart')].map((c) => c.querySelectorAll(':scope > .zoom-chart__map').length).join('') : '(absent)'; })()`);
 check(`course : « Afficher » sur chaque graphe, FC comprise (${deskPerChart})`, /^1{3,}$/.test(deskPerChart));
 // Sans zoom : toute la trace en violet ; un second clic la retire.
 await clickZoomButton('Graphiques', 0, 'Afficher');
-await wait(1500);
+await settle({ max: 1500 });
 const wholeV = await violet();
 check(`course : sans zoom, « Afficher » allume toute la trace (${wholeV.count}, ${wholeV.cover})`, wholeV.count >= 1 && wholeV.cover > 0.45);
 await clickZoomButton('Graphiques', 0, 'Afficher');
-await wait(800);
+await settle({ max: 800 });
 check(`course : second clic, violet retiré (${(await violet()).count})`, (await violet()).count === 0);
 await evaluate(`window.scrollTo(0, 0)`);
 await wait(500);
@@ -266,7 +224,7 @@ check(`course : zoom ×2 encore, sur le même point (${await ticks('Graphiques',
 check(`course : pas de violet avant le bouton (${(await violet()).count})`, (await violet()).count === 0);
 const wholeCover = 1.35 / 5.4;
 console.log('  Sur la carte :', await clickZoomButton('Graphiques', 0, 'Afficher'));
-await wait(1800);
+await settle({ max: 1800 });
 const framed = await violet();
 // Leaflet cadre au cran de zoom entier : le tronçon remplit entre la moitié et toute la carte.
 check(`course : tronçon violet cadré, qui remplit la carte à un cran près (${framed.count} tracé, ${framed.cover})`, framed.count >= 1 && framed.cover > 0.45);
@@ -276,24 +234,24 @@ console.log('  double-clic à 50 % :', await doubleClick('Graphiques', 0, 0.5));
 const narrower = await violet();
 check(`course : le violet suit le zoom, sans recadrer (${framed.cover} → ${narrower.cover})`, narrower.count >= 1 && narrower.cover < framed.cover * 0.7 && narrower.cover > 0.2);
 console.log('  Tout voir :', await clickZoomButton('Graphiques', 0, 'Tout voir'));
-await wait(800);
+await settle({ max: 800 });
 check(`course : « Tout voir » efface le violet, « Afficher » reste (${(await violet()).count}, « ${await zoomButtons('Graphiques', 0)} »)`, (await violet()).count === 0 && (await zoomButtons('Graphiques', 0)) === 'Afficher');
 await doubleClick('Graphiques', 0, 0.5);
 check(`course : le violet ne revient pas au zoom suivant (${(await violet()).count})`, (await violet()).count === 0);
 await clickZoomButton('Graphiques', 0, 'Afficher');
-await wait(1500);
+await settle({ max: 1500 });
 check('course : rallumé par le bouton', (await violet()).count >= 1);
 await clickZoomButton('Graphiques', 0, 'Afficher');
-await wait(800);
+await settle({ max: 800 });
 check(`course : second clic sur la même plage, violet retiré, zoom gardé (${(await violet()).count}, « ${await zoomButtons('Graphiques', 0)} »)`, (await violet()).count === 0 && (await zoomButtons('Graphiques', 0)) === 'Afficher | Tout voir');
 await clickZoomButton('Graphiques', 0, 'Afficher');
-await wait(1200);
+await settle({ max: 1200 });
 check('course : troisième clic, rallumé', (await violet()).count >= 1);
 console.log('  graphiques fermé :', await clickTab('graphiques', true));
-await wait(800);
+await settle({ max: 800 });
 check(`course : onglet fermé, violet effacé (${(await violet()).count})`, (await violet()).count === 0);
 await clickTab('graphiques');
-await wait(1200);
+await settle({ max: 1200 });
 check(`course : rouvert, zoom gardé mais pas le violet (${(await violet()).count}, « ${await zoomButtons('Graphiques', 0)} »)`, (await violet()).count === 0 && (await zoomButtons('Graphiques', 0)) === 'Afficher | Tout voir');
 await clickZoomButton('Graphiques', 0, 'Tout voir');
 check(`course : tronçon entier = ${wholeCover.toFixed(2)} de la trace, pour mémoire`, true);
@@ -302,13 +260,13 @@ check(`course : tronçon entier = ${wholeCover.toFixed(2)} de la trace, pour mé
 await clickTab('graphiques', true);
 for (const [tab, title] of [['cardio', 'Cardio'], ['énergie', 'Énergie'], ['zones de pente', 'Allure par zone de pente']]) {
   console.log(`  ${tab} :`, await clickTab(tab));
-  await wait(1500);
+  await settle({ max: 1500 });
   await hover(title, 0, 0.4);
   check(`${tab} : lecture (${await readouts(title)})`, (await readouts(title)).includes(' · '));
   await doubleClick(title, 0, 0.5);
   check(`${tab} : zoomé (${await zoomButtons(title, 0)})`, (await zoomButtons(title, 0)) === 'Afficher | Tout voir');
   await clickZoomButton(title, 0, 'Afficher');
-  await wait(1500);
+  await settle({ max: 1500 });
   const v = await violet();
   check(`${tab} : tronçon violet cadré (${v.count}, ${v.cover})`, v.count >= 1 && v.cover > 0.45);
   await clickZoomButton(title, 0, 'Tout voir');
@@ -332,11 +290,11 @@ check(`boutons du zoom 20 % plus petits (${JSON.stringify(buttonBox)})`, buttonB
 const mapButtonBox = await evaluate(`(() => { const c = ${CHART('Général', 0)}; const b = c?.querySelector('.zoom-chart__map'); const r = c?.previousElementSibling; if (!b || !r) return null; const cb = c.getBoundingClientRect(), bb = b.getBoundingClientRect(), rb = r.getBoundingClientRect(); return { above: Math.round(cb.top - bb.bottom), right: Math.round(cb.right - bb.right), readoutRight: Math.round(rb.right - parseFloat(getComputedStyle(r).paddingRight) - bb.left) }; })()`);
 check(`« Afficher » sur la ligne du nom, collé à droite, sans couvrir la lecture (${JSON.stringify(mapButtonBox)})`, mapButtonBox !== null && mapButtonBox.above >= 0 && mapButtonBox.right === 0 && mapButtonBox.readoutRight <= 0);
 await clickZoomButton('Général', 0, 'Afficher');
-await wait(1800);
+await settle({ max: 1800 });
 const generalV = await violet();
 check(`général : tronçon violet cadré (${generalV.count}, ${generalV.cover})`, generalV.count >= 1 && generalV.cover > 0.45);
 await clickTab('graphiques');
-await wait(1500);
+await settle({ max: 1500 });
 check(`général : « graphiques » pas zoomé pour autant (${await ticks('Graphiques', 0)})`, (await ticks('Graphiques', 0)) === '0 km | 2 km | 4 km');
 await clickTab('graphiques', true);
 await wait(600);
@@ -349,7 +307,7 @@ check(`analyses : titres à 13 px, noms des graphes à 10 px (${JSON.stringify(s
 // --- 4. Voile et surf ---
 await go(paths.voile, 8000);
 await clickTab('graphiques');
-await wait(2000);
+await settle({ max: 2000 });
 await hover('Graphiques', 0, 0.5);
 const sailRead = await readouts('Graphiques');
 check(`voile : lecture vitesse et FC, à l'heure (${sailRead})`, /nds? · \d\d:\d\d:\d\d/.test(sailRead) && sailRead.includes('bpm'));
@@ -357,16 +315,16 @@ check(`voile : aucune bulle (« ${await tooltipText()} »)`, (await tooltipText(
 await doubleClick('Graphiques', 0, 0.5);
 check(`voile : zoomé (${await zoomButtons('Graphiques', 0)})`, (await zoomButtons('Graphiques', 0)) === 'Afficher | Tout voir');
 await clickZoomButton('Graphiques', 0, 'Afficher');
-await wait(1800);
+await settle({ max: 1800 });
 const sailV = await violet();
 check(`voile : tronçon violet cadré (${sailV.count}, ${sailV.cover})`, sailV.count >= 1 && sailV.cover > 0.45);
 await clickTab('vent');
-await wait(1500);
+await settle({ max: 1500 });
 await hover('Variations du Vent', 0, 0.5);
 check(`vent : lecture en degrés (${await readouts('Variations du Vent')})`, /\d+° · \d\d:/.test(await readouts('Variations du Vent')));
 check(`vent : même zoom (${await zoomButtons('Variations du Vent', 0)})`, (await zoomButtons('Variations du Vent', 0)) === 'Afficher | Tout voir');
 await clickZoomButton('Variations du Vent', 0, 'Afficher');
-await wait(1500);
+await settle({ max: 1500 });
 check('vent : le tronçon passe à l\'onglet vent', (await violet()).count >= 1);
 await clickTab('vent', true);
 await wait(600);
@@ -375,12 +333,12 @@ await clickZoomButton('Graphiques', 0, 'Tout voir');
 
 await go(paths.surf, 6000);
 await clickTab('graphiques');
-await wait(1500);
+await settle({ max: 1500 });
 await hover('Vitesse', 0, 0.5);
 check(`surf : lecture (${await readouts('Vitesse')})`, /km\/h · \d\d:/.test(await readouts('Vitesse')) && (await readouts('Vitesse')).includes('bpm'));
 await doubleClick('Vitesse', 0, 0.6);
 await clickZoomButton('Vitesse', 0, 'Afficher');
-await wait(1500);
+await settle({ max: 1500 });
 const surfV = await violet();
 check(`surf : tronçon violet (${surfV.count}, ${surfV.cover})`, surfV.count >= 1 && surfV.cover > 0.45);
 
@@ -389,7 +347,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, devi
 await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
 await go(paths.course, 6000);
 await clickTab('graphiques');
-await wait(1500);
+await settle({ max: 1500 });
 check(`390 px : « +carte » seul avant le zoom (${await zoomButtons('Graphiques', 0)})`, (await zoomButtons('Graphiques', 0)) === '+carte');
 const perChart = await evaluate(`(() => { const p = ${SCOPE('Graphiques')}; return p ? [...p.querySelectorAll('.zoom-chart')].map((c) => c.querySelectorAll(':scope > .zoom-chart__map').length).join('') : '(absent)'; })()`);
 check(`390 px : « +carte » sur chaque graphe, FC comprise (${perChart})`, /^1{3,}$/.test(perChart));
@@ -398,7 +356,7 @@ check(`390 px : le double toucher zoome ×2 (${await ticks('Graphiques', 0)})`, 
 check(`390 px : aucune bulle (« ${await tooltipText()} »)`, (await tooltipText()) === '');
 check(`390 px : carte hors de vue (${await mapOnScreen()})`, (await mapOnScreen()) === false);
 await clickZoomButton('Graphiques', 0, '+carte');
-await wait(1800);
+await settle({ max: 1800 });
 const overlay = await evaluate(`(() => { const o = document.querySelector('.an-map-overlay'); return o ? { charts: o.querySelectorAll('.an-map-overlay__charts .zoom-chart').length, map: Boolean(o.querySelector('.leaflet-container')) } : null; })()`);
 check(`390 px : plein écran carte + graphes (${JSON.stringify(overlay)})`, overlay !== null && overlay.map && overlay.charts >= 2);
 const overV = await violet('.an-map-overlay');
@@ -412,36 +370,36 @@ check(`390 px : le violet suit (${overV.cover} → ${overV2.cover})`, overV2.cou
 // Plage changée depuis le clic : « Afficher » recadre ; un second clic retire le violet, le plein écran reste.
 check(`390 px : « Afficher » dans le plein écran (${await zoomButtons(null, 0)})`, (await zoomButtons(null, 0)) === 'Afficher | Tout voir');
 await clickZoomButton(null, 0, 'Afficher');
-await wait(1200);
+await settle({ max: 1200 });
 const reframed = await violet('.an-map-overlay');
 check(`390 px : plage changée, « Afficher » recadre sans annuler (${reframed.count}, ${reframed.cover})`, (await evaluate(`Boolean(document.querySelector('.an-map-overlay'))`)) === true && reframed.count >= 1 && reframed.cover > 0.45);
 await clickZoomButton(null, 0, 'Afficher');
-await wait(1200);
+await settle({ max: 1200 });
 check(`390 px : second clic, violet retiré, plein écran ouvert (${(await violet('.an-map-overlay')).count})`, (await evaluate(`Boolean(document.querySelector('.an-map-overlay'))`)) === true && (await violet('.an-map-overlay')).count === 0);
 await evaluate(`document.querySelector('.an-map-overlay__close')?.click()`);
-await wait(800);
+await settle({ max: 800 });
 check('390 px : × ferme le plein écran', (await evaluate(`Boolean(document.querySelector('.an-map-overlay'))`)) === false);
 // Profil de « général » : double toucher, puis plein écran carte + profil.
 console.log('  double toucher sur le profil de « général » :', await doubleTap('Général', 0, 0.25));
 check(`390 px : le profil de « général » zoome ×2 (${await ticks('Général', 0)})`, (await ticks('Général', 0)) === '1 km | 2 km | 3 km');
 await clickZoomButton('Général', 0, '+carte');
-await wait(1800);
+await settle({ max: 1800 });
 const generalOverlay = await evaluate(`(() => { const o = document.querySelector('.an-map-overlay'); return o ? { charts: o.querySelectorAll('.an-map-overlay__charts .zoom-chart').length, name: o.querySelector('.an-map-overlay__charts .chart-readout__label')?.textContent ?? '' } : null; })()`);
 check(`390 px : plein écran carte + profil de « général » (${JSON.stringify(generalOverlay)})`, generalOverlay?.charts === 1 && generalOverlay?.name === 'Altitude' && (await violet('.an-map-overlay')).count >= 1);
 await shoot('zoom-general-plein-ecran');
 await evaluate(`document.querySelector('.an-map-overlay__close')?.click()`);
-await wait(800);
+await settle({ max: 800 });
 await clickZoomButton('Général', 0, 'Tout voir');
 await wait(600);
 // Tout replié sauf « graphiques », en haut de page : la carte est à l'écran, elle se cadre sur place.
 await clickTab('général', true);
 await evaluate(`window.scrollTo(0, 0)`);
-await wait(800);
+await settle({ max: 800 });
 const onScreen = await mapOnScreen();
 const buttonsVisible = await evaluate(`(() => { const b = document.querySelector('.zoom-chart__map'); if (!b) return false; const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; })()`);
 console.log(`  carte à l'écran : ${onScreen}, bouton à l'écran : ${buttonsVisible}`);
 await evaluate(`document.querySelector('.zoom-chart__map')?.click()`);
-await wait(1500);
+await settle({ max: 1500 });
 check(`390 px : carte à l'écran, cadrée sur place sans plein écran (${onScreen})`, onScreen === true && (await evaluate(`Boolean(document.querySelector('.an-map-overlay'))`)) === false && (await violet()).count >= 1);
 await shoot('zoom-sur-place');
 
@@ -454,21 +412,21 @@ await evaluate(`(() => { const c = ${CHART('Graphiques', 0)}; c?.scrollIntoView(
 await wait(600);
 const scrollBefore = await evaluate(`Math.round(window.scrollY)`);
 await clickZoomButton('Graphiques', 0, '+carte');
-await wait(1800);
+await settle({ max: 1800 });
 const wholeOverlay = await evaluate(`(() => { const o = document.querySelector('.an-map-overlay'); return o ? { charts: o.querySelectorAll('.an-map-overlay__charts .zoom-chart').length, mapButtons: [...o.querySelectorAll('.an-map-overlay__charts .zoom-chart__map')].filter((b) => getComputedStyle(b).display !== 'none').length } : null; })()`);
 check(`390 px : sans zoom, plein écran carte + graphes, « Afficher » sur chacun (${JSON.stringify(wholeOverlay)})`, wholeOverlay !== null && wholeOverlay.charts >= 2 && wholeOverlay.mapButtons === wholeOverlay.charts);
 check('390 px : sans zoom, pas de tronçon violet', (await violet('.an-map-overlay')).count === 0);
 check(`390 px : « Afficher » seul, sans zoom (${await zoomButtons(null, 0)})`, (await zoomButtons(null, 0)) === 'Afficher');
 await shoot('sans-zoom-plein-ecran');
 await clickZoomButton(null, 0, 'Afficher');
-await wait(1200);
+await settle({ max: 1200 });
 const overWhole = await violet('.an-map-overlay');
 check(`390 px : « Afficher » sans zoom allume toute la trace (${overWhole.count}, ${overWhole.cover})`, overWhole.count >= 1 && overWhole.cover > 0.45);
 await clickZoomButton(null, 0, 'Afficher');
-await wait(800);
+await settle({ max: 800 });
 check('390 px : second clic, violet retiré, plein écran ouvert', (await violet('.an-map-overlay')).count === 0 && (await overlayOpen()) === true);
 const backed = await back();
-await wait(800);
+await settle({ max: 800 });
 const scrollAfter = await evaluate(`Math.round(window.scrollY)`);
 check(`390 px : le retour ferme carte + graphes (${backed})`, backed === 'layer' && (await overlayOpen()) === false);
 check(`390 px : même défilement après le retour (${scrollBefore} → ${scrollAfter})`, Math.abs(scrollAfter - scrollBefore) <= 2);
@@ -476,16 +434,16 @@ check(`390 px : toujours sur l'analyse (${await evaluate('location.pathname')})`
 // Zoomé, carte hors de vue : plein écran, retour, zoom gardé.
 console.log('  double toucher :', await doubleTap('Graphiques', 0, 0.25));
 await clickZoomButton('Graphiques', 0, '+carte');
-await wait(1800);
+await settle({ max: 1800 });
 check('390 px : zoomé, plein écran ouvert', (await overlayOpen()) === true);
 await back();
-await wait(800);
+await settle({ max: 800 });
 check(`390 px : zoomé, le retour ferme et garde le zoom (${await ticks('Graphiques', 0)})`, (await overlayOpen()) === false && (await ticks('Graphiques', 0)) === '1 km | 2 km | 3 km');
 // Carte seule, d'un toucher.
 await evaluate(`window.scrollTo(0, 0)`);
 await wait(500);
 await evaluate(`document.querySelector('.an-map-row .an-map-frame')?.click()`);
-await wait(1200);
+await settle({ max: 1200 });
 check('390 px : un toucher ouvre la carte seule', (await overlayOpen()) === true && (await evaluate(`Boolean(document.querySelector('.an-map-overlay--charts'))`)) === false);
 const backedMap = await back();
 await wait(600);
@@ -493,6 +451,4 @@ check(`390 px : le retour ferme la carte seule (${backedMap})`, backedMap === 'l
 
 console.log('\n--- console (erreurs, avertissements) ---');
 for (const l of logs) console.log(l);
-console.log(failures === 0 ? '\nTout passe.' : `\n${failures} échec(s).`);
-await send('Browser.close').catch(() => {});
-process.exit(failures === 0 ? 0 : 1);
+await finish('\nTout passe.', { ko: (n) => `\n${n} échec(s).` });

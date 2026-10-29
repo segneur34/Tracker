@@ -8,42 +8,19 @@
 //  3. un toucher sur un autre choix le prend toujours (clic) ; un appui qui bouge à peine ne change rien ;
 //  4. un glisser parti d'un choix qui n'est pas le choix en cours ne déplace pas la case ;
 //  5. Statistiques : la famille glissée ne change l'adresse qu'au lâcher ; la vue choisie est retenue au rechargement.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node glisser.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-    logs.push(`error: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-await send('Page.enable');
-await send('Runtime.enable');
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, waitFor, wait, shoot, close, logs: allLogs } = await connect({ port, shotDir });
+// Ce script ne relevait que les erreurs de console, pas les avertissements.
+
+
 let failures = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failures++;
@@ -86,7 +63,8 @@ const dragWith = async (kind, from, to, mid) => {
 
 /** Glisse la case de deux crans (vers la gauche si elle est assez à droite) et vérifie avant et après le lâcher. */
 const dragTwo = async (label, kind, step = '') => {
-  const before = await readRow(label);
+  // La page se monte après le chargement (modules à la demande) : on attend la rangée jusqu'à 3 s, comme l'ancien sommeil.
+  const before = await waitFor(() => readRow(label), { timeout: 3000, label: `rangée ${label}` });
   if (!before) { check(`${label} : rangée présente`, false); return; }
   const i = checkedIndex(before);
   const j = i >= 2 ? i - 2 : Math.min(before.items.length - 1, i + 2);
@@ -153,7 +131,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, de
 await runOn('ordinateur');
 
 console.log('--- console ---');
-for (const l of logs) console.log(l);
+for (const l of allLogs.filter((l) => !l.startsWith('warning:'))) console.log(l);
 console.log(failures === 0 ? 'Tout est vert.' : `${failures} échec(s).`);
-ws.close();
+await close();
 process.exit(failures === 0 ? 0 : 1);

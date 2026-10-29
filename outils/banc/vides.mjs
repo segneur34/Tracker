@@ -9,56 +9,18 @@
 //  5. à 360×800 : accueil sans lien Profil ni Statistiques, barre du bas Accueil · Profil · rond · Statistiques ·
 //     Réglages ; Réglages, carte Voile ouverte : le nom en texte, qui replie la carte, « Renommer » à droite, sur la
 //     ligne du nom ; Échap n'enregistre rien, Entrée renomme, le nom est relu ; rien ne déborde.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node vides.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+
 const overflow = () => evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
 /** Met un onglet de l'analyse dans l'état voulu (ouvert ou fermé). */
 const setTab = (label, wanted) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-col .ui-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)});
@@ -78,11 +40,9 @@ const clickIn = (title, text) => evaluate(`(() => {
 let failures = 0;
 const check = (what, ok, detail) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}${!ok && detail !== undefined ? ` (${detail})` : ''}`); if (!ok) failures++; };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork();
 
 // --- Sessions synthétiques ---
 /** Trace droite vers l'est, vitesse constante, altitude seulement si `ele`. */
@@ -137,8 +97,8 @@ const paths = {};
 for (const s of SESSIONS) {
   await go(`/${s.page}`, 3000);
   console.log(`import ${s.page} :`, await importGpx(s.gpx, `${s.page}.gpx`));
-  await wait(5000);
-  const rec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000);
+  const rec = await waitFor(async () => (await records())?.find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000), { timeout: 6000, label: `fiche ${s.page}` });
+  await settle({ max: 2000, label: `import ${s.page}` });
   paths[s.page] = `/${s.page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
   check(`${s.page} rangée`, Boolean(rec));
 }
@@ -147,19 +107,19 @@ for (const s of SESSIONS) {
 await go(paths.voile, 6000);
 for (const tab of ['manœuvres', 'vmg', 'vent']) await setTab(tab, true);
 await setTab('général', false);
-await wait(1000);
+await settle({ max: 1000 });
 for (const [title, word] of [['Manœuvres', 'virements et empannages'], ['Analyse VMG', 'la VMG'], ['Variations du Vent', 'ses variations']]) {
   const text = await panel(title);
   check(`voile, « ${title} » : « Vent inconnu », ${word}`, text.includes('Vent inconnu') && text.includes(word) && text.toLowerCase().includes('régler le vent'), text);
 }
 await shoot('vides-voile');
-check('« Régler le vent » ouvre la boussole sur la carte', (await clickIn('Manœuvres', 'Régler le vent')) && (await wait(800), await evaluate(`Boolean(document.querySelector('.an-map-panel .an-wind__dial'))`)));
+check('« Régler le vent » ouvre la boussole sur la carte', (await clickIn('Manœuvres', 'Régler le vent')) && (await settle({ max: 800 }), await evaluate(`Boolean(document.querySelector('.an-map-panel .an-wind__dial'))`)));
 check('boussole ouverte : plus de bouton', !(await panel('Manœuvres')).toLowerCase().includes('régler le vent'));
 
 // --- 3. Course sans altitude ---
 await go(paths.course, 8000);
 await setTab('zones de pente', true);
-await wait(1000);
+await settle({ max: 1000 });
 const zones = await panel('Allure par zone de pente');
 check('course, zones de pente : pourquoi elle est vide', zones.includes("Pas d'altitude dans le fichier") && zones.includes('IGN'), zones);
 check('course, zones de pente : « Réessayer »', zones.toLowerCase().includes('réessayer'), zones);
@@ -168,7 +128,7 @@ await shoot('vides-course');
 // --- 4. Surf : légende de la répartition ---
 await go(paths.surf, 6000);
 await setTab('général', true);
-await wait(800);
+await settle({ max: 800 });
 const legend = await evaluate(`document.querySelector('[title="Répartition du temps de la session"]')?.nextElementSibling?.innerText.replace(/\\n+/g, ' | ') ?? '(absente)'`);
 const general = await panel('Général');
 console.log('légende :', legend);
@@ -262,6 +222,5 @@ check('nom relu après rechargement', (await head('Wing')) !== null);
 console.log('\n--- console (erreurs, avertissements) ---');
 logs.forEach((l) => console.log(l));
 console.log(failures === 0 ? 'Tout est bon.' : `${failures} échec(s).`);
-await send('Page.close').catch(() => undefined);
-ws.close();
+await close();
 process.exit(failures === 0 ? 0 : 1);

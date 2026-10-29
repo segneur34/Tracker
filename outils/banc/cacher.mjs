@@ -8,44 +8,17 @@
 //     le dit ; Route absente d'Enregistrer ; tous deux toujours listés dans Réglages, grisés ;
 //  3. la dernière famille visible ne se cache pas : son œil est désactivé ;
 //  4. tout ré-affiché : chaque relevé redevient celui du départ, à la lettre.
-import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node cacher.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-    logs.push(`error: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-await send('Page.enable');
-// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, importGpx, records, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Runtime.enable');
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
 let failures = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failures++;
@@ -94,18 +67,10 @@ const snapshot = async () => {
 };
 
 // --- Mise en place ---
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 await go('/velo', 5000);
-console.log('import :', await evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], 'sortie.gpx', { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`));
-await wait(5000);
+console.log('import :', await importGpx(gpx, 'sortie.gpx'));
+await waitFor(async () => (await records())?.length >= 1, { timeout: 5000, label: 'fiche' });
+await settle({ max: 2000, label: 'import' });
 
 await go('/parametres');
 await openBlock('Activités', '.settings-activities');
@@ -162,6 +127,9 @@ const after = await snapshot();
 for (const k of Object.keys(before)) check(`ré-affiché, ${k} identique au départ`, before[k] === after[k], before[k] === after[k] ? '' : String(after[k]).replace(/\s+/g, ' ').slice(0, 220));
 
 console.log(`\n${failures === 0 ? 'Tout passe' : `${failures} échec(s)`}`);
-if (logs.length) console.log('Console :\n' + logs.join('\n'));
-ws.close();
+{
+  const errors = logs.filter((l) => !l.startsWith('warning'));
+  if (errors.length) console.log('Console :\n' + errors.join('\n'));
+}
+await close();
 process.exit(failures === 0 ? 0 : 1);

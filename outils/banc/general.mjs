@@ -1,6 +1,6 @@
 // Banc de test : onglet « général » complet et rangée « avancé » (demande du 22/10).
 // Usage : node general.mjs <port> [<dossier des captures>]
-// Sur un profil neuf, sans réseau (IGN, Overpass, tuiles bloqués). Dure environ 1 min 30. Le script :
+// Sur un profil neuf, sans réseau (IGN, Overpass, tuiles bloqués). Dure environ 40 s (lib/cdp.mjs). Le script :
 //  1. importe une wing (bords et manœuvres, vent du nord), une course et une sortie à vélo en côte, une session de surf ;
 //  2. voile, à 1400×1000 : la première rangée « général · avancé », les chiffres du nouveau général (distance en vol,
 //     virements et empannages réussis, top 2 s et 100 m), la mini-boussole et « Régler » ; « avancé » déplie les
@@ -10,56 +10,17 @@
 //     « Polaire » (dessinée), « Terminé » ;
 //  4. course et vélo : chiffres du général, meilleurs segments, profil d'altitude compact ; surf : chiffres réduits ;
 //  5. à 390×844 : voile sans débordement, « Régler » ouvre la carte en plein écran avec la boussole, « Terminé » la ferme.
-import { writeFileSync } from 'node:fs';
+import { BLOCKED_URLS, connect } from './lib/cdp.mjs';
 
 const [port, shotDir] = process.argv.slice(2);
 if (!port) {
   console.error('Usage : node general.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
-};
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importGpx, records, shoot, mouse, check, finish, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 const overflow = () => evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
-const records = () => evaluate(`(async () => {
-  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker')).getDirectoryHandle('sessions');
-  const list = [];
-  for await (const [name, h] of dir.entries()) if (name.endsWith('.json')) list.push(JSON.parse(await (await h.getFile()).text()));
-  return list;
-})()`);
-const importGpx = (gpx, name) => evaluate(`(() => {
-  const input = document.querySelector('input[type=file][accept=".gpx"]');
-  if (!input) return 'absent';
-  const dt = new DataTransfer();
-  dt.items.add(new File([${JSON.stringify(gpx)}], ${JSON.stringify(name)}, { type: 'application/gpx+xml' }));
-  input.files = dt.files;
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return 'ok';
-})()`);
 /** Libellés d'une rangée d'onglets : 0 la première, 1 la rangée « avancé ». */
 const row = (k) => evaluate(`[...(document.querySelectorAll('.an-carte-col .an-tabs > .ui-tabs')[${k}]?.querySelectorAll('.ui-tab') ?? [])].map((t) => t.textContent.trim()).join(' | ')`);
 const clickTab = (label) => evaluate(`(() => {
@@ -88,12 +49,7 @@ const clickButton = (scope, text) => evaluate(`(() => {
   b.click();
   return true;
 })()`);
-let failures = 0;
-const check = (what, ok, detail) => { console.log(`${ok ? 'ok   ' : 'ÉCHEC'} ${what}${!ok && detail !== undefined ? ` (${detail})` : ''}`); if (!ok) failures++; };
-
-await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*', '*://server.arcgisonline.com/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork(BLOCKED_URLS);
 
 // --- Sessions synthétiques ---
 const gpxOf = (type, pts) => `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Banc</name><type>${type}</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`;
@@ -173,8 +129,9 @@ const paths = {};
 for (const s of SESSIONS) {
   await go(`/${s.page}`, 3000);
   console.log(`import ${s.key} :`, await importGpx(s.gpx, `${s.key}.gpx`));
-  await wait(6000);
-  const rec = (await records()).find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000);
+  // L'écriture en mémoire ne touche ni au DOM ni au réseau : la fiche est attendue, puis sa réécriture différée.
+  const rec = await waitFor(async () => (await records())?.find((r) => Math.abs((r.summary?.startMs ?? 0) - s.start) < 2000), { timeout: 6000, label: `fiche ${s.key}` });
+  await settle({ max: 2000, label: `import ${s.key}` });
   paths[s.key] = `/${s.page}/analyse?session=${encodeURIComponent(rec?.gpx ?? '')}`;
   check(`${s.key} rangée`, Boolean(rec));
 }
@@ -215,31 +172,30 @@ await setTab('tops', false);
 await setAdvanced(false);
 
 // --- 3. Réglage du vent sur la carte ---
-check('« Régler » ouvre la boussole sur la carte', (await clickButton(panelOf('Général'), 'Régler')) && (await wait(1200), await evaluate(`Boolean(document.querySelector('.an-map-panel .an-wind__dial'))`)));
+check('« Régler » ouvre la boussole sur la carte', (await clickButton(panelOf('Général'), 'Régler')) && (await settle({ max: 1200 }), await evaluate(`Boolean(document.querySelector('.an-map-panel .an-wind__dial'))`)));
 const dial = await evaluate(`(() => { const r = document.querySelector('.an-map-panel .an-wind__dial').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width }; })()`);
 const windText = () => evaluate(`document.querySelector('.an-map-panel .an-wind__value')?.textContent ?? ''`);
 console.log('boussole :', JSON.stringify(dial), await windText());
 await shoot('general-vent');
-const mouse = (type, x, y) => send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
 await mouse('mousePressed', dial.x, dial.y - dial.w * 0.35);
 await mouse('mouseMoved', dial.x + dial.w * 0.25, dial.y - dial.w * 0.25);
 await mouse('mouseMoved', dial.x + dial.w * 0.35, dial.y);
 await wait(200);
 check('la flèche suit le pointeur avant le lâcher', (await windText()) === 'Vent 90°', await windText());
 await mouse('mouseReleased', dial.x + dial.w * 0.35, dial.y);
-await wait(1500);
+await settle({ max: 1500 });
 general = await panel('Général');
 check('lâchée : vent saisi à 90° dans le général', general.includes('Vent 90°') && general.includes('saisi'), general);
 check('vent dans le brouillon : « Enregistrer la session »', await evaluate(`document.body.textContent.includes('Enregistrer la session')`));
 await clickButton(`document.querySelector('.an-map-panel .an-wind')`, 'Inverser');
-await wait(1200);
+await settle({ max: 1200 });
 check('« Inverser » : 270°', (await windText()) === 'Vent 270°', await windText());
 await clickButton(`document.querySelector('.an-map-panel .an-wind')`, 'Polaire');
-await wait(1200);
+await settle({ max: 1200 });
 check('« Polaire » : la polaire est dessinée', await evaluate(`Boolean(document.querySelector('.an-map-panel .an-wind__polar .recharts-polar-grid'))`));
 await shoot('general-polaire');
 await clickButton(`document.querySelector('.an-map-panel .an-wind')`, 'Calculé');
-await wait(1200);
+await settle({ max: 1200 });
 check('« Calculé » : retour au vent calculé', (await panel('Général')).includes('calculé'), await panel('Général'));
 await clickButton(`document.querySelector('.an-map-panel .an-wind')`, 'Terminé');
 await wait(500);
@@ -292,7 +248,7 @@ check('390 px : « avancé » ouvert, sans débordement', (await overflow()) <= 
 await shoot('general-voile-390');
 await setAdvanced(false);
 await clickButton(panelOf('Général'), 'Régler');
-await wait(1200);
+await settle({ max: 1200 });
 check('390 px : « Régler » ouvre la carte en plein écran avec la boussole', await evaluate(`Boolean(document.querySelector('.an-map-overlay .an-wind__dial'))`));
 await shoot('general-vent-390');
 await clickButton(`document.querySelector('.an-map-overlay .an-wind')`, 'Terminé');
@@ -301,7 +257,4 @@ check('390 px : « Terminé » ferme la carte agrandie', !(await evaluate(`Boole
 
 console.log('\n--- console (erreurs, avertissements) ---');
 logs.forEach((l) => console.log(l));
-console.log(failures === 0 ? 'Tout passe.' : `${failures} échec(s).`);
-await send('Page.close').catch(() => undefined);
-ws.close();
-process.exit(failures === 0 ? 0 : 1);
+await finish('Tout passe.');

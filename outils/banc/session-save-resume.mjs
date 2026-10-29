@@ -1,68 +1,84 @@
-// Suite de session-save.mjs (24/09/2026), sur le même profil Chrome : la session déjà importée est
-// classée en wingfoil (le seuil de la session est effacé), puis son seuil est enregistré à 4 et 12 nœuds ;
-// le résumé de la fiche doit suivre.
+// Suite de session-save.mjs (24/09/2026, reprise sur la bibliothèque et la page d'aujourd'hui le 29/10, n° 84),
+// sur le même profil Chrome : la session déjà importée est classée en Voile (l'activité de la session change par
+// le choix d'activité de l'onglet réglages), puis son seuil est enregistré à 4 et 12 nœuds ; le résumé de la fiche
+// doit suivre.
 // Usage : node session-save-resume.mjs <port>
+// Se branche sur le Chrome du profil de `session-save.mjs` (`BANC_WS` : l'onglet de ce profil), sinon ouvre un
+// onglet du Chrome du port : alors la bibliothèque doit déjà contenir la session.
+import { connect } from './lib/cdp.mjs';
+
 const [port] = process.argv.slice(2);
-const BASE = process.env.BASE ?? 'http://127.0.0.1:4199';
+if (!port) {
+  console.error('Usage : node session-save-resume.mjs <port>');
+  process.exit(1);
+}
 
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
-const dialogs = [];
-let acceptDialogs = false;
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
-  if (msg.method === 'Page.javascriptDialogOpening') {
-    dialogs.push(msg.params.message);
-    ws.send(JSON.stringify({ id: ++id, method: 'Page.handleJavaScriptDialog', params: { accept: acceptDialogs } }));
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => {
-  const res = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-  if (res.result?.exceptionDetails) return `ERREUR: ${res.result.exceptionDetails.exception?.description?.split('\n')[0]}`;
-  return res.result?.result?.value;
-};
-const go = async (path, ms = 2500) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
-const clickText = (text, selector = 'button') => evaluate(`(() => { const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.trim().startsWith(${JSON.stringify(text)})); if (!b) return 'absent'; b.click(); return 'ok'; })()`);
-// Saisie dans un champ contrôlé par React : setter natif, puis événement `input`.
-const typeInto = (selector, value) => evaluate(`(() => { const el = ${selector}; if (!el) return 'absent'; const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()`);
-const THRESHOLD_INPUT = `[...document.querySelectorAll('label')].find((l) => l.textContent.includes("Seuil d'activité"))?.querySelector('input')`;
-const readOpfs = (path) => evaluate(`(async () => { let d = await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker'); const parts = ${JSON.stringify(path)}.split('/'); const name = parts.pop(); for (const p of parts) d = await d.getDirectoryHandle(p); return await (await (await d.getFileHandle(name)).getFile()).text(); })()`);
+// --- Protocole (lib/cdp.mjs) ---
+const { evaluate, go, settle, waitFor, clickText, records, check, finish, logs } = await connect({ port, width: 1400, height: 1000 });
+
 const step = (title) => console.log(`\n== ${title}`);
+const typeInto = (selector, value) => evaluate(`(() => {
+  const el = ${selector};
+  if (!el) return 'absent';
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(value)});
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  return 'ok';
+})()`);
+const THRESHOLD_INPUT = `document.querySelector('input[aria-label="Seuil d\\'activité"]')`;
+const openTab = (label) => evaluate(`(() => {
+  const t = [...document.querySelectorAll('.an-carte-col .ui-tab')].find((x) => x.textContent.trim() === ${JSON.stringify(label)});
+  if (!t) return 'absent';
+  if (t.getAttribute('aria-pressed') !== 'true') t.click();
+  return 'ok';
+})()`);
+/** Choisit une activité dans le choix d'activité de l'analyse : 'ok' ou 'absent'. */
+const chooseActivity = (text) => evaluate(`(async () => {
+  for (const button of document.querySelectorAll('button.activity-select:not(:disabled)')) {
+    button.click();
+    await new Promise((r) => setTimeout(r, 150));
+    const item = [...document.querySelectorAll('.activity-select__option')].find((o) => o.textContent.trim() === ${JSON.stringify(text)});
+    if (item) { item.click(); return 'ok'; }
+    document.querySelector('.activity-select__backdrop')?.click();
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return 'absent';
+})()`);
+const fiche = async (file) => {
+  const r = (await records())?.find((x) => x.gpx === file);
+  return r ? JSON.stringify({ sport: r.sport, analysis: r.analysis, movingTimeS: Math.round(r.summary?.movingTimeS ?? 0) }) : 'fiche absente';
+};
+const activeTime = () => evaluate(`document.body.innerText.match(/Temps (actif|en vol)[^\\n]*\\n[^\\n]*/)?.[0].replace(/\\n/g, ' ') ?? '(absent)'`);
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
-// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-const setSelect = (value) => evaluate(`(() => { const el = document.querySelector('select'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
-const fiche = async (file) => { const r = JSON.parse(await readOpfs(`sessions/${file.replace(/\.gpx$/, '.json')}`)); return JSON.stringify({ sport: r.sport, analysis: r.analysis, movingTimeS: r.summary.movingTimeS === null ? null : Math.round(r.summary.movingTimeS) }); };
-await go('/voile');
-await evaluate(`document.querySelector('.lib-row__main').click()`);
-await wait(6000);
-const url = await evaluate('location.pathname + location.search');
-const file = decodeURIComponent(url.split('session=')[1]);
-step('Support wingfoil : le seuil de la session est effacé, résumé recalculé');
-console.log(await setSelect('wingfoil'));
-await wait(4000);
+await go('/voile', 3000);
+const file = (await records())?.[0]?.gpx ?? '';
+check('la session de session-save.mjs est là', file !== '', file);
+const url = `/voile/analyse?session=${encodeURIComponent(file)}`;
+await go(url, 6000);
+await waitFor(`document.querySelectorAll('.an-carte-col .ui-tab').length > 0`, { timeout: 30000, every: 200, label: 'onglets' });
+await settle({ max: 1000, label: 'analyse' });
+
+step('Activité Voile : le seuil de la session est effacé, résumé recalculé');
+console.log('onglet réglages :', await openTab('réglages'));
+await settle({ max: 800, label: 'onglet réglages' });
+console.log('Voile :', await chooseActivity('Voile'));
+await settle({ max: 4000, label: 'changement d\'activité' });
 console.log('fiche :', await fiche(file), '| seuil affiché :', await evaluate(`${THRESHOLD_INPUT}?.value`));
+
 for (const seuil of ['4', '12']) {
   step(`Seuil ${seuil} nds enregistré`);
-  await typeInto(THRESHOLD_INPUT, seuil);
-  await wait(3000);
-  const actif = await evaluate(`[...document.querySelectorAll('li')].find((l) => l.textContent.startsWith('Temps actif'))?.textContent`);
-  await clickText('Enregistrer la session');
-  await wait(4000);
-  console.log('page :', actif, '| fiche :', await fiche(file));
+  await openTab('réglages');
+  await settle({ max: 800, label: 'onglet réglages' });
+  console.log('saisie :', await typeInto(THRESHOLD_INPUT, seuil));
+  await settle({ max: 3000, label: 'seuil saisi' });
+  const before = (await fiche(file));
+  console.log('clic :', await clickText('Enregistrer la session'));
+  await waitFor(async () => (await fiche(file)) !== before, { timeout: 4000, label: 'fiche écrite' });
+  await settle({ max: 4000, label: 'enregistrement' });
+  await openTab('général');
+  await settle({ max: 800, label: 'onglet général' });
+  console.log('page :', await activeTime(), '| fiche :', await fiche(file));
 }
+
 step('Console');
 console.log(logs.length ? logs.join('\n') : 'aucune erreur');
-ws.close();
+await finish('Tout passe.');

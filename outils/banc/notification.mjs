@@ -10,37 +10,24 @@
 //  4. arrêt : notification effacée ;
 //  5. compteur du fractionné pendant un enregistrement (rejeu ×1 daté de maintenant) : phase au titre et décompte ; « Étape » d'office (26/10).
 import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, workDir] = process.argv.slice(2);
 if (!port || !workDir) {
   console.error('Usage : node notification.mjs <port> <dossier de travail>');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
 // --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, wait, blockNetwork, importFiles, close, logs, onMessage } = await connect({ port, width: 1400, height: 1000 });
 /** Envois de la notification, avec l'instant de réception. */
 const sent = [];
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled') {
-    const text = msg.params.args.map((a) => a.value ?? a.description).join(' ');
-    if (msg.params.type === 'debug' && text.startsWith('[notification]')) sent.push({ atMs: Date.now(), text: text.slice('[notification] '.length) });
-    if (['error', 'warning'].includes(msg.params.type)) logs.push(`${msg.params.type}: ${text.split('\n')[0].slice(0, 300)}`);
-  }
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+onMessage((msg) => {
+  if (msg.method !== 'Runtime.consoleAPICalled') return;
+  const text = msg.params.args.map((a) => a.value ?? a.description).join(' ');
+  if (msg.params.type === 'debug' && text.startsWith('[notification]')) sent.push({ atMs: Date.now(), text: text.slice('[notification] '.length) });
+});
 let failures = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failures++;
@@ -63,11 +50,7 @@ const setSelect = (label, value) => evaluate(`(() => {
   s.dispatchEvent(new Event('change', { bubbles: true }));
   return s.value;
 })()`);
-const setFile = async (selector, file) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files: [file] });
-};
+const setFile = (selector, file) => importFiles(file, selector);
 /** Rejeu d'un GPX à la vitesse donnée, depuis la page Enregistrer, la famille choisie. */
 const startReplay = async (family, file, speed) => {
   await go('/enregistrer');
@@ -95,11 +78,9 @@ const nowTrace = (path, n, type) => {
   writeFileSync(path, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Rejeu</name><type>${type}</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`);
 };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Network.setBlockedURLs', { urls: ['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*'] });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+await blockNetwork(['*://data.geopf.fr/*', '*://overpass-api.de/*', '*://*.openstreetmap.org/*', '*://brouter.de/*']);
 
 // 1. Réglages : notification, dans la partie Enregistrement de la carte Voile.
 await go('/parametres', 4000);
@@ -217,5 +198,5 @@ await evaluate(`(async () => { const b = document.querySelector('.ivl button.ui-
 
 console.log(logs.length ? `console :\n  ${logs.join('\n  ')}` : 'console : rien');
 console.log(failures ? `${failures} échec(s)` : 'tout est bon');
-ws.close();
+await close();
 process.exit(failures ? 1 : 0);

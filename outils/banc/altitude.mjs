@@ -8,45 +8,25 @@
 //  3. passe la session au GPS dans ses réglages, puis revient à l'IGN : D+ et liste suivent ;
 //  4. règle un point tous les 20 m dans Réglages : l'altitude est redemandée à la réouverture.
 import { writeFileSync } from 'node:fs';
+import { connect } from './lib/cdp.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
 if (!port || !workDir) {
   console.error('Usage : node altitude.mjs <port> <dossier de travail> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://localhost:5173';
 
-// --- Protocole ---
-const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-let id = 0;
-const pending = new Map();
-const logs = [];
+// --- Protocole (lib/cdp.mjs) ---
+const { send, evaluate, go, settle, waitFor, wait, importFiles, shoot, onMessage, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
 let ignRequests = 0;
-const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') logs.push(`EXCEPTION: ${(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).split('\n')[0]}`);
-  if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
-    logs.push(`${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(' ').split('\n')[0].slice(0, 300)}`);
-  }
+onMessage((msg) => {
   if (msg.method === 'Network.requestWillBeSent' && msg.params.request.method !== 'OPTIONS' && msg.params.request.url.startsWith('https://data.geopf.fr/altimetrie/')) ignRequests += 1;
-  if (msg.method === 'Page.javascriptDialogOpening') void send('Page.handleJavaScriptDialog', { accept: true });
-};
-await new Promise((r) => { ws.onopen = r; });
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
-const go = async (path, ms = 3000) => { await send('Page.navigate', { url: `${BASE}${path}` }); await wait(ms); };
+});
+
 const clickButton = (text) => evaluate(`(() => {
   const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)} && !x.disabled);
   if (!b) return 'absent'; b.click(); return 'ok';
 })()`);
-const setFile = async (selector, path) => {
-  const { result: { root } } = await send('DOM.getDocument', { depth: -1 });
-  const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector });
-  await send('DOM.setFileInputFiles', { nodeId, files: [path] });
-};
 /** Choisit `value` dans la liste qui suit le libellé `label` (texte du `label` ou de la ligne de réglage). */
 const chooseIn = (label, value) => evaluate(`(() => {
   const holder = [...document.querySelectorAll('label, .settings-row')].find((x) => x.textContent.trim().startsWith(${JSON.stringify(label)}) && x.querySelector('select'));
@@ -59,11 +39,6 @@ const chooseIn = (label, value) => evaluate(`(() => {
 const openSettingsTab = async () => {
   const already = await evaluate(`[...document.querySelectorAll('label')].some((x) => x.textContent.trim().startsWith('Altitude') && x.querySelector('select'))`);
   return already ? 'déjà ouvert' : clickButton('réglages');
-};
-const shoot = async (name) => {
-  if (!shotDir) return;
-  const shot = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(`${shotDir}/${name}.png`, Buffer.from(shot.result.data, 'base64'));
 };
 const readOpfs = (path) => evaluate(`(async () => {
   let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('Tracker');
@@ -87,11 +62,7 @@ const waitSource = async (pattern) => {
   }
 };
 
-await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable'); await send('Network.enable');
-// Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
-await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
-
 // 1. Course synthétique vers le nord, de Grabels vers Saint-Gély-du-Fesc (garrigue, une centaine de mètres de relief).
 const SPEED = 3;
 const t0 = Date.UTC(2026, 9, 7, 8, 0, 0);
@@ -108,9 +79,9 @@ writeFileSync(runPath, `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.
 }\n</trkseg></trk></gpx>\n`);
 console.log(`course synthétique : ${fixes.length} points à ${SPEED} m/s`);
 await go('/course');
-await setFile('input[type=file][accept=".gpx"][multiple]', runPath);
-await wait(4000);
-const gpxName = (await listOpfs('sessions')).find((n) => n.endsWith('.gpx'));
+await importFiles(runPath, 'input[type=file][accept=".gpx"][multiple]');
+const gpxName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx')), { timeout: 6000, label: 'fiche course' });
+await settle({ max: 1500, label: 'import course' });
 const recordPath = `sessions/${gpxName.replace(/\.gpx$/, '.json')}`;
 console.log('rangée :', gpxName, '| liste :', await listGain(), '| requêtes IGN', ignRequests);
 
@@ -120,7 +91,7 @@ console.log('pendant :', await sourceLine());
 await waitSource(/IGN\.$|hors|Réessayez|réseau/);
 console.log('après :', await sourceLine(), '| dénivelé', await elevationStat(), '| requêtes IGN', ignRequests);
 await shoot('altitude-ign');
-await wait(1500);
+await waitFor(async () => JSON.parse(await readOpfs(recordPath)).terrainElevation, { timeout: 1500, label: 'altitude rangée' });
 const record = JSON.parse(await readOpfs(recordPath));
 const terrain = record.terrainElevation;
 console.log('fiche :', terrain
@@ -133,7 +104,8 @@ console.log('rechargée :', await sourceLine(), '| dénivelé', await elevationS
 console.log('onglet réglages :', await openSettingsTab());
 await wait(500);
 console.log('GPS :', await chooseIn('Altitude', 'gps'));
-await wait(2000);
+await settle({ max: 2000 });
+await waitFor(async () => JSON.parse(await readOpfs(recordPath)).elevationSource !== undefined, { timeout: 2000, label: 'fiche au GPS' });
 console.log('au GPS :', await sourceLine(), '| dénivelé', await elevationStat(), '| fiche', JSON.parse(await readOpfs(recordPath)).elevationSource ?? '(IGN)');
 await go('/course', 3000);
 console.log('liste au GPS :', await listGain());
@@ -141,7 +113,8 @@ await go(`/course/analyse?session=${encodeURIComponent(gpxName)}`, 3000);
 await openSettingsTab();
 await wait(500);
 console.log('IGN :', await chooseIn('Altitude', 'ign'));
-await wait(2000);
+await settle({ max: 2000 });
+await waitFor(async () => JSON.parse(await readOpfs(recordPath)).elevationSource === undefined, { timeout: 2000, label: 'fiche IGN' });
 console.log('à l\'IGN :', await sourceLine(), '| dénivelé', await elevationStat(), '| fiche', JSON.parse(await readOpfs(recordPath)).elevationSource ?? '(IGN)', '| requêtes IGN', ignRequests);
 await go('/course', 3000);
 console.log('liste à l\'IGN :', await listGain());
@@ -159,10 +132,11 @@ console.log('20 m :', await chooseIn('Altitude IGN', '20'));
 await wait(500);
 await go(`/course/analyse?session=${encodeURIComponent(gpxName)}`, 1500);
 await waitSource(/IGN\.$|hors|Réessayez|réseau/);
-await wait(1500);
+await waitFor(async () => JSON.parse(await readOpfs(recordPath)).terrainElevation?.stepM === 20, { timeout: 1500, label: 'altitude a 20 m rangée' });
 const record20 = JSON.parse(await readOpfs(recordPath));
 console.log('à 20 m :', await sourceLine(), '| dénivelé', await elevationStat(), '| requêtes IGN', ignRequests,
   '| fiche', record20.terrainElevation ? `pas ${record20.terrainElevation.stepM} m, ${record20.terrainElevation.t.length} échantillons` : 'sans altitude');
 
 console.log(logs.length ? `console :\n${logs.join('\n')}` : 'console : aucune erreur');
-ws.close();
+await close();
+process.exit(0);
