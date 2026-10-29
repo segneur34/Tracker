@@ -84,7 +84,7 @@ Ordre et orchestration seulement. Les seuils, fenêtres et formules sont nommés
    - le nom (`trk/name`) ;
    - le type d'activité (`trk/type`), qui sert à deviner le support d'un import ;
    - les points sans position mais horodatés (`timedPoints`, heure et FC éventuelle ; point 182) : ceux d'une muscu, qui ne passe jamais par la cinématique (`core/heartRateSession.ts`, `summarizeHeartRateSession`). Les `rawPoints` des traces à positions sont inchangés.
-2. `core/sessionSpeed.ts` calcule l'allure de la session (`referenceSpeedMs`, neuvième décile des vitesses brutes, pondéré par la durée) et la cadence (`samplingIntervalS`).
+2. `core/sessionSpeed.ts` calcule l'allure de la session (`referenceSpeedMs`, neuvième décile des vitesses brutes, pondéré par la durée) et la cadence (`samplingIntervalS`). La date brute de chaque point est lue une fois (`rawTimeMs`, posé par `parseGpx` et `toRawPoint`) ; l'unité du Doppler est détectée une fois par le hook et passée à `referenceSpeedMs` (la cinématique garde sa propre détection, bogue C10).
    - Le module voile en tire ses seuils de filtrage (`sessionFilterThresholds`, option `scaleFiltersToSession`). L'accélération plausible vaut max(2 ; 0,8 × allure) par seconde ; le plafond de vitesse est resserré, jamais au-dessus de celui du profil.
    - Sans allure (en course, ou sur une trace trop courte) : 10 m/s² et le plafond du profil.
    - L'allure peut être imposée pour une session, ce qui recalcule toute la chaîne (§10, point 46).
@@ -94,7 +94,7 @@ Ordre et orchestration seulement. Les seuils, fenêtres et formules sont nommés
    - point dont la position saute puis revient (`detourSpikes`) : détour de plus de `maxDetourRatio` fois (3, profil) le chemin direct entre ses voisins, et vitesse impossible au regard de l'accélération plausible. Ses deux intervalles prennent la vitesse et le cap du chemin direct ; un point qui a son Doppler n'est pas touché (§10, point 104) ;
    - vitesse de l'appareil, convertie après détection de son unité ;
    - écrêtage (`clampByAcceleration`, `core/speedFilter.ts`) ;
-   - médiane temporelle, qui donne `smoothedSpeedMs`, la vitesse de toutes les analyses.
+   - médiane temporelle (fenêtre triée tenue à jour, repli sur `median` si une valeur est `NaN`), qui donne `smoothedSpeedMs`, la vitesse de toutes les analyses.
 4. Puis, dans `core/sessionStats.ts` et `core/elevation.ts` :
    - `buildCumulativeTrack` ;
    - `computeActivityMask`, un trigger de Schmitt autour du seuil d'activité, qui démarre dans l'état du premier point. Sans seuil réglé (0), un plancher d'arrêt du calcul (`SportProfile.stillThreshold`) ôte les arrêts complets : détentes de `getActiveThresholds` (entrée 2 km/h, sortie 0,5 à pied, jamais nulle : seuil × `EXIT_FLOOR_RATIO` si seuil + `exitOffset` ≤ 0), confirmation `minStateDurationS`. Un trou de trace n'est en action que si sa vitesse moyenne atteint la détente basse (`gapMinSpeedMs`) ;
@@ -135,7 +135,7 @@ Ordre et orchestration seulement. Les seuils, fenêtres et formules sont nommés
    - Trois tops au près et trois au portant.
 9. Graphes :
    - série principale du graphe sous-échantillonnée à `CHART_MAX_POINTS` en gardant les extrêmes (`sampledIndices`, tolérance `CHART_EXTREME_TOLERANCE` de 5 % de l'étendue), les indices restant ceux de la trace complète ; tops, vitesses max et couleurs se calculent sur les points complets (point 167) ;
-   - survol : l'index survolé vit dans un magasin hors React (`hooks/useChartHover.ts`), lu seulement par le repère de la carte et les lectures de graphe ;
+   - survol : l'index survolé vit dans un magasin hors React (`hooks/useChartHover.ts`), lu seulement par le repère de la carte et les lectures de graphe ; les graphes et le profil de la planification y écrivent directement (`trackHover`, `clearTrackHover`), la page de planification ne se redessine donc pas au survol ; les courbes Recharts n'animent plus ;
    - polaire en 36 secteurs relatifs au vent.
 10. Sauts (point 91), si la session a ses capteurs (`.imu`) : `useSessionJumps` reprend ceux de la fiche, sinon les calcule à l'ouverture de l'analyse (`measureJumps`, `core/jumps.ts`, en SI sur la trace `track` que rend `useSailingSession`) et les range. La hauteur minimale de l'activité et le seuil d'activité effectif (vitesse au décollage) ne filtrent qu'à l'affichage : les changer ne recalcule rien.
 11. Pumping (point 186), sur foil hors bateau : `sailingFlights` (`sailing/sailingStats.ts`) découpe les vols au seuil d'activité de la session, masque coupé aux trous de plus de `maxGapS`, listés à partir de 10 s ; Pumping coché et la session ayant sa capture, `useSessionPumping` lit le `.imu` à l'ouverture de l'onglet « pumping » et `measureFlightPumping` (`core/pumping.ts`, la mesure du surf) mesure chaque vol, réglages dans `pump` du profil (`SAILING_PUMP_DETECTION`). Pumping décoché, l'onglet liste les vols et invite à cocher la case.
