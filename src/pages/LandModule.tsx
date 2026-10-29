@@ -1,6 +1,5 @@
 import { roundTo, toFixedNumber } from '../core/basics';
 import { Fragment, useCallback, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
 import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
 import './analysisMobile.css';
 import GradeLegendRow from '../components/GradeLegendRow';
@@ -11,7 +10,7 @@ import NotesTab from '../components/NotesTab';
 import CadencePanel from '../components/CadencePanel';
 import ChartFold, { GraphFoldHead } from '../components/ChartFold';
 import { HoverReadout, type Readout, type ReadoutValue } from '../components/ChartReadout';
-import AnalysisMap, { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
+import { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
 import EffortThresholdEditor from '../components/EffortThresholdEditor';
 import GradeGradientLegend from '../components/GradeGradientLegend';
 import HeartRateChart from '../components/HeartRateChart';
@@ -34,12 +33,9 @@ import { gearFieldsFor } from '../components/gearFields';
 import { HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import { CADENCE_COLOR } from '../components/cadenceColors';
-import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
-import SessionNameEditor from '../components/SessionNameEditor';
 import GeneralStats from '../components/GeneralStats';
 import ElevationProfileMini, { type ElevationProfileRow } from '../components/ElevationProfileMini';
-import { shareableStats, type ShareStat } from '../core/shareImage';
-import SessionSaveBar from '../components/SessionSaveBar';
+import type { ShareStat } from '../core/shareImage';
 import SessionWeightField from '../components/SessionWeightField';
 import { SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
@@ -54,7 +50,6 @@ import { zoomHint } from '../components/zoomHint';
 import { inChartView } from '../components/chartHover';
 import { ANALYSIS_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
-import PageHeader from '../components/ui/PageHeader';
 import { LAND_TABS, tabDefaults, type LandTab } from '../core/analysisTabs';
 import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { trackChartRows, type TrackChartRow } from '../core/chartRows';
@@ -77,7 +72,6 @@ import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
 import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
-import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { useAnalysisHeart, useHeartRateZoneHighlight } from '../hooks/useAnalysisHeart';
@@ -103,6 +97,7 @@ import { LAND_PAGES, LAND_TREATMENTS, TOTAL_ENERGY_LABEL, type LandFamily, type 
 import StatTile from '../components/ui/StatTile';
 import MapToggle from '../components/ui/MapToggle';
 import { ALTITUDE_COLOR, ENERGY_COLOR, SPEED_COLOR } from '../components/chartStyle';
+import AnalysisShell from '../components/AnalysisShell';
 
 /** Lissage supplémentaire de la vitesse pour le graphe, en secondes. */
 const CHART_SPEED_SMOOTHING_S = 10;
@@ -988,56 +983,30 @@ function LandModule({ family }: { family: LandFamily }) {
   );
 
   return (
-    <div className="an-page" style={{ padding: '20px' }}>
-      <div className="an-sheet">
-        <div className="an-sheet__head">
-          <PageHeader title={isTestSport(profile.id) ? 'Analyse test' : page.title} subtitle={gpx.fileName ? (
-            <SessionNameEditor file={gpx.fileName}
-              share={generalStats.length > 0 ? { family, segments: mapSegments, stats: shareableStats(generalStats) } : undefined} />
-          ) : undefined} back={{ to: libraryPath(family), label: page.backLabel }} />
-          {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
-        </div>
-      </div>
-
-      <SessionSaveBar draft={draft} />
-
-      {gpx.error && (
-        <div className="ui-alert ui-alert--danger" style={{ marginBottom: '10px', maxWidth: '520px' }}>
-          {gpx.error}
-        </div>
-      )}
-
-      {!stats && !gpx.error && requestedFile === null && (
-        <p style={{ color: 'var(--muted)' }}>
-          Aucune session ouverte : choisissez-en une dans <Link to={libraryPath(family)}>{page.backLabel}</Link>.
-        </p>
-      )}
-
-      <div className="an-map-row" style={{ marginTop: '10px' }}>
-        <AnalysisMap
-          panelId={panelId('carte')}
-          anchorId={ANALYSIS_MAP_ANCHOR}
-          expanded={mapExpanded}
-          onExpandedChange={(next) => {
-            setMapExpanded(next);
-            if (!next) zoomOnMap.closeCompanion();
-          }}
-          focus={zoomOnMap.focus}
-          companion={companionCharts(zoomOnMap.companionPanel)}
-          sessionKey={gpx.sessionKey}
-          bounds={mapBounds}
-          layers={mapLayers}
-          defaultHeight={480}
-          legend={gpx.track.length === 0 || surfaceMapPaths ? null
-            : gradeMapPaths ? <GradeGradientLegend range={gradeRange} />
-              : <SpeedGradientLegend unit={speedUnit} range={range} slowLabel={model.slowLabel} />} />
-      </div>
-
-      {/* Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`). */}
-      {stats && (
-        <div className="an-carte-col">
-          <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} advancedOpen={advanced.open} onToggleAdvanced={advanced.toggle} accent={page.accent} />
-          <div className="an-carte-panels">
+    <AnalysisShell title={isTestSport(profile.id) ? 'Analyse test' : page.title} family={family} backLabel={page.backLabel} file={gpx.fileName}
+      share={{ segments: mapSegments, stats: generalStats }} error={sessionError} draft={draft} loadError={gpx.error}
+      empty={!stats && !gpx.error && requestedFile === null}
+      map={{
+        panelId: panelId('carte'),
+        expanded: mapExpanded,
+        onExpandedChange: (next) => {
+          setMapExpanded(next);
+          if (!next) zoomOnMap.closeCompanion();
+        },
+        focus: zoomOnMap.focus,
+        companion: companionCharts(zoomOnMap.companionPanel),
+        sessionKey: gpx.sessionKey,
+        bounds: mapBounds,
+        layers: mapLayers,
+        defaultHeight: 480,
+        legend: gpx.track.length === 0 || surfaceMapPaths ? null
+          : gradeMapPaths ? <GradeGradientLegend range={gradeRange} />
+            : <SpeedGradientLegend unit={speedUnit} range={range} slowLabel={model.slowLabel} />,
+      }}
+      // Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
+      tabs={stats ? {
+        sections, open, onToggle: toggle, advanced, accent: page.accent, panels: (
+          <>
             {open.general && (
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
                 <PanelHeading label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={toggleOf('general')} />
@@ -1386,10 +1355,9 @@ function LandModule({ family }: { family: LandFamily }) {
                 )}
               </ResizablePanel>
             )}
-          </div>
-        </div>
-      )}
-    </div>
+          </>
+        ),
+      } : null} />
   );
 }
 

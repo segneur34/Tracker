@@ -45,6 +45,7 @@ export const SCRIPTS = [
   { nom: 'chrono', args: ['{port}', '{captures?}'], pages: ['enregistrer'], solo: true },
   { nom: 'classer', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'course', 'velo'] },
   { nom: 'compteur-course', args: ['{port}', '{travail}', '{captures?}'], pages: ['enregistrer', 'fractionne', 'course'], solo: true, accelerable: true },
+  { nom: 'coquille', args: ['{port}', '{captures?}'], pages: ['voile', 'course', 'velo', 'surf', 'fractionne'] },
   { nom: 'depense', args: ['{port}', '{captures?}'], pages: ['course', 'reglages'] },
   { nom: 'donnees', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'velo', 'accueil', 'profil'], dev: true },
   { nom: 'entrainement', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer', 'reglages', 'accueil'] },

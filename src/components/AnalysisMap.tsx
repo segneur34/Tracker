@@ -10,7 +10,7 @@ import MapAutoResize from './MapAutoResize';
 import { MapOverlayContext } from './mapOverlayContext';
 import ResizablePanel from './ResizablePanel';
 
-interface AnalysisMapProps {
+export interface AnalysisMapProps {
   /** Identifiant du bloc redimensionnable, clé de sa taille mémorisée : ne pas le renommer. */
   panelId: string;
   /** Ancre HTML du bloc, cible des boutons qui ramènent à la carte. */

@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
 import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
 import './analysisMobile.css';
 import { ReferenceArea } from 'recharts';
@@ -12,18 +11,15 @@ import FoilPumpingFields from '../components/FoilPumpingFields';
 import { GraphFoldHead } from '../components/ChartFold';
 import { HoverReadout, type Readout } from '../components/ChartReadout';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
-import AnalysisMap, { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
+import { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
 import { SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
 import { HelpText } from '../components/Help';
 import PanelTitle, { PanelHeading, SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import { gearFieldsFor } from '../components/gearFields';
-import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
-import SessionNameEditor from '../components/SessionNameEditor';
 import GeneralStats from '../components/GeneralStats';
-import { shareableStats, type ShareStat } from '../core/shareImage';
-import SessionSaveBar from '../components/SessionSaveBar';
+import type { ShareStat } from '../core/shareImage';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SessionThresholdField from '../components/SessionThresholdField';
 import { SessionColorRangeField } from '../components/SpeedRangeEditor';
@@ -40,7 +36,6 @@ import { zoomHint } from '../components/zoomHint';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import { ANALYSIS_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
-import PageHeader from '../components/ui/PageHeader';
 import { SURF_TABS, tabDefaults, type SurfTab } from '../core/analysisTabs';
 import { sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
@@ -55,7 +50,6 @@ import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
 import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
-import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
@@ -67,6 +61,7 @@ import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfin
 import StatTile from '../components/ui/StatTile';
 import MapToggle from '../components/ui/MapToggle';
 import { SPEED_COLOR } from '../components/chartStyle';
+import AnalysisShell from '../components/AnalysisShell';
 
 /**
  * Analyse d'une session de surf (§10, point 97), selon le patron commun
@@ -419,51 +414,27 @@ function SurfModule() {
   const firstOut = returns.find((r) => r.after === 0) ?? null;
 
   return (
-    <div className="an-page" style={{ padding: '20px' }}>
-      <div className="an-sheet">
-        <div className="an-sheet__head">
-          <PageHeader title="Analyse Surf" subtitle={gpx.fileName ? (
-            <SessionNameEditor file={gpx.fileName}
-              share={generalStats.length > 0 ? { family: 'surf', segments: mapSegments, stats: shareableStats(generalStats) } : undefined} />
-          ) : undefined} back={{ to: libraryPath('surf'), label: 'Surf' }} />
-          {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
-        </div>
-      </div>
-
-      <SessionSaveBar draft={draft} />
-
-      {gpx.error && (
-        <div className="ui-alert ui-alert--danger" style={{ marginBottom: '10px', maxWidth: '520px' }}>{gpx.error}</div>
-      )}
-
-      {!summary && !gpx.error && requestedFile === null && (
-        <p style={{ color: 'var(--muted)' }}>
-          Aucune session ouverte : choisissez-en une dans <Link to={libraryPath('surf')}>Surf</Link>.
-        </p>
-      )}
-
-      <div className="an-map-row" style={{ marginTop: '10px' }}>
-        <AnalysisMap
-          panelId={panelId('carte')}
-          anchorId={ANALYSIS_MAP_ANCHOR}
-          expanded={mapExpanded}
-          onExpandedChange={(next) => {
-            setMapExpanded(next);
-            if (!next) zoomOnMap.closeCompanion();
-          }}
-          focus={zoomOnMap.focus}
-          companion={companionCharts(zoomOnMap.companionPanel)}
-          sessionKey={gpx.sessionKey}
-          bounds={mapBounds}
-          layers={mapLayers}
-          defaultHeight={480}
-          legend={track.length === 0 ? null : <SpeedGradientLegend unit={speedUnit} range={range} slowLabel="rame et attente" />} />
-      </div>
-
-      {summary && analysis && surfProfile && (
-        <div className="an-carte-col">
-          <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} advancedOpen={advanced.open} onToggleAdvanced={advanced.toggle} accent={ACCENT} />
-          <div className="an-carte-panels">
+    <AnalysisShell title="Analyse Surf" family="surf" backLabel="Surf" file={gpx.fileName}
+      share={{ segments: mapSegments, stats: generalStats }} error={sessionError} draft={draft} loadError={gpx.error}
+      empty={!summary && !gpx.error && requestedFile === null}
+      map={{
+        panelId: panelId('carte'),
+        expanded: mapExpanded,
+        onExpandedChange: (next) => {
+          setMapExpanded(next);
+          if (!next) zoomOnMap.closeCompanion();
+        },
+        focus: zoomOnMap.focus,
+        companion: companionCharts(zoomOnMap.companionPanel),
+        sessionKey: gpx.sessionKey,
+        bounds: mapBounds,
+        layers: mapLayers,
+        defaultHeight: 480,
+        legend: track.length === 0 ? null : <SpeedGradientLegend unit={speedUnit} range={range} slowLabel="rame et attente" />,
+      }}
+      tabs={summary && analysis && surfProfile ? {
+        sections, open, onToggle: toggle, advanced, accent: ACCENT, panels: (
+          <>
             {open.general && (
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
                 <PanelHeading label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={toggleOf('general')} />
@@ -757,10 +728,9 @@ function SurfModule() {
                 </div>
               </ResizablePanel>
             )}
-          </div>
-        </div>
-      )}
-    </div>
+          </>
+        ),
+      } : null} />
   );
 }
 

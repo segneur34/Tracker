@@ -8,10 +8,8 @@ import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
 import L from 'leaflet';
 import type { DotItemDotProps } from 'recharts';
 import './analysisMobile.css';
-import { Link } from 'react-router-dom';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
 import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
-import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
 import { effectiveHrOffset, useSportSettings } from '../hooks/useSportSettings';
@@ -52,7 +50,7 @@ import HeartRateChart from '../components/HeartRateChart';
 import { CardioCompanion } from '../components/HeartRatePanel';
 import { heartRateReadout, speedReadout } from '../components/chartReadouts';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
-import AnalysisMap, { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
+import { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
 import TrackChart, { type TrackSeries, type TrackYAxis } from '../components/TrackChart';
 import { zoomHint } from '../components/zoomHint';
 import EmptyTabPanel from '../components/EmptyTabPanel';
@@ -61,27 +59,24 @@ import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import HighlightPath from '../components/HighlightPath';
 import SessionThresholdField from '../components/SessionThresholdField';
 import type { GearField } from '../components/gearFields';
-import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import { ANALYSIS_PANEL_STYLE, CARD_STYLE, HALF_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
 import { HelpText } from '../components/Help';
 import { useHelp } from '../components/helpContext';
 import PanelTitle, { PanelHeading, SessionDate } from '../components/PanelTitle';
-import SessionNameEditor from '../components/SessionNameEditor';
 import GeneralStats from '../components/GeneralStats';
 import WindCompass from '../components/WindCompass';
 import WindAdjustOverlay from '../components/WindAdjustOverlay';
 import SpeedPolarChart from '../components/SpeedPolarChart';
-import { shareableStats, type ShareStat } from '../core/shareImage';
-import SessionSaveBar from '../components/SessionSaveBar';
+import type { ShareStat } from '../core/shareImage';
 import { SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import { SessionColorRangeField } from '../components/SpeedRangeEditor';
-import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
 import MapToggle from '../components/ui/MapToggle';
 import { ALTITUDE_COLOR, SAILING_SPEED_COLOR } from '../components/chartStyle';
+import AnalysisShell from '../components/AnalysisShell';
 
 /** Champs du matériel en voile : l'aile ou la voile, plus le foil et le mât sur foil. */
 const SAILING_GEAR_FIELDS: GearField[] = [{ field: 'wing', label: 'Aile / voile', placeholder: 'ex. 5 m²' }];
@@ -872,78 +867,63 @@ function SailingModule() {
   );
 
   return (
-    <div className="an-page" style={{ padding: '20px' }}>
-      <div className="an-sheet">
-        <div className="an-sheet__head">
-          <PageHeader title="Analyse voile" subtitle={requestedFile ? (
-            <SessionNameEditor file={requestedFile}
-              share={generalStats.length > 0 ? { family: 'voile', segments: mapSegments, stats: shareableStats(generalStats) } : undefined} />
-          ) : undefined} back={{ to: libraryPath('voile'), label: 'Sessions voile' }} />
-          {sessionError && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError}</div>}
-        </div>
-      </div>
-
-      {/* Barre visible pendant un brouillon seulement : rien ne s'affiche quand tout est enregistré. */}
-      {loadedFromMemory && <SessionSaveBar draft={draft} />}
-
-      {loadError && (
-        <div className="ui-alert ui-alert--danger" style={{ marginBottom: '10px' }}>
-          {loadError}
-        </div>
-      )}
-
-      {windInputRequired && (
-        <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px' }}>
-          <strong>Vent non fiable.</strong> L'estimation automatique donne {autoWind}° avec un indice de confiance
-          de {windEstimate ? Math.round(windEstimate.confidence * 100) : 0}%, trop faible pour être utilisée.
-          C'est typique d'un aller simple ou d'un plan d'eau à courant. Réglez le vent sur la carte pour
-          débloquer les manœuvres, la VMG et la polaire.
-          {!windAdjust && (
-            <Button size="s" onClick={startWindAdjust} style={{ marginLeft: '6px' }}>Régler le vent</Button>
+    <AnalysisShell title="Analyse voile" family="voile" backLabel="Sessions voile" file={requestedFile}
+      share={{ segments: mapSegments, stats: generalStats }} error={sessionError}
+      // Barre visible pendant un brouillon seulement : rien ne s'affiche quand tout est enregistré.
+      draft={loadedFromMemory ? draft : null}
+      // Erreur de lecture sans largeur bornée, puis le vent non fiable.
+      alerts={(
+        <>
+          {loadError && (
+            <div className="ui-alert ui-alert--danger" style={{ marginBottom: '10px' }}>
+              {loadError}
+            </div>
           )}
-        </div>
+
+          {windInputRequired && (
+            <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px' }}>
+              <strong>Vent non fiable.</strong> L'estimation automatique donne {autoWind}° avec un indice de confiance
+              de {windEstimate ? Math.round(windEstimate.confidence * 100) : 0}%, trop faible pour être utilisée.
+              C'est typique d'un aller simple ou d'un plan d'eau à courant. Réglez le vent sur la carte pour
+              débloquer les manœuvres, la VMG et la polaire.
+              {!windAdjust && (
+                <Button size="s" onClick={startWindAdjust} style={{ marginLeft: '6px' }}>Régler le vent</Button>
+              )}
+            </div>
+          )}
+        </>
       )}
-
-      {trackData.length === 0 && requestedFile === null && (
-        <p style={{ color: 'var(--muted)' }}>
-          Aucune session ouverte : choisissez-en une dans <Link to={libraryPath('voile')}>Sessions voile</Link>.
-        </p>
-      )}
-
-
-      <div className="an-map-row" style={{ marginTop: '10px', zIndex: 0 }}>
-        <AnalysisMap
-          panelId="sailing.carte"
-          anchorId={ANALYSIS_MAP_ANCHOR}
-          sessionKey={sessionKey}
-          bounds={mapBounds}
-          layers={mapLayers}
-          defaultHeight={480}
-          expanded={mapExpanded}
-          focus={zoomOnMap.focus}
-          companion={companionCharts(zoomOnMap.companionPanel)}
-          onExpandedChange={(next) => {
-            setMapExpanded(next);
-            if (!next) zoomOnMap.closeCompanion();
-            // Fermer la carte agrandie termine le réglage commencé dedans.
-            if (!next) setWindAdjust(false);
-          }}
-          overlay={windAdjust && trackData.length > 0 ? (
-            <WindAdjustOverlay windDeg={currentWindValue} autoWind={autoWind} confidence={windEstimate?.confidence ?? null}
-              manual={edits.windDeg !== null} onChange={(deg) => draft.update({ windDeg: deg })} onClose={endWindAdjust}
-              polarAt={polarAt} unitSymbol={speedSymbol} />
-          ) : undefined}
-          legend={trackData.length > 0 ? (
-            <SpeedGradientLegend unit={speedUnit} range={colorRange}
-              slowLabel={`sous ${Math.round(toDisplaySpeed(colorRange.minMs, speedUnit))} ${speedSymbol}`} />
-          ) : null} />
-      </div>
-
-      {/* Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`). */}
-      {stats && (
-        <div className="an-carte-col">
-          <CollapsibleSectionTabs sections={sailingPanels} open={open} onToggle={toggle} advancedOpen={advanced.open} onToggleAdvanced={advanced.toggle} />
-          <div className="an-carte-panels">
+      empty={trackData.length === 0 && requestedFile === null}
+      map={{
+        panelId: 'sailing.carte',
+        rowZIndex: 0,
+        sessionKey,
+        bounds: mapBounds,
+        layers: mapLayers,
+        defaultHeight: 480,
+        expanded: mapExpanded,
+        focus: zoomOnMap.focus,
+        companion: companionCharts(zoomOnMap.companionPanel),
+        onExpandedChange: (next) => {
+          setMapExpanded(next);
+          if (!next) zoomOnMap.closeCompanion();
+          // Fermer la carte agrandie termine le réglage commencé dedans.
+          if (!next) setWindAdjust(false);
+        },
+        overlay: windAdjust && trackData.length > 0 ? (
+          <WindAdjustOverlay windDeg={currentWindValue} autoWind={autoWind} confidence={windEstimate?.confidence ?? null}
+            manual={edits.windDeg !== null} onChange={(deg) => draft.update({ windDeg: deg })} onClose={endWindAdjust}
+            polarAt={polarAt} unitSymbol={speedSymbol} />
+        ) : undefined,
+        legend: trackData.length > 0 ? (
+          <SpeedGradientLegend unit={speedUnit} range={colorRange}
+            slowLabel={`sous ${Math.round(toDisplaySpeed(colorRange.minMs, speedUnit))} ${speedSymbol}`} />
+        ) : null,
+      }}
+      // Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
+      tabs={stats ? {
+        sections: sailingPanels, open, onToggle: toggle, advanced, panels: (
+          <>
             {open.general && (
               <ResizablePanel id="sailing.general" style={PANEL_BLOCK_STYLE}>
                 <PanelHeading label="Général" extra={<SessionDate track={trackData} />} open={open.general} onToggle={toggleOf('general')} />
@@ -1179,10 +1159,9 @@ function SailingModule() {
                 )}
               </ResizablePanel>
             )}
-          </div>
-        </div>
-      )}
-    </div>
+          </>
+        ),
+      } : null} />
   );
 }
 

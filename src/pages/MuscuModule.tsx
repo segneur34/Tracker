@@ -9,7 +9,6 @@ import SessionActivityField from '../components/SessionActivityField';
 import SessionSettingsHeader from '../components/SessionSettingsHeader';
 import CardioTab from '../components/CardioTab';
 import NotesTab from '../components/NotesTab';
-import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import EmptyTabPanel from '../components/EmptyTabPanel';
 import GeneralStats from '../components/GeneralStats';
 import { CardioCurve } from '../components/HeartRatePanel';
@@ -19,22 +18,18 @@ import { markReferenceLines } from '../components/markReferenceLines';
 import { PanelHeading, SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import { SessionMarksList } from '../components/SessionMarks';
-import SessionNameEditor from '../components/SessionNameEditor';
 import { gearFieldsFor } from '../components/gearFields';
-import SessionSaveBar from '../components/SessionSaveBar';
 import { ANALYSIS_PANEL_STYLE } from '../components/styles';
-import PageHeader from '../components/ui/PageHeader';
 import StatTile from '../components/ui/StatTile';
 import { MUSCU_TABS, tabDefaults } from '../core/analysisTabs';
 import { parseGpx } from '../core/gpxParser';
 import { analyzeHeartRateSession, heartRatePointsFrom, type HeartRateSessionPoint, type SessionPhase } from '../core/heartRateSession';
-import { shareableStats, type ShareStat } from '../core/shareImage';
+import type { ShareStat } from '../core/shareImage';
 import { formatDuration } from '../core/units';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
 import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
 import { zoomHint } from '../components/zoomHint';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
-import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useAnalysisHeart } from '../hooks/useAnalysisHeart';
 import { useLibrarySession } from '../hooks/useSessionLibrary';
@@ -42,6 +37,7 @@ import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useSportSettings } from '../hooks/useSportSettings';
 import type { IntervalSeries } from '../recording/intervalTimer';
 import { SPEED_COLOR } from '../components/chartStyle';
+import AnalysisShell from '../components/AnalysisShell';
 
 /**
  * Analyse d'une session sans trace (muscu, lot I du 25/10) : la page
@@ -138,33 +134,15 @@ function MuscuModule() {
   }, [analysis]);
 
   return (
-    <div className="an-page" style={{ padding: '20px' }}>
-      <div className="an-sheet">
-        <div className="an-sheet__head">
-          <PageHeader title={PAGE.title} subtitle={shownFile ? (
-            <SessionNameEditor file={shownFile}
-              share={generalStats.length > 0 ? { family: FAMILY, segments: [], stats: shareableStats(generalStats) } : undefined} />
-          ) : undefined} back={{ to: libraryPath(FAMILY), label: PAGE.backLabel }} />
-          {(sessionError ?? loadError) && <div className="ui-alert ui-alert--warning" style={{ marginTop: '10px' }}>{sessionError ?? loadError}</div>}
-        </div>
-      </div>
-
-      <SessionSaveBar draft={draft} />
-
-      {requested === null && (
-        <p style={{ color: 'var(--muted)' }}>
-          Aucune session ouverte : choisissez-en une dans <Link to={libraryPath(FAMILY)}>{PAGE.backLabel}</Link>.
-        </p>
-      )}
-      {shownFile && !analysis && (
+    <AnalysisShell title={PAGE.title} family={FAMILY} backLabel={PAGE.backLabel} file={shownFile}
+      share={{ segments: [], stats: generalStats }} error={sessionError ?? loadError} draft={draft} empty={requested === null}
+      alerts={shownFile && !analysis && (
         <div className="ui-alert ui-alert--warning" style={{ maxWidth: '520px' }}>Le fichier n'a pas assez de mesures de la ceinture.</div>
       )}
-
-      {/* Pas de carte : les onglets en tête, leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`). */}
-      {analysis && (
-        <div className="an-carte-col" style={{ marginTop: '10px' }}>
-          <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} advancedOpen={advanced.open} onToggleAdvanced={advanced.toggle} accent={PAGE.accent} />
-          <div className="an-carte-panels">
+      // Pas de carte : les onglets en tête, leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
+      tabs={analysis ? {
+        sections, open, onToggle: toggle, advanced, accent: PAGE.accent, panels: (
+          <>
             {open.general && (
               <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
                 <PanelHeading label="Général" extra={<SessionDate track={points} />} open={open.general} onToggle={toggleOf('general')} helpKey="muscu:general" />
@@ -240,10 +218,9 @@ function MuscuModule() {
                   onChange={(next) => changeSessionActivity(shownFile, next)} />
               </ResizablePanel>
             )}
-          </div>
-        </div>
-      )}
-    </div>
+          </>
+        ),
+      } : null} />
   );
 }
 

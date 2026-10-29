@@ -506,6 +506,8 @@ Opus | high. Neutre. Source : 02-A13, 02-A25.
 
 **Rapport attendu** : lignes retirées (les quatre modules), captures.
 
+**Tranché par l'orchestrateur (30/10, questions mineures du plan)** : un script `outils/banc/coquille.mjs` relève texte, classes et rectangles de la page d'analyse des quatre modules aux trois tailles (preuve du lot) ; le `zIndex: 0` de la rangée de la carte de la voile est gardé (lot neutre, pas de pari sur « sans effet ») ; l'erreur de lecture de la voile garde sa largeur, passée dans `alerts` ; `onExpandedChange` reste dans les modules ; `AnalysisShell` à ajouter à la table des pièces de `docs/MISE_EN_PAGE.md` à la passe `doc`, à signaler à l'utilisateur.
+
 ### 66 · Réglages : lecture sûre, un seul cache, moins de recalculs
 
 Opus | medium. Neutre (corrige deux bogues latents). Sources : 02-A24, 02-B2, 02-C4, 02-D3, 03-A3, 03-A5, 03-A9, 03-A10, 03-B5, 03-B6, 03-D3, 03-D4.
