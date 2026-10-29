@@ -50,6 +50,27 @@ export const computeTopSegments = (
   target: TopTarget,
   toDisplaySpeed: (speedMs: number) => number,
   options: TopSegmentOptions = {}
+): TopSegment[] => computeTopSegmentsWith(track, cum, target, toDisplaySpeed, options, holeCounts(track));
+
+/**
+ * Nombre de trous parmi les pas qui mènent aux points 1 à k : la fenêtre
+ * [i, j] en contient un si `gapCount[j] > gapCount[i]`.
+ */
+const holeCounts = (track: TrackPoint[]): Int32Array => {
+  const gapCount = new Int32Array(track.length);
+  for (let k = 1; k < track.length; k++) {
+    gapCount[k] = gapCount[k - 1] + (track[k].gapDistanceM !== undefined ? 1 : 0);
+  }
+  return gapCount;
+};
+
+const computeTopSegmentsWith = (
+  track: TrackPoint[],
+  cum: CumulativeTrack,
+  target: TopTarget,
+  toDisplaySpeed: (speedMs: number) => number,
+  options: TopSegmentOptions,
+  gapCount: Int32Array
 ): TopSegment[] => {
   const count = options.count ?? DEFAULT_TOP_COUNT;
   const decimals = options.decimals ?? 2;
@@ -57,14 +78,12 @@ export const computeTopSegments = (
   const { cumDist, cumTime } = cum;
   const isDistance = target.kind === 'distance';
   const reference = isDistance ? cumDist : cumTime;
-  const windows: { start: number; end: number; val: number }[] = [];
-
-  // Nombre de trous parmi les pas qui mènent aux points 1 à k : la fenêtre
-  // [i, j] en contient un si `gapCount[j] > gapCount[i]`.
-  const gapCount = new Array<number>(track.length).fill(0);
-  for (let k = 1; k < track.length; k++) {
-    gapCount[k] = gapCount[k - 1] + (track[k].gapDistanceM !== undefined ? 1 : 0);
-  }
+  // Fenêtres en tableaux typés (lot 56) : une par point au plus.
+  const capacity = Math.max(0, track.length - 1);
+  const starts = new Int32Array(capacity);
+  const ends = new Int32Array(capacity);
+  const vals = new Float64Array(capacity);
+  let size = 0;
 
   let j = 1;
 
@@ -90,37 +109,65 @@ export const computeTopSegments = (
     }
 
     if (duration > 0 && distance > 0) {
-      windows.push({ start: i, end: j, val: toDisplaySpeed(distance / duration) });
+      // Classées dans l'unité d'affichage, comme avant : deux vitesses distinctes en m/s peuvent y devenir égales.
+      starts[size] = i;
+      ends[size] = j;
+      vals[size] = toDisplaySpeed(distance / duration);
+      size++;
     }
   }
 
   const tops: TopSegment[] = [];
-  const keep = (w: { start: number; end: number; val: number }) => {
-    const path = track.slice(w.start, w.end + 1).map((p) => [p.lat, p.lon] as [number, number]);
-    tops.push({ val: w.val.toFixed(decimals), speed: w.val, path });
-  };
-
-  if (count === 1) {
-    // Un seul segment (direct, borne de couleur) : le meilleur, sans trier toutes les fenêtres (27/10) ; à
-    // égalité, la première, comme le tri stable.
-    let best: { start: number; end: number; val: number } | null = null;
-    for (const w of windows) if (best === null || w.val > best.val) best = w;
-    if (best !== null) keep(best);
-  } else {
-    windows.sort((a, b) => b.val - a.val);
-    const selected: { start: number; end: number }[] = [];
-    for (const w of windows) {
-      if (tops.length >= count) break;
-      const overlap = selected.some((s) => Math.max(w.start, s.start) <= Math.min(w.end, s.end));
-      if (!overlap) {
-        keep(w);
-        selected.push({ start: w.start, end: w.end });
-      }
-    }
+  for (const k of pickTopWindows(starts, ends, vals, size, count)) {
+    const path = track.slice(starts[k], ends[k] + 1).map((p) => [p.lat, p.lon] as [number, number]);
+    tops.push({ val: vals[k].toFixed(decimals), speed: vals[k], path });
   }
 
   while (tops.length < count) tops.push({ val: '-', speed: null, path: [] });
   return tops;
+};
+
+/**
+ * Indices des `count` meilleures fenêtres `[starts[k], ends[k]]` (`k < size`)
+ * qui ne se chevauchent pas, de la meilleure à la moins bonne : à chaque tour,
+ * la plus grande valeur parmi celles qui ne touchent aucune retenue, la
+ * première à égalité. C'est le résultat d'un tri stable décroissant parcouru
+ * dans l'ordre, sans trier (lot 56). Une valeur NaN rend le tri imprévisible :
+ * au-delà d'une fenêtre, on garde alors le tri. Meilleurs segments, podium de la VMG.
+ */
+export const pickTopWindows = (
+  starts: ArrayLike<number>,
+  ends: ArrayLike<number>,
+  values: ArrayLike<number>,
+  size: number,
+  count: number
+): number[] => {
+  const selected: number[] = [];
+  const overlaps = (k: number): boolean => {
+    for (const s of selected) if (Math.max(starts[k], starts[s]) <= Math.min(ends[k], ends[s])) return true;
+    return false;
+  };
+
+  let hasNaN = false;
+  for (let k = 0; k < size; k++) if (Number.isNaN(values[k])) hasNaN = true;
+  if (hasNaN && count !== 1) {
+    const order = Array.from({ length: size }, (_, k) => k).sort((a, b) => values[b] - values[a]);
+    for (const k of order) {
+      if (selected.length >= count) break;
+      if (!overlaps(k)) selected.push(k);
+    }
+    return selected;
+  }
+
+  while (selected.length < count) {
+    let best = -1;
+    for (let k = 0; k < size; k++) {
+      if ((best < 0 || values[k] > values[best]) && !overlaps(k)) best = k;
+    }
+    if (best < 0) break;
+    selected.push(best);
+  }
+  return selected;
 };
 
 /** Applique `computeTopSegments` à une liste de cibles et indexe le résultat par clé. */
@@ -132,8 +179,9 @@ export const computeAllTopSegments = (
   options: TopSegmentOptions = {}
 ): Record<string, TopSegment[]> => {
   const result: Record<string, TopSegment[]> = {};
+  const gapCount = holeCounts(track);
   for (const target of targets) {
-    result[target.key] = computeTopSegments(track, cum, target, toDisplaySpeed, options);
+    result[target.key] = computeTopSegmentsWith(track, cum, target, toDisplaySpeed, options, gapCount);
   }
   return result;
 };

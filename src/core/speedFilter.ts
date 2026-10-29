@@ -216,16 +216,86 @@ export const medianFilterByTimeFrom = (
   while (start > 0 && timesMs[from] - timesMs[start - 1] <= halfWindowMs) start--;
   let end = from;
 
+  // Fenêtre triée tenue à jour (lot 56) : `start` et `end` ne font qu'avancer,
+  // on insère `values[end]` et on retire `values[start]` au lieu de trier la
+  // fenêtre à chaque point. Même ordre que le tri stable de `median` : une
+  // valeur entre après ses égales (elle a le plus grand indice de la fenêtre),
+  // la sortante est la première de ses égales (le plus petit) ; -0 et +0
+  // gardent ainsi leur place. Une fenêtre qui contient un NaN, que le tri ne
+  // range pas de façon sûre, repasse par `median`.
+  const window = new SortedWindow();
+  let inStart = start;
+  let inEnd = start - 1;
+
   for (let i = from; i < values.length; i++) {
     while (start < i && timesMs[i] - timesMs[start] > halfWindowMs) start++;
     if (end < i) end = i;
     while (end + 1 < values.length && timesMs[end + 1] - timesMs[i] <= halfWindowMs) end++;
 
-    out[i] = median(values.slice(start, end + 1));
+    while (inEnd < end) window.add(values[++inEnd]);
+    while (inStart < start) window.remove(values[inStart++]);
+    out[i] = window.nanCount > 0 ? median(values.slice(start, end + 1)) : window.median();
   }
 
   return out;
 };
+
+/**
+ * Valeurs d'une fenêtre glissante, triées comme le tri stable de `median`
+ * (`medianFilterByTimeFrom`) ; les NaN sont seulement comptés.
+ */
+class SortedWindow {
+  private sorted = new Float64Array(64);
+  private size = 0;
+  nanCount = 0;
+
+  /** Ajoute une valeur après ses égales. */
+  add(value: number): void {
+    if (Number.isNaN(value)) {
+      this.nanCount++;
+      return;
+    }
+    if (this.size === this.sorted.length) {
+      const grown = new Float64Array(this.sorted.length * 2);
+      grown.set(this.sorted);
+      this.sorted = grown;
+    }
+    let lo = 0;
+    let hi = this.size;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (value < this.sorted[mid]) hi = mid;
+      else lo = mid + 1;
+    }
+    this.sorted.copyWithin(lo + 1, lo, this.size);
+    this.sorted[lo] = value;
+    this.size++;
+  }
+
+  /** Retire la première des valeurs égales à `value`. */
+  remove(value: number): void {
+    if (Number.isNaN(value)) {
+      this.nanCount--;
+      return;
+    }
+    let lo = 0;
+    let hi = this.size;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.sorted[mid] < value) lo = mid + 1;
+      else hi = mid;
+    }
+    this.sorted.copyWithin(lo, lo + 1, this.size);
+    this.size--;
+  }
+
+  /** Médiane des valeurs, comme `median` (0 si aucune). */
+  median(): number {
+    if (this.size === 0) return 0;
+    const mid = Math.floor(this.size / 2);
+    return this.size % 2 === 0 ? (this.sorted[mid - 1] + this.sorted[mid]) / 2 : this.sorted[mid];
+  }
+}
 
 /**
  * Lissage par ajustement linéaire local sur une fenêtre temporelle centrée.

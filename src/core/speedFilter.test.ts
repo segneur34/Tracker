@@ -5,7 +5,9 @@ import {
   meanFilterByTime,
   median,
   medianFilterByTime,
+  medianFilterByTimeFrom,
 } from './speedFilter';
+import { sameData } from '../test/sameData';
 
 const secondsToMs = (count: number, step = 1): number[] =>
   Array.from({ length: count }, (_, i) => i * step * 1000);
@@ -114,6 +116,85 @@ describe('medianFilterByTime', () => {
 
   it('conserve la longueur de la série', () => {
     expect(medianFilterByTime([1, 2, 3, 4, 5, 6], secondsToMs(6), 3).length).toBe(6);
+  });
+});
+
+/** Copie gelée de `medianFilterByTimeFrom` d'avant le lot 56 : une médiane triée à chaque point. */
+const legacyMedianFilterByTimeFrom = (
+  values: number[], timesMs: number[], windowSeconds: number, from: number, prefix: ArrayLike<number> | null
+): number[] => {
+  if (values.length === 0) return [];
+  const halfWindowMs = (windowSeconds * 1000) / 2;
+  const out = new Array<number>(values.length);
+  for (let k = 0; k < from; k++) out[k] = prefix ? prefix[k] : NaN;
+  let start = from;
+  while (start > 0 && timesMs[from] - timesMs[start - 1] <= halfWindowMs) start--;
+  let end = from;
+  for (let i = from; i < values.length; i++) {
+    while (start < i && timesMs[i] - timesMs[start] > halfWindowMs) start++;
+    if (end < i) end = i;
+    while (end + 1 < values.length && timesMs[end + 1] - timesMs[i] <= halfWindowMs) end++;
+    out[i] = median(values.slice(start, end + 1));
+  }
+  return out;
+};
+
+/** Suite pseudo-aléatoire reproductible. */
+const lcg = (seed: number) => () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+
+/** Valeurs arrondies au dixième, pour beaucoup d'égalités, avec des 0 et des −0. */
+const noisy = (count: number, seed: number): number[] => {
+  const rnd = lcg(seed);
+  return Array.from({ length: count }, () => {
+    const r = rnd();
+    if (r < 0.1) return 0;
+    if (r < 0.2) return -0;
+    return Math.round(rnd() * 80) / 10;
+  });
+};
+
+const sameAsLegacy = (values: number[], timesMs: number[], windowS: number, from = 0, prefix: number[] | null = null) => {
+  const got = medianFilterByTimeFrom(values, timesMs, windowS, from, prefix);
+  const want = legacyMedianFilterByTimeFrom(values, timesMs, windowS, from, prefix);
+  if (!sameData(got, want)) expect(got).toEqual(want);
+};
+
+describe('medianFilterByTimeFrom, fenêtre triée tenue à jour (lot 56)', () => {
+  it('identique au tri à chaque point, à 1 Hz et à 5 Hz, fenêtres de 3 et 5 s', () => {
+    for (const step of [1, 0.2]) {
+      const values = noisy(3000, 7);
+      for (const windowS of [3, 5]) sameAsLegacy(values, secondsToMs(3000, step), windowS);
+    }
+  });
+
+  it('dates tronquées à la seconde, trous, dates qui reculent et dates illisibles', () => {
+    const values = noisy(2000, 11);
+    const truncated = secondsToMs(2000, 0.2).map((t) => Math.floor(t / 1000) * 1000);
+    sameAsLegacy(values, truncated, 3);
+    const withGaps = secondsToMs(2000).map((t, i) => t + Math.floor(i / 300) * 45_000);
+    sameAsLegacy(values, withGaps, 5);
+    const backwards = secondsToMs(2000).map((t, i) => (i % 97 === 3 ? t - 4000 : t));
+    sameAsLegacy(values, backwards, 3);
+    const unreadable = secondsToMs(2000).map((t, i) => (i % 211 === 5 ? NaN : t));
+    sameAsLegacy(values, unreadable, 3);
+  });
+
+  it('valeurs NaN et infinies, fenêtre nulle', () => {
+    const values = noisy(1500, 13).map((v, i) => (i % 101 === 7 ? NaN : i % 89 === 3 ? Infinity : i % 83 === 1 ? -Infinity : v));
+    sameAsLegacy(values, secondsToMs(1500, 0.2), 3);
+    sameAsLegacy(noisy(500, 17), secondsToMs(500, 0.2), 0);
+    sameAsLegacy([], [], 3);
+    sameAsLegacy([-0], [0], 3);
+  });
+
+  it("reprise depuis un indice, valeurs d'avant reprises du calcul précédent", () => {
+    const values = noisy(1000, 19);
+    const timesMs = secondsToMs(1000, 0.2);
+    const prefix = legacyMedianFilterByTimeFrom(values, timesMs, 3, 0, null);
+    for (const from of [0, 1, 7, 500, 999]) {
+      sameAsLegacy(values, timesMs, 3, from, prefix);
+      sameAsLegacy(values, timesMs, 3, from, null);
+    }
   });
 });
 

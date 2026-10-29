@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 93, essai 72, question Q50.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 93, essai 73, question Q50.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -14,6 +14,8 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 APK 0.3.101 installée le 29/10 (versionCode 3101), lots 53 à 55.
 
 - 90 · [outil] Vérifications plus rapides : `npm run verif` (lint, tests, build en une commande, 4 lignes), tests vitest sans isolation et rejeux allégés sans attendu changé, banc sur une bibliothèque commune (outils/banc/lib/, attentes adaptatives, horloge accélérée) et un lanceur (outils/banc/passe.mjs : avant/après automatiques, parallèle, relevés comparés) ; réunit les n° 45, 76, 89 et le banc session-save du n° 84 · noté 29/10 · gros · Fable/high · à valider sur lecture (commits 89c1fa3 et suivant, « à valider ») ; aucun essai au téléphone (outillage seul) · détail : outils/banc/LISEZMOI.md (« Lanceur », « Bibliothèque »)
+- 56 · [dette] Ouverture d'une session plus rapide : environ trois fois moins de calcul à l'ouverture d'une longue session (médiane glissante, meilleurs segments, dates lues une fois) ; chiffres identiques · noté 28/10 · petit · Opus/high · à valider (commit suivant, 0.3.102) ; mesuré sur PC : ouverture voile 5 Hz côté calcul 350 → 110 ms, meilleurs segments 82 → 10 ms, cadence de 30 répétitions 74 → 3 ms, revêtement 45 → 2 ms ; chiffres identiques (tests à copie gelée, empreinte de 108 Mo identique, banc identique) ; non livrés : temps à vélo arrondi, partage du surf, masque unique ; reste le gros poste : la lecture du fichier par le navigateur (environ 1,3 s sur 1,6 s pour 3 h à 5 Hz) · dépend de : 53 (levé) · détail : docs/backlog/52-assainissement.md
+  - essai 72 : ouvrir une longue session de voile, puis une sortie à pied avec répétitions → l'ouverture paraît plus rapide, chiffres inchangés
 
 
 ## Ensuite
@@ -60,7 +62,6 @@ APK 0.3.101 installée le 29/10 (versionCode 3101), lots 53 à 55.
 
 ## Plus tard
 
-- 56 · [dette] Ouverture d'une session plus rapide : environ trois fois moins de calcul à l'ouverture d'une longue session (médiane glissante, meilleurs segments, dates lues une fois) ; chiffres identiques · noté 28/10 · petit · Opus/high · à briefer · dépend de : 53 · détail : docs/backlog/52-assainissement.md
 - 34 · [idée] Mode daltonien (ex-fiche 4) : des couleurs de familles, de traces et de graphes lisibles par un daltonien ; voulu « plus tard », reste à dire quel daltonisme et pour qui (§11 « Mode daltonien », point 90) · noté 08/10 · gros
 - 35 · [idée] Montre connectée Android (ex-fiche 5) : lire sa FC, importer ses sessions, piloter du poignet ; reste à dire quelle montre · noté 22/10 · gros · détail : docs/backlog/35-montre-connectee.md
 - 36 · [idée] Autres capteurs Bluetooth (ex-fiche 17) : puissance, cadence et vitesse à vélo lues comme la ceinture ; dort tant que l'utilisateur n'a pas de capteur (point 118) · noté 16/10 · gros

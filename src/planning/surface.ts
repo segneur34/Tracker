@@ -188,6 +188,32 @@ export const tagsAt = (surfaces: SurfaceRuns, position: number): string | null =
 };
 
 /**
+ * Catégorie du morceau qui couvre chaque position, demandée dans l'ordre :
+ * `classifySurface(tagsAt(surfaces, position))` sans reparcourir les morceaux
+ * ni relire les étiquettes à chaque point (lot 56). Le curseur reprend où il
+ * était tant que la position ne recule pas, sinon (ou position NaN) il repart
+ * du premier morceau ; la catégorie d'une étiquette est calculée une fois.
+ */
+const surfaceCursor = (surfaces: SurfaceRuns): ((position: number) => SurfaceCategory) => {
+  const { runs, tags } = surfaces;
+  const categories = new Map<number, SurfaceCategory>();
+  let cursor = 0;
+  let previous = NaN;
+  return (position) => {
+    if (!(position >= previous)) cursor = 0;
+    previous = position;
+    while (cursor < runs.length && !(runs[cursor][0] > position)) cursor++;
+    const index = cursor > 0 ? runs[cursor - 1][1] : -1;
+    let category = categories.get(index);
+    if (category === undefined) {
+      category = classifySurface(index >= 0 ? tags[index] ?? null : null);
+      categories.set(index, category);
+    }
+    return category;
+  };
+};
+
+/**
  * Morceaux décalés de `shift` points, le premier gardé au début : un point
  * ajouté en tête prend la voie qui suit.
  */
@@ -231,11 +257,12 @@ export interface SurfaceStretch {
  */
 export const legSurfaceStretches = (points: ReadonlyArray<RoutePoint>, surfaces: SurfaceRuns | undefined): SurfaceStretch[] => {
   const stretches: SurfaceStretch[] = [];
+  const categoryAt = surfaces ? surfaceCursor(surfaces) : null;
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1];
     const b = points[i];
     stretches.push({
-      category: surfaces ? classifySurface(tagsAt(surfaces, i - 1)) : 'inconnu',
+      category: categoryAt ? categoryAt(i - 1) : 'inconnu',
       distanceM: haversineDistance(a.lat, a.lon, b.lat, b.lon),
     });
   }
@@ -249,9 +276,10 @@ export const legSurfaceStretches = (points: ReadonlyArray<RoutePoint>, surfaces:
  */
 export const trackSurfaceStretches = (track: ReadonlyArray<TrackPoint>, surfaces: SurfaceRuns, startMs: number): SurfaceStretch[] => {
   const stretches: SurfaceStretch[] = [];
+  const categoryAt = surfaceCursor(surfaces);
   for (let i = 1; i < track.length; i++) {
     stretches.push({
-      category: classifySurface(tagsAt(surfaces, track[i - 1].timeMs - startMs)),
+      category: categoryAt(track[i - 1].timeMs - startMs),
       distanceM: segmentDistanceM(track as TrackPoint[], i),
     });
   }

@@ -46,19 +46,52 @@ const findByLocalName = (element: Element, localName: string): Element | null =>
   return null;
 };
 
-/** Contenu numérique d'un descendant, ou `undefined` s'il est absent ou illisible. */
-const readNumber = (element: Element, localName: string): number | undefined => {
-  const node = findByLocalName(element, localName);
+/** Contenu numérique d'un nœud, ou `undefined` s'il est absent ou illisible. */
+const numberOf = (node: Element | null): number | undefined => {
   if (!node || node.textContent === null) return undefined;
 
   const value = parseFloat(node.textContent.trim());
   return isFinite(value) ? value : undefined;
 };
 
-const readText = (element: Element, localName: string): string | undefined => {
-  const node = findByLocalName(element, localName);
+/** Contenu numérique d'un descendant, ou `undefined` s'il est absent ou illisible. */
+const readNumber = (element: Element, localName: string): number | undefined => numberOf(findByLocalName(element, localName));
+
+/** Contenu texte d'un nœud, ou `undefined` s'il est absent ou vide. */
+const textOf = (node: Element | null): string | undefined => {
   const text = node?.textContent?.trim();
   return text ? text : undefined;
+};
+
+/** Champs lus sur un point de trace. */
+const POINT_FIELDS = ['time', 'ele', 'speed', 'course', 'hr', 'cad'] as const;
+type PointField = (typeof POINT_FIELDS)[number];
+
+/**
+ * Nœud de chacun des champs d'un point, comme `findByLocalName` le trouverait
+ * (premier descendant de ce nom qualifié, sinon premier de ce nom local), en
+ * un seul parcours des descendants au lieu d'un par champ (lot 56).
+ */
+const pointFieldNodes = (trkpt: Element): Record<PointField, Element | null> => {
+  const qualified: Record<PointField, Element | null> = { time: null, ele: null, speed: null, course: null, hr: null, cad: null };
+  const local: Record<PointField, Element | null> = { time: null, ele: null, speed: null, course: null, hr: null, cad: null };
+  const all = trkpt.getElementsByTagName('*');
+  for (let i = 0; i < all.length; i++) {
+    const element = all[i];
+    const name = element.localName;
+    if (!(POINT_FIELDS as readonly string[]).includes(name)) continue;
+    const field = name as PointField;
+    if (local[field] === null) local[field] = element;
+    if (qualified[field] === null && element.tagName === name) qualified[field] = element;
+  }
+  return {
+    time: qualified.time ?? local.time,
+    ele: qualified.ele ?? local.ele,
+    speed: qualified.speed ?? local.speed,
+    course: qualified.course ?? local.course,
+    hr: qualified.hr ?? local.hr,
+    cad: qualified.cad ?? local.cad,
+  };
 };
 
 /** Contenu d'un enfant direct : une extension de point du même nom ne doit pas répondre. */
@@ -79,15 +112,15 @@ const readChildText = (element: Element, localName: string): string | undefined 
  * la même donnée sous `gpxdata:speed`. Les valeurs négatives ou absurdes sont
  * écartées plutôt que propagées.
  */
-const readDeviceSpeed = (trkpt: Element): number | undefined => {
-  const speed = readNumber(trkpt, 'speed');
+const readDeviceSpeed = (node: Element | null): number | undefined => {
+  const speed = numberOf(node);
   if (speed === undefined || speed < 0 || speed > 100) return undefined;
   return speed;
 };
 
 /** Cap porté par le point (`course` du profil Garmin), en degrés ; hors de 0 à 360, écarté. */
-const readCourse = (trkpt: Element): number | undefined => {
-  const course = readNumber(trkpt, 'course');
+const readCourse = (node: Element | null): number | undefined => {
+  const course = numberOf(node);
   return course !== undefined && course >= 0 && course <= 360 ? course : undefined;
 };
 
@@ -111,7 +144,8 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
     const trkpt = trkpts[i];
     const lat = parseFloat(trkpt.getAttribute('lat') ?? '');
     const lon = parseFloat(trkpt.getAttribute('lon') ?? '');
-    const time = readText(trkpt, 'time');
+    const nodes = pointFieldNodes(trkpt);
+    const time = textOf(nodes.time);
 
     // Un point sans horodatage ne sert à rien : toute la kinématique repose
     // sur la différence de temps entre deux points.
@@ -122,7 +156,7 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
       const segment = trkpt.parentElement;
       const resumes = lastTimedSegment !== null && segment !== lastTimedSegment;
       lastTimedSegment = segment;
-      const hr = readNumber(trkpt, 'hr');
+      const hr = numberOf(nodes.hr);
       timedPoints.push({
         time,
         ...(hr !== undefined ? { hr } : {}),
@@ -131,7 +165,7 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
       continue;
     }
 
-    const speedMs = readDeviceSpeed(trkpt);
+    const speedMs = readDeviceSpeed(nodes.speed);
     if (speedMs !== undefined) hasDeviceSpeed = true;
 
     const segment = trkpt.parentElement;
@@ -142,11 +176,13 @@ export const parseGpx = (gpxContent: string): ParsedGpx => {
       lat,
       lon,
       time,
-      ele: readNumber(trkpt, 'ele'),
+      // Date lue une fois (lot 56), comme `pointTimeMs` la relirait.
+      rawTimeMs: new Date(time).getTime(),
+      ele: numberOf(nodes.ele),
       speedMs,
-      courseDeg: readCourse(trkpt),
-      hr: readNumber(trkpt, 'hr'),
-      cadence: readNumber(trkpt, 'cad'),
+      courseDeg: readCourse(nodes.course),
+      hr: numberOf(nodes.hr),
+      cadence: numberOf(nodes.cad),
       ...(resumes ? { segmentStart: true as const } : {}),
     });
   }

@@ -63,13 +63,16 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
     referenceSpeedOverrideMs,
   } = kinematicsOptions;
 
+  /** Unité dans laquelle le fichier exprime la vitesse de l'appareil, si elle existe : détectée une fois, pour l'allure aussi. */
+  const deviceSpeedUnit = useMemo(() => detectTrackDeviceSpeedUnit(session.rawPoints), [session.rawPoints]);
+
   /**
    * Allure de la session, en m/s : déduite de la trace, ou imposée. Elle est
    * calculée sur les vitesses brutes, puisque c'est le filtrage qui en dépend.
    */
   const referenceSpeedMs = useMemo(
-    () => referenceSpeedOverrideMs ?? sessionReferenceSpeedMs(session.rawPoints),
-    [session.rawPoints, referenceSpeedOverrideMs]
+    () => referenceSpeedOverrideMs ?? sessionReferenceSpeedMs(session.rawPoints, deviceSpeedUnit),
+    [session.rawPoints, referenceSpeedOverrideMs, deviceSpeedUnit]
   );
 
   const track: TrackPoint[] = useMemo(() => {
@@ -106,9 +109,6 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
     if (track.length === 0) return null;
     return `${session.trackName ?? session.fileName ?? 'session'}|${track[0].timeMs}`;
   }, [track, session.trackName, session.fileName]);
-
-  /** Unité dans laquelle le fichier exprime la vitesse de l'appareil, si elle existe. */
-  const deviceSpeedUnit = useMemo(() => detectTrackDeviceSpeedUnit(session.rawPoints), [session.rawPoints]);
 
   const loadGpxContent = useCallback((gpxContent: string, fileName: string | null = null) => {
     try {

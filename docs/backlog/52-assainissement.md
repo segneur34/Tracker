@@ -255,6 +255,8 @@ Opus | high. Neutre au bit près. Sources : 04-A2, 04-B1 à B6, 04-B10, 04-B12, 
 
 **Rapport attendu** : tableau des mesures avant/après ; étapes non livrées et pourquoi.
 
+**Tranché par l'orchestrateur (29/10, d'après le plan)** : date brute lue une fois dans un champ `rawTimeMs` (et non `timeMs`, déjà pris par la date répartie de `TrackPoint` : un `TrackPoint` passé à `samplingIntervalS` changerait le résultat sans erreur de type) ; meilleurs segments classés dans l'unité d'affichage comme aujourd'hui (le classement en m/s n'est pas neutre : deux vitesses distinctes peuvent devenir égales une fois converties), le bogue latent C17 reste pour un lot non neutre ; non livrés : temps à vélo arrondi (non neutre par construction, hors ouverture), analyse du surf partagée entre `surfRides` et `summarizeSession` (réglages pris à des moments différents), masque unique (seuils égaux seulement si 0), reprise de la distance d'un pas à l'autre (environ 1 ms) ; lecteur GPX livré seulement si le banc navigateur montre un gain.
+
 ### 57 · Briques communes 2 : angles, géométrie, temps, médiane, profils
 
 Opus | medium. Neutre. Sources : 04-A1, 04-A4 à A7, 04-A10, 04-A12, 04-A13, 04-A15, 04-C6, 04-C7, 05-A8, 05-A10, 05-C2, 05-C8, 06-A9, 07-A3, 07-A5, 08-A5, 08-A9, 08-C1.

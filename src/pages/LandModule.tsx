@@ -90,7 +90,7 @@ import {
 import {
   computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
 } from '../running/runningAnalytics';
-import { analyzeCadence, cadenceBandPaths, sessionCadence, timeSpanCadence } from '../running/cadence';
+import { analyzeCadence, cadenceBandPaths, measuredCadenceSegments, sessionCadence, timeSpanCadence } from '../running/cadence';
 import { isValidCarriedLoad, smoothMovingPower } from '../running/energy';
 import { detectIntervals } from '../running/intervalDetection';
 import { analyzeIntervals, type IntervalPhaseSpan } from '../running/intervalStats';
@@ -592,6 +592,13 @@ function LandModule({ family }: { family: LandFamily }) {
     }
     return (detected?.series ?? []).map((s) => ({ workout: s.workout, laps: s.phases, detected: true }));
   }, [sessionIntervals, detected]);
+  /** Segments où la cadence est mesurée, une fois pour toutes les répétitions de la session (lot 56). */
+  const cadenceSegments = useMemo(
+    () => (open.fractionne && cadencePresent && cadence && cadenceParams
+      ? measuredCadenceSegments(gpx.track, cadence.spm, cadenceParams.gapS)
+      : null),
+    [open.fractionne, cadencePresent, cadence, cadenceParams, gpx.track]
+  );
   /**
    * Séances mesurées sur la trace : chaque répétition avec le repos qui la
    * suit, son profil, et la synthèse. Clé d'une répétition : `séance-répétition`.
@@ -605,13 +612,13 @@ function LandModule({ family }: { family: LandFamily }) {
           ? analyzed.reps.map((r) => timeSpanHeartRate(gpx.track, heart.smoothed, r.work.startMs, r.work.endMs, profile.heartRate.gapS, profile.heartRate.recoveryS))
           : undefined;
         // Cadence et longueur de pas de chaque effort, à pied, si la session a de la cadence.
-        const cadences = cadencePresent && cadence && cadenceParams
-          ? analyzed.reps.map((r) => timeSpanCadence(gpx.track, cadence.spm, r.work.startMs, r.work.endMs, cadenceParams.gapS))
+        const cadences = cadenceSegments
+          ? analyzed.reps.map((r) => timeSpanCadence(cadenceSegments, gpx.track, r.work.startMs, r.work.endMs))
           : undefined;
         return { workout: s.workout, detected: s.detected, name: s.name, ...analyzed, heartRates, cadences };
       })
       : []),
-    [open.fractionne, profile.intervals, intervalSeries, gpx.track, cumulative, heart, profile.heartRate, cadencePresent, cadence, cadenceParams]
+    [open.fractionne, profile.intervals, intervalSeries, gpx.track, cumulative, heart, profile.heartRate, cadenceSegments]
   );
   /** Ce que dit l'onglet quand la vitesse ne livre aucune répétition. */
   const intervalEmptyText = (() => {

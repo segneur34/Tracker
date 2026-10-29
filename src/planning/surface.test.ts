@@ -241,3 +241,37 @@ describe('surbrillance d\'un revêtement choisi', () => {
     expect(both[1][1]).toBeCloseTo(3.8, 9);
   });
 });
+
+describe('revêtement : curseur sur les morceaux (lot 56)', () => {
+  /** Copies gelées d'avant le lot 56 : \`tagsAt\` et \`classifySurface\` à chaque point. */
+  const frozenTrack = (track: ReturnType<typeof computeKinematics>, surfaces: Parameters<typeof tagsAt>[0], startMs: number) =>
+    track.slice(1).map((_, k) => classifySurface(tagsAt(surfaces, track[k].timeMs - startMs)));
+  const frozenLeg = (points: RoutePoint[], surfaces: Parameters<typeof tagsAt>[0] | undefined) =>
+    points.slice(1).map((_, k) => (surfaces ? classifySurface(tagsAt(surfaces, k)) : 'inconnu'));
+
+  const tags = ['highway=track tracktype=grade2', 'highway=residential', 'highway=path surface=gravel', 'sac_scale=alpine_hiking highway=path'];
+  const t0 = Date.parse('2026-10-01T10:00:00Z');
+  const raw: RawTrackPoint[] = Array.from({ length: 600 }, (_, k) => ({
+    lat: 43.6 + k * 1e-5,
+    lon: 3.8,
+    // Un recul de date et une date illisible : le curseur repart du début.
+    time: k === 300 ? 'illisible' : new Date(t0 + k * 1000 - (k === 200 ? 5000 : 0)).toISOString(),
+  }));
+  const track = computeKinematics(raw);
+
+  it('identique à la version gelée : morceaux croissants, non croissants, étiquettes absentes ou hors liste', () => {
+    const cases = [
+      { tags, runs: Array.from({ length: 60 }, (_, k): [number, number] => [k * 10_000, k % 5 === 4 ? -1 : k % 4]) },
+      { tags, runs: [[0, 1], [50_000, 2], [30_000, 0], [90_000, 3], [80_000, -1], [200_000, 7]] as [number, number][] },
+      { tags, runs: [[5000, 2], [5000, 1]] as [number, number][] },
+    ];
+    for (const surfaces of cases) {
+      for (const startMs of [t0, t0 - 7000, NaN]) {
+        expect(trackSurfaceStretches(track, surfaces, startMs).map((s) => s.category)).toEqual(frozenTrack(track, surfaces, startMs));
+      }
+      const points = north(120);
+      expect(legSurfaceStretches(points, surfaces).map((s) => s.category)).toEqual(frozenLeg(points, surfaces));
+    }
+    expect(legSurfaceStretches(north(5), undefined).map((s) => s.category)).toEqual(frozenLeg(north(5), undefined));
+  });
+});

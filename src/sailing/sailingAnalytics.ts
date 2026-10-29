@@ -1,4 +1,5 @@
 import { firstIndexAtOrAfter } from '../core/search';
+import { pickTopWindows } from '../core/topSegments';
 import type { PointData } from '../utils/kinematics';
 import { WIND_LOCAL_MAX_GAP_MIN, type ManeuverLocation, type ManeuverStats, type WindReference } from './maneuvers';
 import { VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
@@ -463,7 +464,9 @@ export const calculateVmgStats = (
   let sumUpStbd = 0, sumUpPort = 0, sumDownStbd = 0, sumDownPort = 0;
   let cUpStbd = 0, cUpPort = 0, cDownStbd = 0, cDownPort = 0;
 
-  const windows: { start: number; end: number; avgVmg: number; allAboveMin: boolean }[] = [];
+  // Fenêtres candidates au podium (toutes au-dessus du minimum), au près et au portant, en tableaux typés (lot 56).
+  const up = { starts: new Int32Array(n), ends: new Int32Array(n), vals: new Float64Array(n), size: 0 };
+  const down = { starts: new Int32Array(n), ends: new Int32Array(n), vals: new Float64Array(n), size: 0 };
   let j = 0;
 
   for (let i = 0; i < n; i++) {
@@ -482,7 +485,14 @@ export const calculateVmgStats = (
     const avgVmg = (cumVmgDt[j] - cumVmgDt[i]) / durationS;
     const isStarboard = cumStbdDt[j] - cumStbdDt[i] > durationS / 2;
     const allAboveMin = cumBelow[j] - (i > 0 ? cumBelow[i - 1] : 0) === 0;
-    windows.push({ start: i, end: j, avgVmg, allAboveMin });
+    // Ni NaN ni zéro : ni au près ni au portant.
+    const side = avgVmg > 0 ? up : avgVmg < 0 ? down : null;
+    if (allAboveMin && side) {
+      side.starts[side.size] = i;
+      side.ends[side.size] = j;
+      side.vals[side.size] = Math.abs(avgVmg);
+      side.size++;
+    }
 
     if (avgSpeed >= minSpeedKn) {
       if (avgVmg > 0) {
@@ -496,23 +506,13 @@ export const calculateVmgStats = (
     }
   }
 
+  // Podium : les trois meilleures fenêtres qui ne se chevauchent pas, comme les meilleurs segments.
   const getTopVmg = (isUpwind: boolean) => {
-    const candidates = windows
-      .filter((w) => w.allAboveMin && (isUpwind ? w.avgVmg > 0 : w.avgVmg < 0))
-      .map((w) => ({ start: w.start, end: w.end, val: Math.abs(w.avgVmg) }))
-      .sort((a, b) => b.val - a.val);
-
-    const tops: { val: string; path: [number, number][] }[] = [];
-    const selected: { start: number; end: number }[] = [];
-    for (const w of candidates) {
-      if (tops.length >= 3) break;
-      const overlap = selected.some((s) => Math.max(w.start, s.start) <= Math.min(w.end, s.end));
-      if (!overlap) {
-        const path = trackData.slice(w.start, w.end + 1).map((p) => [p.lat, p.lon] as [number, number]);
-        tops.push({ val: w.val.toFixed(1), path });
-        selected.push({ start: w.start, end: w.end });
-      }
-    }
+    const side = isUpwind ? up : down;
+    const tops: { val: string; path: [number, number][] }[] = pickTopWindows(side.starts, side.ends, side.vals, side.size, 3).map((k) => ({
+      val: side.vals[k].toFixed(1),
+      path: trackData.slice(side.starts[k], side.ends[k] + 1).map((p) => [p.lat, p.lon] as [number, number]),
+    }));
     while (tops.length < 3) tops.push({ val: '-', path: [] });
     return tops;
   };

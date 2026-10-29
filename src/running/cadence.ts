@@ -437,9 +437,17 @@ class ShareSum {
   }
 }
 
+/** Un segment mesuré : celui qui arrive au point `i`, sa durée, sa cadence moyenne et sa distance. */
+export interface MeasuredSegment {
+  i: number;
+  dtS: number;
+  spm: number;
+  d: number;
+}
+
 /** Le segment qui arrive au point `i` : mesuré si la cadence est connue à ses deux bouts et qu'il n'enjambe pas un trou. */
-const measuredSegments = (track: readonly TrackPoint[], spm: readonly (number | null)[], gapS: number) => {
-  const out: { i: number; dtS: number; spm: number; d: number }[] = [];
+const measuredSegments = (track: readonly TrackPoint[], spm: readonly (number | null)[], gapS: number): MeasuredSegment[] => {
+  const out: MeasuredSegment[] = [];
   for (let i = 1; i < track.length; i++) {
     const a = spm[i - 1];
     const b = spm[i];
@@ -553,21 +561,59 @@ export const analyzeCadence = (
   };
 };
 
-/** Cadence et longueur de pas entre deux instants (l'effort d'une répétition), ou `null` sans mesure. */
-export const timeSpanCadence = (
+/** Segments mesurés d'une session (`measuredSegments`), et si les dates de sa trace ne reculent jamais. */
+export interface MeasuredCadenceSegments {
+  list: MeasuredSegment[];
+  /** Aucune date de la trace ne recule ni n'est illisible (NaN) : les segments se suivent dans le temps. */
+  ordered: boolean;
+}
+
+/** Segments mesurés d'une session, calculés une fois pour la cadence de chaque répétition (`timeSpanCadence`, lot 56). */
+export const measuredCadenceSegments = (
   track: readonly TrackPoint[],
   spm: readonly (number | null)[],
-  startMs: number,
-  endMs: number,
   gapS: number
+): MeasuredCadenceSegments => {
+  let ordered = true;
+  for (let i = 1; i < track.length && ordered; i++) if (!(track[i].timeMs >= track[i - 1].timeMs)) ordered = false;
+  return { list: measuredSegments(track, spm, gapS), ordered };
+};
+
+/**
+ * Cadence et longueur de pas entre deux instants (l'effort d'une répétition),
+ * ou `null` sans mesure : les segments mesurés de la session
+ * (`measuredCadenceSegments`, sur la même trace) qui commencent à `startMs`
+ * ou après et finissent à `endMs` ou avant, dans leur ordre. Dates de la
+ * trace jamais décroissantes (le cas ordinaire) : ces segments se suivent, le
+ * premier est trouvé par dichotomie (lot 56).
+ */
+export const timeSpanCadence = (
+  measured: MeasuredCadenceSegments,
+  track: readonly TrackPoint[],
+  startMs: number,
+  endMs: number
 ): CadenceShare | null => {
   const sum = new ShareSum();
-  for (const s of measuredSegments(track, spm, gapS)) {
-    const t = track[s.i].timeMs;
-    if (track[s.i - 1].timeMs >= startMs && t <= endMs) sum.add(s.dtS, s.spm, s.d);
+  const segments = measured.list;
+  if (measured.ordered) {
+    let lo = 0;
+    let hi = segments.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (track[segments[mid].i - 1].timeMs >= startMs) hi = mid;
+      else lo = mid + 1;
+    }
+    for (let k = lo; k < segments.length && track[segments[k].i].timeMs <= endMs; k++) {
+      sum.add(segments[k].dtS, segments[k].spm, segments[k].d);
+    }
+  } else {
+    for (const s of segments) {
+      if (track[s.i - 1].timeMs >= startMs && track[s.i].timeMs <= endMs) sum.add(s.dtS, s.spm, s.d);
+    }
   }
   return sum.timeS > 0 ? sum.share() : null;
 };
+
 
 /**
  * Passages d'une tranche de cadence, à montrer sur la carte : suites de

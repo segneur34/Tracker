@@ -20,6 +20,13 @@ export interface RawTrackPoint {
   lat: number;
   lon: number;
   time: string | Date;
+  /**
+   * `time` en millisecondes, lu une fois à la lecture du fichier ou à
+   * l'enregistrement (lot 56) : `rawPointTimeMs` le préfère à une nouvelle
+   * lecture de la date. Une date illisible y vaut NaN, comme relue. Ce n'est
+   * pas `TrackPoint.timeMs`, la date répartie (`spreadEqualTimes`).
+   */
+  rawTimeMs?: number;
   ele?: number;
   /**
    * Vitesse fournie par l'appareil, en m/s, lorsqu'elle est présente dans le

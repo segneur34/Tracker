@@ -3,7 +3,7 @@ import { SYNTH_WALL_MS, noiseSource, synthImu } from '../core/imuSynthetic.fixtu
 import { SPORT_PROFILES, GRADE_ANALYSIS } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import {
-  analyzeCadence, cadenceAt, cadenceBandPaths, cadenceFactor, cadenceSeries, gpxStrideCadence, joinCadence, sessionCadence, stepCadenceSpm, stepPeriod, timeSpanCadence,
+  analyzeCadence, cadenceAt, cadenceBandPaths, cadenceFactor, cadenceSeries, gpxStrideCadence, joinCadence, measuredCadenceSegments, sessionCadence, stepCadenceSpm, stepPeriod, timeSpanCadence,
   type CadenceDetection,
 } from './cadence';
 
@@ -260,10 +260,10 @@ describe('analyzeCadence : onglet « cadence »', () => {
 describe('timeSpanCadence et cadenceBandPaths', () => {
   it("cadence et pas d'une répétition", () => {
     const { track, spm } = trackOf(600, (k) => (k >= 100 && k < 160 ? 5 : 2.5), (k) => (k >= 100 && k < 160 ? 190 : 160));
-    const rep = timeSpanCadence(track, spm, track[100].timeMs, track[159].timeMs, P.gapS)!;
+    const rep = timeSpanCadence(measuredCadenceSegments(track, spm, P.gapS), track, track[100].timeMs, track[159].timeMs)!;
     expect(rep.spm).toBeCloseTo(190, 0);
     expect(rep.stepLengthM!).toBeCloseTo(5 / (190 / 60), 1);
-    expect(timeSpanCadence(track, spm.map(() => null), track[100].timeMs, track[159].timeMs, P.gapS)).toBeNull();
+    expect(timeSpanCadence(measuredCadenceSegments(track, spm.map(() => null), P.gapS), track, track[100].timeMs, track[159].timeMs)).toBeNull();
   });
 
   it("passages d'une tranche, coupés à chaque sortie", () => {
@@ -306,6 +306,39 @@ describe('sessionCadence : unité et couverture', () => {
       const s = sessionCadence(shifted(withPause), P);
       expect(s.coveredS).toBeCloseTo(49, 0);
       expect(s.present).toBe(false);
+    }
+  });
+});
+
+describe('timeSpanCadence : segments calculés une fois, dichotomie (lot 56)', () => {
+  /** Copie gelée d'avant le lot 56 : filtre de tous les segments, à chaque appel. */
+  const frozenTimeSpanCadence = (track: TrackPoint[], spm: (number | null)[], startMs: number, endMs: number, gapS: number) => {
+    let timeS = 0, spmTime = 0, steps = 0, distanceM = 0;
+    for (const s of measuredCadenceSegments(track, spm, gapS).list) {
+      if (track[s.i - 1].timeMs >= startMs && track[s.i].timeMs <= endMs) {
+        timeS += s.dtS;
+        spmTime += s.spm * s.dtS;
+        steps += (s.spm / 60) * s.dtS;
+        distanceM += s.d;
+      }
+    }
+    return timeS > 0 ? { timeS, spm: timeS > 0 ? spmTime / timeS : 0, stepLengthM: steps > 0 ? distanceM / steps : null } : null;
+  };
+
+  it('identique à la version gelée : 1 Hz et 5 Hz, trous de cadence, dates qui reculent ou illisibles, bornes NaN ou inversées', () => {
+    for (const hz of [1, 5]) {
+      const base = trackOf(900, (k) => 3 + Math.sin(k / 30), (k) => (Math.floor(k) % 97 === 5 ? null : 160 + Math.round(10 * Math.sin(k / 20))), hz);
+      const backwards = base.track.map((p, j) => (j === 400 * hz ? { ...p, timeMs: p.timeMs - 3000 } : p));
+      const unreadable = base.track.map((p, j) => (j === 300 * hz ? { ...p, timeMs: NaN } : p));
+      for (const track of [base.track, backwards, unreadable]) {
+        const segments = measuredCadenceSegments(track, base.spm, P.gapS);
+        const t0 = base.track[0].timeMs;
+        const spans: [number, number][] = [
+          ...Array.from({ length: 12 }, (_, k): [number, number] => [t0 + k * 70_000 + 333, t0 + k * 70_000 + 40_000 + k * 7]),
+          [NaN, t0 + 1e6], [t0, NaN], [t0 - 1e9, t0 + 1e12], [t0 + 5000, t0 + 4000], [t0 + 1000, t0 + 1000],
+        ];
+        for (const [a, b] of spans) expect(timeSpanCadence(segments, track, a, b)).toEqual(frozenTimeSpanCadence(track, base.spm, a, b, P.gapS));
+      }
     }
   });
 });

@@ -48,6 +48,10 @@ export const initialBearing = (
 export const pointTimeMs = (time: string | Date): number =>
   typeof time === 'string' ? new Date(time).getTime() : time.getTime();
 
+/** Date d'un point brut, en millisecondes : celle lue une fois (`rawTimeMs`), sinon relue de `time`. */
+export const rawPointTimeMs = (point: Pick<RawTrackPoint, 'time' | 'rawTimeMs'>): number =>
+  point.rawTimeMs ?? pointTimeMs(point.time);
+
 /**
  * Dates des points, en millisecondes, avec les points d'une même date répartis
  * régulièrement jusqu'à la date suivante. Certaines applications tronquent
@@ -142,7 +146,7 @@ export const detectDeviceSpeedUnit = (
 /** Unité de la vitesse appareil d'une trace brute, ou `null` si elle n'en porte pas. */
 export const detectTrackDeviceSpeedUnit = (points: RawTrackPoint[]): DeviceSpeedUnit | null => {
   if (!points.some((p) => p.speedMs !== undefined)) return null;
-  const timesMs = spreadEqualTimes(points, points.map((p) => pointTimeMs(p.time)));
+  const timesMs = spreadEqualTimes(points, points.map(rawPointTimeMs));
   const derived: number[] = [0];
   for (let i = 1; i < points.length; i++) {
     const dt = (timesMs[i] - timesMs[i - 1]) / 1000;
@@ -182,12 +186,13 @@ export const detourSpikes = (
   timesMs: number[],
   maxDetourRatio: number = DEFAULT_MAX_DETOUR_RATIO,
   maxAccel: number = DEFAULT_MAX_ACCELERATION
-): number[] => detourSpikesFrom(points, timesMs, maxDetourRatio, maxAccel, 1, false);
+): number[] => detourSpikesFrom(points, timesMs, maxDetourRatio, maxAccel, 1, false, null);
 
 /**
  * `detourSpikes` à partir du point `from` ; `skipFirst` : le point d'avant
  * est un saut, `from` est sauté comme son suivant. Sert à la reprise d'un
- * calcul (`resumeKinematics`).
+ * calcul (`resumeKinematics`). `chordsM` : cordes des pas déjà calculées
+ * (`chordsM[i]` du point `i - 1` au point `i`), sinon recalculées.
  */
 const detourSpikesFrom = (
   points: { lat: number; lon: number; segmentStart?: boolean }[],
@@ -195,7 +200,8 @@ const detourSpikesFrom = (
   maxDetourRatio: number,
   maxAccel: number,
   from: number,
-  skipFirst: boolean
+  skipFirst: boolean,
+  chordsM: ArrayLike<number> | null
 ): number[] => {
   const spikes: number[] = [];
   for (let i = skipFirst ? from + 1 : from; i < points.length - 1; i++) {
@@ -204,8 +210,8 @@ const detourSpikesFrom = (
     const dtOut = (timesMs[i + 1] - timesMs[i]) / 1000;
     if (dtIn <= 0 || dtOut <= 0) continue;
     const [p0, p1, p2] = [points[i - 1], points[i], points[i + 1]];
-    const inM = haversineDistance(p0.lat, p0.lon, p1.lat, p1.lon);
-    const outM = haversineDistance(p1.lat, p1.lon, p2.lat, p2.lon);
+    const inM = chordsM ? chordsM[i] : haversineDistance(p0.lat, p0.lon, p1.lat, p1.lon);
+    const outM = chordsM ? chordsM[i + 1] : haversineDistance(p1.lat, p1.lon, p2.lat, p2.lon);
     const directM = haversineDistance(p0.lat, p0.lon, p2.lat, p2.lon);
     if ((inM + outM) / Math.max(directM, DETOUR_FLOOR_M) <= maxDetourRatio) continue;
     const directMs = directM / (dtIn + dtOut);
@@ -385,12 +391,12 @@ const runKinematics = (points: RawTrackPoint[], options: KinematicsOptions, prev
   if (resumed) {
     const from = resumed.tailStart - 1;
     rawTimesMs = resumed.rawTimesMs.slice(0, from);
-    for (let i = from; i < n; i++) rawTimesMs.push(pointTimeMs(points[i].time));
+    for (let i = from; i < n; i++) rawTimesMs.push(rawPointTimeMs(points[i]));
     const spread = spreadEqualTimes(points.slice(from), rawTimesMs.slice(from));
     timesMs = resumed.timesMs.slice(0, from + 1);
     for (let k = 1; k < spread.length; k++) timesMs.push(spread[k]);
   } else {
-    rawTimesMs = points.map((p) => pointTimeMs(p.time));
+    rawTimesMs = points.map(rawPointTimeMs);
     timesMs = spreadEqualTimes(points, rawTimesMs);
   }
 
@@ -439,7 +445,7 @@ const runKinematics = (points: RawTrackPoint[], options: KinematicsOptions, prev
   const spikes = resumed ? resumed.spikes.filter((i) => i < R - 1) : [];
   const spikeFrom = resumed ? R - 1 : 1;
   const skipFirst = resumed !== null && spikes.length > 0 && spikes[spikes.length - 1] === R - 2;
-  spikes.push(...detourSpikesFrom(points, timesMs, options.maxDetourRatio ?? DEFAULT_MAX_DETOUR_RATIO, maxAcceleration, spikeFrom, skipFirst));
+  spikes.push(...detourSpikesFrom(points, timesMs, options.maxDetourRatio ?? DEFAULT_MAX_DETOUR_RATIO, maxAcceleration, spikeFrom, skipFirst, chordsM));
   for (const i of spikes) {
     if (useDeviceSpeed && points[i].speedMs !== undefined) continue;
     const p0 = points[i - 1];

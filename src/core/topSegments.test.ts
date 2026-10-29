@@ -10,6 +10,7 @@ import { computeKinematics } from './kinematics';
 import { computeAllTopSegments, computeTopSegments } from './topSegments';
 import type { RawTrackPoint, TopTarget, TrackPoint } from './types';
 import { msToKnots } from './units';
+import { sameData } from '../test/sameData';
 import { RUNNING_TOP_TARGETS, SPORT_PROFILES, SURF_TOP_TARGETS } from './sportProfiles';
 
 /**
@@ -330,5 +331,119 @@ describe('computeTopSegments, trou de la trace', () => {
     const track = computeKinematics(raw, { medianWindowSeconds: wing.medianWindowSeconds, maxGapS: wing.maxGapS });
     const tops = computeTopSegments(track, buildCumulativeTrack(track), { key: 't10s', label: '10 s', value: 10, kind: 'time' }, (ms) => ms);
     expect(parseFloat(tops[0].val)).toBeCloseTo(10, 1);
+  });
+});
+
+/** Copie gelée de `computeTopSegments` d'avant le lot 56 : une fenêtre objet par point, tri complet. */
+const frozenTopSegments = (
+  track: TrackPoint[], cum: ReturnType<typeof buildCumulativeTrack>, target: TopTarget, toDisplaySpeed: (ms: number) => number,
+  options: { count?: number; decimals?: number } = {}
+) => {
+  const count = options.count ?? 3;
+  const decimals = options.decimals ?? 2;
+  const { cumDist, cumTime } = cum;
+  const isDistance = target.kind === 'distance';
+  const reference = isDistance ? cumDist : cumTime;
+  const interpolateAt = (ref: number[], t: number, values: number[], lower: number, upper: number): number => {
+    const span = ref[upper] - ref[lower];
+    if (span <= 0) return values[upper];
+    return values[lower] + ((t - ref[lower]) / span) * (values[upper] - values[lower]);
+  };
+  const windows: { start: number; end: number; val: number }[] = [];
+  const gapCount = new Array<number>(track.length).fill(0);
+  for (let k = 1; k < track.length; k++) gapCount[k] = gapCount[k - 1] + (track[k].gapDistanceM !== undefined ? 1 : 0);
+  let j = 1;
+  for (let i = 0; i < track.length - 1; i++) {
+    const threshold = reference[i] + target.value;
+    if (j <= i) j = i + 1;
+    while (j < track.length && reference[j] < threshold) j++;
+    if (j >= track.length) break;
+    if (gapCount[j] > gapCount[i]) continue;
+    let distance: number;
+    let duration: number;
+    if (isDistance) {
+      distance = target.value;
+      duration = interpolateAt(cumDist, threshold, cumTime, j - 1, j) - cumTime[i];
+    } else {
+      distance = interpolateAt(cumTime, threshold, cumDist, j - 1, j) - cumDist[i];
+      duration = target.value;
+    }
+    if (duration > 0 && distance > 0) windows.push({ start: i, end: j, val: toDisplaySpeed(distance / duration) });
+  }
+  const tops: { val: string; speed: number | null; path: [number, number][] }[] = [];
+  const keep = (w: { start: number; end: number; val: number }) => {
+    tops.push({ val: w.val.toFixed(decimals), speed: w.val, path: track.slice(w.start, w.end + 1).map((p) => [p.lat, p.lon] as [number, number]) });
+  };
+  if (count === 1) {
+    let best: { start: number; end: number; val: number } | null = null;
+    for (const w of windows) if (best === null || w.val > best.val) best = w;
+    if (best !== null) keep(best);
+  } else {
+    windows.sort((a, b) => b.val - a.val);
+    const selected: { start: number; end: number }[] = [];
+    for (const w of windows) {
+      if (tops.length >= count) break;
+      if (!selected.some((s) => Math.max(w.start, s.start) <= Math.min(w.end, s.end))) {
+        keep(w);
+        selected.push({ start: w.start, end: w.end });
+      }
+    }
+  }
+  while (tops.length < count) tops.push({ val: '-', speed: null, path: [] });
+  return tops;
+};
+
+describe('computeTopSegments, sélection sans tri (lot 56)', () => {
+  /** Trace brute bruitée, arrondie au dixième de m/s (beaucoup d'égalités), avec pauses et trous. */
+  const rawTrace = (stepS: number, seed: number, constant = false): RawTrackPoint[] => {
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    const out: RawTrackPoint[] = [];
+    const t0 = Date.parse('2026-01-01T10:00:00Z');
+    let lon = 3.8;
+    let offsetS = 0;
+    for (let k = 0; k < 900 / stepS; k++) {
+      if (k > 0 && k % Math.round(400 / stepS) === 0) offsetS += 30; // trou
+      const speed = constant ? 5 : Math.round((5 + 3 * Math.sin(k * stepS / 40) + (rnd() - 0.5) * 2) * 10) / 10;
+      lon += (speed * stepS) / 80_000;
+      out.push({
+        lat: 43.6, lon, time: new Date(t0 + Math.round((k * stepS + offsetS) * 1000)).toISOString(), speedMs: speed,
+        ...(k > 0 && k % Math.round(700 / stepS) === 0 ? { segmentStart: true as const } : {}),
+      });
+    }
+    return out;
+  };
+  const converters: [string, (ms: number) => number][] = [
+    ['m/s', (ms) => ms], ['nœuds', msToKnots], ['km/h', (ms) => ms * 3.6], ['allure', (ms) => 1000 / ms / 60], ['arrondi', (ms) => Math.round(ms)],
+  ];
+
+  it('identique à la version gelée : chaque profil, chaque cible, 1 Hz et 5 Hz, unités, count 1, 3 et 5', () => {
+    for (const stepS of [1, 0.2]) {
+      for (const constant of [false, true]) {
+        const raw = rawTrace(stepS, 11, constant);
+        // Un profil par liste de cibles : ceux qui la partagent font le même calcul.
+        const profiles = Object.values(SPORT_PROFILES).filter((p, k, all) => p.topTargets.length > 0 && all.findIndex((q) => q.topTargets === p.topTargets) === k);
+        for (const profile of profiles) {
+          const track = computeKinematics(raw, { medianWindowSeconds: profile.medianWindowSeconds, maxGapS: profile.maxGapS });
+          const cum = buildCumulativeTrack(track);
+          for (const [, convert] of converters) {
+            for (const count of [1, 3, 5]) {
+              const all = computeAllTopSegments(track, cum, profile.topTargets, convert, { count, decimals: 3 });
+              for (const target of profile.topTargets) {
+                const want = frozenTopSegments(track, cum, target, convert, { count, decimals: 3 });
+                if (!sameData(all[target.key], want)) expect(all[target.key]).toEqual(want);
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('valeur NaN : même résultat que le tri', () => {
+    const track = computeKinematics(rawTrace(1, 5), {});
+    const cum = buildCumulativeTrack(track);
+    const target: TopTarget = { key: 't10s', label: '10 s', value: 10, kind: 'time' };
+    const holes = (ms: number) => (Math.round(ms * 10) % 7 === 0 ? NaN : ms);
+    for (const count of [1, 3]) expect(computeTopSegments(track, cum, target, holes, { count })).toEqual(frozenTopSegments(track, cum, target, holes, { count }));
   });
 });

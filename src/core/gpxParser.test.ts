@@ -127,14 +127,71 @@ describe('parseGpx : points sans position (muscu, lot I du 25/10)', () => {
   });
 
   it('un GPX à positions garde les mêmes rawPoints, et des timedPoints vides', () => {
+    // `rawTimeMs` : la date lue une fois (lot 56).
     const xml = gpx(`<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00Z', '<ele>3</ele>')}${pt(45, 5.001, '2026-10-01T10:00:01Z')}</trkseg>`
       + `<trkseg>${pt(45, 5.002, '2026-10-01T10:05:00Z')}</trkseg></trk>`);
     const r = parseGpx(xml);
     expect(r.timedPoints).toEqual([]);
     expect(r.rawPoints).toEqual([
-      { lat: 45, lon: 5, time: '2026-10-01T10:00:00Z', ele: 3, speedMs: undefined, courseDeg: undefined, hr: undefined, cadence: undefined },
-      { lat: 45, lon: 5.001, time: '2026-10-01T10:00:01Z', ele: undefined, speedMs: undefined, courseDeg: undefined, hr: undefined, cadence: undefined },
-      { lat: 45, lon: 5.002, time: '2026-10-01T10:05:00Z', ele: undefined, speedMs: undefined, courseDeg: undefined, hr: undefined, cadence: undefined, segmentStart: true },
+      { lat: 45, lon: 5, time: '2026-10-01T10:00:00Z', rawTimeMs: Date.parse('2026-10-01T10:00:00Z'), ele: 3, speedMs: undefined, courseDeg: undefined, hr: undefined, cadence: undefined },
+      { lat: 45, lon: 5.001, time: '2026-10-01T10:00:01Z', rawTimeMs: Date.parse('2026-10-01T10:00:01Z'), ele: undefined, speedMs: undefined, courseDeg: undefined, hr: undefined, cadence: undefined },
+      { lat: 45, lon: 5.002, time: '2026-10-01T10:05:00Z', rawTimeMs: Date.parse('2026-10-01T10:05:00Z'), ele: undefined, speedMs: undefined, courseDeg: undefined, hr: undefined, cadence: undefined, segmentStart: true },
     ]);
+  });
+
+  it('date lue une fois : rawTimeMs vaut la date relue, NaN pour une date illisible', () => {
+    const r = parseGpx(gpx(`<trk><trkseg>${pt(45, 5, '2026-10-01T10:00:00.123+02:00')}${pt(45, 5.001, 'pas une date')}</trkseg></trk>`));
+    expect(r.rawPoints.map((p) => p.rawTimeMs)).toEqual(r.rawPoints.map((p) => new Date(p.time).getTime()));
+    expect(r.rawPoints[1].rawTimeMs).toBeNaN();
+  });
+});
+
+describe('parseGpx : un seul parcours des descendants par point (lot 56)', () => {
+  /** Copie gelée de la recherche d'avant le lot 56 : nom qualifié, sinon premier descendant de ce nom local, champ par champ. */
+  const frozenFind = (element: Element, localName: string): Element | null => {
+    const direct = element.getElementsByTagName(localName)[0];
+    if (direct) return direct;
+    const all = element.getElementsByTagName('*');
+    for (let i = 0; i < all.length; i++) if (all[i].localName === localName) return all[i];
+    return null;
+  };
+  const frozenNumber = (element: Element, name: string): number | undefined => {
+    const node = frozenFind(element, name);
+    if (!node || node.textContent === null) return undefined;
+    const value = parseFloat(node.textContent.trim());
+    return isFinite(value) ? value : undefined;
+  };
+
+  it('mêmes champs que la recherche champ par champ : préfixes, doublons, nom qualifié imbriqué, champ illisible', () => {
+    const inners = [
+      '<ele>3</ele><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>150</gpxtpx:hr><gpxtpx:cad>80</gpxtpx:cad><gpxtpx:speed>4.5</gpxtpx:speed><gpxtpx:course>91</gpxtpx:course></gpxtpx:TrackPointExtension></extensions>',
+      // Un champ préfixé avant le même sans préfixe, imbriqué : le nom qualifié l'emporte.
+      '<extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>140</gpxtpx:hr><x><hr>141</hr></x></gpxtpx:TrackPointExtension></extensions><ele>7</ele>',
+      // Deux champs préfixés : le premier ; un premier illisible ne cède pas au suivant.
+      '<extensions><gpxdata:speed xmlns:gpxdata="urn:x">abc</gpxdata:speed><gpxtpx:speed>5</gpxtpx:speed><a:cad xmlns:a="urn:a">70</a:cad><b:cad xmlns:b="urn:b">71</b:cad></extensions>',
+      '<speed>6.2</speed><course>400</course><ele> 12.5 </ele>',
+      '<extensions><gpxtpx:TrackPointExtension><gpxtpx:speed>3</gpxtpx:speed></gpxtpx:TrackPointExtension><speed>2</speed></extensions>',
+    ];
+    const xml = gpx(`<trk><trkseg>${inners.map((inner, k) => pt(45, 5 + k * 0.001, `2026-10-01T10:00:0${k}Z`, inner)).join('')}</trkseg></trk>`);
+    const r = parseGpx(xml);
+    const trkpts = new XmlDomParser().parseFromString(xml, 'application/xml').getElementsByTagName('trkpt');
+    expect(r.rawPoints).toHaveLength(inners.length);
+    r.rawPoints.forEach((p, k) => {
+      const trkpt = trkpts[k] as unknown as Element;
+      const speed = frozenNumber(trkpt, 'speed');
+      const course = frozenNumber(trkpt, 'course');
+      expect(p).toEqual({
+        lat: 45, lon: 5 + k * 0.001, time: `2026-10-01T10:00:0${k}Z`, rawTimeMs: Date.parse(`2026-10-01T10:00:0${k}Z`),
+        ele: frozenNumber(trkpt, 'ele'),
+        speedMs: speed === undefined || speed < 0 || speed > 100 ? undefined : speed,
+        courseDeg: course !== undefined && course >= 0 && course <= 360 ? course : undefined,
+        hr: frozenNumber(trkpt, 'hr'),
+        cadence: frozenNumber(trkpt, 'cad'),
+      });
+    });
+    // Les cas voulus sont bien là.
+    expect(r.rawPoints.map((p) => p.hr)).toEqual([150, 141, undefined, undefined, undefined]);
+    expect(r.rawPoints.map((p) => p.speedMs)).toEqual([4.5, undefined, undefined, 6.2, 2]);
+    expect(r.rawPoints[2].cadence).toBe(70);
   });
 });

@@ -13,7 +13,14 @@
  * résultat.
  */
 
-import { haversineDistance, detectTrackDeviceSpeedUnit, DEVICE_SPEED_FACTOR, pointTimeMs, spreadEqualTimes } from './kinematics';
+import {
+  haversineDistance,
+  detectTrackDeviceSpeedUnit,
+  DEVICE_SPEED_FACTOR,
+  rawPointTimeMs,
+  spreadEqualTimes,
+  type DeviceSpeedUnit,
+} from './kinematics';
 import { DEFAULT_MAX_ACCELERATION } from './speedFilter';
 import type { RawTrackPoint } from './types';
 
@@ -55,17 +62,24 @@ const CEILING_PER_REFERENCE = 3;
  *
  * Le calcul porte sur les vitesses brutes, avant tout filtrage, puisque c'est
  * le filtrage qui en dépend.
+ *
+ * `deviceUnit` : unité de la vitesse appareil déjà détectée
+ * (`detectTrackDeviceSpeedUnit`, `null` sans vitesse appareil) ; absente, elle
+ * est détectée ici.
  */
-export const referenceSpeedMs = (points: RawTrackPoint[]): number => {
+export const referenceSpeedMs = (points: RawTrackPoint[], deviceUnit?: DeviceSpeedUnit | null): number => {
   if (points.length < 2) return 0;
 
-  const deviceUnit = detectTrackDeviceSpeedUnit(points);
-  const deviceFactor = deviceUnit === null ? 0 : DEVICE_SPEED_FACTOR[deviceUnit];
+  const unit = deviceUnit === undefined ? detectTrackDeviceSpeedUnit(points) : deviceUnit;
+  const deviceFactor = unit === null ? 0 : DEVICE_SPEED_FACTOR[unit];
 
-  const samples: { speed: number; weight: number }[] = [];
   // Points d'une même date répartis dans leur intervalle, comme dans `computeKinematics`.
-  const timesMs = spreadEqualTimes(points, points.map((p) => pointTimeMs(p.time)));
+  const timesMs = spreadEqualTimes(points, points.map(rawPointTimeMs));
 
+  // Échantillons en tableaux typés, triés par indices (lot 56).
+  const speeds = new Float64Array(points.length - 1);
+  const weights = new Float64Array(points.length - 1);
+  let size = 0;
   for (let i = 1; i < points.length; i++) {
     const dt = (timesMs[i] - timesMs[i - 1]) / 1000;
     if (dt <= 0) continue;
@@ -74,7 +88,75 @@ export const referenceSpeedMs = (points: RawTrackPoint[]): number => {
     const p1 = points[i];
     const derived = haversineDistance(p0.lat, p0.lon, p1.lat, p1.lon) / dt;
     const speed =
-      deviceUnit !== null && p1.speedMs !== undefined ? p1.speedMs * deviceFactor : derived;
+      unit !== null && p1.speedMs !== undefined ? p1.speedMs * deviceFactor : derived;
+
+    // Date illisible ou vitesse NaN : le tri d'un NaN n'est pas sûr, on garde le calcul d'origine.
+    if (Number.isNaN(dt) || Number.isNaN(speed)) return referenceFromSamples(points, timesMs, unit, deviceFactor);
+    speeds[size] = speed;
+    weights[size] = Math.min(dt, MAX_SAMPLE_S);
+    size++;
+  }
+
+  if (size === 0) return 0;
+
+  const order = stableSortedOrder(speeds, size);
+  let totalWeight = 0;
+  for (let k = 0; k < size; k++) totalWeight += weights[order[k]];
+  const target = totalWeight * REFERENCE_PERCENTILE;
+
+  let cumulated = 0;
+  for (let k = 0; k < size; k++) {
+    cumulated += weights[order[k]];
+    if (cumulated >= target) return speeds[order[k]];
+  }
+  return speeds[order[size - 1]];
+};
+
+/**
+ * Indices des `size` premières valeurs (sans NaN) dans l'ordre du tri stable
+ * `(a, b) => a - b` : croissantes, et à égalité (−0 et +0 compris) dans
+ * l'ordre des indices. Tri natif des valeurs, puis rangement par comptage :
+ * sans fonction de comparaison, plusieurs fois plus rapide (lot 56).
+ */
+const stableSortedOrder = (values: Float64Array, size: number): Uint32Array => {
+  const sorted = values.slice(0, size).sort();
+  // Valeurs distinctes, croissantes ; −0 et +0 n'en font qu'une.
+  const distinct = new Float64Array(size);
+  let count = 0;
+  for (let k = 0; k < size; k++) if (count === 0 || sorted[k] !== distinct[count - 1]) distinct[count++] = sorted[k];
+  const groupOf = new Uint32Array(size);
+  const starts = new Uint32Array(count + 1);
+  for (let k = 0; k < size; k++) {
+    let lo = 0;
+    let hi = count - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (distinct[mid] < values[k]) lo = mid + 1;
+      else hi = mid;
+    }
+    groupOf[k] = lo;
+    starts[lo + 1]++;
+  }
+  for (let g = 0; g < count; g++) starts[g + 1] += starts[g];
+  const order = new Uint32Array(size);
+  for (let k = 0; k < size; k++) order[starts[groupOf[k]]++] = k;
+  return order;
+};
+
+/** `referenceSpeedMs` d'avant le lot 56, objets et tri, pour une trace qui porte une date illisible. */
+const referenceFromSamples = (
+  points: RawTrackPoint[], timesMs: number[], unit: DeviceSpeedUnit | null, deviceFactor: number
+): number => {
+  const samples: { speed: number; weight: number }[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const dt = (timesMs[i] - timesMs[i - 1]) / 1000;
+    if (dt <= 0) continue;
+
+    const p0 = points[i - 1];
+    const p1 = points[i];
+    const derived = haversineDistance(p0.lat, p0.lon, p1.lat, p1.lon) / dt;
+    const speed =
+      unit !== null && p1.speedMs !== undefined ? p1.speedMs * deviceFactor : derived;
 
     samples.push({ speed, weight: Math.min(dt, MAX_SAMPLE_S) });
   }
@@ -103,21 +185,23 @@ export const referenceSpeedMs = (points: RawTrackPoint[]): number => {
  * d'analyser : un enregistrement économique, à plusieurs dizaines de secondes
  * par point, ne décrit ni une accélération ni le détail d'un virage.
  */
-export const samplingIntervalS = (points: ReadonlyArray<Pick<RawTrackPoint, 'time'>>): number => {
+export const samplingIntervalS = (points: ReadonlyArray<Pick<RawTrackPoint, 'time' | 'rawTimeMs'>>): number => {
   if (points.length < 2) return 0;
 
-  const gaps: number[] = [];
-  let previousMs = pointTimeMs(points[0].time);
+  // Écarts tous positifs et finis : le tri numérique d'un tableau typé les range comme `(a, b) => a - b`.
+  const gaps = new Float64Array(points.length - 1);
+  let size = 0;
+  let previousMs = rawPointTimeMs(points[0]);
   for (let i = 1; i < points.length; i++) {
-    const timeMs = pointTimeMs(points[i].time);
-    if (timeMs > previousMs) gaps.push((timeMs - previousMs) / 1000);
+    const timeMs = rawPointTimeMs(points[i]);
+    if (timeMs > previousMs) gaps[size++] = (timeMs - previousMs) / 1000;
     previousMs = timeMs;
   }
 
-  if (gaps.length === 0) return 0;
-  gaps.sort((a, b) => a - b);
-  const mid = Math.floor(gaps.length / 2);
-  return gaps.length % 2 === 0 ? (gaps[mid - 1] + gaps[mid]) / 2 : gaps[mid];
+  if (size === 0) return 0;
+  const sorted = gaps.subarray(0, size).sort();
+  const mid = Math.floor(size / 2);
+  return size % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 };
 
 /**

@@ -128,13 +128,11 @@ export const EMPTY_LIVE_STATS: LiveStats = {
   averageHeartRateBpm: null,
 };
 
-const toRawPoint = (fix: LocationFix): RawTrackPoint => ({
-  lat: fix.lat,
-  lon: fix.lon,
-  time: new Date(fix.timeMs),
-  ele: fix.altitudeM,
-  speedMs: fix.speedMs,
-});
+const toRawPoint = (fix: LocationFix): RawTrackPoint => {
+  const time = new Date(fix.timeMs);
+  // Date lue une fois (lot 56) : celle de `time`, que `Date` arrondit à la milliseconde.
+  return { lat: fix.lat, lon: fix.lon, time, rawTimeMs: time.getTime(), ele: fix.altitudeM, speedMs: fix.speedMs };
+};
 
 /** FC d'un segment, comme l'analyse : somme pondérée par le temps et temps couvert ; `null` sans FC. */
 const heartPart = (

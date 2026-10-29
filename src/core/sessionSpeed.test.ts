@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { referenceSpeedMs, samplingIntervalS, sessionFilterThresholds } from './sessionSpeed';
 import { DEFAULT_MAX_ACCELERATION } from './speedFilter';
 import type { RawTrackPoint } from './types';
+import { computeKinematics, DEVICE_SPEED_FACTOR, detectTrackDeviceSpeedUnit, haversineDistance, pointTimeMs, spreadEqualTimes } from './kinematics';
+import { sameData } from '../test/sameData';
 
 const START_MS = Date.parse('2026-01-01T10:00:00Z');
 const LAT = 43.6;
@@ -127,5 +129,108 @@ describe('sessionFilterThresholds', () => {
       maxAcceleration: DEFAULT_MAX_ACCELERATION,
       maxSpeedMs: 30,
     });
+  });
+});
+
+/** Copie gelée de `referenceSpeedMs` d'avant le lot 56 : objets, tri, dates relues. */
+const frozenReferenceSpeedMs = (points: RawTrackPoint[]): number => {
+  if (points.length < 2) return 0;
+  const deviceUnit = detectTrackDeviceSpeedUnit(points.map(({ lat, lon, time, speedMs }) => ({ lat, lon, time, speedMs })));
+  const deviceFactor = deviceUnit === null ? 0 : DEVICE_SPEED_FACTOR[deviceUnit];
+  const samples: { speed: number; weight: number }[] = [];
+  const timesMs = spreadEqualTimes(points, points.map((p) => pointTimeMs(p.time)));
+  for (let i = 1; i < points.length; i++) {
+    const dt = (timesMs[i] - timesMs[i - 1]) / 1000;
+    if (dt <= 0) continue;
+    const p0 = points[i - 1];
+    const p1 = points[i];
+    const derived = haversineDistance(p0.lat, p0.lon, p1.lat, p1.lon) / dt;
+    const speed = deviceUnit !== null && p1.speedMs !== undefined ? p1.speedMs * deviceFactor : derived;
+    samples.push({ speed, weight: Math.min(dt, 10) });
+  }
+  if (samples.length === 0) return 0;
+  samples.sort((a, b) => a.speed - b.speed);
+  const totalWeight = samples.reduce((sum, x) => sum + x.weight, 0);
+  const target = totalWeight * 0.9;
+  let cumulated = 0;
+  for (const sample of samples) {
+    cumulated += sample.weight;
+    if (cumulated >= target) return sample.speed;
+  }
+  return samples[samples.length - 1].speed;
+};
+
+/** Copie gelée de `samplingIntervalS` d'avant le lot 56. */
+const frozenSamplingIntervalS = (points: ReadonlyArray<Pick<RawTrackPoint, 'time'>>): number => {
+  if (points.length < 2) return 0;
+  const gaps: number[] = [];
+  let previousMs = pointTimeMs(points[0].time);
+  for (let i = 1; i < points.length; i++) {
+    const timeMs = pointTimeMs(points[i].time);
+    if (timeMs > previousMs) gaps.push((timeMs - previousMs) / 1000);
+    previousMs = timeMs;
+  }
+  if (gaps.length === 0) return 0;
+  gaps.sort((a, b) => a - b);
+  const mid = Math.floor(gaps.length / 2);
+  return gaps.length % 2 === 0 ? (gaps[mid - 1] + gaps[mid]) / 2 : gaps[mid];
+};
+
+describe('dates lues une fois, tri par indices (lot 56)', () => {
+  /** Trace bruitée, vitesses arrondies (égalités, 0 et −0), dates tronquées ou non, Doppler en km/h ou absent, reculs et dates illisibles. */
+  const noisyTrace = (stepS: number, seed: number, o: { truncate?: boolean; doppler?: number; unreadable?: boolean } = {}): RawTrackPoint[] => {
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    const points: RawTrackPoint[] = [];
+    let lon = 3.8;
+    for (let k = 0; k < 1500; k++) {
+      const speed = Math.round((4 + 3 * Math.sin(k / 50) + (rnd() - 0.5) * 3) * 10) / 10;
+      lon += (speed * stepS) / M_PER_DEG_LON;
+      let ms = START_MS + Math.round(k * stepS * 1000) + (k % 301 === 7 ? -1500 : 0);
+      if (o.truncate) ms = Math.floor(ms / 1000) * 1000;
+      const time = o.unreadable && k % 409 === 11 ? 'illisible' : new Date(ms).toISOString();
+      points.push({ lat: LAT + (rnd() - 0.5) * 1e-5, lon, time, ...(o.doppler && rnd() > 0.02 ? { speedMs: k % 13 === 0 ? (k % 2 ? -0 : 0) : speed * o.doppler } : {}) });
+    }
+    return points;
+  };
+  const withRaw = (points: RawTrackPoint[]) => points.map((p) => ({ ...p, rawTimeMs: pointTimeMs(p.time) }));
+  const cases = (): [string, RawTrackPoint[]][] => [1, 0.2].flatMap((stepS) => [
+    [`${stepS} s`, noisyTrace(stepS, 3)],
+    [`${stepS} s, tronquées`, noisyTrace(stepS, 5, { truncate: true })],
+    [`${stepS} s, Doppler`, noisyTrace(stepS, 7, { doppler: 1 })],
+    [`${stepS} s, Doppler km/h`, noisyTrace(stepS, 9, { doppler: 3.6 })],
+    [`${stepS} s, illisibles`, noisyTrace(stepS, 11, { unreadable: true, doppler: 1 })],
+  ] as [string, RawTrackPoint[]][]);
+
+  it('referenceSpeedMs : identique à la version gelée, avec et sans rawTimeMs, unité détectée ou donnée', () => {
+    for (const [name, points] of cases()) {
+      const want = frozenReferenceSpeedMs(points);
+      expect(Object.is(referenceSpeedMs(points), want), name).toBe(true);
+      expect(Object.is(referenceSpeedMs(withRaw(points)), want), name).toBe(true);
+      expect(Object.is(referenceSpeedMs(points, detectTrackDeviceSpeedUnit(points)), want), name).toBe(true);
+    }
+  });
+
+  it('vitesses à égalité, 0 et −0 : celle du tri stable', () => {
+    for (const pattern of [[-0, 0, 0], [0, -0], [0, 0, -0, -0, 0]]) {
+      const points = buildTrack(Array.from({ length: 10 }, () => 0)).map((p, k) => ({ ...p, speedMs: pattern[k % pattern.length] }));
+      expect(Object.is(referenceSpeedMs(points), frozenReferenceSpeedMs(points))).toBe(true);
+    }
+  });
+
+  it('samplingIntervalS : identique à la version gelée, avec et sans rawTimeMs', () => {
+    for (const [name, points] of cases()) {
+      const want = frozenSamplingIntervalS(points);
+      expect(Object.is(samplingIntervalS(points), want), name).toBe(true);
+      expect(Object.is(samplingIntervalS(withRaw(points)), want), name).toBe(true);
+    }
+  });
+
+  it('computeKinematics et unité du Doppler : mêmes résultats avec rawTimeMs', () => {
+    for (const [name, points] of cases()) {
+      const a = computeKinematics(points, { medianWindowSeconds: 3, maxGapS: 10 });
+      const b = computeKinematics(withRaw(points), { medianWindowSeconds: 3, maxGapS: 10 });
+      if (!sameData(a, b)) expect(b, name).toEqual(a);
+      expect(detectTrackDeviceSpeedUnit(withRaw(points)), name).toBe(detectTrackDeviceSpeedUnit(points));
+    }
   });
 });
