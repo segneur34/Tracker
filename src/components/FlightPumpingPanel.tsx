@@ -5,6 +5,7 @@ import { HIGHLIGHT_PODIUM_COLORS } from './highlightColors';
 import Button from './ui/Button';
 import MapToggle from './ui/MapToggle';
 import StatTile from './ui/StatTile';
+import Swatch from './ui/Swatch';
 import type { FlightPumping, FlightSpan, PumpingSummary } from '../core/pumping';
 import { formatShortDuration, formatTimeOfDay } from '../core/units';
 import type { PumpingStatus } from '../hooks/useSessionPumping';
@@ -54,7 +55,6 @@ export interface FlightPumpingPanelProps<F extends FlightSpan> {
   offNote?: ReactNode;
 }
 
-const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' } as const;
 const thStyle = { padding: '0.4em 0.5em', whiteSpace: 'nowrap' } as const;
 const tdStyle = { padding: '0.35em 0.5em', textAlign: 'center', whiteSpace: 'nowrap' } as const;
 const noteStyle = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' } as const;
@@ -105,7 +105,7 @@ function FlightPumpingPanel<F extends FlightSpan>({
       </div>
       {flights.length > 0 && (
         <div style={{ overflowX: 'auto', marginTop: '10px' }}>
-          <table style={tableStyle}>
+          <table className="ui-table">
             <thead>
               <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                 <th style={thStyle}>{flights.length > 1 ? 'Plus longs' : 'Vol'}</th>
@@ -125,9 +125,9 @@ function FlightPumpingPanel<F extends FlightSpan>({
               {podium.map((f, k) => {
                 const pump = pumping?.get(f.n) ?? null;
                 return (
-                  <tr key={f.n} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                  <tr key={f.n} className="ui-table__row">
                     <td style={{ ...tdStyle, fontWeight: 700 }}>
-                      <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: HIGHLIGHT_PODIUM_COLORS[k], marginRight: '6px' }} />
+                      <Swatch color={HIGHLIGHT_PODIUM_COLORS[k]} round gap />
                       {flightLabel(f, pump)}
                     </td>
                     <td style={{ ...tdStyle, fontWeight: 700 }}>{formatShortDuration(f.durationS)}</td>
@@ -154,7 +154,7 @@ function FlightPumpingPanel<F extends FlightSpan>({
       )}
       {allOpen && flights.length > 3 && (
         <div style={{ overflowX: 'auto', marginTop: '10px' }}>
-          <table style={tableStyle}>
+          <table className="ui-table">
             <thead>
               <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                 <th style={thStyle}>N°</th>
@@ -179,7 +179,7 @@ function FlightPumpingPanel<F extends FlightSpan>({
               {flights.map((f) => {
                 const pump = pumping?.get(f.n) ?? null;
                 return (
-                  <tr key={f.n} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                  <tr key={f.n} className="ui-table__row">
                     <td style={{ ...tdStyle, fontWeight: 700 }}>{flightLabel(f, pump, false)}</td>
                     <td style={tdStyle}>{formatTimeOfDay(f.startMs).slice(0, 5)}</td>
                     <td style={{ ...tdStyle, fontWeight: 700 }}>{formatShortDuration(f.durationS)}</td>

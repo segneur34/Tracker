@@ -1,5 +1,5 @@
-import { Fragment, useMemo } from 'react';
-import { CircleMarker, Polyline, Popup } from 'react-leaflet';
+import { useMemo } from 'react';
+import HighlightSpan from './HighlightSpan';
 
 /** Un passage de la trace à montrer : vague, vol ou remontée, entre deux index de points. */
 export interface TrackSpanShown {
@@ -28,12 +28,7 @@ function TrackSpanLayer({ track, spans }: {
         const first = track[span.start];
         if (path.length < 2 || !first) return null;
         return (
-          <Fragment key={span.key}>
-            <Polyline positions={path} pathOptions={{ color: span.color, weight: 10, opacity: 0.85 }} />
-            <CircleMarker center={[first.lat, first.lon]} radius={7} pathOptions={{ color: span.color, fillColor: span.color, fillOpacity: 1, weight: 2 }}>
-              <Popup>{span.label}</Popup>
-            </CircleMarker>
-          </Fragment>
+          <HighlightSpan key={span.key} path={path} start={[first.lat, first.lon]} color={span.color}>{span.label}</HighlightSpan>
         );
       })}
     </>

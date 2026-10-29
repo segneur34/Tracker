@@ -1,30 +1,34 @@
+import { FAMILY_ACCENT } from '../core/activities';
 import { errorMessage } from '../core/basics';
 import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ReferenceArea } from 'recharts';
 import './analysisMobile.css';
-import ActivitySelect from '../components/ActivitySelect';
+import Swatch from '../components/ui/Swatch';
+import SessionActivityField from '../components/SessionActivityField';
+import SessionSettingsHeader from '../components/SessionSettingsHeader';
+import CardioTab from '../components/CardioTab';
+import NotesTab from '../components/NotesTab';
 import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import EmptyTabPanel from '../components/EmptyTabPanel';
 import GeneralStats from '../components/GeneralStats';
-import HeartRatePanel, { CardioCurve } from '../components/HeartRatePanel';
+import { CardioCurve } from '../components/HeartRatePanel';
 import { HelpText } from '../components/Help';
 import { zoneLabel } from '../components/heartRateColors';
 import { markReferenceLines } from '../components/markReferenceLines';
-import PanelTitle, { SessionDate } from '../components/PanelTitle';
+import { PanelHeading, SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import { SessionMarksList } from '../components/SessionMarks';
 import SessionNameEditor from '../components/SessionNameEditor';
-import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
+import { gearFieldsFor } from '../components/gearFields';
 import SessionSaveBar from '../components/SessionSaveBar';
-import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
+import { ANALYSIS_PANEL_STYLE } from '../components/styles';
 import PageHeader from '../components/ui/PageHeader';
 import StatTile from '../components/ui/StatTile';
 import { MUSCU_TABS, tabDefaults } from '../core/analysisTabs';
 import { parseGpx } from '../core/gpxParser';
 import { analyzeHeartRateSession, heartRatePointsFrom, type HeartRateSessionPoint, type SessionPhase } from '../core/heartRateSession';
 import { shareableStats, type ShareStat } from '../core/shareImage';
-import { hasPositions } from '../core/sportProfiles';
 import { formatDuration } from '../core/units';
 import { useAnalysisSession } from '../hooks/useAnalysisSession';
 import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
@@ -52,7 +56,7 @@ import { SPEED_COLOR } from '../components/chartStyle';
  */
 
 const FAMILY = 'fractionne' as const;
-const PAGE = { title: 'Analyse muscu', backLabel: 'Entraînement', accent: 'var(--fractionne)', storageId: 'muscu' } as const;
+const PAGE = { title: 'Analyse muscu', backLabel: 'Entraînement', accent: FAMILY_ACCENT.fractionne, storageId: 'muscu' } as const;
 const MUSCU_SECTION_DEFAULTS = tabDefaults(MUSCU_TABS);
 const NO_INTERVALS: IntervalSeries[] = [];
 const NO_POINTS: HeartRateSessionPoint[] = [];
@@ -63,11 +67,6 @@ const PHASE_STYLE: Record<SessionPhase['kind'], { color: string; opacity: number
   repos: { color: SPEED_COLOR, opacity: 0.12, label: 'récupération' },
   libre: { color: '#757575', opacity: 0.1, label: 'bloc libre' },
 };
-
-const gearFields = (labels: [string, string]): GearField[] => [
-  { field: 'gear1', label: labels[0], placeholder: 'ex. charges, machine' },
-  { field: 'gear2', label: labels[1], placeholder: 'ex. modèle, taille' },
-];
 
 /** Session lue : son fichier, et ses points à l'heure (sans position). */
 interface LoadedSession {
@@ -167,10 +166,8 @@ function MuscuModule() {
           <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} advancedOpen={advanced.open} onToggleAdvanced={advanced.toggle} accent={PAGE.accent} />
           <div className="an-carte-panels">
             {open.general && (
-              <ResizablePanel id={panelId('general')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" extra={<SessionDate track={points} />} open={open.general} onToggle={toggleOf('general')} helpKey="muscu:general" />
-                </div>
+              <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
+                <PanelHeading label="Général" extra={<SessionDate track={points} />} open={open.general} onToggle={toggleOf('general')} helpKey="muscu:general" />
                 <HelpText helpKey="muscu:general" note>
                   FC lissée sur {profile.heartRate.smoothS} s ; un trou de plus de {profile.heartRate.gapS} s (ceinture retirée, pause) n'est ni compté ni tracé.
                   {' '}Bandes de couleur : les phases du compteur. Traits numérotés : les notes posées pendant la séance.
@@ -198,7 +195,7 @@ function MuscuModule() {
                       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '4px', fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
                         {phaseKinds.map((kind) => (
                           <span key={kind} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: PHASE_STYLE[kind].color, opacity: 0.6 }} />
+                            <Swatch color={PHASE_STYLE[kind].color} opacity={0.6} />
                             {PHASE_STYLE[kind].label}
                           </span>
                         ))}
@@ -219,12 +216,9 @@ function MuscuModule() {
             )}
 
             {open.cardio && (heart.present ? (
-              <ResizablePanel id={panelId('cardio')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
-                <HeartRatePanel track={points} minutes={minutes} heart={heart} params={profile.heartRate} zones={zones} profileHrMax={runner.hrMax} runner={runner}
-                  onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: points[0]?.timeMs ?? null })}
-                  selectedZone={null} onSelectZone={() => undefined} 
-                  zoom={cardioZoom} mapless open={open.cardio} onToggle={toggleOf('cardio')} />
-              </ResizablePanel>
+              <CardioTab id={panelId('cardio')} track={points} minutes={minutes} heart={heart} params={profile.heartRate} zones={zones} runner={runner}
+                onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: points[0]?.timeMs ?? null })}
+                zoom={cardioZoom} mapless open={open.cardio} onToggle={toggleOf('cardio')} />
             ) : (
               <EmptyTabPanel id={panelId('cardio.vide')} label="Cardio" open={open.cardio} onToggle={toggleOf('cardio')}>
                 Pas assez de FC dans cette session pour l'onglet cardio.
@@ -232,29 +226,18 @@ function MuscuModule() {
             ))}
 
             {open.notes && (
-              <ResizablePanel id={panelId('notes')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                <SessionNotesPanel notes={draft.edits.notes} setNotes={draft.updateNotes} family={FAMILY} conditions="libre" draft={draft}
-                  gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={toggleOf('notes')} />
-              </ResizablePanel>
+              <NotesTab id={panelId('notes')} draft={draft} family={FAMILY} conditions="libre"
+                gearFields={gearFieldsFor(gearLabels, ['ex. charges, machine', 'ex. modèle, taille'])} gearGroups={gearGroups} activityId={activity.id}
+                open={open.notes} onToggle={toggleOf('notes')} />
             )}
 
             {open.reglages && (
-              <ResizablePanel id={panelId('reglages')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={toggleOf('reglages')} helpKey="muscu:reglages" />
-                </div>
-                <HelpText helpKey="muscu:reglages" note>
+              <ResizablePanel id={panelId('reglages')} style={ANALYSIS_PANEL_STYLE}>
+                <SessionSettingsHeader helpKey="muscu:reglages" open={open.reglages} onToggle={toggleOf('reglages')}>
                   Une session sans GPS ne change que pour une autre activité sans trace : elle n'a pas de positions pour une analyse à pied, à vélo ou en voile.
-                </HelpText>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <strong>Activité :</strong>
-                  <ActivitySelect
-                    activities={allActivities.filter((a) => !hasPositions(a.base))}
-                    value={activity.id}
-                    extra={activity}
-                    families={[FAMILY]}
-                    onChange={(next) => changeSessionActivity(shownFile, next)} />
-                </label>
+                </SessionSettingsHeader>
+                <SessionActivityField activities={allActivities} activity={activity} withPositions={false} families={[FAMILY]}
+                  onChange={(next) => changeSessionActivity(shownFile, next)} />
               </ResizablePanel>
             )}
           </div>

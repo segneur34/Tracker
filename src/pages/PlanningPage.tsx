@@ -11,6 +11,7 @@ import type { Readout } from '../components/ChartReadout';
 import ElevationProfileMini, { type ElevationProfileRow } from '../components/ElevationProfileMini';
 import MapAutoResize from '../components/MapAutoResize';
 import BaseTileLayer from '../components/BaseTileLayer';
+import GradeLegendRow from '../components/GradeLegendRow';
 import { HelpText } from '../components/Help';
 import { useHelp } from '../components/helpContext';
 import PanelTitle from '../components/PanelTitle';
@@ -34,7 +35,7 @@ import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER, trackBounds } from '../core/displayConfig';
 import { parseGpxPath } from '../core/gpxParser';
 import { ELEVATION_PRESETS, usesMarkCourse } from '../core/sportProfiles';
-import { SLOW_COLOR, gradientCss } from '../core/speedGradient';
+import { useExclusiveToggles } from '../hooks/useExclusiveToggles';
 import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, formatSpeed, toDisplayDistance, formatMeters } from '../core/units';
 import { useLeaveWarning } from '../hooks/leaveGuard';
 import { useChartZoom } from '../hooks/useChartZoom';
@@ -430,16 +431,7 @@ function PlanningPage() {
    * que leur bloc est ouvert, à la place du bleu ; un tronçon en calcul ou en
    * échec garde son pointillé. Un seul à la fois : en allumer un éteint l'autre.
    */
-  const [surfaceOnMap, setSurfaceOnMap] = useState(false);
-  const [gradeOnMap, setGradeOnMap] = useState(false);
-  const toggleSurfaceOnMap = () => {
-    setSurfaceOnMap(!surfaceOnMap);
-    if (!surfaceOnMap) setGradeOnMap(false);
-  };
-  const toggleGradeOnMap = () => {
-    setGradeOnMap(!gradeOnMap);
-    if (!gradeOnMap) setSurfaceOnMap(false);
-  };
+  const { first: surfaceOnMap, second: gradeOnMap, toggleFirst: toggleSurfaceOnMap, toggleSecond: toggleGradeOnMap } = useExclusiveToggles();
   const surfaceShown = !markCourse && open.surface && surfaceOnMap;
   /** Revêtement choisi dans la barre, en surbrillance sur la carte ; effacé quand le bloc Surface se ferme. */
   const [selectedSurface, setSelectedSurface] = useState<SurfaceCategory | null>(null);
@@ -1075,21 +1067,7 @@ function PlanningPage() {
                   <ElevationProfileMini rows={chartRows} stops={gradeStops} gradientId={gradientId} distanceSymbol={DISTANCE_UNIT_SYMBOL[distanceUnit]}
                     zoom={zoom} read={readProfile}
                     height={PROFILE_HEIGHT_PX} grid />
-                  <div className="plan-legend">
-                    <span>Pente, montée ou descente :</span>
-                    {gradeRange.min > 0 && (
-                      <>
-                        <span className="plan-legend__swatch" style={{ backgroundColor: SLOW_COLOR }} />
-                        <span>sous {Math.round(gradeRange.min * 100)} %,</span>
-                      </>
-                    )}
-                    <span>{Math.round(gradeRange.min * 100)} %</span>
-                    <span className="plan-legend__bar" style={{ background: gradientCss() }} />
-                    <span>{Math.round(gradeRange.max * 100)} % et plus</span>
-                    <Button size="s" aria-pressed={gradeOnMap} onClick={toggleGradeOnMap} style={{ marginLeft: 'auto' }}>
-                      {gradeOnMap ? 'Masquer de la carte' : 'Voir sur la carte'}
-                    </Button>
-                  </div>
+                  <GradeLegendRow label="Pente, montée ou descente :" gradeRange={gradeRange} onMap={gradeOnMap} onToggleMap={toggleGradeOnMap} />
                 </div>
               ) : (
                 route.waypoints.length >= 2 && totals.pendingLegs === 0 && (

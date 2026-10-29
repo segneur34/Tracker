@@ -436,30 +436,6 @@
   margin: 0;
 }
 
-.plan-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: var(--text-xs);
-}
-
-.plan-legend__swatch {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-}
-
-.plan-legend__bar {
-  display: inline-block;
-  width: 90px;
-  height: 10px;
-  border-radius: 2px;
-}
-
 .plan-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

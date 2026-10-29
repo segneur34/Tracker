@@ -53,3 +53,7 @@ export const WORKOUT_LISTS: Record<WorkoutKind, WorkoutList> = {
 
 /** Enregistrer en mode Timer : le compteur seul (`RecordingPage`). */
 export const TIMER_RECORD_PATH = '/enregistrer?minuterie=1';
+
+/** Enregistrer sur une activité, prêt à lancer ; `test` : le test guidé de la rangée « Test » (`&test=`). */
+export const recordPath = (activityId: string, test?: string): string =>
+  `/enregistrer?activite=${encodeURIComponent(activityId)}${test ? `&test=${test}` : ''}`;

@@ -7,12 +7,14 @@ import MapAutoResize from '../components/MapAutoResize';
 import PageBackdrop from '../components/PageBackdrop';
 import { FAMILY_ICON } from '../components/familyIcons';
 import { IconHelp } from '../components/icons';
+import ActivityFilterTabs from '../components/ActivityFilterTabs';
 import ActivityIcon from '../components/ActivityIcon';
 import ActivitySelect, { ActivitySheet } from '../components/ActivitySelect';
 import ImportButtons from '../components/ImportButtons';
 import { useHelp } from '../components/helpContext';
 import MemoryStatus from '../components/MemoryStatus';
 import RefreshLibraryButton from '../components/RefreshLibraryButton';
+import SessionRenameField from '../components/SessionRenameField';
 import RouteList from '../components/RouteList';
 import TrainingHub from '../components/TrainingHub';
 import { sessionColorTrack, sessionSpeedRange, type SessionColorTrack } from '../components/sessionTrack';
@@ -23,7 +25,7 @@ import MoreMenu from '../components/ui/MoreMenu';
 import { sampledIndices } from '../core/chartZoom';
 import { PREVIEW_MAX_POINTS } from '../core/displayConfig';
 import { coloredSegments } from '../core/trackColor';
-import { activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
+import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
 import { smoothHeartRate } from '../core/heartRate';
 import { heartRatePointsFrom, heartRatePreviewPath, repsDone } from '../core/heartRateSession';
 import { parseGpx } from '../core/gpxParser';
@@ -31,6 +33,7 @@ import { getSportProfile, hasPositions, sportFamily, sportTreatment, type SportF
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import { formatDuration, formatShortDuration, formatSpeed, formatDistanceAuto } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
+import { useNearViewport } from '../hooks/useNearViewport';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { useAppliedTheme, useThemedShade } from '../hooks/useTheme';
 import { readSessionGpx, removeSession, updateSessionRecord, useLibraryFields } from '../hooks/useSessionLibrary';
@@ -60,13 +63,13 @@ import './SessionLibrary.css';
  * adresse, montre tout et le rappelle (§10, point 100).
  */
 
-/** Nom, couleur et photo du bandeau de chaque famille (refonte du 22/10). */
+/** Tournure de chaque famille dans « Aucune session … » et photo de son bandeau (refonte du 22/10) ; nom et couleur : `FAMILY_LABEL`, `FAMILY_ACCENT`. */
 const FAMILY: Record<SportFamily, { title: string; accent: string; of: string; banner: string }> = {
-  voile: { title: 'Voile', accent: 'var(--voile)', of: 'de voile', banner: bannerVoile },
-  course: { title: 'À pied', accent: 'var(--course)', of: 'à pied', banner: bannerCourse },
-  velo: { title: 'Vélo', accent: 'var(--velo)', of: 'de vélo', banner: bannerVelo },
-  fractionne: { title: 'Entraînement', accent: 'var(--fractionne)', of: "d'entraînement", banner: bannerFractionne },
-  surf: { title: 'Surf', accent: 'var(--surf)', of: 'de surf', banner: bannerSurf },
+  voile: { title: FAMILY_LABEL.voile, accent: FAMILY_ACCENT.voile, of: 'de voile', banner: bannerVoile },
+  course: { title: FAMILY_LABEL.course, accent: FAMILY_ACCENT.course, of: 'à pied', banner: bannerCourse },
+  velo: { title: FAMILY_LABEL.velo, accent: FAMILY_ACCENT.velo, of: 'de vélo', banner: bannerVelo },
+  fractionne: { title: FAMILY_LABEL.fractionne, accent: FAMILY_ACCENT.fractionne, of: "d'entraînement", banner: bannerFractionne },
+  surf: { title: FAMILY_LABEL.surf, accent: FAMILY_ACCENT.surf, of: 'de surf', banner: bannerSurf },
 };
 
 /** Activité d'une session d'après sa fiche (`sessionActivity`), `null` pour une session à classer. */
@@ -110,7 +113,7 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
     if (summary.elevationGainM !== null) stats.push(`D+ ${Math.round(summary.elevationGainM)} m`);
   }
   // Répétitions du compteur, quand la session en a (fractionné).
-  const reps = session.record.intervals?.reduce((n, series) => n + series.laps.filter((l) => l.kind === 'travail').length, 0) ?? 0;
+  const reps = repsDone(session.record.intervals);
   if (reps > 0) stats.push(`${reps} rép.`);
   return stats;
 };
@@ -145,18 +148,8 @@ function SessionHeartRatePreview({ session, folderLabel, onOpen }: { session: Li
   const { file } = session;
   const sport = session.record.sport;
   const cacheKey = `${folderLabel}|${file}|${sport}`;
-  const [near, setNear] = useState(() => heartPreviewCache.has(cacheKey) || typeof IntersectionObserver === 'undefined');
+  const near = useNearViewport(frame, heartPreviewCache.has(cacheKey), PREVIEW_PRELOAD_MARGIN);
   const [path, setPath] = useState<string | null | undefined>(() => heartPreviewCache.get(cacheKey));
-
-  useEffect(() => {
-    const el = frame.current;
-    if (!el || near) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) setNear(true);
-    }, { rootMargin: PREVIEW_PRELOAD_MARGIN });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [near]);
 
   useEffect(() => {
     if (!near || heartPreviewCache.has(cacheKey) || sport === null) return;
@@ -221,20 +214,10 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
   const referenceOverrideMs = session.record.analysis?.referenceSpeedMs ?? null;
   const cacheKey = `${folderLabel}|${file}|${sport}|${referenceOverrideMs}|${family}`;
   const cached = previewCache.get(cacheKey) ?? null;
-  // Sans IntersectionObserver, chargée tout de suite ; déjà calculée, rien à attendre.
-  const [near, setNear] = useState(() => cached !== null || typeof IntersectionObserver === 'undefined');
+  // Déjà calculée, rien à attendre.
+  const near = useNearViewport(frame, cached !== null, PREVIEW_PRELOAD_MARGIN);
   const [track, setTrack] = useState<SessionColorTrack | null>(cached);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(cached ? 'ready' : 'loading');
-
-  useEffect(() => {
-    const el = frame.current;
-    if (!el || near) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) setNear(true);
-    }, { rootMargin: PREVIEW_PRELOAD_MARGIN });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [near]);
 
   useEffect(() => {
     if (!near) return;
@@ -389,20 +372,8 @@ const SessionRow = memo(function SessionRow({
       <div className="lib-row__actions">
         {nameDraft !== null ? (
           <>
-            <input
-              className="ui-field ui-field--s lib-row__rename"
-              value={nameDraft}
-              autoFocus
-              maxLength={80}
-              placeholder="Nom de la session"
-              aria-label="Nom de la session"
-              onChange={(e) => setNameDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') saveName();
-                else if (e.key === 'Escape') setNameDraft(null);
-              }} />
-            <Button size="s" onClick={saveName}>Valider</Button>
-            <Button size="s" variant="ghost" onClick={() => setNameDraft(null)}>Annuler</Button>
+            <SessionRenameField value={nameDraft} onChange={setNameDraft} onSave={saveName} onCancel={() => setNameDraft(null)}
+              className="ui-field ui-field--s lib-row__rename" />
           </>
         ) : (
           <>
@@ -574,17 +545,8 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       )}
 
       {counts.length > 1 && (
-        <div className="ui-tabs" style={{ '--tab-accent': accent } as React.CSSProperties}>
-          <button type="button" className="ui-tab" aria-pressed={activeFilter === 'all'} onClick={() => setFilter('all')}>
-            tous ({planned ? familyRoutes.length : familySessions.length})
-          </button>
-          {counts.map(({ activity, count }) => (
-            <button key={activity.id} type="button" className="ui-tab" aria-pressed={activeFilter === activity.id} onClick={() => setFilter(activity.id)}>
-              <ActivityIcon activity={activity} className="ui-tab__icon" />
-              {activity.name} ({count})
-            </button>
-          ))}
-        </div>
+        <ActivityFilterTabs total={planned ? familyRoutes.length : familySessions.length} counts={counts} accent={accent}
+          selected={activeFilter === 'all' ? null : activeFilter} onSelect={(id) => setFilter(id ?? 'all')} />
       )}
 
       {hiddenCount > 0 && (

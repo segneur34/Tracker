@@ -7,7 +7,7 @@ import { inChartView } from './chartHover';
 import { phaseAreas } from './fitnessTestChartParts';
 import { HEART_RATE_COLOR } from './heartRateColors';
 import { HelpText } from './Help';
-import PanelTitle from './PanelTitle';
+import { PanelHeading } from './PanelTitle';
 import TrackChart, { type TrackSeries } from './TrackChart';
 import Button from './ui/Button';
 import { sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
@@ -191,9 +191,7 @@ export default function FitnessTestPanel({
 
   return (
     <>
-      <div style={{ marginBottom: '10px' }}>
-        <PanelTitle label={`Test ${protocol.label}`} open={open} onToggle={onToggle} helpKey="analyse:test" />
-      </div>
+      <PanelHeading label={`Test ${protocol.label}`} open={open} onToggle={onToggle} helpKey="analyse:test" />
       <HelpText helpKey="analyse:test" note>
         FC max : pic de la FC lissée sur {protocol.resultHrSmoothS} s. Dernier palier tenu : le dernier dont le suivant a commencé avant que la
         vitesse lâche. Le survol des courbes déplace le repère sur la carte.

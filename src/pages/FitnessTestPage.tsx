@@ -13,9 +13,9 @@ import { isTestSport } from '../core/sportProfiles';
 import { kmhToMs } from '../core/units';
 import { fitnessTestRunner } from '../hooks/useFitnessTest';
 import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
-import { lastRecordActivity, saveFitnessTestSettings, useFitnessTestSettings, useVisibility } from '../hooks/useSportSettings';
+import { lastRecordedOrFirst, saveFitnessTestSettings, useFitnessTestSettings, useVisibility } from '../hooks/useSportSettings';
 import { FITNESS_TESTS, FITNESS_TEST_LIMITS, resolveFitnessTestParams, type FitnessTestParams } from '../recording/fitnessTest';
-import { WORKOUT_LISTS } from './workoutLists';
+import { WORKOUT_LISTS, recordPath } from './workoutLists';
 import './TrainingPages.css';
 
 const PROTOCOL = FITNESS_TESTS['fc-max'];
@@ -53,14 +53,13 @@ function FitnessTestPage() {
   const settings = useFitnessTestSettings('fc-max');
   const { profile } = useRunnerProfile();
   const { activities, isShown } = useVisibility();
-  const activity = useMemo(() => {
-    const tests = activitiesOfFamily(activities.filter(isShown), 'fractionne').filter((a) => isTestSport(a.base));
-    const last = lastRecordActivity();
-    return tests.find((a) => a.id === last?.id) ?? tests[0] ?? null;
-  }, [activities, isShown]);
+  const activity = useMemo(
+    () => lastRecordedOrFirst(activitiesOfFamily(activities.filter(isShown), 'fractionne').filter((a) => isTestSport(a.base))),
+    [activities, isShown]
+  );
   const params = useMemo(() => resolveFitnessTestParams(PROTOCOL, settings, fitnessTestRunner(profile, activity)), [settings, profile, activity]);
   const launch = () => {
-    if (activity) navigate(`/enregistrer?activite=${encodeURIComponent(activity.id)}&test=fc-max`);
+    if (activity) navigate(recordPath(activity.id, 'fc-max'));
   };
   const warmupMin = Math.round(params.warmupS / 60);
   const { from, to } = PROTOCOL.warmupZones;

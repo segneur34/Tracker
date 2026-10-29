@@ -225,6 +225,12 @@
   pointer-events: auto;
 }
 
+/* Synthèse des manœuvres (voile) : la marge des cellules, dont la version du téléphone (plus bas, `!important`) reste prioritaire. */
+.an-man-summary th,
+.an-man-summary td {
+  padding: 7px 14px;
+}
+
 @media (min-width: 768px) and (min-height: 500px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   /* Carte en haut, centrée, plus étroite que la page : la souris trouve de la place de chaque côté
      pour faire défiler la page sans zoomer la carte. */

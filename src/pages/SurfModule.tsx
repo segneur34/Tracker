@@ -3,7 +3,12 @@ import { Link } from 'react-router-dom';
 import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
 import './analysisMobile.css';
 import { ReferenceArea } from 'recharts';
-import ActivitySelect from '../components/ActivitySelect';
+import Swatch from '../components/ui/Swatch';
+import SessionActivityField from '../components/SessionActivityField';
+import SessionSettingsHeader from '../components/SessionSettingsHeader';
+import CardioTab from '../components/CardioTab';
+import NotesTab from '../components/NotesTab';
+import FoilPumpingFields from '../components/FoilPumpingFields';
 import { GraphFoldHead } from '../components/ChartFold';
 import { HoverReadout, type Readout } from '../components/ChartReadout';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
@@ -11,9 +16,9 @@ import AnalysisMap, { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
 import { SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
 import { HelpText } from '../components/Help';
-import PanelTitle, { SessionDate } from '../components/PanelTitle';
+import PanelTitle, { PanelHeading, SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
-import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
+import { gearFieldsFor } from '../components/gearFields';
 import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import SessionNameEditor from '../components/SessionNameEditor';
 import GeneralStats from '../components/GeneralStats';
@@ -21,30 +26,29 @@ import { shareableStats, type ShareStat } from '../core/shareImage';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SessionThresholdField from '../components/SessionThresholdField';
-import SpeedRangeEditor from '../components/SpeedRangeEditor';
+import { SessionColorRangeField } from '../components/SpeedRangeEditor';
 import TrackSpanLayer, { type TrackSpanShown } from '../components/TrackSpanLayer';
 import FlightPumpingPanel, { type FlightColumn } from '../components/FlightPumpingPanel';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import HeartRateChart from '../components/HeartRateChart';
-import HeartRatePanel, { CardioCompanion } from '../components/HeartRatePanel';
+import { CardioCompanion } from '../components/HeartRatePanel';
 import { heartRateReadout, speedReadout } from '../components/chartReadouts';
 import { useAnalysisHeart, useHeartRateZoneHighlight } from '../hooks/useAnalysisHeart';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import TrackChart, { type TrackSeries } from '../components/TrackChart';
 import { zoomHint } from '../components/zoomHint';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
-import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
+import { ANALYSIS_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
 import { SURF_TABS, tabDefaults, type SurfTab } from '../core/analysisTabs';
 import { sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
-import { defaultActiveThresholdOf, hasPositions, sportTreatment } from '../core/sportProfiles';
-import { isValidSpeedRange } from '../core/speedGradient';
+import { defaultActiveThresholdOf, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import { trackColorSegments } from '../core/trackColor';
 import {
-  SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
+  SPEED_UNIT_LABEL, speedSourceText, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
   fromDisplaySpeed, toDisplaySpeed,
 } from '../core/units';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
@@ -105,14 +109,7 @@ const FLIGHT_BAND_COLOR = '#7e57c2';
 type WaveSort = 'ordre' | 'distance' | 'vitesse' | 'duree';
 const WAVE_SORT_LABEL: Record<WaveSort, string> = { ordre: 'ordre', distance: 'distance', vitesse: 'vitesse max', duree: 'durée' };
 
-const panelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' } as const;
 
-/** Champs du matériel, sous les intitulés de l'activité. */
-const gearFields = (labels: [string, string]): GearField[] => [
-  { field: 'gear1', label: labels[0], placeholder: 'ex. modèle, taille' },
-  { field: 'gear2', label: labels[1], placeholder: 'ex. modèle, taille' },
-];
-const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' } as const;
 const thStyle = { padding: '0.4em 0.5em', whiteSpace: 'nowrap' } as const;
 const tdStyle = { padding: '0.35em 0.5em', textAlign: 'center', whiteSpace: 'nowrap' } as const;
 
@@ -468,10 +465,8 @@ function SurfModule() {
           <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} advancedOpen={advanced.open} onToggleAdvanced={advanced.toggle} accent={ACCENT} />
           <div className="an-carte-panels">
             {open.general && (
-              <ResizablePanel id={panelId('general')} style={panelStyle}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={toggleOf('general')} />
-                </div>
+              <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
+                <PanelHeading label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={toggleOf('general')} />
                 <GeneralStats stats={overviewStats} />
                 {draft.edits.foil === null && (
                   <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' }}>
@@ -497,7 +492,7 @@ function SurfModule() {
                         const repeated = phase === 'glisse' && !foil;
                         return (
                           <span key={phase} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: PHASE_COLORS[phase], border: '1px solid var(--line)' }} />
+                            <Swatch color={PHASE_COLORS[phase]} bordered />
                             {label}{repeated ? '' : ` ${Math.round((s / summary.totalS) * 100)} %`}
                           </span>
                         );
@@ -511,7 +506,7 @@ function SurfModule() {
             )}
 
             {open.vagues && (
-              <ResizablePanel id={panelId('vagues')} style={panelStyle}>
+              <ResizablePanel id={panelId('vagues')} style={ANALYSIS_PANEL_STYLE}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
                   <PanelTitle label={`Vagues (${waves.length})`} open={open.vagues} onToggle={toggleOf('vagues')} helpKey="surf:vagues" />
                   <span style={{ flex: 1 }} />
@@ -541,7 +536,7 @@ function SurfModule() {
                   </div>
                 ) : (
                   <div style={{ overflowX: 'auto' }}>
-                    <table style={tableStyle}>
+                    <table className="ui-table">
                       <thead>
                         <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                           <th style={thStyle}>N°</th>
@@ -559,7 +554,7 @@ function SurfModule() {
                         {sortedWaves.map((w) => {
                           const shown = waveShown === String(w.n);
                           return (
-                            <tr key={w.n} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                            <tr key={w.n} className="ui-table__row">
                               <td style={{ ...tdStyle, fontWeight: 700 }}>{w.n}</td>
                               <td style={tdStyle}>{formatTimeOfDay(w.startMs).slice(0, 5)}</td>
                               <td style={tdStyle}>{formatShortDuration(w.durationS)}</td>
@@ -582,10 +577,8 @@ function SurfModule() {
             )}
 
             {open.rame && (
-              <ResizablePanel id={panelId('rame')} style={panelStyle}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Rame et retour au pic" open={open.rame} onToggle={toggleOf('rame')} helpKey="surf:rame" />
-                </div>
+              <ResizablePanel id={panelId('rame')} style={ANALYSIS_PANEL_STYLE}>
+                <PanelHeading label="Rame et retour au pic" open={open.rame} onToggle={toggleOf('rame')} helpKey="surf:rame" />
                 <HelpText helpKey="surf:rame" note>
                   Retour au pic : de la fin {foil ? "d'un vol" : "d'une vague"} au début de la première attente (immobile au moins {surfProfile.surf.minWaitS} s) ; un arrêt plus court (canard, série) compte dans la rame.
                   {' '}Remontée : distance à vol d'oiseau jusqu'au pic, divisée par ce temps. Rame : vitesse en mouvement.
@@ -602,7 +595,7 @@ function SurfModule() {
                 </div>
                 {(measuredReturns.length > 0 || firstOut) && (
                   <div style={{ overflowX: 'auto', marginTop: '10px' }}>
-                    <table style={tableStyle}>
+                    <table className="ui-table">
                       <thead>
                         <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                           <th style={thStyle}>Après</th>
@@ -618,7 +611,7 @@ function SurfModule() {
                         {[...(firstOut ? [firstOut] : []), ...measuredReturns].map((r) => {
                           const shown = returnShown === String(r.after);
                           return (
-                            <tr key={r.after} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                            <tr key={r.after} className="ui-table__row">
                               <td style={{ ...tdStyle, fontWeight: 700 }}>{r.after === 0 ? 'départ' : `${rideWord} ${r.after}`}</td>
                               <td style={tdStyle}>{r.returnS === null ? 'enchaîné' : formatShortDuration(r.returnS)}</td>
                               <td style={tdStyle}>{r.straightM === null ? '—' : `${Math.round(r.straightM)} m`}</td>
@@ -639,7 +632,7 @@ function SurfModule() {
             )}
 
             {open.vols && foil && (
-              <ResizablePanel id={panelId('vols')} style={panelStyle}>
+              <ResizablePanel id={panelId('vols')} style={ANALYSIS_PANEL_STYLE}>
                 <FlightPumpingPanel
                   label={`Vols (${flights.length})`} helpKey="surf:vols" open={open.vols} onToggle={toggleOf('vols')}
                   help={<>
@@ -665,7 +658,7 @@ function SurfModule() {
             )}
 
             {open.tops && tops && (
-              <ResizablePanel id={panelId('tops')} style={panelStyle}>
+              <ResizablePanel id={panelId('tops')} style={ANALYSIS_PANEL_STYLE}>
                 <TopsPanel targets={profile.topTargets} tops={tops} unit={speedUnit} selected={topShown}
                   onSelect={(key) => highlight.show('tops', key)} accent={ACCENT} open={open.tops} onToggle={toggleOf('tops')} />
               </ResizablePanel>
@@ -678,7 +671,7 @@ function SurfModule() {
               const hrShown = heart.present && graphFolds.open.fc;
               return (
               <ResizablePanel id={panelId('graphiques')} defaultHeight={folds ? undefined : 360} minHeight={folds ? 120 : 200} direction="vertical"
-                style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: folds ? 'auto' : 'hidden' }}>
+                style={{ ...PANEL_BLOCK_STYLE, display: 'flex', flexDirection: 'column', overflow: folds ? 'auto' : 'hidden' }}>
                 <div className="chart-head" style={{ marginBottom: '8px', paddingRight: '28px' }}>
                   <PanelTitle label="Vitesse" open={open.graphiques} onToggle={toggleOf('graphiques')} helpKey="surf:graphiques" />
                   {!folds && <HoverReadout read={readSpeed} />}
@@ -708,58 +701,31 @@ function SurfModule() {
             })()}
 
             {open.cardio && heart.present && (
-              <ResizablePanel id={panelId('cardio')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
-                <HeartRatePanel track={track} minutes={trackMinutes} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
-                  onRetainHrMax={retainSessionHrMax} selectedZone={hrZone.selectedZone}
-                  onSelectZone={hrZone.select}
-                  zoom={cardioZoom} onShowOnMap={showCardioOnMap}
-                  open={open.cardio} onToggle={toggleOf('cardio')} />
-              </ResizablePanel>
+              <CardioTab id={panelId('cardio')} track={track} minutes={trackMinutes} heart={heart} params={profile.heartRate} zones={hrZones} runner={runner}
+                onRetainHrMax={retainSessionHrMax} zone={hrZone}
+                zoom={cardioZoom} onShowOnMap={showCardioOnMap}
+                open={open.cardio} onToggle={toggleOf('cardio')} />
             )}
 
             {open.notes && (
-              <ResizablePanel id={panelId('notes')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                <SessionNotesPanel notes={draft.edits.notes} setNotes={draft.updateNotes} family="surf" conditions="libre" draft={draft}
-                  gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={toggleOf('notes')} />
-              </ResizablePanel>
+              <NotesTab id={panelId('notes')} draft={draft} family="surf" conditions="libre"
+                gearFields={gearFieldsFor(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={toggleOf('notes')} />
             )}
 
             {open.reglages && (
-              <ResizablePanel id={panelId('reglages')} style={panelStyle}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={toggleOf('reglages')} helpKey="surf:reglages" />
-                </div>
-                <HelpText helpKey="surf:reglages" note>
-                  Vitesse : {gpx.hasDeviceSpeed
-                    ? `fournie par l'appareil${gpx.deviceSpeedUnit && gpx.deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[gpx.deviceSpeedUnit]} et convertie` : ''}`
-                    : 'dérivée des positions, filtrée'}
+              <ResizablePanel id={panelId('reglages')} style={ANALYSIS_PANEL_STYLE}>
+                <SessionSettingsHeader helpKey="surf:reglages" open={open.reglages} onToggle={toggleOf('reglages')}>
+                  Vitesse : {speedSourceText(gpx.hasDeviceSpeed, gpx.deviceSpeedUnit)}
                   {' · '}Cap : {track.some((p) => p.courseDeg !== undefined) ? "fourni par l'appareil" : 'tiré des positions'}.
-                </HelpText>
+                </SessionSettingsHeader>
                 <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <strong>Activité :</strong>
-                    <ActivitySelect
-                      // Pas vers une activité sans trace (muscu) : la session a des positions.
-                      activities={allActivities.filter((a) => hasPositions(a.base))}
-                      value={activity.id}
-                      extra={activity}
-                      families={sessionFile ? undefined : ['surf']}
-                      onChange={(next) => changeSessionActivity(sessionFile, next)} />
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                    title="Surf foil pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">
-                    <input type="checkbox" checked={foil} onChange={(e) => draft.update({ foil: e.target.checked })} />
-                    <strong>Foil</strong>
-                    {draft.edits.foil === null && <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>(supposé : celui de l'activité)</span>}
-                  </label>
-                  {foil && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                      title="Pumping des vols par les capteurs du téléphone, pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">
-                      <input type="checkbox" checked={pumping} onChange={(e) => draft.update({ pumping: e.target.checked === activityPumping ? null : e.target.checked })} />
-                      <strong>Pumping</strong>
-                      {draft.edits.pumping === null && <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>(celui de l'activité)</span>}
-                    </label>
-                  )}
+                  <SessionActivityField activities={allActivities} activity={activity} withPositions families={sessionFile ? undefined : ['surf']}
+                    onChange={(next) => changeSessionActivity(sessionFile, next)} />
+                  <FoilPumpingFields
+                    foilTitle="Surf foil pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages."
+                    foil={foil} foilIsDefault={draft.edits.foil === null} onFoilChange={(next) => draft.update({ foil: next })}
+                    showPumping={foil} pumping={pumping} pumpingIsDefault={draft.edits.pumping === null}
+                    onPumpingChange={(next) => draft.update({ pumping: next === activityPumping ? null : next })} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
                   <SessionThresholdField
@@ -785,11 +751,8 @@ function SurfModule() {
                       onChange={(next) => draft.update({ waveThreshold: next })} />
                   )}
                   {track.length > 0 && (
-                    <SpeedRangeEditor
-                      unit={speedUnit}
-                      range={range}
-                      isOverridden={draft.edits.speedRange !== null}
-                      onChange={(next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); }} />
+                    <SessionColorRangeField unit={speedUnit} range={range} isOverridden={draft.edits.speedRange !== null}
+                      onChange={(next) => draft.update({ speedRange: next })} />
                   )}
                 </div>
               </ResizablePanel>

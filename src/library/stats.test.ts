@@ -4,7 +4,7 @@ import type { SessionRecord } from './record';
 import {
   averageMovingSpeedMs, cardioLoadBars, cardioTotals, dateTicks, groupTotals, heartRatePoints, metricSeries, metricsOf, recordKindsOf, regularity,
   inBounds, sessionLoad, statSessionOf, statsMetric, statsPeriodBounds, statsTotals, topSessions, weeklyDurations, type StatSession,
-  gearFilterItems, matchesGear,
+  gearFilterItems, matchesGear, groupByActivity,
 } from './stats';
 import type { GearGroup } from '../sailing/sessionNotes';
 
@@ -474,5 +474,33 @@ describe('filtre par matériel (lot 20)', () => {
 
   it('écarte une session sans matériel', () => {
     expect(matchesGear(session(at(2026, 10, 6)), item('i-5'), knownIds)).toBe(false);
+  });
+});
+
+describe('groupByActivity', () => {
+  /** Copie gelée du regroupement recopié dans StatisticsPage avant le lot 64. */
+  const frozen = <T extends { activityId: string }>(items: readonly T[]): [string, T[]][] => {
+    const byActivity = new Map<string, T[]>();
+    for (const p of items) {
+      const list = byActivity.get(p.activityId);
+      if (list) list.push(p);
+      else byActivity.set(p.activityId, [p]);
+    }
+    return [...byActivity.entries()];
+  };
+  const rows = [
+    { activityId: 'b', n: 1 }, { activityId: 'a', n: 2 }, { activityId: 'b', n: 3 }, { activityId: 'c', n: 4 }, { activityId: 'a', n: 5 },
+  ];
+
+  it("range par activité dans l'ordre d'apparition, sans toucher à l'ordre des éléments", () => {
+    expect(groupByActivity(rows)).toEqual([
+      ['b', [rows[0], rows[2]]],
+      ['a', [rows[1], rows[4]]],
+      ['c', [rows[3]]],
+    ]);
+  });
+  it("reprend l'ancien regroupement, liste vide comprise", () => {
+    expect(groupByActivity(rows)).toEqual(frozen(rows));
+    expect(groupByActivity([])).toEqual(frozen([]));
   });
 });

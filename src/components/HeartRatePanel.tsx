@@ -2,16 +2,17 @@ import { toFixedNumber } from '../core/basics';
 import { memo, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
+import BandShareTable from './BandShareTable';
 import CardioLoadHelp from './CardioLoadHelp';
 import { HoverReadout, type Readout } from './ChartReadout';
 import HeartRateChart from './HeartRateChart';
 import { inChartView } from './chartHover';
 import { HelpText, HelpToggle } from './Help';
 import { useHelp } from './helpContext';
-import PanelTitle from './PanelTitle';
+import { PanelHeading } from './PanelTitle';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from './heartRateColors';
-import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 import Button from './ui/Button';
+import { bandRangeLabel } from '../core/bands';
 import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import {
@@ -24,7 +25,6 @@ import type { RunnerProfile } from '../hooks/useRunnerProfile';
 import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
 import { zonesOriginText } from './heartRateOrigin';
 import StatTile from './ui/StatTile';
-import MapToggle from './ui/MapToggle';
 import { CHART_GRID_PROPS, CHART_TICK, SPEED_COLOR, chartTick, yAxisLabel } from './chartStyle';
 import { elapsedX } from './chartAxes';
 import { heartRateReadout } from './chartReadouts';
@@ -66,7 +66,6 @@ interface Props {
 }
 
 const minutesLabel = (v: unknown) => formatClock(Number(v) * 60_000);
-const cell = { padding: '0.4em 0.6em', textAlign: 'center' } as const;
 const scatterTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
 
 /**
@@ -144,7 +143,6 @@ function HeartRatePanel({
   const { smoothed, stats } = heart;
 
   const zoneTimes = useMemo(() => (zones ? timeInZones(track, smoothed, zones.bounds, params.gapS) : null), [zones, track, smoothed, params.gapS]);
-  const countedS = zoneTimes?.reduce((a, b) => a + b, 0) ?? 0;
   const loadHelp = useHelp('analyse:charge');
   const drift = useMemo(
     () => (efficiency ? heartRateDrift(track, smoothed, efficiency.speedsMs, efficiency.active, params.gapS, params.driftMinS) : null),
@@ -164,9 +162,7 @@ function HeartRatePanel({
 
   return (
     <>
-      <div style={{ marginBottom: '10px' }}>
-        <PanelTitle label="Cardio" open={open} onToggle={onToggle} helpKey="analyse:cardio" />
-      </div>
+      <PanelHeading label="Cardio" open={open} onToggle={onToggle} helpKey="analyse:cardio" />
       <HelpText helpKey="analyse:cardio" note>
         FC lissée sur {params.smoothS} s ; un trou de plus de {params.gapS} s (ceinture retirée, pause) n'est pas compté.
         {!mapless && ' Le survol de la courbe déplace le repère sur la carte.'}
@@ -207,47 +203,9 @@ function HeartRatePanel({
 
       {zones && zoneTimes ? (
         <>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginTop: '10px' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Zone</th>
-                <th style={{ ...cell, fontWeight: 'normal', color: 'var(--muted)' }}>FC</th>
-                <th style={cell}>Temps</th>
-                <th style={{ ...cell, width: '30%' }}>Part</th>
-                {!mapless && <th style={cell}>Carte</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {zoneTimes.map((s, zone) => {
-                const share = countedS > 0 ? s / countedS : 0;
-                const shown = selectedZone === zone;
-                const range = zone === 0 ? `< ${zones.bounds[0]}` : zone === zones.bounds.length ? `≥ ${zones.bounds[zone - 1]}` : `${zones.bounds[zone - 1]}-${zones.bounds[zone] - 1}`;
-                return (
-                  <tr key={zone} style={{ borderTop: '1px solid var(--line-soft)', opacity: s > 0 ? 1 : 0.45 }}>
-                    <td style={{ padding: '0.4em 0.6em', fontWeight: 700 }}>
-                      <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', backgroundColor: HEART_ZONE_COLORS[zone], marginRight: '6px' }} />
-                      {zoneLabel(zone)}
-                    </td>
-                    <td style={{ ...cell, color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>{range}</td>
-                    <td style={cell}>{formatShortDuration(s)}</td>
-                    <td style={cell}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div style={{ flex: 1, height: '8px', backgroundColor: 'var(--surface-sunken)', borderRadius: '4px', overflow: 'hidden' }}>
-                          <div style={{ width: `${share * 100}%`, height: '100%', backgroundColor: HEART_ZONE_COLORS[zone] }} />
-                        </div>
-                        <span style={{ minWidth: '3em', textAlign: 'right', fontSize: 'var(--text-xs)' }}>{Math.round(share * 100)} %</span>
-                      </div>
-                    </td>
-                    {!mapless && (
-                      <td style={cell}>
-                        <MapToggle shown={shown} disabled={s <= 0} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => onSelectZone(shown ? null : zone)} />
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <BandShareTable head="Zone" detailHead="FC" shareWidth="30%" marginTop="10px"
+            rows={zoneTimes.map((timeS, zone) => ({ color: HEART_ZONE_COLORS[zone], label: zoneLabel(zone), detail: bandRangeLabel(zones.bounds, zone), timeS }))}
+            selected={selectedZone} onSelect={mapless ? undefined : onSelectZone} />
           <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px' }}>
             Zones calées sur {zonesOriginText(zones, runner)}
           </div>

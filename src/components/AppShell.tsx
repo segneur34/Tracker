@@ -1,5 +1,6 @@
 import { Suspense, useCallback, useEffect, useRef, type ComponentType } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { FAMILY_ACCENT, FAMILY_LABEL } from '../core/activities';
 import { parentPage } from '../core/parentPage';
 import type { SportFamily } from '../core/sportProfiles';
 import { formatClock } from '../core/units';
@@ -47,11 +48,13 @@ interface Destination {
 }
 
 const HOME: Destination = { to: '/', label: 'Accueil', Icon: IconHome, accent: 'var(--ink)' };
-const VOILE: Destination = { to: '/voile', label: 'Voile', Icon: FAMILY_ICON.voile, accent: 'var(--voile)' };
-const COURSE: Destination = { to: '/course', label: 'À pied', Icon: FAMILY_ICON.course, accent: 'var(--course)' };
-const VELO: Destination = { to: '/velo', label: 'Vélo', Icon: FAMILY_ICON.velo, accent: 'var(--velo)' };
-const FRACTIONNE: Destination = { to: '/fractionne', label: 'Entraînement', Icon: FAMILY_ICON.fractionne, accent: 'var(--fractionne)' };
-const SURF: Destination = { to: '/surf', label: 'Surf', Icon: FAMILY_ICON.surf, accent: 'var(--surf)' };
+const familyDestination = (family: SportFamily, to: string): Destination =>
+  ({ to, label: FAMILY_LABEL[family], Icon: FAMILY_ICON[family], accent: FAMILY_ACCENT[family] });
+const VOILE = familyDestination('voile', '/voile');
+const COURSE = familyDestination('course', '/course');
+const VELO = familyDestination('velo', '/velo');
+const FRACTIONNE = familyDestination('fractionne', '/fractionne');
+const SURF = familyDestination('surf', '/surf');
 const SETTINGS: Destination = { to: '/parametres', label: 'Réglages', Icon: IconSettings, accent: 'var(--ink)' };
 const FAMILY_TABS: Record<SportFamily, Destination> = { voile: VOILE, course: COURSE, velo: VELO, fractionne: FRACTIONNE, surf: SURF };
 const RECORD_PATH = '/enregistrer';

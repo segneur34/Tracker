@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { SpeedRangeMs } from '../core/speedGradient';
+import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import { SPEED_UNIT_LABEL, editSpeedUnit, fromDisplaySpeed, toDisplaySpeed, type SpeedUnit } from '../core/units';
 import Button from './ui/Button';
 
@@ -97,3 +97,17 @@ function SpeedRangeEditor({ unit: activityUnit, range, isOverridden, onChange }:
 }
 
 export default SpeedRangeEditor;
+
+/**
+ * Bornes de couleur de la trace dans l'onglet réglages d'une analyse : le
+ * champ `SpeedRangeEditor`, qui ne passe au brouillon que des bornes valides
+ * (min < max) ou `null` (retour au défaut).
+ */
+export function SessionColorRangeField({ unit, range, isOverridden, onChange }: Omit<SpeedRangeEditorProps, 'onChange'> & {
+  onChange: (range: SpeedRangeMs | null) => void;
+}) {
+  return (
+    <SpeedRangeEditor unit={unit} range={range} isOverridden={isOverridden}
+      onChange={(next) => { if (next === null || isValidSpeedRange(next)) onChange(next); }} />
+  );
+}

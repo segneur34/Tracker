@@ -22,9 +22,9 @@ import TrackChart, { type TrackSeries, type TrackYAxis } from './TrackChart';
 import { HIGHLIGHT_PODIUM_COLORS } from './highlightColors';
 import { IconChevronRight } from './icons';
 import { HelpText } from './Help';
-import PanelTitle from './PanelTitle';
+import { PanelHeading } from './PanelTitle';
 import ResizablePanel from './ResizablePanel';
-import { CARD_STYLE, HALF_PANEL_STYLE } from './styles';
+import { ANALYSIS_PANEL_STYLE } from './styles';
 import './IntervalAnalysis.css';
 import StatTile from './ui/StatTile';
 import MapToggle from './ui/MapToggle';
@@ -182,7 +182,6 @@ function IntervalProfileChart({ data, spanS, launchS, reps, speedAxis, formatMs,
   );
 }
 
-const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' };
 const cellStyle: CSSProperties = { padding: '0.4em 0.6em', textAlign: 'center' };
 const noteStyle: CSSProperties = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', lineHeight: 1.45 };
 const chartTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
@@ -234,7 +233,6 @@ function IntervalAnalysis({
   const noun = inverse ? 'allure' : 'vitesse';
   /** Accélération et seuils : en km/h pour une allure, comme les tops. */
   const rateUnit: SpeedUnit = editSpeedUnit(speedUnit);
-  const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' };
   const formatRate = (ms2: number): string =>
     rateUnit === 'ms' ? `${ms2.toFixed(2)} m/s²` : `${toDisplaySpeed(ms2, rateUnit).toFixed(1)} ${SPEED_UNIT_LABEL[rateUnit]} par s`;
   const title = (s: IntervalSeriesView) =>
@@ -259,15 +257,11 @@ function IntervalAnalysis({
     <div key={index} style={{ marginBottom: '8px' }}>{seriesTitle(s, index)}</div>
   );
   /** Titre d'un des trois panneaux ; `helpKey` : son « ? », dont le texte vient juste dessous. */
-  const heading = (label: string, helpKey?: string) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', paddingRight: '28px' }}>
-      <PanelTitle label={label} open={open} onToggle={onToggle} helpKey={helpKey} />
-    </div>
-  );
+  const heading = (label: string, helpKey?: string) => <PanelHeading label={label} open={open} onToggle={onToggle} helpKey={helpKey} padRight />;
 
   if (emptyText !== null) {
     return (
-      <ResizablePanel id={panelId('fractionne')} style={panelStyle}>
+      <ResizablePanel id={panelId('fractionne')} style={ANALYSIS_PANEL_STYLE}>
         {heading('Fractionné')}
         <div style={{ color: 'var(--muted)' }}>{emptyText}</div>
       </ResizablePanel>
@@ -275,7 +269,7 @@ function IntervalAnalysis({
   }
 
   const repsPanel = (
-    <ResizablePanel id={panelId('fractionne')} style={panelStyle}>
+    <ResizablePanel id={panelId('fractionne')} style={ANALYSIS_PANEL_STYLE}>
       {heading('Répétitions', 'analyse:repetitions')}
       <HelpText helpKey="analyse:repetitions" note>
           {series.some((s) => s.detected)
@@ -327,7 +321,7 @@ function IntervalAnalysis({
               {summary.holdRatio !== null && stat('Maintien', signedPercent(summary.holdRatio - 1))}
             </div>
             <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
-              <table className={tableClass} style={tableStyle}>
+              <table className={`ui-table ui-table--cards ${tableClass}`}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
                     <th style={{ ...cellStyle, textAlign: 'left' }}>Rép.</th>
@@ -351,7 +345,7 @@ function IntervalAnalysis({
                     const shown = selectedLap === key;
                     const reached = work.path.length > 1;
                     return (
-                      <tr key={key} style={{ borderTop: '1px solid var(--line-soft)', opacity: reached ? 1 : 0.45 }}>
+                      <tr key={key} className={reached ? 'ui-table__row' : 'ui-table__row ui-table__row--empty'}>
                         <td className="an-ivl-rep" style={{ ...cellStyle, textAlign: 'left', fontWeight: 700, color: repColor(repIndex, s.reps.length) }}>{rep}</td>
                         {showDuration && <td className="an-ivl-dur num" style={cellStyle}>{formatIntervalClock(Math.round(work.durationS))}</td>}
                         <td className="an-ivl-dist" style={cellStyle}>{work.distanceM === null ? '—' : formatShortDistance(work.distanceM, distanceUnit)}</td>
@@ -417,7 +411,7 @@ function IntervalAnalysis({
   };
 
   const evolutionPanel = (
-    <ResizablePanel id={panelId('fractionne-evolution')} style={panelStyle}>
+    <ResizablePanel id={panelId('fractionne-evolution')} style={ANALYSIS_PANEL_STYLE}>
       {heading('Évolution des répétitions', 'analyse:evolution')}
       <HelpText helpKey="analyse:evolution" note>
         {inverse ? 'Allure' : 'Vitesse'} de chaque répétition, de la première (verte) à la dernière (rouge), avec sa moyenne
@@ -483,7 +477,7 @@ function IntervalAnalysis({
   );
 
   const profilePanel = (
-    <ResizablePanel id={panelId('fractionne-profil')} style={panelStyle}>
+    <ResizablePanel id={panelId('fractionne-profil')} style={ANALYSIS_PANEL_STYLE}>
       {heading("Profil d'une répétition", 'analyse:profil-repetition')}
       <HelpText helpKey="analyse:profil-repetition" note>
         {inverse ? 'Allure' : 'Vitesse'} seconde par seconde depuis le départ de chaque répétition : chacune en trait fin, de la

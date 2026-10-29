@@ -9,14 +9,14 @@ import { isIntervalSport, trainingKind } from '../core/sportProfiles';
 import { isIntervalTimerActive, startIntervals } from '../hooks/useIntervalTimer';
 import { useRecorderStatus } from '../hooks/useRecorder';
 import {
-  lastRecordActivity, rememberIntervalWorkout, removeIntervalPreset, saveIntervalPreset, useIntervalSettings, useVisibility,
+  lastRecordedOrFirst, rememberIntervalWorkout, removeIntervalPreset, saveIntervalPreset, useIntervalSettings, useVisibility,
 } from '../hooks/useSportSettings';
 import {
   MAX_INTERVAL_PRESETS, formatIntervalClock, workoutDurationS, workoutLabel,
   type IntervalPreset, type WorkoutKind,
 } from '../recording/intervalTimer';
 import { TestTiles } from './TestsPage';
-import { TIMER_RECORD_PATH, WORKOUT_LISTS } from './workoutLists';
+import { TIMER_RECORD_PATH, WORKOUT_LISTS, recordPath } from './workoutLists';
 import './TrainingPages.css';
 
 /**
@@ -53,17 +53,12 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
     () => activitiesOfFamily(activities.filter(isShown), 'fractionne').filter((a) => isIntervalSport(a.base)),
     [activities, isShown]
   );
-  const activity = useMemo(() => {
-    const last = lastRecordActivity();
-    return intervalActivities.find((a) => a.id === last?.id) ?? intervalActivities[0] ?? null;
-  }, [intervalActivities]);
+  const activity = useMemo(() => lastRecordedOrFirst(intervalActivities), [intervalActivities]);
   // Muscu : la dernière activité de muscu enregistrée, sinon la première visible.
   const muscu = useMemo(() => {
-    const own = activitiesOfFamily(activities.filter(isShown), 'fractionne').filter((a) => trainingKind(a.base) === 'muscu');
-    const last = lastRecordActivity();
-    return own.find((a) => a.id === last?.id) ?? own[0] ?? null;
+    return lastRecordedOrFirst(activitiesOfFamily(activities.filter(isShown), 'fractionne').filter((a) => trainingKind(a.base) === 'muscu'));
   }, [activities, isShown]);
-  const muscuPath = timer && !recording && muscu ? `/enregistrer?activite=${encodeURIComponent(muscu.id)}` : null;
+  const muscuPath = timer && !recording && muscu ? recordPath(muscu.id) : null;
   /** « Muscu » : la séance dans la carte du compteur d'Enregistrer, prête, sans la démarrer. */
   const launchMuscu = (preset: { workout: IntervalPreset['workout'] }) => {
     if (!muscuPath) return;
@@ -75,7 +70,7 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
   // Où « Lancer » mène : le Timer, hors d'un enregistrement ; le Fractionné, sur son activité.
   const launchPath = timer
     ? (recording ? null : TIMER_RECORD_PATH)
-    : activity && `/enregistrer?activite=${encodeURIComponent(activity.id)}`;
+    : activity && recordPath(activity.id);
   const launch = (preset: { workout: IntervalPreset['workout'] }) => {
     if (!launchPath) return;
     if (timer) {

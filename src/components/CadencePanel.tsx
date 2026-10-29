@@ -1,13 +1,13 @@
 import ChartFold from './ChartFold';
 import { HelpText } from './Help';
-import PanelTitle from './PanelTitle';
+import { PanelHeading } from './PanelTitle';
+import BandShareTable from './BandShareTable';
 import { CADENCE_BAND_COLORS } from './cadenceColors';
-import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
+import { bandRangeLabel } from '../core/bands';
 import { speedUnitLabel, formatShortDuration, formatSpeedValue, toDisplaySpeed, signedPercent, type DistanceUnit, type SpeedUnit } from '../core/units';
 import { useOpenSections } from '../hooks/useOpenSections';
 import type { CadenceAnalysis, CadenceShare } from '../running/cadence';
 import StatTile from './ui/StatTile';
-import MapToggle from './ui/MapToggle';
 
 interface Props {
   analysis: CadenceAnalysis;
@@ -27,7 +27,6 @@ interface Props {
 const FOLDS_DEFAULT = { tranches: true, vitesse: true, pente: true };
 
 const cell = { padding: '0.4em 0.6em', textAlign: 'center' } as const;
-const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginTop: '6px' } as const;
 
 const spmText = (spm: number) => `${Math.round(spm)} pas/min`;
 const stepText = (m: number | null) => (m === null ? '—' : `${m.toFixed(2)} m`);
@@ -43,13 +42,12 @@ const signedChange = (from: number, to: number) => signedPercent(from > 0 ? (to 
 export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km', selectedBand, onSelectBand, storagePrefix, open, onToggle }: Props) {
   const folds = useOpenSections(`${storagePrefix}.cadence`, FOLDS_DEFAULT);
   const { bands, bySpeed, byGrade, drift } = analysis;
-  const bandTotal = bands.timesS.reduce((a, b) => a + b, 0);
   const unit = speedUnitLabel(speedUnit, distanceUnit);
   const speedText = (ms: number) => formatSpeedValue(toDisplaySpeed(ms, speedUnit, distanceUnit), speedUnit);
   // La tranche la plus lente part de l'arrêt : « moins de » sa borne haute.
   const speedRange = (fromMs: number, toMs: number) => (fromMs < 0.5 ? `< ${speedText(toMs)}` : `${speedText(fromMs)} – ${speedText(toMs)}`);
   const shareRow = (key: string, label: string, s: CadenceShare, extra?: string) => (
-    <tr key={key} style={{ borderTop: '1px solid var(--line-soft)', opacity: s.timeS > 0 ? 1 : 0.45 }}>
+    <tr key={key} className={s.timeS > 0 ? 'ui-table__row' : 'ui-table__row ui-table__row--empty'}>
       <td style={{ padding: '0.4em 0.6em', fontWeight: 700, whiteSpace: 'nowrap' }}>
         {label}{extra && <span style={{ color: 'var(--muted)', fontWeight: 'normal', fontSize: 'var(--text-xs)' }}> {extra}</span>}
       </td>
@@ -71,9 +69,7 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
 
   return (
     <>
-      <div style={{ marginBottom: '10px' }}>
-        <PanelTitle label="Cadence" extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}>(en mouvement)</span>} open={open} onToggle={onToggle} helpKey="analyse:cadence" />
-      </div>
+      <PanelHeading label="Cadence" extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}>(en mouvement)</span>} open={open} onToggle={onToggle} helpKey="analyse:cadence" />
       <HelpText helpKey="analyse:cadence" note>
         Cadence comptée par l'accéléromètre du téléphone (ou la montre), en pas par minute ; la courbe est dans l'onglet « graphiques ».
         {bands && ` Tranches de la ${bands.running ? 'course' : 'marche'}, choisies par la cadence moyenne ; « Voir » montre leurs passages sur la carte, en violet.`}
@@ -100,52 +96,16 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
 
       <ChartFold label={bands.running ? 'Tranches (course)' : 'Tranches (marche)'} open={folds.open.tranches} onToggle={() => folds.toggle('tranches')} style={{ marginTop: '12px' }} />
       {folds.open.tranches && (
-        <>
-          <table style={tableStyle}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-                <th style={{ textAlign: 'left', padding: '0.4em 0.6em' }}>Pas/min</th>
-                <th style={cell}>Temps</th>
-                <th style={{ ...cell, width: '35%' }}>Part</th>
-                <th style={cell}>Carte</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bands.timesS.map((s, band) => {
-                const share = bandTotal > 0 ? s / bandTotal : 0;
-                const shown = selectedBand === band;
-                const range = band === 0 ? `< ${bands.bounds[0]}` : band === bands.bounds.length ? `≥ ${bands.bounds[band - 1]}` : `${bands.bounds[band - 1]}-${bands.bounds[band] - 1}`;
-                return (
-                  <tr key={band} style={{ borderTop: '1px solid var(--line-soft)', opacity: s > 0 ? 1 : 0.45 }}>
-                    <td style={{ padding: '0.4em 0.6em', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                      <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', backgroundColor: CADENCE_BAND_COLORS[band], marginRight: '6px' }} />
-                      {range}
-                    </td>
-                    <td style={cell}>{formatShortDuration(s)}</td>
-                    <td style={cell}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div style={{ flex: 1, height: '8px', backgroundColor: 'var(--surface-sunken)', borderRadius: '4px', overflow: 'hidden' }}>
-                          <div style={{ width: `${share * 100}%`, height: '100%', backgroundColor: CADENCE_BAND_COLORS[band] }} />
-                        </div>
-                        <span style={{ minWidth: '3em', textAlign: 'right', fontSize: 'var(--text-xs)' }}>{Math.round(share * 100)} %</span>
-                      </div>
-                    </td>
-                    <td style={cell}>
-                      <MapToggle shown={shown} disabled={s <= 0} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => onSelectBand(shown ? null : band)} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </>
+        <BandShareTable head="Pas/min" shareWidth="35%" marginTop="6px" nowrapLabel
+          rows={bands.timesS.map((timeS, band) => ({ color: CADENCE_BAND_COLORS[band], label: bandRangeLabel(bands.bounds, band), timeS }))}
+          selected={selectedBand} onSelect={onSelectBand} />
       )}
 
       {bySpeed.length > 0 && (
         <>
           <ChartFold label="Selon la vitesse" open={folds.open.vitesse} onToggle={() => folds.toggle('vitesse')} style={{ marginTop: '12px' }} />
           {folds.open.vitesse && (
-            <table style={tableStyle}>
+            <table className="ui-table" style={{ marginTop: '6px' }}>
               {shareHead(unit)}
               <tbody>{bySpeed.map((b) => shareRow(String(b.fromMs), speedRange(b.fromMs, b.toMs), b))}</tbody>
             </table>
@@ -157,7 +117,7 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
         <>
           <ChartFold label="Selon la pente" open={folds.open.pente} onToggle={() => folds.toggle('pente')} style={{ marginTop: '12px' }} />
           {folds.open.pente && (
-            <table style={tableStyle}>
+            <table className="ui-table" style={{ marginTop: '6px' }}>
               {shareHead('Zone')}
               <tbody>
                 {byGrade.map((z) => shareRow(z.zone.key, z.zone.label, z, z.zone.range))}

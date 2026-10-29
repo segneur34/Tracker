@@ -27,6 +27,7 @@ import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { armFitnessTest, useFitnessTest } from '../hooks/useFitnessTest';
 import { useIntervalTimerOpen, useIntervalTimerRunning } from '../hooks/useIntervalTimer';
+import { useTransientValue } from '../hooks/useTransientValue';
 import { useStopwatchOpen, useStopwatchRunning } from '../hooks/useStopwatch';
 import { useLiveRecording } from '../hooks/useLiveRecording';
 import { useBeltLive } from '../hooks/useBeltLive';
@@ -39,7 +40,7 @@ import { usePhoneLandscape } from '../hooks/useNarrowScreen';
 import { readHeartRateZoneBounds } from '../hooks/useRunnerProfile';
 import {
   effectiveCadence, effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs,
-  lastRecordActivity, rememberRecordActivity, useVisibility,
+  lastRecordActivity, lastRecordedOrFirst, rememberRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
 import { BELT_STATE_LABEL, EXAMPLE_BELT, savedBelt, type BeltState } from '../platform/heartRate';
@@ -317,12 +318,7 @@ const NOTE_BUZZ_MS = 80;
  * quelques secondes, et le téléphone vibre.
  */
 function NoteButton({ style }: { style?: React.CSSProperties }) {
-  const [feedback, setFeedback] = useState<string | null>(null);
-  useEffect(() => {
-    if (feedback === null) return;
-    const timer = setTimeout(() => setFeedback(null), NOTE_FEEDBACK_MS);
-    return () => clearTimeout(timer);
-  }, [feedback]);
+  const [feedback, setFeedback] = useTransientValue<string>(NOTE_FEEDBACK_MS);
   const note = () => {
     const added = addRecordingMark();
     setFeedback(added ? `Note ${added.n} posée` : 'Pas encore de position : note impossible');
@@ -397,9 +393,7 @@ function RecordingScreen() {
   const rowActivities = chosenKind ? familyActivities.filter((a) => trainingKind(a.base) === chosenKind) : familyActivities;
   /** Un type choisi : la dernière activité enregistrée de ce type, sinon la première. */
   const pickKind = (kind: TrainingKind) => {
-    const own = familyActivities.filter((a) => trainingKind(a.base) === kind);
-    const last = lastRecordActivity();
-    setChosenId((own.find((a) => a.id === last?.id) ?? own[0])?.id ?? null);
+    setChosenId(lastRecordedOrFirst(familyActivities.filter((a) => trainingKind(a.base) === kind))?.id ?? null);
   };
   // Tests : le test choisi sous « Tests » (rangée « Test »), celui de l'adresse (`&test=`, « Lancer » d'un protocole), sinon la FC max.
   // La FC repos s'y choisit aussi, mais se fait sur sa page, sans enregistreur ni GPS (les sessions sans GPS viendront avec la muscu).

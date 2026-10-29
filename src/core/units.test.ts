@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CHART_PACE_MIN_SPEED_MS, INTERVAL_PACE_MIN_SPEED_MS, PACE_MIN_SPEED_MS, formatDistanceAuto, formatMeters, minutesSeconds, msToPace, pad2, signedPercent,
-  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed,
+  CHART_PACE_MIN_SPEED_MS, INTERVAL_PACE_MIN_SPEED_MS, PACE_MIN_SPEED_MS, formatDistanceAuto, formatMeters, minutesSeconds, msToPace, pad2, signedPercent, speedSourceText,
+  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
 } from './units';
 
 describe('distances', () => {
@@ -206,5 +206,24 @@ describe('formatDistanceAuto, formatMeters et seuils', () => {
     expect(INTERVAL_PACE_MIN_SPEED_MS).toBe(0.3);
     expect(msToPace(0.1)).toBeNull();
     expect(msToPace(0.11)).not.toBeNull();
+  });
+});
+
+describe('speedSourceText', () => {
+  /** Copie gelée de l'expression recopiée dans les onglets réglages de la course et du surf (lot 64). */
+  const frozen = (has: boolean, unit: SpeedUnit | null | undefined) =>
+    has ? `fournie par l'appareil${unit && unit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[unit]} et convertie` : ''}` : 'dérivée des positions, filtrée';
+
+  it('reprend l\'ancienne expression pour chaque cas', () => {
+    for (const has of [true, false]) {
+      for (const unit of [null, undefined, 'ms', 'kmh', 'kn', 'minkm'] as const) {
+        expect(speedSourceText(has, unit)).toBe(frozen(has, unit));
+      }
+    }
+  });
+  it('dit l\'unité lue quand ce n\'est pas le m/s', () => {
+    expect(speedSourceText(true, 'kmh')).toBe('fournie par l\'appareil, lue en km/h et convertie');
+    expect(speedSourceText(true, 'ms')).toBe('fournie par l\'appareil');
+    expect(speedSourceText(false, null)).toBe('dérivée des positions, filtrée');
   });
 });

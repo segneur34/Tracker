@@ -103,11 +103,11 @@ function PositionMarker({ position, color, travel }: { position: LocationFix; co
     if (arrow && heading !== null) arrow.style.transform = `rotate(${heading}deg)`;
   }, [heading, icon]);
 
+  // Le style ne change qu'avec la couleur : pas d'objet neuf à chaque position reçue.
+  const dotStyle = useMemo(() => ({ color: '#ffffff', weight: 3, fillColor: color, fillOpacity: 1 }), [color]);
+
   if (heading === null) {
-    return (
-      <CircleMarker center={[position.lat, position.lon]} radius={8}
-        pathOptions={{ color: '#ffffff', weight: 3, fillColor: color, fillOpacity: 1 }} />
-    );
+    return <CircleMarker center={[position.lat, position.lon]} radius={8} pathOptions={dotStyle} />;
   }
   return <Marker ref={marker} position={[position.lat, position.lon]} icon={icon} interactive={false} keyboard={false} />;
 }

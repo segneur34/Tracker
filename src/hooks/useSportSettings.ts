@@ -587,6 +587,12 @@ export const lastRecordActivity = (): Activity | null => {
   return readActivities(stored.activities).find((a) => a.id === stored.recordActivity) ?? null;
 };
 
+/** Parmi `candidates`, la dernière activité enregistrée si elle y est, sinon la première ; `null` si la liste est vide. */
+export const lastRecordedOrFirst = (candidates: readonly Activity[]): Activity | null => {
+  const last = lastRecordActivity();
+  return candidates.find((a) => a.id === last?.id) ?? candidates[0] ?? null;
+};
+
 export const rememberRecordActivity = (id: string): void => {
   const stored = readStoredSettings();
   if (stored.recordActivity !== id) writeStored({ ...stored, recordActivity: id });

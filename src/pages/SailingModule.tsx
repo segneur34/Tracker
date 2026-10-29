@@ -3,7 +3,7 @@ import { roundTo } from '../core/basics';
 import { useCallback, useEffect, useRef, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { GraphFoldHead } from '../components/ChartFold';
 import { HoverReadout, type Readout } from '../components/ChartReadout';
-import { Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
+import { Marker, CircleMarker, Popup } from 'react-leaflet';
 import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
 import L from 'leaflet';
 import type { DotItemDotProps } from 'recharts';
@@ -28,8 +28,7 @@ import { nearestIndexAtTime } from '../core/search';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { FAMILY_ACCENT } from '../core/activities';
-import { activeRatioLabel, hasPositions } from '../core/sportProfiles';
-import { isValidSpeedRange } from '../core/speedGradient';
+import { activeRatioLabel } from '../core/sportProfiles';
 import { trackColorSegments } from '../core/trackColor';
 import type { TopSegment } from '../core/types';
 import {
@@ -38,15 +37,19 @@ import {
 } from '../core/units';
 import { speedPolar, type PolarBin } from '../sailing/wind';
 import { MANEUVER_METRICS, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
-import ActivitySelect from '../components/ActivitySelect';
+import SessionActivityField from '../components/SessionActivityField';
+import SessionSettingsHeader from '../components/SessionSettingsHeader';
+import CardioTab from '../components/CardioTab';
+import NotesTab from '../components/NotesTab';
+import FoilPumpingFields from '../components/FoilPumpingFields';
 import JumpsPanel from '../components/JumpsPanel';
 import JumpMapLayer from '../components/JumpMapLayer';
 import FlightPumpingPanel from '../components/FlightPumpingPanel';
 import TrackSpanLayer, { type TrackSpanShown } from '../components/TrackSpanLayer';
 import StatTile from '../components/ui/StatTile';
-import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
+import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR, HIGHLIGHT_SPAN_OPACITY, PODIUM_RANKS, podiumColor } from '../components/highlightColors';
 import HeartRateChart from '../components/HeartRateChart';
-import HeartRatePanel, { CardioCompanion } from '../components/HeartRatePanel';
+import { CardioCompanion } from '../components/HeartRatePanel';
 import { heartRateReadout, speedReadout } from '../components/chartReadouts';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import AnalysisMap, { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
@@ -54,14 +57,15 @@ import TrackChart, { type TrackSeries, type TrackYAxis } from '../components/Tra
 import { zoomHint } from '../components/zoomHint';
 import EmptyTabPanel from '../components/EmptyTabPanel';
 import ResizablePanel from '../components/ResizablePanel';
-import TopsPanel from '../components/TopsPanel';
+import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
+import HighlightPath from '../components/HighlightPath';
 import SessionThresholdField from '../components/SessionThresholdField';
-import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
+import type { GearField } from '../components/gearFields';
 import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
-import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
+import { ANALYSIS_PANEL_STYLE, CARD_STYLE, HALF_PANEL_STYLE, PANEL_BLOCK_STYLE } from '../components/styles';
 import { HelpText } from '../components/Help';
 import { useHelp } from '../components/helpContext';
-import PanelTitle, { SessionDate } from '../components/PanelTitle';
+import PanelTitle, { PanelHeading, SessionDate } from '../components/PanelTitle';
 import SessionNameEditor from '../components/SessionNameEditor';
 import GeneralStats from '../components/GeneralStats';
 import WindCompass from '../components/WindCompass';
@@ -73,7 +77,7 @@ import { SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
-import SpeedRangeEditor from '../components/SpeedRangeEditor';
+import { SessionColorRangeField } from '../components/SpeedRangeEditor';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
 import MapToggle from '../components/ui/MapToggle';
@@ -276,8 +280,6 @@ function SailingModule() {
   });
   const jumpsVisible = jumps.visible;
 
-  const notes = edits.notes;
-  const setNotes = draft.updateNotes;
   /**
    * Graphes de l'onglet « graphiques » dépliés, chacun replié à part par son
    * titre pour ne comparer que ceux qui restent ouverts (16/10). Replié, un
@@ -416,13 +418,13 @@ function SailingModule() {
     [trackData]
   );
 
+  /** Podiums montrables sur la carte : les tops de vitesse, puis ceux de VMG (près, portant), par clé de cible. */
+  const mapTops = useMemo(
+    () => ({ ...stats?.tops, ...(vmgStats ? { vmgUpwind: vmgStats.topsUpwind, vmgDownwind: vmgStats.topsDownwind } : {}) }),
+    [stats, vmgStats]
+  );
   const staticMapLayers = useMemo(() => {
     if (trackData.length === 0) return null;
-
-    let topArray: Pick<TopSegment, 'val' | 'path'>[] | undefined;
-    if (selectedTopMap === 'vmgUpwind') topArray = vmgStats?.topsUpwind;
-    else if (selectedTopMap === 'vmgDownwind') topArray = vmgStats?.topsDownwind;
-    else topArray = stats?.tops[selectedTopMap as keyof typeof stats.tops];
 
     return (
       <>
@@ -444,33 +446,19 @@ function SailingModule() {
           );
         })}
 
-        {topArray?.map((top, idx) => {
-          if (top.path.length === 0) return null;
-          const highlightColor = HIGHLIGHT_PODIUM_COLORS[idx] ?? HIGHLIGHT_PODIUM_COLORS[2];
-          return (
-            <Polyline
-              key={`top-${selectedTopMap}-${idx}`}
-              positions={top.path}
-              pathOptions={{ color: highlightColor, weight: 10, opacity: 0.8 }}
-            />
-          );
-        })}
+        <TopsHighlight tops={mapTops} selected={selectedTopMap} />
 
         {maneuverTopArray.map((top, idx) => {
           if (top.path.length < 2) return null;
-          const highlightColor = HIGHLIGHT_PODIUM_COLORS[idx] ?? HIGHLIGHT_PODIUM_COLORS[2];
           return (
-            <Polyline
-              key={`maneuver-top-${selectedManeuverTop}-${idx}`}
-              positions={top.path}
-              pathOptions={{ color: highlightColor, weight: 10, opacity: 0.85 }}>
+            <HighlightPath key={`maneuver-top-${selectedManeuverTop}-${idx}`} positions={top.path} color={podiumColor(idx)} opacity={HIGHLIGHT_SPAN_OPACITY}>
               <Popup>{idx + 1}{idx === 0 ? 'er' : 'e'} · {formatTimeOfDay(top.timeMs)} · {top.label}</Popup>
-            </Polyline>
+            </HighlightPath>
           );
         })}
       </>
     );
-  }, [trackData, maneuverStats, showTacksOnMap, showJibesOnMap, selectedTopMap, stats, vmgStats, maneuverTopArray, selectedManeuverTop, speedUnit]);
+  }, [trackData, maneuverStats, showTacksOnMap, showJibesOnMap, selectedTopMap, mapTops, maneuverTopArray, selectedManeuverTop, speedUnit]);
 
   const mapBounds = useMemo(() => trackBounds(trackData), [trackData]);
 
@@ -610,7 +598,7 @@ function SailingModule() {
           onClick={() => highlight.show(panel, selectedTopMap === topKey ? null : topKey)} />
       </div>
       <div style={{ display: 'flex', gap: '10px', fontSize: 'var(--text-s)', marginTop: '4px' }}>
-        {['1er', '2e', '3e'].map((rank, idx) => (
+        {PODIUM_RANKS.map((rank, idx) => (
           <span key={rank} style={{ color: HIGHLIGHT_PODIUM_COLORS[idx], fontWeight: 700 }}>{rank}: {values[idx] ? showKn(values[idx].val) : '-'}</span>
         ))}
       </div>
@@ -649,11 +637,9 @@ function SailingModule() {
 
   /** Panneaux VMG et manœuvres, parmi les onglets sous la carte. */
   const renderVmgPanel = (v: NonNullable<typeof vmgStats>) => (
-    <ResizablePanel id="sailing.carte.vmg" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
-      <div style={{ marginBottom: '10px' }}>
-        <PanelTitle label="Analyse VMG" open={open.vmg} onToggle={toggleOf('vmg')} />
-      </div>
-      <table style={{ width: '100%', textAlign: 'center', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
+    <ResizablePanel id="sailing.carte.vmg" style={PANEL_BLOCK_STYLE}>
+      <PanelHeading label="Analyse VMG" open={open.vmg} onToggle={toggleOf('vmg')} />
+      <table className="ui-table" style={{ textAlign: 'center' }}>
         <thead>
           <tr style={{ backgroundColor: 'var(--surface-sunken)', borderBottom: '1px solid var(--line-strong)' }}>
             <th>Allure</th>
@@ -696,11 +682,11 @@ function SailingModule() {
       <table className="an-man-summary" style={{ borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)', marginBottom: '10px' }}>
         <thead>
           <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
-            <th style={{ textAlign: 'left', padding: '7px 14px' }}>Type</th>
-            <th style={{ padding: '7px 14px' }}>Réussis</th>
-            <th style={{ padding: '7px 14px' }}>Ratés</th>
-            <th style={{ padding: '7px 14px' }} title="Vitesse minimale pendant la manœuvre, moyenne sur toutes les manœuvres">Vmin moy. ({speedSymbol})</th>
-            <th style={{ padding: '7px 14px' }} title="Meilleure vitesse minimale conservée sur une manœuvre">Vmin max ({speedSymbol})</th>
+            <th style={{ textAlign: 'left' }}>Type</th>
+            <th>Réussis</th>
+            <th>Ratés</th>
+            <th title="Vitesse minimale pendant la manœuvre, moyenne sur toutes les manœuvres">Vmin moy. ({speedSymbol})</th>
+            <th title="Meilleure vitesse minimale conservée sur une manœuvre">Vmin max ({speedSymbol})</th>
             <th style={{ padding: '7px 10px' }}>Carte</th>
           </tr>
         </thead>
@@ -709,12 +695,12 @@ function SailingModule() {
             ['Virements', maneuverSummary.tack, showTacksOnMap, () => setShowTacksOnMap(!showTacksOnMap)],
             ['Empannages', maneuverSummary.jibe, showJibesOnMap, () => setShowJibesOnMap(!showJibesOnMap)],
           ] as const).map(([label, summary, shown, toggle]) => (
-            <tr key={label} style={{ borderTop: '1px solid var(--line-soft)' }}>
-              <td style={{ padding: '7px 14px', fontWeight: 700 }}>{label}</td>
-              <td style={{ padding: '7px 14px', textAlign: 'center', color: '#388e3c', fontWeight: 700, fontSize: 'var(--text-m)' }}>{summary?.success ?? 0}</td>
-              <td style={{ padding: '7px 14px', textAlign: 'center', color: '#d32f2f', fontSize: 'var(--text-m)' }}>{summary?.fail ?? 0}</td>
-              <td style={{ padding: '7px 14px', textAlign: 'center' }}>{summary ? showKn(summary.vminAvg) : '-'}</td>
-              <td style={{ padding: '7px 14px', textAlign: 'center', fontWeight: 700 }}>{summary ? showKn(summary.vminMax) : '-'}</td>
+            <tr key={label} className="ui-table__row">
+              <td style={{ fontWeight: 700 }}>{label}</td>
+              <td style={{ textAlign: 'center', color: '#388e3c', fontWeight: 700, fontSize: 'var(--text-m)' }}>{summary?.success ?? 0}</td>
+              <td style={{ textAlign: 'center', color: '#d32f2f', fontSize: 'var(--text-m)' }}>{summary?.fail ?? 0}</td>
+              <td style={{ textAlign: 'center' }}>{summary ? showKn(summary.vminAvg) : '-'}</td>
+              <td style={{ textAlign: 'center', fontWeight: 700 }}>{summary ? showKn(summary.vminMax) : '-'}</td>
               <td style={{ padding: '4px 10px', textAlign: 'center' }}>
                 <MapToggle shown={shown} color="var(--voile)" title={`Afficher les ${label.toLowerCase()} sur la carte`} onClick={toggle}
                   style={{ padding: '3px 10px', border: 'none' }} />
@@ -823,7 +809,7 @@ function SailingModule() {
                   <tr style={{ color: 'var(--muted)', borderBottom: '1px solid var(--line)' }}>
                     <th style={{ textAlign: 'left', padding: '3px 4px', fontWeight: 'normal' }}>Métrique</th>
                     <th style={{ padding: '3px 4px', fontWeight: 'normal' }}>Moyenne</th>
-                    {['1er', '2e', '3e'].map((rank, idx) => (
+                    {PODIUM_RANKS.map((rank, idx) => (
                       <th key={rank} style={{ padding: '3px 4px', fontWeight: 'normal', color: HIGHLIGHT_PODIUM_COLORS[idx] }}>{rank}</th>
                     ))}
                     <th style={{ padding: '3px 4px' }} />
@@ -959,10 +945,8 @@ function SailingModule() {
           <CollapsibleSectionTabs sections={sailingPanels} open={open} onToggle={toggle} advancedOpen={advanced.open} onToggleAdvanced={advanced.toggle} />
           <div className="an-carte-panels">
             {open.general && (
-              <ResizablePanel id="sailing.general" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" extra={<SessionDate track={trackData} />} open={open.general} onToggle={toggleOf('general')} />
-                </div>
+              <ResizablePanel id="sailing.general" style={PANEL_BLOCK_STYLE}>
+                <PanelHeading label="Général" extra={<SessionDate track={trackData} />} open={open.general} onToggle={toggleOf('general')} />
                 <GeneralStats stats={overviewStats} />
                 {/* Mini-boussole du vent ; « Régler » ouvre la grande sur la carte (22/10). */}
                 <div className="an-sheet__wind" style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
@@ -987,7 +971,7 @@ function SailingModule() {
             )}
 
             {open.tops && (
-              <ResizablePanel id="sailing.tops" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
+              <ResizablePanel id="sailing.tops" style={PANEL_BLOCK_STYLE}>
                 <TopsPanel targets={profile.topTargets} tops={stats.tops} unit={speedUnit} selected={highlight.shownIn('tops')}
                   onSelect={(key) => highlight.show('tops', key)} accent={FAMILY_ACCENT.voile} open={open.tops} onToggle={toggleOf('tops')} />
               </ResizablePanel>
@@ -998,7 +982,7 @@ function SailingModule() {
               : renderEmptyPanel('manoeuvres', 'Manœuvres', 'virements et empannages se reconnaissent', 'Aucune manœuvre reconnue sur cette session.'))}
 
             {open.graphiques && (
-              <div style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <div style={{ ...PANEL_BLOCK_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <div style={{ flex: '1 1 100%' }}>
                   <PanelTitle label="Graphiques" open={open.graphiques} onToggle={toggleOf('graphiques')} helpKey="voile:graphiques" />
                   <HelpText helpKey="voile:graphiques" note>Le survol déplace le repère sur la carte. {zoomText}</HelpText>
@@ -1036,13 +1020,10 @@ function SailingModule() {
             )}
 
             {open.cardio && heart.present && (
-              <ResizablePanel id="sailing.cardio" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
-                <HeartRatePanel track={track} minutes={trackMinutes} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
-                  onRetainHrMax={retainSessionHrMax} selectedZone={hrZone.selectedZone}
-                  onSelectZone={hrZone.select}
-                  zoom={cardioZoom} onShowOnMap={showCardioOnMap}
-                  open={open.cardio} onToggle={toggleOf('cardio')} />
-              </ResizablePanel>
+              <CardioTab id="sailing.cardio" track={track} minutes={trackMinutes} heart={heart} params={profile.heartRate} zones={hrZones} runner={runner}
+                onRetainHrMax={retainSessionHrMax} zone={hrZone}
+                zoom={cardioZoom} onShowOnMap={showCardioOnMap}
+                open={open.cardio} onToggle={toggleOf('cardio')} />
             )}
 
             {open.vmg && trackData.length > 0 && (vmgStats
@@ -1070,7 +1051,7 @@ function SailingModule() {
             )}
 
             {pumpingOpen && (
-              <ResizablePanel id="sailing.pumping" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
+              <ResizablePanel id="sailing.pumping" style={ANALYSIS_PANEL_STYLE}>
                 <FlightPumpingPanel
                   label={`Pumping (${flights.length} vol${flights.length > 1 ? 's' : ''})`} helpKey="voile:pumping"
                   open={open.pumping} onToggle={toggleOf('pumping')}
@@ -1097,7 +1078,7 @@ function SailingModule() {
             {open.vent && trackData.length > 0 && !windStats && renderEmptyPanel('vent', 'Variations du Vent', 'ses variations se lisent aux manœuvres, qui se classent',
               'Il faut au moins deux manœuvres pour suivre le vent au fil de la session.')}
             {open.vent && windStats && (
-              <div style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <div style={{ ...PANEL_BLOCK_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <div style={{ flex: '1 1 300px', minWidth: '250px' }}>
                   <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <PanelTitle
@@ -1141,31 +1122,20 @@ function SailingModule() {
             )}
 
             {open.matos && (
-              <ResizablePanel id="sailing.matos" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                {/* Foil et mât sur foil seulement ; ce qui est saisi reste dans la fiche, et revient si l'on recoche. */}
-                <SessionNotesPanel notes={notes} setNotes={setNotes} family="voile" conditions="voile" draft={draft}
-                  gearFields={foil ? SAILING_GEAR_FIELDS_FOIL : SAILING_GEAR_FIELDS} gearGroups={gearGroups} activityId={activity.id}
-                  open={open.matos} onToggle={toggleOf('matos')} />
-              </ResizablePanel>
+              /* Foil et mât sur foil seulement ; ce qui est saisi reste dans la fiche, et revient si l'on recoche. */
+              <NotesTab id="sailing.matos" draft={draft} family="voile" conditions="voile"
+                gearFields={foil ? SAILING_GEAR_FIELDS_FOIL : SAILING_GEAR_FIELDS} gearGroups={gearGroups} activityId={activity.id}
+                open={open.matos} onToggle={toggleOf('matos')} />
             )}
 
             {open.reglages && (
-              <ResizablePanel id="sailing.reglages" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={toggleOf('reglages')} helpKey="voile:reglages" />
-                </div>
-                <HelpText helpKey="voile:reglages" note>Vitesse : {hasDeviceSpeed ? "Doppler de l'appareil" : 'dérivée des positions, filtrée'}.</HelpText>
+              <ResizablePanel id="sailing.reglages" style={PANEL_BLOCK_STYLE}>
+                <SessionSettingsHeader helpKey="voile:reglages" open={open.reglages} onToggle={toggleOf('reglages')}>
+                  Vitesse : {hasDeviceSpeed ? "Doppler de l'appareil" : 'dérivée des positions, filtrée'}.
+                </SessionSettingsHeader>
                 <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-s)' }}>
-                    <strong>Activité :</strong>
-                    <ActivitySelect
-                      // Pas vers une activité sans trace (muscu) : la session a des positions.
-                      activities={allActivities.filter((a) => hasPositions(a.base))}
-                      value={activity.id}
-                      extra={activity}
-                      families={sessionFile ? undefined : ['voile']}
-                      onChange={(next) => changeSessionActivity(sessionFile, next)} />
-                  </label>
+                  <SessionActivityField activities={allActivities} activity={activity} withPositions families={sessionFile ? undefined : ['voile']}
+                    onChange={(next) => changeSessionActivity(sessionFile, next)} />
 
                   {hasActiveThreshold && (
                     <div style={{ fontSize: 'var(--text-s)' }}>
@@ -1181,21 +1151,11 @@ function SailingModule() {
                     </div>
                   )}
 
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-s)' }}
-                    title="Support sur foil pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">
-                    <input type="checkbox" checked={foil} onChange={(e) => draft.update({ foil: e.target.checked })} />
-                    <strong>Foil</strong>
-                    {edits.foil === null && <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>(supposé : celui de l'activité)</span>}
-                  </label>
-
-                  {foil && profile.pump !== null && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-s)' }}
-                      title="Pumping des vols par les capteurs du téléphone, pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages.">
-                      <input type="checkbox" checked={pumping} onChange={(e) => draft.update({ pumping: e.target.checked === activityPumping ? null : e.target.checked })} />
-                      <strong>Pumping</strong>
-                      {edits.pumping === null && <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>(celui de l'activité)</span>}
-                    </label>
-                  )}
+                  <FoilPumpingFields
+                    foilTitle="Support sur foil pour cette session, enregistré avec elle. Celui de l'activité se règle dans Réglages."
+                    foil={foil} foilIsDefault={edits.foil === null} onFoilChange={(next) => draft.update({ foil: next })}
+                    showPumping={foil && profile.pump !== null} pumping={pumping} pumpingIsDefault={edits.pumping === null}
+                    onPumpingChange={(next) => draft.update({ pumping: next === activityPumping ? null : next })} />
 
                   {trackData.length > 0 && (
                     <div style={{ fontSize: 'var(--text-s)' }}>
@@ -1213,11 +1173,8 @@ function SailingModule() {
                 </div>
                 {trackData.length > 0 && (
                   <div style={{ marginTop: '12px', fontSize: 'var(--text-s)' }}>
-                    <SpeedRangeEditor
-                      unit={speedUnit}
-                      range={colorRange}
-                      isOverridden={edits.speedRange !== null}
-                      onChange={(next) => { if (next === null || isValidSpeedRange(next)) draft.update({ speedRange: next }); }} />
+                    <SessionColorRangeField unit={speedUnit} range={colorRange} isOverridden={edits.speedRange !== null}
+                      onChange={(next) => draft.update({ speedRange: next })} />
                   </div>
                 )}
               </ResizablePanel>

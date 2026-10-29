@@ -8,14 +8,14 @@ import PageBackdrop from '../components/PageBackdrop';
 import ChartFold from '../components/ChartFold';
 import { HelpText, HelpToggle } from '../components/Help';
 import { useHelp } from '../components/helpContext';
-import PanelTitle from '../components/PanelTitle';
+import PanelTitle, { PanelHeading } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
 import SectionTabs, { type SectionDefinition } from '../components/SectionTabs';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { IconChevronRight } from '../components/icons';
 import CardioLoadHelp from '../components/CardioLoadHelp';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from '../components/heartRateColors';
-import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
+import { ANALYSIS_PANEL_STYLE, CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import PageHeader from '../components/ui/PageHeader';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
@@ -42,6 +42,7 @@ import {
   gearFilterItems, groupTotals, inBounds, isStatsMetricKey, matchesGear, isStatsPeriod, metricSeries, metricsOf, recordKindsOf, regularity, statsMetric,
   statsPeriodBounds, statsTotals, topSessions, weeklyDurations, type MetricPoint, type StatSession, type StatsMetricKey, type StatsPeriod, type StatsRecordKind,
   type StatsTotals, type ZoneBoundsOf,
+  groupByActivity,
 } from '../library/stats';
 import './analysisMobile.css';
 import './StatisticsPage.css';
@@ -106,7 +107,8 @@ const VIEW_NAMESPACE = 'tracker.statistiques';
 const VIEW_KEY = 'affichage';
 const VIEW_DEFAULTS: StatsView = { famille: null, activite: null, periode: 'tout', donnee: null, materiel: null };
 const panelId = (name: string) => `${STORAGE_ID}.${name}`;
-const panelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' } as const;
+/** Ce que disent les blocs de la page quand la période n'a aucune session. */
+const NO_SESSION_TEXT = 'Aucune session sur la période.';
 const chartPanelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'hidden' } as const;
 const noteStyle = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' } as const;
 
@@ -369,15 +371,7 @@ function StatisticsPage() {
   const cardio = useMemo(() => cardioTotals(inPeriod, zoneBoundsOf, LOAD_WEIGHTS), [inPeriod, zoneBoundsOf]);
   const loadBars = useMemo(() => (zoneBoundsOf ? cardioLoadBars(regular.bars, inPeriod, zoneBoundsOf, LOAD_WEIGHTS) : []), [zoneBoundsOf, regular.bars, inPeriod]);
   const hrPoints = useMemo(() => heartRatePoints(inPeriod), [inPeriod]);
-  const hrSeries = useMemo(() => {
-    const byActivity = new Map<string, typeof hrPoints>();
-    for (const p of hrPoints) {
-      const list = byActivity.get(p.activityId);
-      if (list) list.push(p);
-      else byActivity.set(p.activityId, [p]);
-    }
-    return [...byActivity.entries()];
-  }, [hrPoints]);
+  const hrSeries = useMemo(() => groupByActivity(hrPoints), [hrPoints]);
   const hrTicks = useMemo(
     () => (hrPoints.length > 0 ? dateTicks(hrPoints[0].startMs - 86_400_000, hrPoints[hrPoints.length - 1].startMs + 86_400_000, narrow ? 4 : 6) : null),
     [hrPoints, narrow]
@@ -433,13 +427,7 @@ function StatisticsPage() {
   const chartSeries = useMemo(
     () => series.map((serie) => {
       const rows: ChartRow[] = serie.points.map((p) => ({ ...p, y: toAxis(p.value), lineY: toAxis(p.line), serieKey: serie.key }));
-      const byActivity = new Map<string, ChartRow[]>();
-      for (const row of rows) {
-        const list = byActivity.get(row.activityId);
-        if (list) list.push(row);
-        else byActivity.set(row.activityId, [row]);
-      }
-      return { key: serie.key, label: serie.label, rows, byActivity: [...byActivity.entries()] };
+      return { key: serie.key, label: serie.label, rows, byActivity: groupByActivity(rows) };
     }),
     // `toAxis` ne dépend que de l'unité, des unités de la sélection et de l'échelle des durées.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -555,17 +543,15 @@ function StatisticsPage() {
           )}
           <div className="an-carte-panels stats-panels">
             {open.general && (
-              <ResizablePanel id={panelId('general')} style={panelStyle}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" open={open.general} onToggle={() => toggle('general')}
+              <ResizablePanel id={panelId('general')} style={ANALYSIS_PANEL_STYLE}>
+                <PanelHeading label="Général" open={open.general} onToggle={() => toggle('general')}
                     helpKey={family === 'voile' && totals.maneuverSessions < totals.sessions ? 'stats:general' : undefined} />
-                </div>
                 <HelpText helpKey="stats:general" note>
                   Manœuvres comptées sur les {plural(totals.maneuverSessions, 'session')} déjà ouverte{totals.maneuverSessions > 1 ? 's' : ''} dans l'analyse
                   ({totals.sessions - totals.maneuverSessions} jamais ouverte{totals.sessions - totals.maneuverSessions > 1 ? 's' : ''}).
                 </HelpText>
                 {empty ? (
-                  <p className="stats-hint">Aucune session sur la période.</p>
+                  <p className="stats-hint">{NO_SESSION_TEXT}</p>
                 ) : (
                   <>
                     <div className="an-sheet__stats an-sheet__stats--always">
@@ -636,7 +622,7 @@ function StatisticsPage() {
                     className="stats-metric-chips" onChoose={(key) => { rememberView({ donnee: key }); setPicked(null); }} />
                 )}
                 {chartFull === null ? (
-                  <p className="stats-hint">Aucune session sur la période.</p>
+                  <p className="stats-hint">{NO_SESSION_TEXT}</p>
                 ) : (
                   <>
                     {(twoSeries || weekRows.length > 0) && (
@@ -734,7 +720,7 @@ function StatisticsPage() {
                 </div>
                 <HelpText helpKey="stats:regularite" note>Sessions par {regular.barUnit}, empilées par activité.</HelpText>
                 {regular.weeks === 0 ? (
-                  <p className="stats-hint">Aucune session sur la période.</p>
+                  <p className="stats-hint">{NO_SESSION_TEXT}</p>
                 ) : (
                   <>
                     <div className="an-sheet__stats an-sheet__stats--always">
@@ -767,10 +753,8 @@ function StatisticsPage() {
             )}
 
             {open.cardio && hasCardio && (
-              <ResizablePanel id={panelId('cardio')} style={panelStyle}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Cardio" open={open.cardio} onToggle={() => toggle('cardio')} helpKey={hrZones ? 'stats:cardio' : undefined} />
-                </div>
+              <ResizablePanel id={panelId('cardio')} style={ANALYSIS_PANEL_STYLE}>
+                <PanelHeading label="Cardio" open={open.cardio} onToggle={() => toggle('cardio')} helpKey={hrZones ? 'stats:cardio' : undefined} />
                 <HelpText helpKey="stats:cardio" note>
                   Zones et charge recalculées avec les seuils de Réglages › Pratiquant, décalés pour l'activité de chaque session. Un point par session, à la couleur de son activité ; le toucher ouvre la session.
                 </HelpText>
@@ -858,12 +842,10 @@ function StatisticsPage() {
             )}
 
             {open.records && family !== null && (
-              <ResizablePanel id={panelId('records')} style={panelStyle}>
-                <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Records" open={open.records} onToggle={() => toggle('records')} />
-                </div>
+              <ResizablePanel id={panelId('records')} style={ANALYSIS_PANEL_STYLE}>
+                <PanelHeading label="Records" open={open.records} onToggle={() => toggle('records')} />
                 {empty ? (
-                  <p className="stats-hint">Aucune session sur la période.</p>
+                  <p className="stats-hint">{NO_SESSION_TEXT}</p>
                 ) : (
                   <div className="stats-records">
                     {recordKindsOf(family).map((kind) => {

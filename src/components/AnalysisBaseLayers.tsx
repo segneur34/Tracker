@@ -1,14 +1,11 @@
 import type { ReactNode } from 'react';
-import { Polyline } from 'react-leaflet';
 import type { LocatedMark } from '../core/sessionMarks';
 import type { SportFamily } from '../core/sportProfiles';
 import BaseTileLayer from './BaseTileLayer';
 import { HoveredTrackMarker } from './HoverMarker';
 import { SessionMarksLayer } from './SessionMarks';
+import HighlightPath from './HighlightPath';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
-
-/** Style des tronçons montrés en violet : zone cardiaque, partie vue d'un graphe zoomé. */
-const SHOWN_PATH_OPTIONS = { color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 };
 
 /**
  * Couches de la carte communes aux analyses (voile, course, vélo, fractionné,
@@ -36,9 +33,9 @@ function AnalysisBaseLayers({ family, track, zonePaths, zonePathsKey, zoomPath, 
       <BaseTileLayer family={family} />
       {children}
       {zonePaths.map((path, idx) => (
-        <Polyline key={`cardio-${zonePathsKey}-${idx}`} positions={path} pathOptions={SHOWN_PATH_OPTIONS} />
+        <HighlightPath key={`cardio-${zonePathsKey}-${idx}`} positions={path} color={HIGHLIGHT_SHOWN_COLOR} />
       ))}
-      {zoomPath.length > 1 && <Polyline key="zoom" positions={zoomPath} pathOptions={SHOWN_PATH_OPTIONS} />}
+      {zoomPath.length > 1 && <HighlightPath key="zoom" positions={zoomPath} color={HIGHLIGHT_SHOWN_COLOR} />}
       <SessionMarksLayer located={marks} shownMs={shownMark} />
       <HoveredTrackMarker points={track} />
     </>

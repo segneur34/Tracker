@@ -1,5 +1,6 @@
-import { useEffect, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import type { CSSProperties, MouseEvent, ReactNode } from 'react';
 import { useLongPress } from '../../hooks/useLongPress';
+import { useTransientValue } from '../../hooks/useTransientValue';
 import Button from './Button';
 import HoldDial from './HoldDial';
 
@@ -28,12 +29,7 @@ function HoldButton({ onHold, getHoldMs, label, lead, dialTitle, color = 'var(--
   const holdMs = getHoldMs();
   const { pressingMs, handlers } = useLongPress(onHold, getHoldMs, holdMs > 0 && !disabled);
   /** Rappel du geste après un appui trop court, effacé au bout de quelques secondes. */
-  const [hint, setHint] = useState(false);
-  useEffect(() => {
-    if (!hint) return undefined;
-    const timer = window.setTimeout(() => setHint(false), 3000);
-    return () => window.clearTimeout(timer);
-  }, [hint]);
+  const [hint, setHint] = useTransientValue<true>(3000);
 
   const onClick = (e: MouseEvent) => {
     if (holdMs === 0) {

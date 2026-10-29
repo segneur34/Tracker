@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { CircleMarker, Polyline } from 'react-leaflet';
+import { CircleMarker } from 'react-leaflet';
 import { surfaceHighlight, type SurfaceCategory, type SurfacePath } from '../planning/surface';
+import HighlightPath from './HighlightPath';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 
 /**
@@ -15,8 +16,7 @@ function SurfaceHighlight({ paths, category }: { paths: ReadonlyArray<SurfacePat
   return (
     <>
       {lines.map((positions, idx) => (
-        <Polyline key={`surface-shown-${category}-${idx}`} positions={positions}
-          pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8, interactive: false }} />
+        <HighlightPath key={`surface-shown-${category}-${idx}`} positions={positions} color={HIGHLIGHT_SHOWN_COLOR} interactive={false} />
       ))}
       {marks.map((center, idx) => (
         <CircleMarker key={`surface-mark-${category}-${idx}`} center={center} radius={9}

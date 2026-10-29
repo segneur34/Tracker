@@ -3,15 +3,9 @@ import { addGearItem, type GearGroup } from '../hooks/useSportSettings';
 import type { EditedPart } from '../library/sessionEdits';
 import { RATINGS, WATER_STATES, WIND_LEVELS, type GearChoice, type SailingSessionNotes } from '../sailing/sessionNotes';
 import GearPicker from './GearPicker';
+import type { GearField } from './gearFields';
 import { HelpText } from './Help';
-import PanelTitle from './PanelTitle';
-
-/** Champ texte du matériel : clé dans les notes, intitulé, exemple. */
-export interface GearField {
-  field: 'foil' | 'mast' | 'wing' | 'gear1' | 'gear2';
-  label: string;
-  placeholder: string;
-}
+import { PanelHeading } from './PanelTitle';
 
 interface Props {
   notes: SailingSessionNotes;
@@ -72,9 +66,7 @@ export default function SessionNotesPanel({ notes, setNotes, family, gearFields,
   return (
     <>
       <div style={{ flex: '1 1 260px' }}>
-        <div style={{ marginBottom: '10px' }}>
-          <PanelTitle label="Matériel" open={open} onToggle={onToggle} helpKey={gearGroups ? 'analyse:materiel' : undefined} />
-        </div>
+        <PanelHeading label="Matériel" open={open} onToggle={onToggle} helpKey={gearGroups ? 'analyse:materiel' : undefined} />
         {gearGroups ? (
           <>
             <HelpText helpKey="analyse:materiel" note>

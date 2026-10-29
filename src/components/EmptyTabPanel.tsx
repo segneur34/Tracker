@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import PanelTitle from './PanelTitle';
 import ResizablePanel from './ResizablePanel';
-import { CARD_STYLE, HALF_PANEL_STYLE } from './styles';
+import { PANEL_BLOCK_STYLE } from './styles';
 
 /**
  * Onglet ouvert qui n'a rien à montrer pour cette session : son titre, qui le
@@ -21,7 +21,7 @@ function EmptyTabPanel({ id, label, open, onToggle, children, action }: {
   action?: ReactNode;
 }) {
   return (
-    <ResizablePanel id={id} direction="vertical" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
+    <ResizablePanel id={id} direction="vertical" style={PANEL_BLOCK_STYLE}>
       <div style={{ marginBottom: 'var(--space-2)' }}>
         <PanelTitle label={label} open={open} onToggle={onToggle} />
       </div>

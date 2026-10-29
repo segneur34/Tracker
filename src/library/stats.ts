@@ -8,6 +8,7 @@
 
 import type { Activity } from '../core/activities';
 import { ZONE_COUNT, edwardsLoad, histogramZoneTimes } from '../core/heartRate';
+import { repsDone } from '../core/heartRateSession';
 import { hasPositions, sportFamily, sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
 import { DAY_MS, addDays, addMonths, isoWeek, monthYearLong, monthYearShort, shortDate, stacksByActivity, startOfDay, startOfIsoWeek, startOfMonth } from '../core/calendar';
 import { CHART_PERIODS, chartPeriodBounds, type ChartRange } from './activityChart';
@@ -103,7 +104,7 @@ export const statSessionOf = (file: string, record: SessionRecord, activity: Act
     longestWaveM: summary.longestWaveM ?? null,
     longestFlightS: summary.longestFlightS ?? null,
     flightS: summary.flightS ?? null,
-    reps: record.intervals?.reduce((n, series) => n + series.laps.filter((l) => l.kind === 'travail').length, 0) ?? 0,
+    reps: repsDone(record.intervals),
     heartRate: summary.heartRate ?? null,
     cadenceSpm: summary.cadence?.avgSpm ?? null,
     gear: record.notes?.gear ?? null,
@@ -692,3 +693,14 @@ export const heartRatePoints = (sessions: readonly StatSession[]): { file: strin
     .filter((s) => s.heartRate !== null)
     .sort((a, b) => a.startMs - b.startMs)
     .map((s) => ({ file: s.file, startMs: s.startMs, activityId: s.activityId, avgBpm: s.heartRate!.avgBpm, maxBpm: s.heartRate!.maxBpm }));
+
+/** Éléments rangés par activité, dans l'ordre où chaque activité apparaît, chacun gardant son rang d'origine. */
+export const groupByActivity = <T extends { activityId: string }>(items: readonly T[]): [string, T[]][] => {
+  const byActivity = new Map<string, T[]>();
+  for (const item of items) {
+    const list = byActivity.get(item.activityId);
+    if (list) list.push(item);
+    else byActivity.set(item.activityId, [item]);
+  }
+  return [...byActivity.entries()];
+};

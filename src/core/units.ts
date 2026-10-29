@@ -96,6 +96,16 @@ export const SPEED_UNIT_LABEL: Record<SpeedUnit, string> = {
   minkm: 'min/km',
 };
 
+/**
+ * Origine de la vitesse d'une trace, pour l'aide de l'onglet réglages : celle de
+ * l'appareil (avec son unité si ce n'est pas le m/s, lue puis convertie) ou
+ * dérivée des positions.
+ */
+export const speedSourceText = (hasDeviceSpeed: boolean, deviceSpeedUnit: SpeedUnit | null | undefined): string =>
+  hasDeviceSpeed
+    ? `fournie par l'appareil${deviceSpeedUnit && deviceSpeedUnit !== 'ms' ? `, lue en ${SPEED_UNIT_LABEL[deviceSpeedUnit]} et convertie` : ''}`
+    : 'dérivée des positions, filtrée';
+
 /** Libellé d'une unité de vitesse ; l'allure suit l'unité de distance (« min/km », « min/NM »). */
 export const speedUnitLabel = (unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): string =>
   unit === 'minkm' ? `min/${DISTANCE_UNIT_SYMBOL[distanceUnit]}` : SPEED_UNIT_LABEL[unit];

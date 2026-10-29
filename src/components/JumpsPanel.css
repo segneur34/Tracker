@@ -72,25 +72,13 @@
 }
 
 /* Sur téléphone, chaque saut passe sur deux rangées, comme les manœuvres :
-   numéro à gauche, puis heure, hauteur et « Voir » ; vol, longueur et vitesse. */
+   numéro à gauche, puis heure, hauteur et « Voir » ; vol, longueur et vitesse.
+   Le reste de la bascule en cartes est commun (`ui-table--cards`, `ui.css`) ; ici, les zones de la grille. */
 @media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
-  .an-jump-table thead {
-    display: none;
-  }
-
   .an-jump-table tbody tr {
-    display: grid;
-    grid-template-columns: 2em minmax(0, 1fr) minmax(0, 1fr) auto;
     grid-template-areas:
       'num time height map'
       'num flight length speed';
-    align-items: center;
-    padding: 4px 0;
-  }
-
-  .an-jump-table td {
-    padding: 2px 4px !important;
-    text-align: left !important;
   }
 
   .an-jump-num { grid-area: num; align-self: start; }

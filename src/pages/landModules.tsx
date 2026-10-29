@@ -1,3 +1,4 @@
+import { FAMILY_ACCENT } from '../core/activities';
 import { roundTo } from '../core/basics';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -293,21 +294,21 @@ export const LAND_PAGES: Record<LandFamily, LandPageConfig> = {
     family: 'course',
     title: 'Analyse à pied',
     backLabel: 'Sessions à pied',
-    accent: 'var(--course)',
+    accent: FAMILY_ACCENT.course,
     storageId: 'running',
   },
   velo: {
     family: 'velo',
     title: 'Analyse vélo',
     backLabel: 'Sessions vélo',
-    accent: 'var(--velo)',
+    accent: FAMILY_ACCENT.velo,
     storageId: 'cycling',
   },
   fractionne: {
     family: 'fractionne',
     title: 'Analyse fractionné',
     backLabel: 'Entraînement',
-    accent: 'var(--fractionne)',
+    accent: FAMILY_ACCENT.fractionne,
     storageId: 'intervals',
   },
 };

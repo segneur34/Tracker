@@ -13,9 +13,9 @@ import { CHART_TICK } from './chartStyle';
 import TrackChart, { type TrackSeries, type TrackYAxis } from './TrackChart';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 import { HelpText, HelpToggle } from './Help';
-import PanelTitle from './PanelTitle';
+import { PanelHeading } from './PanelTitle';
 import ResizablePanel from './ResizablePanel';
-import { CARD_STYLE, HALF_PANEL_STYLE } from './styles';
+import { ANALYSIS_PANEL_STYLE } from './styles';
 import './JumpsPanel.css';
 import StatTile from './ui/StatTile';
 import MapToggle from './ui/MapToggle';
@@ -78,7 +78,6 @@ export interface JumpsPanelProps {
   sailing?: boolean;
 }
 
-const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' };
 const cellStyle: CSSProperties = { padding: '0.4em 0.6em', textAlign: 'center' };
 const noteStyle: CSSProperties = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', lineHeight: 1.45 };
 
@@ -157,16 +156,11 @@ function JumpsPanel({
   /** Sauts de la courbe, par l'heure de leur décollage : le premier (le plus haut d'office), et celui qu'on lui compare. */
   const [curveFirst, setCurveFirst] = useState<number | null>(null);
   const [curveSecond, setCurveSecond] = useState<number | null>(null);
-  const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' };
   const buttonStyle = (active: boolean, color: string): CSSProperties => ({
     padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: 'pointer', backgroundColor: active ? color : 'var(--surface-sunken)',
     color: active ? 'var(--on-accent)' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px',
   });
-  const heading = (label: string, helpKey?: string) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', paddingRight: '28px' }}>
-      <PanelTitle label={label} open={open} onToggle={onToggle} helpKey={helpKey} />
-    </div>
-  );
+  const heading = (label: string, helpKey?: string) => <PanelHeading label={label} open={open} onToggle={onToggle} helpKey={helpKey} padRight />;
   const hiddenNote = hiddenCount > 0
     ? `${hiddenCount} ${hiddenCount > 1 ? 'autres vols, plus bas' : 'autre vol, plus bas'} que ${meters(minHeightM)} ou pris sous ${thresholdLabel}, ${hiddenCount > 1 ? 'ne sont pas montrés' : "n'est pas montré"}.`
     : null;
@@ -178,7 +172,7 @@ function JumpsPanel({
         ? `Sauts indisponibles : ${error ?? 'calcul impossible'}.`
         : `Aucun saut d'au moins ${meters(minHeightM)} pris à ${thresholdLabel} ou plus.`;
     return (
-      <ResizablePanel id={`${panelPrefix}.sauts`} style={panelStyle}>
+      <ResizablePanel id={`${panelPrefix}.sauts`} style={ANALYSIS_PANEL_STYLE}>
         {heading('Sauts')}
         <div style={{ color: 'var(--muted)' }}>{text}</div>
         {status === 'ready' && hiddenNote && <div style={noteStyle}>{hiddenNote}</div>}
@@ -204,7 +198,7 @@ function JumpsPanel({
   };
 
   const jumpsPanel = (
-    <ResizablePanel id={`${panelPrefix}.sauts`} style={panelStyle}>
+    <ResizablePanel id={`${panelPrefix}.sauts`} style={ANALYSIS_PANEL_STYLE}>
       {heading('Sauts', 'analyse:sauts')}
       <HelpText helpKey="analyse:sauts" note>
           Hauteur gagnée par le téléphone, donc par le buste, au-dessus de son niveau au décollage, mesurée par
@@ -246,7 +240,7 @@ function JumpsPanel({
         ))}
       </div>
       <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
-        <table className="an-jump-table" style={tableStyle}>
+        <table className="ui-table ui-table--cards an-jump-table">
           <thead>
             <tr style={{ backgroundColor: 'var(--surface-sunken)' }}>
               <th style={{ ...cellStyle, textAlign: 'left' }} title="Numéro du saut dans la séance">N°</th>
@@ -264,7 +258,7 @@ function JumpsPanel({
               const doubtful = j.doubts.length > 0;
               const onCurve = j.takeoffMs === first.takeoffMs || j.takeoffMs === second?.takeoffMs;
               return (
-                <tr key={j.takeoffMs} style={{ borderTop: '1px solid var(--line-soft)' }}>
+                <tr key={j.takeoffMs} className="ui-table__row">
                   <td className="an-jump-num" style={{ ...cellStyle, textAlign: 'left', fontWeight: 700 }}>{order.get(j.takeoffMs)}</td>
                   <td className="an-jump-time num" style={cellStyle}>{formatTimeOfDay(j.takeoffMs)}</td>
                   <td className="an-jump-height" style={{ ...cellStyle, fontWeight: 700 }} title={doubtful ? doubtText(j) : undefined}>
@@ -305,7 +299,7 @@ function JumpsPanel({
     </select>
   );
   const curvePanel = (
-    <ResizablePanel id={`${panelPrefix}.sauts.courbe`} style={panelStyle}>
+    <ResizablePanel id={`${panelPrefix}.sauts.courbe`} style={ANALYSIS_PANEL_STYLE}>
       <div id={curveAnchorId} className="an-jump-compare">
         <label>
           <span className="an-jump-compare__dot" style={{ backgroundColor: CURVE_COLORS[0] }} />

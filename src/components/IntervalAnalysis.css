@@ -15,26 +15,14 @@
 }
 
 /* Sur téléphone, chaque répétition passe sur trois rangées, comme les podiums des manœuvres :
-   numéro à gauche, puis vitesse, distance et « Voir » ; lancé, maintien et durée ; la mini-courbe et le repos. */
+   numéro à gauche, puis vitesse, distance et « Voir » ; lancé, maintien et durée ; la mini-courbe et le repos.
+   Le reste de la bascule en cartes est commun (`ui-table--cards`, `ui.css`) ; ici, les zones de la grille. */
 @media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
-  .an-ivl-table thead {
-    display: none;
-  }
-
   .an-ivl-table tbody tr {
-    display: grid;
-    grid-template-columns: 2em minmax(0, 1fr) minmax(0, 1fr) auto;
     grid-template-areas:
       'rep speed dist map'
       'rep launch hold dur'
       'rep spark spark rest';
-    align-items: center;
-    padding: 4px 0;
-  }
-
-  .an-ivl-table td {
-    padding: 2px 4px !important;
-    text-align: left !important;
   }
 
   .an-ivl-rep { grid-area: rep; align-self: start; }

@@ -20,3 +20,12 @@ export const HALF_PANEL_STYLE = {
   // Marge intérieure comprise dans la demi-ligne, pour un simple bloc comme pour un `ResizablePanel`.
   boxSizing: 'border-box',
 } as const;
+
+/** Bloc blanc d'un panneau d'analyse à sa place dans la page : `CARD_STYLE` et `HALF_PANEL_STYLE`. */
+export const PANEL_BLOCK_STYLE = { ...CARD_STYLE, ...HALF_PANEL_STYLE } as const;
+
+/** Panneau d'analyse, texte en petit : le style de la plupart des `ResizablePanel` des onglets. */
+export const ANALYSIS_PANEL_STYLE = { ...PANEL_BLOCK_STYLE, fontSize: 'var(--text-s)' } as const;
+
+/** Panneau d'analyse qui range ses blocs en ligne (matériel et notes) : le style de l'onglet « matos et notes ». */
+export const NOTES_PANEL_STYLE = { ...PANEL_BLOCK_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' } as const;

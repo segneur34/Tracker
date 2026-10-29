@@ -1,15 +1,17 @@
 import { errorMessage } from '../core/basics';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { FAMILY_LABEL, sessionActivity } from '../core/activities';
 import type { ShareStat } from '../core/shareImage';
 import type { SportFamily } from '../core/sportProfiles';
 import { librarySession, readSessionExport, updateSessionRecord, useSessionName } from '../hooks/useSessionLibrary';
 import { readStoredActivities } from '../hooks/useSportSettings';
+import { useTransientValue } from '../hooks/useTransientValue';
 import { downloadBaseName } from '../library/naming';
 import { bundleSessionGpx } from '../library/sessionBundle';
 import { shareLabels } from '../library/shareStats';
 import { safeFileName, saveToDownloads } from '../platform/files';
 import { IconDownload, IconShare } from './icons';
+import SessionRenameField from './SessionRenameField';
 import ShareDialog from './ShareDialog';
 import type { TrackSegment } from './TrackSegmentsLayer';
 import Button from './ui/Button';
@@ -41,12 +43,7 @@ function SessionNameEditor({ file, share }: { file: string | null; share?: Sessi
   /** Nom en cours de saisie ; `null` hors renommage. */
   const [draft, setDraft] = useState<string | null>(null);
   /** Compte rendu du dernier téléchargement, effacé après quelques secondes. */
-  const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
-  useEffect(() => {
-    if (!note) return;
-    const timer = setTimeout(() => setNote(null), DOWNLOAD_NOTE_MS);
-    return () => clearTimeout(timer);
-  }, [note]);
+  const [note, setNote] = useTransientValue<{ text: string; error: boolean }>(DOWNLOAD_NOTE_MS);
   const session = file === null ? undefined : librarySession(file);
   if (!session || file === null) return null;
 
@@ -78,21 +75,8 @@ function SessionNameEditor({ file, share }: { file: string | null; share?: Sessi
   if (draft !== null) {
     return (
       <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-1)' }}>
-        <input
-          className="ui-field ui-field--s"
-          value={draft}
-          autoFocus
-          maxLength={80}
-          placeholder="Nom de la session"
-          aria-label="Nom de la session"
-          style={{ flex: '1 1 180px', minWidth: 0, maxWidth: '360px' }}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') save();
-            else if (e.key === 'Escape') setDraft(null);
-          }} />
-        <Button size="s" onClick={save}>Valider</Button>
-        <Button size="s" variant="ghost" onClick={() => setDraft(null)}>Annuler</Button>
+        <SessionRenameField value={draft} onChange={setDraft} onSave={save} onCancel={() => setDraft(null)}
+          style={{ flex: '1 1 180px', minWidth: 0, maxWidth: '360px' }} />
       </span>
     );
   }

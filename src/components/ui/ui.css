@@ -669,3 +669,43 @@
   border-color: var(--line-strong) !important;
   color: var(--ink);
 }
+
+/* --- Tableaux des panneaux d'analyse --- */
+
+/* Le tableau : pleine largeur, bordé, en petit. Les marges propres à sa place restent en ligne. */
+.ui-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-s);
+  background-color: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* Une ligne du corps : un trait fin au-dessus ; grisée quand sa valeur est nulle. */
+.ui-table__row {
+  border-top: 1px solid var(--line-soft);
+}
+
+.ui-table__row--empty {
+  opacity: 0.45;
+}
+
+/* Sur téléphone, un tableau `ui-table--cards` n'a plus d'en-tête : chaque ligne devient une carte en grille
+   (numéro à gauche, puis trois colonnes), dont la page donne les zones (`grid-template-areas`) par ses cellules. */
+@media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
+  .ui-table--cards thead {
+    display: none;
+  }
+
+  .ui-table--cards tbody tr {
+    display: grid;
+    grid-template-columns: 2em minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: center;
+    padding: 4px 0;
+  }
+
+  .ui-table--cards td {
+    padding: 2px 4px !important;
+    text-align: left !important;
+  }
+}
