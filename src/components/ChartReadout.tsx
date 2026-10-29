@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { useHoveredIndex } from '../hooks/useChartHover';
+import { useHoveredIndex, useHoverStore, type HoverStore } from '../hooks/useChartHover';
 
 /** Une valeur lue, dans la couleur de sa série. */
 export interface ReadoutValue {
@@ -62,4 +62,20 @@ export function HoverReadout({ read, label, color, line = false }: {
 }) {
   const index = useHoveredIndex();
   return <ChartReadout readout={index === null ? null : read(index)} label={label} color={color} line={line} />;
+}
+
+/**
+ * Lecture d'un graphe qui tient son survol dans un magasin à lui
+ * (`createHoverStore`) : `read` donne la lecture de la ligne survolée, ou
+ * `null`. Comme `HoverReadout`, seule elle se redessine sous le doigt.
+ */
+export function RowReadout<T>({ store, read, label, color, line = false }: {
+  store: HoverStore<T>;
+  read: (row: T) => Readout | null;
+  label?: string;
+  color?: string;
+  line?: boolean;
+}) {
+  const row = useHoverStore(store);
+  return <ChartReadout readout={row === null ? null : read(row)} label={label} color={color} line={line} />;
 }

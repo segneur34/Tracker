@@ -1,15 +1,16 @@
 import { toFixedNumber } from '../core/basics';
-import { useMemo, type ReactElement } from 'react';
-import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { HoverReadout, type Readout } from './ChartReadout';
-import { NO_TOOLTIP_CONTENT, clearTrackHover, inChartView, trackHover } from './chartHover';
+import { useMemo } from 'react';
+import { ReferenceArea, ReferenceLine } from 'recharts';
+import ChartReadout, { HoverReadout, type Readout } from './ChartReadout';
+import { elapsedX } from './chartAxes';
+import { inChartView } from './chartHover';
 import { phaseAreas } from './fitnessTestChartParts';
 import { HEART_RATE_COLOR } from './heartRateColors';
 import { HelpText } from './Help';
 import PanelTitle from './PanelTitle';
-import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
+import TrackChart, { type TrackSeries } from './TrackChart';
 import Button from './ui/Button';
-import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
+import { sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import type { TrackPoint } from '../core/types';
 import {
@@ -20,7 +21,7 @@ import type { ChartZoom } from '../hooks/useChartZoom';
 import { FITNESS_TESTS, TEST_SIGNAL_LABEL, type SessionTest, type TestEndReason, type TestSignal } from '../recording/fitnessTest';
 import { fitnessTestResults } from '../running/fitnessTestResults';
 import StatTile from './ui/StatTile';
-import { CHART_GRID_PROPS, CHART_MARK_COLOR, CHART_TICK, SPEED_COLOR, chartTick, yAxisLabel } from './chartStyle';
+import { CHART_MARK_COLOR, SPEED_COLOR } from './chartStyle';
 
 const TARGET_COLOR = '#0d47a1';
 const CURVE_HEIGHT_PX = 150;
@@ -42,6 +43,15 @@ interface Row {
   target: number | null;
   hr: number | null;
 }
+
+const SPEED_SERIES: TrackSeries<Row>[] = [
+  { kind: 'line', key: 'speed', name: 'speed', color: SPEED_COLOR, width: 1.5, activeDotR: 4 },
+  { kind: 'step', key: 'target', name: 'target', color: TARGET_COLOR, width: 2, activeDotR: false },
+];
+const HR_SERIES: TrackSeries<Row>[] = [{ kind: 'line', key: 'hr', name: 'hr', color: HEART_RATE_COLOR, width: 2, activeDotR: 4 }];
+/** Le graphe du haut cache son abscisse : celle du graphe du bas sert aux deux. */
+const HIDDEN_X = { ...elapsedX(), hide: true };
+const SHOWN_X = elapsedX();
 
 /** Vitesse cible à l'instant `t` : celle du dernier palier commencé, pendant la rampe ; `null` ailleurs. */
 const targetAt = (test: SessionTest, t: number, rampEndMs: number): number | null => {
@@ -85,7 +95,8 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
     if (minutes.length < 2) return [];
     const [first, last] = visibleIndexRange(minutes, zoom.view);
     const display = (ms: number) => toFixedNumber(toDisplaySpeed(ms, unit), 1);
-    return sampledIndices(first, last, CHART_MAX_POINTS, speedsMs).map((i) => {
+    // Les extrêmes de la vitesse et de la FC restent : le pic de FC du test ne disparaît pas.
+    return sampledIndicesKeeping(first, last, CHART_MAX_POINTS, [speedsMs, hrSmoothed]).map((i) => {
       const target = targetAt(test, track[i].timeMs, rampEndMs);
       return {
         index: i,
@@ -109,13 +120,6 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
   const signalLines = signals.map((s) => (
     <ReferenceLine key={`${s.s}-${s.t}`} x={toMin(s.t)} stroke={CHART_MARK_COLOR} strokeOpacity={0.5} strokeDasharray="3 3" ifOverflow="hidden" />
   ));
-  const xAxis = (hide: boolean): ReactElement => (
-    <XAxis dataKey="minutes" type="number" allowDataOverflow hide={hide}
-      domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
-      ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-      tickFormatter={formatClockMinutes} tick={CHART_TICK} />
-  );
-  const onHover = trackHover(rows);
 
   /** Lecture au point survolé (`HoverReadout`), s'il est dans la plage zoomée. */
   const read = (hovered: number): Readout | null => (minutes[hovered] === undefined || !inChartView(zoom.view, minutes[hovered]) ? null : {
@@ -133,41 +137,22 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
   return (
     <>
       <HoverReadout read={read} label="Test" line />
-      <ZoomableChart zoom={zoom} onLeave={clearTrackHover} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${CURVE_HEIGHT_PX}px` }}>
-        <ResponsiveContainer>
-          <ComposedChart data={rows} syncId="test" onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 18, right: 10, left: 0, bottom: 0 }}>
-            <ChartZoomProbe />
-            <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
-            {phaseAreas(areas, true)}
-            {xAxis(true)}
-            <YAxis domain={['dataMin - 1', 'dataMax + 1']} allowDecimals={false} width={46} tick={chartTick(SPEED_COLOR)}
-              label={yAxisLabel(SPEED_UNIT_LABEL[unit], SPEED_COLOR)} />
-            {signalLines}
-            <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-            <Line type="monotone" dataKey="speed" stroke={SPEED_COLOR} strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
-            <Line type="stepAfter" dataKey="target" stroke={TARGET_COLOR} strokeWidth={2} dot={false} activeDot={false} connectNulls={false}
-              isAnimationActive={false} />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </ZoomableChart>
-      <ZoomableChart zoom={zoom} onLeave={clearTrackHover} showReset={false} style={{ width: '100%', height: `${CURVE_HEIGHT_PX}px` }}>
-        <ResponsiveContainer>
-          <ComposedChart data={rows} syncId="test" onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 4, right: 10, left: 0, bottom: 0 }}>
-            <ChartZoomProbe />
-            <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
-            {phaseAreas(areas, false)}
-            {xAxis(false)}
-            <YAxis domain={['dataMin - 5', 'dataMax + 5']} allowDecimals={false} width={46} tick={chartTick(HEART_RATE_COLOR)}
-              label={yAxisLabel('bpm', HEART_RATE_COLOR)} />
-            <ReferenceArea x1={toMin(test.startMs)} x2={toMin(test.rampStartMs ?? test.endMs ?? lastMs)} y1={test.settings.lowBpm} y2={test.settings.highBpm}
-              fill={HEART_RATE_COLOR} fillOpacity={0.15} stroke="none" ifOverflow="hidden" />
-            {signalLines}
-            <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-            <Line type="monotone" dataKey="hr" stroke={HEART_RATE_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} connectNulls={false}
-              isAnimationActive={false} />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </ZoomableChart>
+      <TrackChart rows={rows} zoom={zoom} x={HIDDEN_X} series={SPEED_SERIES} syncId="test" grid="horizontal"
+        yAxes={[{ color: SPEED_COLOR, unit: SPEED_UNIT_LABEL[unit], domain: ['dataMin - 1', 'dataMax + 1'], allowDecimals: false, width: 46 }]}
+        margin={{ top: 18, right: 10, left: 0, bottom: 0 }} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${CURVE_HEIGHT_PX}px` }}>
+        {phaseAreas(areas, true)}
+        {signalLines}
+      </TrackChart>
+      {/* Nom de la courbe de FC : la ligne qui porte son « +carte » (règle de chaque graphe). */}
+      <ChartReadout readout={null} label="FC" color={HEART_RATE_COLOR} line />
+      <TrackChart rows={rows} zoom={zoom} x={SHOWN_X} series={HR_SERIES} syncId="test" grid="horizontal"
+        yAxes={[{ color: HEART_RATE_COLOR, unit: 'bpm', domain: ['dataMin - 5', 'dataMax + 5'], allowDecimals: false, width: 46 }]}
+        margin={{ top: 4, right: 10, left: 0, bottom: 0 }} showReset={false} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${CURVE_HEIGHT_PX}px` }}>
+        {phaseAreas(areas, false)}
+        <ReferenceArea x1={toMin(test.startMs)} x2={toMin(test.rampStartMs ?? test.endMs ?? lastMs)} y1={test.settings.lowBpm} y2={test.settings.highBpm}
+          fill={HEART_RATE_COLOR} fillOpacity={0.15} stroke="none" ifOverflow="hidden" />
+        {signalLines}
+      </TrackChart>
     </>
   );
 }

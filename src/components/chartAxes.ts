@@ -17,6 +17,8 @@ import { CHART_TICK } from './chartStyle';
 export interface ChartXSpec {
   key: string;
   format: (v: number) => string;
+  /** Axe caché : un graphe empilé au-dessus d'un autre au même axe (test guidé). */
+  hide?: boolean;
 }
 
 /** Distance dans l'unité de l'activité (« 2.5 km ») : lignes à clé `dist`. */
@@ -46,7 +48,6 @@ export const chartXAxis = (zoom: ChartZoom, spec: ChartXSpec): ReactElement => c
   ticks: zoom.shown ? niceTicks(zoom.shown) : undefined,
   tickFormatter: spec.format,
   tick: CHART_TICK,
+  ...(spec.hide ? { hide: true } : {}),
 });
 
-/** Axe en heure du jour, à poser comme `XAxis` (voile, surf ; remplacé par `timeOfDayX` au lot 61). */
-export const timeOfDayAxis = (zoom: ChartZoom, startMs: number | undefined): ReactElement => chartXAxis(zoom, timeOfDayX(startMs));

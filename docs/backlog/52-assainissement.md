@@ -412,6 +412,8 @@ Opus | high. Neutre jusqu'à l'étape 4, puis non neutre (Q37, Q38, bogue D3). S
 
 **Rapport attendu** : par étape, ce qui a changé à l'écran (rien pour 1 à 3) ; captures des étapes 4 et 5.
 
+**Tranché par l'orchestrateur (29/10, questions mineures du plan)** : axes de la voile gardés (graduations encre grasse, sans unité : Q37 ne touche que les noms) ; graduations du profil des répétitions et des sauts tirées de `zoom.shown` même si leur texte change à vue entière (c'est la dérive à retirer), changements listés au rapport, pas de BLOQUÉ ; ligne de nom « FC » au-dessus de la courbe de FC du test pour porter son « +carte » ; pics gardés par une tolérance par série, sans plafond de points en plus, un test bornant le nombre de points sur séries bruitées.
+
 ### 62 · Coquille 1 : session et onglets
 
 Opus | high. Neutre. Sources : 02-A1, 02-A2, 02-A3, 02-C5, 03-A1. Le verdict des rapports : une coquille commune est réaliste en pièces, pas en un seul composant (le cœur des sports diffère trop) ; lignes récupérables par la coquille seule : environ 450 à 550 sur les 4 125 lignes des quatre modules.

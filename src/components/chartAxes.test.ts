@@ -3,7 +3,7 @@ import { toFixedNumber } from '../core/basics';
 import { niceTicks } from '../core/chartZoom';
 import { formatClockMinutes, formatTimeOfDay } from '../core/units';
 import type { ChartZoom } from '../hooks/useChartZoom';
-import { chartXAxis, distanceX, elapsedX, timeOfDayAxis, timeOfDayX } from './chartAxes';
+import { chartXAxis, distanceX, elapsedX, timeOfDayX } from './chartAxes';
 import { CHART_TICK } from './chartStyle';
 
 /** Formats d'avant le lot 60, recopiés tels quels (copie gelée). */
@@ -60,9 +60,8 @@ describe('chartXAxis', () => {
     expect(props.ticks).toBeUndefined();
   });
 
-  it('timeOfDayAxis passe par la même fabrique', () => {
-    const start = Date.UTC(2026, 9, 1, 8, 0, 0);
-    const props = timeOfDayAxis(zoomOf({ min: 0, max: 30 }), start).props as { tickFormatter: (v: number) => string };
-    expect(props.tickFormatter(15)).toBe(oldTimeOfDay(start)(15));
+  it('caché seulement si demandé', () => {
+    expect((chartXAxis(zoomOf(null), elapsedX()).props as Record<string, unknown>).hide).toBeUndefined();
+    expect((chartXAxis(zoomOf(null), { ...elapsedX(), hide: true }).props as Record<string, unknown>).hide).toBe(true);
   });
 });

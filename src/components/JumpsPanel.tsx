@@ -1,15 +1,16 @@
 import { roundTo, toFixedNumber } from '../core/basics';
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { jumpDoubtLabel, type SessionJump } from '../core/jumps';
+import { ReferenceLine } from 'recharts';
+import { jumpCurveRows, jumpDoubtLabel, type JumpCurveRow, type SessionJump } from '../core/jumps';
 import { JUMP_DETECTION } from '../core/sportProfiles';
 import { formatShortDistance, formatSpeed, formatTimeOfDay, type DistanceUnit, type SpeedUnit } from '../core/units';
 import type { JumpsStatus } from '../hooks/useSessionJumps';
-import { niceTicks } from '../core/chartZoom';
+import { createHoverStore } from '../hooks/useChartHover';
 import { useChartZoom } from '../hooks/useChartZoom';
-import ChartReadout, { type Readout } from './ChartReadout';
-import { NO_TOOLTIP_CONTENT, clearTrackHover, hoveredRow, inChartView, trackHover, type ChartHoverEvent } from './chartHover';
-import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
+import { RowReadout, type Readout } from './ChartReadout';
+import { clearTrackHover, hoveredRow, inChartView, trackHover, type ChartHoverEvent } from './chartHover';
+import { CHART_TICK } from './chartStyle';
+import TrackChart, { type TrackSeries, type TrackYAxis } from './TrackChart';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 import { HelpText, HelpToggle } from './Help';
 import PanelTitle from './PanelTitle';
@@ -30,6 +31,10 @@ import MapToggle from './ui/MapToggle';
 /** Courbes comparées : le premier saut en bleu, le second en orange. */
 const CURVE_COLORS = ['#1565c0', '#ef6c00'];
 const CURVE_HEIGHT_PX = 220;
+/** Abscisse de la courbe : secondes depuis le décollage. */
+const CURVE_X = { key: 't', format: (v: number) => `${toFixedNumber(v, 2)} s` };
+/** Hauteur, en mètres, depuis le sol. */
+const CURVE_Y: TrackYAxis[] = [{ color: 'var(--chart-axis)', domain: [0, 'auto'], width: 42, tick: CHART_TICK, tickFormatter: (v: number) => `${roundTo(v, 1)} m` }];
 
 /** Tri du tableau. */
 type JumpSort = 'hauteur' | 'vol' | 'longueur';
@@ -83,21 +88,6 @@ const rank = (k: number) => `${k + 1}${k === 0 ? 'er' : 'e'}`;
 /** Raisons d'un doute, en clair, pour l'infobulle. */
 const doubtText = (jump: SessionJump) => `Mesure douteuse : ${jump.doubts.map((d) => jumpDoubtLabel(d, JUMP_DETECTION)).join(' ; ')}.`;
 
-/** Point d'une courbe, en centièmes de seconde depuis le décollage : les deux courbes partagent leurs instants. */
-const curvePoints = (j: SessionJump): Map<number, number> => {
-  const points = new Map<number, number>();
-  j.curve.heightsM.forEach((h, k) => points.set(Math.round((j.curve.startS + k * j.curve.stepS) * 100), h));
-  return points;
-};
-
-/** Ligne de la courbe : `t` en secondes depuis le décollage, la hauteur de chaque saut, le point de trace. */
-interface CurveRow {
-  t: number;
-  premier: number | null;
-  second: number | null;
-  index: number;
-}
-
 /**
  * Courbe d'un saut, ou de deux calés sur leur décollage (25/10) : zoom
  * (double-clic, zone tirée, deux doigts) et lecture au-dessus du graphe ; le
@@ -115,24 +105,20 @@ function JumpCurveChart({ first, second, numbers, trackIndexAt }: {
 }) {
   const jumps = useMemo(() => (second ? [first, second] : [first]), [first, second]);
   /** Lignes de la courbe, refaites seulement quand les sauts comparés changent, non à chaque survol. */
-  const rows = useMemo<CurveRow[]>(() => {
-    const points = jumps.map(curvePoints);
-    const instants = [...new Set(points.flatMap((p) => [...p.keys()]))].sort((a, b) => a - b);
-    return instants.map((c) => {
-      const t = c / 100;
-      const owner = points[0].has(c) ? first : second ?? first;
-      return { t, premier: points[0].get(c) ?? null, second: points[1]?.get(c) ?? null, index: trackIndexAt(owner.takeoffMs + t * 1000) };
-    });
-  }, [jumps, first, second, trackIndexAt]);
+  const rows = useMemo(() => jumpCurveRows(first, second, trackIndexAt), [first, second, trackIndexAt]);
   const full = rows.length > 1 ? { min: rows[0].t, max: rows[rows.length - 1].t } : null;
   const zoom = useChartZoom(full, jumps.map((j) => j.takeoffMs).join('-'));
-  const [hovered, setHovered] = useState<CurveRow | null>(null);
+  /** Ligne survolée, hors de l'état du graphe : le doigt qui glisse ne redessine que la lecture ; le point de trace va au magasin commun. */
+  const [hover] = useState(() => createHoverStore<JumpCurveRow>());
   const onTrackHover = trackHover(rows);
   const onHover = (e: ChartHoverEvent) => {
-    setHovered(hoveredRow(e, rows));
+    hover.set(hoveredRow(e, rows));
     onTrackHover(e);
   };
-  const readout: Readout | null = hovered && inChartView(zoom.view, hovered.t)
+  const series: TrackSeries<JumpCurveRow>[] = jumps.map((_, k) => (
+    { kind: 'line', key: k === 0 ? 'premier' : 'second', name: k === 0 ? 'premier' : 'second', color: CURVE_COLORS[k], width: 2, activeDotR: 4, connectNulls: true }
+  ));
+  const read = (hovered: JumpCurveRow): Readout | null => (inChartView(zoom.view, hovered.t)
     ? {
       values: jumps.map((_, k) => {
         const h = k === 0 ? hovered.premier : hovered.second;
@@ -140,34 +126,22 @@ function JumpCurveChart({ first, second, numbers, trackIndexAt }: {
       }),
       at: `${hovered.t} s depuis le décollage`,
     }
-    : null;
+    : null);
   return (
     <>
-      <ChartReadout line readout={readout} />
-      <ZoomableChart zoom={zoom} style={{ height: `${CURVE_HEIGHT_PX}px` }} onLeave={() => {
-        setHovered(null);
-        clearTrackHover();
-      }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }} onMouseMove={onHover} onTouchMove={onHover}>
-            <ChartZoomProbe />
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--line-soft)" />
-            <XAxis dataKey="t" type="number" allowDataOverflow domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
-              ticks={zoom.view ? niceTicks(zoom.view) : undefined}
-              tickFormatter={(v: number) => `${toFixedNumber(v, 2)} s`} tick={{ fontSize: 11 }} />
-            <YAxis width={42} tickFormatter={(v: number) => `${roundTo(v, 1)} m`} tick={{ fontSize: 11 }} />
-            <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-            <ReferenceLine y={0} stroke="var(--line-strong)" />
-            <ReferenceLine x={0} stroke="var(--muted)" strokeDasharray="4 3" label={{ value: 'décollage', fontSize: 11, position: 'insideTopLeft' }} />
-            {jumps.map((j, k) => (
-              <ReferenceLine key={j.takeoffMs} x={roundTo(j.flightS, 2)} stroke={CURVE_COLORS[k]} strokeDasharray="4 3"
-                label={k === 0 ? { value: 'atterrissage', fontSize: 11, position: 'insideTopRight' } : undefined} />
-            ))}
-            <Line type="monotone" dataKey="premier" stroke={CURVE_COLORS[0]} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
-            {jumps.length > 1 && <Line type="monotone" dataKey="second" stroke={CURVE_COLORS[1]} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />}
-          </LineChart>
-        </ResponsiveContainer>
-      </ZoomableChart>
+      <RowReadout line store={hover} read={read} />
+      <TrackChart rows={rows} zoom={zoom} x={CURVE_X} yAxes={CURVE_Y} series={series} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}
+        onHover={onHover} onLeave={() => {
+          hover.set(null);
+          clearTrackHover();
+        }} style={{ height: `${CURVE_HEIGHT_PX}px` }}>
+        <ReferenceLine y={0} stroke="var(--line-strong)" />
+        <ReferenceLine x={0} stroke="var(--muted)" strokeDasharray="4 3" label={{ value: 'décollage', fontSize: 11, position: 'insideTopLeft' }} />
+        {jumps.map((j, k) => (
+          <ReferenceLine key={j.takeoffMs} x={roundTo(j.flightS, 2)} stroke={CURVE_COLORS[k]} strokeDasharray="4 3"
+            label={k === 0 ? { value: 'atterrissage', fontSize: 11, position: 'insideTopRight' } : undefined} />
+        ))}
+      </TrackChart>
     </>
   );
 }

@@ -13,6 +13,9 @@
 //     d'effort imposé dans l'onglet réglages (trop haut : aucun effort ; plus bas : enregistré dans la fiche), puis
 //     retour au seuil tiré de la session ;
 //  7. le groupe dans Réglages et sur l'accueil, et son absence en planification.
+//  Au passage (lot 61), sur deux autres séances sans compteur de même forme : un clic sur l'évolution hors du tracé ne
+//  choisit aucune répétition (un clic sur le tracé, si) ; le profil zoomé revient à tout voir quand l'autre séance
+//  s'ouvre sans rechargement (avant le lot 61, « Tout voir » restait : échec attendu sur l'ancienne version).
 import { writeFileSync } from 'node:fs';
 import { connect } from './lib/cdp.mjs';
 
@@ -274,6 +277,99 @@ await wait(800);
 console.log('seuil :', await effortField(), '| panneau :', (await panel('Répétitions')).slice(0, 120));
 await shoot('fractionne-detection');
 console.log('Annuler :', await clickText('Annuler'));
+
+// 6 bis (lot 61). Deux séances de même forme, sans compteur : clic sur l'évolution, puis zoom du profil d'une séance à l'autre.
+const freeGpxAt = (start, name) => {
+  let m = 0;
+  const list = [];
+  for (let k = 0; k <= 600 + 8 * 120 - 60 + 300; k++) {
+    const v = effortAt(k);
+    if (k > 0) m += v;
+    list.push(`<trkpt lat="${lat}" lon="${(3.85 + m / mPerDegLon).toFixed(7)}"><ele>60</ele><time>${new Date(start + k * 1000).toISOString()}</time><extensions><speed>${v.toFixed(3)}</speed></extensions></trkpt>`);
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${name}</name><type>run-intervals</type><trkseg>\n${list.join('\n')}\n</trkseg></trk></gpx>\n`;
+};
+const twins = [tf + 86_400_000, tf + 2 * 86_400_000];
+const twinPaths = [];
+for (const [k, start] of twins.entries()) {
+  await go('/fractionne');
+  const gpx = freeGpxAt(start, `Jumelle ${k + 1}`);
+  console.log(`import jumelle ${k + 1} :`, await evaluate(`(() => {
+  const input = document.querySelector('input[type=file][accept=".gpx"]');
+  if (!input) return 'absent';
+  const dt = new DataTransfer();
+  dt.items.add(new File([${JSON.stringify(gpx)}], 'jumelle-${k + 1}.gpx', { type: 'application/gpx+xml' }));
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return 'ok';
+})()`));
+  await wait(4000);
+  const twin = (await records()).find((r) => r.record.summary?.startMs === start)?.record;
+  twinPaths.push(`/fractionne/analyse?session=${encodeURIComponent(twin?.gpx ?? '')}`);
+}
+await go(twinPaths[0], 6000);
+const panelScope = (title) => `[...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim() === ${JSON.stringify(title)})?.closest('.an-carte-panels > *')`;
+const violet = () => evaluate(`[...document.querySelectorAll('path.leaflet-interactive')].filter((p) => p.getAttribute('stroke') === '#7b1fa2').length`);
+/** Points de l'évolution : milieu de la zone de tracé, et dans la marge de l'axe vertical, hors du tracé. */
+const evolutionPoints = await evaluate(`(async () => {
+  const w = ${panelScope('Évolution des répétitions')}?.querySelector('.recharts-wrapper');
+  if (!w) return null;
+  w.scrollIntoView({ block: 'center' });
+  await new Promise((r) => setTimeout(r, 300));
+  const g = (w.querySelector('.recharts-cartesian-grid') ?? w).getBoundingClientRect();
+  const r = w.getBoundingClientRect();
+  return { inX: g.left + g.width * 0.5, outX: r.left + 6, y: g.top + g.height / 2 };
+})()`);
+if (evolutionPoints) {
+  const at = (x) => async (type) => send('Input.dispatchMouseEvent', { type, x, y: evolutionPoints.y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount: 1 });
+  const inside = at(evolutionPoints.inX);
+  const outside = at(evolutionPoints.outX);
+  await inside('mouseMoved');
+  await wait(200);
+  await outside('mouseMoved');
+  await wait(200);
+  await outside('mousePressed');
+  await outside('mouseReleased');
+  await wait(600);
+  const afterOutside = await violet();
+  console.log(`${afterOutside === 0 ? 'ok   ' : 'ÉCHEC'} évolution : un clic hors du tracé ne choisit aucune répétition (${afterOutside} tracé violet)`);
+  await inside('mouseMoved');
+  await wait(200);
+  await inside('mousePressed');
+  await inside('mouseReleased');
+  await wait(600);
+  const afterInside = await violet();
+  console.log(`${afterInside === 1 ? 'ok   ' : 'ÉCHEC'} évolution : un clic sur le tracé montre sa répétition (${afterInside} tracé violet)`);
+  await inside('mousePressed');
+  await inside('mouseReleased');
+  await wait(600);
+} else console.log('ÉCHEC évolution absente');
+const profileButtons = () => evaluate(`[...(${panelScope("Profil d'une répétition")}?.querySelectorAll('.zoom-chart__actions button') ?? [])].map((b) => b.textContent.trim()).join(' | ')`);
+const twinProfile = await evaluate(`(async () => {
+  const c = ${panelScope("Profil d'une répétition")}?.querySelector('.zoom-chart');
+  if (!c) return null;
+  c.scrollIntoView({ block: 'center' });
+  await new Promise((r) => setTimeout(r, 300));
+  const r = (c.querySelector('.recharts-cartesian-grid') ?? c).getBoundingClientRect();
+  return { x: r.left + r.width * 0.5, y: r.top + r.height / 2 };
+})()`);
+if (twinProfile) {
+  const m = (type, clickCount = 1) => send('Input.dispatchMouseEvent', { type, x: twinProfile.x, y: twinProfile.y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount });
+  await m('mouseMoved');
+  await wait(300);
+  // Lecture sur une séance importée, à l'heure fixe : comparable d'un passage à l'autre, au contraire du rejeu.
+  console.log('jumelle 1, profil lu au milieu :', await evaluate(`${panelScope("Profil d'une répétition")}?.querySelector('[data-chart-readout]')?.textContent.trim()`));
+  for (const n of [1, 2]) { await m('mousePressed', n); await m('mouseReleased', n); }
+  await wait(600);
+  const zoomed = await profileButtons();
+  console.log(`${zoomed === 'Tout voir' ? 'ok   ' : 'ÉCHEC'} jumelle 1 : profil zoomé (${zoomed})`);
+  // Autre séance sans rechargement : le routeur suit l'adresse (comme un lien de la bibliothèque).
+  await evaluate(`(() => { history.pushState({}, '', ${JSON.stringify(twinPaths[1])}); dispatchEvent(new PopStateEvent('popstate')); return 'ok'; })()`);
+  await wait(3000);
+  const opened = await evaluate(`decodeURIComponent(location.search).includes(${JSON.stringify(new Date(twins[1]).toISOString().slice(0, 10))}) || location.search === ${JSON.stringify(twinPaths[1].slice(twinPaths[1].indexOf('?')))}`);
+  const after = await profileButtons();
+  console.log(`${opened && after === '' ? 'ok   ' : 'ÉCHEC'} jumelle 2 ouverte sans rechargement : profil revenu à tout voir (${opened ? 'ouverte' : 'pas ouverte'}, boutons « ${after} »)`);
+} else console.log('ÉCHEC profil de la jumelle absent');
 
 // 7. Réglages, accueil, planification.
 await go('/parametres');

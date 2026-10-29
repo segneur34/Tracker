@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
-import type { ReactElement } from 'react';
 import type { XRange } from '../core/chartZoom';
-import { timeOfDayAxis, timeOfDayX } from '../components/chartAxes';
+import { timeOfDayX } from '../components/chartAxes';
 import { inChartView } from '../components/chartHover';
 import { formatTimeOfDay } from '../core/units';
 import { useChartZoom, type ChartZoom } from './useChartZoom';
@@ -19,8 +18,8 @@ export const minutesFullRange = (minutes: ReadonlyArray<number>): XRange | null 
 
 /**
  * Axe du temps des graphes d'une session : minutes depuis le premier point,
- * étendue entière, deux zooms (graphes empilés, courbe de « cardio »), axes
- * du temps et lectures au point survolé. « Tout voir » à chaque session
+ * étendue entière, deux zooms (graphes empilés, courbe de « cardio »),
+ * abscisse en heure du jour et lectures au point survolé. « Tout voir » à chaque session
  * (`sessionKey`). Les modules qui tiennent d'autres zooms (distance, énergie,
  * test) les créent avec `fullRange`.
  */
@@ -35,8 +34,6 @@ export function useTimeChartAxis(track: ReadonlyArray<{ timeMs: number }>, sessi
     fullRange,
     zoom,
     cardioZoom,
-    /** Axe en heure du jour, à poser comme `XAxis`. */
-    timeAxis: (z: ChartZoom): ReactElement => timeOfDayAxis(z, startMs),
     /** Abscisse en heure du jour d'un graphe de trace (`TrackChart`, `HeartRateChart`). */
     timeX: timeOfDayX(startMs),
     /** Le point `i` est dans la plage zoomée de `z` : sinon, rien à lire. */

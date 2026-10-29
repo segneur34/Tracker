@@ -1,22 +1,24 @@
 import type { SpanHeartRate } from '../core/heartRate';
 import type { CadenceShare } from '../running/cadence';
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
   type TooltipPayloadEntry, type TooltipValueType,
 } from 'recharts';
 import { niceTicks } from '../core/chartZoom';
 import {
-  editSpeedUnit, INTERVAL_PACE_MIN_SPEED_MS, signedPercent,
+  editSpeedUnit, signedPercent,
   SPEED_UNIT_LABEL, speedUnitLabel, formatShortDistance, formatSpeed, formatSpeedValue, isInverseUnit, toDisplaySpeed,
   type DistanceUnit, type SpeedUnit,
 } from '../core/units';
 import { formatIntervalClock, workoutLabel, type IntervalWorkout } from '../recording/intervalTimer';
 import type { IntervalRep, IntervalSummary } from '../running/intervalStats';
+import { intervalChartData, SPARK_SMOOTHING_S, type IntervalProfileRow } from '../running/intervalCharts';
+import { createHoverStore } from '../hooks/useChartHover';
 import { useChartZoom } from '../hooks/useChartZoom';
-import ChartReadout, { type Readout } from './ChartReadout';
-import { NO_TOOLTIP_CONTENT, hoveredRow, inChartView, type ChartHoverEvent } from './chartHover';
-import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
+import { RowReadout, type Readout } from './ChartReadout';
+import { hoveredRow, inChartView, type ChartHoverEvent } from './chartHover';
+import TrackChart, { type TrackSeries, type TrackYAxis } from './TrackChart';
 import { HIGHLIGHT_PODIUM_COLORS } from './highlightColors';
 import { IconChevronRight } from './icons';
 import { HelpText } from './Help';
@@ -74,6 +76,8 @@ interface IntervalAnalysisProps {
   emptyText: string | null;
   /** Délai de la récupération, en secondes (`HeartRateProfile.recoveryS`), pour l'en-tête. */
   recoveryS?: number;
+  /** Clé de la session : une autre session remet le zoom du profil à tout voir. */
+  sessionKey: string | null;
 }
 
 const MEAN_COLOR = 'var(--ink)';
@@ -86,8 +90,6 @@ const EVOLUTION_HEIGHT_PX = 200;
 const PROFILE_HEIGHT_PX = 220;
 const SPARK_WIDTH = 96;
 const SPARK_HEIGHT = 22;
-/** Lissage des mini-courbes, pour l'affichage seulement, en secondes. */
-const SPARK_SMOOTHING_S = 5;
 /**
  * Au-delà de ce pas médian entre deux points, la trace est trop clairsemée pour
  * le détail d'une répétition : on le dit (trace Komoot du 21/07, un point
@@ -125,8 +127,10 @@ function RepGradientLegend({ count }: { count: number }) {
   );
 }
 
-/** Ligne du profil d'une répétition : `t` en secondes depuis le départ, puis `mean`, `r<n>` et leur vitesse en m/s (`<clé>Ms`). */
-type ProfileRow = Record<string, number | null>;
+type ProfileRow = IntervalProfileRow;
+
+/** Abscisse du profil : le temps depuis le départ de la répétition. */
+const PROFILE_X = { key: 't', format: (v: number) => formatIntervalClock(v) };
 
 /**
  * Profil superposé des répétitions d'une séance (25/10) : zoom (double-clic,
@@ -143,44 +147,37 @@ function IntervalProfileChart({ data, spanS, launchS, reps, speedAxis, formatMs,
   /** Fin de la mise en vitesse moyenne, en secondes, ou `null`. */
   launchS: number | null;
   reps: IntervalRep[];
-  speedAxis: ReactNode;
+  speedAxis: TrackYAxis;
   formatMs: (ms: number) => string;
   /** Change avec la séance : le zoom revient à tout voir. */
   resetKey: string;
 }) {
   const zoom = useChartZoom({ min: 0, max: spanS }, resetKey);
-  const [hovered, setHovered] = useState<ProfileRow | null>(null);
-  const onHover = (e: ChartHoverEvent) => setHovered(hoveredRow(e, data));
-  const t = hovered?.t ?? null;
-  const meanMs = hovered?.meanMs ?? null;
-  const readout: Readout | null = t !== null && inChartView(zoom.view, t)
-    ? { values: [{ text: `Moyenne ${meanMs !== null ? formatMs(meanMs) : '—'}`, color: MEAN_COLOR }], at: `${formatIntervalClock(t)} après le départ` }
-    : null;
+  /** Ligne survolée, hors de l'état du graphe : le doigt qui glisse ne redessine que la lecture. */
+  const [hover] = useState(() => createHoverStore<ProfileRow>());
+  const onHover = (e: ChartHoverEvent) => hover.set(hoveredRow(e, data));
+  const series: TrackSeries<ProfileRow>[] = [
+    ...reps.map((r, i): TrackSeries<ProfileRow> => (
+      { kind: 'line', key: `r${r.rep}`, name: `Rép. ${r.rep}`, color: repColor(i, reps.length), width: 1.5, activeDotR: false }
+    )),
+    { kind: 'line', key: 'mean', name: 'Moyenne', color: MEAN_COLOR, width: 3, activeDotR: 4 },
+  ];
+  const read = (hovered: ProfileRow): Readout | null => {
+    const t = hovered.t ?? null;
+    const meanMs = hovered.meanMs ?? null;
+    return t !== null && inChartView(zoom.view, t)
+      ? { values: [{ text: `Moyenne ${meanMs !== null ? formatMs(meanMs) : '—'}`, color: MEAN_COLOR }], at: `${formatIntervalClock(t)} après le départ` }
+      : null;
+  };
   return (
     <>
-      <ChartReadout line readout={readout} />
-      <ZoomableChart zoom={zoom} onLeave={() => setHovered(null)} style={{ width: '100%', height: `${PROFILE_HEIGHT_PX}px` }}>
-        <ResponsiveContainer>
-          <ComposedChart data={data} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-            <ChartZoomProbe />
-            <CartesianGrid {...CHART_GRID_PROPS} />
-            <XAxis dataKey="t" type="number" allowDataOverflow domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : [0, spanS]}
-              ticks={zoom.view ? niceTicks(zoom.view) : undefined}
-              tickFormatter={(v: number) => formatIntervalClock(v)} tick={CHART_TICK} />
-            {speedAxis}
-            <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-            {reps.map((r, i) => (
-              <Line key={r.rep} type="monotone" name={`Rép. ${r.rep}`} dataKey={`r${r.rep}`} stroke={repColor(i, reps.length)}
-                strokeWidth={1.5} dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} />
-            ))}
-            <Line type="monotone" name="Moyenne" dataKey="mean" stroke={MEAN_COLOR} strokeWidth={3} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
-            {launchS !== null && launchS > 0 && (
-              <ReferenceLine x={launchS} stroke={TREND_COLOR} strokeDasharray="4 3"
-                label={{ value: 'lancé', position: 'insideTopLeft', fill: TREND_COLOR, fontSize: 11 }} />
-            )}
-          </ComposedChart>
-        </ResponsiveContainer>
-      </ZoomableChart>
+      <RowReadout line store={hover} read={read} />
+      <TrackChart rows={data} zoom={zoom} x={PROFILE_X} yAxes={[speedAxis]} series={series} onHover={onHover} onLeave={() => hover.set(null)}
+        style={{ width: '100%', height: `${PROFILE_HEIGHT_PX}px` }}
+        front={launchS !== null && launchS > 0 && (
+          <ReferenceLine x={launchS} stroke={TREND_COLOR} strokeDasharray="4 3"
+            label={{ value: 'lancé', position: 'insideTopLeft', fill: TREND_COLOR, fontSize: 11 }} />
+        )} />
     </>
   );
 }
@@ -189,31 +186,6 @@ const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', f
 const cellStyle: CSSProperties = { padding: '0.4em 0.6em', textAlign: 'center' };
 const noteStyle: CSSProperties = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', lineHeight: 1.45 };
 const chartTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
-
-/**
- * Points de la mini-courbe d'une répétition : son profil une fois lancé
- * (comme le maintien), lissé sur `SPARK_SMOOTHING_S` pour l'affichage
- * seulement. Avant la mise en vitesse, `null` : l'échelle commune ne
- * s'étire pas jusqu'au départ arrêté, et la baisse en fin de répétition se voit.
- */
-const sparkPoints = (rep: IntervalRep, stepS: number): (number | null)[] => {
-  const from = rep.launchS ?? 0;
-  const half = Math.max(0, Math.round(SPARK_SMOOTHING_S / stepS / 2));
-  const launched = (k: number) => (k + 0.5) * stepS >= from;
-  return rep.profile.map((v, k) => {
-    if (v === null || !launched(k)) return null;
-    let sum = 0;
-    let n = 0;
-    for (let j = Math.max(0, k - half); j <= Math.min(rep.profile.length - 1, k + half); j++) {
-      const w = rep.profile[j];
-      if (w !== null && launched(j)) {
-        sum += w;
-        n += 1;
-      }
-    }
-    return sum / n;
-  });
-};
 
 /**
  * Mini-courbe d'une répétition, aux échelles communes de la séance (temps et
@@ -242,6 +214,7 @@ function Sparkline({ points, length, domain }: { points: (number | null)[]; leng
 
 function IntervalAnalysis({
   series, stepS, launchFraction, samplingS, speedUnit, distanceUnit, panelId, open, onToggle, selectedLap, onSelectLap, emptyText, recoveryS,
+  sessionKey,
 }: IntervalAnalysisProps) {
   /**
    * Séances repliées, par indice, dans les trois panneaux à la fois (pour ne garder que le profil des
@@ -255,13 +228,13 @@ function IntervalAnalysis({
     else next.add(index);
     setFolding({ of: series, folded: next });
   };
+  /** Graphes de chaque séance, refaits seulement quand les séances ou l'unité changent. */
+  const charts = useMemo(() => intervalChartData(series, stepS, speedUnit, distanceUnit), [series, stepS, speedUnit, distanceUnit]);
   const inverse = isInverseUnit(speedUnit);
   const noun = inverse ? 'allure' : 'vitesse';
   /** Accélération et seuils : en km/h pour une allure, comme les tops. */
   const rateUnit: SpeedUnit = editSpeedUnit(speedUnit);
   const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' };
-  const display = (ms: number | null): number | null =>
-    ms === null || !isFinite(ms) || (inverse && ms < INTERVAL_PACE_MIN_SPEED_MS) ? null : parseFloat(toDisplaySpeed(ms, speedUnit, distanceUnit).toFixed(2));
   const formatRate = (ms2: number): string =>
     rateUnit === 'ms' ? `${ms2.toFixed(2)} m/s²` : `${toDisplaySpeed(ms2, rateUnit).toFixed(1)} ${SPEED_UNIT_LABEL[rateUnit]} par s`;
   const title = (s: IntervalSeriesView) =>
@@ -332,13 +305,10 @@ function IntervalAnalysis({
       {series.map((s, seriesIndex) => {
         if (folded.has(seriesIndex)) return foldedSeries(s, seriesIndex);
         const { summary } = s;
-        const sparks = new Map(s.reps.map((r) => [r.rep, sparkPoints(r, stepS)]));
+        const { sparks, sparkDomain: domain, length: sparkLength } = charts[seriesIndex];
         const hasHr = s.heartRates?.some((h) => h !== null) ?? false;
         const hasCadence = s.cadences?.some((c) => c !== null) ?? false;
         const tableClass = ['an-ivl-table', ...(hasHr ? ['an-ivl-table--fc'] : []), ...(hasCadence ? ['an-ivl-table--cad'] : [])].join(' ');
-        const sparkLength = Math.max(0, ...s.reps.map((r) => r.profile.length));
-        const values = [...sparks.values()].flat().filter((v): v is number => v !== null);
-        const domain = values.length > 0 ? { min: Math.min(...values), max: Math.max(...values) } : { min: 0, max: 1 };
         const showDuration = s.detected || s.reps.some((r) => Math.abs(r.work.durationS - s.workout.workS) > 1.5);
         const stat = (label: string, value: ReactNode, detail?: string) => <StatTile label={label} value={value} detail={detail} />;
         return (
@@ -427,10 +397,15 @@ function IntervalAnalysis({
     </ResizablePanel>
   );
 
-  /** Axe des vitesses ; avec `domain`, dans l'unité affichée, ce qui en sort est coupé. */
-  const speedAxis = (domain?: [number, number]) => (
-    <YAxis domain={domain ?? ['auto', 'auto']} allowDataOverflow={domain !== undefined} reversed={inverse} width={46}
-      ticks={domain ? niceTicks({ min: domain[0], max: domain[1] }) : undefined}
+  /** Axe des vitesses du profil ; avec `domain`, dans l'unité affichée, ce qui en sort est coupé. */
+  const profileSpeedAxis = (domain?: [number, number]): TrackYAxis => ({
+    color: SPEED_COLOR, unit: speedUnitLabel(speedUnit, distanceUnit), domain: domain ?? ['auto', 'auto'], allowDataOverflow: domain !== undefined,
+    reversed: inverse, width: 46, ...(domain ? { ticks: niceTicks({ min: domain[0], max: domain[1] }) } : {}),
+    tickFormatter: (v: number) => formatSpeedValue(v, speedUnit),
+  });
+  /** Axe des vitesses de l'évolution. */
+  const speedAxis = () => (
+    <YAxis domain={['auto', 'auto']} allowDataOverflow={false} reversed={inverse} width={46}
       tickFormatter={(v: number) => formatSpeedValue(v, speedUnit)} tick={chartTick(SPEED_COLOR)}
       label={yAxisLabel(speedUnitLabel(speedUnit, distanceUnit), SPEED_COLOR)} />
   );
@@ -452,24 +427,20 @@ function IntervalAnalysis({
       {series.map((s, seriesIndex) => {
         if (folded.has(seriesIndex)) return foldedSeries(s, seriesIndex);
         const trend = s.summary.trend;
-        const reps = s.reps.filter((r) => r.work.speedMs !== null);
-        const first = reps[0]?.rep ?? 1;
-        const last = reps[reps.length - 1]?.rep ?? 1;
-        const at = (rep: number) => (trend && last > first ? trend.firstMs + ((trend.lastMs - trend.firstMs) * (rep - first)) / (last - first) : null);
-        const data = reps.map((r) => {
-          const shown = selectedLap === `${seriesIndex}-${r.rep}`;
+        const { first, last, rows } = charts[seriesIndex].evolution;
+        // Couleur de chaque répétition et répétition sur la carte, posées au rendu sur les lignes calculées une fois.
+        const data = rows.map((row) => {
+          const shown = selectedLap === `${seriesIndex}-${row.rep}`;
           return {
-            rep: r.rep,
-            color: repColor(s.reps.indexOf(r), s.reps.length),
-            speed: display(r.work.speedMs), speedMs: r.work.speedMs,
-            trend: display(at(r.rep)), trendMs: at(r.rep),
-            mean: display(s.summary.meanSpeedMs), meanMs: s.summary.meanSpeedMs,
-            shown: shown ? display(r.work.speedMs) : null, shownMs: shown ? r.work.speedMs : null,
+            ...row,
+            color: repColor(row.repIndex, s.reps.length),
+            shown: shown ? row.speed : null, shownMs: shown ? row.speedMs : null,
           };
         });
+        // Une répétition sous la souris ou le doigt seulement (`hoveredRow`).
         const pick = (e: ChartHoverEvent) => {
-          const row = data[Number(e.activeTooltipIndex)];
-          if (!row || e.activeTooltipIndex === null || e.activeTooltipIndex === undefined) return;
+          const row = hoveredRow(e, data);
+          if (!row) return;
           const key = `${seriesIndex}-${row.rep}`;
           onSelectLap(selectedLap === key ? null : key);
         };
@@ -478,8 +449,13 @@ function IntervalAnalysis({
             {seriesTitle(s, seriesIndex, true)}
             {data.length > 1 ? (
               <div style={{ width: '100%', height: `${EVOLUTION_HEIGHT_PX}px` }}>
+                {/*
+                  Sans couche clavier : un clic donne le focus au graphe, et Recharts y active alors la
+                  première répétition (navigation au clavier) ; un clic hors du tracé, sur une graduation,
+                  la choisissait (banc du lot 61).
+                */}
                 <ResponsiveContainer>
-                  <ComposedChart data={data} onClick={pick} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} style={{ cursor: 'pointer' }}>
+                  <ComposedChart data={data} onClick={pick} accessibilityLayer={false} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} style={{ cursor: 'pointer' }}>
                     <CartesianGrid {...CHART_GRID_PROPS} />
                     <XAxis dataKey="rep" type="number" domain={[first - 0.5, last + 0.5]}
                       ticks={repTicks(first, last)}
@@ -516,34 +492,15 @@ function IntervalAnalysis({
       </HelpText>
       {series.map((s, seriesIndex) => {
         if (folded.has(seriesIndex)) return foldedSeries(s, seriesIndex);
-        const length = Math.max(0, ...s.reps.map((r) => r.profile.length));
-        const data = Array.from({ length }, (_, k) => {
-          const row: Record<string, number | null> = { t: parseFloat(((k + 0.5) * stepS).toFixed(2)) };
-          row.mean = display(s.summary.meanProfile[k] ?? null);
-          row.meanMs = s.summary.meanProfile[k] ?? null;
-          s.reps.forEach((r) => {
-            row[`r${r.rep}`] = display(r.profile[k] ?? null);
-            row[`r${r.rep}Ms`] = r.profile[k] ?? null;
-          });
-          return row;
-        });
+        const { length } = charts[seriesIndex];
+        const { rows: data, domain } = charts[seriesIndex].profile;
         const launch = s.summary.launchS;
-        // Échelle de la partie lancée de chaque répétition, comme les mini-courbes : le départ arrêté sort par le bas.
-        const launched = s.reps.flatMap((r) => sparkPoints(r, stepS)).filter((v): v is number => v !== null);
-        let domain: [number, number] | undefined;
-        if (launched.length > 1) {
-          const lo = Math.min(...launched);
-          const hi = Math.max(...launched);
-          const pad = Math.max((hi - lo) * 0.25, hi * 0.02);
-          const ends = [display(Math.max(lo - pad, INTERVAL_PACE_MIN_SPEED_MS)), display(hi + pad)].filter((v): v is number => v !== null);
-          if (ends.length === 2) domain = [Math.min(...ends), Math.max(...ends)];
-        }
         return (
           <div key={seriesIndex} style={{ marginBottom: '10px' }}>
             {seriesTitle(s, seriesIndex, true)}
             {data.length > 1 ? (
-              <IntervalProfileChart data={data} spanS={length * stepS} launchS={launch} reps={s.reps} speedAxis={speedAxis(domain)}
-                formatMs={(ms) => formatSpeed(ms, speedUnit, distanceUnit)} resetKey={`${seriesIndex}-${s.reps.length}-${length}`} />
+              <IntervalProfileChart data={data} spanS={length * stepS} launchS={launch} reps={s.reps} speedAxis={profileSpeedAxis(domain)}
+                formatMs={(ms) => formatSpeed(ms, speedUnit, distanceUnit)} resetKey={`${sessionKey ?? ''}|${seriesIndex}-${s.reps.length}-${length}`} />
             ) : (
               <div style={{ color: 'var(--muted)' }}>Répétitions trop courtes pour un profil.</div>
             )}

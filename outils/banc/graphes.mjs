@@ -15,6 +15,11 @@
 //  6. à 390×844 : la course, graphes et zones ouverts, sans débordement.
 //  Au passage (lot 60) : le graphe de vitesse de la course zoomé par un double-clic, graduations relevées
 //  (abscisse des trois graphes, ordonnée de la vitesse), capture `graphes-zoom`, puis « Tout voir ».
+//  Lot 61 : noms des graphes de la voile (texte sans tenir compte de la casse, couleur et taille relevées), nom du
+//  vent ; survol de la vitesse en voile et en surf, curseur sur la FC (échec attendu avant le lot 61) ; une sortie à
+//  sprints de 2 h à 1 Hz, pic de FC et creux de cadence de 6 s entre deux points du pas régulier : le haut de l'axe
+//  de FC atteint le pic, le bas de celui de la cadence le creux (échecs attendus avant le lot 61), capture
+//  `graphes-sprints`.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -156,13 +161,38 @@ const withHr = (gpx, hrAt) => {
 const voilePath = join(tmpdir(), 'graphes-voile.gpx');
 execFileSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'make-gpx.mjs'), voilePath]);
 
+/**
+ * Sortie à sprints de `seconds` s à 1 Hz (60 s à 5 m/s toutes les 5 min, sinon 2,5 m/s), FC de 140 ± 10 et cadence de
+ * 85 foulées par minute ; un pic de FC à 200 et un creux de cadence à 60, de 6 s chacun, posés à 3 s après un point
+ * du pas régulier des graphes (15 s pour 7 201 points), hors des sprints : tracés seulement si chaque série garde ses
+ * extrêmes.
+ */
+const sprintGpx = (seconds, t0) => {
+  const lat = 43.6;
+  const mPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
+  const peak = 15 * 210 + 3;
+  const dip = 15 * 390 + 3;
+  const pts = [];
+  let m = 0;
+  for (let k = 0; k <= seconds; k++) {
+    const speed = k % 300 < 60 ? 5 : 2.5;
+    if (k > 0) m += speed;
+    const hr = k >= peak && k < peak + 6 ? 200 : 140 + 10 * Math.sin(k / 300);
+    const cad = k >= dip && k < dip + 6 ? 60 : 85;
+    pts.push(`<trkpt lat="${lat}" lon="${(3.8 + m / mPerDegLon).toFixed(7)}"><ele>40</ele><time>${new Date(t0 + k * 1000).toISOString()}</time><extensions><speed>${speed}</speed><gpxtpx:TrackPointExtension><gpxtpx:hr>${Math.round(hr)}</gpxtpx:hr><gpxtpx:cad>${cad}</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>`);
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"><trk><name>Sprints</name><type>running</type><trkseg>\n${pts.join('\n')}\n</trkseg></trk></gpx>\n`;
+};
+
 const T_RUN = Date.UTC(2026, 9, 1, 8, 0, 0);
 const T_SURF = Date.UTC(2026, 9, 3, 7, 0, 0);
 const T_VOILE = Date.UTC(2026, 8, 20, 13, 0, 0);
+const T_SPRINTS = Date.UTC(2026, 9, 2, 17, 0, 0);
 const SESSIONS = [
   { key: 'course', page: 'course', start: T_RUN, gpx: runGpx(1800, 3, T_RUN, (k) => 130 + k / 60) },
   { key: 'surf', page: 'surf', start: T_SURF, gpx: surfGpx(T_SURF, MORNING, (k) => 110 + 20 * Math.sin(k / 120)) },
   { key: 'voile', page: 'voile', start: T_VOILE, gpx: withHr(readFileSync(voilePath, 'utf8'), (k) => 120 + 25 * Math.sin(k / 300)) },
+  { key: 'sprints', page: 'course', start: T_SPRINTS, gpx: sprintGpx(7200, T_SPRINTS) },
 ];
 
 // --- 1. Import ---
@@ -298,6 +328,52 @@ check(`voile : repli retenu (${await folds('Graphiques')})`, (await folds('Graph
 await fold('Graphiques', 'Historique de Vitesse');
 await settle({ max: 800 });
 check(`voile : rouvert (${await chartsIn('Graphiques')})`, (await chartsIn('Graphiques')) === voileCharts);
+
+// --- 5 bis. Lot 61 : noms de la voile, curseur commun, pics gardés ---
+/** Boutons de repli du panneau tels qu'affichés, en minuscules (les noms suivent la règle commune : capitales), avec leur couleur et leur taille. */
+const foldLooks = (title) => evaluate(`(() => { const s = ${SCOPE(title)}; return s ? [...s.querySelectorAll('[data-chart-fold]')].map((b) => { const c = getComputedStyle(b); return b.innerText.trim().toLowerCase() + ' (' + c.color + ', ' + c.fontSize + ')'; }).join(' ; ') : '(absent)'; })()`);
+/** Curseurs de survol dessinés dans le n-ième graphe du panneau. */
+const cursorsIn = (title, nth) => evaluate(`(() => { const s = ${SCOPE(title)}; const w = s ? s.querySelectorAll('.recharts-wrapper')[${nth}] : null; return w ? w.querySelectorAll('.recharts-tooltip-cursor').length : -1; })()`);
+/** Graduations de l'axe vertical du graphe dont l'axe porte cette unité. */
+const unitTicks = (unit) => evaluate(`(() => {
+  const c = [...document.querySelectorAll('.zoom-chart')].find((z) => [...z.querySelectorAll('.recharts-label')].some((l) => l.textContent.trim() === ${JSON.stringify(unit)}));
+  return c ? [...c.querySelectorAll('.recharts-yAxis-tick-labels .recharts-cartesian-axis-tick-value')].map((t) => Number(t.textContent.trim())).filter((v) => Number.isFinite(v)) : [];
+})()`);
+
+await go(paths.voile, 8000);
+await clickTab('graphiques');
+await settle({ max: 2000 });
+const voileTitles = await foldLooks('Graphiques');
+console.log(`  voile, noms des graphes : ${voileTitles}`);
+check('voile : noms des graphes, casse non comptée', ['historique de vitesse', 'fréquence cardiaque', 'polaire de vitesse (twa)'].every((t) => voileTitles.includes(`${t} (`)));
+console.log('  survol de la vitesse :', await hoverChart('Graphiques', 0));
+await wait(500);
+check(`voile : survol de la vitesse, curseur sur la FC (${await cursorsIn('Graphiques', 1)})`, (await cursorsIn('Graphiques', 1)) >= 1);
+console.log('  vent :', await clickTab('vent'));
+await settle({ max: 1500 });
+const windTitle = await evaluate(`(() => { const e = [...document.querySelectorAll('.an-carte-panels *')].find((x) => x.children.length === 0 && x.textContent.trim() === 'Évolution du Vent'); return e ? e.innerText.trim().toLowerCase() + ' (' + getComputedStyle(e).color + ', ' + getComputedStyle(e).fontSize + ')' : '(absent)'; })()`);
+console.log(`  voile, nom du vent : ${windTitle}`);
+check('voile : nom du vent, casse non comptée', windTitle.startsWith('évolution du vent ('));
+await clickTab('vent', true);
+
+await go(paths.surf, 6000);
+await clickTab('graphiques');
+await settle({ max: 1500 });
+console.log('  surf, survol de la vitesse :', await hoverChart('Vitesse', 0));
+await wait(500);
+check(`surf : survol de la vitesse, curseur sur la FC (${await cursorsIn('Vitesse', 1)})`, (await cursorsIn('Vitesse', 1)) >= 1);
+
+await go(paths.sprints, 8000);
+await clickTab('graphiques');
+await settle({ max: 2000 });
+console.log(`  sprints, replis : ${await folds('Graphiques')}`);
+const hrTicks = await unitTicks('bpm');
+const cadTicks = await unitTicks('pas/min');
+console.log(`  sprints, graduations de la FC : ${hrTicks.join(' | ')} ; de la cadence : ${cadTicks.join(' | ')}`);
+check(`sprints : le haut de l'axe de FC atteint le pic de 200 (${Math.max(...hrTicks)})`, hrTicks.length > 0 && Math.max(...hrTicks) >= 200);
+check(`sprints : le bas de l'axe de cadence descend au creux (${Math.min(...cadTicks)} pour ${Math.max(...cadTicks)} en haut)`,
+  cadTicks.length > 0 && Math.min(...cadTicks) <= 0.8 * Math.max(...cadTicks));
+await shoot('graphes-sprints');
 
 // --- 6. Téléphone ---
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });

@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 93, essai 74, question Q50.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 94, essai 75, question Q50.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -14,6 +14,8 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 APK 0.3.104 (versionCode 3104, lots 56, 57 et 59) installée sur le téléphone le 29/10 : android/app/build/outputs/apk/release/Tracker-0.3.104.apk.
 
 - 60 · [dette] Graphes, partie 2 : un seul graphe relié à la trace, d'abord en course et à vélo ; rien ne change à l'écran · noté 28/10 · petit · Opus/high · à valider sur lecture (commit suivant, 0.3.105) ; aucun essai au téléphone (banc identique sur graphes, general, pentes, depense, cadence, cardio, zoom d'un graphe à pied compris ; relecture sans défaut) ; LandModule n'importe plus Recharts, lignes des graphes calculées seulement onglet ouvert · dépend de : 59 (levé) · détail : docs/backlog/52-assainissement.md
+- 61 · [dette] Graphes, partie 3 : le même graphe en voile, surf, test, sauts et fractionné ; pics de FC gardés dans « graphiques » (Q37, Q38) · noté 28/10 · petit · Opus/high · à valider (commit suivant, 0.3.106) ; voile, surf, test, sauts et profil des répétitions par le graphe commun ; noms des graphes de la voile petits à la couleur de leur courbe (Q37), curseur commun vitesse/FC en voile et surf (Q38), « +carte » sur la FC du test ; pics de FC et de cadence gardés sur les graphes ; zoom du profil remis à zéro au changement de séance ; un clic hors du tracé de l'évolution des répétitions ne choisit plus la première ; banc conforme, relecture sans défaut · dépend de : 60 (levé) · détail : docs/backlog/52-assainissement.md
+  - essai 74 : voile avec la ceinture cardio, onglet graphiques : glisser un doigt sur la vitesse → le curseur suit aussi sur la FC et le repère sur la carte, sans que la page défile
 
 ## Ensuite
 
@@ -59,6 +61,7 @@ APK 0.3.104 (versionCode 3104, lots 56, 57 et 59) installée sur le téléphone 
 
 ## Plus tard
 
+- 93 · [bogue] Graphes : après un clic, Recharts donne le focus au graphe et sa couche clavier active le premier point ; la souris sortie du tracé ramènerait alors le repère de la carte au premier point affiché (vu sur l'évolution des répétitions, corrigé là au lot 61 par accessibilityLayer={false}) ; à vérifier au banc sur les autres graphes · noté 29/10 · petit
 - 34 · [idée] Mode daltonien (ex-fiche 4) : des couleurs de familles, de traces et de graphes lisibles par un daltonien ; voulu « plus tard », reste à dire quel daltonisme et pour qui (§11 « Mode daltonien », point 90) · noté 08/10 · gros
 - 35 · [idée] Montre connectée Android (ex-fiche 5) : lire sa FC, importer ses sessions, piloter du poignet ; reste à dire quelle montre · noté 22/10 · gros · détail : docs/backlog/35-montre-connectee.md
 - 36 · [idée] Autres capteurs Bluetooth (ex-fiche 17) : puissance, cadence et vitesse à vélo lues comme la ceinture ; dort tant que l'utilisateur n'a pas de capteur (point 118) · noté 16/10 · gros
@@ -74,7 +77,6 @@ APK 0.3.104 (versionCode 3104, lots 56, 57 et 59) installée sur le téléphone 
 - 47 · [idée] Itinéraires hors ligne par l'application BRouter pour Android, à la place du serveur public (point 59) · noté 25/09 · gros
 - 49 · [dette] Mesure d'une manœuvre sous bruit réaliste : cap et gain du virement le plus lent (creux vers 3,75 nd) varient de ±20° et 15 m selon la cadence ; ce sont les bornes de measureManeuver, pas la détection (relevé au lot 30) · noté 28/10 · petit
 - 58 · [dette] Voile, curseur du seuil plus fluide : le vent et l'altitude ne se recalculent plus à chaque cran ; chiffres identiques ; seul dans sa session · noté 28/10 · petit · Opus/high · seul dans sa conversation (relevé du vent avant/après sur les 12 sessions réelles, comme au lot 30) : à lancer dans une conversation neuve · dépend de : 56 (levé) · détail : docs/backlog/52-assainissement.md
-- 61 · [dette] Graphes, partie 3 : le même graphe en voile, surf, test, sauts et fractionné ; pics de FC gardés dans « graphiques » (Q37, Q38) · noté 28/10 · petit · Opus/high · dépend de : 60 · détail : docs/backlog/52-assainissement.md
 - 62 · [dette] Analyses, partie commune 1 : lecture de la session et onglets écrits une fois pour les quatre modules ; rien ne change à l'écran · noté 28/10 · petit · Opus/high · dépend de : 54 · détail : docs/backlog/52-assainissement.md
 - 63 · [dette] Analyses, partie commune 2 : FC, couches de la carte, sauts et pumping en commun (Q39) · noté 28/10 · petit · Opus/medium · dépend de : 62, 59 (levé) · détail : docs/backlog/52-assainissement.md
 - 64 · [dette] Analyses, partie commune 3 : panneaux de réglages, tableaux et surbrillances communs ; rien ne change à l'écran · noté 28/10 · petit · Sonnet/high · dépend de : 63 · détail : docs/backlog/52-assainissement.md

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decodeImu, encodeImu, selectImuWindows, type ImuRecording } from './imuFile';
 import { SYNTH_WALL_MS, synthImu as record, type SynthMotion as Motion } from './imuSynthetic.fixture';
 import { pruneImuFile } from './imuPrune';
-import { jumpDoubtLabel, jumpTrackSpan, measureJumps, pruneWindows, trackIndexAtTime, type MeasuredJump } from './jumps';
+import { jumpCurveRows, jumpDoubtLabel, jumpTrackSpan, measureJumps, pruneWindows, trackIndexAtTime, type MeasuredJump, type SessionJump } from './jumps';
 import { SPORT_PROFILES } from './sportProfiles';
 
 const G = 9.80665;
@@ -244,4 +244,55 @@ describe('jumpDoubtLabel', () => {
     expect(jumpDoubtLabel('verticale', { attitudeMaxErrorM: 0.1 })).toBe("verticale incertaine : la hauteur peut s'écarter de plus de 10 cm");
     expect(jumpDoubtLabel('verticale', { attitudeMaxErrorM: 0.15 })).toContain('15 cm');
   });
+});
+
+/** Courbe d'un saut et lignes de la courbe, telles que `JumpsPanel` les faisait avant le lot 61 (copie gelée). */
+const frozenCurvePoints = (j: SessionJump): Map<number, number> => {
+  const points = new Map<number, number>();
+  j.curve.heightsM.forEach((h, k) => points.set(Math.round((j.curve.startS + k * j.curve.stepS) * 100), h));
+  return points;
+};
+const frozenCurveRows = (first: SessionJump, second: SessionJump | null, trackIndexAt: (ms: number) => number) => {
+  const jumps = second ? [first, second] : [first];
+  const points = jumps.map(frozenCurvePoints);
+  const instants = [...new Set(points.flatMap((p) => [...p.keys()]))].sort((a, b) => a - b);
+  return instants.map((c) => {
+    const t = c / 100;
+    const owner = points[0].has(c) ? first : second ?? first;
+    return { t, premier: points[0].get(c) ?? null, second: points[1]?.get(c) ?? null, index: trackIndexAt(owner.takeoffMs + t * 1000) };
+  });
+};
+
+/** Saut rangé synthétique : courbe en parabole au pas `stepS`, partie de `startS`. */
+const sessionJump = (takeoffMs: number, flightS: number, stepS: number, startS: number): SessionJump => {
+  const heightsM: number[] = [];
+  for (let t = startS; t <= flightS + 0.5; t += stepS) heightsM.push(Math.round(Math.max(0, 4.9 * t * (flightS - t)) * 100) / 100);
+  return {
+    takeoffMs, landingMs: takeoffMs + flightS * 1000, flightS, heightM: Math.max(...heightsM), takeoffVerticalMs: 4.9 * flightS,
+    speedMs: 8, lengthM: 8 * flightS, doubts: [], curve: { stepS, startS, heightsM },
+  };
+};
+
+describe('jumpCurveRows, copie gelée de la courbe des sauts', () => {
+  /** Trace à 1 Hz et à 5 Hz : point le plus proche d'un instant. */
+  for (const hz of [1, 5]) {
+    const trackIndexAt = (ms: number) => Math.round(((ms - WALL_MS) / 1000) * hz);
+    it(`${hz} Hz : un saut`, () => {
+      const one = sessionJump(WALL_MS + 30_000, 1.23, 0.02, -0.3);
+      const rows = jumpCurveRows(one, null, trackIndexAt);
+      expect(rows).toEqual(frozenCurveRows(one, null, trackIndexAt));
+      expect(JSON.stringify(rows)).toBe(JSON.stringify(frozenCurveRows(one, null, trackIndexAt)));
+      expect(rows.every((r) => r.second === null)).toBe(true);
+    });
+
+    it(`${hz} Hz : deux sauts, pas et durées différents`, () => {
+      const a = sessionJump(WALL_MS + 30_000, 1.23, 0.02, -0.3);
+      const b = sessionJump(WALL_MS + 95_000, 1.71, 0.05, -0.25);
+      for (const [x, y] of [[a, b], [b, a]] as const) {
+        const rows = jumpCurveRows(x, y, trackIndexAt);
+        expect(rows).toEqual(frozenCurveRows(x, y, trackIndexAt));
+        expect(JSON.stringify(rows)).toBe(JSON.stringify(frozenCurveRows(x, y, trackIndexAt)));
+      }
+    });
+  }
 });

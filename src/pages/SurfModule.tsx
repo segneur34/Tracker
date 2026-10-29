@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } fr
 import { Link } from 'react-router-dom';
 import BaseTileLayer from '../components/BaseTileLayer';
 import './analysisMobile.css';
-import { CartesianGrid, ComposedChart, Line, ReferenceArea, ResponsiveContainer, Tooltip, YAxis } from 'recharts';
+import { ReferenceArea } from 'recharts';
 import ActivitySelect from '../components/ActivitySelect';
 import { GraphFoldHead } from '../components/ChartFold';
 import { HoverReadout, type Readout } from '../components/ChartReadout';
@@ -33,9 +33,8 @@ import { heartRateZonePaths } from '../core/heartRate';
 import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionHeartRate } from '../hooks/useSessionHeartRate';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
-import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
+import TrackChart, { type TrackSeries } from '../components/TrackChart';
 import { zoomHint } from '../components/zoomHint';
-import { NO_TOOLTIP_CONTENT, trackHover } from '../components/chartHover';
 import { Polyline } from 'react-leaflet';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
@@ -43,7 +42,7 @@ import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
 import { sessionActivity } from '../core/activities';
 import { SURF_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type SurfTab } from '../core/analysisTabs';
-import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
+import { sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { defaultActiveThresholdOf, hasPositions, sportTreatment } from '../core/sportProfiles';
@@ -54,7 +53,7 @@ import {
   SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
   fromDisplaySpeed, toDisplaySpeed,
 } from '../core/units';
-import { setHoveredIndex, useResetChartHover } from '../hooks/useChartHover';
+import { useResetChartHover } from '../hooks/useChartHover';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { useGpxSession } from '../hooks/useGpxSession';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
@@ -73,7 +72,7 @@ import type { SurfFlight, SurfPhase, SurfReturn, SurfSpan } from '../surfing/sur
 import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfing/surfSession';
 import StatTile from '../components/ui/StatTile';
 import MapToggle from '../components/ui/MapToggle';
-import { CHART_GRID_PROPS, SPEED_COLOR, chartTick, yAxisLabel } from '../components/chartStyle';
+import { SPEED_COLOR } from '../components/chartStyle';
 
 /**
  * Analyse d'une session de surf (§10, point 97), selon le patron commun
@@ -152,6 +151,10 @@ const ShowButton = ({ shown, onClick, disabled }: { shown: boolean; onClick: () 
 );
 
 /** Une ligne du graphe : `index` renvoie au point de trace d'origine. */
+/** Curseur commun aux graphes de vitesse et de FC (Q38) : ils lisent les mêmes lignes. */
+const SURF_SYNC_ID = 'surf';
+const SPEED_SERIES: TrackSeries<ChartRow>[] = [{ kind: 'line', key: 'speed', name: 'Vitesse', color: SPEED_COLOR, width: 1.5, activeDotR: 4 }];
+
 interface ChartRow {
   index: number;
   /** Temps écoulé depuis le départ, en minutes : l'axe et son zoom. */
@@ -370,7 +373,8 @@ function SurfModule() {
   const chartData = useMemo(() => {
     if (track.length === 0 || !open.graphiques) return [];
     const [first, last] = visibleIndexRange(trackMinutes, zoom.view);
-    return sampledIndices(first, last, CHART_MAX_POINTS, speedSeries).map((i): ChartRow => ({
+    // Les extrêmes de la vitesse et de la FC restent : un pic bref de FC ne disparaît pas.
+    return sampledIndicesKeeping(first, last, CHART_MAX_POINTS, [speedSeries, heart.smoothed]).map((i): ChartRow => ({
       index: i,
       minutes: trackMinutes[i],
       speed: parseFloat(toDisplaySpeed(track[i].smoothedSpeedMs, speedUnit).toFixed(2)),
@@ -379,11 +383,6 @@ function SurfModule() {
     }));
   }, [track, open.graphiques, trackMinutes, zoom.view, speedUnit, heart.smoothed, speedSeries]);
   const minutesOf = (ms: number) => (track.length > 0 ? (ms - track[0].timeMs) / 60000 : 0);
-  /** Survol des graphes : le point va au magasin du survol, lu par le repère de la carte et les lectures, pas par le module. */
-  const clearHover = () => setHoveredIndex(null);
-  /** Axe du temps des graphes, en heure du jour, graduations rondes zoom compris. */
-  const timeAxis = timeChart.timeAxis(zoom);
-  const onChartHover = trackHover(chartData);
   /** Point survolé lu au-dessus des graphes (`HoverReadout`), s'il est dans la plage zoomée. */
   const readable = (i: number): boolean => timeChart.readable(zoom, i);
   const readAt = timeChart.readAt;
@@ -408,32 +407,22 @@ function SurfModule() {
 
   /** Graphe de vitesse : bandes des vagues et des vols, repères ; dans l'onglet, et sous la carte en plein écran. */
   const speedChart = (style: CSSProperties) => (
-    <ZoomableChart zoom={zoom} onLeave={clearHover} onShowOnMap={showGraphsOnMap} style={style}>
-      <ResponsiveContainer>
-        <ComposedChart data={chartData} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-          <ChartZoomProbe />
-          <CartesianGrid {...CHART_GRID_PROPS} />
-          {timeAxis}
-          {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark)}
-          <YAxis domain={[0, 'auto']} tickFormatter={(v) => formatSpeedValue(v, speedUnit)} width={46}
-            tick={chartTick(SPEED_COLOR)}
-            label={yAxisLabel(unitLabel, SPEED_COLOR)} />
-          {foil && flights.map((f) => (
-            <ReferenceArea key={`vol-${f.n}`} x1={minutesOf(f.startMs)} x2={minutesOf(f.endMs)} fill={FLIGHT_BAND_COLOR} fillOpacity={0.1} ifOverflow="hidden" />
-          ))}
-          {waves.map((w) => (
-            <ReferenceArea key={`vague-${w.n}`} x1={minutesOf(w.startMs)} x2={minutesOf(w.endMs)} fill={WAVE_BAND_COLOR} fillOpacity={0.18} ifOverflow="hidden" />
-          ))}
-          <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-          <Line type="monotone" name="Vitesse" dataKey="speed" stroke={SPEED_COLOR} strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
-        </ComposedChart>
-      </ResponsiveContainer>
-    </ZoomableChart>
+    <TrackChart rows={chartData} zoom={zoom} x={timeChart.timeX} series={SPEED_SERIES} syncId={SURF_SYNC_ID}
+      yAxes={[{ color: SPEED_COLOR, unit: unitLabel, domain: [0, 'auto'], width: 46, tickFormatter: (v) => formatSpeedValue(v, speedUnit) }]}
+      onShowOnMap={showGraphsOnMap} style={style}>
+      {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark)}
+      {foil && flights.map((f) => (
+        <ReferenceArea key={`vol-${f.n}`} x1={minutesOf(f.startMs)} x2={minutesOf(f.endMs)} fill={FLIGHT_BAND_COLOR} fillOpacity={0.1} ifOverflow="hidden" />
+      ))}
+      {waves.map((w) => (
+        <ReferenceArea key={`vague-${w.n}`} x1={minutesOf(w.startMs)} x2={minutesOf(w.endMs)} fill={WAVE_BAND_COLOR} fillOpacity={0.18} ifOverflow="hidden" />
+      ))}
+    </TrackChart>
   );
   /** Courbe de FC de « graphiques » ; ses boutons de zoom quand la vitesse est repliée. */
   const heartChart = (speedShown: boolean) => (
     <HeartRateChart data={chartData} zoom={zoom} x={timeChart.timeX} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-      showReset={!speedShown} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
+      syncId={SURF_SYNC_ID} showReset={!speedShown} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
       {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark, 'hr')}
     </HeartRateChart>
   );

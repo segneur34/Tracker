@@ -4,7 +4,7 @@
  * unités affichées (sortie du noyau, `core/units`).
  */
 import { toFixedNumber } from './basics';
-import { sampledIndices, visibleIndexRange } from './chartZoom';
+import { sampledIndicesKeeping, visibleIndexRange } from './chartZoom';
 import type { XRange } from './chartZoom';
 import { CHART_MAX_POINTS } from './displayConfig';
 import { CHART_PACE_MIN_SPEED_MS, toDisplaySpeed, type DistanceUnit, type SpeedUnit } from './units';
@@ -52,16 +52,21 @@ export interface TrackChartRowsInput {
 }
 
 /**
- * Séries des graphes sur la plage visible, au plus `CHART_MAX_POINTS` :
- * distance et vitesse dans l'unité choisie, altitude lissée. Zoomer montre
- * plus de détail.
+ * Séries des graphes sur la plage visible, `CHART_MAX_POINTS` à pas régulier
+ * plus les extrêmes de la vitesse, de l'altitude, de la FC et de la cadence
+ * que ce pas sauterait : distance et vitesse dans l'unité choisie, altitude
+ * lissée. Zoomer montre plus de détail.
  */
 export const trackChartRows = ({
   pointCount, dist, view, speedMs, altitude: altitudes, hasElevation, grades, speedUnit, distanceUnit, inverse, heartRate, cadence,
 }: TrackChartRowsInput): TrackChartRow[] => {
   if (pointCount === 0) return [];
   const [first, last] = visibleIndexRange(dist, view);
-  return sampledIndices(first, last, CHART_MAX_POINTS, speedMs).map((i): TrackChartRow => {
+  // Les extrêmes de chaque courbe tracée restent : un pic bref de FC ou un creux de cadence ne disparaît pas.
+  const kept: ArrayLike<number | null | undefined>[] = [speedMs, heartRate];
+  if (hasElevation) kept.push(altitudes);
+  if (cadence !== null) kept.push(cadence);
+  return sampledIndicesKeeping(first, last, CHART_MAX_POINTS, kept).map((i): TrackChartRow => {
     const altitude = altitudes[i];
     const ms = speedMs[i];
     // En min/km, l'arrêt tend vers l'infini : on laisse un trou plutôt qu'une valeur absurde.

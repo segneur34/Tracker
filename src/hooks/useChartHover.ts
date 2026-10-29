@@ -10,27 +10,51 @@ import { useEffect, useSyncExternalStore } from 'react';
  * change de session ou se démonte (`useResetChartHover`).
  */
 
-let hovered: number | null = null;
-const listeners = new Set<() => void>();
+/** Valeur survolée d'un graphe, hors de l'état React : seuls ses lecteurs se redessinent. */
+export interface HoverStore<T> {
+  /** Pose la valeur (`null` : aucune) ; les abonnés ne sont prévenus que si elle change. */
+  set: (value: T | null) => void;
+  get: () => T | null;
+  subscribe: (listener: () => void) => () => void;
+}
 
-/** Pose le point survolé (`null` : aucun) ; les abonnés ne sont prévenus que s'il change. */
-export const setHoveredIndex = (index: number | null): void => {
-  if (index === hovered) return;
-  hovered = index;
-  listeners.forEach((listener) => listener());
-};
-
-export const getHoveredIndex = (): number | null => hovered;
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
+/**
+ * Magasin d'une valeur survolée : celui du point de trace, commun à toute
+ * l'application, et ceux d'un graphe qui lit son survol lui-même (profil des
+ * répétitions, courbe des sauts), pour que le doigt qui glisse ne redessine
+ * que la lecture, pas le graphe.
+ */
+export const createHoverStore = <T>(): HoverStore<T> => {
+  let value: T | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    set: (next) => {
+      if (next === value) return;
+      value = next;
+      listeners.forEach((listener) => listener());
+    },
+    get: () => value,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
   };
 };
 
+/** La valeur d'un magasin du survol, pour ce qui doit la suivre. */
+export const useHoverStore = <T>(store: HoverStore<T>): T | null => useSyncExternalStore(store.subscribe, store.get, store.get);
+
+const trackStore = createHoverStore<number>();
+
+/** Pose le point survolé (`null` : aucun) ; les abonnés ne sont prévenus que s'il change. */
+export const setHoveredIndex = (index: number | null): void => trackStore.set(index);
+
+export const getHoveredIndex = (): number | null => trackStore.get();
+
 /** Le point survolé, pour ce qui doit le suivre (repère de la carte, lectures). */
-export const useHoveredIndex = (): number | null => useSyncExternalStore(subscribe, getHoveredIndex, getHoveredIndex);
+export const useHoveredIndex = (): number | null => useHoverStore(trackStore);
 
 /** Efface le point survolé quand `key` change (autre session) et au démontage du module. */
 export const useResetChartHover = (key: unknown): void => {

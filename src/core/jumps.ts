@@ -411,3 +411,38 @@ export const jumpTrackSpan = (
   if (to <= from) to = Math.min(track.length - 1, from + 1);
   return { from, to, start };
 };
+
+/** Ligne de la courbe d'un saut : `t` en secondes depuis le décollage, la hauteur de chaque saut, le point de trace. */
+export interface JumpCurveRow {
+  t: number;
+  premier: number | null;
+  second: number | null;
+  index: number;
+}
+
+/** Points d'une courbe, en centièmes de seconde depuis le décollage : les deux courbes partagent leurs instants. */
+const curvePoints = (j: SessionJump): Map<number, number> => {
+  const points = new Map<number, number>();
+  j.curve.heightsM.forEach((h, k) => points.set(Math.round((j.curve.startS + k * j.curve.stepS) * 100), h));
+  return points;
+};
+
+/**
+ * Lignes de la courbe d'un saut, ou de deux calés sur leur décollage : les
+ * instants des deux courbes réunis et triés, la hauteur de chaque saut là où
+ * il en a une, et le point de trace le plus proche (`trackIndexAt`), pris
+ * sur le premier saut s'il a ce point, sinon sur le second.
+ */
+export const jumpCurveRows = (
+  first: SessionJump,
+  second: SessionJump | null,
+  trackIndexAt: (ms: number) => number
+): JumpCurveRow[] => {
+  const points = (second ? [first, second] : [first]).map(curvePoints);
+  const instants = [...new Set(points.flatMap((p) => [...p.keys()]))].sort((a, b) => a - b);
+  return instants.map((c) => {
+    const t = c / 100;
+    const owner = points[0].has(c) ? first : second ?? first;
+    return { t, premier: points[0].get(c) ?? null, second: points[1]?.get(c) ?? null, index: trackIndexAt(owner.takeoffMs + t * 1000) };
+  });
+};

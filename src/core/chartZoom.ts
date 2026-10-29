@@ -136,31 +136,22 @@ export const visibleIndexRange = (values: ArrayLike<number>, range: XRange | nul
  */
 export const CHART_EXTREME_TOLERANCE = 0.05;
 
-/**
- * Indices de `first` à `last` à tracer, au plus `maxPoints` environ, à pas
- * régulier ; le dernier est toujours compris, pour que la courbe aille au
- * bout de la plage. Avec `values` (la série principale du graphe), les
- * extrêmes que le pas régulier sauterait sont ajoutés (27/10) : entre deux
- * indices tracés, le maximum et le minimum de la série qui s'écartent de la
- * corde entre ces deux voisins de plus de `CHART_EXTREME_TOLERANCE` de son
- * étendue. Un top de 2 s reste ainsi visible sur une sortie de 3 h, sans
- * tripler les points sur une trace bruitée ; une série constante ou monotone
- * ne reçoit rien. Les indices restent ceux de la trace complète : le survol
- * et le repère de la carte ne changent pas.
- */
-export const sampledIndices = (
-  first: number,
-  last: number,
-  maxPoints: number,
-  values?: ArrayLike<number | null | undefined>
-): number[] => {
-  if (last < first) return [];
+/** Indices de `first` à `last` à pas régulier, au plus `maxPoints` environ, le dernier compris ; et ce pas. */
+const regularIndices = (first: number, last: number, maxPoints: number): { out: number[]; step: number } => {
   const step = Math.max(1, Math.ceil((last - first + 1) / Math.max(1, maxPoints)));
   const out: number[] = [];
   for (let i = first; i <= last; i += step) out.push(i);
   if (out[out.length - 1] !== last) out.push(last);
-  if (!values || step <= 1) return out;
+  return { out, step };
+};
 
+/**
+ * Indices du pas régulier `out` (de `first` à `last`), avec les extrêmes de
+ * `values` qu'il sauterait : entre deux indices tracés, le maximum et le
+ * minimum qui s'écartent de la corde entre ces deux voisins de plus de
+ * `CHART_EXTREME_TOLERANCE` de l'étendue de la série sur la plage. Croissants.
+ */
+const keepExtremes = (out: number[], first: number, last: number, values: ArrayLike<number | null | undefined>): number[] => {
   const at = (i: number): number => {
     const v = values[i];
     return typeof v === 'number' && isFinite(v) ? v : NaN;
@@ -215,6 +206,47 @@ export const sampledIndices = (
   kept.push(out[out.length - 1]);
   return kept;
 };
+
+/**
+ * Indices de `first` à `last` à tracer, au plus `maxPoints` environ, à pas
+ * régulier ; le dernier est toujours compris, pour que la courbe aille au
+ * bout de la plage. Les extrêmes de chaque série de `series` (les courbes
+ * que le graphe trace de ces lignes : vitesse, altitude, FC, cadence) que le
+ * pas régulier sauterait sont ajoutés, chacun jugé sur l'étendue de sa
+ * série (27/10, et 29/10 pour plusieurs séries) : un pic bref de FC ou un
+ * creux de cadence reste tracé même quand la vitesse ne bouge pas. La
+ * tolérance (`CHART_EXTREME_TOLERANCE`) borne d'elle-même les points d'une
+ * trace bruitée, sans autre plafond. Les indices, croissants et sans
+ * doublon, restent ceux de la trace complète : le survol et le repère de la
+ * carte ne changent pas.
+ */
+export const sampledIndicesKeeping = (
+  first: number,
+  last: number,
+  maxPoints: number,
+  series: ReadonlyArray<ArrayLike<number | null | undefined>>
+): number[] => {
+  if (last < first) return [];
+  const { out, step } = regularIndices(first, last, maxPoints);
+  if (series.length === 0 || step <= 1) return out;
+  if (series.length === 1) return keepExtremes(out, first, last, series[0]);
+  const all = series.flatMap((values) => keepExtremes(out, first, last, values)).sort((a, b) => a - b);
+  const merged: number[] = [];
+  for (const i of all) if (merged[merged.length - 1] !== i) merged.push(i);
+  return merged;
+};
+
+/**
+ * Indices de `first` à `last` à tracer, au plus `maxPoints` environ, à pas
+ * régulier ; avec `values` (la série principale du graphe), ses extrêmes que
+ * le pas régulier sauterait sont ajoutés (`sampledIndicesKeeping`).
+ */
+export const sampledIndices = (
+  first: number,
+  last: number,
+  maxPoints: number,
+  values?: ArrayLike<number | null | undefined>
+): number[] => sampledIndicesKeeping(first, last, maxPoints, values ? [values] : []);
 
 /** Multiples d'une puissance de dix retenus comme pas de graduation. */
 const NICE_STEPS = [1, 2, 2.5, 5, 10];

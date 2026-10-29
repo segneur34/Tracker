@@ -1153,7 +1153,8 @@ function LandModule({ family }: { family: LandFamily }) {
                 selectedLap={selectedLap}
                 onSelectLap={setSelectedLap}
                 emptyText={intervalEmptyText}
-                recoveryS={profile.heartRate.recoveryS} />
+                recoveryS={profile.heartRate.recoveryS}
+                sessionKey={gpx.sessionKey} />
             )}
 
             {open.test && isTestSport(profile.id) && (sessionTest ? (

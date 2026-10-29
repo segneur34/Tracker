@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { trackBounds } from './displayConfig';
 import {
-  axisRangePath, clampRange, niceTicks, pinchRange, pxSelectionRange, sampledIndices, visibleIndexRange, zoomAtRange,
+  axisRangePath, CHART_EXTREME_TOLERANCE, clampRange, niceTicks, pinchRange, pxSelectionRange, sampledIndices, sampledIndicesKeeping,
+  visibleIndexRange, zoomAtRange,
 } from './chartZoom';
 
 const FULL = { min: 0, max: 10 };
@@ -204,5 +205,140 @@ describe('graduations rondes', () => {
 
   it('rien sur une plage vide', () => {
     expect(niceTicks({ min: 3, max: 3 })).toEqual([]);
+  });
+});
+
+/** `sampledIndices` d'avant le lot 61, recopiée telle quelle (copie gelée) : une seule série. */
+const frozenSampledIndices = (first: number, last: number, maxPoints: number, values?: ArrayLike<number | null | undefined>): number[] => {
+  if (last < first) return [];
+  const step = Math.max(1, Math.ceil((last - first + 1) / Math.max(1, maxPoints)));
+  const out: number[] = [];
+  for (let i = first; i <= last; i += step) out.push(i);
+  if (out[out.length - 1] !== last) out.push(last);
+  if (!values || step <= 1) return out;
+  const at = (i: number): number => {
+    const v = values[i];
+    return typeof v === 'number' && isFinite(v) ? v : NaN;
+  };
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = first; i <= last; i++) {
+    const v = at(i);
+    if (Number.isNaN(v)) continue;
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  const tolerance = (hi - lo) * CHART_EXTREME_TOLERANCE;
+  if (!(tolerance > 0)) return out;
+  const kept: number[] = [];
+  for (let k = 0; k < out.length - 1; k++) {
+    const a = out[k];
+    const b = out[k + 1];
+    kept.push(a);
+    let maxI = -1;
+    let minI = -1;
+    let maxV = -Infinity;
+    let minV = Infinity;
+    for (let i = a + 1; i < b; i++) {
+      const v = at(i);
+      if (Number.isNaN(v)) continue;
+      if (v > maxV) {
+        maxV = v;
+        maxI = i;
+      }
+      if (v < minV) {
+        minV = v;
+        minI = i;
+      }
+    }
+    if (maxI < 0) continue;
+    const va = at(a);
+    const vb = at(b);
+    const chordAt = (i: number): number => {
+      if (Number.isNaN(va)) return vb;
+      if (Number.isNaN(vb)) return va;
+      return va + ((vb - va) * (i - a)) / (b - a);
+    };
+    const addMax = maxV - chordAt(maxI) > tolerance;
+    const addMin = chordAt(minI) - minV > tolerance;
+    if (addMax && addMin) kept.push(Math.min(maxI, minI), Math.max(maxI, minI));
+    else if (addMax) kept.push(maxI);
+    else if (addMin) kept.push(minI);
+  }
+  kept.push(out[out.length - 1]);
+  return kept;
+};
+
+/** Bruit pseudo-aléatoire reproductible, entre −1 et 1. */
+const noise = (k: number): number => {
+  const x = Math.sin(k * 12.9898 + 78.233) * 43758.5453;
+  return 2 * (x - Math.floor(x)) - 1;
+};
+
+/**
+ * Sortie de `seconds` secondes à `hz` points par seconde : vitesse en sinus,
+ * FC plate avec un pic de 3 points placé entre deux indices du pas régulier
+ * de `maxPoints` points, cadence avec un creux de 3 points ; trous dans la FC.
+ */
+const sprints = (seconds: number, hz: number, maxPoints = 500) => {
+  const n = seconds * hz;
+  const step = Math.ceil(n / maxPoints);
+  const speed: number[] = [];
+  const hr: (number | null)[] = [];
+  const cadence: (number | null)[] = [];
+  const peakAt = Math.round((n * 0.4237) / step) * step + 1;
+  const dipAt = Math.round((n * 0.7311) / step) * step + 1;
+  for (let k = 0; k < n; k++) {
+    const t = k / hz;
+    speed.push(3 + Math.sin(t / 40));
+    hr.push(k % 211 === 0 ? null : k >= peakAt && k < peakAt + 3 ? 185 : 140);
+    cadence.push(k >= dipAt && k < dipAt + 3 ? 120 : 170);
+  }
+  return { n, speed, hr, cadence, peakAt, dipAt };
+};
+
+describe('indices tracés, plusieurs séries (pics gardés)', () => {
+  for (const hz of [1, 5]) {
+    it(`${hz} Hz, 3 000 s : le pic de FC et le creux de cadence restent, sur-ensemble de la vitesse seule`, () => {
+      const s = sprints(3000, hz);
+      const speedOnly = sampledIndices(0, s.n - 1, 500, s.speed);
+      const all = sampledIndicesKeeping(0, s.n - 1, 500, [s.speed, s.hr, s.cadence]);
+      // Le pic et le creux sont hors de la grille : la vitesse seule les saute.
+      expect(Math.max(...speedOnly.map((i) => s.hr[i] ?? 0))).toBe(140);
+      expect(Math.min(...speedOnly.map((i) => s.cadence[i] ?? Infinity))).toBe(170);
+      expect(Math.max(...all.map((i) => s.hr[i] ?? 0))).toBe(185);
+      expect(Math.min(...all.map((i) => s.cadence[i] ?? Infinity))).toBe(120);
+      const kept = new Set(all);
+      expect(speedOnly.every((i) => kept.has(i))).toBe(true);
+      for (let k = 1; k < all.length; k++) expect(all[k]).toBeGreaterThan(all[k - 1]);
+      expect(all[0]).toBe(0);
+      expect(all[all.length - 1]).toBe(s.n - 1);
+    });
+  }
+
+  it('une série seule : la copie gelée de sampledIndices', () => {
+    for (const hz of [1, 5]) {
+      const s = sprints(3000, hz);
+      for (const values of [s.speed, s.hr, s.cadence]) {
+        expect(sampledIndicesKeeping(0, s.n - 1, 500, [values])).toEqual(frozenSampledIndices(0, s.n - 1, 500, values));
+        expect(sampledIndices(0, s.n - 1, 500, values)).toEqual(frozenSampledIndices(0, s.n - 1, 500, values));
+        expect(sampledIndices(100, 2000, 300, values)).toEqual(frozenSampledIndices(100, 2000, 300, values));
+      }
+      expect(sampledIndices(0, s.n - 1, 500)).toEqual(frozenSampledIndices(0, s.n - 1, 500));
+      expect(sampledIndicesKeeping(0, s.n - 1, 500, [])).toEqual(frozenSampledIndices(0, s.n - 1, 500));
+    }
+    expect(sampledIndicesKeeping(5, 4, 500, [[1, 2]])).toEqual([]);
+  });
+
+  it('séries bruitées : le nombre de points reste borné', () => {
+    const n = 2 * 3600 * 5;
+    const grid = sampledIndices(0, n - 1, 500).length;
+    // Signal lent et bruit de 2 % de son étendue, comme une vitesse, une FC et une cadence lissées.
+    const series = [0, 1, 2, 3].map((s) => Array.from({ length: n }, (_, k) => 10 * Math.sin(k / (900 + 300 * s)) + 0.2 * noise(k + s * n)));
+    const all = sampledIndicesKeeping(0, n - 1, 500, series);
+    expect(all.length).toBeLessThanOrEqual(2 * grid);
+    // Bruit pur : au pire deux extrêmes par intervalle et par série.
+    const raw = [0, 1, 2, 3].map((s) => Array.from({ length: n }, (_, k) => noise(k + s * n)));
+    expect(sampledIndicesKeeping(0, n - 1, 500, raw).length).toBeLessThanOrEqual(grid * (1 + 2 * raw.length));
   });
 });
