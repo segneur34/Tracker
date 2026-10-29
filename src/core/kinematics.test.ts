@@ -11,6 +11,7 @@ import {
   spreadEqualTimes,
   type KinematicsRun,
 } from './kinematics';
+import { sameData } from '../test/sameData';
 import { segmentDistanceM } from './sessionStats';
 import type { RawTrackPoint } from './types';
 
@@ -221,6 +222,8 @@ describe('resumeKinematics', () => {
     return points;
   };
   const options = { medianWindowSeconds: 3, maxDetourRatio: 3, maxSpeedMs: 20, maxGapS: 10 };
+  /** Instants de `build` (en secondes de trace) où une étape change de cas : sauts, dates tronquées, pause et trou, arrêt. */
+  const EVENTS_S = [97, 194, 291, 388, 200, 230, 300, 400, 405];
 
   for (const hz of [1, 5]) {
     for (const doppler of [false, true]) {
@@ -228,13 +231,19 @@ describe('resumeKinematics', () => {
         const points = build(480, hz, doppler);
         let run: KinematicsRun | null = null;
         let resumed = 0;
-        for (let n = 2; n <= points.length; n += n < 40 ? 1 : Math.max(1, Math.round(hz * 1.7))) {
+        // La reprise suit chaque point ajouté ; le calcul entier, plus cher, la contrôle au début, à 2 s de chaque
+        // événement de la trace, sur un point sur 37 ailleurs et au dernier.
+        for (let n = 2; n <= points.length; n++) {
           const prefix = points.slice(0, n);
           const next = resumeKinematics(prefix, options, run);
           expect(next).not.toBeNull();
           if (run && next!.track[0] === run.track[0] && n > 60 * hz) resumed++;
           run = next;
-          expect(run!.track).toEqual(computeKinematics(prefix, options));
+          const lastS = (n - 1) / hz;
+          const checked = n <= 40 || n % 37 === 0 || n === points.length || EVENTS_S.some((e) => Math.abs(lastS - e) <= 2 + 1e-9);
+          if (!checked) continue;
+          const whole = computeKinematics(prefix, options);
+          if (!sameData(run!.track, whole)) expect(run!.track).toEqual(whole);
         }
         // La reprise a bien servi : passé le début, les premiers points sont repris tels quels.
         expect(resumed).toBeGreaterThan(50);

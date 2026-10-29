@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   IMU_FORMAT, IMU_VERSION, PHONE_STREAMS, decodeImu, encodeImu, imuCaptureStats, selectImuWindows, type ImuHeader, type ImuSeries, type ImuStreamInfo,
 } from './imuFile';
+import { sameData } from '../test/sameData';
 
 const HEADER: ImuHeader = {
   format: IMU_FORMAT,
@@ -48,10 +49,15 @@ describe('fichier des capteurs', () => {
     for (const w of written) {
       const r = read!.series.find((s) => s.info.kind === w.info.kind)!;
       expect(r.t.length).toBe(w.t.length);
+      // Le plus grand écart, puis un seul contrôle : un NaN passe par `Math.max` et fait échouer.
+      let maxTimeDiff = 0;
+      let maxValueDiff = 0;
       for (let i = 0; i < w.t.length; i++) {
-        expect(Math.abs(r.t[i] - w.t[i])).toBeLessThanOrEqual(50);
-        for (let a = 0; a < w.info.axes; a++) expect(Math.abs(r.values[a][i] - w.values[a][i])).toBeLessThanOrEqual(w.info.unit / 2 + 1e-4);
+        maxTimeDiff = Math.max(maxTimeDiff, Math.abs(r.t[i] - w.t[i]));
+        for (let a = 0; a < w.info.axes; a++) maxValueDiff = Math.max(maxValueDiff, Math.abs(r.values[a][i] - w.values[a][i]));
       }
+      expect(maxTimeDiff).toBeLessThanOrEqual(50);
+      expect(maxValueDiff).toBeLessThanOrEqual(w.info.unit / 2 + 1e-4);
     }
   });
 
@@ -86,10 +92,14 @@ describe('fichier des capteurs', () => {
     const read = (await decodeImu(await encodeImu(HEADER, [joined]), { streams: ['accel'] }))!;
     const r = read.series[0];
     expect(r.t.length).toBe(joined.t.length);
+    let maxTimeDiff = 0;
+    let maxValueDiff = 0;
     for (let i = 0; i < joined.t.length; i++) {
-      expect(Math.abs(r.t[i] - joined.t[i])).toBeLessThanOrEqual(50);
-      for (let a = 0; a < 3; a++) expect(Math.abs(r.values[a][i] - joined.values[a][i])).toBeLessThanOrEqual(r.info.unit / 2 + 1e-4);
+      maxTimeDiff = Math.max(maxTimeDiff, Math.abs(r.t[i] - joined.t[i]));
+      for (let a = 0; a < 3; a++) maxValueDiff = Math.max(maxValueDiff, Math.abs(r.values[a][i] - joined.values[a][i]));
     }
+    expect(maxTimeDiff).toBeLessThanOrEqual(50);
+    expect(maxValueDiff).toBeLessThanOrEqual(r.info.unit / 2 + 1e-4);
   });
 
   it('ouvre un nouveau bloc après un trou de plus de 3,27 s, sans perdre les instants', async () => {
@@ -159,8 +169,10 @@ describe('fichier des capteurs', () => {
     const read = (await decodeImu(await encodeImu(pruned.header, pruned.series, 1, true)))!;
     expect(read.header.windows).toEqual(windows);
     read.series.forEach((s, k) => {
-      expect(Array.from(s.t)).toEqual(Array.from(pruned.series[k].t));
-      s.values.forEach((v, a) => expect(Array.from(v)).toEqual(Array.from(pruned.series[k].values[a])));
+      if (!sameData(s.t, pruned.series[k].t)) expect(Array.from(s.t)).toEqual(Array.from(pruned.series[k].t));
+      s.values.forEach((v, a) => {
+        if (!sameData(v, pruned.series[k].values[a])) expect(Array.from(v)).toEqual(Array.from(pruned.series[k].values[a]));
+      });
     });
   });
 

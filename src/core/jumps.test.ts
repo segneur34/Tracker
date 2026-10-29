@@ -144,9 +144,12 @@ describe('sauts : élagage et trace', () => {
   // Trois sauts, dont un à 5 s du début et deux à 20 s l'un de l'autre.
   const jumps = [jump(5, 4), jump(200, 5), jump(220, 3.5)];
   const motion: Motion = { durationS: 400, az: (t) => jumps.reduce((s, j) => s + j.az(t), 0) + chop(t) * 0.3 };
+  // Construit une fois pour les tests du bloc, qui ne font que le lire.
+  let recorded: ImuRecording | null = null;
+  const recording = (): ImuRecording => (recorded ??= record(motion));
 
   it('garde chaque saut dans une fenêtre, fenêtres fusionnées et rognées au début', () => {
-    const rec = record(motion);
+    const rec = recording();
     const windows = pruneWindows(rec, D);
     expect(windows).toHaveLength(2);
     expect(windows[0][0]).toBe(0);
@@ -157,10 +160,11 @@ describe('sauts : élagage et trace', () => {
   });
 
   it('donne les mêmes sauts depuis la séance entière et depuis le fichier élagué', async () => {
-    const rec = record(motion);
+    const rec = recording();
     const whole = jumpsOf(rec);
     expect(whole).toHaveLength(3);
-    const pruned = (await decodeImu(await encodeImu(selectImuWindows(rec, pruneWindows(rec, D)).header, selectImuWindows(rec, pruneWindows(rec, D)).series, 1, true)))!;
+    const selected = selectImuWindows(rec, pruneWindows(rec, D));
+    const pruned = (await decodeImu(await encodeImu(selected.header, selected.series, 1, true)))!;
     expect(pruned.header.windows).toHaveLength(2);
     expect(pruned.series[0].t.length).toBeLessThan(rec.series[0].t.length / 2);
     const fromPruned = jumpsOf(pruned);
@@ -173,20 +177,28 @@ describe('sauts : élagage et trace', () => {
 
   it('tire la vitesse au décollage et la longueur de la trace', () => {
     const track = Array.from({ length: 401 }, (_, s) => ({ timeMs: WALL_MS + s * 1000, speedMs: 8 }));
-    const [first] = jumpsOf(record(motion), track);
+    const [first] = jumpsOf(recording(), track);
     expect(first.speedMs).toBeCloseTo(8, 6);
     expect(first.lengthM).toBeCloseTo(8 * first.flightS, 3);
-    expect(jumpsOf(record(motion))[0].speedMs).toBeNull();
+    expect(jumpsOf(recording())[0].speedMs).toBeNull();
   });
 });
 
 describe('sauts : élagage du fichier', () => {
   const jumps = [jump(60, 4.5), jump(200, 3.5)];
   const motion: Motion = { durationS: 300, az: (t) => jumps.reduce((s, j) => s + j.az(t), 0) + chop(t) * 0.3 };
+  // L'enregistrement et son fichier, construits une fois pour les tests du bloc, qui ne font que les lire.
+  let encoded: Promise<Uint8Array> | null = null;
+  const wholeFile = (): Promise<Uint8Array> => {
+    if (encoded === null) {
+      const rec = record(motion);
+      encoded = encodeImu(rec.header, rec.series);
+    }
+    return encoded;
+  };
 
   it('garde les fenêtres des vols, un fichier plus petit, et les mêmes sauts', async () => {
-    const rec = record(motion);
-    const whole = await encodeImu(rec.header, rec.series);
+    const whole = await wholeFile();
     const pruned = await pruneImuFile(whole, D);
     expect(pruned.length).toBeLessThan(whole.length / 2);
     const read = (await decodeImu(pruned))!;
@@ -197,8 +209,7 @@ describe('sauts : élagage du fichier', () => {
   });
 
   it('rend tel quel un fichier déjà élagué ou illisible', async () => {
-    const rec = record(motion);
-    const once = await pruneImuFile(await encodeImu(rec.header, rec.series), D);
+    const once = await pruneImuFile(await wholeFile(), D);
     expect(await pruneImuFile(once, D)).toBe(once);
     const junk = new TextEncoder().encode('<gpx></gpx>');
     expect(await pruneImuFile(junk, D)).toBe(junk);

@@ -47,36 +47,52 @@ export const noiseSource = (seed: number) => {
 export const synthImu = (m: SynthMotion): ImuRecording => {
   const rate = m.rateHz ?? 100;
   const n = Math.round(m.durationS * rate);
-  const times: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const t = i / rate;
-    if (!(m.gaps ?? []).some(([a, b]) => t >= a && t < b)) times.push(t);
-  }
+  // Réglages lus une fois, hors de la boucle des mesures (60 000 pour 10 min à 100 Hz).
+  const gapStarts = (m.gaps ?? []).map(([a]) => a);
+  const gapEnds = (m.gaps ?? []).map(([, b]) => b);
   const rand = noiseSource(42);
   const tilt = m.tilt ?? (() => Math.PI / 6);
+  const lateral = m.ay;
   const range = m.accelRange ?? Infinity;
-  const ax: number[] = [];
-  const ay: number[] = [];
-  const az: number[] = [];
-  const gx: number[] = [];
-  const gy: number[] = [];
-  const gz: number[] = [];
-  for (const t of times) {
+  const k = 1 + (m.scale ?? 0);
+  const bias = m.bias ?? 0;
+  const noiseAmplitude = m.noise ?? 0.05;
+  const sqrt3 = Math.sqrt(3);
+  const drift = m.gyroDrift ?? 0;
+  const clamp = (x: number) => Math.max(-range, Math.min(range, x));
+  const times = new Float64Array(n);
+  const ax = new Float32Array(n);
+  const ay = new Float32Array(n);
+  const az = new Float32Array(n);
+  const gx = new Float32Array(n);
+  const gy = new Float32Array(n);
+  const gz = new Float32Array(n);
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / rate;
+    let inGap = false;
+    for (let g = 0; g < gapStarts.length; g++) {
+      if (t >= gapStarts[g] && t < gapEnds[g]) {
+        inGap = true;
+        break;
+      }
+    }
+    if (inGap) continue;
     const th = tilt(t);
-    const h = m.ay?.(t) ?? 0;
+    const h = (lateral ? lateral(t) : undefined) ?? 0;
     const v = m.az(t) + STANDARD_G;
-    const k = 1 + (m.scale ?? 0);
-    const noise = () => (m.noise ?? 0.05) * rand() * Math.sqrt(3);
-    const clamp = (x: number) => Math.max(-range, Math.min(range, x));
-    ax.push(clamp((m.bias ?? 0) + noise()));
-    ay.push(clamp(k * (Math.cos(th) * h + Math.sin(th) * v) + (m.bias ?? 0) + noise()));
-    az.push(clamp(k * (-Math.sin(th) * h + Math.cos(th) * v) + (m.bias ?? 0) + noise()));
+    // Même ordre des tirages et des opérations qu'avant (une sortie identique à l'octet près) : ax, ay, az, puis gx, gy, gz.
+    ax[count] = clamp(bias + noiseAmplitude * rand() * sqrt3);
+    ay[count] = clamp(k * (Math.cos(th) * h + Math.sin(th) * v) + bias + noiseAmplitude * rand() * sqrt3);
+    az[count] = clamp(k * (-Math.sin(th) * h + Math.cos(th) * v) + bias + noiseAmplitude * rand() * sqrt3);
     const rate1 = (tilt(t + 0.0005) - tilt(t - 0.0005)) / 0.001;
-    gx.push(rate1 + (m.gyroDrift ?? 0) + 0.002 * rand());
-    gy.push((m.gyroDrift ?? 0) + 0.002 * rand());
-    gz.push(0.002 * rand());
+    gx[count] = rate1 + drift + 0.002 * rand();
+    gy[count] = drift + 0.002 * rand();
+    gz[count] = 0.002 * rand();
+    times[count] = Math.round(t * 1e6);
+    count++;
   }
-  const t = Float64Array.from(times, (s) => Math.round(s * 1e6));
+  const t = times.slice(0, count);
   const accelInfo = { ...PHONE_STREAMS[0], sensor: { maxRange: m.accelRange ?? 78.45 } };
   const gyroInfo = { ...PHONE_STREAMS[1], sensor: { maxRange: 34.9 } };
   const header: ImuHeader = {
@@ -86,8 +102,8 @@ export const synthImu = (m: SynthMotion): ImuRecording => {
   return {
     header,
     series: [
-      { info: accelInfo, t, values: [Float32Array.from(ax), Float32Array.from(ay), Float32Array.from(az)] },
-      { info: gyroInfo, t: t.slice(), values: [Float32Array.from(gx), Float32Array.from(gy), Float32Array.from(gz)] },
+      { info: accelInfo, t, values: [ax.slice(0, count), ay.slice(0, count), az.slice(0, count)] },
+      { info: gyroInfo, t: t.slice(), values: [gx.slice(0, count), gy.slice(0, count), gz.slice(0, count)] },
     ],
     chunks: 0, truncated: false, skippedChunks: 0,
   };

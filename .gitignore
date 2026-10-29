@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Sorties de vitest 5 (reporters)
+.vitest/

@@ -8,10 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const calls: string[] = [];
 let failWrite = false;
 
-vi.mock('./runtime', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./runtime')>()),
-  isNativeApp: () => true,
-}));
+const runtime = vi.hoisted(() => ({ native: true }));
+vi.mock('./runtime', () => ({ isNativeApp: () => runtime.native }));
 
 vi.mock('@capacitor/filesystem', () => ({
   Directory: { Data: 'DATA' },
@@ -31,6 +29,7 @@ vi.mock('@capacitor/filesystem', () => ({
 }));
 
 beforeEach(() => {
+  vi.resetModules();
   calls.length = 0;
   failWrite = false;
 });

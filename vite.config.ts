@@ -15,6 +15,11 @@ export default defineConfig({
   test: {
     // Fuseau fixé (src/test/setup.ts) : les dates locales des tests ne dépendent pas de la machine.
     setupFiles: ['./src/test/setup.ts'],
+    // Sans isolation : un fichier de test ne repaie pas le démarrage d'un module ; setup.ts rend l'état propre au suivant.
+    isolate: false,
+    // Pool `forks` gardé (29/10, machine chargée, 3 passes chacun) : forks 5,3 à 10,7 s, threads 8,7 à 12,3 s, et threads
+    // a fait expirer deux fois le test le plus lourd (kinematics, 5 Hz).
+    pool: 'forks',
   },
   build: {
     // Une seule feuille de style, dans l'ordre d'aujourd'hui : aucune page chargée à la demande ne peut en manquer

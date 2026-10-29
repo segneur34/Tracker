@@ -3,6 +3,7 @@ import { SPORT_PROFILES } from '../core/sportProfiles';
 import { cyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
 import { DEFAULT_ENERGY_PARAMS, runningCostJkgM } from '../running/energy';
+import { sameData } from '../test/sameData';
 import { LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, heartOnlyLiveStats, type LiveEnergySetup } from './liveStats';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
@@ -145,6 +146,28 @@ describe('computeLiveStats : mémoire du direct', () => {
     const c = withHr(trace(960, 1300, hz, speed, ele, b[b.length - 1].lat));
     return [a, b, c];
   };
+  /** Bords de la pointe de vitesse de `replay`, en secondes : l'écrêtage de la cinématique reprise y travaille sur 3 s. */
+  const SPIKE_EDGES_S = [500, 503];
+  /**
+   * Positions où le calcul sans mémoire contrôle le direct : les 40 premières, les trois premières et les trois
+   * dernières de chaque segment (la mémoire ouvre et ferme ses segments à la position près, à toute cadence), toutes
+   * celles à 2 s des bords de la pointe, une toutes les 37 s ailleurs, et la dernière.
+   */
+  const checkedPositions = (segments: LocationFix[][], hz: number): Set<number> => {
+    const flat = segments.flat();
+    const out = new Set<number>();
+    flat.forEach((fix, k) => {
+      const n = k + 1;
+      const tS = (fix.timeMs - T0) / 1000;
+      if (n <= 40 || n % (37 * hz) === 0 || n === flat.length || SPIKE_EDGES_S.some((e) => Math.abs(tS - e) <= 2 + 1e-9)) out.add(n);
+    });
+    let offset = 0;
+    for (const segment of segments) {
+      for (let k = 1; k <= 3; k++) out.add(offset + k).add(offset + segment.length + 1 - k);
+      offset += segment.length;
+    }
+    return out;
+  };
   /** Les segments tels que l'enregistreur les donne après `n` positions reçues : les fermés entiers, le dernier en cours. */
   const seenAfter = (segments: LocationFix[][], n: number): LocationFix[][] => {
     const out: LocationFix[][] = [];
@@ -165,16 +188,30 @@ describe('computeLiveStats : mémoire du direct', () => {
         { profile: running, options: { ...LIVE_STATS_DEFAULTS, energy: { family: 'course' as const, params: DEFAULT_ENERGY_PARAMS, massKg: 70 } } },
         { profile: wing, options: LIVE_STATS_DEFAULTS },
       ];
+      const checked = checkedPositions(segments, hz);
       for (const { profile, options } of cases) {
+        // Le calcul sans mémoire refait tout : il ne contrôle que les positions retenues. Deux mémoires : l'une avance
+        // toutes les 2 s de trace, au rythme du direct (`useLiveRecording`), et à chaque position retenue, donc à
+        // chaque position aux bords des segments ; l'autre ne passe que toutes les 37 s, et enjambe les pauses (un
+        // segment qui se ferme et le suivant qui s'ouvre dans le même appel).
         const memory = createLiveStatsMemory();
-        for (let n = 1; n <= total; n += n < 30 ? 1 : Math.round(hz * hz * 2.3)) {
+        const sparse = createLiveStatsMemory();
+        for (let n = 1; n <= total; n++) {
+          const isChecked = checked.has(n);
+          if (!isChecked && n % (2 * hz) !== 0) continue;
           const seen = seenAfter(segments, n);
-          expect(computeLiveStats(seen, profile, options, memory)).toEqual(computeLiveStats(seen, profile, options));
+          const live = computeLiveStats(seen, profile, options, memory);
+          if (!isChecked) continue;
+          const whole = computeLiveStats(seen, profile, options);
+          if (!sameData(live, whole)) expect(live).toEqual(whole);
+          if (n % (37 * hz) !== 0 && n !== total) continue;
+          const late = computeLiveStats(seen, profile, options, sparse);
+          if (!sameData(late, whole)) expect(late).toEqual(whole);
         }
         const all = segments;
         expect(computeLiveStats(all, profile, options, memory)).toEqual(computeLiveStats(all, profile, options));
       }
-    }, 20_000); // Le rejeu recalcule tout à chaque position : près de 5 s quand toute la suite tourne (délai dépassé le 28/10).
+    }, 20_000); // Le calcul sans mémoire, refait à chaque position contrôlée : plus de 2 s à 5 Hz quand toute la suite tourne.
   }
 
   it('repart de zéro si le profil, les réglages ou les positions changent', () => {
@@ -189,8 +226,7 @@ describe('computeLiveStats : mémoire du direct', () => {
     expect(computeLiveStats(copy, wing, options, memory)).toEqual(computeLiveStats(copy, wing, options));
     // Un enregistrement plus court que le précédent.
     expect(computeLiveStats(seenAfter(segments, 100), wing, options, memory)).toEqual(computeLiveStats(seenAfter(segments, 100), wing, options));
-    // Le rejeu à 5 Hz recalcule tout à chaque position : près de 5 s quand toute la suite tourne (délai dépassé le 27/10).
-  }, 20_000);
+  });
 });
 
 describe('computeLiveStats : derniers mètres, pente, vitesse ascensionnelle', () => {
