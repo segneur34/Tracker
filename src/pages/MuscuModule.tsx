@@ -1,17 +1,15 @@
-import { errorMessage, toFixedNumber } from '../core/basics';
+import { errorMessage } from '../core/basics';
 import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ReferenceArea, XAxis } from 'recharts';
+import { ReferenceArea } from 'recharts';
 import './analysisMobile.css';
 import ActivitySelect from '../components/ActivitySelect';
-import { HoverReadout, type Readout } from '../components/ChartReadout';
 import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
 import EmptyTabPanel from '../components/EmptyTabPanel';
 import GeneralStats from '../components/GeneralStats';
-import HeartRateChart from '../components/HeartRateChart';
-import HeartRatePanel from '../components/HeartRatePanel';
+import HeartRatePanel, { CardioCurve } from '../components/HeartRatePanel';
 import { HelpText } from '../components/Help';
-import { HEART_RATE_COLOR, zoneLabel } from '../components/heartRateColors';
+import { zoneLabel } from '../components/heartRateColors';
 import { markReferenceLines } from '../components/markReferenceLines';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
 import ResizablePanel from '../components/ResizablePanel';
@@ -19,22 +17,20 @@ import { SessionMarksList } from '../components/SessionMarks';
 import SessionNameEditor from '../components/SessionNameEditor';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
 import SessionSaveBar from '../components/SessionSaveBar';
-import { inChartView } from '../components/chartHover';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import PageHeader from '../components/ui/PageHeader';
 import StatTile from '../components/ui/StatTile';
 import { sessionActivity } from '../core/activities';
 import { MUSCU_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type MuscuTab } from '../core/analysisTabs';
-import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
-import { CHART_MAX_POINTS } from '../core/displayConfig';
 import { parseGpx } from '../core/gpxParser';
 import { analyzeHeartRateSession, heartRatePointsFrom, type HeartRateSessionPoint, type SessionPhase } from '../core/heartRateSession';
 import { shareableStats, type ShareStat } from '../core/shareImage';
 import { hasPositions } from '../core/sportProfiles';
-import { formatClock, formatClockMinutes, formatDuration } from '../core/units';
+import { formatDuration } from '../core/units';
 import { useAdvancedTabs } from '../hooks/useAdvancedTabs';
-import { setHoveredIndex, useResetChartHover } from '../hooks/useChartHover';
-import { useChartZoom } from '../hooks/useChartZoom';
+import { useResetChartHover } from '../hooks/useChartHover';
+import { zoomHint } from '../components/zoomHint';
+import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -46,6 +42,7 @@ import { useSessionMarks } from '../hooks/useSessionMarks';
 import { effectiveTabChoices, readStoredActivities, useSportSettings } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
 import type { IntervalSeries } from '../recording/intervalTimer';
+import { SPEED_COLOR } from '../components/chartStyle';
 
 /**
  * Analyse d'une session sans trace (muscu, lot I du 25/10) : la page
@@ -68,7 +65,7 @@ const NO_POINTS: HeartRateSessionPoint[] = [];
 /** Phases du compteur sur la courbe : couleurs de données, en dur, et leur nom dans la clé. */
 const PHASE_STYLE: Record<SessionPhase['kind'], { color: string; opacity: number; label: string }> = {
   travail: { color: '#ef6c00', opacity: 0.18, label: 'travail' },
-  repos: { color: '#1e88e5', opacity: 0.12, label: 'récupération' },
+  repos: { color: SPEED_COLOR, opacity: 0.12, label: 'récupération' },
   libre: { color: '#757575', opacity: 0.1, label: 'bloc libre' },
 };
 
@@ -140,28 +137,8 @@ function MuscuModule() {
 
   // Courbe de FC, en minutes depuis le départ.
   const t0 = points[0]?.timeMs ?? 0;
-  const minutes = useMemo(() => points.map((p) => (p.timeMs - t0) / 60_000), [points, t0]);
-  const fullRange = useMemo(() => (minutes.length > 1 ? { min: 0, max: minutes[minutes.length - 1] } : null), [minutes]);
-  const zoom = useChartZoom(fullRange, sessionKey);
-  const cardioZoom = useChartZoom(fullRange, sessionKey);
+  const { minutes, zoom, cardioZoom } = useTimeChartAxis(points, sessionKey);
   const smoothed = analysis?.smoothed;
-  const rows = useMemo(() => {
-    if (!smoothed || minutes.length < 2) return [];
-    const [first, last] = visibleIndexRange(minutes, zoom.view);
-    return sampledIndices(first, last, CHART_MAX_POINTS, smoothed).map((i) => ({
-      index: i,
-      minutes: toFixedNumber(minutes[i], 3),
-      hr: smoothed[i] === null ? null : Math.round(smoothed[i]!),
-    }));
-  }, [minutes, zoom.view, smoothed]);
-  const read = (hoveredIndex: number): Readout | null => {
-    if (!smoothed || minutes[hoveredIndex] === undefined || !inChartView(zoom.view, minutes[hoveredIndex])) return null;
-    const bpm = smoothed[hoveredIndex];
-    return {
-      values: [{ text: bpm === null || bpm === undefined ? '—' : `${Math.round(bpm)} bpm`, color: HEART_RATE_COLOR }],
-      at: formatClock(minutes[hoveredIndex] * 60_000),
-    };
-  };
   const phaseKinds = useMemo(() => [...new Set(analysis?.phases.map((p) => p.kind) ?? [])], [analysis]);
 
   /** Chiffres de « général », repris par l'image de partage (mêmes clés que `summaryShareStats`). */
@@ -217,7 +194,7 @@ function MuscuModule() {
                 <HelpText helpKey="muscu:general" note>
                   FC lissée sur {profile.heartRate.smoothS} s ; un trou de plus de {profile.heartRate.gapS} s (ceinture retirée, pause) n'est ni compté ni tracé.
                   {' '}Bandes de couleur : les phases du compteur. Traits numérotés : les notes posées pendant la séance.
-                  {narrow ? ' Écartez deux doigts ou touchez deux fois la courbe pour zoomer.' : " Tirez une zone sur la courbe pour zoomer, double-clic pour zoomer autour d'un point."}
+                  {narrow ? ` ${zoomHint(true, 'la courbe')}` : " Tirez une zone sur la courbe pour zoomer, double-clic pour zoomer autour d'un point."}
                 </HelpText>
                 <GeneralStats stats={generalStats} />
                 {zones && analysis.zoneTimes && (
@@ -227,23 +204,16 @@ function MuscuModule() {
                     ) : null))}
                   </div>
                 )}
-                {rows.length > 1 && (
+                {smoothed && minutes.length > 1 && (
                   <div style={{ marginTop: '10px' }}>
-                    <HoverReadout read={read} label="FC" color={HEART_RATE_COLOR} line />
-                    <HeartRateChart data={rows} zoom={zoom} zones={zones?.bounds ?? null} thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null}
-                      onHoverIndex={setHoveredIndex} onLeave={() => setHoveredIndex(null)} style={{ width: '100%', height: '220px' }}
-                      xAxis={(
-                        <XAxis dataKey="minutes" type="number" allowDataOverflow
-                          domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
-                          ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-                          tickFormatter={(v: number) => formatClockMinutes(v)} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
-                      )}>
+                    <CardioCurve minutes={minutes} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null}
+                      style={{ width: '100%', height: '220px' }}>
                       {analysis.phases.map((phase) => (
                         <ReferenceArea key={`${phase.kind}-${phase.startMs}`} yAxisId="hr" x1={(phase.startMs - t0) / 60_000} x2={(phase.endMs - t0) / 60_000}
                           fill={PHASE_STYLE[phase.kind].color} fillOpacity={PHASE_STYLE[phase.kind].opacity} stroke="none" ifOverflow="hidden" />
                       ))}
                       {markReferenceLines(marks.located, (m) => (m.mark.timeMs - t0) / 60_000, shownMark, 'hr')}
-                    </HeartRateChart>
+                    </CardioCurve>
                     {phaseKinds.length > 0 && (
                       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '4px', fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
                         {phaseKinds.map((kind) => (
@@ -270,9 +240,9 @@ function MuscuModule() {
 
             {open.cardio && (heart.present ? (
               <ResizablePanel id={panelId('cardio')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
-                <HeartRatePanel track={points} heart={heart} params={profile.heartRate} zones={zones} profileHrMax={runner.hrMax} runner={runner}
+                <HeartRatePanel track={points} minutes={minutes} heart={heart} params={profile.heartRate} zones={zones} profileHrMax={runner.hrMax} runner={runner}
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: points[0]?.timeMs ?? null })}
-                  selectedZone={null} onSelectZone={() => undefined} onHoverIndex={setHoveredIndex} onLeave={() => setHoveredIndex(null)}
+                  selectedZone={null} onSelectZone={() => undefined} 
                   zoom={cardioZoom} mapless open={open.cardio} onToggle={() => toggle('cardio')} />
               </ResizablePanel>
             ) : (

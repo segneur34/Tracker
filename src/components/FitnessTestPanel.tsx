@@ -2,7 +2,8 @@ import { toFixedNumber } from '../core/basics';
 import { useMemo, type ReactElement } from 'react';
 import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { HoverReadout, type Readout } from './ChartReadout';
-import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, inChartView, type ChartHoverEvent } from './chartHover';
+import { NO_TOOLTIP_CONTENT, clearTrackHover, inChartView, trackHover } from './chartHover';
+import { phaseAreas } from './fitnessTestChartParts';
 import { HEART_RATE_COLOR } from './heartRateColors';
 import { HelpText } from './Help';
 import PanelTitle from './PanelTitle';
@@ -19,12 +20,9 @@ import type { ChartZoom } from '../hooks/useChartZoom';
 import { FITNESS_TESTS, TEST_SIGNAL_LABEL, type SessionTest, type TestEndReason, type TestSignal } from '../recording/fitnessTest';
 import { fitnessTestResults } from '../running/fitnessTestResults';
 import StatTile from './ui/StatTile';
+import { CHART_GRID_PROPS, CHART_MARK_COLOR, CHART_TICK, SPEED_COLOR, chartTick, yAxisLabel } from './chartStyle';
 
-/** Bleu des courbes de vitesse des analyses à pied. */
-const SPEED_COLOR = '#1e88e5';
 const TARGET_COLOR = '#0d47a1';
-const PHASE_FILL = '#90a4ae';
-const MARK_COLOR = 'var(--chart-mark)';
 const CURVE_HEIGHT_PX = 150;
 
 /** Signaux tracés sur la courbe : ceux des phases ; les corrections, trop nombreuses, restent dans le direct. */
@@ -64,7 +62,7 @@ const targetAt = (test: SessionTest, t: number, rampEndMs: number): number | nul
  * du protocole ; zoom commun, survol relié à la carte (`hoveredTrackIndex`).
  * Partagées par l'onglet « test » et la carte en plein écran.
  */
-export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, speedUnit, zoom, onHoverIndex, onLeave, onShowOnMap }: {
+export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, speedUnit, zoom, onShowOnMap }: {
   track: readonly TrackPoint[];
   test: SessionTest;
   /** Minutes de chaque point depuis le début de la trace : l'axe et son zoom. */
@@ -74,8 +72,6 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
   hrSmoothed: readonly (number | null)[];
   speedUnit: SpeedUnit;
   zoom: ChartZoom;
-  onHoverIndex: (index: number) => void;
-  onLeave: () => void;
   onShowOnMap?: () => void;
 }) {
   // Une allure ferait un axe inversé : km/h, comme le nuage FC / vitesse.
@@ -103,29 +99,23 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
   if (rows.length < 2) return null;
 
   const phases = [
-    { key: 'echauffement', label: 'Échauffement', from: test.startMs, to: test.rampStartMs ?? test.endMs ?? lastMs },
-    ...(test.rampStartMs !== null ? [{ key: 'rampe', label: 'Rampe', from: test.rampStartMs, to: rampEndMs }] : []),
-    ...(test.rampEndMs !== null ? [{ key: 'recuperation', label: 'Récup.', from: test.rampEndMs, to: test.endMs ?? lastMs }] : []),
+    { key: 'echauffement' as const, from: test.startMs, to: test.rampStartMs ?? test.endMs ?? lastMs },
+    ...(test.rampStartMs !== null ? [{ key: 'rampe' as const, from: test.rampStartMs, to: rampEndMs }] : []),
+    ...(test.rampEndMs !== null ? [{ key: 'recuperation' as const, from: test.rampEndMs, to: test.endMs ?? lastMs }] : []),
   ];
   const signals = test.signals.filter((s) => DRAWN_SIGNALS.includes(s.s));
-  // Des listes d'éléments, pas des composants : Recharts ne voit pas un ReferenceArea rangé dans un composant à lui.
-  const phaseAreas = (labelled: boolean) => phases.map((p, i) => (
-    <ReferenceArea key={p.key} x1={toMin(p.from)} x2={toMin(p.to)} fill={PHASE_FILL} fillOpacity={i % 2 === 0 ? 0.12 : 0.04} ifOverflow="hidden"
-      label={labelled ? { value: p.label, position: 'insideTop', fill: 'var(--chart-axis)', fontSize: 11 } : undefined} />
-  ));
+  // Des listes d'éléments, pas des composants : Recharts ne voit pas un ReferenceLine rangé dans un composant à lui.
+  const areas = phases.map((p) => ({ phase: p.key, x1: toMin(p.from), x2: toMin(p.to) }));
   const signalLines = signals.map((s) => (
-    <ReferenceLine key={`${s.s}-${s.t}`} x={toMin(s.t)} stroke={MARK_COLOR} strokeOpacity={0.5} strokeDasharray="3 3" ifOverflow="hidden" />
+    <ReferenceLine key={`${s.s}-${s.t}`} x={toMin(s.t)} stroke={CHART_MARK_COLOR} strokeOpacity={0.5} strokeDasharray="3 3" ifOverflow="hidden" />
   ));
   const xAxis = (hide: boolean): ReactElement => (
     <XAxis dataKey="minutes" type="number" allowDataOverflow hide={hide}
       domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
       ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-      tickFormatter={formatClockMinutes} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
+      tickFormatter={formatClockMinutes} tick={CHART_TICK} />
   );
-  const onHover = (e: ChartHoverEvent) => {
-    const index = hoveredTrackIndex(e, rows);
-    if (index !== null) onHoverIndex(index);
-  };
+  const onHover = trackHover(rows);
 
   /** Lecture au point survolé (`HoverReadout`), s'il est dans la plage zoomée. */
   const read = (hovered: number): Readout | null => (minutes[hovered] === undefined || !inChartView(zoom.view, minutes[hovered]) ? null : {
@@ -143,15 +133,15 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
   return (
     <>
       <HoverReadout read={read} label="Test" line />
-      <ZoomableChart zoom={zoom} onLeave={onLeave} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${CURVE_HEIGHT_PX}px` }}>
+      <ZoomableChart zoom={zoom} onLeave={clearTrackHover} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${CURVE_HEIGHT_PX}px` }}>
         <ResponsiveContainer>
           <ComposedChart data={rows} syncId="test" onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 18, right: 10, left: 0, bottom: 0 }}>
             <ChartZoomProbe />
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-            {phaseAreas(true)}
+            <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
+            {phaseAreas(areas, true)}
             {xAxis(true)}
-            <YAxis domain={['dataMin - 1', 'dataMax + 1']} allowDecimals={false} width={46} tick={{ fill: SPEED_COLOR, fontSize: 11 }}
-              label={{ value: SPEED_UNIT_LABEL[unit], angle: -90, position: 'insideLeft', fill: SPEED_COLOR, fontSize: 11 }} />
+            <YAxis domain={['dataMin - 1', 'dataMax + 1']} allowDecimals={false} width={46} tick={chartTick(SPEED_COLOR)}
+              label={yAxisLabel(SPEED_UNIT_LABEL[unit], SPEED_COLOR)} />
             {signalLines}
             <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
             <Line type="monotone" dataKey="speed" stroke={SPEED_COLOR} strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
@@ -160,15 +150,15 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
           </ComposedChart>
         </ResponsiveContainer>
       </ZoomableChart>
-      <ZoomableChart zoom={zoom} onLeave={onLeave} showReset={false} style={{ width: '100%', height: `${CURVE_HEIGHT_PX}px` }}>
+      <ZoomableChart zoom={zoom} onLeave={clearTrackHover} showReset={false} style={{ width: '100%', height: `${CURVE_HEIGHT_PX}px` }}>
         <ResponsiveContainer>
           <ComposedChart data={rows} syncId="test" onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 4, right: 10, left: 0, bottom: 0 }}>
             <ChartZoomProbe />
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-            {phaseAreas(false)}
+            <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
+            {phaseAreas(areas, false)}
             {xAxis(false)}
-            <YAxis domain={['dataMin - 5', 'dataMax + 5']} allowDecimals={false} width={46} tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }}
-              label={{ value: 'bpm', angle: -90, position: 'insideLeft', fill: HEART_RATE_COLOR, fontSize: 11 }} />
+            <YAxis domain={['dataMin - 5', 'dataMax + 5']} allowDecimals={false} width={46} tick={chartTick(HEART_RATE_COLOR)}
+              label={yAxisLabel('bpm', HEART_RATE_COLOR)} />
             <ReferenceArea x1={toMin(test.startMs)} x2={toMin(test.rampStartMs ?? test.endMs ?? lastMs)} y1={test.settings.lowBpm} y2={test.settings.highBpm}
               fill={HEART_RATE_COLOR} fillOpacity={0.15} stroke="none" ifOverflow="hidden" />
             {signalLines}
@@ -189,7 +179,7 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
  * courbes annotées. Posé dans le `ResizablePanel` du module.
  */
 export default function FitnessTestPanel({
-  track, test, minutes, speedsMs, hrSmoothed, speedUnit, profileHrMax, onRetainHrMax, zoom, onHoverIndex, onLeave, onShowOnMap,
+  track, test, minutes, speedsMs, hrSmoothed, speedUnit, profileHrMax, onRetainHrMax, zoom, onShowOnMap,
   open, onToggle,
 }: {
   track: TrackPoint[];
@@ -202,8 +192,6 @@ export default function FitnessTestPanel({
   profileHrMax: number | null;
   onRetainHrMax: (bpm: number) => void;
   zoom: ChartZoom;
-  onHoverIndex: (index: number) => void;
-  onLeave: () => void;
   onShowOnMap?: () => void;
   open: boolean;
   onToggle: () => void;
@@ -252,7 +240,7 @@ export default function FitnessTestPanel({
 
       <div style={{ marginTop: '6px' }}>
         <FitnessTestCurves track={track} test={test} minutes={minutes} speedsMs={speedsMs} hrSmoothed={hrSmoothed} speedUnit={speedUnit} zoom={zoom}
-          onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap} />
+          onShowOnMap={onShowOnMap} />
       </div>
 
       <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' }}>

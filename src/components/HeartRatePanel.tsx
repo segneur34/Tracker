@@ -1,5 +1,5 @@
 import { toFixedNumber } from '../core/basics';
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
 import CardioLoadHelp from './CardioLoadHelp';
@@ -12,19 +12,22 @@ import PanelTitle from './PanelTitle';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS, zoneLabel } from './heartRateColors';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 import Button from './ui/Button';
-import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
+import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import {
   edwardsLoad, efficiencyBlocks, heartRateDrift, timeInZones, type HeartRatePoint, type HeartRateZones,
 } from '../core/heartRate';
 import type { HeartRateProfile } from '../core/sportProfiles';
-import { SPEED_UNIT_LABEL, formatClock, formatClockMinutes, formatShortDuration, toDisplaySpeed, editSpeedUnit, type SpeedUnit } from '../core/units';
+import { SPEED_UNIT_LABEL, formatClock, formatShortDuration, toDisplaySpeed, editSpeedUnit, type SpeedUnit } from '../core/units';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import type { RunnerProfile } from '../hooks/useRunnerProfile';
 import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
 import { zonesOriginText } from './heartRateOrigin';
 import StatTile from './ui/StatTile';
 import MapToggle from './ui/MapToggle';
+import { CHART_GRID_PROPS, CHART_TICK, SPEED_COLOR, chartTick, yAxisLabel } from './chartStyle';
+import { elapsedMinutesAxis } from './chartAxes';
+import { heartRateReadout } from './chartReadouts';
 
 /** Vitesse et activité de la trace, pour la dérive et le nuage FC / vitesse (course et vélo). */
 export interface HeartRateEfficiency {
@@ -35,6 +38,8 @@ export interface HeartRateEfficiency {
 
 interface Props {
   track: readonly HeartRatePoint[];
+  /** Temps de chaque point de la trace, en minutes depuis le premier (`useTimeChartAxis`). */
+  minutes: readonly number[];
   heart: SessionHeartRate;
   params: HeartRateProfile;
   /** Zones du pratiquant, `null` sans FC max ni âge. */
@@ -48,8 +53,6 @@ interface Props {
   /** Zone montrée sur la carte (1 à 5, 0 sous Z1), ou `null`. */
   selectedZone: number | null;
   onSelectZone: (zone: number | null) => void;
-  onHoverIndex: (index: number) => void;
-  onLeave: () => void;
   /** Course et vélo seulement. */
   efficiency?: HeartRateEfficiency;
   /** Zoom de la courbe, tenu par le module (« +carte », plein écran carte + graphes) ; « tout voir » à chaque session. */
@@ -68,22 +71,21 @@ const scatterTooltipStyle = { fontSize: 'var(--text-xs)' } as const;
 
 /**
  * Courbe de FC de l'onglet « cardio », sur le temps écoulé, avec sa lecture
- * au-dessus : dans le panneau, et sous la carte en plein écran.
+ * au-dessus : dans le panneau, et sous la carte en plein écran. `minutes` est
+ * le temps de chaque point de la trace (`useTimeChartAxis`) ; `children` ajoute
+ * des éléments au graphe (bandes des phases, traits des repères).
  */
-export function CardioCurve({ track, smoothed, zoom, zones, thresholds, onHoverIndex, onLeave, onShowOnMap, style }: {
-  track: readonly HeartRatePoint[];
+export function CardioCurve({ minutes, smoothed, zoom, zones, thresholds, onShowOnMap, style, children }: {
+  minutes: readonly number[];
   smoothed: readonly (number | null)[];
   zoom: ChartZoom;
   /** Bornes basses des zones 1 à 5, ou `null` sans zones. */
   zones: readonly number[] | null;
   thresholds?: { s1: number; s2: number } | null;
-  onHoverIndex: (index: number) => void;
-  onLeave: () => void;
   onShowOnMap?: () => void;
   style?: CSSProperties;
+  children?: ReactNode;
 }) {
-  const t0 = track[0]?.timeMs ?? 0;
-  const minutes = useMemo(() => track.map((p) => (p.timeMs - t0) / 60_000), [track, t0]);
   const rows = useMemo(() => {
     if (minutes.length < 2) return [];
     const [first, last] = visibleIndexRange(minutes, zoom.view);
@@ -97,21 +99,35 @@ export function CardioCurve({ track, smoothed, zoom, zones, thresholds, onHoverI
   /** Lecture au point survolé (`HoverReadout`), s'il est dans la plage zoomée. */
   const read = (hoveredIndex: number): Readout | null => {
     if (minutes[hoveredIndex] === undefined || !inChartView(zoom.view, minutes[hoveredIndex])) return null;
-    const bpm = smoothed[hoveredIndex];
-    return { values: [{ text: bpm === null || bpm === undefined ? '—' : `${Math.round(bpm)} bpm`, color: HEART_RATE_COLOR }], at: minutesLabel(minutes[hoveredIndex]) };
+    return heartRateReadout(smoothed[hoveredIndex], minutesLabel(minutes[hoveredIndex]));
   };
   return (
     <>
       <HoverReadout read={read} label="FC" color={HEART_RATE_COLOR} line />
-      <HeartRateChart data={rows} zoom={zoom} zones={zones} thresholds={thresholds} onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap}
-        style={style}
-        xAxis={(
-          <XAxis dataKey="minutes" type="number" allowDataOverflow
-            domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
-            ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-            tickFormatter={(v: number) => formatClockMinutes(v)} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
-        )} />
+      <HeartRateChart data={rows} zoom={zoom} zones={zones} thresholds={thresholds} onShowOnMap={onShowOnMap}
+        style={style} xAxis={elapsedMinutesAxis(zoom)}>
+        {children}
+      </HeartRateChart>
     </>
+  );
+}
+
+/**
+ * Courbe de FC qui accompagne les graphes de la voile, du surf et de la
+ * course : rien sans FC, zones et seuils du pratiquant s'il en a.
+ */
+export function CardioCompanion({ minutes, heart, zoom, zones, onShowOnMap, style }: {
+  minutes: readonly number[];
+  heart: SessionHeartRate;
+  zoom: ChartZoom;
+  zones: HeartRateZones | null;
+  onShowOnMap?: () => void;
+  style?: CSSProperties;
+}) {
+  if (!heart.present) return null;
+  return (
+    <CardioCurve minutes={minutes} smoothed={heart.smoothed} zoom={zoom} zones={zones?.bounds ?? null}
+      thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null} onShowOnMap={onShowOnMap} style={style} />
   );
 }
 
@@ -122,7 +138,7 @@ export function CardioCurve({ track, smoothed, zoom, zones, thresholds, onHoverI
  * Posé dans le `ResizablePanel` du module.
  */
 export default function HeartRatePanel({
-  track, heart, params, zones, profileHrMax, runner, onRetainHrMax, selectedZone, onSelectZone, onHoverIndex, onLeave, efficiency,
+  track, minutes, heart, params, zones, profileHrMax, runner, onRetainHrMax, selectedZone, onSelectZone, efficiency,
   zoom, onShowOnMap, mapless = false, open, onToggle,
 }: Props) {
   const { smoothed, stats } = heart;
@@ -185,8 +201,8 @@ export default function HeartRatePanel({
       )}
 
       <div style={{ marginTop: '6px' }}>
-        <CardioCurve track={track} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null}
-          onHoverIndex={onHoverIndex} onLeave={onLeave} onShowOnMap={onShowOnMap} style={{ width: '100%', height: '200px' }} />
+        <CardioCurve minutes={minutes} smoothed={smoothed} zoom={zoom} zones={zones?.bounds ?? null} thresholds={zones ? { s1: zones.s1, s2: zones.s2 } : null}
+          onShowOnMap={onShowOnMap} style={{ width: '100%', height: '200px' }} />
       </div>
 
       {zones && zoneTimes ? (
@@ -258,20 +274,20 @@ export default function HeartRatePanel({
             <div style={{ width: '100%', height: '200px' }}>
               <ResponsiveContainer>
                 <ScatterChart margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                  <XAxis dataKey="speed" type="number" name="Vitesse" domain={['auto', 'auto']} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
+                  <CartesianGrid {...CHART_GRID_PROPS} />
+                  <XAxis dataKey="speed" type="number" name="Vitesse" domain={['auto', 'auto']} tick={CHART_TICK}
                     label={{ value: SPEED_UNIT_LABEL[scatterUnit], position: 'insideBottomRight', offset: -2, fill: 'var(--chart-axis)', fontSize: 11 }} />
-                  <YAxis dataKey="bpm" type="number" name="FC" domain={['auto', 'auto']} width={46} tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }}
-                    label={{ value: 'bpm', angle: -90, position: 'insideLeft', fill: HEART_RATE_COLOR, fontSize: 11 }} />
+                  <YAxis dataKey="bpm" type="number" name="FC" domain={['auto', 'auto']} width={46} tick={chartTick(HEART_RATE_COLOR)}
+                    label={yAxisLabel('bpm', HEART_RATE_COLOR)} />
                   <Tooltip contentStyle={scatterTooltipStyle} formatter={(value, name) => [name === 'FC' ? `${value} bpm` : `${value} ${SPEED_UNIT_LABEL[scatterUnit]}`, name]} />
-                  <Scatter name="Première moitié" data={blocks[0]} fill="#1e88e5" isAnimationActive={false} />
+                  <Scatter name="Première moitié" data={blocks[0]} fill={SPEED_COLOR} isAnimationActive={false} />
                   <Scatter name="Seconde moitié" data={blocks[1]} fill="#fb8c00" isAnimationActive={false} />
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
           )}
           <div style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '4px' }}>
-            Un point par bloc de {params.scatterBlockS} s en mouvement : <span style={{ color: '#1e88e5' }}>première moitié</span>, <span style={{ color: '#fb8c00' }}>seconde moitié</span>.
+            Un point par bloc de {params.scatterBlockS} s en mouvement : <span style={{ color: SPEED_COLOR }}>première moitié</span>, <span style={{ color: '#fb8c00' }}>seconde moitié</span>.
           </div>
         </div>
       )}

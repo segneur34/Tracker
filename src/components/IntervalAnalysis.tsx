@@ -26,6 +26,8 @@ import { CARD_STYLE, HALF_PANEL_STYLE } from './styles';
 import './IntervalAnalysis.css';
 import StatTile from './ui/StatTile';
 import MapToggle from './ui/MapToggle';
+import { CHART_GRID_PROPS, CHART_TICK, SPEED_COLOR, TREND_COLOR, chartTick, yAxisLabel } from './chartStyle';
+import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 
 /**
  * Onglet « fractionné » des analyses de course, de vélo et de fractionné
@@ -74,11 +76,6 @@ interface IntervalAnalysisProps {
   recoveryS?: number;
 }
 
-/** Répétition montrée sur la carte : le violet des tops et des zones de pente. */
-const SHOWN_COLOR = '#7b1fa2';
-/** Vitesse : le bleu des autres graphes. */
-const SPEED_COLOR = '#1e88e5';
-const TREND_COLOR = '#757575';
 const MEAN_COLOR = 'var(--ink)';
 /**
  * Répétitions d'une séance, de la première à la dernière : vert, orange puis
@@ -166,10 +163,10 @@ function IntervalProfileChart({ data, spanS, launchS, reps, speedAxis, formatMs,
         <ResponsiveContainer>
           <ComposedChart data={data} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
             <ChartZoomProbe />
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+            <CartesianGrid {...CHART_GRID_PROPS} />
             <XAxis dataKey="t" type="number" allowDataOverflow domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : [0, spanS]}
               ticks={zoom.view ? niceTicks(zoom.view) : undefined}
-              tickFormatter={(v: number) => formatIntervalClock(v)} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
+              tickFormatter={(v: number) => formatIntervalClock(v)} tick={CHART_TICK} />
             {speedAxis}
             <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
             {reps.map((r, i) => (
@@ -416,7 +413,7 @@ function IntervalAnalysis({
                           {rest ? `${formatIntervalClock(Math.round(rest.durationS))}${rest.distanceM !== null ? ` · ${formatShortDistance(rest.distanceM, distanceUnit)}` : ''}` : '—'}
                         </td>
                         <td className="an-ivl-map" style={cellStyle}>
-                          <MapToggle shown={shown} disabled={!reached} color={SHOWN_COLOR} onClick={() => onSelectLap(shown ? null : key)} />
+                          <MapToggle shown={shown} disabled={!reached} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => onSelectLap(shown ? null : key)} />
                         </td>
                       </tr>
                     );
@@ -434,8 +431,8 @@ function IntervalAnalysis({
   const speedAxis = (domain?: [number, number]) => (
     <YAxis domain={domain ?? ['auto', 'auto']} allowDataOverflow={domain !== undefined} reversed={inverse} width={46}
       ticks={domain ? niceTicks({ min: domain[0], max: domain[1] }) : undefined}
-      tickFormatter={(v: number) => formatSpeedValue(v, speedUnit)} tick={{ fill: SPEED_COLOR, fontSize: 11 }}
-      label={{ value: speedUnitLabel(speedUnit, distanceUnit), angle: -90, position: 'insideLeft', fill: SPEED_COLOR, fontSize: 11 }} />
+      tickFormatter={(v: number) => formatSpeedValue(v, speedUnit)} tick={chartTick(SPEED_COLOR)}
+      label={yAxisLabel(speedUnitLabel(speedUnit, distanceUnit), SPEED_COLOR)} />
   );
   const speedFormatter = (value: TooltipValueType | undefined, name: string | number | undefined, item: TooltipPayloadEntry): [ReactNode, string | number | undefined] => {
     // Recharts ne type pas la ligne de données : la vitesse en m/s y est rangée sous `<clé>Ms`.
@@ -483,10 +480,10 @@ function IntervalAnalysis({
               <div style={{ width: '100%', height: `${EVOLUTION_HEIGHT_PX}px` }}>
                 <ResponsiveContainer>
                   <ComposedChart data={data} onClick={pick} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} style={{ cursor: 'pointer' }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                    <CartesianGrid {...CHART_GRID_PROPS} />
                     <XAxis dataKey="rep" type="number" domain={[first - 0.5, last + 0.5]}
                       ticks={repTicks(first, last)}
-                      tickFormatter={(v: number) => `${v}`} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
+                      tickFormatter={(v: number) => `${v}`} tick={CHART_TICK} />
                     {speedAxis()}
                     <Tooltip formatter={speedFormatter} labelFormatter={(l) => `Répétition ${l}`} contentStyle={chartTooltipStyle} />
                     <Line type="linear" name="Moyenne" dataKey="mean" stroke={TREND_COLOR} strokeWidth={1} dot={false} activeDot={false} isAnimationActive={false} />
@@ -496,7 +493,7 @@ function IntervalAnalysis({
                         <circle key={index} cx={cx} cy={cy} r={4} fill={data[index]?.color ?? SPEED_COLOR} stroke="var(--surface)" strokeWidth={1} />
                       )}
                       activeDot={{ r: 6 }} />
-                    <Line type="linear" name="Sur la carte" dataKey="shown" stroke="none" dot={{ r: 7, fill: SHOWN_COLOR, stroke: 'var(--surface)', strokeWidth: 2 }} activeDot={false} tooltipType="none" isAnimationActive={false} />
+                    <Line type="linear" name="Sur la carte" dataKey="shown" stroke="none" dot={{ r: 7, fill: HIGHLIGHT_SHOWN_COLOR, stroke: 'var(--surface)', strokeWidth: 2 }} activeDot={false} tooltipType="none" isAnimationActive={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

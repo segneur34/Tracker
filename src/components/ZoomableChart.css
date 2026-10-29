@@ -23,13 +23,13 @@
   outline: none;
 }
 
-/* Zone tirée à la souris (couleur de graphe, donc en dur). */
+/* Zone tirée à la souris : la couleur vient de chartStyle.ts (variable posée par ZoomableChart). */
 .zoom-chart__selection {
   position: absolute;
   pointer-events: none;
-  background: rgba(30, 136, 229, 0.15);
-  border-left: 1px solid rgba(30, 136, 229, 0.6);
-  border-right: 1px solid rgba(30, 136, 229, 0.6);
+  background: color-mix(in srgb, var(--zoom-selection) 15%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--zoom-selection) 60%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--zoom-selection) 60%, transparent);
 }
 
 /* « Tout voir », en haut à droite du graphe zoomé. */

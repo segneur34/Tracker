@@ -21,8 +21,10 @@ import SurfaceBar from '../components/SurfaceBar';
 import SurfaceHighlight from '../components/SurfaceHighlight';
 import SurfaceLayer from '../components/SurfaceLayer';
 import WayTypeTabs from '../components/WayTypeTabs';
-import HoverMarker from '../components/HoverMarker';
+import { HoveredTrackMarker } from '../components/HoverMarker';
 import { inChartView } from '../components/chartHover';
+import { ALTITUDE_COLOR } from '../components/chartStyle';
+import { useResetChartHover } from '../hooks/useChartHover';
 import { IconChevronRight, IconFile, IconUndo } from '../components/icons';
 import { CARD_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
@@ -385,7 +387,8 @@ function PlanningPage() {
 
   const [map, setMap] = useState<L.Map | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  /** Le point survolé sur le profil vit dans le magasin du survol : la page ne se redessine pas à chaque mouvement. */
+  useResetChartHover(null);
   const helpOpen = useHelp('plan:trace')?.open ?? false;
   const { open, toggle } = useOpenSections<PlanningSection>('planning', PLANNING_SECTION_DEFAULTS);
 
@@ -523,7 +526,6 @@ function PlanningPage() {
   );
   const gradientId = `${useId()}-profil`;
   const hasElevation = totals.gainM !== null && chartRows.some((r) => r.altitude !== null);
-  const hovered = hoveredIndex !== null ? profile[hoveredIndex] : undefined;
   /** Tracé coloré par la pente, sur les lignes du profil (tous les 10 m), tant que le bloc Général est ouvert. */
   const gradePaths = useMemo(
     () => (!markCourse && open.profil && gradeOnMap && !surfaceShown && hasElevation && gradeRange
@@ -532,18 +534,20 @@ function PlanningPage() {
     [markCourse, open.profil, gradeOnMap, surfaceShown, hasElevation, gradeRange, profile]
   );
 
-  /** Altitude et pente lues au-dessus du profil (`ChartReadout`), au point survolé de la plage zoomée. */
-  const profileReadout: Readout | null = hovered && hoveredIndex !== null && inChartView(zoom.view, profileDist[hoveredIndex])
-    ? {
+  /** Altitude et pente lues au-dessus du profil (`HoverReadout`), à la ligne survolée de la plage zoomée. */
+  const readProfile = (i: number): Readout | null => {
+    const row = profile[i];
+    if (!row || !inChartView(zoom.view, profileDist[i])) return null;
+    return {
       values: [{
-        text: hovered.eleM !== null
-          ? `${Math.round(hovered.eleM)} m${hovered.grade !== null && isFinite(hovered.grade) ? `, pente ${Math.round(hovered.grade * 100)} %` : ''}`
+        text: row.eleM !== null
+          ? `${Math.round(row.eleM)} m${row.grade !== null && isFinite(row.grade) ? `, pente ${Math.round(row.grade * 100)} %` : ''}`
           : '—',
-        color: '#e64a19',
+        color: ALTITUDE_COLOR,
       }],
-      at: `${toFixedNumber(profileDist[hoveredIndex], 2)} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`,
-    }
-    : null;
+      at: `${toFixedNumber(profileDist[i], 2)} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`,
+    };
+  };
 
   // --- Carte ---
 
@@ -924,7 +928,7 @@ function PlanningPage() {
                 <CircleMarker center={[candidate.lat, candidate.lon]} radius={9}
                   pathOptions={{ color: '#ffffff', weight: 3, fillColor: ROUTE_COLOR, fillOpacity: 0.6 }} />
               )}
-              {hovered && <HoverMarker position={[hovered.lat, hovered.lon]} />}
+              <HoveredTrackMarker points={profile} />
             </MapContainer>
             <div className="plan-map-tools theme-light">
               <Button size="s" onClick={() => void locate()} disabled={locating}>
@@ -1069,7 +1073,7 @@ function PlanningPage() {
               {hasElevation && gradeRange ? (
                 <div>
                   <ElevationProfileMini rows={chartRows} stops={gradeStops} gradientId={gradientId} distanceSymbol={DISTANCE_UNIT_SYMBOL[distanceUnit]}
-                    zoom={zoom} readout={profileReadout} onHoverIndex={setHoveredIndex} onLeave={() => setHoveredIndex(null)}
+                    zoom={zoom} read={readProfile}
                     height={PROFILE_HEIGHT_PX} grid />
                   <div className="plan-legend">
                     <span>Pente, montée ou descente :</span>

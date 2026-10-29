@@ -3,10 +3,11 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { niceTicks } from '../core/chartZoom';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import type { GradientStop } from '../running/runningAnalytics';
-import ChartReadout, { HoverReadout, type Readout } from './ChartReadout';
+import { HoverReadout, type Readout } from './ChartReadout';
 import { gradeGradientDefs } from './gradeGradientDefs';
-import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, type ChartHoverEvent } from './chartHover';
+import { NO_TOOLTIP_CONTENT, clearTrackHover, trackHover } from './chartHover';
 import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
+import { ALTITUDE_COLOR, CHART_GRID_PROPS, CHART_TICK, chartTick } from './chartStyle';
 
 /** Une ligne du profil : `index` renvoie au point de trace, `dist` dans l'unité de l'activité. */
 export interface ElevationProfileRow {
@@ -18,8 +19,6 @@ export interface ElevationProfileRow {
 
 /** Hauteur du profil par défaut, en px. */
 const PROFILE_HEIGHT_PX = 130;
-/** Altitude : l'orange des autres graphes. */
-const ALTITUDE_COLOR = '#e64a19';
 
 /**
  * Profil d'altitude compact de l'onglet « général », à pied et à vélo (22/10) :
@@ -32,7 +31,7 @@ const ALTITUDE_COLOR = '#e64a19';
  * sans « +carte » (la carte est déjà au-dessus).
  */
 function ElevationProfileMini({
-  rows, stops, gradientId, distanceSymbol, zoom, readout, read, onHoverIndex, onLeave, onShowOnMap, height = PROFILE_HEIGHT_PX, grid = false,
+  rows, stops, gradientId, distanceSymbol, zoom, read, onShowOnMap, height = PROFILE_HEIGHT_PX, grid = false,
 }: {
   rows: ElevationProfileRow[];
   stops: GradientStop[];
@@ -40,12 +39,8 @@ function ElevationProfileMini({
   gradientId: string;
   distanceSymbol: string;
   zoom: ChartZoom;
-  /** Lecture au point survolé, `null` hors de la plage zoomée (page qui tient son survol : Itinéraires). */
-  readout?: Readout | null;
-  /** Lecture d'un indice de trace, lue dans le magasin du survol (`HoverReadout`) : les analyses. */
-  read?: (index: number) => Readout | null;
-  onHoverIndex: (index: number) => void;
-  onLeave: () => void;
+  /** Lecture d'un indice de trace (ou de ligne du profil), lue dans le magasin du survol (`HoverReadout`) ; `null` hors de la plage zoomée. */
+  read: (index: number) => Readout | null;
   /** « +carte » ou « Afficher » ; aucun bouton s'il manque. */
   onShowOnMap?: () => void;
   /** Hauteur du graphe, en px. */
@@ -53,26 +48,21 @@ function ElevationProfileMini({
   /** Grille en pointillés derrière la courbe. */
   grid?: boolean;
 }) {
-  const onHover = (e: ChartHoverEvent) => {
-    const index = hoveredTrackIndex(e, rows);
-    if (index !== null) onHoverIndex(index);
-  };
+  const onHover = trackHover(rows);
   return (
     <div style={{ marginTop: '10px' }}>
-      {read
-        ? <HoverReadout line read={read} label="Altitude" color={ALTITUDE_COLOR} />
-        : <ChartReadout line readout={readout ?? null} label="Altitude" color={ALTITUDE_COLOR} />}
-      <ZoomableChart zoom={zoom} onLeave={onLeave} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${height}px` }}>
+      <HoverReadout line read={read} label="Altitude" color={ALTITUDE_COLOR} />
+      <ZoomableChart zoom={zoom} onLeave={clearTrackHover} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${height}px` }}>
         <ResponsiveContainer>
           <AreaChart data={rows} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 4, right: 6, left: 0, bottom: 0 }}>
             <ChartZoomProbe />
-            {grid && <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />}
+            {grid && <CartesianGrid {...CHART_GRID_PROPS} />}
             {gradeGradientDefs(gradientId, stops)}
             <XAxis dataKey="dist" type="number" allowDataOverflow
               domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
               ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-              tickFormatter={(v: number) => `${toFixedNumber(v, 3)} ${distanceSymbol}`} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
-            <YAxis domain={['auto', 'auto']} width={38} tickFormatter={(v) => `${v}`} tick={{ fill: ALTITUDE_COLOR, fontSize: 11 }} />
+              tickFormatter={(v: number) => `${toFixedNumber(v, 3)} ${distanceSymbol}`} tick={CHART_TICK} />
+            <YAxis domain={['auto', 'auto']} width={38} tickFormatter={(v) => `${v}`} tick={chartTick(ALTITUDE_COLOR)} />
             <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
             <Area type="monotone" dataKey="altitude" stroke={`url(#${gradientId})`} strokeWidth={2} fill={`url(#${gradientId})`} fillOpacity={0.35}
               dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />

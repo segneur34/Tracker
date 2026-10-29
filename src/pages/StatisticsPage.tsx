@@ -47,6 +47,7 @@ import './analysisMobile.css';
 import './StatisticsPage.css';
 import { plural } from '../core/basics';
 import StatTile from '../components/ui/StatTile';
+import { CHART_GRID_PROPS, CHART_TICK, OTHERS_COLOR, chartTick, yAxisLabel } from '../components/chartStyle';
 
 /**
  * Statistiques (lot 5, étape 1) : une vue d'ensemble, puis une famille, puis
@@ -654,18 +655,18 @@ function StatisticsPage() {
                       <ResponsiveContainer>
                         <ComposedChart margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                           <ChartZoomProbe />
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                          <CartesianGrid {...CHART_GRID_PROPS} />
                           <XAxis dataKey="startMs" type="number" allowDataOverflow
                             domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
                             ticks={chartTicks?.ticks}
                             tickFormatter={(v: number) => formatDateTick(v, chartTicks?.unit ?? 'jour')}
-                            tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
+                            tick={CHART_TICK} />
                           <YAxis type="number" reversed={inverse}
                             domain={inverse ? ['auto', 'auto'] : metric.unit === 'pourcent' ? [0, 100] : [0, 'auto']}
                             allowDecimals={metric.unit !== 'nombre'}
                             tickFormatter={axisTick} width={46}
-                            tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
-                            label={{ value: axisLabel, angle: -90, position: 'insideLeft', fill: 'var(--chart-axis)', fontSize: 11 }} />
+                            tick={CHART_TICK}
+                            label={yAxisLabel(axisLabel, 'var(--chart-axis)')} />
                           <Tooltip cursor={false} isAnimationActive={false}
                             content={({ active, payload }) => {
                               const row = active ? (payload?.[0]?.payload as ChartRow | WeekRow | undefined) : undefined;
@@ -688,7 +689,7 @@ function StatisticsPage() {
                             }} />
                           {chartSeries.map((serie) => (
                             <Line key={`ligne-${serie.key}`} data={serie.rows} dataKey="lineY" type={metric.record ? 'stepAfter' : 'linear'}
-                              stroke="#9aa0a6" strokeDasharray={serieStyle(serie.key).dash} strokeWidth={1.5}
+                              stroke={OTHERS_COLOR} strokeDasharray={serieStyle(serie.key).dash} strokeWidth={1.5}
                               dot={false} activeDot={false} isAnimationActive={false} name={metric.record ? 'Record' : 'Tendance'} />
                           ))}
                           {weekRows.length > 0 && (
@@ -746,10 +747,10 @@ function StatisticsPage() {
                     <div style={{ flex: 1, minHeight: 140 }}>
                       <ResponsiveContainer>
                         <BarChart data={barRows} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+                          <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
                           <XAxis dataKey="i" tickFormatter={(i: number) => regular.bars[i]?.label ?? ''} interval="preserveStartEnd" minTickGap={16}
-                            tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
-                          <YAxis allowDecimals={false} width={30} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
+                            tick={CHART_TICK} />
+                          <YAxis allowDecimals={false} width={30} tick={CHART_TICK} />
                           <Tooltip isAnimationActive={false} cursor={{ fill: 'var(--chart-cursor)' }}
                             labelFormatter={(i) => regular.bars[Number(i)]?.title ?? ''}
                             formatter={(value, name) => [value, activityName(String(name))]}
@@ -808,9 +809,9 @@ function StatisticsPage() {
                     <div style={{ height: '160px' }}>
                       <ResponsiveContainer>
                         <BarChart data={loadBars.map((b, i) => ({ i, load: Math.round(b.load) }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-                          <XAxis dataKey="i" tickFormatter={(i: number) => loadBars[i]?.label ?? ''} interval="preserveStartEnd" minTickGap={16} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
-                          <YAxis allowDecimals={false} width={36} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
+                          <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
+                          <XAxis dataKey="i" tickFormatter={(i: number) => loadBars[i]?.label ?? ''} interval="preserveStartEnd" minTickGap={16} tick={CHART_TICK} />
+                          <YAxis allowDecimals={false} width={36} tick={CHART_TICK} />
                           <Tooltip isAnimationActive={false} cursor={{ fill: 'var(--chart-cursor)' }}
                             labelFormatter={(i) => loadBars[Number(i)]?.title ?? ''} formatter={(value) => [value, 'Charge']} contentStyle={{ fontSize: 'var(--text-xs)' }} />
                           <Bar dataKey="load" fill={HEART_RATE_COLOR} isAnimationActive={false} />
@@ -826,10 +827,10 @@ function StatisticsPage() {
                     <div style={{ height: '160px' }}>
                       <ResponsiveContainer>
                         <ComposedChart margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                          <CartesianGrid {...CHART_GRID_PROPS} />
                           <XAxis dataKey="startMs" type="number" domain={[hrTicks.ticks[0] ?? 'dataMin', hrTicks.ticks[hrTicks.ticks.length - 1] ?? 'dataMax']}
-                            ticks={hrTicks.ticks} tickFormatter={(v: number) => formatDateTick(v, hrTicks.unit)} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
-                          <YAxis type="number" domain={['dataMin - 5', 'dataMax + 5']} allowDecimals={false} width={40} tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }} />
+                            ticks={hrTicks.ticks} tickFormatter={(v: number) => formatDateTick(v, hrTicks.unit)} tick={CHART_TICK} />
+                          <YAxis type="number" domain={['dataMin - 5', 'dataMax + 5']} allowDecimals={false} width={40} tick={chartTick(HEART_RATE_COLOR)} />
                           <Tooltip cursor={false} isAnimationActive={false}
                             content={({ active, payload }) => {
                               const row = active ? (payload?.[0]?.payload as (typeof hrPoints)[number] | undefined) : undefined;

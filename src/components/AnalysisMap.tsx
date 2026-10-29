@@ -173,4 +173,7 @@ function AnalysisMap({
   );
 }
 
+/** Ancre du bloc de la carte (`anchorId`), que « +carte » ramène à l'écran. */
+export const ANALYSIS_MAP_ANCHOR = 'map-view';
+
 export default AnalysisMap;

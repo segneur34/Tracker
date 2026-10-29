@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { HoverReadout, type Readout } from './ChartReadout';
 import { IconChevronRight } from './icons';
 
 /**
@@ -30,6 +31,32 @@ function ChartFold({ label, open, onToggle, color, title, style }: {
       {label}
       <IconChevronRight size={14} style={{ transform: `rotate(${open ? -90 : 90}deg)`, transition: 'transform 0.15s', color: 'var(--ink)' }} />
     </button>
+  );
+}
+
+/**
+ * Tête d'un graphe des analyses : son nom repliable (`ChartFold`) et, à
+ * droite, la lecture au point survolé tant que le graphe est montré. Chaque
+ * infobulle (`title`) est donnée par l'appelant, avec ses mots.
+ */
+export function GraphFoldHead({ label, color, open, onToggle, read, title, foldStyle, style }: {
+  label: ReactNode;
+  color?: string;
+  open: boolean;
+  onToggle: () => void;
+  /** Lecture d'un indice de trace, sans nom ni couleur ; aucune lecture s'il manque. */
+  read?: (index: number) => Readout | null;
+  title?: string;
+  /** Style du bouton du nom. */
+  foldStyle?: CSSProperties;
+  /** Style de la rangée. */
+  style?: CSSProperties;
+}) {
+  return (
+    <div className="chart-head" style={style}>
+      <ChartFold label={label} color={color} open={open} onToggle={onToggle} title={title} style={foldStyle} />
+      {read !== undefined && open && <HoverReadout read={read} />}
+    </div>
   );
 }
 

@@ -1,13 +1,13 @@
 import { normalizeDeg } from '../core/angles';
 import { roundTo } from '../core/basics';
 import { useCallback, useEffect, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
-import ChartFold from '../components/ChartFold';
+import { GraphFoldHead } from '../components/ChartFold';
 import { HoverReadout, type Readout } from '../components/ChartReadout';
 import { Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
 import BaseTileLayer from '../components/BaseTileLayer';
 import L from 'leaflet';
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  LineChart, Line, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   type DotItemDotProps,
 } from 'recharts';
 import './analysisMobile.css';
@@ -29,10 +29,10 @@ import { useMapHighlight } from '../hooks/useMapHighlight';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { ARROW_EVERY_S, CHART_MAX_POINTS, arrowIndices, trackBounds } from '../core/displayConfig';
 import { SAILING_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type SailingTab } from '../core/analysisTabs';
-import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
+import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { nearestIndexAtTime } from '../core/search';
 import { setHoveredIndex, useResetChartHover } from '../hooks/useChartHover';
-import { useChartZoom } from '../hooks/useChartZoom';
+import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { FAMILY_ACCENT, sessionActivity } from '../core/activities';
 import { activeRatioLabel, hasPositions } from '../core/sportProfiles';
@@ -55,18 +55,20 @@ import TrackSpanLayer, { type TrackSpanShown } from '../components/TrackSpanLaye
 import StatTile from '../components/ui/StatTile';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import HeartRateChart from '../components/HeartRateChart';
-import HeartRatePanel, { CardioCurve } from '../components/HeartRatePanel';
+import HeartRatePanel, { CardioCompanion } from '../components/HeartRatePanel';
+import { heartRateReadout, speedReadout } from '../components/chartReadouts';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
-import AnalysisMap from '../components/AnalysisMap';
+import AnalysisMap, { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
 import { HoveredTrackMarker } from '../components/HoverMarker';
 import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
+import { zoomHint } from '../components/zoomHint';
 import EmptyTabPanel from '../components/EmptyTabPanel';
 import ResizablePanel from '../components/ResizablePanel';
 import TopsPanel from '../components/TopsPanel';
 import SessionThresholdField from '../components/SessionThresholdField';
 import SessionNotesPanel, { type GearField } from '../components/SessionNotesPanel';
 import CollapsibleSectionTabs from '../components/CollapsibleSectionTabs';
-import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, inChartView, type ChartHoverEvent } from '../components/chartHover';
+import { NO_TOOLTIP_CONTENT, trackHover } from '../components/chartHover';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import { HelpText } from '../components/Help';
 import { useHelp } from '../components/helpContext';
@@ -86,6 +88,7 @@ import SpeedRangeEditor from '../components/SpeedRangeEditor';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
 import MapToggle from '../components/ui/MapToggle';
+import { CHART_GRID_PROPS, SAILING_SPEED_COLOR } from '../components/chartStyle';
 
 /** Champs du matériel en voile : l'aile ou la voile, plus le foil et le mât sur foil. */
 const SAILING_GEAR_FIELDS: GearField[] = [{ field: 'wing', label: 'Aile / voile', placeholder: 'ex. 5 m²' }];
@@ -291,11 +294,9 @@ function SailingModule() {
    */
   const graphFolds = useOpenSections('sailing-graphes', SAILING_GRAPH_FOLDS_DEFAULT);
   const graphTitle = (key: SailingGraphFold, label: string, read?: (index: number) => Readout | null) => (
-    <div className="chart-head" style={{ justifyContent: read === undefined ? 'center' : undefined, marginBottom: '10px' }}>
-      <ChartFold label={label} open={graphFolds.open[key]} onToggle={() => graphFolds.toggle(key)}
-        title={graphFolds.open[key] ? 'Replier ce graphe' : 'Montrer ce graphe'} style={{ fontSize: 'var(--text-s)', fontWeight: 700 }} />
-      {read !== undefined && graphFolds.open[key] && <HoverReadout read={read} />}
-    </div>
+    <GraphFoldHead label={label} open={graphFolds.open[key]} onToggle={() => graphFolds.toggle(key)} read={read}
+      title={graphFolds.open[key] ? 'Replier ce graphe' : 'Montrer ce graphe'} foldStyle={{ fontSize: 'var(--text-s)', fontWeight: 700 }}
+      style={{ justifyContent: read === undefined ? 'center' : undefined, marginBottom: '10px' }} />
   );
   const foldedGraph = (key: SailingGraphFold, label: string, widthPx: number) => (
     <div style={{ flex: 'none', width: `${widthPx}px`, maxWidth: '100%', boxSizing: 'border-box', border: '1px dashed var(--line-strong)', padding: '10px 10px 0', backgroundColor: 'var(--surface)' }}>
@@ -507,20 +508,16 @@ function SailingModule() {
   const mapBounds = useMemo(() => trackBounds(trackData), [trackData]);
 
   /** Survol d'un graphe : le point va au magasin du survol, lu par le repère de la carte et les lectures, pas par le module. */
-  const onChartHover = (data: ReadonlyArray<{ index: number }>) => (e: ChartHoverEvent) => {
-    const index = hoveredTrackIndex(e, data);
-    if (index !== null) setHoveredIndex(index);
-  };
   const clearHover = () => setHoveredIndex(null);
 
   const narrow = useNarrowScreen();
-  /** Temps écoulé de chaque point, en minutes : l'axe des graphes de vitesse et du vent, et de leur zoom. */
-  const trackMinutes = useMemo(
-    () => trackData.map((p) => (p.timeMs - trackData[0].timeMs) / 60000),
-    [trackData]
-  );
-  /** Zoom commun aux graphes de vitesse et du vent, qui partagent leur axe ; « tout voir » à chaque session. */
-  const chartZoom = useChartZoom(trackMinutes.length > 1 ? { min: 0, max: trackMinutes[trackMinutes.length - 1] } : null, sessionKey);
+  /**
+   * Temps écoulé de chaque point, en minutes : l'axe des graphes de vitesse et du vent. `chartZoom` est
+   * commun à ces graphes, qui partagent leur axe ; `cardioZoom` est celui de la courbe de l'onglet « cardio » ;
+   * « tout voir » à chaque session.
+   */
+  const timeChart = useTimeChartAxis(trackData, sessionKey);
+  const { minutes: trackMinutes, zoom: chartZoom, cardioZoom } = timeChart;
   /** Points de trace des graphes sur la plage visible, au plus `CHART_MAX_POINTS` : zoomer montre plus de détail. */
   const speedSeries = useMemo(() => trackData.map((p) => p.smoothedSpeed), [trackData]);
   const chartIndices = useMemo(() => {
@@ -541,17 +538,9 @@ function SailingModule() {
     [windStats, trackData, chartIndices]
   );
   /** Axe du temps, en heure du jour, graduations rondes zoom compris (`niceTicks`). */
-  const timeAxis = (
-    <XAxis dataKey="minutes" type="number" allowDataOverflow
-      domain={chartZoom.shown ? [chartZoom.shown.min, chartZoom.shown.max] : ['dataMin', 'dataMax']}
-      ticks={chartZoom.shown ? niceTicks(chartZoom.shown) : undefined}
-      tickFormatter={(v: number) => (trackData.length > 0 ? formatTimeOfDay(trackData[0].timeMs + v * 60000).slice(0, 5) : '')}
-      tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
-  );
+  const timeAxis = timeChart.timeAxis(chartZoom);
   /** Traits des repères sur les graphes, en minutes depuis le premier point. */
   const markLines = markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark);
-  /** Zoom de la courbe de l'onglet « cardio », sur le même temps : tenu ici pour « +carte ». */
-  const cardioZoom = useChartZoom(trackMinutes.length > 1 ? { min: 0, max: trackMinutes[trackMinutes.length - 1] } : null, sessionKey);
   /** « +carte » des graphes zoomés : tronçon en violet, cadrage, plein écran carte + graphes au téléphone. */
   const zoomOnMap = useZoomOnMap({
     highlight,
@@ -562,45 +551,39 @@ function SailingModule() {
       cardio: { zoom: cardioZoom, axis: trackMinutes },
     },
     narrow,
-    mapAnchorId: 'map-view',
+    mapAnchorId: ANALYSIS_MAP_ANCHOR,
     mapExpanded,
     openMap: () => setMapExpanded(true),
   });
   /** Point survolé lu au-dessus des graphes de vitesse, de FC et du vent (`HoverReadout`), s'il est dans la plage zoomée. */
-  const readable = (i: number): boolean => trackMinutes[i] !== undefined && inChartView(chartZoom.view, trackMinutes[i]);
-  const readAt = (i: number): string => formatTimeOfDay(trackData[i].timeMs);
-  const speedReadout = (i: number): Readout | null => (readable(i)
-    ? { values: [{ text: `${showKn(trackData[i].smoothedSpeed)} ${speedSymbol}`, color: '#1976d2' }], at: readAt(i) }
+  const readable = (i: number): boolean => timeChart.readable(chartZoom, i);
+  const readAt = timeChart.readAt;
+  const readSpeed = (i: number): Readout | null => (readable(i)
+    ? speedReadout(`${showKn(trackData[i].smoothedSpeed)} ${speedSymbol}`, readAt(i), SAILING_SPEED_COLOR)
     : null);
-  const heartReadout = (i: number): Readout | null => {
-    if (!readable(i)) return null;
-    const bpm = heart.smoothed[i];
-    return { values: [{ text: bpm === null || bpm === undefined ? '—' : `${Math.round(bpm)} bpm`, color: HEART_RATE_COLOR }], at: readAt(i) };
-  };
+  const readHeart = (i: number): Readout | null => (readable(i) ? heartRateReadout(heart.smoothed[i], readAt(i)) : null);
   const windReadout = (i: number): Readout | null => {
     if (!readable(i) || !windStats) return null;
     const direction = windStats.windAt(trackData[i].timeMs);
     return { values: [{ text: direction === null ? '—' : `${normalizeDeg(Math.round(direction))}°`, color: WIND_COLOR }], at: readAt(i) };
   };
-  const zoomHint = narrow
-    ? 'Écartez deux doigts ou touchez deux fois un graphe pour zoomer.'
-    : 'Tirez une zone à la souris ou double-cliquez pour zoomer ; « Afficher » montre sur la carte la partie vue du graphe, un second clic la retire ; « Tout voir » revient.';
+  const zoomText = zoomHint(narrow);
 
   /** Graphe de vitesse : dans l'onglet « graphiques », et sous la carte en plein écran. */
   const speedChart = (style: CSSProperties) => (
     <ZoomableChart zoom={chartZoom} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('graphiques')} style={style}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={speedRows}
-          onMouseMove={onChartHover(speedRows)}
-          onTouchMove={onChartHover(speedRows)}
+          onMouseMove={trackHover(speedRows)}
+          onTouchMove={trackHover(speedRows)}
           margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
           <ChartZoomProbe />
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+          <CartesianGrid {...CHART_GRID_PROPS} />
           {timeAxis}
           {markLines}
           <YAxis domain={[0, 'auto']} tick={{fill: 'var(--ink)', fontSize: 11, fontWeight: 700}} />
           <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-          <Line type="monotone" dataKey="vitesse" stroke="#1976d2" dot={false} strokeWidth={2} />
+          <Line type="monotone" dataKey="vitesse" stroke={SAILING_SPEED_COLOR} dot={false} strokeWidth={2} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </ZoomableChart>
@@ -610,16 +593,16 @@ function SailingModule() {
     <ZoomableChart zoom={chartZoom} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('vent')} style={style}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={windRows}
-          onMouseMove={onChartHover(windRows)}
-          onTouchMove={onChartHover(windRows)}
+          onMouseMove={trackHover(windRows)}
+          onTouchMove={trackHover(windRows)}
           margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
           <ChartZoomProbe />
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+          <CartesianGrid {...CHART_GRID_PROPS} />
           {timeAxis}
           {markLines}
           <YAxis domain={['dataMin - 15', 'dataMax + 15']} tickFormatter={(val: number) => `${normalizeDeg(Math.round(val))}°`} tick={{fill: 'var(--ink)', fontSize: 11, fontWeight: 700}} />
           <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-          <Line type="monotone" dataKey="angle" stroke={WIND_COLOR} strokeWidth={2} dot={maneuverDot} activeDot={{ r: 6 }} connectNulls={false} />
+          <Line type="monotone" dataKey="angle" stroke={WIND_COLOR} strokeWidth={2} dot={maneuverDot} activeDot={{ r: 6 }} connectNulls={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </ZoomableChart>
@@ -627,7 +610,7 @@ function SailingModule() {
   /** Courbe de FC de « graphiques », sur le temps de la session ; ses boutons de zoom quand la vitesse est repliée. */
   const heartChart = (style: CSSProperties) => (
     <HeartRateChart data={heartRows} zoom={chartZoom} xAxis={timeAxis} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-      onHoverIndex={setHoveredIndex} onLeave={clearHover} showReset={!graphFolds.open.vitesse} onShowOnMap={() => zoomOnMap.show('graphiques')} style={style}>
+      showReset={!graphFolds.open.vitesse} onShowOnMap={() => zoomOnMap.show('graphiques')} style={style}>
       {markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark, 'hr')}
     </HeartRateChart>
   );
@@ -639,13 +622,13 @@ function SailingModule() {
           <>
             {graphFolds.open.vitesse && (
               <>
-                <HoverReadout line read={speedReadout} label="Vitesse" color="#1976d2" />
+                <HoverReadout line read={readSpeed} label="Vitesse" color={SAILING_SPEED_COLOR} />
                 {speedChart(COMPANION_CHART_STYLE)}
               </>
             )}
             {heart.present && heartRows.length > 1 && graphFolds.open.fc && (
               <>
-                <HoverReadout line read={heartReadout} label="FC" color={HEART_RATE_COLOR} />
+                <HoverReadout line read={readHeart} label="FC" color={HEART_RATE_COLOR} />
                 {heartChart(COMPANION_CHART_STYLE)}
               </>
             )}
@@ -659,10 +642,7 @@ function SailingModule() {
           </>
         ) : null;
       case 'cardio':
-        return heart.present ? (
-          <CardioCurve track={track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-            onHoverIndex={setHoveredIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={COMPANION_CHART_STYLE} />
-        ) : null;
+        return <CardioCompanion minutes={trackMinutes} heart={heart} zoom={cardioZoom} zones={hrZones} onShowOnMap={() => zoomOnMap.show('cardio')} style={COMPANION_CHART_STYLE} />;
       default:
         return null;
     }
@@ -689,7 +669,7 @@ function SailingModule() {
   const startWindAdjust = () => {
     setWindAdjust(true);
     if (narrow) setMapExpanded(true);
-    else document.getElementById('map-view')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    else document.getElementById(ANALYSIS_MAP_ANCHOR)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
   const endWindAdjust = () => {
     setWindAdjust(false);
@@ -1007,7 +987,7 @@ function SailingModule() {
       <div className="an-map-row" style={{ marginTop: '10px', zIndex: 0 }}>
         <AnalysisMap
           panelId="sailing.carte"
-          anchorId="map-view"
+          anchorId={ANALYSIS_MAP_ANCHOR}
           sessionKey={sessionKey}
           bounds={mapBounds}
           layers={mapLayers}
@@ -1080,12 +1060,12 @@ function SailingModule() {
               <div style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <div style={{ flex: '1 1 100%' }}>
                   <PanelTitle label="Graphiques" open={open.graphiques} onToggle={() => toggle('graphiques')} helpKey="voile:graphiques" />
-                  <HelpText helpKey="voile:graphiques" note>Le survol déplace le repère sur la carte. {zoomHint}</HelpText>
+                  <HelpText helpKey="voile:graphiques" note>Le survol déplace le repère sur la carte. {zoomText}</HelpText>
                 </div>
 
                 {graphFolds.open.vitesse ? (
                 <ResizablePanel id="sailing.graph.vitesse" defaultHeight={350} minWidth={250} minHeight={200} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                  {graphTitle('vitesse', 'Historique de Vitesse', speedReadout)}
+                  {graphTitle('vitesse', 'Historique de Vitesse', readSpeed)}
                   <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                     {speedChart(FILL_STYLE)}
                   </div>
@@ -1095,7 +1075,7 @@ function SailingModule() {
                 {heart.present && heartRows.length > 1 && (
                   graphFolds.open.fc ? (
                   <ResizablePanel id="sailing.graph.fc" defaultHeight={250} minWidth={250} minHeight={160} style={{ flex: 'none', width: '500px', overflow: 'hidden', border: '1px dashed var(--line-strong)', padding: '10px', backgroundColor: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-                    {graphTitle('fc', 'Fréquence cardiaque', heartReadout)}
+                    {graphTitle('fc', 'Fréquence cardiaque', readHeart)}
                     <div style={{ flexGrow: 1, width: '100%', position: 'relative' }}>
                       {heartChart(FILL_STYLE)}
                     </div>
@@ -1116,10 +1096,9 @@ function SailingModule() {
 
             {open.cardio && heart.present && (
               <ResizablePanel id="sailing.cardio" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
-                <HeartRatePanel track={track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
+                <HeartRatePanel track={track} minutes={trackMinutes} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: track[0]?.timeMs ?? null })} selectedZone={selectedHrZone}
                   onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
-                  onHoverIndex={setHoveredIndex} onLeave={clearHover}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
                   open={open.cardio} onToggle={() => toggle('cardio')} />
               </ResizablePanel>
@@ -1146,8 +1125,6 @@ function SailingModule() {
                 podiumShown={jumpPodiumShown}
                 onTogglePodium={() => highlight.show('sauts', jumpPodiumShown ? null : 'podium')}
                 trackIndexAt={trackIndexAt}
-                onCurveHover={onChartHover}
-                onCurveLeave={clearHover}
               />
             )}
 
@@ -1207,7 +1184,7 @@ function SailingModule() {
                     deux manœuvres la courbe est interpolée ; avant la première et après la dernière, elle garde la
                     valeur la plus proche. Elle s'interrompt au-delà de 30 minutes sans manœuvre. Sur le graphe, les
                     points marquent les manœuvres : c'est là, et là seulement, que le vent est mesuré. Le graphe garde le
-                    même zoom que celui de la vitesse. {zoomHint}
+                    même zoom que celui de la vitesse. {zoomText}
                   </p>}
                 </div>
 

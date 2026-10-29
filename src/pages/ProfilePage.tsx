@@ -24,6 +24,7 @@ import { useVisibleStatSessions } from '../hooks/useVisibleStatSessions';
 import { CHART_PERIODS, type ChartRange } from '../library/activityChart';
 import { activityShares, favoriteActivity } from '../library/profile';
 import { inBounds, isStatsPeriod, statsPeriodBounds, statsTotals } from '../library/stats';
+import { OTHERS_COLOR } from '../components/chartStyle';
 import './ProfilePage.css';
 
 /**
@@ -63,7 +64,6 @@ const ROOT_CARDS = ['.profile-periods', '.profile-figures', '.profile-split', '.
 
 /** Au-delà, les plus petites parts se regroupent en « Autres » : un anneau ne se lit plus. */
 const MAX_SLICES = 6;
-const OTHERS_COLOR = '#9aa0a6';
 const OTHERS_KEY = '__autres';
 
 /** Anneau : rayon médian et épaisseur, en unités du dessin (200 de côté). */

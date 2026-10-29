@@ -1,17 +1,13 @@
 import { roundTo } from '../core/basics';
 import { useMemo } from 'react';
 import {
-  Area, CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, CartesianGrid, ComposedChart, Line, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { formatClockMinutes, msToKmh } from '../core/units';
 import { TEST_SIGNAL_LABEL, testPlan, type FitnessTestParams } from '../recording/fitnessTest';
+import { phaseAreas } from './fitnessTestChartParts';
 import { HEART_RATE_COLOR } from './heartRateColors';
-
-/** Bleu des courbes de vitesse des analyses à pied. */
-const SPEED_COLOR = '#1e88e5';
-const PHASE_FILL = '#90a4ae';
-const MARK_COLOR = 'var(--chart-mark)';
-const PHASE_LABEL = { echauffement: 'Échauffement', rampe: 'Rampe', recuperation: 'Récup.' } as const;
+import { CHART_GRID_PROPS, CHART_MARK_COLOR, CHART_TICK, SPEED_COLOR, chartTick, yAxisLabel } from './chartStyle';
 
 const kmhText = (kmh: number) => `${kmh.toFixed(1).replace('.', ',')} km/h`;
 
@@ -41,13 +37,14 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
   const endMin = plan.phases[plan.phases.length - 1].endS / 60;
   const paliers = plan.beeps.filter((b) => b.signal === 'palier');
   const marks = plan.beeps.filter((b) => b.signal !== 'palier');
-  // Une liste d'éléments, pas un composant : Recharts ne voit pas un ReferenceArea rangé dans un composant à lui.
-  const phaseAreas = (labelled: boolean) => plan.phases.map((p, i) => (
-    <ReferenceArea key={p.phase} x1={p.startS / 60} x2={p.endS / 60} fill={PHASE_FILL} fillOpacity={i % 2 === 0 ? 0.12 : 0.04} ifOverflow="hidden"
-      label={labelled ? { value: PHASE_LABEL[p.phase], position: 'insideTop', fill: 'var(--chart-axis)', fontSize: 11 } : undefined} />
-  ));
+  const areas = plan.phases.map((p) => ({ phase: p.phase, x1: p.startS / 60, x2: p.endS / 60 }));
+  /** Cible du palier au bip : celle du plan à cet instant (le pas du protocole, non une valeur en dur). */
+  const palierKmh = (tS: number, k: number): number => {
+    const point = plan.points.find((p) => p.tS === tS && p.targetMs !== null);
+    return roundTo(msToKmh(point?.targetMs ?? v0Ms + k * params.protocol.stepMs), 1);
+  };
   const xAxis = (hide: boolean) => (
-    <XAxis dataKey="minutes" type="number" domain={[0, endMin]} tickFormatter={formatClockMinutes} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} hide={hide} />
+    <XAxis dataKey="minutes" type="number" domain={[0, endMin]} tickFormatter={formatClockMinutes} tick={CHART_TICK} hide={hide} />
   );
   const tooltipLabel = (v: unknown) => formatClockMinutes(Number(v));
 
@@ -55,34 +52,34 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
     <figure className="fit-plan" aria-label="Déroulé du test : vitesse cible et FC dans le temps">
       <ResponsiveContainer width="100%" height={170}>
         <ComposedChart data={rows} margin={{ top: 18, right: 12, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-          {phaseAreas(true)}
+          <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
+          {phaseAreas(areas, true)}
           {xAxis(true)}
-          <YAxis domain={['dataMin - 1', 'dataMax + 1']} allowDecimals={false} width={40} tick={{ fill: SPEED_COLOR, fontSize: 11 }}
-            label={{ value: 'km/h', angle: -90, position: 'insideLeft', fill: SPEED_COLOR, fontSize: 11 }} />
+          <YAxis domain={['dataMin - 1', 'dataMax + 1']} allowDecimals={false} width={40} tick={chartTick(SPEED_COLOR)}
+            label={yAxisLabel('km/h', SPEED_COLOR)} />
           <Tooltip labelFormatter={tooltipLabel} formatter={(v) => [kmhText(Number(v)), 'Vitesse cible']} />
           <Line type="stepAfter" dataKey="speed" name="Vitesse cible" stroke={SPEED_COLOR} strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
           {paliers.map((b, k) => (
-            <ReferenceDot key={b.tS} x={b.tS / 60} y={roundTo(msToKmh(v0Ms) + 0.6 * k, 1)} r={4} fill={SPEED_COLOR} stroke="var(--surface)" strokeWidth={2} />
+            <ReferenceDot key={b.tS} x={b.tS / 60} y={palierKmh(b.tS, k)} r={4} fill={SPEED_COLOR} stroke="var(--surface)" strokeWidth={2} />
           ))}
           {marks.map((b) => (
-            <ReferenceLine key={b.signal} x={b.tS / 60} stroke={MARK_COLOR} strokeDasharray="3 3" ifOverflow="extendDomain" />
+            <ReferenceLine key={b.signal} x={b.tS / 60} stroke={CHART_MARK_COLOR} strokeDasharray="3 3" ifOverflow="extendDomain" />
           ))}
         </ComposedChart>
       </ResponsiveContainer>
       <ResponsiveContainer width="100%" height={150}>
         <ComposedChart data={rows} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-          {phaseAreas(false)}
+          <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
+          {phaseAreas(areas, false)}
           {xAxis(false)}
-          <YAxis domain={[50, 'dataMax + 5']} allowDecimals={false} width={40} tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }}
-            label={{ value: 'bpm', angle: -90, position: 'insideLeft', fill: HEART_RATE_COLOR, fontSize: 11 }} />
+          <YAxis domain={[50, 'dataMax + 5']} allowDecimals={false} width={40} tick={chartTick(HEART_RATE_COLOR)}
+            label={yAxisLabel('bpm', HEART_RATE_COLOR)} />
           <Tooltip labelFormatter={tooltipLabel}
             formatter={(v, name) => (name === 'band' ? [`${(v as number[])[0]} à ${(v as number[])[1]} bpm`, 'Cible'] : [`${v} bpm`, 'FC (exemple)'])} />
           <Area type="linear" dataKey="band" name="band" stroke="none" fill={HEART_RATE_COLOR} fillOpacity={0.15} connectNulls={false} isAnimationActive={false} />
           <Line type="monotone" dataKey="hr" name="hr" stroke={HEART_RATE_COLOR} strokeWidth={2} strokeDasharray="5 3" dot={false} isAnimationActive={false} />
           {marks.map((b) => (
-            <ReferenceLine key={b.signal} x={b.tS / 60} stroke={MARK_COLOR} strokeDasharray="3 3" ifOverflow="extendDomain" />
+            <ReferenceLine key={b.signal} x={b.tS / 60} stroke={CHART_MARK_COLOR} strokeDasharray="3 3" ifOverflow="extendDomain" />
           ))}
         </ComposedChart>
       </ResponsiveContainer>
@@ -90,7 +87,7 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
         <span><i className="fit-plan__key" style={{ background: SPEED_COLOR }} />Vitesse cible, un point par palier (bip long)</span>
         <span><i className="fit-plan__key" style={{ background: HEART_RATE_COLOR, opacity: 0.35 }} />Cible d'échauffement {plan.hrBand.lowBpm} à {plan.hrBand.highBpm} bpm</span>
         <span><i className="fit-plan__key fit-plan__key--dash" style={{ borderColor: HEART_RATE_COLOR }} />FC d'exemple</span>
-        <span><i className="fit-plan__key fit-plan__key--dash" style={{ borderColor: MARK_COLOR }} />
+        <span><i className="fit-plan__key fit-plan__key--dash" style={{ borderColor: CHART_MARK_COLOR }} />
           {marks.map((b) => TEST_SIGNAL_LABEL[b.signal].toLowerCase()).join(', ')}</span>
         <span className="fit-plan__note">Exemple : rampe partie à {kmhText(msToKmh(v0Ms))}, lâchée au {steps}e palier.</span>
       </figcaption>

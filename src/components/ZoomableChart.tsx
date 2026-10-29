@@ -9,6 +9,7 @@ import type { ChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { MapOverlayContext } from './mapOverlayContext';
 import Button from './ui/Button';
+import { SPEED_COLOR } from './chartStyle';
 import './ZoomableChart.css';
 
 /**
@@ -242,7 +243,7 @@ function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, style, ch
       }}
       onDoubleClick={onDoubleClick}>
       <PlotAreaContext.Provider value={reportPlot}>{children}</PlotAreaContext.Provider>
-      {selection && <div className="zoom-chart__selection" style={selection} />}
+      {selection && <div className="zoom-chart__selection" style={{ ...selection, '--zoom-selection': SPEED_COLOR } as CSSProperties} />}
       {onShowOnMap && (
         <Button size="s" className="zoom-chart__map" onClick={onShowOnMap}
           aria-label={openMap ? 'Ouvrir la carte et les graphes' : 'Afficher sur la carte'}>{openMap ? '+carte' : 'Afficher'}</Button>

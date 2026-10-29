@@ -1,9 +1,10 @@
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from 'recharts';
-import { NO_TOOLTIP_CONTENT, hoveredTrackIndex, type ChartHoverEvent } from './chartHover';
+import { NO_TOOLTIP_CONTENT, clearTrackHover, trackHover } from './chartHover';
 import { HEART_RATE_COLOR, HEART_ZONE_COLORS } from './heartRateColors';
 import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
 import type { ChartZoom } from '../hooks/useChartZoom';
+import { CHART_GRID_PROPS, chartTick, yAxisLabel } from './chartStyle';
 
 /** Haut de la bande de la zone 5. */
 const TOP_BPM = 250;
@@ -17,7 +18,7 @@ const TOP_BPM = 250;
  * les onglets des graphes des trois modules.
  */
 export default function HeartRateChart<R extends { index: number; hr: number | null }>({
-  data, zoom, xAxis, zones, thresholds, onHoverIndex, onLeave, onShowOnMap, syncId, showReset, style, children,
+  data, zoom, xAxis, zones, thresholds, onShowOnMap, syncId, showReset, style, children,
 }: {
   data: R[];
   zoom: ChartZoom;
@@ -27,8 +28,6 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
   zones: readonly number[] | null;
   /** Seuils aérobie (S1) et anaérobie (S2), traits noirs ; `null` sans zones. */
   thresholds?: { s1: number; s2: number } | null;
-  onHoverIndex: (index: number) => void;
-  onLeave?: () => void;
   /** « Afficher » ou « +carte », zoomé ou non (voir `ZoomableChart`). */
   onShowOnMap?: () => void;
   syncId?: string;
@@ -37,20 +36,17 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
   /** Éléments de plus dans le graphe (traits des repères). */
   children?: ReactNode;
 }) {
-  const onHover = (e: ChartHoverEvent) => {
-    const index = hoveredTrackIndex(e, data);
-    if (index !== null) onHoverIndex(index);
-  };
+  const onHover = trackHover(data);
   return (
-    <ZoomableChart zoom={zoom} onLeave={onLeave} showReset={showReset} onShowOnMap={onShowOnMap} style={style}>
+    <ZoomableChart zoom={zoom} onLeave={clearTrackHover} showReset={showReset} onShowOnMap={onShowOnMap} style={style}>
       <ResponsiveContainer>
         <ComposedChart data={data} syncId={syncId} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 5, right: thresholds ? 24 : 10, left: 0, bottom: 0 }}>
           <ChartZoomProbe />
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+          <CartesianGrid {...CHART_GRID_PROPS} />
           {xAxis}
           <YAxis yAxisId="hr" domain={['dataMin - 5', 'dataMax + 5']} allowDecimals={false} width={46}
-            tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }}
-            label={{ value: 'bpm', angle: -90, position: 'insideLeft', fill: HEART_RATE_COLOR, fontSize: 11 }} />
+            tick={chartTick(HEART_RATE_COLOR)}
+            label={yAxisLabel('bpm', HEART_RATE_COLOR)} />
           {zones?.map((lower, k) => (
             <ReferenceArea key={k} yAxisId="hr" y1={lower} y2={zones[k + 1] ?? TOP_BPM} fill={HEART_ZONE_COLORS[k + 1]} fillOpacity={0.12}
               stroke="none" ifOverflow="hidden" />

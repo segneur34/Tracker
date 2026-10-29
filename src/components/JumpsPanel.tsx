@@ -1,5 +1,5 @@
 import { roundTo, toFixedNumber } from '../core/basics';
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { jumpDoubtLabel, type SessionJump } from '../core/jumps';
 import { JUMP_DETECTION } from '../core/sportProfiles';
@@ -8,7 +8,7 @@ import type { JumpsStatus } from '../hooks/useSessionJumps';
 import { niceTicks } from '../core/chartZoom';
 import { useChartZoom } from '../hooks/useChartZoom';
 import ChartReadout, { type Readout } from './ChartReadout';
-import { NO_TOOLTIP_CONTENT, hoveredRow, inChartView, type ChartHoverEvent } from './chartHover';
+import { NO_TOOLTIP_CONTENT, clearTrackHover, hoveredRow, inChartView, trackHover, type ChartHoverEvent } from './chartHover';
 import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
 import { HelpText, HelpToggle } from './Help';
@@ -65,8 +65,6 @@ export interface JumpsPanelProps {
   onTogglePodium: () => void;
   /** Point de trace le plus proche d'un instant : relie la courbe à la carte. */
   trackIndexAt: (ms: number) => number;
-  onCurveHover: (rows: ReadonlyArray<{ index: number }>) => (e: ChartHoverEvent) => void;
-  onCurveLeave: () => void;
   /** Début des `id` des blocs, dont la taille est mémorisée : `sailing`, `running`, `cycling`. */
   panelPrefix?: string;
   /** Couleur des boutons choisis : celle du module. */
@@ -106,21 +104,33 @@ interface CurveRow {
  * survol déplace le repère sur la carte. Pas de « +carte » : « Voir »
  * y montre déjà le saut.
  */
-function JumpCurveChart({ rows, jumps, numbers, onCurveHover, onCurveLeave }: {
-  rows: CurveRow[];
+function JumpCurveChart({ first, second, numbers, trackIndexAt }: {
   /** Le saut de la courbe, et celui qu'on lui compare. */
-  jumps: SessionJump[];
+  first: SessionJump;
+  second: SessionJump | null;
   /** Numéro de chaque saut dans la séance. */
   numbers: number[];
-  onCurveHover: (e: ChartHoverEvent) => void;
-  onCurveLeave: () => void;
+  /** Point de trace le plus proche d'un instant : relie la courbe à la carte. */
+  trackIndexAt: (ms: number) => number;
 }) {
+  const jumps = useMemo(() => (second ? [first, second] : [first]), [first, second]);
+  /** Lignes de la courbe, refaites seulement quand les sauts comparés changent, non à chaque survol. */
+  const rows = useMemo<CurveRow[]>(() => {
+    const points = jumps.map(curvePoints);
+    const instants = [...new Set(points.flatMap((p) => [...p.keys()]))].sort((a, b) => a - b);
+    return instants.map((c) => {
+      const t = c / 100;
+      const owner = points[0].has(c) ? first : second ?? first;
+      return { t, premier: points[0].get(c) ?? null, second: points[1]?.get(c) ?? null, index: trackIndexAt(owner.takeoffMs + t * 1000) };
+    });
+  }, [jumps, first, second, trackIndexAt]);
   const full = rows.length > 1 ? { min: rows[0].t, max: rows[rows.length - 1].t } : null;
   const zoom = useChartZoom(full, jumps.map((j) => j.takeoffMs).join('-'));
   const [hovered, setHovered] = useState<CurveRow | null>(null);
+  const onTrackHover = trackHover(rows);
   const onHover = (e: ChartHoverEvent) => {
     setHovered(hoveredRow(e, rows));
-    onCurveHover(e);
+    onTrackHover(e);
   };
   const readout: Readout | null = hovered && inChartView(zoom.view, hovered.t)
     ? {
@@ -136,7 +146,7 @@ function JumpCurveChart({ rows, jumps, numbers, onCurveHover, onCurveLeave }: {
       <ChartReadout line readout={readout} />
       <ZoomableChart zoom={zoom} style={{ height: `${CURVE_HEIGHT_PX}px` }} onLeave={() => {
         setHovered(null);
-        onCurveLeave();
+        clearTrackHover();
       }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }} onMouseMove={onHover} onTouchMove={onHover}>
@@ -164,7 +174,7 @@ function JumpCurveChart({ rows, jumps, numbers, onCurveHover, onCurveLeave }: {
 
 function JumpsPanel({
   status, error, jumps, hiddenCount, minHeightM, thresholdLabel, speedUnit, distanceUnit, open, onToggle,
-  shownJump, onShowJump, podiumShown, onTogglePodium, trackIndexAt, onCurveHover, onCurveLeave,
+  shownJump, onShowJump, podiumShown, onTogglePodium, trackIndexAt,
   panelPrefix = 'sailing', accent = 'var(--voile)', sailing = true,
 }: JumpsPanelProps) {
   /** Ancre de la courbe, pour « Détail ». */
@@ -312,13 +322,6 @@ function JumpsPanel({
 
   // Courbe d'un saut, ou de deux calés sur leur décollage : hauteur selon le temps depuis le décollage.
   const shown = second ? [first, second] : [first];
-  const points = shown.map(curvePoints);
-  const instants = [...new Set(points.flatMap((p) => [...p.keys()]))].sort((a, b) => a - b);
-  const rows = instants.map((c) => {
-    const t = c / 100;
-    const owner = points[0].has(c) ? first : second ?? first;
-    return { t, premier: points[0].get(c) ?? null, second: points[1]?.get(c) ?? null, index: trackIndexAt(owner.takeoffMs + t * 1000) };
-  });
   const select = (value: number | null, onChange: (v: number | null) => void, allowNone: boolean, exclude: number | null) => (
     <select className="ui-field ui-field--s" value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}>
       {allowNone && <option value="">aucun</option>}
@@ -350,8 +353,7 @@ function JumpsPanel({
           </span>
         ))}
       </div>
-      <JumpCurveChart rows={rows} jumps={shown} numbers={shown.map((j) => order.get(j.takeoffMs) ?? 0)}
-        onCurveHover={onCurveHover(rows)} onCurveLeave={onCurveLeave} />
+      <JumpCurveChart first={first} second={second} numbers={shown.map((j) => order.get(j.takeoffMs) ?? 0)} trackIndexAt={trackIndexAt} />
     </ResizablePanel>
   );
 

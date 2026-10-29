@@ -8,6 +8,7 @@
  */
 
 import type { XRange } from '../core/chartZoom';
+import { setHoveredIndex } from '../hooks/useChartHover';
 
 /**
  * Contenu de l'infobulle de Recharts : rien. La valeur se lit au-dessus du
@@ -48,3 +49,21 @@ export const hoveredTrackIndex = (
 
 /** Vrai si l'abscisse `value` du point survolé est dans la plage zoomée (ou s'il n'y a pas de zoom) : sinon, rien à lire. */
 export const inChartView = (view: XRange | null, value: number): boolean => !view || (value >= view.min && value <= view.max);
+
+/**
+ * Gestionnaire de survol d'un graphe (`onMouseMove` et `onTouchMove`) : pose
+ * l'indice de trace de la ligne survolée dans le magasin du survol
+ * (`setHoveredIndex`, lu par le repère de la carte et les lectures), ou dans
+ * `onIndex` pour une page qui tient autrement son survol. Rien ne se passe
+ * hors d'une ligne.
+ */
+export const trackHover = (
+  rows: ReadonlyArray<{ index: number }>,
+  onIndex: (index: number) => void = setHoveredIndex
+) => (e: ChartHoverEvent): void => {
+  const index = hoveredTrackIndex(e, rows);
+  if (index !== null) onIndex(index);
+};
+
+/** Souris sortie d'un graphe : le repère de la carte s'efface. */
+export const clearTrackHover = (): void => setHoveredIndex(null);

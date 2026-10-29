@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { formatMinSec } from '../core/units';
 import { HEART_RATE_COLOR } from './heartRateColors';
+import { CHART_GRID_PROPS, CHART_MARK_COLOR, CHART_TICK, chartTick, yAxisLabel } from './chartStyle';
 
-const MARK_COLOR = 'var(--chart-mark)';
 /** Écart entre deux repères de l'axe du temps, en secondes. */
 const TICK_S = 30;
 
@@ -34,16 +34,16 @@ function RestingHrChart({ series, durationS, lowest = null, height = 220 }: Prop
     <figure className="rest-chart" aria-label="FC pendant le test, en battements par minute">
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={rows} margin={{ top: 22, right: 12, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-          <XAxis dataKey="t" type="number" domain={[0, durationS]} ticks={ticks} tickFormatter={formatMinSec} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
-          <YAxis domain={[lo, hi]} ticks={yTicks} allowDecimals={false} width={40} tick={{ fill: HEART_RATE_COLOR, fontSize: 11 }}
-            label={{ value: 'bpm', angle: -90, position: 'insideLeft', fill: HEART_RATE_COLOR, fontSize: 11 }} />
+          <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
+          <XAxis dataKey="t" type="number" domain={[0, durationS]} ticks={ticks} tickFormatter={formatMinSec} tick={CHART_TICK} />
+          <YAxis domain={[lo, hi]} ticks={yTicks} allowDecimals={false} width={40} tick={chartTick(HEART_RATE_COLOR)}
+            label={yAxisLabel('bpm', HEART_RATE_COLOR)} />
           <Tooltip labelFormatter={(v) => formatMinSec(Math.floor(Number(v)))} formatter={(v) => [`${v} bpm`, 'FC']} />
           {lowest && (
             <ReferenceArea x1={lowest.fromS} x2={lowest.toS} fill={HEART_RATE_COLOR} fillOpacity={0.18} ifOverflow="hidden"
-              label={{ value: `${lowest.bpm} bpm`, position: 'top', fill: MARK_COLOR, fontSize: 12, fontWeight: 700 }} />
+              label={{ value: `${lowest.bpm} bpm`, position: 'top', fill: CHART_MARK_COLOR, fontSize: 12, fontWeight: 700 }} />
           )}
-          {lowest && <ReferenceLine y={lowest.bpm} stroke={MARK_COLOR} strokeDasharray="4 3" ifOverflow="extendDomain" />}
+          {lowest && <ReferenceLine y={lowest.bpm} stroke={CHART_MARK_COLOR} strokeDasharray="4 3" ifOverflow="extendDomain" />}
           <Line type="monotone" dataKey="hr" stroke={HEART_RATE_COLOR} strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
