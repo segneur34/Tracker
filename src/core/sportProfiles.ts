@@ -253,7 +253,7 @@ export interface JumpProfile {
  * sur une séance de kite. À pied et à vélo (VTT), les mêmes seuils écartent
  * la foulée (vol d'environ 0,1 s) ; ils restent à vérifier sur le terrain.
  */
-const JUMP_DETECTION: JumpDetection = {
+export const JUMP_DETECTION: JumpDetection = {
   gridStepS: 0.01, maxGapS: 0.05,
   calmForceFraction: 0.15, calmRotationRadS: 0.3, minCalmS: 1,
   attitudeTauS: 3, attitudeMaxRotationRadS: 1.5, attitudeInitS: 1,

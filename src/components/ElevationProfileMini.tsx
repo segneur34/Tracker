@@ -24,8 +24,8 @@ const ALTITUDE_COLOR = '#e64a19';
  * Profil d'altitude compact de l'onglet « général », à pied et à vélo (22/10) :
  * coloré par la pente, sans repères ni grille (sauf `grid`). Comme les graphes de
  * « graphiques » (25/10) : son nom et la valeur lue au-dessus de lui, zoom
- * propre (double-clic, zone tirée, deux doigts), « +carte » une fois
- * zoomé ; le survol déplace le repère sur la carte. Les lignes sont celles de
+ * propre (double-clic, zone tirée, deux doigts), « +carte » toujours
+ * là, zoomé ou non ; le survol déplace le repère sur la carte. Les lignes sont celles de
  * la plage zoomée, chacune avec son `index` de trace. Repris par la page
  * Itinéraires pour le profil de son bloc Général, plus haut, avec sa grille,
  * sans « +carte » (la carte est déjà au-dessus).

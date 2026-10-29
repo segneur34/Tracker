@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decodeImu, encodeImu, selectImuWindows, type ImuRecording } from './imuFile';
 import { SYNTH_WALL_MS, synthImu as record, type SynthMotion as Motion } from './imuSynthetic.fixture';
 import { pruneImuFile } from './imuPrune';
-import { jumpTrackSpan, measureJumps, pruneWindows, trackIndexAtTime, type MeasuredJump } from './jumps';
+import { jumpDoubtLabel, jumpTrackSpan, measureJumps, pruneWindows, trackIndexAtTime, type MeasuredJump } from './jumps';
 import { SPORT_PROFILES } from './sportProfiles';
 
 const G = 9.80665;
@@ -225,5 +225,12 @@ describe('sauts sur la carte', () => {
     expect(jumpTrackSpan(at(0, 10, 20), { takeoffMs: WALL_MS + 12_000, landingMs: WALL_MS + 13_000 }))
       .toEqual({ from: 1, to: 2, start: 1 });
     expect(jumpTrackSpan(at(0), { takeoffMs: WALL_MS, landingMs: WALL_MS + 500 })).toBeNull();
+  });
+});
+
+describe('jumpDoubtLabel', () => {
+  it('dit la borne de la verticale en centimètres, celle du profil', () => {
+    expect(jumpDoubtLabel('verticale', { attitudeMaxErrorM: 0.1 })).toBe("verticale incertaine : la hauteur peut s'écarter de plus de 10 cm");
+    expect(jumpDoubtLabel('verticale', { attitudeMaxErrorM: 0.15 })).toContain('15 cm');
   });
 });

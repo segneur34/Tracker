@@ -14,7 +14,7 @@ if (!port) {
   console.error('Usage : node racine-periodes.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://127.0.0.1:4190';
+const BASE = process.env.BASE ?? 'http://localhost:5173';
 
 const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
 const ws = new WebSocket(target.webSocketDebuggerUrl);

@@ -29,7 +29,7 @@ export default function HeartRateChart<R extends { index: number; hr: number | n
   thresholds?: { s1: number; s2: number } | null;
   onHoverIndex: (index: number) => void;
   onLeave?: () => void;
-  /** « +carte » une fois zoomé. */
+  /** « Afficher » ou « +carte », zoomé ou non (voir `ZoomableChart`). */
   onShowOnMap?: () => void;
   syncId?: string;
   showReset?: boolean;

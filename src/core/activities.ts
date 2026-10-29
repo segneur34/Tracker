@@ -333,6 +333,7 @@ const foldName = (name: string): string =>
  *   la course et du vélo ; la couleur de chaque activité repasse par
  *   `recolorActivities`, comme en version 4.
  * - Version 8 : Tests, dans l'Entraînement.
+ * - Version 9 : Muscu.
  *
  * Une activité ajoutée se range avec sa famille, sauf si une autre porte déjà
  * son identifiant, ou son nom dans la même famille (casse et accents ignorés :

@@ -364,7 +364,7 @@ export const watchSatellites = (listener: (count: SatelliteCount) => void): (() 
     handle = h;
     if (stopped) void h.remove();
     else void gnss.start().catch(() => undefined);
-  });
+  }).catch(() => undefined);
   return () => {
     stopped = true;
     void handle?.remove();

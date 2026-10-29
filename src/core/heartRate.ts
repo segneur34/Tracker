@@ -1,4 +1,4 @@
-import { firstIndexAtOrAfterTime } from './search';
+import { firstIndexAtOrAfterTime, lastIndexAtOrBeforeTime } from './search';
 import { meanFilterByTime } from './speedFilter';
 
 /**
@@ -437,6 +437,6 @@ export const timeSpanHeartRate = (
   recoveryS: number
 ): SpanHeartRate | null => {
   const start = firstIndexAtOrAfterTime(points, startMs);
-  const end = firstIndexAtOrAfterTime(points, endMs + 1) - 1;
+  const end = lastIndexAtOrBeforeTime(points, endMs);
   return end > start ? spanHeartRate(points, smoothed, start, end, gapS, recoveryS) : null;
 };

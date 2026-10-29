@@ -197,7 +197,3 @@ export const combineLiveLegs = (splits: ReadonlyArray<LiveLegSplit>): LiveLegs =
   });
   return { current, previous };
 };
-
-/** Bord en cours et bord précédent de l'enregistrement, chaque trace étant une portion sans pause. */
-export const computeLiveLegs = (tracks: TrackPoint[][], options: LiveLegOptions = LIVE_LEG_DEFAULTS): LiveLegs =>
-  combineLiveLegs(tracks.map((track) => splitTrack(track, options)));

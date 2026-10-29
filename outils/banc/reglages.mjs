@@ -23,7 +23,7 @@ if (!port) {
   console.error('Usage : node reglages.mjs <port> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://127.0.0.1:4190';
+const BASE = process.env.BASE ?? 'http://localhost:5173';
 // Version des pré-réglages (PRESETS_VERSION) : un fichier d'avant sans elle voit ses seuils effacés une fois (point 168).
 const PRESETS_VERSION = 3;
 

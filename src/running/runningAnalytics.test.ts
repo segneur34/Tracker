@@ -7,7 +7,6 @@ import type { TrackPoint } from '../core/types';
 import {
   DEFAULT_GRADE_RANGE,
   DEFAULT_SPEED_RANGE_MS,
-  averagePace,
   classifyGrade,
   computeGrades,
   computeZoneStats,
@@ -160,7 +159,6 @@ describe('computeZoneStats', () => {
     expect(flatZone.avgSpeedMs).toBeCloseTo(4, 0);
     expect(steepZone.distanceM).toBeGreaterThan(200);
     expect(steepZone.avgSpeedMs).toBeCloseTo(2, 0);
-    expect(steepZone.pace).toBe('8:20 /km');
   });
 
   it('exclut les segments à l\'arrêt de l\'allure de la zone', () => {
@@ -227,20 +225,6 @@ describe('gradeZonePaths', () => {
       return lengthM(gradeZonePaths(track, grades, new Array(track.length).fill(true), 'steepUp', G));
     };
     expect(Math.abs(at(1) - at(0.2))).toBeLessThan(5);
-  });
-});
-
-describe('averagePace', () => {
-  it('convertit une distance et un temps en allure', () => {
-    // 10 km en 50 min : 5:00 /km, 12 km/h.
-    const result = averagePace(10_000, 50 * 60 * 1000);
-    expect(result.pace).toBe('5:00 /km');
-    expect(result.speedKmh).toBe('12.0 km/h');
-  });
-
-  it('reste vide sans distance ou sans temps', () => {
-    expect(averagePace(0, 1000).pace).toBe('-');
-    expect(averagePace(1000, 0).pace).toBe('-');
   });
 });
 

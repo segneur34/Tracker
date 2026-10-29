@@ -126,10 +126,6 @@ const parseWays = (value: string): WaysMode | null => {
   return parts.every(isWayType) ? waysMode(parts) : null;
 };
 
-/** Tout mode connu, écrit dans l'ordre, `imported` compris : celui d'un tronçon relu d'une fiche. */
-export const isRouteMode = (value: unknown): value is RouteMode =>
-  value === 'straight' || value === 'imported' || (typeof value === 'string' && parseWays(value) === value);
-
 /** Mode relu d'une fiche ou des préférences, types remis dans l'ordre, ancien mode traduit ; `null` s'il est inconnu. */
 export const readRouteMode = (value: unknown): RouteMode | null => {
   if (typeof value !== 'string') return null;
@@ -891,7 +887,7 @@ export interface RouteTotals {
 
 /**
  * Distance et dénivelés. `minGainM` : écart qui confirme une montée ou une
- * descente (`accumulateElevation`), celui du terrain de l'activité (règle 3).
+ * descente (`accumulateElevation`), passé par l'appelant (règle 3).
  * L'altitude d'un tracé calculé vient d'un modèle de terrain, déjà lisse, et
  * celle d'une trace chargée est lissée à la lecture (`routeFromTrack`) :
  * aucun lissage ici.

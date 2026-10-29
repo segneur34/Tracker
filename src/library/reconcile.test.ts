@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FolderEntry } from '../platform/memoryFolder';
 import { RECORD_FORMAT, RECORD_VERSION, SUMMARY_CALC_VERSION, type SessionRecord } from './record';
-import { planReconcile, type LibraryCache } from './reconcile';
+import { indexByRecordName, planReconcile, type LibraryCache } from './reconcile';
 
 const file = (name: string, size = 100, mtimeMs = 1000): FolderEntry => ({ name, kind: 'file', size, mtimeMs });
 
@@ -93,5 +93,18 @@ describe('planReconcile', () => {
     );
     expect(plan.rootGpx).toEqual(['a.gpx', 'b.gpx', 'reglages.gpx', 'tracker.gpx']);
     expect(plan.rootRecords).toEqual({ 'a.gpx': 'a.json' });
+  });
+});
+
+describe('indexByRecordName', () => {
+  it('retrouve une fiche .JSON par son nom en minuscules et garde son nom réel pour le cache', () => {
+    const entries = [file('a.gpx'), file('a.JSON'), file('b.json')];
+    const byName = indexByRecordName(entries);
+    const entry = byName.get('a.json');
+    expect(entry?.name).toBe('a.JSON');
+    expect(byName.get('b.json')?.name).toBe('b.json');
+    // Le cache rangé sous le nom réel est repris par planReconcile.
+    const cache: LibraryCache = { [entry!.name]: { size: 100, mtimeMs: 1000, record: record('a.gpx') } };
+    expect(Object.keys(planReconcile(entries, [], cache).reuse)).toEqual(['a.gpx']);
   });
 });

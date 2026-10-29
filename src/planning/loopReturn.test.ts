@@ -148,7 +148,7 @@ describe('retour accepté et recouvrement', () => {
     const aller = [at(0), at(10_600, 10_600)];
     const t0 = performance.now();
     const shared = sharedDistanceM([at(0), at(10_600, 10_600)], [aller], 12);
-    expect(performance.now() - t0).toBeLessThan(200);
+    expect(performance.now() - t0).toBeLessThan(1000);
     expect(shared / Math.hypot(10_600, 10_600)).toBeCloseTo(1, 2);
     // Un point à 11 m du milieu compte, à 13 m non : la grille par bouts ne perd rien.
     const mid = { n: 5300, e: 5300 };

@@ -49,6 +49,13 @@ const isRecordFileName = (name: string): boolean => /\.json$/i.test(name);
 /** Nom de fiche dont l'extension est ramenée à `.json` (le nom de base reste exact). */
 export const lowerRecordExtension = (name: string): string => name.replace(/\.json$/i, '.json');
 
+/**
+ * Entrées indexées par leur nom à l'extension en minuscules : la fiche `X.JSON` se retrouve par
+ * `recordFileName` (`X.json`), mais le cache la garde sous son nom réel, celui que lit `planReconcile`.
+ */
+export const indexByRecordName = (entries: readonly FolderEntry[]): Map<string, FolderEntry> =>
+  new Map(entries.map((e) => [lowerRecordExtension(e.name), e]));
+
 export const planReconcile = (
   sessionEntries: FolderEntry[],
   rootEntries: FolderEntry[],

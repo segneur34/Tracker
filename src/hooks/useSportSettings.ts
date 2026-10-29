@@ -1485,12 +1485,6 @@ export const useSportSettings = (family: SportFamily) => {
   const profile = useMemo(() => getSportProfile(sport), [sport]);
   const id = activity.id;
 
-  /** Activités proposées par le module : les visibles de la famille, plus l'activité courante (de base, ou cachée). */
-  const activityOptions = useMemo(() => {
-    const own = activitiesOfFamily(activities, family).filter((a) => !a.hidden || a.id === id);
-    return own.some((a) => a.id === id) ? own : [...own, activity];
-  }, [activities, family, activity, id]);
-
   const persist = useCallback((next: StoredSettings) => {
     setStored(next);
     writeStored(next);
@@ -1557,7 +1551,6 @@ export const useSportSettings = (family: SportFamily) => {
 
   return {
     activity,
-    activityOptions,
     setActivity,
     sport,
     profile,
@@ -1576,7 +1569,6 @@ export const useSportSettings = (family: SportFamily) => {
     bikeType,
     /** Poids du vélo effectif, en kg (celui du type à défaut de réglage). */
     bikeWeightKg,
-    isBikeWeightOverridden: isValidBikeWeight(storedBikeWeight),
     /** Charge portée de l'activité, en kg (0 sans réglage) ; une session peut avoir la sienne. */
     carriedLoadKg,
     /** Modèle de dépense à pied de l'activité : course (Minetti) ou marche (Pandolf). */

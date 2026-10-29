@@ -101,13 +101,12 @@ const SAILING_GEAR_FIELDS_FOIL: GearField[] = [
  * (`core/analysisTabs.ts`), où chaque activité choisit dans Réglages ceux qu'elle montre. Pour en ajouter un :
  * une entrée là, une valeur par défaut dans `SAILING_PANEL_DEFAULTS`, et un bloc `{open.maCle && (...)}` dans la colonne.
  */
-type SailingPanel = SailingTab;
 
 /** Graphes de l'onglet « graphiques » dépliés tant qu'on ne les replie pas. */
 const SAILING_GRAPH_FOLDS_DEFAULT = { vitesse: true, fc: true, polaire: true };
 type SailingGraphFold = keyof typeof SAILING_GRAPH_FOLDS_DEFAULT;
 
-const SAILING_PANEL_DEFAULTS: Record<SailingPanel, boolean> = {
+const SAILING_PANEL_DEFAULTS: Record<SailingTab, boolean> = {
   general: true,
   tops: false,
   manoeuvres: false,
@@ -152,7 +151,6 @@ const createArrowIcon = (bearing: number) => {
   });
 };
 
-/** Parties d'une session modifiées, en clair. */
 function SailingModule() {
   // Session de la mémoire désignée par l'URL, et son brouillon : vent saisi, seuil
   // d'activité, allure imposée, couleurs et notes, écrits dans sa fiche par « Enregistrer la session ».
@@ -276,7 +274,7 @@ function SailingModule() {
 
   const notes = edits.notes;
   const setNotes = draft.updateNotes;
-  const { open: storedOpen, toggle, set: setSections } = useOpenSections<SailingPanel>('sailing-onglets', SAILING_PANEL_DEFAULTS);
+  const { open: storedOpen, toggle, set: setSections } = useOpenSections<SailingTab>('sailing-onglets', SAILING_PANEL_DEFAULTS);
   /**
    * Graphes de l'onglet « graphiques » dépliés, chacun replié à part par son
    * titre pour ne comparer que ceux qui restent ouverts (16/10). Replié, un
@@ -384,12 +382,12 @@ function SailingModule() {
     (): TrackSegment[] => trackColorSegments(track, 'voile', { minMs: colorRange.minMs, maxMs: colorRange.maxMs }),
     [track, colorRange.minMs, colorRange.maxMs]
   );
+  /** « Temps en vol » sur foil, « Temps actif » sinon : le libellé dit ce qu'il mesure. */
+  const activeTimeWord = foil ? 'Temps en vol' : 'Temps actif';
   /**
    * Chiffres de l'onglet « général », proposés aussi pour l'image de partage. Sans seuil (bateau),
    * toute la session compte en navigation : ni distance, temps, ratio ni moyenne actifs.
    */
-  /** « Temps en vol » sur foil, « Temps actif » sinon : le libellé dit ce qu'il mesure. */
-  const activeTimeWord = foil ? 'Temps en vol' : 'Temps actif';
   const generalStats: ShareStat[] = stats ? [
     { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
     ...(hasActiveThreshold ? [{ key: 'activeDistance', label: 'Distance active', value: formatDistance(stats.activeDistanceM, distanceUnit) }] : []),
@@ -505,7 +503,6 @@ function SailingModule() {
     if (index !== null) setHoveredIndex(index);
   };
   const clearHover = () => setHoveredIndex(null);
-  const hoverIndex = setHoveredIndex;
 
   const narrow = useNarrowScreen();
   /** Temps écoulé de chaque point, en minutes : l'axe des graphes de vitesse et du vent, et de leur zoom. */
@@ -621,12 +618,12 @@ function SailingModule() {
   /** Courbe de FC de « graphiques », sur le temps de la session ; ses boutons de zoom quand la vitesse est repliée. */
   const heartChart = (style: CSSProperties) => (
     <HeartRateChart data={heartRows} zoom={chartZoom} xAxis={timeAxis} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-      onHoverIndex={hoverIndex} onLeave={clearHover} showReset={!graphFolds.open.vitesse} onShowOnMap={() => zoomOnMap.show('graphiques')} style={style}>
+      onHoverIndex={setHoveredIndex} onLeave={clearHover} showReset={!graphFolds.open.vitesse} onShowOnMap={() => zoomOnMap.show('graphiques')} style={style}>
       {markReferenceLines(marks.located, (m) => (trackData.length > 0 ? (m.mark.timeMs - trackData[0].timeMs) / 60000 : 0), shownMark, 'hr')}
     </HeartRateChart>
   );
   /** Graphes de l'onglet d'où vient « +carte », sous la carte en plein écran (téléphone). */
-  const companionCharts = (panel: SailingPanel | null): ReactNode => {
+  const companionCharts = (panel: SailingTab | null): ReactNode => {
     switch (panel) {
       case 'graphiques':
         return (
@@ -655,7 +652,7 @@ function SailingModule() {
       case 'cardio':
         return heart.present ? (
           <CardioCurve track={track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-            onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={COMPANION_CHART_STYLE} />
+            onHoverIndex={setHoveredIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={COMPANION_CHART_STYLE} />
         ) : null;
       default:
         return null;
@@ -1113,7 +1110,7 @@ function SailingModule() {
                 <HeartRatePanel track={track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: track[0]?.timeMs ?? null })} selectedZone={selectedHrZone}
                   onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
-                  onHoverIndex={hoverIndex} onLeave={clearHover}
+                  onHoverIndex={setHoveredIndex} onLeave={clearHover}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
                   open={open.cardio} onToggle={() => toggle('cardio')} />
               </ResizablePanel>

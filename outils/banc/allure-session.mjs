@@ -7,7 +7,7 @@
 // Depuis le 28/10, le champ « Allure de la session » est dans l'onglet « réglages » de l'analyse voile
 // (panneau « Réglages de la session ») : le script ouvre cet onglet avant de le lire.
 const [port, gpx1, gpx2] = process.argv.slice(2);
-const BASE = process.env.BASE ?? 'http://127.0.0.1:4190';
+const BASE = process.env.BASE ?? 'http://localhost:5173';
 
 const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
 const ws = new WebSocket(target.webSocketDebuggerUrl);

@@ -25,15 +25,12 @@ export interface WindGraphPoint {
   index: number;
   /** Temps écoulé depuis le début de la trace, en minutes : l'axe des graphes et de leur zoom. */
   minutes: number;
-  timeLabel: string;
   /**
    * Valeur tracée, exprimée comme référence + écart à la référence, pour
    * rester continue autour de la moyenne sans dérouler la série. `null` loin
    * de toute manœuvre, ce qui interrompt la courbe.
    */
   angle: number | null;
-  /** Même valeur ramenée dans [0, 360[, pour l'info-bulle. */
-  display: number | null;
   /**
    * Vrai sur la ligne affichée la plus proche d'une manœuvre : c'est là que se
    * trouve une vraie mesure, ailleurs la courbe est interpolée.
@@ -200,14 +197,11 @@ export const windChartRows = (
   const reference = wind.referenceDeg;
   const rows = indices.map((i): WindGraphPoint => {
     const timeMs = trackData[i].timeMs;
-    const date = new Date(timeMs);
     const direction = wind.windAt(timeMs);
     return {
       index: i,
       minutes: (timeMs - startMs) / 60000,
-      timeLabel: `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`,
       angle: direction === null ? null : reference + angleDiff(direction, reference),
-      display: direction === null ? null : normalizeAngle(Math.round(direction)),
       isManeuver: false,
     };
   });

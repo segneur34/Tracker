@@ -266,6 +266,16 @@ describe('timeSpanHeartRate', () => {
     }
   });
 
+  it("ne garde pas un point daté d'une fraction de milliseconde après la fin", () => {
+    // Dates fractionnaires : le point à fin + 0,5 ms (FC 200) n'est pas dans la plage.
+    for (const hz of [1, 5]) {
+      const endMs = T0 + 60_000;
+      const points = series(0, 120, hz, (t) => (t < 60 ? 150 : 200)).map((p) => ({ ...p, timeMs: p.timeMs + 0.5 }));
+      const span = timeSpanHeartRate(points, points.map((p) => p.hr ?? null), T0 + 10_000, endMs, P.gapS, P.recoveryS)!;
+      expect(span.maxBpm).toBe(150);
+    }
+  });
+
   it('rend null hors de la trace', () => {
     const points = series(0, 100, 1, () => 150);
     expect(timeSpanHeartRate(points, analyze(points), T0 + 500_000, T0 + 600_000, P.gapS, P.recoveryS)).toBeNull();

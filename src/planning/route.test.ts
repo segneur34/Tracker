@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_IMPORT_SMOOTHING_M, DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, acceptLoopReturn, addBeforeReturn, addWaypoint, closeLoop, courseLegs, insertWaypoint, isLooped, isRouteMode, isWaysMode, legKey,
+  DEFAULT_IMPORT_SMOOTHING_M, DEFAULT_LOOP_CLOSE_M, EMPTY_ROUTE, acceptLoopReturn, addBeforeReturn, addWaypoint, closeLoop, courseLegs, insertWaypoint, isLooped, isWaysMode, legKey,
   moveWaypoint, pendingLegRequests, readRouteMode, recomputeLegsWithoutSurfaces, removeWaypoint, reorderWaypoint, retryFailedLegs,
   presetWayTypes, reverseRoute, routeFromTrack, routeModeLabel, routePoints, sanitizeWayTypes, toggleWayType, wayTypesOf, waysMode,
   routeProfileRows, routeTotals, routeVehicle, setLegMode, setRouteMode, snapToWaypoints, straightenRoute, waypointDistances, withLegError, withLegResult,
   nextReturnVariant, openLoop, outboundKey, removeLoopStart, returnRequest, withLoopReturn, withReturnError, withReturnResult,
   type PlannedRoute, type RoutePoint, type Waypoint,
 } from './route';
+
+/** Tout mode connu, écrit dans l'ordre (ancienne fonction de route.ts, gardée ici comme référence des tests). */
+const isRouteMode = (value: unknown): boolean => typeof value === 'string' && readRouteMode(value) === value;
 
 const A: Waypoint = { lat: 43.6, lon: 3.8 };
 const B: Waypoint = { lat: 43.61, lon: 3.8 };

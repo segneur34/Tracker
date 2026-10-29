@@ -86,9 +86,8 @@ import MapToggle from '../components/ui/MapToggle';
  * le commentaire ; « réglages » ceux de la session. Leur liste est `SURF_TABS`
  * (`core/analysisTabs.ts`), où chaque activité choisit dans Réglages ceux qu'elle montre.
  */
-type SurfSection = SurfTab;
 
-const SURF_SECTION_DEFAULTS: Record<SurfSection, boolean> = {
+const SURF_SECTION_DEFAULTS: Record<SurfTab, boolean> = {
   general: true,
   vagues: false,
   rame: false,
@@ -126,7 +125,6 @@ const FLIGHT_BAND_COLOR = '#7e57c2';
 type WaveSort = 'ordre' | 'distance' | 'vitesse' | 'duree';
 const WAVE_SORT_LABEL: Record<WaveSort, string> = { ordre: 'ordre', distance: 'distance', vitesse: 'vitesse max', duree: 'durée' };
 
-const cardStyle = CARD_STYLE;
 const panelStyle = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' } as const;
 
 /** Champs du matériel, sous les intitulés de l'activité. */
@@ -199,7 +197,7 @@ function SurfModule() {
   const surfProfile = surfProfileOf(profile);
   const waveThreshold = surfProfile ? effectiveWaveThreshold(surfProfile.surf, draft.edits.waveThreshold) : 0;
 
-  const { open: storedOpen, toggle, set: setSections } = useOpenSections<SurfSection>(STORAGE_ID, SURF_SECTION_DEFAULTS);
+  const { open: storedOpen, toggle, set: setSections } = useOpenSections<SurfTab>(STORAGE_ID, SURF_SECTION_DEFAULTS);
   const graphFolds = useOpenSections(`${STORAGE_ID}.graphes`, GRAPH_FOLDS_DEFAULT);
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
@@ -382,7 +380,6 @@ function SurfModule() {
   const minutesOf = (ms: number) => (track.length > 0 ? (ms - track[0].timeMs) / 60000 : 0);
   /** Survol des graphes : le point va au magasin du survol, lu par le repère de la carte et les lectures, pas par le module. */
   const clearHover = () => setHoveredIndex(null);
-  const hoverIndex = setHoveredIndex;
   /** Axe du temps des graphes, en heure du jour, graduations rondes zoom compris. */
   const timeAxis = (
     <XAxis dataKey="minutes" type="number" allowDataOverflow
@@ -452,7 +449,7 @@ function SurfModule() {
   /** Courbe de FC de « graphiques » ; ses boutons de zoom quand la vitesse est repliée. */
   const heartChart = (speedShown: boolean) => (
     <HeartRateChart data={chartData} zoom={zoom} xAxis={timeAxis} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-      onHoverIndex={hoverIndex} onLeave={clearHover} showReset={!speedShown} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
+      onHoverIndex={setHoveredIndex} onLeave={clearHover} showReset={!speedShown} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
       {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark, 'hr')}
     </HeartRateChart>
   );
@@ -481,7 +478,7 @@ function SurfModule() {
       case 'cardio':
         return heart.present ? (
           <CardioCurve track={track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-            onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={chartBox(CHART_HEIGHT_PX)} />
+            onHoverIndex={setHoveredIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={chartBox(CHART_HEIGHT_PX)} />
         ) : null;
       default:
         return null;
@@ -767,7 +764,7 @@ function SurfModule() {
               const hrShown = heart.present && graphFolds.open.fc;
               return (
               <ResizablePanel id={panelId('graphiques')} defaultHeight={folds ? undefined : 360} minHeight={folds ? 120 : 200} direction="vertical"
-                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: folds ? 'auto' : 'hidden' }}>
+                style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: folds ? 'auto' : 'hidden' }}>
                 <div className="chart-head" style={{ marginBottom: '8px', paddingRight: '28px' }}>
                   <PanelTitle label="Vitesse" open={open.graphiques} onToggle={() => toggle('graphiques')} helpKey="surf:graphiques" />
                   {!folds && <HoverReadout read={speedReadout} />}
@@ -801,11 +798,11 @@ function SurfModule() {
             })()}
 
             {open.cardio && heart.present && (
-              <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
+              <ResizablePanel id={panelId('cardio')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <HeartRatePanel track={track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: track[0]?.timeMs ?? null })} selectedZone={selectedHrZone}
                   onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
-                  onHoverIndex={hoverIndex} onLeave={clearHover}
+                  onHoverIndex={setHoveredIndex} onLeave={clearHover}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
                   open={open.cardio} onToggle={() => toggle('cardio')} />
               </ResizablePanel>

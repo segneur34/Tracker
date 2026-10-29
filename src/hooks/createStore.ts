@@ -2,7 +2,7 @@
  * Magasins hors React : un état de module, des abonnés, un instantané lu par
  * `useSyncExternalStore`. Les hooks `useRecorder`, `useSessionLibrary`,
  * `useIntervalTimer`, `useStopwatch`, `useFitnessTest`, `useMarkGuide`,
- * `useFollowedTrace` et `useLiveRecording` s'y appuient : une seule écriture
+ * `useFollowedTrace`, `useLiveRecording` et `useTheme` s'y appuient : une seule écriture
  * de l'abonnement, du désabonnement et de la minuterie d'affichage.
  */
 

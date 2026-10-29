@@ -55,7 +55,7 @@ const tack = (hz = 1): LocationFix[] =>
     hz
   );
 
-describe('computeLiveLegs', () => {
+describe('bords du direct', () => {
   it('rend un seul bord en ligne droite, au cap de la route', () => {
     const { current, previous } = legsOf([sail([{ durationS: 180, fromDeg: 80, speedMs: 8 }])]);
     expect(previous).toBeNull();

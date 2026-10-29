@@ -449,9 +449,9 @@ function SettingsPage() {
                 const land = isLandTreatment(treatment);
                 /** Sans position (muscu) : ni unités, ni seuil, ni couleurs de trace, ni pause automatique ; la ceinture d'office. */
                 const positions = hasPositions(activity.base);
-                /** Seuil d'activité, sous son nom : de vague ou de vol en surf. */
                 /** Seuil d'activité réglable : pas en bateau, où toute la session compte en navigation. */
                 const withThreshold = hasActiveThreshold(p) && positions;
+                /** Nom du seuil, sous son titre : de vague ou de vol en surf. */
                 const thresholdLabel = treatment === 'surf' ? (s.foil ? 'Seuil de vol' : 'Seuil de vague') : "Seuil d'activité";
                 /** Famille du temps estimé des itinéraires, `null` en voile et en fractionné. */
                 const paceFamily = planningFamily(activity);
@@ -515,7 +515,7 @@ function SettingsPage() {
                 // Famille repliée : son en-tête seul, ses activités ne sont pas montées.
                 if (openFamily[family] !== true) return <Fragment key={id}>{heading}</Fragment>;
                 const pauseKmh = parseFloat(msToKmh(s.autoPause.speedMs).toFixed(1));
-                const summary = !positions ? ['sans GPS, ceinture cardio'].join(' · ') : [
+                const summary = !positions ? 'sans GPS, ceinture cardio' : [
                   speedUnitLabel(s.speedUnit, s.distanceUnit),
                   DISTANCE_UNIT_SYMBOL[s.distanceUnit],
                   ...(!withThreshold ? [] : [

@@ -1,4 +1,4 @@
-/* Disposition des modules d'analyse (`SailingModule.tsx`, `LandModule.tsx`), sur les variables de `theme/tokens.css`
+/* Disposition des modules d'analyse (`SailingModule.tsx`, `LandModule.tsx`, `SurfModule.tsx`), sur les variables de `theme/tokens.css`
    (`docs/MISE_EN_PAGE.md`). Sur ordinateur : la carte en haut, plus étroite que la page, puis la colonne
    des onglets (`.an-carte-col`) et ses panneaux, deux par ligne (`HALF_PANEL_STYLE`). Sur téléphone (sous
    768 px, ou tourné : `NARROW_QUERY`) : la carte en tête, en pleine largeur, puis les panneaux un par ligne ;

@@ -53,7 +53,6 @@ export const useSailingSession = ({
 }: SailingSessionInput) => {
   const {
     activity,
-    activityOptions,
     setActivity,
     sport,
     profile,
@@ -240,7 +239,6 @@ export const useSailingSession = ({
     windInputRequired,
     loadGpxContent: gpx.loadGpxContent,
     fileName: gpx.fileName,
-    trackName: gpx.trackName,
     sessionKey: gpx.sessionKey,
     hasDeviceSpeed: gpx.hasDeviceSpeed,
     loadError: gpx.error,
@@ -251,8 +249,6 @@ export const useSailingSession = ({
     polarGraphData,
     // Réglages de l'activité
     activity,
-    /** Activités voile proposées, plus l'activité de base de la session si elle n'en a pas. */
-    activityOptions,
     setActivity,
     sport,
     profile,

@@ -147,9 +147,8 @@ const OVERLAY_CHART_HEIGHT_PX = 320;
  * matériel (deux champs nommés par activité dans Réglages), les conditions,
  * l'appréciation et le commentaire, comme « matos et conditions » en voile.
  */
-type LandSection = LandTab;
 
-const LAND_SECTION_DEFAULTS: Record<LandSection, boolean> = {
+const LAND_SECTION_DEFAULTS: Record<LandTab, boolean> = {
   general: true,
   fractionne: true,
   test: true,
@@ -216,9 +215,7 @@ const ZONES_FOLDS_DEFAULT = { tableau: true, graphe: true };
 /** Session sans séances du compteur : un tableau constant, pour ne pas relancer les calculs qui en dépendent. */
 const NO_INTERVALS: IntervalSeries[] = [];
 
-const cardStyle = CARD_STYLE;
 
-/** Champs du matériel hors voile, sous les intitulés de l'activité. */
 /** Vitesse moyenne montrée : `null` (« — ») sans distance ni temps. */
 const positiveSpeed = (ms: number | null): number | null => (ms !== null && ms > 0 ? ms : null);
 
@@ -318,7 +315,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const [allActivities] = useState(readStoredActivities);
   const changeSessionActivity = useChangeSessionActivity(family, setActivity);
 
-  const { open: storedOpen, toggle, set: setSections } = useOpenSections<LandSection>(page.storageId, LAND_SECTION_DEFAULTS);
+  const { open: storedOpen, toggle, set: setSections } = useOpenSections<LandTab>(page.storageId, LAND_SECTION_DEFAULTS);
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const landTabs = LAND_TABS[model.treatment];
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
@@ -466,9 +463,9 @@ function LandModule({ family }: { family: LandFamily }) {
   /** Zones de pente ; vide si aucune n'a de temps (pentes toutes inconnues) : l'onglet dit alors pourquoi. */
   const zoneStats = useMemo(() => {
     if (grades.length === 0) return [];
-    const zones = computeZoneStats(gpx.track, grades, activityMask, profile.grade, distanceUnit);
+    const zones = computeZoneStats(gpx.track, grades, activityMask, profile.grade);
     return zones.some((z) => z.timeMs > 0) ? zones : [];
-  }, [gpx.track, grades, activityMask, profile.grade, distanceUnit]);
+  }, [gpx.track, grades, activityMask, profile.grade]);
   /** Onglet « cadence » : chiffres, tranches, selon la vitesse et la pente, dérive. */
   const cadenceAnalysis = useMemo(
     () => ((open.cadence || open.general) && cadencePresent && cadenceParams && cadence
@@ -780,7 +777,6 @@ function LandModule({ family }: { family: LandFamily }) {
 
   /** Survol des graphes : le point va au magasin du survol, lu par le repère de la carte et les lectures, pas par le module. */
   const clearHover = () => setHoveredIndex(null);
-  const hoverIndex = setHoveredIndex;
   const onChartHover = (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, chartData);
     if (index !== null) setHoveredIndex(index);
@@ -985,7 +981,7 @@ function LandModule({ family }: { family: LandFamily }) {
       case 'fc':
         return (
           <HeartRateChart data={chartData} zoom={zoom} xAxis={xAxis} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-            onHoverIndex={hoverIndex} onLeave={clearHover} syncId={page.storageId} showReset={showReset} onShowOnMap={showGraphsOnMap}
+            onHoverIndex={setHoveredIndex} onLeave={clearHover} syncId={page.storageId} showReset={showReset} onShowOnMap={showGraphsOnMap}
             style={chartBox(CHART_HEIGHT_PX)}>
             {markReferenceLines(marks.located, (m) => toDisplayDistance(m.distanceM, distanceUnit), shownMark, 'hr')}
           </HeartRateChart>
@@ -1107,12 +1103,11 @@ function LandModule({ family }: { family: LandFamily }) {
     </>
   );
 
-  /** Graphes de l'onglet d'où vient « +carte », sous la carte en plein écran (téléphone). */
   /** Profil d'altitude de « général », dans son panneau ou sous la carte en plein écran (`gradientSuffix`). */
   const generalProfile = (gradientSuffix: string) => (
     <ElevationProfileMini rows={profileRows} stops={profileStops} gradientId={`${profileGradientId}${gradientSuffix}`} distanceSymbol={distanceSymbol}
       zoom={profileZoom} read={graphReadout(['altitude'], profileZoom)}
-      onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('general')} />
+      onHoverIndex={setHoveredIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('general')} />
   );
 
   const companionCharts = (panel: LandTab | null): ReactNode => {
@@ -1133,12 +1128,12 @@ function LandModule({ family }: { family: LandFamily }) {
       case 'cardio':
         return heart.present ? (
           <CardioCurve track={gpx.track} smoothed={heart.smoothed} zoom={cardioZoom} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
-            onHoverIndex={hoverIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={chartBox(CHART_HEIGHT_PX)} />
+            onHoverIndex={setHoveredIndex} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('cardio')} style={chartBox(CHART_HEIGHT_PX)} />
         ) : null;
       case 'test':
         return sessionTest ? (
           <FitnessTestCurves track={gpx.track} test={sessionTest} minutes={trackMinutes} speedsMs={chartSpeed} hrSmoothed={heart.smoothed}
-            speedUnit={speedUnit} zoom={testZoom} onHoverIndex={hoverIndex} onLeave={clearHover}
+            speedUnit={speedUnit} zoom={testZoom} onHoverIndex={setHoveredIndex} onLeave={clearHover}
             onShowOnMap={() => zoomOnMap.show('test')} />
         ) : null;
       default:
@@ -1227,7 +1222,7 @@ function LandModule({ family }: { family: LandFamily }) {
           <CollapsibleSectionTabs sections={sections} open={open} onToggle={toggle} advancedOpen={advanced.open} onToggleAdvanced={advanced.toggle} accent={page.accent} />
           <div className="an-carte-panels">
             {open.general && (
-              <ResizablePanel id={panelId('general')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
+              <ResizablePanel id={panelId('general')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={() => toggle('general')} />
                 </div>
@@ -1259,10 +1254,10 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.test && isTestSport(profile.id) && (sessionTest ? (
-              <ResizablePanel id={panelId('test')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
+              <ResizablePanel id={panelId('test')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <FitnessTestPanel track={gpx.track} test={sessionTest} minutes={trackMinutes} speedsMs={chartSpeed} hrSmoothed={heart.smoothed}
                   speedUnit={speedUnit} profileHrMax={runner.hrMax} onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'test', atMs: sessionTest.startMs })}
-                  zoom={testZoom} onHoverIndex={hoverIndex} onLeave={clearHover}
+                  zoom={testZoom} onHoverIndex={setHoveredIndex} onLeave={clearHover}
                   onShowOnMap={() => zoomOnMap.show('test')} open={open.test} onToggle={() => toggle('test')} />
               </ResizablePanel>
             ) : (
@@ -1272,7 +1267,7 @@ function LandModule({ family }: { family: LandFamily }) {
             ))}
 
             {open.tops && tops && (
-              <ResizablePanel id={panelId('tops')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
+              <ResizablePanel id={panelId('tops')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <TopsPanel targets={profile.topTargets} tops={tops} unit={topUnit} selected={selectedTop} onSelect={setSelectedTop}
                   accent={page.accent} open={open.tops} onToggle={() => toggle('tops')} />
               </ResizablePanel>
@@ -1280,7 +1275,7 @@ function LandModule({ family }: { family: LandFamily }) {
 
             {open.graphiques && chartData.length > 1 && (
               <ResizablePanel id={panelId('graphiques')} minHeight={120} direction="vertical"
-                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
+                style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
                   <PanelTitle label="Graphiques" open={open.graphiques} onToggle={() => toggle('graphiques')} helpKey="analyse:graphiques" />
                   <span style={{ flex: 1 }} />
@@ -1303,24 +1298,24 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.cardio && heart.present && (
-              <ResizablePanel id={panelId('cardio')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
+              <ResizablePanel id={panelId('cardio')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <HeartRatePanel track={gpx.track} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: gpx.track[0]?.timeMs ?? null })} selectedZone={selectedHrZone} onSelectZone={setSelectedHrZone}
-                  onHoverIndex={hoverIndex} onLeave={clearHover} efficiency={heartEfficiency}
+                  onHoverIndex={setHoveredIndex} onLeave={clearHover} efficiency={heartEfficiency}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
                   open={open.cardio} onToggle={() => toggle('cardio')} />
               </ResizablePanel>
             )}
 
             {open.cadence && cadenceAnalysis && (
-              <ResizablePanel id={panelId('cadence')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
+              <ResizablePanel id={panelId('cadence')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <CadencePanel analysis={cadenceAnalysis} speedUnit={speedUnit} distanceUnit={distanceUnit} selectedBand={selectedCadenceBand} onSelectBand={setSelectedCadenceBand}
                   storagePrefix={page.storageId} open={open.cadence} onToggle={() => toggle('cadence')} />
               </ResizablePanel>
             )}
 
             {open.surface && (
-              <ResizablePanel id={panelId('surface')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
+              <ResizablePanel id={panelId('surface')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Surface" open={open.surface} onToggle={() => toggle('surface')} helpKey="analyse:surface" />
                 </div>
@@ -1348,7 +1343,7 @@ function LandModule({ family }: { family: LandFamily }) {
 
             {open.energie && energy && (
               <ResizablePanel id={panelId('energie')} minHeight={320} direction="vertical"
-                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
+                style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', paddingRight: '28px' }}>
                   <PanelTitle label={model.energyLabel} open={open.energie} onToggle={() => toggle('energie')} helpKey="analyse:energie" />
                   <span style={{ flex: 1 }} />
@@ -1430,7 +1425,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
             {open.zones && zoneStats.length > 0 && (
               <ResizablePanel id={panelId('zones')} direction="vertical"
-                style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
+                style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle
                     label={model.zonesTitle}
@@ -1524,14 +1519,14 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {stats && open.notes && (
-              <ResizablePanel id={panelId('notes')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+              <ResizablePanel id={panelId('notes')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                 <SessionNotesPanel notes={draft.edits.notes} setNotes={draft.updateNotes} family={family} conditions="libre" draft={draft}
                   gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={() => toggle('notes')} />
               </ResizablePanel>
             )}
 
             {stats && open.reglages && (
-              <ResizablePanel id={panelId('reglages')} style={{ ...cardStyle, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
+              <ResizablePanel id={panelId('reglages')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
                   <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} helpKey="analyse:reglages" />
                 </div>

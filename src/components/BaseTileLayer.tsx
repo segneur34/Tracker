@@ -42,7 +42,7 @@ class CachedTileLayer extends L.TileLayer {
     this.base = base;
   }
 
-  createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
+  override createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
     const tile = document.createElement('img');
     tile.alt = '';
     tile.setAttribute('role', 'presentation');

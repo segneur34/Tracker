@@ -210,8 +210,6 @@
 }
 
 .lib-banner__count {
-  font-size: var(--text-s);
-  font-weight: 500;
   opacity: 0.9;
 }
 

@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { JUMP_DOUBT_LABEL, type SessionJump } from '../core/jumps';
+import { jumpDoubtLabel, type SessionJump } from '../core/jumps';
+import { JUMP_DETECTION } from '../core/sportProfiles';
 import { formatShortDistance, formatSpeed, formatTimeOfDay, type DistanceUnit, type SpeedUnit } from '../core/units';
 import type { JumpsStatus } from '../hooks/useSessionJumps';
 import { niceTicks } from '../core/chartZoom';
@@ -81,7 +82,7 @@ const meters = (m: number) => `${m.toFixed(2)} m`;
 const seconds = (s: number) => `${s.toFixed(2)} s`;
 const rank = (k: number) => `${k + 1}${k === 0 ? 'er' : 'e'}`;
 /** Raisons d'un doute, en clair, pour l'infobulle. */
-const doubtText = (jump: SessionJump) => `Mesure douteuse : ${jump.doubts.map((d) => JUMP_DOUBT_LABEL[d]).join(' ; ')}.`;
+const doubtText = (jump: SessionJump) => `Mesure douteuse : ${jump.doubts.map((d) => jumpDoubtLabel(d, JUMP_DETECTION)).join(' ; ')}.`;
 
 /** Point d'une courbe, en centièmes de seconde depuis le décollage : les deux courbes partagent leurs instants. */
 const curvePoints = (j: SessionJump): Map<number, number> => {

@@ -97,12 +97,14 @@ export type JumpDoubt = 'parabole' | 'saturation' | 'trou' | 'verticale';
 
 export const JUMP_DOUBTS: readonly JumpDoubt[] = ['parabole', 'saturation', 'trou', 'verticale'];
 
-/** Raison d'un doute, en clair. */
-export const JUMP_DOUBT_LABEL: Record<JumpDoubt, string> = {
-  parabole: "plus haut qu'un vol sans portance de même durée : l'aile a pu tirer vers le bas",
-  saturation: 'capteur saturé pendant la poussée ou le vol',
-  trou: 'mesures interrompues autour du saut',
-  verticale: "verticale incertaine : la hauteur peut s'écarter de plus de 10 cm",
+/** Raison d'un doute, en clair ; la borne de la verticale (`attitudeMaxErrorM`) est dite en centimètres. */
+export const jumpDoubtLabel = (doubt: JumpDoubt, d: Pick<JumpDetection, 'attitudeMaxErrorM'>): string => {
+  switch (doubt) {
+    case 'parabole': return "plus haut qu'un vol sans portance de même durée : l'aile a pu tirer vers le bas";
+    case 'saturation': return 'capteur saturé pendant la poussée ou le vol';
+    case 'trou': return 'mesures interrompues autour du saut';
+    case 'verticale': return `verticale incertaine : la hauteur peut s'écarter de plus de ${Math.round(d.attitudeMaxErrorM * 100)} cm`;
+  }
 };
 
 /** Hauteur du téléphone autour d'un saut, au-dessus de son niveau au décollage. */

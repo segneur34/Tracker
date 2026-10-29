@@ -12,7 +12,7 @@ if (!port || !workDir) {
   console.error('Usage : node compteur-course.mjs <port> <dossier de travail> [<dossier des captures>]');
   process.exit(1);
 }
-const BASE = process.env.BASE ?? 'http://127.0.0.1:4190';
+const BASE = process.env.BASE ?? 'http://localhost:5173';
 
 // --- Protocole ---
 const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();

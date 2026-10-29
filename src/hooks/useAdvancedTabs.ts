@@ -23,7 +23,7 @@ export const useAdvancedTabs = (sessionKey: string | null, setGeneral: (open: bo
     if (!isNewAnalysisSession(readStoredRecord(NAMESPACE, KEY, ADVANCED_DEFAULTS).session, sessionKey)) return;
     update({ ouvert: false, session: sessionKey });
     setGeneral(true);
-    // Seule la trace compte : `setGeneral` est refait à chaque rendu du module.
+    // Seule la trace compte ; `update` et `setGeneral` sont laissés hors des dépendances (règle `react/exhaustive-deps`).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey]);
 

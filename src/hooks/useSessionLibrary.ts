@@ -47,7 +47,7 @@ import {
   type SessionSource,
   type SessionSummary,
 } from '../library/record';
-import { lowerRecordExtension, planReconcile, type LibraryCache } from '../library/reconcile';
+import { indexByRecordName, lowerRecordExtension, planReconcile, type LibraryCache } from '../library/reconcile';
 import { unbundleSessionGpx } from '../library/sessionBundle';
 import {
   TRAVELLING_KEYS,
@@ -288,14 +288,14 @@ const readCache = (f: MemoryFolder): { entries: LibraryCache; light: boolean } =
 const refreshCache = async (f: MemoryFolder, gen: number): Promise<void> => {
   const entries = await f.list(SESSIONS_DIR);
   if (gen !== generation) return;
-  const byName = new Map(entries.map((e) => [e.name, e]));
+  const byName = indexByRecordName(entries);
   const next: LibraryCache = {};
   for (const session of all) {
     // Une fiche en attente ou en cours d'écriture diffère encore du fichier : elle sera relue au prochain lancement.
     if (session.readOnly || recordTimers.has(session.file) || writing.has(session.file) || unwritten.has(session.file)) continue;
     const name = recordFileName(session.file);
     const entry = byName.get(name);
-    if (entry) next[name] = { size: entry.size, mtimeMs: entry.mtimeMs, record: lightRecord(session.record) };
+    if (entry) next[entry.name] = { size: entry.size, mtimeMs: entry.mtimeMs, record: lightRecord(session.record) };
   }
   jsonStore.write(CACHE_KEY, { folder: folderId(f), light: true, entries: next } satisfies StoredCache);
 };

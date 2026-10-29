@@ -3,7 +3,7 @@
 // l'en-tête de l'analyse et relu dans la bibliothèque. Profil Chrome neuf.
 // Usage : node rename.mjs <port> <gpx de voile, produit par make-gpx.mjs>
 const [port, gpx] = process.argv.slice(2);
-const BASE = process.env.BASE ?? 'http://127.0.0.1:4190';
+const BASE = process.env.BASE ?? 'http://localhost:5173';
 
 const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
 const ws = new WebSocket(target.webSocketDebuggerUrl);

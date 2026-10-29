@@ -78,7 +78,7 @@ interface Tap {
   timeMs: number;
 }
 
-function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, className, style, children }: {
+function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, style, children }: {
   zoom: ChartZoom;
   /** Souris sortie du graphe. */
   onLeave?: () => void;
@@ -90,7 +90,6 @@ function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, className
    * du téléphone, ouvre la carte avec les graphes de l'onglet (25/10).
    */
   onShowOnMap?: () => void;
-  className?: string;
   style?: CSSProperties;
   children: ReactNode;
 }) {
@@ -225,7 +224,7 @@ function ZoomableChart({ zoom, showReset = true, onShowOnMap, onLeave, className
   return (
     <div
       ref={box}
-      className={['zoom-chart', className].filter(Boolean).join(' ')}
+      className="zoom-chart"
       style={style}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}

@@ -115,6 +115,8 @@ const browserTone = (durationMs: number, vibrate: boolean, label: string) => {
 
 const createBrowserBeeper = (): Beeper => {
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /** Les trois bips de la fin, annulés par `stop()`. */
+  let finishTimers: ReturnType<typeof setTimeout>[] = [];
   let intervalMs: number | null = null;
   let vibrateOn = false;
   let lastBeepMs = -Infinity;
@@ -154,13 +156,15 @@ const createBrowserBeeper = (): Beeper => {
       clear();
       for (let k = 0; k < 3; k++) {
         const at = k * (BEEP_LONG_MS + BEEP_FINISH_GAP_MS);
-        setTimeout(() => tone(BEEP_LONG_MS, vibrate, 'fin'), at);
+        finishTimers.push(setTimeout(() => tone(BEEP_LONG_MS, vibrate, 'fin'), at));
       }
       lastBeepMs = Date.now() + 3 * BEEP_LONG_MS + 2 * BEEP_FINISH_GAP_MS;
     },
     stop: async () => {
       intervalMs = null;
       clear();
+      finishTimers.forEach(clearTimeout);
+      finishTimers = [];
       await browserAudio?.close().catch(() => {});
       browserAudio = null;
     },

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import { CircleMarker, Polyline, Popup } from 'react-leaflet';
 import { jumpTrackSpan, type SessionJump } from '../core/jumps';
 import { formatTimeOfDay } from '../core/units';
@@ -30,12 +30,12 @@ function JumpMapLayer({ track, jumps, shownJump, podiumShown }: {
           const path = track.slice(span.from, span.to + 1).map((p) => [p.lat, p.lon] as [number, number]);
           const start = track[span.start];
           return (
-            <span key={`jump-${jump.takeoffMs}`}>
+            <Fragment key={`jump-${jump.takeoffMs}`}>
               <Polyline positions={path} pathOptions={{ color, weight: 10, opacity: 0.85 }} />
               <CircleMarker center={[start.lat, start.lon]} radius={7} pathOptions={{ color, fillColor: color, fillOpacity: 1, weight: 2 }}>
                 <Popup>Saut de {formatTimeOfDay(jump.takeoffMs)} · {jump.heightM.toFixed(2)} m · {jump.flightS.toFixed(2)} s de vol</Popup>
               </CircleMarker>
-            </span>
+            </Fragment>
           );
         })}
       </>
