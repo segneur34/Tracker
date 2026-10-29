@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useSyncExternalStore } from 'react';
 import { hasPositions } from '../core/sportProfiles';
 import { getIntervalClock } from '../platform/beeper';
@@ -79,7 +80,7 @@ const reschedule = (announce: boolean): void => {
   commandListeners.forEach((listener) => listener());
   const clock = getIntervalClock();
   const onError = (err: unknown) => {
-    error = err instanceof Error && err.message ? err.message : 'Les bips du compteur ne peuvent pas être joués.';
+    error = errorMessage(err, 'Les bips du compteur ne peuvent pas être joués.');
     publish();
   };
   error = null;

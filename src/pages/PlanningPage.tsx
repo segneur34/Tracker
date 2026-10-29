@@ -1,3 +1,4 @@
+import { errorMessage, toFixedNumber } from '../core/basics';
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Marker, Polyline, useMapEvents } from 'react-leaflet';
@@ -31,7 +32,7 @@ import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER, trackBounds } from '../core/displ
 import { parseGpxPath } from '../core/gpxParser';
 import { ELEVATION_PRESETS, usesMarkCourse } from '../core/sportProfiles';
 import { SLOW_COLOR, gradientCss } from '../core/speedGradient';
-import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, formatSpeed, toDisplayDistance } from '../core/units';
+import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, formatSpeed, toDisplayDistance, formatMeters } from '../core/units';
 import { useLeaveWarning } from '../hooks/leaveGuard';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useGoOnRoute } from '../hooks/useGoOnRoute';
@@ -223,8 +224,6 @@ function MapEvents({ onTap, onTakeOver }: { onTap: (w: Waypoint) => void; onTake
   return null;
 }
 
-const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
-
 const defaultName = (): string => `Itinéraire du ${new Date().toLocaleDateString('fr-FR')}`;
 
 const sameGuide = (a: MarkGuideSettings | null, b: MarkGuideSettings | null): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -329,7 +328,7 @@ function PlanningPage() {
   const distanceUnit = activity ? effectiveDistanceUnit(activity) : 'km';
   const speedUnit = activity ? effectiveSpeedUnit(activity) : 'kmh';
   /** Le kilomètre-effort (100 m de D+ comptent 1 km), dit dans l'unité de distance de l'activité. */
-  const effortDistance = `${parseFloat(toDisplayDistance(1000, distanceUnit).toFixed(2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`;
+  const effortDistance = `${toFixedNumber(toDisplayDistance(1000, distanceUnit), 2)} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`;
   const minGainM = ELEVATION_PRESETS.route.minGainM;
   const gradeRange = useMemo(() => (activity ? effectiveGradeRange(activity) : null), [activity]);
   const color = safeColor(activity?.color ?? FALLBACK_COLOR);
@@ -468,7 +467,7 @@ function PlanningPage() {
     const km = (m: number) => formatDistance(m, distanceUnit, 1);
     const variant = returnMark.variant > 0 ? ` (variante ${returnMark.variant + 1})` : '';
     if (returnMark.outcome === 'avoided') {
-      const ratio = outboundM > 0 ? ` (${parseFloat((returnM / outboundM).toFixed(2))} × l'aller)` : '';
+      const ratio = outboundM > 0 ? ` (${toFixedNumber(returnM / outboundM, 2)} × l'aller)` : '';
       return `Retour par d'autres voies${variant} : ${km(returnM)}${ratio}, ${km(returnMark.sharedM)} sur l'aller.`;
     }
     const why = returnMark.tooLong
@@ -514,7 +513,7 @@ function PlanningPage() {
     const [first, last] = visibleIndexRange(profileDist, zoom.view);
     return sampledIndices(first, last, CHART_MAX_POINTS, profileEle).map((i) => {
       const { eleM, grade } = profile[i];
-      return { index: i, dist: parseFloat(profileDist[i].toFixed(3)), altitude: eleM !== null ? Math.round(eleM) : null, grade };
+      return { index: i, dist: toFixedNumber(profileDist[i], 3), altitude: eleM !== null ? Math.round(eleM) : null, grade };
     });
   }, [profile, profileDist, profileEle, zoom.view]);
   const gradeStops = useMemo(
@@ -541,7 +540,7 @@ function PlanningPage() {
           : '—',
         color: '#e64a19',
       }],
-      at: `${parseFloat(profileDist[hoveredIndex].toFixed(2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`,
+      at: `${toFixedNumber(profileDist[hoveredIndex], 2)} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`,
     }
     : null;
 
@@ -612,7 +611,7 @@ function PlanningPage() {
       if (found.length === 0) setSearchError('Aucun lieu trouvé.');
     } catch (err) {
       setResults(null);
-      setSearchError(err instanceof Error ? err.message : 'Recherche impossible.');
+      setSearchError(errorMessage(err, 'Recherche impossible.'));
     } finally {
       setSearching(false);
     }
@@ -638,7 +637,7 @@ function PlanningPage() {
       setCandidate({ label: 'Votre position', detail: '', lat: fix.lat, lon: fix.lon });
       map?.setView([fix.lat, fix.lon], Math.max(map.getZoom(), 15));
     } catch (err) {
-      setLocateError(err instanceof Error ? err.message : 'Position introuvable.');
+      setLocateError(errorMessage(err, 'Position introuvable.'));
     } finally {
       setLocating(false);
     }
@@ -670,7 +669,7 @@ function PlanningPage() {
       setName(finalName);
       setMessage(`Enregistré dans ${ROUTES_DIR}/${saved.base}.json, avec son GPX.`);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Enregistrement impossible.');
+      setMessage(errorMessage(err, 'Enregistrement impossible.'));
     } finally {
       setSaving(false);
     }
@@ -748,7 +747,7 @@ function PlanningPage() {
       zoom.reset();
       fitTo(loaded);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Lecture du fichier impossible.');
+      setLoadError(errorMessage(err, 'Lecture du fichier impossible.'));
     }
   };
 
@@ -768,7 +767,7 @@ function PlanningPage() {
         setMessage('Itinéraire supprimé.');
       }
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Suppression impossible.');
+      setMessage(errorMessage(err, 'Suppression impossible.'));
     }
   };
 

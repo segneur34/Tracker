@@ -1,3 +1,4 @@
+import { toFixedNumber } from '../core/basics';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { niceTicks } from '../core/chartZoom';
 import type { ChartZoom } from '../hooks/useChartZoom';
@@ -70,7 +71,7 @@ function ElevationProfileMini({
             <XAxis dataKey="dist" type="number" allowDataOverflow
               domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
               ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-              tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${distanceSymbol}`} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
+              tickFormatter={(v: number) => `${toFixedNumber(v, 3)} ${distanceSymbol}`} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
             <YAxis domain={['auto', 'auto']} width={38} tickFormatter={(v) => `${v}`} tick={{ fill: ALTITUDE_COLOR, fontSize: 11 }} />
             <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
             <Area type="monotone" dataKey="altitude" stroke={`url(#${gradientId})`} strokeWidth={2} fill={`url(#${gradientId})`} fillOpacity={0.35}

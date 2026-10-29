@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useCallback, useMemo, useState } from 'react';
 import { parseGpx } from '../core/gpxParser';
 import { computeKinematics, detectTrackDeviceSpeedUnit, type KinematicsOptions } from '../core/kinematics';
@@ -123,7 +124,7 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
       setSession({
         ...EMPTY_STATE,
         fileName,
-        error: err instanceof Error ? err.message : 'Lecture du fichier impossible.',
+        error: errorMessage(err, 'Lecture du fichier impossible.'),
       });
     }
   }, []);

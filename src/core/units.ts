@@ -17,12 +17,39 @@ export const knotsToMs = (kn: number): number => kn / MS_TO_KNOTS;
 export const msToKmh = (ms: number): number => ms * MS_TO_KMH;
 export const kmhToMs = (kmh: number): number => kmh / MS_TO_KMH;
 
+/** Entier sur deux chiffres, « 05 ». */
+export const pad2 = (n: number): string => String(n).padStart(2, '0');
+
+/** Minutes décimales en `m:ss`, avec le report de 60 s (5,999 donne « 6:00 »). */
+export const minutesSeconds = (totalMinutes: number): string => {
+  const min = Math.floor(totalMinutes);
+  const sec = Math.round((totalMinutes - min) * 60);
+  return sec === 60 ? `${min + 1}:00` : `${min}:${pad2(sec)}`;
+};
+
+/**
+ * Écart signé, en pourcentage, d'une fraction : « +1.2 % », « −3.0 % ». Un écart
+ * nul s'écrit « 0 % » ; avec `zeroSign`, il garde son signe (« +0.0 % »).
+ */
+export const signedPercent = (fraction: number, { decimals = 1, zeroSign = false }: { decimals?: number; zeroSign?: boolean } = {}): string => {
+  const value = Math.abs(fraction * 100).toFixed(decimals);
+  if (!zeroSign && Number(value) === 0) return '0 %';
+  return `${zeroSign ? (fraction >= 0 ? '+' : '−') : fraction < 0 ? '−' : '+'}${value} %`;
+};
+
+/** Sous cette vitesse (m/s), une allure tend vers l'infini : `msToPace` rend `null`. */
+export const PACE_MIN_SPEED_MS = 0.1;
+/** Graphes des analyses à pied et à vélo : sous cette vitesse en allure, un trou plutôt qu'une valeur absurde. */
+export const CHART_PACE_MIN_SPEED_MS = 0.3;
+/** Même seuil dans l'analyse des répétitions du fractionné. */
+export const INTERVAL_PACE_MIN_SPEED_MS = 0.3;
+
 /**
  * Allure en minutes par kilomètre, ou par mille nautique (1 852 m) si la
  * distance de l'activité est en `nm`. Grandeur inverse de la vitesse : elle
  * tend vers l'infini à l'arrêt, d'où le `null` en dessous d'un seuil de mouvement.
  */
-export const msToPace = (ms: number, distanceUnit: DistanceUnit = 'km', minSpeedMs = 0.1): number | null => {
+export const msToPace = (ms: number, distanceUnit: DistanceUnit = 'km', minSpeedMs = PACE_MIN_SPEED_MS): number | null => {
   if (ms <= minSpeedMs) return null;
   return METERS_PER_DISTANCE_UNIT[distanceUnit] / ms / 60;
 };
@@ -31,9 +58,7 @@ export const msToPace = (ms: number, distanceUnit: DistanceUnit = 'km', minSpeed
 export const formatPace = (ms: number, distanceUnit: DistanceUnit = 'km'): string => {
   const pace = msToPace(ms, distanceUnit);
   if (pace === null || !isFinite(pace)) return '-';
-  const min = Math.floor(pace);
-  const sec = Math.round((pace - min) * 60);
-  return sec === 60 ? `${min + 1}:00` : `${min}:${sec.toString().padStart(2, '0')}`;
+  return minutesSeconds(pace);
 };
 
 /** Convertit une vitesse en m/s vers une unité d'affichage. */
@@ -102,11 +127,11 @@ export const formatSpeed = (ms: number | null, unit: SpeedUnit, distanceUnit: Di
   if (ms === null || !isFinite(ms)) return '-';
   switch (unit) {
     case 'kn':
-      return `${msToKnots(ms).toFixed(1)} nds`;
+      return `${msToKnots(ms).toFixed(1)} ${SPEED_UNIT_SYMBOL.kn}`;
     case 'kmh':
-      return `${msToKmh(ms).toFixed(1)} km/h`;
+      return `${msToKmh(ms).toFixed(1)} ${SPEED_UNIT_SYMBOL.kmh}`;
     case 'ms':
-      return `${ms.toFixed(2)} m/s`;
+      return `${ms.toFixed(2)} ${SPEED_UNIT_SYMBOL.ms}`;
     case 'minkm':
       return `${formatPace(ms, distanceUnit)} ${speedUnitSymbol(unit, distanceUnit)}`;
   }
@@ -115,11 +140,7 @@ export const formatSpeed = (ms: number | null, unit: SpeedUnit, distanceUnit: Di
 /** Formate une valeur déjà exprimée dans l'unité, pour les axes de graphe. */
 export const formatSpeedValue = (value: number, unit: SpeedUnit): string => {
   if (!isFinite(value)) return '-';
-  if (unit === 'minkm') {
-    const min = Math.floor(value);
-    const sec = Math.round((value - min) * 60);
-    return sec === 60 ? `${min + 1}:00` : `${min}:${sec.toString().padStart(2, '0')}`;
-  }
+  if (unit === 'minkm') return minutesSeconds(value);
   return unit === 'ms' ? value.toFixed(2) : value.toFixed(1);
 };
 
@@ -167,6 +188,12 @@ export const toDisplayDistance = (m: number, unit: DistanceUnit): number => m / 
 export const formatDistance = (m: number, unit: DistanceUnit, decimals = 2): string =>
   isFinite(m) ? `${toDisplayDistance(m, unit).toFixed(decimals)} ${DISTANCE_UNIT_SYMBOL[unit]}` : '-';
 
+/** Distance dans l'unité, deux décimales sous 10 unités et une au-delà (bibliothèque, statistiques). */
+export const formatDistanceAuto = (m: number, unit: DistanceUnit): string => formatDistance(m, unit, toDisplayDistance(m, unit) < 10 ? 2 : 1);
+
+/** Mètres entiers, « 120 m » ; « — » sans valeur. */
+export const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
+
 /** Distance d'approche (une balise) : en mètres sous 1 000 m, quelle que soit l'unité ; au-delà, dans l'unité. */
 export const formatShortDistance = (m: number, unit: DistanceUnit): string =>
   isFinite(m) && m < 1000 ? `${Math.round(m)} m` : formatDistance(m, unit);
@@ -176,7 +203,7 @@ export const formatDuration = (ms: number): string => {
   const totalMin = Math.floor(ms / 60000);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
-  return h > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${m} min`;
+  return h > 0 ? `${h}h${pad2(m)}` : `${m} min`;
 };
 
 /** Durée courte, en secondes : « 45 s », « 1 min 05 », puis comme `formatDuration` au-delà d'une heure. */
@@ -184,14 +211,13 @@ export const formatShortDuration = (s: number): string => {
   const total = Math.max(0, Math.round(s));
   if (total < 60) return `${total} s`;
   if (total >= 3600) return formatDuration(total * 1000);
-  return `${Math.floor(total / 60)} min ${String(total % 60).padStart(2, '0')}`;
+  return `${Math.floor(total / 60)} min ${pad2(total % 60)}`;
 };
 
 /** Durée en `h:mm:ss`, pour un chronomètre. */
 export const formatClock = (ms: number): string => {
   const total = Math.max(0, Math.round(ms / 1000));
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
+  return `${Math.floor(total / 3600)}:${pad2(Math.floor((total % 3600) / 60))}:${pad2(total % 60)}`;
 };
 
 /** Axe de temps d'un graphe, donné en minutes : `h:mm`, ou `h:mm:ss` hors de la minute ronde (graphe zoomé). */
@@ -204,8 +230,8 @@ export const formatClockMinutes = (minutes: number): string => formatClock(minut
 export const formatMinSecHours = (totalSeconds: number, secondSuffix = ''): string => {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor(totalSeconds / 60) % 60;
-  const s = `${String(totalSeconds % 60).padStart(2, '0')}${secondSuffix}`;
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+  const s = `${pad2(totalSeconds % 60)}${secondSuffix}`;
+  return h > 0 ? `${h}:${pad2(m)}:${s}` : `${m}:${s}`;
 };
 
 /** Joules par kilocalorie. */
@@ -214,14 +240,13 @@ export const J_PER_KCAL = 4184;
 /** Durée en secondes au format `m:ss` (de 0 à 59 min), pour un décompte. */
 export const formatMinSec = (s: number): string => {
   const total = Math.max(0, Math.round(s));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  return `${Math.floor(total / 60)}:${pad2(total % 60)}`;
 };
 
 /** Heure locale `hh:mm:ss` d'un instant, pour désigner un moment de la session. */
 export const formatTimeOfDay = (ms: number): string => {
   const date = new Date(ms);
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 };
 
 const WEEKDAYS_FR = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
@@ -229,6 +254,5 @@ const WEEKDAYS_FR = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
 /** Date et heure de départ d'une session, en heure locale : « mer. 14/10/2026 · 10:02 ». */
 export const formatSessionDate = (ms: number): string => {
   const date = new Date(ms);
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${WEEKDAYS_FR[date.getDay()]} ${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} · ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${WEEKDAYS_FR[date.getDay()]} ${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()} · ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 };

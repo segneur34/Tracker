@@ -1,3 +1,4 @@
+import { isObject } from './basics';
 import {
   SPORT_FAMILIES, SPORT_PROFILES, TRAINING_KINDS, TRAINING_KIND_LABEL, isIntervalSport, sportFamily, sportTreatment, trainingKind,
   type SportFamily, type TrainingKind, type Treatment,
@@ -193,8 +194,8 @@ export const readActivities = (raw: unknown): Activity[] => {
   const seen = new Set<string>();
   const list: Activity[] = [];
   for (const item of raw) {
-    if (typeof item !== 'object' || item === null) continue;
-    const { id, name, base, color, hidden, icon } = item as Record<string, unknown>;
+    if (!isObject(item)) continue;
+    const { id, name, base, color, hidden, icon } = item;
     if (typeof id !== 'string' || id === '' || seen.has(id)) continue;
     if (typeof name !== 'string' || name.trim() === '' || !isSportType(base)) continue;
     seen.add(id);

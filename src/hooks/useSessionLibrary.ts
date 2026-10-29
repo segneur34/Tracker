@@ -92,7 +92,7 @@ import type { SessionTest } from '../recording/fitnessTest';
 import { sessionFileName } from '../recording/session';
 import { effectiveFoil, effectivePumping, effectiveThresholdOverride, readStoredActivities } from './useSportSettings';
 import { createListeners } from './createStore';
-import { newId, plural } from '../core/basics';
+import { errorMessage, finiteOr, newId, plural } from '../core/basics';
 
 /**
  * Bibliothèque des sessions : la mémoire de l'application, tenue dans un
@@ -201,8 +201,6 @@ const setState = (patch: Partial<LibraryState>): void => {
 
 const subscribe = listeners.subscribe;
 
-const errorMessage = (err: unknown, fallback: string): string =>
-  err instanceof Error && err.message ? err.message : fallback;
 
 /** Phrase terminée par un point, pour en mettre plusieurs à la suite. */
 const sentence = (text: string): string => (/[.!?…]$/.test(text) ? text : `${text}.`);
@@ -553,7 +551,7 @@ let applyingSettings = false;
 
 const readLocalSavedAt = (): number | null => {
   const value = jsonStore.read<number>(SETTINGS_SAVED_AT_KEY);
-  return typeof value === 'number' && isFinite(value) ? value : null;
+  return finiteOr(value, null);
 };
 
 const localTravellingValues = (): Record<string, unknown> => {
@@ -1673,7 +1671,7 @@ export const importFromFolder = async (): Promise<ImportReport | null> => {
   try {
     entries = await pickFolderToImport();
   } catch (err) {
-    setState({ importing: false, message: `Lecture du dossier impossible : ${err instanceof Error ? err.message : String(err)}` });
+    setState({ importing: false, message: `Lecture du dossier impossible : ${errorMessage(err, String(err))}` });
     return null;
   }
   if (!entries) {

@@ -1,4 +1,5 @@
 import type { SportType } from '../core/types';
+import { GARMIN_TRACKPOINT_NAMESPACE, escapeXmlAttr, gpxDocument } from '../core/xml';
 import type { LocationFix } from '../platform/location';
 import { gpxStrideCadence } from '../running/cadence';
 import type { HeartRateFix } from './session';
@@ -24,10 +25,6 @@ export interface GpxMeta {
   /** Calcul de la session, écrit dans `<type>` ; `null` (journal sans en-tête lisible) : pas de `<type>`, session à classer. */
   sport: SportType | null;
 }
-
-/** Texte sûr dans un contenu ou un attribut XML ; sert aussi au GPX des itinéraires (`planning/routeGpx.ts`). */
-export const escapeXml = (text: string): string =>
-  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const isoTime = (ms: number): string => new Date(ms).toISOString();
 
@@ -55,7 +52,7 @@ const trackPoint = (fix: LocationFix): string => {
 const trackSegment = (fixes: LocationFix[]): string => ['    <trkseg>', ...fixes.map(trackPoint), '    </trkseg>'].join('\n');
 
 /** `segments` : la trace, découpée en continus (`splitIntoSegments`) — un `<trkseg>` par pause. */
-export const buildGpx = (segments: LocationFix[][], meta: GpxMeta): string => gpxDocument(segments, meta, trackSegment);
+export const buildGpx = (segments: LocationFix[][], meta: GpxMeta): string => renderGpx(segments, meta, trackSegment);
 
 /** Point d'une session sans position : l'heure, et la FC si la ceinture l'a donnée ; ni `lat` ni `lon`. */
 const heartRatePoint = (fix: HeartRateFix): string => {
@@ -71,25 +68,22 @@ const heartRatePoint = (fix: HeartRateFix): string => {
  * exigent la position : seul `parseGpx` le relit (`timedPoints`).
  */
 export const buildHeartRateGpx = (segments: HeartRateFix[][], meta: GpxMeta): string =>
-  gpxDocument(segments, meta, (fixes) => ['    <trkseg>', ...fixes.map(heartRatePoint), '    </trkseg>'].join('\n'));
+  renderGpx(segments, meta, (fixes) => ['    <trkseg>', ...fixes.map(heartRatePoint), '    </trkseg>'].join('\n'));
 
-const gpxDocument = <F extends { timeMs: number }>(segments: F[][], meta: GpxMeta, segment: (fixes: F[]) => string): string => {
-  const name = escapeXml(meta.name);
+const renderGpx = <F extends { timeMs: number }>(segments: F[][], meta: GpxMeta, segment: (fixes: F[]) => string): string => {
+  const name = escapeXmlAttr(meta.name);
   const nonEmpty = segments.filter((s) => s.length > 0);
   const toRender = nonEmpty.length > 0 ? nonEmpty : [[]];
   const startTime = nonEmpty.length > 0 ? `<time>${isoTime(nonEmpty[0][0].timeMs)}</time>` : '';
-  return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<gpx version="1.1" creator="Tracker"',
-    '  xmlns="http://www.topografix.com/GPX/1/1"',
-    '  xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2">',
-    `  <metadata><name>${name}</name>${startTime}</metadata>`,
-    '  <trk>',
-    `    <name>${name}</name>`,
-    ...(meta.sport !== null ? [`    <type>${meta.sport}</type>`] : []),
-    ...toRender.map(segment),
-    '  </trk>',
-    '</gpx>',
-    '',
-  ].join('\n');
+  return gpxDocument(
+    [
+      `  <metadata><name>${name}</name>${startTime}</metadata>`,
+      '  <trk>',
+      `    <name>${name}</name>`,
+      ...(meta.sport !== null ? [`    <type>${meta.sport}</type>`] : []),
+      ...toRender.map(segment),
+      '  </trk>',
+    ],
+    { gpxtpx: GARMIN_TRACKPOINT_NAMESPACE }
+  );
 };

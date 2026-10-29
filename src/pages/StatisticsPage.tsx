@@ -1,3 +1,4 @@
+import { dayMonthYear } from '../core/calendar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -20,7 +21,8 @@ import SegmentedControl from '../components/ui/SegmentedControl';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, SPORT_PROFILES, getSportProfile, type SportFamily } from '../core/sportProfiles';
 import {
-  DISTANCE_UNIT_SYMBOL, speedUnitLabel, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, isInverseUnit,
+  formatDistanceAuto,
+  DISTANCE_UNIT_SYMBOL, speedUnitLabel, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, isInverseUnit,
   toDisplayDistance, toDisplaySpeed, type DistanceUnit, type SpeedUnit,
 } from '../core/units';
 import { useChartZoom } from '../hooks/useChartZoom';
@@ -125,13 +127,6 @@ const isLandFamily = (family: SportFamily | null): boolean => family === 'course
 
 const decimal = (value: number, digits = 1): string => value.toFixed(digits).replace('.', ',');
 
-const shortDate = (ms: number): string =>
-  new Date(ms).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
-
-/** Distance, deux décimales sous 10 unités, une au-delà, comme la bibliothèque. */
-const distanceText = (m: number, unit: DistanceUnit): string =>
-  formatDistance(m, unit, toDisplayDistance(m, unit) < 10 ? 2 : 1);
-
 /** Rangée de pastilles : la donnée du graphique. */
 function Chips<K extends string>({ label, items, value, onChoose, accent, className }: {
   label: string;
@@ -161,7 +156,7 @@ const GroupRow = ({ color, name, totals, distanceUnit, onOpen }: {
       <span className="stats-row__swatch" style={{ background: color }} />
       <span className="stats-row__name">{name}</span>
       <span className="stats-row__meta num">
-        {plural(totals.sessions, 'session')} · {formatDuration(totals.durationS * 1000)} · {distanceText(totals.distanceM, distanceUnit)}
+        {plural(totals.sessions, 'session')} · {formatDuration(totals.durationS * 1000)} · {formatDistanceAuto(totals.distanceM, distanceUnit)}
       </span>
       <IconChevronRight size={16} className="stats-row__chevron" />
     </button>
@@ -426,7 +421,7 @@ function StatisticsPage() {
     switch (metric.unit) {
       case 'vitesse': return formatSpeed(value, speedUnit, distanceUnit);
       case 'duree': return formatDuration(value * 1000);
-      case 'distance': return distanceText(value, distanceUnit);
+      case 'distance': return formatDistanceAuto(value, distanceUnit);
       case 'pourcent': return `${Math.round(value)} %`;
       case 'nombre': return String(value);
       case 'metres': return `${Math.round(value)} m`;
@@ -498,7 +493,7 @@ function StatisticsPage() {
     const a = activityById.get(s.activityId);
     switch (kind) {
       case 'vitesse': return formatSpeed(value, a ? effectiveSpeedUnit(a) : speedUnit, a ? effectiveDistanceUnit(a) : distanceUnit);
-      case 'distance': return distanceText(value, a ? effectiveDistanceUnit(a) : distanceUnit);
+      case 'distance': return formatDistanceAuto(value, a ? effectiveDistanceUnit(a) : distanceUnit);
       case 'duree': return formatDuration(value * 1000);
       case 'denivele': return `${Math.round(value)} m`;
       case 'manoeuvres': return String(value);
@@ -576,7 +571,7 @@ function StatisticsPage() {
                       <StatTile label="Sessions" value={totals.sessions} />
                       <StatTile label="Durée totale" value={formatDuration(totals.durationS * 1000)} title="Du premier au dernier point de chaque session" />
                       {totals.movingTimeS > 0 && <StatTile label="Temps en action" value={formatDuration(totals.movingTimeS * 1000)} />}
-                      {family !== null && <StatTile label="Distance" value={distanceText(totals.distanceM, distanceUnit)} />}
+                      {family !== null && <StatTile label="Distance" value={formatDistanceAuto(totals.distanceM, distanceUnit)} />}
                       {isLandFamily(family) && averageMovingSpeedMs(totals) !== null && (
                         <StatTile label="Vitesse moyenne en action" value={formatSpeed(averageMovingSpeedMs(totals), speedUnit, distanceUnit)} />
                       )}
@@ -686,7 +681,7 @@ function StatisticsPage() {
                               }
                               return (
                                 <div className="stats-tooltip">
-                                  <strong>{shortDate(row.startMs)}</strong>
+                                  <strong>{dayMonthYear(row.startMs)}</strong>
                                   <span>{activityName(row.activityId)} · {pointText(series.find((serie) => serie.key === row.serieKey)?.label ?? '', row)}</span>
                                 </div>
                               );
@@ -712,7 +707,7 @@ function StatisticsPage() {
                       {pickedSession && pickedPoints.length > 0 ? (
                         <button type="button" className="stats-row" onClick={() => openSession(pickedSession.file, pickedSession.family)}>
                           <span className="stats-row__swatch" style={{ background: activityColor(pickedSession.activityId) }} />
-                          <span className="stats-row__name">{shortDate(pickedSession.startMs)}</span>
+                          <span className="stats-row__name">{dayMonthYear(pickedSession.startMs)}</span>
                           <span className="stats-row__meta num">
                             {pickedSession.name ?? activityName(pickedSession.activityId)} · {pickedPoints.map(({ label, point }) => pointText(label, point)).join(' · ')}
                             {pickedPoints.some(({ point }) => point.isRecord) ? ' · record' : ''}
@@ -841,7 +836,7 @@ function StatisticsPage() {
                               if (!row) return null;
                               return (
                                 <div className="stats-tooltip">
-                                  <strong>{shortDate(row.startMs)}</strong>
+                                  <strong>{dayMonthYear(row.startMs)}</strong>
                                   <span>{activityName(row.activityId)} · moy. {row.avgBpm} bpm · max {row.maxBpm} bpm</span>
                                 </div>
                               );
@@ -884,7 +879,7 @@ function StatisticsPage() {
                                   <span className="stats-row__swatch" style={{ background: activityColor(s.activityId) }} />
                                   <span className="stats-row__name num">{recordValue(kind, value, s)}</span>
                                   <span className="stats-row__meta">
-                                    {shortDate(s.startMs)} · {s.name ?? activityName(s.activityId)}
+                                    {dayMonthYear(s.startMs)} · {s.name ?? activityName(s.activityId)}
                                   </span>
                                   <IconChevronRight size={16} className="stats-row__chevron" />
                                 </button>

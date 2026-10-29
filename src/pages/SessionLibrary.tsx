@@ -1,3 +1,4 @@
+import { weekdayDayMonthYear } from '../core/calendar';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer } from 'react-leaflet';
 import BaseTileLayer from '../components/BaseTileLayer';
@@ -28,7 +29,7 @@ import { heartRatePointsFrom, heartRatePreviewPath, repsDone } from '../core/hea
 import { parseGpx } from '../core/gpxParser';
 import { getSportProfile, hasPositions, sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
-import { formatDistance, formatDuration, formatShortDuration, formatSpeed, toDisplayDistance } from '../core/units';
+import { formatDuration, formatShortDuration, formatSpeed, formatDistanceAuto } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { useAppliedTheme, useThemedShade } from '../hooks/useTheme';
@@ -72,9 +73,6 @@ const FAMILY: Record<SportFamily, { title: string; accent: string; of: string; b
 const activityOf = (session: LibrarySession, activities: Activity[]): Activity | null =>
   sessionActivity(activities, session.record.activityId, session.record.sport);
 
-const formatDate = (ms: number): string =>
-  new Date(ms).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-
 const formatTime = (ms: number): string =>
   new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
@@ -90,10 +88,8 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
     if (reps > 0) stats.push(`${reps} rép.`);
     return stats;
   }
-  // Deux décimales sous 10 unités, une au-delà.
   const distanceUnit = activity ? effectiveDistanceUnit(activity) : 'km';
-  const decimals = toDisplayDistance(summary.distanceM, distanceUnit) < 10 ? 2 : 1;
-  const stats = [formatDuration(summary.endMs - summary.startMs), formatDistance(summary.distanceM, distanceUnit, decimals)];
+  const stats = [formatDuration(summary.endMs - summary.startMs), formatDistanceAuto(summary.distanceM, distanceUnit)];
   if (activity === null) return stats;
   if (sportTreatment(activity.base) === 'voile') {
     stats.push(`max ${formatSpeed(summary.maxSpeedMs, effectiveSpeedUnit(activity))}`);
@@ -371,7 +367,7 @@ const SessionRow = memo(function SessionRow({
               {activity && <ActivityIcon activity={activity} className="lib-row__icon" style={{ color: shown(activity.color) }} />}
               {activity ? activity.name : 'À classer'}
             </span>
-            <span className="lib-row__date">{formatDate(startMs)} · {formatTime(startMs)}</span>
+            <span className="lib-row__date">{weekdayDayMonthYear(startMs)} · {formatTime(startMs)}</span>
           </span>
           <span className="lib-row__stats num">{rowStats(session, activity).join(' · ')}</span>
           {record.notes?.comment && <span className="lib-row__note">{record.notes.comment}</span>}

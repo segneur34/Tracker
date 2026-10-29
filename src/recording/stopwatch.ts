@@ -6,6 +6,7 @@
  * arrière-plan ou un écran éteint. La remise à zéro l'efface, sans commande.
  */
 
+import { readCommands } from '../core/basics';
 import { formatMinSecHours } from '../core/units';
 
 export type StopwatchCommand = 'lap' | 'pause' | 'resume';
@@ -79,14 +80,9 @@ export const stopwatchCommand = (sw: Stopwatch, kind: StopwatchCommand, nowMs: n
 export const readStopwatch = (value: unknown): Stopwatch | null => {
   if (typeof value !== 'object' || value === null) return null;
   const { startedAtMs, commands } = value as Record<string, unknown>;
-  if (typeof startedAtMs !== 'number' || !isFinite(startedAtMs) || !Array.isArray(commands)) return null;
-  const kinds: StopwatchCommand[] = ['lap', 'pause', 'resume'];
-  const kept = commands.filter((c): c is Stopwatch['commands'][number] => {
-    if (typeof c !== 'object' || c === null) return false;
-    const { kind, atMs } = c as Record<string, unknown>;
-    return kinds.includes(kind as StopwatchCommand) && typeof atMs === 'number' && isFinite(atMs);
-  });
-  return { startedAtMs, commands: kept.map(({ kind, atMs }) => ({ kind, atMs })) };
+  const kept = readCommands(commands, ['lap', 'pause', 'resume'] as const satisfies readonly StopwatchCommand[]);
+  if (typeof startedAtMs !== 'number' || !isFinite(startedAtMs) || kept === null) return null;
+  return { startedAtMs, commands: kept };
 };
 
 /** Temps du chrono, au dixième : « 1:23.4 », « 1:02:03.4 » au-delà d'une heure. */

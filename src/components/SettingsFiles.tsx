@@ -1,3 +1,4 @@
+import { dayMonthYearTime } from '../core/calendar';
 import { useState, type ChangeEvent } from 'react';
 import {
   adoptSettingsFile, dismissSettingsOffer, importSettingsFile, renameDevice, useLibraryFields, type SettingsFileInfo,
@@ -18,9 +19,6 @@ import { plural } from '../core/basics';
  * Réglages).
  */
 
-
-const formatDateTime = (ms: number): string =>
-  new Date(ms).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 const mutedStyle = { margin: 0, color: 'var(--muted)', fontSize: 'var(--text-s)', lineHeight: 1.5 } as const;
 
@@ -106,7 +104,7 @@ function SettingsFiles() {
             <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
               <strong style={{ fontSize: 'var(--text-m)' }}>{file.name}</strong>
               <span className="num" style={mutedStyle}>
-                {plural(file.activityCount, 'activité')} · modifiés le {formatDateTime(file.savedAt)}
+                {plural(file.activityCount, 'activité')} · modifiés le {dayMonthYearTime(file.savedAt)}
               </span>
             </span>
             {file.own

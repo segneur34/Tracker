@@ -1,3 +1,4 @@
+import { meanOf } from '../core/basics';
 import { lastIndexAtOrBeforeTime } from '../core/search';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 
@@ -137,9 +138,9 @@ export const holdRatioOf = (profile: (number | null)[], launchS: number, stepS: 
   const firstHalf = after.filter((s) => s.t <= middle);
   const secondHalf = after.filter((s) => s.t > middle);
   if (firstHalf.length < 2 || secondHalf.length < 2) return null;
-  const mean = (list: { v: number }[]) => list.reduce((sum, s) => sum + s.v, 0) / list.length;
-  const before = mean(firstHalf);
-  return before > 0 ? mean(secondHalf) / before : null;
+  const before = meanOf(firstHalf.map((s) => s.v));
+  const afterMean = meanOf(secondHalf.map((s) => s.v));
+  return before !== null && afterMean !== null && before > 0 ? afterMean / before : null;
 };
 
 /** Une répétition : son travail, le repos qui le suit, son profil et ce qu'on en tire. */
@@ -180,8 +181,7 @@ export interface IntervalSummary {
 }
 
 const average = (values: (number | null)[]): number | null => {
-  const kept = values.filter((v): v is number => v !== null && isFinite(v));
-  return kept.length > 0 ? kept.reduce((sum, v) => sum + v, 0) / kept.length : null;
+  return meanOf(values.filter((v): v is number => v !== null && isFinite(v)));
 };
 
 /** Séance mesurée sur la trace : chaque répétition avec le repos qui la suit, et la synthèse. */

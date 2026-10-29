@@ -1,4 +1,4 @@
-import { zoneOf } from '../core/heartRate';
+import { bandIndex } from '../core/basics';
 import type { ImuRecording } from '../core/imuFile';
 import { kmhToMs } from '../core/units';
 import { segmentDistanceM } from '../core/sessionStats';
@@ -498,7 +498,7 @@ export const analyzeCadence = (
   const running = average.spm >= p.runAboveSpm;
   const bounds = running ? p.runBands : p.walkBands;
   const timesS = new Array<number>(bounds.length + 1).fill(0);
-  for (const s of moving) timesS[zoneOf(s.spm, bounds)] += s.dtS;
+  for (const s of moving) timesS[bandIndex(s.spm, bounds)] += s.dtS;
 
   // Selon la vitesse : tranches de `speedBinKmh`, sur la vitesse lissée du point.
   const binMs = kmhToMs(p.speedBinKmh);
@@ -586,7 +586,7 @@ export const cadenceBandPaths = (
   let current: [number, number][] | null = null;
   let last = -1;
   for (const s of measuredSegments(track, spm, gapS)) {
-    if (!active[s.i] || zoneOf(s.spm, bounds) !== zone) continue;
+    if (!active[s.i] || bandIndex(s.spm, bounds) !== zone) continue;
     if (current === null || last !== s.i - 1) {
       current = [[track[s.i - 1].lat, track[s.i - 1].lon]];
       paths.push(current);

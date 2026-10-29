@@ -1,5 +1,5 @@
 import type { RestingHrProtocol, RestingSample } from '../recording/restingHrTest';
-import { isFiniteNumber } from '../core/basics';
+import { finiteOr, isFiniteNumber, roundTo } from '../core/basics';
 
 /**
  * Résultat d'un test de FC repos (`recording/restingHrTest.ts`) : la moyenne
@@ -107,8 +107,6 @@ export interface StoredRestingResult {
 /** Nombre de tests gardés : les plus récents. */
 export const MAX_STORED_RESTING_RESULTS = 60;
 
-const numOrNull = (v: unknown): number | null => (isFiniteNumber(v) ? v : null);
-
 /** Un test gardé, relu ; `null` s'il est mal formé. */
 export const readStoredRestingResult = (raw: unknown): StoredRestingResult | null => {
   if (typeof raw !== 'object' || raw === null) return null;
@@ -120,10 +118,10 @@ export const readStoredRestingResult = (raw: unknown): StoredRestingResult | nul
     lowestBpm: r.lowestBpm,
     fromS: r.fromS,
     toS: r.toS,
-    meanBpm: numOrNull(r.meanBpm),
-    maxBpm: numOrNull(r.maxBpm),
+    meanBpm: finiteOr(r.meanBpm, null),
+    maxBpm: finiteOr(r.maxBpm, null),
     coverage: isFiniteNumber(r.coverage) ? Math.min(1, Math.max(0, r.coverage)) : 0,
-    series: r.series.map(numOrNull),
+    series: r.series.map((v) => finiteOr(v, null)),
   };
 };
 
@@ -141,6 +139,6 @@ export const toStoredRestingResult = (result: RestingHrResult, startedAtMs: numb
     ? null
     : {
       startedAtMs, version: protocol.version, lowestBpm: result.lowestBpm, fromS: result.fromS, toS: result.toS,
-      meanBpm: result.meanBpm, maxBpm: result.maxBpm, coverage: Math.round(result.coverage * 100) / 100,
+      meanBpm: result.meanBpm, maxBpm: result.maxBpm, coverage: roundTo(result.coverage, 2),
       series: result.series.map((v) => (v === null ? null : Math.round(v))),
     };

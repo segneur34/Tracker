@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useState } from 'react';
 import { FAMILY_LABEL, type Activity } from '../core/activities';
 import { shareableStats } from '../core/shareImage';
@@ -70,7 +71,7 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
         },
       });
     } catch (err) {
-      setError(`Partage impossible : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
+      setError(`Partage impossible : ${errorMessage(err)}`);
     }
   };
 

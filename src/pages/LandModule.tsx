@@ -1,3 +1,4 @@
+import { roundTo, toFixedNumber } from '../core/basics';
 import { Fragment, useCallback, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Polyline } from 'react-leaflet';
@@ -62,6 +63,7 @@ import { meanFilterByTime } from '../core/speedFilter';
 import { SLOW_COLOR, gradientCss, isValidSpeedRange } from '../core/speedGradient';
 import { trackColorSegments } from '../core/trackColor';
 import {
+  editSpeedUnit, CHART_PACE_MIN_SPEED_MS,
   DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, speedUnitLabel, formatClockMinutes, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
   isInverseUnit, toDisplayDistance, toDisplaySpeed,
 } from '../core/units';
@@ -538,8 +540,8 @@ function LandModule({ family }: { family: LandFamily }) {
       const power = smoothedPower[i];
       return {
         index: i,
-        minutes: parseFloat(trackMinutes[i].toFixed(3)),
-        power: isFinite(power) ? Math.round(power * 10) / 10 : null,
+        minutes: toFixedNumber(trackMinutes[i], 3),
+        power: isFinite(power) ? roundTo(power, 1) : null,
         cumulative: energy.cumulative[i],
         speedMs: gpx.track[i].smoothedSpeedMs,
         grade: isFinite(grades[i]) ? grades[i] : null,
@@ -548,7 +550,7 @@ function LandModule({ family }: { family: LandFamily }) {
   }, [energy, smoothedPower, trackMinutes, energyZoom.view, gpx.track, grades]);
 
   /** Meilleurs segments, dans l'unité affichée (km/h pour une allure). */
-  const topUnit = speedUnit === 'minkm' ? 'kmh' : speedUnit;
+  const topUnit = editSpeedUnit(speedUnit);
   const tops = useMemo(
     () => (profile.topTargets.length > 0 && gpx.track.length > 1 && open.tops
       ? computeAllTopSegments(gpx.track, cumulative, profile.topTargets, (ms) => toDisplaySpeed(ms, topUnit), { decimals: 1 })
@@ -618,7 +620,7 @@ function LandModule({ family }: { family: LandFamily }) {
       case 'sans-contraste':
         return "Pas de fractionné reconnu : la vitesse ne se partage pas nettement entre efforts et récupérations. Un seuil d'effort imposé dans l'onglet réglages force la recherche.";
       case 'aucun-effort':
-        return `Aucun effort au-dessus du seuil d'effort (${formatSpeed(detected.thresholdMs, speedUnit === 'minkm' ? 'kmh' : speedUnit)}) : il se baisse dans l'onglet réglages.`;
+        return `Aucun effort au-dessus du seuil d'effort (${formatSpeed(detected.thresholdMs, editSpeedUnit(speedUnit))}) : il se baisse dans l'onglet réglages.`;
       default:
         return 'Trop peu de mouvement pour y chercher des répétitions.';
     }
@@ -685,10 +687,10 @@ function LandModule({ family }: { family: LandFamily }) {
       const altitude = elevation.smoothed[i];
       const ms = chartSpeed[i];
       // En min/km, l'arrêt tend vers l'infini : on laisse un trou plutôt qu'une valeur absurde.
-      const speed = inverse && ms < 0.3 ? null : parseFloat(toDisplaySpeed(ms, speedUnit, distanceUnit).toFixed(2));
+      const speed = inverse && ms < CHART_PACE_MIN_SPEED_MS ? null : toFixedNumber(toDisplaySpeed(ms, speedUnit, distanceUnit), 2);
       return {
         index: i,
-        dist: parseFloat(trackDist[i].toFixed(3)),
+        dist: toFixedNumber(trackDist[i], 3),
         speed,
         speedMs: ms,
         altitude: stats?.hasElevation && isFinite(altitude) ? Math.round(altitude) : null,
@@ -714,7 +716,7 @@ function LandModule({ family }: { family: LandFamily }) {
       const altitude = elevation.smoothed[i];
       return {
         index: i,
-        dist: parseFloat(trackDist[i].toFixed(3)),
+        dist: toFixedNumber(trackDist[i], 3),
         altitude: isFinite(altitude) ? Math.round(altitude) : null,
         grade: isFinite(grades[i]) ? grades[i] : null,
       };
@@ -801,7 +803,7 @@ function LandModule({ family }: { family: LandFamily }) {
     switch (key) {
       case 'vitesse': {
         const ms = chartSpeed[i];
-        return { text: inverse && ms < 0.3 ? '—' : formatSpeed(ms, speedUnit, distanceUnit), color: '#1e88e5' };
+        return { text: inverse && ms < CHART_PACE_MIN_SPEED_MS ? '—' : formatSpeed(ms, speedUnit, distanceUnit), color: '#1e88e5' };
       }
       case 'altitude': {
         const altitude = elevation.smoothed[i];
@@ -829,7 +831,7 @@ function LandModule({ family }: { family: LandFamily }) {
       const i = hoveredIndex;
       const power = smoothedPower[i];
       const main = energyMode === 'power'
-        ? (power !== undefined && isFinite(power) ? `${Math.round(power * 10) / 10} ${energy.powerUnit}` : '—')
+        ? (power !== undefined && isFinite(power) ? `${roundTo(power, 1)} ${energy.powerUnit}` : '—')
         : `${energy.cumulative[i]} ${energy.cumulativeUnit}`;
       return {
         values: [{ text: main, color: '#e64a19' }, { text: `${formatSpeed(gpx.track[i].smoothedSpeedMs, speedUnit, distanceUnit)}${gradeText(i)}` }],
@@ -853,13 +855,13 @@ function LandModule({ family }: { family: LandFamily }) {
   );
   const distanceSymbol = DISTANCE_UNIT_SYMBOL[distanceUnit];
   /** Distance de l'infobulle, au centième. */
-  const distanceLabel = (v: unknown) => `${parseFloat(Number(v).toFixed(2))} ${distanceSymbol}`;
+  const distanceLabel = (v: unknown) => `${toFixedNumber(Number(v), 2)} ${distanceSymbol}`;
   /** Graduations rondes, zoom compris (`niceTicks`). */
   const xAxis = (
     <XAxis dataKey="dist" type="number" allowDataOverflow
       domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
       ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-      tickFormatter={(v: number) => `${parseFloat(v.toFixed(3))} ${distanceSymbol}`} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
+      tickFormatter={(v: number) => `${toFixedNumber(v, 3)} ${distanceSymbol}`} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
   );
 
   /** Traits des repères sur les graphes, en abscisse de distance. */
@@ -1500,7 +1502,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 jumps={shownJumps}
                 hiddenCount={jumpsState.jumps.length - shownJumps.length}
                 minHeightM={jumpMinHeightM}
-                thresholdLabel={formatSpeed(thresholdMs, speedUnit === 'minkm' ? 'kmh' : speedUnit)}
+                thresholdLabel={formatSpeed(thresholdMs, editSpeedUnit(speedUnit))}
                 speedUnit={speedUnit}
                 distanceUnit={distanceUnit}
                 open={open.sauts}
@@ -1584,7 +1586,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 {detected && (
                   <div style={{ marginTop: '12px', fontSize: 'var(--text-s)' }}>
                     <EffortThresholdEditor
-                      unit={speedUnit === 'minkm' ? 'kmh' : speedUnit}
+                      unit={editSpeedUnit(speedUnit)}
                       valueMs={detected.thresholdMs}
                       suggestedMs={detected.suggestedThresholdMs}
                       isOverridden={draft.edits.effortThresholdMs !== null}

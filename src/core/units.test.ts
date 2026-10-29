@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, fromDisplaySpeed, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed,
+  CHART_PACE_MIN_SPEED_MS, INTERVAL_PACE_MIN_SPEED_MS, PACE_MIN_SPEED_MS, formatDistanceAuto, formatMeters, minutesSeconds, msToPace, pad2, signedPercent,
+  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed,
 } from './units';
 
 describe('distances', () => {
@@ -106,5 +107,104 @@ describe('allure et unité de distance', () => {
     expect(speedUnitLabel('minkm', 'nm')).toBe('min/NM');
     expect(speedUnitLabel('minkm')).toBe('min/km');
     expect(speedUnitLabel('kmh', 'nm')).toBe('km/h');
+  });
+});
+
+// Copies gelées des écritures d'avant le lot 55 : les briques doivent rendre les mêmes textes.
+const oldPaceText = (value: number): string => {
+  const min = Math.floor(value);
+  const sec = Math.round((value - min) * 60);
+  return sec === 60 ? `${min + 1}:00` : `${min}:${sec.toString().padStart(2, '0')}`;
+};
+const oldCadenceChange = (from: number, to: number): string => {
+  const pct = from > 0 ? ((to - from) / from) * 100 : 0;
+  return `${pct >= 0 ? '+' : '−'}${Math.abs(pct).toFixed(1)} %`;
+};
+const oldIntervalChange = (fraction: number, decimals = 1): string => {
+  const value = Math.abs(fraction * 100).toFixed(decimals);
+  if (Number(value) === 0) return `0 %`;
+  return `${fraction < 0 ? '−' : '+'}${value} %`;
+};
+const oldFormatSpeed = (ms: number, unit: 'kn' | 'kmh' | 'ms'): string =>
+  unit === 'kn' ? `${(ms * 1.94384).toFixed(1)} nds` : unit === 'kmh' ? `${(ms * 3.6).toFixed(1)} km/h` : `${ms.toFixed(2)} m/s`;
+
+describe('minutesSeconds et pad2', () => {
+  it('écrit les minutes décimales en m:ss avec le report de 60 s', () => {
+    for (const v of [0, 0.5, 1, 4.999, 5.5, 5.9999, 5 + 59.5 / 60, 5 + 59.4 / 60, 12.25, 100.0001, -1.5]) {
+      expect(minutesSeconds(v)).toBe(oldPaceText(v));
+    }
+    expect(minutesSeconds(5 + 59.5 / 60)).toBe('6:00');
+    expect(minutesSeconds(5.5)).toBe('5:30');
+  });
+
+  it('complète à deux chiffres', () => {
+    expect(pad2(0)).toBe('00');
+    expect(pad2(7)).toBe('07');
+    expect(pad2(12)).toBe('12');
+    expect(pad2(123)).toBe('123');
+  });
+
+  it('formatPace et formatSpeed gardent leurs textes', () => {
+    expect(formatSpeed(1000 / (5 * 60), 'minkm')).toBe('5:00 /km');
+    expect(formatSpeed(1000 / (5 * 60 - 0.4), 'minkm')).toBe('5:00 /km');
+    expect(formatSpeed(1852 / (6 * 60), 'minkm', 'nm')).toBe('6:00 /NM');
+    expect(formatSpeed(0.05, 'minkm')).toBe('- /km');
+    for (const ms of [0, 0.1, 2.5, 7.77, 15.123, -1]) {
+      for (const unit of ['kn', 'kmh', 'ms'] as const) expect(formatSpeed(ms, unit)).toBe(oldFormatSpeed(ms, unit));
+    }
+    expect(formatSpeed(null, 'kn')).toBe('-');
+    expect(formatSpeed(NaN, 'kmh')).toBe('-');
+  });
+
+  it("formatSpeedValue écrit une allure en m:ss comme avant", () => {
+    for (const v of [4.5, 5.9999, 6, 0, 10.25]) expect(formatSpeedValue(v, 'minkm')).toBe(oldPaceText(v));
+    expect(formatSpeedValue(NaN, 'minkm')).toBe('-');
+  });
+});
+
+describe('signedPercent', () => {
+  it("rend l'écriture de l'analyse des répétitions (zéro sans signe)", () => {
+    for (const f of [0, 0.0004, -0.0004, 0.012, -0.03, 0.5, -1, 0.0049, 0.005]) {
+      expect(signedPercent(f)).toBe(oldIntervalChange(f));
+      expect(signedPercent(f, { decimals: 0 })).toBe(oldIntervalChange(f, 0));
+    }
+    expect(signedPercent(0)).toBe('0 %');
+    expect(signedPercent(0.012)).toBe('+1.2 %');
+    expect(signedPercent(-0.03)).toBe('−3.0 %');
+  });
+
+  it("rend l'écriture de la cadence (zéro signé)", () => {
+    const change = (from: number, to: number) => signedPercent(from > 0 ? (to - from) / from : 0, { zeroSign: true });
+    for (const [from, to] of [[170, 170], [170, 172], [170, 168], [0, 5], [-3, 4], [0.9, 0.8], [170, 170.0001], [170, 169.9999]]) {
+      expect(change(from, to)).toBe(oldCadenceChange(from, to));
+    }
+    expect(change(170, 170)).toBe('+0.0 %');
+    expect(change(0, 5)).toBe('+0.0 %');
+  });
+});
+
+describe('formatDistanceAuto, formatMeters et seuils', () => {
+  it('met deux décimales sous 10 unités, une au-delà', () => {
+    const old = (m: number, unit: 'km' | 'nm') => formatDistance(m, unit, toDisplayDistance(m, unit) < 10 ? 2 : 1);
+    for (const m of [0, 999, 9999, 10_000, 12_345, 9.99 * 1852, 10 * 1852, NaN, Infinity]) {
+      for (const unit of ['km', 'nm'] as const) expect(formatDistanceAuto(m, unit)).toBe(old(m, unit));
+    }
+    expect(formatDistanceAuto(9_994, 'km')).toBe('9.99 km');
+    expect(formatDistanceAuto(10_040, 'km')).toBe('10.0 km');
+  });
+
+  it('écrit des mètres entiers', () => {
+    expect(formatMeters(null)).toBe('—');
+    expect(formatMeters(0)).toBe('0 m');
+    expect(formatMeters(120.5)).toBe('121 m');
+    expect(formatMeters(-0.4)).toBe('0 m');
+  });
+
+  it("garde les trois seuils d'allure", () => {
+    expect(PACE_MIN_SPEED_MS).toBe(0.1);
+    expect(CHART_PACE_MIN_SPEED_MS).toBe(0.3);
+    expect(INTERVAL_PACE_MIN_SPEED_MS).toBe(0.3);
+    expect(msToPace(0.1)).toBeNull();
+    expect(msToPace(0.11)).not.toBeNull();
   });
 });

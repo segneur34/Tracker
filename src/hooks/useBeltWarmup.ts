@@ -1,10 +1,9 @@
+import { errorMessage } from '../core/basics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { holdBelt, releaseBelt, type HeartRateBelt } from '../platform/heartRate';
 
 /** Nom de la connexion prise par la page Enregistrer avant le départ. */
 const HOLDER = 'depart';
-
-const errorText = (err: unknown): string => (err instanceof Error && err.message ? err.message : 'erreur inconnue');
 
 /**
  * Ceinture connectée dès que sa case est cochée, avant le départ : on voit
@@ -42,7 +41,7 @@ export function useBeltWarmup(belt: HeartRateBelt | null, active: boolean): {
         if (cancelled && !handingOver.current && generation.current === mine) releaseBelt(HOLDER);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(errorText(err));
+        if (!cancelled) setError(errorMessage(err));
       });
     return () => {
       cancelled = true;

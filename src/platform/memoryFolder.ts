@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { registerPlugin } from '@capacitor/core';
 import { base64ToBytes, bytesToBase64 } from './base64';
 import { filesystem } from './files';
@@ -502,7 +503,7 @@ export const openMemoryFolder = async (): Promise<MemoryAccess> => {
   } catch (err) {
     return {
       state: 'unavailable',
-      reason: err instanceof Error && err.message ? err.message : 'Ce navigateur ne permet pas de garder les sessions.',
+      reason: errorMessage(err, 'Ce navigateur ne permet pas de garder les sessions.'),
     };
   }
 };

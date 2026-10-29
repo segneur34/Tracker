@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useEffect, useMemo, useState } from 'react';
 import type { TrackPoint } from '../core/types';
 import type { SessionSurfaces } from '../library/record';
@@ -84,7 +85,7 @@ export const useSessionSurfaces = (track: TrackPoint[], file: string | null, act
         store(file, result);
         setFoundCount(found.size);
       },
-      (err: unknown) => setError({ startMs, message: err instanceof Error ? err.message : 'Recherche des voies impossible.' })
+      (err: unknown) => setError({ startMs, message: errorMessage(err, 'Recherche des voies impossible.') })
     );
   }, [active, surfaces, failed, startMs, track, file, partial]);
 

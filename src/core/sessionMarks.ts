@@ -1,5 +1,5 @@
 import { firstIndexAtOrAfterTime } from './search';
-import { isFiniteNumber } from './basics';
+import { isFiniteNumber, isObject } from './basics';
 
 /**
  * Repères posés par le bouton « Note » pendant l'enregistrement : un instant
@@ -21,8 +21,8 @@ export interface SessionMark {
 
 /** Un repère relu, `null` s'il est mal formé ; un nom vide vaut une absence. */
 export const readSessionMark = (raw: unknown): SessionMark | null => {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
-  const { timeMs, lat, lon, label } = raw as Record<string, unknown>;
+  if (!isObject(raw)) return null;
+  const { timeMs, lat, lon, label } = raw;
   if (!isFiniteNumber(timeMs)) return null;
   const name = typeof label === 'string' ? label.trim() : '';
   // À l'heure seule : les deux nulles.

@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Activity } from '../core/activities';
@@ -80,7 +81,7 @@ export const loadGpxOutcome = async (load: Promise<string | null>): Promise<GpxL
     const text = await load;
     return text === null ? { error: 'GPX introuvable dans la mémoire.', retry: false } : { text };
   } catch (err) {
-    return { error: err instanceof Error && err.message ? err.message : 'GPX illisible.', retry: true };
+    return { error: errorMessage(err, 'GPX illisible.'), retry: true };
   }
 };
 

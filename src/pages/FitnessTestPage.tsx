@@ -1,3 +1,4 @@
+import { roundTo } from '../core/basics';
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import FitnessTestPlanChart from '../components/FitnessTestPlanChart';
@@ -24,7 +25,7 @@ const EXAMPLE_STEPS = 10;
 
 const range = (min: number, max: number, step: number): number[] => {
   const out: number[] = [];
-  for (let v = min; v <= max + 1e-9; v += step) out.push(Math.round(v * 100) / 100);
+  for (let v = min; v <= max + 1e-9; v += step) out.push(roundTo(v, 2));
   return out;
 };
 const WARMUP_CHOICES_S = range(FITNESS_TEST_LIMITS.warmupS.min, FITNESS_TEST_LIMITS.warmupS.max, FITNESS_TEST_LIMITS.warmupS.step);

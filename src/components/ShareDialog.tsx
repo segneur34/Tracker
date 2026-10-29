@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { FAMILY_ACCENT } from '../core/activities';
 import { pickShareStats, SHARE_IMAGE, type ShareStat } from '../core/shareImage';
@@ -93,7 +94,7 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
         });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setFailure({ text: err instanceof Error ? err.message : 'Image impossible à produire.', key: drawKey });
+        if (!cancelled) setFailure({ text: errorMessage(err, 'Image impossible à produire.'), key: drawKey });
       });
     return () => {
       cancelled = true;
@@ -116,7 +117,7 @@ function ShareDialog({ family, activityId, title, subtitle, fileName, segments, 
       const outcome = await shareFile(image.blob, `${fileName}.png`, 'Partager la session');
       if (outcome === 'downloaded') setNote({ text: 'Ce navigateur ne partage pas d\'image : elle est téléchargée.', error: false });
     } catch (err) {
-      setNote({ text: `Partage impossible : ${err instanceof Error ? err.message : 'erreur inconnue'}`, error: true });
+      setNote({ text: `Partage impossible : ${errorMessage(err)}`, error: true });
     }
   };
 

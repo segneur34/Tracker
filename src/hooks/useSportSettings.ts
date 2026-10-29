@@ -13,7 +13,7 @@ import { sanitizeTabChoices, type TabChoices } from '../core/analysisTabs';
 import { isValidSpeedRange, type SpeedRangeMs } from '../core/speedGradient';
 import type { SportType } from '../core/types';
 import { DISTANCE_UNIT_LABEL, SPEED_UNIT_LABEL, type DistanceUnit, type SpeedUnit } from '../core/units';
-import { newId } from '../core/basics';
+import { finiteOr, inRange, newId } from '../core/basics';
 import { jsonStore } from '../platform/storage';
 import { setBeepPitch } from '../platform/beeper';
 import { DEFAULT_BEEP_SOUND, beepSoundHz, isBeepSound, type BeepSound } from '../recording/beepSound';
@@ -241,11 +241,11 @@ export const DEFAULT_LONG_PRESS_MS = 2000;
 export const DEFAULT_STOP_HOLD_MS = 2000;
 
 const isValidLongPress = (value: unknown): value is number =>
-  typeof value === 'number' && isFinite(value) && value >= 300 && value <= 10_000;
+  inRange(value, 300, 10_000);
 
 /** Appui long pour arrêter : 0 (simple appui), ou de 0,5 à 10 s. */
 const isValidStopHold = (value: unknown): value is number =>
-  value === 0 || (typeof value === 'number' && isFinite(value) && value >= 500 && value <= 10_000);
+  value === 0 || inRange(value, 500, 10_000);
 
 export const isTerrainStep = (value: unknown): value is number =>
   typeof value === 'number' && (TERRAIN_STEP_CHOICES_M as readonly number[]).includes(value);
@@ -395,7 +395,7 @@ export const addGearItem = (activityId: string, groupId: string, name: string): 
 
 /** Rapport du retour de boucle admis, en fois l'aller. */
 export const isValidLoopReturnRatio = (value: unknown): value is number =>
-  typeof value === 'number' && isFinite(value) && value >= LOOP_RETURN_RATIO_RANGE.min && value <= LOOP_RETURN_RATIO_RANGE.max;
+  inRange(value, LOOP_RETURN_RATIO_RANGE.min, LOOP_RETURN_RATIO_RANGE.max);
 
 /** Décalage des seuils cardio admis, en bpm entiers. */
 export const HR_OFFSET_RANGE = { min: -30, max: 30 };
@@ -1147,7 +1147,7 @@ export const useAllSportSettings = () => {
         tabs: sanitizeTabChoices(stored.tabs?.[id]) ?? defaultTabsOf(activity),
         isTabsOverridden: sanitizeTabChoices(stored.tabs?.[id]) !== null,
         paceLevel: isPaceLevel(paceLevel) ? paceLevel : defaultPaceOf(activity).level,
-        customFlatSpeedMs: typeof customSpeed === 'number' && isFinite(customSpeed) ? customSpeed : defaultPaceOf(activity).customFlatSpeedMs,
+        customFlatSpeedMs: finiteOr(customSpeed, defaultPaceOf(activity).customFlatSpeedMs),
         wayTypes: ways.wayTypes,
         isWayTypesOverridden: ways.overridden,
         loopReturnRatio: resolveLoopReturnRatio(stored, activity),

@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ChangeEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import ActivitySelect from '../components/ActivitySelect';
@@ -20,7 +21,7 @@ import {
   TRAINING_KIND_LABEL, hasPositions, isIntervalSport, isTestSport, sportFamily, sportTreatment, trainingKind, usesMarkCourse, type SportFamily,
   type TrainingKind,
 } from '../core/sportProfiles';
-import { formatClock, formatDistance, formatShortDistance, formatSpeed } from '../core/units';
+import { formatClock, formatDistance, formatShortDistance, formatSpeed, formatMeters } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { armFitnessTest, useFitnessTest } from '../hooks/useFitnessTest';
@@ -53,6 +54,7 @@ import {
 import { followedTraceLengthM, splitFollowedTrace, type FollowProgress, type FollowedTrace } from '../recording/followedTrace';
 import { travelHeading } from '../recording/heading';
 import {
+  recentWindowLabel,
   liveFieldLabel, liveFieldValue, type LiveFieldContext, type LiveFieldUnits,
 } from '../recording/liveFields';
 import { LIVE_LEG_DEFAULTS, type LiveLeg } from '../recording/liveLegs';
@@ -63,7 +65,7 @@ import { createReplaySource, deviceLocationSource, type LocationFix } from '../p
 import { buzz } from '../platform/beeper';
 import { isNativeApp } from '../platform/runtime';
 import { canLockOrientation, isOrientationLocked, keepScreenOn, lockOrientation, subscribeOrientationLock } from '../platform/screen';
-import { fixesFromRawPoints, recordingDurationMs } from '../recording/session';
+import { fixesFromRawPoints, recordingDurationMs, isAutoPause, isManualPause } from '../recording/session';
 import { FITNESS_TESTS, FITNESS_TEST_IDS, isFitnessTestId, type FitnessTestId } from '../recording/fitnessTest';
 import { RESTING_HR_TEST, type RestingHrTestId } from '../recording/restingHrTest';
 import { WORKOUT_LISTS } from './workoutLists';
@@ -135,8 +137,6 @@ const STAT_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, min
 /** Nom d'une famille dans « Aucune activité … ». */
 const FAMILY_NOUN: Record<SportFamily, string> = { voile: 'voile', course: 'à pied', velo: 'vélo', fractionne: "d'entraînement", surf: 'de surf' };
 
-const formatMeters = (m: number | null): string => (m === null ? '—' : `${Math.round(m)} m`);
-const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
 
 /** Distance restante et part faite de la trace suivie ; « à rejoindre » tant qu'on ne l'a pas rejointe. */
 const followStatItems = (activity: Activity, progress: FollowProgress | null, totalM: number): { label: string; value: string }[] => {
@@ -534,7 +534,7 @@ function RecordingScreen() {
       setReplayError(null);
     } catch (err) {
       setReplay(null);
-      setReplayError(err instanceof Error ? err.message : 'Lecture du fichier impossible.');
+      setReplayError(errorMessage(err, 'Lecture du fichier impossible.'));
     }
   };
 
@@ -770,7 +770,7 @@ function RecordingScreen() {
               Pause
             </Button>
           )}
-          {recorder.status === 'paused' && recorder.pausedReason === 'manual' && (
+          {isManualPause(recorder) && (
             <Button variant="record" size="l" style={{ flex: 1 }} onClick={() => void resumeRecording()}>
               <IconPlay size={20} />
               Reprendre
@@ -852,7 +852,7 @@ function RecordingScreen() {
         </div>
       )}
 
-      {recorder.status === 'paused' && recorder.pausedReason === 'manual' && (
+      {isManualPause(recorder) && (
         <div className="ui-alert ui-alert--warning">
           {liveHeartOnly
             ? 'En pause : les mesures de la ceinture ne sont pas gardées.'
@@ -862,7 +862,7 @@ function RecordingScreen() {
       {busy && recorder.measuringMotion && recorder.status !== 'paused' && (
         <div className="ui-alert">{motionWhat} : les capteurs du téléphone mesurent.</div>
       )}
-      {recorder.status === 'paused' && recorder.pausedReason === 'auto' && (
+      {isAutoPause(recorder) && (
         <div className="ui-alert ui-alert--warning">En pause automatique : aucun mouvement détecté. Reprend dès que vous bougez.</div>
       )}
 

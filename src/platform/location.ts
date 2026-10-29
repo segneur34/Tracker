@@ -1,3 +1,4 @@
+import { errorMessage, finiteOr } from '../core/basics';
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import type { Location as PluginLocation } from '@capgo/background-geolocation';
 import { isNativeApp } from './runtime';
@@ -60,18 +61,14 @@ export interface LocationSource {
   ): Promise<StopLocation>;
 }
 
-/** Valeur absente ou non numérique ramenée à `undefined`. */
-const optional = (value: number | null | undefined): number | undefined =>
-  value === null || value === undefined || !isFinite(value) ? undefined : value;
-
 const fromPlugin = (location: PluginLocation): LocationFix => ({
   timeMs: location.time ?? Date.now(),
   lat: location.latitude,
   lon: location.longitude,
-  accuracyM: optional(location.accuracy),
-  altitudeM: optional(location.altitude),
-  speedMs: optional(location.speed),
-  bearingDeg: optional(location.bearing),
+  accuracyM: finiteOr(location.accuracy, undefined),
+  altitudeM: finiteOr(location.altitude, undefined),
+  speedMs: finiteOr(location.speed, undefined),
+  bearingDeg: finiteOr(location.bearing, undefined),
 });
 
 /** Attente entre deux essais de démarrage du GPS, quand la localisation du téléphone est coupée. */
@@ -161,7 +158,7 @@ const startNative = async (
             toldDisabled = true;
             retry = setTimeout(() => {
               retry = null;
-              if (!stopped) launch().catch((err: unknown) => onError(err instanceof Error ? err.message : 'Localisation indisponible.'));
+              if (!stopped) launch().catch((err: unknown) => onError(errorMessage(err, 'Localisation indisponible.')));
             }, LOCATION_RETRY_MS);
             return;
           }
@@ -173,7 +170,7 @@ const startNative = async (
             relaunched = true;
             BackgroundGeolocation.stop()
               .then(launch)
-              .catch((err: unknown) => onError(err instanceof Error ? err.message : 'Localisation indisponible.'));
+              .catch((err: unknown) => onError(errorMessage(err, 'Localisation indisponible.')));
             return;
           }
           onError(error.message || error.code || 'Localisation indisponible.');
@@ -209,10 +206,10 @@ const browserSource: LocationSource = {
           timeMs: p.timestamp,
           lat: p.coords.latitude,
           lon: p.coords.longitude,
-          accuracyM: optional(p.coords.accuracy),
-          altitudeM: optional(p.coords.altitude),
-          speedMs: optional(p.coords.speed),
-          bearingDeg: optional(p.coords.heading),
+          accuracyM: finiteOr(p.coords.accuracy, undefined),
+          altitudeM: finiteOr(p.coords.altitude, undefined),
+          speedMs: finiteOr(p.coords.speed, undefined),
+          bearingDeg: finiteOr(p.coords.heading, undefined),
         }),
       (e) => onError(e.message || 'Localisation refusée ou indisponible.'),
       { enableHighAccuracy: true, maximumAge: 0 }

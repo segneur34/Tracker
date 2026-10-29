@@ -3,7 +3,7 @@ import { HelpText } from './Help';
 import PanelTitle from './PanelTitle';
 import { CADENCE_BAND_COLORS } from './cadenceColors';
 import { HIGHLIGHT_SHOWN_COLOR } from './highlightColors';
-import { speedUnitLabel, formatShortDuration, formatSpeedValue, toDisplaySpeed, type DistanceUnit, type SpeedUnit } from '../core/units';
+import { speedUnitLabel, formatShortDuration, formatSpeedValue, toDisplaySpeed, signedPercent, type DistanceUnit, type SpeedUnit } from '../core/units';
 import { useOpenSections } from '../hooks/useOpenSections';
 import type { CadenceAnalysis, CadenceShare } from '../running/cadence';
 import StatTile from './ui/StatTile';
@@ -31,10 +31,8 @@ const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 'var(-
 
 const spmText = (spm: number) => `${Math.round(spm)} pas/min`;
 const stepText = (m: number | null) => (m === null ? '—' : `${m.toFixed(2)} m`);
-const signedPercent = (from: number, to: number) => {
-  const pct = from > 0 ? ((to - from) / from) * 100 : 0;
-  return `${pct >= 0 ? '+' : '−'}${Math.abs(pct).toFixed(1)} %`;
-};
+/** Écart de `to` à `from`, signé en pourcentage, « +0.0 % » à zéro. */
+const signedChange = (from: number, to: number) => signedPercent(from > 0 ? (to - from) / from : 0, { zeroSign: true });
 
 /**
  * Onglet « cadence » des analyses à pied (course, marche, fractionné à pied) :
@@ -93,9 +91,9 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
       {drift && (
         <div style={{ fontSize: 'var(--text-s)', margin: '4px 0 2px' }}>
           <span style={{ color: 'var(--muted)' }}>Dérive, du premier au dernier tiers : </span>
-          cadence {Math.round(drift.first.spm)} → {Math.round(drift.last.spm)} pas/min ({signedPercent(drift.first.spm, drift.last.spm)})
+          cadence {Math.round(drift.first.spm)} → {Math.round(drift.last.spm)} pas/min ({signedChange(drift.first.spm, drift.last.spm)})
           {drift.first.stepLengthM !== null && drift.last.stepLengthM !== null && (
-            <>, pas {drift.first.stepLengthM.toFixed(2)} → {drift.last.stepLengthM.toFixed(2)} m ({signedPercent(drift.first.stepLengthM, drift.last.stepLengthM)})</>
+            <>, pas {drift.first.stepLengthM.toFixed(2)} → {drift.last.stepLengthM.toFixed(2)} m ({signedChange(drift.first.stepLengthM, drift.last.stepLengthM)})</>
           )}
         </div>
       )}

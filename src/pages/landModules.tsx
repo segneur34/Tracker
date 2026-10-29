@@ -1,3 +1,4 @@
+import { roundTo } from '../core/basics';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { GradeProfile } from '../core/sportProfiles';
@@ -188,11 +189,11 @@ const runningEnergy = ({ track, grades, gradeZones, activityMask, runner, age, l
         : `Coût selon la pente de Minetti (2002), rapporté à l'économie de course (${params.economyMlKgKm} ml O₂/kg/km${runner.economyMlKgKm === null ? ', valeur par défaut' : ''}), plus la résistance de l'air par air calme ; rien à l'arrêt.`) +
       (load > 0
         ? walking
-          ? ` Charge portée : ${load} kg, dans l'équation de Pandolf (masse ${Math.round(((mass ?? 0) + load) * 10) / 10} kg) ; le repos reste celui du corps.`
-          : ` Charge portée : ${load} kg, déplacée avec le corps (masse ${Math.round(((mass ?? 0) + load) * 10) / 10} kg) ; le repos reste celui du corps.`
+          ? ` Charge portée : ${load} kg, dans l'équation de Pandolf (masse ${roundTo((mass ?? 0) + load, 1)} kg) ; le repos reste celui du corps.`
+          : ` Charge portée : ${load} kg, déplacée avec le corps (masse ${roundTo((mass ?? 0) + load, 1)} kg) ; le repos reste celui du corps.`
         : '') +
       ` Puissance : mécanique, l'énergie de ${effort} sur un rendement de ${Math.round(params.mechanicalEfficiency * 100)} %, comparable à celle d'un capteur de puissance de course ; une estimation, pas une mesure.` +
-      ` Repos : ${Math.round(restWkg * massFactor * 10) / 10} W${perKg}, ${mass !== null && runner.heightCm !== null && runner.sex !== null && age !== null ? 'selon poids, taille, âge et sexe' : 'valeur moyenne (1 MET) faute de profil complet'}, sur toute la durée.`,
+      ` Repos : ${roundTo(restWkg * massFactor, 1)} W${perKg}, ${mass !== null && runner.heightCm !== null && runner.sex !== null && age !== null ? 'selon poids, taille, âge et sexe' : 'valeur moyenne (1 MET) faute de profil complet'}, sur toute la durée.`,
   };
 };
 
@@ -280,7 +281,7 @@ const cyclingEnergy = ({ track, grades, gradeZones, activityMask, runner, age, b
     })),
     warning: surfaceWarning,
     note:
-      `Pesanteur, roulement et air par air calme (vélo ${bike.noun} : CdA ${bike.cdaM2} m², ${bikeWeightKg} kg ; masse totale ${Math.round(params.totalMassKg * 10) / 10} kg), transmission ${Math.round(params.drivetrainEfficiency * 100)} % ; rien en roue libre ni à l'arrêt.` +
+      `Pesanteur, roulement et air par air calme (vélo ${bike.noun} : CdA ${bike.cdaM2} m², ${bikeWeightKg} kg ; masse totale ${roundTo(params.totalMassKg, 1)} kg), transmission ${Math.round(params.drivetrainEfficiency * 100)} % ; rien en roue libre ni à l'arrêt.` +
       ` ${rollingNote(bikeType, energy.surfaceDistanceM, energy.movingDistanceM)}` +
       ` Énergie de pédalage : travail mécanique sur un rendement musculaire de ${Math.round(params.muscleEfficiency * 100)} %.` +
       ` Repos : ${Math.round(restW)} W, ${runner.heightCm !== null && runner.sex !== null && age !== null ? 'selon poids, taille, âge et sexe' : 'valeur moyenne (1 MET) faute de profil complet'}, sur toute la durée.`,

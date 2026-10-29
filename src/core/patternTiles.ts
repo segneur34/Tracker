@@ -1,3 +1,4 @@
+import { roundTo } from './basics';
 import type { SportFamily } from './sportProfiles';
 
 /**
@@ -39,13 +40,12 @@ export interface BackdropTile {
 }
 
 const TAU = 2 * Math.PI;
-const r1 = (v: number): number => Math.round(v * 10) / 10;
 
 type Point = [number, number];
 
 /** Ligne brisée fine d'une suite de points, en tracé SVG. */
 const polyline = (points: readonly (readonly [number, number])[]): string =>
-  points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${r1(x)} ${r1(y)}`).join('');
+  points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${roundTo(x, 1)} ${roundTo(y, 1)}`).join('');
 
 /** Points d'une fonction `x(y)` de `from` à `to`, tous les `step` pixels. */
 const sampleY = (from: number, to: number, x: (y: number) => number, step = 6): Point[] => {
@@ -202,7 +202,7 @@ const neighbours = (width: number, height: number): Point[] =>
  */
 const wrappedShape = (x: number, y: number, relative: string): string =>
   [[0, 0], [-TILE_W, 0], [0, -TILE_H], [-TILE_W, -TILE_H]]
-    .map(([dx, dy]) => `M${r1(x + dx)} ${r1(y + dy)}${relative}`).join('');
+    .map(([dx, dy]) => `M${roundTo(x + dx, 1)} ${roundTo(y + dy, 1)}${relative}`).join('');
 
 /**
  * Souffle de vent, d'après l'image de l'utilisateur (23/10) : quatre longs traits, dont l'un finit en
@@ -220,7 +220,7 @@ const placeSouffle = (ox: number, oy: number, s: number): string =>
   neighbours(TILE_W, TILE_H).map(([dx, dy]) =>
     SOUFFLE.map((d) => {
       let i = 0;
-      return d.replace(/-?\d+(\.\d+)?/g, (n) => String(r1(i++ % 2 === 0 ? ox + dx + Number(n) * s : oy + dy + Number(n) * s)));
+      return d.replace(/-?\d+(\.\d+)?/g, (n) => String(roundTo(i++ % 2 === 0 ? ox + dx + Number(n) * s : oy + dy + Number(n) * s, 1)));
     }).join('')).join('');
 
 /** Voile : trois souffles de tailles différentes par tuile, beaucoup de vide autour. */
@@ -314,7 +314,7 @@ const surfTile = (): TilePath[] => {
     d: neighbours(SURF_W, SURF_H).slice(0, 5).map(([dx, dy]) => {
       let d = polyline(points.map(([x, y]) => [ox + dx + x * s, oy + dy + y * s]));
       if (hook) {
-        const c = (...v: number[]) => v.map((q) => r1(q * s * hook)).join(' ');
+        const c = (...v: number[]) => v.map((q) => roundTo(q * s * hook, 1)).join(' ');
         d += `c${c(0, 30, -14, 44, -36, 40)}c${c(-20, -4, -18, -28, 4, -26)}`;
       }
       return d;
@@ -333,7 +333,7 @@ const fractionneTile = (): TilePath[] => {
       const x0 = (col * TILE_W) / cols + (row % 2) * 50 + jitter(row * cols + col) * 20;
       const y0 = (row * TILE_H) / rows + 80;
       [[0, 0, 54], [16, 11, 84], [42, 16, 38]].forEach(([dx, dy, len]) => {
-        paths.push(wrappedShape(x0 + dx, y0 + dy, `l${r1(ux * len)} ${r1(uy * len)}`));
+        paths.push(wrappedShape(x0 + dx, y0 + dy, `l${roundTo(ux * len, 1)} ${roundTo(uy * len, 1)}`));
       });
     }
   }

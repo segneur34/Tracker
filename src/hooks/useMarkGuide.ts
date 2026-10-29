@@ -1,3 +1,4 @@
+import { isManualPause, isRecordingSession } from '../recording/session';
 import { useSyncExternalStore } from 'react';
 import { activityFamily } from '../core/activities';
 import { usesMarkCourse } from '../core/sportProfiles';
@@ -98,7 +99,7 @@ const publish = () => {
 
 /** Règle le rythme d'approche de la balise visée, s'il a changé. */
 const applyRhythm = (current: Session) => {
-  const manualPause = getRecorderState().status === 'paused' && getRecorderState().pausedReason === 'manual';
+  const manualPause = isManualPause(getRecorderState());
   const intervalMs = current.muted || manualPause || current.distanceM === null
     ? null
     : beepIntervalMs(current.distanceM, current.settings);
@@ -140,7 +141,7 @@ const sync = () => {
   const recorder = getRecorderState();
   const trace = getFollowedTrace();
   const marks = trace?.marks;
-  const recording = recorder.status === 'starting' || recorder.status === 'recording' || recorder.status === 'paused';
+  const recording = isRecordingSession(recorder);
   const activity = recorder.activity;
   const guided = recording && activity !== null && usesMarkCourse(activityFamily(activity)) && marks !== undefined && marks.length > 0;
 
@@ -171,7 +172,7 @@ const sync = () => {
   }
   // Pause manuelle : à la reprise, la position d'avant la pause est oubliée
   // (le segment qui enjambe la pause n'a pas été parcouru).
-  if (recorder.status === 'paused' && recorder.pausedReason === 'manual') {
+  if (isManualPause(recorder)) {
     session.manualPause = true;
   } else if (session.manualPause && recorder.status === 'recording') {
     session.manualPause = false;

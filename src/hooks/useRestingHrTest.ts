@@ -1,13 +1,16 @@
+import { errorMessage } from '../core/basics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { playPattern } from '../platform/beeper';
 import {
-  beltState, heartRateSupported, holdBelt, latestHeartRate, savedBelt, subscribeBeltState, subscribeHeartRate, type BeltState,
+  heartRateSupported, holdBelt, savedBelt, subscribeHeartRate, type BeltState, type HeartRateSample,
 } from '../platform/heartRate';
 import { keepScreenOn } from '../platform/screen';
+import { readableBpm } from '../recording/heartRate';
 import {
   RESTING_HR_TEST, RESTING_SIGNAL_TONES, advanceRestingTest, exampleRestingHr, startRestingTest, type RestingHrProtocol, type RestingHrState,
   type RestingSample,
 } from '../recording/restingHrTest';
+import { useBeltLive } from './useBeltLive';
 import { restingHrResult, type RestingHrResult } from '../running/restingHrResults';
 
 /**
@@ -42,10 +45,11 @@ export interface RestingBelt {
   bpm: number | null;
 }
 
-const errorMessage = (err: unknown, fallback: string): string => (err instanceof Error && err.message !== '' ? err.message : fallback);
-
-const bpmOf = (sample: { bpm: number; contact: boolean | null }): number | null =>
-  sample.contact === false || !(sample.bpm > 0) ? null : Math.round(sample.bpm);
+/** FC lisible d'une mesure, arrondie au battement. */
+const bpmOf = (sample: HeartRateSample | null): number | null => {
+  const bpm = readableBpm(sample);
+  return bpm === null ? null : Math.round(bpm);
+};
 
 export const useRestingHrTest = (
   onFinished: (result: RestingHrResult, startedAtMs: number) => void,
@@ -55,7 +59,8 @@ export const useRestingHrTest = (
   const speed = options.speed ?? 1;
   const belt = useMemo(() => savedBelt(), []);
   const native = heartRateSupported();
-  const [beltInfo, setBeltInfo] = useState<RestingBelt>(() => ({ state: beltState(), bpm: latestHeartRate() ? bpmOf(latestHeartRate()!) : null }));
+  const live = useBeltLive();
+  const beltInfo = useMemo<RestingBelt>(() => ({ state: live.state, bpm: live.bpm === null ? null : Math.round(live.bpm) }), [live.state, live.bpm]);
   const [error, setError] = useState<string | null>(null);
   const [run, setRun] = useState<RestingRun | null>(null);
 
@@ -98,10 +103,8 @@ export const useRestingHrTest = (
     const offSample = subscribeHeartRate((sample) => {
       const bpm = bpmOf(sample);
       bpmRef.current = bpm;
-      setBeltInfo((b) => (b.bpm === bpm && b.state === beltState() ? b : { state: beltState(), bpm }));
       if (stateRef.current && simRef.current === null) apply(Date.now(), { timeMs: sample.timeMs, bpm });
     });
-    const offState = subscribeBeltState((state) => setBeltInfo((b) => ({ state, bpm: state === 'connected' ? b.bpm : null })));
     holdBelt(HOLDER, belt).then(
       (rel) => (alive ? (release = rel) : rel()),
       (err) => alive && setError(`Ceinture cardio injoignable : ${errorMessage(err, 'erreur inconnue')}.`)
@@ -109,7 +112,6 @@ export const useRestingHrTest = (
     return () => {
       alive = false;
       offSample();
-      offState();
       release?.();
     };
   }, [native, belt, apply]);

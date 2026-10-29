@@ -1,3 +1,4 @@
+import { errorMessage, toFixedNumber } from '../core/basics';
 import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ReferenceArea, XAxis } from 'recharts';
@@ -99,7 +100,7 @@ function MuscuModule() {
       setLoadError(null);
     } catch (err) {
       setLoaded(null);
-      setLoadError(err instanceof Error ? err.message : 'Lecture du GPX impossible.');
+      setLoadError(errorMessage(err, 'Lecture du GPX impossible.'));
     }
   }, [activity.id, setActivity]);
   const { file: sessionFile, requested, error: sessionError } = useSessionFromUrl(receiveSession);
@@ -149,7 +150,7 @@ function MuscuModule() {
     const [first, last] = visibleIndexRange(minutes, zoom.view);
     return sampledIndices(first, last, CHART_MAX_POINTS, smoothed).map((i) => ({
       index: i,
-      minutes: parseFloat(minutes[i].toFixed(3)),
+      minutes: toFixedNumber(minutes[i], 3),
       hr: smoothed[i] === null ? null : Math.round(smoothed[i]!),
     }));
   }, [minutes, zoom.view, smoothed]);

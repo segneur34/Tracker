@@ -1,5 +1,5 @@
 import { readActivities } from '../core/activities';
-import { isObject } from '../core/basics';
+import { isObject, parseJson } from '../core/basics';
 
 /**
  * Fichiers de réglages du dossier mémoire (§10, point 90) : un par appareil,
@@ -52,12 +52,7 @@ const readDevice = (raw: unknown): SettingsDevice | null => {
 
 export const parseSettingsFile = (text: string | null): SettingsFile | null => {
   if (text === null) return null;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    return null;
-  }
+  const raw = parseJson(text);
   if (!isObject(raw) || raw.format !== SETTINGS_FORMAT) return null;
   if (typeof raw.version !== 'number' || typeof raw.savedAt !== 'number' || !isFinite(raw.savedAt)) return null;
   if (!isObject(raw.values)) return null;

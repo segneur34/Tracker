@@ -15,7 +15,8 @@
  * « Passer » compris ; les instants, en millisecondes de l'horloge.
  */
 
-import { BEEP_FINAL_MS, BEEP_LONG_MS, BEEP_SHORT_MS } from '../core/beepDurations';
+import { readCommands } from '../core/basics';
+import { TONE_MS, type ToneKind } from '../core/beepDurations';
 import { formatMinSecHours } from '../core/units';
 
 /** Bloc de répétitions : travail, repos, travail… sans repos après la dernière. */
@@ -74,11 +75,11 @@ export const DEFAULT_INTERVAL_WORKOUT: IntervalWorkout = { reps: 10, workS: 60, 
 /** Séances gardées, au plus. */
 export const MAX_INTERVAL_PRESETS = 30;
 
-/** Sons du compteur : bip court, bip long, et le long double de la fin de séance. */
-export type IntervalToneKind = 'court' | 'long' | 'final';
+/** Sons du compteur : bip court, bip long, et le long double de la fin de séance (`core/beepDurations.ts`). */
+export type IntervalToneKind = ToneKind;
 
-/** Durée de chaque son, en millisecondes (`core/beepDurations.ts`). */
-export const INTERVAL_TONE_MS: Record<IntervalToneKind, number> = { court: BEEP_SHORT_MS, long: BEEP_LONG_MS, final: BEEP_FINAL_MS };
+/** Durée de chaque son, en millisecondes. */
+export const INTERVAL_TONE_MS = TONE_MS;
 
 /**
  * Compte à rebours avant le premier travail, en secondes : on lance le
@@ -650,13 +651,8 @@ export const readIntervalRun = (value: unknown): IntervalRun | null => {
   if (typeof value !== 'object' || value === null) return null;
   const { workout, startedAtMs, commands, kind } = value as Record<string, unknown>;
   const clean = sanitizeWorkout(workout);
-  if (clean === null || typeof startedAtMs !== 'number' || !isFinite(startedAtMs) || !Array.isArray(commands)) return null;
-  const kinds: IntervalCommand[] = ['pause', 'resume', 'skip', 'stop'];
-  const kept = commands.filter((c): c is IntervalRun['commands'][number] => {
-    if (typeof c !== 'object' || c === null) return false;
-    const { kind, atMs } = c as Record<string, unknown>;
-    return kinds.includes(kind as IntervalCommand) && typeof atMs === 'number' && isFinite(atMs);
-  });
-  const run: IntervalRun = { workout: clean, startedAtMs, commands: kept.map((c) => ({ kind: c.kind, atMs: c.atMs })) };
+  const kept = readCommands(commands, ['pause', 'resume', 'skip', 'stop'] as const satisfies readonly IntervalCommand[]);
+  if (clean === null || typeof startedAtMs !== 'number' || !isFinite(startedAtMs) || kept === null) return null;
+  const run: IntervalRun = { workout: clean, startedAtMs, commands: kept };
   return kind === 'timer' ? { ...run, kind } : run;
 };

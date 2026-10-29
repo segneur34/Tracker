@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { niceTicks } from '../core/chartZoom';
 import {
+  editSpeedUnit, INTERVAL_PACE_MIN_SPEED_MS, signedPercent,
   SPEED_UNIT_LABEL, speedUnitLabel, formatShortDistance, formatSpeed, formatSpeedValue, isInverseUnit, toDisplaySpeed,
   type DistanceUnit, type SpeedUnit,
 } from '../core/units';
@@ -96,8 +97,6 @@ const SPARK_SMOOTHING_S = 5;
  * toutes les 4 s, un toutes les 20 s à l'arrêt).
  */
 const SPARSE_SAMPLING_S = 2;
-/** Une allure sous cette vitesse tend vers l'infini : un trou plutôt qu'une valeur absurde. */
-const MIN_PACE_SPEED_MS = 0.3;
 
 /** Numéros de répétition sous le graphe d'évolution : tous jusqu'à 15, sinon de 5 en 5 (et le premier). */
 const repTicks = (first: number, last: number): number[] => {
@@ -189,13 +188,6 @@ function IntervalProfileChart({ data, spanS, launchS, reps, speedAxis, formatMs,
   );
 }
 
-/** Écart signé, en pourcentage : « +1.2 % », « −3.0 % ». */
-const signedPercent = (fraction: number, decimals = 1): string => {
-  const value = Math.abs(fraction * 100).toFixed(decimals);
-  if (Number(value) === 0) return `0 %`;
-  return `${fraction < 0 ? '−' : '+'}${value} %`;
-};
-
 const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' };
 const cellStyle: CSSProperties = { padding: '0.4em 0.6em', textAlign: 'center' };
 const noteStyle: CSSProperties = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', lineHeight: 1.45 };
@@ -269,10 +261,10 @@ function IntervalAnalysis({
   const inverse = isInverseUnit(speedUnit);
   const noun = inverse ? 'allure' : 'vitesse';
   /** Accélération et seuils : en km/h pour une allure, comme les tops. */
-  const rateUnit: SpeedUnit = speedUnit === 'minkm' ? 'kmh' : speedUnit;
+  const rateUnit: SpeedUnit = editSpeedUnit(speedUnit);
   const panelStyle: CSSProperties = { ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' };
   const display = (ms: number | null): number | null =>
-    ms === null || !isFinite(ms) || (inverse && ms < MIN_PACE_SPEED_MS) ? null : parseFloat(toDisplaySpeed(ms, speedUnit, distanceUnit).toFixed(2));
+    ms === null || !isFinite(ms) || (inverse && ms < INTERVAL_PACE_MIN_SPEED_MS) ? null : parseFloat(toDisplaySpeed(ms, speedUnit, distanceUnit).toFixed(2));
   const formatRate = (ms2: number): string =>
     rateUnit === 'ms' ? `${ms2.toFixed(2)} m/s²` : `${toDisplaySpeed(ms2, rateUnit).toFixed(1)} ${SPEED_UNIT_LABEL[rateUnit]} par s`;
   const title = (s: IntervalSeriesView) =>
@@ -398,7 +390,7 @@ function IntervalAnalysis({
                         <td className="an-ivl-dist" style={cellStyle}>{work.distanceM === null ? '—' : formatShortDistance(work.distanceM, distanceUnit)}</td>
                         <td className="an-ivl-speed" style={{ ...cellStyle, fontWeight: 700 }}>{formatSpeed(work.speedMs, speedUnit, distanceUnit)}</td>
                         <td className="an-ivl-launch" data-label="lancé" style={cellStyle}>{launchS === null ? '—' : `${Math.round(launchS)} s`}</td>
-                        <td className="an-ivl-hold" data-label="maintien" style={cellStyle}>{holdRatio === null ? '—' : signedPercent(holdRatio - 1, 0)}</td>
+                        <td className="an-ivl-hold" data-label="maintien" style={cellStyle}>{holdRatio === null ? '—' : signedPercent(holdRatio - 1, { decimals: 0 })}</td>
                         <td className="an-ivl-spark-cell" style={cellStyle}>{sparks.get(rep)?.some((v) => v !== null) && <Sparkline points={sparks.get(rep) ?? []} length={sparkLength} domain={domain} />}</td>
                         {hasHr && (
                           <td className="an-ivl-hr" data-label="FC" style={cellStyle}>
@@ -546,7 +538,7 @@ function IntervalAnalysis({
           const lo = Math.min(...launched);
           const hi = Math.max(...launched);
           const pad = Math.max((hi - lo) * 0.25, hi * 0.02);
-          const ends = [display(Math.max(lo - pad, MIN_PACE_SPEED_MS)), display(hi + pad)].filter((v): v is number => v !== null);
+          const ends = [display(Math.max(lo - pad, INTERVAL_PACE_MIN_SPEED_MS)), display(hi + pad)].filter((v): v is number => v !== null);
           if (ends.length === 2) domain = [Math.min(...ends), Math.max(...ends)];
         }
         return (

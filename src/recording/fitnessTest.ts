@@ -1,7 +1,7 @@
 import { heartRateZones, type HeartRateAthlete, type HeartRateZoneModel, type HeartRateZones, type ZoneMethod } from '../core/heartRate';
 import { kmhToMs } from '../core/units';
 import type { ClockTone } from '../platform/beeper';
-import { isFiniteNumber } from '../core/basics';
+import { finiteOr, isFiniteNumber } from '../core/basics';
 
 /**
  * Tests guidés par bips (Entraînement › Tests, 24/10), d'abord la FC max :
@@ -232,8 +232,6 @@ export interface SessionTest {
   signals: { t: number; s: TestSignal }[];
 }
 
-const numOrNull = (v: unknown): number | null => (isFiniteNumber(v) ? v : null);
-
 /** Test d'une fiche ou d'un journal ; `null` s'il est mal formé. */
 export const readSessionTest = (raw: unknown): SessionTest | null => {
   if (typeof raw !== 'object' || raw === null) return null;
@@ -259,13 +257,13 @@ export const readSessionTest = (raw: unknown): SessionTest | null => {
       lowBpm: s.lowBpm, highBpm: s.highBpm, zoneMethod: s.zoneMethod === 'saisis' || s.zoneMethod === 'perso' ? 'saisis' : s.zoneMethod === 'reserve' ? 'reserve' : 'max',
     },
     startMs: r.startMs,
-    rampStartMs: numOrNull(r.rampStartMs),
-    v0Ms: numOrNull(r.v0Ms),
+    rampStartMs: finiteOr(r.rampStartMs, null),
+    v0Ms: finiteOr(r.v0Ms, null),
     steps,
-    rampEndMs: numOrNull(r.rampEndMs),
-    dropMs: numOrNull(r.dropMs),
+    rampEndMs: finiteOr(r.rampEndMs, null),
+    dropMs: finiteOr(r.dropMs, null),
     endReason,
-    endMs: numOrNull(r.endMs),
+    endMs: finiteOr(r.endMs, null),
     signals,
   };
 };

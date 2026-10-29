@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useEffect, useState } from 'react';
 import { decodeImu } from '../core/imuFile';
 import { JUMPS_CALC_VERSION, measureJumps, toSessionJump, type JumpDetection, type SessionJump } from '../core/jumps';
@@ -80,7 +81,7 @@ export const useSessionJumps = (file: string | null, track: TrackPoint[], sport:
         if (!cancelled) setComputedCount(computed.size);
       },
       (err: unknown) => {
-        if (!cancelled) setFailure({ key, message: err instanceof Error ? err.message : 'Calcul des sauts impossible.' });
+        if (!cancelled) setFailure({ key, message: errorMessage(err, 'Calcul des sauts impossible.') });
       }
     );
     return () => {

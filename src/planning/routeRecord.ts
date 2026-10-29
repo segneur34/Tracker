@@ -1,7 +1,7 @@
 import { sanitizeMarkGuide, type MarkGuideSettings } from '../recording/markGuide';
 import { DEFAULT_ROUTE_MODE, newLeg, readRouteMode, type PlannedRoute, type RouteLeg, type RouteMode, type RoutePoint, type Waypoint } from './route';
 import { readSurfaceRuns, type SurfaceRuns } from './surface';
-import { isFiniteNumber, isObject } from '../core/basics';
+import { isFiniteNumber, isObject, parseJson } from '../core/basics';
 
 /**
  * Fiche d'un itinéraire : le fichier JSON rangé dans `itineraires/` du
@@ -138,12 +138,7 @@ export const recordToRoute = (record: RouteRecord): PlannedRoute => {
 
 /** Lit une fiche ; `null` si le texte n'en est pas une lisible. Les champs inconnus sont gardés. */
 export const parseRouteRecord = (text: string): RouteRecord | null => {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    return null;
-  }
+  const raw = parseJson(text);
   if (!isObject(raw) || raw.format !== ROUTE_FORMAT || !isFiniteNumber(raw.version)) return null;
   if (!Array.isArray(raw.waypoints)) return null;
   const waypoints = raw.waypoints.map(readWaypoint);

@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 89, essai 72, question Q50.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 90, essai 72, question Q50.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -18,7 +18,7 @@ APK 0.3.97 installée le 28/10 (versionCode 3097).
    - essai 68 : enregistrement, appui long sur le bouton rond pour la pause puis « Arrêter » aussitôt → session rangée, plus de notification, un nouvel enregistrement démarre normalement.
    - essai 69 : mode avion pendant la recherche du revêtement ou de l'altitude d'une course → message d'erreur et « Réessayer » en deux minutes au plus, au lieu d'une recherche sans fin.
    - essai 70 : voile, ouvrir une session de la bibliothèque, saisir le vent, « Enregistrer la session », ouvrir une autre session puis revenir → vent gardé, et l'autre session n'a jamais affiché ce vent.
-- 55 · [dette] Briques communes, partie 1 : message d'erreur, arrondis, durées et dates, FC lisible, états de l'enregistreur écrits une seule fois ; chiffres et textes identiques · noté 28/10 · petit · Sonnet/high · en cours (chaîne du 29/10, lot Sonnet/high) · dépend de : 53 · détail : docs/backlog/52-assainissement.md
+- 55 · [dette] Briques communes, partie 1 : message d'erreur, arrondis, durées et dates, FC lisible, états de l'enregistreur écrits une seule fois ; chiffres et textes identiques · noté 28/10 · petit · Sonnet/high · à valider sur lecture (version 0.3.101) ; vérif complète propre (115 fichiers, 1 711 tests, build ok) ; banc general, library, statistiques, profil, planning identiques avant/après ; core/basics (errorMessage, inRange, finiteOr, parseJson, meanOf, roundTo, toFixedNumber, readCommands, bandIndex), core/units, core/calendar, core/xml, core/beepDurations, readableBpm, états de l'enregistreur ; un message d'erreur vide prend partout le repli (au lieu de « Partage impossible :  ») ; motifs voisins laissés (fini dans une plage dans heartRate, duration, energy, jumpSettings ; parseFloat(toFixed) dans SettingsPage, SurfModule, IntervalAnalysis, BeepCurveEditor, landModules ; pad dans ProfileRoot, ProfilePage, WorkoutBlocksEditor) · dépend de : 53 · détail : docs/backlog/52-assainissement.md
 
 ## Ensuite
 
@@ -108,6 +108,7 @@ APK 0.3.97 installée le 28/10 (versionCode 3097).
 - 82 · [dette] Planification : doublons internes, profil envoyé une seule fois, revêtement aligné (Q47) · noté 28/10 · petit · Sonnet/high · dépend de : 57 · détail : docs/backlog/52-assainissement.md
 - 83 · [bogue] Enregistrer et Profil : à 115 et 130 % de taille de texte, au téléphone étroit (320 à 390 px), la rangée « Famille » d'Enregistrer et « Période » de Profil défile au lieu de tenir sur la largeur (relevé de tailles.mjs le 29/10) · noté 29/10 · petit · Sonnet/medium
 - 84 · [dette] Suites du lot 54 : un `.tmp` resté dans en-attente/ n'est jamais repris ni nettoyé (plantage entre l'effacement de la cible et le renommage : session perdue, cas rarissime) ; le GPX complet (sessionBundle, export et import) perd encore les champs de fiche illisibles ; un GPX de 0 octet du dossier du navigateur reste listé « illisible » ; banc session-save.mjs périmé (aucun sélecteur trouvé le 29/10), à refaire avec le lot 76 · noté 29/10 · petit · Opus/medium
+- 89 · [bogue] Planifier : un itinéraire enregistré ne se rouvre pas (« Points (0) ») dans le banc planning.mjs, à l'étape « rouvrir », avant comme après le lot 55 (29/10) ; script périmé ou vrai défaut, à trancher d'abord · noté 29/10 · petit · Sonnet/high
 
 ## Questions
 

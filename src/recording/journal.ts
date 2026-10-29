@@ -1,3 +1,4 @@
+import { finiteOr, parseJson } from '../core/basics';
 import { readSessionMark, sortMarks, type SessionMark } from '../core/sessionMarks';
 import type { SportType } from '../core/types';
 import type { LocationFix } from '../platform/location';
@@ -129,17 +130,6 @@ export interface ParsedJournal {
   test: SessionTest | null;
 }
 
-const optionalNumber = (value: unknown): number | undefined =>
-  typeof value === 'number' && isFinite(value) ? value : undefined;
-
-const parseLine = (line: string): unknown => {
-  try {
-    return JSON.parse(line);
-  } catch {
-    return undefined;
-  }
-};
-
 const toHeader = (value: unknown): JournalHeader | null => {
   if (typeof value !== 'object' || value === null) return null;
   const v = value as Partial<JournalHeader>;
@@ -186,27 +176,27 @@ const toTestMarker = (value: unknown): { marker: boolean; test: SessionTest | nu
 /** Ligne de mesure de la ceinture : `true` si c'en est une (même abîmée), et la mesure si elle est lisible. */
 const toHeartMarker = (value: unknown): { marker: boolean; fix: HeartRateFix | null } => {
   if (!Array.isArray(value) || value[0] !== 'hr') return { marker: false, fix: null };
-  const timeMs = optionalNumber(value[1]);
+  const timeMs = finiteOr(value[1], undefined);
   if (value.length !== 3 || timeMs === undefined) return { marker: true, fix: null };
-  const heartRateBpm = optionalNumber(value[2]);
+  const heartRateBpm = finiteOr(value[2], undefined);
   return { marker: true, fix: heartRateBpm === undefined ? { timeMs } : { timeMs, heartRateBpm } };
 };
 
 const toFix = (value: unknown): LocationFix | null => {
   if (!Array.isArray(value) || value.length < 3) return null;
   const [timeMs, lat, lon, accuracyM, altitudeM, speedMs, bearingDeg, heartRateBpm] = value;
-  if (optionalNumber(timeMs) === undefined || optionalNumber(lat) === undefined || optionalNumber(lon) === undefined) {
+  if (finiteOr(timeMs, undefined) === undefined || finiteOr(lat, undefined) === undefined || finiteOr(lon, undefined) === undefined) {
     return null;
   }
   return {
     timeMs,
     lat,
     lon,
-    accuracyM: optionalNumber(accuracyM),
-    altitudeM: optionalNumber(altitudeM),
-    speedMs: optionalNumber(speedMs),
-    bearingDeg: optionalNumber(bearingDeg),
-    heartRateBpm: optionalNumber(heartRateBpm),
+    accuracyM: finiteOr(accuracyM, undefined),
+    altitudeM: finiteOr(altitudeM, undefined),
+    speedMs: finiteOr(speedMs, undefined),
+    bearingDeg: finiteOr(bearingDeg, undefined),
+    heartRateBpm: finiteOr(heartRateBpm, undefined),
   };
 };
 
@@ -229,7 +219,7 @@ export const parseJournal = (text: string): ParsedJournal => {
 
   text.split('\n').forEach((line, i) => {
     if (line.trim() === '') return;
-    const value = parseLine(line);
+    const value = parseJson(line);
     if (i === 0) {
       header = toHeader(value);
       if (header) return;

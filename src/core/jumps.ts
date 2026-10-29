@@ -1,3 +1,4 @@
+import { roundTo } from './basics';
 import type { ImuRecording, ImuSeries } from './imuFile';
 import { STANDARD_G } from './units';
 import {
@@ -144,18 +145,15 @@ export interface MeasuredJump extends Flight {
 /** Saut tel que la fiche le garde : sans les instants du fichier, arrondi. */
 export type SessionJump = Omit<MeasuredJump, 'takeoffUs' | 'landingUs'>;
 
-const toHundredth = (x: number) => Math.round(x * 100) / 100;
-const toTenth = (x: number) => Math.round(x * 10) / 10;
-
 /** Saut arrondi pour la fiche : heures à la milliseconde, hauteur et vol au centième, longueur au décimètre. */
 export const toSessionJump = (j: MeasuredJump): SessionJump => ({
   takeoffMs: Math.round(j.takeoffMs),
   landingMs: Math.round(j.landingMs),
-  flightS: toHundredth(j.flightS),
-  heightM: toHundredth(j.heightM),
-  takeoffVerticalMs: toTenth(j.takeoffVerticalMs),
-  speedMs: j.speedMs === null ? null : toHundredth(j.speedMs),
-  lengthM: j.lengthM === null ? null : toTenth(j.lengthM),
+  flightS: roundTo(j.flightS, 2),
+  heightM: roundTo(j.heightM, 2),
+  takeoffVerticalMs: roundTo(j.takeoffVerticalMs, 1),
+  speedMs: j.speedMs === null ? null : roundTo(j.speedMs, 2),
+  lengthM: j.lengthM === null ? null : roundTo(j.lengthM, 1),
   doubts: j.doubts,
   curve: j.curve,
 });
@@ -283,7 +281,7 @@ export const detectFlights = (rec: ImuRecording, d: JumpDetection, fromUs: numbe
     // Points de la courbe calés sur le décollage.
     const firstOnStep = (i0 - curveStart) % curveSteps;
     const heightsM: number[] = [];
-    for (let k = firstOnStep; k < heights.length; k += curveSteps) heightsM.push(Math.round(heights[k] * 100) / 100);
+    for (let k = firstOnStep; k < heights.length; k += curveSteps) heightsM.push(roundTo(heights[k], 2));
 
     const takeoffUs = startUs + i0 * stepUs;
     const landingUs = startUs + i1 * stepUs;

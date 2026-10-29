@@ -1,3 +1,4 @@
+import { isManualPause, isRecordingSession } from '../recording/session';
 import { useSyncExternalStore } from 'react';
 import type { Activity } from '../core/activities';
 import { haversineDistance } from '../core/kinematics';
@@ -160,7 +161,7 @@ const end = () => {
 /** Démarre ou arrête le guidage selon l'état de l'enregistreur. */
 const sync = () => {
   const recorder = getRecorderState();
-  const recording = recorder.status === 'starting' || recorder.status === 'recording' || recorder.status === 'paused';
+  const recording = isRecordingSession(recorder);
   if (recorder.status === 'idle') closed = null;
   const testing = recording && recorder.activity !== null && isTestSport(recorder.activity.base);
   if (!testing) {
@@ -174,7 +175,7 @@ const sync = () => {
     session = { state: startFitnessTest(params), previous: null, sawPause: false };
     publish();
   }
-  if (recorder.status === 'paused' && recorder.pausedReason === 'manual') session.sawPause = true;
+  if (isManualPause(recorder)) session.sawPause = true;
 };
 
 let started = false;

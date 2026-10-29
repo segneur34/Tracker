@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { bandIndex } from './basics';
 import {
   edwardsLoad, efficiencyBlocks, estimateHrMax, heartRateDrift, heartRateHistogram, heartRateStats, heartRateThresholds, heartRateZonePaths, heartRateZones,
-  histogramZoneTimes, isValidThresholds, isValidZoneBounds, smoothHeartRate, spanHeartRate, timeInZones, timeSpanHeartRate, zoneOf, type HeartRatePoint,
+  histogramZoneTimes, isValidThresholds, isValidZoneBounds, smoothHeartRate, spanHeartRate, timeInZones, timeSpanHeartRate, type HeartRatePoint,
 } from './heartRate';
 import { SPORT_PROFILES } from './sportProfiles';
 
@@ -155,10 +156,10 @@ describe('zones et charge', () => {
   const bounds = [100, 120, 140, 160, 180];
 
   it('classe une FC par zone', () => {
-    expect(zoneOf(90, bounds)).toBe(0);
-    expect(zoneOf(100, bounds)).toBe(1);
-    expect(zoneOf(150, bounds)).toBe(3);
-    expect(zoneOf(195, bounds)).toBe(5);
+    expect(bandIndex(90, bounds)).toBe(0);
+    expect(bandIndex(100, bounds)).toBe(1);
+    expect(bandIndex(150, bounds)).toBe(3);
+    expect(bandIndex(195, bounds)).toBe(5);
   });
 
   it('compte le temps par zone et la charge d\'Edwards', () => {

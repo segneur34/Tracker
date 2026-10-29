@@ -1,3 +1,4 @@
+import { isObject } from './basics';
 import { isIntervalSport, isTestSport, sportTreatment, type SportProfile, type Treatment } from './sportProfiles';
 
 /**
@@ -140,9 +141,9 @@ const MAX_TAB_KEY_LENGTH = 40;
  * jamais lue : un onglet retiré ne casse rien, un onglet revenu retrouve son choix.
  */
 export const sanitizeTabChoices = (value: unknown): TabChoices | null => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  if (!isObject(value)) return null;
   const entries = Object.entries(value).filter(
-    ([key, shown]) => key.length > 0 && key.length <= MAX_TAB_KEY_LENGTH && typeof shown === 'boolean'
+    (entry): entry is [string, boolean] => entry[0].length > 0 && entry[0].length <= MAX_TAB_KEY_LENGTH && typeof entry[1] === 'boolean'
   );
   return entries.length > 0 ? Object.fromEntries(entries) : null;
 };

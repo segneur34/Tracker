@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { errorMessage } from '../core/basics';
 import { TERRAIN_ELEVATION_VERSION, applyTerrainElevation, roundTerrainZ, terrainSamplePoints } from '../core/terrainElevation';
 import type { TrackPoint } from '../core/types';
 import type { SessionTerrainElevation } from '../library/record';
@@ -113,7 +114,7 @@ export const useTerrainElevation = (
         store(file, result);
         setFoundCount(found.size);
       },
-      (err: unknown) => setError({ key, message: err instanceof Error ? err.message : 'Altitude de l\'IGN indisponible.' })
+      (err: unknown) => setError({ key, message: errorMessage(err, 'Altitude de l\'IGN indisponible.') })
     );
   }, [wanted, terrain, failed, key, track, cumDist, stepM, file, partial]);
 

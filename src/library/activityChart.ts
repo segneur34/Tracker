@@ -7,6 +7,9 @@
  * Semaines ISO : elles commencent le lundi, la semaine 1 est celle qui
  * contient le premier jeudi de l'année.
  */
+import {
+  DAY_MS, addDays, isoWeek, isoWeekday, monthYearLong, shortDate, stacksByActivity, startOfDay, startOfIsoWeek,
+} from '../core/calendar';
 
 export type ChartPeriod = 'semaine' | 'trente' | 'sixmois' | 'annee';
 
@@ -63,7 +66,6 @@ export interface ActivityChartData {
   range: string;
 }
 
-const DAY_MS = 86_400_000;
 const DAY_LETTERS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 /**
  * Vue 30 jours : barres d'avant le premier lundi en dessous desquelles la
@@ -73,43 +75,9 @@ const DAY_LETTERS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
  */
 const FIRST_LABEL_MIN_SLOTS = 4;
 
-/** Minuit local du jour de `ms`. */
-export const startOfDay = (ms: number): number => {
-  const d = new Date(ms);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-};
-
-/** Ajoute des jours de calendrier (juste aux changements d'heure). */
-export const addDays = (dayMs: number, n: number): number => {
-  const d = new Date(dayMs);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime();
-};
-
-/** Rang du jour dans la semaine ISO : 0 le lundi, 6 le dimanche. */
-const isoWeekday = (ms: number): number => (new Date(ms).getDay() + 6) % 7;
-
-/** Minuit local du lundi de la semaine de `ms`. */
-export const startOfIsoWeek = (ms: number): number => addDays(startOfDay(ms), -isoWeekday(ms));
-
-/** Année et numéro de semaine ISO du jour de `ms`. */
-export const isoWeek = (ms: number): { year: number; week: number } => {
-  // Le jeudi de la même semaine donne l'année ISO ; la semaine 1 contient le 4 janvier.
-  const thursday = addDays(startOfDay(ms), 3 - isoWeekday(ms));
-  const year = new Date(thursday).getFullYear();
-  const jan4 = new Date(year, 0, 4).getTime();
-  const week1Thursday = addDays(jan4, 3 - isoWeekday(jan4));
-  // Arrondi : un changement d'heure décale les minuits d'une heure.
-  return { year, week: 1 + Math.round((thursday - week1Thursday) / (7 * DAY_MS)) };
-};
-
-const shortDate = (ms: number): string =>
-  new Date(ms).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-
 const longDay = (ms: number): string =>
   new Date(ms).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
-const monthYear = (ms: number): string =>
-  new Date(ms).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
 const MONTH_LETTERS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 
@@ -144,13 +112,13 @@ const monthSlotsOf = (nowMs: number, oldestMs: number | null): { slots: Slot[]; 
     slots.push({
       startMs: start.getTime(),
       endMs: new Date(start.getFullYear(), start.getMonth() + 1, 1).getTime(),
-      label, title: monthYear(start.getTime()), weekStart: january && i > 0, future: false,
+      label, title: monthYearLong(start.getTime()), weekStart: january && i > 0, future: false,
     });
   }
   return {
     slots,
     title: 'Depuis le début, par mois',
-    range: `depuis ${monthYear(slots[0].startMs)}`,
+    range: `depuis ${monthYearLong(slots[0].startMs)}`,
   };
 };
 
@@ -272,12 +240,7 @@ export const buildActivityChart = (
   const bars: ChartBar[] = slots.map((slot) => {
     const mine: ChartSession[] = [];
     while (cursor < inside.length && inside[cursor].startMs < slot.endMs) mine.push(inside[cursor++]);
-    const counts = new Map<string, number>();
-    for (const s of mine) counts.set(s.activityId, (counts.get(s.activityId) ?? 0) + 1);
-    const stacks = [...counts.entries()]
-      .map(([activityId, count]) => ({ activityId, count }))
-      .sort((a, b) => rank(a.activityId) - rank(b.activityId));
-    return { ...slot, stacks, sessions: mine };
+    return { ...slot, stacks: stacksByActivity(mine, order), sessions: mine };
   });
 
   const byActivity = new Map<string, ChartTotal>();

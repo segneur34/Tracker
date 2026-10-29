@@ -4,7 +4,7 @@ import type { PumpDetection } from './pumping';
 import type { CadenceDetection } from '../running/cadence';
 import type { SpeedRangeMs } from './speedGradient';
 import type { SportType, TopTarget } from './types';
-import { kmhToMs, knotsToMs, type SpeedUnit } from './units';
+import { kmhToMs, knotsToMs, METERS_PER_DISTANCE_UNIT, type SpeedUnit } from './units';
 
 /**
  * Profil d'un support. Regroupe tout ce qui varie d'une activité à l'autre :
@@ -489,7 +489,7 @@ export const SAILING_TOP_TARGETS: TopTarget[] = [
   { key: 'd100m', label: '100 m', value: 100, kind: 'distance' },
   { key: 'd500m', label: '500 m', value: 500, kind: 'distance' },
   { key: 'd1000m', label: '1000 m', value: 1000, kind: 'distance' },
-  { key: 'd1NM', label: '1 mille', value: 1852, kind: 'distance' },
+  { key: 'd1NM', label: '1 mille', value: METERS_PER_DISTANCE_UNIT.nm, kind: 'distance' },
 ];
 
 /** Cibles de tops du vélo : les durées des tests d'effort, les distances des segments usuels. */

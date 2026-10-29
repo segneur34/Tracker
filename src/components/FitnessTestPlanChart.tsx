@@ -1,3 +1,4 @@
+import { roundTo } from '../core/basics';
 import { useMemo } from 'react';
 import {
   Area, CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -33,7 +34,7 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
   const plan = useMemo(() => testPlan(params, { v0Ms, steps }), [params, v0Ms, steps]);
   const rows: Row[] = useMemo(() => plan.points.map((p) => ({
     minutes: p.tS / 60,
-    speed: p.targetMs === null ? null : Math.round(msToKmh(p.targetMs) * 10) / 10,
+    speed: p.targetMs === null ? null : roundTo(msToKmh(p.targetMs), 1),
     hr: p.hrBpm,
     band: p.tS <= params.warmupS ? [plan.hrBand.lowBpm, plan.hrBand.highBpm] : null,
   })), [plan, params.warmupS]);
@@ -62,7 +63,7 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
           <Tooltip labelFormatter={tooltipLabel} formatter={(v) => [kmhText(Number(v)), 'Vitesse cible']} />
           <Line type="stepAfter" dataKey="speed" name="Vitesse cible" stroke={SPEED_COLOR} strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
           {paliers.map((b, k) => (
-            <ReferenceDot key={b.tS} x={b.tS / 60} y={Math.round((msToKmh(v0Ms) + 0.6 * k) * 10) / 10} r={4} fill={SPEED_COLOR} stroke="var(--surface)" strokeWidth={2} />
+            <ReferenceDot key={b.tS} x={b.tS / 60} y={roundTo(msToKmh(v0Ms) + 0.6 * k, 1)} r={4} fill={SPEED_COLOR} stroke="var(--surface)" strokeWidth={2} />
           ))}
           {marks.map((b) => (
             <ReferenceLine key={b.signal} x={b.tS / 60} stroke={MARK_COLOR} strokeDasharray="3 3" ifOverflow="extendDomain" />

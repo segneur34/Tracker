@@ -1,3 +1,4 @@
+import { roundTo } from './basics';
 import { median } from './speedFilter';
 import type { TrackPoint } from './types';
 
@@ -137,4 +138,4 @@ export const applyTerrainElevation = (
 };
 
 /** Altitudes rangées au centimètre. */
-export const roundTerrainZ = (z: number | null): number | null => (z === null ? null : Math.round(z * 100) / 100);
+export const roundTerrainZ = (z: number | null): number | null => (z === null ? null : roundTo(z, 2));

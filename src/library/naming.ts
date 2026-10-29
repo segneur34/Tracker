@@ -1,3 +1,4 @@
+import { formatLocalDate } from '../core/calendar';
 import type { SportType } from '../core/types';
 import { isSportType } from '../recording/session';
 import { imuFileName, recordFileName } from './record';
@@ -29,8 +30,6 @@ export const uniqueSessionFileName = (gpxName: string, taken: Iterable<string>):
   }
 };
 
-const pad = (n: number): string => String(n).padStart(2, '0');
-
 /**
  * Nom du GPX téléchargé d'une session nommée, sans extension :
  * `2026-10-10 Wingfoil - Carnon`, pour la retrouver dans Téléchargements. La
@@ -39,7 +38,7 @@ const pad = (n: number): string => String(n).padStart(2, '0');
  */
 export const downloadBaseName = (sessionName: string, activityName: string | null, startMs: number | null, fileName: string): string => {
   const d = startMs === null ? null : new Date(startMs);
-  const date = d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : /^(\d{4}-\d{2}-\d{2})/.exec(fileName)?.[1];
+  const date = d ? formatLocalDate(d.getTime()) : /^(\d{4}-\d{2}-\d{2})/.exec(fileName)?.[1];
   const label = activityName ? `${activityName} - ${sessionName.trim()}` : sessionName.trim();
   return date ? `${date} ${label}` : label;
 };

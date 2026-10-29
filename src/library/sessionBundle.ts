@@ -1,3 +1,4 @@
+import { escapeXmlText } from '../core/xml';
 import { sortMarks, type SessionMark } from '../core/sessionMarks';
 import { base64ToBytes, bytesToBase64 } from '../platform/base64';
 import { isWritableRecord, parseRecordParts, serializeRecord, type RecordWithoutSummary, type SessionRecord } from './record';
@@ -20,7 +21,6 @@ const NS = 'https://github.com/segneur34/Tracker/session';
 const OPEN = `<extensions><tracker:session xmlns:tracker="${NS}" version="1">`;
 const CLOSE = '</tracker:session></extensions>';
 
-const escapeXml = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const unescapeXml = (text: string): string => text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
 export interface UnbundledGpx {
@@ -55,7 +55,7 @@ const LEADING_NAME = /^\s*<name>([\s\S]*?)<\/name>/;
 const waypoints = (marks: readonly SessionMark[]): string =>
   sortMarks(marks).map((m, k) => (m.lat === null || m.lon === null ? ''
     : `<wpt lat="${m.lat}" lon="${m.lon}"><time>${new Date(m.timeMs).toISOString()}</time>`
-      + `<name>${escapeXml(m.label ?? `Note ${k + 1}`)}</name></wpt>`)).join('');
+      + `<name>${escapeXmlText(m.label ?? `Note ${k + 1}`)}</name></wpt>`)).join('');
 
 /**
  * Nom de la session écrit dans `<metadata>` (créé s'il manque) et dans la
@@ -71,7 +71,7 @@ const retouchGpx = (gpx: string, name: string | null, marks: readonly SessionMar
     const first = /<(rte|trk)[\s>]/.exec(gpx);
     if (first) changes.push({ from: first.index, to: first.index, insert: points });
   }
-  if (name !== null) writeName(gpx, escapeXml(name), changes);
+  if (name !== null) writeName(gpx, escapeXmlText(name), changes);
 
   let out = '';
   let cursor = 0;
@@ -117,9 +117,9 @@ export const bundleSessionGpx = (gpx: string, record: SessionRecord, motion: Uin
   const named = retouchGpx(gpx, record.name?.trim() || null, record.marks ?? []);
   const at = named.gpx.lastIndexOf('</gpx>');
   const block = OPEN
-    + `<tracker:record>${escapeXml(serializeRecord(record))}</tracker:record>`
+    + `<tracker:record>${escapeXmlText(serializeRecord(record))}</tracker:record>`
     + (motion ? `<tracker:imu>${bytesToBase64(motion)}</tracker:imu>` : '')
-    + named.edits.map((e) => `<tracker:edit at="${e.at}" length="${e.length}">${escapeXml(e.original)}</tracker:edit>`).join('')
+    + named.edits.map((e) => `<tracker:edit at="${e.at}" length="${e.length}">${escapeXmlText(e.original)}</tracker:edit>`).join('')
     + CLOSE;
   return named.gpx.slice(0, at) + block + named.gpx.slice(at);
 };

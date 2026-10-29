@@ -1,3 +1,4 @@
+import { roundTo } from '../core/basics';
 import { useCallback, useEffect, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
 import ChartFold from '../components/ChartFold';
 import { HoverReadout, type Readout } from '../components/ChartReadout';
@@ -213,7 +214,7 @@ function SailingModule() {
   const showKn = (kn: number | string) => formatKnots(kn, speedUnit);
   /** Seuil saisi en nœuds, montré tel quel en nœuds, sinon converti. */
   // Arrondi au dixième : un seuil mis à l'échelle de l'allure sort en 7,999999… nœuds.
-  const showThreshold = (kn: number) => (speedUnit === 'kn' ? String(Math.round(kn * 10) / 10) : showKn(kn));
+  const showThreshold = (kn: number) => (speedUnit === 'kn' ? String(roundTo(kn, 1)) : showKn(kn));
   // Polaire dans l'unité ; en nœuds, celle du hook telle quelle.
   const polarGraphShown = useMemo(
     () => (speedUnit === 'kn' ? polarGraphData : polarGraphData.map((p) => ({ ...p, vitesse: parseFloat(formatKnots(p.vitesse, speedUnit)) }))),

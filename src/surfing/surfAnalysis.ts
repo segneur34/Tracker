@@ -1,3 +1,4 @@
+import { meanOf } from '../core/basics';
 import { haversineDistance } from '../core/kinematics';
 import { activeRuns, type ActiveRun } from '../core/sessionStats';
 import type { SurfProfile } from '../core/sportProfiles';
@@ -300,8 +301,6 @@ export interface SurfSummary {
   maxWavesInFlight: number | null;
 }
 
-const mean = (values: number[]): number | null => (values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null);
-
 export const summarizeSurf = (track: TrackPoint[], cum: CumulativeTrack, analysis: SurfAnalysis, stillMs: number): SurfSummary => {
   const { phases, waves, flights, returns } = analysis;
   const time: Record<SurfPhase, number> = { glisse: 0, rame: 0, attente: 0, trou: 0 };
@@ -339,9 +338,9 @@ export const summarizeSurf = (track: TrackPoint[], cum: CumulativeTrack, analysi
     avgWaveSpeedMs: waveS > 0 ? waveDistanceM / waveS : null,
     maxWaveSpeedMs: waves.length > 0 ? Math.max(...waves.map((w) => w.maxSpeedMs)) : null,
     paddleSpeedMs: paddleS > 0 ? paddleDistanceM / paddleS : null,
-    avgReturnS: mean(returnTimes),
+    avgReturnS: meanOf(returnTimes),
     bestReturnS: returnTimes.length > 0 ? Math.min(...returnTimes) : null,
-    avgReturnSpeedMs: mean(measured.flatMap((r) => (r.returnSpeedMs === null ? [] : [r.returnSpeedMs]))),
+    avgReturnSpeedMs: meanOf(measured.flatMap((r) => (r.returnSpeedMs === null ? [] : [r.returnSpeedMs]))),
     chainedCount: returns.filter((r) => r.after > 0 && r.returnS === null).length,
     firstOutS: firstOut?.returnS ?? null,
     flightCount: flights.length,

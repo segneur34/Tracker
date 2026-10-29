@@ -6,7 +6,10 @@ import {
   displayedDurationMs,
   evaluateAutoPause,
   fixesFromRawPoints,
+  isAutoPause,
+  isManualPause,
   isNewerFix,
+  isRecordingSession,
   isSportType,
   keepHeartRateSample,
   withStopPoint,
@@ -231,5 +234,30 @@ describe('mesures de la ceinture sans position (muscu, lot I du 25/10)', () => {
     expect(withStopPoint(segments, T + 65_000)).toEqual([segments[0], [{ timeMs: T + 60_000, heartRateBpm: 100 }, { timeMs: T + 65_000 }]]);
     expect(withStopPoint(segments, T + 60_000)).toBe(segments);
     expect(withStopPoint([], T)).toEqual([]);
+  });
+});
+
+describe('états de l’enregistreur', () => {
+  const cases = [
+    { status: 'idle', pausedReason: null },
+    { status: 'starting', pausedReason: null },
+    { status: 'recording', pausedReason: null },
+    { status: 'paused', pausedReason: 'manual' as const },
+    { status: 'paused', pausedReason: 'auto' as const },
+    { status: 'stopping', pausedReason: null },
+  ];
+
+  it('dit si une session est en cours, en pause manuelle ou automatique', () => {
+    expect(cases.map(isRecordingSession)).toEqual([false, true, true, true, true, false]);
+    expect(cases.map(isManualPause)).toEqual([false, false, false, true, false, false]);
+    expect(cases.map(isAutoPause)).toEqual([false, false, false, false, true, false]);
+  });
+
+  it('suit les écritures d’avant', () => {
+    for (const c of cases) {
+      expect(isRecordingSession(c)).toBe(c.status === 'starting' || c.status === 'recording' || c.status === 'paused');
+      expect(isManualPause(c)).toBe(c.status === 'paused' && c.pausedReason === 'manual');
+      expect(isAutoPause(c)).toBe(c.status === 'paused' && c.pausedReason === 'auto');
+    }
   });
 });

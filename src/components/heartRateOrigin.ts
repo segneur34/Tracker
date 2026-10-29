@@ -1,3 +1,4 @@
+import { pad2 } from '../core/units';
 import type { HeartRateZones } from '../core/heartRate';
 import { runnerHrSource, type HrSource, type RunnerProfile } from '../hooks/useRunnerProfile';
 
@@ -6,15 +7,13 @@ import { runnerHrSource, type HrSource, type RunnerProfile } from '../hooks/useR
  * cardio, le test de FC max, Pratiquant et les Statistiques.
  */
 
-const pad = (n: number): string => String(n).padStart(2, '0');
-
 /** « test du 24/10 », « séance du 20/10 », « saisie ». */
 export const hrSourceLabel = (source: HrSource): string => {
   if (source.kind === 'saisie') return 'saisie';
   const kind = source.kind === 'test' ? 'test' : 'séance';
   if (source.atMs === null) return kind;
   const date = new Date(source.atMs);
-  return `${kind} du ${pad(date.getDate())}/${pad(date.getMonth() + 1)}`;
+  return `${kind} du ${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}`;
 };
 
 /** Origine de la FC max retenue par les zones : estimée par l'âge, ou celle de Pratiquant. */

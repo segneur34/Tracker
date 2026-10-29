@@ -9,7 +9,8 @@
 import type { Activity } from '../core/activities';
 import { ZONE_COUNT, edwardsLoad, histogramZoneTimes } from '../core/heartRate';
 import { hasPositions, sportFamily, sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
-import { CHART_PERIODS, addDays, chartPeriodBounds, isoWeek, startOfDay, startOfIsoWeek, type ChartRange } from './activityChart';
+import { DAY_MS, addDays, addMonths, isoWeek, monthYearLong, monthYearShort, shortDate, stacksByActivity, startOfDay, startOfIsoWeek, startOfMonth } from '../core/calendar';
+import { CHART_PERIODS, chartPeriodBounds, type ChartRange } from './activityChart';
 import type { GearChoice, GearGroup } from '../sailing/sessionNotes';
 import type { ManeuverResults, SessionRecord, SummaryHeartRate } from './record';
 
@@ -444,25 +445,7 @@ export interface Regularity {
 /** Au-delà de ce nombre de semaines, les barres se font par mois. */
 const MAX_WEEKLY_BARS = 53;
 
-const WEEK_MS = 7 * 86_400_000;
-
-const shortDate = (ms: number): string => new Date(ms).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-
-const startOfMonth = (ms: number): number => {
-  const d = new Date(ms);
-  return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-};
-
-const addMonths = (monthMs: number, n: number): number => {
-  const d = new Date(monthMs);
-  return new Date(d.getFullYear(), d.getMonth() + n, 1).getTime();
-};
-
-const stacksOf = (sessions: readonly StatSession[], rank: (id: string) => number): RegularityBar['stacks'] => {
-  const counts = new Map<string, number>();
-  for (const s of sessions) counts.set(s.activityId, (counts.get(s.activityId) ?? 0) + 1);
-  return [...counts.entries()].map(([activityId, count]) => ({ activityId, count })).sort((a, b) => rank(a.activityId) - rank(b.activityId));
-};
+const WEEK_MS = 7 * DAY_MS;
 
 /**
  * Régularité d'un ensemble de sessions sur une période qui se termine
@@ -478,7 +461,6 @@ export const regularity = (
   const inside = past.filter((s) => inBounds(s.startMs, bounds)).sort((a, b) => a.startMs - b.startMs);
   const order = [...activityOrder];
   for (const s of inside) if (!order.includes(s.activityId)) order.push(s.activityId);
-  const rank = (id: string) => order.indexOf(id);
 
   // Suite en cours et dernière session, sur toutes les sessions.
   const thisWeek = startOfIsoWeek(nowMs);
@@ -525,8 +507,8 @@ export const regularity = (
         const d = new Date(m);
         slots.push({
           startMs: m, endMs: addMonths(m, 1),
-          label: d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }),
-          title: d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }),
+          label: monthYearShort(d),
+          title: monthYearLong(d),
         });
       }
     }
@@ -535,7 +517,7 @@ export const regularity = (
       const mine: StatSession[] = [];
       while (i < inside.length && inside[i].startMs < slot.startMs) i++;
       while (i < inside.length && inside[i].startMs < slot.endMs) mine.push(inside[i++]);
-      bars.push({ ...slot, count: mine.length, stacks: stacksOf(mine, rank) });
+      bars.push({ ...slot, count: mine.length, stacks: stacksByActivity(mine, order) });
     }
   }
 
@@ -587,7 +569,6 @@ export const topSessions = (
 /** Pas des repères d'un axe des dates. */
 export type DateTickUnit = 'jour' | 'mois' | 'annee';
 
-const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 
 const TICK_STEPS: { unit: DateTickUnit; days?: number; months?: number }[] = [
@@ -643,8 +624,8 @@ export const dateTicks = (min: number, max: number, maxTicks = 6): { ticks: numb
 export const formatDateTick = (ms: number, unit: DateTickUnit): string => {
   const d = new Date(ms);
   if (unit === 'annee') return String(d.getFullYear());
-  if (unit === 'mois') return d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  if (unit === 'mois') return monthYearShort(d);
+  return shortDate(d);
 };
 
 // --- Cardio : tiré de la FC du résumé, avec les zones du moment ---

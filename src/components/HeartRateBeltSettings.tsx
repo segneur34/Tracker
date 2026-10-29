@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useEffect, useRef, useState } from 'react';
 import { useBeltLive } from '../hooks/useBeltLive';
 import {
@@ -14,8 +15,6 @@ const HOLDER = 'reglages';
 const SIGNAL_NEAR_DBM = -60;
 const SIGNAL_IN_RANGE_DBM = -80;
 const signalLabel = (rssi: number): string => (rssi >= SIGNAL_NEAR_DBM ? 'proche' : rssi >= SIGNAL_IN_RANGE_DBM ? 'à portée' : 'loin');
-
-const errorText = (err: unknown): string => (err instanceof Error && err.message ? err.message : 'erreur inconnue');
 
 /**
  * Bloc « Capteurs » de Réglages : la ceinture cardio de ce téléphone, cherchée,
@@ -62,7 +61,7 @@ function HeartRateBeltSettings() {
         setBluetoothOff(false);
       }
     } catch (err) {
-      if (alive.current) setError(`Recherche impossible : ${errorText(err)}.`);
+      if (alive.current) setError(`Recherche impossible : ${errorMessage(err)}.`);
     } finally {
       if (alive.current) setScanning(false);
     }
@@ -89,7 +88,7 @@ function HeartRateBeltSettings() {
       setTesting(true);
       setBluetoothOff(false);
     } catch (err) {
-      if (alive.current) setError(`Connexion impossible : ${errorText(err)}.`);
+      if (alive.current) setError(`Connexion impossible : ${errorMessage(err)}.`);
     }
   };
 

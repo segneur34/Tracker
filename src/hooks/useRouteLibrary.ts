@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useCallback, useEffect, useState } from 'react';
 import { activityFamily, findActivity } from '../core/activities';
 import { usesMarkCourse } from '../core/sportProfiles';
@@ -78,7 +79,7 @@ export const useRouteLibrary = () => {
         setError(null);
       },
       (err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Lecture des itinéraires impossible.');
+        if (!cancelled) setError(errorMessage(err, 'Lecture des itinéraires impossible.'));
       }
     );
     return () => {

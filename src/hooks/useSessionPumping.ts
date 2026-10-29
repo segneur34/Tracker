@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useEffect, useState } from 'react';
 import { decodeImu, type ImuRecording } from '../core/imuFile';
 import { hasSessionMotion, readSessionMotion, useLibrarySession } from './useSessionLibrary';
@@ -63,7 +64,7 @@ export const useSessionPumping = (file: string | null, enabled: boolean) => {
         if (!cancelled) setState({ file, recording, error: null });
       },
       (err: unknown) => {
-        if (!cancelled) setState({ file, recording: null, error: err instanceof Error ? err.message : 'Lecture des capteurs impossible.' });
+        if (!cancelled) setState({ file, recording: null, error: errorMessage(err, 'Lecture des capteurs impossible.') });
       }
     );
     return () => {

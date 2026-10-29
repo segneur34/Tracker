@@ -1,3 +1,4 @@
+import { inRange } from '../core/basics';
 import { useCallback, useEffect, useState } from 'react';
 import { tileCacheUsageByBase } from '../core/mapBase';
 import { TILE_CACHE_DEFAULTS, tileCacheUsage, tilesToEvict, type TileCacheUsage } from '../core/tiles';
@@ -19,7 +20,7 @@ interface TileCacheSettings {
 }
 
 const isValidCap = (value: unknown): value is number =>
-  typeof value === 'number' && isFinite(value) && value >= MIN_CAP_MB && value <= MAX_CAP_MB;
+  inRange(value, MIN_CAP_MB, MAX_CAP_MB);
 
 export const tileCapMb = (): number => {
   const value = jsonStore.read<TileCacheSettings>(STORAGE_KEY)?.capMb;

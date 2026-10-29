@@ -13,7 +13,7 @@ import { readIntervalSeries, type IntervalSeries } from '../recording/intervalTi
 import { isSportType } from '../recording/session';
 import { isValidCarriedLoad } from '../running/energy';
 import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from '../sailing/sessionNotes';
-import { isFiniteNumber, isObject } from '../core/basics';
+import { finiteOr, isFiniteNumber, isObject, parseJson } from '../core/basics';
 
 /**
  * Fiche d'une session : le fichier JSON rangé à côté de son GPX dans le
@@ -141,8 +141,7 @@ export interface ManeuverResults {
 
 const readSummaryTest = (raw: unknown): SummaryTest | null => {
   if (!isObject(raw) || !isFiniteNumber(raw.steps)) return null;
-  const orNull = (v: unknown): number | null => (isFiniteNumber(v) ? v : null);
-  return { hrMaxBpm: orNull(raw.hrMaxBpm), lastStepSpeedMs: orNull(raw.lastStepSpeedMs), steps: raw.steps };
+  return { hrMaxBpm: finiteOr(raw.hrMaxBpm, null), lastStepSpeedMs: finiteOr(raw.lastStepSpeedMs, null), steps: raw.steps };
 };
 
 const readManeuverResults = (raw: unknown): ManeuverResults | null => {
@@ -619,12 +618,7 @@ export interface ParsedRecord {
  * rendus à part, bruts (`unreadable`).
  */
 export const parseRecordWithRaw = (text: string): ParsedRecord | null => {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    return null;
-  }
+  const raw = parseJson(text);
   const parts = readRecordParts(raw);
   return parts && isObject(raw) ? { parts, unreadable: unreadableFields(raw, parts) } : null;
 };

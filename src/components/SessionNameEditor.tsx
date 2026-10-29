@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useEffect, useState } from 'react';
 import { FAMILY_LABEL, sessionActivity } from '../core/activities';
 import type { ShareStat } from '../core/shareImage';
@@ -70,7 +71,7 @@ function SessionNameEditor({ file, share }: { file: string | null; share?: Sessi
       await saveToDownloads(named ? `${named}.gpx` : file, bundleSessionGpx(session.gpx, session.record, session.motion));
       setNote({ text: 'Session enregistrée dans Téléchargements.', error: false });
     } catch (err) {
-      setNote({ text: `Téléchargement impossible : ${err instanceof Error ? err.message : 'erreur inconnue'}`, error: true });
+      setNote({ text: `Téléchargement impossible : ${errorMessage(err)}`, error: true });
     }
   };
 

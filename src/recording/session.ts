@@ -1,7 +1,10 @@
+import { pad2 } from '../core/units';
+import { formatLocalDate } from '../core/calendar';
 import { pointTimeMs } from '../core/kinematics';
 import { SPORT_PROFILES } from '../core/sportProfiles';
 import type { RawTrackPoint, SportType } from '../core/types';
 import type { HeartRateSample } from '../platform/heartRate';
+import { readableBpm } from './heartRate';
 import type { LocationFix } from '../platform/location';
 
 /**
@@ -13,6 +16,22 @@ import type { LocationFix } from '../platform/location';
  * la précédente : ce n'est pas une mesure mais une redélivrance, et elle
  * donnerait un intervalle nul au pipeline d'analyse.
  */
+
+/** Ce que les états de l'enregistreur disent de la pause : l'état (`RecorderState`) en porte plus. */
+interface RecorderPhase {
+  status: string;
+  pausedReason: 'manual' | 'auto' | null;
+}
+
+/** Une session est en cours : au démarrage, en enregistrement ou en pause. */
+export const isRecordingSession = (state: { status: string }): boolean =>
+  state.status === 'starting' || state.status === 'recording' || state.status === 'paused';
+
+/** En pause demandée par l'utilisateur (appui long, notification). */
+export const isManualPause = (state: RecorderPhase): boolean => state.status === 'paused' && state.pausedReason === 'manual';
+
+/** En pause automatique : à l'arrêt, sous la vitesse de pause de l'activité. */
+export const isAutoPause = (state: RecorderPhase): boolean => state.status === 'paused' && state.pausedReason === 'auto';
 
 /**
  * Mesure de la ceinture gardée par l'enregistrement d'une session sans
@@ -32,13 +51,14 @@ export interface HeartRateFix {
  * point non plus (une par seconde au plus, au pas de l'enregistrement).
  */
 export const keepHeartRateSample = (lastKeptMs: number | null, sample: HeartRateSample, minIntervalMs: number): HeartRateFix | null => {
-  if (sample.contact === false || !(sample.bpm > 0) || !isFinite(sample.timeMs)) return null;
+  const bpm = readableBpm(sample);
+  if (bpm === null || !isFinite(sample.timeMs)) return null;
   const timeMs = Math.round(sample.timeMs);
   // Tolérance d'un quart d'intervalle : une ceinture à 1 Hz livre ses mesures
   // avec quelques ms de gigue, et 998 ms après la dernière reste une mesure
   // par seconde, pas une de trop (relecture du 28/10).
   if (lastKeptMs !== null && timeMs - lastKeptMs < minIntervalMs * 0.75) return null;
-  return { timeMs, heartRateBpm: Math.round(sample.bpm) };
+  return { timeMs, heartRateBpm: Math.round(bpm) };
 };
 
 /**
@@ -215,21 +235,19 @@ export const evaluateAutoPause = (
 export const isSportType = (value: unknown): value is SportType =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(SPORT_PROFILES, value);
 
-const pad = (n: number): string => String(n).padStart(2, '0');
-
 /**
  * Nom de fichier d'une session, à l'heure locale de son premier point :
  * `2026-09-23_14-05-07_wingfoil.gpx`, ou `…_session.gpx` si le support est inconnu.
  */
 export const sessionFileName = (startMs: number, sport: SportType | null): string => {
   const d = new Date(startMs);
-  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const time = `${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+  const date = formatLocalDate(startMs);
+  const time = `${pad2(d.getHours())}-${pad2(d.getMinutes())}-${pad2(d.getSeconds())}`;
   return `${date}_${time}_${sport ?? 'session'}.gpx`;
 };
 
 /** Titre d'une session, repris comme nom de trace dans le GPX : `Moth à foil, 23/09/2026 14:05`. */
 export const sessionTitle = (startMs: number, activityName: string): string => {
   const d = new Date(startMs);
-  return `${activityName}, ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${activityName}, ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 };

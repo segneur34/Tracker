@@ -1,3 +1,4 @@
+import { bandIndex } from './basics';
 import { firstIndexAtOrAfterTime, lastIndexAtOrBeforeTime } from './search';
 import { meanFilterByTime } from './speedFilter';
 
@@ -217,13 +218,6 @@ export const heartRateZones = (
   return { ...thresholds, s1, s2, bounds, offsetBpm };
 };
 
-/** Zone d'une FC : 0 sous la zone 1, puis 1 à 5. */
-export const zoneOf = (bpm: number, bounds: readonly number[]): number => {
-  let zone = 0;
-  for (const b of bounds) if (bpm >= b) zone++;
-  return zone;
-};
-
 /** Secondes passées dans chaque zone, de « sous Z1 » (0) à Z5. */
 export const timeInZones = (
   points: readonly HeartRatePoint[],
@@ -232,7 +226,7 @@ export const timeInZones = (
   gapS: number
 ): number[] => {
   const times = new Array<number>(bounds.length + 1).fill(0);
-  forEachCounted(points, smoothed, gapS, (_, bpm, dtS) => (times[zoneOf(bpm, bounds)] += dtS));
+  forEachCounted(points, smoothed, gapS, (_, bpm, dtS) => (times[bandIndex(bpm, bounds)] += dtS));
   return times;
 };
 
@@ -268,7 +262,7 @@ export const heartRateHistogram = (
 /** Temps par zone tiré d'un histogramme, avec les zones du moment (statistiques). */
 export const histogramZoneTimes = (histogram: HeartRateHistogram, bounds: readonly number[]): number[] => {
   const times = new Array<number>(bounds.length + 1).fill(0);
-  histogram.seconds.forEach((s, k) => (times[zoneOf(histogram.fromBpm + k, bounds)] += s));
+  histogram.seconds.forEach((s, k) => (times[bandIndex(histogram.fromBpm + k, bounds)] += s));
   return times;
 };
 
@@ -416,7 +410,7 @@ export const heartRateZonePaths = (
   let current: [number, number][] | null = null;
   let last = -1;
   forEachCounted(points, smoothed, gapS, (i, bpm, _, from) => {
-    if (zoneOf(bpm, bounds) !== zone) return;
+    if (bandIndex(bpm, bounds) !== zone) return;
     if (current === null || last !== from) {
       current = [[points[from].lat, points[from].lon]];
       paths.push(current);

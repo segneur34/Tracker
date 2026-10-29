@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { addDays, startOfDay } from '../library/activityChart';
+import { addDays, startOfDay } from '../core/calendar';
 
 /** Marge après minuit : la minuterie ne repart pas juste avant, sur un réveil un peu en avance. */
 const AFTER_MIDNIGHT_MS = 1000;

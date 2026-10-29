@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import type { LegOptions } from './brouter';
 import type { WayType } from './brouterProfile';
 import { isAbortError } from './fetchJson';
@@ -62,7 +63,7 @@ export const computeLeg = async (
     return result;
   } catch (err) {
     if (isAbortError(err)) throw err;
-    return { error: err instanceof Error ? err.message : 'Calcul impossible.' };
+    return { error: errorMessage(err, 'Calcul impossible.') };
   }
 };
 
@@ -109,7 +110,7 @@ export const computeReturn = async (
       };
     } catch (err) {
       if (isAbortError(err)) throw err;
-      lastError = err instanceof Error ? err.message : lastError;
+      lastError = errorMessage(err, lastError);
     }
   }
   return { error: lastError };

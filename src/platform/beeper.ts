@@ -1,5 +1,5 @@
 import { registerPlugin } from '@capacitor/core';
-import { BEEP_FINAL_MS, BEEP_FINISH_GAP_MS, BEEP_LONG_MS, BEEP_SHORT_MS } from '../core/beepDurations';
+import { BEEP_FINISH_GAP_MS, BEEP_LONG_MS, BEEP_SHORT_MS, TONE_MS, type ToneKind } from '../core/beepDurations';
 import { isNativeApp } from './runtime';
 
 /**
@@ -37,7 +37,7 @@ export interface Beeper {
 /** Un son du compteur, après `delayMs` : court, long, ou le long double de la fin de séance. */
 export interface ClockTone {
   delayMs: number;
-  tone: 'court' | 'long' | 'final';
+  tone: ToneKind;
 }
 
 /** Un changement de phase du compteur, pour sa notification : son nom, et le temps qu'elle durera (0 : sans décompte). */
@@ -171,8 +171,6 @@ const createBrowserBeeper = (): Beeper => {
   };
 };
 
-const TONE_DURATION_MS: Record<ClockTone['tone'], number> = { court: BEEP_SHORT_MS, long: BEEP_LONG_MS, final: BEEP_FINAL_MS };
-
 /**
  * Un motif joué une fois, chaque son à son délai : ne touche ni au rythme des
  * balises ni au programme du compteur. Sur le téléphone, joué sur le fil des
@@ -181,7 +179,7 @@ const TONE_DURATION_MS: Record<ClockTone['tone'], number> = { court: BEEP_SHORT_
 export const playPattern = (tones: ClockTone[], vibrate: boolean): Promise<void> => {
   if (isNativeApp()) return nativePlugin.pattern({ tones, vibrate });
   for (const t of tones) {
-    const play = () => browserTone(TONE_DURATION_MS[t.tone], vibrate, t.tone);
+    const play = () => browserTone(TONE_MS[t.tone], vibrate, t.tone);
     if (t.delayMs > 0) setTimeout(play, t.delayMs);
     else play();
   }
@@ -230,7 +228,7 @@ const createBrowserIntervalClock = (): IntervalClock => {
   return {
     schedule: async (plan, vibrate) => {
       clear();
-      const play = (tone: ClockTone['tone']) => browserTone(TONE_DURATION_MS[tone], vibrate, tone);
+      const play = (tone: ToneKind) => browserTone(TONE_MS[tone], vibrate, tone);
       // Les minuteries d'abord : le premier son ouvre le contexte audio, ce qui prend un moment.
       for (const t of plan.tones) if (t.delayMs > 0) timers.push(setTimeout(() => play(t.tone), t.delayMs));
       for (const c of plan.cues) {

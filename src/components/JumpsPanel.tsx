@@ -1,3 +1,4 @@
+import { roundTo, toFixedNumber } from '../core/basics';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { jumpDoubtLabel, type SessionJump } from '../core/jumps';
@@ -125,7 +126,7 @@ function JumpCurveChart({ rows, jumps, numbers, onCurveHover, onCurveLeave }: {
     ? {
       values: jumps.map((_, k) => {
         const h = k === 0 ? hovered.premier : hovered.second;
-        return { text: `n° ${numbers[k]} : ${h === null ? '—' : `${Math.round(h * 100) / 100} m`}`, color: CURVE_COLORS[k] };
+        return { text: `n° ${numbers[k]} : ${h === null ? '—' : `${roundTo(h, 2)} m`}`, color: CURVE_COLORS[k] };
       }),
       at: `${hovered.t} s depuis le décollage`,
     }
@@ -143,13 +144,13 @@ function JumpCurveChart({ rows, jumps, numbers, onCurveHover, onCurveLeave }: {
             <CartesianGrid strokeDasharray="3 3" stroke="var(--line-soft)" />
             <XAxis dataKey="t" type="number" allowDataOverflow domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
               ticks={zoom.view ? niceTicks(zoom.view) : undefined}
-              tickFormatter={(v: number) => `${parseFloat(v.toFixed(2))} s`} tick={{ fontSize: 11 }} />
-            <YAxis width={42} tickFormatter={(v: number) => `${Math.round(v * 10) / 10} m`} tick={{ fontSize: 11 }} />
+              tickFormatter={(v: number) => `${toFixedNumber(v, 2)} s`} tick={{ fontSize: 11 }} />
+            <YAxis width={42} tickFormatter={(v: number) => `${roundTo(v, 1)} m`} tick={{ fontSize: 11 }} />
             <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
             <ReferenceLine y={0} stroke="var(--line-strong)" />
             <ReferenceLine x={0} stroke="var(--muted)" strokeDasharray="4 3" label={{ value: 'décollage', fontSize: 11, position: 'insideTopLeft' }} />
             {jumps.map((j, k) => (
-              <ReferenceLine key={j.takeoffMs} x={Math.round(j.flightS * 100) / 100} stroke={CURVE_COLORS[k]} strokeDasharray="4 3"
+              <ReferenceLine key={j.takeoffMs} x={roundTo(j.flightS, 2)} stroke={CURVE_COLORS[k]} strokeDasharray="4 3"
                 label={k === 0 ? { value: 'atterrissage', fontSize: 11, position: 'insideTopRight' } : undefined} />
             ))}
             <Line type="monotone" dataKey="premier" stroke={CURVE_COLORS[0]} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />

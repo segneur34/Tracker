@@ -1,4 +1,4 @@
-import { zoneOf } from '../core/heartRate';
+import { bandIndex } from '../core/basics';
 import { sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
@@ -156,7 +156,8 @@ export interface LiveFieldUnits {
   distanceUnit: DistanceUnit;
 }
 
-const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
+/** « 5 min » : la fenêtre des chiffres récents du direct. */
+export const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
 const [TOP_SHORT_S, TOP_LONG_S] = LIVE_STATS_DEFAULTS.topDurationsS;
 
 /** Libellé d'un chiffre ; une allure (min/km) se dit « allure ». */
@@ -304,7 +305,7 @@ export const liveFieldValue = (key: LiveFieldKey, ctx: LiveFieldContext): string
     case 'heartRateZone': {
       if (ctx.heartRateBpm === null || ctx.heartRateZoneBounds === null) return NONE;
       const bpm = Math.round(ctx.heartRateBpm);
-      const zone = zoneOf(bpm, ctx.heartRateZoneBounds);
+      const zone = bandIndex(bpm, ctx.heartRateZoneBounds);
       return `${zone === 0 ? 'sous Z1' : `Z${zone}`} · ${bpm}`;
     }
     case 'step':

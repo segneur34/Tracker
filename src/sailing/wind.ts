@@ -1,3 +1,4 @@
+import { toFixedNumber } from '../core/basics';
 import type { PointData } from '../utils/kinematics';
 import {
   MANEUVER_MAX_STEP_S,
@@ -68,7 +69,7 @@ export const speedPolar = (track: readonly PointData[], windDeg: number, minSpee
     const binIdx = Math.floor(normalizeAngle(p.bearing - windDeg) / POLAR_BIN_DEG);
     if (p.smoothedSpeed > bins[binIdx]) bins[binIdx] = p.smoothedSpeed;
   }
-  return bins.map((maxSpd, i) => ({ angle: `${i * POLAR_BIN_DEG}°`, vitesse: parseFloat(maxSpd.toFixed(1)) }));
+  return bins.map((maxSpd, i) => ({ angle: `${i * POLAR_BIN_DEG}°`, vitesse: toFixedNumber(maxSpd, 1) }));
 };
 
 // ---------------------------------------------------------------------------

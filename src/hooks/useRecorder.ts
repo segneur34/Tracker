@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { BASE_COLOR, baseActivity, findActivity, type Activity } from '../core/activities';
 import { marksWithin, type SessionMark } from '../core/sessionMarks';
@@ -18,13 +19,14 @@ import {
 import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type LocationWatchOptions, type StopLocation } from '../platform/location';
 import { buildGpx, buildHeartRateGpx } from '../recording/gpxWriter';
 import { closeSessionTest, type SessionTest } from '../recording/fitnessTest';
-import { heartRateAt } from '../recording/heartRate';
+import { heartRateAt, readableBpm } from '../recording/heartRate';
 import { seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
 import {
   journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine, journalTestLine,
   parseJournal,
 } from '../recording/journal';
 import {
+  isAutoPause, isManualPause,
   EMPTY_RECORDING_STATS,
   addFixToStats,
   displayedDurationMs,
@@ -207,8 +209,6 @@ export const subscribeToFixes = (listener: (fix: LocationFix) => void): (() => v
   };
 };
 
-const errorMessage = (err: unknown, fallback: string): string =>
-  err instanceof Error && err.message ? err.message : fallback;
 
 // --- Enregistrement en cours ---
 
@@ -281,7 +281,7 @@ const flushJournal = (): Promise<void> => {
 /** Reçoit une position de la source. Le réglage est relu à chaque fois : l'activité peut changer en route. */
 const receiveFix = (received: LocationFix): void => {
   const acceptedStatus =
-    state.status === 'starting' || state.status === 'recording' || (state.status === 'paused' && state.pausedReason === 'auto');
+    state.status === 'starting' || state.status === 'recording' || isAutoPause(state);
   const recording = currentProfile;
   if (!acceptedStatus || recording === null) return;
   if (!isNewerFix(lastReceivedMs, received)) return;
@@ -588,7 +588,7 @@ const takeBelt = async (belt: HeartRateBelt, maxAgeS: number): Promise<void> => 
   setState({ heartRate: { state: beltState(), bpm: null } });
   const offSample = subscribeHeartRate((sample) => {
     receiveHeartSample(sample);
-    const bpm = sample.contact === false || !(sample.bpm > 0) ? null : sample.bpm;
+    const bpm = readableBpm(sample);
     if (state.heartRate && (state.heartRate.bpm !== bpm || state.heartRate.state !== beltState())) {
       setState({ heartRate: { state: beltState(), bpm } });
     }
@@ -726,7 +726,7 @@ export const startRecording = exclusive(async (
  * automatique, elle coupe aussi la source : la reprise devient manuelle.
  */
 export const pauseRecording = exclusive(async (): Promise<void> => {
-  const autoPaused = state.status === 'paused' && state.pausedReason === 'auto';
+  const autoPaused = isAutoPause(state);
   if (state.status !== 'recording' && !autoPaused) return;
   // La durée se fige à cet instant ; depuis une pause automatique, celle-ci y reste comptée.
   const frozenAtMs = Date.now();
@@ -746,12 +746,12 @@ export const pauseRecording = exclusive(async (): Promise<void> => {
 /** Relance la source coupée par `pauseRecording`. Le prochain point gardé ouvre un nouveau segment. */
 export const resumeRecording = exclusive(async (): Promise<void> => {
   // Sans position (muscu), la ceinture est restée prise : la mesure suivante ouvre le segment.
-  if (heartOnly && state.status === 'paused' && state.pausedReason === 'manual') {
+  if (heartOnly && isManualPause(state)) {
     pendingBreak = true;
     setState({ status: 'recording', pausedReason: null, pauseClock: null });
     return;
   }
-  if (state.status !== 'paused' || state.pausedReason !== 'manual' || state.activity === null || currentSource === null || currentProfile === null) {
+  if (!isManualPause(state) || state.activity === null || currentSource === null || currentProfile === null) {
     return;
   }
   const activity = state.activity;
@@ -792,7 +792,7 @@ export const changeRecordingActivity = (activity: Activity): void => {
   pendingLines += journalActivityLine(activity.base, activity);
   const patch: Partial<RecorderState> = { sport: activity.base, activity };
   // En pause automatique, une activité qui n'en a pas ne la lèverait jamais : l'enregistrement reprend.
-  if (state.status === 'paused' && state.pausedReason === 'auto' && profile.autoPauseSpeedMs <= 0) {
+  if (isAutoPause(state) && profile.autoPauseSpeedMs <= 0) {
     pendingBreak = true;
     patch.status = 'recording';
     patch.pausedReason = null;
@@ -853,7 +853,7 @@ export const addRecordingMark = (): { mark: SessionMark; n: number } | null => {
 
 /** Appui long sur le bouton rond : pause manuelle, ou reprise si elle l'est déjà. */
 export const togglePauseRecording = (): Promise<void> =>
-  state.status === 'paused' && state.pausedReason === 'manual' ? resumeRecording() : pauseRecording();
+  isManualPause(state) ? resumeRecording() : pauseRecording();
 
 /** Arrête l'enregistrement, après la pause ou la reprise en cours s'il y en a une (`afterCurrent`). */
 export const stopRecording = afterCurrent(async (): Promise<void> => {

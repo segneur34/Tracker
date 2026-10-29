@@ -1,3 +1,4 @@
+import { toFixedNumber } from '../core/basics';
 import { useMemo, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
@@ -17,7 +18,7 @@ import {
   edwardsLoad, efficiencyBlocks, heartRateDrift, timeInZones, type HeartRatePoint, type HeartRateZones,
 } from '../core/heartRate';
 import type { HeartRateProfile } from '../core/sportProfiles';
-import { SPEED_UNIT_LABEL, formatClock, formatClockMinutes, formatShortDuration, isInverseUnit, toDisplaySpeed, type SpeedUnit } from '../core/units';
+import { SPEED_UNIT_LABEL, formatClock, formatClockMinutes, formatShortDuration, toDisplaySpeed, editSpeedUnit, type SpeedUnit } from '../core/units';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import type { RunnerProfile } from '../hooks/useRunnerProfile';
 import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
@@ -88,7 +89,7 @@ export function CardioCurve({ track, smoothed, zoom, zones, thresholds, onHoverI
     const [first, last] = visibleIndexRange(minutes, zoom.view);
     return sampledIndices(first, last, CHART_MAX_POINTS, smoothed).map((i) => ({
       index: i,
-      minutes: parseFloat(minutes[i].toFixed(3)),
+      minutes: toFixedNumber(minutes[i], 3),
       hr: smoothed[i] === null ? null : Math.round(smoothed[i]!),
     }));
   }, [minutes, zoom.view, smoothed]);
@@ -134,11 +135,11 @@ export default function HeartRatePanel({
     [efficiency, track, smoothed, params.gapS, params.driftMinS]
   );
   /** Vitesse du nuage : km/h quand l'unité est une allure, qui ferait un axe inversé. */
-  const scatterUnit: SpeedUnit | null = efficiency ? (isInverseUnit(efficiency.speedUnit) ? 'kmh' : efficiency.speedUnit) : null;
+  const scatterUnit: SpeedUnit | null = efficiency ? editSpeedUnit(efficiency.speedUnit) : null;
   const blocks = useMemo(() => {
     if (!efficiency || scatterUnit === null) return null;
     const all = efficiencyBlocks(track, smoothed, efficiency.speedsMs, efficiency.active, params.gapS, params.scatterBlockS)
-      .map((b) => ({ speed: parseFloat(toDisplaySpeed(b.speedMs, scatterUnit).toFixed(1)), bpm: Math.round(b.bpm), half: b.half }));
+      .map((b) => ({ speed: toFixedNumber(toDisplaySpeed(b.speedMs, scatterUnit), 1), bpm: Math.round(b.bpm), half: b.half }));
     return [all.filter((b) => b.half === 0), all.filter((b) => b.half === 1)];
   }, [efficiency, scatterUnit, track, smoothed, params.gapS, params.scatterBlockS]);
 

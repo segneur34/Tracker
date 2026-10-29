@@ -14,6 +14,8 @@
  * comptées depuis un lundi.
  */
 
+import { DAY_MS } from '../core/calendar';
+
 /** Règle de la racine, fixée par l'utilisateur le 25/10. */
 export interface RootRules {
   /** Durée d'une période, en jours entiers ; 7 : la semaine. */
@@ -65,7 +67,6 @@ export interface RootGrowth {
 
 /** Lundi 1er janvier 2024 : origine des périodes. */
 const ORIGIN_UTC = Date.UTC(2024, 0, 1);
-const DAY_MS = 86_400_000;
 
 /** Numéro du jour local de `ms` depuis l'origine (les changements d'heure n'y font rien). */
 const localDay = (ms: number): number => {

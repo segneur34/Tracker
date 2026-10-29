@@ -1,3 +1,4 @@
+import { toFixedNumber } from '../core/basics';
 import { useMemo, type ReactElement } from 'react';
 import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { HoverReadout, type Readout } from './ChartReadout';
@@ -11,7 +12,8 @@ import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom'
 import { CHART_MAX_POINTS } from '../core/displayConfig';
 import type { TrackPoint } from '../core/types';
 import {
-  SPEED_UNIT_LABEL, formatClockMinutes, formatShortDuration, formatSpeed, isInverseUnit, toDisplaySpeed, type SpeedUnit,
+  editSpeedUnit,
+  SPEED_UNIT_LABEL, formatClockMinutes, formatShortDuration, formatSpeed, toDisplaySpeed, type SpeedUnit,
 } from '../core/units';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import { FITNESS_TESTS, TEST_SIGNAL_LABEL, type SessionTest, type TestEndReason, type TestSignal } from '../recording/fitnessTest';
@@ -77,7 +79,7 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
   onShowOnMap?: () => void;
 }) {
   // Une allure ferait un axe inversé : km/h, comme le nuage FC / vitesse.
-  const unit: SpeedUnit = isInverseUnit(speedUnit) ? 'kmh' : speedUnit;
+  const unit: SpeedUnit = editSpeedUnit(speedUnit);
   const t0 = track[0]?.timeMs ?? 0;
   const lastMs = track[track.length - 1]?.timeMs ?? t0;
   const rampEndMs = test.rampEndMs ?? lastMs;
@@ -86,12 +88,12 @@ export function FitnessTestCurves({ track, test, minutes, speedsMs, hrSmoothed, 
   const rows = useMemo((): Row[] => {
     if (minutes.length < 2) return [];
     const [first, last] = visibleIndexRange(minutes, zoom.view);
-    const display = (ms: number) => parseFloat(toDisplaySpeed(ms, unit).toFixed(1));
+    const display = (ms: number) => toFixedNumber(toDisplaySpeed(ms, unit), 1);
     return sampledIndices(first, last, CHART_MAX_POINTS, speedsMs).map((i) => {
       const target = targetAt(test, track[i].timeMs, rampEndMs);
       return {
         index: i,
-        minutes: parseFloat(minutes[i].toFixed(3)),
+        minutes: toFixedNumber(minutes[i], 3),
         speed: display(speedsMs[i]),
         target: target === null ? null : display(target),
         hr: hrSmoothed[i] === null ? null : Math.round(hrSmoothed[i]!),
@@ -208,7 +210,7 @@ export default function FitnessTestPanel({
 }) {
   const protocol = FITNESS_TESTS[test.protocol];
   const results = useMemo(() => fitnessTestResults(track, test, protocol), [track, test, protocol]);
-  const speed = (ms: number | null) => (ms === null ? '—' : formatSpeed(ms, isInverseUnit(speedUnit) ? 'kmh' : speedUnit));
+  const speed = (ms: number | null) => (ms === null ? '—' : formatSpeed(ms, editSpeedUnit(speedUnit)));
   const bpm = (v: number | null) => (v === null ? '—' : `${v} bpm`);
   const { lowBpm, highBpm } = test.settings;
   const stat = (label: string, value: string) => <StatTile label={label} value={value} />;

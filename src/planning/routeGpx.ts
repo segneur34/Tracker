@@ -1,4 +1,4 @@
-import { escapeXml } from '../recording/gpxWriter';
+import { escapeXmlAttr, gpxDocument } from '../core/xml';
 import { isLooped, routePoints, type PlannedRoute } from './route';
 
 /**
@@ -27,7 +27,7 @@ const fixed = (value: number, digits: number): string => String(Number(value.toF
 
 /** `label` : nom de chaque point, des lettres par défaut, des numéros pour un parcours de balises (`markLabel`). */
 export const buildRouteGpx = (route: PlannedRoute, name: string, label: (index: number) => string = waypointLabel): string => {
-  const safeName = escapeXml(name);
+  const safeName = escapeXmlAttr(name);
   const shown = isLooped(route) ? route.waypoints.slice(0, -1) : route.waypoints;
   const waypoints = shown.map(
     (w, i) => `  <wpt lat="${fixed(w.lat, 7)}" lon="${fixed(w.lon, 7)}"><name>${label(i)}</name></wpt>`
@@ -36,9 +36,7 @@ export const buildRouteGpx = (route: PlannedRoute, name: string, label: (index: 
     const ele = p.eleM !== undefined ? `<ele>${fixed(p.eleM, 1)}</ele>` : '';
     return `      <trkpt lat="${fixed(p.lat, 7)}" lon="${fixed(p.lon, 7)}">${ele}</trkpt>`;
   });
-  return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<gpx version="1.1" creator="Tracker" xmlns="http://www.topografix.com/GPX/1/1">',
+  return gpxDocument([
     `  <metadata><name>${safeName}</name></metadata>`,
     ...waypoints,
     '  <trk>',
@@ -47,7 +45,5 @@ export const buildRouteGpx = (route: PlannedRoute, name: string, label: (index: 
     ...trackPoints,
     '    </trkseg>',
     '  </trk>',
-    '</gpx>',
-    '',
-  ].join('\n');
+  ]);
 };

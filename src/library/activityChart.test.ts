@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { activityBarUnit, buildActivityChart, chartPeriodBounds, isoWeek, startOfIsoWeek, type ChartSession } from './activityChart';
+import { isoWeek, startOfIsoWeek } from '../core/calendar';
+import { activityBarUnit, buildActivityChart, chartPeriodBounds, type ChartSession } from './activityChart';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime();

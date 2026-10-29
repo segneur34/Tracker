@@ -1,3 +1,4 @@
+import { roundTo } from '../core/basics';
 import { computeElevationStats } from '../core/elevation';
 import { heartRateHistogram, heartRateStats, smoothHeartRate, type HeartRatePoint } from '../core/heartRate';
 import { activeDurationS, heartRatePointsFrom } from '../core/heartRateSession';
@@ -237,7 +238,7 @@ const summaryCadence = (track: TrackPoint[], mask: boolean[], params: CadenceDet
   const cadence = sessionCadence(track, params);
   if (!cadence.present) return undefined;
   const analysis = analyzeCadence(track, cadence.spm, mask, null, params);
-  return analysis ? { avgSpm: Math.round(analysis.averageSpm * 10) / 10, steps: Math.round(analysis.steps) } : undefined;
+  return analysis ? { avgSpm: roundTo(analysis.averageSpm, 1), steps: Math.round(analysis.steps) } : undefined;
 };
 
 /** FC du résumé, comme l'onglet « cardio » la mesure ; rien sous `minCoverageS`. */

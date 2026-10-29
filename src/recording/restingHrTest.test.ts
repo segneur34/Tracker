@@ -73,3 +73,9 @@ describe('sons et exemple', () => {
     }
   });
 });
+
+describe('sons du test de FC repos', () => {
+  it('reprennent le départ et la fin des tests guidés, tels qu’avant', () => {
+    expect(RESTING_SIGNAL_TONES).toEqual({ debut: [{ delayMs: 0, tone: 'court' }], fin: [{ delayMs: 0, tone: 'long' }] });
+  });
+});

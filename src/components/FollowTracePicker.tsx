@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/basics';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { sessionActivity } from '../core/activities';
@@ -99,7 +100,7 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
       onPicked?.(trace);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lecture de la session impossible.');
+      setError(errorMessage(err, 'Lecture de la session impossible.'));
     } finally {
       setLoading(null);
     }

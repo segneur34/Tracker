@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
-import { beltState, latestHeartRate, subscribeBeltState, subscribeHeartRate, type BeltState, type HeartRateSample } from '../platform/heartRate';
-
-/** FC lisible d'une mesure : `null` hors contact de la peau ou sans valeur. */
-const readableBpm = (sample: HeartRateSample | null): number | null =>
-  sample === null || sample.contact === false || !(sample.bpm > 0) ? null : sample.bpm;
+import { readableBpm } from '../recording/heartRate';
+import { beltState, latestHeartRate, subscribeBeltState, subscribeHeartRate, type BeltState } from '../platform/heartRate';
 
 /**
  * État de la connexion à la ceinture et dernière FC, suivis en direct, quel

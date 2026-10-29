@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HeartRateSample } from '../platform/heartRate';
-import { heartRateAt } from './heartRate';
+import { heartRateAt, readableBpm } from './heartRate';
 
 const sample = (timeMs: number, bpm: number, contact: boolean | null = true): HeartRateSample => ({ timeMs, bpm, contact });
 
@@ -44,5 +44,30 @@ describe('heartRateAt', () => {
     // Trou de plus de 3 s : pas de fréquence.
     expect(slow.get(15_000)).toBeUndefined();
     expect(slow.get(12_000)).toBe(129);
+  });
+});
+// Copie gelée de l'ancienne écriture de `heartRateAt`.
+const oldHeartRateAt = (s: HeartRateSample | null, atMs: number, maxAgeS: number): number | undefined => {
+  if (s === null || s.contact === false) return undefined;
+  if (!(s.bpm > 0)) return undefined;
+  return Math.abs(atMs - s.timeMs) <= maxAgeS * 1000 ? Math.round(s.bpm) : undefined;
+};
+describe('readableBpm', () => {
+  const samples: (HeartRateSample | null)[] = [
+    null, sample(0, 72.4), sample(0, 72.5, null), sample(0, 72, false), sample(0, 0), sample(0, -3), sample(0, NaN), sample(0, 140.6, true),
+  ];
+  it('rend la FC si la mesure est lisible, sans l’arrondir, sinon null', () => {
+    expect(readableBpm(null)).toBeNull();
+    expect(readableBpm(sample(0, 72.4))).toBe(72.4);
+    expect(readableBpm(sample(0, 72.5, null))).toBe(72.5);
+    expect(readableBpm(sample(0, 72, false))).toBeNull();
+    expect(readableBpm(sample(0, 0))).toBeNull();
+    expect(readableBpm(sample(0, -3))).toBeNull();
+    expect(readableBpm(sample(0, NaN))).toBeNull();
+  });
+  it('laisse heartRateAt rendre ce qu’il rendait', () => {
+    for (const s of samples) {
+      for (const at of [0, 999, 1000, 1001, 5000]) expect(heartRateAt(s, at, 1)).toBe(oldHeartRateAt(s, at, 1));
+    }
   });
 });

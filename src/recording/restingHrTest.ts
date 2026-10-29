@@ -1,4 +1,5 @@
 import type { ClockTone } from '../platform/beeper';
+import { TEST_SIGNAL_TONES } from './fitnessTest';
 
 /**
  * Test de FC repos (Entraînement › Tests, 24/10) : 3 minutes immobile, la FC
@@ -123,8 +124,8 @@ export const restingRemainingS = (state: RestingHrState, nowMs: number): number 
 
 /** Départ : un court. Fin : un long. Les mêmes sons que les tests guidés (`fitnessTest.ts`). */
 export const RESTING_SIGNAL_TONES: Record<RestingSignal, ClockTone[]> = {
-  debut: [{ delayMs: 0, tone: 'court' }],
-  fin: [{ delayMs: 0, tone: 'long' }],
+  debut: TEST_SIGNAL_TONES.debut,
+  fin: TEST_SIGNAL_TONES.finTest,
 };
 
 // --- Exemple, pour essayer le test sans ceinture (navigateur) ---

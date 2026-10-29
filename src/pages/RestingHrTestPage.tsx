@@ -1,3 +1,4 @@
+import { dayMonthTime } from '../core/calendar';
 import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { HelpText, HelpToggle } from '../components/Help';
@@ -28,7 +29,7 @@ const exampleSpeed = (search: string): number => {
   return isFinite(v) && v >= 1 && v <= 60 ? v : 1;
 };
 
-const dateText = (ms: number): string => new Date(ms).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const dateText = dayMonthTime;
 
 /** Courbe d'un test gardé, à la demande : le graphe n'est monté que déplié. */
 function StoredResultRow({ result, onRemove }: { result: StoredRestingResult; onRemove: () => void }) {

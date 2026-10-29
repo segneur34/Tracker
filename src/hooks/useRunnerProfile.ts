@@ -1,3 +1,4 @@
+import { finiteOr, inRange } from '../core/basics';
 import { useCallback } from 'react';
 import { isActivityIconId, type ActivityIconId } from '../core/activityIcons';
 import type { Activity } from '../core/activities';
@@ -122,7 +123,7 @@ const BOUNDS: Record<NumberField, [number, number]> = {
 export const runnerRootGoalMin = (profile: Partial<Pick<RunnerProfile, 'rootWeeklyGoalMin'>>): number => {
   const raw: unknown = profile.rootWeeklyGoalMin;
   const [lo, hi] = BOUNDS.rootWeeklyGoalMin;
-  return typeof raw === 'number' && isFinite(raw) && raw >= lo && raw <= hi ? raw : ROOT_GOAL.defaultMin;
+  return inRange(raw, lo, hi) ? raw : ROOT_GOAL.defaultMin;
 };
 
 /** Champs que le pop-up de l'accueil demande tant qu'ils manquent ; la FC max et la FC repos viennent des tests. */
@@ -132,7 +133,7 @@ export type ProfilePromptField = (typeof PROFILE_PROMPT_FIELDS)[number];
 /** Une valeur numérique saisie et dans sa plage (relue avec contrôle : fichier de réglages importé). */
 const validNumber = (field: NumberField, raw: unknown): boolean => {
   const [lo, hi] = BOUNDS[field];
-  return typeof raw === 'number' && isFinite(raw) && raw >= lo && raw <= hi;
+  return inRange(raw, lo, hi);
 };
 
 /** Champs du pop-up qui manquent au profil, dans leur ordre ; vide : le profil est rempli. */
@@ -188,7 +189,7 @@ export const runnerHrSource = (profile: Partial<RunnerProfile>, field: 'hrMax' |
   if (typeof raw === 'object' && raw !== null) {
     const { kind, atMs } = raw as Record<string, unknown>;
     if (kind === 'test' || kind === 'seance' || kind === 'saisie') {
-      return { kind, atMs: typeof atMs === 'number' && isFinite(atMs) ? atMs : null };
+      return { kind, atMs: finiteOr(atMs, null) };
     }
   }
   return { kind: 'saisie', atMs: null };
@@ -214,7 +215,7 @@ export const useRunnerProfile = () => {
     (field: NumberField, next: number | null) => {
       if (next !== null) {
         const [lo, hi] = BOUNDS[field];
-        if (!isFinite(next) || next < lo || next > hi) return;
+        if (!inRange(next, lo, hi)) return;
       }
       const source: HrSource | null = next === null ? null : { kind: 'saisie', atMs: null };
       update({
