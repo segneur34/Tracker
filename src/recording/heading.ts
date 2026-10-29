@@ -1,4 +1,4 @@
-import { haversineDistance, initialBearing } from '../core/kinematics';
+import { haversineDistance, initialBearing } from '../core/geo';
 import type { LocationFix } from '../platform/location';
 
 /**

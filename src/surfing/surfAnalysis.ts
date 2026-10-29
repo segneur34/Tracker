@@ -1,7 +1,7 @@
 import { meanOf } from '../core/basics';
-import { haversineDistance } from '../core/kinematics';
+import { haversineDistance } from '../core/geo';
 import { activeRuns, type ActiveRun } from '../core/sessionStats';
-import type { SurfProfile } from '../core/sportProfiles';
+import type { SportProfile, SurfProfile } from '../core/sportProfiles';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { countDirectionChanges } from './gpsTurns';
 
@@ -30,9 +30,10 @@ import { countDirectionChanges } from './gpsTurns';
  * est pompé. Sans foil, les glisses sont les vagues.
  */
 
+/** Réglages de l'analyse : ceux du surf, et le trou de la trace du calcul (`SportProfile.maxGapS`). */
 export type SurfParams = Pick<
-  SurfProfile, 'stillMs' | 'minWaitS' | 'minWaveS' | 'minWaveM' | 'takeoffSearchS' | 'maxGapS' | 'turnMinDeg'
->;
+  SurfProfile, 'stillMs' | 'minWaitS' | 'minWaveS' | 'minWaveM' | 'takeoffSearchS' | 'turnMinDeg'
+> & Pick<SportProfile, 'maxGapS'>;
 
 /** Ce que fait le pratiquant sur un pas. */
 export type SurfPhase = 'glisse' | 'rame' | 'attente' | 'trou';

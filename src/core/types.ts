@@ -15,6 +15,12 @@
 export type SportType =
   | 'wingfoil' | 'windsurf' | 'kite' | 'bateau' | 'running' | 'cycling' | 'run-intervals' | 'bike-intervals' | 'run-test' | 'surf' | 'muscu';
 
+/** Position, en degrés décimaux. */
+export interface LatLon {
+  lat: number;
+  lon: number;
+}
+
 /** Point brut tel que lu dans le fichier de trace, avant tout calcul. */
 export interface RawTrackPoint {
   lat: number;

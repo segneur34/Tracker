@@ -1,4 +1,5 @@
-import { planeProjection, pointSegmentDistanceM, type PlanePoint } from '../core/geoPlane';
+import { planeProjection, type PlanePoint } from '../core/geo';
+import { pointSegmentDistanceM } from '../core/geoPlane';
 import { simplifyPlane } from '../core/simplify';
 import type { RouteLeg, RoutePoint, Waypoint } from './route';
 

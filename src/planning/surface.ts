@@ -1,4 +1,4 @@
-import { haversineDistance } from '../core/kinematics';
+import { haversineDistance, pathLengthM } from '../core/geo';
 import { segmentDistanceM } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
 import { WAY_TYPE_HIGHWAYS } from './brouterProfile';
@@ -253,7 +253,7 @@ export interface SurfaceStretch {
  * Longueurs le long des points d'un tronçon d'itinéraire : le segment
  * `i − 1 → i` prend la voie du point `i − 1`. Sans morceaux, tout est
  * « Inconnu ». Un itinéraire n'a pas de vitesse : la distance est celle entre
- * les points, comme pour sa longueur (`cumulativeDistances`).
+ * les points, comme pour sa longueur (`cumulativeDistancesM`).
  */
 export const legSurfaceStretches = (points: ReadonlyArray<RoutePoint>, surfaces: SurfaceRuns | undefined): SurfaceStretch[] => {
   const stretches: SurfaceStretch[] = [];
@@ -332,13 +332,7 @@ export const surfacePaths = (
 };
 
 /** Longueur d'une ligne, en mètres (distance entre ses points). */
-const lineLengthM = (positions: ReadonlyArray<[number, number]>): number => {
-  let total = 0;
-  for (let i = 1; i < positions.length; i++) {
-    total += haversineDistance(positions[i - 1][0], positions[i - 1][1], positions[i][0], positions[i][1]);
-  }
-  return total;
-};
+const lineLengthM = (positions: ReadonlyArray<[number, number]>): number => pathLengthM(positions.map(([lat, lon]) => ({ lat, lon })));
 
 /** Point à mi-longueur d'une ligne, interpolé sur le segment qui le contient. */
 const midpoint = (positions: ReadonlyArray<[number, number]>): [number, number] => {

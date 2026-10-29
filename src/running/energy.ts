@@ -1,3 +1,4 @@
+import { partitionPoint } from '../core/search';
 import { segmentDistanceM } from '../core/sessionStats';
 import { J_PER_KCAL } from '../core/units';
 import type { TrackPoint } from '../core/types';
@@ -356,16 +357,8 @@ export const smoothMovingPower = (
    * Premier rang de [lo, hi] dont l'instant atteint `t` (`strict` : le
    * dépasse) ; hi + 1 s'il n'y en a pas.
    */
-  const firstFrom = (t: number, lo: number, hi: number, strict: boolean): number => {
-    let a = lo;
-    let b = hi + 1;
-    while (a < b) {
-      const mid = (a + b) >> 1;
-      if (time(mid) < t || (strict && time(mid) === t)) a = mid + 1;
-      else b = mid;
-    }
-    return a;
-  };
+  const firstFrom = (t: number, lo: number, hi: number, strict: boolean): number =>
+    partitionPoint(hi + 1, (mid) => time(mid) < t || (strict && time(mid) === t), lo);
 
   for (let k = 0; k < m; k++) {
     const t = time(k);

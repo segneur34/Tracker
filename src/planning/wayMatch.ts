@@ -1,5 +1,6 @@
 import { pointSegmentDistanceM, type PlanePoint } from '../core/geoPlane';
-import { EARTH_RADIUS_M, haversineDistance, toRad } from '../core/kinematics';
+import { toRad } from '../core/angles';
+import { EARTH_RADIUS_M, haversineDistance } from '../core/geo';
 import type { Waypoint } from './route';
 import { buildSurfaceRuns, type SurfaceRuns } from './surface';
 

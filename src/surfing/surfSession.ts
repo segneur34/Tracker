@@ -47,7 +47,7 @@ export const runSurfSession = (
 ): SurfSessionResult => {
   const rideMask = maskAt(track, profile, settings.threshold);
   const waveMask = settings.foil ? maskAt(track, profile, effectiveWaveThreshold(profile.surf, settings.waveThreshold)) : null;
-  const analysis = analyzeSurf(track, cum, rideMask, waveMask, profile.surf);
+  const analysis = analyzeSurf(track, cum, rideMask, waveMask, { ...profile.surf, maxGapS: profile.maxGapS });
   return { rideMask, analysis, summary: summarizeSurf(track, cum, analysis, profile.surf.stillMs) };
 };
 

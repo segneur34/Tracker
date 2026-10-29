@@ -1,3 +1,4 @@
+import { roundBearingDeg } from '../core/angles';
 import { errorMessage } from '../core/basics';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ChangeEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -167,7 +168,7 @@ const MarkGuideCard = ({ view, activity }: { view: MarkGuideView; activity: Acti
     ? 'Parcours fini'
     : view.distanceM === null || view.bearingDeg === null
       ? 'en attente du GPS'
-      : `${formatShortDistance(view.distanceM, effectiveDistanceUnit(activity))} · ${Math.round(view.bearingDeg) % 360}°`;
+      : `${formatShortDistance(view.distanceM, effectiveDistanceUnit(activity))} · ${roundBearingDeg(view.bearingDeg)}°`;
   return (
     <Card>
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2) var(--space-3)', flexWrap: 'wrap' }}>
@@ -243,7 +244,7 @@ const formatLegDuration = (ms: number): string => {
 const LegCard = ({ title, leg, empty, activity }: { title: string; leg: LiveLeg | null; empty: string; activity: Activity }) => {
   const unit = effectiveSpeedUnit(activity);
   const detail = leg
-    ? `${leg.headingDeg === null ? 'cap —' : `cap ${Math.round(leg.headingDeg) % 360}°`} · ${formatLegDuration(leg.endMs - leg.startMs)}`
+    ? `${leg.headingDeg === null ? 'cap —' : `cap ${roundBearingDeg(leg.headingDeg)}°`} · ${formatLegDuration(leg.endMs - leg.startMs)}`
     : empty;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>

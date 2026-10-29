@@ -1,7 +1,7 @@
 import { isManualPause, isRecordingSession } from '../recording/session';
 import { useSyncExternalStore } from 'react';
 import type { Activity } from '../core/activities';
-import { haversineDistance } from '../core/kinematics';
+import { haversineDistance } from '../core/geo';
 import { getSportProfile, isTestSport } from '../core/sportProfiles';
 import { playPattern } from '../platform/beeper';
 import type { LocationFix } from '../platform/location';

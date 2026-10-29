@@ -174,7 +174,7 @@ export const pickTopWindows = (
 export const computeAllTopSegments = (
   track: TrackPoint[],
   cum: CumulativeTrack,
-  targets: TopTarget[],
+  targets: readonly TopTarget[],
   toDisplaySpeed: (speedMs: number) => number,
   options: TopSegmentOptions = {}
 ): Record<string, TopSegment[]> => {

@@ -28,15 +28,7 @@ export interface SailingStatsOptions {
 /** Tops de vitesse de la voile, en nœuds, sur les sept cibles du calcul. */
 export const computeSailingTops = (track: TrackPoint[], cumulative: CumulativeTrack): SessionStats['tops'] => {
   const tops = computeAllTopSegments(track, cumulative, SAILING_TOP_TARGETS, msToKnots);
-  return {
-    t2s: tops.t2s,
-    t5s: tops.t5s,
-    t10s: tops.t10s,
-    d100m: tops.d100m,
-    d500m: tops.d500m,
-    d1000m: tops.d1000m,
-    d1NM: tops.d1NM,
-  };
+  return Object.fromEntries(SAILING_TOP_TARGETS.map(({ key }) => [key, tops[key]])) as SessionStats['tops'];
 };
 
 /**

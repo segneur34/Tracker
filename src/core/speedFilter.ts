@@ -1,3 +1,5 @@
+import { median } from './basics';
+
 /**
  * Filtrage du bruit GPS sur les séries de vitesse.
  *
@@ -22,15 +24,8 @@ export const DEFAULT_MAX_OUTLIER_S = 3;
 /** Largeur par défaut du filtre médian, en secondes. */
 export const DEFAULT_MEDIAN_WINDOW_S = 3;
 
-/** Médiane d'une liste (0 si elle est vide) : moyenne des deux valeurs centrales pour un nombre pair. */
-export const median = (values: number[]): number => {
-  if (values.length === 0) return 0;
-
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-};
+/** Réexportée pour les appelants d'avant `core/basics.ts` (à retirer au lot 71). */
+export { median } from './basics';
 
 /** Durée, en secondes, sur laquelle la médiane initiale amorce l'écrêtage. */
 export const SEED_WINDOW_S = 10;

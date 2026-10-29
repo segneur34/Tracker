@@ -1,4 +1,4 @@
-import { median } from '../core/speedFilter';
+import { median } from '../core/basics';
 import type { IntervalDetectionProfile } from '../core/sportProfiles';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { INTERVAL_LIMITS, type IntervalWorkout } from '../recording/intervalTimer';

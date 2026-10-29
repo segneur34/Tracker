@@ -9,7 +9,7 @@ import MapToggle from './ui/MapToggle';
 
 interface Props {
   /** Cibles du calcul, en temps puis en distance. */
-  targets: TopTarget[];
+  targets: readonly TopTarget[];
   /** Trois meilleurs passages par cible (`computeAllTopSegments`), dans `unit`. */
   tops: Record<string, TopSegment[]>;
   unit: SpeedUnit;

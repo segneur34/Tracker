@@ -1,3 +1,4 @@
+import { normalizeDeg } from '../core/angles';
 import type { HeartRateHistogram } from '../core/heartRate';
 import { isValidBikeWeight } from '../cycling/energy';
 import { JUMP_DOUBTS, type JumpDoubt, type SessionJump } from '../core/jumps';
@@ -437,9 +438,6 @@ export const readSessionName = (raw: unknown): string | null => {
   const name = raw.trim();
   return name === '' ? null : name;
 };
-
-/** Direction ramenée dans [0, 360). */
-export const normalizeDeg = (deg: number): number => ((deg % 360) + 360) % 360;
 
 /** Bornes de couleur relues : `null` si elles sont mal formées ou vides. */
 const readSpeedRange = (raw: unknown): SpeedRangeMs | null =>

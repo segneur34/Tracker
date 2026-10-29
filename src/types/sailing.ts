@@ -1,3 +1,4 @@
+import type { SailingTopKey } from '../core/sportProfiles';
 import type { BaseSessionStats, TopSegment } from '../core/types';
 
 /**
@@ -5,13 +6,6 @@ import type { BaseSessionStats, TopSegment } from '../core/types';
  * enrichie des meilleurs segments de vitesse.
  */
 export interface SessionStats extends BaseSessionStats {
-  tops: {
-    t2s: TopSegment[];
-    t5s: TopSegment[];
-    t10s: TopSegment[];
-    d100m: TopSegment[];
-    d500m: TopSegment[];
-    d1000m: TopSegment[];
-    d1NM: TopSegment[];
-  };
+  /** Par cible de `SAILING_TOP_TARGETS`, dans leur ordre. */
+  tops: Record<SailingTopKey, TopSegment[]>;
 }

@@ -1,4 +1,5 @@
-import { median } from '../core/speedFilter';
+import { roundBearingDeg, toRad } from '../core/angles';
+import { median } from '../core/basics';
 import { knotsToMs } from '../core/units';
 import type { PointData } from '../utils/kinematics';
 import {
@@ -215,7 +216,8 @@ export interface ManeuverStats {
  */
 export type WindReference = number | ((timeMs: number) => number);
 
-const windAt = (wind: WindReference, timeMs: number): number =>
+/** Vent de référence à l'instant `timeMs`. */
+export const windAt = (wind: WindReference, timeMs: number): number =>
   typeof wind === 'function' ? wind(timeMs) : wind;
 
 /** Tolérance minimale, en degrés, entre la bissectrice d'un virage et l'axe qu'il traverse. */
@@ -511,7 +513,7 @@ export const estimateWind = (
   const confidence = Math.max(polarConfidence, maneuverConfidence * 0.9) * polarSampling(points);
 
   return {
-    direction: Math.round(direction) % 360,
+    direction: roundBearingDeg(direction),
     confidence,
     reliable: confidence >= WIND_CONFIDENCE_MIN,
     orientedBy,
@@ -840,7 +842,7 @@ const distanceAlongBetween = (
   for (let k = Math.max(1, from); k <= to; k++) {
     if (points[k].segmentStart) continue;
     const overlapS = (Math.min(points[k].timeMs, toMs) - Math.max(points[k - 1].timeMs, fromMs)) / 1000;
-    if (overlapS > 0) meters += knotsToMs(points[k].smoothedSpeed) * overlapS * Math.cos((angleDiff(points[k].bearing, directionDeg) * Math.PI) / 180);
+    if (overlapS > 0) meters += knotsToMs(points[k].smoothedSpeed) * overlapS * Math.cos(toRad(angleDiff(points[k].bearing, directionDeg)));
   }
   return meters;
 };

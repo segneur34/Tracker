@@ -1,48 +1,18 @@
+import { firstIndexAtOrAfter } from './search';
+import { median, medianOfSorted } from './basics';
+import { haversineDistance, initialBearing } from './geo';
 import {
   DEFAULT_MAX_ACCELERATION,
   DEFAULT_MEDIAN_WINDOW_S,
   clampByAccelerationFrom,
-  median,
   medianFilterByTimeFrom,
 } from './speedFilter';
 import type { RawTrackPoint, SpeedSource, TrackPoint } from './types';
 import { MS_TO_KMH, MS_TO_KNOTS } from './units';
 
-/** Rayon terrestre moyen en mètres. */
-export const EARTH_RADIUS_M = 6371e3;
-
-export const toRad = (value: number): number => (value * Math.PI) / 180;
-export const toDeg = (value: number): number => (value * 180) / Math.PI;
-
-/** Distance orthodromique entre deux positions, en mètres. */
-export const haversineDistance = (
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number => {
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return EARTH_RADIUS_M * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-};
-
-/** Cap initial entre deux positions, en degrés depuis le nord, sens horaire. */
-export const initialBearing = (
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number => {
-  const dLon = toRad(lon2 - lon1);
-  const y = Math.sin(dLon) * Math.cos(toRad(lat2));
-  const x =
-    Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
-    Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
-};
+/** Réexportés pour les appelants d'avant `core/angles.ts` et `core/geo.ts` (à retirer au lot 71). */
+export { toDeg, toRad } from './angles';
+export { EARTH_RADIUS_M, haversineDistance, initialBearing } from './geo';
 
 /** Convertit un horodatage de point en millisecondes depuis l'époque. */
 export const pointTimeMs = (time: string | Date): number =>
@@ -106,6 +76,22 @@ const UNIT_DETECTION_MIN_SAMPLES = 10;
 /** Vitesse dérivée minimale, en m/s, pour qu'un point serve à la détection. */
 const UNIT_DETECTION_MIN_DERIVED_MS = 1;
 
+/** Unité dont le facteur explique le mieux le rapport médian. */
+const unitFromRatio = (ratio: number): DeviceSpeedUnit => {
+  let best: DeviceSpeedUnit = 'ms';
+  let bestDistance = Infinity;
+  for (const unit of Object.keys(DEVICE_SPEED_FACTOR) as DeviceSpeedUnit[]) {
+    // Comparaison en logarithme : un rapport de 3,6 est aussi loin de 1 que
+    // 1 l'est de 0,28, ce qui rend le choix symétrique.
+    const distance = Math.abs(Math.log(ratio) - Math.log(1 / DEVICE_SPEED_FACTOR[unit]));
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = unit;
+    }
+  }
+  return best;
+};
+
 /**
  * Devine l'unité de la vitesse fournie par l'appareil.
  *
@@ -128,19 +114,7 @@ export const detectDeviceSpeedUnit = (
   }
   if (ratios.length < UNIT_DETECTION_MIN_SAMPLES) return 'ms';
 
-  const ratio = median(ratios);
-  let best: DeviceSpeedUnit = 'ms';
-  let bestDistance = Infinity;
-  for (const unit of Object.keys(DEVICE_SPEED_FACTOR) as DeviceSpeedUnit[]) {
-    // Comparaison en logarithme : un rapport de 3,6 est aussi loin de 1 que
-    // 1 l'est de 0,28, ce qui rend le choix symétrique.
-    const distance = Math.abs(Math.log(ratio) - Math.log(1 / DEVICE_SPEED_FACTOR[unit]));
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = unit;
-    }
-  }
-  return best;
+  return unitFromRatio(median(ratios));
 };
 
 /** Unité de la vitesse appareil d'une trace brute, ou `null` si elle n'en porte pas. */
@@ -307,14 +281,7 @@ const lastEqualRunStart = (rawTimesMs: number[]): number => {
 
 /** Insère `value` dans `sorted` (croissant), à sa place. */
 const insertSorted = (sorted: number[], value: number): void => {
-  let lo = 0;
-  let hi = sorted.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (sorted[mid] < value) lo = mid + 1;
-    else hi = mid;
-  }
-  sorted.splice(lo, 0, value);
+  sorted.splice(firstIndexAtOrAfter(sorted, value), 0, value);
 };
 
 /** Au-delà, des valeurs à ajouter à un tableau trié sont ajoutées puis le tout retrié, plutôt qu'insérées une à une. */
@@ -326,27 +293,6 @@ const withSorted = (sorted: number[], added: number[]): number[] => {
   const out = sorted.slice();
   for (const value of added) insertSorted(out, value);
   return out;
-};
-
-/** Médiane d'un tableau trié, comme `median` ; 0 s'il est vide. */
-const sortedMedian = (sorted: number[]): number => {
-  if (sorted.length === 0) return 0;
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-};
-
-/** Unité dont le facteur explique le mieux le rapport médian (`detectDeviceSpeedUnit`). */
-const unitFromRatio = (ratio: number): DeviceSpeedUnit => {
-  let best: DeviceSpeedUnit = 'ms';
-  let bestDistance = Infinity;
-  for (const unit of Object.keys(DEVICE_SPEED_FACTOR) as DeviceSpeedUnit[]) {
-    const distance = Math.abs(Math.log(ratio) - Math.log(1 / DEVICE_SPEED_FACTOR[unit]));
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = unit;
-    }
-  }
-  return best;
 };
 
 /** Rapport vitesse appareil / dérivée d'un point, s'il sert à la détection de l'unité ; `null` sinon. */
@@ -475,7 +421,7 @@ const runKinematics = (points: RawTrackPoint[], options: KinematicsOptions, prev
     ratiosUpTo = resumed ? Math.max(resumed.ratiosUpTo, R - 2) : 0;
     sortedRatios = withSorted(resumed ? resumed.sortedRatios : [], ratiosOf(resumed ? resumed.ratiosUpTo : 0, ratiosUpTo));
     const all = withSorted(sortedRatios, ratiosOf(ratiosUpTo, n));
-    unit = all.length < UNIT_DETECTION_MIN_SAMPLES ? 'ms' : unitFromRatio(sortedMedian(all));
+    unit = all.length < UNIT_DETECTION_MIN_SAMPLES ? 'ms' : unitFromRatio(medianOfSorted(all));
     // L'unité a changé : tout ce qui suit en dépend, on refait le calcul entier.
     if (resumed && unit !== resumed.unit) return runKinematics(points, options, null);
   }

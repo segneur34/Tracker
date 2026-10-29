@@ -1,5 +1,6 @@
 import { fetchJson } from './fetchJson';
 import { isObject } from '../core/basics';
+import type { LatLon } from '../core/types';
 
 /**
  * Altitude du terrain, demandée à l'API de calcul altimétrique de la
@@ -36,8 +37,6 @@ const TIMEOUT = 'Le service d\'altitude de l\'IGN ne répond pas : réessayez da
 
 /** Délai accordé à chaque paquet, réponse et corps compris, en millisecondes : au-delà, la demande échoue. */
 export const IGN_REQUEST_TIMEOUT_MS = 30_000;
-
-type LatLon = { lat: number; lon: number };
 
 /** Corps de la requête : longitudes et latitudes jointes par `|`. */
 export const ignRequestBody = (points: ReadonlyArray<LatLon>) => ({

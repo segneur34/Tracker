@@ -1,3 +1,4 @@
+import { valueAtTime } from './search';
 import type { ImuRecording } from './imuFile';
 import {
   captureBounds, centredMean, fileUsOf, verticalAcceleration, wallMsOf,
@@ -204,23 +205,6 @@ export const liftoffAt = (v: ImuVertical, around: number, p: PumpDetection): num
   return null;
 };
 
-/** Valeur d'une grandeur de la trace à une heure, interpolée entre ses points ; bornée aux extrémités. */
-export const trackValueAt = (track: TrackPoint[], values: (i: number) => number, ms: number): number => {
-  if (ms <= track[0].timeMs) return values(0);
-  const last = track.length - 1;
-  if (ms >= track[last].timeMs) return values(last);
-  let lo = 0;
-  let hi = last;
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (track[mid].timeMs <= ms) lo = mid;
-    else hi = mid;
-  }
-  const span = track[hi].timeMs - track[lo].timeMs;
-  const w = span > 0 ? (ms - track[lo].timeMs) / span : 0;
-  return values(lo) * (1 - w) + values(hi) * w;
-};
-
 /** Fenêtres mesurées d'un fichier : celles de l'élagage, sinon toute la capture. */
 export const capturedWindows = (rec: ImuRecording): ImuWindow[] => {
   if (rec.header.windows) return rec.header.windows;
@@ -237,7 +221,7 @@ export const measureFlightPumping = (
   rec: ImuRecording, p: PumpDetection, track: TrackPoint[], cum: CumulativeTrack, flights: Pick<FlightSpan, 'n' | 'startMs' | 'endMs'>[]
 ): (FlightPumping | null)[] => {
   const windows = capturedWindows(rec);
-  const distanceAt = (ms: number) => trackValueAt(track, (i) => cum.cumDist[i], ms);
+  const distanceAt = (ms: number) => valueAtTime(track, (i) => cum.cumDist[i], ms, 'clamp');
   return flights.map((f) => {
     const wantFrom = fileUsOf(rec, f.startMs - p.liftoffSearchBeforeS * 1000);
     const flightFrom = fileUsOf(rec, f.startMs);
@@ -264,7 +248,7 @@ export const measureFlightPumping = (
     // dernière reprise du calme trouvée serait au milieu du vol (capture élaguée autour d'un saut).
     const liftoff = best[0] <= flightFrom ? liftoffAt(v, start, p) : null;
     const liftoffMs = liftoff === null ? null : timeMsOf(liftoff);
-    const takeoffSpeedMs = liftoffMs === null ? null : trackValueAt(track, (i) => track[i].smoothedSpeedMs, liftoffMs);
+    const takeoffSpeedMs = liftoffMs === null ? null : valueAtTime(track, (i) => track[i].smoothedSpeedMs, liftoffMs, 'clamp');
 
     const from = liftoff === null ? start : Math.min(start, liftoff);
     const series = pumpSeries(pumpStrokes(v, from, v.n, p).map((i) => i * v.dt), p);

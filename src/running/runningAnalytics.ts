@@ -215,15 +215,21 @@ export const isValidGradeRange = (range: { min?: unknown; max?: unknown }): rang
   typeof range.min === 'number' && typeof range.max === 'number' &&
   isFinite(range.min) && isFinite(range.max) && range.min >= 0 && range.max > range.min;
 
+/** Place de la raideur entre les bornes (1 à la borne haute, au-delà ensuite) ; `null` sous la borne basse ou sans pente. */
+const steepnessShare = (grade: number, range: GradeRange): number | null => {
+  const steepness = Math.abs(grade);
+  if (!isFinite(steepness) || steepness < range.min) return null;
+  return (steepness - range.min) / (range.max - range.min);
+};
+
 /**
  * Couleur d'une pente, sur la palette de la trace. La raideur seule compte :
  * une descente à 20 % a la couleur d'une montée à 20 %, le sens se lit sur la
  * courbe. Gris sous la borne basse et là où la pente manque.
  */
 export const gradeGradientColor = (grade: number, range: GradeRange): string => {
-  const steepness = Math.abs(grade);
-  if (!isFinite(steepness) || steepness < range.min) return SLOW_COLOR;
-  return gradientColor((steepness - range.min) / (range.max - range.min));
+  const share = steepnessShare(grade, range);
+  return share === null ? SLOW_COLOR : gradientColor(share);
 };
 
 /**
@@ -234,10 +240,8 @@ export const GRADE_COLOR_STEPS = 20;
 
 /** Couleur d'une pente ramenée au plus proche des `steps` paliers entre les bornes ; gris comme `gradeGradientColor`. */
 export const gradeStepColor = (grade: number, range: GradeRange, steps = GRADE_COLOR_STEPS): string => {
-  const steepness = Math.abs(grade);
-  if (!isFinite(steepness) || steepness < range.min) return SLOW_COLOR;
-  const t = Math.min(1, (steepness - range.min) / (range.max - range.min));
-  return gradientColor(Math.round(t * steps) / steps);
+  const share = steepnessShare(grade, range);
+  return share === null ? SLOW_COLOR : gradientColor(Math.round(Math.min(1, share) * steps) / steps);
 };
 
 /** Un trait de couleur sur la carte : suite de positions `[lat, lon]`. */

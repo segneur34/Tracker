@@ -55,7 +55,7 @@ import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
 import { buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
 import { sessionActivity } from '../core/activities';
-import { trackIndexAtTime } from '../core/jumps';
+import { nearestIndexAtTime } from '../core/search';
 import { heartRateZonePaths, timeSpanHeartRate } from '../core/heartRate';
 import { ELEVATION_PRESETS, getActiveThresholds, hasPositions, isTestSport, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
@@ -792,7 +792,7 @@ function LandModule({ family }: { family: LandFamily }) {
   };
 
   /** Point de trace le plus proche d'un instant : relie la courbe d'un saut à la carte. */
-  const trackIndexAt = useCallback((ms: number): number => trackIndexAtTime(gpx.track, ms), [gpx.track]);
+  const trackIndexAt = useCallback((ms: number): number => nearestIndexAtTime(gpx.track, ms), [gpx.track]);
   const onJumpCurveHover = (rows: ReadonlyArray<{ index: number }>) => (e: ChartHoverEvent) => {
     const index = hoveredTrackIndex(e, rows);
     if (index !== null) setHoveredIndex(index);

@@ -1,4 +1,4 @@
-import { isObject } from './basics';
+import { isObject, upperMedianOfSorted } from './basics';
 /**
  * Fichier des capteurs d'une session (`.imu`), rangé à côté de son GPX :
  * accéléromètre et gyroscope bruts, et baromètre s'il existe, mesurés par le
@@ -483,7 +483,7 @@ export const imuCaptureStats = (recording: ImuRecording): ImuCaptureStats => {
       if (dt > longest) longest = dt;
     }
     gaps.sort((a, b) => a - b);
-    const median = gaps.length > 0 ? gaps[Math.floor(gaps.length / 2)] : 0;
+    const median = gaps.length > 0 ? upperMedianOfSorted(gaps) : 0;
     return { kind: s.info.kind, count: n, rateHz: median > 0 ? 1e6 / median : 0, longestGapS: longest / 1e6 };
   });
   return {

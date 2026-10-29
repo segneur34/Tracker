@@ -4,6 +4,7 @@ import type { PumpDetection } from './pumping';
 import type { CadenceDetection } from '../running/cadence';
 import type { SpeedRangeMs } from './speedGradient';
 import type { SportType, TopTarget } from './types';
+import { DEFAULT_MAX_DETOUR_RATIO } from './kinematics';
 import { kmhToMs, knotsToMs, METERS_PER_DISTANCE_UNIT, type SpeedUnit } from './units';
 
 /**
@@ -40,7 +41,7 @@ export const LOOP_RETURN_RATIO_RANGE = { min: 1, max: 3 } as const;
  * Pas plus long que cette durée : trou de la trace (arrêt sans point, GPS
  * perdu), en secondes, commun à tous les supports (décision du 27/10).
  */
-const MAX_GAP_S = 10;
+export const MAX_GAP_S = 10;
 
 /** Pas proposés pour l'altitude du terrain, en mètres. */
 export const TERRAIN_STEP_CHOICES_M = [5, 10, 20] as const;
@@ -117,6 +118,7 @@ export const DEFAULT_RECORDING: RecordingProfile = {
 /**
  * Fractionné : pause automatique coupée, un repos immobile de plus de 60 s
  * couperait la trace (§10, point 89). Le délai reste, pour qui la rallume.
+ * Le surf la reprend : l'attente au pic est immobile.
  */
 const INTERVAL_RECORDING: RecordingProfile = { ...DEFAULT_RECORDING, autoPauseSpeedMs: 0 };
 
@@ -246,6 +248,16 @@ export interface JumpProfile {
 }
 
 /**
+ * Grille et verticale des capteurs, communes aux sauts et au pumping : pas de
+ * la grille, trou toléré, repos qui amorce la gravité, filtre d'attitude.
+ */
+const ATTITUDE = {
+  gridStepS: 0.01, maxGapS: 0.05,
+  calmForceFraction: 0.15, calmRotationRadS: 0.3, minCalmS: 1,
+  attitudeTauS: 3, attitudeMaxRotationRadS: 1.5, attitudeInitS: 1,
+};
+
+/**
  * Détection et mesure des sauts, communes aux supports qui sautent. Réglées sur
  * les séances de wingfoil du 08/10/2026, téléphone sur la poitrine : la séance
  * témoin ne donne aucun vol de 0,2 m, l'autre ses 10 sauts (0,66 à 1,72 m) et
@@ -254,9 +266,7 @@ export interface JumpProfile {
  * la foulée (vol d'environ 0,1 s) ; ils restent à vérifier sur le terrain.
  */
 export const JUMP_DETECTION: JumpDetection = {
-  gridStepS: 0.01, maxGapS: 0.05,
-  calmForceFraction: 0.15, calmRotationRadS: 0.3, minCalmS: 1,
-  attitudeTauS: 3, attitudeMaxRotationRadS: 1.5, attitudeInitS: 1,
+  ...ATTITUDE,
   smoothingS: 0.1, pushG: 0.4, pushSearchS: 0.5, landingG: 0.3, edgeSearchS: 0.05,
   minFlightS: 0.2, maxFlightS: 8, minFallG: 0.2, biasWindowS: 10,
   keepMinFlightS: 0.4, keepMinHeightM: 0.2,
@@ -271,9 +281,7 @@ export const JUMP_DETECTION: JumpDetection = {
  * une première session réelle.
  */
 const PUMP_DETECTION: PumpDetection = {
-  gridStepS: 0.01, maxGapS: 0.05,
-  calmForceFraction: 0.15, calmRotationRadS: 0.3, minCalmS: 1,
-  attitudeTauS: 3, attitudeMaxRotationRadS: 1.5, attitudeInitS: 1,
+  ...ATTITUDE,
   strokeSmoothingS: 0.15, strokeBaselineS: 2, strokeMinG: 0.12, strokeMinPeriodS: 0.3, strokeMaxGapS: 2.5, minSeriesStrokes: 3,
   liftoffHighPassS: 0.1, liftoffRoughWindowS: 0.5, liftoffCalmG: 0.08, liftoffCalmS: 1.5,
   liftoffSearchBeforeS: 10, liftoffSearchAfterS: 5,
@@ -358,8 +366,6 @@ export interface SurfProfile {
   minWaveM: number;
   /** Rame de départ : le mouvement continu qui précède la vague, cherché au plus cette durée, en secondes. */
   takeoffSearchS: number;
-  /** Écart entre deux points au-delà duquel la trace a un trou (téléphone sous l'eau), en secondes ; le même que `SportProfile.maxGapS`. */
-  maxGapS: number;
   /** Seuil de vol sur foil, dans `thresholdUnit` : le seuil d'activité par défaut d'une session sur foil. */
   foilActiveThreshold: number;
   /** Seuil de vague sur foil, dans `thresholdUnit` : au-dessus, le vol est porté par une vague ; en dessous, il est pompé. */
@@ -458,7 +464,7 @@ export interface SportProfile {
    * Cibles de recherche des meilleurs segments. L'onglet « tops » est natif en
    * voile et à vélo, générique à pied et en surf (`core/analysisTabs.ts`).
    */
-  topTargets: TopTarget[];
+  topTargets: readonly TopTarget[];
   /** Réglage de l'enregistrement GPS. */
   recording: RecordingProfile;
   /**
@@ -481,8 +487,8 @@ export interface SportProfile {
   pump: PumpDetection | null;
 }
 
-/** Cibles de tops utilisées par tous les supports à voile. */
-export const SAILING_TOP_TARGETS: TopTarget[] = [
+/** Cibles de tops utilisées par tous les supports à voile ; leurs clés font le type des tops de la voile (`SailingTopKey`). */
+export const SAILING_TOP_TARGETS = [
   { key: 't2s', label: '2 s', value: 2, kind: 'time' },
   { key: 't5s', label: '5 s', value: 5, kind: 'time' },
   { key: 't10s', label: '10 s', value: 10, kind: 'time' },
@@ -490,7 +496,10 @@ export const SAILING_TOP_TARGETS: TopTarget[] = [
   { key: 'd500m', label: '500 m', value: 500, kind: 'distance' },
   { key: 'd1000m', label: '1000 m', value: 1000, kind: 'distance' },
   { key: 'd1NM', label: '1 mille', value: METERS_PER_DISTANCE_UNIT.nm, kind: 'distance' },
-];
+] as const satisfies readonly TopTarget[];
+
+/** Clé d'une cible de tops de la voile (`t2s` … `d1NM`). */
+export type SailingTopKey = (typeof SAILING_TOP_TARGETS)[number]['key'];
 
 /** Cibles de tops du vélo : les durées des tests d'effort, les distances des segments usuels. */
 export const CYCLING_TOP_TARGETS: TopTarget[] = [
@@ -543,29 +552,34 @@ export const SURF_TOP_TARGETS: TopTarget[] = [
   { key: 'd10km', label: '10 km', value: 10000, kind: 'distance' },
 ];
 
-/** Réglages communs aux supports à voile, surchargés au cas par cas. */
-const SAILING_DEFAULTS = {
-  speedUnit: 'kn' as SpeedUnit,
-  thresholdUnit: 'kn' as SpeedUnit,
-  activeHysteresis: { enterOffset: 0.5, exitOffset: -1 },
-  stillThreshold: 1,
+/** Réglages communs à tous les calculs, surchargés au cas par cas. */
+const COMMON_DEFAULTS = {
   maxGapS: MAX_GAP_S,
-  minStateDurationS: 0,
-  medianWindowSeconds: 3,
-  maxDetourRatio: 3,
-  // 30 m/s font 58 nœuds : hors de portée en session ordinaire.
-  maxPlausibleSpeedMs: 30,
-  defaultPolarMinSpeed: 5,
+  maxDetourRatio: DEFAULT_MAX_DETOUR_RATIO,
   withoutActiveThreshold: null,
   speedRange: null,
   elevation: ELEVATION_PRESETS.route,
   grade: GRADE_ANALYSIS,
+  foilDefault: false,
+  recording: DEFAULT_RECORDING,
+};
+
+/** Réglages communs aux supports à voile, surchargés au cas par cas. */
+const SAILING_DEFAULTS = {
+  ...COMMON_DEFAULTS,
+  speedUnit: 'kn' as SpeedUnit,
+  thresholdUnit: 'kn' as SpeedUnit,
+  activeHysteresis: { enterOffset: 0.5, exitOffset: -1 },
+  stillThreshold: 1,
+  minStateDurationS: 0,
+  medianWindowSeconds: 3,
+  // 30 m/s font 58 nœuds : hors de portée en session ordinaire.
+  maxPlausibleSpeedMs: 30,
+  defaultPolarMinSpeed: 5,
   terrainElevationStepM: null,
   loopReturnMaxRatio: null,
   topTargets: SAILING_TOP_TARGETS,
-  recording: DEFAULT_RECORDING,
   intervals: null,
-  foilDefault: false,
   heartRate: HEART_RATE,
   cadence: null,
   surf: null,
@@ -576,6 +590,7 @@ const SAILING_DEFAULTS = {
 const heartRateOffset = (offsetBpm: number): HeartRateProfile => ({ ...HEART_RATE, thresholdOffsetBpm: offsetBpm });
 
 const RUNNING_PROFILE: SportProfile = {
+  ...COMMON_DEFAULTS,
   id: 'running',
   label: 'À pied',
   speedUnit: 'minkm',
@@ -585,24 +600,16 @@ const RUNNING_PROFILE: SportProfile = {
   activeHysteresis: { enterOffset: 1, exitOffset: -1 },
   // Sans seuil réglé : arrêt complet sous 0,5 km/h, reprise au-dessus de 2 km/h.
   stillThreshold: 1,
-  maxGapS: MAX_GAP_S,
   minStateDurationS: 3,
   medianWindowSeconds: 5,
-  maxDetourRatio: 3,
   // 12 m/s font 43 km/h, au-delà du sprint humain.
   maxPlausibleSpeedMs: 12,
   defaultPolarMinSpeed: 0,
-  withoutActiveThreshold: null,
-  speedRange: null,
   activeRatioLabel: 'Ratio en mouvement',
-  elevation: ELEVATION_PRESETS.route,
-  grade: GRADE_ANALYSIS,
   terrainElevationStepM: 10,
   loopReturnMaxRatio: DEFAULT_LOOP_RETURN_MAX_RATIO,
   topTargets: RUNNING_TOP_TARGETS,
-  recording: DEFAULT_RECORDING,
   intervals: INTERVAL_ANALYSIS,
-  foilDefault: false,
   jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
   heartRate: HEART_RATE,
   cadence: CADENCE,
@@ -611,6 +618,7 @@ const RUNNING_PROFILE: SportProfile = {
 };
 
 const CYCLING_PROFILE: SportProfile = {
+  ...COMMON_DEFAULTS,
   id: 'cycling',
   label: 'Vélo',
   speedUnit: 'kmh',
@@ -620,24 +628,16 @@ const CYCLING_PROFILE: SportProfile = {
   activeHysteresis: { enterOffset: 1, exitOffset: -2 },
   // Sans seuil réglé : arrêt complet sous 1 km/h, reprise au-dessus de 3 km/h.
   stillThreshold: 2,
-  maxGapS: MAX_GAP_S,
   minStateDurationS: 3,
   medianWindowSeconds: 3,
-  maxDetourRatio: 3,
   // 25 m/s font 90 km/h, au-delà d'une descente de col ordinaire.
   maxPlausibleSpeedMs: 25,
   defaultPolarMinSpeed: 0,
-  withoutActiveThreshold: null,
-  speedRange: null,
   activeRatioLabel: 'Ratio en mouvement',
-  elevation: ELEVATION_PRESETS.route,
-  grade: GRADE_ANALYSIS,
   terrainElevationStepM: 10,
   loopReturnMaxRatio: DEFAULT_LOOP_RETURN_MAX_RATIO,
   topTargets: CYCLING_TOP_TARGETS,
-  recording: DEFAULT_RECORDING,
   intervals: INTERVAL_ANALYSIS,
-  foilDefault: false,
   jumps: { defaultMinHeightM: 0.3, detection: JUMP_DETECTION },
   heartRate: heartRateOffset(-7),
   cadence: null,
@@ -653,6 +653,7 @@ const CYCLING_PROFILE: SportProfile = {
  * pompé en dessous. Valeurs de départ, à valider sur des sessions réelles.
  */
 const SURF_PROFILE: SportProfile = {
+  ...COMMON_DEFAULTS,
   id: 'surf',
   label: 'Surf',
   speedUnit: 'kmh',
@@ -660,29 +661,22 @@ const SURF_PROFILE: SportProfile = {
   defaultActiveThreshold: 9,
   activeHysteresis: { enterOffset: 1, exitOffset: -2 },
   stillThreshold: 2,
-  maxGapS: MAX_GAP_S,
   minStateDurationS: 0,
   medianWindowSeconds: 3,
-  maxDetourRatio: 3,
   // 20 m/s font 72 km/h, au-delà d'une grosse vague ordinaire.
   maxPlausibleSpeedMs: 20,
   defaultPolarMinSpeed: 0,
-  withoutActiveThreshold: null,
-  speedRange: null,
   activeRatioLabel: 'Ratio sur la vague',
-  foilDefault: false,
-  elevation: ELEVATION_PRESETS.route,
-  grade: GRADE_ANALYSIS,
   terrainElevationStepM: null,
   loopReturnMaxRatio: null,
   topTargets: SURF_TOP_TARGETS,
-  recording: { ...DEFAULT_RECORDING, autoPauseSpeedMs: 0 },
+  recording: INTERVAL_RECORDING,
   intervals: null,
   jumps: null,
   heartRate: heartRateOffset(-10),
   cadence: null,
   surf: {
-    stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15, maxGapS: MAX_GAP_S,
+    stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15,
     foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60,
   },
   pump: PUMP_DETECTION,

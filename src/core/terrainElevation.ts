@@ -1,5 +1,5 @@
 import { roundTo } from './basics';
-import { median } from './speedFilter';
+import { median } from './basics';
 import type { TrackPoint } from './types';
 
 /**

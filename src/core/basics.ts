@@ -1,6 +1,6 @@
 /**
  * Petites briques sans domaine, communes à tout le code : borne d'un nombre,
- * gardes de type et lectures de fichiers, arrondis, moyenne, message d'une
+ * gardes de type et lectures de fichiers, arrondis, moyenne, médianes, message d'une
  * erreur, pluriel d'un compte, identifiant tiré au hasard. Pur, hors `newId`.
  */
 
@@ -33,6 +33,24 @@ export const parseJson = (text: string): unknown => {
 /** Moyenne d'une liste de nombres ; `null` si elle est vide. */
 export const meanOf = (values: readonly number[]): number | null =>
   values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+
+/** Médiane d'une suite rangée par ordre croissant (0 si elle est vide) : moyenne des deux valeurs centrales pour un nombre pair. */
+export const medianOfSorted = (sorted: ArrayLike<number>): number => {
+  if (sorted.length === 0) return 0;
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+};
+
+/** Médiane d'une liste (0 si elle est vide), comme `medianOfSorted` ; la liste n'est pas touchée. */
+export const median = (values: number[]): number =>
+  values.length === 0 ? 0 : medianOfSorted([...values].sort((a, b) => a - b));
+
+/**
+ * Médiane haute d'une suite rangée par ordre croissant : la valeur du milieu,
+ * la plus haute des deux centrales pour un nombre pair, sans moyenne (mesures
+ * des capteurs, cadence). Une suite vide ne rend rien d'utilisable.
+ */
+export const upperMedianOfSorted = (sorted: ArrayLike<number>): number => sorted[Math.floor(sorted.length / 2)];
 
 /** Arrondi à `decimals` décimales par `Math.round` (2,675 donne 2,68). */
 export const roundTo = (x: number, decimals: number): number => {

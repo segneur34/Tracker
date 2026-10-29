@@ -1,8 +1,8 @@
+import { angleDiff, normalizeDeg, toDeg, toRad } from '../core/angles';
 import { buildCumulativeTrack, segmentDistanceM } from '../core/sessionStats';
 import { computeTopSegments } from '../core/topSegments';
 import type { TrackPoint } from '../core/types';
 import { MANEUVER_MAX_STEP_S, MANEUVER_MIN_DISTANCE_M, MANEUVER_MIN_TURN_DEG, MANEUVER_WINDOW_S } from '../sailing/sailingConfig';
-import { angleDiff, normalizeAngle } from '../sailing/wind';
 
 /**
  * Bords de voile pendant l'enregistrement. Le vent est inconnu en direct :
@@ -76,7 +76,7 @@ const stepSums = (track: TrackPoint[]): StepSums => {
   const sums: StepSums = { x: [0], y: [0], d: [0] };
   for (let i = 1; i < track.length; i++) {
     const d = segmentDistanceM(track, i);
-    const b = (track[i].bearing * Math.PI) / 180;
+    const b = toRad(track[i].bearing);
     sums.x.push(sums.x[i - 1] + d * Math.sin(b));
     sums.y.push(sums.y[i - 1] + d * Math.cos(b));
     sums.d.push(sums.d[i - 1] + d);
@@ -90,7 +90,7 @@ const meanHeading = (s: StepSums, from: number, to: number): { headingDeg: numbe
   const y = s.y[to] - s.y[from];
   const distanceM = s.d[to] - s.d[from];
   return {
-    headingDeg: normalizeAngle((Math.atan2(x, y) * 180) / Math.PI),
+    headingDeg: normalizeDeg(toDeg(Math.atan2(x, y))),
     coherence: distanceM > 0 ? Math.hypot(x, y) / distanceM : 0,
     distanceM,
   };

@@ -1,4 +1,4 @@
-import { bandIndex } from '../core/basics';
+import { bandIndex, upperMedianOfSorted } from '../core/basics';
 import type { ImuRecording } from '../core/imuFile';
 import { kmhToMs } from '../core/units';
 import { segmentDistanceM } from '../core/sessionStats';
@@ -316,7 +316,7 @@ export const cadenceFactor = (
     const double = plausible(asIs / 4);
     if (keep !== double) return keep ? 1 : 2;
   }
-  return values[Math.floor(values.length / 2)] > p.spmAbove ? 1 : 2;
+  return upperMedianOfSorted(values) > p.spmAbove ? 1 : 2;
 };
 
 /** Cadence du GPX en pas par minute, point par point (`null` sans valeur ou à 0), `cad` multiplié par `factor` (`cadenceFactor`). */

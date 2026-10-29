@@ -1,3 +1,4 @@
+import { normalizeDeg } from '../core/angles';
 import { roundTo } from '../core/basics';
 import { useCallback, useEffect, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
 import ChartFold from '../components/ChartFold';
@@ -29,7 +30,7 @@ import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { ARROW_EVERY_S, CHART_MAX_POINTS, arrowIndices, trackBounds } from '../core/displayConfig';
 import { SAILING_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type SailingTab } from '../core/analysisTabs';
 import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
-import { trackIndexAtTime } from '../core/jumps';
+import { nearestIndexAtTime } from '../core/search';
 import { setHoveredIndex, useResetChartHover } from '../hooks/useChartHover';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
@@ -44,7 +45,7 @@ import {
   SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
   knotsToMs, toDisplaySpeed,
 } from '../core/units';
-import { normalizeAngle, speedPolar, type PolarBin } from '../sailing/wind';
+import { speedPolar, type PolarBin } from '../sailing/wind';
 import { MANEUVER_METRICS, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
 import ActivitySelect from '../components/ActivitySelect';
 import JumpsPanel from '../components/JumpsPanel';
@@ -579,7 +580,7 @@ function SailingModule() {
   const windReadout = (i: number): Readout | null => {
     if (!readable(i) || !windStats) return null;
     const direction = windStats.windAt(trackData[i].timeMs);
-    return { values: [{ text: direction === null ? '—' : `${normalizeAngle(Math.round(direction))}°`, color: WIND_COLOR }], at: readAt(i) };
+    return { values: [{ text: direction === null ? '—' : `${normalizeDeg(Math.round(direction))}°`, color: WIND_COLOR }], at: readAt(i) };
   };
   const zoomHint = narrow
     ? 'Écartez deux doigts ou touchez deux fois un graphe pour zoomer.'
@@ -616,7 +617,7 @@ function SailingModule() {
           <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
           {timeAxis}
           {markLines}
-          <YAxis domain={['dataMin - 15', 'dataMax + 15']} tickFormatter={(val: number) => `${normalizeAngle(Math.round(val))}°`} tick={{fill: 'var(--ink)', fontSize: 11, fontWeight: 700}} />
+          <YAxis domain={['dataMin - 15', 'dataMax + 15']} tickFormatter={(val: number) => `${normalizeDeg(Math.round(val))}°`} tick={{fill: 'var(--ink)', fontSize: 11, fontWeight: 700}} />
           <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
           <Line type="monotone" dataKey="angle" stroke={WIND_COLOR} strokeWidth={2} dot={maneuverDot} activeDot={{ r: 6 }} connectNulls={false} />
         </LineChart>
@@ -938,7 +939,7 @@ function SailingModule() {
   );
 
   /** Point de trace le plus proche d'un instant : relie la courbe d'un saut à la carte. */
-  const trackIndexAt = useCallback((ms: number): number => trackIndexAtTime(trackData, ms), [trackData]);
+  const trackIndexAt = useCallback((ms: number): number => nearestIndexAtTime(trackData, ms), [trackData]);
 
   /** Contenu partagé par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (

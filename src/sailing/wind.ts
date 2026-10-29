@@ -1,3 +1,5 @@
+import { bracketAtTime } from '../core/search';
+import { angleDiff, circularMean, normalizeDeg as normalizeAngle, toDeg, toRad } from '../core/angles';
 import { toFixedNumber } from '../core/basics';
 import type { PointData } from '../utils/kinematics';
 import {
@@ -22,13 +24,8 @@ import {
  * le vol face au vent, ce que les empannages ne font pas.
  */
 
-export const angleDiff = (a: number, b: number): number => {
-  let diff = a - b;
-  diff = ((diff + 180) % 360 + 360) % 360 - 180;
-  return diff;
-};
-
-export const normalizeAngle = (angle: number): number => ((angle % 360) + 360) % 360;
+/** Réexportés pour les appelants d'avant `core/angles.ts` (à retirer au lot 71). */
+export { angleDiff, circularMean, normalizeDeg as normalizeAngle } from '../core/angles';
 
 /**
  * Vent montré par un pointeur posé à (`dx`, `dy`) du centre d'une boussole,
@@ -36,7 +33,7 @@ export const normalizeAngle = (angle: number): number => ((angle % 360) + 360) %
  * arrondi au degré, dans [0, 360[. La flèche de la boussole part de là vers le centre.
  */
 export const pointerWindDeg = (dx: number, dy: number): number =>
-  normalizeAngle(Math.round((Math.atan2(dx, -dy) * 180) / Math.PI));
+  normalizeAngle(Math.round(toDeg(Math.atan2(dx, -dy))));
 
 /**
  * Vent saisi au clavier (« 245 », « -10 », « 370 ») : entier ramené dans
@@ -89,31 +86,6 @@ export interface CircularStats {
   count: number;
 }
 
-/**
- * Moyenne vectorielle de directions, éventuellement pondérées. C'est la seule
- * moyenne valide pour des angles : dérouler puis moyenner arithmétiquement
- * diverge dès qu'une inversion apparaît dans la série.
- */
-export const circularMean = (angles: number[], weights?: number[]): { mean: number; R: number } => {
-  let x = 0;
-  let y = 0;
-  let total = 0;
-  for (let i = 0; i < angles.length; i++) {
-    const w = weights ? weights[i] : 1;
-    const rad = (angles[i] * Math.PI) / 180;
-    x += w * Math.cos(rad);
-    y += w * Math.sin(rad);
-    total += w;
-  }
-  if (total === 0) return { mean: 0, R: 0 };
-  x /= total;
-  y /= total;
-  return {
-    mean: normalizeAngle((Math.atan2(y, x) * 180) / Math.PI),
-    R: Math.sqrt(x * x + y * y),
-  };
-};
-
 export const circularStats = (angles: number[], weights?: number[]): CircularStats => {
   if (angles.length === 0) {
     return { mean: 0, R: 0, stdDevDeg: 0, minDev: 0, maxDev: 0, count: 0 };
@@ -121,7 +93,7 @@ export const circularStats = (angles: number[], weights?: number[]): CircularSta
   const { mean, R } = circularMean(angles, weights);
 
   // Écart-type circulaire standard, borné pour éviter l'infini quand R → 0.
-  const stdDevDeg = R > 1e-9 ? (Math.sqrt(-2 * Math.log(Math.min(1, R))) * 180) / Math.PI : 180;
+  const stdDevDeg = R > 1e-9 ? toDeg(Math.sqrt(-2 * Math.log(Math.min(1, R)))) : 180;
 
   let minDev = 0;
   let maxDev = 0;
@@ -164,12 +136,8 @@ export const interpolateDirection = (
   if (timeMs < first.timeMs) return first.timeMs - timeMs <= maxGapMs ? first.direction : null;
   if (timeMs > last.timeMs) return timeMs - last.timeMs <= maxGapMs ? last.direction : null;
 
-  let lo = 0;
-  let hi = samples.length - 1;
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (samples[mid].timeMs <= timeMs) lo = mid; else hi = mid;
-  }
+  const lo = bracketAtTime(samples, timeMs);
+  const hi = Math.min(lo + 1, samples.length - 1);
   const a = samples[lo];
   const b = samples[hi];
   if (hi !== lo && b.timeMs - a.timeMs > maxGapMs) return null;
@@ -616,10 +584,10 @@ export const orientationVotes = (turns: TurnObservation[], axis: number): Orient
   const vote: OrientationVote = { forAxis: 0, forOpposite: 0 };
   for (const t of turns) {
     if (t.slow) {
-      const c = Math.cos((angleDiff(t.midHeading, axis) * Math.PI) / 180);
+      const c = Math.cos(toRad(angleDiff(t.midHeading, axis)));
       if (c > 0) vote.forAxis += c; else vote.forOpposite += -c;
     } else {
-      const c = Math.cos((angleDiff(t.midHeading, axis) * Math.PI) / 180);
+      const c = Math.cos(toRad(angleDiff(t.midHeading, axis)));
       const weight = Math.min(1, Math.abs(t.cumulativeTurn) / 180);
       if (c > 0) vote.forOpposite += c * weight; else vote.forAxis += -c * weight;
     }

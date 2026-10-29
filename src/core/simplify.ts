@@ -1,5 +1,6 @@
-import { EARTH_RADIUS_M, toRad } from './kinematics';
-import { pointSegmentDistanceM, type PlanePoint } from './geoPlane';
+import { planeProjection, type PlanePoint } from './geo';
+import { pointSegmentDistanceM } from './geoPlane';
+import type { LatLon } from './types';
 
 /**
  * Simplification d'un tracé (Douglas-Peucker) : on garde les bouts et les
@@ -9,11 +10,6 @@ import { pointSegmentDistanceM, type PlanePoint } from './geoPlane';
  *
  * Tout est pur. Unités SI (règle 1) : mètres, degrés décimaux.
  */
-
-interface LatLon {
-  lat: number;
-  lon: number;
-}
 
 /** Rangs des points gardés par Douglas-Peucker, bouts compris, dans l'ordre ; sans récursion. */
 const keptIndices = (points: ReadonlyArray<PlanePoint>, toleranceM: number): number[] => {
@@ -53,8 +49,6 @@ export const simplifyPlane = <P extends PlanePoint>(points: P[], toleranceM: num
 export const simplifyLatLon = <P extends LatLon>(points: P[], toleranceM: number): P[] => {
   if (points.length < 3) return points;
   const refLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
-  const kx = toRad(1) * EARTH_RADIUS_M * Math.cos(toRad(refLat));
-  const ky = toRad(1) * EARTH_RADIUS_M;
-  const plane = points.map((p) => ({ x: p.lon * kx, y: p.lat * ky }));
+  const plane = points.map(planeProjection(refLat).to);
   return keptIndices(plane, toleranceM).map((i) => points[i]);
 };

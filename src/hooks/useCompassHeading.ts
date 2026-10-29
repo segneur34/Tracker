@@ -1,3 +1,4 @@
+import { roundBearingDeg } from '../core/angles';
 import { useEffect, useState } from 'react';
 import { watchCompassHeading } from '../platform/compass';
 
@@ -9,7 +10,7 @@ export const useCompassHeading = (active: boolean): number | null => {
   const [heading, setHeading] = useState<number | null>(null);
   useEffect(() => {
     if (!active) return;
-    const stop = watchCompassHeading((deg) => setHeading(Math.round(deg) % 360));
+    const stop = watchCompassHeading((deg) => setHeading(roundBearingDeg(deg)));
     return () => {
       stop();
       setHeading(null);

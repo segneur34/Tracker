@@ -49,7 +49,7 @@ const buildSurfSession = (phases: Phase[], cadenceS = 1): TrackPoint[] => {
 };
 
 const surf = SPORT_PROFILES.surf.surf!;
-const params: SurfParams = surf;
+const params: SurfParams = { ...surf, maxGapS: SPORT_PROFILES.surf.maxGapS };
 
 /** Masque au seuil donné, en km/h, avec l'hystérésis du profil. */
 const maskAt = (track: TrackPoint[], thresholdKmh: number): boolean[] => {

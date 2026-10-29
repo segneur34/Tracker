@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bandIndex, clamp, errorMessage, finiteOr, inRange, isFiniteNumber, isObject, meanOf, parseJson, plural, readCommands, roundTo, toFixedNumber,
+  bandIndex, clamp, errorMessage, finiteOr, inRange, isFiniteNumber, isObject, meanOf, median, medianOfSorted, parseJson, plural, readCommands, roundTo,
+  toFixedNumber, upperMedianOfSorted,
 } from './basics';
 
 // Copies gelées des anciennes écritures : les briques doivent rendre la même chose.
@@ -122,5 +123,41 @@ describe('basics', () => {
         kinds
       )
     ).toEqual([{ kind: 'lap', atMs: 5 }, { kind: 'pause', atMs: 8 }]);
+  });
+});
+
+describe('médianes (lot 57)', () => {
+  // Copies gelées : `median` de speedFilter, `sortedMedian` de kinematics, médiane haute d'imuVertical.
+  const oldMedian = (values: number[]): number => {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  };
+  const oldUpper = (values: Float64Array): number => {
+    const sorted = Float64Array.from(values).sort();
+    return sorted[sorted.length >> 1];
+  };
+  let seed = 5;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const lists = [[], [3], [1, 2], [2, 1, 2], [0.1, 0.2, 0.30000000000000004], ...Array.from({ length: 50 }, (_, k) => Array.from({ length: k }, () => (rnd() - 0.3) * 1e3))];
+
+  it('moyenne des deux centrales, 0 sur une liste vide, liste laissée telle quelle', () => {
+    expect(median([4, 1, 3, 2])).toBe(2.5);
+    expect(median([])).toBe(0);
+    for (const l of lists) {
+      const copy = [...l];
+      expect(median(l)).toBe(oldMedian(l));
+      expect(l).toEqual(copy);
+      expect(medianOfSorted(Float64Array.from(l).sort())).toBe(oldMedian(l));
+    }
+  });
+
+  it('médiane haute des capteurs : la valeur du milieu, la plus haute des deux centrales', () => {
+    expect(upperMedianOfSorted([1, 2, 3, 4])).toBe(3);
+    for (const l of lists.filter((x) => x.length > 0)) {
+      const f = Float64Array.from(l);
+      expect(upperMedianOfSorted(Float64Array.from(f).sort())).toBe(oldUpper(f));
+    }
   });
 });

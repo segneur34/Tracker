@@ -1,3 +1,4 @@
+import { roundBearingDeg } from '../core/angles';
 import { errorMessage, toFixedNumber } from '../core/basics';
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import L from 'leaflet';
@@ -1017,7 +1018,7 @@ function PlanningPage() {
                     <li key={i} className="plan-course__leg">
                       <span>{pointLabel(i)} → {pointLabel(i + 1)}</span>
                       <span className="num">{formatDistance(leg.distanceM, distanceUnit)}</span>
-                      <span className="num">{Math.round(leg.bearingDeg) % 360}°</span>
+                      <span className="num">{roundBearingDeg(leg.bearingDeg)}°</span>
                     </li>
                   ))}
                 </ol>

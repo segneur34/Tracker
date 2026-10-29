@@ -1,4 +1,4 @@
-import { firstIndexAfter, firstIndexAtOrAfter } from './search';
+import { bracketIndex, firstIndexAfter, firstIndexAtOrAfter } from './search';
 
 /**
  * Zoom horizontal d'un graphe : plage visible de l'axe des abscisses, dans
@@ -91,13 +91,8 @@ export const axisRangePath = (
   const at = (v: number): [number, number] => {
     if (v <= axis[0]) return [points[0].lat, points[0].lon];
     if (v >= axis[n - 1]) return [points[n - 1].lat, points[n - 1].lon];
-    let lo = 0;
-    let hi = n - 1;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (axis[mid] <= v) lo = mid;
-      else hi = mid;
-    }
+    const lo = bracketIndex(n, (i) => axis[i] <= v);
+    const hi = Math.min(lo + 1, n - 1);
     const span = axis[hi] - axis[lo];
     const t = span > 0 ? (v - axis[lo]) / span : 0;
     return [points[lo].lat + t * (points[hi].lat - points[lo].lat), points[lo].lon + t * (points[hi].lon - points[lo].lon)];

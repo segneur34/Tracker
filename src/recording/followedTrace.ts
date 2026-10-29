@@ -1,7 +1,9 @@
+import { partitionPoint } from '../core/search';
 import { projectOnSegment } from '../core/geoPlane';
-import { haversineDistance } from '../core/kinematics';
+import { cumulativeDistancesM, haversineDistance } from '../core/geo';
 import { simplifyLatLon } from '../core/simplify';
-import { cumulativeDistances, routePoints } from '../planning/route';
+import type { LatLon } from '../core/types';
+import { routePoints } from '../planning/route';
 import { recordToRoute, routeMarkGuide, type RouteRecord } from '../planning/routeRecord';
 import type { MarkGuideSettings } from './markGuide';
 
@@ -13,11 +15,6 @@ import type { MarkGuideSettings } from './markGuide';
  */
 
 export type FollowedSource = 'route' | 'session';
-
-interface LatLon {
-  lat: number;
-  lon: number;
-}
 
 export interface FollowedTrace {
   name: string;
@@ -118,7 +115,7 @@ const cumulativeCache = new WeakMap<FollowedTrace, number[]>();
 const cumulativeOf = (trace: FollowedTrace): number[] => {
   let cum = cumulativeCache.get(trace);
   if (!cum) {
-    cum = cumulativeDistances(trace.points);
+    cum = cumulativeDistancesM(trace.points);
     cumulativeCache.set(trace, cum);
   }
   return cum;
@@ -147,16 +144,8 @@ const projectOnTrace = (p: LatLon, points: LatLon[], cum: number[], i: number): 
 };
 
 /** Premier tronçon dont la fin est au-delà de `alongM` (recherche dichotomique). */
-const firstSegmentReaching = (cum: number[], alongM: number): number => {
-  let lo = 0;
-  let hi = cum.length - 2;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (cum[mid + 1] < alongM) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-};
+const firstSegmentReaching = (cum: number[], alongM: number): number =>
+  partitionPoint(cum.length - 2, (i) => cum[i + 1] < alongM);
 
 /**
  * Accrochage à partir de `fromM` : parmi les tronçons à portée, la première

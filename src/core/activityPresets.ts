@@ -1,4 +1,5 @@
 import type { SpeedRangeMs } from './speedGradient';
+import { DEFAULT_RECORDING } from './sportProfiles';
 import type { SportType } from './types';
 import { kmhToMs, knotsToMs, type SpeedUnit } from './units';
 import type { BikeType } from '../cycling/energy';
@@ -50,8 +51,19 @@ export interface ActivityPreset {
  */
 const TRAINING_NOTIFICATION: LiveFieldKey[] = ['step', 'heartRate'];
 
-/** Pause automatique à 0,3 m/s, celle du calcul, au bout de ce temps. */
-const pauseAfter = (delayS: number) => ({ speedMs: 0.3, delayS });
+/** Pause automatique à la vitesse du calcul (`DEFAULT_RECORDING`), au bout de ce temps. */
+const pauseAfter = (delayS: number) => ({ speedMs: DEFAULT_RECORDING.autoPauseSpeedMs, delayS });
+
+/** Fractionné et tests à pied : les mêmes réglages. */
+const RUN_TRAINING: ActivityPreset = {
+  threshold: 0,
+  speedUnit: 'kmh',
+  speedRangeMs: { minMs: kmhToMs(4), maxMs: kmhToMs(20) },
+  gradeRange: { min: 0, max: 0.1 },
+  liveFields: ['speed', 'average', 'heartRate', 'heartRateZone'],
+  notificationFields: TRAINING_NOTIFICATION,
+  heartRate: true,
+};
 
 /** Wingfoil, que la planche reprend : 8 nœuds partout (seuil et bas de la couleur), sans suggestion selon l'allure. */
 const WING: ActivityPreset = {
@@ -92,24 +104,8 @@ const BASE_PRESETS: Partial<Record<SportType, ActivityPreset>> = {
     bikeKg: 12,
     wayTypes: ['route', 'grandeRoute'],
   },
-  'run-intervals': {
-    threshold: 0,
-    speedUnit: 'kmh',
-    speedRangeMs: { minMs: kmhToMs(4), maxMs: kmhToMs(20) },
-    gradeRange: { min: 0, max: 0.1 },
-    liveFields: ['speed', 'average', 'heartRate', 'heartRateZone'],
-    notificationFields: TRAINING_NOTIFICATION,
-    heartRate: true,
-  },
-  'run-test': {
-    threshold: 0,
-    speedUnit: 'kmh',
-    speedRangeMs: { minMs: kmhToMs(4), maxMs: kmhToMs(20) },
-    gradeRange: { min: 0, max: 0.1 },
-    liveFields: ['speed', 'average', 'heartRate', 'heartRateZone'],
-    notificationFields: TRAINING_NOTIFICATION,
-    heartRate: true,
-  },
+  'run-intervals': RUN_TRAINING,
+  'run-test': RUN_TRAINING,
   'bike-intervals': {
     threshold: 0,
     speedRangeMs: { minMs: kmhToMs(10), maxMs: kmhToMs(30) },

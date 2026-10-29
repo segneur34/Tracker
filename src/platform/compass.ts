@@ -1,3 +1,5 @@
+import { normalizeDeg } from '../core/angles';
+
 /**
  * Boussole du téléphone : le cap vers lequel pointe le haut de l'écran, en
  * degrés depuis le nord, sens horaire. Lue sur l'événement
@@ -20,7 +22,7 @@ export const watchCompassHeading = (onHeading: (headingDeg: number) => void): ((
     lastMs = now;
     // `alpha` tourne dans le sens trigonométrique depuis le nord ; l'écran peut être tourné.
     const screenAngle = window.screen.orientation?.angle ?? 0;
-    onHeading((((360 - event.alpha + screenAngle) % 360) + 360) % 360);
+    onHeading(normalizeDeg(360 - event.alpha + screenAngle));
   };
   window.addEventListener('deviceorientationabsolute', handler);
   return () => window.removeEventListener('deviceorientationabsolute', handler);

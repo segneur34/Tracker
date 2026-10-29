@@ -1,3 +1,4 @@
+import { upperMedianOfSorted } from './basics';
 import type { ImuRecording, ImuSeries } from './imuFile';
 import { firstIndexAtOrAfter } from './search';
 import { STANDARD_G } from './units';
@@ -67,11 +68,6 @@ const resample = (s: ImuSeries, from: number, to: number, startUs: number, n: nu
     if (tb - ta > maxGapUs) gap[i] = 1;
   }
   return out;
-};
-
-const median = (values: Float64Array): number => {
-  const sorted = Float64Array.from(values).sort();
-  return sorted[sorted.length >> 1];
 };
 
 /** Vecteur « haut » dans le repère du téléphone, par une passe du filtre complémentaire, aller ou retour. */
@@ -181,7 +177,7 @@ export const verticalAcceleration = (rec: ImuRecording, d: AttitudeParams, fromU
   for (let i = 0; i < n; i++) {
     if (Math.abs(norm[i] - STANDARD_G) < d.calmForceFraction * STANDARD_G && Math.hypot(w[0][i], w[1][i], w[2][i]) < d.calmRotationRadS) calm.push(norm[i]);
   }
-  const gLocal = calm.length * dt >= d.minCalmS ? median(Float64Array.from(calm)) : STANDARD_G;
+  const gLocal = calm.length * dt >= d.minCalmS ? upperMedianOfSorted(Float64Array.from(calm).sort()) : STANDARD_G;
 
   const upF = attitudePass(f, w, norm, n, dt, gLocal, d, true);
   const upB = attitudePass(f, w, norm, n, dt, gLocal, d, false);

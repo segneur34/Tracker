@@ -1,3 +1,4 @@
+import { toRad } from './angles';
 import type { TileCoord } from './tiles';
 
 /**
@@ -90,7 +91,7 @@ export const mapHeight = (count: number): number =>
 /** Point du monde en pixels de tuile au zoom `zoom` (Mercator sphérique, comme les tuiles d'OSM). */
 export const worldPx = (lat: number, lon: number, zoom: number): { x: number; y: number } => {
   const size = SHARE_IMAGE.tileSizePx * 2 ** zoom;
-  const sin = Math.min(Math.max(Math.sin((lat * Math.PI) / 180), -0.9999), 0.9999);
+  const sin = Math.min(Math.max(Math.sin(toRad(lat)), -0.9999), 0.9999);
   return {
     x: ((lon + 180) / 360) * size,
     y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * size,

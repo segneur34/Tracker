@@ -1,3 +1,4 @@
+import { nearestIndexAtTime, valueAtTime } from './search';
 import { roundTo } from './basics';
 import type { ImuRecording, ImuSeries } from './imuFile';
 import { STANDARD_G } from './units';
@@ -342,20 +343,8 @@ export const pruneWindows = (rec: ImuRecording, d: JumpDetection): ImuWindow[] =
 };
 
 /** Vitesse de la trace à un instant, interpolée ; `null` hors de la trace. */
-const speedAt = (track: ReadonlyArray<JumpTrackPoint>, ms: number): number | null => {
-  if (track.length === 0 || ms < track[0].timeMs || ms > track[track.length - 1].timeMs) return null;
-  let lo = 0;
-  let hi = track.length - 1;
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (track[mid].timeMs <= ms) lo = mid;
-    else hi = mid;
-  }
-  const a = track[lo];
-  const b = track[hi];
-  const w = b.timeMs > a.timeMs ? (ms - a.timeMs) / (b.timeMs - a.timeMs) : 0;
-  return a.speedMs * (1 - w) + b.speedMs * w;
-};
+const speedAt = (track: ReadonlyArray<JumpTrackPoint>, ms: number): number | null =>
+  valueAtTime(track, (i) => track[i].speedMs, ms, 'null');
 
 /** Intégrale de la vitesse de la trace entre deux instants (règle 6), par pas de `stepS` ; `null` hors de la trace. */
 const distanceBetween = (track: ReadonlyArray<JumpTrackPoint>, fromMs: number, toMs: number, stepS: number): number | null => {
@@ -400,18 +389,8 @@ export const measureJumps = (rec: ImuRecording, d: JumpDetection, track: Readonl
 
 // --- Sur la carte ---
 
-/** Point de la trace le plus proche d'un instant, la trace étant rangée par le temps ; 0 sur une trace vide. */
-export const trackIndexAtTime = (track: ReadonlyArray<{ timeMs: number }>, ms: number): number => {
-  if (track.length === 0) return 0;
-  let lo = 0;
-  let hi = track.length - 1;
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (track[mid].timeMs <= ms) lo = mid;
-    else hi = mid;
-  }
-  return Math.abs(track[hi].timeMs - ms) < Math.abs(track[lo].timeMs - ms) ? hi : lo;
-};
+/** Réexporté pour les appelants d'avant `nearestIndexAtTime` (à retirer au lot 71). */
+export { nearestIndexAtTime as trackIndexAtTime } from './search';
 
 /**
  * Points de la trace d'un saut, pour la carte : du point qui précède le
@@ -424,10 +403,10 @@ export const jumpTrackSpan = (
   jump: Pick<SessionJump, 'takeoffMs' | 'landingMs'>
 ): { from: number; to: number; start: number } | null => {
   if (track.length < 2) return null;
-  const start = trackIndexAtTime(track, jump.takeoffMs);
+  const start = nearestIndexAtTime(track, jump.takeoffMs);
   let from = start;
   if (track[from].timeMs > jump.takeoffMs && from > 0) from -= 1;
-  let to = trackIndexAtTime(track, jump.landingMs);
+  let to = nearestIndexAtTime(track, jump.landingMs);
   if (track[to].timeMs < jump.landingMs && to < track.length - 1) to += 1;
   if (to <= from) to = Math.min(track.length - 1, from + 1);
   return { from, to, start };

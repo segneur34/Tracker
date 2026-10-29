@@ -1,6 +1,7 @@
 import { distanceToSegmentM } from '../core/geoPlane';
-import { haversineDistance, initialBearing } from '../core/kinematics';
+import { haversineDistance, initialBearing } from '../core/geo';
 import type { SportFamily } from '../core/sportProfiles';
+import type { LatLon } from '../core/types';
 import { kmhToMs, knotsToMs } from '../core/units';
 import { clamp, isObject } from '../core/basics';
 
@@ -19,10 +20,7 @@ import { clamp, isObject } from '../core/basics';
  * (règle 1) : mètres, millisecondes, degrés.
  */
 
-export interface LatLon {
-  lat: number;
-  lon: number;
-}
+export type { LatLon };
 
 /** Un point de la courbe : à `distanceM` de la balise, un bip toutes les `intervalMs`. */
 export interface BeepPoint {

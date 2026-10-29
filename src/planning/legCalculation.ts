@@ -1,10 +1,11 @@
 import { errorMessage } from '../core/basics';
+import { pathLengthM } from '../core/geo';
 import type { LegOptions } from './brouter';
 import type { WayType } from './brouterProfile';
 import { isAbortError } from './fetchJson';
 import { avoidancePolygons, corridorPaths, isAcceptableReturn, returnAttempts, sharedDistanceM, type LoopReturnParams } from './loopReturn';
 import {
-  cumulativeDistances, isWaysMode, legsPoints, snapToWaypoints, wayTypesOf,
+  isWaysMode, legsPoints, snapToWaypoints, wayTypesOf,
   type LegRequest, type ReturnRequest, type RoutePoint, type RouteVehicle, type Waypoint,
 } from './route';
 import type { SurfaceRuns } from './surface';
@@ -67,11 +68,6 @@ export const computeLeg = async (
   }
 };
 
-const lengthM = (points: RoutePoint[]): number => {
-  const cum = cumulativeDistances(points);
-  return cum.length > 0 ? cum[cum.length - 1] : 0;
-};
-
 /**
  * Retour d'une boucle : essais avec le couloir le long de l'aller, du poids
  * le plus fort au plus faible, puis sans couloir (`returnAttempts`), l'un
@@ -90,7 +86,7 @@ export const computeReturn = async (
   params: LoopReturnParams,
   signal: AbortSignal
 ): Promise<ReturnOutcome> => {
-  const outboundM = lengthM(legsPoints(request.outbound));
+  const outboundM = pathLengthM(legsPoints(request.outbound));
   const plan = maxRatio !== null ? avoidancePolygons(request.outbound, params) : { polygons: [], toleranceM: params.toleranceM };
   let lastError = 'Calcul impossible.';
   for (const polygons of returnAttempts(plan?.polygons ?? null, params.weights)) {
@@ -101,7 +97,7 @@ export const computeReturn = async (
       });
       const { maxGapM, ...result } = snapToWaypoints(request.from, request.to, computed.points, computed.surfaces);
       if (maxGapM > maxSnapM) return { error: tooFarMessage(maxGapM) };
-      if (polygons !== null && maxRatio !== null && !isAcceptableReturn(lengthM(result.points), outboundM, maxRatio)) continue;
+      if (polygons !== null && maxRatio !== null && !isAcceptableReturn(pathLengthM(result.points), outboundM, maxRatio)) continue;
       return {
         ...result,
         outcome: polygons !== null ? 'avoided' : 'shortest',

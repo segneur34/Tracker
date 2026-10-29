@@ -1,3 +1,4 @@
+import { roundBearingDeg } from '../core/angles';
 import { bandIndex } from '../core/basics';
 import { sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
@@ -283,10 +284,10 @@ export const liveFieldValue = (key: LiveFieldKey, ctx: LiveFieldContext): string
     }
     case 'recentTopShort': return formatSpeed(stats.recentTopsMs[0] ?? null, speedUnit, distanceUnit);
     case 'recentTopLong': return formatSpeed(stats.recentTopsMs[1] ?? null, speedUnit, distanceUnit);
-    case 'heading': return ctx.headingDeg === null ? NONE : `${Math.round(ctx.headingDeg) % 360}°`;
+    case 'heading': return ctx.headingDeg === null ? NONE : `${roundBearingDeg(ctx.headingDeg)}°`;
     case 'legAverage': return stats.legs.current ? formatSpeed(stats.legs.current.averageSpeedMs, speedUnit, distanceUnit) : NONE;
     case 'markDistance': return ctx.markDistanceM === null ? NONE : formatShortDistance(ctx.markDistanceM, distanceUnit);
-    case 'markBearing': return ctx.markBearingDeg === null ? NONE : `${Math.round(ctx.markBearingDeg) % 360}°`;
+    case 'markBearing': return ctx.markBearingDeg === null ? NONE : `${roundBearingDeg(ctx.markBearingDeg)}°`;
     case 'grade': return formatGrade(stats.currentGrade);
     case 'gain': return formatMeters(stats.elevationGainM);
     case 'recentDistanceGain': return formatMeters(stats.recentDistanceGainM);

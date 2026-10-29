@@ -1,3 +1,4 @@
+import { normalizeDeg } from '../core/angles';
 import { useMemo } from 'react';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { hasActiveThreshold } from '../core/sportProfiles';
@@ -14,7 +15,7 @@ import {
   prepareManeuverDetection,
   windSamplesFrom,
 } from '../sailing/maneuvers';
-import { buildWindTimeline, normalizeAngle, speedPolar } from '../sailing/wind';
+import { buildWindTimeline, speedPolar } from '../sailing/wind';
 import { calculateVmgStats, calculateWindStats, summarizeManeuvers } from '../sailing/sailingAnalytics';
 import { buildSailingSessionStats, computeSailingTops, sailingFlights } from '../sailing/sailingStats';
 import { trackToPointData } from '../utils/kinematics';
@@ -166,7 +167,7 @@ export const useSailingSession = ({
   );
   const autoWind = windEstimate?.direction ?? null;
 
-  const manualWindValue = windDeg === null ? null : normalizeAngle(windDeg);
+  const manualWindValue = windDeg === null ? null : normalizeDeg(windDeg);
 
   /** Vent global retenu, ou `null` si rien de fiable n'est disponible. */
   const currentWindValue = useMemo<number | null>(() => {

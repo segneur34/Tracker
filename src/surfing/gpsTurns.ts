@@ -1,3 +1,4 @@
+import { signedDeltaHalfOpen } from '../core/angles';
 import type { TrackPoint } from '../core/types';
 
 /**
@@ -15,12 +16,6 @@ import type { TrackPoint } from '../core/types';
  * opposé au virage précédent (hystérésis, qui ignore le tremblement du cap).
  */
 
-/** Écart signé de `from` à `to`, dans ]−180 ; 180], en degrés. */
-const signedDelta = (from: number, to: number): number => {
-  const d = (((to - from) % 360) + 540) % 360 - 180;
-  return d === -180 ? 180 : d;
-};
-
 const headingOf = (p: TrackPoint): number => p.courseDeg ?? p.bearing;
 
 /**
@@ -36,7 +31,7 @@ export const countDirectionChanges = (track: TrackPoint[], start: number, end: n
   let direction: -1 | 0 | 1 = 0;
   let turns = 0;
   for (let i = start + 2; i <= end; i++) {
-    heading += signedDelta(headingOf(track[i - 1]), headingOf(track[i]));
+    heading += signedDeltaHalfOpen(headingOf(track[i - 1]), headingOf(track[i]));
     if (direction === 0) {
       lo = Math.min(lo, heading);
       hi = Math.max(hi, heading);

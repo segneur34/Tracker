@@ -1,6 +1,6 @@
 import { accumulateElevation, smoothElevationAlong } from '../core/elevation';
 import { projectOnSegment } from '../core/geoPlane';
-import { haversineDistance, initialBearing } from '../core/kinematics';
+import { cumulativeDistancesM, haversineDistance, initialBearing } from '../core/geo';
 import { GRADE_ANALYSIS, type Treatment } from '../core/sportProfiles';
 import type { BikeType } from '../cycling/energy';
 import { computeGrades } from '../running/runningAnalytics';
@@ -637,7 +637,7 @@ export const routeFromTrack = (
     read.push(p);
   }
   if (read.length < 2) return null;
-  const smoothed = smoothElevationAlong(read.map((p) => p.eleM ?? NaN), cumulativeDistances(read), smoothingM);
+  const smoothed = smoothElevationAlong(read.map((p) => p.eleM ?? NaN), cumulativeDistancesM(read), smoothingM);
   const kept = read.map((p, i): RoutePoint =>
     isFinite(smoothed[i]) ? { lat: p.lat, lon: p.lon, eleM: smoothed[i] } : { lat: p.lat, lon: p.lon });
   const first = kept[0];
@@ -649,7 +649,7 @@ export const routeFromTrack = (
   }
 
   const path = samePlace(first, last) ? kept : [...kept, { ...first }];
-  const cum = cumulativeDistances(path);
+  const cum = cumulativeDistancesM(path);
   const half = cum[cum.length - 1] / 2;
   // Point à mi-parcours, jamais au départ ni à l'arrivée.
   const mid = Math.min(path.length - 2, Math.max(1, cum.findIndex((d) => d >= half)));
@@ -848,19 +848,6 @@ const samePlace = (a: RoutePoint | undefined, b: RoutePoint | undefined): boolea
   !!a && !!b && a.lat === b.lat && a.lon === b.lon;
 
 /**
- * Distance cumulée le long des points, en mètres. Un itinéraire n'a pas de
- * vitesse : la règle 6 (distance intégrée de la vitesse) vaut pour les traces
- * enregistrées ; ici, la somme des distances entre points est la seule mesure.
- */
-export const cumulativeDistances = (points: RoutePoint[]): number[] => {
-  const cum = new Array<number>(points.length).fill(0);
-  for (let i = 1; i < points.length; i++) {
-    cum[i] = cum[i - 1] + haversineDistance(points[i - 1].lat, points[i - 1].lon, points[i].lat, points[i].lon);
-  }
-  return cum;
-};
-
-/**
  * Pour chaque point : distance depuis le départ, et longueur du tronçon qui y
  * arrive (0 pour le départ), en mètres, le long des tracés.
  */
@@ -868,7 +855,7 @@ export const waypointDistances = (route: PlannedRoute): { cumulativeM: number; l
   let cumulativeM = 0;
   return route.waypoints.map((_, i) => {
     const leg = i > 0 ? route.legs[i - 1] : undefined;
-    const cum = leg ? cumulativeDistances(leg.points) : [];
+    const cum = leg ? cumulativeDistancesM(leg.points) : [];
     const legM = cum.length > 0 ? cum[cum.length - 1] : 0;
     cumulativeM += legM;
     return { cumulativeM, legM };
@@ -894,7 +881,7 @@ export interface RouteTotals {
  */
 export const routeTotals = (route: PlannedRoute, minGainM: number): RouteTotals => {
   const points = routePoints(route);
-  const cum = cumulativeDistances(points);
+  const cum = cumulativeDistancesM(points);
   const altitudes = points.map((p) => p.eleM ?? NaN);
   const withEle = altitudes.filter((a) => isFinite(a)).length;
   const elevation = withEle >= 2 ? accumulateElevation(altitudes, minGainM) : null;
@@ -932,7 +919,7 @@ export interface ProfileRow {
  */
 export const routeProfileRows = (points: RoutePoint[], stepM = PROFILE_STEP_M): ProfileRow[] => {
   if (points.length === 0) return [];
-  const cum = cumulativeDistances(points);
+  const cum = cumulativeDistancesM(points);
   const total = cum[cum.length - 1];
   const samples: { distM: number; lat: number; lon: number; ele: number }[] = [];
   let seg = 0;

@@ -1,4 +1,8 @@
-import { EARTH_RADIUS_M, toRad } from './kinematics';
+import { planeProjection, type PlanePoint } from './geo';
+import type { LatLon } from './types';
+
+/** Réexportés pour les appelants d'avant `core/geo.ts` (à retirer au lot 71). */
+export { planeProjection, type PlanePoint } from './geo';
 
 /**
  * Plans locaux équirectangulaires et projection d'un point sur un segment :
@@ -7,17 +11,6 @@ import { EARTH_RADIUS_M, toRad } from './kinematics';
  * mieux que le mètre sur quelques kilomètres. Tout est pur ; unités SI
  * (règle 1) : mètres, degrés décimaux.
  */
-
-interface LatLon {
-  lat: number;
-  lon: number;
-}
-
-/** Point projeté dans un plan local, en mètres. */
-export interface PlanePoint {
-  x: number;
-  y: number;
-}
 
 /** Distance de `p` au segment `[a, b]` d'un plan, en mètres. Segment réduit à un point : distance à ce point. */
 export const pointSegmentDistanceM = (p: PlanePoint, a: PlanePoint, b: PlanePoint): number => {
@@ -44,13 +37,11 @@ export interface SegmentProjection {
  * `p`. Segment réduit à un point : `t` vaut 0.
  */
 export const projectOnSegment = (p: LatLon, a: LatLon, b: LatLon): SegmentProjection => {
-  const cosLat = Math.cos(toRad(p.lat));
-  const x = (q: LatLon) => toRad(q.lon - p.lon) * cosLat * EARTH_RADIUS_M;
-  const y = (q: LatLon) => toRad(q.lat - p.lat) * EARTH_RADIUS_M;
-  const ax = x(a);
-  const ay = y(a);
-  const dx = x(b) - ax;
-  const dy = y(b) - ay;
+  const plane = planeProjection(p.lat, p).to;
+  const { x: ax, y: ay } = plane(a);
+  const pb = plane(b);
+  const dx = pb.x - ax;
+  const dy = pb.y - ay;
   const len2 = dx * dx + dy * dy;
   const t = len2 > 0 ? Math.min(1, Math.max(0, -(ax * dx + ay * dy) / len2)) : 0;
   const offsetX = ax + t * dx;
@@ -60,13 +51,3 @@ export const projectOnSegment = (p: LatLon, a: LatLon, b: LatLon): SegmentProjec
 
 /** Distance de `p` au segment `[a, b]`, en mètres (plan local centré sur `p`). */
 export const distanceToSegmentM = (p: LatLon, a: LatLon, b: LatLon): number => projectOnSegment(p, a, b).distanceM;
-
-/** Plan local autour de `refLat`, aller-retour entre degrés et mètres (origine en 0° de longitude et de latitude). */
-export const planeProjection = (refLat: number) => {
-  const kx = toRad(1) * EARTH_RADIUS_M * Math.cos(toRad(refLat));
-  const ky = toRad(1) * EARTH_RADIUS_M;
-  return {
-    to: (p: LatLon): PlanePoint => ({ x: p.lon * kx, y: p.lat * ky }),
-    from: (q: PlanePoint): LatLon => ({ lat: q.y / ky, lon: q.x / kx }),
-  };
-};

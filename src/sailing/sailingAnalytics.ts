@@ -1,7 +1,7 @@
 import { firstIndexAtOrAfter } from '../core/search';
 import { pickTopWindows } from '../core/topSegments';
 import type { PointData } from '../utils/kinematics';
-import { WIND_LOCAL_MAX_GAP_MIN, type ManeuverLocation, type ManeuverStats, type WindReference } from './maneuvers';
+import { WIND_LOCAL_MAX_GAP_MIN, windAt, type ManeuverLocation, type ManeuverStats, type WindReference } from './maneuvers';
 import { VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
 import {
   angleDiff,
@@ -70,13 +70,6 @@ export interface WindStats {
   /** Vent interpolé à un instant, ou `null` loin de toute manœuvre. */
   windAt: (timeMs: number) => number | null;
 }
-
-/**
- * Vent de référence pour la VMG, fixe ou fonction du temps : sur une session
- * longue le vent bascule, et une VMG calculée contre un vent figé perd son sens.
- */
-const resolveWind = (wind: WindReference, timeMs: number): number =>
-  typeof wind === 'function' ? wind(timeMs) : wind;
 
 /** Trou maximal, en minutes, à travers lequel on interpole encore entre deux manœuvres : celui du classement. */
 const MAX_INTERPOLATION_GAP_MIN = WIND_LOCAL_MAX_GAP_MIN;
@@ -451,7 +444,7 @@ export const calculateVmgStats = (
   for (let k = 1; k < n; k++) {
     const p = trackData[k];
     const dt = p.segmentStart ? 0 : Math.max(0, (p.timeMs - trackData[k - 1].timeMs) / 1000);
-    const diff = angleDiff(p.bearing, resolveWind(wind, p.timeMs));
+    const diff = angleDiff(p.bearing, windAt(wind, p.timeMs));
     const vmg = p.smoothedSpeed * Math.cos(diff * (Math.PI / 180));
     cumDt[k] = cumDt[k - 1] + dt;
     cumSpeedDt[k] = cumSpeedDt[k - 1] + p.smoothedSpeed * dt;

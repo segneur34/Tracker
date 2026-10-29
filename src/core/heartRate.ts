@@ -51,16 +51,19 @@ export const smoothHeartRate = (points: readonly HeartRatePoint[], windowS: numb
 /**
  * Chaque intervalle compté : de `from`, le point à FC précédent (`i - 1` quand
  * tous les points ont la leur), à `i`, sans trou de plus de `gapS` entre les
- * deux ; la durée va à la FC lissée de `i`, arrondie au battement.
+ * deux ; la durée va à la FC lissée de `i`, arrondie au battement. Seulement
+ * les points de `start` à `end` compris, s'ils sont donnés.
  */
 const forEachCounted = (
   points: readonly HeartRatePoint[],
   smoothed: readonly (number | null)[],
   gapS: number,
-  visit: (i: number, bpm: number, dtS: number, from: number) => void
+  visit: (i: number, bpm: number, dtS: number, from: number) => void,
+  start = 0,
+  end = points.length - 1
 ) => {
   let from = -1;
-  for (let i = 0; i < points.length; i++) {
+  for (let i = Math.max(start, 0); i <= end && i < points.length; i++) {
     const bpm = smoothed[i];
     if (bpm === null) continue;
     const previous = from;
@@ -366,20 +369,13 @@ export const spanHeartRate = (
   let sum = 0;
   let coveredS = 0;
   let maxBpm = 0;
-  // Comme `forEachCounted`, d'une FC à la suivante, sans exiger des points contigus.
-  let from = -1;
-  for (let i = Math.max(start, 0); i <= end && i < points.length; i++) {
-    const bpm = smoothed[i];
-    if (bpm === null) continue;
-    const previous = from;
-    from = i;
-    if (previous < 0) continue;
-    const dtS = (points[i].timeMs - points[previous].timeMs) / 1000;
-    if (dtS <= 0 || dtS > gapS) continue;
+  // La FC lissée telle quelle, pas arrondie : arrondies à la fin.
+  forEachCounted(points, smoothed, gapS, (i, _, dtS) => {
+    const bpm = smoothed[i] as number;
     sum += bpm * dtS;
     coveredS += dtS;
     maxBpm = Math.max(maxBpm, bpm);
-  }
+  }, start, end);
   if (coveredS === 0) return null;
   const endBpm = smoothed[end];
   let recoveryBpm: number | null = null;

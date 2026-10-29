@@ -1,7 +1,8 @@
+import { normalizeDeg } from '../core/angles';
 import type { SessionMark } from '../core/sessionMarks';
 import type { SpeedRangeMs } from '../core/speedGradient';
 import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from '../sailing/sessionNotes';
-import { normalizeDeg, type SessionAnalysis, type SessionRecord, type StoredSessionNotes } from './record';
+import { type SessionAnalysis, type SessionRecord, type StoredSessionNotes } from './record';
 
 /**
  * Ce que l'utilisateur change sur une session dans le module d'analyse : vent

@@ -13,8 +13,9 @@
  * résultat.
  */
 
+import { medianOfSorted } from './basics';
+import { haversineDistance } from './geo';
 import {
-  haversineDistance,
   detectTrackDeviceSpeedUnit,
   DEVICE_SPEED_FACTOR,
   rawPointTimeMs,
@@ -22,6 +23,7 @@ import {
   type DeviceSpeedUnit,
 } from './kinematics';
 import { DEFAULT_MAX_ACCELERATION } from './speedFilter';
+import { MAX_GAP_S } from './sportProfiles';
 import type { RawTrackPoint } from './types';
 
 /**
@@ -32,11 +34,11 @@ import type { RawTrackPoint } from './types';
 const REFERENCE_PERCENTILE = 0.9;
 
 /**
- * Durée maximale attribuée à un point, en secondes. Sans ce plafond, le point
- * qui précède une coupure d'enregistrement de trois quarts d'heure pèserait
- * autant que tout le reste de la session.
+ * Durée maximale attribuée à un point, en secondes : celle d'un trou de la
+ * trace. Sans ce plafond, le point qui précède une coupure d'enregistrement de
+ * trois quarts d'heure pèserait autant que tout le reste de la session.
  */
-const MAX_SAMPLE_S = 10;
+const MAX_SAMPLE_S = MAX_GAP_S;
 
 /**
  * Accélération maximale plausible, par unité de vitesse de référence et par
@@ -199,9 +201,7 @@ export const samplingIntervalS = (points: ReadonlyArray<Pick<RawTrackPoint, 'tim
   }
 
   if (size === 0) return 0;
-  const sorted = gaps.subarray(0, size).sort();
-  const mid = Math.floor(size / 2);
-  return size % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return medianOfSorted(gaps.subarray(0, size).sort());
 };
 
 /**
