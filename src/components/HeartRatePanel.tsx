@@ -26,7 +26,7 @@ import { zonesOriginText } from './heartRateOrigin';
 import StatTile from './ui/StatTile';
 import MapToggle from './ui/MapToggle';
 import { CHART_GRID_PROPS, CHART_TICK, SPEED_COLOR, chartTick, yAxisLabel } from './chartStyle';
-import { elapsedMinutesAxis } from './chartAxes';
+import { elapsedX } from './chartAxes';
 import { heartRateReadout } from './chartReadouts';
 
 /** Vitesse et activité de la trace, pour la dérive et le nuage FC / vitesse (course et vélo). */
@@ -105,7 +105,7 @@ export function CardioCurve({ minutes, smoothed, zoom, zones, thresholds, onShow
     <>
       <HoverReadout read={read} label="FC" color={HEART_RATE_COLOR} line />
       <HeartRateChart data={rows} zoom={zoom} zones={zones} thresholds={thresholds} onShowOnMap={onShowOnMap}
-        style={style} xAxis={elapsedMinutesAxis(zoom)}>
+        style={style} x={elapsedX()}>
         {children}
       </HeartRateChart>
     </>

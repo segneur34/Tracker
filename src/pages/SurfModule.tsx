@@ -432,7 +432,7 @@ function SurfModule() {
   );
   /** Courbe de FC de « graphiques » ; ses boutons de zoom quand la vitesse est repliée. */
   const heartChart = (speedShown: boolean) => (
-    <HeartRateChart data={chartData} zoom={zoom} xAxis={timeAxis} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
+    <HeartRateChart data={chartData} zoom={zoom} x={timeChart.timeX} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
       showReset={!speedShown} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
       {markReferenceLines(marks.located, (m) => minutesOf(m.mark.timeMs), shownMark, 'hr')}
     </HeartRateChart>

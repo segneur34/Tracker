@@ -383,6 +383,8 @@ Opus | high. Neutre. Sources : 01-A1, 01-B7, 01-C1, 02-B5.
 
 **Rapport attendu** : lignes retirées ; graphes passés ; écarts de rendu vus sur les captures (il ne doit pas y en avoir).
 
+**Tranché par l'orchestrateur (29/10, questions mineures du plan)** : spécifications d'axe nommées `distanceX`, `elapsedX`, `timeOfDayX` (les noms de la fiche sont pris par les fabriques du lot 59) ; le profil passe à `ComposedChart`, une prop `chart="area"` seulement si les captures diffèrent ; repères derrière les axes verticaux si les captures sont identiques, sinon une prop `before` ; `core/chartRows.ts` rend des lignes en unités affichées, accepté (conversion de sortie par `core/units`, règle 1 respectée, comme le veut la fiche).
+
 ### 61 · Graphes 3 : voile, surf, test, sauts, fractionné ; pics gardés
 
 Opus | high. Neutre jusqu'à l'étape 4, puis non neutre (Q37, Q38, bogue D3). Sources : 01-A1, 01-B4, 01-B5, 01-C1, 01-C2, 01-C7, 01-D1, 01-D2, 01-D4, 08-D7.

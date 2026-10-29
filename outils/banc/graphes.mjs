@@ -13,6 +13,8 @@
 //     vitesse quand aucun graphe d'altitude n'est plus montré ;
 //  5. surf : replis Vitesse et FC ; voile : replis des trois graphes, titre gardé, état retenu ;
 //  6. à 390×844 : la course, graphes et zones ouverts, sans débordement.
+//  Au passage (lot 60) : le graphe de vitesse de la course zoomé par un double-clic, graduations relevées
+//  (abscisse des trois graphes, ordonnée de la vitesse), capture `graphes-zoom`, puis « Tout voir ».
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -72,6 +74,36 @@ const hoverChart = (title, nth) => evaluate(`(async () => {
   }
   return 'ok';
 })()`);
+/** Le n-ième graphe zoomable du panneau. */
+const CHART = (title, nth) => `(${SCOPE(title)}?.querySelectorAll('.zoom-chart')[${nth}] ?? null)`;
+/** Graduations d'un axe (`xAxis` ou `yAxis`) du n-ième graphe. */
+const ticks = (title, nth, axis = 'xAxis') => evaluate(`(() => { const c = ${CHART(title, nth)}; return c ? [...c.querySelectorAll('.recharts-${axis}-tick-labels .recharts-cartesian-axis-tick-value')].map((t) => t.textContent.trim()).join(' | ') : '(absent)'; })()`);
+const zoomButtons = (title, nth) => evaluate(`(() => { const c = ${CHART(title, nth)}; return c ? [...c.querySelectorAll('.zoom-chart__map, .zoom-chart__actions button')].map((b) => b.textContent.trim()).join(' | ') : '(absent)'; })()`);
+const clickZoomButton = (title, nth, label) => evaluate(`(() => {
+  const c = ${CHART(title, nth)};
+  const b = c ? [...c.querySelectorAll('.zoom-chart__map, .zoom-chart__actions button')].find((x) => x.textContent.trim() === ${JSON.stringify(label)}) : null;
+  if (!b) return 'absent'; b.click(); return 'ok';
+})()`);
+/** Double-clic au milieu de la zone de tracé du n-ième graphe, graphe ramené au milieu de l'écran (comme `zoom-carte.mjs`). */
+const doubleClick = async (title, nth, fx) => {
+  const p = await evaluate(`(async () => {
+    const c = ${CHART(title, nth)};
+    if (!c) return null;
+    c.scrollIntoView({ block: 'center' });
+    await new Promise((r) => setTimeout(r, 300));
+    const r = (c.querySelector('.recharts-cartesian-grid') ?? c).getBoundingClientRect();
+    return { x: r.left + r.width * ${fx}, y: r.top + r.height / 2 };
+  })()`);
+  if (!p) return 'absent';
+  const mouse = (type, clickCount = 1) => send('Input.dispatchMouseEvent', { type, x: p.x, y: p.y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount });
+  await mouse('mouseMoved');
+  await mouse('mousePressed', 1);
+  await mouse('mouseReleased', 1);
+  await mouse('mousePressed', 2);
+  await mouse('mouseReleased', 2);
+  await settle({ max: 800 });
+  return 'ok';
+};
 // Rangée « avancé » des analyses ouverte d'office (22/10), rouverte à chaque session neuve avec « général » (23/10) : tous les onglets restent dans la barre ; `general.mjs` éprouve la rangée fermée.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { const s = JSON.parse(localStorage.getItem('tracker.sections') ?? '{}'); if (!s['analyses-avance']) { s['analyses-avance'] = { ouvert: true }; localStorage.setItem('tracker.sections', JSON.stringify(s)); } } catch {} new MutationObserver(() => { const t = document.querySelector('.an-tabs-advanced-toggle[aria-expanded="false"]'); if (!t) return; t.click(); setTimeout(() => { const g = [...document.querySelectorAll('.an-tabs .ui-tab')].find((b) => b.textContent.trim() === 'général'); if (g && g.getAttribute('aria-pressed') !== 'true') g.click(); }, 0); }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-expanded'] });` });
 await blockNetwork();
@@ -186,6 +218,18 @@ await fold('Graphiques', 'FC');
 console.log('  Séparés :', await clickButton('Graphiques', 'Séparés'));
 await settle({ max: 800 });
 check(`séparé : tout rouvert (${await folds('Graphiques')}, ${await chartsIn('Graphiques')} graphes)`, (await folds('Graphiques')) === 'Vitesse+ Altitude+ FC+' && (await chartsIn('Graphiques')) === 3);
+
+// Graphe de vitesse zoomé (lot 60) : graduations relevées, à comparer avant et après un changement des graphes.
+const ticksBefore = await ticks('Graphiques', 0);
+console.log(`  graduations avant le zoom : ${ticksBefore}`);
+console.log('  double-clic sur la vitesse :', await doubleClick('Graphiques', 0, 0.5));
+for (const k of [0, 1, 2]) console.log(`  graphe ${k + 1} zoomé : abscisse ${await ticks('Graphiques', k)} ; ordonnée ${await ticks('Graphiques', k, 'yAxis')}`);
+check(`zoomé : graduations changées, « Tout voir » paru (${await zoomButtons('Graphiques', 0)})`,
+  (await ticks('Graphiques', 0)) !== ticksBefore && (await zoomButtons('Graphiques', 0)).includes('Tout voir'));
+await shoot('graphes-zoom');
+console.log('  Tout voir :', await clickZoomButton('Graphiques', 0, 'Tout voir'));
+await settle({ max: 800 });
+check(`« Tout voir » : graduations rendues (${await ticks('Graphiques', 0)})`, (await ticks('Graphiques', 0)) === ticksBefore);
 
 // --- 4. Zones de pente ---
 console.log('  graphiques fermé :', await clickTab('graphiques', true));

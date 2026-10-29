@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom';
 import { Polyline } from 'react-leaflet';
 import BaseTileLayer from '../components/BaseTileLayer';
 import './analysisMobile.css';
-import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import ActivitySelect from '../components/ActivitySelect';
 import CadencePanel from '../components/CadencePanel';
 import ChartFold, { GraphFoldHead } from '../components/ChartFold';
@@ -16,7 +15,8 @@ import HeartRateChart from '../components/HeartRateChart';
 import FitnessTestPanel, { FitnessTestCurves } from '../components/FitnessTestPanel';
 import HeartRatePanel, { CardioCompanion, type HeartRateEfficiency } from '../components/HeartRatePanel';
 import { heartRateValue } from '../components/chartReadouts';
-import { elapsedMinutesAxis } from '../components/chartAxes';
+import { distanceX, elapsedX } from '../components/chartAxes';
+import TrackChart, { type TrackSeries, type TrackYAxis } from '../components/TrackChart';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import IntervalAnalysis, { type IntervalSeriesView } from '../components/IntervalAnalysis';
 import JumpMapLayer from '../components/JumpMapLayer';
@@ -45,16 +45,15 @@ import SurfaceHighlight from '../components/SurfaceHighlight';
 import SurfaceLayer from '../components/SurfaceLayer';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
-import ZoomableChart, { ChartZoomProbe } from '../components/ZoomableChart';
 import { zoomHint } from '../components/zoomHint';
 import { HoveredTrackMarker } from '../components/HoverMarker';
-import { NO_TOOLTIP_CONTENT, inChartView, trackHover } from '../components/chartHover';
-import { gradeGradientDefs } from '../components/gradeGradientDefs';
+import { inChartView } from '../components/chartHover';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
 import { LAND_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type LandTab } from '../core/analysisTabs';
-import { niceTicks, sampledIndices, visibleIndexRange } from '../core/chartZoom';
+import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
+import { trackChartRows, type TrackChartRow } from '../core/chartRows';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
 import { buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
@@ -71,7 +70,7 @@ import {
   DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, speedUnitLabel, formatClockMinutes, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
   isInverseUnit, toDisplayDistance, toDisplaySpeed,
 } from '../core/units';
-import { setHoveredIndex, useResetChartHover } from '../hooks/useChartHover';
+import { useResetChartHover } from '../hooks/useChartHover';
 import { useChartZoom, type ChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useGpxSession } from '../hooks/useGpxSession';
@@ -107,7 +106,7 @@ import { WAY_MATCH_DEFAULTS } from '../planning/wayMatch';
 import { LAND_PAGES, LAND_TREATMENTS, TOTAL_ENERGY_LABEL, type LandFamily, type LandTreatment } from './landModules';
 import StatTile from '../components/ui/StatTile';
 import MapToggle from '../components/ui/MapToggle';
-import { ALTITUDE_COLOR, CHART_GRID_PROPS, CHART_TICK, ENERGY_COLOR, SPEED_COLOR, chartTick, yAxisLabel } from '../components/chartStyle';
+import { ALTITUDE_COLOR, ENERGY_COLOR, SPEED_COLOR } from '../components/chartStyle';
 
 /** Lissage supplémentaire de la vitesse pour le graphe, en secondes. */
 const CHART_SPEED_SMOOTHING_S = 10;
@@ -168,22 +167,6 @@ const LAND_SECTION_DEFAULTS: Record<LandTab, boolean> = {
 
 type ChartMode = 'separate' | 'overlay';
 type EnergyChartMode = 'power' | 'cumulative';
-
-/** Une ligne des graphes : `index` renvoie au point de trace d'origine. */
-interface ChartRow {
-  index: number;
-  /** Distance parcourue, dans l'unité de l'activité. */
-  dist: number;
-  speed: number | null;
-  speedMs: number;
-  altitude: number | null;
-  /** Pente locale en fraction, `null` là où elle manque. */
-  grade: number | null;
-  /** FC lissée, `null` là où elle manque. */
-  hr: number | null;
-  /** Cadence à pied lissée, en pas par minute, `null` là où elle manque. */
-  cadence: number | null;
-}
 
 /** Une ligne du graphe d'énergie, en fonction du temps écoulé. */
 interface EnergyChartRow {
@@ -667,30 +650,22 @@ function LandModule({ family }: { family: LandFamily }) {
   });
 
   /**
-   * Séries des graphes sur la plage visible, au plus `CHART_MAX_POINTS` :
-   * distance et vitesse dans l'unité choisie, altitude lissée. Zoomer montre
-   * plus de détail.
+   * Lignes des graphes de « graphiques » et de « zones de pente », sur la plage
+   * zoomée : calculées seulement quand l'un d'eux est ouvert, dans son panneau
+   * ou sous la carte en plein écran.
    */
-  const chartData = useMemo(() => {
-    if (gpx.track.length === 0) return [];
-    const [first, last] = visibleIndexRange(trackDist, zoom.view);
-    return sampledIndices(first, last, CHART_MAX_POINTS, chartSpeed).map((i): ChartRow => {
-      const altitude = elevation.smoothed[i];
-      const ms = chartSpeed[i];
-      // En min/km, l'arrêt tend vers l'infini : on laisse un trou plutôt qu'une valeur absurde.
-      const speed = inverse && ms < CHART_PACE_MIN_SPEED_MS ? null : toFixedNumber(toDisplaySpeed(ms, speedUnit, distanceUnit), 2);
-      return {
-        index: i,
-        dist: toFixedNumber(trackDist[i], 3),
-        speed,
-        speedMs: ms,
-        altitude: stats?.hasElevation && isFinite(altitude) ? Math.round(altitude) : null,
-        grade: isFinite(grades[i]) ? grades[i] : null,
-        hr: heart.smoothed[i] === null || heart.smoothed[i] === undefined ? null : Math.round(heart.smoothed[i]!),
-        cadence: cadencePresent && cadence!.smoothed[i] !== null ? Math.round(cadence!.smoothed[i]!) : null,
-      };
-    });
-  }, [gpx.track, trackDist, zoom.view, chartSpeed, elevation, stats, grades, speedUnit, distanceUnit, inverse, heart.smoothed, cadence, cadencePresent]);
+  const chartRowsNeeded = open.graphiques || open.zones
+    || zoomOnMap.companionPanel === 'graphiques' || zoomOnMap.companionPanel === 'zones';
+  const chartData = useMemo(
+    () => (chartRowsNeeded
+      ? trackChartRows({
+          pointCount: gpx.track.length, dist: trackDist, view: zoom.view, speedMs: chartSpeed, altitude: elevation.smoothed,
+          hasElevation: Boolean(stats?.hasElevation), grades, speedUnit, distanceUnit, inverse, heartRate: heart.smoothed,
+          cadence: cadencePresent ? cadence!.smoothed : null,
+        })
+      : []),
+    [chartRowsNeeded, gpx.track, trackDist, zoom.view, chartSpeed, elevation, stats, grades, speedUnit, distanceUnit, inverse, heart.smoothed, cadence, cadencePresent]
+  );
   /** Dérive et nuage FC / vitesse de l'onglet « cardio » : vitesse des graphes, temps en mouvement. */
   const heartEfficiency = useMemo((): HeartRateEfficiency => ({ speedsMs: chartSpeed, active: activityMask, speedUnit }), [chartSpeed, activityMask, speedUnit]);
 
@@ -768,14 +743,10 @@ function LandModule({ family }: { family: LandFamily }) {
     ...(energyTotal ? [{ key: 'energy', label: 'Dépense totale', value: energyTotal.value }] : []),
   ] : [];
 
-  /** Survol des graphes : le point va au magasin du survol, lu par le repère de la carte et les lectures, pas par le module. */
-  const clearHover = () => setHoveredIndex(null);
-  const onChartHover = trackHover(chartData);
 
   /** Point de trace le plus proche d'un instant : relie la courbe d'un saut à la carte. */
   const trackIndexAt = useCallback((ms: number): number => nearestIndexAtTime(gpx.track, ms), [gpx.track]);
 
-  const onEnergyChartHover = trackHover(energyChartData);
 
   /** Pente lue en un point, « , pente 6 % », ou rien. */
   const gradeText = (i: number) => (isFinite(grades[i]) ? `, pente ${Math.round(grades[i] * 100)} %` : '');
@@ -820,29 +791,25 @@ function LandModule({ family }: { family: LandFamily }) {
     })()
     : null;
 
-  const speedAxis = (
-    <YAxis
-      yAxisId="speed"
-      domain={inverse ? ['auto', 'auto'] : [0, 'auto']}
-      reversed={inverse}
-      tickFormatter={(v) => formatSpeedValue(v, speedUnit)}
-      width={46}
-      tick={chartTick(SPEED_COLOR)}
-      label={yAxisLabel(unitLabel, SPEED_COLOR)} />
-  );
-  const altitudeAxis = (orientation: 'left' | 'right') => (
-    <YAxis yAxisId="altitude" orientation={orientation} domain={['auto', 'auto']} tickFormatter={(v) => `${v}`} width={44} tick={chartTick(ALTITUDE_COLOR)} label={yAxisLabel('m', ALTITUDE_COLOR, orientation === 'left' ? 'insideLeft' : 'insideRight')} />
+  const speedAxis: TrackYAxis = {
+    id: 'speed',
+    color: SPEED_COLOR,
+    unit: unitLabel,
+    domain: inverse ? ['auto', 'auto'] : [0, 'auto'],
+    reversed: inverse,
+    tickFormatter: (v) => formatSpeedValue(v, speedUnit),
+    width: 46,
+  };
+  const altitudeAxis = (orientation: 'left' | 'right'): TrackYAxis => (
+    { id: 'altitude', color: ALTITUDE_COLOR, unit: 'm', orientation, domain: ['auto', 'auto'], tickFormatter: (v) => `${v}`, width: 44 }
   );
   const distanceSymbol = DISTANCE_UNIT_SYMBOL[distanceUnit];
   /** Distance de l'infobulle, au centième. */
   const distanceLabel = (v: unknown) => `${toFixedNumber(Number(v), 2)} ${distanceSymbol}`;
-  /** Graduations rondes, zoom compris (`niceTicks`). */
-  const xAxis = (
-    <XAxis dataKey="dist" type="number" allowDataOverflow
-      domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
-      ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-      tickFormatter={(v: number) => `${toFixedNumber(v, 3)} ${distanceSymbol}`} tick={CHART_TICK} />
-  );
+  /** Abscisse des graphes : la distance, graduations rondes zoom compris. */
+  const distX = distanceX(distanceSymbol);
+  /** Courbe de vitesse (ou d'allure), dans l'unité choisie. */
+  const speedSeries: TrackSeries<TrackChartRow> = { kind: 'line', key: 'speed', name: 'Vitesse', yAxisId: 'speed', color: SPEED_COLOR, width: 2, activeDotR: 5 };
 
   /** Traits des repères sur les graphes, en abscisse de distance. */
   const markLines = (yAxisId: 'speed' | 'altitude' | 'hr' | 'cadence') =>
@@ -865,20 +832,11 @@ function LandModule({ family }: { family: LandFamily }) {
 
   /** Graphe d'altitude coloré par la pente : onglet « graphiques » et onglet « zones de pente ». */
   const altitudeChart = (gradientKey: string, showReset: boolean, panel: 'graphiques' | 'zones') => (
-    <ZoomableChart zoom={zoom} onLeave={clearHover} showReset={showReset} onShowOnMap={() => zoomOnMap.show(panel)} style={chartBox(CHART_HEIGHT_PX)}>
-      <ResponsiveContainer>
-        <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-          <ChartZoomProbe />
-          <CartesianGrid {...CHART_GRID_PROPS} />
-          {xAxis}
-          {markLines('altitude')}
-          {altitudeAxis('left')}
-          <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-          {gradeGradientDefs(gradientKey, gradeStops)}
-          <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${gradientKey})`} strokeWidth={2} fill={`url(#${gradientKey})`} fillOpacity={0.35} dot={false} activeDot={{ r: 5 }} connectNulls={false} isAnimationActive={false} />
-        </ComposedChart>
-      </ResponsiveContainer>
-    </ZoomableChart>
+    <TrackChart rows={chartData} zoom={zoom} x={distX} yAxes={[altitudeAxis('left')]}
+      series={[{ kind: 'area', key: 'altitude', name: 'Altitude', yAxisId: 'altitude', color: ALTITUDE_COLOR, width: 2, activeDotR: 5, fillOpacity: 0.35, gradient: { id: gradientKey, stops: gradeStops } }]}
+      syncId={page.storageId} showReset={showReset} onShowOnMap={() => zoomOnMap.show(panel)} style={chartBox(CHART_HEIGHT_PX)}>
+      {markLines('altitude')}
+    </TrackChart>
   );
 
   /** Sous le graphe d'altitude : légende de la pente et « Voir sur la carte ». */
@@ -939,19 +897,10 @@ function LandModule({ family }: { family: LandFamily }) {
     switch (key) {
       case 'vitesse':
         return (
-          <ZoomableChart zoom={zoom} onLeave={clearHover} showReset={showReset} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
-            <ResponsiveContainer>
-              <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                <ChartZoomProbe />
-                <CartesianGrid {...CHART_GRID_PROPS} />
-                {xAxis}
-                {markLines('speed')}
-                {speedAxis}
-                <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-                <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke={SPEED_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} isAnimationActive={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </ZoomableChart>
+          <TrackChart rows={chartData} zoom={zoom} x={distX} yAxes={[speedAxis]} series={[speedSeries]}
+            syncId={page.storageId} showReset={showReset} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
+            {markLines('speed')}
+          </TrackChart>
         );
       case 'altitude':
         return (
@@ -962,36 +911,51 @@ function LandModule({ family }: { family: LandFamily }) {
         );
       case 'fc':
         return (
-          <HeartRateChart data={chartData} zoom={zoom} xAxis={xAxis} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
+          <HeartRateChart data={chartData} zoom={zoom} x={distX} zones={hrZones?.bounds ?? null} thresholds={hrZones ? { s1: hrZones.s1, s2: hrZones.s2 } : null}
             syncId={page.storageId} showReset={showReset} onShowOnMap={showGraphsOnMap}
             style={chartBox(CHART_HEIGHT_PX)}>
-            {markReferenceLines(marks.located, (m) => toDisplayDistance(m.distanceM, distanceUnit), shownMark, 'hr')}
+            {markLines('hr')}
           </HeartRateChart>
         );
       case 'cadence':
         return (
-          <ZoomableChart zoom={zoom} onLeave={clearHover} showReset={showReset} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
-            <ResponsiveContainer>
-              <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                <ChartZoomProbe />
-                <CartesianGrid {...CHART_GRID_PROPS} />
-                {xAxis}
-                {markLines('cadence')}
-                <YAxis yAxisId="cadence" domain={['dataMin - 5', 'dataMax + 5']} allowDecimals={false} width={46}
-                  tickFormatter={(v: number) => `${Math.round(v)}`}
-                  tick={chartTick(CADENCE_COLOR)}
-                  label={yAxisLabel('pas/min', CADENCE_COLOR)} />
-                <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-                <Line yAxisId="cadence" type="monotone" name="Cadence" dataKey="cadence" stroke={CADENCE_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} isAnimationActive={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </ZoomableChart>
+          <TrackChart rows={chartData} zoom={zoom} x={distX}
+            yAxes={[{ id: 'cadence', color: CADENCE_COLOR, unit: 'pas/min', domain: ['dataMin - 5', 'dataMax + 5'], allowDecimals: false, width: 46, tickFormatter: (v) => `${Math.round(v)}` }]}
+            series={[{ kind: 'line', key: 'cadence', name: 'Cadence', yAxisId: 'cadence', color: CADENCE_COLOR, width: 2, activeDotR: 5 }]}
+            syncId={page.storageId} showReset={showReset} onShowOnMap={showGraphsOnMap} style={chartBox(CHART_HEIGHT_PX)}>
+            {markLines('cadence')}
+          </TrackChart>
         );
     }
   };
 
   /** Axe des repères du graphe superposé : celui de la première série montrée. */
   const overlayMarkAxis: 'speed' | 'altitude' | 'hr' | 'cadence' = graphShown('vitesse') ? 'speed' : graphShown('altitude') ? 'altitude' : graphShown('fc') ? 'hr' : 'cadence';
+
+  /**
+   * Axes du graphe superposé : vitesse à gauche, altitude à droite (à gauche
+   * sans vitesse) ; FC et cadence sans axe à elles tant qu'elles ne sont pas
+   * seules (leur valeur se lit au-dessus du graphe).
+   */
+  const overlayAxes: TrackYAxis[] = [];
+  if (graphShown('vitesse')) overlayAxes.push(speedAxis);
+  if (graphShown('altitude')) overlayAxes.push(altitudeAxis(graphShown('vitesse') ? 'right' : 'left'));
+  if (graphShown('fc')) overlayAxes.push({ id: 'hr', color: HEART_RATE_COLOR, hide: shownGraphs.length > 1, domain: ['dataMin - 5', 'dataMax + 5'], width: 46 });
+  if (graphShown('cadence')) overlayAxes.push({ id: 'cadence', color: CADENCE_COLOR, hide: shownGraphs.length > 1, domain: ['dataMin - 5', 'dataMax + 5'], width: 46 });
+  /** Séries du graphe superposé, l'aire d'altitude dessous ; `idSuffix` distingue son dégradé. */
+  const overlaySeries = (idSuffix: string): TrackSeries<TrackChartRow>[] => {
+    const series: TrackSeries<TrackChartRow>[] = [];
+    if (graphShown('altitude')) {
+      series.push({
+        kind: 'area', key: 'altitude', name: 'Altitude', yAxisId: 'altitude', color: ALTITUDE_COLOR, width: 1.5, activeDotR: 4, fillOpacity: 0.3,
+        gradient: { id: `${overlayGradientId}${idSuffix}`, stops: gradeStops },
+      });
+    }
+    if (graphShown('vitesse')) series.push(speedSeries);
+    if (graphShown('fc')) series.push({ kind: 'line', key: 'hr', name: 'FC', yAxisId: 'hr', color: HEART_RATE_COLOR, width: 1.5, activeDotR: 4 });
+    if (graphShown('cadence')) series.push({ kind: 'line', key: 'cadence', name: 'Cadence', yAxisId: 'cadence', color: CADENCE_COLOR, width: 1.5, activeDotR: 4 });
+    return series;
+  };
 
   /**
    * Pile des graphes de « graphiques », Séparés ou Superposés, replis
@@ -1006,36 +970,10 @@ function LandModule({ family }: { family: LandFamily }) {
       </div>
       <HoverReadout line read={graphReadout(shownGraphs.map((c) => c.key))} />
       {shownGraphs.length > 0 && (
-        <ZoomableChart zoom={zoom} onLeave={clearHover} onShowOnMap={showGraphsOnMap} style={chartBox(OVERLAY_CHART_HEIGHT_PX)}>
-          <ResponsiveContainer>
-            <ComposedChart data={chartData} syncId={page.storageId} onMouseMove={onChartHover} onTouchMove={onChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-              <ChartZoomProbe />
-              <CartesianGrid {...CHART_GRID_PROPS} />
-              {xAxis}
-              {markLines(overlayMarkAxis)}
-              {graphShown('vitesse') && speedAxis}
-              {graphShown('altitude') && altitudeAxis(graphShown('vitesse') ? 'right' : 'left')}
-              <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-              {graphShown('altitude') && gradeGradientDefs(`${overlayGradientId}${idSuffix}`, gradeStops)}
-              {graphShown('altitude') && (
-                <Area yAxisId="altitude" type="monotone" name="Altitude" dataKey="altitude" stroke={`url(#${overlayGradientId}${idSuffix})`} strokeWidth={1.5} fill={`url(#${overlayGradientId}${idSuffix})`} fillOpacity={0.3} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
-              )}
-              {graphShown('vitesse') && (
-                <Line yAxisId="speed" type="monotone" name="Vitesse" dataKey="speed" stroke={SPEED_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} isAnimationActive={false} />
-              )}
-              {/* FC superposée sans axe à elle (sauf seule) : sa valeur se lit au-dessus du graphe. */}
-              {graphShown('fc') && <YAxis yAxisId="hr" hide={shownGraphs.length > 1} domain={['dataMin - 5', 'dataMax + 5']} width={46} tick={chartTick(HEART_RATE_COLOR)} />}
-              {graphShown('fc') && (
-                <Line yAxisId="hr" type="monotone" name="FC" dataKey="hr" stroke={HEART_RATE_COLOR} strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
-              )}
-              {/* Cadence superposée de même, sans axe à elle tant qu'elle n'est pas seule. */}
-              {graphShown('cadence') && <YAxis yAxisId="cadence" hide={shownGraphs.length > 1} domain={['dataMin - 5', 'dataMax + 5']} width={46} tick={chartTick(CADENCE_COLOR)} />}
-              {graphShown('cadence') && (
-                <Line yAxisId="cadence" type="monotone" name="Cadence" dataKey="cadence" stroke={CADENCE_COLOR} strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
-              )}
-            </ComposedChart>
-          </ResponsiveContainer>
-        </ZoomableChart>
+        <TrackChart rows={chartData} zoom={zoom} x={distX} yAxes={overlayAxes} series={overlaySeries(idSuffix)}
+          syncId={page.storageId} onShowOnMap={showGraphsOnMap} style={chartBox(OVERLAY_CHART_HEIGHT_PX)}>
+          {markLines(overlayMarkAxis)}
+        </TrackChart>
       )}
       {graphShown('altitude') && gradeLegend}
     </>
@@ -1054,23 +992,12 @@ function LandModule({ family }: { family: LandFamily }) {
   const energyChart = energy && energyChartData.length > 1 ? (
     <>
       <HoverReadout line read={energyReadout} label={energyMode === 'power' ? 'Puissance' : 'Énergie'} color={ENERGY_COLOR} />
-      <ZoomableChart zoom={energyZoom} onLeave={clearHover} onShowOnMap={() => zoomOnMap.show('energie')} style={{ width: '100%', flex: `1 0 ${ENERGY_CHART_HEIGHT_PX}px`, height: `${ENERGY_CHART_HEIGHT_PX}px`, marginTop: '6px' }}>
-        <ResponsiveContainer>
-          <ComposedChart data={energyChartData} onMouseMove={onEnergyChartHover} onTouchMove={onEnergyChartHover} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-            <ChartZoomProbe />
-            <CartesianGrid {...CHART_GRID_PROPS} />
-            {elapsedMinutesAxis(energyZoom)}
-            <YAxis domain={[0, 'auto']} width={50} tick={chartTick(ENERGY_COLOR)}
-              label={yAxisLabel(energyMode === 'power' ? energy.powerUnit : energy.cumulativeUnit, ENERGY_COLOR)} />
-            <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-            {energyMode === 'power' ? (
-              <Line type="monotone" name="Puissance" dataKey="power" stroke={ENERGY_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls={false} isAnimationActive={false} />
-            ) : (
-              <Area type="monotone" name="Énergie dépensée" dataKey="cumulative" stroke={ENERGY_COLOR} strokeWidth={2} fill={ENERGY_COLOR} fillOpacity={0.15} dot={false} activeDot={{ r: 5 }} isAnimationActive={false} />
-            )}
-          </ComposedChart>
-        </ResponsiveContainer>
-      </ZoomableChart>
+      <TrackChart rows={energyChartData} zoom={energyZoom} x={elapsedX()}
+        yAxes={[{ color: ENERGY_COLOR, unit: energyMode === 'power' ? energy.powerUnit : energy.cumulativeUnit, domain: [0, 'auto'], width: 50 }]}
+        series={energyMode === 'power'
+          ? [{ kind: 'line', key: 'power', name: 'Puissance', color: ENERGY_COLOR, width: 2, activeDotR: 5 }]
+          : [{ kind: 'area', key: 'cumulative', name: 'Énergie dépensée', color: ENERGY_COLOR, width: 2, activeDotR: 5, fillOpacity: 0.15 }]}
+        onShowOnMap={() => zoomOnMap.show('energie')} style={{ width: '100%', flex: `1 0 ${ENERGY_CHART_HEIGHT_PX}px`, height: `${ENERGY_CHART_HEIGHT_PX}px`, marginTop: '6px' }} />
     </>
   ) : null;
 

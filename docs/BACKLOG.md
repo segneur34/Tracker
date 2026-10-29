@@ -13,7 +13,7 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 APK 0.3.104 (versionCode 3104, lots 56, 57 et 59) installée sur le téléphone le 29/10 : android/app/build/outputs/apk/release/Tracker-0.3.104.apk.
 
-
+- 60 · [dette] Graphes, partie 2 : un seul graphe relié à la trace, d'abord en course et à vélo ; rien ne change à l'écran · noté 28/10 · petit · Opus/high · à valider sur lecture (commit suivant, 0.3.105) ; aucun essai au téléphone (banc identique sur graphes, general, pentes, depense, cadence, cardio, zoom d'un graphe à pied compris ; relecture sans défaut) ; LandModule n'importe plus Recharts, lignes des graphes calculées seulement onglet ouvert · dépend de : 59 (levé) · détail : docs/backlog/52-assainissement.md
 
 ## Ensuite
 
@@ -22,7 +22,7 @@ APK 0.3.104 (versionCode 3104, lots 56, 57 et 59) installée sur le téléphone 
 3. 88 · [bogue] Bips doubles et triples (trop vite, trop lent) plus brefs : un « bip-bip » plus court et plus serré, pour le compteur, les balises et les tests ; durées dans core/beepDurations.ts, version native dans TonePlayer.java · noté 29/10 · petit · Sonnet/medium · à briefer
 4. 51 · [bogue] Profil › racine : il reste 2 ronds blancs au bout de la racine (un par pointe), à retirer ; décision du 27/10 « aucun rond blanc au bout des radicelles » non tenue ; piste : les bourgeons de drawBuds (--root-bud) au bout des branches en croissance, dans src/components/drawRoot.ts · noté 28/10 · petit · Sonnet/medium · à briefer
 5. 50 · [bogue] Wing foil › onglet pumping : séparer la série de pumping du vol sur le foil, en mettant la cadence au premier plan ; une série dure peu à ton niveau (moins de 30 s) mais peut être bien plus longue avec du meilleur matériel, donc aucune durée plafond ; aujourd'hui un vol entier compte comme du pumping, copié du surf foil (§1 « Pumping foil ») · noté 28/10 · gros · Fable/high · à briefer ; 28/10 : réponse à Q31 reçue (série + vol à part, cadence d'abord) ; la mise au point des seuils attend une capture wing entière (n° 27, essai 48) · détail : docs/backlog/50-pumping-wing.md
-6. 52 · [dette] Assainissement du code (audit du 28/10) : doublons, vitesse, rangement avant le gros fork ; 30 lots numérotés 53 à 82 dans l'ordre conseillé ; 53 à 57 et 59 faits et validés le 29/10 (HISTORIQUE points 194 à 198 et 200), 58 et 60 à 82 en Plus tard ; 18 questions dans la fiche ; le 29/10 l'utilisateur a validé les réponses par défaut de Q33 à Q49, seule Q32 reste posée ici · noté 28/10 · gros · Opus/medium · fiche écrite, lots à lancer dans l'ordre · détail : docs/backlog/52-assainissement.md
+6. 52 · [dette] Assainissement du code (audit du 28/10) : doublons, vitesse, rangement avant le gros fork ; 30 lots numérotés 53 à 82 dans l'ordre conseillé ; 53 à 57 et 59 faits et validés le 29/10 (HISTORIQUE points 194 à 198 et 200), 58 et 60 à 82 en Plus tard ; 29/10 : l'utilisateur fait passer 60 à 64 en chaîne avant le reste ; 18 questions dans la fiche ; le 29/10 l'utilisateur a validé les réponses par défaut de Q33 à Q49, seule Q32 reste posée ici · noté 28/10 · gros · Opus/medium · fiche écrite, lots à lancer dans l'ordre · détail : docs/backlog/52-assainissement.md
 
 ## Ça attend une occasion
 
@@ -74,7 +74,6 @@ APK 0.3.104 (versionCode 3104, lots 56, 57 et 59) installée sur le téléphone 
 - 47 · [idée] Itinéraires hors ligne par l'application BRouter pour Android, à la place du serveur public (point 59) · noté 25/09 · gros
 - 49 · [dette] Mesure d'une manœuvre sous bruit réaliste : cap et gain du virement le plus lent (creux vers 3,75 nd) varient de ±20° et 15 m selon la cadence ; ce sont les bornes de measureManeuver, pas la détection (relevé au lot 30) · noté 28/10 · petit
 - 58 · [dette] Voile, curseur du seuil plus fluide : le vent et l'altitude ne se recalculent plus à chaque cran ; chiffres identiques ; seul dans sa session · noté 28/10 · petit · Opus/high · seul dans sa conversation (relevé du vent avant/après sur les 12 sessions réelles, comme au lot 30) : à lancer dans une conversation neuve · dépend de : 56 (levé) · détail : docs/backlog/52-assainissement.md
-- 60 · [dette] Graphes, partie 2 : un seul graphe relié à la trace, d'abord en course et à vélo ; rien ne change à l'écran · noté 28/10 · petit · Opus/high · dépend de : 59 (levé) · détail : docs/backlog/52-assainissement.md
 - 61 · [dette] Graphes, partie 3 : le même graphe en voile, surf, test, sauts et fractionné ; pics de FC gardés dans « graphiques » (Q37, Q38) · noté 28/10 · petit · Opus/high · dépend de : 60 · détail : docs/backlog/52-assainissement.md
 - 62 · [dette] Analyses, partie commune 1 : lecture de la session et onglets écrits une fois pour les quatre modules ; rien ne change à l'écran · noté 28/10 · petit · Opus/high · dépend de : 54 · détail : docs/backlog/52-assainissement.md
 - 63 · [dette] Analyses, partie commune 2 : FC, couches de la carte, sauts et pumping en commun (Q39) · noté 28/10 · petit · Opus/medium · dépend de : 62, 59 (levé) · détail : docs/backlog/52-assainissement.md

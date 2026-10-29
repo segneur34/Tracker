@@ -1,13 +1,9 @@
-import { toFixedNumber } from '../core/basics';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { niceTicks } from '../core/chartZoom';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import type { GradientStop } from '../running/runningAnalytics';
 import { HoverReadout, type Readout } from './ChartReadout';
-import { gradeGradientDefs } from './gradeGradientDefs';
-import { NO_TOOLTIP_CONTENT, clearTrackHover, trackHover } from './chartHover';
-import ZoomableChart, { ChartZoomProbe } from './ZoomableChart';
-import { ALTITUDE_COLOR, CHART_GRID_PROPS, CHART_TICK, chartTick } from './chartStyle';
+import { distanceX } from './chartAxes';
+import { ALTITUDE_COLOR } from './chartStyle';
+import TrackChart, { type TrackYAxis } from './TrackChart';
 
 /** Une ligne du profil : `index` renvoie au point de trace, `dist` dans l'unité de l'activité. */
 export interface ElevationProfileRow {
@@ -19,6 +15,9 @@ export interface ElevationProfileRow {
 
 /** Hauteur du profil par défaut, en px. */
 const PROFILE_HEIGHT_PX = 130;
+
+/** Axe de l'altitude, sans unité couchée : le profil est étroit. */
+const PROFILE_AXIS: TrackYAxis[] = [{ color: ALTITUDE_COLOR, domain: ['auto', 'auto'], width: 38, tickFormatter: (v) => `${v}` }];
 
 /**
  * Profil d'altitude compact de l'onglet « général », à pied et à vélo (22/10) :
@@ -48,27 +47,13 @@ function ElevationProfileMini({
   /** Grille en pointillés derrière la courbe. */
   grid?: boolean;
 }) {
-  const onHover = trackHover(rows);
   return (
     <div style={{ marginTop: '10px' }}>
       <HoverReadout line read={read} label="Altitude" color={ALTITUDE_COLOR} />
-      <ZoomableChart zoom={zoom} onLeave={clearTrackHover} onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${height}px` }}>
-        <ResponsiveContainer>
-          <AreaChart data={rows} onMouseMove={onHover} onTouchMove={onHover} margin={{ top: 4, right: 6, left: 0, bottom: 0 }}>
-            <ChartZoomProbe />
-            {grid && <CartesianGrid {...CHART_GRID_PROPS} />}
-            {gradeGradientDefs(gradientId, stops)}
-            <XAxis dataKey="dist" type="number" allowDataOverflow
-              domain={zoom.shown ? [zoom.shown.min, zoom.shown.max] : ['dataMin', 'dataMax']}
-              ticks={zoom.shown ? niceTicks(zoom.shown) : undefined}
-              tickFormatter={(v: number) => `${toFixedNumber(v, 3)} ${distanceSymbol}`} tick={CHART_TICK} />
-            <YAxis domain={['auto', 'auto']} width={38} tickFormatter={(v) => `${v}`} tick={chartTick(ALTITUDE_COLOR)} />
-            <Tooltip content={NO_TOOLTIP_CONTENT} isAnimationActive={false} />
-            <Area type="monotone" dataKey="altitude" stroke={`url(#${gradientId})`} strokeWidth={2} fill={`url(#${gradientId})`} fillOpacity={0.35}
-              dot={false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
-          </AreaChart>
-        </ResponsiveContainer>
-      </ZoomableChart>
+      <TrackChart rows={rows} zoom={zoom} x={distanceX(distanceSymbol)} yAxes={PROFILE_AXIS}
+        series={[{ kind: 'area', key: 'altitude', name: 'Altitude', color: ALTITUDE_COLOR, width: 2, activeDotR: 4, fillOpacity: 0.35, gradient: { id: gradientId, stops } }]}
+        margin={{ top: 4, right: 6, left: 0, bottom: 0 }} grid={grid}
+        onShowOnMap={onShowOnMap} style={{ width: '100%', height: `${height}px` }} />
     </div>
   );
 }

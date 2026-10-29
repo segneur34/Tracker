@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { ReactElement } from 'react';
 import type { XRange } from '../core/chartZoom';
-import { elapsedMinutesAxis, timeOfDayAxis } from '../components/chartAxes';
+import { timeOfDayAxis, timeOfDayX } from '../components/chartAxes';
 import { inChartView } from '../components/chartHover';
 import { formatTimeOfDay } from '../core/units';
 import { useChartZoom, type ChartZoom } from './useChartZoom';
@@ -35,10 +35,10 @@ export function useTimeChartAxis(track: ReadonlyArray<{ timeMs: number }>, sessi
     fullRange,
     zoom,
     cardioZoom,
-    /** Axe en heure du jour, à poser comme `xAxis`. */
+    /** Axe en heure du jour, à poser comme `XAxis`. */
     timeAxis: (z: ChartZoom): ReactElement => timeOfDayAxis(z, startMs),
-    /** Axe en temps écoulé. */
-    elapsedAxis: (z: ChartZoom): ReactElement => elapsedMinutesAxis(z),
+    /** Abscisse en heure du jour d'un graphe de trace (`TrackChart`, `HeartRateChart`). */
+    timeX: timeOfDayX(startMs),
     /** Le point `i` est dans la plage zoomée de `z` : sinon, rien à lire. */
     readable: (z: ChartZoom, i: number): boolean => minutes[i] !== undefined && inChartView(z.view, minutes[i]),
     /** Heure du jour du point `i`, abscisse d'une lecture. */
