@@ -1,5 +1,50 @@
-import { describe, expect, it } from 'vitest';
-import { createJsonStore, createMirroredBackend, type StorageBackend } from './storage';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createJsonStore, createMirroredBackend, loadNativeEntries, type PreferencesReader, type StorageBackend } from './storage';
+
+/** Preferences simulées du téléphone, pour `initStorage`. */
+const preferences = {
+  values: {} as Record<string, string>,
+  failures: {} as Record<string, number>,
+  keysFail: false,
+  written: [] as string[],
+};
+
+vi.mock('./runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./runtime')>()),
+  isNativeApp: () => true,
+}));
+
+vi.mock('@capacitor/preferences', () => ({
+  Preferences: {
+    keys: async () => {
+      if (preferences.keysFail) throw new Error('liste illisible');
+      return { keys: Object.keys(preferences.values) };
+    },
+    get: async ({ key }: { key: string }) => {
+      if ((preferences.failures[key] ?? 0) > 0) {
+        preferences.failures[key] -= 1;
+        throw new Error('lecture refusée');
+      }
+      return { value: preferences.values[key] ?? null };
+    },
+    set: async ({ key }: { key: string }) => {
+      preferences.written.push(key);
+    },
+  },
+}));
+
+beforeEach(() => {
+  preferences.values = {};
+  preferences.failures = {};
+  preferences.keysFail = false;
+  preferences.written = [];
+});
+
+/** Module du stockage neuf, sans le chargement d'un test précédent. */
+const freshStorage = async () => {
+  vi.resetModules();
+  return import('./storage');
+};
 
 /** Stockage en mémoire, qui se comporte comme `localStorage`. */
 const memoryBackend = (initial: Record<string, string> = {}): StorageBackend & { data: Map<string, string> } => {
@@ -153,5 +198,68 @@ describe('createMirroredBackend', () => {
 
     expect(store.read('tracker.panelSizes')).toEqual({ 'sailing.carte': { width: 600 } });
     expect(persisted).toEqual([['tracker.panelSizes', '{"sailing.carte":{"width":600}}']]);
+  });
+});
+
+describe('chargement du stockage du téléphone (A3)', () => {
+  const reader = (values: Record<string, string>, failures: Record<string, number>): PreferencesReader => ({
+    keys: async () => ({ keys: Object.keys(values) }),
+    get: async ({ key }) => {
+      if ((failures[key] ?? 0) > 0) {
+        failures[key] -= 1;
+        throw new Error('lecture refusée');
+      }
+      return { value: values[key] };
+    },
+  });
+
+  it('lit les autres clés quand une lecture échoue, et la relève', async () => {
+    const load = await loadNativeEntries(reader({ a: '1', b: '2', c: '3' }, { b: 2 }));
+    expect(load.initial).toEqual({ a: '1', c: '3' });
+    expect(load.failedKeys).toEqual(['b']);
+  });
+
+  it('refait une fois une lecture en échec', async () => {
+    const load = await loadNativeEntries(reader({ a: '1', b: '2' }, { b: 1 }));
+    expect(load.initial).toEqual({ a: '1', b: '2' });
+    expect(load.failedKeys).toEqual([]);
+  });
+
+  it('lève si la liste des clés est illisible', async () => {
+    await expect(loadNativeEntries({ keys: async () => { throw new Error('non'); }, get: async () => ({ value: null }) })).rejects.toThrow();
+  });
+
+  it("au démarrage, garde une clé illisible en mémoire seulement et relève l'échec", async () => {
+    preferences.values = { 'tracker.a': '"un"', 'tracker.b': '"deux"' };
+    preferences.failures = { 'tracker.b': 2 };
+    const storage = await freshStorage();
+    await storage.initStorage();
+    expect(storage.storageStartupFailure()).toEqual({ all: false, keys: ['tracker.b'] });
+    expect(storage.jsonStore.read('tracker.a')).toBe('un');
+    expect(storage.jsonStore.read('tracker.b')).toBeNull();
+    storage.jsonStore.write('tracker.b', 'défaut');
+    storage.jsonStore.write('tracker.a', 'autre');
+    expect(storage.jsonStore.read('tracker.b')).toBe('défaut');
+    // La vraie valeur, peut-être encore sur le téléphone, n'est jamais écrasée.
+    expect(preferences.written).toEqual(['tracker.a']);
+  });
+
+  it('reste en mémoire, sans localStorage, si rien ne peut être lu', async () => {
+    preferences.values = { 'tracker.a': '"un"' };
+    preferences.keysFail = true;
+    const storage = await freshStorage();
+    await storage.initStorage();
+    expect(storage.storageStartupFailure()).toEqual({ all: true, keys: [] });
+    storage.jsonStore.write('tracker.a', 'autre');
+    expect(storage.jsonStore.read('tracker.a')).toBe('autre');
+    expect(preferences.written).toEqual([]);
+  });
+
+  it('sans échec, ne relève rien', async () => {
+    preferences.values = { 'tracker.a': '"un"' };
+    const storage = await freshStorage();
+    await storage.initStorage();
+    expect(storage.storageStartupFailure()).toBeNull();
+    expect(storage.jsonStore.read('tracker.a')).toBe('un');
   });
 });

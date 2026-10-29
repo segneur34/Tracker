@@ -32,6 +32,10 @@ const IGN_NO_DATA_BELOW_M = -1000;
 
 const NO_NETWORK = 'Pas de réseau : l\'altitude de l\'IGN sera redemandée à la prochaine ouverture.';
 const UNREADABLE = 'Réponse du service d\'altitude de l\'IGN illisible.';
+const TIMEOUT = 'Le service d\'altitude de l\'IGN ne répond pas : réessayez dans un moment.';
+
+/** Délai accordé à chaque paquet, réponse et corps compris, en millisecondes : au-delà, la demande échoue. */
+export const IGN_REQUEST_TIMEOUT_MS = 30_000;
 
 type LatLon = { lat: number; lon: number };
 
@@ -77,10 +81,14 @@ const wait = (ms: number, signal?: AbortSignal): Promise<void> =>
 
 /**
  * Altitude du terrain en chaque point, `null` hors couverture, par paquets
- * envoyés l'un après l'autre. `signal` abandonne la demande. Lève une erreur
- * au message lisible.
+ * envoyés l'un après l'autre. `signal` abandonne la demande ; un paquet sans
+ * réponse en `timeoutMs` la fait échouer. Lève une erreur au message lisible.
  */
-export const fetchIgnElevations = async (points: ReadonlyArray<LatLon>, signal?: AbortSignal): Promise<(number | null)[]> => {
+export const fetchIgnElevations = async (
+  points: ReadonlyArray<LatLon>,
+  signal?: AbortSignal,
+  timeoutMs: number = IGN_REQUEST_TIMEOUT_MS
+): Promise<(number | null)[]> => {
   const result: (number | null)[] = [];
   for (let from = 0; from < points.length; from += IGN_MAX_POINTS) {
     if (from > 0) await wait(IGN_REQUEST_GAP_MS, signal);
@@ -90,7 +98,7 @@ export const fetchIgnElevations = async (points: ReadonlyArray<LatLon>, signal?:
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(ignRequestBody(batch)),
       signal,
-    }, { noNetwork: NO_NETWORK, unreadable: UNREADABLE, httpError: ignErrorMessage });
+    }, { noNetwork: NO_NETWORK, unreadable: UNREADABLE, httpError: ignErrorMessage, timeout: TIMEOUT, timeoutMs });
     result.push(...parseIgnElevations(json, batch.length));
   }
   return result;

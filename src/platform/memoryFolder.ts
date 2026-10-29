@@ -543,13 +543,30 @@ export const removePrivateFile = async (path: string): Promise<void> => {
   }
 };
 
+/** Suffixe d'un fichier du dossier privé le temps de l'écrire : seul un fichier complet porte son nom. */
+const PRIVATE_TEMP_SUFFIX = '.tmp';
+
 /**
  * Dossier privé de l'application, sur le téléphone. Les sessions enregistrées
  * y attendent qu'un dossier mémoire soit accessible : un enregistrement ne
- * doit jamais échouer faute de dossier.
+ * doit jamais échouer faute de dossier. Chaque fichier est écrit sous un nom
+ * temporaire (`.tmp`), puis renommé : une écriture interrompue ne laisse jamais
+ * un GPX tronqué sous son nom (les sessions en attente ne prennent que les `.gpx`).
  */
 const createPrivateFolder = (base: string): MemoryFolder => {
   const full = (path: string) => [base, ...splitPath(path)].join('/');
+  /** Écrit `data` sous un nom temporaire, puis le renomme (le renommage remplace un fichier du même nom). */
+  const writeAtomically = async (path: string, data: string, utf8: boolean): Promise<void> => {
+    const { Filesystem, Directory, Encoding } = await filesystem();
+    const temp = full(path) + PRIVATE_TEMP_SUFFIX;
+    try {
+      await Filesystem.writeFile({ path: temp, data, directory: Directory.Data, recursive: true, ...(utf8 ? { encoding: Encoding.UTF8 } : {}) });
+      await Filesystem.rename({ from: temp, to: full(path), directory: Directory.Data, toDirectory: Directory.Data });
+    } catch (err) {
+      await Filesystem.deleteFile({ path: temp, directory: Directory.Data }).catch(() => undefined);
+      throw err;
+    }
+  };
   return {
     kind: 'device',
     label: 'dossier privé de l\'application',
@@ -576,22 +593,10 @@ const createPrivateFolder = (base: string): MemoryFolder => {
         return null;
       }
     },
-    writeText: async (path, text) => {
-      const { Filesystem, Directory, Encoding } = await filesystem();
-      await Filesystem.writeFile({
-        path: full(path),
-        data: text,
-        directory: Directory.Data,
-        encoding: Encoding.UTF8,
-        recursive: true,
-      });
-    },
+    writeText: (path, text) => writeAtomically(path, text, true),
     readBytes: (path) => readPrivateBytes(full(path)),
-    writeBytes: async (path, bytes) => {
-      const { Filesystem, Directory } = await filesystem();
-      // Sans encodage, `data` est du base64.
-      await Filesystem.writeFile({ path: full(path), data: bytesToBase64(bytes), directory: Directory.Data, recursive: true });
-    },
+    // Sans encodage, `data` est du base64.
+    writeBytes: (path, bytes) => writeAtomically(path, bytesToBase64(bytes), false),
     remove: async (path) => {
       const { Filesystem, Directory } = await filesystem();
       try {

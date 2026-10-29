@@ -68,6 +68,23 @@ export const useChangeSessionActivity = (family: SportFamily, setActivity: (id: 
 };
 
 /**
+ * Issue de la lecture du GPX d'une analyse : son texte, ou l'erreur à dire.
+ * `retry` : la lecture a levé (accès au dossier perdu, carte retirée), elle
+ * sera refaite quand la session reparaîtra dans la mémoire.
+ */
+export type GpxLoadOutcome = { text: string } | { error: string; retry: boolean };
+
+/** Lecture du GPX d'une analyse (`loadSessionGpx`), sans jamais lever. */
+export const loadGpxOutcome = async (load: Promise<string | null>): Promise<GpxLoadOutcome> => {
+  try {
+    const text = await load;
+    return text === null ? { error: 'GPX introuvable dans la mémoire.', retry: false } : { text };
+  } catch (err) {
+    return { error: err instanceof Error && err.message ? err.message : 'GPX illisible.', retry: true };
+  }
+};
+
+/**
  * Côté module : charge la session désignée par l'URL, une seule fois par
  * fichier, dès que la bibliothèque la connaît. Sa fiche est relue en entier
  * avant le GPX (`loadSessionGpx`) : altitude, voies et sauts rangés sont là
@@ -96,16 +113,22 @@ export const useSessionFromUrl = (onLoad: (content: string, session: LibrarySess
   useEffect(() => {
     if (requested === null || !known || loadedFor.current === requested) return;
     loadedFor.current = requested;
-    void loadSessionGpx(requested).then((text) => {
+    void loadGpxOutcome(loadSessionGpx(requested)).then((outcome) => {
       if (loadedFor.current !== requested) return;
+      if ('error' in outcome) {
+        // Lecture qui a levé : refaite quand la session reparaît (dossier rouvert).
+        if (outcome.retry) loadedFor.current = null;
+        setReadError(outcome.error);
+        return;
+      }
       // La session relue en entier, plus récente que celle du dernier rendu.
       const current = librarySession(requested) ?? latest.current.session;
-      if (text === null || !current) {
+      if (!current) {
         setReadError('GPX introuvable dans la mémoire.');
         return;
       }
       setReadError(null);
-      latest.current.onLoad(text, current);
+      latest.current.onLoad(outcome.text, current);
     });
   }, [requested, known]);
 

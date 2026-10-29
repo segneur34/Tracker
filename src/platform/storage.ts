@@ -144,28 +144,89 @@ let nativeBackend: StorageBackend | null = null;
 /** Stockage de l'application. */
 export const jsonStore = createJsonStore(() => nativeBackend ?? localStorage);
 
+/** Ce que le stockage natif a su lire, clé par clé. */
+export interface NativeStorageLoad {
+  initial: Record<string, string>;
+  /** Clés restées illisibles après un second essai : leur valeur sur le téléphone est inconnue. */
+  failedKeys: string[];
+}
+
+/** Les Preferences natives, réduites à ce que le chargement en lit. */
+export interface PreferencesReader {
+  keys(): Promise<{ keys: string[] }>;
+  get(options: { key: string }): Promise<{ value: string | null }>;
+}
+
+/**
+ * Lit les Preferences clé par clé : une lecture qui échoue est refaite une
+ * fois, puis la clé est relevée sans retenir les autres. Lève si la liste des
+ * clés elle-même est illisible.
+ */
+export const loadNativeEntries = async (preferences: PreferencesReader): Promise<NativeStorageLoad> => {
+  const { keys } = await preferences.keys();
+  const read = async (key: string): Promise<{ key: string; value: string | null } | null> => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return { key, value: (await preferences.get({ key })).value };
+      } catch {
+        // Second essai, puis la clé est relevée.
+      }
+    }
+    return null;
+  };
+  const results = await Promise.all(keys.map(read));
+  const initial: Record<string, string> = {};
+  const failedKeys: string[] = [];
+  results.forEach((result, i) => {
+    if (!result) failedKeys.push(keys[i]);
+    else if (result.value !== null) initial[result.key] = result.value;
+  });
+  return { initial, failedKeys };
+};
+
+/** Échec du chargement du stockage natif au démarrage : `all` si rien n'a pu être lu. */
+export interface StorageStartupFailure {
+  all: boolean;
+  keys: readonly string[];
+}
+
+let startupFailure: StorageStartupFailure | null = null;
+
+/**
+ * Échec du chargement du stockage au démarrage, `null` s'il n'y en a pas eu.
+ * Les réglages touchés valent alors par défaut et ne sont gardés qu'en mémoire
+ * jusqu'à la fermeture : à dire à l'utilisateur, et à ne pas recopier dans le
+ * dossier mémoire.
+ */
+export const storageStartupFailure = (): StorageStartupFailure | null => startupFailure;
+
 /**
  * À attendre avant le premier rendu. Sur le téléphone, charge en mémoire les
  * Preferences natives, que le système ne vide pas comme il peut vider le
  * `localStorage` d'une WebView ; les écritures y sont ensuite recopiées une à
- * une. Dans le navigateur, ne fait rien. Un échec de chargement laisse
- * `localStorage` en place plutôt que d'empêcher l'application de démarrer.
+ * une. Dans le navigateur, ne fait rien. Une clé illisible vaut par défaut et
+ * reste en mémoire seulement, sans jamais être recopiée dans les Preferences
+ * (sa vraie valeur y est peut-être encore) ; si rien ne peut être lu, tout le
+ * stockage reste en mémoire, jamais sur le `localStorage` de la WebView en
+ * silence. L'échec est relevé (`storageStartupFailure`).
  */
 export const initStorage = async (): Promise<void> => {
   if (!isNativeApp()) return;
+  let preferences: typeof import('@capacitor/preferences').Preferences;
+  let load: NativeStorageLoad;
   try {
-    const { Preferences } = await import('@capacitor/preferences');
-    const { keys } = await Preferences.keys();
-    const entries = await Promise.all(
-      keys.map(async (key) => [key, (await Preferences.get({ key })).value] as const)
-    );
-    const initial: Record<string, string> = {};
-    for (const [key, value] of entries) if (value !== null) initial[key] = value;
-    nativeBackend = createMirroredBackend(initial, (key, value) => {
-      // Écriture refusée : la valeur, déjà en mémoire, vaut pour la session en cours.
-      Preferences.set({ key, value }).catch(() => jsonStore.reportFailure(key));
-    });
+    ({ Preferences: preferences } = await import('@capacitor/preferences'));
+    load = await loadNativeEntries(preferences);
   } catch {
-    // Preferences indisponibles : on reste sur `localStorage`.
+    startupFailure = { all: true, keys: [] };
+    nativeBackend = createMirroredBackend({}, () => undefined);
+    return;
   }
+  const unreadable = new Set(load.failedKeys);
+  if (unreadable.size > 0) startupFailure = { all: false, keys: load.failedKeys };
+  nativeBackend = createMirroredBackend(load.initial, (key, value) => {
+    if (unreadable.has(key)) return;
+    // Écriture refusée : la valeur, déjà en mémoire, vaut pour la session en cours.
+    preferences.set({ key, value }).catch(() => jsonStore.reportFailure(key));
+  });
 };

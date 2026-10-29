@@ -545,10 +545,10 @@ function RecordingScreen() {
    */
   const handleAnalyze = async () => {
     const pending = recorder.pending;
-    const intervalActivity = pending && pending.intervals.length > 0
+    const intervalActivity = pending?.activity && pending.intervals.length > 0
       ? intervalActivityFor(pending.activity, activitiesOfFamily(shownActivities, 'fractionne'))
       : null;
-    const toIntervals = intervalActivity !== null && pending !== null && window.confirm(
+    const toIntervals = intervalActivity !== null && pending?.activity && window.confirm(
       `Le compteur d'intervalles a servi pendant cette session. La ranger en « ${intervalActivity.name} » ? `
       + `Elle aura l'onglet fractionné ; sinon elle reste en « ${pending.activity.name} », sans cet onglet.`
     );
@@ -561,9 +561,10 @@ function RecordingScreen() {
         const listed = activities.some((a) => a.id === intervalActivity.id);
         updateSessionRecord(result.libraryFile, { sport: intervalActivity.base, activityId: listed ? intervalActivity.id : null });
         openSession(result.libraryFile, 'fractionne');
-      } else {
+      } else if (result.sport !== null) {
         openSession(result.libraryFile, sportFamily(result.sport));
       }
+      // Session à classer (journal sans en-tête) : rangée sans activité, elle se classe depuis la bibliothèque.
     }
   };
 
@@ -951,11 +952,13 @@ function RecordingScreen() {
         <Card heading={(
           <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
             {pending.recovered ? 'Session interrompue récupérée' : 'Session terminée'}
-            <SavedSessionShare gpx={pending.content} activity={pending.activity} fileName={pending.fileName} libraryFile={null} />
+            {pending.activity && (
+              <SavedSessionShare gpx={pending.content} activity={pending.activity} fileName={pending.fileName} libraryFile={null} />
+            )}
           </span>
         )}>
           <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
-            {pending.activity.name}, {pending.pointCount} {hasPositions(pending.sport) ? 'points' : 'mesures de la ceinture'}.<br />
+            {pending.activity?.name ?? 'À classer'}, {pending.pointCount} {pending.sport === null || hasPositions(pending.sport) ? 'points' : 'mesures de la ceinture'}.<br />
             <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)' }}>
               Pas encore rangée : « Analyser » la range dans la mémoire et l'ouvre, « Jeter » l'abandonne.
               Aucun nouvel enregistrement avant ce choix.
@@ -981,11 +984,13 @@ function RecordingScreen() {
         <Card heading={(
           <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
             Session rangée
-            <SavedSessionShare gpx={saved.content} activity={saved.activity} fileName={saved.fileName} libraryFile={saved.libraryFile} />
+            {saved.activity && (
+              <SavedSessionShare gpx={saved.content} activity={saved.activity} fileName={saved.fileName} libraryFile={saved.libraryFile} />
+            )}
           </span>
         )}>
           <p style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
-            {saved.activity.name}, {saved.pointCount} {hasPositions(saved.sport) ? 'points' : 'mesures de la ceinture'}.<br />
+            {saved.activity?.name ?? 'À classer'}, {saved.pointCount} {saved.sport === null || hasPositions(saved.sport) ? 'points' : 'mesures de la ceinture'}.<br />
             <span style={{ color: 'var(--muted)', fontSize: 'var(--text-s)', wordBreak: 'break-all' }}>Rangée dans : {saved.location}</span>
             {!saved.libraryFile && native && (
               <>
@@ -997,8 +1002,8 @@ function RecordingScreen() {
             )}
           </p>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            {saved.libraryFile && (
-              <Button variant="primary" onClick={() => openSession(saved.libraryFile!, sportFamily(saved.sport))}>
+            {saved.libraryFile && saved.sport !== null && (
+              <Button variant="primary" onClick={() => openSession(saved.libraryFile!, sportFamily(saved.sport!))}>
                 Analyser
               </Button>
             )}

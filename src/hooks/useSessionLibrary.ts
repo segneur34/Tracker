@@ -34,13 +34,13 @@ import {
   isWritableRecord,
   lightRecord,
   mergeLightRecord,
-  parseRecord,
-  parseRecordParts,
+  parseRecordWithRaw,
   readAnalysis,
   recordFileName,
   serializeRecord,
   type LibrarySession,
   type RecordPatch,
+  type RecordUnreadable,
   type RecordWithoutSummary,
   type SessionAnalysis,
   type SessionRecord,
@@ -86,7 +86,7 @@ import {
   type MemoryKind,
 } from '../platform/memoryFolder';
 import { isNativeApp } from '../platform/runtime';
-import { jsonStore } from '../platform/storage';
+import { jsonStore, storageStartupFailure } from '../platform/storage';
 import type { IntervalSeries } from '../recording/intervalTimer';
 import type { SessionTest } from '../recording/fitnessTest';
 import { sessionFileName } from '../recording/session';
@@ -217,6 +217,9 @@ const reportError = (text: string): void => {
   setState({ error: state.error ? `${sentence(state.error)} ${message}` : message });
 };
 
+/** Erreur du démarrage de l'application (hors de la mémoire), dite dans le même bandeau. */
+export const reportStartupError = (text: string): void => reportError(text);
+
 /** Laisse l'interface respirer entre deux traces lourdes. */
 const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -253,6 +256,31 @@ const removing = new Set<string>();
  * la première écriture réussie.
  */
 const unwritten = new Set<string>();
+
+/**
+ * Champs illisibles de chaque fiche à sa dernière lecture (`parseRecordWithRaw`), par dossier puis
+ * par GPX : réécrits tels quels tant qu'ils n'ont pas changé (`serializeRecord`). Gardés hors de la
+ * fiche, que le cache allégé recopie champ à champ.
+ */
+const unreadableByFolder = new WeakMap<MemoryFolder, Map<string, RecordUnreadable>>();
+
+const unreadableOf = (f: MemoryFolder, file: string): RecordUnreadable | undefined => unreadableByFolder.get(f)?.get(file);
+
+const rememberUnreadable = (f: MemoryFolder, file: string, unreadable: RecordUnreadable | undefined): void => {
+  let byFile = unreadableByFolder.get(f);
+  if (!unreadable || Object.keys(unreadable).length === 0) {
+    byFile?.delete(file);
+    return;
+  }
+  if (!byFile) {
+    byFile = new Map();
+    unreadableByFolder.set(f, byFile);
+  }
+  byFile.set(file, unreadable);
+};
+
+/** Fiche de 0 octet (création interrompue, fichier créé vide avant d'être écrit) : tenue pour absente. */
+const isBlankRecordText = (text: string | null): boolean => text !== null && text.trim() === '';
 
 const replaceSession = (session: LibrarySession): void => {
   if (removing.has(session.file)) return;
@@ -321,10 +349,12 @@ const hydrateSession = (f: MemoryFolder, file: string): Promise<void> => {
   let pending = hydrating.get(file);
   if (!pending) {
     pending = (async () => {
-      const text = await f.readText(sessionPath(recordFileName(file)));
+      const read = await f.readText(sessionPath(recordFileName(file)));
       const current = findSession(file);
       if (!current?.partial || folder !== f) return;
-      const parts = text === null ? null : parseRecordParts(text);
+      const text = isBlankRecordText(read) ? null : read;
+      const parsed = text === null ? null : parseRecordWithRaw(text);
+      const parts = parsed?.parts ?? null;
       // Résumé du disque illisible (écriture interrompue) : celui de la mémoire, refait depuis le GPX, le remplace (E-B10).
       const disk = parts ? { ...parts, summary: parts.summary ?? current.record.summary } : null;
       if (text !== null && !disk) {
@@ -332,6 +362,7 @@ const hydrateSession = (f: MemoryFolder, file: string): Promise<void> => {
       } else if (disk && !isWritableRecord(disk)) {
         replaceSession({ ...current, record: { ...disk, gpx: file }, partial: false, readOnly: true, warning: FUTURE_RECORD_WARNING });
       } else {
+        rememberUnreadable(f, file, parsed?.unreadable);
         replaceSession({ ...current, record: disk ? mergeLightRecord(disk, current.record) : current.record, partial: false });
       }
     })().finally(() => hydrating.delete(file));
@@ -470,7 +501,7 @@ const writeRecordNow = async (file: string): Promise<boolean> => {
     await hydrateSession(f, file);
     const session = findSession(file);
     if (!session || removing.has(file) || session.readOnly || session.partial || folder !== f) return false;
-    await f.writeText(sessionPath(recordFileName(file)), serializeRecord(session.record));
+    await f.writeText(sessionPath(recordFileName(file)), serializeRecord(session.record, unreadableOf(f, file)));
     unwritten.delete(file);
     return true;
   } catch (err) {
@@ -591,6 +622,11 @@ const publishSettingsFiles = (): void => {
  * autre nom, est retiré.
  */
 const writeOwnSettings = async (f: MemoryFolder, savedAt: number): Promise<void> => {
+  // Stockage illisible au démarrage : les réglages en mémoire ne sont pas ceux de l'appareil, son fichier reste tel quel.
+  if (storageStartupFailure()) {
+    publishSettingsFiles();
+    return;
+  }
   const id = deviceId();
   const own = ownSettingsEntry(settingsEntries, id);
   const othersFiles = new Set(settingsEntries.filter((e) => e !== own).map((e) => e.fileName.toLowerCase()));
@@ -700,7 +736,9 @@ const syncSettings = async (f: MemoryFolder): Promise<boolean> => {
   let savedAt = readLocalSavedAt();
   let changed = false;
   let autoAdopted = false;
-  if (savedAt === null) {
+  // Stockage illisible au démarrage : l'appareil peut se croire neuf sans l'être, rien n'est repris de lui-même.
+  const startupFailed = storageStartupFailure() !== null;
+  if (savedAt === null && !startupFailed) {
     const newest = own ?? newestSettingsEntry(settingsEntries);
     const source = newest?.file ?? legacy;
     if (source) {
@@ -720,7 +758,7 @@ const syncSettings = async (f: MemoryFolder): Promise<boolean> => {
     && settingsSignature(own.file.values) === lastSignature;
   if (upToDate) publishSettingsFiles();
   else await writeOwnSettings(f, savedAt);
-  if (legacy) await f.remove(SETTINGS_FILE);
+  if (legacy && !startupFailed) await f.remove(SETTINGS_FILE);
   offerNewSettings(autoAdopted);
   return changed;
 };
@@ -959,7 +997,15 @@ const scan = async (f: MemoryFolder, gen: number, editsBefore = editCount): Prom
     const texts = await Promise.all(batch.map((file) => f.readText(sessionPath(recordFileName(file)))));
     batch.forEach((file, i) => {
       const text = texts[i];
-      const parts = text === null ? null : parseRecordParts(text);
+      // Fiche vide : tenue pour absente, elle est refaite depuis le GPX.
+      if (isBlankRecordText(text)) {
+        rememberUnreadable(f, file, undefined);
+        jobs.push({ file, kind: 'create', readOnly: false, warning: null });
+        return;
+      }
+      const parsed = text === null ? null : parseRecordWithRaw(text);
+      const parts = parsed?.parts ?? null;
+      rememberUnreadable(f, file, parsed?.unreadable);
       if (parts?.summary) keep(file, { ...parts, summary: parts.summary }, false);
       // Résumé seul illisible : il se refait depuis le GPX, la fiche garde nom, notes et réglages.
       else if (parts && isWritableRecord(parts)) jobs.push({ file, kind: 'create', readOnly: false, warning: null, base: parts });
@@ -1034,7 +1080,8 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
   const record = job.base ? withSummary({ ...job.base, gpx: job.file }, analyzed.summary) : newRecord(job.file, analyzed, 'import');
   if (!job.readOnly) {
     try {
-      await f.writeText(sessionPath(recordFileName(job.file)), serializeRecord(record));
+      if (!job.base) rememberUnreadable(f, job.file, undefined);
+      await f.writeText(sessionPath(recordFileName(job.file)), serializeRecord(record, unreadableOf(f, job.file)));
       knownNames.add(recordFileName(job.file));
       unwritten.delete(job.file);
     } catch (err) {
@@ -1210,6 +1257,19 @@ const applySettingsChange = async (changed: boolean): Promise<void> => {
   }
 };
 
+/**
+ * Stockage de l'appareil illisible au démarrage (`storageStartupFailure`) : les réglages touchés valent par
+ * défaut, en mémoire seulement. Dit dès l'interface affichée, et redit après l'ouverture de la mémoire, qui
+ * efface les erreurs précédentes.
+ */
+const reportStorageStartupFailure = (): void => {
+  const failure = storageStartupFailure();
+  if (!failure) return;
+  reportError(failure.all
+    ? "Réglages de l'appareil illisibles au démarrage : les réglages par défaut valent jusqu'à la fermeture, et les changements faits d'ici là ne seront pas gardés. Relancez l'application"
+    : "Une partie des réglages de l'appareil n'a pas pu être lue au démarrage : elle vaut par défaut jusqu'à la fermeture, et ses changements ne seront pas gardés. Relancez l'application");
+};
+
 // --- API ---
 
 /**
@@ -1224,6 +1284,7 @@ export const openLibrary = (): Promise<void> => {
     if (access.state === 'ready') {
       const settingsChanged = await attach(access.folder);
       if (access.notice) reportError(access.notice);
+      if (uiStarted) reportStorageStartupFailure();
       await applySettingsChange(settingsChanged);
       return;
     }
@@ -1255,6 +1316,7 @@ export const startLibraryUi = (isBusy: () => boolean): void => {
     if (settingsTimer !== null) clearTimeout(settingsTimer);
     settingsTimer = setTimeout(() => void flushSettings(), SETTINGS_WRITE_DELAY_MS);
   });
+  reportStorageStartupFailure();
   // Un réglage que l'appareil refuse de garder vaut jusqu'à la fermeture : dit une fois par lancement.
   let storageFailureShown = false;
   jsonStore.subscribeFailure(() => {
@@ -1284,12 +1346,14 @@ export interface AddResult {
 }
 
 interface AddOptions {
-  /** Support imposé ; absent : celui de la fiche importée, sinon deviné. */
-  sport?: SportType;
+  /** Support imposé ; absent : celui de la fiche importée, sinon deviné ; `null` : aucun (session à classer). */
+  sport?: SportType | null;
   /** Activité choisie à l'enregistrement. */
   activityId?: string;
   /** Fiche qui accompagne le GPX, lors de l'import d'un dossier ; son résumé est refait. */
   record?: RecordWithoutSummary | null;
+  /** Champs illisibles de cette fiche à sa lecture, réécrits tels quels (`parseRecordWithRaw`). */
+  unreadable?: RecordUnreadable;
   /** Séances du compteur faites pendant l'enregistrement, rangées dans la fiche. */
   intervals?: IntervalSeries[];
   /** Repères du bouton « Note », rangés dans la fiche. */
@@ -1347,7 +1411,7 @@ const prunedMotion = async (
 const addGpx = async (text: string, source: SessionSource, options: AddOptions): Promise<AddResult> => {
   let analyzed: AnalyzedGpx | null;
   try {
-    const sport = options.sport ?? options.record?.sport ?? undefined;
+    const sport = options.sport !== undefined ? options.sport : options.record?.sport ?? undefined;
     const fields = options.test ? { ...options.record, test: options.test } : options.record;
     analyzed = analyzeGpx(text, sport, options.record?.analysis, options.activityId ?? options.record?.activityId, fields);
   } catch (err) {
@@ -1388,6 +1452,9 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     if (!motion) return { status: 'duplicate', file: existing.file, recordCompleted };
     await f.writeBytes(sessionPath(imuFileName(existing.file)), motion);
     knownNames.add(imuFileName(existing.file));
+    // Publiée de nouveau : une analyse ouverte sur elle relit `hasSessionMotion` (onglets « sauts » et « pumping »).
+    const withMotion = findSession(existing.file);
+    if (withMotion) replaceSession({ ...withMotion });
     return { status: 'duplicate', file: existing.file, motionAdded: true, recordCompleted };
   }
 
@@ -1397,8 +1464,9 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     // Seul un enregistrement attend un dossier ; un import sans dossier est refusé (décision du 27/10).
     const pending = source === 'enregistrement' ? pendingFolder() : null;
     if (!pending) return { status: 'unsaved', file: null };
-    await pending.writeText(name, text);
+    // Les capteurs d'abord : un GPX en attente a toujours les siens complets à côté de lui.
     if (options.motion) await pending.writeBytes(imuFileName(name), options.motion);
+    await pending.writeText(name, text);
     await countPending();
     return { status: 'pending', file: null };
   }
@@ -1428,7 +1496,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   const written = [sessionPath(gpx), sessionPath(recordFileName(gpx)), ...(motion ? [sessionPath(imuFileName(gpx))] : [])];
   try {
     await f.writeText(sessionPath(gpx), text);
-    await f.writeText(sessionPath(recordFileName(gpx)), serializeRecord(record));
+    await f.writeText(sessionPath(recordFileName(gpx)), serializeRecord(record, options.record ? options.unreadable : undefined));
     if (motion) await f.writeBytes(sessionPath(imuFileName(gpx)), motion);
   } catch (err) {
     // Rangée à moitié, la session reparaîtrait sans sa fiche ou ses capteurs, et un nouvel essai ferait un doublon :
@@ -1439,6 +1507,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   knownNames.add(gpx);
   knownNames.add(recordFileName(gpx));
   if (motion) knownNames.add(imuFileName(gpx));
+  rememberUnreadable(f, gpx, options.record ? options.unreadable : undefined);
   replaceSession({ file: gpx, record, readOnly: false, warning: null });
   return { status: 'added', file: gpx };
 };
@@ -1454,7 +1523,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
  */
 export const saveRecordedSession = async (
   text: string,
-  sport: SportType,
+  sport: SportType | null,
   activityId: string | null,
   intervals: IntervalSeries[] = [],
   motion: Uint8Array | null = null,
@@ -1464,6 +1533,7 @@ export const saveRecordedSession = async (
 ): Promise<{ file: string | null; location: string }> => {
   await opening;
   const result = await addGpx(text, 'enregistrement', {
+    // Calcul inconnu (journal sans en-tête) : rien de deviné, la session est rangée « à classer ».
     sport, activityId: activityId ?? undefined, intervals, marks, motion: motion ?? undefined, foil: foil ?? undefined, test: test ?? undefined,
   });
   switch (result.status) {
@@ -1554,10 +1624,11 @@ export const importEntries = async (entries: ImportEntry[]): Promise<ImportRepor
         // à défaut de fichiers posés à côté ; la mémoire range le GPX sans eux.
         const bundle = unbundleSessionGpx(text);
         const recordText = await records.get(entry.key)?.readText();
-        const sidecar = recordText ? parseRecordParts(recordText) : null;
-        const record = sidecar && isWritableRecord(sidecar) ? sidecar : bundle.record;
+        const sidecar = recordText ? parseRecordWithRaw(recordText) : null;
+        const fromSidecar = sidecar !== null && isWritableRecord(sidecar.parts);
+        const record = fromSidecar ? sidecar.parts : bundle.record;
         const motion = (await motions.get(entry.key)?.readBytes()) ?? bundle.motion ?? undefined;
-        const result = await addGpx(bundle.gpx, 'import', { record, motion });
+        const result = await addGpx(bundle.gpx, 'import', { record, motion, unreadable: fromSidecar ? sidecar.unreadable : undefined });
         if (result.status === 'added' && result.file) report.added.push(result.file);
         else if (result.status === 'duplicate') {
           report.duplicates += 1;
@@ -1664,7 +1735,7 @@ export const readSessionExport = async (file: string): Promise<{ gpx: string; re
   if (!f || !session) return null;
   const gpx = await f.readText(sessionPath(file));
   if (gpx === null) return null;
-  return { gpx, record: await fullRecordIn(f, session), motion: await readSessionMotion(file) };
+  return { gpx, record: (await fullRecordIn(f, session)).record, motion: await readSessionMotion(file) };
 };
 
 /** Vrai si la session a ses capteurs (`.imu`) dans la mémoire. */
@@ -1741,6 +1812,7 @@ export const removeSession = async (file: string): Promise<void> => {
       await f.remove(sessionPath(name));
       await f.remove(sessionPath(recordFileName(name)));
       await f.remove(sessionPath(imuFileName(name)));
+      rememberUnreadable(f, name, undefined);
       knownNames.delete(name);
       knownNames.delete(recordFileName(name));
       knownNames.delete(imuFileName(name));
@@ -1757,13 +1829,19 @@ export const removeSession = async (file: string): Promise<void> => {
 
 /**
  * Fiche entière d'une session de la mémoire `f`, pour la recopier ailleurs :
- * une fiche allégée est complétée par celle du disque.
+ * une fiche allégée est complétée par celle du disque. Avec ses champs
+ * illisibles à la lecture (`RecordUnreadable`), à réécrire tels quels.
  */
-const fullRecordIn = async (f: MemoryFolder, session: LibrarySession): Promise<SessionRecord> => {
-  if (!session.partial) return session.record;
+const fullRecordIn = async (
+  f: MemoryFolder, session: LibrarySession
+): Promise<{ record: SessionRecord; unreadable: RecordUnreadable | undefined }> => {
+  if (!session.partial) return { record: session.record, unreadable: unreadableOf(f, session.file) };
   const text = await f.readText(sessionPath(recordFileName(session.file)));
-  const disk = text === null ? null : parseRecord(text);
-  return disk ? mergeLightRecord(disk, session.record) : session.record;
+  const parsed = text === null ? null : parseRecordWithRaw(text);
+  const summary = parsed?.parts.summary;
+  return parsed && summary
+    ? { record: mergeLightRecord({ ...parsed.parts, summary }, session.record), unreadable: parsed.unreadable }
+    : { record: session.record, unreadable: undefined };
 };
 
 /** Vrai si l'on peut désigner un vrai dossier comme mémoire (Chrome et Edge sur ordinateur). */
@@ -1801,8 +1879,10 @@ export const chooseFolder = async (): Promise<void> => {
         const text = await previous.readText(sessionPath(session.file));
         if (text === null) continue;
         const motion = await previous.readBytes(sessionPath(imuFileName(session.file)));
+        const full = session.readOnly ? null : await fullRecordIn(previous, session);
         const result = await addGpx(text, session.record.source, {
-          record: session.readOnly ? null : await fullRecordIn(previous, session),
+          record: full?.record ?? null,
+          unreadable: full?.unreadable,
           motion: motion ?? undefined,
         });
         if (result.status === 'added') copied += 1;

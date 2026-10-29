@@ -163,21 +163,35 @@ const setState = (next: BeltState): void => {
   stateListeners.forEach((listener) => listener(next));
 };
 
-/** Abonnement unique aux événements du greffon, pris au premier besoin. */
+/**
+ * Abonnement unique aux événements du greffon, pris au premier besoin. Un
+ * échec (greffon pas encore prêt) est oublié, pour qu'un `holdBelt` suivant
+ * réessaie ; la moitié prise est alors rendue, pour ne pas doubler les
+ * événements au nouvel essai.
+ */
 const listen = (): Promise<void> => {
-  listening ??= Promise.all([
-    plugin.addListener('heartRate', (data) => {
-      const sample: HeartRateSample = { bpm: data.bpm, timeMs: data.timeMs, contact: typeof data.contact === 'boolean' ? data.contact : null };
-      latest = sample;
-      // Une mesure prouve la connexion, même si son annonce s'est perdue.
-      setState('connected');
-      sampleListeners.forEach((listener) => listener(sample));
-    }),
-    plugin.addListener('status', (data) => {
-      learnAddressType(data.address, data.random);
-      setState(data.state);
-    }),
-  ]).then(() => undefined);
+  listening ??= (async () => {
+    const results = await Promise.allSettled([
+      plugin.addListener('heartRate', (data) => {
+        const sample: HeartRateSample = { bpm: data.bpm, timeMs: data.timeMs, contact: typeof data.contact === 'boolean' ? data.contact : null };
+        latest = sample;
+        // Une mesure prouve la connexion, même si son annonce s'est perdue.
+        setState('connected');
+        sampleListeners.forEach((listener) => listener(sample));
+      }),
+      plugin.addListener('status', (data) => {
+        learnAddressType(data.address, data.random);
+        setState(data.state);
+      }),
+    ]);
+    const failure = results.find((r) => r.status === 'rejected');
+    if (!failure) return;
+    await Promise.all(results.map((r) => (r.status === 'fulfilled' ? r.value.remove().catch(() => undefined) : undefined)));
+    throw failure.reason;
+  })().catch((err: unknown) => {
+    listening = null;
+    throw err;
+  });
   return listening;
 };
 

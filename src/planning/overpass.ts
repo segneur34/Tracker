@@ -27,6 +27,14 @@ const OVERPASS_TIMEOUT_S = 90;
 
 const NO_NETWORK = 'Pas de réseau : la recherche des voies reprendra à la prochaine ouverture de l\'onglet.';
 const UNREADABLE = 'Réponse du serveur d\'OpenStreetMap illisible.';
+const TIMEOUT = 'Le serveur d\'OpenStreetMap ne répond pas : réessayez dans un moment.';
+
+/**
+ * Délai accordé à chaque paquet, réponse et corps compris, en millisecondes :
+ * le serveur s'arrête de lui-même à `OVERPASS_TIMEOUT_S` ; au-delà, la
+ * connexion pend (réseau tombé en pleine réponse) et la recherche échoue.
+ */
+export const OVERPASS_REQUEST_TIMEOUT_MS = 120_000;
 
 const coord = (p: Waypoint): string => `${p.lat.toFixed(6)},${p.lon.toFixed(6)}`;
 
@@ -99,13 +107,15 @@ export const overpassErrorMessage = (status: number): string =>
 
 /**
  * Voies à moins de `radiusM` des lignes, par paquets envoyés l'un après
- * l'autre, chaque voie une seule fois. `signal` abandonne la recherche. Lève
- * une erreur au message lisible.
+ * l'autre, chaque voie une seule fois. `signal` abandonne la recherche ; un
+ * paquet sans réponse en `timeoutMs` la fait échouer. Lève une erreur au
+ * message lisible.
  */
 export const fetchWays = async (
   lines: ReadonlyArray<ReadonlyArray<Waypoint>>,
   radiusM: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  timeoutMs: number = OVERPASS_REQUEST_TIMEOUT_MS
 ): Promise<OsmWay[]> => {
   const byId = new Map<number, OsmWay>();
   for (const batch of batchLines(lines, OVERPASS_MAX_COORDS)) {
@@ -113,6 +123,8 @@ export const fetchWays = async (
       noNetwork: NO_NETWORK,
       unreadable: UNREADABLE,
       httpError: overpassErrorMessage,
+      timeout: TIMEOUT,
+      timeoutMs,
     });
     for (const way of parseOverpassWays(json)) byId.set(way.id, way);
   }

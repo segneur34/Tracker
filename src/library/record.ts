@@ -540,18 +540,99 @@ export const readSessionJumps = (raw: unknown): SessionJumps | null => {
 export type RecordWithoutSummary = Omit<SessionRecord, 'summary'> & { summary: SessionSummary | null };
 
 /**
+ * Champ connu de la fiche que la lecture n'a pas su rendre tel quel (forme
+ * nouvelle écrite par une version plus récente, valeur hors des bornes) :
+ * `raw` est le texte du disque, relu en JSON, `read` ce que la lecture en a
+ * fait (`undefined` : champ écarté).
+ */
+export interface UnreadableField {
+  raw: unknown;
+  read: unknown;
+}
+
+/**
+ * Champs illisibles d'une fiche, par chemin : `surfaces` au premier niveau,
+ * `summary.heartRate` ou `analysis.windDeg` dans un objet. Gardés hors de la
+ * fiche (le cache allégé la recopie champ à champ), et rendus par
+ * `serializeRecord` tant que la valeur n'a pas changé depuis la lecture : une
+ * version plus ancienne qui renomme une session ne perd rien de ce qu'une plus
+ * récente y avait rangé.
+ */
+export type RecordUnreadable = Readonly<Record<string, UnreadableField>>;
+
+/** Champs de premier niveau dont la lecture peut perdre quelque chose. */
+const GUARDED_FIELDS = ['sport', 'surfaces', 'terrainElevation', 'elevationSource', 'intervals', 'jumps', 'marks', 'test'] as const;
+/** Objets relus champ par champ : un champ illisible y est gardé seul ; l'objet entier s'il est illisible (sauf le résumé, refait depuis le GPX). */
+const GUARDED_OBJECTS = ['summary', 'analysis', 'notes'] as const;
+
+/** Tri des clés, pour comparer deux valeurs JSON sans dépendre de l'ordre de leurs champs. */
+const sortedJson = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map(sortedJson)
+    : isObject(value)
+      ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortedJson(value[key])]))
+      : value;
+
+/** Vrai si les deux valeurs s'écrivent pareil en JSON, à l'ordre des champs près (`undefined` : absent). */
+const sameJson = (a: unknown, b: unknown): boolean => {
+  const textA = JSON.stringify(a);
+  const textB = JSON.stringify(b);
+  if (textA === undefined || textB === undefined) return textA === textB;
+  return textA === textB || JSON.stringify(sortedJson(JSON.parse(textA))) === JSON.stringify(sortedJson(JSON.parse(textB)));
+};
+
+/** Champs illisibles d'une fiche relue (`parts`), d'après son JSON brut (`raw`). */
+const unreadableFields = (raw: Record<string, unknown>, parts: RecordWithoutSummary): RecordUnreadable => {
+  const lost: Record<string, UnreadableField> = {};
+  const read = parts as unknown as Record<string, unknown>;
+  for (const key of GUARDED_FIELDS) {
+    if (raw[key] !== undefined && !sameJson(read[key], raw[key])) lost[key] = { raw: raw[key], read: read[key] };
+  }
+  for (const key of GUARDED_OBJECTS) {
+    const rawObject = raw[key];
+    const readObject = read[key];
+    if (rawObject === undefined || rawObject === null) continue;
+    if (!isObject(readObject)) {
+      // Résumé illisible : refait depuis le GPX, sans garder son brut (DECISIONS §8).
+      if (key !== 'summary') lost[key] = { raw: rawObject, read: readObject };
+      continue;
+    }
+    if (!isObject(rawObject)) continue;
+    for (const [field, value] of Object.entries(rawObject)) {
+      if (value !== undefined && !sameJson(readObject[field], value)) lost[`${key}.${field}`] = { raw: value, read: readObject[field] };
+    }
+  }
+  return lost;
+};
+
+/** Fiche lue, et ses champs illisibles (`RecordUnreadable`), à rendre à l'écriture. */
+export interface ParsedRecord {
+  parts: RecordWithoutSummary;
+  unreadable: RecordUnreadable;
+}
+
+/**
  * Lit une fiche, résumé compris s'il est lisible. Rend `null` si le texte
  * n'est pas une fiche : JSON mal formé, autre format, GPX non nommé. Les
  * champs absents, ceux qu'une ancienne version ignorait, restent nuls ; les
- * champs inconnus sont gardés tels quels.
+ * champs inconnus sont gardés tels quels ; les champs connus illisibles sont
+ * rendus à part, bruts (`unreadable`).
  */
-export const parseRecordParts = (text: string): RecordWithoutSummary | null => {
+export const parseRecordWithRaw = (text: string): ParsedRecord | null => {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
     return null;
   }
+  const parts = readRecordParts(raw);
+  return parts && isObject(raw) ? { parts, unreadable: unreadableFields(raw, parts) } : null;
+};
+
+/** Lit une fiche, résumé compris s'il est lisible (`parseRecordWithRaw`, sans les champs illisibles). */
+export const parseRecordParts = (text: string): RecordWithoutSummary | null => parseRecordWithRaw(text)?.parts ?? null;
+
+const readRecordParts = (raw: unknown): RecordWithoutSummary | null => {
   if (!isObject(raw) || raw.format !== RECORD_FORMAT || !isFiniteNumber(raw.version)) return null;
   if (typeof raw.gpx !== 'string' || raw.gpx === '') return null;
   const summary = readSummary(raw.summary);
@@ -593,8 +674,35 @@ export const parseRecord = (text: string): SessionRecord | null => {
   return parts?.summary ? { ...parts, summary: parts.summary } : null;
 };
 
-/** Texte de la fiche, indenté pour rester lisible dans un éditeur. */
-export const serializeRecord = (record: SessionRecord): string => `${JSON.stringify(record, null, 2)}\n`;
+/**
+ * Fiche à écrire, champs illisibles à la lecture (`unreadable`) rendus bruts
+ * là où la valeur n'a pas changé depuis : une valeur neuve l'emporte.
+ */
+const withUnreadable = (record: SessionRecord, unreadable: RecordUnreadable): Record<string, unknown> => {
+  const out: Record<string, unknown> = { ...record };
+  for (const [path, { raw, read }] of Object.entries(unreadable)) {
+    const dot = path.indexOf('.');
+    if (dot < 0) {
+      if (sameJson(out[path], read)) out[path] = raw;
+      continue;
+    }
+    const key = path.slice(0, dot);
+    const field = path.slice(dot + 1);
+    const parent = out[key];
+    if (isObject(parent) && sameJson(parent[field], read)) out[key] = { ...parent, [field]: raw };
+  }
+  return out;
+};
+
+/**
+ * Texte de la fiche, indenté pour rester lisible dans un éditeur. `unreadable` :
+ * champs illisibles à sa lecture (`parseRecordWithRaw`), réécrits tels quels
+ * s'ils n'ont pas changé depuis.
+ */
+export const serializeRecord = (record: SessionRecord, unreadable?: RecordUnreadable): string => {
+  const out = unreadable && Object.keys(unreadable).length > 0 ? withUnreadable(record, unreadable) : record;
+  return `${JSON.stringify(out, null, 2)}\n`;
+};
 
 /** Faux pour une fiche écrite par une version plus récente : on la lit sans jamais la réécrire. */
 export const isWritableRecord = (record: Pick<SessionRecord, 'version'>): boolean => record.version <= RECORD_VERSION;

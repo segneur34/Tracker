@@ -15,6 +15,7 @@ import {
   mergeLightRecord,
   parseRecord,
   parseRecordParts,
+  parseRecordWithRaw,
   readNotes,
   recordFileName,
   serializeRecord,
@@ -725,5 +726,104 @@ describe('completeRecord', () => {
   it('accepte une fiche sans résumé', () => {
     const { summary: _unused, ...rest } = record({ name: 'Sortie' });
     expect(completeRecord(record(), { ...rest, summary: null }).record.name).toBe('Sortie');
+  });
+});
+
+describe("fiche d'une version future relue puis réécrite (A1)", () => {
+  const surfaces: SessionSurfaces = {
+    source: 'overpass', fetchedAt: '2026-10-04T15:00:00.000Z', matchVersion: 1, startMs: START_MS,
+    tags: ['highway=residential'], runs: [[0, 0], [125_000, -1]],
+  };
+  const terrainElevation: SessionTerrainElevation = {
+    source: 'ign', resource: 'ign_rge_alti_wld', version: 1, stepM: 10,
+    fetchedAt: '2026-10-07T09:00:00.000Z', startMs: START_MS, t: [0, 3333], z: [47.5, null],
+  };
+  const jumps: SessionJumps = {
+    version: 1, computedAt: '2026-10-08T14:00:00.000Z',
+    jumps: [{
+      takeoffMs: START_MS + 60_000, landingMs: START_MS + 61_000, flightS: 1, heightM: 1.1, takeoffVerticalMs: 3.9,
+      speedMs: 7.8, lengthM: 9.8, doubts: [], curve: { stepS: 0.05, startS: -0.5, heightsM: [0, 1.1, 0] },
+    }],
+  };
+  const test: SessionTest = {
+    protocol: 'fc-max', version: 1,
+    settings: { warmupS: 480, age: 35, ageSource: 'profil', lowBpm: 110, highBpm: 147, zoneMethod: 'max' },
+    startMs: START_MS, rampStartMs: START_MS + 480_000, v0Ms: 2.5, steps: [{ startMs: START_MS + 480_000, targetMs: 2.5 }],
+    rampEndMs: null, dropMs: null, endReason: null, endMs: null, signals: [{ t: START_MS, s: 'debut' }],
+  };
+  const analysis: SessionAnalysis = {
+    windDeg: 40, activeThreshold: 8, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: true,
+    pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 5,
+  };
+  const valid = record({
+    name: 'Sortie', analysis, surfaces, terrainElevation, elevationSource: 'gps', jumps, test,
+    marks: [{ timeMs: START_MS + 60_000, lat: 43.5, lon: 3.9, label: 'Saut' }],
+    intervals: [{ workout: { reps: 1, workS: 60, restS: 30 }, laps: [{ kind: 'travail', rep: 1, startMs: START_MS, endMs: START_MS + 60_000 }] }],
+    notes: { ...EMPTY_NOTES, comment: 'bien', rating: 4, savedAt: 3 },
+  });
+
+  /** Fiche écrite par une version plus récente : des champs connus sous une forme que celle-ci ne sait pas lire. */
+  const future = {
+    ...valid,
+    surfaces: { source: 'overpass', format: 2, segments: [{ from: 0, kind: 'asphalte' }] },
+    analysis: { ...analysis, windDeg: { from: 40, to: 60 } },
+    test: { ...test, settings: { ...test.settings, zoneMethod: 'lactate' } },
+    summary: { ...valid.summary, heartRate: { zones: [1, 2, 3] } },
+  };
+  const futureText = serializeRecord(future as unknown as SessionRecord);
+
+  /** Texte d'un champ dans une fiche écrite, au caractère près. */
+  const fieldText = (text: string, path: string[]): string =>
+    JSON.stringify(path.reduce<unknown>((value, key) => (value as Record<string, unknown>)[key], JSON.parse(text)), null, 2);
+
+  it("une fiche valide n'a aucun champ illisible, et s'écrit comme avant", () => {
+    const text = serializeRecord(valid);
+    const parsed = parseRecordWithRaw(text)!;
+    expect(parsed.unreadable).toEqual({});
+    const read: SessionRecord = { ...parsed.parts, summary: parsed.parts.summary! };
+    expect(serializeRecord(read, parsed.unreadable)).toBe(serializeRecord(read));
+    expect(serializeRecord(valid, {})).toBe(text);
+  });
+
+  it('relue, renommée, réécrite : chaque champ de forme nouvelle revient identique au caractère près', () => {
+    const parsed = parseRecordWithRaw(futureText)!;
+    expect(Object.keys(parsed.unreadable).sort()).toEqual(['analysis.windDeg', 'summary.heartRate', 'surfaces', 'test']);
+    const read: SessionRecord = { ...parsed.parts, summary: parsed.parts.summary! };
+    expect(read.surfaces).toBeUndefined();
+    expect(read.analysis?.windDeg).toBeNull();
+    const renamed = applyRecordPatch(read, { name: 'Autre nom' }).record;
+    const written = serializeRecord(renamed, parsed.unreadable);
+    for (const path of [['surfaces'], ['analysis', 'windDeg'], ['test'], ['summary', 'heartRate']]) {
+      expect(fieldText(written, path)).toBe(fieldText(futureText, path));
+    }
+    expect(JSON.parse(written).name).toBe('Autre nom');
+    // Les champs valides n'ont pas bougé.
+    for (const path of [['terrainElevation'], ['jumps'], ['marks'], ['intervals'], ['notes'], ['analysis', 'activeThreshold']]) {
+      expect(fieldText(written, path)).toBe(fieldText(futureText, path));
+    }
+  });
+
+  it('une valeur neuve valide l\'emporte sur le brut', () => {
+    const parsed = parseRecordWithRaw(futureText)!;
+    const read: SessionRecord = { ...parsed.parts, summary: parsed.parts.summary! };
+    const changed = applyRecordPatch(read, { analysis: { ...read.analysis!, windDeg: 90 }, surfaces }).record;
+    const written = JSON.parse(serializeRecord(changed, parsed.unreadable));
+    expect(written.analysis.windDeg).toBe(90);
+    expect(written.surfaces).toEqual(surfaces);
+    // Les autres champs illisibles restent bruts.
+    expect(written.test.settings.zoneMethod).toBe('lactate');
+  });
+
+  it("un résumé entier illisible n'est pas gardé : il se refait depuis le GPX", () => {
+    const text = JSON.stringify({ ...valid, summary: { forme: 'nouvelle' } });
+    expect(parseRecordWithRaw(text)!.unreadable).toEqual({});
+  });
+
+  it('un objet de réglages illisible en entier est gardé brut', () => {
+    const text = JSON.stringify({ ...valid, analysis: ['nouvelle forme'] });
+    const parsed = parseRecordWithRaw(text)!;
+    expect(parsed.parts.analysis).toBeNull();
+    const written = JSON.parse(serializeRecord({ ...parsed.parts, summary: parsed.parts.summary! }, parsed.unreadable));
+    expect(written.analysis).toEqual(['nouvelle forme']);
   });
 });

@@ -156,7 +156,13 @@ function SailingModule() {
   // d'activité, allure imposée, couleurs et notes, écrits dans sa fiche par « Enregistrer la session ».
   const [searchParams] = useSearchParams();
   const requestedFile = searchParams.get('session');
-  const draft = useSessionDraft(requestedFile);
+  /**
+   * Fichier de la trace affichée, posé en même temps qu'elle (`receiveSession`). Le brouillon ne vaut que
+   * pour sa propre trace, comme dans les autres modules : passer de A à B n'applique pas un instant le vent,
+   * le seuil ou les repères de B à la trace de A.
+   */
+  const [shownFile, setShownFile] = useState<string | null>(null);
+  const draft = useSessionDraft(requestedFile !== null && shownFile === requestedFile ? requestedFile : null);
   const { edits } = draft;
 
   const {
@@ -218,6 +224,7 @@ function SailingModule() {
   const receiveSession = useCallback((content: string, session: LibrarySession) => {
     const recorded = sessionActivity(readStoredActivities(), session.record.activityId, session.record.sport);
     if (recorded && recorded.id !== activity.id) setActivity(recorded.id);
+    setShownFile(session.file);
     loadGpxContent(content, session.file);
   }, [activity.id, setActivity, loadGpxContent]);
   const { file: sessionFile, error: sessionError } = useSessionFromUrl(receiveSession);

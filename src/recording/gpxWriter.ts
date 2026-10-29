@@ -21,7 +21,8 @@ import type { HeartRateFix } from './session';
 export interface GpxMeta {
   /** Nom de la trace, qui sert aussi à rattacher les notes de session. */
   name: string;
-  sport: SportType;
+  /** Calcul de la session, écrit dans `<type>` ; `null` (journal sans en-tête lisible) : pas de `<type>`, session à classer. */
+  sport: SportType | null;
 }
 
 /** Texte sûr dans un contenu ou un attribut XML ; sert aussi au GPX des itinéraires (`planning/routeGpx.ts`). */
@@ -85,7 +86,7 @@ const gpxDocument = <F extends { timeMs: number }>(segments: F[][], meta: GpxMet
     `  <metadata><name>${name}</name>${startTime}</metadata>`,
     '  <trk>',
     `    <name>${name}</name>`,
-    `    <type>${meta.sport}</type>`,
+    ...(meta.sport !== null ? [`    <type>${meta.sport}</type>`] : []),
     ...toRender.map(segment),
     '  </trk>',
     '</gpx>',

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { batchLines, overpassErrorMessage, overpassQuery, parseOverpassWays } from './overpass';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { OVERPASS_REQUEST_TIMEOUT_MS, batchLines, fetchWays, overpassErrorMessage, overpassQuery, parseOverpassWays } from './overpass';
 
 const p = (i: number) => ({ lat: 43.6 + i * 0.0002, lon: 3.85 });
 const line = (from: number, n: number) => Array.from({ length: n }, (_, i) => p(from + i));
@@ -39,5 +39,41 @@ describe('Overpass', () => {
     expect(overpassErrorMessage(429)).toMatch(/occupé/);
     expect(overpassErrorMessage(504)).toMatch(/occupé/);
     expect(overpassErrorMessage(400)).toMatch(/erreur 400/);
+  });
+});
+
+/** `fetch` qui ne répond jamais, mais s'arrête sur abandon, comme le navigateur. */
+const hangingFetch = (_url: string, init?: RequestInit): Promise<Response> =>
+  new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(new DOMException('Abandon', 'AbortError')));
+  });
+
+describe('Overpass sans réponse (B3)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('échoue au bout du délai, par défaut 120 s, au lieu de rester en recherche', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', hangingFetch);
+    expect(OVERPASS_REQUEST_TIMEOUT_MS).toBe(120_000);
+    const search = fetchWays([line(0, 3)], 20);
+    const outcome = expect(search).rejects.toThrow("Le serveur d'OpenStreetMap ne répond pas");
+    await vi.advanceTimersByTimeAsync(OVERPASS_REQUEST_TIMEOUT_MS - 1);
+    let settled = false;
+    void search.catch(() => undefined).finally(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await outcome;
+  });
+
+  it('prend le délai donné', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', hangingFetch);
+    const outcome = expect(fetchWays([line(0, 3)], 20, undefined, 5_000)).rejects.toThrow('ne répond pas');
+    await vi.advanceTimersByTimeAsync(5_000);
+    await outcome;
   });
 });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { baseActivity } from '../core/activities';
 import type { LocationFix, LocationSource } from '../platform/location';
+import { journalFixLine } from '../recording/journal';
 
 /** Journal en mémoire ; chaque écriture complète (l'en-tête) est relevée. */
 const journal = vi.hoisted(() => {
@@ -57,19 +58,31 @@ const live = await import('./useLiveRecording');
 const T0 = Date.UTC(2026, 9, 27, 9, 0, 0);
 const activity = baseActivity('running');
 
-/** Source simulée : compte ses démarrages, émet à la demande tant qu'elle tourne. */
+/** Source simulée : compte ses démarrages et ses arrêts, dit si elle tourne, émet à la demande tant qu'elle tourne. */
 const fakeSource = () => {
   let onFix: ((fix: LocationFix) => void) | null = null;
   const source = {
     starts: 0,
+    stops: 0,
+    active: false,
+    /** Durée du prochain arrêt, en millisecondes ; un second arrêt pendant le premier rend la main tout de suite. */
+    stopDelayMs: 5,
     label: 'Simulée',
     start: async (_options: unknown, fix: (f: LocationFix) => void) => {
       source.starts += 1;
       // Un démarrage qui prend un peu de temps, comme le greffon.
       await new Promise((resolve) => setTimeout(resolve, 5));
       onFix = fix;
+      source.active = true;
+      let stopping = false;
       return async () => {
+        // Un arrêt qui prend un peu de temps, lui aussi.
+        const delay = stopping ? 0 : source.stopDelayMs;
+        stopping = true;
+        await new Promise((resolve) => setTimeout(resolve, delay));
         onFix = null;
+        source.active = false;
+        source.stops += 1;
       };
     },
     emit: (s: number, speedMs = 3) => onFix?.({ timeMs: T0 + s * 1000, lat: 43 + s * 1e-5, lon: 3, speedMs, accuracyM: 4 }),
@@ -142,6 +155,84 @@ describe('enregistreur', () => {
     const pending = recorder.getRecorderState().pending;
     expect(pending).not.toBeNull();
     expect(pending!.content.match(/<trkseg>/g)).toHaveLength(2);
+  });
+});
+
+describe('arrêt pendant une pause ou une reprise (B1)', () => {
+  it('pause lancée puis « Arrêter » sans attendre : session en attente, au repos, GPS coupé', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.emit(0);
+    source.emit(1);
+    // Le greffon met du temps à couper le GPS : la pause finit après l'arrêt, s'il ne l'attend pas.
+    source.stopDelayMs = 50;
+    const pause = recorder.pauseRecording();
+    const stop = recorder.stopRecording();
+    await Promise.all([pause, stop]);
+    expect(recorder.getRecorderState().status).toBe('idle');
+    expect(recorder.getRecorderState().pending).not.toBeNull();
+    expect(source.active).toBe(false);
+  });
+
+  it('reprise lancée puis « Arrêter » sans attendre : la source relancée est arrêtée, jamais en pause à la fin', async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.emit(0);
+    source.emit(1);
+    await recorder.pauseRecording();
+    const statuses: string[] = [];
+    const off = recorder.subscribeToRecorder(() => statuses.push(recorder.getRecorderState().status));
+    const resume = recorder.resumeRecording();
+    const stop = recorder.stopRecording();
+    await Promise.all([resume, stop]);
+    off();
+    expect(recorder.getRecorderState().status).toBe('idle');
+    expect(statuses[statuses.length - 1]).toBe('idle');
+    expect(source.starts).toBe(2);
+    expect(source.stops).toBe(2);
+    expect(source.active).toBe(false);
+    expect(recorder.getRecorderState().pending).not.toBeNull();
+  });
+
+  it("une pause demandée pendant l'arrêt est ignorée", async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.emit(0);
+    source.emit(1);
+    const stop = recorder.stopRecording();
+    const pause = recorder.pauseRecording();
+    await Promise.all([stop, pause]);
+    expect(recorder.getRecorderState().status).toBe('idle');
+    expect(recorder.getRecorderState().pending).not.toBeNull();
+  });
+});
+
+describe('journal sans en-tête lisible (D13)', () => {
+  it('reprend la session sans deviner son activité : à classer, GPX sans type', async () => {
+    journal.text = [0, 1, 2].map((s) => journalFixLine({ timeMs: T0 + s * 1000, lat: 43 + s * 1e-4, lon: 3, speedMs: 3, accuracyM: 4 })).join('');
+    await recorder.recoverInterruptedRecording();
+    const pending = recorder.getRecorderState().pending!;
+    expect(pending.sport).toBeNull();
+    expect(pending.activity).toBeNull();
+    expect(pending.pointCount).toBe(3);
+    expect(pending.fileName).toMatch(/_session\.gpx$/);
+    expect(pending.content).not.toContain('<type>');
+  });
+});
+
+describe('repère « Note » (D11)', () => {
+  it("porte l'heure des positions, même quand l'horloge en diffère (rejeu), puis le temps écoulé depuis la dernière", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    // Rejeu : l'horloge du téléphone a une heure d'avance sur les positions.
+    vi.setSystemTime(T0 + 3_600_000);
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    source.emit(4);
+    source.emit(5);
+    expect(recorder.addRecordingMark()?.mark.timeMs).toBe(T0 + 5000);
+    // Dix secondes sans position (pause manuelle) : le repère avance avec elles.
+    vi.setSystemTime(Date.now() + 10_000);
+    expect(recorder.addRecordingMark()?.mark.timeMs).toBe(T0 + 15_000);
   });
 });
 

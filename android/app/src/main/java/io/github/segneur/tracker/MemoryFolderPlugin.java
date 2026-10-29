@@ -45,7 +45,9 @@ import org.json.JSONObject;
  * Un fichier existant n'est jamais réécrit sur place : le nouveau contenu va
  * d'abord à côté (« nom.tracker-tmp »), puis prend sa place (`replace`). Une
  * coupure en plein échange est reprise à la lecture suivante du dossier
- * (`list`) : une fiche n'est jamais laissée à moitié écrite.
+ * (`list`) : une fiche n'est jamais laissée à moitié écrite. Un fichier neuf
+ * est écrit de même sous « nom.tracker-new », puis renommé (`createNew`) ; un
+ * « .tracker-new » resté seul, création interrompue, est effacé par `list`.
  */
 @CapacitorPlugin(name = "MemoryFolder")
 public class MemoryFolderPlugin extends Plugin {
@@ -55,6 +57,11 @@ public class MemoryFolderPlugin extends Plugin {
 
     /** Suffixe du fichier écrit à côté de celui qu'il remplace, le temps de l'échange. */
     private static final String TEMP_SUFFIX = ".tracker-tmp";
+    /**
+     * Suffixe d'un fichier neuf, le temps de l'écrire : distinct de TEMP_SUFFIX, qu'une
+     * coupure fait reprendre par `list`, alors qu'un fichier neuf interrompu est seulement effacé.
+     */
+    private static final String NEW_SUFFIX = ".tracker-new";
     /** Fournisseur du stockage du téléphone, dont l'identifiant d'un document est son chemin. */
     private static final String EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents";
 
@@ -164,6 +171,11 @@ public class MemoryFolderPlugin extends Plugin {
                 Set<String> names = new HashSet<>();
                 for (Child child : children) names.add(child.name);
                 for (Child child : children) {
+                    if (!child.isDir && child.name.endsWith(NEW_SUFFIX) && child.name.length() > NEW_SUFFIX.length()) {
+                        // Création interrompue avant son renommage : perdue, puis refaite (fiche depuis le GPX).
+                        deleteQuietly(DocumentsContract.buildDocumentUriUsingTree(tree, child.id));
+                        continue;
+                    }
                     if (!child.isDir && child.name.endsWith(TEMP_SUFFIX) && child.name.length() > TEMP_SUFFIX.length()) {
                         String original = finishInterruptedReplace(tree, child, names);
                         if (original != null) entries.put(entryOf(original, child));
@@ -264,7 +276,7 @@ public class MemoryFolderPlugin extends Plugin {
             if (id != null) {
                 replace(tree, parentId, name, DocumentsContract.buildDocumentUriUsingTree(tree, id), data, path);
             } else {
-                writeTo(create(tree, parentId, name, path), data, path);
+                createNew(tree, parentId, name, data, path);
             }
         } catch (Exception e) {
             call.reject("Écriture impossible : " + e.getMessage());
@@ -301,6 +313,51 @@ public class MemoryFolderPlugin extends Plugin {
             // Renommage refusé malgré l'annonce du fournisseur : le contenu est écrit sous son nom.
             writeTo(create(tree, parentId, name, path), data, path);
             DocumentsContract.deleteDocument(resolver(), temp);
+        }
+    }
+
+    /**
+     * Crée un fichier sans jamais le laisser à moitié écrit sous son nom : le
+     * contenu va d'abord dans « nom.tracker-new », qui prend ensuite le nom
+     * demandé. Si l'application est tuée avant, `list` efface le fichier neuf
+     * resté seul. Un fournisseur qui ne sait pas renommer reçoit l'écriture en
+     * place, comme `replace`.
+     */
+    private void createNew(Uri tree, String parentId, String name, byte[] data, String path) throws Exception {
+        String newName = name + NEW_SUFFIX;
+        String leftover = findChild(tree, parentId, newName);
+        if (leftover != null) DocumentsContract.deleteDocument(resolver(), DocumentsContract.buildDocumentUriUsingTree(tree, leftover));
+        Uri temp = create(tree, parentId, newName, path);
+        if (!supportsRename(temp)) {
+            DocumentsContract.deleteDocument(resolver(), temp);
+            writeTo(create(tree, parentId, name, path), data, path);
+            return;
+        }
+        try {
+            writeTo(temp, data, path);
+        } catch (Exception e) {
+            deleteQuietly(temp);
+            throw e;
+        }
+        Uri renamed;
+        try {
+            renamed = DocumentsContract.renameDocument(resolver(), temp, name);
+        } catch (Exception e) {
+            renamed = null;
+        }
+        if (renamed == null) {
+            // Renommage refusé malgré l'annonce du fournisseur : le contenu est écrit sous son nom.
+            writeTo(create(tree, parentId, name, path), data, path);
+            DocumentsContract.deleteDocument(resolver(), temp);
+        }
+    }
+
+    /** Efface un document sans lever : un échec le laisse pour la prochaine lecture du dossier. */
+    private void deleteQuietly(Uri doc) {
+        try {
+            DocumentsContract.deleteDocument(resolver(), doc);
+        } catch (Exception e) {
+            // Laissé tel quel : il sera effacé à la prochaine lecture.
         }
     }
 

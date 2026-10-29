@@ -14,7 +14,7 @@ import { startFitnessTestGuide } from './hooks/useFitnessTest';
 import { startRecordingNotification } from './hooks/recordingNotification';
 import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
-import { openLibrary, settingsUpgraded, startLibraryUi } from './hooks/useSessionLibrary';
+import { openLibrary, reportStartupError, settingsUpgraded, startLibraryUi } from './hooks/useSessionLibrary';
 import { startBeepSound, upgradeStoredActivities, upgradeStoredPresets } from './hooks/useSportSettings';
 import { startTheme } from './hooks/useTheme';
 import { installBackButton } from './platform/backButton';
@@ -40,9 +40,19 @@ void initStorage()
   })
   .then(() => {
     // Liste d'activités et pré-réglages d'une version d'avant mis à jour, une fois les réglages du dossier repris ;
-    // le fichier de l'appareil suit. Les deux mises à jour se font, d'où les deux appels avant le test.
-    const activitiesUpgraded = upgradeStoredActivities();
-    const presetsUpgraded = upgradeStoredPresets();
+    // le fichier de l'appareil suit. Les deux mises à jour se font, d'où les deux appels avant le test. Une mise à
+    // jour qui lève (réglages d'une forme inattendue) est dite, et l'interface s'affiche quand même.
+    let upgradeError: unknown = null;
+    const upgrade = (run: () => boolean): boolean => {
+      try {
+        return run();
+      } catch (err) {
+        upgradeError ??= err;
+        return false;
+      }
+    };
+    const activitiesUpgraded = upgrade(upgradeStoredActivities);
+    const presetsUpgraded = upgrade(upgradeStoredPresets);
     if (activitiesUpgraded || presetsUpgraded) void settingsUpgraded();
     ReactDOM.createRoot(document.getElementById('root')!).render(
       <React.StrictMode>
@@ -52,6 +62,10 @@ void initStorage()
       </React.StrictMode>
     );
     startLibraryUi(isRecordingActive);
+    if (upgradeError !== null) {
+      const detail = upgradeError instanceof Error && upgradeError.message ? upgradeError.message : 'erreur inconnue';
+      reportStartupError(`Réglages de l'appareil non mis à jour pour cette version : ${detail}`);
+    }
     installLeaveGuard();
     // Pendant un enregistrement, une séance du compteur ou un chrono en marche, la touche retour met l'application en arrière-plan.
     void installBackButton(() => isRecordingActive() || isIntervalTimerActive() || isStopwatchRunning(), confirmLeave);
