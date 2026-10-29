@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import BaseTileLayer from '../components/BaseTileLayer';
+import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
 import './analysisMobile.css';
 import { ReferenceArea } from 'recharts';
 import ActivitySelect from '../components/ActivitySelect';
@@ -8,8 +8,7 @@ import { GraphFoldHead } from '../components/ChartFold';
 import { HoverReadout, type Readout } from '../components/ChartReadout';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import AnalysisMap, { ANALYSIS_MAP_ANCHOR } from '../components/AnalysisMap';
-import { HoveredTrackMarker } from '../components/HoverMarker';
-import { SessionMarksLayer, SessionMarksList } from '../components/SessionMarks';
+import { SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
 import { HelpText } from '../components/Help';
 import PanelTitle, { SessionDate } from '../components/PanelTitle';
@@ -29,13 +28,10 @@ import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import HeartRateChart from '../components/HeartRateChart';
 import HeartRatePanel, { CardioCompanion } from '../components/HeartRatePanel';
 import { heartRateReadout, speedReadout } from '../components/chartReadouts';
-import { heartRateZonePaths } from '../core/heartRate';
-import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
-import { useSessionHeartRate } from '../hooks/useSessionHeartRate';
+import { useAnalysisHeart, useHeartRateZoneHighlight } from '../hooks/useAnalysisHeart';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import TrackChart, { type TrackSeries } from '../components/TrackChart';
 import { zoomHint } from '../components/zoomHint';
-import { Polyline } from 'react-leaflet';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/highlightColors';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
@@ -60,9 +56,8 @@ import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { useSessionPumping } from '../hooks/useSessionPumping';
+import { useFlightPumping, useSessionPumping } from '../hooks/useSessionPumping';
 import { useSportSettings } from '../hooks/useSportSettings';
-import { measureFlightPumping, summarizePumping, type FlightPumping } from '../core/pumping';
 import type { SurfFlight, SurfPhase, SurfReturn, SurfSpan } from '../surfing/surfAnalysis';
 import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfing/surfSession';
 import StatTile from '../components/ui/StatTile';
@@ -180,9 +175,7 @@ function SurfModule() {
   });
   const graphFolds = useOpenSections(`${STORAGE_ID}.graphes`, GRAPH_FOLDS_DEFAULT);
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe sous la vitesse. */
-  const { profile: runner, retainHr } = useRunnerProfile();
-  const heart = useSessionHeartRate(gpx.track, profile.heartRate);
-  const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate, hrOffsetBpm), [runner, profile.heartRate, hrOffsetBpm]);
+  const { runner, retainHr, heart, hrZones } = useAnalysisHeart(gpx.track, profile.heartRate, hrOffsetBpm);
   const sections = useMemo(
     () => shown((s) => (s.key !== 'vols' || foil) && (s.key !== 'cardio' || heart.present)),
     [shown, foil, heart.present]
@@ -196,14 +189,7 @@ function SurfModule() {
   const shownMarkKey = highlight.shownIn('general');
   const shownMark = shownMarkKey === null ? null : Number(shownMarkKey);
   /** Zone cardiaque montrée sur la carte (onglet « cardio »). */
-  const shownHrZone = highlight.shownIn('cardio');
-  const selectedHrZone = shownHrZone === null ? null : Number(shownHrZone);
-  const hrZonePaths = useMemo(
-    () => (selectedHrZone !== null && open.cardio && heart.present && hrZones
-      ? heartRateZonePaths(track, heart.smoothed, hrZones.bounds, selectedHrZone, profile.heartRate.gapS)
-      : []),
-    [selectedHrZone, open.cardio, heart, hrZones, track, profile.heartRate.gapS]
-  );
+  const hrZone = useHeartRateZoneHighlight(highlight, open.cardio, heart, hrZones, track, profile.heartRate.gapS);
   const result = useMemo(
     () => (surfProfile && track.length > 1
       ? runSurfSession(track, cumulative, surfProfile, { threshold, foil, waveThreshold: draft.edits.waveThreshold })
@@ -266,16 +252,11 @@ function SurfModule() {
   const returns = useMemo(() => analysis?.returns ?? [], [analysis]);
 
   // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
-  const sensors = useSessionPumping(shownFile, pumping);
-  const pumpDetection = surfProfile?.pump ?? null;
-  const flightPumping = useMemo(() => {
-    if (!sensors.recording || !pumpDetection || flights.length === 0) return null;
-    const list = measureFlightPumping(sensors.recording, pumpDetection, track, cumulative, flights);
-    return new Map(list.flatMap((x): [number, FlightPumping][] => (x ? [[x.n, x]] : [])));
-  }, [sensors.recording, pumpDetection, track, cumulative, flights]);
-  const pumpSummary = useMemo(() => (flightPumping ? summarizePumping([...flightPumping.values()]) : null), [flightPumping]);
-  /** Les 3 plus longs vols, le résumé de l'onglet. */
-  const podiumFlights = useMemo(() => [...flights].sort((a, b) => b.durationS - a.durationS).slice(0, 3), [flights]);
+  // Capteurs lus à l'ouverture de l'onglet « vols », Pumping coché, comme en voile : une capture entière pèse plusieurs Mo.
+  const sensors = useSessionPumping(shownFile, pumping && open.vols);
+  const {
+    byFlight: flightPumping, summary: pumpSummary, podium: podiumFlights,
+  } = useFlightPumping(sensors.recording, surfProfile?.pump ?? null, track, cumulative, flights);
   const speedCell = (ms: number | null): string => (ms === null ? '—' : formatSpeedValue(toDisplaySpeed(ms, speedUnit), speedUnit));
   /** Colonnes « Tous les vols » du GPS, sans pumping mesuré : pompage et vitesse de pompe (unité de l'activité). */
   const surfFlightGpsColumns: FlightColumn<SurfFlight>[] = [
@@ -370,6 +351,11 @@ function SurfModule() {
     openMap: () => setMapExpanded(true),
   });
   const showGraphsOnMap = () => zoomOnMap.show('graphiques');
+  /** Rappels de l'onglet « cardio », stables : le panneau, mémoïsé, ne se redessine pas au zoom d'un autre graphe. */
+  const firstMs = track[0]?.timeMs ?? null;
+  const retainSessionHrMax = useCallback((bpm: number) => retainHr('hrMax', bpm, { kind: 'seance', atMs: firstMs }), [retainHr, firstMs]);
+  const { show: showZoomOnMap } = zoomOnMap;
+  const showCardioOnMap = useCallback(() => showZoomOnMap('cardio'), [showZoomOnMap]);
 
   /** Graphe de vitesse : bandes des vagues et des vols, repères ; dans l'onglet, et sous la carte en plein écran. */
   const speedChart = (style: CSSProperties) => (
@@ -422,20 +408,12 @@ function SurfModule() {
   };
 
   const mapLayers = (
-    <>
-      <BaseTileLayer family={'surf'} />
+    <AnalysisBaseLayers family="surf" track={track} zonePaths={hrZone.paths} zonePathsKey={hrZone.selectedZone}
+      zoomPath={zoomOnMap.path} marks={marks.located} shownMark={shownMark}>
       <TrackSegmentsLayer segments={mapSegments} weight={5} family={'surf'} />
       <TrackSpanLayer track={track} spans={shownSpans} />
       <TopsHighlight tops={tops} selected={topShown} />
-      {hrZonePaths.map((path, idx) => (
-        <Polyline key={`cardio-${selectedHrZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
-      ))}
-      {zoomOnMap.path.length > 1 && (
-        <Polyline key="zoom" positions={zoomOnMap.path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
-      )}
-      <SessionMarksLayer located={marks.located} shownMs={shownMark} />
-      <HoveredTrackMarker points={track} />
-    </>
+    </AnalysisBaseLayers>
   );
 
   const unitLabel = SPEED_UNIT_LABEL[speedUnit];
@@ -732,9 +710,9 @@ function SurfModule() {
             {open.cardio && heart.present && (
               <ResizablePanel id={panelId('cardio')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <HeartRatePanel track={track} minutes={trackMinutes} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
-                  onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: track[0]?.timeMs ?? null })} selectedZone={selectedHrZone}
-                  onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
-                  zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
+                  onRetainHrMax={retainSessionHrMax} selectedZone={hrZone.selectedZone}
+                  onSelectZone={hrZone.select}
+                  zoom={cardioZoom} onShowOnMap={showCardioOnMap}
                   open={open.cardio} onToggle={toggleOf('cardio')} />
               </ResizablePanel>
             )}

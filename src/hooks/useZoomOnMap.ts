@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { axisRangePath, type XRange } from '../core/chartZoom';
 import { trackBounds, type TrackBounds } from '../core/displayConfig';
 import type { ChartZoom } from './useChartZoom';
-import type { MapHighlight } from './useMapHighlight';
+import type { HighlightKeys, MapHighlight } from './useMapHighlight';
 
 /** Demande de cadrage de la carte (`AnalysisMap`, prop `focus`) : un objet neuf à chaque demande. */
 export interface MapFocus {
@@ -26,7 +26,11 @@ export interface ZoomOnMap<P extends string> {
   companionPanel: P | null;
   /** À la fermeture du plein écran : la carte agrandie redevient seule. */
   closeCompanion: () => void;
+  /** Ramène la carte à l'écran (ordinateur), sous la barre du haut, si elle n'y est pas entière. */
+  scrollToMap: () => void;
 }
+
+const NO_PATH: [number, number][] = [];
 
 /**
  * Partie d'un graphe vue sur la carte, dans les trois modules (23/10, revu
@@ -45,8 +49,10 @@ export interface ZoomOnMap<P extends string> {
  * (tout replié) se cadre sur place. Le retour d'Android referme le plein
  * écran (`AnalysisMap`).
  */
-export const useZoomOnMap = <P extends string>({ highlight, points, charts, narrow, mapAnchorId, mapExpanded, openMap }: {
-  highlight: MapHighlight<P>;
+export const useZoomOnMap = <P extends string, T extends HighlightKeys<P> = Record<never, never>>({
+  highlight, points, charts, narrow, mapAnchorId, mapExpanded, openMap,
+}: {
+  highlight: MapHighlight<P, T>;
   points: ReadonlyArray<{ lat: number; lon: number }>;
   /** Graphe zoomable de chaque onglet qui a « Afficher ». */
   charts: Partial<Record<P, ZoomedChart>>;
@@ -73,7 +79,27 @@ export const useZoomOnMap = <P extends string>({ highlight, points, charts, narr
     [range, axis, points]
   );
 
-  const show = (target: P) => {
+  /** Carte entière à l'écran, sous la barre du haut (sa marge de défilement) ? */
+  const mapOnScreen = useCallback((): boolean => {
+    const anchor = document.getElementById(mapAnchorId);
+    const rect = anchor?.getBoundingClientRect();
+    // Sa marge de défilement réserve la barre du haut, qui colle sur ordinateur et cache ce qui passe dessous.
+    const topInset = anchor ? parseFloat(getComputedStyle(anchor).scrollMarginTop) || 0 : 0;
+    return !rect || (rect.top >= topInset && rect.bottom <= window.innerHeight);
+  }, [mapAnchorId]);
+  const scrollToMap = useCallback(() => {
+    if (mapOnScreen()) return;
+    document.getElementById(mapAnchorId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [mapOnScreen, mapAnchorId]);
+
+  // Valeurs du dernier rendu, lues par `show` : le rappel reste le même d'un rendu à l'autre.
+  const latest = useRef({ charts, narrow, mapExpanded, openMap, panel, focus, highlight, points });
+  useLayoutEffect(() => {
+    latest.current = { charts, narrow, mapExpanded, openMap, panel, focus, highlight, points };
+  });
+
+  const show = useCallback((target: P) => {
+    const { charts, narrow, mapExpanded, openMap, panel, focus, highlight, points } = latest.current;
     const c = charts[target];
     if (!c) return;
     const inPage = narrow && !mapExpanded;
@@ -98,25 +124,21 @@ export const useZoomOnMap = <P extends string>({ highlight, points, charts, narr
     setFocus({ bounds, range: shown, whole: isWhole });
     // Plein écran déjà ouvert : sa carte se recadre, rien de plus.
     if (mapExpanded) return;
-    const anchor = document.getElementById(mapAnchorId);
-    const rect = anchor?.getBoundingClientRect();
-    // Sa marge de défilement réserve la barre du haut, qui colle sur ordinateur et cache ce qui passe dessous.
-    const topInset = anchor ? parseFloat(getComputedStyle(anchor).scrollMarginTop) || 0 : 0;
-    const onScreen = !rect || (rect.top >= topInset && rect.bottom <= window.innerHeight);
-    if (onScreen) return;
+    if (mapOnScreen()) return;
     if (narrow) {
       setCompanionPanel(target);
       openMap();
     } else {
-      anchor?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      scrollToMap();
     }
-  };
+  }, [mapOnScreen, scrollToMap]);
+  const closeCompanion = useCallback(() => setCompanionPanel(null), []);
 
-  return {
-    path: panel !== null ? path : [],
-    focus: panel !== null ? focus : null,
-    show,
-    companionPanel: mapExpanded ? companionPanel : null,
-    closeCompanion: () => setCompanionPanel(null),
-  };
+  const shownPath = panel !== null ? path : NO_PATH;
+  const shownFocus = panel !== null ? focus : null;
+  const shownCompanion = mapExpanded ? companionPanel : null;
+  return useMemo(
+    () => ({ path: shownPath, focus: shownFocus, show, scrollToMap, companionPanel: shownCompanion, closeCompanion }),
+    [shownPath, shownFocus, show, scrollToMap, shownCompanion, closeCompanion]
+  );
 };

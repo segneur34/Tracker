@@ -1,6 +1,8 @@
 import { errorMessage } from '../core/basics';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { decodeImu, type ImuRecording } from '../core/imuFile';
+import { measureFlightPumping, summarizePumping, type FlightPumping, type FlightSpan, type PumpDetection } from '../core/pumping';
+import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { hasSessionMotion, readSessionMotion, useLibrarySession } from './useSessionLibrary';
 
 /**
@@ -77,4 +79,22 @@ export const useSessionPumping = (file: string | null, enabled: boolean) => {
   const error = wanted ? mine?.error ?? null : null;
   const status: PumpingStatus = !wanted ? 'none' : recording ? 'ready' : error ? 'error' : 'loading';
   return { status, recording, error, hasMotion: motion };
+};
+
+/**
+ * Pumping des vols (voile, surf), mesuré sur la capture lue par `useSessionPumping` :
+ * par vol (`byFlight`, par numéro), son résumé, et les 3 plus longs vols
+ * (`podium`), le haut de l'onglet. Il suit les vols, donc le seuil du brouillon.
+ */
+export const useFlightPumping = <F extends Pick<FlightSpan, 'n' | 'startMs' | 'endMs' | 'durationS'>>(
+  recording: ImuRecording | null, detection: PumpDetection | null, track: TrackPoint[], cumulative: CumulativeTrack, flights: F[]
+) => {
+  const byFlight = useMemo(() => {
+    if (!recording || !detection || flights.length === 0) return null;
+    const list = measureFlightPumping(recording, detection, track, cumulative, flights);
+    return new Map(list.flatMap((x): [number, FlightPumping][] => (x ? [[x.n, x]] : [])));
+  }, [recording, detection, track, cumulative, flights]);
+  const summary = useMemo(() => (byFlight ? summarizePumping([...byFlight.values()]) : null), [byFlight]);
+  const podium = useMemo(() => [...flights].sort((a, b) => b.durationS - a.durationS).slice(0, 3), [flights]);
+  return { byFlight, summary, podium };
 };

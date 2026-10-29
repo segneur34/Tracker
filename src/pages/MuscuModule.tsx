@@ -32,8 +32,7 @@ import { zoomHint } from '../components/zoomHint';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
-import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
-import { useSessionHeartRate } from '../hooks/useSessionHeartRate';
+import { useAnalysisHeart } from '../hooks/useAnalysisHeart';
 import { useLibrarySession } from '../hooks/useSessionLibrary';
 import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useSportSettings } from '../hooks/useSportSettings';
@@ -79,7 +78,6 @@ interface LoadedSession {
 function MuscuModule() {
   const panelId = (name: string) => `${PAGE.storageId}.${name}`;
   const { activity, setActivity, profile, hrOffsetBpm, gearLabels, gearGroups } = useSportSettings(FAMILY);
-  const { profile: runner, retainHr } = useRunnerProfile();
   const narrow = useNarrowScreen();
 
   const [loaded, setLoaded] = useState<LoadedSession | null>(null);
@@ -104,12 +102,11 @@ function MuscuModule() {
   const intervals = record?.intervals ?? NO_INTERVALS;
   const sessionKey = shownFile;
 
-  const zones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate, hrOffsetBpm), [runner, profile.heartRate, hrOffsetBpm]);
+  const { runner, retainHr, heart, hrZones: zones } = useAnalysisHeart(points, profile.heartRate, hrOffsetBpm);
   const analysis = useMemo(
     () => analyzeHeartRateSession(points, intervals, profile.heartRate, zones?.bounds ?? null),
     [points, intervals, profile.heartRate, zones]
   );
-  const heart = useSessionHeartRate(points, profile.heartRate);
 
   // Onglets : ceux de l'activité ; « cardio » seulement avec assez de FC. Le point survolé s'efface à chaque session.
   const { open, toggle, toggleOf, advanced, shown } = useAnalysisTabs({

@@ -41,6 +41,15 @@ const panel = (title) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith(${JSON.stringify(title)}));
   return t ? t.closest('.an-carte-panels > *').innerText.replace(/\\n+/g, ' / ').slice(0, 1400) : '(absent)';
 })()`);
+/**
+ * Capteurs lus : depuis le lot 63, le surf ne lit le `.imu` qu'à l'ouverture de l'onglet « vols ».
+ * Attend que « Lecture des capteurs » disparaisse et que « Coups de pompe » paraisse (plafond 10 s).
+ */
+const sensorsRead = () => waitFor(`(() => {
+  const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith('Vols'));
+  const text = t?.closest('.an-carte-panels > *')?.innerText ?? '';
+  return !text.includes('Lecture des capteurs') && text.includes('Coups de pompe');
+})()`, { timeout: 10000, label: 'capteurs lus' });
 /** En-têtes des tableaux du panneau « Vols ». */
 const flightHeads = () => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith('Vols'));
@@ -170,6 +179,7 @@ console.log('Foil :', foilBox, '| Pumping :', pumpBox);
 await settle({ max: 1500 });
 console.log('vols :', await openTab('vols'));
 await settle({ max: 2000 });
+await sensorsRead();
 const vols = await panel('Vols');
 console.log('panneau :', vols);
 check('quatre vols', /Vols \(4\)/i.test(vols ?? ''));
@@ -223,6 +233,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, devi
 await go(path, 5000);
 await openTab('vols');
 await settle({ max: 1500 });
+await sensorsRead();
 await shoot('pumping-telephone');
 const width = await evaluate('document.documentElement.scrollWidth');
 check('pas de débordement à 390 px', width <= 390, String(width));

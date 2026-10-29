@@ -2,7 +2,7 @@ import { roundTo, toFixedNumber } from '../core/basics';
 import { Fragment, useCallback, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Polyline } from 'react-leaflet';
-import BaseTileLayer from '../components/BaseTileLayer';
+import AnalysisBaseLayers from '../components/AnalysisBaseLayers';
 import './analysisMobile.css';
 import ActivitySelect from '../components/ActivitySelect';
 import CadencePanel from '../components/CadencePanel';
@@ -36,7 +36,7 @@ import ElevationProfileMini, { type ElevationProfileRow } from '../components/El
 import { shareableStats, type ShareStat } from '../core/shareImage';
 import SessionSaveBar from '../components/SessionSaveBar';
 import SessionWeightField from '../components/SessionWeightField';
-import { SessionMarksLayer, SessionMarksList } from '../components/SessionMarks';
+import { SessionMarksList } from '../components/SessionMarks';
 import { markReferenceLines } from '../components/markReferenceLines';
 import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SpeedRangeEditor from '../components/SpeedRangeEditor';
@@ -46,7 +46,6 @@ import SurfaceLayer from '../components/SurfaceLayer';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import { zoomHint } from '../components/zoomHint';
-import { HoveredTrackMarker } from '../components/HoverMarker';
 import { inChartView } from '../components/chartHover';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
@@ -58,7 +57,7 @@ import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
 import { buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
 import { nearestIndexAtTime } from '../core/search';
-import { heartRateZonePaths, timeSpanHeartRate } from '../core/heartRate';
+import { timeSpanHeartRate } from '../core/heartRate';
 import { ELEVATION_PRESETS, getActiveThresholds, hasPositions, isTestSport, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import { meanFilterByTime } from '../core/speedFilter';
@@ -77,16 +76,13 @@ import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
 import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
-import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
-import { useSessionHeartRate } from '../hooks/useSessionHeartRate';
+import { useAnalysisHeart, useHeartRateZoneHighlight } from '../hooks/useAnalysisHeart';
 import { useLibrarySession } from '../hooks/useSessionLibrary';
-import { useSessionJumps } from '../hooks/useSessionJumps';
+import { useShownJumps } from '../hooks/useSessionJumps';
 import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import { useTerrainElevation, type TerrainElevationStatus } from '../hooks/useTerrainElevation';
-import {
-  effectiveJumpSettings, useSportSettings,
-} from '../hooks/useSportSettings';
+import { useSportSettings } from '../hooks/useSportSettings';
 import {
   computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
 } from '../running/runningAnalytics';
@@ -170,6 +166,9 @@ interface EnergyChartRow {
  */
 const ENERGY_FIGURES_DEFAULT = { chiffres: true, zones: true };
 
+/** Clés de surbrillance typées par onglet : une zone de pente, un revêtement. */
+type LandHighlightKeys = { zones: GradeZoneKey; surface: SurfaceCategory };
+
 /**
  * Graphes de l'onglet « graphiques » dépliés, chacun replié à part pour ne
  * comparer que ceux qui restent ouverts (demande du 16/10) ; un graphe replié
@@ -230,7 +229,6 @@ function LandModule({ family }: { family: LandFamily }) {
     speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, energyModel, gearLabels, gearGroups, hrOffsetBpm,
   } = useSportSettings(family);
   const model = LAND_TREATMENTS[sportTreatment(sport) === 'velo' ? 'velo' : 'course'];
-  const { profile: runner, age, retainHr } = useRunnerProfile();
   const gpx = useGpxSession({
     medianWindowSeconds: profile.medianWindowSeconds,
     maxDetourRatio: profile.maxDetourRatio,
@@ -238,8 +236,7 @@ function LandModule({ family }: { family: LandFamily }) {
     maxGapS: profile.maxGapS,
   });
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans les graphes. */
-  const heart = useSessionHeartRate(gpx.track, profile.heartRate);
-  const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate, hrOffsetBpm), [runner, profile.heartRate, hrOffsetBpm]);
+  const { runner, age, retainHr, heart, hrZones } = useAnalysisHeart(gpx.track, profile.heartRate, hrOffsetBpm);
   /** Cadence à pied (`cad` du GPX : capteurs du téléphone, montre) : sa courbe dans les graphes et l'onglet « cadence ». */
   const cadenceParams = profile.cadence;
   const cadence = useMemo(
@@ -271,7 +268,7 @@ function LandModule({ family }: { family: LandFamily }) {
   // Onglets de l'activité, rangée « avancé », point survolé effacé à chaque session. Une seule surbrillance
   // sur la carte : un top, une zone de pente, une répétition ou un revêtement ; choisir l'une retire les
   // autres, fermer son onglet l'efface.
-  const { open, toggle, toggleOf, advanced, shown, highlight } = useAnalysisTabs({
+  const { open, toggle, toggleOf, advanced, shown, highlight } = useAnalysisTabs<LandTab, LandHighlightKeys>({
     storageId: page.storageId, tabs: LAND_TABS[model.treatment], defaults: LAND_SECTION_DEFAULTS, activity, sessionKey: gpx.sessionKey,
   });
   /** Répétitions retrouvées dans la vitesse : en famille Fractionné, pour une session faite sans le compteur. */
@@ -280,38 +277,25 @@ function LandModule({ family }: { family: LandFamily }) {
   // garde ses répétitions dans sa fiche, et les retrouve si elle passe en Fractionné.
   const hasIntervals = family === 'fractionne' && (sessionIntervals.length > 0 || detectionOn);
   // Sauts mesurés par les capteurs du téléphone : ceux de la fiche, sinon calculés depuis le `.imu`.
-  const jumpsState = useSessionJumps(shownFile, gpx.track, profile.id);
-  const jumpMinHeightM = effectiveJumpSettings(activity)?.minHeightM ?? profile.jumps?.defaultMinHeightM ?? 0;
   const thresholdMs = fromDisplaySpeed(activeThreshold, profile.thresholdUnit);
-  /** Sauts montrés : la hauteur minimale de l'activité atteinte, pris au seuil d'activité ou plus. */
-  const shownJumps = useMemo(
-    () => jumpsState.jumps.filter((j) => j.heightM >= jumpMinHeightM && (j.speedMs === null || j.speedMs >= thresholdMs)),
-    [jumpsState.jumps, jumpMinHeightM, thresholdMs]
-  );
-  const jumpsVisible = jumpsState.status !== 'none';
+  const jumps = useShownJumps({ file: shownFile, track: gpx.track, profile, activity, thresholdMs, highlight });
+  const jumpsVisible = jumps.visible;
   const sections = useMemo(
     () => shown((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals) && (s.key !== 'test' || isTestSport(profile.id))
       && (s.key !== 'sauts' || jumpsVisible) && (s.key !== 'cardio' || heart.present) && (s.key !== 'cadence' || cadencePresent)),
     [shown, profile.topTargets, profile.id, hasIntervals, jumpsVisible, heart.present, cadencePresent]
   );
   const selectedTop = highlight.shownIn('tops');
-  const selectedZone = highlight.shownIn('zones') as GradeZoneKey | null;
+  const selectedZone = highlight.shownIn('zones');
   const selectedLap = highlight.shownIn('fractionne');
   const setSelectedTop = (key: string | null) => highlight.show('tops', key);
   const setSelectedZone = (key: GradeZoneKey | null) => highlight.show('zones', key);
   const setSelectedLap = (key: string | null) => highlight.show('fractionne', key);
-  const shownHrZone = highlight.shownIn('cardio');
-  const selectedHrZone = shownHrZone === null ? null : Number(shownHrZone);
-  const setSelectedHrZone = (zone: number | null) => highlight.show('cardio', zone === null ? null : String(zone));
-  const selectedSurface = highlight.shownIn('surface') as SurfaceCategory | null;
+  const selectedSurface = highlight.shownIn('surface');
   const setSelectedSurface = (key: SurfaceCategory | null) => highlight.show('surface', key);
   const shownCadenceBand = highlight.shownIn('cadence');
   const selectedCadenceBand = shownCadenceBand === null ? null : Number(shownCadenceBand);
   const setSelectedCadenceBand = (band: number | null) => highlight.show('cadence', band === null ? null : String(band));
-  /** Sauts montrés : le podium des trois plus hauts (`podium`), ou un saut, par l'heure de son décollage. */
-  const jumpHighlight = highlight.shownIn('sauts');
-  const jumpPodiumShown = jumpHighlight === 'podium';
-  const shownJump = jumpHighlight !== null && !jumpPodiumShown ? Number(jumpHighlight) : null;
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
   const [energyMode, setEnergyMode] = useState<EnergyChartMode>('power');
 
@@ -427,12 +411,7 @@ function LandModule({ family }: { family: LandFamily }) {
     [selectedCadenceBand, cadenceAnalysis, cadence, cadenceParams, gpx.track, activityMask]
   );
   /** Passages de la zone cardiaque choisie, tracés sur la carte tant que l'onglet « cardio » est ouvert. */
-  const hrZonePaths = useMemo(
-    () => (selectedHrZone !== null && open.cardio && heart.present && hrZones
-      ? heartRateZonePaths(gpx.track, heart.smoothed, hrZones.bounds, selectedHrZone, profile.heartRate.gapS)
-      : []),
-    [selectedHrZone, open.cardio, heart, hrZones, gpx.track, profile.heartRate.gapS]
-  );
+  const hrZone = useHeartRateZoneHighlight(highlight, open.cardio, heart, hrZones, gpx.track, profile.heartRate.gapS);
   /** Passages de la zone de pente choisie, tracés sur la carte tant que son onglet est ouvert. */
   const zonePaths = useMemo(
     () => (selectedZone !== null && open.zones && grades.length > 0 ? gradeZonePaths(gpx.track, grades, activityMask, selectedZone, profile.grade) : []),
@@ -628,6 +607,11 @@ function LandModule({ family }: { family: LandFamily }) {
     [chartRowsNeeded, gpx.track, trackDist, zoom.view, chartSpeed, elevation, stats, grades, speedUnit, distanceUnit, inverse, heart.smoothed, cadence, cadencePresent]
   );
   /** Dérive et nuage FC / vitesse de l'onglet « cardio » : vitesse des graphes, temps en mouvement. */
+  /** Rappels de l'onglet « cardio », stables : le panneau, mémoïsé, ne se redessine pas au zoom d'un autre graphe. */
+  const firstMs = gpx.track[0]?.timeMs ?? null;
+  const retainSessionHrMax = useCallback((bpm: number) => retainHr('hrMax', bpm, { kind: 'seance', atMs: firstMs }), [retainHr, firstMs]);
+  const { show: showZoomOnMap } = zoomOnMap;
+  const showCardioOnMap = useCallback(() => showZoomOnMap('cardio'), [showZoomOnMap]);
   const heartEfficiency = useMemo((): HeartRateEfficiency => ({ speedsMs: chartSpeed, active: activityMask, speedUnit }), [chartSpeed, activityMask, speedUnit]);
 
   /** Arrêts du dégradé de pente, sur l'étendue des lignes qui portent une altitude (celle de l'aire tracée). */
@@ -1007,15 +991,13 @@ function LandModule({ family }: { family: LandFamily }) {
 
   /** Couches de la carte, partagées par la carte compacte et sa vue agrandie (tap, écran étroit). */
   const mapLayers = (
-    <>
-      <BaseTileLayer family={family} />
+    <AnalysisBaseLayers family={family} track={gpx.track} zonePaths={hrZone.paths} zonePathsKey={hrZone.selectedZone}
+      zoomPath={zoomOnMap.path} marks={marks.located} shownMark={shownMark}>
       {/* Pente : ses tronçons colorés sur le même canevas que la vitesse, pas en milliers de traits SVG (27/10). */}
       {surfaceMapPaths ? <SurfaceLayer paths={surfaceMapPaths} /> : <TrackSegmentsLayer segments={gradeMapPaths ?? mapSegments} weight={5} family={family} />}
+      {/* Surbrillances : une seule à la fois (`useMapHighlight`), leur ordre ne se voit pas. */}
       {zonePaths.map((path, idx) => (
         <Polyline key={`zone-${selectedZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
-      ))}
-      {hrZonePaths.map((path, idx) => (
-        <Polyline key={`cardio-${selectedHrZone}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       ))}
       {cadencePaths.map((path, idx) => (
         <Polyline key={`cadence-${selectedCadenceBand}-${idx}`} positions={path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
@@ -1024,14 +1006,9 @@ function LandModule({ family }: { family: LandFamily }) {
       {selectedLapPath.length > 1 && (
         <Polyline key={`fractionne-${selectedLap}`} positions={selectedLapPath} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
       )}
-      {zoomOnMap.path.length > 1 && (
-        <Polyline key="zoom" positions={zoomOnMap.path} pathOptions={{ color: HIGHLIGHT_SHOWN_COLOR, weight: 10, opacity: 0.8 }} />
-      )}
       <TopsHighlight tops={tops} selected={selectedTop} />
-      {jumpsVisible && <JumpMapLayer track={gpx.track} jumps={shownJumps} shownJump={shownJump} podiumShown={jumpPodiumShown} />}
-      <SessionMarksLayer located={marks.located} shownMs={shownMark} />
-      <HoveredTrackMarker points={gpx.track} />
-    </>
+      {jumpsVisible && <JumpMapLayer track={gpx.track} jumps={jumps.jumps} shownJump={jumps.shownJump} podiumShown={jumps.podiumShown} />}
+    </AnalysisBaseLayers>
   );
 
   return (
@@ -1165,9 +1142,9 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.cardio && heart.present && (
               <ResizablePanel id={panelId('cardio')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <HeartRatePanel track={gpx.track} minutes={trackMinutes} heart={heart} params={profile.heartRate} zones={hrZones} profileHrMax={runner.hrMax} runner={runner}
-                  onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: gpx.track[0]?.timeMs ?? null })} selectedZone={selectedHrZone} onSelectZone={setSelectedHrZone}
+                  onRetainHrMax={retainSessionHrMax} selectedZone={hrZone.selectedZone} onSelectZone={hrZone.select}
                   efficiency={heartEfficiency}
-                  zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
+                  zoom={cardioZoom} onShowOnMap={showCardioOnMap}
                   open={open.cardio} onToggle={toggleOf('cardio')} />
               </ResizablePanel>
             )}
@@ -1358,20 +1335,20 @@ function LandModule({ family }: { family: LandFamily }) {
 
             {open.sauts && jumpsVisible && (
               <JumpsPanel
-                status={jumpsState.status}
-                error={jumpsState.error}
-                jumps={shownJumps}
-                hiddenCount={jumpsState.jumps.length - shownJumps.length}
-                minHeightM={jumpMinHeightM}
+                status={jumps.status}
+                error={jumps.error}
+                jumps={jumps.jumps}
+                hiddenCount={jumps.hiddenCount}
+                minHeightM={jumps.minHeightM}
                 thresholdLabel={formatSpeed(thresholdMs, editSpeedUnit(speedUnit))}
                 speedUnit={speedUnit}
                 distanceUnit={distanceUnit}
                 open={open.sauts}
                 onToggle={toggleOf('sauts')}
-                shownJump={shownJump}
-                onShowJump={(takeoffMs) => highlight.show('sauts', takeoffMs === null ? null : String(takeoffMs))}
-                podiumShown={jumpPodiumShown}
-                onTogglePodium={() => highlight.show('sauts', jumpPodiumShown ? null : 'podium')}
+                shownJump={jumps.shownJump}
+                onShowJump={jumps.showJump}
+                podiumShown={jumps.podiumShown}
+                onTogglePodium={jumps.togglePodium}
                 trackIndexAt={trackIndexAt}
                 panelPrefix={page.storageId}
                 accent={page.accent}

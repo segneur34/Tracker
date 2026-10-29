@@ -1,5 +1,5 @@
 import { toFixedNumber } from '../core/basics';
-import { useMemo, type CSSProperties, type ReactNode } from 'react';
+import { memo, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
 import CardioLoadHelp from './CardioLoadHelp';
@@ -137,7 +137,7 @@ export function CardioCompanion({ minutes, heart, zoom, zones, onShowOnMap, styl
  * observée à retenir ; en course et à vélo, dérive et nuage FC / vitesse.
  * Posé dans le `ResizablePanel` du module.
  */
-export default function HeartRatePanel({
+function HeartRatePanel({
   track, minutes, heart, params, zones, profileHrMax, runner, onRetainHrMax, selectedZone, onSelectZone, efficiency,
   zoom, onShowOnMap, mapless = false, open, onToggle,
 }: Props) {
@@ -294,3 +294,6 @@ export default function HeartRatePanel({
     </>
   );
 }
+
+/** Mémoïsé : le zoom d'un autre graphe de l'analyse ne le redessine pas (lot 63). */
+export default memo(HeartRatePanel);

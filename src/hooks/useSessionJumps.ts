@@ -1,9 +1,11 @@
 import { errorMessage } from '../core/basics';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { decodeImu } from '../core/imuFile';
 import { JUMPS_CALC_VERSION, measureJumps, toSessionJump, type JumpDetection, type SessionJump } from '../core/jumps';
-import { getSportProfile } from '../core/sportProfiles';
+import type { Activity } from '../core/activities';
+import { getSportProfile, type SportProfile } from '../core/sportProfiles';
 import type { SportType, TrackPoint } from '../core/types';
+import { effectiveJumpSettings } from './useSportSettings';
 import { hasSessionMotion, librarySession, readSessionMotion, updateSessionRecord, useLibrarySession } from './useSessionLibrary';
 
 /**
@@ -92,4 +94,45 @@ export const useSessionJumps = (file: string | null, track: TrackPoint[], sport:
   const jumps = current ?? local ?? null;
   const status: JumpsStatus = jumps !== null ? 'ready' : failed !== null ? 'error' : eligible ? 'computing' : 'none';
   return { status, jumps: jumps ?? [], error: failed };
+};
+
+/** Surbrillance de l'onglet « sauts » : un saut par l'heure de son décollage, ou le podium (`podium`). */
+export interface JumpsHighlight {
+  shownIn: (panel: 'sauts') => string | null;
+  show: (panel: 'sauts', key: string | null) => void;
+}
+
+/**
+ * Sauts d'une analyse (voile, course, vélo) : ceux de la session (`useSessionJumps`)
+ * montrés à la hauteur minimale de l'activité, pris au seuil d'activité ou plus,
+ * et leur surbrillance sur la carte. L'onglet « sauts » ne paraît que si la
+ * session en a (`visible`).
+ */
+export const useShownJumps = ({ file, track, profile, activity, thresholdMs, highlight }: {
+  file: string | null;
+  track: TrackPoint[];
+  profile: Pick<SportProfile, 'id' | 'jumps'>;
+  activity: Activity;
+  /** Seuil d'activité de la session, en m/s. */
+  thresholdMs: number;
+  highlight: JumpsHighlight;
+}) => {
+  const state = useSessionJumps(file, track, profile.id);
+  const minHeightM = effectiveJumpSettings(activity)?.minHeightM ?? profile.jumps?.defaultMinHeightM ?? 0;
+  /** Sauts montrés : la hauteur minimale de l'activité atteinte, pris au seuil d'activité ou plus. */
+  const jumps = useMemo(
+    () => state.jumps.filter((j) => j.heightM >= minHeightM && (j.speedMs === null || j.speedMs >= thresholdMs)),
+    [state.jumps, minHeightM, thresholdMs]
+  );
+  const shownKey = highlight.shownIn('sauts');
+  const podiumShown = shownKey === 'podium';
+  /** Saut montré, par l'heure de son décollage. */
+  const shownJump = shownKey !== null && !podiumShown ? Number(shownKey) : null;
+  const { show } = highlight;
+  const showJump = useCallback((takeoffMs: number | null) => show('sauts', takeoffMs === null ? null : String(takeoffMs)), [show]);
+  const togglePodium = useCallback(() => show('sauts', podiumShown ? null : 'podium'), [show, podiumShown]);
+  return {
+    status: state.status, error: state.error, jumps, hiddenCount: state.jumps.length - jumps.length, minHeightM,
+    visible: state.status !== 'none', shownJump, podiumShown, showJump, togglePodium,
+  };
 };

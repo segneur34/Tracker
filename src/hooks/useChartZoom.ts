@@ -50,5 +50,6 @@ export const useChartZoom = (fullRange: XRange | null, resetKey?: unknown): Char
   );
   const reset = useCallback(() => setStored({ key: resetKey, range: null }), [resetKey]);
 
-  return { full, view, shown: view ?? full, minSpan, set, reset };
+  // Rendu stable tant que la plage ne change pas : un panneau mémoïsé qui le reçoit ne se redessine pas.
+  return useMemo(() => ({ full, view, shown: view ?? full, minSpan, set, reset }), [full, view, minSpan, set, reset]);
 };

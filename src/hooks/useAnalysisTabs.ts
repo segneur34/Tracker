@@ -3,7 +3,7 @@ import type { Activity } from '../core/activities';
 import { maskAdvancedTabs, maskHiddenTabs, shownTabs, type AnalysisTab } from '../core/analysisTabs';
 import { useAdvancedTabs } from './useAdvancedTabs';
 import { useResetChartHover } from './useChartHover';
-import { useMapHighlight } from './useMapHighlight';
+import { useMapHighlight, type HighlightKeys } from './useMapHighlight';
 import { useOpenSections } from './useOpenSections';
 import { effectiveTabChoices } from './useSportSettings';
 
@@ -26,8 +26,9 @@ export interface AnalysisTabsInput<K extends string> {
  * qu'elle est fermée (`maskAdvancedTabs`, `useAdvancedTabs`) ; la surbrillance
  * unique de la carte, rattachée aux onglets ouverts (`useMapHighlight`) ; le
  * point survolé des graphes effacé à chaque session (`useResetChartHover`).
+ * `T` donne le type des clés de surbrillance d'un onglet (`zones` : une zone de pente).
  */
-export const useAnalysisTabs = <K extends string>({ storageId, tabs, defaults, activity, sessionKey }: AnalysisTabsInput<K>) => {
+export const useAnalysisTabs = <K extends string, T extends HighlightKeys<K> = Record<never, never>>({ storageId, tabs, defaults, activity, sessionKey }: AnalysisTabsInput<K>) => {
   const { open: storedOpen, toggle, set } = useOpenSections<K>(storageId, defaults);
   // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
   const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
@@ -39,7 +40,7 @@ export const useAnalysisTabs = <K extends string>({ storageId, tabs, defaults, a
     [storedOpen, tabs, tabChoices, advanced.open]
   );
   /** Une seule surbrillance sur la carte, effacée quand son onglet se ferme. */
-  const highlight = useMapHighlight(open);
+  const highlight = useMapHighlight<K, T>(open);
   // Point survolé hors de l'état du module (`useChartHover`) : effacé à chaque session et au démontage.
   useResetChartHover(sessionKey);
 
