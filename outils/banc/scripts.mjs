@@ -64,6 +64,7 @@ export const SCRIPTS = [
   { nom: 'marche', args: ['{port}', '{captures?}'], pages: ['reglages', 'enregistrer'] },
   { nom: 'materiel', args: ['{port}', '{captures?}'], pages: ['course', 'velo', 'surf', 'reglages'] },
   { nom: 'miseajour', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'reglages'] },
+  { nom: 'muscu', args: ['{port}', '{captures?}'], pages: ['fractionne'] },
   { nom: 'notes', args: ['{port}', '{travail}', '{captures?}'], pages: ['enregistrer', 'course', 'voile', 'surf'], solo: true, accelerable: true, masques: [heure] },
   { nom: 'notification', args: ['{port}', '{travail}'], pages: ['reglages', 'enregistrer', 'fractionne'], solo: true },
   { nom: 'onglets', args: ['{port}', '{captures?}'], pages: ['course', 'velo', 'surf', 'voile', 'reglages'] },

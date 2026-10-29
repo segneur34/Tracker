@@ -440,6 +440,8 @@ Opus | high. Neutre. Sources : 02-A1, 02-A2, 02-A3, 02-C5, 03-A1. Le verdict des
 
 **Rapport attendu** : lignes retirées par module ; clés vérifiées.
 
+**Tranché par l'orchestrateur (29/10, questions mineures du plan)** : `useAnalysisTabs` reçoit `defaults` à part (la terre change de liste avec l'activité, `useStoredRecord` veut des défauts fixes) ; un script `outils/banc/muscu.mjs` est écrit pour couvrir l'analyse muscu ; `useSportSettings('voile')` sort de `useSailingSession` et `load` passe par un relais stable ; le brouillon de la voile reste rattaché à la session demandée (`requested`), comme avant : le hook rend `requested` et la voile garde sa garde (lot neutre, aucune différence même si la session disparaît de la mémoire). À proposer à l'utilisateur à la passe doc : « Où ajouter quoi › Section de module » de `CLAUDE.md` devient « une entrée dans la liste du module ; défauts tirés de `tabDefaults` ».
+
 ### 63 · Coquille 2 : FC, couches de carte, sauts, pumping
 
 Opus | medium. Neutre sauf Q39. Sources : 02-A4, 02-A5, 02-A14, 02-B3, 02-B4, 02-C6, 02-C11, 03-B7, 05-A7.

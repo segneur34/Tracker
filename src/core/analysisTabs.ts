@@ -8,8 +8,8 @@ import { isIntervalSport, isTestSport, sportTreatment, type SportProfile, type T
  * caché tant qu'on ne le coche pas. Tous se cachent, « général » et
  * « réglages » compris (choix de l'utilisateur, 14/10).
  *
- * Pour ajouter un onglet : une entrée dans la liste de son module, puis, dans
- * la page, une valeur par défaut dans `*_SECTION_DEFAULTS` et un bloc
+ * Pour ajouter un onglet : une entrée dans la liste de son module (ouvert par
+ * défaut s'il est `primary`, `tabDefaults`), puis, dans la page, un bloc
  * `{open.maCle && (...)}` ; un onglet générique porte `generic` dans les
  * modules où il n'est pas natif, et sa pièce est partagée (`TopsPanel`).
  */
@@ -121,6 +121,20 @@ export const analysisTabs = (profile: SportProfile): readonly AnalysisTab[] =>
   TREATMENT_TABS[sportTreatment(profile.id)].filter((tab) => (tab.key !== 'sauts' || profile.jumps !== null) && (tab.key !== 'cadence' || profile.cadence !== null)
     && (tab.key !== 'pumping' || profile.pump !== null)
     && (tab.key !== 'fractionne' || isIntervalSport(profile.id)) && (tab.key !== 'test' || isTestSport(profile.id)));
+
+/**
+ * Onglets ouverts à la première visite d'un module : ceux de la première rangée
+ * (`primary`), tous les autres fermés. Plusieurs listes pour un module qui en
+ * change avec l'activité (course et vélo : « cadence » n'est qu'à pied) ; le
+ * résultat sert de défauts fixes aux sections mémorisées (`useOpenSections`).
+ */
+export const tabDefaults = <K extends string>(...lists: readonly (readonly AnalysisTab<K>[])[]): Record<K, boolean> => {
+  const defaults = {} as Record<K, boolean>;
+  for (const list of lists) {
+    for (const tab of list) defaults[tab.key] = tab.primary === true;
+  }
+  return defaults;
+};
 
 /** Onglet montré : le choix de l'activité, sinon son défaut (natif montré, générique caché). */
 export const isTabShown = (tab: AnalysisTab, choices: TabChoices | null | undefined): boolean => {

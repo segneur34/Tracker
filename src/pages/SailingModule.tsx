@@ -1,6 +1,6 @@
 import { normalizeDeg } from '../core/angles';
 import { roundTo } from '../core/basics';
-import { useCallback, useEffect, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { GraphFoldHead } from '../components/ChartFold';
 import { HoverReadout, type Readout } from '../components/ChartReadout';
 import { Polyline, Marker, CircleMarker, Popup } from 'react-leaflet';
@@ -8,36 +8,33 @@ import BaseTileLayer from '../components/BaseTileLayer';
 import L from 'leaflet';
 import type { DotItemDotProps } from 'recharts';
 import './analysisMobile.css';
-import { Link, useSearchParams } from 'react-router-dom';
-import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
+import { Link } from 'react-router-dom';
+import { useAnalysisSession } from '../hooks/useAnalysisSession';
+import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
+import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useSailingSession } from '../hooks/useSailingSession';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
-import { effectiveHrOffset, effectiveJumpSettings, effectiveTabChoices, readStoredActivities } from '../hooks/useSportSettings';
+import { effectiveHrOffset, effectiveJumpSettings, useSportSettings } from '../hooks/useSportSettings';
 import { useSessionJumps } from '../hooks/useSessionJumps';
 import { useSessionPumping } from '../hooks/useSessionPumping';
-import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useSessionMarks } from '../hooks/useSessionMarks';
 import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionHeartRate } from '../hooks/useSessionHeartRate';
 import { heartRateZonePaths } from '../core/heartRate';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { useAdvancedTabs } from '../hooks/useAdvancedTabs';
-import { useMapHighlight } from '../hooks/useMapHighlight';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { ARROW_EVERY_S, CHART_MAX_POINTS, arrowIndices, trackBounds } from '../core/displayConfig';
-import { SAILING_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type SailingTab } from '../core/analysisTabs';
+import { SAILING_TABS, tabDefaults, type SailingTab } from '../core/analysisTabs';
 import { sampledIndices, sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
 import { nearestIndexAtTime } from '../core/search';
-import { useResetChartHover } from '../hooks/useChartHover';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
-import { FAMILY_ACCENT, sessionActivity } from '../core/activities';
+import { FAMILY_ACCENT } from '../core/activities';
 import { activeRatioLabel, hasPositions } from '../core/sportProfiles';
 import { isValidSpeedRange } from '../core/speedGradient';
 import { trackColorSegments } from '../core/trackColor';
 import type { TopSegment } from '../core/types';
 import { measureFlightPumping, summarizePumping, type FlightPumping } from '../core/pumping';
-import type { LibrarySession } from '../library/record';
 import {
   SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
   knotsToMs, toDisplaySpeed,
@@ -100,7 +97,7 @@ const SAILING_GEAR_FIELDS_FOIL: GearField[] = [
  * et le vent : seul ouvert par défaut, il se replie pour comparer tableaux et
  * carte. Les réglages de la session sont dans le dernier. Leur liste est `SAILING_TABS`
  * (`core/analysisTabs.ts`), où chaque activité choisit dans Réglages ceux qu'elle montre. Pour en ajouter un :
- * une entrée là, une valeur par défaut dans `SAILING_PANEL_DEFAULTS`, et un bloc `{open.maCle && (...)}` dans la colonne.
+ * une entrée là (ouvert par défaut s'il est `primary`, `tabDefaults`), et un bloc `{open.maCle && (...)}` dans la colonne.
  */
 
 /** Graphes de l'onglet « graphiques » dépliés tant qu'on ne les replie pas. */
@@ -109,19 +106,7 @@ type SailingGraphFold = keyof typeof SAILING_GRAPH_FOLDS_DEFAULT;
 /** Nom de chaque graphe de « graphiques », à la couleur de sa courbe (règle commune des noms, Q37). */
 const SAILING_GRAPH_COLORS: Record<SailingGraphFold, string> = { vitesse: SAILING_SPEED_COLOR, fc: HEART_RATE_COLOR, polaire: ALTITUDE_COLOR };
 
-const SAILING_PANEL_DEFAULTS: Record<SailingTab, boolean> = {
-  general: true,
-  tops: false,
-  manoeuvres: false,
-  graphiques: false,
-  cardio: false,
-  vmg: false,
-  sauts: false,
-  pumping: false,
-  vent: false,
-  matos: false,
-  reglages: false,
-};
+const SAILING_PANEL_DEFAULTS = tabDefaults(SAILING_TABS);
 
 // --- Utilitaires d'affichage ---
 
@@ -173,17 +158,32 @@ const createArrowIcon = (bearing: number) => {
 };
 
 function SailingModule() {
-  // Session de la mémoire désignée par l'URL, et son brouillon : vent saisi, seuil
-  // d'activité, allure imposée, couleurs et notes, écrits dans sa fiche par « Enregistrer la session ».
-  const [searchParams] = useSearchParams();
-  const requestedFile = searchParams.get('session');
+  /** Réglages de l'activité de voile, lus une fois ici et passés à `useSailingSession`. */
+  const settings = useSportSettings('voile');
+  const { activity, setActivity } = settings;
   /**
-   * Fichier de la trace affichée, posé en même temps qu'elle (`receiveSession`). Le brouillon ne vaut que
+   * Fichier de la trace affichée, posé en même temps qu'elle (`load`). Le brouillon ne vaut que
    * pour sa propre trace, comme dans les autres modules : passer de A à B n'applique pas un instant le vent,
    * le seuil ou les repères de B à la trace de A.
    */
   const [shownFile, setShownFile] = useState<string | null>(null);
-  const draft = useSessionDraft(requestedFile !== null && shownFile === requestedFile ? requestedFile : null);
+  /**
+   * Lecture du GPX par `useSailingSession`, appelé après le brouillon dont il lit le vent, le seuil et
+   * l'allure : un relais stable, rempli dès que la trace est là (la lecture vient toujours après le rendu).
+   */
+  const loadTrack = useRef<(content: string, file: string) => void>(() => undefined);
+  const load = useCallback((content: string, file: string) => {
+    setShownFile(file);
+    loadTrack.current(content, file);
+  }, []);
+  // Session de la mémoire désignée par l'URL : son activité devient celle du module. Son brouillon (vent saisi,
+  // seuil d'activité, allure imposée, couleurs et notes, écrits dans sa fiche par « Enregistrer la session »)
+  // reste rattaché à la session demandée, comme avant le lot 62. Toutes les activités sont proposées pour une
+  // session de la mémoire, celles de la voile seules sinon ; vers une activité de course, la session part
+  // dans le module course (`useChangeSessionActivity`).
+  const {
+    requested: requestedFile, sessionFile, error: sessionError, draft, allActivities, changeActivity: changeSessionActivity,
+  } = useAnalysisSession({ family: 'voile', activity, setActivity, load, loadedFile: shownFile, draftFor: 'requested' });
   const { edits } = draft;
 
   const {
@@ -206,8 +206,6 @@ function SailingModule() {
     sessionKey,
     cumulative,
     flights,
-    activity,
-    setActivity,
     profile,
     activityFoil,
     activityPumping,
@@ -224,6 +222,7 @@ function SailingModule() {
     pointCount,
     maneuverThresholds,
   } = useSailingSession({
+    settings,
     windDeg: edits.windDeg,
     activeThresholdKn: edits.activeThreshold,
     referenceSpeedMs: edits.referenceSpeedMs,
@@ -241,23 +240,9 @@ function SailingModule() {
     [polarGraphData, speedUnit]
   );
 
-  // Session de la mémoire désignée par l'URL : son activité devient celle du module.
-  const receiveSession = useCallback((content: string, session: LibrarySession) => {
-    const recorded = sessionActivity(readStoredActivities(), session.record.activityId, session.record.sport);
-    if (recorded && recorded.id !== activity.id) setActivity(recorded.id);
-    setShownFile(session.file);
-    loadGpxContent(content, session.file);
-  }, [activity.id, setActivity, loadGpxContent]);
-  const { file: sessionFile, error: sessionError } = useSessionFromUrl(receiveSession);
-
-  /**
-   * Changer d'activité l'écrit aussi dans la fiche de la session ; vers une
-   * activité de course, la session part dans le module course
-   * (`useChangeSessionActivity`). Toutes les activités sont proposées pour une
-   * session de la mémoire, celles de la voile seules sinon.
-   */
-  const [allActivities] = useState(readStoredActivities);
-  const changeSessionActivity = useChangeSessionActivity('voile', setActivity);
+  useEffect(() => {
+    loadTrack.current = loadGpxContent;
+  }, [loadGpxContent]);
 
   // Nombre et réussite des manœuvres recopiés dans la fiche, pour la liste des sessions et les
   // statistiques. Seulement quand un vent est connu (sinon l'analyse des manœuvres est suspendue),
@@ -297,12 +282,14 @@ function SailingModule() {
   const heart = useSessionHeartRate(track, profile.heartRate);
   const hrOffsetBpm = effectiveHrOffset(activity);
   const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate, hrOffsetBpm), [runner, profile.heartRate, hrOffsetBpm]);
-  // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
-  const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
+  // Onglets de l'activité, rangée « avancé », point survolé effacé à chaque session ; une seule surbrillance
+  // sur la carte, effacée quand son onglet se ferme (`useMapHighlight`).
+  const { open, toggle, toggleOf, advanced, shown, highlight } = useAnalysisTabs({
+    storageId: 'sailing-onglets', tabs: SAILING_TABS, defaults: SAILING_PANEL_DEFAULTS, activity, sessionKey,
+  });
 
   const notes = edits.notes;
   const setNotes = draft.updateNotes;
-  const { open: storedOpen, toggle, set: setSections } = useOpenSections<SailingTab>('sailing-onglets', SAILING_PANEL_DEFAULTS);
   /**
    * Graphes de l'onglet « graphiques » dépliés, chacun replié à part par son
    * titre pour ne comparer que ceux qui restent ouverts (16/10). Replié, un
@@ -319,10 +306,6 @@ function SailingModule() {
       {graphTitle(key, label)}
     </div>
   );
-  /** Rangée « avancé » : refermée, ses onglets et leurs panneaux se replient, mémorisés pour sa réouverture. */
-  const setGeneral = useCallback((shown: boolean) => setSections({ general: shown }), [setSections]);
-  const advanced = useAdvancedTabs(sessionKey, setGeneral);
-  const open = useMemo(() => maskAdvancedTabs(maskHiddenTabs(storedOpen, SAILING_TABS, tabChoices), SAILING_TABS, advanced.open), [storedOpen, tabChoices, advanced.open]);
   // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
   // Capteurs lus à l'ouverture de l'onglet, Pumping coché : une capture entière pèse plusieurs Mo.
   const pumpSensors = useSessionPumping(loadedFromMemory ? sessionFile : null, pumping && open.pumping);
@@ -330,12 +313,10 @@ function SailingModule() {
   const pumpingVisible = foil && profile.pump !== null && pumpSensors.hasMotion;
   const pumpingOpen = open.pumping && pumpingVisible;
   const sailingPanels = useMemo(
-    () => shownTabs(SAILING_TABS, tabChoices).filter((p) => (p.key !== 'sauts' || jumpsVisible) && (p.key !== 'pumping' || pumpingVisible)
+    () => shown((p) => (p.key !== 'sauts' || jumpsVisible) && (p.key !== 'pumping' || pumpingVisible)
       && (p.key !== 'cardio' || heart.present)),
-    [tabChoices, jumpsVisible, pumpingVisible, heart.present]
+    [shown, jumpsVisible, pumpingVisible, heart.present]
   );
-  /** Une seule surbrillance sur la carte, effacée quand son onglet se ferme (`useMapHighlight`). */
-  const highlight = useMapHighlight(open);
   /** Top montré : de vitesse (onglet tops, `t2s`…) ou de VMG (onglet VMG, `vmgUpwind`, `vmgDownwind`), ou `none`. */
   const selectedTopMap = highlight.shownIn('tops') ?? highlight.shownIn('vmg') ?? 'none';
   /** Podium de manœuvres montré : `tack:conservation`, `jibe:distance`, ou `none`. */
@@ -387,8 +368,6 @@ function SailingModule() {
   /** Explications repliées derrière un « ? » (enregistrement et virages écartés ; lecture du vent). */
   const maneuverHelpOpen = useHelp('voile:manoeuvres')?.open ?? false;
   const windHelpOpen = useHelp('voile:vent')?.open ?? false;
-  // Point survolé hors de l'état du module (`useChartHover`) : effacé à chaque session et au démontage.
-  useResetChartHover(sessionKey);
   /** Réglage du vent sur la carte, ouvert par « Régler » ; sur téléphone, dans la carte en plein écran. */
   const [windAdjust, setWindAdjust] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
@@ -683,7 +662,7 @@ function SailingModule() {
    * l'onglet le dit, avec de quoi ouvrir « général » où on le saisit (demande du 19/10).
    */
   const renderEmptyPanel = (key: 'manoeuvres' | 'vmg' | 'vent', label: string, what: string, otherwise: string) => (
-    <EmptyTabPanel id={`sailing.carte.${key}.vide`} label={label} open={open[key]} onToggle={() => toggle(key)}
+    <EmptyTabPanel id={`sailing.carte.${key}.vide`} label={label} open={open[key]} onToggle={toggleOf(key)}
       action={windInputRequired && !windAdjust
         ? <Button size="s" onClick={startWindAdjust}>Régler le vent</Button>
         : undefined}>
@@ -695,7 +674,7 @@ function SailingModule() {
   const renderVmgPanel = (v: NonNullable<typeof vmgStats>) => (
     <ResizablePanel id="sailing.carte.vmg" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
       <div style={{ marginBottom: '10px' }}>
-        <PanelTitle label="Analyse VMG" open={open.vmg} onToggle={() => toggle('vmg')} />
+        <PanelTitle label="Analyse VMG" open={open.vmg} onToggle={toggleOf('vmg')} />
       </div>
       <table style={{ width: '100%', textAlign: 'center', borderCollapse: 'collapse', fontSize: 'var(--text-s)', backgroundColor: 'var(--surface)', border: '1px solid var(--line)' }}>
         <thead>
@@ -732,7 +711,7 @@ function SailingModule() {
   const renderManeuversPanel = (m: NonNullable<typeof maneuverStats>) => (
     <ResizablePanel id={showManeuverDetails ? 'sailing.carte.manoeuvres.details' : 'sailing.carte.manoeuvres'} style={{ ...CARD_STYLE, ...(showManeuverDetails ? { flex: '1 1 100%' } : HALF_PANEL_STYLE), padding: '12px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
-        <PanelTitle label="Manœuvres" open={open.manoeuvres} onToggle={() => toggle('manoeuvres')} helpKey="voile:manoeuvres" />
+        <PanelTitle label="Manœuvres" open={open.manoeuvres} onToggle={toggleOf('manoeuvres')} helpKey="voile:manoeuvres" />
         <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>réussie si Vmin &ge; {showThreshold(activeThresholdKn)} {speedSymbol}</span>
       </div>
 
@@ -1016,7 +995,7 @@ function SailingModule() {
             {open.general && (
               <ResizablePanel id="sailing.general" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" extra={<SessionDate track={trackData} />} open={open.general} onToggle={() => toggle('general')} />
+                  <PanelTitle label="Général" extra={<SessionDate track={trackData} />} open={open.general} onToggle={toggleOf('general')} />
                 </div>
                 <GeneralStats stats={overviewStats} />
                 {/* Mini-boussole du vent ; « Régler » ouvre la grande sur la carte (22/10). */}
@@ -1044,7 +1023,7 @@ function SailingModule() {
             {open.tops && (
               <ResizablePanel id="sailing.tops" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
                 <TopsPanel targets={profile.topTargets} tops={stats.tops} unit={speedUnit} selected={highlight.shownIn('tops')}
-                  onSelect={(key) => highlight.show('tops', key)} accent={FAMILY_ACCENT.voile} open={open.tops} onToggle={() => toggle('tops')} />
+                  onSelect={(key) => highlight.show('tops', key)} accent={FAMILY_ACCENT.voile} open={open.tops} onToggle={toggleOf('tops')} />
               </ResizablePanel>
             )}
 
@@ -1055,7 +1034,7 @@ function SailingModule() {
             {open.graphiques && (
               <div style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <div style={{ flex: '1 1 100%' }}>
-                  <PanelTitle label="Graphiques" open={open.graphiques} onToggle={() => toggle('graphiques')} helpKey="voile:graphiques" />
+                  <PanelTitle label="Graphiques" open={open.graphiques} onToggle={toggleOf('graphiques')} helpKey="voile:graphiques" />
                   <HelpText helpKey="voile:graphiques" note>Le survol déplace le repère sur la carte. {zoomText}</HelpText>
                 </div>
 
@@ -1096,7 +1075,7 @@ function SailingModule() {
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: track[0]?.timeMs ?? null })} selectedZone={selectedHrZone}
                   onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
-                  open={open.cardio} onToggle={() => toggle('cardio')} />
+                  open={open.cardio} onToggle={toggleOf('cardio')} />
               </ResizablePanel>
             )}
 
@@ -1115,7 +1094,7 @@ function SailingModule() {
                 speedUnit={speedUnit}
                 distanceUnit={distanceUnit}
                 open={open.sauts}
-                onToggle={() => toggle('sauts')}
+                onToggle={toggleOf('sauts')}
                 shownJump={shownJump}
                 onShowJump={(takeoffMs) => highlight.show('sauts', takeoffMs === null ? null : String(takeoffMs))}
                 podiumShown={jumpPodiumShown}
@@ -1128,7 +1107,7 @@ function SailingModule() {
               <ResizablePanel id="sailing.pumping" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <FlightPumpingPanel
                   label={`Pumping (${flights.length} vol${flights.length > 1 ? 's' : ''})`} helpKey="voile:pumping"
-                  open={open.pumping} onToggle={() => toggle('pumping')}
+                  open={open.pumping} onToggle={toggleOf('pumping')}
                   help={<>
                     Vol : au-dessus du seuil d'activité ({showThreshold(activeThresholdKn)} {speedSymbol}), d'une traite, d'au moins {pumpDetection?.minFlightS ?? 0} s.
                     {flightPumping
@@ -1158,7 +1137,7 @@ function SailingModule() {
                     <PanelTitle
                       label="Variations du Vent"
                       open={open.vent}
-                      onToggle={() => toggle('vent')}
+                      onToggle={toggleOf('vent')}
                       extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}> (mesurées sur {windStats.count} manœuvres)</span>}
                       helpKey="voile:vent" />
                   </div>
@@ -1200,14 +1179,14 @@ function SailingModule() {
                 {/* Foil et mât sur foil seulement ; ce qui est saisi reste dans la fiche, et revient si l'on recoche. */}
                 <SessionNotesPanel notes={notes} setNotes={setNotes} family="voile" conditions="voile" draft={draft}
                   gearFields={foil ? SAILING_GEAR_FIELDS_FOIL : SAILING_GEAR_FIELDS} gearGroups={gearGroups} activityId={activity.id}
-                  open={open.matos} onToggle={() => toggle('matos')} />
+                  open={open.matos} onToggle={toggleOf('matos')} />
               </ResizablePanel>
             )}
 
             {open.reglages && (
               <ResizablePanel id="sailing.reglages" style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} helpKey="voile:reglages" />
+                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={toggleOf('reglages')} helpKey="voile:reglages" />
                 </div>
                 <HelpText helpKey="voile:reglages" note>Vitesse : {hasDeviceSpeed ? "Doppler de l'appareil" : 'dérivée des positions, filtrée'}.</HelpText>
                 <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>

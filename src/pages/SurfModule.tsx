@@ -40,11 +40,9 @@ import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from '../components/hi
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
-import { sessionActivity } from '../core/activities';
-import { SURF_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type SurfTab } from '../core/analysisTabs';
+import { SURF_TABS, tabDefaults, type SurfTab } from '../core/analysisTabs';
 import { sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
-import { buildCumulativeTrack } from '../core/sessionStats';
 import { defaultActiveThresholdOf, hasPositions, sportTreatment } from '../core/sportProfiles';
 import { isValidSpeedRange } from '../core/speedGradient';
 import { computeAllTopSegments } from '../core/topSegments';
@@ -53,20 +51,17 @@ import {
   SPEED_UNIT_LABEL, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
   fromDisplaySpeed, toDisplaySpeed,
 } from '../core/units';
-import { useResetChartHover } from '../hooks/useChartHover';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { useGpxSession } from '../hooks/useGpxSession';
-import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
-import { useMapHighlight } from '../hooks/useMapHighlight';
+import { useAnalysisSession } from '../hooks/useAnalysisSession';
+import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
+import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { useAdvancedTabs } from '../hooks/useAdvancedTabs';
-import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useSessionPumping } from '../hooks/useSessionPumping';
-import { effectiveTabChoices, readStoredActivities, useSportSettings } from '../hooks/useSportSettings';
-import type { LibrarySession } from '../library/record';
+import { useSportSettings } from '../hooks/useSportSettings';
 import { measureFlightPumping, summarizePumping, type FlightPumping } from '../core/pumping';
 import type { SurfFlight, SurfPhase, SurfReturn, SurfSpan } from '../surfing/surfAnalysis';
 import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfing/surfSession';
@@ -89,17 +84,7 @@ import { SPEED_COLOR } from '../components/chartStyle';
  * (`core/analysisTabs.ts`), où chaque activité choisit dans Réglages ceux qu'elle montre.
  */
 
-const SURF_SECTION_DEFAULTS: Record<SurfTab, boolean> = {
-  general: true,
-  vagues: false,
-  rame: false,
-  vols: false,
-  tops: false,
-  graphiques: false,
-  cardio: false,
-  notes: false,
-  reglages: false,
-};
+const SURF_SECTION_DEFAULTS = tabDefaults(SURF_TABS);
 
 /** Préfixe des identifiants mémorisés (tailles des panneaux, onglets ouverts) : ne pas le renommer. */
 const STORAGE_ID = 'surf';
@@ -174,22 +159,10 @@ function SurfModule() {
     medianWindowSeconds: profile.medianWindowSeconds, maxDetourRatio: profile.maxDetourRatio, maxSpeedMs: profile.maxPlausibleSpeedMs, maxGapS: profile.maxGapS,
   });
 
-  const { loadGpxContent } = gpx;
-  // Session de la mémoire désignée par l'URL : son activité devient celle du module.
-  const receiveSession = useCallback(
-    (content: string, session: LibrarySession) => {
-      const recorded = sessionActivity(readStoredActivities(), session.record.activityId, session.record.sport);
-      if (recorded && recorded.id !== activity.id) setActivity(recorded.id);
-      loadGpxContent(content, session.file);
-    },
-    [activity.id, setActivity, loadGpxContent]
-  );
-  const { file: sessionFile, requested: requestedFile, error: sessionError } = useSessionFromUrl(receiveSession);
-  // Brouillon de la session : seuils, foil, couleurs ; écrit dans sa fiche par « Enregistrer la session ».
-  const shownFile = sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null;
-  const draft = useSessionDraft(shownFile);
-  const [allActivities] = useState(readStoredActivities);
-  const changeSessionActivity = useChangeSessionActivity('surf', setActivity);
+  // Session de l'adresse et son brouillon : seuils, foil, couleurs ; écrit dans sa fiche par « Enregistrer la session ».
+  const {
+    sessionFile, requested: requestedFile, shownFile, error: sessionError, draft, allActivities, changeActivity: changeSessionActivity,
+  } = useAnalysisSession({ family: 'surf', activity, setActivity, load: gpx.loadGpxContent, loadedFile: gpx.fileName });
 
   /** Foil de la session (brouillon, puis fiche), sinon celui de l'activité. */
   const foil = draft.edits.foil ?? activityFoil;
@@ -201,30 +174,23 @@ function SurfModule() {
   const surfProfile = surfProfileOf(profile);
   const waveThreshold = surfProfile ? effectiveWaveThreshold(surfProfile.surf, draft.edits.waveThreshold) : 0;
 
-  const { open: storedOpen, toggle, set: setSections } = useOpenSections<SurfTab>(STORAGE_ID, SURF_SECTION_DEFAULTS);
+  // Onglets de l'activité, rangée « avancé », surbrillance unique de la carte, point survolé effacé à chaque session.
+  const { open, toggle, toggleOf, advanced, shown, highlight } = useAnalysisTabs({
+    storageId: STORAGE_ID, tabs: SURF_TABS, defaults: SURF_SECTION_DEFAULTS, activity, sessionKey: gpx.sessionKey,
+  });
   const graphFolds = useOpenSections(`${STORAGE_ID}.graphes`, GRAPH_FOLDS_DEFAULT);
-  // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
-  const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
-  /** Rangée « avancé » : refermée, ses onglets et leurs panneaux se replient, mémorisés pour sa réouverture. */
-  const setGeneral = useCallback((shown: boolean) => setSections({ general: shown }), [setSections]);
-  const advanced = useAdvancedTabs(gpx.sessionKey, setGeneral);
-  const open = useMemo(() => maskAdvancedTabs(maskHiddenTabs(storedOpen, SURF_TABS, tabChoices), SURF_TABS, advanced.open), [storedOpen, tabChoices, advanced.open]);
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe sous la vitesse. */
   const { profile: runner, retainHr } = useRunnerProfile();
   const heart = useSessionHeartRate(gpx.track, profile.heartRate);
   const hrZones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate, hrOffsetBpm), [runner, profile.heartRate, hrOffsetBpm]);
   const sections = useMemo(
-    () => shownTabs(SURF_TABS, tabChoices).filter((s) => (s.key !== 'vols' || foil) && (s.key !== 'cardio' || heart.present)),
-    [tabChoices, foil, heart.present]
+    () => shown((s) => (s.key !== 'vols' || foil) && (s.key !== 'cardio' || heart.present)),
+    [shown, foil, heart.present]
   );
-  const highlight = useMapHighlight(open);
   const [waveSort, setWaveSort] = useState<WaveSort>('ordre');
-  // Point survolé hors de l'état du module (`useChartHover`) : effacé à chaque session et au démontage.
-  useResetChartHover(gpx.sessionKey);
   const narrow = useNarrowScreen();
 
-  const track = gpx.track;
-  const cumulative = useMemo(() => buildCumulativeTrack(track), [track]);
+  const { track, cumulative } = gpx;
   // Repères du bouton « Note » : fanions, liste de « Général », traits du graphe.
   const marks = useSessionMarks(draft, track, cumulative.cumDist);
   const shownMarkKey = highlight.shownIn('general');
@@ -526,7 +492,7 @@ function SurfModule() {
             {open.general && (
               <ResizablePanel id={panelId('general')} style={panelStyle}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={() => toggle('general')} />
+                  <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={toggleOf('general')} />
                 </div>
                 <GeneralStats stats={overviewStats} />
                 {draft.edits.foil === null && (
@@ -569,7 +535,7 @@ function SurfModule() {
             {open.vagues && (
               <ResizablePanel id={panelId('vagues')} style={panelStyle}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                  <PanelTitle label={`Vagues (${waves.length})`} open={open.vagues} onToggle={() => toggle('vagues')} helpKey="surf:vagues" />
+                  <PanelTitle label={`Vagues (${waves.length})`} open={open.vagues} onToggle={toggleOf('vagues')} helpKey="surf:vagues" />
                   <span style={{ flex: 1 }} />
                   {waves.length > 1 && (
                     <>
@@ -640,7 +606,7 @@ function SurfModule() {
             {open.rame && (
               <ResizablePanel id={panelId('rame')} style={panelStyle}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Rame et retour au pic" open={open.rame} onToggle={() => toggle('rame')} helpKey="surf:rame" />
+                  <PanelTitle label="Rame et retour au pic" open={open.rame} onToggle={toggleOf('rame')} helpKey="surf:rame" />
                 </div>
                 <HelpText helpKey="surf:rame" note>
                   Retour au pic : de la fin {foil ? "d'un vol" : "d'une vague"} au début de la première attente (immobile au moins {surfProfile.surf.minWaitS} s) ; un arrêt plus court (canard, série) compte dans la rame.
@@ -697,7 +663,7 @@ function SurfModule() {
             {open.vols && foil && (
               <ResizablePanel id={panelId('vols')} style={panelStyle}>
                 <FlightPumpingPanel
-                  label={`Vols (${flights.length})`} helpKey="surf:vols" open={open.vols} onToggle={() => toggle('vols')}
+                  label={`Vols (${flights.length})`} helpKey="surf:vols" open={open.vols} onToggle={toggleOf('vols')}
                   help={<>
                     Vol : au-dessus du seuil de vol, d'une traite ; ses vagues sont ses passages au-dessus du seuil de vague en foil.
                     {flightPumping
@@ -723,7 +689,7 @@ function SurfModule() {
             {open.tops && tops && (
               <ResizablePanel id={panelId('tops')} style={panelStyle}>
                 <TopsPanel targets={profile.topTargets} tops={tops} unit={speedUnit} selected={topShown}
-                  onSelect={(key) => highlight.show('tops', key)} accent={ACCENT} open={open.tops} onToggle={() => toggle('tops')} />
+                  onSelect={(key) => highlight.show('tops', key)} accent={ACCENT} open={open.tops} onToggle={toggleOf('tops')} />
               </ResizablePanel>
             )}
 
@@ -736,7 +702,7 @@ function SurfModule() {
               <ResizablePanel id={panelId('graphiques')} defaultHeight={folds ? undefined : 360} minHeight={folds ? 120 : 200} direction="vertical"
                 style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: folds ? 'auto' : 'hidden' }}>
                 <div className="chart-head" style={{ marginBottom: '8px', paddingRight: '28px' }}>
-                  <PanelTitle label="Vitesse" open={open.graphiques} onToggle={() => toggle('graphiques')} helpKey="surf:graphiques" />
+                  <PanelTitle label="Vitesse" open={open.graphiques} onToggle={toggleOf('graphiques')} helpKey="surf:graphiques" />
                   {!folds && <HoverReadout read={readSpeed} />}
                 </div>
                 <HelpText helpKey="surf:graphiques" note>
@@ -769,21 +735,21 @@ function SurfModule() {
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: track[0]?.timeMs ?? null })} selectedZone={selectedHrZone}
                   onSelectZone={(zone) => highlight.show('cardio', zone === null ? null : String(zone))}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
-                  open={open.cardio} onToggle={() => toggle('cardio')} />
+                  open={open.cardio} onToggle={toggleOf('cardio')} />
               </ResizablePanel>
             )}
 
             {open.notes && (
               <ResizablePanel id={panelId('notes')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                 <SessionNotesPanel notes={draft.edits.notes} setNotes={draft.updateNotes} family="surf" conditions="libre" draft={draft}
-                  gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={() => toggle('notes')} />
+                  gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={toggleOf('notes')} />
               </ResizablePanel>
             )}
 
             {open.reglages && (
               <ResizablePanel id={panelId('reglages')} style={panelStyle}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} helpKey="surf:reglages" />
+                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={toggleOf('reglages')} helpKey="surf:reglages" />
                 </div>
                 <HelpText helpKey="surf:reglages" note>
                   Vitesse : {gpx.hasDeviceSpeed

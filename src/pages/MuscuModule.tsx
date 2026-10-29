@@ -20,27 +20,23 @@ import SessionSaveBar from '../components/SessionSaveBar';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import PageHeader from '../components/ui/PageHeader';
 import StatTile from '../components/ui/StatTile';
-import { sessionActivity } from '../core/activities';
-import { MUSCU_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type MuscuTab } from '../core/analysisTabs';
+import { MUSCU_TABS, tabDefaults } from '../core/analysisTabs';
 import { parseGpx } from '../core/gpxParser';
 import { analyzeHeartRateSession, heartRatePointsFrom, type HeartRateSessionPoint, type SessionPhase } from '../core/heartRateSession';
 import { shareableStats, type ShareStat } from '../core/shareImage';
 import { hasPositions } from '../core/sportProfiles';
 import { formatDuration } from '../core/units';
-import { useAdvancedTabs } from '../hooks/useAdvancedTabs';
-import { useResetChartHover } from '../hooks/useChartHover';
+import { useAnalysisSession } from '../hooks/useAnalysisSession';
+import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
 import { zoomHint } from '../components/zoomHint';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
-import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
+import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
-import { useOpenSections } from '../hooks/useOpenSections';
 import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
-import { useSessionDraft } from '../hooks/useSessionDraft';
 import { useSessionHeartRate } from '../hooks/useSessionHeartRate';
 import { useLibrarySession } from '../hooks/useSessionLibrary';
 import { useSessionMarks } from '../hooks/useSessionMarks';
-import { effectiveTabChoices, readStoredActivities, useSportSettings } from '../hooks/useSportSettings';
-import type { LibrarySession } from '../library/record';
+import { useSportSettings } from '../hooks/useSportSettings';
 import type { IntervalSeries } from '../recording/intervalTimer';
 import { SPEED_COLOR } from '../components/chartStyle';
 
@@ -58,7 +54,7 @@ import { SPEED_COLOR } from '../components/chartStyle';
 
 const FAMILY = 'fractionne' as const;
 const PAGE = { title: 'Analyse muscu', backLabel: 'Entraînement', accent: 'var(--fractionne)', storageId: 'muscu' } as const;
-const MUSCU_SECTION_DEFAULTS: Record<MuscuTab, boolean> = { general: true, cardio: false, notes: false, reglages: false };
+const MUSCU_SECTION_DEFAULTS = tabDefaults(MUSCU_TABS);
 const NO_INTERVALS: IntervalSeries[] = [];
 const NO_POINTS: HeartRateSessionPoint[] = [];
 
@@ -88,26 +84,25 @@ function MuscuModule() {
 
   const [loaded, setLoaded] = useState<LoadedSession | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Session de la mémoire désignée par l'URL : son activité devient celle du module.
-  const receiveSession = useCallback((content: string, session: LibrarySession) => {
-    const recorded = sessionActivity(readStoredActivities(), session.record.activityId, session.record.sport);
-    if (recorded && recorded.id !== activity.id) setActivity(recorded.id);
+  /** Lecture du GPX de la session : ses points à l'heure, sans position. */
+  const load = useCallback((content: string, file: string) => {
     try {
-      setLoaded({ file: session.file, points: heartRatePointsFrom(parseGpx(content).timedPoints) });
+      setLoaded({ file, points: heartRatePointsFrom(parseGpx(content).timedPoints) });
       setLoadError(null);
     } catch (err) {
       setLoaded(null);
       setLoadError(errorMessage(err, 'Lecture du GPX impossible.'));
     }
-  }, [activity.id, setActivity]);
-  const { file: sessionFile, requested, error: sessionError } = useSessionFromUrl(receiveSession);
-  const shownFile = loaded && loaded.file === sessionFile ? sessionFile : null;
+  }, []);
+  // Session de l'adresse : son activité devient celle du module ; son brouillon, écrit dans sa fiche par « Enregistrer la session ».
+  // Activité : vers une autre activité sans trace seulement (la session n'a pas de positions).
+  const {
+    requested, shownFile, error: sessionError, draft, allActivities, changeActivity: changeSessionActivity,
+  } = useAnalysisSession({ family: FAMILY, activity, setActivity, load, loadedFile: loaded?.file ?? null });
   const points = shownFile ? loaded!.points : NO_POINTS;
-  const draft = useSessionDraft(shownFile);
   const record = useLibrarySession(shownFile)?.record;
   const intervals = record?.intervals ?? NO_INTERVALS;
   const sessionKey = shownFile;
-  useResetChartHover(sessionKey);
 
   const zones = useMemo(() => runnerHeartRateZones(runner, profile.heartRate, hrOffsetBpm), [runner, profile.heartRate, hrOffsetBpm]);
   const analysis = useMemo(
@@ -116,19 +111,11 @@ function MuscuModule() {
   );
   const heart = useSessionHeartRate(points, profile.heartRate);
 
-  // Onglets : ceux de l'activité ; « cardio » seulement avec assez de FC.
-  const { open: storedOpen, toggle, set: setSections } = useOpenSections<MuscuTab>(PAGE.storageId, MUSCU_SECTION_DEFAULTS);
-  const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
-  const setGeneral = useCallback((shown: boolean) => setSections({ general: shown }), [setSections]);
-  const advanced = useAdvancedTabs(sessionKey, setGeneral);
-  const open = useMemo(
-    () => maskAdvancedTabs(maskHiddenTabs(storedOpen, MUSCU_TABS, tabChoices), MUSCU_TABS, advanced.open),
-    [storedOpen, tabChoices, advanced.open]
-  );
-  const sections = useMemo(
-    () => shownTabs(MUSCU_TABS, tabChoices).filter((s) => s.key !== 'cardio' || heart.present),
-    [tabChoices, heart.present]
-  );
+  // Onglets : ceux de l'activité ; « cardio » seulement avec assez de FC. Le point survolé s'efface à chaque session.
+  const { open, toggle, toggleOf, advanced, shown } = useAnalysisTabs({
+    storageId: PAGE.storageId, tabs: MUSCU_TABS, defaults: MUSCU_SECTION_DEFAULTS, activity, sessionKey,
+  });
+  const sections = useMemo(() => shown((s) => s.key !== 'cardio' || heart.present), [shown, heart.present]);
 
   // Repères du bouton « Note » : liste de « Général », traits sur la courbe ; « Voir » met le trait en violet.
   const noDistances = useMemo(() => points.map(() => 0), [points]);
@@ -153,10 +140,6 @@ function MuscuModule() {
       { key: 'reps', label: 'Répétitions', value: analysis.reps > 0 ? String(analysis.reps) : '—' },
     ];
   }, [analysis]);
-
-  // Activité : vers une autre activité sans trace seulement (la session n'a pas de positions).
-  const [allActivities] = useState(readStoredActivities);
-  const changeSessionActivity = useChangeSessionActivity(FAMILY, setActivity);
 
   return (
     <div className="an-page" style={{ padding: '20px' }}>
@@ -189,7 +172,7 @@ function MuscuModule() {
             {open.general && (
               <ResizablePanel id={panelId('general')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" extra={<SessionDate track={points} />} open={open.general} onToggle={() => toggle('general')} helpKey="muscu:general" />
+                  <PanelTitle label="Général" extra={<SessionDate track={points} />} open={open.general} onToggle={toggleOf('general')} helpKey="muscu:general" />
                 </div>
                 <HelpText helpKey="muscu:general" note>
                   FC lissée sur {profile.heartRate.smoothS} s ; un trou de plus de {profile.heartRate.gapS} s (ceinture retirée, pause) n'est ni compté ni tracé.
@@ -243,10 +226,10 @@ function MuscuModule() {
                 <HeartRatePanel track={points} minutes={minutes} heart={heart} params={profile.heartRate} zones={zones} profileHrMax={runner.hrMax} runner={runner}
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: points[0]?.timeMs ?? null })}
                   selectedZone={null} onSelectZone={() => undefined} 
-                  zoom={cardioZoom} mapless open={open.cardio} onToggle={() => toggle('cardio')} />
+                  zoom={cardioZoom} mapless open={open.cardio} onToggle={toggleOf('cardio')} />
               </ResizablePanel>
             ) : (
-              <EmptyTabPanel id={panelId('cardio.vide')} label="Cardio" open={open.cardio} onToggle={() => toggle('cardio')}>
+              <EmptyTabPanel id={panelId('cardio.vide')} label="Cardio" open={open.cardio} onToggle={toggleOf('cardio')}>
                 Pas assez de FC dans cette session pour l'onglet cardio.
               </EmptyTabPanel>
             ))}
@@ -254,14 +237,14 @@ function MuscuModule() {
             {open.notes && (
               <ResizablePanel id={panelId('notes')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                 <SessionNotesPanel notes={draft.edits.notes} setNotes={draft.updateNotes} family={FAMILY} conditions="libre" draft={draft}
-                  gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={() => toggle('notes')} />
+                  gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={toggleOf('notes')} />
               </ResizablePanel>
             )}
 
             {open.reglages && (
               <ResizablePanel id={panelId('reglages')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} helpKey="muscu:reglages" />
+                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={toggleOf('reglages')} helpKey="muscu:reglages" />
                 </div>
                 <HelpText helpKey="muscu:reglages" note>
                   Une session sans GPS ne change que pour une autre activité sans trace : elle n'a pas de positions pour une analyse à pied, à vélo ou en voile.

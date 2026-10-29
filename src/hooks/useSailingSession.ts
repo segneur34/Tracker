@@ -1,6 +1,5 @@
 import { normalizeDeg } from '../core/angles';
 import { useMemo } from 'react';
-import { buildCumulativeTrack } from '../core/sessionStats';
 import { hasActiveThreshold } from '../core/sportProfiles';
 import { msToKnots } from '../core/units';
 import {
@@ -20,7 +19,7 @@ import { calculateVmgStats, calculateWindStats, summarizeManeuvers } from '../sa
 import { buildSailingSessionStats, computeSailingTops, sailingFlights } from '../sailing/sailingStats';
 import { trackToPointData } from '../utils/kinematics';
 import { useGpxSession } from './useGpxSession';
-import { useSportSettings } from './useSportSettings';
+import type { useSportSettings } from './useSportSettings';
 
 /**
  * Orchestration d'une session à voile : ingestion générique d'un côté,
@@ -36,9 +35,12 @@ import { useSportSettings } from './useSportSettings';
  *
  * Le vent saisi, le seuil et l'allure propres à la session viennent du
  * module (son brouillon, `useSessionDraft`), qui les garde dans la fiche de
- * la session.
+ * la session ; les réglages de l'activité aussi (`useSportSettings('voile')`,
+ * lu une seule fois, par le module).
  */
 export interface SailingSessionInput {
+  /** Réglages de l'activité de voile, lus par le module. */
+  settings: ReturnType<typeof useSportSettings>;
   /** Vent saisi, en degrés ; `null` : vent estimé. */
   windDeg: number | null;
   /** Seuil d'activité de la session, en nœuds ; `null` : celui du support, ou la suggestion. */
@@ -48,13 +50,12 @@ export interface SailingSessionInput {
 }
 
 export const useSailingSession = ({
+  settings,
   windDeg,
   activeThresholdKn: sessionThresholdKn,
   referenceSpeedMs: sessionReferenceMs,
 }: SailingSessionInput) => {
   const {
-    activity,
-    setActivity,
     sport,
     profile,
     activeThreshold: rawActiveThresholdKn,
@@ -65,7 +66,7 @@ export const useSailingSession = ({
     foil: activityFoil,
     pumping: activityPumping,
     gearGroups,
-  } = useSportSettings('voile');
+  } = settings;
 
   // Les seuils de filtrage suivent l'allure de la session, pas seulement le
   // support : sur une trace lente, l'accélération et le plafond du wingfoil
@@ -83,7 +84,7 @@ export const useSailingSession = ({
   const trackData = useMemo(() => trackToPointData(gpx.track), [gpx.track]);
 
   const referenceSpeedKn = msToKnots(gpx.referenceSpeedMs);
-  const cumulative = useMemo(() => buildCumulativeTrack(gpx.track), [gpx.track]);
+  const { cumulative } = gpx;
 
   /**
    * Seuil d'activité suggéré à partir de l'allure de la session, et seuil
@@ -249,8 +250,6 @@ export const useSailingSession = ({
     windStats,
     polarGraphData,
     // Réglages de l'activité
-    activity,
-    setActivity,
     sport,
     profile,
     /** Support sur foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */

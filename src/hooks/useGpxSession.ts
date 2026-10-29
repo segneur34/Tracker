@@ -7,6 +7,7 @@ import {
   samplingIntervalS,
   sessionFilterThresholds,
 } from '../core/sessionSpeed';
+import { buildCumulativeTrack } from '../core/sessionStats';
 import type { RawTrackPoint, TrackPoint } from '../core/types';
 
 /**
@@ -101,6 +102,9 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
     referenceSpeedMs,
   ]);
 
+  /** Distance et temps cumulés le long de la trace, calculés une fois par trace pour tout le module. */
+  const cumulative = useMemo(() => buildCumulativeTrack(track), [track]);
+
   /** Intervalle médian entre deux points, en secondes : la cadence d'enregistrement. */
   const samplingS = useMemo(() => samplingIntervalS(session.rawPoints), [session.rawPoints]);
 
@@ -132,6 +136,7 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
   return {
     ...session,
     track,
+    cumulative,
     referenceSpeedMs,
     samplingS,
     sessionKey,

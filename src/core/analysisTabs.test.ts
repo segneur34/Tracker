@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, analysisTabs, generalOpenAfterAdvanced, isNewAnalysisSession, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, toggleTabChoice,
+  LAND_TABS, MUSCU_TABS, SAILING_TABS, SURF_TABS, analysisTabs, generalOpenAfterAdvanced, isNewAnalysisSession, isTabShown, maskAdvancedTabs, maskHiddenTabs, sanitizeTabChoices, shownTabs, tabDefaults, toggleTabChoice,
 } from './analysisTabs';
 import { SPORT_PROFILES } from './sportProfiles';
 
@@ -200,5 +200,32 @@ describe('« avancé » et « général »', () => {
   it('une trace pas encore lue ne compte pas', () => {
     expect(isNewAnalysisSession('a|1', null)).toBe(false);
     expect(isNewAnalysisSession(undefined, null)).toBe(false);
+  });
+});
+
+describe('tabDefaults : onglets ouverts à la première visite', () => {
+  // Copies gelées des constantes écrites à la main avant le lot 62 (SailingModule, LandModule, SurfModule, MuscuModule).
+  const SAILING_PANEL_DEFAULTS = {
+    general: true, tops: false, manoeuvres: false, graphiques: false, cardio: false, vmg: false, sauts: false, pumping: false, vent: false, matos: false, reglages: false,
+  };
+  const LAND_SECTION_DEFAULTS = {
+    general: true, fractionne: true, test: true, tops: false, zones: false, surface: false, energie: false, graphiques: false, cardio: false, cadence: false,
+    sauts: false, notes: false, reglages: false,
+  };
+  const SURF_SECTION_DEFAULTS = {
+    general: true, vagues: false, rame: false, vols: false, tops: false, graphiques: false, cardio: false, notes: false, reglages: false,
+  };
+  const MUSCU_SECTION_DEFAULTS = { general: true, cardio: false, notes: false, reglages: false };
+
+  it('rend les défauts de chaque module, tels qu\'ils étaient écrits', () => {
+    expect(tabDefaults(SAILING_TABS)).toEqual(SAILING_PANEL_DEFAULTS);
+    expect(tabDefaults(LAND_TABS.course, LAND_TABS.velo)).toEqual(LAND_SECTION_DEFAULTS);
+    expect(tabDefaults(SURF_TABS)).toEqual(SURF_SECTION_DEFAULTS);
+    expect(tabDefaults(MUSCU_TABS)).toEqual(MUSCU_SECTION_DEFAULTS);
+  });
+
+  it('course et vélo : l\'union des deux listes, « cadence » comprise', () => {
+    expect(Object.hasOwn(tabDefaults(LAND_TABS.velo), 'cadence')).toBe(false);
+    expect(tabDefaults(LAND_TABS.course, LAND_TABS.velo).cadence).toBe(false);
   });
 });

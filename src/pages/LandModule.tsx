@@ -51,13 +51,12 @@ import { inChartView } from '../components/chartHover';
 import { CARD_STYLE, HALF_PANEL_STYLE } from '../components/styles';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
-import { LAND_TABS, maskAdvancedTabs, maskHiddenTabs, shownTabs, type LandTab } from '../core/analysisTabs';
+import { LAND_TABS, tabDefaults, type LandTab } from '../core/analysisTabs';
 import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { trackChartRows, type TrackChartRow } from '../core/chartRows';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { computeElevationStats } from '../core/elevation';
-import { buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
-import { sessionActivity } from '../core/activities';
+import { buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
 import { nearestIndexAtTime } from '../core/search';
 import { heartRateZonePaths, timeSpanHeartRate } from '../core/heartRate';
 import { ELEVATION_PRESETS, getActiveThresholds, hasPositions, isTestSport, sportTreatment } from '../core/sportProfiles';
@@ -70,15 +69,13 @@ import {
   DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, speedUnitLabel, formatClockMinutes, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
   isInverseUnit, toDisplayDistance, toDisplaySpeed,
 } from '../core/units';
-import { useResetChartHover } from '../hooks/useChartHover';
 import { useChartZoom, type ChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { useGpxSession } from '../hooks/useGpxSession';
-import { useSessionDraft } from '../hooks/useSessionDraft';
-import { libraryPath, useChangeSessionActivity, useSessionFromUrl } from '../hooks/useLibraryNavigation';
+import { useAnalysisSession } from '../hooks/useAnalysisSession';
+import { useAnalysisTabs } from '../hooks/useAnalysisTabs';
+import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { useAdvancedTabs } from '../hooks/useAdvancedTabs';
-import { useMapHighlight } from '../hooks/useMapHighlight';
 import { useZoomOnMap } from '../hooks/useZoomOnMap';
 import { runnerHeartRateZones, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useSessionHeartRate } from '../hooks/useSessionHeartRate';
@@ -88,7 +85,7 @@ import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import { useTerrainElevation, type TerrainElevationStatus } from '../hooks/useTerrainElevation';
 import {
-  effectiveJumpSettings, effectiveTabChoices, readStoredActivities, useSportSettings,
+  effectiveJumpSettings, useSportSettings,
 } from '../hooks/useSportSettings';
 import {
   computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
@@ -99,7 +96,6 @@ import { detectIntervals } from '../running/intervalDetection';
 import { analyzeIntervals, type IntervalPhaseSpan } from '../running/intervalStats';
 import type { RunningSessionStats } from '../running/types';
 import { BIKE_TYPES, isValidBikeWeight } from '../cycling/energy';
-import type { LibrarySession } from '../library/record';
 import { seriesBlocks, type IntervalSeries, type IntervalWorkout } from '../recording/intervalTimer';
 import type { SurfaceCategory } from '../planning/surface';
 import { WAY_MATCH_DEFAULTS } from '../planning/wayMatch';
@@ -130,8 +126,8 @@ const OVERLAY_CHART_HEIGHT_PX = 320;
 /**
  * Sections du module, rangées dans `LAND_TABS` (`core/analysisTabs.ts`), où
  * chaque activité choisit dans Réglages celles qu'elle montre. Pour en ajouter
- * une : une entrée là, une valeur par défaut dans `LAND_SECTION_DEFAULTS`, et
- * un bloc `{open.maCle && (...)}` dans le rendu. Le premier onglet, « général », porte la synthèse (repliable
+ * une : une entrée là (ouverte par défaut si elle est `primary`, `tabDefaults`),
+ * et un bloc `{open.maCle && (...)}` dans le rendu. Le premier onglet, « général », porte la synthèse (repliable
  * pour gagner de la place, comme en voile), le dernier les réglages de la
  * session. La carte n'en fait pas partie : comme en voile, elle
  * s'affiche en permanence, jamais derrière un onglet qu'on pourrait fermer
@@ -149,21 +145,8 @@ const OVERLAY_CHART_HEIGHT_PX = 320;
  * l'appréciation et le commentaire, comme « matos et conditions » en voile.
  */
 
-const LAND_SECTION_DEFAULTS: Record<LandTab, boolean> = {
-  general: true,
-  fractionne: true,
-  test: true,
-  tops: false,
-  zones: false,
-  surface: false,
-  energie: false,
-  graphiques: false,
-  cardio: false,
-  cadence: false,
-  sauts: false,
-  notes: false,
-  reglages: false,
-};
+/** Onglets ouverts à la première visite, les mêmes à pied et à vélo (« cadence » n'est qu'à pied). */
+const LAND_SECTION_DEFAULTS = tabDefaults(LAND_TABS.course, LAND_TABS.velo);
 
 type ChartMode = 'separate' | 'overlay';
 type EnergyChartMode = 'power' | 'cumulative';
@@ -265,25 +248,17 @@ function LandModule({ family }: { family: LandFamily }) {
   );
   const cadencePresent = cadence?.present === true;
 
-  const { loadGpxContent } = gpx;
-  // Session de la mémoire désignée par l'URL : son activité devient celle du module.
-  const receiveSession = useCallback(
-    (content: string, session: LibrarySession) => {
-      const recorded = sessionActivity(readStoredActivities(), session.record.activityId, session.record.sport);
-      if (recorded && recorded.id !== activity.id) setActivity(recorded.id);
-      loadGpxContent(content, session.file);
-    },
-    [activity.id, setActivity, loadGpxContent]
-  );
-  const { file: sessionFile, requested: requestedFile, error: sessionError } = useSessionFromUrl(receiveSession);
-  // Brouillon de la session de la mémoire affichée (couleurs de la trace), écrit
-  // dans sa fiche par « Enregistrer la session ». Aucun pour un GPX lu hors de la mémoire.
-  const draft = useSessionDraft(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null);
+  // Session de l'adresse, et brouillon de la session affichée (couleurs de la trace), écrit dans sa fiche
+  // par « Enregistrer la session ». Changer d'activité l'écrit aussi dans la fiche de la session (comme en
+  // voile) ; vers une activité de voile, la session part dans le module voile.
+  const {
+    sessionFile, requested: requestedFile, shownFile, error: sessionError, draft, allActivities, changeActivity: changeSessionActivity,
+  } = useAnalysisSession({ family, activity, setActivity, load: gpx.loadGpxContent, loadedFile: gpx.fileName });
   /**
    * Répétitions du compteur rangées dans la fiche de la session affichée, s'il y en a, suivies en direct :
    * une fiche complétée par un import (« Télécharger la session » du téléphone) s'applique sans rouvrir l'analyse.
    */
-  const shownRecord = useLibrarySession(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null)?.record;
+  const shownRecord = useLibrarySession(shownFile)?.record;
   const sessionIntervals = shownRecord?.intervals ?? NO_INTERVALS;
   /** Test guidé de la fiche (Entraînement › Tests) : l'onglet « test ». */
   const sessionTest = shownRecord?.test ?? null;
@@ -293,28 +268,19 @@ function LandModule({ family }: { family: LandFamily }) {
   /** Lissage de l'altitude et plus petit dénivelé compté : le réglage « route », partout (21/10). */
   const elevationProfile = ELEVATION_PRESETS.route;
 
-  /**
-   * Changer d'activité l'écrit aussi dans la fiche de la session (comme en
-   * voile) ; vers une activité de voile, la session part dans le module voile.
-   */
-  const [allActivities] = useState(readStoredActivities);
-  const changeSessionActivity = useChangeSessionActivity(family, setActivity);
-
-  const { open: storedOpen, toggle, set: setSections } = useOpenSections<LandTab>(page.storageId, LAND_SECTION_DEFAULTS);
-  // Onglets de l'activité : ceux cachés dans Réglages sont fermés, même laissés ouverts.
-  const landTabs = LAND_TABS[model.treatment];
-  const tabChoices = useMemo(() => effectiveTabChoices(activity), [activity]);
-  /** Rangée « avancé » : refermée, ses onglets et leurs panneaux se replient, mémorisés pour sa réouverture. */
-  const setGeneral = useCallback((shown: boolean) => setSections({ general: shown }), [setSections]);
-  const advanced = useAdvancedTabs(gpx.sessionKey, setGeneral);
-  const open = useMemo(() => maskAdvancedTabs(maskHiddenTabs(storedOpen, landTabs, tabChoices), landTabs, advanced.open), [storedOpen, landTabs, tabChoices, advanced.open]);
+  // Onglets de l'activité, rangée « avancé », point survolé effacé à chaque session. Une seule surbrillance
+  // sur la carte : un top, une zone de pente, une répétition ou un revêtement ; choisir l'une retire les
+  // autres, fermer son onglet l'efface.
+  const { open, toggle, toggleOf, advanced, shown, highlight } = useAnalysisTabs({
+    storageId: page.storageId, tabs: LAND_TABS[model.treatment], defaults: LAND_SECTION_DEFAULTS, activity, sessionKey: gpx.sessionKey,
+  });
   /** Répétitions retrouvées dans la vitesse : en famille Fractionné, pour une session faite sans le compteur. */
   const detectionOn = family === 'fractionne' && sessionIntervals.length === 0 && profile.intervals !== null;
   // Onglet « fractionné » en famille Fractionné seulement (19/10) : une sortie à pied ou à vélo faite avec le compteur
   // garde ses répétitions dans sa fiche, et les retrouve si elle passe en Fractionné.
   const hasIntervals = family === 'fractionne' && (sessionIntervals.length > 0 || detectionOn);
   // Sauts mesurés par les capteurs du téléphone : ceux de la fiche, sinon calculés depuis le `.imu`.
-  const jumpsState = useSessionJumps(sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null, gpx.track, profile.id);
+  const jumpsState = useSessionJumps(shownFile, gpx.track, profile.id);
   const jumpMinHeightM = effectiveJumpSettings(activity)?.minHeightM ?? profile.jumps?.defaultMinHeightM ?? 0;
   const thresholdMs = fromDisplaySpeed(activeThreshold, profile.thresholdUnit);
   /** Sauts montrés : la hauteur minimale de l'activité atteinte, pris au seuil d'activité ou plus. */
@@ -324,13 +290,10 @@ function LandModule({ family }: { family: LandFamily }) {
   );
   const jumpsVisible = jumpsState.status !== 'none';
   const sections = useMemo(
-    () => shownTabs(landTabs, tabChoices).filter((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals) && (s.key !== 'test' || isTestSport(profile.id))
+    () => shown((s) => (s.key !== 'tops' || profile.topTargets.length > 0) && (s.key !== 'fractionne' || hasIntervals) && (s.key !== 'test' || isTestSport(profile.id))
       && (s.key !== 'sauts' || jumpsVisible) && (s.key !== 'cardio' || heart.present) && (s.key !== 'cadence' || cadencePresent)),
-    [landTabs, tabChoices, profile.topTargets, profile.id, hasIntervals, jumpsVisible, heart.present, cadencePresent]
+    [shown, profile.topTargets, profile.id, hasIntervals, jumpsVisible, heart.present, cadencePresent]
   );
-  // Une seule surbrillance sur la carte : un top, une zone de pente, une
-  // répétition ou un revêtement ; choisir l'une retire les autres, fermer son onglet l'efface.
-  const highlight = useMapHighlight(open);
   const selectedTop = highlight.shownIn('tops');
   const selectedZone = highlight.shownIn('zones') as GradeZoneKey | null;
   const selectedLap = highlight.shownIn('fractionne');
@@ -351,14 +314,12 @@ function LandModule({ family }: { family: LandFamily }) {
   const shownJump = jumpHighlight !== null && !jumpPodiumShown ? Number(jumpHighlight) : null;
   const [chartMode, setChartMode] = useState<ChartMode>('separate');
   const [energyMode, setEnergyMode] = useState<EnergyChartMode>('power');
-  // Point survolé hors de l'état du module (`useChartHover`) : effacé à chaque session et au démontage.
-  useResetChartHover(gpx.sessionKey);
 
   const narrow = useNarrowScreen();
   const unitLabel = speedUnitLabel(speedUnit, distanceUnit);
   const inverse = isInverseUnit(speedUnit);
 
-  const cumulative = useMemo(() => buildCumulativeTrack(gpx.track), [gpx.track]);
+  const { cumulative } = gpx;
   // Repères du bouton « Note » : fanions, liste de « Général », traits des graphes.
   const marks = useSessionMarks(draft, gpx.track, cumulative.cumDist);
   const shownMarkKey = highlight.shownIn('general');
@@ -371,7 +332,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const terrainElevation = useTerrainElevation(
     gpx.track,
     cumulative.cumDist,
-    sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null,
+    shownFile,
     terrainStepM
   );
 
@@ -408,7 +369,7 @@ function LandModule({ family }: { family: LandFamily }) {
    */
   const surfaces = useSessionSurfaces(
     gpx.track,
-    sessionFile !== null && gpx.fileName === sessionFile ? sessionFile : null,
+    shownFile,
     open.surface || model.surfacesAtOpening
   );
   /**
@@ -1127,7 +1088,7 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.general && (
               <ResizablePanel id={panelId('general')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={() => toggle('general')} />
+                  <PanelTitle label="Général" extra={<SessionDate track={gpx.track} />} open={open.general} onToggle={toggleOf('general')} />
                 </div>
                 <GeneralStats stats={overviewStats} />
                 {profileRows.length > 1 && generalProfile('')}
@@ -1149,7 +1110,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 distanceUnit={distanceUnit}
                 panelId={panelId}
                 open={open.fractionne}
-                onToggle={() => toggle('fractionne')}
+                onToggle={toggleOf('fractionne')}
                 selectedLap={selectedLap}
                 onSelectLap={setSelectedLap}
                 emptyText={intervalEmptyText}
@@ -1162,10 +1123,10 @@ function LandModule({ family }: { family: LandFamily }) {
                 <FitnessTestPanel track={gpx.track} test={sessionTest} minutes={trackMinutes} speedsMs={chartSpeed} hrSmoothed={heart.smoothed}
                   speedUnit={speedUnit} profileHrMax={runner.hrMax} onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'test', atMs: sessionTest.startMs })}
                   zoom={testZoom} 
-                  onShowOnMap={() => zoomOnMap.show('test')} open={open.test} onToggle={() => toggle('test')} />
+                  onShowOnMap={() => zoomOnMap.show('test')} open={open.test} onToggle={toggleOf('test')} />
               </ResizablePanel>
             ) : (
-              <EmptyTabPanel id={panelId('test.vide')} label="Test" open={open.test} onToggle={() => toggle('test')}>
+              <EmptyTabPanel id={panelId('test.vide')} label="Test" open={open.test} onToggle={toggleOf('test')}>
                 Cette session n'a pas de test guidé dans sa fiche : un test se lance depuis Entraînement › Tests, et ses résultats arrivent ici.
               </EmptyTabPanel>
             ))}
@@ -1173,7 +1134,7 @@ function LandModule({ family }: { family: LandFamily }) {
             {open.tops && tops && (
               <ResizablePanel id={panelId('tops')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <TopsPanel targets={profile.topTargets} tops={tops} unit={topUnit} selected={selectedTop} onSelect={setSelectedTop}
-                  accent={page.accent} open={open.tops} onToggle={() => toggle('tops')} />
+                  accent={page.accent} open={open.tops} onToggle={toggleOf('tops')} />
               </ResizablePanel>
             )}
 
@@ -1181,7 +1142,7 @@ function LandModule({ family }: { family: LandFamily }) {
               <ResizablePanel id={panelId('graphiques')} minHeight={120} direction="vertical"
                 style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
-                  <PanelTitle label="Graphiques" open={open.graphiques} onToggle={() => toggle('graphiques')} helpKey="analyse:graphiques" />
+                  <PanelTitle label="Graphiques" open={open.graphiques} onToggle={toggleOf('graphiques')} helpKey="analyse:graphiques" />
                   <span style={{ flex: 1 }} />
                   {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setChartMode(mode)}
@@ -1207,21 +1168,21 @@ function LandModule({ family }: { family: LandFamily }) {
                   onRetainHrMax={(bpm) => retainHr('hrMax', bpm, { kind: 'seance', atMs: gpx.track[0]?.timeMs ?? null })} selectedZone={selectedHrZone} onSelectZone={setSelectedHrZone}
                   efficiency={heartEfficiency}
                   zoom={cardioZoom} onShowOnMap={() => zoomOnMap.show('cardio')}
-                  open={open.cardio} onToggle={() => toggle('cardio')} />
+                  open={open.cardio} onToggle={toggleOf('cardio')} />
               </ResizablePanel>
             )}
 
             {open.cadence && cadenceAnalysis && (
               <ResizablePanel id={panelId('cadence')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <CadencePanel analysis={cadenceAnalysis} speedUnit={speedUnit} distanceUnit={distanceUnit} selectedBand={selectedCadenceBand} onSelectBand={setSelectedCadenceBand}
-                  storagePrefix={page.storageId} open={open.cadence} onToggle={() => toggle('cadence')} />
+                  storagePrefix={page.storageId} open={open.cadence} onToggle={toggleOf('cadence')} />
               </ResizablePanel>
             )}
 
             {open.surface && (
               <ResizablePanel id={panelId('surface')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Surface" open={open.surface} onToggle={() => toggle('surface')} helpKey="analyse:surface" />
+                  <PanelTitle label="Surface" open={open.surface} onToggle={toggleOf('surface')} helpKey="analyse:surface" />
                 </div>
                 <HelpText helpKey="analyse:surface" note>
                   Revêtement des voies d'OpenStreetMap à moins de {WAY_MATCH_DEFAULTS.radiusM} m de la trace, demandées à la première
@@ -1249,7 +1210,7 @@ function LandModule({ family }: { family: LandFamily }) {
               <ResizablePanel id={panelId('energie')} minHeight={320} direction="vertical"
                 style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', flexDirection: 'column', overflow: 'auto', fontSize: 'var(--text-s)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', paddingRight: '28px' }}>
-                  <PanelTitle label={model.energyLabel} open={open.energie} onToggle={() => toggle('energie')} helpKey="analyse:energie" />
+                  <PanelTitle label={model.energyLabel} open={open.energie} onToggle={toggleOf('energie')} helpKey="analyse:energie" />
                   <span style={{ flex: 1 }} />
                   {energy.power.length > 0 && (['power', 'cumulative'] as EnergyChartMode[]).map((mode) => (
                     <button key={mode} onClick={() => setEnergyMode(mode)}
@@ -1320,7 +1281,7 @@ function LandModule({ family }: { family: LandFamily }) {
             )}
 
             {open.zones && zoneStats.length === 0 && stats && (
-              <EmptyTabPanel id={panelId('zones.vide')} label={model.zonesTitle} open={open.zones} onToggle={() => toggle('zones')}
+              <EmptyTabPanel id={panelId('zones.vide')} label={model.zonesTitle} open={open.zones} onToggle={toggleOf('zones')}
                 action={!stats.hasElevation && terrainElevation.status === 'error'
                   ? <Button size="s" onClick={terrainElevation.retry}>Réessayer</Button>
                   : undefined}>
@@ -1335,7 +1296,7 @@ function LandModule({ family }: { family: LandFamily }) {
                     label={model.zonesTitle}
                     extra={<span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 'normal' }}>(en mouvement)</span>}
                     open={open.zones}
-                    onToggle={() => toggle('zones')}
+                    onToggle={toggleOf('zones')}
                     helpKey="analyse:zones" />
                 </div>
                 <HelpText helpKey="analyse:zones" note>
@@ -1406,7 +1367,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 speedUnit={speedUnit}
                 distanceUnit={distanceUnit}
                 open={open.sauts}
-                onToggle={() => toggle('sauts')}
+                onToggle={toggleOf('sauts')}
                 shownJump={shownJump}
                 onShowJump={(takeoffMs) => highlight.show('sauts', takeoffMs === null ? null : String(takeoffMs))}
                 podiumShown={jumpPodiumShown}
@@ -1421,14 +1382,14 @@ function LandModule({ family }: { family: LandFamily }) {
             {stats && open.notes && (
               <ResizablePanel id={panelId('notes')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                 <SessionNotesPanel notes={draft.edits.notes} setNotes={draft.updateNotes} family={family} conditions="libre" draft={draft}
-                  gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={() => toggle('notes')} />
+                  gearFields={gearFields(gearLabels)} gearGroups={gearGroups} activityId={activity.id} open={open.notes} onToggle={toggleOf('notes')} />
               </ResizablePanel>
             )}
 
             {stats && open.reglages && (
               <ResizablePanel id={panelId('reglages')} style={{ ...CARD_STYLE, ...HALF_PANEL_STYLE, fontSize: 'var(--text-s)' }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={() => toggle('reglages')} helpKey="analyse:reglages" />
+                  <PanelTitle label="Réglages de la session" open={open.reglages} onToggle={toggleOf('reglages')} helpKey="analyse:reglages" />
                 </div>
                 <HelpText helpKey="analyse:reglages" note>
                   Vitesse : {gpx.hasDeviceSpeed
