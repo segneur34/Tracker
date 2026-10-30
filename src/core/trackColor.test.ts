@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TRACK_COLOR_SMOOTHING_S, coloredSegments, effectiveSpeedRange, trackColorSegments, trackColorSpeedsMs } from './trackColor';
+import { TRACK_COLOR_SMOOTHING_S, coloredSegments, effectiveSpeedRange, pathsByColor, trackColorSegments, trackColorSpeedsMs } from './trackColor';
 import type { TrackPoint } from './types';
 import { mPerDegLon } from '../test/geo.fixture';
 
@@ -83,6 +83,72 @@ describe('trackColorSegments', () => {
 
   it('ne trace rien sous deux points', () => {
     expect(trackColorSegments(buildTrack([[0, 2]]), 'course', { minMs: 1, maxMs: 4 })).toEqual([]);
+  });
+});
+
+describe('pathsByColor', () => {
+  const a: [number, number] = [43.6, 3.8];
+  const b: [number, number] = [43.6, 3.81];
+  const c: [number, number] = [43.61, 3.81];
+  const d: [number, number] = [43.61, 3.82];
+
+  it('regroupe les traits par couleur exacte, dans l\'ordre de première apparition', () => {
+    const groups = pathsByColor([
+      { positions: [a, b], color: '#ff0000' },
+      { positions: [b, c], color: '#00ff00' },
+      // Teinte voisine, pas arrondie vers la précédente.
+      { positions: [c, d], color: '#ff0001' },
+      { positions: [d, a], color: '#ff0000' },
+    ]);
+    expect(groups).toEqual([
+      { color: '#ff0000', segments: [0, 3] },
+      { color: '#00ff00', segments: [1] },
+      { color: '#ff0001', segments: [2] },
+    ]);
+  });
+
+  it('garde les traits de plusieurs points et écarte ceux de moins de deux points', () => {
+    const groups = pathsByColor([
+      { positions: [a, b, c], color: '#123456' },
+      { positions: [d], color: '#123456' },
+      { positions: [], color: '#abcdef' },
+    ]);
+    expect(groups).toEqual([{ color: '#123456', segments: [0] }]);
+  });
+
+  it('regroupe tranche par tranche, tranches dans l\'ordre de la trace', () => {
+    const segments = ['#ff0000', '#00ff00', '#ff0000', '#00ff00', '#ff0000'].map((color) => ({ positions: [a, b], color }));
+    // Trois tranches (deux, deux et un traits), puis deux (trois et deux).
+    expect(pathsByColor(segments, 3)).toEqual([
+      { color: '#ff0000', segments: [0] },
+      { color: '#00ff00', segments: [1] },
+      { color: '#ff0000', segments: [2] },
+      { color: '#00ff00', segments: [3] },
+      { color: '#ff0000', segments: [4] },
+    ]);
+    expect(pathsByColor(segments, 2)).toEqual([
+      { color: '#ff0000', segments: [0, 2] },
+      { color: '#00ff00', segments: [1] },
+      { color: '#00ff00', segments: [3] },
+      { color: '#ff0000', segments: [4] },
+    ]);
+  });
+
+  it('ne perd aucun trait d\'une trace, à 1 Hz comme à 5 Hz', () => {
+    const range = { minMs: 1, maxMs: 9 };
+    for (const hz of [1, 5]) {
+      const segments = trackColorSegments(buildTrack([[60, 2], [20, 6], [60, 8]], hz), 'course', range);
+      for (const tranches of [1, 8]) {
+        const groups = pathsByColor(segments, tranches);
+        const chunk = Math.ceil(segments.length / tranches);
+        const all = groups.flatMap((g) => g.segments);
+        expect([...all].sort((x, y) => x - y)).toEqual(segments.map((_, i) => i));
+        // Chaque trait dans le groupe de sa couleur, une tranche après l'autre.
+        for (const g of groups) for (const i of g.segments) expect(segments[i].color).toBe(g.color);
+        const order = groups.map((g) => Math.floor(g.segments[0] / chunk));
+        expect(order).toEqual([...order].sort((x, y) => x - y));
+      }
+    }
   });
 });
 

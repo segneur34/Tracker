@@ -1,6 +1,7 @@
 import { cardHeight, cardTop, fitView, fullView, mapHeight, projectPoint, SHARE_IMAGE, statColumns, viewTiles, type ShareStat } from '../core/shareImage';
 import { MAP_BASES, type MapBase } from '../core/mapBase';
 import { tileKey, type TileCoord } from '../core/tiles';
+import { PAINT_ORDER_TRANCHES, pathsByColor } from '../core/trackColor';
 import { lightToken } from '../theme/lightToken';
 import { loadMapTile } from './mapTiles';
 import type { TrackSegment } from './TrackSegmentsLayer';
@@ -114,27 +115,34 @@ const drawTrack = (ctx: CanvasRenderingContext2D, content: ShareImageContent, co
   return { view, draw: () => {
     if (!view || content.segments.length === 0) return;
     const at = ([lat, lon]: readonly [number, number]) => projectPoint(view, lat, lon);
+    /** Ajoute au chemin les traits donnés par leur rang ; un trait qui commence où finit le précédent le prolonge. */
+    const addPaths = (indices: Iterable<number>) => {
+      let pen: { x: number; y: number } | null = null;
+      for (const i of indices) {
+        const positions = content.segments[i].positions;
+        if (positions.length < 2) continue;
+        const start = at(positions[0]);
+        if (!pen || pen.x !== start.x || pen.y !== start.y) ctx.moveTo(start.x, start.y);
+        for (let k = 1; k < positions.length; k++) {
+          pen = at(positions[k]);
+          ctx.lineTo(pen.x, pen.y);
+        }
+      }
+    };
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    // Liseré blanc sous la trace : elle reste lisible sur les routes et les couleurs du fond.
+    // Liseré blanc sous la trace, d'un seul tracé : elle reste lisible sur les routes et les couleurs du fond.
     ctx.beginPath();
-    for (const s of content.segments) {
-      const a = at(s.positions[0]);
-      const b = at(s.positions[1]);
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-    }
+    addPaths(content.segments.keys());
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
     ctx.lineWidth = 15;
     ctx.stroke();
+    // Un tracé par couleur, tranche par tranche, comme sur la carte (`ColoredTrackPath`).
     ctx.lineWidth = 8;
-    for (const s of content.segments) {
-      const a = at(s.positions[0]);
-      const b = at(s.positions[1]);
+    for (const group of pathsByColor(content.segments, PAINT_ORDER_TRANCHES)) {
       ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.strokeStyle = s.color;
+      addPaths(group.segments);
+      ctx.strokeStyle = group.color;
       ctx.stroke();
     }
     // Départ en blanc cerclé, arrivée pleine.
@@ -149,7 +157,8 @@ const drawTrack = (ctx: CanvasRenderingContext2D, content: ShareImageContent, co
       ctx.stroke();
     };
     dot(at(content.segments[0].positions[0]), '#ffffff', ink);
-    dot(at(content.segments[content.segments.length - 1].positions[1]), ink, '#ffffff');
+    const last = content.segments[content.segments.length - 1].positions;
+    dot(at(last[last.length - 1]), ink, '#ffffff');
   } };
 };
 

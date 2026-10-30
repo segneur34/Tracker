@@ -72,6 +72,61 @@ export const trackColorSegments = (
 };
 
 /**
+ * Nombre de tranches de la trace dessinée (carte, image de partage) : traits
+ * regroupés par couleur dans chaque tranche, tranches dans l'ordre
+ * (`pathsByColor`). Un passage plus récent reste dessiné par-dessus un plus
+ * ancien (tours, aller-retour), pour quelques centaines ou milliers de tracés
+ * par dessin au lieu d'un par trait. 3 h de sortie : des tranches de 42 s.
+ */
+export const PAINT_ORDER_TRANCHES = 256;
+
+/** Traits d'une même couleur (`pathsByColor`), par leur rang dans la liste des traits. */
+export interface ColorPaths {
+  color: string;
+  segments: number[];
+}
+
+/**
+ * Traits de la trace regroupés par couleur, pour les dessiner d'un seul tracé
+ * par couleur (carte, image de partage) : la couleur exacte de chaque trait,
+ * aucune teinte arrondie ; un trait de moins de deux points ne dessine rien et
+ * n'est pas repris. Chaque groupe donne le rang de ses traits dans `segments`.
+ *
+ * Le regroupement se fait dans chacune des `tranches` parts égales de la
+ * trace (en nombre de traits consécutifs, donc en durée quelle que soit la
+ * cadence), tranches dans l'ordre de la trace ; dans une tranche, les couleurs
+ * dans l'ordre de leur première apparition, les traits dans leur ordre. Une
+ * trace qui repasse sur elle-même (tours de piste, aller-retour) garde ainsi
+ * le passage le plus récent par-dessus, comme quand chaque trait était
+ * dessiné à son tour ; seul un recoupement à l'intérieur d'une tranche se
+ * mêle. Sans `tranches`, une seule.
+ */
+export const pathsByColor = (
+  segments: ReadonlyArray<{ positions: ReadonlyArray<unknown>; color: string }>,
+  tranches = 1
+): ColorPaths[] => {
+  const chunk = Math.max(1, Math.ceil(segments.length / Math.max(1, tranches)));
+  const groups: ColorPaths[] = [];
+  let byColor = new Map<string, number[]>();
+  const flush = () => {
+    for (const [color, indices] of byColor) groups.push({ color, segments: indices });
+    byColor = new Map();
+  };
+  segments.forEach((s, i) => {
+    if (i > 0 && i % chunk === 0) flush();
+    if (s.positions.length < 2) return;
+    let indices = byColor.get(s.color);
+    if (!indices) {
+      indices = [];
+      byColor.set(s.color, indices);
+    }
+    indices.push(i);
+  });
+  flush();
+  return groups;
+};
+
+/**
  * Bornes de couleur effectives d'une trace (décision transverse « Couleur de
  * trace »), dans cet ordre : celles de la trace (sa fiche, ou le brouillon de
  * son analyse) ; sinon celles de son activité, réglées dans Réglages ou

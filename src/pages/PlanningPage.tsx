@@ -10,6 +10,7 @@ import BeepCurveEditor from '../components/BeepCurveEditor';
 import type { Readout } from '../components/ChartReadout';
 import ElevationProfileMini, { type ElevationProfileRow } from '../components/ElevationProfileMini';
 import MapAutoResize from '../components/MapAutoResize';
+import { divIconCache, haloStyle } from '../components/mapStyles';
 import BaseTileLayer from '../components/BaseTileLayer';
 import GradeLegendRow from '../components/GradeLegendRow';
 import { HelpText } from '../components/Help';
@@ -132,14 +133,16 @@ const FALLBACK_COLOR = '#6a1b9a';
  * départ ou l'arrivée.
  */
 const ROUTE_COLOR = '#1565c0';
-/** Liseré blanc sous le tracé, sur le fond satellite (donnée de carte, donc en dur). */
-const HALO_STYLE = { color: '#ffffff', weight: 9, opacity: 0.85, interactive: false } as const;
+/** Épaisseur du tracé prêt et des morceaux colorés par la pente. */
+const ROUTE_WEIGHT = 5;
+/** Liseré blanc sous le tracé, sur le fond satellite, le même que celui des analyses. */
+const HALO_STYLE = haloStyle(ROUTE_WEIGHT);
 /**
  * Styles du tracé, constants : Leaflet ne refait `setStyle` que si l'objet
  * change. Un tronçon prêt garde `dashArray` explicite : Leaflet garderait
  * sinon le pointillé du tronçon en attente.
  */
-const READY_STYLE: L.PathOptions = { color: ROUTE_COLOR, weight: 5, opacity: 0.9, dashArray: undefined, interactive: false };
+const READY_STYLE: L.PathOptions = { color: ROUTE_COLOR, weight: ROUTE_WEIGHT, opacity: 0.9, dashArray: undefined, interactive: false };
 const PENDING_STYLE: L.PathOptions = { color: ROUTE_COLOR, weight: 4, opacity: 0.55, dashArray: '6 8', interactive: false };
 const ERROR_STYLE: L.PathOptions = { color: ERROR_COLOR, weight: 4, opacity: 0.9, dashArray: '6 8', interactive: false };
 /** Trait invisible et large : le toucher qui insère un point n'a pas à viser un trait de 5 px. */
@@ -152,7 +155,7 @@ const gradeStyles = new Map<string, L.PathOptions>();
 const gradeStyle = (color: string): L.PathOptions => {
   let style = gradeStyles.get(color);
   if (!style) {
-    style = { color, weight: 5, opacity: 0.9, interactive: false };
+    style = { color, weight: ROUTE_WEIGHT, opacity: 0.9, interactive: false };
     gradeStyles.set(color, style);
   }
   return style;
@@ -193,21 +196,13 @@ const safeColor = (color: string): string => (/^#[0-9a-f]{3,8}$/i.test(color) ? 
  * Repères des points, lettrés, gardés d'un rendu à l'autre : Leaflet ne les
  * redessine que s'ils changent. `fill` : fond CSS, couleur ou dégradé.
  */
-const iconCache = new Map<string, L.DivIcon>();
-const waypointIcon = (label: string, fill: string, selected: boolean): L.DivIcon => {
-  const key = `${label}|${fill}|${selected}`;
-  let icon = iconCache.get(key);
-  if (!icon) {
-    icon = L.divIcon({
-      className: 'plan-marker',
-      html: `<span class="plan-marker__dot${selected ? ' plan-marker__dot--selected' : ''}" style="background:${fill}">${label}</span>`,
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
-    });
-    iconCache.set(key, icon);
-  }
-  return icon;
-};
+const waypointIcons = divIconCache();
+const waypointIcon = (label: string, fill: string, selected: boolean): L.DivIcon => waypointIcons(`${label}|${fill}|${selected}`, () => ({
+  className: 'plan-marker',
+  html: `<span class="plan-marker__dot${selected ? ' plan-marker__dot--selected' : ''}" style="background:${fill}">${label}</span>`,
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
+}));
 
 const toWaypoint = (latlng: L.LatLng): Waypoint => ({ lat: latlng.lat, lon: latlng.lng });
 

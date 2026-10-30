@@ -1,9 +1,9 @@
-import { divIcon } from 'leaflet';
 import { Marker, Popup } from 'react-leaflet';
 import type { LocatedMark } from '../core/sessionMarks';
 import { formatDistance, formatTimeOfDay, type DistanceUnit } from '../core/units';
 import type { SessionMarksView } from '../hooks/useSessionMarks';
 import { HIGHLIGHT_SHOWN_COLOR, MARK_FLAG_COLOR } from './highlightColors';
+import { divIconCache } from './mapStyles';
 import { IconClose, IconFlag } from './icons';
 import Button from './ui/Button';
 
@@ -19,28 +19,22 @@ const FLAG_W = 24;
 const FLAG_H = 32;
 
 /** Fanions gardés d'un rendu à l'autre : Leaflet ne les redessine que s'ils changent. */
-const flagIcons = new Map<string, ReturnType<typeof divIcon>>();
-const flagIcon = (n: number, shown: boolean) => {
-  const key = `${n}|${shown}`;
-  let icon = flagIcons.get(key);
-  if (!icon) {
-    const color = shown ? HIGHLIGHT_SHOWN_COLOR : MARK_FLAG_COLOR;
-    icon = divIcon({
-      className: '',
-      iconSize: [FLAG_W, FLAG_H],
-      // Le pied du mât sur le point.
-      iconAnchor: [1, FLAG_H],
-      popupAnchor: [10, -FLAG_H],
-      html: `<div style="position:relative;width:${FLAG_W}px;height:${FLAG_H}px">`
-        + `<div style="position:absolute;left:0;top:0;min-width:${FLAG_W - 2}px;height:20px;box-sizing:border-box;padding:0 4px;`
-        + `border-radius:4px 4px 4px 0;background:${color};color:#ffffff;border:2px solid #ffffff;font-weight:700;font-size:11px;`
-        + `line-height:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.35)">${n}</div>`
-        + `<div style="position:absolute;left:0;top:18px;width:2px;height:${FLAG_H - 18}px;background:${color}"></div></div>`,
-    });
-    flagIcons.set(key, icon);
-  }
-  return icon;
-};
+const flagIcons = divIconCache();
+const flagIcon = (n: number, shown: boolean) => flagIcons(`${n}|${shown}`, () => {
+  const color = shown ? HIGHLIGHT_SHOWN_COLOR : MARK_FLAG_COLOR;
+  return {
+    className: '',
+    iconSize: [FLAG_W, FLAG_H],
+    // Le pied du mât sur le point.
+    iconAnchor: [1, FLAG_H],
+    popupAnchor: [10, -FLAG_H],
+    html: `<div style="position:relative;width:${FLAG_W}px;height:${FLAG_H}px">`
+      + `<div style="position:absolute;left:0;top:0;min-width:${FLAG_W - 2}px;height:20px;box-sizing:border-box;padding:0 4px;`
+      + `border-radius:4px 4px 4px 0;background:${color};color:#ffffff;border:2px solid #ffffff;font-weight:700;font-size:11px;`
+      + `line-height:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.35)">${n}</div>`
+      + `<div style="position:absolute;left:0;top:18px;width:2px;height:${FLAG_H - 18}px;background:${color}"></div></div>`,
+  };
+});
 
 /** Repère numéroté, ce qu'il faut aux fanions : l'analyse les situe sur la trace, la carte du direct non. */
 type NumberedMark = Pick<LocatedMark, 'mark' | 'n'>;

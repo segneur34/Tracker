@@ -12,6 +12,7 @@ import { useMapBase } from '../hooks/useMapBase';
 import BaseTileLayer from './BaseTileLayer';
 import { SessionMarksLayer } from './SessionMarks';
 import MapAutoResize from './MapAutoResize';
+import { divIconCache, haloStyle } from './mapStyles';
 import Button from './ui/Button';
 
 interface LiveMapProps {
@@ -42,8 +43,10 @@ interface LiveMapProps {
 /** Couleurs de la trace suivie, reste et partie faite (données de carte, donc en dur). */
 const GUIDE_STYLE = { color: '#37474f', weight: 5, opacity: 0.6, dashArray: '8 8', interactive: false } as const;
 const GUIDE_DONE_STYLE = { color: '#9e9e9e', weight: 4, opacity: 0.5, interactive: false } as const;
+/** Épaisseur de la trace enregistrée. */
+const TRACK_WEIGHT = 4;
 /** Liseré blanc sous la trace, sur le fond satellite. */
-const HALO_STYLE = { color: '#ffffff', weight: 7, opacity: 0.85, interactive: false } as const;
+const HALO_STYLE = haloStyle(TRACK_WEIGHT);
 
 /** Balises : fond, bordure et chiffre selon leur état (données de carte, donc en dur). */
 const MARK_STYLE: Record<CourseMark['state'], { fill: string; border: string; ink: string; dashed?: boolean }> = {
@@ -57,24 +60,18 @@ const AIM_STYLE = { color: '#e65100', weight: 2, opacity: 0.8, dashArray: '4 6',
 const MARK_SIZE = 26;
 
 /** Repères des balises, gardés d'un rendu à l'autre : Leaflet ne les redessine que s'ils changent. */
-const markIcons = new Map<string, ReturnType<typeof divIcon>>();
-const markIcon = (label: string, state: CourseMark['state']) => {
-  const key = `${label}|${state}`;
-  let icon = markIcons.get(key);
-  if (!icon) {
-    const { fill, border, ink, dashed } = MARK_STYLE[state];
-    icon = divIcon({
-      className: '',
-      iconSize: [MARK_SIZE, MARK_SIZE],
-      iconAnchor: [MARK_SIZE / 2, MARK_SIZE / 2],
-      html: `<span style="display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:${MARK_SIZE}px;height:${MARK_SIZE}px;`
-        + `border-radius:50%;background:${fill};color:${ink};border:2px ${dashed ? 'dashed' : 'solid'} ${border};`
-        + `font-weight:700;font-size:13px;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,0.35)">${label}</span>`,
-    });
-    markIcons.set(key, icon);
-  }
-  return icon;
-};
+const markIcons = divIconCache();
+const markIcon = (label: string, state: CourseMark['state']) => markIcons(`${label}|${state}`, () => {
+  const { fill, border, ink, dashed } = MARK_STYLE[state];
+  return {
+    className: '',
+    iconSize: [MARK_SIZE, MARK_SIZE],
+    iconAnchor: [MARK_SIZE / 2, MARK_SIZE / 2],
+    html: `<span style="display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:${MARK_SIZE}px;height:${MARK_SIZE}px;`
+      + `border-radius:50%;background:${fill};color:${ink};border:2px ${dashed ? 'dashed' : 'solid'} ${border};`
+      + `font-weight:700;font-size:13px;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,0.35)">${label}</span>`,
+  };
+});
 
 const ARROW_SIZE = 30;
 
@@ -165,7 +162,7 @@ function LiveMap({ segments, position, color, family, height, guide, guideDone, 
   const paths = useMemo(() => segments.map(segmentPath), [segments]);
   const guidePath = useMemo(() => (guide && guide.length > 1 ? latLngs(guide) : null), [guide]);
   const guideDonePath = useMemo(() => (guideDone && guideDone.length > 1 ? latLngs(guideDone) : null), [guideDone]);
-  const trackStyle = useMemo(() => ({ color, weight: 4, opacity: 0.9 }), [color]);
+  const trackStyle = useMemo(() => ({ color, weight: TRACK_WEIGHT, opacity: 0.9 }), [color]);
   const numberedNotes = useMemo(() => (notes ?? []).map((mark, i) => ({ mark, n: i + 1 })), [notes]);
   // Le dernier segment, recalculé moins souvent que la position, est prolongé jusqu'à elle par un trait à part.
   const lastFix = segments[segments.length - 1]?.at(-1);

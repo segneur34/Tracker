@@ -721,6 +721,8 @@ Opus | high. Neutre à l'œil (Q46, Q48). Sources : 01-B10, 02-B6, 07-A8, 07-A9,
 
 **Rapport attendu** : mesures ; captures.
 
+**Fait (30/10)** : `ColoredTrackPath` (une couche canevas), `pathsByColor` par tranches (256 parts dans l'ordre, regroupées par couleur dans chaque part, pour garder le dernier passage dessus), `haloStyle` et `divIconCache` dans `components/mapStyles.ts`, banc `carte-perf.mjs`. Mesures (3 h à 5 Hz) : couches 54 002 → 3 ; 10 zooms 3,03 → 0,12 s de script en plan, 2,80 → 0,24 s en satellite ; image de partage 540 → 80 ms. Pixels opaques identiques ; seule la frange lissée des bords change. L'image de partage dessine désormais les traits de pente en entier (avant : leurs deux premiers points).
+
 ### 74 · Tuiles et vignettes de la bibliothèque
 
 Opus | high. Neutre. Sources : 06-B4, 07-A12, 07-B2, 07-B4, 07-B5, 07-C2, 07-D7, 08-F.
