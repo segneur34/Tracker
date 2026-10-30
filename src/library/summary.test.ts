@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { computeKinematics } from '../core/kinematics';
+import { computeKinematics, detectTrackDeviceSpeedUnit } from '../core/kinematics';
 import { kinematicsOptionsOf, referenceSpeedMs, scalesFiltersToSession } from '../core/sessionSpeed';
+import { computeActiveDistanceM, computeActiveTimeMs, thresholdActivityMask } from '../core/sessionStats';
 import { FAMILY_BASE } from '../core/activities';
 import { getSportProfile } from '../core/sportProfiles';
 import type { RawTrackPoint } from '../core/types';
+import { msToKnots } from '../core/units';
 import type { SessionTest } from '../recording/fitnessTest';
+import { suggestActiveThresholdKn } from '../sailing/sailingConfig';
 import { SUMMARY_CALC_VERSION } from './record';
+import { ORIGIN, at, mPerDegLon } from '../test/geo.fixture';
 import { phasesTrack } from '../test/track.fixture';
 import { analysisTrack, summarizeHeartRateSession, summarizeSession } from './summary';
 
@@ -87,6 +91,49 @@ describe('summarizeSession', () => {
       const profile = getSportProfile(sport);
       const options = kinematicsOptionsOf(profile, { scaleToSession: scalesFiltersToSession(profile), referenceMs: referenceSpeedMs(raw) });
       expect(analysisTrack(raw, sport), sport).toEqual(computeKinematics(raw, options));
+    }
+  });
+
+  it("voile, vitesse Doppler en km/h : la liste donne les chiffres de l'analyse, à 1 Hz comme à 5 Hz (lot 95)", () => {
+    // Wingfoil 10 min à 20 nœuds puis 5 min à 2 nœuds, positions bruitées de ±0,5 m (bruit déterministe),
+    // vitesse de l'appareil écrite en km/h, absente sur un point sur 37.
+    const dopplerKmh = (hz: number): RawTrackPoint[] => {
+      let seed = 95;
+      const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+      const clean = buildTrack([[600, 10.3], [300, 1]], hz);
+      const eastM = clean.map((p) => (p.lon - clean[0].lon) * mPerDegLon(ORIGIN.lat));
+      return clean.map((p, k) => {
+        const speed = (eastM[Math.max(1, k)] - eastM[Math.max(1, k) - 1]) * hz;
+        const noisy = at(eastM[k] + (rnd() - 0.5), rnd() - 0.5);
+        return { ...p, ...noisy, ...(k % 37 === 5 ? {} : { speedMs: speed * 3.6 * (1 + (rnd() - 0.5) * 0.02) }) };
+      });
+    };
+    for (const hz of [1, 5]) {
+      const raw = dopplerKmh(hz);
+      const unit = detectTrackDeviceSpeedUnit(raw);
+      expect(unit).toBe('kmh');
+      // Allure de l'analyse (`useGpxSession`) : unité détectée une fois, puis passée.
+      const ref = referenceSpeedMs(raw, unit);
+      // Garde-fou : l'unité change bien l'allure, sinon le test ne prouverait rien.
+      expect(Math.abs(referenceSpeedMs(raw, null) - ref), `${hz} Hz`).toBeGreaterThan(0.01);
+      expect(referenceSpeedMs(raw, 'ms') / ref, `${hz} Hz`).toBeCloseTo(3.6, 1);
+      expect(ref, `${hz} Hz`).toBeCloseTo(10.3, 0);
+      for (const sport of ['wingfoil', 'kite'] as const) {
+        const name = `${sport}, ${hz} Hz`;
+        const profile = getSportProfile(sport);
+        const track = computeKinematics(raw, kinematicsOptionsOf(profile, { scaleToSession: true, referenceMs: ref }));
+        expect(analysisTrack(raw, sport), name).toEqual(track);
+        // Chiffres de l'analyse : seuil suggéré par l'allure, masque d'activité, ratio sur le temps en mouvement.
+        const mask = thresholdActivityMask(track, profile, suggestActiveThresholdKn(sport, msToKnots(ref)));
+        const summary = summarizeSession(raw, sport)!;
+        expect(summary.movingTimeS, name).toBe(computeActiveTimeMs(track, mask) / 1000);
+        expect(summary.movingDistanceM, name).toBe(computeActiveDistanceM(track, mask));
+        expect(summary.inMotionS, name).toBe(computeActiveTimeMs(track, thresholdActivityMask(track, profile, 0)) / 1000);
+        expect(summary.maxSpeedMs, name).toBe(Math.max(...track.map((p) => p.smoothedSpeedMs)));
+        expect(summary.pointCount, name).toBe(track.length);
+        expect(summary.movingTimeS!, name).toBeGreaterThan(590);
+        expect(summary.movingTimeS!, name).toBeLessThan(610);
+      }
     }
   });
 
