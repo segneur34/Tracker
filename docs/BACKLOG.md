@@ -11,7 +11,7 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 ## Maintenant
 
-APK 0.4.23 construite le 30/10 (versionCode 4023, lots 71, 82, 75, 72, 73, 74), pas encore installée : téléphone absent de adb ; android/app/build/outputs/apk/release/Tracker-0.4.23.apk. La 0.4.18 (lots 87, 88, 86) est sur le téléphone.
+APK 0.4.23 installée le 30/10 (versionCode 4023, lots 71, 82, 75, 72, 73, 74).
 - 71 · [dette] Rangement des dossiers : chaque fichier à sa place, un test qui garde le sens des dépendances ; reprend aussi le reste du lot 70 (réexport de la pente dans runningAnalytics à retirer, dépendance de types entre running/energyView et cycling, moyennes glissantes à fusionner seulement si identiques au bit près) · noté 28/10 · petit · Sonnet/high · à valider sur lecture (0817256, 0.4.19) ; 30/10 : avancé par l'utilisateur (« Faire 71, 75 et 82, puis 72, 73 et 74 ») ; l'identifiant BRouter passé à 82 (même fichier planning/brouter.ts), tranché par l'orchestrateur · dépend de : 57 (levé), 70 · détail : docs/backlog/52-assainissement.md
 - 82 · [dette] Planification : doublons internes, profil envoyé une seule fois, revêtement aligné (Q47) · noté 28/10 · petit · Sonnet/high · à valider sur lecture (5ad97f1, 0.4.20) ; 30/10 : avancé par l'utilisateur (« Faire 71, 75 et 82, puis 72, 73 et 74 ») ; reprend de 71 l'identifiant BRouter passé en paramètre · dépend de : 57 (levé) · détail : docs/backlog/52-assainissement.md
 - 75 · [outil] Tests : traces d'essai communes au lieu de 26 copies · noté 28/10 · petit · Sonnet/high · à valider sur lecture (b007f2b, tests seulement) · dépend de : 57 (levé) · détail : docs/backlog/52-assainissement.md
