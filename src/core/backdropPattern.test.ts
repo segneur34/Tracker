@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TILE_H, TILE_W, backdropTile, reliefHeight, trailX, veloHeight, type BackdropVariant } from './patternTiles';
+import { TILE_H, TILE_W, backdropTile, reliefHeight, trailX, veloHeight, type BackdropVariant } from './backdropPattern';
 
 /** Points de départ et d'arrivée des lignes brisées d'un tracé (`M` et dernier `L` de chaque ligne). */
 const lineEnds = (d: string): [number, number][] =>

@@ -6,7 +6,7 @@ import {
   inBounds, sessionLoad, statSessionOf, statsMetric, statsPeriodBounds, statsTotals, topSessions, weeklyDurations, type StatSession,
   gearFilterItems, matchesGear, groupByActivity,
 } from './stats';
-import type { GearGroup } from '../sailing/sessionNotes';
+import type { GearGroup } from './notes';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime();

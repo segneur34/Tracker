@@ -1,4 +1,4 @@
-import { DEFAULT_TIMER_WORKOUT, workoutBlocks, type IntervalBlock, type WorkoutKind } from '../recording/intervalTimer';
+import { DEFAULT_TIMER_WORKOUT, workoutBlocks, type IntervalBlock, type WorkoutKind } from './intervalTimer';
 
 /**
  * Les deux listes de séances de l'Entraînement (25/10), sur les mêmes pages

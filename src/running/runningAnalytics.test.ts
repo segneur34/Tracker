@@ -1,22 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { haversineDistance } from '../core/kinematics';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { SLOW_COLOR, gradientColor, speedGradientColor } from '../core/speedGradient';
 import { GRADE_ANALYSIS as G } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
-import {
-  DEFAULT_GRADE_RANGE,
-  DEFAULT_SPEED_RANGE_MS,
-  classifyGrade,
-  computeGrades,
-  computeZoneStats,
-  gradeColorPaths,
-  gradeGradientColor,
-  gradeGradientStops,
-  gradeStepColor,
-  gradeZonePaths,
-  isValidGradeRange,
-} from './runningAnalytics';
+import { DEFAULT_SPEED_RANGE_MS, computeZoneStats, gradeZonePaths } from './runningAnalytics';
+import { haversineDistance } from '../core/geo';
+import { DEFAULT_GRADE_RANGE, classifyGrade, computeGrades, gradeColorPaths, gradeGradientColor, gradeGradientStops, gradeStepColor, isValidGradeRange } from '../core/grade';
 
 /**
  * Trace synthétique : un point par seconde, vitesse et altitude imposées.

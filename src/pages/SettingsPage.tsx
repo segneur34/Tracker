@@ -68,7 +68,7 @@ import {
 import PageHeader from '../components/ui/PageHeader';
 import { HelpText, HelpToggle, SettingRow, SettingsScope } from '../components/Help';
 import { useHelpCollapseAll } from '../components/helpContext';
-import './settingsPage.css';
+import './SettingsPage.css';
 
 /**
  * Sauts mesurés par les capteurs du téléphone (voile sauf bateau, course, vélo) : la case,

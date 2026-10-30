@@ -11,9 +11,9 @@ import { readSurfaceRuns, type SurfaceRuns } from '../planning/surface';
 import { readSessionTest, type SessionTest } from '../recording/fitnessTest';
 import type { SummaryTest } from '../running/fitnessTestResults';
 import { readIntervalSeries, type IntervalSeries } from '../recording/intervalTimer';
-import { isSportType } from '../recording/session';
+import { isSportType } from '../core/sportProfiles';
 import { isValidCarriedLoad } from '../running/energy';
-import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from '../sailing/sessionNotes';
+import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from './notes';
 import { finiteOr, isFiniteNumber, isObject, parseJson } from '../core/basics';
 
 /**

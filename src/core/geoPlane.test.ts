@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { distanceToSegmentM, planeProjection, pointSegmentDistanceM, projectOnSegment } from './geoPlane';
+import { distanceToSegmentM, pointSegmentDistanceM, projectOnSegment } from './geoPlane';
+import { planeProjection } from './geo';
 
 describe('pointSegmentDistanceM', () => {
   it("mesure l'écart à un segment, et au bout le plus proche au-delà", () => {

@@ -1,5 +1,5 @@
 import type { CachedTileEntry } from '../core/tiles';
-import { base64ToBlob, blobToBase64 } from './base64';
+import { base64ToBlob, blobToBase64 } from '../core/base64';
 import { filesystem } from './files';
 import { isNativeApp } from './runtime';
 

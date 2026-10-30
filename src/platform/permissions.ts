@@ -1,5 +1,5 @@
 import { registerPlugin } from '@capacitor/core';
-import type { PermissionKey, PermissionState, PermissionsStatus } from '../recording/permissionsPrompt';
+import type { PermissionKey, PermissionState, PermissionsStatus } from '../core/domainTypes';
 import { bluetoothPermission, requestBluetoothPermission } from './heartRate';
 import { isNativeApp } from './runtime';
 import { jsonStore } from './storage';

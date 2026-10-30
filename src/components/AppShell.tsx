@@ -9,7 +9,7 @@ import { useLongPress } from '../hooks/useLongPress';
 import { togglePauseRecording, useRecorderStatus, useRecordingClock, type RecorderStatus } from '../hooks/useRecorder';
 import { effectiveLongPressMs, useVisibility } from '../hooks/useSportSettings';
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
-import { TIMER_RECORD_PATH } from '../pages/workoutLists';
+import { TIMER_RECORD_PATH } from '../recording/workoutLists';
 import { setBackNavigator } from '../platform/backButton';
 import { lockOrientation } from '../platform/screen';
 import { IconChart, IconHome, IconPause, IconPlay, IconRoute, IconSettings, IconUser } from './icons';

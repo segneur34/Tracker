@@ -1,6 +1,6 @@
 import { formatLocalDate } from '../core/calendar';
 import type { SportType } from '../core/types';
-import { isSportType } from '../recording/session';
+import { isSportType } from '../core/sportProfiles';
 import { imuFileName, recordFileName } from './record';
 
 /**

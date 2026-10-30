@@ -17,46 +17,16 @@
 
 import { readCommands } from '../core/basics';
 import { TONE_MS, type ToneKind } from '../core/beepDurations';
+import type {
+  IntervalBlock, IntervalFreeBlock, IntervalFreeLabel, IntervalLap, IntervalSeries, IntervalSeriesBlock, IntervalWorkout,
+} from '../core/domainTypes';
 import { formatMinSecHours } from '../core/units';
 
-/** Bloc de répétitions : travail, repos, travail… sans repos après la dernière. */
-export interface IntervalSeriesBlock {
-  kind: 'series';
-  reps: number;
-  workS: number;
-  restS: number;
-}
-
-/** Nom d'un bloc libre. */
-export type IntervalFreeLabel = 'Échauffement' | 'Récupération' | 'Retour au calme';
+export type { IntervalBlock, IntervalFreeBlock, IntervalFreeLabel, IntervalLap, IntervalSeries, IntervalSeriesBlock, IntervalWorkout };
 
 export const INTERVAL_FREE_LABELS: readonly IntervalFreeLabel[] = ['Échauffement', 'Récupération', 'Retour au calme'];
 
-/** Bloc libre : une seule phase, hors des répétitions. */
-export interface IntervalFreeBlock {
-  kind: 'libre';
-  label: IntervalFreeLabel;
-  durationS: number;
-}
 
-export type IntervalBlock = IntervalSeriesBlock | IntervalFreeBlock;
-
-/**
- * Une séance. `reps`, `workS` et `restS` sont ceux de son premier bloc de
- * séries : une séance d'un seul bloc n'a pas de `blocks`, comme avant les
- * blocs (24/10), et une version d'avant lit encore le premier bloc d'une
- * séance qui en a plusieurs.
- */
-export interface IntervalWorkout {
-  /** Nombre de répétitions. */
-  reps: number;
-  /** Temps de travail de chaque répétition, en secondes. */
-  workS: number;
-  /** Temps de repos entre deux répétitions, en secondes ; 0 : aucun. */
-  restS: number;
-  /** Les blocs, dans l'ordre, quand la séance n'est pas un seul bloc de séries. */
-  blocks?: IntervalBlock[];
-}
 
 /** Bornes de la saisie : des secondes entières. */
 export const INTERVAL_LIMITS = {
@@ -532,25 +502,7 @@ export const upcomingSchedule = (run: IntervalRun, nowMs: number, announce: bool
 
 // --- Phases accomplies ---
 
-/**
- * Une phase telle qu'elle s'est déroulée, en instants de l'horloge ; le départ
- * n'en est pas une. Un bloc libre en est une, hors des répétitions : une
- * version d'avant les blocs l'écarte à la lecture.
- */
-export interface IntervalLap {
-  kind: 'travail' | 'repos' | 'libre';
-  rep: number;
-  startMs: number;
-  endMs: number;
-  /** Indice du bloc de la séance ; absent dans une fiche d'avant les blocs : le premier. */
-  block?: number;
-}
 
-/** Une séance telle qu'elle a été faite pendant un enregistrement. */
-export interface IntervalSeries {
-  workout: IntervalWorkout;
-  laps: IntervalLap[];
-}
 
 /**
  * Répétitions commencées avant `nowMs`, avec leurs instants réels (le

@@ -1,7 +1,7 @@
 import { normalizeDeg } from '../core/angles';
 import type { SessionMark } from '../core/sessionMarks';
 import type { SpeedRangeMs } from '../core/speedGradient';
-import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from '../sailing/sessionNotes';
+import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from './notes';
 import { type SessionAnalysis, type SessionRecord, type StoredSessionNotes } from './record';
 
 /**

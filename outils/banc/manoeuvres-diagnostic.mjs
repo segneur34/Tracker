@@ -33,13 +33,14 @@ const { computeKinematics } = await load('core/kinematics.ts');
 const { referenceSpeedMs, sessionFilterThresholds } = await load('core/sessionSpeed.ts');
 const { SPORT_PROFILES, hasActiveThreshold } = await load('core/sportProfiles.ts');
 const { thresholdActivityMask } = await load('core/sessionStats.ts');
-const { median } = await load('core/speedFilter.ts');
+const { angleDiff, normalizeDeg: normalizeAngle } = await load('core/angles.ts');
+const { median } = await load('core/basics.ts');
 const { msToKnots } = await load('core/units.ts');
-const { trackToPointData } = await load('utils/kinematics.ts');
+const { trackToPointData } = await load('sailing/pointData.ts');
 const { sessionManeuverThresholds, suggestActiveThresholdKn } = await load('sailing/sailingConfig.ts');
 const { analyzeManeuvers, estimateWind, windSamplesFrom, WIND_LOCAL_MAX_GAP_MIN } = await load('sailing/maneuvers.ts');
 const { buildSailingSessionStats } = await load('sailing/sailingStats.ts');
-const { angleDiff, buildWindTimeline, normalizeAngle } = await load('sailing/wind.ts');
+const { buildWindTimeline } = await load('sailing/wind.ts');
 
 const args = process.argv.slice(2);
 const flags = Object.fromEntries(args.filter((a) => a.startsWith('--')).map((a) => {

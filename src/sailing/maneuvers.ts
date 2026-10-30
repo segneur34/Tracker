@@ -1,7 +1,7 @@
-import { roundBearingDeg, toRad } from '../core/angles';
+import { roundBearingDeg, toRad, angleDiff, circularMean, normalizeDeg } from '../core/angles';
 import { median } from '../core/basics';
 import { knotsToMs } from '../core/units';
-import type { PointData } from '../utils/kinematics';
+import type { PointData } from './pointData';
 import {
   MANEUVER_COOLDOWN_S,
   MANEUVER_CORE_RATE_DEG_S,
@@ -18,23 +18,7 @@ import {
   getDefaultThresholdKn,
   getStillSpeedKn,
 } from './sailingConfig';
-import {
-  CANDIDATE_MIN_SEPARATION,
-  angleDiff,
-  buildWindTimeline,
-  circularMean,
-  describeWindCandidate,
-  estimateWindPolar,
-  isTurningStep,
-  normalizeAngle,
-  polarSampling,
-  polarWindCandidates,
-  scanTurnWindow,
-  strideEnd,
-  type PolarWindEstimate,
-  type WindEstimate,
-  type WindOrientationSource,
-} from './wind';
+import { CANDIDATE_MIN_SEPARATION, buildWindTimeline, describeWindCandidate, estimateWindPolar, isTurningStep, polarSampling, polarWindCandidates, scanTurnWindow, strideEnd, type PolarWindEstimate, type WindEstimate, type WindOrientationSource } from './wind';
 
 export interface ManeuverOptions {
   /**
@@ -409,7 +393,7 @@ export const selectWindCandidate = (
   // vent arrière que seules les manœuvres peuvent écarter avec certitude.
   const candidates = polarWindCandidates(points, minSpeedKn, 3);
   if (candidates.length === 0) return fallback;
-  const twin = normalizeAngle(candidates[0].direction + 180);
+  const twin = normalizeDeg(candidates[0].direction + 180);
   if (candidates.every((c) => Math.abs(angleDiff(c.direction, twin)) >= CANDIDATE_MIN_SEPARATION)) {
     candidates.push(describeWindCandidate(points, twin, minSpeedKn));
   }
@@ -762,7 +746,7 @@ const turnHeadings = (points: PointData[], startIndex: number, endIndex: number)
  */
 const medianStableSegment = (window: HeadingWindow): StableSegment | null =>
   window.durationS >= STABLE_MEDIAN_MIN_DURATION_S && window.spreadDeg <= STABLE_MEDIAN_SPREAD_DEG
-    ? { heading: normalizeAngle(window.heading), meanSpeed: window.meanSpeed }
+    ? { heading: normalizeDeg(window.heading), meanSpeed: window.meanSpeed }
     : null;
 
 /** Virage détecté et classé, tel que la mesure le reçoit. */
@@ -1273,13 +1257,13 @@ export const prepareManeuverDetection = (points: PointData[], options: ManeuverD
     // virement cet arc contient la direction du vent, pour un empannage son
     // opposé. Le sens compte : sur un virage de 180°, l'arc court est
     // indéfini et seule la direction de rotation départage.
-    let bisector = normalizeAngle(headings.approach.heading + (turnSign * turn) / 2);
+    let bisector = normalizeDeg(headings.approach.heading + (turnSign * turn) / 2);
     if (before && after) {
       let delta = angleDiff(after.heading, before.heading);
       if (Math.sign(delta) !== turnSign && Math.abs(delta) > 150) delta += turnSign * 360;
       // Des caps stabilisés qui contredisent le sens du virage ne sont pas
       // exploitables : on garde alors la bissectrice des caps médians.
-      if (Math.sign(delta) === turnSign) bisector = normalizeAngle(before.heading + delta / 2);
+      if (Math.sign(delta) === turnSign) bisector = normalizeDeg(before.heading + delta / 2);
     }
 
     return { verdict: 'candidate', turn, turnSign, turnStart, turnEnd, turnEndMs, headings, before, stableHeadings, bisector, rotation: null };
@@ -1468,7 +1452,7 @@ export const classifyManeuvers = (
       vmin: measure.vmin,
       // L'empannage se lit à l'opposé de la bissectrice : le vent y vient de l'arrière.
       // Arrondi puis normalisé : 359,7° donne 0, jamais 360.
-      localWind: normalizeAngle(Math.round(type === 'tack' ? bisector : bisector + 180)),
+      localWind: normalizeDeg(Math.round(type === 'tack' ? bisector : bisector + 180)),
       timeMs,
       trackIndex: anchorIndex,
       stableHeadings,

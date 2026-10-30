@@ -34,9 +34,6 @@ export const THEME_STORAGE_KEY = 'tracker.theme';
 /** Réglage de départ (décision du 28/10) : Auto, sans Économe. */
 export const THEME_DEFAULT: ThemeSettings = { choice: 'auto', eco: false };
 
-/** Requête du thème sombre du système, lue par « Auto ». */
-export const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)';
-
 const isChoice = (value: unknown): value is ThemeChoice =>
   value === 'clair' || value === 'sombre' || value === 'auto';
 

@@ -3,10 +3,10 @@ import { buildCumulativeTrack } from '../core/sessionStats';
 import { GRADE_ANALYSIS } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import type { SurfaceCategory } from '../planning/surface';
-import { computeGrades } from '../running/runningAnalytics';
 import {
   BIKE_TYPES, computeCyclingEnergy, cyclingEnergyParams, resistiveForceN, rollingCoefficient, type BikeType, type CyclingEnergyParams,
 } from './energy';
+import { computeGrades } from '../core/grade';
 
 /** Trace synthétique à cadence fixe, en ligne droite, altitude fonction de la distance. */
 const buildTrack = (

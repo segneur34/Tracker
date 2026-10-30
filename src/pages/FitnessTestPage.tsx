@@ -15,7 +15,7 @@ import { fitnessTestRunner } from '../hooks/useFitnessTest';
 import { useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import { lastRecordedOrFirst, saveFitnessTestSettings, useFitnessTestSettings, useVisibility } from '../hooks/useSportSettings';
 import { FITNESS_TESTS, FITNESS_TEST_LIMITS, resolveFitnessTestParams, type FitnessTestParams } from '../recording/fitnessTest';
-import { WORKOUT_LISTS, recordPath } from './workoutLists';
+import { WORKOUT_LISTS, recordPath } from '../recording/workoutLists';
 import './TrainingPages.css';
 
 const PROTOCOL = FITNESS_TESTS['fc-max'];

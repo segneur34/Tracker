@@ -1,6 +1,6 @@
 import { isObject } from './basics';
 import {
-  SPORT_FAMILIES, SPORT_PROFILES, TRAINING_KINDS, TRAINING_KIND_LABEL, isIntervalSport, sportFamily, sportTreatment, trainingKind,
+  SPORT_FAMILIES, SPORT_PROFILES, TRAINING_KINDS, TRAINING_KIND_LABEL, isIntervalSport, isSportType, sportFamily, sportTreatment, trainingKind,
   type SportFamily, type TrainingKind, type Treatment,
 } from './sportProfiles';
 import type { SportType } from './types';
@@ -178,9 +178,6 @@ export const FAMILY_LABEL: Record<SportFamily, string> = {
 export const FAMILY_ACCENT: Record<SportFamily, string> = {
   voile: 'var(--voile)', course: 'var(--course)', velo: 'var(--velo)', fractionne: 'var(--fractionne)', surf: 'var(--surf)',
 };
-
-const isSportType = (value: unknown): value is SportType =>
-  typeof value === 'string' && Object.prototype.hasOwnProperty.call(SPORT_PROFILES, value);
 
 const isColor = (value: unknown): value is string => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
 

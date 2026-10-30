@@ -12,9 +12,6 @@ import { formatDuration, kmhToMs } from '../core/units';
  * seuils des zones viennent du profil (`SportProfile.grade`).
  */
 
-/** Réexport le temps de la migration vers `core/grade.ts`. */
-export * from '../core/grade';
-
 export interface ZoneStats {
   zone: GradeZone;
   distanceM: number;

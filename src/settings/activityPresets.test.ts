@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ACTIVITIES, GRAVEL_ACTIVITY, MARCHE_ACTIVITY, VTT_ACTIVITY, baseActivity } from './activities';
+import { DEFAULT_ACTIVITIES, GRAVEL_ACTIVITY, MARCHE_ACTIVITY, VTT_ACTIVITY, baseActivity } from '../core/activities';
 import { DEFAULT_INTERVAL_PRESETS, PRESET_BASES, presetOf } from './activityPresets';
-import { kmhToMs, knotsToMs } from './units';
+import { kmhToMs, knotsToMs } from '../core/units';
 
 describe('presetOf', () => {
   it('une activité de départ qui a son pré-réglage le garde en entier, sans reprendre celui du calcul', () => {

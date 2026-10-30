@@ -1,21 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { PointData } from '../utils/kinematics';
+import type { PointData } from './pointData';
 import { sessionManeuverThresholds } from './sailingConfig';
-import {
-  angleDiff,
-  buildWindTimeline,
-  circularMean,
-  circularStats,
-  describeWindCandidate,
-  estimateWindFromPolar,
-  interpolateDirection,
-  observeTurns,
-  pointerWindDeg,
-  polarSampling,
-  speedPolar,
-  scoreWindCandidate,
-  windDegFromText,
-} from './wind';
+import { buildWindTimeline, circularStats, describeWindCandidate, estimateWindFromPolar, interpolateDirection, observeTurns, pointerWindDeg, polarSampling, speedPolar, scoreWindCandidate, windDegFromText } from './wind';
+import { angleDiff, circularMean } from '../core/angles';
 
 describe('buildWindTimeline', () => {
   const MIN = 60 * 1000;

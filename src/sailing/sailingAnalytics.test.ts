@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { PointData } from '../utils/kinematics';
+import type { PointData } from './pointData';
 import type { ManeuverLocation, ManeuverStats, WindReference } from './maneuvers';
 import { calculateVmgStats, calculateWindStats, type VmgStats } from './sailingAnalytics';
-import { angleDiff } from './wind';
+import { angleDiff } from '../core/angles';
 
 const START_MS = Date.parse('2026-01-01T10:00:00Z');
 

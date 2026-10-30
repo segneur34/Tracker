@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionTest } from '../recording/fitnessTest';
-import { EMPTY_NOTES } from '../sailing/sessionNotes';
+import { EMPTY_NOTES } from './notes';
 import {
   RECORD_FORMAT,
   RECORD_VERSION,

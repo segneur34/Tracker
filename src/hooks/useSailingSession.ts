@@ -17,7 +17,7 @@ import {
 import { buildWindTimeline, speedPolar } from '../sailing/wind';
 import { calculateVmgStats, calculateWindStats, summarizeManeuvers } from '../sailing/sailingAnalytics';
 import { buildSailingSessionStats, computeSailingTops, sailingFlights } from '../sailing/sailingStats';
-import { trackToPointData } from '../utils/kinematics';
+import { trackToPointData } from '../sailing/pointData';
 import { useGpxSession } from './useGpxSession';
 import type { useSportSettings } from './useSportSettings';
 

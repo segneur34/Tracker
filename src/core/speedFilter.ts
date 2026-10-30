@@ -24,9 +24,6 @@ export const DEFAULT_MAX_OUTLIER_S = 3;
 /** Largeur par défaut du filtre médian, en secondes. */
 export const DEFAULT_MEDIAN_WINDOW_S = 3;
 
-/** Réexportée pour les appelants d'avant `core/basics.ts` (à retirer au lot 71). */
-export { median } from './basics';
-
 /** Durée, en secondes, sur laquelle la médiane initiale amorce l'écrêtage. */
 export const SEED_WINDOW_S = 10;
 

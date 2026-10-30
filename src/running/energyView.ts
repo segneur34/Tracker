@@ -1,9 +1,9 @@
 import { roundTo } from '../core/basics';
 import type { GradeZone } from '../core/grade';
+import type { BikeType } from '../core/domainTypes';
 import type { GradeProfile } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import { J_PER_KCAL } from '../core/units';
-import type { BikeType } from '../cycling/energy';
 import type { SurfaceCategory } from '../planning/surface';
 import { computeEnergy, restingPowerWkg, runningEnergyParams, walkingEnergyParams, type EnergyModel } from './energy';
 

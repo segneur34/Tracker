@@ -1,5 +1,6 @@
 import { integrateEnergy, type EnergyStepCost } from '../core/energy';
 import { kmhToMs } from '../core/units';
+import type { BikeType } from '../core/domainTypes';
 import type { TrackPoint } from '../core/types';
 import type { SurfaceCategory } from '../planning/surface';
 import { GRADE_ANALYSIS, type GradeProfile } from '../core/sportProfiles';
@@ -28,8 +29,7 @@ import { gradeZones, type GradeZone } from '../core/grade';
  * de la trace est connu ; ailleurs, son Crr moyen (`crr`).
  */
 
-/** Type de vélo, c'est-à-dire surtout ses pneus : il fixe le roulement, la traînée et le poids du vélo par défaut. */
-export type BikeType = 'route' | 'gravel' | 'vtt' | 'ville';
+export type { BikeType };
 
 export interface BikeSpec {
   label: string;

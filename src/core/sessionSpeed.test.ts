@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { referenceSpeedMs, samplingIntervalS, sessionFilterThresholds } from './sessionSpeed';
 import { DEFAULT_MAX_ACCELERATION } from './speedFilter';
 import type { RawTrackPoint } from './types';
-import { computeKinematics, DEVICE_SPEED_FACTOR, detectTrackDeviceSpeedUnit, haversineDistance, pointTimeMs, spreadEqualTimes } from './kinematics';
+import { computeKinematics, DEVICE_SPEED_FACTOR, detectTrackDeviceSpeedUnit, pointTimeMs, spreadEqualTimes } from './kinematics';
 import { sameData } from '../test/sameData';
+import { haversineDistance } from './geo';
 
 const START_MS = Date.parse('2026-01-01T10:00:00Z');
 const LAT = 43.6;

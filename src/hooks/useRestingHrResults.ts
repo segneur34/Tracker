@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { jsonStore } from '../platform/storage';
-import { MAX_STORED_RESTING_RESULTS, readStoredRestingResults, type StoredRestingResult } from '../running/restingHrResults';
+import { MAX_STORED_RESTING_RESULTS, readStoredRestingResults, type StoredRestingResult } from '../library/restingHrStore';
 
 /**
  * Tests de FC repos gardés sur l'appareil, du plus récent au plus ancien. Une

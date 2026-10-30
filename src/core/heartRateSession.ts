@@ -3,7 +3,7 @@ import { heartRateStats, smoothHeartRate, timeInZones, type HeartRatePoint, type
 import { pointTimeMs } from './kinematics';
 import type { HeartRateProfile } from './sportProfiles';
 import type { TimedTrackPoint } from './types';
-import type { IntervalSeries } from '../recording/intervalTimer';
+import type { IntervalSeries } from './domainTypes';
 
 /**
  * Analyse d'une session sans trace (muscu, lot I du 25/10) : la FC de la

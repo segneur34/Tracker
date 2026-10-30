@@ -1,7 +1,7 @@
 import { bracketAtTime } from '../core/search';
 import { angleDiff, circularMean, normalizeDeg as normalizeAngle, toDeg, toRad } from '../core/angles';
 import { toFixedNumber } from '../core/basics';
-import type { PointData } from '../utils/kinematics';
+import type { PointData } from './pointData';
 import {
   MANEUVER_MAX_STEP_S,
   ORIENTATION_MAX_CONSERVATION,
@@ -23,9 +23,6 @@ import {
  * navigue au portant mais jamais dans le cône, et les virements font perdre
  * le vol face au vent, ce que les empannages ne font pas.
  */
-
-/** Réexportés pour les appelants d'avant `core/angles.ts` (à retirer au lot 71). */
-export { angleDiff, circularMean, normalizeDeg as normalizeAngle } from '../core/angles';
 
 /**
  * Vent montré par un pointeur posé à (`dx`, `dy`) du centre d'une boussole,

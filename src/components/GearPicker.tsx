@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { newId } from '../core/basics';
 import { MAX_GEAR_LABEL_LENGTH, cleanGearName, sameGearName, type GearGroup, type GearItem } from '../hooks/useSportSettings';
 import { pushBackLayer } from '../platform/backButton';
-import type { GearChoice } from '../sailing/sessionNotes';
+import type { GearChoice } from '../library/notes';
 import Button from './ui/Button';
 import { IconChevronRight } from './icons';
 import './ActivitySelect.css';

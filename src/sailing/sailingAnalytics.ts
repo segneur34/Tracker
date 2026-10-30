@@ -1,16 +1,10 @@
 import { firstIndexAtOrAfter } from '../core/search';
 import { pickTopWindows } from '../core/topSegments';
-import type { PointData } from '../utils/kinematics';
+import type { PointData } from './pointData';
 import { WIND_LOCAL_MAX_GAP_MIN, windAt, type ManeuverLocation, type ManeuverStats, type WindReference } from './maneuvers';
 import { VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
-import {
-  angleDiff,
-  circularMean,
-  circularStats,
-  interpolateDirection,
-  normalizeAngle,
-  type TimedDirection,
-} from './wind';
+import { circularStats, interpolateDirection, type TimedDirection } from './wind';
+import { angleDiff, circularMean, normalizeDeg } from '../core/angles';
 
 export interface VmgStats {
   upStbd: { max: string; avg: string };
@@ -162,9 +156,9 @@ export const calculateWindStats = (
 
   // Arrondi puis normalisé : une moyenne à 359,7° s'affiche 0°, jamais 360°.
   return {
-    avgWind: normalizeAngle(Math.round(stats.mean)),
-    minWind: normalizeAngle(Math.round(stats.mean + stats.minDev)),
-    maxWind: normalizeAngle(Math.round(stats.mean + stats.maxDev)),
+    avgWind: normalizeDeg(Math.round(stats.mean)),
+    minWind: normalizeDeg(Math.round(stats.mean + stats.minDev)),
+    maxWind: normalizeDeg(Math.round(stats.mean + stats.maxDev)),
     range: Math.round(stats.maxDev - stats.minDev),
     stdDev: Math.round(stats.stdDevDeg),
     slopePerHour: den !== 0 ? (num / den) * 60 : 0,

@@ -1,5 +1,5 @@
 import { registerPlugin } from '@capacitor/core';
-import { bytesToBase64 } from './base64';
+import { bytesToBase64 } from '../core/base64';
 import { downloadBlob } from './files';
 import { isNativeApp } from './runtime';
 

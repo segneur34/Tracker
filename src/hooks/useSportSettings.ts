@@ -4,7 +4,7 @@ import {
   isActivityShown, newActivityId, insertActivity, readActivities, upgradeActivities, visibleActivities, visibleFamilies, withHidden, type Activity,
 } from '../core/activities';
 import type { ActivityIconId } from '../core/activityIcons';
-import { DEFAULT_INTERVAL_PRESETS, PRESET_BASES, presetOf } from '../core/activityPresets';
+import { DEFAULT_INTERVAL_PRESETS, PRESET_BASES, presetOf } from '../settings/activityPresets';
 import {
   LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, defaultActiveThresholdOf, getSportProfile, hasActiveThreshold, hasPositions,
   type RecordingProfile, type SportFamily, type Treatment,
@@ -30,10 +30,10 @@ import { defaultJumpSettings, sanitizeJumpSettings, type JumpSettings } from '..
 import { BIKE_TYPES, REFERENCE_RIDER_KG, cyclingEnergyParams, isBikeType, isValidBikeWeight, type BikeType } from '../cycling/energy';
 import { isEnergyModel, isValidCarriedLoad, type EnergyModel } from '../running/energy';
 import { DEFAULT_CYCLING_GRADE_RANGE, DEFAULT_CYCLING_SPEED_RANGE_MS } from '../cycling/cyclingConfig';
-import { DEFAULT_GRADE_RANGE, DEFAULT_SPEED_RANGE_MS, isValidGradeRange, type GradeRange } from '../running/runningAnalytics';
+import { DEFAULT_SPEED_RANGE_MS } from '../running/runningAnalytics';
 import { DEFAULT_SAILING_SPEED_RANGE_MS } from '../sailing/sailingConfig';
 import { DEFAULT_SURF_SPEED_RANGE_MS } from '../surfing/surfConfig';
-import type { GearGroup, GearItem } from '../sailing/sessionNotes';
+import type { GearGroup, GearItem } from '../library/notes';
 
 export type { GearGroup, GearItem };
 import {
@@ -42,6 +42,7 @@ import {
 } from '../planning/duration';
 import type { WayType } from '../planning/brouterProfile';
 import { presetWayTypes, sanitizeWayTypes } from '../planning/route';
+import { DEFAULT_GRADE_RANGE, isValidGradeRange, type GradeRange } from '../core/grade';
 
 /** Unités d'affichage proposées selon le traitement du calcul. */
 export const SAILING_UNITS: SpeedUnit[] = ['kn', 'kmh', 'ms'];
@@ -70,7 +71,7 @@ export const TREATMENT_SPEED_RANGE_MS: Record<Treatment, SpeedRangeMs> = {
 
 /**
  * Bornes de couleur d'une activité à défaut de réglage : celles de son pré-réglage
- * (`core/activityPresets.ts`), sinon celles de son calcul s'il en a de fixes (bateau),
+ * (`settings/activityPresets.ts`), sinon celles de son calcul s'il en a de fixes (bateau),
  * sinon celles du traitement.
  */
 export const defaultSpeedRangeOf = (activity: Activity): SpeedRangeMs =>
@@ -485,7 +486,7 @@ const storedActivities = (stored: StoredSettings): Activity[] => {
 /**
  * Version des pré-réglages. 1 (21/10) : bateau (couleurs de 1 à 15 nœuds,
  * sans seuil d'activité, pause sous 0,2 km/h, chiffres du direct). 2 (21/10) :
- * wing, planche, à pied, vélo et fractionné (`core/activityPresets.ts`).
+ * wing, planche, à pied, vélo et fractionné (`settings/activityPresets.ts`).
  * 3 (28/10) : la Marche sans seuil d'activité.
  */
 export const PRESETS_VERSION = 3;

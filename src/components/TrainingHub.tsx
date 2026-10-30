@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { IconChevronRight, IconStopwatch, IconTimer } from './icons';
 import { useIntervalSettings } from '../hooks/useSportSettings';
-import { WORKOUT_LISTS } from '../pages/workoutLists';
+import { WORKOUT_LISTS } from '../recording/workoutLists';
 import '../pages/TrainingPages.css';
 
 const savedCount = (n: number) => `${n} séance${n > 1 ? 's' : ''} gardée${n > 1 ? 's' : ''}`;

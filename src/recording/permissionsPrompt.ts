@@ -4,17 +4,9 @@
  * de `platform/permissions.ts`, la version vue en dernier de l'appareil.
  */
 
-/** Autorisations suivies, dans l'ordre de la carte. */
-export type PermissionKey = 'location' | 'notifications' | 'battery' | 'bluetooth';
+import type { PermissionKey, PermissionState, PermissionsStatus } from '../core/domainTypes';
 
-/**
- * `granted` : accordée ; `prompt` : jamais demandée, la demande système
- * s'affichera ; `denied` : refusée, il faut passer par les réglages de
- * l'application ; `unavailable` : sans objet ici (navigateur).
- */
-export type PermissionState = 'granted' | 'prompt' | 'denied' | 'unavailable';
-
-export type PermissionsStatus = Record<PermissionKey, PermissionState>;
+export type { PermissionKey, PermissionState, PermissionsStatus };
 
 /** Nom de chaque autorisation, en clair. */
 export const PERMISSION_LABEL: Record<PermissionKey, string> = {

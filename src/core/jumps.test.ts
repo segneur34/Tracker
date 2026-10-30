@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { decodeImu, encodeImu, selectImuWindows, type ImuRecording } from './imuFile';
 import { SYNTH_WALL_MS, synthImu as record, type SynthMotion as Motion } from './imuSynthetic.fixture';
 import { pruneImuFile } from './imuPrune';
-import { jumpCurveRows, jumpDoubtLabel, jumpTrackSpan, measureJumps, pruneWindows, trackIndexAtTime, type MeasuredJump, type SessionJump } from './jumps';
+import { jumpCurveRows, jumpDoubtLabel, jumpTrackSpan, measureJumps, pruneWindows, type MeasuredJump, type SessionJump } from './jumps';
 import { SPORT_PROFILES } from './sportProfiles';
+import { nearestIndexAtTime as trackIndexAtTime } from './search';
 
 const G = 9.80665;
 const D = SPORT_PROFILES.wingfoil.jumps!.detection;

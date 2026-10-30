@@ -87,7 +87,7 @@ import { analyzeCadence, cadenceBandPaths, measuredCadenceSegments, sessionCaden
 import { isValidCarriedLoad, smoothMovingPower } from '../running/energy';
 import { detectIntervals } from '../running/intervalDetection';
 import { analyzeIntervals, type IntervalPhaseSpan } from '../running/intervalStats';
-import type { RunningSessionStats } from '../running/types';
+import type { BaseSessionStats } from '../core/types';
 import { BIKE_TYPES, isValidBikeWeight } from '../cycling/energy';
 import { seriesBlocks, type IntervalSeries, type IntervalWorkout } from '../recording/intervalTimer';
 import type { SurfaceCategory } from '../planning/surface';
@@ -321,7 +321,7 @@ function LandModule({ family }: { family: LandFamily }) {
   // Seuil à 0 : aucun seuil réglé ; pauses de l'enregistrement, arrêts complets et trous immobiles ôtés d'office.
   const activityMask = useMemo(() => thresholdActivityMask(gpx.track, profile, activeThreshold), [gpx.track, profile, activeThreshold]);
 
-  const stats: RunningSessionStats | null = useMemo(() => {
+  const stats: BaseSessionStats | null = useMemo(() => {
     if (gpx.track.length === 0) return null;
     const thresholds = getActiveThresholds(profile, activeThreshold);
     return buildBaseSessionStats(gpx.track, {

@@ -71,7 +71,7 @@ import { canLockOrientation, isOrientationLocked, keepScreenOn, lockOrientation,
 import { fixesFromRawPoints, recordingDurationMs, isAutoPause, isManualPause } from '../recording/session';
 import { FITNESS_TESTS, FITNESS_TEST_IDS, isFitnessTestId, type FitnessTestId } from '../recording/fitnessTest';
 import { RESTING_HR_TEST, type RestingHrTestId } from '../recording/restingHrTest';
-import { WORKOUT_LISTS } from './workoutLists';
+import { WORKOUT_LISTS } from '../recording/workoutLists';
 import './RecordingPage.css';
 
 /**

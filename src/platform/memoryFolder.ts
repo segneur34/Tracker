@@ -1,6 +1,6 @@
 import { errorMessage } from '../core/basics';
 import { registerPlugin } from '@capacitor/core';
-import { base64ToBytes, bytesToBase64 } from './base64';
+import { base64ToBytes, bytesToBase64 } from '../core/base64';
 import { filesystem } from './files';
 import { isNativeApp } from './runtime';
 import { jsonStore } from './storage';

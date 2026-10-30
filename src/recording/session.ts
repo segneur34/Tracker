@@ -1,7 +1,7 @@
 import { pad2 } from '../core/units';
 import { formatLocalDate } from '../core/calendar';
 import { pointTimeMs } from '../core/kinematics';
-import { SPORT_PROFILES, hasPositions } from '../core/sportProfiles';
+import { hasPositions } from '../core/sportProfiles';
 import type { RawTrackPoint, SportType } from '../core/types';
 import type { HeartRateSample } from '../platform/heartRate';
 import { readableBpm } from './heartRate';
@@ -231,9 +231,6 @@ export const evaluateAutoPause = (
   if (fix.timeMs - since >= settings.delayS * 1000) return { event: 'pause', belowSinceMs: null };
   return { event: 'none', belowSinceMs: since };
 };
-
-export const isSportType = (value: unknown): value is SportType =>
-  typeof value === 'string' && Object.prototype.hasOwnProperty.call(SPORT_PROFILES, value);
 
 /**
  * Nom de fichier d'une session, à l'heure locale de son premier point :

@@ -16,7 +16,7 @@ import {
   type IntervalPreset, type WorkoutKind,
 } from '../recording/intervalTimer';
 import { TestTiles } from './TestsPage';
-import { TIMER_RECORD_PATH, WORKOUT_LISTS, recordPath } from './workoutLists';
+import { TIMER_RECORD_PATH, WORKOUT_LISTS, recordPath } from '../recording/workoutLists';
 import './TrainingPages.css';
 
 /**

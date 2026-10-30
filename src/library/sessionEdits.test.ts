@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_NOTES } from '../sailing/sessionNotes';
+import { EMPTY_NOTES } from './notes';
 import { RECORD_FORMAT, RECORD_VERSION, SUMMARY_CALC_VERSION, type SessionRecord, type StoredSessionNotes } from './record';
 import { changedParts, editsPatch, rebaseDraft, savedEdits } from './sessionEdits';
 

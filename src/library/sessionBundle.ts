@@ -1,6 +1,6 @@
 import { escapeXmlText } from '../core/xml';
 import { sortMarks, type SessionMark } from '../core/sessionMarks';
-import { base64ToBytes, bytesToBase64 } from '../platform/base64';
+import { base64ToBytes, bytesToBase64 } from '../core/base64';
 import { isWritableRecord, parseRecordParts, serializeRecord, type RecordWithoutSummary, type SessionRecord } from './record';
 
 /**

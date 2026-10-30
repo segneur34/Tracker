@@ -1,5 +1,4 @@
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
-import { DARK_SCHEME_QUERY } from '../theme/theme';
 import { isNativeApp } from './runtime';
 
 /**
@@ -99,6 +98,9 @@ export const lockOrientation = (locked: boolean): void => {
 let nativeDark: boolean | null = null;
 let nativeDarkStarted = false;
 const darkListeners = new Set<(dark: boolean) => void>();
+
+/** Requête du thème sombre du système, lue par « Auto » (`theme/theme.ts`). */
+const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)';
 
 /** Requête du thème sombre du navigateur ; `null` hors navigateur (tests). */
 const browserDarkQuery = (): MediaQueryList | null =>

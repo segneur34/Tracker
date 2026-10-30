@@ -12,7 +12,7 @@ import {
   MAX_INTERVAL_PRESETS, workoutBlocks, workoutFromBlocks, workoutLabel,
   type IntervalBlock, type WorkoutKind,
 } from '../recording/intervalTimer';
-import { WORKOUT_LISTS } from './workoutLists';
+import { WORKOUT_LISTS } from '../recording/workoutLists';
 import './TrainingPages.css';
 
 /**

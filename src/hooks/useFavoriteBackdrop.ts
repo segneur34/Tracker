@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { BackdropVariant } from '../core/patternTiles';
+import type { BackdropVariant } from '../core/backdropPattern';
 import { favoriteFamily } from '../library/profile';
 import { useVisibility } from './useSportSettings';
 import { useVisibleStatSessions } from './useVisibleStatSessions';

@@ -1,19 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import {
-  computeKinematics,
-  detectDeviceSpeedUnit,
-  detectTrackDeviceSpeedUnit,
-  detourSpikes,
-  haversineDistance,
-  initialBearing,
-  pointTimeMs,
-  resumeKinematics,
-  spreadEqualTimes,
-  type KinematicsRun,
-} from './kinematics';
+import { computeKinematics, detectDeviceSpeedUnit, detectTrackDeviceSpeedUnit, detourSpikes, pointTimeMs, resumeKinematics, spreadEqualTimes, type KinematicsRun } from './kinematics';
 import { sameData } from '../test/sameData';
 import { segmentDistanceM } from './sessionStats';
 import type { RawTrackPoint } from './types';
+import { haversineDistance, initialBearing } from './geo';
 
 /** Construit une trace rectiligne vers l'est, à vitesse et cadence constantes. */
 const buildEastwardTrack = (

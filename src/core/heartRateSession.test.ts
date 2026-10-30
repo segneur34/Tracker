@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activeDurationS, analyzeHeartRateSession, heartRatePointsFrom, heartRatePreviewPath, repsDone, sessionPhases, type HeartRateSessionPoint,
 } from './heartRateSession';
-import type { IntervalSeries } from '../recording/intervalTimer';
+import type { IntervalSeries } from './domainTypes';
 
 const T0 = Date.UTC(2026, 9, 28, 18, 0, 0);
 const PARAMS = { smoothS: 5, gapS: 10 };

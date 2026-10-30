@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { SPORT_PROFILES } from '../core/sportProfiles';
 import type { LocationFix } from '../platform/location';
-import { angleDiff } from '../sailing/wind';
 import { computeLiveStats } from './liveStats';
+import { angleDiff } from '../core/angles';
 
 const T0 = Date.UTC(2026, 8, 25, 14, 0, 0);
 const M_PER_DEG_LAT = (6371e3 * Math.PI) / 180;

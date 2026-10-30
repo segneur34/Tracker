@@ -18,7 +18,7 @@ import {
   type IntervalBlock, type WorkoutKind,
 } from '../recording/intervalTimer';
 import { formatStopwatch, type StopwatchState } from '../recording/stopwatch';
-import { WORKOUT_LISTS } from '../pages/workoutLists';
+import { WORKOUT_LISTS } from '../recording/workoutLists';
 import WorkoutBlocksEditor from './WorkoutBlocksEditor';
 import './IntervalCard.css';
 

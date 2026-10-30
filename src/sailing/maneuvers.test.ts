@@ -4,7 +4,7 @@ import type { RawTrackPoint } from '../core/types';
 import { knotsToMs } from '../core/units';
 import { sampledIndices } from '../core/chartZoom';
 import { CHART_MAX_POINTS } from '../core/displayConfig';
-import { trackToPointData, type PointData } from '../utils/kinematics';
+import { trackToPointData, type PointData } from './pointData';
 import {
   WIND_LOCAL_MAX_GAP_MIN,
   analyzeManeuvers,
@@ -21,16 +21,8 @@ import {
 } from './maneuvers';
 import { sessionManeuverThresholds } from './sailingConfig';
 import { calculateWindStats, summarizeManeuvers, windChartRows } from './sailingAnalytics';
-import {
-  angleDiff,
-  buildWindTimeline,
-  circularMean,
-  describeWindCandidate,
-  estimateWindFromPolar,
-  estimateWindPolar,
-  observeTurns,
-  polarSampling,
-} from './wind';
+import { buildWindTimeline, describeWindCandidate, estimateWindFromPolar, estimateWindPolar, observeTurns, polarSampling } from './wind';
+import { angleDiff, circularMean } from '../core/angles';
 
 const TRACK_START_MS = Date.parse('2026-01-01T10:00:00Z');
 

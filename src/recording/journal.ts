@@ -5,7 +5,8 @@ import type { SportType } from '../core/types';
 import type { LocationFix } from '../platform/location';
 import { readSessionTest, type SessionTest } from './fitnessTest';
 import { readIntervalRun, type IntervalRun } from './intervalTimer';
-import { isSportType, type HeartRateFix } from './session';
+import { isSportType } from '../core/sportProfiles';
+import type { HeartRateFix } from './session';
 
 /**
  * Journal d'un enregistrement en cours : une ligne JSON par position, ajoutée

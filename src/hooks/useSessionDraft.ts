@@ -9,7 +9,7 @@ import {
   type EditedPart,
   type SessionEdits,
 } from '../library/sessionEdits';
-import type { SailingSessionNotes } from '../sailing/sessionNotes';
+import type { SailingSessionNotes } from '../library/notes';
 import { useLeaveWarning } from './leaveGuard';
 import { updateSessionRecord, useLibrarySession } from './useSessionLibrary';
 

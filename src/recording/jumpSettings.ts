@@ -1,3 +1,4 @@
+import type { JumpPlacement } from '../core/domainTypes';
 import type { JumpProfile } from '../core/sportProfiles';
 
 /**
@@ -10,8 +11,7 @@ import type { JumpProfile } from '../core/sportProfiles';
  * côté du GPX.
  */
 
-/** Où le téléphone est fixé : règle les seuils de détection et dit la précision à attendre. */
-export type JumpPlacement = 'poitrine' | 'taille' | 'bras' | 'dos';
+export type { JumpPlacement };
 
 /** Dans l'ordre de la liste, le conseillé en tête. */
 export const JUMP_PLACEMENTS: JumpPlacement[] = ['poitrine', 'taille', 'bras', 'dos'];

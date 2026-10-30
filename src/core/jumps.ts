@@ -389,9 +389,6 @@ export const measureJumps = (rec: ImuRecording, d: JumpDetection, track: Readonl
 
 // --- Sur la carte ---
 
-/** Réexporté pour les appelants d'avant `nearestIndexAtTime` (à retirer au lot 71). */
-export { nearestIndexAtTime as trackIndexAtTime } from './search';
-
 /**
  * Points de la trace d'un saut, pour la carte : du point qui précède le
  * décollage à celui qui suit l'atterrissage, deux au moins, puisqu'un saut

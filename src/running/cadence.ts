@@ -4,6 +4,7 @@ import { kmhToMs } from '../core/units';
 import { segmentDistanceM } from '../core/sessionStats';
 import { pathsWhere } from '../core/trackPaths';
 import type { TrackPoint } from '../core/types';
+import type { CadenceDetection } from '../core/domainTypes';
 import type { GradeProfile } from '../core/sportProfiles';
 import { classifyGrade, gradeZones, type GradeZone } from '../core/grade';
 
@@ -37,76 +38,7 @@ import { classifyGrade, gradeZones, type GradeZone } from '../core/grade';
  * `stepCadenceSpm` la remet en pas par minute.
  */
 
-/** Constantes de la mesure (`SPORT_PROFILES.running.cadence`). */
-export interface CadenceDetection {
-  /** Pas de la grille de calcul, en secondes. */
-  gridStepS: number;
-  /** Écart entre deux mesures au-delà duquel la capture a un trou, en secondes. */
-  maxGapS: number;
-  /** Moyenne glissante retirée au module (pesanteur, biais), en secondes. */
-  gravityWindowS: number;
-  /** Fenêtre de l'autocorrélation, centrée sur l'instant mesuré, en secondes. */
-  windowS: number;
-  /** Écart entre deux mesures de cadence, en secondes. */
-  stepS: number;
-  /** Cadence la plus basse et la plus haute cherchées, en pas par minute. */
-  minSpm: number;
-  maxSpm: number;
-  /** Corrélation de la crête retenue sous laquelle le signal n'est pas régulier. */
-  minCorrelation: number;
-  /** Une crête plus tôt est prise si elle atteint cette part de la plus haute. */
-  peakFraction: number;
-  /** La demi-période d'une crête est le pas si elle en atteint cette part. */
-  halfPeriodFraction: number;
-  /**
-   * Écart type du module, sans pesanteur, au-dessus duquel une crête sans
-   * demi-période, qui pourrait être un pas lent ou une foulée de course, est
-   * une foulée, en m/s².
-   */
-  strideRmsMs2: number;
-  /** Écart type du module, sans pesanteur, sous lequel on est à l'arrêt, en m/s². */
-  minRmsMs2: number;
-  /** Part de la fenêtre que la capture doit couvrir. */
-  minCoverage: number;
-  /** Lissage de la courbe des graphes, en secondes. */
-  chartSmoothingS: number;
-  /** Temps couvert par la cadence sous lequel une session est dite sans cadence, en secondes. */
-  minCoverageS: number;
-  /** Écart entre deux points au-delà duquel la cadence n'est pas comptée entre eux, en secondes. */
-  gapS: number;
-  /**
-   * Unité de `cad` d'un GPX, pas ou foulées par minute (décision du 27/10) :
-   * longueur de pas divisée par la fréquence des pas (en pas par seconde),
-   * vraisemblable entre ces bornes, en m·s. Lue sur les segments mesurés :
-   * pris tels quels, puis doublés, un seul des deux sens doit y tomber.
-   */
-  stepLengthPerHz: { min: number; max: number };
-  /**
-   * Faute d'indice de longueur de pas (pas de mouvement, ou les deux sens
-   * aussi vraisemblables) : une médiane de `cad` au-dessus est déjà en pas par
-   * minute, en dessous en foulées.
-   */
-  spmAbove: number;
-  /** Bornes basses des tranches de cadence de la marche et de la course, en pas par minute. */
-  walkBands: readonly number[];
-  runBands: readonly number[];
-  /** Cadence moyenne au-dessus de laquelle la session prend les tranches de la course. */
-  runAboveSpm: number;
-  /** Durée de la cadence maximale, en secondes. */
-  maxWindowS: number;
-  /** Largeur d'une tranche de vitesse, en km/h. */
-  speedBinKmh: number;
-  /** Temps sous lequel une tranche de vitesse n'est pas montrée, en secondes. */
-  minBinS: number;
-  /** Temps mesuré en mouvement sous lequel la dérive n'est pas donnée, en secondes. */
-  driftMinS: number;
-  /**
-   * Garder toute la capture dans la mémoire : vrai tant que la mesure se
-   * règle sur de vraies sorties (relues par adb) ; faux, elle n'est pas
-   * rangée quand elle ne servait qu'à la cadence.
-   */
-  keepCapture: boolean;
-}
+export type { CadenceDetection };
 
 /** Cadence mesurée sur une capture, un pas tous les `stepS`, depuis `startMs` (heure). */
 export interface CadenceSeries {

@@ -10,9 +10,11 @@ import {
 import type { RawTrackPoint, SpeedSource, TrackPoint } from './types';
 import { MS_TO_KMH, MS_TO_KNOTS } from './units';
 
-/** Réexportés pour les appelants d'avant `core/angles.ts` et `core/geo.ts` (à retirer au lot 71). */
-export { toDeg, toRad } from './angles';
-export { EARTH_RADIUS_M, haversineDistance, initialBearing } from './geo';
+/**
+ * Seuls réexports restants du lot 57, lus par `planning/loopReturn.test.ts` (lot 82, qui les retirera avec cette ligne).
+ */
+export { toRad } from './angles';
+export { EARTH_RADIUS_M } from './geo';
 
 /** Convertit un horodatage de point en millisecondes depuis l'époque. */
 export const pointTimeMs = (time: string | Date): number =>

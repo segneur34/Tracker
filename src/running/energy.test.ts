@@ -6,7 +6,7 @@ import {
   DEFAULT_ENERGY_PARAMS, computeEnergy, flatCostJkgM, minettiCost, restingPowerWkg, runningCostJkgM,
   smoothMovingPower, walkingCostJkgM, walkingEnergyParams, walkingGrossWkg, type EnergyParams,
 } from './energy';
-import { computeGrades } from './runningAnalytics';
+import { computeGrades } from '../core/grade';
 
 /**
  * Trace synthétique à cadence fixe : vitesse donnée par seconde écoulée,

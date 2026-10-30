@@ -1,6 +1,6 @@
 import { IconChevronRight, IconPulse } from '../components/icons';
 import { Link, Navigate } from 'react-router-dom';
-import { WORKOUT_LISTS } from './workoutLists';
+import { WORKOUT_LISTS } from '../recording/workoutLists';
 import './TrainingPages.css';
 
 /**

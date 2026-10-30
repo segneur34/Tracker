@@ -15,8 +15,9 @@ import { useRestingHrTest } from '../hooks/useRestingHrTest';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import { BELT_STATE_LABEL } from '../platform/heartRate';
 import { RESTING_HR_TEST, restingRemainingS } from '../recording/restingHrTest';
-import { restingHrSeries, toStoredRestingResult, type StoredRestingResult } from '../running/restingHrResults';
-import { WORKOUT_LISTS } from './workoutLists';
+import { toStoredRestingResult, type StoredRestingResult } from '../library/restingHrStore';
+import { restingHrSeries } from '../running/restingHrResults';
+import { WORKOUT_LISTS } from '../recording/workoutLists';
 import './TrainingPages.css';
 
 const PROTOCOL = RESTING_HR_TEST;

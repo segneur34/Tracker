@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  clampByAcceleration,
-  linearSmoothByTime,
-  meanFilterByTime,
-  median,
-  medianFilterByTime,
-  medianFilterByTimeFrom,
-} from './speedFilter';
+import { clampByAcceleration, linearSmoothByTime, meanFilterByTime, medianFilterByTime, medianFilterByTimeFrom } from './speedFilter';
 import { sameData } from '../test/sameData';
+import { median } from './basics';
 
 const secondsToMs = (count: number, step = 1): number[] =>
   Array.from({ length: count }, (_, i) => i * step * 1000);

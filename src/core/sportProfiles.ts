@@ -1,7 +1,7 @@
 import type { JumpDetection } from './jumps';
 import type { HeartRateZoneModel } from './heartRate';
 import type { PumpDetection } from './pumping';
-import type { CadenceDetection } from '../running/cadence';
+import type { CadenceDetection } from './domainTypes';
 import type { SpeedRangeMs } from './speedGradient';
 import type { SportType, TopTarget } from './types';
 import { DEFAULT_MAX_DETOUR_RATIO } from './kinematics';
@@ -757,6 +757,10 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
 export const SAILING_SPORTS: SportType[] = ['wingfoil', 'windsurf', 'kite', 'bateau'];
 
 export const getSportProfile = (sport: SportType): SportProfile => SPORT_PROFILES[sport];
+
+/** Vrai si la valeur est l'identifiant d'un calcul de support (lecture d'une fiche, d'un journal, d'un nom de fichier). */
+export const isSportType = (value: unknown): value is SportType =>
+  typeof value === 'string' && Object.prototype.hasOwnProperty.call(SPORT_PROFILES, value);
 
 /**
  * Seuil d'activité par défaut d'un calcul, dans `thresholdUnit`. En surf, il dépend du foil : le

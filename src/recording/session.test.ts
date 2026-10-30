@@ -10,7 +10,6 @@ import {
   isManualPause,
   isNewerFix,
   isRecordingSession,
-  isSportType,
   keepHeartRateSample,
   nothingToKeep,
   withStopPoint,
@@ -193,15 +192,6 @@ describe('shouldFlushJournal', () => {
 
   it('écrit au premier point qui suit une coupure, sans attendre', () => {
     expect(shouldFlushJournal(T0, T0 + 600_000, 10)).toBe(true);
-  });
-});
-
-describe('isSportType', () => {
-  it('ne reconnaît que les supports du profil', () => {
-    expect(isSportType('wingfoil')).toBe(true);
-    expect(isSportType('running')).toBe(true);
-    expect(isSportType('toString')).toBe(false);
-    expect(isSportType(42)).toBe(false);
   });
 });
 

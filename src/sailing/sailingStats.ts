@@ -4,7 +4,7 @@ import { getActiveThresholds, getSportProfile, hasActiveThreshold } from '../cor
 import { computeAllTopSegments } from '../core/topSegments';
 import type { CumulativeTrack, SportType, TrackPoint } from '../core/types';
 import { knotsToMs, msToKnots } from '../core/units';
-import type { SessionStats } from '../types/sailing';
+import type { SessionStats } from './types';
 import { DEFAULT_SAILING_SPORT, SAILING_TOP_TARGETS, getDefaultThresholdKn } from './sailingConfig';
 
 export interface SailingStatsOptions {

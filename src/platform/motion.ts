@@ -1,6 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 import { STANDARD_G } from '../core/units';
-import type { JumpPlacement } from '../recording/jumpSettings';
+import type { JumpPlacement } from '../core/domainTypes';
 import { privateFileSize, readPrivateBytes, removePrivateFile } from './memoryFolder';
 import { isNativeApp } from './runtime';
 
