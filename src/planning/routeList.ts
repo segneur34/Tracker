@@ -1,8 +1,9 @@
-import { activityFamily, findActivity, type Activity } from '../core/activities';
+import { activityFamily, type Activity } from '../core/activities';
 import type { SportFamily } from '../core/sportProfiles';
 import { estimateRouteDurationS, type DurationSettings } from './duration';
 import { routeTotals } from './route';
 import { recordToRoute, type RouteRecord } from './routeRecord';
+import { routeActivity, shownRoutes, type WithActivity } from './routeShown';
 
 /**
  * Listes d'itinéraires rangés (point 68) : distance, tri, et vue depuis une
@@ -12,22 +13,8 @@ import { recordToRoute, type RouteRecord } from './routeRecord';
  * pages Itinéraires.
  */
 
-interface WithActivity {
-  record: { activityId: string | null };
-}
-
-export const routeActivity = (route: WithActivity, activities: Activity[]): Activity | null =>
-  findActivity(activities, route.record.activityId);
-
-/**
- * Itinéraires visibles : sans activité, ou d'une activité que `isShown`
- * montre (ni cachée dans Réglages, ni d'une famille cachée, §10, point 100).
- */
-export const shownRoutes = <T extends WithActivity>(routes: T[], activities: Activity[], isShown: (a: Activity) => boolean): T[] =>
-  routes.filter((r) => {
-    const activity = routeActivity(r, activities);
-    return activity === null || isShown(activity);
-  });
+// Écrits dans `routeShown.ts` (sans dépendance, pour l'accueil) ; repris ici pour les importeurs d'avant.
+export { routeActivity, shownRoutes };
 
 export const routesOfFamily = <T extends WithActivity>(routes: T[], activities: Activity[], family: SportFamily): T[] =>
   routes.filter((r) => {

@@ -5,6 +5,7 @@ import { GRADE_ANALYSIS, type Treatment } from '../core/sportProfiles';
 import type { BikeType } from '../cycling/energy';
 import { computeGrades } from '../core/grade';
 import { WAY_TYPES, type WayType } from './brouterProfile';
+import { isWaysMode, joinLegs, samePlace } from './legJoin';
 import { LOOP_RETURN_VARIANTS } from './loopReturn';
 import { shiftSurfaceRuns, type SurfaceRuns } from './surface';
 
@@ -83,8 +84,8 @@ export const wayTypesOf = (mode: WaysMode): WayType[] => {
   return WAY_TYPES.filter((t) => parts.includes(t));
 };
 
-/** Vrai pour un mode calculé par les types de voie (ni ligne droite, ni trace importée). */
-export const isWaysMode = (mode: RouteMode): mode is WaysMode => mode !== 'straight' && mode !== 'imported';
+// Écrit dans `legJoin.ts` (sans cycle avec `surface.ts` et `loopReturn.ts`).
+export { isWaysMode };
 
 /** Mode par défaut, et celui d'un tronçon illisible. */
 export const DEFAULT_ROUTE_MODE: RouteMode = 'sentier';
@@ -154,7 +155,7 @@ export const BIKE_WAY_TYPES: Record<BikeType, WayType[]> = {
 
 /**
  * Types de voie cochés d'office en planification pour une activité qui n'en
- * a pas de réglés ni de pré-réglés (`core/activityPresets.ts`) : selon son
+ * a pas de réglés ni de pré-réglés (`settings/activityPresets.ts`) : selon son
  * type de vélo, la route à pied ; aucun en voile, où les balises sont
  * reliées en ligne droite.
  */
@@ -835,17 +836,7 @@ export const snapToWaypoints = (
 export const routePoints = (route: PlannedRoute): RoutePoint[] => legsPoints(route.legs);
 
 /** Des tronçons qui se suivent, d'un seul trait, point de jonction compté une fois. */
-export const legsPoints = (legs: ReadonlyArray<RouteLeg>): RoutePoint[] => {
-  const out: RoutePoint[] = [];
-  for (const leg of legs) {
-    const start = out.length > 0 && samePlace(out[out.length - 1], leg.points[0]) ? 1 : 0;
-    for (let i = start; i < leg.points.length; i++) out.push(leg.points[i]);
-  }
-  return out;
-};
-
-const samePlace = (a: RoutePoint | undefined, b: RoutePoint | undefined): boolean =>
-  !!a && !!b && a.lat === b.lat && a.lon === b.lon;
+export const legsPoints = (legs: ReadonlyArray<RouteLeg>): RoutePoint[] => joinLegs(legs)[0] ?? [];
 
 /**
  * Pour chaque point : distance depuis le départ, et longueur du tronçon qui y

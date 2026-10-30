@@ -10,12 +10,6 @@ import {
 import type { RawTrackPoint, SpeedSource, TrackPoint } from './types';
 import { MS_TO_KMH, MS_TO_KNOTS } from './units';
 
-/**
- * Seuls réexports restants du lot 57, lus par `planning/loopReturn.test.ts` (lot 82, qui les retirera avec cette ligne).
- */
-export { toRad } from './angles';
-export { EARTH_RADIUS_M } from './geo';
-
 /** Convertit un horodatage de point en millisecondes depuis l'époque. */
 export const pointTimeMs = (time: string | Date): number =>
   typeof time === 'string' ? new Date(time).getTime() : time.getTime();

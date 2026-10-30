@@ -221,7 +221,6 @@ describe('calcul d\'un tronçon par le serveur', () => {
   /** Module neuf à chaque essai : l'envoi du profil est retenu le temps d'un lancement. */
   const loadBrouter = async () => {
     vi.resetModules();
-    vi.doMock('../platform/storage', () => ({ jsonStore: { read: () => null, write: () => {} } }));
     return import('./brouter');
   };
 
@@ -239,22 +238,27 @@ describe('calcul d\'un tronçon par le serveur', () => {
     return calls;
   };
 
+  /** Mémoire de l'id du profil, comme le fait le hook. */
+  const memory = () => {
+    let id: unknown = null;
+    return { read: () => id, write: (value: string) => void (id = value) };
+  };
+
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.doUnmock('../platform/storage');
   });
 
   it('un 500 qui dit « pas de chemin » ne renvoie pas le profil et ne refait pas le calcul', async () => {
     const { fetchLeg } = await loadBrouter();
     const calls = server([() => new Response('target island detected for section 0', { status: 500 })]);
-    await expect(fetchLeg(A, B, ['sentier'], 'pieton')).rejects.toThrow(/Aucun chemin/);
+    await expect(fetchLeg(A, B, ['sentier'], 'pieton', memory())).rejects.toThrow(/Aucun chemin/);
     expect(calls).toEqual(['profil', 'calcul']);
   });
 
   it('un 500 au corps vide (profil effacé du serveur) renvoie le profil, puis refait le calcul une fois', async () => {
     const { fetchLeg } = await loadBrouter();
     const calls = server([() => new Response('', { status: 500 }), () => new Response(JSON.stringify(BROUTER_RESPONSE), { status: 200 })]);
-    const leg = await fetchLeg(A, B, ['sentier'], 'pieton');
+    const leg = await fetchLeg(A, B, ['sentier'], 'pieton', memory());
     expect(leg.points).toHaveLength(3);
     expect(calls).toEqual(['profil', 'calcul', 'profil', 'calcul']);
   });
@@ -262,14 +266,51 @@ describe('calcul d\'un tronçon par le serveur', () => {
   it('deux 500 vides de suite : échec, sans boucle', async () => {
     const { fetchLeg } = await loadBrouter();
     const calls = server([() => new Response('', { status: 500 }), () => new Response('', { status: 500 })]);
-    await expect(fetchLeg(A, B, ['sentier'], 'pieton')).rejects.toThrow(/erreur 500/);
+    await expect(fetchLeg(A, B, ['sentier'], 'pieton', memory())).rejects.toThrow(/erreur 500/);
     expect(calls).toEqual(['profil', 'calcul', 'profil', 'calcul']);
+  });
+
+  it('trois tronçons demandés ensemble n\'envoient le profil qu\'une fois, et l\'id est retenu', async () => {
+    const { fetchLeg } = await loadBrouter();
+    const ok = () => new Response(JSON.stringify(BROUTER_RESPONSE), { status: 200 });
+    const calls = server([ok, ok, ok]);
+    const store = memory();
+    await Promise.all([1, 2, 3].map(() => fetchLeg(A, B, ['sentier'], 'pieton', store)));
+    expect(calls.filter((c) => c === 'profil')).toHaveLength(1);
+    expect(store.read()).toBe('custom_1');
+  });
+
+  it('trois tronçons qui constatent ensemble « profil absent » ne le renvoient qu\'une fois', async () => {
+    const { fetchLeg } = await loadBrouter();
+    const empty = () => new Response('', { status: 500 });
+    const ok = () => new Response(JSON.stringify(BROUTER_RESPONSE), { status: 200 });
+    const calls = server([empty, empty, empty, ok, ok, ok]);
+    const store = memory();
+    const legs = await Promise.all([1, 2, 3].map(() => fetchLeg(A, B, ['sentier'], 'pieton', store)));
+    expect(legs.every((leg) => leg.points.length === 3)).toBe(true);
+    // Un envoi au départ, un seul renvoi pour les trois.
+    expect(calls.filter((c) => c === 'profil')).toHaveLength(2);
+  });
+
+  it('réécrit sur l\'id retenu au lancement précédent', async () => {
+    const { fetchLeg } = await loadBrouter();
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      return url.startsWith(BROUTER_PROFILE_URL)
+        ? new Response('{"profileid":"custom_abc"}', { status: 200 })
+        : new Response(JSON.stringify(BROUTER_RESPONSE), { status: 200 });
+    });
+    const store = memory();
+    store.write('custom_abc');
+    await fetchLeg(A, B, ['sentier'], 'pieton', store);
+    expect(urls[0]).toBe(`${BROUTER_PROFILE_URL}/custom_abc`);
   });
 
   it('une page HTML au lieu du JSON : message en français', async () => {
     const { fetchLeg } = await loadBrouter();
     server([() => new Response('<!DOCTYPE html><html></html>', { status: 200 })]);
-    await expect(fetchLeg(A, B, ['sentier'], 'pieton')).rejects.toThrow('Réponse du serveur de calcul illisible.');
+    await expect(fetchLeg(A, B, ['sentier'], 'pieton', memory())).rejects.toThrow('Réponse du serveur de calcul illisible.');
   });
 
   it('sans réponse en 60 s : échec lisible, que « Réessayer » relance', async () => {
@@ -282,7 +323,7 @@ describe('calcul d\'un tronçon par le serveur', () => {
           init?.signal?.addEventListener('abort', () => reject(new DOMException('Abandon', 'AbortError')));
         });
       });
-      const outcome = expect(fetchLeg(A, B, ['sentier'], 'pieton')).rejects.toThrow('Le serveur de calcul ne répond pas : réessayez.');
+      const outcome = expect(fetchLeg(A, B, ['sentier'], 'pieton', memory())).rejects.toThrow('Le serveur de calcul ne répond pas : réessayez.');
       await vi.advanceTimersByTimeAsync(BROUTER_TIMEOUT_MS);
       await outcome;
     } finally {

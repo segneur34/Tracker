@@ -1,4 +1,6 @@
-import { pointSegmentDistanceM, type PlanePoint } from '../core/geoPlane';
+import { pointSegmentDistanceM } from '../core/geoPlane';
+import type { PlanePoint } from '../core/geo';
+import { buildSegmentGrid } from '../core/segmentGrid';
 import { toRad } from '../core/angles';
 import { EARTH_RADIUS_M, haversineDistance } from '../core/geo';
 import type { Waypoint } from './route';
@@ -69,18 +71,13 @@ export const queryLines = (
   return lines;
 };
 
-interface Segment {
-  way: number;
-  a: PlanePoint;
-  b: PlanePoint;
-}
-
 /**
  * Voie de chaque point : l'indice dans `ways` de la plus proche à moins de
  * `radiusM`, celle du point précédent gardée tant qu'elle n'est pas plus loin
  * que la meilleure de plus de `switchMarginM` ; `-1` si aucune voie n'est assez
  * proche. Plan local équirectangulaire centré sur le premier point ; les
- * segments des voies sont rangés dans une grille de pas `radiusM`.
+ * segments des voies sont rangés dans une grille de pas `radiusM`
+ * (`core/segmentGrid.ts`).
  */
 export const matchTrackToWays = (
   points: ReadonlyArray<Waypoint>,
@@ -94,42 +91,30 @@ export const matchTrackToWays = (
   const px = (p: Waypoint) => toRad(p.lon - lon0) * k;
   const py = (p: Waypoint) => toRad(p.lat - lat0) * EARTH_RADIUS_M;
 
-  const cell = Math.max(radiusM, 1);
-  const grid = new Map<string, Segment[]>();
+  // Segments des voies, à plat ; `wayOf[i]` : l'indice dans `ways` du segment `i`.
+  const segments: [PlanePoint, PlanePoint][] = [];
+  const wayOf: number[] = [];
   ways.forEach((way, w) => {
     for (let i = 1; i < way.geometry.length; i++) {
-      const s: Segment = {
-        way: w,
-        a: { x: px(way.geometry[i - 1]), y: py(way.geometry[i - 1]) },
-        b: { x: px(way.geometry[i]), y: py(way.geometry[i]) },
-      };
-      for (let cx = Math.floor(Math.min(s.a.x, s.b.x) / cell); cx <= Math.floor(Math.max(s.a.x, s.b.x) / cell); cx++) {
-        for (let cy = Math.floor(Math.min(s.a.y, s.b.y) / cell); cy <= Math.floor(Math.max(s.a.y, s.b.y) / cell); cy++) {
-          const key = `${cx},${cy}`;
-          const list = grid.get(key);
-          if (list) list.push(s);
-          else grid.set(key, [s]);
-        }
-      }
+      segments.push([
+        { x: px(way.geometry[i - 1]), y: py(way.geometry[i - 1]) },
+        { x: px(way.geometry[i]), y: py(way.geometry[i]) },
+      ]);
+      wayOf.push(w);
     }
   });
+  // Tout segment à moins de `radiusM` d'un point figure dans la case de ce point.
+  const grid = buildSegmentGrid(segments, Math.max(radiusM, 1), radiusM);
 
   const matched: number[] = [];
   let previous = -1;
   for (const p of points) {
     const at: PlanePoint = { x: px(p), y: py(p) };
-    const { x, y } = at;
-    const cx = Math.floor(x / cell);
-    const cy = Math.floor(y / cell);
-    // Tout segment à moins de `radiusM` passe par l'une des neuf cases autour du point.
     const nearest = new Map<number, number>();
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j++) {
-        for (const s of grid.get(`${cx + i},${cy + j}`) ?? []) {
-          const d = pointSegmentDistanceM(at, s.a, s.b);
-          if (d < (nearest.get(s.way) ?? Infinity)) nearest.set(s.way, d);
-        }
-      }
+    for (const i of grid.near(at)) {
+      const d = pointSegmentDistanceM(at, segments[i][0], segments[i][1]);
+      const way = wayOf[i];
+      if (d < (nearest.get(way) ?? Infinity)) nearest.set(way, d);
     }
     let best = -1;
     let bestD = Infinity;

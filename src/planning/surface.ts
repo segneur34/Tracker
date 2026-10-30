@@ -2,6 +2,7 @@ import { haversineDistance, pathLengthM } from '../core/geo';
 import { segmentDistanceM } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
 import { WAY_TYPE_HIGHWAYS } from './brouterProfile';
+import { isComputedLeg } from './legJoin';
 import type { RouteLeg, RoutePoint } from './route';
 
 /**
@@ -67,21 +68,33 @@ export const SURFACE_COLOR: Record<SurfaceCategory, string> = {
 };
 
 /**
- * Valeurs de `surface`, sans leur précision après « : » (`concrete:plates`,
- * `paving_stones:30`). BRouter ramène certaines valeurs à une autre
- * (`bricks` → `paved`, `rocks` → `rock`) : les deux formes sont là.
+ * Table unique des valeurs de `surface`, sans leur précision après « : »
+ * (`concrete:plates`, `paving_stones:30`) : d'elle seule vient la catégorie
+ * affichée. Elle s'accorde au classement du calcul (`PAVED_SURFACES` et
+ * `UNPAVED_SURFACES` de `brouterProfile.ts`, coûts fixés avec l'utilisateur,
+ * intacts) : une valeur revêtue pour le calcul a une catégorie revêtue
+ * (`PAVED_CATEGORIES`), une valeur non revêtue une catégorie non revêtue ;
+ * `surface.test.ts` le vérifie. BRouter ramène certaines valeurs à une autre
+ * (`bricks` → `paved`, `rocks` → `rock`) et OSM en donne que le calcul ne
+ * liste pas : les formes de l'une et de l'autre sont là, rangées avec leur
+ * équivalent.
  */
-const SURFACE_VALUES: Record<string, SurfaceCategory> = {
+export const SURFACE_VALUES: Record<string, SurfaceCategory> = {
   asphalt: 'asphalte', paved: 'asphalte', concrete: 'asphalte', cement: 'asphalte', chipseal: 'asphalte',
   paving_stones: 'pierresPlates',
   sett: 'paves', cobblestone: 'paves', unhewn_cobblestone: 'paves', bricks: 'paves', brick: 'paves',
   gravel: 'gravillon', fine_gravel: 'gravillon', pebblestone: 'gravillon', compacted: 'gravillon',
   unpaved: 'nonPave', unpaved_minor: 'nonPave',
   dirt: 'terre', earth: 'terre', ground: 'terre', mud: 'terre', soil: 'terre', clay: 'terre',
-  grass: 'herbe', grass_paver: 'herbe', artificial_turf: 'herbe',
+  // Dalles alvéolées enherbées : revêtues pour le calcul (`PAVED_SURFACES`), donc rangées avec les pavés.
+  grass_paver: 'paves',
+  grass: 'herbe', artificial_turf: 'herbe',
   sand: 'sable',
   rock: 'alpin', rocks: 'alpin', rocky: 'alpin', stone: 'alpin',
 };
+
+/** Catégories revêtues, celles que le calcul compte pour des routes (`PAVED_SURFACES`). */
+export const PAVED_CATEGORIES: ReadonlySet<SurfaceCategory> = new Set<SurfaceCategory>(['asphalte', 'pierresPlates', 'paves']);
 
 /** Difficulté de randonnée (`sac_scale`) au-delà de la simple randonnée : un sentier alpin. */
 const ALPINE_SAC_SCALES = new Set([
@@ -372,9 +385,6 @@ export const surfaceHighlight = (
   const marks = lines.filter((line) => lineLengthM(line) < markMaxShare * totalM).map(midpoint);
   return { lines, marks };
 };
-
-/** Tronçon que la carte calcule (type de voie), par opposition à une ligne droite ou une trace importée. */
-const isComputedLeg = (leg: RouteLeg): boolean => leg.mode !== 'straight' && leg.mode !== 'imported';
 
 /** Voies connues d'un tronçon : celles d'un tronçon calculé et prêt ; sinon aucune (« Inconnu »). */
 const knownLegSurfaces = (leg: RouteLeg): SurfaceRuns | undefined =>

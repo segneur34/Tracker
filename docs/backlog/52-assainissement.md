@@ -692,6 +692,8 @@ Opus | medium. Neutre. Sources : 01-C5, 03-C2 à C5, 04-A9, 06-A2, 06-C5, 07-A2,
 
 **Rapport attendu** : fichiers créés ; priorités désormais testées.
 
+**Repris du lot 82 (30/10)** : en sortant le calcul de `useSportSettings.ts`, ne plus tirer `planning/route.ts` dans le paquet du démarrage (`presetWayTypes`, `sanitizeWayTypes` à mettre dans un petit module sans dépendance) ; mesurer le paquet avant/après comme au lot 82.
+
 ### 73 · Carte : trace colorée en une seule couche
 
 Opus | high. Neutre à l'œil (Q46, Q48). Sources : 01-B10, 02-B6, 07-A8, 07-A9, 07-B1, 07-B7.
@@ -920,6 +922,8 @@ Sonnet | high. Neutre sauf Q47. Sources : 07-A4, 07-A6, 07-A11, 07-B8, 07-B9, 07
 **Preuve** : tests ; banc `planning.mjs`, `boucle.mjs`, `surface.mjs` avant/après (texte identique jusqu'à l'étape 3).
 
 **Rapport attendu** : lignes retirées ; taille du paquet du démarrage avant/après ; valeurs de revêtement dont l'affichage change.
+
+**Tranché par l'orchestrateur (30/10)** : l'identifiant du profil BRouter, prévu au lot 71, est passé à ce lot (même fichier `planning/brouter.ts`, pour coder 71 et 82 en parallèle). Q47 lue au sens étroit : seule `grass_paver` change d'affichage (« Herbe » → « Pavés ») ; les valeurs que le calcul ne classe pas (chipseal, cement, bricks, rocky…) gardent leur affichage, car les ranger en « Autre » aurait fait passer de l'asphalte ou des pavés en « Autre ». Paquet du démarrage : seulement −1 ko, car `main.tsx → hooks/useSportSettings.ts` tire `planning/route.ts` (`presetWayTypes`, `sanitizeWayTypes`) et `library/record.ts` tire `planning/surface.ts` : à reprendre au lot 72.
 
 ## Architecture cible
 

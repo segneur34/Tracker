@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { EARTH_RADIUS_M, toRad } from '../core/kinematics';
+import { toRad } from '../core/angles';
+import { EARTH_RADIUS_M } from '../core/geo';
 import {
   LOOP_RETURN_DEFAULTS, avoidancePolygons, corridorPaths, isAcceptableReturn, polygonsParam, returnAttempts, sharedDistanceM,
   type AvoidancePolygon, type CorridorLeg,

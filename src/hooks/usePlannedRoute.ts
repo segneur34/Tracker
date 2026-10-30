@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
-import { fetchLeg } from '../planning/brouter';
-import { computeLeg, computeReturn, type LegResult, type ReturnResult } from '../planning/legCalculation';
+import { jsonStore } from '../platform/storage';
+import { fetchLeg, type ProfileIdStore } from '../planning/brouter';
+import { computeLeg, computeReturn, type LegFetcher, type LegResult, type ReturnResult } from '../planning/legCalculation';
 import { LOOP_RETURN_DEFAULTS, type LoopReturnParams } from '../planning/loopReturn';
 import {
   DEFAULT_MAX_SNAP_M, EMPTY_ROUTE, addBeforeReturn, addWaypoint, closeLoop, insertWaypoint, isLooped,
@@ -30,6 +31,15 @@ import {
  * aux tronçons prêts ; ceux en attente se calculent avec les nouvelles (la
  * page les remet en attente, `setRouteMode`).
  */
+
+/** Id du profil de calcul envoyé au serveur, retenu sur l'appareil (`planning/brouter.ts`). */
+const PROFILE_KEY = 'tracker.brouterProfile';
+const profileStore: ProfileIdStore = {
+  read: () => jsonStore.read<{ id?: unknown }>(PROFILE_KEY)?.id ?? null,
+  write: (id) => jsonStore.write(PROFILE_KEY, { id }),
+};
+const fetchStoredLeg: LegFetcher = (from, to, ways, vehicle, signal, options) =>
+  fetchLeg(from, to, ways, vehicle, profileStore, signal, options);
 
 /** Profondeur de l'annulation. */
 const HISTORY_LIMIT = 50;
@@ -168,7 +178,7 @@ export const usePlannedRoute = (
       }
       const controller = new AbortController();
       inFlight.current = { key, controller };
-      computeReturn(fetchLeg, back, vehicle, maxSnapM, maxReturnRatio, loopParams, controller.signal).then(
+      computeReturn(fetchStoredLeg, back, vehicle, maxSnapM, maxReturnRatio, loopParams, controller.signal).then(
         (outcome) => {
           if (inFlight.current?.controller !== controller) return;
           inFlight.current = null;
@@ -197,7 +207,7 @@ export const usePlannedRoute = (
 
     const controller = new AbortController();
     inFlight.current = { key, controller };
-    computeLeg(fetchLeg, request, vehicle, maxSnapM, controller.signal).then(
+    computeLeg(fetchStoredLeg, request, vehicle, maxSnapM, controller.signal).then(
       (outcome) => {
         if (inFlight.current?.controller !== controller) return;
         inFlight.current = null;

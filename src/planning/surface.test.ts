@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { PAVED_SURFACES, UNPAVED_SURFACES } from './brouterProfile';
 import { computeKinematics } from '../core/kinematics';
 import type { RawTrackPoint } from '../core/types';
 import type { RouteLeg, RoutePoint } from './route';
 import {
-  buildSurfaceRuns, classifySurface, legSurfaceStretches, parseWayTags, readSurfaceRuns, routeSurfacePaths, routeSurfaces,
+  PAVED_CATEGORIES, SURFACE_VALUES, buildSurfaceRuns, classifySurface, legSurfaceStretches, parseWayTags, readSurfaceRuns, routeSurfacePaths, routeSurfaces,
   shiftSurfaceRuns, summarizeSurfaces, surfaceHighlight, surfacePaths, tagsAt, trackSurfaceStretches, wayTagsText,
 } from './surface';
 
@@ -36,6 +37,18 @@ describe('catégorie d\'une voie', () => {
     expect(classifySurface('highway=path surface=rocky')).toBe('alpin');
     expect(classifySurface('highway=footway surface=wood')).toBe('autre');
     expect(classifySurface('highway=track surface=gravel;asphalt')).toBe('gravillon');
+  });
+
+  it('range chaque valeur du calcul du côté où le calcul la range (revêtue ou non)', () => {
+    for (const value of PAVED_SURFACES) expect(PAVED_CATEGORIES.has(SURFACE_VALUES[value]), value).toBe(true);
+    for (const value of UNPAVED_SURFACES) {
+      expect(SURFACE_VALUES[value], value).toBeDefined();
+      expect(PAVED_CATEGORIES.has(SURFACE_VALUES[value]), value).toBe(false);
+    }
+  });
+
+  it('des pavés enherbés (grass_paver) sont des pavés, revêtus comme pour le calcul', () => {
+    expect(classifySurface('highway=track surface=grass_paver')).toBe('paves');
   });
 
   it('met un sentier de montagne en Alpin, avant son revêtement', () => {

@@ -1,9 +1,6 @@
 import { planeProjection, type PlanePoint } from './geo';
 import type { LatLon } from './types';
 
-/** Seul réexport restant du lot 57, lu par `planning/wayMatch.ts` (lot 82, qui le retirera avec cette ligne). */
-export type { PlanePoint } from './geo';
-
 /**
  * Plans locaux équirectangulaires et projection d'un point sur un segment :
  * la seule écriture de cette géométrie (distance à un segment, accrochage à

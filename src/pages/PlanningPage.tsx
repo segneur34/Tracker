@@ -53,7 +53,8 @@ import {
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
 import { PACE_LEVEL_LABEL, estimateDurationFromProfile } from '../planning/duration';
-import { shownRoutes } from '../planning/routeList';
+import { shownRoutes } from '../planning/routeShown';
+import { isAbortError } from '../planning/fetchJson';
 import { searchPlaces, type Place } from '../planning/geocoding';
 import { WAY_TYPES } from '../planning/brouterProfile';
 import {
@@ -595,22 +596,31 @@ function PlanningPage() {
 
   // --- Recherche ---
 
+  // Une recherche en cours est abandonnée quand une autre part, ou en quittant la page : une réponse périmée ne remplace pas la dernière demande.
+  const searchControl = useRef<AbortController | null>(null);
+  useEffect(() => () => searchControl.current?.abort(), []);
+
   const onSearch = async (e: FormEvent) => {
     e.preventDefault();
     const text = query.trim();
     if (text === '') return;
+    searchControl.current?.abort();
+    const controller = new AbortController();
+    searchControl.current = controller;
     setSearching(true);
     setSearchError(null);
     try {
       const center = map?.getCenter();
-      const found = await searchPlaces(text, center ? { lat: center.lat, lon: center.lng } : undefined);
+      const found = await searchPlaces(text, center ? { lat: center.lat, lon: center.lng } : undefined, controller.signal);
+      if (controller.signal.aborted) return;
       setResults(found);
       if (found.length === 0) setSearchError('Aucun lieu trouvé.');
     } catch (err) {
+      if (controller.signal.aborted || isAbortError(err)) return;
       setResults(null);
       setSearchError(errorMessage(err, 'Recherche impossible.'));
     } finally {
-      setSearching(false);
+      if (searchControl.current === controller) setSearching(false);
     }
   };
 

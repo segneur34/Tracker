@@ -1,4 +1,3 @@
-import { jsonStore } from '../platform/storage';
 import { fetchWithin, readErrorBody, readJson, type FetchMessages } from './fetchJson';
 import { BROUTER_PROFILE_TEXT, profileCombination, type WayType } from './brouterProfile';
 import type { RoutePoint, RouteVehicle, Waypoint } from './route';
@@ -12,9 +11,10 @@ import { isObject } from '../core/basics';
  * (`Access-Control-Allow-Origin: *`), donc depuis la WebView du téléphone.
  *
  * Le calcul suit le profil de l'application (`brouterProfile.ts`), envoyé au
- * serveur une fois par lancement : le serveur le garde sous un id, que
- * l'appareil retient pour réécrire le même fichier au lancement suivant
- * plutôt que d'en créer un autre.
+ * serveur une fois par lancement, même quand plusieurs tronçons le demandent
+ * ensemble : le serveur le garde sous un id, que l'appareil retient
+ * (`ProfileIdStore`, lu et écrit par `usePlannedRoute`) pour réécrire le même
+ * fichier au lancement suivant plutôt que d'en créer un autre.
  *
  * La réponse GeoJSON donne l'altitude de chaque point, d'où le dénivelé de
  * l'itinéraire, et les étiquettes des voies suivies, d'où son revêtement
@@ -26,8 +26,12 @@ export const BROUTER_URL = 'https://brouter.de/brouter';
 /** Envoi d'un profil : `POST` du texte, suivi de `/<id>` pour réécrire un profil déjà envoyé. */
 export const BROUTER_PROFILE_URL = `${BROUTER_URL}/profile`;
 
-/** Id du profil retenu sur l'appareil. */
-const PROFILE_KEY = 'tracker.brouterProfile';
+/** Où l'appareil retient l'id du profil envoyé : fourni par l'appelant, ce fichier ne touche pas au stockage. */
+export interface ProfileIdStore {
+  /** Id retenu au lancement précédent, tel que rangé (vérifié ici) ; `null` si aucun. */
+  read(): unknown;
+  write(id: string): void;
+}
 
 /**
  * Réponse du serveur quand le profil demandé n'existe plus (effacé de son
@@ -161,26 +165,26 @@ export const brouterErrorMessage = (status: number, body: string): string =>
     : `Le serveur de calcul n'a pas répondu (erreur ${status}). Réessayez dans un moment.`;
 
 /** Envoie le profil, sur l'id retenu s'il y en a un, et retient l'id rendu. */
-const uploadProfile = async (): Promise<string> => {
-  const stored = jsonStore.read<{ id?: unknown }>(PROFILE_KEY)?.id;
+const uploadProfile = async (store: ProfileIdStore): Promise<string> => {
+  const stored = store.read();
   const url = isProfileId(stored) ? `${BROUTER_PROFILE_URL}/${stored}` : BROUTER_PROFILE_URL;
   const id = await fetchWithin(url, { method: 'POST', body: BROUTER_PROFILE_TEXT }, CALL, async (response) => {
     if (!response.ok) throw new Error(brouterErrorMessage(response.status, await readErrorBody(response)));
     return parseProfileUpload(await readJson(response, UNREADABLE));
   });
-  jsonStore.write(PROFILE_KEY, { id });
+  store.write(id);
   return id;
 };
 
 /** Envoi en cours ou fait pendant ce lancement ; oublié après un échec, pour que l'essai suivant le refasse. */
 let profileUpload: Promise<string> | null = null;
 
-const ensureProfile = (): Promise<string> => {
-  profileUpload ??= uploadProfile().catch((err: unknown) => {
-    profileUpload = null;
+const ensureProfile = (store: ProfileIdStore): Promise<string> => {
+  const upload: Promise<string> = (profileUpload ??= uploadProfile(store).catch((err: unknown) => {
+    if (profileUpload === upload) profileUpload = null;
     throw err;
-  });
-  return profileUpload;
+  }));
+  return upload;
 };
 
 /** Le serveur ne connaît plus le profil demandé (`PROFILE_MISSING_STATUS`, corps vide). */
@@ -188,7 +192,9 @@ const PROFILE_MISSING = Symbol('profil absent');
 
 /**
  * Calcule un tronçon, selon les types de voie cochés et les règles d'accès de
- * l'activité, et les options (`LegOptions`). `signal` annule la requête quand
+ * l'activité, et les options (`LegOptions`). `profile` : où retenir l'id du
+ * profil. Si le serveur a perdu le profil, un seul renvoi sert tous les
+ * tronçons qui l'ont constaté ensemble. `signal` annule la requête quand
  * le tronçon a changé entre-temps (l'envoi du profil, partagé, va à son
  * terme). Sans réponse en `BROUTER_TIMEOUT_MS`, échec. Lève une erreur au
  * message lisible.
@@ -198,6 +204,7 @@ export const fetchLeg = async (
   to: Waypoint,
   ways: ReadonlyArray<WayType>,
   vehicle: RouteVehicle,
+  profile: ProfileIdStore,
   signal?: AbortSignal,
   options?: LegOptions
 ): Promise<{ points: RoutePoint[]; surfaces?: SurfaceRuns }> => {
@@ -208,10 +215,12 @@ export const fetchLeg = async (
       if (response.status === PROFILE_MISSING_STATUS && body.trim() === '') return PROFILE_MISSING;
       throw new Error(brouterErrorMessage(response.status, body));
     });
-  let result = await request(await ensureProfile());
+  const sent = ensureProfile(profile);
+  let result = await request(await sent);
   if (result === PROFILE_MISSING) {
-    profileUpload = null;
-    result = await request(await ensureProfile());
+    // Plusieurs tronçons peuvent l'avoir constaté : seul le premier efface l'envoi périmé, les autres reprennent le nouveau.
+    if (profileUpload === sent) profileUpload = null;
+    result = await request(await ensureProfile(profile));
   }
   if (result === PROFILE_MISSING) throw new Error(brouterErrorMessage(PROFILE_MISSING_STATUS, ''));
   return result;

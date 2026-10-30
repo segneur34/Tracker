@@ -66,8 +66,6 @@ const EXCEPTIONS: Record<string, string> = {
   'running/restingHrResults → recording/restingHrTest': 'protocole du test de FC repos (type)',
   'running/intervalDetection → recording/intervalTimer': 'INTERVAL_LIMITS, bornes du compteur',
   'planning/routeRecord → recording/markGuide': 'réglages de balise rangés avec l\'itinéraire (lot 82)',
-  // Lot 82 : l'identifiant du profil BRouter passe en paramètre, lu et écrit par `usePlannedRoute`.
-  'planning/brouter → platform/storage': 'identifiant du profil BRouter lu et écrit dans le stockage (lot 82)',
   // Le hook de l'axe du temps lit les échelles et le survol des composants de graphe.
   'hooks/useTimeChartAxis → components/chartAxes': 'échelles du graphe',
   'hooks/useTimeChartAxis → components/chartHover': 'survol du graphe',

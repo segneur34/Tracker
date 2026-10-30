@@ -20,7 +20,7 @@ import { profilePromptGate, runnerName, useRunnerProfile } from '../hooks/useRun
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useLibraryFields } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
-import { shownRoutes } from '../planning/routeList';
+import { shownRoutes } from '../planning/routeShown';
 import './Home.css';
 
 /**

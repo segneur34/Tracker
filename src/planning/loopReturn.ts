@@ -1,6 +1,8 @@
 import { planeProjection, type PlanePoint } from '../core/geo';
 import { pointSegmentDistanceM } from '../core/geoPlane';
+import { buildSegmentGrid } from '../core/segmentGrid';
 import { simplifyPlane } from '../core/simplify';
+import { joinLegs } from './legJoin';
 import type { RouteLeg, RoutePoint, Waypoint } from './route';
 
 /**
@@ -114,24 +116,7 @@ export const formsCorridor = (leg: CorridorLeg): boolean => leg.mode !== 'straig
  * Géométrie des morceaux de l'aller qui suivent des voies (`formsCorridor`),
  * tronçons consécutifs mis bout à bout : ce que le retour peut emprunter.
  */
-export const corridorPaths = (legs: ReadonlyArray<CorridorLeg>): RoutePoint[][] => {
-  const paths: RoutePoint[][] = [];
-  let current: RoutePoint[] | null = null;
-  for (const leg of legs) {
-    if (!formsCorridor(leg)) {
-      current = null;
-      continue;
-    }
-    if (!current) {
-      current = [];
-      paths.push(current);
-    }
-    const last = current[current.length - 1];
-    const skip = last && last.lat === leg.points[0].lat && last.lon === leg.points[0].lon ? 1 : 0;
-    for (let i = skip; i < leg.points.length; i++) current.push(leg.points[i]);
-  }
-  return paths;
-};
+export const corridorPaths = (legs: ReadonlyArray<CorridorLeg>): RoutePoint[][] => joinLegs(legs, formsCorridor);
 
 /**
  * Morceaux de l'aller qui forment le couloir : les tronçons calculés ou
@@ -220,9 +205,8 @@ const SHARED_STEP_M = 5;
  * est près de l'aller en son milieu. `outbound` : les morceaux de l'aller,
  * chacun d'un seul trait (`corridorPaths`), sans relier la fin de l'un au
  * début du suivant. Les segments de l'aller sont rangés dans une grille de
- * pas `toleranceM`, par bouts d'au plus `toleranceM` : chaque bout occupe au
- * plus 4 × 4 cases, quelle que soit la longueur du segment, et chaque
- * morceau du retour ne regarde que quelques segments.
+ * pas `toleranceM` (`core/segmentGrid.ts`) : chaque morceau du retour ne
+ * regarde que quelques segments.
  */
 export const sharedDistanceM = (
   path: ReadonlyArray<RoutePoint>,
@@ -237,40 +221,8 @@ export const sharedDistanceM = (
     const xy = piece.map(proj.to);
     for (let i = 0; i + 1 < xy.length; i++) segments.push([xy[i], xy[i + 1]]);
   }
-  const cell = toleranceM;
-  const cellKey = (cx: number, cy: number) => `${cx},${cy}`;
-  const grid = new Map<string, number[]>();
-  const mark = (a: XY, b: XY, index: number) => {
-    const x0 = Math.floor((Math.min(a.x, b.x) - toleranceM) / cell);
-    const x1 = Math.floor((Math.max(a.x, b.x) + toleranceM) / cell);
-    const y0 = Math.floor((Math.min(a.y, b.y) - toleranceM) / cell);
-    const y1 = Math.floor((Math.max(a.y, b.y) + toleranceM) / cell);
-    for (let cx = x0; cx <= x1; cx++) {
-      for (let cy = y0; cy <= y1; cy++) {
-        const key = cellKey(cx, cy);
-        const list = grid.get(key);
-        if (!list) grid.set(key, [index]);
-        // Bouts consécutifs du même segment : rangé une fois par case.
-        else if (list[list.length - 1] !== index) list.push(index);
-      }
-    }
-  };
-  segments.forEach(([a, b], index) => {
-    const parts = Math.max(1, Math.ceil(dist(a, b) / toleranceM));
-    for (let k = 0; k < parts; k++) {
-      const t0 = k / parts;
-      const t1 = (k + 1) / parts;
-      mark(
-        { x: a.x + (b.x - a.x) * t0, y: a.y + (b.y - a.y) * t0 },
-        { x: a.x + (b.x - a.x) * t1, y: a.y + (b.y - a.y) * t1 },
-        index
-      );
-    }
-  });
-  const near = (p: XY): boolean => {
-    const list = grid.get(cellKey(Math.floor(p.x / cell), Math.floor(p.y / cell)));
-    return !!list && list.some((i) => pointSegmentDistanceM(p, segments[i][0], segments[i][1]) < toleranceM);
-  };
+  const grid = buildSegmentGrid(segments, toleranceM, toleranceM);
+  const near = (p: XY): boolean => grid.near(p).some((i) => pointSegmentDistanceM(p, segments[i][0], segments[i][1]) < toleranceM);
 
   const points = path.map(proj.to);
   let shared = 0;
