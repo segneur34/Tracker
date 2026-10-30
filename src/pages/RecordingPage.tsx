@@ -1,6 +1,6 @@
 import { roundBearingDeg } from '../core/angles';
 import { errorMessage } from '../core/basics';
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ChangeEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ChangeEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import ActivitySelect from '../components/ActivitySelect';
 import BeltStatus from '../components/BeltStatus';
@@ -276,9 +276,12 @@ const LiveSummary = ({ items }: { items: { label: string; value: string }[] }) =
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
       {items.map((item) => (
         <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-3)' }}>
-          <span style={{ fontSize: 'var(--text-m)', color: 'var(--muted)' }}>{item.label}</span>
-          <span className="num" style={{ fontSize: 'var(--text-display)', fontWeight: 700, lineHeight: 1.15, whiteSpace: 'nowrap' }}>
-            {item.value}
+          <span style={{ fontSize: 'var(--text-m)', color: 'var(--muted)', minWidth: 0 }}>{item.label}</span>
+          {/* Une valeur longue (« sous Z1 · 142 ») passe à la ligne à son « · », jamais au milieu d'un morceau. */}
+          <span className="num" style={{ fontSize: 'var(--text-display)', fontWeight: 700, lineHeight: 1.15, minWidth: 0, textAlign: 'right' }}>
+            {item.value.split(' · ').map((part, i) => (
+              <Fragment key={i}>{i > 0 && ' · '}<span style={{ whiteSpace: 'nowrap' }}>{part}</span></Fragment>
+            ))}
           </span>
         </div>
       ))}
@@ -909,13 +912,13 @@ function RecordingScreen() {
       {busy ? (
         <div style={{ display: 'flex', gap: '10px' }}>
           {status === 'recording' && (
-            <Button variant="secondary" size="l" style={{ flex: 1 }} onClick={() => void pauseRecording()}>
+            <Button variant="secondary" size="l" className="ui-btn--hold" style={{ flex: 1 }} onClick={() => void pauseRecording()}>
               <IconPause size={20} />
               Pause
             </Button>
           )}
           {manualPause && (
-            <Button variant="record" size="l" style={{ flex: 1 }} onClick={() => void resumeRecording()}>
+            <Button variant="record" size="l" className="ui-btn--hold" style={{ flex: 1 }} onClick={() => void resumeRecording()}>
               <IconPlay size={20} />
               Reprendre
             </Button>
