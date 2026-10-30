@@ -12,9 +12,6 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 ## Maintenant
 
 APK 0.4.23 installée le 30/10 (versionCode 4023, lots 71, 82, 75, 72, 73, 74).
-- 51 · [bogue] Profil › racine : il reste 2 ronds blancs au bout de la racine (un par pointe), à retirer ; décision du 27/10 « aucun rond blanc au bout des radicelles » non tenue ; cause : les bourgeons de drawBuds (--root-bud) dans src/components/drawRoot.ts · noté 28/10 · petit · Sonnet/medium · à valider sur lecture (a059419, 0.4.24 ; à regarder sur la page Profil : plus de rond clair au bout des pointes ; banc profil identique) · détail : docs/backlog/51-racine-ronds-blancs.md
-- 95 · [bogue] Voile : le résumé de la bibliothèque mesure l'allure de la session sans l'unité de vitesse de l'appareil, l'analyse avec ; sur un GPX à vitesse Doppler, la liste et l'analyse peuvent donner des chiffres différents (relevé au lot 72, analysisTrack contre useGpxSession) · noté 30/10 · petit · Opus/high · à valider sur lecture (7a91ace, test seulement) : bogue infirmé, la liste et l'analyse appellent la même fonction qui devine l'unité ; test de garde ajouté (Doppler en km/h, wingfoil et kite, 1 et 5 Hz), contre-épreuve faite ; à fermer sans correction
-- 94 · [outil] Rangement après les vérifications plus rapides (n° 90, validé le 29/10) : retirer l'agent verif (npm run verif suffit), l'agent lot sur node outils/verif.mjs --rapide, l'agent banc sur outils/banc/passe.mjs (gardé pour lire un diff), docs/MODELES.md et la partie « Commandes » de CLAUDE.md à jour · noté 30/10 · petit · Sonnet/medium · à valider sur lecture (3c0925c, outillage seulement)
 
 ## Ensuite
 

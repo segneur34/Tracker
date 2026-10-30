@@ -1032,3 +1032,18 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : quatre fixtures dans `src/test/` (géographie, traces, fiches de session, faux dossier mémoire), « mètres par degré » unique, générateurs mutualisés, sessions bruitées de `maneuvers` construites une fois ; deux tests de la ceinture cardio partagée ajoutés. Aucun attendu changé (2 005 tests).
     - **Pourquoi** : les mêmes constantes et générateurs étaient recopiés dans vingt-six fichiers, et une correction devait être faite partout.
     - **Piège** : une fixture partagée qui change fausse tous les tests à la fois ; garder les attendus inchangés prouve la neutralité du déplacement.
+
+217. Profil : plus de rond clair au bout de la racine (lot 51, validé le 30/10 sur lecture, sans essai au téléphone ; version 0.4.24).
+    - **Décision** : les bourgeons au bout des deux pointes de la racine sont retirés, avec leur couleur `--root-bud` dans les deux thèmes ; la racine finit sur le seul trait.
+    - **Pourquoi** : la décision du 27/10 (§9 de DECISIONS, aucun rond blanc au bout des radicelles) n'était pas tenue : le bourgeon, presque blanc à l'écran, en dessinait un à chaque pointe.
+    - **Piège** : la règle existait déjà par écrit, mais le dessin des bourgeons était resté ; vérifier le rendu contre DECISIONS quand on touche à la racine.
+
+218. Voile : le résumé de la bibliothèque et l'analyse donnent la même allure de session (lot 95, validé le 30/10 sur lecture, sans essai ; test seulement, version inchangée).
+    - **Décision** : bogue soupçonné infirmé, aucun code changé, `SUMMARY_CALC_VERSION` inchangé. Un test de garde dans `library/summary.test.ts` (Doppler en km/h bruité et troué, wingfoil et kite, 1 et 5 Hz) fixe l'égalité.
+    - **Pourquoi** : on craignait que le résumé mesure l'allure sans l'unité Doppler de l'appareil, que l'analyse détecte une fois dans `useGpxSession`.
+    - **Piège** : `referenceSpeedMs` détecte elle-même l'unité quand on ne la lui passe pas, d'où les mêmes chiffres ; le test a été éprouvé à rebours (il échoue si le résumé ignore l'unité).
+
+219. Outillage : rangement après les vérifications plus rapides (lot 94, validé le 30/10 sur lecture ; outillage seulement).
+    - **Décision** : l'agent `verif` est retiré, `npm run verif` lancé depuis la conversation suffit ; l'agent `lot` passe par `node outils/verif.mjs --rapide`, l'agent `banc` par `outils/banc/passe.mjs`, gardé pour lire un long diff.
+    - **Pourquoi** : les vérifications du lot 90 tiennent en quelques lignes et quelques secondes, un sous-agent n'apportait plus que du délai.
+    - **Piège** : les anciens points citant l'agent `verif` restent tels quels, c'est l'historique.
