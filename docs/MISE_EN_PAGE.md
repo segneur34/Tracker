@@ -44,6 +44,7 @@ Patron commun aux modules d'analyse (voile ; course, vélo et fractionné, qui p
 
 | Pièce | Rôle |
 |---|---|
+| `components/AnalysisShell.tsx` | Squelette de la page d'analyse, commun aux quatre modules : page, en-tête, barre du brouillon, alertes, rangée de la carte et colonne d'onglets ; rendu pur, différences passées en paramètres (HISTORIQUE, point 206) |
 | `components/AnalysisMap.tsx` | Carte, légende donnée par le module posée dessus, outil posé dessus (`overlay`), plein écran au toucher ou piloté par le module |
 | `components/BaseTileLayer.tsx` | Fond de la carte (plan ou satellite) de la famille, et son choix sous le + et le − |
 | `components/GeneralStats.tsx`, `components/ElevationProfileMini.tsx` | Chiffres de « général », profil d'altitude compact relié à la carte, zoomable |

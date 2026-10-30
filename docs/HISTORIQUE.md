@@ -951,3 +951,33 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : angles (`core/angles.ts`), géométrie (`core/geo.ts`), recherche dans le temps (`core/search.ts`), médianes (`core/basics.ts`) et blocs de profils écrits une seule fois au noyau ; `SurfProfile.maxGapS` retiré au profit de `profile.maxGapS` ; réexportations laissées dans les anciens fichiers jusqu'au lot 71. Neutre au bit près : `SPORT_PROFILES` et pré-réglages identiques, empreinte de bout en bout identique à l'octet (4 traces à 1 et 5 Hz), banc identique. Non livrés car non identiques au bit près : plan local de `wayMatch`, distance restante des balises, un `toRad` de la VMG.
     - **Pourquoi** : une règle copiée à plusieurs endroits dérive ; chaque copie gardait pourtant ses bords propres (trois sémantiques de dichotomie, deux médianes, un virage de 180° pile du surf).
     - **Piège** : unifier les bords change un résultat sans erreur de type ; la relecture a rattrapé un bord n = 1 avec NaN de `axisRangePath`. Le surf garde le bord ]−180 ; 180] (`signedDeltaHalfOpen`). Les deux détections de l'unité du Doppler restent distinctes (C10). `planning` n'a pas été lancé (GPX manuels).
+
+201. Graphes, partie 2 : un seul graphe de trace, course et vélo (lot 60, validé le 30/10 sur lecture, aucun essai au téléphone, version 0.3.105).
+    - **Décision** : `TrackChart` est le seul squelette Recharts des graphes reliés à la trace (sonde de zoom, grille, axes, survol, animations coupées) ; les cinq graphes de la course et du vélo, la FC et le profil d'altitude y passent, et `LandModule` n'importe plus Recharts. Les lignes des graphes sont calculées une fois (`trackChartRows`), seulement si « graphiques » ou « zones de pente » est ouvert. Neutre : copie gelée du calcul en test (1 et 5 Hz, zoom, allure, trous), banc identique, graduations zoomées comprises.
+    - **Pourquoi** : cinq graphes recopiaient le même squelette et leurs lignes se recalculaient même panneau fermé.
+    - **Piège** : l'axe horizontal ne se fabrique qu'à un endroit (`chartXAxis`), par spécification (distance, temps écoulé, heure) ; un graphe qui crée son propre `XAxis` perd le zoom.
+
+202. Graphes, partie 3 : voile, surf, test, sauts, fractionné (lot 61, validé le 30/10 par l'essai 74 : voile sans ceinture, curseur commun et repère sur la carte, page qui ne défile pas ; version 0.3.106).
+    - **Décision** : les mêmes graphes passent par `TrackChart` (courbe en escalier, survol remplaçable, repère au premier plan) ; profil des répétitions et courbe des sauts calculés une fois et survolés par un magasin local, sans redessiner le graphe. Visible (Q37, Q38) : curseur commun vitesse/FC en voile et en surf, « +carte » sur la FC du test, noms des graphes de la voile à 10 px à la couleur de leur courbe, et l'échantillonnage garde les extrêmes de chaque série (pics de FC et de cadence conservés).
+    - **Pourquoi** : un échantillon régulier effaçait les pics de FC et de cadence ; le survol redessinait tout le graphe à chaque mouvement.
+    - **Piège** : le focus clavier de Recharts faisait choisir la première répétition au clic hors du tracé (`accessibilityLayer` coupé sur ce graphe) ; le zoom du profil n'était pas remis à zéro au changement de séance. Reste à voir : les pics de FC sur une sortie de voile avec ceinture.
+
+203. Coquille des analyses, partie 1 : session et onglets (lot 62, validé le 30/10 sur lecture, version 0.3.107).
+    - **Décision** : `useAnalysisSession` (lecture, fichier affiché, brouillon, activités, changement d'activité) et `useAnalysisTabs` (onglets, avancé, masques, surbrillance, survol) remplacent la composition recopiée dans les quatre modules ; les défauts des sections se tirent des onglets `primary` (`tabDefaults`). Neutre : clés mémorisées inchangées, banc identique.
+    - **Pourquoi** : les quatre pages écrivaient le même assemblage de hooks, et chaque ajout d'onglet se faisait à deux endroits.
+    - **Piège** : la voile garde son brouillon sur la session demandée par l'adresse (`draftFor 'requested'`), pas sur celle affichée ; c'est la différence qu'il a fallu préserver. `toggleOf` rend des rappels stables, sinon `memo` ne sert à rien en aval.
+
+204. Coquille des analyses, partie 2 : FC, couches de carte, sauts, pumping (lot 63, validé le 30/10 sur lecture, version 0.3.108).
+    - **Décision** : `useAnalysisHeart`, `AnalysisBaseLayers`, `useShownJumps` et `useFlightPumping` mis en commun entre les modules ; surbrillance typée par onglet ; « Régler le vent » amène la carte sous la barre du haut au lieu de la centrer ; en surf, les capteurs ne se lisent plus que l'onglet « vols » ouvert, comme en voile (Q39).
+    - **Pourquoi** : un zoom de graphe de course de 2 h avec cardio ouvert coûtait 600 ms de script, ramenés à 500 par `memo` du panneau FC, retour de `useChartZoom` mémoïsé et rappels stables.
+    - **Piège** : l'ordre de pose des couches de la carte est visible (voile et surf l'ont gardé, la terre garde ses surbrillances exclusives) ; `pumping.mjs` du banc devait attendre la fin de la lecture des capteurs.
+
+205. Coquille des analyses, partie 3 : panneaux, tableaux et surbrillances communs (lot 64, validé le 30/10 sur lecture, version 0.3.109).
+    - **Décision** : champs de réglages, onglets cardio et notes, tableaux (classes `ui-table*`, `BandShareTable`), surbrillances (`HighlightPath`, `HighlightSpan`, opacités nommées) et petits utilitaires de pages (`groupByActivity`, `useExclusiveToggles`, `FAMILY_LABEL`) écrits une fois. Neutre : copies gelées en test, banc identique.
+    - **Pourquoi** : mêmes pièces recopiées dans trois à quatre modules.
+    - **Piège** : non livrés car le rendu aurait changé : la barre de répartition du surf et des Statistiques, les phrases « Aucune activité de … visible ».
+
+206. Coquille des analyses, partie 4 : mise en page commune `AnalysisShell` (lot 65, validé le 30/10 sur lecture, version 0.3.110 ; APK installée le 30/10).
+    - **Décision** : page, en-tête, barre du brouillon, alertes, rangée de la carte et colonne d'onglets sortent dans `AnalysisShell`, rendu pur, adopté par muscu, surf, terre et voile ; différences gardées en paramètres (brouillon de la voile si `loadedFromMemory`, alertes du vent, `zIndex` de sa carte, titre « Analyse test », muscu sans carte). Neutre : feuille CSS construite identique à l'octet, banc `coquille.mjs` identique aux trois tailles.
+    - **Pourquoi** : la structure de la page était recopiée dans quatre modules, et `docs/MISE_EN_PAGE.md` n'avait pas de pièce pour la porter.
+    - **Piège** : `analysisMobile.css` vise la structure de `div` : toute modification de l'imbrication casse la mise en page du téléphone sans erreur de type.
