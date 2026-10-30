@@ -40,10 +40,13 @@ Les décisions transverses sont dans `CLAUDE.md`, celles de la disposition des p
 - Pente (décision du 27/10) : mesurée sur une fenêtre de ±25 m, interpolée sur l'altitude lissée ; zones de pente à 3 % (plat) et 10 % (raide). Ces seuils sont ceux du profil du sport (`GradeProfile`), surchargeables, sans réglage dans Réglages pour l'instant.
 - Unité de la cadence (décision du 27/10) : celle d'un capteur ou d'un GPX importé, pas/min ou foulées/min, se devine par la longueur de pas plausible (0,2 à 0,8 m·s de longueur ÷ fréquence), jamais par une unité fixe réglée ; la médiane (130) ne tranche qu'à défaut de mouvement.
 - Cadence à pied (course, marche, fractionné à pied) : mesurée par les capteurs du téléphone porté sur soi, calculée à l'arrêt de l'enregistrement, jamais en direct ; dans le GPX en foulées par minute (`gpxtpx:cad`, pas ÷ 2, comme Garmin et Strava), affichée en pas par minute. Courbe dans « graphiques », onglet « cadence » juste après « cardio » (tranches : marche 90 à 130, course 150 à 190 dès 140 de moyenne ; selon la vitesse, selon la pente, dérive), donnée « Cadence moyenne » des statistiques.
+- Vitesse maximale (Q34, 30/10) : la meilleure moyenne sur 2 s, partout (liste, résumé, direct, voile, course, vélo), jamais le maximum d'un point ; sur une trace à plus de `maxGapS` par point, repli sur la plus haute vitesse lissée.
+- Pente manquante (Q42, 30/10) : la partie de la trace sans altitude reste hors des zones de pente, est comptée au plat par l'énergie, et le tableau des zones le dit en dessous.
 
 ## 3. Sauts
 
 - Sauts, en voile, en course et à vélo : mesurés par l'accéléromètre et le gyroscope du téléphone fixé au corps (« Mesurer les sauts » sur Enregistrer, Android seulement), réglés par activité dans Réglages (case « Sauts », emplacement, hauteur minimale ; ni en bateau ni en fractionné). Toute la séance est enregistrée, puis élaguée à « Analyser » autour de ce qui ressemble à un saut (sauf en voile sur foil avec Pumping coché, §1). Hauteur du buste depuis son niveau au décollage, sur foil aussi. Onglet « sauts » entre VMG et vent en voile, juste après « zones de pente » à terre, visible si la session a ses capteurs.
+- Mesure d'un saut (Q41, 30/10) : la vitesse au décollage est la vitesse lissée, la longueur la différence de distance cumulée entre l'envol et l'atterrissage.
 
 ## 4. Surf
 
@@ -52,6 +55,8 @@ Les décisions transverses sont dans `CLAUDE.md`, celles de la disposition des p
   - Analyse : onglets général, vagues, rame, vols (sur foil), tops (caché tant qu'on ne le coche pas : 2 s, 10 s, 1 min, 10 min ; 100 m, 200 m, 500 m, 1 km, 5 km, 10 km, confirmés le 16/10), graphiques, matériel et notes, réglages ; « général » porte l'essentiel des vagues. Vitesse en km/h par défaut, nœuds au choix dans Réglages. Vague : au-dessus du seuil de vague ; retour au pic : de la fin d'une vague à la première attente ; sur foil, un vol relie les vagues, passages au-dessus du seuil de vague en foil, le reste est pompé. Le seuil par défaut suit le foil (vague ou vol). Seuils réglables par activité et par session.
   - Virages : au GPS, seuls les grands changements de direction, affichés comme expérimentaux.
   - Pumping foil : case par activité et par session, sous Foil ; téléphone sur la poitrine ; par vol, coups, fréquence, distance pompée et par coup, temps de vol, vitesse de décollage (fin des chocs de l'eau, expérimentale, cherchée autour du Seuil de vol, qui est le réglage « mon aile vole à 10 ou à 15 km/h ») ; replié, podium des 3 plus longs vols. Une capture lancée en plein vol ne donne pas de décollage pour ce vol (28/10).
+- Vitesse maximale (Q34, 30/10) : celle d'une vague est la meilleure moyenne sur 2 s ; sur une trace clairsemée, repli sur la vitesse moyenne de la vague.
+- Un seul plancher d'arrêt (Q43, 30/10) : 2 km/h, pour la glisse comme pour l'attente et la rame, malgré +8 % d'attente et −5 % de rame sur l'essai SUP foil.
 
 ## 5. Fractionné
 
@@ -139,3 +144,4 @@ Les décisions transverses sont dans `CLAUDE.md`, celles de la disposition des p
 - « Tout réduire », en haut de Réglages, replie tout d'un geste.
 - Choix d'une activité : une liste dessinée par l'application (famille à gauche, activités décalées dessous, un trait entre familles), jamais le menu natif d'Android.
 - Accueil et fonds de page (maquette Canva, 22-23/10) : accueil à photo d'en-tête et cartes de famille, bibliothèques à bandeau photo, fond dessiné en tuile répétée (`PageBackdrop`, choisi sur maquette le 23/10) : accueil, Profil et Réglages au motif du sport préféré de toutes les sessions (courbes de niveau sans session), Statistiques à celui de la famille choisie, chaque bibliothèque au sien, rien sur Enregistrer. Motif à pied « Relief et sentier » depuis le 28/10 (sentier pointillé, rond et fanion sur des courbes de niveau fines, choisi sur maquette).
+- Choix à quelques options (Q35, 30/10) : bouton glissant pour « Séparés / Superposés », « Puissance / Cumulée », « Résumé / Détails », le tri des sauts et des vagues et « Itinéraires / Sessions », en libellés courts pour tenir à 320 px et sur téléphone tourné ; « Voir » des sauts est un bouton de carte. Réussis et ratés des manœuvres prennent les couleurs du thème (Q49, 30/10). Le filtre de « Suivre une trace » est la liste d'activités de l'application, « Toutes (n) » en tête, sans le nombre par activité.

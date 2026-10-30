@@ -288,6 +288,8 @@ Opus | medium. Neutre. Sources : 04-A1, 04-A4 à A7, 04-A10, 04-A12, 04-A13, 04-
 
 ### 58 · Voile : au seuil, ne refaire que ce qui en dépend
 
+**Fait (30/10)** : étage polaire et masques préparés une fois, seuil différé (Q40), un cran 66 → 29 ms à 5 Hz ; sorties identiques sur les 12 sessions réelles. Validé le 30/10 (point 220).
+
 Opus | high. Neutre au bit près. Seul dans sa session (DECISIONS §1, « Coût du vent » : ce chemin ne se retouche jamais en même temps qu'autre chose). Sources : 01-B9, 02-B6, 03-B3, 04-B7, 04-B10, 05-B1, 05-B2, 05-B5, 05-B7, 05-E3.
 
 **Ce qui existe**
@@ -794,6 +796,8 @@ Sonnet | medium. Neutre (outil). Source : 07-A1.
 
 ### 77 · Thème et DA : CSS communes, variables, choix conformes
 
+**Fait (30/10)** : classes et variables communes, Q35 et Q49 appliquées, filtre de « Suivre une trace » par `ActivitySelect`. Validé le 30/10 (point 223).
+
 Sonnet | medium. Non neutre pour les étapes 4 et 5 (Q35, Q49). Sources : 01-C4, 02-A26, 02-C7, 02-C8, 02-C10, 02-D2, 07-C5, 08-A11, 08-C7 à C9, 08-H3.
 
 **Ce qui existe**
@@ -819,6 +823,8 @@ Sonnet | medium. Non neutre pour les étapes 4 et 5 (Q35, Q49). Sources : 01-C4,
 **Rapport attendu** : classes et variables créées ; captures des étapes 4 et 5.
 
 ### 78 · Formats d'affichage uniques
+
+**Fait (30/10)** : formateurs communs de `core/units.ts`, virgule et « 1 h 24 » partout (Q32) ; dette n° 98 notée. Validé le 30/10 (point 224).
 
 Sonnet | medium. Non neutre (Q32). Sources : 08-A12, 08-D1, 08-D2.
 
@@ -862,6 +868,8 @@ Fable | high. Non neutre (Q33). Seul dans sa session. Sources : 04-C5, 04-D7, 04
 
 ### 80 · Fiche de session : une table des champs, fichiers compacts
 
+**Fait (30/10)** : `ANALYSIS_FIELDS`, `stringifyJson` (Q44). Validé le 30/10 (point 221).
+
 Opus | high. Neutre sauf Q44. Sources : 06-A1, 06-B1, 08-E.
 
 **Ce qui existe**
@@ -881,6 +889,8 @@ Opus | high. Neutre sauf Q44. Sources : 06-A1, 06-B1, 08-E.
 **Rapport attendu** : lignes retirées ; mesure.
 
 ### 81 · Chiffres hors voile : vitesse max, sauts, surf, trous
+
+**Fait (30/10)** : Q34, Q41, Q42, Q43 appliquées, `SUMMARY_CALC_VERSION` 13. Validé le 30/10 (point 222).
 
 Opus | high. Non neutre (Q34, Q41, Q42, Q43 ; bogues C6 à C10, C12 à C14, C19, D9, D26, D27). Sources : 02-D5, 04-A3, 04-C8, 04-D1, 04-D3, 04-D4, 04-D6, 04-D8, 04-D9, 04-D11, 05-A6, 05-C8, 05-D3, 05-D4, 05-D6, 05-D7, 05-F3.
 

@@ -1047,3 +1047,28 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : l'agent `verif` est retiré, `npm run verif` lancé depuis la conversation suffit ; l'agent `lot` passe par `node outils/verif.mjs --rapide`, l'agent `banc` par `outils/banc/passe.mjs`, gardé pour lire un long diff.
     - **Pourquoi** : les vérifications du lot 90 tiennent en quelques lignes et quelques secondes, un sous-agent n'apportait plus que du délai.
     - **Piège** : les anciens points citant l'agent `verif` restent tels quels, c'est l'historique.
+
+220. Voile : au seuil, ne refaire que ce qui en dépend (lot 58, validé le 30/10 sur lecture, sans essai ; version 0.4.25).
+    - **Décision** : l'étage polaire du vent (`prepareWindPolar`) et les masques d'activité sont préparés une fois par trace ; plus d'altitude calculée en voile ; le seuil des calculs est différé (Q40) : le curseur reste fluide, les chiffres le suivent avec un très léger retard, et rien n'est recopié dans la fiche tant qu'ils n'ont pas rejoint le seuil. Un cran : 66 → 29 ms à 5 Hz, 14 → 6,5 ms à 1 Hz.
+    - **Pourquoi** : la polaire, indépendante du seuil, était refaite à chaque cran avec trois passes sur toute la trace.
+    - **Piège** : neutralité prouvée octet pour octet sur les 12 sessions réelles ; un chiffre différé ne doit jamais être enregistré avant d'avoir rejoint le seuil, sinon la fiche garde une valeur d'un cran intermédiaire. Tracé paresseux des manœuvres non livré (gain négligeable).
+
+221. Fiche de session : une table des champs, fichiers compacts (lot 80, validé le 30/10 sur lecture, sans essai ; version 0.4.26).
+    - **Décision** : les saisies d'analyse sont décrites une fois (`ANALYSIS_FIELDS`, contrôlée par le compilateur contre `SessionAnalysis`) et lecture, brouillon, comparaison et écriture s'en déduisent ; Q44 : `stringifyJson` écrit les tableaux de nombres sur une ligne (fiches, réglages, repère du dossier), fiches de course et de vélo de 149,7 à 75,5 ko.
+    - **Pourquoi** : un champ (le pumping) devait être posé à six endroits, et quatre `as unknown as` contournaient le typage.
+    - **Piège** : le regroupement « charge » (poids du vélo et charge portée) et le brut des champs illisibles (lot 54) sont gardés ; les anciennes fiches se relisent telles quelles et ne se compactent qu'à leur prochain enregistrement.
+
+222. Chiffres hors voile : vitesse max, sauts, surf, trous (lot 81, validé le 30/10 sur lecture, sans essai ; version 0.4.27).
+    - **Décision** : Q34 vitesse max = meilleure moyenne sur 2 s partout (`bestWindowSpeedMs`), repli sur la plus haute vitesse lissée pour une trace à plus de `maxGapS` par point, sur la moyenne de la vague en surf ; Q41 sauts sur la vitesse lissée et la distance cumulée (`JUMPS_CALC_VERSION` 2) ; Q42 pente manquante hors des zones, au plat pour l'énergie, dit sous le tableau ; Q43 un seul plancher d'arrêt en surf, 2 km/h. `SUMMARY_CALC_VERSION` 13.
+    - **Pourquoi** : « vitesse max » avait trois sens selon l'écran ; les sauts jugeaient une vitesse brute avec un seuil lissé ; énergie, cadence et dates se faussaient sur les trous et les pauses.
+    - **Piège** : Q43 a été bloquée le 30/10 (+8 % d'attente, −5 % de rame sur l'essai SUP foil, au-delà des 5 % prévus) puis tranchée par l'utilisateur en faveur du plancher unique. Sur 41 sessions réelles, vitesse max de la liste en général un peu plus haute, sauts de −1,3 à +0,8 m.
+
+223. Thème et DA : CSS communes, variables, choix conformes (lot 77, validé le 30/10 sur lecture, sans essai ; version 0.4.28).
+    - **Décision** : classes communes (`.ui-hint`, `.ui-modal-backdrop`, `.ui-card-col`, `.ui-swatch`, `.ui-photo-banner`), z-index et ombres en variables, ruptures d'écran nommées (`SCREEN_BREAKPOINTS`, `useMediaQuery`), plus de `window.matchMedia` en direct. Visible : Q35 six choix au bouton glissant en libellés courts, Q49 réussis et ratés en `--success` et `--danger`, filtre de « Suivre une trace » par `ActivitySelect`.
+    - **Pourquoi** : les mêmes règles étaient recopiées d'un écran à l'autre, et des choix n'avaient pas la forme voulue.
+    - **Piège** : les libellés des choix doivent tenir à 320 px et sur téléphone tourné (d'où les formes courtes) ; la couleur du sport préféré du Profil a dû être éclaircie en thème sombre.
+
+224. Formats d'affichage uniques (lot 78, validé le 30/10 sur lecture, sans essai ; version 0.4.29).
+    - **Décision** : Q32, virgule décimale et durées espacées (« 12,4 km », « 1 h 24 ») partout à l'affichage, par `formatDecimal`, `commaDecimal`, `parseDecimal` et `formatDuration` de `core/units.ts` ; décimales de chaque écran gardées ; notification et image de partage comprises. Saisie, fichiers, fiches et attributs SVG inchangés. Dette n° 98 notée : l'unité de distance reste obligatoire pour les allures (à pied et à vélo seulement).
+    - **Pourquoi** : la même distance s'écrivait « 12,4 km » dans le Profil et « 12.40 km » dans les analyses.
+    - **Piège** : une surcharge d'unité par activité (`distanceUnit`) a été essayée puis retirée (n° 96) ; les bornes saisies à virgule se relisent par `parseDecimal`.
