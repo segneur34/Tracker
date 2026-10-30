@@ -15,6 +15,14 @@ import { jsonStore } from './storage';
  * sur l'appareil, pas dans les réglages recopiés dans le dossier mémoire :
  * c'est un objet à portée de ce téléphone.
  *
+ * Une ceinture perdue (hors de portée, retirée, Bluetooth éteint puis
+ * rallumé) passe à `lost` sans être lâchée : personne ne rend la connexion,
+ * et le greffon la cherche de nouveau seul, écran éteint compris, jusqu'à ce
+ * qu'elle revienne ou que le dernier détenteur la rende (délais et journal
+ * `TrackerHR` dans le greffon). Pendant la perte, `latestHeartRate` est nul :
+ * un trou dans la FC, jamais une valeur figée ; la première mesure revenue
+ * rend l'état `connected`.
+ *
  * Une muscu (lot I du 25/10) n'a pas de service GPS pour tenir l'application
  * écran éteint : `keepBeltAlive` démarre un service au premier plan du greffon
  * (`HeartRateService.java`), avec la notification de l'enregistrement.

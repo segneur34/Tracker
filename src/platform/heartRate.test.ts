@@ -11,6 +11,9 @@ const plugin = vi.hoisted(() => ({
   added: [] as string[],
   removed: [] as string[],
   connects: 0,
+  disconnects: 0,
+  /** Écouteurs posés, par événement, pour jouer les événements du greffon. */
+  listeners: {} as Record<string, (data: unknown) => void>,
 }));
 
 vi.mock('./runtime', async (importOriginal) => ({
@@ -21,18 +24,21 @@ vi.mock('./runtime', async (importOriginal) => ({
 vi.mock('@capacitor/core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@capacitor/core')>()),
   registerPlugin: () => ({
-    addListener: async (event: string) => {
+    addListener: async (event: string, listener: (data: unknown) => void) => {
       if (plugin.refusals > 0) {
         plugin.refusals -= 1;
         throw new Error('greffon pas prêt');
       }
       plugin.added.push(event);
+      plugin.listeners[event] = listener;
       return { remove: async () => void plugin.removed.push(event) };
     },
     connect: async () => {
       plugin.connects += 1;
     },
-    disconnect: async () => undefined,
+    disconnect: async () => {
+      plugin.disconnects += 1;
+    },
   }),
 }));
 
@@ -41,8 +47,13 @@ beforeEach(() => {
   plugin.added = [];
   plugin.removed = [];
   plugin.connects = 0;
+  plugin.disconnects = 0;
+  plugin.listeners = {};
   vi.resetModules();
 });
+
+/** Joue un événement du greffon vers la page. */
+const emit = (event: 'heartRate' | 'status', data: unknown): void => plugin.listeners[event](data);
 
 const belt = { address: 'AA:BB:CC:DD:EE:FF', name: 'Ceinture' };
 
@@ -73,6 +84,60 @@ describe('écoute de la ceinture', () => {
     const first = await holdBelt('essai', belt);
     const second = await holdBelt('enregistrement', belt);
     expect(plugin.added.sort()).toEqual(['heartRate', 'status']);
+    first();
+    second();
+  });
+});
+
+/**
+ * Ceinture perdue pendant un enregistrement (lot 86) : la relance est au
+ * greffon ; la page garde la ceinture, montre la perte et un trou dans la FC,
+ * et reprend d'elle-même à la première mesure revenue.
+ */
+describe('ceinture perdue', () => {
+  it("une perte ne rend pas la connexion : le détenteur la garde, rien n'est coupé ni redemandé", async () => {
+    const { holdBelt, beltHeldBy, beltState } = await import('./heartRate');
+    const release = await holdBelt('enregistrement', belt);
+    emit('status', { state: 'connected', address: belt.address });
+    emit('status', { state: 'lost', address: belt.address });
+    expect(beltState()).toBe('lost');
+    expect(beltHeldBy('enregistrement')).toBe(true);
+    expect(plugin.disconnects).toBe(0);
+    expect(plugin.connects).toBe(1);
+    release();
+    expect(plugin.disconnects).toBe(1);
+  });
+
+  it("pendant la perte, pas de FC : la dernière mesure n'est pas gardée", async () => {
+    const { holdBelt, latestHeartRate } = await import('./heartRate');
+    const release = await holdBelt('enregistrement', belt);
+    emit('heartRate', { bpm: 142, timeMs: 1000, contact: true });
+    expect(latestHeartRate()?.bpm).toBe(142);
+    emit('status', { state: 'lost', address: belt.address });
+    expect(latestHeartRate()).toBeNull();
+    release();
+  });
+
+  it('la première mesure revenue rend la ceinture connectée, avec sa FC', async () => {
+    const { holdBelt, beltState, latestHeartRate, subscribeBeltState } = await import('./heartRate');
+    const release = await holdBelt('enregistrement', belt);
+    const states: string[] = [];
+    const off = subscribeBeltState((s) => states.push(s));
+    emit('status', { state: 'lost', address: belt.address });
+    emit('heartRate', { bpm: 120, timeMs: 2000 });
+    expect(beltState()).toBe('connected');
+    expect(states).toEqual(['lost', 'connected']);
+    expect(latestHeartRate()).toEqual({ bpm: 120, timeMs: 2000, contact: null });
+    off();
+    release();
+  });
+
+  it("une seconde prise pendant la perte ne relance pas la connexion : le greffon s'en charge", async () => {
+    const { holdBelt } = await import('./heartRate');
+    const first = await holdBelt('enregistrement', belt);
+    emit('status', { state: 'lost', address: belt.address });
+    const second = await holdBelt('essai', belt);
+    expect(plugin.connects).toBe(1);
     first();
     second();
   });
