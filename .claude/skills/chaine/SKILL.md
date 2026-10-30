@@ -1,6 +1,6 @@
 ---
 name: chaine
-description: Mode chaîne sur Tracker : enchaîne les éléments d'Ensuite de docs/BACKLOG.md en les confiant aux sous-agents lot, verif, relecture et banc, commite chaque lot vérifié « à valider », ne s'adresse à l'utilisateur que pour une vraie décision, s'arrête quand un paquet est prêt.
+description: Mode chaîne sur Tracker : enchaîne les éléments d'Ensuite de docs/BACKLOG.md en les confiant à l'agent lot, aux vérifications `npm run verif`, aux agents relecture et banc, commite chaque lot vérifié « à valider », ne s'adresse à l'utilisateur que pour une vraie décision, s'arrête quand un paquet est prêt.
 argument-hint: "[lot N | ok partout | ok sauf N : … | ok sauf lot L : … | consignes]"
 disable-model-invocation: true
 ---
@@ -42,10 +42,10 @@ Pour chaque lot :
    - **Maquette d'abord** pour un lot qui change ce que l'utilisateur voit (page neuve, disposition, image de partage, thème) : si la ligne ou le brief ne cite pas une maquette validée, ne lance pas le lot ; traite-le comme BLOQUÉ par une question majeure (étape 5) et propose la maquette. C'est le plan de l'utilisateur, le seul qui vaille d'attendre.
    - **Plan par l'agent `Plan`** pour un lot Opus high ou Fable (page ou fonctionnalité neuve, bug multi-fichiers, noyau) : lance-le avec le brief, en lui demandant de rendre son plan d'un coup, en 60 lignes au plus ; lis-le, confronte-le à `docs/DECISIONS.md` et aux règles de `CLAUDE.md`, tranche les questions mineures (notées dans le détail de l'élément), pose une question majeure à l'utilisateur avant tout code (même règle qu'un BLOQUÉ), puis joins le plan au brief donné à `lot`. Rien de tout cela pour un lot Sonnet medium : le brief suffit.
    - Le brief est le détail de l'élément (`docs/backlog/N-titre.md`) ; s'il n'est pas encore écrit (« à briefer »), écris-le d'abord dans ce fichier. Lancer l'agent `lot` avec ce brief, le plan s'il y en a un, le modèle et l'effort de la ligne (paramètres `model` et `effort` de l'appel), et les réponses déjà données aux questions dont il dépend. Lui dire ce qu'il ne fait pas : pas de commit, pas de version, aucune décision de l'utilisateur.
-4. Rapport **FAIT** : trois agents l'un après l'autre, jamais en parallèle (le serveur Vite du banc fait échouer `vitest`) :
-   - `verif` en vérification complète ; un échec revient à l'agent `lot` par `SendMessage` avec la sortie, une fois, puis c'est un ÉCHEC ;
-   - `relecture` sur le diff non commité, pour les lots Opus et Fable seulement (sujet du lot, brief, décisions) ; un défaut confirmé revient à l'agent `lot` par `SendMessage`, une fois, puis `verif` rapide ;
-   - `banc` sur les scripts que le brief cite (texte de la page avant et après, identique pour un changement neutre).
+4. Rapport **FAIT** : trois étapes l'une après l'autre, jamais en parallèle (le serveur Vite du banc fait échouer `vitest`) :
+   - `npm run verif` depuis la conversation (vérification complète : lint, tous les tests, build ; quelques lignes si tout passe) ; un échec revient à l'agent `lot` par `SendMessage` avec la sortie, une fois, puis c'est un ÉCHEC ;
+   - `relecture` sur le diff non commité, pour les lots Opus et Fable seulement (sujet du lot, brief, décisions) ; un défaut confirmé revient à l'agent `lot` par `SendMessage`, une fois, puis `node outils/verif.mjs --rapide` ;
+   - `node outils/banc/passe.mjs` depuis la conversation sur les scripts que le brief cite (texte de la page avant et après, identique pour un changement neutre) ; l'agent `banc` seulement pour lire un diff long.
    Puis : version augmentée dans `package.json` si `src/` ou `android/` a changé ; commit local marqué « à valider » dans le style des commits récents ; ligne mise à jour dans Maintenant (état « à valider (commit, version) », ou « à valider sur lecture (…) » s'il n'y a rien à essayer au téléphone) ; essais critiques ou douteux du lot en sous-lignes (`  - essai N : quoi → attendu`), numéros donnés par « Prochains numéros » de l'en-tête (mis à jour), quelques-uns par paquet.
 5. Rapport **BLOQUÉ** (une question « Décision n » sans réponse), trois cas :
    - question mineure (nommage, ordre, choix d'implémentation, seuil que `DECISIONS.md` encadre déjà) : tranche-la toi-même, note-la dans le détail de l'élément avec « tranchée par l'orchestrateur » et pourquoi, et renvoie la réponse au même agent par `SendMessage` ;

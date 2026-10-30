@@ -22,6 +22,9 @@ npm run dev          serveur de développement
 npx tsc -b           typecheck incrémental (strict, noUnusedLocals, verbatimModuleSyntax) ; --force pour tout revérifier
 npm run lint         oxlint
 npx vitest run --changed   tests qui importent, même de loin, un fichier modifié non commité
+npm run verif        vérification complète en une commande, sortie courte : lint, tous les tests, build
+node outils/verif.mjs --rapide   typecheck, lint, tests touchés (sans build)
+node outils/banc/passe.mjs       passage du banc, avant/après (options en tête du script)
 npx vitest run       tous les tests, fonctions pures uniquement, environnement node
 npx vitest run src/sailing/wind.test.ts -t "nom"   un fichier, un test
 npm run build        tsc -b && vite build
@@ -34,7 +37,7 @@ Vérifications, toutes doivent passer :
 - à la fin de chaque étape rendue à l'utilisateur, et avant tout commit, banc ou APK : lint, tous les tests, build (qui fait le typecheck) ;
 - rien pour une modification de la seule documentation.
 
-Vérifications, banc et passe de doc passent par les sous-agents `verif`, `banc` et `doc` (`.claude/agents/`, modèles légers), sauf une commande seule dont la sortie tient en quelques lignes.
+Vérifications et banc se lancent depuis la conversation par `npm run verif`, `node outils/verif.mjs --rapide` et `node outils/banc/passe.mjs` ; l'agent `banc` (`.claude/agents/`) ne sert qu'à lire un long diff, la passe de doc passe par l'agent `doc`.
 
 ## Documentation
 

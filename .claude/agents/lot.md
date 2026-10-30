@@ -30,8 +30,8 @@ Tu exécutes un lot dans le dépôt Tracker (`C:\Users\segne\tracker`), sous la 
 
 - Code en français (interface, commentaires), dans le style du dépôt ; réutilise ce qui existe avant d'écrire du neuf : Grep dans `docs/INVENTAIRE.md` (70 Ko, jamais lu en entier), puis dans le code.
 - Un calcul pur reçoit son test synthétique (`*.test.ts`, 1 Hz et 5 Hz quand une fenêtre en secondes est en jeu).
-- Après chaque étape : `npx tsc -b`, `npm run lint`, `npx vitest run --changed --reporter=dot`, chacune avec `2>&1`. Tout doit passer avant de rendre la main.
-- Tu ne lances ni `banc` ni `verif` (l'orchestrateur s'en charge après toi), mais tu peux lancer un script du banc toi-même si le brief te demande de mesurer.
+- Après chaque étape : `node outils/verif.mjs --rapide 2>&1` (typecheck, lint, tests touchés ; sortie de quelques lignes). Tout doit passer avant de rendre la main.
+- Tu ne lances ni la vérification complète (`npm run verif`) ni le banc (l'orchestrateur s'en charge après toi), mais tu peux lancer un script du banc toi-même si le brief te demande de mesurer.
 
 ## Interdits
 
