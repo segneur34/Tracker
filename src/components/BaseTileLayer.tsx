@@ -5,10 +5,10 @@ import L from 'leaflet';
 import { MAP_BASES, type MapBase } from '../core/mapBase';
 import type { SportFamily } from '../core/sportProfiles';
 import { useMapBase } from '../hooks/useMapBase';
+import { resolveTile } from '../platform/mapTiles';
 import { IconLayers } from './icons';
-import { resolveTile } from './mapTiles';
-// La feuille de Leaflet vient avec le fond, posé dans toutes les cartes (analyses, enregistrement, planification,
-// vignettes) : aucune page chargée à la demande ne peut l'oublier (27/10).
+// La feuille de Leaflet vient avec le fond, posé dans toutes les cartes (analyses, enregistrement, planification) :
+// aucune page chargée à la demande ne peut l'oublier (27/10).
 import 'leaflet/dist/leaflet.css';
 import './BaseTileLayer.css';
 
@@ -21,8 +21,9 @@ import './BaseTileLayer.css';
  *
  * Avec une famille (analyses, enregistrement, planification), le fond est
  * celui qu'elle a retenu (`useMapBase`) et un bouton, sous le + et le −, le
- * change ; sans famille (vignettes de la bibliothèque), le plan seul, sans
- * bouton.
+ * change ; sans famille, le plan seul, sans bouton. Les vignettes de la
+ * bibliothèque ne sont pas des cartes : des images fixes
+ * (`drawTrackPreview.ts`), sur les mêmes tuiles (`platform/mapTiles.ts`).
  *
  * Cartes sans réseau : chaque tuile affichée en ligne est gardée sur
  * l'appareil (`platform/tileCache.ts`) et relue ensuite, même sans réseau ;
@@ -31,15 +32,36 @@ import './BaseTileLayer.css';
  * (la photo au large), est remplacée par l'agrandissement d'une tuile des
  * zooms inférieurs, floue mais lisible, plutôt que par une case vide. Les
  * règles d'OSM interdisent de télécharger une zone à l'avance : rien n'est
- * demandé au serveur qui n'ait été affiché.
+ * demandé au serveur qui n'ait été affiché. Une case que Leaflet retire avant
+ * qu'elle soit prête (zoom ou déplacement rapides) abandonne sa demande : la
+ * requête est coupée si aucune autre case ni image ne l'attend.
  */
+
+/** Demande en cours d'une case, et l'adresse d'objet de son image tant qu'elle est posée. */
+interface TileLoad {
+  controller: AbortController;
+  objectUrl: string | null;
+}
 
 class CachedTileLayer extends L.TileLayer {
   private readonly base: MapBase;
+  private readonly loads = new WeakMap<HTMLElement, TileLoad>();
 
   constructor(base: MapBase) {
     super(MAP_BASES[base].url, { attribution: MAP_BASES[base].attribution });
     this.base = base;
+    // Case retirée (hors de la vue, autre zoom) ou abandonnée en cours de chargement : sa demande aussi.
+    const release = (e: L.TileEvent) => this.release(e.tile);
+    this.on('tileunload', release);
+    this.on('tileabort', release);
+  }
+
+  private release(tile: HTMLElement): void {
+    const load = this.loads.get(tile);
+    if (!load) return;
+    this.loads.delete(tile);
+    load.controller.abort();
+    if (load.objectUrl) URL.revokeObjectURL(load.objectUrl);
   }
 
   override createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
@@ -47,15 +69,25 @@ class CachedTileLayer extends L.TileLayer {
     tile.alt = '';
     tile.setAttribute('role', 'presentation');
     const size = this.getTileSize().x;
-    void resolveTile({ z: coords.z, x: coords.x, y: coords.y }, this.base, size).then((content) => {
+    const load: TileLoad = { controller: new AbortController(), objectUrl: null };
+    this.loads.set(tile, load);
+    const { signal } = load.controller;
+    void resolveTile({ z: coords.z, x: coords.x, y: coords.y }, this.base, size, signal).then((content) => {
+      if (signal.aborted) return;
       if (content === null) {
         done(new Error('tuile absente'), tile);
         return;
       }
       const src = typeof content === 'string' ? content : URL.createObjectURL(content);
-      const release = () => { if (typeof content !== 'string') URL.revokeObjectURL(src); };
-      tile.onload = () => { release(); done(undefined, tile); };
-      tile.onerror = () => { release(); done(new Error('tuile illisible'), tile); };
+      if (typeof content !== 'string') load.objectUrl = src;
+      const settle = (error?: Error) => {
+        if (load.objectUrl) URL.revokeObjectURL(load.objectUrl);
+        load.objectUrl = null;
+        this.loads.delete(tile);
+        done(error, tile);
+      };
+      tile.onload = () => settle();
+      tile.onerror = () => settle(new Error('tuile illisible'));
       tile.src = src;
     });
     return tile;

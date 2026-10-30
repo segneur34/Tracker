@@ -126,6 +126,37 @@
   background: var(--surface);
 }
 
+/* Image fixe de la vignette (`drawTrackPreview`), à la taille du cadre. */
+.lib-row__preview-image {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+
+/* Mention d'OSM posée sur l'image, au style de celle de Leaflet (`leaflet.css`, `base.css`) : couleurs de la carte,
+   en dur comme les données de carte (encre #333, nom en bleu #0078a8 sur un voile blanc). */
+.lib-row__preview-credit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 0 5px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #333;
+  font-family: var(--font);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.lib-row__preview-credit-name {
+  color: #0078a8;
+}
+
 .lib-row__preview-status {
   position: absolute;
   inset: 0;

@@ -147,6 +147,50 @@ export const fitView = (
   };
 };
 
+/**
+ * Cadre d'une carte de `widthPx` × `heightPx` posée sur les points comme le
+ * fait `fitBounds` de Leaflet (vignette de la bibliothèque, dessinée en image
+ * fixe au cadrage de la carte qu'elle remplace) : zoom entier, le plus fort où
+ * l'emprise tient avec `paddingPx` de chaque côté (à 1 % de zoom près, l'écart
+ * que Leaflet tolère avant de descendre d'un cran), plafonné à `maxZoom` ; le
+ * centre de l'emprise au centre du cadre, coin haut gauche arrondi au pixel ;
+ * tuiles à leur taille (`scale` 1). `null` sans point.
+ */
+export const fitBoundsView = (
+  points: ReadonlyArray<readonly [number, number]>,
+  widthPx: number,
+  heightPx: number,
+  { paddingPx, maxZoom }: { paddingPx: number; maxZoom: number }
+): ShareView | null => {
+  if (points.length === 0) return null;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const [lat, lon] of points) {
+    const p = worldPx(lat, lon, 0);
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
+  }
+  // Rapport entre la place offerte et l'emprise au zoom 0, comme `getBoundsZoom` ; sans résultat (emprise nulle,
+  // cadre plus petit que ses marges), sans limite, comme Leaflet.
+  const ratio = Math.min((widthPx - 2 * paddingPx) / (maxX - minX), (heightPx - 2 * paddingPx) / (maxY - minY));
+  const log = Math.log2(ratio);
+  const raw = Number.isNaN(log) ? Infinity : log;
+  const zoom = Math.min(Math.max(Math.floor(Math.round(raw * 100) / 100), 0), maxZoom);
+  const factor = 2 ** zoom;
+  return {
+    zoom,
+    scale: 1,
+    originX: Math.round(((minX + maxX) / 2) * factor - widthPx / 2),
+    originY: Math.round(((minY + maxY) / 2) * factor - heightPx / 2),
+    widthPx,
+    heightPx,
+  };
+};
+
 /** Point de la trace en pixels du cadre. */
 export const projectPoint = (view: ShareView, lat: number, lon: number): { x: number; y: number } => {
   const p = worldPx(lat, lon, view.zoom);

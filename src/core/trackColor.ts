@@ -41,9 +41,9 @@ export interface ColoredSegment {
 /**
  * Traits d'une suite de points déjà munis de leur vitesse de couleur
  * (`trackColorSpeedsMs`), un par paire de points consécutifs, à la couleur du
- * point d'arrivée. La vignette y passe ses points échantillonnés : la vitesse
+ * point d'arrivée. La vignette y passe ses points réduits au pixel : la vitesse
  * ayant été lissée sur la trace entière, la couleur ne dépend pas de
- * l'échantillonnage.
+ * la réduction.
  */
 export const coloredSegments = (
   points: readonly { lat: number; lon: number; colorMs: number }[],

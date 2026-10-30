@@ -147,8 +147,11 @@ console.log('fonds rangés :', JSON.stringify(await storedBases()));
 // --- 3. Bibliothèque et planification ---
 await go('/voile', 5000);
 const libButtons = await buttons();
-const libMaps = await evaluate(`document.querySelectorAll('.lib-row__preview .leaflet-container').length`);
-check('bibliothèque de voile : vignettes sans bouton, en plan', libMaps > 0 && libButtons === 0 && (await attribution()).includes('OpenStreetMap'), `${libMaps} cartes, ${libButtons} boutons`);
+// Vignettes en image fixe depuis le lot 74 : plus de carte Leaflet, la mention OSM est posée sur l'image.
+await waitFor(() => evaluate(`document.querySelectorAll('.lib-row__preview-image').length > 0`), { timeout: 5000, label: 'vignettes' }).catch(() => {});
+const libMaps = await evaluate(`document.querySelectorAll('.lib-row__preview-image').length`);
+const libCredit = await evaluate(`document.querySelector('.lib-row__preview-credit')?.textContent ?? ''`);
+check('bibliothèque de voile : vignettes sans bouton, en plan', libMaps > 0 && libButtons === 0 && libCredit.includes('OpenStreetMap'), `${libMaps} vignettes, ${libButtons} boutons`);
 await go('/itineraires', 4000);
 // La planification suit la famille de son activité : la Voile (première proposée sur un profil neuf), en satellite.
 const planFamily = await evaluate(`document.querySelector('.plan-map') ? 'ok' : 'absent'`);

@@ -5,8 +5,8 @@ import { tileKey } from './tiles';
 describe('tileUrl', () => {
   const tile = { z: 15, x: 16808, y: 11953 };
 
-  it('donne l’adresse OSM, sous-domaine choisi comme Leaflet', () => {
-    expect(tileUrl('plan', tile)).toBe('https://a.tile.openstreetmap.org/15/16808/11953.png');
+  it('donne l’adresse OSM, sans sous-domaine', () => {
+    expect(tileUrl('plan', tile)).toBe('https://tile.openstreetmap.org/15/16808/11953.png');
   });
 
   it('donne l’adresse Esri dans l’ordre y puis x, sans image grise au large', () => {

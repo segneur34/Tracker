@@ -1,8 +1,9 @@
 /**
  * Tuiles de carte gardées sur l'appareil, pour les cartes sans réseau :
  * calculs purs (nom d'une tuile, parent à agrandir, fraîcheur, place à
- * libérer). Le stockage est dans `platform/tileCache.ts`, la couche Leaflet
- * dans `components/BaseTileLayer.tsx`, les fonds dans `core/mapBase.ts`.
+ * libérer). Le stockage est dans `platform/tileCache.ts`, les requêtes dans
+ * `platform/mapTiles.ts`, la couche Leaflet dans `components/BaseTileLayer.tsx`,
+ * les fonds dans `core/mapBase.ts`.
  *
  * Les règles d'OpenStreetMap interdisent de télécharger une zone à l'avance :
  * on ne garde que les tuiles affichées en ligne, et on les redemande quand
@@ -48,6 +49,12 @@ export const ancestorTile = (tile: TileCoord, depth: number): AncestorTile | nul
   const py = Math.floor(tile.y / scale);
   return { tile: { z: tile.z - depth, x: px, y: py }, scale, col: tile.x - px * scale, row: tile.y - py * scale };
 };
+
+/**
+ * Vrai si la place occupée est à contrôler après une tuile gardée : le dernier
+ * contrôle date de `intervalMs` ou plus (`TILE_CACHE_DEFAULTS.evictIntervalMs`).
+ */
+export const shouldCheckCap = (lastMs: number, nowMs: number, intervalMs: number): boolean => nowMs - lastMs >= intervalMs;
 
 /** Vrai si une tuile gardée à `savedAtMs` est à redemander. */
 export const isStale = (savedAtMs: number, nowMs: number, maxAgeMs: number): boolean => nowMs - savedAtMs > maxAgeMs;

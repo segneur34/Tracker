@@ -30,7 +30,7 @@ const TRACE_PANE_Z_INDEX = '390';
  *
  * Sur le fond satellite de `family` (`useMapBase`), un liseré blanc sous les
  * traits (`haloStyle`), d'un seul tracé : la trace reste lisible sur la mer,
- * la forêt ou les toits. Sans famille (vignettes de la bibliothèque), le plan,
+ * la forêt ou les toits. Sans famille, le plan,
  * sans liseré.
  */
 function TrackSegmentsLayer({ segments, weight, family }: {

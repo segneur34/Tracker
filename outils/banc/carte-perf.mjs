@@ -1,21 +1,23 @@
 // Banc de test : coût de la trace colorée sur la carte d'une longue sortie (lot 73, « trace colorée en une seule couche »).
 // Usage : node carte-perf.mjs <port> <dossier de travail, chemin Windows> [<dossier des captures>]
-// Sur un profil neuf, sans réseau (tuiles comprises : seule la trace compte, et les durées ne dépendent pas des
-// tuiles reçues). Le script :
+// Sur un profil neuf, sans réseau ; tuiles fausses (`lib/tuiles.mjs`), servies en 400 ms : les zooms rapides
+// laissent des tuiles en route, dont on compte les requêtes, les doubles et les annulées (lot 74). Le script :
 //  1. écrit une course synthétique de 3 h à 5 Hz (54 000 points, boucles qui se recoupent, vitesse de 2 à 4,5 m/s) ;
 //  2. l'importe, ouvre son analyse et relève, sur la carte de l'analyse : le nombre de couches de Leaflet
 //     (`map._layers`), les canevas du volet de la trace et l'histogramme des pixels de ce canevas (couleurs,
 //     parts) ;
 //  3. mesure 10 zooms puis 10 déplacements de la carte (sans animation) : durées du moteur (`Performance.getMetrics`,
-//     ScriptDuration et TaskDuration) et durée de chaque geste jusqu'à l'image suivante ;
+//     ScriptDuration et TaskDuration), durée de chaque geste jusqu'à l'image suivante, et requêtes de tuiles ;
 //  4. passe la carte sur le fond satellite (liseré blanc sous la trace) et refait 2 et 3 ;
-//  5. retourne à la bibliothèque et relève la vignette de la course (couches, histogramme).
+//  5. retourne à la bibliothèque et relève la vignette de la course (couches, histogramme ; image fixe depuis le
+//     lot 74, sans carte ni canevas).
 // Les durées sont en secondes (le masque commun `N ms` les effacerait) : le relevé change d'un passage à l'autre,
 // il se lit à l'œil (couches et histogramme avant et après, durées comparées).
 // Les cartes sont trouvées par un crochet posé sur `window.L` (Leaflet 1.9 s'y publie toujours) : chaque carte créée
 // est gardée dans `window.__cartes`.
 import { writeFileSync } from 'node:fs';
 import { connect } from './lib/cdp.mjs';
+import { BLOCKED_EXCEPT_TILES, fakeTiles, formatTileStats } from './lib/tuiles.mjs';
 
 const [port, workDir, shotDir] = process.argv.slice(2);
 if (!port || !workDir) {
@@ -23,7 +25,9 @@ if (!port || !workDir) {
   process.exit(1);
 }
 
-const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importFiles, records, shoot, close, logs } = await connect({ port, width: 1400, height: 1000, shotDir });
+const b = await connect({ port, width: 1400, height: 1000, shotDir });
+const { send, evaluate, go, settle, waitFor, wait, blockNetwork, importFiles, records, shoot, close, logs } = b;
+const tiles = await fakeTiles(b, { delayMs: 400 });
 
 // Rangée « avancé » ouverte d'office, comme `survol.mjs` ; crochet des cartes de Leaflet.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `
@@ -44,7 +48,7 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: `
     });
   })();
 ` });
-await blockNetwork();
+await blockNetwork(BLOCKED_EXCEPT_TILES);
 await send('Performance.enable');
 
 // 1. Course de 3 h à 5 Hz autour de Montpellier : boucles de 1 km de rayon environ, qui se recoupent.
@@ -77,6 +81,8 @@ const listOpfs = (path) => evaluate(`(async () => {
 const MAP = (scope) => `(window.__cartes ?? []).filter((m) => m._container?.isConnected && m._container.closest(${JSON.stringify(scope)})).at(-1)`;
 const ANALYSE = '.an-map-frame';
 const VIGNETTE = '.lib-row__preview';
+/** Vignette dessinée : sa carte (avant le lot 74) ou son image fixe. */
+const VIGNETTE_READY = `${VIGNETTE} .leaflet-trace-pane canvas, ${VIGNETTE} img.lib-row__preview-image`;
 
 /** Couches de la carte et canevas de son volet de trace. */
 const layers = (scope) => evaluate(`(() => {
@@ -171,8 +177,16 @@ const measure = async (label) => {
   console.log(`${label} : carte       :`, await layers(ANALYSE));
   console.log(`${label} : histogramme :\n${await histogram(ANALYSE)}`);
   await dumpPixels(ANALYSE, label.trim());
+  // Tuiles du cadrage de départ arrivées : seules comptent celles des gestes.
+  await wait(1000);
+  tiles.reset();
   console.log(`${label} : 10 zooms    :`, await gestures(ANALYSE, 'zoom'));
+  await wait(1000);
+  console.log(`${label} : tuiles      :`, formatTileStats(tiles.stats()));
+  tiles.reset();
   console.log(`${label} : 10 déplac.  :`, await gestures(ANALYSE, 'pan'));
+  await wait(1000);
+  console.log(`${label} : tuiles      :`, formatTileStats(tiles.stats()));
 };
 
 // 2. Import et analyse.
@@ -181,7 +195,7 @@ console.log('import             :', await importFiles(runPath, 'input[type=file]
 const runName = await waitFor(async () => (await listOpfs('sessions'))?.find((n) => n.endsWith('.gpx')), { timeout: 20000, label: 'fiche course' });
 // La fiche écrite et la vignette dessinée : la session se relit en entier (sous charge, l'écriture suit l'import de loin).
 await waitFor(async () => (await records()).length > 0, { timeout: 30000, label: 'fiche JSON' });
-await waitFor(`document.querySelectorAll('${VIGNETTE} .leaflet-trace-pane canvas').length > 0`, { timeout: 30000, label: 'vignette après import' });
+await waitFor(`document.querySelectorAll('${VIGNETTE_READY}').length > 0`, { timeout: 30000, label: 'vignette après import' });
 await settle({ max: 3000, label: 'import course' });
 const tOpen = Date.now();
 await go(`/course/analyse?session=${encodeURIComponent(runName)}`, 20000);
@@ -209,8 +223,9 @@ await measure('satellite');
 
 // 5. Vignette de la bibliothèque.
 await go('/course', 8000);
-await waitFor(`document.querySelectorAll('${VIGNETTE} .leaflet-trace-pane canvas').length > 0`, { timeout: 20000, label: 'vignette' });
+await waitFor(`document.querySelectorAll('${VIGNETTE_READY}').length > 0`, { timeout: 20000, label: 'vignette' });
 await settle({ max: 3000, label: 'bibliothèque' });
+console.log('vignette : image fixe  :', (await evaluate(`Boolean(document.querySelector('${VIGNETTE} img.lib-row__preview-image'))`)) ? 'oui' : 'non');
 console.log('vignette : carte       :', await layers(VIGNETTE));
 console.log(`vignette : histogramme :\n${await histogram(VIGNETTE)}`);
 await dumpPixels(VIGNETTE, 'vignette');

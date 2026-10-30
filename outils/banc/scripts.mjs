@@ -39,7 +39,8 @@ export const SCRIPTS = [
   { nom: 'brouillon-voile', args: ['{port}', '{travail}'], pages: ['voile'] },
   { nom: 'cacher', args: ['{port}', '{captures?}'], pages: ['reglages', 'accueil', 'bibliotheque', 'enregistrer', 'velo', 'surf'] },
   { nom: 'cadence', args: ['{port}', '{captures?}'], pages: ['course', 'fractionne', 'statistiques', 'reglages'] },
-  // Mesure (lot 73) : couches de la carte, histogramme du canevas de la trace, durées des zooms et déplacements (en s, changent à chaque passage).
+  // Mesure (lot 73) : couches de la carte, histogramme du canevas de la trace, durées des zooms et déplacements (en s, changent à chaque passage) ;
+  // requêtes de tuiles pendant les gestes, fausses tuiles servies en 400 ms (lot 74).
   { nom: 'carte-perf', args: ['{port}', '{travail}', '{captures?}'], pages: ['course', 'bibliotheque'], sansCache: true, delaiMin: 15 },
   { nom: 'cardio', args: ['{port}', '{captures?}'], pages: ['course', 'surf', 'fractionne', 'voile', 'reglages', 'statistiques'] },
   // Sans `Network.enable`, rien n'est bloqué : l'altitude de l'IGN remplace la côte (LISEZMOI, « Scripts à revoir »).
@@ -103,6 +104,8 @@ export const SCRIPTS = [
   { nom: 'test-fcmax', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer'], solo: true, dev: true, accelerable: true },
   { nom: 'test-fcrepos', args: ['{port}', '{captures?}'], pages: ['fractionne'], solo: true },
   { nom: 'timer', args: ['{port}', '{captures?}'], pages: ['fractionne', 'enregistrer'], solo: true },
+  // Mesure (lot 74) : 150 vignettes défilées (cartes vivantes, DOM, tas, tuiles), mention d'OSM, captures par thème et largeur, list() à 10 000 tuiles.
+  { nom: 'vignettes', args: ['{port}', '{travail}', '{captures?}'], pages: ['bibliotheque', 'course'], sansCache: true, dev: true, delaiMin: 20 },
   { nom: 'vides', args: ['{port}', '{captures?}'], pages: ['voile', 'course', 'surf', 'accueil', 'reglages'] },
   { nom: 'zoom-carte', args: ['{port}', '{captures?}'], pages: ['course', 'voile', 'surf'] },
 ];

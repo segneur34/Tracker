@@ -1,9 +1,6 @@
 import { weekdayDayMonthYear } from '../core/calendar';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer } from 'react-leaflet';
-import BaseTileLayer from '../components/BaseTileLayer';
 import { Link, useSearchParams } from 'react-router-dom';
-import MapAutoResize from '../components/MapAutoResize';
 import PageBackdrop from '../components/PageBackdrop';
 import { FAMILY_ICON } from '../components/familyIcons';
 import { IconHelp } from '../components/icons';
@@ -18,13 +15,13 @@ import SessionRenameField from '../components/SessionRenameField';
 import RouteList from '../components/RouteList';
 import TrainingHub from '../components/TrainingHub';
 import { sessionColorTrack, sessionSpeedRange, type SessionColorTrack } from '../library/sessionTrack';
-import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
+import { drawTrackPreview, thinForPreview, trackPreviewView } from '../components/drawTrackPreview';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import MoreMenu from '../components/ui/MoreMenu';
-import { sampledIndices } from '../core/chartZoom';
 import { PREVIEW_MAX_POINTS } from '../core/displayConfig';
 import { coloredSegments } from '../core/trackColor';
+import { createHeldCache } from '../core/heldCache';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityCounts, sessionActivity, type Activity } from '../core/activities';
 import { smoothHeartRate } from '../core/heartRate';
 import { heartRatePointsFrom, heartRatePreviewPath, repsDone } from '../core/heartRateSession';
@@ -33,6 +30,7 @@ import { getSportProfile, hasPositions, sportFamily, sportTreatment, type SportF
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
 import { formatDuration, formatShortDuration, formatSpeed, formatDistanceAuto } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
+import { useElementSize } from '../hooks/useElementSize';
 import { useNearViewport } from '../hooks/useNearViewport';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { useAppliedTheme, useThemedShade } from '../hooks/useTheme';
@@ -117,20 +115,6 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
   return stats;
 };
 
-/**
- * Vignettes déjà calculées, réduites à `PREVIEW_MAX_POINTS` points : revenir sur
- * la bibliothèque, ou y refaire défiler une ligne, ne relit ni ne réanalyse
- * son GPX (E-O7). La clé tient tout ce dont la trace dépend ; un GPX rangé
- * n'est jamais réécrit.
- */
-const previewCache = new Map<string, SessionColorTrack>();
-const PREVIEW_CACHE_MAX = 400;
-
-const rememberPreview = (key: string, track: SessionColorTrack): void => {
-  if (previewCache.size >= PREVIEW_CACHE_MAX) previewCache.delete(previewCache.keys().next().value!);
-  previewCache.set(key, track);
-};
-
 /** Courbes de FC des vignettes sans trace (muscu), déjà calculées : comme `previewCache`. */
 const heartPreviewCache = new Map<string, string | null>();
 
@@ -190,13 +174,60 @@ function SessionHeartRatePreview({ session, folderLabel, onOpen }: { session: Li
 const PREVIEW_PRELOAD_MARGIN = '200px';
 
 /**
+ * Ce qu'il faut savoir d'une trace pour cadrer et colorer sa vignette :
+ * emprise et, en voile, bornes suggérées par l'allure. La clé tient tout ce
+ * dont la trace dépend ; un GPX rangé n'est jamais réécrit.
+ */
+type PreviewMeta = Pick<SessionColorTrack, 'bounds' | 'suggested'>;
+const previewMeta = new Map<string, PreviewMeta>();
+const PREVIEW_META_MAX = 400;
+
+/**
+ * Points des vignettes déjà calculées (E-O7) : revenir sur la bibliothèque, ou
+ * changer de bornes ou de taille, ne relit ni ne réanalyse le GPX. Chaque
+ * trace est gardée réduite au zoom de sa vignette (`zoom`) ; une vignette
+ * d'un zoom plus fort relit le GPX. Au plus `PREVIEW_POINTS_MAX` points en
+ * tout, les moins récents oubliés d'abord.
+ */
+const previewPoints = new Map<string, { points: SessionColorTrack['points']; zoom: number }>();
+const PREVIEW_POINTS_MAX = 400_000;
+let previewPointCount = 0;
+
+const rememberMeta = (key: string, meta: PreviewMeta): void => {
+  previewMeta.delete(key);
+  if (previewMeta.size >= PREVIEW_META_MAX) previewMeta.delete(previewMeta.keys().next().value!);
+  previewMeta.set(key, meta);
+};
+
+const rememberPoints = (key: string, points: SessionColorTrack['points'], zoom: number): void => {
+  previewPointCount -= previewPoints.get(key)?.points.length ?? 0;
+  previewPoints.delete(key);
+  previewPoints.set(key, { points, zoom });
+  previewPointCount += points.length;
+  for (const [oldest, entry] of previewPoints) {
+    if (previewPointCount <= PREVIEW_POINTS_MAX || oldest === key) break;
+    previewPoints.delete(oldest);
+    previewPointCount -= entry.points.length;
+  }
+};
+
+/**
+ * Vignettes dessinées (PNG en adresse d'objet), en mémoire le temps de la
+ * page seulement : ni dans la fiche ni dans un cache de l'appareil. La clé
+ * tient la session, la taille, la densité de l'écran, le thème économe et les
+ * bornes de couleur ; une vignette affichée n'est jamais libérée.
+ */
+const previewImages = createHeldCache<string>(200, (url) => URL.revokeObjectURL(url));
+
+/**
  * Vignette carte d'une session, toujours affichée à droite de ses chiffres :
- * le GPX est relu quand la ligne approche de l'écran, une fois, puis la trace
- * est réduite à `PREVIEW_MAX_POINTS` points dessinés sur un canevas, pour que
- * toutes les vignettes visibles restent légères. Figée (ni glisser ni zoomer :
- * le doigt fait défiler la liste) ; un toucher ouvre l'analyse. En économe
- * (décision du 28/10), la trace seule, sur le fond noir des cartes de la page,
- * sans le plan d'OSM.
+ * quand la ligne approche de l'écran, le GPX est relu une fois, et la trace,
+ * réduite au demi-pixel près à l'échelle de la vignette, est dessinée sur son
+ * fond en une image fixe (`drawTrackPreview`), au cadrage et à la coloration
+ * de l'analyse ; redessinée seulement si la vignette change de taille ou la
+ * trace de bornes. Aucune carte vivante : une longue bibliothèque reste
+ * légère. Un toucher ouvre l'analyse. En économe (décision du 28/10), la
+ * trace seule, sur le fond noir des cartes de la page, sans le plan d'OSM.
  */
 function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
   session: LibrarySession;
@@ -208,83 +239,123 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
 }) {
   const frame = useRef<HTMLDivElement>(null);
   const { eco } = useAppliedTheme();
+  const size = useElementSize(frame);
   const { file } = session;
   const sport = session.record.sport;
   const referenceOverrideMs = session.record.analysis?.referenceSpeedMs ?? null;
   const cacheKey = `${folderLabel}|${file}|${sport}|${referenceOverrideMs}|${family}`;
-  const cached = previewCache.get(cacheKey) ?? null;
+  /** Emprise et bornes suggérées tirées du GPX par cette vignette, pour sa clé. */
+  const [loaded, setLoaded] = useState<{ key: string; meta: PreviewMeta } | null>(null);
+  const meta = previewMeta.get(cacheKey) ?? (loaded?.key === cacheKey ? loaded.meta : null);
   // Déjà calculée, rien à attendre.
-  const near = useNearViewport(frame, cached !== null, PREVIEW_PRELOAD_MARGIN);
-  const [track, setTrack] = useState<SessionColorTrack | null>(cached);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(cached ? 'ready' : 'loading');
+  const near = useNearViewport(frame, meta !== null, PREVIEW_PRELOAD_MARGIN);
+  const [image, setImage] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  /** Trace colorée tirée du GPX, comme l'analyse la calcule, gardée pour la vignette ; `null` si elle manque ou est illisible. */
+  const loadTrack = useCallback(async (): Promise<SessionColorTrack | null> => {
+    const gpx = await readSessionGpx(file);
+    if (gpx === null) return null;
+    try {
+      const track = sessionColorTrack(gpx, sport, referenceOverrideMs, family);
+      if (track) {
+        rememberMeta(cacheKey, { bounds: track.bounds, suggested: track.suggested });
+        // Points entiers, réduits au premier dessin.
+        rememberPoints(cacheKey, track.points, Infinity);
+      }
+      return track;
+    } catch {
+      return null;
+    }
+  }, [file, sport, referenceOverrideMs, family, cacheKey]);
 
   useEffect(() => {
-    if (!near) return;
+    if (!near || meta) return undefined;
     let cancelled = false;
-    void (async () => {
-      // Déjà calculée (autre réglage de la même ligne, revenu à une valeur vue) : reprise telle quelle.
-      const known = previewCache.get(cacheKey);
-      const gpx = known ? null : await readSessionGpx(file);
+    void loadTrack().then((track) => {
       if (cancelled) return;
-      if (known) {
-        setTrack(known);
-        setStatus('ready');
-        return;
-      }
-      if (gpx === null) { setStatus('error'); return; }
-      try {
-        // La trace et sa couleur telles que l'analyse les calcule, réduite à PREVIEW_MAX_POINTS points.
-        const full = sessionColorTrack(gpx, sport, referenceOverrideMs, family);
-        if (full === null) { setStatus('error'); return; }
-        const reduced = { ...full, points: sampledIndices(0, full.points.length - 1, PREVIEW_MAX_POINTS).map((i) => full.points[i]) };
-        rememberPreview(cacheKey, reduced);
-        setTrack(reduced);
-        setStatus('ready');
-      } catch {
-        if (!cancelled) setStatus('error');
-      }
-    })();
+      if (track) setLoaded({ key: cacheKey, meta: { bounds: track.bounds, suggested: track.suggested } });
+      else setFailed(true);
+    });
     return () => { cancelled = true; };
-  }, [near, file, sport, referenceOverrideMs, family, cacheKey]);
+  }, [near, meta, cacheKey, loadTrack]);
 
   const range = useMemo(
-    () => (track ? sessionSpeedRange(session.record, activity ? activitySpeedRanges(activity) : null, family, track.suggested) : null),
-    [track, session, activity, family]
+    () => (meta ? sessionSpeedRange(session.record, activity ? activitySpeedRanges(activity) : null, family, meta.suggested) : null),
+    [meta, session, activity, family]
   );
-  /** Traits de la vignette, mémorisés : un balayage de la bibliothèque ne les redessine pas. */
-  const segments = useMemo(
-    (): TrackSegment[] => (track && range ? coloredSegments(track.points, range) : []),
-    [track, range]
-  );
+  const width = size?.width ?? 0;
+  const height = size?.height ?? 0;
+  const minMs = range?.minMs ?? null;
+  const maxMs = range?.maxMs ?? null;
+
+  useEffect(() => {
+    if (!meta || minMs === null || maxMs === null || width < 1 || height < 1) return undefined;
+    const view = trackPreviewView(meta.bounds, width, height);
+    if (!view) return undefined;
+    const pixelRatio = window.devicePixelRatio || 1;
+    const imageKey = `${cacheKey}|${width}x${height}@${pixelRatio}|${eco ? 'econome' : 'plan'}|${minMs}|${maxMs}`;
+    const controller = new AbortController();
+    let held = false;
+    let draft: string | null = null;
+    const dropDraft = () => {
+      if (draft) URL.revokeObjectURL(draft);
+      draft = null;
+    };
+    void (async () => {
+      const cached = previewImages.acquire(imageKey);
+      if (cached) {
+        held = true;
+        setImage(cached);
+        return;
+      }
+      let stored = previewPoints.get(cacheKey);
+      if (!stored || stored.zoom < view.zoom) {
+        const track = await loadTrack();
+        stored = track ? { points: track.points, zoom: Infinity } : undefined;
+      }
+      if (controller.signal.aborted) return;
+      if (!stored) {
+        setFailed(true);
+        return;
+      }
+      // Réduite une fois au zoom de la vignette, puis gardée ainsi.
+      const points = stored.zoom === view.zoom ? stored.points : thinForPreview(stored.points, view);
+      if (stored.zoom !== view.zoom) rememberPoints(cacheKey, points, view.zoom);
+      const png = await drawTrackPreview(
+        { view, segments: coloredSegments(points, { minMs, maxMs }), pixelRatio, withMap: !eco },
+        {
+          signal: controller.signal,
+          onTrace: (trace) => {
+            dropDraft();
+            draft = URL.createObjectURL(trace);
+            setImage(draft);
+          },
+        }
+      );
+      if (controller.signal.aborted || !png) return;
+      held = true;
+      setImage(previewImages.put(imageKey, URL.createObjectURL(png)));
+      // L'image d'attente, remplacée, part après le rendu.
+      setTimeout(dropDraft, 0);
+    })();
+    return () => {
+      controller.abort();
+      dropDraft();
+      if (held) previewImages.release(imageKey);
+    };
+  }, [meta, minMs, maxMs, width, height, eco, cacheKey, loadTrack]);
 
   return (
-    <div
-      ref={frame}
-      className="lib-row__preview"
-      role="link"
-      aria-label="Ouvrir l'analyse"
-      // Le lien de la mention OSM compris : un toucher sur la vignette ouvre l'analyse, rien d'autre.
-      onClick={(e) => { e.preventDefault(); onOpen(); }}>
-      {status === 'ready' && track && range ? (
-        <MapContainer
-          bounds={track.bounds}
-          boundsOptions={{ padding: [8, 8], maxZoom: 17 }}
-          preferCanvas
-          dragging={false}
-          touchZoom={false}
-          doubleClickZoom={false}
-          scrollWheelZoom={false}
-          boxZoom={false}
-          keyboard={false}
-          zoomControl={false}
-          attributionControl={!eco}
-          style={{ position: 'absolute', inset: 0, ...(eco ? { background: 'transparent' } : {}) }}>
-          <MapAutoResize />
-          {!eco && <BaseTileLayer />}
-          <TrackSegmentsLayer segments={segments} weight={3} />
-        </MapContainer>
+    <div ref={frame} className="lib-row__preview" role="link" aria-label="Ouvrir l'analyse" onClick={onOpen}>
+      {image ? (
+        <>
+          <img className="lib-row__preview-image" src={image} alt="" draggable={false} />
+          {/* Mention qu'exigent les conditions d'usage d'OSM, comme celle de Leaflet (`MAP_BASES.plan.attribution`), sans lien : un toucher ouvre l'analyse. */}
+          {!eco && <span className="lib-row__preview-credit">© <span className="lib-row__preview-credit-name">OpenStreetMap</span></span>}
+        </>
       ) : (
-        <span className="lib-row__preview-status">{status === 'error' ? 'Carte indisponible' : 'Carte…'}</span>
+        <span className="lib-row__preview-status">{failed ? 'Carte indisponible' : 'Carte…'}</span>
       )}
     </div>
   );

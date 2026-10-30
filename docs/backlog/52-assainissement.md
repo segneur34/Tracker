@@ -750,6 +750,8 @@ Opus | high. Neutre. Sources : 06-B4, 07-A12, 07-B2, 07-B4, 07-B5, 07-C2, 07-D7,
 
 **Réponse de l'utilisateur (30/10)** : vignettes en image fixe ; la trace de la vignette garde un point dès qu'il s'écarte d'un demi-pixel du précédent au zoom de la vignette (`thinToPixels`, `core/simplify.ts`), ni 300 points à pas régulier ni Douglas-Peucker (qui effacerait le dégradé) ; la vignette change donc un peu, en plus fidèle à l'analyse.
 
+**Fait (30/10)** : `platform/mapTiles.ts` (fabrique `createTileResolver`, une requête par tuile, annulée quand plus personne ne l'attend ; seuls 404 et 410 retenus absents, un refus passager est redemandé, défaut relevé par la relecture et corrigé), `BaseTileLayer` annule sur `tileunload` et `tileabort`, OSM sans sous-domaine, index `_index.json` du Cache du navigateur (vérifié en arrière-plan), vignettes en image fixe (`drawTrackPreview`, `fitBoundsView`, `thinToPixels`, `core/heldCache.ts`). Mesures : cartes vivantes 150 → 0 ; DOM 7 761 → 4 754 nœuds, 6 808 → 1 081 écouteurs ; tas 43,4 → 34,1 Mo ; défilement 276 requêtes de tuiles (166 en double) → 112 (2) ; 10 zooms rapides 85 requêtes → 45 (45 annulées) ; `list()` à 10 000 tuiles 7,2 s à chaque chargement → 0,01 s ; paquet de la bibliothèque 840 → 688 Ko. Captures : cadrage, fond, mention identiques, trace plus lisse. Banc : `satellite.mjs` adapté aux vignettes fixes.
+
 ### 75 · Fixtures de test communes
 
 Sonnet | high. Neutre (outil). Sources : 05-A10, 08-A2, 08-A12, 08-B1, 08-D5, 08-F.

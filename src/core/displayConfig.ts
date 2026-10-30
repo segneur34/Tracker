@@ -8,8 +8,9 @@
 export const CHART_MAX_POINTS = 500;
 
 /**
- * Nombre maximal de points tracés sur la vignette d'une session, dans la liste
- * de la bibliothèque : toutes les vignettes visibles sont dessinées à la fois.
+ * Nombre maximal de points de la courbe de FC sur la vignette d'une session
+ * sans trace, dans la liste de la bibliothèque (la trace d'une vignette carte
+ * est réduite au pixel, `components/drawTrackPreview.ts`).
  */
 export const PREVIEW_MAX_POINTS = 300;
 

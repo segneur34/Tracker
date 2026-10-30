@@ -52,3 +52,32 @@ export const simplifyLatLon = <P extends LatLon>(points: P[], toleranceM: number
   const plane = points.map(planeProjection(refLat).to);
   return keptIndices(plane, toleranceM).map((i) => points[i]);
 };
+
+/**
+ * Points d'un tracé réduits pour un dessin : le premier, puis chaque point à
+ * `tolerancePx` pixels ou plus du dernier gardé, et le dernier. `toPx` donne
+ * le pixel d'un point au zoom du dessin (vignette de la bibliothèque, réponse
+ * de l'utilisateur du 30/10 : un point dès qu'il s'écarte d'un demi-pixel du
+ * précédent). Ni pas régulier ni Douglas-Peucker : chaque point qui se voit
+ * reste, avec sa couleur ; seuls ceux confondus avec le précédent tombent.
+ */
+export const thinToPixels = <P>(
+  points: readonly P[],
+  toPx: (point: P) => { x: number; y: number },
+  tolerancePx: number
+): P[] => {
+  if (points.length < 3) return [...points];
+  const kept: P[] = [points[0]];
+  let last = toPx(points[0]);
+  const limit = tolerancePx * tolerancePx;
+  for (let i = 1; i < points.length - 1; i++) {
+    const p = toPx(points[i]);
+    const dx = p.x - last.x;
+    const dy = p.y - last.y;
+    if (dx * dx + dy * dy < limit) continue;
+    kept.push(points[i]);
+    last = p;
+  }
+  kept.push(points[points.length - 1]);
+  return kept;
+};

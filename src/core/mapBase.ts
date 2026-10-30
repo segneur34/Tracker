@@ -4,7 +4,7 @@ import { tileCacheUsage, type CachedTileEntry, type TileCacheUsage, type TileCoo
  * Fonds de carte : le plan d'OpenStreetMap, ou la photo satellite d'Esri
  * (World Imagery), choisi par famille sur la carte (`hooks/useMapBase.ts`).
  * La couche Leaflet est dans `components/BaseTileLayer.tsx`, les tuiles dans
- * `components/mapTiles.ts`.
+ * `platform/mapTiles.ts`.
  *
  * Esri, au large, renvoie une image grise « Map data not yet available » au
  * lieu de la photo ; `blankTile=false` la change en 404, et la case montre
@@ -15,7 +15,7 @@ import { tileCacheUsage, type CachedTileEntry, type TileCacheUsage, type TileCoo
 export type MapBase = 'plan' | 'satellite';
 
 export interface MapBaseSource {
-  /** Gabarit d'adresse : `{s}` sous-domaine, `{z}`, `{x}`, `{y}`. */
+  /** Gabarit d'adresse : `{z}`, `{x}`, `{y}`. */
   url: string;
   /** Mention exigée par les conditions d'usage, en HTML (carte). */
   attribution: string;
@@ -31,7 +31,8 @@ export interface MapBaseSource {
 
 export const MAP_BASES: Record<MapBase, MapBaseSource> = {
   plan: {
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    // Sans sous-domaine : OSM les déconseille depuis 2023 (une seule adresse, servie en HTTP/2).
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     credit: '© OpenStreetMap',
     keyPrefix: '',
@@ -53,10 +54,9 @@ export const MAP_BASE_DEFAULT: MapBase = 'plan';
 
 export const isMapBase = (value: unknown): value is MapBase => value === 'plan' || value === 'satellite';
 
-/** Adresse d'une tuile ; sous-domaine choisi comme Leaflet, pour la même adresse que la carte. */
+/** Adresse d'une tuile. */
 export const tileUrl = (base: MapBase, { z, x, y }: TileCoord): string =>
   MAP_BASES[base].url
-    .replace('{s}', 'abc'[Math.abs(x + y) % 3])
     .replace('{z}', String(z))
     .replace('{x}', String(x))
     .replace('{y}', String(y));

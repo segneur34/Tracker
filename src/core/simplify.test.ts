@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { simplifyLatLon, simplifyPlane } from './simplify';
+import { simplifyLatLon, simplifyPlane, thinToPixels } from './simplify';
 
 describe('simplifyPlane', () => {
   it('ne garde que les bouts d\'une ligne droite', () => {
@@ -25,5 +25,30 @@ describe('simplifyLatLon', () => {
     const pts = [{ lat: 43.6, lon: 3.8, t: 0 }, { lat: 43.6001, lon: 3.805, t: 1 }, { lat: 43.6, lon: 3.81, t: 2 }];
     expect(simplifyLatLon(pts, 5)).toEqual(pts);
     expect(simplifyLatLon(pts, 20)).toEqual([pts[0], pts[2]]);
+  });
+});
+
+describe('thinToPixels', () => {
+  const px = (p: { x: number; y: number }) => p;
+
+  it('garde un point dès qu’il s’écarte d’un demi-pixel du dernier gardé, et les deux bouts', () => {
+    const pts = [{ x: 0, y: 0 }, { x: 0.2, y: 0 }, { x: 0.4, y: 0 }, { x: 0.5, y: 0 }, { x: 0.7, y: 0.1 }, { x: 1, y: 0.1 }, { x: 1.1, y: 0.1 }];
+    expect(thinToPixels(pts, px, 0.5)).toEqual([pts[0], pts[3], pts[5], pts[6]]);
+  });
+
+  it('donne le même tracé à 1 et à 5 points par pixel', () => {
+    const line = (perPx: number) => Array.from({ length: 10 * perPx + 1 }, (_, i) => ({ x: i / perPx, y: 0 }));
+    // Un point par pixel : tous gardés. Cinq par pixel : un sur trois (0, 0,6, 1,2…), puis le dernier.
+    expect(thinToPixels(line(1), px, 0.5)).toHaveLength(11);
+    const dense = thinToPixels(line(5), px, 0.5).map((p) => p.x);
+    expect(dense).toHaveLength(18);
+    expect(dense[1]).toBeCloseTo(0.6);
+    expect(dense.at(-2)).toBeCloseTo(9.6);
+    expect(dense.at(-1)).toBe(10);
+  });
+
+  it('rend tel quel un tracé de moins de trois points', () => {
+    const two = [{ x: 0, y: 0 }, { x: 0.1, y: 0 }];
+    expect(thinToPixels(two, px, 0.5)).toEqual(two);
   });
 });

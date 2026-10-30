@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardHeight, cardTop, fitView, fullView, mapHeight,pickShareStats, projectPoint, SHARE_IMAGE, shareableStats, statColumns, statRows, viewTiles, worldPx, type ShareStat } from './shareImage';
+import { cardHeight, cardTop, fitBoundsView, fitView, fullView, mapHeight,pickShareStats, projectPoint, SHARE_IMAGE, shareableStats, statColumns, statRows, viewTiles, worldPx, type ShareStat } from './shareImage';
 
 /** Une boucle d'environ 2 km au large de Marseille. */
 const loop: Array<[number, number]> = Array.from({ length: 60 }, (_, i) => {
@@ -65,6 +65,45 @@ describe('fitView', () => {
     const dense = fitView(loop, 1080, 760)!;
     const light = fitView([...sparse, ...loop.filter((_, i) => [14, 15, 30, 44, 45].includes(i))], 1080, 760)!;
     expect(light.zoom).toBe(dense.zoom);
+  });
+});
+
+describe('fitBoundsView', () => {
+  const options = { paddingPx: 8, maxZoom: 17 };
+
+  it('rend null sans point', () => {
+    expect(fitBoundsView([], 200, 100, options)).toBeNull();
+  });
+
+  it('prend le zoom entier où l’emprise tient, marges comprises, et centre au pixel près', () => {
+    // 0,703125° de longitude à l’équateur : un demi-pixel au zoom 0 ; 184 px offerts : 368 fois, zoom 8,5 → 8.
+    const view = fitBoundsView([[0, 0], [0, 0.703125]], 200, 100, options)!;
+    expect(view).toEqual({ zoom: 8, scale: 1, originX: 32732, originY: 32718, widthPx: 200, heightPx: 100 });
+  });
+
+  it('monte d’un cran à moins d’un centième de zoom, comme Leaflet', () => {
+    const lonFor = (ratio: number) => (184 * 360) / (256 * ratio);
+    expect(fitBoundsView([[0, 0], [0, lonFor(512 * 0.998)]], 200, 100, options)!.zoom).toBe(9);
+    expect(fitBoundsView([[0, 0], [0, lonFor(512 * 0.99)]], 200, 100, options)!.zoom).toBe(8);
+  });
+
+  it('plafonne le zoom pour un point seul', () => {
+    const view = fitBoundsView([[43.3, 5.4]], 200, 100, options)!;
+    expect(view.zoom).toBe(17);
+    const p = worldPx(43.3, 5.4, 17);
+    expect(view.originX).toBe(Math.round(p.x - 100));
+    expect(view.originY).toBe(Math.round(p.y - 50));
+  });
+
+  it('garde toute la trace dans le cadre, marges comprises', () => {
+    const view = fitBoundsView(loop, 280, 140, options)!;
+    for (const [lat, lon] of loop) {
+      const p = projectPoint(view, lat, lon);
+      expect(p.x).toBeGreaterThanOrEqual(8 - 1);
+      expect(p.x).toBeLessThanOrEqual(280 - 8 + 1);
+      expect(p.y).toBeGreaterThanOrEqual(8 - 1);
+      expect(p.y).toBeLessThanOrEqual(140 - 8 + 1);
+    }
   });
 });
 

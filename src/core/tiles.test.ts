@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ancestorTile, isStale, tileCacheUsage, tileKey, tilesToEvict } from './tiles';
+import { ancestorTile, isStale, shouldCheckCap, tileCacheUsage, tileKey, tilesToEvict } from './tiles';
 
 describe('tileKey', () => {
   it('nomme la tuile par son zoom, sa colonne et sa ligne', () => {
@@ -44,5 +44,13 @@ describe('tilesToEvict', () => {
     expect(tilesToEvict(entries, 99)).toEqual(['a']);
     expect(tilesToEvict(entries, 30)).toEqual(['a', 'b']);
     expect(tilesToEvict(entries, 0)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('shouldCheckCap', () => {
+  it('contrôle la place au plus une fois par intervalle', () => {
+    expect(shouldCheckCap(0, 60_000, 60_000)).toBe(true);
+    expect(shouldCheckCap(10_000, 69_999, 60_000)).toBe(false);
+    expect(shouldCheckCap(10_000, 70_000, 60_000)).toBe(true);
   });
 });
