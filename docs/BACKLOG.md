@@ -36,7 +36,7 @@ APK 0.3.115 installée le 30/10 (versionCode 3115, lots 68 et 67, validés le 30
 
 **Une course avec la ceinture cardio**
 - essai 1 : ceinture, écran éteint : marche de 10 à 15 min, téléphone posé, pause automatique décochée ; trois ou quatre fois 2 min près du téléphone puis 1 à 2 min hors de portée ; remettre la pause automatique après → reprise seule à chaque retour ; onglet « cardio » avec un trou par sortie de portée. 29/10 : raté (aucune reconnexion après une pause automatique), à refaire après le n° 86.
-- essai 77 (lot 67, validé le 30/10 sans lui) : enregistrement à pied avec la ceinture, carte ouverte, puis pause par appui long sur le bouton rond et reprise → position et cap suivent chaque seconde, la durée tourne dans le bandeau et le bouton rond, figée pendant la pause, la FC s'affiche
+- essai 77 : enregistrement à pied avec la ceinture, carte ouverte, puis pause par appui long sur le bouton rond et reprise → position et cap suivent chaque seconde, la durée tourne dans le bandeau et le bouton rond, figée pendant la pause, la FC s'affiche (lot 67, validé le 30/10 sans cet essai)
 - 26 · [idée] Cadence à pied : relecture des .imu des courses des 21, 24 et 25/10, seuils réglés, keepCapture à false, unité devinée confirmée sur une marche en pas par minute (§11 « Course », point 124) · noté 17/10 · gros · Fable/high · à briefer · dépend de : fichiers .imu à copier du téléphone sur le PC
   - essai 4 : cadence : une vraie course, téléphone dans la poche ; données en main (courses du 21, 24 et 25/10 avec .imu sur le téléphone), Claude les relit → environ 160 à 180 pas/min.
 
