@@ -1,30 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { computeKinematics } from '../core/kinematics';
-import type { RawTrackPoint } from '../core/types';
 import { knotsToMs } from '../core/units';
 import { buildCumulativeTrack } from '../core/sessionStats';
+import { phasesTrack } from '../test/track.fixture';
 import { buildSailingSessionStats, sailingFlights } from './sailingStats';
 
 const START_MS = Date.parse('2026-10-21T10:00:00Z');
-const LAT = 43.6;
-const M_PER_DEG_LON = (Math.PI / 180) * 6371e3 * Math.cos((LAT * Math.PI) / 180);
 
 /** Trace vers l'est à `hz` points par seconde (1 d'office), à la vitesse de chaque phase (`[durée en s, vitesse en nœuds]`). */
-const buildTrack = (phases: [number, number][], hz = 1) => {
-  const points: RawTrackPoint[] = [];
-  let meters = 0;
-  let k = 0;
-  const push = () => points.push({ lat: LAT, lon: 3.8 + meters / M_PER_DEG_LON, time: new Date(START_MS + (k * 1000) / hz).toISOString() });
-  push();
-  for (const [durationS, kn] of phases) {
-    for (let i = 0; i < durationS * hz; i++) {
-      meters += knotsToMs(kn) / hz;
-      k += 1;
-      push();
-    }
-  }
-  return computeKinematics(points);
-};
+const buildTrack = (phases: [number, number][], hz = 1) =>
+  computeKinematics(phasesTrack(phases.map(([durationS, kn]): [number, number] => [durationS, knotsToMs(kn)]), hz, { startMs: START_MS }));
 
 describe('buildSailingSessionStats', () => {
   // 10 min à 4 nœuds, puis un bord de 5 min à 0,5 nœud.

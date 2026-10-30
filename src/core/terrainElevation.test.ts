@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildCumulativeTrack } from './sessionStats';
 import { applyTerrainElevation, terrainSamplePoints, type TerrainSamples } from './terrainElevation';
 import type { TrackPoint } from './types';
+import { mPerDegLon } from '../test/geo.fixture';
 
 const START = Date.parse('2026-10-03T08:00:00Z');
 
@@ -11,7 +12,7 @@ const START = Date.parse('2026-10-03T08:00:00Z');
  */
 const buildTrack = (hz: number, seconds: number, speedMs = 3, ele?: (s: number) => number, stop?: { atS: number; durationS: number }): TrackPoint[] => {
   const points: TrackPoint[] = [];
-  const metersPerDegLon = 111_320 * Math.cos((43.6 * Math.PI) / 180);
+  const metersPerDegLon = mPerDegLon(43.6);
   let x = 0;
   for (let i = 0; i <= seconds * hz; i++) {
     const s = i / hz;
@@ -81,7 +82,7 @@ describe('terrainSamplePoints', () => {
 
 describe('applyTerrainElevation', () => {
   // Terrain : une pente de 5 % vers l'est, mesurée sur la longitude.
-  const metersPerDegLon = 111_320 * Math.cos((43.6 * Math.PI) / 180);
+  const metersPerDegLon = mPerDegLon(43.6);
   const slope = (lon: number) => 50 + 0.05 * (lon - 3.8) * metersPerDegLon;
 
   it("remplace l'altitude GPS par celle du terrain, interpolée selon la distance", () => {

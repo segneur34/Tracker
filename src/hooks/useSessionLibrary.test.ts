@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RECORD_FORMAT, RECORD_VERSION, SUMMARY_CALC_VERSION, serializeRecord, type SessionRecord } from '../library/record';
-import type { FolderEntry, MemoryFolder } from '../platform/memoryFolder';
+import type { MemoryFolder } from '../platform/memoryFolder';
+import { createFakeFolder } from '../test/memoryFolder.fixture';
 
 const GPX = '2026-10-27_10-00-00_running.gpx';
 const RECORD = '2026-10-27_10-00-00_running.json';
@@ -12,22 +13,7 @@ const log: string[] = [];
 /** Suppressions en attente : chacune finit quand on appelle sa fonction. */
 const pendingRemovals: (() => void)[] = [];
 
-const entriesOf = (dir: string): FolderEntry[] =>
-  [...files.keys()]
-    .filter((path) => (dir === '' ? !path.includes('/') : path.startsWith(`${dir}/`)))
-    .map((path) => ({ name: dir === '' ? path : path.slice(dir.length + 1), kind: 'file' as const, size: 1, mtimeMs: 1 }));
-
-const fakeFolder: MemoryFolder = {
-  kind: 'picked',
-  label: 'Tracker',
-  list: async (dir) => entriesOf(dir),
-  readText: async (path) => files.get(path) ?? null,
-  writeText: async (path, text) => {
-    log.push(`write ${path}`);
-    files.set(path, text);
-  },
-  readBytes: async () => null,
-  writeBytes: async () => undefined,
+const fakeFolder: MemoryFolder = createFakeFolder(files, log, {
   remove: (path) =>
     new Promise<void>((resolve) => {
       pendingRemovals.push(() => {
@@ -36,7 +22,7 @@ const fakeFolder: MemoryFolder = {
         resolve();
       });
     }),
-};
+});
 
 vi.mock('../platform/memoryFolder', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../platform/memoryFolder')>()),

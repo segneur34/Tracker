@@ -4,14 +4,10 @@ import type { RawTrackPoint } from '../core/types';
 import type { Waypoint } from './route';
 import { summarizeSurfaces, trackSurfaceStretches } from './surface';
 import { WAY_MATCH_DEFAULTS, matchTrackToWays, queryLines, trackSurfaceRuns, type OsmWay } from './wayMatch';
+import { at as geoAt } from '../test/geo.fixture';
 
-/** Un mètre vers l'est et vers le nord, en degrés, autour de 43,6° N. */
-const M_LAT = 1 / 111_195;
-const M_LON = 1 / (111_195 * Math.cos((43.6 * Math.PI) / 180));
-const LAT0 = 43.6;
-const LON0 = 3.8;
 /** Point à `x` mètres à l'est et `y` mètres au nord de l'origine. */
-const at = (x: number, y: number): Waypoint => ({ lat: LAT0 + y * M_LAT, lon: LON0 + x * M_LON });
+const at = (x: number, y: number): Waypoint => geoAt(x, y);
 
 /** Deux voies parallèles vers l'est, à 0 et 8 m au nord (une route et son trottoir), et un sentier qui part au nord à x = 300 m. */
 const WAYS: OsmWay[] = [

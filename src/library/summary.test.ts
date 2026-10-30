@@ -3,39 +3,17 @@ import { computeKinematics } from '../core/kinematics';
 import type { RawTrackPoint } from '../core/types';
 import type { SessionTest } from '../recording/fitnessTest';
 import { SUMMARY_CALC_VERSION } from './record';
+import { phasesTrack } from '../test/track.fixture';
 import { analysisTrack, summarizeHeartRateSession, summarizeSession } from './summary';
 
 const START_MS = Date.parse('2026-09-20T10:00:00Z');
-const LAT = 43.6;
-const M_PER_DEG_LON = (Math.PI / 180) * 6371e3 * Math.cos((LAT * Math.PI) / 180);
 
 /**
  * Trace vers l'est, `hz` points par seconde, à la vitesse de chaque phase
  * (`[durée en s, vitesse en m/s]`). `climbPerS`, facultatif, fait monter
  * l'altitude d'autant de mètres par seconde.
  */
-const buildTrack = (phases: [number, number][], hz = 1, climbPerS?: number): RawTrackPoint[] => {
-  const step = 1 / hz;
-  const points: RawTrackPoint[] = [];
-  let meters = 0;
-  let t = 0;
-  const push = () =>
-    points.push({
-      lat: LAT,
-      lon: 3.8 + meters / M_PER_DEG_LON,
-      time: new Date(START_MS + Math.round(t * 1000)).toISOString(),
-      ele: climbPerS === undefined ? undefined : 10 + climbPerS * t,
-    });
-  push();
-  for (const [durationS, speedMs] of phases) {
-    for (let i = 0; i < Math.round(durationS * hz); i++) {
-      meters += speedMs * step;
-      t += step;
-      push();
-    }
-  }
-  return points;
-};
+const buildTrack = (phases: [number, number][], hz = 1, climbPerS?: number): RawTrackPoint[] => phasesTrack(phases, hz, { startMs: START_MS, climbPerS });
 
 describe('summarizeSession', () => {
   it('range la FC de la session, rien sans FC', () => {

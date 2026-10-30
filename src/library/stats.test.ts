@@ -7,38 +7,12 @@ import {
   gearFilterItems, matchesGear, groupByActivity,
 } from './stats';
 import type { GearGroup } from './notes';
+import { statSession } from '../test/record.fixture';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime();
 
-const session = (startMs: number, over: Partial<StatSession> = {}): StatSession => ({
-  file: `s-${startMs}.json`,
-  name: null,
-  startMs,
-  endMs: startMs + 3_600_000,
-  distanceM: 10_000,
-  movingTimeS: 3000,
-  inMotionS: null,
-  movingDistanceM: 9000,
-  elevationGainM: null,
-  maxSpeedMs: 5,
-  activityId: 'course',
-  family: 'course',
-  treatment: 'course',
-  positions: true,
-  maneuverCount: null,
-  maneuverResults: null,
-  foil: false,
-  waveCount: null,
-  longestWaveM: null,
-  longestFlightS: null,
-  flightS: null,
-  reps: 0,
-  heartRate: null,
-  cadenceSpm: null,
-  gear: null,
-  ...over,
-});
+const session = statSession;
 
 describe('statSessionOf', () => {
   it('reprend le résumé, la famille du calcul et compte les répétitions du compteur', () => {

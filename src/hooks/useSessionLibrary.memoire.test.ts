@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FolderEntry, MemoryFolder } from '../platform/memoryFolder';
+import type { MemoryFolder } from '../platform/memoryFolder';
+import { createFakeFolder } from '../test/memoryFolder.fixture';
 
 /**
  * Bibliothèque sur un faux dossier (lot 3 de la revue du 27/10) : import sans
@@ -21,31 +22,22 @@ const refused = new Set<string>();
 let access: 'ready' | 'unavailable' = 'ready';
 const pendingWrites: string[] = [];
 
-const entriesOf = (dir: string): FolderEntry[] =>
-  [...files.keys()]
-    .filter((path) => (dir === '' ? !path.includes('/') : path.startsWith(`${dir}/`)))
-    .map((path) => ({ name: dir === '' ? path : path.slice(dir.length + 1), kind: 'file' as const, size: files.get(path)!.length, mtimeMs: 1 }));
-
-const fakeFolder: MemoryFolder = {
-  kind: 'picked',
-  label: 'Tracker',
-  list: async (dir) => entriesOf(dir),
-  readText: async (path) => files.get(path) ?? null,
-  writeText: async (path, text) => {
-    if (refused.has(path)) throw new Error('écriture refusée');
-    log.push(`write ${path}`);
-    files.set(path, text);
+const fakeFolder: MemoryFolder = createFakeFolder(
+  files,
+  log,
+  {
+    writeText: async (path, text) => {
+      if (refused.has(path)) throw new Error('écriture refusée');
+      log.push(`write ${path}`);
+      files.set(path, text);
+    },
+    writeBytes: async (path) => {
+      log.push(`write ${path}`);
+      files.set(path, 'imu');
+    },
   },
-  readBytes: async () => null,
-  writeBytes: async (path) => {
-    log.push(`write ${path}`);
-    files.set(path, 'imu');
-  },
-  remove: async (path) => {
-    log.push(`remove ${path}`);
-    files.delete(path);
-  },
-};
+  (path) => files.get(path)!.length,
+);
 
 const fakePending: MemoryFolder = {
   ...fakeFolder,

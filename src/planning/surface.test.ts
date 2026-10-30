@@ -7,6 +7,7 @@ import {
   PAVED_CATEGORIES, SURFACE_VALUES, buildSurfaceRuns, classifySurface, legSurfaceStretches, parseWayTags, readSurfaceRuns, routeSurfacePaths, routeSurfaces,
   shiftSurfaceRuns, summarizeSurfaces, surfaceHighlight, surfacePaths, tagsAt, trackSurfaceStretches, wayTagsText,
 } from './surface';
+import { at as geoAt } from '../test/geo.fixture';
 
 /** Points vers le nord, tous les 0,001° (≈ 111 m). */
 const north = (n: number): RoutePoint[] => Array.from({ length: n }, (_, i) => ({ lat: 43.6 + i * 0.001, lon: 3.8 }));
@@ -144,8 +145,7 @@ describe('longueurs par revêtement', () => {
     // 200 s vers le nord à 3 m/s ; asphalte les 100 premières secondes, gravillon ensuite.
     const raw = (hz: number): RawTrackPoint[] =>
       Array.from({ length: 200 * hz + 1 }, (_, i) => ({
-        lat: 43.6 + (3 * i) / hz / 111_195,
-        lon: 3.8,
+        ...geoAt(0, (3 * i) / hz),
         time: new Date(startMs + (i * 1000) / hz).toISOString(),
       }));
     const surfaces = { tags: ['highway=residential', 'highway=track surface=gravel'], runs: [[0, 0], [100_000, 1]] as [number, number][] };
@@ -191,8 +191,7 @@ describe('tracé par revêtement, pour la carte', () => {
     const startMs = Date.UTC(2026, 9, 3, 15, 0, 0);
     const raw = (hz: number): RawTrackPoint[] =>
       Array.from({ length: 200 * hz + 1 }, (_, i) => ({
-        lat: 43.6 + (3 * i) / hz / 111_195,
-        lon: 3.8,
+        ...geoAt(0, (3 * i) / hz),
         time: new Date(startMs + (i * 1000) / hz).toISOString(),
       }));
     const surfaces = { tags: ['highway=residential', 'highway=track surface=gravel'], runs: [[0, 0], [100_000, 1]] as [number, number][] };

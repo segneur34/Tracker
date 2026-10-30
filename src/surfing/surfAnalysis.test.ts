@@ -7,6 +7,7 @@ import { fromDisplaySpeed } from '../core/units';
 import { summarizeSession } from '../library/summary';
 import { analyzeSurf, summarizeSurf, type SurfParams } from './surfAnalysis';
 import { runSurfSession, surfProfileOf } from './surfSession';
+import { M_PER_DEG_LAT } from '../test/geo.fixture';
 
 /**
  * Session de surf synthétique : une suite de phases à vitesse et cap
@@ -22,7 +23,6 @@ interface Phase {
 }
 
 const T0 = Date.UTC(2026, 9, 10, 9, 0, 0);
-const M_PER_DEG_LAT = 111_195;
 
 const buildSurfSession = (phases: Phase[], cadenceS = 1): TrackPoint[] => {
   const raw: RawTrackPoint[] = [];

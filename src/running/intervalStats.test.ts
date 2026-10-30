@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
 import { analyzeIntervals, holdRatioOf, intervalPhaseStats, launchOf, repSpeedProfile, type IntervalPhaseSpan } from './intervalStats';
+import { mPerDegLon } from '../test/geo.fixture';
 
 const START = Date.parse('2026-10-07T18:00:00Z');
 
 /** Trace vers l'est, un point toutes les `stepS` secondes, à la vitesse donnée pour chaque seconde. */
 const buildTrack = (speedAtS: (s: number) => number, durationS: number, stepS = 1): TrackPoint[] => {
   const lat = 43.6;
-  const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
+  const metersPerDegLon = mPerDegLon(lat);
   const points: TrackPoint[] = [];
   let meters = 0;
   for (let s = 0; s <= durationS; s += stepS) {

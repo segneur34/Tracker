@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { distanceToSegmentM, pointSegmentDistanceM, projectOnSegment } from './geoPlane';
 import { planeProjection } from './geo';
+import { at } from '../test/geo.fixture';
 
 describe('pointSegmentDistanceM', () => {
   it("mesure l'écart à un segment, et au bout le plus proche au-delà", () => {
@@ -9,11 +10,6 @@ describe('pointSegmentDistanceM', () => {
     expect(pointSegmentDistanceM({ x: 3, y: 4 }, { x: 0, y: 0 }, { x: 0, y: 0 })).toBeCloseTo(5);
   });
 });
-
-const M_PER_DEG_LAT = 111195;
-const M_PER_DEG_LON = M_PER_DEG_LAT * Math.cos((43.6 * Math.PI) / 180);
-/** Position à `east` m à l'est et `north` m au nord de (43,6 ; 3,8). */
-const at = (east: number, north: number) => ({ lat: 43.6 + north / M_PER_DEG_LAT, lon: 3.8 + east / M_PER_DEG_LON });
 
 describe('distanceToSegmentM', () => {
   it("mesure l'écart perpendiculaire quand le pied tombe dans le segment", () => {

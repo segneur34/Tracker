@@ -3,11 +3,11 @@ import { SPORT_PROFILES } from '../core/sportProfiles';
 import type { LocationFix } from '../platform/location';
 import { computeLiveStats } from './liveStats';
 import { angleDiff } from '../core/angles';
+import { M_PER_DEG_LAT, mPerDegLon } from '../test/geo.fixture';
 
 const T0 = Date.UTC(2026, 8, 25, 14, 0, 0);
-const M_PER_DEG_LAT = (6371e3 * Math.PI) / 180;
 const LAT = 43.5;
-const M_PER_DEG_LON = M_PER_DEG_LAT * Math.cos((LAT * Math.PI) / 180);
+const M_PER_DEG_LON = mPerDegLon(LAT);
 
 /** Morceau de trace : cap tenu, ou virage régulier de `fromDeg` à `toDeg`, à vitesse constante. */
 interface Piece {

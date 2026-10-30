@@ -5,6 +5,7 @@ import {
   FOLLOWED_TRACE_TOLERANCE_M, createFollowCursor, followProgress, followedTraceFromPoints, followedTraceFromRoute, followedTraceLengthM,
   splitFollowedTrace, thinFollowedTrace, type FollowedTrace,
 } from './followedTrace';
+import { M_PER_DEG_LAT, ORIGIN, at, fixesAlong, mPerDegLon } from '../test/geo.fixture';
 
 const A = { lat: 43.6, lon: 3.8 };
 const B = { lat: 43.61, lon: 3.8 };
@@ -46,27 +47,10 @@ describe('trace suivie', () => {
   });
 });
 
-/** Mètres par degré de latitude, et de longitude à la latitude de `O`. */
-const M_PER_DEG_LAT = 111195;
-const O = { lat: 43.6, lon: 3.8 };
-const M_PER_DEG_LON = M_PER_DEG_LAT * Math.cos((O.lat * Math.PI) / 180);
-/** Position à `east` m à l'est et `north` m au nord de `O`. */
-const at = (east: number, north: number) => ({ lat: O.lat + north / M_PER_DEG_LAT, lon: O.lon + east / M_PER_DEG_LON });
-
 const traceOf = (pts: [number, number][]): FollowedTrace => followedTraceFromPoints(pts.map(([e, n]) => at(e, n)), 'Test', 'route')!;
 
 /** Parcours enregistré le long de sommets donnés, un point tous les `stepM` mètres. */
-const walk = (pts: [number, number][], stepM: number) => {
-  const out = [at(pts[0][0], pts[0][1])];
-  for (let k = 1; k < pts.length; k++) {
-    const [e0, n0] = pts[k - 1];
-    const [e1, n1] = pts[k];
-    const len = Math.hypot(e1 - e0, n1 - n0);
-    const count = Math.max(1, Math.round(len / stepM));
-    for (let j = 1; j <= count; j++) out.push(at(e0 + ((e1 - e0) * j) / count, n0 + ((n1 - n0) * j) / count));
-  }
-  return out;
-};
+const walk = fixesAlong;
 
 describe('avancement sur la trace suivie', () => {
   const line = traceOf([[0, 0], [0, 500], [0, 1000]]);
@@ -198,7 +182,7 @@ describe('trace suivie amincie pour être gardée', () => {
 
   it('suit la même avancée que la trace complète', () => {
     const line = traceOf(walk([[0, 0], [0, 500], [400, 900]], 1).map((p) => [
-      (p.lon - O.lon) * M_PER_DEG_LON, (p.lat - O.lat) * M_PER_DEG_LAT,
+      (p.lon - ORIGIN.lon) * mPerDegLon(ORIGIN.lat), (p.lat - ORIGIN.lat) * M_PER_DEG_LAT,
     ] as [number, number]));
     const thin = thinFollowedTrace(line, FOLLOWED_TRACE_TOLERANCE_M);
     expect(thin.points.length).toBe(3);

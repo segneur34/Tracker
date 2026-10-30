@@ -11,33 +11,9 @@ import { computeAllTopSegments, computeTopSegments } from './topSegments';
 import type { RawTrackPoint, TopTarget, TrackPoint } from './types';
 import { msToKnots } from './units';
 import { sameData } from '../test/sameData';
+import { mPerDegLon } from '../test/geo.fixture';
+import { eastwardTrack } from '../test/track.fixture';
 import { RUNNING_TOP_TARGETS, SPORT_PROFILES, SURF_TOP_TARGETS } from './sportProfiles';
-
-/**
- * Trace synthétique : vitesse imposée point par point, cadence réglable.
- * Les positions sont générées pour être cohérentes avec ces vitesses.
- */
-const buildTrack = (speedsMs: number[], stepSeconds = 1): TrackPoint[] => {
-  const startTime = Date.parse('2026-01-01T10:00:00Z');
-  const lat = 43.6;
-  const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
-
-  let meters = 0;
-  return speedsMs.map((speedMs, i) => {
-    if (i > 0) meters += speedMs * stepSeconds;
-    const timeMs = startTime + i * stepSeconds * 1000;
-    return {
-      lat,
-      lon: 3.8 + meters / metersPerDegLon,
-      time: new Date(timeMs).toISOString(),
-      timeMs,
-      speedMs,
-      smoothedSpeedMs: speedMs,
-      bearing: 90,
-      speedSource: 'derived' as const,
-    };
-  });
-};
 
 const TIME_5S: TopTarget = { key: 't5s', label: '5 s', value: 5, kind: 'time' };
 const DIST_100M: TopTarget = { key: 'd100m', label: '100 m', value: 100, kind: 'distance' };
@@ -47,14 +23,14 @@ describe('computeTopSegments, cible de temps', () => {
     const speeds = new Array(30).fill(5);
     for (let i = 12; i < 19; i++) speeds[i] = 12;
 
-    const track = buildTrack(speeds);
+    const track = eastwardTrack(speeds);
     const tops = computeTopSegments(track, buildCumulativeTrack(track), TIME_5S, msToKnots);
 
     expect(parseFloat(tops[0].val)).toBeCloseTo(msToKnots(12), 1);
   });
 
   it('renvoie exactement trois entrées, complétées par des tirets', () => {
-    const track = buildTrack(new Array(8).fill(5));
+    const track = eastwardTrack(new Array(8).fill(5));
     const tops = computeTopSegments(track, buildCumulativeTrack(track), TIME_5S, msToKnots);
 
     expect(tops).toHaveLength(3);
@@ -65,14 +41,14 @@ describe('computeTopSegments, cible de temps', () => {
     const speeds = new Array(40).fill(4);
     for (let i = 10; i < 17; i++) speeds[i] = 15;
 
-    const track = buildTrack(speeds);
+    const track = eastwardTrack(speeds);
     const tops = computeTopSegments(track, buildCumulativeTrack(track), TIME_5S, msToKnots);
 
     expect(parseFloat(tops[0].val)).toBeGreaterThan(parseFloat(tops[1].val));
   });
 
   it('remplit un chemin exploitable par la carte', () => {
-    const track = buildTrack(new Array(20).fill(6));
+    const track = eastwardTrack(new Array(20).fill(6));
     const tops = computeTopSegments(track, buildCumulativeTrack(track), TIME_5S, msToKnots);
 
     expect(tops[0].path.length).toBeGreaterThan(1);
@@ -80,7 +56,7 @@ describe('computeTopSegments, cible de temps', () => {
   });
 
   it('ne renvoie que des tirets si la trace est plus courte que la cible', () => {
-    const track = buildTrack([5, 5]);
+    const track = eastwardTrack([5, 5]);
     const tops = computeTopSegments(track, buildCumulativeTrack(track), TIME_5S, msToKnots);
 
     expect(tops.map((t) => t.val)).toEqual(['-', '-', '-']);
@@ -88,7 +64,7 @@ describe('computeTopSegments, cible de temps', () => {
 
   it('interpole la borne de fin quand aucun point ne tombe pile sur la cible', () => {
     // Points toutes les 2 s : la cinquième seconde tombe entre deux points.
-    const track = buildTrack(new Array(20).fill(10), 2);
+    const track = eastwardTrack(new Array(20).fill(10), 2);
     const tops = computeTopSegments(track, buildCumulativeTrack(track), TIME_5S, msToKnots);
 
     // Vitesse constante : le résultat doit être exactement 10 m/s malgré l'échantillonnage.
@@ -99,22 +75,22 @@ describe('computeTopSegments, cible de temps', () => {
     const speeds = new Array(40).fill(4);
     for (let i = 10; i < 17; i++) speeds[i] = 15;
     for (let i = 25; i < 32; i++) speeds[i] = 15;
-    const track = buildTrack(speeds);
+    const track = eastwardTrack(speeds);
     const cum = buildCumulativeTrack(track);
     const tops = computeTopSegments(track, cum, TIME_5S, msToKnots);
     expect(tops[0].speed).not.toBeNull();
     expect(tops[0].val).toBe(tops[0].speed!.toFixed(2));
-    const short = buildTrack(new Array(12).fill(4));
+    const short = eastwardTrack(new Array(12).fill(4));
     expect(computeTopSegments(short, buildCumulativeTrack(short), TIME_5S, msToKnots)[2].speed).toBeNull();
     const [single] = computeTopSegments(track, cum, TIME_5S, msToKnots, { count: 1 });
     expect(single.speed).toBe(tops[0].speed);
     expect(single.path).toEqual(tops[0].path);
-    expect(computeTopSegments(buildTrack([5, 5]), buildCumulativeTrack(buildTrack([5, 5])), TIME_5S, msToKnots, { count: 1 })[0].speed).toBeNull();
+    expect(computeTopSegments(eastwardTrack([5, 5]), buildCumulativeTrack(eastwardTrack([5, 5])), TIME_5S, msToKnots, { count: 1 })[0].speed).toBeNull();
   });
 
   it('ne dépend pas de la fréquence d\'échantillonnage', () => {
-    const at1Hz = buildTrack(new Array(30).fill(8), 1);
-    const at5Hz = buildTrack(new Array(150).fill(8), 0.2);
+    const at1Hz = eastwardTrack(new Array(30).fill(8), 1);
+    const at5Hz = eastwardTrack(new Array(150).fill(8), 0.2);
 
     const tops1 = computeTopSegments(at1Hz, buildCumulativeTrack(at1Hz), TIME_5S, msToKnots);
     const tops5 = computeTopSegments(at5Hz, buildCumulativeTrack(at5Hz), TIME_5S, msToKnots);
@@ -125,7 +101,7 @@ describe('computeTopSegments, cible de temps', () => {
 
 describe('computeTopSegments, cible de distance', () => {
   it('mesure la vitesse moyenne sur la distance demandée', () => {
-    const track = buildTrack(new Array(40).fill(10));
+    const track = eastwardTrack(new Array(40).fill(10));
     const tops = computeTopSegments(track, buildCumulativeTrack(track), DIST_100M, msToKnots);
 
     expect(parseFloat(tops[0].val)).toBeCloseTo(msToKnots(10), 1);
@@ -134,7 +110,7 @@ describe('computeTopSegments, cible de distance', () => {
   it('préfère le tronçon le plus rapide', () => {
     const slow = new Array(30).fill(4);
     const fast = new Array(30).fill(14);
-    const track = buildTrack([...slow, ...fast]);
+    const track = eastwardTrack([...slow, ...fast]);
     const tops = computeTopSegments(track, buildCumulativeTrack(track), DIST_100M, msToKnots);
 
     expect(parseFloat(tops[0].val)).toBeGreaterThan(msToKnots(10));
@@ -142,7 +118,7 @@ describe('computeTopSegments, cible de distance', () => {
 
   it('utilise la même définition que les cibles de temps', () => {
     // À vitesse constante, 100 m et 5 s doivent donner la même vitesse.
-    const track = buildTrack(new Array(60).fill(10));
+    const track = eastwardTrack(new Array(60).fill(10));
     const cum = buildCumulativeTrack(track);
 
     const parDistance = computeTopSegments(track, cum, DIST_100M, (v) => v);
@@ -154,7 +130,7 @@ describe('computeTopSegments, cible de distance', () => {
 
 describe('computeTopSegments, conversion d\'unité', () => {
   it('applique le convertisseur fourni', () => {
-    const track = buildTrack(new Array(20).fill(10));
+    const track = eastwardTrack(new Array(20).fill(10));
     const cum = buildCumulativeTrack(track);
 
     const enMs = computeTopSegments(track, cum, TIME_5S, (v) => v);
@@ -166,7 +142,7 @@ describe('computeTopSegments, conversion d\'unité', () => {
 
 describe('computeAllTopSegments', () => {
   it('indexe les résultats par clé de cible', () => {
-    const track = buildTrack(new Array(40).fill(8));
+    const track = eastwardTrack(new Array(40).fill(8));
     const result = computeAllTopSegments(
       track,
       buildCumulativeTrack(track),
@@ -181,7 +157,7 @@ describe('computeAllTopSegments', () => {
 
 describe('buildCumulativeTrack', () => {
   it('intègre la vitesse retenue plutôt que la position brute', () => {
-    const track = buildTrack(new Array(11).fill(10));
+    const track = eastwardTrack(new Array(11).fill(10));
     const cum = buildCumulativeTrack(track);
 
     expect(cum.cumDist[10]).toBeCloseTo(100, 6);
@@ -193,19 +169,19 @@ describe('computeActivityMask, trigger de Schmitt', () => {
   const schmitt = { enterThresholdMs: 8.5, exitThresholdMs: 7 };
 
   it('ne démarre qu\'au-dessus du seuil haut', () => {
-    const track = buildTrack([0, 7.5, 8, 8.4, 8.6, 9]);
+    const track = eastwardTrack([0, 7.5, 8, 8.4, 8.6, 9]);
     const mask = computeActivityMask(track, schmitt);
     expect(mask).toEqual([false, false, false, false, true, true]);
   });
 
   it('ne s\'arrête qu\'en dessous du seuil bas', () => {
-    const track = buildTrack([9, 9, 8, 7.5, 7.2, 6.9, 6]);
+    const track = eastwardTrack([9, 9, 8, 7.5, 7.2, 6.9, 6]);
     const mask = computeActivityMask(track, schmitt);
     expect(mask).toEqual([true, true, true, true, true, false, false]);
   });
 
   it('ne bagote pas quand la vitesse oscille entre les deux seuils', () => {
-    const track = buildTrack([9, 8, 7.5, 8.2, 7.1, 8.4, 7.3, 8]);
+    const track = eastwardTrack([9, 8, 7.5, 8.2, 7.1, 8.4, 7.3, 8]);
     const mask = computeActivityMask(track, schmitt);
     // Une fois lancé, tout reste actif tant qu'on ne passe pas sous 7.
     expect(mask.every(Boolean)).toBe(true);
@@ -213,7 +189,7 @@ describe('computeActivityMask, trigger de Schmitt', () => {
 
   it('un seuil unique, lui, bagote sur la même trace', () => {
     // Démonstration par contraste : seuils haut et bas confondus à 8.
-    const track = buildTrack([9, 8, 7.5, 8.2, 7.1, 8.4, 7.3, 8]);
+    const track = eastwardTrack([9, 8, 7.5, 8.2, 7.1, 8.4, 7.3, 8]);
     const mask = computeActivityMask(track, { enterThresholdMs: 8, exitThresholdMs: 8 });
     const transitions = mask.filter((v, i) => i > 0 && v !== mask[i - 1]).length;
     expect(transitions).toBeGreaterThan(2);
@@ -221,7 +197,7 @@ describe('computeActivityMask, trigger de Schmitt', () => {
 
   it('exige une durée de confirmation si demandé', () => {
     // Pic isolé d'une seconde : pas assez pour valider le démarrage sur 3 s.
-    const track = buildTrack([0, 0, 10, 0, 0, 0, 10, 10, 10, 10, 10]);
+    const track = eastwardTrack([0, 0, 10, 0, 0, 0, 10, 10, 10, 10, 10]);
     const mask = computeActivityMask(track, { ...schmitt, minStateDurationS: 3 });
     expect(mask[2]).toBe(false);
     // Le second plateau dure assez longtemps pour être confirmé.
@@ -231,7 +207,7 @@ describe('computeActivityMask, trigger de Schmitt', () => {
 
 describe('computeActiveTimeMs et computeActiveDistanceM', () => {
   it('ne comptent que les segments actifs', () => {
-    const track = buildTrack([2, 2, 2, 2, 2, 8, 8, 8, 8, 8]);
+    const track = eastwardTrack([2, 2, 2, 2, 2, 8, 8, 8, 8, 8]);
     const mask = computeActivityMask(track, { enterThresholdMs: 6, exitThresholdMs: 6 });
 
     expect(computeActiveTimeMs(track, mask)).toBe(5000);
@@ -239,7 +215,7 @@ describe('computeActiveTimeMs et computeActiveDistanceM', () => {
   });
 
   it('renvoient zéro si rien n\'atteint le seuil', () => {
-    const track = buildTrack(new Array(10).fill(3));
+    const track = eastwardTrack(new Array(10).fill(3));
     const mask = computeActivityMask(track, { enterThresholdMs: 6, exitThresholdMs: 6 });
 
     expect(computeActiveTimeMs(track, mask)).toBe(0);
@@ -250,7 +226,7 @@ describe('computeActiveTimeMs et computeActiveDistanceM', () => {
 describe('buildBaseSessionStats, vitesses moyennes', () => {
   it('donne la moyenne totale et la moyenne active, quelle que soit la cadence', () => {
     for (const stepSeconds of [1, 0.2]) {
-      const stats = buildBaseSessionStats(buildTrack([2, 2, 2, 2, 2, 8, 8, 8, 8, 8], stepSeconds), {
+      const stats = buildBaseSessionStats(eastwardTrack([2, 2, 2, 2, 2, 8, 8, 8, 8, 8], stepSeconds), {
         enterThresholdMs: 6,
         exitThresholdMs: 6,
       });
@@ -261,7 +237,7 @@ describe('buildBaseSessionStats, vitesses moyennes', () => {
   });
 
   it('renvoie null sans temps actif', () => {
-    const stats = buildBaseSessionStats(buildTrack(new Array(10).fill(3)), { enterThresholdMs: 6, exitThresholdMs: 6 });
+    const stats = buildBaseSessionStats(eastwardTrack(new Array(10).fill(3)), { enterThresholdMs: 6, exitThresholdMs: 6 });
 
     expect(stats.avgSpeedMs).toBeCloseTo(3, 6);
     expect(stats.activeAvgSpeedMs).toBeNull();
@@ -270,7 +246,7 @@ describe('buildBaseSessionStats, vitesses moyennes', () => {
 
 describe('cibles des tops à pied et en surf (onglet générique)', () => {
   /** Vitesse par seconde, répétée `hz` fois : la même session à 1 Hz et à 5 Hz. */
-  const atRate = (perSecond: number[], hz: number) => buildTrack(perSecond.flatMap((v) => new Array(hz).fill(v)), 1 / hz);
+  const atRate = (perSecond: number[], hz: number) => eastwardTrack(perSecond.flatMap((v) => new Array(hz).fill(v)), 1 / hz);
   const kmh = (ms: number) => ms * 3.6;
 
   // Surf : 20 min de rame à 1,2 m/s, une vague de 12 s à 5 m/s, dont 2 s à 7 m/s.
@@ -320,7 +296,7 @@ describe('computeTopSegments, trou de la trace', () => {
     // Wingfoil à 1 Hz, Doppler constant à 10 m/s, 20 s sans point (pochette étanche), reprise lue à 14 m/s.
     const startTime = Date.parse('2026-01-01T10:00:00Z');
     const lat = 43.6;
-    const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
+    const metersPerDegLon = mPerDegLon(lat);
     const raw: RawTrackPoint[] = [];
     const push = (s: number, speedMs: number) =>
       raw.push({ lat, lon: 3.8 + (10 * s) / metersPerDegLon, time: new Date(startTime + s * 1000).toISOString(), speedMs });

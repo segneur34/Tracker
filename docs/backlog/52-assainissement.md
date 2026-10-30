@@ -744,6 +744,8 @@ Opus | high. Neutre. Sources : 06-B4, 07-A12, 07-B2, 07-B4, 07-B5, 07-C2, 07-D7,
 
 **Rapport attendu** : mesures.
 
+**Réponse de l'utilisateur (30/10)** : vignettes en image fixe ; la trace de la vignette garde un point dès qu'il s'écarte d'un demi-pixel du précédent au zoom de la vignette (`thinToPixels`, `core/simplify.ts`), ni 300 points à pas régulier ni Douglas-Peucker (qui effacerait le dégradé) ; la vignette change donc un peu, en plus fidèle à l'analyse.
+
 ### 75 · Fixtures de test communes
 
 Sonnet | high. Neutre (outil). Sources : 05-A10, 08-A2, 08-A12, 08-B1, 08-D5, 08-F.
@@ -767,6 +769,8 @@ Sonnet | high. Neutre (outil). Sources : 05-A10, 08-A2, 08-A12, 08-B1, 08-D5, 08
 **Preuve** : même nombre de tests, tous verts ; durées avant/après.
 
 **Rapport attendu** : fichiers migrés, constantes gardées locales et pourquoi, durées.
+
+**Fait (30/10)** : quatre fixtures dans `src/test/` ; « mètres par degré » commun partout, `111320` compris (mêmes attendus, tous verts) ; 2 003 → 2 005 tests (deux de colle de la ceinture). Restent : les tests de colle des hooks (`useSessionDraft`, `useMarkGuide`, `useIntervalTimer`, `recordingNotification`), qui demandent jsdom et testing-library (un paquet à installer) ; `hooks/useSessionLibrary.balayage.test.ts` fait à lui seul 34 s des 35 s de la suite.
 
 ### 76 · Banc : une seule mise en route DevTools
 

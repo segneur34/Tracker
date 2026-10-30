@@ -142,3 +142,38 @@ describe('ceinture perdue', () => {
     second();
   });
 });
+
+/** Deux détenteurs (l'enregistreur et un test guidé) : la connexion n'est coupée que par le dernier qui la rend. */
+describe('deux détenteurs de la ceinture', () => {
+  it("le premier qui rend ne coupe rien ; le second, qui rend en dernier, coupe une seule fois", async () => {
+    const { holdBelt, beltHeldBy, beltState } = await import('./heartRate');
+    const first = await holdBelt('enregistrement', belt);
+    emit('status', { state: 'connected', address: belt.address });
+    const second = await holdBelt('essai', belt);
+    expect(plugin.connects).toBe(1);
+    expect(beltHeldBy('enregistrement')).toBe(true);
+    expect(beltHeldBy('essai')).toBe(true);
+
+    first();
+    expect(beltHeldBy('enregistrement')).toBe(false);
+    expect(beltHeldBy('essai')).toBe(true);
+    expect(plugin.disconnects).toBe(0);
+    expect(beltState()).toBe('connected');
+
+    second();
+    expect(plugin.disconnects).toBe(1);
+    expect(beltState()).toBe('off');
+  });
+
+  it('rendre deux fois la même prise ne coupe pas la connexion de l\'autre détenteur', async () => {
+    const { holdBelt, beltHeldBy } = await import('./heartRate');
+    const first = await holdBelt('enregistrement', belt);
+    const second = await holdBelt('essai', belt);
+    first();
+    first();
+    expect(beltHeldBy('essai')).toBe(true);
+    expect(plugin.disconnects).toBe(0);
+    second();
+    expect(plugin.disconnects).toBe(1);
+  });
+});

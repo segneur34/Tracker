@@ -1,37 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { RECORD_FORMAT, RECORD_VERSION, SUMMARY_CALC_VERSION, completeRecord, type SessionRecord } from './record';
+import { RECORD_VERSION, completeRecord, type SessionRecord } from './record';
 import { bundleSessionGpx, unbundleSessionGpx } from './sessionBundle';
+import { sessionRecord } from '../test/record.fixture';
 
 const START_MS = Date.UTC(2026, 9, 10, 7, 0, 0);
 
 const GPX = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Tracker" xmlns="http://www.topografix.com/GPX/1/1">\n'
   + '<trk><name>Fractionné</name><trkseg><trkpt lat="43.6" lon="3.8"><time>2026-10-10T07:00:00Z</time></trkpt></trkseg></trk>\n</gpx>\n';
 
-const record = (patch: Partial<SessionRecord> = {}): SessionRecord => ({
-  format: RECORD_FORMAT,
-  version: RECORD_VERSION,
-  gpx: '2026-10-10_09-00-00_fractionne-course.gpx',
-  sport: 'running',
-  activityId: null,
-  source: 'enregistrement',
-  addedAt: '2026-10-10T08:00:00.000Z',
-  title: 'Fractionné',
-  name: null,
-  summary: {
-    calcVersion: SUMMARY_CALC_VERSION,
-    startMs: START_MS,
-    endMs: START_MS + 1_800_000,
-    distanceM: 5000,
-    movingTimeS: 1700,
-    elevationGainM: null,
-    maxSpeedMs: 6,
-    pointCount: 1801,
-    samplingS: 1,
-  },
-  notes: null,
-  analysis: null,
-  ...patch,
-});
+const record = (patch: Partial<SessionRecord> = {}): SessionRecord =>
+  sessionRecord({
+    gpx: '2026-10-10_09-00-00_fractionne-course.gpx',
+    sport: 'running',
+    addedAt: '2026-10-10T08:00:00.000Z',
+    title: 'Fractionné',
+    ...patch,
+  }, { startMs: START_MS, endMs: START_MS + 1_800_000, distanceM: 5000, movingTimeS: 1700, maxSpeedMs: 6, pointCount: 1801 });
 
 const INTERVALS: NonNullable<SessionRecord['intervals']> = [{
   workout: { reps: 2, workS: 10, restS: 10 },

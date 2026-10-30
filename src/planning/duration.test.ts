@@ -6,6 +6,7 @@ import {
   type CyclingDurationSettings, type PresetPaceLevel,
 } from './duration';
 import { routePoints, routeProfileRows, routeTotals, type PlannedRoute, type RoutePoint } from './route';
+import { at as geoAt } from '../test/geo.fixture';
 
 const RIDER_KG = 75;
 const params = cyclingEnergyParams('route', BIKE_TYPES.route.bikeKg, RIDER_KG);
@@ -27,7 +28,7 @@ const straightRoute = (km: number, eleAt: (m: number) => number | undefined): Pl
   const steps = Math.round(km * 10);
   for (let i = 0; i <= steps; i++) {
     const m = (i * km * 1000) / steps;
-    points.push({ lat: 43.6 + m / 111_195, lon: 3.8, eleM: eleAt(m) });
+    points.push({ ...geoAt(0, m), eleM: eleAt(m) });
   }
   return {
     waypoints: [points[0], points[points.length - 1]],

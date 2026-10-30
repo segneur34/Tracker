@@ -5,36 +5,12 @@ import { GRADE_ANALYSIS as G } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import { DEFAULT_SPEED_RANGE_MS, computeZoneStats, gradeZonePaths } from './runningAnalytics';
 import { haversineDistance } from '../core/geo';
+import { eastwardTrack } from '../test/track.fixture';
 import { DEFAULT_GRADE_RANGE, classifyGrade, computeGrades, gradeColorPaths, gradeGradientColor, gradeGradientStops, gradeStepColor, isValidGradeRange } from '../core/grade';
 
-/**
- * Trace synthétique : un point par seconde, vitesse et altitude imposées.
- * Les positions sont cohérentes avec la vitesse.
- */
-const buildTrack = (
-  speedsMs: number[],
-  altitudeAt: (distanceM: number) => number = () => 100,
-  intervalS = 1
-): TrackPoint[] => {
-  const start = Date.parse('2026-01-01T10:00:00Z');
-  const lat = 43.6;
-  const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
-  let meters = 0;
-  return speedsMs.map((speedMs, i) => {
-    if (i > 0) meters += speedMs * intervalS;
-    return {
-      lat,
-      lon: 3.8 + meters / metersPerDegLon,
-      time: new Date(start + i * intervalS * 1000).toISOString(),
-      timeMs: start + i * intervalS * 1000,
-      ele: altitudeAt(meters),
-      speedMs,
-      smoothedSpeedMs: speedMs,
-      bearing: 90,
-      speedSource: 'derived' as const,
-    };
-  });
-};
+/** Trace d'un point par seconde (ou toutes les `intervalS`), vitesse et altitude imposées ; plate à 100 m par défaut. */
+const buildTrack = (speedsMs: number[], altitudeAt: (distanceM: number) => number = () => 100, intervalS = 1): TrackPoint[] =>
+  eastwardTrack(speedsMs, intervalS, { altitudeAt });
 
 describe('classifyGrade', () => {
   it('range chaque pente dans sa zone', () => {

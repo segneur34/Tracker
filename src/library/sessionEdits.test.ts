@@ -1,35 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_NOTES } from './notes';
-import { RECORD_FORMAT, RECORD_VERSION, SUMMARY_CALC_VERSION, type SessionRecord, type StoredSessionNotes } from './record';
+import { type SessionRecord, type StoredSessionNotes } from './record';
 import { changedParts, editsPatch, rebaseDraft, savedEdits } from './sessionEdits';
+import { sessionRecord } from '../test/record.fixture';
 
 const START_MS = Date.UTC(2026, 8, 24, 10, 0, 0);
 
-const record = (patch: Partial<SessionRecord> = {}): SessionRecord => ({
-  format: RECORD_FORMAT,
-  version: RECORD_VERSION,
-  gpx: '2026-09-24_12-00-00_wingfoil.gpx',
-  sport: 'wingfoil',
-  activityId: null,
-  source: 'import',
-  addedAt: '2026-09-24T10:00:00.000Z',
-  title: null,
-  name: null,
-  summary: {
-    calcVersion: SUMMARY_CALC_VERSION,
-    startMs: START_MS,
-    endMs: START_MS + 3_600_000,
-    distanceM: 20_000,
-    movingTimeS: 3000,
-    elevationGainM: null,
-    maxSpeedMs: 11,
-    pointCount: 3601,
-    samplingS: 1,
-  },
-  notes: null,
-  analysis: null,
-  ...patch,
-});
+const record = (patch: Partial<SessionRecord> = {}): SessionRecord =>
+  sessionRecord({
+    gpx: '2026-09-24_12-00-00_wingfoil.gpx',
+    source: 'import',
+    addedAt: '2026-09-24T10:00:00.000Z',
+    title: null,
+    ...patch,
+  }, { startMs: START_MS, endMs: START_MS + 3_600_000, distanceM: 20_000, maxSpeedMs: 11 });
 
 const notes = (patch: Partial<StoredSessionNotes> = {}): StoredSessionNotes => ({ ...EMPTY_NOTES, savedAt: START_MS, ...patch });
 

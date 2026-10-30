@@ -3,6 +3,7 @@ import { buildCumulativeTrack } from '../core/sessionStats';
 import { SPORT_PROFILES } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
 import { detectIntervals, otsuThreshold } from './intervalDetection';
+import { mPerDegLon } from '../test/geo.fixture';
 
 const START = Date.parse('2026-10-08T18:00:00Z');
 
@@ -10,7 +11,7 @@ const START = Date.parse('2026-10-08T18:00:00Z');
 const PARAMS = SPORT_PROFILES['run-intervals'].intervals!.detection;
 
 const LAT = 43.6;
-const METERS_PER_DEG_LON = (Math.PI / 180) * 6371e3 * Math.cos((LAT * Math.PI) / 180);
+const METERS_PER_DEG_LON = mPerDegLon(LAT);
 
 const point = (meters: number, timeMs: number, speedMs: number): TrackPoint => ({
   lat: LAT, lon: 3.8 + meters / METERS_PER_DEG_LON, time: new Date(timeMs).toISOString(), timeMs,

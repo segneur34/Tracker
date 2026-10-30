@@ -5,9 +5,9 @@ import type { LocationFix } from '../platform/location';
 import { DEFAULT_ENERGY_PARAMS, runningCostJkgM } from '../running/energy';
 import { sameData } from '../test/sameData';
 import { LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, heartOnlyLiveStats, type LiveEnergySetup } from './liveStats';
+import { M_PER_DEG_LAT } from '../test/geo.fixture';
 
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
-const M_PER_DEG_LAT = (6371e3 * Math.PI) / 180;
 
 /**
  * Trace vers le nord, à `hz` positions par seconde, de `startS` à `endS`, à la

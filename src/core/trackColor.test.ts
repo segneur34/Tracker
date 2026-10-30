@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { TRACK_COLOR_SMOOTHING_S, coloredSegments, trackColorSegments, trackColorSpeedsMs } from './trackColor';
 import type { TrackPoint } from './types';
+import { mPerDegLon } from '../test/geo.fixture';
 
 /** Trace vers l'est, `hz` points par seconde, à la vitesse de chaque phase (`[durée en s, vitesse en m/s]`). */
 const buildTrack = (phases: [number, number][], hz = 1): TrackPoint[] => {
   const startMs = Date.parse('2026-01-01T10:00:00Z');
   const lat = 43.6;
-  const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
+  const metersPerDegLon = mPerDegLon(lat);
   const points: TrackPoint[] = [];
   let meters = 0;
   let t = 0;

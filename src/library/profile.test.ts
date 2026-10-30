@@ -1,38 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { activityShares, favoriteActivity, favoriteFamily } from './profile';
-import type { StatSession } from './stats';
+import { statSession } from '../test/record.fixture';
 
 // Dates construites à l'heure locale : les tests ne dépendent pas du fuseau de la machine.
 const at = (y: number, m: number, d: number, h = 12, min = 0) => new Date(y, m - 1, d, h, min).getTime();
 
-const session = (startMs: number, over: Partial<StatSession> = {}): StatSession => ({
-  file: `s-${startMs}.json`,
-  name: null,
-  startMs,
-  endMs: startMs + 3_600_000,
-  distanceM: 10_000,
-  movingTimeS: 3000,
-  inMotionS: null,
-  movingDistanceM: 9000,
-  elevationGainM: null,
-  maxSpeedMs: 5,
-  activityId: 'course',
-  family: 'course',
-  treatment: 'course',
-  positions: true,
-  maneuverCount: null,
-  maneuverResults: null,
-  foil: false,
-  waveCount: null,
-  longestWaveM: null,
-  longestFlightS: null,
-  flightS: null,
-  reps: 0,
-  heartRate: null,
-  cadenceSpm: null,
-  gear: null,
-  ...over,
-});
+const session = statSession;
 
 describe('activityShares', () => {
   it('répartit le temps par activité, de la plus longue à la plus courte', () => {

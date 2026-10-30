@@ -1,19 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { toRad } from '../core/angles';
-import { EARTH_RADIUS_M } from '../core/geo';
 import {
   LOOP_RETURN_DEFAULTS, avoidancePolygons, corridorPaths, isAcceptableReturn, polygonsParam, returnAttempts, sharedDistanceM,
   type AvoidancePolygon, type CorridorLeg,
 } from './loopReturn';
 import type { RouteLeg, RoutePoint } from './route';
+import { ORIGIN, at as geoAt, mPerDegLon } from '../test/geo.fixture';
 
-const LAT0 = 43.6;
-const LON0 = 3.8;
-const M_LAT = 1 / (toRad(1) * EARTH_RADIUS_M);
-const M_LON = M_LAT / Math.cos(toRad(LAT0));
+/** Un mètre vers l'est, en degrés de longitude. */
+const M_LON = 1 / mPerDegLon(ORIGIN.lat);
 
 /** Point à `northM` au nord et `eastM` à l'est du départ. */
-const at = (northM: number, eastM = 0): RoutePoint => ({ lat: LAT0 + northM * M_LAT, lon: LON0 + eastM * M_LON });
+const at = (northM: number, eastM = 0): RoutePoint => geoAt(eastM, northM);
 
 /** Aller sinueux vers le nord : un point tous les 20 m, ondulation de 30 m d'amplitude sur 400 m. */
 const wiggly = (fromM: number, toM: number, eastM = 0): RoutePoint[] => {

@@ -20,6 +20,7 @@ import {
   type TestSample,
   type TestSignal,
 } from './fitnessTest';
+import { mPerDegLon } from '../test/geo.fixture';
 
 const PROTOCOL = FITNESS_TESTS['fc-max'];
 const T0 = Date.UTC(2026, 9, 24, 8, 0, 0);
@@ -293,7 +294,7 @@ describe('fixSpeedMs (lot 67, sorti de useFitnessTest)', () => {
   const gap = FITNESS_TESTS['fc-max'].derivedSpeedMaxGapS;
   /** Positions à 3 m/s vers l'est, une toutes les `stepMs`, sans vitesse du GPS. */
   const track = (stepMs: number, n: number): LocationFix[] => Array.from({ length: n }, (_, i) => ({
-    lat: 43.7, lon: 3.85 + (3 * (i * stepMs) / 1000) / (111195 * Math.cos((43.7 * Math.PI) / 180)), timeMs: 1_000_000 + i * stepMs, accuracyM: 5,
+    lat: 43.7, lon: 3.85 + (3 * (i * stepMs) / 1000) / mPerDegLon(43.7), timeMs: 1_000_000 + i * stepMs, accuracyM: 5,
   }));
 
   it('donne la vitesse tirée de la précédente, la même à 1 Hz et à 5 Hz', () => {

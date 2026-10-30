@@ -1,27 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { FolderEntry } from '../platform/memoryFolder';
-import { RECORD_FORMAT, RECORD_VERSION, SUMMARY_CALC_VERSION, type SessionRecord } from './record';
+import type { SessionRecord } from './record';
 import { indexByRecordName, planReconcile, type LibraryCache } from './reconcile';
+import { sessionRecord } from '../test/record.fixture';
 
 const file = (name: string, size = 100, mtimeMs = 1000): FolderEntry => ({ name, kind: 'file', size, mtimeMs });
 
-const record = (gpx: string): SessionRecord => ({
-  format: RECORD_FORMAT,
-  version: RECORD_VERSION,
-  gpx,
-  sport: 'running',
-  activityId: null,
-  source: 'import',
-  addedAt: '2026-09-23T13:00:00.000Z',
-  title: null,
-  name: null,
-  summary: {
-    calcVersion: SUMMARY_CALC_VERSION, startMs: 1, endMs: 2, distanceM: 3, movingTimeS: 1,
-    elevationGainM: null, maxSpeedMs: 3, pointCount: 2, samplingS: 1,
-  },
-  notes: null,
-  analysis: null,
-});
+const record = (gpx: string): SessionRecord =>
+  sessionRecord({ gpx, sport: 'running', source: 'import', title: null }, { startMs: 1, endMs: 2, distanceM: 3, movingTimeS: 1, maxSpeedMs: 3, pointCount: 2 });
 
 describe('planReconcile', () => {
   it('reprend du cache une fiche inchangée et relit une fiche modifiée', () => {

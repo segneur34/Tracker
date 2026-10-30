@@ -3,10 +3,11 @@ import { computeKinematics } from './kinematics';
 import { activeRuns, buildBaseSessionStats, buildCumulativeTrack, computeActiveTimeMs, thresholdActivityMask } from './sessionStats';
 import { getActiveThresholds, SPORT_PROFILES, type SportProfile } from './sportProfiles';
 import type { RawTrackPoint, TrackPoint } from './types';
+import { mPerDegLon } from '../test/geo.fixture';
 
 const START_MS = Date.parse('2026-10-27T10:00:00Z');
 const LAT = 43.6;
-const M_PER_DEG_LON = (Math.PI / 180) * 6371e3 * Math.cos((LAT * Math.PI) / 180);
+const M_PER_DEG_LON = mPerDegLon(LAT);
 /** 5 km/h, en m/s. */
 const WALK_MS = 5 / 3.6;
 

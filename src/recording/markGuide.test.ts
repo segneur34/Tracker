@@ -3,26 +3,14 @@ import {
   MARK_GUIDE_DEFAULTS, START_MARK_GUIDE, beepIntervalMs, beepStartM, courseMarks, isCourseFinished, isLoopCourse, markGuideView, markName, remainingCourseM,
   resumedGuideState, sanitizeBeepCurve, sanitizeMarkGuide, skipMark, stepMarkGuide, validationRadiusM, type LatLon, type MarkGuideState, type MarkGuideStep,
 } from './markGuide';
+import { at as geoAt, fixesAlong } from '../test/geo.fixture';
 
-/** Mètres par degré de latitude, et de longitude à la latitude de `O`. */
-const M_PER_DEG_LAT = 111195;
 const O = { lat: 43.4, lon: 3.7 };
-const M_PER_DEG_LON = M_PER_DEG_LAT * Math.cos((O.lat * Math.PI) / 180);
 /** Position à `east` m à l'est et `north` m au nord de `O`. */
-const at = (east: number, north: number): LatLon => ({ lat: O.lat + north / M_PER_DEG_LAT, lon: O.lon + east / M_PER_DEG_LON });
+const at = (east: number, north: number): LatLon => geoAt(east, north, O);
 
 /** Positions le long de sommets donnés, à `speedMs` m/s, une toutes les `stepS` secondes. */
-const sail = (pts: [number, number][], speedMs: number, stepS: number): LatLon[] => {
-  const out = [at(pts[0][0], pts[0][1])];
-  const stepM = speedMs * stepS;
-  for (let k = 1; k < pts.length; k++) {
-    const [e0, n0] = pts[k - 1];
-    const [e1, n1] = pts[k];
-    const count = Math.max(1, Math.round(Math.hypot(e1 - e0, n1 - n0) / stepM));
-    for (let j = 1; j <= count; j++) out.push(at(e0 + ((e1 - e0) * j) / count, n0 + ((n1 - n0) * j) / count));
-  }
-  return out;
-};
+const sail = (pts: [number, number][], speedMs: number, stepS: number): LatLon[] => fixesAlong(pts, speedMs * stepS, O);
 
 /** Rejoue des positions ; rend l'état final et chaque événement, avec la position où il est arrivé. */
 const replay = (fixes: LatLon[], marks: LatLon[], state: MarkGuideState = START_MARK_GUIDE) => {

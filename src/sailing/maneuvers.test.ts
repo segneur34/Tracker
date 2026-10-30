@@ -23,6 +23,7 @@ import { sessionManeuverThresholds } from './sailingConfig';
 import { calculateWindStats, summarizeManeuvers, windChartRows } from './sailingAnalytics';
 import { buildWindTimeline, describeWindCandidate, estimateWindFromPolar, estimateWindPolar, observeTurns, polarSampling } from './wind';
 import { angleDiff, circularMean } from '../core/angles';
+import { M_PER_DEG_LAT, at as geoAt, mPerDegLon } from '../test/geo.fixture';
 
 const TRACK_START_MS = Date.parse('2026-01-01T10:00:00Z');
 
@@ -118,7 +119,6 @@ const buildLegSession = (
   const transitionS = options.transitionS ?? 6;
   const stepS = options.stepS ?? 1;
   const polar = options.polar ?? wingPolar;
-  const M_PER_DEG_LAT = 111320;
   let lat = 43.6;
   let lon = 3.8;
 
@@ -174,7 +174,7 @@ const buildLegSession = (
       const meters = speed * 0.514444 * stepS;
       const rad = (bearing * Math.PI) / 180;
       lat += (meters * Math.cos(rad)) / M_PER_DEG_LAT;
-      lon += (meters * Math.sin(rad)) / (M_PER_DEG_LAT * Math.cos((lat * Math.PI) / 180));
+      lon += (meters * Math.sin(rad)) / mPerDegLon(lat);
     }
   }
   return points;
@@ -242,7 +242,6 @@ const buildSparseTurnTrack = (turnGapS: number, resumeAfterGap = false): PointDa
  * `speedKn` pilote la vitesse d'entrée, `stepM` la distance du virage.
  */
 const buildSlowTurnTrack = (speedKn: number, stepM: number): PointData[] => {
-  const M_PER_DEG_LAT = 111320;
   const points: PointData[] = [];
   let lat = 43.5553;
   let t = 0;
@@ -378,8 +377,7 @@ const buildNoisySession = (
     east += speedMs * Math.sin(rad) * dt;
     if (s >= nextSampleS - 1e-9) {
       raw.push({
-        lat: 43.5 + (north + errorNorth) / 111320,
-        lon: 3.8 + (east + errorEast) / (111320 * Math.cos((43.5 * Math.PI) / 180)),
+        ...geoAt(east + errorEast, north + errorNorth, { lat: 43.5, lon: 3.8 }),
         time: new Date(TRACK_START_MS + Math.round(s * 1000)).toISOString(),
         speedMs: Math.max(0, speedMs + noise.dopplerMs * gauss()),
       });
@@ -1515,8 +1513,10 @@ describe('analyzeManeuvers, détection robuste au bruit de cap', () => {
 // ---------------------------------------------------------------------------
 
 describe('prepareManeuverDetection et classifyManeuvers', () => {
-  /** Sessions de toutes natures : bruitées à 1 et 5 Hz, scriptées à 1 et 5 Hz, par bords, clairsemée. */
+  /** Sessions de toutes natures : bruitées à 1 et 5 Hz, scriptées à 1 et 5 Hz, par bords, clairsemée. Construites une fois pour les tests du bloc. */
+  let built: [string, PointData[], ManeuverOptions][] | undefined;
   const sessions = (): [string, PointData[], ManeuverOptions][] => {
+    if (built) return built;
     const all: [string, PointData[], ManeuverOptions][] = [];
     for (const tack of [false, true]) {
       for (const hz of [1, 5]) {
@@ -1531,6 +1531,7 @@ describe('prepareManeuverDetection et classifyManeuvers', () => {
     all.push(['par bords', buildLegSession(upwindDownwindLegs(6), () => 0), { successThresholdKn: 8 }]);
     all.push(['bords courts', buildLegSession(upwindDownwindLegs(10, 18), () => 0), { successThresholdKn: 8 }]);
     all.push(['clairsemée', buildSparseTurnTrack(22), { successThresholdKn: 8 }]);
+    built = all;
     return all;
   };
 

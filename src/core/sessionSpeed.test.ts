@@ -5,10 +5,11 @@ import type { RawTrackPoint } from './types';
 import { computeKinematics, DEVICE_SPEED_FACTOR, detectTrackDeviceSpeedUnit, pointTimeMs, spreadEqualTimes } from './kinematics';
 import { sameData } from '../test/sameData';
 import { haversineDistance } from './geo';
+import { mPerDegLon } from '../test/geo.fixture';
 
 const START_MS = Date.parse('2026-01-01T10:00:00Z');
 const LAT = 43.6;
-const M_PER_DEG_LON = (Math.PI / 180) * 6371e3 * Math.cos((LAT * Math.PI) / 180);
+const M_PER_DEG_LON = mPerDegLon(LAT);
 
 /**
  * Trace vers l'est dont chaque pas avance de `speedsMs[i] × stepSeconds`

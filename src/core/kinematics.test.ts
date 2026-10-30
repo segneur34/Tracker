@@ -4,6 +4,7 @@ import { sameData } from '../test/sameData';
 import { segmentDistanceM } from './sessionStats';
 import type { RawTrackPoint } from './types';
 import { haversineDistance, initialBearing } from './geo';
+import { M_PER_DEG_LAT, mPerDegLon } from '../test/geo.fixture';
 
 /** Construit une trace rectiligne vers l'est, à vitesse et cadence constantes. */
 const buildEastwardTrack = (
@@ -14,7 +15,7 @@ const buildEastwardTrack = (
 ) => {
   const startTime = Date.parse('2026-01-01T10:00:00Z');
   const lat = 43.6;
-  const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
+  const metersPerDegLon = mPerDegLon(lat);
 
   const points: RawTrackPoint[] = [];
   for (let i = 0; i < count; i++) {
@@ -134,7 +135,7 @@ describe('computeKinematics', () => {
     // Trace régulière à 5 m/s, sauf un point téléporté 500 m plus loin.
     const points = buildEastwardTrack(20, 5, 1);
     const lat = 43.6;
-    const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
+    const metersPerDegLon = mPerDegLon(lat);
     points[10] = { ...points[10], lon: points[10].lon + 500 / metersPerDegLon };
 
     const track = computeKinematics(points);
@@ -184,7 +185,7 @@ describe('computeKinematics', () => {
 
 describe('resumeKinematics', () => {
   const lat = 43.6;
-  const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
+  const metersPerDegLon = mPerDegLon(lat);
   const startTime = Date.parse('2026-01-01T10:00:00Z');
 
   /**
@@ -255,8 +256,8 @@ describe('resumeKinematics', () => {
 
 describe('detourSpikes', () => {
   const lat = 43.6;
-  const metersPerDegLon = (Math.PI / 180) * 6371e3 * Math.cos((lat * Math.PI) / 180);
-  const metersPerDegLat = (Math.PI / 180) * 6371e3;
+  const metersPerDegLon = mPerDegLon(lat);
+  const metersPerDegLat = M_PER_DEG_LAT;
   const startTime = Date.parse('2026-01-01T10:00:00Z');
 
   /** Trace plane à partir de positions en mètres (est, nord) et d'instants en secondes. */
@@ -341,8 +342,7 @@ describe('detourSpikes', () => {
 
 /** Point brut à `eastM` mètres à l'est et `northM` au nord du départ, `s` secondes après lui. */
 const T0_MS = Date.parse('2026-01-01T10:00:00Z');
-const M_PER_DEG_LAT = (Math.PI / 180) * 6371e3;
-const M_PER_DEG_LON_43 = M_PER_DEG_LAT * Math.cos((43.6 * Math.PI) / 180);
+const M_PER_DEG_LON_43 = mPerDegLon(43.6);
 const pointAt = (eastM: number, s: number, northM = 0): RawTrackPoint => ({
   lat: 43.6 + northM / M_PER_DEG_LAT,
   lon: 3.8 + eastM / M_PER_DEG_LON_43,
