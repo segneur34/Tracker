@@ -7,7 +7,7 @@ import type { LocationFix } from '../platform/location';
 import { createFollowCursor, type FollowCursor, type FollowProgress, type FollowedTrace } from '../recording/followedTrace';
 import {
   EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS, computeLiveStats, createLiveStatsMemory, heartOnlyLiveStats, type LiveEnergySetup, type LiveStats,
-  type LiveStatsMemory,
+  type LiveStatsMemory, type LiveStatsOptions,
 } from '../recording/liveStats';
 import { runningEnergyParams, walkingEnergyParams } from '../running/energy';
 import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
@@ -71,6 +71,17 @@ const liveEnergySetup = (activity: Activity): LiveEnergySetup | undefined => {
   }
   return undefined;
 };
+
+/**
+ * Options du calcul du direct pour une activité : celles par défaut, le
+ * « dernier kilomètre » (ou mille) dans son unité de distance, et le modèle
+ * d'énergie de l'analyse. Les libellés du direct les reprennent.
+ */
+export const liveStatsOptionsFor = (activity: Activity): LiveStatsOptions => ({
+  ...LIVE_STATS_DEFAULTS,
+  lastDistanceM: METERS_PER_DISTANCE_UNIT[effectiveDistanceUnit(activity)],
+  energy: liveEnergySetup(activity),
+});
 
 /** Trace suivie dont l'avancement se compte le long d'elle : pas un parcours à balises (voile, surf). */
 const tracedAlong = (trace: FollowedTrace | null, activity: Activity): FollowedTrace | null =>
@@ -137,10 +148,7 @@ const compute = () => {
     return;
   }
   const segments = getLiveSegments();
-  const lastDistanceM = METERS_PER_DISTANCE_UNIT[effectiveDistanceUnit(activity)];
-  const computed = computeLiveStats(segments, getSportProfile(activity.base), {
-    ...LIVE_STATS_DEFAULTS, lastDistanceM, energy: liveEnergySetup(activity),
-  }, memory);
+  const computed = computeLiveStats(segments, getSportProfile(activity.base), liveStatsOptionsFor(activity), memory);
   const along = tracedAlong(trace, activity);
   if (along && follow?.trace !== along) follow = { trace: along, cursor: createFollowCursor(along) };
   live = { segments, stats: computed, updatedMs: lastRunMs, progress: along ? follow!.cursor.progress(segments) : null };

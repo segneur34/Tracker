@@ -1,6 +1,8 @@
+import { haversineDistance } from '../core/geo';
 import { heartRateZones, type HeartRateAthlete, type HeartRateZoneModel, type HeartRateZones, type ZoneMethod } from '../core/heartRate';
 import { kmhToMs } from '../core/units';
 import type { ClockTone } from '../platform/beeper';
+import type { LocationFix } from '../platform/location';
 import { finiteOr, isFiniteNumber } from '../core/basics';
 
 /**
@@ -76,6 +78,8 @@ export interface FitnessTestProtocol {
   repeatGapS: number;
   /** Au-delà de ce trou entre deux positions, la mesure repart de zéro (aucun signal tant qu'elle n'est pas refaite). */
   fixGapS: number;
+  /** Écart maximal entre deux positions pour tirer la vitesse de leur distance, faute de celle du GPS. */
+  derivedSpeedMaxGapS: number;
   /** Lissage de la FC des résultats (pic). */
   resultHrSmoothS: number;
   /** FC de récupération lue tant de secondes après la fin de la rampe. */
@@ -107,9 +111,23 @@ export const FITNESS_TESTS: Record<FitnessTestId, FitnessTestProtocol> = {
     repeatCount: 3,
     repeatGapS: 30,
     fixGapS: 5,
+    derivedSpeedMaxGapS: 5,
     resultHrSmoothS: 5,
     recoveryReadS: 60,
   },
+};
+
+/**
+ * Vitesse d'une position pour le guidage : celle du GPS, sinon celle tirée de
+ * la position précédente, si elle date de `maxGapS` secondes au plus (et
+ * qu'elle est plus ancienne) ; `undefined` sinon.
+ */
+export const fixSpeedMs = (fix: LocationFix, previous: LocationFix | null, maxGapS: number): number | undefined => {
+  if (fix.speedMs !== undefined) return fix.speedMs;
+  if (!previous) return undefined;
+  const dtMs = fix.timeMs - previous.timeMs;
+  if (dtMs <= 0 || dtMs > maxGapS * 1000) return undefined;
+  return haversineDistance(previous.lat, previous.lon, fix.lat, fix.lon) / (dtMs / 1000);
 };
 
 /** Réglages de l'utilisateur, avant « Lancer ». */

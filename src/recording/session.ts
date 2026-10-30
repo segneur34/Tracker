@@ -1,7 +1,7 @@
 import { pad2 } from '../core/units';
 import { formatLocalDate } from '../core/calendar';
 import { pointTimeMs } from '../core/kinematics';
-import { SPORT_PROFILES } from '../core/sportProfiles';
+import { SPORT_PROFILES, hasPositions } from '../core/sportProfiles';
 import type { RawTrackPoint, SportType } from '../core/types';
 import type { HeartRateSample } from '../platform/heartRate';
 import { readableBpm } from './heartRate';
@@ -251,3 +251,7 @@ export const sessionTitle = (startMs: number, activityName: string): string => {
   const d = new Date(startMs);
   return `${activityName}, ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 };
+
+/** Message d'un arrêt sans rien à garder : moins de deux positions, ou sans position (muscu) moins de deux mesures de la ceinture. */
+export const nothingToKeep = (sport: SportType | null): string =>
+  sport === null || hasPositions(sport) ? 'Moins de deux positions reçues : rien à enregistrer.' : 'Moins de deux mesures de la ceinture : rien à enregistrer.';

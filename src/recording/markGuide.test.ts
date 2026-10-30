@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MARK_GUIDE_DEFAULTS, START_MARK_GUIDE, beepIntervalMs, beepStartM, courseMarks, isCourseFinished, isLoopCourse, markName, remainingCourseM,
+  MARK_GUIDE_DEFAULTS, START_MARK_GUIDE, beepIntervalMs, beepStartM, courseMarks, isCourseFinished, isLoopCourse, markGuideView, markName, remainingCourseM,
   resumedGuideState, sanitizeBeepCurve, sanitizeMarkGuide, skipMark, stepMarkGuide, validationRadiusM, type LatLon, type MarkGuideState, type MarkGuideStep,
 } from './markGuide';
 
@@ -214,5 +214,40 @@ describe('balises à dessiner', () => {
 
   it('nomme départ, balises et arrivée', () => {
     expect([0, 1, 2, 3].map((i) => markName(i, 4))).toEqual(['Départ', 'Balise 2', 'Balise 3', 'Arrivée']);
+  });
+});
+
+describe('markGuideView (lot 67, sortie de useMarkGuide)', () => {
+  /** Copie gelée de l'ancienne vue du service (`publish`), `isCourseFinished` appelé deux fois. */
+  const oldView = (session: { marks: LatLon[]; state: MarkGuideState; distanceM: number | null; bearingDeg: number | null; muted: boolean; settings: typeof MARK_GUIDE_DEFAULTS }) => ({
+    active: true,
+    marks: session.marks,
+    target: session.state.target,
+    outcomes: session.state.outcomes,
+    distanceM: session.distanceM,
+    bearingDeg: session.bearingDeg,
+    remainingM: isCourseFinished(session.state, session.marks)
+      ? 0
+      : session.distanceM !== null ? remainingCourseM(session.state, session.marks, session.distanceM) : null,
+    finished: isCourseFinished(session.state, session.marks),
+    muted: session.muted,
+    validationRadiusM: validationRadiusM(session.settings),
+  });
+  const marks = [at(0, 200), at(200, 200), at(200, 0)];
+  const cases = {
+    'en cours': { marks, state: { ...START_MARK_GUIDE, target: 1, outcomes: ['validated' as const] }, distanceM: 120, bearingDeg: 90, muted: false, settings: MARK_GUIDE_DEFAULTS },
+    'sans distance': { marks, state: START_MARK_GUIDE, distanceM: null, bearingDeg: null, muted: true, settings: MARK_GUIDE_DEFAULTS },
+    fini: { marks, state: { ...START_MARK_GUIDE, target: 3, outcomes: ['validated' as const, 'skipped' as const, 'validated' as const] }, distanceM: null, bearingDeg: null, muted: false, settings: MARK_GUIDE_DEFAULTS },
+  };
+
+  it.each(Object.entries(cases))('%s : la même vue qu\'avant', (_, session) => {
+    expect(markGuideView(session)).toEqual(oldView(session));
+    expect(JSON.stringify(markGuideView(session))).toBe(JSON.stringify(oldView(session)));
+  });
+
+  it('dit fini, 0 restant ; sans distance, rien de restant ; en cours, la distance par les balises', () => {
+    expect(markGuideView(cases.fini)).toMatchObject({ finished: true, remainingM: 0 });
+    expect(markGuideView(cases['sans distance'])).toMatchObject({ finished: false, remainingM: null, muted: true });
+    expect(markGuideView(cases['en cours']).remainingM).toBeCloseTo(320, 0);
   });
 });

@@ -12,6 +12,7 @@ import {
   isRecordingSession,
   isSportType,
   keepHeartRateSample,
+  nothingToKeep,
   withStopPoint,
   recordingDurationMs,
   roundFix,
@@ -259,5 +260,13 @@ describe('états de l’enregistreur', () => {
       expect(isManualPause(c)).toBe(c.status === 'paused' && c.pausedReason === 'manual');
       expect(isAutoPause(c)).toBe(c.status === 'paused' && c.pausedReason === 'auto');
     }
+  });
+});
+
+describe('nothingToKeep (lot 67, sorti de useRecorder)', () => {
+  it('parle des positions, ou sans position (muscu) des mesures de la ceinture', () => {
+    expect(nothingToKeep('running')).toBe('Moins de deux positions reçues : rien à enregistrer.');
+    expect(nothingToKeep(null)).toBe('Moins de deux positions reçues : rien à enregistrer.');
+    expect(nothingToKeep('muscu')).toBe('Moins de deux mesures de la ceinture : rien à enregistrer.');
   });
 });

@@ -3,11 +3,11 @@ import { clearRecordingNotification, updateRecordingNotification } from '../plat
 import { intervalStepAt, timerStateAt } from '../recording/intervalTimer';
 import { travelHeading } from '../recording/heading';
 import type { LiveFieldContext } from '../recording/liveFields';
-import { liveNotification, liveNotificationKey, trainingStep } from '../recording/liveNotification';
+import { liveNotification, liveNotificationKey, notificationStateKey, trainingStep } from '../recording/liveNotification';
 import { displayedDurationMs } from '../recording/session';
 import { getFitnessTestView } from './useFitnessTest';
 import { getIntervalRun, subscribeToIntervalCommands } from './useIntervalTimer';
-import { getLiveRecording, subscribeToLiveRecording } from './useLiveRecording';
+import { getLiveRecording, liveStatsOptionsFor, subscribeToLiveRecording } from './useLiveRecording';
 import { getMarkGuideView } from './useMarkGuide';
 import { getLiveFixes, getRecorderState, subscribeToFixes, subscribeToRecorder } from './useRecorder';
 import { readHeartRateZoneBounds } from './useRunnerProfile';
@@ -51,16 +51,6 @@ let rewriteOnFix = false;
 /** État de l'enregistreur au changement précédent. */
 let previous = { status: getRecorderState().status, pausedReason: getRecorderState().pausedReason, pointCount: getRecorderState().stats.pointCount };
 
-/** État qui commande un envoi immédiat ; les premiers chiffres du direct aussi, pour ne pas attendre avec des « - ». */
-const stateKeyNow = (nowMs: number): string => {
-  const { status, pausedReason, activity } = getRecorderState();
-  const run = getIntervalRun();
-  const timer = run ? timerStateAt(run, nowMs) : null;
-  const phase = timer?.phase ? `${timer.status}:${timer.phase.kind}:${timer.phase.rep}:${timer.phase.startS}` : '';
-  const computed = getLiveRecording().updatedMs !== null;
-  return `${status}|${pausedReason ?? ''}|${activity?.id ?? ''}|${phase}|${computed}`;
-};
-
 const clear = () => {
   sentKey = null;
   sentStateKey = null;
@@ -77,18 +67,23 @@ const update = (force: boolean) => {
     return;
   }
   const nowMs = Date.now();
-  const stateKey = stateKeyNow(nowMs);
+  const run = getIntervalRun();
+  const timer = run ? timerStateAt(run, nowMs) : null;
+  const live = getLiveRecording();
+  // État qui commande un envoi immédiat ; les premiers chiffres du direct aussi.
+  const stateKey = notificationStateKey({
+    status, pausedReason: recorder.pausedReason, activityId: activity.id, timer, computed: live.updatedMs !== null,
+  });
   if (!force && stateKey === sentStateKey && nowMs - sentAtMs < MIN_UPDATE_MS) return;
 
   const fields = effectiveNotificationFields(activity);
-  const live = getLiveRecording();
   const mark = getMarkGuideView();
-  const run = getIntervalRun();
-  const timer = run ? timerStateAt(run, nowMs) : null;
   const counterActive = timer !== null && (timer.status === 'running' || timer.status === 'paused');
   const context: LiveFieldContext = {
     speedUnit: effectiveSpeedUnit(activity),
     distanceUnit: effectiveDistanceUnit(activity),
+    // Libellés sur les options du calcul du direct de l'activité.
+    options: liveStatsOptionsFor(activity),
     stats: live.stats,
     durationMs: displayedDurationMs(recorder.stats, recorder.pauseClock, nowMs),
     nowMs,

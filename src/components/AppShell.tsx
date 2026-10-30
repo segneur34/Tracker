@@ -6,7 +6,7 @@ import type { SportFamily } from '../core/sportProfiles';
 import { formatClock } from '../core/units';
 import { useIntervalTimer } from '../hooks/useIntervalTimer';
 import { useLongPress } from '../hooks/useLongPress';
-import { togglePauseRecording, useRecorderStatus, useRecordingClock } from '../hooks/useRecorder';
+import { togglePauseRecording, useRecorderStatus, useRecordingClock, type RecorderStatus } from '../hooks/useRecorder';
 import { effectiveLongPressMs, useVisibility } from '../hooks/useSportSettings';
 import { formatIntervalClock, phaseName } from '../recording/intervalTimer';
 import { TIMER_RECORD_PATH } from '../pages/workoutLists';
@@ -33,7 +33,8 @@ import HoldDial from './ui/HoldDial';
  * taille d'écran en JavaScript.
  *
  * Pendant un enregistrement, un bandeau rouge rappelle sur chaque page qu'il
- * tourne et ramène à la page d'enregistrement ; pendant une séance du
+ * tourne et ramène à la page d'enregistrement ; sa durée (`RecordingClock`)
+ * et le bouton rond (`RecordButton`) suivent seuls l'horloge, pas le cadre ; pendant une séance du
  * compteur du fractionné, un second bandeau dit la phase et son temps restant. Un appui long sur le bouton du
  * milieu (2 s par défaut, réglable) met en pause ou relance, depuis n'importe
  * quelle page ; un appui court y ramène, comme au repos.
@@ -80,6 +81,60 @@ function IntervalBanner() {
   );
 }
 
+/**
+ * Durée de l'enregistrement, seule abonnée à l'horloge : chaque position la
+ * redessine, pas le cadre (bouton du haut, bandeau).
+ */
+function RecordingClock() {
+  const { durationMs } = useRecordingClock(false);
+  return <span className="num">{formatClock(durationMs)}</span>;
+}
+
+/**
+ * Bouton rond du milieu de la barre du bas : sa description dit la durée, il
+ * suit donc l'horloge, à part du cadre. L'appui long reste tenu par le cadre,
+ * qui dessine aussi le grand cadran (`HoldDial`).
+ */
+function RecordButton({ status, pressingMs, handlers }: {
+  status: RecorderStatus;
+  pressingMs: number | null;
+  handlers: ReturnType<typeof useLongPress>['handlers'];
+}) {
+  const { durationMs } = useRecordingClock(false);
+  const navigate = useNavigate();
+  const busy = status !== 'idle';
+  const paused = status === 'paused';
+  const clock = formatClock(durationMs);
+  const canToggle = status === 'recording' || paused;
+  return canToggle ? (
+    // Un bouton, pas un lien : la WebView d'Android affiche l'adresse d'un lien tenu longtemps.
+    <button
+      type="button"
+      aria-label={`Enregistrement ${paused ? 'en pause' : 'en cours'}, ${clock} ; appui long : ${paused ? 'reprendre' : 'pause'}`}
+      className={`shell-record shell-record--busy${paused ? ' shell-record--paused' : ''}`}
+      {...handlers}
+      onClick={(e) => {
+        handlers.onClick(e);
+        if (!e.defaultPrevented) navigate(RECORD_PATH);
+      }}>
+      {paused ? <IconPlay size={24} strokeWidth={2.5} /> : <IconPause size={26} strokeWidth={3} />}
+      {pressingMs !== null && (
+        <svg className="shell-record__ring" viewBox="0 0 64 64" aria-hidden="true"
+          style={{ '--press-ms': `${pressingMs}ms` } as React.CSSProperties}>
+          <circle cx="32" cy="32" r="30" pathLength="100" />
+        </svg>
+      )}
+    </button>
+  ) : (
+    <NavLink
+      to={RECORD_PATH}
+      aria-label={busy ? `Enregistrement en cours, ${clock}` : 'Enregistrer'}
+      className={`shell-record${busy ? ' shell-record--busy' : ''}`}>
+      <span className={`ui-record-dot${busy ? ' ui-record-dot--stop' : ''}`} />
+    </NavLink>
+  );
+}
+
 const tabLink = (d: Destination) => (
   <NavLink
     key={d.to}
@@ -105,7 +160,6 @@ const topLink = (d: Destination) => (
 
 function AppShell() {
   const status = useRecorderStatus();
-  const { durationMs } = useRecordingClock(false);
   const location = useLocation();
   const { pathname } = location;
   const navigate = useNavigate();
@@ -120,7 +174,6 @@ function AppShell() {
   }), [navigate]);
   const busy = status !== 'idle';
   const paused = status === 'paused';
-  const clock = formatClock(durationMs);
   const canToggle = status === 'recording' || paused;
   const onLongPress = useCallback(() => void togglePauseRecording(), []);
   const goHome = useCallback(() => navigate('/'), [navigate]);
@@ -164,7 +217,7 @@ function AppShell() {
           </NavLink>
           <NavLink to={RECORD_PATH} className={`shell-toprecord${busy ? ' shell-toprecord--busy' : ''}`}>
             <span className={`ui-record-dot${busy ? ' ui-record-dot--stop' : ''}`} />
-            {busy ? <span className="num">{clock}</span> : 'Enregistrer'}
+            {busy ? <RecordingClock /> : 'Enregistrer'}
           </NavLink>
         </div>
       </header>
@@ -174,7 +227,7 @@ function AppShell() {
           <Link to={RECORD_PATH} className="shell-banner">
             <span className="shell-banner__dot" />
             <span className="shell-banner__text">{paused ? 'Enregistrement en pause' : 'Enregistrement en cours'}</span>
-            <span className="num">{clock}</span>
+            <RecordingClock />
           </Link>
         )}
         {pathname !== RECORD_PATH && <IntervalBanner />}
@@ -196,33 +249,7 @@ function AppShell() {
         {tabLink(HOME)}
         {tabLink(PROFIL)}
         <div className="shell-tabbar__record">
-          {canToggle ? (
-            // Un bouton, pas un lien : la WebView d'Android affiche l'adresse d'un lien tenu longtemps.
-            <button
-              type="button"
-              aria-label={`Enregistrement ${paused ? 'en pause' : 'en cours'}, ${clock} ; appui long : ${paused ? 'reprendre' : 'pause'}`}
-              className={`shell-record shell-record--busy${paused ? ' shell-record--paused' : ''}`}
-              {...handlers}
-              onClick={(e) => {
-                handlers.onClick(e);
-                if (!e.defaultPrevented) navigate(RECORD_PATH);
-              }}>
-              {paused ? <IconPlay size={24} strokeWidth={2.5} /> : <IconPause size={26} strokeWidth={3} />}
-              {pressingMs !== null && (
-                <svg className="shell-record__ring" viewBox="0 0 64 64" aria-hidden="true"
-                  style={{ '--press-ms': `${pressingMs}ms` } as React.CSSProperties}>
-                  <circle cx="32" cy="32" r="30" pathLength="100" />
-                </svg>
-              )}
-            </button>
-          ) : (
-            <NavLink
-              to={RECORD_PATH}
-              aria-label={busy ? `Enregistrement en cours, ${clock}` : 'Enregistrer'}
-              className={`shell-record${busy ? ' shell-record--busy' : ''}`}>
-              <span className={`ui-record-dot${busy ? ' ui-record-dot--stop' : ''}`} />
-            </NavLink>
-          )}
+          <RecordButton status={status} pressingMs={pressingMs} handlers={handlers} />
         </div>
         {tabLink(STATISTIQUES)}
         {tabLink(SETTINGS)}

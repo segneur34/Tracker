@@ -1,4 +1,5 @@
 import { finiteOr, parseJson } from '../core/basics';
+import { BASE_COLOR, baseActivity, findActivity, type Activity } from '../core/activities';
 import { readSessionMark, sortMarks, type SessionMark } from '../core/sessionMarks';
 import type { SportType } from '../core/types';
 import type { LocationFix } from '../platform/location';
@@ -261,4 +262,15 @@ export const parseJournal = (text: string): ParsedJournal => {
 
   const intervalRuns = [...runs.values()].sort((a, b) => a.startedAtMs - b.startedAtMs);
   return { header, fixes, breaks, heartFixes, heartBreaks, activityChange, intervalRuns, marks: sortMarks(marks), test };
+};
+
+/**
+ * Activité d'un journal relu : celle de la liste si elle existe encore, sinon
+ * reconstruite sous le nom gardé dans l'en-tête (la fiche la rangera sous son
+ * calcul), sinon l'activité de base du calcul.
+ */
+export const journalActivity = (sport: SportType, saved: { id: string; name: string } | undefined, activities: Activity[]): Activity => {
+  if (!saved) return baseActivity(sport);
+  const found = findActivity(activities, saved.id);
+  return found && found.base === sport ? found : { id: saved.id, name: saved.name, base: sport, color: BASE_COLOR[sport] };
 };

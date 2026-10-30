@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_LIVE_FIELDS, DEFAULT_NOTIFICATION_FIELDS, MAX_LIVE_FIELDS, MAX_NOTIFICATION_FIELDS, defaultLiveFieldsOf, defaultNotificationFieldsOf,
-  liveFieldLabel, liveFieldShortLabel, liveFieldValue, liveFieldsOfTreatment, sanitizeLiveFields, type LiveFieldContext,
+  liveFieldLabel, liveFieldShortLabel, liveFieldValue, liveFieldsOfTreatment, recentWindowLabel, sanitizeLiveFields, type LiveFieldContext,
+  type LiveFieldKey, type LiveFieldUnits,
 } from './liveFields';
 import { SPORT_PROFILES, sportFamily, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
-import { EMPTY_LIVE_STATS } from './liveStats';
+import { EMPTY_LIVE_STATS, LIVE_STATS_DEFAULTS } from './liveStats';
+import { isInverseUnit, type DistanceUnit, type SpeedUnit } from '../core/units';
+import type { Treatment } from '../core/sportProfiles';
 
 const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
   stats: EMPTY_LIVE_STATS,
@@ -176,5 +179,113 @@ describe('étape (26/10)', () => {
     expect(liveFieldValue('step', context({ step: { rep: 4, of: null } }))).toBe('4');
     expect(liveFieldValue('step', context({ step: null }))).toBe('—');
     expect(liveFieldValue('step', context())).toBe('—');
+  });
+});
+
+describe('libellés sur les options du direct (lot 67)', () => {
+  // Copie gelée des libellés d'avant le lot 67, tirés de LIVE_STATS_DEFAULTS.
+  const oldRecentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
+  const [TOP_SHORT_S, TOP_LONG_S] = LIVE_STATS_DEFAULTS.topDurationsS;
+
+  const oldLiveFieldLabel = (key: LiveFieldKey, { speedUnit, distanceUnit }: LiveFieldUnits): string => {
+    const pace = isInverseUnit(speedUnit);
+    switch (key) {
+      case 'speed': return pace ? 'Allure' : 'Vitesse';
+      case 'average': return pace ? 'Allure moyenne' : 'Moyenne';
+      case 'max': return `${pace ? 'Meilleure' : 'Max'} (${LIVE_STATS_DEFAULTS.maxDurationS} s)`;
+      case 'recentDistanceSpeed': return `${LIVE_STATS_DEFAULTS.recentDistanceM} derniers m`;
+      case 'lastDistance': return distanceUnit === 'nm' ? 'Dernier mille' : 'Dernier km';
+      case 'distance': return 'Distance';
+      case 'duration': return 'Durée';
+      case 'clock': return 'Heure';
+      case 'remaining': return 'Restant';
+      case 'remainingTime': return 'Temps restant';
+      case 'recentTopShort': return `Top ${TOP_SHORT_S} s (${oldRecentWindowLabel})`;
+      case 'recentTopLong': return `Top ${TOP_LONG_S} s (${oldRecentWindowLabel})`;
+      case 'heading': return 'Cap';
+      case 'legAverage': return 'Moyenne du bord';
+      case 'markDistance': return 'Balise';
+      case 'markBearing': return 'Cap balise';
+      case 'grade': return 'Pente';
+      case 'gain': return 'D+';
+      case 'recentDistanceGain': return `D+ ${LIVE_STATS_DEFAULTS.recentDistanceM} derniers m`;
+      case 'loss': return 'D−';
+      case 'climbRate': return 'Vitesse ascensionnelle';
+      case 'power': return `Puissance (${LIVE_STATS_DEFAULTS.powerWindowS} s)`;
+      case 'effort': return 'Énergie';
+      case 'heartRate': return 'Fréquence cardiaque';
+      case 'averageHeartRate': return 'FC moyenne';
+      case 'heartRateZone': return 'Zone cardiaque';
+      case 'step': return 'Étape';
+    }
+  };
+
+  const oldLiveFieldShortLabel = (key: LiveFieldKey, { speedUnit, distanceUnit }: LiveFieldUnits): string => {
+    const pace = isInverseUnit(speedUnit);
+    switch (key) {
+      case 'speed': return pace ? 'Allure' : 'Vit.';
+      case 'average': return 'Moy.';
+      case 'max': return pace ? 'Meill.' : 'Max';
+      case 'recentDistanceSpeed': return `${LIVE_STATS_DEFAULTS.recentDistanceM} m`;
+      case 'lastDistance': return distanceUnit === 'nm' ? 'Dern. mille' : 'Dern. km';
+      case 'distance': return 'Dist.';
+      case 'duration': return 'Durée';
+      case 'clock': return 'Heure';
+      case 'remaining': return 'Reste';
+      case 'remainingTime': return 'Temps rest.';
+      case 'recentTopShort': return `Top ${TOP_SHORT_S} s`;
+      case 'recentTopLong': return `Top ${TOP_LONG_S} s`;
+      case 'heading': return 'Cap';
+      case 'legAverage': return 'Bord';
+      case 'markDistance': return 'Balise';
+      case 'markBearing': return 'Cap bal.';
+      case 'grade': return 'Pente';
+      case 'gain': return 'D+';
+      case 'recentDistanceGain': return `D+ ${LIVE_STATS_DEFAULTS.recentDistanceM} m`;
+      case 'loss': return 'D−';
+      case 'climbRate': return 'Asc.';
+      case 'power': return 'Puiss.';
+      case 'effort': return 'Énergie';
+      case 'heartRate': return 'FC';
+      case 'averageHeartRate': return 'FC moy.';
+      case 'heartRateZone': return 'Zone';
+      case 'step': return 'Étape';
+    }
+  };
+
+
+  const KEYS = Object.keys(DEFAULT_LIVE_FIELDS).flatMap((t) => liveFieldsOfTreatment(t as Treatment, 'notification', 'fractionne'));
+  const UNITS: { speedUnit: SpeedUnit; distanceUnit: DistanceUnit }[] = [
+    { speedUnit: 'kmh', distanceUnit: 'km' }, { speedUnit: 'minkm', distanceUnit: 'km' }, { speedUnit: 'kn', distanceUnit: 'nm' },
+  ];
+
+  it('identiques à avant avec les options par défaut, données ou non', () => {
+    for (const units of UNITS) {
+      for (const key of new Set(KEYS)) {
+        expect(liveFieldLabel(key, units)).toBe(oldLiveFieldLabel(key, units));
+        expect(liveFieldLabel(key, { ...units, options: LIVE_STATS_DEFAULTS })).toBe(oldLiveFieldLabel(key, units));
+        expect(liveFieldShortLabel(key, units)).toBe(oldLiveFieldShortLabel(key, units));
+        expect(liveFieldShortLabel(key, { ...units, options: LIVE_STATS_DEFAULTS })).toBe(oldLiveFieldShortLabel(key, units));
+      }
+    }
+    expect(recentWindowLabel()).toBe(oldRecentWindowLabel);
+    expect(recentWindowLabel()).toBe('5 min');
+  });
+
+  it('suivent des options changées', () => {
+    const units: LiveFieldUnits = {
+      speedUnit: 'kmh', distanceUnit: 'km',
+      options: { ...LIVE_STATS_DEFAULTS, recentWindowS: 600, topDurationsS: [3, 20], recentDistanceM: 500, maxDurationS: 5, powerWindowS: 30 },
+    };
+    expect(liveFieldLabel('recentTopShort', units)).toBe('Top 3 s (10 min)');
+    expect(liveFieldLabel('recentTopLong', units)).toBe('Top 20 s (10 min)');
+    expect(liveFieldLabel('recentDistanceSpeed', units)).toBe('500 derniers m');
+    expect(liveFieldLabel('recentDistanceGain', units)).toBe('D+ 500 derniers m');
+    expect(liveFieldLabel('max', units)).toBe('Max (5 s)');
+    expect(liveFieldLabel('power', units)).toBe('Puissance (30 s)');
+    expect(liveFieldShortLabel('recentTopShort', units)).toBe('Top 3 s');
+    expect(liveFieldShortLabel('recentDistanceSpeed', units)).toBe('500 m');
+    expect(liveFieldShortLabel('recentDistanceGain', units)).toBe('D+ 500 m');
+    expect(recentWindowLabel(units.options)).toBe('10 min');
   });
 });

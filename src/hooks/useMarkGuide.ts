@@ -5,8 +5,8 @@ import { usesMarkCourse } from '../core/sportProfiles';
 import { getBeeper } from '../platform/beeper';
 import type { LocationFix } from '../platform/location';
 import {
-  START_MARK_GUIDE, aimAtTarget, beepIntervalMs, isCourseFinished, remainingCourseM, resumedGuideState, skipMark as skipInState, stepMarkGuide, validationRadiusM,
-  type LatLon, type MarkGuideSettings, type MarkGuideState, type MarkOutcome,
+  START_MARK_GUIDE, aimAtTarget, beepIntervalMs, isCourseFinished, markGuideView, resumedGuideState, skipMark as skipInState, stepMarkGuide,
+  type LatLon, type MarkGuideSettings, type MarkGuideState, type MarkGuideView,
 } from '../recording/markGuide';
 import { getFollowedTrace, subscribeToFollowedTrace } from './useFollowedTrace';
 import { getRecorderState, subscribeToFixes, subscribeToRecorder } from './useRecorder';
@@ -27,24 +27,6 @@ import { createStore } from './createStore';
  * manuelle, le GPS est coupé : silence. La page le lit par `useMarkGuide`
  * et le pilote par `skipMark` (« Passer ») et `setBeepsMuted` (« Bips »).
  */
-
-export interface MarkGuideView {
-  /** Vrai pendant un enregistrement de voile qui suit un parcours à balises. */
-  active: boolean;
-  marks: LatLon[];
-  /** Balise visée ; égale au nombre de balises une fois le parcours fini. */
-  target: number;
-  outcomes: MarkOutcome[];
-  /** Distance et cap de la dernière position à la balise visée ; `null` avant la première position et parcours fini. */
-  distanceM: number | null;
-  bearingDeg: number | null;
-  /** Distance restante par les balises ; 0 parcours fini. */
-  remainingM: number | null;
-  finished: boolean;
-  /** Bips et vibrations coupés par l'utilisateur. */
-  muted: boolean;
-  validationRadiusM: number;
-}
 
 const INACTIVE: MarkGuideView = {
   active: false,
@@ -79,22 +61,7 @@ let session: Session | null = null;
 const store = createStore<MarkGuideView>(INACTIVE);
 
 const publish = () => {
-  store.set(session
-    ? {
-      active: true,
-      marks: session.marks,
-      target: session.state.target,
-      outcomes: session.state.outcomes,
-      distanceM: session.distanceM,
-      bearingDeg: session.bearingDeg,
-      remainingM: isCourseFinished(session.state, session.marks)
-        ? 0
-        : session.distanceM !== null ? remainingCourseM(session.state, session.marks, session.distanceM) : null,
-      finished: isCourseFinished(session.state, session.marks),
-      muted: session.muted,
-      validationRadiusM: validationRadiusM(session.settings),
-    }
-    : INACTIVE);
+  store.set(session ? markGuideView(session) : INACTIVE);
 };
 
 /** Règle le rythme d'approche de la balise visée, s'il a changé. */

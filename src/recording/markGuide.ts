@@ -209,6 +209,49 @@ export const remainingCourseM = (state: MarkGuideState, marks: ReadonlyArray<Lat
   return total;
 };
 
+/** Guidage tel que la page et la notification le lisent. */
+export interface MarkGuideView {
+  /** Vrai pendant un enregistrement de voile qui suit un parcours à balises. */
+  active: boolean;
+  marks: LatLon[];
+  /** Balise visée ; égale au nombre de balises une fois le parcours fini. */
+  target: number;
+  outcomes: MarkOutcome[];
+  /** Distance et cap de la dernière position à la balise visée ; `null` avant la première position et parcours fini. */
+  distanceM: number | null;
+  bearingDeg: number | null;
+  /** Distance restante par les balises ; 0 parcours fini. */
+  remainingM: number | null;
+  finished: boolean;
+  /** Bips et vibrations coupés par l'utilisateur. */
+  muted: boolean;
+  validationRadiusM: number;
+}
+
+/** Vue d'un guidage en cours : distance restante par les balises (0 parcours fini), rayon de validation des bips. */
+export const markGuideView = (guide: {
+  marks: LatLon[];
+  state: MarkGuideState;
+  distanceM: number | null;
+  bearingDeg: number | null;
+  muted: boolean;
+  settings: MarkGuideSettings;
+}): MarkGuideView => {
+  const finished = isCourseFinished(guide.state, guide.marks);
+  return {
+    active: true,
+    marks: guide.marks,
+    target: guide.state.target,
+    outcomes: guide.state.outcomes,
+    distanceM: guide.distanceM,
+    bearingDeg: guide.bearingDeg,
+    remainingM: finished ? 0 : guide.distanceM !== null ? remainingCourseM(guide.state, guide.marks, guide.distanceM) : null,
+    finished,
+    muted: guide.muted,
+    validationRadiusM: validationRadiusM(guide.settings),
+  };
+};
+
 /** Balise à dessiner sur la carte : position, numéro, et sort (laissée, visée, à venir). */
 export interface CourseMark extends LatLon {
   label: string;

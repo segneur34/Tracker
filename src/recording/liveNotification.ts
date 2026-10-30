@@ -80,6 +80,23 @@ export const liveNotification = ({
   return { title: titleParts.join(SEPARATOR), text: text.join(SEPARATOR), lines, chrono };
 };
 
+/**
+ * État qui commande un envoi immédiat de la notification : statut et pause de
+ * l'enregistreur, activité, phase du compteur (`timer`, `null` sans séance),
+ * et le premier calcul du direct (`computed`), pour ne pas attendre avec des
+ * « — ». Deux états de même clé n'appellent pas d'envoi.
+ */
+export const notificationStateKey = ({ status, pausedReason, activityId, timer, computed }: {
+  status: string;
+  pausedReason: 'manual' | 'auto' | null;
+  activityId: string | null;
+  timer: IntervalTimerState | null;
+  computed: boolean;
+}): string => {
+  const phase = timer?.phase ? `${timer.status}:${timer.phase.kind}:${timer.phase.rep}:${timer.phase.startS}` : '';
+  return `${status}|${pausedReason ?? ''}|${activityId ?? ''}|${phase}|${computed}`;
+};
+
 /** Clé d'une notification : deux notifications de même clé disent la même chose. */
 export const liveNotificationKey = (content: RecordingNotificationContent, standalone: boolean): string =>
   JSON.stringify([content.title, content.text, content.lines, content.chrono, standalone]);

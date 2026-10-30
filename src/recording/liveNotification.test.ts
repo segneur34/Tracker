@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { IntervalTimerState } from './intervalTimer';
 import type { LiveFieldContext } from './liveFields';
-import { liveNotification, liveNotificationKey, trainingStep, type LiveNotificationInput } from './liveNotification';
+import { liveNotification, liveNotificationKey, notificationStateKey, trainingStep, type LiveNotificationInput } from './liveNotification';
 import { EMPTY_LIVE_STATS } from './liveStats';
 
 const context = (patch: Partial<LiveFieldContext> = {}): LiveFieldContext => ({
@@ -113,5 +113,37 @@ describe('trainingStep (26/10)', () => {
     const n = liveNotification(input({ activityName: 'Fractionné à pied', fields: ['step', 'speed'], context: context({ step: { rep: 5, of: 20 } }) }));
     expect(n.text).toBe('Étape 5/20 · Vit. 36.0 km/h');
     expect(n.lines[0]).toBe('Étape : 5/20');
+  });
+});
+
+describe('notificationStateKey (lot 67, sortie de recordingNotification)', () => {
+  /** Copie gelée de l'ancienne clé du service (`stateKeyNow`), sur les mêmes lectures. */
+  const oldKey = (status: string, pausedReason: 'manual' | 'auto' | null, activity: { id: string } | null, timer: IntervalTimerState | null, computed: boolean): string => {
+    const phase = timer?.phase ? `${timer.status}:${timer.phase.kind}:${timer.phase.rep}:${timer.phase.startS}` : '';
+    return `${status}|${pausedReason ?? ''}|${activity?.id ?? ''}|${phase}|${computed}`;
+  };
+  const cases: [string, 'manual' | 'auto' | null, string | null, IntervalTimerState | null, boolean][] = [
+    ['recording', null, 'running', null, true],
+    ['paused', 'auto', 'running', null, true],
+    ['paused', 'manual', 'wingfoil', null, true],
+    ['recording', null, 'run-intervals', work3, true],
+    ['recording', null, 'run-intervals', { ...work3, status: 'paused' }, true],
+    ['recording', null, 'running', { ...work3, phase: null }, true],
+    ['recording', null, 'running', null, false],
+    ['starting', null, null, null, false],
+  ];
+
+  it.each(cases)('%s %s %s : la même clé qu\'avant', (status, pausedReason, activityId, timer, computed) => {
+    expect(notificationStateKey({ status, pausedReason, activityId, timer, computed }))
+      .toBe(oldKey(status, pausedReason, activityId === null ? null : { id: activityId }, timer, computed));
+  });
+
+  it('change avec la pause, la phase du compteur et le premier calcul', () => {
+    const key = (patch: Partial<Parameters<typeof notificationStateKey>[0]>) =>
+      notificationStateKey({ status: 'recording', pausedReason: null, activityId: 'running', timer: null, computed: true, ...patch });
+    expect(key({})).toBe('recording||running||true');
+    expect(key({ status: 'paused', pausedReason: 'auto' })).not.toBe(key({ status: 'paused', pausedReason: 'manual' }));
+    expect(key({ timer: work3 })).toBe('recording||running|running:travail:3:100|true');
+    expect(key({ computed: false })).not.toBe(key({}));
   });
 });

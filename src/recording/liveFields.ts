@@ -5,7 +5,7 @@ import type { SportType } from '../core/types';
 import {
   J_PER_KCAL, formatClock, formatDistance, formatShortDistance, formatSpeed, formatTimeOfDay, isInverseUnit, type DistanceUnit, type SpeedUnit,
 } from '../core/units';
-import { LIVE_STATS_DEFAULTS, type LiveStats } from './liveStats';
+import { LIVE_STATS_DEFAULTS, type LiveStats, type LiveStatsOptions } from './liveStats';
 
 /**
  * Chiffres en grand de l'enregistrement quand la carte est réduite, choisis
@@ -155,38 +155,45 @@ export const sanitizeLiveFields = (
 export interface LiveFieldUnits {
   speedUnit: SpeedUnit;
   distanceUnit: DistanceUnit;
+  /**
+   * Options du calcul du direct dont les chiffres viennent (fenêtres, durées
+   * des tops, distances) : les libellés les disent. Absentes : celles par
+   * défaut (`LIVE_STATS_DEFAULTS`), comme dans Réglages.
+   */
+  options?: LiveStatsOptions;
 }
 
 /** « 5 min » : la fenêtre des chiffres récents du direct. */
-export const recentWindowLabel = `${Math.round(LIVE_STATS_DEFAULTS.recentWindowS / 60)} min`;
-const [TOP_SHORT_S, TOP_LONG_S] = LIVE_STATS_DEFAULTS.topDurationsS;
+export const recentWindowLabel = (options: LiveStatsOptions = LIVE_STATS_DEFAULTS): string =>
+  `${Math.round(options.recentWindowS / 60)} min`;
 
 /** Libellé d'un chiffre ; une allure (min/km) se dit « allure ». */
-export const liveFieldLabel = (key: LiveFieldKey, { speedUnit, distanceUnit }: LiveFieldUnits): string => {
+export const liveFieldLabel = (key: LiveFieldKey, { speedUnit, distanceUnit, options = LIVE_STATS_DEFAULTS }: LiveFieldUnits): string => {
   const pace = isInverseUnit(speedUnit);
+  const [topShortS, topLongS] = options.topDurationsS;
   switch (key) {
     case 'speed': return pace ? 'Allure' : 'Vitesse';
     case 'average': return pace ? 'Allure moyenne' : 'Moyenne';
-    case 'max': return `${pace ? 'Meilleure' : 'Max'} (${LIVE_STATS_DEFAULTS.maxDurationS} s)`;
-    case 'recentDistanceSpeed': return `${LIVE_STATS_DEFAULTS.recentDistanceM} derniers m`;
+    case 'max': return `${pace ? 'Meilleure' : 'Max'} (${options.maxDurationS} s)`;
+    case 'recentDistanceSpeed': return `${options.recentDistanceM} derniers m`;
     case 'lastDistance': return distanceUnit === 'nm' ? 'Dernier mille' : 'Dernier km';
     case 'distance': return 'Distance';
     case 'duration': return 'Durée';
     case 'clock': return 'Heure';
     case 'remaining': return 'Restant';
     case 'remainingTime': return 'Temps restant';
-    case 'recentTopShort': return `Top ${TOP_SHORT_S} s (${recentWindowLabel})`;
-    case 'recentTopLong': return `Top ${TOP_LONG_S} s (${recentWindowLabel})`;
+    case 'recentTopShort': return `Top ${topShortS} s (${recentWindowLabel(options)})`;
+    case 'recentTopLong': return `Top ${topLongS} s (${recentWindowLabel(options)})`;
     case 'heading': return 'Cap';
     case 'legAverage': return 'Moyenne du bord';
     case 'markDistance': return 'Balise';
     case 'markBearing': return 'Cap balise';
     case 'grade': return 'Pente';
     case 'gain': return 'D+';
-    case 'recentDistanceGain': return `D+ ${LIVE_STATS_DEFAULTS.recentDistanceM} derniers m`;
+    case 'recentDistanceGain': return `D+ ${options.recentDistanceM} derniers m`;
     case 'loss': return 'D−';
     case 'climbRate': return 'Vitesse ascensionnelle';
-    case 'power': return `Puissance (${LIVE_STATS_DEFAULTS.powerWindowS} s)`;
+    case 'power': return `Puissance (${options.powerWindowS} s)`;
     case 'effort': return 'Énergie';
     case 'heartRate': return 'Fréquence cardiaque';
     case 'averageHeartRate': return 'FC moyenne';
@@ -196,28 +203,29 @@ export const liveFieldLabel = (key: LiveFieldKey, { speedUnit, distanceUnit }: L
 };
 
 /** Libellé court d'un chiffre, devant sa valeur sur la ligne repliée de la notification. */
-export const liveFieldShortLabel = (key: LiveFieldKey, { speedUnit, distanceUnit }: LiveFieldUnits): string => {
+export const liveFieldShortLabel = (key: LiveFieldKey, { speedUnit, distanceUnit, options = LIVE_STATS_DEFAULTS }: LiveFieldUnits): string => {
   const pace = isInverseUnit(speedUnit);
+  const [topShortS, topLongS] = options.topDurationsS;
   switch (key) {
     case 'speed': return pace ? 'Allure' : 'Vit.';
     case 'average': return 'Moy.';
     case 'max': return pace ? 'Meill.' : 'Max';
-    case 'recentDistanceSpeed': return `${LIVE_STATS_DEFAULTS.recentDistanceM} m`;
+    case 'recentDistanceSpeed': return `${options.recentDistanceM} m`;
     case 'lastDistance': return distanceUnit === 'nm' ? 'Dern. mille' : 'Dern. km';
     case 'distance': return 'Dist.';
     case 'duration': return 'Durée';
     case 'clock': return 'Heure';
     case 'remaining': return 'Reste';
     case 'remainingTime': return 'Temps rest.';
-    case 'recentTopShort': return `Top ${TOP_SHORT_S} s`;
-    case 'recentTopLong': return `Top ${TOP_LONG_S} s`;
+    case 'recentTopShort': return `Top ${topShortS} s`;
+    case 'recentTopLong': return `Top ${topLongS} s`;
     case 'heading': return 'Cap';
     case 'legAverage': return 'Bord';
     case 'markDistance': return 'Balise';
     case 'markBearing': return 'Cap bal.';
     case 'grade': return 'Pente';
     case 'gain': return 'D+';
-    case 'recentDistanceGain': return `D+ ${LIVE_STATS_DEFAULTS.recentDistanceM} m`;
+    case 'recentDistanceGain': return `D+ ${options.recentDistanceM} m`;
     case 'loss': return 'D−';
     case 'climbRate': return 'Asc.';
     case 'power': return 'Puiss.';

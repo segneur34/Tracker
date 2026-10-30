@@ -1,6 +1,6 @@
 import { errorMessage } from '../core/basics';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { BASE_COLOR, baseActivity, findActivity, type Activity } from '../core/activities';
+import type { Activity } from '../core/activities';
 import { marksWithin, type SessionMark } from '../core/sessionMarks';
 import { decodeImu } from '../core/imuFile';
 import { getSportProfile, hasPositions, type RecordingProfile } from '../core/sportProfiles';
@@ -22,8 +22,8 @@ import { closeSessionTest, type SessionTest } from '../recording/fitnessTest';
 import { heartRateAt, readableBpm } from '../recording/heartRate';
 import { seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
 import {
-  journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine, journalTestLine,
-  parseJournal,
+  journalActivity, journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine,
+  journalTestLine, parseJournal,
 } from '../recording/journal';
 import {
   isAutoPause, isManualPause,
@@ -33,6 +33,7 @@ import {
   evaluateAutoPause,
   isNewerFix,
   keepHeartRateSample,
+  nothingToKeep,
   roundFix,
   sessionFileName,
   sessionTitle,
@@ -49,7 +50,7 @@ import { createListeners } from './createStore';
 /**
  * Enregistreur de session. Il vit hors des composants, dans ce module : on
  * peut changer de page pendant un enregistrement sans l'interrompre. Les
- * pages le lisent par `useRecorder` et le pilotent par `startRecording`,
+ * pages le lisent par `useRecorderSelector` et le pilotent par `startRecording`,
  * `stopRecording`, `pauseRecording`/`resumeRecording` (pause manuelle),
  * `changeRecordingActivity`, `analyzePendingSession`/`discardPendingSession`
  * et `recoverInterruptedRecording`. Le guidage vers les balises
@@ -278,6 +279,26 @@ const flushJournal = (): Promise<void> => {
   return enqueueWrite(() => recordingJournal.append(lines));
 };
 
+/**
+ * Garde un point (position, ou mesure de la ceinture sans position) : un
+ * nouveau segment s'ouvre après une pause, le point va au journal, les
+ * statistiques suivent, et le journal s'écrit par paquets.
+ */
+const keepPoint = <P extends HeartRateFix>(fix: P, kept: P[], breaks: number[], line: string, journalFlushS: number): void => {
+  if (pendingBreak) {
+    breaks.push(kept.length);
+    pendingLines += journalBreakLine(fix.timeMs);
+    pendingBreak = false;
+  }
+  kept.push(fix);
+  pendingLines += line;
+  setState({ stats: addFixToStats(state.stats, fix) });
+  if (shouldFlushJournal(lastFlushMs, fix.timeMs, journalFlushS)) {
+    lastFlushMs = fix.timeMs;
+    void flushJournal();
+  }
+};
+
 /** Reçoit une position de la source. Le réglage est relu à chaque fois : l'activité peut changer en route. */
 const receiveFix = (received: LocationFix): void => {
   const acceptedStatus =
@@ -319,19 +340,7 @@ const receiveFix = (received: LocationFix): void => {
     setState({ status: 'recording', pausedReason: null, pauseClock: null });
   }
   if (state.status === 'paused') return;
-
-  if (pendingBreak) {
-    segmentBreaks.push(fixes.length);
-    pendingLines += journalBreakLine(fix.timeMs);
-    pendingBreak = false;
-  }
-  fixes.push(fix);
-  pendingLines += journalFixLine(fix);
-  setState({ stats: addFixToStats(state.stats, fix) });
-  if (shouldFlushJournal(lastFlushMs, fix.timeMs, recording.journalFlushS)) {
-    lastFlushMs = fix.timeMs;
-    void flushJournal();
-  }
+  keepPoint(fix, fixes, segmentBreaks, journalFixLine(fix), recording.journalFlushS);
 };
 
 /**
@@ -344,18 +353,7 @@ const receiveHeartSample = (sample: HeartRateSample): void => {
   const fix = keepHeartRateSample(lastReceivedMs, sample, recording.intervalMs);
   if (fix === null) return;
   lastReceivedMs = fix.timeMs;
-  if (pendingBreak) {
-    heartBreaks.push(heartFixes.length);
-    pendingLines += journalBreakLine(fix.timeMs);
-    pendingBreak = false;
-  }
-  heartFixes.push(fix);
-  pendingLines += journalHeartRateLine(fix);
-  setState({ stats: addFixToStats(state.stats, fix) });
-  if (shouldFlushJournal(lastFlushMs, fix.timeMs, recording.journalFlushS)) {
-    lastFlushMs = fix.timeMs;
-    void flushJournal();
-  }
+  keepPoint(fix, heartFixes, heartBreaks, journalHeartRateLine(fix), recording.journalFlushS);
 };
 
 /**
@@ -363,7 +361,9 @@ const receiveHeartSample = (sample: HeartRateSample): void => {
  * position (`gpxtpx:cad` du GPX). Sans elle, ou si le calcul échoue, les
  * positions telles quelles : la session n'est jamais bloquée par la cadence.
  * Seul l'accéléromètre est décodé ; les octets lus sont rendus aussi, gardés
- * pour « Analyser ».
+ * pour « Analyser ». Pas de `loadSessionMotion` ici : c'est la capture entière
+ * du dossier privé, décodée en partie, que personne d'autre ne lit à l'arrêt
+ * (l'analyse lit le `.imu` élagué, rangé avec la session).
  */
 const withMeasuredCadence = async (
   segments: LocationFix[][], sport: SportType | null, motion: MotionCapture | null
@@ -435,10 +435,6 @@ const buildPendingSession = async (
   return { fileName, content, sport, activity, pointCount, recovered, intervals, marks, motion, motionBytes: measured.bytes, test };
 };
 
-/** Message d'un arrêt sans rien à garder. */
-const nothingToKeep = (sport: SportType | null): string =>
-  sport === null || hasPositions(sport) ? 'Moins de deux positions reçues : rien à enregistrer.' : 'Moins de deux mesures de la ceinture : rien à enregistrer.';
-
 /**
  * « Analyser » : range la session en attente dans la bibliothèque, puis
  * efface le journal. Rend la session rangée, ou `null` si l'écriture échoue :
@@ -481,17 +477,6 @@ const sourceOptions = (activity: Activity, recording: RecordingProfile): Locatio
   notificationTitle: 'Tracker enregistre',
   notificationText: `Session ${activity.name} en cours`,
 });
-
-/**
- * Activité d'un journal relu : celle de la liste si elle existe encore, sinon
- * reconstruite sous le nom gardé dans l'en-tête (la fiche la rangera sous son
- * calcul), sinon l'activité de base du calcul.
- */
-const journalActivity = (sport: SportType, saved: { id: string; name: string } | undefined): Activity => {
-  if (!saved) return baseActivity(sport);
-  const found = findActivity(readStoredActivities(), saved.id);
-  return found && found.base === sport ? found : { id: saved.id, name: saved.name, base: sport, color: BASE_COLOR[sport] };
-};
 
 const isBusy = (): boolean => state.status !== 'idle';
 
@@ -571,7 +556,7 @@ export const recoverInterruptedRecording = async (): Promise<void> => {
     // Test coupé par l'arrêt : une rampe en cours finit à la dernière position.
     const test = parsed.test ? closeSessionTest(parsed.test, toMs) : null;
     const pending = await buildPendingSession(
-      sport !== null ? journalActivity(sport, saved) : null,
+      sport !== null ? journalActivity(sport, saved, readStoredActivities()) : null,
       { segments: splitIntoSegments(list, breaks), heart: splitIntoSegments(parsed.heartFixes, parsed.heartBreaks) },
       true, intervals, recoveredMarks, motion, test
     );
@@ -939,22 +924,27 @@ export const getLastFix = (): LocationFix | null => (isBusy() && fixes.length > 
 /** Efface le compte rendu de la dernière session et le dernier message d'erreur. */
 export const dismissRecorderResult = (): void => setState({ saved: null, error: null });
 
-/** État de l'enregistreur, relu à chaque changement. */
-export const useRecorder = (): RecorderState => useSyncExternalStore(subscribe, () => state);
+/**
+ * Une partie de l'état de l'enregistreur : le composant n'est redessiné que si
+ * elle change (la page ne suit pas chaque position, seuls ses chiffres).
+ * `select` doit rendre une valeur stable pour un même état : une primitive,
+ * ou un objet déjà rangé dans l'état, jamais un objet neuf.
+ */
+export const useRecorderSelector = <T>(select: (s: RecorderState) => T): T => useSyncExternalStore(subscribe, () => select(state));
 
 /** Statut seul de l'enregistreur : ne redessine qu'à son changement, pas à chaque position ni mesure de la ceinture. */
-export const useRecorderStatus = (): RecorderStatus => useSyncExternalStore(subscribe, () => state.status);
+export const useRecorderStatus = (): RecorderStatus => useRecorderSelector((s) => s.status);
 
 /**
- * Horloge de l'enregistrement, pour une page : l'instant présent et la durée
- * affichée (`displayedDurationMs`). Elle bat chaque seconde seulement quand
- * c'est utile : en pause automatique, où la durée tourne sans position, et
- * quand `clockShown` (chiffre « Heure » affiché) ; sinon la page est redessinée
- * avec l'état.
+ * Horloge de l'enregistrement, pour un composant : l'instant présent et la
+ * durée affichée (`displayedDurationMs`). Elle bat chaque seconde seulement
+ * quand c'est utile : en pause automatique, où la durée tourne sans position,
+ * et quand `clockShown` (chiffre « Heure » affiché) ; sinon le composant est
+ * redessiné quand la durée change, à chaque position gardée.
  */
 export const useRecordingClock = (clockShown: boolean): { nowMs: number; durationMs: number } => {
-  const { status, stats, pauseClock } = useRecorder();
-  const ticking = status !== 'idle' && ((pauseClock !== null && pauseClock.frozenAtMs === null) || clockShown);
+  const ticking = useRecorderSelector((s) =>
+    s.status !== 'idle' && ((s.pauseClock !== null && s.pauseClock.frozenAtMs === null) || clockShown));
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     if (!ticking) return undefined;
@@ -967,5 +957,6 @@ export const useRecordingClock = (clockShown: boolean): { nowMs: number; duratio
       clearInterval(every);
     };
   }, [ticking]);
-  return { nowMs, durationMs: displayedDurationMs(stats, pauseClock, nowMs) };
+  const durationMs = useRecorderSelector((s) => displayedDurationMs(s.stats, s.pauseClock, nowMs));
+  return { nowMs, durationMs };
 };

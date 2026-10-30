@@ -1,12 +1,11 @@
 import { isManualPause, isRecordingSession } from '../recording/session';
 import { useSyncExternalStore } from 'react';
 import type { Activity } from '../core/activities';
-import { haversineDistance } from '../core/geo';
 import { getSportProfile, isTestSport } from '../core/sportProfiles';
 import { playPattern } from '../platform/beeper';
 import type { LocationFix } from '../platform/location';
 import {
-  FITNESS_TESTS, TEST_SIGNAL_TONES, closeFitnessTest, finishRamp, guideReadings, phaseRemainingS, resolveFitnessTestParams, startFitnessTest,
+  FITNESS_TESTS, TEST_SIGNAL_TONES, closeFitnessTest, finishRamp, fixSpeedMs, guideReadings, phaseRemainingS, resolveFitnessTestParams, startFitnessTest,
   stepFitnessTest, stepTargetMs,
   type FitnessTestId, type FitnessTestParams, type FitnessTestState, type SessionTest, type TestPhase, type TestRunner, type TestSignal,
 } from '../recording/fitnessTest';
@@ -66,9 +65,6 @@ const INACTIVE: FitnessTestView = {
   lastSignal: null,
 };
 
-/** Écart maximal entre deux positions pour en tirer une vitesse, faute de celle du GPS. */
-const DERIVED_SPEED_MAX_GAP_MS = 5000;
-
 interface Session {
   state: FitnessTestState;
   /** Position précédente, pour la vitesse quand le GPS n'en donne pas. */
@@ -116,15 +112,6 @@ const play = (signal: TestSignal, timeMs: number) => {
   void playPattern(TEST_SIGNAL_TONES[signal], true).catch(() => {});
 };
 
-/** Vitesse de la position : celle du GPS, sinon celle tirée de la précédente, proche. */
-const fixSpeedMs = (fix: LocationFix, previous: LocationFix | null): number | undefined => {
-  if (fix.speedMs !== undefined) return fix.speedMs;
-  if (!previous) return undefined;
-  const dtMs = fix.timeMs - previous.timeMs;
-  if (dtMs <= 0 || dtMs > DERIVED_SPEED_MAX_GAP_MS) return undefined;
-  return haversineDistance(previous.lat, previous.lon, fix.lat, fix.lon) / (dtMs / 1000);
-};
-
 /** Le test avance d'un état à l'autre : signal joué, enregistreur tenu à jour, journal aux phases et paliers. */
 const advance = (current: Session, next: { state: FitnessTestState; signal: TestSignal | null }) => {
   const before = current.state;
@@ -140,7 +127,8 @@ const onFix = (fix: LocationFix) => {
   if (!current) return;
   const resumed = current.sawPause;
   current.sawPause = false;
-  const speedMs = fixSpeedMs(fix, current.previous);
+  // Vitesse du GPS, sinon celle tirée de la position précédente, proche (protocole du test).
+  const speedMs = fixSpeedMs(fix, current.previous, current.state.params.protocol.derivedSpeedMaxGapS);
   current.previous = fix;
   advance(current, stepFitnessTest(current.state, { timeMs: fix.timeMs, speedMs, hrBpm: fix.heartRateBpm }, { resumed }));
   publish();

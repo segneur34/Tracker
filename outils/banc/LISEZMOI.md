@@ -221,6 +221,7 @@ Un passage se lance par `passe.mjs` (section suivante) : serveurs, Chrome, profi
   - avec le dossier des captures, photographie les deux cartes, puis la course à 390×844 et sa carte en plein écran.
 
   Avant le lot, il relevait 10 799 traits SVG, 325 ms par survol et 235 ms par clic ; après, aucun trait SVG, 60 ms et 55 ms, pour un texte identique.
+- `rendus.mjs <port> <dossier de travail>` (lot 67, hors registre : une mesure, pas une preuve de neutralité) : rendus de React pendant un enregistrement, sur un profil neuf, sans réseau, environ 3 min 30 en temps réel. Un faux crochet des outils de React, posé avant tout script de la page, compte à chaque commit les composants rendus ; rejeu ×1 d'une course de 400 s, 60 s carte ouverte, 60 s carte réduite, 60 s sur l'accueil, une ligne par composant suivi et par phase. Avant le lot 67 : `RecordingScreen` 90 et `AppShell` 60 par minute (un par position, plus les calculs du direct).
 - `surf.mjs <port> [<dossier des captures>]` : le surf (point 97), sur un profil neuf, sans réseau. Le script écrit lui-même deux sessions synthétiques, cap de l'appareil compris, et les importe par la page, dans un `File`. Il vérifie :
   - la famille Surf sur l'accueil et dans la barre, et ses deux activités dans Réglages (« Seuil de vague », « Seuil de vol » pour Surf foil, ni pente ni terrain) ;
   - une matinée de trois vagues, dont une enchaînée : la ligne de la bibliothèque, puis les onglets général, vagues (tableau, tri, « Voir », podium), rame et graphiques ;

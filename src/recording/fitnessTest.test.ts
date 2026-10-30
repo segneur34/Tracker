@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { haversineDistance } from '../core/geo';
+import type { LocationFix } from '../platform/location';
 import { SPORT_PROFILES } from '../core/sportProfiles';
 import { kmhToMs, msToKmh } from '../core/units';
 import {
@@ -7,6 +9,7 @@ import {
   closeFitnessTest,
   closeSessionTest,
   finishRamp,
+  fixSpeedMs,
   readSessionTest,
   resolveFitnessTestParams,
   sanitizeFitnessTestSettings,
@@ -274,5 +277,50 @@ describe('testPlan', () => {
     const targets = plan.points.map((p) => p.targetMs).filter((v): v is number => v !== null);
     expect(msToKmh(Math.max(...targets))).toBeCloseTo(8 + 0.6 * 9, 6);
     expect(plan.hrBand).toEqual({ lowBpm: 78, highBpm: 88 });
+  });
+});
+
+describe('fixSpeedMs (lot 67, sorti de useFitnessTest)', () => {
+  /** Copie gelée de l'ancienne fonction du service, seuil en dur. */
+  const oldFixSpeedMs = (fix: LocationFix, previous: LocationFix | null): number | undefined => {
+    if (fix.speedMs !== undefined) return fix.speedMs;
+    if (!previous) return undefined;
+    const dtMs = fix.timeMs - previous.timeMs;
+    if (dtMs <= 0 || dtMs > 5000) return undefined;
+    return haversineDistance(previous.lat, previous.lon, fix.lat, fix.lon) / (dtMs / 1000);
+  };
+  const gap = FITNESS_TESTS['fc-max'].derivedSpeedMaxGapS;
+  /** Positions à 3 m/s vers l'est, une toutes les `stepMs`, sans vitesse du GPS. */
+  const track = (stepMs: number, n: number): LocationFix[] => Array.from({ length: n }, (_, i) => ({
+    lat: 43.7, lon: 3.85 + (3 * (i * stepMs) / 1000) / (111195 * Math.cos((43.7 * Math.PI) / 180)), timeMs: 1_000_000 + i * stepMs, accuracyM: 5,
+  }));
+
+  it('donne la vitesse tirée de la précédente, la même à 1 Hz et à 5 Hz', () => {
+    for (const stepMs of [1000, 200]) {
+      const fixes = track(stepMs, 20);
+      for (let i = 1; i < fixes.length; i++) {
+        const speed = fixSpeedMs(fixes[i], fixes[i - 1], gap);
+        expect(speed).toBe(oldFixSpeedMs(fixes[i], fixes[i - 1]));
+        expect(speed).toBeCloseTo(3, 3);
+      }
+    }
+  });
+
+  it('garde la vitesse du GPS, rien sans précédente ni pour une date identique ou plus ancienne', () => {
+    const [a, b] = track(1000, 2);
+    expect(fixSpeedMs({ ...b, speedMs: 4.2 }, a, gap)).toBe(4.2);
+    expect(fixSpeedMs(b, null, gap)).toBeUndefined();
+    expect(fixSpeedMs({ ...b, timeMs: a.timeMs }, a, gap)).toBeUndefined();
+    expect(fixSpeedMs(a, b, gap)).toBeUndefined();
+  });
+
+  it('tire encore la vitesse à 5 s d\'écart, plus au-delà', () => {
+    const fixes = track(1000, 8);
+    expect(gap).toBe(5);
+    expect(fixSpeedMs(fixes[5], fixes[0], gap)).toBe(oldFixSpeedMs(fixes[5], fixes[0]));
+    expect(fixSpeedMs(fixes[5], fixes[0], gap)).toBeCloseTo(3, 3);
+    expect(fixSpeedMs(fixes[6], fixes[0], gap)).toBeUndefined();
+    expect(oldFixSpeedMs(fixes[6], fixes[0])).toBeUndefined();
+    expect(fixSpeedMs({ ...fixes[5], timeMs: fixes[5].timeMs + 1 }, fixes[0], gap)).toBeUndefined();
   });
 });

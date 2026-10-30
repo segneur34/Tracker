@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { BASE_COLOR, baseActivity, type Activity } from '../core/activities';
 import type { LocationFix } from '../platform/location';
 import { buildGpx } from './gpxWriter';
 import type { SessionTest } from './fitnessTest';
 import { runCommand, startRun } from './intervalTimer';
 import {
-  journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine, journalTestLine,
+  journalActivity, journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine, journalTestLine,
   parseJournal,
 } from './journal';
 import { roundFix, splitIntoSegments } from './session';
@@ -228,5 +229,28 @@ describe('journal d’une session sans position (muscu, lot I du 25/10)', () => 
     const parsed = parseJournal(journalHeaderLine('running', T0) + journalFixLine({ timeMs: T0, lat: 43, lon: 3 }));
     expect(parsed.heartFixes).toEqual([]);
     expect(parsed.fixes).toHaveLength(1);
+  });
+});
+
+describe('journalActivity (lot 67, sortie de useRecorder)', () => {
+  const list: Activity[] = [
+    { id: 'running', name: 'Course', base: 'running', color: '#d11a1a' },
+    { id: 'trail-1', name: 'Trail', base: 'running', color: '#a01010' },
+    { id: 'moth-1', name: 'Moth', base: 'wingfoil', color: '#004aad' },
+  ];
+
+  it("reprend l'activité de la liste, du même calcul", () => {
+    expect(journalActivity('running', { id: 'trail-1', name: 'Ancien nom' }, list)).toBe(list[1]);
+  });
+
+  it("d'un autre calcul ou absente de la liste : reconstruite sous le nom gardé, couleur du calcul", () => {
+    expect(journalActivity('running', { id: 'moth-1', name: 'Moth' }, list))
+      .toEqual({ id: 'moth-1', name: 'Moth', base: 'running', color: BASE_COLOR.running });
+    expect(journalActivity('cycling', { id: 'gravel-2', name: 'Gravel' }, list))
+      .toEqual({ id: 'gravel-2', name: 'Gravel', base: 'cycling', color: BASE_COLOR.cycling });
+  });
+
+  it("sans activité dans l'en-tête : l'activité de base du calcul", () => {
+    expect(journalActivity('surf', undefined, list)).toEqual(baseActivity('surf'));
   });
 });
