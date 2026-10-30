@@ -647,6 +647,7 @@ function LandModule({ family }: { family: LandFamily }) {
     { key: 'overallAverage', label: 'Moyenne sur le temps total', value: formatSpeed(positiveSpeed(stats.avgSpeedMs), speedUnit, distanceUnit) },
     { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
     { key: 'altitude', label: 'Altitude', value: stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—' },
+    ...(heart.present && heart.stats ? [{ key: 'heartRate', label: 'FC moyenne', value: `${Math.round(heart.stats.avgBpm)} bpm` }] : []),
   ] : [];
 
   /**

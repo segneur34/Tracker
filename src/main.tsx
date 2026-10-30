@@ -12,6 +12,7 @@ import { isIntervalTimerActive, startIntervalTimer } from './hooks/useIntervalTi
 import { startLiveRecording } from './hooks/useLiveRecording';
 import { startMarkGuide } from './hooks/useMarkGuide';
 import { startFitnessTestGuide } from './hooks/useFitnessTest';
+import { startZoneAlertGuide } from './hooks/useZoneAlert';
 import { startRecordingNotification } from './hooks/recordingNotification';
 import { isStopwatchRunning, startStopwatchStore } from './hooks/useStopwatch';
 import { isRecordingActive, recoverInterruptedRecording } from './hooks/useRecorder';
@@ -76,6 +77,8 @@ void initStorage()
     startMarkGuide();
     // Guidage d'un test (FC max), pendant un enregistrement d'une activité de test.
     startFitnessTestGuide();
+    // Bips de sortie de la zone cardiaque visée, pendant un enregistrement avec la ceinture.
+    startZoneAlertGuide();
     // Compteur du fractionné : séance reprise si elle court encore, et confiée à l'enregistreur.
     startIntervalTimer();
     // Chronomètre de la carte du compteur, repris s'il était lancé.

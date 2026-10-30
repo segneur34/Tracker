@@ -375,6 +375,10 @@ function SailingModule() {
    * Chiffres de l'onglet « général », proposés aussi pour l'image de partage. Sans seuil (bateau),
    * toute la session compte en navigation : ni distance, temps, ratio ni moyenne actifs.
    */
+  /** FC moyenne, en fin des chiffres de « général » et du partage, si la session a de la FC (comme à pied). */
+  const heartRateStat: ShareStat[] = heart.present && heart.stats
+    ? [{ key: 'heartRate', label: 'FC moyenne', value: `${Math.round(heart.stats.avgBpm)} bpm` }]
+    : [];
   const generalStats: ShareStat[] = stats ? [
     { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
     ...(hasActiveThreshold ? [{ key: 'activeDistance', label: 'Distance active', value: formatDistance(stats.activeDistanceM, distanceUnit) }] : []),
@@ -387,6 +391,7 @@ function SailingModule() {
     ...(hasActiveThreshold ? [
       { key: 'activeAverage', label: `Moyenne active (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: formatSpeed(stats.activeAvgSpeedMs, speedUnit) },
     ] : []),
+    ...heartRateStat,
   ] : [];
   /** Virements ou empannages réussis sur le total, et leur part ; « — » sans vent connu. */
   const maneuverRate = (summary: { success: number; fail: number } | null): string => {
@@ -417,6 +422,7 @@ function SailingModule() {
     { key: 'jibes', label: 'Empannages réussis', value: maneuverRate(maneuverSummary.jibe) },
     { key: 'top2s', label: 'Top 2 s', value: topValue(stats.tops.t2s[0]) },
     { key: 'top100m', label: 'Top 100 m', value: topValue(stats.tops.d100m[0]) },
+    ...heartRateStat,
   ] : [];
   const arrowLayers = useMemo(
     () => arrowIndices(trackData, ARROW_EVERY_S).map((index, idx) => {

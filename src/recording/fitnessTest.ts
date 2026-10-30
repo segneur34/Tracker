@@ -298,7 +298,7 @@ export interface TestSample {
   hrBpm?: number;
 }
 
-interface WindowSample {
+export interface WindowSample {
   activeMs: number;
   speedMs?: number;
   hrBpm?: number;
@@ -354,7 +354,7 @@ export const startFitnessTest = (params: FitnessTestParams): FitnessTestState =>
  * secondes actives : chaque mesure vaut depuis la précédente. `null` si la
  * fenêtre n'en couvre pas la moitié (départ, reprise après un trou).
  */
-const windowMean = (window: WindowSample[], field: 'speedMs' | 'hrBpm', windowS: number, nowMs: number): number | null => {
+export const windowMean = (window: WindowSample[], field: 'speedMs' | 'hrBpm', windowS: number, nowMs: number): number | null => {
   const fromMs = nowMs - windowS * 1000;
   let sum = 0;
   let dur = 0;

@@ -226,13 +226,14 @@ function SurfModule() {
       { key: 'wavesInFlight', label: 'Vagues en un vol', value: String(summary.maxWavesInFlight ?? '—'), title: 'Le plus de vagues reliées par un même vol' },
     ] : []),
     { key: 'distance', label: 'Distance totale', value: formatDistance(totalDistanceM, distanceUnit) },
+    ...(heart.present && heart.stats ? [{ key: 'heartRate', label: 'FC moyenne', value: `${Math.round(heart.stats.avgBpm)} bpm` }] : []),
   ] : [];
 
   /**
    * Chiffres de l'onglet « général » (22/10) : l'essentiel, le détail restant dans « avancé ».
    * L'image de partage garde la liste entière (`generalStats`).
    */
-  const overviewKeys = ['totalTime', 'waves', 'waveTime', 'longestWave', 'maxSpeed', ...(foil ? ['flightTime', 'longestFlight'] : [])];
+  const overviewKeys = ['totalTime', 'waves', 'waveTime', 'longestWave', 'maxSpeed', ...(foil ? ['flightTime', 'longestFlight'] : []), 'heartRate'];
   const overviewStats = overviewKeys.flatMap((key) => generalStats.filter((stat) => stat.key === key));
 
   // Une seule surbrillance : une vague (son numéro) ou le podium, un vol, une remontée.
