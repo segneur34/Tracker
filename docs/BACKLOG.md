@@ -1,6 +1,6 @@
 # Reste à faire
 
-Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 94, essai 76, question Q50.
+Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs` vérifie la forme et imprime le tableau de bord : aucun résumé fait à la main ne le remplace. Prochains numéros : élément 94, essai 77, question Q50.
 - Une ligne par élément : `- N · [type] Titre · noté jj/mm · petit|gros · Modèle/effort · état · dépend de : … · détail : chemin` (champs sans objet omis, ordre gardé). N unique, dans la suite des lots, jamais réutilisé ; type `[bogue]`, `[idée]`, `[dette]` ou `[outil]` ; petit = un lot Sonnet ou Opus, une session ; gros = plusieurs lots, Fable, ou des données réelles ; détail dans `docs/backlog/N-titre.md` quand la ligne ne suffit pas.
 - Quatre zones, un élément dans une seule : **Maintenant** (en cours ou à valider ; 3 lots avec essais au téléphone au plus, un lot validé sur lecture ne compte pas ; première ligne : l'APK installée) ; **Ensuite** (prêts, liste numérotée, l'ordre est la priorité, 7 au plus) ; **Ça attend une occasion** (sous une condition écrite en gras, hors de toute limite) ; **Plus tard** (daté, une phrase avec le résultat attendu ; proposé à l'abandon à la revue après 90 jours).
 - Rangement à la mise au propre, posé en clair à l'utilisateur : un chiffre faux ou un usage cassé → tête d'Ensuite ; « vous en servirez-vous à votre prochaine sortie ? » oui → Ensuite, non → Plus tard ; petit et utile passe avant gros et utile.
@@ -12,6 +12,9 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 ## Maintenant
 
 APK 0.3.113 installée le 30/10 (versionCode 3113, lots 66, 69 et 70, validés le 30/10).
+- 67 · [dette] Enregistrer : seuls les chiffres se redessinent à chaque position GPS, plus toute la page ; reprend aussi le reste du lot 69 (troisième décodage du .imu dans useRecorder) · noté 28/10 · petit · Opus/high · en cours (demandé le 30/10, avant l'ordre d'Ensuite) · dépend de : 55 · détail : docs/backlog/52-assainissement.md
+- 68 · [dette] Bibliothèque : balayage du dossier et écritures groupés, Statistiques et Profil recalculés une fois au lieu d'une fois par session · noté 28/10 · petit · Opus/high · à valider (commit du lot 68, 0.3.114) ; « Mettre à jour » de 300 sessions : une vingtaine de publications au lieu d'environ 600 ; étape 6 (clé tracker.choix) écartée par l'orchestrateur, migration de données pour un gain faible · dépend de : 54 · détail : docs/backlog/52-assainissement.md
+  - essai 76 : Réglages › Mémoire › « Mettre à jour » sur le téléphone, puis Statistiques → même nombre de sessions avant et après, aucune en double, chiffres de Statistiques inchangés
 
 ## Ensuite
 
@@ -76,8 +79,6 @@ APK 0.3.113 installée le 30/10 (versionCode 3113, lots 66, 69 et 70, validés l
 - 47 · [idée] Itinéraires hors ligne par l'application BRouter pour Android, à la place du serveur public (point 59) · noté 25/09 · gros
 - 49 · [dette] Mesure d'une manœuvre sous bruit réaliste : cap et gain du virement le plus lent (creux vers 3,75 nd) varient de ±20° et 15 m selon la cadence ; ce sont les bornes de measureManeuver, pas la détection (relevé au lot 30) · noté 28/10 · petit
 - 58 · [dette] Voile, curseur du seuil plus fluide : le vent et l'altitude ne se recalculent plus à chaque cran ; chiffres identiques ; seul dans sa session · noté 28/10 · petit · Opus/high · seul dans sa conversation (relevé du vent avant/après sur les 12 sessions réelles, comme au lot 30) : à lancer dans une conversation neuve · dépend de : 56 (levé) · détail : docs/backlog/52-assainissement.md
-- 67 · [dette] Enregistrer : seuls les chiffres se redessinent à chaque position GPS, plus toute la page ; reprend aussi le reste du lot 69 (troisième décodage du .imu dans useRecorder) · noté 28/10 · petit · Opus/high · dépend de : 55 · détail : docs/backlog/52-assainissement.md
-- 68 · [dette] Bibliothèque : balayage du dossier et écritures groupés, Statistiques et Profil recalculés une fois au lieu d'une fois par session · noté 28/10 · petit · Opus/high · dépend de : 54 · détail : docs/backlog/52-assainissement.md
 - 71 · [dette] Rangement des dossiers : chaque fichier à sa place, un test qui garde le sens des dépendances ; reprend aussi le reste du lot 70 (réexport de la pente dans runningAnalytics à retirer, dépendance de types entre running/energyView et cycling, moyennes glissantes à fusionner seulement si identiques au bit près) · noté 28/10 · petit · Sonnet/high · dépend de : 57 (levé), 70 · détail : docs/backlog/52-assainissement.md
 - 72 · [dette] Calcul sorti des écrans : réglages, profil, résumés et couleurs de trace calculés et testés à part ; reprend aussi le reste du lot 66 (sélecteur JSON et écouteurs communs, table des champs de réglages, cartes de Réglages mémoïsées : une frappe redessine encore toutes les cartes ouvertes) · noté 28/10 · petit · Opus/medium · dépend de : 71 · détail : docs/backlog/52-assainissement.md
 - 73 · [dette] Carte : trace colorée dessinée en une seule couche au lieu de 54 000 morceaux, couleurs inchangées (Q46, Q48) · noté 28/10 · petit · Opus/high · dépend de : 72 · détail : docs/backlog/52-assainissement.md

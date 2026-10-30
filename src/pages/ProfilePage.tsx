@@ -15,7 +15,7 @@ import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { useProfileRoot } from '../hooks/useProfileRoot';
 import { runnerAvatar, runnerName, useRunnerProfile } from '../hooks/useRunnerProfile';
-import { useSessionLibrary } from '../hooks/useSessionLibrary';
+import { useLibraryFields } from '../hooks/useSessionLibrary';
 import { useStoredRecord } from '../hooks/useStoredRecord';
 import { useThemedShade } from '../hooks/useTheme';
 import { useNow } from '../hooks/useNow';
@@ -103,7 +103,7 @@ const LegendContent = ({ slice: s }: { slice: Slice }) => (
 
 function ProfilePage() {
   const navigate = useNavigate();
-  const { status, sessions, scanning } = useSessionLibrary();
+  const { status, sessions, scanning } = useLibraryFields('status', 'sessions', 'scanning');
   const backdrop = useFavoriteBackdrop();
   const { activities } = useVisibility();
   /** Le nom ou pseudo de Réglages en titre, « Profil » sans lui. */

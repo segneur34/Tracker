@@ -18,7 +18,7 @@ import { libraryPath } from '../hooks/useLibraryNavigation';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { profilePromptGate, runnerName, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
-import { useSessionLibrary } from '../hooks/useSessionLibrary';
+import { useLibraryFields } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
 import { shownRoutes } from '../planning/routeList';
 import './Home.css';
@@ -42,7 +42,7 @@ const FAMILY_PHOTO: Record<SportFamily, string> = {
 };
 
 function Home() {
-  const { status, error } = useSessionLibrary();
+  const { status, error } = useLibraryFields('status', 'error');
   const backdrop = useFavoriteBackdrop();
   const { routes: allRoutes } = useRouteLibrary();
   const { activities, families, isShown, shownActivities } = useVisibility();

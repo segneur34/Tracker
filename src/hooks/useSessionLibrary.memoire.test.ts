@@ -173,9 +173,9 @@ describe('fiche non écrite (E-B10)', () => {
     library.updateSessionRecord(file, { name: 'Matin' });
     await vi.advanceTimersByTimeAsync(2000);
     vi.useRealTimers();
-    // Un import vide reconstruit le cache.
+    // Un import vide met à jour le cache, une seconde après.
     await library.importFiles([]);
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 1100));
     const { jsonStore } = await import('../platform/storage');
     const cache = jsonStore.read<{ entries: Record<string, unknown> }>('tracker.libraryCache');
     expect(cache?.entries[file.replace(/\.gpx$/, '.json')]).toBeUndefined();

@@ -33,7 +33,7 @@ import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useOpenSections } from '../hooks/useOpenSections';
 import { runnerHeartRateZones, useRunnerProfile, type RunnerProfile } from '../hooks/useRunnerProfile';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
-import { useSessionLibrary } from '../hooks/useSessionLibrary';
+import { useLibraryFields } from '../hooks/useSessionLibrary';
 import { readStoredRecord, useStoredRecord } from '../hooks/useStoredRecord';
 import { useVisibleStatSessions, visibleStatSessions } from '../hooks/useVisibleStatSessions';
 import { effectiveDistanceUnit, effectiveHrOffset, effectiveSpeedUnit, useGearGroups, useVisibility } from '../hooks/useSportSettings';
@@ -226,7 +226,7 @@ function CardioLoadHelpSlot({ bounds }: { bounds: Parameters<typeof CardioLoadHe
 
 function StatisticsPage() {
   const [params, setParams] = useSearchParams();
-  const { status, sessions, scanning } = useSessionLibrary();
+  const { status, sessions, scanning } = useLibraryFields('status', 'sessions', 'scanning');
   const favoriteBackdrop = useFavoriteBackdrop();
   const { activities, families, isShown, shownActivities } = useVisibility();
   const openSession = useOpenSession();

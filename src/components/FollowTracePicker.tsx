@@ -6,7 +6,7 @@ import { parseGpx } from '../core/gpxParser';
 import { hasPositions } from '../core/sportProfiles';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { followTrace } from '../hooks/useFollowedTrace';
-import { readSessionGpx, useSessionLibrary } from '../hooks/useSessionLibrary';
+import { readSessionGpx, useLibraryFields } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
 import { shownRoutes } from '../planning/routeList';
 import { followedTraceFromPoints, followedTraceFromRoute, type FollowedTrace } from '../recording/followedTrace';
@@ -47,7 +47,7 @@ const LIST_STYLE = { display: 'flex', flexDirection: 'column', gap: 'var(--space
 const formatDate = (ms: number | string) => new Date(ms).toLocaleDateString('fr-FR');
 
 function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicked?: (trace: FollowedTrace) => void }) {
-  const { status, sessions } = useSessionLibrary();
+  const { status, sessions } = useLibraryFields('status', 'sessions');
   const library = useRouteLibrary();
   const [tab, setTab] = useState<PickerTab>('route');
   const [shown, setShown] = useState(PAGE_SIZE);

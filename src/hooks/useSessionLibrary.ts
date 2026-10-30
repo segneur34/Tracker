@@ -1,5 +1,5 @@
 import { useRef, useSyncExternalStore } from 'react';
-import { baseActivity, sessionActivity } from '../core/activities';
+import { baseActivity, sessionActivity, type Activity } from '../core/activities';
 import { parseGpx } from '../core/gpxParser';
 import { decodeImuHeader } from '../core/imuFile';
 import { pruneImuFile } from '../core/imuPrune';
@@ -234,12 +234,54 @@ let generation = 0;
 /** Ouverture en cours : les écritures l'attendent. */
 let opening: Promise<void> = Promise.resolve();
 
-const publish = (): void => {
+/**
+ * Vrai si `all` a changé depuis la dernière publication de la liste. Un
+ * balayage ne publie pas chaque fiche créée ou recalculée (`replaceSession`
+ * discret) : la liste part au rythme de son compteur, et à sa fin ; toute
+ * autre publication emporte ce qui attendait.
+ */
+let publishPending = false;
+
+/** Liste publiée : une session par identité, et les doublons écartés. */
+const publishedFields = (): Pick<LibraryState, 'sessions' | 'duplicates'> => {
   const { kept, duplicates } = dedupeSessions(all);
-  setState({ sessions: kept, duplicates: duplicates.map((s) => s.file) });
+  publishPending = false;
+  return { sessions: kept, duplicates: duplicates.map((s) => s.file) };
 };
 
-const findSession = (file: string): LibrarySession | undefined => all.find((s) => s.file === file);
+const publish = (): void => setState(publishedFields());
+
+/** Index d'une liste de sessions par une clé, la première de chaque clé gardée (comme `find`). */
+type SessionIndex<K> = WeakMap<readonly LibrarySession[], Map<K, LibrarySession>>;
+
+/**
+ * Index de `list`, tenu tant que la liste garde son identité : `all` et la
+ * liste publiée sont toujours remplacées, jamais modifiées en place.
+ */
+const indexed = <K>(index: SessionIndex<K>, list: readonly LibrarySession[], key: (s: LibrarySession) => K): Map<K, LibrarySession> => {
+  let map = index.get(list);
+  if (!map) {
+    map = new Map();
+    for (const session of list) {
+      const k = key(session);
+      if (!map.has(k)) map.set(k, session);
+    }
+    index.set(list, map);
+  }
+  return map;
+};
+
+const byFile: SessionIndex<string> = new WeakMap();
+const byStart: SessionIndex<number> = new WeakMap();
+
+const sessionOfFile = (list: readonly LibrarySession[], file: string): LibrarySession | undefined =>
+  indexed(byFile, list, (s) => s.file).get(file);
+
+const findSession = (file: string): LibrarySession | undefined => sessionOfFile(all, file);
+
+/** Première session de `all` partie à `startMs` : la même trace, sous quelque nom que ce soit. */
+const findSessionAt = (startMs: number): LibrarySession | undefined =>
+  indexed(byStart, all, (s) => s.record.summary.startMs).get(startMs);
 
 /**
  * Fichiers en cours de suppression (`removeSession`) : un recalcul ou une
@@ -280,10 +322,17 @@ const rememberUnreadable = (f: MemoryFolder, file: string, unreadable: RecordUnr
 /** Fiche de 0 octet (création interrompue, fichier créé vide avant d'être écrit) : tenue pour absente. */
 const isBlankRecordText = (text: string | null): boolean => text !== null && text.trim() === '';
 
-const replaceSession = (session: LibrarySession): void => {
+/**
+ * Met la session à jour dans `all`, tout de suite, et la publie. `quiet`
+ * (balayage de fond) : la publication attend le prochain compteur du balayage
+ * ou une autre publication (`publishPending`).
+ */
+const replaceSession = (session: LibrarySession, quiet = false): void => {
   if (removing.has(session.file)) return;
   all = [...all.filter((s) => s.file !== session.file), session];
-  publish();
+  cacheDirty.add(session.file);
+  if (quiet) publishPending = true;
+  else publish();
 };
 
 // --- Cache des fiches, hors du dossier ---
@@ -310,20 +359,76 @@ const readCache = (f: MemoryFolder): { entries: LibraryCache; light: boolean } =
     : { entries: {}, light: false };
 };
 
-/** Cache reconstruit d'après le contenu réel de `sessions/` et les fiches connues, allégées. */
-const refreshCache = async (f: MemoryFolder, gen: number): Promise<void> => {
+/**
+ * GPX dont l'entrée du cache n'est peut-être plus juste : importés, supprimés,
+ * créés, recalculés ou saisis, écrits ou en échec d'écriture, et ceux écartés
+ * au dernier passage parce que leur fiche attendait d'être écrite. Une mise à
+ * jour du cache (`updateCache`) ne refait que leurs entrées.
+ */
+const cacheDirty = new Set<string>();
+
+/** Après un import ou une suppression, le cache est mis à jour une fois, ce délai écoulé depuis le dernier. */
+const CACHE_UPDATE_DELAY_MS = 1000;
+let cacheTimer: ReturnType<typeof setTimeout> | null = null;
+/** Mise à jour du cache en attente : le dossier et sa génération. */
+let cachePending: { f: MemoryFolder; gen: number } | null = null;
+
+/**
+ * Cache d'après le contenu réel de `sessions/` et les fiches connues,
+ * allégées. `whole` : refait en entier (fin de balayage) ; sinon, seules les
+ * entrées de `cacheDirty` sont refaites, les autres recopiées du cache rangé
+ * (refait en entier s'il est d'un autre dossier ou d'avant l'allègement).
+ */
+const updateCache = async (f: MemoryFolder, gen: number, whole: boolean): Promise<void> => {
   const entries = await f.list(SESSIONS_DIR);
   if (gen !== generation) return;
   const byName = indexByRecordName(entries);
-  const next: LibraryCache = {};
-  for (const session of all) {
-    // Une fiche en attente ou en cours d'écriture diffère encore du fichier : elle sera relue au prochain lancement.
-    if (session.readOnly || recordTimers.has(session.file) || writing.has(session.file) || unwritten.has(session.file)) continue;
-    const name = recordFileName(session.file);
+  const kept = whole ? null : readCache(f);
+  const next: LibraryCache = kept?.light ? { ...kept.entries } : {};
+  const sessions = kept?.light ? [...cacheDirty].map((file) => findSession(file) ?? file) : all;
+  cacheDirty.clear();
+  for (const item of sessions) {
+    const file = typeof item === 'string' ? item : item.file;
+    const name = recordFileName(file);
     const entry = byName.get(name);
-    if (entry) next[entry.name] = { size: entry.size, mtimeMs: entry.mtimeMs, record: lightRecord(session.record) };
+    delete next[name];
+    if (entry) delete next[entry.name];
+    if (typeof item === 'string' || item.readOnly) continue;
+    // Une fiche en attente ou en cours d'écriture diffère encore du fichier : elle sera relue au prochain lancement.
+    if (recordTimers.has(file) || writing.has(file) || unwritten.has(file)) {
+      cacheDirty.add(file);
+      continue;
+    }
+    if (entry) next[entry.name] = { size: entry.size, mtimeMs: entry.mtimeMs, record: lightRecord(item.record) };
   }
   jsonStore.write(CACHE_KEY, { folder: folderId(f), light: true, entries: next } satisfies StoredCache);
+};
+
+/** Cache refait en entier, d'après tout `all` (fin de balayage). */
+const rebuildCache = (f: MemoryFolder, gen: number): Promise<void> => updateCache(f, gen, true);
+
+/** Met à jour le cache dans `CACHE_UPDATE_DELAY_MS`, une fois pour toutes les demandes faites d'ici là. */
+const scheduleCacheUpdate = (f: MemoryFolder): void => {
+  if (cacheTimer !== null) clearTimeout(cacheTimer);
+  cachePending = { f, gen: generation };
+  cacheTimer = setTimeout(() => void flushCacheUpdate(), CACHE_UPDATE_DELAY_MS);
+};
+
+/** Fait tout de suite la mise à jour du cache en attente, s'il y en a une. */
+const flushCacheUpdate = async (): Promise<void> => {
+  if (cacheTimer !== null) clearTimeout(cacheTimer);
+  cacheTimer = null;
+  const pending = cachePending;
+  cachePending = null;
+  if (pending) await updateCache(pending.f, pending.gen, false).catch(() => undefined);
+};
+
+/** Changement de dossier ou relecture : la mise à jour en attente n'a plus lieu d'être, le balayage refera tout le cache. */
+const cancelCacheUpdate = (): void => {
+  if (cacheTimer !== null) clearTimeout(cacheTimer);
+  cacheTimer = null;
+  cachePending = null;
+  cacheDirty.clear();
 };
 
 const FUTURE_RECORD_WARNING = 'Fiche écrite par une version plus récente de Tracker : lue sans être modifiée.';
@@ -340,36 +445,44 @@ const hydrating = new Map<string, Promise<void>>();
  * laisse la mémoire telle quelle, qui est alors tout ce qu'on a ; une fiche
  * illisible ou d'une version future met la session en lecture seule. Une
  * erreur de lecture remonte, et la session reste partielle : rien ne doit
- * alors être écrit.
+ * alors être écrit. `quiet` : relecture du balayage de fond, publiée avec
+ * lui (`replaceSession`) ; une autre relecture qui la rejoint la publie.
  */
-const hydrateSession = (f: MemoryFolder, file: string): Promise<void> => {
+const hydrateSession = (f: MemoryFolder, file: string, quiet = false): Promise<void> => {
   if (!findSession(file)?.partial) return Promise.resolve();
-  let pending = hydrating.get(file);
-  if (!pending) {
-    pending = (async () => {
-      const read = await f.readText(sessionPath(recordFileName(file)));
-      const current = findSession(file);
-      if (!current?.partial || folder !== f) return;
-      const text = isBlankRecordText(read) ? null : read;
-      const parsed = text === null ? null : parseRecordWithRaw(text);
-      const parts = parsed?.parts ?? null;
-      // Résumé du disque illisible (écriture interrompue) : celui de la mémoire, refait depuis le GPX, le remplace (E-B10).
-      const disk = parts ? { ...parts, summary: parts.summary ?? current.record.summary } : null;
-      if (text !== null && !disk) {
-        replaceSession({ ...current, partial: false, readOnly: true, warning: DAMAGED_RECORD_WARNING });
-      } else if (disk && !isWritableRecord(disk)) {
-        replaceSession({ ...current, record: { ...disk, gpx: file }, partial: false, readOnly: true, warning: FUTURE_RECORD_WARNING });
-      } else {
-        rememberUnreadable(f, file, parsed?.unreadable);
-        replaceSession({ ...current, record: disk ? mergeLightRecord(disk, current.record) : current.record, partial: false });
-      }
-    })().finally(() => hydrating.delete(file));
-    hydrating.set(file, pending);
+  const running = hydrating.get(file);
+  if (running) {
+    return quiet ? running : running.then(() => {
+      if (publishPending) publish();
+    });
   }
+  const pending = (async () => {
+    const read = await f.readText(sessionPath(recordFileName(file)));
+    const current = findSession(file);
+    if (!current?.partial || folder !== f) return;
+    const text = isBlankRecordText(read) ? null : read;
+    const parsed = text === null ? null : parseRecordWithRaw(text);
+    const parts = parsed?.parts ?? null;
+    // Résumé du disque illisible (écriture interrompue) : celui de la mémoire, refait depuis le GPX, le remplace (E-B10).
+    const disk = parts ? { ...parts, summary: parts.summary ?? current.record.summary } : null;
+    if (text !== null && !disk) {
+      replaceSession({ ...current, partial: false, readOnly: true, warning: DAMAGED_RECORD_WARNING }, quiet);
+    } else if (disk && !isWritableRecord(disk)) {
+      replaceSession({ ...current, record: { ...disk, gpx: file }, partial: false, readOnly: true, warning: FUTURE_RECORD_WARNING }, quiet);
+    } else {
+      rememberUnreadable(f, file, parsed?.unreadable);
+      replaceSession({ ...current, record: disk ? mergeLightRecord(disk, current.record) : current.record, partial: false }, quiet);
+    }
+  })().finally(() => hydrating.delete(file));
+  hydrating.set(file, pending);
   return pending;
 };
 
 // --- Résumés ---
+
+/** Activité d'une session : la sienne, sinon la première de son calcul, sinon le calcul lui-même. */
+const activityOfSession = (sport: SportType, activityId: string | null | undefined): Activity =>
+  sessionActivity(readStoredActivities(), activityId, sport) ?? baseActivity(sport);
 
 /**
  * Réglages qui changent le résumé : ceux de l'activité de la session, et ceux
@@ -386,7 +499,7 @@ const summaryOptions = (
   elevation?: SessionElevation | null
 ): SummaryOptions => {
   if (sport === null) return {};
-  const activity = sessionActivity(readStoredActivities(), activityId, sport) ?? baseActivity(sport);
+  const activity = activityOfSession(sport, activityId);
   return {
     // Le seuil de la session, sinon celui réglé ou pré-réglé pour son activité (0 : aucun seuil réglé, arrêts complets ôtés d'office).
     activeThreshold: analysis?.activeThreshold ?? effectiveThresholdOverride(activity),
@@ -510,6 +623,8 @@ const writeRecordNow = async (file: string): Promise<boolean> => {
     const left = (writing.get(file) ?? 1) - 1;
     if (left > 0) writing.set(file, left);
     else writing.delete(file);
+    // Fichier récrit, ou fiche qui n'entre plus dans le cache : son entrée est à refaire.
+    cacheDirty.add(file);
   }
 };
 
@@ -525,7 +640,7 @@ const cancelRecordWrite = (file: string): void => {
   recordTimers.delete(file);
 };
 
-/** Écrit tout de suite les fiches et les réglages en attente d'écriture. */
+/** Écrit tout de suite les fiches et les réglages en attente d'écriture, puis le cache des fiches s'il attendait. */
 const flushWrites = async (): Promise<void> => {
   const files = [...recordTimers.keys()];
   files.forEach(cancelRecordWrite);
@@ -533,6 +648,7 @@ const flushWrites = async (): Promise<void> => {
     ...files.map((file) => writeRecordNow(file)),
     ...(settingsTimer !== null ? [flushSettings()] : []),
   ]);
+  await flushCacheUpdate();
 };
 
 // --- Réglages, un fichier par appareil (§10, point 90) ---
@@ -1049,7 +1165,7 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
   }
   if (job.kind === 'refresh') {
     try {
-      await hydrateSession(f, job.file);
+      await hydrateSession(f, job.file, true);
     } catch (err) {
       reportError(`Fiche de ${job.file} non relue : ${errorMessage(err, 'erreur inconnue')}`);
       return 'done';
@@ -1070,7 +1186,7 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
   if (removing.has(job.file)) return 'done';
 
   if (current) {
-    replaceSession({ ...current, record: withSummary(current.record, analyzed.summary) });
+    replaceSession({ ...current, record: withSummary(current.record, analyzed.summary) }, true);
     cancelRecordWrite(job.file);
     await writeRecordNow(job.file);
     return 'done';
@@ -1088,7 +1204,7 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
     }
   }
   if (gen !== generation) return 'stopped';
-  replaceSession({ file: job.file, record, readOnly: job.readOnly, warning: job.warning });
+  replaceSession({ file: job.file, record, readOnly: job.readOnly, warning: job.warning }, true);
   return 'done';
 };
 
@@ -1111,23 +1227,34 @@ const completeScan = (f: MemoryFolder, gen: number, jobs: SummaryJob[]): Promise
   return run;
 };
 
+/**
+ * Les fiches créées ou recalculées entrent dans `all` tout de suite, mais ne
+ * sont publiées qu'avec le compteur (au plus toutes les
+ * `SCAN_PROGRESS_INTERVAL_MS`), puis une fois à la fin : chaque publication
+ * redessine les pages qui lisent la liste. Un arrêt sur erreur publie ce qui
+ * attendait.
+ */
 const runCompleteScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[]): Promise<void> => {
   const unreadable: string[] = [];
   let shownAt = -Infinity;
-  for (let i = 0; i < jobs.length; i++) {
-    if (gen !== generation) return;
-    if (Date.now() - shownAt >= SCAN_PROGRESS_INTERVAL_MS) {
-      shownAt = Date.now();
-      setState({ scanning: { done: i, total: jobs.length } });
+  try {
+    for (let i = 0; i < jobs.length; i++) {
+      if (gen !== generation) return;
+      if (Date.now() - shownAt >= SCAN_PROGRESS_INTERVAL_MS) {
+        shownAt = Date.now();
+        setState({ scanning: { done: i, total: jobs.length }, ...(publishPending ? publishedFields() : {}) });
+      }
+      const outcome = await runJob(f, gen, jobs[i]);
+      if (outcome === 'stopped') return;
+      if (outcome === 'unreadable') unreadable.push(jobs[i].file);
+      await pause();
     }
-    const outcome = await runJob(f, gen, jobs[i]);
-    if (outcome === 'stopped') return;
-    if (outcome === 'unreadable') unreadable.push(jobs[i].file);
-    await pause();
+    if (gen !== generation) return;
+    setState({ scanning: null, unreadable, ...(publishPending ? publishedFields() : {}) });
+  } finally {
+    if (publishPending && gen === generation) publish();
   }
-  if (gen !== generation) return;
-  setState({ scanning: null, unreadable });
-  await refreshCache(f, gen);
+  await rebuildCache(f, gen);
 };
 
 /**
@@ -1183,9 +1310,11 @@ const countPending = async (): Promise<void> => {
  */
 const attach = async (f: MemoryFolder): Promise<boolean> => {
   generation += 1;
+  cancelCacheUpdate();
   const gen = generation;
   folder = f;
   all = [];
+  publishPending = false;
   knownNames = new Set();
   setState({
     status: 'opening',
@@ -1216,8 +1345,10 @@ const attach = async (f: MemoryFolder): Promise<boolean> => {
 
 const detach = (status: 'needs-permission' | 'unavailable', label: string | null, reason: string | null): void => {
   generation += 1;
+  cancelCacheUpdate();
   folder = null;
   all = [];
+  publishPending = false;
   knownNames = new Set();
   settingsEntries = [];
   setState({
@@ -1393,7 +1524,7 @@ const prunedMotion = async (
       return rides ? await pruneSurfImu(motion, rides, profile.pump.pruneMarginS) : motion;
     }
     if (sportTreatment(sport) === 'voile') {
-      const activity = sessionActivity(readStoredActivities(), activityId, sport) ?? baseActivity(sport);
+      const activity = activityOfSession(sport, activityId);
       const foil = analysis?.foil ?? setup?.foil ?? false;
       const pumping = analysis?.pumping ?? effectivePumping(activity) ?? false;
       if (keepsWholeCaptureForPumping(profile.pump, foil, pumping)) return motion;
@@ -1418,11 +1549,11 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   if (!analyzed) return { status: 'invalid', file: null, message: 'Pas assez de points horodatés.' };
 
   const startMs = analyzed.summary.startMs;
-  let existing = all.find((s) => s.record.summary.startMs === startMs);
+  let existing = findSessionAt(startMs);
   // Première lecture du dossier en cours : sa session n'est peut-être pas encore publiée, on l'attend (aucune attente sinon).
   if (!existing && scanCompletion) {
     await scanCompletion.then(() => undefined, () => undefined);
-    existing = all.find((s) => s.record.summary.startMs === startMs);
+    existing = findSessionAt(startMs);
   }
   // Fiche du cache allégé : relue en entier, pour ne pas croire absents ses sauts, ses voies ou son altitude.
   if (existing?.partial && options.record && folder) {
@@ -1640,7 +1771,7 @@ export const importEntries = async (entries: ImportEntry[]): Promise<ImportRepor
         report.failed.push(`${entry.name} : ${errorMessage(err, 'erreur inconnue')}`);
       }
     }
-    if (folder) void refreshCache(folder, generation).catch(() => undefined);
+    if (folder) scheduleCacheUpdate(folder);
     if (report.failed.length === 0) {
       setState({ message: describeImport(report) });
     } else {
@@ -1705,6 +1836,8 @@ export const loadFullSession = async (file: string): Promise<void> => {
   if (!f) return;
   try {
     await hydrateSession(f, file);
+    // Déjà relue par le balayage de fond, pas encore publiée : l'analyse la voit entière tout de suite.
+    if (publishPending) publish();
   } catch (err) {
     reportError(`Fiche de ${file} non relue : ${errorMessage(err, 'erreur inconnue')}`);
   }
@@ -1822,7 +1955,8 @@ export const removeSession = async (file: string): Promise<void> => {
   }
   all = all.filter((s) => !files.includes(s.file));
   publish();
-  void refreshCache(f, generation).catch(() => undefined);
+  for (const name of files) cacheDirty.add(name);
+  scheduleCacheUpdate(f);
 };
 
 /**
@@ -1946,11 +2080,14 @@ export const refreshLibrary = (): Promise<void> => {
     const f = folder;
     if (!f || state.status !== 'ready') return null;
     setState({ refreshing: true, message: null, error: null });
+    // Balayage en cours : ce qu'il n'a pas encore publié compte parmi les sessions d'avant.
+    if (publishPending) publish();
     const before = new Set(state.sessions.map((s) => s.record.summary.startMs));
     // Une saisie faite à partir d'ici garde sa version en mémoire (`keptInMemory`).
     const editsBefore = editCount;
     await flushWrites();
     generation += 1;
+    cancelCacheUpdate();
     const gen = generation;
     const settingsChanged = await syncSettingsSafely(f);
     const jobs = await scan(f, gen, editsBefore);
@@ -1991,9 +2128,6 @@ export const dismissLibraryMessage = (): void => setState({ message: null, error
 /** Ferme la proposition d'un nouveau fichier de réglages ; il reste dans la liste de Réglages › Mémoire. */
 export const dismissSettingsOffer = (): void => setState({ settingsOffer: null });
 
-/** État de la bibliothèque, relu à chaque changement. */
-export const useSessionLibrary = (): LibraryState => useSyncExternalStore(subscribe, () => state);
-
 /** État de la bibliothèque, lu hors d'un composant. */
 export const readLibraryState = (): LibraryState => state;
 
@@ -2018,7 +2152,7 @@ export const librarySession = (file: string): LibrarySession | undefined => find
 
 /** Session d'un fichier, ou `undefined` si la bibliothèque ne la connaît pas. */
 export const findLibrarySession = (sessions: LibrarySession[], file: string | null): LibrarySession | undefined =>
-  file === null ? undefined : sessions.find((s) => s.file === file);
+  file === null ? undefined : sessionOfFile(sessions, file);
 
 /**
  * Une partie de l'état de la bibliothèque : le composant n'est rendu de

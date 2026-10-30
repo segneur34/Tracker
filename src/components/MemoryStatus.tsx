@@ -5,7 +5,7 @@ import {
   dismissLibraryMessage,
   reconnectFolder,
   switchToBrowserMemory,
-  useSessionLibrary,
+  useLibraryFields,
 } from '../hooks/useSessionLibrary';
 import { isNativeApp } from '../platform/runtime';
 import ImportButtons from './ImportButtons';
@@ -48,7 +48,9 @@ function MemoryStatus({
   compact?: boolean;
   collapse?: { open: boolean; onToggle: () => void };
 }) {
-  const library = useSessionLibrary();
+  const library = useLibraryFields(
+    'status', 'folderKind', 'folderLabel', 'reason', 'sessions', 'scanning', 'pendingCount', 'duplicates', 'unreadable', 'message', 'error'
+  );
   const { status, folderKind, folderLabel } = library;
   const canChoose = canChooseMemoryFolder();
   const native = isNativeApp();

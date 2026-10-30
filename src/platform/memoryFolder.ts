@@ -80,6 +80,9 @@ const isNotFound = (err: unknown): boolean =>
 
 // --- Navigateur : poignées de dossier ---
 
+/** Fichiers dont la taille et la date sont lues ensemble au listage d'un dossier : 1 500 fiches ne font pas 1 500 allers-retours. */
+const LIST_STAT_BATCH = 32;
+
 const createHandleFolder = (root: FileSystemDirectoryHandle, kind: MemoryKind, label: string): MemoryFolder => {
   const dirAt = async (parts: string[], create: boolean): Promise<FileSystemDirectoryHandle> => {
     let dir = root;
@@ -127,14 +130,16 @@ const createHandleFolder = (root: FileSystemDirectoryHandle, kind: MemoryKind, l
         if (isNotFound(err)) return [];
         throw err;
       }
+      // Les poignées d'abord, puis taille et date par lots lus ensemble, dans l'ordre du dossier.
+      const handles: [string, FileSystemDirectoryHandle | FileSystemFileHandle][] = [];
+      for await (const pair of dir.entries()) handles.push(pair);
       const entries: FolderEntry[] = [];
-      for await (const [name, handle] of dir.entries()) {
-        if (handle.kind === 'directory') {
-          entries.push({ name, kind: 'directory', size: 0, mtimeMs: 0 });
-        } else {
+      for (let from = 0; from < handles.length; from += LIST_STAT_BATCH) {
+        entries.push(...await Promise.all(handles.slice(from, from + LIST_STAT_BATCH).map(async ([name, handle]): Promise<FolderEntry> => {
+          if (handle.kind === 'directory') return { name, kind: 'directory', size: 0, mtimeMs: 0 };
           const file = await handle.getFile();
-          entries.push({ name, kind: 'file', size: file.size, mtimeMs: file.lastModified });
-        }
+          return { name, kind: 'file', size: file.size, mtimeMs: file.lastModified };
+        })));
       }
       return entries;
     },
