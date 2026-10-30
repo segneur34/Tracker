@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { decodeImu, encodeImu } from '../core/imuFile';
 import { SYNTH_WALL_MS, synthImu } from '../core/imuSynthetic.fixture';
-import { pruneSurfImu, surfPruneWindows } from './pumping';
+import { pruneSurfImu, surfPruneWindows } from './imuPrune';
 
 const G = 9.80665;
 const W = SYNTH_WALL_MS;

@@ -1,5 +1,4 @@
-import { errorMessage } from '../core/basics';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { TrackPoint } from '../core/types';
 import type { SessionSurfaces } from '../library/record';
 import { fetchWays } from '../planning/overpass';
@@ -7,7 +6,7 @@ import {
   summarizeSurfaces, surfacePaths, trackSurfaceStretches, type SurfacePath, type SurfaceStretch, type SurfaceTotal,
 } from '../planning/surface';
 import { WAY_MATCH_DEFAULTS, WAY_MATCH_VERSION, queryLines, trackSurfaceRuns } from '../planning/wayMatch';
-import { librarySession, updateSessionRecord, useLibrarySession } from './useSessionLibrary';
+import { createSessionAssetCache, useSessionAsset } from './sessionAsset';
 
 /**
  * Revêtement d'une session course ou vélo (onglet « surface », et roulement
@@ -22,37 +21,18 @@ import { librarySession, updateSessionRecord, useLibrarySession } from './useSes
  */
 
 /** Voies trouvées pendant ce lancement, par instant du premier point de la trace. */
-const found = new Map<number, SessionSurfaces>();
-/** Recherches en cours, par instant du premier point : une seule par trace. */
-const searching = new Map<number, Promise<SessionSurfaces>>();
+const cache = createSessionAssetCache<SessionSurfaces>();
 
-const search = (track: ReadonlyArray<TrackPoint>): Promise<SessionSurfaces> => {
-  const startMs = track[0].timeMs;
-  let pending = searching.get(startMs);
-  if (!pending) {
-    pending = fetchWays(queryLines(track, WAY_MATCH_DEFAULTS), WAY_MATCH_DEFAULTS.radiusM)
-      .then((ways) => {
-        const matched = trackSurfaceRuns(track, ways, WAY_MATCH_DEFAULTS);
-        const surfaces: SessionSurfaces = {
-          source: 'overpass',
-          fetchedAt: new Date().toISOString(),
-          matchVersion: WAY_MATCH_VERSION,
-          startMs: matched.startMs,
-          ...matched.surfaces,
-        };
-        found.set(startMs, surfaces);
-        return surfaces;
-      })
-      .finally(() => searching.delete(startMs));
-    searching.set(startMs, pending);
-  }
-  return pending;
-};
-
-/** Range les voies dans la fiche, si la session est dans la mémoire et que sa fiche peut être réécrite. */
-const store = (file: string | null, surfaces: SessionSurfaces): void => {
-  const session = file !== null ? librarySession(file) : undefined;
-  if (session && !session.readOnly) updateSessionRecord(session.file, { surfaces });
+const search = async (track: ReadonlyArray<TrackPoint>): Promise<SessionSurfaces> => {
+  const ways = await fetchWays(queryLines(track, WAY_MATCH_DEFAULTS), WAY_MATCH_DEFAULTS.radiusM);
+  const matched = trackSurfaceRuns(track, ways, WAY_MATCH_DEFAULTS);
+  return {
+    source: 'overpass',
+    fetchedAt: new Date().toISOString(),
+    matchVersion: WAY_MATCH_VERSION,
+    startMs: matched.startMs,
+    ...matched.surfaces,
+  };
 };
 
 const isCurrent = (surfaces: SessionSurfaces | undefined): surfaces is SessionSurfaces =>
@@ -61,35 +41,11 @@ const isCurrent = (surfaces: SessionSurfaces | undefined): surfaces is SessionSu
 export type SurfaceSearchStatus = 'idle' | 'searching' | 'error' | 'ready';
 
 export const useSessionSurfaces = (track: TrackPoint[], file: string | null, active: boolean) => {
-  const session = useLibrarySession(file);
   const startMs = track.length > 1 ? track[0].timeMs : null;
-  const stored = session?.record.surfaces;
-  // Fiche allégée, pas encore relue en entier : ses voies rangées ne sont pas encore connues.
-  const partial = session?.partial === true;
-  const [, setFoundCount] = useState(found.size);
-  const [error, setError] = useState<{ startMs: number; message: string } | null>(null);
-
-  const local = startMs !== null ? found.get(startMs) : undefined;
-  const surfaces = isCurrent(stored) ? stored : local;
-  const failed = error !== null && error.startMs === startMs ? error.message : null;
-
-  // Voies trouvées avant que la bibliothèque connaisse la session : rangées dès qu'elle la connaît.
-  useEffect(() => {
-    if (local && !isCurrent(stored) && session && !session.readOnly && !partial) store(session.file, local);
-  }, [local, stored, session, partial]);
-
-  useEffect(() => {
-    if (!active || surfaces || failed !== null || startMs === null || partial) return;
-    search(track).then(
-      (result) => {
-        store(file, result);
-        setFoundCount(found.size);
-      },
-      (err: unknown) => setError({ startMs, message: errorMessage(err, 'Recherche des voies impossible.') })
-    );
-  }, [active, surfaces, failed, startMs, track, file, partial]);
-
-  const retry = () => setError(null);
+  const { value: surfaces, error: failed, retry } = useSessionAsset({
+    cache, file, key: startMs !== null ? String(startMs) : null,
+    isCurrent, active, compute: () => search(track), field: 'surfaces', errorText: 'Recherche des voies impossible.',
+  });
 
   /**
    * Revêtement de chaque segment (pour l'énergie), longueurs par revêtement,

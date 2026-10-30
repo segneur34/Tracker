@@ -93,7 +93,7 @@ export const analysisTrack = (
 /**
  * Glisses d'une session de surf telles que le module d'analyse les découpe :
  * les vols sur foil, les vagues sinon. L'élagage de ses capteurs les entoure
- * (`surfing/pumping.ts`). `null` hors surf.
+ * (`surfing/imuPrune.ts`). `null` hors surf.
  */
 export const surfRides = (
   rawPoints: RawTrackPoint[],

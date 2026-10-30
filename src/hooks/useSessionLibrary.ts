@@ -5,7 +5,7 @@ import { decodeImuHeader } from '../core/imuFile';
 import { pruneImuFile } from '../core/imuPrune';
 import { JUMPS_CALC_VERSION } from '../core/jumps';
 import { keepsWholeCaptureForPumping } from '../core/pumping';
-import { pruneSurfImu } from '../surfing/pumping';
+import { pruneSurfImu } from '../surfing/imuPrune';
 import type { SessionMark } from '../core/sessionMarks';
 import { SAILING_SPORTS, getSportProfile, hasPositions, isLandTreatment, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';

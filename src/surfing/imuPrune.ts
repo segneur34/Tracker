@@ -1,11 +1,13 @@
-import { decodeImu, encodeImu, selectImuWindows, type ImuRecording } from '../core/imuFile';
+import type { ImuRecording } from '../core/imuFile';
+import { pruneImu } from '../core/imuPrune';
 import { captureBounds, fileUsOf, mergeWindows, type ImuWindow } from '../core/imuVertical';
 import type { SurfSpan } from './surfAnalysis';
 
 /**
  * Élagage du `.imu` d'une session de surf autour de ses glisses (point 104),
- * propre au surf ; la mesure du pumping, commune au surf et à la voile, est
- * dans `core/pumping.ts`. Instants du fichier en µs, heures en ms.
+ * propre au surf (l'enveloppe commune est `pruneImu`) ; la mesure du pumping,
+ * commune au surf et à la voile, est dans `core/pumping.ts`. Instants du
+ * fichier en µs, heures en ms.
  */
 
 /**
@@ -31,9 +33,5 @@ export const surfPruneWindows = (rec: ImuRecording, rides: Pick<SurfSpan, 'start
  * Un fichier illisible ou déjà élagué est rendu tel quel ; une erreur remonte
  * (l'appelant range alors la capture complète).
  */
-export const pruneSurfImu = async (bytes: Uint8Array, rides: Pick<SurfSpan, 'startMs' | 'endMs'>[], marginS: number): Promise<Uint8Array> => {
-  const recording = await decodeImu(bytes);
-  if (!recording || recording.header.windows) return bytes;
-  const selected = selectImuWindows(recording, surfPruneWindows(recording, rides, marginS));
-  return encodeImu(selected.header, selected.series, 1, true);
-};
+export const pruneSurfImu = (bytes: Uint8Array, rides: Pick<SurfSpan, 'startMs' | 'endMs'>[], marginS: number): Promise<Uint8Array> =>
+  pruneImu(bytes, (recording) => surfPruneWindows(recording, rides, marginS));

@@ -1,12 +1,13 @@
-import { errorMessage } from '../core/basics';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { decodeImu } from '../core/imuFile';
-import { JUMPS_CALC_VERSION, measureJumps, toSessionJump, type JumpDetection, type SessionJump } from '../core/jumps';
+import { useCallback, useMemo } from 'react';
+import { JUMPS_CALC_VERSION, measureJumps, toSessionJump, type JumpDetection } from '../core/jumps';
+import type { SessionJumps } from '../library/record';
 import type { Activity } from '../core/activities';
 import { getSportProfile, type SportProfile } from '../core/sportProfiles';
 import type { SportType, TrackPoint } from '../core/types';
 import { effectiveJumpSettings } from './useSportSettings';
-import { hasSessionMotion, librarySession, readSessionMotion, updateSessionRecord, useLibrarySession } from './useSessionLibrary';
+import { createSessionAssetCache, useSessionAsset } from './sessionAsset';
+import { loadSessionMotion } from './sessionMotion';
+import { hasSessionMotion, useLibrarySession } from './useSessionLibrary';
 
 /**
  * Sauts d'une session (voile, course, vélo ; `core/jumps.ts`) : ceux de sa fiche s'ils sont
@@ -17,11 +18,9 @@ import { hasSessionMotion, librarySession, readSessionMotion, updateSessionRecor
 
 /**
  * Sauts calculés pendant ce lancement, par session et instant du premier point (fiche en lecture seule comprise) ;
- * `null` : la capture ne mesurait pas les sauts (cadence seule).
+ * `measured: false` : la capture ne mesurait pas les sauts (cadence seule).
  */
-const computed = new Map<string, SessionJump[] | null>();
-/** Calculs en cours, un seul par session. */
-const searching = new Map<string, Promise<SessionJump[] | null>>();
+const cache = createSessionAssetCache<SessionJumps>();
 
 /**
  * `none` : pas de mesure des sauts pour cette session ; `computing` : calcul
@@ -33,67 +32,34 @@ export type JumpsStatus = 'none' | 'computing' | 'ready' | 'error';
 /** Laisse la page se dessiner avant un calcul de quelques dixièmes de seconde. */
 const nextFrame = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-const compute = (key: string, file: string, track: TrackPoint[], detection: JumpDetection): Promise<SessionJump[] | null> => {
-  let pending = searching.get(key);
-  if (!pending) {
-    pending = (async () => {
-      await nextFrame();
-      const bytes = await readSessionMotion(file);
-      if (!bytes) throw new Error('Fichier des capteurs introuvable.');
-      const recording = await decodeImu(bytes);
-      if (!recording) throw new Error('Fichier des capteurs illisible.');
-      // Capture de la seule cadence : pas de sauts à chercher, et la fiche le retient.
-      const measured = recording.header.setup.jumps !== false;
-      const jumps = measured ? measureJumps(recording, detection, track).jumps.map(toSessionJump) : [];
-      computed.set(key, measured ? jumps : null);
-      const session = librarySession(file);
-      if (session && !session.readOnly) {
-        updateSessionRecord(file, {
-          jumps: { version: JUMPS_CALC_VERSION, computedAt: new Date().toISOString(), jumps, ...(measured ? {} : { measured: false as const }) },
-        });
-      }
-      return measured ? jumps : null;
-    })().finally(() => searching.delete(key));
-    searching.set(key, pending);
-  }
-  return pending;
+const compute = async (file: string, track: TrackPoint[], detection: JumpDetection): Promise<SessionJumps> => {
+  await nextFrame();
+  const recording = await loadSessionMotion(file);
+  // Capture de la seule cadence : pas de sauts à chercher, et la fiche le retient.
+  const measured = recording.header.setup.jumps !== false;
+  const jumps = measured ? measureJumps(recording, detection, track).jumps.map(toSessionJump) : [];
+  return { version: JUMPS_CALC_VERSION, computedAt: new Date().toISOString(), jumps, ...(measured ? {} : { measured: false as const }) };
 };
+
+/** Sauts rangés à jour, ou capture qui ne les mesurait pas (quelle que soit la version). */
+const isCurrent = (stored: SessionJumps | undefined): boolean =>
+  stored !== undefined && (stored.measured === false || stored.version >= JUMPS_CALC_VERSION);
 
 export const useSessionJumps = (file: string | null, track: TrackPoint[], sport: SportType) => {
   const session = useLibrarySession(file);
   const detection = getSportProfile(sport).jumps?.detection ?? null;
   const key = file !== null && track.length > 1 ? `${file}|${track[0].timeMs}` : null;
-  const stored = session?.record.jumps;
-  const notMeasured = stored?.measured === false || (key !== null && computed.get(key) === null);
-  const current = stored && stored.version >= JUMPS_CALC_VERSION && stored.measured !== false ? stored.jumps : null;
-  const local = key !== null ? computed.get(key) ?? undefined : undefined;
   const motion = file !== null && hasSessionMotion(file);
-  const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
-  const [, setComputedCount] = useState(computed.size);
-  const failed = failure !== null && failure.key === key ? failure.message : null;
-  const eligible = key !== null && detection !== null && session !== undefined && motion && !current && !local && !notMeasured && failed === null;
-  // Fiche allégée, pas encore relue en entier : elle porte peut-être déjà les sauts, rien n'est calculé avant.
-  const wanted = eligible && session?.partial !== true;
-
-  useEffect(() => {
-    if (!wanted || key === null || file === null || detection === null) return;
-    let cancelled = false;
-    compute(key, file, track, detection).then(
-      () => {
-        if (!cancelled) setComputedCount(computed.size);
-      },
-      (err: unknown) => {
-        if (!cancelled) setFailure({ key, message: errorMessage(err, 'Calcul des sauts impossible.') });
-      }
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [wanted, key, file, detection, track]);
-
-  const jumps = current ?? local ?? null;
-  const status: JumpsStatus = jumps !== null ? 'ready' : failed !== null ? 'error' : eligible ? 'computing' : 'none';
-  return { status, jumps: jumps ?? [], error: failed };
+  const eligible = key !== null && detection !== null && session !== undefined && motion;
+  const { value, error } = useSessionAsset({
+    cache, file, key, isCurrent, active: eligible, field: 'jumps', errorText: 'Calcul des sauts impossible.',
+    // Lancé seulement si la session est éligible : fichier et détection connus.
+    compute: () => (file !== null && detection !== null ? compute(file, track, detection) : Promise.reject(new Error('Pas de capteurs.'))),
+  });
+  const notMeasured = value?.measured === false;
+  const jumps = value !== undefined && !notMeasured ? value.jumps : null;
+  const status: JumpsStatus = jumps !== null ? 'ready' : error !== null ? 'error' : eligible && !notMeasured ? 'computing' : 'none';
+  return { status, jumps: jumps ?? [], error };
 };
 
 /** Surbrillance de l'onglet « sauts » : un saut par l'heure de son décollage, ou le podium (`podium`). */

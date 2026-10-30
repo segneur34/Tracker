@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { errorMessage } from '../core/basics';
+import { useMemo, useState } from 'react';
 import { TERRAIN_ELEVATION_VERSION, applyTerrainElevation, roundTerrainZ, terrainSamplePoints } from '../core/terrainElevation';
 import type { TrackPoint } from '../core/types';
 import type { SessionTerrainElevation } from '../library/record';
 import { IGN_RESOURCE, fetchIgnElevations } from '../planning/ignAltimetry';
-import { librarySession, updateSessionRecord, useLibrarySession } from './useSessionLibrary';
+import { createSessionAssetCache, useSessionAsset } from './sessionAsset';
+import { updateSessionRecord, useLibrarySession } from './useSessionLibrary';
 
 /**
  * Altitude d'une session course ou vélo : celle du terrain (IGN), demandée à
@@ -22,45 +22,26 @@ import { librarySession, updateSessionRecord, useLibrarySession } from './useSes
 export type ElevationSource = 'ign' | 'gps';
 
 /** Altitudes trouvées pendant ce lancement, par instant du premier point et pas. */
-const found = new Map<string, SessionTerrainElevation>();
-/** Demandes en cours, une seule par trace et par pas. */
-const searching = new Map<string, Promise<SessionTerrainElevation>>();
+const cache = createSessionAssetCache<SessionTerrainElevation>();
 /** Source choisie pour une trace hors de la mémoire, par instant du premier point. */
 const localSources = new Map<number, ElevationSource>();
 
 const cacheKey = (startMs: number, stepM: number) => `${startMs}|${stepM}`;
 
-const search = (track: ReadonlyArray<TrackPoint>, cumDist: ReadonlyArray<number>, stepM: number): Promise<SessionTerrainElevation> => {
+const search = async (track: ReadonlyArray<TrackPoint>, cumDist: ReadonlyArray<number>, stepM: number): Promise<SessionTerrainElevation> => {
   const startMs = track[0].timeMs;
-  const key = cacheKey(startMs, stepM);
-  let pending = searching.get(key);
-  if (!pending) {
-    const points = terrainSamplePoints(track, cumDist, stepM);
-    pending = fetchIgnElevations(points)
-      .then((z) => {
-        const terrain: SessionTerrainElevation = {
-          source: 'ign',
-          resource: IGN_RESOURCE,
-          version: TERRAIN_ELEVATION_VERSION,
-          stepM,
-          fetchedAt: new Date().toISOString(),
-          startMs,
-          t: points.map((p) => p.t),
-          z: z.map(roundTerrainZ),
-        };
-        found.set(key, terrain);
-        return terrain;
-      })
-      .finally(() => searching.delete(key));
-    searching.set(key, pending);
-  }
-  return pending;
-};
-
-/** Range l'altitude dans la fiche, si la session est dans la mémoire et que sa fiche peut être réécrite. */
-const store = (file: string | null, terrain: SessionTerrainElevation): void => {
-  const session = file !== null ? librarySession(file) : undefined;
-  if (session && !session.readOnly) updateSessionRecord(session.file, { terrainElevation: terrain });
+  const points = terrainSamplePoints(track, cumDist, stepM);
+  const z = await fetchIgnElevations(points);
+  return {
+    source: 'ign',
+    resource: IGN_RESOURCE,
+    version: TERRAIN_ELEVATION_VERSION,
+    stepM,
+    fetchedAt: new Date().toISOString(),
+    startMs,
+    t: points.map((p) => p.t),
+    z: z.map(roundTerrainZ),
+  };
 };
 
 const isCurrent = (
@@ -86,39 +67,18 @@ export const useTerrainElevation = (
 ) => {
   const session = useLibrarySession(file);
   const startMs = track.length > 1 ? track[0].timeMs : null;
-  const stored = session?.record.terrainElevation;
-  // Fiche allégée, pas encore relue en entier : son altitude rangée n'est pas encore connue.
-  const partial = session?.partial === true;
-  const [, setFoundCount] = useState(found.size);
   const [, setLocalCount] = useState(0);
-  const [error, setError] = useState<{ key: string; message: string } | null>(null);
 
   const source: ElevationSource = session
     ? session.record.elevationSource ?? 'ign'
     : (startMs !== null ? localSources.get(startMs) : undefined) ?? 'ign';
   const key = startMs !== null && stepM !== null ? cacheKey(startMs, stepM) : null;
-  const local = key !== null ? found.get(key) : undefined;
-  const terrain = isCurrent(stored, startMs, stepM) ? stored : local;
-  const failed = error !== null && error.key === key ? error.message : null;
   const wanted = source === 'ign' && key !== null;
-
-  // Altitude trouvée avant que la bibliothèque connaisse la session : rangée dès qu'elle la connaît.
-  useEffect(() => {
-    if (local && !isCurrent(stored, startMs, stepM) && session && !session.readOnly && !partial) store(session.file, local);
-  }, [local, stored, startMs, stepM, session, partial]);
-
-  useEffect(() => {
-    if (!wanted || terrain || failed !== null || key === null || stepM === null || partial) return;
-    search(track, cumDist, stepM).then(
-      (result) => {
-        store(file, result);
-        setFoundCount(found.size);
-      },
-      (err: unknown) => setError({ key, message: errorMessage(err, 'Altitude de l\'IGN indisponible.') })
-    );
-  }, [wanted, terrain, failed, key, track, cumDist, stepM, file, partial]);
-
-  const retry = () => setError(null);
+  const { value: terrain, error: failed, retry } = useSessionAsset({
+    cache, file, key, active: wanted, field: 'terrainElevation', errorText: 'Altitude de l\'IGN indisponible.',
+    isCurrent: (stored) => isCurrent(stored, startMs, stepM),
+    compute: () => search(track, cumDist, stepM ?? 0),
+  });
 
   /** Garde l'altitude du GPS ou revient à celle de l'IGN. */
   const setSource = (next: ElevationSource) => {
