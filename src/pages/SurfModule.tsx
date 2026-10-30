@@ -61,6 +61,7 @@ import type { SurfFlight, SurfPhase, SurfReturn, SurfSpan } from '../surfing/sur
 import { effectiveWaveThreshold, runSurfSession, surfProfileOf } from '../surfing/surfSession';
 import StatTile from '../components/ui/StatTile';
 import MapToggle from '../components/ui/MapToggle';
+import SegmentedControl from '../components/ui/SegmentedControl';
 import { SPEED_COLOR } from '../components/chartStyle';
 import AnalysisShell from '../components/AnalysisShell';
 
@@ -103,7 +104,7 @@ const WAVE_BAND_COLOR = '#1e88e5';
 const FLIGHT_BAND_COLOR = '#7e57c2';
 
 type WaveSort = 'ordre' | 'distance' | 'vitesse' | 'duree';
-const WAVE_SORT_LABEL: Record<WaveSort, string> = { ordre: 'ordre', distance: 'distance', vitesse: 'vitesse max', duree: 'durée' };
+const WAVE_SORT_LABEL: Record<WaveSort, string> = { ordre: 'Ordre', distance: 'Distance', vitesse: 'Vitesse', duree: 'Durée' };
 
 
 const thStyle = { padding: '0.4em 0.5em', whiteSpace: 'nowrap' } as const;
@@ -481,9 +482,8 @@ function SurfModule() {
                     <>
                       <label style={{ fontSize: 'var(--text-xs)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         Tri
-                        <select className="ui-field ui-field--s" value={waveSort} onChange={(e) => setWaveSort(e.target.value as WaveSort)}>
-                          {(Object.keys(WAVE_SORT_LABEL) as WaveSort[]).map((k) => <option key={k} value={k}>{WAVE_SORT_LABEL[k]}</option>)}
-                        </select>
+                        <SegmentedControl<WaveSort> label="Tri des vagues" accent={ACCENT} value={waveSort} onChange={setWaveSort}
+                          items={(Object.keys(WAVE_SORT_LABEL) as WaveSort[]).map((k) => ({ key: k, label: WAVE_SORT_LABEL[k] }))} />
                       </label>
                       <Button size="s" aria-pressed={waveShown === 'podium'} onClick={() => highlight.show('vagues', waveShown === 'podium' ? null : 'podium')}>
                         {waveShown === 'podium' ? 'Masquer les 3 plus longues' : 'Les 3 plus longues'}

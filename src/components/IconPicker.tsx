@@ -4,6 +4,7 @@ import { ACTIVITY_ICON_IDS, ACTIVITY_ICON_LABEL, type ActivityIconId } from '../
 import { ACTIVITY_ICON } from './familyIcons';
 import { useThemedShade } from '../hooks/useTheme';
 import './IconPicker.css';
+import Button from './ui/Button';
 
 /**
  * Icône d'une activité : les seize dessins, à la couleur de l'activité. Celle
@@ -32,9 +33,9 @@ function IconPicker({
         <span className="icon-picker__current" style={{ color }} title={ACTIVITY_ICON_LABEL[value]}>
           <Current size={20} />
         </span>
-        <button type="button" className="ui-btn ui-btn--secondary ui-btn--s" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <Button size="s" aria-expanded={open} onClick={() => setOpen(!open)}>
           {open ? 'Réduire' : 'Changer'}
-        </button>
+        </Button>
       </div>
       {open && (
         <div className="icon-picker__grid">

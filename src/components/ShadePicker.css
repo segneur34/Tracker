@@ -11,12 +11,12 @@
   padding: 0;
   border: 2px solid var(--surface);
   border-radius: var(--radius-pill);
-  box-shadow: 0 0 0 1px var(--line-strong);
+  box-shadow: var(--ring-line);
   cursor: pointer;
 }
 
 .shade-picker__swatch[aria-pressed='true'] {
-  box-shadow: 0 0 0 2px var(--ink);
+  box-shadow: var(--ring-ink);
 }
 
 .shade-picker__swatch:focus-visible {

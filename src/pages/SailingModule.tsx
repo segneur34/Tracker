@@ -75,6 +75,7 @@ import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmen
 import { SessionColorRangeField } from '../components/SpeedRangeEditor';
 import Button from '../components/ui/Button';
 import MapToggle from '../components/ui/MapToggle';
+import SegmentedControl from '../components/ui/SegmentedControl';
 import { ALTITUDE_COLOR, SAILING_SPEED_COLOR } from '../components/chartStyle';
 import AnalysisShell from '../components/AnalysisShell';
 
@@ -443,7 +444,7 @@ function SailingModule() {
               center={[loc.lat, loc.lon]}
               radius={6}
               pathOptions={{
-                color: loc.success ? '#388e3c' : '#d32f2f',
+                color: loc.success ? '#2e7d32' : '#c62828',
                 fillColor: loc.type === 'tack' ? '#fff' : '#000',
                 fillOpacity: 1,
                 weight: 3
@@ -704,8 +705,8 @@ function SailingModule() {
           ] as const).map(([label, summary, shown, toggle]) => (
             <tr key={label} className="ui-table__row">
               <td style={{ fontWeight: 700 }}>{label}</td>
-              <td style={{ textAlign: 'center', color: '#388e3c', fontWeight: 700, fontSize: 'var(--text-m)' }}>{summary?.success ?? 0}</td>
-              <td style={{ textAlign: 'center', color: '#d32f2f', fontSize: 'var(--text-m)' }}>{summary?.fail ?? 0}</td>
+              <td style={{ textAlign: 'center', color: 'var(--success)', fontWeight: 700, fontSize: 'var(--text-m)' }}>{summary?.success ?? 0}</td>
+              <td style={{ textAlign: 'center', color: 'var(--danger)', fontSize: 'var(--text-m)' }}>{summary?.fail ?? 0}</td>
               <td style={{ textAlign: 'center' }}>{summary ? showKn(summary.vminAvg) : '-'}</td>
               <td style={{ textAlign: 'center', fontWeight: 700 }}>{summary ? showKn(summary.vminMax) : '-'}</td>
               <td style={{ padding: '4px 10px', textAlign: 'center' }}>
@@ -783,11 +784,9 @@ function SailingModule() {
       )}
       </>)}
 
-      <button
-        onClick={() => setShowManeuverDetails(!showManeuverDetails)}
-        style={{ padding: '4px 10px', cursor: 'pointer', backgroundColor: showManeuverDetails ? 'var(--voile)' : 'var(--surface-sunken)', color: showManeuverDetails ? 'var(--on-accent)' : 'var(--ink)', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)' }}>
-        {showManeuverDetails ? 'Replier les détails ▲' : 'Détails des manœuvres ▼'}
-      </button>
+      <SegmentedControl<'resume' | 'details'> label="Détails des manœuvres" accent="var(--voile)"
+        value={showManeuverDetails ? 'details' : 'resume'} onChange={(key) => setShowManeuverDetails(key === 'details')}
+        items={[{ key: 'resume', label: 'Résumé' }, { key: 'details', label: 'Détails' }]} />
 
       {showManeuverDetails && (
       <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginTop: '12px' }}>
@@ -800,9 +799,9 @@ function SailingModule() {
               <strong className="ui-subtitle">{title}</strong>
               {summary ? (
                 <span style={{ fontSize: 'var(--text-s)' }}>
-                  <span style={{ color: '#388e3c', fontWeight: 700 }}>{summary.success} réussi{summary.success > 1 ? 's' : ''}</span>
+                  <span style={{ color: 'var(--success)', fontWeight: 700 }}>{summary.success} réussi{summary.success > 1 ? 's' : ''}</span>
                   {' · '}
-                  <span style={{ color: '#d32f2f' }}>{summary.fail} raté{summary.fail > 1 ? 's' : ''}</span>
+                  <span style={{ color: 'var(--danger)' }}>{summary.fail} raté{summary.fail > 1 ? 's' : ''}</span>
                   {' · Vmin moy. '}{showKn(summary.vminAvg)}{` ${speedSymbol}, max `}<strong>{showKn(summary.vminMax)}</strong>{` ${speedSymbol}`}
                 </span>
               ) : (

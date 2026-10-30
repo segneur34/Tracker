@@ -150,16 +150,16 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
           ))}
         </ul>
       ) : (
-        <Card><p className="train-hint">{list.empty}</p></Card>
+        <Card><p className="ui-hint">{list.empty}</p></Card>
       )}
 
       <div className="train-actions">
         <Button variant="primary" disabled={full} onClick={() => navigate(list.editPath)}>{list.create}</Button>
-        {full && <span className="train-hint">{MAX_INTERVAL_PRESETS} séances au plus : retirez-en une.</span>}
+        {full && <span className="ui-hint">{MAX_INTERVAL_PRESETS} séances au plus : retirez-en une.</span>}
       </div>
 
       {timer && muscuPath && (
-        <Link to={muscuPath} className="train-hint" style={{ alignSelf: 'flex-start' }}>Enregistrer sans séance</Link>
+        <Link to={muscuPath} className="ui-hint" style={{ alignSelf: 'flex-start' }}>Enregistrer sans séance</Link>
       )}
 
       {!timer && (

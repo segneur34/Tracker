@@ -19,6 +19,7 @@ import { ANALYSIS_PANEL_STYLE } from './styles';
 import './JumpsPanel.css';
 import StatTile from './ui/StatTile';
 import MapToggle from './ui/MapToggle';
+import SegmentedControl from './ui/SegmentedControl';
 
 /**
  * Onglet « sauts » des analyses (voile, course, vélo) : les sauts mesurés par les capteurs du
@@ -156,10 +157,6 @@ function JumpsPanel({
   /** Sauts de la courbe, par l'heure de leur décollage : le premier (le plus haut d'office), et celui qu'on lui compare. */
   const [curveFirst, setCurveFirst] = useState<number | null>(null);
   const [curveSecond, setCurveSecond] = useState<number | null>(null);
-  const buttonStyle = (active: boolean, color: string): CSSProperties => ({
-    padding: '2px 8px', fontSize: 'var(--text-xs)', cursor: 'pointer', backgroundColor: active ? color : 'var(--surface-sunken)',
-    color: active ? 'var(--on-accent)' : 'var(--ink)', border: '1px solid var(--line-strong)', borderRadius: '4px',
-  });
   const heading = (label: string, helpKey?: string) => <PanelHeading label={label} open={open} onToggle={onToggle} helpKey={helpKey} padRight />;
   const hiddenNote = hiddenCount > 0
     ? `${hiddenCount} ${hiddenCount > 1 ? 'autres vols, plus bas' : 'autre vol, plus bas'} que ${meters(minHeightM)} ou pris sous ${thresholdLabel}, ${hiddenCount > 1 ? 'ne sont pas montrés' : "n'est pas montré"}.`
@@ -231,13 +228,9 @@ function JumpsPanel({
         </ol>
       </div>
 
-      <div className="an-jump-sort" role="group" aria-label="Trier les sauts">
+      <div className="an-jump-sort">
         <span style={{ color: 'var(--muted)' }}>Trier par</span>
-        {SORTS.map((s) => (
-          <button key={s.key} type="button" aria-pressed={sort === s.key} onClick={() => setSort(s.key)} style={buttonStyle(sort === s.key, accent)}>
-            {s.label}
-          </button>
-        ))}
+        <SegmentedControl label="Trier les sauts" items={SORTS} value={sort} onChange={setSort} accent={accent} />
       </div>
       <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
         <table className="ui-table ui-table--cards an-jump-table">
@@ -270,12 +263,8 @@ function JumpsPanel({
                   <td className="an-jump-speed" style={cellStyle}>{formatSpeed(j.speedMs, speedUnit)}</td>
                   <td className="an-jump-map" style={cellStyle}>
                     <span className="an-jump-actions">
-                      <button type="button" onClick={() => onShowJump(shown ? null : j.takeoffMs)} style={buttonStyle(shown, HIGHLIGHT_SHOWN_COLOR)}>
-                        {shown ? 'Masquer' : 'Voir'}
-                      </button>
-                      <button type="button" onClick={() => showDetail(j)} style={buttonStyle(onCurve, CURVE_COLORS[0])}>
-                        Détail
-                      </button>
+                      <MapToggle shown={shown} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => onShowJump(shown ? null : j.takeoffMs)} />
+                      <MapToggle shown={onCurve} color={CURVE_COLORS[0]} labels={['Détail', 'Détail']} onClick={() => showDetail(j)} />
                     </span>
                   </td>
                 </tr>

@@ -131,7 +131,7 @@ function GearSheet({ title, onClose, children }: { title: string; onClose: () =>
     };
   }, []);
   return createPortal(
-    <div className="activity-select__backdrop" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+    <div className="ui-modal-backdrop" onClick={(e) => { e.stopPropagation(); onClose(); }}>
       <div className="activity-select__sheet gear-picker__sheet" role="listbox" aria-label={title} data-testid="gear-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="activity-select__heading"><strong>{title}</strong></div>
         {children}

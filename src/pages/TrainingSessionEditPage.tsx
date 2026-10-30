@@ -74,7 +74,7 @@ function Editor({ kind, id, initialName, initialBlocks }: EditorProps) {
 
       {askClose && (
         <Dialog title="Fermer l'éditeur ?" onClose={() => setAskClose(false)}>
-          <p className="train-hint">La séance a des changements non enregistrés.</p>
+          <p className="ui-hint">La séance a des changements non enregistrés.</p>
           <div className="ivl-actions">
             <Button variant="primary" disabled={!workout} onClick={save}>Enregistrer</Button>
             <Button onClick={leave}>Ne pas enregistrer</Button>

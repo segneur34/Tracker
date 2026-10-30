@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { buildRootModel, layoutKey, rootVisibility, ROOT_STYLE, ROOTLET_MINUTES, MAX_ROOTLETS, type Box, type RootLayout, type RootModel } from '../core/rootPath';
 import { useStoredRecord, readStoredRecord } from '../hooks/useStoredRecord';
+import { usePrefersReducedMotion } from '../hooks/useNarrowScreen';
 import { useAppliedTheme } from '../hooks/useTheme';
 import { pushBackLayer } from '../platform/backButton';
 import { levelText, type RootGrowth } from '../library/rootGrowth';
@@ -273,6 +274,7 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
   // à son nouveau niveau, puis reculerait pour rejouer sa pousse). Une fois lue : l'état du moment, après avoir rejoué
   // une fois ce qui a changé depuis cette visite ; il est alors retenu. L'animation vit avec l'effet : un nouveau rendu
   // (ou le double montage du mode strict) l'annule et la reprend.
+  const reduced = usePrefersReducedMotion();
   useEffect(() => {
     const rest = restFrame(growth);
     const seen = playedRef.current || seenAtOpen.level === null ? null : { ...seenAtOpen, level: seenAtOpen.level };
@@ -282,7 +284,6 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
       return;
     }
     remember({ rules: SEEN_RULES, level: growth.level, period: growth.periodIndex, minutes: growth.minutes });
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     const newPeriod = seen !== null && seen.period !== growth.periodIndex;
     if (seen === null || reduced || (!newPeriod && seen.minutes >= growth.minutes)) {
       playedRef.current = true;
@@ -324,7 +325,7 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [ready, growth, goalMin, seenAtOpen, remember, paint]);
+  }, [ready, growth, goalMin, seenAtOpen, remember, paint, reduced]);
 
   return (
     <>

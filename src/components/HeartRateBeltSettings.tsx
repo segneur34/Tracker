@@ -7,6 +7,7 @@ import {
 } from '../platform/heartRate';
 import BeltStatus from './BeltStatus';
 import { SettingRow } from './Help';
+import Button from './ui/Button';
 
 /** Nom de la connexion prise par l'essai, rendue en quittant la page. */
 const HOLDER = 'reglages';
@@ -113,15 +114,15 @@ function HeartRateBeltSettings() {
         help="Ceinture Bluetooth Smart, sans appairage ni application de sa marque : portez-la, électrodes humidifiées, puis cherchez-la. Elle est proposée à l'enregistrement des activités où « Ceinture cardio » est cochée.">
         <div className="settings-sports__pair">
           <span>{belt ? belt.name : 'aucune'}</span>
-          <button type="button" className="ui-btn ui-btn--secondary ui-btn--s" disabled={scanning} onClick={() => void search()}>
+          <Button size="s" disabled={scanning} onClick={() => void search()}>
             {scanning ? 'Recherche…' : belt ? 'En chercher une autre' : 'Chercher'}
-          </button>
+          </Button>
           {belt && (
-            <button type="button" className="ui-btn ui-btn--secondary ui-btn--s" onClick={() => (testing ? stopTest() : void startTest())}>
+            <Button size="s" onClick={() => (testing ? stopTest() : void startTest())}>
               {testing ? "Arrêter l'essai" : 'Essayer'}
-            </button>
+            </Button>
           )}
-          {belt && <button type="button" className="ui-btn ui-btn--secondary ui-btn--s" onClick={forget}>Oublier</button>}
+          {belt && <Button size="s" onClick={forget}>Oublier</Button>}
         </div>
       </SettingRow>
       {belt && (
@@ -149,10 +150,10 @@ function HeartRateBeltSettings() {
             {others.length === 0
               ? <span className="settings-sports__mark">{belt ? 'aucun' : 'aucune : la ceinture est-elle portée, et le Bluetooth allumé ?'}</span>
               : others.map((f) => (
-                <button key={f.address} type="button" className="ui-btn ui-btn--secondary ui-btn--s"
+                <Button size="s" key={f.address}
                   title={`${f.rssi} dBm : la choisir`} onClick={() => choose(f)}>
                   {f.name} · {signalLabel(f.rssi)}
-                </button>
+                </Button>
               ))}
           </div>
         </div>

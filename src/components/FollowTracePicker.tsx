@@ -10,8 +10,10 @@ import { readSessionGpx, useLibraryFields } from '../hooks/useSessionLibrary';
 import { useVisibility } from '../hooks/useSportSettings';
 import { shownRoutes } from '../planning/routeList';
 import { followedTraceFromPoints, followedTraceFromRoute, type FollowedTrace } from '../recording/followedTrace';
+import ActivitySelect from './ActivitySelect';
 import Button from './ui/Button';
 import Card from './ui/Card';
+import SegmentedControl from './ui/SegmentedControl';
 
 /**
  * Choix de la trace à suivre pendant l'enregistrement : un itinéraire rangé
@@ -109,14 +111,8 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
   return (
     <Card heading="Suivre une trace">
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: 'var(--text-m)' }}>
-        <div className="ui-tabs" role="group" aria-label="Trace à suivre" style={{ paddingBottom: 0 }}>
-          <button type="button" className="ui-tab" aria-pressed={tab === 'route'} onClick={() => setTab('route')}>
-            Itinéraires ({routes.length})
-          </button>
-          <button type="button" className="ui-tab" aria-pressed={tab === 'session'} onClick={() => setTab('session')}>
-            Sessions ({sortedSessions.length})
-          </button>
-        </div>
+        <SegmentedControl<PickerTab> fit label="Trace à suivre" value={tab} onChange={setTab}
+          items={[{ key: 'route', label: `Itinéraires (${routes.length})` }, { key: 'session', label: `Sessions (${sortedSessions.length})` }]} />
 
         {status !== 'ready' && (
           <div className="ui-alert ui-alert--warning">
@@ -149,15 +145,10 @@ function FollowTracePicker({ onClose, onPicked }: { onClose: () => void; onPicke
             {sessionActivities.length > 1 && (
               <label style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <span className="ui-eyebrow">Activité</span>
-                <select className="ui-field" value={activityFilter ?? ''}
-                  onChange={(e) => { setActivityFilter(e.target.value || null); setShown(PAGE_SIZE); }}>
-                  <option value="">Toutes ({sortedSessions.length})</option>
-                  {sessionActivities.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({sortedSessions.filter((s) => s.activity?.id === a.id).length})
-                    </option>
-                  ))}
-                </select>
+                <ActivitySelect activities={sessionActivities} value={activityFilter} label="Activité" className="ui-field"
+                  placeholder={`Toutes (${sortedSessions.length})`}
+                  reset={{ label: `Toutes (${sortedSessions.length})`, onChoose: () => { setActivityFilter(null); setShown(PAGE_SIZE); } }}
+                  onChange={(next) => { setActivityFilter(next.id); setShown(PAGE_SIZE); }} />
               </label>
             )}
             <ul style={LIST_STYLE}>

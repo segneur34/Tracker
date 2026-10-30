@@ -143,7 +143,7 @@
 .an-map-tools {
   position: absolute;
   inset: 0;
-  z-index: 900;
+  z-index: var(--z-map-tools);
   pointer-events: none;
 }
 
@@ -167,7 +167,7 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-m);
   background: var(--surface);
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--shadow-color) 18%, transparent);
+  box-shadow: var(--shadow-float);
   font-size: var(--text-s);
   pointer-events: auto;
 }
@@ -222,7 +222,7 @@
   height: 210px;
   border-radius: var(--radius-m);
   background: var(--surface);
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--shadow-color) 18%, transparent);
+  box-shadow: var(--shadow-float);
   pointer-events: auto;
 }
 
@@ -350,7 +350,7 @@
     position: fixed;
     inset: 0;
     top: var(--shell-top);
-    z-index: 1000;
+    z-index: var(--z-map-overlay);
     background: var(--surface);
   }
 
@@ -358,7 +358,7 @@
     position: absolute;
     top: var(--space-4);
     right: var(--space-4);
-    z-index: 1001;
+    z-index: calc(var(--z-map-overlay) + 1);
     width: 36px;
     height: 36px;
     border-radius: var(--radius-pill);
@@ -483,8 +483,8 @@
    droite de la carte. */
 @media (orientation: landscape) and (max-height: 499.98px) and (pointer: coarse) {
   .an-page:has(.an-map-panel) {
-    /* 55 / 45 (demandé le 24/10) ; un petit téléphone garde 350 px aux panneaux. */
-    --an-map-w: clamp(calc(var(--land-w) * 0.4), calc(var(--land-w) - 350px), calc(var(--land-w) * 0.55));
+    /* 55 / 45 (demandé le 24/10) ; un petit téléphone garde `--an-side-min` aux panneaux. */
+    --an-map-w: clamp(calc(var(--land-w) * 0.4), calc(var(--land-w) - var(--an-side-min)), calc(var(--land-w) * 0.55));
     padding-left: calc(var(--an-map-w) + var(--space-3)) !important;
   }
 

@@ -61,7 +61,7 @@ function Home() {
   return (
     <div className="ui-page ui-page--backdrop home">
       <PageBackdrop variant={backdrop} />
-      <header className="home-header" style={{ backgroundImage: `url(${headerPhoto})` }}>
+      <header className="ui-photo-banner home-header" style={{ backgroundImage: `url(${headerPhoto})` }}>
         <h1 className="home-logo">Tracker<span className="home-version">v{__APP_VERSION__}</span></h1>
         <p className="home-welcome">{name ? `Bienvenue ${name}` : 'Bienvenue'}</p>
       </header>

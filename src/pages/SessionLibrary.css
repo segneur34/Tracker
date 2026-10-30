@@ -1,12 +1,5 @@
 /* Bibliothèque des sessions (`SessionLibrary.tsx`), sur les variables de `theme/tokens.css`. */
 
-.lib-hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--text-m);
-  line-height: 1.5;
-}
-
 .lib-list {
   list-style: none;
   margin: 0;
@@ -188,18 +181,11 @@
 
 /* Bandeau photo : déborde des marges de la page en haut et sur les côtés ; nom et activités en bas à gauche. */
 .lib-banner {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
   aspect-ratio: 1080 / 430;
   min-height: 170px;
-  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) 0;
   padding: var(--space-2) var(--space-3) var(--space-4) var(--space-4);
   /* Voile sombre en bas de la photo, sous le nom et les activités. */
   background-image: linear-gradient(to top, rgb(0 0 0 / 0.5), transparent 65%), var(--banner);
-  background-size: cover;
-  background-position: center;
-  color: var(--on-accent);
   text-shadow: 0 1px 6px rgb(0 0 0 / 0.55);
 }
 

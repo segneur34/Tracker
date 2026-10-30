@@ -38,17 +38,6 @@
   flex-shrink: 0;
 }
 
-.activity-select__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-5);
-  background: color-mix(in srgb, var(--ink) 40%, transparent);
-}
-
 .activity-select__sheet {
   width: min(100%, 360px);
   max-height: 80vh;

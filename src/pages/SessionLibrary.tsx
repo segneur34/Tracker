@@ -559,7 +559,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
     <div className="ui-page ui-page--backdrop lib-page" style={{ '--lib-accent': accent, '--help-accent': accent, ...(family === 'fractionne' ? { '--btn-accent': accent } : {}) } as React.CSSProperties}>
       <PageBackdrop variant={family} />
       {/* Bandeau photo de la famille : son icône, son nom, ses activités et le nombre de sessions ; « … » en haut à droite. */}
-      <header className="lib-banner" style={{ '--banner': `url(${banner})` } as React.CSSProperties}>
+      <header className="ui-photo-banner lib-banner" style={{ '--banner': `url(${banner})` } as React.CSSProperties}>
         <div className="lib-banner__more">
           {/* Imports et mise à jour, de moindre usage : derrière « … », pour que la liste vienne tout de suite. */}
           <MoreMenu label="Importer, mettre à jour">
@@ -590,7 +590,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       {/* Entraînement : les types d'entraînement en tuiles, avant les sessions (24/10). */}
       {family === 'fractionne' && <TrainingHub />}
       {helpOpen && (
-        <p className="lib-hint">
+        <p className="ui-hint ui-hint--m">
           {native
             ? "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le PC ou un autre téléphone, notes comprises. On peut aussi copier les fichiers directement dans Documents › Tracker › sessions : ils apparaissent avec « Mettre à jour », ou au lancement suivant."
             : "« Ajouter les sessions d'un dossier » reprend celles d'un dossier Tracker copié depuis le téléphone ou un autre PC, notes comprises. Chrome demande alors s'il faut importer les fichiers « sur ce site » : ils restent sur ce PC, Tracker n'envoie rien sur internet. Le dossier mémoire de ce PC, lui, se choisit dans Réglages › Mémoire ; des fichiers copiés dedans pendant que Tracker est ouvert apparaissent avec « Mettre à jour »."}
@@ -598,7 +598,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       )}
 
       {familyHidden && (
-        <p className="lib-hint">
+        <p className="ui-hint ui-hint--m">
           {title} est caché dans <Link to="/parametres">Réglages</Link> : ni proposé, ni dans la barre. Ses sessions restent toutes ici.
         </p>
       )}
@@ -620,7 +620,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       )}
 
       {hiddenCount > 0 && (
-        <p className="lib-hint">
+        <p className="ui-hint ui-hint--m">
           Activités cachées : {hiddenCount} {planned ? 'itinéraire' : 'session'}{hiddenCount > 1 ? 's' : ''} en moins dans la liste.
           Elles se ré-affichent dans <Link to="/parametres">Réglages</Link>.
         </p>
@@ -631,7 +631,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
           {shownRoutes.length > 0 ? (
             <RouteList routes={shownRoutes} activities={activities} />
           ) : (
-            <p className="lib-hint">
+            <p className="ui-hint ui-hint--m">
               Aucun itinéraire {FAMILY[family].of} pour l'instant.{' '}
               <Link to="/itineraires">Planifiez-en un</Link> et rangez-le sous une de ces activités : il apparaîtra ici.
             </p>
@@ -641,7 +641,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
 
       {!planned && unclassified.length > 0 && (
         <Card heading="À classer">
-          <p className="lib-hint">
+          <p className="ui-hint ui-hint--m">
             Traces dont l'activité n'est pas connue : choisissez-la pour les ranger en voile, à pied, à vélo, en surf ou en entraînement. Ouvrir l'une d'elles la demande d'abord.
           </p>
           <ul className="lib-list">{unclassified.map(row)}</ul>
@@ -653,7 +653,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       ) : (
         library.status === 'ready' && !library.scanning && hiddenCount === 0 && (
           <Card>
-            <p className="lib-hint">
+            <p className="ui-hint ui-hint--m">
               Aucune session {FAMILY[family].of} pour l'instant. Enregistrez-en une, ou
               importez des GPX : ils sont rangés dans la mémoire et analysés ici.
             </p>

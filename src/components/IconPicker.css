@@ -19,7 +19,7 @@
   height: 32px;
   border-radius: var(--radius-s);
   background: var(--surface);
-  box-shadow: 0 0 0 2px var(--ink);
+  box-shadow: var(--ring-ink);
 }
 
 .icon-picker__grid {
@@ -38,12 +38,12 @@
   border: none;
   border-radius: var(--radius-s);
   background: var(--surface);
-  box-shadow: 0 0 0 1px var(--line-strong);
+  box-shadow: var(--ring-line);
   cursor: pointer;
 }
 
 .icon-picker__choice[aria-pressed='true'] {
-  box-shadow: 0 0 0 2px var(--ink);
+  box-shadow: var(--ring-ink);
 }
 
 .icon-picker__choice:focus-visible {

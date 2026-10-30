@@ -54,7 +54,7 @@
   min-height: 20px;
   padding: 0 calc(var(--space-3) * 0.8);
   font-size: calc(var(--text-s) * 0.8);
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--shadow-color) 20%, transparent);
+  box-shadow: var(--shadow-chip);
 }
 
 .chart-head:has(+ .zoom-chart > .zoom-chart__map),
@@ -67,7 +67,7 @@
   min-height: 24px;
   padding: 0 calc(var(--space-3) * 0.8);
   font-size: calc(var(--text-s) * 0.8);
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--shadow-color) 20%, transparent);
+  box-shadow: var(--shadow-chip);
 }
 
 /*

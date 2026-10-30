@@ -21,7 +21,7 @@ function TrainingHub() {
       <Link to={WORKOUT_LISTS.fractionne.listPath} className="train-tile">
         <span className="train-tile__icon" aria-hidden="true"><IconStopwatch size={16} /></span>
         <span className="train-tile__text">
-          <span className="train-tile__title">{WORKOUT_LISTS.fractionne.title}</span>
+          <span className="ui-subtitle">{WORKOUT_LISTS.fractionne.title}</span>
           <span className="train-tile__sub">
             Compteur d'intervalles : {savedCount(presets.length)} ; FC max, FC repos
           </span>
@@ -31,7 +31,7 @@ function TrainingHub() {
       <Link to={WORKOUT_LISTS.timer.listPath} className="train-tile">
         <span className="train-tile__icon" aria-hidden="true"><IconTimer size={16} /></span>
         <span className="train-tile__text">
-          <span className="train-tile__title">{WORKOUT_LISTS.timer.title}</span>
+          <span className="ui-subtitle">{WORKOUT_LISTS.timer.title}</span>
           <span className="train-tile__sub">Minuteries, seules ou avec la ceinture : {savedCount(timerPresets.length)}</span>
         </span>
         <IconChevronRight size={14} className="train-tile__go" />

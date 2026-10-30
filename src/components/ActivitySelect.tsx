@@ -38,12 +38,14 @@ interface ActivitySheetProps {
   label?: string;
   /** Question posée en tête de la liste, et sa précision. */
   heading?: { title: string; hint?: string };
+  /** Première ligne « sans choix » (un filtre : « Toutes ») ; elle est cochée tant que `value` est `null`. */
+  reset?: { label: string; onChoose: () => void };
   onChoose: (activity: Activity) => void;
   onClose: () => void;
 }
 
 /** Liste des activités par famille, par-dessus la page ; Échap, un appui à côté ou le retour d'Android la ferme. */
-export function ActivitySheet({ activities, value, families = SPORT_FAMILIES, label, heading, onChoose, onClose }: ActivitySheetProps) {
+export function ActivitySheet({ activities, value, families = SPORT_FAMILIES, label, heading, reset, onChoose, onClose }: ActivitySheetProps) {
   const selectedRef = useRef<HTMLButtonElement>(null);
   const { isShown } = useVisibility();
   const shown = useThemedShade();
@@ -71,12 +73,20 @@ export function ActivitySheet({ activities, value, families = SPORT_FAMILIES, la
   }, []);
 
   return createPortal(
-    <div className="activity-select__backdrop" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+    <div className="ui-modal-backdrop" onClick={(e) => { e.stopPropagation(); onClose(); }}>
       <div className="activity-select__sheet" role="listbox" aria-label={heading?.title ?? label ?? 'Activité'} onClick={(e) => e.stopPropagation()}>
         {heading && (
           <div className="activity-select__heading">
             <strong>{heading.title}</strong>
             {heading.hint && <span>{heading.hint}</span>}
+          </div>
+        )}
+        {reset && (
+          <div className="activity-select__group">
+            <button type="button" role="option" aria-selected={value === null} className="activity-select__option" onClick={reset.onChoose}>
+              <span className="activity-select__option-name">{reset.label}</span>
+              <span className="activity-select__radio" aria-hidden="true" />
+            </button>
           </div>
         )}
         {groups.map(({ family, items }) => {
@@ -122,6 +132,8 @@ interface ActivitySelectProps {
   extra?: Activity | null;
   /** Familles proposées ; toutes par défaut. */
   families?: SportFamily[];
+  /** Ligne « sans choix » en tête de la liste (filtre) ; `onChange` n'est pas appelé pour elle. */
+  reset?: { label: string; onChoose: () => void };
   placeholder?: string;
   disabled?: boolean;
   /** Classe du bouton, celle d'un champ (`ui-field`, petit par défaut). */
@@ -130,7 +142,7 @@ interface ActivitySelectProps {
 }
 
 function ActivitySelect({
-  activities, value, onChange, extra, families, placeholder, disabled, className = 'ui-field ui-field--s', label,
+  activities, value, onChange, extra, families, reset, placeholder, disabled, className = 'ui-field ui-field--s', label,
 }: ActivitySelectProps) {
   const [open, setOpen] = useState(false);
   const list = extra && !activities.some((a) => a.id === extra.id) ? [...activities, extra] : activities;
@@ -159,7 +171,8 @@ function ActivitySelect({
       </button>
 
       {open && (
-        <ActivitySheet activities={list} value={value} families={families} label={label} onChoose={choose} onClose={() => setOpen(false)} />
+        <ActivitySheet activities={list} value={value} families={families} label={label}
+          reset={reset && { label: reset.label, onChoose: () => { setOpen(false); reset.onChoose(); } }} onChoose={choose} onClose={() => setOpen(false)} />
       )}
     </>
   );

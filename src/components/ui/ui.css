@@ -190,6 +190,60 @@
   letter-spacing: var(--title-spacing);
 }
 
+/* Aide grise sous un titre ou à la place d'une liste vide ; `--m` pour la bibliothèque, un cran plus grand. */
+.ui-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-s);
+}
+
+.ui-hint--m {
+  font-size: var(--text-m);
+  line-height: 1.5;
+}
+
+/* Carte blanche en colonne (graphe d'activités et répartition du Profil). */
+.ui-card-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* Pastille de couleur 10 × 10 devant un nom (légendes, lignes de statistiques). */
+.ui-swatch {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* Bandeau photo qui déborde des marges de la page (accueil, bibliothèque) ; hauteur, marges intérieures et ombre du texte restent à la page. */
+.ui-photo-banner {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) 0;
+  background-size: cover;
+  background-position: center;
+  color: var(--on-accent);
+}
+
+/* Fond d'une fenêtre modale (`Dialog`, `ActivitySelect`, `GearPicker`) : au-dessus de tout (`--z-dialog`). */
+.ui-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: color-mix(in srgb, var(--ink) 40%, transparent);
+}
+
 /* --- Boutons --- */
 
 .ui-btn {
@@ -517,7 +571,7 @@
   position: absolute;
   top: calc(100% + var(--space-1));
   right: 0;
-  z-index: 1150;
+  z-index: var(--z-menu);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -610,7 +664,7 @@
 .ui-savebar--dirty {
   position: sticky;
   top: 0;
-  z-index: 1050;
+  z-index: var(--z-savebar);
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--warning-line);
   border-radius: var(--radius-m);

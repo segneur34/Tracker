@@ -1,16 +1,6 @@
 /* Graphe d'activités du profil (`ActivityChart.tsx`), sur les variables de `theme/tokens.css`.
    Les couleurs des barres sont celles des activités, posées en style par le composant. */
 
-.actchart {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border-radius: var(--radius-l);
-  background: var(--surface);
-  border: 1px solid var(--line);
-}
-
 .actchart__head {
   display: flex;
   align-items: baseline;
@@ -164,14 +154,6 @@
 .actchart__chevron {
   flex: 0 0 auto;
   color: var(--faint);
-}
-
-.actchart__dot,
-.actchart__swatch {
-  flex: 0 0 auto;
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
 }
 
 .actchart__name {

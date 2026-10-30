@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NARROW_QUERY, PHONE_LANDSCAPE_QUERY, WIDE_QUERY } from './useNarrowScreen';
+import { NARROW_QUERY, PHONE_LANDSCAPE_QUERY, SCREEN_BREAKPOINTS, WIDE_QUERY } from './useNarrowScreen';
 
 // Lus sur le disque : Vitest rend vide un CSS importé, même brut. Les types de Node ne sont pas ceux de l'app :
 // le peu qui sert ici est décrit à la main.
@@ -33,6 +33,18 @@ describe('rupture téléphone / ordinateur', () => {
     const landscape = mediaQueries().filter(({ query }) => /orientation|499/.test(query) && !/76[78]/.test(query));
     expect(landscape.length).toBeGreaterThan(5);
     for (const { file, query } of landscape) expect(query, file).toBe(PHONE_LANDSCAPE_QUERY);
+  });
+});
+
+describe('autres ruptures', () => {
+  it('tout @media du CSS est la rupture téléphone, le téléphone tourné ou une rupture nommée de SCREEN_BREAKPOINTS', () => {
+    const known: string[] = [NARROW_QUERY, WIDE_QUERY, PHONE_LANDSCAPE_QUERY, ...Object.values(SCREEN_BREAKPOINTS)];
+    for (const { file, query } of mediaQueries()) expect(known, `${file} : ${query}`).toContain(query);
+  });
+
+  it('chaque rupture nommée est lue quelque part dans le CSS', () => {
+    const used = mediaQueries().map(({ query }) => query);
+    for (const [name, query] of Object.entries(SCREEN_BREAKPOINTS)) expect(used, name).toContain(query);
   });
 });
 

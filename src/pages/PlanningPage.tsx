@@ -851,7 +851,7 @@ function PlanningPage() {
             {markCourse ? (
               <span className="plan-toolbar__note">Balises reliées en ligne droite</span>
             ) : (
-              <WayPicker mode={mode} label="Types de voie" className="plan-modes" onChange={chooseMode}
+              <WayPicker mode={mode} label="Types de voie" compact className="plan-modes" onChange={chooseMode}
                 style={{ '--tab-accent': color } as React.CSSProperties}>
                 <button type="button" className="ui-tab plan-modes__loop" aria-pressed={planner.loop} onClick={toggleLoop}
                   title="L'itinéraire revient toujours au départ, par un retour qui évite les voies de l'aller">

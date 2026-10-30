@@ -15,7 +15,7 @@ export function TestTiles() {
       <Link to="/fractionne/tests/fc-max" className="train-tile">
         <span className="train-tile__icon" aria-hidden="true"><IconPulse size={16} /></span>
         <span className="train-tile__text">
-          <span className="train-tile__title">FC max</span>
+          <span className="ui-subtitle">FC max</span>
           <span className="train-tile__sub">Échauffement, rampe de +0,6 km/h par minute jusqu'à ne plus tenir, récupération</span>
         </span>
         <IconChevronRight size={14} className="train-tile__go" />
@@ -23,7 +23,7 @@ export function TestTiles() {
       <Link to="/fractionne/tests/fc-repos" className="train-tile">
         <span className="train-tile__icon" aria-hidden="true"><IconPulse size={16} /></span>
         <span className="train-tile__text">
-          <span className="train-tile__title">FC repos</span>
+          <span className="ui-subtitle">FC repos</span>
           <span className="train-tile__sub">3 minutes immobile, la ceinture seule, sans GPS : la moyenne de 30 s la plus basse, après la première minute</span>
         </span>
         <IconChevronRight size={14} className="train-tile__go" />

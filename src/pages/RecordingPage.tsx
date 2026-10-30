@@ -442,7 +442,7 @@ function RecordingMap({ busy, followed, courseMarksOf, liveActivity, family, onR
         color={FAMILY_SHADES[liveActivity ? sportFamily(liveActivity.base) : 'voile'][0]}
         family={liveActivity ? activityFamily(liveActivity) : family}
         overlay={busy ? (
-          <Button size="s" onClick={onReduce} style={{ boxShadow: '0 1px 5px color-mix(in srgb, var(--shadow-color) 25%, transparent)' }}>
+          <Button size="s" onClick={onReduce} style={{ boxShadow: 'var(--shadow-tool)' }}>
             Réduire la carte
           </Button>
         ) : undefined} />
@@ -861,7 +861,7 @@ function RecordingScreen() {
                   <BeltStatus state={beltLive.state} bpm={beltLive.bpm}
                     offText={beltWarmup.error ? `connexion impossible : ${beltWarmup.error}` : null}>
                     {beltWarmup.error && (
-                      <button type="button" className="ui-btn ui-btn--secondary ui-btn--s" onClick={beltWarmup.retry}>Réessayer</button>
+                      <Button size="s" onClick={beltWarmup.retry}>Réessayer</Button>
                     )}
                   </BeltStatus>
                 </span>

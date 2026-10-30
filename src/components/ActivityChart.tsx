@@ -75,7 +75,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
   const weekly = period === 'sixmois' || period === 'annee' || period === 'tout';
 
   return (
-    <section className="actchart" aria-label="Activités">
+    <section className="actchart ui-card-col" aria-label="Activités">
       <div className="actchart__head">
         <h2>{chart.title}<HelpToggle helpKey="profil:activites" label={chart.title} /></h2>
         <span className="num">{plural(totalSessions, 'session')}</span>
@@ -120,7 +120,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
                 return (
                   <li key={s.file}>
                     <button type="button" onClick={() => openSession(s.file, sportFamily(activity.base))}>
-                      <span className="actchart__dot" style={{ background: shown(activity.color) }} />
+                      <span className="ui-swatch" style={{ background: shown(activity.color) }} />
                       <span className="actchart__name">{activity.name}</span>
                       <span className="actchart__meta num">
                         {weekly && `${new Date(s.startMs).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })} · `}
@@ -152,7 +152,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
             return (
               <li key={t.activityId}>
                 <button type="button" onClick={() => navigate(libraryPath(sportFamily(activity.base), activity.id))}>
-                  <span className="actchart__swatch" style={{ background: shown(activity.color) }} />
+                  <span className="ui-swatch" style={{ background: shown(activity.color) }} />
                   <span className="actchart__name">{activity.name}</span>
                   <span className="actchart__meta num">
                     {plural(t.sessions, 'session')} · {formatDuration(t.durationS * 1000)} · {formatDistance(t.distanceM, activity)}

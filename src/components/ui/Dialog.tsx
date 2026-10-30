@@ -32,7 +32,7 @@ function Dialog({ title, onClose, className, children }: {
   }, []);
 
   return createPortal(
-    <div className="ui-dialog__backdrop" onClick={onClose}>
+    <div className="ui-modal-backdrop ui-dialog__backdrop" onClick={onClose}>
       <div className={className ? `ui-dialog ${className}` : 'ui-dialog'} role="dialog" aria-modal="true" aria-label={title}
         onClick={(e) => e.stopPropagation()}>
         <div className="ui-dialog__head">

@@ -55,6 +55,16 @@
      servant à faire défiler la page à la souris (`analysisMobile.css`). */
   --analysis-map-width: 80%;
 
+  /* Plans empilés (z-index), du plus bas au plus haut. Les contrôles de Leaflet montent jusqu'à 1000 dans le contexte
+     de leur carte. */
+  --z-map-tools: 900;
+  --z-map-overlay: 1000;
+  --z-savebar: 1050;
+  --z-bars: 1100;
+  --z-menu: 1150;
+  --z-dial: 1200;
+  --z-dialog: 1300;
+
   /* Navigation */
   --topbar-h: 56px;
   --tabbar-h: 64px;
@@ -80,6 +90,8 @@
        celle d'un téléphone droit. */
     --land-w: calc(100vw - var(--shell-left) - var(--inset-right));
     --land-side-min: 380px;
+    /* Les analyses laissent un peu moins à leurs panneaux (MISE_EN_PAGE) : un petit téléphone garde 350 px. */
+    --an-side-min: 350px;
   }
 }
 
@@ -171,6 +183,13 @@
   /* Ombres : leur couleur, mêlée en transparence (`color-mix`) ; transparente en économe, où les ombres
      disparaissent. */
   --shadow-color: #1b1f24;
+  /* Recettes d'ombre reprises à l'identique par plusieurs écrans (déclarées ici pour suivre `--shadow-color`
+     et `--ink` du thème, y compris sous `.theme-light`). */
+  --shadow-float: 0 2px 10px color-mix(in srgb, var(--shadow-color) 18%, transparent);
+  --shadow-tool: 0 1px 5px color-mix(in srgb, var(--shadow-color) 25%, transparent);
+  --shadow-chip: 0 1px 4px color-mix(in srgb, var(--shadow-color) 20%, transparent);
+  --ring-ink: 0 0 0 2px var(--ink);
+  --ring-line: 0 0 0 1px var(--line-strong);
 
   /* Graphes : quadrillage, graduations (texte et trait), repères neutres (lignes de phase, seuils), voile
      sous le pointeur. Les couleurs des données restent en dur (`CLAUDE.md`). */

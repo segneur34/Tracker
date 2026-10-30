@@ -17,8 +17,30 @@ export const WIDE_QUERY = '(min-width: 768px) and (min-height: 500px), (min-widt
 /** Téléphone tourné : rail de navigation à gauche, carte sur un côté (lot 5 b des demandes du 23/10). */
 export const PHONE_LANDSCAPE_QUERY = '(orientation: landscape) and (max-height: 499.98px) and (pointer: coarse)';
 
+/**
+ * Les autres ruptures d'écran de l'application, nommées ici pour que `mediaQueries.test.ts` les connaisse toutes :
+ * un `@media` de CSS qui n'est ni la rupture téléphone, ni le téléphone tourné, ni l'une de celles-ci échoue au test.
+ * Chaque valeur est recopiée telle quelle dans le CSS qui la lit.
+ */
+export const SCREEN_BREAKPOINTS = {
+  /** Cases de la barre du bas sans libellé, icônes seules (`AppShell.css`). */
+  iconTabs: '(max-width: 339.98px)',
+  /** Profil : anneau, légende et en-tête empilés (`ProfilePage.css`, `ProfileRoot.css`, `ProfileAvatar.css`). */
+  profileStacked: '(max-width: 599px)',
+  /** Profil : très petit écran (`ProfilePage.css`). */
+  profileTiny: '(max-width: 359px)',
+  /** Enregistrement, petit téléphone tourné : la page s'empile comme droite (`RecordingPage.css`). */
+  recordingNarrow: '(max-width: 699.98px)',
+  /** Barre du haut resserrée sur un ordinateur étroit (`AppShell.css`). */
+  topbarTight: '(max-width: 1199.98px)',
+  /** Planification, grand écran (`PlanningPage.css`). */
+  planningWide: '(min-width: 1200px)',
+  /** Mouvement réduit demandé au système (case du bouton glissant, `ui.css` ; animation de la racine du Profil). */
+  reducedMotion: '(prefers-reduced-motion: reduce)',
+} as const;
+
 /** Vrai tant que la requête répond, suivi en direct quand l'écran change de taille ou tourne. */
-function useMediaQuery(media: string): boolean {
+export function useMediaQuery(media: string): boolean {
   const [matches, setMatches] = useState(() => window.matchMedia(media).matches);
 
   useEffect(() => {
@@ -30,6 +52,11 @@ function useMediaQuery(media: string): boolean {
   }, [media]);
 
   return matches;
+}
+
+/** Vrai quand le système demande moins de mouvement. */
+export function usePrefersReducedMotion(): boolean {
+  return useMediaQuery(SCREEN_BREAKPOINTS.reducedMotion);
 }
 
 /** Vrai sur un écran de téléphone, droit ou tourné. */

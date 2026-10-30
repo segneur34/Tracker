@@ -26,7 +26,7 @@
 .shell-banners {
   position: sticky;
   top: 0;
-  z-index: 1100;
+  z-index: var(--z-bars);
 }
 
 .shell-banner {
@@ -62,7 +62,7 @@
 .shell-tabbar {
   position: sticky;
   bottom: 0;
-  z-index: 1100;
+  z-index: var(--z-bars);
   box-sizing: border-box;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -200,7 +200,7 @@
   .shell-topbar {
     position: sticky;
     top: 0;
-    z-index: 1100;
+    z-index: var(--z-bars);
     box-sizing: border-box;
     display: flex;
     align-items: center;

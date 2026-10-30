@@ -157,7 +157,7 @@ const GroupRow = ({ color, name, totals, distanceUnit, onOpen }: {
 }) => (
   <li>
     <button type="button" className="stats-row" onClick={onOpen}>
-      <span className="stats-row__swatch" style={{ background: color }} />
+      <span className="ui-swatch" style={{ background: color }} />
       <span className="stats-row__name">{name}</span>
       <span className="stats-row__meta num">
         {plural(totals.sessions, 'session')} · {formatDuration(totals.durationS * 1000)} · {formatDistanceAuto(totals.distanceM, distanceUnit)}
@@ -535,12 +535,12 @@ function StatisticsPage() {
       </div>
 
       {status === 'opening' ? (
-        <p className="stats-hint">Lecture de la mémoire…</p>
+        <p className="ui-hint">Lecture de la mémoire…</p>
       ) : (
         <div className="stats-col">
           <SectionTabs sections={sections} open={open} onToggle={toggle} accent={tabAccent} />
           {scanning && (
-            <p className="stats-hint">Fiches en cours de calcul ({scanning.done} / {scanning.total}) : chiffres provisoires.</p>
+            <p className="ui-hint">Fiches en cours de calcul ({scanning.done} / {scanning.total}) : chiffres provisoires.</p>
           )}
           <div className="an-carte-panels stats-panels">
             {open.general && (
@@ -552,7 +552,7 @@ function StatisticsPage() {
                   ({totals.sessions - totals.maneuverSessions} jamais ouverte{totals.sessions - totals.maneuverSessions > 1 ? 's' : ''}).
                 </HelpText>
                 {empty ? (
-                  <p className="stats-hint">{NO_SESSION_TEXT}</p>
+                  <p className="ui-hint">{NO_SESSION_TEXT}</p>
                 ) : (
                   <>
                     <div className="an-sheet__stats an-sheet__stats--always">
@@ -623,7 +623,7 @@ function StatisticsPage() {
                     className="stats-metric-chips" onChoose={(key) => { rememberView({ donnee: key }); setPicked(null); }} />
                 )}
                 {chartFull === null ? (
-                  <p className="stats-hint">{NO_SESSION_TEXT}</p>
+                  <p className="ui-hint">{NO_SESSION_TEXT}</p>
                 ) : (
                   <>
                     {(twoSeries || weekRows.length > 0) && (
@@ -694,7 +694,7 @@ function StatisticsPage() {
                     <div className="stats-picked">
                       {pickedSession && pickedPoints.length > 0 ? (
                         <button type="button" className="stats-row" onClick={() => openSession(pickedSession.file, pickedSession.family)}>
-                          <span className="stats-row__swatch" style={{ background: activityColor(pickedSession.activityId) }} />
+                          <span className="ui-swatch" style={{ background: activityColor(pickedSession.activityId) }} />
                           <span className="stats-row__name">{dayMonthYear(pickedSession.startMs)}</span>
                           <span className="stats-row__meta num">
                             {pickedSession.name ?? activityName(pickedSession.activityId)} · {pickedPoints.map(({ label, point }) => pointText(label, point)).join(' · ')}
@@ -721,7 +721,7 @@ function StatisticsPage() {
                 </div>
                 <HelpText helpKey="stats:regularite" note>Sessions par {regular.barUnit}, empilées par activité.</HelpText>
                 {regular.weeks === 0 ? (
-                  <p className="stats-hint">{NO_SESSION_TEXT}</p>
+                  <p className="ui-hint">{NO_SESSION_TEXT}</p>
                 ) : (
                   <>
                     <div className="an-sheet__stats an-sheet__stats--always">
@@ -846,7 +846,7 @@ function StatisticsPage() {
               <ResizablePanel id={panelId('records')} style={ANALYSIS_PANEL_STYLE}>
                 <PanelHeading label="Records" open={open.records} onToggle={() => toggle('records')} />
                 {empty ? (
-                  <p className="stats-hint">{NO_SESSION_TEXT}</p>
+                  <p className="ui-hint">{NO_SESSION_TEXT}</p>
                 ) : (
                   <div className="stats-records">
                     {recordKindsOf(family).map((kind) => {
@@ -860,7 +860,7 @@ function StatisticsPage() {
                               <li key={s.file}>
                                 <button type="button" className="stats-row" onClick={() => openSession(s.file, s.family)}>
                                   <span className="stats-row__rank num">{rank + 1}</span>
-                                  <span className="stats-row__swatch" style={{ background: activityColor(s.activityId) }} />
+                                  <span className="ui-swatch" style={{ background: activityColor(s.activityId) }} />
                                   <span className="stats-row__name num">{recordValue(kind, value, s)}</span>
                                   <span className="stats-row__meta">
                                     {dayMonthYear(s.startMs)} · {s.name ?? activityName(s.activityId)}

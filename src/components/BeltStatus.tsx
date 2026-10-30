@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { BELT_STATE_LABEL, openBluetoothSettings, type BeltState } from '../platform/heartRate';
 import './StatusLine.css';
+import Button from './ui/Button';
 
 /** Pastille de l'état : vert connectée, jaune en cours, introuvable ou perdue, gris sinon. */
 const STATE_COLOR: Record<BeltState, string> = {
@@ -42,10 +43,10 @@ function BeltStatus({ state, bpm, offText, children }: {
 /** Bouton vers les réglages Bluetooth d'Android, en secours d'une ceinture introuvable. */
 export function BluetoothSettingsButton() {
   return (
-    <button type="button" className="ui-btn ui-btn--secondary ui-btn--s"
+    <Button size="s"
       onClick={() => void openBluetoothSettings().catch(() => undefined)}>
       Réglages Bluetooth
-    </button>
+    </Button>
   );
 }
 

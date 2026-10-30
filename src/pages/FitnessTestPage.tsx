@@ -120,7 +120,7 @@ function FitnessTestPage() {
               {WARMUP_CHOICES_S.map((s) => <option key={s} value={s}>{s / 60} min</option>)}
             </select>
           </label>
-          <p className="train-hint">
+          <p className="ui-hint">
             Échauffement en zones {from} à {to} : {params.warmupLowBpm} à {params.warmupHighBpm} bpm. <ZonesSource params={params} runner={profile} />
           </p>
         </div>
@@ -136,7 +136,7 @@ function FitnessTestPage() {
           <IconPlay size={18} />
           Lancer
         </Button>
-        <span className="train-hint">Ouvre Enregistrer, prêt ; le bouton rond démarre.</span>
+        <span className="ui-hint">Ouvre Enregistrer, prêt ; le bouton rond démarre.</span>
       </div>
     </div>
   );

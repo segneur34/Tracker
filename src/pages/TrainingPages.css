@@ -45,14 +45,6 @@
   min-width: 0;
 }
 
-.train-tile__title {
-  font-family: var(--font-title);
-  font-size: var(--text-m);
-  font-weight: var(--title-weight);
-  letter-spacing: var(--title-spacing);
-  text-transform: uppercase;
-}
-
 .train-tile__sub {
   color: var(--muted);
   font-size: var(--text-xs);
@@ -69,12 +61,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-}
-
-.train-hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--text-s);
 }
 
 /* Fractionné et tests (lot I du 25/10) : la rangée des tests sous la liste des séances. */

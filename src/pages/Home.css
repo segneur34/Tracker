@@ -8,16 +8,9 @@
 
 /* En-tête : la photo déborde des marges de la page, en haut et sur les côtés. */
 .home-header {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
   /* Plus haute que la photo (1079 × 432), recadrée sur les côtés. */
   aspect-ratio: 1079 / 580;
-  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) 0;
   padding: var(--space-3) var(--space-4) var(--space-4);
-  background-size: cover;
-  background-position: center;
-  color: var(--on-accent);
   text-shadow: 0 1px 6px rgb(0 0 0 / 0.45);
 }
 

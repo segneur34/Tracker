@@ -1328,7 +1328,7 @@ function AddActivityForm({
       )}
       <ShadePicker shades={FAMILY_SHADES[family]} value={color} onChange={setColor} label="Couleur de la nouvelle activité" />
       <IconPicker value={icon ?? guessActivityIcon(name, base)} color={color} onChange={setIcon} label="Icône de la nouvelle activité" />
-      <button onClick={submit} disabled={name.trim() === ''} className="ui-btn ui-btn--secondary ui-btn--s">Ajouter</button>
+      <Button size="s" onClick={submit} disabled={name.trim() === ''}>Ajouter</Button>
       <HelpText helpKey="ajout">Elle part des valeurs de son calcul ; tout se règle ensuite dans sa carte.</HelpText>
     </div>
   );
@@ -1366,9 +1366,9 @@ function OfflineMapsSettings() {
         </select>
       </label>
       <HelpText helpKey="cartes:plafond">Au-delà, les plus anciens morceaux sont effacés. Les photos du fond satellite pèsent plus que le plan.</HelpText>
-      <button type="button" onClick={askClear} disabled={usage?.tiles === 0} className="ui-btn ui-btn--secondary ui-btn--s">
+      <Button size="s" onClick={askClear} disabled={usage?.tiles === 0}>
         Vider
-      </button>
+      </Button>
     </>
   );
 }

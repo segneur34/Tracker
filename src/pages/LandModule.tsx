@@ -95,6 +95,7 @@ import { WAY_MATCH_DEFAULTS } from '../planning/wayMatch';
 import { LAND_PAGES, LAND_TREATMENTS, type LandFamily, type LandTreatment } from './landModules';
 import StatTile from '../components/ui/StatTile';
 import MapToggle from '../components/ui/MapToggle';
+import SegmentedControl from '../components/ui/SegmentedControl';
 import { ALTITUDE_COLOR, ENERGY_COLOR, SPEED_COLOR } from '../components/chartStyle';
 import AnalysisShell from '../components/AnalysisShell';
 
@@ -1063,12 +1064,8 @@ function LandModule({ family }: { family: LandFamily }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px', paddingRight: '28px' }}>
                   <PanelTitle label="Graphiques" open={open.graphiques} onToggle={toggleOf('graphiques')} helpKey="analyse:graphiques" />
                   <span style={{ flex: 1 }} />
-                  {(['separate', 'overlay'] as ChartMode[]).map((mode) => (
-                    <button key={mode} onClick={() => setChartMode(mode)}
-                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)', backgroundColor: chartMode === mode ? page.accent : 'var(--surface-sunken)', color: chartMode === mode ? 'var(--on-accent)' : 'var(--ink)' }}>
-                      {mode === 'separate' ? 'Séparés' : 'Superposés'}
-                    </button>
-                  ))}
+                  <SegmentedControl<ChartMode> label="Disposition des graphes" accent={page.accent} value={chartMode} onChange={setChartMode}
+                    items={[{ key: 'separate', label: 'Séparés' }, { key: 'overlay', label: 'Superposés' }]} />
                 </div>
                 <HelpText helpKey="analyse:graphiques" note>
                   Vitesse lissée sur 10 s{inverse ? ', axe inversé : plus haut, plus vite' : ''}. Le survol d'un graphe déplace le repère sur l'autre graphe et sur la carte.
@@ -1127,12 +1124,10 @@ function LandModule({ family }: { family: LandFamily }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px', paddingRight: '28px' }}>
                   <PanelTitle label={model.energyLabel} open={open.energie} onToggle={toggleOf('energie')} helpKey="analyse:energie" />
                   <span style={{ flex: 1 }} />
-                  {energy.power.length > 0 && (['power', 'cumulative'] as EnergyChartMode[]).map((mode) => (
-                    <button key={mode} onClick={() => setEnergyMode(mode)}
-                      style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontSize: 'var(--text-xs)', backgroundColor: energyMode === mode ? page.accent : 'var(--surface-sunken)', color: energyMode === mode ? 'var(--on-accent)' : 'var(--ink)' }}>
-                      {mode === 'power' ? 'Puissance' : 'Cumulée'}
-                    </button>
-                  ))}
+                  {energy.power.length > 0 && (
+                    <SegmentedControl<EnergyChartMode> label="Courbe d'énergie" accent={page.accent} value={energyMode} onChange={setEnergyMode}
+                      items={[{ key: 'power', label: 'Puissance' }, { key: 'cumulative', label: 'Cumulée' }]} />
+                  )}
                   <ChartFold label="Chiffres" open={energyFold.open.chiffres} onToggle={() => energyFold.toggle('chiffres')}
                     title={energyFold.open.chiffres ? 'Replier les chiffres pour voir le graphe et la carte ensemble' : 'Montrer les chiffres'}
                     style={{ alignSelf: 'auto', padding: '4px 8px 4px 12px' }} />

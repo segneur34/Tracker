@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import L from 'leaflet';
 import { MapContainer, useMap } from 'react-leaflet';
 import { DEFAULT_MAP_CENTER, type TrackBounds } from '../core/displayConfig';
-import { NARROW_QUERY, usePhoneLandscape } from '../hooks/useNarrowScreen';
+import { useNarrowScreen, usePhoneLandscape } from '../hooks/useNarrowScreen';
 import type { MapFocus } from '../hooks/useZoomOnMap';
 import { pushBackLayer } from '../platform/backButton';
 import MapAutoResize from './MapAutoResize';
@@ -115,6 +115,7 @@ function AnalysisMap({
   useEffect(() => (expanded ? pushBackLayer(() => setExpandedRef.current(false)) : undefined), [expanded]);
   // Téléphone tourné : la carte en plein écran, à l'ouverture comme à chaque rotation ; remis droit, elle se referme.
   const landscape = usePhoneLandscape();
+  const narrow = useNarrowScreen();
   const wasLandscape = useRef<boolean | null>(null);
   useEffect(() => {
     if (wasLandscape.current !== landscape && (landscape || wasLandscape.current !== null)) setExpanded(landscape);
@@ -136,7 +137,7 @@ function AnalysisMap({
           className="an-map-frame an-map-corner"
           onClick={(e) => {
             if ((e.target as Element).closest('.leaflet-control, .an-map-tool')) return;
-            if (window.matchMedia(NARROW_QUERY).matches) setExpanded(true);
+            if (narrow) setExpanded(true);
           }}
           style={{ position: 'relative', flex: '1 1 auto', minHeight: 0, overflow: 'hidden', borderRadius: '8px', border: '1px solid var(--line-strong)' }}>
           <MapContainer key={sessionKey ?? 'empty'} {...initialView(bounds)} style={{ height: '100%', width: '100%' }}>

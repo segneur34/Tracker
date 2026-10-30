@@ -1,16 +1,5 @@
-/* Fenêtre modale (`Dialog.tsx`) : au milieu de l'écran, au-dessus des barres (1100)
+/* Fenêtre modale (`Dialog.tsx` ; son fond est `.ui-modal-backdrop`, `ui.css`) : au milieu de l'écran, au-dessus des barres (1100)
    et du menu « … » (1150) ; sur téléphone, presque tout l'écran. */
-
-.ui-dialog__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-5);
-  background: color-mix(in srgb, var(--ink) 40%, transparent);
-}
 
 .ui-dialog {
   display: flex;
@@ -54,7 +43,7 @@
 }
 
 @media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
-  .ui-dialog__backdrop {
+  .ui-modal-backdrop.ui-dialog__backdrop {
     padding: var(--space-3);
   }
 }

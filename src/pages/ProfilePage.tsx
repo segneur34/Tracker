@@ -191,7 +191,7 @@ function ProfilePage() {
         <button type="button" className="profile-head__avatar" aria-label="Changer la photo de profil" aria-expanded={picking}
           onClick={() => setPicking(!picking)}>
           <ProfileAvatar avatar={avatar}
-            fallback={overallFavorite ? { icon: activityIcon(overallFavorite), color: overallFavorite.color } : null} />
+            fallback={overallFavorite ? { icon: activityIcon(overallFavorite), color: shown(overallFavorite.color) } : null} />
         </button>
         <h1 className="profile-head__title">{name ?? 'Profil'}</h1>
         <RootSlot growth={root.growth} open={rootOpen} onToggle={() => setRootOpen(!rootOpen)} />
@@ -202,10 +202,10 @@ function ProfilePage() {
         value={period} onChange={(key) => rememberView({ periode: key })} />
 
       {status === 'opening' ? (
-        <p className="profile-hint">Lecture de la mémoire…</p>
+        <p className="ui-hint">Lecture de la mémoire…</p>
       ) : (
         <>
-          {scanning && <p className="profile-hint">Fiches en cours de calcul ({scanning.done} / {scanning.total}) : chiffres provisoires.</p>}
+          {scanning && <p className="ui-hint">Fiches en cours de calcul ({scanning.done} / {scanning.total}) : chiffres provisoires.</p>}
 
           <section className="profile-figures" aria-label="Totaux de la période">
             <div className="profile-figure">
@@ -234,7 +234,7 @@ function ProfilePage() {
                 title={`${favorite.name} : voir ses sessions`}>
                 <span className="ui-eyebrow">Sport préféré</span>
                 <span className="profile-figure__value">
-                  <ActivityArt icon={activityIcon(favorite)} className="profile-figure__art" style={{ color: favorite.color }} />
+                  <ActivityArt icon={activityIcon(favorite)} className="profile-figure__art" style={{ color: shown(favorite.color) }} />
                 </span>
                 <span className="profile-figure__caption profile-figure__name">{favorite.name}</span>
               </button>
@@ -248,7 +248,7 @@ function ProfilePage() {
           </section>
 
           {slices.length > 0 && (
-            <section className="profile-split" aria-label="Répartition par activité">
+            <section className="profile-split ui-card-col" aria-label="Répartition par activité">
               <h2 className="profile-card__title">Répartition du temps</h2>
               <div className="profile-split__body">
                 <div className="profile-donut">

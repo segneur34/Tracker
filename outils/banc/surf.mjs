@@ -135,10 +135,9 @@ console.log('podium :', await clickText('Les 3 plus longues'));
 await wait(500);
 console.log('surbrillance :', await evaluate(`['#d32f2f', '#f57c00', '#388e3c'].map((c) => document.querySelectorAll('.leaflet-overlay-pane path[stroke="' + c + '"]').length).join('/')`), 'traits du podium');
 console.log('tri par distance :', await evaluate(`(() => {
-  const s = [...document.querySelectorAll('.an-carte-panels select')].find((x) => [...x.options].some((o) => o.value === 'distance'));
-  if (!s) return 'absent';
-  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, 'distance');
-  s.dispatchEvent(new Event('change', { bubbles: true }));
+  const b = [...document.querySelectorAll('.an-carte-panels [role=radiogroup] button')].find((x) => x.textContent.trim() === 'Distance');
+  if (!b) return 'absent';
+  b.click();
   return 'ok';
 })()`));
 await wait(300);

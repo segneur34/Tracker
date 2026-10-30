@@ -126,7 +126,7 @@ function RestingHrTestPage() {
                 {belt.state === 'searching' && <> <BluetoothSettingsButton /></>}
               </p>
             ) : (
-              <p className="train-hint">Pas de ceinture dans le navigateur : l'exemple joue une FC d'exemple, pour voir le déroulé et le résultat.</p>
+              <p className="ui-hint">Pas de ceinture dans le navigateur : l'exemple joue une FC d'exemple, pour voir le déroulé et le résultat.</p>
             )}
             <div className="train-actions">
               {native ? (
@@ -140,7 +140,7 @@ function RestingHrTestPage() {
                   Essayer avec une FC d'exemple
                 </Button>
               )}
-              {native && !beltReady && <span className="train-hint">« Démarrer » attend la FC de la ceinture.</span>}
+              {native && !beltReady && <span className="ui-hint">« Démarrer » attend la FC de la ceinture.</span>}
             </div>
           </Card>
         </>
@@ -149,7 +149,7 @@ function RestingHrTestPage() {
       {phase === 'preparation' && run && (
         <Card heading="Installez-vous">
           <p className="rest-count" role="timer" aria-live="off">{remainingS} s</p>
-          <p className="train-hint">Le bip court lance les {PROTOCOL.durationS / 60} minutes.{run.simulated && ' Exemple : FC simulée.'}</p>
+          <p className="ui-hint">Le bip court lance les {PROTOCOL.durationS / 60} minutes.{run.simulated && ' Exemple : FC simulée.'}</p>
           <div className="train-actions rest-actions"><Button onClick={cancel}>Annuler</Button></div>
         </Card>
       )}
@@ -161,7 +161,7 @@ function RestingHrTestPage() {
             <p className="rest-live__bpm">{run.bpm !== null ? <><strong>{run.bpm}</strong> bpm</> : 'pas de mesure'}</p>
           </div>
           <RestingHrChart series={live} durationS={PROTOCOL.durationS} />
-          <p className="train-hint">Un bip long annoncera la fin.{run.simulated && ' Exemple : FC simulée.'}</p>
+          <p className="ui-hint">Un bip long annoncera la fin.{run.simulated && ' Exemple : FC simulée.'}</p>
           <div className="train-actions rest-actions"><Button onClick={cancel}>Annuler</Button></div>
         </Card>
       )}
@@ -178,7 +178,7 @@ function RestingHrTestPage() {
               <p className="rest-result"><strong className="rest-result__bpm">{result.lowestBpm}</strong> bpm</p>
               <RestingHrChart series={result.series} durationS={PROTOCOL.durationS}
                 lowest={{ fromS: result.fromS, toS: result.toS, bpm: result.lowestBpm }} />
-              <p className="train-hint">
+              <p className="ui-hint">
                 Sur les {PROTOCOL.durationS / 60} minutes : moyenne {result.meanBpm} bpm, maximum {result.maxBpm} bpm.
                 {' '}Mesures sur {Math.round(result.coverage * 100)} % du temps.
               </p>
@@ -199,7 +199,7 @@ function RestingHrTestPage() {
             )}
             <Button onClick={cancel}>Refaire</Button>
           </div>
-          {canRetain && !retained && profile.hrRest !== null && <p className="train-hint">Votre FC repos actuelle : {profile.hrRest} bpm (Pratiquant, dans <Link to="/parametres">Réglages</Link>).</p>}
+          {canRetain && !retained && profile.hrRest !== null && <p className="ui-hint">Votre FC repos actuelle : {profile.hrRest} bpm (Pratiquant, dans <Link to="/parametres">Réglages</Link>).</p>}
         </Card>
       )}
 
