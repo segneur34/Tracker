@@ -11,7 +11,7 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 ## Maintenant
 
-APK 0.4.31 installée le 30/10 (versionCode 4031 ; lots 72, 86, 87, 88 et 28 en attente de leurs essais, reportés à une sortie).
+APK 0.4.31 installée le 30/10 (versionCode 4031 ; lots 72, 86, 87, 88 et 28 en attente de leurs essais, reportés à une sortie). APK 0.4.35 construite le 30/10 à 23 h (versionCode 4035, `android\app\build\outputs\apk\release\Tracker-0.4.35.apk`), pas encore installée (téléphone débranché) : elle porte les lots 83, 93, 38 et 84 ; l'essai 87 se fait sur elle.
 
 - 83 · [bogue] Enregistrer et Profil : à 115 et 130 % de taille de texte, au téléphone étroit (320 à 390 px), la rangée « Famille » d'Enregistrer et « Période » de Profil défile au lieu de tenir sur la largeur (relevé de tailles.mjs le 29/10) · noté 29/10 · petit · Sonnet/medium · à valider (commit du 30/10, 0.4.32) : cause, les cases ne pouvaient pas rétrécir sous leur plus long mot ; corrigé une fois dans la variante « fit » du bouton glissant, règle redondante de Profil retirée ; relevé du banc : 5 combinaisons qui défilaient sur Enregistrer et 4 sur Profil avant, 0 après · détail : docs/backlog/83-rangees-texte-agrandi.md
   - essai 87 : téléphone réglé sur la plus grande taille de texte, ouvrir Enregistrer (rangée « Famille ») et Profil (rangée « Période ») → les deux rangées tiennent sur la largeur sans défiler ; si un mot est coupé de façon laide (« Fractionné »), le dire : la seule autre issue est un libellé plus court
