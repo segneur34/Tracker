@@ -69,7 +69,7 @@ Numérotation : Q31 a déjà servi (n° 50, pumping en wing, répondue le 28/10)
 | 76 | Banc : une seule mise en route DevTools | outils | Sonnet/medium | petit | oui | 53 | Plus tard |
 | 77 | Thème et DA : CSS communes, variables, choix conformes | doublons | Sonnet/medium | petit | non (Q35, Q49) | 64 | Plus tard |
 | 78 | Formats d'affichage uniques | bogues | Sonnet/medium | petit | non (Q32) | 55 | Plus tard |
-| 79 | Voile : manœuvres mesurées selon les règles 2 et 6 | bogues | Fable/high | gros | non (Q33) | 58, 71 | Plus tard |
+| 79 | Voile : manœuvres mesurées selon les règles 2 et 6 | bogues | Fable/high | gros | non (Q33) | 58, 71 | fait, validé le 30/10 (HISTORIQUE point 225) |
 | 80 | Fiche de session : une table des champs, fichiers compacts | doublons | Opus/high | petit | oui sauf Q44 | 54, 55 | Plus tard |
 | 81 | Chiffres hors voile : vitesse max, sauts, surf, trous | bogues | Opus/high | petit | non (Q34, Q41 à Q43) | 57, 70 | Plus tard |
 | 82 | Planification : doublons internes et revêtement | doublons | Sonnet/high | petit | oui sauf Q47 | 57 | Plus tard |
