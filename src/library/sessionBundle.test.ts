@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { escapeXmlText } from '../core/xml';
-import { RECORD_VERSION, completeRecord, serializeRecord, type SessionRecord } from './record';
+import { RECORD_VERSION, completeRecord, parseRecordWithRaw, serializeRecord, type SessionRecord } from './record';
 import { bundleSessionGpx, unbundleSessionGpx } from './sessionBundle';
 import { familyRecords, sessionRecord } from '../test/record.fixture';
 
@@ -48,7 +48,7 @@ describe('GPX complet', () => {
   });
 
   it('laisse tel quel un GPX sans paquet', () => {
-    expect(unbundleSessionGpx(GPX)).toEqual({ gpx: GPX, record: null, motion: null });
+    expect(unbundleSessionGpx(GPX)).toEqual({ gpx: GPX, record: null, unreadable: {}, motion: null });
   });
 
   it('retire puis ignore un paquet abîmé', () => {
@@ -56,6 +56,23 @@ describe('GPX complet', () => {
     const back = unbundleSessionGpx(bundled);
     expect(back.gpx).toBe(GPX);
     expect(back.record).toBeNull();
+  });
+
+  it('garde à l’aller-retour les champs de fiche qu’elle ne sait pas lire, et les champs inconnus', () => {
+    // Fiche du disque écrite par une version plus récente : revêtement d'une forme nouvelle, champ inconnu.
+    const surfaces = { source: 'overpass', format: 2, segments: [{ from: 0, kind: 'asphalte' }] };
+    const disk = JSON.parse(serializeRecord(record({ name: 'Carnon' })));
+    const read = parseRecordWithRaw(JSON.stringify({ ...disk, surfaces, futur: { vagues: [1, 2] } }));
+    expect(read).not.toBeNull();
+    expect(Object.keys(read!.unreadable)).toEqual(['surfaces']);
+    const fiche = { ...read!.parts, summary: read!.parts.summary! };
+    const back = unbundleSessionGpx(bundleSessionGpx(GPX, fiche, null, read!.unreadable));
+    expect(back.gpx).toBe(GPX);
+    expect(back.unreadable).toEqual(read!.unreadable);
+    const rewritten = JSON.parse(serializeRecord({ ...back.record!, summary: back.record!.summary! }, back.unreadable));
+    expect(rewritten.surfaces).toEqual(surfaces);
+    expect(rewritten.futur).toEqual({ vagues: [1, 2] });
+    expect(rewritten.name).toBe('Carnon');
   });
 
   it('ignore une fiche écrite par une version plus récente', () => {

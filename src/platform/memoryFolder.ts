@@ -557,7 +557,8 @@ const PRIVATE_TEMP_SUFFIX = '.tmp';
  * y attendent qu'un dossier mémoire soit accessible : un enregistrement ne
  * doit jamais échouer faute de dossier. Chaque fichier est écrit sous un nom
  * temporaire (`.tmp`), puis renommé : une écriture interrompue ne laisse jamais
- * un GPX tronqué sous son nom (les sessions en attente ne prennent que les `.gpx`).
+ * un GPX tronqué sous son nom. Un `.tmp` laissé par un plantage est repris ou
+ * effacé avec les sessions en attente (`library/pendingTemps.ts`).
  */
 const createPrivateFolder = (base: string): MemoryFolder => {
   const full = (path: string) => [base, ...splitPath(path)].join('/');

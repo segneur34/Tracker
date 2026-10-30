@@ -9,6 +9,11 @@ export interface ImportReport {
   existing: string[];
   duplicates: number;
   invalid: string[];
+  /**
+   * GPX vides ou blancs (écriture interrompue) : ni sessions ni illisibles. Comptés, pas dits dans
+   * la phrase du compte rendu.
+   */
+  ignored: string[];
   unsaved: number;
   /** Fichiers qu'on n'a pas pu lire ou ranger, avec la raison. */
   failed: string[];

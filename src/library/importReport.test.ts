@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { describeImport, type ImportReport } from './importReport';
 
 const report = (patch: Partial<ImportReport> = {}): ImportReport => ({
-  added: [], existing: [], duplicates: 0, invalid: [], unsaved: 0, failed: [], motionAdded: 0, recordCompleted: 0, ...patch,
+  added: [], existing: [], duplicates: 0, invalid: [], ignored: [], unsaved: 0, failed: [], motionAdded: 0, recordCompleted: 0, ...patch,
 });
 
 describe("compte rendu d'un import (lot 72)", () => {

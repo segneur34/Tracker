@@ -1,7 +1,7 @@
 import { escapeXmlText } from '../core/xml';
 import { sortMarks, type SessionMark } from '../core/sessionMarks';
 import { base64ToBytes, bytesToBase64 } from '../core/base64';
-import { isWritableRecord, parseRecordParts, serializeRecord, type RecordWithoutSummary, type SessionRecord } from './record';
+import { isWritableRecord, parseRecordWithRaw, serializeRecord, type RecordUnreadable, type RecordWithoutSummary, type SessionRecord } from './record';
 
 /**
  * GPX complet d'une session, pour la passer d'un appareil à l'autre en un seul
@@ -31,6 +31,11 @@ export interface UnbundledGpx {
    * plus récente ; son résumé, refait à l'import, peut manquer.
    */
   record: RecordWithoutSummary | null;
+  /**
+   * Champs de la fiche du paquet que cette version ne sait pas lire (`parseRecordWithRaw`), à
+   * réécrire tels quels avec elle ; vide sans fiche.
+   */
+  unreadable: RecordUnreadable;
   /** Capteurs du paquet, `null` s'il n'en porte pas. */
   motion: Uint8Array | null;
 }
@@ -111,13 +116,16 @@ const writeName = (gpx: string, text: string, changes: { from: number; to: numbe
   if (trk && !trk[0].endsWith('/>')) nameAfter(trk.index + trk[0].length);
 };
 
-/** GPX empaqueté avec sa fiche et ses capteurs. Un GPX sans `</gpx>` est rendu tel quel. */
-export const bundleSessionGpx = (gpx: string, record: SessionRecord, motion: Uint8Array | null): string => {
+/**
+ * GPX empaqueté avec sa fiche et ses capteurs. `unreadable` : champs de la fiche illisibles à sa
+ * lecture, écrits tels quels (`serializeRecord`). Un GPX sans `</gpx>` est rendu tel quel.
+ */
+export const bundleSessionGpx = (gpx: string, record: SessionRecord, motion: Uint8Array | null, unreadable?: RecordUnreadable): string => {
   if (gpx.lastIndexOf('</gpx>') < 0) return gpx;
   const named = retouchGpx(gpx, record.name?.trim() || null, record.marks ?? []);
   const at = named.gpx.lastIndexOf('</gpx>');
   const block = OPEN
-    + `<tracker:record>${escapeXmlText(serializeRecord(record))}</tracker:record>`
+    + `<tracker:record>${escapeXmlText(serializeRecord(record, unreadable))}</tracker:record>`
     + (motion ? `<tracker:imu>${bytesToBase64(motion)}</tracker:imu>` : '')
     + named.edits.map((e) => `<tracker:edit at="${e.at}" length="${e.length}">${escapeXmlText(e.original)}</tracker:edit>`).join('')
     + CLOSE;
@@ -150,11 +158,12 @@ const undoEdits = (gpx: string, body: string, record: Pick<RecordWithoutSummary,
 export const unbundleSessionGpx = (text: string): UnbundledGpx => {
   const start = text.lastIndexOf(OPEN);
   const end = start < 0 ? -1 : text.indexOf(CLOSE, start);
-  if (end < 0) return { gpx: text, record: null, motion: null };
+  if (end < 0) return { gpx: text, record: null, unreadable: {}, motion: null };
   const body = text.slice(start + OPEN.length, end);
   const recordText = /<tracker:record>([\s\S]*?)<\/tracker:record>/.exec(body)?.[1];
-  const parsed = recordText === undefined ? null : parseRecordParts(unescapeXml(recordText));
-  const gpx = undoEdits(text.slice(0, start) + text.slice(end + CLOSE.length), body, parsed && isWritableRecord(parsed) ? parsed : null);
+  const read = recordText === undefined ? null : parseRecordWithRaw(unescapeXml(recordText));
+  const parsed = read && isWritableRecord(read.parts) ? read : null;
+  const gpx = undoEdits(text.slice(0, start) + text.slice(end + CLOSE.length), body, parsed?.parts ?? null);
   const imuText = /<tracker:imu>([A-Za-z0-9+/=\s]*)<\/tracker:imu>/.exec(body)?.[1];
   let motion: Uint8Array | null = null;
   try {
@@ -162,5 +171,5 @@ export const unbundleSessionGpx = (text: string): UnbundledGpx => {
   } catch {
     motion = null;
   }
-  return { gpx, record: parsed && isWritableRecord(parsed) ? parsed : null, motion };
+  return { gpx, record: parsed?.parts ?? null, unreadable: parsed?.unreadable ?? {}, motion };
 };

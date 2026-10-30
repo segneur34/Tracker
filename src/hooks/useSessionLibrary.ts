@@ -30,6 +30,7 @@ import {
   dedupeSessions,
   findLegacyNotes,
   imuFileName,
+  isBlankGpxText,
   isGpxFileName,
   isSummaryStale,
   isWritableRecord,
@@ -50,6 +51,7 @@ import {
 } from '../library/record';
 import { indexByRecordName, lowerRecordExtension, planReconcile, type LibraryCache } from '../library/reconcile';
 import { unbundleSessionGpx } from '../library/sessionBundle';
+import { isCompleteGpxText, planPendingTemps } from '../library/pendingTemps';
 import {
   TRAVELLING_KEYS,
   adoptedValues,
@@ -1086,8 +1088,8 @@ const RECORD_READ_BATCH = 8;
 /** À l'ouverture d'une mémoire encore vide, la liste est publiée tous les tant de sessions lues. */
 const PROGRESSIVE_PUBLISH_COUNT = 25;
 
-/** `stopped` : le dossier a changé, le balayage s'arrête. */
-type JobOutcome = 'done' | 'unreadable' | 'stopped';
+/** `stopped` : le dossier a changé, le balayage s'arrête ; `blank` : GPX vide, qui n'est pas une session (ignoré, pas effacé). */
+type JobOutcome = 'done' | 'unreadable' | 'blank' | 'stopped';
 
 /**
  * Crée une fiche, ou refait le résumé d'une fiche existante. Pour celle-ci,
@@ -1104,6 +1106,9 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
   } catch {
     return 'unreadable';
   }
+  // GPX vide ou blanc sans fiche (écriture interrompue) : ni session ni « illisible », laissé en place.
+  // Avec une fiche, même illisible ou d'une version plus récente, il reste dit « illisible ».
+  if (job.kind === 'create' && !job.base && !job.readOnly && text !== null && isBlankGpxText(text)) return 'blank';
   if (job.kind === 'refresh') {
     try {
       await hydrateSession(f, job.file, true);
@@ -1199,34 +1204,100 @@ const runCompleteScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[])
 };
 
 /**
+ * GPX dont l'écriture dans le dossier en attente est en cours (`addGpx`) : la reprise des
+ * temporaires (`planPendingTemps`) ne touche pas aux leurs.
+ */
+const pendingWriting = new Set<string>();
+
+/** Capteurs temporaires lus, s'ils commencent par un en-tête lisible ; `null` sinon. */
+const readPendingImuTemp = async (pending: MemoryFolder, name: string | null): Promise<Uint8Array | null> => {
+  if (!name) return null;
+  const bytes = await pending.readBytes(name);
+  return bytes && decodeImuHeader(bytes) ? bytes : null;
+};
+
+/**
  * Sessions enregistrées sur le téléphone faute de dossier, rangées dès qu'il
  * y en a un. Une session qu'on ne peut ranger reste en attente, sans retenir
- * les autres, et l'échec est dit.
+ * les autres, et l'échec est dit. Les temporaires d'une écriture interrompue
+ * par un plantage (`planPendingTemps`) : un GPX complet est rangé comme les
+ * autres, puis effacé ; un temporaire tronqué ou illisible est effacé, et dit ;
+ * celui dont la cible est là, effacé sans rien dire.
  */
 const flushPending = async (): Promise<void> => {
   const pending = pendingFolder();
   if (!pending) return;
-  let files: FolderEntry[];
+  let names: string[];
   try {
-    files = (await pending.list('')).filter((e) => e.kind === 'file' && isGpxFileName(e.name));
+    names = (await pending.list('')).filter((e) => e.kind === 'file').map((e) => e.name);
   } catch (err) {
     reportError(`Sessions en attente illisibles : ${errorMessage(err, 'erreur inconnue')}`);
     return;
   }
-  for (const entry of files) {
+  const temps = planPendingTemps(names, pendingWriting);
+  for (const name of temps.stale) await pending.remove(name).catch(() => undefined);
+  for (const name of temps.orphanImuTemps) {
+    await pending.remove(name).catch(() => undefined);
+    reportError(`Capteurs en attente ${name} sans leur trace (écriture interrompue), effacés`);
+  }
+  for (const name of names.filter(isGpxFileName)) {
     try {
-      const text = await pending.readText(entry.name);
+      const text = await pending.readText(name);
       if (text === null) continue;
-      const motion = await pending.readBytes(imuFileName(entry.name));
+      const imuTemp = temps.imuTemps[name] ?? null;
+      const imu = await pending.readBytes(imuFileName(name));
+      const fromTemp = imu ? null : await readPendingImuTemp(pending, imuTemp);
+      const motion = imu ?? fromTemp;
       const result = await addGpx(text, 'enregistrement', { motion: motion ?? undefined });
       if (result.status === 'added' || result.status === 'duplicate') {
-        await pending.remove(entry.name);
-        if (motion) await pending.remove(imuFileName(entry.name));
+        await pending.remove(name);
+        // Seuls les capteurs lus et rangés avec la session sont effacés.
+        if (imu) await pending.remove(imuFileName(name));
+        if (fromTemp && imuTemp) await pending.remove(imuTemp);
       } else if (result.status === 'invalid') {
-        reportError(`Session en attente ${entry.name} illisible, laissée en attente : ${result.message ?? 'GPX illisible'}`);
+        reportError(`Session en attente ${name} illisible, laissée en attente : ${result.message ?? 'GPX illisible'}`);
       }
     } catch (err) {
-      reportError(`Session en attente ${entry.name} non rangée : ${errorMessage(err, 'erreur inconnue')}`);
+      reportError(`Session en attente ${name} non rangée : ${errorMessage(err, 'erreur inconnue')}`);
+    }
+  }
+
+  for (const session of temps.sessions) {
+    const drop = async (why: string) => {
+      await pending.remove(session.temp);
+      if (session.imuTemp) await pending.remove(session.imuTemp);
+      reportError(`Session en attente ${session.gpx} ${why}, effacée`);
+    };
+    try {
+      const text = await pending.readText(session.temp);
+      // Lecture en échec : rien n'est effacé, le temporaire sera repris au prochain dossier ouvert.
+      if (text === null) continue;
+      if (isBlankGpxText(text)) {
+        await drop('vide (écriture interrompue)');
+        continue;
+      }
+      if (!isCompleteGpxText(text)) {
+        await drop('incomplète (écriture interrompue)');
+        continue;
+      }
+      const imu = session.imu ? await pending.readBytes(session.imu) : null;
+      const fromTemp = imu ? null : await readPendingImuTemp(pending, session.imuTemp);
+      const motion = imu ?? fromTemp;
+      const result = await addGpx(text, 'enregistrement', { motion: motion ?? undefined });
+      if (result.status === 'added' || result.status === 'duplicate') {
+        await pending.remove(session.temp);
+        // Seuls les capteurs lus et rangés avec la session sont effacés : une lecture en échec les laisse.
+        if (imu && session.imu) await pending.remove(session.imu);
+        if (fromTemp && session.imuTemp) await pending.remove(session.imuTemp);
+      } else if (result.status === 'pending') {
+        // Plus de dossier entre-temps : la session est de nouveau en attente, sous son nom cette fois.
+        await pending.remove(session.temp);
+        if (fromTemp && session.imuTemp) await pending.remove(session.imuTemp);
+      } else if (result.status === 'invalid') {
+        await drop(`illisible (${result.message ?? 'GPX illisible'})`);
+      }
+    } catch (err) {
+      reportError(`Session en attente ${session.gpx} non rangée : ${errorMessage(err, 'erreur inconnue')}`);
     }
   }
   await countPending();
@@ -1535,8 +1606,13 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
     const pending = source === 'enregistrement' ? pendingFolder() : null;
     if (!pending) return { status: 'unsaved', file: null };
     // Les capteurs d'abord : un GPX en attente a toujours les siens complets à côté de lui.
-    if (options.motion) await pending.writeBytes(imuFileName(name), options.motion);
-    await pending.writeText(name, text);
+    pendingWriting.add(name);
+    try {
+      if (options.motion) await pending.writeBytes(imuFileName(name), options.motion);
+      await pending.writeText(name, text);
+    } finally {
+      pendingWriting.delete(name);
+    }
     await countPending();
     return { status: 'pending', file: null };
   }
@@ -1640,7 +1716,7 @@ const pickedEntry = (file: File): ImportEntry => ({
  */
 export const importEntries = async (entries: ImportEntry[]): Promise<ImportReport> => {
   setState({ importing: true });
-  const report: ImportReport = { added: [], existing: [], duplicates: 0, invalid: [], unsaved: 0, failed: [], motionAdded: 0, recordCompleted: 0 };
+  const report: ImportReport = { added: [], existing: [], duplicates: 0, invalid: [], ignored: [], unsaved: 0, failed: [], motionAdded: 0, recordCompleted: 0 };
   try {
     await opening;
     const records = new Map<string, ImportEntry>();
@@ -1658,6 +1734,11 @@ export const importEntries = async (entries: ImportEntry[]): Promise<ImportRepor
           report.failed.push(`${entry.name} : illisible`);
           continue;
         }
+        // GPX vide : pas une session, ni illisible.
+        if (isBlankGpxText(text)) {
+          report.ignored.push(entry.name);
+          continue;
+        }
         // GPX complet (`library/sessionBundle.ts`) : la fiche et les capteurs qu'il porte servent
         // à défaut de fichiers posés à côté ; la mémoire range le GPX sans eux.
         const bundle = unbundleSessionGpx(text);
@@ -1666,7 +1747,7 @@ export const importEntries = async (entries: ImportEntry[]): Promise<ImportRepor
         const fromSidecar = sidecar !== null && isWritableRecord(sidecar.parts);
         const record = fromSidecar ? sidecar.parts : bundle.record;
         const motion = (await motions.get(entry.key)?.readBytes()) ?? bundle.motion ?? undefined;
-        const result = await addGpx(bundle.gpx, 'import', { record, motion, unreadable: fromSidecar ? sidecar.unreadable : undefined });
+        const result = await addGpx(bundle.gpx, 'import', { record, motion, unreadable: fromSidecar ? sidecar.unreadable : bundle.unreadable });
         if (result.status === 'added' && result.file) report.added.push(result.file);
         else if (result.status === 'duplicate') {
           report.duplicates += 1;
@@ -1765,17 +1846,21 @@ export const loadSessionGpx = async (file: string): Promise<string | null> => {
 
 /**
  * GPX complet d'une session, pour « Télécharger la session » : le GPX tel que
- * rangé, sa fiche entière et ses capteurs (`library/sessionBundle.ts`).
+ * rangé, sa fiche entière, avec ses champs illisibles à la lecture, et ses
+ * capteurs (`library/sessionBundle.ts`).
  * `null` si le GPX n'est pas lisible.
  */
-export const readSessionExport = async (file: string): Promise<{ gpx: string; record: SessionRecord; motion: Uint8Array | null } | null> => {
+export const readSessionExport = async (
+  file: string
+): Promise<{ gpx: string; record: SessionRecord; unreadable: RecordUnreadable | undefined; motion: Uint8Array | null } | null> => {
   await opening;
   const f = folder;
   const session = findSession(file);
   if (!f || !session) return null;
   const gpx = await f.readText(sessionPath(file));
   if (gpx === null) return null;
-  return { gpx, record: (await fullRecordIn(f, session)).record, motion: await readSessionMotion(file) };
+  const { record, unreadable } = await fullRecordIn(f, session);
+  return { gpx, record, unreadable, motion: await readSessionMotion(file) };
 };
 
 /** Vrai si la session a ses capteurs (`.imu`) dans la mémoire. */

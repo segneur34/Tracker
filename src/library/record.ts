@@ -807,6 +807,12 @@ export const imuFileName = (gpxName: string): string => gpxName.replace(/\.gpx$/
 export const isGpxFileName = (name: string): boolean => /\.gpx$/i.test(name);
 
 /**
+ * Vrai pour un GPX vide ou blanc (écriture interrompue, fichier créé puis jamais rempli) : ce n'est
+ * pas une session. Il est ignoré sans message, jamais effacé.
+ */
+export const isBlankGpxText = (text: string): boolean => text.trim() === '';
+
+/**
  * Notes saisies avant l'existence du dossier mémoire (`tracker.sailingNotes`),
  * rangées sous `nom de trace ou de fichier|instant du premier point`. Le nom a
  * pu changer depuis, l'instant non : c'est lui qui les retrouve.

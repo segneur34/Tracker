@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MemoryFolder } from '../platform/memoryFolder';
-import { createFakeFolder } from '../test/memoryFolder.fixture';
+import { createFakeFolder, fakeEntries } from '../test/memoryFolder.fixture';
 
 /**
  * Bibliothèque sur un faux dossier (lot 3 de la revue du 27/10) : import sans
@@ -39,11 +39,18 @@ const fakeFolder: MemoryFolder = createFakeFolder(
   (path) => files.get(path)!.length,
 );
 
+/** Fichiers déjà dans le dossier en attente, par nom (les écritures n'y vont pas : `pendingWrites`). */
+const pendingFiles = new Map<string, string>();
+
 const fakePending: MemoryFolder = {
   ...fakeFolder,
   kind: 'device',
   label: 'en attente',
-  list: async () => [],
+  list: async () => fakeEntries(pendingFiles, ''),
+  readText: async (path) => pendingFiles.get(path) ?? null,
+  remove: async (path) => {
+    pendingFiles.delete(path);
+  },
   writeText: async (path) => {
     pendingWrites.push(path);
   },
@@ -98,6 +105,7 @@ beforeEach(() => {
   log.length = 0;
   refused.clear();
   pendingWrites.length = 0;
+  pendingFiles.clear();
   access = 'ready';
   storageFailed = false;
 });
@@ -217,6 +225,74 @@ describe('enregistrement en attente d\'un dossier (A2)', () => {
     const library = await openFresh();
     await library.saveRecordedSession(gpxAt(0), 'running', null, [], new Uint8Array([1]));
     expect(pendingWrites.map((p) => p.replace(/^.*\./, ''))).toEqual(['imu', 'gpx']);
+  });
+});
+
+describe('temporaires laissés en attente par un plantage (lot 84, A)', () => {
+  it('range un GPX temporaire complet, efface un tronqué en le disant, et le reste d’une écriture achevée', async () => {
+    pendingFiles.set('complet.gpx.tmp', gpxAt(0));
+    pendingFiles.set('tronque.gpx.tmp', gpxAt(5).slice(0, 80));
+    pendingFiles.set('fini.gpx', gpxAt(10));
+    pendingFiles.set('fini.gpx.tmp', gpxAt(10));
+    const library = await openFresh();
+    await settle(library);
+    expect([...pendingFiles.keys()]).toEqual([]);
+    const starts = library.readLibraryState().sessions.map((s) => new Date(s.record.summary.startMs).toISOString()).sort();
+    expect(starts).toEqual(['2026-10-27T10:00:00.000Z', '2026-10-27T10:10:00.000Z']);
+    expect(library.readLibraryState().error).toContain('tronque.gpx incomplète');
+    expect(library.readLibraryState().error).not.toContain('fini');
+  });
+});
+
+describe('capteurs en attente illisibles (lot 84, A)', () => {
+  it('ne les efface pas quand leur lecture échoue, la session étant rangée sans eux', async () => {
+    // Le faux dossier en attente rend `null` à toute lecture d'octets : échec de lecture des capteurs.
+    pendingFiles.set('x.gpx.tmp', gpxAt(0));
+    pendingFiles.set('x.imu', 'capteurs');
+    pendingFiles.set('y.gpx', gpxAt(10));
+    pendingFiles.set('y.imu.tmp', 'capteurs');
+    const library = await openFresh();
+    await settle(library);
+    expect(library.readLibraryState().sessions).toHaveLength(2);
+    expect([...pendingFiles.keys()].sort()).toEqual(['x.imu', 'y.imu.tmp']);
+  });
+});
+
+describe('GPX vide dans le dossier (lot 84, C)', () => {
+  it('n’est ni une session ni « illisible », et reste en place', async () => {
+    files.set('sessions/vide.gpx', '');
+    files.set('sessions/blanc.gpx', ' \n  ');
+    files.set('sessions/sortie.gpx', gpxAt(0));
+    const library = await openFresh();
+    await settle(library);
+    expect(library.readLibraryState().sessions.map((s) => s.file)).toEqual(['sortie.gpx']);
+    expect(library.readLibraryState().unreadable).toEqual([]);
+    expect(files.has('sessions/vide.gpx')).toBe(true);
+    expect(log.filter((l) => l.includes('vide') || l.includes('blanc'))).toEqual([]);
+  });
+
+  it('avec une fiche, reste dit « illisible » : la fiche et ses notes ne deviennent pas invisibles', async () => {
+    const { RECORD_FORMAT, RECORD_VERSION } = await import('../library/record');
+    files.set('sessions/vide.gpx', '');
+    // Fiche lisible au résumé illisible, puis fiche d'une version plus récente.
+    files.set('sessions/vide.json', JSON.stringify({
+      format: RECORD_FORMAT, version: RECORD_VERSION, gpx: 'vide.gpx', sport: 'running', activityId: null, source: 'import',
+      addedAt: '2026-10-27T11:00:00.000Z', title: null, name: 'Matin', summary: null, notes: null, analysis: null,
+    }));
+    files.set('sessions/futur.gpx', '');
+    files.set('sessions/futur.json', JSON.stringify({ format: RECORD_FORMAT, version: RECORD_VERSION + 1, gpx: 'futur.gpx', name: 'Soir' }));
+    const library = await openFresh();
+    await settle(library);
+    expect([...library.readLibraryState().unreadable].sort()).toEqual(['futur.gpx', 'vide.gpx']);
+  });
+
+  it('à l’import, est compté parmi les ignorés, pas parmi les illisibles', async () => {
+    const library = await openFresh();
+    await settle(library);
+    const report = await library.importFiles([new File([''], 'vide.gpx'), new File([gpxAt(0)], 'sortie.gpx')]);
+    expect(report.ignored).toEqual(['vide.gpx']);
+    expect(report.invalid).toEqual([]);
+    expect(report.added).toHaveLength(1);
   });
 });
 

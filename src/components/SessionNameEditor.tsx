@@ -65,7 +65,7 @@ function SessionNameEditor({ file, share }: { file: string | null; share?: Sessi
       const session = await readSessionExport(file);
       if (session === null) throw new Error('GPX illisible dans la mémoire.');
       const named = name?.trim() ? safeFileName(downloadBaseName(name, activityName, session.record.summary.startMs, file)) : '';
-      await saveToDownloads(named ? `${named}.gpx` : file, bundleSessionGpx(session.gpx, session.record, session.motion));
+      await saveToDownloads(named ? `${named}.gpx` : file, bundleSessionGpx(session.gpx, session.record, session.motion, session.unreadable));
       setNote({ text: 'Session enregistrée dans Téléchargements.', error: false });
     } catch (err) {
       setNote({ text: `Téléchargement impossible : ${errorMessage(err)}`, error: true });
