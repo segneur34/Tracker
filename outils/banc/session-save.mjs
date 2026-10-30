@@ -157,20 +157,22 @@ console.log('barre :', await bar());
 check('commentaire effacé par Annuler', (await evaluate(`${COMMENT_AREA}?.value`)) === '');
 check('plus rien à enregistrer', !/Non enregistré/.test(await bar()), await bar());
 
-step('8. Brouillon gardé après un retour arrière du navigateur');
+step('8. Retour arrière du navigateur refusé : on reste, brouillon intact');
 await typeInto(COMMENT_AREA, 'Brouillon gardé');
 await settle({ max: 800, label: 'commentaire' });
-await evaluate('history.back()');
-await settle({ max: 2000, label: 'retour arrière' });
-console.log('url :', await evaluate('location.pathname'));
-await evaluate('history.forward()');
-await waitFor(`location.pathname === '/voile/analyse'`, { timeout: 6000, label: 'retour en avant' });
-await settle({ max: 6000, label: 'retour en avant' });
-await waitWind();
-await openTab('matos et conditions');
-await settle({ max: 800, label: 'onglet matos' });
+await refuseDialogs(true);
+// Deux retours de suite : la garde de l'historique doit être remise après le premier refus.
+for (const n of [1, 2]) {
+  await evaluate('history.back()');
+  await settle({ max: 1500, label: `retour arrière ${n}` });
+  console.log(`retour ${n} : url`, await evaluate('location.pathname'), '| dialogue :', (await refusals()).at(-1) ?? '(aucun)');
+}
+await refuseDialogs(false);
 console.log('commentaire :', JSON.stringify(await evaluate(`${COMMENT_AREA}?.value`)), '| barre :', await bar());
-check('brouillon retrouvé', (await evaluate(`${COMMENT_AREA}?.value`)) === 'Brouillon gardé');
+check('avertissement posé à chaque retour', (await refusals()).length === 2, String((await refusals()).length));
+check('on reste sur l\'analyse', (await evaluate('location.pathname')) === '/voile/analyse', await evaluate('location.pathname'));
+check('brouillon intact', (await evaluate(`${COMMENT_AREA}?.value`)) === 'Brouillon gardé');
+check('barre « Non enregistré »', /Non enregistré/.test(await bar()), await bar());
 
 step('9. Retour à la liste accepté : brouillon abandonné');
 console.log('clic retour :', await evaluate(`(() => { const a = [...document.querySelectorAll('a')].find((x) => x.textContent.trim().startsWith('Sessions voile')); if (!a) return 'absent'; a.click(); return 'ok'; })()`));
@@ -179,6 +181,33 @@ await settle({ max: 1500, label: 'liste' });
 console.log('url :', await evaluate('location.pathname'));
 console.log('fiche :', JSON.stringify(await fiche(file)));
 check('avertissement accepté', dialogs.length >= 1, dialogs.at(-1));
+check('de retour sur la liste', (await evaluate('location.pathname')) === '/voile');
+check('fiche sans le brouillon', (await fiche(file))?.comment === null || (await fiche(file))?.comment === '');
+
+step('9b. Retour depuis la liste : la garde restée dessous est traversée sans bruit');
+// Le lien de l'étape 9 est parti en laissant l'entrée « garde » sous la liste : un retour doit atterrir sur l'analyse, pas dessus.
+await evaluate('history.back()');
+await waitFor(`location.pathname === '/voile/analyse' && !history.state?.leaveGuard`, { timeout: 4000, label: 'garde traversée' });
+await settle({ max: 1500, label: 'analyse' });
+console.log('url :', await evaluate('location.pathname'), '| état :', JSON.stringify(await evaluate('history.state?.leaveGuard ?? null')));
+check('garde périmée traversée', (await evaluate('history.state?.leaveGuard ?? null')) === null);
+
+step('10. Retour arrière du navigateur accepté : brouillon abandonné, on part');
+const dialogsBefore = dialogs.length;
+await go('/voile', 3000);
+await go(url, 7000);
+await waitWind();
+await openTab('matos et conditions');
+await settle({ max: 800, label: 'onglet matos' });
+await typeInto(COMMENT_AREA, 'Brouillon à jeter');
+await settle({ max: 800, label: 'commentaire' });
+check('barre « Non enregistré »', /Non enregistré/.test(await bar()), await bar());
+await evaluate('history.back()');
+await waitFor(`location.pathname === '/voile'`, { timeout: 4000, label: 'retour arrière accepté' });
+await settle({ max: 1500, label: 'liste' });
+console.log('url :', await evaluate('location.pathname'));
+console.log('fiche :', JSON.stringify(await fiche(file)));
+check('avertissement accepté', dialogs.length === dialogsBefore + 1, dialogs.at(-1));
 check('de retour sur la liste', (await evaluate('location.pathname')) === '/voile');
 check('fiche sans le brouillon', (await fiche(file))?.comment === null || (await fiche(file))?.comment === '');
 
