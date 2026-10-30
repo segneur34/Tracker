@@ -136,6 +136,23 @@ describe('createJsonStore', () => {
     expect(store.read('tracker.sportSettings')).toEqual({ sport: 'windsurf' });
   });
 
+  it("ne prévient l'abonné d'une clé que des écritures de cette clé, refusées comprises", () => {
+    let refuse = false;
+    const backend = memoryBackend();
+    const store = createJsonStore(() => (refuse ? { getItem: backend.getItem, setItem: () => { throw new Error('quota'); } } : backend));
+    let calls = 0;
+    const unsubscribe = store.subscribeKey('tracker.sportSettings', () => calls++);
+    store.write('tracker.panelSizes', {});
+    expect(calls).toBe(0);
+    store.write('tracker.sportSettings', {});
+    refuse = true;
+    store.write('tracker.sportSettings', { a: 1 });
+    expect(calls).toBe(2);
+    unsubscribe();
+    store.write('tracker.sportSettings', {});
+    expect(calls).toBe(2);
+  });
+
   it('signale chaque refus, et seulement les refus, y compris ceux constatés plus tard', () => {
     let refuse = false;
     const backend = memoryBackend();

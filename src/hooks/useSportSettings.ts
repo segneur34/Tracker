@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   ACTIVITIES_VERSION, FAMILY_BASE, MARCHE_ACTIVITY, SURF_FOIL_ACTIVITY, activitiesOfFamily, activityFamily, activityTreatment, baseActivity, findActivity,
   isActivityShown, newActivityId, insertActivity, readActivities, upgradeActivities, visibleActivities, visibleFamilies, withHidden, type Activity,
@@ -6,7 +6,7 @@ import {
 import type { ActivityIconId } from '../core/activityIcons';
 import { DEFAULT_INTERVAL_PRESETS, PRESET_BASES, presetOf } from '../core/activityPresets';
 import {
-  LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, defaultActiveThresholdOf, getSportProfile,
+  LOOP_RETURN_RATIO_RANGE, SPORT_FAMILIES, TERRAIN_STEP_CHOICES_M, defaultActiveThresholdOf, getSportProfile, hasActiveThreshold, hasPositions,
   type RecordingProfile, type SportFamily, type Treatment,
 } from '../core/sportProfiles';
 import { sanitizeTabChoices, type TabChoices } from '../core/analysisTabs';
@@ -451,9 +451,35 @@ const withVisibility = (stored: StoredSettings, activities: Activity[], hiddenFa
  * et de `reglages.json`.
  */
 export const readStoredSettings = (): StoredSettings => {
-  const { referenceSpeeds: _abandoned, ...settings } =
-    jsonStore.read<StoredSettings & { referenceSpeeds?: unknown }>(STORAGE_KEY) ?? {};
+  const raw = jsonStore.read<StoredSettings & { referenceSpeeds?: unknown }>(STORAGE_KEY);
+  // Même objet tant que la valeur enregistrée ne change pas : c'est l'instantané de `useSyncExternalStore`.
+  if (storedCache && storedCache.raw === raw) return storedCache.value;
+  const { referenceSpeeds: _abandoned, ...settings } = raw ?? {};
+  storedCache = { raw, value: settings };
   return settings;
+};
+
+let storedCache: { raw: unknown; value: StoredSettings } | null = null;
+
+/** Abonnement aux seules écritures des réglages : les autres clés du stockage ne réveillent personne. */
+export const subscribeStoredSettings = (listener: () => void): (() => void) => jsonStore.subscribeKey(STORAGE_KEY, listener);
+
+let activitiesCache: { raw: unknown; text: string; value: Activity[] } | null = null;
+
+/**
+ * Activités des réglages, même tableau tant que leur texte ne change pas :
+ * une écriture d'un autre réglage ne refait ni la liste ni ce qui en dépend.
+ */
+const storedActivities = (stored: StoredSettings): Activity[] => {
+  const raw = stored.activities;
+  if (activitiesCache && activitiesCache.raw === raw) return activitiesCache.value;
+  const text = JSON.stringify(raw ?? null);
+  if (activitiesCache && activitiesCache.text === text) {
+    activitiesCache = { ...activitiesCache, raw };
+    return activitiesCache.value;
+  }
+  activitiesCache = { raw, text, value: readActivities(raw) };
+  return activitiesCache.value;
 };
 
 /**
@@ -488,6 +514,17 @@ const PRESET_RESETS: { version: number; bases: SportType[]; ids?: string[]; keys
 /** Toute écriture porte la version des pré-réglages : ce qu'elle contient est choisi avec eux. */
 const writeStored = (settings: StoredSettings): void =>
   jsonStore.write(STORAGE_KEY, { ...settings, presetsVersion: PRESETS_VERSION });
+
+/**
+ * Réécrit les réglages à partir de ceux du moment, relus à l'instant et non
+ * figés au dernier rendu : deux écritures d'un même geste se cumulent, et une
+ * écriture d'ailleurs n'est pas défaite. `change` rend `null` (ou rien) s'il
+ * n'y a rien à écrire.
+ */
+export const updateStoredSettings = (change: (stored: StoredSettings) => StoredSettings | null | undefined): void => {
+  const next = change(readStoredSettings());
+  if (next) writeStored(next);
+};
 
 /**
  * Met à jour, une fois, une liste d'activités d'une version d'avant
@@ -579,6 +616,18 @@ export const defaultBikeKg = (activity: Activity, bikeType: BikeType): number =>
 };
 
 /** Activités de l'utilisateur, hors composant (enregistrement, bibliothèque). */
+/** Unité de distance d'une activité : celle choisie, sinon le kilomètre. */
+const resolveDistanceUnit = (stored: StoredSettings, activity: Activity): DistanceUnit => {
+  const unit = stored.distanceUnits?.[activity.id];
+  return isKnownDistanceUnit(unit) ? unit : 'km';
+};
+
+/** Poids du vélo d'une activité, en kg : celui réglé, sinon celui de son type. */
+const resolveBikeKg = (stored: StoredSettings, activity: Activity, bikeType: BikeType): number => {
+  const weight = stored.bikeWeights?.[activity.id];
+  return isValidBikeWeight(weight) ? weight : defaultBikeKg(activity, bikeType);
+};
+
 export const readStoredActivities = (): Activity[] => readActivities(readStoredSettings().activities);
 
 /** Dernière activité enregistrée, si elle existe encore. */
@@ -795,10 +844,13 @@ export const effectiveRecordingProfile = (activity: Activity): RecordingProfile 
 export const effectiveLiveFields = (activity: Activity): LiveFieldKey[] =>
   sanitizeLiveFields(readStoredSettings().liveFields?.[activity.id], activityTreatment(activity)) ?? defaultLiveFieldsFor(activity);
 
+/** Chiffres de la notification choisis pour une activité, gardés s'ils lui conviennent ; `null` s'il n'y en a pas. */
+const sanitizeNotificationFields = (value: unknown, activity: Activity): LiveFieldKey[] | null =>
+  sanitizeLiveFields(value, activityTreatment(activity), MAX_NOTIFICATION_FIELDS, 'notification', activityFamily(activity));
+
 /** Chiffres de la notification de l'enregistrement : ceux choisis dans Réglages, sinon ceux du calcul. */
 export const effectiveNotificationFields = (activity: Activity): LiveFieldKey[] =>
-  sanitizeLiveFields(readStoredSettings().notificationFields?.[activity.id], activityTreatment(activity), MAX_NOTIFICATION_FIELDS, 'notification', activityFamily(activity))
-    ?? defaultNotificationFieldsFor(activity);
+  sanitizeNotificationFields(readStoredSettings().notificationFields?.[activity.id], activity) ?? defaultNotificationFieldsFor(activity);
 
 /** Bips d'approche des balises d'un parcours : ceux réglés pour l'activité, sinon le défaut. */
 export const effectiveMarkGuide = (activity: Activity): MarkGuideSettings =>
@@ -867,10 +919,7 @@ export const effectiveTabChoices = (activity: Activity): TabChoices | null =>
 export const effectiveSpeedUnit = (activity: Activity): SpeedUnit => resolveSpeedUnit(readStoredSettings(), activity);
 
 /** Unité de distance effective d'une activité : celle choisie dans Réglages, sinon le kilomètre. */
-export const effectiveDistanceUnit = (activity: Activity): DistanceUnit => {
-  const unit = readStoredSettings().distanceUnits?.[activity.id];
-  return isKnownDistanceUnit(unit) ? unit : 'km';
-};
+export const effectiveDistanceUnit = (activity: Activity): DistanceUnit => resolveDistanceUnit(readStoredSettings(), activity);
 
 /** Retour de boucle d'une activité en planification, en fois l'aller ; `null` en voile. Utilisable hors composant. */
 export const effectiveLoopReturnRatio = (activity: Activity): number | null => resolveLoopReturnRatio(readStoredSettings(), activity);
@@ -895,8 +944,7 @@ export const PLANNING_FAMILIES: SportFamily[] = ['voile', 'course', 'velo', 'sur
 export const effectiveBikeSetup = (activity: Activity): { bikeType: BikeType; bikeKg: number } => {
   const stored = readStoredSettings();
   const bikeType = resolveBikeType(stored, activity);
-  const weight = stored.bikeWeights?.[activity.id];
-  return { bikeType, bikeKg: isValidBikeWeight(weight) ? weight : defaultBikeKg(activity, bikeType) };
+  return { bikeType, bikeKg: resolveBikeKg(stored, activity, bikeType) };
 };
 
 /**
@@ -1044,7 +1092,7 @@ export interface SportSettingsView {
 
 /** Tables de réglages rangées par activité. */
 type PerActivityKey = (typeof PER_ACTIVITY_KEYS)[number];
-const PER_ACTIVITY_KEYS = [
+export const PER_ACTIVITY_KEYS = [
   'thresholds', 'speedUnits', 'distanceUnits', 'speedRanges', 'gradeRanges', 'autoPause', 'bikeTypes', 'bikeWeights', 'carriedLoads', 'energyModels', 'hrOffsets', 'gearLabels', 'gearGroups',
   'tabs', 'paceLevels', 'customFlatSpeeds', 'liveFields', 'notificationFields', 'markGuide', 'wayTypes', 'terrainSteps', 'loopReturnRatios', 'foils', 'pumping', 'jumps',
   'heartRate', 'cadence',
@@ -1075,6 +1123,90 @@ const withoutOverrides = (stored: StoredSettings, id: string, keep: readonly Per
 /** « Par défaut » d'une activité : ses surcharges effacées, son matériel enregistré gardé. */
 export const resetOverrides = (stored: StoredSettings, id: string): StoredSettings => withoutOverrides(stored, id, KEPT_BY_RESET);
 
+/** Réglages d'une activité tels que Réglages les montre : valeurs effectives et ce qui est réglé. */
+export const settingsView = (stored: StoredSettings, activity: Activity): SportSettingsView => {
+  const id = activity.id;
+  const profile = getSportProfile(activity.base);
+  const unit = stored.speedUnits?.[id];
+  const distanceUnit = stored.distanceUnits?.[id];
+  const threshold = stored.thresholds?.[id];
+  const range = stored.speedRanges?.[id];
+  const grades = stored.gradeRanges?.[id];
+  const autoPauseOverride = stored.autoPause?.[id];
+  const bikeWeight = stored.bikeWeights?.[id];
+  const carriedLoad = stored.carriedLoads?.[id];
+  const paceLevel = stored.paceLevels?.[id];
+  const customSpeed = stored.customFlatSpeeds?.[id];
+  const liveFields = sanitizeLiveFields(stored.liveFields?.[id], activityTreatment(activity));
+  const notificationFields = sanitizeNotificationFields(stored.notificationFields?.[id], activity);
+  const markGuide = sanitizeMarkGuide(stored.markGuide?.[id]);
+  const ways = resolveWayTypes(stored, activity);
+  return {
+    activity,
+    speedUnit: resolveSpeedUnit(stored, activity),
+    isSpeedUnitOverridden: isKnownSpeedUnit(unit) && unit !== defaultSpeedUnitOf(activity),
+    distanceUnit: resolveDistanceUnit(stored, activity),
+    isDistanceUnitOverridden: isKnownDistanceUnit(distanceUnit),
+    activeThreshold: threshold ?? defaultThresholdOf(activity, resolveFoil(stored, activity) ?? false),
+    isThresholdOverridden: threshold !== undefined,
+    terrainStepM: resolveTerrainStepM(stored, activity),
+    speedRange: range && isValidSpeedRange(range) ? range : null,
+    gradeRange: grades && isValidGradeRange(grades) ? grades : null,
+    autoPause: autoPauseOverride ?? defaultAutoPauseOf(activity),
+    isAutoPauseOverridden: autoPauseOverride !== undefined,
+    liveFields: liveFields ?? defaultLiveFieldsFor(activity),
+    isLiveFieldsOverridden: liveFields !== null,
+    notificationFields: notificationFields ?? defaultNotificationFieldsFor(activity),
+    isNotificationFieldsOverridden: notificationFields !== null,
+    markGuide: markGuide ?? defaultMarkGuideOf(activity),
+    isMarkGuideOverridden: markGuide !== null,
+    foil: resolveFoil(stored, activity),
+    isFoilOverridden: typeof stored.foils?.[id] === 'boolean',
+    pumping: resolvePumping(stored, activity),
+    jumps: resolveJumps(stored, activity),
+    heartRate: resolveHeartRate(stored, activity),
+    isHeartRateOverridden: typeof stored.heartRate?.[id] === 'boolean' && stored.heartRate[id] !== defaultHeartRateOf(activity),
+    cadence: resolveCadence(stored, activity),
+    isJumpsOverridden: stored.jumps?.[id] !== undefined && profile.jumps !== null,
+    bikeType: resolveBikeType(stored, activity),
+    bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
+    carriedLoad: isValidCarriedLoad(carriedLoad) ? carriedLoad : null,
+    energyModel: resolveEnergyModel(stored, activity),
+    isEnergyModelOverridden: isEnergyModel(stored.energyModels?.[id]) && stored.energyModels[id] !== defaultEnergyModelOf(activity),
+    hrOffset: resolveHrOffset(stored, activity),
+    isHrOffsetOverridden: isValidHrOffset(stored.hrOffsets?.[id]),
+    gearLabels: sanitizeGearLabels(stored.gearLabels?.[id]),
+    gearGroups: sanitizeGearGroups(stored.gearGroups?.[id]),
+    tabs: sanitizeTabChoices(stored.tabs?.[id]) ?? defaultTabsOf(activity),
+    isTabsOverridden: sanitizeTabChoices(stored.tabs?.[id]) !== null,
+    paceLevel: isPaceLevel(paceLevel) ? paceLevel : defaultPaceOf(activity).level,
+    customFlatSpeedMs: finiteOr(customSpeed, defaultPaceOf(activity).customFlatSpeedMs),
+    wayTypes: ways.wayTypes,
+    isWayTypesOverridden: ways.overridden,
+    loopReturnRatio: resolveLoopReturnRatio(stored, activity),
+  };
+};
+
+/**
+ * Vrai si l'activité a un réglage que « Par défaut » effacerait : marque
+ * « · modifié » de sa carte et menu « Par défaut » actif. Le matériel
+ * enregistré (`gearGroups`) n'y compte pas : « Par défaut » le garde
+ * (`KEPT_BY_RESET`), le bouton n'aurait rien à remettre.
+ */
+export const isActivityOverridden = (s: SportSettingsView): boolean => {
+  const { activity } = s;
+  const p = getSportProfile(activity.base);
+  /** Seuil d'activité réglable : pas en bateau, ni sans position. */
+  const withThreshold = hasActiveThreshold(p) && hasPositions(activity.base);
+  const pace = defaultPaceOf(activity);
+  return (
+    s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || (withThreshold && s.isThresholdOverridden) || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
+    s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrainStepM !== defaultTerrainStepOf(activity) || s.bikeType !== defaultBikeType(activity) || s.bikeWeight !== null || s.carriedLoad !== null || s.isEnergyModelOverridden || s.isHrOffsetOverridden || s.gearLabels !== null || s.isTabsOverridden ||
+    s.paceLevel !== pace.level || s.customFlatSpeedMs !== pace.customFlatSpeedMs || s.isWayTypesOverridden ||
+    s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.isHeartRateOverridden || s.cadence === false
+  );
+};
+
 /**
  * Accès à toutes les activités à la fois, pour la page Réglages : leurs
  * réglages, et la liste elle-même (ajouter, renommer, supprimer). Chaque
@@ -1082,85 +1214,12 @@ export const resetOverrides = (stored: StoredSettings, id: string): StoredSettin
  * prochain affichage.
  */
 export const useAllSportSettings = () => {
-  const [stored, setStored] = useState<StoredSettings>(readStoredSettings);
-  const activities = useMemo(() => readActivities(stored.activities), [stored.activities]);
+  // Lus par `useSyncExternalStore` : une écriture d'ailleurs (compteur du fractionné, `reglages.json`
+  // repris du dossier), même faite entre le rendu et l'abonnement, est vue.
+  const stored = useSyncExternalStore(subscribeStoredSettings, readStoredSettings);
+  const activities = storedActivities(stored);
 
-  const persist = useCallback((next: StoredSettings) => {
-    setStored(next);
-    writeStored(next);
-  }, []);
-
-  // Écrits d'ailleurs pendant que la page est ouverte (compteur du fractionné,
-  // `reglages.json` repris du dossier) : relus, pour que le prochain changement ne les écrase pas.
-  useEffect(() => jsonStore.subscribe((key) => {
-    if (key === STORAGE_KEY) setStored(readStoredSettings());
-  }), []);
-
-  const view = useCallback(
-    (activity: Activity): SportSettingsView => {
-      const id = activity.id;
-      const profile = getSportProfile(activity.base);
-      const unit = stored.speedUnits?.[id];
-      const distanceUnit = stored.distanceUnits?.[id];
-      const threshold = stored.thresholds?.[id];
-      const range = stored.speedRanges?.[id];
-      const grades = stored.gradeRanges?.[id];
-      const autoPauseOverride = stored.autoPause?.[id];
-      const bikeWeight = stored.bikeWeights?.[id];
-      const carriedLoad = stored.carriedLoads?.[id];
-      const paceLevel = stored.paceLevels?.[id];
-      const customSpeed = stored.customFlatSpeeds?.[id];
-      const liveFields = sanitizeLiveFields(stored.liveFields?.[id], activityTreatment(activity));
-      const notificationFields = sanitizeLiveFields(stored.notificationFields?.[id], activityTreatment(activity), MAX_NOTIFICATION_FIELDS, 'notification', activityFamily(activity));
-      const markGuide = sanitizeMarkGuide(stored.markGuide?.[id]);
-      const ways = resolveWayTypes(stored, activity);
-      return {
-        activity,
-        speedUnit: resolveSpeedUnit(stored, activity),
-        isSpeedUnitOverridden: isKnownSpeedUnit(unit) && unit !== defaultSpeedUnitOf(activity),
-        distanceUnit: isKnownDistanceUnit(distanceUnit) ? distanceUnit : 'km',
-        isDistanceUnitOverridden: isKnownDistanceUnit(distanceUnit),
-        activeThreshold: threshold ?? defaultThresholdOf(activity, resolveFoil(stored, activity) ?? false),
-        isThresholdOverridden: threshold !== undefined,
-        terrainStepM: resolveTerrainStepM(stored, activity),
-        speedRange: range && isValidSpeedRange(range) ? range : null,
-        gradeRange: grades && isValidGradeRange(grades) ? grades : null,
-        autoPause: autoPauseOverride ?? defaultAutoPauseOf(activity),
-        isAutoPauseOverridden: autoPauseOverride !== undefined,
-        liveFields: liveFields ?? defaultLiveFieldsFor(activity),
-        isLiveFieldsOverridden: liveFields !== null,
-        notificationFields: notificationFields ?? defaultNotificationFieldsFor(activity),
-        isNotificationFieldsOverridden: notificationFields !== null,
-        markGuide: markGuide ?? defaultMarkGuideOf(activity),
-        isMarkGuideOverridden: markGuide !== null,
-        foil: resolveFoil(stored, activity),
-        isFoilOverridden: typeof stored.foils?.[id] === 'boolean',
-        pumping: resolvePumping(stored, activity),
-        jumps: resolveJumps(stored, activity),
-        heartRate: resolveHeartRate(stored, activity),
-        isHeartRateOverridden: typeof stored.heartRate?.[id] === 'boolean' && stored.heartRate[id] !== defaultHeartRateOf(activity),
-        cadence: resolveCadence(stored, activity),
-        isJumpsOverridden: stored.jumps?.[id] !== undefined && profile.jumps !== null,
-        bikeType: resolveBikeType(stored, activity),
-        bikeWeight: isValidBikeWeight(bikeWeight) ? bikeWeight : null,
-        carriedLoad: isValidCarriedLoad(carriedLoad) ? carriedLoad : null,
-        energyModel: resolveEnergyModel(stored, activity),
-        isEnergyModelOverridden: isEnergyModel(stored.energyModels?.[id]) && stored.energyModels[id] !== defaultEnergyModelOf(activity),
-        hrOffset: resolveHrOffset(stored, activity),
-        isHrOffsetOverridden: isValidHrOffset(stored.hrOffsets?.[id]),
-        gearLabels: sanitizeGearLabels(stored.gearLabels?.[id]),
-        gearGroups: sanitizeGearGroups(stored.gearGroups?.[id]),
-        tabs: sanitizeTabChoices(stored.tabs?.[id]) ?? defaultTabsOf(activity),
-        isTabsOverridden: sanitizeTabChoices(stored.tabs?.[id]) !== null,
-        paceLevel: isPaceLevel(paceLevel) ? paceLevel : defaultPaceOf(activity).level,
-        customFlatSpeedMs: finiteOr(customSpeed, defaultPaceOf(activity).customFlatSpeedMs),
-        wayTypes: ways.wayTypes,
-        isWayTypesOverridden: ways.overridden,
-        loopReturnRatio: resolveLoopReturnRatio(stored, activity),
-      };
-    },
-    [stored]
-  );
+  const view = useCallback((activity: Activity): SportSettingsView => settingsView(stored, activity), [stored]);
 
   /** Écrit ou efface (`null`) un réglage d'une activité. */
   const setFor = useCallback(
@@ -1169,204 +1228,211 @@ export const useAllSportSettings = () => {
       field: F,
       value: SportSettingsView[F] | null
     ) => {
-      const next: StoredSettings = { ...stored };
-      const put = <T,>(map: ByActivity<T> | undefined, v: T | null): ByActivity<T> => {
-        const copy = { ...map };
-        if (v === null) delete copy[id];
-        else copy[id] = v;
-        return copy;
-      };
-      switch (field) {
-        case 'speedUnit':
-          if (value !== null && !isKnownSpeedUnit(value)) return;
-          next.speedUnits = put(stored.speedUnits, value as SpeedUnit | null);
-          break;
-        case 'distanceUnit':
-          if (value !== null && !isKnownDistanceUnit(value)) return;
-          next.distanceUnits = put(stored.distanceUnits, value as DistanceUnit | null);
-          break;
-        case 'activeThreshold':
-          if (value !== null && (typeof value !== 'number' || !isFinite(value) || value < 0)) return;
-          next.thresholds = put(stored.thresholds, value as number | null);
-          break;
-        case 'terrainStepM':
-          if (value !== null && !isTerrainStep(value)) return;
-          next.terrainSteps = put(stored.terrainSteps, value as number | null);
-          break;
-        case 'speedRange': {
-          const r = value as { minMs: number; maxMs: number } | null;
-          if (r !== null && !isValidSpeedRange(r)) return;
-          next.speedRanges = put(stored.speedRanges, r);
-          break;
+      updateStoredSettings((stored) => {
+        const activities = storedActivities(stored);
+        const next: StoredSettings = { ...stored };
+        const put = <T,>(map: ByActivity<T> | undefined, v: T | null): ByActivity<T> => {
+          const copy = { ...map };
+          if (v === null) delete copy[id];
+          else copy[id] = v;
+          return copy;
+        };
+        switch (field) {
+          case 'speedUnit':
+            if (value !== null && !isKnownSpeedUnit(value)) return;
+            next.speedUnits = put(stored.speedUnits, value as SpeedUnit | null);
+            break;
+          case 'distanceUnit':
+            if (value !== null && !isKnownDistanceUnit(value)) return;
+            next.distanceUnits = put(stored.distanceUnits, value as DistanceUnit | null);
+            break;
+          case 'activeThreshold':
+            if (value !== null && (typeof value !== 'number' || !isFinite(value) || value < 0)) return;
+            next.thresholds = put(stored.thresholds, value as number | null);
+            break;
+          case 'terrainStepM':
+            if (value !== null && !isTerrainStep(value)) return;
+            next.terrainSteps = put(stored.terrainSteps, value as number | null);
+            break;
+          case 'speedRange': {
+            const r = value as { minMs: number; maxMs: number } | null;
+            if (r !== null && !isValidSpeedRange(r)) return;
+            next.speedRanges = put(stored.speedRanges, r);
+            break;
+          }
+          case 'gradeRange': {
+            const g = value as GradeRange | null;
+            if (g !== null && !isValidGradeRange(g)) return;
+            next.gradeRanges = put(stored.gradeRanges, g);
+            break;
+          }
+          case 'autoPause': {
+            const a = value as { speedMs: number; delayS: number } | null;
+            if (a !== null && !(isFinite(a.speedMs) && isFinite(a.delayS) && a.speedMs >= 0 && a.delayS >= 0)) return;
+            next.autoPause = put(stored.autoPause, a);
+            break;
+          }
+          case 'liveFields': {
+            const activity = findActivity(activities, id);
+            if (!activity) return;
+            const fields = value === null ? null : sanitizeLiveFields(value, activityTreatment(activity));
+            if (value !== null && fields === null) return;
+            next.liveFields = put(stored.liveFields, fields);
+            break;
+          }
+          case 'notificationFields': {
+            const activity = findActivity(activities, id);
+            if (!activity) return;
+            const fields = value === null ? null : sanitizeNotificationFields(value, activity);
+            if (value !== null && fields === null) return;
+            next.notificationFields = put(stored.notificationFields, fields);
+            break;
+          }
+          case 'markGuide': {
+            const guide = value === null ? null : sanitizeMarkGuide(value);
+            if (value !== null && guide === null) return;
+            next.markGuide = put(stored.markGuide, guide);
+            break;
+          }
+          case 'foil': {
+            const activity = findActivity(activities, id);
+            if (!activity || resolveFoil(stored, activity) === null) return;
+            if (value !== null && typeof value !== 'boolean') return;
+            next.foils = put(stored.foils, value as boolean | null);
+            break;
+          }
+          case 'pumping': {
+            const activity = findActivity(activities, id);
+            if (!activity || resolvePumping(stored, activity) === null) return;
+            if (value !== null && typeof value !== 'boolean') return;
+            next.pumping = put(stored.pumping, value === true ? true : null);
+            break;
+          }
+          case 'heartRate': {
+            const activity = findActivity(activities, id);
+            if (!activity) return;
+            if (value !== null && typeof value !== 'boolean') return;
+            // Seul l'écart à son défaut est rangé : décocher une ceinture pré-réglée range « non ».
+            next.heartRate = put(stored.heartRate, value === null || value === defaultHeartRateOf(activity) ? null : value as boolean);
+            break;
+          }
+          case 'cadence': {
+            const activity = findActivity(activities, id);
+            if (!activity || resolveCadence(stored, activity) === null) return;
+            if (value !== null && typeof value !== 'boolean') return;
+            next.cadence = put(stored.cadence, value === false ? false : null);
+            break;
+          }
+          case 'jumps': {
+            const activity = findActivity(activities, id);
+            const profile = activity ? getSportProfile(activity.base).jumps : null;
+            if (!profile) return;
+            const jumps = value === null ? null : sanitizeJumpSettings(value, profile);
+            if (value !== null && jumps === null) return;
+            next.jumps = put(stored.jumps, jumps);
+            break;
+          }
+          case 'bikeType':
+            if (value !== null && !isBikeType(value)) return;
+            next.bikeTypes = put(stored.bikeTypes, value as BikeType | null);
+            break;
+          case 'bikeWeight':
+            if (value !== null && !isValidBikeWeight(value)) return;
+            next.bikeWeights = put(stored.bikeWeights, value as number | null);
+            break;
+          case 'carriedLoad':
+            if (value !== null && !isValidCarriedLoad(value)) return;
+            next.carriedLoads = put(stored.carriedLoads, value === 0 ? null : value as number | null);
+            break;
+          case 'energyModel':
+            if (value !== null && !isEnergyModel(value)) return;
+            next.energyModels = put(stored.energyModels, value as EnergyModel | null);
+            break;
+          case 'hrOffset':
+            if (value !== null && !isValidHrOffset(value)) return;
+            next.hrOffsets = put(stored.hrOffsets, value as number | null);
+            break;
+          case 'gearLabels': {
+            const labels = value === null ? null : sanitizeGearLabels(value);
+            if (value !== null && !Array.isArray(value)) return;
+            next.gearLabels = put(stored.gearLabels, labels);
+            break;
+          }
+          case 'gearGroups': {
+            const groups = value === null ? null : sanitizeGearGroups(value);
+            if (value !== null && groups === null) return;
+            next.gearGroups = put(stored.gearGroups, groups);
+            break;
+          }
+          case 'tabs': {
+            const choices = value === null ? null : sanitizeTabChoices(value);
+            if (value !== null && choices === null) return;
+            next.tabs = put(stored.tabs, choices === null ? null : { ...choices });
+            break;
+          }
+          case 'paceLevel':
+            if (value !== null && !isPaceLevel(value)) return;
+            next.paceLevels = put(stored.paceLevels, value as PaceLevel | null);
+            break;
+          case 'customFlatSpeedMs': {
+            const activity = findActivity(activities, id);
+            const family = activity ? planningFamily(activity) : null;
+            if (value !== null && (!family || !isValidFlatSpeed(family, value))) return;
+            next.customFlatSpeeds = put(stored.customFlatSpeeds, value as number | null);
+            break;
+          }
+          case 'wayTypes': {
+            const ways = value === null ? null : sanitizeWayTypes(value);
+            if (value !== null && ways === null) return;
+            next.wayTypes = put(stored.wayTypes, ways);
+            break;
+          }
+          case 'loopReturnRatio':
+            if (value !== null && !isValidLoopReturnRatio(value)) return;
+            next.loopReturnRatios = put(stored.loopReturnRatios, value as number | null);
+            break;
         }
-        case 'gradeRange': {
-          const g = value as GradeRange | null;
-          if (g !== null && !isValidGradeRange(g)) return;
-          next.gradeRanges = put(stored.gradeRanges, g);
-          break;
-        }
-        case 'autoPause': {
-          const a = value as { speedMs: number; delayS: number } | null;
-          if (a !== null && !(isFinite(a.speedMs) && isFinite(a.delayS) && a.speedMs >= 0 && a.delayS >= 0)) return;
-          next.autoPause = put(stored.autoPause, a);
-          break;
-        }
-        case 'liveFields': {
-          const activity = findActivity(activities, id);
-          if (!activity) return;
-          const fields = value === null ? null : sanitizeLiveFields(value, activityTreatment(activity));
-          if (value !== null && fields === null) return;
-          next.liveFields = put(stored.liveFields, fields);
-          break;
-        }
-        case 'notificationFields': {
-          const activity = findActivity(activities, id);
-          if (!activity) return;
-          const fields = value === null ? null : sanitizeLiveFields(value, activityTreatment(activity), MAX_NOTIFICATION_FIELDS, 'notification', activityFamily(activity));
-          if (value !== null && fields === null) return;
-          next.notificationFields = put(stored.notificationFields, fields);
-          break;
-        }
-        case 'markGuide': {
-          const guide = value === null ? null : sanitizeMarkGuide(value);
-          if (value !== null && guide === null) return;
-          next.markGuide = put(stored.markGuide, guide);
-          break;
-        }
-        case 'foil': {
-          const activity = findActivity(activities, id);
-          if (!activity || resolveFoil(stored, activity) === null) return;
-          if (value !== null && typeof value !== 'boolean') return;
-          next.foils = put(stored.foils, value as boolean | null);
-          break;
-        }
-        case 'pumping': {
-          const activity = findActivity(activities, id);
-          if (!activity || resolvePumping(stored, activity) === null) return;
-          if (value !== null && typeof value !== 'boolean') return;
-          next.pumping = put(stored.pumping, value === true ? true : null);
-          break;
-        }
-        case 'heartRate': {
-          const activity = findActivity(activities, id);
-          if (!activity) return;
-          if (value !== null && typeof value !== 'boolean') return;
-          // Seul l'écart à son défaut est rangé : décocher une ceinture pré-réglée range « non ».
-          next.heartRate = put(stored.heartRate, value === null || value === defaultHeartRateOf(activity) ? null : value as boolean);
-          break;
-        }
-        case 'cadence': {
-          const activity = findActivity(activities, id);
-          if (!activity || resolveCadence(stored, activity) === null) return;
-          if (value !== null && typeof value !== 'boolean') return;
-          next.cadence = put(stored.cadence, value === false ? false : null);
-          break;
-        }
-        case 'jumps': {
-          const activity = findActivity(activities, id);
-          const profile = activity ? getSportProfile(activity.base).jumps : null;
-          if (!profile) return;
-          const jumps = value === null ? null : sanitizeJumpSettings(value, profile);
-          if (value !== null && jumps === null) return;
-          next.jumps = put(stored.jumps, jumps);
-          break;
-        }
-        case 'bikeType':
-          if (value !== null && !isBikeType(value)) return;
-          next.bikeTypes = put(stored.bikeTypes, value as BikeType | null);
-          break;
-        case 'bikeWeight':
-          if (value !== null && !isValidBikeWeight(value)) return;
-          next.bikeWeights = put(stored.bikeWeights, value as number | null);
-          break;
-        case 'carriedLoad':
-          if (value !== null && !isValidCarriedLoad(value)) return;
-          next.carriedLoads = put(stored.carriedLoads, value === 0 ? null : value as number | null);
-          break;
-        case 'energyModel':
-          if (value !== null && !isEnergyModel(value)) return;
-          next.energyModels = put(stored.energyModels, value as EnergyModel | null);
-          break;
-        case 'hrOffset':
-          if (value !== null && !isValidHrOffset(value)) return;
-          next.hrOffsets = put(stored.hrOffsets, value as number | null);
-          break;
-        case 'gearLabels': {
-          const labels = value === null ? null : sanitizeGearLabels(value);
-          if (value !== null && !Array.isArray(value)) return;
-          next.gearLabels = put(stored.gearLabels, labels);
-          break;
-        }
-        case 'gearGroups': {
-          const groups = value === null ? null : sanitizeGearGroups(value);
-          if (value !== null && groups === null) return;
-          next.gearGroups = put(stored.gearGroups, groups);
-          break;
-        }
-        case 'tabs': {
-          const choices = value === null ? null : sanitizeTabChoices(value);
-          if (value !== null && choices === null) return;
-          next.tabs = put(stored.tabs, choices === null ? null : { ...choices });
-          break;
-        }
-        case 'paceLevel':
-          if (value !== null && !isPaceLevel(value)) return;
-          next.paceLevels = put(stored.paceLevels, value as PaceLevel | null);
-          break;
-        case 'customFlatSpeedMs': {
-          const activity = findActivity(activities, id);
-          const family = activity ? planningFamily(activity) : null;
-          if (value !== null && (!family || !isValidFlatSpeed(family, value))) return;
-          next.customFlatSpeeds = put(stored.customFlatSpeeds, value as number | null);
-          break;
-        }
-        case 'wayTypes': {
-          const ways = value === null ? null : sanitizeWayTypes(value);
-          if (value !== null && ways === null) return;
-          next.wayTypes = put(stored.wayTypes, ways);
-          break;
-        }
-        case 'loopReturnRatio':
-          if (value !== null && !isValidLoopReturnRatio(value)) return;
-          next.loopReturnRatios = put(stored.loopReturnRatios, value as number | null);
-          break;
-      }
-      persist(next);
+        return next;
+      });
     },
-    [activities, persist, stored]
+    []
   );
 
   /** Remet tous les réglages d'une activité au défaut de son calcul ; le matériel enregistré reste. */
-  const resetActivity = useCallback((id: string) => persist(resetOverrides(stored, id)), [persist, stored]);
+  const resetActivity = useCallback((id: string) => updateStoredSettings((stored) => resetOverrides(stored, id)), []);
 
   /** Ajoute une activité, rangée avec sa famille ; rend son identifiant, `null` si le nom est vide. */
   const addActivity = useCallback(
     (name: string, base: SportType, color: string, icon?: ActivityIconId): string | null => {
       const trimmed = name.trim();
       if (trimmed === '') return null;
-      const id = newActivityId(trimmed, activities);
-      const activity: Activity = { id, name: trimmed, base, color, ...(icon ? { icon } : {}) };
-      persist({ ...stored, activities: insertActivity(activities, activity), activitiesVersion: ACTIVITIES_VERSION });
+      let id = '';
+      updateStoredSettings((stored) => {
+        const activities = storedActivities(stored);
+        id = newActivityId(trimmed, activities);
+        const activity: Activity = { id, name: trimmed, base, color, ...(icon ? { icon } : {}) };
+        return { ...stored, activities: insertActivity(activities, activity), activitiesVersion: ACTIVITIES_VERSION };
+      });
       return id;
     },
-    [activities, persist, stored]
+    []
   );
 
   /** Renomme, recolore ou change l'icône d'une activité ; un nom vide est ignoré. */
   const updateActivity = useCallback(
     (id: string, patch: { name?: string; color?: string; icon?: ActivityIconId }) => {
       const name = patch.name?.trim();
-      persist({
+      updateStoredSettings((stored) => ({
         ...stored,
         activitiesVersion: ACTIVITIES_VERSION,
-        activities: activities.map((a) =>
+        activities: storedActivities(stored).map((a) =>
           a.id === id
             ? { ...a, ...(name ? { name } : {}), ...(patch.color ? { color: patch.color } : {}), ...(patch.icon ? { icon: patch.icon } : {}) }
             : a
         ),
-      });
+      }));
     },
-    [activities, persist, stored]
+    []
   );
 
   /**
@@ -1374,8 +1440,13 @@ export const useAllSportSettings = () => {
    * de leur calcul (`sessionActivity`).
    */
   const removeActivity = useCallback(
-    (id: string) => persist({ ...withoutOverrides(stored, id), activities: activities.filter((a) => a.id !== id), activitiesVersion: ACTIVITIES_VERSION }),
-    [activities, persist, stored]
+    (id: string) =>
+      updateStoredSettings((stored) => ({
+        ...withoutOverrides(stored, id),
+        activities: storedActivities(stored).filter((a) => a.id !== id),
+        activitiesVersion: ACTIVITIES_VERSION,
+      })),
+    []
   );
 
   /**
@@ -1384,16 +1455,17 @@ export const useAllSportSettings = () => {
    * Cacher la dernière activité visible de la dernière famille visible est refusé.
    */
   const setActivityHidden = useCallback(
-    (id: string, hidden: boolean) => {
-      const hiddenFamilies = readHiddenFamilies(stored);
-      const target = activities.find((a) => a.id === id);
-      if (!target) return;
-      const nextActivities = activities.map((a) => (a.id === id ? withHidden(a, hidden) : a));
-      const family = activityFamily(target);
-      const next = withVisibility(stored, nextActivities, hidden ? hiddenFamilies : hiddenFamilies.filter((f) => f !== family));
-      if (next) persist(next);
-    },
-    [activities, persist, stored]
+    (id: string, hidden: boolean) =>
+      updateStoredSettings((stored) => {
+        const activities = storedActivities(stored);
+        const hiddenFamilies = readHiddenFamilies(stored);
+        const target = activities.find((a) => a.id === id);
+        if (!target) return null;
+        const nextActivities = activities.map((a) => (a.id === id ? withHidden(a, hidden) : a));
+        const family = activityFamily(target);
+        return withVisibility(stored, nextActivities, hidden ? hiddenFamilies : hiddenFamilies.filter((f) => f !== family));
+      }),
+    []
   );
 
   /**
@@ -1402,20 +1474,17 @@ export const useAllSportSettings = () => {
    * choix. Cacher la dernière famille visible est refusé.
    */
   const setFamilyHidden = useCallback(
-    (family: SportFamily, hidden: boolean) => {
-      const hiddenFamilies = readHiddenFamilies(stored);
-      if (hidden) {
-        const next = withVisibility(stored, activities, hiddenFamilies.includes(family) ? hiddenFamilies : [...hiddenFamilies, family]);
-        if (next) persist(next);
-        return;
-      }
-      const own = activitiesOfFamily(activities, family);
-      const allHidden = own.length > 0 && own.every((a) => a.hidden);
-      const nextActivities = allHidden ? activities.map((a) => (activityFamily(a) === family ? withHidden(a, false) : a)) : activities;
-      const next = withVisibility(stored, nextActivities, hiddenFamilies.filter((f) => f !== family));
-      if (next) persist(next);
-    },
-    [activities, persist, stored]
+    (family: SportFamily, hidden: boolean) =>
+      updateStoredSettings((stored) => {
+        const activities = storedActivities(stored);
+        const hiddenFamilies = readHiddenFamilies(stored);
+        if (hidden) return withVisibility(stored, activities, hiddenFamilies.includes(family) ? hiddenFamilies : [...hiddenFamilies, family]);
+        const own = activitiesOfFamily(activities, family);
+        const allHidden = own.length > 0 && own.every((a) => a.hidden);
+        const nextActivities = allHidden ? activities.map((a) => (activityFamily(a) === family ? withHidden(a, false) : a)) : activities;
+        return withVisibility(stored, nextActivities, hiddenFamilies.filter((f) => f !== family));
+      }),
+    []
   );
 
   const longPressMs = isValidLongPress(stored.longPressMs) ? stored.longPressMs : DEFAULT_LONG_PRESS_MS;
@@ -1423,12 +1492,14 @@ export const useAllSportSettings = () => {
   const setLongPressMs = useCallback(
     (value: number | null) => {
       if (value !== null && !isValidLongPress(value)) return;
-      const next: StoredSettings = { ...stored };
-      if (value === null) delete next.longPressMs;
-      else next.longPressMs = value;
-      persist(next);
+      updateStoredSettings((stored) => {
+        const next: StoredSettings = { ...stored };
+        if (value === null) delete next.longPressMs;
+        else next.longPressMs = value;
+        return next;
+      });
     },
-    [persist, stored]
+    []
   );
 
   const stopHoldMs = isValidStopHold(stored.stopHoldMs) ? stored.stopHoldMs : DEFAULT_STOP_HOLD_MS;
@@ -1436,12 +1507,14 @@ export const useAllSportSettings = () => {
   const setStopHoldMs = useCallback(
     (value: number | null) => {
       if (value !== null && !isValidStopHold(value)) return;
-      const next: StoredSettings = { ...stored };
-      if (value === null) delete next.stopHoldMs;
-      else next.stopHoldMs = value;
-      persist(next);
+      updateStoredSettings((stored) => {
+        const next: StoredSettings = { ...stored };
+        if (value === null) delete next.stopHoldMs;
+        else next.stopHoldMs = value;
+        return next;
+      });
     },
-    [persist, stored]
+    []
   );
 
   const beepSound = isBeepSound(stored.beepSound) ? stored.beepSound : DEFAULT_BEEP_SOUND;
@@ -1451,9 +1524,9 @@ export const useAllSportSettings = () => {
    */
   const setBeepSound = useCallback(
     (value: BeepSound) => {
-      persist({ ...stored, beepSound: value });
+      updateStoredSettings((stored) => ({ ...stored, beepSound: value }));
     },
-    [persist, stored]
+    []
   );
 
   return {
@@ -1478,40 +1551,51 @@ const moduleActivity = (stored: StoredSettings, activities: Activity[], family: 
 };
 
 /**
+ * `value` lui-même, ou celui d'un rendu précédent de même texte : une valeur
+ * relue du stockage à chaque écriture ne refait pas ce qui en dépend
+ * (coloration de la trace) tant qu'elle ne change pas.
+ */
+const useStableByText = <T,>(value: T): T => {
+  const text = JSON.stringify(value);
+  const [kept, setKept] = useState({ text, value });
+  if (kept.text === text) return kept.value;
+  setKept({ text, value });
+  return value;
+};
+
+/**
  * Réglages d'un module d'analyse : son activité courante, le profil de son
  * calcul et les réglages rangés sous elle. Un module ne reprend que les
  * activités de sa famille : la course n'hérite pas du seuil de vol du
  * wingfoil (règle 9).
  */
 export const useSportSettings = (family: SportFamily) => {
-  const [stored, setStored] = useState<StoredSettings>(readStoredSettings);
-  const activities = useMemo(() => readActivities(stored.activities), [stored.activities]);
-  const activity = useMemo(() => moduleActivity(stored, activities, family), [stored, activities, family]);
+  // Lus par `useSyncExternalStore`, abonnés aux seuls réglages : une écriture d'ailleurs (Réglages,
+  // réglages repris du dossier), même faite entre le rendu et l'abonnement, est vue (E-B6, A4).
+  const stored = useSyncExternalStore(subscribeStoredSettings, readStoredSettings);
+  const activities = storedActivities(stored);
+  // Refaite seulement si l'activité retenue ou la liste change, pas à chaque écriture d'un autre réglage.
+  const remembered = stored.moduleActivity?.[family];
+  const legacySport = stored.sport;
+  const activity = useMemo(
+    () => moduleActivity({ moduleActivity: { [family]: remembered }, sport: legacySport }, activities, family),
+    [remembered, legacySport, activities, family]
+  );
   const sport = activity.base;
   const profile = useMemo(() => getSportProfile(sport), [sport]);
   const id = activity.id;
 
-  const persist = useCallback((next: StoredSettings) => {
-    setStored(next);
-    writeStored(next);
-  }, []);
-
-  // Écrits d'ailleurs pendant que le module est ouvert (Réglages, réglages repris du dossier) : suivis,
-  // pour afficher les réglages du moment et ne pas les défaire au prochain changement (E-B6).
-  useEffect(() => jsonStore.subscribe((key) => {
-    if (key === STORAGE_KEY) setStored(readStoredSettings());
-  }), []);
-
   /** Change l'activité du module ; un identifiant d'une autre famille est ignoré. */
   const setActivity = useCallback(
     (nextId: string) => {
-      const next = findActivity(activities, nextId);
-      if (!next || activityFamily(next) !== family) return;
       // Relus à l'instant : une écriture d'ailleurs, faite depuis le dernier rendu, est gardée.
-      const current = readStoredSettings();
-      persist({ ...current, moduleActivity: { ...current.moduleActivity, [family]: next.id } });
+      updateStoredSettings((current) => {
+        const next = findActivity(storedActivities(current), nextId);
+        if (!next || activityFamily(next) !== family) return null;
+        return { ...current, moduleActivity: { ...current.moduleActivity, [family]: next.id } };
+      });
     },
-    [persist, activities, family]
+    [family]
   );
 
   /** Support sur foil de l'activité, réglé dans Réglages ; une session peut avoir le sien. */
@@ -1533,25 +1617,23 @@ export const useSportSettings = (family: SportFamily) => {
 
   // Lecture seule : les unités se choisissent dans Réglages, par activité.
   const speedUnit = resolveSpeedUnit(stored, activity);
-  const storedDistanceUnit = stored.distanceUnits?.[id];
-  const distanceUnit: DistanceUnit = isKnownDistanceUnit(storedDistanceUnit) ? storedDistanceUnit : 'km';
+  const distanceUnit = resolveDistanceUnit(stored, activity);
 
   // Lecture seule ici : les bornes de l'activité se règlent dans Réglages, celles
   // d'une trace dans sa fiche (brouillon du module).
-  const speedRange = resolveSpeedRange(stored, activity);
-  const gradeRange = resolveGradeRange(stored, activity);
+  const speedRange = useStableByText(resolveSpeedRange(stored, activity));
+  const gradeRange = useStableByText(resolveGradeRange(stored, activity));
 
   // Vélo : type et poids, réglés dans Réglages.
   const bikeType = resolveBikeType(stored, activity);
-  const storedBikeWeight = stored.bikeWeights?.[id];
-  const bikeWeightKg = isValidBikeWeight(storedBikeWeight) ? storedBikeWeight : defaultBikeKg(activity, bikeType);
+  const bikeWeightKg = resolveBikeKg(stored, activity, bikeType);
   // Course : charge portée, réglée dans Réglages.
   const storedLoad = stored.carriedLoads?.[id];
   const carriedLoadKg = isValidCarriedLoad(storedLoad) ? storedLoad : 0;
   // À pied : modèle de dépense, réglé dans Réglages.
   const energyModel = resolveEnergyModel(stored, activity);
-  const gearLabels = useMemo(() => resolveGearLabels(stored, id), [stored, id]);
-  const gearGroups = useMemo(() => resolveGearGroups(stored, id), [stored, id]);
+  const gearLabels = useStableByText(resolveGearLabels(stored, id));
+  const gearGroups = useStableByText(resolveGearGroups(stored, id));
   // Cardio : décalage des seuils S1 et S2, réglé dans Réglages.
   const hrOffsetBpm = resolveHrOffset(stored, activity);
 

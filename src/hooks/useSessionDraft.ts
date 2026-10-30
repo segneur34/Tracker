@@ -3,6 +3,7 @@ import {
   EDITED_PART_LABEL,
   changedParts,
   editsPatch,
+  patchedDraft,
   rebaseDraft,
   savedEdits,
   type EditedPart,
@@ -59,18 +60,32 @@ export const useSessionDraft = (file: string | null) => {
   const edits = draft ?? saved;
   const changed: EditedPart[] = useMemo(() => (draft ? changedParts(saved, draft) : []), [saved, draft]);
 
-  const update = useCallback(
-    (patch: Partial<SessionEdits>) => {
-      const next = { base: saved, edits: { ...edits, ...patch } };
-      if (file !== null) drafts.set(file, next);
+  /**
+   * Change le brouillon à partir de celui du moment, relu à l'instant et non
+   * figé au dernier rendu : deux changements d'un même geste se cumulent (A5).
+   */
+  const change = useCallback(
+    (patch: (edits: SessionEdits) => Partial<SessionEdits>) => {
+      const apply = (prev: Draft | null): Draft => {
+        const prevEdits = prev ? (prev.base === saved ? prev.edits : rebaseDraft(prev.base, saved, prev.edits)) : null;
+        return { base: saved, edits: patchedDraft(prevEdits, saved, patch) };
+      };
+      if (file === null) {
+        setStored(apply);
+        return;
+      }
+      const next = apply(drafts.get(file) ?? null);
+      drafts.set(file, next);
       setStored(next);
     },
-    [edits, file, saved]
+    [file, saved]
   );
 
+  const update = useCallback((patch: Partial<SessionEdits>) => change(() => patch), [change]);
+
   const updateNotes = useCallback(
-    (patch: Partial<SailingSessionNotes>) => update({ notes: { ...edits.notes, ...patch } }),
-    [update, edits.notes]
+    (patch: Partial<SailingSessionNotes>) => change((edits) => ({ notes: { ...edits.notes, ...patch } })),
+    [change]
   );
 
   const cancel = useCallback(() => {

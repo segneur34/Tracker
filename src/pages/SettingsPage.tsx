@@ -29,8 +29,8 @@ import SegmentedControl from '../components/ui/SegmentedControl';
 import { playPattern, setBeepPitch, type ClockTone } from '../platform/beeper';
 import { BEEP_SOUNDS, beepSoundHz } from '../recording/beepSound';
 import {
-  DEFAULT_GEAR_LABELS, HR_OFFSET_RANGE, MAX_GEAR_LABEL_LENGTH, TREATMENT_UNITS, defaultBikeKg, defaultBikeType, defaultEnergyModelOf, defaultLiveFieldsFor, defaultMarkGuideOf,
-  defaultNotificationFieldsFor, defaultPaceOf, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, defaultHrOffsetOf, defaultTerrainStepOf, planningFamily,
+  DEFAULT_GEAR_LABELS, HR_OFFSET_RANGE, MAX_GEAR_LABEL_LENGTH, TREATMENT_UNITS, defaultBikeKg, defaultEnergyModelOf, defaultLiveFieldsFor, defaultMarkGuideOf,
+  defaultNotificationFieldsFor, isActivityOverridden, defaultSpeedRangeOf, defaultFoil, defaultGradeRange, defaultHrOffsetOf, defaultTerrainStepOf, planningFamily,
   rangeFollowsPace, sanitizeGearLabels, thresholdFollowsPace, useAllSportSettings, type GearGroup, type SportSettingsView,
 } from '../hooks/useSportSettings';
 import GearGroupsEditor from '../components/GearGroupsEditor';
@@ -461,11 +461,7 @@ function SettingsPage() {
                 const familyHidden = isFamilyHidden(activities, hiddenFamilies, family);
                 /** Grisée : cachée elle-même, ou par sa famille. */
                 const shownHidden = activity.hidden === true || familyHidden;
-                const overridden =
-                  s.isSpeedUnitOverridden || s.isDistanceUnitOverridden || (withThreshold && s.isThresholdOverridden) || s.isAutoPauseOverridden || s.speedRange !== null || s.gradeRange !== null ||
-                  s.isLiveFieldsOverridden || s.isNotificationFieldsOverridden || s.isMarkGuideOverridden || s.terrainStepM !== defaultTerrainStepOf(activity) || s.bikeType !== defaultBikeType(activity) || s.bikeWeight !== null || s.carriedLoad !== null || s.isEnergyModelOverridden || s.isHrOffsetOverridden || s.gearLabels !== null || s.isTabsOverridden ||
-                  s.paceLevel !== defaultPaceOf(activity).level || s.customFlatSpeedMs !== defaultPaceOf(activity).customFlatSpeedMs || s.isWayTypesOverridden ||
-                  s.loopReturnRatio !== p.loopReturnMaxRatio || s.isFoilOverridden || s.pumping === true || s.isJumpsOverridden || s.isHeartRateOverridden || s.cadence === false;
+                const overridden = isActivityOverridden(s);
                 // Seuil : en voile dans l'unité choisie (rangé dans celle du calcul, les nœuds), en course en km/h.
                 const thresholdUnit: SpeedUnit = sailing ? s.speedUnit : p.thresholdUnit;
                 const thresholdShown = parseFloat(

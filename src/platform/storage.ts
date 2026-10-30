@@ -40,6 +40,12 @@ export interface JsonStore {
    * suivie comme une autre. Rend la fonction qui désabonne.
    */
   subscribe(listener: (key: string) => void): () => void;
+  /**
+   * Appelle `listener` à chaque écriture de `key` seulement, même refusée par
+   * le stockage : les écritures des autres clés ne réveillent pas l'abonné.
+   * Rend la fonction qui désabonne.
+   */
+  subscribeKey(key: string, listener: () => void): () => void;
   /** Appelle `listener` avec la clé de chaque écriture refusée par le stockage. Rend la fonction qui désabonne. */
   subscribeFailure(listener: (key: string) => void): () => void;
   /** Signale le refus d'une écriture constaté plus tard (Preferences natives, qui écrivent en arrière-plan). */
@@ -107,6 +113,15 @@ export const createJsonStore = (getBackend: () => StorageBackend): JsonStore => 
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
+      };
+    },
+    subscribeKey: (key, listener) => {
+      const onWrite = (written: string): void => {
+        if (written === key) listener();
+      };
+      listeners.add(onWrite);
+      return () => {
+        listeners.delete(onWrite);
       };
     },
     subscribeFailure: (listener) => {

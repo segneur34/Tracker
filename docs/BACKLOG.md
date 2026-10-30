@@ -13,6 +13,10 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 APK 0.3.110 installée le 30/10 (versionCode 3110, lots 60 à 65, validés le 30/10).
 
+- 66 · [dette] Réglages : lecture sûre (plus d'écriture perdue), un seul cache, moins de recalcul à chaque frappe · noté 28/10 · petit · Opus/medium · à valider sur lecture (commit du lot 66, 0.3.111) ; neutre, banc identique (reglages, prereglages, cacher, familles), relecture sans défaut ; constat A12 (gearGroups) faux, rien à changer ; laissé faute de temps, à reprendre avec le lot 72 : createJsonSelector et createListeners commun, table SETTING_FIELDS, cartes de Réglages mémoïsées (une frappe redessine encore toutes les cartes ouvertes) · dépend de : 55 · détail : docs/backlog/52-assainissement.md
+- 69 · [dette] Recherches par session : revêtement, altitude et sauts sur un seul mécanisme, capteurs décodés une seule fois · noté 28/10 · petit · Opus/medium · en cours (30/10, paquet 66, 70, 69, en parallèle dans un worktree) · dépend de : 54 · détail : docs/backlog/52-assainissement.md
+- 70 · [dette] Course et vélo : énergie calculée par une seule boucle, pente rangée au noyau ; chiffres identiques · noté 28/10 · petit · Opus/medium · en cours (30/10, paquet 66, 70, 69, en parallèle dans un worktree) · dépend de : 57 (levé) · détail : docs/backlog/52-assainissement.md
+
 ## Ensuite
 
 1. 86 · [bogue] Ceinture cardio : après une pause automatique, téléphone laissé à distance, l'application ne s'est jamais reconnectée à la ceinture ; une reprise seule au retour dans la portée est voulue (essai 1) · noté 29/10 · petit · Opus/high · à briefer
@@ -76,11 +80,8 @@ APK 0.3.110 installée le 30/10 (versionCode 3110, lots 60 à 65, validés le 30
 - 47 · [idée] Itinéraires hors ligne par l'application BRouter pour Android, à la place du serveur public (point 59) · noté 25/09 · gros
 - 49 · [dette] Mesure d'une manœuvre sous bruit réaliste : cap et gain du virement le plus lent (creux vers 3,75 nd) varient de ±20° et 15 m selon la cadence ; ce sont les bornes de measureManeuver, pas la détection (relevé au lot 30) · noté 28/10 · petit
 - 58 · [dette] Voile, curseur du seuil plus fluide : le vent et l'altitude ne se recalculent plus à chaque cran ; chiffres identiques ; seul dans sa session · noté 28/10 · petit · Opus/high · seul dans sa conversation (relevé du vent avant/après sur les 12 sessions réelles, comme au lot 30) : à lancer dans une conversation neuve · dépend de : 56 (levé) · détail : docs/backlog/52-assainissement.md
-- 66 · [dette] Réglages : lecture sûre (plus d'écriture perdue), un seul cache, moins de recalcul à chaque frappe · noté 28/10 · petit · Opus/medium · dépend de : 55 · détail : docs/backlog/52-assainissement.md
 - 67 · [dette] Enregistrer : seuls les chiffres se redessinent à chaque position GPS, plus toute la page · noté 28/10 · petit · Opus/high · dépend de : 55 · détail : docs/backlog/52-assainissement.md
 - 68 · [dette] Bibliothèque : balayage du dossier et écritures groupés, Statistiques et Profil recalculés une fois au lieu d'une fois par session · noté 28/10 · petit · Opus/high · dépend de : 54 · détail : docs/backlog/52-assainissement.md
-- 69 · [dette] Recherches par session : revêtement, altitude et sauts sur un seul mécanisme, capteurs décodés une seule fois · noté 28/10 · petit · Opus/medium · dépend de : 54 · détail : docs/backlog/52-assainissement.md
-- 70 · [dette] Course et vélo : énergie calculée par une seule boucle, pente rangée au noyau ; chiffres identiques · noté 28/10 · petit · Opus/medium · dépend de : 57 (levé) · détail : docs/backlog/52-assainissement.md
 - 71 · [dette] Rangement des dossiers : chaque fichier à sa place, un test qui garde le sens des dépendances · noté 28/10 · petit · Sonnet/high · dépend de : 57 (levé), 70 · détail : docs/backlog/52-assainissement.md
 - 72 · [dette] Calcul sorti des écrans : réglages, profil, résumés et couleurs de trace calculés et testés à part · noté 28/10 · petit · Opus/medium · dépend de : 71 · détail : docs/backlog/52-assainissement.md
 - 73 · [dette] Carte : trace colorée dessinée en une seule couche au lieu de 54 000 morceaux, couleurs inchangées (Q46, Q48) · noté 28/10 · petit · Opus/high · dépend de : 72 · détail : docs/backlog/52-assainissement.md

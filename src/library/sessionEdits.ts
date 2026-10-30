@@ -199,3 +199,18 @@ export const editsPatch = (record: SessionRecord, saved: SessionEdits, edits: Se
   }
   return patch;
 };
+
+/**
+ * Brouillon après un changement, fait sur le brouillon du moment (`current`,
+ * `null` sans brouillon : l'état enregistré) et non sur celui du dernier
+ * rendu : deux changements d'un même geste se cumulent. `patch` reçoit les
+ * réglages du moment, pour fusionner un morceau (notes).
+ */
+export const patchedDraft = (
+  current: SessionEdits | null,
+  saved: SessionEdits,
+  patch: (edits: SessionEdits) => Partial<SessionEdits>
+): SessionEdits => {
+  const edits = current ?? saved;
+  return { ...edits, ...patch(edits) };
+};
