@@ -312,9 +312,10 @@ export const polarWindCandidates = (
   points: PointData[],
   minSpeedKn = WIND_ESTIMATION_MIN_SPEED_KN,
   count = 3
-): PolarWindEstimate[] => {
-  const maxSpeeds = buildMaxSpeedsByBearing(points, minSpeedKn);
+): PolarWindEstimate[] => candidatesOf(buildMaxSpeedsByBearing(points, minSpeedKn), count);
 
+/** Candidats de `polarWindCandidates`, sur des vitesses max par cap déjà relevées. */
+const candidatesOf = (maxSpeeds: number[], count: number): PolarWindEstimate[] => {
   const scores = new Array<number>(360);
   for (let w = 0; w < 360; w++) scores[w] = scoreWindCandidate(maxSpeeds, w).score;
 
@@ -340,10 +341,11 @@ export const describeWindCandidate = (
   points: PointData[],
   direction: number,
   minSpeedKn = WIND_ESTIMATION_MIN_SPEED_KN
-): PolarWindEstimate => {
-  const maxSpeeds = buildMaxSpeedsByBearing(points, minSpeedKn);
-  return describeCandidate(maxSpeeds, normalizeAngle(direction), coverageOf(maxSpeeds));
-};
+): PolarWindEstimate => describeDirection(buildMaxSpeedsByBearing(points, minSpeedKn), direction);
+
+/** Descripteur de `describeWindCandidate`, sur des vitesses max par cap déjà relevées. */
+const describeDirection = (maxSpeeds: number[], direction: number): PolarWindEstimate =>
+  describeCandidate(maxSpeeds, normalizeAngle(direction), coverageOf(maxSpeeds));
 
 /**
  * Cherche la direction qui centre le mieux l'angle mort : peu de vitesse dans
@@ -625,7 +627,11 @@ const POLAR_CONTRAST_MIN = 0.15;
  */
 export const estimateWindPolar = (points: PointData[], options: WindEstimateOptions = {}): WindEstimate => {
   const minSpeedKn = options.minSpeedKn ?? WIND_ESTIMATION_MIN_SPEED_KN;
-  const polar = estimateWindFromPolar(points, minSpeedKn);
+  return orientPolar(points, estimateWindFromPolar(points, minSpeedKn), minSpeedKn);
+};
+
+/** Orientation de `estimateWindPolar`, sur le meilleur candidat de la polaire déjà trouvé. */
+const orientPolar = (points: PointData[], polar: PolarWindEstimate, minSpeedKn: number): WindEstimate => {
   const candidateA = polar.direction;
   const candidateB = (polar.direction + 180) % 360;
 
@@ -651,5 +657,45 @@ export const estimateWindPolar = (points: PointData[], options: WindEstimateOpti
     reliable: confidence >= WIND_CONFIDENCE_MIN,
     orientedBy,
     maneuverCount: 0,
+  };
+};
+
+/**
+ * Ce que l'estimation du vent lit de la trace sans le seuil d'activité : la
+ * polaire et ses candidats, l'estimation polaire orientée (virages compris) et
+ * le soutien de la trace. Préparé une fois par trace et par vitesse plancher
+ * de la polaire (`prepareWindPolar`), il évite de tout refaire à chaque cran
+ * du seuil, qui ne change que le classement des manœuvres.
+ */
+export interface WindPolarStage {
+  readonly points: PointData[];
+  readonly minSpeedKn: number;
+  /** Candidats de la polaire, par score décroissant (`polarWindCandidates`, trois au plus). */
+  readonly candidates: readonly PolarWindEstimate[];
+  /** Descripteur d'une direction imposée, sur la même polaire (`describeWindCandidate`). */
+  readonly describe: (direction: number) => PolarWindEstimate;
+  /** Estimation polaire orientée (`estimateWindPolar`). */
+  readonly polar: WindEstimate;
+  /** Soutien de la trace à la polaire (`polarSampling`). */
+  readonly sampling: number;
+}
+
+/**
+ * Prépare l'étage polaire de l'estimation du vent : les vitesses max par cap
+ * sont relevées une fois, au lieu d'une fois pour l'estimation polaire, une
+ * pour les candidats et une pour le jumeau au vent arrière. Le meilleur
+ * candidat est le même que celui d'`estimateWindFromPolar` : le tri ne dépend
+ * pas du nombre de candidats gardés.
+ */
+export const prepareWindPolar = (points: PointData[], minSpeedKn = WIND_ESTIMATION_MIN_SPEED_KN): WindPolarStage => {
+  const maxSpeeds = buildMaxSpeedsByBearing(points, minSpeedKn);
+  const candidates = candidatesOf(maxSpeeds, 3);
+  return {
+    points,
+    minSpeedKn,
+    candidates,
+    describe: (direction) => describeDirection(maxSpeeds, direction),
+    polar: orientPolar(points, candidates[0], minSpeedKn),
+    sampling: polarSampling(points),
   };
 };

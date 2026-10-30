@@ -1,5 +1,5 @@
 import { normalizeDeg } from '../core/angles';
-import { useMemo } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import { msToKnots } from '../core/units';
 import {
   resolveSailingThresholds,
@@ -13,9 +13,9 @@ import {
   prepareManeuverDetection,
   windSamplesFrom,
 } from '../sailing/maneuvers';
-import { buildWindTimeline, speedPolar } from '../sailing/wind';
+import { buildWindTimeline, prepareWindPolar, speedPolar } from '../sailing/wind';
 import { calculateVmgStats, calculateWindStats, summarizeManeuvers } from '../sailing/sailingAnalytics';
-import { buildSailingSessionStats, computeSailingTops, sailingFlights } from '../sailing/sailingStats';
+import { buildSailingSessionStats, computeSailingTops, sailingActivityMask, sailingFlights, sailingRatioMask } from '../sailing/sailingStats';
 import { trackToPointData } from '../sailing/pointData';
 import { useGpxSession } from './useGpxSession';
 import type { useSportSettings } from './useSportSettings';
@@ -30,7 +30,12 @@ import type { useSportSettings } from './useSportSettings';
  * calculées sur une direction fausse.
  *
  * Le seuil d'activité est propagé à tous les calculs qui en dépendent, et une
- * modification du seuil recalcule les statistiques sans relire le fichier.
+ * modification du seuil recalcule les statistiques sans relire le fichier :
+ * seulement ce qui dépend du seuil (masque d'activité, classement des
+ * manœuvres), la polaire, la détection des virages et le masque du ratio étant
+ * préparés une fois par trace. Ces calculs suivent le seuil avec un très léger
+ * retard (`useDeferredValue`) : le champ du seuil reste fluide, les chiffres le
+ * rejoignent juste après, sur la même valeur.
  *
  * Le vent saisi, le seuil et l'allure propres à la session viennent du
  * module (son brouillon, `useSessionDraft`), qui les garde dans la fiche de
@@ -84,7 +89,18 @@ export const useSailingSession = ({
    * seuil, garde son seuil fixe de réussite (`resolveSailingThresholds`).
    */
   const thresholds = resolveSailingThresholds(profile, isThresholdOverridden ? rawActiveThresholdKn : null, sessionThresholdKn, referenceSpeedKn);
-  const { withThreshold, defaultKn: defaultActiveThresholdKn, activeKn: activeThresholdKn, flightKn: flightThresholdKn } = thresholds;
+  const { withThreshold, defaultKn: defaultActiveThresholdKn, activeKn: activeThresholdKn } = thresholds;
+  /**
+   * Seuil des calculs : celui du champ, différé (Q40). Le champ et ses libellés
+   * lisent `activeThresholdKn`, immédiat ; le seuil de vol le suit comme dans
+   * `resolveSailingThresholds`. Pas de retard quand la trace change avec lui
+   * (autre session, autre support) : la nouvelle trace serait sinon calculée une
+   * première fois au seuil de l'ancienne.
+   */
+  const deferredThresholdKn = useDeferredValue(activeThresholdKn);
+  const deferredTrackData = useDeferredValue(trackData);
+  const computeThresholdKn = deferredTrackData === trackData ? deferredThresholdKn : activeThresholdKn;
+  const flightThresholdKn = withThreshold ? computeThresholdKn : undefined;
 
   const suggestedSpeedRangeMs = useMemo(
     () => suggestSpeedRangeMs(sport, referenceSpeedKn, gpx.track, cumulative),
@@ -93,15 +109,21 @@ export const useSailingSession = ({
 
   // Les tops ne dépendent que de la trace : calculés une fois, pas à chaque mouvement du seuil.
   const tops = useMemo(() => computeSailingTops(gpx.track, cumulative), [gpx.track, cumulative]);
+  // Le masque du ratio non plus ; celui d'activité, au seuil, sert aux statistiques et aux vols.
+  const ratioMask = useMemo(() => sailingRatioMask(gpx.track, sport), [gpx.track, sport]);
+  const activityMask = useMemo(
+    () => sailingActivityMask(gpx.track, sport, computeThresholdKn),
+    [gpx.track, sport, computeThresholdKn]
+  );
   const stats = useMemo(
-    () => buildSailingSessionStats(gpx.track, { sport, activeThresholdKn, cumulative, tops }),
-    [gpx.track, sport, activeThresholdKn, cumulative, tops]
+    () => buildSailingSessionStats(gpx.track, { sport, activeThresholdKn: computeThresholdKn, cumulative, tops, activityMask, ratioMask }),
+    [gpx.track, sport, computeThresholdKn, cumulative, tops, activityMask, ratioMask]
   );
   /** Vols, pour le pumping sur foil (lot 22) : suites au-dessus du seuil d'activité, les plus courtes non listées. */
   const minFlightS = profile.pump?.minFlightS ?? null;
   const flights = useMemo(
-    () => (minFlightS === null ? [] : sailingFlights(gpx.track, cumulative, sport, activeThresholdKn, minFlightS)),
-    [gpx.track, cumulative, sport, activeThresholdKn, minFlightS]
+    () => (minFlightS === null ? [] : sailingFlights(gpx.track, cumulative, sport, activityMask, minFlightS)),
+    [gpx.track, cumulative, sport, activityMask, minFlightS]
   );
 
   /**
@@ -128,23 +150,36 @@ export const useSailingSession = ({
     [trackData, minEntrySpeedKn, stillSpeedKn]
   );
 
+  /**
+   * Étage polaire du vent (polaire, candidats, orientation par les virages,
+   * soutien de la trace), préparé une fois par trace : il ne dépend pas du
+   * seuil d'activité.
+   */
+  const polarMinSpeedKn = maneuverThresholds.polarMinSpeedKn;
+  const polarStage = useMemo(
+    () => (trackData.length > 0 ? prepareWindPolar(trackData, polarMinSpeedKn) : null),
+    [trackData, polarMinSpeedKn]
+  );
+
   // Les seuils viennent du profil du support et de la surcharge de
   // l'utilisateur : changer de support, ou bouger le seuil d'activité,
-  // recalcule le vent. C'est le prix d'une seule notion de « réussite » dans
-  // toute l'application, la même ici que pour les manœuvres affichées.
+  // reclasse les manœuvres candidates du vent. C'est le prix d'une seule
+  // notion de « réussite » dans toute l'application, la même ici que pour les
+  // manœuvres affichées.
   const windEstimate = useMemo(
     () =>
-      detection
+      detection && polarStage
         ? estimateWind(trackData, {
-            minSpeedKn: maneuverThresholds.polarMinSpeedKn,
-            successThresholdKn: activeThresholdKn,
+            minSpeedKn: polarMinSpeedKn,
+            successThresholdKn: computeThresholdKn,
             minEntrySpeedKn,
             flightThresholdKn,
             stillSpeedKn,
             detection,
+            polarStage,
           })
         : null,
-    [trackData, detection, maneuverThresholds.polarMinSpeedKn, activeThresholdKn, minEntrySpeedKn, flightThresholdKn, stillSpeedKn]
+    [trackData, detection, polarStage, polarMinSpeedKn, computeThresholdKn, minEntrySpeedKn, flightThresholdKn, stillSpeedKn]
   );
   const autoWind = windEstimate?.direction ?? null;
 
@@ -162,7 +197,7 @@ export const useSailingSession = ({
 
   const maneuverStats = useMemo(() => {
     if (!detection || currentWindValue === null) return null;
-    const options = { successThresholdKn: activeThresholdKn, flightThresholdKn };
+    const options = { successThresholdKn: computeThresholdKn, flightThresholdKn };
 
     // Deux passes : la première classe avec le vent global, la seconde avec
     // le vent local interpolé entre les manœuvres de la première, pour rester
@@ -174,7 +209,7 @@ export const useSailingSession = ({
       WIND_LOCAL_MAX_GAP_MIN * 60 * 1000
     );
     return classifyManeuvers(detection, timeline, options);
-  }, [detection, currentWindValue, activeThresholdKn, flightThresholdKn]);
+  }, [detection, currentWindValue, computeThresholdKn, flightThresholdKn]);
 
   const maneuverSummary = useMemo(() => summarizeManeuvers(maneuverStats), [maneuverStats]);
 
@@ -194,13 +229,12 @@ export const useSailingSession = ({
   }, [windStats, currentWindValue]);
 
   const vmgStats = useMemo(() => {
-    return calculateVmgStats(trackData, windAt, activeThresholdKn);
-  }, [trackData, windAt, activeThresholdKn]);
+    return calculateVmgStats(trackData, windAt, computeThresholdKn);
+  }, [trackData, windAt, computeThresholdKn]);
 
   // Polaire au seuil accordé à l'allure de la session (règle 4), le même que
   // celui de l'estimation du vent : sur une trace lente, le seuil fixe du
   // profil laissait le radar presque vide.
-  const polarMinSpeedKn = maneuverThresholds.polarMinSpeedKn;
   const polarGraphData = useMemo(
     () => (trackData.length > 0 && currentWindValue !== null ? speedPolar(trackData, currentWindValue, polarMinSpeedKn) : []),
     [trackData, currentWindValue, polarMinSpeedKn]
@@ -242,6 +276,8 @@ export const useSailingSession = ({
     speedUnit,
     distanceUnit,
     activeThresholdKn,
+    /** Vrai tant que les chiffres n'ont pas rejoint le seuil du champ (Q40) : rien n'en est recopié dans la fiche entre-temps. */
+    thresholdPending: computeThresholdKn !== activeThresholdKn,
     /** Seuil d'activité réglable : faux en bateau, où toute la session compte en navigation. */
     hasActiveThreshold: withThreshold,
     /** Seuil hors réglage de la session : celui du support s'il est surchargé, sinon la suggestion. */

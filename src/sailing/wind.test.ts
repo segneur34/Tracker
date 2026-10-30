@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PointData } from './pointData';
 import { sessionManeuverThresholds } from './sailingConfig';
-import { buildWindTimeline, circularStats, describeWindCandidate, estimateWindFromPolar, interpolateDirection, observeTurns, pointerWindDeg, polarSampling, speedPolar, scoreWindCandidate, windDegFromText } from './wind';
+import { buildWindTimeline, circularStats, describeWindCandidate, estimateWindFromPolar, estimateWindPolar, interpolateDirection, observeTurns, pointerWindDeg, polarSampling, polarWindCandidates, prepareWindPolar, speedPolar, scoreWindCandidate, windDegFromText } from './wind';
 import { angleDiff, circularMean } from '../core/angles';
 
 describe('buildWindTimeline', () => {
@@ -137,9 +137,7 @@ const buildPoints = (samples: { bearing: number; speed: number }[]): PointData[]
   return samples.map((s, i) => ({
     lat: 43.6,
     lon: 3.8,
-    time: new Date(start + i * 1000).toISOString(),
     timeMs: start + i * 1000,
-    speed: s.speed,
     smoothedSpeed: s.speed,
     bearing: s.bearing,
   }));
@@ -219,6 +217,29 @@ describe('describeWindCandidate', () => {
   });
 });
 
+describe('prepareWindPolar', () => {
+  it("rend les candidats, les descripteurs, l'estimation polaire et le soutien des fonctions qu'il remplace", () => {
+    // Polaires nettes (orientées par la polaire) et couverture symétrique
+    // (orientée par les virages, contraste faible), trace vide comprise.
+    const symmetric: { bearing: number; speed: number }[] = [];
+    for (let b = 0; b < 360; b += 2) symmetric.push({ bearing: b, speed: 12 });
+    for (const points of [buildPoints(realisticPolar(0)), buildPoints(realisticPolar(137)), buildPoints(symmetric), []]) {
+      for (const minSpeedKn of [2, 5]) {
+        const stage = prepareWindPolar(points, minSpeedKn);
+        expect(stage.points).toBe(points);
+        expect(stage.minSpeedKn).toBe(minSpeedKn);
+        expect(stage.candidates).toEqual(polarWindCandidates(points, minSpeedKn, 3));
+        expect(stage.candidates[0]).toEqual(estimateWindFromPolar(points, minSpeedKn));
+        for (const direction of [0, 90, 211, -90, 450]) {
+          expect(stage.describe(direction)).toEqual(describeWindCandidate(points, direction, minSpeedKn));
+        }
+        expect(stage.polar).toEqual(estimateWindPolar(points, { minSpeedKn }));
+        expect(stage.sampling).toBe(polarSampling(points));
+      }
+    }
+  });
+});
+
 describe('observeTurns', () => {
   it('relève un virage franc et cohérent', () => {
     const samples: { bearing: number; speed: number }[] = [];
@@ -249,9 +270,7 @@ describe('polarSampling', () => {
     Array.from({ length: count }, (_, k) => ({
       lat: 43.6,
       lon: 3.8,
-      time: '',
       timeMs: Math.round(k * stepS * 1000),
-      speed: 12,
       smoothedSpeed: 12,
       bearing: 45,
       ...(resumeAt === k ? { segmentStart: true as const } : {}),
@@ -294,7 +313,7 @@ describe('pointerWindDeg', () => {
 });
 
 describe('speedPolar', () => {
-  const at = (bearing: number, speed: number): PointData => ({ lat: 0, lon: 0, time: new Date(0), timeMs: 0, speed, smoothedSpeed: speed, bearing });
+  const at = (bearing: number, speed: number): PointData => ({ lat: 0, lon: 0, timeMs: 0, smoothedSpeed: speed, bearing });
 
   it('range chaque point par son angle au vent, la vitesse max par case', () => {
     const polar = speedPolar([at(95, 12), at(99, 15), at(300, 20)], 90, 3);
@@ -323,7 +342,7 @@ describe('speedPolar au seuil accordé à la session', () => {
       const bearing = (t * 0.6) % 360;
       const twa = Math.abs(angleDiff(bearing, 0));
       const speed = twa < 35 ? 1.5 : twa < 110 ? 7 : 4.4;
-      points.push({ lat: 43.6, lon: 3.8, time: '', timeMs: t * 1000, speed, smoothedSpeed: speed, bearing });
+      points.push({ lat: 43.6, lon: 3.8, timeMs: t * 1000, smoothedSpeed: speed, bearing });
     }
     const profileKn = 5;
     const sessionKn = sessionManeuverThresholds('windsurf', 4.4).polarMinSpeedKn;
@@ -337,7 +356,7 @@ describe('observeTurns et reprise de pause', () => {
   const buildTurn = (resume: boolean): PointData[] => {
     const points: PointData[] = [];
     const push = (t: number, bearing: number, segmentStart = false) =>
-      points.push({ lat: 43.6, lon: 3.8, time: '', timeMs: t * 1000, speed: 12, smoothedSpeed: 12, bearing, ...(segmentStart ? { segmentStart: true as const } : {}) });
+      points.push({ lat: 43.6, lon: 3.8, timeMs: t * 1000, smoothedSpeed: 12, bearing, ...(segmentStart ? { segmentStart: true as const } : {}) });
     for (let t = 0; t <= 60; t++) push(t, 90);
     // Un pas de 20 s, à travers lequel le cap passe de 90° à 270°.
     for (let t = 80; t <= 140; t++) push(t, 270, resume && t === 80);

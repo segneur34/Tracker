@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHART_PACE_MIN_SPEED_MS, INTERVAL_PACE_MIN_SPEED_MS, PACE_MIN_SPEED_MS, formatDistanceAuto, formatMeters, minutesSeconds, msToPace, pad2, signedPercent, speedSourceText,
-  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
+  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed, knotsToChartValue, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
 } from './units';
 
 describe('distances', () => {
@@ -45,6 +45,18 @@ describe('formatKnots', () => {
 
   it('rend tel quel ce qui n\'est pas un nombre', () => {
     expect(formatKnots('-', 'kmh')).toBe('-');
+  });
+});
+
+describe('knotsToChartValue', () => {
+  it('rend exactement la lecture du texte de formatKnots, dans toutes les unités', () => {
+    const values = [0, 0.04, 0.05, 0.15, 0.25, 1, 2.45, 3.75, 7.999999, 8, 12.44, 12.45, 18.272096, 24.95, 33.3333, 101.25, -1, NaN, Infinity, -Infinity];
+    for (let kn = 0; kn < 40; kn += 0.0137) values.push(kn);
+    for (const unit of ['kn', 'kmh', 'ms', 'minkm'] as SpeedUnit[]) {
+      for (const kn of values) {
+        expect(Object.is(knotsToChartValue(kn, unit), parseFloat(formatKnots(kn, unit))), `${kn} ${unit}`).toBe(true);
+      }
+    }
   });
 });
 

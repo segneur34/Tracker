@@ -3,7 +3,7 @@ import { computeKinematics } from '../core/kinematics';
 import { knotsToMs } from '../core/units';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { phasesTrack } from '../test/track.fixture';
-import { buildSailingSessionStats, sailingFlights } from './sailingStats';
+import { buildSailingSessionStats, sailingActivityMask, sailingFlights, sailingRatioMask } from './sailingStats';
 
 const START_MS = Date.parse('2026-10-21T10:00:00Z');
 
@@ -41,6 +41,25 @@ describe('buildSailingSessionStats', () => {
 
   it('bateau : pas de temps en mouvement à part, sans seuil ni ratio', () => {
     expect(buildSailingSessionStats(track, { sport: 'bateau' })!.inMotionTimeS).toBe(0);
+  });
+
+  it.each(['wingfoil', 'windsurf', 'kite', 'bateau'] as const)("masques reçus tout faits : mêmes chiffres qu'à les refaire (%s, lot 58)", (sport) => {
+    const sailed = buildTrack([[300, 0], [600, 15], [300, 3], [120, 9], [300, 0]], 5);
+    const cumulative = buildCumulativeTrack(sailed);
+    const ratioMask = sailingRatioMask(sailed, sport);
+    for (const activeThresholdKn of [3, 7, 8.5, 12]) {
+      const activityMask = sailingActivityMask(sailed, sport, activeThresholdKn);
+      expect(buildSailingSessionStats(sailed, { sport, activeThresholdKn, cumulative, activityMask, ratioMask }))
+        .toEqual(buildSailingSessionStats(sailed, { sport, activeThresholdKn, cumulative }));
+      expect(sailingFlights(sailed, cumulative, sport, activityMask, 10)).toEqual(sailingFlights(sailed, cumulative, sport, activeThresholdKn, 10));
+    }
+  });
+
+  it("pas de dénivelé en voile, qui ne l'affiche pas, même sur une trace qui a son altitude", () => {
+    const climbing = computeKinematics(phasesTrack([[600, knotsToMs(10)]], 1, { startMs: START_MS, climbPerS: 0.1 }));
+    const stats = buildSailingSessionStats(climbing, { sport: 'wingfoil', activeThresholdKn: 3 })!;
+    expect(stats.hasElevation).toBe(false);
+    expect(stats.elevationGain).toBe('-');
   });
 });
 

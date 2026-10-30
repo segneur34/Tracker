@@ -20,9 +20,7 @@ const buildTrackAt = (
     return {
       lat: 43.6,
       lon: 3.8 + t * 0.0001,
-      time: new Date(timeMs).toISOString(),
       timeMs,
-      speed,
       smoothedSpeed: speed,
       bearing,
       ...(segmentStartAtS.includes(t) ? { segmentStart: true as const } : {}),

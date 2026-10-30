@@ -18,7 +18,7 @@ import {
   getDefaultThresholdKn,
   getStillSpeedKn,
 } from './sailingConfig';
-import { CANDIDATE_MIN_SEPARATION, buildWindTimeline, describeWindCandidate, estimateWindPolar, isTurningStep, polarSampling, polarWindCandidates, scanTurnWindow, strideEnd, type PolarWindEstimate, type WindEstimate, type WindOrientationSource } from './wind';
+import { CANDIDATE_MIN_SEPARATION, buildWindTimeline, isTurningStep, prepareWindPolar, scanTurnWindow, strideEnd, type PolarWindEstimate, type WindEstimate, type WindOrientationSource, type WindPolarStage } from './wind';
 
 export interface ManeuverOptions {
   /**
@@ -316,7 +316,27 @@ export interface WindEstimationOptions {
    * détection (`minEntrySpeedKn`, `stillSpeedKn`), sans quoi elle est refusée.
    */
   detection?: ManeuverDetection;
+  /**
+   * Étage polaire préparé une fois sur `points` (`prepareWindPolar`), commun
+   * à tous les seuils d'activité ; absent, l'estimation le prépare elle-même.
+   * Il doit porter sur la même trace, avec la même vitesse plancher de la
+   * polaire (`minSpeedKn`), sans quoi il est refusé.
+   */
+  polarStage?: WindPolarStage;
 }
+
+/**
+ * Étage polaire de l'estimation : celui que les options apportent, vérifié
+ * (même trace, même vitesse plancher), sinon préparé ici.
+ */
+const polarStageFor = (points: PointData[], options: WindEstimationOptions): WindPolarStage => {
+  const minSpeedKn = options.minSpeedKn ?? WIND_ESTIMATION_MIN_SPEED_KN;
+  const given = options.polarStage;
+  if (!given) return prepareWindPolar(points, minSpeedKn);
+  if (given.points !== points) throw new Error(`L'étage polaire préparé ne porte pas sur cette trace.`);
+  if (given.minSpeedKn !== minSpeedKn) throw new Error(`L'étage polaire préparé n'a pas la vitesse plancher de cette estimation.`);
+  return given;
+};
 
 /**
  * Détection à classer : celle que les options apportent, vérifiée (même
@@ -378,7 +398,6 @@ export const selectWindCandidate = (
   polar: WindEstimate,
   options: WindEstimationOptions = {}
 ): CandidateSelection => {
-  const minSpeedKn = options.minSpeedKn ?? WIND_ESTIMATION_MIN_SPEED_KN;
   const fallback: CandidateSelection = {
     direction: polar.direction,
     orientedBy: polar.orientedBy,
@@ -391,11 +410,12 @@ export const selectWindCandidate = (
 
   // Candidats : les maxima du score, plus l'opposé du meilleur, jumeau au
   // vent arrière que seules les manœuvres peuvent écarter avec certitude.
-  const candidates = polarWindCandidates(points, minSpeedKn, 3);
+  const stage = polarStageFor(points, options);
+  const candidates = [...stage.candidates];
   if (candidates.length === 0) return fallback;
   const twin = normalizeDeg(candidates[0].direction + 180);
   if (candidates.every((c) => Math.abs(angleDiff(c.direction, twin)) >= CANDIDATE_MIN_SEPARATION)) {
-    candidates.push(describeWindCandidate(points, twin, minSpeedKn));
+    candidates.push(stage.describe(twin));
   }
 
   let chosen: PolarWindEstimate | null = null;
@@ -449,15 +469,14 @@ export const estimateWind = (
   points: PointData[],
   options: WindEstimationOptions = {}
 ): WindEstimate => {
-  const minSpeedKn = options.minSpeedKn ?? WIND_ESTIMATION_MIN_SPEED_KN;
-
-  const polar = estimateWindPolar(points, { minSpeedKn });
+  // L'étage polaire et la détection sont préparés une fois, pour les candidats et les deux passes.
+  const polarStage = polarStageFor(points, options);
+  const polar = polarStage.polar;
   if (points.length === 0) return polar;
 
-  // La détection est préparée une fois, pour les candidats et les deux passes.
   const detection = detectionFor(points, options);
   const classification = classificationOptions(options);
-  const selection = selectWindCandidate(points, polar, { ...options, detection });
+  const selection = selectWindCandidate(points, polar, { ...options, detection, polarStage });
   const orientedBy = selection.orientedBy;
   const polarConfidence = selection.polarConfidence;
   let direction = selection.direction;
@@ -494,7 +513,7 @@ export const estimateWind = (
   // confiance annoncée se rabat sur le soutien de la trace (`polarSampling`),
   // jusqu'à demander le vent à l'utilisateur. Les poids ci-dessus n'en
   // tiennent pas compte : la direction reste la même, seule la confiance baisse.
-  const confidence = Math.max(polarConfidence, maneuverConfidence * 0.9) * polarSampling(points);
+  const confidence = Math.max(polarConfidence, maneuverConfidence * 0.9) * polarStage.sampling;
 
   return {
     direction: roundBearingDeg(direction),

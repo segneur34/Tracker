@@ -11,11 +11,8 @@ import type { TrackPoint } from '../core/types';
 export interface PointData {
   lat: number;
   lon: number;
-  time: string | Date;
   /** Horodatage en millisecondes, pour les fenêtres temporelles. */
   timeMs: number;
-  /** Vitesse retenue, en nœuds. */
-  speed: number;
   /** Vitesse filtrée, en nœuds. */
   smoothedSpeed: number;
   bearing: number;
@@ -27,9 +24,7 @@ export interface PointData {
 export const toPointData = (point: TrackPoint): PointData => ({
   lat: point.lat,
   lon: point.lon,
-  time: point.time,
   timeMs: point.timeMs,
-  speed: msToKnots(point.speedMs),
   smoothedSpeed: msToKnots(point.smoothedSpeedMs),
   bearing: point.bearing,
   ...(point.segmentStart ? { segmentStart: true as const } : {}),

@@ -21,7 +21,7 @@ import {
 } from './maneuvers';
 import { sessionManeuverThresholds } from './sailingConfig';
 import { calculateWindStats, summarizeManeuvers, windChartRows } from './sailingAnalytics';
-import { buildWindTimeline, describeWindCandidate, estimateWindFromPolar, estimateWindPolar, observeTurns, polarSampling } from './wind';
+import { buildWindTimeline, describeWindCandidate, estimateWindFromPolar, estimateWindPolar, observeTurns, polarSampling, prepareWindPolar } from './wind';
 import { angleDiff, circularMean } from '../core/angles';
 import { M_PER_DEG_LAT, at as geoAt, mPerDegLon } from '../test/geo.fixture';
 
@@ -46,9 +46,7 @@ const buildTrack = (
     points.push({
       lat: 43.6,
       lon: 3.8 + t * 0.0001,
-      time: new Date(timeMs).toISOString(),
       timeMs,
-      speed,
       smoothedSpeed: speed,
       bearing,
     });
@@ -163,9 +161,7 @@ const buildLegSession = (
     points.push({
       lat: options.integratePosition ? lat : 43.6,
       lon: options.integratePosition ? lon : 3.8 + t * 0.0001,
-      time: new Date(timeMs).toISOString(),
       timeMs,
-      speed,
       smoothedSpeed: speed,
       bearing,
     });
@@ -220,9 +216,7 @@ const buildSparseTurnTrack = (turnGapS: number, resumeAfterGap = false): PointDa
     points.push({
       lat: 43.553 + t * 0.00001,
       lon: 4.071 + t * 0.00001,
-      time: new Date(timeMs).toISOString(),
       timeMs,
-      speed,
       smoothedSpeed: speed,
       bearing,
       ...(segmentStart ? { segmentStart: true as const } : {}),
@@ -251,9 +245,7 @@ const buildSlowTurnTrack = (speedKn: number, stepM: number): PointData[] => {
     points.push({
       lat,
       lon: 4.0720,
-      time: new Date(timeMs).toISOString(),
       timeMs,
-      speed,
       smoothedSpeed: speed,
       bearing,
     });
@@ -930,7 +922,7 @@ describe('estimateWind', () => {
     const fallStart = Math.floor(track.length / 3);
     const noise = [130, 20, 250, 80, 300, 10, 200, 90, 330, 160, 40, 270, 120, 350, 60, 210, 30, 280, 150, 100, 320, 70, 240, 180, 50, 290, 140, 20, 260, 110];
     noise.forEach((b, k) => {
-      track[fallStart + k] = { ...track[fallStart + k], bearing: b, speed: 0.5, smoothedSpeed: 0.5 };
+      track[fallStart + k] = { ...track[fallStart + k], bearing: b, smoothedSpeed: 0.5 };
     });
 
     const estimate = estimateWind(track);
@@ -1036,7 +1028,7 @@ describe('estimateWind', () => {
     const dense = buildLegSession(upwindDownwindLegs(6), () => 0, { integratePosition: true });
     const raw: RawTrackPoint[] = dense
       .filter((_, k) => k % 17 === 0)
-      .map((p) => ({ lat: p.lat, lon: p.lon, time: p.time as string, speedMs: knotsToMs(p.speed) }));
+      .map((p) => ({ lat: p.lat, lon: p.lon, time: new Date(p.timeMs).toISOString(), speedMs: knotsToMs(p.smoothedSpeed) }));
     const sparse = trackToPointData(computeKinematics(raw, { medianWindowSeconds: 3 }));
 
     expect(polarSampling(dense)).toBe(1);
@@ -1568,5 +1560,32 @@ describe('prepareManeuverDetection et classifyManeuvers', () => {
     expect(() => estimateWind(points, { minEntrySpeedKn: 2, detection: prepareManeuverDetection(points) })).toThrow();
     expect(() => estimateWind(points, { stillSpeedKn: 1, detection: prepareManeuverDetection(points, { stillSpeedKn: 2 }) })).toThrow();
     expect(() => estimateWind(points, { minEntrySpeedKn: 2, detection: prepareManeuverDetection(points, { minEntrySpeedKn: 2 }) })).not.toThrow();
+  });
+
+  it('estime le même vent avec et sans étage polaire préparé, à tous les seuils (lot 58)', () => {
+    // Le hook prépare la polaire une fois par trace et la garde quand le seuil
+    // bouge : chaque seuil doit rendre exactement l'estimation d'une passe neuve.
+    for (const [name, points] of sessions()) {
+      for (const minSpeedKn of [2, 5]) {
+        const polarStage = prepareWindPolar(points, minSpeedKn);
+        const detection = prepareManeuverDetection(points, { minEntrySpeedKn: 2, stillSpeedKn: 1 });
+        for (const successThresholdKn of [2, 6.5, 8, 12, 6.5]) {
+          const options: WindEstimationOptions = { minSpeedKn, successThresholdKn, minEntrySpeedKn: 2, flightThresholdKn: successThresholdKn, stillSpeedKn: 1 };
+          const fresh = estimateWind(points, options);
+          const staged = estimateWind(points, { ...options, detection, polarStage });
+          expect(staged, `${name} ${minSpeedKn} ${successThresholdKn}`).toEqual(fresh);
+          expect(JSON.stringify(staged)).toBe(JSON.stringify(fresh));
+        }
+      }
+      expect(estimateWind(points, { polarStage: prepareWindPolar(points) }), name).toEqual(estimateWind(points));
+    }
+  });
+
+  it('refuse un étage polaire préparé sur une autre trace ou à une autre vitesse plancher', () => {
+    const points = buildLegSession(upwindDownwindLegs(6), () => 0);
+    const other = buildLegSession(upwindDownwindLegs(6), () => 0);
+    expect(() => estimateWind(points, { polarStage: prepareWindPolar(other) })).toThrow();
+    expect(() => estimateWind(points, { minSpeedKn: 2, polarStage: prepareWindPolar(points, 5) })).toThrow();
+    expect(() => estimateWind(points, { minSpeedKn: 2, polarStage: prepareWindPolar(points, 2) })).not.toThrow();
   });
 });

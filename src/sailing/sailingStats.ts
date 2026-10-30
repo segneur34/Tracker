@@ -1,3 +1,4 @@
+import { EMPTY_ELEVATION } from '../core/elevation';
 import { flightSpans, type FlightSpan } from '../core/pumping';
 import { activeRuns, buildCumulativeTrack, buildBaseSessionStats, thresholdActivityMask } from '../core/sessionStats';
 import { getActiveThresholds, getSportProfile, hasActiveThreshold } from '../core/sportProfiles';
@@ -23,7 +24,29 @@ export interface SailingStatsOptions {
    * que de la trace, pas du seuil, et ne sont pas refaits à chaque réglage.
    */
   tops?: SessionStats['tops'];
+  /** Masque d'activité au seuil déjà calculé (`sailingActivityMask`), partagé avec les vols. */
+  activityMask?: boolean[];
+  /**
+   * Masque du ratio déjà calculé (`sailingRatioMask`) : il ne dépend pas du
+   * seuil et n'est pas refait à chaque réglage. Ignoré en bateau, sans ratio.
+   */
+  ratioMask?: boolean[];
 }
+
+/** Masque d'activité d'une session à voile au seuil `activeThresholdKn` (tout en navigation en bateau, sans seuil). */
+export const sailingActivityMask = (track: TrackPoint[], sport: SportType, activeThresholdKn: number): boolean[] =>
+  thresholdActivityMask(track, getSportProfile(sport), activeThresholdKn);
+
+/**
+ * Masque du dénominateur du ratio de vol (ou de navigation, de planing) : le
+ * temps en mouvement, arrêts complets ôtés au plancher d'arrêt (décision du
+ * 28/10) ; sur toute la session, une demi-heure passée à l'arrêt le divisait
+ * par deux. Le bateau, sans seuil, n'a pas de ratio.
+ */
+export const sailingRatioMask = (track: TrackPoint[], sport: SportType): boolean[] | undefined => {
+  const profile = getSportProfile(sport);
+  return hasActiveThreshold(profile) ? thresholdActivityMask(track, profile, 0) : undefined;
+};
 
 /** Tops de vitesse de la voile, en nœuds, sur les sept cibles du calcul. */
 export const computeSailingTops = (track: TrackPoint[], cumulative: CumulativeTrack): SessionStats['tops'] => {
@@ -48,12 +71,9 @@ export const buildSailingSessionStats = (
 
   const cumulative = options.cumulative ?? buildCumulativeTrack(track);
   // Sans seuil (bateau) : toute la session en navigation, pauses de l'enregistrement et trous immobiles ôtés.
-  const activityMask = thresholdActivityMask(track, profile, activeThresholdKn);
-  // Ratio de vol (ou de navigation, de planing) sur le temps en mouvement,
-  // arrêts complets ôtés au plancher d'arrêt (décision du 28/10) : sur toute
-  // la session, une demi-heure passée à l'arrêt le divisait par deux. Le
-  // bateau, sans seuil, n'a pas de ratio.
-  const ratioMask = hasActiveThreshold(profile) ? thresholdActivityMask(track, profile, 0) : undefined;
+  const activityMask = options.activityMask ?? sailingActivityMask(track, sport, activeThresholdKn);
+  // Ratio sur le temps en mouvement (`sailingRatioMask`) ; aucun en bateau.
+  const ratioMask = hasActiveThreshold(profile) ? options.ratioMask ?? sailingRatioMask(track, sport) : undefined;
 
   const base = buildBaseSessionStats(track, {
     enterThresholdMs: knotsToMs(thresholds.enter),
@@ -62,6 +82,8 @@ export const buildSailingSessionStats = (
     cumulative,
     activityMask,
     ratioMask,
+    // La voile n'affiche pas l'altitude (DECISIONS §2, « Rien en voile ») : pas de dénivelé à calculer.
+    elevationStats: EMPTY_ELEVATION,
   });
 
   return { ...base, tops: options.tops ?? computeSailingTops(track, cumulative) };
@@ -73,12 +95,15 @@ export const buildSailingSessionStats = (
  * ratio de vol), coupées aux trous de la trace (`maxGapS`) ; celles de moins de
  * `minFlightS` secondes ne sont pas listées. La détection n'est pas retouchée :
  * c'est celle des chiffres « en vol ». Rien en bateau, sans seuil.
+ *
+ * `threshold` : le seuil d'activité en nœuds, ou le masque d'activité déjà
+ * calculé à ce seuil (`sailingActivityMask`), celui des statistiques.
  */
 export const sailingFlights = (
-  track: TrackPoint[], cumulative: CumulativeTrack, sport: SportType, activeThresholdKn: number, minFlightS: number
+  track: TrackPoint[], cumulative: CumulativeTrack, sport: SportType, threshold: number | boolean[], minFlightS: number
 ): FlightSpan[] => {
   const profile = getSportProfile(sport);
   if (track.length < 2 || !hasActiveThreshold(profile)) return [];
-  const mask = thresholdActivityMask(track, profile, activeThresholdKn);
+  const mask = typeof threshold === 'number' ? sailingActivityMask(track, sport, threshold) : threshold;
   return flightSpans(track, cumulative, activeRuns(track, mask, profile.maxGapS), minFlightS);
 };

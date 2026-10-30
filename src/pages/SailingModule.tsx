@@ -31,7 +31,7 @@ import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
 import type { TopSegment } from '../core/types';
 import {
   SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
-  knotsToMs, toDisplaySpeed,
+  knotsToChartValue, knotsToMs, toDisplaySpeed,
 } from '../core/units';
 import { speedPolar, type PolarBin } from '../sailing/wind';
 import { MANEUVER_METRICS, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
@@ -141,15 +141,23 @@ const WIND_SERIES: TrackSeries<WindGraphPoint>[] = [
   { kind: 'line', key: 'angle', name: 'angle', color: WIND_COLOR, width: 2, activeDotR: 6, dot: maneuverDot },
 ];
 
+/** Icônes de flèche de cap, une par degré, faites une fois pour toutes les traces. */
+const arrowIcons = new Map<number, L.DivIcon>();
 const createArrowIcon = (bearing: number) => {
-  return L.divIcon({
-    className: 'custom-arrow',
-    html: `<svg width="12" height="12" viewBox="0 0 24 24" style="transform: rotate(${bearing}deg); display: block;">
-             <path d="M12 0L24 24L12 18L0 24Z" fill="#222" stroke="#fff" stroke-width="2"/>
-           </svg>`,
-    iconSize: [12, 12],
-    iconAnchor: [6, 6]
-  });
+  const deg = Math.round(bearing) % 360;
+  let icon = arrowIcons.get(deg);
+  if (!icon) {
+    icon = L.divIcon({
+      className: 'custom-arrow',
+      html: `<svg width="12" height="12" viewBox="0 0 24 24" style="transform: rotate(${deg}deg); display: block;">
+               <path d="M12 0L24 24L12 18L0 24Z" fill="#222" stroke="#fff" stroke-width="2"/>
+             </svg>`,
+      iconSize: [12, 12],
+      iconAnchor: [6, 6]
+    });
+    arrowIcons.set(deg, icon);
+  }
+  return icon;
 };
 
 function SailingModule() {
@@ -208,6 +216,7 @@ function SailingModule() {
     speedUnit,
     distanceUnit,
     activeThresholdKn,
+    thresholdPending,
     hasActiveThreshold,
     defaultActiveThresholdKn,
     speedRange,
@@ -231,7 +240,7 @@ function SailingModule() {
   const showThreshold = (kn: number) => (speedUnit === 'kn' ? String(roundTo(kn, 1)) : showKn(kn));
   // Polaire dans l'unité ; en nœuds, celle du hook telle quelle.
   const polarGraphShown = useMemo(
-    () => (speedUnit === 'kn' ? polarGraphData : polarGraphData.map((p) => ({ ...p, vitesse: parseFloat(formatKnots(p.vitesse, speedUnit)) }))),
+    () => (speedUnit === 'kn' ? polarGraphData : polarGraphData.map((p) => ({ ...p, vitesse: knotsToChartValue(p.vitesse, speedUnit) }))),
     [polarGraphData, speedUnit]
   );
 
@@ -246,17 +255,18 @@ function SailingModule() {
   const tackFail = maneuverStats?.tackFail ?? null;
   const jibeSuccess = maneuverStats?.jibeSuccess ?? null;
   const jibeFail = maneuverStats?.jibeFail ?? null;
-  // Pas pendant un brouillon : la liste doit refléter l'état enregistré.
+  // Pas pendant un brouillon : la liste doit refléter l'état enregistré ; ni avant que les
+  // manœuvres n'aient rejoint le seuil (Q40), qui les classe.
   const loadedFromMemory = sessionFile !== null && fileName === sessionFile && trackData.length > 0;
   const { dirty } = draft;
   useEffect(() => {
-    if (!loadedFromMemory || !sessionFile || dirty || currentWindValue === null) return;
+    if (!loadedFromMemory || !sessionFile || dirty || thresholdPending || currentWindValue === null) return;
     if (tackSuccess === null || tackFail === null || jibeSuccess === null || jibeFail === null) return;
     updateSessionRecord(sessionFile, {
       maneuverCount: tackSuccess + tackFail + jibeSuccess + jibeFail,
       maneuverResults: { tackSuccess, tackFail, jibeSuccess, jibeFail },
     });
-  }, [loadedFromMemory, sessionFile, dirty, currentWindValue, tackSuccess, tackFail, jibeSuccess, jibeFail]);
+  }, [loadedFromMemory, sessionFile, dirty, thresholdPending, currentWindValue, tackSuccess, tackFail, jibeSuccess, jibeFail]);
 
   /** Support sur foil de la session : le sien s'il est réglé, sinon celui de l'activité. */
   const foil = edits.foil ?? activityFoil;
@@ -484,7 +494,7 @@ function SailingModule() {
     [visibleRange, speedSeries]
   );
   const speedRows = useMemo(
-    () => chartIndices.map((i) => ({ index: i, minutes: trackMinutes[i], vitesse: parseFloat(formatKnots(trackData[i].smoothedSpeed, speedUnit)) })),
+    () => chartIndices.map((i) => ({ index: i, minutes: trackMinutes[i], vitesse: knotsToChartValue(trackData[i].smoothedSpeed, speedUnit) })),
     [chartIndices, trackMinutes, trackData, speedUnit]
   );
   const heartRows = useMemo(
@@ -616,7 +626,7 @@ function SailingModule() {
   const polarMinSpeedKn = maneuverThresholds.polarMinSpeedKn;
   const polarAt = useCallback((deg: number): PolarBin[] => {
     const bins = speedPolar(trackData, deg, polarMinSpeedKn);
-    return speedUnit === 'kn' ? bins : bins.map((p) => ({ ...p, vitesse: parseFloat(formatKnots(p.vitesse, speedUnit)) }));
+    return speedUnit === 'kn' ? bins : bins.map((p) => ({ ...p, vitesse: knotsToChartValue(p.vitesse, speedUnit) }));
   }, [trackData, polarMinSpeedKn, speedUnit]);
 
   /**

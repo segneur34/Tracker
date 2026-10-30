@@ -1,6 +1,7 @@
 /**
  * Conversions d'unités. Le noyau travaille en m/s, l'affichage se fait ici.
  */
+import { toFixedNumber } from './basics';
 
 export const MS_TO_KNOTS = 1.94384;
 export const MS_TO_KMH = 3.6;
@@ -170,6 +171,19 @@ export const formatKnots = (kn: number | string, unit: SpeedUnit): string => {
   if (!isFinite(value)) return String(kn);
   if (unit === 'kn') return typeof kn === 'string' ? kn : value.toFixed(1);
   return formatSpeedValue(knotsToDisplay(value, unit), unit);
+};
+
+/**
+ * Vitesse en nœuds pour un graphe, dans l'unité : le nombre que rend la
+ * lecture de `formatKnots`, au même arrondi que l'affichage, sans passer par
+ * le texte. L'allure garde la lecture du texte « m:ss », telle quelle.
+ */
+export const knotsToChartValue = (kn: number, unit: SpeedUnit): number => {
+  if (!isFinite(kn)) return kn;
+  if (unit === 'kn') return toFixedNumber(kn, 1);
+  const value = knotsToDisplay(kn, unit);
+  if (unit === 'minkm' || !isFinite(value)) return parseFloat(formatSpeedValue(value, unit));
+  return toFixedNumber(value, unit === 'ms' ? 2 : 1);
 };
 
 /** Unité dans laquelle une distance est présentée : kilomètres ou milles nautiques. */
