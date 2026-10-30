@@ -1,9 +1,9 @@
 import { partitionPoint } from '../core/search';
-import { segmentDistanceM } from '../core/sessionStats';
+import { integrateEnergy, type EnergyStepCost } from '../core/energy';
 import { J_PER_KCAL } from '../core/units';
 import type { TrackPoint } from '../core/types';
 import { GRADE_ANALYSIS, type GradeProfile } from '../core/sportProfiles';
-import { classifyGrade, gradeZones, type GradeZone, type GradeZoneKey } from './runningAnalytics';
+import { gradeZones, type GradeZone } from '../core/grade';
 
 /**
  * Dépense d'énergie de la course à pied, tout en unités SI et par kilo de
@@ -247,64 +247,39 @@ export const computeEnergy = (
   loadRatio = 0
 ): EnergyResult => {
   const massRatio = 1 + Math.max(0, loadRatio);
-  const n = track.length;
-  const mechanicalPowerWkg = new Array<number>(n).fill(NaN);
-  const cumulativeTotalJkg = new Array<number>(n).fill(0);
-  const byZone: Record<GradeZoneKey, { netJkg: number; distanceM: number; timeS: number }> = {
-    steepDown: { netJkg: 0, distanceM: 0, timeS: 0 },
-    down: { netJkg: 0, distanceM: 0, timeS: 0 },
-    flat: { netJkg: 0, distanceM: 0, timeS: 0 },
-    up: { netJkg: 0, distanceM: 0, timeS: 0 },
-    steepUp: { netJkg: 0, distanceM: 0, timeS: 0 },
+  const efficiency = params.mechanicalEfficiency;
+  const stepCost: EnergyStepCost = (i, d, grade) => {
+    const v = track[i].speedMs;
+    const net = params.model === 'marche'
+      ? (walkingCostJkgM(v, grade, loadRatio, params.bodyKg, params.walking) + params.airDragJs2M3Kg * v * v * massRatio) * d
+      : (runningCostJkgM(grade, params) + params.airDragJs2M3Kg * v * v) * d * massRatio;
+    return { net, mechanical: net * efficiency };
   };
-  let netJkg = 0;
-  let restJkg = 0;
-  let movingTimeS = 0;
-  let movingDistanceM = 0;
+  const sums = integrateEnergy(track, grades, activityMask, restWkg, stepCost, params.gradeZones);
+  const netJkg = sums.net;
 
-  for (let i = 1; i < n; i++) {
-    const dt = (track[i].timeMs - track[i - 1].timeMs) / 1000;
-    if (dt <= 0) {
-      cumulativeTotalJkg[i] = cumulativeTotalJkg[i - 1];
-      continue;
-    }
-    const rest = restWkg * dt;
-    restJkg += rest;
-    let net = 0;
-    if (activityMask[i]) {
-      const d = segmentDistanceM(track, i);
-      const v = track[i].speedMs;
-      const grade = grades[i] ?? NaN;
-      net = params.model === 'marche'
-        ? (walkingCostJkgM(v, grade, loadRatio, params.bodyKg, params.walking) + params.airDragJs2M3Kg * v * v * massRatio) * d
-        : (runningCostJkgM(grade, params) + params.airDragJs2M3Kg * v * v) * d * massRatio;
-      mechanicalPowerWkg[i] = (net * params.mechanicalEfficiency) / dt;
-      netJkg += net;
-      movingTimeS += dt;
-      movingDistanceM += d;
-      const zone = byZone[classifyGrade(grade, params.gradeZones) ?? 'flat'];
-      zone.netJkg += net;
-      zone.distanceM += d;
-      zone.timeS += dt;
-    }
-    cumulativeTotalJkg[i] = cumulativeTotalJkg[i - 1] + rest + net;
-  }
-
+  // Le travail mécanique est la dépense nette fois le rendement, appliqué aux
+  // totaux (et non sommé pas à pas) : mêmes chiffres qu'avant la mise en commun.
   return {
-    mechanicalPowerWkg,
-    cumulativeTotalJkg,
-    mechanicalJkg: netJkg * params.mechanicalEfficiency,
+    mechanicalPowerWkg: sums.mechanicalPower,
+    cumulativeTotalJkg: sums.cumulativeTotal,
+    mechanicalJkg: netJkg * efficiency,
     netJkg,
-    restJkg,
-    totalJkg: netJkg + restJkg,
-    movingTimeS,
-    movingDistanceM,
-    zones: gradeZones(params.gradeZones).map((zone) => ({
-      zone,
-      ...byZone[zone.key],
-      mechanicalJkg: byZone[zone.key].netJkg * params.mechanicalEfficiency,
-      share: netJkg > 0 ? byZone[zone.key].netJkg / netJkg : 0,
-    })),
+    restJkg: sums.rest,
+    totalJkg: netJkg + sums.rest,
+    movingTimeS: sums.movingTimeS,
+    movingDistanceM: sums.movingDistanceM,
+    zones: gradeZones(params.gradeZones).map((zone) => {
+      const z = sums.byZone[zone.key];
+      return {
+        zone,
+        netJkg: z.net,
+        distanceM: z.distanceM,
+        timeS: z.timeS,
+        mechanicalJkg: z.net * efficiency,
+        share: netJkg > 0 ? z.net / netJkg : 0,
+      };
+    }),
   };
 };
 

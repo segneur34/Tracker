@@ -2,9 +2,10 @@ import { bandIndex, upperMedianOfSorted } from '../core/basics';
 import type { ImuRecording } from '../core/imuFile';
 import { kmhToMs } from '../core/units';
 import { segmentDistanceM } from '../core/sessionStats';
+import { pathsWhere } from '../core/trackPaths';
 import type { TrackPoint } from '../core/types';
 import type { GradeProfile } from '../core/sportProfiles';
-import { classifyGrade, gradeZones, type GradeZone } from './runningAnalytics';
+import { classifyGrade, gradeZones, type GradeZone } from '../core/grade';
 
 /**
  * Cadence à pied : pas par minute, mesurés par l'accéléromètre du téléphone
@@ -627,18 +628,9 @@ export const cadenceBandPaths = (
   bounds: readonly number[],
   zone: number,
   gapS: number
-): [number, number][][] => {
-  const paths: [number, number][][] = [];
-  let current: [number, number][] | null = null;
-  let last = -1;
-  for (const s of measuredSegments(track, spm, gapS)) {
-    if (!active[s.i] || bandIndex(s.spm, bounds) !== zone) continue;
-    if (current === null || last !== s.i - 1) {
-      current = [[track[s.i - 1].lat, track[s.i - 1].lon]];
-      paths.push(current);
-    }
-    current.push([track[s.i].lat, track[s.i].lon]);
-    last = s.i;
-  }
-  return paths;
-};
+): [number, number][][] =>
+  pathsWhere(
+    track,
+    measuredSegments(track, spm, gapS).map((s) => ({ from: s.i - 1, to: s.i, spm: s.spm })),
+    (s) => active[s.to] && bandIndex(s.spm, bounds) === zone
+  );

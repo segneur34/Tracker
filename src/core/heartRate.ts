@@ -1,6 +1,7 @@
 import { bandIndex } from './basics';
 import { firstIndexAtOrAfterTime, lastIndexAtOrBeforeTime } from './search';
 import { meanFilterByTime } from './speedFilter';
+import { pathsWhere, type TrackStep } from './trackPaths';
 
 /**
  * Fréquence cardiaque d'une session : série lissée, zones d'effort, temps
@@ -402,19 +403,9 @@ export const heartRateZonePaths = (
   zone: number,
   gapS: number
 ): [number, number][][] => {
-  const paths: [number, number][][] = [];
-  let current: [number, number][] | null = null;
-  let last = -1;
-  forEachCounted(points, smoothed, gapS, (i, bpm, _, from) => {
-    if (bandIndex(bpm, bounds) !== zone) return;
-    if (current === null || last !== from) {
-      current = [[points[from].lat, points[from].lon]];
-      paths.push(current);
-    }
-    for (let k = from + 1; k <= i; k++) current.push([points[k].lat, points[k].lon]);
-    last = i;
-  });
-  return paths;
+  const steps: (TrackStep & { bpm: number })[] = [];
+  forEachCounted(points, smoothed, gapS, (i, bpm, _, from) => steps.push({ from, to: i, bpm }));
+  return pathsWhere(points, steps, (s) => bandIndex(s.bpm, bounds) === zone);
 };
 
 /** FC d'une plage de temps (une répétition du fractionné), de `startMs` à `endMs` ; `null` sans FC. */

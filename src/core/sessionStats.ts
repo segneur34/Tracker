@@ -163,6 +163,25 @@ export interface ActiveRun {
   end: number;
 }
 
+/** Un tronçon de la trace, entre les points `start` et `end`, mesuré comme les cumuls. */
+export interface TrackSpan extends ActiveRun {
+  startMs: number;
+  endMs: number;
+  durationS: number;
+  /** Intégrale de la vitesse (règle 6), `cumDist[end] − cumDist[start]`. */
+  distanceM: number;
+}
+
+/** Mesure d'un tronçon `run` : heures, durée et distance. */
+export const spanOfRun = (track: readonly TrackPoint[], cum: Pick<CumulativeTrack, 'cumDist'>, run: ActiveRun): TrackSpan => ({
+  start: run.start,
+  end: run.end,
+  startMs: track[run.start].timeMs,
+  endMs: track[run.end].timeMs,
+  durationS: (track[run.end].timeMs - track[run.start].timeMs) / 1000,
+  distanceM: cum.cumDist[run.end] - cum.cumDist[run.start],
+});
+
 /**
  * Suites du masque d'activité. Un pas plus long que `maxGapS` (un trou de la
  * trace) n'est jamais en action : il coupe la suite en cours. Avec `from` et

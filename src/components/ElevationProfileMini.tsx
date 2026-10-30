@@ -1,5 +1,5 @@
 import type { ChartZoom } from '../hooks/useChartZoom';
-import type { GradientStop } from '../running/runningAnalytics';
+import type { GradientStop } from '../core/grade';
 import { HoverReadout, type Readout } from './ChartReadout';
 import { distanceX } from './chartAxes';
 import { ALTITUDE_COLOR } from './chartStyle';

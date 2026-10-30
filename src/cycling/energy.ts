@@ -1,9 +1,9 @@
-import { segmentDistanceM } from '../core/sessionStats';
+import { integrateEnergy, type EnergyStepCost } from '../core/energy';
 import { kmhToMs } from '../core/units';
 import type { TrackPoint } from '../core/types';
 import type { SurfaceCategory } from '../planning/surface';
 import { GRADE_ANALYSIS, type GradeProfile } from '../core/sportProfiles';
-import { classifyGrade, gradeZones, type GradeZone, type GradeZoneKey } from '../running/runningAnalytics';
+import { gradeZones, type GradeZone } from '../core/grade';
 
 /**
  * Dépense d'énergie à vélo, tout en unités SI. Contrairement à la course, la
@@ -209,68 +209,36 @@ export const computeCyclingEnergy = (
   restW: number,
   surfaces?: ReadonlyArray<SurfaceCategory>
 ): CyclingEnergyResult => {
-  const n = track.length;
-  const mechanicalPowerW = new Array<number>(n).fill(NaN);
-  const cumulativeTotalJ = new Array<number>(n).fill(0);
-  const byZone: Record<GradeZoneKey, { mechanicalJ: number; netJ: number; distanceM: number; timeS: number }> = {
-    steepDown: { mechanicalJ: 0, netJ: 0, distanceM: 0, timeS: 0 },
-    down: { mechanicalJ: 0, netJ: 0, distanceM: 0, timeS: 0 },
-    flat: { mechanicalJ: 0, netJ: 0, distanceM: 0, timeS: 0 },
-    up: { mechanicalJ: 0, netJ: 0, distanceM: 0, timeS: 0 },
-    steepUp: { mechanicalJ: 0, netJ: 0, distanceM: 0, timeS: 0 },
-  };
-  let mechanicalJ = 0;
-  let netJ = 0;
-  let restJ = 0;
-  let movingTimeS = 0;
-  let movingDistanceM = 0;
   const surfaceDistanceM: Partial<Record<SurfaceCategory, number>> = {};
-
-  for (let i = 1; i < n; i++) {
-    const dt = (track[i].timeMs - track[i - 1].timeMs) / 1000;
-    if (dt <= 0) {
-      cumulativeTotalJ[i] = cumulativeTotalJ[i - 1];
-      continue;
-    }
-    const rest = restW * dt;
-    restJ += rest;
-    let net = 0;
-    if (activityMask[i]) {
-      const d = segmentDistanceM(track, i);
-      const grade = grades[i] ?? NaN;
-      const surface = surfaces?.[i - 1];
-      const crr = rollingCoefficient(params, surface);
-      const work = Math.max(0, resistiveForceN(track[i].speedMs, grade, params, crr) * d) / params.drivetrainEfficiency;
-      if (surface) surfaceDistanceM[surface] = (surfaceDistanceM[surface] ?? 0) + d;
-      net = work / params.muscleEfficiency;
-      mechanicalPowerW[i] = work / dt;
-      mechanicalJ += work;
-      netJ += net;
-      movingTimeS += dt;
-      movingDistanceM += d;
-      const zone = byZone[classifyGrade(grade, params.gradeZones) ?? 'flat'];
-      zone.mechanicalJ += work;
-      zone.netJ += net;
-      zone.distanceM += d;
-      zone.timeS += dt;
-    }
-    cumulativeTotalJ[i] = cumulativeTotalJ[i - 1] + rest + net;
-  }
+  const stepCost: EnergyStepCost = (i, d, grade) => {
+    const surface = surfaces?.[i - 1];
+    const crr = rollingCoefficient(params, surface);
+    const work = Math.max(0, resistiveForceN(track[i].speedMs, grade, params, crr) * d) / params.drivetrainEfficiency;
+    if (surface) surfaceDistanceM[surface] = (surfaceDistanceM[surface] ?? 0) + d;
+    return { net: work / params.muscleEfficiency, mechanical: work };
+  };
+  const sums = integrateEnergy(track, grades, activityMask, restW, stepCost, params.gradeZones);
 
   return {
-    mechanicalPowerW,
-    cumulativeTotalJ,
-    mechanicalJ,
-    netJ,
-    restJ,
-    totalJ: netJ + restJ,
-    movingTimeS,
-    movingDistanceM,
+    mechanicalPowerW: sums.mechanicalPower,
+    cumulativeTotalJ: sums.cumulativeTotal,
+    mechanicalJ: sums.mechanical,
+    netJ: sums.net,
+    restJ: sums.rest,
+    totalJ: sums.net + sums.rest,
+    movingTimeS: sums.movingTimeS,
+    movingDistanceM: sums.movingDistanceM,
     surfaceDistanceM,
-    zones: gradeZones(params.gradeZones).map((zone) => ({
-      zone,
-      ...byZone[zone.key],
-      share: netJ > 0 ? byZone[zone.key].netJ / netJ : 0,
-    })),
+    zones: gradeZones(params.gradeZones).map((zone) => {
+      const z = sums.byZone[zone.key];
+      return {
+        zone,
+        mechanicalJ: z.mechanical,
+        netJ: z.net,
+        distanceM: z.distanceM,
+        timeS: z.timeS,
+        share: sums.net > 0 ? z.net / sums.net : 0,
+      };
+    }),
   };
 };

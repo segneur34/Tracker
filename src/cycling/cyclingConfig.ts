@@ -1,6 +1,6 @@
 import { kmhToMs } from '../core/units';
 import type { SpeedRangeMs } from '../core/speedGradient';
-import type { GradeRange } from '../running/runningAnalytics';
+import type { GradeRange } from '../core/grade';
 
 /**
  * Valeurs d'affichage propres au vélo, surchargeables par activité dans

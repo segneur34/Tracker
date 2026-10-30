@@ -10,7 +10,7 @@ import type { JumpSettings } from '../recording/jumpSettings';
 import type { LiveFieldKey } from '../recording/liveFields';
 import type { MarkGuideSettings } from '../recording/markGuide';
 import type { EnergyModel } from '../running/energy';
-import type { GradeRange } from '../running/runningAnalytics';
+import type { GradeRange } from './grade';
 
 /**
  * Pré-réglages des activités (21/10) : ce que Réglages montre comme « défaut »

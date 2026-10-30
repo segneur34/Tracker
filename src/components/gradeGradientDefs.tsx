@@ -1,4 +1,4 @@
-import type { GradientStop } from '../running/runningAnalytics';
+import type { GradientStop } from '../core/grade';
 
 /**
  * Dégradé horizontal d'une courbe d'altitude, selon la pente

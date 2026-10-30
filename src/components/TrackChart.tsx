@@ -1,7 +1,7 @@
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, YAxis, type AxisDomainItem, type DotItemDotProps, type Margin } from 'recharts';
 import type { ChartZoom } from '../hooks/useChartZoom';
-import type { GradientStop } from '../running/runningAnalytics';
+import type { GradientStop } from '../core/grade';
 import { chartXAxis, type ChartXSpec } from './chartAxes';
 import { NO_TOOLTIP_CONTENT, clearTrackHover, trackHover, type ChartHoverEvent } from './chartHover';
 import { CHART_GRID_PROPS, chartTick, yAxisLabel } from './chartStyle';

@@ -3,7 +3,7 @@ import { projectOnSegment } from '../core/geoPlane';
 import { cumulativeDistancesM, haversineDistance, initialBearing } from '../core/geo';
 import { GRADE_ANALYSIS, type Treatment } from '../core/sportProfiles';
 import type { BikeType } from '../cycling/energy';
-import { computeGrades } from '../running/runningAnalytics';
+import { computeGrades } from '../core/grade';
 import { WAY_TYPES, type WayType } from './brouterProfile';
 import { LOOP_RETURN_VARIANTS } from './loopReturn';
 import { shiftSurfaceRuns, type SurfaceRuns } from './surface';

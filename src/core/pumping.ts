@@ -4,7 +4,7 @@ import {
   captureBounds, centredMean, fileUsOf, verticalAcceleration, wallMsOf,
   type AttitudeParams, type ImuVertical, type ImuWindow,
 } from './imuVertical';
-import type { ActiveRun } from './sessionStats';
+import { spanOfRun, type ActiveRun, type TrackSpan } from './sessionStats';
 import type { CumulativeTrack, TrackPoint } from './types';
 
 /**
@@ -13,7 +13,7 @@ import type { CumulativeTrack, TrackPoint } from './types';
  * poitrine, depuis le `.imu` de la session, vol par vol : les vols viennent
  * du module (`SurfFlight` en surf, `sailingFlights` en voile). Tout est en
  * SI : instants du fichier en µs, heures en ms, accélérations en m/s²,
- * distances en mètres. L'élagage propre au surf reste dans `surfing/pumping.ts`.
+ * distances en mètres. L'élagage propre au surf reste dans `surfing/imuPrune.ts`.
  *
  * - Verticale du monde (`core/imuVertical.ts`), quelle que soit l'orientation
  *   du téléphone, comme pour les sauts.
@@ -75,15 +75,9 @@ export interface PumpDetection extends AttitudeParams {
 }
 
 /** Un vol, en index de points de la trace et en heures (ms) : ceux du surf (`SurfFlight`) comme ceux de la voile. */
-export interface FlightSpan {
+export interface FlightSpan extends TrackSpan {
   /** Numéro du vol, à partir de 1. */
   n: number;
-  start: number;
-  end: number;
-  startMs: number;
-  endMs: number;
-  durationS: number;
-  distanceM: number;
 }
 
 /**
@@ -94,12 +88,9 @@ export interface FlightSpan {
 export const flightSpans = (track: TrackPoint[], cum: CumulativeTrack, runs: ActiveRun[], minS: number): FlightSpan[] => {
   const spans: FlightSpan[] = [];
   for (const r of runs) {
-    const durationS = (track[r.end].timeMs - track[r.start].timeMs) / 1000;
-    if (durationS < minS) continue;
-    spans.push({
-      n: spans.length + 1, start: r.start, end: r.end, startMs: track[r.start].timeMs, endMs: track[r.end].timeMs,
-      durationS, distanceM: cum.cumDist[r.end] - cum.cumDist[r.start],
-    });
+    const span = spanOfRun(track, cum, r);
+    if (span.durationS < minS) continue;
+    spans.push({ n: spans.length + 1, ...span });
   }
   return spans;
 };

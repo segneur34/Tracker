@@ -1,6 +1,7 @@
 import { meanOf } from '../core/basics';
 import { haversineDistance } from '../core/geo';
-import { activeRuns, type ActiveRun } from '../core/sessionStats';
+import type { FlightSpan } from '../core/pumping';
+import { activeRuns, spanOfRun, type ActiveRun } from '../core/sessionStats';
 import type { SportProfile, SurfProfile } from '../core/sportProfiles';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { countDirectionChanges } from './gpsTurns';
@@ -39,17 +40,7 @@ export type SurfParams = Pick<
 export type SurfPhase = 'glisse' | 'rame' | 'attente' | 'trou';
 
 /** Un passage de la trace, entre deux points. */
-export interface SurfSpan {
-  /** Numéro, à partir de 1, dans l'ordre de la session. */
-  n: number;
-  /** Index des points de départ et d'arrivée. */
-  start: number;
-  end: number;
-  startMs: number;
-  endMs: number;
-  durationS: number;
-  /** Intégrale de la vitesse (règle 6). */
-  distanceM: number;
+export interface SurfSpan extends FlightSpan {
   /** Plus haute vitesse lissée. */
   maxSpeedMs: number;
   avgSpeedMs: number;
@@ -114,20 +105,17 @@ const stepS = (track: TrackPoint[], i: number): number => (track[i].timeMs - tra
 
 /** Mesure d'un passage entre les points `start` et `end`. */
 const spanOf = (track: TrackPoint[], cum: CumulativeTrack, n: number, run: ActiveRun): SurfSpan => {
-  const durationS = (track[run.end].timeMs - track[run.start].timeMs) / 1000;
-  const distanceM = cum.cumDist[run.end] - cum.cumDist[run.start];
+  const span = spanOfRun(track, cum, run);
   let maxSpeedMs = 0;
   for (let i = run.start + 1; i <= run.end; i++) maxSpeedMs = Math.max(maxSpeedMs, track[i].smoothedSpeedMs);
-  return {
-    n, start: run.start, end: run.end, startMs: track[run.start].timeMs, endMs: track[run.end].timeMs,
-    durationS, distanceM, maxSpeedMs, avgSpeedMs: durationS > 0 ? distanceM / durationS : 0,
-  };
+  return { n, ...span, maxSpeedMs, avgSpeedMs: span.durationS > 0 ? span.distanceM / span.durationS : 0 };
 };
 
 const keptRuns = (track: TrackPoint[], cum: CumulativeTrack, runs: ActiveRun[], p: SurfParams): ActiveRun[] =>
-  runs.filter((r) =>
-    (track[r.end].timeMs - track[r.start].timeMs) / 1000 >= p.minWaveS && cum.cumDist[r.end] - cum.cumDist[r.start] >= p.minWaveM
-  );
+  runs.filter((r) => {
+    const { durationS, distanceM } = spanOfRun(track, cum, r);
+    return durationS >= p.minWaveS && distanceM >= p.minWaveM;
+  });
 
 /** Phase de chaque pas, glisses données. */
 const stepPhases = (track: TrackPoint[], rides: ActiveRun[], p: SurfParams): SurfPhase[] => {

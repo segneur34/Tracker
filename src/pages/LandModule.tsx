@@ -81,9 +81,8 @@ import { useSessionMarks } from '../hooks/useSessionMarks';
 import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import { useTerrainElevation, type TerrainElevationStatus } from '../hooks/useTerrainElevation';
 import { useSportSettings } from '../hooks/useSportSettings';
-import {
-  computeGrades, computeZoneStats, gradeColorPaths, gradeGradientStops, gradeZonePaths, type GradeZoneKey,
-} from '../running/runningAnalytics';
+import { computeGrades, gradeColorPaths, gradeGradientStops, type GradeZoneKey } from '../core/grade';
+import { computeZoneStats, gradeZonePaths } from '../running/runningAnalytics';
 import { analyzeCadence, cadenceBandPaths, measuredCadenceSegments, sessionCadence, timeSpanCadence } from '../running/cadence';
 import { isValidCarriedLoad, smoothMovingPower } from '../running/energy';
 import { detectIntervals } from '../running/intervalDetection';
@@ -93,7 +92,7 @@ import { BIKE_TYPES, isValidBikeWeight } from '../cycling/energy';
 import { seriesBlocks, type IntervalSeries, type IntervalWorkout } from '../recording/intervalTimer';
 import type { SurfaceCategory } from '../planning/surface';
 import { WAY_MATCH_DEFAULTS } from '../planning/wayMatch';
-import { LAND_PAGES, LAND_TREATMENTS, TOTAL_ENERGY_LABEL, type LandFamily, type LandTreatment } from './landModules';
+import { LAND_PAGES, LAND_TREATMENTS, type LandFamily, type LandTreatment } from './landModules';
 import StatTile from '../components/ui/StatTile';
 import MapToggle from '../components/ui/MapToggle';
 import { ALTITUDE_COLOR, ENERGY_COLOR, SPEED_COLOR } from '../components/chartStyle';
@@ -653,7 +652,7 @@ function LandModule({ family }: { family: LandFamily }) {
    * Chiffres de l'onglet « général » (22/10) : l'essentiel, le détail restant dans « avancé ».
    * L'image de partage garde la liste entière (`generalStats`).
    */
-  const energyTotal = model.treatment === 'velo' ? energy?.stats.find((stat) => stat.label === TOTAL_ENERGY_LABEL && stat.value !== '—') ?? null : null;
+  const energyTotal = model.treatment === 'velo' ? energy?.stats.find((stat) => stat.key === 'total' && stat.value !== '—') ?? null : null;
   const overviewStats: ShareStat[] = stats ? [
     { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
     { key: 'totalTime', label: 'Temps de parcours', value: stats.totalTime },
