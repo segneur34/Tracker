@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { computeKinematics, detectTrackDeviceSpeedUnit } from '../core/kinematics';
 import { kinematicsOptionsOf, referenceSpeedMs, scalesFiltersToSession } from '../core/sessionSpeed';
-import { computeActiveDistanceM, computeActiveTimeMs, thresholdActivityMask } from '../core/sessionStats';
+import { buildCumulativeTrack, computeActiveDistanceM, computeActiveTimeMs, thresholdActivityMask } from '../core/sessionStats';
+import { bestWindowSpeedMs } from '../core/topSegments';
 import { FAMILY_BASE } from '../core/activities';
 import { getSportProfile } from '../core/sportProfiles';
 import type { RawTrackPoint } from '../core/types';
@@ -70,6 +71,11 @@ describe('summarizeSession', () => {
     expect(summary.maxSpeedMs).toBeCloseTo(3, 1);
   });
 
+  it('trace clairsemée (un point toutes les 15 s, chaque pas est un trou) : vitesse max lissée, pas 0 (lot 81)', () => {
+    const summary = summarizeSession(buildTrack([[1200, 4]], 1 / 15), 'running')!;
+    expect(summary.maxSpeedMs).toBeCloseTo(4, 1);
+  });
+
   it('part de la trace d\'analyse, celle que la vignette colore', () => {
     // Pic de 1 s à 60 m/s : au-delà de la vitesse plausible d'une course, il est écrêté.
     const raw = buildTrack([[300, 3], [1, 60], [300, 3]]);
@@ -77,7 +83,8 @@ describe('summarizeSession', () => {
       const track = analysisTrack(raw, sport);
       const summary = summarizeSession(raw, sport)!;
       expect(summary.pointCount).toBe(track.length);
-      expect(summary.maxSpeedMs).toBe(Math.max(...track.map((p) => p.smoothedSpeedMs)));
+      // Vitesse max : la meilleure moyenne sur 2 s de la trace d'analyse (Q34, lot 81).
+      expect(summary.maxSpeedMs).toBe(bestWindowSpeedMs(track, buildCumulativeTrack(track), 2));
     }
     expect(Math.max(...analysisTrack(raw, 'running').map((p) => p.smoothedSpeedMs))).toBeLessThan(20);
     // Sans support, aucun filtre : la trace brute enrichie.
@@ -129,7 +136,7 @@ describe('summarizeSession', () => {
         expect(summary.movingTimeS, name).toBe(computeActiveTimeMs(track, mask) / 1000);
         expect(summary.movingDistanceM, name).toBe(computeActiveDistanceM(track, mask));
         expect(summary.inMotionS, name).toBe(computeActiveTimeMs(track, thresholdActivityMask(track, profile, 0)) / 1000);
-        expect(summary.maxSpeedMs, name).toBe(Math.max(...track.map((p) => p.smoothedSpeedMs)));
+        expect(summary.maxSpeedMs, name).toBe(bestWindowSpeedMs(track, buildCumulativeTrack(track), 2));
         expect(summary.pointCount, name).toBe(track.length);
         expect(summary.movingTimeS!, name).toBeGreaterThan(590);
         expect(summary.movingTimeS!, name).toBeLessThan(610);
@@ -170,7 +177,7 @@ describe('summarizeSession', () => {
     // 5 min à l'arrêt, 10 min de vol à 20 nœuds, 5 min à 3 nœuds, 5 min à l'arrêt.
     for (const hz of [1, 5]) {
       const summary = summarizeSession(buildTrack([[300, 0], [600, 10.3], [300, 1.5], [300, 0]], hz), 'wingfoil', { activeThreshold: 7 })!;
-      expect(summary.calcVersion).toBe(12);
+      expect(summary.calcVersion).toBe(SUMMARY_CALC_VERSION);
       expect(summary.inMotionS!).toBeGreaterThan(890);
       expect(summary.inMotionS!).toBeLessThan(910);
       expect(summary.movingTimeS! / summary.inMotionS!).toBeCloseTo(2 / 3, 1);

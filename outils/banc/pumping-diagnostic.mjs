@@ -142,7 +142,7 @@ if (!flags.tous) console.log('(vols hors capture omis : --tous pour les lister)'
 // --- Coups autour des sauts : faux coups possibles ---
 const jumpDetection = profile.jumps?.detection;
 if (jumpDetection) {
-  const { jumps } = measureJumps(rec, jumpDetection, track);
+  const { jumps } = measureJumps(rec, jumpDetection, track, cum.cumDist);
   console.log(`\nSauts rangés : ${jumps.length} ; coups trouvés de 3 s avant le décollage à 3 s après l'arrivée`);
   for (const j of jumps) {
     const v = verticalAcceleration(rec, P, fileUsOf(rec, j.takeoffMs - 13_000), fileUsOf(rec, j.landingMs + 13_000));

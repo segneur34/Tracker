@@ -40,6 +40,7 @@ import { SURF_TABS, tabDefaults, type SurfTab } from '../core/analysisTabs';
 import { sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { defaultActiveThresholdOf, sportTreatment } from '../core/sportProfiles';
+import { nearestIndexAtTime } from '../core/search';
 import { computeAllTopSegments } from '../core/topSegments';
 import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
 import {
@@ -258,9 +259,7 @@ function SurfModule() {
   const returnEnd = useCallback(
     (r: SurfReturn): number => {
       const targetMs = r.returnS !== null ? r.startMs + r.returnS * 1000 : r.endMs;
-      let i = 0;
-      while (i < track.length - 1 && track[i].timeMs < targetMs) i++;
-      return i;
+      return nearestIndexAtTime(track, targetMs);
     },
     [track]
   );
@@ -286,8 +285,7 @@ function SurfModule() {
     if (returnShown !== null) {
       const r = returns.find((x) => String(x.after) === returnShown);
       if (!r) return [];
-      let start = 0;
-      while (start < track.length - 1 && track[start].timeMs < r.startMs) start++;
+      const start = nearestIndexAtTime(track, r.startMs);
       // Sur foil, les remontées suivent les vols, numérotés comme eux.
       const label = r.after === 0 ? 'Première sortie' : `Remontée après ${foil ? 'le vol' : 'la vague'} ${r.after}`;
       return [{ key: `remontee-${r.after}`, start, end: returnEnd(r), color: HIGHLIGHT_SHOWN_COLOR, label: `${label} · ${formatTimeOfDay(r.startMs)}` }];

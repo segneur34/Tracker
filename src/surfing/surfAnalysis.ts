@@ -2,6 +2,7 @@ import { meanOf } from '../core/basics';
 import { haversineDistance } from '../core/geo';
 import type { FlightSpan } from '../core/pumping';
 import { activeRuns, spanOfRun, type ActiveRun } from '../core/sessionStats';
+import { bestWindowSpeedMs } from '../core/topSegments';
 import type { SportProfile, SurfProfile } from '../core/sportProfiles';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { countDirectionChanges } from './gpsTurns';
@@ -13,11 +14,13 @@ import { countDirectionChanges } from './gpsTurns';
  * - **glisse** : dans une vague, ou dans un vol sur foil. C'est une suite du
  *   masque d'activité (le seuil de vague, ou le seuil de vol sur foil),
  *   gardée si elle dure `minWaveS` et couvre `minWaveM` ;
- * - **attente** : immobile (vitesse lissée sous `stillMs`) pendant au moins
- *   `minWaitS` d'affilée, au pic le plus souvent ;
+ * - **attente** : immobile (vitesse lissée sous `stillMs`, le plancher d'arrêt
+ *   du profil, `stillThreshold`) pendant au moins `minWaitS` d'affilée, au pic
+ *   le plus souvent ;
  * - **rame** : le reste, arrêts courts compris (canard, série qui passe) ;
- * - **sans signal** : un pas plus long que `maxGapS`, le téléphone sous l'eau.
- *   Il n'est jamais interpolé (règle 10) : il borne la phase en cours.
+ * - **sans signal** : un pas plus long que `maxGapS`, le téléphone sous l'eau,
+ *   ou le pas de reprise d'une pause manuelle (`segmentStart`). Il n'est jamais
+ *   interpolé (règle 10) : il borne la phase en cours.
  *
  * Entre deux glisses, une remontée. Le retour au pic va de la fin de la
  * glisse au début de la première attente ; une glisse prise sans attente est
@@ -31,17 +34,21 @@ import { countDirectionChanges } from './gpsTurns';
  * est pompé. Sans foil, les glisses sont les vagues.
  */
 
-/** Réglages de l'analyse : ceux du surf, et le trou de la trace du calcul (`SportProfile.maxGapS`). */
+/**
+ * Réglages de l'analyse : ceux du surf, le trou de la trace et la fenêtre de la
+ * vitesse max du calcul, et `stillMs`, le plancher d'arrêt du profil
+ * (`stillThreshold`) en m/s : un seul plancher pour le masque et l'attente (Q43).
+ */
 export type SurfParams = Pick<
-  SurfProfile, 'stillMs' | 'minWaitS' | 'minWaveS' | 'minWaveM' | 'takeoffSearchS' | 'turnMinDeg'
-> & Pick<SportProfile, 'maxGapS'>;
+  SurfProfile, 'minWaitS' | 'minWaveS' | 'minWaveM' | 'takeoffSearchS' | 'turnMinDeg'
+> & Pick<SportProfile, 'maxGapS' | 'maxSpeedWindowS'> & { stillMs: number };
 
 /** Ce que fait le pratiquant sur un pas. */
 export type SurfPhase = 'glisse' | 'rame' | 'attente' | 'trou';
 
 /** Un passage de la trace, entre deux points. */
 export interface SurfSpan extends FlightSpan {
-  /** Plus haute vitesse lissée. */
+  /** Vitesse max : la meilleure moyenne sur `maxSpeedWindowS` (Q34) ; la moyenne du passage s'il est plus court. */
   maxSpeedMs: number;
   avgSpeedMs: number;
 }
@@ -103,12 +110,16 @@ export interface SurfAnalysis {
 
 const stepS = (track: TrackPoint[], i: number): number => (track[i].timeMs - track[i - 1].timeMs) / 1000;
 
-/** Mesure d'un passage entre les points `start` et `end`. */
-const spanOf = (track: TrackPoint[], cum: CumulativeTrack, n: number, run: ActiveRun): SurfSpan => {
+/**
+ * Mesure d'un passage entre les points `start` et `end`. Vitesse max : la
+ * meilleure moyenne sur `maxSpeedWindowS` dans le passage, sinon (passage plus
+ * court, ou coupé de trous) sa moyenne.
+ */
+const spanOf = (track: TrackPoint[], cum: CumulativeTrack, n: number, run: ActiveRun, windowS: number): SurfSpan => {
   const span = spanOfRun(track, cum, run);
-  let maxSpeedMs = 0;
-  for (let i = run.start + 1; i <= run.end; i++) maxSpeedMs = Math.max(maxSpeedMs, track[i].smoothedSpeedMs);
-  return { n, ...span, maxSpeedMs, avgSpeedMs: span.durationS > 0 ? span.distanceM / span.durationS : 0 };
+  const avgSpeedMs = span.durationS > 0 ? span.distanceM / span.durationS : 0;
+  const maxSpeedMs = bestWindowSpeedMs(track, cum, windowS, run.start, run.end) ?? avgSpeedMs;
+  return { n, ...span, maxSpeedMs, avgSpeedMs };
 };
 
 const keptRuns = (track: TrackPoint[], cum: CumulativeTrack, runs: ActiveRun[], p: SurfParams): ActiveRun[] =>
@@ -130,7 +141,8 @@ const stepPhases = (track: TrackPoint[], rides: ActiveRun[], p: SurfParams): Sur
     from = -1;
   };
   for (let i = 1; i < track.length; i++) {
-    if (stepS(track, i) > p.maxGapS) {
+    // Trou de la trace, ou reprise après une pause manuelle : ni rame ni attente.
+    if (stepS(track, i) > p.maxGapS || track[i].segmentStart) {
       closeStop(i - 1);
       phases[i] = 'trou';
       continue;
@@ -212,7 +224,7 @@ export const analyzeSurf = (
   if (waveMask === null) {
     rides.forEach((r, k) => {
       waves.push({
-        ...spanOf(track, cum, k + 1, r), ...takeoffOf(track, cum, phases, r.start, p),
+        ...spanOf(track, cum, k + 1, r, p.maxSpeedWindowS), ...takeoffOf(track, cum, phases, r.start, p),
         turns: countDirectionChanges(track, r.start, r.end, p.turnMinDeg), flight: null,
       });
     });
@@ -223,7 +235,7 @@ export const analyzeSurf = (
       let waveS = 0;
       let waveDistanceM = 0;
       for (const w of flightWaves) {
-        const span = spanOf(track, cum, waves.length + 1, w);
+        const span = spanOf(track, cum, waves.length + 1, w, p.maxSpeedWindowS);
         waveS += span.durationS;
         waveDistanceM += span.distanceM;
         waves.push({
@@ -231,7 +243,7 @@ export const analyzeSurf = (
           turns: countDirectionChanges(track, w.start, w.end, p.turnMinDeg), flight: k + 1,
         });
       }
-      const span = spanOf(track, cum, k + 1, r);
+      const span = spanOf(track, cum, k + 1, r, p.maxSpeedWindowS);
       const pumpS = span.durationS - waveS;
       const pumpDistanceM = span.distanceM - waveDistanceM;
       flights.push({

@@ -36,7 +36,7 @@ import {
  */
 
 /** Version du calcul des sauts rangés dans la fiche : l'augmenter refait les sauts des sessions qui ont leur `.imu`. */
-export const JUMPS_CALC_VERSION = 1;
+export const JUMPS_CALC_VERSION = 2;
 
 /** Constantes de la détection et de la mesure (`SPORT_PROFILES[…].jumps.detection`). */
 export interface JumpDetection extends AttitudeParams {
@@ -159,10 +159,10 @@ export const toSessionJump = (j: MeasuredJump): SessionJump => ({
   curve: j.curve,
 });
 
-/** Point de la trace utile ici (`TrackPoint`). */
+/** Point de la trace utile ici (`TrackPoint`) : la vitesse lissée, celle du seuil d'activité et du pumping. */
 export interface JumpTrackPoint {
   timeMs: number;
-  speedMs: number;
+  smoothedSpeedMs: number;
 }
 
 /**
@@ -342,20 +342,21 @@ export const pruneWindows = (rec: ImuRecording, d: JumpDetection): ImuWindow[] =
   return mergeWindows(windows);
 };
 
-/** Vitesse de la trace à un instant, interpolée ; `null` hors de la trace. */
+/** Vitesse lissée de la trace à un instant, interpolée ; `null` hors de la trace. */
 const speedAt = (track: ReadonlyArray<JumpTrackPoint>, ms: number): number | null =>
-  valueAtTime(track, (i) => track[i].speedMs, ms, 'null');
+  valueAtTime(track, (i) => track[i].smoothedSpeedMs, ms, 'null');
 
-/** Intégrale de la vitesse de la trace entre deux instants (règle 6), par pas de `stepS` ; `null` hors de la trace. */
-const distanceBetween = (track: ReadonlyArray<JumpTrackPoint>, fromMs: number, toMs: number, stepS: number): number | null => {
-  if (speedAt(track, fromMs) === null || speedAt(track, toMs) === null) return null;
-  const stepMs = stepS * 1000;
-  let distance = 0;
-  for (let t = fromMs; t < toMs; t += stepMs) {
-    const next = Math.min(toMs, t + stepMs);
-    distance += (((speedAt(track, t) ?? 0) + (speedAt(track, next) ?? 0)) / 2) * ((next - t) / 1000);
-  }
-  return distance;
+/**
+ * Distance parcourue entre deux instants : la distance cumulée de la trace
+ * (`buildCumulativeTrack`, règle 6 : trous bornés, pauses à zéro) lue aux deux
+ * bouts, comme le pumping et les repères ; `null` hors de la trace, ou sans
+ * distance cumulée de la même longueur que la trace.
+ */
+const distanceBetween = (track: ReadonlyArray<JumpTrackPoint>, cumDist: ArrayLike<number>, fromMs: number, toMs: number): number | null => {
+  if (cumDist.length !== track.length) return null;
+  const from = valueAtTime(track, (i) => cumDist[i], fromMs, 'null');
+  const to = valueAtTime(track, (i) => cumDist[i], toMs, 'null');
+  return from === null || to === null ? null : to - from;
 };
 
 export interface JumpsMeasure {
@@ -370,11 +371,14 @@ export interface JumpsMeasure {
 /**
  * Sauts d'une session : fenêtres (`pruneWindows`), vols de chaque fenêtre,
  * puis ceux qui ont la durée et la hauteur à ranger. La vitesse au décollage
- * et la longueur viennent de la trace, si elle est fournie. Le seuil
+ * (lissée) et la longueur (par `cumDist`, la distance cumulée de la trace)
+ * viennent de la trace, si elle est fournie. Le seuil
  * d'activité et la hauteur minimale de l'activité ne filtrent qu'à
  * l'affichage.
  */
-export const measureJumps = (rec: ImuRecording, d: JumpDetection, track: ReadonlyArray<JumpTrackPoint> = []): JumpsMeasure => {
+export const measureJumps = (
+  rec: ImuRecording, d: JumpDetection, track: ReadonlyArray<JumpTrackPoint> = [], cumDist: ArrayLike<number> = []
+): JumpsMeasure => {
   const windows = pruneWindows(rec, d);
   const flights = windows.flatMap(([from, to]) => detectFlights(rec, d, from, to));
   const jumps = flights
@@ -382,7 +386,7 @@ export const measureJumps = (rec: ImuRecording, d: JumpDetection, track: Readonl
     .map((f): MeasuredJump => ({
       ...f,
       speedMs: speedAt(track, f.takeoffMs),
-      lengthM: distanceBetween(track, f.takeoffMs, f.landingMs, d.gridStepS),
+      lengthM: distanceBetween(track, cumDist, f.takeoffMs, f.landingMs),
     }));
   return { jumps, flights, windows };
 };

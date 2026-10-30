@@ -53,6 +53,30 @@ export const computeTopSegments = (
 ): TopSegment[] => computeTopSegmentsWith(track, cum, target, toDisplaySpeed, options, holeCounts(track));
 
 /**
+ * Vitesse max d'une trace ou d'un passage, en m/s : la meilleure moyenne sur
+ * `durationS` (`SportProfile.maxSpeedWindowS`, 2 s), une seule définition pour
+ * la voile, le surf, le résumé de la bibliothèque et le direct (Q34, lot 81).
+ * `from` et `to` bornent le passage, en index de points (la fenêtre reste
+ * entre eux) ; `null` si aucune fenêtre ne tient, trous de trace écartés comme
+ * dans `computeTopSegments`.
+ */
+export const bestWindowSpeedMs = (
+  track: TrackPoint[],
+  cum: CumulativeTrack,
+  durationS: number,
+  from = 0,
+  to = track.length - 1
+): number | null => {
+  if (to - from < 1) return null;
+  const whole = from === 0 && to === track.length - 1;
+  const part = whole ? track : track.slice(from, to + 1);
+  const partCum = whole ? cum : { cumDist: cum.cumDist.slice(from, to + 1), cumTime: cum.cumTime.slice(from, to + 1) };
+  const target: TopTarget = { key: 'max', label: '', value: durationS, kind: 'time' };
+  const [top] = computeTopSegments(part, partCum, target, (speedMs) => speedMs, { count: 1, decimals: 6 });
+  return top?.speed ?? null;
+};
+
+/**
  * Nombre de trous parmi les pas qui mènent aux points 1 à k : la fenêtre
  * [i, j] en contient un si `gapCount[j] > gapCount[i]`.
  */

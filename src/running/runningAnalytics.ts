@@ -68,6 +68,21 @@ export const computeZoneStats = (
 };
 
 /**
+ * Temps en mouvement sans pente connue (altitude manquante), en secondes :
+ * hors du tableau des zones (`computeZoneStats`), alors que l'énergie le
+ * compte au plat (`integrateEnergy`). L'onglet le dit sous le tableau (Q42).
+ */
+export const ungradedMovingS = (track: TrackPoint[], grades: number[], activityMask: boolean[], p: GradeProfile): number => {
+  let ms = 0;
+  for (let i = 1; i < track.length; i++) {
+    if (!activityMask[i] || classifyGrade(grades[i], p) !== null) continue;
+    const dtMs = track[i].timeMs - track[i - 1].timeMs;
+    if (dtMs > 0) ms += dtMs;
+  }
+  return ms / 1000;
+};
+
+/**
  * Tracés d'une zone de pente, à montrer sur la carte : les suites de segments
  * en mouvement dont la pente tombe dans la zone, retenus comme par
  * `computeZoneStats` (le segment qui arrive au point `i` porte la pente de

@@ -23,6 +23,13 @@ const surfs = [SURF_ACTIVITY.name, SURF_FOIL_ACTIVITY.name];
 describe('readActivities', () => {
   it('rend celles du premier lancement quand la liste est absente', () => {
     expect(readActivities(undefined)).toEqual(DEFAULT_ACTIVITIES);
+    // Une copie : la modifier ne touche pas la constante.
+    const copy = readActivities(undefined);
+    expect(copy).not.toBe(DEFAULT_ACTIVITIES);
+    copy[0].name = 'Autre';
+    copy.pop();
+    expect(DEFAULT_ACTIVITIES[0].name).toBe('Voile');
+    expect(DEFAULT_ACTIVITIES).toHaveLength(12);
     expect(DEFAULT_ACTIVITIES.map((a) => a.name)).toEqual([
       'Voile', 'Course', 'Marche', 'Route', 'Gravel', 'VTT', 'Surf', 'Surf foil', 'Fractionné à pied', 'Fractionné vélo', 'Tests', 'Muscu',
     ]);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeKinematics } from '../core/kinematics';
-import { buildCumulativeTrack, computeActivityMask } from '../core/sessionStats';
+import { buildCumulativeTrack, computeActivityMask, thresholdActivityMask } from '../core/sessionStats';
 import { SPORT_PROFILES, defaultActiveThresholdOf, getActiveThresholds } from '../core/sportProfiles';
 import type { RawTrackPoint, TrackPoint } from '../core/types';
 import { fromDisplaySpeed } from '../core/units';
@@ -49,7 +49,11 @@ const buildSurfSession = (phases: Phase[], cadenceS = 1): TrackPoint[] => {
 };
 
 const surf = SPORT_PROFILES.surf.surf!;
-const params: SurfParams = { ...surf, maxGapS: SPORT_PROFILES.surf.maxGapS };
+const params: SurfParams = {
+  ...surf, maxGapS: SPORT_PROFILES.surf.maxGapS, maxSpeedWindowS: SPORT_PROFILES.surf.maxSpeedWindowS,
+  // Un seul plancher d'arrêt (Q43, lot 81) : celui du profil, 2 km/h.
+  stillMs: fromDisplaySpeed(SPORT_PROFILES.surf.stillThreshold, 'kmh'),
+};
 
 /** Masque au seuil donné, en km/h, avec l'hystérésis du profil. */
 const maskAt = (track: TrackPoint[], thresholdKmh: number): boolean[] => {
@@ -269,5 +273,62 @@ describe('runSurfSession et résumé de la bibliothèque', () => {
     expect(foil.flightS!).toBeGreaterThanOrEqual(foil.longestFlightS ?? 0);
     // Sur une autre famille, pas de champ du surf.
     expect(summarizeSession(raw, 'running')!.waveCount).toBeUndefined();
+  });
+});
+
+describe('vitesse max des vagues, plancher d’arrêt unique, pause manuelle (lot 81)', () => {
+  const profile = surfProfileOf(SPORT_PROFILES.surf)!;
+
+  for (const cadenceS of [1, 0.2]) {
+    it(`à ${1 / cadenceS} Hz, la vitesse max d'une vague est sa meilleure moyenne sur 2 s`, () => {
+      // Une vague à 6 m/s portée 3 s à 8 m/s : la meilleure moyenne sur 2 s tient dans le plateau.
+      const phases: Phase[] = [
+        ...MORNING.slice(0, 13),
+        { s: 6, speed: 6, heading: 160 }, { s: 3, speed: 8, heading: 160 }, { s: 11, speed: 6, heading: 160 },
+        ...MORNING.slice(14),
+      ];
+      const { analysis, summary } = analyze(buildSurfSession(phases, cadenceS));
+      const b = analysis.waves[1];
+      expect(b.maxSpeedMs).toBeGreaterThan(7.5);
+      expect(b.maxSpeedMs).toBeLessThanOrEqual(8 + 1e-6);
+      expect(summary.maxWaveSpeedMs).toBe(b.maxSpeedMs);
+    });
+
+    it(`à ${1 / cadenceS} Hz, une pause manuelle de 8 s n'est ni rame ni attente`, () => {
+      const track = buildSurfSession(MORNING, cadenceS);
+      // Pause dans la remontée qui suit la première vague (rame à 1 m/s), à 450 s.
+      const k0 = Math.round(450 / cadenceS);
+      const paused = track.map((p, k) => {
+        if (k < k0) return p;
+        const timeMs = p.timeMs + 8000;
+        return { ...p, timeMs, time: new Date(timeMs).toISOString(), ...(k === k0 ? { segmentStart: true as const } : {}) };
+      });
+      const before = analyze(track).summary;
+      const { analysis, summary } = analyze(paused);
+      expect(analysis.phases[k0]).toBe('trou');
+      expect(summary.trouS - before.trouS).toBeCloseTo(8 + cadenceS, 6);
+      expect(summary.rameS + summary.attenteS).toBeCloseTo(before.rameS + before.attenteS - cadenceS, 6);
+      expect(summary.waveCount).toBe(before.waveCount);
+    });
+  }
+
+  it('seuil à 0 : le masque tombe au plancher d’arrêt du profil, comme thresholdActivityMask', () => {
+    const track = buildSurfSession(MORNING);
+    const run = runSurfSession(track, buildCumulativeTrack(track), profile, { threshold: 0, foil: false, waveThreshold: null });
+    expect(run.rideMask).toEqual(thresholdActivityMask(track, SPORT_PROFILES.surf, 0));
+    expect(run.rideMask.some((m) => m)).toBe(true);
+    expect(run.rideMask.every((m) => m)).toBe(false);
+  });
+
+  it('résumé : vitesse max sur 2 s, à 1 Hz et 5 Hz ; la plus haute vitesse lissée si aucune fenêtre ne tient', () => {
+    for (const cadenceS of [1, 0.2]) {
+      const raw: RawTrackPoint[] = buildSurfSession(MORNING, cadenceS).map((p) => ({ lat: p.lat, lon: p.lon, time: p.time, speedMs: p.speedMs }));
+      expect(summarizeSession(raw, 'surf')!.maxSpeedMs).toBeCloseTo(6, 1);
+    }
+    const two: RawTrackPoint[] = [
+      { lat: 43.4, lon: 3.6, time: new Date(T0).toISOString(), speedMs: 3 },
+      { lat: 43.40001, lon: 3.6, time: new Date(T0 + 1000).toISOString(), speedMs: 3 },
+    ];
+    expect(summarizeSession(two, 'running')!.maxSpeedMs).toBeCloseTo(3, 6);
   });
 });

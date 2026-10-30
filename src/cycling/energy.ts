@@ -210,10 +210,10 @@ export const computeCyclingEnergy = (
   surfaces?: ReadonlyArray<SurfaceCategory>
 ): CyclingEnergyResult => {
   const surfaceDistanceM: Partial<Record<SurfaceCategory, number>> = {};
-  const stepCost: EnergyStepCost = (i, d, grade) => {
+  const stepCost: EnergyStepCost = (i, d, grade, v) => {
     const surface = surfaces?.[i - 1];
     const crr = rollingCoefficient(params, surface);
-    const work = Math.max(0, resistiveForceN(track[i].speedMs, grade, params, crr) * d) / params.drivetrainEfficiency;
+    const work = Math.max(0, resistiveForceN(v, grade, params, crr) * d) / params.drivetrainEfficiency;
     if (surface) surfaceDistanceM[surface] = (surfaceDistanceM[surface] ?? 0) + d;
     return { net: work / params.muscleEfficiency, mechanical: work };
   };

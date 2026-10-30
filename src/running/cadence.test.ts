@@ -288,6 +288,26 @@ describe('sessionCadence : la cadence du GPX', () => {
   });
 });
 
+describe('segments mesurés : le pas de reprise après une pause est écarté (lot 81)', () => {
+  for (const hz of [1, 5]) {
+    it(`à ${hz} Hz, une pause de 6 s marquée segmentStart ne compte ni en pas ni en temps`, () => {
+      // 5 min à 3 m/s et 170 pas/min ; à 150 s, une pause manuelle de 6 s (sous `gapS`).
+      const { track, spm } = trackOf(300, () => 3, () => 170, hz);
+      const k0 = 150 * hz + 1;
+      const paused = track.map((p, j) => {
+        const timeMs = j < k0 ? p.timeMs : p.timeMs + 6000;
+        return { ...p, timeMs, time: new Date(timeMs), ...(j === k0 ? { segmentStart: true as const } : {}) };
+      });
+      const list = measuredCadenceSegments(paused, spm, P.gapS).list;
+      expect(list.some((s) => s.i === k0)).toBe(false);
+      expect(list).toHaveLength(300 * hz - 1);
+      const a = analyzeCadence(paused, spm, paused.map(() => true), null, P)!;
+      expect(a.steps).toBeCloseTo((170 / 60) * (300 - 1 / hz), 3);
+      expect(a.averageSpm).toBeCloseTo(170, 6);
+    });
+  }
+});
+
 describe('sessionCadence : unité et couverture', () => {
   it('une marche déjà écrite en pas par minute n\'est pas doublée', () => {
     const { track } = trackOf(300, () => 1.4, () => null);

@@ -17,9 +17,11 @@ export interface EnergyStep {
 
 /**
  * Coût du segment `i - 1 → i`, de longueur `distanceM` (`segmentDistanceM`),
- * à la pente `grade` (`NaN` si elle manque).
+ * à la pente `grade` (`NaN` si elle manque), parcouru à `speedMs` : la
+ * vitesse du point, sauf sur un trou de trace, où c'est la distance bornée
+ * sur la durée du pas (règle 6) plutôt que la vitesse du point de reprise.
  */
-export type EnergyStepCost = (i: number, distanceM: number, grade: number) => EnergyStep;
+export type EnergyStepCost = (i: number, distanceM: number, grade: number, speedMs: number) => EnergyStep;
 
 /** Sommes d'une zone de pente, sur les seuls segments en mouvement. */
 export interface EnergyZoneSums {
@@ -90,7 +92,9 @@ export const integrateEnergy = (
     if (activityMask[i]) {
       const d = segmentDistanceM(track, i);
       const grade = grades[i] ?? NaN;
-      const step = stepCost(i, d, grade);
+      // Trou de trace (`gapDistanceM`) : la vitesse moyenne du pas, pas celle du point de reprise.
+      const v = track[i].gapDistanceM !== undefined ? d / dt : track[i].speedMs;
+      const step = stepCost(i, d, grade, v);
       netStep = step.net;
       mechanicalPower[i] = step.mechanical / dt;
       mechanical += step.mechanical;

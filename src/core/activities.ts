@@ -187,7 +187,8 @@ const isColor = (value: unknown): value is string => typeof value === 'string' &
  * aussi ; une liste vide reste vide (l'utilisateur a tout supprimé).
  */
 export const readActivities = (raw: unknown): Activity[] => {
-  if (!Array.isArray(raw)) return DEFAULT_ACTIVITIES;
+  // Une copie : l'appelant peut trier ou compléter la liste sans toucher la constante.
+  if (!Array.isArray(raw)) return DEFAULT_ACTIVITIES.map((a) => ({ ...a }));
   const seen = new Set<string>();
   const list: Activity[] = [];
   for (const item of raw) {

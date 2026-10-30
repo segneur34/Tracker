@@ -189,6 +189,14 @@ describe('zones et charge', () => {
     direct.forEach((s, z) => expect(Math.abs(fromHistogram[z] - s)).toBeLessThanOrEqual(1));
     expect(histogram.fromBpm).toBe(110);
   });
+
+  it('histogramme de 200 000 valeurs à 5 Hz : bornes lues en boucle', () => {
+    const points = series(0, 40_000, 5, (t) => 100 + Math.floor(t / 400));
+    const smoothed = points.map((p) => p.hr ?? null);
+    const histogram = heartRateHistogram(points, smoothed, P.gapS)!;
+    expect(histogram.fromBpm).toBe(100);
+    expect(histogram.seconds).toHaveLength(100);
+  });
 });
 
 describe('heartRateDrift', () => {

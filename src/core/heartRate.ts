@@ -256,9 +256,14 @@ export const heartRateHistogram = (
   const byBpm = new Map<number, number>();
   forEachCounted(points, smoothed, gapS, (_, bpm, dtS) => byBpm.set(bpm, (byBpm.get(bpm) ?? 0) + dtS));
   if (byBpm.size === 0) return null;
-  const keys = [...byBpm.keys()];
-  const fromBpm = Math.min(...keys);
-  const seconds = new Array<number>(Math.max(...keys) - fromBpm + 1).fill(0);
+  // Boucle plutôt que Math.min(...clés), comme pour toute série.
+  let fromBpm = Infinity;
+  let toBpm = -Infinity;
+  for (const bpm of byBpm.keys()) {
+    if (bpm < fromBpm) fromBpm = bpm;
+    if (bpm > toBpm) toBpm = bpm;
+  }
+  const seconds = new Array<number>(toBpm - fromBpm + 1).fill(0);
   for (const [bpm, s] of byBpm) seconds[bpm - fromBpm] = Math.round(s);
   return { fromBpm, seconds };
 };

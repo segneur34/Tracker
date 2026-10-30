@@ -71,8 +71,13 @@ export const RECORD_VERSION = 1;
  * 12 (28 octobre 2026) : voile à seuil, temps en mouvement (`inMotionS`),
  * dénominateur du ratio de vol, de navigation ou de planing ; détection des
  * manœuvres refaite (les comptes de la fiche suivent à la réouverture).
+ *
+ * 13 (30 octobre 2026) : vitesse max sur la meilleure moyenne de 2 s, plus le
+ * pic d'un point ; cadence d'enregistrement d'un fichier aux dates tronquées
+ * (5 Hz : 0,2 s) ; cadence moyenne sans le pas de reprise d'une pause ; surf à
+ * un seul plancher d'arrêt (2 km/h), pause manuelle hors de la rame et de l'attente.
  */
-export const SUMMARY_CALC_VERSION = 12;
+export const SUMMARY_CALC_VERSION = 13;
 
 export type SessionSource = 'enregistrement' | 'import';
 
@@ -96,7 +101,10 @@ export interface SessionSummary {
   movingDistanceM?: number | null;
   /** Dénivelé positif, `null` si la trace n'a pas assez d'altitudes. */
   elevationGainM: number | null;
-  /** Plus haute vitesse lissée. */
+  /**
+   * Vitesse max : la meilleure moyenne sur 2 s (`maxSpeedWindowS`, depuis la version 13) ; si aucune fenêtre ne
+   * tient (trace clairsemée, pas plus longs que `maxGapS`), la plus haute vitesse lissée, comme avant.
+   */
   maxSpeedMs: number;
   pointCount: number;
   /** Intervalle médian entre deux points : la cadence d'enregistrement. */

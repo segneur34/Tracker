@@ -82,7 +82,7 @@ if (gpxPath) {
   while ((m = re.exec(text))) {
     const time = /<time>([^<]+)<\/time>/.exec(m[1]);
     const speed = /<(?:\w+:)?speed>([^<]+)<\/(?:\w+:)?speed>/.exec(m[1]);
-    if (time && speed) track.push({ timeMs: Date.parse(time[1]), speedMs: Number(speed[1]) });
+    if (time && speed) track.push({ timeMs: Date.parse(time[1]), smoothedSpeedMs: Number(speed[1]) });
   }
   if (track.length > 0) {
     console.log(`GPX : ${track.length} points avec vitesse, de ${hhmmss(track[0].timeMs)} à ${hhmmss(track[track.length - 1].timeMs)}`);
@@ -95,7 +95,10 @@ if (gpxPath) {
 
 // --- Sauts, calcul de l'application ---
 const started = performance.now();
-const { jumps, flights, windows } = measureJumps(rec, detection, track);
+// Distance cumulée de la vitesse lue, pas à pas (comme `segmentDistanceM`), pour la longueur des sauts.
+const cumDist = track.map(() => 0);
+for (let i = 1; i < track.length; i++) cumDist[i] = cumDist[i - 1] + (track[i].smoothedSpeedMs * Math.max(0, track[i].timeMs - track[i - 1].timeMs)) / 1000;
+const { jumps, flights, windows } = measureJumps(rec, detection, track, cumDist);
 const elapsed = performance.now() - started;
 const keptS = windows.reduce((s, [a, b]) => s + (b - a) / 1e6, 0);
 const share = stats.durationS > 0 ? keptS / stats.durationS : 0;

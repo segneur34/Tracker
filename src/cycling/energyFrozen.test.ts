@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { energyCases } from '../core/energyTestTracks';
+import { energyCases, withGapSpeeds } from '../core/energyTestTracks';
 import { classifyGrade, gradeZones, type GradeZoneKey } from '../core/grade';
 import { segmentDistanceM } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
@@ -11,7 +11,8 @@ import {
 
 /**
  * Neutralité de la mise en commun de l'intégration (`core/energy.ts`) : copie
- * gelée de `computeCyclingEnergy` avant le lot 70, comparée bit à bit.
+ * gelée de `computeCyclingEnergy` avant le lot 70, comparée bit à bit ; sur un
+ * trou, à la vitesse du pas (`withGapSpeeds`, lot 81).
  */
 const frozenComputeCyclingEnergy = (
   track: TrackPoint[],
@@ -95,7 +96,7 @@ describe('computeCyclingEnergy, copie gelée', () => {
       const params = cyclingEnergyParams(bike, 9, 72);
       it(`${c.name}, ${bike}`, () => {
         const now = computeCyclingEnergy(c.track, c.grades, c.mask, params, 85);
-        const before = frozenComputeCyclingEnergy(c.track, c.grades, c.mask, params, 85);
+        const before = frozenComputeCyclingEnergy(withGapSpeeds(c.track), c.grades, c.mask, params, 85);
         expect(now).toEqual(before);
         expect(JSON.stringify(now)).toBe(JSON.stringify(before));
         expect(now.netJ).toBeGreaterThan(0);
@@ -103,7 +104,7 @@ describe('computeCyclingEnergy, copie gelée', () => {
       it(`${c.name}, ${bike}, revêtements`, () => {
         const surfaces = c.track.slice(1).map((_, k) => SURFACES[Math.floor(k / 37) % SURFACES.length]);
         const now = computeCyclingEnergy(c.track, c.grades, c.mask, params, 85, surfaces);
-        const before = frozenComputeCyclingEnergy(c.track, c.grades, c.mask, params, 85, surfaces);
+        const before = frozenComputeCyclingEnergy(withGapSpeeds(c.track), c.grades, c.mask, params, 85, surfaces);
         expect(now).toEqual(before);
         expect(JSON.stringify(now)).toBe(JSON.stringify(before));
       });

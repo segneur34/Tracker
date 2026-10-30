@@ -51,4 +51,27 @@ describe('integrateEnergy', () => {
     expect(r.cumulativeTotal[5]).toBe(r.cumulativeTotal[4]);
     expect(r.mechanicalPower[9]).toBeNaN();
   });
+
+  for (const stepS of [1, 0.2]) {
+    it(`trou de trace à ${1 / stepS} Hz : le pas du trou est coûté à sa vitesse moyenne, les autres à celle du point (lot 81)`, () => {
+      // 60 s à 3 m/s, un trou de 30 s qui ne couvre que 45 m (1,5 m/s), puis
+      // la reprise à 6 m/s : le pas du trou se lit à 1,5 m/s, pas à 6.
+      const track = line(stepS, 60);
+      const gapAt = Math.round(30 / stepS);
+      for (let k = gapAt; k < track.length; k++) {
+        const timeMs = track[k].timeMs + 30_000;
+        track[k] = { ...track[k], timeMs, time: new Date(timeMs).toISOString(), speedMs: k === gapAt ? 6 : 3 };
+      }
+      track[gapAt] = { ...track[gapAt], gapDistanceM: 45 };
+      const seen: [number, number][] = [];
+      const record: EnergyStepCost = (i, d, _g, v) => {
+        seen.push([i, v]);
+        return cost(i, d, NaN, v);
+      };
+      integrateEnergy(track, [], track.map(() => true), 0, record, GRADE_ANALYSIS);
+      const atGap = seen.find(([i]) => i === gapAt)!;
+      expect(atGap[1]).toBeCloseTo(45 / (30 + stepS), 9);
+      expect(seen.filter(([i]) => i !== gapAt).every(([, v]) => v === 3)).toBe(true);
+    });
+  }
 });

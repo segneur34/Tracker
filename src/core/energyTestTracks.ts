@@ -1,5 +1,5 @@
 import { computeGrades } from './grade';
-import { buildCumulativeTrack } from './sessionStats';
+import { buildCumulativeTrack, segmentDistanceM } from './sessionStats';
 import { GRADE_ANALYSIS } from './sportProfiles';
 import type { TrackPoint } from './types';
 
@@ -87,3 +87,16 @@ export const energyCases = (): EnergyCase[] => {
   }
   return cases;
 };
+
+/**
+ * La trace telle que les copies gelées d'avant le lot 81 doivent la lire pour
+ * rester comparables : sur un trou (`gapDistanceM`), la vitesse du point est la
+ * distance du pas sur sa durée, celle que l'intégration passe désormais au coût
+ * (règle 6). Les autres points ne changent pas.
+ */
+export const withGapSpeeds = (track: TrackPoint[]): TrackPoint[] =>
+  track.map((p, i) => {
+    if (i === 0 || p.gapDistanceM === undefined) return p;
+    const dt = (p.timeMs - track[i - 1].timeMs) / 1000;
+    return dt > 0 ? { ...p, speedMs: segmentDistanceM(track, i) / dt } : p;
+  });

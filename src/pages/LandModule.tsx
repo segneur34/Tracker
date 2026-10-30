@@ -82,7 +82,7 @@ import { useSessionSurfaces } from '../hooks/useSessionSurfaces';
 import { useTerrainElevation, type TerrainElevationStatus } from '../hooks/useTerrainElevation';
 import { useSportSettings } from '../hooks/useSportSettings';
 import { computeGrades, gradeColorPaths, gradeGradientStops, type GradeZoneKey } from '../core/grade';
-import { computeZoneStats, gradeZonePaths } from '../running/runningAnalytics';
+import { computeZoneStats, gradeZonePaths, ungradedMovingS } from '../running/runningAnalytics';
 import { analyzeCadence, cadenceBandPaths, measuredCadenceSegments, sessionCadence, timeSpanCadence } from '../running/cadence';
 import { isValidCarriedLoad, smoothMovingPower } from '../running/energy';
 import { detectIntervals } from '../running/intervalDetection';
@@ -375,6 +375,11 @@ function LandModule({ family }: { family: LandFamily }) {
     const zones = computeZoneStats(gpx.track, grades, activityMask, profile.grade);
     return zones.some((z) => z.timeMs > 0) ? zones : [];
   }, [gpx.track, grades, activityMask, profile.grade]);
+  /** Temps en mouvement sans altitude : hors des zones, compté au plat par l'énergie ; dit sous le tableau (Q42). */
+  const ungradedS = useMemo(
+    () => (open.zones && zoneStats.length > 0 ? ungradedMovingS(gpx.track, grades, activityMask, profile.grade) : 0),
+    [open.zones, zoneStats, gpx.track, grades, activityMask, profile.grade]
+  );
   /** Onglet « cadence » : chiffres, tranches, selon la vitesse et la pente, dérive. */
   const cadenceAnalysis = useMemo(
     () => ((open.cadence || open.general) && cadencePresent && cadenceParams && cadence
@@ -995,7 +1000,7 @@ function LandModule({ family }: { family: LandFamily }) {
         defaultHeight: 480,
         legend: gpx.track.length === 0 || surfaceMapPaths ? null
           : gradeMapPaths ? <GradeGradientLegend range={gradeRange} />
-            : <SpeedGradientLegend unit={speedUnit} range={range} slowLabel={model.slowLabel} />,
+            : <SpeedGradientLegend unit={speedUnit} distanceUnit={distanceUnit} range={range} slowLabel={model.slowLabel} />,
       }}
       // Onglets sous la carte, et leurs panneaux deux par ligne sur ordinateur (`docs/MISE_EN_PAGE.md`).
       tabs={stats ? {
@@ -1248,6 +1253,11 @@ function LandModule({ family }: { family: LandFamily }) {
                     })}
                   </tbody>
                 </table>
+                {ungradedS > 0 && (
+                  <p style={{ margin: 'var(--space-1) 0 0', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
+                    Passages sans altitude : hors des zones ; l'énergie les compte au plat.
+                  </p>
+                )}
                 </>)}
                 {/* Le graphe d'altitude de l'onglet « graphiques », avec ses options : même zoom, même survol, même « Voir sur la carte ». */}
                 {chartData.length > 1 && (

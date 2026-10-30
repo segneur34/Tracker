@@ -356,8 +356,6 @@ const INTERVAL_ANALYSIS: IntervalProfile = {
  * reste est ici. Défauts provisoires, à valider sur des sessions réelles.
  */
 export interface SurfProfile {
-  /** Attente au pic sous cette vitesse lissée, en m/s ; au-dessus, hors vague, on rame. */
-  stillMs: number;
   /** Arrêt plus court ignoré (canard, série qui passe) : pas encore l'attente au pic, en secondes. */
   minWaitS: number;
   /** Vague plus courte écartée, en secondes… */
@@ -413,6 +411,12 @@ export interface SportProfile {
   stillThreshold: number;
   /** Pas plus long que cette durée : trou de la trace (arrêt sans point, GPS perdu), en secondes. */
   maxGapS: number;
+  /**
+   * Vitesse max : la meilleure moyenne sur cette durée, en secondes, partout
+   * (voile, vagues du surf, résumé de la bibliothèque ; Q34, lot 81), jamais
+   * le pic d'un point (`bestWindowSpeedMs`).
+   */
+  maxSpeedWindowS: number;
   /** Durée de confirmation avant tout changement d'état d'activité, en secondes. */
   minStateDurationS: number;
   /** Largeur du filtre médian appliqué à la vitesse, en secondes. */
@@ -560,6 +564,7 @@ export const SURF_TOP_TARGETS: TopTarget[] = [
 /** Réglages communs à tous les calculs, surchargés au cas par cas. */
 const COMMON_DEFAULTS = {
   maxGapS: MAX_GAP_S,
+  maxSpeedWindowS: 2,
   maxDetourRatio: DEFAULT_MAX_DETOUR_RATIO,
   withoutActiveThreshold: null,
   speedRangeFollowsPace: false,
@@ -690,7 +695,7 @@ const SURF_PROFILE: SportProfile = {
   heartRate: heartRateOffset(-10),
   cadence: null,
   surf: {
-    stillMs: 0.5, minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15,
+    minWaitS: 10, minWaveS: 3, minWaveM: 15, takeoffSearchS: 15,
     foilActiveThreshold: 10, foilWaveThreshold: 18, turnMinDeg: 60,
   },
   pump: PUMP_DETECTION,

@@ -27,11 +27,12 @@ export const rawPointTimeMs = (point: Pick<RawTrackPoint, 'time' | 'rawTimeMs'>)
  * de date `T` suivie d'une date `T' > T` prend `T + k × (T' − T) / n` ; un point
  * à la même position que le précédent de la suite (vrai doublon) garde la date
  * de celui-ci, son pas reste nul. La dernière suite de la trace s'étale sur
- * l'écart qui la précède ; rien si elle commence la trace.
+ * l'écart qui la précède ; rien si elle commence la trace. Des points sans
+ * position (FC seule) passent pour des doublons : leurs dates restent égales.
  */
 export const spreadEqualTimes = (
-  points: { lat: number; lon: number }[],
-  timesMs: number[]
+  points: ReadonlyArray<{ lat?: number; lon?: number }>,
+  timesMs: readonly number[]
 ): number[] => {
   const spread = timesMs.slice();
   let start = 0;

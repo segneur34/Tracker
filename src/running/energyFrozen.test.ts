@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { energyCases } from '../core/energyTestTracks';
+import { energyCases, withGapSpeeds } from '../core/energyTestTracks';
 import { classifyGrade, gradeZones, type GradeZoneKey } from '../core/grade';
 import { segmentDistanceM } from '../core/sessionStats';
 import type { TrackPoint } from '../core/types';
@@ -10,7 +10,8 @@ import {
 
 /**
  * Neutralité de la mise en commun de l'intégration (`core/energy.ts`) : copie
- * gelée de `computeEnergy` avant le lot 70, comparée bit à bit.
+ * gelée de `computeEnergy` avant le lot 70, comparée bit à bit ; sur un trou,
+ * à la vitesse du pas (`withGapSpeeds`, lot 81).
  */
 const frozenComputeEnergy = (
   track: TrackPoint[],
@@ -94,7 +95,7 @@ describe('computeEnergy, copie gelée', () => {
     for (const [label, params, load] of PARAMS) {
       it(`${c.name}, ${label}`, () => {
         const now = computeEnergy(c.track, c.grades, c.mask, params, 1.2, load);
-        const before = frozenComputeEnergy(c.track, c.grades, c.mask, params, 1.2, load);
+        const before = frozenComputeEnergy(withGapSpeeds(c.track), c.grades, c.mask, params, 1.2, load);
         expect(now).toEqual(before);
         expect(JSON.stringify(now)).toBe(JSON.stringify(before));
         expect(now.netJkg).toBeGreaterThan(0);

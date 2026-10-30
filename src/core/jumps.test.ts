@@ -33,7 +33,14 @@ const jump = (takeoffS: number, v0: number, fall = G, pushS = 0.3, landS = 0.3) 
 /** Clapot : quelques sinus de 2 à 4 Hz, 0,3 g au plus. */
 const chop = (t: number) => 0.15 * G * Math.sin(2 * Math.PI * 2.3 * t) + 0.1 * G * Math.sin(2 * Math.PI * 3.7 * t + 1) + 0.05 * G * Math.sin(2 * Math.PI * 1.1 * t + 2);
 
-const jumpsOf = (rec: ImuRecording, track: { timeMs: number; speedMs: number }[] = []): MeasuredJump[] => measureJumps(rec, D, track).jumps;
+/** Sauts d'une capture ; la distance cumulée de la trace est intégrée pas à pas, comme `buildCumulativeTrack`. */
+const jumpsOf = (rec: ImuRecording, track: { timeMs: number; smoothedSpeedMs: number; stepM?: number }[] = []): MeasuredJump[] => {
+  const cumDist = [0];
+  for (let i = 1; i < track.length; i++) {
+    cumDist.push(cumDist[i - 1] + (track[i].stepM ?? (track[i].smoothedSpeedMs * (track[i].timeMs - track[i - 1].timeMs)) / 1000));
+  }
+  return measureJumps(rec, D, track, cumDist).jumps;
+};
 
 describe('sauts : hauteur', () => {
   it('mesure un vol libre de 2 m, téléphone penché de 30°, à g·T²/8 près', () => {
@@ -177,11 +184,45 @@ describe('sauts : élagage et trace', () => {
   });
 
   it('tire la vitesse au décollage et la longueur de la trace', () => {
-    const track = Array.from({ length: 401 }, (_, s) => ({ timeMs: WALL_MS + s * 1000, speedMs: 8 }));
+    const track = Array.from({ length: 401 }, (_, s) => ({ timeMs: WALL_MS + s * 1000, smoothedSpeedMs: 8 }));
     const [first] = jumpsOf(recording(), track);
     expect(first.speedMs).toBeCloseTo(8, 6);
     expect(first.lengthM).toBeCloseTo(8 * first.flightS, 3);
     expect(jumpsOf(recording())[0].speedMs).toBeNull();
+  });
+
+  for (const hz of [1, 5]) {
+    it(`à ${hz} Hz : vitesse lissée au décollage, longueur par la distance cumulée de la trace (Q41, lot 81)`, () => {
+      // Vitesse lissée de 6 à 10 m/s en rampe : celle du décollage, interpolée.
+      const n = 400 * hz;
+      const at = (k: number) => 6 + (4 * k) / n;
+      const track = Array.from({ length: n + 1 }, (_, k) => ({ timeMs: WALL_MS + (k * 1000) / hz, smoothedSpeedMs: at(k), speedMs: 99 }));
+      const [first] = jumpsOf(recording(), track);
+      const kAt = ((first.takeoffMs - WALL_MS) / 1000) * hz;
+      expect(first.speedMs).toBeCloseTo(at(kAt), 6);
+      // La longueur est l'écart des distances cumulées aux deux bouts : ni plus, ni moins.
+      const cum = (ms: number) => {
+        const k = ((ms - WALL_MS) / 1000) * hz;
+        const k0 = Math.floor(k);
+        let d = 0;
+        for (let j = 1; j <= k0; j++) d += at(j) / hz;
+        return d + (k - k0) * (at(k0 + 1) / hz);
+      };
+      expect(first.lengthM).toBeCloseTo(cum(first.landingMs) - cum(first.takeoffMs), 6);
+    });
+  }
+
+  it('une pause de la trace pendant le vol ne compte rien, un trou compte sa distance bornée', () => {
+    const base = Array.from({ length: 401 }, (_, s) => ({ timeMs: WALL_MS + s * 1000, smoothedSpeedMs: 8 }));
+    const [ref] = jumpsOf(recording(), base);
+    const step = Math.floor((ref.takeoffMs - WALL_MS) / 1000) + 1;
+    const paused = base.map((p, s) => (s === step ? { ...p, stepM: 0 } : p));
+    const [withPause] = jumpsOf(recording(), paused);
+    expect(withPause.lengthM).toBeLessThan(ref.lengthM!);
+    const holed = base.map((p, s) => (s === step ? { ...p, stepM: 2 } : p));
+    const [withHole] = jumpsOf(recording(), holed);
+    expect(withHole.lengthM).toBeLessThan(ref.lengthM!);
+    expect(withHole.lengthM).toBeGreaterThan(withPause.lengthM!);
   });
 });
 

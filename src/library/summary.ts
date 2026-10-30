@@ -11,6 +11,7 @@ import {
   computeActiveTimeMs,
   thresholdActivityMask,
 } from '../core/sessionStats';
+import { bestWindowSpeedMs } from '../core/topSegments';
 import {
   SAILING_SPORTS,
   defaultActiveThresholdOf,
@@ -160,6 +161,13 @@ const analyze = (
   };
 };
 
+/** Plus haute vitesse lissée d'une trace, 0 si elle est vide : la vitesse max quand aucune fenêtre ne tient. */
+const maxSmoothedSpeedMs = (track: readonly TrackPoint[]): number => {
+  let max = 0;
+  for (const p of track) if (p.smoothedSpeedMs > max) max = p.smoothedSpeedMs;
+  return max;
+};
+
 /** Résumé d'une trace, ou `null` si elle a moins de deux points horodatés. */
 export const summarizeSession = (
   rawPoints: RawTrackPoint[],
@@ -170,12 +178,14 @@ export const summarizeSession = (
   const { movingTimeS, movingDistanceM } = analyzed;
   if (analyzed.track.length < 2) return null;
 
-  const { cumDist } = buildCumulativeTrack(analyzed.track);
+  const cum = buildCumulativeTrack(analyzed.track);
+  const { cumDist } = cum;
   const track = options.terrainElevation ? applyTerrainElevation(analyzed.track, cumDist, options.terrainElevation).track : analyzed.track;
   const elevationProfile = options.elevation ?? getSportProfile(sport ?? 'running').elevation;
   const elevation = computeElevationStats(track, elevationProfile);
-  let maxSpeedMs = 0;
-  for (const p of track) if (p.smoothedSpeedMs > maxSpeedMs) maxSpeedMs = p.smoothedSpeedMs;
+  // Vitesse max : la meilleure moyenne sur 2 s, comme partout (Q34). Aucune fenêtre ne tient (trace
+  // clairsemée, chaque pas plus long que `maxGapS` est un trou, règle 10) : la plus haute vitesse lissée.
+  const maxSpeedMs = bestWindowSpeedMs(analyzed.track, cum, getSportProfile(sport ?? 'running').maxSpeedWindowS) ?? maxSmoothedSpeedMs(track);
   const heartRate = summaryHeartRate(track, getSportProfile(sport ?? 'running').heartRate);
   const cadenceParams = sport ? getSportProfile(sport).cadence : null;
   const cadence = cadenceParams ? summaryCadence(track, analyzed.mask ?? track.map(() => true), cadenceParams) : undefined;

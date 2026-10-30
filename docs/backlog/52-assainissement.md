@@ -909,7 +909,7 @@ Opus | high. Non neutre (Q34, Q41, Q42, Q43 ; bogues C6 à C10, C12 à C14, C19,
 
 **Rapport attendu** : tableau avant/après par étape ; versions augmentées.
 
-**Tranché par l'orchestrateur (30/10)** : Q43, « bougent peu » = moins de 5 % sur l'attente, la rame et le retour au pic de chaque session réelle, sinon BLOQUÉ avec l'écart. Étape 1 : l'unité de distance passée aux trois appelants seulement ; la surcharge qui la rend obligatoire partout (environ 56 appels, dont les fichiers du lot 77) va au lot 78, qui reprend `core/units.ts`. Plan du lot : une brique `bestWindowSpeedMs` dans `core/topSegments.ts`, qui remplace aussi `maxWindowSpeedMs` (voile) et `bestTopOf` (direct) ; `maxSpeedWindowS` dans `COMMON_DEFAULTS` (règle 3).
+**Tranché par l'orchestrateur (30/10)** : Q43, « bougent peu » = moins de 5 % sur l'attente, la rame et le retour au pic de chaque session réelle, sinon BLOQUÉ avec l'écart. Bloqué le 30/10 (essai SUP foil : attente 609 → 658 s, +8 % ; rame 925 → 876 s, −5 %) ; réponse de l'utilisateur le 30/10 : un seul plancher à 2 km/h malgré l'écart. Étape 1 : l'unité de distance passée aux trois appelants seulement ; la surcharge qui la rend obligatoire partout (environ 56 appels, dont les fichiers du lot 77) va au lot 78, qui reprend `core/units.ts`. Plan du lot : une brique `bestWindowSpeedMs` dans `core/topSegments.ts`, qui remplace aussi `maxWindowSpeedMs` (voile) et `bestTopOf` (direct) ; `maxSpeedWindowS` dans `COMMON_DEFAULTS` (règle 3).
 
 ### 82 · Planification : doublons internes et revêtement
 

@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { JUMPS_CALC_VERSION, measureJumps, toSessionJump, type JumpDetection } from '../core/jumps';
 import type { SessionJumps } from '../library/record';
 import type { Activity } from '../core/activities';
+import { buildCumulativeTrack } from '../core/sessionStats';
 import { getSportProfile, type SportProfile } from '../core/sportProfiles';
 import type { SportType, TrackPoint } from '../core/types';
 import { effectiveJumpSettings } from './useSportSettings';
@@ -37,7 +38,7 @@ const compute = async (file: string, track: TrackPoint[], detection: JumpDetecti
   const recording = await loadSessionMotion(file);
   // Capture de la seule cadence : pas de sauts à chercher, et la fiche le retient.
   const measured = recording.header.setup.jumps !== false;
-  const jumps = measured ? measureJumps(recording, detection, track).jumps.map(toSessionJump) : [];
+  const jumps = measured ? measureJumps(recording, detection, track, buildCumulativeTrack(track).cumDist).jumps.map(toSessionJump) : [];
   return { version: JUMPS_CALC_VERSION, computedAt: new Date().toISOString(), jumps, ...(measured ? {} : { measured: false as const }) };
 };
 

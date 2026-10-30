@@ -186,17 +186,23 @@ const referenceFromSamples = (
  * passage à terre, une pause — qui tireraient la moyenne sans rien dire de la
  * cadence réelle. C'est cet intervalle qui décide de ce qu'une trace permet
  * d'analyser : un enregistrement économique, à plusieurs dizaines de secondes
- * par point, ne décrit ni une accélération ni le détail d'un virage.
+ * par point, ne décrit ni une accélération ni le détail d'un virage. Les dates
+ * égales d'un fichier tronqué à la seconde sont réparties comme pour la
+ * cinématique (`spreadEqualTimes`) : un 5 Hz tronqué donne 0,2 s, pas 1 s.
+ * Des points sans position (FC seule) gardent leurs dates.
  */
-export const samplingIntervalS = (points: ReadonlyArray<Pick<RawTrackPoint, 'time' | 'rawTimeMs'>>): number => {
+export const samplingIntervalS = (
+  points: ReadonlyArray<Pick<RawTrackPoint, 'time' | 'rawTimeMs'> & { lat?: number; lon?: number }>
+): number => {
   if (points.length < 2) return 0;
+  const timesMs = spreadEqualTimes(points, points.map(rawPointTimeMs));
 
   // Écarts tous positifs et finis : le tri numérique d'un tableau typé les range comme `(a, b) => a - b`.
   const gaps = new Float64Array(points.length - 1);
   let size = 0;
-  let previousMs = rawPointTimeMs(points[0]);
+  let previousMs = timesMs[0];
   for (let i = 1; i < points.length; i++) {
-    const timeMs = rawPointTimeMs(points[i]);
+    const timeMs = timesMs[i];
     if (timeMs > previousMs) gaps[size++] = (timeMs - previousMs) / 1000;
     previousMs = timeMs;
   }

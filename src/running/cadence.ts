@@ -378,14 +378,18 @@ export interface MeasuredSegment {
   d: number;
 }
 
-/** Le segment qui arrive au point `i` : mesuré si la cadence est connue à ses deux bouts et qu'il n'enjambe pas un trou. */
+/**
+ * Le segment qui arrive au point `i` : mesuré si la cadence est connue à ses
+ * deux bouts et qu'il n'enjambe ni un trou ni une pause (`segmentStart`),
+ * comme `cadenceFactor` et `sessionCadence`.
+ */
 const measuredSegments = (track: readonly TrackPoint[], spm: readonly (number | null)[], gapS: number): MeasuredSegment[] => {
   const out: MeasuredSegment[] = [];
   for (let i = 1; i < track.length; i++) {
     const a = spm[i - 1];
     const b = spm[i];
     const dtS = (track[i].timeMs - track[i - 1].timeMs) / 1000;
-    if (a === null || b === null || dtS <= 0 || dtS > gapS) continue;
+    if (a === null || b === null || dtS <= 0 || dtS > gapS || track[i].segmentStart) continue;
     out.push({ i, dtS, spm: (a + b) / 2, d: segmentDistanceM(track as TrackPoint[], i) });
   }
   return out;

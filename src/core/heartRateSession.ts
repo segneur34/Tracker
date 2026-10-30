@@ -127,8 +127,15 @@ export const heartRatePreviewPath = (
   if (shown.length < 2 || points.length < 2) return null;
   const t0 = points[0].timeMs;
   const spanMs = Math.max(1, points[points.length - 1].timeMs - t0);
-  const lo = Math.min(...shown);
-  const spanBpm = Math.max(1, Math.max(...shown) - lo);
+  // Boucle plutôt que Math.min(...série) : une longue séance dépasserait la
+  // limite d'arguments d'un appel de fonction.
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const v of shown) {
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  const spanBpm = Math.max(1, hi - lo);
   const parts: string[] = [];
   let pen = false;
   for (const i of sampledIndices(0, points.length - 1, maxPoints, smoothed)) {

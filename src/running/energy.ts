@@ -248,8 +248,7 @@ export const computeEnergy = (
 ): EnergyResult => {
   const massRatio = 1 + Math.max(0, loadRatio);
   const efficiency = params.mechanicalEfficiency;
-  const stepCost: EnergyStepCost = (i, d, grade) => {
-    const v = track[i].speedMs;
+  const stepCost: EnergyStepCost = (_i, d, grade, v) => {
     const net = params.model === 'marche'
       ? (walkingCostJkgM(v, grade, loadRatio, params.bodyKg, params.walking) + params.airDragJs2M3Kg * v * v * massRatio) * d
       : (runningCostJkgM(grade, params) + params.airDragJs2M3Kg * v * v) * d * massRatio;

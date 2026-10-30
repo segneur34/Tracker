@@ -1,6 +1,6 @@
 import { SAILING_TOP_TARGETS, SPORT_PROFILES, hasActiveThreshold, type SportProfile } from '../core/sportProfiles';
 import type { SpeedRangeMs } from '../core/speedGradient';
-import { computeTopSegments } from '../core/topSegments';
+import { bestWindowSpeedMs } from '../core/topSegments';
 import type { CumulativeTrack, SportType, TrackPoint } from '../core/types';
 import { knotsToMs } from '../core/units';
 
@@ -214,19 +214,6 @@ export const resolveSailingThresholds = (
 };
 
 /**
- * Vitesse maximale sur une fenêtre glissante de 2 s, en m/s, ou `null` si la
- * trace est trop courte pour en couvrir une. Réutilise `computeTopSegments`
- * avec la cible `t2s` déjà définie pour les tops de vitesse : son premier
- * segment après tri, avant filtrage du chevauchement, est déjà le maximum
- * cherché.
- */
-const maxWindowSpeedMs = (track: TrackPoint[], cum: CumulativeTrack): number | null => {
-  const t2s = SAILING_TOP_TARGETS.find((target) => target.key === 't2s')!;
-  const [top] = computeTopSegments(track, cum, t2s, (speedMs) => speedMs, { count: 1, decimals: 6 });
-  return top?.speed ?? null;
-};
-
-/**
  * Bornes de couleur suggérées, en m/s, à partir de l'allure de la session :
  * borne basse alignée sur le seuil d'activité suggéré, borne haute au pic de
  * vitesse sur 2 s plus une marge. Repli sur les bornes du calcul
@@ -242,7 +229,7 @@ export const suggestSpeedRangeMs = (
 ): SpeedRangeMs => {
   const profile = SPORT_PROFILES[sport];
   if (!profile.speedRangeFollowsPace) return profile.speedRange;
-  const peakMs = maxWindowSpeedMs(track, cum);
+  const peakMs = bestWindowSpeedMs(track, cum, profile.maxSpeedWindowS);
   if (peakMs === null) return profile.speedRange;
   return {
     minMs: knotsToMs(suggestActiveThresholdKn(sport, referenceSpeedKn)),

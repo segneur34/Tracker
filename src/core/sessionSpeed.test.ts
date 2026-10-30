@@ -98,6 +98,20 @@ describe('samplingIntervalS', () => {
   it('renvoie zéro sur une trace trop courte', () => {
     expect(samplingIntervalS([])).toBe(0);
   });
+
+  it('dates tronquées à la seconde : 5 Hz donne 0,2 s, 1 Hz reste 1 s (lot 81)', () => {
+    const truncated = (stepS: number) => buildTrack(steady(200, 5), stepS).map((p) => ({
+      ...p, time: new Date(Math.floor(Date.parse(p.time as string) / 1000) * 1000).toISOString(),
+    }));
+    expect(samplingIntervalS(truncated(0.2))).toBeCloseTo(0.2, 6);
+    expect(samplingIntervalS(truncated(1))).toBeCloseTo(1, 6);
+  });
+
+  it('points sans position (FC seule) : dates égales laissées telles quelles', () => {
+    const t0 = Date.UTC(2026, 9, 30, 8, 0, 0);
+    const points = Array.from({ length: 50 }, (_, k) => ({ time: new Date(t0 + Math.floor(k / 5) * 1000).toISOString(), hr: 120 }));
+    expect(samplingIntervalS(points)).toBe(1);
+  });
 });
 
 describe('sessionFilterThresholds', () => {
@@ -220,9 +234,15 @@ describe('dates lues une fois, tri par indices (lot 56)', () => {
     }
   });
 
-  it('samplingIntervalS : identique à la version gelée, avec et sans rawTimeMs', () => {
+  it('samplingIntervalS : identique à la version gelée, avec et sans rawTimeMs (dates tronquées à 5 Hz exceptées, lot 81)', () => {
     for (const [name, points] of cases()) {
-      const want = frozenSamplingIntervalS(points);
+      // Lot 81 : les dates égales sont réparties ; 5 Hz tronqué donne 0,2 s, la copie gelée 1 s.
+      const want = name === '0.2 s, tronquées' ? 0.2 : frozenSamplingIntervalS(points);
+      if (name === '0.2 s, tronquées') {
+        expect(frozenSamplingIntervalS(points)).toBe(1);
+        expect(samplingIntervalS(points)).toBeCloseTo(want, 9);
+        continue;
+      }
       expect(Object.is(samplingIntervalS(points), want), name).toBe(true);
       expect(Object.is(samplingIntervalS(withRaw(points)), want), name).toBe(true);
     }

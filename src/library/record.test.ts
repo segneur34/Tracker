@@ -403,7 +403,7 @@ describe('isSummaryStale', () => {
   });
 
   it('version 12 : une fiche de voile de la version 11 est recalculée, son temps en mouvement relu défensivement', () => {
-    expect(SUMMARY_CALC_VERSION).toBe(12);
+    expect(SUMMARY_CALC_VERSION).toBeGreaterThanOrEqual(12);
     expect(isSummaryStale(record({ summary: { ...record().summary, calcVersion: 11 } }))).toBe(true);
     const withMotion = record({ summary: { ...record().summary, inMotionS: 2005 } });
     expect(parseRecord(serializeRecord(withMotion))!.summary.inMotionS).toBe(2005);

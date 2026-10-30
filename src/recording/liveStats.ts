@@ -3,7 +3,7 @@ import { heartRateStats, smoothHeartRate } from '../core/heartRate';
 import { resumeKinematics, type KinematicsRun } from '../core/kinematics';
 import { MIN_ELEVATION_COVERAGE, buildCumulativeTrack, segmentDistanceM } from '../core/sessionStats';
 import { SAILING_SPORTS, type HeartRateProfile, type SportProfile } from '../core/sportProfiles';
-import { computeTopSegments } from '../core/topSegments';
+import { bestWindowSpeedMs } from '../core/topSegments';
 import type { CumulativeTrack, RawTrackPoint, TrackPoint } from '../core/types';
 import { computeCyclingEnergy, type CyclingEnergyParams } from '../cycling/energy';
 import type { LocationFix } from '../platform/location';
@@ -258,13 +258,6 @@ const segmentEnergy = (track: TrackPoint[], grades: number[], setup: LiveEnergyS
   return { effortJ: result.netJ, power: result.mechanicalPowerW };
 };
 
-/** Meilleure vitesse sur `durationS` d'une trace ; `null` si elle est trop courte. */
-const bestTopOf = (track: TrackPoint[], cum: CumulativeTrack, durationS: number): number | null => {
-  if (track.length < 2) return null;
-  const [top] = computeTopSegments(track, cum, { key: 'live', label: '', value: durationS, kind: 'time' }, (ms) => ms, { count: 1, decimals: 6 });
-  return top.speed;
-};
-
 /**
  * Meilleure vitesse sur `durationS`, parmi les points postérieurs à `sinceMs`.
  * Segment par segment : rien ne franchit une pause ; un segment fini avant
@@ -275,7 +268,7 @@ const bestRecentTop = (tracks: TrackPoint[][], durationS: number, sinceMs: numbe
   for (const track of tracks) {
     if (track[track.length - 1].timeMs < sinceMs) continue;
     const recent = track.filter((p) => p.timeMs >= sinceMs);
-    const value = bestTopOf(recent, buildCumulativeTrack(recent), durationS);
+    const value = bestWindowSpeedMs(recent, buildCumulativeTrack(recent), durationS);
     if (value !== null && (best === null || value > best)) best = value;
   }
   return best;
@@ -372,7 +365,7 @@ export const computeLiveStats = (
       distanceM,
       movingTimeMs: track.length >= 2 ? track[track.length - 1].timeMs - track[0].timeMs : 0,
       heart: heartPart(entry.fixes, profile.heartRate),
-      maxSpeedMs: bestTopOf(track, cum, options.maxDurationS),
+      maxSpeedMs: bestWindowSpeedMs(track, cum, options.maxDurationS),
       legs: sailing && track.length >= 2 ? splitLiveLegs(track) : null,
       elevation: null,
       energy: null,

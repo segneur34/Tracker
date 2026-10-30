@@ -7,7 +7,7 @@ import {
   computeActivityMask,
 } from './sessionStats';
 import { computeKinematics } from './kinematics';
-import { computeAllTopSegments, computeTopSegments } from './topSegments';
+import { bestWindowSpeedMs, computeAllTopSegments, computeTopSegments } from './topSegments';
 import type { RawTrackPoint, TopTarget, TrackPoint } from './types';
 import { msToKnots } from './units';
 import { sameData } from '../test/sameData';
@@ -421,5 +421,62 @@ describe('computeTopSegments, sélection sans tri (lot 56)', () => {
     const target: TopTarget = { key: 't10s', label: '10 s', value: 10, kind: 'time' };
     const holes = (ms: number) => (Math.round(ms * 10) % 7 === 0 ? NaN : ms);
     for (const count of [1, 3]) expect(computeTopSegments(track, cum, target, holes, { count })).toEqual(frozenTopSegments(track, cum, target, holes, { count }));
+  });
+});
+
+/** Copie gelée de `maxWindowSpeedMs` (`sailing/sailingConfig.ts`) d'avant le lot 81. */
+const frozenMaxWindowSpeedMs = (track: TrackPoint[], cum: ReturnType<typeof buildCumulativeTrack>): number | null => {
+  const t2s: TopTarget = { key: 't2s', label: '2 s', value: 2, kind: 'time' };
+  const [top] = computeTopSegments(track, cum, t2s, (speedMs) => speedMs, { count: 1, decimals: 6 });
+  return top?.speed ?? null;
+};
+
+/** Copie gelée de `bestTopOf` (`recording/liveStats.ts`) d'avant le lot 81. */
+const frozenBestTopOf = (track: TrackPoint[], cum: ReturnType<typeof buildCumulativeTrack>, durationS: number): number | null => {
+  if (track.length < 2) return null;
+  const [top] = computeTopSegments(track, cum, { key: 'live', label: '', value: durationS, kind: 'time' }, (ms) => ms, { count: 1, decimals: 6 });
+  return top.speed;
+};
+
+describe('bestWindowSpeedMs : vitesse max, meilleure moyenne sur 2 s (Q34, lot 81)', () => {
+  for (const stepS of [1, 0.2]) {
+    const hz = 1 / stepS;
+    it(`à ${hz} Hz, un pic d'une seconde ne fait pas la vitesse max`, () => {
+      // 60 s à 5 m/s, une seconde à 15 m/s : la meilleure moyenne sur 2 s vaut 10 m/s.
+      const speeds = Array.from({ length: Math.round(60 * hz) + 1 }, (_, k) => (k * stepS > 30 && k * stepS <= 31 + 1e-9 ? 15 : 5));
+      const track = eastwardTrack(speeds, stepS);
+      expect(bestWindowSpeedMs(track, buildCumulativeTrack(track), 2)).toBeCloseTo(10, 6);
+    });
+
+    it(`à ${hz} Hz, bornée à un passage : la fenêtre reste entre from et to`, () => {
+      const speeds = Array.from({ length: Math.round(60 * hz) + 1 }, (_, k) => (k * stepS > 40 ? 12 : k * stepS > 10 && k * stepS <= 20 ? 7 : 3));
+      const track = eastwardTrack(speeds, stepS);
+      const cum = buildCumulativeTrack(track);
+      expect(bestWindowSpeedMs(track, cum, 2, Math.round(10 * hz), Math.round(20 * hz))).toBeCloseTo(7, 6);
+      expect(bestWindowSpeedMs(track, cum, 2, Math.round(10 * hz), Math.round(11 * hz))).toBeNull();
+      expect(bestWindowSpeedMs(track, cum, 2)).toBeCloseTo(12, 6);
+    });
+  }
+
+  it('rien ne tient : null (trace plus courte que la fenêtre, un seul point, fenêtre coupée par un trou)', () => {
+    expect(bestWindowSpeedMs(eastwardTrack([5]), buildCumulativeTrack(eastwardTrack([5])), 2)).toBeNull();
+    const short = eastwardTrack([5, 5]);
+    expect(bestWindowSpeedMs(short, buildCumulativeTrack(short), 2)).toBeNull();
+    const holed = eastwardTrack([5, 5, 5, 5]).map((p, k) => (k === 2 ? { ...p, gapDistanceM: 5 } : p));
+    expect(bestWindowSpeedMs(holed, buildCumulativeTrack(holed), 2)).toBeNull();
+  });
+
+  it('identique aux copies gelées de la voile (couleurs) et du direct, à 1 Hz et 5 Hz, trous et pauses', () => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    for (const stepS of [1, 0.2, 4]) {
+      const speeds = Array.from({ length: 400 }, () => Math.round((3 + rnd() * 9) * 10) / 10);
+      const track = eastwardTrack(speeds, stepS).map((p, k) =>
+        k === 50 ? { ...p, gapDistanceM: 20 } : k === 120 ? { ...p, segmentStart: true as const } : p);
+      const cum = buildCumulativeTrack(track);
+      expect(bestWindowSpeedMs(track, cum, 2)).toBe(frozenMaxWindowSpeedMs(track, cum));
+      for (const d of [2, 5, 30]) expect(bestWindowSpeedMs(track, cum, d)).toBe(frozenBestTopOf(track, cum, d));
+    }
+    expect(bestWindowSpeedMs([], buildCumulativeTrack([]), 2)).toBe(frozenBestTopOf([], buildCumulativeTrack([]), 2));
   });
 });

@@ -94,4 +94,12 @@ describe('heartRatePreviewPath', () => {
     expect(heartRatePreviewPath(pts, [100, 120, null, 110, 100], 100, 50, 100)).toBe('M0.0 50.0L25.0 0.0M75.0 25.0L100.0 50.0');
     expect(heartRatePreviewPath(pts, [100, null, null, null, null], 100, 50, 100)).toBeNull();
   });
+
+  it('tient une série de 200 000 valeurs (pas de Math.min sur la série entière)', () => {
+    const n = 200_000;
+    const pts = Array.from({ length: n }, (_, k) => ({ timeMs: T0 + k * 200 }));
+    const bpm = pts.map((_, k) => 100 + (k % 50));
+    const path = heartRatePreviewPath(pts, bpm, 100, 49, 10)!;
+    expect(path.startsWith('M0.0 49.0')).toBe(true);
+  });
 });

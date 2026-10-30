@@ -3,7 +3,7 @@ import { buildCumulativeTrack } from '../core/sessionStats';
 import { SLOW_COLOR, gradientColor, speedGradientColor } from '../core/speedGradient';
 import { GRADE_ANALYSIS as G, SPORT_PROFILES } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
-import { computeZoneStats, gradeZonePaths } from './runningAnalytics';
+import { computeZoneStats, gradeZonePaths, ungradedMovingS } from './runningAnalytics';
 import { haversineDistance } from '../core/geo';
 import { eastwardTrack } from '../test/track.fixture';
 import { DEFAULT_GRADE_RANGE, classifyGrade, computeGrades, gradeColorPaths, gradeGradientColor, gradeGradientStops, gradeStepColor, isValidGradeRange } from '../core/grade';
@@ -134,6 +134,26 @@ describe('computeZoneStats', () => {
     const zones = computeZoneStats(track, grades, mask, G);
     const flatZone = zones.find((z) => z.zone.key === 'flat')!;
     expect(flatZone.timeMs).toBeLessThanOrEqual(50 * 1000);
+  });
+});
+
+describe('ungradedMovingS : passages sans altitude, hors des zones (Q42, lot 81)', () => {
+  for (const stepS of [1, 0.2]) {
+    it(`à ${1 / stepS} Hz : le temps en mouvement sans pente, pauses exclues`, () => {
+      // 100 s à 3 m/s : pente connue sur les 40 premières secondes, inconnue ensuite ; arrêt de 80 à 100 s.
+      const n = Math.round(100 / stepS);
+      const track = eastwardTrack(new Array(n + 1).fill(3), stepS);
+      const grades = track.map((_, k) => (k * stepS <= 40 + 1e-9 ? 0 : NaN));
+      const mask = track.map((_, k) => k * stepS <= 80 + 1e-9);
+      expect(ungradedMovingS(track, grades, mask, G)).toBeCloseTo(40, 6);
+      const zonesS = computeZoneStats(track, grades, mask, G).reduce((s, z) => s + z.timeMs / 1000, 0);
+      expect(zonesS + ungradedMovingS(track, grades, mask, G)).toBeCloseTo(80, 6);
+    });
+  }
+
+  it('rien sans altitude manquante', () => {
+    const track = eastwardTrack(new Array(30).fill(3));
+    expect(ungradedMovingS(track, track.map(() => 0), track.map(() => true), G)).toBe(0);
   });
 });
 
