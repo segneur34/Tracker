@@ -2,6 +2,7 @@
 import react from '@vitejs/plugin-react'
 import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
+import { configDefaults } from 'vitest/config'
 
 // Version unique de l'application, lue dans package.json (Gradle lit la même).
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as { version: string }
@@ -20,6 +21,8 @@ export default defineConfig({
     // Pool `forks` gardé (29/10, machine chargée, 3 passes chacun) : forks 5,3 à 10,7 s, threads 8,7 à 12,3 s, et threads
     // a fait expirer deux fois le test le plus lourd (kinematics, 5 Hz).
     pool: 'forks',
+    // Copies de travail des lots menés en parallèle (`/chaine`) : jamais testées depuis le dépôt principal.
+    exclude: [...configDefaults.exclude, '.claude/**'],
   },
   build: {
     // Une seule feuille de style, dans l'ordre d'aujourd'hui : aucune page chargée à la demande ne peut en manquer

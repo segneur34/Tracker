@@ -25,7 +25,16 @@ Exactement l'étape 3 de `/clore` (`.claude/skills/clore/SKILL.md`), qui fait fo
 
 ## 2. La boucle
 
-Pour chaque lot, l'un après l'autre (un seul dépôt : version et HISTORIQUE se croiseraient) :
+Les lots se prennent dans l'ordre d'Ensuite. Leur code peut s'écrire en parallèle (« Lots en parallèle », ci-dessous) ; tout le reste (vérification, relecture, banc, version, commit) se fait un lot à la fois, dans le dépôt principal et dans cet ordre, sinon version et HISTORIQUE se croiseraient.
+
+**Lots en parallèle**, pour aller plus vite : les agents `lot` de 2 ou 3 lots peuvent coder en même temps si toutes ces conditions sont vérifiées avant le lancement.
+- Indépendants : aucun ne dépend d'un autre (« dépend de »), et les fichiers que leurs briefs disent toucher ne se recouvrent pas. Chaque agent reçoit la liste des fichiers des autres, à ne pas toucher ; s'il le doit, il le dit dans son rapport au lieu de le faire.
+- Isolés : le premier lot dans le dépôt principal, chacun des autres dans son worktree (`isolation: "worktree"` de l'appel, sous `.claude/worktrees/`, que git, vitest et oxlint ignorent). L'agent y pose une jonction `node_modules` vers celle du dépôt et n'y lance ni banc ni build.
+- Jamais en parallèle : un lot dont la fiche dit « seul dans sa session » (noyau voile, §1 « Coût du vent »), un lot qui touche aux fiches, au dossier mémoire ou à l'enregistrement (données de l'utilisateur), un lot qui attend une maquette, une réponse ou la lecture de son plan.
+- Rapatriés un à un : une fois le lot précédent commité, le travail d'un worktree est rapporté dans le dépôt principal (`git -C <worktree> add -A -- . ':!node_modules'`, puis `git -C <worktree> diff --cached --binary HEAD | git apply --3way`), puis passe l'étape 4 en entier, comme s'il avait été fait là, sur l'arbre qui porte déjà les lots précédents. Un conflit à ce moment est un ÉCHEC de ce lot (étape 6) ; les autres continuent.
+- Nettoyés : après le commit, `cmd //c rmdir <worktree>\node_modules` (retire la jonction seule, jamais `rm -rf` dessus, qui viderait le vrai `node_modules`), puis `git worktree remove --force <worktree>` et `git branch -D` de sa branche.
+
+Pour chaque lot :
 1. **Limite** : si Maintenant compte déjà 3 lots avec des essais au téléphone (`node outils/backlog.mjs` le dit : « Rien avant validation »), ne lance rien : « validez d'abord les essais », et propose `/clore`. Un lot validé sur lecture, sans essai, ne compte pas.
 2. Prendre le premier élément d'Ensuite dont « dépend de » est levé. `git status --short` doit être vide (hors `docs/BACKLOG.md` et `docs/backlog/`, dont les changements partent avec le commit suivant, celui du lot ou de la doc) ; sinon un lot précédent a été mal clos (étape 5 ou 6) : le dire et s'arrêter. Déplacer sa ligne en Maintenant, état « en cours ».
 3. Deux garde-fous avant de coder, puis le lancement :

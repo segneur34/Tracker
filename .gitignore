@@ -25,3 +25,6 @@ dist-ssr
 
 # Sorties de vitest 5 (reporters)
 .vitest/
+
+# Copies de travail des lots menés en parallèle (/chaine)
+.claude/worktrees/
