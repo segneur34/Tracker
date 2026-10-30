@@ -140,11 +140,10 @@
   /* Encre des fonds surf et vélo : couleurs des images données par l'utilisateur le 23/10. */
   --backdrop-surf: #1ba1e2;
   --backdrop-velo: #7f9f7c;
-  /* Racine du Profil (`components/drawRoot.ts`, lues par le canevas) : racine vivante, bourgeon, radicelles
+  /* Racine du Profil (`components/drawRoot.ts`, lues par le canevas) : racine vivante, radicelles
      de la période, radicelle flétrie, partie sèche, pousse, sol, graine, fleur. */
   --root-live: #4c8a43;
   --root-edge: #2d5a29;
-  --root-bud: #d5ecc2;
   --root-fresh: #6fbf45;
   --root-withered: #b9a487;
   --root-dry: #d3cab9;
@@ -221,7 +220,6 @@
   --contour: #263039;
   /* Sol et parties sèches plus foncés, fleur gardée. */
   --root-live: #5a9a50;
-  --root-bud: #a8d48c;
   --root-withered: #7d6c55;
   --root-dry: #5e5649;
   --root-dry-edge: #4a4338;

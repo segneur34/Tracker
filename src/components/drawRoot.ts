@@ -13,7 +13,6 @@ import { clamp } from '../core/basics';
 export interface RootColors {
   live: string;
   edge: string;
-  bud: string;
   fresh: string;
   withered: string;
   dry: string;
@@ -27,7 +26,7 @@ export interface RootColors {
 }
 
 const COLOR_VARS: Record<keyof RootColors, string> = {
-  live: '--root-live', edge: '--root-edge', bud: '--root-bud', fresh: '--root-fresh',
+  live: '--root-live', edge: '--root-edge', fresh: '--root-fresh',
   withered: '--root-withered', dry: '--root-dry', dryEdge: '--root-dry-edge', sprout: '--root-sprout', soil: '--root-soil',
   seed: '--root-seed', flower: '--root-flower', flowerEdge: '--root-flower-edge', flowerHeart: '--root-flower-heart',
 };
@@ -195,22 +194,6 @@ const drawRootlets = (
   ctx.globalAlpha = 1;
 };
 
-const drawBuds = (ctx: CanvasRenderingContext2D, model: RootModel, vis: readonly (number | null)[], colors: RootColors, thickness: number) => {
-  for (let m = 0; m < model.mains; m++) {
-    const piece = model.pieces[m];
-    const v = vis[m];
-    if (v === null || v <= 2 || v >= piece.len) continue;
-    const p = piece.pts[Math.min(piece.pts.length - 1, indexAt(piece.pts, v))];
-    ctx.fillStyle = colors.bud;
-    ctx.strokeStyle = colors.edge;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, Math.max(2, thickness * 0.9), 0, TAU);
-    ctx.fill();
-    ctx.stroke();
-  }
-};
-
 /** Ligne de sol du carré, avec quelques cailloux dessous, à droite (le chiffre est à gauche). */
 const drawGround = (ctx: CanvasRenderingContext2D, model: RootModel, colors: RootColors) => {
   const { slot, seed } = model;
@@ -376,6 +359,5 @@ export const drawRoot = (ctx: CanvasRenderingContext2D, model: RootModel, frame:
   }
   const vis = drawStructure(ctx, model, frame.level, frame.growthSteps, style, colors.live, colors.edge, style.thickness, true);
   drawRootlets(ctx, model, vis, frame, colors, style.thickness);
-  if (frame.progress >= 1 && frame.wither === 0) drawBuds(ctx, model, vis, colors, style.thickness);
   drawSprout(ctx, model, frame, colors);
 };
