@@ -12,7 +12,7 @@ import { analysisTabs, isTabShown, toggleTabChoice, type TabChoices } from '../c
 import type { SportType } from '../core/types';
 import {
   DISTANCE_UNIT_LABEL, DISTANCE_UNIT_SYMBOL, SPEED_UNIT_LABEL, speedUnitLabel, speedUnitSymbol, editSpeedUnit, formatPace, formatSpeedValue, fromDisplaySpeed, kmhToMs, msToKmh, toDisplaySpeed,
-  type DistanceUnit, type SpeedUnit,
+  type DistanceUnit, type SpeedUnit, commaDecimal, parseDecimal
 } from '../core/units';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -422,7 +422,7 @@ const ActivityCard = memo(function ActivityCard({
   // Voile sans réglage : champs vides, les bornes suivent l'allure de chaque session, sauf bornes fixes (pré-réglage, bateau).
   const followsPace = rangeFollowsPace(activity);
   const rangeEmpty = followsPace && s.speedRange === null;
-  const displayBound = (ms: number) => parseFloat(formatSpeedValue(toDisplaySpeed(ms, rangeUnit), rangeUnit));
+  const displayBound = (ms: number) => parseDecimal(formatSpeedValue(toDisplaySpeed(ms, rangeUnit), rangeUnit));
   const setRangeBound = (bound: 'minMs' | 'maxMs', next: number | null) => {
     if (next === null) { setFor(id, 'speedRange', null); return; }
     const candidate = { ...shownRange, [bound]: fromDisplaySpeed(next, rangeUnit) };
@@ -449,9 +449,9 @@ const ActivityCard = memo(function ActivityCard({
     speedUnitLabel(s.speedUnit, s.distanceUnit),
     DISTANCE_UNIT_SYMBOL[s.distanceUnit],
     ...(!withThreshold ? [] : [
-      thresholdEmpty ? "seuil selon l'allure" : noThreshold ? 'sans seuil' : `seuil ${thresholdShown} ${SPEED_UNIT_LABEL[thresholdUnit]}`,
+      thresholdEmpty ? "seuil selon l'allure" : noThreshold ? 'sans seuil' : `seuil ${commaDecimal(thresholdShown)} ${SPEED_UNIT_LABEL[thresholdUnit]}`,
     ]),
-    s.autoPause.speedMs > 0 ? `pause sous ${pauseKmh} km/h après ${s.autoPause.delayS} s` : 'sans pause automatique',
+    s.autoPause.speedMs > 0 ? `pause sous ${commaDecimal(pauseKmh)} km/h après ${s.autoPause.delayS} s` : 'sans pause automatique',
     ...(s.foil ? ['foil'] : []),
     ...(s.foil && s.pumping ? ['pumping'] : []),
     ...(s.jumps?.enabled ? ['sauts'] : []),
@@ -1085,13 +1085,13 @@ function FieldsSetting({ label, help, helpKey, target = 'live', treatment, famil
 }
 
 /** Vitesse en km/h, sans décimale inutile. */
-const kmhLabel = (ms: number): string => `${parseFloat(msToKmh(ms).toFixed(1))} km/h`;
+const kmhLabel = (ms: number): string => `${commaDecimal(parseFloat(msToKmh(ms).toFixed(1)))} km/h`;
 
 /** Ce que donne une vitesse sur le plat : l'allure en course, la puissance de montée à vélo. */
 const paceDetail = (family: PlanningFamily, speedMs: number, distanceUnit: DistanceUnit, climbWkg?: number): string =>
   family === 'course'
     ? `${kmhLabel(speedMs)}, ${formatPace(speedMs, distanceUnit)} ${speedUnitSymbol('minkm', distanceUnit)}`
-    : `${kmhLabel(speedMs)}, ${parseFloat((climbWkg ?? climbPowerWkgForFlatSpeed(speedMs)).toFixed(1))} W/kg en montée`;
+    : `${kmhLabel(speedMs)}, ${commaDecimal(parseFloat((climbWkg ?? climbPowerWkgForFlatSpeed(speedMs)).toFixed(1)))} W/kg en montée`;
 
 /**
  * Niveau du temps estimé des itinéraires d'une activité, dans sa carte : un

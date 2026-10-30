@@ -5,6 +5,7 @@ import { WIND_LOCAL_MAX_GAP_MIN, windAt, type ManeuverLocation, type ManeuverSta
 import { VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
 import { circularStats, interpolateDirection, type TimedDirection } from './wind';
 import { angleDiff, circularMean, normalizeDeg } from '../core/angles';
+import { formatDecimal } from '../core/units';
 
 export interface VmgStats {
   upStbd: { max: string; avg: string };
@@ -308,7 +309,7 @@ export const formatMetric = (metric: ManeuverMetric, value: number | null): stri
     case 'conservation':
       return `${Math.round(value * 100)} %`;
     case 'relaunch':
-      return `${value.toFixed(1)} s`;
+      return `${formatDecimal(value, 1)} s`;
     case 'headingChange':
       return `${Math.round(value)}°`;
     case 'distance':

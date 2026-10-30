@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Activity } from '../core/activities';
 import { sportFamily } from '../core/sportProfiles';
-import { DISTANCE_UNIT_SYMBOL, formatDuration, toDisplayDistance } from '../core/units';
+import { formatDistance, formatDuration } from '../core/units';
 import { HelpText, HelpToggle } from './Help';
 import { IconChevronRight } from './icons';
 import { libraryPath } from '../core/parentPage';
@@ -37,10 +37,7 @@ const STACK_MIN_H = 1;
 const TOTALS_DEFAULT = { totaux: true };
 
 /** Distance dans l'unité choisie pour l'activité dans Réglages. */
-const formatDistance = (m: number, activity: Activity): string => {
-  const unit = effectiveDistanceUnit(activity);
-  return `${toDisplayDistance(m, unit).toFixed(1).replace('.', ',')} ${DISTANCE_UNIT_SYMBOL[unit]}`;
-};
+const distanceText = (m: number, activity: Activity): string => formatDistance(m, effectiveDistanceUnit(activity), 1);
 
 const formatTime = (ms: number): string =>
   new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -124,7 +121,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
                       <span className="actchart__name">{activity.name}</span>
                       <span className="actchart__meta num">
                         {weekly && `${new Date(s.startMs).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })} · `}
-                        {formatTime(s.startMs)} · {formatDuration(s.durationS * 1000)} · {formatDistance(s.distanceM, activity)}
+                        {formatTime(s.startMs)} · {formatDuration(s.durationS * 1000)} · {distanceText(s.distanceM, activity)}
                       </span>
                     </button>
                   </li>
@@ -155,7 +152,7 @@ function ActivityChart({ period, nowMs }: { period: ChartRange; nowMs: number })
                   <span className="ui-swatch" style={{ background: shown(activity.color) }} />
                   <span className="actchart__name">{activity.name}</span>
                   <span className="actchart__meta num">
-                    {plural(t.sessions, 'session')} · {formatDuration(t.durationS * 1000)} · {formatDistance(t.distanceM, activity)}
+                    {plural(t.sessions, 'session')} · {formatDuration(t.durationS * 1000)} · {distanceText(t.distanceM, activity)}
                   </span>
                   <IconChevronRight size={16} className="actchart__chevron" />
                 </button>

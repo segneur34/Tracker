@@ -37,7 +37,7 @@ import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER, trackBounds } from '../core/displ
 import { parseGpxPath } from '../core/gpxParser';
 import { ELEVATION_PRESETS, usesMarkCourse } from '../core/sportProfiles';
 import { useExclusiveToggles } from '../hooks/useExclusiveToggles';
-import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, formatSpeed, toDisplayDistance, formatMeters } from '../core/units';
+import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, formatSpeed, toDisplayDistance, formatMeters, commaDecimal } from '../core/units';
 import { useLeaveWarning } from '../hooks/leaveGuard';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useGoOnRoute } from '../hooks/useGoOnRoute';
@@ -328,7 +328,7 @@ function PlanningPage() {
   const distanceUnit = activity ? effectiveDistanceUnit(activity) : 'km';
   const speedUnit = activity ? effectiveSpeedUnit(activity) : 'kmh';
   /** Le kilomètre-effort (100 m de D+ comptent 1 km), dit dans l'unité de distance de l'activité. */
-  const effortDistance = `${toFixedNumber(toDisplayDistance(1000, distanceUnit), 2)} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`;
+  const effortDistance = `${commaDecimal(toFixedNumber(toDisplayDistance(1000, distanceUnit), 2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`;
   const minGainM = ELEVATION_PRESETS.route.minGainM;
   const gradeRange = useMemo(() => (activity ? effectiveGradeRange(activity) : null), [activity]);
   const color = safeColor(activity?.color ?? FALLBACK_COLOR);
@@ -459,7 +459,7 @@ function PlanningPage() {
     const km = (m: number) => formatDistance(m, distanceUnit, 1);
     const variant = returnMark.variant > 0 ? ` (variante ${returnMark.variant + 1})` : '';
     if (returnMark.outcome === 'avoided') {
-      const ratio = outboundM > 0 ? ` (${toFixedNumber(returnM / outboundM, 2)} × l'aller)` : '';
+      const ratio = outboundM > 0 ? ` (${commaDecimal(toFixedNumber(returnM / outboundM, 2))} × l'aller)` : '';
       return `Retour par d'autres voies${variant} : ${km(returnM)}${ratio}, ${km(returnMark.sharedM)} sur l'aller.`;
     }
     const why = returnMark.tooLong
@@ -533,7 +533,7 @@ function PlanningPage() {
           : '—',
         color: ALTITUDE_COLOR,
       }],
-      at: `${toFixedNumber(profileDist[i], 2)} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`,
+      at: `${commaDecimal(toFixedNumber(profileDist[i], 2))} ${DISTANCE_UNIT_SYMBOL[distanceUnit]}`,
     };
   };
 

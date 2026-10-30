@@ -3,13 +3,13 @@ import { useMemo } from 'react';
 import {
   Area, CartesianGrid, ComposedChart, Line, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { formatClockMinutes, msToKmh } from '../core/units';
+import { formatClockMinutes, msToKmh, formatDecimal } from '../core/units';
 import { TEST_SIGNAL_LABEL, testPlan, type FitnessTestParams } from '../recording/fitnessTest';
 import { phaseAreas } from './fitnessTestChartParts';
 import { HEART_RATE_COLOR } from './heartRateColors';
 import { CHART_GRID_PROPS, CHART_MARK_COLOR, CHART_TICK, SPEED_COLOR, chartTick, yAxisLabel } from './chartStyle';
 
-const kmhText = (kmh: number) => `${kmh.toFixed(1).replace('.', ',')} km/h`;
+const kmhText = (kmh: number) => `${formatDecimal(kmh, 1)} km/h`;
 
 interface Row {
   minutes: number;

@@ -19,7 +19,7 @@ import {
   edwardsLoad, efficiencyBlocks, heartRateDrift, timeInZones, type HeartRatePoint, type HeartRateZones,
 } from '../core/heartRate';
 import type { HeartRateProfile } from '../core/sportProfiles';
-import { SPEED_UNIT_LABEL, formatClock, formatShortDuration, toDisplaySpeed, editSpeedUnit, type SpeedUnit } from '../core/units';
+import { SPEED_UNIT_LABEL, formatClock, formatShortDuration, toDisplaySpeed, editSpeedUnit, type SpeedUnit, formatDecimal, commaDecimal } from '../core/units';
 import type { ChartZoom } from '../hooks/useChartZoom';
 import type { RunnerProfile } from '../running/runnerProfile';
 import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
@@ -223,10 +223,10 @@ function HeartRatePanel({
             {drift === null
               ? `Dérive cardiaque : il faut au moins ${Math.round(params.driftMinS / 60)} min en mouvement avec la FC.`
               : Math.abs(drift.driftPct) < params.driftStablePct
-                ? `Dérive cardiaque de ${drift.driftPct.toFixed(1)} % : FC stable à vitesse égale d'une moitié à l'autre.`
+                ? `Dérive cardiaque de ${formatDecimal(drift.driftPct, 1)} % : FC stable à vitesse égale d'une moitié à l'autre.`
                 : drift.driftPct > 0
-                  ? `Dérive cardiaque de ${drift.driftPct.toFixed(1)} % : à vitesse égale, le cœur bat plus vite en seconde moitié (fatigue, chaleur, déshydratation).`
-                  : `Dérive cardiaque de ${drift.driftPct.toFixed(1)} % : la seconde moitié est plus efficace que la première (échauffement, descente).`}
+                  ? `Dérive cardiaque de ${formatDecimal(drift.driftPct, 1)} % : à vitesse égale, le cœur bat plus vite en seconde moitié (fatigue, chaleur, déshydratation).`
+                  : `Dérive cardiaque de ${formatDecimal(drift.driftPct, 1)} % : la seconde moitié est plus efficace que la première (échauffement, descente).`}
           </div>
           {blocks && blocks[0].length + blocks[1].length > 1 && (
             <div style={{ width: '100%', height: '200px' }}>
@@ -237,7 +237,7 @@ function HeartRatePanel({
                     label={{ value: SPEED_UNIT_LABEL[scatterUnit], position: 'insideBottomRight', offset: -2, fill: 'var(--chart-axis)', fontSize: 11 }} />
                   <YAxis dataKey="bpm" type="number" name="FC" domain={['auto', 'auto']} width={46} tick={chartTick(HEART_RATE_COLOR)}
                     label={yAxisLabel('bpm', HEART_RATE_COLOR)} />
-                  <Tooltip contentStyle={scatterTooltipStyle} formatter={(value, name) => [name === 'FC' ? `${value} bpm` : `${value} ${SPEED_UNIT_LABEL[scatterUnit]}`, name]} />
+                  <Tooltip contentStyle={scatterTooltipStyle} formatter={(value, name) => [name === 'FC' ? `${value} bpm` : `${commaDecimal(String(value))} ${SPEED_UNIT_LABEL[scatterUnit]}`, name]} />
                   <Scatter name="Première moitié" data={blocks[0]} fill={SPEED_COLOR} isAnimationActive={false} />
                   <Scatter name="Seconde moitié" data={blocks[1]} fill="#fb8c00" isAnimationActive={false} />
                 </ScatterChart>

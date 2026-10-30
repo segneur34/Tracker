@@ -21,7 +21,7 @@ import SegmentedControl from '../components/ui/SegmentedControl';
 import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, type Activity } from '../core/activities';
 import { SPORT_FAMILIES, SPORT_PROFILES, getSportProfile, type SportFamily } from '../core/sportProfiles';
 import {
-  formatDistanceAuto,
+  formatDistanceAuto, formatDecimal,
   DISTANCE_UNIT_SYMBOL, speedUnitLabel, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, isInverseUnit,
   toDisplayDistance, toDisplaySpeed, type DistanceUnit, type SpeedUnit,
 } from '../core/units';
@@ -129,7 +129,6 @@ const isFamily = (value: unknown): value is SportFamily => SPORT_FAMILIES.some((
 const isLandFamily = (family: SportFamily | null): boolean => family === 'course' || family === 'velo' || family === 'fractionne';
 
 
-const decimal = (value: number, digits = 1): string => value.toFixed(digits).replace('.', ',');
 
 /** Rangée de pastilles : la donnée du graphique. */
 function Chips<K extends string>({ label, items, value, onChoose, accent, className }: {
@@ -568,13 +567,13 @@ function StatisticsPage() {
                       {family === 'voile' && totals.maneuverSessions > 0 && (
                         <>
                           <StatTile label="Manœuvres" value={totals.maneuvers} />
-                          <StatTile label="Manœuvres par session" value={decimal(totals.maneuvers / totals.maneuverSessions)} />
+                          <StatTile label="Manœuvres par session" value={formatDecimal(totals.maneuvers / totals.maneuverSessions)} />
                         </>
                       )}
                       {family === 'surf' && totals.waveSessions > 0 && (
                         <>
                           <StatTile label="Vagues" value={totals.waves} />
-                          <StatTile label="Vagues par session" value={decimal(totals.waves / totals.waveSessions)} />
+                          <StatTile label="Vagues par session" value={formatDecimal(totals.waves / totals.waveSessions)} />
                         </>
                       )}
                       {family === 'surf' && totals.longestWaveM !== null && <StatTile label="Plus longue vague" value={`${Math.round(totals.longestWaveM)} m`} />}
@@ -725,7 +724,7 @@ function StatisticsPage() {
                 ) : (
                   <>
                     <div className="an-sheet__stats an-sheet__stats--always">
-                      <StatTile label="Sessions par semaine" value={decimal(regular.perWeek)} title="En moyenne sur les semaines de la période" />
+                      <StatTile label="Sessions par semaine" value={formatDecimal(regular.perWeek)} title="En moyenne sur les semaines de la période" />
                       <StatTile label="Semaines actives" value={`${regular.activeWeeks} / ${regular.weeks}`} />
                       <StatTile label="Plus longue série" value={plural(regular.longestStreak, 'semaine')} title="Semaines actives consécutives sur la période" />
                       <StatTile label="Série en cours" value={plural(regular.currentStreak, 'semaine')} title="Jusqu'à cette semaine, ou à la précédente si celle-ci est vide" />

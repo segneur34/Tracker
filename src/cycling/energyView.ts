@@ -1,5 +1,5 @@
 import { roundTo } from '../core/basics';
-import { J_PER_KCAL } from '../core/units';
+import { J_PER_KCAL, formatDecimal } from '../core/units';
 import { SURFACE_LABEL, type SurfaceCategory } from '../planning/surface';
 import { DEFAULT_ENERGY_PARAMS, restingPowerWkg } from '../running/energy';
 import { TOTAL_ENERGY_LABEL, type EnergyInputs, type EnergyViewData } from '../running/energyView';
@@ -76,7 +76,7 @@ export const cyclingEnergyView = ({ track, grades, gradeZones, activityMask, run
         key: 'puissance',
         label: 'Puissance moyenne en mouvement',
         value: energy.movingTimeS > 0 ? `${Math.round(energy.mechanicalJ / energy.movingTimeS)} W` : '—',
-        detail: energy.movingTimeS > 0 ? `${(energy.mechanicalJ / energy.movingTimeS / riderKg).toFixed(1)} W/kg` : undefined,
+        detail: energy.movingTimeS > 0 ? `${formatDecimal(energy.mechanicalJ / energy.movingTimeS / riderKg, 1)} W/kg` : undefined,
       },
       { key: 'travail', label: 'Travail mécanique', value: kj(energy.mechanicalJ) },
       { key: 'effort', label: 'Énergie de pédalage', value: `${kcal(energy.netJ)} kcal`, detail: kj(energy.netJ) },

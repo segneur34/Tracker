@@ -31,7 +31,7 @@ import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
 import type { TopSegment } from '../core/types';
 import {
   SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
-  knotsToChartValue, knotsToMs, toDisplaySpeed,
+  knotsToChartValue, knotsToMs, toDisplaySpeed, formatDecimal, commaDecimal
 } from '../core/units';
 import { speedPolar, type PolarBin } from '../sailing/wind';
 import { MANEUVER_METRICS, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
@@ -381,7 +381,7 @@ function SailingModule() {
     { key: 'totalTime', label: 'Temps total', value: stats.totalTime },
     ...(hasActiveThreshold ? [
       { key: 'activeTime', label: `${activeTimeWord} (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: stats.activeTime },
-      { key: 'activeRatio', label: activeRatioLabel(profile, foil), value: `${stats.activeRatio}%` },
+      { key: 'activeRatio', label: activeRatioLabel(profile, foil), value: `${commaDecimal(stats.activeRatio)}%` },
     ] : []),
     { key: 'averageSpeed', label: 'Vitesse moyenne', value: formatSpeed(stats.avgSpeedMs, speedUnit) },
     ...(hasActiveThreshold ? [
@@ -406,7 +406,7 @@ function SailingModule() {
       { key: 'activeDistance', label: foil ? 'Distance en vol' : 'Distance active', value: formatDistance(stats.activeDistanceM, distanceUnit) },
       { key: 'totalTime', label: 'Temps total', value: stats.totalTime },
       { key: 'activeTime', label: `${activeTimeWord} (≥${showThreshold(activeThresholdKn)} ${speedSymbol})`, value: stats.activeTime },
-      { key: 'activeRatio', label: activeRatioLabel(profile, foil), value: `${stats.activeRatio}%` },
+      { key: 'activeRatio', label: activeRatioLabel(profile, foil), value: `${commaDecimal(stats.activeRatio)}%` },
       { key: 'activeAverage', label: `Moyenne ${activeWord}`, value: formatSpeed(stats.activeAvgSpeedMs, speedUnit) },
     ] : [
       { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
@@ -721,7 +721,7 @@ function SailingModule() {
 
       {maneuverHelpOpen && (<>
       <p style={{ margin: '0 0 10px', padding: '8px', backgroundColor: 'var(--bg)', borderLeft: '3px solid var(--line-strong)', borderRadius: '4px', color: 'var(--ink-2)', fontSize: 'var(--text-xs)', lineHeight: '1.6' }}>
-        <strong>Enregistrement :</strong> {pointCount} points, un toutes les {samplingS < 10 ? samplingS.toFixed(1) : Math.round(samplingS)} s en médiane. Entrée de virage retenue au-dessus de {showKn(maneuverThresholds.minEntrySpeedKn)} {speedSymbol}, d'après l'allure de la session.
+        <strong>Enregistrement :</strong> {pointCount} points, un toutes les {samplingS < 10 ? formatDecimal(samplingS, 1) : Math.round(samplingS)} s en médiane. Entrée de virage retenue au-dessus de {showKn(maneuverThresholds.minEntrySpeedKn)} {speedSymbol}, d'après l'allure de la session.
         {samplingS > 10 && (
           <>
             {' '}Cadence économique : les manœuvres se lisent encore, mais leur qualité
@@ -1083,7 +1083,7 @@ function SailingModule() {
                     <li><strong>Moyenne :</strong> {windStats.avgWind}°</li>
                     <li><strong>Plage de variation :</strong> {windStats.range}° (de {windStats.minWind}° à {windStats.maxWind}°)</li>
                     <li><strong>Régularité (écart-type circulaire) :</strong> ± {windStats.stdDev}° <em>(faible = vent laminaire, élevé = vent oscillant)</em></li>
-                    <li><strong>Tendance temporelle :</strong> {Math.abs(windStats.slopePerHour).toFixed(1)}°/heure ({windStats.slopePerHour > 0 ? 'rotation droite / horaire' : 'rotation gauche / anti-horaire'})</li>
+                    <li><strong>Tendance temporelle :</strong> {formatDecimal(Math.abs(windStats.slopePerHour), 1)}°/heure ({windStats.slopePerHour > 0 ? 'rotation droite / horaire' : 'rotation gauche / anti-horaire'})</li>
                     <li style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
                       {Math.round(windStats.stableShare * 100)}% des manœuvres ont des caps stabilisés avant et après : ce sont les mesures les plus nettes, mais toutes comptent.
                     </li>

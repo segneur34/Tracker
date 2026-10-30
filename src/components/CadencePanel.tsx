@@ -4,7 +4,7 @@ import { PanelHeading } from './PanelTitle';
 import BandShareTable from './BandShareTable';
 import { CADENCE_BAND_COLORS } from './cadenceColors';
 import { bandRangeLabel } from '../core/bands';
-import { speedUnitLabel, formatShortDuration, formatSpeedValue, toDisplaySpeed, signedPercent, type DistanceUnit, type SpeedUnit } from '../core/units';
+import { speedUnitLabel, formatShortDuration, formatSpeedValue, toDisplaySpeed, signedPercent, type DistanceUnit, type SpeedUnit, formatDecimal } from '../core/units';
 import { useOpenSections } from '../hooks/useOpenSections';
 import type { CadenceAnalysis, CadenceShare } from '../running/cadence';
 import StatTile from './ui/StatTile';
@@ -29,7 +29,7 @@ const FOLDS_DEFAULT = { tranches: true, vitesse: true, pente: true };
 const cell = { padding: '0.4em 0.6em', textAlign: 'center' } as const;
 
 const spmText = (spm: number) => `${Math.round(spm)} pas/min`;
-const stepText = (m: number | null) => (m === null ? '—' : `${m.toFixed(2)} m`);
+const stepText = (m: number | null) => (m === null ? '—' : `${formatDecimal(m, 2)} m`);
 /** Écart de `to` à `from`, signé en pourcentage, « +0.0 % » à zéro. */
 const signedChange = (from: number, to: number) => signedPercent(from > 0 ? (to - from) / from : 0, { zeroSign: true });
 
@@ -89,7 +89,7 @@ export default function CadencePanel({ analysis, speedUnit, distanceUnit = 'km',
           <span style={{ color: 'var(--muted)' }}>Dérive, du premier au dernier tiers : </span>
           cadence {Math.round(drift.first.spm)} → {Math.round(drift.last.spm)} pas/min ({signedChange(drift.first.spm, drift.last.spm)})
           {drift.first.stepLengthM !== null && drift.last.stepLengthM !== null && (
-            <>, pas {drift.first.stepLengthM.toFixed(2)} → {drift.last.stepLengthM.toFixed(2)} m ({signedChange(drift.first.stepLengthM, drift.last.stepLengthM)})</>
+            <>, pas {formatDecimal(drift.first.stepLengthM, 2)} → {formatDecimal(drift.last.stepLengthM, 2)} m ({signedChange(drift.first.stepLengthM, drift.last.stepLengthM)})</>
           )}
         </div>
       )}

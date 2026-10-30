@@ -1,4 +1,5 @@
 import { zoneLabel } from './heartRateColors';
+import { commaDecimal } from '../core/units';
 
 interface Props {
   /** Bornes basses des zones 1 à 5, en bpm (`HeartRateZones.bounds`). */
@@ -9,7 +10,7 @@ interface Props {
   period?: boolean;
 }
 
-const coefficient = (w: number | undefined) => String(w ?? 0).replace('.', ',');
+const coefficient = (w: number | undefined) => commaDecimal(w ?? 0);
 
 /**
  * Explication de la charge cardiaque, dépliée par le « ? » de sa case :

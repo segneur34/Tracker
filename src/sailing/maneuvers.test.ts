@@ -895,7 +895,7 @@ describe('summarizeManeuvers', () => {
     const jibe = summarizeManeuvers(stats).jibe!;
 
     expect(jibe.withoutRelaunch).toBe(1);
-    expect(jibe.averages.relaunch).toBe('3.0 s');
+    expect(jibe.averages.relaunch).toBe('3,0 s');
     // Sans relance, pas de distance de manœuvre : elle ne gagne pas le podium des plus courtes.
     expect(jibe.tops.distance).toHaveLength(2);
   });

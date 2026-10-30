@@ -18,6 +18,19 @@ export const knotsToMs = (kn: number): number => kn / MS_TO_KNOTS;
 export const msToKmh = (ms: number): number => ms * MS_TO_KMH;
 export const kmhToMs = (kmh: number): number => kmh / MS_TO_KMH;
 
+/**
+ * Nombre décimal à l'affichage : virgule française, `decimals` chiffres fixes
+ * (« 12,40 »). Le seul formateur des décimales d'écran : les valeurs passées aux
+ * bibliothèques, aux fichiers et aux fiches restent des nombres à point.
+ */
+export const formatDecimal = (value: number, decimals = 1): string => value.toFixed(decimals).replace('.', ',');
+
+/** Texte décimal déjà arrondi (« 12.4 ») mis à la virgule pour l'affichage ; tout autre texte est rendu tel quel. */
+export const commaDecimal = (text: string | number): string => String(text).replace(/^(-?\d+)\.(\d+)$/, '$1,$2');
+
+/** Nombre lu dans un texte d'affichage (virgule ou point) : l'inverse de `formatDecimal`. */
+export const parseDecimal = (text: string): number => parseFloat(text.replace(',', '.'));
+
 /** Entier sur deux chiffres, « 05 ». */
 export const pad2 = (n: number): string => String(n).padStart(2, '0');
 
@@ -29,12 +42,12 @@ export const minutesSeconds = (totalMinutes: number): string => {
 };
 
 /**
- * Écart signé, en pourcentage, d'une fraction : « +1.2 % », « −3.0 % ». Un écart
- * nul s'écrit « 0 % » ; avec `zeroSign`, il garde son signe (« +0.0 % »).
+ * Écart signé, en pourcentage, d'une fraction : « +1,2 % », « −3.0 % ». Un écart
+ * nul s'écrit « 0 % » ; avec `zeroSign`, il garde son signe (« +0,0 % »).
  */
 export const signedPercent = (fraction: number, { decimals = 1, zeroSign = false }: { decimals?: number; zeroSign?: boolean } = {}): string => {
-  const value = Math.abs(fraction * 100).toFixed(decimals);
-  if (!zeroSign && Number(value) === 0) return '0 %';
+  const value = formatDecimal(Math.abs(fraction * 100), decimals);
+  if (!zeroSign && parseDecimal(value) === 0) return '0 %';
   return `${zeroSign ? (fraction >= 0 ? '+' : '−') : fraction < 0 ? '−' : '+'}${value} %`;
 };
 
@@ -63,7 +76,7 @@ export const formatPace = (ms: number, distanceUnit: DistanceUnit = 'km'): strin
 };
 
 /** Convertit une vitesse en m/s vers une unité d'affichage. */
-export const toDisplaySpeed = (ms: number, unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): number => {
+export function toDisplaySpeed(ms: number, unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): number {
   switch (unit) {
     case 'kn':
       return msToKnots(ms);
@@ -74,7 +87,7 @@ export const toDisplaySpeed = (ms: number, unit: SpeedUnit, distanceUnit: Distan
     case 'minkm':
       return msToPace(ms, distanceUnit) ?? 0;
   }
-};
+}
 
 /** Convertit une vitesse saisie dans une unité d'affichage vers des m/s. */
 export const fromDisplaySpeed = (value: number, unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): number => {
@@ -115,7 +128,7 @@ export const speedUnitLabel = (unit: SpeedUnit, distanceUnit: DistanceUnit = 'km
 export const speedUnitSymbol = (unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): string =>
   unit === 'minkm' ? `/${DISTANCE_UNIT_SYMBOL[distanceUnit]}` : SPEED_UNIT_SYMBOL[unit];
 
-/** Symbole court, accolé à une valeur (« 12.4 nds »). */
+/** Symbole court, accolé à une valeur (« 12,4 nds »). */
 export const SPEED_UNIT_SYMBOL: Record<SpeedUnit, string> = {
   kn: 'nds',
   kmh: 'km/h',
@@ -134,25 +147,25 @@ export const isInverseUnit = (unit: SpeedUnit): boolean => unit === 'minkm';
 export const editSpeedUnit = (unit: SpeedUnit): SpeedUnit => (isInverseUnit(unit) ? 'kmh' : unit);
 
 /** Formate une vitesse en m/s dans l'unité choisie, avec son symbole. */
-export const formatSpeed = (ms: number | null, unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): string => {
+export function formatSpeed(ms: number | null, unit: SpeedUnit, distanceUnit: DistanceUnit = 'km'): string {
   if (ms === null || !isFinite(ms)) return '-';
   switch (unit) {
     case 'kn':
-      return `${msToKnots(ms).toFixed(1)} ${SPEED_UNIT_SYMBOL.kn}`;
+      return `${formatDecimal(msToKnots(ms), 1)} ${SPEED_UNIT_SYMBOL.kn}`;
     case 'kmh':
-      return `${msToKmh(ms).toFixed(1)} ${SPEED_UNIT_SYMBOL.kmh}`;
+      return `${formatDecimal(msToKmh(ms), 1)} ${SPEED_UNIT_SYMBOL.kmh}`;
     case 'ms':
-      return `${ms.toFixed(2)} ${SPEED_UNIT_SYMBOL.ms}`;
+      return `${formatDecimal(ms, 2)} ${SPEED_UNIT_SYMBOL.ms}`;
     case 'minkm':
       return `${formatPace(ms, distanceUnit)} ${speedUnitSymbol(unit, distanceUnit)}`;
   }
-};
+}
 
 /** Formate une valeur déjà exprimée dans l'unité, pour les axes de graphe. */
 export const formatSpeedValue = (value: number, unit: SpeedUnit): string => {
   if (!isFinite(value)) return '-';
   if (unit === 'minkm') return minutesSeconds(value);
-  return unit === 'ms' ? value.toFixed(2) : value.toFixed(1);
+  return formatDecimal(value, unit === 'ms' ? 2 : 1);
 };
 
 /**
@@ -169,7 +182,7 @@ export const knotsToDisplay = (kn: number, unit: SpeedUnit): number => toDisplay
 export const formatKnots = (kn: number | string, unit: SpeedUnit): string => {
   const value = typeof kn === 'number' ? kn : parseFloat(kn);
   if (!isFinite(value)) return String(kn);
-  if (unit === 'kn') return typeof kn === 'string' ? kn : value.toFixed(1);
+  if (unit === 'kn') return commaDecimal(typeof kn === 'string' ? kn : value.toFixed(1));
   return formatSpeedValue(knotsToDisplay(value, unit), unit);
 };
 
@@ -182,7 +195,7 @@ export const knotsToChartValue = (kn: number, unit: SpeedUnit): number => {
   if (!isFinite(kn)) return kn;
   if (unit === 'kn') return toFixedNumber(kn, 1);
   const value = knotsToDisplay(kn, unit);
-  if (unit === 'minkm' || !isFinite(value)) return parseFloat(formatSpeedValue(value, unit));
+  if (unit === 'minkm' || !isFinite(value)) return parseDecimal(formatSpeedValue(value, unit));
   return toFixedNumber(value, unit === 'ms' ? 2 : 1);
 };
 
@@ -210,7 +223,7 @@ export const toDisplayDistance = (m: number, unit: DistanceUnit): number => m / 
 
 /** Formate une distance en mètres dans l'unité choisie, avec son symbole. */
 export const formatDistance = (m: number, unit: DistanceUnit, decimals = 2): string =>
-  isFinite(m) ? `${toDisplayDistance(m, unit).toFixed(decimals)} ${DISTANCE_UNIT_SYMBOL[unit]}` : '-';
+  isFinite(m) ? `${formatDecimal(toDisplayDistance(m, unit), decimals)} ${DISTANCE_UNIT_SYMBOL[unit]}` : '-';
 
 /** Distance dans l'unité, deux décimales sous 10 unités et une au-delà (bibliothèque, statistiques). */
 export const formatDistanceAuto = (m: number, unit: DistanceUnit): string => formatDistance(m, unit, toDisplayDistance(m, unit) < 10 ? 2 : 1);
@@ -222,12 +235,12 @@ export const formatMeters = (m: number | null): string => (m === null ? '—' : 
 export const formatShortDistance = (m: number, unit: DistanceUnit): string =>
   isFinite(m) && m < 1000 ? `${Math.round(m)} m` : formatDistance(m, unit);
 
-/** Formate une durée en millisecondes, par exemple `1h24` ou `37 min`. */
+/** Formate une durée en millisecondes, par exemple `1 h 24` ou `37 min` : la seule écriture des durées. */
 export const formatDuration = (ms: number): string => {
   const totalMin = Math.floor(ms / 60000);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
-  return h > 0 ? `${h}h${pad2(m)}` : `${m} min`;
+  return h > 0 ? `${h.toLocaleString('fr-FR')} h ${pad2(m)}` : `${m} min`;
 };
 
 /** Durée courte, en secondes : « 45 s », « 1 min 05 », puis comme `formatDuration` au-delà d'une heure. */

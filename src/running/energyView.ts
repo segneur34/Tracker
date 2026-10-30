@@ -3,7 +3,7 @@ import type { GradeZone } from '../core/grade';
 import type { BikeType } from '../core/domainTypes';
 import type { GradeProfile } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
-import { J_PER_KCAL } from '../core/units';
+import { J_PER_KCAL, formatDecimal } from '../core/units';
 import type { SurfaceCategory } from '../planning/surface';
 import { computeEnergy, restingPowerWkg, runningEnergyParams, walkingEnergyParams, type EnergyModel } from './energy';
 
@@ -118,11 +118,11 @@ export const runningEnergyView = ({ track, grades, gradeZones, activityMask, run
   const perKg = mass === null ? '/kg' : '';
   const kcal = (jkg: number) => {
     const value = (jkg * massFactor) / J_PER_KCAL;
-    return mass === null ? value.toFixed(1) : String(Math.round(value));
+    return mass === null ? formatDecimal(value, 1) : String(Math.round(value));
   };
   const kj = (jkg: number) => Math.round((jkg * massFactor) / 1000);
   /** Puissance donnée en W/kg, écrite en W ; au dixième si elle reste par kilo. */
-  const powerText = (wkg: number) => (mass === null ? wkg.toFixed(1) : String(Math.round(wkg * mass)));
+  const powerText = (wkg: number) => (mass === null ? formatDecimal(wkg, 1) : String(Math.round(wkg * mass)));
   const cumulativeDecimals = mass === null ? 2 : 0;
   return {
     power: energy.mechanicalPowerWkg.map((p) => p * massFactor),
@@ -136,7 +136,7 @@ export const runningEnergyView = ({ track, grades, gradeZones, activityMask, run
         key: 'puissance',
         label: 'Puissance moyenne en mouvement',
         value: energy.movingTimeS > 0 ? `${Math.round((energy.mechanicalJkg / energy.movingTimeS) * massFactor)} W${perKg}` : '—',
-        detail: mass !== null && energy.movingTimeS > 0 ? `${(energy.mechanicalJkg / energy.movingTimeS).toFixed(1)} W/kg` : undefined,
+        detail: mass !== null && energy.movingTimeS > 0 ? `${formatDecimal(energy.mechanicalJkg / energy.movingTimeS, 1)} W/kg` : undefined,
       },
       {
         key: 'cout-km',

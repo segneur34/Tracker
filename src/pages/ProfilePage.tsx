@@ -9,7 +9,7 @@ import { IconChevronRight } from '../components/icons';
 import SegmentedControl from '../components/ui/SegmentedControl';
 import { activityFamily, type Activity } from '../core/activities';
 import { activityIcon } from '../core/activityIcons';
-import { toDisplayDistance } from '../core/units';
+import { formatDuration, toDisplayDistance } from '../core/units';
 import { libraryPath } from '../core/parentPage';
 import { useFavoriteBackdrop } from '../hooks/useFavoriteBackdrop';
 import { useOpenSections } from '../hooks/useOpenSections';
@@ -82,12 +82,7 @@ interface Slice {
   activity: Activity | null;
 }
 
-const hoursText = (s: number): string => {
-  const totalMin = Math.floor(s / 60);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return h > 0 ? `${h.toLocaleString('fr-FR')} h ${String(m).padStart(2, '0')}` : `${m} min`;
-};
+const hoursText = (s: number): string => formatDuration(s * 1000);
 
 const percentText = (share: number): string =>
   share > 0 && share < 0.01 ? '< 1 %' : `${Math.round(share * 100)} %`;

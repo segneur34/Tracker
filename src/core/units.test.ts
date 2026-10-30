@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CHART_PACE_MIN_SPEED_MS, INTERVAL_PACE_MIN_SPEED_MS, PACE_MIN_SPEED_MS, formatDistanceAuto, formatMeters, minutesSeconds, msToPace, pad2, signedPercent, speedSourceText,
+  CHART_PACE_MIN_SPEED_MS, commaDecimal, formatDecimal, formatDuration, formatShortDuration, parseDecimal, INTERVAL_PACE_MIN_SPEED_MS, PACE_MIN_SPEED_MS, formatDistanceAuto, formatMeters, minutesSeconds, msToPace, pad2, signedPercent, speedSourceText,
   editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed, knotsToChartValue, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
 } from './units';
 
@@ -11,15 +11,15 @@ describe('distances', () => {
   });
 
   it('formate avec le symbole et le nombre de décimales demandé', () => {
-    expect(formatDistance(29_720, 'km')).toBe('29.72 km');
-    expect(formatDistance(3704, 'nm', 1)).toBe('2.0 NM');
+    expect(formatDistance(29_720, 'km')).toBe('29,72 km');
+    expect(formatDistance(3704, 'nm', 1)).toBe('2,0 NM');
     expect(formatDistance(NaN, 'km')).toBe('-');
   });
 
   it('donne une distance d\'approche en mètres sous 1 000 m', () => {
     expect(formatShortDistance(143.4, 'km')).toBe('143 m');
     expect(formatShortDistance(143.4, 'nm')).toBe('143 m');
-    expect(formatShortDistance(3704, 'nm')).toBe('2.00 NM');
+    expect(formatShortDistance(3704, 'nm')).toBe('2,00 NM');
     expect(formatShortDistance(NaN, 'km')).toBe('-');
   });
 });
@@ -34,13 +34,13 @@ describe('knotsToDisplay', () => {
 
 describe('formatKnots', () => {
   it('garde le texte reçu en nœuds, pour un affichage inchangé', () => {
-    expect(formatKnots('12.4', 'kn')).toBe('12.4');
-    expect(formatKnots(12.44, 'kn')).toBe('12.4');
+    expect(formatKnots('12.4', 'kn')).toBe('12,4');
+    expect(formatKnots(12.44, 'kn')).toBe('12,4');
   });
 
   it('convertit un texte ou un nombre de nœuds dans l\'unité choisie', () => {
-    expect(formatKnots('10.0', 'kmh')).toBe('18.5');
-    expect(formatKnots(10, 'ms')).toBe('5.14');
+    expect(formatKnots('10.0', 'kmh')).toBe('18,5');
+    expect(formatKnots(10, 'ms')).toBe('5,14');
   });
 
   it('rend tel quel ce qui n\'est pas un nombre', () => {
@@ -54,7 +54,7 @@ describe('knotsToChartValue', () => {
     for (let kn = 0; kn < 40; kn += 0.0137) values.push(kn);
     for (const unit of ['kn', 'kmh', 'ms', 'minkm'] as SpeedUnit[]) {
       for (const kn of values) {
-        expect(Object.is(knotsToChartValue(kn, unit), parseFloat(formatKnots(kn, unit))), `${kn} ${unit}`).toBe(true);
+        expect(Object.is(knotsToChartValue(kn, unit), parseDecimal(formatKnots(kn, unit))), `${kn} ${unit}`).toBe(true);
       }
     }
   });
@@ -162,7 +162,7 @@ describe('minutesSeconds et pad2', () => {
     expect(formatSpeed(1852 / (6 * 60), 'minkm', 'nm')).toBe('6:00 /NM');
     expect(formatSpeed(0.05, 'minkm')).toBe('- /km');
     for (const ms of [0, 0.1, 2.5, 7.77, 15.123, -1]) {
-      for (const unit of ['kn', 'kmh', 'ms'] as const) expect(formatSpeed(ms, unit)).toBe(oldFormatSpeed(ms, unit));
+      for (const unit of ['kn', 'kmh', 'ms'] as const) expect(formatSpeed(ms, unit)).toBe(oldFormatSpeed(ms, unit).replace('.', ','));
     }
     expect(formatSpeed(null, 'kn')).toBe('-');
     expect(formatSpeed(NaN, 'kmh')).toBe('-');
@@ -177,21 +177,21 @@ describe('minutesSeconds et pad2', () => {
 describe('signedPercent', () => {
   it("rend l'écriture de l'analyse des répétitions (zéro sans signe)", () => {
     for (const f of [0, 0.0004, -0.0004, 0.012, -0.03, 0.5, -1, 0.0049, 0.005]) {
-      expect(signedPercent(f)).toBe(oldIntervalChange(f));
-      expect(signedPercent(f, { decimals: 0 })).toBe(oldIntervalChange(f, 0));
+      expect(signedPercent(f)).toBe(oldIntervalChange(f).replace('.', ','));
+      expect(signedPercent(f, { decimals: 0 })).toBe(oldIntervalChange(f, 0).replace('.', ','));
     }
     expect(signedPercent(0)).toBe('0 %');
-    expect(signedPercent(0.012)).toBe('+1.2 %');
-    expect(signedPercent(-0.03)).toBe('−3.0 %');
+    expect(signedPercent(0.012)).toBe('+1,2 %');
+    expect(signedPercent(-0.03)).toBe('−3,0 %');
   });
 
   it("rend l'écriture de la cadence (zéro signé)", () => {
     const change = (from: number, to: number) => signedPercent(from > 0 ? (to - from) / from : 0, { zeroSign: true });
     for (const [from, to] of [[170, 170], [170, 172], [170, 168], [0, 5], [-3, 4], [0.9, 0.8], [170, 170.0001], [170, 169.9999]]) {
-      expect(change(from, to)).toBe(oldCadenceChange(from, to));
+      expect(change(from, to)).toBe(oldCadenceChange(from, to).replace('.', ','));
     }
-    expect(change(170, 170)).toBe('+0.0 %');
-    expect(change(0, 5)).toBe('+0.0 %');
+    expect(change(170, 170)).toBe('+0,0 %');
+    expect(change(0, 5)).toBe('+0,0 %');
   });
 });
 
@@ -201,8 +201,8 @@ describe('formatDistanceAuto, formatMeters et seuils', () => {
     for (const m of [0, 999, 9999, 10_000, 12_345, 9.99 * 1852, 10 * 1852, NaN, Infinity]) {
       for (const unit of ['km', 'nm'] as const) expect(formatDistanceAuto(m, unit)).toBe(old(m, unit));
     }
-    expect(formatDistanceAuto(9_994, 'km')).toBe('9.99 km');
-    expect(formatDistanceAuto(10_040, 'km')).toBe('10.0 km');
+    expect(formatDistanceAuto(9_994, 'km')).toBe('9,99 km');
+    expect(formatDistanceAuto(10_040, 'km')).toBe('10,0 km');
   });
 
   it('écrit des mètres entiers', () => {
@@ -237,5 +237,29 @@ describe('speedSourceText', () => {
     expect(speedSourceText(true, 'kmh')).toBe('fournie par l\'appareil, lue en km/h et convertie');
     expect(speedSourceText(true, 'ms')).toBe('fournie par l\'appareil');
     expect(speedSourceText(false, null)).toBe('dérivée des positions, filtrée');
+  });
+});
+
+describe('formats d\'affichage uniques', () => {
+  it('formatDecimal : virgule et décimales fixes, arrondi du toFixed', () => {
+    expect(formatDecimal(12.4, 2)).toBe('12,40');
+    expect(formatDecimal(12.44)).toBe('12,4');
+    expect(formatDecimal(-0.06, 1)).toBe('-0,1');
+    expect(formatDecimal(3, 0)).toBe('3');
+  });
+  it('commaDecimal et parseDecimal : texte arrondi mis à la virgule, et relu', () => {
+    expect(commaDecimal('12.4')).toBe('12,4');
+    expect(commaDecimal(0.5)).toBe('0,5');
+    expect(commaDecimal('-')).toBe('-');
+    expect(commaDecimal('5:30')).toBe('5:30');
+    expect(parseDecimal('12,4')).toBe(12.4);
+    expect(parseDecimal('12.4')).toBe(12.4);
+  });
+  it('durées espacées partout : « 1 h 24 », « 37 min »', () => {
+    expect(formatDuration(84 * 60_000)).toBe('1 h 24');
+    expect(formatDuration(60 * 60_000)).toBe('1 h 00');
+    expect(formatDuration(37 * 60_000 + 59_000)).toBe('37 min');
+    expect(formatShortDuration(3_900)).toBe('1 h 05');
+    expect(formatShortDuration(65)).toBe('1 min 05');
   });
 });

@@ -3,7 +3,7 @@ import { bandIndex } from '../core/basics';
 import { sportTreatment, type SportFamily, type Treatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
-  J_PER_KCAL, formatClock, formatDistance, formatShortDistance, formatSpeed, formatTimeOfDay, isInverseUnit, type DistanceUnit, type SpeedUnit,
+  J_PER_KCAL, formatClock, formatDistance, formatShortDistance, formatSpeed, formatTimeOfDay, isInverseUnit, type DistanceUnit, type SpeedUnit, formatDecimal
 } from '../core/units';
 import { LIVE_STATS_DEFAULTS, type LiveStats, type LiveStatsOptions } from './liveStats';
 
@@ -303,11 +303,11 @@ export const liveFieldValue = (key: LiveFieldKey, ctx: LiveFieldContext): string
     case 'climbRate': return stats.climbRateMh === null ? NONE : `${Math.round(stats.climbRateMh)} m/h`;
     case 'power':
       if (stats.recentPowerW === null) return NONE;
-      return stats.energyPerKg ? `${stats.recentPowerW.toFixed(1)} W/kg` : `${Math.round(stats.recentPowerW)} W`;
+      return stats.energyPerKg ? `${formatDecimal(stats.recentPowerW, 1)} W/kg` : `${Math.round(stats.recentPowerW)} W`;
     case 'effort': {
       if (stats.effortJ === null) return NONE;
       const kcal = stats.effortJ / J_PER_KCAL;
-      return stats.energyPerKg ? `${kcal.toFixed(1)} kcal/kg` : `${Math.round(kcal)} kcal`;
+      return stats.energyPerKg ? `${formatDecimal(kcal, 1)} kcal/kg` : `${Math.round(kcal)} kcal`;
     }
     case 'heartRate': return ctx.heartRateBpm === null ? NONE : `${Math.round(ctx.heartRateBpm)} bpm`;
     case 'averageHeartRate': return stats.averageHeartRateBpm === null ? NONE : `${Math.round(stats.averageHeartRateBpm)} bpm`;

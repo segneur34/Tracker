@@ -1,6 +1,7 @@
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip } from 'recharts';
 import type { PolarBin } from '../sailing/wind';
 import { ALTITUDE_COLOR } from './chartStyle';
+import { commaDecimal } from '../core/units';
 
 /**
  * Polaire de vitesse au vent (vitesse max par angle au vent, vent en haut),
@@ -24,7 +25,7 @@ function SpeedPolarChart({ data, unitSymbol, compact = false }: { data: PolarBin
             <PolarAngleAxis dataKey="angle" tick={{ fill: 'var(--ink-2)', fontSize }} />
             <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={{ fill: 'var(--ink)', fontSize, fontWeight: 'bold' }} />
             <Radar name="Vitesse Max" dataKey="vitesse" stroke={ALTITUDE_COLOR} fill={ALTITUDE_COLOR} fillOpacity={0.4} isAnimationActive={!compact} />
-            <Tooltip formatter={(value: unknown): [string, string] => [`${value} ${unitSymbol}`, 'Vmax']} />
+            <Tooltip formatter={(value: unknown): [string, string] => [`${commaDecimal(String(value))} ${unitSymbol}`, 'Vmax']} />
           </RadarChart>
         </ResponsiveContainer>
       </div>

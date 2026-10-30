@@ -9,7 +9,7 @@ import { niceTicks } from '../core/chartZoom';
 import {
   editSpeedUnit, signedPercent,
   SPEED_UNIT_LABEL, speedUnitLabel, formatShortDistance, formatSpeed, formatSpeedValue, isInverseUnit, toDisplaySpeed,
-  type DistanceUnit, type SpeedUnit,
+  type DistanceUnit, type SpeedUnit, formatDecimal
 } from '../core/units';
 import { formatIntervalClock, workoutLabel, type IntervalWorkout } from '../recording/intervalTimer';
 import type { IntervalRep, IntervalSummary } from '../running/intervalStats';
@@ -234,7 +234,7 @@ function IntervalAnalysis({
   /** Accélération et seuils : en km/h pour une allure, comme les tops. */
   const rateUnit: SpeedUnit = editSpeedUnit(speedUnit);
   const formatRate = (ms2: number): string =>
-    rateUnit === 'ms' ? `${ms2.toFixed(2)} m/s²` : `${toDisplaySpeed(ms2, rateUnit).toFixed(1)} ${SPEED_UNIT_LABEL[rateUnit]} par s`;
+    rateUnit === 'ms' ? `${formatDecimal(ms2, 2)} m/s²` : `${formatDecimal(toDisplaySpeed(ms2, rateUnit), 1)} ${SPEED_UNIT_LABEL[rateUnit]} par s`;
   const title = (s: IntervalSeriesView) =>
     s.detected ? `≈ ${workoutLabel(s.workout)}, répétitions détectées` : `${s.name ?? 'Séance'} ${workoutLabel(s.workout)}`;
   /** Titre d'une séance : un bouton à chevron qui la replie ou la déplie dans les trois panneaux. */
@@ -285,7 +285,7 @@ function IntervalAnalysis({
       </HelpText>
       {samplingS > SPARSE_SAMPLING_S && (
         <div className="ui-alert ui-alert--warning" style={{ marginBottom: '10px', fontSize: 'var(--text-xs)' }}>
-          Un point toutes les {samplingS.toFixed(1)} s en médiane : la trace est trop clairsemée pour le détail d'une
+          Un point toutes les {formatDecimal(samplingS, 1)} s en médiane : la trace est trop clairsemée pour le détail d'une
           répétition. Les efforts paraissent plus courts et plus lents qu'ils ne l'étaient, une partie tombant dans le long
           segment de la récupération ; lancé, maintien et profils sont approximatifs.
         </div>
@@ -315,8 +315,8 @@ function IntervalAnalysis({
               {summary.worst && stat('La plus lente', formatSpeed(summary.worst.speedMs, speedUnit, distanceUnit), `rép. ${summary.worst.rep}`)}
               {summary.trend && stat('Dérive', `${signedPercent(summary.trend.perRep)} par rép.`,
                 `de ${formatSpeed(summary.trend.firstMs, speedUnit, distanceUnit)} à ${formatSpeed(summary.trend.lastMs, speedUnit, distanceUnit)}`)}
-              {summary.regularity !== null && stat('Régularité', `± ${(summary.regularity * 100).toFixed(1)} %`)}
-              {summary.launchS !== null && stat('Mise en vitesse', `${summary.launchS.toFixed(1)} s`,
+              {summary.regularity !== null && stat('Régularité', `± ${formatDecimal(summary.regularity * 100, 1)} %`)}
+              {summary.launchS !== null && stat('Mise en vitesse', `${formatDecimal(summary.launchS, 1)} s`,
                 summary.accelMs2 !== null ? formatRate(summary.accelMs2) : undefined)}
               {summary.holdRatio !== null && stat('Maintien', signedPercent(summary.holdRatio - 1))}
             </div>
@@ -370,7 +370,7 @@ function IntervalAnalysis({
                         )}
                         {hasCadence && (
                           <td className="an-ivl-step" data-label="pas" style={cellStyle}>
-                            {s.cadences?.[repIndex]?.stepLengthM != null ? `${s.cadences[repIndex]!.stepLengthM!.toFixed(2)} m` : '—'}
+                            {s.cadences?.[repIndex]?.stepLengthM != null ? `${formatDecimal(s.cadences[repIndex]!.stepLengthM!, 2)} m` : '—'}
                           </td>
                         )}
                         <td className="an-ivl-rest" style={{ ...cellStyle, color: 'var(--muted)' }}>

@@ -22,11 +22,11 @@ const values = (stats: ReturnType<typeof summaryShareStats>) => Object.fromEntri
 describe('summaryShareStats', () => {
   it('donne à pied les chiffres de l\'onglet « général », sous les mêmes clés', () => {
     const v = values(summaryShareStats(summary(), 'course', { speed: 'kmh', distance: 'km' }));
-    expect(v.distance).toBe('10.00 km');
-    expect(v.totalTime).toBe('1h00');
+    expect(v.distance).toBe('10,00 km');
+    expect(v.totalTime).toBe('1 h 00');
     expect(v.activeTime).toBe('50 min');
-    expect(v.movingAverage).toBe('10.8 km/h');
-    expect(v.overallAverage).toBe('10.0 km/h');
+    expect(v.movingAverage).toBe('10,8 km/h');
+    expect(v.overallAverage).toBe('10,0 km/h');
     expect(v.elevationGain).toBe('+120 m');
   });
 
@@ -49,9 +49,9 @@ describe('summaryShareStats', () => {
 
   it('donne en voile la moyenne active et les manœuvres, dans l\'unité de l\'activité', () => {
     const v = values(summaryShareStats(summary({ maneuverCount: 14 }), 'voile', { speed: 'kn', distance: 'nm' }));
-    expect(v.activeAverage).toBe('5.8 nds');
+    expect(v.activeAverage).toBe('5,8 nds');
     expect(v.maneuvers).toBe('14');
-    expect(v.distance).toBe('5.40 NM');
+    expect(v.distance).toBe('5,40 NM');
   });
 
   it('donne en surf les vagues, sans vol hors foil', () => {

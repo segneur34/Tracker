@@ -160,7 +160,7 @@ await shoot('cadence-course');
 const speeds = await tableRows('Cadence', 'km/h');
 console.log('  selon la vitesse :', speeds?.join(' | '));
 check('selon la vitesse : deux tranches, cadence et pas plus grands à la plus rapide',
-  speeds?.length === 2 && speeds[0].includes('160 pas/min') && speeds[1].includes('176 pas/min') && speeds[0].includes('0.97 m') && speeds[1].includes('1.23 m'));
+  speeds?.length === 2 && speeds[0].includes('160 pas/min') && speeds[1].includes('176 pas/min') && speeds[0].includes('0,97 m') && speeds[1].includes('1,23 m'));
 const grades = await tableRows('Cadence', 'Zone');
 console.log('  selon la pente :', grades?.join(' | '));
 check('selon la pente : la côte en « Montée », le reste à plat', grades?.some((r) => r.startsWith('Montée 3 à 10 % 5 min')) && grades?.some((r) => r.startsWith('À peu près plat')));
@@ -196,7 +196,7 @@ check(`course sans cadence : pas d'onglet (${await tabLabels()})`, !(await tabLa
 await go(paths.fractionne, 7000);
 const reps = await tableRows('Répétitions', 'Cadence');
 console.log('  répétitions :', reps?.slice(0, 2).join(' | '));
-check(`fractionné : colonnes Cadence et Pas (${reps?.length ?? 0} répétitions)`, (reps?.length ?? 0) >= 7 && /18\d pas\/min/.test(reps[0]) && / \d\.\d\d m /.test(` ${reps[0]} `));
+check(`fractionné : colonnes Cadence et Pas (${reps?.length ?? 0} répétitions)`, (reps?.length ?? 0) >= 7 && /18\d pas\/min/.test(reps[0]) && / \d,\d\d m /.test(` ${reps[0]} `));
 
 // --- 5. Statistiques ---
 await go('/statistiques?famille=course', 4000);

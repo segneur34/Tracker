@@ -38,8 +38,8 @@ describe('liveNotification', () => {
   it("donne l'activité, les chiffres en une ligne et la durée au chronomètre", () => {
     const n = liveNotification(input());
     expect(n.title).toBe('Wingfoil');
-    expect(n.text).toBe('Vit. 36.0 km/h · Dist. 12.35 km');
-    expect(n.lines).toEqual(['Vitesse : 36.0 km/h', 'Distance : 12.35 km']);
+    expect(n.text).toBe('Vit. 36,0 km/h · Dist. 12,35 km');
+    expect(n.lines).toEqual(['Vitesse : 36,0 km/h', 'Distance : 12,35 km']);
     expect(n.chrono).toEqual({ baseMs: NOW - 3_725_000, countDown: false });
   });
 
@@ -57,7 +57,7 @@ describe('liveNotification', () => {
   it('en pause manuelle : durée figée dans le titre, deux chiffres sur la ligne, pas de chronomètre', () => {
     const n = liveNotification(input({ paused: 'manual' }));
     expect(n.title).toBe('Wingfoil · en pause 1:02:05');
-    expect(n.text).toBe('Vit. 36.0 km/h · Dist. 12.35 km');
+    expect(n.text).toBe('Vit. 36,0 km/h · Dist. 12,35 km');
     expect(n.chrono).toBeNull();
   });
 
@@ -111,7 +111,7 @@ describe('trainingStep (26/10)', () => {
 
   it("met l'étape sur la ligne repliée, la phase restant dans le titre", () => {
     const n = liveNotification(input({ activityName: 'Fractionné à pied', fields: ['step', 'speed'], context: context({ step: { rep: 5, of: 20 } }) }));
-    expect(n.text).toBe('Étape 5/20 · Vit. 36.0 km/h');
+    expect(n.text).toBe('Étape 5/20 · Vit. 36,0 km/h');
     expect(n.lines[0]).toBe('Étape : 5/20');
   });
 });

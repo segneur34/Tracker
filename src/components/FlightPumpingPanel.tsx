@@ -7,7 +7,7 @@ import MapToggle from './ui/MapToggle';
 import StatTile from './ui/StatTile';
 import Swatch from './ui/Swatch';
 import type { FlightPumping, FlightSpan, PumpingSummary } from '../core/pumping';
-import { formatShortDuration, formatTimeOfDay } from '../core/units';
+import { formatShortDuration, formatTimeOfDay, formatDecimal } from '../core/units';
 import type { PumpingStatus } from '../hooks/useSessionPumping';
 
 /** Une colonne propre au module dans les tableaux des vols : son titre et sa case. */
@@ -99,7 +99,7 @@ function FlightPumpingPanel<F extends FlightSpan>({
           <>
             <StatTile label="Coups de pompe" value={pumpSummary.strokes} />
             <StatTile label="Fréquence" value={orDash(pumpSummary.strokesPerMin, (v) => `${Math.round(v)} /min`)} title="Coups de pompe par minute de pumping" />
-            <StatTile label="Par coup" value={orDash(pumpSummary.perStrokeM, (v) => `${v.toFixed(1)} m`)} title="Distance pompée divisée par le nombre de coups" />
+            <StatTile label="Par coup" value={orDash(pumpSummary.perStrokeM, (v) => `${formatDecimal(v, 1)} m`)} title="Distance pompée divisée par le nombre de coups" />
           </>
         )}
       </div>
@@ -136,7 +136,7 @@ function FlightPumpingPanel<F extends FlightSpan>({
                       <>
                         <td style={tdStyle}>{speedCell(pump?.takeoffSpeedMs ?? null)}</td>
                         <td style={tdStyle}>{orDash(pump?.strokesPerMin ?? null, (v) => `${Math.round(v)} /min`)}</td>
-                        <td style={tdStyle}>{orDash(pump?.perStrokeM ?? null, (v) => v.toFixed(1))}</td>
+                        <td style={tdStyle}>{orDash(pump?.perStrokeM ?? null, (v) => formatDecimal(v, 1))}</td>
                       </>
                     ) : podiumColumns.map((c) => <td key={c.header} style={tdStyle}>{c.cell(f)}</td>)}
                     <td style={tdStyle}>{showButton(f)}</td>
@@ -192,7 +192,7 @@ function FlightPumpingPanel<F extends FlightSpan>({
                         <td style={tdStyle}>{pump ? `${Math.round(pump.pumpDistanceM)} m` : '—'}</td>
                         <td style={tdStyle}>{pump ? pump.strokes : '—'}</td>
                         <td style={tdStyle}>{orDash(pump?.strokesPerMin ?? null, (v) => `${Math.round(v)} /min`)}</td>
-                        <td style={tdStyle}>{orDash(pump?.perStrokeM ?? null, (v) => v.toFixed(1))}</td>
+                        <td style={tdStyle}>{orDash(pump?.perStrokeM ?? null, (v) => formatDecimal(v, 1))}</td>
                       </>
                     ) : allColumnsWithoutPumping.map((c) => <td key={c.header} style={tdStyle}>{c.cell(f)}</td>)}
                     <td style={tdStyle}>{showButton(f)}</td>

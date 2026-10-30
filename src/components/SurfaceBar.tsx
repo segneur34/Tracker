@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import './SurfaceBar.css';
-import { formatShortDistance, type DistanceUnit } from '../core/units';
+import { formatShortDistance, type DistanceUnit, formatDecimal } from '../core/units';
 import { SURFACE_COLOR, SURFACE_LABEL, type SurfaceCategory, type SurfaceTotal } from '../planning/surface';
 import Button from './ui/Button';
 
@@ -20,7 +20,7 @@ interface SurfaceBarProps {
 /** Part de la longueur totale, en pour cent : un chiffre après la virgule sous 1 %. */
 const share = (distanceM: number, totalM: number): string => {
   const pct = totalM > 0 ? (100 * distanceM) / totalM : 0;
-  return `${pct < 1 ? pct.toFixed(1) : Math.round(pct)} %`;
+  return `${pct < 1 ? formatDecimal(pct, 1) : Math.round(pct)} %`;
 };
 
 /**

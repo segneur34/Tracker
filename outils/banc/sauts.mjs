@@ -232,7 +232,7 @@ console.log('onglet sauts :', await openTab('sauts'));
 await settle({ max: 800 });
 text = await pageText();
 const jumpRows = await evaluate(`document.querySelectorAll('.an-jump-table tbody tr').length`);
-check('onglet « sauts » : 2 sauts, le plus haut vers 2,07 m', jumpRows === 2 && /2\.0\d m/.test(text), `${jumpRows} lignes, ${(text.match(/2\.0\d m/) ?? ['?'])[0]}`);
+check('onglet « sauts » : 2 sauts, le plus haut vers 2,07 m', jumpRows === 2 && /2[.,]0\d m/.test(text), `${jumpRows} lignes, ${(text.match(/2[.,]0\d m/) ?? ['?'])[0]}`);
 check('podium, tableau et courbe', text.includes('Les plus hauts') && text.includes('Longueur') && text.includes('comparer avec'));
 console.log('Voir :', await evaluate(`(() => {
   const b = [...document.querySelectorAll('.an-jump-table button')].find((x) => x.textContent.trim() === 'Voir');
@@ -254,7 +254,7 @@ await clickButton('.an-jump-sort button', 'Longueur');
 await wait(300);
 const longestFirst = await firstRow();
 const lengths = await evaluate(`[...document.querySelectorAll('.an-jump-table tbody tr .an-jump-length')].map((c) => c.textContent.trim()).join(' > ')`);
-check('tri par longueur : le plus long en tête', parseFloat(lengths.split(' > ')[0]) >= parseFloat(lengths.split(' > ')[1]), `n° ${longestFirst} en tête, ${lengths}`);
+check('tri par longueur : le plus long en tête', parseFloat(lengths.split(' > ')[0].replace(',', '.')) >= parseFloat(lengths.split(' > ')[1].replace(',', '.')), `n° ${longestFirst} en tête, ${lengths}`);
 // « Détail » de la dernière ligne : ce saut devient le premier de la courbe.
 const lastNum = await evaluate(`[...document.querySelectorAll('.an-jump-table tbody tr .an-jump-num')].at(-1).textContent.trim()`);
 await evaluate(`[...document.querySelectorAll('.an-jump-table tbody tr')].at(-1).querySelector('.an-jump-actions button:last-child').click()`);

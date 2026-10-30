@@ -116,15 +116,15 @@ describe('liveFieldValue', () => {
     expect(liveFieldValue('power', context({ stats }))).toBe('312 W');
     expect(liveFieldValue('effort', context({ stats }))).toBe('640 kcal');
     const perKg = { ...stats, recentPowerW: 4.18, effortJ: 8.5 * 4184, energyPerKg: true };
-    expect(liveFieldValue('power', context({ stats: perKg }))).toBe('4.2 W/kg');
-    expect(liveFieldValue('effort', context({ stats: perKg }))).toBe('8.5 kcal/kg');
+    expect(liveFieldValue('power', context({ stats: perKg }))).toBe('4,2 W/kg');
+    expect(liveFieldValue('effort', context({ stats: perKg }))).toBe('8,5 kcal/kg');
   });
 
   it('donne le temps restant à la moyenne actuelle, et rien sans trace', () => {
     const stats = { ...EMPTY_LIVE_STATS, averageSpeedMs: 3 };
     expect(liveFieldValue('remainingTime', context({ stats, remainingM: 5400 }))).toBe('0:30:00');
     expect(liveFieldValue('remainingTime', context({ stats }))).toBe('—');
-    expect(liveFieldValue('remaining', context({ stats, remainingM: 5400 }))).toBe('5.40 km');
+    expect(liveFieldValue('remaining', context({ stats, remainingM: 5400 }))).toBe('5,40 km');
   });
 
   it('marque les valeurs manquantes', () => {

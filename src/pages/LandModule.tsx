@@ -65,7 +65,7 @@ import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
 import {
   editSpeedUnit, CHART_PACE_MIN_SPEED_MS,
   DISTANCE_UNIT_SYMBOL, speedSourceText, speedUnitLabel, formatClockMinutes, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
-  isInverseUnit, toDisplayDistance, toDisplaySpeed,
+  isInverseUnit, toDisplayDistance, toDisplaySpeed, commaDecimal
 } from '../core/units';
 import { useChartZoom, type ChartZoom } from '../hooks/useChartZoom';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
@@ -642,7 +642,7 @@ function LandModule({ family }: { family: LandFamily }) {
     { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
     { key: 'activeDistance', label: 'Distance en mouvement', value: formatDistance(stats.activeDistanceM, distanceUnit) },
     { key: 'totalTime', label: 'Temps de parcours', value: stats.totalTime },
-    { key: 'activeTime', label: `Temps en mouvement (${stats.activeRatio} %)`, value: stats.activeTime },
+    { key: 'activeTime', label: `Temps en mouvement (${commaDecimal(stats.activeRatio)} %)`, value: stats.activeTime },
     { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit, distanceUnit) },
     { key: 'overallAverage', label: 'Moyenne sur le temps total', value: formatSpeed(positiveSpeed(stats.avgSpeedMs), speedUnit, distanceUnit) },
     { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
@@ -657,7 +657,7 @@ function LandModule({ family }: { family: LandFamily }) {
   const overviewStats: ShareStat[] = stats ? [
     { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
     { key: 'totalTime', label: 'Temps de parcours', value: stats.totalTime },
-    { key: 'activeTime', label: `Temps en mouvement (${stats.activeRatio} %)`, value: stats.activeTime },
+    { key: 'activeTime', label: `Temps en mouvement (${commaDecimal(stats.activeRatio)} %)`, value: stats.activeTime },
     { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit, distanceUnit) },
     { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
     ...overviewTargets.map((target) => {
@@ -735,7 +735,7 @@ function LandModule({ family }: { family: LandFamily }) {
   );
   const distanceSymbol = DISTANCE_UNIT_SYMBOL[distanceUnit];
   /** Distance de l'infobulle, au centième. */
-  const distanceLabel = (v: unknown) => `${toFixedNumber(Number(v), 2)} ${distanceSymbol}`;
+  const distanceLabel = (v: unknown) => `${commaDecimal(toFixedNumber(Number(v), 2))} ${distanceSymbol}`;
   /** Abscisse des graphes : la distance, graduations rondes zoom compris. */
   const distX = distanceX(distanceSymbol);
   /** Courbe de vitesse (ou d'allure), dans l'unité choisie. */

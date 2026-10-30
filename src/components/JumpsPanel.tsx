@@ -3,7 +3,7 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { ReferenceLine } from 'recharts';
 import { jumpCurveRows, jumpDoubtLabel, type JumpCurveRow, type SessionJump } from '../core/jumps';
 import { JUMP_DETECTION } from '../core/sportProfiles';
-import { formatShortDistance, formatSpeed, formatTimeOfDay, type DistanceUnit, type SpeedUnit } from '../core/units';
+import { formatShortDistance, formatSpeed, formatTimeOfDay, type DistanceUnit, type SpeedUnit, formatDecimal, commaDecimal } from '../core/units';
 import type { JumpsStatus } from '../hooks/useSessionJumps';
 import { createHoverStore } from '../hooks/useChartHover';
 import { useChartZoom } from '../hooks/useChartZoom';
@@ -33,9 +33,9 @@ import SegmentedControl from './ui/SegmentedControl';
 const CURVE_COLORS = ['#1565c0', '#ef6c00'];
 const CURVE_HEIGHT_PX = 220;
 /** Abscisse de la courbe : secondes depuis le décollage. */
-const CURVE_X = { key: 't', format: (v: number) => `${toFixedNumber(v, 2)} s` };
+const CURVE_X = { key: 't', format: (v: number) => `${commaDecimal(toFixedNumber(v, 2))} s` };
 /** Hauteur, en mètres, depuis le sol. */
-const CURVE_Y: TrackYAxis[] = [{ color: 'var(--chart-axis)', domain: [0, 'auto'], width: 42, tick: CHART_TICK, tickFormatter: (v: number) => `${roundTo(v, 1)} m` }];
+const CURVE_Y: TrackYAxis[] = [{ color: 'var(--chart-axis)', domain: [0, 'auto'], width: 42, tick: CHART_TICK, tickFormatter: (v: number) => `${commaDecimal(roundTo(v, 1))} m` }];
 
 /** Tri du tableau. */
 type JumpSort = 'hauteur' | 'vol' | 'longueur';
@@ -82,8 +82,8 @@ export interface JumpsPanelProps {
 const cellStyle: CSSProperties = { padding: '0.4em 0.6em', textAlign: 'center' };
 const noteStyle: CSSProperties = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '6px', lineHeight: 1.45 };
 
-const meters = (m: number) => `${m.toFixed(2)} m`;
-const seconds = (s: number) => `${s.toFixed(2)} s`;
+const meters = (m: number) => `${formatDecimal(m, 2)} m`;
+const seconds = (s: number) => `${formatDecimal(s, 2)} s`;
 const rank = (k: number) => `${k + 1}${k === 0 ? 'er' : 'e'}`;
 /** Raisons d'un doute, en clair, pour l'infobulle. */
 const doubtText = (jump: SessionJump) => `Mesure douteuse : ${jump.doubts.map((d) => jumpDoubtLabel(d, JUMP_DETECTION)).join(' ; ')}.`;

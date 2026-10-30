@@ -7,6 +7,7 @@ import { pushBackLayer } from '../platform/backButton';
 import { levelText, type RootGrowth } from '../library/rootGrowth';
 import { drawRoot, readRootColors, type RootColors, type RootFrame } from './drawRoot';
 import './ProfileRoot.css';
+import { formatDuration } from '../core/units';
 
 /**
  * Racine du Profil (maquette validée le 22/10) : elle part du carré à droite
@@ -50,10 +51,7 @@ const SLOT_CLASS = 'profile-root-slot';
 const plural = (n: number, word: string): string => `${word}${n >= 2 ? 's' : ''}`;
 /** Nombre et mot liés par une espace insécable : jamais séparés en fin de ligne. */
 const count = (n: number, word: string): string => `${levelText(n)} ${plural(n, word)}`;
-const minutesText = (min: number): string => {
-  const m = Math.round(min);
-  return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`;
-};
+const minutesText = (min: number): string => formatDuration(Math.round(min) * 60_000);
 const ease = (t: number): number => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 
 /** Carré à droite du pseudo : le niveau de la racine ; le toucher ouvre le détail. */

@@ -45,7 +45,7 @@ import { computeAllTopSegments } from '../core/topSegments';
 import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
 import {
   SPEED_UNIT_LABEL, speedSourceText, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
-  fromDisplaySpeed, toDisplaySpeed,
+  fromDisplaySpeed, toDisplaySpeed, formatDecimal
 } from '../core/units';
 import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { useGpxSession } from '../hooks/useGpxSession';
@@ -212,8 +212,8 @@ function SurfModule() {
   /** Chiffres de l'onglet « général », proposés aussi pour l'image de partage. */
   const generalStats: ShareStat[] = summary ? [
     { key: 'totalTime', label: 'Durée de la session', value: formatDuration(summary.totalS * 1000) },
-    { key: 'waveTime', label: `Sur la vague (${summary.totalS > 0 ? ((summary.waveS / summary.totalS) * 100).toFixed(1) : '0'} %)`, value: formatShortDuration(summary.waveS) },
-    { key: 'waves', label: 'Vagues', value: `${summary.waveCount}${summary.wavesPerHour !== null && summary.waveCount > 0 ? ` (${summary.wavesPerHour.toFixed(1)} / h)` : ''}` },
+    { key: 'waveTime', label: `Sur la vague (${summary.totalS > 0 ? formatDecimal((summary.waveS / summary.totalS) * 100, 1) : '0'} %)`, value: formatShortDuration(summary.waveS) },
+    { key: 'waves', label: 'Vagues', value: `${summary.waveCount}${summary.wavesPerHour !== null && summary.waveCount > 0 ? ` (${formatDecimal(summary.wavesPerHour, 1)} / h)` : ''}` },
     { key: 'averageWave', label: 'Distance moyenne', value: orDash(summary.avgWaveDistanceM, (m) => `${Math.round(m)} m`) },
     { key: 'longestWave', label: 'Plus longue vague', value: orDash(summary.longestWaveM, (m) => `${Math.round(m)} m`) },
     { key: 'maxSpeed', label: 'Vitesse max', value: orDash(summary.maxWaveSpeedMs, (v) => formatSpeed(v, speedUnit)) },
@@ -222,7 +222,7 @@ function SurfModule() {
     { key: 'return', label: 'Retour au pic (moyen)', value: orDash(summary.avgReturnS, formatShortDuration), title: "De la fin d'une vague à la première attente" },
     ...(foil ? [
       { key: 'longestFlight', label: 'Plus long vol', value: orDash(summary.longestFlightS, formatShortDuration) },
-      { key: 'flightTime', label: `Ratio de vol (${summary.totalS > 0 ? ((summary.flightS / summary.totalS) * 100).toFixed(1) : '0'} %)`, value: formatShortDuration(summary.flightS) },
+      { key: 'flightTime', label: `Ratio de vol (${summary.totalS > 0 ? formatDecimal((summary.flightS / summary.totalS) * 100, 1) : '0'} %)`, value: formatShortDuration(summary.flightS) },
       { key: 'wavesInFlight', label: 'Vagues en un vol', value: String(summary.maxWavesInFlight ?? '—'), title: 'Le plus de vagues reliées par un même vol' },
     ] : []),
     { key: 'distance', label: 'Distance totale', value: formatDistance(totalDistanceM, distanceUnit) },

@@ -22,7 +22,7 @@ import {
   TRAINING_KIND_LABEL, hasPositions, isIntervalSport, isTestSport, sportFamily, sportTreatment, trainingKind, usesMarkCourse, type SportFamily,
   type TrainingKind,
 } from '../core/sportProfiles';
-import { formatClock, formatDistance, formatShortDistance, formatSpeed, formatMeters } from '../core/units';
+import { formatClock, formatDistance, formatShortDistance, formatSpeed, formatMeters, formatDecimal } from '../core/units';
 import LiveMap from '../components/LiveMap';
 import { clearFollowedTrace, useFollowedTrace } from '../hooks/useFollowedTrace';
 import { armFitnessTest, useFitnessTest } from '../hooks/useFitnessTest';
@@ -542,7 +542,7 @@ function RecordingGpsCard({ busy, liveHeartOnly, deviceGps }: {
         <div style={STAT_GRID}>
           <Stat label="Durée" value={formatClock(pointsDurationMs)} />
           <Stat label="Points" value={String(stats.pointCount)} />
-          <Stat label="Intervalle moyen" value={meanIntervalS === null ? '—' : `${meanIntervalS.toFixed(1)} s`} />
+          <Stat label="Intervalle moyen" value={meanIntervalS === null ? '—' : `${formatDecimal(meanIntervalS, 1)} s`} />
           <Stat label="Plus long trou" value={`${Math.round(stats.longestGapS)} s`} />
           <Stat label="Précision" value={stats.lastAccuracyM === null ? '—' : `${Math.round(stats.lastAccuracyM)} m`} />
           {busy && deviceGps && (

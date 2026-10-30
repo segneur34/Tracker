@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import './BeepCurveEditor.css';
 import Button from './ui/Button';
-import { formatSpeed, type SpeedUnit } from '../core/units';
+import { formatSpeed, type SpeedUnit, commaDecimal } from '../core/units';
 import { useRecorderStatus } from '../hooks/useRecorder';
 import { BEEP_LONG_MS } from '../core/beepDurations';
 import { getBeeper } from '../platform/beeper';
@@ -58,7 +58,7 @@ const ticks = (max: number, step: number): number[] => Array.from({ length: Math
 const xStep = (xMax: number): number => (xMax <= 300 ? 50 : xMax <= 600 ? 100 : xMax <= 1200 ? 250 : 500);
 const yStep = (yMax: number): number => (yMax <= 3000 ? 500 : 1000);
 
-const seconds = (ms: number): string => `${parseFloat((ms / 1000).toFixed(2))} s`;
+const seconds = (ms: number): string => `${commaDecimal(parseFloat((ms / 1000).toFixed(2)))} s`;
 const sameGuide = (a: MarkGuideSettings, b: MarkGuideSettings): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 /** Saisie d'un nombre, rangée à la sortie du champ ou sur Entrée : une valeur à moitié tapée ne réordonne pas la courbe. */
