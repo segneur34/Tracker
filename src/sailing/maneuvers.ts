@@ -13,6 +13,7 @@ import {
   MANEUVER_MIN_TURN_DEG,
   MANEUVER_WINDOW_S,
   ORIENTATION_MAX_CONSERVATION,
+  TURN_STRIDE_MIN_S,
   WIND_CONFIDENCE_MIN,
   WIND_ESTIMATION_MIN_SPEED_KN,
   getDefaultThresholdKn,
@@ -42,6 +43,8 @@ export interface ManeuverOptions {
   fullTurnDeg?: number;
   /** Rotation minimale, en °/s, du cœur d'un virage, d'où se lit son approche (`MANEUVER_CORE_RATE_DEG_S`). */
   coreRateDegS?: number;
+  /** Virage minimal, en degrés, pour qu'un changement de cap soit lu comme un virage (`MANEUVER_MIN_TURN_DEG`). */
+  minTurnDeg?: number;
   /**
    * Seuil de vol (ou de navigation), en nœuds : le seuil d'activité de la
    * session. Donné, une manœuvre classée dont la vitesse d'approche est en
@@ -153,6 +156,8 @@ export interface ManeuverRejections {
   slowEntry: number;
   /** Rotation trop dispersée pour un virage : chute, hésitation. */
   incoherent: number;
+  /** Cap d'approche ou de sortie lu sous le plancher d'arrêt : planche arrêtée, le cap n'est que du bruit de position. */
+  still: number;
   /** Virage franc et net, mais dont la bissectrice ne tombe près d'aucun axe du vent. */
   unclassified: number;
   /** Cap franc, mais sur une distance trop courte pour qu'il veuille dire quelque chose. */
@@ -567,9 +572,16 @@ interface StableSegment {
 /**
  * Segment stabilisé situé avant (`direction` = -1) ou après (`direction` = +1)
  * un instant donné, ou `null` si aucun segment assez long et assez droit
- * n'existe dans la zone de recherche.
+ * n'existe dans la zone de recherche. Exporté pour son test à 1 et 5 Hz.
+ *
+ * La vitesse de rotation se lit par pas d'au moins `TURN_STRIDE_MIN_S`
+ * (règle 2) : d'un point au suivant, 1° de bruit sur 0,2 s faisait 5°/s à
+ * 5 Hz, au-dessus des 3°/s admis, et le segment n'existait presque jamais sur
+ * un fichier dense. Les points d'un pas sont validés ensemble quand le pas
+ * passe, abandonnés ensemble sinon ; un reste plus court qu'un pas est
+ * abandonné. À 1 Hz, un pas est un point : rien ne change.
  */
-const stableSegment = (
+export const stableSegment = (
   points: PointData[],
   fromIndex: number,
   direction: -1 | 1
@@ -582,7 +594,16 @@ const stableSegment = (
   let speedSum = 0;
   let firstMs: number | null = null;
   let lastMs: number | null = null;
-  let previous: PointData | null = null;
+  const accept = (p: PointData): void => {
+    bearings.push(p.bearing);
+    speedSum += p.smoothedSpeed;
+    if (firstMs === null) firstMs = p.timeMs;
+    lastMs = p.timeMs;
+  };
+  /** Dernier point validé, d'où part le pas en cours. */
+  let anchor: PointData | null = null;
+  /** Points du pas en cours, en attente du premier qui le clôt. */
+  const pending: PointData[] = [];
 
   // On part du virage et on s'en éloigne : le segment retenu est le plus
   // proche du virage, et il s'arrête au premier changement de cap franc.
@@ -592,17 +613,18 @@ const stableSegment = (
     if (elapsed > searchMs) break;
     if (elapsed < marginMs) continue;
 
-    if (previous) {
-      const dt = Math.abs(p.timeMs - previous.timeMs) / 1000;
-      const rate = dt > 0 ? Math.abs(angleDiff(p.bearing, previous.bearing)) / dt : 0;
-      if (rate > STABLE_MAX_RATE_DEG_S) break;
+    if (anchor === null) {
+      accept(p);
+      anchor = p;
+      continue;
     }
-
-    bearings.push(p.bearing);
-    speedSum += p.smoothedSpeed;
-    if (firstMs === null) firstMs = p.timeMs;
-    lastMs = p.timeMs;
-    previous = p;
+    pending.push(p);
+    const dt = Math.abs(p.timeMs - anchor.timeMs) / 1000;
+    if (dt < TURN_STRIDE_MIN_S) continue;
+    if (Math.abs(angleDiff(p.bearing, anchor.bearing)) / dt > STABLE_MAX_RATE_DEG_S) break;
+    for (const q of pending) accept(q);
+    pending.length = 0;
+    anchor = p;
   }
 
   if (bearings.length < 2 || firstMs === null || lastMs === null) return null;
@@ -644,8 +666,9 @@ const APEX_SEARCH_AFTER_S = 10;
  * Départ du cœur d'un virage tournant dans le sens `turnSign`, entre les
  * points `from` et `to` : la suite de pas consécutifs tournant à
  * `minRateDegS` au moins qui cumule le plus de virage, ou `null` s'il n'y en a
- * aucune. Les pas se prennent d'au moins 1 s (règle 2) : à 5 Hz, un pas
- * bruité de 0,2 s ne coupe pas une suite qu'il ne couperait pas à 1 Hz.
+ * aucune. Les pas se prennent d'au moins `TURN_STRIDE_MIN_S` (`strideEnd`,
+ * règle 2) : à 5 Hz, un pas bruité de 0,2 s ne coupe pas une suite qu'il ne
+ * couperait pas à 1 Hz, et à 1 Hz un pas de 998 ms de gigue n'en avale pas deux.
  */
 const turnCoreStart = (
   points: PointData[],
@@ -660,8 +683,7 @@ const turnCoreStart = (
   let runTurn = 0;
   let k = from;
   while (k < to) {
-    let next = k + 1;
-    while (next < to && points[next].timeMs - points[k].timeMs < 1000) next++;
+    const next = strideEnd(points, k, to);
     const step = turnSign * angleDiff(points[next].bearing, points[k].bearing);
     const dtS = (points[next].timeMs - points[k].timeMs) / 1000;
     if (step > 0 && step >= minRateDegS * Math.max(dtS, 0)) {
@@ -811,27 +833,35 @@ const findRelaunch = (points: PointData[], apexIndex: number, entrySpeed: number
 };
 
 /**
- * Distance parcourue entre deux indices, en mètres, par intégration de la
- * vitesse. Le pas qui reprend après une pause de l'enregistrement
- * (`segmentStart`) ne compte pas : rien n'y a été parcouru (règle 6).
+ * Distance du pas qui arrive au point `k`, en mètres : celle du noyau
+ * (`stepDistanceM`, règle 6 : vitesse retenue × durée, bornée par la corde
+ * × 1,5 sur un trou de la trace), la même que la distance de la session. Le
+ * pas qui reprend après une pause de l'enregistrement (`segmentStart`) ne
+ * compte pas : rien n'y a été parcouru. Repli, pour une trace synthétique
+ * posée à la main sans distance de pas : la vitesse lissée × durée.
  */
+const stepDistanceM = (points: PointData[], k: number): number => {
+  if (k <= 0 || points[k].segmentStart) return 0;
+  const given = points[k].stepDistanceM;
+  if (given !== undefined) return given;
+  const dt = (points[k].timeMs - points[k - 1].timeMs) / 1000;
+  return dt > 0 ? knotsToMs(points[k].smoothedSpeed) * dt : 0;
+};
+
+/** Distance parcourue entre deux indices, en mètres : somme des pas (`stepDistanceM`). */
 const distanceBetween = (points: PointData[], from: number, to: number): number => {
   let meters = 0;
-  for (let k = from + 1; k <= to; k++) {
-    if (points[k].segmentStart) continue;
-    const dt = (points[k].timeMs - points[k - 1].timeMs) / 1000;
-    if (dt > 0) meters += knotsToMs(points[k].smoothedSpeed) * dt;
-  }
+  for (let k = from + 1; k <= to; k++) meters += stepDistanceM(points, k);
   return meters;
 };
 
 /**
  * Chemin parcouru projeté sur une direction entre deux instants, en mètres :
- * intégrale de la vitesse retenue fois le cosinus de l'écart entre la route et
+ * somme des pas (`stepDistanceM`) fois le cosinus de l'écart entre la route et
  * cette direction, comme `distanceBetween`, les intervalles au bord n'étant
- * comptés que pour leur part. Un virage compressé dans un seul intervalle
- * compte par la route de cet intervalle, sa corde. Les intervalles lus vont du
- * point `from` au point `to`, qui doivent encadrer les deux instants.
+ * comptés que pour leur part de durée. Un virage compressé dans un seul
+ * intervalle compte par la route de cet intervalle, sa corde. Les intervalles
+ * lus vont du point `from` au point `to`, qui doivent encadrer les deux instants.
  */
 const distanceAlongBetween = (
   points: PointData[],
@@ -844,8 +874,13 @@ const distanceAlongBetween = (
   let meters = 0;
   for (let k = Math.max(1, from); k <= to; k++) {
     if (points[k].segmentStart) continue;
+    const dtS = (points[k].timeMs - points[k - 1].timeMs) / 1000;
     const overlapS = (Math.min(points[k].timeMs, toMs) - Math.max(points[k - 1].timeMs, fromMs)) / 1000;
-    if (overlapS > 0) meters += knotsToMs(points[k].smoothedSpeed) * overlapS * Math.cos(toRad(angleDiff(points[k].bearing, directionDeg)));
+    if (!(overlapS > 0) || !(dtS > 0)) continue;
+    const given = points[k].stepDistanceM;
+    // Même repli que `stepDistanceM`, écrit tel quel pour rendre les mêmes flottants qu'avant sur une trace synthétique.
+    const share = given !== undefined ? (given * overlapS) / dtS : knotsToMs(points[k].smoothedSpeed) * overlapS;
+    meters += share * Math.cos(toRad(angleDiff(points[k].bearing, directionDeg)));
   }
   return meters;
 };
@@ -1019,12 +1054,13 @@ export interface DetectionSettings {
   fullTurnDeg: number;
   coreRateDegS: number;
   stillSpeedKn: number;
+  minTurnDeg: number;
 }
 
 /** Réglages de la seule détection, parmi `ManeuverOptions`. */
 export type ManeuverDetectionOptions = Pick<
   ManeuverOptions,
-  'minEntrySpeedKn' | 'windowSeconds' | 'maxStepSeconds' | 'minDistanceM' | 'minCoherence' | 'fullTurnDeg' | 'coreRateDegS' | 'stillSpeedKn'
+  'minEntrySpeedKn' | 'windowSeconds' | 'maxStepSeconds' | 'minDistanceM' | 'minCoherence' | 'fullTurnDeg' | 'coreRateDegS' | 'stillSpeedKn' | 'minTurnDeg'
 >;
 
 /** Réglages du seul classement, parmi `ManeuverOptions` : ceux qui vont avec le vent. */
@@ -1039,6 +1075,7 @@ const resolveDetectionSettings = (options: ManeuverDetectionOptions): DetectionS
   fullTurnDeg: options.fullTurnDeg ?? MANEUVER_FULL_TURN_DEG,
   coreRateDegS: options.coreRateDegS ?? MANEUVER_CORE_RATE_DEG_S,
   stillSpeedKn: options.stillSpeedKn ?? getStillSpeedKn(),
+  minTurnDeg: options.minTurnDeg ?? MANEUVER_MIN_TURN_DEG,
 });
 
 /**
@@ -1136,7 +1173,7 @@ export interface ManeuverDetection {
  */
 export const prepareManeuverDetection = (points: PointData[], options: ManeuverDetectionOptions = {}): ManeuverDetection => {
   const settings = resolveDetectionSettings(options);
-  const { minEntrySpeedKn, windowMs, maxStepMs, minDistanceM, minCoherence, fullTurnDeg, coreRateDegS, stillSpeedKn } = settings;
+  const { minEntrySpeedKn, windowMs, maxStepMs, minDistanceM, minCoherence, fullTurnDeg, coreRateDegS, stillSpeedKn, minTurnDeg } = settings;
   const n = points.length;
   const windows = new Array<WindowReading | undefined>(n);
   /** Virages lus depuis leur borne basse libre, par `i`. */
@@ -1170,7 +1207,7 @@ export const prepareManeuverDetection = (points: PointData[], options: ManeuverD
     // longue pour qu'un virage puisse encore s'y lire. Un pas unique retenu
     // ci-dessus dure, lui, plus longtemps que la fenêtre entière.
     if (points[j].timeMs - points[i].timeMs < windowMs * 0.5) return NOTHING;
-    if (!(Math.abs(cumulativeTurn) > MANEUVER_MIN_TURN_DEG)) return NOTHING;
+    if (!(Math.abs(cumulativeTurn) > minTurnDeg)) return NOTHING;
 
     // Une chute fait aussi tourner le cap de plus de 60°, mais dans tous les
     // sens : le virage net est petit devant la somme des rotations. Un vrai
@@ -1265,7 +1302,7 @@ export const prepareManeuverDetection = (points: PointData[], options: ManeuverD
     // il n'est que du bruit de position, et la « sortie » n'en est pas une.
     if (headings.approach.meanSpeed < stillSpeedKn || headings.exit.meanSpeed < stillSpeedKn) return STILL;
     const turn = turnSign * (headings.exit.heading - headings.approach.heading);
-    if (turn <= MANEUVER_MIN_TURN_DEG) return { verdict: 'small', turn };
+    if (turn <= minTurnDeg) return { verdict: 'small', turn };
     if (turn >= fullTurnDeg) return { verdict: 'fullTurn', turn, turnStart, turnEnd, turnEndMs };
 
     const before = stableSegment(points, turnStart, -1) ?? medianStableSegment(headings.approach);
@@ -1352,7 +1389,7 @@ export const classifyManeuvers = (
     tackFail: 0,
     jibeSuccess: 0,
     jibeFail: 0,
-    rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
+    rejected: { slowEntry: 0, incoherent: 0, still: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
     rejectedTurns: [],
     locations: [],
   };
@@ -1415,7 +1452,7 @@ export const classifyManeuvers = (
     const timeMs = points[anchorIndex].timeMs;
     const windowEndMs = points[j].timeMs;
     if (reading.verdict === 'still') {
-      countRejection('incoherent', i, windowEndMs, cumulativeTurn);
+      countRejection('still', i, windowEndMs, cumulativeTurn);
       continue;
     }
     if (reading.verdict === 'small') {

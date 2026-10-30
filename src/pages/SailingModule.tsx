@@ -734,6 +734,7 @@ function SailingModule() {
       {(m.rejected.unclassified > 0 ||
         m.rejected.slowEntry > 0 ||
         m.rejected.incoherent > 0 ||
+        m.rejected.still > 0 ||
         m.rejected.tooShort > 0 ||
         m.rejected.noFlight > 0 ||
         m.rejected.fullTurn > 0) && (
@@ -766,7 +767,13 @@ function SailingModule() {
           {m.rejected.incoherent > 0 && (
             <>
               <br />
-              <strong>{m.rejected.incoherent}</strong> dont le cap partait dans tous les sens, ou se lisait à l'arrêt : chute ou hésitation.
+              <strong>{m.rejected.incoherent}</strong> dont le cap partait dans tous les sens : chute ou hésitation.
+            </>
+          )}
+          {m.rejected.still > 0 && (
+            <>
+              <br />
+              <strong>{m.rejected.still}</strong> lu{m.rejected.still > 1 ? 's' : ''} planche arrêtée, avant ou après le virage : à l'arrêt le cap n'est que du bruit de position.
             </>
           )}
           {m.rejected.tooShort > 0 && (

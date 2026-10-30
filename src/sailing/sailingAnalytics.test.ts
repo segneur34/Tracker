@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { PointData } from './pointData';
 import type { ManeuverLocation, ManeuverStats, WindReference } from './maneuvers';
 import { calculateVmgStats, calculateWindStats, type VmgStats } from './sailingAnalytics';
+
+/** Forme des copies gelées : cases en chaînes `toFixed(1)`, comme avant le lot 79. */
+type FrozenVmgStats = Omit<VmgStats, 'upStbd' | 'upPort' | 'downStbd' | 'downPort'> & Record<'upStbd' | 'upPort' | 'downStbd' | 'downPort', { max: string; avg: string }>;
+/** Le résultat d'aujourd'hui dans la forme gelée, pour le comparer à l'identique. */
+const asFrozen = (v: VmgStats): FrozenVmgStats => {
+  const cell = (c: { max: number; avg: number }) => ({ max: c.max.toFixed(1), avg: c.avg.toFixed(1) });
+  return { ...v, upStbd: cell(v.upStbd), upPort: cell(v.upPort), downStbd: cell(v.downStbd), downPort: cell(v.downPort) };
+};
 import { angleDiff } from '../core/angles';
 
 const START_MS = Date.parse('2026-01-01T10:00:00Z');
@@ -68,7 +76,7 @@ const legSession = (legS = 90, transitionS = 6) => {
  * Version d'avant le 27/10, moyennes par point : la référence que la version
  * en sommes cumulées doit retrouver sur une trace régulière.
  */
-const legacyVmgStats = (trackData: PointData[], wind: WindReference, minSpeedKn: number, windowSeconds = 10): VmgStats => {
+const legacyVmgStats = (trackData: PointData[], wind: WindReference, minSpeedKn: number, windowSeconds = 10): FrozenVmgStats => {
   const resolveWind = (w: WindReference, timeMs: number): number => (typeof w === 'function' ? w(timeMs) : w);
   const windowMs = windowSeconds * 1000;
   let maxUpStbd = 0, maxUpPort = 0, maxDownStbd = 0, maxDownPort = 0;
@@ -137,9 +145,9 @@ const legacyVmgStats = (trackData: PointData[], wind: WindReference, minSpeedKn:
 };
 
 const MIN_KN = 5;
-const cells = (v: VmgStats): number[] =>
-  [v.upStbd, v.upPort, v.downStbd, v.downPort].flatMap((c) => [parseFloat(c.max), parseFloat(c.avg)]);
-const topVals = (v: VmgStats): number[] => [...v.topsUpwind, ...v.topsDownwind].map((t) => parseFloat(t.val));
+const cells = (v: VmgStats | FrozenVmgStats): number[] =>
+  [v.upStbd, v.upPort, v.downStbd, v.downPort].flatMap((c) => [Number(c.max), Number(c.avg)]);
+const topVals = (v: VmgStats | FrozenVmgStats): number[] => [...v.topsUpwind, ...v.topsDownwind].map((t) => parseFloat(t.val));
 
 const expectClose = (a: number[], b: number[], tolerance: number) => {
   expect(a.length).toBe(b.length);
@@ -189,14 +197,14 @@ describe('calculateVmgStats', () => {
     // La vitesse ondule de ±1,5 nœud : la moyenne des fenêtres retombe sur la polaire, le max un peu au-dessus.
     const up = 12 * Math.cos(Math.PI / 4);
     const down = 15 * Math.cos(Math.PI / 4);
-    expect(Math.abs(parseFloat(v.upStbd.avg) - up)).toBeLessThan(0.5);
-    expect(Math.abs(parseFloat(v.upPort.avg) - up)).toBeLessThan(0.5);
-    expect(Math.abs(parseFloat(v.downPort.avg) - down)).toBeLessThan(0.5);
-    expect(Math.abs(parseFloat(v.downStbd.avg) - down)).toBeLessThan(0.5);
-    expect(parseFloat(v.upStbd.max)).toBeGreaterThan(up);
-    expect(parseFloat(v.upStbd.max)).toBeLessThan(up + 1.2);
-    expect(parseFloat(v.downPort.max)).toBeGreaterThan(down);
-    expect(parseFloat(v.downPort.max)).toBeLessThan(down + 1.2);
+    expect(Math.abs(v.upStbd.avg - up)).toBeLessThan(0.5);
+    expect(Math.abs(v.upPort.avg - up)).toBeLessThan(0.5);
+    expect(Math.abs(v.downPort.avg - down)).toBeLessThan(0.5);
+    expect(Math.abs(v.downStbd.avg - down)).toBeLessThan(0.5);
+    expect(v.upStbd.max).toBeGreaterThan(up);
+    expect(v.upStbd.max).toBeLessThan(up + 1.2);
+    expect(v.downPort.max).toBeGreaterThan(down);
+    expect(v.downPort.max).toBeLessThan(down + 1.2);
     expect(v.topsUpwind[0].path.length).toBeGreaterThan(1);
     expect(v.topsDownwind[0].path.length).toBeGreaterThan(1);
   });
@@ -214,8 +222,8 @@ describe('calculateVmgStats', () => {
     const times = [...regularTimes(30, 1), ...regularTimes(30, 1).map((t) => t + 38)];
     const track = buildTrackAt(times, () => 315, () => 12, [38]);
     const v = calculateVmgStats(track, 0, MIN_KN)!;
-    expect(parseFloat(v.upStbd.max)).toBeCloseTo(12 * Math.cos(Math.PI / 4), 1);
-    expect(parseFloat(v.upStbd.avg)).toBeCloseTo(12 * Math.cos(Math.PI / 4), 1);
+    expect(v.upStbd.max).toBeCloseTo(12 * Math.cos(Math.PI / 4), 1);
+    expect(v.upStbd.avg).toBeCloseTo(12 * Math.cos(Math.PI / 4), 1);
   });
 
   it('rend null sans trace ou sans vent', () => {
@@ -236,7 +244,7 @@ describe('calculateWindStats', () => {
     const track = buildTrackAt(regularTimes(600, 1), () => 315, () => 12);
     const stats: ManeuverStats = {
       tackSuccess: 3, tackFail: 0, jibeSuccess: 0, jibeFail: 0,
-      rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
+      rejected: { slowEntry: 0, incoherent: 0, still: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
       rejectedTurns: [],
       locations: [fakeManeuver(359.7, START_MS + 60_000), fakeManeuver(359.9, START_MS + 180_000), fakeManeuver(359.8, START_MS + 300_000)],
     };
@@ -248,7 +256,7 @@ describe('calculateWindStats', () => {
 });
 
 /** Copie gelée de `calculateVmgStats` d'avant le lot 56 (objets par fenêtre, filtre et tri du podium). */
-const frozenVmgStats = (trackData: PointData[], wind: WindReference, minSpeedKn: number, windowSeconds = 10): VmgStats | null => {
+const frozenVmgStats = (trackData: PointData[], wind: WindReference, minSpeedKn: number, windowSeconds = 10): FrozenVmgStats | null => {
   if (trackData.length === 0) return null;
   const resolveWind = (w: WindReference, timeMs: number): number => (typeof w === 'function' ? w(timeMs) : w);
   const windowMs = windowSeconds * 1000;
@@ -341,13 +349,13 @@ describe('calculateVmgStats, podium sans tri (lot 56)', () => {
       seed = 3;
       const track = buildTrackAt(regularTimes(session.durationS, stepS), session.bearingAt, noisySpeed, [300, 1200]);
       for (const wind of [0, 20, (t: number) => (t / 5000) % 360] as WindReference[]) {
-        for (const minKn of [0, MIN_KN, 9]) expect(calculateVmgStats(track, wind, minKn, 10)).toEqual(frozenVmgStats(track, wind, minKn, 10));
+        for (const minKn of [0, MIN_KN, 9]) expect(asFrozen(calculateVmgStats(track, wind, minKn, 10)!)).toEqual(frozenVmgStats(track, wind, minKn, 10));
       }
     }
   });
 
   it("vitesse constante : toutes les fenêtres égales, la première l'emporte", () => {
     const track = buildTrackAt(regularTimes(600, 1), () => 30, () => 10);
-    expect(calculateVmgStats(track, 0, 0)).toEqual(frozenVmgStats(track, 0, 0));
+    expect(asFrozen(calculateVmgStats(track, 0, 0)!)).toEqual(frozenVmgStats(track, 0, 0));
   });
 });

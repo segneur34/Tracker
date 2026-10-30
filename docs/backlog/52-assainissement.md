@@ -866,6 +866,13 @@ Fable | high. Non neutre (Q33). Seul dans sa session. Sources : 04-C5, 04-D7, 04
 
 **Rapport attendu** : le tableau avant/après ; ce qui a bougé et pourquoi ; ce qui n'a pas été fait.
 
+**Tranché par l'orchestrateur le 30/10, sur le plan de l'agent `Plan`** :
+- D1, base de la distance d'une manœuvre : la distance du pas du noyau (`segmentDistanceM` : vitesse retenue `speedMs` × durée, 0 sur une reprise, trou borné par `gapDistanceM`), portée dans `PointData`, et non la vitesse lissée de la voile plus le seul trou borné. Pourquoi : la règle 6 et le texte de Q33 (« comme le reste de l'application ») le disent, et le brief validé le nomme ; l'écart avec l'ancienne mesure est chiffré dans le relevé et dit au rapport.
+- D2, allure de la session (étape 5) : mesure seulement ; si l'écart se voit (allure à 0,1 nd, un seuil accordé ou une manœuvre qui change), le lot ne corrige pas `referenceSpeedMs` (noyau commun à toutes les familles, `SUMMARY_CALC_VERSION`) et donne les chiffres au rapport ; l'orchestrateur pose alors la question à l'utilisateur.
+- Worktree « avant » sous `.claude/worktrees/` (ignoré par git, `node_modules` trouvé en remontant), pas de jonction à poser.
+- `TopSegment.val` et `averages` restent des chaînes (type partagé avec `TopsPanel`, hors lot) ; seuls `VmgStats` et `vminAvg`/`vminMax` passent en nombres.
+- Dette relevée hors lot : la VMG intègre aussi la vitesse à travers un trou (`sailingAnalytics.ts`, `calculateVmgStats`).
+
 ### 80 · Fiche de session : une table des champs, fichiers compacts
 
 **Fait (30/10)** : `ANALYSIS_FIELDS`, `stringifyJson` (Q44). Validé le 30/10 (point 221).

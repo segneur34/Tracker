@@ -7,11 +7,18 @@ import { circularStats, interpolateDirection, type TimedDirection } from './wind
 import { angleDiff, circularMean, normalizeDeg } from '../core/angles';
 import { formatDecimal } from '../core/units';
 
+/** Meilleure et moyenne VMG d'une allure et d'une amure, en nœuds, non arrondies : la page les formate dans son unité. */
+export interface VmgCell {
+  max: number;
+  avg: number;
+}
+
 export interface VmgStats {
-  upStbd: { max: string; avg: string };
-  upPort: { max: string; avg: string };
-  downStbd: { max: string; avg: string };
-  downPort: { max: string; avg: string };
+  upStbd: VmgCell;
+  upPort: VmgCell;
+  downStbd: VmgCell;
+  downPort: VmgCell;
+  /** Podiums, au format des meilleurs segments (`TopSegment`), valeur déjà arrondie. */
   topsUpwind: { val: string; path: [number, number][] }[];
   topsDownwind: { val: string; path: [number, number][] }[];
 }
@@ -276,8 +283,9 @@ export interface ManeuverTypeSummary {
    * meilleurs qu'ils ne sont sans que rien ne le dise.
    */
   withoutRelaunch: number;
-  vminAvg: string;
-  vminMax: string;
+  /** Vitesse minimale moyenne et meilleure, en nœuds, non arrondies. */
+  vminAvg: number;
+  vminMax: number;
   averages: Record<ManeuverMetric, string>;
   /** Podiums, vides pour une métrique qui n'en a pas pour ce type (`MANEUVER_METRICS[].ranked`). */
   tops: Record<ManeuverMetric, ManeuverTop[]>;
@@ -389,8 +397,8 @@ const summarizeType = (
     success: indexed.filter(({ m }) => m.success).length,
     fail: indexed.filter(({ m }) => !m.success).length,
     withoutRelaunch: indexed.filter(({ m }) => m.relaunchS === null).length,
-    vminAvg: (vmins.reduce((a, b) => a + b, 0) / vmins.length).toFixed(1),
-    vminMax: Math.max(...vmins).toFixed(1),
+    vminAvg: vmins.reduce((a, b) => a + b, 0) / vmins.length,
+    vminMax: Math.max(...vmins),
     averages,
     tops,
   };
@@ -506,10 +514,10 @@ export const calculateVmgStats = (
   };
 
   return {
-    upStbd: { max: maxUpStbd.toFixed(1), avg: cUpStbd > 0 ? (sumUpStbd / cUpStbd).toFixed(1) : '0.0' },
-    upPort: { max: maxUpPort.toFixed(1), avg: cUpPort > 0 ? (sumUpPort / cUpPort).toFixed(1) : '0.0' },
-    downStbd: { max: maxDownStbd.toFixed(1), avg: cDownStbd > 0 ? (sumDownStbd / cDownStbd).toFixed(1) : '0.0' },
-    downPort: { max: maxDownPort.toFixed(1), avg: cDownPort > 0 ? (sumDownPort / cDownPort).toFixed(1) : '0.0' },
+    upStbd: { max: maxUpStbd, avg: cUpStbd > 0 ? sumUpStbd / cUpStbd : 0 },
+    upPort: { max: maxUpPort, avg: cUpPort > 0 ? sumUpPort / cUpPort : 0 },
+    downStbd: { max: maxDownStbd, avg: cDownStbd > 0 ? sumDownStbd / cDownStbd : 0 },
+    downPort: { max: maxDownPort, avg: cDownPort > 0 ? sumDownPort / cDownPort : 0 },
     topsUpwind: getTopVmg(true),
     topsDownwind: getTopVmg(false),
   };

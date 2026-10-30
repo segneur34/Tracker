@@ -13,6 +13,7 @@ import {
   measureManeuver,
   prepareManeuverDetection,
   selectWindCandidate,
+  stableSegment,
   windSamplesFrom,
   type ManeuverLocation,
   type ManeuverOptions,
@@ -22,7 +23,7 @@ import {
 import { sessionManeuverThresholds } from './sailingConfig';
 import { calculateWindStats, summarizeManeuvers, windChartRows } from './sailingAnalytics';
 import { buildWindTimeline, describeWindCandidate, estimateWindFromPolar, estimateWindPolar, observeTurns, polarSampling, prepareWindPolar } from './wind';
-import { angleDiff, circularMean } from '../core/angles';
+import { angleDiff, circularMean, toRad } from '../core/angles';
 import { M_PER_DEG_LAT, at as geoAt, mPerDegLon } from '../test/geo.fixture';
 
 const TRACK_START_MS = Date.parse('2026-01-01T10:00:00Z');
@@ -258,6 +259,37 @@ const buildSlowTurnTrack = (speedKn: number, stepM: number): PointData[] => {
   push(123, speedKn, stepM);
   for (let k = 0; k < 6; k++, t += 10) push(123, speedKn, speedKn * 0.514444 * 10);
   return points;
+};
+
+/**
+ * Trace de la chaîne réelle (positions, vitesse appareil, `computeKinematics`
+ * avec le trou de 10 s du profil) : un bord, un silence de l'enregistreur
+ * pendant lequel la planche a viré, un bord. La corde du silence se donne à
+ * part de la vitesse : un enregistreur économique se tait quand la planche
+ * ralentit, et la vitesse lue à la reprise ne dit rien de ce qui s'est passé.
+ */
+const buildTurnThroughHole = (
+  before: { heading: number; kn: number },
+  hole: { s: number; chordM: number; chordBearing: number },
+  after: { heading: number; kn: number },
+  legS = 60,
+  stepS = 1
+): PointData[] => {
+  const raw: RawTrackPoint[] = [];
+  let east = 0;
+  let north = 0;
+  let t = 0;
+  const push = (kn: number) =>
+    raw.push({ ...geoAt(east, north, { lat: 43.5, lon: 3.8 }), time: new Date(TRACK_START_MS + t * 1000).toISOString(), speedMs: knotsToMs(kn) });
+  const advance = (bearing: number, meters: number) => {
+    east += meters * Math.sin(toRad(bearing));
+    north += meters * Math.cos(toRad(bearing));
+  };
+  push(before.kn);
+  for (let k = 1; k < legS / stepS; k++) { advance(before.heading, knotsToMs(before.kn) * stepS); t += stepS; push(before.kn); }
+  advance(hole.chordBearing, hole.chordM); t += hole.s; push(after.kn);
+  for (let k = 1; k < legS / stepS; k++) { advance(after.heading, knotsToMs(after.kn) * stepS); t += stepS; push(after.kn); }
+  return trackToPointData(computeKinematics(raw, { medianWindowSeconds: 3, maxGapS: 10 }));
 };
 
 /**
@@ -532,6 +564,37 @@ describe('analyzeManeuvers, enregistrement économique', () => {
     // l'enregistrement : rien n'y a été parcouru, ce n'est pas un virage.
     expect(analyzeManeuvers(buildSparseTurnTrack(20), 23, { successThresholdKn: 8 }).locations).toHaveLength(1);
     expect(analyzeManeuvers(buildSparseTurnTrack(20, true), 23, { successThresholdKn: 8 }).locations).toHaveLength(0);
+  });
+
+  it('n\'invente plus de virage sur un pas unique de 25 s dont la corde fait 3 m (règle 6, lot 79)', () => {
+    // Bord à 5 nœuds, 25 s de silence (admis jusqu'à 30 s), reprise 3 m plus
+    // loin à 5 nœuds sur l'autre bord. La vitesse lissée à la reprise donnait
+    // 64 m au garde-fou des 10 m, et un « virage » sur place était compté. La
+    // distance du noyau borne ce pas par sa corde × 1,5, soit 4,5 m.
+    const track = buildTurnThroughHole({ heading: 282, kn: 5 }, { s: 25, chordM: 3, chordBearing: 123 }, { heading: 123, kn: 5 });
+    const stats = analyzeManeuvers(track, 200, { successThresholdKn: 1 });
+    expect(stats.locations).toHaveLength(0);
+    expect(stats.rejected.tooShort).toBeGreaterThan(0);
+  });
+
+  it('lit toujours le virage compressé en un pas quand la planche a vraiment avancé (cadence Komoot, chaîne réelle)', () => {
+    // Le cas réel de 13:07, avec de vraies positions : un point toutes les 6 s, 22 s de silence, 40 m de corde.
+    const track = buildTurnThroughHole({ heading: 324, kn: 4.7 }, { s: 22, chordM: 40, chordBearing: 110 }, { heading: 109, kn: 3.3 }, 60, 6);
+    const stats = analyzeManeuvers(track, 23, { successThresholdKn: 8 });
+    expect(stats.locations).toHaveLength(1);
+    expect(stats.locations[0].type).toBe('tack');
+  });
+
+  it('borne la distance et le gain d\'une manœuvre traversée par un trou à la corde × 1,5 (règle 6, lot 79)', () => {
+    // Virement par le nord pendant 15 s de silence, reprise 10 m plus loin sur
+    // le nouveau bord : 38,6 m à 5 nœuds, 15 m par la corde.
+    const track = buildTurnThroughHole({ heading: 45, kn: 5 }, { s: 15, chordM: 10, chordBearing: 315 }, { heading: 315, kn: 5 });
+    const [m] = analyzeManeuvers(track, 0, { successThresholdKn: 2 }).locations;
+    expect(m.type).toBe('tack');
+    expect(m.distanceM!).toBeGreaterThan(10);
+    expect(m.distanceM!).toBeLessThanOrEqual(10 * 1.5 + 0.1);
+    expect(m.windwardGainM!).toBeGreaterThan(0);
+    expect(m.windwardGainM!).toBeLessThanOrEqual(m.distanceM!);
   });
 
   it('ne compte pas le pas de reprise dans la distance de manœuvre', () => {
@@ -852,6 +915,49 @@ describe('measureManeuver', () => {
       }
     }
   });
+
+  it('lit un cap stabilisé à 5 Hz sous 1° de bruit de cap, comme à 1 Hz (règle 2, lot 79)', () => {
+    // Cap qui oscille de ±1° d'un point à l'autre : 2°/s à 1 Hz, mais 10°/s
+    // d'un point au suivant à 5 Hz, au-dessus des 3°/s admis. Lu par pas
+    // d'au moins 0,9 s, le segment existe aux deux cadences, avec le même cap.
+    const wobble = (t: number, stepS: number) => 90 + (Math.round(t / stepS) % 2 === 0 ? 1 : -1);
+    const at1Hz = stableSegment(buildTrack(60, 1, (t) => wobble(t, 1)), 0, 1);
+    const at5Hz = stableSegment(buildTrack(60, 0.2, (t) => wobble(t, 0.2)), 0, 1);
+    expect(at1Hz).not.toBeNull();
+    expect(at5Hz).not.toBeNull();
+    expect(Math.abs(angleDiff(at5Hz!.heading, at1Hz!.heading))).toBeLessThanOrEqual(1);
+    // Un vrai changement de cap arrête toujours le segment, à 5 Hz comme à 1 Hz.
+    const turning = (stepS: number) => buildTrack(60, stepS, (t) => 90 + t * 6);
+    expect(stableSegment(turning(1), 0, 1)).toBeNull();
+    expect(stableSegment(turning(0.2), 0, 1)).toBeNull();
+  });
+
+  it('lit autant de caps stabilisés, donc autant d\'échantillons de vent, à 5 Hz qu\'à 1 Hz sous bruit réaliste, à un près', () => {
+    // Relevé du lot 79 : avant comme après la lecture par pas de `stableSegment`,
+    // les empannages font 3/3 aux deux cadences et les virements 3 à 1 Hz,
+    // 2 à 5 Hz (graines 1 à 3). Le dernier virement, le plus lent, tient son
+    // cap stabilisé du repli sur la fenêtre médiane, dont l'écart maximal
+    // tombe à 21° à 1 Hz et 29° à 5 Hz autour des 25° admis : la fenêtre
+    // d'approche chevauche le début de la rotation (n° 49). D'où « à un près ».
+    const counts = (hz: number): [number, number, number][] => {
+      const rows: [number, number, number][] = [];
+      for (const tack of [false, true]) {
+        for (const seed of [1, 2, 3]) {
+          const { points } = buildNoisySession(tack ? GOOD_TACKS : GOOD_JIBES, { tack, legKn: tack ? 15 : 18, noise: REALISTIC_NOISE, seed, hz });
+          const stats = analyzeManeuvers(points, 0, { successThresholdKn: 2 });
+          rows.push([stats.locations.length, stats.locations.filter((m) => m.stableHeadings).length, windSamplesFrom(stats).length]);
+        }
+      }
+      return rows;
+    };
+    const at1Hz = counts(1);
+    const at5Hz = counts(5);
+    at1Hz.forEach(([count, stable, samples], k) => {
+      expect(at5Hz[k][0]).toBe(count);
+      expect(Math.abs(at5Hz[k][1] - stable)).toBeLessThanOrEqual(1);
+      expect(Math.abs(at5Hz[k][2] - samples)).toBeLessThanOrEqual(1);
+    });
+  });
 });
 
 describe('summarizeManeuvers', () => {
@@ -861,7 +967,7 @@ describe('summarizeManeuvers', () => {
       tackFail: 0,
       jibeSuccess: 4,
       jibeFail: 0,
-      rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
+      rejected: { slowEntry: 0, incoherent: 0, still: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
       rejectedTurns: [],
       locations: [
         fakeManeuver({ timeMs: TRACK_START_MS, relaunchS: 2, conservation: 0.6 }),
@@ -884,7 +990,7 @@ describe('summarizeManeuvers', () => {
       tackFail: 0,
       jibeSuccess: 3,
       jibeFail: 0,
-      rejected: { slowEntry: 0, incoherent: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
+      rejected: { slowEntry: 0, incoherent: 0, still: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
       rejectedTurns: [],
       locations: [
         fakeManeuver({ relaunchS: 2 }),
@@ -1490,6 +1596,24 @@ describe('analyzeManeuvers, détection robuste au bruit de cap', () => {
     }
   });
 
+  it('gigue d\'horloge de 998 et 1002 ms : mêmes manœuvres et mêmes bornes qu\'à 1 Hz exacte (lot 79)', () => {
+    // Une vraie trace à 1 Hz a quelques millisecondes de gigue. Le départ du
+    // cœur du virage se lisait par pas de 1 s stricts : un pas de 998 ms en
+    // avalait deux, et le début de la rotation pouvait se déplacer d'un point.
+    const jitter = (points: PointData[]): PointData[] => points.map((p, k) => ({ ...p, timeMs: p.timeMs + (k % 2 === 0 ? -2 : 2) }));
+    const bounds = (stats: ManeuverStats) =>
+      stats.locations.map((m) => `${m.type}:${m.success ? 'ok' : 'raté'}:${m.entryIndex}-${m.apexIndex}-${m.exitIndex}:${m.localWind}:${m.headingChange.toFixed(2)}`);
+    for (const name of Object.keys(SCENARIOS)) {
+      const s = SCENARIOS[name];
+      const exact = scriptedSession(s.durationS, s.headings, s.speeds, 1);
+      expect(bounds(analyzeManeuvers(jitter(exact), 0, FLIGHT_OPTIONS)), name).toEqual(bounds(analyzeManeuvers(exact, 0, FLIGHT_OPTIONS)));
+    }
+    for (const tack of [false, true]) {
+      const { points } = buildNoisySession(tack ? GOOD_TACKS : GOOD_JIBES, { tack, legKn: tack ? 15 : 18, seed: 2 });
+      expect(bounds(analyzeManeuvers(jitter(points), 0, { successThresholdKn: 2 }))).toEqual(bounds(analyzeManeuvers(points, 0, { successThresholdKn: 2 })));
+    }
+  });
+
   it('lit des caps stabilisés sur les fenêtres médianes quand aucun segment ne tient 3°/s', () => {
     const stats = scenarioStats('virementSymetrique');
     expect(stats.locations).toHaveLength(1);
@@ -1560,6 +1684,16 @@ describe('prepareManeuverDetection et classifyManeuvers', () => {
     expect(() => estimateWind(points, { minEntrySpeedKn: 2, detection: prepareManeuverDetection(points) })).toThrow();
     expect(() => estimateWind(points, { stillSpeedKn: 1, detection: prepareManeuverDetection(points, { stillSpeedKn: 2 }) })).toThrow();
     expect(() => estimateWind(points, { minEntrySpeedKn: 2, detection: prepareManeuverDetection(points, { minEntrySpeedKn: 2 }) })).not.toThrow();
+    // Le virage minimal est un réglage de détection comme les autres (lot 79) : l'estimation ne le surcharge pas, elle lit le défaut.
+    expect(() => estimateWind(points, { detection: prepareManeuverDetection(points, { minTurnDeg: 70 }) })).toThrow();
+    expect(() => estimateWind(points, { detection: prepareManeuverDetection(points, { minTurnDeg: 60 }) })).not.toThrow();
+  });
+
+  it('donne, avec le virage minimal passé en réglage à sa valeur par défaut, exactement ce que donnait la constante (lot 79)', () => {
+    for (const [name, points, options] of sessions()) {
+      const plain = JSON.stringify(analyzeManeuvers(points, 0, options));
+      expect(JSON.stringify(analyzeManeuvers(points, 0, { ...options, minTurnDeg: 60 })), name).toBe(plain);
+    }
   });
 
   it('estime le même vent avec et sans étage polaire préparé, à tous les seuils (lot 58)', () => {

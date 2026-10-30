@@ -185,7 +185,7 @@ result.locations.forEach((m, n) => {
 
 // --- Demi-tours hors vol et tours complets, puis tous les écartés ---
 const rejectedTurns = result.rejectedTurns;
-const label = { noFlight: 'demi-tour hors vol', fullTurn: 'tour complet', unclassified: 'non classé', incoherent: 'incohérent', slowEntry: 'entrée lente', tooShort: 'sur place' };
+const label = { noFlight: 'demi-tour hors vol', fullTurn: 'tour complet', unclassified: 'non classé', incoherent: 'incohérent', still: 'planche arrêtée', slowEntry: 'entrée lente', tooShort: 'sur place' };
 const describe = (r) =>
   `  ${clock(r.timeMs)}  ${(label[r.motif] ?? r.motif).padEnd(18)}  virage ${String(Math.round(r.turnDeg)).padStart(4)}°  vitesse ${r1(r.speedKn).padStart(5)} nd${r.type ? `  (${r.type === 'tack' ? 'virement' : 'empannage'})` : ''}`;
 if (!rejectedTurns) {
@@ -199,7 +199,7 @@ if (!rejectedTurns) {
   fullTurns.forEach((r) => console.log(describe(r)));
   if (flags.ecartes) {
     console.log('\nVirages écartés, par motif (un par virage compté dans les rejets) :');
-    for (const motif of ['unclassified', 'incoherent', 'slowEntry', 'tooShort']) {
+    for (const motif of ['unclassified', 'incoherent', 'still', 'slowEntry', 'tooShort']) {
       const list = rejectedTurns.filter((r) => r.motif === motif);
       console.log(`${label[motif]} : ${list.length}`);
       list.forEach((r) => console.log(describe(r)));
