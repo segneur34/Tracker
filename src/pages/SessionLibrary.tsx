@@ -17,7 +17,7 @@ import RefreshLibraryButton from '../components/RefreshLibraryButton';
 import SessionRenameField from '../components/SessionRenameField';
 import RouteList from '../components/RouteList';
 import TrainingHub from '../components/TrainingHub';
-import { sessionColorTrack, sessionSpeedRange, type SessionColorTrack } from '../components/sessionTrack';
+import { sessionColorTrack, sessionSpeedRange, type SessionColorTrack } from '../library/sessionTrack';
 import TrackSegmentsLayer, { type TrackSegment } from '../components/TrackSegmentsLayer';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -37,9 +37,8 @@ import { useNearViewport } from '../hooks/useNearViewport';
 import { useRouteLibrary } from '../hooks/useRouteLibrary';
 import { useAppliedTheme, useThemedShade } from '../hooks/useTheme';
 import { readSessionGpx, removeSession, updateSessionRecord, useLibraryFields } from '../hooks/useSessionLibrary';
-import {
-  PLANNING_FAMILIES, effectiveDistanceUnit, effectiveSpeedUnit, useVisibility,
-} from '../hooks/useSportSettings';
+import { PLANNING_FAMILIES } from '../settings/activitySettings';
+import { activitySpeedRanges, effectiveDistanceUnit, effectiveSpeedUnit, useVisibility } from '../hooks/useSportSettings';
 import type { LibrarySession } from '../library/record';
 import { routeActivity, routesOfFamily } from '../planning/routeList';
 import { isNativeApp } from '../platform/runtime';
@@ -249,7 +248,7 @@ function SessionPreviewMap({ session, activity, family, folderLabel, onOpen }: {
   }, [near, file, sport, referenceOverrideMs, family, cacheKey]);
 
   const range = useMemo(
-    () => (track ? sessionSpeedRange(session.record, activity, family, track.suggested) : null),
+    () => (track ? sessionSpeedRange(session.record, activity ? activitySpeedRanges(activity) : null, family, track.suggested) : null),
     [track, session, activity, family]
   );
   /** Traits de la vignette, mémorisés : un balayage de la bibliothèque ne les redessine pas. */

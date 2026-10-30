@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parentPage } from './parentPage';
+import { analysisPath, libraryPath, parentPage, sessionFamily } from './parentPage';
 
 describe('parentPage', () => {
   it("rien au-dessus de l'accueil", () => {
@@ -56,5 +56,24 @@ describe('parentPage', () => {
   it('une barre oblique finale ne change rien', () => {
     expect(parentPage('/voile/analyse/', '')).toBe('/voile');
     expect(parentPage('/statistiques/', '?famille=surf')).toBe('/statistiques');
+  });
+});
+
+describe('chemins de la bibliothèque et des analyses (lot 72)', () => {
+  it("ouvre la bibliothèque d'une famille, filtrée sur une activité", () => {
+    expect(libraryPath('voile')).toBe('/voile');
+    expect(libraryPath('course', 'a-trail é')).toBe('/course?activite=a-trail%20%C3%A9');
+  });
+
+  it("ouvre l'analyse d'une famille, sur une session si elle est donnée", () => {
+    expect(analysisPath('velo')).toBe('/velo/analyse');
+    expect(analysisPath('surf', '2026-09-23 surf.gpx')).toBe('/surf/analyse?session=2026-09-23%20surf.gpx');
+    expect(parentPage('/surf/analyse', '?session=x')).toBe('/surf');
+  });
+
+  it('range une session dans la famille de son calcul, une session à classer dans celle donnée', () => {
+    expect(sessionFamily({ record: { sport: 'run-intervals' } }, 'course')).toBe('fractionne');
+    expect(sessionFamily({ record: { sport: null } }, 'voile')).toBe('voile');
+    expect(sessionFamily(undefined, 'velo')).toBe('velo');
   });
 });

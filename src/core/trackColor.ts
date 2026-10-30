@@ -70,3 +70,19 @@ export const trackColorSegments = (
   const speeds = trackColorSpeedsMs(track, treatment);
   return coloredSegments(track.map((p, i) => ({ lat: p.lat, lon: p.lon, colorMs: speeds[i] })), range);
 };
+
+/**
+ * Bornes de couleur effectives d'une trace (décision transverse « Couleur de
+ * trace »), dans cet ordre : celles de la trace (sa fiche, ou le brouillon de
+ * son analyse) ; sinon celles de son activité, réglées dans Réglages ou
+ * pré-réglées ; sinon, en voile, celles suggérées par l'allure de la session ;
+ * sinon celles par défaut de l'activité, ou du calcul pour une session sans
+ * activité (`SportProfile.speedRange`). Les modules d'analyse, les vignettes
+ * et l'image partagée passent tous par ici.
+ */
+export const effectiveSpeedRange = ({ sessionRange, activityRange, suggested, fallback }: {
+  sessionRange: SpeedRangeMs | null;
+  activityRange: SpeedRangeMs | null;
+  suggested: SpeedRangeMs | null;
+  fallback: SpeedRangeMs;
+}): SpeedRangeMs => sessionRange ?? activityRange ?? suggested ?? fallback;

@@ -1,3 +1,5 @@
+import { jsonStore } from '../platform/storage';
+
 /**
  * Magasins hors React : un état de module, des abonnés, un instantané lu par
  * `useSyncExternalStore`. Les hooks `useRecorder`, `useSessionLibrary`,
@@ -6,15 +8,23 @@
  * de l'abonnement, du désabonnement et de la minuterie d'affichage.
  */
 
-/** Abonnés d'un magasin : `subscribe` rend le désabonnement, `notify` les prévient tous. */
-export interface Listeners {
-  subscribe: (listener: () => void) => () => void;
-  notify: () => void;
+/**
+ * Abonnés d'un magasin : `subscribe` rend le désabonnement, `notify` les
+ * prévient tous, avec ses arguments (une position reçue, par exemple).
+ */
+export interface Listeners<A extends unknown[] = []> {
+  subscribe: (listener: (...args: A) => void) => () => void;
+  notify: (...args: A) => void;
   size: () => number;
 }
 
-export const createListeners = (): Listeners => {
-  const listeners = new Set<() => void>();
+/**
+ * Ensemble d'abonnés, le seul de l'application (lot 72). `safe` : un abonné
+ * qui lève n'empêche pas les suivants d'être prévenus, ni l'appelant de
+ * poursuivre (enregistrement, direct, notification).
+ */
+export const createListeners = <A extends unknown[] = []>({ safe = false }: { safe?: boolean } = {}): Listeners<A> => {
+  const listeners = new Set<(...args: A) => void>();
   return {
     subscribe: (listener) => {
       listeners.add(listener);
@@ -22,7 +32,19 @@ export const createListeners = (): Listeners => {
         listeners.delete(listener);
       };
     },
-    notify: () => listeners.forEach((listener) => listener()),
+    notify: (...args) => {
+      for (const listener of listeners) {
+        if (!safe) {
+          listener(...args);
+          continue;
+        }
+        try {
+          listener(...args);
+        } catch {
+          // Un abonné en échec n'arrête ni les autres, ni l'appelant.
+        }
+      }
+    },
     size: () => listeners.size,
   };
 };
@@ -106,4 +128,40 @@ export const createTickingStore = <V>(options: {
   };
 
   return { get: () => view, publish, subscribe };
+};
+
+/** Même valeur au sens du texte JSON : la comparaison par défaut des lectures du magasin. */
+export const sameJson = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b);
+
+/** Lecture mémorisée d'une clé du magasin JSON (`createJsonSelector`). */
+export interface JsonSelector<T> {
+  /** Sélection du moment, la même référence tant qu'elle ne change pas : l'instantané de `useSyncExternalStore`. */
+  get: () => T;
+  /** Abonnement aux seules écritures de la clé. */
+  subscribe: (listener: () => void) => () => void;
+}
+
+/**
+ * Lecture d'une partie d'une clé du magasin JSON (lot 72), une seule façon de
+ * la garder pour tous : `select` n'est refait que si la valeur rangée change,
+ * et la sélection précédente est rendue telle quelle tant que `equal` (même
+ * texte JSON par défaut) la dit inchangée. Une écriture d'un autre réglage de
+ * la même clé ne refait donc rien de ce qui en dépend.
+ */
+export const createJsonSelector = <T>(
+  key: string,
+  select: (raw: unknown) => T,
+  equal: (previous: T, next: T) => boolean = sameJson
+): JsonSelector<T> => {
+  let cache: { raw: unknown; value: T } | null = null;
+  return {
+    get: () => {
+      const raw = jsonStore.read<unknown>(key);
+      if (cache && cache.raw === raw) return cache.value;
+      const next = select(raw);
+      cache = { raw, value: cache && equal(cache.value, next) ? cache.value : next };
+      return cache.value;
+    },
+    subscribe: (listener) => jsonStore.subscribeKey(key, listener),
+  };
 };

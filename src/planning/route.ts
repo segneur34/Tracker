@@ -2,9 +2,9 @@ import { accumulateElevation, smoothElevationAlong } from '../core/elevation';
 import { projectOnSegment } from '../core/geoPlane';
 import { cumulativeDistancesM, haversineDistance, initialBearing } from '../core/geo';
 import { GRADE_ANALYSIS, type Treatment } from '../core/sportProfiles';
-import type { BikeType } from '../cycling/energy';
 import { computeGrades } from '../core/grade';
-import { WAY_TYPES, type WayType } from './brouterProfile';
+import type { WayType } from './brouterProfile';
+import { isWayType, waysMode, wayTypesOf, WAYS_SEPARATOR, type WaysMode } from './wayTypes';
 import { isWaysMode, joinLegs, samePlace } from './legJoin';
 import { LOOP_RETURN_VARIANTS } from './loopReturn';
 import { shiftSurfaceRuns, type SurfaceRuns } from './surface';
@@ -43,25 +43,6 @@ export const WAY_TYPE_HINT: Record<WayType, string> = {
   grandeRoute: 'départementales et nationales',
 };
 
-/** Séparateur des types dans un mode : `route+grandeRoute`. */
-const WAYS_SEPARATOR = '+';
-
-/** Types optionnels, mis bout à bout dans l'ordre de `WAY_TYPES` ; `''` pour aucun. */
-type JoinWays<A extends string, B extends string> = A extends '' ? B : B extends '' ? A : `${A}${typeof WAYS_SEPARATOR}${B}`;
-type OptionalWay<T extends WayType> = T | '';
-
-/**
- * Mode d'un tronçon calculé : les types cochés, dans l'ordre de `WAY_TYPES`,
- * joints par « + » (`route+grandeRoute`). Un seul type garde son nom : les
- * fiches et préférences d'avant les cases (`piste`, `grandeRoute`…) se
- * relisent telles quelles ; « Chemin », devenu « Sentier », est traduit
- * (`readRouteMode`).
- */
-export type WaysMode = Exclude<
-  JoinWays<JoinWays<JoinWays<OptionalWay<'sentier'>, OptionalWay<'piste'>>, OptionalWay<'route'>>, OptionalWay<'grandeRoute'>>,
-  ''
->;
-
 /**
  * Façon de relier deux points : par les types de voie cochés, en ligne
  * droite, ou par le tracé d'un GPX chargé (`imported`), gardé tel quel. Le
@@ -69,20 +50,6 @@ export type WaysMode = Exclude<
  * (`RouteVehicle`).
  */
 export type RouteMode = WaysMode | 'straight' | 'imported';
-
-/** Mode des types donnés, remis dans l'ordre et sans doublon ; `null` sans aucun type. */
-export const waysMode = (types: Iterable<WayType>): WaysMode | null => {
-  const chosen = new Set(types);
-  const kept = WAY_TYPES.filter((t) => chosen.has(t));
-  // Types connus, dans l'ordre : la chaîne est bien un `WaysMode`.
-  return kept.length > 0 ? (kept.join(WAYS_SEPARATOR) as WaysMode) : null;
-};
-
-/** Types de voie d'un mode, dans l'ordre de `WAY_TYPES`. */
-export const wayTypesOf = (mode: WaysMode): WayType[] => {
-  const parts = mode.split(WAYS_SEPARATOR);
-  return WAY_TYPES.filter((t) => parts.includes(t));
-};
 
 // Écrit dans `legJoin.ts` (sans cycle avec `surface.ts` et `loopReturn.ts`).
 export { isWaysMode };
@@ -117,8 +84,6 @@ const LEGACY_ROUTE_MODES: Record<string, RouteMode> = { foot: 'sentier', mtb: 'p
 /** Types renommés, relus sous leur nouveau nom : « Chemin » est devenu « Sentier » (05/10/2026). */
 const LEGACY_WAY_TYPES: Record<string, WayType> = { chemin: 'sentier' };
 
-const isWayType = (value: string): value is WayType => (WAY_TYPES as readonly string[]).includes(value);
-
 /** Types d'une chaîne `a+b`, dans le désordre accepté, anciens noms traduits ; `null` si une part n'est pas un type. */
 const parseWays = (value: string): WaysMode | null => {
   const parts = value.split(WAYS_SEPARATOR).map((part) =>
@@ -144,32 +109,6 @@ export const readRouteMode = (value: unknown): RouteMode | null => {
 export type RouteVehicle = 'pieton' | 'velo';
 
 export const routeVehicle = (treatment: Treatment): RouteVehicle => (treatment === 'velo' ? 'velo' : 'pieton');
-
-/** À vélo, types de voie cochés d'office selon le type de vélo (§10, point 81). */
-export const BIKE_WAY_TYPES: Record<BikeType, WayType[]> = {
-  route: ['route'],
-  ville: ['route'],
-  gravel: ['piste'],
-  vtt: ['sentier', 'piste'],
-};
-
-/**
- * Types de voie cochés d'office en planification pour une activité qui n'en
- * a pas de réglés ni de pré-réglés (`settings/activityPresets.ts`) : selon son
- * type de vélo, la route à pied ; aucun en voile, où les balises sont
- * reliées en ligne droite.
- */
-export const presetWayTypes = (treatment: Treatment, bikeType: BikeType): WayType[] => {
-  if (treatment === 'velo') return BIKE_WAY_TYPES[bikeType];
-  return treatment === 'course' ? ['route'] : [];
-};
-
-/** Types de voie d'un réglage : connus, dans l'ordre, sans doublon ; `null` si la valeur n'en est pas une liste non vide. */
-export const sanitizeWayTypes = (value: unknown): WayType[] | null => {
-  if (!Array.isArray(value) || !value.every((v): v is WayType => typeof v === 'string' && isWayType(v))) return null;
-  const mode = waysMode(value);
-  return mode ? wayTypesOf(mode) : null;
-};
 
 /** Tronçon qui ne se calcule pas : ligne droite, ou trace importée. */
 const isFixedMode = (mode: RouteMode): boolean => !isWaysMode(mode);

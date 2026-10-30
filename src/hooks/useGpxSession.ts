@@ -1,11 +1,13 @@
 import { errorMessage } from '../core/basics';
 import { useCallback, useMemo, useState } from 'react';
 import { parseGpx } from '../core/gpxParser';
-import { computeKinematics, detectTrackDeviceSpeedUnit, type KinematicsOptions } from '../core/kinematics';
+import { computeKinematics, detectTrackDeviceSpeedUnit } from '../core/kinematics';
 import {
   referenceSpeedMs as sessionReferenceSpeedMs,
+  kinematicsOptionsOf,
   samplingIntervalS,
-  sessionFilterThresholds,
+  scalesFiltersToSession,
+  type KinematicsProfile,
 } from '../core/sessionSpeed';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import type { RawTrackPoint, TrackPoint } from '../core/types';
@@ -16,14 +18,13 @@ import type { RawTrackPoint, TrackPoint } from '../core/types';
  * support construit ensuite ses propres statistiques par-dessus.
  */
 
-export interface GpxSessionOptions extends KinematicsOptions {
+export interface GpxSessionOptions {
   /**
-   * Accorde les seuils de filtrage à l'allure de la session plutôt que de
-   * s'en tenir à ceux du support. Une accélération et un plafond calibrés pour
-   * un support rapide laissent passer, sur une session lente, des pics
-   * d'enregistrement qui fabriquent ensuite des manœuvres inexistantes.
+   * Profil du calcul de la session : ses filtres (`kinematicsOptionsOf`),
+   * accordés en voile à l'allure de la session (`scalesFiltersToSession`),
+   * comme le résumé de la bibliothèque. Absent : aucun filtre.
    */
-  scaleFiltersToSession?: boolean;
+  profile?: KinematicsProfile;
   /** Allure de session imposée par l'utilisateur, en m/s, au lieu de celle déduite. */
   referenceSpeedOverrideMs?: number;
 }
@@ -53,16 +54,7 @@ const EMPTY_STATE: GpxSessionState = {
  */
 export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
   const [session, setSession] = useState<GpxSessionState>(EMPTY_STATE);
-  const {
-    medianWindowSeconds,
-    maxDetourRatio,
-    maxAcceleration,
-    maxSpeedMs,
-    forceDerivedSpeed,
-    maxGapS,
-    scaleFiltersToSession,
-    referenceSpeedOverrideMs,
-  } = kinematicsOptions;
+  const { profile, referenceSpeedOverrideMs } = kinematicsOptions;
 
   /** Unité dans laquelle le fichier exprime la vitesse de l'appareil, si elle existe : détectée une fois, pour l'allure aussi. */
   const deviceSpeedUnit = useMemo(() => detectTrackDeviceSpeedUnit(session.rawPoints), [session.rawPoints]);
@@ -76,31 +68,13 @@ export const useGpxSession = (kinematicsOptions: GpxSessionOptions = {}) => {
     [session.rawPoints, referenceSpeedOverrideMs, deviceSpeedUnit]
   );
 
-  const track: TrackPoint[] = useMemo(() => {
-    // Sans mise à l'échelle, les seuils restent ceux qu'on a reçus : c'est le
-    // comportement du module course, qu'on ne touche pas.
-    const scaled = scaleFiltersToSession
-      ? sessionFilterThresholds(referenceSpeedMs, maxSpeedMs ?? Infinity)
-      : { maxAcceleration, maxSpeedMs };
-    return computeKinematics(session.rawPoints, {
-      medianWindowSeconds,
-      maxDetourRatio,
-      maxAcceleration: scaled.maxAcceleration,
-      maxSpeedMs: scaled.maxSpeedMs,
-      forceDerivedSpeed,
-      maxGapS,
-    });
-  }, [
-    session.rawPoints,
-    medianWindowSeconds,
-    maxDetourRatio,
-    maxAcceleration,
-    maxSpeedMs,
-    forceDerivedSpeed,
-    maxGapS,
-    scaleFiltersToSession,
-    referenceSpeedMs,
-  ]);
+  const track: TrackPoint[] = useMemo(
+    () => computeKinematics(
+      session.rawPoints,
+      profile ? kinematicsOptionsOf(profile, { scaleToSession: scalesFiltersToSession(profile), referenceMs: referenceSpeedMs }) : {}
+    ),
+    [session.rawPoints, profile, referenceSpeedMs]
+  );
 
   /** Distance et temps cumulés le long de la trace, calculés une fois par trace pour tout le module. */
   const cumulative = useMemo(() => buildCumulativeTrack(track), [track]);

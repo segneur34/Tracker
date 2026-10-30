@@ -1,16 +1,15 @@
-import { FAMILY_BASE, type Activity } from '../core/activities';
+import { FAMILY_BASE } from '../core/activities';
 import { trackBounds, type TrackBounds } from '../core/displayConfig';
 import { parseGpx } from '../core/gpxParser';
 import { referenceSpeedMs as sessionReferenceSpeedMs } from '../core/sessionSpeed';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import type { SpeedRangeMs } from '../core/speedGradient';
-import { sportTreatment, type SportFamily } from '../core/sportProfiles';
-import { trackColorSpeedsMs } from '../core/trackColor';
+import { getSportProfile, sportTreatment, type SportFamily } from '../core/sportProfiles';
+import { effectiveSpeedRange, trackColorSpeedsMs } from '../core/trackColor';
 import type { SportType } from '../core/types';
 import { msToKnots } from '../core/units';
-import { TREATMENT_SPEED_RANGE_MS, activitySpeedRange, defaultSpeedRangeOf } from '../hooks/useSportSettings';
-import type { SessionRecord } from '../library/record';
-import { analysisTrack } from '../library/summary';
+import type { SessionRecord } from './record';
+import { analysisTrack } from './summary';
 import { suggestSpeedRangeMs } from '../sailing/sailingConfig';
 
 /**
@@ -54,24 +53,33 @@ export const sessionColorTrack = (
 };
 
 /**
- * Bornes de couleur d'une session hors de son analyse, dans cet ordre, comme le module d'analyse :
- * 0. celles enregistrées dans la fiche de la session (`analysis.speedRange`) ;
- * 1. celles réglées pour son activité dans Réglages (`tracker.sportSettings`), sinon pré-réglées (`activitySpeedRange`) ;
- * 2. en voile, les bornes suggérées par l'allure de la session (`suggestSpeedRangeMs`,
- *    mesurées sur la trace entière comme dans l'analyse) ;
- * 3. à défaut, celui de son activité (`defaultSpeedRangeOf`), sinon celui du traitement de
- *    son calcul (celui du calcul par défaut de la famille pour une session à classer).
+ * Bornes de couleur de l'activité d'une session, lues dans ses réglages par
+ * l'appelant (`activitySpeedRanges`, `hooks/useSportSettings.ts`) : celles
+ * réglées ou pré-réglées (`fixed`, `null` sans l'un ni l'autre) et celles
+ * par défaut (`fallback`).
+ */
+export interface ActivitySpeedRanges {
+  fixed: SpeedRangeMs | null;
+  fallback: SpeedRangeMs;
+}
+
+/**
+ * Bornes de couleur d'une session hors de son analyse, dans l'ordre de
+ * l'analyse (`effectiveSpeedRange`) : celles de sa fiche (`analysis.speedRange`),
+ * sinon celles de son activité, sinon en voile celles suggérées par l'allure
+ * (mesurées sur la trace entière comme dans l'analyse), sinon celles par défaut
+ * de l'activité, ou du calcul de la session (celui par défaut de la famille
+ * pour une session à classer) quand elle n'a pas d'activité.
  */
 export const sessionSpeedRange = (
   record: Pick<SessionRecord, 'analysis' | 'sport'>,
-  activity: Activity | null,
+  activity: ActivitySpeedRanges | null,
   family: SportFamily,
   suggested: SpeedRangeMs | null
-): SpeedRangeMs => {
-  if (record.analysis?.speedRange) return record.analysis.speedRange;
-  const fixed = activity ? activitySpeedRange(activity) : null;
-  if (fixed) return fixed;
-  if (suggested) return suggested;
-  if (activity) return defaultSpeedRangeOf(activity);
-  return TREATMENT_SPEED_RANGE_MS[sportTreatment(record.sport ?? FAMILY_BASE[family])];
-};
+): SpeedRangeMs =>
+  effectiveSpeedRange({
+    sessionRange: record.analysis?.speedRange ?? null,
+    activityRange: activity?.fixed ?? null,
+    suggested,
+    fallback: activity?.fallback ?? getSportProfile(record.sport ?? FAMILY_BASE[family]).speedRange,
+  });

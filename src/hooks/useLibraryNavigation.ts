@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Activity } from '../core/activities';
 import { sportFamily, type SportFamily } from '../core/sportProfiles';
 import type { LibrarySession } from '../library/record';
+import { analysisPath, sessionFamily } from '../core/parentPage';
 import { confirmLeave } from './leaveGuard';
 import { librarySession, loadFullSession, loadSessionGpx, updateSessionRecord, useLibrarySelector, useLibrarySession } from './useSessionLibrary';
 import { readStoredActivities } from './useSportSettings';
@@ -14,18 +15,6 @@ import { readStoredActivities } from './useSportSettings';
  * La session à analyser est dans l'URL (`/voile/analyse?session=<fichier>`) :
  * un rechargement la rouvre, et le retour arrière ramène à la liste.
  */
-
-/** Bibliothèque d'une famille, filtrée sur une activité si `activityId` est donné. */
-export const libraryPath = (family: SportFamily, activityId?: string): string =>
-  `/${family}${activityId ? `?activite=${encodeURIComponent(activityId)}` : ''}`;
-
-/** Module d'analyse d'une famille, ouvert sur une session de la mémoire si `file` est donné. */
-export const analysisPath = (family: SportFamily, file?: string | null): string =>
-  `/${family}/analyse${file ? `?session=${encodeURIComponent(file)}` : ''}`;
-
-/** Famille d'une session : celle de son support, sinon `fallback` pour une session à classer. */
-export const sessionFamily = (session: LibrarySession | undefined, fallback: SportFamily): SportFamily =>
-  session?.record.sport ? sportFamily(session.record.sport) : fallback;
 
 /** Ouvre une session de la mémoire dans le module qui l'analyse. */
 export const useOpenSession = () => {

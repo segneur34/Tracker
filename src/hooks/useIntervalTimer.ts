@@ -7,7 +7,7 @@ import {
   handsOverToRecording, isRunClosed, phaseName, readIntervalRun, runCommand, startRun, timerStateAt, upcomingSchedule,
   type IntervalCommand, type IntervalRun, type IntervalTimerState, type IntervalWorkout, type WorkoutKind,
 } from '../recording/intervalTimer';
-import { createTickingStore } from './createStore';
+import { createListeners, createTickingStore } from './createStore';
 import { getRecorderState, noteIntervalRun, subscribeToRecorder } from './useRecorder';
 import { rememberIntervalWorkout } from './useSportSettings';
 
@@ -53,7 +53,7 @@ export interface IntervalTimerView {
 let run: IntervalRun | null = null;
 let error: string | null = null;
 /** Abonnés hors React, prévenus à chaque commande. */
-const commandListeners = new Set<() => void>();
+const commandListeners = createListeners();
 
 const isActive = (state: IntervalTimerState | null): boolean => state?.status === 'running' || state?.status === 'paused';
 
@@ -77,7 +77,7 @@ const { publish, subscribe } = ticking;
  * Les abonnés aux commandes (notification de l'enregistrement) sont prévenus.
  */
 const reschedule = (announce: boolean): void => {
-  commandListeners.forEach((listener) => listener());
+  commandListeners.notify();
   const clock = getIntervalClock();
   const onError = (err: unknown) => {
     error = errorMessage(err, 'Les bips du compteur ne peuvent pas être joués.');
@@ -214,12 +214,7 @@ export const getIntervalRun = (): IntervalRun | null => run;
  * fermeture), hors React. Ne compte pas comme une page qui regarde : pas de
  * minuterie d'affichage. Rend le désabonnement.
  */
-export const subscribeToIntervalCommands = (listener: () => void): (() => void) => {
-  commandListeners.add(listener);
-  return () => {
-    commandListeners.delete(listener);
-  };
-};
+export const subscribeToIntervalCommands = (listener: () => void): (() => void) => commandListeners.subscribe(listener);
 
 /** Le compteur, relu à chaque changement et, pendant une séance qui avance, au quart de seconde. */
 export const useIntervalTimer = (): IntervalTimerView => useSyncExternalStore(subscribe, ticking.get);

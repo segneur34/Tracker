@@ -4,7 +4,7 @@ import '../pages/analysisMobile.css';
 import type { ShareStat } from '../core/shareImage';
 import { shareableStats } from '../core/shareImage';
 import type { SportFamily } from '../core/sportProfiles';
-import { libraryPath } from '../hooks/useLibraryNavigation';
+import { libraryPath } from '../core/parentPage';
 import type { useSessionDraft } from '../hooks/useSessionDraft';
 import AnalysisMap, { ANALYSIS_MAP_ANCHOR, type AnalysisMapProps } from './AnalysisMap';
 import CollapsibleSectionTabs from './CollapsibleSectionTabs';

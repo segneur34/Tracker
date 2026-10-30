@@ -1,5 +1,6 @@
 import type { SportFamily } from '../core/sportProfiles';
-import { addGearItem, type GearGroup } from '../hooks/useSportSettings';
+import { addGearItem } from '../hooks/useSportSettings';
+import type { GearGroup } from '../library/notes';
 import type { EditedPart } from '../library/sessionEdits';
 import { RATINGS, WATER_STATES, WIND_LEVELS, type GearChoice, type SailingSessionNotes } from '../library/notes';
 import GearPicker from './GearPicker';

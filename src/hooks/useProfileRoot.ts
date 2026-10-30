@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import type { StatSession } from '../library/stats';
 import { rootGrowth, type RootGrowth } from '../library/rootGrowth';
-import { runnerRootGoalMin, type RunnerProfile } from './useRunnerProfile';
+import { runnerRootGoalMin } from '../library/profilePrompt';
+import type { RunnerProfile } from '../running/runnerProfile';
 
 /**
  * Racine du Profil : son niveau, rejoué sur les sessions du Profil (classées,

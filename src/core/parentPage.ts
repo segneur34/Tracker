@@ -1,4 +1,5 @@
-import { SPORT_FAMILIES, type SportFamily } from './sportProfiles';
+import { SPORT_FAMILIES, sportFamily, type SportFamily } from './sportProfiles';
+import type { SportType } from './types';
 
 const isFamily = (s: string): s is SportFamily => (SPORT_FAMILIES as string[]).includes(s);
 
@@ -36,3 +37,15 @@ export const parentPage = (pathname: string, search: string): string | null => {
   }
   return '/';
 };
+
+/** Bibliothèque d'une famille, filtrée sur une activité si `activityId` est donné. */
+export const libraryPath = (family: SportFamily, activityId?: string): string =>
+  `/${family}${activityId ? `?activite=${encodeURIComponent(activityId)}` : ''}`;
+
+/** Module d'analyse d'une famille, ouvert sur une session de la mémoire si `file` est donné. */
+export const analysisPath = (family: SportFamily, file?: string | null): string =>
+  `/${family}/analyse${file ? `?session=${encodeURIComponent(file)}` : ''}`;
+
+/** Famille d'une session : celle de son support, sinon `fallback` pour une session à classer. */
+export const sessionFamily = (session: { record: { sport: SportType | null } } | undefined, fallback: SportFamily): SportFamily =>
+  session?.record.sport ? sportFamily(session.record.sport) : fallback;

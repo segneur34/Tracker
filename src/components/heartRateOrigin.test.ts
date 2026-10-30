@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { heartRateZones } from '../core/heartRate';
 import { SPORT_PROFILES } from '../core/sportProfiles';
-import { EMPTY_RUNNER_PROFILE, type RunnerProfile } from '../hooks/useRunnerProfile';
+import { EMPTY_RUNNER_PROFILE, type RunnerProfile } from '../running/runnerProfile';
 import { formatOffsetBpm, hrSourceLabel, zonesOriginText } from './heartRateOrigin';
 
 const MODEL = SPORT_PROFILES.running.heartRate.zoneModel;

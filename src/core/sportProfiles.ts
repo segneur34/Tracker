@@ -431,10 +431,15 @@ export interface SportProfile {
   /** Vitesse minimale, dans `thresholdUnit`, pour qu'un point alimente le diagramme polaire. */
   defaultPolarMinSpeed: number;
   /**
-   * Bornes de couleur de la trace par défaut, fixes, en m/s ; `null` : celles
-   * du traitement, et en voile la suggestion faite selon l'allure de la session.
+   * Bornes de couleur de la trace du calcul, en m/s, à défaut de pré-réglage et
+   * de réglage ; en voile, celles d'une trace trop courte pour suggérer les siennes.
    */
-  speedRange: SpeedRangeMs | null;
+  speedRange: SpeedRangeMs;
+  /**
+   * Couleurs suggérées selon l'allure de chaque session tant que le pré-réglage
+   * n'en fixe pas (voile, sauf le bateau) ; le seuil d'activité de même.
+   */
+  speedRangeFollowsPace: boolean;
   /**
    * Libellé du ratio de temps actif, propre au vocabulaire du support, hors
    * foil : sur foil, c'est `FOIL_RATIO_LABEL` (`activeRatioLabel`).
@@ -557,7 +562,7 @@ const COMMON_DEFAULTS = {
   maxGapS: MAX_GAP_S,
   maxDetourRatio: DEFAULT_MAX_DETOUR_RATIO,
   withoutActiveThreshold: null,
-  speedRange: null,
+  speedRangeFollowsPace: false,
   elevation: ELEVATION_PRESETS.route,
   grade: GRADE_ANALYSIS,
   foilDefault: false,
@@ -567,6 +572,9 @@ const COMMON_DEFAULTS = {
 /** Réglages communs aux supports à voile, surchargés au cas par cas. */
 const SAILING_DEFAULTS = {
   ...COMMON_DEFAULTS,
+  // Gris sous 8 nœuds, rouge franc à partir de 28 ; en voile, la suggestion tirée de l'allure prime.
+  speedRange: { minMs: knotsToMs(8), maxMs: knotsToMs(28) },
+  speedRangeFollowsPace: true,
   speedUnit: 'kn' as SpeedUnit,
   thresholdUnit: 'kn' as SpeedUnit,
   activeHysteresis: { enterOffset: 0.5, exitOffset: -1 },
@@ -593,6 +601,8 @@ const RUNNING_PROFILE: SportProfile = {
   ...COMMON_DEFAULTS,
   id: 'running',
   label: 'À pied',
+  // 4 km/h, la marche, et 15 km/h.
+  speedRange: { minMs: kmhToMs(4), maxMs: kmhToMs(15) },
   speedUnit: 'minkm',
   thresholdUnit: 'kmh',
   // Reprise au-dessus de 4 km/h, pause en dessous de 2 km/h, confirmée sur 3 s.
@@ -621,6 +631,8 @@ const CYCLING_PROFILE: SportProfile = {
   ...COMMON_DEFAULTS,
   id: 'cycling',
   label: 'Vélo',
+  // 10 km/h, l'allure de balade, et 40 km/h.
+  speedRange: { minMs: kmhToMs(10), maxMs: kmhToMs(40) },
   speedUnit: 'kmh',
   thresholdUnit: 'kmh',
   // Reprise au-dessus de 6 km/h, pause en dessous de 3 km/h, confirmée sur 3 s.
@@ -656,6 +668,8 @@ const SURF_PROFILE: SportProfile = {
   ...COMMON_DEFAULTS,
   id: 'surf',
   label: 'Surf',
+  // 5 à 30 km/h : la rame, sous 5 km/h, reste grise ; la vague ressort en couleur.
+  speedRange: { minMs: kmhToMs(5), maxMs: kmhToMs(30) },
   speedUnit: 'kmh',
   thresholdUnit: 'kmh',
   defaultActiveThreshold: 9,
@@ -722,6 +736,7 @@ export const SPORT_PROFILES: Record<SportType, SportProfile> = {
     defaultPolarMinSpeed: 2,
     // Couleurs de 1 à 15 nœuds, fixes, plutôt que selon l'allure (21/10).
     speedRange: { minMs: knotsToMs(1), maxMs: knotsToMs(15) },
+    speedRangeFollowsPace: false,
     recording: BOAT_RECORDING,
     activeRatioLabel: 'Ratio de navigation',
     // Voile au rappel, comme la planche (25/10).

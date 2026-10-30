@@ -21,9 +21,10 @@ import {
   rawPointTimeMs,
   spreadEqualTimes,
   type DeviceSpeedUnit,
+  type KinematicsOptions,
 } from './kinematics';
 import { DEFAULT_MAX_ACCELERATION } from './speedFilter';
-import { MAX_GAP_S } from './sportProfiles';
+import { MAX_GAP_S, SAILING_SPORTS, type SportProfile } from './sportProfiles';
 import type { RawTrackPoint } from './types';
 
 /**
@@ -221,5 +222,39 @@ export const sessionFilterThresholds = (
   return {
     maxAcceleration: Math.max(MIN_ACCEL_MS2, ACCEL_PER_REFERENCE * referenceMs),
     maxSpeedMs: Math.min(supportMaxSpeedMs, CEILING_PER_REFERENCE * referenceMs),
+  };
+};
+
+/** Ce que les filtres de la cinématique lisent du profil d'un calcul. */
+export type KinematicsProfile = Pick<SportProfile, 'id' | 'medianWindowSeconds' | 'maxDetourRatio' | 'maxPlausibleSpeedMs' | 'maxGapS'>;
+
+/**
+ * Filtres accordés à l'allure de la session : en voile seulement, bateau
+ * compris (règle 4). Les modules d'analyse et le résumé de la bibliothèque
+ * (`library/summary.ts`, `analysisTrack`) en décident ici, pour donner les
+ * mêmes chiffres.
+ */
+export const scalesFiltersToSession = (profile: Pick<SportProfile, 'id'>): boolean => SAILING_SPORTS.includes(profile.id);
+
+/**
+ * Options de la cinématique tirées du profil d'un calcul (lot 72) : fenêtre
+ * médiane, détour, plafond de vitesse, trou de trace ; accélération et
+ * plafond accordés à l'allure de la session (`referenceMs`, en m/s) si
+ * `scaleToSession`, sinon le plafond du support seul. Une seule écriture,
+ * lue par l'analyse (`useGpxSession`) et par le résumé (`analysisTrack`).
+ */
+export const kinematicsOptionsOf = (
+  profile: KinematicsProfile,
+  { scaleToSession, referenceMs }: { scaleToSession: boolean; referenceMs: number }
+): KinematicsOptions => {
+  const filters = scaleToSession
+    ? sessionFilterThresholds(referenceMs, profile.maxPlausibleSpeedMs)
+    : { maxAcceleration: undefined, maxSpeedMs: profile.maxPlausibleSpeedMs };
+  return {
+    medianWindowSeconds: profile.medianWindowSeconds,
+    maxDetourRatio: profile.maxDetourRatio,
+    maxAcceleration: filters.maxAcceleration,
+    maxSpeedMs: filters.maxSpeedMs,
+    maxGapS: profile.maxGapS,
   };
 };

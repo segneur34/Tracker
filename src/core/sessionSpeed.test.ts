@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { referenceSpeedMs, samplingIntervalS, sessionFilterThresholds } from './sessionSpeed';
+import { kinematicsOptionsOf, referenceSpeedMs, samplingIntervalS, scalesFiltersToSession, sessionFilterThresholds } from './sessionSpeed';
+import { SPORT_PROFILES } from './sportProfiles';
 import { DEFAULT_MAX_ACCELERATION } from './speedFilter';
 import type { RawTrackPoint } from './types';
 import { computeKinematics, DEVICE_SPEED_FACTOR, detectTrackDeviceSpeedUnit, pointTimeMs, spreadEqualTimes } from './kinematics';
@@ -234,5 +235,36 @@ describe('dates lues une fois, tri par indices (lot 56)', () => {
       if (!sameData(a, b)) expect(b, name).toEqual(a);
       expect(detectTrackDeviceSpeedUnit(withRaw(points)), name).toBe(detectTrackDeviceSpeedUnit(points));
     }
+  });
+});
+
+describe('options de la cinématique tirées du profil (lot 72)', () => {
+  it("accorde les filtres à l'allure en voile seulement, bateau compris", () => {
+    const scaled = Object.values(SPORT_PROFILES).filter(scalesFiltersToSession).map((p) => p.id).sort();
+    expect(scaled).toEqual(['bateau', 'kite', 'windsurf', 'wingfoil']);
+  });
+
+  it("en voile, l'accélération et le plafond de la session, sous celui du support", () => {
+    const wing = SPORT_PROFILES.wingfoil;
+    const options = kinematicsOptionsOf(wing, { scaleToSession: true, referenceMs: 4 });
+    expect(options).toEqual({
+      medianWindowSeconds: wing.medianWindowSeconds,
+      maxDetourRatio: wing.maxDetourRatio,
+      ...sessionFilterThresholds(4, wing.maxPlausibleSpeedMs),
+      maxGapS: wing.maxGapS,
+    });
+  });
+
+  it("ailleurs, le plafond du support seul, quelle que soit l'allure", () => {
+    const run = SPORT_PROFILES.running;
+    const options = kinematicsOptionsOf(run, { scaleToSession: false, referenceMs: 3 });
+    expect(options).toEqual({
+      medianWindowSeconds: run.medianWindowSeconds,
+      maxDetourRatio: run.maxDetourRatio,
+      maxAcceleration: undefined,
+      maxSpeedMs: run.maxPlausibleSpeedMs,
+      maxGapS: run.maxGapS,
+    });
+    expect(kinematicsOptionsOf(run, { scaleToSession: false, referenceMs: 9 })).toEqual(options);
   });
 });

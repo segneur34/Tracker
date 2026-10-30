@@ -1,4 +1,4 @@
-import { SAILING_TOP_TARGETS, SPORT_PROFILES } from '../core/sportProfiles';
+import { SAILING_TOP_TARGETS, SPORT_PROFILES, hasActiveThreshold, type SportProfile } from '../core/sportProfiles';
 import type { SpeedRangeMs } from '../core/speedGradient';
 import { computeTopSegments } from '../core/topSegments';
 import type { CumulativeTrack, SportType, TrackPoint } from '../core/types';
@@ -24,12 +24,6 @@ export const getDefaultThresholdKn = (sport: SportType = DEFAULT_SAILING_SPORT):
 export const getStillSpeedKn = (sport: SportType = DEFAULT_SAILING_SPORT): number =>
   SPORT_PROFILES[sport].stillThreshold;
 
-/**
- * Bornes par défaut du dégradé de couleur de la trace (`core/speedGradient.ts`),
- * en m/s : gris sous 8 nœuds, rouge franc à partir de 28 nœuds. Réglables par
- * support dans la légende, comme en course.
- */
-export const DEFAULT_SAILING_SPEED_RANGE_MS: SpeedRangeMs = { minMs: knotsToMs(8), maxMs: knotsToMs(28) };
 
 /** Virage cumulé minimal, en degrés, pour qu'une inflexion soit une manœuvre. */
 export const MANEUVER_MIN_TURN_DEG = 60;
@@ -179,6 +173,46 @@ export const suggestActiveThresholdKn = (sport: SportType, referenceSpeedKn: num
   return SLOW_SESSION_ACTIVE_THRESHOLD_KN;
 };
 
+/** Seuils d'une session de voile, en nœuds (`resolveSailingThresholds`). */
+export interface SailingThresholds {
+  /** Seuil d'activité réglable : tous les supports sauf le bateau. */
+  withThreshold: boolean;
+  /** Seuil suggéré par l'allure de la session (`suggestActiveThresholdKn`). */
+  suggestedKn: number;
+  /** Seuil de la session à défaut du sien : celui de l'activité s'il est réglé ou pré-réglé, sinon la suggestion. */
+  defaultKn: number;
+  /** Seuil d'activité effectif, qui dit aussi la réussite des manœuvres. */
+  activeKn: number;
+  /** Seuil de vol (ou de navigation) des manœuvres ; `undefined` sans seuil (bateau), qui compte tout. */
+  flightKn: number | undefined;
+}
+
+/**
+ * Seuils d'une session de voile, dans cet ordre de priorité (§10, point 29) :
+ * 1. sans seuil (bateau, 21/10), le seuil fixe de réussite des manœuvres du
+ *    calcul (`withoutActiveThreshold`), qui ne se règle nulle part ;
+ * 2. le seuil de la session (`sessionKn`, sa fiche ou son brouillon) ;
+ * 3. celui de l'activité, réglé dans Réglages ou pré-réglé (`activityKn`) ;
+ * 4. la suggestion selon l'allure de la session (`referenceKn`), jamais le
+ *    défaut fixe du profil (une trace lente au seuil wingfoil n'affichait
+ *    aucune manœuvre, point 27).
+ * Le seuil de vol des manœuvres est le seuil d'activité : un demi-tour entamé
+ * en dessous n'est ni réussi ni raté (28/10) ; le bateau compte tout.
+ */
+export const resolveSailingThresholds = (
+  profile: SportProfile,
+  activityKn: number | null,
+  sessionKn: number | null,
+  referenceKn: number
+): SailingThresholds => {
+  const withThreshold = hasActiveThreshold(profile);
+  const fixedKn = profile.withoutActiveThreshold?.maneuverSuccess ?? null;
+  const suggestedKn = suggestActiveThresholdKn(profile.id, referenceKn);
+  const defaultKn = fixedKn ?? activityKn ?? suggestedKn;
+  const activeKn = fixedKn ?? sessionKn ?? defaultKn;
+  return { withThreshold, suggestedKn, defaultKn, activeKn, flightKn: withThreshold ? activeKn : undefined };
+};
+
 /**
  * Vitesse maximale sur une fenêtre glissante de 2 s, en m/s, ou `null` si la
  * trace est trop courte pour en couvrir une. Réutilise `computeTopSegments`
@@ -195,9 +229,10 @@ const maxWindowSpeedMs = (track: TrackPoint[], cum: CumulativeTrack): number | n
 /**
  * Bornes de couleur suggérées, en m/s, à partir de l'allure de la session :
  * borne basse alignée sur le seuil d'activité suggéré, borne haute au pic de
- * vitesse sur 2 s plus une marge. Repli sur `DEFAULT_SAILING_SPEED_RANGE_MS`
- * si la trace est trop courte pour mesurer ce pic. Un calcul aux bornes fixes
- * (bateau, de 1 à 15 nœuds) garde les siennes, quelle que soit la session.
+ * vitesse sur 2 s plus une marge. Repli sur les bornes du calcul
+ * (`SportProfile.speedRange`) si la trace est trop courte pour mesurer ce pic.
+ * Un calcul aux bornes fixes (`speedRangeFollowsPace` faux : bateau, de 1 à
+ * 15 nœuds) garde les siennes, quelle que soit la session.
  */
 export const suggestSpeedRangeMs = (
   sport: SportType,
@@ -205,10 +240,10 @@ export const suggestSpeedRangeMs = (
   track: TrackPoint[],
   cum: CumulativeTrack
 ): SpeedRangeMs => {
-  const fixed = SPORT_PROFILES[sport].speedRange;
-  if (fixed) return fixed;
+  const profile = SPORT_PROFILES[sport];
+  if (!profile.speedRangeFollowsPace) return profile.speedRange;
   const peakMs = maxWindowSpeedMs(track, cum);
-  if (peakMs === null) return DEFAULT_SAILING_SPEED_RANGE_MS;
+  if (peakMs === null) return profile.speedRange;
   return {
     minMs: knotsToMs(suggestActiveThresholdKn(sport, referenceSpeedKn)),
     maxMs: peakMs + knotsToMs(SPEED_RANGE_MAX_MARGIN_KN),

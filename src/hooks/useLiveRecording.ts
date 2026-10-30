@@ -101,17 +101,12 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 /** Pages qui lisent le direct (`useLiveRecording`). */
 const pageListeners = createListeners();
 /** Abonnés hors React (notification), qui ne pressent pas le rythme. */
-const backgroundListeners = new Set<() => void>();
+// Un abonné en échec n'arrête pas le direct.
+const backgroundListeners = createListeners({ safe: true });
 
 const publish = () => {
   pageListeners.notify();
-  backgroundListeners.forEach((listener) => {
-    try {
-      listener();
-    } catch {
-      // Un abonné en échec n'arrête pas le direct.
-    }
-  });
+  backgroundListeners.notify();
 };
 
 const clearTimer = () => {
@@ -189,12 +184,7 @@ export const startLiveRecording = (): void => {
 export const getLiveRecording = (): LiveRecording => live;
 
 /** Chaque recalcul, hors React ; sans effet sur le rythme. Rend le désabonnement. */
-export const subscribeToLiveRecording = (listener: () => void): (() => void) => {
-  backgroundListeners.add(listener);
-  return () => {
-    backgroundListeners.delete(listener);
-  };
-};
+export const subscribeToLiveRecording = (listener: () => void): (() => void) => backgroundListeners.subscribe(listener);
 
 const subscribe = (listener: () => void) => {
   const unsubscribe = pageListeners.subscribe(listener);

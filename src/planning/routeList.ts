@@ -1,7 +1,7 @@
 import { activityFamily, type Activity } from '../core/activities';
 import type { SportFamily } from '../core/sportProfiles';
-import { estimateRouteDurationS, type DurationSettings } from './duration';
-import { routeTotals } from './route';
+import { estimateDurationFromProfile, type DurationSettings } from './duration';
+import { routePoints, routeProfileRows, routeTotals, type PlannedRoute } from './route';
 import { recordToRoute, type RouteRecord } from './routeRecord';
 import { routeActivity, shownRoutes, type WithActivity } from './routeShown';
 
@@ -92,4 +92,20 @@ export const sortRoutes = <T extends Sortable>(routes: T[], sort: RouteSort, dis
     'distance-decroissante': (a, b) => distanceOf(b) - distanceOf(a),
   };
   return [...routes].sort(compare[sort]);
+};
+
+/**
+ * Temps estimé d'un itinéraire, en secondes, ou `null` sans réglage (voile)
+ * ou sans tracé. `minGainM` : écart qui confirme une montée, celui du terrain
+ * de l'activité, pour que le D+ compté soit celui affiché (`routeTotals`).
+ */
+export const estimateRouteDurationS = (
+  route: PlannedRoute,
+  minGainM: number,
+  settings: DurationSettings | null
+): number | null => {
+  if (!settings) return null;
+  const points = routePoints(route);
+  if (points.length < 2) return null;
+  return estimateDurationFromProfile(routeTotals(route, minGainM), routeProfileRows(points), settings);
 };

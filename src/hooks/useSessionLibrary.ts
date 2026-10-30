@@ -7,7 +7,7 @@ import { JUMPS_CALC_VERSION } from '../core/jumps';
 import { keepsWholeCaptureForPumping } from '../core/pumping';
 import { pruneSurfImu } from '../surfing/imuPrune';
 import type { SessionMark } from '../core/sessionMarks';
-import { SAILING_SPORTS, getSportProfile, hasPositions, isLandTreatment, sportTreatment } from '../core/sportProfiles';
+import { getSportProfile, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import {
   MARKER_FILE,
@@ -20,7 +20,8 @@ import {
   sessionPath,
   settingsPath,
 } from '../library/folderLayout';
-import { guessSport, uniqueSessionFileName } from '../library/naming';
+import { uniqueSessionFileName } from '../library/naming';
+import { describeImport, type ImportReport } from '../library/importReport';
 import {
   RECORD_FORMAT,
   RECORD_VERSION,
@@ -69,7 +70,10 @@ import {
   unseenSettingsEntries,
   type SettingsEntry,
 } from '../library/settingsFile';
-import { summarizeHeartRateSession, summarizeSession, surfRides, type SummaryOptions } from '../library/summary';
+import { surfRides } from '../library/summary';
+import {
+  analyzeGpx, summaryOptions, withSummary, type ActivitySummarySettings, type AnalyzedGpx,
+} from '../library/summaryOptions';
 import { readPickedBytes, readPickedFile } from '../platform/files';
 import {
   FolderRefusedError,
@@ -485,65 +489,12 @@ const activityOfSession = (sport: SportType, activityId: string | null | undefin
   sessionActivity(readStoredActivities(), activityId, sport) ?? baseActivity(sport);
 
 /**
- * Réglages qui changent le résumé : ceux de l'activité de la session, et ceux
- * de la session (`analysis`, dans sa fiche). Le seuil de la session prime sur
- * celui de l'activité ; l'allure imposée n'existe que pour une session, et
- * qu'en voile. L'altitude du terrain de la fiche remplace celle du GPS en
- * course et à vélo, sauf si l'utilisateur a gardé le GPS. En surf, le foil
- * de la session (sinon de son activité) et son seuil de vague en foil.
+ * Réglages de l'activité d'une session qui changent son résumé (seuil, foil),
+ * lus dans Réglages pour le calcul retenu (`analyzeGpx`, `summaryOptions`).
  */
-const summaryOptions = (
-  sport: SportType | null,
-  analysis?: SessionAnalysis | null,
-  activityId?: string | null,
-  elevation?: SessionElevation | null
-): SummaryOptions => {
-  if (sport === null) return {};
+const activitySummarySettings = (activityId: string | null | undefined) => (sport: SportType): ActivitySummarySettings => {
   const activity = activityOfSession(sport, activityId);
-  return {
-    // Le seuil de la session, sinon celui réglé ou pré-réglé pour son activité (0 : aucun seuil réglé, arrêts complets ôtés d'office).
-    activeThreshold: analysis?.activeThreshold ?? effectiveThresholdOverride(activity),
-    referenceSpeedOverrideMs: SAILING_SPORTS.includes(sport) ? analysis?.referenceSpeedMs ?? undefined : undefined,
-    terrainElevation:
-      isLandTreatment(sportTreatment(sport)) && elevation?.elevationSource !== 'gps' ? elevation?.terrainElevation : undefined,
-    // Surf : le foil de la session, sinon celui de son activité ; son seuil de vague en foil.
-    foil: analysis?.foil ?? effectiveFoil(activity) ?? undefined,
-    waveThreshold: analysis?.waveThreshold ?? undefined,
-    test: elevation?.test,
-  };
-};
-
-/** Altitude de la fiche (celle du terrain, et la source choisie) et son test guidé. */
-type SessionElevation = Pick<SessionRecord, 'terrainElevation' | 'elevationSource' | 'test'>;
-
-interface AnalyzedGpx {
-  summary: SessionSummary;
-  sport: SportType | null;
-  title: string | null;
-}
-
-/**
- * Lit un GPX et le résume. `sport` absent : deviné depuis la trace.
- * `analysis` : réglages d'analyse de la fiche (seuil, allure), s'il y en a ;
- * `activityId` : son activité, dont les réglages s'appliquent ;
- * `elevation` : son altitude du terrain, la source choisie et son test guidé.
- * Rend `null` si la trace a moins de deux points, lève une erreur si le XML
- * est illisible.
- */
-const analyzeGpx = (
-  text: string,
-  sport?: SportType | null,
-  analysis?: SessionAnalysis | null,
-  activityId?: string | null,
-  elevation?: SessionElevation | null
-): AnalyzedGpx | null => {
-  const parsed = parseGpx(text);
-  const resolved = sport === undefined ? guessSport(parsed.trackType) : sport;
-  // Session sans trace (muscu) : ses points n'ont que l'heure et la FC.
-  const summary = resolved !== null && !hasPositions(resolved)
-    ? summarizeHeartRateSession(parsed.timedPoints, resolved)
-    : summarizeSession(parsed.rawPoints, resolved, summaryOptions(resolved, analysis, activityId, elevation));
-  return summary ? { summary, sport: resolved, title: parsed.trackName ?? null } : null;
+  return { thresholdOverride: effectiveThresholdOverride(activity), foil: effectiveFoil(activity) };
 };
 
 /**
@@ -552,7 +503,7 @@ const analyzeGpx = (
  * `null` si la trace a moins de deux points ; lève si le XML est illisible.
  */
 export const summarizeGpxText = (text: string, sport: SportType, activityId: string | null): SessionSummary | null =>
-  analyzeGpx(text, sport, null, activityId)?.summary ?? null;
+  analyzeGpx(text, sport, null, activitySummarySettings(activityId))?.summary ?? null;
 
 const LEGACY_NOTES_KEY = 'tracker.sailingNotes';
 
@@ -570,16 +521,6 @@ const newRecord = (gpx: string, analyzed: AnalyzedGpx, source: SessionSource, ac
   // Notes saisies avant l'existence du dossier, pour la même trace.
   notes: findLegacyNotes(jsonStore.read<Record<string, unknown>>(LEGACY_NOTES_KEY), analyzed.summary.startMs),
   analysis: null,
-});
-
-/** Nouveau résumé, en gardant le nombre et la réussite des manœuvres de la dernière analyse. */
-const withSummary = (record: RecordWithoutSummary, summary: SessionSummary): SessionRecord => ({
-  ...record,
-  summary: {
-    ...summary,
-    ...(record.summary?.maneuverCount !== undefined ? { maneuverCount: record.summary.maneuverCount } : {}),
-    ...(record.summary?.maneuverResults !== undefined ? { maneuverResults: record.summary.maneuverResults } : {}),
-  },
 });
 
 // --- Écritures différées des fiches ---
@@ -1177,7 +1118,7 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
   const from = current?.record ?? job.base;
   let analyzed: AnalyzedGpx | null;
   try {
-    analyzed = text === null ? null : analyzeGpx(text, from ? from.sport : undefined, from?.analysis, from?.activityId, from);
+    analyzed = text === null ? null : analyzeGpx(text, from ? from.sport : undefined, from?.analysis, activitySummarySettings(from?.activityId), from);
   } catch {
     return 'unreadable';
   }
@@ -1520,7 +1461,7 @@ const prunedMotion = async (
     }
     if (profile.surf) {
       if (!profile.pump?.pruneCapture) return motion;
-      const rides = surfRides(parseGpx(text).rawPoints, sport, summaryOptions(sport, analysis, activityId));
+      const rides = surfRides(parseGpx(text).rawPoints, sport, summaryOptions(sport, analysis, activitySummarySettings(activityId)(sport)));
       return rides ? await pruneSurfImu(motion, rides, profile.pump.pruneMarginS) : motion;
     }
     if (sportTreatment(sport) === 'voile') {
@@ -1542,7 +1483,7 @@ const addGpx = async (text: string, source: SessionSource, options: AddOptions):
   try {
     const sport = options.sport !== undefined ? options.sport : options.record?.sport ?? undefined;
     const fields = options.test ? { ...options.record, test: options.test } : options.record;
-    analyzed = analyzeGpx(text, sport, options.record?.analysis, options.activityId ?? options.record?.activityId, fields);
+    analyzed = analyzeGpx(text, sport, options.record?.analysis, activitySummarySettings(options.activityId ?? options.record?.activityId), fields);
   } catch (err) {
     return { status: 'invalid', file: null, message: errorMessage(err, 'GPX illisible.') };
   }
@@ -1679,21 +1620,6 @@ export const saveRecordedSession = async (
   }
 };
 
-export interface ImportReport {
-  added: string[];
-  /** Sessions déjà présentes, par leur nom dans la mémoire. */
-  existing: string[];
-  duplicates: number;
-  invalid: string[];
-  unsaved: number;
-  /** Fichiers qu'on n'a pas pu lire ou ranger, avec la raison. */
-  failed: string[];
-  /** Sessions déjà présentes qui ont reçu leurs capteurs (`.imu`). */
-  motionAdded: number;
-  /** Sessions déjà présentes dont la fiche a été complétée. */
-  recordCompleted: number;
-}
-
 /** Fichier choisi dans le navigateur, lu seulement au moment de le ranger. */
 const pickedEntry = (file: File): ImportEntry => ({
   name: file.name,
@@ -1701,23 +1627,6 @@ const pickedEntry = (file: File): ImportEntry => ({
   readText: () => readPickedFile(file),
   readBytes: () => readPickedBytes(file),
 });
-
-const describeImport = (report: ImportReport): string => {
-  const parts: string[] = [];
-  parts.push(report.added.length === 1 ? '1 session ajoutée' : `${report.added.length} sessions ajoutées`);
-  if (report.duplicates > 0) parts.push(`${report.duplicates} déjà présente${report.duplicates > 1 ? 's' : ''}`);
-  if (report.motionAdded > 0) {
-    parts.push(`capteurs ajoutés à ${report.motionAdded} session${report.motionAdded > 1 ? 's' : ''} déjà présente${report.motionAdded > 1 ? 's' : ''}`);
-  }
-  if (report.recordCompleted > 0) {
-    parts.push(`fiche complétée pour ${report.recordCompleted} session${report.recordCompleted > 1 ? 's' : ''} déjà présente${report.recordCompleted > 1 ? 's' : ''}`);
-  }
-  if (report.invalid.length > 0) parts.push(`${report.invalid.length} illisible${report.invalid.length > 1 ? 's' : ''} (${report.invalid.join(', ')})`);
-  if (report.unsaved > 0) {
-    parts.push(`${report.unsaved} non rangée${report.unsaved > 1 ? 's' : ''} : désignez d'abord le dossier mémoire (Réglages › Mémoire)`);
-  }
-  return `${parts.join(', ')}.`;
-};
 
 /**
  * Importe des fichiers : des GPX, ou un dossier mémoire entier, dont chaque
@@ -1910,7 +1819,7 @@ const resummarize = async (file: string): Promise<void> => {
     await hydrateSession(f, file);
     const session = findSession(file);
     if (text === null || !session || session.readOnly || session.partial || folder !== f) return;
-    const analyzed = analyzeGpx(text, session.record.sport, session.record.analysis, session.record.activityId, session.record);
+    const analyzed = analyzeGpx(text, session.record.sport, session.record.analysis, activitySummarySettings(session.record.activityId), session.record);
     if (!analyzed) return;
     replaceSession({ ...session, record: withSummary(session.record, analyzed.summary) });
     scheduleRecordWrite(file);

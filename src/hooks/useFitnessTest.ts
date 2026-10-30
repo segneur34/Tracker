@@ -10,7 +10,8 @@ import {
   type FitnessTestId, type FitnessTestParams, type FitnessTestState, type SessionTest, type TestPhase, type TestRunner, type TestSignal,
 } from '../recording/fitnessTest';
 import { getRecorderState, noteFitnessTest, subscribeToFixes, subscribeToRecorder } from './useRecorder';
-import { readRunnerProfile, runnerAge, type RunnerProfile } from './useRunnerProfile';
+import { readRunnerProfile } from './useRunnerProfile';
+import { runnerAge, type RunnerProfile } from '../running/runnerProfile';
 import { effectiveHrOffset, readFitnessTestSettings } from './useSportSettings';
 import { createStore } from './createStore';
 

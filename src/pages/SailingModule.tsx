@@ -27,7 +27,7 @@ import { useTimeChartAxis } from '../hooks/useTimeChartAxis';
 import { useNarrowScreen } from '../hooks/useNarrowScreen';
 import { FAMILY_ACCENT } from '../core/activities';
 import { activeRatioLabel } from '../core/sportProfiles';
-import { trackColorSegments } from '../core/trackColor';
+import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
 import type { TopSegment } from '../core/types';
 import {
   SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
@@ -329,7 +329,9 @@ function SailingModule() {
   const shownMark = shownMarkKey === null ? null : Number(shownMarkKey);
 
   /** Bornes du dégradé de couleur de la trace, en m/s : celles de la session, sinon de Réglages, sinon la suggestion. */
-  const colorRange = edits.speedRange ?? speedRange ?? suggestedSpeedRangeMs;
+  const colorRange = effectiveSpeedRange({
+    sessionRange: edits.speedRange, activityRange: speedRange, suggested: suggestedSpeedRangeMs, fallback: settings.defaultSpeedRange,
+  });
 
   const [showTacksOnMap, setShowTacksOnMap] = useState<boolean>(false);
   const [showJibesOnMap, setShowJibesOnMap] = useState<boolean>(false);

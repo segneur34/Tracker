@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { BIKE_TYPES, cyclingEnergyParams } from '../cycling/energy';
 import {
   KM_EFFORT_CLIMB_FACTOR, LEVEL_CLIMB_POWER_WKG, LEVEL_FLAT_SPEED_MS, PRESET_PACE_LEVELS, climbPowerWkgForFlatSpeed,
-  cyclingDurationS, cyclingRideSpeedMs, cyclingSpeedOnGradeMs, estimateDurationFromProfile, estimateRouteDurationS, runningDurationS,
+  cyclingDurationS, cyclingRideSpeedMs, cyclingSpeedOnGradeMs, estimateDurationFromProfile, runningDurationS,
   type CyclingDurationSettings, type PresetPaceLevel,
 } from './duration';
 import { routePoints, routeProfileRows, routeTotals, type PlannedRoute, type RoutePoint } from './route';
+import { estimateRouteDurationS } from './routeList';
 import { at as geoAt } from '../test/geo.fixture';
 
 const RIDER_KG = 75;

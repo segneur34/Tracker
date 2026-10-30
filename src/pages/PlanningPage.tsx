@@ -47,9 +47,9 @@ import { getLastFix, useRecorderStatus } from '../hooks/useRecorder';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  effectiveDistanceUnit, effectiveDurationSettings, effectiveGradeRange, effectiveLoopReturnRatio, effectiveMarkGuide,
-  effectivePace, effectiveSpeedUnit, effectiveWayTypes, lastRecordActivity, useVisibility, PLANNING_FAMILIES,
+  effectiveDistanceUnit, effectiveDurationSettings, effectiveGradeRange, effectiveLoopReturnRatio, effectiveMarkGuide, effectivePace, effectiveSpeedUnit, effectiveWayTypes, lastRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
+import { PLANNING_FAMILIES } from '../settings/activitySettings';
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
 import { PACE_LEVEL_LABEL, estimateDurationFromProfile } from '../planning/duration';
@@ -60,10 +60,10 @@ import { WAY_TYPES } from '../planning/brouterProfile';
 import {
   DEFAULT_ROUTE_MODE, EMPTY_ROUTE, STRAIGHT_HINT, STRAIGHT_LABEL, WAY_TYPE_HINT, WAY_TYPE_LABEL, acceptLoopReturn, courseLegs, isLooped, isWaysMode,
   routeFromTrack,
-  routeModeLabel, routePoints, routeProfileRows, routeTotals, routeVehicle, setRouteMode, straightenRoute, toggleWayType, wayTypesOf, waypointDistances,
-  waysMode,
+  routeModeLabel, routePoints, routeProfileRows, routeTotals, routeVehicle, setRouteMode, straightenRoute, toggleWayType, waypointDistances,
   type PlannedRoute, type RouteMode, type RoutePoint, type Waypoint,
 } from '../planning/route';
+import { wayTypesOf, waysMode } from '../planning/wayTypes';
 import { buildRouteGpx, markLabel, waypointLabel } from '../planning/routeGpx';
 import { recordToRoute, routeMarkGuide } from '../planning/routeRecord';
 import { routeSurfacePaths, routeSurfaces, type SurfaceCategory } from '../planning/surface';

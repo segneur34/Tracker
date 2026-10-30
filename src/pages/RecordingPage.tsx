@@ -40,8 +40,7 @@ import { useOpenSections } from '../hooks/useOpenSections';
 import { usePhoneLandscape } from '../hooks/useNarrowScreen';
 import { readHeartRateZoneBounds } from '../hooks/useRunnerProfile';
 import {
-  effectiveCadence, effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs,
-  lastRecordActivity, lastRecordedOrFirst, rememberRecordActivity, useVisibility,
+  effectiveCadence, effectiveDistanceUnit, effectiveFoil, effectiveHeartRate, effectiveJumpSettings, effectiveLiveFields, effectivePumping, effectiveSpeedUnit, effectiveStopHoldMs, lastRecordActivity, lastRecordedOrFirst, rememberRecordActivity, useVisibility,
 } from '../hooks/useSportSettings';
 import { getMotionCapabilities, type MotionCapabilities } from '../platform/motion';
 import { BELT_STATE_LABEL, EXAMPLE_BELT, savedBelt, type BeltState } from '../platform/heartRate';

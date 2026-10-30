@@ -61,7 +61,7 @@ import { timeSpanHeartRate } from '../core/heartRate';
 import { ELEVATION_PRESETS, getActiveThresholds, isTestSport, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
 import { meanFilterByTime } from '../core/speedFilter';
-import { trackColorSegments } from '../core/trackColor';
+import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
 import {
   editSpeedUnit, CHART_PACE_MIN_SPEED_MS,
   DISTANCE_UNIT_SYMBOL, speedSourceText, speedUnitLabel, formatClockMinutes, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
@@ -222,12 +222,7 @@ function LandModule({ family }: { family: LandFamily }) {
     speedRange, gradeRange, defaultSpeedRange, bikeType, bikeWeightKg: activityBikeKg, carriedLoadKg, energyModel, gearLabels, gearGroups, hrOffsetBpm,
   } = useSportSettings(family);
   const model = LAND_TREATMENTS[sportTreatment(sport) === 'velo' ? 'velo' : 'course'];
-  const gpx = useGpxSession({
-    medianWindowSeconds: profile.medianWindowSeconds,
-    maxDetourRatio: profile.maxDetourRatio,
-    maxSpeedMs: profile.maxPlausibleSpeedMs,
-    maxGapS: profile.maxGapS,
-  });
+  const gpx = useGpxSession({ profile });
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe dans les graphes. */
   const { runner, age, retainHr, heart, hrZones } = useAnalysisHeart(gpx.track, profile.heartRate, hrOffsetBpm);
   /** Cadence à pied (`cad` du GPX : capteurs du téléphone, montre) : sa courbe dans les graphes et l'onglet « cadence ». */
@@ -537,8 +532,8 @@ function LandModule({ family }: { family: LandFamily }) {
     return intervalViews[series]?.reps.find((r) => r.rep === rep)?.work.path ?? [];
   }, [selectedLap, open.fractionne, intervalViews]);
 
-  /** Bornes du dégradé de couleur, en m/s : celles de la session, sinon de Réglages, sinon le défaut de la famille. */
-  const range = draft.edits.speedRange ?? speedRange ?? defaultSpeedRange;
+  /** Bornes du dégradé de couleur, en m/s : celles de la session, sinon de Réglages, sinon le défaut de l'activité. */
+  const range = effectiveSpeedRange({ sessionRange: draft.edits.speedRange, activityRange: speedRange, suggested: null, fallback: defaultSpeedRange });
 
   /** Vitesse des graphes, lissée une fois pour toute la trace. */
   const chartSpeed = useMemo(

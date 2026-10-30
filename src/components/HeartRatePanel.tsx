@@ -21,7 +21,7 @@ import {
 import type { HeartRateProfile } from '../core/sportProfiles';
 import { SPEED_UNIT_LABEL, formatClock, formatShortDuration, toDisplaySpeed, editSpeedUnit, type SpeedUnit } from '../core/units';
 import type { ChartZoom } from '../hooks/useChartZoom';
-import type { RunnerProfile } from '../hooks/useRunnerProfile';
+import type { RunnerProfile } from '../running/runnerProfile';
 import type { SessionHeartRate } from '../hooks/useSessionHeartRate';
 import { zonesOriginText } from './heartRateOrigin';
 import StatTile from './ui/StatTile';

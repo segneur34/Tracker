@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_ROUTE, addBeforeReturn, addWaypoint, isLooped, legKey, removeWaypoint, setRouteMode, withLegResult, type PlannedRoute, type Waypoint } from '../planning/route';
-import { plannedRouteReducer, type PlannedRouteAction, type PlannedRouteState } from './usePlannedRoute';
+import { EMPTY_ROUTE, addBeforeReturn, addWaypoint, isLooped, legKey, removeWaypoint, setRouteMode, withLegResult, type PlannedRoute, type Waypoint } from './route';
+import { plannedRouteReducer, type PlannedRouteAction, type PlannedRouteState } from './plannedRouteReducer';
 
 const A: Waypoint = { lat: 43.6, lon: 3.8 };
 const B: Waypoint = { lat: 43.61, lon: 3.8 };

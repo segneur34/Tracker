@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { FAMILY_ACCENT } from '../core/activities';
 import { ACTIVITY_ICON_IDS, ACTIVITY_ICON_LABEL, type ActivityIconId } from '../core/activityIcons';
 import type { SportFamily } from '../core/sportProfiles';
-import { AVATAR_PHOTO_PX, type RunnerAvatar } from '../hooks/useRunnerProfile';
+import { AVATAR_PHOTO_PX, type RunnerAvatar } from '../running/runnerProfile';
 import { pushBackLayer } from '../platform/backButton';
 import { readPickedImage } from '../platform/files';
 import ActivityArt from './activityArt';

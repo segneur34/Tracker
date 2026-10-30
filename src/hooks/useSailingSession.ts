@@ -1,10 +1,9 @@
 import { normalizeDeg } from '../core/angles';
 import { useMemo } from 'react';
-import { hasActiveThreshold } from '../core/sportProfiles';
 import { msToKnots } from '../core/units';
 import {
+  resolveSailingThresholds,
   sessionManeuverThresholds,
-  suggestActiveThresholdKn,
   suggestSpeedRangeMs,
 } from '../sailing/sailingConfig';
 import {
@@ -71,14 +70,7 @@ export const useSailingSession = ({
   // Les seuils de filtrage suivent l'allure de la session, pas seulement le
   // support : sur une trace lente, l'accélération et le plafond du wingfoil
   // laissent passer des pics d'enregistrement qui fabriquent des manœuvres.
-  const gpx = useGpxSession({
-    medianWindowSeconds: profile.medianWindowSeconds,
-    maxDetourRatio: profile.maxDetourRatio,
-    maxSpeedMs: profile.maxPlausibleSpeedMs,
-    maxGapS: profile.maxGapS,
-    scaleFiltersToSession: true,
-    referenceSpeedOverrideMs: sessionReferenceMs ?? undefined,
-  });
+  const gpx = useGpxSession({ profile, referenceSpeedOverrideMs: sessionReferenceMs ?? undefined });
 
   // Vue en nœuds de la trace, attendue par les analyses voile.
   const trackData = useMemo(() => trackToPointData(gpx.track), [gpx.track]);
@@ -87,18 +79,12 @@ export const useSailingSession = ({
   const { cumulative } = gpx;
 
   /**
-   * Seuil d'activité suggéré à partir de l'allure de la session, et seuil
-   * effectif : celui de la session s'il y en a un, sinon la surcharge du
-   * support, sinon la suggestion, jamais le défaut fixe du profil (§10,
-   * point 29 ; une trace lente au seuil wingfoil n'affichait aucune
-   * manœuvre, cf. point 27). Sans seuil (bateau, 21/10), le seuil fixe de
-   * réussite des manœuvres, qui ne se règle ni dans Réglages ni par session.
+   * Seuil d'activité effectif : celui de la session, sinon celui de l'activité
+   * (réglé ou pré-réglé), sinon la suggestion selon l'allure ; le bateau, sans
+   * seuil, garde son seuil fixe de réussite (`resolveSailingThresholds`).
    */
-  const withThreshold = hasActiveThreshold(profile);
-  const fixedThresholdKn = profile.withoutActiveThreshold?.maneuverSuccess ?? null;
-  const suggestedActiveThresholdKn = suggestActiveThresholdKn(sport, referenceSpeedKn);
-  const defaultActiveThresholdKn = fixedThresholdKn ?? (isThresholdOverridden ? rawActiveThresholdKn : suggestedActiveThresholdKn);
-  const activeThresholdKn = fixedThresholdKn ?? sessionThresholdKn ?? defaultActiveThresholdKn;
+  const thresholds = resolveSailingThresholds(profile, isThresholdOverridden ? rawActiveThresholdKn : null, sessionThresholdKn, referenceSpeedKn);
+  const { withThreshold, defaultKn: defaultActiveThresholdKn, activeKn: activeThresholdKn, flightKn: flightThresholdKn } = thresholds;
 
   const suggestedSpeedRangeMs = useMemo(
     () => suggestSpeedRangeMs(sport, referenceSpeedKn, gpx.track, cumulative),
@@ -127,12 +113,6 @@ export const useSailingSession = ({
     () => sessionManeuverThresholds(sport, referenceSpeedKn),
     [sport, referenceSpeedKn]
   );
-  /**
-   * Seuil de vol (ou de navigation) des manœuvres : le seuil d'activité de la
-   * session. Un demi-tour entamé en dessous n'est ni réussi ni raté (28/10).
-   * Le bateau, sans seuil, compte tout.
-   */
-  const flightThresholdKn = withThreshold ? activeThresholdKn : undefined;
   /** Plancher d'arrêt du support : un cap lu plus lentement n'est que du bruit. */
   const stillSpeedKn = profile.stillThreshold;
   const minEntrySpeedKn = maneuverThresholds.minEntrySpeedKn;

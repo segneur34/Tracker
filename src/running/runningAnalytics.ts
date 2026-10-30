@@ -1,10 +1,9 @@
 import { classifyGrade, gradeZones, type GradeZone, type GradeZoneKey } from '../core/grade';
 import { segmentDistanceM } from '../core/sessionStats';
 import { consecutiveSteps, pathsWhere } from '../core/trackPaths';
-import type { SpeedRangeMs } from '../core/speedGradient';
 import type { GradeProfile } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
-import { formatDuration, kmhToMs } from '../core/units';
+import { formatDuration } from '../core/units';
 
 /**
  * Analyse propre à la course à pied : zones de terrain et allures par zone.
@@ -84,8 +83,3 @@ export const gradeZonePaths = (
 ): [number, number][][] =>
   pathsWhere(track, consecutiveSteps(track.length), ({ to }) => activityMask[to] && classifyGrade(grades[to], p) === zone);
 
-/**
- * Bornes par défaut du dégradé de couleur de la trace (`core/speedGradient.ts`),
- * en m/s : 4 km/h, la marche, et 15 km/h.
- */
-export const DEFAULT_SPEED_RANGE_MS: SpeedRangeMs = { minMs: kmhToMs(4), maxMs: kmhToMs(15) };

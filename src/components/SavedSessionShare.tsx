@@ -5,11 +5,11 @@ import { shareableStats } from '../core/shareImage';
 import { getSportProfile, hasActiveThreshold, hasPositions, sportFamily, sportTreatment } from '../core/sportProfiles';
 import { coloredSegments } from '../core/trackColor';
 import { librarySession, summarizeGpxText } from '../hooks/useSessionLibrary';
-import { effectiveDistanceUnit, effectiveFoil, effectiveSpeedUnit } from '../hooks/useSportSettings';
+import { activitySpeedRanges, effectiveDistanceUnit, effectiveFoil, effectiveSpeedUnit } from '../hooks/useSportSettings';
 import { shareLabels, summaryShareStats } from '../library/shareStats';
 import { safeFileName } from '../platform/files';
 import { IconShare } from './icons';
-import { sessionColorTrack, sessionSpeedRange } from './sessionTrack';
+import { sessionColorTrack, sessionSpeedRange } from '../library/sessionTrack';
 import ShareDialog from './ShareDialog';
 import type { TrackSegment } from './TrackSegmentsLayer';
 import Button from './ui/Button';
@@ -54,7 +54,7 @@ function SavedSessionShare({ gpx, activity, fileName, libraryFile }: SavedSessio
       const withTrack = hasPositions(sport);
       const track = withTrack ? sessionColorTrack(gpx, sport, record?.analysis?.referenceSpeedMs ?? null, family) : null;
       if ((withTrack && track === null) || summary === null) throw new Error('trace trop courte.');
-      const range = track ? sessionSpeedRange(record ?? { analysis: null, sport }, activity, family, track.suggested) : null;
+      const range = track ? sessionSpeedRange(record ?? { analysis: null, sport }, activity ? activitySpeedRanges(activity) : null, family, track.suggested) : null;
       const labels = shareLabels(record?.name ?? null, activity.name, FAMILY_LABEL[family], summary.startMs, libraryFile ?? fileName);
       const units = { speed: effectiveSpeedUnit(activity), distance: effectiveDistanceUnit(activity) };
       // Foil de la session, sinon celui de l'activité : « Temps en vol » au lieu de « Temps actif ».

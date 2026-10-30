@@ -3,7 +3,7 @@ import { computeElevationStats } from '../core/elevation';
 import { heartRateHistogram, heartRateStats, smoothHeartRate, type HeartRatePoint } from '../core/heartRate';
 import { activeDurationS, heartRatePointsFrom } from '../core/heartRateSession';
 import { computeKinematics } from '../core/kinematics';
-import { referenceSpeedMs, samplingIntervalS, sessionFilterThresholds } from '../core/sessionSpeed';
+import { kinematicsOptionsOf, referenceSpeedMs, samplingIntervalS, scalesFiltersToSession } from '../core/sessionSpeed';
 import {
   MIN_ELEVATION_COVERAGE,
   buildCumulativeTrack,
@@ -78,16 +78,7 @@ export const analysisTrack = (
 ): TrackPoint[] => {
   if (sport === null) return computeKinematics(rawPoints);
   const profile = getSportProfile(sport);
-  const filters = SAILING_SPORTS.includes(sport)
-    ? sessionFilterThresholds(referenceMs, profile.maxPlausibleSpeedMs)
-    : { maxAcceleration: undefined, maxSpeedMs: profile.maxPlausibleSpeedMs };
-  return computeKinematics(rawPoints, {
-    medianWindowSeconds: profile.medianWindowSeconds,
-    maxDetourRatio: profile.maxDetourRatio,
-    maxAcceleration: filters.maxAcceleration,
-    maxSpeedMs: filters.maxSpeedMs,
-    maxGapS: profile.maxGapS,
-  });
+  return computeKinematics(rawPoints, kinematicsOptionsOf(profile, { scaleToSession: scalesFiltersToSession(profile), referenceMs }));
 };
 
 /**

@@ -41,7 +41,7 @@ import { sampledIndicesKeeping, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, trackBounds } from '../core/displayConfig';
 import { defaultActiveThresholdOf, sportTreatment } from '../core/sportProfiles';
 import { computeAllTopSegments } from '../core/topSegments';
-import { trackColorSegments } from '../core/trackColor';
+import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
 import {
   SPEED_UNIT_LABEL, speedSourceText, formatDistance, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
   fromDisplaySpeed, toDisplaySpeed,
@@ -142,9 +142,7 @@ function SurfModule() {
     activity, setActivity, profile, thresholdOverride, speedUnit, distanceUnit, speedRange, defaultSpeedRange, foil: activityFoil,
     pumping: activityPumping, gearLabels, gearGroups, hrOffsetBpm,
   } = useSportSettings('surf');
-  const gpx = useGpxSession({
-    medianWindowSeconds: profile.medianWindowSeconds, maxDetourRatio: profile.maxDetourRatio, maxSpeedMs: profile.maxPlausibleSpeedMs, maxGapS: profile.maxGapS,
-  });
+  const gpx = useGpxSession({ profile });
 
   // Session de l'adresse et son brouillon : seuils, foil, couleurs ; écrit dans sa fiche par « Enregistrer la session ».
   const {
@@ -200,8 +198,8 @@ function SurfModule() {
   const topShown = highlight.shownIn('tops');
   const totalDistanceM = cumulative.cumDist[cumulative.cumDist.length - 1] ?? 0;
 
-  /** Bornes du dégradé de couleur, en m/s : celles de la session, sinon de Réglages, sinon le défaut du surf. */
-  const range = draft.edits.speedRange ?? speedRange ?? defaultSpeedRange;
+  /** Bornes du dégradé de couleur, en m/s : celles de la session, sinon de Réglages, sinon le défaut de l'activité. */
+  const range = effectiveSpeedRange({ sessionRange: draft.edits.speedRange, activityRange: speedRange, suggested: null, fallback: defaultSpeedRange });
   const treatment = sportTreatment(activity.base);
   const mapSegments = useMemo(
     (): TrackSegment[] => trackColorSegments(track, treatment, { minMs: range.minMs, maxMs: range.maxMs }),

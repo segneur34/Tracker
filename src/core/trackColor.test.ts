@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TRACK_COLOR_SMOOTHING_S, coloredSegments, trackColorSegments, trackColorSpeedsMs } from './trackColor';
+import { TRACK_COLOR_SMOOTHING_S, coloredSegments, effectiveSpeedRange, trackColorSegments, trackColorSpeedsMs } from './trackColor';
 import type { TrackPoint } from './types';
 import { mPerDegLon } from '../test/geo.fixture';
 
@@ -83,5 +83,28 @@ describe('trackColorSegments', () => {
 
   it('ne trace rien sous deux points', () => {
     expect(trackColorSegments(buildTrack([[0, 2]]), 'course', { minMs: 1, maxMs: 4 })).toEqual([]);
+  });
+});
+
+describe('effectiveSpeedRange : ordre des bornes de couleur (décision transverse)', () => {
+  const session = { minMs: 1, maxMs: 2 };
+  const activity = { minMs: 3, maxMs: 4 };
+  const suggested = { minMs: 5, maxMs: 6 };
+  const fallback = { minMs: 7, maxMs: 8 };
+
+  it('celles de la trace priment sur tout', () => {
+    expect(effectiveSpeedRange({ sessionRange: session, activityRange: activity, suggested, fallback })).toBe(session);
+  });
+
+  it("puis celles de l'activité, réglées ou pré-réglées, avant la suggestion de la voile", () => {
+    expect(effectiveSpeedRange({ sessionRange: null, activityRange: activity, suggested, fallback })).toBe(activity);
+  });
+
+  it("en voile, la suggestion tirée de l'allure avant le défaut", () => {
+    expect(effectiveSpeedRange({ sessionRange: null, activityRange: null, suggested, fallback })).toBe(suggested);
+  });
+
+  it("à pied, à vélo et en surf (pas de suggestion), le défaut de l'activité ou du calcul", () => {
+    expect(effectiveSpeedRange({ sessionRange: null, activityRange: null, suggested: null, fallback })).toBe(fallback);
   });
 });

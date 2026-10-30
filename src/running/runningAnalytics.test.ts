@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { buildCumulativeTrack } from '../core/sessionStats';
 import { SLOW_COLOR, gradientColor, speedGradientColor } from '../core/speedGradient';
-import { GRADE_ANALYSIS as G } from '../core/sportProfiles';
+import { GRADE_ANALYSIS as G, SPORT_PROFILES } from '../core/sportProfiles';
 import type { TrackPoint } from '../core/types';
-import { DEFAULT_SPEED_RANGE_MS, computeZoneStats, gradeZonePaths } from './runningAnalytics';
+import { computeZoneStats, gradeZonePaths } from './runningAnalytics';
 import { haversineDistance } from '../core/geo';
 import { eastwardTrack } from '../test/track.fixture';
 import { DEFAULT_GRADE_RANGE, classifyGrade, computeGrades, gradeColorPaths, gradeGradientColor, gradeGradientStops, gradeStepColor, isValidGradeRange } from '../core/grade';
@@ -194,7 +194,7 @@ describe('gradeZonePaths', () => {
 });
 
 describe('dégradé de vitesse', () => {
-  const { minMs, maxMs } = DEFAULT_SPEED_RANGE_MS;
+  const { minMs, maxMs } = SPORT_PROFILES.running.speedRange;
   const kmh = (v: number) => v / 3.6;
 
   it('met la marche en gris', () => {

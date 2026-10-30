@@ -195,20 +195,15 @@ export const getRecorderState = (): RecorderState => state;
 /** Changements d'état de l'enregistreur, hors React ; rend le désabonnement. */
 export const subscribeToRecorder = (listener: () => void): (() => void) => subscribe(listener);
 
-/** Abonnés aux positions reçues. */
-const fixListeners = new Set<(fix: LocationFix) => void>();
+/** Abonnés aux positions reçues ; un abonné en échec n'arrête pas l'enregistrement. */
+const fixListeners = createListeners<[LocationFix]>({ safe: true });
 
 /**
  * Chaque position nouvelle reçue pendant l'enregistrement, pause
  * automatique comprise (la source tourne encore) : la seule boucle sûre
  * écran éteint. Rend le désabonnement.
  */
-export const subscribeToFixes = (listener: (fix: LocationFix) => void): (() => void) => {
-  fixListeners.add(listener);
-  return () => {
-    fixListeners.delete(listener);
-  };
-};
+export const subscribeToFixes = (listener: (fix: LocationFix) => void): (() => void) => fixListeners.subscribe(listener);
 
 
 // --- Enregistrement en cours ---
@@ -317,13 +312,7 @@ const receiveFix = (received: LocationFix): void => {
   lastReceivedMs = fix.timeMs;
   lastReceivedFix = fix;
   lastReceivedAtMs = Date.now();
-  for (const listener of fixListeners) {
-    try {
-      listener(fix);
-    } catch {
-      // Un abonné en échec n'arrête pas l'enregistrement.
-    }
-  }
+  fixListeners.notify(fix);
 
   const auto = evaluateAutoPause(state.status === 'paused', belowSinceMs, fix, {
     speedMs: recording.autoPauseSpeedMs,

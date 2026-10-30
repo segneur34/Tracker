@@ -4,9 +4,9 @@ import { HelpText, HelpToggle } from './Help';
 import Button from './ui/Button';
 import Dialog from './ui/Dialog';
 import SegmentedControl from './ui/SegmentedControl';
-import {
-  RUNNER_NAME_MAX, missingProfileFields, readRunnerProfile, shouldPromptProfile, useRunnerProfile, type RunnerProfile,
-} from '../hooks/useRunnerProfile';
+import { RUNNER_NAME_MAX, type RunnerProfile } from '../running/runnerProfile';
+import { missingProfileFields, shouldPromptProfile } from '../library/profilePrompt';
+import { readRunnerProfile, useRunnerProfile } from '../hooks/useRunnerProfile';
 import { isNativeApp } from '../platform/runtime';
 import './ProfilePrompt.css';
 

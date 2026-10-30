@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { newId } from '../core/basics';
-import { MAX_GEAR_LABEL_LENGTH, cleanGearName, sameGearName, type GearGroup, type GearItem } from '../hooks/useSportSettings';
+import { MAX_GEAR_LABEL_LENGTH, cleanGearName, sameGearName } from '../settings/gear';
+import type { GearGroup, GearItem } from '../library/notes';
 import { pushBackLayer } from '../platform/backButton';
 import type { GearChoice } from '../library/notes';
 import Button from './ui/Button';

@@ -1,4 +1,5 @@
-import type { RouteMode, RoutePoint, WaysMode } from './route';
+import type { RouteMode, RoutePoint } from './route';
+import type { WaysMode } from './wayTypes';
 
 /**
  * Deux pièces de base des tronçons d'un itinéraire, sans autre dépendance que

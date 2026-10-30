@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { newId, plural } from '../core/basics';
-import { MAX_GEAR_LABEL_LENGTH, cleanGearName, withGearItem, type GearGroup } from '../hooks/useSportSettings';
+import { MAX_GEAR_LABEL_LENGTH, cleanGearName, withGearItem } from '../settings/gear';
+import type { GearGroup } from '../library/notes';
 import Button from './ui/Button';
 import { IconChevronDown, IconChevronRight, IconClose } from './icons';
 import './Gear.css';

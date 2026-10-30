@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import { createListeners } from './createStore';
 
 /**
  * Point de trace survolé sur un graphe, hors de l'état des modules (27/10) :
@@ -26,20 +27,15 @@ export interface HoverStore<T> {
  */
 export const createHoverStore = <T>(): HoverStore<T> => {
   let value: T | null = null;
-  const listeners = new Set<() => void>();
+  const listeners = createListeners();
   return {
     set: (next) => {
       if (next === value) return;
       value = next;
-      listeners.forEach((listener) => listener());
+      listeners.notify();
     },
     get: () => value,
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    subscribe: listeners.subscribe,
   };
 };
 

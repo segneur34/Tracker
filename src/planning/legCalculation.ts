@@ -5,10 +5,11 @@ import type { WayType } from './brouterProfile';
 import { isAbortError } from './fetchJson';
 import { avoidancePolygons, corridorPaths, isAcceptableReturn, returnAttempts, sharedDistanceM, type LoopReturnParams } from './loopReturn';
 import {
-  isWaysMode, legsPoints, snapToWaypoints, wayTypesOf,
+  isWaysMode, legsPoints, snapToWaypoints,
   type LegRequest, type ReturnRequest, type RoutePoint, type RouteVehicle, type Waypoint,
 } from './route';
 import type { SurfaceRuns } from './surface';
+import { wayTypesOf } from './wayTypes';
 
 /**
  * Calcul d'un tronçon et du retour d'une boucle, pour `usePlannedRoute` : le

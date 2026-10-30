@@ -694,6 +694,8 @@ Opus | medium. Neutre. Sources : 01-C5, 03-C2 à C5, 04-A9, 06-A2, 06-C5, 07-A2,
 
 **Repris du lot 82 (30/10)** : en sortant le calcul de `useSportSettings.ts`, ne plus tirer `planning/route.ts` dans le paquet du démarrage (`presetWayTypes`, `sanitizeWayTypes` à mettre dans un petit module sans dépendance) ; mesurer le paquet avant/après comme au lot 82.
 
+**Fait (30/10)** : calcul des réglages dans `settings/activitySettings.ts` et `settings/gear.ts` (hook 1 674 → 937 lignes), reste du lot 66 (table `SETTING_FIELDS`, `createJsonSelector`, `createListeners`, `ActivityCard` mémoïsée), priorités testées (bornes de couleur, seuil de la voile, options du résumé et de l'analyse). Paquet du démarrage 633,0 → 631,3 ko : `route.ts` reste chargé par `main.tsx → useLiveRecording → recording/followedTrace → planning/routeRecord → route.ts`, et `library/record` tire `planning/surface` ; hors lot. Écarté : mesure au profileur des rendus des cartes, `useNumberDraft`. Banc : texte identique (réglages, notification, général, partage, pré-réglages, cacher, familles, library3) ; `library.mjs` plante des deux côtés (script périmé).
+
 ### 73 · Carte : trace colorée en une seule couche
 
 Opus | high. Neutre à l'œil (Q46, Q48). Sources : 01-B10, 02-B6, 07-A8, 07-A9, 07-B1, 07-B7.

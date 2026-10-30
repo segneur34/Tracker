@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { computeKinematics } from '../core/kinematics';
+import { kinematicsOptionsOf, referenceSpeedMs, scalesFiltersToSession } from '../core/sessionSpeed';
+import { FAMILY_BASE } from '../core/activities';
+import { getSportProfile } from '../core/sportProfiles';
 import type { RawTrackPoint } from '../core/types';
 import type { SessionTest } from '../recording/fitnessTest';
 import { SUMMARY_CALC_VERSION } from './record';
@@ -75,6 +78,16 @@ describe('summarizeSession', () => {
     expect(Math.max(...analysisTrack(raw, 'running').map((p) => p.smoothedSpeedMs))).toBeLessThan(20);
     // Sans support, aucun filtre : la trace brute enrichie.
     expect(analysisTrack(raw, null)).toEqual(computeKinematics(raw));
+  });
+
+  it("donne la trace de l'analyse, mêmes options de cinématique, pour chaque famille (lot 72)", () => {
+    // Le module d'analyse (`useGpxSession`) calcule sa trace avec ces mêmes options.
+    const raw = buildTrack([[120, 2], [1, 40], [240, 6], [60, 1]]);
+    for (const sport of [...Object.values(FAMILY_BASE), 'bateau', 'kite'] as const) {
+      const profile = getSportProfile(sport);
+      const options = kinematicsOptionsOf(profile, { scaleToSession: scalesFiltersToSession(profile), referenceMs: referenceSpeedMs(raw) });
+      expect(analysisTrack(raw, sport), sport).toEqual(computeKinematics(raw, options));
+    }
   });
 
   it('ne compte en mouvement que le temps passé au-dessus du seuil du support', () => {
