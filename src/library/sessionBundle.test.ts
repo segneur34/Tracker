@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { RECORD_VERSION, completeRecord, type SessionRecord } from './record';
+import { escapeXmlText } from '../core/xml';
+import { RECORD_VERSION, completeRecord, serializeRecord, type SessionRecord } from './record';
 import { bundleSessionGpx, unbundleSessionGpx } from './sessionBundle';
-import { sessionRecord } from '../test/record.fixture';
+import { familyRecords, sessionRecord } from '../test/record.fixture';
 
 const START_MS = Date.UTC(2026, 9, 10, 7, 0, 0);
 
@@ -156,6 +157,24 @@ describe('GPX complet dont la fiche a un résumé abîmé', () => {
     const back = unbundleSessionGpx(damaged);
     expect(back.record?.summary).toBeNull();
     expect(back.record?.name).toBe('Piste');
+  });
+});
+
+describe('GPX complet et fiche compacte (lot 80)', () => {
+  const marks = [{ timeMs: START_MS + 60_000, lat: 43.6, lon: 3.8, label: 'Bouée' }];
+
+  it('un paquet d’avant, fiche indentée, se relit et se défait encore', () => {
+    const fiche = record({ ...familyRecords().course, name: 'Carnon', marks, gpx: '2026-10-10_09-00-00_course.gpx' });
+    const bundled = bundleSessionGpx(GPX, fiche, new Uint8Array([1, 2, 3]));
+    const compact = escapeXmlText(serializeRecord(fiche));
+    expect(bundled).toContain(compact);
+    const old = bundled.replace(compact, escapeXmlText(`${JSON.stringify(fiche, null, 2)}\n`));
+    expect(old.length).toBeGreaterThan(bundled.length);
+    const back = unbundleSessionGpx(old);
+    expect(back.gpx).toBe(GPX);
+    expect(back.record).toEqual(unbundleSessionGpx(bundled).record);
+    expect(back.record).toEqual(fiche);
+    expect(back.motion).toEqual(new Uint8Array([1, 2, 3]));
   });
 });
 

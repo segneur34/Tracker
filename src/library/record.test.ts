@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { normalizeDeg } from '../core/angles';
+import { isFiniteNumber, isObject } from '../core/basics';
+import { isValidSpeedRange } from '../core/speedGradient';
+import { isValidBikeWeight } from '../cycling/energy';
+import { isValidCarriedLoad } from '../running/energy';
 import type { SessionTest } from '../recording/fitnessTest';
 import { EMPTY_NOTES } from './notes';
 import {
+  ANALYSIS_KEYS,
   RECORD_FORMAT,
   RECORD_VERSION,
   SUMMARY_CALC_VERSION,
@@ -16,6 +22,7 @@ import {
   parseRecord,
   parseRecordParts,
   parseRecordWithRaw,
+  readAnalysis,
   readNotes,
   recordFileName,
   serializeRecord,
@@ -26,7 +33,7 @@ import {
   type SessionSurfaces,
   type SessionTerrainElevation,
 } from './record';
-import { sessionRecord } from '../test/record.fixture';
+import { familyRecords, sessionRecord } from '../test/record.fixture';
 
 const START_MS = Date.UTC(2026, 8, 23, 12, 0, 0);
 
@@ -802,5 +809,98 @@ describe("fiche d'une version future relue puis réécrite (A1)", () => {
     expect(parsed.parts.analysis).toBeNull();
     const written = JSON.parse(serializeRecord({ ...parsed.parts, summary: parsed.parts.summary! }, parsed.unreadable));
     expect(written.analysis).toEqual(['nouvelle forme']);
+  });
+});
+
+/** Copie gelée de la lecture des réglages d'avant la table `ANALYSIS_FIELDS` (lot 80). */
+const oldReadAnalysis = (raw: unknown): SessionAnalysis | null => {
+  if (!isObject(raw)) return null;
+  return {
+    ...raw,
+    windDeg: isFiniteNumber(raw.windDeg) ? normalizeDeg(raw.windDeg) : null,
+    activeThreshold: isFiniteNumber(raw.activeThreshold) && raw.activeThreshold >= 0 ? raw.activeThreshold : null,
+    referenceSpeedMs: isFiniteNumber(raw.referenceSpeedMs) && raw.referenceSpeedMs > 0 ? raw.referenceSpeedMs : null,
+    speedRange: isObject(raw.speedRange) && isValidSpeedRange(raw.speedRange) ? { minMs: raw.speedRange.minMs, maxMs: raw.speedRange.maxMs } : null,
+    effortThresholdMs: isFiniteNumber(raw.effortThresholdMs) && raw.effortThresholdMs > 0 ? raw.effortThresholdMs : null,
+    foil: typeof raw.foil === 'boolean' ? raw.foil : null,
+    pumping: typeof raw.pumping === 'boolean' ? raw.pumping : null,
+    waveThreshold: isFiniteNumber(raw.waveThreshold) && raw.waveThreshold > 0 ? raw.waveThreshold : null,
+    bikeWeightKg: isValidBikeWeight(raw.bikeWeightKg) ? raw.bikeWeightKg : null,
+    loadKg: isValidCarriedLoad(raw.loadKg) ? raw.loadKg : null,
+    savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
+  };
+};
+
+describe('réglages relus par la table des champs (lot 80), comme avant', () => {
+  const valid = {
+    windDeg: 312.5, activeThreshold: 8, referenceSpeedMs: 6.2, speedRange: { minMs: 3, maxMs: 14.5 }, effortThresholdMs: 4.1, foil: true,
+    pumping: false, waveThreshold: 9.5, bikeWeightKg: 9.8, loadKg: 0, savedAt: 5,
+  };
+  const cases: [string, unknown][] = [
+    ['valides', valid],
+    ['nuls', { windDeg: null, activeThreshold: null, referenceSpeedMs: null, speedRange: null, effortThresholdMs: null, foil: null, pumping: null, waveThreshold: null, bikeWeightKg: null, loadKg: null, savedAt: 0 }],
+    ['vides', {}],
+    ['hors bornes', {
+      windDeg: -30, activeThreshold: -1, referenceSpeedMs: 0, speedRange: { minMs: 5, maxMs: 2 }, effortThresholdMs: -2, foil: 0, pumping: 1,
+      waveThreshold: 0, bikeWeightKg: 2, loadKg: 51, savedAt: Number.NaN,
+    }],
+    ['vent au-delà du tour', { ...valid, windDeg: 725 }],
+    ['mauvais types', {
+      windDeg: '40', activeThreshold: true, referenceSpeedMs: [3], speedRange: [1, 2], effortThresholdMs: { v: 1 }, foil: 'true', pumping: 'false',
+      waveThreshold: '9', bikeWeightKg: '10', loadKg: null, savedAt: '5',
+    }],
+    ['infinis', { ...valid, windDeg: Infinity, activeThreshold: Infinity, bikeWeightKg: -Infinity }],
+    ['clés inconnues, en tête et au milieu', { futur: { a: [1, 2] }, windDeg: 10, autre: 'x', loadKg: 3, ['__proto__x']: 1 }],
+    ['ordre des clés mélangé', { savedAt: 9, loadKg: 4, foil: false, windDeg: 359.9 }],
+    ['bornes de couleur avec un champ de plus', { ...valid, speedRange: { minMs: 1, maxMs: 2, unite: 'kn' } }],
+    ['pas un objet', null],
+    ['liste', [valid]],
+    ['nombre', 5],
+  ];
+
+  it.each(cases)('%s', (_, raw) => {
+    const actual = readAnalysis(raw);
+    const expected = oldReadAnalysis(raw);
+    expect(actual).toEqual(expected);
+    expect(JSON.stringify(actual)).toBe(JSON.stringify(expected));
+  });
+
+  it('chaque champ des réglages a sa ligne dans la table, dans leur ordre', () => {
+    expect([...ANALYSIS_KEYS, 'savedAt']).toEqual(Object.keys(oldReadAnalysis({})!));
+  });
+});
+
+describe('fiches compactes, une par famille (lot 80)', () => {
+  const families = Object.entries(familyRecords());
+
+  it.each(families)('%s : relue à l\'identique, réécrite au caractère près', (_, r) => {
+    const text = serializeRecord(r);
+    const parsed = parseRecordWithRaw(text)!;
+    expect(parsed.unreadable).toEqual({});
+    const back = parseRecord(text)!;
+    expect(back).toEqual(r);
+    expect(JSON.stringify(back)).toBe(JSON.stringify(r));
+    expect(serializeRecord(back)).toBe(text);
+    expect(JSON.parse(text)).toEqual(JSON.parse(JSON.stringify(r)));
+  });
+
+  it.each(families)('%s : une fiche indentée d\'avant se relit pareil, et se réécrit compacte', (_, r) => {
+    const old = `${JSON.stringify(r, null, 2)}\n`;
+    const text = serializeRecord(r);
+    expect(parseRecord(old)).toEqual(parseRecord(text));
+    expect(parseRecordWithRaw(old)!.unreadable).toEqual({});
+    expect(serializeRecord(parseRecord(old)!)).toBe(text);
+    expect(text.length).toBeLessThanOrEqual(old.length);
+  });
+
+  it('les tableaux de nombres tiennent sur une ligne, les objets restent indentés', () => {
+    const text = serializeRecord(familyRecords().course);
+    expect(text).toMatch(/\n {4}"t": \[0,1800,3600,/);
+    expect(text).toMatch(/\n {4}"z": \[[^\n]*null[^\n]*\]\n {2}\},\n/);
+    expect(text).toMatch(/\n {8}"seconds": \[0,/);
+    expect(text).toContain('\n  "analysis": {\n    "windDeg": null,\n');
+    const velo = serializeRecord(familyRecords().velo);
+    expect(velo).toMatch(/\n {4}"runs": \[\[0,-1\],\[12000,0\],/);
+    expect(velo).toContain('"tags": [\n      "highway=residential",\n');
   });
 });

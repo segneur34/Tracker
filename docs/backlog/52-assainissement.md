@@ -909,6 +909,8 @@ Opus | high. Non neutre (Q34, Q41, Q42, Q43 ; bogues C6 à C10, C12 à C14, C19,
 
 **Rapport attendu** : tableau avant/après par étape ; versions augmentées.
 
+**Tranché par l'orchestrateur (30/10)** : Q43, « bougent peu » = moins de 5 % sur l'attente, la rame et le retour au pic de chaque session réelle, sinon BLOQUÉ avec l'écart. Étape 1 : l'unité de distance passée aux trois appelants seulement ; la surcharge qui la rend obligatoire partout (environ 56 appels, dont les fichiers du lot 77) va au lot 78, qui reprend `core/units.ts`. Plan du lot : une brique `bestWindowSpeedMs` dans `core/topSegments.ts`, qui remplace aussi `maxWindowSpeedMs` (voile) et `bestTopOf` (direct) ; `maxSpeedWindowS` dans `COMMON_DEFAULTS` (règle 3).
+
 ### 82 · Planification : doublons internes et revêtement
 
 Sonnet | high. Neutre sauf Q47. Sources : 07-A4, 07-A6, 07-A11, 07-B8, 07-B9, 07-C4, 07-D4, 07-D5.
@@ -1072,7 +1074,7 @@ Essais au téléphone : seuls B1 (essai 68) et B3 (essai 69) en demandent un ; A
 
 ## Questions
 
-Pour l'utilisateur, en clair. **Réponse du 29/10 : l'utilisateur a validé la réponse par défaut de Q33 à Q49 ; elles sont tranchées, les lots les appliquent telles quelles.** Seule Q32 reste ouverte, posée dans `docs/BACKLOG.md` ; il a demandé en quoi consistait le mélange (réponse : virgule dans Profil et Statistiques, point et deux décimales dans la bibliothèque et les analyses ; « 1h24 » et « 1 h 24 » sur la même page Profil) ; sans réponse, la valeur par défaut s'applique au lot 78.
+Pour l'utilisateur, en clair. **Réponse du 29/10 : l'utilisateur a validé la réponse par défaut de Q33 à Q49 ; elles sont tranchées, les lots les appliquent telles quelles.** Q32 répondue le 30/10 : oui aux deux (« 12,4 km » et « 1 h 24 » partout). Elle était posée dans `docs/BACKLOG.md` ; il a demandé en quoi consistait le mélange (réponse : virgule dans Profil et Statistiques, point et deux décimales dans la bibliothèque et les analyses ; « 1h24 » et « 1 h 24 » sur la même page Profil) ; sans réponse, la valeur par défaut s'applique au lot 78.
 
 | Q | Lot | Question | Par défaut | Ce qui change selon la réponse |
 |---|---|---|---|---|

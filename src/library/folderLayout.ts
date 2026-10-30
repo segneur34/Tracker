@@ -1,3 +1,5 @@
+import { stringifyJson } from '../core/basics';
+
 /**
  * Disposition du dossier mémoire (`docs/ETAT_DU_PROJET.md` §6) :
  *
@@ -30,7 +32,7 @@ export const routePath = (fileName: string): string => `${ROUTES_DIR}/${fileName
 export const settingsPath = (fileName: string): string => `${SETTINGS_DIR}/${fileName}`;
 
 export const markerText = (): string =>
-  `${JSON.stringify({ format: MEMORY_FORMAT, version: MEMORY_VERSION }, null, 2)}\n`;
+  `${stringifyJson({ format: MEMORY_FORMAT, version: MEMORY_VERSION })}\n`;
 
 /** Texte du `LISEZMOI.txt`, en fins de ligne Windows : il sera surtout ouvert sur un PC. */
 export const readmeText = (): string =>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bandIndex, clamp, errorMessage, finiteOr, inRange, isFiniteNumber, isObject, meanOf, median, medianOfSorted, parseJson, plural, readCommands, roundTo,
-  toFixedNumber, upperMedianOfSorted,
+  stringifyJson, toFixedNumber, upperMedianOfSorted,
 } from './basics';
 
 // Copies gelées des anciennes écritures : les briques doivent rendre la même chose.
@@ -159,5 +159,50 @@ describe('médianes (lot 57)', () => {
       const f = Float64Array.from(l);
       expect(upperMedianOfSorted(Float64Array.from(f).sort())).toBe(oldUpper(f));
     }
+  });
+});
+
+describe('stringifyJson (lot 80)', () => {
+  /** Valeurs sans tableau de nombres : le texte est celui de `JSON.stringify(value, null, 2)`. */
+  const plain: [string, unknown][] = [
+    ['objet vide', {}],
+    ['tableau vide', []],
+    ['objet imbriqué', { a: { b: { c: 'texte' } }, d: 'é"\\n', e: {} }],
+    ['textes avec crochets et retours à la ligne', { s: '[1,2]\n[3]', t: ['[', ']', '{\n}'] }],
+    ['tableau de textes et d\'objets', ['a', { b: 1 }, ['c'], [{ d: 2 }]]],
+    ['undefined, fonction, symbole omis dans un objet', { a: undefined, b: () => 1, c: Symbol('x'), d: 'gardé' }],
+    ['undefined, fonction, symbole à null dans un tableau', ['x', undefined, () => 1, Symbol('y')]],
+    ['date et toJSON', { quand: new Date(Date.UTC(2026, 9, 30)), propre: { toJSON: (key: string) => `clé ${key}` } }],
+    ['nombres seuls', { n: 1, m: -0, o: 1e21, p: 1.5e-7, q: NaN, r: -Infinity, s: true, t: null }],
+    ['objets en boîte', { n: Object(3), s: Object('x'), b: Object(false) }],
+    ['scalaires', 'texte'],
+  ];
+
+  it.each(plain)('%s : comme JSON.stringify indenté', (_, value) => {
+    expect(stringifyJson(value)).toBe(JSON.stringify(value, null, 2));
+  });
+
+  it('rend undefined comme JSON.stringify pour une valeur non écrite', () => {
+    expect(stringifyJson(undefined)).toBeUndefined();
+    expect(stringifyJson(() => 1)).toBeUndefined();
+    expect(stringifyJson(5)).toBe('5');
+    expect(stringifyJson(null)).toBe('null');
+  });
+
+  it('écrit un tableau de nombres, de null ou de booléens sur une ligne, et les tableaux de tels tableaux', () => {
+    expect(stringifyJson({ z: [1, null, -2.5, 1e-7, 1e21, NaN, Infinity, true], runs: [[0, 0], [125_000, -1]], vide: [[]] }))
+      .toBe('{\n  "z": [1,null,-2.5,1e-7,1e+21,null,null,true],\n  "runs": [[0,0],[125000,-1]],\n  "vide": [[]]\n}');
+    // Un tableau mêlé reste indenté, ses tableaux de nombres sur une ligne.
+    expect(stringifyJson([[1, 2], 'a', [[3]], [[[4]]]])).toBe('[\n  [1,2],\n  "a",\n  [[3]],\n  [\n    [[4]]\n  ]\n]');
+    expect(stringifyJson([undefined, 1])).toBe('[\n  null,\n  1\n]');
+  });
+
+  it('se relit en la même valeur que JSON.stringify', () => {
+    const values: unknown[] = [
+      ...plain.map(([, v]) => v),
+      { t: Array.from({ length: 50 }, (_, i) => i * 0.1), z: [null, 3, -4], h: { seconds: [0, 0.25, 1e-9] }, l: [[1, [2]], [3]] },
+      [[1, 2], [3, 4]], [[1, 'a']], [{ a: [1] }], [[], [1]], [-0, 0],
+    ];
+    for (const v of values) expect(JSON.parse(stringifyJson(v) ?? 'null')).toEqual(JSON.parse(JSON.stringify(v) ?? 'null'));
   });
 });

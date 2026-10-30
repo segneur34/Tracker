@@ -14,7 +14,7 @@ import { readIntervalSeries, type IntervalSeries } from '../recording/intervalTi
 import { isSportType } from '../core/sportProfiles';
 import { isValidCarriedLoad } from '../running/energy';
 import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from './notes';
-import { finiteOr, isFiniteNumber, isObject, parseJson } from '../core/basics';
+import { finiteOr, isFiniteNumber, isObject, parseJson, stringifyJson } from '../core/basics';
 
 /**
  * Fiche d'une session : le fichier JSON rangé à côté de son GPX dans le
@@ -443,21 +443,74 @@ export const readSessionName = (raw: unknown): string | null => {
 const readSpeedRange = (raw: unknown): SpeedRangeMs | null =>
   isObject(raw) && isValidSpeedRange(raw) ? { minMs: raw.minMs, maxMs: raw.maxMs } : null;
 
+/** Mêmes bornes de couleur, par leurs valeurs : une fiche relue en donne une copie. */
+const sameRange = (a: SpeedRangeMs | null, b: SpeedRangeMs | null): boolean =>
+  a === b || (a !== null && b !== null && a.minMs === b.minMs && a.maxMs === b.maxMs);
+
+/** Réglage d'analyse saisi par l'utilisateur : tous les champs de `SessionAnalysis`, hors sa date. */
+export type AnalysisKey = Exclude<keyof SessionAnalysis, 'savedAt'>;
+
+/** Réglages d'analyse saisis seuls, sans leur date. */
+export type AnalysisValues = Pick<SessionAnalysis, AnalysisKey>;
+
+/** Partie de l'écran où se saisit un réglage d'analyse, celle qu'annonce le brouillon (`library/sessionEdits.ts`). */
+export type AnalysisPart = 'vent' | 'seuil' | 'allure' | 'couleurs' | 'effort' | 'foil' | 'pumping' | 'vague' | 'charge';
+
+/**
+ * Un réglage d'analyse : sa partie à l'écran ; sa lecture depuis le JSON de
+ * la fiche, une valeur mal formée revenant au défaut (`null`) ; son égalité
+ * (`===` par défaut) ; sa mise en forme à l'écriture (telle quelle par défaut).
+ */
+export interface AnalysisField<K extends AnalysisKey> {
+  part: AnalysisPart;
+  read(raw: unknown): AnalysisValues[K];
+  same?(a: AnalysisValues[K], b: AnalysisValues[K]): boolean;
+  write?(value: AnalysisValues[K]): AnalysisValues[K];
+}
+
+/**
+ * Table des réglages d'analyse, la seule place de leurs champs : lecture de la
+ * fiche (`readAnalysis`), brouillon et écriture (`library/sessionEdits.ts`)
+ * s'en déduisent. Un champ ajouté à `SessionAnalysis` sans sa ligne ici est
+ * refusé par le compilateur. L'ordre est celui de l'écran et de la fiche.
+ */
+export const ANALYSIS_FIELDS: { readonly [K in AnalysisKey]: AnalysisField<K> } = {
+  windDeg: {
+    part: 'vent',
+    read: (raw) => (isFiniteNumber(raw) ? normalizeDeg(raw) : null),
+    write: (value) => (value === null ? null : normalizeDeg(value)),
+  },
+  activeThreshold: { part: 'seuil', read: (raw) => (isFiniteNumber(raw) && raw >= 0 ? raw : null) },
+  referenceSpeedMs: { part: 'allure', read: (raw) => (isFiniteNumber(raw) && raw > 0 ? raw : null) },
+  speedRange: { part: 'couleurs', read: (raw) => readSpeedRange(raw), same: sameRange },
+  effortThresholdMs: { part: 'effort', read: (raw) => (isFiniteNumber(raw) && raw > 0 ? raw : null) },
+  foil: { part: 'foil', read: (raw) => (typeof raw === 'boolean' ? raw : null) },
+  pumping: { part: 'pumping', read: (raw) => (typeof raw === 'boolean' ? raw : null) },
+  waveThreshold: { part: 'vague', read: (raw) => (isFiniteNumber(raw) && raw > 0 ? raw : null) },
+  bikeWeightKg: { part: 'charge', read: (raw) => (isValidBikeWeight(raw) ? raw : null) },
+  loadKg: { part: 'charge', read: (raw) => (isValidCarriedLoad(raw) ? raw : null) },
+};
+
+/** Les clés de `ANALYSIS_FIELDS`, dans leur ordre. */
+export const ANALYSIS_KEYS = Object.keys(ANALYSIS_FIELDS) as AnalysisKey[];
+
+const setValue = <K extends AnalysisKey>(out: Partial<AnalysisValues>, key: K, value: AnalysisValues[K]): void => {
+  out[key] = value;
+};
+
+/** Réglages tirés champ par champ de `value`, dans l'ordre de la table. */
+export const mapAnalysis = (value: <K extends AnalysisKey>(key: K) => AnalysisValues[K]): AnalysisValues => {
+  const out: Partial<AnalysisValues> = {};
+  for (const key of ANALYSIS_KEYS) setValue(out, key, value(key));
+  return out as AnalysisValues;
+};
+
 /** Réglages d'analyse relus, champ par champ : une valeur mal formée revient au défaut. */
 export const readAnalysis = (raw: unknown): SessionAnalysis | null => {
   if (!isObject(raw)) return null;
   return {
     ...raw,
-    windDeg: isFiniteNumber(raw.windDeg) ? normalizeDeg(raw.windDeg) : null,
-    activeThreshold: isFiniteNumber(raw.activeThreshold) && raw.activeThreshold >= 0 ? raw.activeThreshold : null,
-    referenceSpeedMs: isFiniteNumber(raw.referenceSpeedMs) && raw.referenceSpeedMs > 0 ? raw.referenceSpeedMs : null,
-    speedRange: readSpeedRange(raw.speedRange),
-    effortThresholdMs: isFiniteNumber(raw.effortThresholdMs) && raw.effortThresholdMs > 0 ? raw.effortThresholdMs : null,
-    foil: typeof raw.foil === 'boolean' ? raw.foil : null,
-    pumping: typeof raw.pumping === 'boolean' ? raw.pumping : null,
-    waveThreshold: isFiniteNumber(raw.waveThreshold) && raw.waveThreshold > 0 ? raw.waveThreshold : null,
-    bikeWeightKg: isValidBikeWeight(raw.bikeWeightKg) ? raw.bikeWeightKg : null,
-    loadKg: isValidCarriedLoad(raw.loadKg) ? raw.loadKg : null,
+    ...mapAnalysis((key) => ANALYSIS_FIELDS[key].read(raw[key])),
     savedAt: isFiniteNumber(raw.savedAt) ? raw.savedAt : 0,
   };
 };
@@ -581,7 +634,7 @@ const sameJson = (a: unknown, b: unknown): boolean => {
 /** Champs illisibles d'une fiche relue (`parts`), d'après son JSON brut (`raw`). */
 const unreadableFields = (raw: Record<string, unknown>, parts: RecordWithoutSummary): RecordUnreadable => {
   const lost: Record<string, UnreadableField> = {};
-  const read = parts as unknown as Record<string, unknown>;
+  const read: Record<string, unknown> = parts;
   for (const key of GUARDED_FIELDS) {
     if (raw[key] !== undefined && !sameJson(read[key], raw[key])) lost[key] = { raw: raw[key], read: read[key] };
   }
@@ -687,13 +740,14 @@ const withUnreadable = (record: SessionRecord, unreadable: RecordUnreadable): Re
 };
 
 /**
- * Texte de la fiche, indenté pour rester lisible dans un éditeur. `unreadable` :
- * champs illisibles à sa lecture (`parseRecordWithRaw`), réécrits tels quels
- * s'ils n'ont pas changé depuis.
+ * Texte de la fiche, indenté pour rester lisible dans un éditeur, tableaux de
+ * nombres sur une ligne (`stringifyJson`). `unreadable` : champs illisibles à
+ * sa lecture (`parseRecordWithRaw`), réécrits tels quels s'ils n'ont pas
+ * changé depuis.
  */
 export const serializeRecord = (record: SessionRecord, unreadable?: RecordUnreadable): string => {
   const out = unreadable && Object.keys(unreadable).length > 0 ? withUnreadable(record, unreadable) : record;
-  return `${JSON.stringify(out, null, 2)}\n`;
+  return `${stringifyJson(out)}\n`;
 };
 
 /** Faux pour une fiche écrite par une version plus récente : on la lit sans jamais la réécrire. */

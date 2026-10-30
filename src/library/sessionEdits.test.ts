@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_NOTES } from './notes';
-import { type SessionRecord, type StoredSessionNotes } from './record';
-import { changedParts, editsPatch, rebaseDraft, savedEdits } from './sessionEdits';
-import { sessionRecord } from '../test/record.fixture';
+import { normalizeDeg } from '../core/angles';
+import type { SessionMark } from '../core/sessionMarks';
+import type { SpeedRangeMs } from '../core/speedGradient';
+import { EMPTY_NOTES, type GearChoice, type SailingSessionNotes } from './notes';
+import { applyRecordPatch, parseRecordWithRaw, serializeRecord, type SessionRecord, type StoredSessionNotes } from './record';
+import { changedParts, editsPatch, rebaseDraft, savedEdits, type EditedPart, type EditsPatch, type SessionEdits } from './sessionEdits';
+import { familyRecords, sessionRecord } from '../test/record.fixture';
 
 const START_MS = Date.UTC(2026, 8, 24, 10, 0, 0);
 
@@ -240,5 +243,201 @@ describe('matériel enregistré dans le brouillon (lot 20)', () => {
     expect(rebaseDraft(before, after, untouched).notes.gear).toEqual([wing, mast]);
     const chosen = { ...before, notes: { ...before.notes, gear: null } };
     expect(rebaseDraft(before, after, chosen).notes.gear).toBeNull();
+  });
+});
+
+/*
+ * Lot 80 : copies gelées des fonctions d'avant la table des réglages
+ * (`ANALYSIS_FIELDS`), comparées aux nouvelles, valeur et ordre des clés compris.
+ */
+const OLD_NOTE_FIELDS = Object.keys(EMPTY_NOTES) as (keyof SailingSessionNotes)[];
+const oldSameGear = (a: readonly GearChoice[] | null, b: readonly GearChoice[] | null): boolean =>
+  a === b || ((a?.length ?? 0) === 0 && (b?.length ?? 0) === 0) || (a !== null && b !== null && a.length === b.length && a.every((g, i) => {
+    const o = b[i];
+    return g.groupId === o.groupId && g.groupName === o.groupName && g.itemId === o.itemId && g.itemName === o.itemName;
+  }));
+const oldSameNoteField = <F extends keyof SailingSessionNotes>(field: F, a: SailingSessionNotes[F], b: SailingSessionNotes[F]): boolean =>
+  field === 'gear' ? oldSameGear(a as GearChoice[] | null, b as GearChoice[] | null) : a === b;
+const oldSameNotes = (a: SailingSessionNotes, b: SailingSessionNotes): boolean =>
+  OLD_NOTE_FIELDS.every((field) => oldSameNoteField(field, a[field], b[field]));
+const OLD_NO_MARKS: SessionMark[] = [];
+const oldPickNotes = (n: SailingSessionNotes): SailingSessionNotes =>
+  Object.fromEntries(OLD_NOTE_FIELDS.map((field) => [field, n[field]])) as unknown as SailingSessionNotes;
+const oldSavedEdits = (r: SessionRecord | null): SessionEdits => ({
+  notes: r?.notes ? oldPickNotes(r.notes) : EMPTY_NOTES,
+  windDeg: r?.analysis?.windDeg ?? null,
+  activeThreshold: r?.analysis?.activeThreshold ?? null,
+  referenceSpeedMs: r?.analysis?.referenceSpeedMs ?? null,
+  speedRange: r?.analysis?.speedRange ?? null,
+  effortThresholdMs: r?.analysis?.effortThresholdMs ?? null,
+  foil: r?.analysis?.foil ?? null,
+  pumping: r?.analysis?.pumping ?? null,
+  waveThreshold: r?.analysis?.waveThreshold ?? null,
+  bikeWeightKg: r?.analysis?.bikeWeightKg ?? null,
+  loadKg: r?.analysis?.loadKg ?? null,
+  marks: r?.marks ?? OLD_NO_MARKS,
+});
+const oldSameRange = (a: SpeedRangeMs | null, b: SpeedRangeMs | null): boolean =>
+  a === b || (a !== null && b !== null && a.minMs === b.minMs && a.maxMs === b.maxMs);
+const oldSameMarks = (a: readonly SessionMark[], b: readonly SessionMark[]): boolean =>
+  a === b || (a.length === b.length && a.every((m, i) => {
+    const o = b[i];
+    return m.timeMs === o.timeMs && m.lat === o.lat && m.lon === o.lon && m.label === o.label;
+  }));
+const oldChangedParts = (saved: SessionEdits, edits: SessionEdits): EditedPart[] => {
+  const parts: EditedPart[] = [];
+  if (saved.windDeg !== edits.windDeg) parts.push('vent');
+  if (saved.activeThreshold !== edits.activeThreshold) parts.push('seuil');
+  if (saved.referenceSpeedMs !== edits.referenceSpeedMs) parts.push('allure');
+  if (!oldSameRange(saved.speedRange, edits.speedRange)) parts.push('couleurs');
+  if (saved.effortThresholdMs !== edits.effortThresholdMs) parts.push('effort');
+  if (saved.foil !== edits.foil) parts.push('foil');
+  if (saved.pumping !== edits.pumping) parts.push('pumping');
+  if (saved.waveThreshold !== edits.waveThreshold) parts.push('vague');
+  if (saved.bikeWeightKg !== edits.bikeWeightKg || saved.loadKg !== edits.loadKg) parts.push('charge');
+  if (!oldSameNotes(saved.notes, edits.notes)) parts.push('notes');
+  if (!oldSameMarks(saved.marks, edits.marks)) parts.push('reperes');
+  return parts;
+};
+const OLD_SAME: { [K in Exclude<keyof SessionEdits, 'notes'>]: (a: SessionEdits[K], b: SessionEdits[K]) => boolean } = {
+  windDeg: (a, b) => a === b,
+  activeThreshold: (a, b) => a === b,
+  referenceSpeedMs: (a, b) => a === b,
+  speedRange: oldSameRange,
+  effortThresholdMs: (a, b) => a === b,
+  foil: (a, b) => a === b,
+  pumping: (a, b) => a === b,
+  waveThreshold: (a, b) => a === b,
+  bikeWeightKg: (a, b) => a === b,
+  loadKg: (a, b) => a === b,
+  marks: oldSameMarks,
+};
+const oldRebaseDraft = (prevSaved: SessionEdits, nextSaved: SessionEdits, draft: SessionEdits): SessionEdits => {
+  if (prevSaved === nextSaved) return draft;
+  const next: SessionEdits = { ...draft };
+  let changed = false;
+  for (const key of Object.keys(OLD_SAME) as (keyof typeof OLD_SAME)[]) {
+    const same = OLD_SAME[key] as (a: unknown, b: unknown) => boolean;
+    if (same(draft[key], prevSaved[key]) && !same(draft[key], nextSaved[key])) {
+      (next as unknown as Record<string, unknown>)[key] = nextSaved[key];
+      changed = true;
+    }
+  }
+  const n: SailingSessionNotes = { ...draft.notes };
+  for (const field of OLD_NOTE_FIELDS) {
+    if (oldSameNoteField(field, draft.notes[field], prevSaved.notes[field]) && !oldSameNoteField(field, draft.notes[field], nextSaved.notes[field])) {
+      (n as unknown as Record<string, unknown>)[field] = nextSaved.notes[field];
+      changed = true;
+    }
+  }
+  return changed ? { ...next, notes: n } : draft;
+};
+const oldEditsPatch = (r: SessionRecord, saved: SessionEdits, edits: SessionEdits, now: number): EditsPatch => {
+  const parts = oldChangedParts(saved, edits);
+  const patch: EditsPatch = {};
+  if (parts.includes('notes')) patch.notes = { ...r.notes, ...edits.notes, savedAt: now };
+  if (parts.includes('reperes')) patch.marks = edits.marks.map((m) => ({ ...m, label: m.label?.trim() || null }));
+  if (parts.some((part) => part !== 'notes' && part !== 'reperes')) {
+    patch.analysis = {
+      ...r.analysis,
+      windDeg: edits.windDeg === null ? null : normalizeDeg(edits.windDeg),
+      activeThreshold: edits.activeThreshold,
+      referenceSpeedMs: edits.referenceSpeedMs,
+      speedRange: edits.speedRange,
+      effortThresholdMs: edits.effortThresholdMs,
+      foil: edits.foil,
+      pumping: edits.pumping,
+      waveThreshold: edits.waveThreshold,
+      bikeWeightKg: edits.bikeWeightKg,
+      loadKg: edits.loadKg,
+      savedAt: now,
+    };
+  }
+  return patch;
+};
+
+/** Pareil que la copie gelée : valeur et texte JSON (ordre des clés). */
+const expectSame = (actual: unknown, expected: unknown) => {
+  expect(actual).toEqual(expected);
+  expect(JSON.stringify(actual)).toBe(JSON.stringify(expected));
+};
+
+describe('brouillon tiré de la table des réglages (lot 80), comme avant', () => {
+  const families = familyRecords();
+  const records: [string, SessionRecord | null][] = [
+    ['sans fiche', null],
+    ['fiche nue', record()],
+    ['réglages avec un champ inconnu', record({ analysis: { ...families.voile.analysis!, futur: { a: 1 } } as SessionRecord['analysis'] })],
+    ['notes partielles', record({ notes: { comment: 'x', savedAt: 1 } as StoredSessionNotes })],
+    ...Object.entries(families),
+  ];
+  /** Brouillons tirés de `saved` : chaque champ changé seul, les deux de « charge » ensemble, tout à la fois. */
+  const variants = (saved: SessionEdits): SessionEdits[] => [
+    saved,
+    { ...saved, speedRange: saved.speedRange && { ...saved.speedRange }, notes: { ...saved.notes }, marks: saved.marks.map((m) => ({ ...m })) },
+    { ...saved, windDeg: 405 },
+    { ...saved, windDeg: saved.windDeg === null ? 10 : null },
+    { ...saved, activeThreshold: 5.5 },
+    { ...saved, referenceSpeedMs: 3.3 },
+    { ...saved, speedRange: { minMs: 1, maxMs: 9 } },
+    { ...saved, speedRange: null },
+    { ...saved, effortThresholdMs: 2.2 },
+    { ...saved, foil: !saved.foil },
+    { ...saved, pumping: saved.pumping === null ? true : null },
+    { ...saved, waveThreshold: 11 },
+    { ...saved, bikeWeightKg: 12 },
+    { ...saved, loadKg: 7 },
+    { ...saved, bikeWeightKg: 13, loadKg: 2 },
+    { ...saved, notes: { ...saved.notes, comment: 'neuf' } },
+    { ...saved, marks: [{ timeMs: 5, lat: null, lon: null, label: '  a  ' }] },
+    {
+      notes: { ...saved.notes, rating: 2 }, windDeg: -30, activeThreshold: 1, referenceSpeedMs: 2, speedRange: { minMs: 0, maxMs: 4 }, effortThresholdMs: 3,
+      foil: false, pumping: false, waveThreshold: 4, bikeWeightKg: 20, loadKg: 0, marks: [],
+    },
+  ];
+
+  it.each(records)('savedEdits : %s', (_, r) => {
+    expectSame(savedEdits(r), oldSavedEdits(r));
+  });
+
+  it.each(records)('changedParts et editsPatch : %s', (_, r) => {
+    const saved = savedEdits(r);
+    const base = r ?? record();
+    for (const edits of variants(saved)) {
+      expectSame(changedParts(saved, edits), oldChangedParts(saved, edits));
+      expectSame(editsPatch(base, saved, edits, 77), oldEditsPatch(base, saved, edits, 77));
+    }
+  });
+
+  it.each(records)('rebaseDraft : %s', (_, r) => {
+    const prevSaved = savedEdits(r);
+    for (const nextSaved of variants(prevSaved)) {
+      for (const draft of variants(prevSaved)) {
+        const actual = rebaseDraft(prevSaved, nextSaved, draft);
+        const expected = oldRebaseDraft(prevSaved, nextSaved, draft);
+        expectSame(actual, expected);
+        expect(actual === draft).toBe(expected === draft);
+      }
+    }
+  });
+});
+
+describe("champ illisible d'une fiche compacte, autre réglage enregistré (lot 54, lot 80)", () => {
+  it('le vent de forme nouvelle revient brut, au caractère près, quand le seuil change', () => {
+    const valid = familyRecords().voile;
+    const future = { ...valid, analysis: { ...valid.analysis, windDeg: { from: 40, to: [60, 70.5] } } };
+    const futureText = serializeRecord(future as unknown as SessionRecord);
+    const parsed = parseRecordWithRaw(futureText)!;
+    expect(Object.keys(parsed.unreadable)).toEqual(['analysis.windDeg']);
+    const read: SessionRecord = { ...parsed.parts, summary: parsed.parts.summary! };
+    const saved = savedEdits(read);
+    expect(saved.windDeg).toBeNull();
+    const patch = editsPatch(read, saved, { ...saved, activeThreshold: 9 }, 99);
+    expect(patch.analysis?.windDeg).toBeNull();
+    const written = serializeRecord(applyRecordPatch(read, patch).record, parsed.unreadable);
+    const windText = /\n {4}"windDeg": \{[\s\S]*?\n {4}\}/.exec(futureText)![0];
+    expect(windText).toContain('"to": [60,70.5]');
+    expect(written).toContain(windText);
+    expect(JSON.parse(written).analysis.activeThreshold).toBe(9);
   });
 });

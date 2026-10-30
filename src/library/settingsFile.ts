@@ -1,5 +1,5 @@
 import { readActivities } from '../core/activities';
-import { isObject, parseJson } from '../core/basics';
+import { isObject, parseJson, stringifyJson } from '../core/basics';
 
 /**
  * Fichiers de réglages du dossier mémoire (§10, point 90) : un par appareil,
@@ -76,7 +76,8 @@ export const buildSettingsFile = (
   values: { ...previous?.values, ...values },
 });
 
-export const serializeSettingsFile = (file: SettingsFile): string => `${JSON.stringify(file, null, 2)}\n`;
+/** Texte du fichier, indenté, tableaux de nombres sur une ligne (`stringifyJson`). */
+export const serializeSettingsFile = (file: SettingsFile): string => `${stringifyJson(file)}\n`;
 
 // --- Appareils et noms de fichier ---
 

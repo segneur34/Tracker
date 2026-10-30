@@ -31,6 +31,19 @@ describe('parseSettingsFile', () => {
     expect(file.version).toBe(2);
   });
 
+  it('écrit les tableaux de nombres sur une ligne, se relit pareil, et relit un fichier indenté d’avant (lot 80)', () => {
+    const rich = { ...values, 'tracker.profile': { zones: [120, 140, 155, 170], poids: 72.5, noms: ['a', 'b'] }, 'tracker.nav': [[1, 2], [3]] };
+    const file = buildSettingsFile(rich, 1234, null, { id: 'abc', name: 'Téléphone' });
+    const text = serializeSettingsFile(file);
+    expect(text).toContain('"zones": [120,140,155,170],\n');
+    expect(text).toContain('"noms": [\n');
+    expect(text.endsWith('\n')).toBe(true);
+    expect(parseSettingsFile(text)).toEqual(file);
+    const old = `${JSON.stringify(file, null, 2)}\n`;
+    expect(parseSettingsFile(old)).toEqual(parseSettingsFile(text));
+    expect(serializeSettingsFile(parseSettingsFile(old)!)).toBe(text);
+  });
+
   it("relit l'ancien reglages.json (version 1), sans appareil", () => {
     const old = JSON.stringify({ format: SETTINGS_FORMAT, version: 1, savedAt: 5, values });
     expect(parseSettingsFile(old)).toEqual({ format: SETTINGS_FORMAT, version: 1, savedAt: 5, device: null, values });

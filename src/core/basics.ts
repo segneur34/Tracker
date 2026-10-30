@@ -30,6 +30,50 @@ export const parseJson = (text: string): unknown => {
   }
 };
 
+const JSON_INDENT = '  ';
+
+/** Élément d'un tableau écrit sur une ligne : nombre, `null` ou booléen. */
+const isFlatJsonItem = (value: unknown): boolean => value === null || typeof value === 'number' || typeof value === 'boolean';
+
+/** Tableau écrit sur une ligne : nombres, `null` ou booléens, ou tableaux de tels éléments (voies, courbes). */
+const isFlatJsonArray = (array: readonly unknown[]): boolean =>
+  array.every((item) => isFlatJsonItem(item) || (Array.isArray(item) && item.every(isFlatJsonItem)));
+
+/** Texte JSON d'une valeur sous la clé `key`, en retrait `pad` ; `undefined` : valeur omise (comme `JSON.stringify`). */
+const writeJson = (value: unknown, key: string, pad: string): string | undefined => {
+  let v = value;
+  if (typeof v === 'object' && v !== null && typeof (v as { toJSON?: unknown }).toJSON === 'function') {
+    v = (v as { toJSON: (key: string) => unknown }).toJSON(key);
+  }
+  if (typeof v !== 'object' || v === null || v instanceof Number || v instanceof String || v instanceof Boolean) return JSON.stringify(v);
+  if (Array.isArray(v)) {
+    if (isFlatJsonArray(v)) return JSON.stringify(v);
+    const inner = pad + JSON_INDENT;
+    const items: string[] = [];
+    for (let i = 0; i < v.length; i++) items.push(inner + (writeJson(v[i], String(i), inner) ?? 'null'));
+    return `[\n${items.join(',\n')}\n${pad}]`;
+  }
+  const inner = pad + JSON_INDENT;
+  const entries: string[] = [];
+  for (const k of Object.keys(v)) {
+    const text = writeJson((v as Record<string, unknown>)[k], k, inner);
+    if (text !== undefined) entries.push(`${inner}${JSON.stringify(k)}: ${text}`);
+  }
+  return entries.length === 0 ? '{}' : `{\n${entries.join(',\n')}\n${pad}}`;
+};
+
+/**
+ * Texte JSON lisible et compact, pour les fichiers du dossier mémoire (fiches,
+ * réglages) : objets indentés de deux espaces comme `JSON.stringify(value,
+ * null, 2)`, mais un tableau de nombres (altitude, histogramme, courbe, voies)
+ * sur une seule ligne. `JSON.parse` en relit exactement la même valeur.
+ */
+export function stringifyJson(value: object): string;
+export function stringifyJson(value: unknown): string | undefined;
+export function stringifyJson(value: unknown): string | undefined {
+  return writeJson(value, '', '');
+}
+
 /** Moyenne d'une liste de nombres ; `null` si elle est vide. */
 export const meanOf = (values: readonly number[]): number | null =>
   values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
