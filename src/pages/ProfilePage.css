@@ -264,13 +264,6 @@ button.profile-legend__row {
 }
 
 @media (max-width: 599px) {
-  /* Les cinq périodes tiennent dans la largeur au lieu de défiler : un libellé long passe sur deux lignes. */
-  .ui-segmented.profile-periods button {
-    flex: 1 1 auto;
-    white-space: normal;
-    line-height: 1.15;
-  }
-
   .profile-head {
     gap: var(--space-3);
   }
