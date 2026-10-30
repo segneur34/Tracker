@@ -20,6 +20,7 @@
 //  sprints de 2 h à 1 Hz, pic de FC et creux de cadence de 6 s entre deux points du pas régulier : le haut de l'axe
 //  de FC atteint le pic, le bas de celui de la cadence le creux (échecs attendus avant le lot 61), capture
 //  `graphes-sprints`.
+//  Lot 93 : clic sur le graphe de vitesse de la course puis sortie de la souris : le repère de la carte s'efface.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -260,6 +261,52 @@ await shoot('graphes-zoom');
 console.log('  Tout voir :', await clickZoomButton('Graphiques', 0, 'Tout voir'));
 await settle({ max: 800 });
 check(`« Tout voir » : graduations rendues (${await ticks('Graphiques', 0)})`, (await ticks('Graphiques', 0)) === ticksBefore);
+
+// Lot 93 : un clic sur un graphe lui donne le focus, et la couche clavier de Recharts (accessibilityLayer) active alors
+// le premier point (curseur et point actif posés dessus) ; si la souris est hors du tracé (graduations, marges), le
+// moindre mouvement ramène le repère de la carte au premier point affiché. Le repère doit rester où le survol l'a
+// laissé, et le graphe ne doit ni prendre le focus ni afficher de curseur à l'insu de la souris.
+{
+  // Page rechargée : le double-clic du zoom, plus haut, a déjà donné le focus au graphe.
+  await go(paths.course, 6000);
+  await clickTab('graphiques');
+  await settle({ max: 1500 });
+  const p = await evaluate(`(async () => {
+    const c = ${CHART('Graphiques', 0)};
+    if (!c) return null;
+    c.scrollIntoView({ block: 'center' });
+    await new Promise((r) => setTimeout(r, 300));
+    const r = (c.querySelector('.recharts-cartesian-grid') ?? c).getBoundingClientRect();
+    return { trace: { x: r.left + r.width * 0.6, y: r.top + r.height / 2 }, graduations: { x: r.left - 12, y: r.top + r.height / 2 } };
+  })()`);
+  const mouse = (type, pt, clickCount = 0) => send('Input.dispatchMouseEvent', { type, x: pt.x, y: pt.y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount });
+  /** Le repère de la carte tel que dessiné (sa position suit le point survolé). */
+  const marker = () => evaluate(`[...document.querySelectorAll('.an-map-row path[stroke="#1b1f24"]')].map((m) => m.getAttribute('d') + '|' + JSON.stringify(m.getBoundingClientRect())).join(';')`);
+  /** Curseurs de survol et points actifs dessinés dans les graphes de la page. */
+  const cursors = () => evaluate(`document.querySelectorAll('.recharts-tooltip-cursor').length + document.querySelectorAll('.recharts-active-dot').length`);
+  check('premier point : graphe de vitesse trouvé', Boolean(p));
+  if (p) {
+    // Le survol pose le repère, puis la souris passe sur les graduations, où le repère reste.
+    for (const dx of [-30, -10, 0]) await mouse('mouseMoved', { x: p.trace.x + dx, y: p.trace.y });
+    await wait(300);
+    check(`premier point : le survol pose le repère sur la carte (${await hoverMarkers()})`, (await hoverMarkers()) === 1);
+    for (const dx of [0, 3]) await mouse('mouseMoved', { x: p.graduations.x + dx, y: p.graduations.y });
+    await wait(300);
+    const laisse = await marker();
+    // Clic sur une graduation, puis quelques mouvements de la souris sur elles.
+    await mouse('mousePressed', p.graduations, 1);
+    await mouse('mouseReleased', p.graduations, 1);
+    for (const dy of [0, 3, 6]) await mouse('mouseMoved', { x: p.graduations.x, y: p.graduations.y + dy });
+    await wait(500);
+    const focus = await evaluate(`(() => { const a = document.activeElement; return a ? a.tagName + ' tabindex=' + a.getAttribute('tabindex') : ''; })()`);
+    const apres = await marker();
+    console.log(`  après le clic sur une graduation : focus ${focus}, ${await cursors()} curseur(s) et point(s) actif(s), repère ${apres === laisse ? 'resté où il était' : 'déplacé'}`);
+    check('premier point : un clic sur une graduation ne ramène pas le repère au premier point', apres === laisse);
+    check(`premier point : le graphe ne prend pas le focus au clavier (${focus})`, !focus.includes('tabindex=0'));
+    check(`premier point : aucun curseur ni point actif hors du tracé (${await cursors()})`, (await cursors()) === 0);
+    await mouse('mouseMoved', { x: 5, y: 5 });
+  }
+}
 
 // --- 4. Zones de pente ---
 console.log('  graphiques fermé :', await clickTab('graphiques', true));

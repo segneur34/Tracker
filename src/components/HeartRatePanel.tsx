@@ -231,7 +231,7 @@ function HeartRatePanel({
           {blocks && blocks[0].length + blocks[1].length > 1 && (
             <div style={{ width: '100%', height: '200px' }}>
               <ResponsiveContainer>
-                <ScatterChart margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <ScatterChart accessibilityLayer={false} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid {...CHART_GRID_PROPS} />
                   <XAxis dataKey="speed" type="number" name="Vitesse" domain={['auto', 'auto']} tick={CHART_TICK}
                     label={{ value: SPEED_UNIT_LABEL[scatterUnit], position: 'insideBottomRight', offset: -2, fill: 'var(--chart-axis)', fontSize: 11 }} />

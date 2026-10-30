@@ -92,7 +92,10 @@ export type TrackChartProps<R> = TrackChartBase<R> & (
  * animations coupées. `children` : bandes, seuils et repères, posés tels quels
  * dans le graphe (Recharts ne voit pas un `ReferenceLine` rangé dans un
  * composant à lui), après les axes et avant les séries ; `front` : ceux qui
- * passent par-dessus les séries.
+ * passent par-dessus les séries. Sans couche clavier de Recharts
+ * (`accessibilityLayer={false}`) : un clic donne le focus au graphe, qui y
+ * activerait le premier point, et la souris, hors du tracé, ramènerait le
+ * repère de la carte à ce point.
  */
 export default function TrackChart<R>(props: TrackChartProps<R>) {
   const { zoom, x, yAxes, series, margin = DEFAULT_MARGIN, grid = true, syncId, showReset, onShowOnMap, style, children, front } = props;
@@ -102,7 +105,7 @@ export default function TrackChart<R>(props: TrackChartProps<R>) {
   return (
     <ZoomableChart zoom={zoom} onLeave={onLeave} showReset={showReset} onShowOnMap={onShowOnMap} style={style}>
       <ResponsiveContainer>
-        <ComposedChart data={rows} {...(syncId !== undefined ? { syncId } : {})} onMouseMove={onHover} onTouchMove={onHover} margin={margin}>
+        <ComposedChart data={rows} accessibilityLayer={false} {...(syncId !== undefined ? { syncId } : {})} onMouseMove={onHover} onTouchMove={onHover} margin={margin}>
           <ChartZoomProbe />
           {grid === 'horizontal' ? <CartesianGrid {...CHART_GRID_PROPS} vertical={false} /> : grid && <CartesianGrid {...CHART_GRID_PROPS} />}
           {chartXAxis(zoom, x)}

@@ -51,7 +51,7 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
   return (
     <figure className="fit-plan" aria-label="Déroulé du test : vitesse cible et FC dans le temps">
       <ResponsiveContainer width="100%" height={170}>
-        <ComposedChart data={rows} margin={{ top: 18, right: 12, bottom: 0, left: 0 }}>
+        <ComposedChart data={rows} accessibilityLayer={false} margin={{ top: 18, right: 12, bottom: 0, left: 0 }}>
           <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
           {phaseAreas(areas, true)}
           {xAxis(true)}
@@ -68,7 +68,7 @@ function FitnessTestPlanChart({ params, v0Ms, steps }: { params: FitnessTestPara
         </ComposedChart>
       </ResponsiveContainer>
       <ResponsiveContainer width="100%" height={150}>
-        <ComposedChart data={rows} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
+        <ComposedChart data={rows} accessibilityLayer={false} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
           <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
           {phaseAreas(areas, false)}
           {xAxis(false)}

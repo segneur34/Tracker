@@ -33,7 +33,7 @@ function RestingHrChart({ series, durationS, lowest = null, height = 220 }: Prop
   return (
     <figure className="rest-chart" aria-label="FC pendant le test, en battements par minute">
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={rows} margin={{ top: 22, right: 12, bottom: 0, left: 0 }}>
+        <ComposedChart data={rows} accessibilityLayer={false} margin={{ top: 22, right: 12, bottom: 0, left: 0 }}>
           <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
           <XAxis dataKey="t" type="number" domain={[0, durationS]} ticks={ticks} tickFormatter={formatMinSec} tick={CHART_TICK} />
           <YAxis domain={[lo, hi]} ticks={yTicks} allowDecimals={false} width={40} tick={chartTick(HEART_RATE_COLOR)}

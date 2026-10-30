@@ -639,7 +639,7 @@ function StatisticsPage() {
                     )}
                     <ZoomableChart zoom={zoom} style={{ width: '100%', flex: 1, minHeight: 0 }}>
                       <ResponsiveContainer>
-                        <ComposedChart margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                        <ComposedChart accessibilityLayer={false} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                           <ChartZoomProbe />
                           <CartesianGrid {...CHART_GRID_PROPS} />
                           <XAxis dataKey="startMs" type="number" allowDataOverflow
@@ -732,7 +732,7 @@ function StatisticsPage() {
                     </div>
                     <div style={{ flex: 1, minHeight: 140 }}>
                       <ResponsiveContainer>
-                        <BarChart data={barRows} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                        <BarChart data={barRows} accessibilityLayer={false} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                           <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
                           <XAxis dataKey="i" tickFormatter={(i: number) => regular.bars[i]?.label ?? ''} interval="preserveStartEnd" minTickGap={16}
                             tick={CHART_TICK} />
@@ -792,7 +792,7 @@ function StatisticsPage() {
                     <div className="stats-records__title">Charge par {regular.barUnit}</div>
                     <div style={{ height: '160px' }}>
                       <ResponsiveContainer>
-                        <BarChart data={loadBars.map((b, i) => ({ i, load: Math.round(b.load) }))} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                        <BarChart data={loadBars.map((b, i) => ({ i, load: Math.round(b.load) }))} accessibilityLayer={false} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                           <CartesianGrid {...CHART_GRID_PROPS} vertical={false} />
                           <XAxis dataKey="i" tickFormatter={(i: number) => loadBars[i]?.label ?? ''} interval="preserveStartEnd" minTickGap={16} tick={CHART_TICK} />
                           <YAxis allowDecimals={false} width={36} tick={CHART_TICK} />
@@ -810,7 +810,7 @@ function StatisticsPage() {
                     <div className="stats-records__title">FC moyenne par session</div>
                     <div style={{ height: '160px' }}>
                       <ResponsiveContainer>
-                        <ComposedChart margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                        <ComposedChart accessibilityLayer={false} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                           <CartesianGrid {...CHART_GRID_PROPS} />
                           <XAxis dataKey="startMs" type="number" domain={[hrTicks.ticks[0] ?? 'dataMin', hrTicks.ticks[hrTicks.ticks.length - 1] ?? 'dataMax']}
                             ticks={hrTicks.ticks} tickFormatter={(v: number) => formatDateTick(v, hrTicks.unit)} tick={CHART_TICK} />
