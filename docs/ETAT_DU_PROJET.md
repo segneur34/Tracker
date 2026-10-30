@@ -41,7 +41,7 @@ Les couches, de bas en haut. Tous les imports sont relatifs, sans alias de chemi
 - **Noyau `core/`** : sans notion de sport, en unités SI, du parseur GPX aux profils de support, en passant par la cinématique, les filtres, l'allure de la session, les cumuls, le masque d'activité, le dénivelé et les tops.
 - **Famille et traitement** (`core/sportProfiles.ts`, point 89) : la famille d'un calcul range ses sessions (bibliothèque, accueil, barre, listes d'activités, Réglages : `sportFamily`) ; son traitement dit comment elles se calculent et s'affichent (unités, énergie, vélo, altitude du terrain, revêtement, chiffres du direct : `sportTreatment`). Les deux se confondent, sauf pour le fractionné, rangé à part et traité comme la course ou le vélo. Le surf (point 97) est une famille et un traitement à lui : ni vent, ni dénivelé, ni énergie (`isLandTreatment` désigne la course et le vélo).
 - **Briques communes** (point 168) : `core/geoPlane.ts` (plan local, projection sur un segment), `core/search.ts` (dichotomies), `core/basics.ts` (`clamp`, `isObject`, `isFiniteNumber`, `plural`), `core/units.ts` (seul lieu des conversions) et `hooks/createStore.ts` (magasins hors des composants) ; `platform/files.ts` expose l'unique `filesystem()`. Une nouvelle copie de l'une d'elles est une dette.
-- **Sports** : `sailing/` en nœuds sur `PointData` (adaptateur `utils/kinematics.ts`, règle 5), `running/`, `cycling/` et `surfing/` en SI.
+- **Sports** : `sailing/` en nœuds sur `PointData` (adaptateur `sailing/pointData.ts`, règle 5), `running/`, `cycling/` et `surfing/` en SI.
 - **Logique pure de l'application**, testée en node : `recording/` (positions, journal, GPX, direct, trace suivie), `library/` (fiche, résumé, rapprochement, réglages qui voyagent) et `planning/` (itinéraires).
 - **Plateforme `platform/`** : seul accès au stockage, aux fichiers, à la position, au son, au vibreur, aux capteurs et à la notification (règle 12). `isNativeApp()` choisit la version navigateur ou téléphone de chaque module ; les hooks et les pages ne voient pas la différence. Exception : `compass`, la boussole, n'existe que dans le navigateur.
 - **Hooks** :
@@ -59,20 +59,22 @@ Dépendances entre dossiers :
 
 | Dossier | Dépend de |
 |---|---|
-| `core` | `core` seulement |
-| `sailing` | `core`, `types/sailing`, le type `PointData` |
-| `running` | `core`, `recording/intervalTimer` (séance déduite des répétitions détectées) |
-| `cycling` | `core`, `running/energy` et `running/energyView` (paramètres et forme de la vue d'énergie ; dépendance de types à défaire, lot 71) |
-| `surfing` | `core` |
-| `platform` | Capacitor et ses plugins seulement |
-| `recording` | `core`, `sailing` (`liveLegs`), `planning` (`followedTrace`), le type `LocationFix` de `platform/location` |
-| `planning` | `core` (pente), `cycling/energy` (temps estimé), `recording/gpxWriter`, `recording/markGuide` (bips d'un parcours), `platform/storage` (id du profil BRouter) |
-| `library` | `core`, `sailing/sailingConfig`, `sailing/sessionNotes`, `surfing/surfSession` (résumé), `recording/session`, le type `FolderEntry` de `platform/memoryFolder` |
-| hooks | toutes les couches ci-dessus |
-| composants | `platform`, pour `ResizablePanel`, `LiveMap` et `MemoryStatus` |
+| `core` | `core` seulement (les types de domaine qu'il lit sont dans `core/domainTypes`) |
+| `sailing`, `surfing` | `core` |
+| `running` | `core` |
+| `cycling` | `core`, `running` |
+| `planning` | `core`, `running`, `cycling` |
+| `recording` | `core`, `platform`, `sailing`, `surfing`, `running`, `cycling`, `planning` |
+| `library` | `core`, `platform` et tous les domaines |
+| `settings` (`activityPresets`) | `core` et les domaines |
+| `platform`, `theme` | `core` seulement (Capacitor et ses plugins) |
+| hooks | `core`, `platform`, `theme`, domaines, `settings` |
+| composants | les mêmes et `hooks` |
 | pages | tout |
 
-`planning` et `recording` dépendent l'un de l'autre, mais aucun fichier n'entre dans un cycle.
+`src/architecture.test.ts` garde ce sens et liste dix exceptions nommées, qui ne doivent que diminuer : revêtement (`planning/surface`) lu par `cycling/energy`, `cycling/energyView` et `running/energyView` ; `running/*` lisant des types et bornes de `recording` (`fitnessTest`, `restingHrTest`, `intervalTimer`) ; `planning/routeRecord` lisant `recording/markGuide` ; `hooks/useTimeChartAxis` lisant deux fichiers de graphe des composants.
+
+Plus de cycle entre dossiers : `recording` lit `planning`, jamais l'inverse hors l'exception de `routeRecord`.
 
 ## 4. Pipeline de données
 
@@ -262,7 +264,7 @@ Tracker/
 | `tracker.panelSizes` | `components/ResizablePanel.tsx` | `Record<panelId, { width?; height? }>` |
 | `tracker.followedTrace` | `hooks/useFollowedTrace.ts` | `{ name; source; activityId; points; marks?; markGuide? }`, gardée jusqu'à « Retirer » ; `marks` : les points posés d'un itinéraire (balises en voile et en surf, point 120), `markGuide` : ses bips propres (point 77) ; `points` amincis à la pose (Douglas-Peucker à 2 m, `thinFollowedTrace`, coordonnées au 1e-6°, point 92) |
 | `tracker.planning` | `pages/PlanningPage.tsx` | `{ activityId?; view?; loop? }` ; `loop` : dernier état choisi du bouton « Boucle » (point 87) ; un ancien `mode` y reste, ignoré : les cases suivent l'activité depuis le point 81 |
-| `tracker.brouterProfile` | `planning/brouter.ts` | `{ id }`, id du profil maison sur brouter.de, renvoyé sur cet id à chaque lancement ; propre à l'appareil |
+| `tracker.brouterProfile` | `hooks/usePlannedRoute.ts` | `{ id }`, id du profil maison sur brouter.de, renvoyé sur cet id à chaque lancement ; propre à l'appareil |
 | `tracker.routeList` | `pages/RoutesPage.tsx` | `{ sort }`, tri de la liste des itinéraires |
 | `tracker.heartRateBelt` | `platform/heartRate.ts` | `{ address; name; random? }` de la ceinture retenue (type d'adresse appris par la recherche, point 146), ou `null` ; propre à l'appareil (point 115) |
 | `tracker.permissionsSeenVersion` | `platform/permissions.ts` | version de l'application pour laquelle la carte « Autorisations » a été vue (« Plus tard » ou tout accordé) ; la carte revient à la version suivante s'il manque une autorisation (point 119) |
@@ -321,7 +323,7 @@ Un calcul a son `*.test.ts` à côté de lui (`gpxParser`, `imuVertical` et `act
 - `core/speedGradient`, couvert par d'autres fichiers de test (`runningAnalytics`, `sailingConfig`) ;
 - `core/imuPrune`, couvert par `jumps.test.ts`, et `surfing/surfSession`, par `surfAnalysis.test.ts` ;
 - `planning/brouterProfile`, couvert par `brouter.test.ts` ;
-- `sailing/sailingStats`, `sailing/sessionNotes` et `library/folderLayout`, sans test ;
+- `sailing/sailingStats`, `library/notes` et `library/folderLayout`, sans test ;
 - les tables de réglages (`core/sportProfiles`, `cycling/cyclingConfig`, `surfing/surfConfig`) et les fichiers de types, lus par les autres tests.
 
 Trois familles de tests méritent d'être connues :
@@ -329,7 +331,7 @@ Trois familles de tests méritent d'être connues :
 - les protocoles synthétiques du vent de `sailing/maneuvers.test.ts` : rider asymétrique, session sans largue, courant traversier, bascule de 60°, support lent, enregistrement économique ;
 - la mesure des manœuvres (`measureManeuver`), sur `buildNoisySession` : positions intégrées, bruit GPS, de cap et de Doppler à graine fixe, passage par `computeKinematics`.
 
-Générateurs : `buildEastwardTrack` (kinematics), `buildTrack` (plusieurs fichiers), `realisticPolar` (wind) et, dans `maneuvers.test.ts`, `buildLegSession`, avec ses allures, son courant et sa polaire optionnels (`slowPolar` : celle du wingfoil divisée par 2,5).
+Décors communs dans `src/test/*.fixture.ts` (géographie et « mètres par degré », traces, fiches de session, faux dossier mémoire) : un test n'en recopie plus. Générateurs : `eastwardTrack`, `phasesTrack`, `headingTrack` (fixtures), `realisticPolar` (wind) et, dans `maneuvers.test.ts`, `buildLegSession`, avec ses allures, son courant et sa polaire optionnels (`slowPolar` : celle du wingfoil divisée par 2,5).
 
 **Attention à l'option `integratePosition`.** Par défaut, les générateurs font avancer la position le long d'une ligne arbitraire, indépendante des caps imposés. Toute analyse qui lit les positions (distance d'une manœuvre, tracé, géométrie du virage) doit être testée avec cette option, sinon elle mesure une trajectoire sans rapport avec la session simulée.
 
@@ -371,7 +373,7 @@ Des faits sur le code, sans intention : ce qui reste à faire est dans `docs/BAC
   - seuils jamais validés sur une vraie session (vague 9 km/h, attente, vol 10 km/h, vague en foil 18 km/h), ni le retour au pic jusqu'à la première attente → essai 46 ;
   - pumping (point 110) : seuils du `pump` du profil de surf (`PUMP_DETECTION`) jamais réglés sur un vol réel ; le `.imu` de surf n'est pas élagué pour l'instant (`pruneCapture` à faux). Sur la capture sans vol du 14/10, la rugosité à l'arrêt sur l'eau (0,03 à 0,05 g) est déjà sous `liftoffCalmG` (0,08 g) : risque de décollage trouvé trop tôt → essai 46 ;
   - virages par le gyroscope pas encore faits → reste à faire n° 40.
-- **Appréciations** (point 114) : en emoji (`RATINGS` de `sailing/sessionNotes.ts`) → reste à faire n° 41.
+- **Appréciations** (point 114) : en emoji (`RATINGS` de `library/notes.ts`) → reste à faire n° 41.
 - **Racine du Profil** (points 138 et 158) : la règle à la semaine (`ROOT_RULES`) est en place mais pas encore éprouvée sur de vraies semaines (recul, fleur, feuilles tombées) → essai 47.
 - **Entraînement** (points 143 à 145) : le test de FC max n'a pas encore été fait avec la ceinture → essai 2 ; les tests de FC repos gardent la clé de l'appareil (`tracker.restingHr`), hors des sessions, et il n'y a pas de test de VMA → reste à faire n° 29.
 - **Couleurs des familles** (point 90) : rouge, orange et vert ne se séparent que par leur clarté ; aujourd'hui, une famille va toujours avec son icône ou son nom → reste à faire n° 34 (mode daltonien).
