@@ -1,6 +1,7 @@
 import { haversineDistance } from '../core/geo';
 import { heartRateZones, type HeartRateAthlete, type HeartRateZoneModel, type HeartRateZones, type ZoneMethod } from '../core/heartRate';
 import { kmhToMs } from '../core/units';
+import { BRIEF_SPACING_MS } from '../core/beepDurations';
 import type { ClockTone } from '../platform/beeper';
 import type { LocationFix } from '../platform/location';
 import { finiteOr, isFiniteNumber } from '../core/basics';
@@ -595,18 +596,17 @@ export const guideReadings = (state: FitnessTestState): { speedMs: number | null
 
 // --- Sons ---
 
-/** Écart entre les débuts de deux bips courts d'un même signal : assez serré pour qu'on les compte. */
-const SHORT_SPACING_MS = 350;
 /** Écart entre les débuts des sons de la fin de rampe, comme la fin de séance du compteur. */
 const END_SPACING_MS = 1000;
 
-const shorts = (n: number): ClockTone[] => Array.from({ length: n }, (_, i) => ({ delayMs: i * SHORT_SPACING_MS, tone: 'court' as const }));
+/** Un bip court seul, ou n bips brefs rapprochés (« bip-bip ») pour trop vite et trop lent. */
+const briefs = (n: number): ClockTone[] => Array.from({ length: n }, (_, i) => ({ delayMs: i * BRIEF_SPACING_MS, tone: 'bref' as const }));
 
 export const TEST_SIGNAL_TONES: Record<TestSignal, ClockTone[]> = {
-  debut: shorts(1),
-  bien: shorts(1),
-  trop: shorts(2),
-  accelere: shorts(3),
+  debut: [{ delayMs: 0, tone: 'court' }],
+  bien: [{ delayMs: 0, tone: 'court' }],
+  trop: briefs(2),
+  accelere: briefs(3),
   palier: [{ delayMs: 0, tone: 'long' }],
   finRampe: [{ delayMs: 0, tone: 'court' }, { delayMs: END_SPACING_MS, tone: 'long' }, { delayMs: 2 * END_SPACING_MS, tone: 'final' }],
   finTest: [{ delayMs: 0, tone: 'long' }],

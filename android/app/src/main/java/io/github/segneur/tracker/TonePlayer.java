@@ -13,7 +13,7 @@ import android.os.VibratorManager;
 
 /**
  * Sons et vibrations communs aux bips des balises (BeeperPlugin) et au
- * compteur du fractionné (IntervalTimerService) : un bip court, un bip long,
+ * compteur du fractionné (IntervalTimerService) : un bip bref, un bip court, un bip long,
  * et le long double de la fin d'une séance, chacun avec sa vibration.
  *
  * Le son passe par le flux des alarmes : audible téléphone en silencieux, au
@@ -28,11 +28,13 @@ import android.os.VibratorManager;
  */
 final class TonePlayer {
 
-    /** Durées, en millisecondes : bip court, bip long, long double (comme src/platform/beeper.ts). */
+    /** Durées, en millisecondes : bip bref, bip court, bip long, long double (comme src/platform/beeper.ts). */
+    static final int BRIEF_MS = 65;
     static final int SHORT_MS = 120;
     static final int LONG_MS = 800;
     static final int FINAL_MS = 1600;
     /** Vibrations, en millisecondes : avec un bip court, avec un bip long, avec le long double. */
+    static final int BRIEF_VIBRATION_MS = 40;
     static final int SHORT_VIBRATION_MS = 80;
     static final int LONG_VIBRATION_MS = 600;
     static final int FINAL_VIBRATION_MS = 1300;
@@ -49,6 +51,7 @@ final class TonePlayer {
     private static volatile int pitchHz = -1;
 
     private final Context context;
+    private AudioTrack briefTone;
     private AudioTrack shortTone;
     private AudioTrack longTone;
     private AudioTrack finalTone;
@@ -87,6 +90,12 @@ final class TonePlayer {
         builtHz = hz;
     }
 
+    void playBrief(boolean vibrate) {
+        ensurePitch();
+        if (briefTone == null) briefTone = buildTone(BRIEF_MS, builtHz);
+        play(briefTone, vibrate ? BRIEF_VIBRATION_MS : 0);
+    }
+
     void playShort(boolean vibrate) {
         ensurePitch();
         if (shortTone == null) shortTone = buildTone(SHORT_MS, builtHz);
@@ -106,9 +115,11 @@ final class TonePlayer {
     }
 
     void release() {
+        if (briefTone != null) briefTone.release();
         if (shortTone != null) shortTone.release();
         if (longTone != null) longTone.release();
         if (finalTone != null) finalTone.release();
+        briefTone = null;
         shortTone = null;
         longTone = null;
         finalTone = null;

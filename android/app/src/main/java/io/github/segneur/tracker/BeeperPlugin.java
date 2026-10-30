@@ -136,6 +136,7 @@ public class BeeperPlugin extends Plugin {
                 h.postDelayed(() -> {
                     if (kind == IntervalTimerService.TONE_FINAL) tones().playFinal(vibrateRequested);
                     else if (kind == IntervalTimerService.TONE_LONG) tones().playLong(vibrateRequested);
+                    else if (kind == IntervalTimerService.TONE_BRIEF) tones().playBrief(vibrateRequested);
                     else tones().playShort(vibrateRequested);
                 }, delays[i]);
             }

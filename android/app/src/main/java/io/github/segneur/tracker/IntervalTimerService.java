@@ -46,10 +46,12 @@ public class IntervalTimerService extends Service {
     static final int TONE_SHORT = 0;
     static final int TONE_LONG = 1;
     static final int TONE_FINAL = 2;
+    static final int TONE_BRIEF = 3;
 
     static int toneKind(String tone) {
         if ("long".equals(tone)) return TONE_LONG;
         if ("final".equals(tone)) return TONE_FINAL;
+        if ("bref".equals(tone)) return TONE_BRIEF;
         return TONE_SHORT;
     }
 
@@ -129,6 +131,7 @@ public class IntervalTimerService extends Service {
             handler.postDelayed(() -> {
                 if (kind == TONE_FINAL) tones.playFinal(vibrate);
                 else if (kind == TONE_LONG) tones.playLong(vibrate);
+                else if (kind == TONE_BRIEF) tones.playBrief(vibrate);
                 else tones.playShort(vibrate);
             }, Math.max(0, toneDelays[i]));
             lastMs = Math.max(lastMs, toneDelays[i]);
