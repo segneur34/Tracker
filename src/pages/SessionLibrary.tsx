@@ -4,7 +4,10 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import PageBackdrop from '../components/PageBackdrop';
 import { FAMILY_ICON } from '../components/familyIcons';
-import { IconHelp } from '../components/icons';
+import { IconChevronDown, IconChevronUp, IconHelp } from '../components/icons';
+import SegmentedControl from '../components/ui/SegmentedControl';
+import { SESSION_SORTS, SESSION_SORT_DEFAULT, isSessionSort, sortSessions, type SessionSort } from '../library/sessionSort';
+import { jsonStore } from '../platform/storage';
 import ActivityFilterTabs from '../components/ActivityFilterTabs';
 import ActivityIcon from '../components/ActivityIcon';
 import ActivitySelect, { ActivitySheet } from '../components/ActivitySelect';
@@ -484,6 +487,13 @@ function OutdatedSummaries() {
   return <p className="ui-hint ui-hint--m">{plural(toUpdate, 'session')} à mettre à jour</p>;
 }
 
+/** Tri choisi, propre à l'appareil et le même pour toutes les familles. */
+const SORT_KEY = 'tracker.triBibliotheque';
+const readSort = (): SessionSort => {
+  const stored = jsonStore.read<{ sort?: unknown }>(SORT_KEY)?.sort;
+  return isSessionSort(stored) ? stored : SESSION_SORT_DEFAULT;
+};
+
 function SessionLibrary({ family }: { family: SportFamily }) {
   // Les champs lus seulement : ni le compteur du balayage ni les messages ne redessinent la liste.
   const library = useLibraryFields('sessions', 'status', 'scanning', 'folderLabel');
@@ -543,7 +553,16 @@ function SessionLibrary({ family }: { family: SportFamily }) {
   );
   // Une activité sans élément ici (ou seule, donc sans onglets) : « tous », jamais une liste vide sans issue.
   const activeFilter = counts.length > 1 && counts.some((c) => c.activity.id === filter) ? filter : 'all';
-  const shown = activeFilter === 'all' ? familySessions : familySessions.filter((s) => activityByFile.get(s.file)?.id === activeFilter);
+  const [sort, setSortState] = useState<SessionSort>(readSort);
+  const setSort = (next: SessionSort) => {
+    setSortState(next);
+    jsonStore.write(SORT_KEY, { sort: next });
+  };
+  const [sortOpen, setSortOpen] = useState(false);
+  const shown = useMemo(
+    () => sortSessions(activeFilter === 'all' ? familySessions : familySessions.filter((s) => activityByFile.get(s.file)?.id === activeFilter), sort),
+    [activeFilter, familySessions, activityByFile, sort]
+  );
   const shownRoutes = activeFilter === 'all' ? familyRoutes : familyRoutes.filter((r) => routeActivity(r, activities)?.id === activeFilter);
   const native = isNativeApp();
   /** Activités nommées dans le bandeau : celles de la famille montrées ici, dans l'ordre de Réglages. */
@@ -615,14 +634,30 @@ function SessionLibrary({ family }: { family: SportFamily }) {
         </p>
       )}
 
-      {plans && (
-        <div className="ui-tabs" aria-label="Vue" style={{ '--tab-accent': accent } as React.CSSProperties}>
-          <button type="button" className="ui-tab" aria-pressed={!planned} onClick={() => setPlanned(false)}>
-            réalisées ({familySessions.length})
-          </button>
-          <button type="button" className="ui-tab" aria-pressed={planned} onClick={() => setPlanned(true)}>
-            planifiées ({familyRoutes.length})
-          </button>
+      {(plans || !planned) && (
+        <div className="lib-toolbar" style={{ '--tab-accent': accent } as React.CSSProperties}>
+          <div className="lib-toolbar__row">
+            {plans && (
+              <div className="ui-tabs" aria-label="Vue">
+                <button type="button" className="ui-tab" aria-pressed={!planned} onClick={() => setPlanned(false)}>
+                  réalisées ({familySessions.length})
+                </button>
+                <button type="button" className="ui-tab" aria-pressed={planned} onClick={() => setPlanned(true)}>
+                  planifiées ({familyRoutes.length})
+                </button>
+              </div>
+            )}
+            {/* Tri des sessions réalisées : le bouton n'existe pas en vue « planifiées ». */}
+            {!planned && (
+              <button type="button" className="ui-tab lib-toolbar__sort" aria-expanded={sortOpen}                onClick={() => setSortOpen((open) => !open)}>
+                Tris {sortOpen ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+              </button>
+            )}
+          </div>
+          {!planned && sortOpen && (
+            <SegmentedControl<SessionSort> label="Trier les sessions" className="lib-toolbar__choice" accent={accent}
+              items={SESSION_SORTS} value={sort} onChange={setSort} />
+          )}
         </div>
       )}
 
