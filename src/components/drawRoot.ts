@@ -9,6 +9,15 @@ import { clamp } from '../core/basics';
  * partie sèche, racine et ramifications, radicelles de la période, bourgeons.
  */
 
+/** Étapes de la fleur, en multiples de l'objectif de la période : ouverte à 1 fois, épanouie à 4 (maquette du 31/10). */
+export const BLOOM_STEPS = 4;
+/** Le bouton s'entrouvre sur le dernier tiers avant l'objectif, de ce multiple à 1. */
+const BUD_OPENING_FROM = 0.7;
+/** Le second rang de pétales pousse entre ces deux multiples. */
+const BLOOM_RING2: readonly [number, number] = [2, 3];
+/** Les graines du cœur paraissent entre ces deux multiples. */
+const BLOOM_SEEDS: readonly [number, number] = [3, 4];
+
 /** Couleurs du dessin, lues sur les variables `--root-*` de `theme/tokens.css`. */
 export interface RootColors {
   live: string;
@@ -50,8 +59,10 @@ export interface RootFrame {
   minutes: number;
   /** Flétrissement des radicelles, de 0 (fraîches) à 1 (mortes). */
   wither: number;
-  /** Part de l'objectif faite dans la période, de 0 à 1 : la pousse grandit, la fleur s'ouvre (en entier à 1). */
+  /** Part de l'objectif faite dans la période, de 0 à 1 : la pousse grandit (tige et feuilles). */
   progress: number;
+  /** Temps de la période en multiples de l'objectif, de 0 à `BLOOM_STEPS` : la fleur, en bouton avant 1, épanouie au bout. */
+  bloom: number;
   /** Feuilles tombées, de 0 (sur la tige) à 1 (mortes au sol) : la dernière période close a été manquée ; de nouvelles repoussent avec `progress`. */
   fallen: number;
 }
@@ -194,6 +205,100 @@ const drawRootlets = (
   ctx.globalAlpha = 1;
 };
 
+/** Un pétale : ellipse posée à `dist` du centre, longueur `len`, largeur `wid`, tournée de `angle`. */
+const petal = (ctx: CanvasRenderingContext2D, angle: number, dist: number, len: number, wid: number, fill: string, edge: string) => {
+  ctx.save();
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.ellipse(dist, 0, len, wid, 0, 0, TAU);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = edge;
+  ctx.stroke();
+  ctx.restore();
+};
+
+/**
+ * La fleur, centrée sur l'origine (le sommet de la tige), pour `t` multiples de
+ * l'objectif (maquette du 31/10, quatre étapes). Avant 1 : un bouton qui
+ * grossit et s'entrouvre sur le dernier tiers ; à 1 : cinq pétales ; de 1 à 2 :
+ * pétales plus longs et cœur plus gros ; de 2 à 3, un second rang de pétales
+ * pousse derrière ; jusqu'à 4, tout grandit et le cœur se garnit de graines.
+ * Continue d'une étape à l'autre.
+ */
+const drawFlower = (ctx: CanvasRenderingContext2D, bloom: number, k: number, colors: RootColors) => {
+  const t = clamp(bloom, 0, BLOOM_STEPS);
+  ctx.lineWidth = 0.8;
+  ctx.strokeStyle = colors.flowerEdge;
+  if (t < 1) {
+    const r = (1.4 + 1.6 * t) * k;
+    const opening = clamp((t - BUD_OPENING_FROM) / (1 - BUD_OPENING_FROM), 0, 1);
+    if (opening <= 0) {
+      // Pétales serrés en goutte, pointe vers le haut, tenus par deux sépales.
+      ctx.fillStyle = colors.flower;
+      ctx.beginPath();
+      ctx.moveTo(0, -r * 2.1);
+      ctx.quadraticCurveTo(r * 1.1, -r * 0.8, 0, 0);
+      ctx.quadraticCurveTo(-r * 1.1, -r * 0.8, 0, -r * 2.1);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = colors.sprout;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(0, 0.4 * r);
+        ctx.quadraticCurveTo(side * r * 1.05, -r * 0.3, side * r * 0.25, -r * 1.35);
+        ctx.quadraticCurveTo(side * r * 0.2, -r * 0.4, 0, 0.4 * r);
+        ctx.fill();
+      }
+      return;
+    }
+    // Cinq pétales qui s'écartent depuis le haut, régulièrement répartis à l'objectif ; celui du haut en dernier.
+    const spread = opening * (TAU / 5);
+    const length = 0.75 + 0.25 * opening;
+    for (const i of [0, 4, 1, 3, 2]) {
+      petal(ctx, -Math.PI / 2 + (i - 2) * spread, r * 1.05 * length, r * 0.95 * length, r * (0.4 + 0.15 * opening), colors.flower, colors.flowerEdge);
+    }
+    ctx.fillStyle = colors.flowerHeart;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.55 * (0.5 + 0.5 * opening), 0, TAU);
+    ctx.fill();
+    return;
+  }
+  // Ouverte : la taille suit le multiple.
+  const r = (3.0 + 0.55 * (t - 1)) * k;
+  const length = 1 + 0.25 * clamp(t - 1, 0, 1) + 0.1 * clamp(t - 3, 0, 1);
+  const width = 0.55 + (0.08 * clamp(t - 1, 0, 3)) / 3;
+  const ring2 = clamp((t - BLOOM_RING2[0]) / (BLOOM_RING2[1] - BLOOM_RING2[0]), 0, 1);
+  if (ring2 > 0) {
+    // Rang du dos : un peu plus foncé, décalé d'un demi-pétale, qui grandit depuis le cœur.
+    const back = mix(colors.flower, colors.flowerEdge, 0.3);
+    for (let i = 0; i < 5; i++) {
+      petal(ctx, -Math.PI / 2 + (i + 0.5) * (TAU / 5), r * 1.1 * length * ring2, r * 1.05 * length * ring2, r * width * 0.95 * ring2, back, colors.flowerEdge);
+    }
+  }
+  for (const i of [0, 4, 1, 3, 2]) {
+    petal(ctx, -Math.PI / 2 + i * (TAU / 5), r * 1.05 * length, r * 0.95 * length, r * width, colors.flower, colors.flowerEdge);
+  }
+  const heart = r * (0.55 + (0.15 * clamp(t - 1, 0, 3)) / 3);
+  ctx.fillStyle = colors.flowerHeart;
+  ctx.beginPath();
+  ctx.arc(0, 0, heart, 0, TAU);
+  ctx.fill();
+  // Les graines du cœur : la fleur est mûre.
+  const seeds = clamp((t - BLOOM_SEEDS[0]) / (BLOOM_SEEDS[1] - BLOOM_SEEDS[0]), 0, 1);
+  if (seeds > 0) {
+    ctx.fillStyle = mix(colors.flowerHeart, '#000000', 0.3);
+    ctx.globalAlpha = seeds;
+    for (let i = 0; i < 6; i++) {
+      const a = (i * TAU) / 6 + 0.4;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * heart * 0.5, Math.sin(a) * heart * 0.5, heart * 0.12, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+};
+
 /** Ligne de sol du carré, avec quelques cailloux dessous, à droite (le chiffre est à gauche). */
 const drawGround = (ctx: CanvasRenderingContext2D, model: RootModel, colors: RootColors) => {
   const { slot, seed } = model;
@@ -224,7 +329,8 @@ const drawGround = (ctx: CanvasRenderingContext2D, model: RootModel, colors: Roo
  * période est vide ; dès qu'elle a une étape, une plante qui reste debout d'une
  * période à l'autre et grandit avec l'objectif. La fleur n'est là qu'avec du
  * temps dans la période : un bouton dès la première minute, qui grossit puis
- * s'ouvre avec le temps fait, en entier à l'objectif. Après une période
+ * s'ouvre avec le temps fait, en entier à l'objectif, et continue d'évoluer par
+ * multiples de l'objectif jusqu'à 4 fois (`drawFlower`). Après une période
  * manquée (`fallen`), les feuilles tombent et restent mortes au sol ; de
  * nouvelles repoussent sur la tige avec le temps fait.
  */
@@ -232,7 +338,7 @@ const drawSprout = (ctx: CanvasRenderingContext2D, model: RootModel, frame: Root
   const { seed, slot } = model;
   const k = (slot.b - slot.y) / 88;
   const progress = frame.progress * (1 - frame.wither);
-  const bloom = frame.minutes > 0 && frame.wither < 1;
+  const flowering = frame.minutes > 0 && frame.wither < 1;
   const planted = frame.level > 0.01 ? 0.62 + 0.3 * clamp(frame.level / frame.growthSteps, 0, 1) : 0;
   const grown = Math.max(progress, planted);
   const fallen = clamp(frame.fallen, 0, 1);
@@ -301,51 +407,11 @@ const drawSprout = (ctx: CanvasRenderingContext2D, model: RootModel, frame: Root
       leaf(node, Math.PI + 0.5, size * 0.9, colors.sprout);
     }
 
-    // La fleur : rien sans temps dans la période ; un bouton, puis des pétales qui s'écartent jusqu'à l'objectif.
-    if (bloom) {
-      const r = (1.4 + 2.4 * clamp(progress, 0, 1)) * k;
+    // La fleur : rien sans temps dans la période ; un bouton, ouvert à l'objectif, puis ses étapes jusqu'à 4 fois.
+    if (flowering) {
       ctx.save();
       ctx.translate(top.x, top.y);
-      ctx.lineWidth = 0.8;
-      ctx.strokeStyle = colors.flowerEdge;
-      const opening = clamp((progress - 0.35) / 0.65, 0, 1);
-      if (opening <= 0) {
-        // Pétales serrés en goutte, pointe vers le haut, tenus par deux sépales.
-        ctx.fillStyle = colors.flower;
-        ctx.beginPath();
-        ctx.moveTo(0, -r * 2.1);
-        ctx.quadraticCurveTo(r * 1.1, -r * 0.8, 0, 0);
-        ctx.quadraticCurveTo(-r * 1.1, -r * 0.8, 0, -r * 2.1);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = colors.sprout;
-        for (const side of [-1, 1]) {
-          ctx.beginPath();
-          ctx.moveTo(0, 0.4 * r);
-          ctx.quadraticCurveTo(side * r * 1.05, -r * 0.3, side * r * 0.25, -r * 1.35);
-          ctx.quadraticCurveTo(side * r * 0.2, -r * 0.4, 0, 0.4 * r);
-          ctx.fill();
-        }
-      } else {
-        // Cinq pétales qui s'écartent depuis le haut, régulièrement répartis à l'objectif.
-        const spread = opening * (TAU / 5);
-        const length = 0.75 + 0.25 * opening;
-        ctx.fillStyle = colors.flower;
-        // Les pétales du dos d'abord, celui du haut en dernier.
-        for (const i of [0, 4, 1, 3, 2]) {
-          ctx.save();
-          ctx.rotate(-Math.PI / 2 + (i - 2) * spread);
-          ctx.beginPath();
-          ctx.ellipse(r * 1.05 * length, 0, r * 0.95 * length, r * (0.4 + 0.15 * opening), 0, 0, TAU);
-          ctx.fill();
-          ctx.stroke();
-          ctx.restore();
-        }
-        ctx.fillStyle = colors.flowerHeart;
-        ctx.beginPath();
-        ctx.arc(0, 0, r * 0.55 * (0.5 + 0.5 * opening), 0, TAU);
-        ctx.fill();
-      }
+      drawFlower(ctx, frame.bloom * (1 - frame.wither), k, colors);
       ctx.restore();
     }
   }

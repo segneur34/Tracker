@@ -44,6 +44,13 @@ describe('rootGrowth', () => {
     const now = rootGrowth([...held(0, 2), session(3, 30)], GOAL, week(3, 2));
     expect(now).toMatchObject({ level: 3, minutes: 30, held: false });
     expect(now.progress).toBeCloseTo(30 / 45);
+    expect(now.goalTimes).toBeCloseTo(30 / 45);
+  });
+
+  it('la fleur suit les multiples de l\'objectif, sans plafond ; la tige reste plafonnée à 1', () => {
+    expect(rootGrowth([session(0, 90)], GOAL, week(0, 6))).toMatchObject({ goalTimes: 2, progress: 1, held: true });
+    expect(rootGrowth([session(0, 60), session(0, 150, 3)], GOAL, week(0, 6))).toMatchObject({ goalTimes: 210 / 45, progress: 1 });
+    expect(rootGrowth([], GOAL, week(0)).goalTimes).toBe(0);
   });
 
   it('l\'objectif se tient à plusieurs sessions dans la semaine, du lundi au dimanche', () => {

@@ -55,8 +55,10 @@ export interface RootGrowth {
   minutes: number;
   /** La période en cours est déjà tenue. */
   held: boolean;
-  /** Part de l'objectif faite dans la période en cours, de 0 à 1. */
+  /** Part de l'objectif faite dans la période en cours, de 0 à 1 : la tige et les radicelles. */
   progress: number;
+  /** Temps de la période en cours en multiples de l'objectif, non plafonné : la fleur (épanouie à 4 fois). */
+  goalTimes: number;
   /** Périodes closes manquées d'affilée, juste avant celle en cours. */
   missedInRow: number;
   /** Recul de la période en cours si elle est manquée, en étapes ; `Infinity` : retour à la graine. */
@@ -128,7 +130,7 @@ export const rootGrowth = (sessions: readonly RootSession[], goalMin: number, no
   return {
     level, maxLevel, growthSteps, fraction: level / growthSteps,
     periodIndex: current, periodStartMs: periodStart(current, days), periodEndMs: periodStart(current + 1, days),
-    minutes, held: minutes >= goal, progress: Math.min(1, minutes / goal),
+    minutes, held: minutes >= goal, progress: Math.min(1, minutes / goal), goalTimes: minutes / goal,
     missedInRow: missed, lossStep: lossOf(rules, missed + 1), losing,
   };
 };

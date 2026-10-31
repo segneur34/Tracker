@@ -5,9 +5,9 @@ import { usePrefersReducedMotion } from '../hooks/useNarrowScreen';
 import { useAppliedTheme } from '../hooks/useTheme';
 import { pushBackLayer } from '../platform/backButton';
 import { levelText, type RootGrowth } from '../library/rootGrowth';
-import { drawRoot, readRootColors, type RootColors, type RootFrame } from './drawRoot';
+import { BLOOM_STEPS, drawRoot, readRootColors, type RootColors, type RootFrame } from './drawRoot';
 import './ProfileRoot.css';
-import { formatDuration } from '../core/units';
+import { formatDecimal, formatDuration } from '../core/units';
 
 /**
  * Racine du Profil (maquette validée le 22/10) : elle part du carré à droite
@@ -15,7 +15,8 @@ import { formatDuration } from '../core/units';
  * par semaine tenue (`library/rootGrowth.ts`) ; elle recule des semaines
  * manquées (−3, −6, puis la graine), la partie perdue restant dessinée sèche.
  * Le temps de la semaine fait pousser des radicelles et la pousse au-dessus du
- * sol, dont la fleur paraît à la première minute et s'ouvre jusqu'à l'objectif ;
+ * sol, dont la fleur paraît à la première minute, s'ouvre à l'objectif et
+ * continue d'évoluer jusqu'à 4 fois l'objectif (quatre étapes, maquette du 31/10) ;
  * après une semaine manquée, ses feuilles tombent et restent mortes au sol, de
  * nouvelles repoussant avec le temps fait.
  *
@@ -53,6 +54,22 @@ const plural = (n: number, word: string): string => `${word}${n >= 2 ? 's' : ''}
 const count = (n: number, word: string): string => `${levelText(n)} ${plural(n, word)}`;
 const minutesText = (min: number): string => formatDuration(Math.round(min) * 60_000);
 const ease = (t: number): number => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+/** Étape de la fleur pour des minutes de la semaine, en multiples de l'objectif, plafonnée à la dernière. */
+const bloomOf = (minutes: number, goalMin: number): number => Math.min(BLOOM_STEPS, minutes / Math.max(1, goalMin));
+/** Multiple de l'objectif arrondi au dixième par défaut (on ne dit pas « 2 fois » avant d'y être) : « 2 », « 1,5 ». */
+const timesText = (goalTimes: number): string => {
+  const tenth = Math.floor(goalTimes * 10 + 1e-9) / 10;
+  return Number.isInteger(tenth) ? String(tenth) : formatDecimal(tenth, 1);
+};
+
+/** Où en est la fleur, en clair (textes de la maquette du 31/10). */
+const flowerText = (growth: RootGrowth, goalMin: number): string => {
+  if (growth.minutes <= 0) return 'Pas encore de fleur : elle paraît à la première minute.';
+  const reached = Math.min(BLOOM_STEPS, Math.floor(growth.goalTimes + 1e-9));
+  if (reached <= 0) return `Fleur en bouton ; elle s'ouvre à ${minutesText(goalMin)}.`;
+  if (reached >= BLOOM_STEPS) return `Fleur épanouie : étape ${BLOOM_STEPS} sur ${BLOOM_STEPS}.`;
+  return `Fleur à l'étape ${reached} sur ${BLOOM_STEPS} ; la suivante à ${minutesText((reached + 1) * goalMin)}.`;
+};
 
 /** Carré à droite du pseudo : le niveau de la racine ; le toucher ouvre le détail. */
 export function RootSlot({ growth, open, onToggle }: { growth: RootGrowth; open: boolean; onToggle: () => void }) {
@@ -117,9 +134,11 @@ function RootBubble({ growth, goalMin, top, right, onClose }: {
       )}
       <span>
         Cette semaine : {minutesText(growth.minutes)} sur {minutesText(goalMin)}
+        {growth.goalTimes >= 1 && ` · ${timesText(growth.goalTimes)} fois l'objectif`}
         {rootlets > 0 && ` · ${count(rootlets, 'radicelle')}`}
       </span>
       <span className="profile-root__bar"><span style={{ width: `${Math.round(growth.progress * 100)}%` }} /></span>
+      <span className="profile-root__muted">{flowerText(growth, goalMin)}</span>
       <span className="profile-root__muted">
         {growth.held
           ? 'Objectif tenu : la racine gagne une étape dimanche soir.'
@@ -153,13 +172,14 @@ const canvasDensity = (width: number, height: number): number => {
 /** Ce qui se dessine hors animation. */
 const restFrame = (growth: RootGrowth): RootFrame => ({
   level: growth.level, maxLevel: growth.maxLevel, growthSteps: growth.growthSteps,
-  minutes: growth.minutes, wither: 0, progress: growth.progress, fallen: growth.losing ? 1 : 0,
+  minutes: growth.minutes, wither: 0, progress: growth.progress, bloom: Math.min(BLOOM_STEPS, growth.goalTimes),
+  fallen: growth.losing ? 1 : 0,
 });
 
 /** L'état vu à la dernière visite, sur le dessin du moment ; celui-ci tel quel sans visite retenue. */
 const seenFrame = (rest: RootFrame, seen: LastSeen, goalMin: number, period: number): RootFrame => (seen.level === null ? rest : {
   ...rest, level: seen.level, maxLevel: Math.max(seen.level, rest.maxLevel), minutes: seen.minutes,
-  progress: Math.min(1, seen.minutes / Math.max(1, goalMin)),
+  progress: Math.min(1, seen.minutes / Math.max(1, goalMin)), bloom: bloomOf(seen.minutes, goalMin),
   // Une semaine close depuis : ses feuilles ne tombent qu'en rejouant le recul.
   fallen: seen.period === period ? rest.fallen : 0,
 });
@@ -197,8 +217,9 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
     ctx.setTransform(built.dpr, 0, 0, built.dpr, 0, 0);
     ctx.clearRect(0, 0, built.width, built.height);
     if (built.model && colorsRef.current) drawRoot(ctx, built.model, frameRef.current, colorsRef.current, ROOT_STYLE);
-    // Niveau dessiné, lu par le banc (`outils/banc/racine.mjs`).
+    // Niveau et étape de la fleur dessinés, lus par le banc (`outils/banc/racine.mjs`).
     canvas.dataset.niveau = frameRef.current.level.toFixed(2);
+    canvas.dataset.fleur = frameRef.current.bloom.toFixed(2);
     // Longueur visible de la racine mère, en pixels, lue par le banc : la même quelle que soit la période.
     canvas.dataset.longueur = built.model
       ? String(Math.round(rootVisibility(built.model, frameRef.current.level, frameRef.current.growthSteps, ROOT_STYLE.ramifications)[0] ?? 0))
@@ -304,13 +325,14 @@ function ProfileRoot({ growth, goalMin, cardSelectors, ready, open, onClose }: {
           minutes: t < 2400 ? seen.minutes : growth.minutes * fresh,
           wither: t < 2400 ? Math.min(1, t / 1100) : 0,
           progress: t < 2400 ? 0 : growth.progress * fresh,
+          bloom: t < 2400 ? 0 : rest.bloom * fresh,
           // La fleur de la semaine passée se fane avec les radicelles ; si elle est manquée, les feuilles tombent avec le recul.
           fallen: rest.fallen * ease((t - 700) / 1700),
         };
         done = t >= 3200;
       } else {
         const minutes = seen.minutes + (growth.minutes - seen.minutes) * ease(t / 900);
-        frameRef.current = { ...rest, minutes, progress: Math.min(1, minutes / Math.max(1, goalMin)) };
+        frameRef.current = { ...rest, minutes, progress: Math.min(1, minutes / Math.max(1, goalMin)), bloom: bloomOf(minutes, goalMin) };
         done = t >= 900;
       }
       if (done) {

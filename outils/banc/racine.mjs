@@ -2,11 +2,13 @@
 // semaines manquées d'affilée : −3, −6, puis la graine ; objectif par semaine, 45 min par défaut).
 // Usage : node racine.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau. Le script écrit un historique de courses de 45 min, le lundi, sur les semaines 0 à 29,
-// 33 et 34 (la semaine 0 commence 50 semaines avant celle d'aujourd'hui), et trois de 15 min les mardi, mercredi et jeudi
-// de la semaine 35 ; il les importe par la page Course. Puis il ouvre le Profil à des dates choisies, l'heure de la page
-// décalée par un script posé avant son chargement (`Date` remplacé), et vérifie :
+// 33 et 34 (la semaine 0 commence 50 semaines avant celle d'aujourd'hui), trois de 15 min les mardi, mercredi et jeudi
+// de la semaine 35, puis trois de 45 min les vendredi, samedi et dimanche (2, 3 et 4 fois l'objectif) ; il les importe par
+// la page Course. Puis il ouvre le Profil à des dates choisies, l'heure de la page décalée par un script posé avant son
+// chargement (`Date` remplacé), et vérifie :
 //  1. le niveau : semaines 1, 6, 13, 26, 30 ; 1, 2, 3 semaines manquées (27, 21, 0), la reprise (1, puis 2) ;
 //  2. la bulle : recul de 3, « de 6 de plus », « revient à sa graine », feuilles tombées, temps de la semaine et radicelles ;
+//     la fleur de la semaine 35 (`data-fleur`, multiples de l'objectif) : rien, bouton, ouverte, puis étapes 2, 3 et 4 sur 4 ;
 //  3. Réglages, « Pratiquant » : une seule ligne « Objectif par semaine » ; à 60 min, plus rien de tenu ; vidée, 45 ;
 //  4. un état vu d'avant la règle (sans version) est ignoré ; le rejeu d'un recul de 9 (30 → 21) à l'ouverture ;
 //  5. à 390 et 320 px : rien ne déborde, le carré et la bulle restent dans l'écran.
@@ -50,8 +52,11 @@ const gpxOf = (t0, minutes, name) => {
 const files = [];
 for (const w of [...Array.from({ length: 30 }, (_, k) => k), 33, 34]) files.push([`course-s${w}.gpx`, gpxOf(dayAt(w, 0, 10), 45, `course s${w}`)]);
 for (const d of [1, 2, 3]) files.push([`course-s35-${d}.gpx`, gpxOf(dayAt(35, d, 10), 15, `course s35 j${d}`)]);
+for (const d of [4, 5, 6]) files.push([`course-s35-${d}.gpx`, gpxOf(dayAt(35, d, 10), 45, `course s35 j${d}`)]);
 
 const slotText = () => evaluate(`document.querySelector('.profile-root-slot')?.textContent ?? null`);
+/** Étape de la fleur dessinée, en multiples de l'objectif (0 à 4). */
+const flowerDrawn = () => evaluate(`Number(document.querySelector('canvas.profile-root')?.dataset.fleur ?? NaN)`);
 /** Texte de la bulle, espaces insécables (entre un nombre et son mot) ramenées à des espaces. */
 const bubbleText = () => evaluate(`document.querySelector('.profile-root__bubble')?.textContent.replace(/\\u00a0/g, ' ') ?? null`);
 const overflow = () => evaluate('document.documentElement.scrollWidth > window.innerWidth');
@@ -136,15 +141,22 @@ const states = [
   { w: 32, level: '21étapes', label: '2 semaines manquées : −9', bubble: ['elle revient à sa graine.', "2 semaines manquées d'affilée"] },
   { w: 33, level: '0étape', label: '3 semaines manquées : la graine', bubble: ['elle reste à sa graine.', "3 semaines manquées d'affilée", 'Partie sèche : 30 étapes'] },
   { w: 34, level: '1étape', label: 'Reprise : une semaine tenue', bubble: ['elle revient à sa graine.'] },
-  { w: 35, d: 0, level: '2étapes', label: 'Semaine 35, lundi : 0 min, pas de fleur', bubble: ['Cette semaine : 0 min sur 45 min'] },
-  { w: 35, d: 1, level: '2étapes', label: 'Mardi : 15 min, bouton', bubble: ['Cette semaine : 15 min sur 45 min · 3 radicelles'] },
-  { w: 35, d: 2, level: '2étapes', label: 'Mercredi : 30 min, fleur entrouverte', bubble: ['Cette semaine : 30 min sur 45 min · 6 radicelles'] },
-  { w: 35, d: 3, level: '2étapes', label: 'Jeudi : 45 min, fleur ouverte', bubble: ['Cette semaine : 45 min sur 45 min · 9 radicelles', 'Objectif tenu : la racine gagne une étape dimanche soir.'] },
+  { w: 35, d: 0, level: '2étapes', fleur: 0, label: 'Semaine 35, lundi : 0 min, pas de fleur', bubble: ['Cette semaine : 0 min sur 45 min', 'Pas encore de fleur : elle paraît à la première minute.'] },
+  { w: 35, d: 1, level: '2étapes', fleur: 1 / 3, label: 'Mardi : 15 min, bouton', bubble: ['Cette semaine : 15 min sur 45 min · 3 radicelles', "Fleur en bouton ; elle s'ouvre à 45 min."] },
+  { w: 35, d: 2, level: '2étapes', fleur: 2 / 3, label: 'Mercredi : 30 min, bouton plus gros', bubble: ['Cette semaine : 30 min sur 45 min · 6 radicelles'] },
+  { w: 35, d: 3, level: '2étapes', fleur: 1, label: 'Jeudi : 45 min, fleur ouverte', bubble: ["Cette semaine : 45 min sur 45 min · 1 fois l'objectif · 9 radicelles", "Fleur à l'étape 1 sur 4 ; la suivante à 1 h 30.", 'Objectif tenu : la racine gagne une étape dimanche soir.'] },
+  { w: 35, d: 4, level: '2étapes', fleur: 2, label: 'Vendredi : 1 h 30, pétales plus longs', bubble: ["Cette semaine : 1 h 30 sur 45 min · 2 fois l'objectif · 18 radicelles", "Fleur à l'étape 2 sur 4 ; la suivante à 2 h 15."] },
+  { w: 35, d: 5, level: '2étapes', fleur: 3, label: 'Samedi : 2 h 15, second rang de pétales', bubble: ["Cette semaine : 2 h 15 sur 45 min · 3 fois l'objectif", "Fleur à l'étape 3 sur 4 ; la suivante à 3 h 00."] },
+  { w: 35, d: 6, level: '2étapes', fleur: 4, label: 'Dimanche : 3 h 00, fleur épanouie', bubble: ["Cette semaine : 3 h 00 sur 45 min · 4 fois l'objectif", 'Fleur épanouie : étape 4 sur 4.'] },
 ];
 for (const st of states) {
   await profileAt(dayAt(st.w, st.d ?? 0, st.d ? 12 : 8));
   const tag = `s${st.w}${st.d ? `-j${st.d}` : ''}`;
   check(`${st.label} : ${st.level}`, (await slotText()) === st.level, await slotText());
+  if (st.fleur !== undefined) {
+    const f = await flowerDrawn();
+    check(`${st.label} : fleur à ${st.fleur.toFixed(2)} fois l'objectif`, Math.abs(f - st.fleur) < 0.03, String(f));
+  }
   await shootState(`racine-${tag}`, st.label);
   if (st.bubble) {
     const b = await openBubble();
