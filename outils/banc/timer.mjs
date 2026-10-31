@@ -13,7 +13,7 @@
 //  4. « Enregistrer une session » rend la page ordinaire ;
 //  4 bis. (lot 24, 28/10) « Enregistrer » d'une séance, en muscu : Enregistrer sur Muscu, la séance dans la carte du compteur sans être
 //     lancée, ceinture cochée et grisée (FC d'exemple du navigateur), compteur lancé puis session démarrée, « Arrêter » de la session tenu
-//     2 s : le compteur est arrêté avec elle ; le lien « Enregistrer sans séance » ;
+//     2 s : le compteur est arrêté avec elle ; le lien « Enregistrer sans séance » absent (lot 102) ;
 //  5. à 390 × 844 : la page Timer, Enregistrer en mode Timer et le compteur en marche sans débordement.
 import { connect } from './lib/cdp.mjs';
 
@@ -206,12 +206,8 @@ check('page ordinaire', (await where()) === '/enregistrer' && (await raw('.ui-pa
 
 // --- 4 bis. « Enregistrer » : la séance avec la ceinture, en muscu (lot I du 25/10, `handsOverToRecording`) ---
 await go('/fractionne/timer');
-const sansSeance = await evaluate(`[...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Enregistrer sans séance')?.getAttribute('href') ?? '(absent)'`);
-check('lien « Enregistrer sans séance » vers la muscu', sansSeance === '/enregistrer?activite=muscu', sansSeance);
-console.log('sans séance :', await clickText('Enregistrer sans séance', 'a'));
-await wait(1200);
-check('sans séance : Enregistrer sur Muscu, aucun compteur lancé', (await where()) === '/enregistrer?activite=muscu'
-  && (await evaluate(`JSON.parse(localStorage.getItem('tracker.intervalRun') ?? 'null') === null`)) === true, await where());
+const sansSeance = await evaluate(`[...document.querySelectorAll('a')].some((a) => a.textContent.trim() === 'Enregistrer sans séance')`);
+check('lien « Enregistrer sans séance » retiré (lot 102)', sansSeance === false, String(sansSeance));
 await go('/fractionne/timer');
 console.log('Enregistrer :', await itemButton('Gainage', 'Enregistrer'));
 await wait(1500);

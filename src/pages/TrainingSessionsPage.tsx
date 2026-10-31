@@ -37,8 +37,7 @@ import './TrainingPages.css';
  * compteur seul, comme avant) ou en « Muscu » : Enregistrer ouvert sur la
  * dernière activité de muscu, la séance mise dans la carte du compteur, sans
  * la démarrer ; « Démarrer » (ceinture connectée) lance la session, et le
- * compteur se lance d'un geste. Un lien sous la liste ouvre la muscu sans
- * séance. Fractionné et tests : la rangée des tests sous la liste.
+ * compteur se lance d'un geste. Fractionné et tests : la rangée des tests sous la liste.
  */
 
 function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
@@ -157,10 +156,6 @@ function TrainingSessionsPage({ kind }: { kind: WorkoutKind }) {
         <Button variant="primary" disabled={full} onClick={() => navigate(list.editPath)}>{list.create}</Button>
         {full && <span className="ui-hint">{MAX_INTERVAL_PRESETS} séances au plus : retirez-en une.</span>}
       </div>
-
-      {timer && muscuPath && (
-        <Link to={muscuPath} className="ui-hint" style={{ alignSelf: 'flex-start' }}>Enregistrer sans séance</Link>
-      )}
 
       {!timer && (
         <section className="train-tests" aria-label="Tests">
