@@ -62,4 +62,17 @@ describe('état de la planification', () => {
     expect(off.route.waypoints).toEqual([A, B]);
     expect(off.loop).toBe(false);
   });
+
+  it('une retouche (altitude de l\'IGN) se pose sur l\'itinéraire et sur ceux de « Précédent », sans nouvelle étape', () => {
+    const state = run(start(false), [add(A), add(B), add(C)]);
+    expect(state.history).toHaveLength(3);
+    const lift = (r: PlannedRoute): PlannedRoute => ({ ...r, legs: r.legs.map((l) => ({ ...l, points: l.points.map((p) => ({ ...p, eleM: 7 })) })) });
+    const touched = plannedRouteReducer(state, { type: 'retouch', change: lift });
+    expect(touched.history).toHaveLength(3);
+    expect(touched.route.legs.every((l) => l.points.every((p) => p.eleM === 7))).toBe(true);
+    // « Précédent » rend l'itinéraire d'avant, avec l'altitude.
+    const undone = plannedRouteReducer(touched, { type: 'undo' });
+    expect(undone.route.legs).toHaveLength(1);
+    expect(undone.route.legs[0].points.every((p) => p.eleM === 7)).toBe(true);
+  });
 });

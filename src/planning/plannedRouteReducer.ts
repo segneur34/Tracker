@@ -36,6 +36,12 @@ export type PlannedRouteAction =
   | { type: 'loop'; on: boolean }
   /** Résultat d'un calcul, ou nouvel essai : hors annulation. */
   | { type: 'apply'; change: (r: PlannedRoute) => PlannedRoute }
+  /**
+   * Retouche d'une donnée de l'itinéraire qui n'est pas une modification de
+   * l'utilisateur (l'altitude de l'IGN d'une trace chargée) : posée sur
+   * l'itinéraire et sur ceux que « Précédent » rend, sans nouvelle étape.
+   */
+  | { type: 'retouch'; change: (r: PlannedRoute) => PlannedRoute }
   | { type: 'undo' }
   /**
    * Nouvel itinéraire (ouvert depuis la mémoire), et ses types de voie et son
@@ -75,6 +81,11 @@ export const plannedRouteReducer = (state: PlannedRouteState, action: PlannedRou
     case 'apply': {
       const route = settle(action.change(state.route), state.mode, state.loop);
       return route === state.route ? state : { ...state, route };
+    }
+    case 'retouch': {
+      const route = action.change(state.route);
+      const history = state.history.map((snapshot) => ({ ...snapshot, route: action.change(snapshot.route) }));
+      return { ...state, route, history };
     }
     case 'undo':
       return state.history.length === 0 ? state : { ...state.history[state.history.length - 1], history: state.history.slice(0, -1) };

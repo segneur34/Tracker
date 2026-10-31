@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { jsonStore } from '../platform/storage';
 import { fetchLeg, type ProfileIdStore } from '../planning/brouter';
+import { fetchIgnElevations } from '../planning/ignAltimetry';
+import { applyImportedElevation, importedSamplePoints } from '../planning/importedElevation';
 import { computeLeg, computeReturn, type LegFetcher, type LegResult, type ReturnResult } from '../planning/legCalculation';
 import { LOOP_RETURN_DEFAULTS, type LoopReturnParams } from '../planning/loopReturn';
 import { plannedRouteReducer, type Edit, type PlannedRouteState } from '../planning/plannedRouteReducer';
@@ -57,6 +59,14 @@ const store = <T,>(cache: Map<string, T>, key: string, value: T): void => {
   if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value!);
   cache.set(key, value);
 };
+
+/**
+ * Altitude d'une trace chargée : `searching` : demande à l'IGN en cours ;
+ * `ign` : altitude de l'IGN posée ; `outside` : aucun point couvert par l'IGN ;
+ * `error` : demande échouée. Dans les deux derniers cas, la trace garde
+ * l'altitude lissée du GPS.
+ */
+export type ImportedElevationStatus = 'searching' | 'ign' | 'outside' | 'error';
 
 export interface PlannedRouteOptions {
   /** Écart au-delà duquel un point est jugé hors de tout chemin, en mètres. */
@@ -152,6 +162,21 @@ export const usePlannedRoute = (
   // Calcul abandonné en quittant la page.
   useEffect(() => () => inFlight.current?.controller.abort(), []);
 
+  // Altitude de l'IGN d'une trace chargée : une demande au plus, abandonnée si un autre itinéraire prend la place.
+  const [importedElevation, setImportedElevation] = useState<ImportedElevationStatus | null>(null);
+  const elevationRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => elevationRequest.current?.abort(), []);
+
+  const replace = useCallback(
+    (next: PlannedRoute, nextMode?: RouteMode, nextLoop?: boolean) => {
+      elevationRequest.current?.abort();
+      elevationRequest.current = null;
+      setImportedElevation(null);
+      dispatch({ type: 'replace', route: next, mode: nextMode, loop: nextLoop });
+    },
+    []
+  );
+
   const edit = useCallback((change: Edit) => dispatch({ type: 'edit', change }), []);
 
   return {
@@ -167,10 +192,43 @@ export const usePlannedRoute = (
      * types de voie à cocher et le mode « Boucle » s'ils changent : l'annulation
      * repart de zéro, l'itinéraire est pris tel quel.
      */
-    replace: useCallback(
-      (next: PlannedRoute, nextMode?: RouteMode, nextLoop?: boolean) => dispatch({ type: 'replace', route: next, mode: nextMode, loop: nextLoop }),
-      []
+    replace,
+    /**
+     * Comme `replace`, pour un itinéraire tiré d'un GPX chargé (`routeFromTrack`) : la trace garde
+     * l'altitude lissée du GPS le temps que l'IGN réponde (`stepM` : pas des échantillons, en
+     * mètres), puis prend la sienne, sur l'itinéraire et sur ses « Précédent ». Pas de demande si
+     * `stepM` est `null`. Rien ne se pose si un autre itinéraire a pris la place entre-temps.
+     */
+    loadImported: useCallback(
+      (next: PlannedRoute, stepM: number | null, nextMode?: RouteMode, nextLoop?: boolean) => {
+        replace(next, nextMode, nextLoop);
+        if (stepM === null) return;
+        const samples = importedSamplePoints(next, stepM);
+        const controller = new AbortController();
+        elevationRequest.current = controller;
+        setImportedElevation('searching');
+        fetchIgnElevations(samples, controller.signal).then(
+          (z) => {
+            if (controller.signal.aborted) return;
+            elevationRequest.current = null;
+            if (!z.some((v) => v !== null)) {
+              setImportedElevation('outside');
+              return;
+            }
+            dispatch({ type: 'retouch', change: (r) => applyImportedElevation(r, samples, z).route });
+            setImportedElevation('ign');
+          },
+          () => {
+            if (controller.signal.aborted) return;
+            elevationRequest.current = null;
+            setImportedElevation('error');
+          }
+        );
+      },
+      [replace]
     ),
+    /** État de la demande d'altitude de la dernière trace chargée ; `null` si aucune. */
+    importedElevation,
     /**
      * Types de voie cochés, avec la modification de l'itinéraire qui en découle
      * (`setRouteMode`), et le mode « Boucle » s'il change avec eux ; « Précédent »

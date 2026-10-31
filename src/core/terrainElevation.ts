@@ -35,10 +35,11 @@ export interface TerrainSamplePoint {
  * Une position tous les `stepM` mètres de `cumDist` (distance cumulée de la
  * trace, `buildCumulativeTrack`), interpolée entre les deux points qui
  * l'encadrent, plus le premier et le dernier point. Un arrêt (distance qui
- * n'avance pas) ne donne pas d'échantillon.
+ * n'avance pas) ne donne pas d'échantillon. Seuls la position et l'instant
+ * comptent : une trace sans heure (planification) y met sa distance.
  */
 export const terrainSamplePoints = (
-  track: ReadonlyArray<TrackPoint>,
+  track: ReadonlyArray<Pick<TrackPoint, 'lat' | 'lon' | 'timeMs'>>,
   cumDist: ReadonlyArray<number>,
   stepM: number
 ): TerrainSamplePoint[] => {

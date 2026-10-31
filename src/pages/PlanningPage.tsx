@@ -35,7 +35,7 @@ import { activityFamily, activityTreatment, findActivity, type Activity } from '
 import { sampledIndices, visibleIndexRange } from '../core/chartZoom';
 import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER, trackBounds } from '../core/displayConfig';
 import { parseGpxPath } from '../core/gpxParser';
-import { ELEVATION_PRESETS, usesMarkCourse } from '../core/sportProfiles';
+import { ELEVATION_PRESETS, getSportProfile, usesMarkCourse } from '../core/sportProfiles';
 import { useExclusiveToggles } from '../hooks/useExclusiveToggles';
 import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, formatLandSpeed, toDisplayDistance, formatMeters, commaDecimal } from '../core/units';
 import { useLeaveWarning } from '../hooks/leaveGuard';
@@ -43,14 +43,14 @@ import { useChartZoom } from '../hooks/useChartZoom';
 import { useGoOnRoute } from '../hooks/useGoOnRoute';
 import { useMapBase } from '../hooks/useMapBase';
 import { useOpenSections } from '../hooks/useOpenSections';
-import { usePlannedRoute } from '../hooks/usePlannedRoute';
+import { usePlannedRoute, type ImportedElevationStatus } from '../hooks/usePlannedRoute';
 import { getLastFix, useRecorderStatus } from '../hooks/useRecorder';
 import { useRouteLibrary, type SavedRoute } from '../hooks/useRouteLibrary';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
 import {
-  effectiveDistanceUnit, effectiveDurationSettings, effectiveGradeRange, effectiveLoopReturnRatio, effectiveMarkGuide, effectivePace, effectiveSpeedUnit, effectiveWayTypes, lastRecordActivity, useVisibility,
+  effectiveDistanceUnit, effectiveDurationSettings, effectiveGradeRange, effectiveLoopReturnRatio, effectiveMarkGuide, effectivePace, effectiveSpeedUnit, effectiveWayTypes, lastRecordActivity, readStoredSettings, useVisibility,
 } from '../hooks/useSportSettings';
-import { PLANNING_FAMILIES } from '../settings/activitySettings';
+import { PLANNING_FAMILIES, resolveTerrainStepM } from '../settings/activitySettings';
 import { ROUTES_DIR } from '../library/folderLayout';
 import { guessSport } from '../library/naming';
 import { PACE_LEVEL_LABEL, estimateDurationFromProfile } from '../planning/duration';
@@ -310,6 +310,13 @@ function WayPicker({ mode, label, compact, className, style, straightOff, onChan
 /** Types de voie cochés à l'arrivée sur une activité : les siens ; sans eux (voile), le mode par défaut. */
 const activityMode = (activity: Activity | null): RouteMode => (activity ? waysMode(effectiveWayTypes(activity)) : null) ?? DEFAULT_ROUTE_MODE;
 
+const IMPORTED_ELEVATION_TEXT: Record<ImportedElevationStatus, string> = {
+  searching: 'Altitude IGN en cours… (celle du GPS en attendant)',
+  ign: 'Altitude IGN.',
+  outside: "Altitude du GPS : le tracé est hors de la couverture de l'IGN.",
+  error: "Altitude du GPS : l'IGN n'a pas répondu.",
+};
+
 function PlanningPage() {
   // Une activité cachée dans Réglages n'est ni proposée (`ActivitySheet`) ni reprise (§10, point 100).
   const { activities, isShown } = useVisibility();
@@ -420,6 +427,9 @@ function PlanningPage() {
 
   const points = useMemo(() => routePoints(route), [route]);
   const totals = useMemo(() => routeTotals(route, minGainM), [route, minGainM]);
+  /** Source de l'altitude d'une trace chargée, dite tant qu'une trace importée est sur la carte. */
+  const importedElevationText =
+    planner.importedElevation !== null && route.legs.some((l) => l.mode === 'imported') ? IMPORTED_ELEVATION_TEXT[planner.importedElevation] : null;
   const surfaces = useMemo(() => routeSurfaces(route.legs), [route.legs]);
   /**
    * « Voir sur la carte » du bloc Surface, et celui de la pente sous le graphe
@@ -736,7 +746,10 @@ function PlanningPage() {
       const sport = guessSport(parsed.trackType);
       const guessed = sport ? activities.find((a) => a.base === sport && plannable(a)) : undefined;
       // La trace reste telle quelle : pas de mode « Boucle ».
-      planner.replace(loaded, guessed ? activityMode(guessed) : undefined, false);
+      // Son altitude est demandée à l'IGN, au pas des analyses de l'activité (rien en voile ni en surf) ; sans activité, celui de la course.
+      const target = guessed ?? activity;
+      const terrainStepM = target ? resolveTerrainStepM(readStoredSettings(), target) : getSportProfile('running').terrainElevationStepM;
+      planner.loadImported(loaded, terrainStepM, guessed ? activityMode(guessed) : undefined, false);
       setCurrent(null);
       setSavedRoute(EMPTY_ROUTE);
       setCourseGuide(null);
@@ -1066,6 +1079,8 @@ function PlanningPage() {
                   </div>
                 )}
               </div>
+
+              {importedElevationText && <p className="plan-note">{importedElevationText}</p>}
 
               {hasElevation && gradeRange ? (
                 <div>
