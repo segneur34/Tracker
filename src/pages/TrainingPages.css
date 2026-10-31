@@ -334,6 +334,8 @@
 }
 
 .rest-history__chart {
-  flex-basis: 100%;
+  /* Colonne flex avec align-items: flex-start : sans cela, largeur nulle. */
+  align-self: stretch;
+  width: 100%;
   min-width: 0;
 }
