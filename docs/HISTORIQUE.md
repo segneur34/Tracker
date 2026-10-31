@@ -1162,3 +1162,26 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : un virage vu en un seul pas (cadence économique, règle 10) dont la rotation atteint 150° est de sens `undecided` : compté, ni virement ni empannage, réussi ou raté sur sa Vmin, hors du pourcentage de réussite et du vent ; en dessous de 150° il garde l'arc court. Décision de l'utilisateur : aucune hypothèse sur le sens. Ligne « Sens incertain » au tableau seulement s'il y en a, marqueurs gris sur la carte.
     - **Pourquoi** : choisir un sens sur un seul pas aurait faussé les comptes et le vent.
     - **Piège** : sur le téléphone le seuil d'activité de la planche (8 nd) écarte toutes les manœuvres d'une session lente (allure 5 nd : 0 manœuvre, 21 virages « sans vol ») ; à 1 nd par session, 22 manœuvres dont 8 incertaines. Avec le vent saisi 28° contre 202° calculé, virements et empannages s'échangent (10/3 contre 3/10).
+
+243. Courbe du test de FC repos gardé de largeur nulle (lot 107, validé le 31/10).
+    - **Décision** : `.rest-history__chart` prend `align-self: stretch` et `width: 100%`.
+    - **Pourquoi** : la courbe mesurait 0 px de large.
+    - **Piège** : dans une colonne flex en `align-items: flex-start`, `flex-basis` ne joue pas sur la largeur ; un `ResponsiveContainer` à 100 % dans un enfant de colonne non étiré n'a donc aucune largeur. Le contrôle de `test-fcrepos.mjs` passe.
+
+244. Voile › général : virements et empannages côte à côte, « Top 2 s » en face de la moyenne (lot 108, validé le 31/10).
+    - **Décision** : « Virements réussis » et « Empannages réussis » partagent une ligne (`pairs` de `GeneralStats`, bloc sur deux colonnes) ; sur demande de l'utilisateur, « Top 2 s » se met en face de « Moyenne en vol » et « Top 100 m » quitte « général » (il reste dans « tops »). DECISIONS §1.
+    - **Pourquoi** : demande de l'utilisateur ; selon le nombre de tuiles avant elle (5 avec seuil, 3 sans), la paire tombait à cheval sur deux lignes, puis une case restait vide en face de la moyenne.
+    - **Piège** : l'image de partage garde sa liste entière (`generalStats`), indépendante de la disposition.
+
+245. « Enregistrer sans séance » retiré de Muscu et du compteur (lot 102, validé le 31/10).
+    - **Décision** : le lien disparaît ; Enregistrer › type Muscu fait la même chose (réponse à Q50). DECISIONS §5 ; `timer.mjs` vérifie l'absence.
+    - **Piège** : deux contrôles « tuiles » de `timer.mjs` échouent avant comme après le lot : ancien défaut du script, pas une régression.
+
+246. Tri des sessions de la bibliothèque (lot 109, validé le 31/10).
+    - **Décision** : bouton « Tris » dépliable, quatre cases (récentes, distance, durée, v. max), toujours du plus grand au plus petit ; choix retenu sur l'appareil (`jsonStore`, `tracker.triBibliotheque`), le même pour toutes les familles. DECISIONS §8.
+    - **Pourquoi** : retrouver la plus longue ou la plus rapide sans parcourir la liste.
+    - **Piège** : une session sans la valeur triée (pas de vitesse max, par exemple) ne doit ni monter ni descendre au hasard : fin de liste, par date.
+
+247. « Arrêter l'enregistrement » sur l'écran « Séance terminée » (lot 103, validé le 31/10).
+    - **Décision** : à la fin d'une séance du compteur pendant un enregistrement, l'écran propose le `StopButton` d'Enregistrer, même geste tenu, même arrêt, sans arrêt automatique (réponse de l'utilisateur : proposer seulement). DECISIONS §5 ; `timer.mjs` étape 4 ter.
+    - **Pourquoi** : le compteur finissait et l'enregistrement continuait sans que rien ne le rappelle.

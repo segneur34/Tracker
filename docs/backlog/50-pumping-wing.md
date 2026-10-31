@@ -4,6 +4,12 @@
 
 « Problème avec l'onglet pumping dans le wing foil : il y a un mélange entre le pumping où il y a une cadence de pumping, va durer peu de temps à mon niveau (– de 30 sec) je perds de la vitesse pendant… Et entre le vol qui est le moment où je suis en vol en foil. Je pense que ça vient du fait que le pumping vient du calcul de surf foil mais c'est une mauvaise compréhension de ce qu'on veut dire par pumping. Lot important. »
 
+## Tel que noté (31/10, Tom, marqué « important »)
+
+« Il faut retravailler l'onglet pumping au moins en wing : actuellement il compte comme vol, mais il doit ne compter que s'il y a vol avec une cadence de pumping ; trouver pumping n'est pas égal à vol, même en surf foil et autre support à foil. »
+
+Portée élargie : pas seulement le wing, **tous les supports à foil** (surf foil, planche à foil, kite foil…). Un vol sans cadence de coups ne compte pas comme du pumping.
+
 ## Où
 
 Voile › une session de wing (ou de planche à foil) avec « Pumping » coché › onglet « pumping » ; `core/pumping.ts` (`measureFlightPumping`), `SAILING_PUMP_DETECTION` dans `core/sportProfiles.ts`, `useSessionPumping`.
