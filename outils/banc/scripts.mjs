@@ -110,7 +110,7 @@ export const SCRIPTS = [
   { nom: 'zoom-carte', args: ['{port}', '{captures?}'], pages: ['course', 'voile', 'surf'] },
 ];
 
-/** Le passage courant, sans nom ni `--pages` ni `--tous` (`library` et `planning` avec `--gpx` seulement). */
-export const PASSAGE_COURANT = ['general', 'library', 'statistiques', 'profil', 'planning', 'onglets', 'tailles', 'bench', 'familles', 'cardio'];
+/** Le passage courant, sans nom ni `--pages` ni `--tous` (`library` et `planning` avec `--gpx` seulement ; sans `tailles`, 20 min : par son nom ou `--pages`). */
+export const PASSAGE_COURANT = ['general', 'library', 'statistiques', 'profil', 'planning', 'onglets', 'bench', 'familles', 'cardio'];
 
 export const PAGES = ['voile', 'course', 'velo', 'surf', 'fractionne', 'enregistrer', 'bibliotheque', 'planification', 'statistiques', 'profil', 'reglages', 'accueil'];

@@ -4,6 +4,7 @@
 //         [--sans-reseau] [--gpx <dossier>] [--brouillon <dossier>] [--temps k] [--captures] [--garder]
 //         [--sans-cache] [--nettoyer-avant] [--chrome <premier port>] [--port <port Vite>] (l'avant sur le port suivant)
 // Mode d'emploi : LISEZMOI.md, section « Lanceur ». Registre des scripts : scripts.mjs. Node 22 ou plus, sans dépendance.
+// Le passage courant (sans nom) ne comprend plus `tailles` : le jouer par son nom ou `--pages` quand le lot touche la mise en page, le thème ou Réglages.
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
