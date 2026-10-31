@@ -85,4 +85,5 @@ Choix par défaut, retenus le 31/10 :
 
 - Q31 (répondue le 28/10, précisée le 31/10) : voir « Voulu ».
 - Contradiction avec DECISIONS §1 et §4 (« par vol ») : levée par la décision du 31/10, lignes réécrites à l'étape 5.
+- Limite connue (rapport du lot, 31/10) : un clapot régulier et assez fort peut valider une cadence (le double de sa période tombe dans la plage) ; il ne fait une série que s'il donne aussi des coups au seuil `strokeMinG` (0,12 g). À regarder sur l'essai 94, à régler au n° 27.
 - Lien avec le n° 27 (seuils, faux coups autour des sauts) : la structure se fait ici sur traces synthétiques ; le réglage des seuils attend la capture entière (essai 48).
