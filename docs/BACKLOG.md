@@ -62,7 +62,7 @@ APK 0.4.50 construite le 31/10 (versionCode 4050 ; lots 104, 46 et 85), à insta
 
 ## Plus tard
 
-- 111 · [idée] Profil › racine › fleur : elle évolue trop peu au fil de la semaine, alors que les radicelles poussent à vue ; lui donner 3 ou 4 étapes visibles selon le temps fait dans la semaine (aujourd'hui : absente, bouton dès la première minute, ouverte à l'objectif ; DECISIONS §9 « Racine », ProfileRoot.tsx) · noté 31/10 · petit · Opus/high · à briefer, maquette des étapes à valider avant le code · dépend de : Q52
+- 111 · [idée] Profil › racine › fleur : elle évolue trop peu au fil de la semaine, alors que les radicelles poussent à vue ; lui donner 3 ou 4 étapes visibles selon le temps fait dans la semaine (aujourd'hui : absente, bouton dès la première minute, ouverte à l'objectif ; DECISIONS §9 « Racine », ProfileRoot.tsx) · noté 31/10 · petit · Opus/high · à briefer, maquette des étapes à valider avant le code ; 31/10 : Q52 répondue, étapes calées sur des multiples de l'objectif par semaine : bouton dès la première minute, puis 1 fois, 2 fois, 3 fois et 4 fois l'objectif (épanouie au maximum à 4 fois ; le nombre exact de dessins entre 1 et 4 se règle à la maquette) · dépend de : maquette
 - 110 · [idée] Bibliothèque de sessions : réfléchir à un mode de recherche (par nom, notes, date, lieu, matériel, fourchette de distance ou de durée…) ; commencer par dire ce que l'utilisateur cherche le plus souvent, après le tri du n° 109 · noté 31/10 · gros · Fable/medium · dépend de : 109
 - 105 · [dette] Sauts à terre : sur la course du 31/10, le seul saut trouvé a un vol de 1,92 s pour 0,88 m de haut (incohérent : 1,92 s de vol libre ≈ 4,5 m) et les doutes « saturation » et « verticale » ; la durée de vol est sans doute surestimée ; relire le .imu de la course (2026-10-31_09-12-36_running) avec `outils/banc/sauts-diagnostic.mjs --tous` et recaler les seuils pour que le vol et la hauteur concordent (§3 « Sauts », §11 « Sauts à terre ») · noté 31/10 · petit · Opus/high
 - 106 · [dette] Allure en milles, restes du lot 98 : `RecordingPage.tsx` (chiffres du direct, lignes 218 à 266), `EffortThresholdEditor.tsx` et `FitnessTestPanel.tsx` appellent encore `formatSpeed` sans unité de distance ; vérifier si l'unité de vitesse y peut être une allure avec une distance en milles (chiffre faux en silence) et, si oui, leur passer l'unité de distance (`formatLandSpeed`) · noté 31/10 · petit · Sonnet/medium
@@ -78,5 +78,4 @@ APK 0.4.50 construite le 31/10 (versionCode 4050 ; lots 104, 46 et 85), à insta
 
 ## Questions
 
-- Q52 · lot 111 · les étapes de la fleur se règlent-elles sur des heures fixes ou sur une part de l'objectif par semaine ? · par défaut : une part de l'objectif (le réglage de chacun), 4 étapes : bouton dès la première minute, entrouverte au tiers de l'objectif, ouverte à l'objectif, épanouie au double · posée le 31/10
 
