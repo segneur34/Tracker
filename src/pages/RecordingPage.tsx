@@ -216,25 +216,25 @@ const liveStatItems = (
     return [
       ...options.topDurationsS.map((d, i) => ({
         label: `Top ${d} s (${recentWindowLabel(options)})`,
-        value: formatSpeed(live.recentTopsMs[i] ?? null, unit),
+        value: formatSpeed(live.recentTopsMs[i] ?? null, unit, distanceUnit),
       })),
       { label: 'Distance', value: formatDistance(live.distanceM, distanceUnit) },
     ];
   }
   if (sportTreatment(activity.base) === 'surf') {
     return [
-      { label: 'Vitesse', value: formatSpeed(live.currentSpeedMs, unit) },
-      { label: 'Vitesse max', value: formatSpeed(live.maxSpeedMs, unit) },
+      { label: 'Vitesse', value: formatSpeed(live.currentSpeedMs, unit, distanceUnit) },
+      { label: 'Vitesse max', value: formatSpeed(live.maxSpeedMs, unit, distanceUnit) },
       { label: 'Distance', value: formatDistance(live.distanceM, distanceUnit) },
     ];
   }
   // Course : l'allure ; vélo : la vitesse.
   const speedWord = sportTreatment(activity.base) === 'velo' ? 'Vitesse' : 'Allure';
   return [
-    { label: speedWord, value: formatSpeed(live.currentSpeedMs, unit) },
+    { label: speedWord, value: formatSpeed(live.currentSpeedMs, unit, distanceUnit) },
     { label: 'Distance', value: formatDistance(live.distanceM, distanceUnit) },
-    { label: distanceUnit === 'nm' ? 'Dernier mille' : 'Dernier km', value: formatSpeed(live.lastDistanceSpeedMs, unit) },
-    { label: `${speedWord} moyenne`, value: formatSpeed(live.averageSpeedMs, unit) },
+    { label: distanceUnit === 'nm' ? 'Dernier mille' : 'Dernier km', value: formatSpeed(live.lastDistanceSpeedMs, unit, distanceUnit) },
+    { label: `${speedWord} moyenne`, value: formatSpeed(live.averageSpeedMs, unit, distanceUnit) },
     { label: 'D+', value: formatMeters(live.elevationGainM) },
     { label: 'D−', value: formatMeters(live.elevationLossM) },
     { label: `D+ ${recentWindowLabel(options)}`, value: formatMeters(live.recentGainM) },
@@ -253,6 +253,7 @@ const formatLegDuration = (ms: number): string => {
  */
 const LegCard = ({ title, leg, empty, activity }: { title: string; leg: LiveLeg | null; empty: string; activity: Activity }) => {
   const unit = effectiveSpeedUnit(activity);
+  const distanceUnit = effectiveDistanceUnit(activity);
   const detail = leg
     ? `${leg.headingDeg === null ? 'cap —' : `cap ${roundBearingDeg(leg.headingDeg)}°`} · ${formatLegDuration(leg.endMs - leg.startMs)}`
     : empty;
@@ -263,8 +264,8 @@ const LegCard = ({ title, leg, empty, activity }: { title: string; leg: LiveLeg 
         <span className="num" style={{ fontSize: 'var(--text-s)', color: 'var(--muted)' }}>{detail}</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-2)' }}>
-        <Stat label="Moyenne" value={formatSpeed(leg?.averageSpeedMs ?? null, unit)} />
-        <Stat label={`Max (${LIVE_LEG_DEFAULTS.topDurationS} s)`} value={formatSpeed(leg?.maxSpeedMs ?? null, unit)} />
+        <Stat label="Moyenne" value={formatSpeed(leg?.averageSpeedMs ?? null, unit, distanceUnit)} />
+        <Stat label={`Max (${LIVE_LEG_DEFAULTS.topDurationS} s)`} value={formatSpeed(leg?.maxSpeedMs ?? null, unit, distanceUnit)} />
       </div>
     </div>
   );
