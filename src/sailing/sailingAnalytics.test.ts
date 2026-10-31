@@ -226,6 +226,31 @@ describe('calculateVmgStats', () => {
     expect(v.upStbd.avg).toBeCloseTo(12 * Math.cos(Math.PI / 4), 1);
   });
 
+  it("sans trou, la distance du pas n'a aucun effet (neutre)", () => {
+    const plain = buildTrackAt(regularTimes(session.durationS, 1), session.bearingAt, session.speedAt);
+    const withStep = plain.map((p) => ({ ...p, stepDistanceM: 1234 }));
+    expect(calculateVmgStats(withStep, 0, MIN_KN)).toEqual(calculateVmgStats(plain, 0, MIN_KN));
+  });
+
+  it('trou de trace (lot 100) : le pas du trou compte pour sa distance, pas pour la vitesse lissée du point de reprise', () => {
+    // Bord au près à 12 nœuds ; trou de 60 s au milieu, bornée par la corde : le bateau n'a fait que 6 nœuds en moyenne.
+    const build = (stepS: number): PointData[] => {
+      const times = [...regularTimes(30, stepS), ...regularTimes(30, stepS).map((t) => t + 90)];
+      const track = buildTrackAt(times, () => 315, () => 12);
+      const resume = track.findIndex((p, k) => k > 0 && p.timeMs - track[k - 1].timeMs > 10_000);
+      const gapDistanceM = 12 * 0.514444 * 60 * 0.5;
+      return track.map((p, k) => (k === resume ? { ...p, stepDistanceM: gapDistanceM } : { ...p, stepDistanceM: 12 * 0.514444 * (stepS) }));
+    };
+    const at1 = calculateVmgStats(build(1), 0, MIN_KN, 120)!;
+    const at5 = calculateVmgStats(build(0.2), 0, MIN_KN, 120)!;
+    const full = 12 * Math.cos(Math.PI / 4);
+    // Fenêtre de 120 s (au-delà du trou) : avant le lot 100 la vitesse lissée de 12 nœuds courait sur les 60 s du trou
+    // (8,485 partout) ; maintenant le trou pèse 6 nœuds : 60 s à 12 + 60 s à 6, sur 120 s, soit 9 nœuds de vitesse, 6,364 de VMG.
+    expect(at1.upStbd.max).toBeLessThan(full - 1);
+    expect(at1.upStbd.avg).toBeCloseTo(9 * Math.cos(Math.PI / 4), 0);
+    expect(at5.upStbd.avg).toBeCloseTo(at1.upStbd.avg, 1);
+  });
+
   it('rend null sans trace ou sans vent', () => {
     expect(calculateVmgStats([], 0, MIN_KN)).toBeNull();
     const track = buildTrackAt(regularTimes(30, 1), () => 315, () => 12);

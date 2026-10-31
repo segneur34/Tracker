@@ -5,7 +5,8 @@ import { WIND_LOCAL_MAX_GAP_MIN, isDirected, windAt, type ManeuverKind, type Man
 import { VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
 import { circularStats, interpolateDirection, type TimedDirection } from './wind';
 import { angleDiff, circularMean, normalizeDeg } from '../core/angles';
-import { formatDecimal } from '../core/units';
+import { formatDecimal, msToKnots } from '../core/units';
+import { MAX_GAP_S } from '../core/sportProfiles';
 
 /** Meilleure et moyenne VMG d'une allure et d'une amure, en nœuds, non arrondies : la page les formate dans son unité. */
 export interface VmgCell {
@@ -441,7 +442,9 @@ export const calculateVmgStats = (
   wind: WindReference | null,
   /** Vitesse minimale, en nœuds, pour qu'une fenêtre compte dans la VMG. */
   minSpeedKn: number = getDefaultThresholdKn(),
-  windowSeconds: number = VMG_WINDOW_S
+  windowSeconds: number = VMG_WINDOW_S,
+  /** Un pas plus long est un trou de la trace (règle 6) : il pèse par sa distance, pas par la vitesse lissée du point de reprise. */
+  maxGapS: number = MAX_GAP_S
 ): VmgStats | null => {
   if (trackData.length === 0 || wind === null) return null;
 
@@ -460,9 +463,12 @@ export const calculateVmgStats = (
     const p = trackData[k];
     const dt = p.segmentStart ? 0 : Math.max(0, (p.timeMs - trackData[k - 1].timeMs) / 1000);
     const diff = angleDiff(p.bearing, windAt(wind, p.timeMs));
-    const vmg = p.smoothedSpeed * Math.cos(diff * (Math.PI / 180));
+    // Trou de trace (règle 6, comme les manœuvres au lot 79) : vitesse moyenne du pas = distance retenue (bornée par
+    // la corde, nulle si immobile) / durée. Hors trou, la vitesse lissée du point, inchangée.
+    const speed = dt > maxGapS && p.stepDistanceM !== undefined ? msToKnots(p.stepDistanceM / dt) : p.smoothedSpeed;
+    const vmg = speed * Math.cos(diff * (Math.PI / 180));
     cumDt[k] = cumDt[k - 1] + dt;
-    cumSpeedDt[k] = cumSpeedDt[k - 1] + p.smoothedSpeed * dt;
+    cumSpeedDt[k] = cumSpeedDt[k - 1] + speed * dt;
     cumVmgDt[k] = cumVmgDt[k - 1] + vmg * dt;
     cumStbdDt[k] = cumStbdDt[k - 1] + (diff < 0 ? dt : 0);
     cumBelow[k] = cumBelow[k - 1] + (p.smoothedSpeed < minSpeedKn ? 1 : 0);
