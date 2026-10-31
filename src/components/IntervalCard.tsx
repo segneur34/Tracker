@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import Button from './ui/Button';
 import Card from './ui/Card';
@@ -109,8 +109,14 @@ const askEdit = () => {
   if (window.confirm('Arrêter la séance pour la modifier ?')) stopAndCloseIntervals();
 };
 
-/** Vue « Compteur » : la séance à lancer, ou celle en cours. `recording` : un enregistrement tourne. */
-function CounterView({ kind, recording, muscu, timer }: { kind: WorkoutKind; recording: boolean; muscu: boolean; timer: IntervalTimerView }) {
+/**
+ * Vue « Compteur » : la séance à lancer, ou celle en cours. `recording` : un enregistrement tourne.
+ * `stopRecording` : à la fin de la séance (« terminée », pas « arrêtée »), le bouton tenu qui arrête
+ * l'enregistrement, proposé à côté de « Fermer » ; jamais d'arrêt seul (31/10, lot 103).
+ */
+function CounterView({ kind, recording, muscu, timer, stopRecording }: {
+  kind: WorkoutKind; recording: boolean; muscu: boolean; timer: IntervalTimerView; stopRecording?: ReactNode;
+}) {
   const { run, state, error } = timer;
 
   if (!run || !state) return <WorkoutEditor kind={kind} recording={recording} muscu={muscu} />;
@@ -124,6 +130,7 @@ function CounterView({ kind, recording, muscu, timer }: { kind: WorkoutKind; rec
         </div>
         <div className="ivl-actions">
           <Button onClick={closeIntervals}>Fermer</Button>
+          {state.status === 'finished' && recording && stopRecording}
         </div>
       </>
     );
@@ -223,9 +230,11 @@ type CardView = 'compteur' | 'chrono';
  * ne regarde pas, si elle tourne, se rappelle en pastille sur son bouton.
  * `recording` : un enregistrement tourne.
  */
-function IntervalCard({ kind = 'fractionne', recording, muscu = false }: {
+function IntervalCard({ kind = 'fractionne', recording, muscu = false, stopRecording }: {
   kind?: WorkoutKind;
   recording: boolean;
+  /** Bouton qui arrête l'enregistrement (celui de la page, tenu), proposé à la fin de la séance pendant un enregistrement. */
+  stopRecording?: ReactNode;
   /** Séances du Timer pour une muscu (lot I du 25/10) : la séance va dans la session. */
   muscu?: boolean;
 }) {
@@ -258,7 +267,7 @@ function IntervalCard({ kind = 'fractionne', recording, muscu = false }: {
           {chronoBadge && <span className="ivl-switch__badge num">{chronoBadge}</span>}
         </button>
       </div>
-      {shown === 'compteur' ? <CounterView kind={kind} recording={recording} muscu={muscu} timer={timer} /> : <StopwatchView state={chrono} />}
+      {shown === 'compteur' ? <CounterView kind={kind} recording={recording} muscu={muscu} timer={timer} stopRecording={stopRecording} /> : <StopwatchView state={chrono} />}
     </Card>
   );
 }

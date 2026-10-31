@@ -14,6 +14,8 @@
 //  4 bis. (lot 24, 28/10) « Enregistrer » d'une séance, en muscu : Enregistrer sur Muscu, la séance dans la carte du compteur sans être
 //     lancée, ceinture cochée et grisée (FC d'exemple du navigateur), compteur lancé puis session démarrée, « Arrêter » de la session tenu
 //     2 s : le compteur est arrêté avec elle ; le lien « Enregistrer sans séance » absent (lot 102) ;
+//  4 ter. (lot 103) la même séance passée jusqu'au bout pendant l'enregistrement : « Séance terminée » propose « Arrêter
+//     l'enregistrement » à côté de « Fermer », la session continue ; appui court : le geste rappelé ; tenu 2 s : « Session terminée » ;
 //  5. à 390 × 844 : la page Timer, Enregistrer en mode Timer et le compteur en marche sans débordement.
 import { connect } from './lib/cdp.mjs';
 
@@ -234,6 +236,36 @@ check('session arrêtée : le compteur arrêté avec elle', /Séance arrêtée/.
   && /"kind":"stop"/.test(await evaluate(`localStorage.getItem('tracker.intervalRun') ?? ''`)), await text('.ivl-done'));
 check('session terminée, rangée seulement à « Analyser »', /Session terminée/i.test(await text('.ui-page')) && /Analyser/i.test(await text('.ui-page')), (await text('.ui-page')).slice(0, 160));
 check('muscu : position jamais demandée', (await geoCalls()) === geoBefore, `${(await geoCalls()) - geoBefore} demande(s)`);
+console.log('jeter :', await clickText('Jeter'));
+await wait(800);
+
+// --- 4 ter. (lot 103, 31/10) Séance terminée pendant l'enregistrement : « Arrêter l'enregistrement » proposé, tenu, jamais seul ---
+await go('/fractionne/timer');
+console.log('Enregistrer :', await itemButton('Gainage', 'Enregistrer'));
+await wait(1500);
+console.log('lancer le compteur :', await clickText('Lancer le compteur'));
+await wait(800);
+console.log('démarrer :', await clickText('Démarrer'));
+await wait(2500);
+// « Passer » jusqu'au bout de la séance (départ et 26 phases).
+const skips = await evaluate(`(async () => { let n = 0; while (n < 60 && !document.querySelector('.ivl-done')) { const b = [...document.querySelectorAll('.ivl button')].find((x) => x.textContent.trim() === 'Passer'); if (!b) break; b.click(); n++; await new Promise((r) => setTimeout(r, 60)); } return n; })()`);
+await wait(800);
+const endActions = await evaluate(`[...document.querySelectorAll('.ivl .ivl-actions button')].map((b) => b.textContent.trim()).join(', ')`);
+check("séance terminée pendant l'enregistrement : « Arrêter l'enregistrement » à côté de « Fermer »", /Séance terminée/.test(await text('.ivl-done'))
+  && endActions === "Fermer, Arrêter l'enregistrement", `${skips} passe(s) | ${await text('.ivl-done')} | ${endActions}`);
+check("l'enregistrement continue après la fin de la séance", (await evaluate(`[...document.querySelectorAll('button.ui-btn--danger')].some((b) => b.textContent.trim() === 'Arrêter' && !b.closest('.ivl'))`)) === true
+  && !/Session terminée/i.test(await text('.ui-page')));
+// Un appui court ne fait que rappeler le geste.
+await evaluate(`(() => { const b = [...document.querySelectorAll('.ivl button.ui-btn--danger')].find((x) => x.textContent.includes("Arrêter l'enregistrement")); b?.click(); return 'ok'; })()`);
+await wait(500);
+check('appui court : le geste rappelé, la session continue', /Maintenir 2 s pour arrêter/i.test(await text('.ivl .ivl-actions')) && !/Session terminée/i.test(await text('.ui-page')),
+  await text('.ivl .ivl-actions'));
+console.log("tenir « Arrêter l'enregistrement » :", await evaluate(`(() => { const b = [...document.querySelectorAll('.ivl button.ui-btn--danger')].find((x) => !x.disabled); if (!b) return 'absent'; window.__stopButton = b; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return 'ok'; })()`));
+await wait(2300);
+await evaluate(`(() => { const b = window.__stopButton; b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse' })); b.click(); return 'ok'; })()`);
+await wait(2500);
+check("tenu 2 s : l'écran « Session terminée », comme « Arrêter »", /Session terminée/i.test(await text('.ui-page')) && /Analyser/i.test(await text('.ui-page')), (await text('.ui-page')).slice(0, 160));
+check("session arrêtée : plus d'« Arrêter l'enregistrement » dans le compteur", !/Arrêter l'enregistrement/.test(await text('.ivl')), await text('.ivl'));
 console.log('jeter :', await clickText('Jeter'));
 await wait(800);
 

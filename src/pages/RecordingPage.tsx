@@ -309,13 +309,15 @@ const RECORDING_SECTION_DEFAULTS = { carte: true };
  * « Arrêter » : tenu le temps réglé dans Réglages (2 s par défaut), pour qu'un
  * geste involontaire ne coupe pas la session ; un appui court le rappelle. À 0,
  * un simple appui arrête. Le grand cadran montre l'appui sous le doigt (`HoldButton`).
+ * `inCounter` : le même arrêt, proposé par l'écran « Séance terminée » du compteur (lot 103).
  */
-function StopButton({ status }: { status: RecorderState['status'] }) {
+function StopButton({ status, inCounter = false }: { status: RecorderState['status']; inCounter?: boolean }) {
   const stop = useCallback(() => void stopRecording(), []);
   return (
     <HoldButton onHold={stop} getHoldMs={effectiveStopHoldMs} disabled={status === 'starting' || status === 'stopping'}
-      size="l" style={{ flex: 1 }} lead={<span className="ui-record-dot ui-record-dot--stop" />} dialTitle="Arrêter"
-      label={status === 'stopping' ? 'Enregistrement du fichier…' : 'Arrêter'} />
+      size={inCounter ? undefined : 'l'} style={inCounter ? undefined : { flex: 1 }} lead={<span className="ui-record-dot ui-record-dot--stop" />}
+      dialTitle={inCounter ? "Arrêter l'enregistrement" : 'Arrêter'}
+      label={status === 'stopping' ? 'Enregistrement du fichier…' : inCounter ? "Arrêter l'enregistrement" : 'Arrêter'} />
   );
 }
 
@@ -1035,7 +1037,8 @@ function RecordingScreen() {
 
       {error && <div className="ui-alert ui-alert--danger">{error}</div>}
 
-      {showCounter && <IntervalCard kind={counterTimer ? 'timer' : 'fractionne'} recording={busy} muscu={counterTimer} />}
+      {showCounter && <IntervalCard kind={counterTimer ? 'timer' : 'fractionne'} recording={busy} muscu={counterTimer}
+        stopRecording={<StopButton status={status} inCounter />} />}
 
       {showTest && <FitnessTestCard testId={guidedTestId} activity={liveActivity} />}
 
