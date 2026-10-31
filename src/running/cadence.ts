@@ -7,6 +7,7 @@ import type { TrackPoint } from '../core/types';
 import type { CadenceDetection } from '../core/domainTypes';
 import type { GradeProfile } from '../core/sportProfiles';
 import { classifyGrade, gradeZones, type GradeZone } from '../core/grade';
+import { autocorrelation, firstStrongPeak, isPeak, refinedPeak } from '../core/periodicity';
 
 /**
  * Cadence à pied : pas par minute, mesurés par l'accéléromètre du téléphone
@@ -105,32 +106,10 @@ const removeMovingMean = (values: Float64Array, half: number): Float64Array => {
   return out;
 };
 
-/** Autocorrélation normalisée de `x` (sans trou) pour les décalages de 0 à `maxLag`. */
-const autocorrelation = (x: Float64Array, maxLag: number): Float64Array => {
-  const n = x.length;
-  const r = new Float64Array(maxLag + 1);
-  for (let lag = 0; lag <= maxLag && lag < n - 1; lag++) {
-    let xy = 0;
-    let xx = 0;
-    let yy = 0;
-    for (let i = 0; i + lag < n; i++) {
-      const a = x[i];
-      const b = x[i + lag];
-      xy += a * b;
-      xx += a * a;
-      yy += b * b;
-    }
-    r[lag] = xx > 0 && yy > 0 ? xy / Math.sqrt(xx * yy) : 0;
-  }
-  return r;
-};
-
-/** Crête locale de l'autocorrélation. */
-const isPeak = (r: Float64Array, k: number) => k > 0 && k < r.length - 1 && r[k] >= r[k - 1] && r[k] >= r[k + 1];
-
 /**
  * Période d'un pas dans une fenêtre, en cases de la grille (fractionnaire), ou
- * `null` ; `rmsMs2` : écart type de la fenêtre.
+ * `null` ; `rmsMs2` : écart type de la fenêtre. Autocorrélation et crêtes :
+ * `core/periodicity.ts`, communes au pumping sur foil.
  */
 export const stepPeriod = (x: Float64Array, p: CadenceDetection, rmsMs2: number): number | null => {
   const minLag = Math.max(2, Math.floor(60 / p.maxSpm / p.gridStepS));
@@ -138,12 +117,9 @@ export const stepPeriod = (x: Float64Array, p: CadenceDetection, rmsMs2: number)
   const maxLag = Math.min(x.length - 2, 2 * maxStepLag + 1);
   if (maxLag <= minLag) return null;
   const r = autocorrelation(x, maxLag);
-  const peaks: number[] = [];
-  for (let k = minLag; k < maxLag; k++) if (isPeak(r, k)) peaks.push(k);
-  if (peaks.length === 0) return null;
-  const best = Math.max(...peaks.map((k) => r[k]));
-  if (best < p.minCorrelation) return null;
-  let chosen = peaks.find((k) => r[k] >= p.peakFraction * best)!;
+  const strong = firstStrongPeak(r, minLag, maxLag, p.minCorrelation, p.peakFraction);
+  if (strong === null) return null;
+  let chosen = strong;
   // Pas ou foulée : la demi-période, si elle corrèle encore assez, est le pas.
   const half = chosen / 2;
   const span = Math.max(1, Math.round(half * 0.15));
@@ -157,12 +133,7 @@ export const stepPeriod = (x: Float64Array, p: CadenceDetection, rmsMs2: number)
   else if (chosen > maxStepLag || (half >= minLag && rmsMs2 >= p.strideRmsMs2)) steps = 2;
   if (chosen / steps > maxStepLag) return null;
   // Crête affinée par une parabole sur ses deux voisines.
-  const a = r[chosen - 1];
-  const b = r[chosen];
-  const c = r[chosen + 1];
-  const denom = a - 2 * b + c;
-  const shift = denom < 0 ? (0.5 * (a - c)) / denom : 0;
-  return (chosen + Math.max(-0.5, Math.min(0.5, shift))) / steps;
+  return refinedPeak(r, chosen) / steps;
 };
 
 /** Cadence d'une capture, un pas tous les `stepS` ; `null` si elle n'a pas d'accéléromètre. */

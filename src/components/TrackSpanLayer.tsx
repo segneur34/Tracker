@@ -12,8 +12,9 @@ export interface TrackSpanShown {
 }
 
 /**
- * Passages d'une trace sur la carte, en surf (vague, vol, remontée) et en voile
- * (vol du pumping) : celui choisi en violet, ou un podium aux couleurs des
+ * Passages d'une trace sur la carte, en surf (vague, vol, série de pumping,
+ * remontée) et en voile (vol ou série du pumping, `pumpingHighlight.ts`) :
+ * celui choisi en violet, ou un podium aux couleurs des
  * tops ; un trait sur la trace et un point au départ, comme les sauts
  * (`JumpMapLayer`). Les index sont ceux de la trace dessinée.
  */

@@ -1,6 +1,6 @@
 # 50 · Pumping sur foil : la série de coups, pas le vol
 
-Modèle | Réflexion : agent `lot` sur Opus high, plan par l'agent `Plan`, relecture obligatoire ; orchestration et décisions sur Fable high (`/chaine`), le lot touchant au calcul du pumping. Lire avant : CLAUDE.md (règles 2, 3, 10), `docs/DECISIONS.md` §1 (« Pumping en voile », « Pumping foil ») et §4 (« Pumping foil »), `docs/MISE_EN_PAGE.md`, et ce fichier en entier.
+Modèle | Réflexion : Opus | xhigh (choix de l'utilisateur du 31/10 : tout sur Opus extra-high, orchestration comprise, sans Fable) ; plan par l'agent `Plan`, relecture obligatoire. Lire avant : CLAUDE.md (règles 2, 3, 10), `docs/DECISIONS.md` §1 (« Pumping en voile », « Pumping foil ») et §4 (« Pumping foil »), `docs/MISE_EN_PAGE.md`, et ce fichier en entier.
 
 ## Tel que noté (28/10, 20:42, Tom)
 
@@ -70,6 +70,16 @@ Choix par défaut, retenus le 31/10 :
 
 - `npm run verif` ; banc `node outils/banc/passe.mjs` (scripts `pumping`, `onglets`) ; agent `relecture`.
 - Sur données réelles : la capture du 26/10 (élaguée autour des sauts, des bouts de vol seulement) dans `pumping-diagnostic.mjs` si l'utilisateur en donne le chemin. Le vrai essai attend une sortie wing capturée entière, Pumping coché (essai 48), qui sert aussi au réglage des seuils (n° 27).
+
+## Tranché par l'orchestrateur (31/10, plan de l'agent `Plan`)
+
+- Autocorrélation et recherche de crête extraites de `stepPeriod` vers `core/periodicity.ts`, mot pour mot (cadence à pied inchangée, prouvée par `cadence.test.ts` et le banc) ; la logique pas/foulée reste à pied ; pour le pumping, la crête est cherchée hors de la toute première case, pour qu'une vibration rapide ne valide pas une harmonique dans la plage.
+- Cadence affichée : celle des coups comptés (cohérente avec Coups et m/coup) ; l'autocorrélation ne sert qu'à valider.
+- Plage provisoire 40 à 130 coups par minute, corrélation 0,5, fenêtre 6 s : réglées au n° 27.
+- Une fenêtre ratée au milieu d'une série ne la coupe pas si le trou ne dépasse pas `strokeMaxGapS`.
+- Titre du panneau « Pumping (N séries) » en voile et en surf avec mesure, « Vols (N) » sans ; noms des onglets inchangés.
+- Part du vol pompée : rapportée au temps de vol couvert par la capture.
+- Surf sans capteurs : « Pompage » devient « Hors vague » et « Pompe (unité) » « Vitesse hors vague (unité) » ; la phrase « le reste est pompé » de DECISIONS §4 (Analyse) est réécrite avec les lignes « Pumping ».
 
 ## Questions
 

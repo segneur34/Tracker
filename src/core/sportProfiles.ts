@@ -278,11 +278,14 @@ export const JUMP_DETECTION: JumpDetection = {
 /**
  * Pumping sur foil, téléphone sur la poitrine (point 104) : verticale calculée
  * comme pour les sauts ; coups, séries et décollage provisoires, à régler sur
- * une première session réelle.
+ * une première session réelle. Cadence qui valide une série (lot 50) : fenêtre
+ * de 6 s, corrélation 0,5, de 40 à 130 coups par minute, provisoires aussi (n° 27).
  */
 const PUMP_DETECTION: PumpDetection = {
   ...ATTITUDE,
   strokeSmoothingS: 0.15, strokeBaselineS: 2, strokeMinG: 0.12, strokeMinPeriodS: 0.3, strokeMaxGapS: 2.5, minSeriesStrokes: 3,
+  cadenceGridS: 0.05, cadenceWindowS: 6, cadenceStepS: 0.5, cadenceMinCorrelation: 0.5, cadencePeakFraction: 0.85,
+  cadenceMinCoverage: 0.5, cadenceMinPerMin: 40, cadenceMaxPerMin: 130,
   liftoffHighPassS: 0.1, liftoffRoughWindowS: 0.5, liftoffCalmG: 0.08, liftoffCalmS: 1.5,
   liftoffSearchBeforeS: 10, liftoffSearchAfterS: 5,
   pruneCapture: false, pruneMarginS: 30,

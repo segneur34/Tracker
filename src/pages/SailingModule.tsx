@@ -30,7 +30,7 @@ import { activeRatioLabel } from '../core/sportProfiles';
 import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
 import type { TopSegment } from '../core/types';
 import {
-  SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatShortDuration, formatSpeed, formatSpeedValue, formatTimeOfDay,
+  SPEED_UNIT_LABEL, SPEED_UNIT_SYMBOL, formatDistance, formatKnots, formatSpeed, formatSpeedValue, formatTimeOfDay,
   knotsToChartValue, knotsToMs, toDisplaySpeed, formatDecimal, commaDecimal
 } from '../core/units';
 import { speedPolar, type PolarBin } from '../sailing/wind';
@@ -43,9 +43,9 @@ import FoilPumpingFields from '../components/FoilPumpingFields';
 import JumpsPanel from '../components/JumpsPanel';
 import JumpMapLayer from '../components/JumpMapLayer';
 import FlightPumpingPanel from '../components/FlightPumpingPanel';
-import TrackSpanLayer, { type TrackSpanShown } from '../components/TrackSpanLayer';
-import StatTile from '../components/ui/StatTile';
-import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR, HIGHLIGHT_SPAN_OPACITY, PODIUM_RANKS, podiumColor } from '../components/highlightColors';
+import TrackSpanLayer from '../components/TrackSpanLayer';
+import { pumpingHighlightSpans } from '../components/pumpingHighlight';
+import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SPAN_OPACITY, PODIUM_RANKS, podiumColor } from '../components/highlightColors';
 import HeartRateChart from '../components/HeartRateChart';
 import { CardioCompanion } from '../components/HeartRatePanel';
 import { heartRateReadout, speedReadout } from '../components/chartReadouts';
@@ -321,19 +321,14 @@ function SailingModule() {
   const selectedManeuverTop = highlight.shownIn('manoeuvres') ?? 'none';
   const pumpDetection = profile.pump;
   const {
-    byFlight: flightPumping, summary: pumpSummary, podium: podiumFlights,
+    byFlight: flightPumping, summary: pumpSummary, podium: podiumFlights, series: pumpSeriesList, seriesPodium,
   } = useFlightPumping(pumpSensors.recording, pumpDetection, track, cumulative, flights);
-  /** Vol montré sur la carte (onglet « pumping ») : son numéro, ou le podium (`podium`). */
-  const flightShown = highlight.shownIn('pumping');
-  const shownFlightSpans = useMemo((): TrackSpanShown[] => {
-    const spanLabel = (f: (typeof flights)[number]) =>
-      `Vol ${f.n} · ${formatTimeOfDay(f.startMs)} · ${formatShortDuration(f.durationS)} · ${Math.round(f.distanceM)} m`;
-    if (flightShown === 'podium') {
-      return podiumFlights.map((f, k) => ({ key: `vol-${f.n}`, start: f.start, end: f.end, color: HIGHLIGHT_PODIUM_COLORS[k], label: spanLabel(f) }));
-    }
-    const f = flightShown === null ? undefined : flights.find((x) => String(x.n) === flightShown);
-    return f ? [{ key: `vol-${f.n}`, start: f.start, end: f.end, color: HIGHLIGHT_SHOWN_COLOR, label: spanLabel(f) }] : [];
-  }, [flightShown, flights, podiumFlights]);
+  /** Série ou vol montré sur la carte (onglet « pumping »), ou l'un des deux podiums (`PumpingHighlightKey`). */
+  const pumpingShown = highlight.shownIn('pumping');
+  const shownFlightSpans = useMemo(
+    () => pumpingHighlightSpans(pumpingShown, flights, podiumFlights, pumpSeriesList, seriesPodium),
+    [pumpingShown, flights, podiumFlights, pumpSeriesList, seriesPodium]
+  );
   /** Zone cardiaque montrée sur la carte (onglet « cardio »). */
   const hrZone = useHeartRateZoneHighlight(highlight, open.cardio, heart, hrZones, track, profile.heartRate.gapS);
   // Repères du bouton « Note » : fanions, liste de « Général », traits des graphes.
@@ -1067,25 +1062,24 @@ function SailingModule() {
             {pumpingOpen && (
               <ResizablePanel id="sailing.pumping" style={ANALYSIS_PANEL_STYLE}>
                 <FlightPumpingPanel
-                  label={`Pumping (${flights.length} vol${flights.length > 1 ? 's' : ''})`} helpKey="voile:pumping"
+                  helpKey="voile:pumping"
                   open={open.pumping} onToggle={toggleOf('pumping')}
                   help={<>
+                    {flightPumping && pumpDetection
+                      ? <>Pumping : en vol seulement, compté par séries de coups mesurées par les capteurs du téléphone fixé sur la poitrine ;
+                        une série ne compte que si ses coups suivent une cadence régulière, de {pumpDetection.cadenceMinPerMin} à {pumpDetection.cadenceMaxPerMin} coups
+                        par minute. Cadence : coups par minute de la série ; vitesse : au début, puis à la fin de la série. </>
+                      : null}
                     Vol : au-dessus du seuil d'activité ({showThreshold(activeThresholdKn)} {speedSymbol}), d'une traite, d'au moins {pumpDetection?.minFlightS ?? 0} s.
-                    {flightPumping
-                      ? " Pumping : mesuré par les capteurs du téléphone fixé sur la poitrine, sur les séries de coups. Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)."
-                      : ''}
+                    {flightPumping ? " Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)." : ''}
                   </>}
                   flights={flights} podium={podiumFlights}
-                  tiles={<>
-                    <StatTile label="Vols" value={flights.length} />
-                    <StatTile label="Plus long vol" value={podiumFlights.length > 0 ? formatShortDuration(podiumFlights[0].durationS) : '—'} />
-                  </>}
-                  pumping={flightPumping} pumpSummary={pumpSummary}
-                  shown={flightShown} onShow={(key) => highlight.show('pumping', key)} accent={FAMILY_ACCENT.voile}
+                  pumping={flightPumping} pumpSummary={pumpSummary} series={pumpSeriesList} seriesPodium={seriesPodium}
+                  shown={pumpingShown} onShow={(key) => highlight.show('pumping', key)} accent={FAMILY_ACCENT.voile}
                   speedCell={(ms) => (ms === null ? '—' : formatSpeedValue(toDisplaySpeed(ms, speedUnit), speedUnit))}
                   unitLabel={SPEED_UNIT_LABEL[speedUnit]}
                   pumpingOn={pumping} sensors={pumpSensors}
-                  offNote="Cochez « Pumping » dans l'onglet réglages pour compter les coups de chaque vol, téléphone fixé sur la poitrine." />
+                  offNote="Cochez « Pumping » dans l'onglet réglages pour compter les séries de coups en vol, téléphone fixé sur la poitrine." />
               </ResizablePanel>
             )}
 

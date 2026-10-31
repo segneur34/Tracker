@@ -1,14 +1,18 @@
-// Banc de test : pumping foil en surf (§10, point 104).
+// Banc de test : pumping foil en surf (§10, point 104 ; séries validées par leur cadence, lot 50).
 // Usage : node pumping.mjs <port> [<dossier des captures>]
 // Sur un profil neuf, sans réseau, serveur de développement (le script importe `/src/...` dans la page).
 // Le script fabrique lui-même, dans la page, une session de surf foil de quatre vols et ses capteurs
-// (`.imu` synthétique, `core/imuSynthetic.fixture.ts` : chocs de l'eau hors des vols, pumping à 1,5 Hz en vol), et vérifie :
+// (`.imu` synthétique, `core/imuSynthetic.fixture.ts` : chocs de l'eau hors des vols ; pumping à 1,5 Hz sur une partie
+// des vols seulement : deux séries dans le vol 1, une dans le vol 2, aucune dans le vol 3, une dans le vol 4), et vérifie :
 //  1. Réglages, carte « Surf foil » : la case « Pumping foil » (partie Onglet analyse), cochée, puis le résumé de la carte ;
 //     carte « Surf » (sans foil) : pas de case ;
 //  2. l'import de la session avec ses capteurs, puis l'analyse : Foil et Pumping cochés pour la session (onglet
-//     réglages), onglet « vols » : coups, fréquence (vers 90 /min), distance par coup, podium des 3 plus longs vols avec
-//     décollage, « Tous les vols (4) » replié puis déplié, « Voir » d'un vol sur la carte ;
-//  3. Pumping décoché pour la session : colonnes du GPS revenues ; « Enregistrer la session » range `analysis.pumping` ;
+//     réglages), onglet « vols » : titre « Pumping (4 séries) », tuiles (cadence vers 90 /min, séries, temps pompé,
+//     coups, par coup, part du vol pompée), les 3 plus longues séries, « Toutes les séries (4) », puis les vols à part
+//     (tuiles, 3 plus longs, « Tous les vols (4) » replié puis déplié) ; « Voir » d'une série puis d'un vol : une
+//     seule surbrillance sur la carte ;
+//  3. Pumping décoché pour la session : les vols seuls, colonnes du GPS « Hors vague » ; « Enregistrer la session »
+//     range `analysis.pumping` ;
 //  4. Enregistrer, dans le navigateur : pas de case « Mesurer le pumping » (téléphone seulement) ;
 //  5. la page à 390 × 844, sans débordement.
 import { connect } from './lib/cdp.mjs';
@@ -39,23 +43,37 @@ const openTab = (label) => evaluate(`(() => {
 })()`);
 const panel = (title) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith(${JSON.stringify(title)}));
-  return t ? t.closest('.an-carte-panels > *').innerText.replace(/\\n+/g, ' / ').slice(0, 1400) : '(absent)';
+  return t ? t.closest('.an-carte-panels > *').innerText.replace(/\\n+/g, ' / ').slice(0, 4000) : '(absent)';
 })()`);
+/** Le panneau de l'onglet « vols » : titré « Pumping (N séries) » avec les capteurs, « Vols (N) » sans. */
+const pumpPanel = `[...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => /^(Pumping|Vols) \\(/.test(h.textContent.trim()))?.closest('.an-carte-panels > *')`;
 /**
  * Capteurs lus : depuis le lot 63, le surf ne lit le `.imu` qu'à l'ouverture de l'onglet « vols ».
- * Attend que « Lecture des capteurs » disparaisse et que « Coups de pompe » paraisse (plafond 10 s).
+ * Attend que « Lecture des capteurs » disparaisse et que la tuile « Cadence » paraisse (plafond 10 s).
  */
 const sensorsRead = () => waitFor(`(() => {
-  const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith('Vols'));
-  const text = t?.closest('.an-carte-panels > *')?.innerText ?? '';
-  return !text.includes('Lecture des capteurs') && text.includes('Coups de pompe');
+  const text = ${pumpPanel}?.innerText ?? '';
+  return !text.includes('Lecture des capteurs') && text.includes('Cadence');
 })()`, { timeout: 10000, label: 'capteurs lus' });
-/** En-têtes des tableaux du panneau « Vols ». */
+/** En-têtes des tableaux du panneau, dans l'ordre. */
 const flightHeads = () => evaluate(`(() => {
-  const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith('Vols'));
-  const p = t?.closest('.an-carte-panels > *');
+  const p = ${pumpPanel};
   return p ? [...p.querySelectorAll('table')].map((tb) => [...tb.querySelectorAll('th')].map((h) => h.textContent).join(', ')).join(' || ') : '(absent)';
 })()`);
+/** Lignes du tableau du panneau dont le premier en-tête est `first` (`Cadence` : séries ; `Vol` : vols), le `rank`-ième de ce genre. */
+const tableRows = (first, rank = 0) => evaluate(`(() => {
+  const tables = [...(${pumpPanel}?.querySelectorAll('table') ?? [])].filter((tb) => tb.querySelector('th')?.textContent === ${JSON.stringify(first)});
+  const tb = tables[${rank}];
+  return tb ? [...tb.querySelectorAll('tbody tr')].map((r) => [...r.cells].slice(0, -1).map((c) => c.textContent).join(' ')).join(' | ') : '(absent)';
+})()`);
+/** « Voir » de la ligne `row` du premier tableau dont le premier en-tête est `first`. */
+const showRow = (first, row) => evaluate(`(() => {
+  const tb = [...(${pumpPanel}?.querySelectorAll('table') ?? [])].find((t) => t.querySelector('th')?.textContent === ${JSON.stringify(first)});
+  const b = tb?.querySelectorAll('tbody tr')[${row}]?.querySelector('td:last-child button');
+  if (!b) return 'absent'; b.click(); return 'ok';
+})()`);
+/** Traits et points violets (passage montré seul) sur la carte. */
+const violetPaths = () => evaluate(`document.querySelectorAll('.leaflet-overlay-pane path[stroke="#7b1fa2"]').length`);
 const sessionBox = (label) => evaluate(`(() => {
   const box = [...document.querySelectorAll('.an-carte-panels label')].find((l) => l.querySelector('strong')?.textContent === ${JSON.stringify(label)})?.querySelector('input[type=checkbox]');
   if (!box) return 'absente'; box.click(); return box.checked ? 'cochée' : 'décochée';
@@ -131,7 +149,8 @@ await shoot('pumping-reglages');
 // --- 2. Session de surf foil et ses capteurs ---
 // 450 s : quatre vols à 4,5 m/s (16 km/h, sous le seuil de vague en foil), de 60, 30, 20 et 10 s ; rame à 1 m/s
 // entre eux, départ à 2 m/s les 4 s qui précèdent chaque vol. Capteurs : chocs de l'eau hors des vols, pumping
-// vertical de 0,3 g à 1,5 Hz en vol.
+// vertical de 0,3 g à 1,5 Hz sur une partie des vols : 15 s puis 20 s dans le vol 1, 12 s dans le vol 2, rien dans
+// le vol 3, 7 s dans le vol 4 ; le reste du vol, calme.
 await go('/surf', 4000);
 const imported = await evaluate(`(async () => {
   const { encodeImu } = await import('/src/core/imuFile.ts');
@@ -149,7 +168,8 @@ const imported = await evaluate(`(async () => {
   const gpx = '<?xml version="1.0"?><gpx version="1.1" creator="banc" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Pumping</name><type>surf</type><trkseg>' + pts.join('') + '</trkseg></trk></gpx>';
   const G = 9.80665;
   const water = (t) => 0.4 * G * Math.sin(2 * Math.PI * 5.3 * t) + 0.3 * G * Math.sin(2 * Math.PI * 7.1 * t + 1) + 0.2 * G * Math.sin(2 * Math.PI * 3.3 * t + 2);
-  const pump = (t) => (inFlight(t) ? Math.sin(2 * Math.PI * 1.5 * t) : 0);
+  const pumped = [[70, 85], [100, 120], [206, 218], [402, 409]];
+  const pump = (t) => (pumped.some(([a, b]) => t >= a && t < b) ? Math.sin(2 * Math.PI * 1.5 * t) : 0);
   const rec = synthImu({ durationS: 450, az: (t) => (inFlight(t) ? 0.3 * G * pump(t) : water(t)), ay: (t) => 0.1 * G * pump(t), tilt: (t) => Math.PI / 6 + 0.1 * pump(t) });
   const imu = await encodeImu(rec.header, rec.series);
   const input = [...document.querySelectorAll('input[type=file]')].find((i) => !i.accept);
@@ -180,37 +200,56 @@ await settle({ max: 1500 });
 console.log('vols :', await openTab('vols'));
 await settle({ max: 2000 });
 await sensorsRead();
-const vols = await panel('Vols');
+const vols = await panel('Pumping');
 console.log('panneau :', vols);
-check('quatre vols', /Vols \(4\)/i.test(vols ?? ''));
-const freq = Number(/Fréquence \/ (\d+) \/min/.exec(vols ?? '')?.[1]);
-check('fréquence vers 90 coups par minute', Math.abs(freq - 90) <= 5, String(freq));
-check('distance par coup', /Par coup \/ 3\.\d m/.test(vols ?? ''), /Par coup \/ [^/]+/.exec(vols ?? '')?.[0]);
+// Titre en capitales à l'écran (titres de panneau, `--title-*`) : comparé sans la casse.
+check('titre « Pumping (4 séries) »', /^Pumping \(4 séries\)/i.test(vols ?? ''), /^[^/]+/.exec(vols ?? '')?.[0]);
+// Le texte du panneau, coupé à chaque ligne : une tuile est son libellé, puis sa valeur.
+const tokens = (vols ?? '').split(' / ');
+const tile = (label) => { const i = tokens.indexOf(label); return i < 0 ? undefined : tokens[i + 1]; };
+const cadence = Number(/^(\d+) \/min$/.exec(tile('Cadence') ?? '')?.[1]);
+check('tuile Cadence vers 90 coups par minute, en tête', Math.abs(cadence - 90) <= 5 && tokens.indexOf('Cadence') >= 0 && tokens.indexOf('Cadence') < tokens.indexOf('Séries'), tile('Cadence'));
+check('tuile Séries', tile('Séries') === '4', tile('Séries'));
+console.log('tuiles : temps pompé', tile('Temps pompé'), '| coups', tile('Coups'), '| par coup', tile('Par coup'), '| part du vol pompée', tile('Part du vol pompée'));
+// 4,5 m/s à 1,5 coup par seconde : 3 m par coup.
+check('distance par coup', /^(2,9|3,\d) m$/.test(tile('Par coup') ?? ''), tile('Par coup'));
+check('part du vol pompée entre 30 et 60 %', (() => { const v = Number(/^(\d+) %$/.exec(tile('Part du vol pompée') ?? '')?.[1]); return v >= 30 && v <= 60; })(), tile('Part du vol pompée'));
+check('vols à part : tuiles Vols, Temps de vol, Plus long vol', tokens.includes('Vols (4)') && tile('Vols') === '4' && tile('Temps de vol') !== undefined && tile('Plus long vol') !== undefined, `${tile('Vols')} · ${tile('Temps de vol')} · ${tile('Plus long vol')}`);
 const heads = await flightHeads();
-check('podium avec décollage, fréquence et m/coup', /Plus longs, Durée, Distance, Décollage \(km\/h\), Fréquence, m\/coup, Carte/.test(heads ?? ''), heads);
-check('tableau complet replié', !/N°/.test(heads ?? ''));
-console.log('déplier :', await clickText('Tous les vols (4)'));
+check('les 3 plus longues séries : cadence d’abord', /^Cadence, Début, Durée, Coups, m\/coup, Vitesse \(km\/h\), Vol, Carte/.test(heads ?? ''), heads);
+check('les 3 plus longs vols : décollage, séries, temps pompé', /Vol, Début, Durée, Distance, Décollage \(km\/h\), Séries, Temps pompé, Carte/.test(heads ?? ''));
+check('tableaux complets repliés', (heads ?? '').split(' || ').length === 2);
+console.log('3 plus longues séries :', await tableRows('Cadence'));
+console.log('3 plus longs vols :', await tableRows('Vol'));
+console.log('déplier les séries :', await clickText('Toutes les séries (4)'));
+console.log('déplier les vols :', await clickText('Tous les vols (4)'));
 await wait(400);
 const allHeads = await flightHeads();
-check('tableau complet déplié', /N°, Heure, Durée, Distance, Décollage \(km\/h\), Vagues, Pompage, Distance pompée, Coups, Fréquence, m\/coup, Carte/.test(allHeads ?? ''), allHeads);
-console.log('lignes :', await evaluate(`(() => {
-  const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith('Vols'));
-  const tables = t?.closest('.an-carte-panels > *').querySelectorAll('table');
-  return tables ? [...tables[tables.length - 1].querySelectorAll('tbody tr')].map((r) => [...r.cells].slice(0, -1).map((c) => c.textContent).join(' ')).join(' | ') : '(absent)';
-})()`));
-console.log('Voir le vol 2 :', await evaluate(`(() => {
-  const row = [...document.querySelectorAll('.an-carte-panels tr')].find((r) => r.cells[0]?.textContent === '2');
-  const b = row?.querySelector('button'); if (!b) return 'absent'; b.click(); return 'ok';
-})()`));
+check('tableaux complets dépliés', (allHeads ?? '').split(' || ').length === 4
+  && /Vol, Début, Durée, Distance, Décollage \(km\/h\), Vagues, Séries, Temps pompé, Carte/.test(allHeads ?? ''), allHeads);
+const allSeries = await tableRows('Cadence', 1);
+console.log('toutes les séries :', allSeries);
+check('quatre séries, deux dans le vol 1', (allSeries ?? '').split(' | ').length === 4 && /^(?:[^|]* 1 \| ){2}[^|]* 2 \| [^|]* 4$/.test(allSeries ?? ''), allSeries);
+const allFlights = await tableRows('Vol', 1);
+console.log('tous les vols :', allFlights);
+check('le vol 3, sans pompe, sans série', /Vol 3 [^|]* 0 0 s(?: \||$)/.test(allFlights ?? ''), allFlights);
+console.log('Voir la plus longue série :', await showRow('Cadence', 0));
 await wait(500);
-check('vol 2 sur la carte', (await evaluate(`document.querySelectorAll('.leaflet-overlay-pane path[stroke="#7b1fa2"]').length`)) > 0);
+const seriesPaths = await violetPaths();
+check('série sur la carte', seriesPaths > 0, String(seriesPaths));
 await shoot('pumping-vols');
+console.log('Voir le plus long vol :', await showRow('Vol', 0));
+await wait(500);
+const flightPaths = await violetPaths();
+check('le vol remplace la série : une seule surbrillance', flightPaths === seriesPaths, `${seriesPaths} puis ${flightPaths}`);
 
 // --- 3. Pumping décoché pour la session, puis enregistré ---
 console.log('Pumping :', await sessionBox('Pumping'));
 await settle({ max: 800 });
+console.log('panneau sans pumping :', await panel('Vols'));
 const gpsHeads = await flightHeads();
-check('colonnes du GPS sans pumping', /Vagues, Pompage, Pompe \(km\/h\)/.test(gpsHeads ?? '') && !/Décollage/.test(gpsHeads ?? ''), gpsHeads);
+check('les vols seuls, colonnes du GPS « Hors vague »', /Vagues, Hors vague, Vitesse hors vague \(km\/h\)/.test(gpsHeads ?? '')
+  && !/Décollage|Cadence|Pompage/.test(gpsHeads ?? ''), gpsHeads);
 console.log('Pumping :', await sessionBox('Pumping'));
 await settle({ max: 800 });
 console.log('Enregistrer la session :', await clickText('Enregistrer la session'));
@@ -234,6 +273,13 @@ await go(path, 5000);
 await openTab('vols');
 await settle({ max: 1500 });
 await sensorsRead();
+console.log('Toutes les séries :', await clickText('Toutes les séries (4)'), '| Tous les vols :', await clickText('Tous les vols (4)'));
+await wait(400);
+console.log('carte d’une série au téléphone :', await evaluate(`(() => {
+  const tb = [...(${pumpPanel}?.querySelectorAll('table') ?? [])].find((t) => t.querySelector('th')?.textContent === 'Cadence');
+  const r = tb?.querySelector('tbody tr'); if (!r) return '(absent)';
+  return getComputedStyle(r).display + ' : ' + r.innerText.replace(/\\s+/g, ' ');
+})()`));
 await shoot('pumping-telephone');
 const width = await evaluate('document.documentElement.scrollWidth');
 check('pas de débordement à 390 px', width <= 390, String(width));

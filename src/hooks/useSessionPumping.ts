@@ -1,7 +1,9 @@
 import { errorMessage } from '../core/basics';
 import { useEffect, useMemo, useState } from 'react';
 import type { ImuRecording } from '../core/imuFile';
-import { measureFlightPumping, summarizePumping, type FlightPumping, type FlightSpan, type PumpDetection } from '../core/pumping';
+import {
+  longestPumpSeries, measureFlightPumping, sessionPumpSeries, summarizePumping, type FlightPumping, type FlightSpan, type PumpDetection, type PumpingSeries,
+} from '../core/pumping';
 import type { CumulativeTrack, TrackPoint } from '../core/types';
 import { cachedSessionMotion, loadSessionMotion, useSessionMotionReader } from './sessionMotion';
 import { hasSessionMotion, useLibrarySession } from './useSessionLibrary';
@@ -52,10 +54,15 @@ export const useSessionPumping = (file: string | null, enabled: boolean) => {
   return { status, recording, error, hasMotion: motion };
 };
 
+/** Aucune série : la même liste d'un rendu à l'autre. */
+const NO_SERIES: PumpingSeries[] = [];
+
 /**
  * Pumping des vols (voile, surf), mesuré sur la capture lue par `useSessionPumping` :
- * par vol (`byFlight`, par numéro), son résumé, et les 3 plus longs vols
- * (`podium`), le haut de l'onglet. Il suit les vols, donc le seuil du brouillon.
+ * par vol (`byFlight`, par numéro), son résumé, les séries de coups de la
+ * session, numérotées dans l'ordre (`series`), et les 3 plus longues
+ * (`seriesPodium`), le haut de l'onglet ; les 3 plus longs vols (`podium`).
+ * Il suit les vols, donc le seuil du brouillon.
  */
 export const useFlightPumping = <F extends Pick<FlightSpan, 'n' | 'startMs' | 'endMs' | 'durationS'>>(
   recording: ImuRecording | null, detection: PumpDetection | null, track: TrackPoint[], cumulative: CumulativeTrack, flights: F[]
@@ -66,6 +73,8 @@ export const useFlightPumping = <F extends Pick<FlightSpan, 'n' | 'startMs' | 'e
     return new Map(list.flatMap((x): [number, FlightPumping][] => (x ? [[x.n, x]] : [])));
   }, [recording, detection, track, cumulative, flights]);
   const summary = useMemo(() => (byFlight ? summarizePumping([...byFlight.values()]) : null), [byFlight]);
+  const series = useMemo(() => (byFlight ? sessionPumpSeries([...byFlight.values()]) : NO_SERIES), [byFlight]);
+  const seriesPodium = useMemo(() => longestPumpSeries(series, 3), [series]);
   const podium = useMemo(() => [...flights].sort((a, b) => b.durationS - a.durationS).slice(0, 3), [flights]);
-  return { byFlight, summary, podium };
+  return { byFlight, summary, series, seriesPodium, podium };
 };

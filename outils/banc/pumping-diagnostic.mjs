@@ -13,10 +13,14 @@
 //
 // `--seuil` est le seuil d'activité de la session (sa fiche), sinon la
 // suggestion de l'application ; `--min-vol` la durée minimale d'un vol listé,
-// sinon celle du profil. Sont imprimés : l'état de la capture (fenêtres
+// sinon celle du profil. Sont imprimés : les constantes des coups et de la
+// cadence qui valide une série (lot 50), l'état de la capture (fenêtres
 // gardées, si elle est élaguée), puis par vol l'heure, la durée, la part
 // couverte par la capture, le décollage et sa vitesse, les coups, la
-// fréquence, le temps pompé et la distance par coup ; enfin les coups trouvés
+// cadence, le temps pompé, la distance par coup et la part du vol validée par
+// la cadence ; sous chaque vol, ses séries (cadence des coups et cadence de
+// l'autocorrélation, médiane des fenêtres de la série, début, durée, coups,
+// vitesse avant et après, distance par coup) ; enfin les coups trouvés
 // autour de chaque saut (faux coups possibles : les chocs d'un saut font
 // osciller l'accélération comme une pompe). Avec `--coups`, l'accélération
 // verticale lissée, privée de sa dérive, crête à crête par tranche de 5 s dans
@@ -39,7 +43,9 @@ const { SPORT_PROFILES } = await load('core/sportProfiles.ts');
 const { buildCumulativeTrack } = await load('core/sessionStats.ts');
 const { decodeImu, imuCaptureStats } = await load('core/imuFile.ts');
 const { centredMean, fileUsOf, verticalAcceleration, wallMsOf } = await load('core/imuVertical.ts');
-const { capturedWindows, measureFlightPumping, pumpSeries, pumpStrokes, summarizePumping } = await load('core/pumping.ts');
+const {
+  capturedWindows, flightCapture, measureFlightPumping, pumpCadence, pumpSeries, pumpSignal, pumpStrokes, summarizePumping,
+} = await load('core/pumping.ts');
 const { measureJumps } = await load('core/jumps.ts');
 const { msToKnots } = await load('core/units.ts');
 const { suggestActiveThresholdKn } = await load('sailing/sailingConfig.ts');
@@ -97,6 +103,7 @@ console.log(`GPX : ${gpxPath}`);
 console.log(`Points ${track.length}, de ${hhmmss(t0)}, durée ${minutes((track[track.length - 1].timeMs - t0) / 1000)}, support ${support}`);
 console.log(`Seuil d'activité ${r1(seuil)} nd${flags.seuil !== undefined ? ' (donné)' : ' (suggestion)'} ; vols listés dès ${minVol} s`);
 console.log(`Seuils du pumping : coup à ±${P.strokeMinG} g (lissage ${P.strokeSmoothingS} s, dérive ${P.strokeBaselineS} s), ${P.strokeMinPeriodS} à ${P.strokeMaxGapS} s entre deux coups, série dès ${P.minSeriesStrokes} coups ; décollage : calme sous ${P.liftoffCalmG} g pendant ${P.liftoffCalmS} s, cherché de −${P.liftoffSearchBeforeS} à +${P.liftoffSearchAfterS} s`);
+console.log(`Cadence qui valide une série : fenêtre de ${P.cadenceWindowS} s toutes les ${P.cadenceStepS} s, cases de ${P.cadenceGridS} s, mesurée sur ${Math.round(P.cadenceMinCoverage * 100)} % au moins, corrélation ${P.cadenceMinCorrelation} au moins (crête à ${Math.round(P.cadencePeakFraction * 100)} % de la plus haute), de ${P.cadenceMinPerMin} à ${P.cadenceMaxPerMin} coups par minute ; trou de validation comblé jusqu'à ${P.strokeMaxGapS} s`);
 
 // --- Capture ---
 const rec = await decodeImu(new Uint8Array(readFileSync(imuPath)));
@@ -124,19 +131,42 @@ const coveredOf = (f) => {
 };
 const coveredS = flights.reduce((s, f) => s + coveredOf(f), 0);
 console.log(`\nVols : ${flights.length}, ${minutes(flightS)} en vol ; capteurs sur ${minutes(coveredS)} (${pct(coveredS, flightS)}) ; vols touchés : ${pumping.filter((x) => x !== null).length}`);
-console.log('    n  début    heure     durée  couvert   décollage      coups  /min  pompé   m/coup');
+/** Médiane d'une liste de nombres, `null` si elle est vide. */
+const median = (xs) => {
+  if (xs.length === 0) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+};
+console.log('    n  début    heure     durée  couvert   décollage      coups  /min  pompé   m/coup  validé');
+console.log('         série    durée  coups  /min  autocorr.  avant → après (nd)  m/coup');
 flights.forEach((f, k) => {
   const p = pumping[k];
   const cov = coveredOf(f);
   if (cov === 0 && !flags.tous) return;
+  // Cadence du vol, recalculée sur la même capture que l'application (`flightCapture`).
+  const capture = p ? flightCapture(rec, P, windows, f) : null;
+  const cadence = capture ? pumpCadence(capture.v, pumpSignal(capture.v, P), capture.from, capture.v.n, P) : null;
+  const t0Ms = capture ? wallMsOf(rec, capture.v.startUs) : 0;
+  const validatedS = cadence ? cadence.ranges.reduce((s, [a, b]) => s + (b - a), 0) : 0;
   const lift = p?.liftoffMs != null ? `${clock(p.liftoffMs)} ${r1(msToKnots(p.takeoffSpeedMs))} nd` : '—';
   console.log(
     `  ${String(f.n).padStart(3)}  ${clock(f.startMs)}  ${hhmmss(f.startMs)}  ${r1(f.durationS).padStart(5)} s  ${pct(cov, f.durationS).padStart(5)}${p && !p.covered ? ' *' : '  '}  ${lift.padEnd(14)}`
-    + `  ${p ? String(p.strokes).padStart(5) : '    —'}  ${p ? r1(p.strokesPerMin).padStart(4) : '   —'}  ${p ? r1(p.pumpS).padStart(5) : '    —'} s  ${p ? r1(p.perStrokeM) : '—'}`,
+    + `  ${p ? String(p.strokes).padStart(5) : '    —'}  ${p ? r1(p.strokesPerMin).padStart(4) : '   —'}  ${p ? r1(p.pumpS).padStart(5) : '    —'} s  ${p ? r1(p.perStrokeM).padStart(6) : '     —'}`
+    + `  ${p ? pct(validatedS, p.measuredS).padStart(6) : '     —'}`,
   );
+  for (const s of p?.series ?? []) {
+    // Cadence de l'autocorrélation : médiane des fenêtres validées dont le centre tombe dans la série.
+    const auto = median((cadence?.windows ?? [])
+      .filter((w) => w.valid && t0Ms + w.centerS * 1000 >= s.startMs && t0Ms + w.centerS * 1000 <= s.endMs)
+      .map((w) => w.perMin));
+    console.log(
+      `         ${clock(s.startMs)}  ${r1(s.durationS).padStart(5)} s  ${String(s.strokes).padStart(5)}  ${r1(s.strokesPerMin).padStart(4)}  ${r1(auto).padStart(9)}`
+      + `  ${r1(msToKnots(s.speedBeforeMs)).padStart(5)} → ${r1(msToKnots(s.speedAfterMs)).padEnd(5)}       ${r2(s.perStrokeM)}`,
+    );
+  }
 });
 const sum = summarizePumping(pumping);
-console.log(`Total sur les vols touchés : ${sum.strokes} coups, ${r1(sum.pumpS)} s pompées, ${r1(sum.strokesPerMin)} /min, ${r1(sum.perStrokeM)} m par coup`);
+console.log(`Total sur les vols touchés : ${sum.series} séries, ${sum.strokes} coups, ${r1(sum.pumpS)} s pompées sur ${r1(sum.flightS)} s de vol mesuré (${pct(sum.pumpS, sum.flightS)}), ${r1(sum.strokesPerMin)} /min, ${r1(sum.perStrokeM)} m par coup`);
 if (!flags.tous) console.log('(vols hors capture omis : --tous pour les lister)');
 
 // --- Coups autour des sauts : faux coups possibles ---

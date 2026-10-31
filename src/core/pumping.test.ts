@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { selectImuWindows, type ImuRecording } from './imuFile';
 import { SYNTH_WALL_MS, synthImu } from './imuSynthetic.fixture';
 import {
-  flightSpans, keepsWholeCaptureForPumping, measureFlightPumping, summarizePumping, type FlightPumping, type FlightSpan, type PumpDetection,
+  capturedWindows, flightCapture, flightSpans, keepsWholeCaptureForPumping, longestPumpSeries, measureFlightPumping, pumpSeries, pumpStrokes,
+  sessionPumpSeries, summarizePumping, type FlightPumping, type FlightSpan, type MeasuredPumpSeries, type PumpDetection,
 } from './pumping';
 import { activeRuns, buildCumulativeTrack } from './sessionStats';
 import { SPORT_PROFILES } from './sportProfiles';
@@ -175,6 +176,162 @@ describe('pumping en voile sur foil', () => {
     const results = [measure(at(50), 1, 41, 100, S), measure(at(200), 1, 41, 100, S), measure(at(200), 5, 41, 100, S)];
     for (const r of results) expect(Math.abs(r.strokes - results[0].strokes)).toBeLessThanOrEqual(1);
     for (const r of results) expect(Math.abs(r.perStrokeM! - results[0].perStrokeM!) / results[0].perStrokeM!).toBeLessThan(0.03);
+  });
+});
+
+/** Pompe verticale de 0,3 g sur des plages [début, fin, Hz], buste qui bascule à chaque pompe ; chocs de l'eau avant `liftoffS`, clapot léger après. */
+const pumpCapture = (plages: [number, number, number][], liftoffS: number, durationS: number, rateHz = 100, extra: (t: number) => number = () => 0): ImuRecording => {
+  const pumping = (t: number) => {
+    for (const [a, b, hz] of plages) if (t >= a && t < b) return Math.sin(2 * Math.PI * hz * (t - a));
+    return 0;
+  };
+  return synthImu({
+    durationS, rateHz,
+    az: (t) => (t < liftoffS ? water(t) : chop(t) + 0.3 * G * pumping(t) + extra(t)),
+    ay: (t) => 0.1 * G * pumping(t),
+    tilt: (t) => Math.PI / 6 + 0.2 * Math.sin(2 * Math.PI * 0.1 * t) + 0.1 * pumping(t),
+  });
+};
+
+/** Trace à `hz` points par seconde sur `durationS`, vitesse tirée de `speed` (m/s). */
+const trackWith = (hz: number, durationS: number, speed: (t: number) => number = speedAt): TrackPoint[] =>
+  Array.from({ length: durationS * hz + 1 }, (_, k) => {
+    const t = k / hz;
+    const timeMs = W + t * 1000;
+    return { lat: 43.4, lon: 3.6, time: new Date(timeMs), timeMs, speedMs: speed(t), smoothedSpeedMs: speed(t), bearing: 0, speedSource: 'doppler' };
+  });
+
+/** Pumping des vols [début, fin] (secondes) sur une trace à `hz`. */
+const measureFlights = (rec: ImuRecording, track: TrackPoint[], vols: [number, number][], p: PumpDetection = P): (FlightPumping | null)[] =>
+  measureFlightPumping(rec, p, track, buildCumulativeTrack(track), vols.map(([a, b], k) => flightSpan(track, a, b, k + 1)));
+
+/** Séries de l'ancien calcul, sans la cadence : tous les coups du vol, groupés par leur seul écart. */
+const seriesWithoutCadence = (rec: ImuRecording, track: TrackPoint[], fromS: number, toS: number, p: PumpDetection = P) => {
+  const c = flightCapture(rec, p, capturedWindows(rec), flightSpan(track, fromS, toS));
+  expect(c).not.toBeNull();
+  return pumpSeries(pumpStrokes(c!.v, c!.from, c!.v.n, p).map((i) => i * c!.v.dt), p);
+};
+
+describe('pumping : séries validées par leur cadence', () => {
+  it('trouve la série de 20 s d’un vol de 60 s, et la part du vol pompée', () => {
+    const rec = pumpCapture([[50, 70, 1.5]], 40, 120);
+    const [p] = measureFlights(rec, trackWith(1, 120), [[40, 100]]);
+    expect(p!.series).toHaveLength(1);
+    const [s] = p!.series;
+    expect(Math.abs(s.durationS - 20)).toBeLessThan(1);
+    expect(Math.abs(s.strokes - 30)).toBeLessThanOrEqual(1);
+    expect(Math.abs(s.strokesPerMin - 90) / 90).toBeLessThan(0.03);
+    expect(s.flight).toBe(1);
+    expect(Math.abs(s.startMs - (W + 50_000))).toBeLessThan(1000);
+    expect(Math.abs(p!.measuredS - 60)).toBeLessThan(1);
+    expect(Math.abs(p!.pumpShare - 1 / 3)).toBeLessThan(0.03);
+    // Les sommes du vol sont celles de ses séries.
+    expect(p!.strokes).toBe(s.strokes);
+    expect(p!.pumpS).toBeCloseTo(s.durationS, 9);
+  });
+
+  it('ne fait pas de série d’un clapot irrégulier, que l’ancien calcul prenait pour du pumping', () => {
+    // Bosses de 0,3 g (une oscillation de 0,5 s) espacées de 0,6 à 2,4 s, sans régularité, tout le vol.
+    const gaps = [0.6, 1.9, 1.1, 2.4, 0.8, 1.6, 2.2, 0.7, 1.35, 2.05, 0.95, 1.75];
+    const bumps: number[] = [];
+    for (let t = 42, k = 0; t < 99; t += gaps[k++ % gaps.length]) bumps.push(t);
+    const bump = (t: number) => {
+      for (const b of bumps) if (t >= b && t < b + 0.5) return -0.3 * G * Math.sin((2 * Math.PI * (t - b)) / 0.5);
+      return 0;
+    };
+    const rec = pumpCapture([], 40, 120, 100, bump);
+    const track = trackWith(1, 120);
+    const [p] = measureFlights(rec, track, [[40, 100]]);
+    expect(p!.series).toHaveLength(0);
+    expect(p!.strokes).toBe(0);
+    expect(p!.pumpShare).toBe(0);
+    // Contre-épreuve : sans la cadence, les bosses faisaient une série.
+    expect(seriesWithoutCadence(rec, track, 40, 100).length).toBeGreaterThan(0);
+  });
+
+  it.each([3.5, 0.5])('ne fait pas de série d’une oscillation régulière hors de la plage de cadence (%s Hz)', (hz) => {
+    const rec = pumpCapture([[45, 95, hz]], 40, 120);
+    const track = trackWith(1, 120);
+    const [p] = measureFlights(rec, track, [[40, 100]]);
+    expect(p!.series).toHaveLength(0);
+    expect(seriesWithoutCadence(rec, track, 40, 100).length).toBeGreaterThan(0);
+  });
+
+  it('garde entière une pompe régulière de 3 min : aucune durée plafond', () => {
+    const rec = pumpCapture([[50, 230, 1.5]], 40, 320);
+    const [p] = measureFlights(rec, trackWith(1, 320), [[40, 300]]);
+    expect(p!.series).toHaveLength(1);
+    expect(Math.abs(p!.series[0].strokes - 270)).toBeLessThanOrEqual(2);
+    expect(Math.abs(p!.series[0].durationS - 180)).toBeLessThan(1);
+  });
+
+  it('donne la vitesse avant et après la série, et la distance par coup', () => {
+    // 6 m/s jusqu'à 50 s, puis la vitesse tombe à 4 m/s pendant la série, jusqu'à 70 s.
+    const speed = (t: number) => (t < 50 ? 6 : t < 70 ? 6 - (t - 50) * 0.1 : 4);
+    const rec = pumpCapture([[50, 70, 1.5]], 40, 120);
+    const [p] = measureFlights(rec, trackWith(1, 120, speed), [[40, 100]]);
+    const [s] = p!.series;
+    expect(s.speedBeforeMs).toBeGreaterThan(s.speedAfterMs);
+    expect(Math.abs(s.speedBeforeMs - 6)).toBeLessThan(0.2);
+    expect(Math.abs(s.speedAfterMs - 4)).toBeLessThan(0.2);
+    expect(Math.abs(s.perStrokeM - s.distanceM / s.strokes)).toBeLessThan(1e-9);
+    // Vers 5 m/s, 1,5 coup par seconde.
+    expect(s.perStrokeM).toBeGreaterThan(3);
+    expect(s.perStrokeM).toBeLessThan(3.7);
+    expect(s.end).toBeGreaterThan(s.start);
+  });
+
+  it('donne les mêmes séries avec une capture à 50 et à 200 Hz, une trace à 1 et à 5 Hz', () => {
+    const plages: [number, number, number][] = [[48, 60, 1.5], [72, 92, 1.2]];
+    const at = (rateHz: number, trackHz: number) => measureFlights(pumpCapture(plages, 40, 120, rateHz), trackWith(trackHz, 120), [[40, 100]])[0]!.series;
+    const results = [at(50, 1), at(200, 1), at(200, 5), at(50, 5)];
+    for (const r of results) {
+      expect(r).toHaveLength(2);
+      r.forEach((s, k) => {
+        const ref = results[0][k];
+        expect(Math.abs(s.strokes - ref.strokes)).toBeLessThanOrEqual(1);
+        expect(Math.abs(s.durationS - ref.durationS)).toBeLessThan(0.5);
+        expect(Math.abs(s.startMs - ref.startMs)).toBeLessThan(500);
+        expect(Math.abs(s.perStrokeM - ref.perStrokeM) / ref.perStrokeM).toBeLessThan(0.03);
+        expect(Math.abs(s.strokesPerMin - ref.strokesPerMin)).toBeLessThan(2);
+      });
+    }
+  });
+});
+
+describe('pumping : séries de la session', () => {
+  // Deux vols : le premier pompe deux fois (10 s, puis 25 s), le second une fois (15 s).
+  const rec = pumpCapture([[45, 55, 1.5], [70, 95, 1.5], [125, 140, 1.5]], 40, 180);
+  const track = trackWith(1, 180);
+  const list = measureFlights(rec, track, [[40, 100], [110, 170]]);
+
+  it('numérote les séries de tous les vols dans l’ordre', () => {
+    const series = sessionPumpSeries([list[0], null, list[1]]);
+    expect(series.map((s) => s.n)).toEqual([1, 2, 3]);
+    expect(series.map((s) => s.flight)).toEqual([1, 1, 2]);
+    // Le premier coup compté vient une demi-pompe après le début de la pompe : un peu moins que la durée pompée.
+    [10, 25, 15].forEach((d, k) => expect(Math.abs(series[k].durationS - d)).toBeLessThan(1));
+  });
+
+  it('range le podium des plus longues séries', () => {
+    const podium = longestPumpSeries(sessionPumpSeries(list), 3);
+    expect(podium.map((s) => s.n)).toEqual([2, 3, 1]);
+    expect(longestPumpSeries(sessionPumpSeries(list), 2)).toHaveLength(2);
+  });
+
+  it('résume la session : séries, temps de vol mesuré, part pompée', () => {
+    const sum = summarizePumping([...list, null]);
+    expect(sum.series).toBe(3);
+    expect(sum.measured).toBe(2);
+    expect(sum.flightS).toBeCloseTo(list[0]!.measuredS + list[1]!.measuredS, 9);
+    expect(Math.abs(sum.pumpS - 50)).toBeLessThan(2);
+    expect(sum.pumpShare).toBeCloseTo(sum.pumpS / sum.flightS, 9);
+    expect(sum.strokesPerMin! / 90).toBeCloseTo(1, 1);
+  });
+
+  it('range à égalité de durée la première de la session en tête', () => {
+    const s = (n: number, durationS: number) => ({ n, durationS } as MeasuredPumpSeries & { n: number });
+    expect(longestPumpSeries([s(1, 10), s(2, 12), s(3, 12)], 3).map((x) => x.n)).toEqual([2, 3, 1]);
   });
 });
 

@@ -24,6 +24,7 @@ import SpeedGradientLegend from '../components/SpeedGradientLegend';
 import SessionThresholdField from '../components/SessionThresholdField';
 import { SessionColorRangeField } from '../components/SpeedRangeEditor';
 import TrackSpanLayer, { type TrackSpanShown } from '../components/TrackSpanLayer';
+import { pumpingHighlightSpans } from '../components/pumpingHighlight';
 import FlightPumpingPanel, { type FlightColumn } from '../components/FlightPumpingPanel';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import HeartRateChart from '../components/HeartRateChart';
@@ -112,10 +113,10 @@ const tdStyle = { padding: '0.35em 0.5em', textAlign: 'center', whiteSpace: 'now
 
 const orDash = (value: number | null, format: (v: number) => string): string => (value === null ? '—' : format(value));
 
-/** Colonnes des vols propres au surf : vagues du vol, pompage vu par le GPS. */
+/** Colonnes des vols propres au surf : vagues du vol, temps de vol hors des vagues vu par le GPS (lot 50 : ce n'est pas du pumping). */
 const SURF_FLIGHT_PODIUM_COLUMNS: FlightColumn<SurfFlight>[] = [
   { header: 'Vagues', cell: (f) => f.waveCount },
-  { header: 'Pompage', cell: (f) => formatShortDuration(f.pumpS) },
+  { header: 'Hors vague', cell: (f) => formatShortDuration(f.pumpS) },
 ];
 const SURF_FLIGHT_ALL_COLUMNS: FlightColumn<SurfFlight>[] = [{ header: 'Vagues', cell: (f) => f.waveCount }];
 
@@ -247,14 +248,15 @@ function SurfModule() {
   // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
   // Capteurs lus à l'ouverture de l'onglet « vols », Pumping coché, comme en voile : une capture entière pèse plusieurs Mo.
   const sensors = useSessionPumping(shownFile, pumping && open.vols);
+  const pumpDetection = surfProfile?.pump ?? null;
   const {
-    byFlight: flightPumping, summary: pumpSummary, podium: podiumFlights,
-  } = useFlightPumping(sensors.recording, surfProfile?.pump ?? null, track, cumulative, flights);
+    byFlight: flightPumping, summary: pumpSummary, podium: podiumFlights, series: pumpSeriesList, seriesPodium,
+  } = useFlightPumping(sensors.recording, pumpDetection, track, cumulative, flights);
   const speedCell = (ms: number | null): string => (ms === null ? '—' : formatSpeedValue(toDisplaySpeed(ms, speedUnit), speedUnit));
-  /** Colonnes « Tous les vols » du GPS, sans pumping mesuré : pompage et vitesse de pompe (unité de l'activité). */
+  /** Colonnes « Tous les vols » du GPS, sans pumping mesuré : temps et vitesse hors des vagues (unité de l'activité). */
   const surfFlightGpsColumns: FlightColumn<SurfFlight>[] = [
-    { header: 'Pompage', cell: (f) => formatShortDuration(f.pumpS) },
-    { header: `Pompe (${SPEED_UNIT_LABEL[speedUnit]})`, cell: (f) => speedCell(f.pumpSpeedMs) },
+    { header: 'Hors vague', cell: (f) => formatShortDuration(f.pumpS) },
+    { header: `Vitesse hors vague (${SPEED_UNIT_LABEL[speedUnit]})`, cell: (f) => speedCell(f.pumpSpeedMs) },
   ];
 
   /** Point d'arrivée d'une remontée sur la carte : le pic (début de l'attente), sinon la glisse suivante. */
@@ -276,14 +278,8 @@ function SurfModule() {
       const w = waves.find((x) => String(x.n) === waveShown);
       return w ? [{ key: `vague-${w.n}`, start: w.start, end: w.end, color: HIGHLIGHT_SHOWN_COLOR, label: spanLabel('Vague', w) }] : [];
     }
-    if (flightShown === 'podium') {
-      return podiumFlights
-        .map((f, k) => ({ key: `vol-${f.n}`, start: f.start, end: f.end, color: HIGHLIGHT_PODIUM_COLORS[k], label: spanLabel('Vol', f) }));
-    }
-    if (flightShown !== null) {
-      const f = flights.find((x) => String(x.n) === flightShown);
-      return f ? [{ key: `vol-${f.n}`, start: f.start, end: f.end, color: HIGHLIGHT_SHOWN_COLOR, label: spanLabel('Vol', f) }] : [];
-    }
+    // Onglet « vols » : une série de coups, un vol, ou l'un des deux podiums (`PumpingHighlightKey`).
+    if (flightShown !== null) return pumpingHighlightSpans(flightShown, flights, podiumFlights, pumpSeriesList, seriesPodium, (f) => spanLabel('Vol', f));
     if (returnShown !== null) {
       const r = returns.find((x) => String(x.after) === returnShown);
       if (!r) return [];
@@ -293,7 +289,7 @@ function SurfModule() {
       return [{ key: `remontee-${r.after}`, start, end: returnEnd(r), color: HIGHLIGHT_SHOWN_COLOR, label: `${label} · ${formatTimeOfDay(r.startMs)}` }];
     }
     return [];
-  }, [waveShown, flightShown, returnShown, waves, flights, podiumFlights, returns, track, returnEnd, speedUnit, foil]);
+  }, [waveShown, flightShown, returnShown, waves, flights, podiumFlights, pumpSeriesList, seriesPodium, returns, track, returnEnd, speedUnit, foil]);
 
   const sortedWaves = useMemo(() => {
     const list = [...waves];
@@ -602,20 +598,21 @@ function SurfModule() {
             {open.vols && foil && (
               <ResizablePanel id={panelId('vols')} style={ANALYSIS_PANEL_STYLE}>
                 <FlightPumpingPanel
-                  label={`Vols (${flights.length})`} helpKey="surf:vols" open={open.vols} onToggle={toggleOf('vols')}
+                  helpKey="surf:vols" open={open.vols} onToggle={toggleOf('vols')}
                   help={<>
+                    {flightPumping && pumpDetection
+                      ? <>Pumping : en vol seulement, compté par séries de coups mesurées par les capteurs du téléphone ;
+                        une série ne compte que si ses coups suivent une cadence régulière, de {pumpDetection.cadenceMinPerMin} à {pumpDetection.cadenceMaxPerMin} coups
+                        par minute. Cadence : coups par minute de la série ; vitesse : au début, puis à la fin de la série. </>
+                      : null}
                     Vol : au-dessus du seuil de vol, d'une traite ; ses vagues sont ses passages au-dessus du seuil de vague en foil.
                     {flightPumping
-                      ? " Pumping : mesuré par les capteurs du téléphone, sur les séries de coups. Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)."
-                      : ' Le reste du vol est pompé.'}
+                      ? " Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)."
+                      : " Hors vague : le temps du vol passé hors des vagues, vu par le GPS ; sans les capteurs, rien ne dit s'il est pompé."}
                   </>}
                   flights={flights} podium={podiumFlights}
-                  tiles={<>
-                    <StatTile label="Plus long vol" value={orDash(summary.longestFlightS, formatShortDuration)} />
-                    <StatTile label="Temps de vol" value={formatShortDuration(summary.flightS)} />
-                    <StatTile label="Vagues en un vol" value={summary.maxWavesInFlight ?? '—'} />
-                  </>}
-                  pumping={flightPumping} pumpSummary={pumpSummary}
+                  extraFlightTiles={<StatTile label="Vagues en un vol" value={summary.maxWavesInFlight ?? '—'} />}
+                  pumping={flightPumping} pumpSummary={pumpSummary} series={pumpSeriesList} seriesPodium={seriesPodium}
                   shown={flightShown} onShow={(key) => highlight.show('vols', key)} accent={ACCENT}
                   speedCell={speedCell} unitLabel={unitLabel}
                   podiumColumns={SURF_FLIGHT_PODIUM_COLUMNS}

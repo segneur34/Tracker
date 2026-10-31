@@ -1,0 +1,54 @@
+/* Onglet « pumping » de la voile et « vols » du surf (`FlightPumpingPanel.tsx`). */
+
+/* Sous-titre des vols, sous le pumping : à part, un trait au-dessus. */
+.an-pump-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-4) 0 var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line-soft);
+}
+
+/* « Vol » devant le numéro : l'en-tête le dit sur ordinateur, la carte du téléphone n'en a pas. */
+.an-pump-lead__word {
+  display: none;
+}
+
+/* Sur téléphone, chaque ligne devient une carte (`ui-table--cards`, `ui.css`) : en tête à gauche, sur toute la
+   hauteur, la cadence de la série (ou le vol), « Voir » en haut à droite, et les autres cases à la suite,
+   chacune précédée de son nom (`data-label`), quel que soit le nombre de colonnes du module. */
+@media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
+  .ui-table--cards.an-pump-table tbody tr {
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+    column-gap: var(--space-2);
+  }
+
+  .an-pump-table .an-pump-lead {
+    grid-column: 1;
+    grid-row: 1 / span 6;
+    align-self: start;
+    font-size: var(--text-m);
+  }
+
+  .an-pump-table .an-pump-map {
+    grid-column: 4;
+    grid-row: 1;
+  }
+
+  .an-pump-table td {
+    white-space: normal !important;
+    min-width: 0;
+  }
+
+  .an-pump-table td[data-label]::before {
+    content: attr(data-label) ' ';
+    color: var(--muted);
+    font-size: var(--text-xs);
+  }
+
+  .an-pump-lead__word {
+    display: inline;
+  }
+}
