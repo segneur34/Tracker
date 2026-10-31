@@ -16,51 +16,32 @@
   display: none;
 }
 
-/* Sur téléphone, chaque ligne devient une carte (`ui-table--cards`, `ui.css`) : en tête à gauche, sur toute la
-   hauteur, la cadence de la série (ou le vol), « Voir » en haut à droite, et les autres cases à la suite sur
-   deux colonnes égales, chacune précédée de son nom (`data-label`), quel que soit le nombre de colonnes du
-   module. Pas de colonne à largeur libre pour les cases : une case longue (vitesse) l'élargirait et ferait
-   chevaucher les autres. */
+/* Sur téléphone, chaque ligne devient une carte (`ui-table--cards`, `ui.css`) : en tête, la cadence de la série
+   (ou le vol) et « Voir » à droite ; dessous, les autres cases deux par deux, chacune précédée de son nom
+   (`data-label`), quel que soit le nombre de colonnes du module. Deux colonnes égales sur toute la largeur de la
+   carte : ni colonne à largeur libre (une case longue l'élargirait et ferait chevaucher les autres), ni en-tête
+   sur la hauteur de la carte, pour que l'heure tienne encore avec le texte d'Android agrandi. */
 @media (max-width: 767.98px), (max-height: 499.98px) and (pointer: coarse) {
   .ui-table--cards.an-pump-table tbody tr {
-    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: var(--space-2);
   }
 
   .an-pump-table .an-pump-lead {
     grid-column: 1;
-    grid-row: 1 / span 6;
-    align-self: start;
+    grid-row: 1;
     font-size: var(--text-m);
   }
 
   .an-pump-table .an-pump-map {
-    grid-column: 3;
+    grid-column: 2;
     grid-row: 1;
     justify-self: end;
   }
 
-  /* Les séries, de colonnes connues : début, durée et « Voir » ; coups, mètres par coup et vol ; la vitesse
-     sur toute la largeur. La dernière colonne ne prend que la largeur de « Voir » et du numéro du vol. */
-  .ui-table--cards.an-pump-table--series tbody tr {
-    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
-    grid-template-areas:
-      'lead start dur map'
-      'lead strokes per flight'
-      'lead speed speed speed';
-  }
-
-  .an-pump-table--series .an-pump-lead { grid-area: lead; }
-  .an-pump-table--series .an-pump-start { grid-area: start; }
-  .an-pump-table--series .an-pump-dur { grid-area: dur; }
-  .an-pump-table--series .an-pump-map { grid-area: map; }
-  .an-pump-table--series .an-pump-strokes { grid-area: strokes; }
-  .an-pump-table--series .an-pump-per { grid-area: per; }
-  .an-pump-table--series .an-pump-flight { grid-area: flight; }
-  .an-pump-table--series .an-pump-speed { grid-area: speed; }
-
   .an-pump-table td {
     white-space: normal !important;
+    overflow-wrap: anywhere;
     min-width: 0;
   }
 

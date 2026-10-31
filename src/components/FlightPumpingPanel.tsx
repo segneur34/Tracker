@@ -101,7 +101,7 @@ function FlightPumpingPanel<F extends FlightSpan>({
   // --- Séries ---
   const seriesTable = (list: PumpingSeries[], podiumRows: boolean) => (
     <div style={{ overflowX: 'auto', marginTop: '10px' }}>
-      <table className="ui-table ui-table--cards an-pump-table an-pump-table--series">
+      <table className="ui-table ui-table--cards an-pump-table">
         <thead>
           <tr style={headRowStyle}>
             <th style={thStyle}>Cadence</th>
@@ -121,12 +121,12 @@ function FlightPumpingPanel<F extends FlightSpan>({
                 {podiumRows && <Swatch color={HIGHLIGHT_PODIUM_COLORS[k]} round gap />}
                 {perMin(s.strokesPerMin)}
               </td>
-              <td className="num an-pump-start" style={tdStyle}>{formatTimeOfDay(s.startMs)}</td>
-              <td className="an-pump-dur" data-label="durée" style={tdStyle}>{formatShortDuration(s.durationS)}</td>
-              <td className="an-pump-strokes" data-label="coups" style={tdStyle}>{s.strokes}</td>
-              <td className="an-pump-per" data-label="m/coup" style={tdStyle}>{formatDecimal(s.perStrokeM, 1)}</td>
-              <td className="an-pump-speed" data-label={`vitesse (${unitLabel})`} style={tdStyle}>{speedCell(s.speedBeforeMs)} → {speedCell(s.speedAfterMs)}</td>
-              <td className="an-pump-flight" data-label="vol" style={tdStyle}>{s.flight}</td>
+              <td className="num" style={tdStyle}>{formatTimeOfDay(s.startMs)}</td>
+              <td data-label="durée" style={tdStyle}>{formatShortDuration(s.durationS)}</td>
+              <td data-label="coups" style={tdStyle}>{s.strokes}</td>
+              <td data-label="m/coup" style={tdStyle}>{formatDecimal(s.perStrokeM, 1)}</td>
+              <td data-label={`vitesse (${unitLabel})`} style={tdStyle}>{speedCell(s.speedBeforeMs)} → {speedCell(s.speedAfterMs)}</td>
+              <td data-label="vol" style={tdStyle}>{s.flight}</td>
               <td className="an-pump-map" style={tdStyle}>{mapButton(seriesKey(s.n))}</td>
             </tr>
           ))}
