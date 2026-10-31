@@ -1082,3 +1082,23 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : la zone visée se choisit sur la page Enregistrer (« aucune » ou Z1 à Z5, remis à « aucune » à chaque ouverture), pour toute activité sauf tests guidés et FC repos. Hors zone depuis 10 s : deux bips au-dessus, trois en dessous, rappel à 40 s puis trois fois par minute, un bip court au retour si un signal a sonné ; pause, FC perdue, changement de côté ou trou remettent le compte à zéro (`zoneAlert.ts`, délais surchargeables, fenêtres en secondes). FC moyenne en fin de « Général » en voile et en surf, et dans l'image de partage à pied et à vélo.
     - **Pourquoi** : tenir une zone sans regarder l'écran, et ne plus devoir ouvrir l'onglet cardio pour la FC moyenne ; pas de mémorisation pour éviter un bip surprise.
     - **Piège** : l'état `heartRate` de l'enregistreur ne change que si le bpm change et les positions ne battent pas en muscu, d'où l'abonnement direct à la ceinture (`subscribeHeartRate`). `usePerActivityChoice` ne mémorise rien d'une visite à l'autre. `playPattern` n'enchaîne pas les motifs : un bip de zone peut se superposer à un bip de balise ou du compteur (accepté).
+
+227. Rangées Famille et Période avec un texte agrandi (lot 83, validé le 31/10, essai 87 réussi sur l'APK 0.4.35 ; version 0.4.32).
+    - **Décision** : la variante `fit` du `SegmentedControl` laisse ses cases rétrécir (`min-width: 0`, `overflow-wrap: anywhere`) ; la règle propre à la Période du Profil, devenue redondante, est retirée. Les rangées non `fit` défilent toujours.
+    - **Pourquoi** : à 115 et 130 % de texte sur 320 à 390 px, « Famille » (Enregistrer) et « Période » (Profil) défilaient au lieu de tenir sur la largeur.
+    - **Piège** : un enfant flex ne passe pas sous sa largeur de contenu (`min-width: auto`) et `hyphens: auto` ne coupe rien sans langue connue ; aucun libellé raccourci. Sur téléphone, les libellés passent sur deux lignes et la rangée tient.
+
+228. Graphes : plus de repère figé au premier point après un clic (lot 93, validé le 31/10 sur lecture ; version 0.4.34).
+    - **Décision** : `accessibilityLayer={false}` sur tous les graphes Recharts (`TrackChart`, cardio, FC repos, plan de test, Statistiques), comme au lot 61 pour les répétitions ; aucune navigation au clavier n'y est voulue. Contrôle ajouté à `outils/banc/graphes.mjs`.
+    - **Pourquoi** : après un clic, la couche d'accessibilité active le premier point ; souris sortie, le survol commun ramenait le repère de la carte à ce point au lieu de l'effacer.
+    - **Piège** : le défaut ne se voit qu'à la souris, d'où un contrôle du banc qui échoue avant la correction et passe après.
+
+229. Brouillon : le retour arrière du navigateur demande confirmation (lot 38, validé le 31/10 sur lecture ; version 0.4.33).
+    - **Décision** : sans changer de routeur (`BrowserRouter` n'a pas `useBlocker`), une entrée d'historique « garde » est empilée sur la même adresse tant qu'un avertissement est posé ; `popstate` demande confirmation (refus : garde remise, on reste ; accord : brouillon abandonné et recul d'une entrée de plus). Logique pure `createHistoryGuard` testée avec un historique injecté. Aucune garde dans l'application Android, où le retour passe par `installBackButton`.
+    - **Pourquoi** : le brouillon était gardé mais l'utilisateur partait sans avertissement, contrairement aux liens, au retour d'Android et à la fermeture.
+    - **Piège** : le retrait de la garde provoque son propre `popstate` (compté, jamais pris pour une sortie) ; un départ par un lien laisse une garde sous la page, traversée sans bruit au retour ; le retrait est différé d'un tour pour qu'un message changé garde sa garde.
+
+230. Enregistrement et fiches : restes d'écriture repris, GPX complet sans perte, GPX vide ignoré (lot 84, suite du lot 54 ; validé le 31/10 sur lecture ; version 0.4.35).
+    - **Décision** : (A) un `.gpx.tmp` resté dans `en-attente/` est repris s'il finit par `</gpx>` et que sa cible manque, effacé s'il est tronqué ou si le `.gpx` existe, avec le `.imu.tmp` (`planPendingTemps`, pur). (B) le GPX complet exporte et réimporte les champs de fiche illisibles. (C) un GPX de 0 octet ou blanc n'est ni listé ni « illisible » ni effacé ; compté « ignoré » à l'import, rien à l'écran.
+    - **Pourquoi** : un plantage entre l'écriture et le renommage perdait la session ; l'export du lot 54 perdait les champs d'une version future ; un fichier vide revenait en erreur à chaque ouverture.
+    - **Piège** : jamais d'effacement d'un fichier de l'utilisateur hors des `.tmp` du dossier privé de l'application ; un `.tmp` est ignoré tant que son GPX est en cours d'écriture dans ce lancement.
