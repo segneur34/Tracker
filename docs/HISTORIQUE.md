@@ -1112,3 +1112,33 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : carte réduite, la valeur « Zone FC » (« sous Z1 · 142 ») se coupe à son « · » en morceaux insécables, libellé et valeur en `minWidth: 0` ; les autres valeurs restent sur une ligne. « Pause » et « Reprendre » prennent `ui-btn--hold`, comme « Arrêter » (§6).
     - **Pourquoi** : la valeur, plus longue que son cadre, le dépassait ; le texte du bouton se sélectionnait à l'appui long.
     - **Piège** : couper n'importe où aurait déformé la lecture de la zone ; la coupure est donc forcée au séparateur. Le banc `tailles` passe de 6 à 0 combinaison en défaut sur Enregistrer.
+
+233. Banc : `tailles` sort du passage courant (lot 92, validé le 31/10).
+    - **Décision** : `tailles` n'est plus joué par défaut ; passage courant de 7 à 8 min ramené à 2 min 26. Il se joue par son nom, `--pages` ou `--tous` quand un lot touche la mise en page, le thème ou Réglages.
+    - **Pourquoi** : c'était le script le plus long et la plupart des lots n'ont aucun effet sur les tailles.
+    - **Piège** : plus rien ne le rappelle tout seul ; le jouer à la main avant un lot de mise en page. Restent les plus longs : statistiques 1 min 08, onglets 1 min 01.
+
+234. Test « élagage du fichier » de `core/jumps.test.ts` rendu stable (lot 101, validé le 31/10).
+    - **Décision** : trace de 300 à 180 s (vols à 30 et 140 s), délai du test porté à 20 s.
+    - **Pourquoi** : le dépassement des 5 s ne venait que de la charge de la machine (0,4 s seul).
+    - **Piège** : à 120 s, les fenêtres des deux vols dépassent la moitié de la trace et l'assertion tombe : la trace ne se raccourcit pas sans toucher aux vols.
+
+235. VMG : un trou pèse sa distance retenue (lot 100, validé le 31/10 ; version 0.4.38).
+    - **Décision** : dans `calculateVmgStats`, un pas plus long que `maxGapS` (paramètre, défaut `MAX_GAP_S`) pèse `stepDistanceM` (règle 6) sur sa durée, non la vitesse lissée.
+    - **Pourquoi** : la vitesse lissée traversait le trou et surévaluait la VMG (test à fenêtre de 120 s et trou de 60 s : 8,49 → 6,36 nd).
+    - **Piège** : avec la fenêtre VMG par défaut de 10 s, un trou n'entre jamais dans une fenêtre ; rien ne change à l'écran aujourd'hui, seul le test le prouve.
+
+236. Allures à pied et à vélo : unité de distance obligatoire (lot 98, validé le 31/10 ; version 0.4.39).
+    - **Décision** : `formatLandSpeed(ms, unit, distanceUnit)` (`core/units.ts`) pour les modules à pied et à vélo (analyse, bibliothèque, Statistiques, intervalles, tests guidés, planification, partage) ; `formatSpeed` reste en voile, surf et Réglages.
+    - **Pourquoi** : six appels omettaient l'unité de distance, d'où une allure en milles fausse en silence. Rendre l'unité obligatoire au type partout (lot 78) avait échoué : 45 appels où l'allure n'a pas de sens.
+    - **Piège** : la frontière se tient par la fonction, pas par le type de `formatSpeed`. Restes (n° 106) : `RecordingPage`, `EffortThresholdEditor`, `FitnessTestPanel` appellent encore `formatSpeed` sans unité de distance.
+
+237. Banc : treize scripts remis d'aplomb (lot 91, validé le 31/10).
+    - **Décision** : scripts réparés, `recherche-sans-reponse` fini (plus manuel) ; `AudioContext` ouvert dans `connect()` de `lib/cdp.mjs` quand `TEMPS` > 1 (neutre).
+    - **Pourquoi** : des scripts périmés ou instables rendaient le banc peu fiable.
+    - **Piège** : `prereglages` écrivait avant le montage de la ligne et relisait après un délai fixe (attendre l'état) ; `brouillon-voile` relevait entre le `pushState` et le rendu de B (compter les mutations du DOM après le changement) ; `recherche-sans-reponse` recalculait la borne de sa boucle à chaque tour et s'arrêtait vers 85 s (échéance fixée une fois, 200 s). Un contrôle échoue à dessein, `test-fcrepos` « courbe du test gardé affichée » : bogue 107 de l'application, courbe de 0 px (`.rest-history__item { align-items: flex-start }`).
+
+238. Allure de la session sans les pas de reprise ni les trous (lot 99, validé le 31/10 ; version 0.4.40).
+    - **Décision** : `referenceSpeedMs(points, deviceUnit?, maxGapS = MAX_GAP_S)` écarte les pas de reprise après pause (`segmentStart`) et ceux de plus de `maxGapS` ; repli sur l'ancien calcul (durée plafonnée à `maxGapS`) seulement si la trace n'a aucun pas ordinaire (règle 10 : une cadence économique ne tombe pas à 0). `SUMMARY_CALC_VERSION` 13 → 14, car `library/summary.ts` en tire les filtres voile et le seuil suggéré.
+    - **Pourquoi** : trace Komoot du 21/09 à pas de 25 s : 4,38 → 5,13 nd, validé par l'utilisateur sur le PC (essai 90). Neutre bit à bit sans trou ni pause ; seules les sessions de voile à trous ou pauses bougent.
+    - **Piège** : peser la distance bornée du trou sur sa durée n'aurait rien changé (la distance retenue vaut la corde), d'où l'écart pur ; à la relecture, le repli n'acceptait pas les reprises, corrigé.
