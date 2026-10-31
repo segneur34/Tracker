@@ -961,7 +961,7 @@ function SailingModule() {
             {open.general && (
               <ResizablePanel id="sailing.general" style={PANEL_BLOCK_STYLE}>
                 <PanelHeading label="Général" extra={<SessionDate track={trackData} />} open={open.general} onToggle={toggleOf('general')} />
-                <GeneralStats stats={overviewStats} />
+                <GeneralStats stats={overviewStats} pairs={[['tacks', 'jibes']]} />
                 {/* Mini-boussole du vent ; « Régler » ouvre la grande sur la carte (22/10). */}
                 <div className="an-sheet__wind" style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
                   <WindCompass windAngle={currentWindValue ?? autoWind ?? 0} size={64} />

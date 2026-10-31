@@ -25,6 +25,14 @@
   margin-bottom: var(--space-4);
 }
 
+/* Deux tuiles gardées côte à côte : occupe deux colonnes de la grille et passe à la ligne si elles ne tiennent pas. */
+.an-sheet__stat-pair {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3) var(--space-4);
+}
+
 .an-sheet__stat {
   display: flex;
   flex-direction: column;
