@@ -125,6 +125,13 @@ export interface SessionSummary {
   cadence?: SummaryCadence;
   /** Test guidé de la fiche (`test`) : FC max et dernier palier tenu ; absent sans test. */
   test?: SummaryTest;
+  /**
+   * Empreinte des réglages qui ont produit ce résumé (`summaryOptionsKey` : seuil, allure imposée,
+   * foil et seuil de vague en surf), lot 37. Une empreinte qui ne correspond plus aux réglages
+   * courants rend le résumé à refaire (`isSummaryOutdated`) ; absente d'une fiche d'avant, il est
+   * refait une fois. Absente aussi sans calcul ou sans positions (muscu), où elle ne sert pas.
+   */
+  optionsKey?: string;
 }
 
 /** Cadence d'une session à pied dans son résumé, comme l'onglet « cadence » la mesure. */
@@ -402,6 +409,7 @@ const readSummary = (raw: unknown): SessionSummary | null => {
   const test = readSummaryTest(raw.test);
   if (test) summary.test = test;
   else delete summary.test;
+  if (typeof raw.optionsKey !== 'string') delete summary.optionsKey;
   return summary;
 };
 

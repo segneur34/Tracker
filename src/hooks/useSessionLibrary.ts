@@ -32,7 +32,6 @@ import {
   imuFileName,
   isBlankGpxText,
   isGpxFileName,
-  isSummaryStale,
   isWritableRecord,
   lightRecord,
   mergeLightRecord,
@@ -74,7 +73,7 @@ import {
 } from '../library/settingsFile';
 import { surfRides } from '../library/summary';
 import {
-  analyzeGpx, summaryOptions, withSummary, type ActivitySummarySettings, type AnalyzedGpx,
+  analyzeGpx, isSummaryOutdated, outdatedRefreshFiles, summaryOptions, withSummary, type ActivitySummarySettings, type AnalyzedGpx,
 } from '../library/summaryOptions';
 import { readPickedBytes, readPickedFile } from '../platform/files';
 import {
@@ -96,7 +95,7 @@ import { jsonStore, storageStartupFailure } from '../platform/storage';
 import type { IntervalSeries } from '../recording/intervalTimer';
 import type { SessionTest } from '../recording/fitnessTest';
 import { sessionFileName } from '../recording/session';
-import { effectiveFoil, effectivePumping, effectiveThresholdOverride, readStoredActivities } from './useSportSettings';
+import { effectiveFoil, effectivePumping, effectiveThresholdOverride, readStoredActivities, subscribeStoredSettings } from './useSportSettings';
 import { createListeners } from './createStore';
 import { errorMessage, finiteOr, newId, plural } from '../core/basics';
 
@@ -152,8 +151,13 @@ export interface LibraryState {
   reason: string | null;
   /** Sessions, une par identité, de la plus récente à la plus ancienne. */
   sessions: LibrarySession[];
-  /** Fiches en cours de création ou de recalcul. */
-  scanning: { done: number; total: number } | null;
+  /**
+   * Fiches en cours de création ou de recalcul ; `creating` : parmi elles, les GPX sans fiche
+   * (fiches à créer), seuls dits « Lecture des traces sans fiche ».
+   */
+  scanning: { done: number; total: number; creating: { done: number; total: number } } | null;
+  /** Sessions dont le résumé reste à refaire dans le passage en cours (version du calcul ou réglages changés). */
+  toUpdate: number;
   /** Fichiers d'une session déjà présente sous un autre nom, ignorés. */
   duplicates: string[];
   /** GPX qu'on n'a pas su lire. */
@@ -184,6 +188,7 @@ const INITIAL_STATE: LibraryState = {
   reason: null,
   sessions: [],
   scanning: null,
+  toUpdate: 0,
   duplicates: [],
   unreadable: [],
   pendingCount: 0,
@@ -507,6 +512,30 @@ const activitySummarySettings = (activityId: string | null | undefined) => (spor
 export const summarizeGpxText = (text: string, sport: SportType, activityId: string | null): SessionSummary | null =>
   analyzeGpx(text, sport, null, activitySummarySettings(activityId))?.summary ?? null;
 
+/**
+ * Test « résumé à refaire » (`isSummaryOutdated`) pour tout un passage sur la liste : les réglages
+ * de chaque activité ne sont lus qu'une fois. À reprendre à chaque passage, les réglages ayant pu changer.
+ */
+const summaryOutdatedTest = (): ((record: SessionRecord) => boolean) => {
+  const read = new Map<string, ActivitySummarySettings>();
+  return (record) => isSummaryOutdated(record, (sport) => {
+    const key = `${record.activityId ?? ''}|${sport}`;
+    let settings = read.get(key);
+    if (!settings) {
+      settings = activitySummarySettings(record.activityId)(sport);
+      read.set(key, settings);
+    }
+    return settings;
+  });
+};
+
+/**
+ * Traces dont le résumé n'a pas pu être refait depuis l'ouverture de la mémoire (GPX illisible,
+ * fiche non relue) : elles ne sont pas retentées par le recalcul qui suit un réglage changé, mais
+ * le sont à la prochaine ouverture ou à « Mettre à jour ».
+ */
+const refreshFailed = new Set<string>();
+
 const LEGACY_NOTES_KEY = 'tracker.sailingNotes';
 
 const newRecord = (gpx: string, analyzed: AnalyzedGpx, source: SessionSource, activityId: string | null = null): SessionRecord => ({
@@ -604,6 +633,8 @@ const DEVICE_NAME_KEY = 'tracker.deviceName';
 /** Fichiers de réglages déjà vus par l'appareil (`settingsEntryKey`) : un nouveau n'est proposé qu'une fois. */
 const SEEN_SETTINGS_KEY = 'tracker.seenSettingsFiles';
 const SETTINGS_WRITE_DELAY_MS = 2000;
+/** Après un réglage changé, les résumés périmés sont refaits ce délai écoulé depuis la dernière écriture. */
+const SETTINGS_REFRESH_DELAY_MS = 1500;
 let settingsTimer: ReturnType<typeof setTimeout> | null = null;
 /** Vrai pendant qu'on applique des réglages repris : ce ne sont pas des changements de l'utilisateur. */
 let applyingSettings = false;
@@ -1033,6 +1064,8 @@ const scan = async (f: MemoryFolder, gen: number, editsBefore = editCount): Prom
   const jobs: SummaryJob[] = [];
   const found: LibrarySession[] = [];
   let publishedCount = 0;
+  // Résumé à refaire : version du calcul dépassée, ou réglages changés depuis (empreinte, lot 37).
+  const isOutdated = summaryOutdatedTest();
   const keep = (file: string, record: SessionRecord, partial: boolean) => {
     const readOnly = !isWritableRecord(record);
     found.push({
@@ -1042,7 +1075,7 @@ const scan = async (f: MemoryFolder, gen: number, editsBefore = editCount): Prom
       warning: readOnly ? FUTURE_RECORD_WARNING : null,
       ...(partial ? { partial: true } : {}),
     });
-    if (!readOnly && isSummaryStale(record)) jobs.push({ file, kind: 'refresh', readOnly: false, warning: null });
+    if (!readOnly && isOutdated(record)) jobs.push({ file, kind: 'refresh', readOnly: false, warning: null });
   };
 
   for (const [file, record] of Object.entries(plan.reuse)) keep(file, record, cache.light);
@@ -1100,6 +1133,11 @@ type JobOutcome = 'done' | 'unreadable' | 'blank' | 'stopped';
  * en clair.
  */
 const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<JobOutcome> => {
+  // Résumé refait entre-temps, ou réglage remis comme avant : la trace n'est pas relue.
+  if (job.kind === 'refresh') {
+    const listed = findSession(job.file);
+    if (!listed || listed.readOnly || !isSummaryOutdated(listed.record, activitySummarySettings(listed.record.activityId))) return 'done';
+  }
   let text: string | null;
   try {
     text = await f.readText(sessionPath(job.file));
@@ -1114,12 +1152,16 @@ const runJob = async (f: MemoryFolder, gen: number, job: SummaryJob): Promise<Jo
       await hydrateSession(f, job.file, true);
     } catch (err) {
       reportError(`Fiche de ${job.file} non relue : ${errorMessage(err, 'erreur inconnue')}`);
+      refreshFailed.add(job.file);
       return 'done';
     }
   }
   if (gen !== generation) return 'stopped';
   const current = job.kind === 'refresh' ? findSession(job.file) : undefined;
-  if (job.kind === 'refresh' && (!current || current.readOnly || current.partial)) return 'done';
+  if (job.kind === 'refresh' && (!current || current.readOnly || current.partial)) {
+    if (current?.partial) refreshFailed.add(job.file);
+    return 'done';
+  }
   const from = current?.record ?? job.base;
   let analyzed: AnalyzedGpx | null;
   try {
@@ -1164,12 +1206,24 @@ const SCAN_PROGRESS_INTERVAL_MS = 250;
  */
 let scanCompletion: Promise<void> | null = null;
 
-/** Crée ou recalcule les fiches, une trace à la fois, en laissant l'interface répondre. */
-const completeScan = (f: MemoryFolder, gen: number, jobs: SummaryJob[]): Promise<void> => {
-  const run = runCompleteScan(f, gen, jobs).finally(() => {
+/**
+ * Passage en cours, quel qu'il soit (création de fiches ou résumés à refaire) : le recalcul qui
+ * suit un réglage changé (`queueOutdatedRefresh`) l'attend, pour ne jamais en lancer deux à la fois.
+ */
+let scanPass: Promise<void> | null = null;
+
+/**
+ * Crée ou recalcule les fiches, une trace à la fois, en laissant l'interface répondre. Un passage
+ * qui ne fait que refaire des résumés n'est pas attendu par `addGpx` : il ne crée aucune session.
+ * `keepUnreadable` : les GPX illisibles déjà signalés le restent (passage partiel).
+ */
+const completeScan = (f: MemoryFolder, gen: number, jobs: SummaryJob[], keepUnreadable = false): Promise<void> => {
+  const run = runCompleteScan(f, gen, jobs, keepUnreadable).finally(() => {
     if (scanCompletion === run) scanCompletion = null;
+    if (scanPass === run) scanPass = null;
   });
-  scanCompletion = run;
+  scanPass = run;
+  if (jobs.some((job) => job.kind === 'create')) scanCompletion = run;
   return run;
 };
 
@@ -1180,23 +1234,37 @@ const completeScan = (f: MemoryFolder, gen: number, jobs: SummaryJob[]): Promise
  * redessine les pages qui lisent la liste. Un arrêt sur erreur publie ce qui
  * attendait.
  */
-const runCompleteScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[]): Promise<void> => {
-  const unreadable: string[] = [];
+const runCompleteScan = async (f: MemoryFolder, gen: number, jobs: SummaryJob[], keepUnreadable: boolean): Promise<void> => {
+  const unreadable: string[] = keepUnreadable ? [...state.unreadable] : [];
+  const createTotal = jobs.filter((job) => job.kind === 'create').length;
+  let created = 0;
+  let toUpdate = jobs.length - createTotal;
   let shownAt = -Infinity;
   try {
     for (let i = 0; i < jobs.length; i++) {
       if (gen !== generation) return;
       if (Date.now() - shownAt >= SCAN_PROGRESS_INTERVAL_MS) {
         shownAt = Date.now();
-        setState({ scanning: { done: i, total: jobs.length }, ...(publishPending ? publishedFields() : {}) });
+        setState({
+          scanning: { done: i, total: jobs.length, creating: { done: created, total: createTotal } },
+          toUpdate,
+          ...(publishPending ? publishedFields() : {}),
+        });
       }
-      const outcome = await runJob(f, gen, jobs[i]);
+      const job = jobs[i];
+      const outcome = await runJob(f, gen, job);
       if (outcome === 'stopped') return;
-      if (outcome === 'unreadable') unreadable.push(jobs[i].file);
+      if (outcome === 'unreadable') {
+        if (!unreadable.includes(job.file)) unreadable.push(job.file);
+        // Un résumé qu'on n'a pas su refaire n'est retenté qu'à la prochaine ouverture ou à « Mettre à jour ».
+        if (job.kind === 'refresh') refreshFailed.add(job.file);
+      }
+      if (job.kind === 'create') created += 1;
+      else toUpdate -= 1;
       await pause();
     }
     if (gen !== generation) return;
-    setState({ scanning: null, unreadable, ...(publishPending ? publishedFields() : {}) });
+    setState({ scanning: null, toUpdate: 0, unreadable, ...(publishPending ? publishedFields() : {}) });
   } finally {
     if (publishPending && gen === generation) publish();
   }
@@ -1328,6 +1396,7 @@ const attach = async (f: MemoryFolder): Promise<boolean> => {
   all = [];
   publishPending = false;
   knownNames = new Set();
+  refreshFailed.clear();
   setState({
     status: 'opening',
     folderKind: f.kind,
@@ -1337,6 +1406,7 @@ const attach = async (f: MemoryFolder): Promise<boolean> => {
     duplicates: [],
     unreadable: [],
     scanning: null,
+    toUpdate: 0,
     error: null,
   });
   try {
@@ -1350,7 +1420,7 @@ const attach = async (f: MemoryFolder): Promise<boolean> => {
   setState({ status: 'ready' });
   await flushPending();
   void completeScan(f, gen, jobs).catch((err) =>
-    setState({ scanning: null, error: `Lecture du dossier interrompue : ${errorMessage(err, 'erreur inconnue')}` })
+    setState({ scanning: null, toUpdate: 0, error: `Lecture du dossier interrompue : ${errorMessage(err, 'erreur inconnue')}` })
   );
   return settingsChanged;
 };
@@ -1363,6 +1433,7 @@ const detach = (status: 'needs-permission' | 'unavailable', label: string | null
   publishPending = false;
   knownNames = new Set();
   settingsEntries = [];
+  refreshFailed.clear();
   setState({
     status,
     folderKind: null,
@@ -1372,6 +1443,7 @@ const detach = (status: 'needs-permission' | 'unavailable', label: string | null
     duplicates: [],
     unreadable: [],
     scanning: null,
+    toUpdate: 0,
     settingsFiles: [],
     settingsOffer: null,
   });
@@ -1456,6 +1528,18 @@ export const startLibraryUi = (isBusy: () => boolean): void => {
     jsonStore.write(SETTINGS_SAVED_AT_KEY, Date.now());
     if (settingsTimer !== null) clearTimeout(settingsTimer);
     settingsTimer = setTimeout(() => void flushSettings(), SETTINGS_WRITE_DELAY_MS);
+  });
+  // Réglage d'activité changé (seuil, foil, activité supprimée…) : les résumés qu'il rend périmés sont
+  // refaits, une fois la saisie posée (elle écrit à chaque touche). Pas pour des réglages repris du
+  // dossier : la page se recharge, ou ils valent au prochain lancement, qui refait ce qu'il faut.
+  let settingsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  subscribeStoredSettings(() => {
+    if (applyingSettings) return;
+    if (settingsRefreshTimer !== null) clearTimeout(settingsRefreshTimer);
+    settingsRefreshTimer = setTimeout(() => {
+      settingsRefreshTimer = null;
+      void queueOutdatedRefresh();
+    }, SETTINGS_REFRESH_DELAY_MS);
   });
   reportStorageStartupFailure();
   // Un réglage que l'appareil refuse de garder vaut jusqu'à la fermeture : dit une fois par lancement.
@@ -2083,6 +2167,8 @@ export const refreshLibrary = (): Promise<void> => {
     generation += 1;
     cancelCacheUpdate();
     const gen = generation;
+    // Relecture voulue : les résumés qu'on n'avait pas su refaire sont retentés.
+    refreshFailed.clear();
     const settingsChanged = await syncSettingsSafely(f);
     const jobs = await scan(f, gen, editsBefore);
     if (gen !== generation) return null;
@@ -2108,13 +2194,57 @@ export const refreshLibrary = (): Promise<void> => {
       await applySettingsChange(read.settingsChanged);
     })
     .catch((err: unknown) => {
-      setState({ scanning: null, error: `Relecture du dossier impossible : ${errorMessage(err, 'erreur inconnue')}` });
+      setState({ scanning: null, toUpdate: 0, error: `Relecture du dossier impossible : ${errorMessage(err, 'erreur inconnue')}` });
     })
     .finally(() => {
       refreshing = null;
       setState({ refreshing: false });
     });
   return refreshing;
+};
+
+/** Recalcul des résumés périmés en cours (`queueOutdatedRefresh`), et s'il faut réévaluer à sa fin. */
+let outdatedRefresh: Promise<void> | null = null;
+let outdatedAgain = false;
+
+/**
+ * Refait en tâche de fond les résumés que les réglages d'aujourd'hui rendent périmés (seuil d'une
+ * activité changé dans Réglages, pré-réglage effacé, activité supprimée…), lot 37 : une trace à la
+ * fois, par le même passage que les fiches du lancement (`completeScan`), la plus récente d'abord.
+ * Attend la fin de l'ouverture, d'une relecture ou d'un passage en cours ; s'arrête avec lui si la
+ * mémoire change (`generation`). Appelé de nouveau pendant qu'il tourne, il réévalue une fois à la
+ * fin. Rien n'est relu ni écrit quand aucun résumé n'est périmé ; une trace déjà tentée sans succès
+ * depuis l'ouverture n'est pas retentée (`refreshFailed`).
+ */
+export const queueOutdatedRefresh = (): Promise<void> => {
+  if (outdatedRefresh) {
+    outdatedAgain = true;
+    return outdatedRefresh;
+  }
+  const run = (async () => {
+    do {
+      outdatedAgain = false;
+      for (;;) {
+        await opening;
+        if (refreshing) await refreshing;
+        else if (scanPass) await scanPass.then(() => undefined, () => undefined);
+        else break;
+      }
+      const f = folder;
+      if (!f || state.status !== 'ready') return;
+      const files = outdatedRefreshFiles(all, summaryOutdatedTest(), refreshFailed);
+      if (files.length === 0) continue;
+      await completeScan(f, generation, files.map((file): SummaryJob => ({ file, kind: 'refresh', readOnly: false, warning: null })), true);
+    } while (outdatedAgain);
+  })()
+    .catch((err: unknown) => {
+      setState({ scanning: null, toUpdate: 0, error: `Mise à jour des résumés interrompue : ${errorMessage(err, 'erreur inconnue')}` });
+    })
+    .finally(() => {
+      outdatedRefresh = null;
+    });
+  outdatedRefresh = run;
+  return run;
 };
 
 export const dismissLibraryMessage = (): void => setState({ message: null, error: null });

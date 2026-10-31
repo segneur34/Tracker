@@ -92,7 +92,10 @@ function MemoryStatus({
     </div>
   );
 
-  const attention = status !== 'ready' || library.scanning !== null || library.pendingCount > 0
+  // Seule la lecture des GPX sans fiche demande attention ; les résumés refaits ont leur ligne dans la liste.
+  const creating = library.scanning && library.scanning.creating.done < library.scanning.creating.total
+    ? library.scanning.creating : null;
+  const attention = status !== 'ready' || creating !== null || library.pendingCount > 0
     || library.duplicates.length > 0 || library.unreadable.length > 0;
   if (compact && !attention) {
     return (
@@ -130,9 +133,9 @@ function MemoryStatus({
         </HelpText>
         {statusLine}
 
-        {library.scanning && (
+        {creating && (
           <p style={mutedStyle}>
-            Lecture des traces sans fiche : {library.scanning.done} / {library.scanning.total}
+            Lecture des traces sans fiche : {creating.done} / {creating.total}
           </p>
         )}
 

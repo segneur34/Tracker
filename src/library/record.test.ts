@@ -62,6 +62,14 @@ describe('parseRecord et serializeRecord', () => {
     expect('movingDistanceM' in parseRecord(serializeRecord(record()))!.summary).toBe(false);
   });
 
+  it("relisent l'empreinte des réglages du résumé (lot 37), et écartent une empreinte qui n'est pas un texte", () => {
+    const optionsKey = '[6,null,null,null]';
+    expect(parseRecord(serializeRecord(record({ summary: { ...record().summary, optionsKey } })))!.summary.optionsKey).toBe(optionsKey);
+    const abimee = { ...record(), summary: { ...record().summary, optionsKey: 6 } };
+    expect('optionsKey' in parseRecord(JSON.stringify(abimee))!.summary).toBe(false);
+    expect('optionsKey' in parseRecord(serializeRecord(record()))!.summary).toBe(false);
+  });
+
   it('relisent la FC du résumé, et écartent une FC mal formée', () => {
     const heartRate = { avgBpm: 148, maxBpm: 171, coveredS: 2400, histogram: { fromBpm: 120, seconds: [10, 20, 30] } };
     const r = record({ summary: { ...record().summary, heartRate } });

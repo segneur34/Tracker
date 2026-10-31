@@ -1,3 +1,4 @@
+import { plural } from '../core/basics';
 import { weekdayDayMonthYear } from '../core/calendar';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -473,6 +474,16 @@ const SessionRow = memo(function SessionRow({
   );
 });
 
+/**
+ * Résumés refaits en tâche de fond (version du calcul, réglage d'activité changé), lot 37 : une
+ * ligne tant qu'il en reste, lue à part pour que le compteur ne redessine pas la liste.
+ */
+function OutdatedSummaries() {
+  const { toUpdate } = useLibraryFields('toUpdate');
+  if (toUpdate <= 0) return null;
+  return <p className="ui-hint ui-hint--m">{plural(toUpdate, 'session')} à mettre à jour</p>;
+}
+
 function SessionLibrary({ family }: { family: SportFamily }) {
   // Les champs lus seulement : ni le compteur du balayage ni les messages ne redessinent la liste.
   const library = useLibraryFields('sessions', 'status', 'scanning', 'folderLabel');
@@ -587,6 +598,7 @@ function SessionLibrary({ family }: { family: SportFamily }) {
       </header>
 
       <MemoryStatus compact />
+      <OutdatedSummaries />
       {/* Entraînement : les types d'entraînement en tuiles, avant les sessions (24/10). */}
       {family === 'fractionne' && <TrainingHub />}
       {helpOpen && (

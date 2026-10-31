@@ -1,8 +1,10 @@
 import { parseGpx } from '../core/gpxParser';
-import { SAILING_SPORTS, hasPositions, isLandTreatment, sportTreatment } from '../core/sportProfiles';
+import { SAILING_SPORTS, getSportProfile, hasPositions, isLandTreatment, isSportType, sportTreatment } from '../core/sportProfiles';
 import type { SportType } from '../core/types';
 import { guessSport } from './naming';
-import type { RecordWithoutSummary, SessionAnalysis, SessionRecord, SessionSummary } from './record';
+import {
+  isSummaryStale, type LibrarySession, type RecordWithoutSummary, type SessionAnalysis, type SessionRecord, type SessionSummary,
+} from './record';
 import { summarizeHeartRateSession, summarizeSession, type SummaryOptions } from './summary';
 
 /**
@@ -51,6 +53,46 @@ export const summaryOptions = (
   };
 };
 
+/**
+ * Empreinte des réglages qui changent le résumé, gardée dans le résumé (`SessionSummary.optionsKey`,
+ * lot 37) : seuil, allure imposée, foil en surf (ailleurs il ne change pas le résumé) et seuil de
+ * vague. L'altitude du terrain et le test guidé n'y sont pas : ils sont dans la fiche, et leur
+ * changement refait déjà le résumé (`applyRecordPatch`).
+ */
+export const summaryOptionsKey = (sport: SportType, options: SummaryOptions): string =>
+  JSON.stringify([
+    options.activeThreshold ?? null,
+    options.referenceSpeedOverrideMs ?? null,
+    getSportProfile(sport).surf ? options.foil ?? false : null,
+    options.waveThreshold ?? null,
+  ]);
+
+/**
+ * Vrai si le résumé est à refaire : calculé par une version antérieure du calcul, ou avec d'autres
+ * réglages que ceux d'aujourd'hui (seuil de l'activité changé dans Réglages, allure imposée de la
+ * session changée…), ou d'avant l'empreinte. Ne lit que la fiche allégée et les réglages, jamais le
+ * GPX. Sans calcul connu ou sans positions (muscu, résumé sans réglage), seule la version compte.
+ */
+export const isSummaryOutdated = (
+  record: SessionRecord,
+  activityOf: (sport: SportType) => ActivitySummarySettings
+): boolean => {
+  if (isSummaryStale(record)) return true;
+  const { sport } = record;
+  if (sport === null || !isSportType(sport) || !hasPositions(sport)) return false;
+  return record.summary.optionsKey !== summaryOptionsKey(sport, summaryOptions(sport, record.analysis, activityOf(sport)));
+};
+
+/**
+ * Sessions dont le résumé est à refaire, dans l'ordre de la liste (la plus récente d'abord) : ni
+ * fiche en lecture seule, ni trace déjà tentée sans succès depuis le lancement (`failed`).
+ */
+export const outdatedRefreshFiles = (
+  sessions: readonly Pick<LibrarySession, 'file' | 'record' | 'readOnly'>[],
+  isOutdated: (record: SessionRecord) => boolean,
+  failed: ReadonlySet<string>
+): string[] => sessions.filter((s) => !s.readOnly && !failed.has(s.file) && isOutdated(s.record)).map((s) => s.file);
+
 export interface AnalyzedGpx {
   summary: SessionSummary;
   sport: SportType | null;
@@ -75,13 +117,19 @@ export const analyzeGpx = (
   const parsed = parseGpx(text);
   const resolved = sport === undefined ? guessSport(parsed.trackType) : sport;
   // Session sans trace (muscu) : ses points n'ont que l'heure et la FC.
-  const summary = resolved !== null && !hasPositions(resolved)
-    ? summarizeHeartRateSession(parsed.timedPoints, resolved)
-    : summarizeSession(
-      parsed.rawPoints, resolved,
-      resolved === null ? {} : summaryOptions(resolved, analysis, activityOf(resolved), elevation)
-    );
-  return summary ? { summary, sport: resolved, title: parsed.trackName ?? null } : null;
+  if (resolved !== null && !hasPositions(resolved)) {
+    const summary = summarizeHeartRateSession(parsed.timedPoints, resolved);
+    return summary ? { summary, sport: resolved, title: parsed.trackName ?? null } : null;
+  }
+  const options = resolved === null ? {} : summaryOptions(resolved, analysis, activityOf(resolved), elevation);
+  const summary = summarizeSession(parsed.rawPoints, resolved, options);
+  if (!summary) return null;
+  // Empreinte des réglages du calcul : un réglage changé plus tard rendra ce résumé à refaire.
+  return {
+    summary: resolved === null ? summary : { ...summary, optionsKey: summaryOptionsKey(resolved, options) },
+    sport: resolved,
+    title: parsed.trackName ?? null,
+  };
 };
 
 /** Nouveau résumé, en gardant le nombre et la réussite des manœuvres de la dernière analyse. */
