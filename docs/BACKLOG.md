@@ -11,7 +11,7 @@ Tenu par Claude ; l'utilisateur n'a jamais à l'ouvrir. `node outils/backlog.mjs
 
 ## Maintenant
 
-APK 0.4.35 installée le 31/10 (versionCode 4035 ; elle porte aussi le lot 28, déjà dans la 0.4.31 ; lots 72, 86, 87, 88 et 28 en attente de leurs essais, reportés à une sortie).
+APK 0.4.35 installée le 31/10 (versionCode 4035 ; elle porte aussi le lot 28, déjà dans la 0.4.31 ; lots 72, 86, 87, 88 et 28 en attente de leurs essais, reportés à une sortie). APK 0.4.37 construite le 31/10 (lots 44 et 37), non installée : téléphone non branché ; `androidppuild\outputspkelease\Tracker-0.4.37.apk`.
 
 - 44 · [dette] Manœuvres : creux lu sur la vitesse brute (le filtre médian de 3 s remonte les creux en V, conservation surestimée de 0,05 à 0,1 ; §11 « Manœuvres ») ; lot commun avec 49 et 43 · noté 30/09 · petit · Opus/high · à valider (commit « Lot 44 », version 0.4.36) ; 31/10 : décision de l'utilisateur, oui, vitesse brute ; SUMMARY_CALC_VERSION inchangé (le résumé ne calcule pas les manœuvres : les comptes d'une fiche suivent à sa réouverture) · détail : docs/backlog/44-mesure-manoeuvres.md
   - essai 88 : sur le PC, ouvrir la session de planche Komoot du 22/09 → des manœuvres « sens incertain » (ligne du tableau, marqueurs gris), ni virement ni empannage faux, et le vent demandé si toutes le sont ; puis une session de wing dense → même nombre de manœuvres qu'avant, réussites et Vmin un peu plus bas (jusqu'à 0,1 de conservation).
