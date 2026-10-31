@@ -142,10 +142,11 @@ check('voile : première rangée « général · avancé »', (await row(0)) ===
 check('voile : « avancé » fermé au départ, pas de seconde rangée', !(await advancedOpen()) && (await row(1)) === '', await row(1));
 let general = await panel('Général');
 console.log('général voile :', general);
-for (const label of ['Distance en vol', 'Temps total', 'Temps en vol', 'Ratio de vol', 'Moyenne en vol', 'Virements réussis', 'Empannages réussis', 'Top 2 s', 'Top 100 m', 'Vent', 'Régler']) {
+for (const label of ['Distance en vol', 'Temps total', 'Temps en vol', 'Ratio de vol', 'Moyenne en vol', 'Top 2 s', 'Virements réussis', 'Empannages réussis', 'Vent', 'Régler']) {
   // Sans casse : les boutons et les titres sont en capitales (typographie de l'accueil, 22/10).
   check(`voile, général : « ${label} »`, general.toLowerCase().includes(label.toLowerCase()), general.slice(0, 200));
 }
+check('voile, général : plus de « Top 100 m » (dans « tops », 31/10)', !general.toLowerCase().includes('top 100 m'), general.slice(0, 200));
 check('voile, général : des manœuvres comptées', /Virements réussis \/ \d+ \/ \d+ \(\d+ %\)/.test(general), general);
 check('voile, général : ni distance totale ni saisie du vent', !general.includes('Distance /') && !general.includes('Saisie'), general);
 await shoot('general-voile');

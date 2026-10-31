@@ -421,10 +421,10 @@ function SailingModule() {
       { key: 'totalTime', label: 'Temps total', value: stats.totalTime },
       { key: 'averageSpeed', label: 'Vitesse moyenne', value: formatSpeed(stats.avgSpeedMs, speedUnit) },
     ]),
+    // Top 2 s en face de la moyenne ; le top 100 m reste dans « avancé › tops » (31/10).
+    { key: 'top2s', label: 'Top 2 s', value: topValue(stats.tops.t2s[0]) },
     { key: 'tacks', label: 'Virements réussis', value: maneuverRate(maneuverSummary.tack) },
     { key: 'jibes', label: 'Empannages réussis', value: maneuverRate(maneuverSummary.jibe) },
-    { key: 'top2s', label: 'Top 2 s', value: topValue(stats.tops.t2s[0]) },
-    { key: 'top100m', label: 'Top 100 m', value: topValue(stats.tops.d100m[0]) },
     ...heartRateStat,
   ] : [];
   const arrowLayers = useMemo(
