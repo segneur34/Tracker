@@ -29,7 +29,7 @@ import { heartRatePointsFrom, heartRatePreviewPath, repsDone } from '../core/hea
 import { parseGpx } from '../core/gpxParser';
 import { getSportProfile, hasPositions, sportFamily, sportTreatment, type SportFamily } from '../core/sportProfiles';
 import { HEART_RATE_COLOR } from '../components/heartRateColors';
-import { formatDuration, formatShortDuration, formatSpeed, formatDistanceAuto } from '../core/units';
+import { formatDuration, formatShortDuration, formatLandSpeed, formatSpeed, formatDistanceAuto } from '../core/units';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { useElementSize } from '../hooks/useElementSize';
 import { useNearViewport } from '../hooks/useNearViewport';
@@ -103,10 +103,10 @@ const rowStats = (session: LibrarySession, activity: Activity | null): string[] 
   } else if (summary.test) {
     // Test guidé : FC max et vitesse du dernier palier tenu.
     if (summary.test.hrMaxBpm !== null) stats.push(`FC max ${summary.test.hrMaxBpm}`);
-    if (summary.test.lastStepSpeedMs !== null) stats.push(formatSpeed(summary.test.lastStepSpeedMs, effectiveSpeedUnit(activity)));
+    if (summary.test.lastStepSpeedMs !== null) stats.push(formatLandSpeed(summary.test.lastStepSpeedMs, effectiveSpeedUnit(activity), distanceUnit));
   } else {
     if (summary.movingTimeS && summary.distanceM > 0) {
-      stats.push(formatSpeed(summary.distanceM / summary.movingTimeS, effectiveSpeedUnit(activity)));
+      stats.push(formatLandSpeed(summary.distanceM / summary.movingTimeS, effectiveSpeedUnit(activity), distanceUnit));
     }
     if (summary.elevationGainM !== null) stats.push(`D+ ${Math.round(summary.elevationGainM)} m`);
   }

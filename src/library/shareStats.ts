@@ -1,6 +1,6 @@
 import type { ShareStat } from '../core/shareImage';
 import type { Treatment } from '../core/sportProfiles';
-import { formatDistance, formatDuration, formatSessionDate, formatShortDuration, formatSpeed, type DistanceUnit, type SpeedUnit } from '../core/units';
+import { formatDistance, formatDuration, formatSessionDate, formatShortDuration, formatLandSpeed, type DistanceUnit, type SpeedUnit } from '../core/units';
 import { downloadBaseName } from './naming';
 import type { SessionSummary } from './record';
 
@@ -24,7 +24,7 @@ export const summaryShareStats = (
   const movingS = summary.movingTimeS;
   const movingM = summary.movingDistanceM ?? null;
   const distance = formatDistance(summary.distanceM, units.distance);
-  const speed = (ms: number | null) => (ms === null || !Number.isFinite(ms) ? '—' : formatSpeed(ms, units.speed, units.distance));
+  const speed = (ms: number | null) => (ms === null || !Number.isFinite(ms) ? '—' : formatLandSpeed(ms, units.speed, units.distance));
   const per = (m: number | null, s: number | null) => (m === null || s === null || s <= 0 ? null : m / s);
 
   if (treatment === 'voile') {

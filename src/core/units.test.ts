@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHART_PACE_MIN_SPEED_MS, commaDecimal, formatDecimal, formatDuration, formatShortDuration, parseDecimal, INTERVAL_PACE_MIN_SPEED_MS, PACE_MIN_SPEED_MS, formatDistanceAuto, formatMeters, minutesSeconds, msToPace, pad2, signedPercent, speedSourceText,
-  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed, knotsToChartValue, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
+  editSpeedUnit, formatClockMinutes, formatDistance, formatMinSecHours, formatSessionDate, formatKnots, formatShortDistance, formatSpeed, formatLandSpeed, formatSpeedValue, fromDisplaySpeed, knotsToChartValue, knotsToDisplay, kmhToMs, speedUnitLabel, toDisplayDistance, toDisplaySpeed, SPEED_UNIT_LABEL, type SpeedUnit,
 } from './units';
 
 describe('distances', () => {
@@ -261,5 +261,15 @@ describe('formats d\'affichage uniques', () => {
     expect(formatDuration(37 * 60_000 + 59_000)).toBe('37 min');
     expect(formatShortDuration(3_900)).toBe('1 h 05');
     expect(formatShortDuration(65)).toBe('1 min 05');
+  });
+});
+
+describe('formatLandSpeed', () => {
+  it("rend l'allure en milles et exige l'unité de distance", () => {
+    expect(formatLandSpeed(1852 / 600, 'minkm', 'nm')).toBe('10:00 /NM');
+    expect(formatLandSpeed(1000 / 300, 'minkm', 'km')).toBe('5:00 /km');
+    expect(formatLandSpeed(10, 'kmh', 'nm')).toBe('36,0 km/h');
+    // @ts-expect-error l'unité de distance est obligatoire
+    formatLandSpeed(1000 / 300, 'minkm');
   });
 });

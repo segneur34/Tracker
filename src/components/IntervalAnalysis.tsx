@@ -8,7 +8,7 @@ import {
 import { niceTicks } from '../core/chartZoom';
 import {
   editSpeedUnit, signedPercent,
-  SPEED_UNIT_LABEL, speedUnitLabel, formatShortDistance, formatSpeed, formatSpeedValue, isInverseUnit, toDisplaySpeed,
+  SPEED_UNIT_LABEL, speedUnitLabel, formatShortDistance, formatLandSpeed, formatSpeedValue, isInverseUnit, toDisplaySpeed,
   type DistanceUnit, type SpeedUnit, formatDecimal
 } from '../core/units';
 import { formatIntervalClock, workoutLabel, type IntervalWorkout } from '../recording/intervalTimer';
@@ -310,11 +310,11 @@ function IntervalAnalysis({
             {seriesTitle(s, seriesIndex)}
             <div className="an-sheet__stats an-sheet__stats--always">
               {stat('Répétitions', s.detected ? `${summary.count}` : `${summary.count} / ${s.workout.reps}`, s.detected ? 'détectées' : undefined)}
-              {stat(`Moyenne des répétitions`, formatSpeed(summary.meanSpeedMs, speedUnit, distanceUnit))}
-              {summary.best && stat('La plus rapide', formatSpeed(summary.best.speedMs, speedUnit, distanceUnit), `rép. ${summary.best.rep}`)}
-              {summary.worst && stat('La plus lente', formatSpeed(summary.worst.speedMs, speedUnit, distanceUnit), `rép. ${summary.worst.rep}`)}
+              {stat(`Moyenne des répétitions`, formatLandSpeed(summary.meanSpeedMs, speedUnit, distanceUnit))}
+              {summary.best && stat('La plus rapide', formatLandSpeed(summary.best.speedMs, speedUnit, distanceUnit), `rép. ${summary.best.rep}`)}
+              {summary.worst && stat('La plus lente', formatLandSpeed(summary.worst.speedMs, speedUnit, distanceUnit), `rép. ${summary.worst.rep}`)}
               {summary.trend && stat('Dérive', `${signedPercent(summary.trend.perRep)} par rép.`,
-                `de ${formatSpeed(summary.trend.firstMs, speedUnit, distanceUnit)} à ${formatSpeed(summary.trend.lastMs, speedUnit, distanceUnit)}`)}
+                `de ${formatLandSpeed(summary.trend.firstMs, speedUnit, distanceUnit)} à ${formatLandSpeed(summary.trend.lastMs, speedUnit, distanceUnit)}`)}
               {summary.regularity !== null && stat('Régularité', `± ${formatDecimal(summary.regularity * 100, 1)} %`)}
               {summary.launchS !== null && stat('Mise en vitesse', `${formatDecimal(summary.launchS, 1)} s`,
                 summary.accelMs2 !== null ? formatRate(summary.accelMs2) : undefined)}
@@ -349,7 +349,7 @@ function IntervalAnalysis({
                         <td className="an-ivl-rep" style={{ ...cellStyle, textAlign: 'left', fontWeight: 700, color: repColor(repIndex, s.reps.length) }}>{rep}</td>
                         {showDuration && <td className="an-ivl-dur num" style={cellStyle}>{formatIntervalClock(Math.round(work.durationS))}</td>}
                         <td className="an-ivl-dist" style={cellStyle}>{work.distanceM === null ? '—' : formatShortDistance(work.distanceM, distanceUnit)}</td>
-                        <td className="an-ivl-speed" style={{ ...cellStyle, fontWeight: 700 }}>{formatSpeed(work.speedMs, speedUnit, distanceUnit)}</td>
+                        <td className="an-ivl-speed" style={{ ...cellStyle, fontWeight: 700 }}>{formatLandSpeed(work.speedMs, speedUnit, distanceUnit)}</td>
                         <td className="an-ivl-launch" data-label="lancé" style={cellStyle}>{launchS === null ? '—' : `${Math.round(launchS)} s`}</td>
                         <td className="an-ivl-hold" data-label="maintien" style={cellStyle}>{holdRatio === null ? '—' : signedPercent(holdRatio - 1, { decimals: 0 })}</td>
                         <td className="an-ivl-spark-cell" style={cellStyle}>{sparks.get(rep)?.some((v) => v !== null) && <Sparkline points={sparks.get(rep) ?? []} length={sparkLength} domain={domain} />}</td>
@@ -407,7 +407,7 @@ function IntervalAnalysis({
     // Recharts ne type pas la ligne de données : la vitesse en m/s y est rangée sous `<clé>Ms`.
     const row: Record<string, number | null> | undefined = item.payload;
     const ms = row && typeof item.dataKey === 'string' ? row[`${item.dataKey}Ms`] : null;
-    return [ms != null ? formatSpeed(ms, speedUnit, distanceUnit) : String(value ?? ''), name];
+    return [ms != null ? formatLandSpeed(ms, speedUnit, distanceUnit) : String(value ?? ''), name];
   };
 
   const evolutionPanel = (
@@ -494,7 +494,7 @@ function IntervalAnalysis({
             {seriesTitle(s, seriesIndex, true)}
             {data.length > 1 ? (
               <IntervalProfileChart data={data} spanS={length * stepS} launchS={launch} reps={s.reps} speedAxis={profileSpeedAxis(domain)}
-                formatMs={(ms) => formatSpeed(ms, speedUnit, distanceUnit)} resetKey={`${sessionKey ?? ''}|${seriesIndex}-${s.reps.length}-${length}`} />
+                formatMs={(ms) => formatLandSpeed(ms, speedUnit, distanceUnit)} resetKey={`${sessionKey ?? ''}|${seriesIndex}-${s.reps.length}-${length}`} />
             ) : (
               <div style={{ color: 'var(--muted)' }}>Répétitions trop courtes pour un profil.</div>
             )}

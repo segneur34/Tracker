@@ -64,7 +64,7 @@ import { meanFilterByTime } from '../core/speedFilter';
 import { effectiveSpeedRange, trackColorSegments } from '../core/trackColor';
 import {
   editSpeedUnit, CHART_PACE_MIN_SPEED_MS,
-  DISTANCE_UNIT_SYMBOL, speedSourceText, speedUnitLabel, formatClockMinutes, formatDistance, formatSpeed, formatSpeedValue, fromDisplaySpeed,
+  DISTANCE_UNIT_SYMBOL, speedSourceText, speedUnitLabel, formatClockMinutes, formatDistance, formatLandSpeed, formatSpeedValue, fromDisplaySpeed,
   isInverseUnit, toDisplayDistance, toDisplaySpeed, commaDecimal
 } from '../core/units';
 import { useChartZoom, type ChartZoom } from '../hooks/useChartZoom';
@@ -527,7 +527,7 @@ function LandModule({ family }: { family: LandFamily }) {
       case 'sans-contraste':
         return "Pas de fractionné reconnu : la vitesse ne se partage pas nettement entre efforts et récupérations. Un seuil d'effort imposé dans l'onglet réglages force la recherche.";
       case 'aucun-effort':
-        return `Aucun effort au-dessus du seuil d'effort (${formatSpeed(detected.thresholdMs, editSpeedUnit(speedUnit))}) : il se baisse dans l'onglet réglages.`;
+        return `Aucun effort au-dessus du seuil d'effort (${formatLandSpeed(detected.thresholdMs, editSpeedUnit(speedUnit), distanceUnit)}) : il se baisse dans l'onglet réglages.`;
       default:
         return 'Trop peu de mouvement pour y chercher des répétitions.';
     }
@@ -643,8 +643,8 @@ function LandModule({ family }: { family: LandFamily }) {
     { key: 'activeDistance', label: 'Distance en mouvement', value: formatDistance(stats.activeDistanceM, distanceUnit) },
     { key: 'totalTime', label: 'Temps de parcours', value: stats.totalTime },
     { key: 'activeTime', label: `Temps en mouvement (${commaDecimal(stats.activeRatio)} %)`, value: stats.activeTime },
-    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit, distanceUnit) },
-    { key: 'overallAverage', label: 'Moyenne sur le temps total', value: formatSpeed(positiveSpeed(stats.avgSpeedMs), speedUnit, distanceUnit) },
+    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatLandSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit, distanceUnit) },
+    { key: 'overallAverage', label: 'Moyenne sur le temps total', value: formatLandSpeed(positiveSpeed(stats.avgSpeedMs), speedUnit, distanceUnit) },
     { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
     { key: 'altitude', label: 'Altitude', value: stats.hasElevation ? `${stats.elevationMin} à ${stats.elevationMax} m` : '—' },
     ...(heart.present && heart.stats ? [{ key: 'heartRate', label: 'FC moyenne', value: `${Math.round(heart.stats.avgBpm)} bpm` }] : []),
@@ -659,14 +659,14 @@ function LandModule({ family }: { family: LandFamily }) {
     { key: 'distance', label: 'Distance', value: formatDistance(stats.distanceM, distanceUnit) },
     { key: 'totalTime', label: 'Temps de parcours', value: stats.totalTime },
     { key: 'activeTime', label: `Temps en mouvement (${commaDecimal(stats.activeRatio)} %)`, value: stats.activeTime },
-    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit, distanceUnit) },
+    { key: 'movingAverage', label: 'Moyenne en mouvement', value: formatLandSpeed(positiveSpeed(stats.activeAvgSpeedMs), speedUnit, distanceUnit) },
     { key: 'elevationGain', label: 'Dénivelé', value: stats.hasElevation ? `+${stats.elevationGain} / -${stats.elevationLoss} m` : '—' },
     ...overviewTargets.map((target) => {
       const top = overviewTops?.[target.key]?.[0];
       return {
         key: `top-${target.key}`,
         label: `${target.kind === 'time' ? 'Meilleures' : 'Meilleur'} ${target.label}`,
-        value: top && top.speed !== null ? formatSpeed(top.speed, speedUnit, distanceUnit) : '—',
+        value: top && top.speed !== null ? formatLandSpeed(top.speed, speedUnit, distanceUnit) : '—',
       };
     }),
     ...(heart.present && heart.stats ? [{ key: 'heartRate', label: 'FC moyenne', value: `${Math.round(heart.stats.avgBpm)} bpm` }] : []),
@@ -686,7 +686,7 @@ function LandModule({ family }: { family: LandFamily }) {
     switch (key) {
       case 'vitesse': {
         const ms = chartSpeed[i];
-        return { text: inverse && ms < CHART_PACE_MIN_SPEED_MS ? '—' : formatSpeed(ms, speedUnit, distanceUnit), color: SPEED_COLOR };
+        return { text: inverse && ms < CHART_PACE_MIN_SPEED_MS ? '—' : formatLandSpeed(ms, speedUnit, distanceUnit), color: SPEED_COLOR };
       }
       case 'altitude': {
         const altitude = elevation.smoothed[i];
@@ -716,7 +716,7 @@ function LandModule({ family }: { family: LandFamily }) {
         ? (power !== undefined && isFinite(power) ? `${roundTo(power, 1)} ${energy.powerUnit}` : '—')
         : `${energy.cumulative[i]} ${energy.cumulativeUnit}`;
       return {
-        values: [{ text: main, color: ALTITUDE_COLOR }, { text: `${formatSpeed(gpx.track[i].smoothedSpeedMs, speedUnit, distanceUnit)}${gradeText(i)}` }],
+        values: [{ text: main, color: ALTITUDE_COLOR }, { text: `${formatLandSpeed(gpx.track[i].smoothedSpeedMs, speedUnit, distanceUnit)}${gradeText(i)}` }],
         at: formatClockMinutes(trackMinutes[i]),
       };
     })()
@@ -1240,7 +1240,7 @@ function LandModule({ family }: { family: LandFamily }) {
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>{z.zone.range}</td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{formatDistance(z.distanceM, distanceUnit)} <span style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>({Math.round(z.distanceShare * 100)} %)</span></td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>{z.time}</td>
-                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 700 }}>{formatSpeed(z.avgSpeedMs, speedUnit, distanceUnit)}</td>
+                          <td style={{ padding: '0.4em 0.6em', textAlign: 'center', fontWeight: 700 }}>{formatLandSpeed(z.avgSpeedMs, speedUnit, distanceUnit)}</td>
                           <td style={{ padding: '0.4em 0.6em', textAlign: 'center' }}>
                             <MapToggle shown={shown} disabled={!reached} color={HIGHLIGHT_SHOWN_COLOR} onClick={() => setSelectedZone(shown ? null : z.zone.key)} />
                           </td>
@@ -1279,7 +1279,7 @@ function LandModule({ family }: { family: LandFamily }) {
                 jumps={jumps.jumps}
                 hiddenCount={jumps.hiddenCount}
                 minHeightM={jumps.minHeightM}
-                thresholdLabel={formatSpeed(thresholdMs, editSpeedUnit(speedUnit))}
+                thresholdLabel={formatLandSpeed(thresholdMs, editSpeedUnit(speedUnit), distanceUnit)}
                 speedUnit={speedUnit}
                 distanceUnit={distanceUnit}
                 open={open.sauts}

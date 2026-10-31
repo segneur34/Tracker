@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import { FAMILY_ACCENT, type Activity } from '../core/activities';
-import { formatSpeed } from '../core/units';
+import { formatLandSpeed } from '../core/units';
 import { finishFitnessRamp, fitnessTestRunner, useFitnessTest, type FitnessTestView } from '../hooks/useFitnessTest';
 import { useRunnerProfile } from '../hooks/useRunnerProfile';
-import { effectiveSpeedUnit, useFitnessTestSettings } from '../hooks/useSportSettings';
+import { effectiveDistanceUnit, effectiveSpeedUnit, useFitnessTestSettings } from '../hooks/useSportSettings';
 import { FITNESS_TESTS, TEST_SIGNAL_LABEL, resolveFitnessTestParams, type FitnessTestId, type TestPhase } from '../recording/fitnessTest';
 import { formatIntervalClock } from '../recording/intervalTimer';
 import './IntervalCard.css';
@@ -59,12 +59,13 @@ function TestPreview({ testId, activity }: { testId: FitnessTestId; activity: Ac
 /** Test en cours. */
 function TestLive({ view, activity }: { view: FitnessTestView; activity: Activity }) {
   const unit = effectiveSpeedUnit(activity);
+  const distanceUnit = effectiveDistanceUnit(activity);
   const { phase, params } = view;
   const title = phase === 'rampe' ? `${PHASE_LABEL.rampe} · palier ${view.step}` : PHASE_LABEL[phase];
   const reading = phase === 'echauffement'
     ? `Cible ${params ? `${params.warmupLowBpm} à ${params.warmupHighBpm}` : '—'} bpm · lue ${bpm(view.hrBpm)}`
     : phase === 'rampe'
-      ? `Cible ${formatSpeed(view.targetMs, unit)} · lue ${formatSpeed(view.speedMs, unit)} · FC ${bpm(view.hrBpm)}`
+      ? `Cible ${formatLandSpeed(view.targetMs, unit, distanceUnit)} · lue ${formatLandSpeed(view.speedMs, unit, distanceUnit)} · FC ${bpm(view.hrBpm)}`
       : phase === 'recuperation' || phase === 'fini' ? `FC ${bpm(view.hrBpm)}` : null;
   const askFinish = () => {
     if (window.confirm('Finir la rampe maintenant ? La récupération commence, et le dernier palier commencé ne compte pas.')) finishFitnessRamp();

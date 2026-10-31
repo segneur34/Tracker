@@ -37,7 +37,7 @@ import { CHART_MAX_POINTS, DEFAULT_MAP_CENTER, trackBounds } from '../core/displ
 import { parseGpxPath } from '../core/gpxParser';
 import { ELEVATION_PRESETS, usesMarkCourse } from '../core/sportProfiles';
 import { useExclusiveToggles } from '../hooks/useExclusiveToggles';
-import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, formatSpeed, toDisplayDistance, formatMeters, commaDecimal } from '../core/units';
+import { DISTANCE_UNIT_SYMBOL, formatDistance, formatDuration, formatLandSpeed, toDisplayDistance, formatMeters, commaDecimal } from '../core/units';
 import { useLeaveWarning } from '../hooks/leaveGuard';
 import { useChartZoom } from '../hooks/useChartZoom';
 import { useGoOnRoute } from '../hooks/useGoOnRoute';
@@ -1049,7 +1049,7 @@ function PlanningPage() {
                 {hasElevation && gradeRange && 'Pour zoomer : écartez deux doigts ou touchez deux fois la courbe ; à la souris, tirez une zone ou double-cliquez. '}
                 {durationSettings && pace && (
                   <>
-                    Temps estimé au niveau {PACE_LEVEL_LABEL[pace.level].toLowerCase()}, {formatSpeed(pace.flatSpeedMs, speedUnit)} sur le plat
+                    Temps estimé au niveau {PACE_LEVEL_LABEL[pace.level].toLowerCase()}, {formatLandSpeed(pace.flatSpeedMs, speedUnit, distanceUnit)} sur le plat
                     {durationSettings.family === 'course' ? `, chaque 100 m de D+ comptant ${effortDistance}` : ''} : à régler dans <Link to="/parametres">Réglages</Link>.
                   </>
                 )}

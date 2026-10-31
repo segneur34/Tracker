@@ -22,7 +22,7 @@ import { FAMILY_ACCENT, FAMILY_LABEL, activitiesOfFamily, activityFamily, type A
 import { SPORT_FAMILIES, SPORT_PROFILES, getSportProfile, type SportFamily } from '../core/sportProfiles';
 import {
   formatDistanceAuto, formatDecimal,
-  DISTANCE_UNIT_SYMBOL, speedUnitLabel, formatDuration, formatShortDuration, formatSpeed, formatSpeedValue, isInverseUnit,
+  DISTANCE_UNIT_SYMBOL, speedUnitLabel, formatDuration, formatShortDuration, formatLandSpeed, formatSpeedValue, isInverseUnit,
   toDisplayDistance, toDisplaySpeed, type DistanceUnit, type SpeedUnit,
 } from '../core/units';
 import { useChartZoom } from '../hooks/useChartZoom';
@@ -414,7 +414,7 @@ function StatisticsPage() {
   /** Valeur d'une session en clair, dans l'unité de la sélection. */
   const metricText = (value: number): string => {
     switch (metric.unit) {
-      case 'vitesse': return formatSpeed(value, speedUnit, distanceUnit);
+      case 'vitesse': return formatLandSpeed(value, speedUnit, distanceUnit);
       case 'duree': return formatDuration(value * 1000);
       case 'distance': return formatDistanceAuto(value, distanceUnit);
       case 'pourcent': return `${Math.round(value)} %`;
@@ -481,7 +481,7 @@ function StatisticsPage() {
   const recordValue = (kind: StatsRecordKind, value: number, s: StatSession): string => {
     const a = activityById.get(s.activityId);
     switch (kind) {
-      case 'vitesse': return formatSpeed(value, a ? effectiveSpeedUnit(a) : speedUnit, a ? effectiveDistanceUnit(a) : distanceUnit);
+      case 'vitesse': return formatLandSpeed(value, a ? effectiveSpeedUnit(a) : speedUnit, a ? effectiveDistanceUnit(a) : distanceUnit);
       case 'distance': return formatDistanceAuto(value, a ? effectiveDistanceUnit(a) : distanceUnit);
       case 'duree': return formatDuration(value * 1000);
       case 'denivele': return `${Math.round(value)} m`;
@@ -560,10 +560,10 @@ function StatisticsPage() {
                       {totals.movingTimeS > 0 && <StatTile label="Temps en action" value={formatDuration(totals.movingTimeS * 1000)} />}
                       {family !== null && <StatTile label="Distance" value={formatDistanceAuto(totals.distanceM, distanceUnit)} />}
                       {isLandFamily(family) && averageMovingSpeedMs(totals) !== null && (
-                        <StatTile label="Vitesse moyenne en action" value={formatSpeed(averageMovingSpeedMs(totals), speedUnit, distanceUnit)} />
+                        <StatTile label="Vitesse moyenne en action" value={formatLandSpeed(averageMovingSpeedMs(totals), speedUnit, distanceUnit)} />
                       )}
                       {isLandFamily(family) && totals.elevationSessions > 0 && <StatTile label="Dénivelé positif" value={`${Math.round(totals.elevationGainM)} m`} />}
-                      {family !== null && totals.maxSpeedMs !== null && <StatTile label="Vitesse max" value={formatSpeed(totals.maxSpeedMs, speedUnit, distanceUnit)} />}
+                      {family !== null && totals.maxSpeedMs !== null && <StatTile label="Vitesse max" value={formatLandSpeed(totals.maxSpeedMs, speedUnit, distanceUnit)} />}
                       {family === 'voile' && totals.maneuverSessions > 0 && (
                         <>
                           <StatTile label="Manœuvres" value={totals.maneuvers} />

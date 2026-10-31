@@ -161,6 +161,15 @@ export function formatSpeed(ms: number | null, unit: SpeedUnit, distanceUnit: Di
   }
 }
 
+/**
+ * Comme `formatSpeed`, pour les modules à pied et à vélo (et la bibliothèque,
+ * Statistiques, intervalles) où l'unité peut être une allure : l'unité de
+ * distance est obligatoire au type, faute de quoi l'allure serait fausse en
+ * silence en milles. Voile et surf gardent `formatSpeed`.
+ */
+export const formatLandSpeed = (ms: number | null, unit: SpeedUnit, distanceUnit: DistanceUnit): string =>
+  formatSpeed(ms, unit, distanceUnit);
+
 /** Formate une valeur déjà exprimée dans l'unité, pour les axes de graphe. */
 export const formatSpeedValue = (value: number, unit: SpeedUnit): string => {
   if (!isFinite(value)) return '-';
