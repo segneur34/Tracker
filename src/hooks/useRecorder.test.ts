@@ -115,15 +115,56 @@ describe('enregistreur', () => {
     expect(recorder.getRecorderState().status).toBe('recording');
   });
 
-  it('deux « Reprendre » sans attendre : un seul redémarrage de la source (D-B3)', async () => {
+  it("deux « Reprendre » sans attendre : la source, restée allumée pendant la pause, n'est ni arrêtée ni relancée (D-B3, lot 104)", async () => {
     const source = fakeSource();
     await recorder.startRecording(activity, source);
     source.emit(0);
     source.emit(1);
     await recorder.pauseRecording();
     await Promise.all([recorder.resumeRecording(), recorder.resumeRecording()]);
-    expect(source.starts).toBe(2);
+    expect(source.starts).toBe(1);
+    expect(source.stops).toBe(0);
+    expect(source.active).toBe(true);
     expect(recorder.getRecorderState().status).toBe('recording');
+  });
+
+  it("pause manuelle : le GPS reste allumé, la carte suit le coureur, rien n'est gardé ni compté, la trace repart à la reprise (lot 104)", async () => {
+    const source = fakeSource();
+    await recorder.startRecording(activity, source);
+    for (let s = 0; s < 10; s++) source.emit(s);
+    await recorder.pauseRecording();
+    expect(source.active).toBe(true);
+    const seenByOthers: number[] = [];
+    const offFixes = recorder.subscribeToFixes((f) => seenByOthers.push(f.timeMs));
+    // Le coureur continue d'avancer, puis s'arrête plus longtemps que le délai de la pause automatique.
+    for (let s = 10; s < 40; s++) source.emit(s);
+    expect(recorder.getLivePosition()?.timeMs).toBe(T0 + 39_000);
+    expect(recorder.getLastFix()?.timeMs).toBe(T0 + 9000);
+    expect(recorder.getLiveHeadingFixes()).toHaveLength(31);
+    for (let s = 40; s < 140; s++) source.emit(s, 0);
+    offFixes();
+    const paused = recorder.getRecorderState();
+    expect(paused.stats.pointCount).toBe(10);
+    expect(paused.status).toBe('paused');
+    expect(paused.pausedReason).toBe('manual');
+    // Notification, guidage et test ne voient pas les positions de la pause.
+    expect(seenByOthers).toEqual([]);
+    await recorder.resumeRecording();
+    // Rien de gardé encore : la flèche reste sur la dernière position reçue en pause, pas sur le point de la pause.
+    expect(recorder.getLivePosition()?.timeMs).toBe(T0 + 139_000);
+    expect(recorder.getLiveHeadingFixes()).toHaveLength(131);
+    source.emit(140);
+    expect(recorder.getLivePosition()?.timeMs).toBe(T0 + 140_000);
+    expect(recorder.getLiveHeadingFixes().at(-1)?.timeMs).toBe(T0 + 140_000);
+    expect(recorder.getLiveHeadingFixes()).toHaveLength(11);
+    for (let s = 141; s < 150; s++) source.emit(s);
+    expect(recorder.getLiveSegmentCount()).toBe(2);
+    await recorder.stopRecording();
+    const content = recorder.getRecorderState().pending!.content;
+    expect(content.match(/<trkseg>/g)).toHaveLength(2);
+    expect(content.match(/<trkpt/g)).toHaveLength(20);
+    // Le second segment commence à la première position reprise.
+    expect(content.split('<trkseg>')[2]).toContain(new Date(T0 + 140_000).toISOString().slice(0, 19));
   });
 
   it('le direct couvre la position qui vient d\'arriver (D-B4)', async () => {
@@ -174,7 +215,7 @@ describe('arrêt pendant une pause ou une reprise (B1)', () => {
     expect(source.active).toBe(false);
   });
 
-  it('reprise lancée puis « Arrêter » sans attendre : la source relancée est arrêtée, jamais en pause à la fin', async () => {
+  it('reprise lancée puis « Arrêter » sans attendre : la source est arrêtée, jamais en pause à la fin', async () => {
     const source = fakeSource();
     await recorder.startRecording(activity, source);
     source.emit(0);
@@ -188,8 +229,9 @@ describe('arrêt pendant une pause ou une reprise (B1)', () => {
     off();
     expect(recorder.getRecorderState().status).toBe('idle');
     expect(statuses[statuses.length - 1]).toBe('idle');
-    expect(source.starts).toBe(2);
-    expect(source.stops).toBe(2);
+    // Le GPS est resté allumé pendant la pause : un seul démarrage, un seul arrêt.
+    expect(source.starts).toBe(1);
+    expect(source.stops).toBe(1);
     expect(source.active).toBe(false);
     expect(recorder.getRecorderState().pending).not.toBeNull();
   });

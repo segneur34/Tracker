@@ -1,7 +1,7 @@
 // Banc de test : rendus de React pendant un enregistrement (lot 67, « ne redessiner que les chiffres »).
 // Usage : node rendus.mjs <port> <dossier de travail, chemin Windows>
 // Sur un profil neuf, sans réseau, environ 3 min 30 en temps réel (`TEMPS=10` : 25 s, mêmes ordres de grandeur).
-// Hors registre : une mesure, pas une preuve de neutralité (les comptes varient de quelques unités d'un passage à
+// Au registre en `manuel` (lancé seulement si nommé) : une mesure, pas une preuve de neutralité (les comptes varient de quelques unités d'un passage à
 // l'autre). Un faux crochet des outils de React (`__REACT_DEVTOOLS_GLOBAL_HOOK__`), posé avant tout script de la page,
 // reçoit chaque commit ; l'arbre des fibres y est parcouru, et une fibre de composant compte un rendu quand elle est
 // neuve dans l'arbre (clonée pour ce rendu, ou montée) et porte le drapeau « travail fait » (`PerformedWork`, 1).

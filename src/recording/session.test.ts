@@ -8,6 +8,7 @@ import {
   fixesFromRawPoints,
   isAutoPause,
   isManualPause,
+  receivedFixRole,
   isNewerFix,
   isRecordingSession,
   keepHeartRateSample,
@@ -18,6 +19,7 @@ import {
   sessionFileName,
   sessionTitle,
   shouldFlushJournal,
+  segmentCount,
   splitIntoSegments,
 } from './session';
 
@@ -84,6 +86,27 @@ describe('splitIntoSegments', () => {
 
   it('rend un tableau vide pour une trace vide', () => {
     expect(splitIntoSegments([], [1])).toEqual([]);
+  });
+});
+
+describe('receivedFixRole', () => {
+  it('garde ou soumet à la pause automatique hors pause manuelle ; en pause manuelle, la carte seule ; ignore au repos', () => {
+    expect(receivedFixRole({ status: 'starting', pausedReason: null })).toBe('evaluate');
+    expect(receivedFixRole({ status: 'recording', pausedReason: null })).toBe('evaluate');
+    expect(receivedFixRole({ status: 'paused', pausedReason: 'auto' })).toBe('evaluate');
+    expect(receivedFixRole({ status: 'paused', pausedReason: 'manual' })).toBe('show');
+    expect(receivedFixRole({ status: 'stopping', pausedReason: null })).toBe('ignore');
+    expect(receivedFixRole({ status: 'idle', pausedReason: null })).toBe('ignore');
+  });
+});
+
+describe('segmentCount', () => {
+  it('compte les segments que splitIntoSegments rendrait', () => {
+    const fixes = [fixAt(0), fixAt(1), fixAt(2), fixAt(3)];
+    for (const breaks of [[], [2], [3, 1, 1], [0, -1, 4, 99], [1, 2, 3]]) {
+      expect(segmentCount(fixes.length, breaks)).toBe(splitIntoSegments(fixes, breaks).length);
+    }
+    expect(segmentCount(0, [1])).toBe(0);
   });
 });
 

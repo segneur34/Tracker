@@ -34,6 +34,18 @@ export const isManualPause = (state: RecorderPhase): boolean => state.status ===
 export const isAutoPause = (state: RecorderPhase): boolean => state.status === 'paused' && state.pausedReason === 'auto';
 
 /**
+ * Ce que devient une position reçue selon l'état de l'enregistreur :
+ * `evaluate`, la pause automatique en juge puis elle est gardée hors pause ;
+ * `show`, en pause manuelle, elle ne sert qu'à la carte du direct (le GPS
+ * reste allumé, lot 104 ; rien n'est gardé ni compté, et la reprise reste
+ * manuelle) ; `ignore`, hors d'un enregistrement.
+ */
+export const receivedFixRole = (state: RecorderPhase): 'evaluate' | 'show' | 'ignore' =>
+  state.status === 'starting' || state.status === 'recording' || isAutoPause(state) ? 'evaluate'
+    : isManualPause(state) ? 'show'
+      : 'ignore';
+
+/**
  * Mesure de la ceinture gardée par l'enregistrement d'une session sans
  * position (muscu, lot I du 25/10) : l'heure et la FC, sans lat ni lon. Sans
  * FC, c'est le point posé à l'heure de l'arrêt, pour que la durée aille
@@ -125,6 +137,13 @@ export const splitIntoSegments = <F extends { timeMs: number }>(fixes: F[], brea
   segments.push(fixes.slice(start));
   return segments.filter((s) => s.length > 0);
 };
+
+/**
+ * Nombre de segments que `splitIntoSegments` rendrait, sans rien découper :
+ * la dernière position gardée est toujours dans le dernier (carte du direct).
+ */
+export const segmentCount = (fixCount: number, breaks: ReadonlyArray<number>): number =>
+  fixCount === 0 ? 0 : new Set(breaks.filter((i) => i > 0 && i < fixCount)).size + 1;
 
 /** Ce que la page d'enregistrement affiche en direct. */
 export interface RecordingStats {

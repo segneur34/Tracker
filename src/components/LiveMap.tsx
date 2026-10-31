@@ -5,6 +5,7 @@ import { Circle, CircleMarker, MapContainer, Marker, Polyline, useMap, useMapEve
 import { useCompassHeading } from '../hooks/useCompassHeading';
 import type { LocationFix } from '../platform/location';
 import { displayHeading, type TravelHeading } from '../recording/heading';
+import { liveTail } from '../recording/livePath';
 import type { CourseMark } from '../recording/markGuide';
 import type { SessionMark } from '../core/sessionMarks';
 import type { SportFamily } from '../core/sportProfiles';
@@ -20,6 +21,11 @@ interface LiveMapProps {
   segments: LocationFix[][];
   /** Position du moment, suivie par la carte. */
   position: LocationFix | null;
+  /**
+   * Rang, dans l'enregistrement, du segment de `position` (le dernier pour une position gardée) : le trait qui
+   * prolonge la trace jusqu'à elle ne joint jamais deux segments (`liveTail`). Sans lui, aucun trait.
+   */
+  positionSegment?: number | null;
   /** Couleur de la trace, celle de la famille du support. */
   color: string;
   /** Famille de l'activité : son fond de carte, plan ou satellite (`BaseTileLayer`). */
@@ -154,7 +160,7 @@ const segmentPath = (segment: LocationFix[]): [number, number][] => {
  * la position), et les notes posées en fanions numérotés. Sans position ni trace, la carte s'ouvre cadrée sur la trace
  * suivie. Sans réseau, le fond manque mais traces et position restent.
  */
-function LiveMap({ segments, position, color, family, height, guide, guideDone, travel, overlay, marks, validationRadiusM, notes }: LiveMapProps) {
+function LiveMap({ segments, position, positionSegment = null, color, family, height, guide, guideDone, travel, overlay, marks, validationRadiusM, notes }: LiveMapProps) {
   const [following, setFollowing] = useState(true);
   const halo = useMapBase(family)[0] === 'satellite';
   // Tracés mémorisés : `segments` ne change qu'au recalcul (toutes les 2 s, `useLiveRecording`), la position à chaque mesure.
@@ -164,8 +170,9 @@ function LiveMap({ segments, position, color, family, height, guide, guideDone, 
   const guideDonePath = useMemo(() => (guideDone && guideDone.length > 1 ? latLngs(guideDone) : null), [guideDone]);
   const trackStyle = useMemo(() => ({ color, weight: TRACK_WEIGHT, opacity: 0.9 }), [color]);
   const numberedNotes = useMemo(() => (notes ?? []).map((mark, i) => ({ mark, n: i + 1 })), [notes]);
-  // Le dernier segment, recalculé moins souvent que la position, est prolongé jusqu'à elle par un trait à part.
-  const lastFix = segments[segments.length - 1]?.at(-1);
+  // Le dernier segment, recalculé moins souvent que la position, est prolongé jusqu'à elle par un trait à part ;
+  // juste après une reprise, la position est déjà dans un nouveau segment : pas de trait depuis le point de la pause.
+  const tail = liveTail(segments, position, positionSegment);
   const target = marks?.find((m) => m.state === 'target');
   const start = position ?? segments[0]?.[0] ?? null;
   const guideBounds = !start && guide && guide.length > 1 ? trackBounds(guide) : null;
@@ -187,12 +194,12 @@ function LiveMap({ segments, position, color, family, height, guide, guideDone, 
           <Polyline positions={[[position.lat, position.lon], [target.lat, target.lon]]} pathOptions={AIM_STYLE} />
         )}
         {halo && paths.map((positions, i) => <Polyline key={`halo-${i}`} positions={positions} pathOptions={HALO_STYLE} />)}
-        {halo && lastFix && position && (
-          <Polyline positions={[[lastFix.lat, lastFix.lon], [position.lat, position.lon]]} pathOptions={HALO_STYLE} />
+        {halo && tail && (
+          <Polyline positions={[[tail[0].lat, tail[0].lon], [tail[1].lat, tail[1].lon]]} pathOptions={HALO_STYLE} />
         )}
         {paths.map((positions, i) => <Polyline key={i} positions={positions} pathOptions={trackStyle} />)}
-        {lastFix && position && (
-          <Polyline positions={[[lastFix.lat, lastFix.lon], [position.lat, position.lon]]} pathOptions={trackStyle} />
+        {tail && (
+          <Polyline positions={[[tail[0].lat, tail[0].lon], [tail[1].lat, tail[1].lon]]} pathOptions={trackStyle} />
         )}
         {marks?.map((m, i) => (
           <Marker key={i} position={[m.lat, m.lon]} icon={markIcon(m.label, m.state)} interactive={false} keyboard={false}

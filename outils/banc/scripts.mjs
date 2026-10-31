@@ -19,7 +19,7 @@
 //  - `releve` : fichiers du dossier de travail ajoutés au relevé ;
 //  - `delaiMin` : délai maximal en minutes (10 par défaut) ;
 //  - `accelerable` : le script lit `TEMPS` (attentes raccourcies, sortie inchangée sous horloge accélérée) :
-//    `compteur-course`, `notes`, `test-fcmax` (29/10) ; les autres scripts `solo` restent à temps réel (LISEZMOI) ;
+//    `compteur-course`, `notes`, `test-fcmax` (29/10), `carte-direct` (31/10) ; les autres scripts `solo` restent à temps réel (LISEZMOI) ;
 //  - `manuel` : raison pour laquelle le lanceur ne sait pas le lancer seul (lancé seulement si nommé, sauf
 //    `{dossierGpx}` : lancé avec `--gpx`).
 
@@ -41,6 +41,8 @@ export const SCRIPTS = [
   { nom: 'cadence', args: ['{port}', '{captures?}'], pages: ['course', 'fractionne', 'statistiques', 'reglages'] },
   // Mesure (lot 73) : couches de la carte, histogramme du canevas de la trace, durées des zooms et déplacements (en s, changent à chaque passage) ;
   // requêtes de tuiles pendant les gestes, fausses tuiles servies en 400 ms (lot 74).
+  // Carte du direct en pause manuelle, trous de position et page cachée (lot 104) ; relevés détaillés sur la sortie d'erreur.
+  { nom: 'carte-direct', args: ['{port}', '{travail}'], pages: ['enregistrer', 'course'], solo: true, accelerable: true },
   { nom: 'carte-perf', args: ['{port}', '{travail}', '{captures?}'], pages: ['course', 'bibliotheque'], sansCache: true, delaiMin: 15 },
   { nom: 'cardio', args: ['{port}', '{captures?}'], pages: ['course', 'surf', 'fractionne', 'voile', 'reglages', 'statistiques'] },
   // Sans `Network.enable`, rien n'est bloqué : l'altitude de l'IGN remplace la côte (LISEZMOI, « Scripts à revoir »).
@@ -84,6 +86,8 @@ export const SCRIPTS = [
   { nom: 'racine', args: ['{port}', '{captures?}'], pages: ['profil', 'reglages'] },
   { nom: 'recherche-sans-reponse', args: ['{port}', '{travail}'], pages: ['course'], reseau: true },
   { nom: 'reduire', args: ['{port}', '{captures?}'], pages: ['reglages', 'profil'] },
+  { nom: 'rendus', args: ['{port}', '{travail}'], pages: ['enregistrer'], solo: true,
+    manuel: "une mesure, pas une preuve de neutralité : les comptes de rendus varient de quelques unités d'un passage à l'autre" },
   { nom: 'reglages-aide', args: ['{port}', '{captures?}'], pages: ['reglages', 'planification'] },
   { nom: 'reglages', args: ['{port}', '{captures?}'], pages: ['reglages'] },
   { nom: 'rename', args: ['{port}', '{gpx}'], pages: ['bibliotheque', 'voile'] },

@@ -20,13 +20,14 @@ import { stopOrphanedDeviceLocation, type LocationFix, type LocationSource, type
 import { buildGpx, buildHeartRateGpx } from '../recording/gpxWriter';
 import { closeSessionTest, type SessionTest } from '../recording/fitnessTest';
 import { heartRateAt, readableBpm } from '../recording/heartRate';
+import { headingFixes, shownLiveFix } from '../recording/livePosition';
 import { seriesWithin, type IntervalRun, type IntervalSeries } from '../recording/intervalTimer';
 import {
   journalActivity, journalActivityLine, journalBreakLine, journalFixLine, journalHeaderLine, journalHeartRateLine, journalIntervalsLine, journalNoteLine,
   journalTestLine, parseJournal,
 } from '../recording/journal';
 import {
-  isAutoPause, isManualPause,
+  isAutoPause, isManualPause, receivedFixRole,
   EMPTY_RECORDING_STATS,
   addFixToStats,
   displayedDurationMs,
@@ -38,6 +39,7 @@ import {
   sessionFileName,
   sessionTitle,
   shouldFlushJournal,
+  segmentCount,
   splitIntoSegments,
   withStopPoint,
   type HeartRateFix,
@@ -238,6 +240,10 @@ let lastReceivedAtMs: number | null = null;
 let belowSinceMs: number | null = null;
 /** Une pause vient de se terminer : le prochain point gardé ouvre un nouveau segment. */
 let pendingBreak = false;
+/** Positions reçues pendant la pause manuelle en cours, pour la carte seule : jamais gardées. */
+let pauseFixes: LocationFix[] = [];
+/** Abonnés aux positions de la pause manuelle (la carte du direct, `useLivePosition`). */
+const pausePositionListeners = createListeners({ safe: true });
 /** Écritures du journal, enchaînées pour qu'elles arrivent dans l'ordre. */
 let writes: Promise<void> = Promise.resolve();
 /** Instant du démarrage, à l'horloge : le début de la fenêtre des séances du compteur. */
@@ -284,6 +290,8 @@ const keepPoint = <P extends HeartRateFix>(fix: P, kept: P[], breaks: number[], 
     breaks.push(kept.length);
     pendingLines += journalBreakLine(fix.timeMs);
     pendingBreak = false;
+    // Premier point gardé après une pause manuelle : la carte reprend la trace, ses positions de pause ne servent plus.
+    pauseFixes = [];
   }
   kept.push(fix);
   pendingLines += line;
@@ -296,10 +304,9 @@ const keepPoint = <P extends HeartRateFix>(fix: P, kept: P[], breaks: number[], 
 
 /** Reçoit une position de la source. Le réglage est relu à chaque fois : l'activité peut changer en route. */
 const receiveFix = (received: LocationFix): void => {
-  const acceptedStatus =
-    state.status === 'starting' || state.status === 'recording' || isAutoPause(state);
+  const role = receivedFixRole(state);
   const recording = currentProfile;
-  if (!acceptedStatus || recording === null) return;
+  if (role === 'ignore' || recording === null) return;
   if (!isNewerFix(lastReceivedMs, received)) return;
   // La source envoie de nouveau : son erreur, encore affichée, n'a plus lieu d'être.
   if (sourceError !== null) {
@@ -312,6 +319,13 @@ const receiveFix = (received: LocationFix): void => {
   lastReceivedMs = fix.timeMs;
   lastReceivedFix = fix;
   lastReceivedAtMs = Date.now();
+  if (role === 'show') {
+    // Pause manuelle : le GPS reste allumé pour la carte du direct seule ; rien n'est gardé, compté ni évalué (la
+    // reprise reste manuelle), et les abonnés aux positions (notification, guidage, test) n'en voient rien.
+    pauseFixes.push(fix);
+    pausePositionListeners.notify();
+    return;
+  }
   fixListeners.notify(fix);
 
   const auto = evaluateAutoPause(state.status === 'paused', belowSinceMs, fix, {
@@ -650,6 +664,7 @@ export const startRecording = exclusive(async (
   lastReceivedAtMs = null;
   belowSinceMs = null;
   pendingBreak = false;
+  pauseFixes = [];
   startedAtMs = Date.now();
   intervalRuns = new Map();
   marks = [];
@@ -695,9 +710,10 @@ export const startRecording = exclusive(async (
 });
 
 /**
- * Pause manuelle : coupe la source GPS pour économiser la batterie sur un
- * arrêt volontaire. `resumeRecording` la relance. Depuis une pause
- * automatique, elle coupe aussi la source : la reprise devient manuelle.
+ * Pause manuelle : plus rien n'est gardé ni compté, durée figée. Le GPS reste
+ * allumé (lot 104, décision du 31/10) : la carte du direct suit le coureur
+ * qui continue d'avancer, et la reprise ne relance rien (pas de première
+ * position périmée). Depuis une pause automatique, la reprise devient manuelle.
  */
 export const pauseRecording = exclusive(async (): Promise<void> => {
   const autoPaused = isAutoPause(state);
@@ -705,19 +721,14 @@ export const pauseRecording = exclusive(async (): Promise<void> => {
   // La durée se fige à cet instant ; depuis une pause automatique, celle-ci y reste comptée.
   const frozenAtMs = Date.now();
   const pauseClock: PauseClock = { sinceMs: autoPaused && state.pauseClock ? state.pauseClock.sinceMs : frozenAtMs, frozenAtMs };
-  try {
-    await stopSource?.();
-  } catch {
-    // La source est peut-être déjà arrêtée : on met en pause quand même.
-  }
-  stopSource = null;
   belowSinceMs = null;
+  // En pause dès l'appui : le GPS restant allumé, une position arrivée pendant l'écriture du journal ne serait pas gardée.
+  setState({ status: 'paused', pausedReason: 'manual', pauseClock });
   await flushJournal();
   if (state.measuringMotion) await pauseMotionCapture().catch(() => undefined);
-  setState({ status: 'paused', pausedReason: 'manual', pauseClock });
 });
 
-/** Relance la source coupée par `pauseRecording`. Le prochain point gardé ouvre un nouveau segment. */
+/** Reprend après une pause manuelle : le prochain point gardé ouvre un nouveau segment. La source n'est relancée que si elle s'est arrêtée. */
 export const resumeRecording = exclusive(async (): Promise<void> => {
   // Sans position (muscu), la ceinture est restée prise : la mesure suivante ouvre le segment.
   if (heartOnly && isManualPause(state)) {
@@ -725,9 +736,20 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
     setState({ status: 'recording', pausedReason: null, pauseClock: null });
     return;
   }
-  if (!isManualPause(state) || state.activity === null || currentSource === null || currentProfile === null) {
+  if (!isManualPause(state) || state.activity === null || currentProfile === null) {
     return;
   }
+  belowSinceMs = null;
+  if (stopSource !== null) {
+    // Le GPS est resté allumé pendant la pause : la position suivante ouvre le segment. Jusque-là, la carte reste sur
+    // la dernière position reçue en pause (`pauseFixes`, vidé au premier point gardé), pas sur le point de la pause.
+    pendingBreak = true;
+    if (state.measuringMotion) await resumeMotionCapture().catch(() => undefined);
+    setState({ status: 'recording', pausedReason: null, pauseClock: null });
+    return;
+  }
+  if (currentSource === null) return;
+  pauseFixes = [];
   const activity = state.activity;
   const source = currentSource;
   const profile = currentProfile;
@@ -750,9 +772,8 @@ export const resumeRecording = exclusive(async (): Promise<void> => {
  * fichier, `<type>` du GPX, module qui l'analyse), et la pause automatique
  * suit ses réglages dès la position suivante. Le changement est écrit dans le
  * journal : une session récupérée après un plantage garde l'activité choisie.
- * La notification Android garde le nom du départ jusqu'à une reprise après
- * pause manuelle : la changer tout de suite demanderait de relancer la source
- * GPS, au risque d'un trou dans la trace. Jamais d'une session sans position
+ * La source GPS n'est pas relancée (elle garde les réglages du départ),
+ * pour ne pas risquer un trou dans la trace. Jamais d'une session sans position
  * (muscu) à une session à positions, ni l'inverse : l'une n'a pas de GPS en
  * route, l'autre perdrait sa trace.
  */
@@ -886,6 +907,7 @@ export const stopRecording = afterCurrent(async (): Promise<void> => {
   }
   fixes = [];
   segmentBreaks = [];
+  pauseFixes = [];
   heartFixes = [];
   heartBreaks = [];
   heartOnly = false;
@@ -909,6 +931,30 @@ export const getLiveFixes = (): ReadonlyArray<LocationFix> => (isBusy() ? fixes 
 
 /** Dernière position gardée de l'enregistrement en cours. */
 export const getLastFix = (): LocationFix | null => (isBusy() && fixes.length > 0 ? fixes[fixes.length - 1] : null);
+
+/** Position de la carte du direct : la dernière gardée, ou en pause manuelle la dernière reçue (`shownLiveFix`). */
+export const getLivePosition = (): LocationFix | null => (isBusy() ? shownLiveFix(fixes[fixes.length - 1] ?? null, pauseFixes) : null);
+
+const subscribeToLivePosition = (listener: () => void): (() => void) => {
+  const fromState = subscribe(listener);
+  const fromPause = pausePositionListeners.subscribe(listener);
+  return () => {
+    fromState();
+    fromPause();
+  };
+};
+
+/**
+ * Position de la carte du direct, pour la carte seule (point 210) : redessine à chaque position gardée, et en pause
+ * manuelle à chaque position reçue ; `null` au repos.
+ */
+export const useLivePosition = (): LocationFix | null => useSyncExternalStore(subscribeToLivePosition, getLivePosition);
+
+/** Positions d'où la carte tire le cap de sa flèche : en pause manuelle, celles reçues depuis le point de la pause. */
+export const getLiveHeadingFixes = (): ReadonlyArray<LocationFix> => (isBusy() ? headingFixes(fixes, pauseFixes) : []);
+
+/** Nombre de segments de l'enregistrement en cours : la dernière position gardée est dans le dernier. */
+export const getLiveSegmentCount = (): number => (isBusy() ? segmentCount(fixes.length, segmentBreaks) : 0);
 
 /** Efface le compte rendu de la dernière session et le dernier message d'erreur. */
 export const dismissRecorderResult = (): void => setState({ saved: null, error: null });

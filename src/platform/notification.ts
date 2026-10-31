@@ -8,8 +8,8 @@ import { isNativeApp } from './runtime';
  * `@capgo/background-geolocation`, qui n'offre aucun moyen de la changer)
  * est récrite par un greffon maison sur le même numéro : visible écran
  * verrouillé, titre, chiffres du direct, chronomètre d'Android. Pendant une
- * pause manuelle, le service GPS est arrêté : le greffon la pose alors
- * lui-même (`standalone`). Dans le navigateur, chaque envoi est consigné en
+ * pause manuelle, le greffon la pose lui-même (`standalone`), que le
+ * service GPS tourne ou non. Dans le navigateur, chaque envoi est consigné en
  * `console.debug` (« [notification] … »), pour le banc.
  */
 

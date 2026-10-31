@@ -51,9 +51,10 @@ import { PERMISSION_LABEL } from '../recording/permissionsPrompt';
 import { useOpenSession } from '../hooks/useLibraryNavigation';
 import { updateSessionRecord } from '../hooks/useSessionLibrary';
 import {
-  addRecordingMark, analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes, pauseRecording,
+  addRecordingMark, analyzePendingSession, changeRecordingActivity, discardPendingSession, dismissRecorderResult, getLastFix, getLiveFixes,
+  getLiveHeadingFixes, getLiveSegmentCount, pauseRecording,
   resumeRecording, startRecording, stopRecording, type RecorderState,
-  useRecordingClock, useRecorderSelector, useRecorderStatus,
+  useLivePosition, useRecordingClock, useRecorderSelector, useRecorderStatus,
 } from '../hooks/useRecorder';
 import { followedTraceLengthM, splitFollowedTrace, type FollowProgress, type FollowedTrace } from '../recording/followedTrace';
 import { travelHeading } from '../recording/heading';
@@ -414,8 +415,8 @@ function RecordingMap({ busy, followed, courseMarksOf, liveActivity, family, onR
   family: SportFamily;
   onReduce: () => void;
 }) {
-  // Chaque position gardée change les statistiques : la carte suit la dernière position et le cap.
-  useRecorderSelector((s) => s.stats);
+  // La carte suit chaque position gardée, et en pause manuelle chaque position reçue (le GPS reste allumé), avec son cap.
+  const livePosition = useLivePosition();
   const notes = useRecorderSelector((s) => s.marks);
   const live = useLiveRecording();
   const markGuide = useMarkGuide();
@@ -434,13 +435,16 @@ function RecordingMap({ busy, followed, courseMarksOf, liveActivity, family, onR
     () => (courseMarksOf ? courseMarks(courseMarksOf, markGuide.active ? markGuide : null) : undefined),
     [courseMarksOf, markGuide]
   );
-  const travel = busy ? travelHeading(getLiveFixes()) : undefined;
+  const travel = busy ? travelHeading(getLiveHeadingFixes()) : undefined;
+  // Une position de la pause manuelle n'est pas gardée : aucun trait ne la joint à la trace.
+  const position = busy ? livePosition : null;
+  const positionSegment = position !== null && position === getLastFix() ? getLiveSegmentCount() - 1 : null;
   return (
     // Au repos, un aperçu de la trace suivie, sans position : remonté à chaque trace pour s'y cadrer. Sur un téléphone
     // tourné, la carte se fixe à droite (`RecordingPage.css`).
     <div className="rec-map">
       <LiveMap key={busy ? 'direct' : `apercu-${followed?.name}-${followed?.points.length}`}
-        segments={busy ? live.segments : []} position={busy ? getLastFix() : null} height="45vh"
+        segments={busy ? live.segments : []} position={position} positionSegment={positionSegment} height="45vh"
         guide={guide.remaining} guideDone={guide.done} travel={travel}
         marks={mapMarks} validationRadiusM={markGuide.active ? markGuide.validationRadiusM : undefined}
         notes={busy ? notes : undefined}
