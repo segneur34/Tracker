@@ -1147,3 +1147,18 @@ Condensé le 26 septembre 2026 (point 65) : chaque point garde sa décision, son
     - **Décision** : le résumé garde l'empreinte des réglages qui l'ont produit (`summary.optionsKey` : seuil, allure imposée, foil et seuil de vague en surf) ; une empreinte qui diffère des réglages courants le rend à refaire (`isSummaryOutdated`, sans lire le GPX). `queueOutdatedRefresh` les refait une trace à la fois par la file du lancement, 1,5 s après la dernière saisie, avec une ligne « n sessions à mettre à jour » qui s'efface seule ; reprise au lancement suivant si l'application est fermée. Automatique, sans bouton (décision de l'utilisateur du 31/10). `SUMMARY_CALC_VERSION` inchangé : les fiches d'avant, sans empreinte, sont refaites une fois.
     - **Pourquoi** : changer le seuil d'une activité ou l'allure imposée laissait la liste sur d'anciens chiffres, sans rien dire.
     - **Piège** : jamais deux passages à la fois (`scanPass` attendu, réévaluation unique si un réglage change pendant le recalcul) ; une trace déjà tentée sans succès n'est pas retentée en boucle (`refreshFailed`, vidé à l'ouverture et à « Mettre à jour ») ; le compteur « Lecture des traces sans fiche » ne doit compter que les créations (`scanning.creating`), sinon la carte de la mémoire réclamait l'attention pour un simple recalcul.
+
+240. Creux de manœuvre lu sur la vitesse brute (lot 44, validé le 31/10 ; version 0.4.36).
+    - **Décision** : Vmin et conservation se lisent sur la vitesse brute, plus sur la filtrée (décision de l'utilisateur du 31/10). `SUMMARY_CALC_VERSION` inchangé : le résumé ne calcule pas les manœuvres, les comptes d'une fiche suivent à sa réouverture.
+    - **Pourquoi** : le filtre médian de 3 s remontait les creux en V, conservation surestimée de 0,05 à 0,1. Relevé avant/après (diagnostic) : planche Komoot du 21/09, 22 manœuvres et vent 207° des deux côtés ; wing du 26/10, 18/10 et 10/10 : mêmes nombres (35, 31, 10), même vent, réussite 57 → 46 %, 87 → 87 %, 20 → 10 % ; chiffres jugés acceptables.
+    - **Piège** : seuls Vmin, conservation et réussite bougent ; toute retouche de la détection refait ce relevé.
+
+241. Caps stabilisés d'une manœuvre lus par pas de 0,9 s (lot 49, validé le 31/10).
+    - **Décision** : `medianStableSegment` lit l'écart de sa fenêtre par pas d'au moins 0,9 s ; bornes du test inchangées (20° et 15 m), caps stabilisés 3/3 aux deux cadences.
+    - **Pourquoi** : lue point à point, la fenêtre donnait 21° à 1 Hz et 29° à 5 Hz pour un seuil de 25° : un virement sur trois perdait son cap stabilisé à 5 Hz (règle 2).
+    - **Piège** : resserrer les bornes du test à la place aurait masqué l'écart de cadence au lieu de le supprimer.
+
+242. Virage vu en un seul pas : « sens incertain » (lot 43, validé le 31/10, essai 88).
+    - **Décision** : un virage vu en un seul pas (cadence économique, règle 10) dont la rotation atteint 150° est de sens `undecided` : compté, ni virement ni empannage, réussi ou raté sur sa Vmin, hors du pourcentage de réussite et du vent ; en dessous de 150° il garde l'arc court. Décision de l'utilisateur : aucune hypothèse sur le sens. Ligne « Sens incertain » au tableau seulement s'il y en a, marqueurs gris sur la carte.
+    - **Pourquoi** : choisir un sens sur un seul pas aurait faussé les comptes et le vent.
+    - **Piège** : sur le téléphone le seuil d'activité de la planche (8 nd) écarte toutes les manœuvres d'une session lente (allure 5 nd : 0 manœuvre, 21 virages « sans vol ») ; à 1 nd par session, 22 manœuvres dont 8 incertaines. Avec le vent saisi 28° contre 202° calculé, virements et empannages s'échangent (10/3 contre 3/10).
