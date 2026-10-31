@@ -288,3 +288,93 @@ describe('options de la cinématique tirées du profil (lot 72)', () => {
     expect(kinematicsOptionsOf(run, { scaleToSession: false, referenceMs: 9 })).toEqual(options);
   });
 });
+
+describe('pas de reprise et trous de la trace (lot 99)', () => {
+  /** Un pas de la trace : vitesse en m/s, durée en secondes, reprise après une pause. */
+  type Step = { speedMs: number; dt: number; resume?: boolean };
+
+  /**
+   * Trace vers l'est pas à pas : chaque pas avance de `speedMs × dt` mètres en
+   * `dt` secondes ; une reprise avance de `speedMs` mètres en une seconde
+   * après une pause de `dt` secondes sur place.
+   */
+  const buildSteps = (steps: Step[]): RawTrackPoint[] => {
+    const points: RawTrackPoint[] = [{ lat: LAT, lon: 3.8, time: new Date(START_MS).toISOString() }];
+    let meters = 0;
+    let ms = START_MS;
+    for (const step of steps) {
+      meters += step.resume ? step.speedMs : step.speedMs * step.dt;
+      ms += step.resume ? (step.dt + 1) * 1000 : step.dt * 1000;
+      points.push({
+        lat: LAT,
+        lon: 3.8 + meters / M_PER_DEG_LON,
+        time: new Date(ms).toISOString(),
+        ...(step.resume ? { segmentStart: true as const } : {}),
+      });
+    }
+    return points;
+  };
+  const steps = (count: number, speedMs: number, dt: number): Step[] => Array.from({ length: count }, () => ({ speedMs, dt }));
+
+  it('neutre sans trou ni pause : identique au calcul d\'avant, à 1 Hz et à 5 Hz', () => {
+    for (const stepS of [1, 0.2]) {
+      const points = buildTrack(Array.from({ length: 600 }, (_, k) => 3 + 2 * Math.sin(k / 40)), stepS);
+      expect(Object.is(referenceSpeedMs(points), frozenReferenceSpeedMs(points))).toBe(true);
+    }
+  });
+
+  it('pas de 25 s (cadence économique, cas Komoot) : les pas ordinaires font l\'allure, qui monte', () => {
+    // Cent pas de 25 s à 4,38 nd (2,25 m/s), vingt secondes à 1 Hz à 5,13 nd (2,64 m/s).
+    const points = buildSteps([...steps(50, 2.25, 25), ...steps(20, 2.64, 1), ...steps(50, 2.25, 25)]);
+    expect(frozenReferenceSpeedMs(points)).toBeCloseTo(2.25, 2);
+    expect(referenceSpeedMs(points)).toBeCloseTo(2.64, 2);
+  });
+
+  it('même allure à 1 Hz et à 5 Hz, trous et pause compris (règle 2)', () => {
+    const at = (stepS: number): Step[] => {
+      const n = Math.round(1 / stepS);
+      return [
+        ...steps(40, 2.25, 25),
+        ...steps(200 * n, 4, stepS),
+        { speedMs: 4 * stepS, dt: 300, resume: true },
+        ...steps(100 * n, 8, stepS),
+        ...steps(10, 1, 25),
+      ];
+    };
+    const à1Hz = referenceSpeedMs(buildSteps(at(1)));
+    expect(à1Hz).toBeCloseTo(8, 2);
+    expect(referenceSpeedMs(buildSteps(at(0.2)))).toBeCloseTo(à1Hz, 2);
+  });
+
+  it('pauses de 5 min puis reprise : la même allure que la trace sans les pauses', () => {
+    // 899 s à 4 m/s, 101 s à 8 m/s : le décile tombe juste au-dessus du bord lent.
+    const sansPause: Step[] = [...steps(899, 4, 1), ...steps(101, 8, 1)];
+    // Trois reprises dans le bord lent, après une pause de 5 min sur place.
+    const avecPauses = sansPause.map((step, k) => (k === 200 || k === 400 || k === 600 ? { ...step, dt: 300, resume: true } : step));
+    const sans = referenceSpeedMs(buildSteps(sansPause));
+    expect(sans).toBeCloseTo(8, 2);
+    expect(referenceSpeedMs(buildSteps(avecPauses))).toBeCloseTo(sans, 6);
+    // Avant : chaque reprise pesait 10 s à vitesse presque nulle, et l'allure tombait au bord lent.
+    expect(frozenReferenceSpeedMs(buildSteps(avecPauses))).toBeCloseTo(4, 2);
+  });
+
+  it('trace faite uniquement de trous : ils restent la mesure, plafonnés à maxGapS', () => {
+    const points = buildSteps(steps(100, 2.25, 25));
+    expect(referenceSpeedMs(points)).toBeCloseTo(2.25, 2);
+    expect(Object.is(referenceSpeedMs(points), frozenReferenceSpeedMs(points))).toBe(true);
+  });
+
+  it('trace faite uniquement de reprises : elles restent la mesure, comme avant', () => {
+    const deuxPoints = buildSteps([{ speedMs: 3, dt: 300, resume: true }]);
+    expect(referenceSpeedMs(deuxPoints)).toBeGreaterThan(0);
+    expect(Object.is(referenceSpeedMs(deuxPoints), frozenReferenceSpeedMs(deuxPoints))).toBe(true);
+    const reprises = buildSteps(Array.from({ length: 20 }, (_, k) => ({ speedMs: 2 + k / 10, dt: 60, resume: true })));
+    expect(referenceSpeedMs(reprises)).toBeGreaterThan(0);
+    expect(Object.is(referenceSpeedMs(reprises), frozenReferenceSpeedMs(reprises))).toBe(true);
+  });
+
+  it('maxGapS est un paramètre : un pas plus court que lui compte', () => {
+    const points = buildSteps([...steps(50, 2.25, 25), ...steps(20, 2.64, 1), ...steps(50, 2.25, 25)]);
+    expect(referenceSpeedMs(points, null, 30)).toBeCloseTo(2.25, 2);
+  });
+});

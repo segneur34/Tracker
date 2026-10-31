@@ -35,13 +35,6 @@ import type { RawTrackPoint } from './types';
 const REFERENCE_PERCENTILE = 0.9;
 
 /**
- * Durée maximale attribuée à un point, en secondes : celle d'un trou de la
- * trace. Sans ce plafond, le point qui précède une coupure d'enregistrement de
- * trois quarts d'heure pèserait autant que tout le reste de la session.
- */
-const MAX_SAMPLE_S = MAX_GAP_S;
-
-/**
  * Accélération maximale plausible, par unité de vitesse de référence et par
  * seconde : il faut environ une seconde et quart pour atteindre l'allure de
  * croisière. Au-delà, le point est suspect — ce qui ne le condamne pas, le
@@ -66,11 +59,23 @@ const CEILING_PER_REFERENCE = 3;
  * Le calcul porte sur les vitesses brutes, avant tout filtrage, puisque c'est
  * le filtrage qui en dépend.
  *
+ * Le pas de reprise après une pause (`segmentStart`) et le pas plus long que
+ * `maxGapS` (trou de la trace, `SportProfile.maxGapS`) sont écartés (lot 99) :
+ * leur vitesse est une moyenne sur un chemin inconnu, presque nulle quand le
+ * pas enjambe une pause ou un arrêt, et ne dit rien de l'allure tenue ; la
+ * cinématique ne leur prête pas non plus de vitesse propre (règle 6 : seule
+ * leur distance est bornée, `gapDistanceM`). Une trace faite uniquement de
+ * trous ou de reprises (cadence économique, règle 10) les garde, faute d'autre mesure, avec
+ * une durée plafonnée à `maxGapS` : sans ce plafond, le point qui précède une
+ * coupure de trois quarts d'heure pèserait autant que tout le reste.
+ *
  * `deviceUnit` : unité de la vitesse appareil déjà détectée
  * (`detectTrackDeviceSpeedUnit`, `null` sans vitesse appareil) ; absente, elle
  * est détectée ici.
  */
-export const referenceSpeedMs = (points: RawTrackPoint[], deviceUnit?: DeviceSpeedUnit | null): number => {
+export const referenceSpeedMs = (
+  points: RawTrackPoint[], deviceUnit?: DeviceSpeedUnit | null, maxGapS: number = MAX_GAP_S
+): number => {
   if (points.length < 2) return 0;
 
   const unit = deviceUnit === undefined ? detectTrackDeviceSpeedUnit(points) : deviceUnit;
@@ -78,6 +83,25 @@ export const referenceSpeedMs = (points: RawTrackPoint[], deviceUnit?: DeviceSpe
 
   // Points d'une même date répartis dans leur intervalle, comme dans `computeKinematics`.
   const timesMs = spreadEqualTimes(points, points.map(rawPointTimeMs));
+  const reference = referenceOf(points, timesMs, unit, deviceFactor, maxGapS, false);
+  // Rien que des trous ou des reprises : ils restent la seule mesure, comme avant le lot 99.
+  return reference ?? referenceOf(points, timesMs, unit, deviceFactor, maxGapS, true) ?? 0;
+};
+
+/**
+ * Pas compté dans l'allure : ni la reprise d'une pause (le pas qui mène au
+ * point `segmentStart` enjambe la pause) ni un trou plus long que `maxGapS`,
+ * sauf `keepGaps` (repli, où tous les pas comptent, durée plafonnée à
+ * `maxGapS`). Une durée illisible (NaN) passe, vers le repli lent.
+ */
+const keptStep = (point: RawTrackPoint, dt: number, maxGapS: number, keepGaps: boolean): boolean =>
+  keepGaps || (!point.segmentStart && !(dt > maxGapS));
+
+/** Neuvième décile pondéré des pas retenus (`keptStep`), `null` s'il n'en reste aucun. */
+const referenceOf = (
+  points: RawTrackPoint[], timesMs: number[], unit: DeviceSpeedUnit | null, deviceFactor: number,
+  maxGapS: number, keepGaps: boolean
+): number | null => {
 
   // Échantillons en tableaux typés, triés par indices (lot 56).
   const speeds = new Float64Array(points.length - 1);
@@ -85,7 +109,7 @@ export const referenceSpeedMs = (points: RawTrackPoint[], deviceUnit?: DeviceSpe
   let size = 0;
   for (let i = 1; i < points.length; i++) {
     const dt = (timesMs[i] - timesMs[i - 1]) / 1000;
-    if (dt <= 0) continue;
+    if (dt <= 0 || !keptStep(points[i], dt, maxGapS, keepGaps)) continue;
 
     const p0 = points[i - 1];
     const p1 = points[i];
@@ -94,13 +118,13 @@ export const referenceSpeedMs = (points: RawTrackPoint[], deviceUnit?: DeviceSpe
       unit !== null && p1.speedMs !== undefined ? p1.speedMs * deviceFactor : derived;
 
     // Date illisible ou vitesse NaN : le tri d'un NaN n'est pas sûr, on garde le calcul d'origine.
-    if (Number.isNaN(dt) || Number.isNaN(speed)) return referenceFromSamples(points, timesMs, unit, deviceFactor);
+    if (Number.isNaN(dt) || Number.isNaN(speed)) return referenceFromSamples(points, timesMs, unit, deviceFactor, maxGapS, keepGaps);
     speeds[size] = speed;
-    weights[size] = Math.min(dt, MAX_SAMPLE_S);
+    weights[size] = Math.min(dt, maxGapS);
     size++;
   }
 
-  if (size === 0) return 0;
+  if (size === 0) return null;
 
   const order = stableSortedOrder(speeds, size);
   let totalWeight = 0;
@@ -148,12 +172,13 @@ const stableSortedOrder = (values: Float64Array, size: number): Uint32Array => {
 
 /** `referenceSpeedMs` d'avant le lot 56, objets et tri, pour une trace qui porte une date illisible. */
 const referenceFromSamples = (
-  points: RawTrackPoint[], timesMs: number[], unit: DeviceSpeedUnit | null, deviceFactor: number
-): number => {
+  points: RawTrackPoint[], timesMs: number[], unit: DeviceSpeedUnit | null, deviceFactor: number,
+  maxGapS: number, keepGaps: boolean
+): number | null => {
   const samples: { speed: number; weight: number }[] = [];
   for (let i = 1; i < points.length; i++) {
     const dt = (timesMs[i] - timesMs[i - 1]) / 1000;
-    if (dt <= 0) continue;
+    if (dt <= 0 || !keptStep(points[i], dt, maxGapS, keepGaps)) continue;
 
     const p0 = points[i - 1];
     const p1 = points[i];
@@ -161,10 +186,10 @@ const referenceFromSamples = (
     const speed =
       unit !== null && p1.speedMs !== undefined ? p1.speedMs * deviceFactor : derived;
 
-    samples.push({ speed, weight: Math.min(dt, MAX_SAMPLE_S) });
+    samples.push({ speed, weight: Math.min(dt, maxGapS) });
   }
 
-  if (samples.length === 0) return 0;
+  if (samples.length === 0) return null;
 
   samples.sort((a, b) => a.speed - b.speed);
   const totalWeight = samples.reduce((sum, s) => sum + s.weight, 0);

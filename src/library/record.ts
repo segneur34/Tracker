@@ -76,8 +76,13 @@ export const RECORD_VERSION = 1;
  * pic d'un point ; cadence d'enregistrement d'un fichier aux dates tronquées
  * (5 Hz : 0,2 s) ; cadence moyenne sans le pas de reprise d'une pause ; surf à
  * un seul plancher d'arrêt (2 km/h), pause manuelle hors de la rame et de l'attente.
+ *
+ * 14 (31 octobre 2026) : allure de la session (`referenceSpeedMs`) sans les pas
+ * de reprise d'une pause ni les trous de plus de `maxGapS` ; en voile, elle
+ * accorde les filtres et le seuil suggéré, donc distance, vitesses, temps en
+ * mouvement et vignette (les autres familles ne bougent pas).
  */
-export const SUMMARY_CALC_VERSION = 13;
+export const SUMMARY_CALC_VERSION = 14;
 
 export type SessionSource = 'enregistrement' | 'import';
 
