@@ -151,8 +151,11 @@ const timeline = buildWindTimeline(
 );
 const result = analyzeManeuvers(pts, timeline, options);
 const counted = result.locations.length;
+// Sens incertain (virage vu en un seul pas, lot 44) : compté dans le total, hors du % de réussite.
+const undecided = result.undecided ?? 0;
+const directed = counted - undecided;
 const failed = result.tackFail + result.jibeFail;
-console.log(`\nManœuvres : ${counted} (virements ${result.tackSuccess} ok / ${result.tackFail} ratés, empannages ${result.jibeSuccess} ok / ${result.jibeFail} ratés ; ${pct(counted - failed, counted)} réussies)`);
+console.log(`\nManœuvres : ${counted} (virements ${result.tackSuccess} ok / ${result.tackFail} ratés, empannages ${result.jibeSuccess} ok / ${result.jibeFail} ratés, sens incertain ${undecided} ; ${pct(directed - failed, directed)} des virements et empannages réussis)`);
 console.log(`Écartés : ${JSON.stringify(result.rejected)}`);
 
 // Caps de contrôle, relus par l'outil : médiane des caps déroulés entre deux instants.
@@ -175,11 +178,14 @@ result.locations.forEach((m, n) => {
   const before = medianHeading(entryMs - 10000, entryMs - 2000);
   const after = medianHeading(exitMs + 1000, exitMs + 8000);
   const sides = before === null || after === null ? '—' : `${side(before, windDeg)}→${side(after, windDeg)}`;
-  const bisector = m.type === 'tack' ? m.localWind : m.localWind + 180;
+  // Sens incertain : ni bissectrice ni vent local, que le vent ne lit pas.
+  const directedTurn = m.type === 'tack' || m.type === 'jibe';
+  const bisector = !directedTurn ? null : m.type === 'tack' ? m.localWind : m.localWind + 180;
+  const kind = m.type === 'undecided' ? 'inc.' : m.type;
   let k = m.entryIndex;
   while (k > 0 && pts[k].timeMs > entryMs - 6000) k--;
   console.log(
-    `${String(n + 1).padStart(3)}  ${clock(entryMs)}  ${clock(m.timeMs)}  ${m.type.padEnd(4)}  ${m.success ? 'ok' : 'KO'}  ${r1(m.entrySpeed).padStart(6)}  ${r1(m.vmin).padStart(4)}  ${r1(m.conservation).padStart(4)}  ${String(m.relaunchS === null ? '—' : Math.round(m.relaunchS)).padStart(7)}  ${String(Math.round(m.headingChange)).padStart(4)}  ${deg(before)} → ${deg(after)}          ${sides.padEnd(5)}  ${deg(bisector)}          ${deg(m.localWind)}       ${m.stableHeadings ? 'oui' : 'non'}   ${flyingAt(k)}/${flyingAt(m.exitIndex)}`
+    `${String(n + 1).padStart(3)}  ${clock(entryMs)}  ${clock(m.timeMs)}  ${kind.padEnd(4)}  ${m.success ? 'ok' : 'KO'}  ${r1(m.entrySpeed).padStart(6)}  ${r1(m.vmin).padStart(4)}  ${r1(m.conservation).padStart(4)}  ${String(m.relaunchS === null ? '—' : Math.round(m.relaunchS)).padStart(7)}  ${String(Math.round(m.headingChange)).padStart(4)}  ${deg(before)} → ${deg(after)}          ${sides.padEnd(5)}  ${deg(bisector)}          ${deg(directedTurn ? m.localWind : null)}       ${m.stableHeadings ? 'oui' : 'non'}   ${flyingAt(k)}/${flyingAt(m.exitIndex)}`
   );
 });
 

@@ -10,6 +10,7 @@ import {
   analyzeManeuvers,
   classifyManeuvers,
   estimateWind,
+  maneuverAgreement,
   measureManeuver,
   prepareManeuverDetection,
   selectWindCandidate,
@@ -232,6 +233,26 @@ const buildSparseTurnTrack = (turnGapS: number, resumeAfterGap = false): PointDa
 };
 
 /**
+ * Bords de 60 s échantillonnés tous les `legStepS`, cap 40° puis 215°, trois
+ * fois de suite, chaque demi-tour de 175° tenant dans un unique silence de
+ * 20 s de l'enregistreur : on connaît le cap avant et le cap après, pas le
+ * côté par lequel la planche est passée (lot 44).
+ */
+const buildSilentUTurns = (legStepS: number, speedKn = 10): PointData[] => {
+  const points: PointData[] = [];
+  let t = 0;
+  for (let leg = 0; leg < 4; leg++) {
+    const bearing = leg % 2 === 0 ? 40 : 215;
+    const legStart = t;
+    for (; t <= legStart + 60 + 1e-9; t += legStepS) {
+      points.push({ lat: 43.553 + t * 0.00001, lon: 4.071 + t * 0.00001, timeMs: TRACK_START_MS + Math.round(t * 1000), smoothedSpeed: speedKn, bearing });
+    }
+    t = legStart + 60 + 20;
+  }
+  return points;
+};
+
+/**
  * Deux bords séparés par un unique pas, avec positions réelles : c'est le
  * virage de 12:50 de la trace Komoot, entamé à 2 nœuds et long de 12 m.
  * `speedKn` pilote la vitesse d'entrée, `stepM` la distance du virage.
@@ -446,6 +467,40 @@ const scriptedTack = (minLagS: number) => {
   return { track, apexMs: TRACK_START_MS + apexS * 1000 };
 };
 
+/**
+ * Virement sans bruit de la chaîne réelle (positions, vitesse appareil,
+ * `computeKinematics`) : près à 45° à 15 nœuds, rotation jusqu'à −45° de 40 à
+ * 44 s, et un creux plat à 11,5 nœuds sur ]41,5 ; 42,5] s, une seule seconde :
+ * un point à 1 Hz, cinq à 5 Hz. L'écrêtage par l'accélération (10 m/s²)
+ * laisse passer ces 3,5 nœuds en 0,2 s ; la médiane de 3 s les efface.
+ */
+const DIP_LEG_KN = 15;
+const DIP_KN = 11.5;
+const buildDipTack = (hz: number): PointData[] => {
+  const dtS = 0.01;
+  const stepsPerSample = Math.round(1 / (hz * dtS));
+  const speedAt = (s: number) => (s > 41.5 && s <= 42.5 ? DIP_KN : DIP_LEG_KN);
+  const headingAt = (s: number) => (s < 40 ? 45 : s < 44 ? 45 - ((s - 40) / 4) * 90 : -45);
+  const raw: RawTrackPoint[] = [];
+  let east = 0;
+  let north = 0;
+  for (let n = 0; n <= 100 / dtS; n++) {
+    const s = n * dtS;
+    if (n % stepsPerSample === 0) {
+      const sampleS = n / stepsPerSample / hz;
+      raw.push({
+        ...geoAt(east, north, { lat: 43.5, lon: 3.8 }),
+        time: new Date(TRACK_START_MS + Math.round(sampleS * 1000)).toISOString(),
+        speedMs: knotsToMs(speedAt(sampleS)),
+      });
+    }
+    const meters = knotsToMs(speedAt(s)) * dtS;
+    east += meters * Math.sin(toRad(headingAt(s)));
+    north += meters * Math.cos(toRad(headingAt(s)));
+  }
+  return trackToPointData(computeKinematics(raw, { medianWindowSeconds: 3 }));
+};
+
 /** Manœuvre factice, pour éprouver le résumé sans passer par la détection. */
 const fakeManeuver = (overrides: Partial<ManeuverLocation>): ManeuverLocation => ({
   lat: 43.6,
@@ -540,6 +595,46 @@ describe('analyzeManeuvers, enregistrement économique', () => {
 
     expect(stats.locations).toHaveLength(1);
     expect(stats.locations[0].type).toBe('tack');
+  });
+
+  it('compte un demi-tour de 175° vu en un pas de 20 s, sens incertain, hors du vent (lot 44)', () => {
+    for (const legStepS of [1, 0.2, 6]) {
+      const points = buildSilentUTurns(legStepS);
+      const stats = analyzeManeuvers(points, 0, { successThresholdKn: 8 });
+      expect(stats.locations.map((m) => m.type)).toEqual(['undecided', 'undecided', 'undecided']);
+      expect(stats.undecided).toBe(3);
+      expect(stats.tackSuccess + stats.tackFail + stats.jibeSuccess + stats.jibeFail).toBe(0);
+      // Réussie ou ratée sur sa vitesse minimale ; sans direction, ni gain au vent ni cap stabilisé.
+      for (const m of stats.locations) {
+        expect(m.success).toBe(true);
+        expect(m.windwardGainM).toBeNull();
+        expect(m.stableHeadings).toBe(false);
+      }
+      // Aucune n'alimente le vent : ni sa mesure, ni son orientation, ni sa courbe.
+      expect(windSamplesFrom(stats)).toHaveLength(0);
+      expect(maneuverAgreement(stats).count).toBe(0);
+      expect(calculateWindStats(points, stats, 0)).toBeNull();
+      // Le vent n'y change rien : le sens incertain ne le lit pas.
+      expect(analyzeManeuvers(points, 120, { successThresholdKn: 8 })).toEqual(stats);
+    }
+  });
+
+  it('met le sens incertain entamé sous le seuil de vol avec les demi-tours hors vol (lot 44)', () => {
+    const stats = analyzeManeuvers(buildSilentUTurns(1, 6), 0, { successThresholdKn: 8, flightThresholdKn: 8 });
+    expect(stats.locations).toHaveLength(0);
+    expect(stats.undecided).toBe(0);
+    expect(stats.rejected.noFlight).toBe(3);
+    expect(stats.rejectedTurns.every((r) => r.motif === 'noFlight' && r.type === undefined)).toBe(true);
+  });
+
+  it('classe toujours le même demi-tour observé point à point, à 1 Hz comme à 5 Hz (lot 44)', () => {
+    // La branche ne s'arme que sur une fenêtre vide : un virage de 180° vu
+    // sur plusieurs points garde son sens.
+    for (const stepS of [1, 0.2]) {
+      const stats = analyzeManeuvers(buildTrack(70, stepS, singleTackThroughNorth), 0, { successThresholdKn: 8 });
+      expect(stats.tackSuccess + stats.tackFail).toBe(1);
+      expect(stats.undecided).toBe(0);
+    }
   });
 
   it('n\'invente pas de virage à travers une vraie coupure', () => {
@@ -850,6 +945,25 @@ describe('measureManeuver', () => {
     }
   });
 
+  it('lit le creux en V sur la vitesse brute, sous la médiane, identique à 1 Hz et à 5 Hz (lot 44)', () => {
+    const conservations = [1, 5].map((hz) => {
+      const points = buildDipTack(hz);
+      const [tack] = analyzeManeuvers(points, 0, { successThresholdKn: 2 }).locations;
+      // La même trace sans la vitesse non filtrée : la mesure lissée d'avant.
+      const smoothedOnly = points.map(({ speedKn: _raw, ...p }) => p);
+      const [smoothed] = analyzeManeuvers(smoothedOnly, 0, { successThresholdKn: 2 }).locations;
+      expect(tack.type).toBe('tack');
+      expect(smoothed.conservation).toBeCloseTo(1, 6);
+      expect(tack.conservation).toBeLessThan(smoothed.conservation);
+      expect(tack.conservation).toBeCloseTo(DIP_KN / DIP_LEG_KN, 3);
+      // Le creux de la vitesse lissée borne toujours la relance : elle ne bouge pas.
+      expect(tack.relaunchS).toBe(smoothed.relaunchS);
+      expect(tack.exitIndex).toBe(smoothed.exitIndex);
+      return tack.conservation;
+    });
+    expect(conservations[1]).toBeCloseTo(conservations[0], 6);
+  });
+
   it('mesure le gain au vent dans le sens de la manœuvre, plus grand pour la plus rapide', () => {
     // Même durée de rotation : seule la vitesse conservée les distingue.
     for (const tack of [false, true]) {
@@ -863,8 +977,14 @@ describe('measureManeuver', () => {
     }
   });
 
-  /** Mêmes manœuvres, mêmes types, mêmes réussites, mesures proches, à 1 Hz et à 5 Hz. */
-  const expectSameMeasures = (noise: NoiseLevel, tolerance: { relaunchS: number; headingDeg: number; gainM: number }) => {
+  /**
+   * Mêmes manœuvres, mêmes types, mêmes réussites, mesures proches, à 1 Hz et
+   * à 5 Hz. La conservation se lit depuis le lot 44 sur la vitesse non
+   * filtrée : le point seul à 1 Hz, la moyenne de sa seconde (±0,45 s) à
+   * 5 Hz, qui remonte le fond d'un V aigu d'environ 0,6 nœud (+0,04 sur un
+   * virement à 15 nœuds), quand le point seul garde à 1 Hz son bruit Doppler.
+   */
+  const expectSameMeasures = (noise: NoiseLevel, tolerance: { conservation: number; relaunchS: number; headingDeg: number; gainM: number }) => {
     for (const tack of [false, true]) {
       for (const seed of [1, 2, 3]) {
         const options = { tack, legKn: tack ? 15 : 18, noise, seed };
@@ -876,7 +996,7 @@ describe('measureManeuver', () => {
           const b = at5Hz[k];
           expect(b.type).toBe(a.type);
           expect(b.success).toBe(a.success);
-          expect(Math.abs(a.conservation - b.conservation)).toBeLessThanOrEqual(0.05);
+          expect(Math.abs(a.conservation - b.conservation)).toBeLessThanOrEqual(tolerance.conservation);
           expect(Math.abs(a.relaunchS! - b.relaunchS!)).toBeLessThanOrEqual(tolerance.relaunchS);
           expect(Math.abs(a.headingChange - b.headingChange)).toBeLessThanOrEqual(tolerance.headingDeg);
           expect(Math.abs(a.windwardGainM! - b.windwardGainM!)).toBeLessThanOrEqual(tolerance.gainM);
@@ -886,19 +1006,23 @@ describe('measureManeuver', () => {
   };
 
   it('donne les mêmes mesures à 1 Hz et à 5 Hz', () => {
-    expectSameMeasures(LOW_NOISE, { relaunchS: 1.5, headingDeg: 3, gainM: 3 });
+    // Relevé du lot 44 : conservation à 0,052 près (0,020 sur la vitesse lissée).
+    expectSameMeasures(LOW_NOISE, { conservation: 0.06, relaunchS: 1.5, headingDeg: 3, gainM: 3 });
   });
 
   it('donne les mêmes mesures à 1 Hz et à 5 Hz sous un bruit indépendant d\'un point à l\'autre', () => {
     // Bruit réaliste, positions et Doppler compris : lue point à point, la
     // somme des rotations cumulait à 5 Hz cinq fois le bruit d'un pas de 1 s,
     // et la cohérence écartait presque tous les virages (lot 30). Nombre,
-    // types, réussites et conservation sont ceux du 1 Hz ; cap et gain gardent
+    // types et réussites sont ceux du 1 Hz, la conservation proche ; cap et gain gardent
     // le bruit des bornes de la mesure au creux du virement le plus lent
     // (3,75 nœuds, un pas de 0,4 m pour 0,5 m d'erreur de position), qui frappe
     // une cadence comme l'autre : 67° à 1 Hz pour un virage de 90°, 69° à 5 Hz
-    // sur une autre graine.
-    expectSameMeasures(REALISTIC_NOISE, { relaunchS: 2, headingDeg: 20, gainM: 15 });
+    // sur une autre graine. Relevé du lot 44 : 18,5° et 13,2 m au plus, que la
+    // lecture des caps stabilisés par pas ne change pas ; conservation à
+    // 0,075 près (0,030 sur la vitesse lissée), le point seul gardant à 1 Hz
+    // son bruit Doppler.
+    expectSameMeasures(REALISTIC_NOISE, { conservation: 0.08, relaunchS: 2, headingDeg: 20, gainM: 15 });
   });
 
   it('observeTurns relève les mêmes virages, vol perdu ou non, à 1 Hz et à 5 Hz', () => {
@@ -932,13 +1056,13 @@ describe('measureManeuver', () => {
     expect(stableSegment(turning(0.2), 0, 1)).toBeNull();
   });
 
-  it('lit autant de caps stabilisés, donc autant d\'échantillons de vent, à 5 Hz qu\'à 1 Hz sous bruit réaliste, à un près', () => {
-    // Relevé du lot 79 : avant comme après la lecture par pas de `stableSegment`,
-    // les empannages font 3/3 aux deux cadences et les virements 3 à 1 Hz,
-    // 2 à 5 Hz (graines 1 à 3). Le dernier virement, le plus lent, tient son
-    // cap stabilisé du repli sur la fenêtre médiane, dont l'écart maximal
-    // tombe à 21° à 1 Hz et 29° à 5 Hz autour des 25° admis : la fenêtre
-    // d'approche chevauche le début de la rotation (n° 49). D'où « à un près ».
+  it('lit autant de caps stabilisés, donc autant d\'échantillons de vent, à 5 Hz qu\'à 1 Hz sous bruit réaliste (lot 44)', () => {
+    // Relevé du lot 79 : les empannages faisaient 3/3 aux deux cadences et
+    // les virements 3 à 1 Hz, 2 à 5 Hz (graines 1 à 3). Le dernier virement,
+    // le plus lent, tient son cap stabilisé du repli sur la fenêtre médiane,
+    // dont l'écart maximal, lu point à point, tombait à 21° à 1 Hz et 29° à
+    // 5 Hz autour des 25° admis. Lu par pas d'au moins 0,9 s (lot 44), il est
+    // le même aux deux cadences : 3/3 partout.
     const counts = (hz: number): [number, number, number][] => {
       const rows: [number, number, number][] = [];
       for (const tack of [false, true]) {
@@ -952,11 +1076,11 @@ describe('measureManeuver', () => {
     };
     const at1Hz = counts(1);
     const at5Hz = counts(5);
-    at1Hz.forEach(([count, stable, samples], k) => {
-      expect(at5Hz[k][0]).toBe(count);
-      expect(Math.abs(at5Hz[k][1] - stable)).toBeLessThanOrEqual(1);
-      expect(Math.abs(at5Hz[k][2] - samples)).toBeLessThanOrEqual(1);
-    });
+    expect(at5Hz).toEqual(at1Hz);
+    for (const [count, stable, samples] of at1Hz) {
+      expect(stable).toBe(count);
+      expect(samples).toBe(count);
+    }
   });
 });
 
@@ -967,6 +1091,7 @@ describe('summarizeManeuvers', () => {
       tackFail: 0,
       jibeSuccess: 4,
       jibeFail: 0,
+      undecided: 0,
       rejected: { slowEntry: 0, incoherent: 0, still: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
       rejectedTurns: [],
       locations: [
@@ -984,12 +1109,39 @@ describe('summarizeManeuvers', () => {
     expect(jibe.tops.conservation.map((t) => t.index)).toEqual([1, 2, 3]);
   });
 
+  it('résume le sens incertain à part, avec ses moyennes, sans podium (lot 44)', () => {
+    const stats: ManeuverStats = {
+      tackSuccess: 1,
+      tackFail: 0,
+      jibeSuccess: 0,
+      jibeFail: 0,
+      undecided: 2,
+      rejected: { slowEntry: 0, incoherent: 0, still: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
+      rejectedTurns: [],
+      locations: [
+        fakeManeuver({ type: 'undecided', success: true, conservation: 0.6, windwardGainM: null }),
+        fakeManeuver({ type: 'tack', conservation: 0.5 }),
+        fakeManeuver({ type: 'undecided', success: false, conservation: 0.4, windwardGainM: null }),
+      ],
+    };
+    const summary = summarizeManeuvers(stats);
+    expect(summary.tack!.count).toBe(1);
+    expect(summary.jibe).toBeNull();
+    const undecided = summary.undecided!;
+    expect(undecided.count).toBe(2);
+    expect(undecided.success).toBe(1);
+    expect(undecided.fail).toBe(1);
+    expect(undecided.averages.conservation).toBe('50 %');
+    for (const tops of Object.values(undecided.tops)) expect(tops).toHaveLength(0);
+  });
+
   it('compte à part les manœuvres sans relance, absentes de la moyenne', () => {
     const stats = {
       tackSuccess: 0,
       tackFail: 0,
       jibeSuccess: 3,
       jibeFail: 0,
+      undecided: 0,
       rejected: { slowEntry: 0, incoherent: 0, still: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
       rejectedTurns: [],
       locations: [
@@ -1116,14 +1268,21 @@ describe('estimateWind', () => {
     turn(45, 135, 6, 9, 5);
     for (let k = 0; k < 6; k++) { leg(135, 9, 150); turn(135, 225, 6, 9, 6); leg(225, 9, 150); turn(225, 135, 6, 9, 6); }
     const track = trackToPointData(computeKinematics(raw, { medianWindowSeconds: 3 }));
+    // La mesure affichée lit depuis le lot 44 la vitesse non filtrée (43 %
+    // ici) : la même trace sans elle garde la mesure lissée de l'époque, à 51 %.
+    const smoothedOnly = track.map(({ speedKn: _raw, ...p }) => p);
 
-    const tacks = analyzeManeuvers(track, 0).locations.filter((m) => m.type === 'tack');
+    const tacks = analyzeManeuvers(smoothedOnly, 0).locations.filter((m) => m.type === 'tack');
     expect(tacks.length).toBeGreaterThan(0);
     for (const m of tacks) {
       expect(m.windCriteria.conservation).toBeLessThan(0.5);
       expect(m.conservation).toBeGreaterThan(0.5);
     }
-    expect(distanceTo(estimateWind(track).direction, 0)).toBeLessThanOrEqual(8);
+    expect(distanceTo(estimateWind(smoothedOnly).direction, 0)).toBeLessThanOrEqual(8);
+    // Ni la détection ni le vent ne lisent la vitesse non filtrée.
+    const withRaw = analyzeManeuvers(track, 0).locations.filter((m) => m.type === 'tack');
+    expect(withRaw.map((m) => m.windCriteria)).toEqual(tacks.map((m) => m.windCriteria));
+    expect(estimateWind(track)).toEqual(estimateWind(smoothedOnly));
   });
 
   it('rabat la confiance d\'une trace clairsemée sous le seuil de fiabilité', () => {

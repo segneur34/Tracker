@@ -243,7 +243,7 @@ describe('calculateWindStats', () => {
   it('affiche 0° et non 360° pour un vent moyen à 359,8°', () => {
     const track = buildTrackAt(regularTimes(600, 1), () => 315, () => 12);
     const stats: ManeuverStats = {
-      tackSuccess: 3, tackFail: 0, jibeSuccess: 0, jibeFail: 0,
+      tackSuccess: 3, tackFail: 0, jibeSuccess: 0, jibeFail: 0, undecided: 0,
       rejected: { slowEntry: 0, incoherent: 0, still: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
       rejectedTurns: [],
       locations: [fakeManeuver(359.7, START_MS + 60_000), fakeManeuver(359.9, START_MS + 180_000), fakeManeuver(359.8, START_MS + 300_000)],
@@ -252,6 +252,25 @@ describe('calculateWindStats', () => {
     expect(wind.avgWind).toBe(0);
     expect(wind.minWind).toBe(0);
     expect(wind.maxWind).toBe(0);
+  });
+
+  it('ne suit pas le vent aux manœuvres de sens incertain (lot 44)', () => {
+    const track = buildTrackAt(regularTimes(600, 1), () => 315, () => 12);
+    const stats: ManeuverStats = {
+      tackSuccess: 2, tackFail: 0, jibeSuccess: 0, jibeFail: 0, undecided: 2,
+      rejected: { slowEntry: 0, incoherent: 0, still: 0, unclassified: 0, tooShort: 0, fullTurn: 0, noFlight: 0 },
+      rejectedTurns: [],
+      locations: [
+        fakeManeuver(10, START_MS + 60_000),
+        { ...fakeManeuver(190, START_MS + 120_000), type: 'undecided' },
+        fakeManeuver(20, START_MS + 180_000),
+        { ...fakeManeuver(200, START_MS + 240_000), type: 'undecided' },
+      ],
+    };
+    const wind = calculateWindStats(track, stats, 15)!;
+    expect(wind.count).toBe(2);
+    expect(wind.avgWind).toBe(15);
+    expect(wind.maneuverIndices).toHaveLength(2);
   });
 });
 

@@ -34,7 +34,7 @@ import {
   knotsToChartValue, knotsToMs, toDisplaySpeed, formatDecimal, commaDecimal
 } from '../core/units';
 import { speedPolar, type PolarBin } from '../sailing/wind';
-import { MANEUVER_METRICS, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
+import { MANEUVER_LABELS, MANEUVER_METRICS, windChartRows, type ManeuverMetric, type ManeuverTop, type WindGraphPoint } from '../sailing/sailingAnalytics';
 import SessionActivityField from '../components/SessionActivityField';
 import SessionSettingsHeader from '../components/SessionSettingsHeader';
 import CardioTab from '../components/CardioTab';
@@ -256,18 +256,20 @@ function SailingModule() {
   const tackFail = maneuverStats?.tackFail ?? null;
   const jibeSuccess = maneuverStats?.jibeSuccess ?? null;
   const jibeFail = maneuverStats?.jibeFail ?? null;
+  // Les manœuvres de sens incertain comptent dans le total, pas dans la réussite des virements et empannages.
+  const undecided = maneuverStats?.undecided ?? null;
   // Pas pendant un brouillon : la liste doit refléter l'état enregistré ; ni avant que les
   // manœuvres n'aient rejoint le seuil (Q40), qui les classe.
   const loadedFromMemory = sessionFile !== null && fileName === sessionFile && trackData.length > 0;
   const { dirty } = draft;
   useEffect(() => {
     if (!loadedFromMemory || !sessionFile || dirty || thresholdPending || currentWindValue === null) return;
-    if (tackSuccess === null || tackFail === null || jibeSuccess === null || jibeFail === null) return;
+    if (tackSuccess === null || tackFail === null || jibeSuccess === null || jibeFail === null || undecided === null) return;
     updateSessionRecord(sessionFile, {
-      maneuverCount: tackSuccess + tackFail + jibeSuccess + jibeFail,
+      maneuverCount: tackSuccess + tackFail + jibeSuccess + jibeFail + undecided,
       maneuverResults: { tackSuccess, tackFail, jibeSuccess, jibeFail },
     });
-  }, [loadedFromMemory, sessionFile, dirty, thresholdPending, currentWindValue, tackSuccess, tackFail, jibeSuccess, jibeFail]);
+  }, [loadedFromMemory, sessionFile, dirty, thresholdPending, currentWindValue, tackSuccess, tackFail, jibeSuccess, jibeFail, undecided]);
 
   /** Support sur foil de la session : le sien s'il est réglé, sinon celui de l'activité. */
   const foil = edits.foil ?? activityFoil;
@@ -346,6 +348,7 @@ function SailingModule() {
 
   const [showTacksOnMap, setShowTacksOnMap] = useState<boolean>(false);
   const [showJibesOnMap, setShowJibesOnMap] = useState<boolean>(false);
+  const [showUndecidedOnMap, setShowUndecidedOnMap] = useState<boolean>(false);
   const [showManeuverDetails, setShowManeuverDetails] = useState<boolean>(false);
   /** Explications repliées derrière un « ? » (enregistrement et virages écartés ; lecture du vent). */
   const maneuverHelpOpen = useHelp('voile:manoeuvres')?.open ?? false;
@@ -443,7 +446,8 @@ function SailingModule() {
     return (
       <>
         {maneuverStats?.locations.map((loc, idx) => {
-          if ((loc.type === 'tack' && !showTacksOnMap) || (loc.type === 'jibe' && !showJibesOnMap)) return null;
+          const shown = loc.type === 'tack' ? showTacksOnMap : loc.type === 'jibe' ? showJibesOnMap : showUndecidedOnMap;
+          if (!shown) return null;
           return (
             <CircleMarker
               key={`maneuver-${idx}`}
@@ -451,11 +455,12 @@ function SailingModule() {
               radius={6}
               pathOptions={{
                 color: loc.success ? '#2e7d32' : '#c62828',
-                fillColor: loc.type === 'tack' ? '#fff' : '#000',
+                // Blanc au virement, noir à l'empannage, gris quand le sens est incertain.
+                fillColor: loc.type === 'tack' ? '#fff' : loc.type === 'jibe' ? '#000' : '#9e9e9e',
                 fillOpacity: 1,
                 weight: 3
               }}>
-              <Popup>{loc.type === 'tack' ? 'Virement' : 'Empannage'} {loc.success ? 'Réussi' : 'Raté'} - Vmin: {formatKnots(loc.vmin, speedUnit)} {SPEED_UNIT_SYMBOL[speedUnit]}</Popup>
+              <Popup>{MANEUVER_LABELS[loc.type]} {loc.success ? 'Réussi' : 'Raté'} - Vmin: {formatKnots(loc.vmin, speedUnit)} {SPEED_UNIT_SYMBOL[speedUnit]}</Popup>
             </CircleMarker>
           );
         })}
@@ -472,7 +477,7 @@ function SailingModule() {
         })}
       </>
     );
-  }, [trackData, maneuverStats, showTacksOnMap, showJibesOnMap, selectedTopMap, mapTops, maneuverTopArray, selectedManeuverTop, speedUnit]);
+  }, [trackData, maneuverStats, showTacksOnMap, showJibesOnMap, showUndecidedOnMap, selectedTopMap, mapTops, maneuverTopArray, selectedManeuverTop, speedUnit]);
 
   const mapBounds = useMemo(() => trackBounds(trackData), [trackData]);
 
@@ -706,17 +711,22 @@ function SailingModule() {
         </thead>
         <tbody>
           {([
-            ['Virements', maneuverSummary.tack, showTacksOnMap, () => setShowTacksOnMap(!showTacksOnMap)],
-            ['Empannages', maneuverSummary.jibe, showJibesOnMap, () => setShowJibesOnMap(!showJibesOnMap)],
-          ] as const).map(([label, summary, shown, toggle]) => (
+            ['Virements', maneuverSummary.tack, showTacksOnMap, () => setShowTacksOnMap(!showTacksOnMap), undefined],
+            ['Empannages', maneuverSummary.jibe, showJibesOnMap, () => setShowJibesOnMap(!showJibesOnMap), undefined],
+            // Virages vus en un seul pas de la trace (lot 44) : la ligne n'apparaît que s'il y en a.
+            ...(maneuverSummary.undecided
+              ? [['Sens incertain', maneuverSummary.undecided, showUndecidedOnMap, () => setShowUndecidedOnMap(!showUndecidedOnMap),
+                'Virage vu en un seul pas de la trace : on connaît le cap avant et après, pas le côté par lequel il est passé. Compté, ni virement ni empannage, et hors du vent.'] as const]
+              : []),
+          ] as const).map(([label, summary, shown, toggle, hint]) => (
             <tr key={label} className="ui-table__row">
-              <td style={{ fontWeight: 700 }}>{label}</td>
+              <td style={{ fontWeight: 700 }} title={hint}>{label}</td>
               <td style={{ textAlign: 'center', color: 'var(--success)', fontWeight: 700, fontSize: 'var(--text-m)' }}>{summary?.success ?? 0}</td>
               <td style={{ textAlign: 'center', color: 'var(--danger)', fontSize: 'var(--text-m)' }}>{summary?.fail ?? 0}</td>
               <td style={{ textAlign: 'center' }}>{summary ? showKn(summary.vminAvg) : '-'}</td>
               <td style={{ textAlign: 'center', fontWeight: 700 }}>{summary ? showKn(summary.vminMax) : '-'}</td>
               <td style={{ padding: '4px 10px', textAlign: 'center' }}>
-                <MapToggle shown={shown} color="var(--voile)" title={`Afficher les ${label.toLowerCase()} sur la carte`} onClick={toggle}
+                <MapToggle shown={shown} color="var(--voile)" title={`Afficher les ${hint ? 'manœuvres de sens incertain' : label.toLowerCase()} sur la carte`} onClick={toggle}
                   style={{ padding: '3px 10px', border: 'none' }} />
               </td>
             </tr>

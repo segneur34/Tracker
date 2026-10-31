@@ -1,7 +1,7 @@
 import { firstIndexAtOrAfter } from '../core/search';
 import { pickTopWindows } from '../core/topSegments';
 import type { PointData } from './pointData';
-import { WIND_LOCAL_MAX_GAP_MIN, windAt, type ManeuverLocation, type ManeuverStats, type WindReference } from './maneuvers';
+import { WIND_LOCAL_MAX_GAP_MIN, isDirected, windAt, type ManeuverKind, type ManeuverLocation, type ManeuverStats, type WindReference } from './maneuvers';
 import { VMG_WINDOW_S, getDefaultThresholdKn } from './sailingConfig';
 import { circularStats, interpolateDirection, type TimedDirection } from './wind';
 import { angleDiff, circularMean, normalizeDeg } from '../core/angles';
@@ -78,7 +78,9 @@ const MAX_INTERPOLATION_GAP_MIN = WIND_LOCAL_MAX_GAP_MIN;
 
 /**
  * Manœuvres retenues pour suivre le vent : toutes celles que la détection a
- * classées, virements et empannages, réussis ou non, caps stabilisés ou non.
+ * classées, virements et empannages, réussis ou non, caps stabilisés ou non ;
+ * jamais un sens incertain, dont le vent local n'est qu'une supposition
+ * (`isDirected`).
  *
  * Exiger des caps stabilisés de part et d'autre, comme le fait encore
  * `windSamplesFrom` pour l'estimation globale, n'en laissait passer qu'une sur
@@ -90,7 +92,7 @@ const MAX_INTERPOLATION_GAP_MIN = WIND_LOCAL_MAX_GAP_MIN;
  */
 const maneuverSamples = (maneuverStats: ManeuverStats | null): ManeuverLocation[] => {
   if (!maneuverStats) return [];
-  return [...maneuverStats.locations].sort((a, b) => a.timeMs - b.timeMs);
+  return maneuverStats.locations.filter(isDirected).sort((a, b) => a.timeMs - b.timeMs);
 };
 
 /** Poids plancher d'une manœuvre très asymétrique : elle pèse peu, jamais rien. */
@@ -219,7 +221,14 @@ export const windChartRows = (
 
 export type ManeuverMetric = 'conservation' | 'relaunch' | 'headingChange' | 'distance' | 'windwardGain';
 
-type ManeuverType = ManeuverLocation['type'];
+type ManeuverType = ManeuverKind;
+
+/** Nom d'une manœuvre, par genre, dans le tableau, la carte et les listes. */
+export const MANEUVER_LABELS: Record<ManeuverKind, string> = {
+  tack: 'Virement',
+  jibe: 'Empannage',
+  undecided: 'Sens incertain',
+};
 
 export const MANEUVER_METRICS: {
   key: ManeuverMetric;
@@ -294,6 +303,8 @@ export interface ManeuverTypeSummary {
 export interface ManeuverSummary {
   tack: ManeuverTypeSummary | null;
   jibe: ManeuverTypeSummary | null;
+  /** Sens incertain : moyennes seulement, aucun podium (`MANEUVER_METRICS[].ranked`). */
+  undecided: ManeuverTypeSummary | null;
 }
 
 const metricValue = (m: ManeuverLocation, metric: ManeuverMetric): number | null => {
@@ -406,10 +417,11 @@ const summarizeType = (
 
 /** Moyennes et podiums des métriques de qualité, par type de manœuvre. */
 export const summarizeManeuvers = (maneuverStats: ManeuverStats | null): ManeuverSummary => {
-  if (!maneuverStats) return { tack: null, jibe: null };
+  if (!maneuverStats) return { tack: null, jibe: null, undecided: null };
   return {
     tack: summarizeType(maneuverStats.locations, 'tack'),
     jibe: summarizeType(maneuverStats.locations, 'jibe'),
+    undecided: summarizeType(maneuverStats.locations, 'undecided'),
   };
 };
 

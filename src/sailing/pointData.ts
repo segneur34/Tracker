@@ -16,6 +16,13 @@ export interface PointData {
   timeMs: number;
   /** Vitesse filtrée, en nœuds. */
   smoothedSpeed: number;
+  /**
+   * Vitesse retenue du point, non filtrée, en nœuds (`TrackPoint.speedMs`,
+   * écrêtée de ses aberrations mais sans la médiane de 3 s, qui comble les
+   * creux en V). Absente sur une trace synthétique posée à la main : la
+   * lecture retombe alors sur la vitesse filtrée (`rawSpeedKn`).
+   */
+  speedKn?: number;
   bearing: number;
   /** Reprise après une pause de l'enregistrement : rien n'est parcouru sur ce pas (`TrackPoint.segmentStart`). */
   segmentStart?: true;
@@ -37,11 +44,15 @@ export const toPointData = (track: TrackPoint[], i: number): PointData => {
     lon: point.lon,
     timeMs: point.timeMs,
     smoothedSpeed: msToKnots(point.smoothedSpeedMs),
+    speedKn: msToKnots(point.speedMs),
     bearing: point.bearing,
     ...(point.segmentStart ? { segmentStart: true as const } : {}),
     stepDistanceM: segmentDistanceM(track, i),
   };
 };
+
+/** Vitesse non filtrée du point, en nœuds, sinon sa vitesse filtrée (trace synthétique). */
+export const rawSpeedKn = (point: PointData): number => point.speedKn ?? point.smoothedSpeed;
 
 /** Vue en nœuds d'une trace déjà calculée par le noyau. */
 export const trackToPointData = (track: TrackPoint[]): PointData[] => track.map((_, i) => toPointData(track, i));
