@@ -7,12 +7,12 @@
 //  1. Réglages, carte « Surf foil » : la case « Pumping foil » (partie Onglet analyse), cochée, puis le résumé de la carte ;
 //     carte « Surf » (sans foil) : pas de case ;
 //  2. l'import de la session avec ses capteurs, puis l'analyse : Foil et Pumping cochés pour la session (onglet
-//     réglages), onglet « vols » : titre « Pumping (4 séries) », tuiles (cadence vers 90 /min, séries, temps pompé,
-//     coups, par coup, part du vol pompée), les 3 plus longues séries, « Toutes les séries (4) », puis les vols à part
-//     (tuiles, 3 plus longs, « Tous les vols (4) » replié puis déplié) ; « Voir » d'une série puis d'un vol : une
-//     seule surbrillance sur la carte ;
-//  3. Pumping décoché pour la session : les vols seuls, colonnes du GPS « Hors vague » ; « Enregistrer la session »
-//     range `analysis.pumping` ;
+//     réglages), onglet « pumping » : titre « Pumping (4 séries) », tuiles (cadence vers 90 /min, séries, temps pompé,
+//     coups, par coup, part du vol pompée), les 3 plus longues séries, « Toutes les séries (4) » ; onglet « vols », à
+//     part depuis le 31/10 : tuiles, 3 plus longs, « Tous les vols (4) » replié puis déplié ; « Voir » d'une série
+//     puis d'un vol : une seule surbrillance sur la carte ;
+//  3. Pumping décoché pour la session : les vols seuls, colonnes du GPS « Hors vague », l'onglet « pumping » sans
+//     séries ; « Enregistrer la session » range `analysis.pumping` ;
 //  4. Enregistrer, dans le navigateur : pas de case « Mesurer le pumping » (téléphone seulement) ;
 //  5. la page à 390 × 844, sans débordement.
 import { connect } from './lib/cdp.mjs';
@@ -45,30 +45,34 @@ const panel = (title) => evaluate(`(() => {
   const t = [...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim().startsWith(${JSON.stringify(title)}));
   return t ? t.closest('.an-carte-panels > *').innerText.replace(/\\n+/g, ' / ').slice(0, 4000) : '(absent)';
 })()`);
-/** Le panneau de l'onglet « vols » : titré « Pumping (N séries) » avec les capteurs, « Vols (N) » sans. */
-const pumpPanel = `[...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => /^(Pumping|Vols) \\(/.test(h.textContent.trim()))?.closest('.an-carte-panels > *')`;
+/** Panneau titré `title` (« Pumping », « Pumping (N séries) », « Vols (N) »). */
+const panelOf = (title) => `[...document.querySelectorAll('.an-carte-panels [role=button]')].find((h) => h.textContent.trim() === '${title}' || h.textContent.trim().startsWith('${title} ('))?.closest('.an-carte-panels > *')`;
+/** Panneaux ouverts des onglets « pumping » puis « vols » (deux onglets depuis le 31/10). */
+const pumpPanels = `[${panelOf('Pumping')}, ${panelOf('Vols')}].filter(Boolean)`;
+/** Tableaux des deux panneaux : séries d'abord, puis vols. */
+const pumpTables = `${pumpPanels}.flatMap((p) => [...p.querySelectorAll('table')])`;
 /**
- * Capteurs lus : depuis le lot 63, le surf ne lit le `.imu` qu'à l'ouverture de l'onglet « vols ».
+ * Capteurs lus : depuis le lot 63, le surf ne lit le `.imu` qu'à l'ouverture de l'onglet (« vols » ou « pumping »).
  * Attend que « Lecture des capteurs » disparaisse et que la tuile « Cadence » paraisse (plafond 10 s).
  */
 const sensorsRead = () => waitFor(`(() => {
-  const text = ${pumpPanel}?.innerText ?? '';
+  const text = ${panelOf('Pumping')}?.innerText ?? '';
   return !text.includes('Lecture des capteurs') && text.includes('Cadence');
 })()`, { timeout: 10000, label: 'capteurs lus' });
-/** En-têtes des tableaux du panneau, dans l'ordre. */
+/** En-têtes des tableaux des deux panneaux, dans l'ordre. */
 const flightHeads = () => evaluate(`(() => {
-  const p = ${pumpPanel};
-  return p ? [...p.querySelectorAll('table')].map((tb) => [...tb.querySelectorAll('th')].map((h) => h.textContent).join(', ')).join(' || ') : '(absent)';
+  const tables = ${pumpTables};
+  return tables.length ? tables.map((tb) => [...tb.querySelectorAll('th')].map((h) => h.textContent).join(', ')).join(' || ') : '(absent)';
 })()`);
 /** Lignes du tableau du panneau dont le premier en-tête est `first` (`Cadence` : séries ; `Vol` : vols), le `rank`-ième de ce genre. */
 const tableRows = (first, rank = 0) => evaluate(`(() => {
-  const tables = [...(${pumpPanel}?.querySelectorAll('table') ?? [])].filter((tb) => tb.querySelector('th')?.textContent === ${JSON.stringify(first)});
+  const tables = ${pumpTables}.filter((tb) => tb.querySelector('th')?.textContent === ${JSON.stringify(first)});
   const tb = tables[${rank}];
   return tb ? [...tb.querySelectorAll('tbody tr')].map((r) => [...r.cells].slice(0, -1).map((c) => c.textContent).join(' ')).join(' | ') : '(absent)';
 })()`);
 /** « Voir » de la ligne `row` du premier tableau dont le premier en-tête est `first`. */
 const showRow = (first, row) => evaluate(`(() => {
-  const tb = [...(${pumpPanel}?.querySelectorAll('table') ?? [])].find((t) => t.querySelector('th')?.textContent === ${JSON.stringify(first)});
+  const tb = ${pumpTables}.find((t) => t.querySelector('th')?.textContent === ${JSON.stringify(first)});
   const b = tb?.querySelectorAll('tbody tr')[${row}]?.querySelector('td:last-child button');
   if (!b) return 'absent'; b.click(); return 'ok';
 })()`);
@@ -197,11 +201,13 @@ let pumpBox = await evaluate(`[...document.querySelectorAll('.an-carte-panels la
 if (pumpBox !== true) pumpBox = await sessionBox('Pumping');
 console.log('Foil :', foilBox, '| Pumping :', pumpBox);
 await settle({ max: 1500 });
-console.log('vols :', await openTab('vols'));
+console.log('vols :', await openTab('vols'), '| pumping :', await openTab('pumping'));
 await settle({ max: 2000 });
 await sensorsRead();
 const vols = await panel('Pumping');
 console.log('panneau :', vols);
+const flightsText = await panel('Vols');
+console.log('panneau des vols :', flightsText);
 // Titre en capitales à l'écran (titres de panneau, `--title-*`) : comparé sans la casse.
 check('titre « Pumping (4 séries) »', /^Pumping \(4 séries\)/i.test(vols ?? ''), /^[^/]+/.exec(vols ?? '')?.[0]);
 // Le texte du panneau, coupé à chaque ligne : une tuile est son libellé, puis sa valeur.
@@ -214,7 +220,12 @@ console.log('tuiles : temps pompé', tile('Temps pompé'), '| coups', tile('Coup
 // 4,5 m/s à 1,5 coup par seconde : 3 m par coup.
 check('distance par coup', /^(2,9|3,\d) m$/.test(tile('Par coup') ?? ''), tile('Par coup'));
 check('part du vol pompée entre 30 et 60 %', (() => { const v = Number(/^(\d+) %$/.exec(tile('Part du vol pompée') ?? '')?.[1]); return v >= 30 && v <= 60; })(), tile('Part du vol pompée'));
-check('vols à part : tuiles Vols, Temps de vol, Plus long vol', tokens.includes('Vols (4)') && tile('Vols') === '4' && tile('Temps de vol') !== undefined && tile('Plus long vol') !== undefined, `${tile('Vols')} · ${tile('Temps de vol')} · ${tile('Plus long vol')}`);
+const flightTokens = (flightsText ?? '').split(' / ');
+const flightTile = (label) => { const i = flightTokens.indexOf(label); return i < 0 ? undefined : flightTokens[i + 1]; };
+check('pas de vols dans l\u2019onglet pumping', !tokens.includes('Temps de vol') && !tokens.some((t) => /^Vols/i.test(t)));
+check('onglet vols à part : tuiles Vols, Temps de vol, Plus long vol', /^Vols \(4\)/i.test(flightsText ?? '') && flightTile('Vols') === '4'
+  && flightTile('Temps de vol') !== undefined && flightTile('Plus long vol') !== undefined, `${flightTile('Vols')} · ${flightTile('Temps de vol')} · ${flightTile('Plus long vol')}`);
+check('pas de séries dans l\u2019onglet vols', !flightTokens.includes('Cadence') && !/Toutes les séries/i.test(flightsText ?? ''));
 const heads = await flightHeads();
 check('les 3 plus longues séries : cadence d’abord', /^Cadence, Début, Durée, Coups, m\/coup, Vitesse \(km\/h\), Vol, Carte/.test(heads ?? ''), heads);
 check('les 3 plus longs vols : décollage, séries, temps pompé', /Vol, Début, Durée, Distance, Décollage \(km\/h\), Séries, Temps pompé, Carte/.test(heads ?? ''));
@@ -247,6 +258,7 @@ check('le vol remplace la série : une seule surbrillance', flightPaths === seri
 console.log('Pumping :', await sessionBox('Pumping'));
 await settle({ max: 800 });
 console.log('panneau sans pumping :', await panel('Vols'));
+console.log('onglet pumping sans pumping :', await panel('Pumping'));
 const gpsHeads = await flightHeads();
 check('les vols seuls, colonnes du GPS « Hors vague »', /Vagues, Hors vague, Vitesse hors vague \(km\/h\)/.test(gpsHeads ?? '')
   && !/Décollage|Cadence|Pompage/.test(gpsHeads ?? ''), gpsHeads);
@@ -271,12 +283,13 @@ check('pas de case « Mesurer le pumping » dans le navigateur', !(await evaluat
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await go(path, 5000);
 await openTab('vols');
+await openTab('pumping');
 await settle({ max: 1500 });
 await sensorsRead();
 console.log('Toutes les séries :', await clickText('Toutes les séries (4)'), '| Tous les vols :', await clickText('Tous les vols (4)'));
 await wait(400);
 console.log('carte d’une série au téléphone :', await evaluate(`(() => {
-  const tb = [...(${pumpPanel}?.querySelectorAll('table') ?? [])].find((t) => t.querySelector('th')?.textContent === 'Cadence');
+  const tb = ${pumpTables}.find((t) => t.querySelector('th')?.textContent === 'Cadence');
   const r = tb?.querySelector('tbody tr'); if (!r) return '(absent)';
   return getComputedStyle(r).display + ' : ' + r.innerText.replace(/\\s+/g, ' ');
 })()`));

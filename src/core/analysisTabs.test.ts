@@ -14,9 +14,10 @@ describe('analysisTabs : onglets proposés par calcul', () => {
     expect(keys(analysisTabs(SPORT_PROFILES.bateau))).not.toContain('pumping');
   });
 
-  it('voile : « pumping » juste après « sauts » (lot 22)', () => {
+  it('voile : « vols » puis « pumping » juste après « sauts » (lots 22 et 50)', () => {
     const order = keys(SAILING_TABS);
-    expect(order.indexOf('pumping')).toBe(order.indexOf('sauts') + 1);
+    expect(order.indexOf('vols')).toBe(order.indexOf('sauts') + 1);
+    expect(order.indexOf('pumping')).toBe(order.indexOf('vols') + 1);
     expect(keys(analysisTabs(SPORT_PROFILES.kite))).toContain('pumping');
   });
 
@@ -56,10 +57,11 @@ describe('analysisTabs : onglets proposés par calcul', () => {
     expect(keys(analysisTabs(SPORT_PROFILES['bike-intervals']))).not.toContain('cadence');
   });
 
-  it('surf : « tops » entre « vols » et « graphiques »', () => {
+  it('surf : « pumping » juste après « vols », puis « tops » avant « graphiques »', () => {
     const surf = keys(analysisTabs(SPORT_PROFILES.surf));
     expect(surf).toEqual(keys(SURF_TABS));
-    expect(surf.indexOf('tops')).toBe(surf.indexOf('vols') + 1);
+    expect(surf.indexOf('pumping')).toBe(surf.indexOf('vols') + 1);
+    expect(surf.indexOf('tops')).toBe(surf.indexOf('pumping') + 1);
     expect(surf.indexOf('graphiques')).toBe(surf.indexOf('tops') + 1);
   });
 
@@ -139,7 +141,7 @@ describe('toggleTabChoice', () => {
 });
 
 describe('maskHiddenTabs', () => {
-  const open = { general: true, vagues: true, rame: false, vols: false, tops: true, graphiques: false, cardio: false, notes: false, reglages: false };
+  const open = { general: true, vagues: true, rame: false, vols: false, pumping: false, tops: true, graphiques: false, cardio: false, notes: false, reglages: false };
 
   it('ferme les onglets cachés laissés ouverts', () => {
     const masked = maskHiddenTabs(open, SURF_TABS, { vagues: false });
@@ -158,7 +160,7 @@ describe('maskHiddenTabs', () => {
 });
 
 describe('maskAdvancedTabs', () => {
-  const open = { general: true, vagues: true, rame: false, vols: false, tops: true, graphiques: false, cardio: false, notes: false, reglages: false };
+  const open = { general: true, vagues: true, rame: false, vols: false, pumping: false, tops: true, graphiques: false, cardio: false, notes: false, reglages: false };
 
   it('« avancé » fermé : ses onglets se replient, « général » reste', () => {
     const masked = maskAdvancedTabs(open, SURF_TABS, false);
@@ -206,14 +208,14 @@ describe('« avancé » et « général »', () => {
 describe('tabDefaults : onglets ouverts à la première visite', () => {
   // Copies gelées des constantes écrites à la main avant le lot 62 (SailingModule, LandModule, SurfModule, MuscuModule).
   const SAILING_PANEL_DEFAULTS = {
-    general: true, tops: false, manoeuvres: false, graphiques: false, cardio: false, vmg: false, sauts: false, pumping: false, vent: false, matos: false, reglages: false,
+    general: true, tops: false, manoeuvres: false, graphiques: false, cardio: false, vmg: false, sauts: false, vols: false, pumping: false, vent: false, matos: false, reglages: false,
   };
   const LAND_SECTION_DEFAULTS = {
     general: true, fractionne: true, test: true, tops: false, zones: false, surface: false, energie: false, graphiques: false, cardio: false, cadence: false,
     sauts: false, notes: false, reglages: false,
   };
   const SURF_SECTION_DEFAULTS = {
-    general: true, vagues: false, rame: false, vols: false, tops: false, graphiques: false, cardio: false, notes: false, reglages: false,
+    general: true, vagues: false, rame: false, vols: false, pumping: false, tops: false, graphiques: false, cardio: false, notes: false, reglages: false,
   };
   const MUSCU_SECTION_DEFAULTS = { general: true, cardio: false, notes: false, reglages: false };
 

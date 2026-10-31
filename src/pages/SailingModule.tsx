@@ -42,7 +42,7 @@ import NotesTab from '../components/NotesTab';
 import FoilPumpingFields from '../components/FoilPumpingFields';
 import JumpsPanel from '../components/JumpsPanel';
 import JumpMapLayer from '../components/JumpMapLayer';
-import FlightPumpingPanel from '../components/FlightPumpingPanel';
+import { FlightsPanel, PumpingPanel } from '../components/FlightPumpingPanel';
 import TrackSpanLayer from '../components/TrackSpanLayer';
 import { pumpingHighlightSpans } from '../components/pumpingHighlight';
 import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SPAN_OPACITY, PODIUM_RANKS, podiumColor } from '../components/highlightColors';
@@ -305,15 +305,18 @@ function SailingModule() {
     </div>
   );
   // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
-  // Capteurs lus à l'ouverture de l'onglet, Pumping coché : une capture entière pèse plusieurs Mo.
-  const pumpSensors = useSessionPumping(loadedFromMemory ? sessionFile : null, pumping && open.pumping);
-  /** Onglet « pumping » : sur foil, pour un calcul qui le mesure, si la session a ses capteurs ; Pumping décoché, il montre les vols. */
-  const pumpingVisible = foil && profile.pump !== null && pumpSensors.hasMotion;
+  // Capteurs lus à l'ouverture de l'onglet « vols » ou « pumping », Pumping coché : une capture entière pèse plusieurs Mo.
+  const pumpSensors = useSessionPumping(loadedFromMemory ? sessionFile : null, pumping && (open.vols || open.pumping));
+  /** Onglet « vols » : sur foil, pour un calcul qui mesure le pumping ; les vols viennent du GPS. */
+  const flightsVisible = foil && profile.pump !== null;
+  const flightsOpen = open.vols && flightsVisible;
+  /** Onglet « pumping » : de même, si la session a ses capteurs ; Pumping décoché, il le dit. */
+  const pumpingVisible = flightsVisible && pumpSensors.hasMotion;
   const pumpingOpen = open.pumping && pumpingVisible;
   const sailingPanels = useMemo(
-    () => shown((p) => (p.key !== 'sauts' || jumpsVisible) && (p.key !== 'pumping' || pumpingVisible)
+    () => shown((p) => (p.key !== 'sauts' || jumpsVisible) && (p.key !== 'vols' || flightsVisible) && (p.key !== 'pumping' || pumpingVisible)
       && (p.key !== 'cardio' || heart.present)),
-    [shown, jumpsVisible, pumpingVisible, heart.present]
+    [shown, jumpsVisible, flightsVisible, pumpingVisible, heart.present]
   );
   /** Top montré : de vitesse (onglet tops, `t2s`…) ou de VMG (onglet VMG, `vmgUpwind`, `vmgDownwind`), ou `none`. */
   const selectedTopMap = highlight.shownIn('tops') ?? highlight.shownIn('vmg') ?? 'none';
@@ -323,11 +326,12 @@ function SailingModule() {
   const {
     byFlight: flightPumping, summary: pumpSummary, podium: podiumFlights, series: pumpSeriesList, seriesPodium,
   } = useFlightPumping(pumpSensors.recording, pumpDetection, track, cumulative, flights);
-  /** Série ou vol montré sur la carte (onglet « pumping »), ou l'un des deux podiums (`PumpingHighlightKey`). */
+  /** Vol ou série montrés sur la carte (onglets « vols » et « pumping »), ou l'un des deux podiums (`PumpingHighlightKey`). */
+  const flightShown = highlight.shownIn('vols');
   const pumpingShown = highlight.shownIn('pumping');
   const shownFlightSpans = useMemo(
-    () => pumpingHighlightSpans(pumpingShown, flights, podiumFlights, pumpSeriesList, seriesPodium),
-    [pumpingShown, flights, podiumFlights, pumpSeriesList, seriesPodium]
+    () => pumpingHighlightSpans(flightShown ?? pumpingShown, flights, podiumFlights, pumpSeriesList, seriesPodium),
+    [flightShown, pumpingShown, flights, podiumFlights, pumpSeriesList, seriesPodium]
   );
   /** Zone cardiaque montrée sur la carte (onglet « cardio »). */
   const hrZone = useHeartRateZoneHighlight(highlight, open.cardio, heart, hrZones, track, profile.heartRate.gapS);
@@ -1059,21 +1063,39 @@ function SailingModule() {
               />
             )}
 
+            {flightsOpen && (
+              <ResizablePanel id="sailing.vols" style={ANALYSIS_PANEL_STYLE}>
+                <FlightsPanel
+                  helpKey="voile:vols"
+                  open={open.vols} onToggle={toggleOf('vols')}
+                  help={<>
+                    Vol : au-dessus du seuil d'activité ({showThreshold(activeThresholdKn)} {speedSymbol}), d'une traite, d'au moins {pumpDetection?.minFlightS ?? 0} s.
+                    {flightPumping
+                      ? " Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental) ; séries et temps pompé : ceux de l'onglet pumping."
+                      : ''}
+                  </>}
+                  flights={flights} podium={podiumFlights}
+                  pumping={flightPumping} pumpSummary={pumpSummary}
+                  shown={flightShown} onShow={(key) => highlight.show('vols', key)} accent={FAMILY_ACCENT.voile}
+                  speedCell={(ms) => (ms === null ? '—' : formatSpeedValue(toDisplaySpeed(ms, speedUnit), speedUnit))}
+                  unitLabel={SPEED_UNIT_LABEL[speedUnit]}
+                  sensors={pumpSensors} />
+              </ResizablePanel>
+            )}
+
             {pumpingOpen && (
               <ResizablePanel id="sailing.pumping" style={ANALYSIS_PANEL_STYLE}>
-                <FlightPumpingPanel
+                <PumpingPanel
                   helpKey="voile:pumping"
                   open={open.pumping} onToggle={toggleOf('pumping')}
                   help={<>
-                    {flightPumping && pumpDetection
-                      ? <>Pumping : en vol seulement, compté par séries de coups mesurées par les capteurs du téléphone fixé sur la poitrine ;
-                        une série ne compte que si ses coups suivent une cadence régulière, de {pumpDetection.cadenceMinPerMin} à {pumpDetection.cadenceMaxPerMin} coups
-                        par minute. Cadence : coups par minute de la série ; vitesse : au début, puis à la fin de la série. </>
+                    Pumping : en vol seulement (onglet vols), compté par séries de coups mesurées par les capteurs du téléphone fixé sur la poitrine ;
+                    {pumpDetection
+                      ? <> une série ne compte que si ses coups suivent une cadence régulière, de {pumpDetection.cadenceMinPerMin} à {pumpDetection.cadenceMaxPerMin} coups
+                        par minute.</>
                       : null}
-                    Vol : au-dessus du seuil d'activité ({showThreshold(activeThresholdKn)} {speedSymbol}), d'une traite, d'au moins {pumpDetection?.minFlightS ?? 0} s.
-                    {flightPumping ? " Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)." : ''}
+                    {' '}Cadence : coups par minute de la série ; vitesse : au début, puis à la fin de la série.
                   </>}
-                  flights={flights} podium={podiumFlights}
                   pumping={flightPumping} pumpSummary={pumpSummary} series={pumpSeriesList} seriesPodium={seriesPodium}
                   shown={pumpingShown} onShow={(key) => highlight.show('pumping', key)} accent={FAMILY_ACCENT.voile}
                   speedCell={(ms) => (ms === null ? '—' : formatSpeedValue(toDisplaySpeed(ms, speedUnit), speedUnit))}

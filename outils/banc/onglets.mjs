@@ -5,7 +5,7 @@
 //     tous les onglets de chaque analyse et, avec `DUMP=x`, relève leur texte dans `x-course.txt`, `x-velo.txt`,
 //     `x-surf.txt` et `x-voile.txt` ; avec `RELEVE_SEUL=1`, il s'arrête là (pour la version d'avant le lot) ;
 //  2. dans Réglages, partie Onglet analyse : la ligne « Onglets » de Voile, Course, Route, Fractionné à pied, Surf et
-//     Surf foil, ses défauts (« tops » coché à vélo et en voile, pas à pied ni en surf ; « vols » sur foil seulement ;
+//     Surf foil, ses défauts (« tops » coché à vélo et en voile, pas à pied ni en surf ; « vols » et « pumping » sur foil seulement ;
 //     pas de « sauts » en fractionné) ;
 //  3. « tops » coché et « vagues » caché en surf, « tops » coché en course, « vmg » caché en voile, rangés ;
 //  4. le surf : « tops » entre « rame » et « graphiques », « vagues » absent même laissé ouvert, le tableau,
@@ -179,13 +179,13 @@ for (const name of Object.keys(CARDS)) {
   shown[name] = await pills(name);
   console.log(`${name} :`, shown[name], '·', await rowMark(name));
 }
-check('Voile : tous montrés, « tops » et « sauts » compris', shown.Voile === 'général tops manœuvres graphiques cardio vmg sauts pumping vent matos et conditions réglages');
+check('Voile : tous montrés, « tops » et « sauts » compris', shown.Voile === 'général tops manœuvres graphiques cardio vmg sauts vols pumping vent matos et conditions réglages');
 // « sauts » caché d'office en Course par son pré-réglage (point 130).
 check('Course : « tops » relâché', shown.Course.includes('(tops)') && shown.Course.includes('(sauts)'));
 check('Route : « tops » enfoncé', / tops /.test(` ${shown.Route} `) && !shown.Route.includes('(tops)'));
 check('Fractionné à pied : pas de « sauts »', !shown['Fractionné à pied'].includes('sauts') && shown['Fractionné à pied'].includes('fractionné'));
-check('Surf : « tops » relâché, pas de « vols »', shown.Surf.includes('(tops)') && !shown.Surf.includes('vols'));
-check('Surf foil : « vols »', shown['Surf foil'].includes('vols'));
+check('Surf : « tops » relâché, ni « vols » ni « pumping »', shown.Surf.includes('(tops)') && !shown.Surf.includes('vols') && !shown.Surf.includes('pumping'));
+check('Surf foil : « vols » puis « pumping »', shown['Surf foil'].includes('vols pumping'));
 check('« défaut » sans choix', (await rowMark('Surf')) === 'défaut');
 
 // --- 3. Choix ---

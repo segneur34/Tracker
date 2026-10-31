@@ -4,7 +4,7 @@ import { HIGHLIGHT_PODIUM_COLORS, HIGHLIGHT_SHOWN_COLOR } from './highlightColor
 import type { TrackSpanShown } from './TrackSpanLayer';
 
 /**
- * Surbrillance de l'onglet du pumping (« pumping » en voile, « vols » en surf),
+ * Surbrillance des onglets « vols » et « pumping » (voile et surf sur foil),
  * une seule à la fois (`useMapHighlight`) : une série de coups ou le podium des
  * séries, un vol ou le podium des vols.
  */

@@ -18,25 +18,17 @@ export interface FlightColumn<F> {
   cell: (flight: F) => ReactNode;
 }
 
-export interface FlightPumpingPanelProps<F extends FlightSpan> {
+/** Ce que les deux onglets ont en commun : titre, aide, surbrillance, vitesse. */
+interface PanelBaseProps {
   helpKey: string;
   open: boolean;
   onToggle: () => void;
   /** Texte de l'aide « ? », sous le titre. */
   help: ReactNode;
-  /** Vols listés, dans l'ordre de la session. */
-  flights: F[];
-  /** Les 3 plus longs vols. */
-  podium: F[];
-  /** Tuiles propres au module, après celles des vols (Vols, Temps de vol, Plus long vol). */
-  extraFlightTiles?: ReactNode;
   /** Pumping mesuré par vol (par numéro), `null` sans capteurs lus ou Pumping décoché. */
   pumping: ReadonlyMap<number, FlightPumping> | null;
   pumpSummary: PumpingSummary | null;
-  /** Séries de coups de la session, dans l'ordre (`sessionPumpSeries`), et les 3 plus longues. */
-  series: PumpingSeries[];
-  seriesPodium: PumpingSeries[];
-  /** Surbrillance de l'onglet (`PumpingHighlightKey`) : une série, un vol, ou l'un des deux podiums. */
+  /** Surbrillance de l'onglet (`PumpingHighlightKey`) : une série ou un vol, ou un podium. */
   shown: string | null;
   onShow: (key: PumpingHighlightKey | null) => void;
   /** Couleur du module, pour le bouton « Voir ». */
@@ -44,18 +36,33 @@ export interface FlightPumpingPanelProps<F extends FlightSpan> {
   /** Vitesse dans l'unité de l'activité, « — » sans valeur ; `unitLabel` est son unité, dans les titres. */
   speedCell: (ms: number | null) => string;
   unitLabel: string;
+  /** Lecture des capteurs (`useSessionPumping`). */
+  sensors: { status: PumpingStatus; error: string | null };
+}
+
+export interface PumpingPanelProps extends PanelBaseProps {
+  /** Séries de coups de la session, dans l'ordre (`sessionPumpSeries`), et les 3 plus longues. */
+  series: PumpingSeries[];
+  seriesPodium: PumpingSeries[];
+  /** Pumping coché pour la session (fiche, sinon activité). */
+  pumpingOn: boolean;
+  /** Note, Pumping décoché ; rien si absente. */
+  offNote?: ReactNode;
+}
+
+export interface FlightsPanelProps<F extends FlightSpan> extends PanelBaseProps {
+  /** Vols listés, dans l'ordre de la session. */
+  flights: F[];
+  /** Les 3 plus longs vols. */
+  podium: F[];
+  /** Tuiles propres au module, après celles des vols (Vols, Temps de vol, Plus long vol). */
+  extraFlightTiles?: ReactNode;
   /** Colonnes du module : du podium des vols sans pumping mesuré… */
   podiumColumns?: FlightColumn<F>[];
   /** …de « Tous les vols », toujours, après le décollage… */
   allColumns?: FlightColumn<F>[];
   /** …et de « Tous les vols » sans pumping mesuré, à la place des siennes. */
   allColumnsWithoutPumping?: FlightColumn<F>[];
-  /** Pumping coché pour la session (fiche, sinon activité). */
-  pumpingOn: boolean;
-  /** Lecture des capteurs (`useSessionPumping`). */
-  sensors: { status: PumpingStatus; error: string | null };
-  /** Note sous les tableaux, Pumping décoché ; rien si absente. */
-  offNote?: ReactNode;
 }
 
 const thStyle = { padding: '0.4em 0.5em', whiteSpace: 'nowrap' } as const;
@@ -63,29 +70,18 @@ const tdStyle = { padding: '0.35em 0.5em', textAlign: 'center', whiteSpace: 'now
 const boldStyle = { ...tdStyle, fontWeight: 700 } as const;
 const noteStyle = { color: 'var(--muted)', fontSize: 'var(--text-xs)', marginTop: '8px' } as const;
 const headRowStyle = { backgroundColor: 'var(--surface-sunken)' } as const;
+const headStyle = { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' } as const;
 
 const orDash = (value: number | null, format: (v: number) => string): string => (value === null ? '—' : format(value));
 const perMin = (v: number) => `${Math.round(v)} /min`;
 const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
 
-/**
- * Pumping et vols mesurés par les capteurs du téléphone (`core/pumping.ts`),
- * pièce commune aux onglets « vols » du surf et « pumping » de la voile (lot 50).
- * En haut, le pumping : séries de coups validées par leur cadence, tuiles
- * (cadence d'abord), les 3 plus longues séries, « Toutes les séries ». Dessous,
- * à part, les vols : tuiles, les 3 plus longs vols, « Tous les vols ». Sans
- * mesure (capteurs absents, Pumping décoché), les vols seuls. Le panneau
- * redimensionnable reste chez l'appelant, avec son identifiant.
- */
-function FlightPumpingPanel<F extends FlightSpan>({
-  helpKey, open, onToggle, help, flights, podium, extraFlightTiles, pumping, pumpSummary, series, seriesPodium, shown, onShow, accent,
-  speedCell, unitLabel, podiumColumns = [], allColumns = [], allColumnsWithoutPumping = [], pumpingOn, sensors, offNote,
-}: FlightPumpingPanelProps<F>) {
-  const [allSeriesOpen, setAllSeriesOpen] = useState(false);
-  const [allFlightsOpen, setAllFlightsOpen] = useState(false);
-  /** Pumping mesuré : la capture touche au moins un vol. */
-  const measuring = pumping !== null && pumpSummary !== null && pumpSummary.measured > 0;
-  const title = measuring ? `Pumping (${plural(series.length, 'série')})` : `Vols (${flights.length})`;
+/** Pumping mesuré : la capture touche au moins un vol. */
+const isMeasuring = (pumping: PanelBaseProps['pumping'], summary: PumpingSummary | null) =>
+  pumping !== null && summary !== null && summary.measured > 0;
+
+/** Bouton « Voir » d'une ligne et bouton d'un podium, qui montrent ou retirent leur surbrillance. */
+const showButtons = ({ shown, onShow, accent }: Pick<PanelBaseProps, 'shown' | 'onShow' | 'accent'>) => {
   const toggleShown = (key: PumpingHighlightKey) => onShow(shown === key ? null : key);
   const mapButton = (key: PumpingHighlightKey) => <MapToggle shown={shown === key} color={accent} onClick={() => toggleShown(key)} />;
   const podiumButton = (key: PumpingHighlightKey, label: string) => (
@@ -93,12 +89,31 @@ function FlightPumpingPanel<F extends FlightSpan>({
       {shown === key ? `Masquer ${label}` : label.charAt(0).toUpperCase() + label.slice(1)}
     </Button>
   );
-  /** Nom d'un vol dans les tableaux ; une étoile si les capteurs n'en couvrent qu'une partie. */
-  const flightName = (f: F) => `${f.n}${pumping?.get(f.n)?.covered === false ? ' *' : ''}`;
-  const totalFlightS = flights.reduce((s, f) => s + f.durationS, 0);
-  const longestFlightS = flights.reduce((m, f) => Math.max(m, f.durationS), 0);
+  return { mapButton, podiumButton };
+};
 
-  // --- Séries ---
+/** Lecture des capteurs en cours ou impossible. */
+const sensorNotes = (sensors: PanelBaseProps['sensors']) => (
+  <>
+    {sensors.status === 'loading' && <div style={noteStyle}>Lecture des capteurs…</div>}
+    {sensors.error && <div style={noteStyle}>Capteurs : {sensors.error}</div>}
+  </>
+);
+
+/**
+ * Onglet « pumping » de la voile et du surf sur foil (lot 50) : séries de coups
+ * mesurées par les capteurs du téléphone, validées par leur cadence ; tuiles
+ * (cadence d'abord), les 3 plus longues séries, « Toutes les séries ». Les vols
+ * ont leur onglet (`FlightsPanel`). Le panneau redimensionnable reste chez
+ * l'appelant, avec son identifiant.
+ */
+export function PumpingPanel({
+  helpKey, open, onToggle, help, pumping, pumpSummary, series, seriesPodium, shown, onShow, accent, speedCell, unitLabel, pumpingOn, sensors, offNote,
+}: PumpingPanelProps) {
+  const [allSeriesOpen, setAllSeriesOpen] = useState(false);
+  const measuring = isMeasuring(pumping, pumpSummary);
+  const { mapButton, podiumButton } = showButtons({ shown, onShow, accent });
+
   const seriesTable = (list: PumpingSeries[], podiumRows: boolean) => (
     <div style={{ overflowX: 'auto', marginTop: '10px' }}>
       <table className="ui-table ui-table--cards an-pump-table">
@@ -135,7 +150,65 @@ function FlightPumpingPanel<F extends FlightSpan>({
     </div>
   );
 
-  // --- Vols ---
+  return (
+    <>
+      <div style={headStyle}>
+        <PanelTitle label={measuring ? `Pumping (${plural(series.length, 'série')})` : 'Pumping'} open={open} onToggle={onToggle} helpKey={helpKey} />
+        <span style={{ flex: 1 }} />
+        {measuring && series.length > 1 && podiumButton(SERIES_PODIUM_KEY, 'les 3 plus longues séries')}
+      </div>
+      <HelpText helpKey={helpKey} note>{help}</HelpText>
+
+      {measuring && pumpSummary && (
+        <>
+          <div className="an-sheet__stats an-sheet__stats--always">
+            <StatTile label="Cadence" value={orDash(pumpSummary.strokesPerMin, perMin)} title="Coups par minute, sur les séries" />
+            <StatTile label="Séries" value={pumpSummary.series} />
+            <StatTile label="Temps pompé" value={formatShortDuration(pumpSummary.pumpS)} />
+            <StatTile label="Coups" value={pumpSummary.strokes} />
+            <StatTile label="Par coup" value={orDash(pumpSummary.perStrokeM, (v) => `${formatDecimal(v, 1)} m`)} title="Distance des séries divisée par leurs coups" />
+            <StatTile label="Part du vol pompée" value={`${Math.round(pumpSummary.pumpShare * 100)} %`} title="Temps pompé sur le temps de vol couvert par les capteurs" />
+          </div>
+          {series.length === 0 && (
+            <div style={noteStyle}>Aucune série de coups à une cadence régulière : rien n'est compté comme du pumping.</div>
+          )}
+          {series.length > 0 && seriesTable(seriesPodium, series.length > 1)}
+          {series.length > 3 && (
+            <Button size="s" style={{ marginTop: '10px' }} aria-expanded={allSeriesOpen} onClick={() => setAllSeriesOpen(!allSeriesOpen)}>
+              {allSeriesOpen ? 'Replier les séries ▲' : `Toutes les séries (${series.length}) ▼`}
+            </Button>
+          )}
+          {allSeriesOpen && series.length > 3 && seriesTable(series, false)}
+        </>
+      )}
+
+      {pumping && !measuring && sensors.status === 'ready' && (
+        <div style={noteStyle}>Les capteurs de cette session ne couvrent aucun vol.</div>
+      )}
+      {!pumpingOn && offNote && <div style={noteStyle}>{offNote}</div>}
+      {sensorNotes(sensors)}
+    </>
+  );
+}
+
+/**
+ * Onglet « vols » de la voile et du surf sur foil (lot 50) : tuiles, les 3 plus
+ * longs vols, « Tous les vols ». Avec le pumping mesuré, chaque vol porte sa
+ * vitesse de décollage, ses séries et son temps pompé ; sans, les colonnes du
+ * GPS du module. Le panneau redimensionnable reste chez l'appelant.
+ */
+export function FlightsPanel<F extends FlightSpan>({
+  helpKey, open, onToggle, help, flights, podium, extraFlightTiles, pumping, pumpSummary, shown, onShow, accent,
+  speedCell, unitLabel, podiumColumns = [], allColumns = [], allColumnsWithoutPumping = [], sensors,
+}: FlightsPanelProps<F>) {
+  const [allFlightsOpen, setAllFlightsOpen] = useState(false);
+  const measuring = isMeasuring(pumping, pumpSummary);
+  const { mapButton, podiumButton } = showButtons({ shown, onShow, accent });
+  /** Nom d'un vol dans les tableaux ; une étoile si les capteurs n'en couvrent qu'une partie. */
+  const flightName = (f: F) => `${f.n}${pumping?.get(f.n)?.covered === false ? ' *' : ''}`;
+  const totalFlightS = flights.reduce((s, f) => s + f.durationS, 0);
+  const longestFlightS = flights.reduce((m, f) => Math.max(m, f.durationS), 0);
+
   const flightTable = (list: F[], podiumRows: boolean) => {
     const moduleColumns = measuring ? (podiumRows ? [] : allColumns) : podiumRows ? podiumColumns : [...allColumns, ...allColumnsWithoutPumping];
     return (
@@ -188,49 +261,15 @@ function FlightPumpingPanel<F extends FlightSpan>({
     );
   };
 
-  const flightsHead = measuring ? (
-    <div className="an-pump-sub">
-      <strong>Vols ({flights.length})</strong>
-      <span style={{ flex: 1 }} />
-      {flights.length > 1 && podiumButton(FLIGHT_PODIUM_KEY, 'les 3 plus longs vols')}
-    </div>
-  ) : null;
-
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-        <PanelTitle label={title} open={open} onToggle={onToggle} helpKey={helpKey} />
+      <div style={headStyle}>
+        <PanelTitle label={`Vols (${flights.length})`} open={open} onToggle={onToggle} helpKey={helpKey} />
         <span style={{ flex: 1 }} />
-        {measuring
-          ? series.length > 1 && podiumButton(SERIES_PODIUM_KEY, 'les 3 plus longues séries')
-          : flights.length > 1 && podiumButton(FLIGHT_PODIUM_KEY, 'les 3 plus longs vols')}
+        {flights.length > 1 && podiumButton(FLIGHT_PODIUM_KEY, 'les 3 plus longs vols')}
       </div>
       <HelpText helpKey={helpKey} note>{help}</HelpText>
 
-      {measuring && pumpSummary && (
-        <>
-          <div className="an-sheet__stats an-sheet__stats--always">
-            <StatTile label="Cadence" value={orDash(pumpSummary.strokesPerMin, perMin)} title="Coups par minute, sur les séries" />
-            <StatTile label="Séries" value={pumpSummary.series} />
-            <StatTile label="Temps pompé" value={formatShortDuration(pumpSummary.pumpS)} />
-            <StatTile label="Coups" value={pumpSummary.strokes} />
-            <StatTile label="Par coup" value={orDash(pumpSummary.perStrokeM, (v) => `${formatDecimal(v, 1)} m`)} title="Distance des séries divisée par leurs coups" />
-            <StatTile label="Part du vol pompée" value={`${Math.round(pumpSummary.pumpShare * 100)} %`} title="Temps pompé sur le temps de vol couvert par les capteurs" />
-          </div>
-          {series.length === 0 && (
-            <div style={noteStyle}>Aucune série de coups à une cadence régulière : rien n'est compté comme du pumping.</div>
-          )}
-          {series.length > 0 && seriesTable(seriesPodium, series.length > 1)}
-          {series.length > 3 && (
-            <Button size="s" style={{ marginTop: '10px' }} aria-expanded={allSeriesOpen} onClick={() => setAllSeriesOpen(!allSeriesOpen)}>
-              {allSeriesOpen ? 'Replier les séries ▲' : `Toutes les séries (${series.length}) ▼`}
-            </Button>
-          )}
-          {allSeriesOpen && series.length > 3 && seriesTable(series, false)}
-        </>
-      )}
-
-      {flightsHead}
       <div className="an-sheet__stats an-sheet__stats--always">
         <StatTile label="Vols" value={flights.length} />
         <StatTile label="Temps de vol" value={formatShortDuration(totalFlightS)} />
@@ -248,17 +287,7 @@ function FlightPumpingPanel<F extends FlightSpan>({
       {pumping && [...pumping.values()].some((x) => !x.covered) && (
         <div style={noteStyle}>* : capteurs sur une partie du vol seulement.</div>
       )}
-      {pumping && !measuring && sensors.status === 'ready' && (
-        <div style={noteStyle}>Les capteurs de cette session ne couvrent aucun vol.</div>
-      )}
-      {pumpingOn && sensors.status === 'none' && (
-        <div style={noteStyle}>Cette session n'a pas les capteurs : cochez « Mesurer le pumping » dans Enregistrer, téléphone fixé sur la poitrine.</div>
-      )}
-      {!pumpingOn && offNote && <div style={noteStyle}>{offNote}</div>}
-      {sensors.status === 'loading' && <div style={noteStyle}>Lecture des capteurs…</div>}
-      {sensors.error && <div style={noteStyle}>Capteurs : {sensors.error}</div>}
+      {sensorNotes(sensors)}
     </>
   );
 }
-
-export default FlightPumpingPanel;

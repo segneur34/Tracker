@@ -11,7 +11,7 @@ import { hasSessionMotion, useLibrarySession } from './useSessionLibrary';
 /**
  * Capteurs d'une session sur foil, surf ou voile, pour le pumping des vols
  * (`core/pumping.ts`) : son `.imu` lu et décodé à l'ouverture de l'analyse
- * (de l'onglet « pumping » en voile), si le pumping est coché.
+ * (des onglets « vols » ou « pumping »), si le pumping est coché.
  * Le pumping se recalcule à chaque seuil (il suit les vols) : rien n'est rangé
  * dans la fiche. La capture est partagée avec les sauts (`loadSessionMotion`).
  */

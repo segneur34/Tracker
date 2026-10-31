@@ -25,7 +25,7 @@ export interface AnalysisTab<K extends string = string> {
 /** Choix d'une activité : seulement les onglets montrés ou cachés à l'écart de leur défaut. */
 export type TabChoices = Readonly<Record<string, boolean>>;
 
-export type SailingTab = 'general' | 'tops' | 'manoeuvres' | 'graphiques' | 'cardio' | 'vmg' | 'sauts' | 'pumping' | 'vent' | 'matos' | 'reglages';
+export type SailingTab = 'general' | 'tops' | 'manoeuvres' | 'graphiques' | 'cardio' | 'vmg' | 'sauts' | 'vols' | 'pumping' | 'vent' | 'matos' | 'reglages';
 
 /** Voile : une seule barre, dans l'ordre voulu par l'utilisateur. */
 export const SAILING_TABS: AnalysisTab<SailingTab>[] = [
@@ -38,7 +38,9 @@ export const SAILING_TABS: AnalysisTab<SailingTab>[] = [
   { key: 'vmg', label: 'vmg' },
   // Seulement pour une session aux sauts mesurés par les capteurs du téléphone.
   { key: 'sauts', label: 'sauts' },
-  // Sur foil seulement, pour une session qui a ses capteurs (lot 22) : mêmes capteurs que les sauts.
+  // Sur foil seulement : les vols vus par le GPS, puis le pumping, pour une session qui a ses capteurs (lot 22),
+  // les mêmes que les sauts ; deux onglets à part (lot 50, 31/10).
+  { key: 'vols', label: 'vols' },
   { key: 'pumping', label: 'pumping' },
   { key: 'vent', label: 'vent' },
   { key: 'matos', label: 'matos et conditions' },
@@ -75,15 +77,16 @@ export const LAND_TABS: Record<'course' | 'velo', AnalysisTab<LandTab>[]> = {
   velo: landTabs(false, false),
 };
 
-export type SurfTab = 'general' | 'vagues' | 'rame' | 'vols' | 'tops' | 'graphiques' | 'cardio' | 'notes' | 'reglages';
+export type SurfTab = 'general' | 'vagues' | 'rame' | 'vols' | 'pumping' | 'tops' | 'graphiques' | 'cardio' | 'notes' | 'reglages';
 
 /** Surf (surf, paddle, SUP foil, kayak, downwind) : « tops » est générique. */
 export const SURF_TABS: AnalysisTab<SurfTab>[] = [
   { key: 'general', label: 'général', primary: true },
   { key: 'vagues', label: 'vagues' },
   { key: 'rame', label: 'rame' },
-  // Sur foil seulement.
+  // Sur foil seulement ; « pumping » pour une session qui a ses capteurs, à part des vols (lot 50, 31/10).
   { key: 'vols', label: 'vols' },
+  { key: 'pumping', label: 'pumping' },
   { key: 'tops', label: 'tops', generic: true },
   { key: 'graphiques', label: 'graphiques' },
   { key: 'cardio', label: 'cardio' },

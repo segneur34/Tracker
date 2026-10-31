@@ -25,7 +25,7 @@ import SessionThresholdField from '../components/SessionThresholdField';
 import { SessionColorRangeField } from '../components/SpeedRangeEditor';
 import TrackSpanLayer, { type TrackSpanShown } from '../components/TrackSpanLayer';
 import { pumpingHighlightSpans } from '../components/pumpingHighlight';
-import FlightPumpingPanel, { type FlightColumn } from '../components/FlightPumpingPanel';
+import { FlightsPanel, PumpingPanel, type FlightColumn } from '../components/FlightPumpingPanel';
 import TopsPanel, { TopsHighlight } from '../components/TopsPanel';
 import HeartRateChart from '../components/HeartRateChart';
 import { CardioCompanion } from '../components/HeartRatePanel';
@@ -71,8 +71,8 @@ import AnalysisShell from '../components/AnalysisShell';
  * (`docs/MISE_EN_PAGE.md`) : carte colorée par la vitesse, puis les onglets.
  * « général » porte la synthèse ; « vagues » le tableau des vagues ; « rame »
  * les remontées et le retour au pic ; « vols », sur foil seulement, les vols
- * qui relient plusieurs vagues en pompant, et leur pumping mesuré par les
- * capteurs si la session les a (point 104) ; « tops », si l'activité le coche
+ * qui relient plusieurs vagues en pompant (point 104), et à part « pumping »,
+ * les séries de coups mesurées par les capteurs si la session les a ; « tops », si l'activité le coche
  * dans Réglages (paddle, kayak, downwind), les meilleurs passages sur chaque
  * durée ou distance ; « graphiques » la vitesse au fil
  * de la session, vagues en bandes ; « matériel et notes » le matériel (deux
@@ -169,9 +169,15 @@ function SurfModule() {
   const graphFolds = useOpenSections(`${STORAGE_ID}.graphes`, GRAPH_FOLDS_DEFAULT);
   /** FC de la session (ceinture, montre) et zones du pratiquant : l'onglet « cardio » et sa courbe sous la vitesse. */
   const { runner, retainHr, heart, hrZones } = useAnalysisHeart(gpx.track, profile.heartRate, hrOffsetBpm);
+  // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
+  // Capteurs lus à l'ouverture de l'onglet « vols » ou « pumping », Pumping coché, comme en voile : une capture entière pèse plusieurs Mo.
+  const sensors = useSessionPumping(shownFile, pumping && (open.vols || open.pumping));
+  const pumpDetection = surfProfile?.pump ?? null;
+  /** Onglet « pumping » : sur foil, pour un calcul qui le mesure, si la session a ses capteurs ; Pumping décoché, il le dit. */
+  const pumpingVisible = foil && pumpDetection !== null && sensors.hasMotion;
   const sections = useMemo(
-    () => shown((s) => (s.key !== 'vols' || foil) && (s.key !== 'cardio' || heart.present)),
-    [shown, foil, heart.present]
+    () => shown((s) => (s.key !== 'vols' || foil) && (s.key !== 'pumping' || pumpingVisible) && (s.key !== 'cardio' || heart.present)),
+    [shown, foil, pumpingVisible, heart.present]
   );
   const [waveSort, setWaveSort] = useState<WaveSort>('ordre');
   const narrow = useNarrowScreen();
@@ -240,15 +246,12 @@ function SurfModule() {
   // Une seule surbrillance : une vague (son numéro) ou le podium, un vol, une remontée.
   const waveShown = highlight.shownIn('vagues');
   const flightShown = highlight.shownIn('vols');
+  const pumpingShown = highlight.shownIn('pumping');
   const returnShown = highlight.shownIn('rame');
   const waves = useMemo(() => analysis?.waves ?? [], [analysis]);
   const flights = useMemo(() => analysis?.flights ?? [], [analysis]);
   const returns = useMemo(() => analysis?.returns ?? [], [analysis]);
 
-  // Pumping des vols, par les capteurs de la session : il suit les vols, donc le seuil du brouillon.
-  // Capteurs lus à l'ouverture de l'onglet « vols », Pumping coché, comme en voile : une capture entière pèse plusieurs Mo.
-  const sensors = useSessionPumping(shownFile, pumping && open.vols);
-  const pumpDetection = surfProfile?.pump ?? null;
   const {
     byFlight: flightPumping, summary: pumpSummary, podium: podiumFlights, series: pumpSeriesList, seriesPodium,
   } = useFlightPumping(sensors.recording, pumpDetection, track, cumulative, flights);
@@ -278,8 +281,9 @@ function SurfModule() {
       const w = waves.find((x) => String(x.n) === waveShown);
       return w ? [{ key: `vague-${w.n}`, start: w.start, end: w.end, color: HIGHLIGHT_SHOWN_COLOR, label: spanLabel('Vague', w) }] : [];
     }
-    // Onglet « vols » : une série de coups, un vol, ou l'un des deux podiums (`PumpingHighlightKey`).
-    if (flightShown !== null) return pumpingHighlightSpans(flightShown, flights, podiumFlights, pumpSeriesList, seriesPodium, (f) => spanLabel('Vol', f));
+    // Onglets « vols » et « pumping » : un vol, une série de coups, ou l'un des deux podiums (`PumpingHighlightKey`).
+    const flightOrSeries = flightShown ?? pumpingShown;
+    if (flightOrSeries !== null) return pumpingHighlightSpans(flightOrSeries, flights, podiumFlights, pumpSeriesList, seriesPodium, (f) => spanLabel('Vol', f));
     if (returnShown !== null) {
       const r = returns.find((x) => String(x.after) === returnShown);
       if (!r) return [];
@@ -289,7 +293,7 @@ function SurfModule() {
       return [{ key: `remontee-${r.after}`, start, end: returnEnd(r), color: HIGHLIGHT_SHOWN_COLOR, label: `${label} · ${formatTimeOfDay(r.startMs)}` }];
     }
     return [];
-  }, [waveShown, flightShown, returnShown, waves, flights, podiumFlights, pumpSeriesList, seriesPodium, returns, track, returnEnd, speedUnit, foil]);
+  }, [waveShown, flightShown, pumpingShown, returnShown, waves, flights, podiumFlights, pumpSeriesList, seriesPodium, returns, track, returnEnd, speedUnit, foil]);
 
   const sortedWaves = useMemo(() => {
     const list = [...waves];
@@ -597,28 +601,43 @@ function SurfModule() {
 
             {open.vols && foil && (
               <ResizablePanel id={panelId('vols')} style={ANALYSIS_PANEL_STYLE}>
-                <FlightPumpingPanel
+                <FlightsPanel
                   helpKey="surf:vols" open={open.vols} onToggle={toggleOf('vols')}
                   help={<>
-                    {flightPumping && pumpDetection
-                      ? <>Pumping : en vol seulement, compté par séries de coups mesurées par les capteurs du téléphone ;
-                        une série ne compte que si ses coups suivent une cadence régulière, de {pumpDetection.cadenceMinPerMin} à {pumpDetection.cadenceMaxPerMin} coups
-                        par minute. Cadence : coups par minute de la série ; vitesse : au début, puis à la fin de la série. </>
-                      : null}
                     Vol : au-dessus du seuil de vol, d'une traite ; ses vagues sont ses passages au-dessus du seuil de vague en foil.
                     {flightPumping
-                      ? " Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental)."
+                      ? " Décollage : vitesse GPS quand les chocs de la planche sur l'eau cessent (expérimental) ; séries et temps pompé : ceux de l'onglet pumping."
                       : " Hors vague : le temps du vol passé hors des vagues, vu par le GPS ; sans les capteurs, rien ne dit s'il est pompé."}
                   </>}
                   flights={flights} podium={podiumFlights}
                   extraFlightTiles={<StatTile label="Vagues en un vol" value={summary.maxWavesInFlight ?? '—'} />}
-                  pumping={flightPumping} pumpSummary={pumpSummary} series={pumpSeriesList} seriesPodium={seriesPodium}
+                  pumping={flightPumping} pumpSummary={pumpSummary}
                   shown={flightShown} onShow={(key) => highlight.show('vols', key)} accent={ACCENT}
                   speedCell={speedCell} unitLabel={unitLabel}
                   podiumColumns={SURF_FLIGHT_PODIUM_COLUMNS}
                   allColumns={SURF_FLIGHT_ALL_COLUMNS}
                   allColumnsWithoutPumping={surfFlightGpsColumns}
-                  pumpingOn={pumping} sensors={sensors} />
+                  sensors={sensors} />
+              </ResizablePanel>
+            )}
+
+            {open.pumping && pumpingVisible && (
+              <ResizablePanel id={panelId('pumping')} style={ANALYSIS_PANEL_STYLE}>
+                <PumpingPanel
+                  helpKey="surf:pumping" open={open.pumping} onToggle={toggleOf('pumping')}
+                  help={<>
+                    Pumping : en vol seulement (onglet vols), compté par séries de coups mesurées par les capteurs du téléphone ;
+                    {pumpDetection
+                      ? <> une série ne compte que si ses coups suivent une cadence régulière, de {pumpDetection.cadenceMinPerMin} à {pumpDetection.cadenceMaxPerMin} coups
+                        par minute.</>
+                      : null}
+                    {' '}Cadence : coups par minute de la série ; vitesse : au début, puis à la fin de la série.
+                  </>}
+                  pumping={flightPumping} pumpSummary={pumpSummary} series={pumpSeriesList} seriesPodium={seriesPodium}
+                  shown={pumpingShown} onShow={(key) => highlight.show('pumping', key)} accent={ACCENT}
+                  speedCell={speedCell} unitLabel={unitLabel}
+                  pumpingOn={pumping} sensors={sensors}
+                  offNote="Cochez « Pumping » dans l'onglet réglages pour compter les séries de coups en vol, téléphone fixé sur la poitrine." />
               </ResizablePanel>
             )}
 

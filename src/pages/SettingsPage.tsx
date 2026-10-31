@@ -143,14 +143,14 @@ function WayTypesSetting({ view, treatment, onChange }: { view: SportSettingsVie
 /**
  * Onglets des analyses de l'activité : enfoncé, montré. Ceux du module le sont
  * d'office, un onglet générique (« tops » à pied et en surf) ne l'est qu'une
- * fois coché ; tous se cachent. « vols » n'est proposé que sur foil.
+ * fois coché ; tous se cachent. « vols » et « pumping » ne sont proposés que sur foil.
  */
 function AnalysisTabsSetting({ view, profile, onChange }: {
   view: SportSettingsView;
   profile: SportProfile;
   onChange: (choices: TabChoices | null) => void;
 }) {
-  const tabs = analysisTabs(profile).filter((tab) => tab.key !== 'vols' || view.foil === true);
+  const tabs = analysisTabs(profile).filter((tab) => (tab.key !== 'vols' && tab.key !== 'pumping') || view.foil === true);
   return (
     <SettingRow label="Onglets" helpKey={`${view.activity.id}:onglets`}
       help="Enfoncé : montré dans les analyses. Ceux venus d'un autre module (« tops ») sont cachés d'office ; sans « réglages », l'activité et le seuil d'une session ne se changent plus depuis son analyse.">
